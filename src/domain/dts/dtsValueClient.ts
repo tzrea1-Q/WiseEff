@@ -1,4 +1,5 @@
 import type { DtsValueType } from "@/application/ports/DtsStructuredRepository";
+import { dtsValueTypeLabel } from "@/domain/dts/dtsValueTypeLabels";
 
 export type ClassifiedDtsValue = {
   valueType: DtsValueType;
@@ -74,17 +75,17 @@ export function validateDtsValue(
       return {
         ...classified,
         valid: false,
-        error: `期望类型 ${declaredType}，实际为 ${classified.valueType}`,
+        error: `期望类型「${dtsValueTypeLabel(declaredType)}」，实际为「${dtsValueTypeLabel(classified.valueType)}」`,
       };
     }
   }
 
   if (declaredType === "empty" && rawText.trim() !== "") {
-    return { ...classified, valid: false, error: "empty 属性必须为空" };
+    return { ...classified, valid: false, error: "空属性的值必须为空" };
   }
 
   if (declaredType === "bool" && rawText.trim() !== "") {
-    return { ...classified, valid: false, error: "bool 属性必须为空 RHS" };
+    return { ...classified, valid: false, error: "布尔属性不能带右侧取值" };
   }
 
   return { ...classified, valid: true };
@@ -96,18 +97,18 @@ function findSyntaxError(rawText: string, valueType: DtsValueType): string | und
 
   if (valueType === "bytes") {
     const match = trimmed.match(/^\/bits\/\s+(\d+)\s+<([^>]*)>\s*$/i);
-    if (!match) return "bytes 语法无效，期望 /bits/ N <…>";
+    if (!match) return "字节数组语法无效，期望 /bits/ N <…>";
     const inner = match[2];
     if (!cellsFullyTokenized(inner, { allowEmpty: false })) {
-      return "bytes 含有非法字节单元";
+      return "字节数组含有非法数值";
     }
     return undefined;
   }
 
   if (valueType === "string-list") {
-    if (!trimmed.includes('"')) return "string-list 缺少引号字符串";
+    if (!trimmed.includes('"')) return "字符串列表缺少引号字符串";
     // Remaining non-whitespace/comma outside quotes is allowed loosely; require at least one string.
-    if (normalizeStringList(trimmed) === "") return "string-list 缺少有效字符串";
+    if (normalizeStringList(trimmed) === "") return "字符串列表缺少有效字符串";
     return undefined;
   }
 
@@ -115,33 +116,33 @@ function findSyntaxError(rawText: string, valueType: DtsValueType): string | und
     const groups = splitAngleGroups(trimmed);
     if (groups.length === 0) {
       if (valueType === "mixed") return undefined;
-      return "期望 <…> 单元组";
+      return "期望 <…> 数值组";
     }
     for (const group of groups) {
       const allowEmpty = false;
       if (valueType === "u32-array" || valueType === "phandle-list") {
         if (!cellsFullyTokenized(group, { allowEmpty })) {
-          return valueType === "phandle-list" ? "phandle-list 含有非法标签" : "u32-array 含有非法单元";
+          return valueType === "phandle-list" ? "句柄引用含有非法标签" : "整数数组含有非法数值";
         }
         if (valueType === "phandle-list") {
           const tokens = tokenizeGroup(group);
           if (tokens.length === 0 || tokens.some((t) => !t.startsWith("&"))) {
-            return "phandle-list 仅允许 &label 引用";
+            return "句柄引用仅允许 &label 形式";
           }
         }
         if (valueType === "u32-array") {
           const tokens = tokenizeGroup(group);
           if (tokens.length === 0 || tokens.some((t) => t.startsWith("&"))) {
-            return "u32-array 仅允许数值单元";
+            return "整数数组仅允许数值";
           }
         }
       } else if (!cellsFullyTokenized(group, { allowEmpty: true }) && group.trim() !== "") {
         // mixed: allow empty groups? keep loose — only flag leftover junk when tokens present
         if (tokenizeGroup(group).length > 0 && !cellsFullyTokenized(group, { allowEmpty: true })) {
-          return "mixed 含有非法单元";
+          return "混合类型含有非法数值";
         }
         if (tokenizeGroup(group).length === 0 && /[^\s,]/.test(group)) {
-          return "mixed 含有非法单元";
+          return "混合类型含有非法数值";
         }
       }
     }

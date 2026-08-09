@@ -43,7 +43,7 @@ describe("StructuredValueEditor", () => {
       />
     );
 
-    const cells = screen.getAllByRole("textbox", { name: /cell/i });
+    const cells = screen.getAllByRole("textbox", { name: /数值/i });
     expect(cells.length).toBeGreaterThanOrEqual(2);
     expect(cells[0]).toHaveValue("0xB");
     expect(cells[1]).toHaveValue("0x4b");
@@ -71,7 +71,7 @@ describe("StructuredValueEditor", () => {
       />
     );
 
-    const cell = screen.getByRole("textbox", { name: /cell 1/i });
+    const cell = screen.getByRole("textbox", { name: /数值 1/i });
     fireEvent.change(cell, { target: { value: "0xGG" } });
 
     const last = onChange.mock.calls.at(-1)?.[0];
@@ -92,8 +92,8 @@ describe("StructuredValueEditor", () => {
       />
     );
 
-    expect(screen.getByLabelText(/bits width|位宽/i)).toHaveValue(8);
-    const bytes = screen.getAllByRole("textbox", { name: /byte/i });
+    expect(screen.getByLabelText("位宽")).toHaveValue(8);
+    const bytes = screen.getAllByRole("textbox", { name: /字节/i });
     expect(bytes).toHaveLength(2);
 
     fireEvent.change(bytes[1], { target: { value: "0xAB" } });

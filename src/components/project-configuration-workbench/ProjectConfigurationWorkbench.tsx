@@ -37,6 +37,7 @@ import {
 } from "@/components/parameter-admin-next/useGovernanceToast";
 import { mapApiAuditEventToView } from "@/domain/audit/mapAuditEventView";
 import type { AuditEventListResponse, AuditEventView, ListAuditEventsParams } from "@/domain/audit/types";
+import { dtsValueTypeLabel } from "@/domain/dts/dtsValueTypeLabels";
 import { createAuditClient } from "@/infrastructure/http/auditClient";
 import {
   presentWorkbenchActivity,
@@ -65,7 +66,6 @@ import {
   canvasModeQueryValue,
   classifyNodeRisk,
   formatSourceSpan,
-  inspectorBackTarget,
   parseCanvasMode,
   resolveInspectorLevel,
   shouldPersistInspector,
@@ -87,6 +87,7 @@ import {
   upsertSessionDraftBucket,
   type SessionDraftScope
 } from "./sessionDraftStorage";
+import { WorkbenchStructureTree } from "./WorkbenchStructureTree";
 
 export type ProjectConfigurationWorkbenchProject = {
   id: string;
@@ -272,15 +273,6 @@ function groupHitsByFile(hits: DtsSearchHit[]): Array<{ fileId: string; fileName
   return [...groups.values()];
 }
 
-function buildNestedTree(nodes: DtsStructuralNode[]): Array<DtsStructuralNode & { depth: number }> {
-  return [...nodes]
-    .sort((left, right) => left.nodePath.localeCompare(right.nodePath))
-    .map((node) => ({
-      ...node,
-      depth: node.nodePath ? node.nodePath.split("/").filter(Boolean).length - 1 : 0
-    }));
-}
-
 function nearestNodeForLine(nodes: DtsStructuralNode[], line: number): DtsStructuralNode | null {
   let best: DtsStructuralNode | null = null;
   let bestDistance = Number.POSITIVE_INFINITY;
@@ -368,6 +360,7 @@ export function ProjectConfigurationWorkbench({
   const [modeSourceLoading, setModeSourceLoading] = useState(false);
   const [modeSourceError, setModeSourceError] = useState("");
   const [downloadMessage, setDownloadMessage] = useState("");
+  const [downloadingDts, setDownloadingDts] = useState(false);
   const [activeCandidate, setActiveCandidate] = useState<ParameterFileCandidate | null>(null);
   const [candidateSource, setCandidateSource] = useState("");
   const [candidateLoading, setCandidateLoading] = useState(false);
@@ -425,7 +418,6 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [findQuery, setFindQuery] = useState("");
   const [findNextToken, setFindNextToken] = useState(0);
-  const [lineJumpDraft, setLineJumpDraft] = useState("");
   const [focusLineOverride, setFocusLineOverride] = useState<number | null>(null);
   const [suppressScrollSync, setSuppressScrollSync] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -724,12 +716,6 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   }, [search]);
 
   useEffect(() => {
-    if (selectedNodePath || selectedPropertyName) {
-      setInspectorOpen(true);
-    }
-  }, [selectedNodePath, selectedPropertyName]);
-
-  useEffect(() => {
     const measure = () => {
       const body = workbenchBodyRef.current;
       if (!body) return;
@@ -1001,8 +987,6 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     setFocusLineOverride(null);
   }, [selectedNodePath, selectedPropertyName, selectedMember?.fileId]);
 
-  const nestedNodes = useMemo(() => buildNestedTree(structureNodes), [structureNodes]);
-
   const focusSpan = useMemo(() => {
     if (!selectedNodePath) return null;
     const node = structureNodes.find((item) => item.nodePath === selectedNodePath);
@@ -1031,7 +1015,6 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
       setSelectedNodePath(nodePath);
       setSelectedPropertyName(propertyName);
       setInspectorLevelOverride(null);
-      setInspectorOpen(true);
       onNavigate(
         formatWorkbenchPath(project.id, search, {
           configSet: selectedConfigSet.id,
@@ -1072,7 +1055,6 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     (hit: DtsSearchHit) => {
       if (!selectedConfigSet) return;
       setSuppressScrollSync(true);
-      setInspectorOpen(true);
       onNavigate(
         formatWorkbenchPath(project.id, search, {
           configSet: selectedConfigSet.id,
@@ -1130,7 +1112,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
       }
       if (event.altKey && event.key.toLowerCase() === "g") {
         event.preventDefault();
-        const line = Number(lineJumpDraft || window.prompt("跳转到行号") || "");
+        const line = Number(window.prompt("跳转到行号") || "");
         if (Number.isFinite(line) && line >= 1) {
           setFocusLineOverride(line);
         }
@@ -1153,7 +1135,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [lineJumpDraft]);
+  }, []);
 
   const memberIds = useMemo(
     () => new Set(selectedMembers.map((item) => item.fileId)),
@@ -1408,7 +1390,6 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     (fileId: string) => {
       if (!selectedConfigSet) return;
       setInspectorLevelOverride("file");
-      setInspectorOpen(true);
       const switchingFile = selectedMember?.fileId !== fileId;
       onNavigate(
         formatWorkbenchPath(project.id, search, {
@@ -1423,58 +1404,6 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     },
     [canvasMode, historyVersionId, onNavigate, project.id, search, selectedConfigSet, selectedMember?.fileId]
   );
-
-  const handleInspectorBack = useCallback(() => {
-    if (!selectedConfigSet) return;
-    const target = inspectorBackTarget(inspectorLevel);
-    setActivityMissingNotice("");
-    if (inspectorLevel === "activity") {
-      setInspectorLevelOverride(derivedInspectorLevel === "config-set" ? null : derivedInspectorLevel);
-      setInspectorOpen(true);
-      onNavigate(
-        formatWorkbenchPath(project.id, search, {
-          configSet: selectedConfigSet.id,
-          file: selectedMember?.fileId ?? queryValue(search, "file"),
-          node: selectedNodePath,
-          property: selectedPropertyName,
-          sourceMode: canvasModeQueryValue(canvasMode),
-          version: historyVersionId,
-          candidate: candidateId,
-          inspector: null
-        })
-      );
-      return;
-    }
-    setInspectorLevelOverride(target.level);
-    setInspectorOpen(true);
-    const nextNode = target.clearNode ? null : selectedNodePath;
-    const nextProperty = target.clearProperty ? null : selectedPropertyName;
-    if (target.clearNode) setSelectedNodePath(null);
-    if (target.clearProperty) setSelectedPropertyName(null);
-    onNavigate(
-      formatWorkbenchPath(project.id, search, {
-        configSet: selectedConfigSet.id,
-        file: selectedMember?.fileId ?? queryValue(search, "file"),
-        node: nextNode,
-        property: nextProperty,
-        sourceMode: canvasModeQueryValue(canvasMode),
-        version: historyVersionId
-      })
-    );
-  }, [
-    canvasMode,
-    candidateId,
-    derivedInspectorLevel,
-    historyVersionId,
-    inspectorLevel,
-    onNavigate,
-    project.id,
-    search,
-    selectedConfigSet,
-    selectedMember?.fileId,
-    selectedNodePath,
-    selectedPropertyName
-  ]);
 
   const refreshActivityTimeline = useCallback(async () => {
     setActivityLoading(true);
@@ -1770,6 +1699,28 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     },
     [fileRepository, project.id, selectedMember]
   );
+
+  const downloadActiveDts = useCallback(async () => {
+    if (!selectedMember?.currentVersionId || downloadingDts) return;
+    const activeVersion =
+      fileVersions.find((item) => item.id === selectedMember.currentVersionId) ??
+      ({
+        id: selectedMember.currentVersionId,
+        fileId: selectedMember.fileId,
+        versionNumber: 0,
+        checksum: "",
+        sizeBytes: 0,
+        parsedIndex: {},
+        origin: "upload",
+        createdAt: ""
+      } satisfies ProjectParameterFileVersion);
+    setDownloadingDts(true);
+    try {
+      await handleDownloadVersion(activeVersion);
+    } finally {
+      setDownloadingDts(false);
+    }
+  }, [downloadingDts, fileVersions, handleDownloadVersion, selectedMember]);
 
   const selectedStructureNode = useMemo(
     () => structureNodes.find((item) => item.nodePath === selectedNodePath) ?? null,
@@ -2517,44 +2468,46 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
         </label>
         <div className="configuration-workbench__identities" aria-label="配置身份">
           <span className="configuration-workbench__working">工作配置</span>
-          <button
-            type="button"
-            className="button subtle configuration-workbench__identity-fold"
-            aria-expanded={identitiesExpanded}
-            aria-controls="workbench-identity-details"
-            onClick={() => setIdentitiesExpanded((open) => !open)}
-          >
-            版本{identitiesExpanded ? " ▴" : " ▾"}
-          </button>
-          {identitiesExpanded ? (
-            <div id="workbench-identity-details" className="configuration-workbench__identity-details">
-              <span className="configuration-workbench__identity-chip" data-identity="file-version">
-                文件版本：
-                {selectedMember?.currentVersionNumber
-                  ? `v${selectedMember.currentVersionNumber}`
-                  : selectedMember?.currentVersionId ?? "无"}
-              </span>
-              <span className="configuration-workbench__identity-chip" data-identity="candidate">
-                候选文件版本：
-                {activeCandidate && activeCandidate.status !== "abandoned"
-                  ? `${activeCandidate.fileName} · ${activeCandidate.status}`
-                  : "尚未上传"}
-              </span>
-              <span className="configuration-workbench__identity-chip" data-identity="release-baseline">
-                发布基线：
-                {baselinesLoading ? "加载中…" : baselinesError ? "不可用" : releasedBaseline?.name ?? "尚未发布"}
-              </span>
-              {baselinesError ? (
-                <button
-                  className="button subtle configuration-workbench__baseline-retry"
-                  type="button"
-                  onClick={() => setBaselinesRetry((value) => value + 1)}
-                >
-                  重试发布基线
-                </button>
-              ) : null}
-            </div>
-          ) : null}
+          <div className="configuration-workbench__identity-fold-wrap">
+            <button
+              type="button"
+              className="button subtle configuration-workbench__identity-fold"
+              aria-expanded={identitiesExpanded}
+              aria-controls="workbench-identity-details"
+              onClick={() => setIdentitiesExpanded((open) => !open)}
+            >
+              版本{identitiesExpanded ? " ▴" : " ▾"}
+            </button>
+            {identitiesExpanded ? (
+              <div id="workbench-identity-details" className="configuration-workbench__identity-details" role="region" aria-label="版本详情">
+                <span className="configuration-workbench__identity-chip" data-identity="file-version">
+                  文件版本：
+                  {selectedMember?.currentVersionNumber
+                    ? `v${selectedMember.currentVersionNumber}`
+                    : selectedMember?.currentVersionId ?? "无"}
+                </span>
+                <span className="configuration-workbench__identity-chip" data-identity="candidate">
+                  候选文件版本：
+                  {activeCandidate && activeCandidate.status !== "abandoned"
+                    ? `${activeCandidate.fileName} · ${activeCandidate.status}`
+                    : "尚未上传"}
+                </span>
+                <span className="configuration-workbench__identity-chip" data-identity="release-baseline">
+                  发布基线：
+                  {baselinesLoading ? "加载中…" : baselinesError ? "不可用" : releasedBaseline?.name ?? "尚未发布"}
+                </span>
+                {baselinesError ? (
+                  <button
+                    className="button subtle configuration-workbench__baseline-retry"
+                    type="button"
+                    onClick={() => setBaselinesRetry((value) => value + 1)}
+                  >
+                    重试发布基线
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
         </div>
         <div className="configuration-workbench__unavailable-actions" aria-label="后续阶段操作">
           {canAdmin ? (
@@ -2673,6 +2626,25 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                     活动
                   </button>
                 ) : null}
+                <button
+                  type="button"
+                  className="dropdown-item"
+                  role="menuitem"
+                  disabled={!selectedMember?.currentVersionId || downloadingDts}
+                  title={
+                    !selectedMember
+                      ? "请先选择一个成员文件"
+                      : !selectedMember.currentVersionId
+                        ? "当前成员没有可下载的活跃版本"
+                        : "下载当前选中成员的活跃 DTS 版本"
+                  }
+                  onClick={() => {
+                    setMoreMenuOpen(false);
+                    void downloadActiveDts();
+                  }}
+                >
+                  {downloadingDts ? "下载中…" : "下载 DTS"}
+                </button>
                 {canAdmin && selectedConfigSet ? (
                   <button
                     type="button"
@@ -2893,31 +2865,6 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                     <Search size={14} aria-hidden="true" />
                     {searchLoading ? "搜索中…" : "搜索"}
                   </button>
-                  <button
-                    className="button subtle"
-                    type="button"
-                    aria-label="下一个匹配"
-                    onClick={() => setFindNextToken((value) => value + 1)}
-                  >
-                    下一个
-                  </button>
-                  <label className="configuration-workbench__line-jump">
-                    <span>行</span>
-                    <input
-                      type="number"
-                      min={1}
-                      value={lineJumpDraft}
-                      onChange={(event) => setLineJumpDraft(event.target.value)}
-                      aria-label="跳转到行号"
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          const line = Number(lineJumpDraft);
-                          if (Number.isFinite(line) && line >= 1) setFocusLineOverride(line);
-                        }
-                      }}
-                    />
-                  </label>
                 </div>
               </form>
               {searchError ? (
@@ -2994,13 +2941,18 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                       >
                         <FileCode2 size={15} aria-hidden="true" />
                         <span>
-                          <strong>{item.fileName}</strong>
-                          <small>{roleLabel} · {versionLabel}</small>
-                          <small className="mono">{item.currentVersionId ?? "版本身份缺失"}</small>
+                          <strong title={item.fileName}>{item.fileName}</strong>
+                          <small className="mono" title={item.currentVersionId ?? undefined}>
+                            {item.currentVersionId ?? "版本身份缺失"}
+                          </small>
+                        </span>
+                        <span className="configuration-workbench__member-meta" aria-hidden="true">
+                          <span>{roleLabel}</span>
+                          <span>{versionLabel}</span>
                         </span>
                       </button>
                       {selected ? (
-                        <div className="configuration-workbench__node-tree" role="group" aria-label={`${item.fileName} 节点树`}>
+                        <div className="configuration-workbench__node-tree-wrap">
                           {structureLoading ? <p role="status">正在加载结构树…</p> : null}
                           {structureError ? (
                             <div role="alert" className="configuration-workbench__scoped-error">
@@ -3010,60 +2962,20 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                               </button>
                             </div>
                           ) : null}
-                          {!structureLoading && !structureError
-                            ? nestedNodes.map((node) => {
-                                const nodeSelected = selectedNodePath === node.nodePath && !selectedPropertyName;
-                                return (
-                                  <div key={node.nodePath} className="configuration-workbench__node-block">
-                                    <button
-                                      type="button"
-                                      role="treeitem"
-                                      aria-selected={nodeSelected}
-                                      aria-label={`节点 ${node.nodePath || "/"}`}
-                                      className={`button subtle configuration-workbench__node${nodeSelected ? " is-selected" : ""}`}
-                                      style={{ paddingInlineStart: `${12 + Math.max(node.depth, 0) * 12}px` }}
-                                      onClick={() => selectStructureTarget(item.fileId, node.nodePath, null)}
-                                    >
-                                      <code title={node.nodePath || "/"}>
-                                        {node.nodePath.includes("/")
-                                          ? node.nodePath.slice(node.nodePath.lastIndexOf("/") + 1)
-                                          : node.nodePath || "/"}
-                                      </code>
-                                    </button>
-                                    {selectedNodePath === node.nodePath
-                                      ? node.properties.map((property) => {
-                                          const propertySelected = selectedPropertyName === property.name;
-                                          const identity = propertyIdentity(node.nodePath, property.name);
-                                          const draftKey = selectedMember
-                                            ? sessionDraftKey({
-                                                fileId: selectedMember.fileId,
-                                                nodePath: node.nodePath,
-                                                propertyName: property.name
-                                              })
-                                            : "";
-                                          const hasSessionChange = Boolean(draftKey && sessionDrafts[draftKey]);
-                                          return (
-                                            <button
-                                              key={`${node.nodePath}/${property.name}`}
-                                              type="button"
-                                              role="treeitem"
-                                              aria-selected={propertySelected}
-                                              aria-label={`属性 ${node.nodePath}/${property.name}`}
-                                              data-property-identity={identity}
-                                              data-session-change={hasSessionChange ? "true" : undefined}
-                                              className={`button subtle configuration-workbench__property${propertySelected ? " is-selected" : ""}${hasSessionChange ? " has-session-change" : ""}`}
-                                              style={{ paddingInlineStart: `${24 + Math.max(node.depth, 0) * 12}px` }}
-                                              onClick={() => selectStructureTarget(item.fileId, node.nodePath, property.name)}
-                                            >
-                                              <code>{property.name}</code>
-                                            </button>
-                                          );
-                                        })
-                                      : null}
-                                  </div>
-                                );
-                              })
-                            : null}
+                          {!structureLoading && !structureError ? (
+                            <WorkbenchStructureTree
+                              nodes={structureNodes}
+                              fileId={item.fileId}
+                              selectedNodePath={selectedNodePath}
+                              selectedPropertyName={selectedPropertyName}
+                              sessionDrafts={sessionDrafts}
+                              ariaLabel={`${item.fileName} 节点树`}
+                              onSelectNode={(nodePath) => selectStructureTarget(item.fileId, nodePath, null)}
+                              onSelectProperty={(nodePath, propertyName) =>
+                                selectStructureTarget(item.fileId, nodePath, propertyName)
+                              }
+                            />
+                          ) : null}
                         </div>
                       ) : null}
                     </div>
@@ -3384,16 +3296,6 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                   </strong>
                 </div>
                 <div className="configuration-workbench__inspector-actions">
-                  {inspectorLevel !== "config-set" ? (
-                    <button
-                      className="button subtle"
-                      type="button"
-                      aria-label="检查器返回"
-                      onClick={handleInspectorBack}
-                    >
-                      返回
-                    </button>
-                  ) : null}
                   <button
                     className="button subtle configuration-workbench__icon-button"
                     type="button"
@@ -3404,6 +3306,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                   </button>
                 </div>
               </div>
+              <div className="configuration-workbench__inspector-body">
               <WorkbenchBaselineDock
                 baselines={baselines}
                 releasedTipId={releasedBaseline?.id}
@@ -3894,11 +3797,13 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                     </div>
                     <div>
                       <dt>类型</dt>
-                      <dd>{selectedStructureProperty.valueType}</dd>
+                      <dd>{dtsValueTypeLabel(selectedStructureProperty.valueType)}</dd>
                     </div>
                     <div>
                       <dt>类型约束</dt>
-                      <dd>须符合 {selectedStructureProperty.valueType} 语法；提交前可在任务坞校验。</dd>
+                      <dd>
+                        须符合「{dtsValueTypeLabel(selectedStructureProperty.valueType)}」语法；提交前可在任务坞校验。
+                      </dd>
                     </div>
                     <div>
                       <dt>原始值</dt>
@@ -4037,6 +3942,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                     canvasMode +
                     "。缺少参数修改权限时仍可浏览结构与源码。"}
               </p>
+              </div>
             </aside>
           ) : null}
         </div>

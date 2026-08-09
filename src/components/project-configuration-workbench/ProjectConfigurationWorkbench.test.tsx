@@ -242,6 +242,13 @@ async function openCreateConfigSetDialog() {
   return screen.findByRole("heading", { name: "新建配置集" });
 }
 
+function ensureInspectorOpen() {
+  const toggle = screen.getByRole("button", { name: "检查器" });
+  if (toggle.getAttribute("aria-expanded") !== "true") {
+    fireEvent.click(toggle);
+  }
+}
+
 function renderWorkbench(options: {
   search?: string;
   onNavigate?: ReturnType<typeof vi.fn>;
@@ -591,6 +598,46 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(tasksRegion).toHaveTextContent("任务证据");
   });
 
+  it("does not auto-open the inspector when navigating the DTS tree or search hits", async () => {
+    const search = vi.fn(async () => ({
+      hits: [
+        {
+          fileId: "file-board",
+          fileName: "aurora-board.dts",
+          versionId: "version-board-12",
+          nodePath: "board",
+          propertyName: "model",
+          snippet: "model",
+          source: {
+            startOffset: 20,
+            endOffset: 28,
+            startLine: 2,
+            startColumn: 3,
+            endLine: 2,
+            endColumn: 11
+          }
+        }
+      ]
+    }));
+    renderWorkbench({
+      dtsRepository: createDtsRepository({
+        getStructure: vi.fn(async () => BOARD_STRUCTURE),
+        search
+      })
+    });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    expect(screen.queryByRole("complementary", { name: "配置检查器" })).not.toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    expect(screen.queryByRole("complementary", { name: "配置检查器" })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("统一搜索查询"), { target: { value: "model" } });
+    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+    await screen.findByLabelText("搜索结果");
+    fireEvent.click(screen.getByRole("button", { name: /board/ }));
+    expect(screen.queryByRole("complementary", { name: "配置检查器" })).not.toBeInTheDocument();
+  });
 
   it("opens a typed StructuredValueEditor for an editable property with context metadata", async () => {
     renderWorkbench({
@@ -601,16 +648,17 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    ensureInspectorOpen();
 
     const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
-    expect(inspector).toHaveTextContent("string-list");
+    expect(inspector).toHaveTextContent("字符串列表");
     expect(inspector).toHaveTextContent('"Aurora"');
     expect(inspector).toHaveTextContent("Aurora");
     expect(inspector).toHaveTextContent(/L2:3/);
     expect(inspector).toHaveTextContent("常规");
     expect(inspector).toHaveTextContent(/变更原因/);
     expect(inspector).toHaveTextContent("可编辑");
-    expect(within(inspector).getByRole("group", { name: "string-list" })).toBeInTheDocument();
+    expect(within(inspector).getByRole("group", { name: "字符串列表" })).toBeInTheDocument();
     expect(within(inspector).getByLabelText("字符串 1")).toBeEnabled();
     expect(screen.getByLabelText("只读 DTS 源码").querySelector('[contenteditable="true"]')).toBeNull();
   });
@@ -624,6 +672,7 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    ensureInspectorOpen();
 
     const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
     expect(inspector).toHaveTextContent(/你的角色没有修改参数的权限/);
@@ -641,11 +690,12 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     fireEvent.click(await screen.findByRole("treeitem", { name: "节点 regulator" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: "属性 regulator/regulator-min-microvolt" }));
+    ensureInspectorOpen();
 
     const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
     expect(inspector).toHaveTextContent(/安全关键节点，你的角色没有修改它的权限/);
     expect(inspector).not.toHaveTextContent(/parameter:edit-critical/);
-    expect(within(inspector).getByLabelText("cell 1")).toBeDisabled();
+    expect(within(inspector).getByLabelText("数值 1")).toBeDisabled();
   });
 
   it("records typed edits in the session-changes dock with shared tree and gutter identity", async () => {
@@ -657,6 +707,7 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    ensureInspectorOpen();
     const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
     fireEvent.change(within(inspector).getByLabelText("字符串 1"), {
       target: { value: "Aurora-X" }
@@ -699,6 +750,7 @@ describe("ProjectConfigurationWorkbench", () => {
     fireEvent.click(boardNode);
     const modelProperty = await screen.findByRole("treeitem", { name: "属性 board/model" });
     fireEvent.click(modelProperty);
+    ensureInspectorOpen();
     let inspector = await screen.findByRole("complementary", { name: "配置检查器" });
     fireEvent.change(within(inspector).getByLabelText("字符串 1"), {
       target: { value: "Aurora-X" }
@@ -775,6 +827,7 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    ensureInspectorOpen();
     const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
     fireEvent.change(within(inspector).getByLabelText("字符串 1"), {
       target: { value: "Aurora-X" }
@@ -804,6 +857,7 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    ensureInspectorOpen();
     const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
     fireEvent.change(within(inspector).getByLabelText("字符串 1"), {
       target: { value: "Aurora-Recovered" }
@@ -915,6 +969,7 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    ensureInspectorOpen();
     fireEvent.change(
       within(await screen.findByRole("complementary", { name: "配置检查器" })).getByLabelText("字符串 1"),
       { target: { value: "Aurora-Stale-Lock" } }
@@ -936,6 +991,7 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    ensureInspectorOpen();
     const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
     expect(inspector).toHaveTextContent(/基线版本已变更：会话草稿仅可检查或复制/);
     expect(within(inspector).getByLabelText("字符串 1")).toBeDisabled();
@@ -979,6 +1035,7 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    ensureInspectorOpen();
     fireEvent.change(
       within(await screen.findByRole("complementary", { name: "配置检查器" })).getByLabelText("字符串 1"),
       { target: { value: "Aurora-Stale" } }
@@ -1029,6 +1086,7 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    ensureInspectorOpen();
     fireEvent.change(
       within(await screen.findByRole("complementary", { name: "配置检查器" })).getByLabelText("字符串 1"),
       { target: { value: "Aurora-Reconfirm" } }
@@ -1069,6 +1127,7 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    ensureInspectorOpen();
     fireEvent.change(
       within(await screen.findByRole("complementary", { name: "配置检查器" })).getByLabelText("字符串 1"),
       { target: { value: "Aurora-Leave" } }
@@ -1109,6 +1168,7 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    ensureInspectorOpen();
     fireEvent.change(
       within(await screen.findByRole("complementary", { name: "配置检查器" })).getByLabelText("字符串 1"),
       { target: { value: "Aurora-UserA" } }
@@ -1287,11 +1347,12 @@ describe("ProjectConfigurationWorkbench", () => {
     });
     const propertyItem = await screen.findByRole("treeitem", { name: "属性 board/model" });
     await waitFor(() => expect(propertyItem).toHaveAttribute("aria-selected", "true"));
-    expect(await screen.findByRole("complementary", { name: "配置检查器" })).toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "配置检查器" })).not.toBeInTheDocument();
+    ensureInspectorOpen();
     expect(await screen.findByText("属性名")).toBeInTheDocument();
     const inspector = screen.getByRole("complementary", { name: "配置检查器" });
     expect(inspector).toHaveTextContent("model");
-    expect(inspector).toHaveTextContent("string-list");
+    expect(inspector).toHaveTextContent("字符串列表");
   });
 
   it("retries only the structure tree when structure loading fails", async () => {
@@ -1413,10 +1474,7 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(inspector).toHaveTextContent("文件");
     expect(inspector).toHaveTextContent("候选文件版本");
     expect(inspector).toHaveTextContent("尚未上传");
-
-    fireEvent.click(screen.getByRole("button", { name: "检查器返回" }));
-    expect(await screen.findByText("成员数")).toBeInTheDocument();
-    expect(inspector).toHaveTextContent("配置集");
+    expect(within(inspector).getByRole("button", { name: "关闭检查器" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("treeitem", { name: /aurora-board\.dts/ }));
     expect(await screen.findByText("文件格式")).toBeInTheDocument();
@@ -1434,7 +1492,7 @@ describe("ProjectConfigurationWorkbench", () => {
 
     fireEvent.click(screen.getByRole("treeitem", { name: "属性 board/model" }));
     expect(await screen.findByText("属性名")).toBeInTheDocument();
-    expect(within(inspector).getByText("string-list")).toBeInTheDocument();
+    expect(within(inspector).getByText("字符串列表")).toBeInTheDocument();
     expect(within(inspector).getAllByText('"Aurora"').length).toBeGreaterThanOrEqual(1);
     expect(within(inspector).getByLabelText("字符串 1")).toHaveValue("Aurora");
     expect(within(inspector).getByText(/L2:3/)).toBeInTheDocument();
@@ -1444,7 +1502,7 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(onNavigate.mock.calls.at(-1)?.[0]).toContain("file=file-board");
   });
 
-  it("walks inspector back from property to config set while preserving source selection", async () => {
+  it("updates inspector level from tree selection while preserving source selection", async () => {
     const getStructure = vi.fn(async () => ({
       nodes: [
         {
@@ -1485,21 +1543,25 @@ describe("ProjectConfigurationWorkbench", () => {
       syncSearch: true
     });
     await screen.findByRole("treeitem", { name: "属性 board/model" });
+    expect(screen.queryByRole("complementary", { name: "配置检查器" })).not.toBeInTheDocument();
+    ensureInspectorOpen();
     expect(await screen.findByText("属性名")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "关闭检查器" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "检查器返回" }));
+    fireEvent.click(screen.getByRole("treeitem", { name: "节点 board" }));
     await waitFor(() => expect(screen.getByText("节点路径")).toBeInTheDocument());
     expect(screen.getByRole("heading", { name: "aurora-board.dts" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "检查器返回" }));
+    fireEvent.click(screen.getByRole("treeitem", { name: /aurora-board\.dts/ }));
     await waitFor(() => expect(screen.getByText("文件格式")).toBeInTheDocument());
-    expect(screen.getByRole("heading", { name: "aurora-board.dts" })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "检查器返回" }));
-    await waitFor(() => expect(screen.getByText("成员数")).toBeInTheDocument());
     expect(screen.getByRole("heading", { name: "aurora-board.dts" })).toBeInTheDocument();
     const urls = onNavigate.mock.calls.map((call) => String(call[0]));
     expect(urls.some((url) => url.includes("file=file-board") && !url.includes("node="))).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭检查器" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "配置检查器" })).not.toBeInTheDocument()
+    );
   });
 
   it("enters historical source mode, downloads a version, and restores working target on exit", async () => {
@@ -2189,15 +2251,19 @@ describe("ProjectConfigurationWorkbench", () => {
     );
     await waitFor(() => expect(screen.getByRole("treeitem", { name: /notes\.json/ })).toBeInTheDocument());
 
-    const inspectorToggle = screen.getByRole("button", { name: "检查器" });
-    if (inspectorToggle.getAttribute("aria-expanded") !== "true") {
-      fireEvent.click(inspectorToggle);
-    }
+    cleanup();
+    renderWorkbench({
+      syncSearch: true,
+      search: "?configSet=cs-default&inspector=config-set",
+      dtsRepository: createDtsRepository({
+        listConfigSetFiles,
+        addConfigSetFile,
+        removeConfigSetFile
+      })
+    });
     const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
-    if (within(inspector).queryByRole("button", { name: "检查器返回" })) {
-      fireEvent.click(within(inspector).getByRole("button", { name: "检查器返回" }));
-    }
     expect(inspector).toHaveTextContent("成员管理");
+    expect(within(inspector).getByRole("button", { name: "关闭检查器" })).toBeInTheDocument();
 
     fireEvent.click(within(inspector).getByRole("button", { name: "移除 aurora-board.dts" }));
     expect(await screen.findByRole("dialog")).toHaveTextContent("后续基线与导出将不再包含它");
@@ -2328,6 +2394,62 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(revokeObjectURL).toHaveBeenCalled();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it("downloads the active member DTS from the more menu", async () => {
+    const downloadVersion = vi.fn(async () => ({
+      contentType: "text/plain",
+      fileName: "aurora-board.dts",
+      bytes: new TextEncoder().encode('/dts-v1/;\n/ { model = "Aurora"; };\n')
+    }));
+    const createObjectURL = vi.fn(() => "blob:dts");
+    const revokeObjectURL = vi.fn();
+    const clickSpy = vi.fn();
+    vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
+    const originalCreateElement = document.createElement.bind(document);
+    vi.spyOn(document, "createElement").mockImplementation((tagName: string) => {
+      const element = originalCreateElement(tagName);
+      if (tagName === "a") {
+        Object.defineProperty(element, "click", { value: clickSpy });
+      }
+      return element;
+    });
+
+    renderWorkbench({
+      fileRepository: createFileRepository({ downloadVersion })
+    });
+
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    fireEvent.click(screen.getByRole("button", { name: "更多" }));
+    const downloadItem = screen.getByRole("menuitem", { name: "下载 DTS" });
+    expect(downloadItem).toBeEnabled();
+    fireEvent.click(downloadItem);
+    await waitFor(() =>
+      expect(downloadVersion).toHaveBeenCalledWith(PROJECT.id, "file-board", "version-board-12")
+    );
+    expect(clickSpy).toHaveBeenCalled();
+    expect(revokeObjectURL).toHaveBeenCalled();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("keeps download DTS available for non-admin viewers", async () => {
+    renderWorkbench({ canAdmin: false });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    fireEvent.click(screen.getByRole("button", { name: "更多" }));
+    expect(screen.getByRole("menuitem", { name: "下载 DTS" })).toBeEnabled();
+    expect(screen.queryByRole("menuitem", { name: "导出配置集" })).not.toBeInTheDocument();
+  });
+
+  it("disables download DTS when the Config set has no members", async () => {
+    renderWorkbench({
+      dtsRepository: createDtsRepository({
+        listConfigSetFiles: vi.fn(async () => [])
+      })
+    });
+    await screen.findByText("当前配置集没有成员文件");
+    fireEvent.click(screen.getByRole("button", { name: "更多" }));
+    expect(screen.getByRole("menuitem", { name: "下载 DTS" })).toBeDisabled();
   });
 
   it("keeps read context visible and denies mutations when canAdmin is false", async () => {

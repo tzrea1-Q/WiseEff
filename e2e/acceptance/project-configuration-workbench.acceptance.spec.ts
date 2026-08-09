@@ -197,6 +197,84 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       expect(desktopShell.scrollWidth).toBeLessThanOrEqual(desktopShell.clientWidth);
       expect(desktopShell.commandOverlaps).toEqual([]);
 
+      const commandControlAudit = await page.evaluate(() => {
+        const command = document.querySelector(".configuration-workbench__command");
+        if (!command) return { clipped: [], overlaps: [], fold: null };
+        const controls = Array.from(
+          command.querySelectorAll("button, select, .configuration-workbench__working, .configuration-workbench__readiness")
+        ).filter((el) => {
+          const box = el.getBoundingClientRect();
+          return box.width > 2 && box.height > 2;
+        });
+        const clipped: Array<{ label: string; scroll: number; client: number; parentClip: boolean }> = [];
+        for (const el of controls) {
+          const html = el as HTMLElement;
+          const box = html.getBoundingClientRect();
+          let parentClip = false;
+          let ancestor: HTMLElement | null = html.parentElement;
+          while (ancestor && ancestor !== command.parentElement) {
+            const style = getComputedStyle(ancestor);
+            if (style.overflow === "hidden" || style.overflowX === "hidden") {
+              const ar = ancestor.getBoundingClientRect();
+              if (box.left < ar.left - 1 || box.right > ar.right + 1) {
+                parentClip = true;
+                break;
+              }
+            }
+            ancestor = ancestor.parentElement;
+          }
+          const scrollW = Math.ceil(html.scrollWidth);
+          const clientW = Math.ceil(html.clientWidth);
+          if (parentClip || scrollW > clientW + 1) {
+            clipped.push({
+              label: (html.getAttribute("aria-label") || html.textContent || html.className || "").toString().slice(0, 40),
+              scroll: scrollW,
+              client: clientW,
+              parentClip
+            });
+          }
+        }
+        const overlaps: Array<{ a: string; b: string; ox: number; oy: number }> = [];
+        for (let i = 0; i < controls.length; i += 1) {
+          for (let j = i + 1; j < controls.length; j += 1) {
+            const a = controls[i]!;
+            const b = controls[j]!;
+            if (a.contains(b) || b.contains(a)) continue;
+            const ar = a.getBoundingClientRect();
+            const br = b.getBoundingClientRect();
+            const ox = Math.min(ar.right, br.right) - Math.max(ar.left, br.left);
+            const oy = Math.min(ar.bottom, br.bottom) - Math.max(ar.top, br.top);
+            if (ox > 2 && oy > 2) {
+              overlaps.push({
+                a: (a.getAttribute("aria-label") || a.textContent || a.className || "").toString().slice(0, 32),
+                b: (b.getAttribute("aria-label") || b.textContent || b.className || "").toString().slice(0, 32),
+                ox: Math.round(ox),
+                oy: Math.round(oy)
+              });
+            }
+          }
+        }
+        const fold = command.querySelector(".configuration-workbench__identity-fold") as HTMLElement | null;
+        const foldBox = fold?.getBoundingClientRect() ?? null;
+        return {
+          clipped,
+          overlaps,
+          fold: fold
+            ? {
+                width: Math.round(foldBox!.width),
+                scrollWidth: Math.ceil(fold.scrollWidth),
+                clientWidth: Math.ceil(fold.clientWidth),
+                text: (fold.textContent || "").trim()
+              }
+            : null
+        };
+      });
+      expect(commandControlAudit.fold?.text).toMatch(/版本/);
+      expect(commandControlAudit.fold?.scrollWidth ?? 0).toBeLessThanOrEqual((commandControlAudit.fold?.clientWidth ?? 0) + 1);
+      expect(commandControlAudit.fold?.width ?? 0).toBeGreaterThanOrEqual(52);
+      expect(commandControlAudit.clipped).toEqual([]);
+      expect(commandControlAudit.overlaps).toEqual([]);
+
       await page.getByRole("button", { name: "检查器", exact: true }).click();
       await expect(page.getByRole("complementary", { name: "配置检查器" })).toBeVisible();
       const inspectorOverlay = await page.evaluate(() => {
@@ -533,8 +611,9 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       );
       await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible();
       await expect(page.getByLabel("配置身份")).toContainText("工作配置");
-      await expect(page.getByLabel("配置身份")).toContainText("候选文件版本");
-      await expect(page.getByLabel("配置身份")).toContainText("发布基线");
+      await page.getByRole("button", { name: /版本/ }).click();
+      await expect(page.getByRole("region", { name: "版本详情" })).toContainText("候选文件版本");
+      await expect(page.getByRole("region", { name: "版本详情" })).toContainText("发布基线");
 
       await page.getByRole("button", { name: "检查器" }).click();
       const inspector = page.getByRole("complementary", { name: "配置检查器" });
@@ -551,11 +630,12 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await expect(inspector).toContainText("属性名");
       await expect(inspector).toContainText("InspectV2");
 
-      await page.getByRole("button", { name: "检查器返回" }).click();
+      await page.getByRole("treeitem", { name: "节点 board" }).click();
       await expect(inspector).toContainText("节点路径");
-      await page.getByRole("button", { name: "检查器返回" }).click();
+      await page.getByRole("treeitem", { name: new RegExp(primaryFileName) }).click();
       await expect(inspector).toContainText("文件格式");
       await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible();
+      await expect(inspector.getByRole("button", { name: "关闭检查器" })).toBeVisible();
 
       const historyVersion = versionsBody.items.find((item) => item.id === v1Body.version.id) ?? versionsBody.items.at(-1);
       expect(historyVersion).toBeTruthy();
@@ -575,7 +655,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await expect(page).toHaveURL(/sourceMode=unified-diff/);
       await expect(page.getByLabel("统一差异对比")).toBeVisible();
 
-      await page.getByRole("button", { name: "关闭检查器" }).click();
+      await page.getByRole("button", { name: "检查器", exact: true }).click();
       await page.getByRole("button", { name: "并排对比", exact: true }).click();
       await expect(page).toHaveURL(/sourceMode=side-by-side/);
       await expect(page.getByLabel("并排差异对比")).toBeVisible();
@@ -753,7 +833,8 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(v1Body.item.id)}&sourceMode=candidate&candidate=${encodeURIComponent(candidateBody.item.id)}`
       );
       await expect(page.getByLabel("候选只读源码模式")).toBeVisible();
-      await expect(page.getByLabel("配置身份")).toContainText(candidateBody.item.status);
+      await page.getByRole("button", { name: /版本/ }).click();
+      await expect(page.getByRole("region", { name: "版本详情" })).toContainText(candidateBody.item.status);
       const inspectorToggle = page.getByRole("button", { name: "检查器" });
       if ((await inspectorToggle.getAttribute("aria-expanded")) !== "true") {
         await inspectorToggle.click();
@@ -1625,22 +1706,20 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await page.getByRole("button", { name: `编入 ${looseFileName}` }).click();
       await expect(page.getByRole("treeitem", { name: new RegExp(looseFileName) })).toBeVisible({ timeout: 15_000 });
 
-      const inspectorToggle = page.getByRole("button", { name: "检查器", exact: true });
-      if ((await inspectorToggle.getAttribute("aria-expanded")) !== "true") {
-        await inspectorToggle.click();
-      }
+      await page.goto(
+        `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}&inspector=config-set`
+      );
+      await dismissXiaozeHint(page);
       const inspector = page.getByRole("complementary", { name: "配置检查器" });
       await expect(inspector).toBeVisible();
-      const back = inspector.getByRole("button", { name: "检查器返回" });
-      if (await back.isVisible().catch(() => false)) {
-        await back.click();
-      }
       await expect(inspector).toContainText("成员管理");
+      await expect(inspector.getByRole("button", { name: "关闭检查器" })).toBeVisible();
       await inspector.getByRole("button", { name: `移除 ${looseFileName}` }).click();
       await expect(page.getByRole("dialog")).toContainText("后续基线与导出将不再包含它");
       await page.getByRole("button", { name: "确认移除" }).click();
       await expect(ungrouped).toContainText(looseFileName);
 
+      const inspectorToggle = page.getByRole("button", { name: "检查器", exact: true });
       if ((await inspectorToggle.getAttribute("aria-expanded")) !== "true") {
         await inspectorToggle.click();
       }

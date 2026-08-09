@@ -126,7 +126,7 @@ describe("SpecCreateDialog", () => {
     await user.type(screen.getByLabelText("展示名"), "GPIO 中断");
     await user.type(screen.getByLabelText("文档说明"), "中断脚定义");
     await user.selectOptions(screen.getByLabelText("值形状 valueShape"), "phandle-list");
-    fireEvent.change(screen.getByLabelText("cellsPerGroup"), { target: { value: "3" } });
+    fireEvent.change(screen.getByLabelText("每组数值个数"), { target: { value: "3" } });
     await user.type(screen.getByLabelText("单位"), "n/a");
     await user.type(screen.getByLabelText("示例值（JSON 或原文，可空）"), '"<&gpio 1 0>"');
     await user.click(screen.getByLabelText(/overridePlatform/));
