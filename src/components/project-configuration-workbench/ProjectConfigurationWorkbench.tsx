@@ -19,7 +19,6 @@ import type {
 } from "@/application/ports/DtsStructuredRepository";
 import type {
   FileSyncSummary,
-  ParameterFileCandidate,
   ParameterFileRepository,
   ParameterFileSyncConflict,
   ProjectParameterFile,
@@ -78,6 +77,7 @@ import {
   type SessionDraftScope
 } from "@/application/project-configuration/sessionDraftStorage";
 import { useStructuredEditSession } from "@/application/project-configuration/useStructuredEditSession";
+import { useCandidateVersionFlow } from "@/application/project-configuration/useCandidateVersionFlow";
 import { WorkbenchStructureTree } from "./WorkbenchStructureTree";
 
 export type ProjectConfigurationWorkbenchProject = {
@@ -346,11 +346,20 @@ export function ProjectConfigurationWorkbench({
   const [modeSourceError, setModeSourceError] = useState("");
   const [downloadMessage, setDownloadMessage] = useState("");
   const [downloadingDts, setDownloadingDts] = useState(false);
-  const [activeCandidate, setActiveCandidate] = useState<ParameterFileCandidate | null>(null);
-  const [candidateSource, setCandidateSource] = useState("");
-  const [candidateLoading, setCandidateLoading] = useState(false);
-  const [candidateError, setCandidateError] = useState("");
-  const [uploadingCandidate, setUploadingCandidate] = useState(false);
+  const {
+    flow: candidateFlow,
+    candidate: activeCandidate,
+    sourceText: candidateSource,
+    loading: candidateLoading,
+    uploading: uploadingCandidate,
+    activating: activatingCandidate,
+    error: candidateError,
+    activateError,
+    activateRole,
+    canActivate,
+    canRecompute,
+    canAbandon
+  } = useCandidateVersionFlow();
   const [activityEvents, setActivityEvents] = useState<AuditEventView[]>([]);
   const [activityRows, setActivityRows] = useState<WorkbenchActivityRow[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
@@ -358,10 +367,7 @@ export function ProjectConfigurationWorkbench({
   const [activityMissingNotice, setActivityMissingNotice] = useState("");
   const [activityRefreshToken, setActivityRefreshToken] = useState(0);
   const [knownCandidateIds, setKnownCandidateIds] = useState<string[]>([]);
-const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
-  const [activatingCandidate, setActivatingCandidate] = useState(false);
-  const [activateRole, setActivateRole] = useState<ConfigSetRole>("overlay");
-  const [activateError, setActivateError] = useState("");
+  const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   const candidateFileInputRef = useRef<HTMLInputElement | null>(null);
   const [lastVisibleLine, setLastVisibleLine] = useState<number | null>(null);
   const [restoredScrollLine, setRestoredScrollLine] = useState<number | null>(null);
@@ -850,37 +856,12 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   useEffect(() => {
     if (canvasMode !== "candidate" || !candidateId) {
       if (canvasMode !== "candidate") {
-        setCandidateSource("");
-        setCandidateLoading(false);
+        candidateFlow.leaveCanvas();
       }
       return;
     }
-    let cancelled = false;
-    setCandidateLoading(true);
-    setCandidateError("");
-    void (async () => {
-      try {
-        const [candidate, downloaded] = await Promise.all([
-          fileRepository.getCandidate(project.id, candidateId),
-          fileRepository.downloadCandidate(project.id, candidateId)
-        ]);
-        if (cancelled) return;
-        setActiveCandidate(candidate);
-        setCandidateSource(decodeSourceBytes(downloaded.bytes));
-      } catch (error: unknown) {
-        if (!cancelled) {
-          setActiveCandidate(null);
-          setCandidateSource("");
-          setCandidateError(error instanceof Error ? error.message : "候选加载失败。");
-        }
-      } finally {
-        if (!cancelled) setCandidateLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [candidateId, canvasMode, fileRepository, project.id]);
+    void candidateFlow.load(project.id, candidateId, fileRepository);
+  }, [candidateFlow, candidateId, canvasMode, fileRepository, project.id]);
 
   useEffect(() => {
     if (configSetsLoading || !selectedConfigSet) return;
@@ -2378,48 +2359,32 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
               const file = event.target.files?.[0];
               event.target.value = "";
               if (!file || !selectedConfigSet) return;
-              setUploadingCandidate(true);
-              setCandidateError("");
               void (async () => {
                 try {
-                  const contentBase64 = await new Promise<string>((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onerror = () => reject(reader.error ?? new Error("Failed to read candidate file."));
-                    reader.onload = () => {
-                      const result = String(reader.result ?? "");
-                      const marker = "base64,";
-                      const index = result.indexOf(marker);
-                      resolve(index >= 0 ? result.slice(index + marker.length) : result);
-                    };
-                    reader.readAsDataURL(file);
-                  });
-                  const candidate = await fileRepository.createCandidate(project.id, {
-                    fileName: file.name,
-                    contentBase64,
-                    fileId: selectedMember?.fileId
-                  });
-                  setActiveCandidate(candidate);
+                  const created = await candidateFlow.create(
+                    project.id,
+                    { file, fileId: selectedMember?.fileId },
+                    fileRepository
+                  );
                   setInspectorOpen(true);
                   onNavigate(
                     formatWorkbenchPath(project.id, search, {
                       configSet: selectedConfigSet.id,
                       file: selectedMember?.fileId ?? null,
                       sourceMode: "candidate",
-                      candidate: candidate.id,
+                      candidate: created.id,
                       version: null,
                       node: null,
                       property: null
                     })
                   );
                   notifyMutation(
-                    candidate.status === "failed"
+                    created.status === "failed"
                       ? "候选解析失败，活跃源码未改动；可查看诊断后放弃。"
                       : "候选已创建，工作配置与活跃版本未改动。"
                   );
-                } catch (error: unknown) {
-                  setCandidateError(error instanceof Error ? error.message : "候选上传失败。");
-                } finally {
-                  setUploadingCandidate(false);
+                } catch {
+                  // candidateFlow.error already set
                 }
               })();
             }}
@@ -3281,27 +3246,21 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                       </div>
                     ) : null}
                     <div className="configuration-workbench__inspector-actions">
-                      {activeCandidate.status === "blocked" || activeCandidate.status === "stale" ? (
+                      {canRecompute ? (
                         <button
                           className="button subtle"
                           type="button"
                           onClick={() => {
                             void (async () => {
                               try {
-                                const updated = await fileRepository.recomputeCandidate(
-                                  project.id,
-                                  activeCandidate.id
-                                );
-                                setActiveCandidate(updated);
+                                const updated = await candidateFlow.recompute(project.id, fileRepository);
                                 notifyMutation(
                                   updated.status === "ready"
                                     ? "已按当前基重算候选影响，可再次审查后激活。"
                                     : "已按当前阻断条件重算候选影响。"
                                 );
-                              } catch (error: unknown) {
-                                setCandidateError(
-                                  error instanceof Error ? error.message : "候选重算失败。"
-                                );
+                              } catch {
+                                // candidateFlow.error already set
                               }
                             })();
                           }}
@@ -3309,32 +3268,27 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                           重算影响
                         </button>
                       ) : null}
-                      {activeCandidate.status === "ready" ? (
+                      {canActivate ? (
                         <button
                           className="button primary"
                           type="button"
                           data-testid="activate-candidate"
                           onClick={() => {
-                            setActivateError("");
-                            setActivateRole("overlay");
+                            candidateFlow.setActivateRole("overlay");
                             setActivateConfirmOpen(true);
                           }}
                         >
                           激活候选
                         </button>
                       ) : null}
-                      {["ready", "blocked", "failed", "stale"].includes(activeCandidate.status) ? (
+                      {canAbandon ? (
                         <button
                           className="button subtle"
                           type="button"
                           onClick={() => {
                             void (async () => {
                               try {
-                                const abandoned = await fileRepository.abandonCandidate(
-                                  project.id,
-                                  activeCandidate.id
-                                );
-                                setActiveCandidate(abandoned);
+                                await candidateFlow.abandon(project.id, fileRepository);
                                 notifyMutation("候选已放弃；工作配置与配置集成员未改动。");
                                 if (selectedConfigSet) {
                                   onNavigate(
@@ -3347,10 +3301,8 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                                     })
                                   );
                                 }
-                              } catch (error: unknown) {
-                                setCandidateError(
-                                  error instanceof Error ? error.message : "放弃候选失败。"
-                                );
+                              } catch {
+                                // candidateFlow.error already set
                               }
                             })();
                           }}
@@ -3824,7 +3776,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
               <select
                 value={activateRole}
                 disabled={activatingCandidate}
-                onChange={(event) => setActivateRole(event.target.value as ConfigSetRole)}
+                onChange={(event) => candidateFlow.setActivateRole(event.target.value as ConfigSetRole)}
               >
                 {(Object.keys(ROLE_LABELS) as ConfigSetRole[]).map((role) => (
                   <option key={role} value={role}>
@@ -3839,25 +3791,17 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
         onCancel={() => {
           if (!activatingCandidate) {
             setActivateConfirmOpen(false);
-            setActivateError("");
           }
         }}
         onConfirm={() => {
           if (!activeCandidate || activeCandidate.status !== "ready") return;
           void (async () => {
-            setActivatingCandidate(true);
-            setActivateError("");
-            setCandidateError("");
             try {
-              if (!activeCandidate.fileId && !selectedConfigSet) {
-                throw new Error("激活新文件需要已选择的配置集。");
-              }
-              const result = await fileRepository.activateCandidate(project.id, activeCandidate.id, {
-                expectedCurrentVersionId: activeCandidate.baseVersionId ?? null,
-                configSetId: activeCandidate.fileId ? undefined : selectedConfigSet?.id,
-                role: activeCandidate.fileId ? undefined : activateRole
-              });
-              setActiveCandidate(result.item);
+              const result = await candidateFlow.activate(
+                project.id,
+                { configSetId: selectedConfigSet?.id },
+                fileRepository
+              );
               notifyMutation("候选已激活；工作源码、成员与历史已刷新。");
               setActivateConfirmOpen(false);
               setFilesRetry((value) => value + 1);
@@ -3877,20 +3821,10 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
               }
             } catch (error: unknown) {
               const message = error instanceof Error ? error.message : "激活候选失败。";
-              setActivateError(message);
-              setCandidateError(message);
               if (/stale/i.test(message)) {
-                try {
-                  const refreshed = await fileRepository.getCandidate(project.id, activeCandidate.id);
-                  setActiveCandidate(refreshed);
-                  setActivateConfirmOpen(false);
-                  notifyMutation("基版本已变更，候选已标为过期；请重算影响后再激活。");
-                } catch {
-                  // keep prior candidate state
-                }
+                setActivateConfirmOpen(false);
+                notifyMutation("基版本已变更，候选已标为过期；请重算影响后再激活。");
               }
-            } finally {
-              setActivatingCandidate(false);
             }
           })();
         }}
