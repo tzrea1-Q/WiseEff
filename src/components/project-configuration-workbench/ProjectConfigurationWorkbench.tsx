@@ -46,7 +46,6 @@ import { WorkbenchSourceTree } from "./WorkbenchSourceTree";
 import { WorkbenchTaskDock } from "./WorkbenchTaskDock";
 import {
   ROLE_LABELS,
-  decodeSourceBytes,
   defaultRoleForFile,
   downloadExportBundle,
   formatWorkbenchPath,
@@ -69,6 +68,7 @@ import { useConflictLocateFacade } from "@/application/project-configuration/use
 import { useConfigSetOpsSession } from "@/application/project-configuration/useConfigSetOpsSession";
 import { useWorkbenchNavigationSession } from "@/application/project-configuration/useWorkbenchNavigationSession";
 import { useWorkbenchWorkspaceLoadSession } from "@/application/project-configuration/useWorkbenchWorkspaceLoadSession";
+import { useWorkbenchCanvasHistorySession } from "@/application/project-configuration/useWorkbenchCanvasHistorySession";
 
 export type ProjectConfigurationWorkbenchProject = {
   id: string;
@@ -169,10 +169,6 @@ export function ProjectConfigurationWorkbench({
   const [fileVersions, setFileVersions] = useState<ProjectParameterFileVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [versionsError, setVersionsError] = useState("");
-  const [historySource, setHistorySource] = useState("");
-  const [compareSource, setCompareSource] = useState("");
-  const [modeSourceLoading, setModeSourceLoading] = useState(false);
-  const [modeSourceError, setModeSourceError] = useState("");
   const [downloadMessage, setDownloadMessage] = useState("");
   const [downloadingDts, setDownloadingDts] = useState(false);
   const {
@@ -200,13 +196,6 @@ export function ProjectConfigurationWorkbench({
   const candidateFileInputRef = useRef<HTMLInputElement | null>(null);
   const [lastVisibleLine, setLastVisibleLine] = useState<number | null>(null);
   const [restoredScrollLine, setRestoredScrollLine] = useState<number | null>(null);
-  const workingSnapshotRef = useRef<{
-    fileId: string | null;
-    nodePath: string | null;
-    propertyName: string | null;
-    scrollLine: number | null;
-    sourceMode: string | null;
-  } | null>(null);
   const [tasksOpen, setTasksOpen] = useState(false);
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
   const [draftCopyStatus, setDraftCopyStatus] = useState("");
@@ -261,6 +250,14 @@ export function ProjectConfigurationWorkbench({
     pendingFocusLine,
     suppressScrollSync
   } = useWorkbenchNavigationSession();
+  const {
+    session: canvasHistorySession,
+    historySource,
+    compareSource,
+    modeSourceLoading,
+    modeSourceError,
+    workingSnapshot
+  } = useWorkbenchCanvasHistorySession();
   const [exportEvidence, setExportEvidence] = useState("");
   const sourceRegionRef = useRef<HTMLElement | null>(null);
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
@@ -488,65 +485,51 @@ export function ProjectConfigurationWorkbench({
   }, [fileRepository, inspectorOpen, project.id, selectedMember]);
 
   useEffect(() => {
-    if (canvasMode === "working" || !selectedMember || !historyVersionId) {
-      setHistorySource("");
-      setCompareSource("");
-      setModeSourceError("");
-      setModeSourceLoading(false);
-      return;
-    }
-    if (!workingSnapshotRef.current) {
-      workingSnapshotRef.current = {
+    if (
+      canvasMode !== "working" &&
+      canvasMode !== "candidate" &&
+      selectedMember &&
+      historyVersionId &&
+      !workingSnapshot
+    ) {
+      canvasHistorySession.rememberWorkingSnapshot({
         fileId: selectedMember.fileId,
         nodePath: selectedNodePath,
         propertyName: selectedPropertyName,
         scrollLine: lastVisibleLine,
         sourceMode: null
-      };
+      });
     }
-    let cancelled = false;
-    setModeSourceLoading(true);
-    setModeSourceError("");
-    const load = async () => {
-      try {
-        const historical = await fileRepository.downloadVersion(
-          project.id,
-          selectedMember.fileId,
-          historyVersionId
-        );
-        if (cancelled) return;
-        const historicalText = decodeSourceBytes(historical.bytes);
-        setHistorySource(historicalText);
-        if (canvasMode === "unified-diff" || canvasMode === "side-by-side") {
-          if (selectedMember.currentVersionId) {
-            const working = await fileRepository.downloadVersion(
-              project.id,
-              selectedMember.fileId,
-              selectedMember.currentVersionId
-            );
-            if (cancelled) return;
-            setCompareSource(decodeSourceBytes(working.bytes));
-          } else {
-            setCompareSource(source);
-          }
-        } else {
-          setCompareSource("");
-        }
-      } catch (error: unknown) {
-        if (!cancelled) {
-          setHistorySource("");
-          setCompareSource("");
-          setModeSourceError(error instanceof Error ? error.message : "历史源码加载失败。");
-        }
-      } finally {
-        if (!cancelled) setModeSourceLoading(false);
-      }
-    };
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [canvasMode, fileRepository, historyVersionId, project.id, selectedMember, source]);
+  }, [
+    canvasHistorySession,
+    canvasMode,
+    historyVersionId,
+    lastVisibleLine,
+    selectedMember,
+    selectedNodePath,
+    selectedPropertyName,
+    workingSnapshot
+  ]);
+
+  useEffect(() => {
+    void canvasHistorySession.loadModeSource({
+      canvasMode,
+      projectId: project.id,
+      fileId: selectedMember?.fileId ?? null,
+      versionId: historyVersionId,
+      currentVersionId: selectedMember?.currentVersionId ?? null,
+      workingSource: source,
+      repo: fileRepository
+    });
+  }, [
+    canvasHistorySession,
+    canvasMode,
+    fileRepository,
+    historyVersionId,
+    project.id,
+    selectedMember,
+    source
+  ]);
 
   useEffect(() => {
     if (canvasMode !== "candidate" || !candidateId) {
@@ -671,14 +654,21 @@ export function ProjectConfigurationWorkbench({
   }, [selectedNodePath, selectedPropertyName, structureNodes]);
 
   const rememberWorkingSnapshot = useCallback(() => {
-    workingSnapshotRef.current = {
+    canvasHistorySession.rememberWorkingSnapshot({
       fileId: selectedMember?.fileId ?? null,
       nodePath: selectedNodePath,
       propertyName: selectedPropertyName,
       scrollLine: lastVisibleLine,
       sourceMode: canvasModeQueryValue(canvasMode)
-    };
-  }, [canvasMode, lastVisibleLine, selectedMember?.fileId, selectedNodePath, selectedPropertyName]);
+    });
+  }, [
+    canvasHistorySession,
+    canvasMode,
+    lastVisibleLine,
+    selectedMember?.fileId,
+    selectedNodePath,
+    selectedPropertyName
+  ]);
 
   const selectStructureTarget = useCallback(
     (fileId: string, nodePath: string | null, propertyName: string | null = null) => {
@@ -1330,7 +1320,7 @@ export function ProjectConfigurationWorkbench({
 
   const exitSpecialCanvasMode = useCallback(() => {
     if (!selectedConfigSet) return;
-    const snapshot = workingSnapshotRef.current;
+    const snapshot = workingSnapshot;
     const restoreLine = snapshot?.scrollLine ?? lastVisibleLine;
     setRestoredScrollLine(restoreLine);
     if (restoreLine != null) setFocusLineOverride(restoreLine);
@@ -1359,7 +1349,8 @@ export function ProjectConfigurationWorkbench({
     selectedConfigSet,
     selectedMember?.fileId,
     selectedNodePath,
-    selectedPropertyName
+    selectedPropertyName,
+    workingSnapshot
   ]);
 
   const handleDownloadVersion = useCallback(
@@ -1991,7 +1982,7 @@ export function ProjectConfigurationWorkbench({
             sourceError={sourceError}
             modeSourceError={modeSourceError}
             onSourceRetry={() => workspaceLoadSession.retrySource()}
-            onClearModeSourceError={() => setModeSourceError("")}
+            onClearModeSourceError={() => canvasHistorySession.clearModeSource()}
             source={source}
             historySource={historySource}
             candidateSource={candidateSource}
