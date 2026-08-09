@@ -82,9 +82,9 @@ npm run build
 
 ## Documentation Update Gate
 
-- [ ] ADR-0019 accepted and indexed
-- [ ] CONTEXT glossary terms present
-- [ ] OpenAPI regenerated and `npm run contract:check` green
+- [x] ADR-0019 accepted and indexed
+- [x] CONTEXT glossary terms present
+- [x] OpenAPI regenerated and `npm run contract:check` green
 - [ ] Deferred product/architecture/frontend doc rows either updated or carried to #290 / tech-debt with evidence
 - [ ] Plan moves to `completed/` only from #290
 
