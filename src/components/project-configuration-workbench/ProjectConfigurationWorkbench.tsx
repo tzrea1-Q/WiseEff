@@ -1,16 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
-  ConfigSetRole,
-  DtsBaselineMemberComparison,
-  DtsConfigSetMemberFile,
   DtsReleaseReadinessIssue,
   DtsSearchHit,
   DtsStructuredRepository
 } from "@/application/ports/DtsStructuredRepository";
 import type {
   ParameterFileRepository,
-  ProjectParameterFile,
   ProjectParameterFileVersion
 } from "@/application/ports/ParameterFileRepository";
 import {
@@ -20,7 +16,6 @@ import {
 import type { AuditEventListResponse, ListAuditEventsParams } from "@/domain/audit/types";
 import {
   presentWorkbenchActivity,
-  resolveWorkbenchActivityTarget,
   workbenchActivityApps
 } from "./workbenchActivityModel";
 import { WorkbenchCommandBar } from "./WorkbenchCommandBar";
@@ -41,16 +36,13 @@ import {
 import { WorkbenchInspectorPanel } from "./WorkbenchInspectorPanel";
 import { WorkbenchSourceCanvas } from "./WorkbenchSourceCanvas";
 import { WorkbenchSourceTree } from "./WorkbenchSourceTree";
+import { WorkbenchSetupGate } from "./WorkbenchSetupGate";
 import { WorkbenchTaskDock } from "./WorkbenchTaskDock";
 import {
-  ROLE_LABELS,
-  defaultRoleForFile,
-  downloadExportBundle,
   formatWorkbenchPath,
   locatorToFocusSpan,
   nearestNodeForLine,
   queryValue,
-  triggerVersionDownload,
   type PendingConfirmation
 } from "./workbenchShellHelpers";
 import {
@@ -68,6 +60,15 @@ import { useWorkbenchNavigationSession } from "@/application/project-configurati
 import { useWorkbenchWorkspaceLoadSession } from "@/application/project-configuration/useWorkbenchWorkspaceLoadSession";
 import { useWorkbenchCanvasHistorySession } from "@/application/project-configuration/useWorkbenchCanvasHistorySession";
 import { useWorkbenchActivitySession } from "@/application/project-configuration/useWorkbenchActivitySession";
+import {
+  buildWorkbenchActivityCatalog,
+  navigateWorkbenchActivityEvent
+} from "@/application/project-configuration/workbenchActivityNavigation";
+import { useWorkbenchBaselineOrchestration } from "@/application/project-configuration/useWorkbenchBaselineOrchestration";
+import { useWorkbenchCanvasOps } from "@/application/project-configuration/useWorkbenchCanvasOps";
+import { useWorkbenchCandidateOrchestration } from "@/application/project-configuration/useWorkbenchCandidateOrchestration";
+import { useWorkbenchConfigSetOrchestration } from "@/application/project-configuration/useWorkbenchConfigSetOrchestration";
+import { useWorkbenchKeyboardShortcuts } from "@/application/project-configuration/useWorkbenchKeyboardShortcuts";
 
 export type ProjectConfigurationWorkbenchProject = {
   id: string;
@@ -154,13 +155,6 @@ export function ProjectConfigurationWorkbench({
     actionError: baselineActionError,
     releasedTip: releasedBaseline
   } = useReleaseBaselineSession();
-  const [createBaselineOpen, setCreateBaselineOpen] = useState(false);
-  const [newBaselineName, setNewBaselineName] = useState("");
-  const [releaseBaselineOpen, setReleaseBaselineOpen] = useState(false);
-  const [restoreBaselineOpen, setRestoreBaselineOpen] = useState(false);
-  const [workingReturnPath, setWorkingReturnPath] = useState<string | null>(null);
-  const [baselinesRetry, setBaselinesRetry] = useState(0);
-  const [readinessRetry, setReadinessRetry] = useState(0);
   const [treeOpen, setTreeOpen] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorPersistent, setInspectorPersistent] = useState(false);
@@ -168,8 +162,6 @@ export function ProjectConfigurationWorkbench({
   const [fileVersions, setFileVersions] = useState<ProjectParameterFileVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [versionsError, setVersionsError] = useState("");
-  const [downloadMessage, setDownloadMessage] = useState("");
-  const [downloadingDts, setDownloadingDts] = useState(false);
   const {
     flow: candidateFlow,
     candidate: activeCandidate,
@@ -197,7 +189,6 @@ export function ProjectConfigurationWorkbench({
     () => activityEvents.map(presentWorkbenchActivity),
     [activityEvents]
   );
-  const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   const candidateFileInputRef = useRef<HTMLInputElement | null>(null);
   const [lastVisibleLine, setLastVisibleLine] = useState<number | null>(null);
   const [restoredScrollLine, setRestoredScrollLine] = useState<number | null>(null);
@@ -230,10 +221,6 @@ export function ProjectConfigurationWorkbench({
   const treeRegionRef = useRef<HTMLElement | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<PendingConfirmation | null>(null);
-  const [memberFileId, setMemberFileId] = useState("");
-  const [memberRole, setMemberRole] = useState<ConfigSetRole>("base");
-  const [memberSortOrder, setMemberSortOrder] = useState(0);
-  const [syncEvidence, setSyncEvidence] = useState("");
   const {
     facade: conflictLocateFacade,
     conflicts: syncConflicts
@@ -263,7 +250,6 @@ export function ProjectConfigurationWorkbench({
     modeSourceError,
     workingSnapshot
   } = useWorkbenchCanvasHistorySession();
-  const [exportEvidence, setExportEvidence] = useState("");
   const sourceRegionRef = useRef<HTMLElement | null>(null);
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
   const scrollSyncTimerRef = useRef<number | null>(null);
@@ -301,31 +287,6 @@ export function ProjectConfigurationWorkbench({
   useEffect(() => {
     void workspaceLoadSession.loadMembers(project.id, selectedConfigSet?.id ?? null, dtsRepository);
   }, [dtsRepository, membersRetry, project.id, selectedConfigSet, workspaceLoadSession]);
-
-  useEffect(() => {
-    void releaseBaselineSession.loadBaselines(
-      project.id,
-      selectedConfigSet?.id ?? null,
-      dtsRepository
-    );
-  }, [baselinesRetry, dtsRepository, project.id, releaseBaselineSession, selectedConfigSet]);
-
-  useEffect(() => {
-    void releaseBaselineSession.refreshReadiness(
-      project.id,
-      selectedConfigSet?.id ?? null,
-      { canAdmin },
-      dtsRepository
-    );
-  }, [
-    acknowledgedWarningIds,
-    canAdmin,
-    dtsRepository,
-    project.id,
-    readinessRetry,
-    releaseBaselineSession,
-    selectedConfigSet
-  ]);
 
   const selectedMembers = useMemo(() => {
     if (!selectedConfigSet) return [];
@@ -658,23 +619,6 @@ export function ProjectConfigurationWorkbench({
     return locatorToFocusSpan(node.source);
   }, [selectedNodePath, selectedPropertyName, structureNodes]);
 
-  const rememberWorkingSnapshot = useCallback(() => {
-    canvasHistorySession.rememberWorkingSnapshot({
-      fileId: selectedMember?.fileId ?? null,
-      nodePath: selectedNodePath,
-      propertyName: selectedPropertyName,
-      scrollLine: lastVisibleLine,
-      sourceMode: canvasModeQueryValue(canvasMode)
-    });
-  }, [
-    canvasHistorySession,
-    canvasMode,
-    lastVisibleLine,
-    selectedMember?.fileId,
-    selectedNodePath,
-    selectedPropertyName
-  ]);
-
   const selectStructureTarget = useCallback(
     (fileId: string, nodePath: string | null, propertyName: string | null = null) => {
       if (!selectedConfigSet) return;
@@ -722,91 +666,17 @@ export function ProjectConfigurationWorkbench({
       scrollSyncTimerRef.current = window.setTimeout(() => {
         const nearest = nearestNodeForLine(structureNodes, line);
         if (!nearest || nearest.nodePath === selectedNodePath) return;
-        // Update tree selection without stealing focus or rewriting URL on every scroll tick.
         navigationSession.setStructureSelection(nearest.nodePath, null);
       }, 80);
     },
     [canvasMode, navigationSession, selectedMember, selectedNodePath, structureNodes, suppressScrollSync]
   );
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const tag = target?.tagName?.toLowerCase();
-      const typing = tag === "input" || tag === "textarea" || target?.isContentEditable;
-
-      // Never override browser/system shortcuts (meta/ctrl combinations).
-      if (event.metaKey || event.ctrlKey) return;
-
-      if (event.altKey && event.key.toLowerCase() === "f") {
-        event.preventDefault();
-        searchInputRef.current?.focus();
-        return;
-      }
-      if (event.altKey && event.key.toLowerCase() === "n") {
-        event.preventDefault();
-        setFindNextToken((value) => value + 1);
-        return;
-      }
-      if (event.altKey && event.key.toLowerCase() === "g") {
-        event.preventDefault();
-        const line = Number(window.prompt("跳转到行号") || "");
-        if (Number.isFinite(line) && line >= 1) {
-          setFocusLineOverride(line);
-        }
-        return;
-      }
-      if (event.altKey && event.key === "1") {
-        event.preventDefault();
-        treeRegionRef.current?.focus();
-        return;
-      }
-      if (event.altKey && event.key === "2") {
-        event.preventDefault();
-        sourceRegionRef.current?.querySelector<HTMLElement>('[aria-label="DTS 源码"]')?.focus();
-        return;
-      }
-      if (!typing && event.key === "/" ) {
-        event.preventDefault();
-        searchInputRef.current?.focus();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-
   const memberIds = useMemo(
     () => new Set(selectedMembers.map((item) => item.fileId)),
     [selectedMembers]
   );
   const ungroupedFiles = projectFiles.filter((item) => !memberIds.has(item.id));
-
-  useEffect(() => {
-    const requested = queryValue(search, "baseline");
-    if (requested && baselines.some((item) => item.id === requested)) {
-      releaseBaselineSession.selectBaseline(requested);
-      return;
-    }
-    if (!requested) {
-      if (selectedBaselineId && baselines.some((item) => item.id === selectedBaselineId)) {
-        return;
-      }
-      releaseBaselineSession.selectBaseline(null);
-    }
-  }, [baselines, releaseBaselineSession, search, selectedBaselineId]);
-
-  useEffect(() => {
-    void releaseBaselineSession.loadPinnedMembers(project.id, dtsRepository);
-  }, [dtsRepository, project.id, releaseBaselineSession, selectedBaselineId, selectedConfigSet]);
-
-  useEffect(() => {
-    const available = ungroupedFiles[0]?.id ?? "";
-    setMemberFileId((current) => (current && ungroupedFiles.some((item) => item.id === current) ? current : available));
-  }, [ungroupedFiles]);
-
-  useEffect(() => {
-    setMemberSortOrder(selectedMembers.length);
-  }, [selectedMembers.length]);
 
   const runAction = useCallback(async (key: string, action: () => Promise<void>) => {
     setPendingAction(key);
@@ -817,221 +687,160 @@ export function ProjectConfigurationWorkbench({
     }
   }, []);
 
-  const handleCreateConfigSet = useCallback(
-    async (name: string): Promise<string | null | undefined> => {
-      if (!canAdmin) return undefined;
-      const result = await configSetOpsSession.create(
-        project.id,
-        { name, existingNames: configSets.map((item) => item.name) },
-        dtsRepository
-      );
-      if (!result.ok) {
-        return result.kind === "validation" ? result.message : undefined;
-      }
-      workspaceLoadSession.setConfigSets([
-        result.item,
-        ...configSets.filter((item) => item.id !== result.item.id)
-      ]);
-      workspaceLoadSession.setMembers([], result.item.id);
-      setInspectorLevelOverride("config-set");
-      setInspectorOpen(true);
-      onNavigate(
-        formatWorkbenchPath(project.id, search, {
-          configSet: result.item.id,
-          file: null,
-          node: null,
-          property: null,
-          sourceMode: null,
-          version: null,
-          candidate: null
-        })
-      );
-      return null;
+  const notifyMutation = useCallback(
+    (message: string) => {
+      showToast(message);
+      activitySession.bumpRefresh();
     },
-    [canAdmin, configSetOpsSession, configSets, dtsRepository, onNavigate, project.id, search, workspaceLoadSession]
+    [activitySession, showToast]
   );
 
-  const submitCreateConfigSet = useCallback(
-    async (name: string): Promise<string | null | undefined> => {
-      let result: string | null | undefined = undefined;
-      await runAction("create-config-set", async () => {
-        result = await handleCreateConfigSet(name);
-      });
-      return result;
-    },
-    [handleCreateConfigSet, runAction]
-  );
+  const {
+    createBaselineOpen,
+    setCreateBaselineOpen,
+    newBaselineName,
+    setNewBaselineName,
+    releaseBaselineOpen,
+    setReleaseBaselineOpen,
+    restoreBaselineOpen,
+    setRestoreBaselineOpen,
+    setBaselinesRetry,
+    setReadinessRetry,
+    handleOpenCreateBaseline,
+    createWorkbenchBaseline,
+    selectWorkbenchBaseline,
+    compareWorkbenchBaseline,
+    exitBaselineCompare,
+    selectBaselineCompareMember,
+    releaseWorkbenchBaseline,
+    openRestoreWorkbenchBaseline,
+    restoreWorkbenchBaseline
+  } = useWorkbenchBaselineOrchestration({
+    projectId: project.id,
+    search,
+    onNavigate,
+    canAdmin,
+    dtsRepository,
+    releaseBaselineSession,
+    workspaceLoadSession,
+    selectedConfigSet,
+    selectedMemberFileId,
+    selectedBaselineId,
+    baselines,
+    acknowledgedWarningIds,
+    canvasMode,
+    historyVersionId,
+    candidateId,
+    selectedNodePath,
+    selectedPropertyName,
+    sessionDraftsDirty,
+    notifyMutation,
+    setInspectorOpen,
+    setTasksOpen
+  });
 
-  const addMemberToConfigSet = useCallback(
-    async (fileId: string, role: ConfigSetRole, sortOrder: number) => {
-      if (!canAdmin || !selectedConfigSet) return;
-      const file = projectFiles.find((item) => item.id === fileId);
-      const result = await configSetOpsSession.addMember(
-        project.id,
-        selectedConfigSet.id,
-        { fileId, role, sortOrder, file },
-        dtsRepository
-      );
-      if (!result.ok) return;
-      workspaceLoadSession.setMembers([
-        ...members.filter((item) => item.fileId !== result.membership.fileId),
-        {
-          ...result.membership,
-          fileName: result.fileName,
-          format: result.format,
-          currentVersionId: result.currentVersionId,
-          currentVersionNumber: result.currentVersionNumber
-        }
-      ]);
-      setInspectorLevelOverride("config-set");
-      setInspectorOpen(true);
-      workspaceLoadSession.retryMembers();
-    },
-    [
-      canAdmin,
-      configSetOpsSession,
-      dtsRepository,
-      members,
-      project.id,
-      projectFiles,
-      selectedConfigSet,
-      workspaceLoadSession
-    ]
-  );
+  const {
+    memberFileId,
+    memberRole,
+    memberSortOrder,
+    syncEvidence,
+    exportEvidence,
+    setMemberFileId,
+    setMemberRole,
+    setMemberSortOrder,
+    submitCreateConfigSet,
+    addMemberToConfigSet,
+    assignUngroupedFile,
+    requestRemoveMember,
+    syncSelectedFile,
+    exportSelectedConfigSet,
+    selectConfigSet,
+    selectMember
+  } = useWorkbenchConfigSetOrchestration({
+    projectId: project.id,
+    search,
+    onNavigate,
+    canAdmin,
+    dtsRepository,
+    fileRepository,
+    configSetOpsSession,
+    workspaceLoadSession,
+    navigationSession,
+    conflictLocateFacade,
+    configSets,
+    members,
+    projectFiles,
+    selectedConfigSet,
+    selectedMember,
+    selectedMembers,
+    ungroupedFiles,
+    canvasMode,
+    historyVersionId,
+    runAction,
+    setInspectorLevelOverride: (level) => setInspectorLevelOverride(level),
+    setInspectorOpen,
+    setTasksOpen,
+    setConfirmation
+  });
 
-  const assignUngroupedFile = useCallback(
-    async (file: ProjectParameterFile) => {
-      const role = defaultRoleForFile(file, selectedMembers.length > 0);
-      await addMemberToConfigSet(file.id, role, selectedMembers.length);
-    },
-    [addMemberToConfigSet, selectedMembers.length]
-  );
+  const {
+    downloadMessage,
+    downloadingDts,
+    enterCanvasMode,
+    exitSpecialCanvasMode,
+    handleDownloadVersion,
+    downloadActiveDts
+  } = useWorkbenchCanvasOps({
+    projectId: project.id,
+    search,
+    onNavigate,
+    fileRepository,
+    canvasHistorySession,
+    navigationSession,
+    selectedConfigSet,
+    selectedMember,
+    canvasMode,
+    historyVersionId,
+    selectedNodePath,
+    selectedPropertyName,
+    lastVisibleLine,
+    workingSnapshot,
+    fileVersions,
+    setFocusLineOverride,
+    setRestoredScrollLine
+  });
 
-  const removeMemberFromConfigSet = useCallback(
-    async (fileId: string) => {
-      if (!canAdmin || !selectedConfigSet) return;
-      const result = await configSetOpsSession.removeMember(
-        project.id,
-        selectedConfigSet.id,
-        fileId,
-        dtsRepository
-      );
-      if (!result.ok) return;
-      workspaceLoadSession.setMembers(members.filter((item) => item.fileId !== fileId));
-      if (selectedMember?.fileId === fileId) {
-        onNavigate(
-          formatWorkbenchPath(project.id, search, {
-            configSet: selectedConfigSet.id,
-            file: null,
-            node: null,
-            property: null,
-            sourceMode: null,
-            version: null
-          })
-        );
-      }
-      workspaceLoadSession.retryMembers();
-    },
-    [
-      canAdmin,
-      configSetOpsSession,
-      dtsRepository,
-      members,
-      onNavigate,
-      project.id,
-      search,
-      selectedConfigSet,
-      selectedMember?.fileId,
-      workspaceLoadSession
-    ]
-  );
+  const {
+    activateConfirmOpen,
+    handleCandidateFileChange,
+    handleRecomputeCandidate,
+    handleOpenActivateCandidate,
+    handleAbandonCandidate,
+    handleConfirmActivateCandidate,
+    handleCancelActivateCandidate
+  } = useWorkbenchCandidateOrchestration({
+    projectId: project.id,
+    search,
+    onNavigate,
+    fileRepository,
+    candidateFlow,
+    workspaceLoadSession,
+    selectedConfigSet,
+    selectedMemberFileId,
+    activeCandidate,
+    activatingCandidate,
+    notifyMutation,
+    setInspectorOpen,
+    setBaselinesRetry
+  });
 
-  const requestRemoveMember = useCallback(
-    (member: DtsConfigSetMemberFile) => {
-      if (!canAdmin || !selectedConfigSet) return;
-      setConfirmation({
-        key: `remove-member-${member.fileId}`,
-        title: "移除配置集成员",
-        description: (
-          <p>
-            将把 <code>{member.fileName}</code>（角色：
-            {ROLE_LABELS[member.role] ?? member.role}）从配置集「{selectedConfigSet.name}」中移除。该文件本身不会被删除，但基于此配置集的后续基线与导出将不再包含它。
-          </p>
-        ),
-        confirmLabel: "确认移除",
-        pendingLabel: "移除中…",
-        tone: "danger",
-        run: () => removeMemberFromConfigSet(member.fileId)
-      });
-    },
-    [canAdmin, removeMemberFromConfigSet, selectedConfigSet]
-  );
-
-  const syncSelectedFile = useCallback(async () => {
-    if (!canAdmin || !selectedMember) return;
-    const result = await configSetOpsSession.syncFile(
-      project.id,
-      { fileId: selectedMember.fileId, fileName: selectedMember.fileName },
-      fileRepository
-    );
-    if (!result.ok) return;
-    setSyncEvidence(result.evidence);
-    setTasksOpen(true);
-    workspaceLoadSession.setProjectFiles(result.files);
-    conflictLocateFacade.setOpenConflicts(result.conflicts);
-    workspaceLoadSession.retryMembers();
-    workspaceLoadSession.retryFiles();
-  }, [canAdmin, configSetOpsSession, conflictLocateFacade, fileRepository, project.id, selectedMember, workspaceLoadSession]);
-
-  const exportSelectedConfigSet = useCallback(async () => {
-    if (!canAdmin || !selectedConfigSet) return;
-    const result = await configSetOpsSession.exportConfigSet(
-      project.id,
-      selectedConfigSet.id,
-      selectedConfigSet.name,
-      dtsRepository
-    );
-    if (!result.ok) return;
-    downloadExportBundle(selectedConfigSet.name, result.export);
-    setExportEvidence(result.evidence);
-    setTasksOpen(true);
-  }, [canAdmin, configSetOpsSession, dtsRepository, project.id, selectedConfigSet]);
-
-  const selectConfigSet = useCallback(
-    (configSetId: string) => {
-      setInspectorLevelOverride("config-set");
-      setInspectorOpen(true);
-      onNavigate(navigationSession.selectConfigSet(project.id, search, configSetId));
-    },
-    [navigationSession, onNavigate, project.id, search]
-  );
-
-  const selectMember = useCallback(
-    (fileId: string) => {
-      if (!selectedConfigSet) return;
-      setInspectorLevelOverride("file");
-      onNavigate(
-        navigationSession.selectMember(project.id, search, {
-          configSetId: selectedConfigSet.id,
-          fileId,
-          currentFileId: selectedMember?.fileId ?? null,
-          sourceMode: canvasModeQueryValue(canvasMode),
-          versionId: historyVersionId,
-          workingMode: canvasMode === "working"
-        })
-      );
-    },
-    [
-      canvasMode,
-      historyVersionId,
-      navigationSession,
-      onNavigate,
-      project.id,
-      search,
-      selectedConfigSet,
-      selectedMember?.fileId
-    ]
-  );
+  useWorkbenchKeyboardShortcuts({
+    searchInputRef,
+    treeRegionRef,
+    sourceRegionRef,
+    onFindNext: () => setFindNextToken((value) => value + 1),
+    onGotoLine: (line) => setFocusLineOverride(line)
+  });
 
   const refreshActivityTimeline = useCallback(async () => {
     await activitySession.refresh(
@@ -1083,122 +892,35 @@ export function ProjectConfigurationWorkbench({
       if (!selectedConfigSet) return;
       const event = activityEvents.find((item) => item.id === eventId);
       if (!event) return;
-      const catalog = {
-        configSetIds: new Set(configSets.map((item) => item.id)),
-        fileIds: new Set(projectFiles.map((item) => item.id)),
-        candidateIds: new Set(
-          [
+      navigateWorkbenchActivityEvent({
+        event,
+        catalog: buildWorkbenchActivityCatalog({
+          configSetIds: configSets.map((item) => item.id),
+          fileIds: projectFiles.map((item) => item.id),
+          candidateIds: [
             ...knownCandidateIds,
             activeCandidate?.id,
             candidateId
-          ].filter((value): value is string => Boolean(value))
-        ),
-        baselineIds: new Set(baselines.map((item) => item.id)),
-        knownNodePathsByFileId: new Map([
-          [selectedMember?.fileId ?? "", new Set(structureNodes.map((node) => node.nodePath))]
-        ])
-      };
-      const resolved = resolveWorkbenchActivityTarget(event, catalog);
-      if (resolved.missing) {
-        activitySession.setMissingNotice(resolved.missingReason ?? "该活动目标已不可用。");
-        return;
-      }
-      activitySession.setMissingNotice("");
-      setInspectorLevelOverride(null);
-      setInspectorOpen(true);
-
-      if (resolved.kind === "config-set" && resolved.configSetId) {
-        onNavigate(
-          formatWorkbenchPath(project.id, search, {
-            configSet: resolved.configSetId,
-            file: null,
-            node: null,
-            property: null,
-            sourceMode: null,
-            version: null,
-            candidate: null,
-            inspector: null
-          })
-        );
-        setInspectorLevelOverride("config-set");
-        return;
-      }
-
-      if (resolved.kind === "candidate" && resolved.candidateId) {
-        onNavigate(
-          formatWorkbenchPath(project.id, search, {
-            configSet: selectedConfigSet.id,
-            file: resolved.fileId ?? selectedMember?.fileId ?? null,
-            node: null,
-            property: null,
-            sourceMode: "candidate",
-            version: null,
-            candidate: resolved.candidateId,
-            inspector: null
-          })
-        );
-        return;
-      }
-
-      if (resolved.kind === "baseline") {
-        if (resolved.missing) {
-          activitySession.setMissingNotice(
-            resolved.missingReason ?? "发布基线已不存在；事件仍可作为只读证据。"
-          );
-          return;
-        }
-        if (resolved.baselineId && selectedConfigSet) {
-          activitySession.setMissingNotice("");
-          releaseBaselineSession.selectBaseline(resolved.baselineId);
-          setInspectorOpen(true);
-          onNavigate(
-            formatWorkbenchPath(project.id, search, {
-              configSet: selectedConfigSet.id,
-              file: selectedMember?.fileId ?? null,
-              baseline: resolved.baselineId,
-              inspector: null
-            })
-          );
-        }
-        return;
-      }
-
-      if (resolved.kind === "conflict") {
-        setTasksOpen(true);
-        activitySession.setMissingNotice("");
-        void conflictLocateFacade.openArbitration(project.id, fileRepository, {
-          fileId: resolved.fileId,
-          nodePath: resolved.nodePath ?? null,
-          propertyName: resolved.propertyName ?? null
-        });
-        if (resolved.fileId) {
-          selectStructureTarget(
-            resolved.fileId,
-            resolved.nodePath ?? null,
-            resolved.propertyName ?? null
-          );
-        }
-        return;
-      }
-
-      if (resolved.fileId) {
-        navigationSession.setStructureSelection(
-          resolved.nodePath ?? null,
-          resolved.propertyName ?? null
-        );
-        onNavigate(
-          formatWorkbenchPath(project.id, search, {
-            configSet: selectedConfigSet.id,
-            file: resolved.fileId,
-            node: resolved.nodePath ?? null,
-            property: resolved.propertyName ?? null,
-            sourceMode: null,
-            version: null,
-            candidate: null,
-            inspector: null
-          })
-        );
-      }
+          ].filter((value): value is string => Boolean(value)),
+          baselineIds: baselines.map((item) => item.id),
+          selectedMemberFileId,
+          structureNodePaths: structureNodes.map((node) => node.nodePath)
+        }),
+        projectId: project.id,
+        search,
+        selectedConfigSetId: selectedConfigSet.id,
+        selectedMemberFileId,
+        onNavigate,
+        activitySession,
+        releaseBaselineSession,
+        navigationSession,
+        conflictLocateFacade,
+        fileRepository,
+        selectStructureTarget,
+        setInspectorLevelOverride: (level) => setInspectorLevelOverride(level),
+        setInspectorOpen,
+        setTasksOpen
+      });
     },
     [
       activeCandidate?.id,
@@ -1218,175 +940,10 @@ export function ProjectConfigurationWorkbench({
       search,
       selectStructureTarget,
       selectedConfigSet,
-      selectedMember?.fileId,
+      selectedMemberFileId,
       structureNodes
     ]
   );
-
-  const notifyMutation = useCallback(
-    (message: string) => {
-      showToast(message);
-      activitySession.bumpRefresh();
-    },
-    [activitySession, showToast]
-  );
-
-  const handleCandidateFileChange = useCallback(
-    (file: File) => {
-      if (!selectedConfigSet) return;
-      void (async () => {
-        try {
-          const created = await candidateFlow.create(
-            project.id,
-            { file, fileId: selectedMember?.fileId },
-            fileRepository
-          );
-          setInspectorOpen(true);
-          onNavigate(
-            formatWorkbenchPath(project.id, search, {
-              configSet: selectedConfigSet.id,
-              file: selectedMember?.fileId ?? null,
-              sourceMode: "candidate",
-              candidate: created.id,
-              version: null,
-              node: null,
-              property: null
-            })
-          );
-          notifyMutation(
-            created.status === "failed"
-              ? "候选解析失败，活跃源码未改动；可查看诊断后放弃。"
-              : "候选已创建，工作配置与活跃版本未改动。"
-          );
-        } catch {
-          // candidateFlow.error already set
-        }
-      })();
-    },
-    [
-      candidateFlow,
-      fileRepository,
-      notifyMutation,
-      onNavigate,
-      project.id,
-      search,
-      selectedConfigSet,
-      selectedMember?.fileId
-    ]
-  );
-
-  const handleOpenCreateBaseline = useCallback(() => {
-    releaseBaselineSession.clearActionError();
-    setCreateBaselineOpen(true);
-  }, [releaseBaselineSession]);
-
-  const enterCanvasMode = useCallback(
-    (mode: WorkbenchCanvasMode, versionId: string | null) => {
-      if (!selectedConfigSet || !selectedMember) return;
-      if (canvasMode === "working") {
-        rememberWorkingSnapshot();
-      }
-      onNavigate(
-        formatWorkbenchPath(project.id, search, {
-          configSet: selectedConfigSet.id,
-          file: selectedMember.fileId,
-          node: selectedNodePath,
-          property: selectedPropertyName,
-          sourceMode: canvasModeQueryValue(mode),
-          version: versionId,
-          candidate: null
-        })
-      );
-    },
-    [
-      canvasMode,
-      onNavigate,
-      project.id,
-      rememberWorkingSnapshot,
-      search,
-      selectedConfigSet,
-      selectedMember,
-      selectedNodePath,
-      selectedPropertyName
-    ]
-  );
-
-  const exitSpecialCanvasMode = useCallback(() => {
-    if (!selectedConfigSet) return;
-    const snapshot = workingSnapshot;
-    const restoreLine = snapshot?.scrollLine ?? lastVisibleLine;
-    setRestoredScrollLine(restoreLine);
-    if (restoreLine != null) setFocusLineOverride(restoreLine);
-    navigationSession.beginSuppressScrollSync(300);
-    onNavigate(
-      formatWorkbenchPath(project.id, search, {
-        configSet: selectedConfigSet.id,
-        file: snapshot?.fileId ?? selectedMember?.fileId ?? null,
-        node: snapshot?.nodePath ?? selectedNodePath,
-        property: snapshot?.propertyName ?? selectedPropertyName,
-        sourceMode: null,
-        version: null,
-        candidate: null
-      })
-    );
-    window.setTimeout(() => {
-      if (restoreLine != null) setFocusLineOverride(restoreLine);
-      setRestoredScrollLine(null);
-    }, 300);
-  }, [
-    lastVisibleLine,
-    navigationSession,
-    onNavigate,
-    project.id,
-    search,
-    selectedConfigSet,
-    selectedMember?.fileId,
-    selectedNodePath,
-    selectedPropertyName,
-    workingSnapshot
-  ]);
-
-  const handleDownloadVersion = useCallback(
-    async (version: ProjectParameterFileVersion) => {
-      if (!selectedMember) return;
-      setDownloadMessage("");
-      try {
-        await triggerVersionDownload(
-          fileRepository,
-          project.id,
-          selectedMember.fileId,
-          version,
-          selectedMember.fileName
-        );
-        setDownloadMessage(`已下载 ${selectedMember.fileName} 的版本 ${version.versionNumber}`);
-      } catch (error: unknown) {
-        setDownloadMessage(error instanceof Error ? error.message : "下载失败。");
-      }
-    },
-    [fileRepository, project.id, selectedMember]
-  );
-
-  const downloadActiveDts = useCallback(async () => {
-    if (!selectedMember?.currentVersionId || downloadingDts) return;
-    const activeVersion =
-      fileVersions.find((item) => item.id === selectedMember.currentVersionId) ??
-      ({
-        id: selectedMember.currentVersionId,
-        fileId: selectedMember.fileId,
-        versionNumber: 0,
-        checksum: "",
-        sizeBytes: 0,
-        parsedIndex: {},
-        origin: "upload",
-        createdAt: ""
-      } satisfies ProjectParameterFileVersion);
-    setDownloadingDts(true);
-    try {
-      await handleDownloadVersion(activeVersion);
-    } finally {
-      setDownloadingDts(false);
-    }
-  }, [downloadingDts, fileVersions, handleDownloadVersion, selectedMember]);
 
   const selectedStructureNode = useMemo(
     () => structureNodes.find((item) => item.nodePath === selectedNodePath) ?? null,
@@ -1473,243 +1030,6 @@ export function ProjectConfigurationWorkbench({
   useEffect(() => {
     void structuredEditSession.hydrate(sessionDraftScope);
   }, [sessionDraftScope, structuredEditSession]);
-
-  const createWorkbenchBaseline = useCallback(async () => {
-    if (!canAdmin || !selectedConfigSet) return;
-    try {
-      const created = await releaseBaselineSession.create(
-        project.id,
-        selectedConfigSet.id,
-        { name: newBaselineName, localSessionDirty: sessionDraftsDirty },
-        dtsRepository
-      );
-      setNewBaselineName("");
-      setCreateBaselineOpen(false);
-      setReadinessRetry((value) => value + 1);
-      setBaselinesRetry((value) => value + 1);
-      notifyMutation(`已创建基线「${created.name}」。`);
-    } catch {
-      // actionError is owned by ReleaseBaselineSession
-    }
-  }, [
-    canAdmin,
-    dtsRepository,
-    newBaselineName,
-    notifyMutation,
-    project.id,
-    releaseBaselineSession,
-    selectedConfigSet,
-    sessionDraftsDirty
-  ]);
-
-  const selectWorkbenchBaseline = useCallback(
-    (baselineId: string) => {
-      if (!selectedConfigSet) return;
-      releaseBaselineSession.selectBaseline(baselineId);
-      setInspectorOpen(true);
-      onNavigate(
-        formatWorkbenchPath(project.id, search, {
-          configSet: selectedConfigSet.id,
-          file: selectedMember?.fileId ?? null,
-          baseline: baselineId,
-          sourceMode: canvasModeQueryValue(canvasMode),
-          version: historyVersionId,
-          candidate: candidateId
-        })
-      );
-    },
-    [
-      candidateId,
-      canvasMode,
-      historyVersionId,
-      onNavigate,
-      project.id,
-      releaseBaselineSession,
-      search,
-      selectedConfigSet,
-      selectedMember?.fileId
-    ]
-  );
-
-  const compareWorkbenchBaseline = useCallback(
-    async (against: "working" | "released") => {
-      if (!selectedConfigSet || !selectedBaselineId) return;
-      releaseBaselineSession.clearActionError();
-      setWorkingReturnPath(
-        formatWorkbenchPath(project.id, search, {
-          configSet: selectedConfigSet.id,
-          file: selectedMember?.fileId ?? null,
-          node: selectedNodePath,
-          property: selectedPropertyName,
-          sourceMode: null,
-          version: null,
-          candidate: null,
-          baseline: selectedBaselineId
-        })
-      );
-      const result = await releaseBaselineSession.compare(project.id, against, dtsRepository);
-      const firstDrift = result.members.find(
-        (member) => member.status === "version_changed" && member.baselineVersionId
-      );
-      if (firstDrift?.baselineVersionId && firstDrift.fileId) {
-        onNavigate(
-          formatWorkbenchPath(project.id, search, {
-            configSet: selectedConfigSet.id,
-            file: firstDrift.fileId,
-            sourceMode: "unified-diff",
-            version: firstDrift.baselineVersionId,
-            baseline: selectedBaselineId,
-            node: null,
-            property: null,
-            candidate: null
-          })
-        );
-      }
-      notifyMutation(
-        against === "released" ? "已对比基线与已发布 tip。" : "已对比基线与 Working 配置。"
-      );
-    },
-    [
-      dtsRepository,
-      notifyMutation,
-      onNavigate,
-      project.id,
-      releaseBaselineSession,
-      search,
-      selectedBaselineId,
-      selectedConfigSet,
-      selectedMember?.fileId,
-      selectedNodePath,
-      selectedPropertyName
-    ]
-  );
-
-  const exitBaselineCompare = useCallback(() => {
-    releaseBaselineSession.clearCompare();
-    if (workingReturnPath) {
-      onNavigate(workingReturnPath);
-      setWorkingReturnPath(null);
-      return;
-    }
-    if (!selectedConfigSet) return;
-    onNavigate(
-      formatWorkbenchPath(project.id, search, {
-        configSet: selectedConfigSet.id,
-        file: selectedMember?.fileId ?? null,
-        sourceMode: null,
-        version: null,
-        baseline: selectedBaselineId,
-        candidate: null
-      })
-    );
-  }, [
-    onNavigate,
-    project.id,
-    releaseBaselineSession,
-    search,
-    selectedBaselineId,
-    selectedConfigSet,
-    selectedMember?.fileId,
-    workingReturnPath
-  ]);
-
-  const selectBaselineCompareMember = useCallback(
-    (member: DtsBaselineMemberComparison) => {
-      if (!selectedConfigSet || !member.baselineVersionId) return;
-      onNavigate(
-        formatWorkbenchPath(project.id, search, {
-          configSet: selectedConfigSet.id,
-          file: member.fileId,
-          sourceMode: canvasMode === "side-by-side" ? "side-by-side" : "unified-diff",
-          version: member.baselineVersionId,
-          baseline: selectedBaselineId,
-          node: null,
-          property: null,
-          candidate: null
-        })
-      );
-    },
-    [canvasMode, onNavigate, project.id, search, selectedBaselineId, selectedConfigSet]
-  );
-
-  const releaseWorkbenchBaseline = useCallback(async () => {
-    if (!canAdmin || !selectedConfigSet || !selectedBaselineId) return;
-    try {
-      const result = await releaseBaselineSession.release(
-        project.id,
-        selectedConfigSet.id,
-        { localSessionDirty: sessionDraftsDirty },
-        dtsRepository
-      );
-      setReleaseBaselineOpen(false);
-      setReadinessRetry((value) => value + 1);
-      setBaselinesRetry((value) => value + 1);
-      notifyMutation(`已发布基线「${result.item.name}」。`);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "";
-      if (message.includes("确认策略允许的警告")) {
-        setTasksOpen(true);
-      }
-    }
-  }, [
-    canAdmin,
-    dtsRepository,
-    notifyMutation,
-    project.id,
-    releaseBaselineSession,
-    selectedBaselineId,
-    selectedConfigSet,
-    sessionDraftsDirty
-  ]);
-
-  const openRestoreWorkbenchBaseline = useCallback(async () => {
-    if (!selectedBaselineId) return;
-    releaseBaselineSession.clearActionError();
-    await releaseBaselineSession.previewRestore(project.id, dtsRepository);
-    setRestoreBaselineOpen(true);
-  }, [dtsRepository, project.id, releaseBaselineSession, selectedBaselineId]);
-
-  const restoreWorkbenchBaseline = useCallback(async () => {
-    if (!canAdmin || !selectedConfigSet || !selectedBaselineId) return;
-    releaseBaselineSession.clearActionError();
-    const { result, tipUnchanged } = await releaseBaselineSession.restore(
-      project.id,
-      selectedConfigSet.id,
-      dtsRepository
-    );
-    setRestoreBaselineOpen(false);
-    workspaceLoadSession.retryMembers();
-    setBaselinesRetry((value) => value + 1);
-    setReadinessRetry((value) => value + 1);
-    workspaceLoadSession.retrySource();
-    onNavigate(
-      formatWorkbenchPath(project.id, search, {
-        configSet: selectedConfigSet.id,
-        file: selectedMember?.fileId ?? null,
-        sourceMode: null,
-        version: null,
-        baseline: selectedBaselineId,
-        candidate: null
-      })
-    );
-    notifyMutation(
-      tipUnchanged
-        ? `已恢复基线成员（${result.restored} 项）；已发布 tip 未变。`
-        : `已恢复基线成员（${result.restored} 项）。`
-    );
-  }, [
-    canAdmin,
-    dtsRepository,
-    notifyMutation,
-    onNavigate,
-    project.id,
-    releaseBaselineSession,
-    search,
-    selectedBaselineId,
-    selectedConfigSet,
-    selectedMember?.fileId,
-    workspaceLoadSession
-  ]);
 
   const handleSelectReadinessIssue = useCallback(
     (issue: DtsReleaseReadinessIssue) => {
@@ -1890,35 +1210,15 @@ export function ProjectConfigurationWorkbench({
         onTasksToggle={() => setTasksOpen((open) => !open)}
       />
 
-      {configSetsLoading ? (
-        <div className="configuration-workbench__setup-state" role="status">
-          正在加载配置集…
-        </div>
-      ) : configSetsError ? (
-        <div className="configuration-workbench__setup-state" role="alert">
-          <strong>配置集加载失败</strong>
-          <p>{configSetsError}</p>
-          <button className="button subtle" type="button" onClick={() => workspaceLoadSession.retryConfigSets()}>
-            重试配置集
-          </button>
-        </div>
-      ) : !selectedConfigSet ? (
-        <div className="configuration-workbench__setup-state" role="status">
-          <strong>项目还没有配置集</strong>
-          {canAdmin ? (
-            <>
-              <p>
-                从配置集下拉框选择「+ 新建配置集…」即可创建。上传文件或候选不会自动激活工作配置；创建后需明确把文件编入成员。
-              </p>
-              <p className="configuration-workbench__empty-hint">上传不会自动激活工作配置。</p>
-            </>
-          ) : (
-            <>
-              <p>当前账号无法创建配置集。只读上下文仍可查看；请联系管理员完成初始化。</p>
-            </>
-          )}
-        </div>
-      ) : (
+      <WorkbenchSetupGate
+        configSetsLoading={configSetsLoading}
+        configSetsError={configSetsError}
+        onConfigSetsRetry={() => workspaceLoadSession.retryConfigSets()}
+        selectedConfigSet={selectedConfigSet ?? null}
+        canAdmin={canAdmin}
+      />
+
+      {selectedConfigSet ? (
         <div className="configuration-workbench__body" ref={workbenchBodyRef} aria-label="工作台主体">
           <WorkbenchSourceTree
             treeOpen={treeOpen}
@@ -2031,45 +1331,9 @@ export function ProjectConfigurationWorkbench({
               canRecompute={canRecompute}
               canActivate={canActivate}
               canAbandon={canAbandon}
-              onRecomputeCandidate={() => {
-                void (async () => {
-                  try {
-                    const updated = await candidateFlow.recompute(project.id, fileRepository);
-                    notifyMutation(
-                      updated.status === "ready"
-                        ? "已按当前基重算候选影响，可再次审查后激活。"
-                        : "已按当前阻断条件重算候选影响。"
-                    );
-                  } catch {
-                    // candidateFlow.error already set
-                  }
-                })();
-              }}
-              onActivateCandidate={() => {
-                candidateFlow.setActivateRole("overlay");
-                setActivateConfirmOpen(true);
-              }}
-              onAbandonCandidate={() => {
-                void (async () => {
-                  try {
-                    await candidateFlow.abandon(project.id, fileRepository);
-                    notifyMutation("候选已放弃；工作配置与配置集成员未改动。");
-                    if (selectedConfigSet) {
-                      onNavigate(
-                        formatWorkbenchPath(project.id, search, {
-                          configSet: selectedConfigSet.id,
-                          file: selectedMember?.fileId ?? null,
-                          sourceMode: null,
-                          candidate: null,
-                          version: null
-                        })
-                      );
-                    }
-                  } catch {
-                    // candidateFlow.error already set
-                  }
-                })();
-              }}
+              onRecomputeCandidate={handleRecomputeCandidate}
+              onActivateCandidate={handleOpenActivateCandidate}
+              onAbandonCandidate={handleAbandonCandidate}
               activityMissingNotice={activityMissingNotice}
               activityLoading={activityLoading}
               activityError={activityError}
@@ -2110,7 +1374,7 @@ export function ProjectConfigurationWorkbench({
             />
           ) : null}
         </div>
-      )}
+      ) : null}
 
       <WorkbenchCandidateActivateDialog
         open={activateConfirmOpen}
@@ -2120,46 +1384,8 @@ export function ProjectConfigurationWorkbench({
         onActivateRoleChange={(role) => candidateFlow.setActivateRole(role)}
         activating={activatingCandidate}
         activateError={activateError}
-        onCancel={() => {
-          if (!activatingCandidate) {
-            setActivateConfirmOpen(false);
-          }
-        }}
-        onConfirm={() => {
-          if (!activeCandidate || activeCandidate.status !== "ready") return;
-          void (async () => {
-            try {
-              const result = await candidateFlow.activate(
-                project.id,
-                { configSetId: selectedConfigSet?.id },
-                fileRepository
-              );
-              notifyMutation("候选已激活；工作源码、成员与历史已刷新。");
-              setActivateConfirmOpen(false);
-              workspaceLoadSession.retryFiles();
-              workspaceLoadSession.retryMembers();
-              workspaceLoadSession.retrySource();
-              setBaselinesRetry((value) => value + 1);
-              if (selectedConfigSet) {
-                onNavigate(
-                  formatWorkbenchPath(project.id, search, {
-                    configSet: selectedConfigSet.id,
-                    file: result.file.id,
-                    sourceMode: null,
-                    candidate: null,
-                    version: null
-                  })
-                );
-              }
-            } catch (error: unknown) {
-              const message = error instanceof Error ? error.message : "激活候选失败。";
-              if (/stale/i.test(message)) {
-                setActivateConfirmOpen(false);
-                notifyMutation("基版本已变更，候选已标为过期；请重算影响后再激活。");
-              }
-            }
-          })();
-        }}
+        onCancel={handleCancelActivateCandidate}
+        onConfirm={handleConfirmActivateCandidate}
       />
 
       <WorkbenchTaskDock
