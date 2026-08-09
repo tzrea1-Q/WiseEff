@@ -12,7 +12,7 @@ import {
   readSessionDraftStore,
   SESSION_DRAFT_STORAGE_KEY,
   upsertSessionDraftBucket
-} from "./sessionDraftStorage";
+} from "@/application/project-configuration/sessionDraftStorage";
 
 afterEach(() => {
   cleanup();
@@ -268,10 +268,12 @@ function renderWorkbench(options: {
     project: PROJECT,
     dtsRepository: options.dtsRepository ?? createDtsRepository(),
     fileRepository: options.fileRepository ?? createFileRepository(),
+    listAuditEvents:
+      options.listAuditEvents ??
+      (vi.fn(async () => ({ items: [], nextCursor: null })) as ProjectConfigurationWorkbenchProps["listAuditEvents"]),
     ...(options.canEdit === undefined ? {} : { canEdit: options.canEdit }),
     ...(options.canEditCritical === undefined ? {} : { canEditCritical: options.canEditCritical }),
     ...(options.canAdmin === undefined ? {} : { canAdmin: options.canAdmin }),
-    ...(options.listAuditEvents ? { listAuditEvents: options.listAuditEvents } : {}),
     ...(options.currentUserId === undefined ? {} : { currentUserId: options.currentUserId }),
     ...(options.organizationId === undefined ? {} : { organizationId: options.organizationId }),
     ...(options.draftStorage ? { draftStorage: options.draftStorage } : {})

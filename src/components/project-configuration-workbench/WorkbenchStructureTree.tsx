@@ -7,7 +7,7 @@ import {
   propertyIdentity,
   sessionDraftKey,
   type SessionPropertyDraft
-} from "./sessionDrafts";
+} from "@/application/project-configuration/sessionDrafts";
 import {
   buildWorkbenchStructureTree,
   workbenchExpansionPath,

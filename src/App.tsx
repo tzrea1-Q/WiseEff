@@ -223,7 +223,7 @@ import {
   type RegisterLocalAccountResponseDto,
   type UpdateCurrentUserProfileInput
 } from "@/infrastructure/http/authClient";
-import { clearSessionDraftsForLogout } from "@/components/project-configuration-workbench/sessionDraftStorage";
+import { clearSessionDraftsForLogout } from "@/application/project-configuration/sessionDraftStorage";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 import { createMockParameterRepository } from "@/infrastructure/mock/mockParameterRepository";
 import { createMockRuntimeState, type MockRuntimeState } from "@/infrastructure/mock/mockState";

@@ -38,7 +38,6 @@ import {
 import { mapApiAuditEventToView } from "@/domain/audit/mapAuditEventView";
 import type { AuditEventListResponse, AuditEventView, ListAuditEventsParams } from "@/domain/audit/types";
 import { dtsValueTypeLabel } from "@/domain/dts/dtsValueTypeLabels";
-import { createAuditClient } from "@/infrastructure/http/auditClient";
 import {
   presentWorkbenchActivity,
   resolveWorkbenchActivityTarget,
@@ -78,14 +77,14 @@ import {
   listSessionDraftRows,
   sessionDraftKey,
   type SessionPropertyDraft
-} from "./sessionDrafts";
+} from "@/application/project-configuration/sessionDrafts";
 import {
   findRecoverableSessionDraft,
   formatSessionDraftCopyText,
   removeSessionDraftBucket,
   upsertSessionDraftBucket,
   type SessionDraftScope
-} from "./sessionDraftStorage";
+} from "@/application/project-configuration/sessionDraftStorage";
 import { WorkbenchStructureTree } from "./WorkbenchStructureTree";
 
 export type ProjectConfigurationWorkbenchProject = {
@@ -107,7 +106,8 @@ export type ProjectConfigurationWorkbenchProps = {
   canEditCritical?: boolean;
   /** When false, mutations are denied but read context stays visible. Defaults true for back-compat. */
   canAdmin?: boolean;
-  listAuditEvents?: (params?: ListAuditEventsParams) => Promise<AuditEventListResponse>;
+  /** Required AuditQuery.listAuditEvents — workbench must not construct audit HTTP clients. */
+  listAuditEvents: (params?: ListAuditEventsParams) => Promise<AuditEventListResponse>;
   /** Authenticated user for draft scoping. Defaults to "local-user" for back-compat tests. */
   currentUserId?: string;
   /** Optional org override; prefer selectedConfigSet.organizationId at runtime. */
@@ -301,13 +301,6 @@ export function ProjectConfigurationWorkbench({
   organizationId,
   draftStorage
 }: ProjectConfigurationWorkbenchProps) {
-  const listProjectActivity = useCallback(
-    (params?: ListAuditEventsParams) =>
-      listAuditEvents
-        ? listAuditEvents(params)
-        : createAuditClient().listAuditEvents(params),
-    [listAuditEvents]
-  );
   const { message: toastMessage, showToast } = useGovernanceToast();
   const [configSets, setConfigSets] = useState<DtsConfigSet[]>([]);
   const [projectFiles, setProjectFiles] = useState<ProjectParameterFile[]>([]);
@@ -1464,7 +1457,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     setActivityError("");
     try {
       const [response, candidates] = await Promise.all([
-        listProjectActivity({
+        listAuditEvents({
           projectId: project.id,
           apps: workbenchActivityApps(),
           limit: 40
@@ -1482,7 +1475,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     } finally {
       setActivityLoading(false);
     }
-  }, [fileRepository, listProjectActivity, project.id]);
+  }, [fileRepository, listAuditEvents, project.id]);
 
   useEffect(() => {
     if (inspectorLevel !== "activity" || !inspectorOpen) return;

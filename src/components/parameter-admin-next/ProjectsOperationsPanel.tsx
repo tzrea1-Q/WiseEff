@@ -4,6 +4,7 @@ import { canPerform } from "@/app/permissions";
 import type { ParameterPageActions } from "@/app/routes";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import type { DtsStructuredRepository } from "@/application/ports/DtsStructuredRepository";
+import { resolveAuditQuery } from "@/application/parameters/auditQueryRuntime";
 import { resolveDtsStructuredRepository } from "@/application/parameters/dtsStructuredRuntime";
 import { resolveParameterFileRepository } from "@/application/parameters/parameterFileRuntime";
 import { DeleteProjectDialog } from "@/components/admin/DeleteProjectDialog";
@@ -123,6 +124,7 @@ export function ProjectsOperationsPanel({
       resolveDtsStructuredRepository(runtimeMode),
     [application, dtsStructuredRepository, runtimeMode]
   );
+  const auditQuery = useMemo(() => resolveAuditQuery(runtimeMode), [runtimeMode]);
 
   const [apiRows, setApiRows] = useState<ParameterAdminProjectRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -342,6 +344,7 @@ export function ProjectsOperationsPanel({
           onNavigate={onNavigate}
           dtsRepository={dtsRepo}
           fileRepository={fileRepository}
+          listAuditEvents={(params) => auditQuery.listAuditEvents(params)}
           currentUserId={state.currentUserId}
           canEdit
           canEditCritical
