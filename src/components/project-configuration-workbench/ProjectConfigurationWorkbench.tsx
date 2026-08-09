@@ -1,70 +1,64 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Activity, ChevronLeft, ChevronRight, FileCode2, FolderTree, Info, Lock, PanelRight, Rows3, Search, TriangleAlert } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   ConfigSetRole,
   DtsBaselineMemberComparison,
   DtsConfigSet,
   DtsConfigSetMemberFile,
-  DtsExportConfigSetResult,
   DtsReleaseReadinessIssue,
   DtsSearchHit,
-  DtsSourceLocator,
   DtsStructuralNode,
   DtsStructuredRepository
 } from "@/application/ports/DtsStructuredRepository";
 import type {
-  FileSyncSummary,
   ParameterFileRepository,
   ProjectParameterFile,
   ProjectParameterFileVersion
 } from "@/application/ports/ParameterFileRepository";
-import { ConfirmDialog } from "@/components/common/ConfirmDialog";
-import { ModalDialog } from "@/components/common/ModalDialog";
-import {
-  ProjectPrimaryDtsViewer,
-  type DtsViewerFocusSpan
-} from "@/components/parameter-topology/ProjectPrimaryDtsViewer";
 import {
   GovernanceToast,
   useGovernanceToast
 } from "@/components/parameter-admin-next/useGovernanceToast";
 import { mapApiAuditEventToView } from "@/domain/audit/mapAuditEventView";
 import type { AuditEventListResponse, AuditEventView, ListAuditEventsParams } from "@/domain/audit/types";
-import { dtsValueTypeLabel } from "@/domain/dts/dtsValueTypeLabels";
 import {
   presentWorkbenchActivity,
   resolveWorkbenchActivityTarget,
   workbenchActivityApps,
   type WorkbenchActivityRow
 } from "./workbenchActivityModel";
-import { WorkbenchConflictArbitrationDock } from "./WorkbenchConflictArbitrationDock";
-import {
-  WorkbenchReleaseReadinessIssues,
-  WorkbenchReleaseReadinessSummary,
-  workbenchReadinessAllowsCreate,
-  workbenchReadinessAllowsRelease
-} from "./WorkbenchReleaseReadiness";
-import {
-  WorkbenchBaselineDock,
-  formatRestorePreviewDescription
-} from "./WorkbenchBaselineDock";
+import { WorkbenchCommandBar } from "./WorkbenchCommandBar";
+import { WorkbenchBaselineDialogs } from "./WorkbenchBaselineDialogs";
+import { WorkbenchCandidateActivateDialog } from "./WorkbenchCandidateActivateDialog";
+import { WorkbenchShellChrome } from "./WorkbenchShellChrome";
 import { isCriticalDtsNodePath } from "@/components/parameters/dtsCriticalPath";
-import {
-  StructuredValueEditor,
-  type StructuredValueChange
-} from "@/components/parameters/StructuredValueEditor";
+import type { StructuredValueChange } from "@/components/parameters/StructuredValueEditor";
 import {
   buildUnifiedDiff,
   canvasModeQueryValue,
-  classifyNodeRisk,
-  formatSourceSpan,
   parseCanvasMode,
   resolveInspectorLevel,
   shouldPersistInspector,
   type InspectorLevel,
   type WorkbenchCanvasMode
 } from "./workbenchInspectorModel";
+import { WorkbenchInspectorPanel } from "./WorkbenchInspectorPanel";
+import { WorkbenchSourceCanvas } from "./WorkbenchSourceCanvas";
+import { WorkbenchSourceTree } from "./WorkbenchSourceTree";
+import { WorkbenchTaskDock } from "./WorkbenchTaskDock";
+import {
+  ROLE_LABELS,
+  decodeSourceBytes,
+  defaultConfigSet,
+  defaultRoleForFile,
+  downloadExportBundle,
+  formatWorkbenchPath,
+  locatorToFocusSpan,
+  nearestNodeForLine,
+  queryValue,
+  triggerVersionDownload,
+  type PendingConfirmation
+} from "./workbenchShellHelpers";
 import {
   sessionDraftKey
 } from "@/application/project-configuration/sessionDrafts";
@@ -75,7 +69,7 @@ import { useStructuredEditSession } from "@/application/project-configuration/us
 import { useCandidateVersionFlow } from "@/application/project-configuration/useCandidateVersionFlow";
 import { useReleaseBaselineSession } from "@/application/project-configuration/useReleaseBaselineSession";
 import { useConflictLocateFacade } from "@/application/project-configuration/useConflictLocateFacade";
-import { WorkbenchStructureTree } from "./WorkbenchStructureTree";
+import { useConfigSetOpsSession } from "@/application/project-configuration/useConfigSetOpsSession";
 
 export type ProjectConfigurationWorkbenchProject = {
   id: string;
@@ -105,177 +99,6 @@ export type ProjectConfigurationWorkbenchProps = {
   /** Injectable storage for recoverable session drafts (tests / non-DOM). */
   draftStorage?: Pick<Storage, "getItem" | "setItem" | "removeItem">;
 };
-
-const CONFIG_SET_ROLES: ConfigSetRole[] = ["base", "overlay", "charging", "thermal", "misc"];
-
-const ROLE_LABELS: Record<ConfigSetRole, string> = {
-  base: "基础",
-  overlay: "覆盖层",
-  charging: "充电",
-  thermal: "温控",
-  misc: "其他"
-};
-
-type PendingConfirmation = {
-  key: string;
-  title: string;
-  description: ReactNode;
-  confirmLabel: string;
-  pendingLabel: string;
-  tone: "primary" | "danger";
-  run: () => Promise<void>;
-};
-
-function downloadExportBundle(
-  configSetName: string,
-  result: Pick<DtsExportConfigSetResult, "manifest" | "files">
-) {
-  const filesPayload = result.files.map((file) => `// ${file.name}\n${file.content}`).join("\n\n");
-  const payload = [
-    "// wiseeff-config-set-export-manifest.json",
-    JSON.stringify(result.manifest, null, 2),
-    "",
-    "// wiseeff-config-set-export-files",
-    filesPayload
-  ].join("\n");
-  const blob = new Blob([payload], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `${configSetName || "config-set"}-export.txt`;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
-
-function formatSyncSummary(result: FileSyncSummary): string {
-  if (typeof result.draftsCreated === "number") {
-    return `同步成功，已创建 ${result.draftsCreated} 条草稿。`;
-  }
-  return "同步成功。";
-}
-
-function defaultRoleForFile(file: ProjectParameterFile, hasMembers: boolean): ConfigSetRole {
-  if (file.format === "json") return "misc";
-  return hasMembers ? "overlay" : "base";
-}
-
-function queryValue(search: string, name: string) {
-  return new URLSearchParams(search.startsWith("?") ? search.slice(1) : search).get(name);
-}
-
-function defaultConfigSet(configSets: DtsConfigSet[]) {
-  const namedDefault = configSets.find((item) => item.name.trim().toLowerCase() === "default");
-  if (namedDefault) return namedDefault;
-  return [...configSets].sort(
-    (left, right) =>
-      left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)
-  )[0] ?? null;
-}
-
-type WorkbenchPathPatch = {
-  configSet: string;
-  file?: string | null;
-  node?: string | null;
-  property?: string | null;
-  sourceMode?: string | null;
-  version?: string | null;
-  candidate?: string | null;
-  baseline?: string | null;
-  inspector?: string | null;
-};
-
-function formatWorkbenchPath(projectId: string, search: string, patch: WorkbenchPathPatch) {
-  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-  params.set("configSet", patch.configSet);
-  const setOrDelete = (key: string, value: string | null | undefined) => {
-    if (value === undefined) return;
-    if (value) params.set(key, value);
-    else params.delete(key);
-  };
-  setOrDelete("file", patch.file);
-  setOrDelete("node", patch.node);
-  setOrDelete("property", patch.property);
-  setOrDelete("sourceMode", patch.sourceMode);
-  setOrDelete("version", patch.version);
-  setOrDelete("candidate", patch.candidate);
-  setOrDelete("baseline", patch.baseline);
-  if (patch.inspector === null) {
-    params.delete("inspector");
-  } else if (patch.inspector !== undefined) {
-    params.set("inspector", patch.inspector);
-  }
-  return `/parameter-admin/projects/${encodeURIComponent(projectId)}/configuration?${params.toString()}`;
-}
-
-const ORIGIN_LABELS: Record<ProjectParameterFileVersion["origin"], string> = {
-  upload: "手动上传",
-  writeback: "参数回写"
-};
-
-function decodeSourceBytes(bytes: Uint8Array) {
-  return new TextDecoder().decode(bytes);
-}
-
-async function triggerVersionDownload(
-  fileRepository: ParameterFileRepository,
-  projectId: string,
-  fileId: string,
-  version: ProjectParameterFileVersion,
-  fileName: string
-) {
-  const result = await fileRepository.downloadVersion(projectId, fileId, version.id);
-  const blob = new Blob([Uint8Array.from(result.bytes)], {
-    type: result.contentType || "application/octet-stream"
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = result.fileName || `${fileName}.v${version.versionNumber}`;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
-
-function locatorToFocusSpan(source?: DtsSourceLocator): DtsViewerFocusSpan | null {
-  if (!source) return null;
-  return {
-    startLine: source.startLine,
-    endLine: source.endLine,
-    startColumn: source.startColumn,
-    endColumn: source.endColumn
-  };
-}
-
-function groupHitsByFile(hits: DtsSearchHit[]): Array<{ fileId: string; fileName: string; hits: DtsSearchHit[] }> {
-  const groups = new Map<string, { fileId: string; fileName: string; hits: DtsSearchHit[] }>();
-  for (const hit of hits) {
-    const existing = groups.get(hit.fileId);
-    if (existing) {
-      existing.hits.push(hit);
-    } else {
-      groups.set(hit.fileId, { fileId: hit.fileId, fileName: hit.fileName, hits: [hit] });
-    }
-  }
-  return [...groups.values()];
-}
-
-function nearestNodeForLine(nodes: DtsStructuralNode[], line: number): DtsStructuralNode | null {
-  let best: DtsStructuralNode | null = null;
-  let bestDistance = Number.POSITIVE_INFINITY;
-  for (const node of nodes) {
-    if (!node.source) continue;
-    if (line < node.source.startLine) continue;
-    const distance = line - node.source.startLine;
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      best = node;
-    }
-  }
-  return best;
-}
 
 export function ProjectConfigurationWorkbench({
   project,
@@ -416,14 +239,6 @@ export function ProjectConfigurationWorkbench({
   const [suppressScrollSync, setSuppressScrollSync] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const treeRegionRef = useRef<HTMLElement | null>(null);
-  const [newConfigSetName, setNewConfigSetName] = useState("");
-  const [configSetNameError, setConfigSetNameError] = useState("");
-  const [createConfigSetOpen, setCreateConfigSetOpen] = useState(false);
-  const [identitiesExpanded, setIdentitiesExpanded] = useState(false);
-  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
-  const moreMenuRef = useRef<HTMLDivElement | null>(null);
-  const [opsError, setOpsError] = useState("");
-  const [opsMessage, setOpsMessage] = useState("");
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<PendingConfirmation | null>(null);
   const [memberFileId, setMemberFileId] = useState("");
@@ -434,6 +249,11 @@ export function ProjectConfigurationWorkbench({
     facade: conflictLocateFacade,
     conflicts: syncConflicts
   } = useConflictLocateFacade();
+  const {
+    session: configSetOpsSession,
+    lastError: opsError,
+    lastMessage: opsMessage
+  } = useConfigSetOpsSession();
   const [exportEvidence, setExportEvidence] = useState("");
   const sourceRegionRef = useRef<HTMLElement | null>(null);
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
@@ -451,25 +271,6 @@ export function ProjectConfigurationWorkbench({
     media.addEventListener("change", syncViewport);
     return () => media.removeEventListener("change", syncViewport);
   }, []);
-
-  useEffect(() => {
-    if (!moreMenuOpen) return;
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (target && moreMenuRef.current && !moreMenuRef.current.contains(target)) {
-        setMoreMenuOpen(false);
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMoreMenuOpen(false);
-    };
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [moreMenuOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1157,30 +958,24 @@ export function ProjectConfigurationWorkbench({
     }
   }, []);
 
-  const createConfigSet = useCallback(async () => {
-    if (!canAdmin) return;
-    const name = newConfigSetName.trim();
-    if (!name) {
-      setConfigSetNameError("请先填写配置集名称。");
-      return;
-    }
-    if (configSets.some((item) => item.name.toLowerCase() === name.toLowerCase())) {
-      setConfigSetNameError(`已存在名为「${name}」的配置集。`);
-      return;
-    }
-    setConfigSetNameError("");
-    setOpsError("");
-    try {
-      const created = await dtsRepository.createConfigSet(project.id, { name });
-      setConfigSets((current) => [created, ...current.filter((item) => item.id !== created.id)]);
-      setNewConfigSetName("");
-      setCreateConfigSetOpen(false);
+  const handleCreateConfigSet = useCallback(
+    async (name: string): Promise<string | null | undefined> => {
+      if (!canAdmin) return undefined;
+      const result = await configSetOpsSession.create(
+        project.id,
+        { name, existingNames: configSets.map((item) => item.name) },
+        dtsRepository
+      );
+      if (!result.ok) {
+        return result.kind === "validation" ? result.message : undefined;
+      }
+      setConfigSets((current) => [result.item, ...current.filter((item) => item.id !== result.item.id)]);
       setMembers([]);
       setInspectorLevelOverride("config-set");
       setInspectorOpen(true);
       onNavigate(
         formatWorkbenchPath(project.id, search, {
-          configSet: created.id,
+          configSet: result.item.id,
           file: null,
           node: null,
           property: null,
@@ -1189,42 +984,48 @@ export function ProjectConfigurationWorkbench({
           candidate: null
         })
       );
-      setOpsMessage(`已创建配置集「${created.name}」。`);
-    } catch (error: unknown) {
-      setOpsError(error instanceof Error ? error.message : "创建配置集失败。");
-    }
-  }, [canAdmin, configSets, dtsRepository, newConfigSetName, onNavigate, project.id, search]);
+      return null;
+    },
+    [canAdmin, configSetOpsSession, configSets, dtsRepository, onNavigate, project.id, search]
+  );
+
+  const submitCreateConfigSet = useCallback(
+    async (name: string): Promise<string | null | undefined> => {
+      let result: string | null | undefined = undefined;
+      await runAction("create-config-set", async () => {
+        result = await handleCreateConfigSet(name);
+      });
+      return result;
+    },
+    [handleCreateConfigSet, runAction]
+  );
 
   const addMemberToConfigSet = useCallback(
     async (fileId: string, role: ConfigSetRole, sortOrder: number) => {
       if (!canAdmin || !selectedConfigSet) return;
-      setOpsError("");
-      try {
-        const membership = await dtsRepository.addConfigSetFile(project.id, selectedConfigSet.id, {
-          fileId,
-          role,
-          sortOrder
-        });
-        const file = projectFiles.find((item) => item.id === fileId);
-        setMembers((current) => [
-          ...current.filter((item) => item.fileId !== membership.fileId),
-          {
-            ...membership,
-            fileName: file?.fileName ?? membership.fileId,
-            format: file?.format ?? "dts",
-            currentVersionId: file?.currentVersionId,
-            currentVersionNumber: file?.currentVersionNumber
-          }
-        ]);
-        setOpsMessage(`已将「${file?.fileName ?? fileId}」编入配置集（${ROLE_LABELS[role]} · 顺序 ${sortOrder}）。`);
-        setInspectorLevelOverride("config-set");
-        setInspectorOpen(true);
-        setMembersRetry((value) => value + 1);
-      } catch (error: unknown) {
-        setOpsError(error instanceof Error ? error.message : "添加成员失败。");
-      }
+      const file = projectFiles.find((item) => item.id === fileId);
+      const result = await configSetOpsSession.addMember(
+        project.id,
+        selectedConfigSet.id,
+        { fileId, role, sortOrder, file },
+        dtsRepository
+      );
+      if (!result.ok) return;
+      setMembers((current) => [
+        ...current.filter((item) => item.fileId !== result.membership.fileId),
+        {
+          ...result.membership,
+          fileName: result.fileName,
+          format: result.format,
+          currentVersionId: result.currentVersionId,
+          currentVersionNumber: result.currentVersionNumber
+        }
+      ]);
+      setInspectorLevelOverride("config-set");
+      setInspectorOpen(true);
+      setMembersRetry((value) => value + 1);
     },
-    [canAdmin, dtsRepository, project.id, projectFiles, selectedConfigSet]
+    [canAdmin, configSetOpsSession, dtsRepository, project.id, projectFiles, selectedConfigSet]
   );
 
   const assignUngroupedFile = useCallback(
@@ -1238,29 +1039,38 @@ export function ProjectConfigurationWorkbench({
   const removeMemberFromConfigSet = useCallback(
     async (fileId: string) => {
       if (!canAdmin || !selectedConfigSet) return;
-      setOpsError("");
-      try {
-        await dtsRepository.removeConfigSetFile(project.id, selectedConfigSet.id, fileId);
-        setMembers((current) => current.filter((item) => item.fileId !== fileId));
-        setOpsMessage("已从配置集移除成员文件。");
-        if (selectedMember?.fileId === fileId) {
-          onNavigate(
-            formatWorkbenchPath(project.id, search, {
-              configSet: selectedConfigSet.id,
-              file: null,
-              node: null,
-              property: null,
-              sourceMode: null,
-              version: null
-            })
-          );
-        }
-        setMembersRetry((value) => value + 1);
-      } catch (error: unknown) {
-        setOpsError(error instanceof Error ? error.message : "移除成员失败。");
+      const result = await configSetOpsSession.removeMember(
+        project.id,
+        selectedConfigSet.id,
+        fileId,
+        dtsRepository
+      );
+      if (!result.ok) return;
+      setMembers((current) => current.filter((item) => item.fileId !== fileId));
+      if (selectedMember?.fileId === fileId) {
+        onNavigate(
+          formatWorkbenchPath(project.id, search, {
+            configSet: selectedConfigSet.id,
+            file: null,
+            node: null,
+            property: null,
+            sourceMode: null,
+            version: null
+          })
+        );
       }
+      setMembersRetry((value) => value + 1);
     },
-    [canAdmin, dtsRepository, onNavigate, project.id, search, selectedConfigSet, selectedMember?.fileId]
+    [
+      canAdmin,
+      configSetOpsSession,
+      dtsRepository,
+      onNavigate,
+      project.id,
+      search,
+      selectedConfigSet,
+      selectedMember?.fileId
+    ]
   );
 
   const requestRemoveMember = useCallback(
@@ -1286,44 +1096,33 @@ export function ProjectConfigurationWorkbench({
 
   const syncSelectedFile = useCallback(async () => {
     if (!canAdmin || !selectedMember) return;
-    setOpsError("");
-    try {
-      const summary = await fileRepository.syncFile(project.id, selectedMember.fileId);
-      const evidence = `${selectedMember.fileName}：${formatSyncSummary(summary)}`;
-      setSyncEvidence(evidence);
-      setOpsMessage(evidence);
-      setTasksOpen(true);
-      const [files, conflicts] = await Promise.all([
-        fileRepository.listFiles(project.id),
-        fileRepository.listConflicts(project.id)
-      ]);
-      setProjectFiles(files);
-      conflictLocateFacade.setOpenConflicts(conflicts);
-      setMembersRetry((value) => value + 1);
-      setFilesRetry((value) => value + 1);
-    } catch (error: unknown) {
-      setOpsError(error instanceof Error ? error.message : "手动同步失败。");
-    }
-  }, [canAdmin, conflictLocateFacade, fileRepository, project.id, selectedMember]);
+    const result = await configSetOpsSession.syncFile(
+      project.id,
+      { fileId: selectedMember.fileId, fileName: selectedMember.fileName },
+      fileRepository
+    );
+    if (!result.ok) return;
+    setSyncEvidence(result.evidence);
+    setTasksOpen(true);
+    setProjectFiles(result.files);
+    conflictLocateFacade.setOpenConflicts(result.conflicts);
+    setMembersRetry((value) => value + 1);
+    setFilesRetry((value) => value + 1);
+  }, [canAdmin, configSetOpsSession, conflictLocateFacade, fileRepository, project.id, selectedMember]);
 
   const exportSelectedConfigSet = useCallback(async () => {
     if (!canAdmin || !selectedConfigSet) return;
-    setOpsError("");
-    try {
-      const result = await dtsRepository.exportConfigSet(project.id, selectedConfigSet.id);
-      downloadExportBundle(selectedConfigSet.name, result);
-      const memberCount = result.manifest.members.length;
-      const validation = result.manifest.validation
-        ? `校验 ${result.manifest.validation.ok ? "通过" : "未通过"}（${result.manifest.validation.mode}）`
-        : "无校验元数据";
-      const evidence = `已导出配置集「${selectedConfigSet.name}」：${memberCount} 个成员，含角色/顺序；${validation}。`;
-      setExportEvidence(evidence);
-      setOpsMessage(evidence);
-      setTasksOpen(true);
-    } catch (error: unknown) {
-      setOpsError(error instanceof Error ? error.message : "导出配置集失败。");
-    }
-  }, [canAdmin, dtsRepository, project.id, selectedConfigSet]);
+    const result = await configSetOpsSession.exportConfigSet(
+      project.id,
+      selectedConfigSet.id,
+      selectedConfigSet.name,
+      dtsRepository
+    );
+    if (!result.ok) return;
+    downloadExportBundle(selectedConfigSet.name, result.export);
+    setExportEvidence(result.evidence);
+    setTasksOpen(true);
+  }, [canAdmin, configSetOpsSession, dtsRepository, project.id, selectedConfigSet]);
 
   const selectConfigSet = useCallback(
     (configSetId: string) => {
@@ -1570,6 +1369,55 @@ export function ProjectConfigurationWorkbench({
     },
     [showToast]
   );
+
+  const handleCandidateFileChange = useCallback(
+    (file: File) => {
+      if (!selectedConfigSet) return;
+      void (async () => {
+        try {
+          const created = await candidateFlow.create(
+            project.id,
+            { file, fileId: selectedMember?.fileId },
+            fileRepository
+          );
+          setInspectorOpen(true);
+          onNavigate(
+            formatWorkbenchPath(project.id, search, {
+              configSet: selectedConfigSet.id,
+              file: selectedMember?.fileId ?? null,
+              sourceMode: "candidate",
+              candidate: created.id,
+              version: null,
+              node: null,
+              property: null
+            })
+          );
+          notifyMutation(
+            created.status === "failed"
+              ? "候选解析失败，活跃源码未改动；可查看诊断后放弃。"
+              : "候选已创建，工作配置与活跃版本未改动。"
+          );
+        } catch {
+          // candidateFlow.error already set
+        }
+      })();
+    },
+    [
+      candidateFlow,
+      fileRepository,
+      notifyMutation,
+      onNavigate,
+      project.id,
+      search,
+      selectedConfigSet,
+      selectedMember?.fileId
+    ]
+  );
+
+  const handleOpenCreateBaseline = useCallback(() => {
+    releaseBaselineSession.clearActionError();
+    setCreateBaselineOpen(true);
+  }, [releaseBaselineSession]);
 
   const enterCanvasMode = useCallback(
     (mode: WorkbenchCanvasMode, versionId: string | null) => {
@@ -2128,373 +1976,56 @@ export function ProjectConfigurationWorkbench({
 
   return (
     <section className="configuration-workbench" aria-label="项目配置工作台">
-      <header className="configuration-workbench__command" aria-label="配置命令栏">
-        <button
-          type="button"
-          className="button subtle configuration-workbench__back"
-          onClick={handleLeaveWorkbench}
-        >
-          <ChevronLeft size={16} aria-hidden="true" />
-          项目清单
-        </button>
-        <div
-          className="configuration-workbench__project"
-          title={`${project.code} · ${project.statusLabel}`}
-        >
-          <strong>{project.name}</strong>
-        </div>
-        <label className="configuration-workbench__config-select">
-          <span>配置集</span>
-          <select
-            aria-label="配置集"
-            value={selectedConfigSet?.id ?? ""}
-            disabled={configSetsLoading || Boolean(configSetsError)}
-            onChange={(event) => {
-              const next = event.target.value;
-              if (next === "__create_config_set__") {
-                event.target.value = selectedConfigSet?.id ?? "";
-                setConfigSetNameError("");
-                setCreateConfigSetOpen(true);
-                return;
-              }
-              selectConfigSet(next);
-            }}
-          >
-            {configSets.length === 0 ? (
-              <option value="" disabled>
-                {canAdmin ? "选择或新建配置集" : "暂无配置集"}
-              </option>
-            ) : null}
-            {configSets.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-            {canAdmin ? (
-              <option value="__create_config_set__">+ 新建配置集…</option>
-            ) : null}
-          </select>
-        </label>
-        <div className="configuration-workbench__identities" aria-label="配置身份">
-          <span className="configuration-workbench__working">工作配置</span>
-          <div className="configuration-workbench__identity-fold-wrap">
-            <button
-              type="button"
-              className="button subtle configuration-workbench__identity-fold"
-              aria-expanded={identitiesExpanded}
-              aria-controls="workbench-identity-details"
-              onClick={() => setIdentitiesExpanded((open) => !open)}
-            >
-              版本{identitiesExpanded ? " ▴" : " ▾"}
-            </button>
-            {identitiesExpanded ? (
-              <div id="workbench-identity-details" className="configuration-workbench__identity-details" role="region" aria-label="版本详情">
-                <span className="configuration-workbench__identity-chip" data-identity="file-version">
-                  文件版本：
-                  {selectedMember?.currentVersionNumber
-                    ? `v${selectedMember.currentVersionNumber}`
-                    : selectedMember?.currentVersionId ?? "无"}
-                </span>
-                <span className="configuration-workbench__identity-chip" data-identity="candidate">
-                  候选文件版本：
-                  {activeCandidate && activeCandidate.status !== "abandoned"
-                    ? `${activeCandidate.fileName} · ${activeCandidate.status}`
-                    : "尚未上传"}
-                </span>
-                <span className="configuration-workbench__identity-chip" data-identity="release-baseline">
-                  发布基线：
-                  {baselinesLoading ? "加载中…" : baselinesError ? "不可用" : releasedBaseline?.name ?? "尚未发布"}
-                </span>
-                {baselinesError ? (
-                  <button
-                    className="button subtle configuration-workbench__baseline-retry"
-                    type="button"
-                    onClick={() => setBaselinesRetry((value) => value + 1)}
-                  >
-                    重试发布基线
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        </div>
-        <div className="configuration-workbench__unavailable-actions" aria-label="后续阶段操作">
-          {canAdmin ? (
-            <WorkbenchReleaseReadinessSummary
-              readiness={releaseReadiness}
-              loading={readinessLoading}
-              error={readinessError}
-              localSessionDirty={sessionDraftsDirty}
-              onRetry={() => setReadinessRetry((value) => value + 1)}
-              onOpenIssues={() => {
-                setTasksOpen(true);
-              }}
-            />
-          ) : null}
-          {!narrowViewport ? (
-            <button
-              className="button subtle configuration-workbench__inspector-toggle"
-              type="button"
-              aria-label="检查器"
-              aria-expanded={inspectorOpen}
-              onClick={() => setInspectorOpen((open) => !open)}
-            >
-              <PanelRight size={16} aria-hidden="true" />
-              检查器
-            </button>
-          ) : null}
-          <input
-            ref={candidateFileInputRef}
-            type="file"
-            accept=".dts,.dtsi,.json,text/plain,application/json"
-            hidden
-            aria-hidden="true"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.target.value = "";
-              if (!file || !selectedConfigSet) return;
-              void (async () => {
-                try {
-                  const created = await candidateFlow.create(
-                    project.id,
-                    { file, fileId: selectedMember?.fileId },
-                    fileRepository
-                  );
-                  setInspectorOpen(true);
-                  onNavigate(
-                    formatWorkbenchPath(project.id, search, {
-                      configSet: selectedConfigSet.id,
-                      file: selectedMember?.fileId ?? null,
-                      sourceMode: "candidate",
-                      candidate: created.id,
-                      version: null,
-                      node: null,
-                      property: null
-                    })
-                  );
-                  notifyMutation(
-                    created.status === "failed"
-                      ? "候选解析失败，活跃源码未改动；可查看诊断后放弃。"
-                      : "候选已创建，工作配置与活跃版本未改动。"
-                  );
-                } catch {
-                  // candidateFlow.error already set
-                }
-              })();
-            }}
-          />
-          <button
-            className="button subtle"
-            type="button"
-            disabled={uploadingCandidate || !selectedConfigSet || !canAdmin}
-            title="上传创建候选文件版本，不会激活工作配置"
-            onClick={() => candidateFileInputRef.current?.click()}
-          >
-            {uploadingCandidate ? "上传中…" : "上传候选"}
-          </button>
-          <div className="dropdown-root configuration-workbench__more" ref={moreMenuRef}>
-            <button
-              type="button"
-              className="button subtle"
-              aria-expanded={moreMenuOpen}
-              aria-haspopup="menu"
-              aria-label="更多"
-              onClick={() => setMoreMenuOpen((open) => !open)}
-            >
-              更多{moreMenuOpen ? " ▴" : " ▾"}
-            </button>
-            {moreMenuOpen ? (
-              <div className="dropdown-menu configuration-workbench__more-menu" role="menu" aria-label="更多操作">
-                {!narrowViewport ? (
-                  <button
-                    type="button"
-                    className="dropdown-item"
-                    role="menuitem"
-                    onClick={() => {
-                      setMoreMenuOpen(false);
-                      openActivityInspector();
-                    }}
-                  >
-                    <Activity size={14} aria-hidden="true" />
-                    活动
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  className="dropdown-item"
-                  role="menuitem"
-                  disabled={!selectedMember?.currentVersionId || downloadingDts}
-                  title={
-                    !selectedMember
-                      ? "请先选择一个成员文件"
-                      : !selectedMember.currentVersionId
-                        ? "当前成员没有可下载的活跃版本"
-                        : "下载当前选中成员的活跃 DTS 版本"
-                  }
-                  onClick={() => {
-                    setMoreMenuOpen(false);
-                    void downloadActiveDts();
-                  }}
-                >
-                  {downloadingDts ? "下载中…" : "下载 DTS"}
-                </button>
-                {canAdmin && selectedConfigSet ? (
-                  <button
-                    type="button"
-                    className="dropdown-item"
-                    role="menuitem"
-                    disabled={pendingAction !== null}
-                    onClick={() => {
-                      setMoreMenuOpen(false);
-                      void runAction("export-config-set", exportSelectedConfigSet);
-                    }}
-                  >
-                    {pendingAction === "export-config-set" ? "导出中…" : "导出配置集"}
-                  </button>
-                ) : null}
-                {canAdmin && selectedConfigSet ? (
-                  <button
-                    type="button"
-                    className="dropdown-item"
-                    role="menuitem"
-                    disabled={
-                      pendingAction !== null ||
-                      !workbenchReadinessAllowsCreate(releaseReadiness, sessionDraftsDirty) ||
-                      readinessLoading
-                    }
-                    title={
-                      sessionDraftsDirty
-                        ? "还有未保存的本机会话变更，不能创建基线"
-                        : !releaseReadiness?.available
-                          ? "发布就绪不可用，不能创建基线"
-                          : !releaseReadiness.canCreateBaseline
-                            ? "发布就绪门禁阻止创建基线"
-                            : "创建发布基线快照"
-                    }
-                    onClick={() => {
-                      setMoreMenuOpen(false);
-                      releaseBaselineSession.clearActionError();
-                      setCreateBaselineOpen(true);
-                    }}
-                  >
-                    创建基线
-                  </button>
-                ) : (
-                  <button type="button" className="dropdown-item" role="menuitem" disabled title="需要管理员权限才能创建基线">
-                    创建基线
-                  </button>
-                )}
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </header>
+      <WorkbenchCommandBar
+        project={project}
+        onLeave={handleLeaveWorkbench}
+        configSets={configSets}
+        selectedConfigSet={selectedConfigSet ?? null}
+        configSetsLoading={configSetsLoading}
+        configSetsError={configSetsError}
+        onSelectConfigSet={selectConfigSet}
+        canAdmin={canAdmin}
+        selectedMember={selectedMember ?? null}
+        activeCandidate={activeCandidate}
+        baselinesLoading={baselinesLoading}
+        baselinesError={baselinesError}
+        releasedBaseline={releasedBaseline}
+        onBaselinesRetry={() => setBaselinesRetry((value) => value + 1)}
+        releaseReadiness={releaseReadiness}
+        readinessLoading={readinessLoading}
+        readinessError={readinessError}
+        sessionDraftsDirty={sessionDraftsDirty}
+        onReadinessRetry={() => setReadinessRetry((value) => value + 1)}
+        onOpenIssues={() => setTasksOpen(true)}
+        narrowViewport={narrowViewport}
+        inspectorOpen={inspectorOpen}
+        onInspectorToggle={() => setInspectorOpen((open) => !open)}
+        candidateFileInputRef={candidateFileInputRef}
+        uploadingCandidate={uploadingCandidate}
+        onCandidateFileChange={handleCandidateFileChange}
+        downloadingDts={downloadingDts}
+        onDownloadActiveDts={downloadActiveDts}
+        pendingAction={pendingAction}
+        onOpenActivity={openActivityInspector}
+        onExportConfigSet={() => void runAction("export-config-set", exportSelectedConfigSet)}
+        onOpenCreateBaseline={handleOpenCreateBaseline}
+        onCreateConfigSet={submitCreateConfigSet}
+      />
 
-      <ModalDialog
-        open={createConfigSetOpen}
-        onDismiss={pendingAction === "create-config-set" ? undefined : () => setCreateConfigSetOpen(false)}
-        className="submission-dialog configuration-workbench__create-config-dialog"
-        backdropClassName="param-admin-modal-backdrop"
-        describedBy
-      >
-        {({ titleId, descriptionId }) => (
-          <>
-            <div className="submission-dialog-head">
-              <div>
-                <h2 id={titleId}>新建配置集</h2>
-                <p id={descriptionId}>创建后需明确把文件编入成员；上传候选不会自动激活工作配置。</p>
-              </div>
-              <button
-                type="button"
-                className="audit-dialog-close-icon"
-                aria-label="关闭"
-                disabled={pendingAction === "create-config-set"}
-                onClick={() => setCreateConfigSetOpen(false)}
-              >
-                ×
-              </button>
-            </div>
-            <form
-              className="configuration-workbench__create-config-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void runAction("create-config-set", createConfigSet);
-              }}
-            >
-              <label>
-                配置集名称
-                <input
-                  type="text"
-                  value={newConfigSetName}
-                  autoFocus
-                  aria-invalid={configSetNameError ? "true" : "false"}
-                  aria-describedby={configSetNameError ? "workbench-config-set-name-error" : undefined}
-                  onChange={(event) => {
-                    setNewConfigSetName(event.target.value);
-                    setConfigSetNameError("");
-                  }}
-                  placeholder="board-a"
-                />
-              </label>
-              {configSetNameError ? (
-                <p className="field-error" id="workbench-config-set-name-error" role="alert">
-                  {configSetNameError}
-                </p>
-              ) : null}
-              <div className="configuration-workbench__create-config-actions">
-                <button
-                  type="button"
-                  className="button subtle"
-                  disabled={pendingAction === "create-config-set"}
-                  onClick={() => setCreateConfigSetOpen(false)}
-                >
-                  取消
-                </button>
-                <button className="button" type="submit" disabled={pendingAction !== null}>
-                  {pendingAction === "create-config-set" ? "创建中…" : "创建配置集"}
-                </button>
-              </div>
-            </form>
-          </>
-        )}
-      </ModalDialog>
-
-      {opsError ? (
-        <p className="configuration-workbench__ops-banner" role="alert">
-          {opsError}
-        </p>
-      ) : null}
-      {opsMessage ? (
-        <p className="configuration-workbench__ops-banner" role="status">
-          {opsMessage}
-        </p>
-      ) : null}
-      {!canAdmin ? (
-        <p className="configuration-workbench__ops-banner" role="note">
-          仅管理员可变更配置集成员、同步或导出。只读上下文仍可查看。
-        </p>
-      ) : null}
-
-      {narrowViewport ? (
-        <nav className="configuration-workbench__mobile-tools" aria-label="工作台区域">
-          <button className="button subtle configuration-workbench__mobile-tool" type="button" aria-label="源结构" aria-expanded={treeOpen} onClick={() => setTreeOpen((open) => !open)}>
-            <FolderTree size={16} aria-hidden="true" />
-            源结构
-          </button>
-          <button className="button subtle configuration-workbench__mobile-tool" type="button" aria-label="活动" aria-pressed={inspectorOpen && inspectorLevel === "activity"} onClick={openActivityInspector}>
-            <Activity size={16} aria-hidden="true" />
-            活动
-          </button>
-          <button className="button subtle configuration-workbench__mobile-tool" type="button" aria-label="检查器" aria-expanded={inspectorOpen} onClick={() => setInspectorOpen((open) => !open)}>
-            <PanelRight size={16} aria-hidden="true" />
-            检查器
-          </button>
-          <button className="button subtle configuration-workbench__mobile-tool" type="button" aria-label="任务面板" aria-expanded={tasksOpen} onClick={() => setTasksOpen((open) => !open)}>
-            <Rows3 size={16} aria-hidden="true" />
-            任务
-          </button>
-        </nav>
-      ) : null}
+      <WorkbenchShellChrome
+        opsError={opsError}
+        opsMessage={opsMessage}
+        canAdmin={canAdmin}
+        narrowViewport={narrowViewport}
+        treeOpen={treeOpen}
+        onTreeToggle={() => setTreeOpen((open) => !open)}
+        inspectorOpen={inspectorOpen}
+        inspectorLevel={inspectorLevel}
+        onOpenActivity={openActivityInspector}
+        onInspectorToggle={() => setInspectorOpen((open) => !open)}
+        tasksOpen={tasksOpen}
+        onTasksToggle={() => setTasksOpen((open) => !open)}
+      />
 
       {configSetsLoading ? (
         <div className="configuration-workbench__setup-state" role="status">
@@ -2526,1162 +2057,206 @@ export function ProjectConfigurationWorkbench({
         </div>
       ) : (
         <div className="configuration-workbench__body" ref={workbenchBodyRef} aria-label="工作台主体">
-          {treeOpen ? (
-            <aside className="configuration-workbench__tree" aria-label="源结构" tabIndex={-1} ref={treeRegionRef}>
-              <div className="configuration-workbench__region-head">
-                <div>
-                  <span>源结构</span>
-                  <strong>{selectedConfigSet.name}</strong>
-                </div>
-                <button className="button subtle configuration-workbench__icon-button" type="button" aria-label="折叠源结构" onClick={() => setTreeOpen(false)}>
-                  <ChevronLeft size={16} aria-hidden="true" />
-                </button>
-              </div>
-              <form
-                className="configuration-workbench__search"
-                aria-label="统一结构搜索"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void runUnifiedSearch();
-                }}
-              >
-                <input
-                  ref={searchInputRef}
-                  type="search"
-                  value={searchDraft}
-                  onChange={(event) => setSearchDraft(event.target.value)}
-                  placeholder="文件名 / 路径 / 属性…"
-                  aria-label="统一搜索查询"
-                />
-                <div className="configuration-workbench__search-actions">
-                  <button className="button subtle" type="submit" disabled={searchLoading}>
-                    <Search size={14} aria-hidden="true" />
-                    {searchLoading ? "搜索中…" : "搜索"}
-                  </button>
-                </div>
-              </form>
-              {searchError ? (
-                <div role="alert" className="configuration-workbench__scoped-error">
-                  <p>{searchError}</p>
-                </div>
-              ) : null}
-              {searchHits.length > 0 ? (
-                <div className="configuration-workbench__search-results" aria-label="搜索结果">
-                  {groupHitsByFile(searchHits).map((group) => (
-                    <div key={group.fileId} className="configuration-workbench__search-group">
-                      <strong>{group.fileName}</strong>
-                      <ul>
-                        {group.hits.map((hit, index) => (
-                          <li key={`${hit.fileId}-${hit.nodePath}-${hit.propertyName ?? ""}-${index}`}>
-                            <button
-                              type="button"
-                              className="button subtle"
-                              onClick={() => handleSearchHit(hit)}
-                            >
-                              <code>{hit.nodePath}</code>
-                              {hit.propertyName ? <span> · {hit.propertyName}</span> : null}
-                              {hit.snippet ? <small>{hit.snippet}</small> : null}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              {membersLoading ? <p role="status">正在加载成员文件…</p> : null}
-              {membersError ? (
-                <div role="alert" className="configuration-workbench__scoped-error">
-                  <p>{membersError}</p>
-                  <button className="button subtle" type="button" onClick={() => setMembersRetry((value) => value + 1)}>
-                    重试成员
-                  </button>
-                </div>
-              ) : null}
-              {!membersLoading && !membersError && selectedMembers.length === 0 ? (
-                <div className="configuration-workbench__empty">
-                  <strong>当前配置集没有成员文件</strong>
-                  <p>
-                    从下方未编组文件编入成员，或上传候选后再明确分配。上传候选不会自动激活工作配置。
-                  </p>
-                  {canAdmin ? (
-                    <button
-                      className="button subtle"
-                      type="button"
-                      disabled={uploadingCandidate}
-                      onClick={() => candidateFileInputRef.current?.click()}
-                    >
-                      {uploadingCandidate ? "上传中…" : "上传候选"}
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-              <div role="tree" aria-label={`${selectedConfigSet.name} 成员文件`} className="configuration-workbench__member-tree">
-                {selectedMembers.map((item) => {
-                  const roleLabel = ROLE_LABELS[item.role];
-                  const versionLabel = item.currentVersionNumber ? `v${item.currentVersionNumber}` : "无活跃版本";
-                  const selected = item.fileId === selectedMember?.fileId;
-                  return (
-                    <div key={item.fileId} className="configuration-workbench__member-block">
-                      <button
-                        type="button"
-                        role="treeitem"
-                        aria-selected={selected}
-                        aria-expanded={selected ? true : undefined}
-                        aria-label={`${item.fileName} ${roleLabel} ${versionLabel}`}
-                        className={`button subtle configuration-workbench__member${selected ? " is-selected" : ""}`}
-                        onClick={() => selectMember(item.fileId)}
-                      >
-                        <FileCode2 size={15} aria-hidden="true" />
-                        <span>
-                          <strong title={item.fileName}>{item.fileName}</strong>
-                          <small className="mono" title={item.currentVersionId ?? undefined}>
-                            {item.currentVersionId ?? "版本身份缺失"}
-                          </small>
-                        </span>
-                        <span className="configuration-workbench__member-meta" aria-hidden="true">
-                          <span>{roleLabel}</span>
-                          <span>{versionLabel}</span>
-                        </span>
-                      </button>
-                      {selected ? (
-                        <div className="configuration-workbench__node-tree-wrap">
-                          {structureLoading ? <p role="status">正在加载结构树…</p> : null}
-                          {structureError ? (
-                            <div role="alert" className="configuration-workbench__scoped-error">
-                              <p>{structureError}</p>
-                              <button className="button subtle" type="button" onClick={() => setStructureRetry((value) => value + 1)}>
-                                重试结构树
-                              </button>
-                            </div>
-                          ) : null}
-                          {!structureLoading && !structureError ? (
-                            <WorkbenchStructureTree
-                              nodes={structureNodes}
-                              fileId={item.fileId}
-                              selectedNodePath={selectedNodePath}
-                              selectedPropertyName={selectedPropertyName}
-                              sessionDrafts={sessionDrafts}
-                              ariaLabel={`${item.fileName} 节点树`}
-                              onSelectNode={(nodePath) => selectStructureTarget(item.fileId, nodePath, null)}
-                              onSelectProperty={(nodePath, propertyName) =>
-                                selectStructureTarget(item.fileId, nodePath, propertyName)
-                              }
-                            />
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
-              <div role="group" aria-label="未编组项目文件" className="configuration-workbench__ungrouped">
-                <div className="configuration-workbench__ungrouped-title">
-                  <span>未编组项目文件</span>
-                  <small>{filesLoading ? "…" : ungroupedFiles.length}</small>
-                </div>
-                {filesError ? (
-                  <div role="alert" className="configuration-workbench__scoped-error">
-                    <p>{filesError}</p>
-                    <button className="button subtle" type="button" onClick={() => setFilesRetry((value) => value + 1)}>
-                      重试项目文件
-                    </button>
-                  </div>
-                ) : null}
-                {!filesError && !filesLoading && ungroupedFiles.length === 0 ? <p>没有未编组文件。</p> : null}
-                {ungroupedFiles.map((item) => (
-                  <div key={item.id} className="configuration-workbench__ungrouped-file">
-                    <span>{item.fileName}</span>
-                    <small>不参与当前工作配置与发布就绪度</small>
-                    {canAdmin && selectedConfigSet ? (
-                      <button
-                        className="button subtle"
-                        type="button"
-                        aria-label={`编入 ${item.fileName}`}
-                        disabled={pendingAction !== null}
-                        onClick={() => void runAction(`assign-${item.id}`, () => assignUngroupedFile(item))}
-                      >
-                        编入当前配置集
-                      </button>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            </aside>
-          ) : (
-            <button
-              type="button"
-              className="button subtle configuration-workbench__tree-collapsed"
-              aria-label="展开源结构"
-              onClick={() => setTreeOpen(true)}
-            >
-              <ChevronRight size={16} aria-hidden="true" />
-            </button>
-          )}
+          <WorkbenchSourceTree
+            treeOpen={treeOpen}
+            onTreeOpenChange={setTreeOpen}
+            treeRegionRef={treeRegionRef}
+            selectedConfigSet={selectedConfigSet}
+            searchInputRef={searchInputRef}
+            searchDraft={searchDraft}
+            onSearchDraftChange={setSearchDraft}
+            onSearchSubmit={() => void runUnifiedSearch()}
+            searchLoading={searchLoading}
+            searchError={searchError}
+            searchHits={searchHits}
+            onSearchHit={handleSearchHit}
+            membersLoading={membersLoading}
+            membersError={membersError}
+            onMembersRetry={() => setMembersRetry((value) => value + 1)}
+            selectedMembers={selectedMembers}
+            selectedMember={selectedMember ?? null}
+            onSelectMember={selectMember}
+            structureLoading={structureLoading}
+            structureError={structureError}
+            onStructureRetry={() => setStructureRetry((value) => value + 1)}
+            structureNodes={structureNodes}
+            selectedNodePath={selectedNodePath}
+            selectedPropertyName={selectedPropertyName}
+            sessionDrafts={sessionDrafts}
+            onSelectStructureTarget={selectStructureTarget}
+            canAdmin={canAdmin}
+            uploadingCandidate={uploadingCandidate}
+            onUploadCandidate={() => candidateFileInputRef.current?.click()}
+            filesLoading={filesLoading}
+            filesError={filesError}
+            onFilesRetry={() => setFilesRetry((value) => value + 1)}
+            ungroupedFiles={ungroupedFiles}
+            pendingAction={pendingAction}
+            onAssignUngroupedFile={(item) => void runAction(`assign-${item.id}`, () => assignUngroupedFile(item))}
+          />
 
-          <main className="configuration-workbench__source" aria-label="只读 DTS 源码" ref={sourceRegionRef}>
-            {selectedMember ? (
-              <header className="configuration-workbench__source-head">
-                <div>
-                  <span>
-                    {selectedConfigSet.name} /{" "}
-                    {canvasMode === "working"
-                      ? "工作配置"
-                      : canvasMode === "history"
-                        ? "历史只读源码"
-                        : canvasMode === "candidate"
-                          ? "候选只读源码"
-                          : "只读对比"}
-                  </span>
-                  <h2>{selectedMember.fileName}</h2>
-                </div>
-                <div className="configuration-workbench__version-identity">
-                  <span>
-                    {canvasMode === "working"
-                      ? "活跃文件版本"
-                      : canvasMode === "candidate"
-                        ? "候选文件版本"
-                        : "对照文件版本"}
-                  </span>
-                  <strong className="mono">
-                    {canvasMode === "working"
-                      ? selectedMember.currentVersionId ?? "缺失"
-                      : canvasMode === "candidate"
-                        ? activeCandidate?.id ?? candidateId ?? "缺失"
-                        : historyVersionId ?? "缺失"}
-                  </strong>
-                </div>
-                {canvasMode !== "working" ? (
-                  <div className="configuration-workbench__mode-actions">
-                    {canvasMode !== "candidate" && canvasMode !== "side-by-side" ? (
-                      <button
-                        className="button subtle"
-                        type="button"
-                        onClick={() => enterCanvasMode("side-by-side", historyVersionId)}
-                      >
-                        并排对比
-                      </button>
-                    ) : null}
-                    {canvasMode !== "candidate" && canvasMode !== "unified-diff" ? (
-                      <button
-                        className="button subtle"
-                        type="button"
-                        onClick={() => enterCanvasMode("unified-diff", historyVersionId)}
-                      >
-                        统一差异
-                      </button>
-                    ) : null}
-                    <button
-                      className="button subtle"
-                      type="button"
-                      onClick={exitSpecialCanvasMode}
-                      aria-label={
-                        canvasMode === "history"
-                          ? "退出历史源码"
-                          : canvasMode === "candidate"
-                            ? "退出候选源码"
-                            : "退出对比"
-                      }
-                    >
-                      {canvasMode === "history"
-                        ? "退出历史源码"
-                        : canvasMode === "candidate"
-                          ? "退出候选源码"
-                          : "退出对比"}
-                    </button>
-                  </div>
-                ) : null}
-              </header>
-            ) : null}
-            {canvasMode !== "working" ? (
-              <p
-                className="configuration-workbench__mode-banner"
-                role="status"
-                aria-label={
-                  canvasMode === "history"
-                    ? "历史只读源码模式"
-                    : canvasMode === "candidate"
-                      ? "候选只读源码模式"
-                      : "只读对比模式"
-                }
-              >
-                当前为
-                {canvasMode === "history"
-                  ? "历史只读源码"
-                  : canvasMode === "candidate"
-                    ? "候选只读源码"
-                    : "只读对比"}
-                模式，不能编辑，也不会改变工作配置。
-              </p>
-            ) : null}
-            {candidateError ? (
-              <div className="configuration-workbench__setup-state" role="alert">
-                {candidateError}
-              </div>
-            ) : null}
-            {sourceLoading || modeSourceLoading ? (
-              <div className="configuration-workbench__source-state" role="status">
-                {canvasMode === "working" ? "正在加载活跃源码…" : "正在加载对照源码…"}
-              </div>
-            ) : null}
-            {!sourceLoading && !modeSourceLoading && (sourceError || modeSourceError) ? (
-              <div className="configuration-workbench__source-state" role="alert">
-                <Info size={20} aria-hidden="true" />
-                <strong>源码读取失败</strong>
-                <p>{sourceError || modeSourceError}</p>
-                <button
-                  className="button subtle configuration-workbench__retry"
-                  type="button"
-                  onClick={() =>
-                    canvasMode === "working"
-                      ? setSourceRetry((value) => value + 1)
-                      : setModeSourceError("")
-                  }
-                >
-                  重试源码
-                </button>
-              </div>
-            ) : null}
-            {!sourceLoading && !modeSourceLoading && !sourceError && !modeSourceError && !selectedMember ? (
-              <div className="configuration-workbench__source-state" role="status">
-                <strong>没有可读取的成员源码</strong>
-                <p>选择含成员文件的配置集后，活跃源码会显示在这里。</p>
-              </div>
-            ) : null}
-            {!sourceLoading &&
-            !modeSourceLoading &&
-            !sourceError &&
-            !modeSourceError &&
-            selectedMember &&
-            canvasMode === "working" &&
-            !selectedMember.currentVersionId ? (
-              <div className="configuration-workbench__source-state" role="status">
-                <strong>成员文件没有活跃版本</strong>
-                <p>文件身份仍保留在树中；请在旧项目运营入口检查版本历史。</p>
-              </div>
-            ) : null}
-            {!sourceLoading &&
-            !modeSourceLoading &&
-            !sourceError &&
-            !modeSourceError &&
-            selectedMember &&
-            canvasMode === "working" &&
-            selectedMember.currentVersionId &&
-            !source ? (
-              <div className="configuration-workbench__source-state" role="status">
-                <strong>源码内容为空</strong>
-                <p>当前活跃版本没有可显示的源码内容；可重试或回到旧项目运营入口检查版本历史。</p>
-                <button className="button subtle configuration-workbench__retry" type="button" onClick={() => setSourceRetry((value) => value + 1)}>
-                  重试源码
-                </button>
-              </div>
-            ) : null}
-            {!sourceLoading &&
-            !modeSourceLoading &&
-            !sourceError &&
-            !modeSourceError &&
-            selectedMember &&
-            canvasMode === "working" &&
-            source ? (
-              <ProjectPrimaryDtsViewer
-                className="configuration-workbench__code"
-                fileName={selectedMember.fileName}
-                versionNumber={selectedMember.currentVersionNumber ?? 0}
-                text={source}
-                focusSpan={restoredScrollLine != null ? null : focusSpan}
-                focusLine={focusLineOverride ?? restoredScrollLine}
-                findQuery={findQuery}
-                findNextToken={findNextToken}
-                onVisibleLineChange={handleVisibleLineChange}
-                sessionChangeMarkers={sessionChangeMarkers}
-              />
-            ) : null}
-            {!modeSourceLoading &&
-            !modeSourceError &&
-            selectedMember &&
-            canvasMode === "history" &&
-            historySource ? (
-              <ProjectPrimaryDtsViewer
-                className="configuration-workbench__code"
-                fileName={selectedMember.fileName}
-                versionNumber={
-                  fileVersions.find((item) => item.id === historyVersionId)?.versionNumber ?? 0
-                }
-                text={historySource}
-                focusLine={focusLineOverride}
-                onVisibleLineChange={handleVisibleLineChange}
-              />
-            ) : null}
-            {!candidateLoading &&
-            canvasMode === "candidate" &&
-            candidateSource ? (
-              <ProjectPrimaryDtsViewer
-                className="configuration-workbench__code"
-                fileName={activeCandidate?.fileName ?? selectedMember?.fileName ?? "candidate.dts"}
-                versionNumber={0}
-                text={candidateSource}
-                focusLine={focusLineOverride}
-                onVisibleLineChange={handleVisibleLineChange}
-              />
-            ) : null}
-            {canvasMode === "candidate" && candidateLoading ? (
-              <div className="configuration-workbench__source-state" role="status">
-                正在加载候选源码…
-              </div>
-            ) : null}
-            {!modeSourceLoading &&
-            !modeSourceError &&
-            selectedMember &&
-            canvasMode === "unified-diff" &&
-            unifiedDiffText ? (
-              <pre className="configuration-workbench__diff" aria-label="统一差异对比">
-                {unifiedDiffText}
-              </pre>
-            ) : null}
-            {!modeSourceLoading &&
-            !modeSourceError &&
-            selectedMember &&
-            canvasMode === "side-by-side" &&
-            historySource ? (
-              <div className="configuration-workbench__side-by-side" aria-label="并排差异对比">
-                <ProjectPrimaryDtsViewer
-                  className="configuration-workbench__code"
-                  fileName={`${selectedMember.fileName} · 工作配置`}
-                  versionNumber={selectedMember.currentVersionNumber ?? 0}
-                  text={compareSource || source}
-                  onVisibleLineChange={handleVisibleLineChange}
-                />
-                <ProjectPrimaryDtsViewer
-                  className="configuration-workbench__code"
-                  fileName={`${selectedMember.fileName} · 历史`}
-                  versionNumber={
-                    fileVersions.find((item) => item.id === historyVersionId)?.versionNumber ?? 0
-                  }
-                  text={historySource}
-                />
-              </div>
-            ) : null}
-          </main>
+          <WorkbenchSourceCanvas
+            sourceRegionRef={sourceRegionRef}
+            selectedConfigSetName={selectedConfigSet.name}
+            selectedMember={selectedMember ?? null}
+            canvasMode={canvasMode}
+            historyVersionId={historyVersionId}
+            candidateId={candidateId}
+            activeCandidate={activeCandidate}
+            fileVersions={fileVersions}
+            onEnterCanvasMode={enterCanvasMode}
+            onExitSpecialCanvasMode={exitSpecialCanvasMode}
+            candidateError={candidateError}
+            sourceLoading={sourceLoading}
+            modeSourceLoading={modeSourceLoading}
+            sourceError={sourceError}
+            modeSourceError={modeSourceError}
+            onSourceRetry={() => setSourceRetry((value) => value + 1)}
+            onClearModeSourceError={() => setModeSourceError("")}
+            source={source}
+            historySource={historySource}
+            candidateSource={candidateSource}
+            candidateLoading={candidateLoading}
+            compareSource={compareSource}
+            unifiedDiffText={unifiedDiffText}
+            focusSpan={focusSpan}
+            focusLineOverride={focusLineOverride}
+            restoredScrollLine={restoredScrollLine}
+            findQuery={findQuery}
+            findNextToken={findNextToken}
+            onVisibleLineChange={handleVisibleLineChange}
+            sessionChangeMarkers={sessionChangeMarkers}
+          />
 
           {inspectorOpen ? (
-            <aside
-              className={
-                inspectorPersistent && !narrowViewport
-                  ? "configuration-workbench__inspector is-persistent"
-                  : "configuration-workbench__inspector"
-              }
-              aria-label="配置检查器"
-              data-layout={inspectorPersistent && !narrowViewport ? "persistent" : "overlay"}
-            >
-              <div className="configuration-workbench__region-head">
-                <div>
-                  <span>检查器</span>
-                  <strong>
-                    {inspectorLevel === "activity"
-                      ? "项目活动"
-                      : inspectorLevel === "property"
-                        ? selectedPropertyName
-                        : inspectorLevel === "node"
-                          ? selectedNodePath
-                          : inspectorLevel === "file"
-                            ? selectedMember?.fileName
-                            : selectedConfigSet.name}
-                  </strong>
-                </div>
-                <div className="configuration-workbench__inspector-actions">
-                  <button
-                    className="button subtle configuration-workbench__icon-button"
-                    type="button"
-                    aria-label="关闭检查器"
-                    onClick={() => setInspectorOpen(false)}
-                  >
-                    ×
-                  </button>
-                </div>
-              </div>
-              <div className="configuration-workbench__inspector-body">
-              <WorkbenchBaselineDock
-                baselines={baselines}
-                releasedTipId={releasedBaseline?.id}
-                selectedBaselineId={selectedBaselineId}
-                loading={baselinesLoading}
-                error={baselinesError}
-                compareMembers={baselineCompare?.members ?? null}
-                compareAgainst={baselineCompareAgainst}
-                pinnedMembers={baselinePinnedMembers}
-                canAdmin={canAdmin}
-                canRelease={workbenchReadinessAllowsRelease(releaseReadiness, sessionDraftsDirty)}
-                canRestore={canAdmin && Boolean(selectedBaselineId)}
-                releaseBlockedReason={
-                  sessionDraftsDirty
-                    ? "还有未保存的本机会话变更，不能发布"
-                    : !releaseReadiness?.canRelease
-                      ? "发布就绪门禁阻止发布"
-                      : undefined
-                }
-                comparing={Boolean(baselineCompare) || canvasMode === "unified-diff" || canvasMode === "side-by-side"}
-                onSelectBaseline={selectWorkbenchBaseline}
-                onRetry={() => setBaselinesRetry((value) => value + 1)}
-                onCompare={(against) => {
-                  void runAction("compare-baseline", () => compareWorkbenchBaseline(against));
-                }}
-                onOpenRelease={() => {
-                  releaseBaselineSession.clearActionError();
-                  setReleaseBaselineOpen(true);
-                }}
-                onOpenRestore={() => {
-                  void runAction("preview-restore-baseline", openRestoreWorkbenchBaseline);
-                }}
-                onExitCompare={exitBaselineCompare}
-                onSelectCompareMember={selectBaselineCompareMember}
-              />
-              <dl>
-                <div>
-                  <dt>检查层级</dt>
-                  <dd>
-                    {inspectorLevel === "config-set"
-                      ? "配置集"
-                      : inspectorLevel === "file"
-                        ? "文件"
-                        : inspectorLevel === "node"
-                          ? "节点"
-                          : inspectorLevel === "activity"
-                            ? "活动"
-                            : "属性"}
-                  </dd>
-                </div>
-                <div>
-                  <dt>工作配置</dt>
-                  <dd>工作配置</dd>
-                </div>
-                <div>
-                  <dt>发布基线</dt>
-                  <dd>{releasedBaseline?.name ?? "尚未发布"}</dd>
-                </div>
-                <div>
-                  <dt>候选文件版本</dt>
-                  <dd>
-                    {activeCandidate && activeCandidate.status !== "abandoned"
-                      ? `${activeCandidate.fileName} · ${activeCandidate.status}`
-                      : "尚未上传"}
-                  </dd>
-                </div>
-                {activeCandidate && canvasMode === "candidate" ? (
-                  <>
-                    <div>
-                      <dt>候选身份</dt>
-                      <dd className="mono">{activeCandidate.id}</dd>
-                    </div>
-                    <div>
-                      <dt>对照活跃版本</dt>
-                      <dd className="mono">{activeCandidate.baseVersionId ?? "新文件候选"}</dd>
-                    </div>
-                    <div>
-                      <dt>诊断</dt>
-                      <dd>
-                        {(activeCandidate.diagnostics?.length ?? 0) === 0
-                          ? "无"
-                          : activeCandidate.diagnostics.map((item) => (
-                              <div key={`${item.code}-${item.message}`}>
-                                [{item.severity}] {item.code}: {item.message}
-                              </div>
-                            ))}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>阻断</dt>
-                      <dd>
-                        {(activeCandidate.blockers?.length ?? 0) === 0
-                          ? "无"
-                          : activeCandidate.blockers.map((item) => (
-                              <div key={`${item.code}-${item.message}`}>
-                                {item.code}: {item.message}
-                              </div>
-                            ))}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>结构差异</dt>
-                      <dd>
-                        {(activeCandidate.impact.structuralDiff?.length ?? 0) === 0
-                          ? "无"
-                          : `${activeCandidate.impact.structuralDiff?.length} 项`}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>覆盖/映射</dt>
-                      <dd>
-                        {activeCandidate.impact.coverage
-                          ? `已注册 ${activeCandidate.impact.coverage.matchedRegisteredCount} · 未注册 ${activeCandidate.impact.coverage.newUnregisteredCount}`
-                          : "不适用"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>冲突证据</dt>
-                      <dd>
-                        {(activeCandidate.impact.conflicts?.length ?? 0) === 0
-                          ? "无开放冲突"
-                          : activeCandidate.impact.conflicts?.map((item) => (
-                              <div key={item.id} className="mono">
-                                {item.id}
-                                {item.parameterName ? ` · ${item.parameterName}` : ""}
-                              </div>
-                            ))}
-                      </dd>
-                    </div>
-                    {activeCandidate.impact.textDiff ? (
-                      <div>
-                        <dt>文本差异</dt>
-                        <dd>
-                          <pre className="configuration-workbench__diff-view mono" tabIndex={0}>
-                            {activeCandidate.impact.textDiff}
-                          </pre>
-                        </dd>
-                      </div>
-                    ) : null}
-                    <div className="configuration-workbench__inspector-actions">
-                      {canRecompute ? (
-                        <button
-                          className="button subtle"
-                          type="button"
-                          onClick={() => {
-                            void (async () => {
-                              try {
-                                const updated = await candidateFlow.recompute(project.id, fileRepository);
-                                notifyMutation(
-                                  updated.status === "ready"
-                                    ? "已按当前基重算候选影响，可再次审查后激活。"
-                                    : "已按当前阻断条件重算候选影响。"
-                                );
-                              } catch {
-                                // candidateFlow.error already set
-                              }
-                            })();
-                          }}
-                        >
-                          重算影响
-                        </button>
-                      ) : null}
-                      {canActivate ? (
-                        <button
-                          className="button primary"
-                          type="button"
-                          data-testid="activate-candidate"
-                          onClick={() => {
-                            candidateFlow.setActivateRole("overlay");
-                            setActivateConfirmOpen(true);
-                          }}
-                        >
-                          激活候选
-                        </button>
-                      ) : null}
-                      {canAbandon ? (
-                        <button
-                          className="button subtle"
-                          type="button"
-                          onClick={() => {
-                            void (async () => {
-                              try {
-                                await candidateFlow.abandon(project.id, fileRepository);
-                                notifyMutation("候选已放弃；工作配置与配置集成员未改动。");
-                                if (selectedConfigSet) {
-                                  onNavigate(
-                                    formatWorkbenchPath(project.id, search, {
-                                      configSet: selectedConfigSet.id,
-                                      file: selectedMember?.fileId ?? null,
-                                      sourceMode: null,
-                                      candidate: null,
-                                      version: null
-                                    })
-                                  );
-                                }
-                              } catch {
-                                // candidateFlow.error already set
-                              }
-                            })();
-                          }}
-                        >
-                          放弃候选
-                        </button>
-                      ) : null}
-                    </div>
-                  </>
-                ) : null}
-                {inspectorLevel === "activity" ? (
-                  <>
-                    <div>
-                      <dt>活动时间线</dt>
-                      <dd>当前组织与项目范围内的服务器审计投影</dd>
-                    </div>
-                    {activityMissingNotice ? (
-                      <div>
-                        <dt>目标状态</dt>
-                        <dd>
-                          <p role="status" aria-label="活动目标不可用">
-                            {activityMissingNotice}
-                          </p>
-                        </dd>
-                      </div>
-                    ) : null}
-                    {activityLoading ? (
-                      <div>
-                        <dt>加载</dt>
-                        <dd role="status">正在加载项目活动…</dd>
-                      </div>
-                    ) : null}
-                    {activityError ? (
-                      <div>
-                        <dt>失败</dt>
-                        <dd>
-                          <p role="alert">{activityError}</p>
-                          <button
-                            className="button subtle"
-                            type="button"
-                            onClick={() => setActivityRefreshToken((value) => value + 1)}
-                          >
-                            重试活动
-                          </button>
-                        </dd>
-                      </div>
-                    ) : null}
-                    {!activityLoading && !activityError && activityRows.length === 0 ? (
-                      <div>
-                        <dt>空态</dt>
-                        <dd role="status">暂无项目活动记录</dd>
-                      </div>
-                    ) : null}
-                    {!activityLoading && activityRows.length > 0 ? (
-                      <div>
-                        <dt>事件</dt>
-                        <dd>
-                          <ul className="configuration-workbench__activity-list" aria-label="项目活动事件">
-                            {activityRows.map((row) => (
-                              <li key={row.id}>
-                                <button
-                                  type="button"
-                                  className="button subtle configuration-workbench__activity-item"
-                                  aria-label={`${row.action} · ${row.targetLabel}`}
-                                  onClick={() => handleActivityEventSelect(row.id)}
-                                >
-                                  <span className="configuration-workbench__activity-action">
-                                    {row.action}
-                                  </span>
-                                  <span className="configuration-workbench__activity-meta">
-                                    {row.actor} · {row.targetLabel} · {row.outcome} · {row.timeLabel}
-                                  </span>
-                                  <time dateTime={row.createdAtIso || undefined}>{row.absoluteTime}</time>
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
-                        </dd>
-                      </div>
-                    ) : null}
-                  </>
-                ) : null}
-                {inspectorLevel === "config-set" ? (
-                  <>
-                    <div>
-                      <dt>配置集</dt>
-                      <dd>{selectedConfigSet.name}</dd>
-                    </div>
-                    <div>
-                      <dt>描述</dt>
-                      <dd>{selectedConfigSet.description || "无描述"}</dd>
-                    </div>
-                    <div>
-                      <dt>成员数</dt>
-                      <dd>{selectedMembers.length}</dd>
-                    </div>
-                    <section className="configuration-workbench__member-ops" aria-label="成员管理">
-                      <strong>成员管理</strong>
-                      {selectedMembers.length === 0 ? (
-                        <p>尚无成员。从下方未编组文件编入，或使用表单添加。</p>
-                      ) : (
-                        <ul>
-                          {selectedMembers.map((member) => (
-                            <li key={member.fileId}>
-                              <span>
-                                {member.fileName} · {ROLE_LABELS[member.role]} · 顺序 {member.sortOrder}
-                              </span>
-                              {canAdmin ? (
-                                <button
-                                  className="button subtle"
-                                  type="button"
-                                  aria-label={`移除 ${member.fileName}`}
-                                  disabled={pendingAction !== null}
-                                  onClick={() => requestRemoveMember(member)}
-                                >
-                                  移除
-                                </button>
-                              ) : null}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                      {canAdmin ? (
-                        <div className="configuration-workbench__member-form">
-                          <label>
-                            文件
-                            <select
-                              aria-label="待编入文件"
-                              value={memberFileId}
-                              onChange={(event) => setMemberFileId(event.target.value)}
-                            >
-                              {ungroupedFiles.length === 0 ? (
-                                <option value="">无未编组文件</option>
-                              ) : (
-                                ungroupedFiles.map((file) => (
-                                  <option key={file.id} value={file.id}>
-                                    {file.fileName}
-                                  </option>
-                                ))
-                              )}
-                            </select>
-                          </label>
-                          <label>
-                            角色
-                            <select
-                              aria-label="成员角色"
-                              value={memberRole}
-                              onChange={(event) => setMemberRole(event.target.value as ConfigSetRole)}
-                            >
-                              {CONFIG_SET_ROLES.map((role) => (
-                                <option key={role} value={role}>
-                                  {ROLE_LABELS[role]}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label>
-                            顺序
-                            <input
-                              type="number"
-                              aria-label="成员顺序"
-                              value={memberSortOrder}
-                              onChange={(event) => setMemberSortOrder(Number(event.target.value) || 0)}
-                            />
-                          </label>
-                          <button
-                            className="button subtle"
-                            type="button"
-                            disabled={!memberFileId || pendingAction !== null}
-                            onClick={() =>
-                              void runAction("add-member", () =>
-                                addMemberToConfigSet(memberFileId, memberRole, memberSortOrder)
-                              )
-                            }
-                          >
-                            添加成员
-                          </button>
-                        </div>
-                      ) : null}
-                    </section>
-                  </>
-                ) : null}
-                {inspectorLevel === "file" && selectedMember ? (
-                  <>
-                    <div>
-                      <dt>文件格式</dt>
-                      <dd>{selectedMember.format}</dd>
-                    </div>
-                    <div>
-                      <dt>成员角色</dt>
-                      <dd>{ROLE_LABELS[selectedMember.role]}</dd>
-                    </div>
-                    <div>
-                      <dt>活跃文件版本</dt>
-                      <dd className="mono">{selectedMember.currentVersionId ?? "缺失"}</dd>
-                    </div>
-                    {canAdmin ? (
-                      <div className="configuration-workbench__inspector-actions">
-                        <button
-                          className="button subtle"
-                          type="button"
-                          disabled={pendingAction !== null}
-                          onClick={() => void runAction("sync-file", syncSelectedFile)}
-                        >
-                          {pendingAction === "sync-file" ? "同步中…" : "手动同步"}
-                        </button>
-                        <button
-                          className="button subtle"
-                          type="button"
-                          disabled={pendingAction !== null}
-                          onClick={() => requestRemoveMember(selectedMember)}
-                        >
-                          从配置集移除
-                        </button>
-                      </div>
-                    ) : null}
-                  </>
-                ) : null}
-                {inspectorLevel === "node" && selectedStructureNode ? (
-                  <>
-                    <div>
-                      <dt>节点路径</dt>
-                      <dd>
-                        <code>{selectedStructureNode.nodePath || "/"}</code>
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>源码位置</dt>
-                      <dd>{formatSourceSpan(selectedStructureNode.source)}</dd>
-                    </div>
-                    <div>
-                      <dt>labels</dt>
-                      <dd>
-                        {selectedStructureNode.labels.length
-                          ? selectedStructureNode.labels.join(", ")
-                          : "无"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>compatible</dt>
-                      <dd>{selectedStructureNode.compatible ?? "无"}</dd>
-                    </div>
-                    <div>
-                      <dt>风险</dt>
-                      <dd>{classifyNodeRisk(selectedStructureNode.status)}</dd>
-                    </div>
-                    <div>
-                      <dt>来源</dt>
-                      <dd>
-                        工作配置 · 文件版本 {selectedMember?.currentVersionId ?? "未知"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>读权限</dt>
-                      <dd>只读</dd>
-                    </div>
-                  </>
-                ) : null}
-                {inspectorLevel === "property" && selectedStructureProperty && selectedStructureNode ? (
-                  <>
-                    <div>
-                      <dt>属性名</dt>
-                      <dd>{selectedStructureProperty.name}</dd>
-                    </div>
-                    <div>
-                      <dt>节点路径</dt>
-                      <dd>
-                        <code>{selectedStructureNode.nodePath}</code>
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>源码位置</dt>
-                      <dd>
-                        {formatSourceSpan(
-                          selectedStructureProperty.source ?? selectedStructureNode.source
-                        )}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>类型</dt>
-                      <dd>{dtsValueTypeLabel(selectedStructureProperty.valueType)}</dd>
-                    </div>
-                    <div>
-                      <dt>类型约束</dt>
-                      <dd>
-                        须符合「{dtsValueTypeLabel(selectedStructureProperty.valueType)}」语法；提交前可在任务坞校验。
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>原始值</dt>
-                      <dd>
-                        <code>{activePropertyDraft?.rawText ?? selectedStructureProperty.rawText}</code>
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>规范化值</dt>
-                      <dd>{activePropertyDraft?.normalizedValue ?? selectedStructureProperty.normalizedValue}</dd>
-                    </div>
-                    <div>
-                      <dt>风险</dt>
-                      <dd>
-                        {isCriticalDtsNodePath(selectedStructureNode.nodePath)
-                          ? "安全关键"
-                          : classifyNodeRisk(selectedStructureNode.status)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>变更原因</dt>
-                      <dd>提交变更请求时必须填写原因；原因会进入既有审核流程。</dd>
-                    </div>
-                    <div>
-                      <dt>来源</dt>
-                      <dd>
-                        工作配置 · 文件版本 {selectedMember?.currentVersionId ?? "未知"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>写权限</dt>
-                      <dd>
-                        {editorLocked
-                          ? criticalLocked
-                            ? "只读（无安全关键修改权限）"
-                            : "只读（无参数修改权限）"
-                          : "可编辑"}
-                      </dd>
-                    </div>
-                    {isCriticalDtsNodePath(selectedStructureNode.nodePath) ? (
-                      <p className="configuration-workbench__risk-note" role="note">
-                        <TriangleAlert size={16} strokeWidth={2} aria-hidden="true" />
-                        <span>安全关键节点：改动电源或温控取值可能损坏硬件，提交前请确认取值来源。</span>
-                      </p>
-                    ) : null}
-                    <div className="configuration-workbench__typed-editor" aria-label="属性值编辑">
-                      {editorLocked ? (
-                        <p className="configuration-workbench__locked" role="note">
-                          <Lock size={16} strokeWidth={2} aria-hidden="true" />
-                          <span>
-                            {staleDraftLocked
-                              ? "基线版本已变更：会话草稿仅可检查或复制。请先基于当前基线继续编辑，再修改取值。"
-                              : criticalLocked
-                                ? "这是安全关键节点，你的角色没有修改它的权限。当前取值可以查看，但不能编辑或提交。"
-                                : "你的角色没有修改参数的权限。当前取值可以查看，但不能编辑或提交。"}
-                          </span>
-                        </p>
-                      ) : null}
-                      <StructuredValueEditor
-                        propertyName={selectedStructureProperty.name}
-                        valueType={selectedStructureProperty.valueType}
-                        rawText={activePropertyDraft?.rawText ?? selectedStructureProperty.rawText}
-                        present={activePropertyDraft?.present}
-                        availableLabels={availableLabels}
-                        disabled={editorLocked || selectedStructureProperty.valueType === "empty"}
-                        onChange={handleStructuredValueChange}
-                      />
-                    </div>
-                  </>
-                ) : null}
-              </dl>
-              {inspectorLevel === "file" && selectedMember ? (
-                <section className="configuration-workbench__version-history" aria-label="不可变版本历史">
-                  <strong>不可变版本历史</strong>
-                  {versionsLoading ? <p role="status">正在加载版本历史…</p> : null}
-                  {versionsError ? (
-                    <div role="alert">
-                      <p>{versionsError}</p>
-                    </div>
-                  ) : null}
-                  {!versionsLoading && !versionsError && fileVersions.length === 0 ? (
-                    <p>暂无版本记录。</p>
-                  ) : null}
-                  <ul>
-                    {fileVersions.map((version) => {
-                      const active = version.id === selectedMember.currentVersionId;
-                      return (
-                        <li key={version.id}>
-                          <div>
-                            <strong>
-                              版本 {version.versionNumber}
-                              {active ? " · 活跃" : ""}
-                            </strong>
-                            <small className="mono">{version.id}</small>
-                            <span>来源：{ORIGIN_LABELS[version.origin]}</span>
-                            <span>创建时间：{version.createdAt}</span>
-                            <span>操作人：{version.createdByUserId ?? "未记录"}</span>
-                          </div>
-                          <div className="configuration-workbench__version-actions">
-                            <button
-                              className="button subtle"
-                              type="button"
-                              aria-label={`查看版本 ${version.versionNumber} 历史源码`}
-                              onClick={() => enterCanvasMode("history", version.id)}
-                            >
-                              查看历史
-                            </button>
-                            <button
-                              className="button subtle"
-                              type="button"
-                              aria-label={`统一差异版本 ${version.versionNumber}`}
-                              onClick={() => enterCanvasMode("unified-diff", version.id)}
-                            >
-                              统一差异
-                            </button>
-                            <button
-                              className="button subtle"
-                              type="button"
-                              aria-label={`下载版本 ${version.versionNumber}`}
-                              onClick={() => void handleDownloadVersion(version)}
-                            >
-                              下载
-                            </button>
-                          </div>
-                        </li>
+            <WorkbenchInspectorPanel
+              inspectorPersistent={inspectorPersistent}
+              narrowViewport={narrowViewport}
+              inspectorLevel={inspectorLevel}
+              onClose={() => setInspectorOpen(false)}
+              selectedConfigSet={selectedConfigSet}
+              selectedMember={selectedMember}
+              selectedPropertyName={selectedPropertyName}
+              selectedNodePath={selectedNodePath}
+              baselines={baselines}
+              releasedBaseline={releasedBaseline}
+              selectedBaselineId={selectedBaselineId}
+              baselinesLoading={baselinesLoading}
+              baselinesError={baselinesError}
+              baselineCompare={baselineCompare}
+              baselineCompareAgainst={baselineCompareAgainst}
+              baselinePinnedMembers={baselinePinnedMembers}
+              canAdmin={canAdmin}
+              releaseReadiness={releaseReadiness}
+              sessionDraftsDirty={sessionDraftsDirty}
+              canvasMode={canvasMode}
+              onSelectBaseline={selectWorkbenchBaseline}
+              onBaselinesRetry={() => setBaselinesRetry((value) => value + 1)}
+              onCompareBaseline={(against) => {
+                void runAction("compare-baseline", () => compareWorkbenchBaseline(against));
+              }}
+              onOpenRelease={() => {
+                releaseBaselineSession.clearActionError();
+                setReleaseBaselineOpen(true);
+              }}
+              onOpenRestoreBaseline={() => {
+                void runAction("preview-restore-baseline", openRestoreWorkbenchBaseline);
+              }}
+              onExitBaselineCompare={exitBaselineCompare}
+              onSelectBaselineCompareMember={selectBaselineCompareMember}
+              activeCandidate={activeCandidate}
+              canRecompute={canRecompute}
+              canActivate={canActivate}
+              canAbandon={canAbandon}
+              onRecomputeCandidate={() => {
+                void (async () => {
+                  try {
+                    const updated = await candidateFlow.recompute(project.id, fileRepository);
+                    notifyMutation(
+                      updated.status === "ready"
+                        ? "已按当前基重算候选影响，可再次审查后激活。"
+                        : "已按当前阻断条件重算候选影响。"
+                    );
+                  } catch {
+                    // candidateFlow.error already set
+                  }
+                })();
+              }}
+              onActivateCandidate={() => {
+                candidateFlow.setActivateRole("overlay");
+                setActivateConfirmOpen(true);
+              }}
+              onAbandonCandidate={() => {
+                void (async () => {
+                  try {
+                    await candidateFlow.abandon(project.id, fileRepository);
+                    notifyMutation("候选已放弃；工作配置与配置集成员未改动。");
+                    if (selectedConfigSet) {
+                      onNavigate(
+                        formatWorkbenchPath(project.id, search, {
+                          configSet: selectedConfigSet.id,
+                          file: selectedMember?.fileId ?? null,
+                          sourceMode: null,
+                          candidate: null,
+                          version: null
+                        })
                       );
-                    })}
-                  </ul>
-                  {downloadMessage ? <p role="status">{downloadMessage}</p> : null}
-                </section>
-              ) : null}
-              <p className="configuration-workbench__read-only-note">
-                {canEdit
-                  ? "源码画布保持只读；整文件替换请走候选文件版本。属性改动在类型化检查器中编辑，并进入会话变更坞提交。候选激活需确认影响范围；配置集创建/成员管理、手动同步与导出同样可用。"
-                  : "当前检查器为只读上下文。画布模式：" +
-                    canvasMode +
-                    "。缺少参数修改权限时仍可浏览结构与源码。"}
-              </p>
-              </div>
-            </aside>
+                    }
+                  } catch {
+                    // candidateFlow.error already set
+                  }
+                })();
+              }}
+              activityMissingNotice={activityMissingNotice}
+              activityLoading={activityLoading}
+              activityError={activityError}
+              activityRows={activityRows}
+              onActivityRetry={() => setActivityRefreshToken((value) => value + 1)}
+              onActivityEventSelect={handleActivityEventSelect}
+              selectedMembers={selectedMembers}
+              pendingAction={pendingAction}
+              ungroupedFiles={ungroupedFiles}
+              memberFileId={memberFileId}
+              memberRole={memberRole}
+              memberSortOrder={memberSortOrder}
+              onMemberFileIdChange={setMemberFileId}
+              onMemberRoleChange={setMemberRole}
+              onMemberSortOrderChange={setMemberSortOrder}
+              onAddMember={() =>
+                void runAction("add-member", () =>
+                  addMemberToConfigSet(memberFileId, memberRole, memberSortOrder)
+                )
+              }
+              onRequestRemoveMember={requestRemoveMember}
+              onSyncFile={() => void runAction("sync-file", syncSelectedFile)}
+              fileVersions={fileVersions}
+              versionsLoading={versionsLoading}
+              versionsError={versionsError}
+              onEnterCanvasMode={enterCanvasMode}
+              onDownloadVersion={(version) => void handleDownloadVersion(version)}
+              downloadMessage={downloadMessage}
+              selectedStructureNode={selectedStructureNode}
+              selectedStructureProperty={selectedStructureProperty}
+              activePropertyDraft={activePropertyDraft}
+              availableLabels={availableLabels}
+              editorLocked={editorLocked}
+              criticalLocked={criticalLocked}
+              staleDraftLocked={staleDraftLocked}
+              onStructuredValueChange={handleStructuredValueChange}
+              canEdit={canEdit}
+            />
           ) : null}
         </div>
       )}
 
-      <ConfirmDialog
-        open={activateConfirmOpen && activeCandidate?.status === "ready"}
-        title="确认激活候选"
-        description={
-          <div>
-            <p>
-              将把候选 <code>{activeCandidate?.fileName}</code> 晋升为工作配置的活跃版本。此操作会改变后续基线可发布内容。
-            </p>
-            <ul>
-              <li>
-                对照活跃版本：{" "}
-                <code className="mono">{activeCandidate?.baseVersionId ?? "新文件（无基）"}</code>
-              </li>
-              <li>结构差异：{(activeCandidate?.impact.structuralDiff?.length ?? 0) || 0} 项</li>
-              <li>
-                覆盖/映射：
-                {activeCandidate?.impact.coverage
-                  ? `已注册 ${activeCandidate.impact.coverage.matchedRegisteredCount} · 未注册 ${activeCandidate.impact.coverage.newUnregisteredCount}`
-                  : "不适用"}
-              </li>
-              <li>阻断：{(activeCandidate?.blockers?.length ?? 0) === 0 ? "无" : activeCandidate?.blockers.length}</li>
-            </ul>
-            {activeCandidate?.impact.textDiff ? (
-              <pre className="configuration-workbench__diff-view mono" tabIndex={0}>
-                {activeCandidate.impact.textDiff}
-              </pre>
-            ) : null}
-          </div>
-        }
-        confirmLabel="确认激活"
-        tone="primary"
-        pending={activatingCandidate}
-        pendingLabel="激活中…"
-        error={activateError}
-        acknowledgement="我已审查影响范围，并确认对照的是当前活跃基版本。"
-        extra={
-          !activeCandidate?.fileId ? (
-            <label className="configuration-workbench__activate-role">
-              <span>新文件成员角色</span>
-              <select
-                value={activateRole}
-                disabled={activatingCandidate}
-                onChange={(event) => candidateFlow.setActivateRole(event.target.value as ConfigSetRole)}
-              >
-                {(Object.keys(ROLE_LABELS) as ConfigSetRole[]).map((role) => (
-                  <option key={role} value={role}>
-                    {ROLE_LABELS[role]}
-                  </option>
-                ))}
-              </select>
-              <small>将加入配置集 {selectedConfigSet?.name ?? "（未选择）"}，不会隐式创建其他成员关系。</small>
-            </label>
-          ) : null
-        }
+      <WorkbenchCandidateActivateDialog
+        open={activateConfirmOpen}
+        activeCandidate={activeCandidate}
+        configSetName={selectedConfigSet?.name ?? null}
+        activateRole={activateRole}
+        onActivateRoleChange={(role) => candidateFlow.setActivateRole(role)}
+        activating={activatingCandidate}
+        activateError={activateError}
         onCancel={() => {
           if (!activatingCandidate) {
             setActivateConfirmOpen(false);
@@ -3724,290 +2299,100 @@ export function ProjectConfigurationWorkbench({
         }}
       />
 
-      <footer className={tasksOpen ? "configuration-workbench__tasks is-open" : "configuration-workbench__tasks"}>
-        <button className="button subtle configuration-workbench__task-toggle" type="button" aria-label="任务" aria-expanded={tasksOpen} onClick={() => setTasksOpen((open) => !open)}>
-          <span>本轮更改 <strong>{sessionDraftRows.length + (syncEvidence || exportEvidence ? 1 : 0)}</strong></span>
-          <span>校验问题 <strong>{sessionDraftRows.filter((row) => row.valid === false).length}</strong></span>
-          <span>冲突 <strong>{syncConflicts.length}</strong></span>
-          <span>
-            就绪问题{" "}
-            <strong>{(releaseReadiness?.blockers.length ?? 0) + (releaseReadiness?.warnings.length ?? 0)}</strong>
-          </span>
-          <span>{tasksOpen ? "收起" : "展开任务"}</span>
-        </button>
-        {tasksOpen ? (
-          <div role="region" aria-label="配置任务" className="configuration-workbench__task-panel">
-            <strong>会话变更</strong>
-            {sessionDraftRows.length === 0 ? (
-              <p>没有本轮更改。从结构树或源码定位选中属性后，用类型化编辑器写入本地会话变更。</p>
-            ) : (
-              <>
-                {draftRecoveryStatus === "stale-base" ? (
-                  <div className="configuration-workbench__stale-draft" role="status">
-                    <p>
-                      基线版本已变更。这些会话草稿仍可检查与复制，但在基于当前基线继续编辑之前不能校验或提交。
-                    </p>
-                    <div className="configuration-workbench__task-actions">
-                      <button
-                        className="button subtle"
-                        type="button"
-                        onClick={() => void handleCopySessionDrafts()}
-                      >
-                        复制草稿
-                      </button>
-                      <button
-                        className="button primary"
-                        type="button"
-                        onClick={handleReconfirmStaleDrafts}
-                      >
-                        基于当前基线继续编辑
-                      </button>
-                    </div>
-                    <textarea
-                      ref={draftCopyFallbackRef}
-                      aria-hidden="true"
-                      tabIndex={-1}
-                      readOnly
-                      className="configuration-workbench__draft-copy-fallback"
-                      style={{ position: "absolute", left: "-9999px", height: 1, width: 1, opacity: 0 }}
-                    />
-                    {draftCopyStatus ? <p role="status">{draftCopyStatus}</p> : null}
-                  </div>
-                ) : null}
-                <ul className="configuration-workbench__session-changes" aria-label="会话变更列表">
-                  {sessionDraftRows.map((row) => {
-                    const checked = selectedDraftKeys.has(row.key);
-                    return (
-                      <li key={row.key}>
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            data-property-identity={row.identity}
-                            aria-label={`${row.nodePath}/${row.propertyName}`}
-                            onChange={() => {
-                              const next = new Set(selectedDraftKeys);
-                              if (next.has(row.key)) next.delete(row.key);
-                              else next.add(row.key);
-                              structuredEditSession.selectSubset(next);
-                            }}
-                          />
-                          <span>
-                            <code>{row.nodePath}/{row.propertyName}</code>
-                            <small>
-                              {row.beforeRawText} → {row.rawText}
-                            </small>
-                          </span>
-                        </label>
-                      </li>
-                    );
-                  })}
-                </ul>
-                <label className="configuration-workbench__reason">
-                  <span>变更原因</span>
-                  <textarea
-                    aria-label="变更原因"
-                    value={submitReason}
-                    onChange={(event) => structuredEditSession.setReason(event.target.value)}
-                    rows={2}
-                    disabled={!canEdit}
-                  />
-                </label>
-                <div className="configuration-workbench__task-actions">
-                  <button
-                    className="button subtle"
-                    type="button"
-                    onClick={handleValidateSelected}
-                    disabled={!canEdit || sessionDraftRows.length === 0 || draftRecoveryStatus === "stale-base"}
-                  >
-                    校验所选
-                  </button>
-                  <button
-                    className="button primary"
-                    type="button"
-                    onClick={() => void handleSubmitSelected()}
-                    disabled={
-                      !canEdit ||
-                      submittingEdits ||
-                      selectedDraftKeys.size === 0 ||
-                      draftRecoveryStatus === "stale-base"
-                    }
-                  >
-                    {submittingEdits ? "提交中…" : `提交所选（${selectedDraftKeys.size}）`}
-                  </button>
-                </div>
-              </>
-            )}
-            {validateStatus ? (
-              <p role="status">{validateStatus}</p>
-            ) : null}
-            {submitStatus ? (
-              <p role="status">{submitStatus}</p>
-            ) : null}
-            {submitError ? (
-              <p role="alert">{submitError}</p>
-            ) : null}
-            <strong>任务证据</strong>
-            {syncEvidence ? <p role="status">{syncEvidence}</p> : null}
-            {exportEvidence ? <p role="status">{exportEvidence}</p> : null}
-            {syncConflicts.length > 0 ? (
-              <WorkbenchConflictArbitrationDock
-                projectId={project.id}
-                repository={fileRepository}
-                conflicts={syncConflicts}
-                onConflictsChange={(next) => conflictLocateFacade.setOpenConflicts(next)}
-                onQueueEmpty={() => setTasksOpen(false)}
-                onLocateConflict={(conflict) => {
-                  const target = conflictLocateFacade.locate(conflict);
-                  if (!target) return;
-                  selectStructureTarget(target.fileId, target.nodePath, target.propertyName);
-                }}
-              />
-            ) : null}
-            {canAdmin ? (
-              <WorkbenchReleaseReadinessIssues
-                readiness={releaseReadiness}
-                acknowledgedWarningIds={acknowledgedWarningIds}
-                onAcknowledgeWarning={(issueId) => {
-                  releaseBaselineSession.acknowledgeWarning(issueId);
-                }}
-                onSelectIssue={handleSelectReadinessIssue}
-                onRetry={() => setReadinessRetry((value) => value + 1)}
-              />
-            ) : null}
-            {!syncEvidence && !exportEvidence && syncConflicts.length === 0 ? (
-              <p>暂无同步或导出证据。手动同步与配置集导出结果会显示在这里。</p>
-            ) : null}
-          </div>
-        ) : null}
-      </footer>
+      <WorkbenchTaskDock
+        tasksOpen={tasksOpen}
+        onTasksOpenChange={setTasksOpen}
+        sessionDraftRows={sessionDraftRows}
+        syncEvidence={syncEvidence}
+        exportEvidence={exportEvidence}
+        syncConflicts={syncConflicts}
+        releaseReadiness={releaseReadiness}
+        draftRecoveryStatus={draftRecoveryStatus}
+        draftCopyFallbackRef={draftCopyFallbackRef}
+        draftCopyStatus={draftCopyStatus}
+        onCopySessionDrafts={handleCopySessionDrafts}
+        onReconfirmStaleDrafts={handleReconfirmStaleDrafts}
+        selectedDraftKeys={selectedDraftKeys}
+        onToggleDraftKey={(key) => {
+          const next = new Set(selectedDraftKeys);
+          if (next.has(key)) next.delete(key);
+          else next.add(key);
+          structuredEditSession.selectSubset(next);
+        }}
+        submitReason={submitReason}
+        onSubmitReasonChange={(value) => structuredEditSession.setReason(value)}
+        canEdit={canEdit}
+        onValidateSelected={handleValidateSelected}
+        onSubmitSelected={handleSubmitSelected}
+        submittingEdits={submittingEdits}
+        validateStatus={validateStatus}
+        submitStatus={submitStatus}
+        submitError={submitError}
+        projectId={project.id}
+        fileRepository={fileRepository}
+        onConflictsChange={(next) => conflictLocateFacade.setOpenConflicts(next)}
+        onLocateConflict={(conflict) => {
+          const target = conflictLocateFacade.locate(conflict);
+          if (!target) return;
+          selectStructureTarget(target.fileId, target.nodePath, target.propertyName);
+        }}
+        canAdmin={canAdmin}
+        acknowledgedWarningIds={acknowledgedWarningIds}
+        onAcknowledgeWarning={(issueId) => {
+          releaseBaselineSession.acknowledgeWarning(issueId);
+        }}
+        onSelectReadinessIssue={handleSelectReadinessIssue}
+        onReadinessRetry={() => setReadinessRetry((value) => value + 1)}
+      />
 
-      <ConfirmDialog
-        open={createBaselineOpen}
-        title="创建发布基线"
-        description={
-          <div>
-            <p>将按当前配置集成员版本创建快照。创建不上传文件，也不改变工作配置。</p>
-            {sessionDraftsDirty ? (
-              <p role="alert">还有未保存的本机会话变更；请先提交或丢弃后再创建基线。</p>
-            ) : null}
-            {baselineActionError ? <p role="alert">{baselineActionError}</p> : null}
-            <label>
-              <span>基线名称</span>
-              <input
-                aria-label="基线名称"
-                value={newBaselineName}
-                onChange={(event) => setNewBaselineName(event.target.value)}
-              />
-            </label>
-          </div>
-        }
-        confirmLabel="创建基线"
-        cancelLabel="取消"
-        pending={pendingAction === "create-baseline"}
-        pendingLabel="创建中…"
-        tone="primary"
-        onCancel={() => {
+      <WorkbenchBaselineDialogs
+        createOpen={createBaselineOpen}
+        releaseOpen={releaseBaselineOpen}
+        restoreOpen={restoreBaselineOpen}
+        leaveOpen={leaveConfirmOpen}
+        sessionDraftsDirty={sessionDraftsDirty}
+        baselineActionError={baselineActionError}
+        newBaselineName={newBaselineName}
+        onNewBaselineNameChange={setNewBaselineName}
+        pendingAction={pendingAction}
+        releaseReadiness={releaseReadiness}
+        acknowledgedWarningIds={acknowledgedWarningIds}
+        restorePreview={restorePreview}
+        selectedBaselineId={selectedBaselineId}
+        baselines={baselines}
+        onCancelCreate={() => {
           if (pendingAction) return;
           setCreateBaselineOpen(false);
           releaseBaselineSession.clearActionError();
         }}
-        onConfirm={() => {
+        onConfirmCreate={() => {
           void runAction("create-baseline", createWorkbenchBaseline);
         }}
-      />
-
-      <ConfirmDialog
-        open={releaseBaselineOpen}
-        title="发布基线确认"
-        description={
-          <div>
-            <p>
-              将把选中草稿发布为配置集当前 tip，并把先前 tip 标记为历史。发布会写入审计并刷新
-              working-versus-released drift。
-            </p>
-            {releaseReadiness?.warnings
-              .filter((item) => item.acknowledgementRequired)
-              .map((item) => (
-                <p key={item.id} role="note">
-                  警告：{item.message}
-                  {acknowledgedWarningIds.has(item.id) ? "（已确认）" : "（待确认）"}
-                </p>
-              ))}
-            {baselineActionError ? <p role="alert">{baselineActionError}</p> : null}
-          </div>
-        }
-        confirmLabel="确认发布"
-        cancelLabel="取消"
-        pending={pendingAction === "release-baseline"}
-        pendingLabel="发布中…"
-        tone="danger"
-        onCancel={() => {
+        onCancelRelease={() => {
           if (pendingAction) return;
           setReleaseBaselineOpen(false);
           releaseBaselineSession.clearActionError();
         }}
-        onConfirm={() => {
+        onConfirmRelease={() => {
           void runAction("release-baseline", releaseWorkbenchBaseline);
         }}
-      />
-
-      <ConfirmDialog
-        open={restoreBaselineOpen}
-        title="恢复基线确认"
-        description={
-          restorePreview && selectedBaselineId
-            ? formatRestorePreviewDescription(
-                baselines.find((item) => item.id === selectedBaselineId)?.name ?? selectedBaselineId,
-                restorePreview.members,
-                restorePreview.releasedBaselineUnchanged
-              )
-            : "正在准备恢复预览…"
-        }
-        confirmLabel="确认恢复"
-        cancelLabel="取消"
-        pending={pendingAction === "restore-baseline"}
-        pendingLabel="恢复中…"
-        tone="danger"
-        onCancel={() => {
+        onCancelRestore={() => {
           if (pendingAction) return;
           setRestoreBaselineOpen(false);
           releaseBaselineSession.clearRestorePreview();
           releaseBaselineSession.clearActionError();
         }}
-        onConfirm={() => {
+        onConfirmRestore={() => {
           void runAction("restore-baseline", restoreWorkbenchBaseline);
         }}
-      />
-
-      <ConfirmDialog
-        open={leaveConfirmOpen}
-        title="离开配置工作台"
-        description={
-          <p>
-            还有未提交的会话变更。离开将丢弃本机可恢复草稿；若仅想稍后继续，请留在本页或先复制草稿。
-          </p>
-        }
-        confirmLabel="丢弃并离开"
-        cancelLabel="留在本页"
-        tone="danger"
-        onCancel={() => setLeaveConfirmOpen(false)}
-        onConfirm={handleDiscardAndLeave}
-      />
-
-      <ConfirmDialog
-        open={Boolean(confirmation)}
-        title={confirmation?.title ?? ""}
-        description={confirmation?.description ?? null}
-        confirmLabel={confirmation?.confirmLabel ?? "确认"}
-        pending={pendingAction === confirmation?.key}
-        pendingLabel={confirmation?.pendingLabel}
-        tone={confirmation?.tone ?? "primary"}
-        onCancel={() => {
+        onCancelLeave={() => setLeaveConfirmOpen(false)}
+        onConfirmLeave={handleDiscardAndLeave}
+        confirmation={confirmation}
+        onCancelConfirmation={() => {
           if (pendingAction) return;
           setConfirmation(null);
         }}
-        onConfirm={() => {
+        onConfirmConfirmation={() => {
           if (!confirmation) return;
           void runAction(confirmation.key, async () => {
             await confirmation.run();
@@ -4015,6 +2400,7 @@ export function ProjectConfigurationWorkbench({
           });
         }}
       />
+
       <GovernanceToast message={toastMessage} />
     </section>
   );

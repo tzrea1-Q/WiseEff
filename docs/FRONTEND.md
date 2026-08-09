@@ -105,8 +105,9 @@ Domain acts for the configuration workbench live as Workbench sessions under `sr
 | `CandidateVersionFlow` | Candidate create/load/recompute/abandon/activate (+ File→base64) |
 | `ReleaseBaselineSession` | Readiness refresh/ack, baseline create/compare/release/restore (+ gate tokens) |
 | `ConflictLocateFacade` | Open-conflict load, locate projection, open-arbitration refresh |
+| `ConfigSetOpsSession` | Config-set create / add-remove member / export / manual sync (+ narrow port Picks) |
 
-React hooks (`useStructuredEditSession`, `useCandidateVersionFlow`, `useReleaseBaselineSession`, `useConflictLocateFacade`) are thin `useSyncExternalStore` adapters. Prefer unit-testing the session command interfaces. The shell (`ProjectConfigurationWorkbench`) keeps URL/selection, ConfirmDialogs, and dock presentation; it must not re-own those lifecycle state machines.
+React hooks (`useStructuredEditSession`, `useCandidateVersionFlow`, `useReleaseBaselineSession`, `useConflictLocateFacade`, `useConfigSetOpsSession`) are thin `useSyncExternalStore` adapters. Prefer unit-testing the session command interfaces. The shell (`ProjectConfigurationWorkbench`) keeps URL/selection, ConfirmDialog ownership, and presentation-adapter wiring (`WorkbenchCommandBar`, `WorkbenchInspectorPanel`, `WorkbenchSourceTree`, `WorkbenchSourceCanvas`, `WorkbenchTaskDock`); it must not re-own those lifecycle state machines.
 
 - `ProjectParameterFilesPanel` and `ParameterFileConflictPanel` accept a `repository` prop only; they must **not** call `createParameterFileClient()` inside the component.
 - `/parameter-admin/projects` and `/parameter-admin` resolve the port once and pass it down (including mock mode demos that list fixture files / open conflicts without HTTP).

@@ -495,21 +495,23 @@ New coordinating surface:
 
 ```text
 ProjectConfigurationWorkbenchPage
-└─ ProjectConfigurationWorkbench (shell: selection / URL / ConfirmDialog / docks)
-   ├─ ConfigurationCommandBar
-   ├─ ConfigSourceTree
-   ├─ DtsSourceCanvas
-   ├─ ConfigurationInspector (+ WorkbenchBaselineDock)
-   ├─ ConfigurationTaskDock (+ conflict / readiness adapters)
-   ├─ ReleaseReadinessIndicator
+└─ ProjectConfigurationWorkbench (shell: selection / URL / ConfirmDialog wiring / load orchestration)
+   ├─ WorkbenchCommandBar
+   ├─ WorkbenchShellChrome (ops banners + mobile region tools)
+   ├─ WorkbenchSourceTree
+   ├─ WorkbenchSourceCanvas
+   ├─ WorkbenchInspectorPanel (+ WorkbenchBaselineDock)
+   ├─ WorkbenchTaskDock (+ conflict / readiness adapters)
+   ├─ WorkbenchCandidateActivateDialog / WorkbenchBaselineDialogs
    └─ Workbench sessions (`src/application/project-configuration/`)
       ├─ StructuredEditSession
       ├─ CandidateVersionFlow
       ├─ ReleaseBaselineSession
-      └─ ConflictLocateFacade
+      ├─ ConflictLocateFacade
+      └─ ConfigSetOpsSession
 ```
 
-Wave-1 session extraction (#258–#265) moved domain acts behind command interfaces under `src/application/project-configuration/`. The shell still hosts substantial layout and presentation wiring (thousands of lines); further thinning is presentation-adapter extraction, not re-opening those session machines. Activity uses injected `AuditQuery.listAuditEvents` only — the workbench page must not construct audit HTTP clients.
+Wave-1 session extraction (#258–#265 / PR #266) moved domain acts behind command interfaces under `src/application/project-configuration/`. Wave-2 (#267–#271) extracted presentation adapters (`WorkbenchCommandBar`, `WorkbenchInspectorPanel`, source tree/canvas, task dock, shell chrome/dialogs) plus `ConfigSetOpsSession`; the shell is orchestration-focused at ≤ ~2500 lines, with further thinning (aspirational 800–1000) deferred to wave-3. Activity uses injected `AuditQuery.listAuditEvents` only — the workbench page must not construct audit HTTP clients.
 
 Reuse rules:
 
