@@ -135,7 +135,7 @@ export function StructuredValueEditor({
 
       {valueType === "empty" ? (
         <p className="structured-value-empty-note" id={`${baseId}-empty`}>
-          empty 空属性（只读）— 规范化值为 empty
+          空属性（只读）— 规范化预览为 empty
         </p>
       ) : null}
 
@@ -190,15 +190,15 @@ function U32ArrayEditor({
   };
 
   return (
-    <div className="structured-value-u32-matrix" role="group" aria-label="u32-array cells">
+    <div className="structured-value-u32-matrix" role="group" aria-label="整数数组">
       {cells.map((cell, index) => {
         const cellError = validateCellToken(cell);
         const show = shouldShowFieldError(cellError, { touched, submitted: showErrors });
         return (
           <label key={`${baseId}-cell-${index}`} className="structured-value-cell">
-            <span className="sr-only">cell {index + 1}</span>
+            <span className="sr-only">数值 {index + 1}</span>
             <input
-              aria-label={`cell ${index + 1}`}
+              aria-label={`数值 ${index + 1}`}
               aria-invalid={show ? "true" : "false"}
               disabled={disabled}
               value={cell}
@@ -212,10 +212,10 @@ function U32ArrayEditor({
       <button
         type="button"
         disabled={disabled}
-        aria-label="添加 cell"
+        aria-label="添加数值"
         onClick={() => onCellsChange([...cells, "0"])}
       >
-        添加 cell
+        添加数值
       </button>
     </div>
   );
@@ -243,12 +243,12 @@ function BytesEditor({
   const width = parsed.width || 8;
 
   return (
-    <div className="structured-value-bytes" role="group" aria-label="bytes editor">
+    <div className="structured-value-bytes" role="group" aria-label="字节数组">
       <label>
         位宽
         <input
           type="number"
-          aria-label="bits width"
+          aria-label="位宽"
           min={8}
           step={8}
           disabled={disabled}
@@ -261,9 +261,9 @@ function BytesEditor({
         const show = shouldShowFieldError(cellError, { touched, submitted: showErrors });
         return (
           <label key={`${baseId}-byte-${index}`}>
-            <span className="sr-only">byte {index + 1}</span>
+            <span className="sr-only">字节 {index + 1}</span>
             <input
-              aria-label={`byte ${index + 1}`}
+              aria-label={`字节 ${index + 1}`}
               aria-invalid={show ? "true" : "false"}
               disabled={disabled}
               value={byte}
@@ -280,10 +280,10 @@ function BytesEditor({
       <button
         type="button"
         disabled={disabled}
-        aria-label="添加 byte"
+        aria-label="添加字节"
         onClick={() => onChangeValue(width, [...bytes, "0x00"])}
       >
-        添加 byte
+        添加字节
       </button>
     </div>
   );
@@ -303,7 +303,7 @@ function StringListEditor({
   const values = parseStringListValues(rawText);
 
   return (
-    <div className="structured-value-string-list" role="group" aria-label="string-list">
+    <div className="structured-value-string-list" role="group" aria-label="字符串列表">
       {values.map((value, index) => (
         <div key={`${baseId}-str-${index}`} className="structured-value-string-row">
           <input
@@ -362,7 +362,7 @@ function PhandleListEditor({
   };
 
   return (
-    <div className="structured-value-phandle-list" role="group" aria-label="phandle-list">
+    <div className="structured-value-phandle-list" role="group" aria-label="句柄引用">
       {labels.map((label) => (
         <label key={`${baseId}-ph-${label}`}>
           <input
@@ -446,11 +446,11 @@ function MixedEditor({
 
   return (
     <label className="structured-value-mixed">
-      <span className="sr-only">mixed 原始值</span>
+      <span className="sr-only">混合类型原始值</span>
       <textarea
         id={`${baseId}-mixed`}
         className="parameter-admin-code-editor"
-        aria-label="mixed 原始值"
+        aria-label="混合类型原始值"
         aria-invalid={show ? "true" : "false"}
         disabled={disabled}
         value={rawText}
@@ -465,9 +465,9 @@ function MixedEditor({
 
 function validateCellToken(token: string): string | null {
   const trimmed = token.trim();
-  if (!trimmed) return "单元不能为空";
+  if (!trimmed) return "数值不能为空";
   if (/^&[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed)) return null;
   if (/^-?0[xX][0-9A-Fa-f]+$/.test(trimmed)) return null;
   if (/^-?\d+$/.test(trimmed)) return null;
-  return "非法单元";
+  return "非法数值";
 }

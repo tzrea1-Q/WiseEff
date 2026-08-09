@@ -203,10 +203,10 @@ export function ValueShapeFields({
 
         {showCellFields ? (
           <FieldShell className={fieldClassName}>
-            <FieldLabel htmlFor={bitsId} label="bits" description={descriptions?.bits} />
+            <FieldLabel htmlFor={bitsId} label="位宽" description={descriptions?.bits} />
             <input
               id={bitsId}
-              aria-label="bits"
+              aria-label="位宽"
               type="number"
               min={8}
               step={8}
@@ -231,12 +231,12 @@ export function ValueShapeFields({
           <FieldShell className={fieldClassName}>
             <FieldLabel
               htmlFor={cellsPerGroupId}
-              label="cellsPerGroup"
+              label="每组数值个数"
               description={descriptions?.cellsPerGroup}
             />
             <input
               id={cellsPerGroupId}
-              aria-label="cellsPerGroup"
+              aria-label="每组数值个数"
               type="number"
               min={1}
               value={state.cellsPerGroup ?? ""}
@@ -261,12 +261,12 @@ export function ValueShapeFields({
           <FieldShell className={fieldClassName}>
             <FieldLabel
               htmlFor={bytesLengthId}
-              label="bytes.length"
+              label="字节长度"
               description={descriptions?.bytesLength}
             />
             <input
               id={bytesLengthId}
-              aria-label="bytes.length"
+              aria-label="字节长度"
               type="number"
               min={0}
               value={state.bytesLength ?? ""}
