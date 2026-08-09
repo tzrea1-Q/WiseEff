@@ -496,10 +496,14 @@ ProjectConfigurationWorkbenchPage
       ├─ CandidateVersionFlow
       ├─ ReleaseBaselineSession
       ├─ ConflictLocateFacade
-      └─ ConfigSetOpsSession
+      ├─ ConfigSetOpsSession
+      ├─ WorkbenchNavigationSession
+      ├─ WorkbenchWorkspaceLoadSession
+      ├─ WorkbenchCanvasHistorySession
+      └─ WorkbenchActivitySession
 ```
 
-Wave-1 会话抽取（#258–#265 / PR #266）把领域动作收到 `src/application/project-configuration/` 的命令接口后面。Wave-2（#267–#271）抽出展示适配器（`WorkbenchCommandBar`、`WorkbenchInspectorPanel`、源结构树/画布、任务坞、壳层 chrome/对话框）以及 `ConfigSetOpsSession`；壳层以编排为主且 ≤ ~2500 行，更进一步瘦身（目标 800–1000）留给 wave-3。Activity 只注入 `AuditQuery.listAuditEvents`——工作台页面模块禁止自行构造审计 HTTP client。
+Wave-1 会话抽取（#258–#265 / PR #266）把领域动作收到 `src/application/project-configuration/` 的命令接口后面。Wave-2（#267–#271 / PR #272）抽出展示适配器（`WorkbenchCommandBar`、`WorkbenchInspectorPanel`、源结构树/画布、任务坞、壳层 chrome/对话框）以及 `ConfigSetOpsSession`（壳 ≤ ~2500）。Wave-3（#273–#278）抽出 Navigation / WorkspaceLoad / CanvasHistory / Activity Workbench session，并把壳压到 ≤ ~1500 行编排向（stretch 800–1000 记为残余债）。Activity 只注入 `AuditQuery.listAuditEvents`——工作台页面模块禁止自行构造审计 HTTP client。
 
 复用约束：
 
