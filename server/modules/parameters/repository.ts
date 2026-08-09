@@ -2792,29 +2792,29 @@ export async function insertFileSyncConflict(
     projectParameterBindingId?: string;
   }
 ) {
-  const bindingId = input.projectParameterBindingId ?? input.projectParameterValueId;
-  const parameterSpecId = input.parameterSpecId ?? input.parameterDefinitionId;
   const result = await db.query<FileSyncConflictRow>(
     `
     insert into parameter_file_sync_conflicts (
-      id, organization_id, project_id,
+      id, organization_id, project_id, project_parameter_value_id, parameter_definition_id,
       file_version_id, file_draft_id, ui_draft_id, file_value, ui_draft_value, status,
       parameter_spec_id, project_parameter_binding_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, 'open', $9, $10)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'open', $11, $12)
     returning *
     `,
     [
       input.id,
       input.organizationId,
       input.projectId,
+      input.projectParameterValueId,
+      input.parameterDefinitionId,
       input.fileVersionId,
       input.fileDraftId,
       input.uiDraftId,
       input.fileValue,
       input.uiDraftValue,
-      parameterSpecId,
-      bindingId
+      input.parameterSpecId ?? null,
+      input.projectParameterBindingId ?? null
     ]
   );
 

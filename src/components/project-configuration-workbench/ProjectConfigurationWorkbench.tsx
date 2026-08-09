@@ -76,7 +76,6 @@ import {
   aggregateSessionDraftSubset,
   clearSubmittedDrafts,
   listSessionDraftRows,
-  propertyIdentity,
   sessionDraftKey,
   type SessionPropertyDraft
 } from "./sessionDrafts";
