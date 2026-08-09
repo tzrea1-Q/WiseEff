@@ -495,15 +495,21 @@ New coordinating surface:
 
 ```text
 ProjectConfigurationWorkbenchPage
-└─ ProjectConfigurationWorkbench
+└─ ProjectConfigurationWorkbench (shell: selection / URL / ConfirmDialog / docks)
    ├─ ConfigurationCommandBar
    ├─ ConfigSourceTree
    ├─ DtsSourceCanvas
-   ├─ ConfigurationInspector
-   ├─ ConfigurationTaskDock
+   ├─ ConfigurationInspector (+ WorkbenchBaselineDock)
+   ├─ ConfigurationTaskDock (+ conflict / readiness adapters)
    ├─ ReleaseReadinessIndicator
-   └─ CandidateVersionFlow
+   └─ Workbench sessions (`src/application/project-configuration/`)
+      ├─ StructuredEditSession
+      ├─ CandidateVersionFlow
+      ├─ ReleaseBaselineSession
+      └─ ConflictLocateFacade
 ```
+
+Wave-1 session extraction (#258–#265) moved domain acts behind command interfaces under `src/application/project-configuration/`. The shell still hosts substantial layout and presentation wiring (thousands of lines); further thinning is presentation-adapter extraction, not re-opening those session machines. Activity uses injected `AuditQuery.listAuditEvents` only — the workbench page must not construct audit HTTP clients.
 
 Reuse rules:
 

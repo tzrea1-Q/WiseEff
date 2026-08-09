@@ -483,15 +483,21 @@ clean → dirty → validating → submitting → submitted
 
 ```text
 ProjectConfigurationWorkbenchPage
-└─ ProjectConfigurationWorkbench
+└─ ProjectConfigurationWorkbench（壳：选择 / URL / ConfirmDialog / 各坞）
    ├─ ConfigurationCommandBar
    ├─ ConfigSourceTree
    ├─ DtsSourceCanvas
-   ├─ ConfigurationInspector
-   ├─ ConfigurationTaskDock
+   ├─ ConfigurationInspector（含 WorkbenchBaselineDock）
+   ├─ ConfigurationTaskDock（冲突 / 就绪适配）
    ├─ ReleaseReadinessIndicator
-   └─ CandidateVersionFlow
+   └─ Workbench sessions（`src/application/project-configuration/`）
+      ├─ StructuredEditSession
+      ├─ CandidateVersionFlow
+      ├─ ReleaseBaselineSession
+      └─ ConflictLocateFacade
 ```
+
+Wave-1 会话抽取（#258–#265）把领域动作收到 `src/application/project-configuration/` 的命令接口后面。壳层仍承载大量布局与展示接线（数千行）；继续瘦身应抽展示适配器，而不是重开这些会话状态机。Activity 只注入 `AuditQuery.listAuditEvents`——工作台页面模块禁止自行构造审计 HTTP client。
 
 复用约束：
 

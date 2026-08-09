@@ -4,14 +4,10 @@ import { Activity, ChevronLeft, ChevronRight, FileCode2, FolderTree, Info, Lock,
 import type {
   ConfigSetRole,
   DtsBaselineMemberComparison,
-  DtsCompareBaselineResult,
   DtsConfigSet,
   DtsConfigSetMemberFile,
   DtsExportConfigSetResult,
-  DtsReleaseBaseline,
-  DtsReleaseReadiness,
   DtsReleaseReadinessIssue,
-  DtsRestorePreviewResult,
   DtsSearchHit,
   DtsSourceLocator,
   DtsStructuralNode,
@@ -19,9 +15,7 @@ import type {
 } from "@/application/ports/DtsStructuredRepository";
 import type {
   FileSyncSummary,
-  ParameterFileCandidate,
   ParameterFileRepository,
-  ParameterFileSyncConflict,
   ProjectParameterFile,
   ProjectParameterFileVersion
 } from "@/application/ports/ParameterFileRepository";
@@ -38,7 +32,6 @@ import {
 import { mapApiAuditEventToView } from "@/domain/audit/mapAuditEventView";
 import type { AuditEventListResponse, AuditEventView, ListAuditEventsParams } from "@/domain/audit/types";
 import { dtsValueTypeLabel } from "@/domain/dts/dtsValueTypeLabels";
-import { createAuditClient } from "@/infrastructure/http/auditClient";
 import {
   presentWorkbenchActivity,
   resolveWorkbenchActivityTarget,
@@ -73,19 +66,15 @@ import {
   type WorkbenchCanvasMode
 } from "./workbenchInspectorModel";
 import {
-  aggregateSessionDraftSubset,
-  clearSubmittedDrafts,
-  listSessionDraftRows,
-  sessionDraftKey,
-  type SessionPropertyDraft
-} from "./sessionDrafts";
+  sessionDraftKey
+} from "@/application/project-configuration/sessionDrafts";
 import {
-  findRecoverableSessionDraft,
-  formatSessionDraftCopyText,
-  removeSessionDraftBucket,
-  upsertSessionDraftBucket,
   type SessionDraftScope
-} from "./sessionDraftStorage";
+} from "@/application/project-configuration/sessionDraftStorage";
+import { useStructuredEditSession } from "@/application/project-configuration/useStructuredEditSession";
+import { useCandidateVersionFlow } from "@/application/project-configuration/useCandidateVersionFlow";
+import { useReleaseBaselineSession } from "@/application/project-configuration/useReleaseBaselineSession";
+import { useConflictLocateFacade } from "@/application/project-configuration/useConflictLocateFacade";
 import { WorkbenchStructureTree } from "./WorkbenchStructureTree";
 
 export type ProjectConfigurationWorkbenchProject = {
@@ -107,7 +96,8 @@ export type ProjectConfigurationWorkbenchProps = {
   canEditCritical?: boolean;
   /** When false, mutations are denied but read context stays visible. Defaults true for back-compat. */
   canAdmin?: boolean;
-  listAuditEvents?: (params?: ListAuditEventsParams) => Promise<AuditEventListResponse>;
+  /** Required AuditQuery.listAuditEvents — workbench must not construct audit HTTP clients. */
+  listAuditEvents: (params?: ListAuditEventsParams) => Promise<AuditEventListResponse>;
   /** Authenticated user for draft scoping. Defaults to "local-user" for back-compat tests. */
   currentUserId?: string;
   /** Optional org override; prefer selectedConfigSet.organizationId at runtime. */
@@ -301,33 +291,29 @@ export function ProjectConfigurationWorkbench({
   organizationId,
   draftStorage
 }: ProjectConfigurationWorkbenchProps) {
-  const listProjectActivity = useCallback(
-    (params?: ListAuditEventsParams) =>
-      listAuditEvents
-        ? listAuditEvents(params)
-        : createAuditClient().listAuditEvents(params),
-    [listAuditEvents]
-  );
   const { message: toastMessage, showToast } = useGovernanceToast();
   const [configSets, setConfigSets] = useState<DtsConfigSet[]>([]);
   const [projectFiles, setProjectFiles] = useState<ProjectParameterFile[]>([]);
   const [members, setMembers] = useState<DtsConfigSetMemberFile[]>([]);
-  const [baselines, setBaselines] = useState<DtsReleaseBaseline[]>([]);
-  const [releaseReadiness, setReleaseReadiness] = useState<DtsReleaseReadiness | null>(null);
-  const [readinessLoading, setReadinessLoading] = useState(false);
-  const [readinessError, setReadinessError] = useState("");
-  const [readinessRetry, setReadinessRetry] = useState(0);
-  const [acknowledgedWarningIds, setAcknowledgedWarningIds] = useState<Set<string>>(() => new Set());
+  const {
+    session: releaseBaselineSession,
+    baselines,
+    baselinesLoading,
+    baselinesError,
+    readiness: releaseReadiness,
+    readinessLoading,
+    readinessError,
+    acknowledgedWarningIds,
+    selectedBaselineId,
+    pinnedMembers: baselinePinnedMembers,
+    compareResult: baselineCompare,
+    compareAgainst: baselineCompareAgainst,
+    restorePreview,
+    actionError: baselineActionError,
+    releasedTip: releasedBaseline
+  } = useReleaseBaselineSession();
   const [createBaselineOpen, setCreateBaselineOpen] = useState(false);
   const [newBaselineName, setNewBaselineName] = useState("");
-  const [baselineActionError, setBaselineActionError] = useState("");
-  const [selectedBaselineId, setSelectedBaselineId] = useState<string | null>(null);
-  const [baselinePinnedMembers, setBaselinePinnedMembers] = useState<
-    Array<{ fileId: string; fileVersionId: string; versionNumber: number }>
-  >([]);
-  const [baselineCompare, setBaselineCompare] = useState<DtsCompareBaselineResult | null>(null);
-  const [baselineCompareAgainst, setBaselineCompareAgainst] = useState<"working" | "released">("working");
-  const [restorePreview, setRestorePreview] = useState<DtsRestorePreviewResult | null>(null);
   const [releaseBaselineOpen, setReleaseBaselineOpen] = useState(false);
   const [restoreBaselineOpen, setRestoreBaselineOpen] = useState(false);
   const [workingReturnPath, setWorkingReturnPath] = useState<string | null>(null);
@@ -335,17 +321,16 @@ export function ProjectConfigurationWorkbench({
   const [configSetsLoading, setConfigSetsLoading] = useState(true);
   const [filesLoading, setFilesLoading] = useState(true);
   const [membersLoading, setMembersLoading] = useState(false);
-  const [baselinesLoading, setBaselinesLoading] = useState(false);
   const [sourceLoading, setSourceLoading] = useState(false);
   const [configSetsError, setConfigSetsError] = useState("");
   const [filesError, setFilesError] = useState("");
   const [membersError, setMembersError] = useState("");
-  const [baselinesError, setBaselinesError] = useState("");
   const [sourceError, setSourceError] = useState("");
   const [configRetry, setConfigRetry] = useState(0);
   const [filesRetry, setFilesRetry] = useState(0);
   const [membersRetry, setMembersRetry] = useState(0);
   const [baselinesRetry, setBaselinesRetry] = useState(0);
+  const [readinessRetry, setReadinessRetry] = useState(0);
   const [sourceRetry, setSourceRetry] = useState(0);
   const [treeOpen, setTreeOpen] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(false);
@@ -360,11 +345,20 @@ export function ProjectConfigurationWorkbench({
   const [modeSourceError, setModeSourceError] = useState("");
   const [downloadMessage, setDownloadMessage] = useState("");
   const [downloadingDts, setDownloadingDts] = useState(false);
-  const [activeCandidate, setActiveCandidate] = useState<ParameterFileCandidate | null>(null);
-  const [candidateSource, setCandidateSource] = useState("");
-  const [candidateLoading, setCandidateLoading] = useState(false);
-  const [candidateError, setCandidateError] = useState("");
-  const [uploadingCandidate, setUploadingCandidate] = useState(false);
+  const {
+    flow: candidateFlow,
+    candidate: activeCandidate,
+    sourceText: candidateSource,
+    loading: candidateLoading,
+    uploading: uploadingCandidate,
+    activating: activatingCandidate,
+    error: candidateError,
+    activateError,
+    activateRole,
+    canActivate,
+    canRecompute,
+    canAbandon
+  } = useCandidateVersionFlow();
   const [activityEvents, setActivityEvents] = useState<AuditEventView[]>([]);
   const [activityRows, setActivityRows] = useState<WorkbenchActivityRow[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
@@ -372,10 +366,7 @@ export function ProjectConfigurationWorkbench({
   const [activityMissingNotice, setActivityMissingNotice] = useState("");
   const [activityRefreshToken, setActivityRefreshToken] = useState(0);
   const [knownCandidateIds, setKnownCandidateIds] = useState<string[]>([]);
-const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
-  const [activatingCandidate, setActivatingCandidate] = useState(false);
-  const [activateRole, setActivateRole] = useState<ConfigSetRole>("overlay");
-  const [activateError, setActivateError] = useState("");
+  const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   const candidateFileInputRef = useRef<HTMLInputElement | null>(null);
   const [lastVisibleLine, setLastVisibleLine] = useState<number | null>(null);
   const [restoredScrollLine, setRestoredScrollLine] = useState<number | null>(null);
@@ -387,23 +378,27 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     sourceMode: string | null;
   } | null>(null);
   const [tasksOpen, setTasksOpen] = useState(false);
-  const [sessionDrafts, setSessionDrafts] = useState<Record<string, SessionPropertyDraft>>({});
-  const [selectedDraftKeys, setSelectedDraftKeys] = useState<Set<string>>(new Set());
-  const [submitReason, setSubmitReason] = useState("");
-  const [submitError, setSubmitError] = useState("");
-  const [submitStatus, setSubmitStatus] = useState("");
-  const [validateStatus, setValidateStatus] = useState("");
-  const [submittingEdits, setSubmittingEdits] = useState(false);
-  const [draftRecoveryStatus, setDraftRecoveryStatus] = useState<"none" | "compatible" | "stale-base">(
-    "none"
-  );
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
   const [draftCopyStatus, setDraftCopyStatus] = useState("");
-  const draftRecoveryGenerationRef = useRef(0);
-  const draftPersistScopeRef = useRef<SessionDraftScope | null>(null);
-  const draftPersistEnabledRef = useRef(false);
   const draftCopyFallbackRef = useRef<HTMLTextAreaElement | null>(null);
   const sessionDraftStorage = draftStorage ?? localStorage;
+  const {
+    session: structuredEditSession,
+    drafts: sessionDrafts,
+    selectedKeys: selectedDraftKeys,
+    reason: submitReason,
+    recoveryStatus: draftRecoveryStatus,
+    validateStatus,
+    submitError,
+    submitStatus,
+    submitting: submittingEdits,
+    rows: sessionDraftRows,
+    isDirty: sessionDraftsDirty,
+    isStaleBase: staleDraftLocked
+  } = useStructuredEditSession({
+    storage: sessionDraftStorage,
+    onDraftsRecovered: () => setTasksOpen(true)
+  });
   const [narrowViewport, setNarrowViewport] = useState(false);
   const [structureNodes, setStructureNodes] = useState<DtsStructuralNode[]>([]);
   const [structureLoading, setStructureLoading] = useState(false);
@@ -418,12 +413,6 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
   const [findNextToken, setFindNextToken] = useState(0);
   const [focusLineOverride, setFocusLineOverride] = useState<number | null>(null);
-  const pendingLocateFocusRef = useRef<{
-    fileId: string;
-    nodePath: string | null;
-    propertyName: string | null;
-    line: number;
-  } | null>(null);
   const [suppressScrollSync, setSuppressScrollSync] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const treeRegionRef = useRef<HTMLElement | null>(null);
@@ -441,7 +430,10 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   const [memberRole, setMemberRole] = useState<ConfigSetRole>("base");
   const [memberSortOrder, setMemberSortOrder] = useState(0);
   const [syncEvidence, setSyncEvidence] = useState("");
-  const [syncConflicts, setSyncConflicts] = useState<ParameterFileSyncConflict[]>([]);
+  const {
+    facade: conflictLocateFacade,
+    conflicts: syncConflicts
+  } = useConflictLocateFacade();
   const [exportEvidence, setExportEvidence] = useState("");
   const sourceRegionRef = useRef<HTMLElement | null>(null);
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
@@ -526,23 +518,8 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   }, [fileRepository, filesRetry, project.id]);
 
   useEffect(() => {
-    let cancelled = false;
-    void fileRepository
-      .listConflicts(project.id)
-      .then((items) => {
-        if (!cancelled) {
-          setSyncConflicts(items.filter((item) => item.status === "open"));
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setSyncConflicts([]);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [fileRepository, filesRetry, project.id]);
+    void conflictLocateFacade.load(project.id, fileRepository);
+  }, [conflictLocateFacade, fileRepository, filesRetry, project.id]);
 
   const selectedConfigSet = useMemo(() => {
     const requested = queryValue(search, "configSet");
@@ -578,63 +555,29 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   }, [dtsRepository, membersRetry, project.id, selectedConfigSet]);
 
   useEffect(() => {
-    if (!selectedConfigSet) {
-      setBaselines([]);
-      setBaselinesLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setBaselinesLoading(true);
-    setBaselinesError("");
-    void dtsRepository
-      .listBaselines(project.id, selectedConfigSet.id)
-      .then((items) => {
-        if (!cancelled) setBaselines(items);
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setBaselines([]);
-          setBaselinesError(error instanceof Error ? error.message : "发布基线加载失败。");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setBaselinesLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [baselinesRetry, dtsRepository, project.id, selectedConfigSet]);
+    void releaseBaselineSession.loadBaselines(
+      project.id,
+      selectedConfigSet?.id ?? null,
+      dtsRepository
+    );
+  }, [baselinesRetry, dtsRepository, project.id, releaseBaselineSession, selectedConfigSet]);
 
   useEffect(() => {
-    if (!selectedConfigSet || !canAdmin) {
-      setReleaseReadiness(null);
-      setReadinessLoading(false);
-      setReadinessError("");
-      return;
-    }
-    let cancelled = false;
-    setReadinessLoading(true);
-    setReadinessError("");
-    void dtsRepository
-      .getReleaseReadiness(project.id, selectedConfigSet.id, {
-        acknowledgedWarningIds: [...acknowledgedWarningIds]
-      })
-      .then((item) => {
-        if (!cancelled) setReleaseReadiness(item);
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setReleaseReadiness(null);
-          setReadinessError(error instanceof Error ? error.message : "发布就绪加载失败。");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setReadinessLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [acknowledgedWarningIds, canAdmin, dtsRepository, project.id, readinessRetry, selectedConfigSet]);
+    void releaseBaselineSession.refreshReadiness(
+      project.id,
+      selectedConfigSet?.id ?? null,
+      { canAdmin },
+      dtsRepository
+    );
+  }, [
+    acknowledgedWarningIds,
+    canAdmin,
+    dtsRepository,
+    project.id,
+    readinessRetry,
+    releaseBaselineSession,
+    selectedConfigSet
+  ]);
 
   const selectedMembers = useMemo(() => {
     if (!selectedConfigSet) return [];
@@ -730,7 +673,9 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
       setInspectorLevelOverride("config-set");
       setInspectorOpen(true);
     }
-  }, [search]);
+    // Re-apply when the default member appears; the clear-override effect above would
+    // otherwise drop cutover `inspector=` before assertions/navigation settle.
+  }, [search, selectedMember?.fileId]);
 
   useEffect(() => {
     const tasks = queryValue(search, "tasks");
@@ -860,37 +805,12 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   useEffect(() => {
     if (canvasMode !== "candidate" || !candidateId) {
       if (canvasMode !== "candidate") {
-        setCandidateSource("");
-        setCandidateLoading(false);
+        candidateFlow.leaveCanvas();
       }
       return;
     }
-    let cancelled = false;
-    setCandidateLoading(true);
-    setCandidateError("");
-    void (async () => {
-      try {
-        const [candidate, downloaded] = await Promise.all([
-          fileRepository.getCandidate(project.id, candidateId),
-          fileRepository.downloadCandidate(project.id, candidateId)
-        ]);
-        if (cancelled) return;
-        setActiveCandidate(candidate);
-        setCandidateSource(decodeSourceBytes(downloaded.bytes));
-      } catch (error: unknown) {
-        if (!cancelled) {
-          setActiveCandidate(null);
-          setCandidateSource("");
-          setCandidateError(error instanceof Error ? error.message : "候选加载失败。");
-        }
-      } finally {
-        if (!cancelled) setCandidateLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [candidateId, canvasMode, fileRepository, project.id]);
+    void candidateFlow.load(project.id, candidateId, fileRepository);
+  }, [candidateFlow, candidateId, canvasMode, fileRepository, project.id]);
 
   useEffect(() => {
     if (configSetsLoading || !selectedConfigSet) return;
@@ -1026,20 +946,24 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   }, [search, structureError, structureLoading, structureNodes]);
 
   useEffect(() => {
-    const pending = pendingLocateFocusRef.current;
-    if (pending) {
-      const matched =
-        selectedMember?.fileId === pending.fileId &&
-        selectedNodePath === pending.nodePath &&
-        selectedPropertyName === pending.propertyName;
-      if (matched) {
-        pendingLocateFocusRef.current = null;
-        setFocusLineOverride(pending.line);
-      }
+    const consumed = conflictLocateFacade.consumeLocateTargetIfMatched({
+      fileId: selectedMember?.fileId ?? null,
+      nodePath: selectedNodePath,
+      propertyName: selectedPropertyName
+    });
+    if (consumed?.focusLine != null) {
+      setFocusLineOverride(consumed.focusLine);
       return;
     }
-    setFocusLineOverride(null);
-  }, [selectedNodePath, selectedPropertyName, selectedMember?.fileId]);
+    if (!conflictLocateFacade.locateTarget) {
+      setFocusLineOverride(null);
+    }
+  }, [
+    conflictLocateFacade,
+    selectedNodePath,
+    selectedPropertyName,
+    selectedMember?.fileId
+  ]);
 
   const focusSpan = useMemo(() => {
     if (!selectedNodePath) return null;
@@ -1196,45 +1120,24 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     [selectedMembers]
   );
   const ungroupedFiles = projectFiles.filter((item) => !memberIds.has(item.id));
-  const releasedBaseline = useMemo(() => {
-    const released = baselines.filter((item) => item.status === "released");
-    if (released.length === 0) return null;
-    return [...released].sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0] ?? null;
-  }, [baselines]);
 
   useEffect(() => {
     const requested = queryValue(search, "baseline");
     if (requested && baselines.some((item) => item.id === requested)) {
-      setSelectedBaselineId(requested);
+      releaseBaselineSession.selectBaseline(requested);
       return;
     }
     if (!requested) {
-      setSelectedBaselineId((current) =>
-        current && baselines.some((item) => item.id === current) ? current : null
-      );
+      if (selectedBaselineId && baselines.some((item) => item.id === selectedBaselineId)) {
+        return;
+      }
+      releaseBaselineSession.selectBaseline(null);
     }
-  }, [baselines, search]);
+  }, [baselines, releaseBaselineSession, search, selectedBaselineId]);
 
   useEffect(() => {
-    if (!selectedBaselineId || !selectedConfigSet) {
-      setBaselinePinnedMembers([]);
-      return;
-    }
-    let cancelled = false;
-    void dtsRepository
-      .getBaseline(project.id, selectedBaselineId)
-      .then((result) => {
-        if (cancelled) return;
-        setBaselinePinnedMembers(result.members);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setBaselinePinnedMembers([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [dtsRepository, project.id, selectedBaselineId, selectedConfigSet]);
+    void releaseBaselineSession.loadPinnedMembers(project.id, dtsRepository);
+  }, [dtsRepository, project.id, releaseBaselineSession, selectedBaselineId, selectedConfigSet]);
 
   useEffect(() => {
     const available = ungroupedFiles[0]?.id ?? "";
@@ -1395,13 +1298,13 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
         fileRepository.listConflicts(project.id)
       ]);
       setProjectFiles(files);
-      setSyncConflicts(conflicts.filter((item) => item.status === "open"));
+      conflictLocateFacade.setOpenConflicts(conflicts);
       setMembersRetry((value) => value + 1);
       setFilesRetry((value) => value + 1);
     } catch (error: unknown) {
       setOpsError(error instanceof Error ? error.message : "手动同步失败。");
     }
-  }, [canAdmin, fileRepository, project.id, selectedMember]);
+  }, [canAdmin, conflictLocateFacade, fileRepository, project.id, selectedMember]);
 
   const exportSelectedConfigSet = useCallback(async () => {
     if (!canAdmin || !selectedConfigSet) return;
@@ -1464,7 +1367,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     setActivityError("");
     try {
       const [response, candidates] = await Promise.all([
-        listProjectActivity({
+        listAuditEvents({
           projectId: project.id,
           apps: workbenchActivityApps(),
           limit: 40
@@ -1482,7 +1385,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     } finally {
       setActivityLoading(false);
     }
-  }, [fileRepository, listProjectActivity, project.id]);
+  }, [fileRepository, listAuditEvents, project.id]);
 
   useEffect(() => {
     if (inspectorLevel !== "activity" || !inspectorOpen) return;
@@ -1588,7 +1491,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
         }
         if (resolved.baselineId && selectedConfigSet) {
           setActivityMissingNotice("");
-          setSelectedBaselineId(resolved.baselineId);
+          releaseBaselineSession.selectBaseline(resolved.baselineId);
           setInspectorOpen(true);
           onNavigate(
             formatWorkbenchPath(project.id, search, {
@@ -1605,14 +1508,11 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
       if (resolved.kind === "conflict") {
         setTasksOpen(true);
         setActivityMissingNotice("");
-        void fileRepository
-          .listConflicts(project.id)
-          .then((items) => {
-            setSyncConflicts(items.filter((item) => item.status === "open"));
-          })
-          .catch(() => {
-            /* keep prior conflict list */
-          });
+        void conflictLocateFacade.openArbitration(project.id, fileRepository, {
+          fileId: resolved.fileId,
+          nodePath: resolved.nodePath ?? null,
+          propertyName: resolved.propertyName ?? null
+        });
         if (resolved.fileId) {
           selectStructureTarget(
             resolved.fileId,
@@ -1647,12 +1547,14 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
       activityEvents,
       baselines,
       candidateId,
+      conflictLocateFacade,
       fileRepository,
       knownCandidateIds,
       configSets,
       onNavigate,
       project.id,
       projectFiles,
+      releaseBaselineSession,
       search,
       selectStructureTarget,
       selectedConfigSet,
@@ -1785,32 +1687,13 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     return selectedStructureNode.properties.find((item) => item.name === selectedPropertyName) ?? null;
   }, [selectedPropertyName, selectedStructureNode]);
 
-  const sessionDraftRows = useMemo(() => {
-    if (!selectedMember) return [];
-    return listSessionDraftRows({
-      fileId: selectedMember.fileId,
-      nodes: structureNodes,
-      drafts: sessionDrafts
-    });
-  }, [selectedMember, sessionDrafts, structureNodes]);
-
   useEffect(() => {
-    // While structure is still loading, rows are empty — do not prune restored selection.
-    if (sessionDraftRows.length === 0) {
+    if (selectedMember?.fileId) {
+      structuredEditSession.setStructure(structureNodes, selectedMember.fileId);
       return;
     }
-    setSelectedDraftKeys((current) => {
-      const valid = new Set(sessionDraftRows.map((row) => row.key));
-      if (current.size === 0 && Object.keys(sessionDrafts).length > 0) {
-        return valid;
-      }
-      const next = new Set<string>();
-      for (const key of current) {
-        if (valid.has(key)) next.add(key);
-      }
-      return next;
-    });
-  }, [sessionDraftRows, sessionDrafts]);
+    structuredEditSession.setStructure([], "");
+  }, [selectedMember?.fileId, structureNodes, structuredEditSession]);
 
   const sessionChangeMarkers = useMemo(
     () =>
@@ -1835,7 +1718,6 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     Boolean(selectedStructureNode) &&
     !canEditCritical &&
     isCriticalDtsNodePath(selectedStructureNode!.nodePath);
-  const staleDraftLocked = draftRecoveryStatus === "stale-base";
   const editorLocked = !canEdit || criticalLocked || staleDraftLocked;
 
   const activePropertyDraftKey =
@@ -1878,47 +1760,34 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     selectedMember?.fileId
   ]);
 
-  const sessionDraftsDirty =
-    Object.keys(sessionDrafts).length > 0 || sessionDraftRows.length > 0;
+  useEffect(() => {
+    void structuredEditSession.hydrate(sessionDraftScope);
+  }, [sessionDraftScope, structuredEditSession]);
 
   const createWorkbenchBaseline = useCallback(async () => {
     if (!canAdmin || !selectedConfigSet) return;
-    const name = newBaselineName.trim();
-    if (!name) {
-      setBaselineActionError("请先填写基线名称。");
-      return;
-    }
-    setBaselineActionError("");
-    const readiness = await dtsRepository.getReleaseReadiness(project.id, selectedConfigSet.id, {
-      acknowledgedWarningIds: [...acknowledgedWarningIds]
-    });
-    setReleaseReadiness(readiness);
-    if (!workbenchReadinessAllowsCreate(readiness, sessionDraftsDirty)) {
-      setBaselineActionError(
-        sessionDraftsDirty
-          ? "还有未保存的本机会话变更，不能创建基线。"
-          : readiness.unavailableReason ?? "发布就绪门禁阻止创建基线。"
+    try {
+      const created = await releaseBaselineSession.create(
+        project.id,
+        selectedConfigSet.id,
+        { name: newBaselineName, localSessionDirty: sessionDraftsDirty },
+        dtsRepository
       );
-      return;
+      setNewBaselineName("");
+      setCreateBaselineOpen(false);
+      setReadinessRetry((value) => value + 1);
+      setBaselinesRetry((value) => value + 1);
+      notifyMutation(`已创建基线「${created.name}」。`);
+    } catch {
+      // actionError is owned by ReleaseBaselineSession
     }
-    const created = await dtsRepository.createBaseline(project.id, selectedConfigSet.id, {
-      name,
-      gateToken: readiness.gateToken,
-      acknowledgedWarningIds: [...acknowledgedWarningIds]
-    });
-    setBaselines((current) => [created, ...current.filter((item) => item.id !== created.id)]);
-    setNewBaselineName("");
-    setCreateBaselineOpen(false);
-    setReadinessRetry((value) => value + 1);
-    setBaselinesRetry((value) => value + 1);
-    notifyMutation(`已创建基线「${created.name}」。`);
   }, [
-    acknowledgedWarningIds,
     canAdmin,
     dtsRepository,
     newBaselineName,
     notifyMutation,
     project.id,
+    releaseBaselineSession,
     selectedConfigSet,
     sessionDraftsDirty
   ]);
@@ -1926,8 +1795,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   const selectWorkbenchBaseline = useCallback(
     (baselineId: string) => {
       if (!selectedConfigSet) return;
-      setSelectedBaselineId(baselineId);
-      setBaselineCompare(null);
+      releaseBaselineSession.selectBaseline(baselineId);
       setInspectorOpen(true);
       onNavigate(
         formatWorkbenchPath(project.id, search, {
@@ -1946,6 +1814,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
       historyVersionId,
       onNavigate,
       project.id,
+      releaseBaselineSession,
       search,
       selectedConfigSet,
       selectedMember?.fileId
@@ -1955,7 +1824,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   const compareWorkbenchBaseline = useCallback(
     async (against: "working" | "released") => {
       if (!selectedConfigSet || !selectedBaselineId) return;
-      setBaselineActionError("");
+      releaseBaselineSession.clearActionError();
       setWorkingReturnPath(
         formatWorkbenchPath(project.id, search, {
           configSet: selectedConfigSet.id,
@@ -1968,9 +1837,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
           baseline: selectedBaselineId
         })
       );
-      const result = await dtsRepository.compareBaseline(project.id, selectedBaselineId, { against });
-      setBaselineCompare(result);
-      setBaselineCompareAgainst(against);
+      const result = await releaseBaselineSession.compare(project.id, against, dtsRepository);
       const firstDrift = result.members.find(
         (member) => member.status === "version_changed" && member.baselineVersionId
       );
@@ -1997,6 +1864,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
       notifyMutation,
       onNavigate,
       project.id,
+      releaseBaselineSession,
       search,
       selectedBaselineId,
       selectedConfigSet,
@@ -2007,7 +1875,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   );
 
   const exitBaselineCompare = useCallback(() => {
-    setBaselineCompare(null);
+    releaseBaselineSession.clearCompare();
     if (workingReturnPath) {
       onNavigate(workingReturnPath);
       setWorkingReturnPath(null);
@@ -2027,6 +1895,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   }, [
     onNavigate,
     project.id,
+    releaseBaselineSession,
     search,
     selectedBaselineId,
     selectedConfigSet,
@@ -2055,50 +1924,29 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
 
   const releaseWorkbenchBaseline = useCallback(async () => {
     if (!canAdmin || !selectedConfigSet || !selectedBaselineId) return;
-    setBaselineActionError("");
-    const readiness = await dtsRepository.getReleaseReadiness(project.id, selectedConfigSet.id, {
-      acknowledgedWarningIds: [...acknowledgedWarningIds]
-    });
-    setReleaseReadiness(readiness);
-    if (!workbenchReadinessAllowsRelease(readiness, sessionDraftsDirty)) {
-      setBaselineActionError(
-        sessionDraftsDirty
-          ? "还有未保存的本机会话变更，不能发布基线。"
-          : readiness.unavailableReason ?? "发布就绪门禁阻止发布基线。"
+    try {
+      const result = await releaseBaselineSession.release(
+        project.id,
+        selectedConfigSet.id,
+        { localSessionDirty: sessionDraftsDirty },
+        dtsRepository
       );
-      return;
+      setReleaseBaselineOpen(false);
+      setReadinessRetry((value) => value + 1);
+      setBaselinesRetry((value) => value + 1);
+      notifyMutation(`已发布基线「${result.item.name}」。`);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("确认策略允许的警告")) {
+        setTasksOpen(true);
+      }
     }
-    const unacked = readiness.warnings.filter(
-      (item) => item.acknowledgementRequired && !acknowledgedWarningIds.has(item.id)
-    );
-    if (unacked.length > 0) {
-      setBaselineActionError("请先在 Issues 坞确认策略允许的警告，再发布。");
-      setTasksOpen(true);
-      return;
-    }
-    const result = await dtsRepository.releaseBaseline(project.id, selectedBaselineId, {
-      gateToken: readiness.gateToken,
-      acknowledgedWarningIds: [...acknowledgedWarningIds]
-    });
-    setBaselines((current) =>
-      current.map((item) => {
-        if (item.id === result.item.id) return result.item;
-        if (item.configSetId === selectedConfigSet.id && item.status === "released") {
-          return { ...item, status: "historical" };
-        }
-        return item;
-      })
-    );
-    setReleaseBaselineOpen(false);
-    setReadinessRetry((value) => value + 1);
-    setBaselinesRetry((value) => value + 1);
-    notifyMutation(`已发布基线「${result.item.name}」。`);
   }, [
-    acknowledgedWarningIds,
     canAdmin,
     dtsRepository,
     notifyMutation,
     project.id,
+    releaseBaselineSession,
     selectedBaselineId,
     selectedConfigSet,
     sessionDraftsDirty
@@ -2106,19 +1954,20 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
 
   const openRestoreWorkbenchBaseline = useCallback(async () => {
     if (!selectedBaselineId) return;
-    setBaselineActionError("");
-    const preview = await dtsRepository.previewRestoreBaseline(project.id, selectedBaselineId);
-    setRestorePreview(preview);
+    releaseBaselineSession.clearActionError();
+    await releaseBaselineSession.previewRestore(project.id, dtsRepository);
     setRestoreBaselineOpen(true);
-  }, [dtsRepository, project.id, selectedBaselineId]);
+  }, [dtsRepository, project.id, releaseBaselineSession, selectedBaselineId]);
 
   const restoreWorkbenchBaseline = useCallback(async () => {
     if (!canAdmin || !selectedConfigSet || !selectedBaselineId) return;
-    setBaselineActionError("");
-    const tipBefore = releasedBaseline?.id;
-    const result = await dtsRepository.rollbackBaseline(project.id, selectedBaselineId);
+    releaseBaselineSession.clearActionError();
+    const { result, tipUnchanged } = await releaseBaselineSession.restore(
+      project.id,
+      selectedConfigSet.id,
+      dtsRepository
+    );
     setRestoreBaselineOpen(false);
-    setRestorePreview(null);
     setMembersRetry((value) => value + 1);
     setBaselinesRetry((value) => value + 1);
     setReadinessRetry((value) => value + 1);
@@ -2133,11 +1982,8 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
         candidate: null
       })
     );
-    const tipAfter = (await dtsRepository.listBaselines(project.id, selectedConfigSet.id)).find(
-      (item) => item.status === "released"
-    )?.id;
     notifyMutation(
-      tipBefore && tipAfter && tipBefore === tipAfter
+      tipUnchanged
         ? `已恢复基线成员（${result.restored} 项）；已发布 tip 未变。`
         : `已恢复基线成员（${result.restored} 项）。`
     );
@@ -2147,7 +1993,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     notifyMutation,
     onNavigate,
     project.id,
-    releasedBaseline?.id,
+    releaseBaselineSession,
     search,
     selectedBaselineId,
     selectedConfigSet,
@@ -2171,102 +2017,9 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     [selectStructureTarget]
   );
 
-  useEffect(() => {
-    const generation = ++draftRecoveryGenerationRef.current;
-    let cancelled = false;
-    draftPersistEnabledRef.current = false;
-    setSubmitError("");
-    setSubmitStatus("");
-    setValidateStatus("");
-    setDraftCopyStatus("");
-
-    if (!sessionDraftScope) {
-      setSessionDrafts({});
-      setSelectedDraftKeys(new Set());
-      setSubmitReason("");
-      setDraftRecoveryStatus("none");
-      draftPersistScopeRef.current = null;
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    void Promise.resolve().then(() => {
-      if (cancelled || generation !== draftRecoveryGenerationRef.current) return;
-      const recovered = findRecoverableSessionDraft(sessionDraftScope, sessionDraftStorage);
-      if (cancelled || generation !== draftRecoveryGenerationRef.current) return;
-      if (recovered) {
-        const draftKeys = Object.keys(recovered.bucket.drafts);
-        const restoredSelected =
-          recovered.bucket.selectedKeys.length > 0
-            ? recovered.bucket.selectedKeys
-            : draftKeys;
-        setSessionDrafts(recovered.bucket.drafts);
-        setSelectedDraftKeys(new Set(restoredSelected));
-        setSubmitReason(recovered.bucket.reason);
-        setDraftRecoveryStatus(recovered.classification);
-        draftPersistScopeRef.current = recovered.bucket.scope;
-        if (draftKeys.length > 0) {
-          setTasksOpen(true);
-        }
-      } else {
-        setSessionDrafts({});
-        setSelectedDraftKeys(new Set());
-        setSubmitReason("");
-        setDraftRecoveryStatus("none");
-        draftPersistScopeRef.current = sessionDraftScope;
-      }
-      queueMicrotask(() => {
-        if (cancelled || generation !== draftRecoveryGenerationRef.current) return;
-        draftPersistEnabledRef.current = true;
-      });
-    });
-
-    return () => {
-      cancelled = true;
-      draftPersistEnabledRef.current = false;
-    };
-  }, [sessionDraftScope, sessionDraftStorage]);
-
-  useEffect(() => {
-    if (!draftPersistEnabledRef.current) return;
-    const persistScope = draftPersistScopeRef.current ?? sessionDraftScope;
-    if (!persistScope) return;
-    const draftKeys = Object.keys(sessionDrafts);
-    if (draftKeys.length === 0) {
-      removeSessionDraftBucket(persistScope, sessionDraftStorage);
-      return;
-    }
-    const selected =
-      selectedDraftKeys.size > 0 ? Array.from(selectedDraftKeys) : draftKeys;
-    upsertSessionDraftBucket(
-      {
-        scope: persistScope,
-        drafts: sessionDrafts,
-        selectedKeys: selected,
-        reason: submitReason,
-        updatedAt: new Date().toISOString()
-      },
-      sessionDraftStorage
-    );
-  }, [
-    selectedDraftKeys,
-    sessionDraftScope,
-    sessionDraftStorage,
-    sessionDrafts,
-    submitReason
-  ]);
-
   const handleCopySessionDrafts = useCallback(async () => {
-    const persistScope = draftPersistScopeRef.current ?? sessionDraftScope;
-    if (!persistScope || Object.keys(sessionDrafts).length === 0) return;
-    const text = formatSessionDraftCopyText({
-      scope: persistScope,
-      drafts: sessionDrafts,
-      selectedKeys: Array.from(selectedDraftKeys),
-      reason: submitReason,
-      updatedAt: new Date().toISOString()
-    });
+    const text = structuredEditSession.copyText();
+    if (!text) return;
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text);
@@ -2285,31 +2038,12 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     } else {
       setDraftCopyStatus("无法自动复制，请手动记录草稿内容。");
     }
-  }, [selectedDraftKeys, sessionDraftScope, sessionDrafts, submitReason]);
+  }, [structuredEditSession]);
 
   const handleReconfirmStaleDrafts = useCallback(() => {
-    if (!sessionDraftScope || Object.keys(sessionDrafts).length === 0) return;
-    const nextBucket = {
-      scope: sessionDraftScope,
-      drafts: sessionDrafts,
-      selectedKeys: Array.from(selectedDraftKeys),
-      reason: submitReason,
-      updatedAt: new Date().toISOString()
-    };
-    upsertSessionDraftBucket(nextBucket, sessionDraftStorage);
-    draftPersistScopeRef.current = sessionDraftScope;
-    setDraftRecoveryStatus("none");
-    setSubmitError("");
-    setValidateStatus("");
-    setSubmitStatus("已基于当前基线继续编辑；请重新校验后再提交。");
+    structuredEditSession.recover();
     setTasksOpen(true);
-  }, [
-    selectedDraftKeys,
-    sessionDraftScope,
-    sessionDraftStorage,
-    sessionDrafts,
-    submitReason
-  ]);
+  }, [structuredEditSession]);
 
   const handleLeaveWorkbench = useCallback(() => {
     if (sessionDraftsDirty) {
@@ -2320,17 +2054,10 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   }, [onNavigate, sessionDraftsDirty]);
 
   const handleDiscardAndLeave = useCallback(() => {
-    const persistScope = draftPersistScopeRef.current ?? sessionDraftScope;
-    if (persistScope) {
-      removeSessionDraftBucket(persistScope, sessionDraftStorage);
-    }
-    setSessionDrafts({});
-    setSelectedDraftKeys(new Set());
-    setSubmitReason("");
-    setDraftRecoveryStatus("none");
+    structuredEditSession.discard();
     setLeaveConfirmOpen(false);
     onNavigate("/parameter-admin/projects");
-  }, [onNavigate, sessionDraftScope, sessionDraftStorage]);
+  }, [onNavigate, structuredEditSession]);
 
   const handleStructuredValueChange = useCallback(
     (next: StructuredValueChange) => {
@@ -2342,124 +2069,52 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
       ) {
         return;
       }
-      const key = sessionDraftKey({
-        fileId: selectedMember.fileId,
-        nodePath: selectedStructureNode.nodePath,
-        propertyName: selectedStructureProperty.name
-      });
-      setSessionDrafts((current) => ({
-        ...current,
-        [key]: {
+      structuredEditSession.change(
+        {
+          fileId: selectedMember.fileId,
+          nodePath: selectedStructureNode.nodePath,
+          propertyName: selectedStructureProperty.name
+        },
+        {
           rawText: next.rawText,
           normalizedValue: next.normalizedValue,
           valid: next.valid,
           ...(next.error ? { error: next.error } : {}),
           ...(typeof next.present === "boolean" ? { present: next.present } : {})
         }
-      }));
-      setSelectedDraftKeys((current) => {
-        const nextKeys = new Set(current);
-        nextKeys.add(key);
-        return nextKeys;
-      });
+      );
       setTasksOpen(true);
-      setSubmitError("");
-      setSubmitStatus("");
-      setValidateStatus("");
     },
     [
       editorLocked,
       selectedMember,
       selectedStructureNode,
-      selectedStructureProperty
+      selectedStructureProperty,
+      structuredEditSession
     ]
   );
 
   const handleValidateSelected = useCallback(() => {
-    if (draftRecoveryStatus === "stale-base") {
-      setValidateStatus("基线版本已变更：会话草稿仅可检查或复制，请先基于当前基线继续编辑后再校验。");
-      setSubmitError("");
-      return;
-    }
-    const selected = sessionDraftRows.filter((row) => selectedDraftKeys.has(row.key));
-    if (selected.length === 0) {
-      setValidateStatus("请先勾选要校验的会话变更。");
-      return;
-    }
-    const invalid = selected.filter((row) => row.valid === false);
-    if (invalid.length > 0) {
-      setValidateStatus(`校验未通过：${invalid.map((row) => `${row.nodePath}/${row.propertyName}`).join("、")}`);
-      return;
-    }
-    setValidateStatus(`校验通过：${selected.length} 项`);
-    setSubmitError("");
-  }, [draftRecoveryStatus, selectedDraftKeys, sessionDraftRows]);
+    structuredEditSession.validate();
+  }, [structuredEditSession]);
 
   const handleSubmitSelected = useCallback(async () => {
     if (!selectedMember || !canEdit || submittingEdits) return;
-    if (draftRecoveryStatus === "stale-base") {
-      setSubmitError("基线版本已变更：无法对过期草稿提交变更请求。请先基于当前基线继续编辑。");
-      setValidateStatus("");
-      return;
-    }
-    const reason = submitReason.trim();
-    if (!reason) {
-      setSubmitError("提交变更请求前请填写变更原因。");
-      return;
-    }
-    const selected = sessionDraftRows.filter((row) => selectedDraftKeys.has(row.key));
-    if (selected.length === 0) {
-      setSubmitError("请先勾选要提交的会话变更。");
-      return;
-    }
-    const invalid = selected.filter((row) => row.valid === false);
-    if (invalid.length > 0) {
-      setSubmitError(`仍有未通过校验的变更：${invalid.map((row) => `${row.nodePath}/${row.propertyName}`).join("、")}`);
-      return;
-    }
-    const aggregate = aggregateSessionDraftSubset({
-      fileId: selectedMember.fileId,
-      fileName: selectedMember.fileName,
-      rows: sessionDraftRows,
-      selectedKeys: selectedDraftKeys,
-      reason
-    });
-    if (aggregate.edits.length === 0) {
-      setSubmitError("没有可提交的变更。");
-      return;
-    }
-    setSubmittingEdits(true);
-    setSubmitError("");
-    setSubmitStatus("");
     try {
-      const round = await dtsRepository.submitStructuredEdits(project.id, {
-        edits: aggregate.edits,
-        reason
+      await structuredEditSession.submit({
+        projectId: project.id,
+        fileId: selectedMember.fileId,
+        fileName: selectedMember.fileName,
+        dtsRepository
       });
-      const submittedKeys = selected.map((row) => row.key);
-      setSessionDrafts((current) => clearSubmittedDrafts(current, submittedKeys));
-      setSubmitStatus(`已提交变更请求 ${round.id}`);
-      setValidateStatus("");
       setMembersRetry((value) => value + 1);
       setStructureRetry((value) => value + 1);
       setSourceRetry((value) => value + 1);
       setFilesRetry((value) => value + 1);
-    } catch (error: unknown) {
-      setSubmitError(error instanceof Error ? error.message : "提交变更请求失败。");
-    } finally {
-      setSubmittingEdits(false);
+    } catch {
+      // submitError is projected from the session snapshot
     }
-  }, [
-    canEdit,
-    draftRecoveryStatus,
-    dtsRepository,
-    project.id,
-    selectedDraftKeys,
-    selectedMember,
-    sessionDraftRows,
-    submitReason,
-    submittingEdits
-  ]);
+  }, [canEdit, dtsRepository, project.id, selectedMember, structuredEditSession, submittingEdits]);
 
   const unifiedDiffText = useMemo(() => {
     if (canvasMode !== "unified-diff" || !historySource) return "";
@@ -2598,48 +2253,32 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
               const file = event.target.files?.[0];
               event.target.value = "";
               if (!file || !selectedConfigSet) return;
-              setUploadingCandidate(true);
-              setCandidateError("");
               void (async () => {
                 try {
-                  const contentBase64 = await new Promise<string>((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onerror = () => reject(reader.error ?? new Error("Failed to read candidate file."));
-                    reader.onload = () => {
-                      const result = String(reader.result ?? "");
-                      const marker = "base64,";
-                      const index = result.indexOf(marker);
-                      resolve(index >= 0 ? result.slice(index + marker.length) : result);
-                    };
-                    reader.readAsDataURL(file);
-                  });
-                  const candidate = await fileRepository.createCandidate(project.id, {
-                    fileName: file.name,
-                    contentBase64,
-                    fileId: selectedMember?.fileId
-                  });
-                  setActiveCandidate(candidate);
+                  const created = await candidateFlow.create(
+                    project.id,
+                    { file, fileId: selectedMember?.fileId },
+                    fileRepository
+                  );
                   setInspectorOpen(true);
                   onNavigate(
                     formatWorkbenchPath(project.id, search, {
                       configSet: selectedConfigSet.id,
                       file: selectedMember?.fileId ?? null,
                       sourceMode: "candidate",
-                      candidate: candidate.id,
+                      candidate: created.id,
                       version: null,
                       node: null,
                       property: null
                     })
                   );
                   notifyMutation(
-                    candidate.status === "failed"
+                    created.status === "failed"
                       ? "候选解析失败，活跃源码未改动；可查看诊断后放弃。"
                       : "候选已创建，工作配置与活跃版本未改动。"
                   );
-                } catch (error: unknown) {
-                  setCandidateError(error instanceof Error ? error.message : "候选上传失败。");
-                } finally {
-                  setUploadingCandidate(false);
+                } catch {
+                  // candidateFlow.error already set
                 }
               })();
             }}
@@ -2734,7 +2373,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                     }
                     onClick={() => {
                       setMoreMenuOpen(false);
-                      setBaselineActionError("");
+                      releaseBaselineSession.clearActionError();
                       setCreateBaselineOpen(true);
                     }}
                   >
@@ -3387,7 +3026,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                   void runAction("compare-baseline", () => compareWorkbenchBaseline(against));
                 }}
                 onOpenRelease={() => {
-                  setBaselineActionError("");
+                  releaseBaselineSession.clearActionError();
                   setReleaseBaselineOpen(true);
                 }}
                 onOpenRestore={() => {
@@ -3501,27 +3140,21 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                       </div>
                     ) : null}
                     <div className="configuration-workbench__inspector-actions">
-                      {activeCandidate.status === "blocked" || activeCandidate.status === "stale" ? (
+                      {canRecompute ? (
                         <button
                           className="button subtle"
                           type="button"
                           onClick={() => {
                             void (async () => {
                               try {
-                                const updated = await fileRepository.recomputeCandidate(
-                                  project.id,
-                                  activeCandidate.id
-                                );
-                                setActiveCandidate(updated);
+                                const updated = await candidateFlow.recompute(project.id, fileRepository);
                                 notifyMutation(
                                   updated.status === "ready"
                                     ? "已按当前基重算候选影响，可再次审查后激活。"
                                     : "已按当前阻断条件重算候选影响。"
                                 );
-                              } catch (error: unknown) {
-                                setCandidateError(
-                                  error instanceof Error ? error.message : "候选重算失败。"
-                                );
+                              } catch {
+                                // candidateFlow.error already set
                               }
                             })();
                           }}
@@ -3529,32 +3162,27 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                           重算影响
                         </button>
                       ) : null}
-                      {activeCandidate.status === "ready" ? (
+                      {canActivate ? (
                         <button
                           className="button primary"
                           type="button"
                           data-testid="activate-candidate"
                           onClick={() => {
-                            setActivateError("");
-                            setActivateRole("overlay");
+                            candidateFlow.setActivateRole("overlay");
                             setActivateConfirmOpen(true);
                           }}
                         >
                           激活候选
                         </button>
                       ) : null}
-                      {["ready", "blocked", "failed", "stale"].includes(activeCandidate.status) ? (
+                      {canAbandon ? (
                         <button
                           className="button subtle"
                           type="button"
                           onClick={() => {
                             void (async () => {
                               try {
-                                const abandoned = await fileRepository.abandonCandidate(
-                                  project.id,
-                                  activeCandidate.id
-                                );
-                                setActiveCandidate(abandoned);
+                                await candidateFlow.abandon(project.id, fileRepository);
                                 notifyMutation("候选已放弃；工作配置与配置集成员未改动。");
                                 if (selectedConfigSet) {
                                   onNavigate(
@@ -3567,10 +3195,8 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                                     })
                                   );
                                 }
-                              } catch (error: unknown) {
-                                setCandidateError(
-                                  error instanceof Error ? error.message : "放弃候选失败。"
-                                );
+                              } catch {
+                                // candidateFlow.error already set
                               }
                             })();
                           }}
@@ -4044,7 +3670,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
               <select
                 value={activateRole}
                 disabled={activatingCandidate}
-                onChange={(event) => setActivateRole(event.target.value as ConfigSetRole)}
+                onChange={(event) => candidateFlow.setActivateRole(event.target.value as ConfigSetRole)}
               >
                 {(Object.keys(ROLE_LABELS) as ConfigSetRole[]).map((role) => (
                   <option key={role} value={role}>
@@ -4059,25 +3685,17 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
         onCancel={() => {
           if (!activatingCandidate) {
             setActivateConfirmOpen(false);
-            setActivateError("");
           }
         }}
         onConfirm={() => {
           if (!activeCandidate || activeCandidate.status !== "ready") return;
           void (async () => {
-            setActivatingCandidate(true);
-            setActivateError("");
-            setCandidateError("");
             try {
-              if (!activeCandidate.fileId && !selectedConfigSet) {
-                throw new Error("激活新文件需要已选择的配置集。");
-              }
-              const result = await fileRepository.activateCandidate(project.id, activeCandidate.id, {
-                expectedCurrentVersionId: activeCandidate.baseVersionId ?? null,
-                configSetId: activeCandidate.fileId ? undefined : selectedConfigSet?.id,
-                role: activeCandidate.fileId ? undefined : activateRole
-              });
-              setActiveCandidate(result.item);
+              const result = await candidateFlow.activate(
+                project.id,
+                { configSetId: selectedConfigSet?.id },
+                fileRepository
+              );
               notifyMutation("候选已激活；工作源码、成员与历史已刷新。");
               setActivateConfirmOpen(false);
               setFilesRetry((value) => value + 1);
@@ -4097,20 +3715,10 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
               }
             } catch (error: unknown) {
               const message = error instanceof Error ? error.message : "激活候选失败。";
-              setActivateError(message);
-              setCandidateError(message);
               if (/stale/i.test(message)) {
-                try {
-                  const refreshed = await fileRepository.getCandidate(project.id, activeCandidate.id);
-                  setActiveCandidate(refreshed);
-                  setActivateConfirmOpen(false);
-                  notifyMutation("基版本已变更，候选已标为过期；请重算影响后再激活。");
-                } catch {
-                  // keep prior candidate state
-                }
+                setActivateConfirmOpen(false);
+                notifyMutation("基版本已变更，候选已标为过期；请重算影响后再激活。");
               }
-            } finally {
-              setActivatingCandidate(false);
             }
           })();
         }}
@@ -4178,12 +3786,10 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                             data-property-identity={row.identity}
                             aria-label={`${row.nodePath}/${row.propertyName}`}
                             onChange={() => {
-                              setSelectedDraftKeys((current) => {
-                                const next = new Set(current);
-                                if (next.has(row.key)) next.delete(row.key);
-                                else next.add(row.key);
-                                return next;
-                              });
+                              const next = new Set(selectedDraftKeys);
+                              if (next.has(row.key)) next.delete(row.key);
+                              else next.add(row.key);
+                              structuredEditSession.selectSubset(next);
                             }}
                           />
                           <span>
@@ -4202,7 +3808,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                   <textarea
                     aria-label="变更原因"
                     value={submitReason}
-                    onChange={(event) => setSubmitReason(event.target.value)}
+                    onChange={(event) => structuredEditSession.setReason(event.target.value)}
                     rows={2}
                     disabled={!canEdit}
                   />
@@ -4249,23 +3855,12 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                 projectId={project.id}
                 repository={fileRepository}
                 conflicts={syncConflicts}
-                onConflictsChange={setSyncConflicts}
+                onConflictsChange={(next) => conflictLocateFacade.setOpenConflicts(next)}
                 onQueueEmpty={() => setTasksOpen(false)}
                 onLocateConflict={(conflict) => {
-                  if (!conflict.fileId) return;
-                  const nodePath = conflict.nodePath ?? conflict.sourceNodePath ?? null;
-                  const propertyName = conflict.propertyName ?? null;
-                  if (conflict.source?.startLine) {
-                    pendingLocateFocusRef.current = {
-                      fileId: conflict.fileId,
-                      nodePath,
-                      propertyName,
-                      line: conflict.source.startLine
-                    };
-                  } else {
-                    pendingLocateFocusRef.current = null;
-                  }
-                  selectStructureTarget(conflict.fileId, nodePath, propertyName);
+                  const target = conflictLocateFacade.locate(conflict);
+                  if (!target) return;
+                  selectStructureTarget(target.fileId, target.nodePath, target.propertyName);
                 }}
               />
             ) : null}
@@ -4274,12 +3869,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                 readiness={releaseReadiness}
                 acknowledgedWarningIds={acknowledgedWarningIds}
                 onAcknowledgeWarning={(issueId) => {
-                  setAcknowledgedWarningIds((current) => {
-                    const next = new Set(current);
-                    if (next.has(issueId)) next.delete(issueId);
-                    else next.add(issueId);
-                    return next;
-                  });
+                  releaseBaselineSession.acknowledgeWarning(issueId);
                 }}
                 onSelectIssue={handleSelectReadinessIssue}
                 onRetry={() => setReadinessRetry((value) => value + 1)}
@@ -4320,7 +3910,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
         onCancel={() => {
           if (pendingAction) return;
           setCreateBaselineOpen(false);
-          setBaselineActionError("");
+          releaseBaselineSession.clearActionError();
         }}
         onConfirm={() => {
           void runAction("create-baseline", createWorkbenchBaseline);
@@ -4355,7 +3945,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
         onCancel={() => {
           if (pendingAction) return;
           setReleaseBaselineOpen(false);
-          setBaselineActionError("");
+          releaseBaselineSession.clearActionError();
         }}
         onConfirm={() => {
           void runAction("release-baseline", releaseWorkbenchBaseline);
@@ -4382,8 +3972,8 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
         onCancel={() => {
           if (pendingAction) return;
           setRestoreBaselineOpen(false);
-          setRestorePreview(null);
-          setBaselineActionError("");
+          releaseBaselineSession.clearRestorePreview();
+          releaseBaselineSession.clearActionError();
         }}
         onConfirm={() => {
           void runAction("restore-baseline", restoreWorkbenchBaseline);

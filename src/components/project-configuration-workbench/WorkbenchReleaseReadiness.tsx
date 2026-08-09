@@ -1,4 +1,8 @@
 import type { DtsReleaseReadiness, DtsReleaseReadinessIssue } from "@/application/ports/DtsStructuredRepository";
+import {
+  releaseReadinessAllowsCreate,
+  releaseReadinessAllowsRelease
+} from "@/application/project-configuration/releaseReadinessGates";
 
 const LEVEL_LABEL: Record<DtsReleaseReadiness["level"], string> = {
   blocked: "已阻断",
@@ -16,19 +20,11 @@ export type WorkbenchReleaseReadinessSummaryProps = {
   onOpenIssues: () => void;
 };
 
-export function workbenchReadinessAllowsCreate(
-  readiness: DtsReleaseReadiness | null,
-  localSessionDirty: boolean
-) {
-  return Boolean(readiness?.available && readiness.canCreateBaseline && !localSessionDirty);
-}
+/** @deprecated Prefer releaseReadinessAllowsCreate — kept as workbench alias. */
+export const workbenchReadinessAllowsCreate = releaseReadinessAllowsCreate;
 
-export function workbenchReadinessAllowsRelease(
-  readiness: DtsReleaseReadiness | null,
-  localSessionDirty: boolean
-) {
-  return Boolean(readiness?.available && readiness.canRelease && !localSessionDirty);
-}
+/** @deprecated Prefer releaseReadinessAllowsRelease — kept as workbench alias. */
+export const workbenchReadinessAllowsRelease = releaseReadinessAllowsRelease;
 
 export function WorkbenchReleaseReadinessSummary({
   readiness,

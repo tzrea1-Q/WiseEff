@@ -91,6 +91,23 @@ Key UI:
 
 `ParameterFileRepository` is the frontend port for project parameter-file list/upload/version/sync and sync-conflict resolve. Admin surfaces must inject it through `resolveParameterFileRepository(runtimeMode)` in `src/application/parameters/parameterFileRuntime.ts` — mock via `createMockParameterFileRepository`, API via `createParameterFileClient`.
 
+## AuditQuery (workbench Activity)
+
+`AuditQuery` is the read-side port for listing audit events (Activity timelines and similar projections). It is distinct from write-only `AuditSink`. Resolve it with `resolveAuditQuery(runtimeMode)` in `src/application/parameters/auditQueryRuntime.ts` — mock returns an empty listing adapter (no HTTP); API wraps `createAuditClient`. The project configuration workbench must receive `listAuditEvents` by injection from that resolver (or a test double) and must **not** call `createAuditClient()` inside the page module.
+
+## Workbench sessions (project configuration)
+
+Domain acts for the configuration workbench live as Workbench sessions under `src/application/project-configuration/` (see `CONTEXT.md`):
+
+| Session | Owns |
+| --- | --- |
+| `StructuredEditSession` | Local draft hydrate/persist, validate/submit, stale-base recovery |
+| `CandidateVersionFlow` | Candidate create/load/recompute/abandon/activate (+ File→base64) |
+| `ReleaseBaselineSession` | Readiness refresh/ack, baseline create/compare/release/restore (+ gate tokens) |
+| `ConflictLocateFacade` | Open-conflict load, locate projection, open-arbitration refresh |
+
+React hooks (`useStructuredEditSession`, `useCandidateVersionFlow`, `useReleaseBaselineSession`, `useConflictLocateFacade`) are thin `useSyncExternalStore` adapters. Prefer unit-testing the session command interfaces. The shell (`ProjectConfigurationWorkbench`) keeps URL/selection, ConfirmDialogs, and dock presentation; it must not re-own those lifecycle state machines.
+
 - `ProjectParameterFilesPanel` and `ParameterFileConflictPanel` accept a `repository` prop only; they must **not** call `createParameterFileClient()` inside the component.
 - `/parameter-admin/projects` and `/parameter-admin` resolve the port once and pass it down (including mock mode demos that list fixture files / open conflicts without HTTP).
 - `ParameterFileConflictPanel` gives both arbitration sides equal emphasis, shows each conflict's provenance (time, source file version), counts the open queue in its heading, and confirms the chosen side through `ConfirmDialog` with an optional reason recorded in the audit hint.
