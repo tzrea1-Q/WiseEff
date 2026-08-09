@@ -14,7 +14,6 @@ import type {
   DtsStructuredRepository
 } from "@/application/ports/DtsStructuredRepository";
 import type {
-  FileSyncSummary,
   ParameterFileRepository,
   ProjectParameterFile,
   ProjectParameterFileVersion
@@ -64,6 +63,7 @@ import { useStructuredEditSession } from "@/application/project-configuration/us
 import { useCandidateVersionFlow } from "@/application/project-configuration/useCandidateVersionFlow";
 import { useReleaseBaselineSession } from "@/application/project-configuration/useReleaseBaselineSession";
 import { useConflictLocateFacade } from "@/application/project-configuration/useConflictLocateFacade";
+import { useConfigSetOpsSession } from "@/application/project-configuration/useConfigSetOpsSession";
 import { WorkbenchStructureTree } from "./WorkbenchStructureTree";
 
 export type ProjectConfigurationWorkbenchProject = {
@@ -134,13 +134,6 @@ function downloadExportBundle(
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
-}
-
-function formatSyncSummary(result: FileSyncSummary): string {
-  if (typeof result.draftsCreated === "number") {
-    return `同步成功，已创建 ${result.draftsCreated} 条草稿。`;
-  }
-  return "同步成功。";
 }
 
 function defaultRoleForFile(file: ProjectParameterFile, hasMembers: boolean): ConfigSetRole {
@@ -398,8 +391,6 @@ export function ProjectConfigurationWorkbench({
   const [suppressScrollSync, setSuppressScrollSync] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const treeRegionRef = useRef<HTMLElement | null>(null);
-  const [opsError, setOpsError] = useState("");
-  const [opsMessage, setOpsMessage] = useState("");
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<PendingConfirmation | null>(null);
   const [memberFileId, setMemberFileId] = useState("");
@@ -410,6 +401,11 @@ export function ProjectConfigurationWorkbench({
     facade: conflictLocateFacade,
     conflicts: syncConflicts
   } = useConflictLocateFacade();
+  const {
+    session: configSetOpsSession,
+    lastError: opsError,
+    lastMessage: opsMessage
+  } = useConfigSetOpsSession();
   const [exportEvidence, setExportEvidence] = useState("");
   const sourceRegionRef = useRef<HTMLElement | null>(null);
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
@@ -1117,39 +1113,32 @@ export function ProjectConfigurationWorkbench({
   const handleCreateConfigSet = useCallback(
     async (name: string): Promise<string | null | undefined> => {
       if (!canAdmin) return undefined;
-      const trimmed = name.trim();
-      if (!trimmed) {
-        return "请先填写配置集名称。";
+      const result = await configSetOpsSession.create(
+        project.id,
+        { name, existingNames: configSets.map((item) => item.name) },
+        dtsRepository
+      );
+      if (!result.ok) {
+        return result.kind === "validation" ? result.message : undefined;
       }
-      if (configSets.some((item) => item.name.toLowerCase() === trimmed.toLowerCase())) {
-        return `已存在名为「${trimmed}」的配置集。`;
-      }
-      setOpsError("");
-      try {
-        const created = await dtsRepository.createConfigSet(project.id, { name: trimmed });
-        setConfigSets((current) => [created, ...current.filter((item) => item.id !== created.id)]);
-        setMembers([]);
-        setInspectorLevelOverride("config-set");
-        setInspectorOpen(true);
-        onNavigate(
-          formatWorkbenchPath(project.id, search, {
-            configSet: created.id,
-            file: null,
-            node: null,
-            property: null,
-            sourceMode: null,
-            version: null,
-            candidate: null
-          })
-        );
-        setOpsMessage(`已创建配置集「${created.name}」。`);
-        return null;
-      } catch (error: unknown) {
-        setOpsError(error instanceof Error ? error.message : "创建配置集失败。");
-        return undefined;
-      }
+      setConfigSets((current) => [result.item, ...current.filter((item) => item.id !== result.item.id)]);
+      setMembers([]);
+      setInspectorLevelOverride("config-set");
+      setInspectorOpen(true);
+      onNavigate(
+        formatWorkbenchPath(project.id, search, {
+          configSet: result.item.id,
+          file: null,
+          node: null,
+          property: null,
+          sourceMode: null,
+          version: null,
+          candidate: null
+        })
+      );
+      return null;
     },
-    [canAdmin, configSets, dtsRepository, onNavigate, project.id, search]
+    [canAdmin, configSetOpsSession, configSets, dtsRepository, onNavigate, project.id, search]
   );
 
   const submitCreateConfigSet = useCallback(
@@ -1166,33 +1155,29 @@ export function ProjectConfigurationWorkbench({
   const addMemberToConfigSet = useCallback(
     async (fileId: string, role: ConfigSetRole, sortOrder: number) => {
       if (!canAdmin || !selectedConfigSet) return;
-      setOpsError("");
-      try {
-        const membership = await dtsRepository.addConfigSetFile(project.id, selectedConfigSet.id, {
-          fileId,
-          role,
-          sortOrder
-        });
-        const file = projectFiles.find((item) => item.id === fileId);
-        setMembers((current) => [
-          ...current.filter((item) => item.fileId !== membership.fileId),
-          {
-            ...membership,
-            fileName: file?.fileName ?? membership.fileId,
-            format: file?.format ?? "dts",
-            currentVersionId: file?.currentVersionId,
-            currentVersionNumber: file?.currentVersionNumber
-          }
-        ]);
-        setOpsMessage(`已将「${file?.fileName ?? fileId}」编入配置集（${ROLE_LABELS[role]} · 顺序 ${sortOrder}）。`);
-        setInspectorLevelOverride("config-set");
-        setInspectorOpen(true);
-        setMembersRetry((value) => value + 1);
-      } catch (error: unknown) {
-        setOpsError(error instanceof Error ? error.message : "添加成员失败。");
-      }
+      const file = projectFiles.find((item) => item.id === fileId);
+      const result = await configSetOpsSession.addMember(
+        project.id,
+        selectedConfigSet.id,
+        { fileId, role, sortOrder, file },
+        dtsRepository
+      );
+      if (!result.ok) return;
+      setMembers((current) => [
+        ...current.filter((item) => item.fileId !== result.membership.fileId),
+        {
+          ...result.membership,
+          fileName: result.fileName,
+          format: result.format,
+          currentVersionId: result.currentVersionId,
+          currentVersionNumber: result.currentVersionNumber
+        }
+      ]);
+      setInspectorLevelOverride("config-set");
+      setInspectorOpen(true);
+      setMembersRetry((value) => value + 1);
     },
-    [canAdmin, dtsRepository, project.id, projectFiles, selectedConfigSet]
+    [canAdmin, configSetOpsSession, dtsRepository, project.id, projectFiles, selectedConfigSet]
   );
 
   const assignUngroupedFile = useCallback(
@@ -1206,29 +1191,38 @@ export function ProjectConfigurationWorkbench({
   const removeMemberFromConfigSet = useCallback(
     async (fileId: string) => {
       if (!canAdmin || !selectedConfigSet) return;
-      setOpsError("");
-      try {
-        await dtsRepository.removeConfigSetFile(project.id, selectedConfigSet.id, fileId);
-        setMembers((current) => current.filter((item) => item.fileId !== fileId));
-        setOpsMessage("已从配置集移除成员文件。");
-        if (selectedMember?.fileId === fileId) {
-          onNavigate(
-            formatWorkbenchPath(project.id, search, {
-              configSet: selectedConfigSet.id,
-              file: null,
-              node: null,
-              property: null,
-              sourceMode: null,
-              version: null
-            })
-          );
-        }
-        setMembersRetry((value) => value + 1);
-      } catch (error: unknown) {
-        setOpsError(error instanceof Error ? error.message : "移除成员失败。");
+      const result = await configSetOpsSession.removeMember(
+        project.id,
+        selectedConfigSet.id,
+        fileId,
+        dtsRepository
+      );
+      if (!result.ok) return;
+      setMembers((current) => current.filter((item) => item.fileId !== fileId));
+      if (selectedMember?.fileId === fileId) {
+        onNavigate(
+          formatWorkbenchPath(project.id, search, {
+            configSet: selectedConfigSet.id,
+            file: null,
+            node: null,
+            property: null,
+            sourceMode: null,
+            version: null
+          })
+        );
       }
+      setMembersRetry((value) => value + 1);
     },
-    [canAdmin, dtsRepository, onNavigate, project.id, search, selectedConfigSet, selectedMember?.fileId]
+    [
+      canAdmin,
+      configSetOpsSession,
+      dtsRepository,
+      onNavigate,
+      project.id,
+      search,
+      selectedConfigSet,
+      selectedMember?.fileId
+    ]
   );
 
   const requestRemoveMember = useCallback(
@@ -1254,44 +1248,33 @@ export function ProjectConfigurationWorkbench({
 
   const syncSelectedFile = useCallback(async () => {
     if (!canAdmin || !selectedMember) return;
-    setOpsError("");
-    try {
-      const summary = await fileRepository.syncFile(project.id, selectedMember.fileId);
-      const evidence = `${selectedMember.fileName}：${formatSyncSummary(summary)}`;
-      setSyncEvidence(evidence);
-      setOpsMessage(evidence);
-      setTasksOpen(true);
-      const [files, conflicts] = await Promise.all([
-        fileRepository.listFiles(project.id),
-        fileRepository.listConflicts(project.id)
-      ]);
-      setProjectFiles(files);
-      conflictLocateFacade.setOpenConflicts(conflicts);
-      setMembersRetry((value) => value + 1);
-      setFilesRetry((value) => value + 1);
-    } catch (error: unknown) {
-      setOpsError(error instanceof Error ? error.message : "手动同步失败。");
-    }
-  }, [canAdmin, conflictLocateFacade, fileRepository, project.id, selectedMember]);
+    const result = await configSetOpsSession.syncFile(
+      project.id,
+      { fileId: selectedMember.fileId, fileName: selectedMember.fileName },
+      fileRepository
+    );
+    if (!result.ok) return;
+    setSyncEvidence(result.evidence);
+    setTasksOpen(true);
+    setProjectFiles(result.files);
+    conflictLocateFacade.setOpenConflicts(result.conflicts);
+    setMembersRetry((value) => value + 1);
+    setFilesRetry((value) => value + 1);
+  }, [canAdmin, configSetOpsSession, conflictLocateFacade, fileRepository, project.id, selectedMember]);
 
   const exportSelectedConfigSet = useCallback(async () => {
     if (!canAdmin || !selectedConfigSet) return;
-    setOpsError("");
-    try {
-      const result = await dtsRepository.exportConfigSet(project.id, selectedConfigSet.id);
-      downloadExportBundle(selectedConfigSet.name, result);
-      const memberCount = result.manifest.members.length;
-      const validation = result.manifest.validation
-        ? `校验 ${result.manifest.validation.ok ? "通过" : "未通过"}（${result.manifest.validation.mode}）`
-        : "无校验元数据";
-      const evidence = `已导出配置集「${selectedConfigSet.name}」：${memberCount} 个成员，含角色/顺序；${validation}。`;
-      setExportEvidence(evidence);
-      setOpsMessage(evidence);
-      setTasksOpen(true);
-    } catch (error: unknown) {
-      setOpsError(error instanceof Error ? error.message : "导出配置集失败。");
-    }
-  }, [canAdmin, dtsRepository, project.id, selectedConfigSet]);
+    const result = await configSetOpsSession.exportConfigSet(
+      project.id,
+      selectedConfigSet.id,
+      selectedConfigSet.name,
+      dtsRepository
+    );
+    if (!result.ok) return;
+    downloadExportBundle(selectedConfigSet.name, result.export);
+    setExportEvidence(result.evidence);
+    setTasksOpen(true);
+  }, [canAdmin, configSetOpsSession, dtsRepository, project.id, selectedConfigSet]);
 
   const selectConfigSet = useCallback(
     (configSetId: string) => {
