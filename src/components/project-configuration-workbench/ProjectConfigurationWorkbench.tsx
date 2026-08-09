@@ -659,20 +659,22 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     if (requested) {
       const memberHit = selectedMembers.find((item) => item.fileId === requested);
       if (memberHit) return memberHit;
-      // Conflict locate / deep links may target a project file outside the Config set.
-      // Keep that file on the canvas instead of silently falling back to the primary member.
-      const projectHit = projectFiles.find((file) => file.id === requested);
-      if (projectHit) {
-        return {
-          configSetId: selectedConfigSet?.id ?? "",
-          fileId: projectHit.id,
-          fileName: projectHit.fileName,
-          format: projectHit.format,
-          role: "misc",
-          sortOrder: -1,
-          currentVersionId: projectHit.currentVersionId,
-          currentVersionNumber: projectHit.currentVersionNumber
-        };
+      // Wait for Config set members before synthesizing a non-member locate target,
+      // otherwise the canvas heading appears while the member tree is still empty.
+      if (!membersLoading && !membersError) {
+        const projectHit = projectFiles.find((file) => file.id === requested);
+        if (projectHit) {
+          return {
+            configSetId: selectedConfigSet?.id ?? "",
+            fileId: projectHit.id,
+            fileName: projectHit.fileName,
+            format: projectHit.format,
+            role: "misc",
+            sortOrder: -1,
+            currentVersionId: projectHit.currentVersionId,
+            currentVersionNumber: projectHit.currentVersionNumber
+          };
+        }
       }
     }
     return (
@@ -681,7 +683,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
       selectedMembers[0] ??
       null
     );
-  }, [projectFiles, search, selectedConfigSet?.id, selectedMembers]);
+  }, [membersError, membersLoading, projectFiles, search, selectedConfigSet?.id, selectedMembers]);
 
   const selectedMemberFileId = selectedMember?.fileId ?? null;
   const selectedMemberVersionId = selectedMember?.currentVersionId ?? null;

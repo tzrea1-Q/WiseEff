@@ -1713,7 +1713,7 @@ describe("ProjectConfigurationWorkbench", () => {
       syncSearch: true
     });
     await screen.findByRole("heading", { name: "aurora-board.dts" });
-    fireEvent.click(screen.getByRole("treeitem", { name: /charging-overlay\.dtsi/ }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: /charging-overlay\.dtsi/ }));
     await waitFor(() => {
       const urls = onNavigate.mock.calls.map((call) => String(call[0]));
       expect(
