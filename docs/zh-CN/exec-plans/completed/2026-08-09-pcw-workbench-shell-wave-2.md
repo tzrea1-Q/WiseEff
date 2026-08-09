@@ -1,8 +1,8 @@
 # PCW 工作台壳层 wave-2 — 展示适配器 + ConfigSetOps
 
-> 状态：**Active（策划）** — 仅在 [PR #266](https://github.com/tzrea1-Q/WiseEff/pull/266) 合入 `main` 后实现
+> 状态：**Complete** — 壳 ≤ ~2500 行；适配器 + ConfigSetOpsSession 已落在 `feat/pcw-workbench-shell-wave-2`
 > 日期：2026-08-09
-> English: [`docs/exec-plans/active/2026-08-09-pcw-workbench-shell-wave-2.md`](../../../exec-plans/active/2026-08-09-pcw-workbench-shell-wave-2.md)
+> English: [`docs/exec-plans/completed/2026-08-09-pcw-workbench-shell-wave-2.md`](../../../exec-plans/completed/2026-08-09-pcw-workbench-shell-wave-2.md)
 > 父程序：[#258](https://github.com/tzrea1-Q/WiseEff/issues/258)（wave-1 会话见 PR #266）
 > 锁定设计：[`docs/zh-CN/design-docs/2026-08-06-project-configuration-workbench-design.md`](../../design-docs/2026-08-06-project-configuration-workbench-design.md) §16
 
@@ -10,7 +10,7 @@
 
 Wave-1（#259–#265 / PR #266）已抽出 Workbench session：`StructuredEditSession`、`CandidateVersionFlow`、`ReleaseBaselineSession`、`ConflictLocateFacade`，以及 `AuditQuery` 注入。
 
-壳层 [`ProjectConfigurationWorkbench.tsx`](../../../src/components/project-configuration-workbench/ProjectConfigurationWorkbench.tsx) 仍约 **4021** 行；剩余主要是 JSX 展示与配置集运维 / URL / 加载编排。
+壳层 [`ProjectConfigurationWorkbench.tsx`](../../../../src/components/project-configuration-workbench/ProjectConfigurationWorkbench.tsx) 仍约 **4021** 行；剩余主要是 JSX 展示与配置集运维 / URL / 加载编排。
 
 已锁定决策（2026-08-09）：
 

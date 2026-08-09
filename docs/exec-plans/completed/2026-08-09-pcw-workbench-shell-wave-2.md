@@ -1,8 +1,8 @@
 # PCW workbench shell wave-2 — presentation adapters + ConfigSetOps
 
-> Status: **Active (planning)** — implement only after [PR #266](https://github.com/tzrea1-Q/WiseEff/pull/266) merges to `main`
+> Status: **Complete** — shell ≤ ~2500 LOC; adapters + ConfigSetOpsSession landed on `feat/pcw-workbench-shell-wave-2`
 > Date: 2026-08-09
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-09-pcw-workbench-shell-wave-2.md`](../../zh-CN/exec-plans/active/2026-08-09-pcw-workbench-shell-wave-2.md)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-09-pcw-workbench-shell-wave-2.md`](../../zh-CN/exec-plans/completed/2026-08-09-pcw-workbench-shell-wave-2.md)
 > Parent program: [#258](https://github.com/tzrea1-Q/WiseEff/issues/258) (wave-1 sessions landed in PR #266)
 > Locked design: [`docs/design-docs/2026-08-06-project-configuration-workbench-design.md`](../../design-docs/2026-08-06-project-configuration-workbench-design.md) §16
 
@@ -16,7 +16,7 @@ Wave-1 (#259–#265 / PR #266) extracted Workbench sessions:
 - `ConflictLocateFacade`
 - plus `AuditQuery` injection
 
-The shell [`ProjectConfigurationWorkbench.tsx`](../../src/components/project-configuration-workbench/ProjectConfigurationWorkbench.tsx) is still ~**4021** lines. Most remaining bulk is JSX presentation and config-set ops / URL / load orchestration — not the four domain sessions.
+The shell [`ProjectConfigurationWorkbench.tsx`](../../../src/components/project-configuration-workbench/ProjectConfigurationWorkbench.tsx) is still ~**4021** lines. Most remaining bulk is JSX presentation and config-set ops / URL / load orchestration — not the four domain sessions.
 
 Grill decisions (2026-08-09):
 
@@ -113,11 +113,13 @@ Frontend-visible extractionsions require playwright-cli checks per `AGENTS.md` o
 
 Blocking before moving this plan to `completed/`:
 
-- [ ] EN/ZH design §16 lists CommandBar + InspectorPanel adapters and ConfigSetOpsSession
-- [ ] EN/ZH FRONTEND Workbench sessions table includes ConfigSetOpsSession
-- [ ] `docs/PLANS.md` / zh-CN companion point at this plan while active, then move to completed/
-- [ ] `npm run docs:check` passes
-- [ ] Any deferred shell thinning (canvas/tree/Activity) recorded on #258 or tech-debt tracker
+- [x] EN/ZH design §16 lists CommandBar + InspectorPanel adapters and ConfigSetOpsSession
+- [x] EN/ZH FRONTEND Workbench sessions table includes ConfigSetOpsSession
+- [x] `docs/PLANS.md` / zh-CN companion point at this plan while active, then move to completed/
+- [x] `npm run docs:check` passes
+- [x] Any deferred shell thinning (canvas/tree/Activity) recorded on #258 or tech-debt tracker
+
+Note: wave-2 also extracted `WorkbenchSourceTree` / `WorkbenchSourceCanvas` / `WorkbenchTaskDock` / shell chrome+dialog adapters to meet the ≤ ~2500 intermediate gate; aspirational 800–1000 shell LOC remains wave-3.
 
 ## Risks
 

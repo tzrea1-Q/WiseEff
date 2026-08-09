@@ -483,21 +483,23 @@ clean → dirty → validating → submitting → submitted
 
 ```text
 ProjectConfigurationWorkbenchPage
-└─ ProjectConfigurationWorkbench（壳：选择 / URL / ConfirmDialog / 各坞）
-   ├─ ConfigurationCommandBar
-   ├─ ConfigSourceTree
-   ├─ DtsSourceCanvas
-   ├─ ConfigurationInspector（含 WorkbenchBaselineDock）
-   ├─ ConfigurationTaskDock（冲突 / 就绪适配）
-   ├─ ReleaseReadinessIndicator
+└─ ProjectConfigurationWorkbench（壳：选择 / URL / ConfirmDialog 接线 / 加载编排）
+   ├─ WorkbenchCommandBar
+   ├─ WorkbenchShellChrome（ops 横幅 + 移动端区域工具）
+   ├─ WorkbenchSourceTree
+   ├─ WorkbenchSourceCanvas
+   ├─ WorkbenchInspectorPanel（含 WorkbenchBaselineDock）
+   ├─ WorkbenchTaskDock（冲突 / 就绪适配）
+   ├─ WorkbenchCandidateActivateDialog / WorkbenchBaselineDialogs
    └─ Workbench sessions（`src/application/project-configuration/`）
       ├─ StructuredEditSession
       ├─ CandidateVersionFlow
       ├─ ReleaseBaselineSession
-      └─ ConflictLocateFacade
+      ├─ ConflictLocateFacade
+      └─ ConfigSetOpsSession
 ```
 
-Wave-1 会话抽取（#258–#265）把领域动作收到 `src/application/project-configuration/` 的命令接口后面。壳层仍承载大量布局与展示接线（数千行）；继续瘦身应抽展示适配器，而不是重开这些会话状态机。Activity 只注入 `AuditQuery.listAuditEvents`——工作台页面模块禁止自行构造审计 HTTP client。
+Wave-1 会话抽取（#258–#265 / PR #266）把领域动作收到 `src/application/project-configuration/` 的命令接口后面。Wave-2（#267–#271）抽出展示适配器（`WorkbenchCommandBar`、`WorkbenchInspectorPanel`、源结构树/画布、任务坞、壳层 chrome/对话框）以及 `ConfigSetOpsSession`；壳层以编排为主且 ≤ ~2500 行，更进一步瘦身（目标 800–1000）留给 wave-3。Activity 只注入 `AuditQuery.listAuditEvents`——工作台页面模块禁止自行构造审计 HTTP client。
 
 复用约束：
 
