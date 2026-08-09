@@ -508,10 +508,14 @@ ProjectConfigurationWorkbenchPage
       ├─ CandidateVersionFlow
       ├─ ReleaseBaselineSession
       ├─ ConflictLocateFacade
-      └─ ConfigSetOpsSession
+      ├─ ConfigSetOpsSession
+      ├─ WorkbenchNavigationSession
+      ├─ WorkbenchWorkspaceLoadSession
+      ├─ WorkbenchCanvasHistorySession
+      └─ WorkbenchActivitySession
 ```
 
-Wave-1 session extraction (#258–#265 / PR #266) moved domain acts behind command interfaces under `src/application/project-configuration/`. Wave-2 (#267–#271) extracted presentation adapters (`WorkbenchCommandBar`, `WorkbenchInspectorPanel`, source tree/canvas, task dock, shell chrome/dialogs) plus `ConfigSetOpsSession`; the shell is orchestration-focused at ≤ ~2500 lines, with further thinning (aspirational 800–1000) deferred to wave-3. Activity uses injected `AuditQuery.listAuditEvents` only — the workbench page must not construct audit HTTP clients.
+Wave-1 session extraction (#258–#265 / PR #266) moved domain acts behind command interfaces under `src/application/project-configuration/`. Wave-2 (#267–#271 / PR #272) extracted presentation adapters (`WorkbenchCommandBar`, `WorkbenchInspectorPanel`, source tree/canvas, task dock, shell chrome/dialogs) plus `ConfigSetOpsSession` (shell ≤ ~2500). Wave-3 (#273–#278) extracted Navigation / WorkspaceLoad / CanvasHistory / Activity Workbench sessions and slimmed the shell to ≤ ~1500 orchestration lines (stretch 800–1000 remains residual debt). Activity uses injected `AuditQuery.listAuditEvents` only — the workbench page must not construct audit HTTP clients.
 
 Reuse rules:
 

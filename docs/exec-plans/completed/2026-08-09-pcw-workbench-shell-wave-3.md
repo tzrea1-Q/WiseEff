@@ -1,9 +1,9 @@
 # PCW workbench shell wave-3 — navigation / load / canvas / activity sessions
 
-> Status: **Active (planning)** — implement from `main` after [PR #272](https://github.com/tzrea1-Q/WiseEff/pull/272) (wave-2) is merged
+> Status: **Complete** — shell `wc -l` = **1496** (≤ ~1500 soft gate); stretch 800–1000 residual; closes #258 via #273–#278
 > Date: 2026-08-09
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-09-pcw-workbench-shell-wave-3.md`](../../zh-CN/exec-plans/active/2026-08-09-pcw-workbench-shell-wave-3.md)
-> Parent program: [#258](https://github.com/tzrea1-Q/WiseEff/issues/258) (wave-1 PR #266; wave-2 PR #272)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-09-pcw-workbench-shell-wave-3.md`](../../zh-CN/exec-plans/completed/2026-08-09-pcw-workbench-shell-wave-3.md)
+> Parent program: [#258](https://github.com/tzrea1-Q/WiseEff/issues/258) (wave-1 PR #266; wave-2 PR #272; wave-3 #273–#278)
 > Locked design: [`docs/design-docs/2026-08-06-project-configuration-workbench-design.md`](../../design-docs/2026-08-06-project-configuration-workbench-design.md) §16
 
 ## Context
@@ -116,12 +116,12 @@ Frontend-visible session wiring requires playwright-cli checks per `AGENTS.md` o
 
 Blocking before moving this plan to `completed/` and closing #258:
 
-- [ ] EN/ZH design §16 lists the four wave-3 sessions
-- [ ] EN/ZH FRONTEND Workbench sessions table includes them
-- [ ] `docs/PLANS.md` / zh-CN companion point at this plan while active, then move to completed/
-- [ ] `npm run docs:check` passes
-- [ ] Shell `wc -l` ≤ ~1500 with orchestration-only responsibilities; stretch 800–1000 noted if missed
-- [ ] #258 closed with completion evidence (or explicit residual debt if soft gate waived by owner)
+- [x] EN/ZH design §16 lists the four wave-3 sessions
+- [x] EN/ZH FRONTEND Workbench sessions table includes them
+- [x] `docs/PLANS.md` / zh-CN companion point at this plan while active, then move to completed/
+- [x] `npm run docs:check` passes
+- [x] Shell `wc -l` ≤ ~1500 with orchestration-only responsibilities; stretch 800–1000 noted if missed (**1496**; stretch residual)
+- [x] #258 closed with completion evidence (or explicit residual debt if soft gate waived by owner)
 
 ## Risks
 

@@ -106,8 +106,12 @@ Domain acts for the configuration workbench live as Workbench sessions under `sr
 | `ReleaseBaselineSession` | Readiness refresh/ack, baseline create/compare/release/restore (+ gate tokens) |
 | `ConflictLocateFacade` | Open-conflict load, locate projection, open-arbitration refresh |
 | `ConfigSetOpsSession` | Config-set create / add-remove member / export / manual sync (+ narrow port Picks) |
+| `WorkbenchNavigationSession` | URL/selection sync, structure target, unified search (+ hits) |
+| `WorkbenchWorkspaceLoadSession` | Config sets / project files / members / active source / structure loads + retries |
+| `WorkbenchCanvasHistorySession` | History / unified-diff / side-by-side source load + working-canvas snapshot restore |
+| `WorkbenchActivitySession` | Activity timeline load/refresh + missing-notice; event→navigate stays shell+Navigation |
 
-React hooks (`useStructuredEditSession`, `useCandidateVersionFlow`, `useReleaseBaselineSession`, `useConflictLocateFacade`, `useConfigSetOpsSession`) are thin `useSyncExternalStore` adapters. Prefer unit-testing the session command interfaces. The shell (`ProjectConfigurationWorkbench`) keeps URL/selection, ConfirmDialog ownership, and presentation-adapter wiring (`WorkbenchCommandBar`, `WorkbenchInspectorPanel`, `WorkbenchSourceTree`, `WorkbenchSourceCanvas`, `WorkbenchTaskDock`); it must not re-own those lifecycle state machines.
+React hooks (`useStructuredEditSession`, `useCandidateVersionFlow`, `useReleaseBaselineSession`, `useConflictLocateFacade`, `useConfigSetOpsSession`, `useWorkbenchNavigationSession`, `useWorkbenchWorkspaceLoadSession`, `useWorkbenchCanvasHistorySession`, `useWorkbenchActivitySession`) are thin `useSyncExternalStore` adapters. Prefer unit-testing the session command interfaces. The shell (`ProjectConfigurationWorkbench`) keeps ConfirmDialog ownership, cross-session bridges, and presentation-adapter wiring (`WorkbenchCommandBar`, `WorkbenchInspectorPanel`, `WorkbenchSourceTree`, `WorkbenchSourceCanvas`, `WorkbenchTaskDock`); navigation/load/canvas/activity lifecycle state machines live in the sessions above (wave-3 / #258).
 
 - `ProjectParameterFilesPanel` and `ParameterFileConflictPanel` accept a `repository` prop only; they must **not** call `createParameterFileClient()` inside the component.
 - `/parameter-admin/projects` and `/parameter-admin` resolve the port once and pass it down (including mock mode demos that list fixture files / open conflicts without HTTP).

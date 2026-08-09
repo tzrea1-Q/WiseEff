@@ -1,9 +1,9 @@
 # PCW 工作台壳层 wave-3 — 导航 / 加载 / 画布历史 / 活动会话
 
-> 状态：**Active（策划）** — 在 [PR #272](https://github.com/tzrea1-Q/WiseEff/pull/272)（wave-2）合入后从 `main` 实现
+> 状态：**Complete** — 壳 `wc -l` = **1496**（≤ ~1500 软门禁）；stretch 800–1000 为残余债；经 #273–#278 关闭 #258
 > 日期：2026-08-09
-> English: [`docs/exec-plans/active/2026-08-09-pcw-workbench-shell-wave-3.md`](../../../exec-plans/active/2026-08-09-pcw-workbench-shell-wave-3.md)
-> 父程序：[#258](https://github.com/tzrea1-Q/WiseEff/issues/258)（wave-1 PR #266；wave-2 PR #272）
+> English: [`docs/exec-plans/completed/2026-08-09-pcw-workbench-shell-wave-3.md`](../../../exec-plans/completed/2026-08-09-pcw-workbench-shell-wave-3.md)
+> 父程序：[#258](https://github.com/tzrea1-Q/WiseEff/issues/258)（wave-1 PR #266；wave-2 PR #272；wave-3 #273–#278）
 > 锁定设计：[`docs/zh-CN/design-docs/2026-08-06-project-configuration-workbench-design.md`](../../design-docs/2026-08-06-project-configuration-workbench-design.md) §16
 
 ## 背景
