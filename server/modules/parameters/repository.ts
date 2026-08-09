@@ -2822,8 +2822,9 @@ export async function insertFileSyncConflict(
 }
 
 /**
- * Post-cutover enrichment for file↔UI sync conflicts.
- * Joins bindings/specs/modules and occurrence spans; never touches renamed legacy PPV tables.
+ * Enrichment for file↔UI sync conflicts.
+ * Prefer post-cutover binding/spec joins; fall back to legacy PPV/definition columns
+ * so pre-cutover conflict rows still surface baseValue and parameterName.
  */
 const FILE_SYNC_CONFLICT_SELECT = `
     select

@@ -25,6 +25,14 @@ const organizationId = "org-chargelab";
 const projectId = "aurora";
 const adminHeaders = () => authHeadersForRole("admin");
 const hardwareHeaders = () => authHeadersForRole("hardware-user");
+
+async function ensureInspectorOpen(page: Page) {
+  const toggle = page.getByRole("button", { name: "检查器", exact: true });
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") {
+    await toggle.click();
+  }
+  await expect(page.getByRole("complementary", { name: "配置检查器" })).toBeVisible();
+}
 const sampleDts = `/dts-v1/;
 / {
 	model = "Configuration tracer";
@@ -225,7 +233,10 @@ test.describe("project configuration workbench read-only browser acceptance", ()
           }
           const scrollW = Math.ceil(html.scrollWidth);
           const clientW = Math.ceil(html.clientWidth);
-          if (parentClip || scrollW > clientW + 1) {
+          // Native <select> scrollWidth reflects the longest option, even when the
+          // control intentionally truncates the closed-face label in the command bar.
+          const intrinsicSelectOverflow = html.tagName === "SELECT" && !parentClip && scrollW > clientW + 1;
+          if (!intrinsicSelectOverflow && (parentClip || scrollW > clientW + 1)) {
             clipped.push({
               label: (html.getAttribute("aria-label") || html.textContent || html.className || "").toString().slice(0, 40),
               scroll: scrollW,
@@ -968,8 +979,8 @@ test.describe("project configuration workbench read-only browser acceptance", ()
 
       await page.getByRole("treeitem", { name: "节点 board" }).click();
       await page.getByRole("treeitem", { name: "属性 board/model" }).click();
+      await ensureInspectorOpen(page);
       const inspector = page.getByRole("complementary", { name: "配置检查器" });
-      await expect(inspector).toBeVisible();
       await expect(inspector).toContainText("可编辑");
       await expect(inspector).toContainText("变更原因");
       const stringInput = inspector.getByRole("textbox", { name: "字符串 1" });
@@ -1117,8 +1128,8 @@ test.describe("project configuration workbench read-only browser acceptance", ()
 
       await page.getByRole("treeitem", { name: "节点 board" }).click();
       await page.getByRole("treeitem", { name: "属性 board/model" }).click();
+      await ensureInspectorOpen(page);
       const inspector = page.getByRole("complementary", { name: "配置检查器" });
-      await expect(inspector).toBeVisible();
       const stringInput = inspector.getByRole("textbox", { name: "字符串 1" });
       await expect(stringInput).toBeEnabled();
       await stringInput.fill("DraftV2");
@@ -1725,7 +1736,9 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       }
       await page.getByRole("treeitem", { name: new RegExp(primaryFileName) }).click();
       await expect(inspector.getByRole("button", { name: "手动同步" })).toBeVisible();
-      await inspector.getByRole("button", { name: "手动同步" }).click();
+      const syncButton = inspector.getByRole("button", { name: "手动同步" });
+      await syncButton.evaluate((el) => el.scrollIntoView({ block: "center", inline: "nearest" }));
+      await syncButton.click();
       await expect(page.getByRole("region", { name: "配置任务" })).toContainText(primaryFileName);
 
       await page.getByRole("button", { name: "更多" }).click();

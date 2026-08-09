@@ -2265,8 +2265,10 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(inspector).toHaveTextContent("成员管理");
     expect(within(inspector).getByRole("button", { name: "关闭检查器" })).toBeInTheDocument();
 
-    fireEvent.click(within(inspector).getByRole("button", { name: "移除 aurora-board.dts" }));
-    expect(await screen.findByRole("dialog")).toHaveTextContent("后续基线与导出将不再包含它");
+    await waitFor(() => {
+      fireEvent.click(within(inspector).getByRole("button", { name: "移除 aurora-board.dts" }));
+      expect(screen.getByRole("dialog")).toHaveTextContent("后续基线与导出将不再包含它");
+    });
     fireEvent.click(screen.getByRole("button", { name: "确认移除" }));
     await waitFor(() =>
       expect(removeConfigSetFile).toHaveBeenCalledWith(PROJECT.id, "cs-default", "file-board")

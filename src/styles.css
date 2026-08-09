@@ -26700,7 +26700,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
   flex-direction: column;
   width: min(360px, calc(100% - 42px));
   min-height: 0;
-  overflow: hidden;
+  overflow: auto;
   color: var(--text);
   background: color-mix(in srgb, var(--surface) 98%, transparent);
   border: 1px solid var(--outline);
@@ -26724,10 +26724,23 @@ button.dts-topology-navigator__disclosure:focus-visible {
   backdrop-filter: none;
 }
 
+.configuration-workbench__inspector > .configuration-workbench__region-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: color-mix(in srgb, var(--surface) 98%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.configuration-workbench__inspector.is-persistent > .configuration-workbench__region-head {
+  background: var(--surface);
+  backdrop-filter: none;
+}
+
 .configuration-workbench__inspector-body {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  overflow: visible;
 }
 
 .configuration-workbench__inspector-actions {
