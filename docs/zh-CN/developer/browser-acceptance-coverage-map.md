@@ -29,8 +29,8 @@
 - `DEBUG-ADMIN-001`：API mode 下调试管理后台可新增、编辑、归档、恢复，并维护 HDC/ADB binding 与复杂值元数据。
 - `DTS-RELOAD-DEPLOY-001`：经假本地设备桥部署已校验的重载 overlay（mount / pushFile / trigger）至 `unverifiable`；浏览器证据 `work/ui-checks/285-*`。
 - `DTS-RELOAD-KERNEL-001`：触发后内核日志采集保持为未判定证据；浏览器证据 `work/ui-checks/286-*`。
-- `DTS-RELOAD-VERIFY-001`：触发成功后经 `debug.readNode` 核对绑定参数，升级为 verified/contradicted 或保持 unverifiable；浏览器证据 `work/ui-checks/287-*`。
-- `DTS-RELOAD-RESIDUE-001`：设备写后终端记录残留；恢复基线仅在成功时清除；浏览器证据 `work/ui-checks/288-*`。
+- `DTS-RELOAD-VERIFY-001`：触发成功后经 `debug.readNode` 核对绑定参数，升级为 verified/contradicted 或保持 unverifiable。验收 spec 仅断言无绑定路径（不调用 `debug.readNode`、保持 unverifiable）；升级判定由服务端测试断言。人工浏览器证据 `work/ui-checks/287-*`。
+- `DTS-RELOAD-RESIDUE-001`：设备写后终端记录残留。验收 spec 断言残留已记录且可读；补偿性恢复运行与"仅成功时清除"规则由服务端测试断言。人工浏览器证据 `work/ui-checks/288-*`。
 - `DTS-RELOAD-DEPLOY-HW-001`：真实 HDC 目标经已配对本地桥部署重载 overlay（条件覆盖，非阻塞）。
 - `BRIDGE-WIN-001`：`/node-debugging` 的 Windows 优先本地 Bridge 面板可覆盖缺失安装、未配对、未启动、在线无设备与在线目标状态，并展示同源 Windows 下载入口。
 - `BRIDGE-TOOLS-001`：Bridge 已连接但 `tools.adb.available: false` 时，Step ③ 显示缺少 ADB 与 **安装调试工具** CTA（非「Bridge 未安装」）。覆盖：`src/NodeDebuggingPage.test.tsx`。
