@@ -66,7 +66,6 @@ export type PowerManagementDebugParameter = {
   normalizationMode?: "exact" | "trim" | "line-ending-normalized" | "json-canonical";
   maxValueBytes?: number | null;
   parameterDefinitionId?: string;
-  reloadManaged?: boolean;
   writeFormatExample?: string;
   writeFormatHint?: string;
 };

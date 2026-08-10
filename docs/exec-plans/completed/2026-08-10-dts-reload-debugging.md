@@ -72,7 +72,7 @@ These remain open after #285–#289; automated coverage uses a fake bridge. Hard
 | Quality / acceptance | Update | Browser coverage map EN/ZH; operation matrix already had DTS-RELOAD-* (regenerated docs); requirements.ts already registered |
 | Chinese companions | Update | All developer-facing EN docs touched above have zh companions updated as separate files |
 | Tech debt | Update | TD-033 corrected (dropped `parameter_reload_bindings`); zh TD-032/TD-033 aligned; TD-063–TD-067 opened with owners |
-| Retired concept cleanup | Update | Removed dead `ParameterReload*` domain/DTO/client methods; retired contract entries document `410` `ErrorResponse` |
+| Retired concept cleanup | Update | Removed dead `ParameterReload*` domain/DTO/client methods and unused `reloadManaged`; retired contract entries use `successStatus: 410` (no spurious OpenAPI 200) |
 
 ## Documentation Update Gate
 

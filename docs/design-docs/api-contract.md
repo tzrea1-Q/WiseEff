@@ -89,12 +89,12 @@ Dedicated module under `/api/v1/dts-reload/*` (not the retired `/api/v1/debuggin
 
 | Method | Path | Authz | Purpose |
 | --- | --- | --- | --- |
-| `GET` | `/api/v1/dts-reload/candidates` | `debugging:view` or `debugging:dts-reload` | Project parameters with debuggability, sensitiveMatch, lastReload |
-| `POST` | `/api/v1/dts-reload/runs` | `debugging:dts-reload` | Start run (batch targets); may require `confirm-sensitive-reload` |
+| `GET` | `/api/v1/dts-reload/projects/:projectId/candidates` | `debugging:view` or `debugging:dts-reload` | Project parameters with debuggability, sensitiveMatch, lastReload |
+| `POST` | `/api/v1/dts-reload/projects/:projectId/runs` | `debugging:dts-reload` | Start run (batch targets); may require `confirm-sensitive-reload` |
 | `POST` | `/api/v1/dts-reload/runs/:runId/deploy` | `debugging:dts-reload` | In-request bridge deploy; requires `confirm-dts-reload` |
 | `GET` | `/api/v1/dts-reload/runs` / `.../:runId` | view path | History and detail including reload snapshot |
 | `GET` | `/api/v1/dts-reload/residue` | view path | Device residue bookkeeping |
-| `POST` | `/api/v1/dts-reload/restore-baseline` | `debugging:dts-reload` | Start compensating restore-baseline run |
+| `POST` | `/api/v1/dts-reload/projects/:projectId/restore-baseline` | `debugging:dts-reload` | Start compensating restore-baseline run |
 | `*` | `/api/v1/dts-reload/configuration*` | `debugging:admin` | Org defaults + device overrides |
 
 Committed OpenAPI (`docs/generated/openapi.json`) is authoritative for request/response schemas.

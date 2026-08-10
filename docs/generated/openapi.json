@@ -7042,8 +7042,11 @@
           "debugging"
         ],
         "responses": {
-          "200": {
-            "description": "Successful response.",
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "410": {
+            "description": "Gone — retired endpoint.",
             "content": {
               "application/json": {
                 "schema": {
@@ -7051,12 +7054,6 @@
                 }
               }
             }
-          },
-          "400": {
-            "$ref": "#/components/responses/ErrorResponse"
-          },
-          "410": {
-            "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -7072,8 +7069,11 @@
           "debugging"
         ],
         "responses": {
-          "200": {
-            "description": "Successful response.",
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "410": {
+            "description": "Gone — retired endpoint.",
             "content": {
               "application/json": {
                 "schema": {
@@ -7081,12 +7081,6 @@
                 }
               }
             }
-          },
-          "400": {
-            "$ref": "#/components/responses/ErrorResponse"
-          },
-          "410": {
-            "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"

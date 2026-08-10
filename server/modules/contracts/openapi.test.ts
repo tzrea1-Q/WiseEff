@@ -248,12 +248,18 @@ describe("M5 OpenAPI contract", () => {
 
     expect(schemaRegistry["debugging.listReloadTargets"]).toMatchObject({
       responseBody: "ErrorResponse",
-      additionalResponses: { "410": "ErrorResponse" }
+      successStatus: 410
     });
     expect(schemaRegistry["debugging.reloadParameter"]).toMatchObject({
       responseBody: "ErrorResponse",
-      additionalResponses: { "410": "ErrorResponse" }
+      successStatus: 410
     });
+    expect(buildOpenApiDocument().paths["/api/v1/debugging/reload-targets"]?.get?.responses).toEqual(
+      expect.objectContaining({
+        "410": expect.objectContaining({ description: "Gone — retired endpoint." })
+      })
+    );
+    expect(buildOpenApiDocument().paths["/api/v1/debugging/reload-targets"]?.get?.responses?.["200"]).toBeUndefined();
 
     expect(schemaRegistry["debugging.admin.createParameter"]).toMatchObject({
       requestBody: "DebugAdminParameterRequest",

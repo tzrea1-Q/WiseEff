@@ -63,7 +63,6 @@ export type DebugParameter = {
   normalizationMode?: DebugNormalizationMode;
   maxValueBytes?: number | null;
   parameterDefinitionId?: string;
-  reloadManaged?: boolean;
   writeFormatExample?: string;
   writeFormatHint?: string;
 };
