@@ -43,6 +43,8 @@ export type DtsReloadRunStatus =
   | "validated"
   | "deploying"
   | "unverifiable"
+  | "verified"
+  | "contradicted"
   | "failed";
 
 export type DtsReloadIntegrityCheck = "sha256" | "md5" | "byte-length";
@@ -64,6 +66,27 @@ export type DtsReloadKernelSignal = {
   excerpt: string | null;
 };
 
+export type DtsReloadParameterVerificationOutcome =
+  | "verified"
+  | "contradicted"
+  | "unbound"
+  | "read-failed";
+
+export type DtsReloadParameterVerification = {
+  bindingId: string;
+  propertyKey: string;
+  outcome: DtsReloadParameterVerificationOutcome;
+  debugNodeId: string | null;
+  nodePath: string | null;
+  expectedValue: string;
+  readValue: string | null;
+  reason: string | null;
+};
+
+export type DtsReloadBehaviouralVerification = {
+  outcomes: DtsReloadParameterVerification[];
+};
+
 export type DtsReloadSnapshot = {
   libraryBaselines: Array<{
     bindingId: string;
@@ -77,6 +100,7 @@ export type DtsReloadSnapshot = {
     integrityCheck: DtsReloadIntegrityCheck | null;
   } | null;
   kernelSignal: DtsReloadKernelSignal | null;
+  behaviouralVerification: DtsReloadBehaviouralVerification | null;
 };
 
 export type DtsReloadRun = {
@@ -160,7 +184,19 @@ export const dtsReloadStatusLabels: Record<DtsReloadRunStatus, string> = {
   validated: "预检通过（未部署）",
   deploying: "正在部署",
   unverifiable: "不可验证的重载",
+  verified: "行为已验证",
+  contradicted: "行为矛盾",
   failed: "部署失败"
+};
+
+export const dtsReloadVerificationOutcomeLabels: Record<
+  DtsReloadParameterVerificationOutcome,
+  string
+> = {
+  verified: "已验证",
+  contradicted: "矛盾",
+  unbound: "缺少调试节点绑定",
+  "read-failed": "读取失败"
 };
 
 /** Closed allowlist of exact kernel log commands — shared with bridge/server via device-command-core. */

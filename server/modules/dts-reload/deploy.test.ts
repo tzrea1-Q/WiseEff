@@ -34,6 +34,66 @@ import { DTS_RELOAD_CONFIRMATION_TOKEN } from "./types";
 
 type QueryCall = { text: string; values: unknown[] };
 
+type DeployDbOptions = {
+  runRow: Record<string, unknown>;
+  targetRows?: unknown[];
+  /** Rows returned for debug-node binding resolution, keyed by binding id (values[1]). */
+  debugBindingsByBindingId?: Record<string, unknown[]>;
+};
+
+function createDeployDb(options: DeployDbOptions) {
+  const calls: QueryCall[] = [];
+  const updates: Array<Record<string, unknown>> = [];
+  const runQuery = async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
+    const call = { text, values };
+    calls.push(call);
+
+    if (text.includes("from dts_reload_run_targets")) {
+      return { rows: (options.targetRows ?? []) as Row[], rowCount: (options.targetRows ?? []).length };
+    }
+
+    if (text.includes("from debugging_parameters") || text.includes("join debugging_parameters")) {
+      const bindingId = String(values[1] ?? "");
+      const rows = options.debugBindingsByBindingId?.[bindingId] ?? [];
+      return { rows: rows as Row[], rowCount: rows.length };
+    }
+
+    if (text.includes("update dts_reload_runs")) {
+      const next = {
+        ...options.runRow,
+        status: values[2],
+        failure_code: values[3],
+        steps: JSON.parse(String(values[4])),
+        reload_snapshot: JSON.parse(String(values[11])),
+        integrity_check: values[10],
+        completed_at: values[12],
+        device_id: values[5],
+        bridge_id: values[6],
+        bridge_machine_label: values[7],
+        target_ref: values[8],
+        protocol: values[9]
+      };
+      updates.push(next);
+      return { rows: [next] as Row[], rowCount: 1 };
+    }
+
+    // getReloadRun / artifact key lookup
+    if (text.includes("from dts_reload_runs") || text.includes("overlay_artifact_storage_key")) {
+      return { rows: [options.runRow] as Row[], rowCount: 1 };
+    }
+
+    return { rows: [] as Row[], rowCount: 0 };
+  };
+
+  const db: Database = {
+    query: (text, values = []) => runQuery(text, values),
+    transaction: async <T,>(fn: (queryable: Queryable) => Promise<T>) =>
+      fn({ query: (text, values = []) => runQuery(text, values) })
+  };
+  return { db, calls, updates };
+}
+
+/** Legacy queue-based helper for early-refusal tests that never reach behavioural verify. */
 function createFakeDb(handlers: Array<(call: QueryCall) => unknown[]> = []) {
   const calls: QueryCall[] = [];
   const runQuery = async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
@@ -208,35 +268,7 @@ describe("deployReloadRun", () => {
       }
     ];
 
-    const updates: Array<Record<string, unknown>> = [];
-    const { db } = createFakeDb([
-      // getReloadRun
-      () => [runRow],
-      () => targetRows,
-      // artifact key lookup
-      () => [runRow],
-      // persistProgress updates
-      (call) => {
-        updates.push({ text: call.text, values: call.values });
-        return [{ ...runRow, status: call.values[2], steps: JSON.parse(String(call.values[4])), reload_snapshot: JSON.parse(String(call.values[11])), integrity_check: call.values[10], completed_at: call.values[12], device_id: call.values[5], bridge_id: call.values[6], bridge_machine_label: call.values[7], target_ref: call.values[8], protocol: call.values[9], failure_code: call.values[3] }];
-      },
-      (call) => {
-        updates.push({ text: call.text, values: call.values });
-        return [{ ...runRow, status: call.values[2], steps: JSON.parse(String(call.values[4])), reload_snapshot: JSON.parse(String(call.values[11])), integrity_check: call.values[10], completed_at: call.values[12], device_id: call.values[5], bridge_id: call.values[6], bridge_machine_label: call.values[7], target_ref: call.values[8], protocol: call.values[9], failure_code: call.values[3] }];
-      },
-      (call) => {
-        updates.push({ text: call.text, values: call.values });
-        return [{ ...runRow, status: call.values[2], steps: JSON.parse(String(call.values[4])), reload_snapshot: JSON.parse(String(call.values[11])), integrity_check: call.values[10], completed_at: call.values[12], device_id: call.values[5], bridge_id: call.values[6], bridge_machine_label: call.values[7], target_ref: call.values[8], protocol: call.values[9], failure_code: call.values[3] }];
-      },
-      (call) => {
-        updates.push({ text: call.text, values: call.values });
-        return [{ ...runRow, status: call.values[2], steps: JSON.parse(String(call.values[4])), reload_snapshot: JSON.parse(String(call.values[11])), integrity_check: call.values[10], completed_at: call.values[12], device_id: call.values[5], bridge_id: call.values[6], bridge_machine_label: call.values[7], target_ref: call.values[8], protocol: call.values[9], failure_code: call.values[3] }];
-      },
-      (call) => {
-        updates.push({ text: call.text, values: call.values });
-        return [{ ...runRow, status: call.values[2], steps: JSON.parse(String(call.values[4])), reload_snapshot: JSON.parse(String(call.values[11])), integrity_check: call.values[10], completed_at: call.values[12], device_id: call.values[5], bridge_id: call.values[6], bridge_machine_label: call.values[7], target_ref: call.values[8], protocol: call.values[9], failure_code: call.values[3] }];
-      }
-    ]);
+    const { db } = createDeployDb({ runRow, targetRows });
 
     const files = new Map<string, Buffer>([
       ["src-key", Buffer.from("/dts-v1/;\n/plugin/;\n")],
@@ -329,6 +361,14 @@ describe("deployReloadRun", () => {
         }
       ]
     });
+    expect(result.reloadSnapshot?.behaviouralVerification?.outcomes).toEqual([
+      expect.objectContaining({
+        bindingId: "b1",
+        propertyKey: "watchdog_time",
+        outcome: "unbound",
+        reason: expect.stringContaining("No readable debug-node binding")
+      })
+    ]);
     expect(result.steps.map((step) => [step.step, step.outcome])).toEqual([
       ["compile-base", "passed"],
       ["compile-overlay", "passed"],
@@ -375,6 +415,7 @@ describe("deployReloadRun", () => {
       { protocol: "hdc", targetRef: "AURORA-001", command: "dmesg" },
       { timeoutMs: 10_000 }
     );
+    expect(bridgeRpcClient.call.mock.calls.some((call) => call[1] === "debug.readNode")).toBe(false);
     expect(acquireDebugDeviceLease).toHaveBeenCalled();
     expect(releaseDebugDeviceLease).toHaveBeenCalled();
     expect(resolveReloadConfiguration).toHaveBeenCalledWith(db, {
@@ -640,7 +681,10 @@ describe("deployReloadRun", () => {
     expect(releaseDebugDeviceLease).toHaveBeenCalled();
   });
 
-  async function runSuccessfulDeployThroughTrigger(bridgeRpcClient: { call: ReturnType<typeof vi.fn> }) {
+  async function runSuccessfulDeployThroughTrigger(
+    bridgeRpcClient: { call: ReturnType<typeof vi.fn> },
+    options: { debugBindingsByBindingId?: Record<string, unknown[]> } = {}
+  ) {
     const artifactBytes = Buffer.from("dtbo");
     const artifactSha = createHash("sha256").update(artifactBytes).digest("hex");
     const runRow = validatedRunRow({ overlay_artifact_sha256: artifactSha, overlay_artifact_bytes: artifactBytes.length });
@@ -654,32 +698,11 @@ describe("deployReloadRun", () => {
         sort_order: 0
       }
     ];
-    const persist = (call: QueryCall) => [
-      {
-        ...runRow,
-        status: call.values[2],
-        failure_code: call.values[3],
-        steps: JSON.parse(String(call.values[4])),
-        reload_snapshot: JSON.parse(String(call.values[11])),
-        integrity_check: call.values[10],
-        completed_at: call.values[12],
-        device_id: call.values[5],
-        bridge_id: call.values[6],
-        bridge_machine_label: call.values[7],
-        target_ref: call.values[8],
-        protocol: call.values[9]
-      }
-    ];
-    const { db } = createFakeDb([
-      () => [runRow],
-      () => targetRows,
-      () => [runRow],
-      persist,
-      persist,
-      persist,
-      persist,
-      persist
-    ]);
+    const { db } = createDeployDb({
+      runRow,
+      targetRows,
+      debugBindingsByBindingId: options.debugBindingsByBindingId
+    });
     const objectStore: ObjectStore = {
       put: vi.fn(),
       get: vi.fn(async (key) => (key === "art-key" ? artifactBytes : Buffer.from("src"))),
@@ -704,13 +727,30 @@ describe("deployReloadRun", () => {
     );
   }
 
+  function debugBindingRow(overrides: Record<string, unknown> = {}) {
+    return {
+      debug_node_id: "dbg-node-1",
+      node_path: "/sys/class/power_supply/battery/watchdog_time",
+      access_mode: "RW",
+      value_kind: "scalar",
+      value_format: "raw",
+      normalization_mode: "trim",
+      max_value_bytes: null,
+      value_shape: { kind: "cells", bits: 32, cellsPerGroup: 1, groups: 1 },
+      ...overrides
+    };
+  }
+
   function successfulDeployRpcHandlers(
-    readKernelLog: () => Record<string, unknown> | Promise<Record<string, unknown>>
+    readKernelLog: () => Record<string, unknown> | Promise<Record<string, unknown>>,
+    readNode?: () => Record<string, unknown> | Promise<Record<string, unknown>>
   ) {
     const artifactSha = createHash("sha256").update("dtbo").digest("hex");
     return vi.fn(async (_bridgeId: string, method: string) => {
       if (method === "bridge.getCapabilities") {
-        return { methods: [...DTS_RELOAD_BRIDGE_RPC_METHODS, "bridge.getCapabilities"] };
+        return {
+          methods: [...DTS_RELOAD_BRIDGE_RPC_METHODS, "bridge.getCapabilities", "debug.readNode"]
+        };
       }
       if (method === "debug.mountTarget") return { ok: true };
       if (method === "debug.pushFile") {
@@ -718,6 +758,10 @@ describe("deployReloadRun", () => {
       }
       if (method === "debug.writeNode") return { ok: true, verified: true };
       if (method === "debug.readKernelLog") return readKernelLog();
+      if (method === "debug.readNode") {
+        if (!readNode) throw new Error("unexpected debug.readNode");
+        return readNode();
+      }
       throw new Error(`unexpected ${method}`);
     });
   }
@@ -818,6 +862,95 @@ describe("deployReloadRun", () => {
       captureStatus: "obtained",
       rawText: logText,
       captureError: null
+    });
+  });
+
+  it("reads bound parameters through debug.readNode and reports behaviourally verified", async () => {
+    const bridgeRpcClient = {
+      call: successfulDeployRpcHandlers(
+        () => ({ ok: true, text: "kernel: unrelated\n", truncated: false }),
+        () => ({ ok: true, value: "7000\n" })
+      )
+    };
+
+    const result = await runSuccessfulDeployThroughTrigger(bridgeRpcClient, {
+      debugBindingsByBindingId: { b1: [debugBindingRow()] }
+    });
+
+    expect(result.status).toBe("verified");
+    expect(result.reloadSnapshot?.behaviouralVerification?.outcomes).toEqual([
+      expect.objectContaining({
+        bindingId: "b1",
+        outcome: "verified",
+        readValue: "7000\n",
+        nodePath: "/sys/class/power_supply/battery/watchdog_time"
+      })
+    ]);
+    expect(createAuditEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        kind: "dts-reload-run-verified",
+        action: "verified",
+        metadata: expect.objectContaining({
+          behaviouralVerification: expect.objectContaining({
+            outcomes: expect.arrayContaining([
+              expect.objectContaining({ bindingId: "b1", outcome: "verified" })
+            ])
+          })
+        })
+      })
+    );
+    const readCall = bridgeRpcClient.call.mock.calls.find((call) => call[1] === "debug.readNode");
+    expect(readCall).toEqual([
+      "br-1",
+      "debug.readNode",
+      {
+        protocol: "hdc",
+        targetRef: "AURORA-001",
+        nodePath: "/sys/class/power_supply/battery/watchdog_time",
+        preserveExactRead: false
+      },
+      { timeoutMs: 10_000 }
+    ]);
+    expect(bridgeRpcClient.call.mock.calls.map((call) => call[1])).not.toContain("debug.verifyReload");
+  });
+
+  it("reports contradicted when the driver surface disagrees with the debug value", async () => {
+    const bridgeRpcClient = {
+      call: successfulDeployRpcHandlers(
+        () => ({ ok: true, text: "", truncated: false }),
+        () => ({ ok: true, value: "6000" })
+      )
+    };
+
+    const result = await runSuccessfulDeployThroughTrigger(bridgeRpcClient, {
+      debugBindingsByBindingId: { b1: [debugBindingRow()] }
+    });
+
+    expect(result.status).toBe("contradicted");
+    expect(result.reloadSnapshot?.behaviouralVerification?.outcomes[0]).toMatchObject({
+      outcome: "contradicted",
+      readValue: "6000"
+    });
+  });
+
+  it("degrades a bound parameter to read-failed without failing the whole run", async () => {
+    const bridgeRpcClient = {
+      call: successfulDeployRpcHandlers(
+        () => ({ ok: true, text: "", truncated: false }),
+        () => ({ ok: false, error: "permission denied" })
+      )
+    };
+
+    const result = await runSuccessfulDeployThroughTrigger(bridgeRpcClient, {
+      debugBindingsByBindingId: { b1: [debugBindingRow()] }
+    });
+
+    expect(result.status).toBe("unverifiable");
+    expect(result.failureCode).toBeNull();
+    expect(result.reloadSnapshot?.behaviouralVerification?.outcomes[0]).toMatchObject({
+      outcome: "read-failed",
+      reason: "permission denied"
     });
   });
 });

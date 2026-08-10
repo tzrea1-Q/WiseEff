@@ -1,6 +1,6 @@
 # DTS reload debugging (#280 series)
 
-> Status: **Active** — #281–#285 merged via PR #295; #286 on `feat/dts-reload-kernel-log`
+> Status: **Active** — #281–#286 merged; #287 on `feat/dts-reload-behavioural-verify`
 > Date: 2026-08-10
 > Parent: GitHub [#280](https://github.com/tzrea1-Q/WiseEff/issues/280)
 > Tickets: #281–#290
@@ -44,6 +44,17 @@ Ship DTS reload debugging so hardware engineers can validate candidate library p
 - Mock mode: static unavailable only — no mock repository / fixtures / reducer actions
 - Degraded locator: refuse only when the parameter's own locator *is* a synthesised `/label` anchor, not when it is a descendant hanging under one
 - Kernel log command allowlist (server save + bridge re-validate): exact entries via `@wiseeff/device-command-core/kernelLogCommand`
+
+## #287 progress
+
+- After successful trigger + kernel log capture: behavioural verification via existing `debug.readNode` only (no new RPC)
+- Binding resolution: `debugging_parameters.project_parameter_binding_id` (preferred) or `parameter_spec_id`, then `debug_nodes` + enabled protocol `debug_node_bindings` (RO/RW) — same path shape as `/node-debugging`
+- Per-parameter outcomes on `reloadSnapshot.behaviouralVerification`: `verified` | `contradicted` | `unbound` | `read-failed`
+- Aggregation: zero bindings → `unverifiable`; any contradicted → `contradicted`; every bound verified → `verified`; bound reads failed without contradiction → stay `unverifiable` (no invented success)
+- Value-shape compare via `parseDtsValue` (cells numeric / string-list); sysfs bare decimals coerced
+- Migration `0099` widens status check with `verified` | `contradicted`; audit kinds include verification outcomes
+- UI: per-parameter outcomes with plain language for missing binding vs read failed; DEV `?uiPreview=behavioural-verify`
+- Acceptance: extend deploy fake-bridge coverage; browser evidence under `work/ui-checks/287-dts-reload-verify-*`
 
 ## #286 progress
 
@@ -106,7 +117,7 @@ Ship DTS reload debugging so hardware engineers can validate candidate library p
 | API / generated | Update | `docs/generated/openapi.json` via `npm run contract:openapi` |
 | Security | Update | Snapshot redefinition + confirm-dts-reload; ADR-0021; EN + zh-CN SECURITY |
 | Reliability / runbooks | Review | In-request deploy (ADR-0020); no BullMQ path |
-| Quality / acceptance | Update | `DTS-RELOAD-DEPLOY-001` + `DTS-RELOAD-KERNEL-001` + HW conditional; browser evidence `work/ui-checks/285-*` / `286-*` |
+| Quality / acceptance | Update | `DTS-RELOAD-DEPLOY-001` + `DTS-RELOAD-KERNEL-001` + `DTS-RELOAD-VERIFY-001` + HW conditional; browser evidence `work/ui-checks/285-*` / `286-*` / `287-*` |
 | Chinese companions | Update | `docs/zh-CN/SECURITY.md` for reload snapshot |
 
 ## Documentation Update Gate

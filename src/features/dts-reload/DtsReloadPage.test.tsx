@@ -112,6 +112,20 @@ function createRepository(overrides: Partial<DtsReloadRepository> = {}): DtsRelo
               }
             ],
             excerpt: null
+          },
+          behaviouralVerification: {
+            outcomes: [
+              {
+                bindingId: "binding-1",
+                propertyKey: "watchdog_time",
+                outcome: "unbound",
+                debugNodeId: null,
+                nodePath: null,
+                expectedValue: "<7000>",
+                readValue: null,
+                reason: "No readable debug-node binding for this parameter and protocol."
+              }
+            ]
           }
         }
       })
@@ -372,6 +386,9 @@ describe("DtsReloadPage", () => {
     expect(screen.getAllByText(/仅长度校验/).length).toBeGreaterThan(0);
     expect(screen.getByText(/重载快照/)).toBeInTheDocument();
     expect(screen.getByText(/挂载目标/)).toBeInTheDocument();
+    expect(screen.getByLabelText("行为验证结果")).toBeInTheDocument();
+    expect(screen.getByLabelText("行为验证结果")).toHaveTextContent("缺少调试节点绑定");
+    expect(screen.getByLabelText("行为验证结果")).toHaveTextContent(/不是读取失败/);
     expect(screen.getByLabelText("内核日志证据")).toBeInTheDocument();
     expect(screen.getByText(/内核日志证据（未判定）/)).toBeInTheDocument();
     expect(screen.getByLabelText("内核日志证据")).toHaveTextContent(/没有/);
@@ -380,6 +397,67 @@ describe("DtsReloadPage", () => {
     expect(screen.getByLabelText("按参数名分组的匹配行")).toHaveTextContent("kernel: watchdog_time applied");
     await user.click(screen.getByText("查看未过滤的完整采集"));
     expect(screen.getByLabelText("未过滤的内核日志采集")).toHaveTextContent("overlay reload ok");
+  });
+
+  it("shows per-parameter behavioural verification outcomes including missing bindings", async () => {
+    const user = userEvent.setup();
+    const repository = createRepository({
+      deployRun: vi.fn(async () =>
+        run({
+          status: "verified",
+          steps: [
+            { step: "compile-base", outcome: "passed" },
+            { step: "compile-overlay", outcome: "passed" },
+            { step: "dry-run-merge", outcome: "passed" },
+            { step: "assert-effect", outcome: "passed" },
+            { step: "mount-target", outcome: "passed" },
+            { step: "transfer-artifact", outcome: "passed" },
+            { step: "trigger-reload", outcome: "passed" }
+          ],
+          reloadSnapshot: {
+            libraryBaselines: [
+              {
+                bindingId: "binding-1",
+                propertyKey: "watchdog_time",
+                nodePath: "/amba/i2c@1/dev@6E",
+                baselineValue: "<6000>"
+              }
+            ],
+            artifactDigest: {
+              sha256: "sha-art",
+              onDeviceDigest: "sha-art",
+              integrityCheck: "sha256"
+            },
+            kernelSignal: null,
+            behaviouralVerification: {
+              outcomes: [
+                {
+                  bindingId: "binding-1",
+                  propertyKey: "watchdog_time",
+                  outcome: "verified",
+                  debugNodeId: "dbg-1",
+                  nodePath: "/sys/class/power_supply/battery/watchdog_time",
+                  expectedValue: "<7000>",
+                  readValue: "7000",
+                  reason: null
+                }
+              ]
+            }
+          }
+        })
+      )
+    });
+
+    renderPage(repository);
+    await screen.findAllByText("Watchdog");
+    await fillDeployFields(user);
+    await user.click(screen.getByRole("button", { name: /启动重载运行/ }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "确认部署" }));
+
+    await waitFor(() => expect(screen.getByText("行为已验证")).toBeInTheDocument());
+    expect(screen.getByLabelText("行为验证结果")).toHaveTextContent("已验证");
+    expect(screen.getByLabelText("行为验证结果")).toHaveTextContent("读回：7000");
   });
 
   it("distinguishes capture failure from obtained-with-no-matches in the evidence panel", async () => {
@@ -419,7 +497,8 @@ describe("DtsReloadPage", () => {
               truncated: false,
               matchedByParameter: [],
               excerpt: null
-            }
+            },
+            behaviouralVerification: null
           }
         })
       )
