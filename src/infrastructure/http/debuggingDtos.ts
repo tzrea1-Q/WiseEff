@@ -286,24 +286,6 @@ export function nodeWriteResultFromDto(response: { operation: NodeOperationDto; 
   };
 }
 
-export type ParameterReloadTargetDto = {
-  parameterDefinitionId: string;
-  name: string;
-  module: string;
-  unit: string;
-  range: string;
-  risk: DebugParameter["risk"];
-  currentValue: string;
-  recommendedValue: string;
-  binding: {
-    id: string;
-    protocol: DebugConnectionProtocol;
-    nodePath: string;
-    accessMode: DebugParameterAccessMode;
-    enabled: boolean;
-  } | null;
-};
-
 export type DebugRuntimeNodeDto = {
   id: string;
   name: string;
@@ -345,31 +327,5 @@ export function debugRuntimeNodeToDebugParameter(dto: DebugRuntimeNodeDto): Debu
     valueFormat: valueMetadata.valueFormat,
     normalizationMode: valueMetadata.normalizationMode,
     maxValueBytes: valueMetadata.maxValueBytes ?? null
-  };
-}
-
-export function reloadTargetToDebugParameter(dto: ParameterReloadTargetDto): DebugParameter {
-  const binding = dto.binding;
-  const bindingStatus: DebugParameter["bindingStatus"] = !binding ? "missing" : binding.enabled ? "configured" : "disabled";
-  const pending = binding?.enabled && dto.currentValue !== dto.recommendedValue;
-  return {
-    id: dto.parameterDefinitionId,
-    parameterDefinitionId: dto.parameterDefinitionId,
-    reloadManaged: true,
-    name: dto.name,
-    key: dto.parameterDefinitionId,
-    description: "",
-    module: dto.module,
-    currentValue: dto.currentValue,
-    targetValue: dto.recommendedValue,
-    unit: dto.unit,
-    range: dto.range,
-    risk: dto.risk,
-    status: !binding?.enabled ? "待下发" : pending ? "待下发" : "已同步",
-    nodePath: binding?.nodePath ?? "",
-    accessMode: binding?.accessMode ?? "RW",
-    selectedProtocol: binding?.protocol,
-    bindingStatus,
-    enabled: binding?.enabled ?? false
   };
 }

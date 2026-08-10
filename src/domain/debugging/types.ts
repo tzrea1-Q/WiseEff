@@ -135,17 +135,3 @@ export type DebugNodeRegistryEntry = {
   enabled: boolean;
   bindings: DebugNodeProtocolBinding[];
 };
-
-export type ParameterReloadBinding = {
-  id: string;
-  parameterDefinitionId: string;
-  parameterName?: string;
-  module?: string;
-  unit?: string;
-  risk?: RiskLevel;
-  protocol: DebugConnectionProtocol;
-  nodePath: string;
-  accessMode: DebugParameterAccessMode;
-  enabled: boolean;
-  notes?: string | null;
-};

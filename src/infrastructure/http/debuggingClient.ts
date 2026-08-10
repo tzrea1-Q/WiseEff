@@ -4,7 +4,6 @@ import type {
   DebugSessionSnapshot,
   DetectTargetsInput,
   ReadNodeInput,
-  ReloadParameterInput,
   RollbackSnapshotInput,
   WriteNodeInput
 } from "@/application/ports/DebuggingGateway";
@@ -17,14 +16,12 @@ import {
   nodeOperationFromDto,
   nodeReadResultFromDto,
   nodeWriteResultFromDto,
-  reloadTargetToDebugParameter,
   type DebugDeviceDto,
   type DebugParameterDto,
   type DebugRuntimeNodeDto,
   type DebugSnapshotDto,
   type DebugTargetDto,
-  type NodeOperationDto,
-  type ParameterReloadTargetDto
+  type NodeOperationDto
 } from "./debuggingDtos";
 import { createDefaultApiClient } from "./defaultApiClient";
 
@@ -52,12 +49,6 @@ function sessionPath(sessionId: string) {
 
 function snapshotRollbackPath(snapshotId: string) {
   return `/api/v1/debugging/snapshots/${encodeURIComponent(snapshotId)}/rollback`;
-}
-
-function buildReloadTargetsPath(query?: { protocol?: string }) {
-  const params = new URLSearchParams();
-  if (query?.protocol) params.set("protocol", query.protocol);
-  return appendQuery("/api/v1/debugging/reload-targets", params);
 }
 
 function readNodeRequestBody(input: ReadNodeInput): ReadNodeInput {
@@ -104,10 +95,6 @@ export function createHttpDebuggingGateway(apiClient: ApiClient = createDefaultA
       const response = await apiClient.get<ItemsEnvelope<DebugParameterDto>>(buildParametersPath(query));
       return response.items.map(debugParameterFromDto);
     },
-    async listReloadTargets(query) {
-      const response = await apiClient.get<ItemsEnvelope<ParameterReloadTargetDto>>(buildReloadTargetsPath(query));
-      return response.items.map(reloadTargetToDebugParameter);
-    },
     async detectTargets(input?: DetectTargetsInput) {
       const response = await apiClient.post<ItemsEnvelope<DebugTargetDto>>("/api/v1/debugging/targets/detect", input ?? {});
       return response.items.map(debugTargetFromDto);
@@ -137,10 +124,6 @@ export function createHttpDebuggingGateway(apiClient: ApiClient = createDefaultA
     },
     async writeNode(input: WriteNodeInput) {
       const response = await apiClient.post<WriteNodeResponse>("/api/v1/debugging/nodes/write", writeNodeRequestBody(input));
-      return nodeWriteResultFromDto(response);
-    },
-    async reloadParameter(input: ReloadParameterInput) {
-      const response = await apiClient.post<WriteNodeResponse>("/api/v1/debugging/parameters/reload", input);
       return nodeWriteResultFromDto(response);
     },
     async rollbackSnapshot(input: RollbackSnapshotInput) {

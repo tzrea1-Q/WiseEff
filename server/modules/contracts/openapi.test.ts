@@ -246,6 +246,15 @@ describe("M5 OpenAPI contract", () => {
       ])
     );
 
+    expect(schemaRegistry["debugging.listReloadTargets"]).toMatchObject({
+      responseBody: "ErrorResponse",
+      additionalResponses: { "410": "ErrorResponse" }
+    });
+    expect(schemaRegistry["debugging.reloadParameter"]).toMatchObject({
+      responseBody: "ErrorResponse",
+      additionalResponses: { "410": "ErrorResponse" }
+    });
+
     expect(schemaRegistry["debugging.admin.createParameter"]).toMatchObject({
       requestBody: "DebugAdminParameterRequest",
       responseBody: "DebugAdminParameterResponse",

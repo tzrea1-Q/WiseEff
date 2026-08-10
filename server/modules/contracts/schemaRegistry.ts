@@ -1029,15 +1029,16 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "debugging.listReloadTargets": {
-    summary: "List managed parameters with reload bindings for a project",
+    summary: "Retired parameter-reload target list (always 410 Gone)",
     tags: ["debugging"],
-    responseBody: "ParameterReloadTargetListResponse"
+    responseBody: "ErrorResponse",
+    additionalResponses: { "410": "ErrorResponse" }
   },
   "debugging.reloadParameter": {
-    summary: "Reload managed parameter value onto device",
+    summary: "Retired parameter-reload write (always 410 Gone)",
     tags: ["debugging"],
-    requestBody: "ReloadParameterRequest",
-    responseBody: "DebugNodeOperationResponse"
+    responseBody: "ErrorResponse",
+    additionalResponses: { "410": "ErrorResponse" }
   },
   "debugging.createSession": {
     summary: "Create debug session",
