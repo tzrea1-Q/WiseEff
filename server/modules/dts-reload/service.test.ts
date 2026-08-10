@@ -242,6 +242,31 @@ describe("startReloadRun", () => {
     expect(put).not.toHaveBeenCalled();
   });
 
+  it("refuses a debug value whose cell dimensions do not match the declared value shape", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        candidateRow({
+          value_shape: { kind: "cells", bits: 32, cellsPerGroup: 3, groups: 1 },
+          constraints: {}
+        })
+      ]
+    ]);
+    const { objectStore, put } = makeObjectStore();
+
+    await expect(
+      startReloadRun(db, objectStore, auth(), {
+        projectId: "project-1",
+        targets: [{ bindingId: "binding-1", debugValue: "<1 2>" }]
+      })
+    ).rejects.toMatchObject({
+      code: "VALIDATION_FAILED",
+      details: { expectedCellsPerGroup: 3 }
+    });
+
+    expect(put).not.toHaveBeenCalled();
+    expect(calls.some((call) => call.text.includes("insert into dts_reload_runs"))).toBe(false);
+  });
+
   it("blocks the whole batch when one target violates constraints", async () => {
     const { db, calls } = createFakeDb([
       [candidateRow()],

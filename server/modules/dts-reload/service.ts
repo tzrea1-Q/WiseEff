@@ -199,6 +199,41 @@ function assertParsedValueMatchesShape(
       { bindingId, debugValue }
     );
   }
+
+  const cellsPerGroup = valueShape?.cellsPerGroup;
+  if (typeof cellsPerGroup === "number" && Number.isInteger(cellsPerGroup) && cellsPerGroup >= 1) {
+    const mismatched = parsedValue.groups.some((group) => group.length !== cellsPerGroup);
+    if (mismatched) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        `Debug value must have ${cellsPerGroup} cell(s) per group.`,
+        400,
+        {
+          bindingId,
+          debugValue,
+          expectedCellsPerGroup: cellsPerGroup,
+          actualCellsPerGroup: parsedValue.groups.map((group) => group.length)
+        }
+      );
+    }
+  }
+
+  const expectedGroups = valueShape?.groups;
+  if (typeof expectedGroups === "number" && Number.isInteger(expectedGroups) && expectedGroups >= 1) {
+    if (parsedValue.groups.length !== expectedGroups) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        `Debug value must have ${expectedGroups} cell group(s).`,
+        400,
+        {
+          bindingId,
+          debugValue,
+          expectedGroups,
+          actualGroups: parsedValue.groups.length
+        }
+      );
+    }
+  }
 }
 
 async function resolveStartTargets(

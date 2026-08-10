@@ -24,6 +24,9 @@ yarn-error.log*
 pnpm-debug.log*
 .vite-dev*.log
 
+# Local API runtime data (object store, etc.)
+.data/
+
 # Local environment files
 .env
 .env.*
