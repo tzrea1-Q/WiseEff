@@ -3,14 +3,18 @@ import { createHash, randomUUID } from "node:crypto";
 import { createAuditEvent } from "../audit/repository";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
-import { parseDtsValue } from "../dts";
+import { parseDtsValue, type DtsValue } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { buildReloadBaseSource } from "./baseSource";
-import { classifyReloadCandidate } from "./candidates";
+import { classifyReloadCandidate, type CandidateValueShape } from "./candidates";
 import { assertDebugValueConstraints } from "./constraints";
-import { generateDebugOverlay } from "./debugOverlay";
+import {
+  generateDebugOverlay,
+  groupDebugOverlayTargets,
+  type DebugOverlayPropertyBinding
+} from "./debugOverlay";
 import { requireDtsReload } from "./policy";
 import { runDebugOverlayPreflight } from "./preflight";
 import {
@@ -30,10 +34,31 @@ import type { ReloadCandidateDto, ReloadRunDto } from "./types";
 
 export type DtsReloadServiceContext = AuditCorrelationContext;
 
-export type StartReloadRunInput = {
-  projectId: string;
+export type StartReloadRunTargetInput = {
   bindingId: string;
   debugValue: string;
+};
+
+export type StartReloadRunInput = {
+  projectId: string;
+  targets: StartReloadRunTargetInput[];
+};
+
+type ResolvedReloadTarget = {
+  candidate: ReloadCandidateDto;
+  configRevisionId: string | null;
+  debugValue: string;
+  parsedValue: DtsValue;
+  binding: DebugOverlayPropertyBinding;
+};
+
+const BLOCK_REASON_MESSAGES: Record<NonNullable<ReloadCandidateDto["blockReason"]>, string> = {
+  "no-node-path": "parameter has no absolute device-tree node path",
+  "synthesised-anchor":
+    "parameter locator is a synthesised /label anchor, not a genuine device-tree path usable as target-path",
+  "unsupported-value-shape":
+    "parameter value shape is outside the supported set (u32 cell arrays and string lists)",
+  "no-baseline-value": "parameter has no library baseline value"
 };
 
 function sha256Hex(bytes: Buffer | string): string {
@@ -45,9 +70,9 @@ function asConstraints(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function asValueShape(value: unknown) {
+function asValueShape(value: unknown): CandidateValueShape {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  return value as { kind?: string; bits?: number; cellsPerGroup?: number; groups?: number };
+  return value as CandidateValueShape;
 }
 
 function rowToCandidate(row: ReloadCandidateRow): ReloadCandidateDto {
@@ -143,6 +168,156 @@ async function loadBaseSource(
   return { configSetId, baseSource: buildReloadBaseSource(sources) };
 }
 
+function assertParsedValueMatchesShape(
+  parsedValue: DtsValue,
+  valueShape: CandidateValueShape,
+  bindingId: string,
+  debugValue: string
+) {
+  if (valueShape?.kind === "string-list") {
+    if (parsedValue.kind !== "strings" || parsedValue.values.length === 0) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "Debug value must be a string list (for example \"okay\" or \"a\", \"b\").",
+        400,
+        { bindingId, debugValue }
+      );
+    }
+    return;
+  }
+
+  if (
+    parsedValue.kind !== "cells" ||
+    parsedValue.bits !== 32 ||
+    parsedValue.groups.length === 0 ||
+    parsedValue.groups.some((group) => group.length === 0 || group.some((cell) => cell.kind !== "integer"))
+  ) {
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      "Debug value must be an unsigned 32-bit cell array (for example <6000>, <0x1770>, or <1 2 3>).",
+      400,
+      { bindingId, debugValue }
+    );
+  }
+
+  const cellsPerGroup = valueShape?.cellsPerGroup;
+  if (typeof cellsPerGroup === "number" && Number.isInteger(cellsPerGroup) && cellsPerGroup >= 1) {
+    const mismatched = parsedValue.groups.some((group) => group.length !== cellsPerGroup);
+    if (mismatched) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        `Debug value must have ${cellsPerGroup} cell(s) per group.`,
+        400,
+        {
+          bindingId,
+          debugValue,
+          expectedCellsPerGroup: cellsPerGroup,
+          actualCellsPerGroup: parsedValue.groups.map((group) => group.length)
+        }
+      );
+    }
+  }
+
+  const expectedGroups = valueShape?.groups;
+  if (typeof expectedGroups === "number" && Number.isInteger(expectedGroups) && expectedGroups >= 1) {
+    if (parsedValue.groups.length !== expectedGroups) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        `Debug value must have ${expectedGroups} cell group(s).`,
+        400,
+        {
+          bindingId,
+          debugValue,
+          expectedGroups,
+          actualGroups: parsedValue.groups.length
+        }
+      );
+    }
+  }
+}
+
+async function resolveStartTargets(
+  db: Queryable,
+  auth: AuthContext,
+  input: StartReloadRunInput
+): Promise<ResolvedReloadTarget[]> {
+  if (input.targets.length === 0) {
+    throw new ApiError("VALIDATION_FAILED", "At least one reload target is required.", 400);
+  }
+
+  const seen = new Set<string>();
+  const resolved: ResolvedReloadTarget[] = [];
+
+  for (const target of input.targets) {
+    if (seen.has(target.bindingId)) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        `Duplicate bindingId in reload batch: ${target.bindingId}.`,
+        400,
+        { bindingId: target.bindingId }
+      );
+    }
+    seen.add(target.bindingId);
+
+    const row = await getReloadCandidateRow(db, {
+      organizationId: auth.organization.id,
+      projectId: input.projectId,
+      bindingId: target.bindingId
+    });
+    if (!row) {
+      throw new ApiError("NOT_FOUND", "Parameter binding was not found for this project.", 404, {
+        bindingId: target.bindingId,
+        projectId: input.projectId
+      });
+    }
+
+    const candidate = rowToCandidate(row);
+    if (!candidate.debuggable || !candidate.nodePath) {
+      const detail = candidate.blockReason
+        ? BLOCK_REASON_MESSAGES[candidate.blockReason]
+        : "parameter is not debuggable";
+      throw new ApiError("VALIDATION_FAILED", `Parameter is not debuggable: ${detail}.`, 400, {
+        bindingId: candidate.bindingId,
+        blockReason: candidate.blockReason
+      });
+    }
+
+    let parsedValue: DtsValue;
+    try {
+      parsedValue = parseDtsValue(candidate.propertyKey, target.debugValue.trim()).value;
+    } catch (error) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        `Debug value could not be parsed: ${error instanceof Error ? error.message : "invalid value"}`,
+        400,
+        { bindingId: candidate.bindingId, debugValue: target.debugValue }
+      );
+    }
+
+    assertParsedValueMatchesShape(
+      parsedValue,
+      asValueShape(row.value_shape),
+      candidate.bindingId,
+      target.debugValue
+    );
+    assertDebugValueConstraints(parsedValue, candidate.constraints);
+
+    resolved.push({
+      candidate,
+      configRevisionId: row.config_revision_id,
+      debugValue: target.debugValue,
+      parsedValue,
+      binding: {
+        nodePath: candidate.nodePath,
+        propertyKey: candidate.propertyKey,
+        value: parsedValue
+      }
+    });
+  }
+
+  return resolved;
+}
+
 export async function startReloadRun(
   db: Database,
   objectStore: ObjectStore,
@@ -152,67 +327,16 @@ export async function startReloadRun(
 ): Promise<ReloadRunDto> {
   requireDtsReload(auth);
 
-  const row = await getReloadCandidateRow(db, {
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    bindingId: input.bindingId
-  });
-  if (!row) {
-    throw new ApiError("NOT_FOUND", "Parameter binding was not found for this project.", 404, {
-      bindingId: input.bindingId,
-      projectId: input.projectId
-    });
-  }
-
-  const candidate = rowToCandidate(row);
-  if (!candidate.debuggable || !candidate.nodePath) {
-    throw new ApiError(
-      "VALIDATION_FAILED",
-      `Parameter is not debuggable${candidate.blockReason ? `: ${candidate.blockReason}` : ""}.`,
-      400,
-      { bindingId: candidate.bindingId, blockReason: candidate.blockReason }
-    );
-  }
-
-  let parsedValue;
-  try {
-    parsedValue = parseDtsValue(candidate.propertyKey, input.debugValue.trim()).value;
-  } catch (error) {
-    throw new ApiError(
-      "VALIDATION_FAILED",
-      `Debug value could not be parsed: ${error instanceof Error ? error.message : "invalid value"}`,
-      400,
-      { bindingId: candidate.bindingId, debugValue: input.debugValue }
-    );
-  }
-  if (
-    parsedValue.kind !== "cells" ||
-    parsedValue.bits !== 32 ||
-    parsedValue.groups.length !== 1 ||
-    parsedValue.groups[0]?.length !== 1 ||
-    parsedValue.groups[0]?.[0]?.kind !== "integer"
-  ) {
-    throw new ApiError(
-      "VALIDATION_FAILED",
-      "Debug value must be a single unsigned 32-bit cell (for example <6000> or <0x1770>).",
-      400,
-      { bindingId: candidate.bindingId, debugValue: input.debugValue }
-    );
-  }
-  assertDebugValueConstraints(parsedValue, candidate.constraints);
+  const resolved = await resolveStartTargets(db, auth, input);
+  const overlayTargets = groupDebugOverlayTargets(resolved.map((item) => item.binding));
+  const overlaySource = generateDebugOverlay(overlayTargets);
+  const runId = randomUUID();
+  const configRevisionId = resolved[0]?.configRevisionId ?? null;
 
   const beforeFingerprint = await readLibraryFingerprint(db, {
     organizationId: auth.organization.id,
     projectId: input.projectId
   });
-
-  const runId = randomUUID();
-  const overlaySource = generateDebugOverlay([
-    {
-      nodePath: candidate.nodePath,
-      properties: [{ name: candidate.propertyKey, value: parsedValue }]
-    }
-  ]);
 
   await writeReloadAudit(
     db,
@@ -224,11 +348,15 @@ export async function startReloadRun(
       runId,
       metadata: {
         projectId: input.projectId,
-        bindingId: candidate.bindingId,
-        propertyKey: candidate.propertyKey,
-        nodePath: candidate.nodePath,
-        baselineValue: candidate.baselineValue,
-        debugValue: input.debugValue
+        targetCount: resolved.length,
+        fragmentCount: overlayTargets.length,
+        targets: resolved.map((item) => ({
+          bindingId: item.candidate.bindingId,
+          propertyKey: item.candidate.propertyKey,
+          nodePath: item.candidate.nodePath,
+          baselineValue: item.candidate.baselineValue,
+          debugValue: item.debugValue
+        }))
       }
     },
     context
@@ -238,15 +366,15 @@ export async function startReloadRun(
   try {
     ({ baseSource } = await loadBaseSource(db, objectStore, auth, input.projectId));
   } catch (error) {
-    const failureCode = error instanceof ApiError ? String(error.details?.code ?? "reload-base-missing") : "reload-base-missing";
+    const failureCode =
+      error instanceof ApiError ? String(error.details?.code ?? "reload-base-missing") : "reload-base-missing";
     const message = error instanceof Error ? error.message : "Failed to build base device tree.";
     await assertLibraryUntouched(db, input.projectId, auth.organization.id, beforeFingerprint);
     const persisted = await persistRunOutcome(db, objectStore, auth, {
       runId,
       projectId: input.projectId,
-      configRevisionId: row.config_revision_id,
-      candidate,
-      debugValue: input.debugValue,
+      configRevisionId,
+      targets: resolved,
       status: "blocked",
       failureCode,
       steps: [],
@@ -265,12 +393,9 @@ export async function startReloadRun(
         runId,
         metadata: {
           projectId: input.projectId,
-          bindingId: candidate.bindingId,
-          propertyKey: candidate.propertyKey,
-          baselineValue: candidate.baselineValue,
-          debugValue: input.debugValue,
+          targetCount: resolved.length,
           failureCode,
-          configRevisionId: row.config_revision_id
+          configRevisionId
         }
       },
       context
@@ -281,12 +406,7 @@ export async function startReloadRun(
   const preflight = await runDebugOverlayPreflight({
     baseSource,
     overlaySource,
-    targets: [
-      {
-        nodePath: candidate.nodePath,
-        properties: [{ name: candidate.propertyKey, value: parsedValue }]
-      }
-    ]
+    targets: overlayTargets
   });
 
   const status = preflight.ok ? "validated" : "blocked";
@@ -299,9 +419,8 @@ export async function startReloadRun(
   const persisted = await persistRunOutcome(db, objectStore, auth, {
     runId,
     projectId: input.projectId,
-    configRevisionId: row.config_revision_id,
-    candidate,
-    debugValue: input.debugValue,
+    configRevisionId,
+    targets: resolved,
     status,
     failureCode,
     steps: preflight.steps,
@@ -321,13 +440,10 @@ export async function startReloadRun(
       runId,
       metadata: {
         projectId: input.projectId,
-        bindingId: candidate.bindingId,
-        propertyKey: candidate.propertyKey,
-        nodePath: candidate.nodePath,
-        baselineValue: candidate.baselineValue,
-        debugValue: input.debugValue,
+        targetCount: resolved.length,
+        fragmentCount: overlayTargets.length,
         failureCode,
-        configRevisionId: row.config_revision_id,
+        configRevisionId,
         overlaySourceSha256: persisted.overlaySourceSha256,
         artifactSha256: persisted.artifact?.sha256 ?? null
       }
@@ -346,8 +462,7 @@ async function persistRunOutcome(
     runId: string;
     projectId: string;
     configRevisionId: string | null;
-    candidate: ReloadCandidateDto;
-    debugValue: string;
+    targets: ResolvedReloadTarget[];
     status: "blocked" | "validated";
     failureCode: string | null;
     steps: ReloadRunDto["steps"];
@@ -401,16 +516,18 @@ async function persistRunOutcome(
       completedAt
     });
 
-    await insertReloadRunTarget(tx, {
-      id: randomUUID(),
-      reloadRunId: input.runId,
-      bindingId: input.candidate.bindingId,
-      nodePath: input.candidate.nodePath!,
-      propertyKey: input.candidate.propertyKey,
-      baselineValue: input.candidate.baselineValue,
-      debugValue: input.debugValue,
-      sortOrder: 0
-    });
+    for (const [index, target] of input.targets.entries()) {
+      await insertReloadRunTarget(tx, {
+        id: randomUUID(),
+        reloadRunId: input.runId,
+        bindingId: target.candidate.bindingId,
+        nodePath: target.candidate.nodePath!,
+        propertyKey: target.candidate.propertyKey,
+        baselineValue: target.candidate.baselineValue,
+        debugValue: target.debugValue,
+        sortOrder: index
+      });
+    }
 
     return run;
   });

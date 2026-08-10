@@ -79,10 +79,10 @@ export type ReloadConfigurationAdminView = {
 };
 
 export const dtsReloadBlockReasonLabels: Record<DtsReloadCandidateBlockReason, string> = {
-  "no-node-path": "缺少绝对节点路径",
-  "synthesised-anchor": "定位器是合成锚点，不能作为 target-path",
-  "unsupported-value-shape": "当前仅支持单个 u32 cell",
-  "no-baseline-value": "缺少库基线值"
+  "no-node-path": "缺少绝对节点路径，无法作为 target-path",
+  "synthesised-anchor": "定位器是合成 /label 锚点，不能作为 target-path",
+  "unsupported-value-shape": "当前仅支持 u32 cell 数组与字符串列表",
+  "no-baseline-value": "缺少库基线值，无法对比调试值"
 };
 
 /** Closed allowlist of exact kernel log commands — must stay aligned with server validation. */

@@ -22,27 +22,61 @@ function constraintSummary(constraints: Record<string, unknown>): string {
   return parts.length > 0 ? parts.join(" · ") : "—";
 }
 
-function parseSingleU32Cell(raw: string): number | null {
+function parseCellIntegers(raw: string): number[] | null {
   const trimmed = raw.trim();
-  const match = /^<\s*(0x[0-9a-fA-F]+|\d+)\s*>$/.exec(trimmed) ?? /^(0x[0-9a-fA-F]+|\d+)$/.exec(trimmed);
-  if (!match) return null;
-  const value = Number(match[1]);
-  return Number.isFinite(value) ? value : null;
+  const groups = trimmed.match(/<[^>]+>/g);
+  if (!groups || groups.length === 0) {
+    const bare = /^(0x[0-9a-fA-F]+|-?\d+)(?:\s+(0x[0-9a-fA-F]+|-?\d+))*$/.exec(trimmed);
+    if (!bare) return null;
+    return trimmed.split(/\s+/).map((token) => Number(token));
+  }
+  const values: number[] = [];
+  for (const group of groups) {
+    const body = group.slice(1, -1).trim();
+    if (!body) return null;
+    for (const token of body.split(/\s+/)) {
+      if (!/^(0x[0-9a-fA-F]+|-?\d+)$/.test(token)) return null;
+      values.push(Number(token));
+    }
+  }
+  return values.every((value) => Number.isFinite(value)) ? values : null;
+}
+
+function looksLikeStringList(raw: string): boolean {
+  return /"(?:\\.|[^"\\])*"/.test(raw.trim());
 }
 
 function validateDebugValueAgainstConstraints(
   raw: string,
-  constraints: Record<string, unknown>
+  candidate: DtsReloadCandidate
 ): string | null {
-  const numeric = parseSingleU32Cell(raw);
+  const trimmed = raw.trim();
+  if (!trimmed) return "请输入调试值。";
+
+  if (candidate.valueShapeKind === "string-list") {
+    if (!looksLikeStringList(trimmed)) {
+      return '调试值必须是字符串列表，例如 "okay" 或 "a", "b"。';
+    }
+    return null;
+  }
+
+  const numeric = parseCellIntegers(trimmed);
   if (numeric === null) {
-    return "调试值必须是单个 u32 cell，例如 <7000> 或 <0x1770>。";
+    return "调试值必须是 u32 cell 数组，例如 <7000>、<0x1770> 或 <1 2 3>。";
   }
-  if (typeof constraints.min === "number" && numeric < constraints.min) {
-    return `调试值低于声明的最小值 ${constraints.min}。`;
+
+  const { constraints } = candidate;
+  const expectedCells = typeof constraints.cells === "number" ? constraints.cells : undefined;
+  const min = typeof constraints.min === "number" ? constraints.min : undefined;
+  const max = typeof constraints.max === "number" ? constraints.max : undefined;
+  if (expectedCells !== undefined && numeric.length !== expectedCells) {
+    return `调试值 cell 数量应为 ${expectedCells}，当前为 ${numeric.length}。`;
   }
-  if (typeof constraints.max === "number" && numeric > constraints.max) {
-    return `调试值超过声明的最大值 ${constraints.max}。`;
+  if (min !== undefined && numeric.some((value) => value < min)) {
+    return `调试值低于声明的最小值 ${min}。`;
+  }
+  if (max !== undefined && numeric.some((value) => value > max)) {
+    return `调试值超过声明的最大值 ${max}。`;
   }
   return null;
 }
@@ -72,17 +106,38 @@ export function DtsReloadPage({
 }: DtsReloadPageProps) {
   const [projectId, setProjectId] = useState(initialProjectId ?? projects[0]?.id ?? "");
   const [candidates, setCandidates] = useState<DtsReloadCandidate[]>([]);
-  const [selectedBindingId, setSelectedBindingId] = useState<string | null>(null);
-  const [debugValue, setDebugValue] = useState("");
+  const [selectedBindingIds, setSelectedBindingIds] = useState<string[]>([]);
+  const [debugValues, setDebugValues] = useState<Record<string, string>>({});
   const [run, setRun] = useState<DtsReloadRun | null>(null);
   const [loading, setLoading] = useState(false);
   const [starting, setStarting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [query, setQuery] = useState("");
+  const [nameQuery, setNameQuery] = useState("");
+  const [moduleFilter, setModuleFilter] = useState("");
+  const [nodeFilter, setNodeFilter] = useState("");
 
-  const selected = useMemo(
-    () => candidates.find((candidate) => candidate.bindingId === selectedBindingId) ?? null,
-    [candidates, selectedBindingId]
+  const modules = useMemo(
+    () =>
+      Array.from(new Set(candidates.map((candidate) => candidate.module).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b)
+      ),
+    [candidates]
+  );
+
+  const nodes = useMemo(
+    () =>
+      Array.from(
+        new Set(candidates.map((candidate) => candidate.nodePath).filter((value): value is string => Boolean(value)))
+      ).sort((a, b) => a.localeCompare(b)),
+    [candidates]
+  );
+
+  const selectedCandidates = useMemo(
+    () =>
+      selectedBindingIds
+        .map((bindingId) => candidates.find((candidate) => candidate.bindingId === bindingId))
+        .filter((candidate): candidate is DtsReloadCandidate => Boolean(candidate)),
+    [candidates, selectedBindingIds]
   );
 
   useEffect(() => {
@@ -99,8 +154,13 @@ export function DtsReloadPage({
         if (cancelled) return;
         setCandidates(result.items);
         const firstDebuggable = result.items.find((item) => item.debuggable);
-        setSelectedBindingId(firstDebuggable?.bindingId ?? result.items[0]?.bindingId ?? null);
-        setDebugValue(firstDebuggable?.baselineValue ?? "");
+        if (firstDebuggable) {
+          setSelectedBindingIds([firstDebuggable.bindingId]);
+          setDebugValues({ [firstDebuggable.bindingId]: firstDebuggable.baselineValue ?? "" });
+        } else {
+          setSelectedBindingIds([]);
+          setDebugValues({});
+        }
         const existingRunId = readRunIdFromSearch();
         if (existingRunId) {
           try {
@@ -141,33 +201,51 @@ export function DtsReloadPage({
   }
 
   const filtered = candidates.filter((candidate) => {
-    if (!query.trim()) return true;
-    const haystack = [candidate.displayName, candidate.propertyKey, candidate.module, candidate.nodePath ?? ""]
-      .join(" ")
-      .toLocaleLowerCase();
-    return haystack.includes(query.trim().toLocaleLowerCase());
+    if (moduleFilter && candidate.module !== moduleFilter) return false;
+    if (nodeFilter && candidate.nodePath !== nodeFilter) return false;
+    if (!nameQuery.trim()) return true;
+    const haystack = [candidate.displayName, candidate.propertyKey].join(" ").toLocaleLowerCase();
+    return haystack.includes(nameQuery.trim().toLocaleLowerCase());
   });
 
-  const onSelect = (candidate: DtsReloadCandidate) => {
-    setSelectedBindingId(candidate.bindingId);
-    setDebugValue(candidate.baselineValue ?? "");
+  const toggleSelected = (candidate: DtsReloadCandidate) => {
+    if (!candidate.debuggable) return;
     setErrorMessage("");
+    setSelectedBindingIds((current) => {
+      if (current.includes(candidate.bindingId)) {
+        return current.filter((id) => id !== candidate.bindingId);
+      }
+      setDebugValues((values) => ({
+        ...values,
+        [candidate.bindingId]: values[candidate.bindingId] ?? candidate.baselineValue ?? ""
+      }));
+      return [...current, candidate.bindingId];
+    });
   };
 
   const onStart = async () => {
-    if (!selected || !canStartRun) return;
-    const constraintError = validateDebugValueAgainstConstraints(debugValue, selected.constraints);
-    if (constraintError) {
-      setErrorMessage(constraintError);
-      return;
+    if (!canStartRun || selectedCandidates.length === 0) return;
+
+    for (const candidate of selectedCandidates) {
+      const constraintError = validateDebugValueAgainstConstraints(
+        debugValues[candidate.bindingId] ?? "",
+        candidate
+      );
+      if (constraintError) {
+        setErrorMessage(`${candidate.displayName || candidate.propertyKey}：${constraintError}`);
+        return;
+      }
     }
+
     setStarting(true);
     setErrorMessage("");
     try {
       const started = await repository.startRun({
         projectId,
-        bindingId: selected.bindingId,
-        debugValue
+        targets: selectedCandidates.map((candidate) => ({
+          bindingId: candidate.bindingId,
+          debugValue: (debugValues[candidate.bindingId] ?? "").trim()
+        }))
       });
       setRun(started);
       writeRunIdToSearch(started.id);
@@ -200,7 +278,7 @@ export function DtsReloadPage({
           DTS 重载调试
         </h2>
         <p className="text-sm text-muted-foreground">
-          为单个 u32 参数生成并通过预检的调试 overlay。调试值不会写回参数库。本票停在可下载产物，不触达设备。
+          一次运行可批量覆盖多个节点的参数（u32 cell 数组与字符串列表）。调试值不会写回参数库。本票停在可下载产物，不触达设备。
         </p>
       </header>
 
@@ -221,14 +299,46 @@ export function DtsReloadPage({
           </select>
         </label>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">搜索</span>
+          <span className="font-medium">按名称搜索</span>
           <input
-            aria-label="搜索参数"
-            className="min-w-[220px] rounded-md border px-3 py-2"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="名称 / 模块 / 路径"
+            aria-label="按名称搜索参数"
+            className="min-w-[180px] rounded-md border px-3 py-2"
+            value={nameQuery}
+            onChange={(event) => setNameQuery(event.target.value)}
+            placeholder="显示名 / 属性键"
           />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium">按模块筛选</span>
+          <select
+            aria-label="按模块筛选"
+            className="min-w-[160px] rounded-md border px-3 py-2"
+            value={moduleFilter}
+            onChange={(event) => setModuleFilter(event.target.value)}
+          >
+            <option value="">全部模块</option>
+            {modules.map((module) => (
+              <option key={module} value={module}>
+                {module}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium">按节点筛选</span>
+          <select
+            aria-label="按节点筛选"
+            className="min-w-[220px] max-w-[320px] rounded-md border px-3 py-2"
+            value={nodeFilter}
+            onChange={(event) => setNodeFilter(event.target.value)}
+          >
+            <option value="">全部节点</option>
+            {nodes.map((nodePath) => (
+              <option key={nodePath} value={nodePath}>
+                {nodePath}
+              </option>
+            ))}
+          </select>
         </label>
       </div>
 
@@ -249,93 +359,115 @@ export function DtsReloadPage({
           <table className="w-full text-left text-sm">
             <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
+                <th className="px-3 py-2">选择</th>
                 <th className="px-3 py-2">参数</th>
+                <th className="px-3 py-2">模块</th>
                 <th className="px-3 py-2">库基线</th>
-                <th className="px-3 py-2">约束</th>
                 <th className="px-3 py-2">状态</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td className="px-3 py-4 text-muted-foreground" colSpan={4}>
+                  <td className="px-3 py-4 text-muted-foreground" colSpan={5}>
                     加载中…
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-4 text-muted-foreground" colSpan={4}>
-                    当前项目没有可列出的参数。
+                  <td className="px-3 py-4 text-muted-foreground" colSpan={5}>
+                    当前筛选条件下没有可列出的参数。
                   </td>
                 </tr>
               ) : (
-                filtered.map((candidate) => (
-                  <tr
-                    key={candidate.bindingId}
-                    className={cn(
-                      "cursor-pointer border-t hover:bg-muted/30",
-                      selectedBindingId === candidate.bindingId && "bg-sky-50"
-                    )}
-                    onClick={() => onSelect(candidate)}
-                  >
-                    <td className="px-3 py-2">
-                      <div className="font-medium">{candidate.displayName || candidate.propertyKey}</div>
-                      <div className="text-xs text-muted-foreground">{candidate.nodePath ?? "无路径"}</div>
-                    </td>
-                    <td className="px-3 py-2 font-mono text-xs">{candidate.baselineValue ?? "—"}</td>
-                    <td className="px-3 py-2 text-xs">{constraintSummary(candidate.constraints)}</td>
-                    <td className="px-3 py-2 text-xs">
-                      {candidate.debuggable
-                        ? "可调试"
-                        : dtsReloadBlockReasonLabels[candidate.blockReason ?? "unsupported-value-shape"]}
-                    </td>
-                  </tr>
-                ))
+                filtered.map((candidate) => {
+                  const selected = selectedBindingIds.includes(candidate.bindingId);
+                  return (
+                    <tr
+                      key={candidate.bindingId}
+                      className={cn(
+                        "border-t",
+                        candidate.debuggable ? "cursor-pointer hover:bg-muted/30" : "opacity-80",
+                        selected && "bg-sky-50"
+                      )}
+                      onClick={() => toggleSelected(candidate)}
+                    >
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          aria-label={`选择 ${candidate.displayName || candidate.propertyKey}`}
+                          checked={selected}
+                          disabled={!candidate.debuggable}
+                          onChange={() => toggleSelected(candidate)}
+                          onClick={(event) => event.stopPropagation()}
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="font-medium">{candidate.displayName || candidate.propertyKey}</div>
+                        <div className="text-xs text-muted-foreground">{candidate.nodePath ?? "无路径"}</div>
+                      </td>
+                      <td className="px-3 py-2 text-xs">{candidate.module || "—"}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{candidate.baselineValue ?? "—"}</td>
+                      <td className="px-3 py-2 text-xs">
+                        {candidate.debuggable
+                          ? "可调试"
+                          : dtsReloadBlockReasonLabels[candidate.blockReason ?? "unsupported-value-shape"]}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
 
         <div className="flex flex-col gap-4 rounded-md border p-4">
-          <h3 className="text-sm font-semibold">启动运行</h3>
-          {selected ? (
-            <>
-              <dl className="grid gap-2 text-sm">
-                <div>
-                  <dt className="text-xs text-muted-foreground">属性</dt>
-                  <dd className="font-mono">{selected.propertyKey}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted-foreground">库基线</dt>
-                  <dd className="font-mono">{selected.baselineValue ?? "—"}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted-foreground">约束</dt>
-                  <dd>{constraintSummary(selected.constraints)}</dd>
-                </div>
-              </dl>
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium">调试值</span>
-                <input
-                  aria-label="调试值"
-                  className="rounded-md border px-3 py-2 font-mono"
-                  value={debugValue}
-                  onChange={(event) => setDebugValue(event.target.value)}
-                  disabled={!selected.debuggable || !canStartRun}
-                  placeholder="<7000>"
-                />
-              </label>
-              <Button
-                type="button"
-                onClick={() => void onStart()}
-                disabled={!selected.debuggable || !canStartRun || !debugValue.trim() || starting}
-              >
-                {starting ? "预检中…" : "启动重载运行"}
-              </Button>
-            </>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">启动运行</h3>
+            <span className="text-xs text-muted-foreground">已选 {selectedCandidates.length} 个参数</span>
+          </div>
+
+          {selectedCandidates.length === 0 ? (
+            <p className="text-sm text-muted-foreground">勾选一个或多个可调试参数以输入调试值。</p>
           ) : (
-            <p className="text-sm text-muted-foreground">选择一个参数以输入调试值。</p>
+            <ul className="flex max-h-[360px] flex-col gap-3 overflow-y-auto">
+              {selectedCandidates.map((candidate) => (
+                <li key={candidate.bindingId} className="rounded-md border p-3">
+                  <div className="mb-2">
+                    <div className="text-sm font-medium">{candidate.displayName || candidate.propertyKey}</div>
+                    <div className="text-xs text-muted-foreground">{candidate.nodePath}</div>
+                    <div className="text-xs text-muted-foreground">
+                      基线 {candidate.baselineValue ?? "—"} · {constraintSummary(candidate.constraints)}
+                    </div>
+                  </div>
+                  <label className="flex flex-col gap-1 text-sm">
+                    <span className="font-medium">调试值</span>
+                    <input
+                      aria-label={`${candidate.displayName || candidate.propertyKey} 调试值`}
+                      className="rounded-md border px-3 py-2 font-mono"
+                      value={debugValues[candidate.bindingId] ?? ""}
+                      onChange={(event) =>
+                        setDebugValues((values) => ({
+                          ...values,
+                          [candidate.bindingId]: event.target.value
+                        }))
+                      }
+                      disabled={!canStartRun}
+                      placeholder={candidate.valueShapeKind === "string-list" ? '"okay"' : "<7000>"}
+                    />
+                  </label>
+                </li>
+              ))}
+            </ul>
           )}
+
+          <Button
+            type="button"
+            onClick={() => void onStart()}
+            disabled={selectedCandidates.length === 0 || !canStartRun || starting}
+          >
+            {starting ? "预检中…" : `启动重载运行（${selectedCandidates.length}）`}
+          </Button>
 
           {run ? (
             <div className="flex flex-col gap-3 border-t pt-4" aria-live="polite">
@@ -351,6 +483,9 @@ export function DtsReloadPage({
                 </span>
               </div>
               {run.failureCode ? <p className="text-xs text-muted-foreground">失败码：{run.failureCode}</p> : null}
+              {run.targets.length > 0 ? (
+                <p className="text-xs text-muted-foreground">本运行包含 {run.targets.length} 个参数目标。</p>
+              ) : null}
               {run.diagnostics.length > 0 ? (
                 <ul className="space-y-1 text-xs text-rose-900">
                   {run.diagnostics.map((diagnostic, index) => (

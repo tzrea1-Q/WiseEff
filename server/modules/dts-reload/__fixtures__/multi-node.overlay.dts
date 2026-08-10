@@ -1,0 +1,27 @@
+/dts-v1/;
+/plugin/;
+
+/*
+ * WiseEff DTS reload debugging — generated debug overlay.
+ * Authored by the platform from resolved parameter bindings; never hand-edited.
+ * Debug values are run-scoped and do not change the parameter library.
+ */
+
+/ {
+	fragment@0 {
+		target-path = "/amba/i2c@FDF5E000/sc8562@6E";
+
+		__overlay__ {
+			watchdog_time = <7000>;
+			vout_ovp_mv = <0x1770>;
+		};
+	};
+
+	fragment@1 {
+		target-path = "/amba/uart@FDF02000";
+
+		__overlay__ {
+			current-speed = <115200>;
+		};
+	};
+};

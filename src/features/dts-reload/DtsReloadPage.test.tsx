@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -43,7 +43,8 @@ function run(overrides: Partial<DtsReloadRun> = {}): DtsReloadRun {
     steps: [],
     diagnostics: [],
     toolVersions: { dtc: "1.7.0", fdtoverlay: "1.7.0" },
-    overlaySource: '/dts-v1/;\n/plugin/;\n\n/ {\n\tfragment@0 {\n\t\ttarget-path = "/amba/i2c@1/dev@6E";\n\t};\n};\n',
+    overlaySource:
+      '/dts-v1/;\n/plugin/;\n\n/ {\n\tfragment@0 {\n\t\ttarget-path = "/amba/i2c@1/dev@6E";\n\t};\n};\n',
     overlaySourceSha256: "sha",
     artifact: { fileName: "debug-overlay-run-1.dtbo", sha256: "sha-art", sizeBytes: 32 },
     createdAt: "2026-08-10T00:00:00.000Z",
@@ -73,55 +74,117 @@ describe("DtsReloadPage", () => {
 
   it("renders a static unavailable state when no repository is injected", () => {
     render(
-      <DtsReloadPage
-        projects={[{ id: "project-1", name: "Demo" }]}
-        repository={null}
-        canStartRun={false}
-      />
+      <DtsReloadPage projects={[{ id: "project-1", name: "Demo" }]} repository={null} canStartRun={false} />
     );
     expect(screen.getByRole("status")).toHaveTextContent(/仅在 API 模式下可用/);
   });
 
-  it("lists candidates, starts a run, shows overlay source, and downloads the artifact", async () => {
+  it("lists candidates, starts a batch run, shows overlay source, and downloads the artifact", async () => {
     const user = userEvent.setup();
-    const repository = createRepository();
+    const repository = createRepository({
+      listCandidates: vi.fn(async () => ({
+        items: [
+          candidate(),
+          candidate({
+            bindingId: "binding-2",
+            propertyKey: "compatible",
+            displayName: "Compatible",
+            module: "uart",
+            nodePath: "/amba/uart@2",
+            baselineValue: '"sc8562"',
+            valueShapeKind: "string-list",
+            constraints: {}
+          }),
+          candidate({
+            bindingId: "binding-blocked",
+            displayName: "Blocked",
+            nodePath: "/amba",
+            debuggable: false,
+            blockReason: "synthesised-anchor"
+          })
+        ]
+      }))
+    });
     const createObjectURL = vi.fn(() => "blob:overlay");
     const revokeObjectURL = vi.fn();
     vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
 
     render(
-      <DtsReloadPage
-        projects={[{ id: "project-1", name: "Demo" }]}
-        repository={repository}
-        canStartRun
-      />
+      <DtsReloadPage projects={[{ id: "project-1", name: "Demo" }]} repository={repository} canStartRun />
     );
 
-    expect(await screen.findByText("Watchdog")).toBeInTheDocument();
-    expect(screen.getAllByText("<6000>").length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/min 0/).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Watchdog")).length).toBeGreaterThan(0);
+    expect(screen.getByText(/合成 \/label 锚点/)).toBeInTheDocument();
 
-    const debugInput = screen.getByLabelText("调试值");
-    await user.clear(debugInput);
-    await user.type(debugInput, "<99999>");
-    await user.click(screen.getByRole("button", { name: "启动重载运行" }));
+    await user.selectOptions(screen.getByLabelText("按模块筛选"), "uart");
+    expect(screen.queryByRole("checkbox", { name: "选择 Watchdog" })).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "选择 Compatible" })).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("按模块筛选"), "");
+
+    await user.type(screen.getByLabelText("按名称搜索参数"), "Watch");
+    expect(screen.getByRole("checkbox", { name: "选择 Watchdog" })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "选择 Compatible" })).not.toBeInTheDocument();
+    await user.clear(screen.getByLabelText("按名称搜索参数"));
+
+    await user.click(screen.getByLabelText("选择 Compatible"));
+    expect(screen.getByText(/已选 2 个参数/)).toBeInTheDocument();
+
+    const watchdogInput = screen.getByLabelText("Watchdog 调试值");
+    await user.clear(watchdogInput);
+    await user.type(watchdogInput, "<99999>");
+    await user.click(screen.getByRole("button", { name: /启动重载运行/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/最大值/);
     expect(repository.startRun).not.toHaveBeenCalled();
 
-    await user.clear(debugInput);
-    await user.type(debugInput, "<7000>");
-    await user.click(screen.getByRole("button", { name: "启动重载运行" }));
+    await user.clear(watchdogInput);
+    await user.type(watchdogInput, "<7000>");
+    const compatibleInput = screen.getByLabelText("Compatible 调试值");
+    await user.clear(compatibleInput);
+    await user.type(compatibleInput, '"sc8562", "sc8562-v2"');
+    await user.click(screen.getByRole("button", { name: /启动重载运行/ }));
 
-    await waitFor(() => expect(repository.startRun).toHaveBeenCalledWith({
-      projectId: "project-1",
-      bindingId: "binding-1",
-      debugValue: "<7000>"
-    }));
+    await waitFor(() =>
+      expect(repository.startRun).toHaveBeenCalledWith({
+        projectId: "project-1",
+        targets: [
+          { bindingId: "binding-1", debugValue: "<7000>" },
+          { bindingId: "binding-2", debugValue: '"sc8562", "sc8562-v2"' }
+        ]
+      })
+    );
 
     const overlay = await screen.findByLabelText("Overlay 源码");
     expect((overlay as HTMLTextAreaElement).value).toContain("target-path");
+    expect(screen.getByText(/本运行包含 1 个参数目标/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /下载编译产物/ }));
     await waitFor(() => expect(repository.downloadArtifact).toHaveBeenCalledWith("run-1"));
     expect(createObjectURL).toHaveBeenCalled();
+  });
+
+  it("does not allow selecting a not-debuggable parameter", async () => {
+    const user = userEvent.setup();
+    const repository = createRepository({
+      listCandidates: vi.fn(async () => ({
+        items: [
+          candidate({
+            bindingId: "binding-blocked",
+            displayName: "Blocked",
+            debuggable: false,
+            blockReason: "unsupported-value-shape"
+          })
+        ]
+      }))
+    });
+
+    render(
+      <DtsReloadPage projects={[{ id: "project-1", name: "Demo" }]} repository={repository} canStartRun />
+    );
+
+    expect(await screen.findByText("Blocked")).toBeInTheDocument();
+    const checkbox = screen.getByLabelText("选择 Blocked");
+    expect(checkbox).toBeDisabled();
+    await user.click(screen.getByText("Blocked"));
+    expect(screen.getByText(/已选 0 个参数/)).toBeInTheDocument();
+    expect(within(screen.getByRole("table")).getByText(/u32 cell 数组与字符串列表/)).toBeInTheDocument();
   });
 });

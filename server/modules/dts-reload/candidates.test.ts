@@ -31,11 +31,19 @@ describe("isSupportedReloadValueShape", () => {
     expect(isSupportedReloadValueShape({ kind: "cells", bits: 32, cellsPerGroup: 1, groups: 1 })).toBe(true);
   });
 
-  it("rejects multi-cell and non-u32 shapes", () => {
-    expect(isSupportedReloadValueShape({ kind: "cells", bits: 32, cellsPerGroup: 2 })).toBe(false);
+  it("accepts multi-cell u32 arrays", () => {
+    expect(isSupportedReloadValueShape({ kind: "cells", bits: 32, cellsPerGroup: 2, groups: 1 })).toBe(true);
+    expect(isSupportedReloadValueShape({ kind: "cells", bits: 32, cellsPerGroup: 4, groups: 2 })).toBe(true);
+  });
+
+  it("accepts string lists", () => {
+    expect(isSupportedReloadValueShape({ kind: "string-list" })).toBe(true);
+  });
+
+  it("rejects non-u32 cells, phandle lists, and incomplete cell shapes", () => {
     expect(isSupportedReloadValueShape({ kind: "cells", bits: 8, cellsPerGroup: 1 })).toBe(false);
-    expect(isSupportedReloadValueShape({ kind: "string-list" })).toBe(false);
     expect(isSupportedReloadValueShape({ kind: "cells", bits: 32 })).toBe(false);
+    expect(isSupportedReloadValueShape({ kind: "phandle-list", bits: 32, cellsPerGroup: 1 })).toBe(false);
     expect(isSupportedReloadValueShape({ kind: "u32-array", bits: 32, cellsPerGroup: 1 })).toBe(false);
     expect(isSupportedReloadValueShape(null)).toBe(false);
   });
@@ -70,9 +78,31 @@ describe("classifyReloadCandidate", () => {
   it("blocks missing path, unsupported shape, and missing baseline", () => {
     expect(classifyReloadCandidate({ ...base, nodePath: null }).blockReason).toBe("no-node-path");
     expect(
-      classifyReloadCandidate({ ...base, valueShape: { kind: "string-list" }, valueShapeKind: "string-list" })
-        .blockReason
+      classifyReloadCandidate({
+        ...base,
+        valueShape: { kind: "phandle-list", bits: 32, cellsPerGroup: 1 },
+        valueShapeKind: "phandle-list"
+      }).blockReason
     ).toBe("unsupported-value-shape");
     expect(classifyReloadCandidate({ ...base, baselineValue: null }).blockReason).toBe("no-baseline-value");
+  });
+
+  it("marks string-list and multi-cell u32 bindings as debuggable", () => {
+    expect(
+      classifyReloadCandidate({
+        ...base,
+        valueShape: { kind: "string-list" },
+        valueShapeKind: "string-list",
+        baselineValue: '"okay"'
+      }).debuggable
+    ).toBe(true);
+    expect(
+      classifyReloadCandidate({
+        ...base,
+        valueShape: { kind: "cells", bits: 32, cellsPerGroup: 3, groups: 1 },
+        valueShapeKind: "cells",
+        baselineValue: "<1 2 3>"
+      }).debuggable
+    ).toBe(true);
   });
 });

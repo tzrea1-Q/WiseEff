@@ -7,6 +7,44 @@ export type DebugOverlayTarget = {
   properties: Array<{ name: string; value: DtsValue }>;
 };
 
+/** One property binding before node grouping — several may share a node path. */
+export type DebugOverlayPropertyBinding = {
+  nodePath: string;
+  propertyKey: string;
+  value: DtsValue;
+};
+
+/**
+ * Group property bindings into one fragment target per distinct node path.
+ * First-seen node order and within-node property order are preserved so batch
+ * selection order stays predictable in the generated overlay.
+ */
+export function groupDebugOverlayTargets(
+  bindings: readonly DebugOverlayPropertyBinding[]
+): DebugOverlayTarget[] {
+  if (bindings.length === 0) {
+    throw new Error("A debug overlay needs at least one property binding.");
+  }
+
+  const targets: DebugOverlayTarget[] = [];
+  const indexByPath = new Map<string, number>();
+
+  for (const binding of bindings) {
+    const existing = indexByPath.get(binding.nodePath);
+    if (existing === undefined) {
+      indexByPath.set(binding.nodePath, targets.length);
+      targets.push({
+        nodePath: binding.nodePath,
+        properties: [{ name: binding.propertyKey, value: binding.value }]
+      });
+      continue;
+    }
+    targets[existing]!.properties.push({ name: binding.propertyKey, value: binding.value });
+  }
+
+  return targets;
+}
+
 const HEADER = [
   "/dts-v1/;",
   "/plugin/;",
