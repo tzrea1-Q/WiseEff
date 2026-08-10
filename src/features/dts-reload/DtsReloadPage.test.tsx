@@ -669,8 +669,31 @@ describe("DtsReloadPage", () => {
     expect(screen.getAllByText(/已阻断|部署失败/).length).toBeGreaterThan(0);
 
     const historyRegion = screen.getByLabelText("运行历史");
+    const deviceFilter = within(historyRegion).getByRole("checkbox", { name: /仅显示当前设备的运行/ });
+    await waitFor(() => expect(deviceFilter).toBeEnabled());
+    expect(within(historyRegion).getByText(/仅当前设备（bridge:bridge-1）/)).toBeInTheDocument();
+
+    vi.mocked(repository.listRuns).mockClear();
+    await user.click(deviceFilter);
+    await waitFor(() =>
+      expect(repository.listRuns).toHaveBeenCalledWith(
+        expect.objectContaining({ projectId: "project-1", deviceId: "bridge:bridge-1", limit: 10 })
+      )
+    );
+
     await user.click(within(historyRegion).getByRole("button", { name: /恢复基线/ }));
     await waitFor(() => expect(repository.getRun).toHaveBeenCalledWith("run-restore-history"));
     expect(await screen.findByText(/目的：恢复基线/)).toBeInTheDocument();
+  });
+
+  it("disables the device-only history filter until a device id is available", async () => {
+    const repository = createRepository({
+      listRuns: vi.fn(async () => ({ items: [], nextCursor: null }))
+    });
+    renderPage(repository, { bridges: [], canStartRun: true });
+    await screen.findByText("运行历史");
+    const historyRegion = screen.getByLabelText("运行历史");
+    expect(within(historyRegion).getByRole("checkbox", { name: /仅显示当前设备的运行/ })).toBeDisabled();
+    expect(within(historyRegion).getByText(/先填写设备 ID/)).toBeInTheDocument();
   });
 });

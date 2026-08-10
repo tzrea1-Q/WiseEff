@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import {
@@ -504,6 +504,7 @@ export function DtsReloadPage({
   const [historyLoadingMore, setHistoryLoadingMore] = useState(false);
   const [historyError, setHistoryError] = useState("");
   const [historyFilterDevice, setHistoryFilterDevice] = useState(false);
+  const historyQueryKeyRef = useRef(0);
 
   const selectedBridge = useMemo(
     () => bridges.find((bridge) => bridge.id === bridgeId) ?? null,
@@ -621,28 +622,38 @@ export function DtsReloadPage({
     ) {
       return;
     }
+    const filterByDevice = historyFilterDevice && Boolean(deviceId.trim());
+    if (historyFilterDevice && !deviceId.trim()) {
+      setHistoryFilterDevice(false);
+      return;
+    }
     let cancelled = false;
+    const queryKey = ++historyQueryKeyRef.current;
     setHistoryLoading(true);
+    setHistoryNextCursor(null);
+    setHistoryItems([]);
     setHistoryError("");
     void repository
       .listRuns({
         projectId,
-        ...(historyFilterDevice && deviceId.trim() ? { deviceId: deviceId.trim() } : {}),
+        ...(filterByDevice ? { deviceId: deviceId.trim() } : {}),
         limit: 10
       })
       .then((result) => {
-        if (cancelled) return;
+        if (cancelled || queryKey !== historyQueryKeyRef.current) return;
         setHistoryItems(result.items);
         setHistoryNextCursor(result.nextCursor);
       })
       .catch((error) => {
-        if (cancelled) return;
+        if (cancelled || queryKey !== historyQueryKeyRef.current) return;
         setHistoryItems([]);
         setHistoryNextCursor(null);
         setHistoryError(error instanceof Error ? error.message : "加载运行历史失败。");
       })
       .finally(() => {
-        if (!cancelled) setHistoryLoading(false);
+        if (!cancelled && queryKey === historyQueryKeyRef.current) {
+          setHistoryLoading(false);
+        }
       });
     return () => {
       cancelled = true;
@@ -1320,22 +1331,29 @@ export function DtsReloadPage({
   };
 
   const onLoadMoreHistory = async () => {
-    if (!repository || !projectId || !historyNextCursor || historyLoadingMore) return;
+    if (!repository || !projectId || !historyNextCursor || historyLoadingMore || historyLoading) return;
+    const queryKey = historyQueryKeyRef.current;
+    const cursor = historyNextCursor;
+    const filterByDevice = historyFilterDevice && Boolean(deviceId.trim());
     setHistoryLoadingMore(true);
     setHistoryError("");
     try {
       const result = await repository.listRuns({
         projectId,
-        ...(historyFilterDevice && deviceId.trim() ? { deviceId: deviceId.trim() } : {}),
-        cursor: historyNextCursor,
+        ...(filterByDevice ? { deviceId: deviceId.trim() } : {}),
+        cursor,
         limit: 10
       });
+      if (queryKey !== historyQueryKeyRef.current) return;
       setHistoryItems((current) => [...current, ...result.items]);
       setHistoryNextCursor(result.nextCursor);
     } catch (error) {
+      if (queryKey !== historyQueryKeyRef.current) return;
       setHistoryError(error instanceof Error ? error.message : "加载更多运行历史失败。");
     } finally {
-      setHistoryLoadingMore(false);
+      if (queryKey === historyQueryKeyRef.current) {
+        setHistoryLoadingMore(false);
+      }
     }
   };
 
@@ -1842,12 +1860,16 @@ export function DtsReloadPage({
           <label className="flex items-center gap-2 text-xs">
             <input
               type="checkbox"
-              checked={historyFilterDevice}
-              onChange={(event) => setHistoryFilterDevice(event.target.checked)}
+              checked={Boolean(historyFilterDevice && deviceId.trim())}
+              disabled={!deviceId.trim()}
+              onChange={(event) => {
+                if (!deviceId.trim()) return;
+                setHistoryFilterDevice(event.target.checked);
+              }}
               aria-label="仅显示当前设备的运行"
             />
             仅当前设备
-            {deviceId.trim() ? `（${deviceId.trim()}）` : ""}
+            {deviceId.trim() ? `（${deviceId.trim()}）` : "（先填写设备 ID）"}
           </label>
         </div>
         {historyError ? (
@@ -1896,7 +1918,7 @@ export function DtsReloadPage({
           <Button
             type="button"
             variant="outline"
-            disabled={historyLoadingMore}
+            disabled={historyLoadingMore || historyLoading}
             onClick={() => void onLoadMoreHistory()}
           >
             {historyLoadingMore ? "加载中…" : "加载更多"}
