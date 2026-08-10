@@ -22,6 +22,7 @@ import WebSocket from "ws";
 import { DTS_RELOAD_BRIDGE_RPC_METHODS } from "@wiseeff/device-command-core/bridgeRpcMethods";
 
 import { acceptanceUserIdForRole, authHeadersForRole } from "./helpers/bearerAuth";
+import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 
 const databaseUrl = process.env.DATABASE_URL?.trim() || "";
 const apiBase = process.env.VITE_WISEEFF_API_BASE_URL ?? process.env.WISEEFF_API_BASE_URL ?? "http://127.0.0.1:8787";
@@ -304,7 +305,7 @@ test.describe("DTS reload deploy fake-bridge wiring", () => {
 
   test("DTS-RELOAD-DEPLOY-001 mounts, pushes, and triggers through the real bridge RPC envelope", async ({
     page
-  }) => {
+  }, testInfo) => {
     test.setTimeout(120_000);
 
     const pair = await pairBridge(page);
@@ -396,6 +397,47 @@ test.describe("DTS reload deploy fake-bridge wiring", () => {
       // No binding → no debug.readNode; never invent a new verification RPC.
       expect(observed.methods).not.toContain("debug.readNode");
       expect(observed.timeouts.length).toBe(5);
+
+      const deployApi = summarizeApiResponse(deploy, {
+        method: "POST",
+        path: `/api/v1/dts-reload/runs/${runId}/deploy`,
+        responseSummary: `status=unverifiable methods=${observed.methods.join(",")}`
+      });
+      const residueApi = summarizeApiResponse(residueResponse, {
+        method: "GET",
+        path: "/api/v1/dts-reload/residue",
+        responseSummary: `sourceRunId=${runId}`
+      });
+      const shared = {
+        status: "passed" as const,
+        page,
+        testInfo,
+        route: "/dts-reload",
+        role: "Admin",
+        api: [deployApi, residueApi],
+        notes:
+          "Fake bridge proves mount/push/trigger/kernel-log envelope; unbound behavioural verify and residue bookkeeping share this deploy."
+      };
+      await recordOperationEvidence({
+        ...shared,
+        operationId: "DTS-RELOAD-DEPLOY-001",
+        title: "dts reload deploy mount push trigger"
+      });
+      await recordOperationEvidence({
+        ...shared,
+        operationId: "DTS-RELOAD-KERNEL-001",
+        title: "dts reload kernel log evidence"
+      });
+      await recordOperationEvidence({
+        ...shared,
+        operationId: "DTS-RELOAD-VERIFY-001",
+        title: "dts reload behavioural verify unbound"
+      });
+      await recordOperationEvidence({
+        ...shared,
+        operationId: "DTS-RELOAD-RESIDUE-001",
+        title: "dts reload residue recorded after deploy"
+      });
     } finally {
       await new Promise<void>((resolve) => {
         if (fake.socket.readyState === WebSocket.CLOSED) {
