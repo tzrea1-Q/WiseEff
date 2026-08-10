@@ -89,7 +89,7 @@ export function matchSensitiveRules(
   );
 }
 
-async function listSensitiveNodeRules(
+export async function listSensitiveNodeRules(
   db: Queryable,
   input: { organizationId: string; projectId: string }
 ): Promise<SensitiveNodeRule[]> {
@@ -112,6 +112,30 @@ async function listSensitiveNodeRules(
     [input.organizationId, input.projectId]
   );
   return result.rows.map(toRule);
+}
+
+/** Resolve the highest-tier sensitive rule matching a node (path and/or compatible). */
+export async function resolveSensitiveNodeMatch(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    nodePath: string;
+    compatible?: string | null;
+  }
+): Promise<SensitiveNodeRule | null> {
+  const nodePath = input.nodePath.trim();
+  if (!nodePath) return null;
+
+  const rules = await listSensitiveNodeRules(db, {
+    organizationId: input.organizationId,
+    projectId: input.projectId
+  });
+  return matchSensitiveRules(rules, {
+    nodePath,
+    compatible: input.compatible,
+    projectId: input.projectId
+  });
 }
 
 /** Resolve dts_nodes.compatible for a parameter source when structural model is available. */

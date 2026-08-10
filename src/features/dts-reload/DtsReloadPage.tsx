@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import type { DtsReloadCandidate, DtsReloadRun } from "@/domain/dtsReload/types";
-import { dtsReloadBlockReasonLabels } from "@/domain/dtsReload/types";
+import { dtsReloadBlockReasonLabels, SENSITIVE_RELOAD_CONFIRMATION_TOKEN } from "@/domain/dtsReload/types";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +20,12 @@ function constraintSummary(constraints: Record<string, unknown>): string {
   if (typeof constraints.max === "number") parts.push(`max ${constraints.max}`);
   if (typeof constraints.cells === "number") parts.push(`cells ${constraints.cells}`);
   return parts.length > 0 ? parts.join(" · ") : "—";
+}
+
+function sensitiveBadgeLabel(candidate: DtsReloadCandidate): string | null {
+  const match = candidate.sensitiveMatch;
+  if (!match) return null;
+  return match.riskTier === "critical" ? "敏感 · critical" : "敏感 · high";
 }
 
 function parseCellIntegers(raw: string): number[] | null {
@@ -115,6 +121,7 @@ export function DtsReloadPage({
   const [nameQuery, setNameQuery] = useState("");
   const [moduleFilter, setModuleFilter] = useState("");
   const [nodeFilter, setNodeFilter] = useState("");
+  const [criticalConfirmed, setCriticalConfirmed] = useState(false);
 
   const modules = useMemo(
     () =>
@@ -139,6 +146,17 @@ export function DtsReloadPage({
         .filter((candidate): candidate is DtsReloadCandidate => Boolean(candidate)),
     [candidates, selectedBindingIds]
   );
+
+  const selectedHasCriticalSensitive = selectedCandidates.some(
+    (candidate) => candidate.sensitiveMatch?.riskTier === "critical"
+  );
+  const selectedHasSensitive = selectedCandidates.some((candidate) => Boolean(candidate.sensitiveMatch));
+
+  useEffect(() => {
+    if (!selectedHasCriticalSensitive) {
+      setCriticalConfirmed(false);
+    }
+  }, [selectedHasCriticalSensitive]);
 
   useEffect(() => {
     if (!repository || !projectId) {
@@ -237,6 +255,11 @@ export function DtsReloadPage({
       }
     }
 
+    if (selectedHasCriticalSensitive && !criticalConfirmed) {
+      setErrorMessage("所选参数包含 critical 敏感节点，请先勾选明确确认后再启动。");
+      return;
+    }
+
     setStarting(true);
     setErrorMessage("");
     try {
@@ -245,7 +268,10 @@ export function DtsReloadPage({
         targets: selectedCandidates.map((candidate) => ({
           bindingId: candidate.bindingId,
           debugValue: (debugValues[candidate.bindingId] ?? "").trim()
-        }))
+        })),
+        ...(selectedHasCriticalSensitive
+          ? { confirmationToken: SENSITIVE_RELOAD_CONFIRMATION_TOKEN }
+          : {})
       });
       setRun(started);
       writeRunIdToSearch(started.id);
@@ -363,25 +389,27 @@ export function DtsReloadPage({
                 <th className="px-3 py-2">参数</th>
                 <th className="px-3 py-2">模块</th>
                 <th className="px-3 py-2">库基线</th>
+                <th className="px-3 py-2">治理</th>
                 <th className="px-3 py-2">状态</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td className="px-3 py-4 text-muted-foreground" colSpan={5}>
+                  <td className="px-3 py-4 text-muted-foreground" colSpan={6}>
                     加载中…
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-4 text-muted-foreground" colSpan={5}>
+                  <td className="px-3 py-4 text-muted-foreground" colSpan={6}>
                     当前筛选条件下没有可列出的参数。
                   </td>
                 </tr>
               ) : (
                 filtered.map((candidate) => {
                   const selected = selectedBindingIds.includes(candidate.bindingId);
+                  const sensitiveLabel = sensitiveBadgeLabel(candidate);
                   return (
                     <tr
                       key={candidate.bindingId}
@@ -409,6 +437,31 @@ export function DtsReloadPage({
                       <td className="px-3 py-2 text-xs">{candidate.module || "—"}</td>
                       <td className="px-3 py-2 font-mono text-xs">{candidate.baselineValue ?? "—"}</td>
                       <td className="px-3 py-2 text-xs">
+                        {sensitiveLabel ? (
+                          <span
+                            className={cn(
+                              "inline-flex rounded-md px-2 py-0.5 font-medium",
+                              candidate.sensitiveMatch?.riskTier === "critical"
+                                ? "bg-rose-100 text-rose-950"
+                                : "bg-amber-100 text-amber-950"
+                            )}
+                            title={
+                              candidate.sensitiveMatch
+                                ? `需要 ${candidate.sensitiveMatch.requiredCapability}${
+                                    candidate.sensitiveMatch.requiresConfirmation
+                                      ? "，并需明确确认"
+                                      : ""
+                                  }`
+                                : undefined
+                            }
+                          >
+                            {sensitiveLabel}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-xs">
                         {candidate.debuggable
                           ? "可调试"
                           : dtsReloadBlockReasonLabels[candidate.blockReason ?? "unsupported-value-shape"]}
@@ -431,14 +484,36 @@ export function DtsReloadPage({
             <p className="text-sm text-muted-foreground">勾选一个或多个可调试参数以输入调试值。</p>
           ) : (
             <ul className="flex max-h-[360px] flex-col gap-3 overflow-y-auto">
-              {selectedCandidates.map((candidate) => (
+              {selectedCandidates.map((candidate) => {
+                const sensitiveLabel = sensitiveBadgeLabel(candidate);
+                return (
                 <li key={candidate.bindingId} className="rounded-md border p-3">
                   <div className="mb-2">
-                    <div className="text-sm font-medium">{candidate.displayName || candidate.propertyKey}</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-sm font-medium">{candidate.displayName || candidate.propertyKey}</div>
+                      {sensitiveLabel ? (
+                        <span
+                          className={cn(
+                            "rounded-md px-2 py-0.5 text-xs font-medium",
+                            candidate.sensitiveMatch?.riskTier === "critical"
+                              ? "bg-rose-100 text-rose-950"
+                              : "bg-amber-100 text-amber-950"
+                          )}
+                        >
+                          {sensitiveLabel}
+                        </span>
+                      ) : null}
+                    </div>
                     <div className="text-xs text-muted-foreground">{candidate.nodePath}</div>
                     <div className="text-xs text-muted-foreground">
                       基线 {candidate.baselineValue ?? "—"} · {constraintSummary(candidate.constraints)}
                     </div>
+                    {candidate.sensitiveMatch ? (
+                      <p className="mt-1 text-xs text-amber-950">
+                        需要 {candidate.sensitiveMatch.requiredCapability}
+                        {candidate.sensitiveMatch.requiresConfirmation ? "，并需明确确认" : ""}
+                      </p>
+                    ) : null}
                   </div>
                   <label className="flex flex-col gap-1 text-sm">
                     <span className="font-medium">调试值</span>
@@ -457,14 +532,51 @@ export function DtsReloadPage({
                     />
                   </label>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
+
+          {selectedHasSensitive ? (
+            <p role="status" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+              已选参数命中敏感节点规则：除 debugging:dts-reload 外还需要{" "}
+              {Array.from(
+                new Set(
+                  selectedCandidates
+                    .map((candidate) => candidate.sensitiveMatch?.requiredCapability)
+                    .filter((value): value is string => Boolean(value))
+                )
+              ).join(" / ") || "parameter:edit-critical"}
+              。
+              {selectedHasCriticalSensitive ? " critical 层级还需在下方明确确认。" : ""}
+            </p>
+          ) : null}
+
+          {selectedHasCriticalSensitive ? (
+            <label className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-950">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={criticalConfirmed}
+                onChange={(event) => setCriticalConfirmed(event.target.checked)}
+                aria-label="确认 critical 敏感节点重载"
+              />
+              <span>
+                我确认要为 critical 敏感参数启动重载运行（发送 confirmationToken=
+                {SENSITIVE_RELOAD_CONFIRMATION_TOKEN}）。调试值不会写回参数库；设备部署确认属于后续步骤。
+              </span>
+            </label>
+          ) : null}
 
           <Button
             type="button"
             onClick={() => void onStart()}
-            disabled={selectedCandidates.length === 0 || !canStartRun || starting}
+            disabled={
+              selectedCandidates.length === 0 ||
+              !canStartRun ||
+              starting ||
+              (selectedHasCriticalSensitive && !criticalConfirmed)
+            }
           >
             {starting ? "预检中…" : `启动重载运行（${selectedCandidates.length}）`}
           </Button>

@@ -10,6 +10,17 @@ export type ReloadCandidateBlockReason =
   | "unsupported-value-shape"
   | "no-baseline-value";
 
+/** Server-computed sensitive-node match for a reload candidate (UI must not reimplement matching). */
+export interface ReloadCandidateSensitiveMatchDto {
+  riskTier: "high" | "critical";
+  requiredCapability: string;
+  ruleId: string;
+  matchType: "path" | "compatible";
+  pattern: string;
+  requiresElevatedCapability: true;
+  requiresConfirmation: boolean;
+}
+
 export interface ReloadCandidateDto {
   bindingId: string;
   projectId: string;
@@ -18,6 +29,8 @@ export interface ReloadCandidateDto {
   module: string;
   /** Absolute device-tree path, or null when the binding has no resolved locator. */
   nodePath: string | null;
+  /** Compatible string from the logical node revision, when available. */
+  compatible: string | null;
   /** Library baseline value, exactly as the parameter library holds it. */
   baselineValue: string | null;
   valueShapeKind: string | null;
@@ -25,6 +38,8 @@ export interface ReloadCandidateDto {
   constraints: Record<string, unknown>;
   debuggable: boolean;
   blockReason?: ReloadCandidateBlockReason;
+  /** Present when organisation sensitive-node rules match this parameter's node. */
+  sensitiveMatch: ReloadCandidateSensitiveMatchDto | null;
 }
 
 export type ReloadRunStatus = "pending" | "blocked" | "validated";

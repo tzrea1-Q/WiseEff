@@ -55,7 +55,8 @@ export function createHttpDtsReloadRepository(options: HttpDtsReloadRepositoryOp
 
     async startRun(input: StartDtsReloadRunInput) {
       const response = await apiClient.post<ItemEnvelope<DtsReloadRun>>(runsPath(input.projectId), {
-        targets: input.targets
+        targets: input.targets,
+        ...(input.confirmationToken ? { confirmationToken: input.confirmationToken } : {})
       });
       return response.item;
     },

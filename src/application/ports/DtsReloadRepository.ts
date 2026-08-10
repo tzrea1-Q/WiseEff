@@ -8,6 +8,8 @@ import type {
 export type StartDtsReloadRunInput = {
   projectId: string;
   targets: Array<{ bindingId: string; debugValue: string }>;
+  /** Required for critical-tier sensitive matches: `confirm-sensitive-reload`. */
+  confirmationToken?: string;
 };
 
 export interface DtsReloadRepository {

@@ -4,6 +4,16 @@ export type DtsReloadCandidateBlockReason =
   | "unsupported-value-shape"
   | "no-baseline-value";
 
+export type DtsReloadSensitiveMatch = {
+  riskTier: "high" | "critical";
+  requiredCapability: string;
+  ruleId: string;
+  matchType: "path" | "compatible";
+  pattern: string;
+  requiresElevatedCapability: true;
+  requiresConfirmation: boolean;
+};
+
 export type DtsReloadCandidate = {
   bindingId: string;
   projectId: string;
@@ -11,13 +21,18 @@ export type DtsReloadCandidate = {
   displayName: string;
   module: string;
   nodePath: string | null;
+  compatible?: string | null;
   baselineValue: string | null;
   valueShapeKind: string | null;
   unit: string | null;
   constraints: Record<string, unknown>;
   debuggable: boolean;
   blockReason?: DtsReloadCandidateBlockReason;
+  sensitiveMatch?: DtsReloadSensitiveMatch | null;
 };
+
+/** Confirmation token required when any selected target matches a critical-tier sensitive rule. */
+export const SENSITIVE_RELOAD_CONFIRMATION_TOKEN = "confirm-sensitive-reload";
 
 export type DtsReloadRunStatus = "pending" | "blocked" | "validated";
 

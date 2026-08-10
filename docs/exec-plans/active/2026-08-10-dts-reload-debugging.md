@@ -1,6 +1,6 @@
 # DTS reload debugging (#280 series)
 
-> Status: **Active** — #281/#282 merged; #283 parameter breadth on `feat/dts-reload-parameter-breadth`
+> Status: **Active** — #281–#283 merged; #284 sensitive-node on `feat/dts-reload-sensitive-node`
 > Date: 2026-08-10
 > Parent: GitHub [#280](https://github.com/tzrea1-Q/WiseEff/issues/280)
 > Tickets: #281–#290
@@ -22,8 +22,9 @@ Ship DTS reload debugging so hardware engineers can validate candidate library p
 | --- | --- |
 | #281 | Reload run skeleton: one scalar u32 → validated downloadable overlay (merged) |
 | #282 | Reload configuration governance + resolution entry point (merged) |
-| #283 | Parameter breadth: multi-node fragments, u32 arrays, string lists, filters (`feat/dts-reload-parameter-breadth`) |
-| #284–#289 | Sensitive-node, bridge deploy, kernel log, residue, restore, history |
+| #283 | Parameter breadth: multi-node fragments, u32 arrays, string lists, filters (merged) |
+| #284 | Sensitive-node governance for reload (`feat/dts-reload-sensitive-node`) |
+| #285–#289 | Bridge deploy, kernel log, residue, restore, history |
 | #290 | Series closeout / archive this plan |
 
 ## Git & PR Workflow
@@ -43,6 +44,16 @@ Ship DTS reload debugging so hardware engineers can validate candidate library p
 - Mock mode: static unavailable only — no mock repository / fixtures / reducer actions
 - Degraded locator: refuse only when the parameter's own locator *is* a synthesised `/label` anchor, not when it is a descendant hanging under one
 - Kernel log command allowlist prefixes (server save + later bridge re-validate): `dmesg`, `hilog`, `cat /proc/kmsg`
+
+## #284 progress
+
+- Gate in `startReloadRun` after resolve, before overlay: path + compatible via `dts_sensitive_node_rules`
+- high → requires `parameter:edit-critical`; critical → elevated + `confirmationToken: "confirm-sensitive-reload"`
+- Agent refused for any sensitive match; denials audited as `dts-reload-sensitive-node-denied`
+- Candidates expose `sensitiveMatch`; `/dts-reload` marks badges + critical confirm before start
+- No migration
+- #285 should require `confirm-dts-reload` in addition; compose after this sensitive gate
+- Browser evidence: `work/ui-checks/284-dts-reload-sensitive-{desktop-1440,tablet-768,mobile-390}.png`
 
 ## #283 progress
 
@@ -73,7 +84,7 @@ Ship DTS reload debugging so hardware engineers can validate candidate library p
 | Architecture | Review | No structural rewrite; revisit when bridge deploy lands |
 | Frontend | Review | `/debugging-admin` panel wiring is local; defer deep FRONTEND.md until surface complete |
 | API / generated | Update | `docs/generated/openapi.json` via `npm run contract:openapi` |
-| Security | Review | Snapshot / sensitive-node belong to later tickets; this ticket adds configuration audit kinds |
+| Security | Update | Snapshot still later; #284 documents sensitive-node reload extension in SECURITY.md |
 | Reliability / runbooks | No change | Device deploy not in #282 |
 | Quality / acceptance | Review | Browser evidence under `work/ui-checks/`; acceptance IDs deferred to #290 |
 | Chinese companions | Review | Optional until #290 archives |
