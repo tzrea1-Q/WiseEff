@@ -1,6 +1,6 @@
 # DTS reload debugging (#280 series)
 
-> Status: **Active** — #281–#286 merged; #287 on `feat/dts-reload-behavioural-verify`
+> Status: **Active** — #281–#287 merged; #288 on `feat/dts-reload-residue-restore`
 > Date: 2026-08-10
 > Parent: GitHub [#280](https://github.com/tzrea1-Q/WiseEff/issues/280)
 > Tickets: #281–#290
@@ -44,6 +44,16 @@ Ship DTS reload debugging so hardware engineers can validate candidate library p
 - Mock mode: static unavailable only — no mock repository / fixtures / reducer actions
 - Degraded locator: refuse only when the parameter's own locator *is* a synthesised `/label` anchor, not when it is a descendant hanging under one
 - Kernel log command allowlist (server save + bridge re-validate): exact entries via `@wiseeff/device-command-core/kernelLogCommand`
+
+## #288 progress
+
+- Migration `0100`: `dts_reload_runs.purpose` (`ordinary` | `restore-baseline`) + durable `dts_reload_device_residue` keyed by `(organization_id, device_id)`
+- **Residue rule**: SET when an ordinary run reaches post-device-write terminal (`unverifiable` | `verified` | `contradicted`); CLEAR when a restore-baseline run reaches the same terminals; `blocked` / `failed` do not set; failed restore leaves residue
+- Residue names `sourceRunId` + parameters; presentation copy states platform bookkeeping, cannot confirm from device, invalidated by reboot / reflash / out-of-band changes
+- `GET /api/v1/dts-reload/residue?deviceId=` + `POST .../restore-baseline` (reuses `startReloadRun` with baseline debug values + purpose; client still deploys via normal confirm path — no shortcut)
+- Distinct restore audit kinds: `dts-reload-restore-started|blocked|validated|deploy-started|unverifiable|verified|contradicted|failed`
+- UI: residue indicator wherever device is shown on `/dts-reload`; restore confirmation uses compensating-reload language; DEV `?uiPreview=residue`
+- Acceptance: `DTS-RELOAD-RESIDUE-001`; browser evidence under `work/ui-checks/288-dts-reload-residue-*`
 
 ## #287 progress
 
@@ -117,7 +127,7 @@ Ship DTS reload debugging so hardware engineers can validate candidate library p
 | API / generated | Update | `docs/generated/openapi.json` via `npm run contract:openapi` |
 | Security | Update | Snapshot redefinition + confirm-dts-reload; ADR-0021; EN + zh-CN SECURITY |
 | Reliability / runbooks | Review | In-request deploy (ADR-0020); no BullMQ path |
-| Quality / acceptance | Update | `DTS-RELOAD-DEPLOY-001` + `DTS-RELOAD-KERNEL-001` + `DTS-RELOAD-VERIFY-001` + HW conditional; browser evidence `work/ui-checks/285-*` / `286-*` / `287-*` |
+| Quality / acceptance | Update | `DTS-RELOAD-DEPLOY-001` + `DTS-RELOAD-KERNEL-001` + `DTS-RELOAD-VERIFY-001` + `DTS-RELOAD-RESIDUE-001` + HW conditional; browser evidence `work/ui-checks/285-*` / `286-*` / `287-*` / `288-*` |
 | Chinese companions | Update | `docs/zh-CN/SECURITY.md` for reload snapshot |
 
 ## Documentation Update Gate

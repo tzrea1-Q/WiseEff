@@ -12,6 +12,7 @@ import type {
   DtsReloadCandidate,
   DtsReloadIntegrityCheck,
   DtsReloadParameterVerification,
+  DtsReloadResidue,
   DtsReloadRun,
   DtsReloadSnapshot
 } from "@/domain/dtsReload/types";
@@ -349,15 +350,25 @@ function DeployConfirmBody({
   run,
   deviceId,
   targetRef,
-  bridgeMachineLabel
+  bridgeMachineLabel,
+  residue
 }: {
   run: DtsReloadRun;
   deviceId: string;
   targetRef: string;
   bridgeMachineLabel: string;
+  residue: DtsReloadResidue | null;
 }) {
+  const isRestore = run.purpose === "restore-baseline";
   return (
     <div className="flex flex-col gap-3 text-sm">
+      {isRestore ? (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+          这是一次<strong>补偿性重载</strong>，不是撤销。已应用的调试 overlay
+          无法卸载；本次会以库基线值作为调试值重新部署一层。
+        </p>
+      ) : null}
+      {residue ? <ResidueIndicator residue={residue} deviceId={deviceId} /> : null}
       <dl className="grid gap-1 text-xs">
         <div>
           <dt className="font-medium">目标设备</dt>
@@ -376,14 +387,16 @@ function DeployConfirmBody({
       </dl>
       {run.targets.length > 0 ? (
         <div>
-          <p className="mb-1 text-xs font-medium">参数变更</p>
+          <p className="mb-1 text-xs font-medium">{isRestore ? "将部署的基线值" : "参数变更"}</p>
           <ul className="max-h-40 space-y-2 overflow-y-auto rounded-md border p-2 text-xs">
             {run.targets.map((target) => (
               <li key={target.bindingId}>
                 <div className="font-medium">{target.propertyKey}</div>
                 <div className="font-mono text-muted-foreground">{target.nodePath}</div>
                 <div className="font-mono">
-                  {target.baselineValue ?? "—"} → {target.debugValue}
+                  {isRestore
+                    ? target.debugValue
+                    : `${target.baselineValue ?? "—"} → ${target.debugValue}`}
                 </div>
               </li>
             ))}
@@ -402,6 +415,32 @@ function DeployConfirmBody({
         </label>
       ) : null}
     </div>
+  );
+}
+
+function ResidueIndicator({
+  residue,
+  deviceId
+}: {
+  residue: DtsReloadResidue;
+  deviceId: string;
+}) {
+  const parameterNames = residue.parameters.map((entry) => entry.propertyKey).join("、") || "（无参数）";
+  return (
+    <aside
+      className="rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-950"
+      aria-label="重载残留指示"
+      data-testid="reload-residue-indicator"
+    >
+      <p className="font-semibold">设备可能携带调试残留</p>
+      <p className="mt-1 text-xs">
+        设备 <span className="font-mono">{deviceId || residue.deviceId}</span> 的平台记账显示，运行{" "}
+        <span className="font-mono">{residue.sourceRunId}</span> 曾部署调试值（参数：{parameterNames}）。
+      </p>
+      <p className="mt-2 text-xs leading-relaxed">
+        这是<strong>平台根据运行历史做的记账</strong>，无法从设备侧确认。重启、重新刷机，或在平台之外做的任何改动，都会使该指示失效。
+      </p>
+    </aside>
   );
 }
 
@@ -437,6 +476,12 @@ export function DtsReloadPage({
   const [deviceIdTouched, setDeviceIdTouched] = useState(false);
   const [deployConfirmOpen, setDeployConfirmOpen] = useState(false);
   const [pendingDeployRun, setPendingDeployRun] = useState<DtsReloadRun | null>(null);
+  const [residue, setResidue] = useState<DtsReloadResidue | null>(null);
+  const [residueLoading, setResidueLoading] = useState(false);
+  const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [restoreError, setRestoreError] = useState("");
+  const [restoreCriticalConfirmed, setRestoreCriticalConfirmed] = useState(false);
 
   const selectedBridge = useMemo(
     () => bridges.find((bridge) => bridge.id === bridgeId) ?? null,
@@ -512,6 +557,36 @@ export function DtsReloadPage({
   }, [bridgeId, deviceIdTouched]);
 
   useEffect(() => {
+    if (!repository || !deviceId.trim()) {
+      setResidue(null);
+      return;
+    }
+    if (
+      import.meta.env.DEV &&
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("uiPreview") === "residue"
+    ) {
+      return;
+    }
+    let cancelled = false;
+    setResidueLoading(true);
+    void repository
+      .getResidue(deviceId.trim())
+      .then((item) => {
+        if (!cancelled) setResidue(item);
+      })
+      .catch(() => {
+        // Keep any previously shown bookkeeping if the lookup fails transiently.
+      })
+      .finally(() => {
+        if (!cancelled) setResidueLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [repository, deviceId]);
+
+  useEffect(() => {
     if (!selectedHasCriticalSensitive) {
       setCriticalConfirmed(false);
     }
@@ -559,9 +634,73 @@ export function DtsReloadPage({
             writeRunIdToSearch(null);
           }
         }
-        // DEV-only visual QA hooks for playwright-cli screenshots (#286 / #287).
+        // DEV-only visual QA hooks for playwright-cli screenshots (#286 / #287 / #288).
         if (import.meta.env.DEV && typeof window !== "undefined") {
           const preview = new URLSearchParams(window.location.search).get("uiPreview");
+          if (preview === "residue") {
+            setDeviceId("bridge:preview");
+            setDeviceIdTouched(true);
+            setTargetRef("AURORA-PREVIEW");
+            setResidue({
+              deviceId: "bridge:preview",
+              projectId,
+              sourceRunId: "preview-residue-run",
+              parameters: [
+                {
+                  bindingId: "binding-1",
+                  propertyKey: "watchdog_time",
+                  nodePath: "/amba/i2c@1/dev@6E",
+                  baselineValue: "<6000>",
+                  debugValue: "<7000>"
+                },
+                {
+                  bindingId: "binding-2",
+                  propertyKey: "input_current",
+                  nodePath: "/amba/i2c@1/dev@6E",
+                  baselineValue: "<3000>",
+                  debugValue: "<3100>"
+                }
+              ],
+              recordedAt: "2026-08-10T00:00:00.000Z"
+            });
+            setRun({
+              id: "preview-residue-run",
+              projectId,
+              configRevisionId: null,
+              status: "unverifiable",
+              purpose: "ordinary",
+              failureCode: null,
+              targets: [
+                {
+                  bindingId: "binding-1",
+                  nodePath: "/amba/i2c@1/dev@6E",
+                  propertyKey: "watchdog_time",
+                  baselineValue: "<6000>",
+                  debugValue: "<7000>"
+                }
+              ],
+              steps: [
+                { step: "mount-target", outcome: "passed" },
+                { step: "transfer-artifact", outcome: "passed" },
+                { step: "trigger-reload", outcome: "passed" }
+              ],
+              diagnostics: [],
+              toolVersions: { dtc: "1.7.0", fdtoverlay: "1.7.0" },
+              overlaySource: null,
+              overlaySourceSha256: null,
+              artifact: null,
+              deviceId: "bridge:preview",
+              bridgeId: "bridge-preview",
+              bridgeMachineLabel: "Preview Lab",
+              targetRef: "AURORA-PREVIEW",
+              protocol: "hdc",
+              integrityCheck: "sha256",
+              reloadSnapshot: null,
+              createdAt: "2026-08-10T00:00:00.000Z",
+              completedAt: "2026-08-10T00:00:02.000Z"
+            });
+            return;
+          }
           if (preview === "kernel-signal" || preview === "behavioural-verify") {
             const verifiedPreview = preview === "behavioural-verify";
             setRun({
@@ -569,6 +708,7 @@ export function DtsReloadPage({
               projectId,
               configRevisionId: null,
               status: verifiedPreview ? "verified" : "unverifiable",
+              purpose: "ordinary",
               failureCode: null,
               targets: [
                 {
@@ -729,10 +869,59 @@ export function DtsReloadPage({
       writeRunIdToSearch(deployed.id);
       setDeployConfirmOpen(false);
       setPendingDeployRun(null);
+      try {
+        const nextResidue = await repository!.getResidue(deviceId.trim());
+        setResidue(nextResidue);
+      } catch {
+        // Residue refresh is best-effort after deploy.
+      }
     } catch (error) {
       setDeployError(error instanceof Error ? error.message : "部署到设备失败。");
     } finally {
       setDeploying(false);
+    }
+  };
+
+  const openRestoreConfirm = () => {
+    setRestoreError("");
+    setRestoreCriticalConfirmed(false);
+    setRestoreConfirmOpen(true);
+  };
+
+  const closeRestoreConfirm = () => {
+    if (restoring) return;
+    setRestoreConfirmOpen(false);
+    setRestoreError("");
+    setRestoreCriticalConfirmed(false);
+  };
+
+  const onRestoreConfirm = async () => {
+    if (!repository || !projectId || !deviceId.trim()) return;
+    if (restoreHasCriticalSensitive && !restoreCriticalConfirmed) {
+      setRestoreError("critical 敏感参数恢复基线前须明确确认。");
+      return;
+    }
+    setRestoring(true);
+    setRestoreError("");
+    try {
+      const restoreRun = await repository.restoreBaseline({
+        projectId,
+        deviceId: deviceId.trim(),
+        ...(restoreHasCriticalSensitive
+          ? { confirmationToken: SENSITIVE_RELOAD_CONFIRMATION_TOKEN }
+          : {})
+      });
+      setRun(restoreRun);
+      writeRunIdToSearch(restoreRun.id);
+      setRestoreConfirmOpen(false);
+      setRestoreCriticalConfirmed(false);
+      if (restoreRun.status === "validated") {
+        openDeployConfirm(restoreRun);
+      }
+    } catch (error) {
+      setRestoreError(error instanceof Error ? error.message : "启动基线恢复运行失败。");
+    } finally {
+      setRestoring(false);
     }
   };
 
@@ -835,6 +1024,15 @@ export function DtsReloadPage({
 
   const confirmRun = pendingDeployRun ?? run;
   const canRetryDeploy = run?.status === "validated" || run?.status === "failed";
+  const residueSensitiveCandidates = useMemo(() => {
+    if (!residue) return [];
+    const bindingIds = new Set(residue.parameters.map((entry) => entry.bindingId));
+    return candidates.filter((candidate) => bindingIds.has(candidate.bindingId));
+  }, [residue, candidates]);
+  const restoreHasCriticalSensitive = residueSensitiveCandidates.some(
+    (candidate) => candidate.sensitiveMatch?.riskTier === "critical"
+  );
+  const restoreHasSensitive = residueSensitiveCandidates.some((candidate) => Boolean(candidate.sensitiveMatch));
 
   return (
     <section className="dts-reload-page flex flex-col gap-5 p-6" aria-labelledby="dts-reload-title">
@@ -1078,6 +1276,19 @@ export function DtsReloadPage({
 
           <div className="flex flex-col gap-3 rounded-md border border-dashed p-3">
             <h4 className="text-sm font-semibold">设备部署</h4>
+            {residue && !residueLoading ? (
+              <div className="flex flex-col gap-2">
+                <ResidueIndicator residue={residue} deviceId={deviceId.trim()} />
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!canStartRun || restoring || !deviceId.trim()}
+                  onClick={openRestoreConfirm}
+                >
+                  恢复基线（补偿性重载）
+                </Button>
+              </div>
+            ) : null}
             <label className="flex flex-col gap-1 text-sm">
               <span className="font-medium">Bridge</span>
               <select
@@ -1197,10 +1408,19 @@ export function DtsReloadPage({
               </div>
               {run.failureCode ? <p className="text-xs text-muted-foreground">失败码：{run.failureCode}</p> : null}
               {run.bridgeMachineLabel || run.targetRef ? (
-                <p className="text-xs text-muted-foreground">
-                  目标设备：{run.deviceId ?? deviceId} · {run.targetRef ?? targetRef}
-                  {run.bridgeMachineLabel ? ` · Bridge ${run.bridgeMachineLabel}` : ""}
-                </p>
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs text-muted-foreground">
+                    目标设备：{run.deviceId ?? deviceId} · {run.targetRef ?? targetRef}
+                    {run.bridgeMachineLabel ? ` · Bridge ${run.bridgeMachineLabel}` : ""}
+                    {run.purpose === "restore-baseline" ? " · 补偿性恢复基线" : ""}
+                  </p>
+                  {residue && (run.deviceId ?? deviceId) ? (
+                    <ResidueIndicator
+                      residue={residue}
+                      deviceId={(run.deviceId ?? deviceId).trim()}
+                    />
+                  ) : null}
+                </div>
               ) : null}
               {run.targets.length > 0 ? (
                 <p className="text-xs text-muted-foreground">本运行包含 {run.targets.length} 个参数目标。</p>
@@ -1252,7 +1472,7 @@ export function DtsReloadPage({
 
       <ConfirmDialog
         open={deployConfirmOpen}
-        title="确认部署到设备"
+        title={confirmRun?.purpose === "restore-baseline" ? "确认补偿性恢复基线部署" : "确认部署到设备"}
         description={
           confirmRun ? (
             <DeployConfirmBody
@@ -1260,16 +1480,71 @@ export function DtsReloadPage({
               deviceId={deviceId.trim()}
               targetRef={targetRef.trim()}
               bridgeMachineLabel={selectedBridge?.machineLabel ?? confirmRun.bridgeMachineLabel ?? "—"}
+              residue={residue}
             />
           ) : null
         }
-        confirmLabel="确认部署"
+        confirmLabel={confirmRun?.purpose === "restore-baseline" ? "确认补偿性部署" : "确认部署"}
         tone="danger"
         pending={deploying}
         pendingLabel="部署中…"
         error={deployError}
         onCancel={closeDeployConfirm}
         onConfirm={() => void onDeployConfirm()}
+      />
+
+      <ConfirmDialog
+        open={restoreConfirmOpen}
+        title="确认恢复基线（补偿性重载）"
+        description={
+          residue ? (
+            <div className="flex flex-col gap-3 text-sm">
+              <p className="text-xs leading-relaxed">
+                将启动一次<strong>新的重载运行</strong>，调试值取自残留产生运行的同一参数集的<strong>库基线值</strong>。
+                这是<strong>补偿性重载</strong>，不是撤销——已应用的 overlay 无法卸载。
+              </p>
+              <ResidueIndicator residue={residue} deviceId={deviceId.trim()} />
+              <p className="text-xs text-muted-foreground">
+                预检、敏感确认与部署确认路径与普通运行完全相同，不会走捷径。
+              </p>
+              {restoreHasSensitive ? (
+                <p className="text-xs text-amber-950">
+                  残留参数含敏感节点匹配；恢复基线仍须具备{" "}
+                  {Array.from(
+                    new Set(
+                      residueSensitiveCandidates
+                        .map((candidate) => candidate.sensitiveMatch?.requiredCapability)
+                        .filter((value): value is string => Boolean(value))
+                    )
+                  ).join(" / ") || "parameter:edit-critical"}
+                  。
+                </p>
+              ) : null}
+              {restoreHasCriticalSensitive ? (
+                <label className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-950">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={restoreCriticalConfirmed}
+                    onChange={(event) => setRestoreCriticalConfirmed(event.target.checked)}
+                    aria-label="确认 critical 敏感节点补偿性恢复"
+                  />
+                  <span>
+                    我确认要以库基线值对 critical 敏感参数启动补偿性恢复（confirmationToken=
+                    {SENSITIVE_RELOAD_CONFIRMATION_TOKEN}）。这不是撤销。
+                  </span>
+                </label>
+              ) : null}
+            </div>
+          ) : null
+        }
+        confirmLabel="启动补偿性恢复"
+        tone="danger"
+        pending={restoring}
+        pendingLabel="启动中…"
+        error={restoreError}
+        onCancel={closeRestoreConfirm}
+        onConfirm={() => void onRestoreConfirm()}
       />
     </section>
   );

@@ -86,6 +86,21 @@ function createDeployDb(options: DeployDbOptions) {
       return { rows: [next] as Row[], rowCount: 1 };
     }
 
+    if (text.includes("dts_reload_device_residue")) {
+      if (text.toLowerCase().includes("insert into")) {
+        const row = {
+          organization_id: values[0],
+          device_id: values[1],
+          project_id: values[2],
+          source_run_id: values[3],
+          parameters: JSON.parse(String(values[4])),
+          recorded_at: values[5]
+        };
+        return { rows: [row] as Row[], rowCount: 1 };
+      }
+      return { rows: [] as Row[], rowCount: 0 };
+    }
+
     // getReloadRun / artifact key lookup
     if (text.includes("from dts_reload_runs") || text.includes("overlay_artifact_storage_key")) {
       return { rows: [options.runRow] as Row[], rowCount: 1 };
@@ -143,6 +158,7 @@ function validatedRunRow(overrides: Record<string, unknown> = {}) {
     project_id: "project-1",
     config_revision_id: "rev-1",
     status: "validated",
+    purpose: "ordinary",
     failure_code: null,
     steps: [
       { step: "compile-base", outcome: "passed" },

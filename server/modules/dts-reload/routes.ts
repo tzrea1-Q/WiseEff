@@ -16,14 +16,18 @@ import {
 import { deviceIdParamsSchema, reloadConfigurationContractBodySchema } from "./configurationSchemas";
 import {
   deployReloadRun,
+  getReloadResidue,
   getReloadRun,
   getReloadRunArtifact,
   listReloadCandidates,
-  startReloadRun
+  startReloadRun,
+  startRestoreBaselineRun
 } from "./service";
 import {
   deployReloadRunBodySchema,
   projectIdParamsSchema,
+  residueQuerySchema,
+  restoreBaselineBodySchema,
   runIdParamsSchema,
   startReloadRunBodySchema
 } from "./schemas";
@@ -125,6 +129,34 @@ export function registerDtsReloadRoutes(
       { requestId: request.requestId }
     );
     return { status: 201, body: { item } };
+  });
+
+  router.post("/api/v1/dts-reload/projects/:projectId/restore-baseline", async (request) => {
+    const db = requireDb(options.db);
+    const objectStore = requireObjectStore(options.objectStore);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(projectIdParamsSchema, request.params);
+    const body = parseWithSchema(restoreBaselineBodySchema, request.body);
+    const item = await startRestoreBaselineRun(
+      db,
+      objectStore,
+      auth,
+      {
+        projectId: params.projectId,
+        deviceId: body.deviceId,
+        confirmationToken: body.confirmationToken
+      },
+      { requestId: request.requestId }
+    );
+    return { status: 201, body: { item } };
+  });
+
+  router.get("/api/v1/dts-reload/residue", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const query = parseWithSchema(residueQuerySchema, request.query);
+    const item = await getReloadResidue(db, auth, query.deviceId);
+    return { status: 200, body: { item } };
   });
 
   router.post("/api/v1/dts-reload/runs/:runId/deploy", async (request) => {

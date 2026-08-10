@@ -34,12 +34,22 @@ import {
   type ReloadCandidateRow
 } from "./repository";
 import {
+  applyResidueForDeployTerminal,
+  getDeviceResidue
+} from "./residue";
+import {
   assertSensitiveReloadBatchAllowed,
   matchReloadCandidatesSensitive,
   type ReloadTargetSensitiveHit
 } from "./sensitiveGate";
 import { executeReloadDeploy, type DeployReloadDeps, type DeployReloadRunInput } from "./deploy";
-import type { ReloadCandidateDto, ReloadRunDto, ReloadRunStatus } from "./types";
+import type {
+  ReloadCandidateDto,
+  ReloadResidueDto,
+  ReloadRunDto,
+  ReloadRunPurpose,
+  ReloadRunStatus
+} from "./types";
 import { DTS_RELOAD_CONFIRMATION_TOKEN } from "./types";
 
 export type DtsReloadServiceContext = AuditCorrelationContext & {
@@ -55,7 +65,42 @@ export type StartReloadRunInput = {
   projectId: string;
   targets: StartReloadRunTargetInput[];
   confirmationToken?: string;
+  purpose?: ReloadRunPurpose;
 };
+
+export type RestoreBaselineInput = {
+  projectId: string;
+  deviceId: string;
+  confirmationToken?: string;
+};
+
+type ReloadAuditKind =
+  | "dts-reload-run-start"
+  | "dts-reload-run-blocked"
+  | "dts-reload-run-validated"
+  | "dts-reload-run-deploy-started"
+  | "dts-reload-run-unverifiable"
+  | "dts-reload-run-verified"
+  | "dts-reload-run-contradicted"
+  | "dts-reload-run-failed"
+  | "dts-reload-restore-started"
+  | "dts-reload-restore-blocked"
+  | "dts-reload-restore-validated"
+  | "dts-reload-restore-deploy-started"
+  | "dts-reload-restore-unverifiable"
+  | "dts-reload-restore-verified"
+  | "dts-reload-restore-contradicted"
+  | "dts-reload-restore-failed";
+
+type ReloadAuditAction =
+  | "start"
+  | "blocked"
+  | "validated"
+  | "deploy"
+  | "unverifiable"
+  | "verified"
+  | "contradicted"
+  | "failed";
 
 type ResolvedReloadTarget = {
   candidate: ReloadCandidateDto;
@@ -115,16 +160,8 @@ async function writeReloadAudit(
   db: Queryable,
   auth: AuthContext,
   input: {
-    kind:
-      | "dts-reload-run-start"
-      | "dts-reload-run-blocked"
-      | "dts-reload-run-validated"
-      | "dts-reload-run-deploy-started"
-      | "dts-reload-run-unverifiable"
-      | "dts-reload-run-verified"
-      | "dts-reload-run-contradicted"
-      | "dts-reload-run-failed";
-    action: "start" | "blocked" | "validated" | "deploy" | "unverifiable" | "verified" | "contradicted" | "failed";
+    kind: ReloadAuditKind;
+    action: ReloadAuditAction;
     projectId: string;
     runId: string;
     severity?: "High" | "Medium" | "Low";
@@ -148,6 +185,40 @@ async function writeReloadAudit(
     metadata: input.metadata,
     traceId: context.requestId ?? randomUUID()
   });
+}
+
+function auditKindsForPurpose(purpose: ReloadRunPurpose): {
+  start: ReloadAuditKind;
+  blocked: ReloadAuditKind;
+  validated: ReloadAuditKind;
+  deployStarted: ReloadAuditKind;
+  unverifiable: ReloadAuditKind;
+  verified: ReloadAuditKind;
+  contradicted: ReloadAuditKind;
+  failed: ReloadAuditKind;
+} {
+  if (purpose === "restore-baseline") {
+    return {
+      start: "dts-reload-restore-started",
+      blocked: "dts-reload-restore-blocked",
+      validated: "dts-reload-restore-validated",
+      deployStarted: "dts-reload-restore-deploy-started",
+      unverifiable: "dts-reload-restore-unverifiable",
+      verified: "dts-reload-restore-verified",
+      contradicted: "dts-reload-restore-contradicted",
+      failed: "dts-reload-restore-failed"
+    };
+  }
+  return {
+    start: "dts-reload-run-start",
+    blocked: "dts-reload-run-blocked",
+    validated: "dts-reload-run-validated",
+    deployStarted: "dts-reload-run-deploy-started",
+    unverifiable: "dts-reload-run-unverifiable",
+    verified: "dts-reload-run-verified",
+    contradicted: "dts-reload-run-contradicted",
+    failed: "dts-reload-run-failed"
+  };
 }
 
 function sensitiveAuditSummary(hits: ReloadTargetSensitiveHit[]) {
@@ -384,6 +455,9 @@ export async function startReloadRun(
 ): Promise<ReloadRunDto> {
   requireDtsReload(auth);
 
+  const purpose: ReloadRunPurpose = input.purpose ?? "ordinary";
+  const audits = auditKindsForPurpose(purpose);
+
   const resolved = await resolveStartTargets(db, auth, input);
   const sensitiveHits = await assertSensitiveReloadBatchAllowed(db, auth, {
     projectId: input.projectId,
@@ -414,13 +488,14 @@ export async function startReloadRun(
     db,
     auth,
     {
-      kind: "dts-reload-run-start",
+      kind: audits.start,
       action: "start",
       projectId: input.projectId,
       runId,
       severity: hasCriticalSensitive ? "High" : "Medium",
       metadata: {
         projectId: input.projectId,
+        purpose,
         targetCount: resolved.length,
         fragmentCount: overlayTargets.length,
         targets: resolved.map((item) => ({
@@ -455,6 +530,7 @@ export async function startReloadRun(
       runId,
       projectId: input.projectId,
       configRevisionId,
+      purpose,
       targets: resolved,
       status: "blocked",
       failureCode,
@@ -468,13 +544,14 @@ export async function startReloadRun(
       db,
       auth,
       {
-        kind: "dts-reload-run-blocked",
+        kind: audits.blocked,
         action: "blocked",
         projectId: input.projectId,
         runId,
         severity: hasCriticalSensitive ? "High" : "Medium",
         metadata: {
           projectId: input.projectId,
+          purpose,
           targetCount: resolved.length,
           failureCode,
           configRevisionId,
@@ -503,6 +580,7 @@ export async function startReloadRun(
     runId,
     projectId: input.projectId,
     configRevisionId,
+    purpose,
     targets: resolved,
     status,
     failureCode,
@@ -517,13 +595,14 @@ export async function startReloadRun(
     db,
     auth,
     {
-      kind: status === "validated" ? "dts-reload-run-validated" : "dts-reload-run-blocked",
+      kind: status === "validated" ? audits.validated : audits.blocked,
       action: status === "validated" ? "validated" : "blocked",
       projectId: input.projectId,
       runId,
       severity: hasCriticalSensitive ? "High" : "Medium",
       metadata: {
         projectId: input.projectId,
+        purpose,
         targetCount: resolved.length,
         fragmentCount: overlayTargets.length,
         failureCode,
@@ -539,6 +618,107 @@ export async function startReloadRun(
   return persisted;
 }
 
+/**
+ * Start a compensating restore-baseline reload for a device that carries residue.
+ * Debug values are the library baseline values for the same parameter set as the
+ * residue-producing run. The run still requires normal deploy confirmation — no shortcut.
+ */
+export async function startRestoreBaselineRun(
+  db: Database,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: RestoreBaselineInput,
+  context: DtsReloadServiceContext = {}
+): Promise<ReloadRunDto> {
+  requireDtsReload(auth);
+
+  const residue = await getDeviceResidue(db, {
+    organizationId: auth.organization.id,
+    deviceId: input.deviceId
+  });
+  if (!residue) {
+    throw new ApiError(
+      "CONFLICT",
+      "No reload residue is recorded for this device; restore-baseline has nothing to compensate.",
+      409,
+      { code: "reload-residue-missing", deviceId: input.deviceId }
+    );
+  }
+  if (residue.projectId !== input.projectId) {
+    throw new ApiError(
+      "CONFLICT",
+      "Residue for this device belongs to a different project.",
+      409,
+      {
+        code: "reload-residue-project-mismatch",
+        deviceId: input.deviceId,
+        residueProjectId: residue.projectId,
+        projectId: input.projectId
+      }
+    );
+  }
+  if (residue.parameters.length === 0) {
+    throw new ApiError(
+      "CONFLICT",
+      "Residue record has no parameters to restore.",
+      409,
+      { code: "reload-residue-empty", deviceId: input.deviceId, sourceRunId: residue.sourceRunId }
+    );
+  }
+
+  const targets: StartReloadRunTargetInput[] = [];
+  for (const parameter of residue.parameters) {
+    const candidate = await getReloadCandidateRow(db, {
+      organizationId: auth.organization.id,
+      projectId: input.projectId,
+      bindingId: parameter.bindingId
+    });
+    if (!candidate) {
+      throw new ApiError(
+        "NOT_FOUND",
+        `Residue parameter binding ${parameter.bindingId} is no longer available in the project.`,
+        404,
+        { code: "reload-residue-binding-missing", bindingId: parameter.bindingId }
+      );
+    }
+    const baselineValue = candidate.baseline_value;
+    if (baselineValue === null || baselineValue === undefined || baselineValue === "") {
+      throw new ApiError(
+        "CONFLICT",
+        `Residue parameter ${parameter.propertyKey} has no library baseline value to restore.`,
+        409,
+        { code: "reload-residue-baseline-missing", bindingId: parameter.bindingId }
+      );
+    }
+    targets.push({ bindingId: parameter.bindingId, debugValue: baselineValue });
+  }
+
+  return startReloadRun(
+    db,
+    objectStore,
+    auth,
+    {
+      projectId: input.projectId,
+      targets,
+      confirmationToken: input.confirmationToken,
+      purpose: "restore-baseline"
+    },
+    context
+  );
+}
+
+export async function getReloadResidue(
+  db: Queryable,
+  auth: AuthContext,
+  deviceId: string
+): Promise<ReloadResidueDto | null> {
+  requireDtsReload(auth);
+  return getDeviceResidue(db, {
+    organizationId: auth.organization.id,
+    deviceId
+  });
+}
+
 async function persistRunOutcome(
   db: Database,
   objectStore: ObjectStore,
@@ -547,6 +727,7 @@ async function persistRunOutcome(
     runId: string;
     projectId: string;
     configRevisionId: string | null;
+    purpose: ReloadRunPurpose;
     targets: ResolvedReloadTarget[];
     status: ReloadRunStatus;
     failureCode: string | null;
@@ -588,6 +769,7 @@ async function persistRunOutcome(
       projectId: input.projectId,
       configRevisionId: input.configRevisionId,
       status: input.status,
+      purpose: input.purpose,
       failureCode: input.failureCode,
       steps: input.steps,
       diagnostics: input.diagnostics,
@@ -730,17 +912,20 @@ export async function deployReloadRun(
   }
   const artifactBytes = await objectStore.get(row.overlay_artifact_storage_key);
 
+  const audits = auditKindsForPurpose(run.purpose);
+
   await writeReloadAudit(
     db,
     auth,
     {
-      kind: "dts-reload-run-deploy-started",
+      kind: audits.deployStarted,
       action: "deploy",
       projectId: run.projectId,
       runId: run.id,
       severity: "High",
       metadata: {
         phase: "deploy",
+        purpose: run.purpose,
         deviceId: input.deviceId,
         bridgeId: input.bridgeId,
         targetRef: input.targetRef,
@@ -792,14 +977,26 @@ export async function deployReloadRun(
     }
   });
 
+  const residueAction = result.deviceId
+    ? await applyResidueForDeployTerminal(db, {
+        organizationId: auth.organization.id,
+        deviceId: result.deviceId,
+        projectId: result.projectId,
+        runId: result.id,
+        purpose: result.purpose,
+        status: result.status,
+        targets: result.targets
+      })
+    : "none";
+
   const terminalAudit =
     result.status === "verified"
-      ? { kind: "dts-reload-run-verified" as const, action: "verified" as const }
+      ? { kind: audits.verified, action: "verified" as const }
       : result.status === "contradicted"
-        ? { kind: "dts-reload-run-contradicted" as const, action: "contradicted" as const }
+        ? { kind: audits.contradicted, action: "contradicted" as const }
         : result.status === "unverifiable"
-          ? { kind: "dts-reload-run-unverifiable" as const, action: "unverifiable" as const }
-          : { kind: "dts-reload-run-failed" as const, action: "failed" as const };
+          ? { kind: audits.unverifiable, action: "unverifiable" as const }
+          : { kind: audits.failed, action: "failed" as const };
 
   await writeReloadAudit(
     db,
@@ -812,13 +1009,15 @@ export async function deployReloadRun(
       severity: "High",
       metadata: {
         phase: "deploy",
+        purpose: result.purpose,
         status: result.status,
         failureCode: result.failureCode,
         deviceId: result.deviceId,
         bridgeId: result.bridgeId,
         integrityCheck: result.integrityCheck,
         reloadSnapshot: result.reloadSnapshot,
-        behaviouralVerification: result.reloadSnapshot?.behaviouralVerification ?? null
+        behaviouralVerification: result.reloadSnapshot?.behaviouralVerification ?? null,
+        residueAction
       }
     },
     context

@@ -31,6 +31,9 @@ function createRepository(overrides: Partial<DtsReloadRepository> = {}): DtsRelo
   return {
     listCandidates: vi.fn(),
     startRun: vi.fn(),
+    restoreBaseline: vi.fn(),
+    getResidue: vi.fn(async () => null),
+    deployRun: vi.fn(),
     getRun: vi.fn(),
     downloadArtifact: vi.fn(),
     getReloadConfiguration: vi.fn(async () => seededView()),

@@ -329,6 +329,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "DTS-RELOAD-RESIDUE-001",
+    workflow: "E",
+    title: "After a post-device-write reload terminal, residue is recorded for the device; restore-baseline starts a compensating run that clears residue only on success.",
+    required: true
+  },
+  {
     id: "DTS-RELOAD-DEPLOY-HW-001",
     workflow: "E",
     title: "Reload overlay deploy to a real HDC target through a paired local device bridge when lab env is enabled.",

@@ -802,6 +802,20 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     successStatus: 201,
     additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "dtsReload.restoreBaseline": {
+    summary: "Start a compensating restore-baseline reload from recorded device residue",
+    tags: ["dts-reload"],
+    requestBody: "RestoreDtsReloadBaselineRequest",
+    responseBody: "DtsReloadRunResponse",
+    successStatus: 201,
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "dtsReload.getResidue": {
+    summary: "Get platform bookkeeping residue for a device (not confirmed from the device)",
+    tags: ["dts-reload"],
+    responseBody: "DtsReloadResidueResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse" }
+  },
   "dtsReload.deployRun": {
     summary: "Deploy a validated reload overlay to a device through the local device bridge",
     tags: ["dts-reload"],
