@@ -28,6 +28,8 @@ M6.4 durable queue note: Redis/BullMQ is implemented as the self-hosted log-anal
 
 M6.5 observability note: `server/observability/` provides correlation, structured-log redaction helpers, a Prometheus metrics registry, and a tracing boundary. `GET /metrics` exposes build, HTTP, readiness, database, object-store, Xiaoze LLM readiness, worker queue gauges/counters, log-analysis terminal job duration/failure-reason counters, Agent approval/tool metrics, and device gateway operation counters. Baseline spans are wired for HTTP route templates and debugging gateway detect/read/write/rollback boundaries; database, object-store, queue, and per-job spans still need target-oriented follow-up instrumentation. Prometheus, alerts, and Grafana templates live under `ops/self-hosted/observability/`; `/metrics` must remain private to the operations network, VPN, allowlisted proxy, mTLS, or stronger access control.
 
+**DTS 重载调试：** `server/modules/dts-reload/` 提供调试 overlay 生成与预检、重载配置、进程内桥接部署（ADR-0020）、重载快照（ADR-0021）、残留/恢复基线与运行历史。UI 为 `/dts-reload`；与已退役的参数重载 HTTP（`410`）无关。详见英文版 Backend 节。
+
 ## 2. 推荐技术栈
 
 | 层级 | 推荐 |

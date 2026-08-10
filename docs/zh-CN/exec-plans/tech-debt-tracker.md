@@ -36,6 +36,12 @@
 - **TD-059（其余弹窗尚未迁到共享原语）：** `ModalDialog` / `ConfirmDialog`（`src/components/common/`）已承载弹窗契约——焦点陷阱与归还、背景 `inert`、只有最上层响应 Escape、遮罩关闭成对判定、统一 z-index 刻度——但目前只有 `ProjectAdminFormDialog`、`DeleteProjectDialog` 与治理确认框接入，其他参数后台、工作台与调试弹窗仍各自处理 keydown 与遮罩点击。影响：POD-F1–F5 记录的焦点、层叠与关闭故障在未迁移的弹窗上依然存在，并且容易再长出一套偏离契约的实现。下一步：各自按计划迁移，先从 `ParameterSpecDetailDialog`（`2026-08-03-parameter-spec-editor-fidelity.md` 第 19–23 项）开始。
 - **TD-062（PCW 壳 stretch 800–1000）：** Wave-3（#273–#278）已满足软门禁（`ProjectConfigurationWorkbench.tsx` = 1496 行）并关闭 #258；stretch 目标 800–1000 仍为残余债。勿重开 #258；下次改壳时再抽 bootstrap effects / MainStage bindings。
 - **TD-055（产品作用域策略目标面未建）：** 定义编辑器与 `PATCH /api/v2/parameter-specs/:specId` 已按 SE-D1 移除 `policyTarget` 写入；`parameter_policy_targets` 表与三处只读 join 仍在，但无生产写入。初始化仍优先 `policyTarget ?? schemaDefault`。后续要么建产品作用域治理面，要么用 ADR 正式退役表与读者。
+- **TD-033（遗留调试 catalog 表）：** `debugging_parameters` / `debugging_parameter_node_bindings` 仍为审计/历史保留。`parameter_reload_bindings` 已在迁移 `0037` **删除**，不得再写成存活 schema；`/debugging` 参数重载保持产品下线，且与 `/dts-reload`（DTS 重载）不是同一概念。详见英文版 Open 表。
+- **TD-063（调试值晋升为库变更请求）：** `/dts-reload` 按 ADR-0019 不回写参数库；已验证的调试值仍需另建治理变更请求。**负责人：Product / Debugging platform。**
+- **TD-064（工作台交接至 `/dts-reload`）：** 从参数工作台携带选中 binding 进入重载页被延后。**负责人：Product / Frontend。**
+- **TD-065（超出已支持值形态）：** 目前仅支持 u32 cell/数组与 string list；其余形态仍拒绝。**负责人：Debugging platform。**
+- **TD-066（产物保留清理）：** 90 天下载 `410` 门禁之外，对象存储 blob 自动 GC 未建。**负责人：Debugging platform / Ops。**
+- **TD-067（多副本桥接路由）：** 桥接 WebSocket 单进程亲和；进程内 DTS 重载部署（ADR-0020）依赖持有 socket 的副本。**负责人：Platform / Reliability。**
 
 ## 近期关闭项
 
@@ -53,7 +59,7 @@
 
 - **TD-029（小泽 checkpoint 持久化）：** 已于 2026-06-29 关闭。生产/自托管使用 `XIAOZE_CHECKPOINTER=postgres`；证据见 `docs/generated/xiaoze-checkpointer-evidence.md`。详情见英文版 Completed 表。
 - **TD-030（小泽聊天历史）：** 已于 2026-06-30 关闭。API 模式通过 `/api/v1/agent/xiaoze/threads` 与 `XiaozeThreadContext` 持久化线程；mock 模式仍用浏览器 localStorage。
-- **TD-032（参数调试平台重构）：** 已于 2026-07-01 关闭。完成节点/重载绑定拆分、reload 运行时、Admin 分 Tab 与 `/debugging` 恢复。详情见英文版 Completed 表。
+- **TD-032（参数调试平台重构）：** 已于 2026-07-01 **被节点调试 pivot 取代**（见英文版 Completed 表与 `docs/exec-plans/active/2026-07-01-wiseeff-node-only-debugging-platform.md`）。原 TD-032 的参数重载 + `/debugging` 恢复方向已退役；`/debugging` 再次隐藏；运行时 catalog 以 `debug_nodes` 为主。勿将「已关闭」读成「参数重载已上线」。
 - **TD-036（产品问题反馈）：** 已于 2026-07-08 在 `feat/product-feedback` 分支关闭。侧边栏「问题反馈」已接入 `/api/v1/product-feedback` 持久化、多图片对象存储附件和 `/feedback-admin` Admin 处理页；文档、合同和 schema 覆盖见英文版 Completed 表及本分支提交。
 
 ## 同类中文文档

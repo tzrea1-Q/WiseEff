@@ -120,19 +120,10 @@ export type RollbackSnapshotInput = {
   confirmationToken: string;
 };
 
-export type ReloadParameterInput = {
-  sessionId: string;
-  parameterDefinitionId: string;
-  value: string;
-  confirmationToken?: string;
-  approvalId?: string;
-};
-
 export interface DebuggingGateway {
   listDevices?(): Promise<DebugDeviceSnapshot[]>;
   listParameters?(query?: { protocol?: DebugConnectionProtocol }): Promise<import("../../domain/debugging/types").DebugParameter[]>;
   listRuntimeNodes?(query?: { protocol?: DebugConnectionProtocol }): Promise<import("../../domain/debugging/types").DebugParameter[]>;
-  listReloadTargets?(query?: { protocol?: DebugConnectionProtocol }): Promise<import("../../domain/debugging/types").DebugParameter[]>;
   detectTargets(input?: DetectTargetsInput): Promise<DeviceTarget[]>;
   createSession?(input: {
     deviceId: string;
@@ -145,6 +136,5 @@ export interface DebuggingGateway {
   listSessionEvents?(sessionId: string): Promise<NodeOperationSnapshot[]>;
   readNode(input: ReadNodeInput): Promise<NodeReadResult>;
   writeNode(input: WriteNodeInput): Promise<NodeWriteResult>;
-  reloadParameter?(input: ReloadParameterInput): Promise<NodeWriteResult>;
   rollbackSnapshot?(input: RollbackSnapshotInput): Promise<{ snapshot: DebugSnapshotSummary; operations: NodeOperationSnapshot[] }>;
 }

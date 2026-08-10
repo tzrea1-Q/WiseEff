@@ -7037,23 +7037,23 @@
     "/api/v1/debugging/reload-targets": {
       "get": {
         "operationId": "debugging.listReloadTargets",
-        "summary": "List managed parameters with reload bindings for a project",
+        "summary": "Retired parameter-reload target list (always 410 Gone)",
         "tags": [
           "debugging"
         ],
         "responses": {
-          "200": {
-            "description": "Successful response.",
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "410": {
+            "description": "Gone — retired endpoint.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ParameterReloadTargetListResponse"
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
-          },
-          "400": {
-            "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -7064,33 +7064,23 @@
     "/api/v1/debugging/parameters/reload": {
       "post": {
         "operationId": "debugging.reloadParameter",
-        "summary": "Reload managed parameter value onto device",
+        "summary": "Retired parameter-reload write (always 410 Gone)",
         "tags": [
           "debugging"
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReloadParameterRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "200": {
-            "description": "Successful response.",
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "410": {
+            "description": "Gone — retired endpoint.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DebugNodeOperationResponse"
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
-          },
-          "400": {
-            "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
@@ -8417,17 +8407,9 @@
         "type": "object",
         "x-wiseeff-schema": "MoveDebugNodeModuleRequest"
       },
-      "ParameterReloadTargetListResponse": {
+      "ErrorResponse": {
         "type": "object",
-        "x-wiseeff-schema": "ParameterReloadTargetListResponse"
-      },
-      "ReloadParameterRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "ReloadParameterRequest"
-      },
-      "DebugNodeOperationResponse": {
-        "type": "object",
-        "x-wiseeff-schema": "DebugNodeOperationResponse"
+        "x-wiseeff-schema": "ErrorResponse"
       },
       "CreateDebugSessionRequest": {
         "type": "object",
@@ -8444,6 +8426,10 @@
       "ReadDebugNodeRequest": {
         "type": "object",
         "x-wiseeff-schema": "ReadDebugNodeRequest"
+      },
+      "DebugNodeOperationResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugNodeOperationResponse"
       },
       "WriteDebugNodeRequest": {
         "type": "object",

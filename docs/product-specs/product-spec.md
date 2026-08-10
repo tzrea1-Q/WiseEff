@@ -24,7 +24,11 @@ Users upload logs, track staged analysis, review evidence and reports, archive o
 
 ### Debugging
 
-Users connect to simulator or HDC-backed targets, read safe nodes, prepare writes with range/risk checks, capture snapshots, verify readback, and record operation history. Device writes remain human-approved and audited.
+**Node debugging** (`/node-debugging`) connects to simulator or HDC/ADB-backed targets, reads safe nodes, prepares writes with range/risk checks, captures undoable snapshots, verifies readback, and records operation history. Device writes remain human-approved and audited.
+
+**DTS reload debugging** (`/dts-reload`) validates candidate library parameter values on a real device by generating, compiling, and deploying a debug overlay through the local device bridge, then capturing a reload snapshot (baselines, artifact integrity, optional kernel log, behavioural verification). Debug values never mutate the parameter library. Sensitive-node rules and `confirm-dts-reload` / `confirm-sensitive-reload` gate privileged steps. Admins govern reload configuration on `/debugging-admin`.
+
+**Parameter debugging** (`/debugging`) remains product-offline. The retired M1-era parameter-reload surface must not be confused with DTS reload debugging.
 
 ### Agent Assistance
 

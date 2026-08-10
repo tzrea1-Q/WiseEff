@@ -6,7 +6,7 @@ export type ContractSchemaRef = {
   requestBody?: string;
   responseBody: string;
   responseMedia?: "json" | "binary";
-  successStatus?: 200 | 201;
+  successStatus?: 200 | 201 | 410;
   additionalSuccessResponses?: Record<string, string>;
   additionalResponses?: Record<string, string>;
 };
@@ -1029,15 +1029,16 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "debugging.listReloadTargets": {
-    summary: "List managed parameters with reload bindings for a project",
+    summary: "Retired parameter-reload target list (always 410 Gone)",
     tags: ["debugging"],
-    responseBody: "ParameterReloadTargetListResponse"
+    responseBody: "ErrorResponse",
+    successStatus: 410
   },
   "debugging.reloadParameter": {
-    summary: "Reload managed parameter value onto device",
+    summary: "Retired parameter-reload write (always 410 Gone)",
     tags: ["debugging"],
-    requestBody: "ReloadParameterRequest",
-    responseBody: "DebugNodeOperationResponse"
+    responseBody: "ErrorResponse",
+    successStatus: 410
   },
   "debugging.createSession": {
     summary: "Create debug session",

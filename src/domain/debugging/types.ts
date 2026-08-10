@@ -63,7 +63,6 @@ export type DebugParameter = {
   normalizationMode?: DebugNormalizationMode;
   maxValueBytes?: number | null;
   parameterDefinitionId?: string;
-  reloadManaged?: boolean;
   writeFormatExample?: string;
   writeFormatHint?: string;
 };
@@ -134,18 +133,4 @@ export type DebugNodeRegistryEntry = {
   modulePath?: string[];
   enabled: boolean;
   bindings: DebugNodeProtocolBinding[];
-};
-
-export type ParameterReloadBinding = {
-  id: string;
-  parameterDefinitionId: string;
-  parameterName?: string;
-  module?: string;
-  unit?: string;
-  risk?: RiskLevel;
-  protocol: DebugConnectionProtocol;
-  nodePath: string;
-  accessMode: DebugParameterAccessMode;
-  enabled: boolean;
-  notes?: string | null;
 };

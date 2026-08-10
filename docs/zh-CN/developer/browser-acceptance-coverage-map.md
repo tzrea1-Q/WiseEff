@@ -27,6 +27,11 @@
 - `PFB-AUTHZ-001`：非 Admin 无法访问产品反馈管理 API 或 `/feedback-admin` 页面（`e2e/acceptance/product-feedback.acceptance.spec.ts`）。
 - `DEBUG-SIM-001`：模拟器读、写、回读不一致、回滚与审计路径，包含复杂 JSON 值元数据。
 - `DEBUG-ADMIN-001`：API mode 下调试管理后台可新增、编辑、归档、恢复，并维护 HDC/ADB binding 与复杂值元数据。
+- `DTS-RELOAD-DEPLOY-001`：经假本地设备桥部署已校验的重载 overlay（mount / pushFile / trigger）至 `unverifiable`；浏览器证据 `work/ui-checks/285-*`。
+- `DTS-RELOAD-KERNEL-001`：触发后内核日志采集保持为未判定证据；浏览器证据 `work/ui-checks/286-*`。
+- `DTS-RELOAD-VERIFY-001`：触发成功后经 `debug.readNode` 核对绑定参数，升级为 verified/contradicted 或保持 unverifiable；浏览器证据 `work/ui-checks/287-*`。
+- `DTS-RELOAD-RESIDUE-001`：设备写后终端记录残留；恢复基线仅在成功时清除；浏览器证据 `work/ui-checks/288-*`。
+- `DTS-RELOAD-DEPLOY-HW-001`：真实 HDC 目标经已配对本地桥部署重载 overlay（条件覆盖，非阻塞）。
 - `BRIDGE-WIN-001`：`/node-debugging` 的 Windows 优先本地 Bridge 面板可覆盖缺失安装、未配对、未启动、在线无设备与在线目标状态，并展示同源 Windows 下载入口。
 - `BRIDGE-TOOLS-001`：Bridge 已连接但 `tools.adb.available: false` 时，Step ③ 显示缺少 ADB 与 **安装调试工具** CTA（非「Bridge 未安装」）。覆盖：`src/NodeDebuggingPage.test.tsx`。
 - `PARAM-HOME-001`：`/parameter-home` 通过 `ParameterDashboardRepository` 加载 summary/hotspots API 数据，并支持页面内时间窗口与热榜维度切换（`e2e/acceptance/parameter-home.acceptance.spec.ts`）。

@@ -265,7 +265,17 @@ Runtime split:
 - Local HDC helpers remain available for non-API `/node-debugging` experiments.
 - `api` mode uses `src/infrastructure/http/debuggingClient.ts` for HDC/ADB devices, targets, parameters, sessions, node reads, node writes, snapshot rollback, and session events. Runtime and admin calls are organization-scoped and do not send `projectId`.
 
-**Parameter debugging route:** `/debugging` remains product-offline (TD-032). Migration `0037` removed `parameter_reload_bindings` and reload HTTP routes. `/node-debugging` is the M3 node catalog workspace.
+**Parameter debugging route:** `/debugging` remains product-offline (TD-032). Migration `0037` removed `parameter_reload_bindings` and the live reload-target/reload-write surface (HTTP routes still return `410 Gone`). `/node-debugging` is the M3 node catalog workspace. **DTS reload debugging** ships at `/dts-reload` (`src/features/dts-reload/DtsReloadPage.tsx`) and is unrelated to the retired parameter-reload concept.
+
+### DTS reload debugging (`/dts-reload`)
+
+API-mode page for validating project parameter candidates on a bridge-reachable device:
+
+- Lists reload candidates for a project (debuggable vs blocked reasons, baseline vs debug value, sensitive-match badges, last-reload projection).
+- Starts a reload run (batch targets), shows overlay preview / preflight diagnostics, then deploys with explicit `confirm-dts-reload` (and `confirm-sensitive-reload` when critical rules match).
+- Shows in-request deploy progress, reload snapshot evidence (artifact integrity, unjudged kernel log, behavioural verification), residue indicator, restore-baseline confirmation, and run history.
+- Mock mode is unavailable for this surface (static unavailable copy only). Reload configuration CRUD for admins lives on `/debugging-admin`.
+- Client: `src/infrastructure/http/dtsReloadClient.ts` (and related ports under `src/application/ports/`).
 
 ### Local Device Bridge (Phase A)
 

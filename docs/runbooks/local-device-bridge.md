@@ -137,6 +137,7 @@ The bridge CLI executes `adb` and `hdc` locally using the same argv, timeout, an
 - `bridge.getCapabilities` reports whether `adb` and `hdc` binaries are available on the bridge host.
 - `debug.detectTargets` accepts `protocol=adb` or `protocol=hdc` and returns targets from the selected protocol.
 - `debug.readNode` / `debug.writeNode` route through the same protocol and target ref as server-hosted debugging.
+- DTS reload deploy additionally requires bridge capabilities for `debug.mountTarget`, `debug.pushFile`, and `debug.readKernelLog` (see `DTS_RELOAD_BRIDGE_RPC_METHODS`). Trigger reuses `debug.writeNode` with `readBack: false`. Deploy is in-request on the API process holding the bridge socket (ADR-0020).
 
 Operator checks:
 
@@ -153,6 +154,18 @@ Use `/api/v1/debugging/*` to verify bridge-backed behavior:
 - high-risk write without confirmation returns validation failure
 - high-risk write with `confirm-high-risk-write` succeeds and creates snapshot metadata
 - when multiple online bridges return targets, the UI requires explicit target selection before session create
+
+## DTS reload debugging checks
+
+Use `/dts-reload` (permission `debugging:dts-reload`) when validating library candidates via overlay:
+
+1. Confirm the bridge advertises `debug.mountTarget`, `debug.pushFile`, and `debug.readKernelLog`.
+2. Start a run from a project with resolvable absolute `target-path` parameters; confirm preflight blocks wrong paths before deploy.
+3. Deploy only after the UI collects `confirm-dts-reload` (and `confirm-sensitive-reload` when critical sensitive rules match).
+4. Expect terminal `unverifiable` unless behavioural verification can graduate the run; inspect reload snapshot + residue presentation.
+5. Conditional hardware: `DTS-RELOAD-DEPLOY-HW-001` when `DEVICE_BRIDGE_HDC_AVAILABLE=true` and an approved lab reload destination exists.
+
+Automated fake-bridge coverage: `DTS-RELOAD-DEPLOY-001`, `DTS-RELOAD-KERNEL-001`, `DTS-RELOAD-VERIFY-001`, `DTS-RELOAD-RESIDUE-001` in `e2e/acceptance/dts-reload-deploy.acceptance.spec.ts`.
 
 ## Conditional Acceptance Run
 
