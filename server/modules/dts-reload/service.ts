@@ -5,6 +5,7 @@ import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import { parseDtsValue, type DtsValue } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
+import type { SensitiveWriteActorType } from "../parameters/sensitiveNode";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { buildReloadBaseSource } from "./baseSource";
@@ -30,9 +31,16 @@ import {
   type LibraryFingerprint,
   type ReloadCandidateRow
 } from "./repository";
+import {
+  assertSensitiveReloadBatchAllowed,
+  matchReloadCandidatesSensitive,
+  type ReloadTargetSensitiveHit
+} from "./sensitiveGate";
 import type { ReloadCandidateDto, ReloadRunDto } from "./types";
 
-export type DtsReloadServiceContext = AuditCorrelationContext;
+export type DtsReloadServiceContext = AuditCorrelationContext & {
+  actorType?: SensitiveWriteActorType;
+};
 
 export type StartReloadRunTargetInput = {
   bindingId: string;
@@ -42,6 +50,7 @@ export type StartReloadRunTargetInput = {
 export type StartReloadRunInput = {
   projectId: string;
   targets: StartReloadRunTargetInput[];
+  confirmationToken?: string;
 };
 
 type ResolvedReloadTarget = {
@@ -50,6 +59,7 @@ type ResolvedReloadTarget = {
   debugValue: string;
   parsedValue: DtsValue;
   binding: DebugOverlayPropertyBinding;
+  compatible: string | null;
 };
 
 const BLOCK_REASON_MESSAGES: Record<NonNullable<ReloadCandidateDto["blockReason"]>, string> = {
@@ -77,7 +87,7 @@ function asValueShape(value: unknown): CandidateValueShape {
 
 function rowToCandidate(row: ReloadCandidateRow): ReloadCandidateDto {
   const valueShape = asValueShape(row.value_shape);
-  return classifyReloadCandidate({
+  const classified = classifyReloadCandidate({
     bindingId: row.binding_id,
     projectId: row.project_id,
     propertyKey: row.property_key,
@@ -90,6 +100,11 @@ function rowToCandidate(row: ReloadCandidateRow): ReloadCandidateDto {
     unit: row.unit,
     constraints: asConstraints(row.constraints)
   });
+  return {
+    ...classified,
+    compatible: row.compatible ?? null,
+    sensitiveMatch: null
+  };
 }
 
 async function writeReloadAudit(
@@ -100,6 +115,8 @@ async function writeReloadAudit(
     action: "start" | "blocked" | "validated";
     projectId: string;
     runId: string;
+    severity?: "High" | "Medium" | "Low";
+    actorType?: SensitiveWriteActorType;
     metadata: Record<string, unknown>;
   },
   context: DtsReloadServiceContext = {}
@@ -109,16 +126,29 @@ async function writeReloadAudit(
     organizationId: auth.organization.id,
     projectId: input.projectId,
     actorUserId: auth.user.id,
-    actorType: "user",
+    actorType: input.actorType ?? context.actorType ?? "user",
     app: "dts-reload",
     kind: input.kind,
     action: input.action,
-    severity: "Medium",
+    severity: input.severity ?? "Medium",
     targetType: "dts-reload-run",
     targetId: input.runId,
     metadata: input.metadata,
     traceId: context.requestId ?? randomUUID()
   });
+}
+
+function sensitiveAuditSummary(hits: ReloadTargetSensitiveHit[]) {
+  return hits.map((hit) => ({
+    bindingId: hit.bindingId,
+    propertyKey: hit.propertyKey,
+    nodePath: hit.nodePath,
+    ruleId: hit.rule.id,
+    riskTier: hit.rule.riskTier,
+    matchType: hit.rule.matchType,
+    pattern: hit.rule.pattern,
+    requiredCapability: hit.rule.requiredCapability
+  }));
 }
 
 export async function listReloadCandidates(
@@ -131,7 +161,21 @@ export async function listReloadCandidates(
     organizationId: auth.organization.id,
     projectId
   });
-  return { items: rows.map(rowToCandidate) };
+  const baseItems = rows.map(rowToCandidate);
+  const matches = await matchReloadCandidatesSensitive(db, {
+    organizationId: auth.organization.id,
+    projectId,
+    candidates: rows.map((row) => ({
+      nodePath: row.node_path,
+      compatible: row.compatible
+    }))
+  });
+  return {
+    items: baseItems.map((item, index) => ({
+      ...item,
+      sensitiveMatch: matches[index] ?? null
+    }))
+  };
 }
 
 async function loadBaseSource(
@@ -311,7 +355,8 @@ async function resolveStartTargets(
         nodePath: candidate.nodePath,
         propertyKey: candidate.propertyKey,
         value: parsedValue
-      }
+      },
+      compatible: row.compatible ?? null
     });
   }
 
@@ -328,6 +373,21 @@ export async function startReloadRun(
   requireDtsReload(auth);
 
   const resolved = await resolveStartTargets(db, auth, input);
+  const sensitiveHits = await assertSensitiveReloadBatchAllowed(db, auth, {
+    projectId: input.projectId,
+    actorType: context.actorType ?? "user",
+    confirmationToken: input.confirmationToken,
+    targets: resolved.map((item) => ({
+      bindingId: item.candidate.bindingId,
+      propertyKey: item.candidate.propertyKey,
+      nodePath: item.candidate.nodePath!,
+      compatible: item.compatible
+    })),
+    requestId: context.requestId
+  });
+  const hasCriticalSensitive = sensitiveHits.some((hit) => hit.rule.riskTier === "critical");
+  const sensitiveSummary = sensitiveAuditSummary(sensitiveHits);
+
   const overlayTargets = groupDebugOverlayTargets(resolved.map((item) => item.binding));
   const overlaySource = generateDebugOverlay(overlayTargets);
   const runId = randomUUID();
@@ -346,6 +406,7 @@ export async function startReloadRun(
       action: "start",
       projectId: input.projectId,
       runId,
+      severity: hasCriticalSensitive ? "High" : "Medium",
       metadata: {
         projectId: input.projectId,
         targetCount: resolved.length,
@@ -356,7 +417,15 @@ export async function startReloadRun(
           nodePath: item.candidate.nodePath,
           baselineValue: item.candidate.baselineValue,
           debugValue: item.debugValue
-        }))
+        })),
+        ...(sensitiveSummary.length > 0
+          ? {
+              sensitiveMatches: sensitiveSummary,
+              criticalSensitiveConfirmation: hasCriticalSensitive
+                ? "confirm-sensitive-reload"
+                : undefined
+            }
+          : {})
       }
     },
     context
@@ -391,11 +460,13 @@ export async function startReloadRun(
         action: "blocked",
         projectId: input.projectId,
         runId,
+        severity: hasCriticalSensitive ? "High" : "Medium",
         metadata: {
           projectId: input.projectId,
           targetCount: resolved.length,
           failureCode,
-          configRevisionId
+          configRevisionId,
+          ...(sensitiveSummary.length > 0 ? { sensitiveMatches: sensitiveSummary } : {})
         }
       },
       context
@@ -438,6 +509,7 @@ export async function startReloadRun(
       action: status === "validated" ? "validated" : "blocked",
       projectId: input.projectId,
       runId,
+      severity: hasCriticalSensitive ? "High" : "Medium",
       metadata: {
         projectId: input.projectId,
         targetCount: resolved.length,
@@ -445,7 +517,8 @@ export async function startReloadRun(
         failureCode,
         configRevisionId,
         overlaySourceSha256: persisted.overlaySourceSha256,
-        artifactSha256: persisted.artifact?.sha256 ?? null
+        artifactSha256: persisted.artifact?.sha256 ?? null,
+        ...(sensitiveSummary.length > 0 ? { sensitiveMatches: sensitiveSummary } : {})
       }
     },
     context

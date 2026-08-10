@@ -66,10 +66,12 @@ export function classifyReloadCandidate(input: CandidateClassificationInput): Re
     displayName: input.displayName,
     module: input.module,
     nodePath: input.nodePath,
+    compatible: null as string | null,
     baselineValue: input.baselineValue,
     valueShapeKind: input.valueShapeKind,
     unit: input.unit,
-    constraints: input.constraints
+    constraints: input.constraints,
+    sensitiveMatch: null as ReloadCandidateDto["sensitiveMatch"]
   };
 
   const blockReason = classifyBlockReason(input);

@@ -12,6 +12,7 @@ export type ReloadCandidateRow = {
   display_name: string;
   module_name: string;
   node_path: string | null;
+  compatible: string | null;
   /** Config revision the baseline binding revision and node locator were taken from. */
   config_revision_id: string | null;
   baseline_value: string | null;
@@ -163,6 +164,7 @@ export async function listReloadCandidateRows(
       coalesce(psv.display_name, dps.property_key, ps.specification_key) as display_name,
       coalesce(asub.display_name, pm.name, '') as module_name,
       lnr.node_locator as node_path,
+      lnr.compatible as compatible,
       br.config_revision_id as config_revision_id,
       br.raw_value as baseline_value,
       psv.value_shape as value_shape,
@@ -182,7 +184,7 @@ export async function listReloadCandidateRows(
     ) br on true
     left join parameter_spec_versions psv on psv.id = br.parameter_spec_version_id
     left join lateral (
-      select node_locator
+      select node_locator, compatible
       from dts_logical_node_revisions
       where logical_node_id = b.logical_node_id
         and config_revision_id = br.config_revision_id
@@ -219,6 +221,7 @@ export async function getReloadCandidateRow(
       coalesce(psv.display_name, dps.property_key, ps.specification_key) as display_name,
       coalesce(asub.display_name, pm.name, '') as module_name,
       lnr.node_locator as node_path,
+      lnr.compatible as compatible,
       br.config_revision_id as config_revision_id,
       br.raw_value as baseline_value,
       psv.value_shape as value_shape,
@@ -238,7 +241,7 @@ export async function getReloadCandidateRow(
     ) br on true
     left join parameter_spec_versions psv on psv.id = br.parameter_spec_version_id
     left join lateral (
-      select node_locator
+      select node_locator, compatible
       from dts_logical_node_revisions
       where logical_node_id = b.logical_node_id
         and config_revision_id = br.config_revision_id

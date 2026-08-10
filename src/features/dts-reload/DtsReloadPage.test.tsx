@@ -187,4 +187,64 @@ describe("DtsReloadPage", () => {
     expect(screen.getByText(/已选 0 个参数/)).toBeInTheDocument();
     expect(within(screen.getByRole("table")).getByText(/u32 cell 数组与字符串列表/)).toBeInTheDocument();
   });
+
+  it("marks sensitive candidates before start and requires critical confirmation token", async () => {
+    const user = userEvent.setup();
+    const repository = createRepository({
+      listCandidates: vi.fn(async () => ({
+        items: [
+          candidate({
+            displayName: "Safety Watchdog",
+            sensitiveMatch: {
+              riskTier: "critical",
+              requiredCapability: "parameter:edit-critical",
+              ruleId: "rule-1",
+              matchType: "path",
+              pattern: "/amba/i2c@1/dev@6E",
+              requiresElevatedCapability: true,
+              requiresConfirmation: true
+            }
+          }),
+          candidate({
+            bindingId: "binding-high",
+            displayName: "High Param",
+            propertyKey: "high_param",
+            nodePath: "/amba/uart@2",
+            sensitiveMatch: {
+              riskTier: "high",
+              requiredCapability: "parameter:edit-critical",
+              ruleId: "rule-2",
+              matchType: "path",
+              pattern: "/amba/uart@2",
+              requiresElevatedCapability: true,
+              requiresConfirmation: false
+            }
+          })
+        ]
+      }))
+    });
+
+    render(
+      <DtsReloadPage projects={[{ id: "project-1", name: "Demo" }]} repository={repository} canStartRun />
+    );
+
+    expect(await screen.findAllByText("敏感 · critical")).not.toHaveLength(0);
+    expect(screen.getAllByText("敏感 · high").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/parameter:edit-critical/).length).toBeGreaterThan(0);
+
+    const startButton = screen.getByRole("button", { name: /启动重载运行/ });
+    expect(startButton).toBeDisabled();
+
+    await user.click(screen.getByLabelText("确认 critical 敏感节点重载"));
+    expect(startButton).toBeEnabled();
+    await user.click(startButton);
+
+    await waitFor(() =>
+      expect(repository.startRun).toHaveBeenCalledWith({
+        projectId: "project-1",
+        targets: [{ bindingId: "binding-1", debugValue: "<6000>" }],
+        confirmationToken: "confirm-sensitive-reload"
+      })
+    );
+  });
 });

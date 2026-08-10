@@ -18,9 +18,28 @@ type QueuedResult = unknown[] | ((call: QueryCall) => unknown[]);
 function createFakeDb(results: QueuedResult[] = []) {
   const calls: QueryCall[] = [];
 
+  const isSensitiveRulesQuery = (text: string) => text.includes("from dts_sensitive_node_rules");
+  const looksLikeSensitiveRuleRows = (rows: unknown[]) =>
+    rows.length === 0 ||
+    (typeof rows[0] === "object" &&
+      rows[0] !== null &&
+      ("risk_tier" in (rows[0] as object) || "match_type" in (rows[0] as object)));
+
   const runQuery = async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
     const call = { text, values };
     calls.push(call);
+
+    // Sensitive-rule lookups must not steal fingerprint / insert queue entries from older tests.
+    // Only consume an explicitly queued rule-row array; never consume function responders.
+    if (isSensitiveRulesQuery(text)) {
+      const next = results[0];
+      if (Array.isArray(next) && looksLikeSensitiveRuleRows(next)) {
+        results.shift();
+        return { rows: next as Row[], rowCount: next.length };
+      }
+      return { rows: [] as Row[], rowCount: 0 };
+    }
+
     const next = results.length > 0 ? results.shift()! : fingerprintResponder();
     const rows = typeof next === "function" ? next(call) : next;
     return { rows: rows as Row[], rowCount: rows.length };
@@ -62,11 +81,26 @@ function candidateRow(overrides: Record<string, unknown> = {}) {
     display_name: "Watchdog",
     module_name: "charger",
     node_path: "/amba/i2c@FDF5E000/sc8562@6E",
+    compatible: "sc8562",
     config_revision_id: "rev-1",
     baseline_value: "<6000>",
     value_shape: { kind: "cells", bits: 32, cellsPerGroup: 1, groups: 1 },
     unit: "ms",
     constraints: { min: 0, max: 20000, cells: 1 },
+    ...overrides
+  };
+}
+
+function sensitiveRuleRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "rule-1",
+    organization_id: "org-1",
+    project_id: null,
+    match_type: "path",
+    pattern: "/amba/i2c@FDF5E000/sc8562@6E",
+    risk_tier: "high",
+    required_capability: "parameter:edit-critical",
+    enabled: true,
     ...overrides
   };
 }
@@ -198,12 +232,35 @@ describe("listReloadCandidates", () => {
       bindingId: "binding-1",
       baselineValue: "<6000>",
       constraints: { min: 0, max: 20000, cells: 1 },
-      debuggable: true
+      debuggable: true,
+      sensitiveMatch: null
     });
     expect(result.items[1]).toMatchObject({
       bindingId: "binding-2",
       debuggable: false,
-      blockReason: "synthesised-anchor"
+      blockReason: "synthesised-anchor",
+      sensitiveMatch: null
+    });
+  });
+
+  it("exposes server-computed sensitive matches so the UI can mark elevated requirements before start", async () => {
+    const { db } = createFakeDb([
+      [candidateRow()],
+      [
+        sensitiveRuleRow({
+          risk_tier: "critical",
+          pattern: "/amba/i2c@FDF5E000/sc8562@6E"
+        })
+      ]
+    ]);
+
+    const result = await listReloadCandidates(db, auth(), "project-1");
+    expect(result.items[0]?.sensitiveMatch).toMatchObject({
+      riskTier: "critical",
+      requiredCapability: "parameter:edit-critical",
+      ruleId: "rule-1",
+      requiresElevatedCapability: true,
+      requiresConfirmation: true
     });
   });
 });
@@ -504,6 +561,275 @@ describe("startReloadRun", () => {
     expect(result.failureCode).toBe("property-absent-in-base");
     expect(result.diagnostics.some((d) => d.code === "property-absent-in-base")).toBe(true);
   }, 60_000);
+});
+
+describe("startReloadRun sensitive-node governance", () => {
+  const elevatedAuth = () =>
+    auth({ permissions: ["debugging:dts-reload", "parameter:edit-critical"] });
+
+  it("refuses a high-tier match when the caller has only debugging:dts-reload", async () => {
+    const { db, calls } = createFakeDb([[candidateRow()], [sensitiveRuleRow({ risk_tier: "high" })]]);
+    const { objectStore, put } = makeObjectStore();
+
+    await expect(
+      startReloadRun(db, objectStore, auth(), {
+        projectId: "project-1",
+        targets: [{ bindingId: "binding-1", debugValue: "<7000>" }]
+      })
+    ).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      status: 403,
+      details: {
+        code: "sensitive-node-reload-denied",
+        riskTier: "high",
+        bindingId: "binding-1",
+        requiredCapability: "parameter:edit-critical",
+        reason: "missing-capability"
+      }
+    });
+
+    expect(put).not.toHaveBeenCalled();
+    expect(calls.some((call) => call.text.includes("insert into dts_reload_runs"))).toBe(false);
+    expect(createAuditEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        kind: "dts-reload-sensitive-node-denied",
+        action: "deny",
+        severity: "High",
+        metadata: expect.objectContaining({
+          reason: "missing-capability",
+          riskTier: "high",
+          bindingId: "binding-1"
+        })
+      })
+    );
+  });
+
+  it("allows a high-tier match when the caller also has parameter:edit-critical", async () => {
+    const baseKey = "org-1/board.dts";
+    const { objectStore } = makeObjectStore({ [baseKey]: Buffer.from(BASE_DTS, "utf8") });
+    const { db } = createFakeDb([
+      [candidateRow()],
+      [sensitiveRuleRow({ risk_tier: "high" })],
+      ...fingerprintParts(),
+      [{ id: "cs-1" }],
+      [{ file_name: "board.dts", role: "base", sort_order: 0, storage_key: baseKey, format: "dts" }],
+      ...fingerprintParts(),
+      blockedOrValidatedInsert("validated"),
+      [],
+      [
+        {
+          binding_id: "binding-1",
+          node_path: "/amba/i2c@FDF5E000/sc8562@6E",
+          property_key: "watchdog_time",
+          baseline_value: "<6000>",
+          debug_value: "<7000>",
+          sort_order: 0
+        }
+      ]
+    ]);
+
+    const result = await startReloadRun(db, objectStore, elevatedAuth(), {
+      projectId: "project-1",
+      targets: [{ bindingId: "binding-1", debugValue: "<7000>" }]
+    });
+    expect(result.status).toBe("validated");
+  }, 60_000);
+
+  it("refuses a critical-tier match without confirmation even with elevated capability", async () => {
+    const { db } = createFakeDb([[candidateRow()], [sensitiveRuleRow({ risk_tier: "critical" })]]);
+    const { objectStore, put } = makeObjectStore();
+
+    await expect(
+      startReloadRun(db, objectStore, elevatedAuth(), {
+        projectId: "project-1",
+        targets: [{ bindingId: "binding-1", debugValue: "<7000>" }]
+      })
+    ).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      details: {
+        code: "sensitive-node-reload-denied",
+        riskTier: "critical",
+        reason: "missing-confirmation",
+        requireConfirmation: true,
+        expectedConfirmationToken: "confirm-sensitive-reload"
+      }
+    });
+    expect(put).not.toHaveBeenCalled();
+    expect(createAuditEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        kind: "dts-reload-sensitive-node-denied",
+        metadata: expect.objectContaining({ reason: "missing-confirmation" })
+      })
+    );
+  });
+
+  it("allows a critical-tier match with elevated capability plus confirm-sensitive-reload and audits High", async () => {
+    const baseKey = "org-1/board.dts";
+    const { objectStore } = makeObjectStore({ [baseKey]: Buffer.from(BASE_DTS, "utf8") });
+    const { db } = createFakeDb([
+      [candidateRow()],
+      [sensitiveRuleRow({ risk_tier: "critical" })],
+      ...fingerprintParts(),
+      [{ id: "cs-1" }],
+      [{ file_name: "board.dts", role: "base", sort_order: 0, storage_key: baseKey, format: "dts" }],
+      ...fingerprintParts(),
+      blockedOrValidatedInsert("validated"),
+      [],
+      [
+        {
+          binding_id: "binding-1",
+          node_path: "/amba/i2c@FDF5E000/sc8562@6E",
+          property_key: "watchdog_time",
+          baseline_value: "<6000>",
+          debug_value: "<7000>",
+          sort_order: 0
+        }
+      ]
+    ]);
+
+    const result = await startReloadRun(
+      db,
+      objectStore,
+      elevatedAuth(),
+      {
+        projectId: "project-1",
+        targets: [{ bindingId: "binding-1", debugValue: "<7000>" }],
+        confirmationToken: "confirm-sensitive-reload"
+      }
+    );
+    expect(result.status).toBe("validated");
+    expect(createAuditEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        kind: "dts-reload-run-start",
+        severity: "High",
+        metadata: expect.objectContaining({
+          sensitiveMatches: [
+            expect.objectContaining({
+              ruleId: "rule-1",
+              riskTier: "critical",
+              pattern: "/amba/i2c@FDF5E000/sc8562@6E"
+            })
+          ]
+        })
+      })
+    );
+  }, 60_000);
+
+  it("refuses an agent actor for any sensitive match and audits requireHuman", async () => {
+    const { db } = createFakeDb([[candidateRow()], [sensitiveRuleRow({ risk_tier: "high" })]]);
+    const { objectStore, put } = makeObjectStore();
+
+    await expect(
+      startReloadRun(
+        db,
+        objectStore,
+        elevatedAuth(),
+        {
+          projectId: "project-1",
+          targets: [{ bindingId: "binding-1", debugValue: "<7000>" }],
+          confirmationToken: "confirm-sensitive-reload"
+        },
+        { actorType: "agent" }
+      )
+    ).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      details: {
+        code: "sensitive-node-reload-denied",
+        reason: "agent-refused",
+        requireHuman: true,
+        riskTier: "high"
+      }
+    });
+    expect(put).not.toHaveBeenCalled();
+    expect(createAuditEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        actorType: "agent",
+        kind: "dts-reload-sensitive-node-denied",
+        metadata: expect.objectContaining({
+          reason: "agent-refused",
+          requireHuman: true
+        })
+      })
+    );
+  });
+
+  it("refuses a critical-tier match without elevated capability before asking for confirmation", async () => {
+    const { db } = createFakeDb([[candidateRow()], [sensitiveRuleRow({ risk_tier: "critical" })]]);
+    const { objectStore, put } = makeObjectStore();
+
+    await expect(
+      startReloadRun(db, objectStore, auth(), {
+        projectId: "project-1",
+        targets: [{ bindingId: "binding-1", debugValue: "<7000>" }],
+        confirmationToken: "confirm-sensitive-reload"
+      })
+    ).rejects.toMatchObject({
+      details: {
+        code: "sensitive-node-reload-denied",
+        riskTier: "critical",
+        reason: "missing-capability"
+      }
+    });
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it("refuses an agent actor for a critical-tier match even with elevated capability and confirmation", async () => {
+    const { db } = createFakeDb([[candidateRow()], [sensitiveRuleRow({ risk_tier: "critical" })]]);
+    const { objectStore } = makeObjectStore();
+
+    await expect(
+      startReloadRun(
+        db,
+        objectStore,
+        elevatedAuth(),
+        {
+          projectId: "project-1",
+          targets: [{ bindingId: "binding-1", debugValue: "<7000>" }],
+          confirmationToken: "confirm-sensitive-reload"
+        },
+        { actorType: "agent" }
+      )
+    ).rejects.toMatchObject({
+      details: {
+        code: "sensitive-node-reload-denied",
+        reason: "agent-refused",
+        riskTier: "critical",
+        requireHuman: true
+      }
+    });
+  });
+
+  it("matches compatible-kind rules for reload targets", async () => {
+    const { db } = createFakeDb([
+      [candidateRow({ compatible: "vendor,watchdog-v2" })],
+      [
+        sensitiveRuleRow({
+          id: "rule-compat",
+          match_type: "compatible",
+          pattern: "vendor,watchdog*",
+          risk_tier: "high"
+        })
+      ]
+    ]);
+    const { objectStore } = makeObjectStore();
+
+    await expect(
+      startReloadRun(db, objectStore, auth(), {
+        projectId: "project-1",
+        targets: [{ bindingId: "binding-1", debugValue: "<7000>" }]
+      })
+    ).rejects.toMatchObject({
+      details: {
+        code: "sensitive-node-reload-denied",
+        matchType: "compatible",
+        pattern: "vendor,watchdog*"
+      }
+    });
+  });
 });
 
 describe("getReloadRun", () => {
