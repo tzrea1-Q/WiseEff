@@ -20,11 +20,13 @@ import {
   getReloadRun,
   getReloadRunArtifact,
   listReloadCandidates,
+  listReloadRuns,
   startReloadRun,
   startRestoreBaselineRun
 } from "./service";
 import {
   deployReloadRunBodySchema,
+  listReloadRunsQuerySchema,
   projectIdParamsSchema,
   residueQuerySchema,
   restoreBaselineBodySchema,
@@ -52,6 +54,37 @@ function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Inv
     throw new ApiError("VALIDATION_FAILED", message, 400, { issues: parsed.error.issues });
   }
   return parsed.data;
+}
+
+function flattenQuery(query: Record<string, string | string[]>) {
+  return Object.fromEntries(Object.entries(query).map(([key, value]) => [key, Array.isArray(value) ? value[0] : value]));
+}
+
+const reloadRunListCursorSchema = z.object({
+  createdAt: z.string().datetime(),
+  id: z.string().min(1)
+});
+
+function parseReloadRunListCursor(cursor: string | undefined) {
+  if (!cursor) {
+    return undefined;
+  }
+  try {
+    const payload = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as unknown;
+    return parseWithSchema(reloadRunListCursorSchema, payload, "Invalid reload run list cursor.");
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError("VALIDATION_FAILED", "Invalid reload run list cursor.", 400);
+  }
+}
+
+function encodeReloadRunListCursor(cursor: { createdAt: string; id: string } | null) {
+  if (!cursor) {
+    return null;
+  }
+  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
 }
 
 export function registerDtsReloadRoutes(
@@ -109,6 +142,25 @@ export function registerDtsReloadRoutes(
     const params = parseWithSchema(projectIdParamsSchema, request.params);
     const result = await listReloadCandidates(db, auth, params.projectId);
     return { status: 200, body: result };
+  });
+
+  router.get("/api/v1/dts-reload/runs", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const query = parseWithSchema(listReloadRunsQuerySchema, flattenQuery(request.query));
+    const result = await listReloadRuns(db, auth, {
+      projectId: query.projectId,
+      deviceId: query.deviceId,
+      limit: query.limit,
+      cursor: parseReloadRunListCursor(query.cursor)
+    });
+    return {
+      status: 200,
+      body: {
+        items: result.items,
+        nextCursor: encodeReloadRunListCursor(result.nextCursor)
+      }
+    };
   });
 
   router.post("/api/v1/dts-reload/projects/:projectId/runs", async (request) => {

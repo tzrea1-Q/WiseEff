@@ -19,6 +19,7 @@ function createFakeDb(results: QueuedResult[] = []) {
   const calls: QueryCall[] = [];
 
   const isSensitiveRulesQuery = (text: string) => text.includes("from dts_sensitive_node_rules");
+  const isLastReloadQuery = (text: string) => text.includes("select distinct on (t.binding_id)");
   const looksLikeSensitiveRuleRows = (rows: unknown[]) =>
     rows.length === 0 ||
     (typeof rows[0] === "object" &&
@@ -34,6 +35,15 @@ function createFakeDb(results: QueuedResult[] = []) {
     if (isSensitiveRulesQuery(text)) {
       const next = results[0];
       if (Array.isArray(next) && looksLikeSensitiveRuleRows(next)) {
+        results.shift();
+        return { rows: next as Row[], rowCount: next.length };
+      }
+      return { rows: [] as Row[], rowCount: 0 };
+    }
+
+    if (isLastReloadQuery(text)) {
+      const next = results[0];
+      if (Array.isArray(next) && (next.length === 0 || (next[0] && typeof next[0] === "object" && "run_id" in (next[0] as object)))) {
         results.shift();
         return { rows: next as Row[], rowCount: next.length };
       }
@@ -207,11 +217,11 @@ beforeEach(() => {
 });
 
 describe("dts-reload policy gate", () => {
-  it("refuses callers lacking debugging:dts-reload", async () => {
+  it("refuses callers lacking debugging:view for candidate reads", async () => {
     const { db } = createFakeDb();
     await expect(listReloadCandidates(db, auth({ permissions: [] }), "project-1")).rejects.toMatchObject({
       code: "FORBIDDEN",
-      details: { permission: "debugging:dts-reload" }
+      details: { permission: "debugging:view" }
     });
   });
 });

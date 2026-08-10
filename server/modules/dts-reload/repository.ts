@@ -8,7 +8,10 @@ import { parseBehaviouralVerification } from "./behaviouralVerify";
 import type {
   IntegrityCheckStrength,
   ReloadCandidateDto,
+  ReloadCandidateLastReloadDto,
   ReloadRunDto,
+  ReloadRunListCursor,
+  ReloadRunListItemDto,
   ReloadRunPurpose,
   ReloadRunStatus,
   ReloadRunTargetDto,
@@ -191,7 +194,8 @@ function toTargetDto(row: ReloadRunTargetRow): ReloadRunTargetDto {
 export function toReloadRunDto(
   row: ReloadRunRow,
   targets: ReloadRunTargetDto[],
-  overlaySource: string | null
+  overlaySource: string | null,
+  options: { artifactRetentionExpired?: boolean } = {}
 ): ReloadRunDto {
   const artifactSha = row.overlay_artifact_sha256;
   const artifactBytes = row.overlay_artifact_bytes;
@@ -234,6 +238,7 @@ export function toReloadRunDto(
       snapshot.behaviouralVerification)
       ? snapshot
       : null,
+    artifactRetentionExpired: options.artifactRetentionExpired === true,
     createdAt: dateTimeToIso(row.created_at),
     completedAt: row.completed_at ? dateTimeToIso(row.completed_at) : null
   };
@@ -520,6 +525,172 @@ export async function getReloadRunRow(
     [input.organizationId, input.runId]
   );
   return result.rows[0] ?? null;
+}
+
+export type ListReloadRunsQuery = {
+  organizationId: string;
+  projectId?: string;
+  deviceId?: string;
+  cursor?: ReloadRunListCursor;
+  limit: number;
+};
+
+type ReloadRunListRow = {
+  id: string;
+  project_id: string;
+  status: ReloadRunStatus;
+  purpose?: ReloadRunPurpose | null;
+  failure_code: string | null;
+  device_id: string | null;
+  created_at: string | Date;
+  completed_at: string | Date | null;
+  overlay_artifact_sha256: string | null;
+  overlay_artifact_bytes: number | string | null;
+  integrity_check: string | null;
+  target_count: string | number;
+  property_keys: string[] | null;
+};
+
+function toReloadRunListItem(row: ReloadRunListRow): ReloadRunListItemDto {
+  const artifactSha = row.overlay_artifact_sha256;
+  const artifactBytes = row.overlay_artifact_bytes;
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    deviceId: row.device_id,
+    status: row.status,
+    purpose: asReloadPurpose(row.purpose),
+    failureCode: row.failure_code,
+    targetCount: Number(row.target_count ?? 0),
+    propertyKeys: Array.isArray(row.property_keys) ? row.property_keys.filter((key) => typeof key === "string") : [],
+    artifact:
+      artifactSha && artifactBytes !== null && artifactBytes !== undefined
+        ? {
+            fileName: `debug-overlay-${row.id}.dtbo`,
+            sha256: artifactSha,
+            sizeBytes: Number(artifactBytes)
+          }
+        : null,
+    integrityCheck: asIntegrityCheck(row.integrity_check),
+    createdAt: dateTimeToIso(row.created_at),
+    completedAt: row.completed_at ? dateTimeToIso(row.completed_at) : null
+  };
+}
+
+/**
+ * Paginated reload run history, most recent first. Includes blocked/failed/restore-baseline.
+ */
+export async function listReloadRunRows(
+  db: Queryable,
+  query: ListReloadRunsQuery
+): Promise<{ items: ReloadRunListItemDto[]; nextCursor: ReloadRunListCursor | null }> {
+  const values: unknown[] = [query.organizationId];
+  const where = ["r.organization_id = $1"];
+
+  if (query.projectId) {
+    values.push(query.projectId);
+    where.push(`r.project_id = $${values.length}`);
+  }
+  if (query.deviceId) {
+    values.push(query.deviceId);
+    where.push(`r.device_id = $${values.length}`);
+  }
+  if (query.cursor) {
+    values.push(query.cursor.createdAt, query.cursor.id);
+    where.push(`(r.created_at, r.id) < ($${values.length - 1}::timestamptz, $${values.length})`);
+  }
+
+  values.push(query.limit + 1);
+  const result = await db.query<ReloadRunListRow>(
+    `
+    select
+      r.id,
+      r.project_id,
+      r.status,
+      r.purpose,
+      r.failure_code,
+      r.device_id,
+      r.created_at,
+      r.completed_at,
+      r.overlay_artifact_sha256,
+      r.overlay_artifact_bytes,
+      r.integrity_check,
+      coalesce(t.target_count, 0) as target_count,
+      coalesce(t.property_keys, '{}'::text[]) as property_keys
+    from dts_reload_runs r
+    left join lateral (
+      select
+        count(*)::int as target_count,
+        array_agg(property_key order by sort_order asc, id asc) as property_keys
+      from dts_reload_run_targets
+      where reload_run_id = r.id
+    ) t on true
+    where ${where.join("\n      and ")}
+    order by r.created_at desc, r.id desc
+    limit $${values.length}
+    `,
+    values
+  );
+
+  const hasMore = result.rows.length > query.limit;
+  const items = result.rows.slice(0, query.limit).map(toReloadRunListItem);
+  const last = items.at(-1);
+  return {
+    items,
+    nextCursor: hasMore && last ? { createdAt: last.createdAt, id: last.id } : null
+  };
+}
+
+type LastReloadRow = {
+  binding_id: string;
+  run_id: string;
+  debug_value: string;
+  status: ReloadRunStatus;
+  purpose?: ReloadRunPurpose | null;
+  attempted_at: string | Date;
+};
+
+/**
+ * Most recent reload attempt per binding within a project (for candidate enrichment).
+ */
+export async function listLastReloadByBindingIds(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; bindingIds: string[] }
+): Promise<Map<string, ReloadCandidateLastReloadDto>> {
+  const map = new Map<string, ReloadCandidateLastReloadDto>();
+  if (input.bindingIds.length === 0) {
+    return map;
+  }
+
+  const result = await db.query<LastReloadRow>(
+    `
+    select distinct on (t.binding_id)
+      t.binding_id,
+      r.id as run_id,
+      t.debug_value,
+      r.status,
+      r.purpose,
+      coalesce(r.completed_at, r.created_at) as attempted_at
+    from dts_reload_run_targets t
+    join dts_reload_runs r on r.id = t.reload_run_id
+    where r.organization_id = $1
+      and r.project_id = $2
+      and t.binding_id = any($3::text[])
+    order by t.binding_id, r.created_at desc, r.id desc
+    `,
+    [input.organizationId, input.projectId, input.bindingIds]
+  );
+
+  for (const row of result.rows) {
+    map.set(row.binding_id, {
+      runId: row.run_id,
+      debugValue: row.debug_value,
+      attemptedAt: dateTimeToIso(row.attempted_at),
+      outcome: row.status,
+      purpose: asReloadPurpose(row.purpose)
+    });
+  }
+  return map;
 }
 
 export async function listReloadRunTargets(db: Queryable, reloadRunId: string): Promise<ReloadRunTargetDto[]> {

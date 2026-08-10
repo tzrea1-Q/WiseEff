@@ -29,6 +29,16 @@ export type DtsReloadCandidate = {
   debuggable: boolean;
   blockReason?: DtsReloadCandidateBlockReason;
   sensitiveMatch?: DtsReloadSensitiveMatch | null;
+  /** Most recent reload attempt for this binding, when known. */
+  lastReload?: DtsReloadLastReload | null;
+};
+
+export type DtsReloadLastReload = {
+  runId: string;
+  debugValue: string;
+  attemptedAt: string;
+  outcome: DtsReloadRunStatus;
+  purpose: DtsReloadRunPurpose;
 };
 
 /** Confirmation token required when any selected target matches a critical-tier sensitive rule. */
@@ -145,8 +155,30 @@ export type DtsReloadRun = {
   protocol?: string | null;
   integrityCheck?: DtsReloadIntegrityCheck | null;
   reloadSnapshot?: DtsReloadSnapshot | null;
+  /** True when overlay blobs are past retention; digests remain, download reports expired. */
+  artifactRetentionExpired?: boolean;
   createdAt: string;
   completedAt: string | null;
+};
+
+export type DtsReloadRunListItem = {
+  id: string;
+  projectId: string;
+  deviceId: string | null;
+  status: DtsReloadRunStatus;
+  purpose: DtsReloadRunPurpose;
+  failureCode: string | null;
+  targetCount: number;
+  propertyKeys: string[];
+  artifact: { fileName: string; sha256: string; sizeBytes: number } | null;
+  integrityCheck: DtsReloadIntegrityCheck | null;
+  createdAt: string;
+  completedAt: string | null;
+};
+
+export type DtsReloadRunListResult = {
+  items: DtsReloadRunListItem[];
+  nextCursor: string | null;
 };
 
 /**
@@ -211,6 +243,11 @@ export const dtsReloadStatusLabels: Record<DtsReloadRunStatus, string> = {
   verified: "行为已验证",
   contradicted: "行为矛盾",
   failed: "部署失败"
+};
+
+export const dtsReloadPurposeLabels: Record<DtsReloadRunPurpose, string> = {
+  ordinary: "普通重载",
+  "restore-baseline": "恢复基线"
 };
 
 export const dtsReloadVerificationOutcomeLabels: Record<

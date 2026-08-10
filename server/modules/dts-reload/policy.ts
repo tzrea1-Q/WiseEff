@@ -7,7 +7,25 @@ function requirePermission(auth: AuthContext, permission: BackendPermission) {
   }
 }
 
-/** Dedicated permission for starting and reading DTS reload debugging runs. */
+function hasPermission(auth: AuthContext, permission: BackendPermission) {
+  return auth.user.isActive && auth.permissions.includes(permission);
+}
+
+/** Dedicated permission for starting and mutating DTS reload debugging runs. */
 export function requireDtsReload(auth: AuthContext) {
   requirePermission(auth, "debugging:dts-reload");
+}
+
+/**
+ * Read history / candidates / residue / artifact metadata.
+ * Accepts either `debugging:view` or `debugging:dts-reload` so view-only users
+ * can learn from past runs without being able to start one.
+ */
+export function requireDtsReloadView(auth: AuthContext) {
+  if (hasPermission(auth, "debugging:view") || hasPermission(auth, "debugging:dts-reload")) {
+    return;
+  }
+  throw new ApiError("FORBIDDEN", "Missing permission: debugging:view.", 403, {
+    permission: "debugging:view"
+  });
 }

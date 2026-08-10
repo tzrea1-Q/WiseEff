@@ -794,6 +794,12 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "DtsReloadCandidateListResponse",
     additionalResponses: { "403": "ErrorResponse" }
   },
+  "dtsReload.listRuns": {
+    summary: "List DTS reload runs filtered by project and/or device, most recent first",
+    tags: ["dts-reload"],
+    responseBody: "DtsReloadRunListResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse" }
+  },
   "dtsReload.startRun": {
     summary: "Start a DTS reload run for a batch of parameters (stops at validated overlay)",
     tags: ["dts-reload"],
@@ -835,7 +841,12 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["dts-reload"],
     responseBody: "BinaryAttachment",
     responseMedia: "binary",
-    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+    additionalResponses: {
+      "403": "ErrorResponse",
+      "404": "ErrorResponse",
+      "409": "ErrorResponse",
+      "410": "ErrorResponse"
+    }
   },
   "dtsReload.getConfiguration": {
     summary: "Get organisation reload configuration defaults and per-device overrides",

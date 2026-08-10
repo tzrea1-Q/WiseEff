@@ -41,6 +41,17 @@ export const residueQuerySchema = z.object({
   deviceId: z.string().min(1)
 });
 
+export const listReloadRunsQuerySchema = z
+  .object({
+    projectId: z.string().min(1).optional(),
+    deviceId: z.string().min(1).optional(),
+    cursor: z.string().optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional()
+  })
+  .refine((value) => Boolean(value.projectId?.trim() || value.deviceId?.trim()), {
+    message: "projectId or deviceId is required"
+  });
+
 export const projectIdParamsSchema = z.object({
   projectId: z.string().min(1)
 });

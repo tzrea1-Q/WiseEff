@@ -21,6 +21,16 @@ export interface ReloadCandidateSensitiveMatchDto {
   requiresConfirmation: boolean;
 }
 
+/** Per-parameter last reload attempt projected onto the candidates list (#289). */
+export interface ReloadCandidateLastReloadDto {
+  runId: string;
+  debugValue: string;
+  /** When the attempt was recorded (run completed_at, else created_at). */
+  attemptedAt: string;
+  outcome: ReloadRunStatus;
+  purpose: ReloadRunPurpose;
+}
+
 export interface ReloadCandidateDto {
   bindingId: string;
   projectId: string;
@@ -40,7 +50,34 @@ export interface ReloadCandidateDto {
   blockReason?: ReloadCandidateBlockReason;
   /** Present when organisation sensitive-node rules match this parameter's node. */
   sensitiveMatch: ReloadCandidateSensitiveMatchDto | null;
+  /** Most recent reload attempt for this binding in the project, if any. */
+  lastReload: ReloadCandidateLastReloadDto | null;
 }
+
+/** Compact list row for reload run history (#289). */
+export interface ReloadRunListItemDto {
+  id: string;
+  projectId: string;
+  deviceId: string | null;
+  status: ReloadRunStatus;
+  purpose: ReloadRunPurpose;
+  failureCode: string | null;
+  targetCount: number;
+  propertyKeys: string[];
+  artifact: {
+    fileName: string;
+    sha256: string;
+    sizeBytes: number;
+  } | null;
+  integrityCheck: IntegrityCheckStrength | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export type ReloadRunListCursor = {
+  createdAt: string;
+  id: string;
+};
 
 /**
  * Reload run status machine (#281 preflight + #285 deploy + #287 behavioural verify).
@@ -207,9 +244,17 @@ export interface ReloadRunDto {
   protocol: string | null;
   integrityCheck: IntegrityCheckStrength | null;
   reloadSnapshot: ReloadSnapshotDto | null;
+  /**
+   * True when overlay blobs are past the retention window.
+   * Metadata and digests remain; artifact download returns expired.
+   */
+  artifactRetentionExpired: boolean;
   createdAt: string;
   completedAt: string | null;
 }
+
+/** Overlay blob retention window for compiled debug overlays (#289). */
+export const RELOAD_ARTIFACT_RETENTION_DAYS = 90;
 
 /**
  * Platform bookkeeping that a device was last left carrying debug values.

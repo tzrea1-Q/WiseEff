@@ -67,6 +67,7 @@ function run(overrides: Partial<DtsReloadRun> = {}): DtsReloadRun {
 function createRepository(overrides: Partial<DtsReloadRepository> = {}): DtsReloadRepository {
   return {
     listCandidates: vi.fn(async () => ({ items: [candidate()] })),
+    listRuns: vi.fn(async () => ({ items: [], nextCursor: null })),
     startRun: vi.fn(async () => run()),
     restoreBaseline: vi.fn(async () =>
       run({
@@ -578,5 +579,121 @@ describe("DtsReloadPage", () => {
     expect(deployDialog).toHaveTextContent(/补偿性恢复基线部署|补偿性重载/);
     expect(deployDialog).toHaveTextContent(/不是撤销/);
     expect(deployDialog).toHaveTextContent(/平台根据运行历史做的记账/);
+  });
+
+  it("shows run history and last-reload state; view-only users can open details but not start", async () => {
+    const user = userEvent.setup();
+    const historyRun = run({
+      id: "run-history",
+      status: "failed",
+      purpose: "ordinary",
+      failureCode: "transfer-failed"
+    });
+    const restoreHistory = run({
+      id: "run-restore-history",
+      status: "verified",
+      purpose: "restore-baseline",
+      restoresSourceRunId: "run-history"
+    });
+    const repository = createRepository({
+      listCandidates: vi.fn(async () => ({
+        items: [
+          candidate({
+            lastReload: {
+              runId: "run-history",
+              debugValue: "<7000>",
+              attemptedAt: "2026-08-10T11:00:00.000Z",
+              outcome: "failed",
+              purpose: "ordinary"
+            }
+          })
+        ]
+      })),
+      listRuns: vi.fn(async () => ({
+        items: [
+          {
+            id: "run-restore-history",
+            projectId: "project-1",
+            deviceId: "bridge:bridge-1",
+            status: "verified" as const,
+            purpose: "restore-baseline" as const,
+            failureCode: null,
+            targetCount: 1,
+            propertyKeys: ["watchdog_time"],
+            artifact: { fileName: "debug-overlay-run-restore-history.dtbo", sha256: "sha", sizeBytes: 32 },
+            integrityCheck: "sha256" as const,
+            createdAt: "2026-08-10T12:00:00.000Z",
+            completedAt: "2026-08-10T12:00:03.000Z"
+          },
+          {
+            id: "run-history",
+            projectId: "project-1",
+            deviceId: "bridge:bridge-1",
+            status: "failed" as const,
+            purpose: "ordinary" as const,
+            failureCode: "transfer-failed",
+            targetCount: 1,
+            propertyKeys: ["watchdog_time"],
+            artifact: null,
+            integrityCheck: null,
+            createdAt: "2026-08-10T11:00:00.000Z",
+            completedAt: "2026-08-10T11:00:02.000Z"
+          },
+          {
+            id: "run-blocked",
+            projectId: "project-1",
+            deviceId: null,
+            status: "blocked" as const,
+            purpose: "ordinary" as const,
+            failureCode: "preflight-failed",
+            targetCount: 1,
+            propertyKeys: ["watchdog_time"],
+            artifact: null,
+            integrityCheck: null,
+            createdAt: "2026-08-10T10:00:00.000Z",
+            completedAt: "2026-08-10T10:00:01.000Z"
+          }
+        ],
+        nextCursor: null
+      })),
+      getRun: vi.fn(async (runId: string) => (runId === "run-restore-history" ? restoreHistory : historyRun))
+    });
+
+    renderPage(repository, { canStartRun: false });
+    await screen.findByText("运行历史");
+    expect(screen.getByRole("status")).toHaveTextContent(/仅有调试查看权限/);
+    expect(screen.getByRole("button", { name: /启动重载运行/ })).toBeDisabled();
+    expect(screen.getByText("上次重载")).toBeInTheDocument();
+    expect(screen.getByText("<7000>")).toBeInTheDocument();
+    expect(screen.getAllByText(/恢复基线/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/已阻断|部署失败/).length).toBeGreaterThan(0);
+
+    const historyRegion = screen.getByLabelText("运行历史");
+    const deviceFilter = within(historyRegion).getByRole("checkbox", { name: /仅显示当前设备的运行/ });
+    await waitFor(() => expect(deviceFilter).toBeEnabled());
+    expect(within(historyRegion).getByText(/仅当前设备（bridge:bridge-1）/)).toBeInTheDocument();
+
+    vi.mocked(repository.listRuns).mockClear();
+    await user.click(deviceFilter);
+    await waitFor(() =>
+      expect(repository.listRuns).toHaveBeenCalledWith(
+        expect.objectContaining({ projectId: "project-1", deviceId: "bridge:bridge-1", limit: 10 })
+      )
+    );
+
+    await user.click(within(historyRegion).getByRole("button", { name: /恢复基线/ }));
+    await waitFor(() => expect(repository.getRun).toHaveBeenCalledWith("run-restore-history"));
+    expect(await screen.findByText(/目的：恢复基线/)).toBeInTheDocument();
+  });
+
+  it("disables the device-only history filter until a device id is available", async () => {
+    const repository = createRepository({
+      listRuns: vi.fn(async () => ({ items: [], nextCursor: null }))
+    });
+    renderPage(repository, { bridges: [], canStartRun: true });
+    await screen.findByText("运行历史");
+    const historyRegion = screen.getByLabelText("运行历史");
+    expect(within(historyRegion).getByRole("checkbox", { name: /仅显示当前设备的运行/ })).toBeDisabled();
+    expect(within(historyRegion).getByText(/先填写设备 ID/)).toBeInTheDocument();
   });
 });

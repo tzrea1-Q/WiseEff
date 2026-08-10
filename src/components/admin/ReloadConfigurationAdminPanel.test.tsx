@@ -30,6 +30,7 @@ function seededView(overrides: Partial<ReloadConfigurationAdminView> = {}): Relo
 function createRepository(overrides: Partial<DtsReloadRepository> = {}): DtsReloadRepository {
   return {
     listCandidates: vi.fn(),
+    listRuns: vi.fn(async () => ({ items: [], nextCursor: null })),
     startRun: vi.fn(),
     restoreBaseline: vi.fn(),
     getResidue: vi.fn(async () => null),
