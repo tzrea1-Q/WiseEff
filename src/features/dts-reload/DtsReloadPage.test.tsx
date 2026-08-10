@@ -728,6 +728,25 @@ describe("DtsReloadPage", () => {
     expect(await screen.findByRole("status", { name: /Bridge 就绪状态/ })).toHaveTextContent(/已连接/);
   });
 
+  it("does not treat recent lastSeen as connected when health probe reports offline", async () => {
+    const repository = createRepository();
+    renderPage(repository, {
+      bridges: [{ id: "bridge-1", machineLabel: "Lab Mac", lastSeenAt: new Date().toISOString() }],
+      probeBridgeHealth: async () => ({ connected: false, bridgeId: undefined })
+    });
+    expect(await screen.findByRole("status", { name: /Bridge 就绪状态/ })).toHaveTextContent(/已配对但未连接/);
+    expect(screen.getByRole("status", { name: /Bridge 就绪状态/ })).not.toHaveTextContent(/已连接 ·/);
+  });
+
+  it("does not mark a different bridge connected when health is bound to another id", async () => {
+    const repository = createRepository();
+    renderPage(repository, {
+      bridges: [{ id: "bridge-1", machineLabel: "Lab Mac", lastSeenAt: new Date().toISOString() }],
+      probeBridgeHealth: async () => ({ connected: true, bridgeId: "bridge-other" })
+    });
+    expect(await screen.findByRole("status", { name: /Bridge 就绪状态/ })).toHaveTextContent(/已配对但未连接/);
+  });
+
   it("lists reachable targets from detectTargets for selection context", async () => {
     const user = userEvent.setup();
     const repository = createRepository();

@@ -72,9 +72,11 @@ function inferBridgeOnline(
   bridge: BridgeOption,
   health: Pick<LocalBridgeHealthState, "connected" | "bridgeId"> | null
 ) {
-  if (health?.connected && health.bridgeId === bridge.id) {
-    return true;
+  // Health probe succeeded — trust it exclusively (do not fall back to lastSeen).
+  if (health) {
+    return Boolean(health.connected && health.bridgeId === bridge.id);
   }
+  // Health unavailable — fall back to recent lastSeen window.
   if (!bridge.lastSeenAt) {
     return false;
   }
