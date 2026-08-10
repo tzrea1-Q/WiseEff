@@ -20,10 +20,12 @@ import type {
 } from "@/domain/dtsReload/types";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Button } from "@/components/ui/button";
+import { formatBridgeLastSeen, inferBridgeOnline } from "@/components/bridgeOnline";
 import { listMyBridges, probeLocalBridgeHealth } from "@/infrastructure/http/deviceBridgeClient";
 import type { LocalBridgeHealthState } from "@/infrastructure/http/deviceBridgeClient";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { cn } from "@/lib/utils";
+import { DEVICE_BRIDGE_RELEASES_PATH } from "@wiseeff/device-command-core/bridgeApiPaths";
 
 type DeployProtocol = "hdc" | "adb";
 
@@ -55,34 +57,7 @@ export type DtsReloadPageProps = {
 
 type BridgeOption = DtsReloadBridgeOption;
 
-/** Match /node-debugging online window — lastSeen within 2 minutes counts as connected when health is unavailable. */
-const BRIDGE_ONLINE_WINDOW_MS = 2 * 60 * 1000;
-
-const DEVICE_BRIDGE_RELEASES_PATH = "/api/v1/device-bridges/releases";
 const BRIDGE_UPGRADE_ENTRY_PATH = "/node-debugging";
-
-function formatBridgeLastSeen(lastSeenAt: string | null | undefined) {
-  if (!lastSeenAt) return "从未在线";
-  const timestamp = new Date(lastSeenAt).getTime();
-  if (!Number.isFinite(timestamp)) return "未知";
-  return new Date(timestamp).toLocaleString("zh-CN", { hour12: false });
-}
-
-function inferBridgeOnline(
-  bridge: BridgeOption,
-  health: Pick<LocalBridgeHealthState, "connected" | "bridgeId"> | null
-) {
-  // Health probe succeeded — trust it exclusively (do not fall back to lastSeen).
-  if (health) {
-    return Boolean(health.connected && health.bridgeId === bridge.id);
-  }
-  // Health unavailable — fall back to recent lastSeen window.
-  if (!bridge.lastSeenAt) {
-    return false;
-  }
-  const lastSeen = new Date(bridge.lastSeenAt).getTime();
-  return Number.isFinite(lastSeen) && Date.now() - lastSeen <= BRIDGE_ONLINE_WINDOW_MS;
-}
 
 function readBridgeUpgradeReleasesPath(error: unknown): string | null {
   if (!(error instanceof WiseEffApiError)) return null;
@@ -572,7 +547,9 @@ export function DtsReloadPage({
     [bridges, bridgeId]
   );
 
-  const selectedBridgeConnected = Boolean(selectedBridge && inferBridgeOnline(selectedBridge, bridgeHealth));
+  const selectedBridgeConnected = Boolean(
+    selectedBridge && inferBridgeOnline(selectedBridge, bridgeHealth, { healthExclusive: true })
+  );
 
   const bridgeReadinessLabel = useMemo(() => {
     if (bridgesLoading) return "正在检查 Bridge…";
@@ -1806,7 +1783,9 @@ export function DtsReloadPage({
                   bridges.map((bridge) => (
                     <option key={bridge.id} value={bridge.id}>
                       {bridge.machineLabel}
-                      {inferBridgeOnline(bridge, bridgeHealth) ? " · 已连接" : " · 未连接"}
+                      {inferBridgeOnline(bridge, bridgeHealth, { healthExclusive: true })
+                        ? " · 已连接"
+                        : " · 未连接"}
                     </option>
                   ))
                 )}

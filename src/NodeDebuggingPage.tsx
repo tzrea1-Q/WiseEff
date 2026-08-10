@@ -6,6 +6,7 @@ import { ColumnFilter } from "./components/ColumnFilter";
 import { ConfirmDialog } from "./components/common/ConfirmDialog";
 import { LocalDeviceBridgeWizard, type BridgePanelStatus } from "./components/LocalDeviceBridgeWizard";
 import { deriveBridgePanelStatus, countActiveBridgesForPlatform, formatDetectFailureMessage, isBridgeOnlinePanelStatus, isLocalBridgeAuthFailure, isLocalBridgePairingStale, isLocalBridgeTokenExpired, shouldFetchBridgePairingCode } from "./components/bridgePanelStatus";
+import { formatBridgeLastSeen, inferBridgeOnline } from "./components/bridgeOnline";
 import { NodeOperationHistoryPanel, type NodeOperationEvent } from "./components/NodeOperationHistoryPanel";
 import { RollbackConfirmDialog } from "./components/RollbackConfirmDialog";
 import { WorkbenchSheet } from "./components/WorkbenchSheet";
@@ -80,7 +81,6 @@ type RuntimeRow = ProtocolAwareDebugParameter & {
 };
 
 const unsupportedNodeValueLabel = "该节点不支持";
-const bridgeOnlineWindowMs = 2 * 60 * 1000;
 
 type PageNodeOperationEvent = NodeOperationEvent & {
   durationMs?: number;
@@ -350,24 +350,6 @@ function resolveReadRowOutcome(result: NodeReadResult) {
     ok: true as const,
     value
   };
-}
-
-function formatBridgeLastSeen(lastSeenAt: string | null) {
-  if (!lastSeenAt) return "从未在线";
-  const timestamp = new Date(lastSeenAt).getTime();
-  if (!Number.isFinite(timestamp)) return "未知";
-  return new Date(timestamp).toLocaleString("zh-CN", { hour12: false });
-}
-
-function inferBridgeOnline(bridge: DeviceBridgeRecord, health: LocalBridgeHealthState | null) {
-  if (health?.connected && health.bridgeId === bridge.id) {
-    return true;
-  }
-  if (!bridge.lastSeenAt) {
-    return false;
-  }
-  const lastSeen = new Date(bridge.lastSeenAt).getTime();
-  return Number.isFinite(lastSeen) && Date.now() - lastSeen <= bridgeOnlineWindowMs;
 }
 
 function bridgeTargetLabel(target: Pick<DeviceTarget, "label" | "targetRef" | "bridgeMachineLabel">) {

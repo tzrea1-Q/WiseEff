@@ -90,6 +90,42 @@ describe("reload configuration service", () => {
     });
   });
 
+  it("refuses an agent actor on configuration write and audits dts-reload-agent-refused", async () => {
+    const { db } = createFakeDb();
+    await expect(
+      updateOrganisationReloadConfiguration(db, auth(), SEEDED_RELOAD_CONFIGURATION, {
+        actorType: "agent",
+        requestId: "req-config-agent"
+      })
+    ).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      details: {
+        code: "dts-reload-agent-refused",
+        reason: "agent-refused",
+        requireHuman: true,
+        action: "configure"
+      }
+    });
+    expect(createAuditEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        actorType: "agent",
+        kind: "dts-reload-agent-refused",
+        action: "deny",
+        metadata: expect.objectContaining({
+          code: "dts-reload-agent-refused",
+          reason: "agent-refused",
+          requireHuman: true,
+          action: "configure"
+        })
+      })
+    );
+    expect(createAuditEvent).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ kind: "dts-reload-configuration-update" })
+    );
+  });
+
   it("returns seeded organisation defaults when no row exists", async () => {
     const { db } = createFakeDb([[], []]);
     const view = await getReloadConfigurationAdminView(db, auth());

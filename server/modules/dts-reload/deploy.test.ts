@@ -18,7 +18,9 @@ vi.mock("../deviceBridge/repository", () => ({
 
 vi.mock("../debugging/repository", () => ({
   acquireDebugDeviceLease: vi.fn(),
-  releaseDebugDeviceLease: vi.fn()
+  releaseDebugDeviceLease: vi.fn(),
+  ensureBridgeDebugDevice: vi.fn(async () => undefined),
+  ensureDtsReloadLeaseSession: vi.fn(async () => undefined)
 }));
 
 vi.mock("./resolveConfiguration", () => ({
@@ -35,7 +37,12 @@ vi.mock("./behaviouralVerify", async (importOriginal) => {
 
 import { createAuditEvent } from "../audit/repository";
 import { listBridgesForUser } from "../deviceBridge/repository";
-import { acquireDebugDeviceLease, releaseDebugDeviceLease } from "../debugging/repository";
+import {
+  acquireDebugDeviceLease,
+  ensureBridgeDebugDevice,
+  ensureDtsReloadLeaseSession,
+  releaseDebugDeviceLease
+} from "../debugging/repository";
 import { resolveReloadConfiguration } from "./resolveConfiguration";
 import { verifyReloadTargetsBehaviourally } from "./behaviouralVerify";
 import { deployReloadRun } from "./service";
@@ -499,6 +506,26 @@ describe("deployReloadRun", () => {
     );
     expect(bridgeRpcClient.call.mock.calls.some((call) => call[1] === "debug.readNode")).toBe(false);
     expect(acquireDebugDeviceLease).toHaveBeenCalled();
+    expect(ensureBridgeDebugDevice).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        organizationId: "org-1",
+        deviceId: "dev-1",
+        protocol: "hdc"
+      })
+    );
+    expect(ensureDtsReloadLeaseSession).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        organizationId: "org-1",
+        sessionId: "dts-reload:run-1",
+        deviceId: "dev-1",
+        bridgeId: "br-1",
+        protocol: "hdc",
+        targetRef: "AURORA-001",
+        actorUserId: "user-1"
+      })
+    );
     expect(releaseDebugDeviceLease).toHaveBeenCalled();
     expect(resolveReloadConfiguration).toHaveBeenCalledWith(db, {
       organizationId: "org-1",

@@ -6,6 +6,7 @@
   "exports": {
     "./adbRunner": "./src/adbRunner.ts",
     "./adbTargets": "./src/adbTargets.ts",
+    "./bridgeApiPaths": "./src/bridgeApiPaths.ts",
     "./bridgeRpcMethods": "./src/bridgeRpcMethods.ts",
     "./hdcRunner": "./src/hdcRunner.ts",
     "./hdcTargets": "./src/hdcTargets.ts",

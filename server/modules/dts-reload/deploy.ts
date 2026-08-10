@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { DEVICE_BRIDGE_RELEASES_PATH } from "@wiseeff/device-command-core/bridgeApiPaths";
 import { DTS_RELOAD_BRIDGE_RPC_METHODS } from "@wiseeff/device-command-core/bridgeRpcMethods";
 
 import type { BridgeRpcClient } from "../deviceBridge/rpc";
@@ -8,6 +9,8 @@ import { listBridgesForUser } from "../deviceBridge/repository";
 import { loadLatestBridgeReleaseManifest } from "../deviceBridge/releaseManifest";
 import {
   acquireDebugDeviceLease,
+  ensureBridgeDebugDevice,
+  ensureDtsReloadLeaseSession,
   releaseDebugDeviceLease
 } from "../debugging/repository";
 import type { AuthContext } from "../auth/types";
@@ -27,7 +30,6 @@ import type {
   ReloadStep
 } from "./types";
 import {
-  DEVICE_BRIDGE_RELEASES_PATH,
   DTS_RELOAD_CONFIRMATION_TOKEN,
   PUSH_FILE_MAX_BYTES,
   RELOAD_KERNEL_LOG_TIMEOUT_MS,
@@ -296,7 +298,25 @@ export async function executeReloadDeploy(input: {
     { claim: true }
   );
 
+  await ensureBridgeDebugDevice(input.db, {
+    organizationId: auth.organization.id,
+    deviceId: deploy.deviceId,
+    name: bridge.machineLabel,
+    protocol: deploy.protocol
+  });
+
   const leaseSessionId = `dts-reload:${run.id}`;
+  await ensureDtsReloadLeaseSession(input.db, {
+    organizationId: auth.organization.id,
+    sessionId: leaseSessionId,
+    deviceId: deploy.deviceId,
+    bridgeId: deploy.bridgeId,
+    bridgeMachineLabel: bridge.machineLabel,
+    protocol: deploy.protocol,
+    targetRef: deploy.targetRef,
+    actorUserId: auth.user.id
+  });
+
   const lease = await acquireDebugDeviceLease(input.db, {
     organizationId: auth.organization.id,
     deviceId: deploy.deviceId,

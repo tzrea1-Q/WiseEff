@@ -8,7 +8,7 @@ import { ApiError } from "../../shared/http/errors";
 
 export const DTS_RELOAD_AGENT_REFUSED_CODE = "dts-reload-agent-refused";
 
-export type DtsReloadMutatingAction = "start" | "deploy" | "restore";
+export type DtsReloadMutatingAction = "start" | "deploy" | "restore" | "configure";
 
 function requirePermission(auth: AuthContext, permission: BackendPermission) {
   if (!auth.user.isActive || !auth.permissions.includes(permission)) {
@@ -40,8 +40,13 @@ export function requireDtsReloadView(auth: AuthContext) {
 }
 
 /**
- * Refuse Agent actors from any DTS reload start / deploy / restore path.
+ * Refuse Agent actors from DTS reload mutating paths (start / deploy / restore / configure).
  * Sensitive-node Agent refusal remains as defence in depth for matched batches.
+ *
+ * Trust boundary: `actorType` is a caller-supplied in-process label (same pattern as
+ * `SensitiveWriteActorType` in parameters). It binds Agent tool / service callers that
+ * pass `actorType: "agent"`; an agent presenting a user HTTP token is indistinguishable
+ * from a human. See TD-068 / docs/SECURITY.md.
  */
 export async function assertDtsReloadHumanActor(
   db: Queryable,
@@ -69,7 +74,7 @@ export async function assertDtsReloadHumanActor(
     kind: "dts-reload-agent-refused",
     action: "deny",
     severity: "High",
-    targetType: input.runId ? "dts-reload-run" : "dts-reload",
+    targetType: input.runId ? "dts-reload-run" : input.action === "configure" ? "dts-reload-configuration" : "dts-reload",
     targetId: input.runId ?? input.projectId ?? "dts-reload",
     metadata: {
       code: DTS_RELOAD_AGENT_REFUSED_CODE,
@@ -82,7 +87,7 @@ export async function assertDtsReloadHumanActor(
 
   throw new ApiError(
     "FORBIDDEN",
-    "Agent actors cannot start, deploy, or restore DTS reload runs; a human operator is required.",
+    "Agent actors cannot start, deploy, restore, or configure DTS reload; a human operator is required.",
     403,
     {
       code: DTS_RELOAD_AGENT_REFUSED_CODE,
