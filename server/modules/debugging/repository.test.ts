@@ -9,6 +9,8 @@ import {
   createDebugParameter,
   createDebugSession,
   createDebugSnapshot,
+  ensureBridgeDebugDevice,
+  ensureDtsReloadLeaseSession,
   insertDebugEvent,
   insertNodeOperation,
   linkOperationSnapshot,
@@ -868,6 +870,74 @@ describe("debugging repository", () => {
       bridgeMachineLabel: null
     });
     expect(session.id).toEqual(expect.any(String));
+  });
+
+  it("ensureBridgeDebugDevice upserts bridge-backed debugging_devices", async () => {
+    const { db, calls } = createFakeDb([[]]);
+
+    await ensureBridgeDebugDevice(db, {
+      organizationId: "org-1",
+      deviceId: "bridge:br-1",
+      name: "lab-mac",
+      protocol: "hdc"
+    });
+
+    expect(calls[0].text).toContain("insert into debugging_devices");
+    expect(calls[0].values).toEqual(["bridge:br-1", "org-1", "lab-mac", "hdc"]);
+  });
+
+  it("ensureBridgeDebugDevice skips non-bridge device ids", async () => {
+    const { db, calls } = createFakeDb([[]]);
+
+    await ensureBridgeDebugDevice(db, {
+      organizationId: "org-1",
+      deviceId: "device-1",
+      name: "sim",
+      protocol: "hdc"
+    });
+
+    expect(calls).toHaveLength(0);
+  });
+
+  it("ensureDtsReloadLeaseSession upserts target then synthetic session", async () => {
+    const { db, calls } = createFakeDb([
+      (call) => [{ id: call.values[2] }],
+      []
+    ]);
+
+    await ensureDtsReloadLeaseSession(db, {
+      organizationId: "org-1",
+      sessionId: "dts-reload:run-1",
+      deviceId: "bridge:br-1",
+      bridgeId: "br-1",
+      bridgeMachineLabel: "lab-mac",
+      protocol: "hdc",
+      targetRef: "AURORA-001",
+      actorUserId: "user-1"
+    });
+
+    expect(calls[0].text).toContain("insert into debugging_targets");
+    expect(calls[0].values).toEqual([
+      "org-1",
+      "bridge:br-1",
+      "bridge:br-1:hdc:AURORA-001",
+      "br-1",
+      "hdc",
+      "AURORA-001",
+      "lab-mac"
+    ]);
+    expect(calls[1].text).toContain("insert into debugging_sessions");
+    expect(calls[1].values).toEqual([
+      "dts-reload:run-1",
+      "org-1",
+      "bridge:br-1",
+      "bridge:br-1:hdc:AURORA-001",
+      "hdc",
+      "br-1",
+      "lab-mac",
+      "node",
+      "user-1"
+    ]);
   });
 
   it("acquireDebugDeviceLease returns the lease when the device is claimable", async () => {

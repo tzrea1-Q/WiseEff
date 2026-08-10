@@ -1066,6 +1066,92 @@ export async function ensureBridgeDebugDevice(
   );
 }
 
+/**
+ * Ensure target + debugging_sessions rows exist for a DTS reload lease session id.
+ * `debug_device_leases.session_id` FKs `debugging_sessions`; deploy uses synthetic
+ * ids `dts-reload:{runId}` that are not created via node-debugging createSession.
+ */
+export async function ensureDtsReloadLeaseSession(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    sessionId: string;
+    deviceId: string;
+    bridgeId: string;
+    bridgeMachineLabel: string;
+    protocol: DebugConnectionProtocol;
+    targetRef: string;
+    actorUserId: string;
+  }
+) {
+  const targetId = `bridge:${input.bridgeId}:${input.protocol}:${input.targetRef}`;
+  const label = input.bridgeMachineLabel.trim() || input.targetRef;
+  const targetResult = await db.query<{ id: string }>(
+    `
+    insert into debugging_targets (
+      organization_id, device_id, id, bridge_id, protocol, target_ref, label, status
+    )
+    values ($1, $2, $3, $4, $5, $6, $7, 'detected')
+    on conflict (device_id, protocol, target_ref) do update
+    set label = excluded.label,
+      bridge_id = excluded.bridge_id,
+      status = 'detected',
+      detected_at = now()
+    returning id
+    `,
+    [
+      input.organizationId,
+      input.deviceId,
+      targetId,
+      input.bridgeId,
+      input.protocol,
+      input.targetRef,
+      label
+    ]
+  );
+  const resolvedTargetId = targetResult.rows[0]?.id ?? targetId;
+
+  await db.query(
+    `
+    insert into debugging_sessions (
+      id,
+      organization_id,
+      device_id,
+      target_id,
+      protocol,
+      execution_mode,
+      bridge_id,
+      bridge_machine_label,
+      session_kind,
+      actor_user_id,
+      status
+    )
+    values ($1, $2, $3, $4, $5, 'bridge', $6, $7, $8, $9, 'active')
+    on conflict (id) do update
+    set device_id = excluded.device_id,
+      target_id = excluded.target_id,
+      protocol = excluded.protocol,
+      execution_mode = excluded.execution_mode,
+      bridge_id = excluded.bridge_id,
+      bridge_machine_label = excluded.bridge_machine_label,
+      actor_user_id = excluded.actor_user_id,
+      status = 'active',
+      ended_at = null
+    `,
+    [
+      input.sessionId,
+      input.organizationId,
+      input.deviceId,
+      resolvedTargetId,
+      input.protocol,
+      input.bridgeId,
+      input.bridgeMachineLabel.trim() || null,
+      DEBUG_SESSION_KIND_NODE,
+      input.actorUserId
+    ]
+  );
+}
+
 export async function upsertDetectedTargets(
   db: Queryable,
   input: {
