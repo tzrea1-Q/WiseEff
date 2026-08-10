@@ -106,7 +106,7 @@ export function registerDtsReloadRoutes(
       db,
       objectStore,
       auth,
-      { projectId: params.projectId, bindingId: body.bindingId, debugValue: body.debugValue },
+      { projectId: params.projectId, targets: body.targets },
       { requestId: request.requestId }
     );
     return { status: 201, body: { item } };

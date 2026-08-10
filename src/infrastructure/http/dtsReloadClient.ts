@@ -55,8 +55,7 @@ export function createHttpDtsReloadRepository(options: HttpDtsReloadRepositoryOp
 
     async startRun(input: StartDtsReloadRunInput) {
       const response = await apiClient.post<ItemEnvelope<DtsReloadRun>>(runsPath(input.projectId), {
-        bindingId: input.bindingId,
-        debugValue: input.debugValue
+        targets: input.targets
       });
       return response.item;
     },

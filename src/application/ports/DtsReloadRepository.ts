@@ -7,8 +7,7 @@ import type {
 
 export type StartDtsReloadRunInput = {
   projectId: string;
-  bindingId: string;
-  debugValue: string;
+  targets: Array<{ bindingId: string; debugValue: string }>;
 };
 
 export interface DtsReloadRepository {

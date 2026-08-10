@@ -166,7 +166,7 @@ export async function listReloadCandidateRows(
       br.config_revision_id as config_revision_id,
       br.raw_value as baseline_value,
       psv.value_shape as value_shape,
-      psv.unit as unit,
+      psv.units as unit,
       coalesce(dps.constraints, '{}'::jsonb) as constraints
     from project_parameter_bindings b
     join parameter_specs ps on ps.id = b.parameter_spec_id
@@ -222,7 +222,7 @@ export async function getReloadCandidateRow(
       br.config_revision_id as config_revision_id,
       br.raw_value as baseline_value,
       psv.value_shape as value_shape,
-      psv.unit as unit,
+      psv.units as unit,
       coalesce(dps.constraints, '{}'::jsonb) as constraints
     from project_parameter_bindings b
     join parameter_specs ps on ps.id = b.parameter_spec_id

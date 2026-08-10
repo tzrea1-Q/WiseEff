@@ -1,8 +1,13 @@
 import { z } from "zod";
 
-export const startReloadRunBodySchema = z.object({
+export const startReloadRunTargetSchema = z.object({
   bindingId: z.string().min(1),
   debugValue: z.string().min(1)
+});
+
+/** Batch start body: one or more parameter debug values for a single reload run. */
+export const startReloadRunBodySchema = z.object({
+  targets: z.array(startReloadRunTargetSchema).min(1)
 });
 
 export const projectIdParamsSchema = z.object({

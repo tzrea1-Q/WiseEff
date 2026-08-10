@@ -1,6 +1,6 @@
 # DTS reload debugging (#280 series)
 
-> Status: **Active** — #281 merged; #282 reload configuration on `feat/dts-reload-configuration`
+> Status: **Active** — #281/#282 merged; #283 parameter breadth on `feat/dts-reload-parameter-breadth`
 > Date: 2026-08-10
 > Parent: GitHub [#280](https://github.com/tzrea1-Q/WiseEff/issues/280)
 > Tickets: #281–#290
@@ -21,8 +21,9 @@ Ship DTS reload debugging so hardware engineers can validate candidate library p
 | Ticket | Scope |
 | --- | --- |
 | #281 | Reload run skeleton: one scalar u32 → validated downloadable overlay (merged) |
-| #282 | Reload configuration governance + resolution entry point (`feat/dts-reload-configuration`) |
-| #283–#289 | Bridge deploy, multi-parameter, kernel log, residue, restore, history, sensitive-node, etc. |
+| #282 | Reload configuration governance + resolution entry point (merged) |
+| #283 | Parameter breadth: multi-node fragments, u32 arrays, string lists, filters (`feat/dts-reload-parameter-breadth`) |
+| #284–#289 | Sensitive-node, bridge deploy, kernel log, residue, restore, history |
 | #290 | Series closeout / archive this plan |
 
 ## Git & PR Workflow
@@ -42,6 +43,17 @@ Ship DTS reload debugging so hardware engineers can validate candidate library p
 - Mock mode: static unavailable only — no mock repository / fixtures / reducer actions
 - Degraded locator: refuse only when the parameter's own locator *is* a synthesised `/label` anchor, not when it is a descendant hanging under one
 - Kernel log command allowlist prefixes (server save + later bridge re-validate): `dmesg`, `hilog`, `cat /proc/kmsg`
+
+## #283 progress
+
+- Widened `isSupportedReloadValueShape` to u32 cell arrays + string lists
+- Batch start body `{ targets: [{ bindingId, debugValue }, ...] }`; overlay groups by node into `fragment@N`
+- Server refuses not-debuggable / constraint failures across the whole batch
+- Preflight tests cover multi-fragment atomic block + array/string-list assert-effect
+- `/dts-reload` multi-select + name/module/node filters; OpenAPI regenerated
+- Fixed candidate SQL `psv.units` (was `psv.unit`) and preflight decompile parse catch (no 500)
+- Browser evidence: `work/ui-checks/283-dts-reload-{desktop-1440,tablet-768,mobile-390}.png`
+- No migration (existing `dts_reload_run_targets` already multi-row)
 
 ## #282 progress
 

@@ -324,14 +324,20 @@ async function decompileNodes(
     return null;
   }
 
-  const resolved = resolveDts(parseDts(decompiled.stdout));
-  // `resolveDts` reports root-relative paths ("" for the root); device-tree targets are absolute.
-  return new Map(resolved.nodes.map((node) => [`/${node.nodePath}`, node]));
+  try {
+    const resolved = resolveDts(parseDts(decompiled.stdout));
+    // `resolveDts` reports root-relative paths ("" for the root); device-tree targets are absolute.
+    return new Map(resolved.nodes.map((node) => [`/${node.nodePath}`, node]));
+  } catch {
+    // Real vendor trees can decompile to forms our DTS lexer does not yet accept (for example
+    // bare byte arrays). Treat that as an unreadable tree rather than crashing the run request.
+    return null;
+  }
 }
 
 /**
- * Compare values by cell, not by text: `dtc` decompiles to hexadecimal while a debug value may be
- * entered in decimal, and both spellings mean the same device-tree value.
+ * Compare values by cell or string content, not by text spelling: `dtc` decompiles to
+ * hexadecimal while a debug value may be entered in decimal, and string quotes may differ.
  */
 function normalizeValue(value: DtsValue | undefined, fallback: string): string {
   if (value?.kind === "cells") {
@@ -339,6 +345,9 @@ function normalizeValue(value: DtsValue | undefined, fallback: string): string {
       group.map((cell) => (cell.kind === "integer" ? decimal(cell) : `&${cell.label}`)).join(" ")
     );
     return groups.map((group) => `<${group}>`).join(" ");
+  }
+  if (value?.kind === "strings") {
+    return value.values.map((entry) => JSON.stringify(entry)).join(", ");
   }
   return fallback.trim();
 }

@@ -3,7 +3,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { generateDebugOverlay } from "./debugOverlay";
+import { generateDebugOverlay, groupDebugOverlayTargets } from "./debugOverlay";
+import { parseDtsValue } from "../dts";
 
 const fixtureDir = join(dirname(fileURLToPath(import.meta.url)), "__fixtures__");
 
@@ -11,8 +12,16 @@ function u32Cell(raw: string) {
   return {
     kind: "cells" as const,
     bits: 32 as const,
-    groups: [[{ kind: "integer" as const, raw, value: String(Number(raw)) }]]
+    groups: [[{ kind: "integer" as const, raw, value: String(Number(raw.startsWith("0x") ? Number(raw) : raw)) }]]
   };
+}
+
+function cells(raw: string) {
+  return parseDtsValue("cells", raw).value;
+}
+
+function strings(raw: string) {
+  return parseDtsValue("strings", raw).value;
 }
 
 describe("generateDebugOverlay", () => {
@@ -61,5 +70,40 @@ describe("generateDebugOverlay", () => {
 
   it("refuses an empty target list rather than emitting an overlay that changes nothing", () => {
     expect(() => generateDebugOverlay([])).toThrow(/at least one target/);
+  });
+
+  it("groups multiple properties on the same node into one fragment and emits one fragment per node", async () => {
+    const expected = await readFile(join(fixtureDir, "multi-node.overlay.dts"), "utf8");
+    const targets = groupDebugOverlayTargets([
+      { nodePath: "/amba/i2c@FDF5E000/sc8562@6E", propertyKey: "watchdog_time", value: u32Cell("7000") },
+      { nodePath: "/amba/i2c@FDF5E000/sc8562@6E", propertyKey: "vout_ovp_mv", value: u32Cell("0x1770") },
+      { nodePath: "/amba/uart@FDF02000", propertyKey: "current-speed", value: u32Cell("115200") }
+    ]);
+
+    expect(targets).toHaveLength(2);
+    expect(targets[0]?.properties).toHaveLength(2);
+    expect(generateDebugOverlay(targets)).toBe(expected);
+  });
+
+  it("renders a multi-cell u32 array through the DTS value renderer", async () => {
+    const expected = await readFile(join(fixtureDir, "u32-array.overlay.dts"), "utf8");
+    const overlay = generateDebugOverlay([
+      {
+        nodePath: "/amba/i2c@FDF5E000/sc8562@6E",
+        properties: [{ name: "sense_r_config", value: cells("<100 200 300>") }]
+      }
+    ]);
+    expect(overlay).toBe(expected);
+  });
+
+  it("renders a string list through the DTS value renderer", async () => {
+    const expected = await readFile(join(fixtureDir, "string-list.overlay.dts"), "utf8");
+    const overlay = generateDebugOverlay([
+      {
+        nodePath: "/amba/i2c@FDF5E000/sc8562@6E",
+        properties: [{ name: "compatible", value: strings('"sc8562", "sc8562-v2"') }]
+      }
+    ]);
+    expect(overlay).toBe(expected);
   });
 });

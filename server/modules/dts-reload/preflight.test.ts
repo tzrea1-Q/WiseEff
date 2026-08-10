@@ -164,4 +164,143 @@ describe("runDebugOverlayPreflight", () => {
     expect(result.toolVersions.dtc).toMatch(/\d+\.\d+\.\d+/);
     expect(result.toolVersions.fdtoverlay).toMatch(/\d+\.\d+\.\d+/);
   });
+
+  it("asserts every property across every fragment in a multi-node batch", async () => {
+    const multiBase = `/dts-v1/;
+
+/ {
+	amba: amba {
+		i2c@FDF5E000 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			sc8562@6E {
+				compatible = "sc8562";
+				watchdog_time = <5000>;
+				vout_ovp_mv = <4000>;
+			};
+		};
+		uart@FDF02000 {
+			current-speed = <9600>;
+		};
+	};
+};
+`;
+    const targets = [
+      {
+        nodePath: NODE_PATH,
+        properties: [
+          { name: "watchdog_time", value: u32("6000") },
+          { name: "vout_ovp_mv", value: u32("5000") }
+        ]
+      },
+      {
+        nodePath: "/amba/uart@FDF02000",
+        properties: [{ name: "current-speed", value: u32("115200") }]
+      }
+    ];
+
+    const result = await runDebugOverlayPreflight({
+      baseSource: multiBase,
+      overlaySource: generateDebugOverlay(targets),
+      targets
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.observedValues).toEqual(
+      expect.arrayContaining([
+        { nodePath: NODE_PATH, propertyName: "watchdog_time", before: "<5000>", after: "<6000>" },
+        { nodePath: NODE_PATH, propertyName: "vout_ovp_mv", before: "<4000>", after: "<5000>" },
+        {
+          nodePath: "/amba/uart@FDF02000",
+          propertyName: "current-speed",
+          before: "<9600>",
+          after: "<115200>"
+        }
+      ])
+    );
+  });
+
+  it("blocks a multi-fragment batch as a whole when one fragment cannot apply", async () => {
+    const targets = [
+      target(NODE_PATH, "watchdog_time", "6000"),
+      target("/amba/uart@MISSING", "current-speed", "115200")
+    ];
+
+    const result = await runDebugOverlayPreflight({
+      baseSource: BASE_SOURCE,
+      overlaySource: generateDebugOverlay(targets),
+      targets
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.overlayBlob).toBeUndefined();
+    expect(result.diagnostics.some((d) => d.code === "target-node-missing")).toBe(true);
+  });
+
+  it("asserts a multi-cell array and a string-list property", async () => {
+    const shapedBase = `/dts-v1/;
+
+/ {
+	amba: amba {
+		i2c@FDF5E000 {
+			sc8562@6E {
+				sense_r_config = <1 2 3>;
+				compatible = "sc8562";
+			};
+		};
+	};
+};
+`;
+    const targets = [
+      {
+        nodePath: NODE_PATH,
+        properties: [
+          {
+            name: "sense_r_config",
+            value: {
+              kind: "cells" as const,
+              bits: 32 as const,
+              groups: [
+                [
+                  { kind: "integer" as const, raw: "10", value: "10" },
+                  { kind: "integer" as const, raw: "20", value: "20" },
+                  { kind: "integer" as const, raw: "30", value: "30" }
+                ]
+              ]
+            }
+          },
+          {
+            name: "compatible",
+            value: { kind: "strings" as const, values: ["sc8562", "sc8562-v2"] }
+          }
+        ]
+      }
+    ];
+
+    const result = await runDebugOverlayPreflight({
+      baseSource: shapedBase,
+      overlaySource: generateDebugOverlay(targets),
+      targets
+    });
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.ok).toBe(true);
+    expect(result.observedValues).toEqual(
+      expect.arrayContaining([
+        {
+          nodePath: NODE_PATH,
+          propertyName: "sense_r_config",
+          before: "<1 2 3>",
+          after: "<10 20 30>"
+        },
+        {
+          nodePath: NODE_PATH,
+          propertyName: "compatible",
+          before: '"sc8562"',
+          after: '"sc8562", "sc8562-v2"'
+        }
+      ])
+    );
+  });
 });

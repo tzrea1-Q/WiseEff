@@ -216,14 +216,153 @@ describe("startReloadRun", () => {
     await expect(
       startReloadRun(db, objectStore, auth(), {
         projectId: "project-1",
-        bindingId: "binding-1",
-        debugValue: "<99999>"
+        targets: [{ bindingId: "binding-1", debugValue: "<99999>" }]
       })
     ).rejects.toBeInstanceOf(ApiError);
 
     expect(put).not.toHaveBeenCalled();
     expect(calls.some((call) => call.text.includes("insert into dts_reload_runs"))).toBe(false);
   });
+
+  it("refuses a not-debuggable parameter through the API", async () => {
+    const { db } = createFakeDb([
+      [candidateRow({ binding_id: "binding-bad", node_path: "/amba" })]
+    ]);
+    const { objectStore, put } = makeObjectStore();
+
+    await expect(
+      startReloadRun(db, objectStore, auth(), {
+        projectId: "project-1",
+        targets: [{ bindingId: "binding-bad", debugValue: "<7000>" }]
+      })
+    ).rejects.toMatchObject({
+      code: "VALIDATION_FAILED",
+      details: { blockReason: "synthesised-anchor" }
+    });
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it("blocks the whole batch when one target violates constraints", async () => {
+    const { db, calls } = createFakeDb([
+      [candidateRow()],
+      [
+        candidateRow({
+          binding_id: "binding-2",
+          property_key: "vout_ovp_mv",
+          constraints: { min: 0, max: 10000, cells: 1 }
+        })
+      ]
+    ]);
+    const { objectStore, put } = makeObjectStore();
+
+    await expect(
+      startReloadRun(db, objectStore, auth(), {
+        projectId: "project-1",
+        targets: [
+          { bindingId: "binding-1", debugValue: "<7000>" },
+          { bindingId: "binding-2", debugValue: "<99999>" }
+        ]
+      })
+    ).rejects.toBeInstanceOf(ApiError);
+
+    expect(put).not.toHaveBeenCalled();
+    expect(calls.some((call) => call.text.includes("insert into dts_reload_runs"))).toBe(false);
+  });
+
+  it("persists a validated multi-node batch with one fragment per node", async () => {
+    const baseKey = "org-1/board.dts";
+    const multiBase = `/dts-v1/;
+
+/ {
+\tamba {
+\t\ti2c@FDF5E000 {
+\t\t\tsc8562@6E {
+\t\t\t\twatchdog_time = <6000>;
+\t\t\t\tvout_ovp_mv = <5000>;
+\t\t\t};
+\t\t};
+\t\tuart@FDF02000 {
+\t\t\tcurrent-speed = <9600>;
+\t\t};
+\t};
+};
+`;
+    const { objectStore, files } = makeObjectStore({ [baseKey]: Buffer.from(multiBase, "utf8") });
+
+    const { db } = createFakeDb([
+      [candidateRow()],
+      [
+        candidateRow({
+          binding_id: "binding-2",
+          property_key: "vout_ovp_mv",
+          baseline_value: "<5000>",
+          constraints: { min: 0, max: 20000, cells: 1 }
+        })
+      ],
+      [
+        candidateRow({
+          binding_id: "binding-3",
+          property_key: "current-speed",
+          node_path: "/amba/uart@FDF02000",
+          baseline_value: "<9600>",
+          constraints: { min: 0, max: 4000000, cells: 1 }
+        })
+      ],
+      ...fingerprintParts(),
+      [{ id: "cs-1" }],
+      [{ file_name: "board.dts", role: "base", sort_order: 0, storage_key: baseKey, format: "dts" }],
+      ...fingerprintParts(),
+      blockedOrValidatedInsert("validated"),
+      [],
+      [],
+      [],
+      [
+        {
+          binding_id: "binding-1",
+          node_path: "/amba/i2c@FDF5E000/sc8562@6E",
+          property_key: "watchdog_time",
+          baseline_value: "<6000>",
+          debug_value: "<7000>",
+          sort_order: 0
+        },
+        {
+          binding_id: "binding-2",
+          node_path: "/amba/i2c@FDF5E000/sc8562@6E",
+          property_key: "vout_ovp_mv",
+          baseline_value: "<5000>",
+          debug_value: "<0x1770>",
+          sort_order: 1
+        },
+        {
+          binding_id: "binding-3",
+          node_path: "/amba/uart@FDF02000",
+          property_key: "current-speed",
+          baseline_value: "<9600>",
+          debug_value: "<115200>",
+          sort_order: 2
+        }
+      ]
+    ]);
+
+    const result = await startReloadRun(db, objectStore, auth(), {
+      projectId: "project-1",
+      targets: [
+        { bindingId: "binding-1", debugValue: "<7000>" },
+        { bindingId: "binding-2", debugValue: "<0x1770>" },
+        { bindingId: "binding-3", debugValue: "<115200>" }
+      ]
+    });
+
+    expect(result.status).toBe("validated");
+    expect(result.overlaySource).toContain("fragment@0");
+    expect(result.overlaySource).toContain("fragment@1");
+    expect(result.overlaySource).toContain("watchdog_time = <7000>");
+    expect(result.overlaySource).toContain("vout_ovp_mv = <0x1770>");
+    expect(result.overlaySource).toContain("current-speed = <115200>");
+    expect(result.overlaySource).not.toMatch(/^&/m);
+    expect(result.artifact?.sha256).toMatch(/^sha-/);
+    expect(Object.keys(files).some((key) => key.endsWith(".dtbo"))).toBe(true);
+  }, 60_000);
 
   it("persists a validated run with overlay source and artifact, and leaves the library fingerprint unchanged", async () => {
     const baseKey = "org-1/board.dts";
@@ -251,8 +390,7 @@ describe("startReloadRun", () => {
 
     const result = await startReloadRun(db, objectStore, auth(), {
       projectId: "project-1",
-      bindingId: "binding-1",
-      debugValue: "<7000>"
+      targets: [{ bindingId: "binding-1", debugValue: "<7000>" }]
     });
 
     expect(result.status).toBe("validated");
@@ -294,8 +432,7 @@ describe("startReloadRun", () => {
 
     const result = await startReloadRun(db, objectStore, auth(), {
       projectId: "project-1",
-      bindingId: "binding-1",
-      debugValue: "<7000>"
+      targets: [{ bindingId: "binding-1", debugValue: "<7000>" }]
     });
 
     expect(result.status).toBe("blocked");
@@ -335,8 +472,7 @@ describe("startReloadRun", () => {
 
     const result = await startReloadRun(db, objectStore, auth(), {
       projectId: "project-1",
-      bindingId: "binding-1",
-      debugValue: "<7000>"
+      targets: [{ bindingId: "binding-1", debugValue: "<7000>" }]
     });
 
     expect(result.status).toBe("blocked");

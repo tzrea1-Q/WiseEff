@@ -795,7 +795,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse" }
   },
   "dtsReload.startRun": {
-    summary: "Start a DTS reload run for one scalar parameter (stops at validated overlay)",
+    summary: "Start a DTS reload run for a batch of parameters (stops at validated overlay)",
     tags: ["dts-reload"],
     requestBody: "StartDtsReloadRunRequest",
     responseBody: "DtsReloadRunResponse",

@@ -19,15 +19,28 @@ export type CandidateValueShape = {
 } | null;
 
 /**
- * This ticket supports exactly one unsigned 32-bit cell. Anything else is listed as
- * not-debuggable so later tickets can widen the shape matrix without silently guessing.
+ * Supported reload shapes for this surface: unsigned 32-bit cell arrays (any cell count /
+ * group count once the shape records bits=32 and cellsPerGroup) and string lists.
+ * Booleans, empty properties, byte arrays, phandle lists, and mixed values stay refused.
  */
 export function isSupportedReloadValueShape(valueShape: CandidateValueShape): boolean {
   if (!valueShape || typeof valueShape !== "object") return false;
+  if (valueShape.kind === "string-list") return true;
   if (valueShape.kind !== "cells") return false;
   if (valueShape.bits !== 32) return false;
-  if (valueShape.cellsPerGroup !== 1) return false;
-  if (valueShape.groups !== undefined && valueShape.groups !== 1) return false;
+  if (
+    typeof valueShape.cellsPerGroup !== "number" ||
+    !Number.isInteger(valueShape.cellsPerGroup) ||
+    valueShape.cellsPerGroup < 1
+  ) {
+    return false;
+  }
+  if (
+    valueShape.groups !== undefined &&
+    (typeof valueShape.groups !== "number" || !Number.isInteger(valueShape.groups) || valueShape.groups < 1)
+  ) {
+    return false;
+  }
   return true;
 }
 
