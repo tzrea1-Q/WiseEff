@@ -547,7 +547,9 @@ export function DtsReloadPage({
     [bridges, bridgeId]
   );
 
-  const selectedBridgeConnected = Boolean(selectedBridge && inferBridgeOnline(selectedBridge, bridgeHealth));
+  const selectedBridgeConnected = Boolean(
+    selectedBridge && inferBridgeOnline(selectedBridge, bridgeHealth, { healthExclusive: true })
+  );
 
   const bridgeReadinessLabel = useMemo(() => {
     if (bridgesLoading) return "正在检查 Bridge…";
@@ -1781,7 +1783,9 @@ export function DtsReloadPage({
                   bridges.map((bridge) => (
                     <option key={bridge.id} value={bridge.id}>
                       {bridge.machineLabel}
-                      {inferBridgeOnline(bridge, bridgeHealth) ? " · 已连接" : " · 未连接"}
+                      {inferBridgeOnline(bridge, bridgeHealth, { healthExclusive: true })
+                        ? " · 已连接"
+                        : " · 未连接"}
                     </option>
                   ))
                 )}
