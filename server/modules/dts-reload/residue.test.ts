@@ -34,6 +34,19 @@ function createResidueDb(seed: {
       return { rows: [residue] as Row[], rowCount: 1 };
     }
 
+    if (normalized.includes("delete from dts_reload_device_residue") && normalized.includes("source_run_id")) {
+      const matches =
+        residue !== null &&
+        residue.organization_id === values[0] &&
+        residue.device_id === values[1] &&
+        residue.source_run_id === values[2];
+      if (matches) {
+        residue = null;
+        return { rows: [] as Row[], rowCount: 1 };
+      }
+      return { rows: [] as Row[], rowCount: 0 };
+    }
+
     if (normalized.includes("delete from dts_reload_device_residue")) {
       const had = residue !== null;
       residue = null;
@@ -174,10 +187,58 @@ describe("dts-reload residue persistence", () => {
         runId: "run-restore",
         purpose: "restore-baseline",
         status: "unverifiable",
-        targets: targets.map((t) => ({ ...t, debugValue: t.baselineValue! }))
+        targets: targets.map((t) => ({ ...t, debugValue: t.baselineValue! })),
+        restoresSourceRunId: "run-ordinary"
       })
     ).toBe("clear");
     expect(getResidue()).toBeNull();
     expect(await clearDeviceResidue(db, { organizationId: "org-1", deviceId: "dev-1" })).toBe(false);
+  });
+
+  it("does not clear residue when restore targets a stale source run", async () => {
+    const { db, getResidue } = createResidueDb();
+    const targets = [
+      {
+        bindingId: "binding-1",
+        propertyKey: "watchdog_time",
+        nodePath: "/amba/i2c@1/dev@6E",
+        baselineValue: "<6000>",
+        debugValue: "<7000>"
+      }
+    ];
+
+    await applyResidueForDeployTerminal(db, {
+      organizationId: "org-1",
+      deviceId: "dev-1",
+      projectId: "project-1",
+      runId: "run-ordinary-1",
+      purpose: "ordinary",
+      status: "verified",
+      targets
+    });
+    await applyResidueForDeployTerminal(db, {
+      organizationId: "org-1",
+      deviceId: "dev-1",
+      projectId: "project-1",
+      runId: "run-ordinary-2",
+      purpose: "ordinary",
+      status: "unverifiable",
+      targets
+    });
+    expect(getResidue()?.source_run_id).toBe("run-ordinary-2");
+
+    expect(
+      await applyResidueForDeployTerminal(db, {
+        organizationId: "org-1",
+        deviceId: "dev-1",
+        projectId: "project-1",
+        runId: "run-restore-stale",
+        purpose: "restore-baseline",
+        status: "unverifiable",
+        targets: targets.map((t) => ({ ...t, debugValue: t.baselineValue! })),
+        restoresSourceRunId: "run-ordinary-1"
+      })
+    ).toBe("none");
+    expect(getResidue()?.source_run_id).toBe("run-ordinary-2");
   });
 });

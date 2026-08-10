@@ -145,6 +145,26 @@ export async function clearDeviceResidue(
   return (result.rowCount ?? 0) > 0;
 }
 
+/**
+ * Clear residue only when it still names the source run this restore targeted.
+ * Prevents a stale restore deploy from wiping bookkeeping refreshed by a newer ordinary reload.
+ */
+export async function clearDeviceResidueIfSource(
+  db: Queryable,
+  input: { organizationId: string; deviceId: string; sourceRunId: string }
+): Promise<boolean> {
+  const result = await db.query(
+    `
+    delete from dts_reload_device_residue
+    where organization_id = $1
+      and device_id = $2
+      and source_run_id = $3
+    `,
+    [input.organizationId, input.deviceId, input.sourceRunId]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
 export async function applyResidueForDeployTerminal(
   db: Queryable,
   input: {
@@ -155,6 +175,7 @@ export async function applyResidueForDeployTerminal(
     purpose: ReloadRunPurpose;
     status: ReloadRunStatus;
     targets: ReloadRunTargetDto[];
+    restoresSourceRunId?: string | null;
   }
 ): Promise<"set" | "clear" | "none"> {
   const action = residueActionForTerminal({ purpose: input.purpose, status: input.status });
@@ -169,11 +190,16 @@ export async function applyResidueForDeployTerminal(
     return "set";
   }
   if (action === "clear") {
-    await clearDeviceResidue(db, {
+    const sourceRunId = input.restoresSourceRunId?.trim();
+    if (!sourceRunId) {
+      return "none";
+    }
+    const cleared = await clearDeviceResidueIfSource(db, {
       organizationId: input.organizationId,
-      deviceId: input.deviceId
+      deviceId: input.deviceId,
+      sourceRunId
     });
-    return "clear";
+    return cleared ? "clear" : "none";
   }
   return "none";
 }

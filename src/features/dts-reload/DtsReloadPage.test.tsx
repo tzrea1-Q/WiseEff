@@ -35,6 +35,7 @@ function run(overrides: Partial<DtsReloadRun> = {}): DtsReloadRun {
     configRevisionId: null,
     status: "validated",
     purpose: "ordinary",
+    restoresSourceRunId: null,
     failureCode: null,
     targets: [
       {

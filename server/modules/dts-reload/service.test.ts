@@ -194,7 +194,9 @@ function blockedOrValidatedInsert(status: "blocked" | "validated"): QueuedResult
         overlay_artifact_bytes: call.values[14],
         created_by_user_id: "user-1",
         created_at: "2026-08-10T00:00:00.000Z",
-        completed_at: call.values[16]
+        completed_at: call.values[16],
+        device_id: call.values[17] ?? null,
+        restores_source_run_id: call.values[18] ?? null
       }
     ];
   };

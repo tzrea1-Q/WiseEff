@@ -177,6 +177,12 @@ export interface ReloadRunDto {
   configRevisionId: string | null;
   status: ReloadRunStatus;
   purpose: ReloadRunPurpose;
+  /**
+   * For restore-baseline runs: the residue source run this compensating reload targets.
+   * Used to clear residue only when it still names this source (stale restores must not
+   * wipe a newer ordinary reload's bookkeeping). Null for ordinary runs.
+   */
+  restoresSourceRunId: string | null;
   failureCode: string | null;
   targets: ReloadRunTargetDto[];
   steps: Array<PreflightStep | ReloadStep>;
@@ -190,6 +196,10 @@ export interface ReloadRunDto {
     sha256: string;
     sizeBytes: number;
   } | null;
+  /**
+   * Device id. For restore-baseline runs this is pinned at start and must match deploy.
+   * For ordinary runs it is typically null until deploy.
+   */
   deviceId: string | null;
   bridgeId: string | null;
   bridgeMachineLabel: string | null;

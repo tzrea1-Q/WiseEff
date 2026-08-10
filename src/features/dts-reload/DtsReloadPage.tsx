@@ -669,6 +669,7 @@ export function DtsReloadPage({
               configRevisionId: null,
               status: "unverifiable",
               purpose: "ordinary",
+              restoresSourceRunId: null,
               failureCode: null,
               targets: [
                 {
@@ -709,6 +710,7 @@ export function DtsReloadPage({
               configRevisionId: null,
               status: verifiedPreview ? "verified" : "unverifiable",
               purpose: "ordinary",
+              restoresSourceRunId: null,
               failureCode: null,
               targets: [
                 {
@@ -869,11 +871,19 @@ export function DtsReloadPage({
       writeRunIdToSearch(deployed.id);
       setDeployConfirmOpen(false);
       setPendingDeployRun(null);
+      const postWrite =
+        deployed.status === "unverifiable" ||
+        deployed.status === "verified" ||
+        deployed.status === "contradicted";
+      if (postWrite && deployed.purpose === "restore-baseline") {
+        // Optimistic clear so a failed residue refresh cannot leave a stale banner.
+        setResidue(null);
+      }
       try {
         const nextResidue = await repository!.getResidue(deviceId.trim());
         setResidue(nextResidue);
       } catch {
-        // Residue refresh is best-effort after deploy.
+        // Restore already cleared optimistically. Ordinary deploys keep prior residue on refresh failure.
       }
     } catch (error) {
       setDeployError(error instanceof Error ? error.message : "部署到设备失败。");

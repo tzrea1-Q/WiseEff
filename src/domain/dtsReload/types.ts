@@ -112,6 +112,8 @@ export type DtsReloadRun = {
   configRevisionId: string | null;
   status: DtsReloadRunStatus;
   purpose: DtsReloadRunPurpose;
+  /** Present on restore-baseline runs — residue source this compensating reload targets. */
+  restoresSourceRunId?: string | null;
   failureCode: string | null;
   targets: Array<{
     bindingId: string;

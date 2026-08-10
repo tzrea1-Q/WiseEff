@@ -6,12 +6,20 @@
 -- Rule:
 -- - SET when an ordinary run reaches a post-device-write terminal
 --   (unverifiable | verified | contradicted) — i.e. debug values were applied.
--- - CLEAR when a restore-baseline run reaches the same post-device-write terminals.
+-- - CLEAR when a restore-baseline run reaches the same post-device-write terminals
+--   AND the device's current residue still names the source run this restore targeted
+--   (`restores_source_run_id`). A newer ordinary reload that refreshed residue must not
+--   be cleared by a stale restore deploy.
 -- - blocked / failed-before-successful-trigger do NOT set residue.
 -- - A failed restore leaves residue in place.
+-- - Restore runs persist `device_id` + `restores_source_run_id` at start so deploy cannot
+--   retarget a different device.
 
 alter table dts_reload_runs
   add column if not exists purpose text not null default 'ordinary';
+
+alter table dts_reload_runs
+  add column if not exists restores_source_run_id text null references dts_reload_runs(id) on delete set null;
 
 alter table dts_reload_runs
   drop constraint if exists dts_reload_runs_purpose_check;

@@ -139,7 +139,9 @@ function createRestoreDb(options: { residue: Record<string, unknown> | null }) {
             overlay_artifact_bytes: values[14],
             created_by_user_id: values[15],
             created_at: "2026-08-10T00:00:00.000Z",
-            completed_at: values[16]
+            completed_at: values[16],
+            device_id: values[17] ?? null,
+            restores_source_run_id: values[18] ?? null
           }
         ] as Row[],
         rowCount: 1
@@ -239,6 +241,8 @@ describe("startRestoreBaselineRun", () => {
 
     expect(result.purpose).toBe("restore-baseline");
     expect(result.status).toBe("validated");
+    expect(result.deviceId).toBe("bridge:lab-1");
+    expect(result.restoresSourceRunId).toBe("run-residue");
     expect(result.targets[0]?.debugValue).toBe("<6000>");
     expect(inserts.some((row) => row.purpose === "restore-baseline")).toBe(true);
 

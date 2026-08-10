@@ -66,6 +66,10 @@ export type StartReloadRunInput = {
   targets: StartReloadRunTargetInput[];
   confirmationToken?: string;
   purpose?: ReloadRunPurpose;
+  /** Required when purpose is restore-baseline — pinned for deploy device checks. */
+  deviceId?: string;
+  /** Residue source run this restore compensates. */
+  restoresSourceRunId?: string;
 };
 
 export type RestoreBaselineInput = {
@@ -458,6 +462,25 @@ export async function startReloadRun(
   const purpose: ReloadRunPurpose = input.purpose ?? "ordinary";
   const audits = auditKindsForPurpose(purpose);
 
+  if (purpose === "restore-baseline") {
+    if (!input.deviceId?.trim()) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "restore-baseline runs require a pinned deviceId at start.",
+        400,
+        { code: "restore-device-required" }
+      );
+    }
+    if (!input.restoresSourceRunId?.trim()) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "restore-baseline runs require restoresSourceRunId naming the residue source run.",
+        400,
+        { code: "restore-source-run-required" }
+      );
+    }
+  }
+
   const resolved = await resolveStartTargets(db, auth, input);
   const sensitiveHits = await assertSensitiveReloadBatchAllowed(db, auth, {
     projectId: input.projectId,
@@ -531,6 +554,8 @@ export async function startReloadRun(
       projectId: input.projectId,
       configRevisionId,
       purpose,
+      deviceId: purpose === "restore-baseline" ? input.deviceId ?? null : null,
+      restoresSourceRunId: purpose === "restore-baseline" ? input.restoresSourceRunId ?? null : null,
       targets: resolved,
       status: "blocked",
       failureCode,
@@ -581,6 +606,8 @@ export async function startReloadRun(
     projectId: input.projectId,
     configRevisionId,
     purpose,
+    deviceId: purpose === "restore-baseline" ? input.deviceId ?? null : null,
+    restoresSourceRunId: purpose === "restore-baseline" ? input.restoresSourceRunId ?? null : null,
     targets: resolved,
     status,
     failureCode,
@@ -701,7 +728,9 @@ export async function startRestoreBaselineRun(
       projectId: input.projectId,
       targets,
       confirmationToken: input.confirmationToken,
-      purpose: "restore-baseline"
+      purpose: "restore-baseline",
+      deviceId: input.deviceId,
+      restoresSourceRunId: residue.sourceRunId
     },
     context
   );
@@ -728,6 +757,8 @@ async function persistRunOutcome(
     projectId: string;
     configRevisionId: string | null;
     purpose: ReloadRunPurpose;
+    deviceId?: string | null;
+    restoresSourceRunId?: string | null;
     targets: ResolvedReloadTarget[];
     status: ReloadRunStatus;
     failureCode: string | null;
@@ -770,6 +801,8 @@ async function persistRunOutcome(
       configRevisionId: input.configRevisionId,
       status: input.status,
       purpose: input.purpose,
+      deviceId: input.deviceId ?? null,
+      restoresSourceRunId: input.restoresSourceRunId ?? null,
       failureCode: input.failureCode,
       steps: input.steps,
       diagnostics: input.diagnostics,
@@ -903,6 +936,30 @@ export async function deployReloadRun(
     });
   }
 
+  if (run.purpose === "restore-baseline") {
+    if (!run.deviceId?.trim()) {
+      throw new ApiError(
+        "CONFLICT",
+        "Restore-baseline run is missing its pinned device id; refuse deploy.",
+        409,
+        { code: "restore-device-unpinned", runId: run.id }
+      );
+    }
+    if (input.deviceId !== run.deviceId) {
+      throw new ApiError(
+        "CONFLICT",
+        "Restore-baseline deploy must target the same device the restore run was started for.",
+        409,
+        {
+          code: "restore-device-mismatch",
+          runId: run.id,
+          pinnedDeviceId: run.deviceId,
+          deployDeviceId: input.deviceId
+        }
+      );
+    }
+  }
+
   const row = await getReloadRunRow(db, { organizationId: auth.organization.id, runId: input.runId });
   if (!row?.overlay_artifact_storage_key) {
     throw new ApiError("CONFLICT", "Reload run has no compiled overlay artifact to deploy.", 409, {
@@ -985,7 +1042,8 @@ export async function deployReloadRun(
         runId: result.id,
         purpose: result.purpose,
         status: result.status,
-        targets: result.targets
+        targets: result.targets,
+        restoresSourceRunId: result.restoresSourceRunId
       })
     : "none";
 
