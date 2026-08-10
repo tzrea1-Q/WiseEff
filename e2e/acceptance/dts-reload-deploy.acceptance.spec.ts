@@ -1,7 +1,11 @@
 /**
+ * @acceptance DTS-RELOAD-DEPLOY-001
  * @operation DTS-RELOAD-DEPLOY-001
+ * @acceptance DTS-RELOAD-KERNEL-001
  * @operation DTS-RELOAD-KERNEL-001
+ * @acceptance DTS-RELOAD-VERIFY-001
  * @operation DTS-RELOAD-VERIFY-001
+ * @acceptance DTS-RELOAD-RESIDUE-001
  * @operation DTS-RELOAD-RESIDUE-001
  *
  * Wiring proof for #285/#286/#287/#288: one fake bridge WebSocket client with
@@ -17,19 +21,19 @@ import WebSocket from "ws";
 
 import { DTS_RELOAD_BRIDGE_RPC_METHODS } from "@wiseeff/device-command-core/bridgeRpcMethods";
 
+import { acceptanceUserIdForRole, authHeadersForRole } from "./helpers/bearerAuth";
+
 const databaseUrl = process.env.DATABASE_URL?.trim() || "";
 const apiBase = process.env.VITE_WISEEFF_API_BASE_URL ?? process.env.WISEEFF_API_BASE_URL ?? "http://127.0.0.1:8787";
-const userId = "u-xu-yun";
+const userId = acceptanceUserIdForRole("admin");
 
 function apiRoute(path: string) {
   return new URL(path, apiBase).toString();
 }
 
-function smokeHeaders() {
-  return {
-    "content-type": "application/json",
-    "x-wiseeff-user": userId
-  };
+/** Bearer + x-wiseeff-user so the spec works under both AUTH_MODE=production (hmac) and development. */
+function authHeaders() {
+  return authHeadersForRole("admin");
 }
 
 function bridgeWebSocketUrl() {
@@ -43,7 +47,7 @@ function bridgeWebSocketUrl() {
 async function postJson<T>(page: Page, path: string, data: Record<string, unknown>) {
   const response = await page.request.post(apiRoute(path), {
     data,
-    headers: smokeHeaders()
+    headers: authHeaders()
   });
   const body = (await response.json().catch(() => null)) as T | { error?: { message?: string } } | null;
   expect(response.ok(), `${path} failed: ${JSON.stringify(body)}`).toBe(true);
@@ -60,7 +64,7 @@ async function pairBridge(page: Page) {
       arch: "amd64",
       clientVersion: "0.1.0-test"
     },
-    headers: smokeHeaders()
+    headers: authHeaders()
   });
   expect(paired.ok()).toBe(true);
   return (await paired.json()) as { bridgeId: string; bridgeToken: string };
@@ -238,7 +242,7 @@ test.describe("DTS reload deploy fake-bridge wiring", () => {
 
     try {
       // Resolve org/project from seeded M0/M1 user context via /api/v1/me and projects list.
-      const me = await page.request.get(apiRoute("/api/v1/me"), { headers: smokeHeaders() });
+      const me = await page.request.get(apiRoute("/api/v1/me"), { headers: authHeaders() });
       expect(me.ok()).toBe(true);
       const meBody = (await me.json()) as {
         user?: { id?: string; organizationId?: string };
@@ -247,7 +251,7 @@ test.describe("DTS reload deploy fake-bridge wiring", () => {
       const organizationId = meBody.organization?.id ?? meBody.user?.organizationId;
       expect(organizationId).toBeTruthy();
 
-      const projects = await page.request.get(apiRoute("/api/v1/projects"), { headers: smokeHeaders() });
+      const projects = await page.request.get(apiRoute("/api/v1/projects"), { headers: authHeaders() });
       expect(projects.ok()).toBe(true);
       const projectBody = (await projects.json()) as { items?: Array<{ id: string }> };
       const projectId = projectBody.items?.[0]?.id;
@@ -264,7 +268,7 @@ test.describe("DTS reload deploy fake-bridge wiring", () => {
       });
 
       const deploy = await page.request.post(apiRoute(`/api/v1/dts-reload/runs/${runId}/deploy`), {
-        headers: smokeHeaders(),
+        headers: authHeaders(),
         data: {
           deviceId: `bridge:${pair.bridgeId}`,
           bridgeId: pair.bridgeId,
@@ -298,7 +302,7 @@ test.describe("DTS reload deploy fake-bridge wiring", () => {
 
       const residueResponse = await page.request.get(
         apiRoute(`/api/v1/dts-reload/residue?deviceId=${encodeURIComponent(`bridge:${pair.bridgeId}`)}`),
-        { headers: smokeHeaders() }
+        { headers: authHeaders() }
       );
       const residueBody = await residueResponse.json().catch(() => null);
       expect(residueResponse.ok(), `residue failed: ${JSON.stringify(residueBody)}`).toBe(true);

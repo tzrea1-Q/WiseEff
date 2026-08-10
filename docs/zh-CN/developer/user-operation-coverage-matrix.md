@@ -28,8 +28,8 @@
 
 - `DTS-RELOAD-DEPLOY-001`：经假本地设备桥部署已校验 overlay（mount / pushFile / trigger）至 `unverifiable`；`coverage: automated`。
 - `DTS-RELOAD-KERNEL-001`：触发后内核日志为未判定证据；`coverage: automated`。
-- `DTS-RELOAD-VERIFY-001`：经 `debug.readNode` 行为核对；`coverage: automated`。
-- `DTS-RELOAD-RESIDUE-001`：残留记账与恢复基线；`coverage: automated`。
+- `DTS-RELOAD-VERIFY-001`：经 `debug.readNode` 行为核对；`coverage: automated`。验收 spec 只覆盖无绑定路径，升级判定由 `server/modules/dts-reload/deploy.test.ts` 断言。
+- `DTS-RELOAD-RESIDUE-001`：残留记账与恢复基线；`coverage: automated`。验收 spec 只覆盖残留已记录可读，补偿运行与清除规则由 `residue.test.ts` / `restoreBaseline.test.ts` 断言。
 - `DTS-RELOAD-DEPLOY-HW-001`：真实 HDC 目标条件部署；`coverage: conditional`。
 - `PARAM-ADMIN-003`：Admin 在 `/parameter-admin/projects` 确认项目清单在 ≤960px 卡片布局下状态、计数、最近更新、治理信号（冲突/基线）与行操作可见；Batch 1–3 以 CSS + playwright-cli 证据先行，专用 e2e 待后续。
 - `PARAM-INIT-WIZARD-001`：创建者完成项目参数初始化（选源 + 勾选）并进入待审阅；单测/服务端已覆盖；playwright-cli 证据见 `work/ui-checks/param-init/`；完整浏览器 e2e 待语义 binding 选择器落地后补。

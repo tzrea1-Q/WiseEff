@@ -693,10 +693,14 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "debugging",
     route: "/dts-reload",
     roles: ["Hardware Committer", "Admin"],
-    action: "After successful trigger, read bound parameters via debug.readNode and graduate to verified/contradicted or stay unverifiable.",
+    action:
+      "After successful trigger, read bound parameters via debug.readNode. The acceptance spec asserts the unbound path (no debug.readNode, run stays unverifiable); graduation to verified/contradicted is asserted by server tests.",
     coverage: "automated",
     acceptanceIds: ["DTS-RELOAD-VERIFY-001"],
-    specFiles: ["e2e/acceptance/dts-reload-deploy.acceptance.spec.ts"],
+    specFiles: [
+      "e2e/acceptance/dts-reload-deploy.acceptance.spec.ts",
+      "server/modules/dts-reload/deploy.test.ts"
+    ],
     assertions: ["api"]
   },
   {
@@ -705,10 +709,15 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "debugging",
     route: "/dts-reload",
     roles: ["Hardware Committer", "Admin"],
-    action: "Record reload residue after post-device-write terminals; restore-baseline starts a compensating run through the normal start/deploy path and clears residue only on success.",
+    action:
+      "Record reload residue after post-device-write terminals. The acceptance spec asserts residue is recorded and readable for the deployed device; the compensating restore-baseline run and clear-only-on-success rule are asserted by server tests.",
     coverage: "automated",
     acceptanceIds: ["DTS-RELOAD-RESIDUE-001"],
-    specFiles: ["e2e/acceptance/dts-reload-deploy.acceptance.spec.ts"],
+    specFiles: [
+      "e2e/acceptance/dts-reload-deploy.acceptance.spec.ts",
+      "server/modules/dts-reload/residue.test.ts",
+      "server/modules/dts-reload/restoreBaseline.test.ts"
+    ],
     assertions: ["api"]
   },
   {
