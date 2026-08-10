@@ -14,6 +14,10 @@ import type { AuthContext } from "../auth/types";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { resolveReloadConfiguration } from "./resolveConfiguration";
+import {
+  buildNotObtainedKernelSignal,
+  buildObtainedKernelSignal
+} from "./kernelSignal";
 import type {
   IntegrityCheckStrength,
   ReloadRunDto,
@@ -24,6 +28,7 @@ import {
   DEVICE_BRIDGE_RELEASES_PATH,
   DTS_RELOAD_CONFIRMATION_TOKEN,
   PUSH_FILE_MAX_BYTES,
+  RELOAD_KERNEL_LOG_TIMEOUT_MS,
   RELOAD_MOUNT_TIMEOUT_MS,
   RELOAD_PUSH_FILE_TIMEOUT_MS,
   RELOAD_TRIGGER_TIMEOUT_MS
@@ -45,6 +50,7 @@ export type DeployReloadDeps = {
   mountTimeoutMs?: number;
   pushFileTimeoutMs?: number;
   triggerTimeoutMs?: number;
+  kernelLogTimeoutMs?: number;
   pushFileMaxBytes?: number;
   now?: () => Date;
 };
@@ -562,13 +568,63 @@ export async function executeReloadDeploy(input: {
 
     markStep("trigger-reload", { outcome: "passed", completedAt: now().toISOString() });
 
+    // Capture kernel log evidence after a successful trigger. Never derive run outcome from log text.
+    const kernelLogTimeoutMs = deps.kernelLogTimeoutMs ?? RELOAD_KERNEL_LOG_TIMEOUT_MS;
+    let kernelSignal = buildNotObtainedKernelSignal({
+      command: configuration.kernelLogCommand,
+      captureError: "Kernel log capture did not run."
+    });
+    try {
+      const captureResult = await deps.bridgeRpcClient.call(
+        deploy.bridgeId,
+        "debug.readKernelLog",
+        {
+          protocol: deploy.protocol,
+          targetRef: deploy.targetRef,
+          command: configuration.kernelLogCommand
+        },
+        { timeoutMs: kernelLogTimeoutMs }
+      );
+      const rawText = typeof captureResult.text === "string" ? captureResult.text : "";
+      // Prefer non-empty verbatim text even when the bridge reports ok:false — kernel log lines
+      // may look like tool diagnostics, and the capture is unjudged evidence either way.
+      if (rawText.length > 0) {
+        kernelSignal = buildObtainedKernelSignal({
+          command: configuration.kernelLogCommand,
+          rawText,
+          truncated: captureResult.truncated === true,
+          targets: run.targets
+        });
+      } else if (captureResult.ok === true) {
+        kernelSignal = buildNotObtainedKernelSignal({
+          command: configuration.kernelLogCommand,
+          captureError: "Kernel log capture returned no text."
+        });
+      } else {
+        const message =
+          typeof captureResult.error === "string" && captureResult.error.trim()
+            ? captureResult.error
+            : "Kernel log capture failed.";
+        kernelSignal = buildNotObtainedKernelSignal({
+          command: configuration.kernelLogCommand,
+          captureError: message
+        });
+      }
+    } catch (error) {
+      kernelSignal = buildNotObtainedKernelSignal({
+        command: configuration.kernelLogCommand,
+        captureError: error instanceof Error && error.message.trim() ? error.message : "Kernel log capture threw."
+      });
+    }
+
     // Terminal: unverifiable reload — commands succeeded, no DT value read-back.
-    // #286 will hook kernel log capture after this trigger step and attach kernelSignal.
+    // Kernel log is unjudged evidence only; status stays unverifiable regardless of log content.
     const snapshot = buildReloadSnapshot({
       targets: run.targets,
       artifactSha256: contentSha256,
       onDeviceDigest: remoteDigest,
-      integrityCheck
+      integrityCheck,
+      kernelSignal
     });
 
     return input.persistProgress({

@@ -9,6 +9,7 @@
     "./bridgeRpcMethods": "./src/bridgeRpcMethods.ts",
     "./hdcRunner": "./src/hdcRunner.ts",
     "./hdcTargets": "./src/hdcTargets.ts",
+    "./kernelLogCommand": "./src/kernelLogCommand.ts",
     "./remoteNodeWrite": "./src/remoteNodeWrite.ts"
   }
 }

@@ -189,6 +189,11 @@ function stepOutcomeClass(outcome: string): string {
 
 function ReloadSnapshotSummary({ snapshot }: { snapshot: DtsReloadSnapshot }) {
   const digest = snapshot.artifactDigest;
+  const signal = snapshot.kernelSignal;
+  const obtained = signal?.captureStatus === "obtained";
+  const matchedGroups = signal?.matchedByParameter ?? [];
+  const hasMatches = matchedGroups.some((group) => group.lines.length > 0);
+
   return (
     <div className="rounded-md border bg-muted/20 p-3 text-xs">
       <p className="font-medium">重载快照</p>
@@ -204,11 +209,53 @@ function ReloadSnapshotSummary({ snapshot }: { snapshot: DtsReloadSnapshot }) {
           ) : null}
         </div>
       ) : null}
-      {snapshot.kernelSignal ? (
-        <p className="mt-2 text-muted-foreground">
-          内核日志命令：{snapshot.kernelSignal.command}
-          {snapshot.kernelSignal.excerpt ? ` · ${snapshot.kernelSignal.excerpt}` : ""}
-        </p>
+      {signal ? (
+        <div className="mt-3 space-y-2 border-t pt-3" aria-label="内核日志证据">
+          <p className="font-medium">内核日志证据（未判定）</p>
+          <p className="text-muted-foreground">
+            以下内容仅为采集到的内核日志证据。平台<strong>没有</strong>据此推断重载成功或失败，运行结果仍为「不可验证的重载」。
+          </p>
+          <p className="font-mono text-muted-foreground">命令：{signal.command}</p>
+          {obtained ? (
+            <>
+              {signal.truncated ? (
+                <p className="text-amber-900">采集文本已按字节上限截断。</p>
+              ) : null}
+              {hasMatches ? (
+                <div className="space-y-2" aria-label="按参数名分组的匹配行">
+                  {matchedGroups.map((group) =>
+                    group.lines.length > 0 ? (
+                      <div key={`${group.bindingId}-${group.parameterName}`}>
+                        <p className="font-medium font-mono">{group.parameterName}</p>
+                        <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded-md border bg-background p-2 font-mono text-[11px]">
+                          {group.lines.join("\n")}
+                        </pre>
+                      </div>
+                    ) : null
+                  )}
+                </div>
+              ) : (
+                <p className="text-muted-foreground">已采集到内核日志，但没有匹配到本运行参数名的行。</p>
+              )}
+              {signal.rawText ? (
+                <details className="rounded-md border bg-background p-2">
+                  <summary className="cursor-pointer font-medium">查看未过滤的完整采集</summary>
+                  <pre
+                    aria-label="未过滤的内核日志采集"
+                    className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap font-mono text-[11px]"
+                  >
+                    {signal.rawText}
+                  </pre>
+                </details>
+              ) : null}
+            </>
+          ) : (
+            <p className="text-muted-foreground">
+              未获得内核日志信号
+              {signal.captureError ? `：${signal.captureError}` : "。"}
+            </p>
+          )}
+        </div>
       ) : null}
     </div>
   );
@@ -444,6 +491,78 @@ export function DtsReloadPage({
           } catch {
             writeRunIdToSearch(null);
           }
+        }
+        // DEV-only visual QA hook for playwright-cli kernel-evidence screenshots (#286).
+        if (
+          import.meta.env.DEV &&
+          typeof window !== "undefined" &&
+          new URLSearchParams(window.location.search).get("uiPreview") === "kernel-signal"
+        ) {
+          setRun({
+            id: "preview-run",
+            projectId,
+            configRevisionId: null,
+            status: "unverifiable",
+            failureCode: null,
+            targets: [
+              {
+                bindingId: "binding-1",
+                nodePath: "/amba/i2c@1/dev@6E",
+                propertyKey: "watchdog_time",
+                baselineValue: "<6000>",
+                debugValue: "<7000>"
+              }
+            ],
+            steps: [
+              { step: "mount-target", outcome: "passed" },
+              { step: "transfer-artifact", outcome: "passed" },
+              { step: "trigger-reload", outcome: "passed" }
+            ],
+            diagnostics: [],
+            toolVersions: { dtc: "1.7.0", fdtoverlay: "1.7.0" },
+            overlaySource: null,
+            overlaySourceSha256: null,
+            artifact: null,
+            deviceId: "bridge:preview",
+            bridgeId: "bridge-preview",
+            bridgeMachineLabel: "Preview Lab",
+            targetRef: "AURORA-PREVIEW",
+            protocol: "hdc",
+            integrityCheck: "sha256",
+            reloadSnapshot: {
+              libraryBaselines: [
+                {
+                  bindingId: "binding-1",
+                  propertyKey: "watchdog_time",
+                  nodePath: "/amba/i2c@1/dev@6E",
+                  baselineValue: "<6000>"
+                }
+              ],
+              artifactDigest: {
+                sha256: "preview-sha",
+                onDeviceDigest: "preview-sha",
+                integrityCheck: "sha256"
+              },
+              kernelSignal: {
+                command: "dmesg",
+                captureStatus: "obtained",
+                captureError: null,
+                rawText: "kernel: watchdog_time applied\nkernel: overlay reload ok\n",
+                truncated: false,
+                matchedByParameter: [
+                  {
+                    parameterName: "watchdog_time",
+                    bindingId: "binding-1",
+                    lines: ["kernel: watchdog_time applied"]
+                  }
+                ],
+                excerpt: null
+              }
+            },
+            createdAt: "2026-08-10T00:00:00.000Z",
+            completedAt: "2026-08-10T00:00:02.000Z"
+          });
+          return;
         }
         setRun(null);
       })

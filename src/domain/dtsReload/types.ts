@@ -47,6 +47,23 @@ export type DtsReloadRunStatus =
 
 export type DtsReloadIntegrityCheck = "sha256" | "md5" | "byte-length";
 
+export type DtsReloadKernelSignalCaptureStatus = "obtained" | "not-obtained";
+
+export type DtsReloadKernelSignal = {
+  command: string;
+  captureStatus: DtsReloadKernelSignalCaptureStatus;
+  captureError: string | null;
+  rawText: string | null;
+  truncated: boolean;
+  matchedByParameter: Array<{
+    parameterName: string;
+    bindingId: string;
+    lines: string[];
+  }>;
+  /** Legacy stub; prefer rawText. */
+  excerpt: string | null;
+};
+
 export type DtsReloadSnapshot = {
   libraryBaselines: Array<{
     bindingId: string;
@@ -59,7 +76,7 @@ export type DtsReloadSnapshot = {
     onDeviceDigest: string | null;
     integrityCheck: DtsReloadIntegrityCheck | null;
   } | null;
-  kernelSignal: { command: string; excerpt: string | null } | null;
+  kernelSignal: DtsReloadKernelSignal | null;
 };
 
 export type DtsReloadRun = {
@@ -146,14 +163,8 @@ export const dtsReloadStatusLabels: Record<DtsReloadRunStatus, string> = {
   failed: "部署失败"
 };
 
-/** Closed allowlist of exact kernel log commands — must stay aligned with server validation. */
-export const KERNEL_LOG_COMMAND_ALLOWLIST = [
-  "dmesg",
-  "dmesg -T",
-  "hilog",
-  "hilog -x",
-  "cat /proc/kmsg"
-] as const;
-
-/** Tool families shown in admin copy; prefer KERNEL_LOG_COMMAND_ALLOWLIST for validation. */
-export const KERNEL_LOG_COMMAND_ALLOWLIST_PREFIXES = ["dmesg", "hilog", "cat /proc/kmsg"] as const;
+/** Closed allowlist of exact kernel log commands — shared with bridge/server via device-command-core. */
+export {
+  KERNEL_LOG_COMMAND_ALLOWLIST,
+  KERNEL_LOG_COMMAND_ALLOWLIST_PREFIXES
+} from "@wiseeff/device-command-core/kernelLogCommand";

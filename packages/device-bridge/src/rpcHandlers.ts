@@ -5,6 +5,11 @@ import { join } from "node:path";
 
 import { BRIDGE_RPC_METHODS, type BridgeRpcMethod } from "@wiseeff/device-command-core/bridgeRpcMethods";
 import {
+  isAllowedKernelLogCommand,
+  KERNEL_LOG_CAPTURE_MAX_BYTES,
+  truncateKernelLogText
+} from "@wiseeff/device-command-core/kernelLogCommand";
+import {
   buildRemoteWriteShellCommand,
   normalizeRemoteReadValue,
   remoteShellDiagnostic,
@@ -122,6 +127,7 @@ export function createRpcHandlers(options: {
   capabilityProbeTimeoutMs?: number;
   mountTimeoutMs?: number;
   pushFileTimeoutMs?: number;
+  kernelLogTimeoutMs?: number;
 } = {}) {
   const adbCommand = options.adbCommand ?? "adb";
   const hdcCommand = options.hdcCommand ?? "hdc";
@@ -132,6 +138,7 @@ export function createRpcHandlers(options: {
   const capabilityProbeTimeoutMs = options.capabilityProbeTimeoutMs ?? 2_000;
   const mountTimeoutMs = options.mountTimeoutMs ?? 15_000;
   const pushFileTimeoutMs = options.pushFileTimeoutMs ?? 30_000;
+  const kernelLogTimeoutMs = options.kernelLogTimeoutMs ?? 10_000;
   const digestToolCache = new Map<string, IntegrityCheckStrength>();
 
   async function readNode(params: Record<string, unknown>) {
@@ -337,6 +344,60 @@ export function createRpcHandlers(options: {
     }
   }
 
+  async function readKernelLog(params: Record<string, unknown>) {
+    const protocol = requireSupportedProtocol(params.protocol);
+    const targetRef = readRequiredString(params.targetRef, "targetRef");
+    const command = readRequiredString(params.command, "command");
+
+    if (!isAllowedKernelLogCommand(command)) {
+      throw new RpcRequestError(
+        "COMMAND_NOT_ALLOWED",
+        `Kernel log command is not on the bridge allowlist. Refusing execution.`
+      );
+    }
+
+    // Pass the exact allowlisted string as a single shell argument — never append caller argv.
+    const runner = protocol === "hdc" ? hdcRunner : adbRunner;
+    const shellArgs =
+      protocol === "hdc"
+        ? ["-t", targetRef, "shell", command]
+        : ["-s", targetRef, "shell", command];
+    const result = await runner(shellArgs, { timeoutMs: kernelLogTimeoutMs });
+
+    // Streaming readers (e.g. cat /proc/kmsg) may time out with partial stdout; keep non-empty text.
+    // Do NOT run remoteShellDiagnostic over kernel log stdout — real dmesg/hilog lines often contain
+    // [Fail], [E######], or "Permission denied" substrings that are evidence, not tool diagnostics.
+    const rawStdout = typeof result.stdout === "string" ? result.stdout : "";
+    const capped = truncateKernelLogText(rawStdout, KERNEL_LOG_CAPTURE_MAX_BYTES);
+    const hasText = capped.text.length > 0;
+    if (hasText) {
+      return {
+        ok: true,
+        text: capped.text,
+        truncated: capped.truncated,
+        byteLength: capped.byteLength,
+        maxBytes: KERNEL_LOG_CAPTURE_MAX_BYTES,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        durationMs: result.durationMs
+      };
+    }
+
+    const diagnostic = remoteShellDiagnostic({ stdout: "", stderr: result.stderr ?? "" });
+    const ok = result.code === 0 && !result.timedOut && !diagnostic;
+    return {
+      ok,
+      text: "",
+      truncated: false,
+      byteLength: 0,
+      maxBytes: KERNEL_LOG_CAPTURE_MAX_BYTES,
+      error: ok ? undefined : commandFailureMessage(protocol, result),
+      stdout: result.stdout,
+      stderr: result.stderr,
+      durationMs: result.durationMs
+    };
+  }
+
   return {
     async handle(method: RpcMethod, params: Record<string, unknown>): Promise<RpcMethodResult> {
       switch (method) {
@@ -441,6 +502,8 @@ export function createRpcHandlers(options: {
           return mountTarget(params);
         case "debug.pushFile":
           return pushFile(params);
+        case "debug.readKernelLog":
+          return readKernelLog(params);
         default:
           throw new RpcRequestError("METHOD_NOT_FOUND", `Unsupported RPC method: ${method}`);
       }

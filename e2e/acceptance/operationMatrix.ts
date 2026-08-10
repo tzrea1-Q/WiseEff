@@ -669,9 +669,21 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "debugging",
     route: "/dts-reload",
     roles: ["Hardware Committer", "Admin"],
-    action: "Deploy a validated reload overlay through a fake local device bridge (mount, pushFile, trigger).",
+    action: "Deploy a validated reload overlay through a fake local device bridge (mount, pushFile, trigger, readKernelLog).",
     coverage: "automated",
     acceptanceIds: ["DTS-RELOAD-DEPLOY-001"],
+    specFiles: ["e2e/acceptance/dts-reload-deploy.acceptance.spec.ts"],
+    assertions: ["api"]
+  },
+  {
+    id: "DTS-RELOAD-KERNEL-001",
+    priority: "P0",
+    area: "debugging",
+    route: "/dts-reload",
+    roles: ["Hardware Committer", "Admin"],
+    action: "Capture unjudged kernel log evidence after a successful reload trigger via debug.readKernelLog.",
+    coverage: "automated",
+    acceptanceIds: ["DTS-RELOAD-KERNEL-001"],
     specFiles: ["e2e/acceptance/dts-reload-deploy.acceptance.spec.ts"],
     assertions: ["api"]
   },
@@ -686,7 +698,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     acceptanceIds: ["DTS-RELOAD-DEPLOY-HW-001"],
     specFiles: ["e2e/acceptance/dts-reload-deploy.acceptance.spec.ts"],
     assertions: ["api"],
-    deferralReason: "Requires DEVICE_BRIDGE_HDC_AVAILABLE=true, a paired bridge with mountTarget/pushFile, USB device, and an approved lab reload destination."
+    deferralReason: "Requires DEVICE_BRIDGE_HDC_AVAILABLE=true, a paired bridge with mountTarget/pushFile/readKernelLog, USB device, and an approved lab reload destination."
   },
   {
     id: "HDC-LAB-001",

@@ -281,6 +281,15 @@ describe("deployReloadRun", () => {
         if (method === "debug.writeNode") {
           return { ok: true, verified: true, writeResult: { ok: true } };
         }
+        if (method === "debug.readKernelLog") {
+          return {
+            ok: true,
+            text: "kernel: watchdog_time applied\nkernel: overlay reload ok\n",
+            truncated: false,
+            byteLength: 58,
+            maxBytes: 256 * 1024
+          };
+        }
         throw new Error(`unexpected ${method}`);
       })
     };
@@ -308,7 +317,18 @@ describe("deployReloadRun", () => {
     expect(result.integrityCheck).toBe("sha256");
     expect(result.reloadSnapshot?.libraryBaselines[0]?.baselineValue).toBe("<6000>");
     expect(result.reloadSnapshot?.artifactDigest?.integrityCheck).toBe("sha256");
-    expect(result.reloadSnapshot?.kernelSignal).toBeNull();
+    expect(result.reloadSnapshot?.kernelSignal).toMatchObject({
+      command: "dmesg",
+      captureStatus: "obtained",
+      rawText: "kernel: watchdog_time applied\nkernel: overlay reload ok\n",
+      matchedByParameter: [
+        {
+          parameterName: "watchdog_time",
+          bindingId: "b1",
+          lines: ["kernel: watchdog_time applied"]
+        }
+      ]
+    });
     expect(result.steps.map((step) => [step.step, step.outcome])).toEqual([
       ["compile-base", "passed"],
       ["compile-overlay", "passed"],
@@ -346,6 +366,13 @@ describe("deployReloadRun", () => {
         value: "1",
         readBack: false
       }),
+      { timeoutMs: 10_000 }
+    );
+    expect(bridgeRpcClient.call).toHaveBeenNthCalledWith(
+      5,
+      "br-1",
+      "debug.readKernelLog",
+      { protocol: "hdc", targetRef: "AURORA-001", command: "dmesg" },
       { timeoutMs: 10_000 }
     );
     expect(acquireDebugDeviceLease).toHaveBeenCalled();
@@ -611,5 +638,186 @@ describe("deployReloadRun", () => {
     });
     expect(statuses).toEqual(["deploying", "deploying", "failed"]);
     expect(releaseDebugDeviceLease).toHaveBeenCalled();
+  });
+
+  async function runSuccessfulDeployThroughTrigger(bridgeRpcClient: { call: ReturnType<typeof vi.fn> }) {
+    const artifactBytes = Buffer.from("dtbo");
+    const artifactSha = createHash("sha256").update(artifactBytes).digest("hex");
+    const runRow = validatedRunRow({ overlay_artifact_sha256: artifactSha, overlay_artifact_bytes: artifactBytes.length });
+    const targetRows = [
+      {
+        binding_id: "b1",
+        node_path: "/amba/i2c@1/node",
+        property_key: "watchdog_time",
+        baseline_value: "<6000>",
+        debug_value: "<7000>",
+        sort_order: 0
+      }
+    ];
+    const persist = (call: QueryCall) => [
+      {
+        ...runRow,
+        status: call.values[2],
+        failure_code: call.values[3],
+        steps: JSON.parse(String(call.values[4])),
+        reload_snapshot: JSON.parse(String(call.values[11])),
+        integrity_check: call.values[10],
+        completed_at: call.values[12],
+        device_id: call.values[5],
+        bridge_id: call.values[6],
+        bridge_machine_label: call.values[7],
+        target_ref: call.values[8],
+        protocol: call.values[9]
+      }
+    ];
+    const { db } = createFakeDb([
+      () => [runRow],
+      () => targetRows,
+      () => [runRow],
+      persist,
+      persist,
+      persist,
+      persist,
+      persist
+    ]);
+    const objectStore: ObjectStore = {
+      put: vi.fn(),
+      get: vi.fn(async (key) => (key === "art-key" ? artifactBytes : Buffer.from("src"))),
+      delete: vi.fn()
+    };
+    return deployReloadRun(
+      db,
+      objectStore,
+      auth(),
+      {
+        runId: "run-1",
+        deviceId: "dev-1",
+        bridgeId: "br-1",
+        targetRef: "AURORA-001",
+        protocol: "hdc",
+        confirmationTokens: [DTS_RELOAD_CONFIRMATION_TOKEN]
+      },
+      {
+        bridgeRpcClient,
+        bridgeConnectionPool: { isConnected: () => true }
+      }
+    );
+  }
+
+  function successfulDeployRpcHandlers(
+    readKernelLog: () => Record<string, unknown> | Promise<Record<string, unknown>>
+  ) {
+    const artifactSha = createHash("sha256").update("dtbo").digest("hex");
+    return vi.fn(async (_bridgeId: string, method: string) => {
+      if (method === "bridge.getCapabilities") {
+        return { methods: [...DTS_RELOAD_BRIDGE_RPC_METHODS, "bridge.getCapabilities"] };
+      }
+      if (method === "debug.mountTarget") return { ok: true };
+      if (method === "debug.pushFile") {
+        return { ok: true, localDigest: artifactSha, remoteDigest: artifactSha, integrityCheck: "sha256" };
+      }
+      if (method === "debug.writeNode") return { ok: true, verified: true };
+      if (method === "debug.readKernelLog") return readKernelLog();
+      throw new Error(`unexpected ${method}`);
+    });
+  }
+
+  it("never interpolates parameter names into the kernel log bridge RPC params", async () => {
+    const bridgeRpcClient = {
+      call: successfulDeployRpcHandlers(() => ({
+        ok: true,
+        text: "kernel: watchdog_time applied\n",
+        truncated: false
+      }))
+    };
+
+    await runSuccessfulDeployThroughTrigger(bridgeRpcClient);
+
+    const kernelCall = bridgeRpcClient.call.mock.calls.find((call) => call[1] === "debug.readKernelLog");
+    expect(kernelCall).toBeDefined();
+    const params = kernelCall![2] as Record<string, unknown>;
+    expect(params).toEqual({
+      protocol: "hdc",
+      targetRef: "AURORA-001",
+      command: "dmesg"
+    });
+    expect(JSON.stringify(params)).not.toContain("watchdog_time");
+    expect(JSON.stringify(params)).not.toContain("b1");
+  });
+
+  it("does not derive run outcome from kernel log text that mentions errors", async () => {
+    const bridgeRpcClient = {
+      call: successfulDeployRpcHandlers(() => ({
+        ok: true,
+        text: "kernel: FATAL error failed overlay apply\n",
+        truncated: false
+      }))
+    };
+
+    const result = await runSuccessfulDeployThroughTrigger(bridgeRpcClient);
+
+    expect(result.status).toBe("unverifiable");
+    expect(result.failureCode).toBeNull();
+    expect(result.reloadSnapshot?.kernelSignal?.captureStatus).toBe("obtained");
+    expect(result.reloadSnapshot?.kernelSignal?.rawText).toContain("FATAL error");
+  });
+
+  it("keeps capture failure distinct from obtained-with-no-matching-lines and does not fail the run", async () => {
+    const failedClient = {
+      call: successfulDeployRpcHandlers(() => ({
+        ok: false,
+        error: "HDC exited with 1.",
+        text: "",
+        truncated: false
+      }))
+    };
+    const noMatchClient = {
+      call: successfulDeployRpcHandlers(() => ({
+        ok: true,
+        text: "kernel: boot complete without parameter names\n",
+        truncated: false
+      }))
+    };
+
+    const failed = await runSuccessfulDeployThroughTrigger(failedClient);
+    const noMatch = await runSuccessfulDeployThroughTrigger(noMatchClient);
+
+    expect(failed.status).toBe("unverifiable");
+    expect(failed.reloadSnapshot?.kernelSignal).toMatchObject({
+      captureStatus: "not-obtained",
+      rawText: null,
+      captureError: "HDC exited with 1."
+    });
+
+    expect(noMatch.status).toBe("unverifiable");
+    expect(noMatch.reloadSnapshot?.kernelSignal).toMatchObject({
+      captureStatus: "obtained",
+      rawText: "kernel: boot complete without parameter names\n",
+      captureError: null
+    });
+    expect(noMatch.reloadSnapshot?.kernelSignal?.matchedByParameter.every((group) => group.lines.length === 0)).toBe(
+      true
+    );
+  });
+
+  it("keeps verbatim kernel log text when the bridge reports ok:false with non-empty text", async () => {
+    const logText = "[Fail] overlay reported\n[E123456] probe failed\nwatchdog_time applied\n";
+    const bridgeRpcClient = {
+      call: successfulDeployRpcHandlers(() => ({
+        ok: false,
+        error: "looked like a diagnostic",
+        text: logText,
+        truncated: false
+      }))
+    };
+
+    const result = await runSuccessfulDeployThroughTrigger(bridgeRpcClient);
+
+    expect(result.status).toBe("unverifiable");
+    expect(result.reloadSnapshot?.kernelSignal).toMatchObject({
+      captureStatus: "obtained",
+      rawText: logText,
+      captureError: null
+    });
   });
 });

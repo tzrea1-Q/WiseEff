@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  isAllowedKernelLogCommand,
   KERNEL_LOG_COMMAND_ALLOWLIST,
   SEEDED_RELOAD_CONFIGURATION
 } from "./configurationTypes";
 import {
   assertReloadConfigurationContract,
   isAbsoluteUnixPath,
-  isAllowedKernelLogCommand,
   isValidDestinationFilename,
   parseReloadConfigurationContract
 } from "./configurationValidation";

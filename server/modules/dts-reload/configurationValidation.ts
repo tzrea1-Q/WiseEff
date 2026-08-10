@@ -1,11 +1,10 @@
 import { ApiError } from "../../shared/http/errors";
 import {
+  isAllowedKernelLogCommand,
   KERNEL_LOG_COMMAND_ALLOWLIST,
   KERNEL_LOG_COMMAND_ALLOWLIST_PREFIXES,
   type ReloadConfigurationContract
 } from "./configurationTypes";
-
-const DISALLOWED_KERNEL_LOG_CHARS = /[\u0000-\u001f\u007f;&|`$<>(){}[\]\\]/;
 
 /**
  * Absolute Unix path with no `..` segments. Trailing slash is allowed for directories.
@@ -27,19 +26,6 @@ export function isValidDestinationFilename(value: string): boolean {
   if (value.includes("/") || value.includes("\\") || value.includes("\0")) return false;
   if (value === "." || value === ".." || value.includes("..")) return false;
   return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value);
-}
-
-/**
- * A saved kernel log command must exactly match a closed allowlist entry.
- * Newlines, control characters, and shell metacharacters are rejected before the membership check.
- */
-export function isAllowedKernelLogCommand(value: string): boolean {
-  if (typeof value !== "string") return false;
-  if (DISALLOWED_KERNEL_LOG_CHARS.test(value)) return false;
-  const trimmed = value.trim();
-  if (!trimmed) return false;
-  // Exact match only — no prefix acceptance, no extra argv after `cat /proc/kmsg`.
-  return (KERNEL_LOG_COMMAND_ALLOWLIST as readonly string[]).includes(trimmed);
 }
 
 export function parseReloadConfigurationContract(input: unknown): ReloadConfigurationContract {

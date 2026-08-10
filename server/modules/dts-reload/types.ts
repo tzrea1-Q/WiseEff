@@ -76,6 +76,41 @@ export interface ReloadStep {
   detail?: Record<string, unknown>;
 }
 
+/**
+ * Unjudged kernel log evidence attached to a reload snapshot (#286).
+ *
+ * Matching identity: each run target's `propertyKey` (DTS property / parameter name).
+ * Filtering is server-side only — parameter names never enter bridge RPC params.
+ *
+ * captureStatus distinguishes:
+ * - obtained: bridge returned non-empty raw text (matchedByParameter may still be empty)
+ * - not-obtained: capture failed, threw, returned empty, or otherwise yielded no signal
+ */
+export type KernelSignalCaptureStatus = "obtained" | "not-obtained";
+
+export interface KernelSignalMatchedGroup {
+  /** Target propertyKey used for substring matching against log lines. */
+  parameterName: string;
+  bindingId: string;
+  lines: string[];
+}
+
+export interface KernelSignalDto {
+  command: string;
+  captureStatus: KernelSignalCaptureStatus;
+  /** Set when captureStatus is not-obtained; null when obtained. */
+  captureError: string | null;
+  /** Verbatim capture text when obtained; null when not-obtained. */
+  rawText: string | null;
+  truncated: boolean;
+  matchedByParameter: KernelSignalMatchedGroup[];
+  /**
+   * Legacy stub field from pre-#286 rows (`{ command, excerpt }`). Prefer rawText.
+   * When parsing legacy rows, excerpt is preserved and also mapped into rawText when present.
+   */
+  excerpt: string | null;
+}
+
 export interface ReloadSnapshotDto {
   libraryBaselines: Array<{
     bindingId: string;
@@ -89,8 +124,8 @@ export interface ReloadSnapshotDto {
     /** Strength actually achieved — never report byte-length as a digest match. */
     integrityCheck: IntegrityCheckStrength | null;
   } | null;
-  /** Filled by #286 when kernel log capture lands; null until then. */
-  kernelSignal: { command: string; excerpt: string | null } | null;
+  /** Kernel log evidence after a successful trigger; null when deploy never reached capture. */
+  kernelSignal: KernelSignalDto | null;
 }
 
 export interface ReloadRunTargetDto {
@@ -138,5 +173,6 @@ export const PUSH_FILE_MAX_BYTES = 1 * 1024 * 1024;
 export const RELOAD_MOUNT_TIMEOUT_MS = 15_000;
 export const RELOAD_PUSH_FILE_TIMEOUT_MS = 30_000;
 export const RELOAD_TRIGGER_TIMEOUT_MS = 10_000;
+export const RELOAD_KERNEL_LOG_TIMEOUT_MS = 10_000;
 
 export const DEVICE_BRIDGE_RELEASES_PATH = "/api/v1/device-bridge/releases";

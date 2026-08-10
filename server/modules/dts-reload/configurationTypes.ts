@@ -50,18 +50,12 @@ export const SEEDED_RELOAD_CONFIGURATION: ReloadConfigurationContract = {
 };
 
 /**
- * Closed allowlist of exact kernel log commands that may be saved.
- * Prefix matching is intentionally rejected: trailing arguments after `cat /proc/kmsg`,
- * embedded newlines, and shell metacharacters must not be smuggled into a privileged
- * execution channel. Bridge-side re-validation belongs to a later ticket.
+ * Re-export the shared closed allowlist so server save validation cannot drift from bridge
+ * re-validation (`@wiseeff/device-command-core/kernelLogCommand`).
  */
-export const KERNEL_LOG_COMMAND_ALLOWLIST = [
-  "dmesg",
-  "dmesg -T",
-  "hilog",
-  "hilog -x",
-  "cat /proc/kmsg"
-] as const;
-
-/** @deprecated Prefer KERNEL_LOG_COMMAND_ALLOWLIST; kept for UI copy that lists the tool families. */
-export const KERNEL_LOG_COMMAND_ALLOWLIST_PREFIXES = ["dmesg", "hilog", "cat /proc/kmsg"] as const;
+export {
+  KERNEL_LOG_COMMAND_ALLOWLIST,
+  KERNEL_LOG_COMMAND_ALLOWLIST_PREFIXES,
+  KERNEL_LOG_CAPTURE_MAX_BYTES,
+  isAllowedKernelLogCommand
+} from "@wiseeff/device-command-core/kernelLogCommand";
