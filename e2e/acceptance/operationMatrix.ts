@@ -688,6 +688,18 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["api"]
   },
   {
+    id: "DTS-RELOAD-VERIFY-001",
+    priority: "P0",
+    area: "debugging",
+    route: "/dts-reload",
+    roles: ["Hardware Committer", "Admin"],
+    action: "After successful trigger, read bound parameters via debug.readNode and graduate to verified/contradicted or stay unverifiable.",
+    coverage: "automated",
+    acceptanceIds: ["DTS-RELOAD-VERIFY-001"],
+    specFiles: ["e2e/acceptance/dts-reload-deploy.acceptance.spec.ts"],
+    assertions: ["api"]
+  },
+  {
     id: "DTS-RELOAD-DEPLOY-HW-001",
     priority: "P1",
     area: "debugging",

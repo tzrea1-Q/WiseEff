@@ -4,6 +4,7 @@ import type {
   PreflightStep
 } from "./preflight";
 import { parseKernelSignal } from "./kernelSignal";
+import { parseBehaviouralVerification } from "./behaviouralVerify";
 import type {
   IntegrityCheckStrength,
   ReloadCandidateDto,
@@ -160,7 +161,8 @@ function asReloadSnapshot(value: unknown): ReloadSnapshotDto | null {
           integrityCheck: asIntegrityCheck(artifactDigest.integrityCheck)
         }
       : null,
-    kernelSignal: parseKernelSignal(record.kernelSignal)
+    kernelSignal: parseKernelSignal(record.kernelSignal),
+    behaviouralVerification: parseBehaviouralVerification(record.behaviouralVerification)
   };
 }
 
@@ -208,11 +210,13 @@ export function toReloadRunDto(
     targetRef: row.target_ref ?? null,
     protocol: row.protocol ?? null,
     integrityCheck: asIntegrityCheck(row.integrity_check),
-    reloadSnapshot: snapshot && (snapshot.libraryBaselines.length > 0 || snapshot.artifactDigest)
+    reloadSnapshot: snapshot &&
+    (snapshot.libraryBaselines.length > 0 ||
+      snapshot.artifactDigest ||
+      snapshot.kernelSignal ||
+      snapshot.behaviouralVerification)
       ? snapshot
-      : snapshot?.kernelSignal
-        ? snapshot
-        : null,
+      : null,
     createdAt: dateTimeToIso(row.created_at),
     completedAt: row.completed_at ? dateTimeToIso(row.completed_at) : null
   };

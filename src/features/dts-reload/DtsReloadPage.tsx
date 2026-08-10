@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
-import type {
-  DtsReloadCandidate,
-  DtsReloadIntegrityCheck,
-  DtsReloadRun,
-  DtsReloadSnapshot
-} from "@/domain/dtsReload/types";
 import {
   dtsReloadBlockReasonLabels,
   dtsReloadStatusLabels,
+  dtsReloadVerificationOutcomeLabels,
   DTS_RELOAD_CONFIRMATION_TOKEN,
   SENSITIVE_RELOAD_CONFIRMATION_TOKEN
+} from "@/domain/dtsReload/types";
+import type {
+  DtsReloadCandidate,
+  DtsReloadIntegrityCheck,
+  DtsReloadParameterVerification,
+  DtsReloadRun,
+  DtsReloadSnapshot
 } from "@/domain/dtsReload/types";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Button } from "@/components/ui/button";
@@ -158,10 +160,12 @@ function integrityCheckLabel(check: DtsReloadIntegrityCheck): string {
 function statusBadgeClass(status: DtsReloadRun["status"]): string {
   switch (status) {
     case "validated":
+    case "verified":
       return "bg-emerald-100 text-emerald-900";
     case "deploying":
       return "bg-sky-100 text-sky-900";
     case "failed":
+    case "contradicted":
       return "bg-rose-100 text-rose-950";
     case "unverifiable":
       return "bg-amber-100 text-amber-950";
@@ -169,6 +173,37 @@ function statusBadgeClass(status: DtsReloadRun["status"]): string {
       return "bg-amber-100 text-amber-950";
     default:
       return "bg-muted text-muted-foreground";
+  }
+}
+
+function verificationOutcomeClass(outcome: DtsReloadParameterVerification["outcome"]): string {
+  switch (outcome) {
+    case "verified":
+      return "text-emerald-800";
+    case "contradicted":
+      return "text-rose-900";
+    case "read-failed":
+      return "text-amber-900";
+    case "unbound":
+    default:
+      return "text-muted-foreground";
+  }
+}
+
+function verificationOutcomeDescription(entry: DtsReloadParameterVerification): string {
+  switch (entry.outcome) {
+    case "verified":
+      return "调试节点读回与调试值在参数值形状下一致。";
+    case "contradicted":
+      return "调试节点读回与调试值不一致。";
+    case "unbound":
+      return "该参数没有可用的调试节点绑定，因此无法行为验证——这不是读取失败。";
+    case "read-failed":
+      return entry.reason?.trim()
+        ? `调试节点读取失败：${entry.reason}`
+        : "调试节点读取失败；该参数保持未验证，不影响整次运行成败。";
+    default:
+      return entry.reason ?? "";
   }
 }
 
@@ -190,9 +225,11 @@ function stepOutcomeClass(outcome: string): string {
 function ReloadSnapshotSummary({ snapshot }: { snapshot: DtsReloadSnapshot }) {
   const digest = snapshot.artifactDigest;
   const signal = snapshot.kernelSignal;
+  const verification = snapshot.behaviouralVerification;
   const obtained = signal?.captureStatus === "obtained";
   const matchedGroups = signal?.matchedByParameter ?? [];
   const hasMatches = matchedGroups.some((group) => group.lines.length > 0);
+  const outcomes = verification?.outcomes ?? [];
 
   return (
     <div className="rounded-md border bg-muted/20 p-3 text-xs">
@@ -209,11 +246,41 @@ function ReloadSnapshotSummary({ snapshot }: { snapshot: DtsReloadSnapshot }) {
           ) : null}
         </div>
       ) : null}
+      {outcomes.length > 0 ? (
+        <div className="mt-3 space-y-2 border-t pt-3" aria-label="行为验证结果">
+          <p className="font-medium">行为验证（按参数）</p>
+          <p className="text-muted-foreground">
+            通过已有调试节点绑定读取驱动表面值，并按参数声明的值形状与调试值比较。缺少绑定是诚实缺口，不是失败。
+          </p>
+          <ul className="space-y-2">
+            {outcomes.map((entry) => (
+              <li key={entry.bindingId} className="rounded-md border bg-background p-2">
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <span className="font-medium font-mono">{entry.propertyKey}</span>
+                  <span className={cn("font-medium", verificationOutcomeClass(entry.outcome))}>
+                    {dtsReloadVerificationOutcomeLabels[entry.outcome]}
+                  </span>
+                </div>
+                <p className="mt-1 text-muted-foreground">{verificationOutcomeDescription(entry)}</p>
+                {entry.nodePath ? (
+                  <p className="mt-1 font-mono text-muted-foreground">节点：{entry.nodePath}</p>
+                ) : null}
+                {entry.readValue !== null && entry.readValue !== undefined ? (
+                  <p className="mt-1 font-mono">读回：{entry.readValue}</p>
+                ) : null}
+                {entry.outcome !== "unbound" && entry.expectedValue ? (
+                  <p className="mt-1 font-mono text-muted-foreground">期望：{entry.expectedValue}</p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {signal ? (
         <div className="mt-3 space-y-2 border-t pt-3" aria-label="内核日志证据">
           <p className="font-medium">内核日志证据（未判定）</p>
           <p className="text-muted-foreground">
-            以下内容仅为采集到的内核日志证据。平台<strong>没有</strong>据此推断重载成功或失败，运行结果仍为「不可验证的重载」。
+            以下内容仅为采集到的内核日志证据。平台<strong>没有</strong>据此推断重载成功或失败。
           </p>
           <p className="font-mono text-muted-foreground">命令：{signal.command}</p>
           {obtained ? (
@@ -492,77 +559,129 @@ export function DtsReloadPage({
             writeRunIdToSearch(null);
           }
         }
-        // DEV-only visual QA hook for playwright-cli kernel-evidence screenshots (#286).
-        if (
-          import.meta.env.DEV &&
-          typeof window !== "undefined" &&
-          new URLSearchParams(window.location.search).get("uiPreview") === "kernel-signal"
-        ) {
-          setRun({
-            id: "preview-run",
-            projectId,
-            configRevisionId: null,
-            status: "unverifiable",
-            failureCode: null,
-            targets: [
-              {
-                bindingId: "binding-1",
-                nodePath: "/amba/i2c@1/dev@6E",
-                propertyKey: "watchdog_time",
-                baselineValue: "<6000>",
-                debugValue: "<7000>"
-              }
-            ],
-            steps: [
-              { step: "mount-target", outcome: "passed" },
-              { step: "transfer-artifact", outcome: "passed" },
-              { step: "trigger-reload", outcome: "passed" }
-            ],
-            diagnostics: [],
-            toolVersions: { dtc: "1.7.0", fdtoverlay: "1.7.0" },
-            overlaySource: null,
-            overlaySourceSha256: null,
-            artifact: null,
-            deviceId: "bridge:preview",
-            bridgeId: "bridge-preview",
-            bridgeMachineLabel: "Preview Lab",
-            targetRef: "AURORA-PREVIEW",
-            protocol: "hdc",
-            integrityCheck: "sha256",
-            reloadSnapshot: {
-              libraryBaselines: [
+        // DEV-only visual QA hooks for playwright-cli screenshots (#286 / #287).
+        if (import.meta.env.DEV && typeof window !== "undefined") {
+          const preview = new URLSearchParams(window.location.search).get("uiPreview");
+          if (preview === "kernel-signal" || preview === "behavioural-verify") {
+            const verifiedPreview = preview === "behavioural-verify";
+            setRun({
+              id: "preview-run",
+              projectId,
+              configRevisionId: null,
+              status: verifiedPreview ? "verified" : "unverifiable",
+              failureCode: null,
+              targets: [
                 {
                   bindingId: "binding-1",
-                  propertyKey: "watchdog_time",
                   nodePath: "/amba/i2c@1/dev@6E",
-                  baselineValue: "<6000>"
+                  propertyKey: "watchdog_time",
+                  baselineValue: "<6000>",
+                  debugValue: "<7000>"
+                },
+                {
+                  bindingId: "binding-2",
+                  nodePath: "/amba/i2c@1/dev@6E",
+                  propertyKey: "input_current",
+                  baselineValue: "<3000>",
+                  debugValue: "<3100>"
                 }
               ],
-              artifactDigest: {
-                sha256: "preview-sha",
-                onDeviceDigest: "preview-sha",
-                integrityCheck: "sha256"
-              },
-              kernelSignal: {
-                command: "dmesg",
-                captureStatus: "obtained",
-                captureError: null,
-                rawText: "kernel: watchdog_time applied\nkernel: overlay reload ok\n",
-                truncated: false,
-                matchedByParameter: [
+              steps: [
+                { step: "mount-target", outcome: "passed" },
+                { step: "transfer-artifact", outcome: "passed" },
+                { step: "trigger-reload", outcome: "passed" }
+              ],
+              diagnostics: [],
+              toolVersions: { dtc: "1.7.0", fdtoverlay: "1.7.0" },
+              overlaySource: null,
+              overlaySourceSha256: null,
+              artifact: null,
+              deviceId: "bridge:preview",
+              bridgeId: "bridge-preview",
+              bridgeMachineLabel: "Preview Lab",
+              targetRef: "AURORA-PREVIEW",
+              protocol: "hdc",
+              integrityCheck: "sha256",
+              reloadSnapshot: {
+                libraryBaselines: [
                   {
-                    parameterName: "watchdog_time",
                     bindingId: "binding-1",
-                    lines: ["kernel: watchdog_time applied"]
+                    propertyKey: "watchdog_time",
+                    nodePath: "/amba/i2c@1/dev@6E",
+                    baselineValue: "<6000>"
+                  },
+                  {
+                    bindingId: "binding-2",
+                    propertyKey: "input_current",
+                    nodePath: "/amba/i2c@1/dev@6E",
+                    baselineValue: "<3000>"
                   }
                 ],
-                excerpt: null
-              }
-            },
-            createdAt: "2026-08-10T00:00:00.000Z",
-            completedAt: "2026-08-10T00:00:02.000Z"
-          });
-          return;
+                artifactDigest: {
+                  sha256: "preview-sha",
+                  onDeviceDigest: "preview-sha",
+                  integrityCheck: "sha256"
+                },
+                kernelSignal: {
+                  command: "dmesg",
+                  captureStatus: "obtained",
+                  captureError: null,
+                  rawText: "kernel: watchdog_time applied\nkernel: overlay reload ok\n",
+                  truncated: false,
+                  matchedByParameter: [
+                    {
+                      parameterName: "watchdog_time",
+                      bindingId: "binding-1",
+                      lines: ["kernel: watchdog_time applied"]
+                    }
+                  ],
+                  excerpt: null
+                },
+                behaviouralVerification: verifiedPreview
+                  ? {
+                      outcomes: [
+                        {
+                          bindingId: "binding-1",
+                          propertyKey: "watchdog_time",
+                          outcome: "verified",
+                          debugNodeId: "dbg-watchdog",
+                          nodePath: "/sys/class/power_supply/battery/watchdog_time",
+                          expectedValue: "<7000>",
+                          readValue: "7000",
+                          reason: null
+                        },
+                        {
+                          bindingId: "binding-2",
+                          propertyKey: "input_current",
+                          outcome: "unbound",
+                          debugNodeId: null,
+                          nodePath: null,
+                          expectedValue: "<3100>",
+                          readValue: null,
+                          reason: "No readable debug-node binding for this parameter and protocol."
+                        }
+                      ]
+                    }
+                  : {
+                      outcomes: [
+                        {
+                          bindingId: "binding-1",
+                          propertyKey: "watchdog_time",
+                          outcome: "unbound",
+                          debugNodeId: null,
+                          nodePath: null,
+                          expectedValue: "<7000>",
+                          readValue: null,
+                          reason: "No readable debug-node binding for this parameter and protocol."
+                        }
+                      ]
+                    }
+              },
+              createdAt: "2026-08-10T00:00:00.000Z",
+              completedAt: "2026-08-10T00:00:02.000Z"
+            });
+            return;
+          }
         }
         setRun(null);
       })

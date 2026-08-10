@@ -317,6 +317,18 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "DTS-RELOAD-KERNEL-001",
+    workflow: "E",
+    title: "Kernel log capture after reload trigger stays unjudged evidence and does not change run status.",
+    required: true
+  },
+  {
+    id: "DTS-RELOAD-VERIFY-001",
+    workflow: "E",
+    title: "After successful trigger, bound parameters are read via debug.readNode; run graduates to verified/contradicted or stays unverifiable.",
+    required: true
+  },
+  {
     id: "DTS-RELOAD-DEPLOY-HW-001",
     workflow: "E",
     title: "Reload overlay deploy to a real HDC target through a paired local device bridge when lab env is enabled.",

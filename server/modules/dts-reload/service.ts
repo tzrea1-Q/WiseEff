@@ -121,8 +121,10 @@ async function writeReloadAudit(
       | "dts-reload-run-validated"
       | "dts-reload-run-deploy-started"
       | "dts-reload-run-unverifiable"
+      | "dts-reload-run-verified"
+      | "dts-reload-run-contradicted"
       | "dts-reload-run-failed";
-    action: "start" | "blocked" | "validated" | "deploy" | "unverifiable" | "failed";
+    action: "start" | "blocked" | "validated" | "deploy" | "unverifiable" | "verified" | "contradicted" | "failed";
     projectId: string;
     runId: string;
     severity?: "High" | "Medium" | "Low";
@@ -790,12 +792,21 @@ export async function deployReloadRun(
     }
   });
 
+  const terminalAudit =
+    result.status === "verified"
+      ? { kind: "dts-reload-run-verified" as const, action: "verified" as const }
+      : result.status === "contradicted"
+        ? { kind: "dts-reload-run-contradicted" as const, action: "contradicted" as const }
+        : result.status === "unverifiable"
+          ? { kind: "dts-reload-run-unverifiable" as const, action: "unverifiable" as const }
+          : { kind: "dts-reload-run-failed" as const, action: "failed" as const };
+
   await writeReloadAudit(
     db,
     auth,
     {
-      kind: result.status === "unverifiable" ? "dts-reload-run-unverifiable" : "dts-reload-run-failed",
-      action: result.status === "unverifiable" ? "unverifiable" : "failed",
+      kind: terminalAudit.kind,
+      action: terminalAudit.action,
       projectId: run.projectId,
       runId: run.id,
       severity: "High",
@@ -806,7 +817,8 @@ export async function deployReloadRun(
         deviceId: result.deviceId,
         bridgeId: result.bridgeId,
         integrityCheck: result.integrityCheck,
-        reloadSnapshot: result.reloadSnapshot
+        reloadSnapshot: result.reloadSnapshot,
+        behaviouralVerification: result.reloadSnapshot?.behaviouralVerification ?? null
       }
     },
     context

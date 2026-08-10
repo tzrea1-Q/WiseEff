@@ -14,6 +14,8 @@ import type { AuthContext } from "../auth/types";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { resolveReloadConfiguration } from "./resolveConfiguration";
+import { verifyReloadTargetsBehaviourally } from "./behaviouralVerify";
+import type { BehaviouralVerificationDto } from "./behaviouralVerify";
 import {
   buildNotObtainedKernelSignal,
   buildObtainedKernelSignal
@@ -31,6 +33,7 @@ import {
   RELOAD_KERNEL_LOG_TIMEOUT_MS,
   RELOAD_MOUNT_TIMEOUT_MS,
   RELOAD_PUSH_FILE_TIMEOUT_MS,
+  RELOAD_READ_NODE_TIMEOUT_MS,
   RELOAD_TRIGGER_TIMEOUT_MS
 } from "./types";
 
@@ -51,6 +54,7 @@ export type DeployReloadDeps = {
   pushFileTimeoutMs?: number;
   triggerTimeoutMs?: number;
   kernelLogTimeoutMs?: number;
+  readNodeTimeoutMs?: number;
   pushFileMaxBytes?: number;
   now?: () => Date;
 };
@@ -146,6 +150,7 @@ export function buildReloadSnapshot(input: {
   onDeviceDigest: string | null;
   integrityCheck: IntegrityCheckStrength | null;
   kernelSignal?: ReloadSnapshotDto["kernelSignal"];
+  behaviouralVerification?: BehaviouralVerificationDto | null;
 }): ReloadSnapshotDto {
   return {
     libraryBaselines: input.targets.map((target) => ({
@@ -161,7 +166,8 @@ export function buildReloadSnapshot(input: {
           integrityCheck: input.integrityCheck
         }
       : null,
-    kernelSignal: input.kernelSignal ?? null
+    kernelSignal: input.kernelSignal ?? null,
+    behaviouralVerification: input.behaviouralVerification ?? null
   };
 }
 
@@ -617,18 +623,58 @@ export async function executeReloadDeploy(input: {
       });
     }
 
-    // Terminal: unverifiable reload — commands succeeded, no DT value read-back.
-    // Kernel log is unjudged evidence only; status stays unverifiable regardless of log content.
+    // Behavioural verification via existing debug.readNode only — after kernel log capture.
+    // Kernel log remains unjudged evidence; outcomes come only from debug-node read-back.
+    // Never fail the whole deploy after a successful trigger — degrade to unverifiable.
+    const readNodeTimeoutMs = deps.readNodeTimeoutMs ?? RELOAD_READ_NODE_TIMEOUT_MS;
+    let verification: {
+      status: Extract<ReloadRunDto["status"], "verified" | "contradicted" | "unverifiable">;
+      behaviouralVerification: BehaviouralVerificationDto;
+    };
+    try {
+      verification = await verifyReloadTargetsBehaviourally({
+        db: input.db,
+        organizationId: auth.organization.id,
+        targets: run.targets,
+        protocol: deploy.protocol,
+        bridgeId: deploy.bridgeId,
+        targetRef: deploy.targetRef,
+        bridgeRpcClient: deps.bridgeRpcClient,
+        readTimeoutMs: readNodeTimeoutMs
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : "Behavioural verification aborted unexpectedly.";
+      verification = {
+        status: "unverifiable",
+        behaviouralVerification: {
+          outcomes: run.targets.map((target) => ({
+            bindingId: target.bindingId,
+            propertyKey: target.propertyKey,
+            outcome: "read-failed" as const,
+            debugNodeId: null,
+            nodePath: null,
+            expectedValue: target.debugValue,
+            readValue: null,
+            reason: message
+          }))
+        }
+      };
+    }
+
     const snapshot = buildReloadSnapshot({
       targets: run.targets,
       artifactSha256: contentSha256,
       onDeviceDigest: remoteDigest,
       integrityCheck,
-      kernelSignal
+      kernelSignal,
+      behaviouralVerification: verification.behaviouralVerification
     });
 
     return input.persistProgress({
-      status: "unverifiable",
+      status: verification.status,
       failureCode: null,
       steps: [...steps],
       deviceId: deploy.deviceId,

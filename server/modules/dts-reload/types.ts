@@ -43,12 +43,14 @@ export interface ReloadCandidateDto {
 }
 
 /**
- * Reload run status machine (#281 preflight + #285 deploy).
+ * Reload run status machine (#281 preflight + #285 deploy + #287 behavioural verify).
  * - pending: reserved for resumable/async shaping (not used as a durable terminal today)
  * - blocked: preflight refused before any device write
  * - validated: overlay compiled and applicable; artifact downloadable; not yet deployed
  * - deploying: in-request mount/transfer/trigger in progress (survivable shape for later async)
- * - unverifiable: all deploy commands succeeded and artifact integrity held; no DT read-back
+ * - unverifiable: commands succeeded but behavioural confirmation is unavailable or incomplete
+ * - verified: behaviourally verified — every bound parameter's debug-node read matched
+ * - contradicted: at least one bound debug-node read disagreed with the debug value
  * - failed: a deploy step failed (mount / transfer / trigger / integrity)
  */
 export type ReloadRunStatus =
@@ -57,6 +59,8 @@ export type ReloadRunStatus =
   | "validated"
   | "deploying"
   | "unverifiable"
+  | "verified"
+  | "contradicted"
   | "failed";
 
 export type IntegrityCheckStrength = "sha256" | "md5" | "byte-length";
@@ -111,6 +115,27 @@ export interface KernelSignalDto {
   excerpt: string | null;
 }
 
+export type ParameterVerificationOutcome =
+  | "verified"
+  | "contradicted"
+  | "unbound"
+  | "read-failed";
+
+export interface ParameterVerificationRecordDto {
+  bindingId: string;
+  propertyKey: string;
+  outcome: ParameterVerificationOutcome;
+  debugNodeId: string | null;
+  nodePath: string | null;
+  expectedValue: string;
+  readValue: string | null;
+  reason: string | null;
+}
+
+export interface BehaviouralVerificationDto {
+  outcomes: ParameterVerificationRecordDto[];
+}
+
 export interface ReloadSnapshotDto {
   libraryBaselines: Array<{
     bindingId: string;
@@ -126,6 +151,8 @@ export interface ReloadSnapshotDto {
   } | null;
   /** Kernel log evidence after a successful trigger; null when deploy never reached capture. */
   kernelSignal: KernelSignalDto | null;
+  /** Per-parameter behavioural verification via debug-node read-back (#287); null when not attempted. */
+  behaviouralVerification: BehaviouralVerificationDto | null;
 }
 
 export interface ReloadRunTargetDto {
@@ -174,5 +201,6 @@ export const RELOAD_MOUNT_TIMEOUT_MS = 15_000;
 export const RELOAD_PUSH_FILE_TIMEOUT_MS = 30_000;
 export const RELOAD_TRIGGER_TIMEOUT_MS = 10_000;
 export const RELOAD_KERNEL_LOG_TIMEOUT_MS = 10_000;
+export const RELOAD_READ_NODE_TIMEOUT_MS = 10_000;
 
 export const DEVICE_BRIDGE_RELEASES_PATH = "/api/v1/device-bridge/releases";

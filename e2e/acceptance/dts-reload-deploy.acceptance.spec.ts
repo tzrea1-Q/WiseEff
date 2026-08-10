@@ -1,15 +1,17 @@
 /**
  * @operation DTS-RELOAD-DEPLOY-001
  * @operation DTS-RELOAD-KERNEL-001
+ * @operation DTS-RELOAD-VERIFY-001
  *
- * Wiring proof for #285/#286: one fake bridge WebSocket client with
+ * Wiring proof for #285/#286/#287: one fake bridge WebSocket client with
  * mountTarget/pushFile/writeNode/readKernelLog handlers proves the real RPC envelope,
  * connection-pool serialisation, and per-method timeouts are connected. Branch coverage
- * lives in server/modules/dts-reload/deploy.test.ts.
+ * (including behavioural verify via debug.readNode) lives in
+ * server/modules/dts-reload/deploy.test.ts.
  */
 import { createHash, randomUUID } from "node:crypto";
 import { Client } from "pg";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "playwright/test";
 import WebSocket from "ws";
 
 import { DTS_RELOAD_BRIDGE_RPC_METHODS } from "@wiseeff/device-command-core/bridgeRpcMethods";
@@ -281,6 +283,13 @@ test.describe("DTS reload deploy fake-bridge wiring", () => {
               command: "dmesg",
               captureStatus: "obtained",
               rawText: "kernel: overlay applied\n"
+            },
+            behaviouralVerification: {
+              outcomes: [
+                expect.objectContaining({
+                  outcome: "unbound"
+                })
+              ]
             }
           }
         }
@@ -293,6 +302,8 @@ test.describe("DTS reload deploy fake-bridge wiring", () => {
         "debug.writeNode",
         "debug.readKernelLog"
       ]);
+      // No binding → no debug.readNode; never invent a new verification RPC.
+      expect(observed.methods).not.toContain("debug.readNode");
       expect(observed.timeouts.length).toBe(5);
     } finally {
       await new Promise<void>((resolve) => {
