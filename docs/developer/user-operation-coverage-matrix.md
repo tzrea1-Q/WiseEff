@@ -29,7 +29,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `PARAM-INIT-LOCK-001` | P1 | parameters | future | `/parameters` | Software User, Admin | ui, api | `src/ParametersPage.test.tsx`<br>`server/modules/parameters/service.test.ts` |
 | `PROJ-OPS-001` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`<br>`src/ParameterAdminNextPage.test.tsx`<br>`src/components/parameter-admin-next/projectOperationsCutover.test.ts` |
 | `PROJ-OPS-002` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
-| `PROJ-OPS-003` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, audit, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
+| `PROJ-OPS-003` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, api, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
 | `PROJ-CONFIG-READ-001` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, api, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
 | `PROJ-CONFIG-SOURCE-001` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, api, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
 | `PROJ-CONFIG-INSPECT-001` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, api, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
@@ -55,6 +55,8 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `DEBUG-ADMIN-001` | P1 | debugging | automated | `/debugging-admin` | Admin | ui, api, db, audit | `e2e/acceptance/debugging-admin.acceptance.spec.ts` |
 | `BRIDGE-WIN-001` | P1 | debugging | future | `/node-debugging` | Hardware Committer, Admin | ui, api | `e2e/acceptance/debugging-local-bridge.acceptance.spec.ts`<br>`e2e/acceptance/local-device-bridge.acceptance.spec.ts` |
 | `BRIDGE-HDC-001` | P1 | debugging | conditional | `/node-debugging` | Hardware Committer, Admin | ui, api | `e2e/acceptance/local-device-bridge.acceptance.spec.ts` |
+| `DTS-RELOAD-DEPLOY-001` | P0 | debugging | automated | `/dts-reload` | Hardware Committer, Admin | api | `e2e/acceptance/dts-reload-deploy.acceptance.spec.ts` |
+| `DTS-RELOAD-DEPLOY-HW-001` | P1 | debugging | conditional | `/dts-reload` | Hardware Committer, Admin | api | `e2e/acceptance/dts-reload-deploy.acceptance.spec.ts` |
 | `HDC-LAB-001` | P1 | debugging | conditional | `/node-debugging` | Hardware Committer, Admin | ui, api, audit | `e2e/acceptance/hdc-device-lab.acceptance.spec.ts` |
 | `ADB-LAB-001` | P1 | debugging | conditional | `/node-debugging` | Hardware Committer, Admin | ui, api, audit | `e2e/acceptance/adb-device-lab.acceptance.spec.ts` |
 | `XIAOZE-PERCEPTION-001` | P0 | agent | automated | `/parameters` | Admin | ui, api | `e2e/acceptance/xiaoze-perception.acceptance.spec.ts` |
@@ -135,6 +137,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 - `PARAM-ADMIN-DIALOG-001`: The modal contract is covered by unit tests on the shared primitive plus playwright-cli evidence; a keyboard-focused e2e spec follows.
 - `BRIDGE-WIN-001`: Requires a real Windows bridge runtime and localhost health endpoint orchestration in acceptance.
 - `BRIDGE-HDC-001`: Requires a pre-paired bridge process, hdc on PATH, USB device, and DEVICE_BRIDGE_HDC_AVAILABLE=true.
+- `DTS-RELOAD-DEPLOY-HW-001`: Requires DEVICE_BRIDGE_HDC_AVAILABLE=true, a paired bridge with mountTarget/pushFile, USB device, and an approved lab reload destination.
 - `HDC-LAB-001`: Requires DEBUG_DEVICE_GATEWAY_MODE=hdc and HDC_DEVICE_LAB_AVAILABLE=true with hardware attached.
 - `ADB-LAB-001`: Requires DEBUG_DEVICE_GATEWAY_MODE=adb, ADB_DEVICE_LAB_AVAILABLE=true, exactly one ready ADB device, one ADB inventory row, and one shared default ADB smoke binding.
 - `PARAM-ADMIN-IA-001`: Unit-covered in ParameterAdminNextPage and organization path tests; dedicated Playwright marker deferred.

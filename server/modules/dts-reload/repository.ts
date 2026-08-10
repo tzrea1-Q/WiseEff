@@ -3,7 +3,15 @@ import type {
   PreflightDiagnostic,
   PreflightStep
 } from "./preflight";
-import type { ReloadCandidateDto, ReloadRunDto, ReloadRunStatus, ReloadRunTargetDto } from "./types";
+import type {
+  IntegrityCheckStrength,
+  ReloadCandidateDto,
+  ReloadRunDto,
+  ReloadRunStatus,
+  ReloadRunTargetDto,
+  ReloadSnapshotDto,
+  ReloadStep
+} from "./types";
 
 export type ReloadCandidateRow = {
   binding_id: string;
@@ -28,7 +36,7 @@ export type InsertReloadRunInput = {
   configRevisionId: string | null;
   status: ReloadRunStatus;
   failureCode: string | null;
-  steps: PreflightStep[];
+  steps: Array<PreflightStep | ReloadStep>;
   diagnostics: PreflightDiagnostic[];
   toolVersions: { dtc: string | null; fdtoverlay: string | null };
   overlaySourceStorageKey: string | null;
@@ -51,6 +59,22 @@ export type InsertReloadRunTargetInput = {
   sortOrder: number;
 };
 
+export type UpdateReloadRunDeployInput = {
+  runId: string;
+  organizationId: string;
+  status: ReloadRunStatus;
+  failureCode: string | null;
+  steps: Array<PreflightStep | ReloadStep>;
+  deviceId: string | null;
+  bridgeId: string | null;
+  bridgeMachineLabel: string | null;
+  targetRef: string | null;
+  protocol: string | null;
+  integrityCheck: IntegrityCheckStrength | null;
+  reloadSnapshot: ReloadSnapshotDto;
+  completedAt: string | null;
+};
+
 type ReloadRunRow = {
   id: string;
   organization_id: string;
@@ -69,6 +93,13 @@ type ReloadRunRow = {
   created_by_user_id: string | null;
   created_at: string | Date;
   completed_at: string | Date | null;
+  device_id?: string | null;
+  bridge_id?: string | null;
+  bridge_machine_label?: string | null;
+  target_ref?: string | null;
+  protocol?: string | null;
+  integrity_check?: string | null;
+  reload_snapshot?: unknown;
 };
 
 type ReloadRunTargetRow = {
@@ -99,6 +130,51 @@ function asToolVersions(value: unknown): { dtc: string | null; fdtoverlay: strin
   };
 }
 
+function asIntegrityCheck(value: unknown): IntegrityCheckStrength | null {
+  if (value === "sha256" || value === "md5" || value === "byte-length") return value;
+  return null;
+}
+
+function asReloadSnapshot(value: unknown): ReloadSnapshotDto | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const baselines = Array.isArray(record.libraryBaselines) ? record.libraryBaselines : [];
+  const artifactDigest =
+    record.artifactDigest && typeof record.artifactDigest === "object" && !Array.isArray(record.artifactDigest)
+      ? (record.artifactDigest as Record<string, unknown>)
+      : null;
+  return {
+    libraryBaselines: baselines
+      .filter((entry): entry is Record<string, unknown> => typeof entry === "object" && entry !== null)
+      .map((entry) => ({
+        bindingId: typeof entry.bindingId === "string" ? entry.bindingId : "",
+        propertyKey: typeof entry.propertyKey === "string" ? entry.propertyKey : "",
+        nodePath: typeof entry.nodePath === "string" ? entry.nodePath : "",
+        baselineValue: typeof entry.baselineValue === "string" ? entry.baselineValue : null
+      })),
+    artifactDigest: artifactDigest
+      ? {
+          sha256: typeof artifactDigest.sha256 === "string" ? artifactDigest.sha256 : "",
+          onDeviceDigest: typeof artifactDigest.onDeviceDigest === "string" ? artifactDigest.onDeviceDigest : null,
+          integrityCheck: asIntegrityCheck(artifactDigest.integrityCheck)
+        }
+      : null,
+    kernelSignal:
+      record.kernelSignal && typeof record.kernelSignal === "object" && !Array.isArray(record.kernelSignal)
+        ? {
+            command:
+              typeof (record.kernelSignal as Record<string, unknown>).command === "string"
+                ? ((record.kernelSignal as Record<string, unknown>).command as string)
+                : "",
+            excerpt:
+              typeof (record.kernelSignal as Record<string, unknown>).excerpt === "string"
+                ? ((record.kernelSignal as Record<string, unknown>).excerpt as string)
+                : null
+          }
+        : null
+  };
+}
+
 function toTargetDto(row: ReloadRunTargetRow): ReloadRunTargetDto {
   return {
     bindingId: row.binding_id,
@@ -116,6 +192,7 @@ export function toReloadRunDto(
 ): ReloadRunDto {
   const artifactSha = row.overlay_artifact_sha256;
   const artifactBytes = row.overlay_artifact_bytes;
+  const snapshot = asReloadSnapshot(row.reload_snapshot);
   return {
     id: row.id,
     projectId: row.project_id,
@@ -123,7 +200,7 @@ export function toReloadRunDto(
     status: row.status,
     failureCode: row.failure_code,
     targets,
-    steps: asJsonArray<PreflightStep>(row.steps),
+    steps: asJsonArray<PreflightStep | ReloadStep>(row.steps),
     diagnostics: asJsonArray<PreflightDiagnostic>(row.diagnostics),
     toolVersions: asToolVersions(row.tool_versions),
     overlaySource,
@@ -135,6 +212,17 @@ export function toReloadRunDto(
             sha256: artifactSha,
             sizeBytes: Number(artifactBytes)
           }
+        : null,
+    deviceId: row.device_id ?? null,
+    bridgeId: row.bridge_id ?? null,
+    bridgeMachineLabel: row.bridge_machine_label ?? null,
+    targetRef: row.target_ref ?? null,
+    protocol: row.protocol ?? null,
+    integrityCheck: asIntegrityCheck(row.integrity_check),
+    reloadSnapshot: snapshot && (snapshot.libraryBaselines.length > 0 || snapshot.artifactDigest)
+      ? snapshot
+      : snapshot?.kernelSignal
+        ? snapshot
         : null,
     createdAt: dateTimeToIso(row.created_at),
     completedAt: row.completed_at ? dateTimeToIso(row.completed_at) : null
@@ -318,6 +406,50 @@ export async function insertReloadRunTarget(db: Queryable, input: InsertReloadRu
       input.sortOrder
     ]
   );
+}
+
+export async function updateReloadRunDeployState(
+  db: Queryable,
+  input: UpdateReloadRunDeployInput
+): Promise<ReloadRunRow> {
+  const result = await db.query<ReloadRunRow>(
+    `
+    update dts_reload_runs
+    set
+      status = $3,
+      failure_code = $4,
+      steps = $5::jsonb,
+      device_id = $6,
+      bridge_id = $7,
+      bridge_machine_label = $8,
+      target_ref = $9,
+      protocol = $10,
+      integrity_check = $11,
+      reload_snapshot = $12::jsonb,
+      completed_at = $13
+    where organization_id = $1 and id = $2
+    returning *
+    `,
+    [
+      input.organizationId,
+      input.runId,
+      input.status,
+      input.failureCode,
+      JSON.stringify(input.steps),
+      input.deviceId,
+      input.bridgeId,
+      input.bridgeMachineLabel,
+      input.targetRef,
+      input.protocol,
+      input.integrityCheck,
+      JSON.stringify(input.reloadSnapshot),
+      input.completedAt
+    ]
+  );
+  if (!result.rows[0]) {
+    throw new Error(`Reload run ${input.runId} was not found for deploy update.`);
+  }
+  return result.rows[0];
 }
 
 export async function getReloadRunRow(

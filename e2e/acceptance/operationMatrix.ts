@@ -664,6 +664,31 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     deferralReason: "Requires a pre-paired bridge process, hdc on PATH, USB device, and DEVICE_BRIDGE_HDC_AVAILABLE=true."
   },
   {
+    id: "DTS-RELOAD-DEPLOY-001",
+    priority: "P0",
+    area: "debugging",
+    route: "/dts-reload",
+    roles: ["Hardware Committer", "Admin"],
+    action: "Deploy a validated reload overlay through a fake local device bridge (mount, pushFile, trigger).",
+    coverage: "automated",
+    acceptanceIds: ["DTS-RELOAD-DEPLOY-001"],
+    specFiles: ["e2e/acceptance/dts-reload-deploy.acceptance.spec.ts"],
+    assertions: ["api"]
+  },
+  {
+    id: "DTS-RELOAD-DEPLOY-HW-001",
+    priority: "P1",
+    area: "debugging",
+    route: "/dts-reload",
+    roles: ["Hardware Committer", "Admin"],
+    action: "Deploy a reload overlay to a real HDC target through a paired local device bridge.",
+    coverage: "conditional",
+    acceptanceIds: ["DTS-RELOAD-DEPLOY-HW-001"],
+    specFiles: ["e2e/acceptance/dts-reload-deploy.acceptance.spec.ts"],
+    assertions: ["api"],
+    deferralReason: "Requires DEVICE_BRIDGE_HDC_AVAILABLE=true, a paired bridge with mountTarget/pushFile, USB device, and an approved lab reload destination."
+  },
+  {
     id: "HDC-LAB-001",
     priority: "P1",
     area: "debugging",

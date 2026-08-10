@@ -28,6 +28,7 @@ import {
   listReloadRunTargets,
   readLibraryFingerprint,
   toReloadRunDto,
+  updateReloadRunDeployState,
   type LibraryFingerprint,
   type ReloadCandidateRow
 } from "./repository";
@@ -36,7 +37,9 @@ import {
   matchReloadCandidatesSensitive,
   type ReloadTargetSensitiveHit
 } from "./sensitiveGate";
-import type { ReloadCandidateDto, ReloadRunDto } from "./types";
+import { executeReloadDeploy, type DeployReloadDeps, type DeployReloadRunInput } from "./deploy";
+import type { ReloadCandidateDto, ReloadRunDto, ReloadRunStatus } from "./types";
+import { DTS_RELOAD_CONFIRMATION_TOKEN } from "./types";
 
 export type DtsReloadServiceContext = AuditCorrelationContext & {
   actorType?: SensitiveWriteActorType;
@@ -111,8 +114,14 @@ async function writeReloadAudit(
   db: Queryable,
   auth: AuthContext,
   input: {
-    kind: "dts-reload-run-start" | "dts-reload-run-blocked" | "dts-reload-run-validated";
-    action: "start" | "blocked" | "validated";
+    kind:
+      | "dts-reload-run-start"
+      | "dts-reload-run-blocked"
+      | "dts-reload-run-validated"
+      | "dts-reload-run-deploy-started"
+      | "dts-reload-run-unverifiable"
+      | "dts-reload-run-failed";
+    action: "start" | "blocked" | "validated" | "deploy" | "unverifiable" | "failed";
     projectId: string;
     runId: string;
     severity?: "High" | "Medium" | "Low";
@@ -536,7 +545,7 @@ async function persistRunOutcome(
     projectId: string;
     configRevisionId: string | null;
     targets: ResolvedReloadTarget[];
-    status: "blocked" | "validated";
+    status: ReloadRunStatus;
     failureCode: string | null;
     steps: ReloadRunDto["steps"];
     diagnostics: ReloadRunDto["diagnostics"];
@@ -680,4 +689,114 @@ export async function getReloadRunArtifact(
     bytes,
     sha256: row.overlay_artifact_sha256
   };
+}
+
+export async function deployReloadRun(
+  db: Database,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: DeployReloadRunInput,
+  deps: DeployReloadDeps,
+  context: DtsReloadServiceContext = {}
+): Promise<ReloadRunDto> {
+  requireDtsReload(auth);
+
+  if (!input.confirmationTokens.includes(DTS_RELOAD_CONFIRMATION_TOKEN)) {
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      `Deploying a reload run requires confirmation token "${DTS_RELOAD_CONFIRMATION_TOKEN}".`,
+      400,
+      { code: "missing-dts-reload-confirmation", requiredToken: DTS_RELOAD_CONFIRMATION_TOKEN }
+    );
+  }
+
+  const run = await getReloadRun(db, objectStore, auth, input.runId);
+  if (!run.artifact?.sha256) {
+    throw new ApiError("CONFLICT", "Reload run has no compiled overlay artifact to deploy.", 409, {
+      code: "reload-artifact-missing",
+      runId: input.runId
+    });
+  }
+
+  const row = await getReloadRunRow(db, { organizationId: auth.organization.id, runId: input.runId });
+  if (!row?.overlay_artifact_storage_key) {
+    throw new ApiError("CONFLICT", "Reload run has no compiled overlay artifact to deploy.", 409, {
+      code: "reload-artifact-missing",
+      runId: input.runId
+    });
+  }
+  const artifactBytes = await objectStore.get(row.overlay_artifact_storage_key);
+
+  await writeReloadAudit(
+    db,
+    auth,
+    {
+      kind: "dts-reload-run-deploy-started",
+      action: "deploy",
+      projectId: run.projectId,
+      runId: run.id,
+      severity: "High",
+      metadata: {
+        phase: "deploy",
+        deviceId: input.deviceId,
+        bridgeId: input.bridgeId,
+        targetRef: input.targetRef,
+        protocol: input.protocol,
+        confirmationToken: "confirm-dts-reload",
+        artifactSha256: run.artifact.sha256
+      }
+    },
+    context
+  );
+
+  const result = await executeReloadDeploy({
+    db,
+    auth,
+    run,
+    artifactBytes,
+    deploy: input,
+    deps,
+    persistProgress: async (update) => {
+      const updated = await updateReloadRunDeployState(db, {
+        runId: run.id,
+        organizationId: auth.organization.id,
+        status: update.status,
+        failureCode: update.failureCode,
+        steps: update.steps,
+        deviceId: update.deviceId,
+        bridgeId: update.bridgeId,
+        bridgeMachineLabel: update.bridgeMachineLabel,
+        targetRef: update.targetRef,
+        protocol: update.protocol,
+        integrityCheck: update.integrityCheck,
+        reloadSnapshot: update.reloadSnapshot,
+        completedAt: update.completedAt
+      });
+      return toReloadRunDto(updated, run.targets, run.overlaySource);
+    }
+  });
+
+  await writeReloadAudit(
+    db,
+    auth,
+    {
+      kind: result.status === "unverifiable" ? "dts-reload-run-unverifiable" : "dts-reload-run-failed",
+      action: result.status === "unverifiable" ? "unverifiable" : "failed",
+      projectId: run.projectId,
+      runId: run.id,
+      severity: "High",
+      metadata: {
+        phase: "deploy",
+        status: result.status,
+        failureCode: result.failureCode,
+        deviceId: result.deviceId,
+        bridgeId: result.bridgeId,
+        integrityCheck: result.integrityCheck,
+        reloadSnapshot: result.reloadSnapshot
+      }
+    },
+    context
+  );
+
+  return result;
 }

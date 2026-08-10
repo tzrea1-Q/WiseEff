@@ -34,7 +34,33 @@ export type DtsReloadCandidate = {
 /** Confirmation token required when any selected target matches a critical-tier sensitive rule. */
 export const SENSITIVE_RELOAD_CONFIRMATION_TOKEN = "confirm-sensitive-reload";
 
-export type DtsReloadRunStatus = "pending" | "blocked" | "validated";
+/** Always required before device deploy. Runtime code must never inject this. */
+export const DTS_RELOAD_CONFIRMATION_TOKEN = "confirm-dts-reload";
+
+export type DtsReloadRunStatus =
+  | "pending"
+  | "blocked"
+  | "validated"
+  | "deploying"
+  | "unverifiable"
+  | "failed";
+
+export type DtsReloadIntegrityCheck = "sha256" | "md5" | "byte-length";
+
+export type DtsReloadSnapshot = {
+  libraryBaselines: Array<{
+    bindingId: string;
+    propertyKey: string;
+    nodePath: string;
+    baselineValue: string | null;
+  }>;
+  artifactDigest: {
+    sha256: string;
+    onDeviceDigest: string | null;
+    integrityCheck: DtsReloadIntegrityCheck | null;
+  } | null;
+  kernelSignal: { command: string; excerpt: string | null } | null;
+};
 
 export type DtsReloadRun = {
   id: string;
@@ -49,7 +75,11 @@ export type DtsReloadRun = {
     baselineValue: string | null;
     debugValue: string;
   }>;
-  steps: Array<{ step: string; outcome: "passed" | "failed" | "skipped" }>;
+  steps: Array<{
+    step: string;
+    outcome: "passed" | "failed" | "skipped" | "pending" | "running";
+    error?: string;
+  }>;
   diagnostics: Array<{
     stage: string;
     code: string;
@@ -61,6 +91,13 @@ export type DtsReloadRun = {
   overlaySource: string | null;
   overlaySourceSha256: string | null;
   artifact: { fileName: string; sha256: string; sizeBytes: number } | null;
+  deviceId?: string | null;
+  bridgeId?: string | null;
+  bridgeMachineLabel?: string | null;
+  targetRef?: string | null;
+  protocol?: string | null;
+  integrityCheck?: DtsReloadIntegrityCheck | null;
+  reloadSnapshot?: DtsReloadSnapshot | null;
   createdAt: string;
   completedAt: string | null;
 };
@@ -98,6 +135,15 @@ export const dtsReloadBlockReasonLabels: Record<DtsReloadCandidateBlockReason, s
   "synthesised-anchor": "定位器是合成 /label 锚点，不能作为 target-path",
   "unsupported-value-shape": "当前仅支持 u32 cell 数组与字符串列表",
   "no-baseline-value": "缺少库基线值，无法对比调试值"
+};
+
+export const dtsReloadStatusLabels: Record<DtsReloadRunStatus, string> = {
+  pending: "等待中",
+  blocked: "已阻断",
+  validated: "预检通过（未部署）",
+  deploying: "正在部署",
+  unverifiable: "不可验证的重载",
+  failed: "部署失败"
 };
 
 /** Closed allowlist of exact kernel log commands — must stay aligned with server validation. */

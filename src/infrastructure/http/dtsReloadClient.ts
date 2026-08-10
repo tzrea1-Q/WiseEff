@@ -1,4 +1,4 @@
-import type { DtsReloadRepository, StartDtsReloadRunInput } from "@/application/ports/DtsReloadRepository";
+import type { DtsReloadRepository, StartDtsReloadRunInput, DeployDtsReloadRunInput } from "@/application/ports/DtsReloadRepository";
 import type {
   DeviceReloadConfigurationOverride,
   DtsReloadCandidate,
@@ -31,6 +31,10 @@ function runPath(runId: string) {
   return `/api/v1/dts-reload/runs/${encodeURIComponent(runId)}`;
 }
 
+function deployPath(runId: string) {
+  return `${runPath(runId)}/deploy`;
+}
+
 function artifactPath(runId: string) {
   return `${runPath(runId)}/artifact`;
 }
@@ -57,6 +61,17 @@ export function createHttpDtsReloadRepository(options: HttpDtsReloadRepositoryOp
       const response = await apiClient.post<ItemEnvelope<DtsReloadRun>>(runsPath(input.projectId), {
         targets: input.targets,
         ...(input.confirmationToken ? { confirmationToken: input.confirmationToken } : {})
+      });
+      return response.item;
+    },
+
+    async deployRun(input: DeployDtsReloadRunInput) {
+      const response = await apiClient.post<ItemEnvelope<DtsReloadRun>>(deployPath(input.runId), {
+        deviceId: input.deviceId,
+        bridgeId: input.bridgeId,
+        targetRef: input.targetRef,
+        protocol: input.protocol,
+        confirmationTokens: input.confirmationTokens
       });
       return response.item;
     },

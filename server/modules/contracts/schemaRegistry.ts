@@ -802,6 +802,14 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     successStatus: 201,
     additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "dtsReload.deployRun": {
+    summary: "Deploy a validated reload overlay to a device through the local device bridge",
+    tags: ["dts-reload"],
+    requestBody: "DeployDtsReloadRunRequest",
+    responseBody: "DtsReloadRunResponse",
+    successStatus: 200,
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "dtsReload.getRun": {
     summary: "Get a DTS reload run detail including overlay source",
     tags: ["dts-reload"],

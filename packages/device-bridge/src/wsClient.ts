@@ -1,9 +1,10 @@
 import WebSocket from "ws";
 import { HttpsProxyAgent } from "https-proxy-agent";
+import type { BridgeRpcMethod } from "@wiseeff/device-command-core/bridgeRpcMethods";
 import { resolveProxyUrl } from "./proxyFetch";
 import { shouldBypassProxyForUrl } from "./proxyBypass";
 
-type RpcMethod = "bridge.getCapabilities" | "debug.detectTargets" | "debug.readNode" | "debug.writeNode";
+type RpcMethod = BridgeRpcMethod;
 
 type BridgeHelloMessage = {
   type: "bridge.hello";

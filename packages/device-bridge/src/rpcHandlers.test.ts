@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { describe, expect, it, vi } from "vitest";
 
 import type { AdbCommandRunner } from "@wiseeff/device-command-core/adbRunner";
@@ -234,5 +236,136 @@ describe("device bridge rpc handlers", () => {
       code: "UNSUPPORTED_PROTOCOL",
       message: "bad protocol"
     });
+  });
+
+  it("advertises methods from the shared BRIDGE_RPC_METHODS declaration", async () => {
+    const { BRIDGE_RPC_METHODS } = await import("@wiseeff/device-command-core/bridgeRpcMethods");
+    const rpc = createRpcHandlers({
+      adbRunner: makeRunner([
+        { code: 0, stdout: "Android Debug Bridge version 1.0.41\n", stderr: "", durationMs: 5 }
+      ]).runner,
+      hdcRunner: makeRunner([{ code: 0, stdout: "hdc version 2.0.0\n", stderr: "", durationMs: 5 }]).runner
+    });
+
+    const capabilities = await rpc.handle("bridge.getCapabilities", {});
+    expect(capabilities.methods).toEqual([...BRIDGE_RPC_METHODS]);
+  });
+
+  it("mounts the writable target via hdc target mount", async () => {
+    const hdc = makeRunner([{ code: 0, stdout: "", stderr: "", durationMs: 20 }]);
+    const rpc = createRpcHandlers({ hdcRunner: hdc.runner, adbRunner: makeRunner([]).runner });
+
+    const result = await rpc.handle("debug.mountTarget", {
+      protocol: "hdc",
+      targetRef: "AURORA-001"
+    });
+
+    expect(result).toMatchObject({ ok: true, durationMs: 20 });
+    expect(hdc.calls).toEqual([["-t", "AURORA-001", "target", "mount"]]);
+  });
+
+  it("pushes a file with hdc file send and returns a sha256 on-device digest", async () => {
+    const content = Buffer.from("dtbo-bytes");
+    const contentSha256 = createHash("sha256").update(content).digest("hex");
+    const hdc = makeRunner([
+      { code: 0, stdout: "", stderr: "", durationMs: 12 },
+      {
+        code: 0,
+        stdout: `${contentSha256}  /vendor/firmware/power_dts_overlay.dtbo\n`,
+        stderr: "",
+        durationMs: 8
+      }
+    ]);
+    const rpc = createRpcHandlers({ hdcRunner: hdc.runner, adbRunner: makeRunner([]).runner });
+
+    const result = await rpc.handle("debug.pushFile", {
+      protocol: "hdc",
+      targetRef: "AURORA-001",
+      destinationDirectory: "/vendor/firmware/",
+      destinationFilename: "power_dts_overlay.dtbo",
+      contentBase64: content.toString("base64"),
+      contentSha256
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      localDigest: contentSha256,
+      remoteDigest: contentSha256,
+      integrityCheck: "sha256"
+    });
+    expect(hdc.calls[0]?.slice(0, 3)).toEqual(["-t", "AURORA-001", "file"]);
+    expect(hdc.calls[0]?.[3]).toBe("send");
+    expect(hdc.calls[0]?.[5]).toBe("/vendor/firmware/power_dts_overlay.dtbo");
+    expect(hdc.calls[1]).toEqual([
+      "-t",
+      "AURORA-001",
+      "shell",
+      "sha256sum '/vendor/firmware/power_dts_overlay.dtbo'"
+    ]);
+  });
+
+  it("probes digest tools in sha256sum → md5sum → wc -c order and caches the result", async () => {
+    const content = Buffer.from("dtbo-bytes-md5");
+    const contentSha256 = createHash("sha256").update(content).digest("hex");
+    const contentMd5 = createHash("md5").update(content).digest("hex");
+    const hdc = makeRunner([
+      // first push: sha256 missing, md5 works
+      { code: 0, stdout: "", stderr: "", durationMs: 5 },
+      { code: 127, stdout: "", stderr: "sha256sum: not found", durationMs: 3 },
+      { code: 0, stdout: `${contentMd5}  /vendor/firmware/a.dtbo\n`, stderr: "", durationMs: 4 },
+      // second push: cache should skip straight to md5
+      { code: 0, stdout: "", stderr: "", durationMs: 5 },
+      { code: 0, stdout: `${contentMd5}  /vendor/firmware/a.dtbo\n`, stderr: "", durationMs: 4 }
+    ]);
+    const rpc = createRpcHandlers({ hdcRunner: hdc.runner, adbRunner: makeRunner([]).runner });
+    const params = {
+      protocol: "hdc" as const,
+      targetRef: "AURORA-001",
+      destinationDirectory: "/vendor/firmware/",
+      destinationFilename: "a.dtbo",
+      contentBase64: content.toString("base64"),
+      contentSha256
+    };
+
+    const first = await rpc.handle("debug.pushFile", params);
+    const second = await rpc.handle("debug.pushFile", params);
+
+    expect(first).toMatchObject({ ok: true, integrityCheck: "md5", remoteDigest: contentMd5 });
+    expect(second).toMatchObject({ ok: true, integrityCheck: "md5", remoteDigest: contentMd5 });
+    expect(hdc.calls.filter((args) => args.some((part) => part.includes("sha256sum")))).toHaveLength(1);
+    expect(hdc.calls.filter((args) => args.some((part) => part.includes("md5sum")))).toHaveLength(2);
+  });
+
+  it("falls back to byte-length integrity when digest tools are unavailable", async () => {
+    const content = Buffer.from("length-only");
+    const contentSha256 = createHash("sha256").update(content).digest("hex");
+    const hdc = makeRunner([
+      { code: 0, stdout: "", stderr: "", durationMs: 5 },
+      { code: 127, stdout: "", stderr: "sha256sum: not found", durationMs: 2 },
+      { code: 127, stdout: "", stderr: "md5sum: not found", durationMs: 2 },
+      { code: 0, stdout: `${content.length} /vendor/firmware/a.dtbo\n`, stderr: "", durationMs: 2 }
+    ]);
+    const rpc = createRpcHandlers({ hdcRunner: hdc.runner, adbRunner: makeRunner([]).runner });
+
+    const result = await rpc.handle("debug.pushFile", {
+      protocol: "hdc",
+      targetRef: "AURORA-001",
+      destinationDirectory: "/vendor/firmware/",
+      destinationFilename: "a.dtbo",
+      contentBase64: content.toString("base64"),
+      contentSha256
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      integrityCheck: "byte-length",
+      remoteDigest: String(content.length)
+    });
+    expect(hdc.calls.at(-1)).toEqual([
+      "-t",
+      "AURORA-001",
+      "shell",
+      "wc -c < '/vendor/firmware/a.dtbo'"
+    ]);
   });
 });

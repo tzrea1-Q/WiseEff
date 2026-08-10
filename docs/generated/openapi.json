@@ -5502,6 +5502,62 @@
         }
       }
     },
+    "/api/v1/dts-reload/runs/{runId}/deploy": {
+      "post": {
+        "operationId": "dtsReload.deployRun",
+        "summary": "Deploy a validated reload overlay to a device through the local device bridge",
+        "tags": [
+          "dts-reload"
+        ],
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeployDtsReloadRunRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DtsReloadRunResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/dts-reload/runs/{runId}": {
       "get": {
         "operationId": "dtsReload.getRun",
@@ -8109,6 +8165,10 @@
       "DtsReloadRunResponse": {
         "type": "object",
         "x-wiseeff-schema": "DtsReloadRunResponse"
+      },
+      "DeployDtsReloadRunRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "DeployDtsReloadRunRequest"
       },
       "DtsReloadConfigurationAdminResponse": {
         "type": "object",

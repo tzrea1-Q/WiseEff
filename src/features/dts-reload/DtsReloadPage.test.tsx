@@ -1,11 +1,15 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import type { ComponentProps } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import type { DtsReloadCandidate, DtsReloadRun } from "@/domain/dtsReload/types";
+import { DTS_RELOAD_CONFIRMATION_TOKEN } from "@/domain/dtsReload/types";
 import { DtsReloadPage } from "./DtsReloadPage";
 import { getRequiredRoleForPage } from "@/app/permissions";
+
+const testBridges = [{ id: "bridge-1", machineLabel: "Lab Mac" }];
 
 function candidate(overrides: Partial<DtsReloadCandidate> = {}): DtsReloadCandidate {
   return {
@@ -40,7 +44,12 @@ function run(overrides: Partial<DtsReloadRun> = {}): DtsReloadRun {
         debugValue: "<7000>"
       }
     ],
-    steps: [],
+    steps: [
+      { step: "compile-base", outcome: "passed" },
+      { step: "compile-overlay", outcome: "passed" },
+      { step: "dry-run-merge", outcome: "passed" },
+      { step: "assert-effect", outcome: "passed" }
+    ],
     diagnostics: [],
     toolVersions: { dtc: "1.7.0", fdtoverlay: "1.7.0" },
     overlaySource:
@@ -57,6 +66,42 @@ function createRepository(overrides: Partial<DtsReloadRepository> = {}): DtsRelo
   return {
     listCandidates: vi.fn(async () => ({ items: [candidate()] })),
     startRun: vi.fn(async () => run()),
+    deployRun: vi.fn(async () =>
+      run({
+        status: "unverifiable",
+        steps: [
+          { step: "compile-base", outcome: "passed" },
+          { step: "compile-overlay", outcome: "passed" },
+          { step: "dry-run-merge", outcome: "passed" },
+          { step: "assert-effect", outcome: "passed" },
+          { step: "mount-target", outcome: "passed" },
+          { step: "transfer-artifact", outcome: "passed" },
+          { step: "trigger-reload", outcome: "passed" }
+        ],
+        deviceId: "bridge:bridge-1",
+        bridgeId: "bridge-1",
+        bridgeMachineLabel: "Lab Mac",
+        targetRef: "device-serial-1",
+        protocol: "hdc",
+        integrityCheck: "byte-length",
+        reloadSnapshot: {
+          libraryBaselines: [
+            {
+              bindingId: "binding-1",
+              propertyKey: "watchdog_time",
+              nodePath: "/amba/i2c@1/dev@6E",
+              baselineValue: "<6000>"
+            }
+          ],
+          artifactDigest: {
+            sha256: "sha-art",
+            onDeviceDigest: "32",
+            integrityCheck: "byte-length"
+          },
+          kernelSignal: { command: "dmesg", excerpt: "overlay applied" }
+        }
+      })
+    ),
     getRun: vi.fn(async () => run()),
     downloadArtifact: vi.fn(async () => new Blob([Uint8Array.from([1, 2, 3])])),
     getReloadConfiguration: vi.fn(),
@@ -66,6 +111,26 @@ function createRepository(overrides: Partial<DtsReloadRepository> = {}): DtsRelo
     ...overrides
   };
 }
+
+function renderPage(repository: DtsReloadRepository, overrides: Partial<ComponentProps<typeof DtsReloadPage>> = {}) {
+  return render(
+    <DtsReloadPage
+      projects={[{ id: "project-1", name: "Demo" }]}
+      repository={repository}
+      canStartRun
+      bridges={testBridges}
+      {...overrides}
+    />
+  );
+}
+
+async function fillDeployFields(user: ReturnType<typeof userEvent.setup>) {
+  await user.type(screen.getByLabelText("目标标识 targetRef"), "device-serial-1");
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("DtsReloadPage", () => {
   it("requires committer role for the page", () => {
@@ -105,13 +170,10 @@ describe("DtsReloadPage", () => {
         ]
       }))
     });
-    const createObjectURL = vi.fn(() => "blob:overlay");
-    const revokeObjectURL = vi.fn();
-    vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:overlay");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
 
-    render(
-      <DtsReloadPage projects={[{ id: "project-1", name: "Demo" }]} repository={repository} canStartRun />
-    );
+    renderPage(repository);
 
     expect((await screen.findAllByText("Watchdog")).length).toBeGreaterThan(0);
     expect(screen.getByText(/合成 \/label 锚点/)).toBeInTheDocument();
@@ -132,6 +194,7 @@ describe("DtsReloadPage", () => {
     const watchdogInput = screen.getByLabelText("Watchdog 调试值");
     await user.clear(watchdogInput);
     await user.type(watchdogInput, "<99999>");
+    await fillDeployFields(user);
     await user.click(screen.getByRole("button", { name: /启动重载运行/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/最大值/);
     expect(repository.startRun).not.toHaveBeenCalled();
@@ -152,6 +215,15 @@ describe("DtsReloadPage", () => {
         ]
       })
     );
+    expect(repository.deployRun).not.toHaveBeenCalled();
+
+    const dialog = await screen.findByRole("dialog");
+    expect((within(dialog).getByLabelText("部署确认 Overlay 源码") as HTMLTextAreaElement).value).toContain(
+      "target-path"
+    );
+    expect(within(dialog).getByText(/<6000>/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/<7000>/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "取消" }));
 
     const overlay = await screen.findByLabelText("Overlay 源码");
     expect((overlay as HTMLTextAreaElement).value).toContain("target-path");
@@ -176,9 +248,7 @@ describe("DtsReloadPage", () => {
       }))
     });
 
-    render(
-      <DtsReloadPage projects={[{ id: "project-1", name: "Demo" }]} repository={repository} canStartRun />
-    );
+    renderPage(repository);
 
     expect(await screen.findByText("Blocked")).toBeInTheDocument();
     const checkbox = screen.getByLabelText("选择 Blocked");
@@ -224,9 +294,7 @@ describe("DtsReloadPage", () => {
       }))
     });
 
-    render(
-      <DtsReloadPage projects={[{ id: "project-1", name: "Demo" }]} repository={repository} canStartRun />
-    );
+    renderPage(repository);
 
     expect(await screen.findAllByText("敏感 · critical")).not.toHaveLength(0);
     expect(screen.getAllByText("敏感 · high").length).toBeGreaterThan(0);
@@ -235,6 +303,7 @@ describe("DtsReloadPage", () => {
     const startButton = screen.getByRole("button", { name: /启动重载运行/ });
     expect(startButton).toBeDisabled();
 
+    await fillDeployFields(user);
     await user.click(screen.getByLabelText("确认 critical 敏感节点重载"));
     expect(startButton).toBeEnabled();
     await user.click(startButton);
@@ -246,5 +315,48 @@ describe("DtsReloadPage", () => {
         confirmationToken: "confirm-sensitive-reload"
       })
     );
+    expect(repository.deployRun).not.toHaveBeenCalled();
+  });
+
+  it("opens deploy confirm after validated start and only calls deployRun with confirm-dts-reload on confirm", async () => {
+    const user = userEvent.setup();
+    const repository = createRepository();
+
+    renderPage(repository);
+    await screen.findAllByText("Watchdog");
+    await fillDeployFields(user);
+    await user.click(screen.getByRole("button", { name: /启动重载运行/ }));
+
+    await waitFor(() => expect(repository.startRun).toHaveBeenCalled());
+    expect(repository.deployRun).not.toHaveBeenCalled();
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("确认部署到设备")).toBeInTheDocument();
+    expect(within(dialog).getByText(/Lab Mac/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/bridge:bridge-1/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/device-serial-1/)).toBeInTheDocument();
+    expect((within(dialog).getByLabelText("部署确认 Overlay 源码") as HTMLTextAreaElement).value).toContain(
+      "target-path"
+    );
+    expect(within(dialog).getByText(/<6000>/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/<7000>/)).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "确认部署" }));
+
+    await waitFor(() =>
+      expect(repository.deployRun).toHaveBeenCalledWith({
+        runId: "run-1",
+        deviceId: "bridge:bridge-1",
+        bridgeId: "bridge-1",
+        targetRef: "device-serial-1",
+        protocol: "hdc",
+        confirmationTokens: [DTS_RELOAD_CONFIRMATION_TOKEN]
+      })
+    );
+    await waitFor(() => expect(repository.deployRun).toHaveBeenCalledTimes(1));
+    expect(screen.getByText("不可验证的重载")).toBeInTheDocument();
+    expect(screen.getAllByText(/仅长度校验/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/重载快照/)).toBeInTheDocument();
+    expect(screen.getByText(/挂载目标/)).toBeInTheDocument();
   });
 });
