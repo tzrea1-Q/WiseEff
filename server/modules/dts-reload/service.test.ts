@@ -180,20 +180,23 @@ function blockedOrValidatedInsert(status: "blocked" | "validated"): QueuedResult
         project_id: "project-1",
         config_revision_id: call.values[3],
         status,
-        failure_code: call.values[5],
-        steps: typeof call.values[6] === "string" ? JSON.parse(call.values[6] as string) : call.values[6],
+        purpose: call.values[5] ?? "ordinary",
+        failure_code: call.values[6],
+        steps: typeof call.values[7] === "string" ? JSON.parse(call.values[7] as string) : call.values[7],
         diagnostics:
-          typeof call.values[7] === "string" ? JSON.parse(call.values[7] as string) : call.values[7],
-        tool_versions:
           typeof call.values[8] === "string" ? JSON.parse(call.values[8] as string) : call.values[8],
-        overlay_source_storage_key: call.values[9],
-        overlay_source_sha256: call.values[10],
-        overlay_artifact_storage_key: call.values[11],
-        overlay_artifact_sha256: call.values[12],
-        overlay_artifact_bytes: call.values[13],
+        tool_versions:
+          typeof call.values[9] === "string" ? JSON.parse(call.values[9] as string) : call.values[9],
+        overlay_source_storage_key: call.values[10],
+        overlay_source_sha256: call.values[11],
+        overlay_artifact_storage_key: call.values[12],
+        overlay_artifact_sha256: call.values[13],
+        overlay_artifact_bytes: call.values[14],
         created_by_user_id: "user-1",
         created_at: "2026-08-10T00:00:00.000Z",
-        completed_at: call.values[15]
+        completed_at: call.values[16],
+        device_id: call.values[17] ?? null,
+        restores_source_run_id: call.values[18] ?? null
       }
     ];
   };

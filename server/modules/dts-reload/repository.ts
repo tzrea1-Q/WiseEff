@@ -9,6 +9,7 @@ import type {
   IntegrityCheckStrength,
   ReloadCandidateDto,
   ReloadRunDto,
+  ReloadRunPurpose,
   ReloadRunStatus,
   ReloadRunTargetDto,
   ReloadSnapshotDto,
@@ -37,6 +38,11 @@ export type InsertReloadRunInput = {
   projectId: string;
   configRevisionId: string | null;
   status: ReloadRunStatus;
+  purpose?: ReloadRunPurpose;
+  /** Pinned at start for restore-baseline; ordinary runs leave null until deploy. */
+  deviceId?: string | null;
+  /** Residue source run this restore compensates; required for restore-baseline clears. */
+  restoresSourceRunId?: string | null;
   failureCode: string | null;
   steps: Array<PreflightStep | ReloadStep>;
   diagnostics: PreflightDiagnostic[];
@@ -83,6 +89,8 @@ type ReloadRunRow = {
   project_id: string;
   config_revision_id: string | null;
   status: ReloadRunStatus;
+  purpose?: ReloadRunPurpose | null;
+  restores_source_run_id?: string | null;
   failure_code: string | null;
   steps: unknown;
   diagnostics: unknown;
@@ -137,6 +145,10 @@ function asIntegrityCheck(value: unknown): IntegrityCheckStrength | null {
   return null;
 }
 
+function asReloadPurpose(value: unknown): ReloadRunPurpose {
+  return value === "restore-baseline" ? "restore-baseline" : "ordinary";
+}
+
 function asReloadSnapshot(value: unknown): ReloadSnapshotDto | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
@@ -189,6 +201,11 @@ export function toReloadRunDto(
     projectId: row.project_id,
     configRevisionId: row.config_revision_id,
     status: row.status,
+    purpose: asReloadPurpose(row.purpose),
+    restoresSourceRunId:
+      typeof row.restores_source_run_id === "string" && row.restores_source_run_id.trim()
+        ? row.restores_source_run_id
+        : null,
     failureCode: row.failure_code,
     targets,
     steps: asJsonArray<PreflightStep | ReloadStep>(row.steps),
@@ -341,20 +358,21 @@ export async function getReloadCandidateRow(
 }
 
 export async function insertReloadRun(db: Queryable, input: InsertReloadRunInput): Promise<ReloadRunRow> {
+  const purpose = input.purpose ?? "ordinary";
   const result = await db.query<ReloadRunRow>(
     `
     insert into dts_reload_runs (
-      id, organization_id, project_id, config_revision_id, status, failure_code,
+      id, organization_id, project_id, config_revision_id, status, purpose, failure_code,
       steps, diagnostics, tool_versions,
       overlay_source_storage_key, overlay_source_sha256,
       overlay_artifact_storage_key, overlay_artifact_sha256, overlay_artifact_bytes,
-      created_by_user_id, completed_at
+      created_by_user_id, completed_at, device_id, restores_source_run_id
     ) values (
-      $1, $2, $3, $4, $5, $6,
-      $7::jsonb, $8::jsonb, $9::jsonb,
-      $10, $11,
-      $12, $13, $14,
-      $15, $16
+      $1, $2, $3, $4, $5, $6, $7,
+      $8::jsonb, $9::jsonb, $10::jsonb,
+      $11, $12,
+      $13, $14, $15,
+      $16, $17, $18, $19
     )
     returning *
     `,
@@ -364,6 +382,7 @@ export async function insertReloadRun(db: Queryable, input: InsertReloadRunInput
       input.projectId,
       input.configRevisionId,
       input.status,
+      purpose,
       input.failureCode,
       JSON.stringify(input.steps),
       JSON.stringify(input.diagnostics),
@@ -374,7 +393,9 @@ export async function insertReloadRun(db: Queryable, input: InsertReloadRunInput
       input.overlayArtifactSha256,
       input.overlayArtifactBytes,
       input.createdByUserId,
-      input.completedAt
+      input.completedAt,
+      input.deviceId ?? null,
+      input.restoresSourceRunId ?? null
     ]
   );
 

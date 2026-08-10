@@ -28,6 +28,19 @@ export const deployReloadRunBodySchema = z.object({
   confirmationTokens: z.array(z.string().min(1)).min(1)
 });
 
+export const restoreBaselineBodySchema = z.object({
+  deviceId: z.string().min(1),
+  /**
+   * Required when residue parameters match a critical-tier sensitive-node rule.
+   * Must equal `confirm-sensitive-reload`. Device-deploy confirmation is collected on deploy.
+   */
+  confirmationToken: z.string().min(1).optional()
+});
+
+export const residueQuerySchema = z.object({
+  deviceId: z.string().min(1)
+});
+
 export const projectIdParamsSchema = z.object({
   projectId: z.string().min(1)
 });

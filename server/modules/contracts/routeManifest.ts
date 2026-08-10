@@ -547,6 +547,20 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "dtsReload.restoreBaseline",
+    method: "POST",
+    path: "/api/v1/dts-reload/projects/:projectId/restore-baseline",
+    module: "dts-reload",
+    stability: "mvp"
+  },
+  {
+    id: "dtsReload.getResidue",
+    method: "GET",
+    path: "/api/v1/dts-reload/residue",
+    module: "dts-reload",
+    stability: "mvp"
+  },
+  {
     id: "dtsReload.deployRun",
     method: "POST",
     path: "/api/v1/dts-reload/runs/:runId/deploy",

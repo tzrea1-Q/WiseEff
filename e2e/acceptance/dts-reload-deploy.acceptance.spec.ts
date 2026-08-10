@@ -2,12 +2,13 @@
  * @operation DTS-RELOAD-DEPLOY-001
  * @operation DTS-RELOAD-KERNEL-001
  * @operation DTS-RELOAD-VERIFY-001
+ * @operation DTS-RELOAD-RESIDUE-001
  *
- * Wiring proof for #285/#286/#287: one fake bridge WebSocket client with
+ * Wiring proof for #285/#286/#287/#288: one fake bridge WebSocket client with
  * mountTarget/pushFile/writeNode/readKernelLog handlers proves the real RPC envelope,
  * connection-pool serialisation, and per-method timeouts are connected. Branch coverage
- * (including behavioural verify via debug.readNode) lives in
- * server/modules/dts-reload/deploy.test.ts.
+ * (including behavioural verify via debug.readNode and residue set/clear) lives in
+ * server/modules/dts-reload/deploy.test.ts and residue.test.ts / restoreBaseline.test.ts.
  */
 import { createHash, randomUUID } from "node:crypto";
 import { Client } from "pg";
@@ -292,6 +293,20 @@ test.describe("DTS reload deploy fake-bridge wiring", () => {
               ]
             }
           }
+        }
+      });
+
+      const residueResponse = await page.request.get(
+        apiRoute(`/api/v1/dts-reload/residue?deviceId=${encodeURIComponent(`bridge:${pair.bridgeId}`)}`),
+        { headers: smokeHeaders() }
+      );
+      const residueBody = await residueResponse.json().catch(() => null);
+      expect(residueResponse.ok(), `residue failed: ${JSON.stringify(residueBody)}`).toBe(true);
+      expect(residueBody).toMatchObject({
+        item: {
+          deviceId: `bridge:${pair.bridgeId}`,
+          projectId,
+          sourceRunId: runId
         }
       });
 

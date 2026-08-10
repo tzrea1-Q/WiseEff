@@ -47,6 +47,9 @@ export type DtsReloadRunStatus =
   | "contradicted"
   | "failed";
 
+/** ordinary debug values vs compensating restore-baseline (not an undo). */
+export type DtsReloadRunPurpose = "ordinary" | "restore-baseline";
+
 export type DtsReloadIntegrityCheck = "sha256" | "md5" | "byte-length";
 
 export type DtsReloadKernelSignalCaptureStatus = "obtained" | "not-obtained";
@@ -108,6 +111,9 @@ export type DtsReloadRun = {
   projectId: string;
   configRevisionId: string | null;
   status: DtsReloadRunStatus;
+  purpose: DtsReloadRunPurpose;
+  /** Present on restore-baseline runs — residue source this compensating reload targets. */
+  restoresSourceRunId?: string | null;
   failureCode: string | null;
   targets: Array<{
     bindingId: string;
@@ -141,6 +147,24 @@ export type DtsReloadRun = {
   reloadSnapshot?: DtsReloadSnapshot | null;
   createdAt: string;
   completedAt: string | null;
+};
+
+/**
+ * Platform bookkeeping that a device was last left carrying debug values.
+ * Not confirmed from the device; invalidated by reboot / reflash / out-of-band changes.
+ */
+export type DtsReloadResidue = {
+  deviceId: string;
+  projectId: string;
+  sourceRunId: string;
+  parameters: Array<{
+    bindingId: string;
+    propertyKey: string;
+    nodePath: string;
+    baselineValue: string | null;
+    debugValue: string;
+  }>;
+  recordedAt: string;
 };
 
 export type ReloadConfigurationContract = {

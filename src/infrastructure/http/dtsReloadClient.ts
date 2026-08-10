@@ -1,7 +1,13 @@
-import type { DtsReloadRepository, StartDtsReloadRunInput, DeployDtsReloadRunInput } from "@/application/ports/DtsReloadRepository";
+import type {
+  DtsReloadRepository,
+  StartDtsReloadRunInput,
+  DeployDtsReloadRunInput,
+  RestoreDtsReloadBaselineInput
+} from "@/application/ports/DtsReloadRepository";
 import type {
   DeviceReloadConfigurationOverride,
   DtsReloadCandidate,
+  DtsReloadResidue,
   DtsReloadRun,
   OrganisationReloadConfiguration,
   ReloadConfigurationAdminView,
@@ -25,6 +31,14 @@ function candidatesPath(projectId: string) {
 
 function runsPath(projectId: string) {
   return `/api/v1/dts-reload/projects/${encodeURIComponent(projectId)}/runs`;
+}
+
+function restoreBaselinePath(projectId: string) {
+  return `/api/v1/dts-reload/projects/${encodeURIComponent(projectId)}/restore-baseline`;
+}
+
+function residuePath(deviceId: string) {
+  return `/api/v1/dts-reload/residue?deviceId=${encodeURIComponent(deviceId)}`;
 }
 
 function runPath(runId: string) {
@@ -62,6 +76,19 @@ export function createHttpDtsReloadRepository(options: HttpDtsReloadRepositoryOp
         targets: input.targets,
         ...(input.confirmationToken ? { confirmationToken: input.confirmationToken } : {})
       });
+      return response.item;
+    },
+
+    async restoreBaseline(input: RestoreDtsReloadBaselineInput) {
+      const response = await apiClient.post<ItemEnvelope<DtsReloadRun>>(restoreBaselinePath(input.projectId), {
+        deviceId: input.deviceId,
+        ...(input.confirmationToken ? { confirmationToken: input.confirmationToken } : {})
+      });
+      return response.item;
+    },
+
+    async getResidue(deviceId: string) {
+      const response = await apiClient.get<ItemEnvelope<DtsReloadResidue | null>>(residuePath(deviceId));
       return response.item;
     },
 

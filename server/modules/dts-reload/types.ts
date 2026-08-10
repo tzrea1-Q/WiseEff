@@ -63,6 +63,14 @@ export type ReloadRunStatus =
   | "contradicted"
   | "failed";
 
+/**
+ * Why a reload run was started.
+ * - ordinary: engineer-supplied debug values
+ * - restore-baseline: compensating reload whose debug values are library baselines
+ *   for the same parameter set as the residue-producing run (not an undo / unload)
+ */
+export type ReloadRunPurpose = "ordinary" | "restore-baseline";
+
 export type IntegrityCheckStrength = "sha256" | "md5" | "byte-length";
 
 export type DeployStepName = "mount-target" | "transfer-artifact" | "trigger-reload";
@@ -168,6 +176,13 @@ export interface ReloadRunDto {
   projectId: string;
   configRevisionId: string | null;
   status: ReloadRunStatus;
+  purpose: ReloadRunPurpose;
+  /**
+   * For restore-baseline runs: the residue source run this compensating reload targets.
+   * Used to clear residue only when it still names this source (stale restores must not
+   * wipe a newer ordinary reload's bookkeeping). Null for ordinary runs.
+   */
+  restoresSourceRunId: string | null;
   failureCode: string | null;
   targets: ReloadRunTargetDto[];
   steps: Array<PreflightStep | ReloadStep>;
@@ -181,6 +196,10 @@ export interface ReloadRunDto {
     sha256: string;
     sizeBytes: number;
   } | null;
+  /**
+   * Device id. For restore-baseline runs this is pinned at start and must match deploy.
+   * For ordinary runs it is typically null until deploy.
+   */
   deviceId: string | null;
   bridgeId: string | null;
   bridgeMachineLabel: string | null;
@@ -190,6 +209,25 @@ export interface ReloadRunDto {
   reloadSnapshot: ReloadSnapshotDto | null;
   createdAt: string;
   completedAt: string | null;
+}
+
+/**
+ * Platform bookkeeping that a device was last left carrying debug values.
+ * Derived from run history — not confirmed from the device. Invalidated by reboot,
+ * reflash, or any out-of-band change made outside the platform.
+ */
+export interface ReloadResidueDto {
+  deviceId: string;
+  projectId: string;
+  sourceRunId: string;
+  parameters: Array<{
+    bindingId: string;
+    propertyKey: string;
+    nodePath: string;
+    baselineValue: string | null;
+    debugValue: string;
+  }>;
+  recordedAt: string;
 }
 
 /** Always required before any device deploy for a reload run. Never inject from runtime. */

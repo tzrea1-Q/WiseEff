@@ -34,6 +34,8 @@ function run(overrides: Partial<DtsReloadRun> = {}): DtsReloadRun {
     projectId: "project-1",
     configRevisionId: null,
     status: "validated",
+    purpose: "ordinary",
+    restoresSourceRunId: null,
     failureCode: null,
     targets: [
       {
@@ -66,9 +68,26 @@ function createRepository(overrides: Partial<DtsReloadRepository> = {}): DtsRelo
   return {
     listCandidates: vi.fn(async () => ({ items: [candidate()] })),
     startRun: vi.fn(async () => run()),
+    restoreBaseline: vi.fn(async () =>
+      run({
+        id: "run-restore",
+        purpose: "restore-baseline",
+        targets: [
+          {
+            bindingId: "binding-1",
+            nodePath: "/amba/i2c@1/dev@6E",
+            propertyKey: "watchdog_time",
+            baselineValue: "<6000>",
+            debugValue: "<6000>"
+          }
+        ]
+      })
+    ),
+    getResidue: vi.fn(async () => null),
     deployRun: vi.fn(async () =>
       run({
         status: "unverifiable",
+        purpose: "ordinary",
         steps: [
           { step: "compile-base", outcome: "passed" },
           { step: "compile-overlay", outcome: "passed" },
@@ -513,5 +532,51 @@ describe("DtsReloadPage", () => {
     await waitFor(() => expect(screen.getByText(/未获得内核日志信号/)).toBeInTheDocument());
     expect(screen.getByText(/HDC exited with 1/)).toBeInTheDocument();
     expect(screen.getByText("不可验证的重载")).toBeInTheDocument();
+  });
+
+  it("shows residue bookkeeping copy and opens compensating restore confirmation", async () => {
+    const user = userEvent.setup();
+    const residue = {
+      deviceId: "bridge:bridge-1",
+      projectId: "project-1",
+      sourceRunId: "run-residue",
+      parameters: [
+        {
+          bindingId: "binding-1",
+          propertyKey: "watchdog_time",
+          nodePath: "/amba/i2c@1/dev@6E",
+          baselineValue: "<6000>",
+          debugValue: "<7000>"
+        }
+      ],
+      recordedAt: "2026-08-10T00:00:00.000Z"
+    };
+    const repository = createRepository({
+      getResidue: vi.fn(async () => residue)
+    });
+
+    renderPage(repository);
+    await screen.findByLabelText("重载残留指示");
+    expect(screen.getByLabelText("重载残留指示")).toHaveTextContent(/平台根据运行历史做的记账/);
+    expect(screen.getByLabelText("重载残留指示")).toHaveTextContent(/无法从设备侧确认/);
+    expect(screen.getByLabelText("重载残留指示")).toHaveTextContent(/重启、重新刷机/);
+    expect(screen.getByLabelText("重载残留指示")).toHaveTextContent(/run-residue/);
+    expect(screen.getByLabelText("重载残留指示")).toHaveTextContent(/watchdog_time/);
+
+    await user.click(screen.getByRole("button", { name: /恢复基线（补偿性重载）/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent(/补偿性重载/);
+    expect(dialog).toHaveTextContent(/不是撤销/);
+    expect(dialog).toHaveTextContent(/无法卸载/);
+
+    await user.click(within(dialog).getByRole("button", { name: "启动补偿性恢复" }));
+    await waitFor(() => expect(repository.restoreBaseline).toHaveBeenCalledWith({
+      projectId: "project-1",
+      deviceId: "bridge:bridge-1"
+    }));
+    const deployDialog = await screen.findByRole("dialog");
+    expect(deployDialog).toHaveTextContent(/补偿性恢复基线部署|补偿性重载/);
+    expect(deployDialog).toHaveTextContent(/不是撤销/);
+    expect(deployDialog).toHaveTextContent(/平台根据运行历史做的记账/);
   });
 });

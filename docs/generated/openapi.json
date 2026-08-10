@@ -5502,6 +5502,92 @@
         }
       }
     },
+    "/api/v1/dts-reload/projects/{projectId}/restore-baseline": {
+      "post": {
+        "operationId": "dtsReload.restoreBaseline",
+        "summary": "Start a compensating restore-baseline reload from recorded device residue",
+        "tags": [
+          "dts-reload"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreDtsReloadBaselineRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DtsReloadRunResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/dts-reload/residue": {
+      "get": {
+        "operationId": "dtsReload.getResidue",
+        "summary": "Get platform bookkeeping residue for a device (not confirmed from the device)",
+        "tags": [
+          "dts-reload"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DtsReloadResidueResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/dts-reload/runs/{runId}/deploy": {
       "post": {
         "operationId": "dtsReload.deployRun",
@@ -8165,6 +8251,14 @@
       "DtsReloadRunResponse": {
         "type": "object",
         "x-wiseeff-schema": "DtsReloadRunResponse"
+      },
+      "RestoreDtsReloadBaselineRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "RestoreDtsReloadBaselineRequest"
+      },
+      "DtsReloadResidueResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DtsReloadResidueResponse"
       },
       "DeployDtsReloadRunRequest": {
         "type": "object",

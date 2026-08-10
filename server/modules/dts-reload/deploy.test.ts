@@ -86,6 +86,21 @@ function createDeployDb(options: DeployDbOptions) {
       return { rows: [next] as Row[], rowCount: 1 };
     }
 
+    if (text.includes("dts_reload_device_residue")) {
+      if (text.toLowerCase().includes("insert into")) {
+        const row = {
+          organization_id: values[0],
+          device_id: values[1],
+          project_id: values[2],
+          source_run_id: values[3],
+          parameters: JSON.parse(String(values[4])),
+          recorded_at: values[5]
+        };
+        return { rows: [row] as Row[], rowCount: 1 };
+      }
+      return { rows: [] as Row[], rowCount: 0 };
+    }
+
     // getReloadRun / artifact key lookup
     if (text.includes("from dts_reload_runs") || text.includes("overlay_artifact_storage_key")) {
       return { rows: [options.runRow] as Row[], rowCount: 1 };
@@ -143,6 +158,8 @@ function validatedRunRow(overrides: Record<string, unknown> = {}) {
     project_id: "project-1",
     config_revision_id: "rev-1",
     status: "validated",
+    purpose: "ordinary",
+    restores_source_run_id: null,
     failure_code: null,
     steps: [
       { step: "compile-base", outcome: "passed" },
@@ -998,5 +1015,59 @@ describe("deployReloadRun", () => {
       outcome: "read-failed",
       reason: "resolver exploded"
     });
+  });
+
+  it("refuses restore-baseline deploy when the request device differs from the pinned start device", async () => {
+    const artifactBytes = Buffer.from("dtbo");
+    const artifactSha = createHash("sha256").update(artifactBytes).digest("hex");
+    const runRow = validatedRunRow({
+      overlay_artifact_sha256: artifactSha,
+      overlay_artifact_bytes: artifactBytes.length,
+      purpose: "restore-baseline",
+      device_id: "bridge:lab-1",
+      restores_source_run_id: "run-residue"
+    });
+    const { db } = createDeployDb({
+      runRow,
+      targetRows: [
+        {
+          binding_id: "b1",
+          node_path: "/n",
+          property_key: "p",
+          baseline_value: "<1>",
+          debug_value: "<1>",
+          sort_order: 0
+        }
+      ]
+    });
+    const objectStore: ObjectStore = {
+      put: vi.fn(),
+      get: vi.fn(async (key) => (key === "art-key" ? artifactBytes : Buffer.from("src"))),
+      delete: vi.fn()
+    };
+    const bridgeRpcClient = { call: vi.fn() };
+
+    await expect(
+      deployReloadRun(
+        db,
+        objectStore,
+        auth(),
+        {
+          runId: "run-1",
+          deviceId: "bridge:other-device",
+          bridgeId: "br-1",
+          targetRef: "AURORA-001",
+          protocol: "hdc",
+          confirmationTokens: [DTS_RELOAD_CONFIRMATION_TOKEN]
+        },
+        {
+          bridgeRpcClient,
+          bridgeConnectionPool: { isConnected: () => true }
+        }
+      )
+    ).rejects.toMatchObject({
+      details: { code: "restore-device-mismatch", pinnedDeviceId: "bridge:lab-1" }
+    });
+    expect(bridgeRpcClient.call).not.toHaveBeenCalled();
   });
 });

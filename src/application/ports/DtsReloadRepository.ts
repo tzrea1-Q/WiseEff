@@ -1,5 +1,6 @@
 import type {
   DtsReloadCandidate,
+  DtsReloadResidue,
   DtsReloadRun,
   ReloadConfigurationAdminView,
   ReloadConfigurationContract
@@ -8,6 +9,13 @@ import type {
 export type StartDtsReloadRunInput = {
   projectId: string;
   targets: Array<{ bindingId: string; debugValue: string }>;
+  /** Required for critical-tier sensitive matches: `confirm-sensitive-reload`. */
+  confirmationToken?: string;
+};
+
+export type RestoreDtsReloadBaselineInput = {
+  projectId: string;
+  deviceId: string;
   /** Required for critical-tier sensitive matches: `confirm-sensitive-reload`. */
   confirmationToken?: string;
 };
@@ -25,6 +33,8 @@ export type DeployDtsReloadRunInput = {
 export interface DtsReloadRepository {
   listCandidates(projectId: string): Promise<{ items: DtsReloadCandidate[] }>;
   startRun(input: StartDtsReloadRunInput): Promise<DtsReloadRun>;
+  restoreBaseline(input: RestoreDtsReloadBaselineInput): Promise<DtsReloadRun>;
+  getResidue(deviceId: string): Promise<DtsReloadResidue | null>;
   deployRun(input: DeployDtsReloadRunInput): Promise<DtsReloadRun>;
   getRun(runId: string): Promise<DtsReloadRun>;
   downloadArtifact(runId: string): Promise<Blob>;

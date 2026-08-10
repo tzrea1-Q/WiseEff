@@ -700,6 +700,18 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["api"]
   },
   {
+    id: "DTS-RELOAD-RESIDUE-001",
+    priority: "P0",
+    area: "debugging",
+    route: "/dts-reload",
+    roles: ["Hardware Committer", "Admin"],
+    action: "Record reload residue after post-device-write terminals; restore-baseline starts a compensating run through the normal start/deploy path and clears residue only on success.",
+    coverage: "automated",
+    acceptanceIds: ["DTS-RELOAD-RESIDUE-001"],
+    specFiles: ["e2e/acceptance/dts-reload-deploy.acceptance.spec.ts"],
+    assertions: ["api"]
+  },
+  {
     id: "DTS-RELOAD-DEPLOY-HW-001",
     priority: "P1",
     area: "debugging",
