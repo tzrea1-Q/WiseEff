@@ -11,7 +11,7 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 import { Client } from "pg";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "playwright/test";
 import WebSocket from "ws";
 
 import { DTS_RELOAD_BRIDGE_RPC_METHODS } from "@wiseeff/device-command-core/bridgeRpcMethods";
