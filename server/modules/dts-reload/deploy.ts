@@ -9,6 +9,7 @@ import { listBridgesForUser } from "../deviceBridge/repository";
 import { loadLatestBridgeReleaseManifest } from "../deviceBridge/releaseManifest";
 import {
   acquireDebugDeviceLease,
+  ensureBridgeDebugDevice,
   releaseDebugDeviceLease
 } from "../debugging/repository";
 import type { AuthContext } from "../auth/types";
@@ -295,6 +296,13 @@ export async function executeReloadDeploy(input: {
     },
     { claim: true }
   );
+
+  await ensureBridgeDebugDevice(input.db, {
+    organizationId: auth.organization.id,
+    deviceId: deploy.deviceId,
+    name: bridge.machineLabel,
+    protocol: deploy.protocol
+  });
 
   const leaseSessionId = `dts-reload:${run.id}`;
   const lease = await acquireDebugDeviceLease(input.db, {

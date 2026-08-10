@@ -1032,6 +1032,40 @@ async function ensureBridgeDebugDevices(
   }
 }
 
+/**
+ * Ensure a `bridge:…` device id exists before taking a debug_device_leases row.
+ * Leases still FK to debugging_devices; DTS reload addresses devices as bridge ids
+ * that may never have been detected via node-debugging.
+ */
+export async function ensureBridgeDebugDevice(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    deviceId: string;
+    name: string;
+    protocol: DebugConnectionProtocol;
+  }
+) {
+  if (!input.deviceId.startsWith("bridge:")) {
+    return;
+  }
+  await db.query(
+    `
+    insert into debugging_devices (
+      id, organization_id, name, transport, status, firmware, last_seen_at
+    )
+    values ($1, $2, $3, $4, 'online', 'bridge', now())
+    on conflict (id) do update
+    set name = excluded.name,
+      transport = excluded.transport,
+      status = 'online',
+      last_seen_at = now(),
+      updated_at = now()
+    `,
+    [input.deviceId, input.organizationId, input.name.trim() || input.deviceId, input.protocol]
+  );
+}
+
 export async function upsertDetectedTargets(
   db: Queryable,
   input: {
