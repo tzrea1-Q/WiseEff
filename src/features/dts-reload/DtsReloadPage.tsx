@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import {
   dtsReloadBlockReasonLabels,
+  dtsReloadPurposeLabels,
   dtsReloadStatusLabels,
   dtsReloadVerificationOutcomeLabels,
   DTS_RELOAD_CONFIRMATION_TOKEN,
@@ -14,6 +15,7 @@ import type {
   DtsReloadParameterVerification,
   DtsReloadResidue,
   DtsReloadRun,
+  DtsReloadRunListItem,
   DtsReloadSnapshot
 } from "@/domain/dtsReload/types";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -143,6 +145,20 @@ function writeRunIdToSearch(runId: string | null) {
 
 function defaultDeviceId(bridgeId: string): string {
   return `bridge:${bridgeId}`;
+}
+
+function formatAttemptedAt(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
+}
+
+function lastReloadSummary(candidate: DtsReloadCandidate): string {
+  const last = candidate.lastReload;
+  if (!last) return "—";
+  const purpose =
+    last.purpose === "restore-baseline" ? ` · ${dtsReloadPurposeLabels["restore-baseline"]}` : "";
+  return `${last.debugValue} · ${dtsReloadStatusLabels[last.outcome]}${purpose} · ${formatAttemptedAt(last.attemptedAt)}`;
 }
 
 function integrityCheckLabel(check: DtsReloadIntegrityCheck): string {
@@ -482,6 +498,12 @@ export function DtsReloadPage({
   const [restoring, setRestoring] = useState(false);
   const [restoreError, setRestoreError] = useState("");
   const [restoreCriticalConfirmed, setRestoreCriticalConfirmed] = useState(false);
+  const [historyItems, setHistoryItems] = useState<DtsReloadRunListItem[]>([]);
+  const [historyNextCursor, setHistoryNextCursor] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyLoadingMore, setHistoryLoadingMore] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [historyFilterDevice, setHistoryFilterDevice] = useState(false);
 
   const selectedBridge = useMemo(
     () => bridges.find((bridge) => bridge.id === bridgeId) ?? null,
@@ -587,6 +609,47 @@ export function DtsReloadPage({
   }, [repository, deviceId]);
 
   useEffect(() => {
+    if (!repository || !projectId) {
+      setHistoryItems([]);
+      setHistoryNextCursor(null);
+      return;
+    }
+    if (
+      import.meta.env.DEV &&
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("uiPreview") === "history"
+    ) {
+      return;
+    }
+    let cancelled = false;
+    setHistoryLoading(true);
+    setHistoryError("");
+    void repository
+      .listRuns({
+        projectId,
+        ...(historyFilterDevice && deviceId.trim() ? { deviceId: deviceId.trim() } : {}),
+        limit: 10
+      })
+      .then((result) => {
+        if (cancelled) return;
+        setHistoryItems(result.items);
+        setHistoryNextCursor(result.nextCursor);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setHistoryItems([]);
+        setHistoryNextCursor(null);
+        setHistoryError(error instanceof Error ? error.message : "加载运行历史失败。");
+      })
+      .finally(() => {
+        if (!cancelled) setHistoryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [repository, projectId, historyFilterDevice, historyFilterDevice ? deviceId : ""]);
+
+  useEffect(() => {
     if (!selectedHasCriticalSensitive) {
       setCriticalConfirmed(false);
     }
@@ -634,9 +697,166 @@ export function DtsReloadPage({
             writeRunIdToSearch(null);
           }
         }
-        // DEV-only visual QA hooks for playwright-cli screenshots (#286 / #287 / #288).
+        // DEV-only visual QA hooks for playwright-cli screenshots (#286 / #287 / #288 / #289).
         if (import.meta.env.DEV && typeof window !== "undefined") {
           const preview = new URLSearchParams(window.location.search).get("uiPreview");
+          if (preview === "history") {
+            setDeviceId("bridge:preview");
+            setDeviceIdTouched(true);
+            setTargetRef("AURORA-PREVIEW");
+            setCandidates(
+              result.items.map((item, index) =>
+                index === 0
+                  ? {
+                      ...item,
+                      lastReload: {
+                        runId: "preview-history-failed",
+                        debugValue: "<7000>",
+                        attemptedAt: "2026-08-10T11:00:00.000Z",
+                        outcome: "failed",
+                        purpose: "ordinary"
+                      }
+                    }
+                  : item
+              )
+            );
+            setHistoryItems([
+              {
+                id: "preview-history-restore",
+                projectId,
+                deviceId: "bridge:preview",
+                status: "verified",
+                purpose: "restore-baseline",
+                failureCode: null,
+                targetCount: 1,
+                propertyKeys: ["watchdog_time"],
+                artifact: { fileName: "debug-overlay-preview-history-restore.dtbo", sha256: "sha-restore", sizeBytes: 40 },
+                integrityCheck: "sha256",
+                createdAt: "2026-08-10T12:00:00.000Z",
+                completedAt: "2026-08-10T12:00:03.000Z"
+              },
+              {
+                id: "preview-history-failed",
+                projectId,
+                deviceId: "bridge:preview",
+                status: "failed",
+                purpose: "ordinary",
+                failureCode: "transfer-failed",
+                targetCount: 1,
+                propertyKeys: ["watchdog_time"],
+                artifact: { fileName: "debug-overlay-preview-history-failed.dtbo", sha256: "sha-failed", sizeBytes: 32 },
+                integrityCheck: "md5",
+                createdAt: "2026-08-10T11:00:00.000Z",
+                completedAt: "2026-08-10T11:00:02.000Z"
+              },
+              {
+                id: "preview-history-blocked",
+                projectId,
+                deviceId: null,
+                status: "blocked",
+                purpose: "ordinary",
+                failureCode: "preflight-failed",
+                targetCount: 1,
+                propertyKeys: ["watchdog_time"],
+                artifact: null,
+                integrityCheck: null,
+                createdAt: "2026-08-10T10:00:00.000Z",
+                completedAt: "2026-08-10T10:00:01.000Z"
+              }
+            ]);
+            setHistoryNextCursor(null);
+            setRun({
+              id: "preview-history-restore",
+              projectId,
+              configRevisionId: null,
+              status: "verified",
+              purpose: "restore-baseline",
+              restoresSourceRunId: "preview-history-failed",
+              failureCode: null,
+              targets: [
+                {
+                  bindingId: "binding-1",
+                  nodePath: "/amba/i2c@1/dev@6E",
+                  propertyKey: "watchdog_time",
+                  baselineValue: "<6000>",
+                  debugValue: "<6000>"
+                }
+              ],
+              steps: [
+                { step: "compile-base", outcome: "passed" },
+                { step: "compile-overlay", outcome: "passed" },
+                { step: "dry-run-merge", outcome: "passed" },
+                { step: "assert-effect", outcome: "passed" },
+                { step: "mount-target", outcome: "passed" },
+                { step: "transfer-artifact", outcome: "passed" },
+                { step: "trigger-reload", outcome: "passed" }
+              ],
+              diagnostics: [],
+              toolVersions: { dtc: "1.7.0", fdtoverlay: "1.7.0" },
+              overlaySource: "/dts-v1/;\n/plugin/;\n",
+              overlaySourceSha256: "src-sha",
+              artifact: {
+                fileName: "debug-overlay-preview-history-restore.dtbo",
+                sha256: "sha-restore",
+                sizeBytes: 40
+              },
+              deviceId: "bridge:preview",
+              bridgeId: "bridge-preview",
+              bridgeMachineLabel: "Preview Lab",
+              targetRef: "AURORA-PREVIEW",
+              protocol: "hdc",
+              integrityCheck: "sha256",
+              artifactRetentionExpired: false,
+              reloadSnapshot: {
+                libraryBaselines: [
+                  {
+                    bindingId: "binding-1",
+                    propertyKey: "watchdog_time",
+                    nodePath: "/amba/i2c@1/dev@6E",
+                    baselineValue: "<6000>"
+                  }
+                ],
+                artifactDigest: {
+                  sha256: "sha-restore",
+                  onDeviceDigest: "sha-restore",
+                  integrityCheck: "sha256"
+                },
+                kernelSignal: {
+                  command: "dmesg",
+                  captureStatus: "obtained",
+                  captureError: null,
+                  rawText: "watchdog_time applied",
+                  truncated: false,
+                  matchedByParameter: [
+                    {
+                      parameterName: "watchdog_time",
+                      bindingId: "binding-1",
+                      lines: ["watchdog_time applied"]
+                    }
+                  ],
+                  excerpt: null
+                },
+                behaviouralVerification: {
+                  outcomes: [
+                    {
+                      bindingId: "binding-1",
+                      propertyKey: "watchdog_time",
+                      outcome: "verified",
+                      debugNodeId: "node-1",
+                      nodePath: "/sys/watchdog",
+                      expectedValue: "<6000>",
+                      readValue: "6000",
+                      reason: null
+                    }
+                  ]
+                }
+              },
+              createdAt: "2026-08-10T12:00:00.000Z",
+              completedAt: "2026-08-10T12:00:03.000Z"
+            });
+            writeRunIdToSearch("preview-history-restore");
+            return;
+          }
           if (preview === "residue") {
             setDeviceId("bridge:preview");
             setDeviceIdTouched(true);
@@ -1019,6 +1239,10 @@ export function DtsReloadPage({
 
   const onDownload = async () => {
     if (!run?.artifact) return;
+    if (run.artifactRetentionExpired) {
+      setErrorMessage("该运行的编译产物已超过保留期，无法下载（元数据与摘要仍可查看）。");
+      return;
+    }
     try {
       const blob = await repository.downloadArtifact(run.id);
       const url = URL.createObjectURL(blob);
@@ -1029,6 +1253,89 @@ export function DtsReloadPage({
       URL.revokeObjectURL(url);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "下载产物失败。");
+    }
+  };
+
+  const onOpenHistoryRun = async (runId: string) => {
+    if (!repository) return;
+    if (
+      import.meta.env.DEV &&
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("uiPreview") === "history" &&
+      run
+    ) {
+      // Preview fixtures are client-only; switching among preview history rows keeps the
+      // already-loaded detail shape and only swaps the selected history highlight via URL.
+      if (runId === run.id || runId.startsWith("preview-history-")) {
+        writeRunIdToSearch(runId);
+        if (runId !== run.id && runId === "preview-history-failed") {
+          setRun({
+            ...run,
+            id: "preview-history-failed",
+            status: "failed",
+            purpose: "ordinary",
+            restoresSourceRunId: null,
+            failureCode: "transfer-failed",
+            artifactRetentionExpired: false,
+            reloadSnapshot: null,
+            overlaySource: null
+          });
+        } else if (runId === "preview-history-blocked") {
+          setRun({
+            ...run,
+            id: "preview-history-blocked",
+            status: "blocked",
+            purpose: "ordinary",
+            restoresSourceRunId: null,
+            failureCode: "preflight-failed",
+            deviceId: null,
+            artifact: null,
+            overlaySource: null,
+            reloadSnapshot: null
+          });
+        } else if (runId === "preview-history-restore") {
+          // Keep the richer restore preview already seeded on load.
+          writeRunIdToSearch(runId);
+        }
+        return;
+      }
+    }
+    setErrorMessage("");
+    try {
+      const existing = await repository.getRun(runId);
+      setRun(existing);
+      writeRunIdToSearch(existing.id);
+      if (existing.bridgeId) setBridgeId(existing.bridgeId);
+      if (existing.targetRef) setTargetRef(existing.targetRef);
+      if (existing.deviceId) {
+        setDeviceId(existing.deviceId);
+        setDeviceIdTouched(true);
+      }
+      if (existing.protocol === "hdc" || existing.protocol === "adb") {
+        setProtocol(existing.protocol);
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "加载运行详情失败。");
+    }
+  };
+
+  const onLoadMoreHistory = async () => {
+    if (!repository || !projectId || !historyNextCursor || historyLoadingMore) return;
+    setHistoryLoadingMore(true);
+    setHistoryError("");
+    try {
+      const result = await repository.listRuns({
+        projectId,
+        ...(historyFilterDevice && deviceId.trim() ? { deviceId: deviceId.trim() } : {}),
+        cursor: historyNextCursor,
+        limit: 10
+      });
+      setHistoryItems((current) => [...current, ...result.items]);
+      setHistoryNextCursor(result.nextCursor);
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : "加载更多运行历史失败。");
+    } finally {
+      setHistoryLoadingMore(false);
     }
   };
 
@@ -1116,8 +1423,9 @@ export function DtsReloadPage({
       </div>
 
       {!canStartRun ? (
-        <p role="status" className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-950">
-          当前账号没有 DTS 重载调试权限。服务器也会拒绝无权限请求。
+        <p role="status" className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          当前账号仅有调试查看权限：可浏览运行历史与参数上次重载状态，但无法启动、部署或恢复基线。需要{" "}
+          <code className="rounded bg-amber-100 px-1">debugging:dts-reload</code> 才能执行变更。
         </p>
       ) : null}
 
@@ -1136,6 +1444,7 @@ export function DtsReloadPage({
                 <th className="px-3 py-2">参数</th>
                 <th className="px-3 py-2">模块</th>
                 <th className="px-3 py-2">库基线</th>
+                <th className="px-3 py-2">上次重载</th>
                 <th className="px-3 py-2">治理</th>
                 <th className="px-3 py-2">状态</th>
               </tr>
@@ -1143,13 +1452,13 @@ export function DtsReloadPage({
             <tbody>
               {loading ? (
                 <tr>
-                  <td className="px-3 py-4 text-muted-foreground" colSpan={6}>
+                  <td className="px-3 py-4 text-muted-foreground" colSpan={7}>
                     加载中…
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-4 text-muted-foreground" colSpan={6}>
+                  <td className="px-3 py-4 text-muted-foreground" colSpan={7}>
                     当前筛选条件下没有可列出的参数。
                   </td>
                 </tr>
@@ -1183,6 +1492,26 @@ export function DtsReloadPage({
                       </td>
                       <td className="px-3 py-2 text-xs">{candidate.module || "—"}</td>
                       <td className="px-3 py-2 font-mono text-xs">{candidate.baselineValue ?? "—"}</td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground" title={lastReloadSummary(candidate)}>
+                        {candidate.lastReload ? (
+                          <button
+                            type="button"
+                            className="text-left text-sky-800 underline-offset-2 hover:underline"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void onOpenHistoryRun(candidate.lastReload!.runId);
+                            }}
+                          >
+                            <span className="font-mono text-foreground">{candidate.lastReload.debugValue}</span>
+                            <span className="mt-0.5 block">
+                              {dtsReloadStatusLabels[candidate.lastReload.outcome]} ·{" "}
+                              {formatAttemptedAt(candidate.lastReload.attemptedAt)}
+                            </span>
+                          </button>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
                       <td className="px-3 py-2 text-xs">
                         {sensitiveLabel ? (
                           <span
@@ -1417,6 +1746,12 @@ export function DtsReloadPage({
                 </span>
               </div>
               {run.failureCode ? <p className="text-xs text-muted-foreground">失败码：{run.failureCode}</p> : null}
+              {run.purpose === "restore-baseline" ? (
+                <p className="text-xs font-medium text-violet-900">
+                  目的：{dtsReloadPurposeLabels["restore-baseline"]}
+                  {run.restoresSourceRunId ? `（源运行 ${run.restoresSourceRunId}）` : ""}
+                </p>
+              ) : null}
               {run.bridgeMachineLabel || run.targetRef ? (
                 <div className="flex flex-col gap-2">
                   <p className="text-xs text-muted-foreground">
@@ -1461,9 +1796,19 @@ export function DtsReloadPage({
                 </label>
               ) : null}
               {run.artifact ? (
-                <Button type="button" variant="outline" onClick={() => void onDownload()}>
-                  下载编译产物 ({run.artifact.fileName})
-                </Button>
+                <div className="flex flex-col gap-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={run.artifactRetentionExpired === true}
+                    onClick={() => void onDownload()}
+                  >
+                    {run.artifactRetentionExpired
+                      ? "产物已过期（不可下载）"
+                      : `下载编译产物 (${run.artifact.fileName})`}
+                  </Button>
+                  <p className="font-mono text-[11px] text-muted-foreground">sha256 {run.artifact.sha256}</p>
+                </div>
               ) : null}
               {canRetryDeploy && canStartRun ? (
                 <Button
@@ -1478,6 +1823,85 @@ export function DtsReloadPage({
             </div>
           ) : null}
         </div>
+      </div>
+
+      <div
+        className="flex flex-col gap-3 rounded-md border p-4"
+        aria-label="运行历史"
+        aria-labelledby="dts-reload-history-title"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 id="dts-reload-history-title" className="text-sm font-semibold">
+              运行历史
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              按项目列出（可选设备过滤），含已阻断与失败运行；恢复基线运行单独标注。
+            </p>
+          </div>
+          <label className="flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={historyFilterDevice}
+              onChange={(event) => setHistoryFilterDevice(event.target.checked)}
+              aria-label="仅显示当前设备的运行"
+            />
+            仅当前设备
+            {deviceId.trim() ? `（${deviceId.trim()}）` : ""}
+          </label>
+        </div>
+        {historyError ? (
+          <p role="alert" className="text-xs text-rose-900">
+            {historyError}
+          </p>
+        ) : null}
+        {historyLoading ? (
+          <p className="text-sm text-muted-foreground">加载运行历史…</p>
+        ) : historyItems.length === 0 ? (
+          <p className="text-sm text-muted-foreground">暂无运行记录。</p>
+        ) : (
+          <ul className="divide-y rounded-md border">
+            {historyItems.map((item) => (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  className={cn(
+                    "flex w-full flex-col gap-1 px-3 py-3 text-left hover:bg-muted/30",
+                    run?.id === item.id && "bg-sky-50"
+                  )}
+                  onClick={() => void onOpenHistoryRun(item.id)}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={cn("rounded-md px-2 py-0.5 text-xs font-medium", statusBadgeClass(item.status))}>
+                      {dtsReloadStatusLabels[item.status]}
+                    </span>
+                    {item.purpose === "restore-baseline" ? (
+                      <span className="rounded-md bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-950">
+                        {dtsReloadPurposeLabels["restore-baseline"]}
+                      </span>
+                    ) : null}
+                    <span className="text-xs text-muted-foreground">{formatAttemptedAt(item.createdAt)}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {item.deviceId ?? "未绑定设备"} · {item.targetCount} 个参数
+                    {item.propertyKeys.length > 0 ? ` · ${item.propertyKeys.slice(0, 3).join(", ")}` : ""}
+                    {item.failureCode ? ` · ${item.failureCode}` : ""}
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {historyNextCursor ? (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={historyLoadingMore}
+            onClick={() => void onLoadMoreHistory()}
+          >
+            {historyLoadingMore ? "加载中…" : "加载更多"}
+          </Button>
+        ) : null}
       </div>
 
       <ConfirmDialog

@@ -297,13 +297,20 @@ describe("startRestoreBaselineRun", () => {
 });
 
 describe("getReloadResidue authz", () => {
-  it("refuses callers lacking debugging:dts-reload", async () => {
+  it("refuses callers lacking debugging:view (and debugging:dts-reload)", async () => {
     const { db } = createRestoreDb({ residue: null });
     await expect(
       getReloadResidue(db, auth({ permissions: [] }), "bridge:lab-1")
     ).rejects.toMatchObject({
       code: "FORBIDDEN",
-      details: { permission: "debugging:dts-reload" }
+      details: { permission: "debugging:view" }
     });
+  });
+
+  it("allows callers with only debugging:view", async () => {
+    const { db } = createRestoreDb({ residue: null });
+    await expect(
+      getReloadResidue(db, auth({ permissions: ["debugging:view"] }), "bridge:lab-1")
+    ).resolves.toBeNull();
   });
 });

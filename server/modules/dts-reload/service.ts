@@ -16,15 +16,17 @@ import {
   groupDebugOverlayTargets,
   type DebugOverlayPropertyBinding
 } from "./debugOverlay";
-import { requireDtsReload } from "./policy";
+import { requireDtsReload, requireDtsReloadView } from "./policy";
 import { runDebugOverlayPreflight } from "./preflight";
 import {
   getReloadCandidateRow,
   getReloadRunRow,
   insertReloadRun,
   insertReloadRunTarget,
+  listLastReloadByBindingIds,
   listProjectDtsMemberSources,
   listReloadCandidateRows,
+  listReloadRunRows,
   listReloadRunTargets,
   readLibraryFingerprint,
   claimReloadRunForDeploy,
@@ -47,10 +49,14 @@ import type {
   ReloadCandidateDto,
   ReloadResidueDto,
   ReloadRunDto,
+  ReloadRunListCursor,
+  ReloadRunListItemDto,
   ReloadRunPurpose,
   ReloadRunStatus
 } from "./types";
-import { DTS_RELOAD_CONFIRMATION_TOKEN } from "./types";
+import { DTS_RELOAD_CONFIRMATION_TOKEN, RELOAD_ARTIFACT_RETENTION_DAYS } from "./types";
+
+export { RELOAD_ARTIFACT_RETENTION_DAYS } from "./types";
 
 export type DtsReloadServiceContext = AuditCorrelationContext & {
   actorType?: SensitiveWriteActorType;
@@ -156,7 +162,8 @@ function rowToCandidate(row: ReloadCandidateRow): ReloadCandidateDto {
   return {
     ...classified,
     compatible: row.compatible ?? null,
-    sensitiveMatch: null
+    sensitiveMatch: null,
+    lastReload: null
   };
 }
 
@@ -243,7 +250,7 @@ export async function listReloadCandidates(
   auth: AuthContext,
   projectId: string
 ): Promise<{ items: ReloadCandidateDto[] }> {
-  requireDtsReload(auth);
+  requireDtsReloadView(auth);
   const rows = await listReloadCandidateRows(db, {
     organizationId: auth.organization.id,
     projectId
@@ -257,12 +264,61 @@ export async function listReloadCandidates(
       compatible: row.compatible
     }))
   });
+  const lastReloadByBinding = await listLastReloadByBindingIds(db, {
+    organizationId: auth.organization.id,
+    projectId,
+    bindingIds: rows.map((row) => row.binding_id)
+  });
   return {
     items: baseItems.map((item, index) => ({
       ...item,
-      sensitiveMatch: matches[index] ?? null
+      sensitiveMatch: matches[index] ?? null,
+      lastReload: lastReloadByBinding.get(item.bindingId) ?? null
     }))
   };
+}
+
+export type ListReloadRunsInput = {
+  projectId?: string;
+  deviceId?: string;
+  cursor?: ReloadRunListCursor;
+  limit?: number;
+};
+
+export async function listReloadRuns(
+  db: Queryable,
+  auth: AuthContext,
+  input: ListReloadRunsInput
+): Promise<{ items: ReloadRunListItemDto[]; nextCursor: ReloadRunListCursor | null }> {
+  requireDtsReloadView(auth);
+  const projectId = input.projectId?.trim() || undefined;
+  const deviceId = input.deviceId?.trim() || undefined;
+  if (!projectId && !deviceId) {
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      "List reload runs requires projectId and/or deviceId.",
+      400,
+      { code: "reload-run-list-filter-required" }
+    );
+  }
+  const limit = input.limit ?? 20;
+  return listReloadRunRows(db, {
+    organizationId: auth.organization.id,
+    projectId,
+    deviceId,
+    cursor: input.cursor,
+    limit
+  });
+}
+
+function isReloadArtifactRetentionExpired(createdAt: string, completedAt: string | null): boolean {
+  const anchor = completedAt ?? createdAt;
+  const anchorMs = Date.parse(anchor);
+  if (!Number.isFinite(anchorMs)) {
+    return false;
+  }
+  const retentionMs = RELOAD_ARTIFACT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  return Date.now() - anchorMs > retentionMs;
 }
 
 async function loadBaseSource(
@@ -741,7 +797,7 @@ export async function getReloadResidue(
   auth: AuthContext,
   deviceId: string
 ): Promise<ReloadResidueDto | null> {
-  requireDtsReload(auth);
+  requireDtsReloadView(auth);
   return getDeviceResidue(db, {
     organizationId: auth.organization.id,
     deviceId
@@ -865,19 +921,27 @@ export async function getReloadRun(
   auth: AuthContext,
   runId: string
 ): Promise<ReloadRunDto> {
-  requireDtsReload(auth);
+  requireDtsReloadView(auth);
   const row = await getReloadRunRow(db, { organizationId: auth.organization.id, runId });
   if (!row) {
     throw new ApiError("NOT_FOUND", "Reload run was not found.", 404, { runId });
   }
 
   const targets = await listReloadRunTargets(db, runId);
+  const createdAt = row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at);
+  const completedAt = row.completed_at
+    ? row.completed_at instanceof Date
+      ? row.completed_at.toISOString()
+      : String(row.completed_at)
+    : null;
+  const artifactRetentionExpired = isReloadArtifactRetentionExpired(createdAt, completedAt);
+
   let overlaySource: string | null = null;
-  if (row.overlay_source_storage_key) {
+  if (row.overlay_source_storage_key && !artifactRetentionExpired) {
     const bytes = await objectStore.get(row.overlay_source_storage_key);
     overlaySource = bytes.toString("utf8");
   }
-  return toReloadRunDto(row, targets, overlaySource);
+  return toReloadRunDto(row, targets, overlaySource, { artifactRetentionExpired });
 }
 
 export async function getReloadRunArtifact(
@@ -886,7 +950,7 @@ export async function getReloadRunArtifact(
   auth: AuthContext,
   runId: string
 ): Promise<{ fileName: string; contentType: string; bytes: Buffer; sha256: string }> {
-  requireDtsReload(auth);
+  requireDtsReloadView(auth);
   const row = await getReloadRunRow(db, { organizationId: auth.organization.id, runId });
   if (!row) {
     throw new ApiError("NOT_FOUND", "Reload run was not found.", 404, { runId });
@@ -897,6 +961,27 @@ export async function getReloadRunArtifact(
       "This reload run has no compiled artifact to download (it may have been blocked).",
       409,
       { runId, status: row.status }
+    );
+  }
+
+  const createdAt = row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at);
+  const completedAt = row.completed_at
+    ? row.completed_at instanceof Date
+      ? row.completed_at.toISOString()
+      : String(row.completed_at)
+    : null;
+  if (isReloadArtifactRetentionExpired(createdAt, completedAt)) {
+    throw new ApiError(
+      "GONE",
+      "This reload run's overlay artifact has passed its retention window and is no longer downloadable.",
+      410,
+      {
+        code: "reload-artifact-expired",
+        runId,
+        retentionDays: RELOAD_ARTIFACT_RETENTION_DAYS,
+        completedAt,
+        createdAt
+      }
     );
   }
 

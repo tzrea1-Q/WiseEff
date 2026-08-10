@@ -540,6 +540,13 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "dtsReload.listRuns",
+    method: "GET",
+    path: "/api/v1/dts-reload/runs",
+    module: "dts-reload",
+    stability: "mvp"
+  },
+  {
     id: "dtsReload.startRun",
     method: "POST",
     path: "/api/v1/dts-reload/projects/:projectId/runs",

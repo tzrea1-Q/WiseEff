@@ -1,6 +1,6 @@
 # DTS reload debugging (#280 series)
 
-> Status: **Active** — #281–#287 merged; #288 on `feat/dts-reload-residue-restore`
+> Status: **Active** — #281–#288 merged; #289 on `feat/dts-reload-run-history`
 > Date: 2026-08-10
 > Parent: GitHub [#280](https://github.com/tzrea1-Q/WiseEff/issues/280)
 > Tickets: #281–#290
@@ -44,6 +44,16 @@ Ship DTS reload debugging so hardware engineers can validate candidate library p
 - Mock mode: static unavailable only — no mock repository / fixtures / reducer actions
 - Degraded locator: refuse only when the parameter's own locator *is* a synthesised `/label` anchor, not when it is a descendant hanging under one
 - Kernel log command allowlist (server save + bridge re-validate): exact entries via `@wiseeff/device-command-core/kernelLogCommand`
+
+## #289 progress
+
+- `GET /api/v1/dts-reload/runs` with `projectId` and/or `deviceId`, cursor pagination (`createdAt`+`id`), most recent first; includes blocked/failed; surfaces `purpose`
+- Authz: `requireDtsReloadView` (`debugging:view` **or** `debugging:dts-reload`) for list/get/candidates/residue/artifact metadata; mutate paths still `debugging:dts-reload`
+- Candidates enriched with `lastReload` (value, attemptedAt, outcome, purpose, runId)
+- Artifact retention: `RELOAD_ARTIFACT_RETENTION_DAYS = 90` from `completed_at` ?? `created_at`; download returns `410` / `reload-artifact-expired`; detail keeps digests + `artifactRetentionExpired`
+- UI: history panel + last-reload column + view-only copy; DEV `?uiPreview=history`
+- Acceptance coverage via `history.test.ts` + page tests; browser evidence `work/ui-checks/289-dts-reload-history-*`
+- Contract: `dtsReload.listRuns` registered; OpenAPI regenerated
 
 ## #288 progress
 

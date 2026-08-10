@@ -71,7 +71,8 @@ export function classifyReloadCandidate(input: CandidateClassificationInput): Re
     valueShapeKind: input.valueShapeKind,
     unit: input.unit,
     constraints: input.constraints,
-    sensitiveMatch: null as ReloadCandidateDto["sensitiveMatch"]
+    sensitiveMatch: null as ReloadCandidateDto["sensitiveMatch"],
+    lastReload: null as ReloadCandidateDto["lastReload"]
   };
 
   const blockReason = classifyBlockReason(input);

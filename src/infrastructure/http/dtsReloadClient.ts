@@ -2,13 +2,15 @@ import type {
   DtsReloadRepository,
   StartDtsReloadRunInput,
   DeployDtsReloadRunInput,
-  RestoreDtsReloadBaselineInput
+  RestoreDtsReloadBaselineInput,
+  ListDtsReloadRunsInput
 } from "@/application/ports/DtsReloadRepository";
 import type {
   DeviceReloadConfigurationOverride,
   DtsReloadCandidate,
   DtsReloadResidue,
   DtsReloadRun,
+  DtsReloadRunListItem,
   OrganisationReloadConfiguration,
   ReloadConfigurationAdminView,
   ReloadConfigurationContract
@@ -20,6 +22,7 @@ import { resolveWiseEffApiBaseUrl } from "./runtimeMode";
 type ApiClient = ReturnType<typeof createApiClient>;
 type ItemEnvelope<T> = { item: T };
 type ListEnvelope<T> = { items: T[] };
+type CursorListEnvelope<T> = { items: T[]; nextCursor: string | null };
 
 type HttpDtsReloadRepositoryOptions =
   | { apiClient?: undefined; baseUrl?: string; fetchImpl?: typeof fetch }
@@ -31,6 +34,16 @@ function candidatesPath(projectId: string) {
 
 function runsPath(projectId: string) {
   return `/api/v1/dts-reload/projects/${encodeURIComponent(projectId)}/runs`;
+}
+
+function listRunsPath(input: ListDtsReloadRunsInput) {
+  const params = new URLSearchParams();
+  if (input.projectId) params.set("projectId", input.projectId);
+  if (input.deviceId) params.set("deviceId", input.deviceId);
+  if (input.cursor) params.set("cursor", input.cursor);
+  if (input.limit !== undefined) params.set("limit", String(input.limit));
+  const query = params.toString();
+  return query ? `/api/v1/dts-reload/runs?${query}` : "/api/v1/dts-reload/runs";
 }
 
 function restoreBaselinePath(projectId: string) {
@@ -69,6 +82,11 @@ export function createHttpDtsReloadRepository(options: HttpDtsReloadRepositoryOp
     async listCandidates(projectId: string) {
       const response = await apiClient.get<ListEnvelope<DtsReloadCandidate>>(candidatesPath(projectId));
       return { items: response.items };
+    },
+
+    async listRuns(input: ListDtsReloadRunsInput) {
+      const response = await apiClient.get<CursorListEnvelope<DtsReloadRunListItem>>(listRunsPath(input));
+      return { items: response.items, nextCursor: response.nextCursor ?? null };
     },
 
     async startRun(input: StartDtsReloadRunInput) {
