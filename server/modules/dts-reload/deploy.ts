@@ -625,17 +625,44 @@ export async function executeReloadDeploy(input: {
 
     // Behavioural verification via existing debug.readNode only — after kernel log capture.
     // Kernel log remains unjudged evidence; outcomes come only from debug-node read-back.
+    // Never fail the whole deploy after a successful trigger — degrade to unverifiable.
     const readNodeTimeoutMs = deps.readNodeTimeoutMs ?? RELOAD_READ_NODE_TIMEOUT_MS;
-    const verification = await verifyReloadTargetsBehaviourally({
-      db: input.db,
-      organizationId: auth.organization.id,
-      targets: run.targets,
-      protocol: deploy.protocol,
-      bridgeId: deploy.bridgeId,
-      targetRef: deploy.targetRef,
-      bridgeRpcClient: deps.bridgeRpcClient,
-      readTimeoutMs: readNodeTimeoutMs
-    });
+    let verification: {
+      status: Extract<ReloadRunDto["status"], "verified" | "contradicted" | "unverifiable">;
+      behaviouralVerification: BehaviouralVerificationDto;
+    };
+    try {
+      verification = await verifyReloadTargetsBehaviourally({
+        db: input.db,
+        organizationId: auth.organization.id,
+        targets: run.targets,
+        protocol: deploy.protocol,
+        bridgeId: deploy.bridgeId,
+        targetRef: deploy.targetRef,
+        bridgeRpcClient: deps.bridgeRpcClient,
+        readTimeoutMs: readNodeTimeoutMs
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : "Behavioural verification aborted unexpectedly.";
+      verification = {
+        status: "unverifiable",
+        behaviouralVerification: {
+          outcomes: run.targets.map((target) => ({
+            bindingId: target.bindingId,
+            propertyKey: target.propertyKey,
+            outcome: "read-failed" as const,
+            debugNodeId: null,
+            nodePath: null,
+            expectedValue: target.debugValue,
+            readValue: null,
+            reason: message
+          }))
+        }
+      };
+    }
 
     const snapshot = buildReloadSnapshot({
       targets: run.targets,

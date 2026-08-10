@@ -25,10 +25,19 @@ vi.mock("./resolveConfiguration", () => ({
   resolveReloadConfiguration: vi.fn()
 }));
 
+vi.mock("./behaviouralVerify", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./behaviouralVerify")>();
+  return {
+    ...actual,
+    verifyReloadTargetsBehaviourally: vi.fn(actual.verifyReloadTargetsBehaviourally)
+  };
+});
+
 import { createAuditEvent } from "../audit/repository";
 import { listBridgesForUser } from "../deviceBridge/repository";
 import { acquireDebugDeviceLease, releaseDebugDeviceLease } from "../debugging/repository";
 import { resolveReloadConfiguration } from "./resolveConfiguration";
+import { verifyReloadTargetsBehaviourally } from "./behaviouralVerify";
 import { deployReloadRun } from "./service";
 import { DTS_RELOAD_CONFIRMATION_TOKEN } from "./types";
 
@@ -951,6 +960,43 @@ describe("deployReloadRun", () => {
     expect(result.reloadSnapshot?.behaviouralVerification?.outcomes[0]).toMatchObject({
       outcome: "read-failed",
       reason: "permission denied"
+    });
+  });
+
+  it("treats an uninterpretable read-back as read-failed, not contradicted", async () => {
+    const bridgeRpcClient = {
+      call: successfulDeployRpcHandlers(
+        () => ({ ok: true, text: "", truncated: false }),
+        () => ({ ok: true, value: "not-a-number" })
+      )
+    };
+
+    const result = await runSuccessfulDeployThroughTrigger(bridgeRpcClient, {
+      debugBindingsByBindingId: { b1: [debugBindingRow()] }
+    });
+
+    expect(result.status).toBe("unverifiable");
+    expect(result.failureCode).toBeNull();
+    expect(result.reloadSnapshot?.behaviouralVerification?.outcomes[0]).toMatchObject({
+      outcome: "read-failed",
+      readValue: "not-a-number",
+      reason: expect.stringMatching(/value shape/i)
+    });
+  });
+
+  it("keeps the run unverifiable when behavioural verification throws after a successful trigger", async () => {
+    vi.mocked(verifyReloadTargetsBehaviourally).mockRejectedValueOnce(new Error("resolver exploded"));
+    const bridgeRpcClient = {
+      call: successfulDeployRpcHandlers(() => ({ ok: true, text: "", truncated: false }))
+    };
+
+    const result = await runSuccessfulDeployThroughTrigger(bridgeRpcClient);
+
+    expect(result.status).toBe("unverifiable");
+    expect(result.failureCode).toBeNull();
+    expect(result.reloadSnapshot?.behaviouralVerification?.outcomes[0]).toMatchObject({
+      outcome: "read-failed",
+      reason: "resolver exploded"
     });
   });
 });

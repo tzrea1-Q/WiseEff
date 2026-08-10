@@ -123,36 +123,43 @@ function coerceReadAsStrings(propertyKey: string, readValue: string): string[] |
 /**
  * Shape-aware comparison of a reload debug value against a debug-node read-back.
  * Uses DTS value parsing — never raw string equality alone for cells / string lists.
+ *
+ * - matched: values agree under the declared shape
+ * - contradicted: both sides parsed/coerced and numeric/string values disagree
+ * - incomparable: expected value cannot be parsed, or read-back cannot be coerced into the shape
+ *   (not a driver contradiction — treat as read-failed at the call site)
  */
+export type ReloadDebugValueCompareResult = "matched" | "contradicted" | "incomparable";
+
 export function compareReloadDebugValue(input: {
   propertyKey: string;
   debugValue: string;
   readValue: string;
   valueShape: CandidateValueShape;
-}): boolean {
+}): ReloadDebugValueCompareResult {
   let expected: DtsValue;
   try {
     expected = parseDtsValue(input.propertyKey, input.debugValue).value;
   } catch {
-    return false;
+    return "incomparable";
   }
 
   if (input.valueShape?.kind === "string-list") {
-    if (expected.kind !== "strings") return false;
+    if (expected.kind !== "strings") return "incomparable";
     const actual = coerceReadAsStrings(input.propertyKey, input.readValue);
-    if (!actual) return false;
-    if (actual.length !== expected.values.length) return false;
-    return actual.every((value, index) => value === expected.values[index]);
+    if (!actual) return "incomparable";
+    if (actual.length !== expected.values.length) return "contradicted";
+    return actual.every((value, index) => value === expected.values[index]) ? "matched" : "contradicted";
   }
 
   // Default / cells shapes: compare numeric cell sequences.
   const expectedCells = cellIntegers(expected);
-  if (!expectedCells) return false;
+  if (!expectedCells) return "incomparable";
   const actualValue = coerceReadAsCells(input.propertyKey, input.readValue);
   const actualCells = actualValue ? cellIntegers(actualValue) : null;
-  if (!actualCells) return false;
-  if (actualCells.length !== expectedCells.length) return false;
-  return actualCells.every((value, index) => value === expectedCells[index]);
+  if (!actualCells) return "incomparable";
+  if (actualCells.length !== expectedCells.length) return "contradicted";
+  return actualCells.every((value, index) => value === expectedCells[index]) ? "matched" : "contradicted";
 }
 
 /**
@@ -264,70 +271,102 @@ export async function verifyReloadTargetsBehaviourally(input: {
   const outcomes: ParameterVerificationRecord[] = [];
 
   for (const target of input.targets) {
-    const binding = await resolveDebugNodeBindingForReloadTarget(input.db, {
-      organizationId: input.organizationId,
-      bindingId: target.bindingId,
-      protocol: input.protocol
-    });
+    try {
+      const binding = await resolveDebugNodeBindingForReloadTarget(input.db, {
+        organizationId: input.organizationId,
+        bindingId: target.bindingId,
+        protocol: input.protocol
+      });
 
-    if (!binding) {
+      if (!binding) {
+        outcomes.push({
+          bindingId: target.bindingId,
+          propertyKey: target.propertyKey,
+          outcome: "unbound",
+          debugNodeId: null,
+          nodePath: null,
+          expectedValue: target.debugValue,
+          readValue: null,
+          reason: "No readable debug-node binding for this parameter and protocol."
+        });
+        continue;
+      }
+
+      const readResult = await readNodeViaBridge({
+        rpc: input.bridgeRpcClient,
+        bridgeId: input.bridgeId,
+        protocol: input.protocol,
+        targetRef: input.targetRef,
+        nodePath: binding.nodePath,
+        preserveExactRead: preserveExactReadForNode(binding),
+        timeoutMs: input.readTimeoutMs
+      });
+
+      if (!readResult.ok) {
+        outcomes.push({
+          bindingId: target.bindingId,
+          propertyKey: target.propertyKey,
+          outcome: "read-failed",
+          debugNodeId: binding.debugNodeId,
+          nodePath: binding.nodePath,
+          expectedValue: target.debugValue,
+          readValue: null,
+          reason: readResult.error?.trim() || "Debug-node read failed."
+        });
+        continue;
+      }
+
+      const readValue = (readResult.value ?? readResult.stdout ?? "").toString();
+      const compare = compareReloadDebugValue({
+        propertyKey: target.propertyKey,
+        debugValue: target.debugValue,
+        readValue,
+        valueShape: binding.valueShape
+      });
+
+      if (compare === "incomparable") {
+        outcomes.push({
+          bindingId: target.bindingId,
+          propertyKey: target.propertyKey,
+          outcome: "read-failed",
+          debugNodeId: binding.debugNodeId,
+          nodePath: binding.nodePath,
+          expectedValue: target.debugValue,
+          readValue,
+          reason:
+            "Debug-node read-back could not be interpreted under the parameter's declared value shape."
+        });
+        continue;
+      }
+
       outcomes.push({
         bindingId: target.bindingId,
         propertyKey: target.propertyKey,
-        outcome: "unbound",
-        debugNodeId: null,
-        nodePath: null,
+        outcome: compare === "matched" ? "verified" : "contradicted",
+        debugNodeId: binding.debugNodeId,
+        nodePath: binding.nodePath,
         expectedValue: target.debugValue,
-        readValue: null,
-        reason: "No readable debug-node binding for this parameter and protocol."
+        readValue,
+        reason:
+          compare === "matched"
+            ? null
+            : "Driver surface value does not match the debug value under the parameter's value shape."
       });
-      continue;
-    }
-
-    const readResult = await readNodeViaBridge({
-      rpc: input.bridgeRpcClient,
-      bridgeId: input.bridgeId,
-      protocol: input.protocol,
-      targetRef: input.targetRef,
-      nodePath: binding.nodePath,
-      preserveExactRead: preserveExactReadForNode(binding),
-      timeoutMs: input.readTimeoutMs
-    });
-
-    if (!readResult.ok) {
+    } catch (error) {
       outcomes.push({
         bindingId: target.bindingId,
         propertyKey: target.propertyKey,
         outcome: "read-failed",
-        debugNodeId: binding.debugNodeId,
-        nodePath: binding.nodePath,
+        debugNodeId: null,
+        nodePath: null,
         expectedValue: target.debugValue,
         readValue: null,
-        reason: readResult.error?.trim() || "Debug-node read failed."
+        reason:
+          error instanceof Error && error.message.trim()
+            ? error.message
+            : "Behavioural verification failed unexpectedly for this parameter."
       });
-      continue;
     }
-
-    const readValue = (readResult.value ?? readResult.stdout ?? "").toString();
-    const matched = compareReloadDebugValue({
-      propertyKey: target.propertyKey,
-      debugValue: target.debugValue,
-      readValue,
-      valueShape: binding.valueShape
-    });
-
-    outcomes.push({
-      bindingId: target.bindingId,
-      propertyKey: target.propertyKey,
-      outcome: matched ? "verified" : "contradicted",
-      debugNodeId: binding.debugNodeId,
-      nodePath: binding.nodePath,
-      expectedValue: target.debugValue,
-      readValue,
-      reason: matched
-        ? null
-        : "Driver surface value does not match the debug value under the parameter's value shape."
-    });
   }
 
   return {

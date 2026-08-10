@@ -15,7 +15,7 @@ describe("compareReloadDebugValue", () => {
         readValue: "7000\n",
         valueShape: { kind: "cells", bits: 32, cellsPerGroup: 1, groups: 1 }
       })
-    ).toBe(true);
+    ).toBe("matched");
   });
 
   it("matches hex cell syntax against the same numeric read-back", () => {
@@ -26,10 +26,10 @@ describe("compareReloadDebugValue", () => {
         readValue: "7000",
         valueShape: { kind: "cells", bits: 32, cellsPerGroup: 1, groups: 1 }
       })
-    ).toBe(true);
+    ).toBe("matched");
   });
 
-  it("rejects a numeric mismatch without comparing raw text", () => {
+  it("reports contradicted for a numeric mismatch without comparing raw text", () => {
     expect(
       compareReloadDebugValue({
         propertyKey: "watchdog_time",
@@ -37,7 +37,7 @@ describe("compareReloadDebugValue", () => {
         readValue: "6000",
         valueShape: { kind: "cells", bits: 32, cellsPerGroup: 1, groups: 1 }
       })
-    ).toBe(false);
+    ).toBe("contradicted");
   });
 
   it("matches multi-cell arrays by numeric values", () => {
@@ -48,7 +48,7 @@ describe("compareReloadDebugValue", () => {
         readValue: "1 2 3",
         valueShape: { kind: "cells", bits: 32, cellsPerGroup: 3, groups: 1 }
       })
-    ).toBe(true);
+    ).toBe("matched");
   });
 
   it("matches string-list debug values against a quoted or bare driver surface", () => {
@@ -59,7 +59,7 @@ describe("compareReloadDebugValue", () => {
         readValue: "okay",
         valueShape: { kind: "string-list" }
       })
-    ).toBe(true);
+    ).toBe("matched");
     expect(
       compareReloadDebugValue({
         propertyKey: "status",
@@ -67,7 +67,29 @@ describe("compareReloadDebugValue", () => {
         readValue: "disabled",
         valueShape: { kind: "string-list" }
       })
-    ).toBe(false);
+    ).toBe("contradicted");
+  });
+
+  it("reports incomparable when the read-back cannot be coerced into the declared shape", () => {
+    expect(
+      compareReloadDebugValue({
+        propertyKey: "watchdog_time",
+        debugValue: "<7000>",
+        readValue: "not-a-number",
+        valueShape: { kind: "cells", bits: 32, cellsPerGroup: 1, groups: 1 }
+      })
+    ).toBe("incomparable");
+  });
+
+  it("reports incomparable when the expected debug value cannot be parsed", () => {
+    expect(
+      compareReloadDebugValue({
+        propertyKey: "watchdog_time",
+        debugValue: "<<<broken",
+        readValue: "7000",
+        valueShape: { kind: "cells", bits: 32, cellsPerGroup: 1, groups: 1 }
+      })
+    ).toBe("incomparable");
   });
 });
 
