@@ -607,6 +607,33 @@ Indexes and constraints:
 
 Migration `0037_debug_logs_org_scope_decoupling.sql` dropped cross-domain `parameter_reload_bindings` and removed `project_id` from all M2/M3 tables listed above.
 
+### DTS reload debugging (migrations `0096`–`0100`)
+
+Separate from node debugging and from the retired parameter-reload table.
+
+#### `dts_reload_runs` / `dts_reload_run_targets` (`0096`, extended by `0098`–`0100`)
+
+- Run is the audit subject: overlay source/artifact storage keys + digests, steps/diagnostics/toolVersions, device/bridge fields, `reload_snapshot` JSON, `purpose` (`ordinary` | `restore-baseline`), optional `restores_source_run_id`.
+- Status check includes `pending` | `blocked` | `validated` | `deploying` | `unverifiable` | `verified` | `contradicted` | `failed`.
+- Targets: one row per binding with `node_path`, `property_key`, `baseline_value`, `debug_value`, `sort_order`.
+
+#### `dts_reload_org_defaults` / `dts_reload_device_overrides` (`0097`)
+
+Device-side contract: destination directory/filename, trigger node/payload, kernel log command. Device override wins over org default. Never accepted from the client at run time.
+
+#### `dts_reload_device_residue` (`0100`)
+
+Primary key `(organization_id, device_id)` with `source_run_id`, `parameters` JSON, `recorded_at`. Platform bookkeeping only.
+
+Indexes:
+
+- `dts_reload_runs_project_created_idx`, `dts_reload_runs_device_created_idx` (partial)
+- `dts_reload_run_targets_run_idx`
+- `dts_reload_device_overrides_org_idx` / `_device_idx`
+- `dts_reload_device_residue_project_idx`
+
+Permission seed: `debugging:dts-reload` appended to committer/admin roles in `0096`.
+
 Migration `0040_debug_node_modules_tree.sql` extends the TD-032 `debug_node_modules` / `debug_nodes` catalog with hierarchical columns:
 
 - `debug_node_modules`: `parent_id`, `path`, `depth`, `sort_order`; sibling-unique `(organization_id, coalesce(parent_id, ''), name)`.

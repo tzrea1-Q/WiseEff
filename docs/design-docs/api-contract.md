@@ -83,6 +83,22 @@ Admin `POST`/`PATCH` validates combinations: scalar defaults to `raw`/`trim`; `j
 
 Node operation DTOs may include `valueKind`, `valueFormat`, `normalizationMode`, `valuePreview`, and value digests for complex writes without returning full large payloads in list views.
 
+## DTS reload debugging
+
+Dedicated module under `/api/v1/dts-reload/*` (not the retired `/api/v1/debugging/reload-targets` / `.../parameters/reload` `410` surface).
+
+| Method | Path | Authz | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/v1/dts-reload/candidates` | `debugging:view` or `debugging:dts-reload` | Project parameters with debuggability, sensitiveMatch, lastReload |
+| `POST` | `/api/v1/dts-reload/runs` | `debugging:dts-reload` | Start run (batch targets); may require `confirm-sensitive-reload` |
+| `POST` | `/api/v1/dts-reload/runs/:runId/deploy` | `debugging:dts-reload` | In-request bridge deploy; requires `confirm-dts-reload` |
+| `GET` | `/api/v1/dts-reload/runs` / `.../:runId` | view path | History and detail including reload snapshot |
+| `GET` | `/api/v1/dts-reload/residue` | view path | Device residue bookkeeping |
+| `POST` | `/api/v1/dts-reload/restore-baseline` | `debugging:dts-reload` | Start compensating restore-baseline run |
+| `*` | `/api/v1/dts-reload/configuration*` | `debugging:admin` | Org defaults + device overrides |
+
+Committed OpenAPI (`docs/generated/openapi.json`) is authoritative for request/response schemas.
+
 ## Parameter Module Tree
 
 Org-scoped parameter modules are a hierarchical taxonomy independent from the debugging module tree. List routes require `parameter:view`; create/update/move/delete require `admin:access` (`canAdminParameters`). Deletes reject non-empty modules (`409 CONFLICT` when child modules or assigned parameters remain). Move rejects cycles (`409 CONFLICT`).

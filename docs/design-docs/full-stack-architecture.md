@@ -14,7 +14,9 @@ The frontend contains route/application shell code, domain types and pure rules,
 
 ## Backend
 
-The backend composes modules for auth, users, audit, parameters, logs, jobs, debugging, Agent, operations, observability, database, and HTTP foundations. Production writes follow authentication, authorization, validation, transaction, audit, and structured response/error rules.
+The backend composes modules for auth, users, audit, parameters, logs, jobs, debugging, dts-reload, Agent, operations, observability, database, and HTTP foundations. Production writes follow authentication, authorization, validation, transaction, audit, and structured response/error rules.
+
+**DTS reload debugging** (`server/modules/dts-reload/`, UI `/dts-reload`) validates candidate library values on a real device by generating a `/plugin/` debug overlay, compiling it with the pinned `dtc`/`fdtoverlay` toolchain, deploying through the local device bridge, and capturing a reload snapshot. Debug values never mutate the parameter library (ADR-0019). Deploy runs in-request on the API process that holds the bridge WebSocket (ADR-0020) — it is not a BullMQ job. The reload snapshot records library baselines, on-device artifact integrity, optional kernel-log evidence, and behavioural verification outcomes when debug-node bindings exist (ADR-0021).
 
 The live Agent seam is Xiaoze only: CopilotKit/AG-UI on the frontend and LangGraph plus `ToolRegistry` on the backend. Live model calls use LangChain `ChatOpenAI` against the OpenAI-compatible `AGENT_API_*` endpoint unless `XIAOZE_DETERMINISTIC` is set. WiseEff owns tool execution, authorization, approval records, and audit for all Agent paths.
 
@@ -30,7 +32,7 @@ Mutating `action.submitParameterChange` (`kind: mutating`, `requiresApproval: tr
 
 P2 adds a LangGraph `StateGraph` planning loop: intent → perceive → plan → act → observe, looping until the plan completes or a step is rejected. A checkpointer keyed by `threadId` retains perceived context across mutating interrupts; production and self-hosted deployments use `XIAOZE_CHECKPOINTER=postgres` (tables ensured by `npm run db:migrate`), while local dev/tests default to in-memory checkpointing. After human approval, `agUiEndpoint` delegates resume to the planning agent via `Command({ resume })`. Opt-in proactive suggestions call `POST /api/v1/agent/xiaoze/suggest` (read-only perception tools only), gated by `XIAOZE_PROACTIVE_ENABLED` and `VITE_XIAOZE_PROACTIVE_ENABLED` (default off). User-visible chat history remains separate (TD-030).
 
-Device writes use simulator or HDC gateway seams and require guarded write behavior.
+Device writes use simulator or HDC gateway seams and require guarded write behavior. DTS reload device writes additionally require `debugging:dts-reload`, `confirm-dts-reload` at deploy, a device lease, bridge capability negotiation for `debug.mountTarget` / `debug.pushFile` / `debug.readKernelLog`, and sensitive-node escalation (`parameter:edit-critical` / `confirm-sensitive-reload`) when rules match.
 
 ## Operations
 

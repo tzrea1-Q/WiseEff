@@ -154,6 +154,22 @@ M2 日志与 M3 调试运行时/catalog API 以认证用户的 `organization_id`
 
 `GET /api/v1/debugging/admin/nodes` 支持 `moduleId` 与 `includeDescendants` 子树筛选。
 
+## DTS 重载调试
+
+独立模块 `/api/v1/dts-reload/*`（勿与已退役的 `/api/v1/debugging/reload-targets` / `.../parameters/reload` 的 `410` 面混淆）。
+
+| 方法 | 路径 | 权限 | 说明 |
+| --- | --- | --- | --- |
+| `GET` | `/api/v1/dts-reload/candidates` | `debugging:view` 或 `debugging:dts-reload` | 项目候选参数（可调试性、sensitiveMatch、lastReload） |
+| `POST` | `/api/v1/dts-reload/runs` | `debugging:dts-reload` | 启动运行（批量 targets；critical 可能需 `confirm-sensitive-reload`） |
+| `POST` | `/api/v1/dts-reload/runs/:runId/deploy` | `debugging:dts-reload` | 进程内桥接部署；需 `confirm-dts-reload` |
+| `GET` | `/api/v1/dts-reload/runs` / `.../:runId` | 查看路径 | 历史与含重载快照的详情 |
+| `GET` | `/api/v1/dts-reload/residue` | 查看路径 | 设备残留记账 |
+| `POST` | `/api/v1/dts-reload/restore-baseline` | `debugging:dts-reload` | 启动恢复基线运行 |
+| `*` | `/api/v1/dts-reload/configuration*` | `debugging:admin` | 组织默认与设备覆盖 |
+
+请求/响应 schema 以已提交的 OpenAPI（`docs/generated/openapi.json`）为准。
+
 ## 3. Auth 与用户
 
 | 方法 | 路径 | 说明 |

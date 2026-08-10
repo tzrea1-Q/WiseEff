@@ -222,6 +222,19 @@ Runtime separation:
 
 Admin IA exposes a single **node directory** tab for logical node CRUD plus per-protocol binding upsert/archive.
 
+### DTS reload debugging (#280)
+
+DTS reload debugging is a separate domain from node debugging and from the retired parameter-reload concept:
+
+- **Reload run** (`dts_reload_runs` + `dts_reload_run_targets`): one batch of debug values for one project+device. Statuses include preflight (`pending` / `blocked` / `validated`), in-request deploy (`deploying`), and honest terminals (`unverifiable` / `verified` / `contradicted` / `failed`). `purpose` is `ordinary` or `restore-baseline`.
+- **Debug overlay**: platform-authored `/plugin/` DTS addressing nodes by absolute `target-path`, plus the compiled `dtbo`. Debug values never mutate binding revisions, drafts, or release baselines (ADR-0019).
+- **Reload configuration** (`dts_reload_org_defaults` / `dts_reload_device_overrides`): destination path, trigger node/payload, and kernel-log command. Resolved server-side only; device override wins.
+- **Reload snapshot** (JSON on the run, ADR-0021): library baselines, verified artifact digest + integrity strength, optional kernel signal, and per-parameter behavioural verification when debug-node bindings exist. Not stored in `debugging_snapshots`.
+- **Reload residue** (`dts_reload_device_residue`): platform bookkeeping that a device was left carrying debug values; cleared only by a successful restore-baseline that still targets the recorded source run.
+- **Sensitive-node extension**: the same `dts_sensitive_node_rules` used by library writes gate reload start (`parameter:edit-critical`, and `confirm-sensitive-reload` for critical). Deploy additionally requires `confirm-dts-reload`.
+
+Permission: mutate with `debugging:dts-reload`; view history/candidates/residue with `debugging:view` or `debugging:dts-reload`. Configuration CRUD requires `debugging:admin`.
+
 ### Debug Value Metadata
 
 Debugging parameters carry explicit value metadata separate from protocol bindings:

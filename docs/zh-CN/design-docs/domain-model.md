@@ -327,6 +327,19 @@ TD-032 将调试 catalog 拆成三个协作面：
 
 Admin IA 提供单一**节点目录** Tab：逻辑节点 CRUD 与按协议 binding upsert/archive。
 
+### DTS 重载调试（#280）
+
+DTS 重载调试与节点调试、以及已退役的「参数重载」概念均不相同：
+
+- **重载运行**（`dts_reload_runs` + `dts_reload_run_targets`）：一次对某项目+设备的一批调试值。状态含预检（`pending` / `blocked` / `validated`）、进程内部署（`deploying`）与诚实终端（`unverifiable` / `verified` / `contradicted` / `failed`）。`purpose` 为 `ordinary` 或 `restore-baseline`。
+- **调试 overlay**：平台生成的 `/plugin/` DTS（以绝对 `target-path` 寻址）及其编译产物 `dtbo`。调试值永不写入 binding 修订、草稿或发布基线（ADR-0019）。
+- **重载配置**（`dts_reload_org_defaults` / `dts_reload_device_overrides`）：落地路径、触发节点/载荷、内核日志命令。仅服务端解析；设备覆盖优先。
+- **重载快照**（运行上的 JSON，ADR-0021）：库基线、已校验产物摘要与完整性强度、可选内核信号、以及在存在 debug-node binding 时的行为核对结果。不写入 `debugging_snapshots`。
+- **重载残留**（`dts_reload_device_residue`）：设备仍携带调试值的平台记账；仅当成功的恢复基线仍指向记录中的源运行时才清除。
+- **敏感节点扩展**：与库写入相同的 `dts_sensitive_node_rules` 在启动重载时生效（`parameter:edit-critical`；critical 另需 `confirm-sensitive-reload`）。部署另需 `confirm-dts-reload`。
+
+权限：变更需 `debugging:dts-reload`；查看历史/候选/残留可用 `debugging:view` 或 `debugging:dts-reload`。配置 CRUD 需 `debugging:admin`。
+
 ### 调试值元数据
 
 调试参数携带与协议 binding 分离的显式值元数据：

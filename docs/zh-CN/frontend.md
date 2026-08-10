@@ -174,8 +174,9 @@ mock mode 有意保留 12 个兼容参数，以保证组件测试与演示轻量
 设备调试：
 
 - `/node-debugging`：通过 API mode gateway 读写节点、生成快照和审计（当前主入口）。
-- `/debugging`：**暂时下线**（2026-07-01）；路由显示不可用页并引导至节点调试，因设备参数重载能力尚未就绪。`DebuggingPage` 组件保留供后续恢复与组件测试。
-- `/debugging-admin`：API mode 下通过 `src/infrastructure/http/debuggingAdminClient.ts` 管理调试 catalog，可查询、新增、更新、归档、恢复并维护 HDC/ADB bindings；mock mode 保留本地 `configDraft` 和 JSON 编辑路径，用于演示和组件测试。
+- `/dts-reload`：DTS 重载调试（与已退役的「参数重载」无关）。API mode 下列出项目候选参数、启动重载运行、预检 overlay、以 `confirm-dts-reload`（critical 敏感命中另需 `confirm-sensitive-reload`）部署，并展示重载快照、残留、恢复基线与运行历史。Mock mode 仅静态不可用。配置 CRUD 在 `/debugging-admin`。客户端：`src/infrastructure/http/dtsReloadClient.ts`。
+- `/debugging`：**产品下线**（TD-032）；路由显示不可用页并引导至节点调试。迁移 `0037` 已删除 `parameter_reload_bindings`；遗留 HTTP 仍返回 `410`。`DebuggingPage` 组件仅供历史组件测试保留，不可与 `/dts-reload` 混淆。
+- `/debugging-admin`：API mode 下通过 `src/infrastructure/http/debuggingAdminClient.ts` 管理调试 catalog，可查询、新增、更新、归档、恢复并维护 HDC/ADB bindings；并承载 DTS 重载配置面板。mock mode 保留本地 `configDraft` 和 JSON 编辑路径，用于演示和组件测试。
 
 ### 本地 Device Bridge（Phase A）
 

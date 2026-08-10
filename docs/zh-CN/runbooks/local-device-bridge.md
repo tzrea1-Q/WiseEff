@@ -136,6 +136,7 @@ Bridge CLI 在本机执行 `adb` 与 `hdc`，argv、超时与 shell 转义规则
 - `bridge.getCapabilities` 报告 Bridge 主机上 `adb` / `hdc` 是否可用。
 - `debug.detectTargets` 接受 `protocol=adb` 或 `protocol=hdc`，并返回对应协议的目标列表。
 - `debug.readNode` / `debug.writeNode` 使用与会话相同的协议与 target ref。
+- DTS 重载部署额外需要桥接能力 `debug.mountTarget`、`debug.pushFile`、`debug.readKernelLog`（见 `DTS_RELOAD_BRIDGE_RPC_METHODS`）。触发复用 `debug.writeNode`（`readBack: false`）。部署在持有桥接 socket 的 API 进程内执行（ADR-0020）。
 
 运维检查：
 
@@ -152,6 +153,18 @@ Bridge CLI 在本机执行 `adb` 与 `hdc`，argv、超时与 shell 转义规则
 - 高风险写入缺少确认 token 时返回校验失败
 - 带 `confirm-high-risk-write` 的高风险写入成功并生成快照元数据
 - 多个在线 Bridge 同时返回目标时，前端要求显式选择目标后再创建 session
+
+## DTS 重载调试检查
+
+在 `/dts-reload`（权限 `debugging:dts-reload`）验证库候选值时：
+
+1. 确认桥接已通告 `debug.mountTarget`、`debug.pushFile`、`debug.readKernelLog`。
+2. 从可解析绝对 `target-path` 的项目启动运行；确认错误路径在部署前被预检阻断。
+3. 仅在 UI 收集 `confirm-dts-reload`（critical 敏感命中另需 `confirm-sensitive-reload`）后部署。
+4. 默认终端为 `unverifiable`，除非行为核对可升级；检查重载快照与残留展示。
+5. 条件硬件：`DTS-RELOAD-DEPLOY-HW-001`（需 `DEVICE_BRIDGE_HDC_AVAILABLE=true` 与已批准的实验室重载目标）。
+
+自动化假桥覆盖：`DTS-RELOAD-DEPLOY-001`、`DTS-RELOAD-KERNEL-001`、`DTS-RELOAD-VERIFY-001`、`DTS-RELOAD-RESIDUE-001`（`e2e/acceptance/dts-reload-deploy.acceptance.spec.ts`）。
 
 ## 条件验收执行
 
