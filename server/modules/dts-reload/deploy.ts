@@ -586,7 +586,9 @@ export async function executeReloadDeploy(input: {
         { timeoutMs: kernelLogTimeoutMs }
       );
       const rawText = typeof captureResult.text === "string" ? captureResult.text : "";
-      if (captureResult.ok === true && rawText.length > 0) {
+      // Prefer non-empty verbatim text even when the bridge reports ok:false — kernel log lines
+      // may look like tool diagnostics, and the capture is unjudged evidence either way.
+      if (rawText.length > 0) {
         kernelSignal = buildObtainedKernelSignal({
           command: configuration.kernelLogCommand,
           rawText,

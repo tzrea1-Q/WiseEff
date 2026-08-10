@@ -365,18 +365,31 @@ export function createRpcHandlers(options: {
     const result = await runner(shellArgs, { timeoutMs: kernelLogTimeoutMs });
 
     // Streaming readers (e.g. cat /proc/kmsg) may time out with partial stdout; keep non-empty text.
+    // Do NOT run remoteShellDiagnostic over kernel log stdout — real dmesg/hilog lines often contain
+    // [Fail], [E######], or "Permission denied" substrings that are evidence, not tool diagnostics.
     const rawStdout = typeof result.stdout === "string" ? result.stdout : "";
     const capped = truncateKernelLogText(rawStdout, KERNEL_LOG_CAPTURE_MAX_BYTES);
     const hasText = capped.text.length > 0;
-    const diagnostic = remoteShellDiagnostic(result);
-    const commandOk = result.code === 0 && !result.timedOut && !diagnostic;
-    const ok = commandOk || (hasText && !diagnostic);
+    if (hasText) {
+      return {
+        ok: true,
+        text: capped.text,
+        truncated: capped.truncated,
+        byteLength: capped.byteLength,
+        maxBytes: KERNEL_LOG_CAPTURE_MAX_BYTES,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        durationMs: result.durationMs
+      };
+    }
 
+    const diagnostic = remoteShellDiagnostic({ stdout: "", stderr: result.stderr ?? "" });
+    const ok = result.code === 0 && !result.timedOut && !diagnostic;
     return {
       ok,
-      text: capped.text,
-      truncated: capped.truncated,
-      byteLength: capped.byteLength,
+      text: "",
+      truncated: false,
+      byteLength: 0,
       maxBytes: KERNEL_LOG_CAPTURE_MAX_BYTES,
       error: ok ? undefined : commandFailureMessage(protocol, result),
       stdout: result.stdout,

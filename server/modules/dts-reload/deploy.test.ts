@@ -799,4 +799,25 @@ describe("deployReloadRun", () => {
       true
     );
   });
+
+  it("keeps verbatim kernel log text when the bridge reports ok:false with non-empty text", async () => {
+    const logText = "[Fail] overlay reported\n[E123456] probe failed\nwatchdog_time applied\n";
+    const bridgeRpcClient = {
+      call: successfulDeployRpcHandlers(() => ({
+        ok: false,
+        error: "looked like a diagnostic",
+        text: logText,
+        truncated: false
+      }))
+    };
+
+    const result = await runSuccessfulDeployThroughTrigger(bridgeRpcClient);
+
+    expect(result.status).toBe("unverifiable");
+    expect(result.reloadSnapshot?.kernelSignal).toMatchObject({
+      captureStatus: "obtained",
+      rawText: logText,
+      captureError: null
+    });
+  });
 });

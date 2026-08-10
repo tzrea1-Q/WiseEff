@@ -430,4 +430,46 @@ describe("device bridge rpc handlers", () => {
       ["-s", "emulator-5554", "shell", "cat /proc/kmsg"]
     ]);
   });
+
+  it("keeps kernel log text that looks like tool diagnostics as successful capture evidence", async () => {
+    const logText = [
+      "[Fail] overlay reload reported by kernel",
+      "[E123456] driver probe failed",
+      "sh: something Permission denied in a log line",
+      "watchdog_time applied"
+    ].join("\n");
+    const hdc = makeRunner([{ code: 1, stdout: logText, stderr: "", durationMs: 11, timedOut: true }]);
+    const rpc = createRpcHandlers({ hdcRunner: hdc.runner, adbRunner: makeRunner([]).runner });
+
+    const result = await rpc.handle("debug.readKernelLog", {
+      protocol: "hdc",
+      targetRef: "AURORA-001",
+      command: "dmesg"
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      text: logText,
+      truncated: false
+    });
+  });
+
+  it("reports capture failure only when kernel log stdout is empty", async () => {
+    const hdc = makeRunner([
+      { code: 1, stdout: "", stderr: "sh: dmesg: not found", durationMs: 4 }
+    ]);
+    const rpc = createRpcHandlers({ hdcRunner: hdc.runner, adbRunner: makeRunner([]).runner });
+
+    const result = await rpc.handle("debug.readKernelLog", {
+      protocol: "hdc",
+      targetRef: "AURORA-001",
+      command: "dmesg"
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      text: ""
+    });
+    expect(result.error).toEqual(expect.any(String));
+  });
 });
