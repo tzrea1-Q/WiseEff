@@ -280,6 +280,22 @@ export function PageRouter({
               ? undefined
               : "该页面仅在 API 模式下可用。Mock 运行时不提供 DTS 重载调试。"
           }
+          detectTargets={
+            runtimeMode === "api" && debuggingGateway
+              ? async (protocol) => {
+                  const targets = await debuggingGateway.detectTargets({ protocol });
+                  return targets
+                    .filter((target) => Boolean(target.targetRef?.trim()))
+                    .map((target) => ({
+                      targetRef: target.targetRef!.trim(),
+                      label: target.bridgeMachineLabel?.trim()
+                        ? `${target.bridgeMachineLabel.trim()} · ${target.targetRef!.trim()}`
+                        : target.label || target.targetRef!.trim(),
+                      bridgeId: target.bridgeId
+                    }));
+                }
+              : undefined
+          }
         />
       );
     case "debugging-admin":

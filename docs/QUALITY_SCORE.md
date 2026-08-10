@@ -83,6 +83,22 @@ M6.1 is covered by self-hosted compose/env/proxy metadata checks and a smoke run
 
 Remaining M6 risks: the M6.2-M6.5 implementation PRs and target evidence are still separate workstreams. M6.6 consumes M6.2 identity readiness as an explicit release dependency, but local script output is not an identity, capacity, or rollback pass unless backed by target OIDC evidence, target metrics, rollback rehearsal, queue drain/pause/resume, observability snapshots, and target synthetic artifacts.
 
+## DTS Reload Coverage
+
+DTS reload debugging (`/dts-reload`, `server/modules/dts-reload`) landed through series #281–#290. Coverage includes candidate listing, sensitive-node start gates, overlay compile/preflight, fake-bridge deploy (mount / pushFile / trigger), kernel-log evidence, behavioural verify, residue bookkeeping, restore-baseline, and configuration admin. Acceptance IDs:
+
+| ID | Coverage | Notes |
+| --- | --- | --- |
+| `DTS-RELOAD-DEPLOY-001` | automated | Fake local device bridge deploy to `unverifiable` |
+| `DTS-RELOAD-KERNEL-001` | automated | Kernel log capture stays unjudged evidence |
+| `DTS-RELOAD-VERIFY-001` | automated | `debug.readNode` behavioural verify |
+| `DTS-RELOAD-RESIDUE-001` | automated | Residue + restore-baseline |
+| `DTS-RELOAD-DEPLOY-HW-001` | conditional | Real HDC lab; requires `DEVICE_BRIDGE_HDC_AVAILABLE=true` |
+
+Agent mutating calls (start / deploy / restore) are refused server-side with audited `dts-reload-agent-refused` (#301); sensitive-node Agent refusal remains defence in depth. Human-operator sensitive behaviour from #284 is unchanged.
+
+Remaining gaps: HW-conditional lab evidence (`DTS-RELOAD-DEPLOY-HW-001`); multi-replica bridge routing (TD-067); deferred product debt TD-063–066 (promote-to-library, workbench hand-off, value shapes, artifact GC).
+
 For documentation-only changes:
 
 - Verify file paths and cross-links.

@@ -18,7 +18,7 @@ export type ConfirmDialogProps = {
   acknowledgement?: ReactNode;
   /** Additional fields the confirmation collects, such as an audit reason. */
   extra?: ReactNode;
-  error?: string;
+  error?: ReactNode;
   onConfirm: () => void;
   onCancel: () => void;
 };

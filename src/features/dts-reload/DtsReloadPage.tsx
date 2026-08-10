@@ -20,8 +20,24 @@ import type {
 } from "@/domain/dtsReload/types";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Button } from "@/components/ui/button";
-import { listMyBridges } from "@/infrastructure/http/deviceBridgeClient";
+import { listMyBridges, probeLocalBridgeHealth } from "@/infrastructure/http/deviceBridgeClient";
+import type { LocalBridgeHealthState } from "@/infrastructure/http/deviceBridgeClient";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { cn } from "@/lib/utils";
+
+type DeployProtocol = "hdc" | "adb";
+
+export type DtsReloadBridgeOption = {
+  id: string;
+  machineLabel: string;
+  lastSeenAt?: string | null;
+};
+
+export type DtsReloadReachableTarget = {
+  targetRef: string;
+  label?: string;
+  bridgeId?: string;
+};
 
 export type DtsReloadPageProps = {
   projects: Array<{ id: string; name: string }>;
@@ -29,13 +45,49 @@ export type DtsReloadPageProps = {
   repository: DtsReloadRepository | null;
   canStartRun: boolean;
   unavailableReason?: string;
-  bridges?: Array<{ id: string; machineLabel: string }>;
-  listBridges?: () => Promise<Array<{ id: string; machineLabel: string }>>;
+  bridges?: DtsReloadBridgeOption[];
+  listBridges?: () => Promise<DtsReloadBridgeOption[]>;
+  /** Optional local health probe — defaults to deviceBridgeClient.probeLocalBridgeHealth. */
+  probeBridgeHealth?: () => Promise<Pick<LocalBridgeHealthState, "connected" | "bridgeId"> | null>;
+  /** Optional reachable-target detection (same seam as /node-debugging detectTargets). */
+  detectTargets?: (protocol: DeployProtocol) => Promise<DtsReloadReachableTarget[]>;
 };
 
-type BridgeOption = { id: string; machineLabel: string };
-type DeployProtocol = "hdc" | "adb";
+type BridgeOption = DtsReloadBridgeOption;
 
+/** Match /node-debugging online window — lastSeen within 2 minutes counts as connected when health is unavailable. */
+const BRIDGE_ONLINE_WINDOW_MS = 2 * 60 * 1000;
+
+const DEVICE_BRIDGE_RELEASES_PATH = "/api/v1/device-bridges/releases";
+const BRIDGE_UPGRADE_ENTRY_PATH = "/node-debugging";
+
+function formatBridgeLastSeen(lastSeenAt: string | null | undefined) {
+  if (!lastSeenAt) return "从未在线";
+  const timestamp = new Date(lastSeenAt).getTime();
+  if (!Number.isFinite(timestamp)) return "未知";
+  return new Date(timestamp).toLocaleString("zh-CN", { hour12: false });
+}
+
+function inferBridgeOnline(
+  bridge: BridgeOption,
+  health: Pick<LocalBridgeHealthState, "connected" | "bridgeId"> | null
+) {
+  if (health?.connected && health.bridgeId === bridge.id) {
+    return true;
+  }
+  if (!bridge.lastSeenAt) {
+    return false;
+  }
+  const lastSeen = new Date(bridge.lastSeenAt).getTime();
+  return Number.isFinite(lastSeen) && Date.now() - lastSeen <= BRIDGE_ONLINE_WINDOW_MS;
+}
+
+function readBridgeUpgradeReleasesPath(error: unknown): string | null {
+  if (!(error instanceof WiseEffApiError)) return null;
+  if (error.details?.code !== "bridge-upgrade-required") return null;
+  const path = error.details.releasesPath;
+  return typeof path === "string" && path.trim() ? path.trim() : DEVICE_BRIDGE_RELEASES_PATH;
+}
 const dtsReloadStepLabels: Record<string, string> = {
   "compile-base": "编译基础设备树",
   "compile-overlay": "编译 Overlay",
@@ -467,7 +519,9 @@ export function DtsReloadPage({
   canStartRun,
   unavailableReason,
   bridges: bridgesProp,
-  listBridges
+  listBridges,
+  probeBridgeHealth,
+  detectTargets
 }: DtsReloadPageProps) {
   const [projectId, setProjectId] = useState(initialProjectId ?? projects[0]?.id ?? "");
   const [candidates, setCandidates] = useState<DtsReloadCandidate[]>([]);
@@ -479,12 +533,17 @@ export function DtsReloadPage({
   const [deploying, setDeploying] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [deployError, setDeployError] = useState("");
+  const [deployUpgradeReleasesPath, setDeployUpgradeReleasesPath] = useState<string | null>(null);
   const [nameQuery, setNameQuery] = useState("");
   const [moduleFilter, setModuleFilter] = useState("");
   const [nodeFilter, setNodeFilter] = useState("");
   const [criticalConfirmed, setCriticalConfirmed] = useState(false);
   const [bridges, setBridges] = useState<BridgeOption[]>(bridgesProp ?? []);
   const [bridgesLoading, setBridgesLoading] = useState(false);
+  const [bridgeHealth, setBridgeHealth] = useState<Pick<LocalBridgeHealthState, "connected" | "bridgeId"> | null>(
+    null
+  );
+  const [reachableTargets, setReachableTargets] = useState<DtsReloadReachableTarget[]>([]);
   const [bridgeId, setBridgeId] = useState("");
   const [targetRef, setTargetRef] = useState("");
   const [protocol, setProtocol] = useState<DeployProtocol>("hdc");
@@ -509,6 +568,26 @@ export function DtsReloadPage({
   const selectedBridge = useMemo(
     () => bridges.find((bridge) => bridge.id === bridgeId) ?? null,
     [bridges, bridgeId]
+  );
+
+  const selectedBridgeConnected = Boolean(selectedBridge && inferBridgeOnline(selectedBridge, bridgeHealth));
+
+  const bridgeReadinessLabel = useMemo(() => {
+    if (bridgesLoading) return "正在检查 Bridge…";
+    if (bridges.length === 0) return "未配对 Bridge — 请先在节点调试中安装并配对本地设备代理。";
+    if (!selectedBridge) return "已配对但未选择 Bridge。";
+    if (selectedBridgeConnected) {
+      return `已连接 · ${selectedBridge.machineLabel}（最近在线 ${formatBridgeLastSeen(selectedBridge.lastSeenAt)}）`;
+    }
+    return `已配对但未连接 · ${selectedBridge.machineLabel}（最近在线 ${formatBridgeLastSeen(selectedBridge.lastSeenAt)}）`;
+  }, [bridges.length, bridgesLoading, selectedBridge, selectedBridgeConnected]);
+
+  const targetsForSelectedBridge = useMemo(
+    () =>
+      reachableTargets.filter(
+        (target) => !target.bridgeId || !bridgeId || target.bridgeId === bridgeId
+      ),
+    [reachableTargets, bridgeId]
   );
 
   const modules = useMemo(
@@ -552,7 +631,16 @@ export function DtsReloadPage({
     if (!repository || bridgesProp) return;
     let cancelled = false;
     setBridgesLoading(true);
-    const load = listBridges ?? (() => listMyBridges().then((items) => items.map((item) => ({ id: item.id, machineLabel: item.machineLabel }))));
+    const load =
+      listBridges ??
+      (() =>
+        listMyBridges().then((items) =>
+          items.map((item) => ({
+            id: item.id,
+            machineLabel: item.machineLabel,
+            lastSeenAt: item.lastSeenAt
+          }))
+        ));
     void load()
       .then((items) => {
         if (!cancelled) setBridges(items);
@@ -567,6 +655,42 @@ export function DtsReloadPage({
       cancelled = true;
     };
   }, [repository, bridgesProp, listBridges]);
+
+  useEffect(() => {
+    if (!repository) return;
+    let cancelled = false;
+    const probe = probeBridgeHealth ?? (() => probeLocalBridgeHealth());
+    void probe()
+      .then((health) => {
+        if (!cancelled) {
+          setBridgeHealth(health ? { connected: health.connected, bridgeId: health.bridgeId } : null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setBridgeHealth(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [repository, probeBridgeHealth]);
+
+  useEffect(() => {
+    if (!repository || !detectTargets || bridges.length === 0) {
+      setReachableTargets([]);
+      return;
+    }
+    let cancelled = false;
+    void detectTargets(protocol)
+      .then((targets) => {
+        if (!cancelled) setReachableTargets(targets);
+      })
+      .catch(() => {
+        if (!cancelled) setReachableTargets([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [repository, detectTargets, protocol, bridges.length]);
 
   useEffect(() => {
     if (!bridgeId && bridges.length > 0) {
@@ -708,7 +832,8 @@ export function DtsReloadPage({
             writeRunIdToSearch(null);
           }
         }
-        // DEV-only visual QA hooks for playwright-cli screenshots (#286 / #287 / #288 / #289).
+        // DEV-only visual QA hooks for playwright-cli screenshots.
+        // Quarantined: do not expand; ignored outside import.meta.env.DEV.
         if (import.meta.env.DEV && typeof window !== "undefined") {
           const preview = new URLSearchParams(window.location.search).get("uiPreview");
           if (preview === "history") {
@@ -1073,6 +1198,7 @@ export function DtsReloadPage({
   const openDeployConfirm = (validatedRun: DtsReloadRun) => {
     setPendingDeployRun(validatedRun);
     setDeployError("");
+    setDeployUpgradeReleasesPath(null);
     setDeployConfirmOpen(true);
   };
 
@@ -1081,6 +1207,7 @@ export function DtsReloadPage({
     setDeployConfirmOpen(false);
     setPendingDeployRun(null);
     setDeployError("");
+    setDeployUpgradeReleasesPath(null);
   };
 
   const onDeployConfirm = async () => {
@@ -1089,6 +1216,7 @@ export function DtsReloadPage({
 
     setDeploying(true);
     setDeployError("");
+    setDeployUpgradeReleasesPath(null);
     try {
       const deployed = await repository!.deployRun({
         runId: deployRun.id,
@@ -1118,6 +1246,7 @@ export function DtsReloadPage({
       }
     } catch (error) {
       setDeployError(error instanceof Error ? error.message : "部署到设备失败。");
+      setDeployUpgradeReleasesPath(readBridgeUpgradeReleasesPath(error));
     } finally {
       setDeploying(false);
     }
@@ -1633,6 +1762,17 @@ export function DtsReloadPage({
 
           <div className="flex flex-col gap-3 rounded-md border border-dashed p-3">
             <h4 className="text-sm font-semibold">设备部署</h4>
+            <p role="status" aria-label="Bridge 就绪状态" className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              {bridgeReadinessLabel}
+              {bridges.length === 0 ? (
+                <>
+                  {" "}
+                  <a className="font-medium text-sky-700 underline" href={BRIDGE_UPGRADE_ENTRY_PATH}>
+                    前往节点调试安装 Bridge
+                  </a>
+                </>
+              ) : null}
+            </p>
             {residue && !residueLoading ? (
               <div className="flex flex-col gap-2">
                 <ResidueIndicator residue={residue} deviceId={deviceId.trim()} />
@@ -1664,11 +1804,33 @@ export function DtsReloadPage({
                   bridges.map((bridge) => (
                     <option key={bridge.id} value={bridge.id}>
                       {bridge.machineLabel}
+                      {inferBridgeOnline(bridge, bridgeHealth) ? " · 已连接" : " · 未连接"}
                     </option>
                   ))
                 )}
               </select>
             </label>
+            {targetsForSelectedBridge.length > 0 ? (
+              <div className="flex flex-col gap-2" aria-label="可达设备目标">
+                <span className="text-sm font-medium">可达设备目标</span>
+                <p className="text-xs text-muted-foreground">来自当前 Bridge 检测结果，点击填入 targetRef。</p>
+                <ul className="flex flex-wrap gap-2">
+                  {targetsForSelectedBridge.map((target) => (
+                    <li key={`${target.bridgeId ?? "any"}:${target.targetRef}`}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={!canStartRun}
+                        onClick={() => setTargetRef(target.targetRef)}
+                      >
+                        {target.label?.trim() || target.targetRef}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             <label className="flex flex-col gap-1 text-sm">
               <span className="font-medium">目标标识 (targetRef)</span>
               <input
@@ -1944,7 +2106,24 @@ export function DtsReloadPage({
         tone="danger"
         pending={deploying}
         pendingLabel="部署中…"
-        error={deployError}
+        error={
+          deployError ? (
+            <span className="flex flex-col gap-2">
+              <span>{deployError}</span>
+              {deployUpgradeReleasesPath ? (
+                <span>
+                  Bridge 版本过旧或缺少所需 RPC。请{" "}
+                  <a className="font-medium underline" href={BRIDGE_UPGRADE_ENTRY_PATH}>
+                    下载或升级 Bridge
+                  </a>
+                  （发布元数据：<code className="rounded bg-rose-100 px-1">{deployUpgradeReleasesPath}</code>）。
+                </span>
+              ) : null}
+            </span>
+          ) : (
+            ""
+          )
+        }
         onCancel={closeDeployConfirm}
         onConfirm={() => void onDeployConfirm()}
       />
