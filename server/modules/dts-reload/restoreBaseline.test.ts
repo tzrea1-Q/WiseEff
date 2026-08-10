@@ -294,6 +294,60 @@ describe("startRestoreBaselineRun", () => {
       details: { permission: "debugging:dts-reload" }
     });
   });
+
+  it("refuses an agent actor on restore-baseline and audits dts-reload-agent-refused", async () => {
+    const { db, inserts } = createRestoreDb({
+      residue: {
+        organization_id: "org-1",
+        device_id: "bridge:lab-1",
+        project_id: "project-1",
+        source_run_id: "run-residue",
+        parameters: [
+          {
+            bindingId: "binding-1",
+            propertyKey: "watchdog_time",
+            nodePath: "/amba/i2c@1/dev@6E",
+            baselineValue: "<6000>",
+            debugValue: "<7000>"
+          }
+        ],
+        recorded_at: "2026-08-10T00:00:00.000Z"
+      }
+    });
+
+    await expect(
+      startRestoreBaselineRun(
+        db,
+        objectStore(),
+        auth(),
+        { projectId: "project-1", deviceId: "bridge:lab-1" },
+        { actorType: "agent", requestId: "req-restore-agent" }
+      )
+    ).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      details: {
+        code: "dts-reload-agent-refused",
+        reason: "agent-refused",
+        requireHuman: true,
+        action: "restore"
+      }
+    });
+    expect(inserts).toEqual([]);
+    expect(createAuditEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        actorType: "agent",
+        kind: "dts-reload-agent-refused",
+        action: "deny",
+        metadata: expect.objectContaining({
+          code: "dts-reload-agent-refused",
+          reason: "agent-refused",
+          requireHuman: true,
+          action: "restore"
+        })
+      })
+    );
+  });
 });
 
 describe("getReloadResidue authz", () => {

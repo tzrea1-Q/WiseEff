@@ -42,6 +42,8 @@
 - **TD-065（超出已支持值形态）：** 目前仅支持 u32 cell/数组与 string list；其余形态仍拒绝。**负责人：Debugging platform。**
 - **TD-066（产物保留清理）：** 90 天下载 `410` 门禁之外，对象存储 blob 自动 GC 未建。**负责人：Debugging platform / Ops。**
 - **TD-067（多副本桥接路由）：** 桥接 WebSocket 单进程亲和；进程内 DTS 重载部署（ADR-0020）依赖持有 socket 的副本。**负责人：Platform / Reliability。**
+- **TD-068（DTS 重载 Agent actorType 信任边界）：** 闸门依赖调用方传入的进程内 `actorType`，非 `AuthContext` 已认证身份；持用户 HTTP token 的 Agent 与人类不可区分（与参数 `SensitiveWriteActorType` 相同）。**负责人：Security / Backend。** 见 `docs/SECURITY.md`（#304）。
+- **TD-069（`DtsReloadPage.tsx` 体积）：** 记录时为 **2188** 行（#304）；拆分延后以免淹没本轮安全/助手漂移修复。**负责人：Frontend / Debugging platform。**
 
 ## 近期关闭项
 

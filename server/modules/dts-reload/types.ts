@@ -285,5 +285,3 @@ export const RELOAD_PUSH_FILE_TIMEOUT_MS = 30_000;
 export const RELOAD_TRIGGER_TIMEOUT_MS = 10_000;
 export const RELOAD_KERNEL_LOG_TIMEOUT_MS = 10_000;
 export const RELOAD_READ_NODE_TIMEOUT_MS = 10_000;
-
-export const DEVICE_BRIDGE_RELEASES_PATH = "/api/v1/device-bridges/releases";

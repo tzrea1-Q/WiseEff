@@ -1,3 +1,5 @@
+import { DEVICE_BRIDGE_RELEASES_PATH } from "@wiseeff/device-command-core/bridgeApiPaths";
+
 import { createApiClient } from "./apiClient";
 import { createDefaultApiClient } from "./defaultApiClient";
 import { resolveLocalBridgeHealthUrl } from "./localBridgeHttpUrl";
@@ -182,7 +184,7 @@ export async function revokeBridge(
 }
 
 export async function listReleases(apiClient: ApiClient = createDefaultApiClient()) {
-  return apiClient.get<DeviceBridgeReleaseManifest>("/api/v1/device-bridges/releases");
+  return apiClient.get<DeviceBridgeReleaseManifest>(DEVICE_BRIDGE_RELEASES_PATH);
 }
 
 export async function probeLocalBridgeHealth(fetchImpl: typeof fetch = fetch): Promise<LocalBridgeHealthState | null> {

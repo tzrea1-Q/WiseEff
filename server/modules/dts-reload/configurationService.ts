@@ -4,6 +4,7 @@ import { createAuditEvent } from "../audit/repository";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import { requireDebugAdmin } from "../debugging/policy";
+import type { SensitiveWriteActorType } from "../parameters/sensitiveNode";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import {
@@ -26,8 +27,16 @@ import {
   type DeviceOverrideRow,
   type OrganisationDefaultRow
 } from "./configurationRepository";
+import { assertDtsReloadHumanActor } from "./policy";
 
-export type ReloadConfigurationServiceContext = AuditCorrelationContext;
+export type ReloadConfigurationServiceContext = AuditCorrelationContext & {
+  /**
+   * Caller-supplied actor label (parameters `SensitiveWriteActorType` pattern).
+   * Mutating entry points must pass this through rather than hard-coding `"user"`.
+   * HTTP admin routes omit it and default to `"user"` at the gate/audit boundary.
+   */
+  actorType?: SensitiveWriteActorType;
+};
 
 function toIso(value: string | Date | null | undefined): string | null {
   if (!value) return null;
@@ -76,6 +85,7 @@ async function writeConfigurationAudit(
     previous: ReloadConfigurationContract | null;
     next: ReloadConfigurationContract | null;
     deviceId?: string;
+    actorType: SensitiveWriteActorType;
   },
   context: ReloadConfigurationServiceContext = {}
 ) {
@@ -84,7 +94,7 @@ async function writeConfigurationAudit(
     organizationId: auth.organization.id,
     projectId: null,
     actorUserId: auth.user.id,
-    actorType: "user",
+    actorType: input.actorType,
     app: "dts-reload",
     kind: input.kind,
     action: input.action,
@@ -98,6 +108,18 @@ async function writeConfigurationAudit(
       next: input.next
     },
     traceId: context.requestId ?? randomUUID()
+  });
+}
+
+async function assertConfigurationHumanActor(
+  db: Queryable,
+  auth: AuthContext,
+  context: ReloadConfigurationServiceContext
+) {
+  await assertDtsReloadHumanActor(db, auth, {
+    actorType: context.actorType,
+    action: "configure",
+    requestId: context.requestId
   });
 }
 
@@ -121,6 +143,8 @@ export async function updateOrganisationReloadConfiguration(
   context: ReloadConfigurationServiceContext = {}
 ): Promise<OrganisationReloadConfigurationDto> {
   requireDebugAdmin(auth);
+  await assertConfigurationHumanActor(db, auth, context);
+  const actorType = context.actorType ?? "user";
   const contract = parseReloadConfigurationContract(body);
 
   return db.transaction(async (tx) => {
@@ -140,7 +164,8 @@ export async function updateOrganisationReloadConfiguration(
         scope: "organisation",
         targetId: auth.organization.id,
         previous,
-        next: rowToContract(saved)
+        next: rowToContract(saved),
+        actorType
       },
       context
     );
@@ -156,6 +181,8 @@ export async function upsertDeviceReloadConfiguration(
   context: ReloadConfigurationServiceContext = {}
 ): Promise<DeviceReloadConfigurationOverrideDto> {
   requireDebugAdmin(auth);
+  await assertConfigurationHumanActor(db, auth, context);
+  const actorType = context.actorType ?? "user";
   const contract = parseReloadConfigurationContract(body);
 
   return db.transaction(async (tx) => {
@@ -185,7 +212,8 @@ export async function upsertDeviceReloadConfiguration(
         targetId: deviceId,
         deviceId,
         previous,
-        next: rowToContract(saved)
+        next: rowToContract(saved),
+        actorType
       },
       context
     );
@@ -201,6 +229,8 @@ export async function removeDeviceReloadConfiguration(
   context: ReloadConfigurationServiceContext = {}
 ): Promise<{ deviceId: string }> {
   requireDebugAdmin(auth);
+  await assertConfigurationHumanActor(db, auth, context);
+  const actorType = context.actorType ?? "user";
 
   return db.transaction(async (tx) => {
     const removed = await deleteDeviceOverride(tx, auth.organization.id, deviceId);
@@ -217,7 +247,8 @@ export async function removeDeviceReloadConfiguration(
         targetId: deviceId,
         deviceId,
         previous: rowToContract(removed),
-        next: null
+        next: null,
+        actorType
       },
       context
     );

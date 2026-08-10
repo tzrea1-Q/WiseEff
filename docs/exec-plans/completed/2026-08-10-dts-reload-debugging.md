@@ -89,3 +89,11 @@ These remain open after #285–#289; automated coverage uses a fake bridge. Hard
 ## Series progress summary (#281–#289)
 
 See prior ticket sections retained in git history on `main`. Closeout (#290) does not rebuild the feature; it discharges documentation, debt, coverage, and retired-concept cleanup only.
+
+## Post-closeout decisions (#304)
+
+Recorded on `feat/dts-reload-round2-followups` after round-2 review:
+
+1. **Agent gate completeness:** Apply `assertDtsReloadHumanActor` to admin reload-configuration writes (`configure` action) as well as start / deploy / restore. #280's outright Agent refusal covers the configuration surface; #301's narrower AC did not create an exemption. See `docs/SECURITY.md`.
+2. **Actor-type trust boundary:** Do not redesign `AuthContext` here. Track as **TD-068**: the gate binds in-process callers that pass `actorType: "agent"`; an agent with a user HTTP token is indistinguishable — same as parameters `SensitiveWriteActorType`.
+3. **Page size:** `DtsReloadPage.tsx` at 2188 lines tracked as **TD-069**; do not split in this ticket.

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { DEVICE_BRIDGE_RELEASES_PATH } from "@wiseeff/device-command-core/bridgeApiPaths";
 import { DTS_RELOAD_BRIDGE_RPC_METHODS } from "@wiseeff/device-command-core/bridgeRpcMethods";
 
 import type { BridgeRpcClient } from "../deviceBridge/rpc";
@@ -27,7 +28,6 @@ import type {
   ReloadStep
 } from "./types";
 import {
-  DEVICE_BRIDGE_RELEASES_PATH,
   DTS_RELOAD_CONFIRMATION_TOKEN,
   PUSH_FILE_MAX_BYTES,
   RELOAD_KERNEL_LOG_TIMEOUT_MS,

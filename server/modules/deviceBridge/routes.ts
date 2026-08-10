@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { DEVICE_BRIDGE_RELEASES_PATH } from "@wiseeff/device-command-core/bridgeApiPaths";
+
 import type { AuthContext } from "../auth/types";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -70,7 +72,7 @@ export function registerDeviceBridgeRoutes(
     loadToolReleaseManifest: options.loadToolReleaseManifest
   });
 
-  router.get("/api/v1/device-bridges/releases", async () => {
+  router.get(DEVICE_BRIDGE_RELEASES_PATH, async () => {
     if (!options.loadReleaseManifest) {
       throw new ApiError("INTERNAL_ERROR", "Device bridge release manifest loader is required.", 500);
     }
