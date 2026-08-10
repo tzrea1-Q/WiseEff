@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  KERNEL_LOG_COMMAND_ALLOWLIST_PREFIXES,
+  KERNEL_LOG_COMMAND_ALLOWLIST,
   SEEDED_RELOAD_CONFIGURATION
 } from "./configurationTypes";
 import {
@@ -54,11 +54,10 @@ describe("reload configuration validation", () => {
     ).toThrow(/filename/i);
   });
 
-  it("rejects kernel log commands outside the allowlist of recognised log sources", () => {
-    for (const prefix of KERNEL_LOG_COMMAND_ALLOWLIST_PREFIXES) {
-      expect(isAllowedKernelLogCommand(prefix)).toBe(true);
-    }
+  it("rejects kernel log commands outside the closed exact allowlist", () => {
+    expect(isAllowedKernelLogCommand("dmesg")).toBe(true);
     expect(isAllowedKernelLogCommand("dmesg -T")).toBe(true);
+    expect(isAllowedKernelLogCommand("hilog")).toBe(true);
     expect(isAllowedKernelLogCommand("hilog -x")).toBe(true);
     expect(isAllowedKernelLogCommand("cat /proc/kmsg")).toBe(true);
 
@@ -66,13 +65,19 @@ describe("reload configuration validation", () => {
     expect(isAllowedKernelLogCommand("bash -c dmesg")).toBe(false);
     expect(isAllowedKernelLogCommand("dmesg; reboot")).toBe(false);
     expect(isAllowedKernelLogCommand("cat /etc/passwd")).toBe(false);
+    // Prefix alone is not enough — no smuggling via trailing argv or newlines.
+    expect(isAllowedKernelLogCommand("cat /proc/kmsg /etc/passwd")).toBe(false);
+    expect(isAllowedKernelLogCommand("dmesg -T --color")).toBe(false);
+    expect(isAllowedKernelLogCommand("dmesg\nrm -rf /")).toBe(false);
+    expect(isAllowedKernelLogCommand("dmesg\r\nrm -rf /")).toBe(false);
+    expect(isAllowedKernelLogCommand("dmesg -T\ncat /etc/passwd")).toBe(false);
 
     expect(() =>
       assertReloadConfigurationContract({
         ...SEEDED_RELOAD_CONFIGURATION,
         kernelLogCommand: "curl http://evil"
       })
-    ).toThrow(/allowlist|kernel log/i);
+    ).toThrow(/allowlist|kernel log|must be one of/i);
   });
 
   it("requires a non-empty trigger payload", () => {

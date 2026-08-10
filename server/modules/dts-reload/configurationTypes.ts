@@ -50,7 +50,18 @@ export const SEEDED_RELOAD_CONFIGURATION: ReloadConfigurationContract = {
 };
 
 /**
- * Recognised kernel log sources. A saved command must start with one of these prefixes.
- * Bridge-side re-validation belongs to a later ticket; this allowlist is enforced on save.
+ * Closed allowlist of exact kernel log commands that may be saved.
+ * Prefix matching is intentionally rejected: trailing arguments after `cat /proc/kmsg`,
+ * embedded newlines, and shell metacharacters must not be smuggled into a privileged
+ * execution channel. Bridge-side re-validation belongs to a later ticket.
  */
+export const KERNEL_LOG_COMMAND_ALLOWLIST = [
+  "dmesg",
+  "dmesg -T",
+  "hilog",
+  "hilog -x",
+  "cat /proc/kmsg"
+] as const;
+
+/** @deprecated Prefer KERNEL_LOG_COMMAND_ALLOWLIST; kept for UI copy that lists the tool families. */
 export const KERNEL_LOG_COMMAND_ALLOWLIST_PREFIXES = ["dmesg", "hilog", "cat /proc/kmsg"] as const;

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import type { ReloadConfigurationContract } from "@/domain/dtsReload/types";
-import { KERNEL_LOG_COMMAND_ALLOWLIST_PREFIXES } from "@/domain/dtsReload/types";
+import { KERNEL_LOG_COMMAND_ALLOWLIST } from "@/domain/dtsReload/types";
 import { Button } from "@/components/ui/button";
 
 export type ReloadConfigurationDeviceOption = {
@@ -199,7 +199,7 @@ export function ReloadConfigurationAdminPanel({
         <h3>DTS 重载配置</h3>
         <p className="reload-configuration-muted">
           组织默认值与可选的设备覆盖。运行时始终由服务端从已存储记录解析；浏览器请求体不能影响有效合约。
-          内核日志命令须以允许列表前缀开头：{KERNEL_LOG_COMMAND_ALLOWLIST_PREFIXES.join("、")}。
+          内核日志命令须与允许列表完全一致：{KERNEL_LOG_COMMAND_ALLOWLIST.join("、")}。
         </p>
         {loading ? <p className="reload-configuration-muted">正在加载…</p> : null}
         {errorMessage ? (

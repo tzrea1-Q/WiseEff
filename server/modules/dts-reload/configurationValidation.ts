@@ -1,10 +1,11 @@
 import { ApiError } from "../../shared/http/errors";
 import {
+  KERNEL_LOG_COMMAND_ALLOWLIST,
   KERNEL_LOG_COMMAND_ALLOWLIST_PREFIXES,
   type ReloadConfigurationContract
 } from "./configurationTypes";
 
-const SHELL_METACHARACTERS = /[;&|`$<>(){}[\]\\]/;
+const DISALLOWED_KERNEL_LOG_CHARS = /[\u0000-\u001f\u007f;&|`$<>(){}[\]\\]/;
 
 /**
  * Absolute Unix path with no `..` segments. Trailing slash is allowed for directories.
@@ -29,16 +30,16 @@ export function isValidDestinationFilename(value: string): boolean {
 }
 
 /**
- * A saved kernel log command must start with a recognised log-source prefix and must not contain
- * shell metacharacters. Optional trailing arguments are allowed for the allowlisted tools.
+ * A saved kernel log command must exactly match a closed allowlist entry.
+ * Newlines, control characters, and shell metacharacters are rejected before the membership check.
  */
 export function isAllowedKernelLogCommand(value: string): boolean {
   if (typeof value !== "string") return false;
+  if (DISALLOWED_KERNEL_LOG_CHARS.test(value)) return false;
   const trimmed = value.trim();
-  if (!trimmed || SHELL_METACHARACTERS.test(trimmed)) return false;
-  return KERNEL_LOG_COMMAND_ALLOWLIST_PREFIXES.some(
-    (prefix) => trimmed === prefix || trimmed.startsWith(`${prefix} `)
-  );
+  if (!trimmed) return false;
+  // Exact match only — no prefix acceptance, no extra argv after `cat /proc/kmsg`.
+  return (KERNEL_LOG_COMMAND_ALLOWLIST as readonly string[]).includes(trimmed);
 }
 
 export function parseReloadConfigurationContract(input: unknown): ReloadConfigurationContract {
@@ -101,11 +102,12 @@ export function assertReloadConfigurationContract(contract: ReloadConfigurationC
   if (!isAllowedKernelLogCommand(contract.kernelLogCommand)) {
     throw new ApiError(
       "VALIDATION_FAILED",
-      `Kernel log command must start with a recognised log source (${KERNEL_LOG_COMMAND_ALLOWLIST_PREFIXES.join(", ")}).`,
+      `Kernel log command must be one of: ${KERNEL_LOG_COMMAND_ALLOWLIST.join(", ")}.`,
       400,
       {
         field: "kernelLogCommand",
-        allowlist: [...KERNEL_LOG_COMMAND_ALLOWLIST_PREFIXES]
+        allowlist: [...KERNEL_LOG_COMMAND_ALLOWLIST],
+        families: [...KERNEL_LOG_COMMAND_ALLOWLIST_PREFIXES]
       }
     );
   }

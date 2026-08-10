@@ -85,5 +85,14 @@ export const dtsReloadBlockReasonLabels: Record<DtsReloadCandidateBlockReason, s
   "no-baseline-value": "缺少库基线值"
 };
 
-/** Kernel log command allowlist prefixes — must stay aligned with server validation. */
+/** Closed allowlist of exact kernel log commands — must stay aligned with server validation. */
+export const KERNEL_LOG_COMMAND_ALLOWLIST = [
+  "dmesg",
+  "dmesg -T",
+  "hilog",
+  "hilog -x",
+  "cat /proc/kmsg"
+] as const;
+
+/** Tool families shown in admin copy; prefer KERNEL_LOG_COMMAND_ALLOWLIST for validation. */
 export const KERNEL_LOG_COMMAND_ALLOWLIST_PREFIXES = ["dmesg", "hilog", "cat /proc/kmsg"] as const;
