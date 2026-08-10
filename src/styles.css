@@ -5578,6 +5578,35 @@ td small {
   color: #ba1a1a;
 }
 
+.reload-configuration-panel {
+  margin-bottom: 16px;
+}
+
+.reload-configuration-muted {
+  margin: 0;
+  color: var(--text-muted, #64748b);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.reload-configuration-form {
+  margin-top: 8px;
+}
+
+.reload-configuration-form input,
+.reload-configuration-form select {
+  min-width: 0;
+  width: 100%;
+  overflow-x: auto;
+}
+
+.reload-configuration-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
 .param-admin-shell .debug-admin-catalog-tabs {
   display: flex;
   flex-wrap: wrap;
