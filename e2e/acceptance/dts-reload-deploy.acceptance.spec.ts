@@ -1,9 +1,11 @@
 /**
  * @operation DTS-RELOAD-DEPLOY-001
+ * @operation DTS-RELOAD-KERNEL-001
  *
- * Wiring proof for #285: one fake bridge WebSocket client with mountTarget/pushFile/writeNode
- * handlers proves the real RPC envelope, connection-pool serialisation, and per-method timeouts
- * are connected. Branch coverage lives in server/modules/dts-reload/deploy.test.ts.
+ * Wiring proof for #285/#286: one fake bridge WebSocket client with
+ * mountTarget/pushFile/writeNode/readKernelLog handlers proves the real RPC envelope,
+ * connection-pool serialisation, and per-method timeouts are connected. Branch coverage
+ * lives in server/modules/dts-reload/deploy.test.ts.
  */
 import { createHash, randomUUID } from "node:crypto";
 import { Client } from "pg";
@@ -142,6 +144,18 @@ async function connectFakeBridge(
       return;
     }
 
+    if (message.method === "debug.readKernelLog") {
+      respond({
+        ok: true,
+        text: "kernel: overlay applied\n",
+        truncated: false,
+        byteLength: 24,
+        maxBytes: 256 * 1024,
+        durationMs: 3
+      });
+      return;
+    }
+
     socket.send(
       JSON.stringify({
         type: "rpc.response",
@@ -261,7 +275,14 @@ test.describe("DTS reload deploy fake-bridge wiring", () => {
       expect(deployBody).toMatchObject({
         item: {
           status: "unverifiable",
-          integrityCheck: "sha256"
+          integrityCheck: "sha256",
+          reloadSnapshot: {
+            kernelSignal: {
+              command: "dmesg",
+              captureStatus: "obtained",
+              rawText: "kernel: overlay applied\n"
+            }
+          }
         }
       });
 
@@ -269,9 +290,10 @@ test.describe("DTS reload deploy fake-bridge wiring", () => {
         "bridge.getCapabilities",
         "debug.mountTarget",
         "debug.pushFile",
-        "debug.writeNode"
+        "debug.writeNode",
+        "debug.readKernelLog"
       ]);
-      expect(observed.timeouts.length).toBe(4);
+      expect(observed.timeouts.length).toBe(5);
     } finally {
       await new Promise<void>((resolve) => {
         if (fake.socket.readyState === WebSocket.CLOSED) {

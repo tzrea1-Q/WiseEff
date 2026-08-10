@@ -3,6 +3,7 @@ import type {
   PreflightDiagnostic,
   PreflightStep
 } from "./preflight";
+import { parseKernelSignal } from "./kernelSignal";
 import type {
   IntegrityCheckStrength,
   ReloadCandidateDto,
@@ -159,19 +160,7 @@ function asReloadSnapshot(value: unknown): ReloadSnapshotDto | null {
           integrityCheck: asIntegrityCheck(artifactDigest.integrityCheck)
         }
       : null,
-    kernelSignal:
-      record.kernelSignal && typeof record.kernelSignal === "object" && !Array.isArray(record.kernelSignal)
-        ? {
-            command:
-              typeof (record.kernelSignal as Record<string, unknown>).command === "string"
-                ? ((record.kernelSignal as Record<string, unknown>).command as string)
-                : "",
-            excerpt:
-              typeof (record.kernelSignal as Record<string, unknown>).excerpt === "string"
-                ? ((record.kernelSignal as Record<string, unknown>).excerpt as string)
-                : null
-          }
-        : null
+    kernelSignal: parseKernelSignal(record.kernelSignal)
   };
 }
 

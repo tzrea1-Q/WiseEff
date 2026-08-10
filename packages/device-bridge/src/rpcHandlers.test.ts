@@ -368,4 +368,66 @@ describe("device bridge rpc handlers", () => {
       "wc -c < '/vendor/firmware/a.dtbo'"
     ]);
   });
+
+  it("reads kernel log via an allowlisted command and returns capped raw text", async () => {
+    const logText = "watchdog_time applied\noverlay reload ok\n";
+    const hdc = makeRunner([{ code: 0, stdout: logText, stderr: "", durationMs: 9 }]);
+    const rpc = createRpcHandlers({ hdcRunner: hdc.runner, adbRunner: makeRunner([]).runner });
+
+    const result = await rpc.handle("debug.readKernelLog", {
+      protocol: "hdc",
+      targetRef: "AURORA-001",
+      command: "dmesg"
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      text: logText,
+      truncated: false,
+      byteLength: Buffer.byteLength(logText, "utf8"),
+      maxBytes: 256 * 1024
+    });
+    expect(hdc.calls).toEqual([["-t", "AURORA-001", "shell", "dmesg"]]);
+  });
+
+  it("refuses non-allowlisted kernel log commands without invoking the runner", async () => {
+    const hdc = makeRunner([]);
+    const rpc = createRpcHandlers({ hdcRunner: hdc.runner, adbRunner: makeRunner([]).runner });
+
+    await expect(
+      rpc.handle("debug.readKernelLog", {
+        protocol: "hdc",
+        targetRef: "AURORA-001",
+        command: "bash -c id"
+      })
+    ).rejects.toMatchObject({
+      code: "COMMAND_NOT_ALLOWED",
+      message: expect.stringMatching(/allowlist/i)
+    });
+    expect(hdc.calls).toEqual([]);
+  });
+
+  it("executes dmesg -T and cat /proc/kmsg as exact allowlisted shell commands", async () => {
+    const adb = makeRunner([
+      { code: 0, stdout: "line\n", stderr: "", durationMs: 3 },
+      { code: 0, stdout: "kmsg\n", stderr: "", durationMs: 4 }
+    ]);
+    const rpc = createRpcHandlers({ adbRunner: adb.runner, hdcRunner: makeRunner([]).runner });
+
+    await rpc.handle("debug.readKernelLog", {
+      protocol: "adb",
+      targetRef: "emulator-5554",
+      command: "dmesg -T"
+    });
+    await rpc.handle("debug.readKernelLog", {
+      protocol: "adb",
+      targetRef: "emulator-5554",
+      command: "cat /proc/kmsg"
+    });
+
+    expect(adb.calls).toEqual([
+      ["-s", "emulator-5554", "shell", "dmesg -T"],
+      ["-s", "emulator-5554", "shell", "cat /proc/kmsg"]
+    ]);
+  });
 });

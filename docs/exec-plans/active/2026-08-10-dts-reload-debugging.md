@@ -1,6 +1,6 @@
 # DTS reload debugging (#280 series)
 
-> Status: **Active** — #281–#284 merged; #285 on `feat/dts-reload-deploy-trigger`
+> Status: **Active** — #281–#285 merged via PR #295; #286 on `feat/dts-reload-kernel-log`
 > Date: 2026-08-10
 > Parent: GitHub [#280](https://github.com/tzrea1-Q/WiseEff/issues/280)
 > Tickets: #281–#290
@@ -43,7 +43,17 @@ Ship DTS reload debugging so hardware engineers can validate candidate library p
 - Pre-flight uses the real pinned `dtc` / `fdtoverlay` toolchain
 - Mock mode: static unavailable only — no mock repository / fixtures / reducer actions
 - Degraded locator: refuse only when the parameter's own locator *is* a synthesised `/label` anchor, not when it is a descendant hanging under one
-- Kernel log command allowlist prefixes (server save + later bridge re-validate): `dmesg`, `hilog`, `cat /proc/kmsg`
+- Kernel log command allowlist (server save + bridge re-validate): exact entries via `@wiseeff/device-command-core/kernelLogCommand`
+
+## #286 progress
+
+- Shared allowlist + byte cap in `@wiseeff/device-command-core/kernelLogCommand`; bridge re-validates independently
+- New RPC `debug.readKernelLog`; required in `DTS_RELOAD_BRIDGE_RPC_METHODS` (hard refuse before deploy)
+- After successful trigger: capture from `resolveReloadConfiguration(...).kernelLogCommand` only; store verbatim in `reloadSnapshot.kernelSignal`
+- Server-side filter by target `propertyKey`; capture failure / empty → `not-obtained` without failing the run (`unverifiable` unchanged)
+- UI: unjudged evidence panel with grouped matches + full capture; DEV `?uiPreview=kernel-signal` for playwright-cli
+- Acceptance: `DTS-RELOAD-KERNEL-001` (same fake-bridge wiring as deploy); browser evidence under `work/ui-checks/286-dts-reload-kernel-*`
+- No migration (JSON on `reload_snapshot`)
 
 ## #285 progress
 
@@ -96,7 +106,7 @@ Ship DTS reload debugging so hardware engineers can validate candidate library p
 | API / generated | Update | `docs/generated/openapi.json` via `npm run contract:openapi` |
 | Security | Update | Snapshot redefinition + confirm-dts-reload; ADR-0021; EN + zh-CN SECURITY |
 | Reliability / runbooks | Review | In-request deploy (ADR-0020); no BullMQ path |
-| Quality / acceptance | Update | `DTS-RELOAD-DEPLOY-001` + HW conditional; browser evidence `work/ui-checks/285-*` |
+| Quality / acceptance | Update | `DTS-RELOAD-DEPLOY-001` + `DTS-RELOAD-KERNEL-001` + HW conditional; browser evidence `work/ui-checks/285-*` / `286-*` |
 | Chinese companions | Update | `docs/zh-CN/SECURITY.md` for reload snapshot |
 
 ## Documentation Update Gate

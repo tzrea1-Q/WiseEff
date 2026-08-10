@@ -9,12 +9,21 @@ export const BRIDGE_RPC_METHODS = [
   "debug.readNode",
   "debug.writeNode",
   "debug.mountTarget",
-  "debug.pushFile"
+  "debug.pushFile",
+  "debug.readKernelLog"
 ] as const;
 
 export type BridgeRpcMethod = (typeof BRIDGE_RPC_METHODS)[number];
 
-/** Methods required to deploy a DTS reload overlay through the local device bridge (#285). */
-export const DTS_RELOAD_BRIDGE_RPC_METHODS = ["debug.mountTarget", "debug.pushFile", "debug.writeNode"] as const;
+/**
+ * Methods required to deploy a DTS reload overlay through the local device bridge (#285/#286).
+ * Includes kernel-log capture so older bridges are refused before deploy starts.
+ */
+export const DTS_RELOAD_BRIDGE_RPC_METHODS = [
+  "debug.mountTarget",
+  "debug.pushFile",
+  "debug.writeNode",
+  "debug.readKernelLog"
+] as const;
 
 export type DtsReloadBridgeRpcMethod = (typeof DTS_RELOAD_BRIDGE_RPC_METHODS)[number];

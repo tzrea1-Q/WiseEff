@@ -98,7 +98,21 @@ function createRepository(overrides: Partial<DtsReloadRepository> = {}): DtsRelo
             onDeviceDigest: "32",
             integrityCheck: "byte-length"
           },
-          kernelSignal: { command: "dmesg", excerpt: "overlay applied" }
+          kernelSignal: {
+            command: "dmesg",
+            captureStatus: "obtained",
+            captureError: null,
+            rawText: "kernel: watchdog_time applied\nkernel: overlay reload ok\n",
+            truncated: false,
+            matchedByParameter: [
+              {
+                parameterName: "watchdog_time",
+                bindingId: "binding-1",
+                lines: ["kernel: watchdog_time applied"]
+              }
+            ],
+            excerpt: null
+          }
         }
       })
     ),
@@ -358,5 +372,67 @@ describe("DtsReloadPage", () => {
     expect(screen.getAllByText(/仅长度校验/).length).toBeGreaterThan(0);
     expect(screen.getByText(/重载快照/)).toBeInTheDocument();
     expect(screen.getByText(/挂载目标/)).toBeInTheDocument();
+    expect(screen.getByLabelText("内核日志证据")).toBeInTheDocument();
+    expect(screen.getByText(/内核日志证据（未判定）/)).toBeInTheDocument();
+    expect(screen.getByLabelText("内核日志证据")).toHaveTextContent(/没有/);
+    expect(screen.getByLabelText("内核日志证据")).toHaveTextContent(/推断重载成功或失败/);
+    expect(screen.getByLabelText("按参数名分组的匹配行")).toHaveTextContent("watchdog_time");
+    expect(screen.getByLabelText("按参数名分组的匹配行")).toHaveTextContent("kernel: watchdog_time applied");
+    await user.click(screen.getByText("查看未过滤的完整采集"));
+    expect(screen.getByLabelText("未过滤的内核日志采集")).toHaveTextContent("overlay reload ok");
+  });
+
+  it("distinguishes capture failure from obtained-with-no-matches in the evidence panel", async () => {
+    const user = userEvent.setup();
+    const failedRepo = createRepository({
+      deployRun: vi.fn(async () =>
+        run({
+          status: "unverifiable",
+          steps: [
+            { step: "compile-base", outcome: "passed" },
+            { step: "compile-overlay", outcome: "passed" },
+            { step: "dry-run-merge", outcome: "passed" },
+            { step: "assert-effect", outcome: "passed" },
+            { step: "mount-target", outcome: "passed" },
+            { step: "transfer-artifact", outcome: "passed" },
+            { step: "trigger-reload", outcome: "passed" }
+          ],
+          reloadSnapshot: {
+            libraryBaselines: [
+              {
+                bindingId: "binding-1",
+                propertyKey: "watchdog_time",
+                nodePath: "/amba/i2c@1/dev@6E",
+                baselineValue: "<6000>"
+              }
+            ],
+            artifactDigest: {
+              sha256: "sha-art",
+              onDeviceDigest: "32",
+              integrityCheck: "byte-length"
+            },
+            kernelSignal: {
+              command: "dmesg",
+              captureStatus: "not-obtained",
+              captureError: "HDC exited with 1.",
+              rawText: null,
+              truncated: false,
+              matchedByParameter: [],
+              excerpt: null
+            }
+          }
+        })
+      )
+    });
+
+    renderPage(failedRepo);
+    await screen.findAllByText("Watchdog");
+    await fillDeployFields(user);
+    await user.click(screen.getByRole("button", { name: /启动重载运行/ }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "确认部署" }));
+    await waitFor(() => expect(screen.getByText(/未获得内核日志信号/)).toBeInTheDocument());
+    expect(screen.getByText(/HDC exited with 1/)).toBeInTheDocument();
+    expect(screen.getByText("不可验证的重载")).toBeInTheDocument();
   });
 });
