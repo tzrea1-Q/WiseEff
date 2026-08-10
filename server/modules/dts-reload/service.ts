@@ -27,6 +27,7 @@ import {
   listReloadCandidateRows,
   listReloadRunTargets,
   readLibraryFingerprint,
+  claimReloadRunForDeploy,
   toReloadRunDto,
   updateReloadRunDeployState,
   type LibraryFingerprint,
@@ -756,8 +757,8 @@ export async function deployReloadRun(
     artifactBytes,
     deploy: input,
     deps,
-    persistProgress: async (update) => {
-      const updated = await updateReloadRunDeployState(db, {
+    persistProgress: async (update, options) => {
+      const payload = {
         runId: run.id,
         organizationId: auth.organization.id,
         status: update.status,
@@ -771,7 +772,20 @@ export async function deployReloadRun(
         integrityCheck: update.integrityCheck,
         reloadSnapshot: update.reloadSnapshot,
         completedAt: update.completedAt
-      });
+      };
+      if (options?.claim) {
+        const claimed = await claimReloadRunForDeploy(db, payload);
+        if (!claimed) {
+          throw new ApiError(
+            "CONFLICT",
+            "Reload run is already being deployed (or is no longer deployable).",
+            409,
+            { code: "reload-deploy-already-in-progress", runId: run.id, status: run.status }
+          );
+        }
+        return toReloadRunDto(claimed, run.targets, run.overlaySource);
+      }
+      const updated = await updateReloadRunDeployState(db, payload);
       return toReloadRunDto(updated, run.targets, run.overlaySource);
     }
   });

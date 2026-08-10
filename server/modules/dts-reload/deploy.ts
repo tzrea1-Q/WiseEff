@@ -159,6 +159,20 @@ export function buildReloadSnapshot(input: {
   };
 }
 
+type PersistDeployProgress = (update: {
+  status: ReloadRunDto["status"];
+  failureCode: string | null;
+  steps: ReloadStep[];
+  deviceId: string;
+  bridgeId: string;
+  bridgeMachineLabel: string;
+  targetRef: string;
+  protocol: "hdc" | "adb";
+  integrityCheck: IntegrityCheckStrength | null;
+  reloadSnapshot: ReloadSnapshotDto;
+  completedAt: string | null;
+}, options?: { claim?: boolean }) => Promise<ReloadRunDto>;
+
 export async function executeReloadDeploy(input: {
   db: Database;
   auth: AuthContext;
@@ -166,19 +180,7 @@ export async function executeReloadDeploy(input: {
   artifactBytes: Buffer;
   deploy: DeployReloadRunInput;
   deps: DeployReloadDeps;
-  persistProgress: (update: {
-    status: ReloadRunDto["status"];
-    failureCode: string | null;
-    steps: ReloadStep[];
-    deviceId: string;
-    bridgeId: string;
-    bridgeMachineLabel: string;
-    targetRef: string;
-    protocol: "hdc" | "adb";
-    integrityCheck: IntegrityCheckStrength | null;
-    reloadSnapshot: ReloadSnapshotDto;
-    completedAt: string | null;
-  }) => Promise<ReloadRunDto>;
+  persistProgress: PersistDeployProgress;
 }): Promise<ReloadRunDto> {
   const { auth, run, artifactBytes, deploy, deps } = input;
   const now = deps.now ?? (() => new Date());
@@ -247,23 +249,6 @@ export async function executeReloadDeploy(input: {
     deviceId: deploy.deviceId
   });
 
-  const leaseSessionId = `dts-reload:${run.id}`;
-  const lease = await acquireDebugDeviceLease(input.db, {
-    organizationId: auth.organization.id,
-    deviceId: deploy.deviceId,
-    sessionId: leaseSessionId,
-    actorUserId: auth.user.id,
-    leaseTtlMs: 5 * 60 * 1000
-  });
-  if (!lease) {
-    throw new ApiError(
-      "CONFLICT",
-      "Device is leased by another active session. Wait for the lease to expire or release it.",
-      409,
-      { code: "device-lease-held", deviceId: deploy.deviceId }
-    );
-  }
-
   const preflightSteps = (run.steps as ReloadStep[]).filter((step) =>
     ["compile-base", "compile-overlay", "dry-run-merge", "assert-effect"].includes(step.step)
   );
@@ -281,19 +266,47 @@ export async function executeReloadDeploy(input: {
     integrityCheck: null
   });
 
-  await input.persistProgress({
-    status: "deploying",
-    failureCode: null,
-    steps,
+  // Claim before lease so a lost race never releases another deployer's same-session lease.
+  await input.persistProgress(
+    {
+      status: "deploying",
+      failureCode: null,
+      steps,
+      deviceId: deploy.deviceId,
+      bridgeId: deploy.bridgeId,
+      bridgeMachineLabel: bridge.machineLabel,
+      targetRef: deploy.targetRef,
+      protocol: deploy.protocol,
+      integrityCheck: null,
+      reloadSnapshot: emptySnapshot,
+      completedAt: null
+    },
+    { claim: true }
+  );
+
+  const leaseSessionId = `dts-reload:${run.id}`;
+  const lease = await acquireDebugDeviceLease(input.db, {
+    organizationId: auth.organization.id,
     deviceId: deploy.deviceId,
-    bridgeId: deploy.bridgeId,
-    bridgeMachineLabel: bridge.machineLabel,
-    targetRef: deploy.targetRef,
-    protocol: deploy.protocol,
-    integrityCheck: null,
-    reloadSnapshot: emptySnapshot,
-    completedAt: null
+    sessionId: leaseSessionId,
+    actorUserId: auth.user.id,
+    leaseTtlMs: 5 * 60 * 1000
   });
+  if (!lease) {
+    return input.persistProgress({
+      status: "failed",
+      failureCode: "device-lease-held",
+      steps: [...steps],
+      deviceId: deploy.deviceId,
+      bridgeId: deploy.bridgeId,
+      bridgeMachineLabel: bridge.machineLabel,
+      targetRef: deploy.targetRef,
+      protocol: deploy.protocol,
+      integrityCheck: null,
+      reloadSnapshot: emptySnapshot,
+      completedAt: now().toISOString()
+    });
+  }
 
   const markStep = (name: ReloadStep["step"], patch: Partial<ReloadStep>) => {
     steps.splice(
@@ -301,6 +314,34 @@ export async function executeReloadDeploy(input: {
       steps.length,
       ...steps.map((step) => (step.step === name ? { ...step, ...patch } : step))
     );
+  };
+
+  let latestIntegrity: IntegrityCheckStrength | null = null;
+  let latestSnapshot = emptySnapshot;
+
+  const failAborted = async (error: unknown) => {
+    const message = error instanceof Error && error.message.trim() ? error.message : "Deploy aborted due to an unexpected error.";
+    const running = steps.find((step) => step.outcome === "running");
+    if (running) {
+      markStep(running.step, {
+        outcome: "failed",
+        completedAt: now().toISOString(),
+        error: message
+      });
+    }
+    return input.persistProgress({
+      status: "failed",
+      failureCode: "deploy-aborted",
+      steps: [...steps],
+      deviceId: deploy.deviceId,
+      bridgeId: deploy.bridgeId,
+      bridgeMachineLabel: bridge.machineLabel,
+      targetRef: deploy.targetRef,
+      protocol: deploy.protocol,
+      integrityCheck: latestIntegrity,
+      reloadSnapshot: latestSnapshot,
+      completedAt: now().toISOString()
+    });
   };
 
   try {
@@ -451,6 +492,14 @@ export async function executeReloadDeploy(input: {
       detail: { integrityCheck, localDigest, remoteDigest }
     });
 
+    latestIntegrity = integrityCheck;
+    latestSnapshot = buildReloadSnapshot({
+      targets: run.targets,
+      artifactSha256: contentSha256,
+      onDeviceDigest: remoteDigest,
+      integrityCheck
+    });
+
     // 3) Trigger via existing writeNode with readBack disabled
     markStep("trigger-reload", { outcome: "running", startedAt: now().toISOString(), error: undefined });
     await input.persistProgress({
@@ -462,13 +511,8 @@ export async function executeReloadDeploy(input: {
       bridgeMachineLabel: bridge.machineLabel,
       targetRef: deploy.targetRef,
       protocol: deploy.protocol,
-      integrityCheck,
-      reloadSnapshot: buildReloadSnapshot({
-        targets: run.targets,
-        artifactSha256: contentSha256,
-        onDeviceDigest: remoteDigest,
-        integrityCheck
-      }),
+      integrityCheck: latestIntegrity,
+      reloadSnapshot: latestSnapshot,
       completedAt: null
     });
 
@@ -540,6 +584,8 @@ export async function executeReloadDeploy(input: {
       reloadSnapshot: snapshot,
       completedAt: now().toISOString()
     });
+  } catch (error) {
+    return failAborted(error);
   } finally {
     await releaseDebugDeviceLease(input.db, {
       organizationId: auth.organization.id,

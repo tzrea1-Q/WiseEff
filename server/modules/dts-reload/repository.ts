@@ -408,6 +408,24 @@ export async function insertReloadRunTarget(db: Queryable, input: InsertReloadRu
   );
 }
 
+function deployStateUpdateParams(input: UpdateReloadRunDeployInput) {
+  return [
+    input.organizationId,
+    input.runId,
+    input.status,
+    input.failureCode,
+    JSON.stringify(input.steps),
+    input.deviceId,
+    input.bridgeId,
+    input.bridgeMachineLabel,
+    input.targetRef,
+    input.protocol,
+    input.integrityCheck,
+    JSON.stringify(input.reloadSnapshot),
+    input.completedAt
+  ] as const;
+}
+
 export async function updateReloadRunDeployState(
   db: Queryable,
   input: UpdateReloadRunDeployInput
@@ -430,26 +448,48 @@ export async function updateReloadRunDeployState(
     where organization_id = $1 and id = $2
     returning *
     `,
-    [
-      input.organizationId,
-      input.runId,
-      input.status,
-      input.failureCode,
-      JSON.stringify(input.steps),
-      input.deviceId,
-      input.bridgeId,
-      input.bridgeMachineLabel,
-      input.targetRef,
-      input.protocol,
-      input.integrityCheck,
-      JSON.stringify(input.reloadSnapshot),
-      input.completedAt
-    ]
+    [...deployStateUpdateParams(input)]
   );
   if (!result.rows[0]) {
     throw new Error(`Reload run ${input.runId} was not found for deploy update.`);
   }
   return result.rows[0];
+}
+
+/**
+ * Atomically claim a validated/failed run for deploy (`→ deploying`).
+ * Returns null when another deployer already claimed the run (or status is not deployable).
+ */
+export async function claimReloadRunForDeploy(
+  db: Queryable,
+  input: UpdateReloadRunDeployInput
+): Promise<ReloadRunRow | null> {
+  if (input.status !== "deploying") {
+    throw new Error(`claimReloadRunForDeploy expects status "deploying", got "${input.status}".`);
+  }
+  const result = await db.query<ReloadRunRow>(
+    `
+    update dts_reload_runs
+    set
+      status = $3,
+      failure_code = $4,
+      steps = $5::jsonb,
+      device_id = $6,
+      bridge_id = $7,
+      bridge_machine_label = $8,
+      target_ref = $9,
+      protocol = $10,
+      integrity_check = $11,
+      reload_snapshot = $12::jsonb,
+      completed_at = $13
+    where organization_id = $1
+      and id = $2
+      and status = any($14::text[])
+    returning *
+    `,
+    [...deployStateUpdateParams(input), ["validated", "failed"]]
+  );
+  return result.rows[0] ?? null;
 }
 
 export async function getReloadRunRow(

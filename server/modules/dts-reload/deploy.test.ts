@@ -469,4 +469,147 @@ describe("deployReloadRun", () => {
       }
     });
   });
+
+  it("atomically refuses a second deploy claim on the same run and never acquires a lease", async () => {
+    const artifactBytes = Buffer.from("dtbo");
+    const artifactSha = createHash("sha256").update(artifactBytes).digest("hex");
+    const runRow = validatedRunRow({ overlay_artifact_sha256: artifactSha });
+    const { db, calls } = createFakeDb([
+      () => [runRow],
+      () => [
+        {
+          binding_id: "b1",
+          node_path: "/n",
+          property_key: "p",
+          baseline_value: "<1>",
+          debug_value: "<2>",
+          sort_order: 0
+        }
+      ],
+      () => [runRow],
+      // claimReloadRunForDeploy lost the race
+      () => []
+    ]);
+    const objectStore: ObjectStore = {
+      put: vi.fn(),
+      get: vi.fn(async (key) => (key === "art-key" ? artifactBytes : Buffer.from("src"))),
+      delete: vi.fn()
+    };
+    const bridgeRpcClient = {
+      call: vi.fn(async () => ({ methods: [...DTS_RELOAD_BRIDGE_RPC_METHODS, "bridge.getCapabilities"] }))
+    };
+
+    await expect(
+      deployReloadRun(
+        db,
+        objectStore,
+        auth(),
+        {
+          runId: "run-1",
+          deviceId: "dev-1",
+          bridgeId: "br-1",
+          targetRef: "AURORA-001",
+          protocol: "hdc",
+          confirmationTokens: [DTS_RELOAD_CONFIRMATION_TOKEN]
+        },
+        {
+          bridgeRpcClient,
+          bridgeConnectionPool: { isConnected: () => true }
+        }
+      )
+    ).rejects.toMatchObject({
+      details: { code: "reload-deploy-already-in-progress" }
+    });
+
+    expect(acquireDebugDeviceLease).not.toHaveBeenCalled();
+    expect(releaseDebugDeviceLease).not.toHaveBeenCalled();
+    expect(bridgeRpcClient.call).toHaveBeenCalledTimes(1);
+    expect(calls.some((call) => /status = any\(\$14::text\[\]\)/.test(call.text))).toBe(true);
+  });
+
+  it("marks the run failed when bridge RPC throws after claim so it is not stuck deploying", async () => {
+    const artifactBytes = Buffer.from("dtbo");
+    const artifactSha = createHash("sha256").update(artifactBytes).digest("hex");
+    const runRow = validatedRunRow({ overlay_artifact_sha256: artifactSha });
+    const statuses: unknown[] = [];
+    const persist = (call: QueryCall) => {
+      statuses.push(call.values[2]);
+      return [
+        {
+          ...runRow,
+          status: call.values[2],
+          failure_code: call.values[3],
+          steps: JSON.parse(String(call.values[4])),
+          reload_snapshot: JSON.parse(String(call.values[11] ?? "{}")),
+          integrity_check: call.values[10],
+          completed_at: call.values[12],
+          device_id: call.values[5],
+          bridge_id: call.values[6],
+          bridge_machine_label: call.values[7],
+          target_ref: call.values[8],
+          protocol: call.values[9]
+        }
+      ];
+    };
+    const { db } = createFakeDb([
+      () => [runRow],
+      () => [
+        {
+          binding_id: "b1",
+          node_path: "/n",
+          property_key: "p",
+          baseline_value: "<1>",
+          debug_value: "<2>",
+          sort_order: 0
+        }
+      ],
+      () => [runRow],
+      persist, // claim → deploying
+      persist, // mount running
+      persist // abort → failed
+    ]);
+    const objectStore: ObjectStore = {
+      put: vi.fn(),
+      get: vi.fn(async (key) => (key === "art-key" ? artifactBytes : Buffer.from("src"))),
+      delete: vi.fn()
+    };
+    const bridgeRpcClient = {
+      call: vi.fn(async (_id: string, method: string) => {
+        if (method === "bridge.getCapabilities") {
+          return { methods: [...DTS_RELOAD_BRIDGE_RPC_METHODS, "bridge.getCapabilities"] };
+        }
+        if (method === "debug.mountTarget") {
+          throw new Error("bridge RPC timed out");
+        }
+        throw new Error(`unexpected ${method}`);
+      })
+    };
+
+    const result = await deployReloadRun(
+      db,
+      objectStore,
+      auth(),
+      {
+        runId: "run-1",
+        deviceId: "dev-1",
+        bridgeId: "br-1",
+        targetRef: "AURORA-001",
+        protocol: "hdc",
+        confirmationTokens: [DTS_RELOAD_CONFIRMATION_TOKEN]
+      },
+      {
+        bridgeRpcClient,
+        bridgeConnectionPool: { isConnected: () => true }
+      }
+    );
+
+    expect(result.status).toBe("failed");
+    expect(result.failureCode).toBe("deploy-aborted");
+    expect(result.steps.find((step) => step.step === "mount-target")).toMatchObject({
+      outcome: "failed",
+      error: "bridge RPC timed out"
+    });
+    expect(statuses).toEqual(["deploying", "deploying", "failed"]);
+    expect(releaseDebugDeviceLease).toHaveBeenCalled();
+  });
 });
