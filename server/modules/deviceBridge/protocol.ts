@@ -1,11 +1,10 @@
-export const BRIDGE_RPC_METHODS = [
-  "bridge.getCapabilities",
-  "debug.detectTargets",
-  "debug.readNode",
-  "debug.writeNode"
-] as const;
+import {
+  BRIDGE_RPC_METHODS,
+  DTS_RELOAD_BRIDGE_RPC_METHODS,
+  type BridgeRpcMethod
+} from "@wiseeff/device-command-core/bridgeRpcMethods";
 
-export type BridgeRpcMethod = (typeof BRIDGE_RPC_METHODS)[number];
+export { BRIDGE_RPC_METHODS, DTS_RELOAD_BRIDGE_RPC_METHODS, type BridgeRpcMethod };
 
 export type BridgeHelloMessage = {
   type: "bridge.hello";

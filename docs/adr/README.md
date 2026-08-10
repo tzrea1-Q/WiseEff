@@ -29,3 +29,5 @@ See also: [`CONTEXT.md`](../../CONTEXT.md), [`docs/design-docs/domain-model.md`]
 | [0017](0017-definition-identity-is-correctable.md) | Definition identity is correctable and `parameter_specs.id` is a surrogate |
 | [0018](0018-uploaded-file-versions-are-staged-before-activation.md) | Uploaded file versions are staged before activation |
 | [0019](0019-debug-values-never-mutate-the-parameter-library.md) | Debug values never mutate the parameter library |
+| [0020](0020-reload-runs-execute-in-request-on-bridge-holding-process.md) | Reload runs execute in-request on the bridge-holding process |
+| [0021](0021-reload-snapshot-satisfies-device-write-snapshot-non-negotiable.md) | Reload snapshot satisfies the device-write snapshot non-negotiable |

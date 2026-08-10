@@ -12,9 +12,20 @@ export type StartDtsReloadRunInput = {
   confirmationToken?: string;
 };
 
+export type DeployDtsReloadRunInput = {
+  runId: string;
+  deviceId: string;
+  bridgeId: string;
+  targetRef: string;
+  protocol: "hdc" | "adb";
+  /** Must include `confirm-dts-reload`. Never inject from runtime. */
+  confirmationTokens: string[];
+};
+
 export interface DtsReloadRepository {
   listCandidates(projectId: string): Promise<{ items: DtsReloadCandidate[] }>;
   startRun(input: StartDtsReloadRunInput): Promise<DtsReloadRun>;
+  deployRun(input: DeployDtsReloadRunInput): Promise<DtsReloadRun>;
   getRun(runId: string): Promise<DtsReloadRun>;
   downloadArtifact(runId: string): Promise<Blob>;
   getReloadConfiguration(): Promise<ReloadConfigurationAdminView>;

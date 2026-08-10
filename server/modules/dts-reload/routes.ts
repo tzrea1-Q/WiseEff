@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 import type { AuthContext } from "../auth/types";
+import type { BridgeRpcClient } from "../deviceBridge/rpc";
+import type { BridgeConnectionPool } from "../deviceBridge/connectionPool";
 import type { ObjectStore } from "../logs/objectStore";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -13,12 +15,18 @@ import {
 } from "./configurationService";
 import { deviceIdParamsSchema, reloadConfigurationContractBodySchema } from "./configurationSchemas";
 import {
+  deployReloadRun,
   getReloadRun,
   getReloadRunArtifact,
   listReloadCandidates,
   startReloadRun
 } from "./service";
-import { projectIdParamsSchema, runIdParamsSchema, startReloadRunBodySchema } from "./schemas";
+import {
+  deployReloadRunBodySchema,
+  projectIdParamsSchema,
+  runIdParamsSchema,
+  startReloadRunBodySchema
+} from "./schemas";
 
 function requireDb(db: Database | undefined) {
   if (!db) {
@@ -47,6 +55,9 @@ export function registerDtsReloadRoutes(
   options: {
     db?: Database;
     objectStore?: ObjectStore;
+    bridgeRpcClient?: Pick<BridgeRpcClient, "call">;
+    bridgeConnectionPool?: Pick<BridgeConnectionPool, "isConnected">;
+    bridgeArtifactRoot?: string;
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
   }
 ) {
@@ -114,6 +125,42 @@ export function registerDtsReloadRoutes(
       { requestId: request.requestId }
     );
     return { status: 201, body: { item } };
+  });
+
+  router.post("/api/v1/dts-reload/runs/:runId/deploy", async (request) => {
+    const db = requireDb(options.db);
+    const objectStore = requireObjectStore(options.objectStore);
+    if (!options.bridgeRpcClient || !options.bridgeConnectionPool) {
+      throw new ApiError(
+        "INTERNAL_ERROR",
+        "Device bridge RPC is not configured; reload deploy requires the local device bridge.",
+        500,
+        { code: "bridge-rpc-unavailable" }
+      );
+    }
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(runIdParamsSchema, request.params);
+    const body = parseWithSchema(deployReloadRunBodySchema, request.body);
+    const item = await deployReloadRun(
+      db,
+      objectStore,
+      auth,
+      {
+        runId: params.runId,
+        deviceId: body.deviceId,
+        bridgeId: body.bridgeId,
+        targetRef: body.targetRef,
+        protocol: body.protocol ?? "hdc",
+        confirmationTokens: body.confirmationTokens
+      },
+      {
+        bridgeRpcClient: options.bridgeRpcClient,
+        bridgeConnectionPool: options.bridgeConnectionPool,
+        artifactRoot: options.bridgeArtifactRoot
+      },
+      { requestId: request.requestId }
+    );
+    return { status: 200, body: { item } };
   });
 
   router.get("/api/v1/dts-reload/runs/:runId", async (request) => {

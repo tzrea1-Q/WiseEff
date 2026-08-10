@@ -1,6 +1,6 @@
 # DTS reload debugging (#280 series)
 
-> Status: **Active** — #281–#283 merged; #284 sensitive-node on `feat/dts-reload-sensitive-node`
+> Status: **Active** — #281–#284 merged; #285 on `feat/dts-reload-deploy-trigger`
 > Date: 2026-08-10
 > Parent: GitHub [#280](https://github.com/tzrea1-Q/WiseEff/issues/280)
 > Tickets: #281–#290
@@ -45,6 +45,16 @@ Ship DTS reload debugging so hardware engineers can validate candidate library p
 - Degraded locator: refuse only when the parameter's own locator *is* a synthesised `/label` anchor, not when it is a descendant hanging under one
 - Kernel log command allowlist prefixes (server save + later bridge re-validate): `dmesg`, `hilog`, `cat /proc/kmsg`
 
+## #285 progress
+
+- Prefactor: `BRIDGE_RPC_METHODS` shared via `@wiseeff/device-command-core/bridgeRpcMethods`; bridge capabilities advertise from that list
+- New RPCs: `debug.mountTarget`, `debug.pushFile` (digest ladder `sha256sum` → `md5sum` → `wc -c`); trigger reuses `debug.writeNode` with `readBack: false`
+- Deploy path: `POST /api/v1/dts-reload/runs/:runId/deploy` with `confirm-dts-reload`; lease via `debug_device_leases`; in-request (ADR-0020)
+- Terminal `unverifiable` / `failed`; reload snapshot on run (ADR-0021); migration `0098`
+- UI: confirm dialog + step progress; browser evidence under `work/ui-checks/285-dts-reload-deploy-*`
+- Acceptance: `DTS-RELOAD-DEPLOY-001` automated (fake WS); `DTS-RELOAD-DEPLOY-HW-001` conditional
+- #286 should capture kernel log after trigger and attach `reloadSnapshot.kernelSignal`
+
 ## #284 progress
 
 - Gate in `startReloadRun` after resolve, before overlay: path + compatible via `dts_sensitive_node_rules`
@@ -84,10 +94,10 @@ Ship DTS reload debugging so hardware engineers can validate candidate library p
 | Architecture | Review | No structural rewrite; revisit when bridge deploy lands |
 | Frontend | Review | `/debugging-admin` panel wiring is local; defer deep FRONTEND.md until surface complete |
 | API / generated | Update | `docs/generated/openapi.json` via `npm run contract:openapi` |
-| Security | Update | Snapshot still later; #284 documents sensitive-node reload extension in SECURITY.md |
-| Reliability / runbooks | No change | Device deploy not in #282 |
-| Quality / acceptance | Review | Browser evidence under `work/ui-checks/`; acceptance IDs deferred to #290 |
-| Chinese companions | Review | Optional until #290 archives |
+| Security | Update | Snapshot redefinition + confirm-dts-reload; ADR-0021; EN + zh-CN SECURITY |
+| Reliability / runbooks | Review | In-request deploy (ADR-0020); no BullMQ path |
+| Quality / acceptance | Update | `DTS-RELOAD-DEPLOY-001` + HW conditional; browser evidence `work/ui-checks/285-*` |
+| Chinese companions | Update | `docs/zh-CN/SECURITY.md` for reload snapshot |
 
 ## Documentation Update Gate
 

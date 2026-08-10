@@ -46,6 +46,7 @@ const migration0094 = "0094_project_parameter_file_candidate_activation.sql";
 const migration0095 = "0095_dts_release_baseline_historical.sql";
 const migration0096 = "0096_dts_reload_runs.sql";
 const migration0097 = "0097_dts_reload_configuration.sql";
+const migration0098 = "0098_dts_reload_deploy.sql";
 
 const enablementMigrations = [
   migration0068,
@@ -78,6 +79,7 @@ const enablementMigrations = [
   migration0095,
   migration0096,
   migration0097,
+  migration0098,
 ] as const;
 const REQUIRED_TABLES = [
   "parameter_specs",

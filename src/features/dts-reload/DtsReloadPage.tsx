@@ -1,9 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
-import type { DtsReloadCandidate, DtsReloadRun } from "@/domain/dtsReload/types";
-import { dtsReloadBlockReasonLabels, SENSITIVE_RELOAD_CONFIRMATION_TOKEN } from "@/domain/dtsReload/types";
+import type {
+  DtsReloadCandidate,
+  DtsReloadIntegrityCheck,
+  DtsReloadRun,
+  DtsReloadSnapshot
+} from "@/domain/dtsReload/types";
+import {
+  dtsReloadBlockReasonLabels,
+  dtsReloadStatusLabels,
+  DTS_RELOAD_CONFIRMATION_TOKEN,
+  SENSITIVE_RELOAD_CONFIRMATION_TOKEN
+} from "@/domain/dtsReload/types";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Button } from "@/components/ui/button";
+import { listMyBridges } from "@/infrastructure/http/deviceBridgeClient";
 import { cn } from "@/lib/utils";
 
 export type DtsReloadPageProps = {
@@ -12,6 +24,29 @@ export type DtsReloadPageProps = {
   repository: DtsReloadRepository | null;
   canStartRun: boolean;
   unavailableReason?: string;
+  bridges?: Array<{ id: string; machineLabel: string }>;
+  listBridges?: () => Promise<Array<{ id: string; machineLabel: string }>>;
+};
+
+type BridgeOption = { id: string; machineLabel: string };
+type DeployProtocol = "hdc" | "adb";
+
+const dtsReloadStepLabels: Record<string, string> = {
+  "compile-base": "编译基础设备树",
+  "compile-overlay": "编译 Overlay",
+  "dry-run-merge": "干运行合并",
+  "assert-effect": "断言效果",
+  "mount-target": "挂载目标",
+  "transfer-artifact": "传输产物",
+  "trigger-reload": "触发重载"
+};
+
+const dtsReloadStepOutcomeLabels: Record<string, string> = {
+  passed: "通过",
+  failed: "失败",
+  skipped: "跳过",
+  pending: "等待",
+  running: "进行中"
 };
 
 function constraintSummary(constraints: Record<string, unknown>): string {
@@ -103,12 +138,167 @@ function writeRunIdToSearch(runId: string | null) {
   window.history.replaceState({}, "", `${url.pathname}${url.search}`);
 }
 
+function defaultDeviceId(bridgeId: string): string {
+  return `bridge:${bridgeId}`;
+}
+
+function integrityCheckLabel(check: DtsReloadIntegrityCheck): string {
+  switch (check) {
+    case "byte-length":
+      return "仅长度校验";
+    case "md5":
+      return "MD5 摘要匹配";
+    case "sha256":
+      return "SHA256 摘要匹配";
+    default:
+      return check;
+  }
+}
+
+function statusBadgeClass(status: DtsReloadRun["status"]): string {
+  switch (status) {
+    case "validated":
+      return "bg-emerald-100 text-emerald-900";
+    case "deploying":
+      return "bg-sky-100 text-sky-900";
+    case "failed":
+      return "bg-rose-100 text-rose-950";
+    case "unverifiable":
+      return "bg-amber-100 text-amber-950";
+    case "blocked":
+      return "bg-amber-100 text-amber-950";
+    default:
+      return "bg-muted text-muted-foreground";
+  }
+}
+
+function stepOutcomeClass(outcome: string): string {
+  switch (outcome) {
+    case "passed":
+      return "text-emerald-800";
+    case "failed":
+      return "text-rose-900";
+    case "running":
+      return "text-sky-800";
+    case "skipped":
+      return "text-muted-foreground";
+    default:
+      return "text-muted-foreground";
+  }
+}
+
+function ReloadSnapshotSummary({ snapshot }: { snapshot: DtsReloadSnapshot }) {
+  const digest = snapshot.artifactDigest;
+  return (
+    <div className="rounded-md border bg-muted/20 p-3 text-xs">
+      <p className="font-medium">重载快照</p>
+      <p className="mt-1 text-muted-foreground">
+        库基线记录 {snapshot.libraryBaselines.length} 条
+      </p>
+      {digest ? (
+        <div className="mt-2 space-y-1 font-mono">
+          <p>产物 SHA256：{digest.sha256}</p>
+          {digest.onDeviceDigest ? <p>设备端摘要：{digest.onDeviceDigest}</p> : null}
+          {digest.integrityCheck ? (
+            <p>完整性校验：{integrityCheckLabel(digest.integrityCheck)}</p>
+          ) : null}
+        </div>
+      ) : null}
+      {snapshot.kernelSignal ? (
+        <p className="mt-2 text-muted-foreground">
+          内核日志命令：{snapshot.kernelSignal.command}
+          {snapshot.kernelSignal.excerpt ? ` · ${snapshot.kernelSignal.excerpt}` : ""}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function RunStepsList({ steps }: { steps: DtsReloadRun["steps"] }) {
+  if (steps.length === 0) return null;
+  return (
+    <ol className="space-y-1 text-xs" aria-label="运行步骤">
+      {steps.map((step, index) => (
+        <li key={`${step.step}-${index}`} className="flex flex-wrap items-baseline gap-x-2">
+          <span className="font-medium">{dtsReloadStepLabels[step.step] ?? step.step}</span>
+          <span className={cn("font-medium", stepOutcomeClass(step.outcome))}>
+            {dtsReloadStepOutcomeLabels[step.outcome] ?? step.outcome}
+          </span>
+          {step.error ? <span className="text-rose-900">{step.error}</span> : null}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function DeployConfirmBody({
+  run,
+  deviceId,
+  targetRef,
+  bridgeMachineLabel
+}: {
+  run: DtsReloadRun;
+  deviceId: string;
+  targetRef: string;
+  bridgeMachineLabel: string;
+}) {
+  return (
+    <div className="flex flex-col gap-3 text-sm">
+      <dl className="grid gap-1 text-xs">
+        <div>
+          <dt className="font-medium">目标设备</dt>
+          <dd className="font-mono text-muted-foreground">
+            {deviceId} · {targetRef}
+          </dd>
+        </div>
+        <div>
+          <dt className="font-medium">Bridge 机器</dt>
+          <dd>{bridgeMachineLabel}</dd>
+        </div>
+        <div>
+          <dt className="font-medium">参数数量</dt>
+          <dd>{run.targets.length}</dd>
+        </div>
+      </dl>
+      {run.targets.length > 0 ? (
+        <div>
+          <p className="mb-1 text-xs font-medium">参数变更</p>
+          <ul className="max-h-40 space-y-2 overflow-y-auto rounded-md border p-2 text-xs">
+            {run.targets.map((target) => (
+              <li key={target.bindingId}>
+                <div className="font-medium">{target.propertyKey}</div>
+                <div className="font-mono text-muted-foreground">{target.nodePath}</div>
+                <div className="font-mono">
+                  {target.baselineValue ?? "—"} → {target.debugValue}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {run.overlaySource ? (
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-xs font-medium">Overlay 源码</span>
+          <textarea
+            aria-label="部署确认 Overlay 源码"
+            className="min-h-[180px] rounded-md border bg-muted/20 p-2 font-mono text-xs"
+            readOnly
+            value={run.overlaySource}
+          />
+        </label>
+      ) : null}
+    </div>
+  );
+}
+
 export function DtsReloadPage({
   projects,
   initialProjectId,
   repository,
   canStartRun,
-  unavailableReason
+  unavailableReason,
+  bridges: bridgesProp,
+  listBridges
 }: DtsReloadPageProps) {
   const [projectId, setProjectId] = useState(initialProjectId ?? projects[0]?.id ?? "");
   const [candidates, setCandidates] = useState<DtsReloadCandidate[]>([]);
@@ -117,11 +307,27 @@ export function DtsReloadPage({
   const [run, setRun] = useState<DtsReloadRun | null>(null);
   const [loading, setLoading] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [deploying, setDeploying] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [deployError, setDeployError] = useState("");
   const [nameQuery, setNameQuery] = useState("");
   const [moduleFilter, setModuleFilter] = useState("");
   const [nodeFilter, setNodeFilter] = useState("");
   const [criticalConfirmed, setCriticalConfirmed] = useState(false);
+  const [bridges, setBridges] = useState<BridgeOption[]>(bridgesProp ?? []);
+  const [bridgesLoading, setBridgesLoading] = useState(false);
+  const [bridgeId, setBridgeId] = useState("");
+  const [targetRef, setTargetRef] = useState("");
+  const [protocol, setProtocol] = useState<DeployProtocol>("hdc");
+  const [deviceId, setDeviceId] = useState("");
+  const [deviceIdTouched, setDeviceIdTouched] = useState(false);
+  const [deployConfirmOpen, setDeployConfirmOpen] = useState(false);
+  const [pendingDeployRun, setPendingDeployRun] = useState<DtsReloadRun | null>(null);
+
+  const selectedBridge = useMemo(
+    () => bridges.find((bridge) => bridge.id === bridgeId) ?? null,
+    [bridges, bridgeId]
+  );
 
   const modules = useMemo(
     () =>
@@ -151,6 +357,45 @@ export function DtsReloadPage({
     (candidate) => candidate.sensitiveMatch?.riskTier === "critical"
   );
   const selectedHasSensitive = selectedCandidates.some((candidate) => Boolean(candidate.sensitiveMatch));
+
+  const deployReady = Boolean(bridgeId.trim() && targetRef.trim() && deviceId.trim());
+
+  useEffect(() => {
+    if (bridgesProp) {
+      setBridges(bridgesProp);
+    }
+  }, [bridgesProp]);
+
+  useEffect(() => {
+    if (!repository || bridgesProp) return;
+    let cancelled = false;
+    setBridgesLoading(true);
+    const load = listBridges ?? (() => listMyBridges().then((items) => items.map((item) => ({ id: item.id, machineLabel: item.machineLabel }))));
+    void load()
+      .then((items) => {
+        if (!cancelled) setBridges(items);
+      })
+      .catch(() => {
+        if (!cancelled) setBridges([]);
+      })
+      .finally(() => {
+        if (!cancelled) setBridgesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [repository, bridgesProp, listBridges]);
+
+  useEffect(() => {
+    if (!bridgeId && bridges.length > 0) {
+      setBridgeId(bridges[0]!.id);
+    }
+  }, [bridgeId, bridges]);
+
+  useEffect(() => {
+    if (!bridgeId || deviceIdTouched) return;
+    setDeviceId(defaultDeviceId(bridgeId));
+  }, [bridgeId, deviceIdTouched]);
 
   useEffect(() => {
     if (!selectedHasCriticalSensitive) {
@@ -185,6 +430,15 @@ export function DtsReloadPage({
             const existing = await repository.getRun(existingRunId);
             if (!cancelled && existing.projectId === projectId) {
               setRun(existing);
+              if (existing.bridgeId) setBridgeId(existing.bridgeId);
+              if (existing.targetRef) setTargetRef(existing.targetRef);
+              if (existing.deviceId) {
+                setDeviceId(existing.deviceId);
+                setDeviceIdTouched(true);
+              }
+              if (existing.protocol === "hdc" || existing.protocol === "adb") {
+                setProtocol(existing.protocol);
+              }
               return;
             }
           } catch {
@@ -204,6 +458,45 @@ export function DtsReloadPage({
       cancelled = true;
     };
   }, [projectId, repository]);
+
+  const openDeployConfirm = (validatedRun: DtsReloadRun) => {
+    setPendingDeployRun(validatedRun);
+    setDeployError("");
+    setDeployConfirmOpen(true);
+  };
+
+  const closeDeployConfirm = () => {
+    if (deploying) return;
+    setDeployConfirmOpen(false);
+    setPendingDeployRun(null);
+    setDeployError("");
+  };
+
+  const onDeployConfirm = async () => {
+    const deployRun = pendingDeployRun ?? (run?.status === "validated" || run?.status === "failed" ? run : null);
+    if (!deployRun || !deployReady) return;
+
+    setDeploying(true);
+    setDeployError("");
+    try {
+      const deployed = await repository!.deployRun({
+        runId: deployRun.id,
+        deviceId: deviceId.trim(),
+        bridgeId: bridgeId.trim(),
+        targetRef: targetRef.trim(),
+        protocol,
+        confirmationTokens: [DTS_RELOAD_CONFIRMATION_TOKEN]
+      });
+      setRun(deployed);
+      writeRunIdToSearch(deployed.id);
+      setDeployConfirmOpen(false);
+      setPendingDeployRun(null);
+    } catch (error) {
+      setDeployError(error instanceof Error ? error.message : "部署到设备失败。");
+    } finally {
+      setDeploying(false);
+    }
+  };
 
   if (!repository) {
     return (
@@ -275,6 +568,11 @@ export function DtsReloadPage({
       });
       setRun(started);
       writeRunIdToSearch(started.id);
+      if (started.status === "validated" && deployReady) {
+        openDeployConfirm(started);
+      } else if (started.status === "validated" && !deployReady) {
+        setErrorMessage("预检已通过。填写 Bridge / targetRef / deviceId 后可点击「确认部署到设备」。");
+      }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "启动重载运行失败。");
     } finally {
@@ -297,6 +595,9 @@ export function DtsReloadPage({
     }
   };
 
+  const confirmRun = pendingDeployRun ?? run;
+  const canRetryDeploy = run?.status === "validated" || run?.status === "failed";
+
   return (
     <section className="dts-reload-page flex flex-col gap-5 p-6" aria-labelledby="dts-reload-title">
       <header className="flex flex-col gap-2">
@@ -304,7 +605,7 @@ export function DtsReloadPage({
           DTS 重载调试
         </h2>
         <p className="text-sm text-muted-foreground">
-          一次运行可批量覆盖多个节点的参数（u32 cell 数组与字符串列表）。调试值不会写回参数库。本票停在可下载产物，不触达设备。
+          一次运行可批量覆盖多个节点的参数（u32 cell 数组与字符串列表）。调试值不会写回参数库。预检通过后可确认部署到设备。
         </p>
       </header>
 
@@ -537,6 +838,73 @@ export function DtsReloadPage({
             </ul>
           )}
 
+          <div className="flex flex-col gap-3 rounded-md border border-dashed p-3">
+            <h4 className="text-sm font-semibold">设备部署</h4>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="font-medium">Bridge</span>
+              <select
+                aria-label="选择 Bridge"
+                className="rounded-md border px-3 py-2"
+                value={bridgeId}
+                disabled={!canStartRun || bridgesLoading}
+                onChange={(event) => {
+                  setBridgeId(event.target.value);
+                  setDeviceIdTouched(false);
+                }}
+              >
+                {bridges.length === 0 ? (
+                  <option value="">{bridgesLoading ? "加载 Bridge…" : "暂无可用 Bridge"}</option>
+                ) : (
+                  bridges.map((bridge) => (
+                    <option key={bridge.id} value={bridge.id}>
+                      {bridge.machineLabel}
+                    </option>
+                  ))
+                )}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="font-medium">目标标识 (targetRef)</span>
+              <input
+                aria-label="目标标识 targetRef"
+                className="rounded-md border px-3 py-2 font-mono"
+                value={targetRef}
+                disabled={!canStartRun}
+                onChange={(event) => setTargetRef(event.target.value)}
+                placeholder="设备序列号或连接标识"
+              />
+            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="font-medium">协议</span>
+                <select
+                  aria-label="部署协议"
+                  className="rounded-md border px-3 py-2"
+                  value={protocol}
+                  disabled={!canStartRun}
+                  onChange={(event) => setProtocol(event.target.value as DeployProtocol)}
+                >
+                  <option value="hdc">HDC</option>
+                  <option value="adb">ADB</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="font-medium">deviceId</span>
+                <input
+                  aria-label="deviceId"
+                  className="rounded-md border px-3 py-2 font-mono"
+                  value={deviceId}
+                  disabled={!canStartRun}
+                  onChange={(event) => {
+                    setDeviceIdTouched(true);
+                    setDeviceId(event.target.value);
+                  }}
+                  placeholder="bridge:..."
+                />
+              </label>
+            </div>
+          </div>
+
           {selectedHasSensitive ? (
             <p role="status" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
               已选参数命中敏感节点规则：除 debugging:dts-reload 外还需要{" "}
@@ -563,7 +931,7 @@ export function DtsReloadPage({
               />
               <span>
                 我确认要为 critical 敏感参数启动重载运行（发送 confirmationToken=
-                {SENSITIVE_RELOAD_CONFIRMATION_TOKEN}）。调试值不会写回参数库；设备部署确认属于后续步骤。
+                {SENSITIVE_RELOAD_CONFIRMATION_TOKEN}）。调试值不会写回参数库；设备部署需另行确认。
               </span>
             </label>
           ) : null}
@@ -583,20 +951,26 @@ export function DtsReloadPage({
 
           {run ? (
             <div className="flex flex-col gap-3 border-t pt-4" aria-live="polite">
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold">运行结果</h3>
-                <span
-                  className={cn(
-                    "rounded-md px-2 py-0.5 text-xs font-medium",
-                    run.status === "validated" ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-950"
-                  )}
-                >
-                  {run.status === "validated" ? "已验证" : "已阻断"}
+                <span className={cn("rounded-md px-2 py-0.5 text-xs font-medium", statusBadgeClass(run.status))}>
+                  {dtsReloadStatusLabels[run.status]}
                 </span>
               </div>
               {run.failureCode ? <p className="text-xs text-muted-foreground">失败码：{run.failureCode}</p> : null}
+              {run.bridgeMachineLabel || run.targetRef ? (
+                <p className="text-xs text-muted-foreground">
+                  目标设备：{run.deviceId ?? deviceId} · {run.targetRef ?? targetRef}
+                  {run.bridgeMachineLabel ? ` · Bridge ${run.bridgeMachineLabel}` : ""}
+                </p>
+              ) : null}
               {run.targets.length > 0 ? (
                 <p className="text-xs text-muted-foreground">本运行包含 {run.targets.length} 个参数目标。</p>
+              ) : null}
+              {run.integrityCheck ? (
+                <p className="text-xs text-muted-foreground">
+                  完整性校验：{integrityCheckLabel(run.integrityCheck)}
+                </p>
               ) : null}
               {run.diagnostics.length > 0 ? (
                 <ul className="space-y-1 text-xs text-rose-900">
@@ -605,6 +979,8 @@ export function DtsReloadPage({
                   ))}
                 </ul>
               ) : null}
+              <RunStepsList steps={run.steps} />
+              {run.reloadSnapshot ? <ReloadSnapshotSummary snapshot={run.reloadSnapshot} /> : null}
               {run.overlaySource ? (
                 <label className="flex flex-col gap-1 text-sm">
                   <span className="font-medium">Overlay 源码</span>
@@ -621,10 +997,42 @@ export function DtsReloadPage({
                   下载编译产物 ({run.artifact.fileName})
                 </Button>
               ) : null}
+              {canRetryDeploy && canStartRun ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!deployReady || deploying}
+                  onClick={() => openDeployConfirm(run)}
+                >
+                  {run.status === "failed" ? "重试部署到设备" : "部署到设备"}
+                </Button>
+              ) : null}
             </div>
           ) : null}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={deployConfirmOpen}
+        title="确认部署到设备"
+        description={
+          confirmRun ? (
+            <DeployConfirmBody
+              run={confirmRun}
+              deviceId={deviceId.trim()}
+              targetRef={targetRef.trim()}
+              bridgeMachineLabel={selectedBridge?.machineLabel ?? confirmRun.bridgeMachineLabel ?? "—"}
+            />
+          ) : null
+        }
+        confirmLabel="确认部署"
+        tone="danger"
+        pending={deploying}
+        pendingLabel="部署中…"
+        error={deployError}
+        onCancel={closeDeployConfirm}
+        onConfirm={() => void onDeployConfirm()}
+      />
     </section>
   );
 }

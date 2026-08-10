@@ -311,6 +311,18 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: false
   },
   {
+    id: "DTS-RELOAD-DEPLOY-001",
+    workflow: "E",
+    title: "Validated reload overlay deploys through a fake local device bridge (mount, pushFile, trigger) to unverifiable.",
+    required: true
+  },
+  {
+    id: "DTS-RELOAD-DEPLOY-HW-001",
+    workflow: "E",
+    title: "Reload overlay deploy to a real HDC target through a paired local device bridge when lab env is enabled.",
+    required: false
+  },
+  {
     id: "HDC-LAB-001",
     workflow: "F",
     title: "Real HDC device lab read/write smoke runs when explicitly enabled.",

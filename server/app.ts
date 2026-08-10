@@ -171,6 +171,14 @@ export function createWiseEffServer(
   registerDtsReloadRoutes(router, {
     db: options.db,
     objectStore: options.objectStore,
+    ...(options.deviceBridge?.rpcClient ? { bridgeRpcClient: options.deviceBridge.rpcClient } : {}),
+    ...(options.deviceBridge?.connectionPool ? { bridgeConnectionPool: options.deviceBridge.connectionPool } : {}),
+    ...(options.deviceBridge?.artifactRoot || options.env?.DEVICE_BRIDGE_ARTIFACT_ROOT
+      ? {
+          bridgeArtifactRoot:
+            options.deviceBridge?.artifactRoot ?? options.env?.DEVICE_BRIDGE_ARTIFACT_ROOT
+        }
+      : {}),
     getCurrentAuthContext: authResolver
   });
   registerJobRoutes(router, {
