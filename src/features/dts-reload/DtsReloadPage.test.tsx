@@ -661,7 +661,7 @@ describe("DtsReloadPage", () => {
 
     renderPage(repository, { canStartRun: false });
     await screen.findByText("运行历史");
-    expect(screen.getByRole("status")).toHaveTextContent(/仅有调试查看权限/);
+    expect(screen.getByText(/仅有调试查看权限/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /启动重载运行/ })).toBeDisabled();
     expect(screen.getByText("上次重载")).toBeInTheDocument();
     expect(screen.getByText("<7000>")).toBeInTheDocument();
@@ -695,5 +695,100 @@ describe("DtsReloadPage", () => {
     const historyRegion = screen.getByLabelText("运行历史");
     expect(within(historyRegion).getByRole("checkbox", { name: /仅显示当前设备的运行/ })).toBeDisabled();
     expect(within(historyRegion).getByText(/先填写设备 ID/)).toBeInTheDocument();
+  });
+
+  it("distinguishes no paired bridge, paired-offline, and connected readiness", async () => {
+    const repository = createRepository();
+    const { rerender } = renderPage(repository, {
+      bridges: [],
+      probeBridgeHealth: async () => null
+    });
+    expect(await screen.findByRole("status", { name: /Bridge 就绪状态/ })).toHaveTextContent(/未配对 Bridge/);
+
+    rerender(
+      <DtsReloadPage
+        projects={[{ id: "project-1", name: "Demo" }]}
+        repository={repository}
+        canStartRun
+        bridges={[{ id: "bridge-1", machineLabel: "Lab Mac", lastSeenAt: null }]}
+        probeBridgeHealth={async () => ({ connected: false, bridgeId: undefined })}
+      />
+    );
+    expect(await screen.findByRole("status", { name: /Bridge 就绪状态/ })).toHaveTextContent(/已配对但未连接/);
+
+    rerender(
+      <DtsReloadPage
+        projects={[{ id: "project-1", name: "Demo" }]}
+        repository={repository}
+        canStartRun
+        bridges={[{ id: "bridge-1", machineLabel: "Lab Mac", lastSeenAt: new Date().toISOString() }]}
+        probeBridgeHealth={async () => ({ connected: true, bridgeId: "bridge-1" })}
+      />
+    );
+    expect(await screen.findByRole("status", { name: /Bridge 就绪状态/ })).toHaveTextContent(/已连接/);
+  });
+
+  it("does not treat recent lastSeen as connected when health probe reports offline", async () => {
+    const repository = createRepository();
+    renderPage(repository, {
+      bridges: [{ id: "bridge-1", machineLabel: "Lab Mac", lastSeenAt: new Date().toISOString() }],
+      probeBridgeHealth: async () => ({ connected: false, bridgeId: undefined })
+    });
+    expect(await screen.findByRole("status", { name: /Bridge 就绪状态/ })).toHaveTextContent(/已配对但未连接/);
+    expect(screen.getByRole("status", { name: /Bridge 就绪状态/ })).not.toHaveTextContent(/已连接 ·/);
+  });
+
+  it("does not mark a different bridge connected when health is bound to another id", async () => {
+    const repository = createRepository();
+    renderPage(repository, {
+      bridges: [{ id: "bridge-1", machineLabel: "Lab Mac", lastSeenAt: new Date().toISOString() }],
+      probeBridgeHealth: async () => ({ connected: true, bridgeId: "bridge-other" })
+    });
+    expect(await screen.findByRole("status", { name: /Bridge 就绪状态/ })).toHaveTextContent(/已配对但未连接/);
+  });
+
+  it("lists reachable targets from detectTargets for selection context", async () => {
+    const user = userEvent.setup();
+    const repository = createRepository();
+    renderPage(repository, {
+      bridges: [{ id: "bridge-1", machineLabel: "Lab Mac", lastSeenAt: new Date().toISOString() }],
+      probeBridgeHealth: async () => ({ connected: true, bridgeId: "bridge-1" }),
+      detectTargets: async () => [
+        { targetRef: "AURORA-001", label: "Lab Mac · AURORA-001", bridgeId: "bridge-1" },
+        { targetRef: "AURORA-002", label: "Lab Mac · AURORA-002", bridgeId: "bridge-1" }
+      ]
+    });
+
+    const targetList = await screen.findByLabelText("可达设备目标");
+    expect(within(targetList).getByRole("button", { name: /AURORA-001/ })).toBeInTheDocument();
+    await user.click(within(targetList).getByRole("button", { name: /AURORA-002/ }));
+    expect(screen.getByLabelText("目标标识 targetRef")).toHaveValue("AURORA-002");
+  });
+
+  it("renders a navigable upgrade control when deploy fails with bridge-upgrade-required", async () => {
+    const user = userEvent.setup();
+    const { WiseEffApiError } = await import("@/infrastructure/http/apiClient");
+    const repository = createRepository({
+      deployRun: vi.fn(async () => {
+        throw new WiseEffApiError(
+          "VALIDATION_FAILED",
+          "Device bridge is missing required RPC methods. Upgrade from /api/v1/device-bridges/releases.",
+          {
+            code: "bridge-upgrade-required",
+            releasesPath: "/api/v1/device-bridges/releases"
+          },
+          "req-upgrade"
+        );
+      })
+    });
+    renderPage(repository);
+    await screen.findAllByText("Watchdog");
+    await fillDeployFields(user);
+    await user.click(screen.getByRole("button", { name: /启动重载运行/ }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "确认部署" }));
+    const upgradeLink = await screen.findByRole("link", { name: /下载或升级 Bridge/ });
+    expect(upgradeLink).toHaveAttribute("href", "/node-debugging");
+    expect(within(dialog).getByText("/api/v1/device-bridges/releases")).toBeInTheDocument();
   });
 });

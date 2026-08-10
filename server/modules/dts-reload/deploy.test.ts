@@ -228,6 +228,62 @@ describe("deployReloadRun", () => {
     });
   });
 
+  it("refuses an agent actor for deploy and audits the refusal", async () => {
+    const artifactSha = createHash("sha256").update("dtbo").digest("hex");
+    const { db } = createFakeDb([
+      () => [validatedRunRow({ overlay_artifact_sha256: artifactSha })]
+    ]);
+    const objectStore: ObjectStore = {
+      put: vi.fn(),
+      get: vi.fn(async () => Buffer.from("dtbo")),
+      delete: vi.fn()
+    };
+    const bridgeRpcClient = { call: vi.fn() };
+
+    await expect(
+      deployReloadRun(
+        db,
+        objectStore,
+        auth(),
+        {
+          runId: "run-1",
+          deviceId: "dev-1",
+          bridgeId: "br-1",
+          targetRef: "AURORA-001",
+          protocol: "hdc",
+          confirmationTokens: [DTS_RELOAD_CONFIRMATION_TOKEN]
+        },
+        {
+          bridgeRpcClient,
+          bridgeConnectionPool: { isConnected: () => true }
+        },
+        { actorType: "agent" }
+      )
+    ).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      details: {
+        code: "dts-reload-agent-refused",
+        reason: "agent-refused",
+        requireHuman: true,
+        action: "deploy"
+      }
+    });
+    expect(bridgeRpcClient.call).not.toHaveBeenCalled();
+    expect(createAuditEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        actorType: "agent",
+        kind: "dts-reload-agent-refused",
+        action: "deny",
+        metadata: expect.objectContaining({
+          reason: "agent-refused",
+          requireHuman: true,
+          action: "deploy"
+        })
+      })
+    );
+  });
+
   it("refuses deploy when confirm-dts-reload is missing and never invents the token", async () => {
     const artifactSha = createHash("sha256").update("dtbo").digest("hex");
     const { db } = createFakeDb([
@@ -559,7 +615,7 @@ describe("deployReloadRun", () => {
     ).rejects.toMatchObject({
       details: {
         code: "bridge-upgrade-required",
-        releasesPath: "/api/v1/device-bridge/releases"
+        releasesPath: "/api/v1/device-bridges/releases"
       }
     });
   });

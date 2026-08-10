@@ -16,7 +16,7 @@ import {
   groupDebugOverlayTargets,
   type DebugOverlayPropertyBinding
 } from "./debugOverlay";
-import { requireDtsReload, requireDtsReloadView } from "./policy";
+import { assertDtsReloadHumanActor, requireDtsReload, requireDtsReloadView } from "./policy";
 import { runDebugOverlayPreflight } from "./preflight";
 import {
   getReloadCandidateRow,
@@ -516,6 +516,12 @@ export async function startReloadRun(
   requireDtsReload(auth);
 
   const purpose: ReloadRunPurpose = input.purpose ?? "ordinary";
+  await assertDtsReloadHumanActor(db, auth, {
+    actorType: context.actorType,
+    action: purpose === "restore-baseline" ? "restore" : "start",
+    projectId: input.projectId,
+    requestId: context.requestId
+  });
   const audits = auditKindsForPurpose(purpose);
 
   if (purpose === "restore-baseline") {
@@ -1003,6 +1009,13 @@ export async function deployReloadRun(
   context: DtsReloadServiceContext = {}
 ): Promise<ReloadRunDto> {
   requireDtsReload(auth);
+
+  await assertDtsReloadHumanActor(db, auth, {
+    actorType: context.actorType,
+    action: "deploy",
+    runId: input.runId,
+    requestId: context.requestId
+  });
 
   if (!input.confirmationTokens.includes(DTS_RELOAD_CONFIRMATION_TOKEN)) {
     throw new ApiError(

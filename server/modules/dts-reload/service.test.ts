@@ -731,6 +731,46 @@ describe("startReloadRun sensitive-node governance", () => {
     );
   }, 60_000);
 
+  it("refuses an agent actor for start even without a sensitive match and audits the refusal", async () => {
+    const { db } = createFakeDb([[candidateRow()]]);
+    const { objectStore, put } = makeObjectStore();
+
+    await expect(
+      startReloadRun(
+        db,
+        objectStore,
+        auth(),
+        {
+          projectId: "project-1",
+          targets: [{ bindingId: "binding-1", debugValue: "<7000>" }]
+        },
+        { actorType: "agent" }
+      )
+    ).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      details: {
+        code: "dts-reload-agent-refused",
+        reason: "agent-refused",
+        requireHuman: true,
+        action: "start"
+      }
+    });
+    expect(put).not.toHaveBeenCalled();
+    expect(createAuditEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        actorType: "agent",
+        kind: "dts-reload-agent-refused",
+        action: "deny",
+        metadata: expect.objectContaining({
+          reason: "agent-refused",
+          requireHuman: true,
+          action: "start"
+        })
+      })
+    );
+  });
+
   it("refuses an agent actor for any sensitive match and audits requireHuman", async () => {
     const { db } = createFakeDb([[candidateRow()], [sensitiveRuleRow({ risk_tier: "high" })]]);
     const { objectStore, put } = makeObjectStore();
@@ -750,10 +790,9 @@ describe("startReloadRun sensitive-node governance", () => {
     ).rejects.toMatchObject({
       code: "FORBIDDEN",
       details: {
-        code: "sensitive-node-reload-denied",
+        code: "dts-reload-agent-refused",
         reason: "agent-refused",
-        requireHuman: true,
-        riskTier: "high"
+        requireHuman: true
       }
     });
     expect(put).not.toHaveBeenCalled();
@@ -761,7 +800,7 @@ describe("startReloadRun sensitive-node governance", () => {
       expect.anything(),
       expect.objectContaining({
         actorType: "agent",
-        kind: "dts-reload-sensitive-node-denied",
+        kind: "dts-reload-agent-refused",
         metadata: expect.objectContaining({
           reason: "agent-refused",
           requireHuman: true
@@ -808,9 +847,8 @@ describe("startReloadRun sensitive-node governance", () => {
       )
     ).rejects.toMatchObject({
       details: {
-        code: "sensitive-node-reload-denied",
+        code: "dts-reload-agent-refused",
         reason: "agent-refused",
-        riskTier: "critical",
         requireHuman: true
       }
     });

@@ -1,5 +1,14 @@
-import { ApiError } from "../../shared/http/errors";
+import { randomUUID } from "node:crypto";
+
+import { createAuditEvent } from "../audit/repository";
 import type { AuthContext, BackendPermission } from "../auth/types";
+import type { SensitiveWriteActorType } from "../parameters/sensitiveNode";
+import type { Queryable } from "../../shared/database/client";
+import { ApiError } from "../../shared/http/errors";
+
+export const DTS_RELOAD_AGENT_REFUSED_CODE = "dts-reload-agent-refused";
+
+export type DtsReloadMutatingAction = "start" | "deploy" | "restore";
 
 function requirePermission(auth: AuthContext, permission: BackendPermission) {
   if (!auth.user.isActive || !auth.permissions.includes(permission)) {
@@ -28,4 +37,58 @@ export function requireDtsReloadView(auth: AuthContext) {
   throw new ApiError("FORBIDDEN", "Missing permission: debugging:view.", 403, {
     permission: "debugging:view"
   });
+}
+
+/**
+ * Refuse Agent actors from any DTS reload start / deploy / restore path.
+ * Sensitive-node Agent refusal remains as defence in depth for matched batches.
+ */
+export async function assertDtsReloadHumanActor(
+  db: Queryable,
+  auth: AuthContext,
+  input: {
+    actorType?: SensitiveWriteActorType;
+    action: DtsReloadMutatingAction;
+    projectId?: string | null;
+    runId?: string | null;
+    requestId?: string;
+  }
+): Promise<void> {
+  const actorType = input.actorType ?? "user";
+  if (actorType !== "agent") {
+    return;
+  }
+
+  await createAuditEvent(db, {
+    id: randomUUID(),
+    organizationId: auth.organization.id,
+    projectId: input.projectId ?? null,
+    actorUserId: auth.user.id,
+    actorType: "agent",
+    app: "dts-reload",
+    kind: "dts-reload-agent-refused",
+    action: "deny",
+    severity: "High",
+    targetType: input.runId ? "dts-reload-run" : "dts-reload",
+    targetId: input.runId ?? input.projectId ?? "dts-reload",
+    metadata: {
+      code: DTS_RELOAD_AGENT_REFUSED_CODE,
+      reason: "agent-refused",
+      requireHuman: true,
+      action: input.action
+    },
+    traceId: input.requestId ?? randomUUID()
+  });
+
+  throw new ApiError(
+    "FORBIDDEN",
+    "Agent actors cannot start, deploy, or restore DTS reload runs; a human operator is required.",
+    403,
+    {
+      code: DTS_RELOAD_AGENT_REFUSED_CODE,
+      reason: "agent-refused",
+      requireHuman: true,
+      action: input.action
+    }
+  );
 }
