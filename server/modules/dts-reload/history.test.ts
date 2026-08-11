@@ -284,6 +284,7 @@ describe("last reload projection on candidates", () => {
           project_id: "project-1",
           property_key: "watchdog_time",
           display_name: "Watchdog",
+          module_id: "mod-charger",
           module_name: "charger",
           node_path: "/node",
           compatible: "sc8562",

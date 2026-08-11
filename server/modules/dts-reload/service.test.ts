@@ -89,6 +89,7 @@ function candidateRow(overrides: Record<string, unknown> = {}) {
     project_id: "project-1",
     property_key: "watchdog_time",
     display_name: "Watchdog",
+    module_id: "mod-charger",
     module_name: "charger",
     node_path: "/amba/i2c@FDF5E000/sc8562@6E",
     compatible: "sc8562",

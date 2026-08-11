@@ -61,6 +61,7 @@ function candidateRow() {
     project_id: "project-1",
     property_key: "watchdog_time",
     display_name: "Watchdog",
+    module_id: "mod-charger",
     module_name: "charger",
     node_path: "/amba/i2c@1/dev@6E",
     compatible: "sc8562",

@@ -20,6 +20,8 @@ export type DtsReloadCandidate = {
   propertyKey: string;
   displayName: string;
   module: string;
+  /** Parameter-module id when assigned; enables registry nesting in the module navigator. */
+  moduleId?: string | null;
   nodePath: string | null;
   compatible?: string | null;
   baselineValue: string | null;

@@ -37,6 +37,8 @@ export interface ReloadCandidateDto {
   propertyKey: string;
   displayName: string;
   module: string;
+  /** Parameter-module id when the binding is assigned; drives navigator nesting. */
+  moduleId: string | null;
   /** Absolute device-tree path, or null when the binding has no resolved locator. */
   nodePath: string | null;
   /** Compatible string from the logical node revision, when available. */

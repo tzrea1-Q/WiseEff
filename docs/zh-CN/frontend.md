@@ -174,13 +174,13 @@ mock mode 有意保留 12 个兼容参数，以保证组件测试与演示轻量
 设备调试：
 
 - `/node-debugging`：通过 API mode gateway 读写节点、生成快照和审计（当前主入口）。
-- `/dts-reload`：DTS 重载调试（与已退役的「参数重载」无关）。API mode 下列出项目候选参数、启动重载运行、预检 overlay、以 `confirm-dts-reload`（critical 敏感命中另需 `confirm-sensitive-reload`）部署，并展示重载快照、残留、恢复基线与运行历史。Mock mode 仅静态不可用。配置 CRUD 在 `/debugging-admin`。客户端：`src/infrastructure/http/dtsReloadClient.ts`。
-- `/debugging`：**产品下线**（TD-032）；路由显示不可用页并引导至节点调试。迁移 `0037` 已删除 `parameter_reload_bindings`；遗留 HTTP 仍返回 `410`。`DebuggingPage` 组件仅供历史组件测试保留，不可与 `/dts-reload` 混淆。
+- `/dts-reload`：参数调试（产品名；技术能力仍为 DTS overlay 重载，与已退役的「参数重载」无关）。壳层与 `/node-debugging` 同族 workbench 节奏（`workbench-page` / `workbench-one-col`）：表前协议切换与共享 `LocalDeviceBridgePanel`（安装/配对/连接向导）、多目标时同款 `bridge-target-picker`（`targetRef`/`deviceId` 由 Bridge 检测与所选代理推导，不再单独放部署目标卡）、候选区 **左模块导航 + 右表**（复用参数修改页的 `DtsTopologyNavigator` 与 `buildModuleTree`：模块注册表嵌套 + `groupByDevice` 器件层，可展开树状；选中节点按子树 binding 过滤表格；表头 **模块** 列另接共享 `ColumnFilter` 多选筛选；末列 **操作**：不可调试显示阻断原因，可调试显示铅笔「编辑」，打开 `WorkbenchSheet` 侧栏查看详情、上次重载历史并填写调试值，确认后写入本轮重载托盘；表内不再单独放「上次重载」列）、**本轮重载** 托盘对齐参数工作台「本轮已修改」：仅在有选中项时显示，并作为独立区块放在「可调试参数」上方（`Reload batch` eyebrow、基线→调试值 diff、就地编辑、主 CTA「下发参数」）、有运行时的结果面板，以及**默认折叠**的运行历史；标题依赖 shell（`appConfig`），页内不再重复 `h2`。Bridge 就绪 UI 与节点调试复用同一组件（`src/components/LocalDeviceBridgePanel.tsx`）。API mode 下列出项目候选参数、下发参数、预检 overlay、以 `confirm-dts-reload`（critical 敏感命中另需 `confirm-sensitive-reload`）部署，并展示重载快照、残留、恢复基线与运行历史。Mock mode 仅静态不可用。配置 CRUD 在 `/debugging-admin`。客户端：`src/infrastructure/http/dtsReloadClient.ts`。实现：`src/features/dts-reload/DtsReloadPage.tsx`（大文件拆分见 TD-069）。
+- `/debugging`：**产品下线**（TD-032）；路由显示不可用页并引导至节点调试。迁移 `0037` 已删除 `parameter_reload_bindings`；遗留 HTTP 仍返回 `410`。`DebuggingPage` 组件仅供历史组件测试保留，不可与 `/dts-reload`（现 UI 标题「参数调试」）混淆。
 - `/debugging-admin`：API mode 下通过 `src/infrastructure/http/debuggingAdminClient.ts` 管理调试 catalog，可查询、新增、更新、归档、恢复并维护 HDC/ADB bindings；并承载 DTS 重载配置面板。mock mode 保留本地 `configDraft` 和 JSON 编辑路径，用于演示和组件测试。
 
 ### 本地 Device Bridge（Phase A）
 
-`/node-debugging` 使用三步向导（**安装 Bridge → 连接本机 → 插入 USB 设备**），组件位于 `src/components/LocalDeviceBridgeWizard.tsx`。面板通过 `deviceBridgeClient` 读取 `/api/v1/device-bridges/releases`，经 `pickBridgeReleaseForHost()` 优先选择 `artifactKind: "installer"` 的安装包；配对码来自 `/api/v1/device-bridges/pairing-codes`；设备代理列表来自 `/api/v1/device-bridges/mine`。
+`/node-debugging` 与 `/dts-reload` 共用 `LocalDeviceBridgePanel`（`src/components/LocalDeviceBridgePanel.tsx`），其中三步向导（**安装 Bridge → 连接本机 → 插入 USB 设备**）位于 `src/components/LocalDeviceBridgeWizard.tsx`。面板通过 `deviceBridgeClient` 读取 `/api/v1/device-bridges/releases`，经 `pickBridgeReleaseForHost()` 优先选择 `artifactKind: "installer"` 的安装包；配对码来自 `/api/v1/device-bridges/pairing-codes`；设备代理列表来自 `/api/v1/device-bridges/mine`。
 
 主连接流程：点击 **连接本地设备** → 首次可选确认（`wiseeff.bridgeSchemeConfirm`）→ `launchBridgeConnect()` 打开 `wiseeff-bridge://connect?...` → `pollLocalBridgeHealth()` 最多 30 秒轮询 `http://127.0.0.1:18787/health` → `connected: true` 后自动 detect。工具函数在 `src/infrastructure/http/bridgeConnectLauncher.ts`。
 

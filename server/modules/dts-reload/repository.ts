@@ -24,6 +24,8 @@ export type ReloadCandidateRow = {
   project_id: string;
   property_key: string;
   display_name: string;
+  /** Binding module id when assigned; used by the UI module navigator hierarchy. */
+  module_id: string | null;
   module_name: string;
   node_path: string | null;
   compatible: string | null;
@@ -265,6 +267,7 @@ export async function listReloadCandidateRows(
         ''
       ) as property_key,
       coalesce(psv.display_name, dps.property_key, ps.specification_key) as display_name,
+      b.module_id as module_id,
       coalesce(asub.display_name, pm.name, '') as module_name,
       lnr.node_locator as node_path,
       lnr.compatible as compatible,
@@ -322,6 +325,7 @@ export async function getReloadCandidateRow(
         ''
       ) as property_key,
       coalesce(psv.display_name, dps.property_key, ps.specification_key) as display_name,
+      b.module_id as module_id,
       coalesce(asub.display_name, pm.name, '') as module_name,
       lnr.node_locator as node_path,
       lnr.compatible as compatible,
