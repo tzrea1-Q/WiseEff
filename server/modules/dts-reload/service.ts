@@ -9,7 +9,7 @@ import type { SensitiveWriteActorType } from "../parameters/sensitiveNode";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { buildReloadBaseSource } from "./baseSource";
-import { classifyReloadCandidate, normalizeReloadCandidates, resolveReloadValueShape, type CandidateValueShape } from "./candidates";
+import { classifyReloadCandidate, isPhandleCellArrayValue, normalizeReloadCandidates, resolveReloadValueShape, type CandidateValueShape } from "./candidates";
 import { assertDebugValueConstraints } from "./constraints";
 import {
   generateDebugOverlay,
@@ -379,6 +379,60 @@ function assertParsedValueMatchesShape(
         "Debug value must be a string list (for example \"okay\" or \"a\", \"b\").",
         400,
         { bindingId, debugValue }
+      );
+    }
+    return;
+  }
+
+  if (valueShape?.kind === "phandle-cells") {
+    if (!isPhandleCellArrayValue(parsedValue)) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "Debug value must be a GPIO-style phandle cell array (for example <&gpio13 29 0>).",
+        400,
+        { bindingId, debugValue }
+      );
+    }
+
+    const cellsPerGroup = valueShape.cellsPerGroup;
+    if (typeof cellsPerGroup === "number" && Number.isInteger(cellsPerGroup) && cellsPerGroup >= 2) {
+      const mismatched =
+        parsedValue.kind === "cells" &&
+        parsedValue.groups.some((group) => group.length !== cellsPerGroup);
+      if (mismatched) {
+        throw new ApiError(
+          "VALIDATION_FAILED",
+          `Debug value must have ${cellsPerGroup} cell(s) per group.`,
+          400,
+          {
+            bindingId,
+            debugValue,
+            expectedCellsPerGroup: cellsPerGroup,
+            actualCellsPerGroup:
+              parsedValue.kind === "cells" ? parsedValue.groups.map((group) => group.length) : []
+          }
+        );
+      }
+    }
+
+    const expectedGroups = valueShape.groups;
+    if (
+      typeof expectedGroups === "number" &&
+      Number.isInteger(expectedGroups) &&
+      expectedGroups >= 1 &&
+      parsedValue.kind === "cells" &&
+      parsedValue.groups.length !== expectedGroups
+    ) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        `Debug value must have ${expectedGroups} cell group(s).`,
+        400,
+        {
+          bindingId,
+          debugValue,
+          expectedGroups,
+          actualGroups: parsedValue.groups.length
+        }
       );
     }
     return;

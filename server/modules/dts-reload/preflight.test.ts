@@ -303,4 +303,56 @@ describe("runDebugOverlayPreflight", () => {
       ])
     );
   });
+
+  it("passes a GPIO-style phandle cell overlay when the base carries /__symbols__", async () => {
+    const gpioBase = `/dts-v1/;
+
+/ {
+	gpio13: gpio13 {
+	};
+
+	amba: amba {
+		i2c@FDF5E000 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			sc8562@6E {
+				compatible = "sc8562";
+				gpio_int = <&gpio13 29 0>;
+			};
+		};
+	};
+};
+`;
+    const value = {
+      kind: "cells" as const,
+      bits: 32 as const,
+      groups: [
+        [
+          { kind: "phandle" as const, label: "gpio13" },
+          { kind: "integer" as const, raw: "30", value: "30" },
+          { kind: "integer" as const, raw: "0", value: "0" }
+        ]
+      ]
+    };
+    const targets = [{ nodePath: NODE_PATH, properties: [{ name: "gpio_int", value }] }];
+
+    const result = await runDebugOverlayPreflight({
+      baseSource: gpioBase,
+      overlaySource: generateDebugOverlay(targets),
+      targets
+    });
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.ok).toBe(true);
+    expect(result.overlayBlob?.byteLength).toBeGreaterThan(0);
+    expect(result.observedValues).toEqual([
+      {
+        nodePath: NODE_PATH,
+        propertyName: "gpio_int",
+        before: "<1 29 0>",
+        after: "<1 30 0>"
+      }
+    ]);
+  });
 });

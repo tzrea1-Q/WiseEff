@@ -91,6 +91,36 @@ describe("compareReloadDebugValue", () => {
       })
     ).toBe("incomparable");
   });
+
+  it("matches GPIO-style phandle cell arrays by label and integer cells", () => {
+    expect(
+      compareReloadDebugValue({
+        propertyKey: "gpio_int",
+        debugValue: "<&gpio13 29 0>",
+        readValue: "<&gpio13 0x1d 0>",
+        valueShape: { kind: "mixed" }
+      })
+    ).toBe("matched");
+    expect(
+      compareReloadDebugValue({
+        propertyKey: "gpio_int",
+        debugValue: "<&gpio13 29 0>",
+        readValue: "<&gpio13 30 0>",
+        valueShape: { kind: "phandle-cells", bits: 32, cellsPerGroup: 3 }
+      })
+    ).toBe("contradicted");
+  });
+
+  it("treats bare integer read-back as incomparable for phandle-cells", () => {
+    expect(
+      compareReloadDebugValue({
+        propertyKey: "gpio_int",
+        debugValue: "<&gpio13 29 0>",
+        readValue: "29 0",
+        valueShape: { kind: "mixed" }
+      })
+    ).toBe("incomparable");
+  });
 });
 
 describe("aggregateBehaviouralStatus", () => {

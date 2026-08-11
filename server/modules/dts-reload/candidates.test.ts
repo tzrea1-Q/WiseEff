@@ -68,6 +68,28 @@ describe("resolveReloadValueShape", () => {
       bits: 32
     });
   });
+
+  it("resolves mixed / phandle-list GPIO baselines onto phandle-cells", () => {
+    expect(resolveReloadValueShape({ kind: "mixed" }, "<&gpio13 29 0>")).toEqual({
+      kind: "phandle-cells",
+      bits: 32,
+      cellsPerGroup: 3
+    });
+    expect(
+      resolveReloadValueShape({ kind: "phandle-list", cellsPerGroup: 3 }, "<&gpio6 15 0>")
+    ).toEqual({
+      kind: "phandle-cells",
+      bits: 32,
+      cellsPerGroup: 3
+    });
+  });
+
+  it("does not invent width for a bare phandle-only list such as interrupt-parent", () => {
+    expect(resolveReloadValueShape({ kind: "phandle-list" }, "<&gic>")).toEqual({
+      kind: "phandle-cells",
+      bits: 32
+    });
+  });
 });
 
 describe("inferCellsPerGroupFromBaseline", () => {
@@ -75,6 +97,7 @@ describe("inferCellsPerGroupFromBaseline", () => {
     expect(inferCellsPerGroupFromBaseline(null)).toBeNull();
     expect(inferCellsPerGroupFromBaseline("<1 2>, <3 4 5>")).toBeNull();
     expect(inferCellsPerGroupFromBaseline('"okay"')).toBeNull();
+    expect(inferCellsPerGroupFromBaseline("<&gpio13 29 0>")).toBeNull();
   });
 });
 
@@ -97,10 +120,16 @@ describe("isSupportedReloadValueShape", () => {
     expect(isSupportedReloadValueShape({ kind: "string-list" })).toBe(true);
   });
 
-  it("rejects non-u32 cells, phandle lists, and incomplete cell shapes", () => {
+  it("accepts complete GPIO-style phandle-cells", () => {
+    expect(isSupportedReloadValueShape({ kind: "phandle-cells", bits: 32, cellsPerGroup: 3 })).toBe(true);
+  });
+
+  it("rejects non-u32 cells, unresolved phandle families, and incomplete cell shapes", () => {
     expect(isSupportedReloadValueShape({ kind: "cells", bits: 8, cellsPerGroup: 1 })).toBe(false);
     expect(isSupportedReloadValueShape({ kind: "cells", bits: 32 })).toBe(false);
     expect(isSupportedReloadValueShape({ kind: "phandle-list", bits: 32, cellsPerGroup: 1 })).toBe(false);
+    expect(isSupportedReloadValueShape({ kind: "phandle-cells", bits: 32 })).toBe(false);
+    expect(isSupportedReloadValueShape({ kind: "phandle-cells", bits: 32, cellsPerGroup: 1 })).toBe(false);
     expect(isSupportedReloadValueShape({ kind: "u32-array" })).toBe(false);
     expect(isSupportedReloadValueShape(null)).toBe(false);
   });
@@ -151,6 +180,16 @@ describe("classifyReloadCandidate", () => {
         valueShapeKind: "phandle-list"
       }).blockReason
     ).toBe("unsupported-value-shape");
+    expect(
+      classifyReloadCandidate({
+        ...base,
+        propertyKey: "interrupt-parent",
+        valueShape: { kind: "phandle-list" },
+        valueShapeKind: "phandle-list",
+        baselineValue: "<&gic>",
+        constraints: {}
+      }).blockReason
+    ).toBe("unsupported-value-shape");
     expect(classifyReloadCandidate({ ...base, baselineValue: null }).blockReason).toBe("no-baseline-value");
   });
 
@@ -169,6 +208,20 @@ describe("classifyReloadCandidate", () => {
         valueShape: { kind: "cells", bits: 32, cellsPerGroup: 3, groups: 1 },
         valueShapeKind: "cells",
         baselineValue: "<1 2 3>"
+      }).debuggable
+    ).toBe(true);
+  });
+
+  it("marks GPIO-style mixed gpio_int bindings as debuggable", () => {
+    expect(
+      classifyReloadCandidate({
+        ...base,
+        propertyKey: "gpio_int",
+        displayName: "gpio_int",
+        valueShape: { kind: "mixed" },
+        valueShapeKind: "mixed",
+        baselineValue: "<&gpio13 29 0>",
+        constraints: { cells: 3 }
       }).debuggable
     ).toBe(true);
   });
