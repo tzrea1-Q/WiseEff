@@ -45,6 +45,11 @@ export interface ReloadCandidateDto {
   compatible: string | null;
   /** Library baseline value, exactly as the parameter library holds it. */
   baselineValue: string | null;
+  /**
+   * Human-readable parameter meaning for the side sheet.
+   * Prefer spec documentation, then description; null when neither is set.
+   */
+  description: string | null;
   valueShapeKind: string | null;
   unit: string | null;
   constraints: Record<string, unknown>;

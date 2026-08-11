@@ -68,6 +68,16 @@ describe("classifyReloadCandidate", () => {
     expect(classifyReloadCandidate(base).debuggable).toBe(true);
   });
 
+  it("carries parameter meaning onto the candidate DTO", () => {
+    expect(
+      classifyReloadCandidate({
+        ...base,
+        description: "  Watchdog timeout  "
+      }).description
+    ).toBe("Watchdog timeout");
+    expect(classifyReloadCandidate({ ...base, description: "   " }).description).toBeNull();
+  });
+
   it("blocks a synthesised-anchor locator on the parameter itself", () => {
     expect(classifyReloadCandidate({ ...base, nodePath: "/amba" })).toMatchObject({
       debuggable: false,

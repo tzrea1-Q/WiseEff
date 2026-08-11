@@ -25,6 +25,8 @@ export type DtsReloadCandidate = {
   nodePath: string | null;
   compatible?: string | null;
   baselineValue: string | null;
+  /** Spec documentation, then description — shown as 参数含义 in the edit sheet. */
+  description: string | null;
   valueShapeKind: string | null;
   unit: string | null;
   constraints: Record<string, unknown>;

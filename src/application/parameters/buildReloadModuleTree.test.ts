@@ -16,6 +16,7 @@ function candidate(overrides: Partial<DtsReloadCandidate> = {}): DtsReloadCandid
     nodePath: "/amba/i2c@1/sc8562@6E",
     compatible: "sc8562",
     baselineValue: "<6000>",
+    description: null,
     valueShapeKind: "cells",
     unit: "ms",
     constraints: {},

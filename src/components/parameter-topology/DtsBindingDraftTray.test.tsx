@@ -75,7 +75,9 @@ describe("DtsBindingDraftTray", () => {
     expect(within(tray).getByRole("heading", { name: "本轮已修改" })).toBeVisible();
     expect(within(tray).getByText("gpio_int")).toBeVisible();
     const diff = within(tray).getByLabelText("gpio_int 值变更");
-    expect(diff.querySelector(".submission-preview-diff")).toBeInTheDocument();
+    expect(diff.querySelector(".submission-preview-diff--scalar")).toBeInTheDocument();
+    expect(diff.querySelector(".submission-preview-diff-row[data-kind='remove'] code")).toHaveTextContent("<&gpio13 29 0>");
+    expect(diff.querySelector(".submission-preview-diff-row[data-kind='add'] code")).toHaveTextContent("<&gpio13 30 0>");
     expect(within(diff).getByText("<&gpio13 29 0>")).toBeVisible();
     expect(within(diff).getByText("<&gpio13 30 0>")).toBeVisible();
     expect(within(tray).getByText("Move interrupt line")).toBeVisible();
@@ -138,7 +140,7 @@ describe("DtsBindingDraftTray", () => {
     );
 
     expect(screen.getAllByText("删除属性（tombstone）").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByLabelText("gpio_int 值变更").querySelector(".submission-preview-diff")).toBeInTheDocument();
+    expect(screen.getByLabelText("gpio_int 值变更").querySelector(".submission-preview-diff--scalar")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "移出本轮修改" }));
     expect(onRemove).toHaveBeenCalledWith("draft-delete");
 

@@ -7,6 +7,7 @@ import {
   dtsReloadStatusLabels,
   type DtsReloadCandidate
 } from "@/domain/dtsReload/types";
+import { DtsReloadCandidateMeaning } from "@/features/dts-reload/DtsReloadCandidateMeaning";
 
 export type DtsReloadCandidateEditDialogProps = {
   candidate: DtsReloadCandidate;
@@ -19,6 +20,16 @@ export type DtsReloadCandidateEditDialogProps = {
   /** Open a past reload run from the candidate's last-reload projection. */
   onOpenHistoryRun?: (runId: string) => void;
 };
+
+/** True when the draft debug value is non-empty and differs from the library baseline. */
+export function hasMeaningfulDebugChange(
+  debugValue: string,
+  baselineValue: string | null | undefined
+): boolean {
+  const trimmed = debugValue.trim();
+  if (!trimmed) return false;
+  return trimmed !== (baselineValue ?? "").trim();
+}
 
 function constraintSummary(constraints: Record<string, unknown>): string {
   const parts: string[] = [];
@@ -66,8 +77,11 @@ export function DtsReloadCandidateEditDialog({
       : candidate.sensitiveMatch
         ? "敏感 · high"
         : null;
+  const canSubmit = hasMeaningfulDebugChange(debugValue, candidate.baselineValue);
+  const submitLabel = alreadyInBatch ? "更新本轮" : "加入本轮重载";
 
   const submit = () => {
+    if (!canSubmit) return;
     const error = onConfirm(debugValue);
     if (error) {
       setErrorMessage(error);
@@ -89,8 +103,21 @@ export function DtsReloadCandidateEditDialog({
             <button type="button" className="button subtle" onClick={onClose}>
               取消
             </button>
-            <button type="button" className="button primary" onClick={submit}>
-              {alreadyInBatch ? "更新本轮" : "加入本轮重载"}
+            <button
+              type="button"
+              className="button primary"
+              onClick={submit}
+              disabled={!canSubmit}
+              aria-disabled={!canSubmit}
+              title={
+                !debugValue.trim()
+                  ? "请先输入调试值"
+                  : !canSubmit
+                    ? "调试值与库基线相同，无需加入本轮"
+                    : undefined
+              }
+            >
+              {submitLabel}
             </button>
           </div>
         </div>
@@ -128,6 +155,11 @@ export function DtsReloadCandidateEditDialog({
             </div>
           </div>
         </div>
+
+        <DtsReloadCandidateMeaning
+          meaning={candidate.description}
+          headingId={`${fieldId}-meaning`}
+        />
 
         <section className="dts-reload-candidate-edit__history" aria-labelledby={`${fieldId}-history`}>
           <h3 id={`${fieldId}-history`}>上次重载</h3>

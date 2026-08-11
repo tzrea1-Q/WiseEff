@@ -154,6 +154,7 @@ function rowToCandidate(row: ReloadCandidateRow): ReloadCandidateDto {
     module: row.module_name,
     nodePath: row.node_path,
     baselineValue: row.baseline_value,
+    description: row.description,
     valueShape,
     valueShapeKind: valueShape?.kind ?? null,
     unit: row.unit,
