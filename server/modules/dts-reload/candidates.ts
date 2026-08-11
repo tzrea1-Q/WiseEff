@@ -53,6 +53,7 @@ export type CandidateClassificationInput = {
   moduleId?: string | null;
   nodePath: string | null;
   baselineValue: string | null;
+  description?: string | null;
   valueShape: CandidateValueShape;
   valueShapeKind: string | null;
   unit: string | null;
@@ -70,6 +71,7 @@ export function classifyReloadCandidate(input: CandidateClassificationInput): Re
     nodePath: input.nodePath,
     compatible: null as string | null,
     baselineValue: input.baselineValue,
+    description: input.description?.trim() ? input.description.trim() : null,
     valueShapeKind: input.valueShapeKind,
     unit: input.unit,
     constraints: input.constraints,

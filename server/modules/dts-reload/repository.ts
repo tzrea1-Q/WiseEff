@@ -32,6 +32,8 @@ export type ReloadCandidateRow = {
   /** Config revision the baseline binding revision and node locator were taken from. */
   config_revision_id: string | null;
   baseline_value: string | null;
+  /** Resolved parameter meaning: documentation, else description. */
+  description: string | null;
   value_shape: unknown;
   unit: string | null;
   constraints: unknown;
@@ -273,6 +275,17 @@ export async function listReloadCandidateRows(
       lnr.compatible as compatible,
       br.config_revision_id as config_revision_id,
       br.raw_value as baseline_value,
+      nullif(
+        trim(
+          both from coalesce(
+            nullif(psv.documentation, ''),
+            nullif(psv.description, ''),
+            nullif(dps.documentation, ''),
+            ''
+          )
+        ),
+        ''
+      ) as description,
       psv.value_shape as value_shape,
       psv.units as unit,
       coalesce(dps.constraints, '{}'::jsonb) as constraints
@@ -331,6 +344,17 @@ export async function getReloadCandidateRow(
       lnr.compatible as compatible,
       br.config_revision_id as config_revision_id,
       br.raw_value as baseline_value,
+      nullif(
+        trim(
+          both from coalesce(
+            nullif(psv.documentation, ''),
+            nullif(psv.description, ''),
+            nullif(dps.documentation, ''),
+            ''
+          )
+        ),
+        ''
+      ) as description,
       psv.value_shape as value_shape,
       psv.units as unit,
       coalesce(dps.constraints, '{}'::jsonb) as constraints

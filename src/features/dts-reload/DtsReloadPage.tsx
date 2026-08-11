@@ -28,7 +28,10 @@ import {
   type LocalDeviceBridgePanelState
 } from "@/components/LocalDeviceBridgePanel";
 import { DtsTopologyNavigator } from "@/components/parameter-topology/DtsTopologyNavigator";
-import { DtsReloadCandidateEditDialog } from "@/features/dts-reload/DtsReloadCandidateEditDialog";
+import {
+  DtsReloadCandidateEditDialog,
+  hasMeaningfulDebugChange
+} from "@/features/dts-reload/DtsReloadCandidateEditDialog";
 import type { DtsWorkbenchTreeNode } from "@/application/parameters/buildDtsTopologyTree";
 import {
   buildReloadModuleTree,
@@ -161,14 +164,6 @@ const dtsReloadStepOutcomeLabels: Record<string, string> = {
   pending: "等待",
   running: "进行中"
 };
-
-function constraintSummary(constraints: Record<string, unknown>): string {
-  const parts: string[] = [];
-  if (typeof constraints.min === "number") parts.push(`min ${constraints.min}`);
-  if (typeof constraints.max === "number") parts.push(`max ${constraints.max}`);
-  if (typeof constraints.cells === "number") parts.push(`cells ${constraints.cells}`);
-  return parts.length > 0 ? parts.join(" · ") : "—";
-}
 
 function sensitiveBadgeLabel(candidate: DtsReloadCandidate): string | null {
   const match = candidate.sensitiveMatch;
@@ -448,14 +443,22 @@ function ReloadSnapshotSummary({ snapshot }: { snapshot: DtsReloadSnapshot }) {
 function RunStepsList({ steps }: { steps: DtsReloadRun["steps"] }) {
   if (steps.length === 0) return null;
   return (
-    <ol className="space-y-1 text-xs" aria-label="运行步骤">
+    <ol className="dts-reload-run-steps" aria-label="运行步骤">
       {steps.map((step, index) => (
-        <li key={`${step.step}-${index}`} className="flex flex-wrap items-baseline gap-x-2">
-          <span className="font-medium">{dtsReloadStepLabels[step.step] ?? step.step}</span>
-          <span className={cn("font-medium", stepOutcomeClass(step.outcome))}>
-            {dtsReloadStepOutcomeLabels[step.outcome] ?? step.outcome}
-          </span>
-          {step.error ? <span className="text-rose-900">{step.error}</span> : null}
+        <li
+          key={`${step.step}-${index}`}
+          className="dts-reload-run-steps__item"
+          data-outcome={step.outcome}
+        >
+          <div className="dts-reload-run-steps__head">
+            <span className="dts-reload-run-steps__name">
+              {dtsReloadStepLabels[step.step] ?? step.step}
+            </span>
+            <span className={cn("dts-reload-run-steps__outcome", stepOutcomeClass(step.outcome))}>
+              {dtsReloadStepOutcomeLabels[step.outcome] ?? step.outcome}
+            </span>
+          </div>
+          {step.error ? <p className="dts-reload-run-steps__error">{step.error}</p> : null}
         </li>
       ))}
     </ol>
@@ -737,6 +740,9 @@ export function DtsReloadPage({
     (candidate) => candidate.sensitiveMatch?.riskTier === "critical"
   );
   const selectedHasSensitive = selectedCandidates.some((candidate) => Boolean(candidate.sensitiveMatch));
+  const selectedHasMeaningfulDebugChange = selectedCandidates.some((candidate) =>
+    hasMeaningfulDebugChange(debugValues[candidate.bindingId] ?? "", candidate.baselineValue)
+  );
 
   const deployReady = Boolean(bridgeId.trim() && targetRef.trim() && deviceId.trim());
 
@@ -1025,7 +1031,7 @@ export function DtsReloadPage({
                 deviceId: null,
                 status: "blocked",
                 purpose: "ordinary",
-                failureCode: "preflight-failed",
+                failureCode: "base-compile-failed",
                 targetCount: 1,
                 propertyKeys: ["watchdog_time"],
                 artifact: null,
@@ -1485,6 +1491,11 @@ export function DtsReloadPage({
   };
 
   const confirmCandidateDebugValue = (candidate: DtsReloadCandidate, debugValue: string): string | null => {
+    if (!hasMeaningfulDebugChange(debugValue, candidate.baselineValue)) {
+      return debugValue.trim()
+        ? "调试值与库基线相同，无需加入本轮。"
+        : "请输入调试值。";
+    }
     const constraintError = validateDebugValueAgainstConstraints(debugValue, candidate);
     if (constraintError) return constraintError;
     setErrorMessage("");
@@ -1500,6 +1511,11 @@ export function DtsReloadPage({
 
   const onStart = async () => {
     if (!canStartRun || selectedCandidates.length === 0) return;
+
+    if (!selectedHasMeaningfulDebugChange) {
+      setErrorMessage("本轮调试值均与库基线相同或为空，请先修改后再下发。");
+      return;
+    }
 
     for (const candidate of selectedCandidates) {
       const constraintError = validateDebugValueAgainstConstraints(
@@ -1585,7 +1601,22 @@ export function DtsReloadPage({
             failureCode: "transfer-failed",
             artifactRetentionExpired: false,
             reloadSnapshot: null,
-            overlaySource: null
+            overlaySource: null,
+            diagnostics: [
+              {
+                code: "transfer-failed",
+                message: "Artifact transfer to the device failed before reload could be triggered."
+              }
+            ],
+            steps: [
+              { step: "compile-base", outcome: "passed" },
+              { step: "compile-overlay", outcome: "passed" },
+              { step: "dry-run-merge", outcome: "passed" },
+              { step: "assert-effect", outcome: "passed" },
+              { step: "mount-target", outcome: "passed" },
+              { step: "transfer-artifact", outcome: "failed", error: "hdc file send timed out" },
+              { step: "trigger-reload", outcome: "skipped" }
+            ]
           });
         } else if (runId === "preview-history-blocked") {
           setRun({
@@ -1594,11 +1625,28 @@ export function DtsReloadPage({
             status: "blocked",
             purpose: "ordinary",
             restoresSourceRunId: null,
-            failureCode: "preflight-failed",
+            failureCode: "base-compile-failed",
             deviceId: null,
+            bridgeId: null,
+            bridgeMachineLabel: null,
+            targetRef: null,
+            integrityCheck: null,
             artifact: null,
-            overlaySource: null,
-            reloadSnapshot: null
+            overlaySource:
+              '/dts-v1/;\n/plugin/;\n\n/ {\n\tfragment@0 {\n\t\ttarget-path = "/amba/i2c@FF24E000/hl7603@75";\n\t};\n};\n',
+            reloadSnapshot: null,
+            diagnostics: [
+              {
+                code: "base-compile-failed",
+                message: "The compiled base device tree could not be read back for verification."
+              }
+            ],
+            steps: [
+              { step: "compile-base", outcome: "failed", error: "dtc exited with status 1" },
+              { step: "compile-overlay", outcome: "skipped" },
+              { step: "dry-run-merge", outcome: "skipped" },
+              { step: "assert-effect", outcome: "skipped" }
+            ]
           });
         } else if (runId === "preview-history-restore") {
           // Keep the richer restore preview already seeded on load.
@@ -1846,7 +1894,7 @@ export function DtsReloadPage({
                         <ParameterValueDiff baseValue={baselineValue} targetValue={debugValue || "—"} />
                       </div>
                       <p className="dts-reload-run-tray__meta">
-                        {candidate.nodePath ?? "无路径"} · 约束 {constraintSummary(candidate.constraints)}
+                        {candidate.nodePath ?? "无路径"}
                       </p>
                       {candidate.sensitiveMatch ? (
                         <p className="dts-reload-run-tray__meta">
@@ -1916,7 +1964,13 @@ export function DtsReloadPage({
                   disabled={
                     !canStartRun ||
                     starting ||
+                    !selectedHasMeaningfulDebugChange ||
                     (selectedHasCriticalSensitive && !criticalConfirmed)
+                  }
+                  title={
+                    !selectedHasMeaningfulDebugChange
+                      ? "本轮调试值均与库基线相同或为空"
+                      : undefined
                   }
                 >
                   {starting ? "下发中…" : `下发参数（${selectedCandidates.length}）`}
@@ -1967,7 +2021,7 @@ export function DtsReloadPage({
                       aria-label="按名称搜索参数"
                       value={nameQuery}
                       onChange={(event) => setNameQuery(event.target.value)}
-                      placeholder="显示名 / 属性键"
+                      placeholder="参数名"
                     />
                   </label>
                   <span className="parameters-table-count">
@@ -2111,69 +2165,121 @@ export function DtsReloadPage({
               </span>
             </div>
             <div className="dts-reload-run-result__body">
-              {run.failureCode ? <p>失败码：{run.failureCode}</p> : null}
-              {run.purpose === "restore-baseline" ? (
-                <p className="dts-reload-run-purpose">
-                  目的：{dtsReloadPurposeLabels["restore-baseline"]}
-                  {run.restoresSourceRunId ? `（源运行 ${run.restoresSourceRunId}）` : ""}
-                </p>
+              {run.failureCode ||
+              run.purpose === "restore-baseline" ||
+              run.bridgeMachineLabel ||
+              run.targetRef ||
+              run.targets.length > 0 ||
+              run.integrityCheck ? (
+                <section className="dts-reload-run-slice" aria-label="运行摘要">
+                  <h3 className="dts-reload-run-slice__title">摘要</h3>
+                  <dl className="dts-reload-run-summary">
+                    {run.failureCode ? (
+                      <div className="dts-reload-run-summary__row">
+                        <dt>失败码</dt>
+                        <dd className="font-mono">{run.failureCode}</dd>
+                      </div>
+                    ) : null}
+                    {run.purpose === "restore-baseline" ? (
+                      <div className="dts-reload-run-summary__row">
+                        <dt>目的</dt>
+                        <dd className="dts-reload-run-purpose">
+                          {dtsReloadPurposeLabels["restore-baseline"]}
+                          {run.restoresSourceRunId ? `（源运行 ${run.restoresSourceRunId}）` : ""}
+                        </dd>
+                      </div>
+                    ) : null}
+                    {run.bridgeMachineLabel || run.targetRef ? (
+                      <div className="dts-reload-run-summary__row">
+                        <dt>目标设备</dt>
+                        <dd>
+                          <span className="font-mono">
+                            {run.deviceId ?? deviceId} · {run.targetRef ?? targetRef}
+                          </span>
+                          {run.bridgeMachineLabel ? ` · Bridge ${run.bridgeMachineLabel}` : ""}
+                          {run.purpose === "restore-baseline" ? " · 补偿性恢复基线" : ""}
+                        </dd>
+                      </div>
+                    ) : null}
+                    {run.targets.length > 0 ? (
+                      <div className="dts-reload-run-summary__row">
+                        <dt>参数目标</dt>
+                        <dd>本运行包含 {run.targets.length} 个参数目标。</dd>
+                      </div>
+                    ) : null}
+                    {run.integrityCheck ? (
+                      <div className="dts-reload-run-summary__row">
+                        <dt>完整性校验</dt>
+                        <dd>{integrityCheckLabel(run.integrityCheck)}</dd>
+                      </div>
+                    ) : null}
+                  </dl>
+                </section>
               ) : null}
-              {run.bridgeMachineLabel || run.targetRef ? (
-                <div className="dts-reload-run-target">
-                  <p>
-                    目标设备：{run.deviceId ?? deviceId} · {run.targetRef ?? targetRef}
-                    {run.bridgeMachineLabel ? ` · Bridge ${run.bridgeMachineLabel}` : ""}
-                    {run.purpose === "restore-baseline" ? " · 补偿性恢复基线" : ""}
-                  </p>
-                  {residue && (run.deviceId ?? deviceId) ? (
-                    <ResidueIndicator
-                      residue={residue}
-                      deviceId={(run.deviceId ?? deviceId).trim()}
-                    />
-                  ) : null}
-                </div>
-              ) : null}
-              {run.targets.length > 0 ? <p>本运行包含 {run.targets.length} 个参数目标。</p> : null}
-              {run.integrityCheck ? <p>完整性校验：{integrityCheckLabel(run.integrityCheck)}</p> : null}
+
               {run.diagnostics.length > 0 ? (
-                <ul className="dts-reload-diagnostics">
-                  {run.diagnostics.map((diagnostic, index) => (
-                    <li key={`${diagnostic.code}-${index}`}>{diagnostic.message}</li>
-                  ))}
-                </ul>
+                <section className="dts-reload-run-slice dts-reload-run-slice--danger" aria-label="诊断信息">
+                  <h3 className="dts-reload-run-slice__title">诊断</h3>
+                  <ul className="dts-reload-diagnostics">
+                    {run.diagnostics.map((diagnostic, index) => (
+                      <li key={`${diagnostic.code}-${index}`}>{diagnostic.message}</li>
+                    ))}
+                  </ul>
+                </section>
               ) : null}
-              <RunStepsList steps={run.steps} />
-              {run.reloadSnapshot ? <ReloadSnapshotSummary snapshot={run.reloadSnapshot} /> : null}
+
+              {run.steps.length > 0 ? (
+                <section className="dts-reload-run-slice" aria-label="预检步骤">
+                  <h3 className="dts-reload-run-slice__title">预检步骤</h3>
+                  <RunStepsList steps={run.steps} />
+                </section>
+              ) : null}
+
+              {run.reloadSnapshot ? (
+                <section className="dts-reload-run-slice" aria-label="重载证据">
+                  <h3 className="dts-reload-run-slice__title">重载证据</h3>
+                  <ReloadSnapshotSummary snapshot={run.reloadSnapshot} />
+                </section>
+              ) : null}
+
               {run.overlaySource ? (
-                <label className="dts-reload-overlay-source">
-                  <span>Overlay 源码</span>
-                  <textarea aria-label="Overlay 源码" readOnly value={run.overlaySource} />
-                </label>
+                <section className="dts-reload-run-slice">
+                  <h3 className="dts-reload-run-slice__title">Overlay 源码</h3>
+                  <div className="dts-reload-overlay-source">
+                    <textarea aria-label="Overlay 源码" readOnly value={run.overlaySource} />
+                  </div>
+                </section>
               ) : null}
-              {run.artifact ? (
-                <div className="dts-reload-artifact">
-                  <button
-                    type="button"
-                    className="button subtle"
-                    disabled={run.artifactRetentionExpired === true}
-                    onClick={() => void onDownload()}
-                  >
-                    {run.artifactRetentionExpired
-                      ? "产物已过期（不可下载）"
-                      : `下载编译产物 (${run.artifact.fileName})`}
-                  </button>
-                  <p className="font-mono">sha256 {run.artifact.sha256}</p>
-                </div>
-              ) : null}
-              {canRetryDeploy && canStartRun ? (
-                <button
-                  type="button"
-                  className="submit-round-button debugging-deploy-button"
-                  disabled={!deployReady || deploying}
-                  onClick={() => openDeployConfirm(run)}
-                >
-                  {run.status === "failed" ? "重试部署到设备" : "部署到设备"}
-                </button>
+
+              {run.artifact || (canRetryDeploy && canStartRun) ? (
+                <section className="dts-reload-run-slice dts-reload-run-slice--actions" aria-label="产物与操作">
+                  <h3 className="dts-reload-run-slice__title">产物与操作</h3>
+                  {run.artifact ? (
+                    <div className="dts-reload-artifact">
+                      <button
+                        type="button"
+                        className="button subtle dts-reload-artifact__download"
+                        disabled={run.artifactRetentionExpired === true}
+                        onClick={() => void onDownload()}
+                      >
+                        {run.artifactRetentionExpired
+                          ? "产物已过期（不可下载）"
+                          : `下载编译产物 (${run.artifact.fileName})`}
+                      </button>
+                      <p className="font-mono">sha256 {run.artifact.sha256}</p>
+                    </div>
+                  ) : null}
+                  {canRetryDeploy && canStartRun ? (
+                    <button
+                      type="button"
+                      className="submit-round-button debugging-deploy-button"
+                      disabled={!deployReady || deploying}
+                      onClick={() => openDeployConfirm(run)}
+                    >
+                      {run.status === "failed" ? "重试部署到设备" : "部署到设备"}
+                    </button>
+                  ) : null}
+                </section>
               ) : null}
             </div>
           </section>

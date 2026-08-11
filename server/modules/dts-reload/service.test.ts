@@ -95,6 +95,7 @@ function candidateRow(overrides: Record<string, unknown> = {}) {
     compatible: "sc8562",
     config_revision_id: "rev-1",
     baseline_value: "<6000>",
+    description: "Watchdog timeout for charger safety.",
     value_shape: { kind: "cells", bits: 32, cellsPerGroup: 1, groups: 1 },
     unit: "ms",
     constraints: { min: 0, max: 20000, cells: 1 },
@@ -245,6 +246,7 @@ describe("listReloadCandidates", () => {
     expect(result.items[0]).toMatchObject({
       bindingId: "binding-1",
       baselineValue: "<6000>",
+      description: "Watchdog timeout for charger safety.",
       constraints: { min: 0, max: 20000, cells: 1 },
       debuggable: true,
       sensitiveMatch: null

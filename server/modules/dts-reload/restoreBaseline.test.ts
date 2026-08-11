@@ -67,6 +67,7 @@ function candidateRow() {
     compatible: "sc8562",
     config_revision_id: "rev-1",
     baseline_value: "<6000>",
+    description: null,
     value_shape: { kind: "cells", bits: 32, cellsPerGroup: 1, groups: 1 },
     unit: "ms",
     constraints: { min: 0, max: 20000, cells: 1 }

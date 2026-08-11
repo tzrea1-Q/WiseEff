@@ -71,6 +71,7 @@ function candidate(overrides: Partial<DtsReloadCandidate> = {}): DtsReloadCandid
     module: "charger",
     nodePath: "/amba/i2c@1/dev@6E",
     baselineValue: "<6000>",
+    description: "Watchdog timeout for charger safety.",
     valueShapeKind: "cells",
     unit: "ms",
     constraints: { min: 0, max: 20000, cells: 1 },
@@ -230,8 +231,29 @@ async function fillDeployFields(_user: ReturnType<typeof userEvent.setup>) {
   // Deploy target comes from Bridge detect / initialTargetRef — no manual field.
 }
 
+async function setDebugValueInTray(
+  user: ReturnType<typeof userEvent.setup>,
+  label: string,
+  value: string
+) {
+  const input = await screen.findByLabelText(label);
+  await user.clear(input);
+  await user.type(input, value);
+}
+
+async function setWatchdogDebugValue(
+  user: ReturnType<typeof userEvent.setup>,
+  value = "<7000>"
+) {
+  await setDebugValueInTray(user, "Watchdog 调试值", value);
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
+  const url = new URL(window.location.href);
+  url.searchParams.delete("run");
+  url.searchParams.delete("uiPreview");
+  window.history.replaceState({}, "", `${url.pathname}${url.search}`);
 });
 
 describe("DtsReloadPage", () => {
@@ -275,17 +297,28 @@ describe("DtsReloadPage", () => {
 
     await user.click(await screen.findByRole("button", { name: /编辑 Watchdog/ }));
     const sheet = await screen.findByRole("dialog", { name: "Watchdog" });
+    expect(within(sheet).getByRole("heading", { name: "参数含义" })).toBeInTheDocument();
+    expect(within(sheet).getByText("Watchdog timeout for charger safety.")).toBeInTheDocument();
     expect(within(sheet).getByRole("heading", { name: "上次重载" })).toBeInTheDocument();
-    expect(within(sheet).getByText("暂无上次重载记录。")).toBeInTheDocument();
     expect(within(sheet).getByLabelText("Watchdog 调试值")).toHaveValue("<6000>");
+    expect(within(sheet).getByRole("button", { name: "更新本轮" })).toBeDisabled();
+
     const valueInput = within(sheet).getByLabelText("Watchdog 调试值");
     await user.clear(valueInput);
+    expect(within(sheet).getByRole("button", { name: "更新本轮" })).toBeDisabled();
     await user.type(valueInput, "<7000>");
+    expect(within(sheet).getByRole("button", { name: "更新本轮" })).toBeEnabled();
     await user.click(within(sheet).getByRole("button", { name: "更新本轮" }));
 
     expect(screen.queryByRole("dialog", { name: "Watchdog" })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "本轮重载" })).toBeInTheDocument();
     expect(screen.getByDisplayValue("<7000>")).toBeInTheDocument();
+  });
+
+  it("keeps dispatch disabled while the reload batch has no meaningful debug changes", async () => {
+    renderPage(createRepository());
+    expect(await screen.findByRole("region", { name: "本轮重载" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /下发参数/ })).toBeDisabled();
   });
 
   it("edits the reload batch in a workbench-style tray with remove and reset actions", async () => {
@@ -311,7 +344,10 @@ describe("DtsReloadPage", () => {
 
     expect(await screen.findByRole("region", { name: "本轮重载" })).toBeInTheDocument();
     expect(screen.getByText(/本轮 1 项/)).toBeInTheDocument();
-    expect(screen.getByLabelText("Watchdog 值变更")).toBeInTheDocument();
+    const watchdogDiff = screen.getByLabelText("Watchdog 值变更");
+    expect(watchdogDiff.querySelector(".submission-preview-diff--scalar")).toHaveAttribute("data-kind", "equal");
+    expect(watchdogDiff.querySelector(".submission-preview-diff-row[data-kind='remove'] code")).toHaveTextContent("<6000>");
+    expect(watchdogDiff.querySelector(".submission-preview-diff-row[data-kind='add'] code")).toHaveTextContent("<6000>");
 
     await user.click(screen.getByRole("checkbox", { name: "选择 Compatible" }));
     expect(screen.getByText(/本轮 2 项/)).toBeInTheDocument();
@@ -320,6 +356,10 @@ describe("DtsReloadPage", () => {
     await user.clear(compatibleInput);
     await user.type(compatibleInput, '"debug"');
     expect(compatibleInput).toHaveValue('"debug"');
+    const compatibleDiff = screen.getByLabelText("Compatible 值变更");
+    expect(compatibleDiff.querySelector(".submission-preview-diff--scalar")).toHaveAttribute("data-kind", "changed");
+    expect(compatibleDiff.querySelector(".submission-preview-diff-row[data-kind='remove'] code")).toHaveTextContent('"sc8562"');
+    expect(compatibleDiff.querySelector(".submission-preview-diff-row[data-kind='add'] code")).toHaveTextContent('"debug"');
 
     await user.click(screen.getByRole("button", { name: "重置为基线" }));
     expect(compatibleInput).toHaveValue('"sc8562"');
@@ -568,6 +608,7 @@ describe("DtsReloadPage", () => {
     expect(startButton).toBeDisabled();
 
     await fillDeployFields(user);
+    await setDebugValueInTray(user, "Safety Watchdog 调试值", "<7000>");
     await user.click(screen.getByLabelText("确认 critical 敏感节点重载"));
     expect(startButton).toBeEnabled();
     await user.click(startButton);
@@ -575,7 +616,7 @@ describe("DtsReloadPage", () => {
     await waitFor(() =>
       expect(repository.startRun).toHaveBeenCalledWith({
         projectId: "project-1",
-        targets: [{ bindingId: "binding-1", debugValue: "<6000>" }],
+        targets: [{ bindingId: "binding-1", debugValue: "<7000>" }],
         confirmationToken: "confirm-sensitive-reload"
       })
     );
@@ -589,6 +630,7 @@ describe("DtsReloadPage", () => {
     renderPage(repository);
     await screen.findAllByText("Watchdog");
     await fillDeployFields(user);
+    await setWatchdogDebugValue(user);
     await user.click(screen.getByRole("button", { name: /下发参数/ }));
 
     await waitFor(() => expect(repository.startRun).toHaveBeenCalled());
@@ -687,6 +729,7 @@ describe("DtsReloadPage", () => {
     renderPage(repository);
     await screen.findAllByText("Watchdog");
     await fillDeployFields(user);
+    await setWatchdogDebugValue(user);
     await user.click(screen.getByRole("button", { name: /下发参数/ }));
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "确认部署" }));
@@ -743,6 +786,7 @@ describe("DtsReloadPage", () => {
     renderPage(failedRepo);
     await screen.findAllByText("Watchdog");
     await fillDeployFields(user);
+    await setWatchdogDebugValue(user);
     await user.click(screen.getByRole("button", { name: /下发参数/ }));
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "确认部署" }));
@@ -906,7 +950,9 @@ describe("DtsReloadPage", () => {
 
     await user.click(within(historyRegion).getByRole("button", { name: /恢复基线/ }));
     await waitFor(() => expect(repository.getRun).toHaveBeenCalledWith("run-restore-history"));
-    expect(await screen.findByText(/目的：恢复基线/)).toBeInTheDocument();
+    const summary = await screen.findByLabelText("运行摘要");
+    expect(within(summary).getByText("目的")).toBeInTheDocument();
+    expect(within(summary).getByText(/恢复基线/)).toBeInTheDocument();
   });
 
   it("disables the device-only history filter until a device id is available", async () => {
@@ -1020,6 +1066,7 @@ describe("DtsReloadPage", () => {
     renderPage(repository);
     await screen.findAllByText("Watchdog");
     await fillDeployFields(user);
+    await setWatchdogDebugValue(user);
     await user.click(screen.getByRole("button", { name: /下发参数/ }));
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "确认部署" }));
