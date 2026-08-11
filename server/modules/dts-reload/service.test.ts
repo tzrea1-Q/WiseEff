@@ -259,6 +259,72 @@ describe("listReloadCandidates", () => {
     });
   });
 
+  it("collapses duplicate overlay identities and prefers the debuggable row", async () => {
+    const { db } = createFakeDb([
+      [
+        candidateRow({
+          binding_id: "binding-stale",
+          property_key: "active_perf_limit",
+          display_name: "active_perf_limit",
+          node_path: "/hisi_vbat_drop_protect_v2/middle_cpu",
+          value_shape: { kind: "u32-array" },
+          baseline_value: null,
+          constraints: {},
+          description: null
+        }),
+        candidateRow({
+          binding_id: "binding-ok",
+          property_key: "active_perf_limit",
+          display_name: "active_perf_limit",
+          node_path: "/hisi_vbat_drop_protect_v2/middle_cpu",
+          value_shape: { kind: "u32-array" },
+          baseline_value: "<16 100 100 6 15 100 0 5 100>",
+          constraints: {},
+          description: null
+        }),
+        candidateRow({
+          binding_id: "binding-null-path",
+          property_key: "active_perf_limit",
+          display_name: "active_perf_limit",
+          node_path: null,
+          value_shape: { kind: "u32-array" },
+          baseline_value: "<16 100 100 6 15 100 0 5 100>",
+          constraints: {},
+          description: null
+        })
+      ]
+    ]);
+
+    const result = await listReloadCandidates(db, auth(), "project-1");
+    expect(result.items).toHaveLength(2);
+    const withPath = result.items.find((item) => item.nodePath);
+    expect(withPath).toMatchObject({
+      bindingId: "binding-ok",
+      debuggable: true,
+      propertyKey: "active_perf_limit"
+    });
+    expect(result.items.find((item) => item.nodePath == null)?.bindingId).toBe("binding-null-path");
+  });
+
+  it("marks incomplete u32-array catalog shapes debuggable when baseline width is regular", async () => {
+    const { db } = createFakeDb([
+      [
+        candidateRow({
+          property_key: "active_perf_limit",
+          value_shape: { kind: "u32-array" },
+          baseline_value: "<16 100 100 6 15 100 0 5 100>",
+          constraints: {}
+        })
+      ]
+    ]);
+
+    const result = await listReloadCandidates(db, auth(), "project-1");
+    expect(result.items[0]).toMatchObject({
+      debuggable: true,
+      valueShapeKind: "u32-array"
+    });
+  });
+
   it("exposes server-computed sensitive matches so the UI can mark elevated requirements before start", async () => {
     const { db } = createFakeDb([
       [candidateRow()],
@@ -338,6 +404,71 @@ describe("startReloadRun", () => {
 
     expect(put).not.toHaveBeenCalled();
     expect(calls.some((call) => call.text.includes("insert into dts_reload_runs"))).toBe(false);
+  });
+
+  it("infers cellsPerGroup from baseline for incomplete u32-array shapes during start", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        candidateRow({
+          property_key: "active_perf_limit",
+          value_shape: { kind: "u32-array" },
+          baseline_value: "<16 100 100 6 15 100 0 5 100>",
+          constraints: {}
+        })
+      ]
+    ]);
+    const { objectStore, put } = makeObjectStore();
+
+    await expect(
+      startReloadRun(db, objectStore, auth(), {
+        projectId: "project-1",
+        targets: [{ bindingId: "binding-1", debugValue: "<1 2 3>" }]
+      })
+    ).rejects.toMatchObject({
+      code: "VALIDATION_FAILED",
+      details: { expectedCellsPerGroup: 9 }
+    });
+
+    expect(put).not.toHaveBeenCalled();
+    expect(calls.some((call) => call.text.includes("insert into dts_reload_runs"))).toBe(false);
+  });
+
+  it("refuses a batch that targets the same overlay path and property twice", async () => {
+    const { db } = createFakeDb([
+      [
+        candidateRow({
+          binding_id: "binding-a",
+          property_key: "active_perf_limit",
+          value_shape: { kind: "u32-array" },
+          baseline_value: "<16 100 100 6 15 100 0 5 100>",
+          constraints: {}
+        })
+      ],
+      [
+        candidateRow({
+          binding_id: "binding-b",
+          property_key: "active_perf_limit",
+          value_shape: { kind: "u32-array" },
+          baseline_value: "<16 100 100 6 15 100 0 5 100>",
+          constraints: {}
+        })
+      ]
+    ]);
+    const { objectStore, put } = makeObjectStore();
+
+    await expect(
+      startReloadRun(db, objectStore, auth(), {
+        projectId: "project-1",
+        targets: [
+          { bindingId: "binding-a", debugValue: "<16 100 100 6 15 100 0 5 100>" },
+          { bindingId: "binding-b", debugValue: "<17 100 100 6 15 100 0 5 100>" }
+        ]
+      })
+    ).rejects.toMatchObject({
+      code: "VALIDATION_FAILED",
+      details: { code: "reload-duplicate-overlay-target" }
+    });
+    expect(put).not.toHaveBeenCalled();
   });
 
   it("blocks the whole batch when one target violates constraints", async () => {

@@ -306,7 +306,9 @@ export async function listReloadCandidateRows(
       select node_locator, compatible
       from dts_logical_node_revisions
       where logical_node_id = b.logical_node_id
-        and config_revision_id = br.config_revision_id
+      order by
+        case when config_revision_id = br.config_revision_id then 0 else 1 end,
+        config_revision_id desc
       limit 1
     ) lnr on true
     where b.organization_id = $1
@@ -375,7 +377,9 @@ export async function getReloadCandidateRow(
       select node_locator, compatible
       from dts_logical_node_revisions
       where logical_node_id = b.logical_node_id
-        and config_revision_id = br.config_revision_id
+      order by
+        case when config_revision_id = br.config_revision_id then 0 else 1 end,
+        config_revision_id desc
       limit 1
     ) lnr on true
     where b.organization_id = $1
