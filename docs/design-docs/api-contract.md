@@ -89,7 +89,7 @@ Dedicated module under `/api/v1/dts-reload/*` (not the retired `/api/v1/debuggin
 
 | Method | Path | Authz | Purpose |
 | --- | --- | --- | --- |
-| `GET` | `/api/v1/dts-reload/projects/:projectId/candidates` | `debugging:view` or `debugging:dts-reload` | Project parameters with debuggability, `moduleId`, `description` (parameter meaning), sensitiveMatch, lastReload |
+| `GET` | `/api/v1/dts-reload/projects/:projectId/candidates` | `debugging:view` or `debugging:dts-reload` | Project parameters with debuggability, `moduleId`, `description` (parameter meaning), sensitiveMatch, lastReload. `u32-array` is treated as the same reload family as `cells` (width may be inferred from a regular library baseline). Rows that share the same overlay identity (`nodePath` + `propertyKey`) are collapsed to one candidate. |
 | `POST` | `/api/v1/dts-reload/projects/:projectId/runs` | `debugging:dts-reload` | Start run (batch targets); may require `confirm-sensitive-reload` |
 | `POST` | `/api/v1/dts-reload/runs/:runId/deploy` | `debugging:dts-reload` | In-request bridge deploy; requires `confirm-dts-reload` |
 | `GET` | `/api/v1/dts-reload/runs` / `.../:runId` | view path | History and detail including reload snapshot |

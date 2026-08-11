@@ -9,7 +9,7 @@ import type { SensitiveWriteActorType } from "../parameters/sensitiveNode";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { buildReloadBaseSource } from "./baseSource";
-import { classifyReloadCandidate, type CandidateValueShape } from "./candidates";
+import { classifyReloadCandidate, normalizeReloadCandidates, resolveReloadValueShape, type CandidateValueShape } from "./candidates";
 import { assertDebugValueConstraints } from "./constraints";
 import {
   generateDebugOverlay,
@@ -144,8 +144,12 @@ function asValueShape(value: unknown): CandidateValueShape {
   return value as CandidateValueShape;
 }
 
-function rowToCandidate(row: ReloadCandidateRow): ReloadCandidateDto {
+function rowToCandidate(row: ReloadCandidateRow): {
+  candidate: ReloadCandidateDto;
+  resolvedShape: CandidateValueShape;
+} {
   const valueShape = asValueShape(row.value_shape);
+  const resolvedShape = resolveReloadValueShape(valueShape, row.baseline_value);
   const classified = classifyReloadCandidate({
     bindingId: row.binding_id,
     projectId: row.project_id,
@@ -161,11 +165,14 @@ function rowToCandidate(row: ReloadCandidateRow): ReloadCandidateDto {
     constraints: asConstraints(row.constraints)
   });
   return {
-    ...classified,
-    moduleId: row.module_id ?? null,
-    compatible: row.compatible ?? null,
-    sensitiveMatch: null,
-    lastReload: null
+    candidate: {
+      ...classified,
+      moduleId: row.module_id ?? null,
+      compatible: row.compatible ?? null,
+      sensitiveMatch: null,
+      lastReload: null
+    },
+    resolvedShape
   };
 }
 
@@ -257,7 +264,8 @@ export async function listReloadCandidates(
     organizationId: auth.organization.id,
     projectId
   });
-  const baseItems = rows.map(rowToCandidate);
+  const mapped = rows.map(rowToCandidate);
+  const baseItems = mapped.map((entry) => entry.candidate);
   const matches = await matchReloadCandidatesSensitive(db, {
     organizationId: auth.organization.id,
     projectId,
@@ -271,12 +279,13 @@ export async function listReloadCandidates(
     projectId,
     bindingIds: rows.map((row) => row.binding_id)
   });
+  const enriched = baseItems.map((item, index) => ({
+    ...item,
+    sensitiveMatch: matches[index] ?? null,
+    lastReload: lastReloadByBinding.get(item.bindingId) ?? null
+  }));
   return {
-    items: baseItems.map((item, index) => ({
-      ...item,
-      sensitiveMatch: matches[index] ?? null,
-      lastReload: lastReloadByBinding.get(item.bindingId) ?? null
-    }))
+    items: normalizeReloadCandidates(enriched)
   };
 }
 
@@ -435,6 +444,7 @@ async function resolveStartTargets(
   }
 
   const seen = new Set<string>();
+  const seenOverlayIdentity = new Set<string>();
   const resolved: ResolvedReloadTarget[] = [];
 
   for (const target of input.targets) {
@@ -460,7 +470,7 @@ async function resolveStartTargets(
       });
     }
 
-    const candidate = rowToCandidate(row);
+    const { candidate, resolvedShape } = rowToCandidate(row);
     if (!candidate.debuggable || !candidate.nodePath) {
       const detail = candidate.blockReason
         ? BLOCK_REASON_MESSAGES[candidate.blockReason]
@@ -470,6 +480,22 @@ async function resolveStartTargets(
         blockReason: candidate.blockReason
       });
     }
+
+    const overlayIdentity = `${candidate.propertyKey}\0${candidate.nodePath}`;
+    if (seenOverlayIdentity.has(overlayIdentity)) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        `Duplicate overlay target in reload batch: ${candidate.nodePath} :: ${candidate.propertyKey}.`,
+        400,
+        {
+          code: "reload-duplicate-overlay-target",
+          bindingId: candidate.bindingId,
+          nodePath: candidate.nodePath,
+          propertyKey: candidate.propertyKey
+        }
+      );
+    }
+    seenOverlayIdentity.add(overlayIdentity);
 
     let parsedValue: DtsValue;
     try {
@@ -485,7 +511,7 @@ async function resolveStartTargets(
 
     assertParsedValueMatchesShape(
       parsedValue,
-      asValueShape(row.value_shape),
+      resolvedShape,
       candidate.bindingId,
       target.debugValue
     );
