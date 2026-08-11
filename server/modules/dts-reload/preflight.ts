@@ -133,7 +133,9 @@ export async function runDebugOverlayPreflight(input: PreflightInput): Promise<P
 
     const compileBase = await runDtsToolchainCommand(
       commands.dtc,
-      ["-I", "dts", "-O", "dtb", "-o", baseDtbPath, baseDtsPath],
+      // `-@` emits `/__symbols__` so overlays that carry phandle cells (e.g. gpio_int)
+      // can resolve `&label` fixups at `fdtoverlay` time.
+      ["-@", "-I", "dts", "-O", "dtb", "-o", baseDtbPath, baseDtsPath],
       { cwd: workDir, timeoutMs }
     );
     if (compileBase.code !== 0) {
@@ -156,7 +158,7 @@ export async function runDebugOverlayPreflight(input: PreflightInput): Promise<P
 
     const compileOverlay = await runDtsToolchainCommand(
       commands.dtc,
-      ["-I", "dts", "-O", "dtb", "-o", overlayDtboPath, overlayDtsPath],
+      ["-@", "-I", "dts", "-O", "dtb", "-o", overlayDtboPath, overlayDtsPath],
       { cwd: workDir, timeoutMs }
     );
     if (compileOverlay.code !== 0) {
@@ -255,6 +257,8 @@ function assertOverlayEffect(
 ): { diagnostics: PreflightDiagnostic[]; observedValues: PreflightObservedValue[] } {
   const diagnostics: PreflightDiagnostic[] = [];
   const observedValues: PreflightObservedValue[] = [];
+  // Decompiled trees expose phandle numbers; debug overlays still carry `&label` cells.
+  const labelPhandles = buildLabelPhandleMap(baseNodes);
 
   for (const target of targets) {
     const baseNode = baseNodes.get(target.nodePath);
@@ -284,8 +288,8 @@ function assertOverlayEffect(
       }
 
       const after = mergedNode.properties.find((candidate) => candidate.name === property.name);
-      const expected = normalizeValue(property.value, property.name);
-      const observed = after ? normalizeValue(after.cst.value, after.rawText) : null;
+      const expected = normalizeValue(property.value, property.name, labelPhandles);
+      const observed = after ? normalizeValue(after.cst.value, after.rawText, labelPhandles) : null;
 
       if (observed === null || observed !== expected) {
         diagnostics.push({
@@ -301,7 +305,7 @@ function assertOverlayEffect(
       observedValues.push({
         nodePath: target.nodePath,
         propertyName: property.name,
-        before: normalizeValue(before.cst.value, before.rawText),
+        before: normalizeValue(before.cst.value, before.rawText, labelPhandles),
         after: observed
       });
     }
@@ -338,11 +342,23 @@ async function decompileNodes(
 /**
  * Compare values by cell or string content, not by text spelling: `dtc` decompiles to
  * hexadecimal while a debug value may be entered in decimal, and string quotes may differ.
+ * Phandle labels in debug values are resolved to the numeric phandle cells that `dtc -@`
+ * assigns on labeled nodes (visible as each node's `phandle = <N>` property after decompile).
  */
-function normalizeValue(value: DtsValue | undefined, fallback: string): string {
+function normalizeValue(
+  value: DtsValue | undefined,
+  fallback: string,
+  labelPhandles: ReadonlyMap<string, string> = new Map()
+): string {
   if (value?.kind === "cells") {
     const groups = value.groups.map((group) =>
-      group.map((cell) => (cell.kind === "integer" ? decimal(cell) : `&${cell.label}`)).join(" ")
+      group
+        .map((cell) => {
+          if (cell.kind === "integer") return decimal(cell);
+          const resolved = labelPhandles.get(cell.label);
+          return resolved ?? `&${cell.label}`;
+        })
+        .join(" ")
     );
     return groups.map((group) => `<${group}>`).join(" ");
   }
@@ -350,6 +366,22 @@ function normalizeValue(value: DtsValue | undefined, fallback: string): string {
     return value.values.map((entry) => JSON.stringify(entry)).join(", ");
   }
   return fallback.trim();
+}
+
+function buildLabelPhandleMap(nodes: Map<string, ResolvedNode>): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const node of nodes.values()) {
+    const phandleProp = node.properties.find((property) => property.name === "phandle");
+    const phandleValue = phandleProp?.cst.value;
+    if (!phandleValue || phandleValue.kind !== "cells") continue;
+    const cell = phandleValue.groups[0]?.[0];
+    if (!cell || cell.kind !== "integer") continue;
+    const numeric = decimal(cell);
+    for (const label of node.labels) {
+      map.set(label, numeric);
+    }
+  }
+  return map;
 }
 
 function decimal(cell: { raw: string; value: string }): string {

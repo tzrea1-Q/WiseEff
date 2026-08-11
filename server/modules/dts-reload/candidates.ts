@@ -1,4 +1,4 @@
-import { parseDtsValue } from "../dts";
+import { parseDtsValue, type DtsValue } from "../dts";
 import type { ReloadCandidateBlockReason, ReloadCandidateDto } from "./types";
 
 /**
@@ -23,15 +23,36 @@ function isU32CellFamilyKind(kind: string | undefined): boolean {
   return kind === "cells" || kind === "u32-array";
 }
 
+function isPhandleCellFamilyKind(kind: string | undefined): boolean {
+  return kind === "mixed" || kind === "phandle-list" || kind === "phandle-cells";
+}
+
+/**
+ * GPIO / interrupt-style specifier: each group is `&label` followed by one or more integers,
+ * with a uniform group width (typically phandle + pin + flags → 3).
+ */
+export function isPhandleCellArrayValue(value: DtsValue): boolean {
+  if (value.kind !== "cells" || value.bits !== 32 || value.groups.length === 0) return false;
+  const widths = value.groups.map((group) => group.length);
+  const width = widths[0]!;
+  if (width < 2) return false;
+  if (widths.some((entry) => entry !== width)) return false;
+  return value.groups.every((group) => {
+    const [head, ...tail] = group;
+    return head?.kind === "phandle" && tail.length > 0 && tail.every((cell) => cell.kind === "integer");
+  });
+}
+
 /**
  * Infer a uniform cells-per-group width from a library baseline u32 matrix.
- * Returns null when the baseline is missing, unparsable, empty, or irregular.
+ * Returns null when the baseline is missing, unparsable, empty, irregular, or phandle-prefixed.
  */
 export function inferCellsPerGroupFromBaseline(baselineValue: string | null | undefined): number | null {
   if (!baselineValue || baselineValue.trim().length === 0) return null;
   try {
     const parsed = parseDtsValue("reload-baseline", baselineValue.trim()).value;
     if (parsed.kind !== "cells" || parsed.bits !== 32 || parsed.groups.length === 0) return null;
+    if (isPhandleCellArrayValue(parsed)) return null;
     const widths = parsed.groups.map((group) => group.length);
     if (widths.some((width) => width < 1)) return null;
     const first = widths[0]!;
@@ -43,9 +64,25 @@ export function inferCellsPerGroupFromBaseline(baselineValue: string | null | un
 }
 
 /**
+ * Infer phandle-cell group width from a GPIO-style baseline such as `<&gpio13 29 0>`.
+ */
+export function inferPhandleCellsPerGroupFromBaseline(
+  baselineValue: string | null | undefined
+): number | null {
+  if (!baselineValue || baselineValue.trim().length === 0) return null;
+  try {
+    const parsed = parseDtsValue("reload-baseline", baselineValue.trim()).value;
+    if (!isPhandleCellArrayValue(parsed) || parsed.kind !== "cells") return null;
+    return parsed.groups[0]!.length;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Normalize catalog shapes onto the reload surface vocabulary.
- * Spec/DTS layers use `u32-array`; reload AST uses `cells`. Incomplete shapes may borrow
- * `cellsPerGroup` (and default bits=32 for u32-array) from a regular baseline matrix.
+ * - `u32-array` / `cells` → `cells` (width may be inferred from a regular integer baseline)
+ * - `mixed` / `phandle-list` that match GPIO-style `<&label N …>` → `phandle-cells`
  */
 export function resolveReloadValueShape(
   valueShape: CandidateValueShape,
@@ -55,6 +92,33 @@ export function resolveReloadValueShape(
   if (valueShape.kind === "string-list") {
     return { kind: "string-list" };
   }
+
+  if (isPhandleCellFamilyKind(valueShape.kind)) {
+    let cellsPerGroup =
+      typeof valueShape.cellsPerGroup === "number" &&
+      Number.isInteger(valueShape.cellsPerGroup) &&
+      valueShape.cellsPerGroup >= 2
+        ? valueShape.cellsPerGroup
+        : undefined;
+    if (cellsPerGroup === undefined) {
+      const inferred = inferPhandleCellsPerGroupFromBaseline(baselineValue);
+      if (inferred !== null) cellsPerGroup = inferred;
+    }
+    const resolved: NonNullable<CandidateValueShape> = {
+      kind: "phandle-cells",
+      bits: 32,
+      ...(cellsPerGroup !== undefined ? { cellsPerGroup } : {})
+    };
+    if (
+      typeof valueShape.groups === "number" &&
+      Number.isInteger(valueShape.groups) &&
+      valueShape.groups >= 1
+    ) {
+      resolved.groups = valueShape.groups;
+    }
+    return resolved;
+  }
+
   if (!isU32CellFamilyKind(valueShape.kind)) {
     return valueShape;
   }
@@ -96,16 +160,31 @@ export function resolveReloadValueShape(
 }
 
 /**
- * Supported reload shapes for this surface: unsigned 32-bit cell arrays (catalog `cells` or
- * `u32-array`, any cell count / group count once bits=32 and cellsPerGroup are known) and
- * string lists. Booleans, empty properties, byte arrays, phandle lists, and mixed values stay refused.
- *
- * Callers should pass a shape already run through `resolveReloadValueShape` when baseline
- * inference is needed for incomplete catalog metadata.
+ * Supported reload shapes: u32 cell arrays, string lists, and GPIO-style phandle cell
+ * arrays (`<&gpioN pin flags>`), once width metadata is known.
  */
 export function isSupportedReloadValueShape(valueShape: CandidateValueShape): boolean {
   if (!valueShape || typeof valueShape !== "object") return false;
   if (valueShape.kind === "string-list") return true;
+
+  if (valueShape.kind === "phandle-cells") {
+    if (valueShape.bits !== undefined && valueShape.bits !== 32) return false;
+    if (
+      typeof valueShape.cellsPerGroup !== "number" ||
+      !Number.isInteger(valueShape.cellsPerGroup) ||
+      valueShape.cellsPerGroup < 2
+    ) {
+      return false;
+    }
+    if (
+      valueShape.groups !== undefined &&
+      (typeof valueShape.groups !== "number" || !Number.isInteger(valueShape.groups) || valueShape.groups < 1)
+    ) {
+      return false;
+    }
+    return true;
+  }
+
   if (!isU32CellFamilyKind(valueShape.kind)) return false;
   const bits = valueShape.bits ?? (valueShape.kind === "u32-array" ? 32 : undefined);
   if (bits !== 32) return false;

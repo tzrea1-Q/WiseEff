@@ -102,6 +102,46 @@ function coerceReadAsCells(propertyKey: string, readValue: string): DtsValue | n
   }
 }
 
+/** GPIO-style specifier: each group is `&label` followed by one or more integers. */
+function isPhandleCellSequence(value: DtsValue): boolean {
+  if (value.kind !== "cells" || value.groups.length === 0) return false;
+  const widths = value.groups.map((group) => group.length);
+  const width = widths[0]!;
+  if (width < 2 || widths.some((entry) => entry !== width)) return false;
+  return value.groups.every((group) => {
+    const [head, ...tail] = group;
+    return head?.kind === "phandle" && tail.length > 0 && tail.every((cell) => cell.kind === "integer");
+  });
+}
+
+function serializePhandleCellSequence(value: DtsValue): string[] {
+  if (value.kind !== "cells") return [];
+  const out: string[] = [];
+  for (const group of value.groups) {
+    for (const cell of group) {
+      if (cell.kind === "phandle") {
+        out.push(`&${cell.label}`);
+        continue;
+      }
+      const parsed = parseIntegerToken(cell.value);
+      out.push(parsed === null ? cell.value : String(parsed));
+    }
+  }
+  return out;
+}
+
+function coerceReadAsPhandleCells(propertyKey: string, readValue: string): DtsValue | null {
+  const trimmed = readValue.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = parseDtsValue(propertyKey, trimmed).value;
+    if (isPhandleCellSequence(parsed)) return parsed;
+  } catch {
+    // Fall through — bare integer streams cannot recover phandle identity.
+  }
+  return null;
+}
+
 function coerceReadAsStrings(propertyKey: string, readValue: string): string[] | null {
   const trimmed = readValue.trim();
   if (!trimmed) return null;
@@ -150,6 +190,20 @@ export function compareReloadDebugValue(input: {
     if (!actual) return "incomparable";
     if (actual.length !== expected.values.length) return "contradicted";
     return actual.every((value, index) => value === expected.values[index]) ? "matched" : "contradicted";
+  }
+
+  const phandleFamily =
+    input.valueShape?.kind === "phandle-cells" ||
+    input.valueShape?.kind === "mixed" ||
+    input.valueShape?.kind === "phandle-list";
+  if (phandleFamily || isPhandleCellSequence(expected)) {
+    if (!isPhandleCellSequence(expected)) return "incomparable";
+    const actualValue = coerceReadAsPhandleCells(input.propertyKey, input.readValue);
+    if (!actualValue || !isPhandleCellSequence(actualValue)) return "incomparable";
+    const left = serializePhandleCellSequence(expected);
+    const right = serializePhandleCellSequence(actualValue);
+    if (left.length !== right.length) return "contradicted";
+    return left.every((value, index) => value === right[index]) ? "matched" : "contradicted";
   }
 
   // Default / cells shapes: compare numeric cell sequences.

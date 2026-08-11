@@ -191,6 +191,36 @@ function parseCellIntegers(raw: string): number[] | null {
   return values.every((value) => Number.isFinite(value)) ? values : null;
 }
 
+function isPhandleCellFamilyKind(kind: string | null | undefined): boolean {
+  return kind === "mixed" || kind === "phandle-list" || kind === "phandle-cells";
+}
+
+/** GPIO-style groups: each `<&label N …>` with uniform width (phandle + ≥1 integers). */
+function parsePhandleCellGroups(
+  raw: string
+): Array<{ label: string; integers: number[]; width: number }> | null {
+  const trimmed = raw.trim();
+  const groups = trimmed.match(/<[^>]+>/g);
+  if (!groups || groups.length === 0) return null;
+  const parsed: Array<{ label: string; integers: number[]; width: number }> = [];
+  for (const group of groups) {
+    const tokens = group.slice(1, -1).trim().split(/\s+/).filter(Boolean);
+    if (tokens.length < 2) return null;
+    const labelMatch = /^&([A-Za-z_][\w]*)$/.exec(tokens[0]!);
+    if (!labelMatch) return null;
+    const integers: number[] = [];
+    for (const token of tokens.slice(1)) {
+      if (!/^(0x[0-9a-fA-F]+|-?\d+)$/.test(token)) return null;
+      integers.push(Number(token));
+    }
+    if (integers.length === 0 || integers.some((value) => !Number.isFinite(value))) return null;
+    parsed.push({ label: labelMatch[1]!, integers, width: integers.length + 1 });
+  }
+  const width = parsed[0]!.width;
+  if (parsed.some((group) => group.width !== width)) return null;
+  return parsed;
+}
+
 function looksLikeStringList(raw: string): boolean {
   return /"(?:\\.|[^"\\])*"/.test(raw.trim());
 }
@@ -205,6 +235,28 @@ function validateDebugValueAgainstConstraints(
   if (candidate.valueShapeKind === "string-list") {
     if (!looksLikeStringList(trimmed)) {
       return '调试值必须是字符串列表，例如 "okay" 或 "a", "b"。';
+    }
+    return null;
+  }
+
+  if (isPhandleCellFamilyKind(candidate.valueShapeKind)) {
+    const groups = parsePhandleCellGroups(trimmed);
+    if (!groups) {
+      return "调试值必须是 GPIO 风格 phandle 数组，例如 <&gpio13 29 0>。";
+    }
+    const { constraints } = candidate;
+    const expectedCells = typeof constraints.cells === "number" ? constraints.cells : undefined;
+    const min = typeof constraints.min === "number" ? constraints.min : undefined;
+    const max = typeof constraints.max === "number" ? constraints.max : undefined;
+    if (expectedCells !== undefined && groups.some((group) => group.width !== expectedCells)) {
+      return `调试值 cell 数量应为 ${expectedCells}，当前为 ${groups.map((group) => group.width).join(", ")}。`;
+    }
+    const integers = groups.flatMap((group) => group.integers);
+    if (min !== undefined && integers.some((value) => value < min)) {
+      return `调试值低于声明的最小值 ${min}。`;
+    }
+    if (max !== undefined && integers.some((value) => value > max)) {
+      return `调试值超过声明的最大值 ${max}。`;
     }
     return null;
   }
@@ -1917,7 +1969,13 @@ export function DtsReloadPage({
                             }))
                           }
                           disabled={!canStartRun || starting}
-                          placeholder={candidate.valueShapeKind === "string-list" ? '"okay"' : "<7000>"}
+                          placeholder={
+                            candidate.valueShapeKind === "string-list"
+                              ? '"okay"'
+                              : isPhandleCellFamilyKind(candidate.valueShapeKind)
+                                ? "<&gpio13 29 0>"
+                                : "<7000>"
+                          }
                         />
                       </label>
                     </article>

@@ -325,6 +325,29 @@ describe("listReloadCandidates", () => {
     });
   });
 
+  it("marks GPIO-style mixed gpio_int candidates as debuggable", async () => {
+    const { db } = createFakeDb([
+      [
+        candidateRow({
+          property_key: "gpio_int",
+          display_name: "gpio_int",
+          value_shape: { kind: "mixed" },
+          baseline_value: "<&gpio13 29 0>",
+          constraints: { cells: 3 },
+          description: "SC8562 interrupt GPIO"
+        })
+      ]
+    ]);
+
+    const result = await listReloadCandidates(db, auth(), "project-1");
+    expect(result.items[0]).toMatchObject({
+      propertyKey: "gpio_int",
+      valueShapeKind: "mixed",
+      debuggable: true,
+      baselineValue: "<&gpio13 29 0>"
+    });
+  });
+
   it("exposes server-computed sensitive matches so the UI can mark elevated requirements before start", async () => {
     const { db } = createFakeDb([
       [candidateRow()],
@@ -432,6 +455,83 @@ describe("startReloadRun", () => {
     expect(put).not.toHaveBeenCalled();
     expect(calls.some((call) => call.text.includes("insert into dts_reload_runs"))).toBe(false);
   });
+
+  it("refuses a GPIO phandle debug value whose cell width does not match the baseline shape", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        candidateRow({
+          property_key: "gpio_int",
+          value_shape: { kind: "mixed" },
+          baseline_value: "<&gpio13 29 0>",
+          constraints: { cells: 3 }
+        })
+      ]
+    ]);
+    const { objectStore, put } = makeObjectStore();
+
+    await expect(
+      startReloadRun(db, objectStore, auth(), {
+        projectId: "project-1",
+        targets: [{ bindingId: "binding-1", debugValue: "<&gpio13 29>" }]
+      })
+    ).rejects.toMatchObject({
+      code: "VALIDATION_FAILED",
+      details: { expectedCellsPerGroup: 3 }
+    });
+
+    expect(put).not.toHaveBeenCalled();
+    expect(calls.some((call) => call.text.includes("insert into dts_reload_runs"))).toBe(false);
+  });
+
+  it("persists a validated gpio_int phandle-cells reload", async () => {
+    const baseKey = "org-1/board.dts";
+    const gpioBase =
+      "/dts-v1/;\n\n/ {\n\tgpiol13: gpio13 {\n\t};\n\tamba {\n\t\ti2c@FDF5E000 {\n\t\t\tsc8562@6E {\n\t\t\t\tgpio_int = <&gpio13 29 0>;\n\t\t\t};\n\t\t};\n\t};\n};\n".replace(
+        "gpiol13:",
+        "gpio13:"
+      );
+    const { objectStore, files } = makeObjectStore({ [baseKey]: Buffer.from(gpioBase, "utf8") });
+
+    const { db } = createFakeDb([
+      [
+        candidateRow({
+          property_key: "gpio_int",
+          display_name: "gpio_int",
+          value_shape: { kind: "mixed" },
+          baseline_value: "<&gpio13 29 0>",
+          constraints: { cells: 3 },
+          unit: null
+        })
+      ],
+      ...fingerprintParts(),
+      [{ id: "cs-1" }],
+      [{ file_name: "board.dts", role: "base", sort_order: 0, storage_key: baseKey, format: "dts" }],
+      ...fingerprintParts(),
+      blockedOrValidatedInsert("validated"),
+      [],
+      [
+        {
+          binding_id: "binding-1",
+          node_path: "/amba/i2c@FDF5E000/sc8562@6E",
+          property_key: "gpio_int",
+          baseline_value: "<&gpio13 29 0>",
+          debug_value: "<&gpio13 30 0>",
+          sort_order: 0
+        }
+      ]
+    ]);
+
+    const result = await startReloadRun(db, objectStore, auth(), {
+      projectId: "project-1",
+      targets: [{ bindingId: "binding-1", debugValue: "<&gpio13 30 0>" }]
+    });
+
+    expect(result.status).toBe("validated");
+    expect(result.overlaySource).toContain("gpio_int = <&gpio13 30 0>");
+    expect(result.overlaySource).toContain('target-path = "/amba/i2c@FDF5E000/sc8562@6E"');
+    expect(result.artifact?.sha256).toMatch(/^sha-/);
+    expect(Object.keys(files).some((key) => key.endsWith(".dtbo"))).toBe(true);
+  }, 60_000);
 
   it("refuses a batch that targets the same overlay path and property twice", async () => {
     const { db } = createFakeDb([
