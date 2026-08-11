@@ -121,6 +121,25 @@ describe("compareReloadDebugValue", () => {
       })
     ).toBe("incomparable");
   });
+
+  it("matches /bits/ 8 debug values against square-bracket or bare byte read-back", () => {
+    expect(
+      compareReloadDebugValue({
+        propertyKey: "prevfod1_product_list",
+        debugValue: "/bits/ 8 <34>",
+        readValue: "[22]",
+        valueShape: { kind: "bytes" }
+      })
+    ).toBe("matched");
+    expect(
+      compareReloadDebugValue({
+        propertyKey: "prevfod1_product_list",
+        debugValue: "/bits/ 8 <34>",
+        readValue: "17",
+        valueShape: { kind: "bytes" }
+      })
+    ).toBe("contradicted");
+  });
 });
 
 describe("aggregateBehaviouralStatus", () => {

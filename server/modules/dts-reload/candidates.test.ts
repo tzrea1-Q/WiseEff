@@ -90,14 +90,30 @@ describe("resolveReloadValueShape", () => {
       bits: 32
     });
   });
+
+  it("resolves catalog bytes with /bits/ 8 baselines onto 8-bit cells", () => {
+    expect(resolveReloadValueShape({ kind: "bytes" }, "/bits/ 8 <17>")).toEqual({
+      kind: "cells",
+      bits: 8,
+      cellsPerGroup: 1,
+      groups: 1
+    });
+    expect(resolveReloadValueShape({ kind: "bytes" }, "/bits/ 8 <0x5 0x5 0x5>")).toEqual({
+      kind: "cells",
+      bits: 8,
+      cellsPerGroup: 3,
+      groups: 1
+    });
+  });
 });
 
 describe("inferCellsPerGroupFromBaseline", () => {
-  it("returns null for irregular or empty baselines", () => {
+  it("returns null for irregular, empty, or non-u32 baselines", () => {
     expect(inferCellsPerGroupFromBaseline(null)).toBeNull();
     expect(inferCellsPerGroupFromBaseline("<1 2>, <3 4 5>")).toBeNull();
     expect(inferCellsPerGroupFromBaseline('"okay"')).toBeNull();
     expect(inferCellsPerGroupFromBaseline("<&gpio13 29 0>")).toBeNull();
+    expect(inferCellsPerGroupFromBaseline("/bits/ 8 <17>")).toBeNull();
   });
 });
 
@@ -124,12 +140,19 @@ describe("isSupportedReloadValueShape", () => {
     expect(isSupportedReloadValueShape({ kind: "phandle-cells", bits: 32, cellsPerGroup: 3 })).toBe(true);
   });
 
-  it("rejects non-u32 cells, unresolved phandle families, and incomplete cell shapes", () => {
-    expect(isSupportedReloadValueShape({ kind: "cells", bits: 8, cellsPerGroup: 1 })).toBe(false);
+  it("accepts 8-bit and 16-bit integer cell arrays", () => {
+    expect(isSupportedReloadValueShape({ kind: "cells", bits: 8, cellsPerGroup: 1, groups: 1 })).toBe(true);
+    expect(isSupportedReloadValueShape({ kind: "cells", bits: 8, cellsPerGroup: 3 })).toBe(true);
+    expect(isSupportedReloadValueShape({ kind: "cells", bits: 16, cellsPerGroup: 2 })).toBe(true);
+  });
+
+  it("rejects unsupported bits, unresolved phandle families, and incomplete cell shapes", () => {
+    expect(isSupportedReloadValueShape({ kind: "cells", bits: 64, cellsPerGroup: 1 })).toBe(false);
     expect(isSupportedReloadValueShape({ kind: "cells", bits: 32 })).toBe(false);
     expect(isSupportedReloadValueShape({ kind: "phandle-list", bits: 32, cellsPerGroup: 1 })).toBe(false);
     expect(isSupportedReloadValueShape({ kind: "phandle-cells", bits: 32 })).toBe(false);
     expect(isSupportedReloadValueShape({ kind: "phandle-cells", bits: 32, cellsPerGroup: 1 })).toBe(false);
+    expect(isSupportedReloadValueShape({ kind: "bytes" })).toBe(false);
     expect(isSupportedReloadValueShape({ kind: "u32-array" })).toBe(false);
     expect(isSupportedReloadValueShape(null)).toBe(false);
   });
@@ -222,6 +245,21 @@ describe("classifyReloadCandidate", () => {
         valueShapeKind: "mixed",
         baselineValue: "<&gpio13 29 0>",
         constraints: { cells: 3 }
+      }).debuggable
+    ).toBe(true);
+  });
+
+  it("marks catalog bytes bindings authored as /bits/ 8 as debuggable", () => {
+    expect(
+      classifyReloadCandidate({
+        ...base,
+        propertyKey: "prevfod1_product_list",
+        displayName: "prevfod1_product_list",
+        valueShape: { kind: "bytes" },
+        valueShapeKind: "bytes",
+        baselineValue: "/bits/ 8 <17>",
+        nodePath: "/amba/i2c@FF24E000/mt5788@2B",
+        constraints: {}
       }).debuggable
     ).toBe(true);
   });

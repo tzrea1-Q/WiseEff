@@ -17,14 +17,22 @@ export type CandidateValueShape = {
   bits?: number;
   cellsPerGroup?: number;
   groups?: number;
+  /** Present on some catalog `bytes` inferences; treated as a single-group cell count. */
+  length?: number;
 } | null;
 
-function isU32CellFamilyKind(kind: string | undefined): boolean {
-  return kind === "cells" || kind === "u32-array";
+const SUPPORTED_CELL_BITS = new Set([8, 16, 32]);
+
+function isIntegerCellFamilyKind(kind: string | undefined): boolean {
+  return kind === "cells" || kind === "u32-array" || kind === "bytes";
 }
 
 function isPhandleCellFamilyKind(kind: string | undefined): boolean {
   return kind === "mixed" || kind === "phandle-list" || kind === "phandle-cells";
+}
+
+export function isSupportedCellBits(bits: number | undefined): bits is 8 | 16 | 32 {
+  return typeof bits === "number" && SUPPORTED_CELL_BITS.has(bits);
 }
 
 /**
@@ -44,23 +52,65 @@ export function isPhandleCellArrayValue(value: DtsValue): boolean {
 }
 
 /**
- * Infer a uniform cells-per-group width from a library baseline u32 matrix.
- * Returns null when the baseline is missing, unparsable, empty, irregular, or phandle-prefixed.
+ * True when a parsed debug/baseline value is an integer-only cell matrix at a supported width,
+ * or an 8-bit square-bracket byte array (dtc's decompiled spelling of `/bits/ 8`).
  */
-export function inferCellsPerGroupFromBaseline(baselineValue: string | null | undefined): number | null {
+export function isIntegerCellArrayValue(value: DtsValue, bits?: number): boolean {
+  if (value.kind === "bytes") {
+    if (bits !== undefined && bits !== 8) return false;
+    return value.values.length > 0;
+  }
+  if (value.kind !== "cells" || value.groups.length === 0) return false;
+  if (bits !== undefined && value.bits !== bits) return false;
+  if (!isSupportedCellBits(value.bits)) return false;
+  return value.groups.every(
+    (group) => group.length > 0 && group.every((cell) => cell.kind === "integer")
+  );
+}
+
+type InferredCellBaseline = {
+  bits: 8 | 16 | 32;
+  cellsPerGroup: number;
+  groups: number;
+};
+
+/**
+ * Infer bit width and uniform cells-per-group from a library baseline.
+ * Accepts `/bits/ N <…>` cell matrices and `[xx yy …]` byte arrays (as bits=8).
+ * Rejects phandle-prefixed groups.
+ */
+export function inferIntegerCellBaseline(
+  baselineValue: string | null | undefined
+): InferredCellBaseline | null {
   if (!baselineValue || baselineValue.trim().length === 0) return null;
   try {
     const parsed = parseDtsValue("reload-baseline", baselineValue.trim()).value;
-    if (parsed.kind !== "cells" || parsed.bits !== 32 || parsed.groups.length === 0) return null;
+    if (parsed.kind === "bytes") {
+      if (parsed.values.length === 0) return null;
+      return { bits: 8, cellsPerGroup: parsed.values.length, groups: 1 };
+    }
+    if (parsed.kind !== "cells" || !isSupportedCellBits(parsed.bits) || parsed.groups.length === 0) {
+      return null;
+    }
     if (isPhandleCellArrayValue(parsed)) return null;
+    if (!isIntegerCellArrayValue(parsed, parsed.bits)) return null;
     const widths = parsed.groups.map((group) => group.length);
-    if (widths.some((width) => width < 1)) return null;
     const first = widths[0]!;
     if (widths.some((width) => width !== first)) return null;
-    return first;
+    return { bits: parsed.bits, cellsPerGroup: first, groups: parsed.groups.length };
   } catch {
     return null;
   }
+}
+
+/**
+ * Infer a uniform cells-per-group width from a library baseline u32 matrix.
+ * Returns null when the baseline is missing, unparsable, empty, irregular, or not 32-bit.
+ */
+export function inferCellsPerGroupFromBaseline(baselineValue: string | null | undefined): number | null {
+  const inferred = inferIntegerCellBaseline(baselineValue);
+  if (!inferred || inferred.bits !== 32) return null;
+  return inferred.cellsPerGroup;
 }
 
 /**
@@ -82,6 +132,7 @@ export function inferPhandleCellsPerGroupFromBaseline(
 /**
  * Normalize catalog shapes onto the reload surface vocabulary.
  * - `u32-array` / `cells` → `cells` (width may be inferred from a regular integer baseline)
+ * - catalog `bytes` with `/bits/ 8 <…>` (or `[…]`) baselines → `cells` with bits=8
  * - `mixed` / `phandle-list` that match GPIO-style `<&label N …>` → `phandle-cells`
  */
 export function resolveReloadValueShape(
@@ -119,16 +170,21 @@ export function resolveReloadValueShape(
     return resolved;
   }
 
-  if (!isU32CellFamilyKind(valueShape.kind)) {
+  if (!isIntegerCellFamilyKind(valueShape.kind)) {
     return valueShape;
   }
 
-  const bits =
+  const inferred = inferIntegerCellBaseline(baselineValue);
+
+  let bits: number | undefined =
     typeof valueShape.bits === "number" && Number.isInteger(valueShape.bits)
       ? valueShape.bits
-      : valueShape.kind === "u32-array"
-        ? 32
-        : undefined;
+      : undefined;
+  if (bits === undefined) {
+    if (valueShape.kind === "u32-array") bits = 32;
+    else if (valueShape.kind === "bytes") bits = inferred?.bits ?? 8;
+    else if (inferred) bits = inferred.bits;
+  }
 
   let cellsPerGroup =
     typeof valueShape.cellsPerGroup === "number" &&
@@ -137,9 +193,17 @@ export function resolveReloadValueShape(
       ? valueShape.cellsPerGroup
       : undefined;
 
-  if (cellsPerGroup === undefined) {
-    const inferred = inferCellsPerGroupFromBaseline(baselineValue);
-    if (inferred !== null) cellsPerGroup = inferred;
+  if (
+    cellsPerGroup === undefined &&
+    typeof valueShape.length === "number" &&
+    Number.isInteger(valueShape.length) &&
+    valueShape.length >= 1
+  ) {
+    cellsPerGroup = valueShape.length;
+  }
+
+  if (cellsPerGroup === undefined && inferred) {
+    cellsPerGroup = inferred.cellsPerGroup;
   }
 
   const resolved: NonNullable<CandidateValueShape> = {
@@ -154,14 +218,16 @@ export function resolveReloadValueShape(
     valueShape.groups >= 1
   ) {
     resolved.groups = valueShape.groups;
+  } else if (valueShape.kind === "bytes" && cellsPerGroup !== undefined) {
+    resolved.groups = 1;
   }
 
   return resolved;
 }
 
 /**
- * Supported reload shapes: u32 cell arrays, string lists, and GPIO-style phandle cell
- * arrays (`<&gpioN pin flags>`), once width metadata is known.
+ * Supported reload shapes: integer cell arrays at bits 8/16/32 (including catalog `bytes`
+ * authored as `/bits/ 8 <…>`), string lists, and GPIO-style phandle cell arrays.
  */
 export function isSupportedReloadValueShape(valueShape: CandidateValueShape): boolean {
   if (!valueShape || typeof valueShape !== "object") return false;
@@ -185,9 +251,9 @@ export function isSupportedReloadValueShape(valueShape: CandidateValueShape): bo
     return true;
   }
 
-  if (!isU32CellFamilyKind(valueShape.kind)) return false;
+  if (valueShape.kind !== "cells" && valueShape.kind !== "u32-array") return false;
   const bits = valueShape.bits ?? (valueShape.kind === "u32-array" ? 32 : undefined);
-  if (bits !== 32) return false;
+  if (!isSupportedCellBits(bits)) return false;
   if (
     typeof valueShape.cellsPerGroup !== "number" ||
     !Number.isInteger(valueShape.cellsPerGroup) ||

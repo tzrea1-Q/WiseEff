@@ -80,6 +80,14 @@ describe("lexDts", () => {
     expect(kinds(tokens).filter((k) => k === "directive")).toHaveLength(4);
   });
 
+  it("tokenizes dtc square-bracket byte arrays as a single bytes token", () => {
+    const tokens = lexDts("prevfod1_product_list = [11]; rx = [05 05 05];");
+    expect(tokens.filter((token) => token.kind === "bytes").map((token) => token.value)).toEqual([
+      "[11]",
+      "[05 05 05]"
+    ]);
+  });
+
   it("tokenizes bare root slash as slash token", () => {
     const tokens = lexDts("/ { board_id = <0>; };");
     expect(tokens[0]).toMatchObject({ kind: "slash", value: "/" });
