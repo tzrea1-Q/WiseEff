@@ -8610,10 +8610,6 @@ td small {
   gap: 8px;
 }
 
-.dts-reload-candidate-edit__value .submission-preview-diff {
-  max-height: 12rem;
-}
-
 .dts-reload-candidate-meaning {
   display: grid;
   gap: 10px;
@@ -11910,6 +11906,10 @@ td small {
 
 .parameter-draft-diff-panel .submission-preview-diff {
   max-height: 220px;
+}
+
+.dts-reload-candidate-edit__value .submission-preview-diff {
+  max-height: 12rem;
 }
 
 .submission-preview-diff-row {
