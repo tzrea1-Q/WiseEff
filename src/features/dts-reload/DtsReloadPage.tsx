@@ -1604,6 +1604,7 @@ export function DtsReloadPage({
             overlaySource: null,
             diagnostics: [
               {
+                stage: "transfer-artifact",
                 code: "transfer-failed",
                 message: "Artifact transfer to the device failed before reload could be triggered."
               }
@@ -1637,6 +1638,7 @@ export function DtsReloadPage({
             reloadSnapshot: null,
             diagnostics: [
               {
+                stage: "compile-base",
                 code: "base-compile-failed",
                 message: "The compiled base device tree could not be read back for verification."
               }
