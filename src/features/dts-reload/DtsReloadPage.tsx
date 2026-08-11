@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Pencil, Search, X } from "lucide-react";
 
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import {
@@ -19,10 +20,28 @@ import type {
   DtsReloadSnapshot
 } from "@/domain/dtsReload/types";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
-import { Button } from "@/components/ui/button";
-import { formatBridgeLastSeen, inferBridgeOnline } from "@/components/bridgeOnline";
-import { listMyBridges, probeLocalBridgeHealth } from "@/infrastructure/http/deviceBridgeClient";
-import type { LocalBridgeHealthState } from "@/infrastructure/http/deviceBridgeClient";
+import { ColumnFilter } from "@/components/ColumnFilter";
+import { ParameterValueDiff } from "@/components/ParameterValueDiff";
+import { inferBridgeOnline } from "@/components/bridgeOnline";
+import {
+  LocalDeviceBridgePanel,
+  type LocalDeviceBridgePanelState
+} from "@/components/LocalDeviceBridgePanel";
+import { DtsTopologyNavigator } from "@/components/parameter-topology/DtsTopologyNavigator";
+import { DtsReloadCandidateEditDialog } from "@/features/dts-reload/DtsReloadCandidateEditDialog";
+import type { DtsWorkbenchTreeNode } from "@/application/parameters/buildDtsTopologyTree";
+import {
+  buildReloadModuleTree,
+  collectSubtreeBindingIds
+} from "@/application/parameters/buildReloadModuleTree";
+import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
+import { resolveParameterModuleRegistryRepository } from "@/application/parameters/parameterModuleRegistryResolve";
+import {
+  EMPTY_PARAMETER_MODULE_REGISTRY,
+  type ParameterModuleRegistry
+} from "@/domain/parameter-topology/moduleRegistry";
+import type { DeviceBridgeRecord, LocalBridgeHealthState } from "@/infrastructure/http/deviceBridgeClient";
+import type { LocalBridgeProbeResult } from "@/infrastructure/http/bridgeConnectLauncher";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { cn } from "@/lib/utils";
 import { DEVICE_BRIDGE_RELEASES_PATH } from "@wiseeff/device-command-core/bridgeApiPaths";
@@ -53,11 +72,71 @@ export type DtsReloadPageProps = {
   probeBridgeHealth?: () => Promise<Pick<LocalBridgeHealthState, "connected" | "bridgeId"> | null>;
   /** Optional reachable-target detection (same seam as /node-debugging detectTargets). */
   detectTargets?: (protocol: DeployProtocol) => Promise<DtsReloadReachableTarget[]>;
+  /** Test/demo seam: seed deploy target without the removed manual targetRef field. */
+  initialTargetRef?: string;
+  /** Optional module registry for navigator nesting (defaults to runtime resolve). */
+  moduleRegistryRepository?: ParameterModuleRegistryRepository | null;
 };
 
 type BridgeOption = DtsReloadBridgeOption;
 
 const BRIDGE_UPGRADE_ENTRY_PATH = "/node-debugging";
+const UNCLASSIFIED_MODULE_LABEL = "未分类";
+
+function candidateModuleLabel(candidate: Pick<DtsReloadCandidate, "module">): string {
+  return candidate.module.trim() || UNCLASSIFIED_MODULE_LABEL;
+}
+
+function findWorkbenchTreeNode(
+  nodes: DtsWorkbenchTreeNode[],
+  nodeId: string
+): DtsWorkbenchTreeNode | null {
+  for (const node of nodes) {
+    if (node.id === nodeId) return node;
+    const nested = findWorkbenchTreeNode(node.children, nodeId);
+    if (nested) return nested;
+  }
+  return null;
+}
+
+function asDeviceBridgeRecords(options: DtsReloadBridgeOption[]): DeviceBridgeRecord[] {
+  return options.map((item) => ({
+    id: item.id,
+    machineLabel: item.machineLabel,
+    platform: "darwin",
+    arch: "arm64",
+    clientVersion: null,
+    capabilities: {},
+    createdAt: "1970-01-01T00:00:00.000Z",
+    lastSeenAt: item.lastSeenAt ?? null,
+    revokedAt: null
+  }));
+}
+
+function adaptProbeBridgeHealth(
+  probe: () => Promise<Pick<LocalBridgeHealthState, "connected" | "bridgeId"> | null>
+): () => Promise<LocalBridgeProbeResult> {
+  return async () => {
+    const partial = await probe();
+    if (!partial) {
+      return { health: null, reachability: "offline" };
+    }
+    return {
+      health: {
+        ok: true,
+        paired: true,
+        connected: partial.connected,
+        bridgeId: partial.bridgeId,
+        updatedAt: new Date().toISOString(),
+        tools: {
+          adb: { available: true },
+          hdc: { available: true }
+        }
+      },
+      reachability: "ok"
+    };
+  };
+}
 
 function readBridgeUpgradeReleasesPath(error: unknown): string | null {
   if (!(error instanceof WiseEffApiError)) return null;
@@ -180,14 +259,6 @@ function formatAttemptedAt(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString();
-}
-
-function lastReloadSummary(candidate: DtsReloadCandidate): string {
-  const last = candidate.lastReload;
-  if (!last) return "—";
-  const purpose =
-    last.purpose === "restore-baseline" ? ` · ${dtsReloadPurposeLabels["restore-baseline"]}` : "";
-  return `${last.debugValue} · ${dtsReloadStatusLabels[last.outcome]}${purpose} · ${formatAttemptedAt(last.attemptedAt)}`;
 }
 
 function integrityCheckLabel(check: DtsReloadIntegrityCheck): string {
@@ -498,8 +569,20 @@ export function DtsReloadPage({
   bridges: bridgesProp,
   listBridges,
   probeBridgeHealth,
-  detectTargets
+  detectTargets,
+  initialTargetRef,
+  moduleRegistryRepository
 }: DtsReloadPageProps) {
+  const moduleRegistryRepo = useMemo(
+    () =>
+      moduleRegistryRepository === null
+        ? null
+        : (moduleRegistryRepository ?? resolveParameterModuleRegistryRepository()),
+    [moduleRegistryRepository]
+  );
+  const [moduleRegistry, setModuleRegistry] = useState<ParameterModuleRegistry>(
+    EMPTY_PARAMETER_MODULE_REGISTRY
+  );
   const [projectId, setProjectId] = useState(initialProjectId ?? projects[0]?.id ?? "");
   const [candidates, setCandidates] = useState<DtsReloadCandidate[]>([]);
   const [selectedBindingIds, setSelectedBindingIds] = useState<string[]>([]);
@@ -512,17 +595,18 @@ export function DtsReloadPage({
   const [deployError, setDeployError] = useState("");
   const [deployUpgradeReleasesPath, setDeployUpgradeReleasesPath] = useState<string | null>(null);
   const [nameQuery, setNameQuery] = useState("");
-  const [moduleFilter, setModuleFilter] = useState("");
-  const [nodeFilter, setNodeFilter] = useState("");
+  const [moduleColumnFilter, setModuleColumnFilter] = useState<string[]>([]);
+  const [selectedModuleNodeId, setSelectedModuleNodeId] = useState<string | null>(null);
+  const [editingBindingId, setEditingBindingId] = useState<string | null>(null);
   const [criticalConfirmed, setCriticalConfirmed] = useState(false);
   const [bridges, setBridges] = useState<BridgeOption[]>(bridgesProp ?? []);
-  const [bridgesLoading, setBridgesLoading] = useState(false);
   const [bridgeHealth, setBridgeHealth] = useState<Pick<LocalBridgeHealthState, "connected" | "bridgeId"> | null>(
     null
   );
   const [reachableTargets, setReachableTargets] = useState<DtsReloadReachableTarget[]>([]);
+  const [detectingTargets, setDetectingTargets] = useState(false);
   const [bridgeId, setBridgeId] = useState("");
-  const [targetRef, setTargetRef] = useState("");
+  const [targetRef, setTargetRef] = useState(initialTargetRef ?? "");
   const [protocol, setProtocol] = useState<DeployProtocol>("hdc");
   const [deviceId, setDeviceId] = useState("");
   const [deviceIdTouched, setDeviceIdTouched] = useState(false);
@@ -547,20 +631,6 @@ export function DtsReloadPage({
     [bridges, bridgeId]
   );
 
-  const selectedBridgeConnected = Boolean(
-    selectedBridge && inferBridgeOnline(selectedBridge, bridgeHealth, { healthExclusive: true })
-  );
-
-  const bridgeReadinessLabel = useMemo(() => {
-    if (bridgesLoading) return "正在检查 Bridge…";
-    if (bridges.length === 0) return "未配对 Bridge — 请先在节点调试中安装并配对本地设备代理。";
-    if (!selectedBridge) return "已配对但未选择 Bridge。";
-    if (selectedBridgeConnected) {
-      return `已连接 · ${selectedBridge.machineLabel}（最近在线 ${formatBridgeLastSeen(selectedBridge.lastSeenAt)}）`;
-    }
-    return `已配对但未连接 · ${selectedBridge.machineLabel}（最近在线 ${formatBridgeLastSeen(selectedBridge.lastSeenAt)}）`;
-  }, [bridges.length, bridgesLoading, selectedBridge, selectedBridgeConnected]);
-
   const targetsForSelectedBridge = useMemo(
     () =>
       reachableTargets.filter(
@@ -569,21 +639,75 @@ export function DtsReloadPage({
     [reachableTargets, bridgeId]
   );
 
-  const modules = useMemo(
-    () =>
-      Array.from(new Set(candidates.map((candidate) => candidate.module).filter(Boolean))).sort((a, b) =>
-        a.localeCompare(b)
-      ),
-    [candidates]
+  useEffect(() => {
+    if (!moduleRegistryRepo) {
+      setModuleRegistry(EMPTY_PARAMETER_MODULE_REGISTRY);
+      return undefined;
+    }
+    let cancelled = false;
+    moduleRegistryRepo
+      .getRegistry()
+      .then((registry) => {
+        if (!cancelled) setModuleRegistry(registry);
+      })
+      .catch(() => {
+        if (!cancelled) setModuleRegistry(EMPTY_PARAMETER_MODULE_REGISTRY);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [moduleRegistryRepo]);
+
+  const moduleTree = useMemo(
+    () => buildReloadModuleTree({ candidates, modules: moduleRegistry.modules }),
+    [candidates, moduleRegistry.modules]
   );
 
-  const nodes = useMemo(
+  const selectedModuleNode = useMemo(
     () =>
-      Array.from(
-        new Set(candidates.map((candidate) => candidate.nodePath).filter((value): value is string => Boolean(value)))
-      ).sort((a, b) => a.localeCompare(b)),
-    [candidates]
+      selectedModuleNodeId ? findWorkbenchTreeNode(moduleTree, selectedModuleNodeId) : null,
+    [moduleTree, selectedModuleNodeId]
   );
+
+  useEffect(() => {
+    if (selectedModuleNodeId && !selectedModuleNode) {
+      setSelectedModuleNodeId(null);
+    }
+  }, [selectedModuleNodeId, selectedModuleNode]);
+
+  const selectedModuleBindingIds = useMemo(
+    () => (selectedModuleNode ? collectSubtreeBindingIds(selectedModuleNode) : null),
+    [selectedModuleNode]
+  );
+
+  const scopedCandidates = useMemo(() => {
+    const normalizedQuery = nameQuery.trim().toLocaleLowerCase();
+    return candidates.filter((candidate) => {
+      if (selectedModuleBindingIds && !selectedModuleBindingIds.has(candidate.bindingId)) return false;
+      if (!normalizedQuery) return true;
+      const haystack = [candidate.displayName, candidate.propertyKey].join(" ").toLocaleLowerCase();
+      return haystack.includes(normalizedQuery);
+    });
+  }, [candidates, nameQuery, selectedModuleBindingIds]);
+
+  const moduleFilterOptions = useMemo(
+    () =>
+      Array.from(new Set(scopedCandidates.map((candidate) => candidateModuleLabel(candidate)))).sort((left, right) =>
+        left.localeCompare(right, "zh-Hans-CN")
+      ),
+    [scopedCandidates]
+  );
+
+  const activeModuleColumnFilter = useMemo(
+    () => moduleColumnFilter.filter((name) => moduleFilterOptions.includes(name)),
+    [moduleColumnFilter, moduleFilterOptions]
+  );
+
+  const filtered = useMemo(() => {
+    if (activeModuleColumnFilter.length === 0) return scopedCandidates;
+    const selected = new Set(activeModuleColumnFilter);
+    return scopedCandidates.filter((candidate) => selected.has(candidateModuleLabel(candidate)));
+  }, [activeModuleColumnFilter, scopedCandidates]);
 
   const selectedCandidates = useMemo(
     () =>
@@ -593,6 +717,22 @@ export function DtsReloadPage({
     [candidates, selectedBindingIds]
   );
 
+  const editingCandidate = useMemo(
+    () =>
+      editingBindingId
+        ? candidates.find(
+            (candidate) => candidate.bindingId === editingBindingId && candidate.debuggable
+          ) ?? null
+        : null,
+    [candidates, editingBindingId]
+  );
+
+  useEffect(() => {
+    if (editingBindingId && !editingCandidate) {
+      setEditingBindingId(null);
+    }
+  }, [editingBindingId, editingCandidate]);
+
   const selectedHasCriticalSensitive = selectedCandidates.some(
     (candidate) => candidate.sensitiveMatch?.riskTier === "critical"
   );
@@ -600,82 +740,97 @@ export function DtsReloadPage({
 
   const deployReady = Boolean(bridgeId.trim() && targetRef.trim() && deviceId.trim());
 
-  useEffect(() => {
-    if (bridgesProp) {
-      setBridges(bridgesProp);
+  const bridgesOverride = useMemo(
+    () => (bridgesProp ? asDeviceBridgeRecords(bridgesProp) : undefined),
+    [bridgesProp]
+  );
+
+  const listBridgesForPanel = useMemo(
+    () =>
+      listBridges
+        ? async () => asDeviceBridgeRecords(await listBridges())
+        : undefined,
+    [listBridges]
+  );
+
+  const probeHealthForPanel = useMemo(
+    () => (probeBridgeHealth ? adaptProbeBridgeHealth(probeBridgeHealth) : undefined),
+    [probeBridgeHealth]
+  );
+
+  const handleBridgeStateChange = useCallback((state: LocalDeviceBridgePanelState) => {
+    const nextBridges = state.bridges
+      .filter((bridge) => !bridge.revokedAt)
+      .map((bridge) => ({
+        id: bridge.id,
+        machineLabel: bridge.machineLabel,
+        lastSeenAt: bridge.lastSeenAt
+      }));
+    setBridges((current) => {
+      if (
+        current.length === nextBridges.length &&
+        current.every(
+          (bridge, index) =>
+            bridge.id === nextBridges[index]?.id &&
+            bridge.machineLabel === nextBridges[index]?.machineLabel &&
+            bridge.lastSeenAt === nextBridges[index]?.lastSeenAt
+        )
+      ) {
+        return current;
+      }
+      return nextBridges;
+    });
+    setBridgeHealth((current) => {
+      const next = state.health
+        ? { connected: state.health.connected, bridgeId: state.health.bridgeId }
+        : null;
+      if (
+        current?.connected === next?.connected &&
+        current?.bridgeId === next?.bridgeId &&
+        Boolean(current) === Boolean(next)
+      ) {
+        return current;
+      }
+      return next;
+    });
+    const preferred =
+      (state.health?.bridgeId && nextBridges.some((bridge) => bridge.id === state.health?.bridgeId)
+        ? state.health.bridgeId
+        : null) ??
+      nextBridges[0]?.id ??
+      "";
+    setBridgeId((current) => (current && nextBridges.some((bridge) => bridge.id === current) ? current : preferred));
+  }, []);
+
+  const runDetectTargets = useCallback(async () => {
+    if (!detectTargets) {
+      setReachableTargets([]);
+      return;
     }
-  }, [bridgesProp]);
-
-  useEffect(() => {
-    if (!repository || bridgesProp) return;
-    let cancelled = false;
-    setBridgesLoading(true);
-    const load =
-      listBridges ??
-      (() =>
-        listMyBridges().then((items) =>
-          items.map((item) => ({
-            id: item.id,
-            machineLabel: item.machineLabel,
-            lastSeenAt: item.lastSeenAt
-          }))
-        ));
-    void load()
-      .then((items) => {
-        if (!cancelled) setBridges(items);
-      })
-      .catch(() => {
-        if (!cancelled) setBridges([]);
-      })
-      .finally(() => {
-        if (!cancelled) setBridgesLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [repository, bridgesProp, listBridges]);
-
-  useEffect(() => {
-    if (!repository) return;
-    let cancelled = false;
-    const probe = probeBridgeHealth ?? (() => probeLocalBridgeHealth());
-    void probe()
-      .then((health) => {
-        if (!cancelled) {
-          setBridgeHealth(health ? { connected: health.connected, bridgeId: health.bridgeId } : null);
+    setDetectingTargets(true);
+    try {
+      const targets = await detectTargets(protocol);
+      setReachableTargets(targets);
+      if (targets.length === 1) {
+        const only = targets[0]!.targetRef.trim();
+        if (only) {
+          setTargetRef((current) => (current.trim() ? current : only));
         }
-      })
-      .catch(() => {
-        if (!cancelled) setBridgeHealth(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [repository, probeBridgeHealth]);
+      }
+    } catch {
+      setReachableTargets([]);
+    } finally {
+      setDetectingTargets(false);
+    }
+  }, [detectTargets, protocol]);
 
   useEffect(() => {
     if (!repository || !detectTargets || bridges.length === 0) {
       setReachableTargets([]);
       return;
     }
-    let cancelled = false;
-    void detectTargets(protocol)
-      .then((targets) => {
-        if (!cancelled) setReachableTargets(targets);
-      })
-      .catch(() => {
-        if (!cancelled) setReachableTargets([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [repository, detectTargets, protocol, bridges.length]);
-
-  useEffect(() => {
-    if (!bridgeId && bridges.length > 0) {
-      setBridgeId(bridges[0]!.id);
-    }
-  }, [bridgeId, bridges]);
+    void runDetectTargets();
+  }, [repository, detectTargets, protocol, bridges.length, runDetectTargets]);
 
   useEffect(() => {
     if (!bridgeId || deviceIdTouched) return;
@@ -1276,24 +1431,15 @@ export function DtsReloadPage({
 
   if (!repository) {
     return (
-      <section className="dts-reload-page flex flex-col gap-4 p-6" aria-labelledby="dts-reload-unavailable-title">
-        <h2 id="dts-reload-unavailable-title" className="text-xl font-semibold">
-          DTS 重载调试
-        </h2>
-        <p role="status" className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          {unavailableReason ?? "该页面仅在 API 模式下可用。Mock 运行时不提供 DTS 重载调试。"}
-        </p>
-      </section>
+      <div className="workbench-page dts-reload-page">
+        <div className="workbench-one-col">
+          <p role="status" className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            {unavailableReason ?? "该页面仅在 API 模式下可用。Mock 运行时不提供参数调试。"}
+          </p>
+        </div>
+      </div>
     );
   }
-
-  const filtered = candidates.filter((candidate) => {
-    if (moduleFilter && candidate.module !== moduleFilter) return false;
-    if (nodeFilter && candidate.nodePath !== nodeFilter) return false;
-    if (!nameQuery.trim()) return true;
-    const haystack = [candidate.displayName, candidate.propertyKey].join(" ").toLocaleLowerCase();
-    return haystack.includes(nameQuery.trim().toLocaleLowerCase());
-  });
 
   const toggleSelected = (candidate: DtsReloadCandidate) => {
     if (!candidate.debuggable) return;
@@ -1308,6 +1454,48 @@ export function DtsReloadPage({
       }));
       return [...current, candidate.bindingId];
     });
+  };
+
+  const removeFromReloadBatch = (bindingId: string) => {
+    setErrorMessage("");
+    setSelectedBindingIds((current) => current.filter((id) => id !== bindingId));
+  };
+
+  const clearReloadBatch = () => {
+    setErrorMessage("");
+    setSelectedBindingIds([]);
+    setCriticalConfirmed(false);
+  };
+
+  const resetReloadBatchToBaseline = () => {
+    setErrorMessage("");
+    setDebugValues((values) => {
+      const next = { ...values };
+      for (const candidate of selectedCandidates) {
+        next[candidate.bindingId] = candidate.baselineValue ?? "";
+      }
+      return next;
+    });
+  };
+
+  const openCandidateEditor = (candidate: DtsReloadCandidate) => {
+    if (!candidate.debuggable) return;
+    setErrorMessage("");
+    setEditingBindingId(candidate.bindingId);
+  };
+
+  const confirmCandidateDebugValue = (candidate: DtsReloadCandidate, debugValue: string): string | null => {
+    const constraintError = validateDebugValueAgainstConstraints(debugValue, candidate);
+    if (constraintError) return constraintError;
+    setErrorMessage("");
+    setDebugValues((values) => ({
+      ...values,
+      [candidate.bindingId]: debugValue
+    }));
+    setSelectedBindingIds((current) =>
+      current.includes(candidate.bindingId) ? current : [...current, candidate.bindingId]
+    );
+    return null;
   };
 
   const onStart = async () => {
@@ -1347,10 +1535,10 @@ export function DtsReloadPage({
       if (started.status === "validated" && deployReady) {
         openDeployConfirm(started);
       } else if (started.status === "validated" && !deployReady) {
-        setErrorMessage("预检已通过。填写 Bridge / targetRef / deviceId 后可点击「确认部署到设备」。");
+        setErrorMessage("预检已通过。请先连接 Bridge 并检测设备目标后再确认部署。");
       }
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "启动重载运行失败。");
+      setErrorMessage(error instanceof Error ? error.message : "下发参数失败。");
     } finally {
       setStarting(false);
     }
@@ -1477,445 +1665,462 @@ export function DtsReloadPage({
   );
   const restoreHasSensitive = residueSensitiveCandidates.some((candidate) => Boolean(candidate.sensitiveMatch));
 
+  const projectName = projects.find((project) => project.id === projectId)?.name ?? projectId;
+  const bridgeStatusPill =
+    bridges.length === 0
+      ? "等待 Bridge"
+      : selectedBridge && inferBridgeOnline(selectedBridge, bridgeHealth, { healthExclusive: true })
+        ? `${selectedBridge.machineLabel} · 已连接`
+        : selectedBridge
+          ? `${selectedBridge.machineLabel} · 未连接`
+          : "等待 Bridge";
+
   return (
-    <section className="dts-reload-page flex flex-col gap-5 p-6" aria-labelledby="dts-reload-title">
-      <header className="flex flex-col gap-2">
-        <h2 id="dts-reload-title" className="text-xl font-semibold">
-          DTS 重载调试
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          一次运行可批量覆盖多个节点的参数（u32 cell 数组与字符串列表）。调试值不会写回参数库。预检通过后可确认部署到设备。
-        </p>
-      </header>
+    <div className="workbench-page dts-reload-page">
+      <div className="workbench-one-col">
+        {!canStartRun ? (
+          <p role="status" className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            当前账号仅有调试查看权限：可浏览运行历史与参数上次重载状态，但无法启动、部署或恢复基线。需要{" "}
+            <code className="rounded bg-amber-100 px-1">debugging:dts-reload</code> 才能执行变更。
+          </p>
+        ) : null}
 
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">项目</span>
-          <select
-            aria-label="选择项目"
-            className="min-w-[220px] rounded-md border px-3 py-2"
-            value={projectId}
-            onChange={(event) => setProjectId(event.target.value)}
-          >
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
+        {errorMessage ? (
+          <p role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-950">
+            {errorMessage}
+          </p>
+        ) : null}
+
+        <div className="node-debugging-controls dts-reload-controls">
+          <div className="protocol-switch" role="group" aria-label="连接协议">
+            {(["hdc", "adb"] as const).map((item) => (
+              <button
+                key={item}
+                type="button"
+                className={protocol === item ? "protocol-switch-button active" : "protocol-switch-button"}
+                aria-pressed={protocol === item}
+                disabled={!canStartRun}
+                onClick={() => setProtocol(item)}
+              >
+                {item.toUpperCase()}
+              </button>
             ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">按名称搜索</span>
-          <input
-            aria-label="按名称搜索参数"
-            className="min-w-[180px] rounded-md border px-3 py-2"
-            value={nameQuery}
-            onChange={(event) => setNameQuery(event.target.value)}
-            placeholder="显示名 / 属性键"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">按模块筛选</span>
-          <select
-            aria-label="按模块筛选"
-            className="min-w-[160px] rounded-md border px-3 py-2"
-            value={moduleFilter}
-            onChange={(event) => setModuleFilter(event.target.value)}
-          >
-            <option value="">全部模块</option>
-            {modules.map((module) => (
-              <option key={module} value={module}>
-                {module}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">按节点筛选</span>
-          <select
-            aria-label="按节点筛选"
-            className="min-w-[220px] max-w-[320px] rounded-md border px-3 py-2"
-            value={nodeFilter}
-            onChange={(event) => setNodeFilter(event.target.value)}
-          >
-            <option value="">全部节点</option>
-            {nodes.map((nodePath) => (
-              <option key={nodePath} value={nodePath}>
-                {nodePath}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      {!canStartRun ? (
-        <p role="status" className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          当前账号仅有调试查看权限：可浏览运行历史与参数上次重载状态，但无法启动、部署或恢复基线。需要{" "}
-          <code className="rounded bg-amber-100 px-1">debugging:dts-reload</code> 才能执行变更。
-        </p>
-      ) : null}
-
-      {errorMessage ? (
-        <p role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-950">
-          {errorMessage}
-        </p>
-      ) : null}
-
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-        <div className="overflow-hidden rounded-md border">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2">选择</th>
-                <th className="px-3 py-2">参数</th>
-                <th className="px-3 py-2">模块</th>
-                <th className="px-3 py-2">库基线</th>
-                <th className="px-3 py-2">上次重载</th>
-                <th className="px-3 py-2">治理</th>
-                <th className="px-3 py-2">状态</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td className="px-3 py-4 text-muted-foreground" colSpan={7}>
-                    加载中…
-                  </td>
-                </tr>
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td className="px-3 py-4 text-muted-foreground" colSpan={7}>
-                    当前筛选条件下没有可列出的参数。
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((candidate) => {
-                  const selected = selectedBindingIds.includes(candidate.bindingId);
-                  const sensitiveLabel = sensitiveBadgeLabel(candidate);
-                  return (
-                    <tr
-                      key={candidate.bindingId}
-                      className={cn(
-                        "border-t",
-                        candidate.debuggable ? "cursor-pointer hover:bg-muted/30" : "opacity-80",
-                        selected && "bg-sky-50"
-                      )}
-                      onClick={() => toggleSelected(candidate)}
-                    >
-                      <td className="px-3 py-2">
-                        <input
-                          type="checkbox"
-                          aria-label={`选择 ${candidate.displayName || candidate.propertyKey}`}
-                          checked={selected}
-                          disabled={!candidate.debuggable}
-                          onChange={() => toggleSelected(candidate)}
-                          onClick={(event) => event.stopPropagation()}
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="font-medium">{candidate.displayName || candidate.propertyKey}</div>
-                        <div className="text-xs text-muted-foreground">{candidate.nodePath ?? "无路径"}</div>
-                      </td>
-                      <td className="px-3 py-2 text-xs">{candidate.module || "—"}</td>
-                      <td className="px-3 py-2 font-mono text-xs">{candidate.baselineValue ?? "—"}</td>
-                      <td className="px-3 py-2 text-xs text-muted-foreground" title={lastReloadSummary(candidate)}>
-                        {candidate.lastReload ? (
-                          <button
-                            type="button"
-                            className="text-left text-sky-800 underline-offset-2 hover:underline"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void onOpenHistoryRun(candidate.lastReload!.runId);
-                            }}
-                          >
-                            <span className="font-mono text-foreground">{candidate.lastReload.debugValue}</span>
-                            <span className="mt-0.5 block">
-                              {dtsReloadStatusLabels[candidate.lastReload.outcome]} ·{" "}
-                              {formatAttemptedAt(candidate.lastReload.attemptedAt)}
-                            </span>
-                          </button>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-xs">
-                        {sensitiveLabel ? (
-                          <span
-                            className={cn(
-                              "inline-flex rounded-md px-2 py-0.5 font-medium",
-                              candidate.sensitiveMatch?.riskTier === "critical"
-                                ? "bg-rose-100 text-rose-950"
-                                : "bg-amber-100 text-amber-950"
-                            )}
-                            title={
-                              candidate.sensitiveMatch
-                                ? `需要 ${candidate.sensitiveMatch.requiredCapability}${
-                                    candidate.sensitiveMatch.requiresConfirmation
-                                      ? "，并需明确确认"
-                                      : ""
-                                  }`
-                                : undefined
-                            }
-                          >
-                            {sensitiveLabel}
-                          </span>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-xs">
-                        {candidate.debuggable
-                          ? "可调试"
-                          : dtsReloadBlockReasonLabels[candidate.blockReason ?? "unsupported-value-shape"]}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+          </div>
+          <label className="dts-reload-project-select">
+            <span>项目</span>
+            <select
+              aria-label="选择项目"
+              value={projectId}
+              onChange={(event) => setProjectId(event.target.value)}
+            >
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
-        <div className="flex flex-col gap-4 rounded-md border p-4">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold">启动运行</h3>
-            <span className="text-xs text-muted-foreground">已选 {selectedCandidates.length} 个参数</span>
+        <LocalDeviceBridgePanel
+          target={targetRef.trim() || undefined}
+          detecting={detectingTargets}
+          protocol={protocol}
+          onDetect={() => void runDetectTargets()}
+          bridgesOverride={bridgesOverride}
+          listBridges={listBridgesForPanel}
+          probeHealth={probeHealthForPanel}
+          onBridgeStateChange={handleBridgeStateChange}
+        />
+
+        {targetsForSelectedBridge.length > 1 ? (
+          <section className="bridge-target-picker" aria-label="设备代理目标选择">
+            <div className="bridge-target-picker__head">
+              <strong>检测到多个设备代理目标</strong>
+              <small>请选择要部署的设备后再启动重载。</small>
+            </div>
+            <ul className="bridge-target-picker__list">
+              {targetsForSelectedBridge.map((target) => (
+                <li key={`${target.bridgeId ?? "any"}:${target.targetRef}`}>
+                  <button
+                    type="button"
+                    className={cn("button subtle", targetRef === target.targetRef ? "is-active" : undefined)}
+                    disabled={!canStartRun}
+                    aria-pressed={targetRef === target.targetRef}
+                    onClick={() => setTargetRef(target.targetRef)}
+                  >
+                    {target.label?.trim() || target.targetRef}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
+        {residue && !residueLoading ? (
+          <div className="dts-reload-residue-banner" role="region" aria-label="重载残留">
+            <ResidueIndicator residue={residue} deviceId={deviceId.trim()} />
+            <button
+              type="button"
+              className="button subtle"
+              disabled={!canStartRun || restoring || !deviceId.trim()}
+              onClick={openRestoreConfirm}
+            >
+              恢复基线（补偿性重载）
+            </button>
+          </div>
+        ) : null}
+
+        {selectedCandidates.length > 0 ? (
+          <div className="dts-parameter-workbench__current-edits dts-draft-tray dts-reload-run-tray-slot">
+            {selectedHasSensitive ? (
+              <p role="status" className="dts-reload-sensitive-banner">
+                已选参数命中敏感节点规则：除 debugging:dts-reload 外还需要{" "}
+                {Array.from(
+                  new Set(
+                    selectedCandidates
+                      .map((candidate) => candidate.sensitiveMatch?.requiredCapability)
+                      .filter((value): value is string => Boolean(value))
+                  )
+                ).join(" / ") || "parameter:edit-critical"}
+                。
+                {selectedHasCriticalSensitive ? " critical 层级还需在本轮托盘中明确确认。" : ""}
+              </p>
+            ) : null}
+
+            <section
+              className="dts-reload-run-tray dts-binding-draft-tray dts-draft-tray"
+              role="region"
+              aria-label="本轮重载"
+            >
+              <header>
+                <div>
+                  <p className="eyebrow">Reload batch</p>
+                  <h3>本轮重载</h3>
+                  <p>
+                    {deployReady
+                      ? "核对基线 → 调试值后启动预检；通过后需再确认部署到设备。调试值不会写回参数库。"
+                      : "可先编辑调试值并启动预检；部署需先完成 Bridge 连接与目标检测。"}
+                  </p>
+                </div>
+                <span>{`本轮 ${selectedCandidates.length} 项`}</span>
+              </header>
+
+              <div className="dts-binding-draft-tray__items dts-reload-run-tray__items">
+                {selectedCandidates.map((candidate) => {
+                  const sensitiveLabel = sensitiveBadgeLabel(candidate);
+                  const debugValue = debugValues[candidate.bindingId] ?? "";
+                  const baselineValue = candidate.baselineValue ?? "—";
+                  return (
+                    <article className="dts-binding-draft-tray__item" key={candidate.bindingId}>
+                      <div className="dts-binding-draft-tray__item-heading">
+                        <div>
+                          <strong>{candidate.displayName || candidate.propertyKey}</strong>
+                          <span>{candidateModuleLabel(candidate)}</span>
+                          {sensitiveLabel ? (
+                            <span
+                              className={cn(
+                                "dts-reload-sensitive-badge",
+                                candidate.sensitiveMatch?.riskTier === "critical" && "is-critical"
+                              )}
+                            >
+                              {sensitiveLabel}
+                            </span>
+                          ) : null}
+                        </div>
+                        <button
+                          type="button"
+                          className="button subtle"
+                          aria-label={`移出本轮重载 ${candidate.displayName || candidate.propertyKey}`}
+                          disabled={starting || !canStartRun}
+                          onClick={() => removeFromReloadBatch(candidate.bindingId)}
+                        >
+                          <X size={15} strokeWidth={1.9} aria-hidden="true" />
+                          移除
+                        </button>
+                      </div>
+                      <div
+                        className="dts-binding-draft-tray__diff"
+                        aria-label={`${candidate.displayName || candidate.propertyKey} 值变更`}
+                      >
+                        <ParameterValueDiff baseValue={baselineValue} targetValue={debugValue || "—"} />
+                      </div>
+                      <p className="dts-reload-run-tray__meta">
+                        {candidate.nodePath ?? "无路径"} · 约束 {constraintSummary(candidate.constraints)}
+                      </p>
+                      {candidate.sensitiveMatch ? (
+                        <p className="dts-reload-run-tray__meta">
+                          需要 {candidate.sensitiveMatch.requiredCapability}
+                          {candidate.sensitiveMatch.requiresConfirmation ? "，并需明确确认" : ""}
+                        </p>
+                      ) : null}
+                      <label className="dts-reload-run-tray__value">
+                        <span>调试值</span>
+                        <input
+                          aria-label={`${candidate.displayName || candidate.propertyKey} 调试值`}
+                          className="font-mono"
+                          value={debugValue}
+                          onChange={(event) =>
+                            setDebugValues((values) => ({
+                              ...values,
+                              [candidate.bindingId]: event.target.value
+                            }))
+                          }
+                          disabled={!canStartRun || starting}
+                          placeholder={candidate.valueShapeKind === "string-list" ? '"okay"' : "<7000>"}
+                        />
+                      </label>
+                    </article>
+                  );
+                })}
+              </div>
+
+              {selectedHasCriticalSensitive ? (
+                <label className="dts-reload-critical-confirm">
+                  <input
+                    type="checkbox"
+                    checked={criticalConfirmed}
+                    onChange={(event) => setCriticalConfirmed(event.target.checked)}
+                    aria-label="确认 critical 敏感节点重载"
+                  />
+                  <span>
+                    我确认要为 critical 敏感参数下发调试值。调试值不会写回参数库；设备部署需另行确认。
+                  </span>
+                </label>
+              ) : null}
+
+              <div className="binding-draft-submission__actions dts-reload-run-tray__actions">
+                <button
+                  type="button"
+                  className="button subtle"
+                  disabled={starting}
+                  onClick={resetReloadBatchToBaseline}
+                >
+                  重置为基线
+                </button>
+                <button
+                  type="button"
+                  className="button subtle"
+                  disabled={starting}
+                  onClick={clearReloadBatch}
+                >
+                  清空本轮
+                </button>
+                <button
+                  type="button"
+                  className="button primary"
+                  aria-label={
+                    starting ? "下发中" : `下发参数（${selectedCandidates.length}）`
+                  }
+                  onClick={() => void onStart()}
+                  disabled={
+                    !canStartRun ||
+                    starting ||
+                    (selectedHasCriticalSensitive && !criticalConfirmed)
+                  }
+                >
+                  {starting ? "下发中…" : `下发参数（${selectedCandidates.length}）`}
+                </button>
+              </div>
+            </section>
+          </div>
+        ) : null}
+
+        <section className="debug-table dts-reload-candidates">
+          <div className="panel-header">
+            <strong>可调试参数</strong>
+            <span>
+              {projectName} · {bridgeStatusPill}
+            </span>
           </div>
 
-          {selectedCandidates.length === 0 ? (
-            <p className="text-sm text-muted-foreground">勾选一个或多个可调试参数以输入调试值。</p>
-          ) : (
-            <ul className="flex max-h-[360px] flex-col gap-3 overflow-y-auto">
-              {selectedCandidates.map((candidate) => {
-                const sensitiveLabel = sensitiveBadgeLabel(candidate);
-                return (
-                <li key={candidate.bindingId} className="rounded-md border p-3">
-                  <div className="mb-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="text-sm font-medium">{candidate.displayName || candidate.propertyKey}</div>
-                      {sensitiveLabel ? (
-                        <span
-                          className={cn(
-                            "rounded-md px-2 py-0.5 text-xs font-medium",
-                            candidate.sensitiveMatch?.riskTier === "critical"
-                              ? "bg-rose-100 text-rose-950"
-                              : "bg-amber-100 text-amber-950"
-                          )}
-                        >
-                          {sensitiveLabel}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="text-xs text-muted-foreground">{candidate.nodePath}</div>
-                    <div className="text-xs text-muted-foreground">
-                      基线 {candidate.baselineValue ?? "—"} · {constraintSummary(candidate.constraints)}
-                    </div>
-                    {candidate.sensitiveMatch ? (
-                      <p className="mt-1 text-xs text-amber-950">
-                        需要 {candidate.sensitiveMatch.requiredCapability}
-                        {candidate.sensitiveMatch.requiresConfirmation ? "，并需明确确认" : ""}
-                      </p>
-                    ) : null}
-                  </div>
-                  <label className="flex flex-col gap-1 text-sm">
-                    <span className="font-medium">调试值</span>
+          <div className="dts-parameter-workbench__body dts-reload-candidates-body">
+            <div
+              className="dts-parameter-workbench__navigator dts-workbench-topology"
+              role="region"
+              aria-label="模块导航"
+            >
+              <div className="dts-parameter-workbench__navigator-header">
+                <h3 className="dts-parameter-workbench__navigator-title">模块导航</h3>
+              </div>
+              <DtsTopologyNavigator
+                view="effective"
+                nodes={moduleTree}
+                selectedNodeId={selectedModuleNode?.id ?? null}
+                defaultExpandDepth={2}
+                labelKind="text"
+                emptyMessage="暂无模块分组"
+                ariaLabel="业务模块树"
+                onSelectNode={(nodeId) =>
+                  setSelectedModuleNodeId((current) => (current === nodeId ? null : nodeId))
+                }
+              />
+            </div>
+
+            <div className="dts-reload-candidates-results">
+              <section className="parameters-table" aria-label="可调试参数">
+                <div className="parameters-table-toolbar dts-reload-candidates-toolbar">
+                  <label className="parameters-table-search">
+                    <Search size={16} aria-hidden="true" />
                     <input
-                      aria-label={`${candidate.displayName || candidate.propertyKey} 调试值`}
-                      className="rounded-md border px-3 py-2 font-mono"
-                      value={debugValues[candidate.bindingId] ?? ""}
-                      onChange={(event) =>
-                        setDebugValues((values) => ({
-                          ...values,
-                          [candidate.bindingId]: event.target.value
-                        }))
-                      }
-                      disabled={!canStartRun}
-                      placeholder={candidate.valueShapeKind === "string-list" ? '"okay"' : "<7000>"}
+                      type="search"
+                      aria-label="按名称搜索参数"
+                      value={nameQuery}
+                      onChange={(event) => setNameQuery(event.target.value)}
+                      placeholder="显示名 / 属性键"
                     />
                   </label>
-                </li>
-                );
-              })}
-            </ul>
-          )}
+                  <span className="parameters-table-count">
+                    Showing {filtered.length} of {candidates.length}
+                  </span>
+                </div>
 
-          <div className="flex flex-col gap-3 rounded-md border border-dashed p-3">
-            <h4 className="text-sm font-semibold">设备部署</h4>
-            <p role="status" aria-label="Bridge 就绪状态" className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-              {bridgeReadinessLabel}
-              {bridges.length === 0 ? (
-                <>
-                  {" "}
-                  <a className="font-medium text-sky-700 underline" href={BRIDGE_UPGRADE_ENTRY_PATH}>
-                    前往节点调试安装 Bridge
-                  </a>
-                </>
-              ) : null}
-            </p>
-            {residue && !residueLoading ? (
-              <div className="flex flex-col gap-2">
-                <ResidueIndicator residue={residue} deviceId={deviceId.trim()} />
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={!canStartRun || restoring || !deviceId.trim()}
-                  onClick={openRestoreConfirm}
-                >
-                  恢复基线（补偿性重载）
-                </Button>
-              </div>
-            ) : null}
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Bridge</span>
-              <select
-                aria-label="选择 Bridge"
-                className="rounded-md border px-3 py-2"
-                value={bridgeId}
-                disabled={!canStartRun || bridgesLoading}
-                onChange={(event) => {
-                  setBridgeId(event.target.value);
-                  setDeviceIdTouched(false);
-                }}
-              >
-                {bridges.length === 0 ? (
-                  <option value="">{bridgesLoading ? "加载 Bridge…" : "暂无可用 Bridge"}</option>
-                ) : (
-                  bridges.map((bridge) => (
-                    <option key={bridge.id} value={bridge.id}>
-                      {bridge.machineLabel}
-                      {inferBridgeOnline(bridge, bridgeHealth, { healthExclusive: true })
-                        ? " · 已连接"
-                        : " · 未连接"}
-                    </option>
-                  ))
-                )}
-              </select>
-            </label>
-            {targetsForSelectedBridge.length > 0 ? (
-              <div className="flex flex-col gap-2" aria-label="可达设备目标">
-                <span className="text-sm font-medium">可达设备目标</span>
-                <p className="text-xs text-muted-foreground">来自当前 Bridge 检测结果，点击填入 targetRef。</p>
-                <ul className="flex flex-wrap gap-2">
-                  {targetsForSelectedBridge.map((target) => (
-                    <li key={`${target.bridgeId ?? "any"}:${target.targetRef}`}>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={!canStartRun}
-                        onClick={() => setTargetRef(target.targetRef)}
-                      >
-                        {target.label?.trim() || target.targetRef}
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">目标标识 (targetRef)</span>
-              <input
-                aria-label="目标标识 targetRef"
-                className="rounded-md border px-3 py-2 font-mono"
-                value={targetRef}
-                disabled={!canStartRun}
-                onChange={(event) => setTargetRef(event.target.value)}
-                placeholder="设备序列号或连接标识"
-              />
-            </label>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium">协议</span>
-                <select
-                  aria-label="部署协议"
-                  className="rounded-md border px-3 py-2"
-                  value={protocol}
-                  disabled={!canStartRun}
-                  onChange={(event) => setProtocol(event.target.value as DeployProtocol)}
-                >
-                  <option value="hdc">HDC</option>
-                  <option value="adb">ADB</option>
-                </select>
-              </label>
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium">deviceId</span>
-                <input
-                  aria-label="deviceId"
-                  className="rounded-md border px-3 py-2 font-mono"
-                  value={deviceId}
-                  disabled={!canStartRun}
-                  onChange={(event) => {
-                    setDeviceIdTouched(true);
-                    setDeviceId(event.target.value);
-                  }}
-                  placeholder="bridge:..."
-                />
-              </label>
+            <div className="parameters-table-scroll table-wrap">
+              <table className="parameters-table-grid dts-reload-candidates-grid">
+                <colgroup>
+                  <col className="dts-reload-col-select" />
+                  <col className="dts-reload-col-param" />
+                  <col className="dts-reload-col-module" />
+                  <col className="dts-reload-col-baseline" />
+                  <col className="dts-reload-col-actions" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>选择</th>
+                    <th>参数</th>
+                    <th scope="col">
+                      <div className="parameters-table-head-cell">
+                        <span>模块</span>
+                        <ColumnFilter
+                          label="模块"
+                          groupLabel="模块筛选"
+                          values={moduleFilterOptions}
+                          selectedValues={activeModuleColumnFilter}
+                          onToggle={(value) =>
+                            setModuleColumnFilter((current) =>
+                              current.includes(value)
+                                ? current.filter((item) => item !== value)
+                                : [...current, value]
+                            )
+                          }
+                          onClear={() => setModuleColumnFilter([])}
+                        />
+                      </div>
+                    </th>
+                    <th>库基线</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={5}>加载中…</td>
+                    </tr>
+                  ) : filtered.length === 0 ? (
+                    <tr>
+                      <td colSpan={5}>当前筛选条件下没有可列出的参数。</td>
+                    </tr>
+                  ) : (
+                    filtered.map((candidate) => {
+                      const selected = selectedBindingIds.includes(candidate.bindingId);
+                      return (
+                        <tr
+                          key={candidate.bindingId}
+                          className={cn(
+                            candidate.debuggable ? "cursor-pointer" : "opacity-80",
+                            selected && "is-selected"
+                          )}
+                          onClick={() => toggleSelected(candidate)}
+                        >
+                          <td data-label="选择">
+                            <input
+                              type="checkbox"
+                              aria-label={`选择 ${candidate.displayName || candidate.propertyKey}`}
+                              checked={selected}
+                              disabled={!candidate.debuggable}
+                              onChange={() => toggleSelected(candidate)}
+                              onClick={(event) => event.stopPropagation()}
+                            />
+                          </td>
+                          <td data-label="参数">
+                            <strong title={candidate.displayName || candidate.propertyKey}>
+                              {candidate.displayName || candidate.propertyKey}
+                            </strong>
+                            <small title={candidate.nodePath ?? "无路径"}>
+                              {candidate.nodePath ?? "无路径"}
+                            </small>
+                          </td>
+                          <td data-label="模块" title={candidateModuleLabel(candidate)}>
+                            {candidateModuleLabel(candidate)}
+                          </td>
+                          <td data-label="库基线">
+                            <code title={candidate.baselineValue ?? undefined}>
+                              {candidate.baselineValue ?? "—"}
+                            </code>
+                          </td>
+                          <td
+                            data-label="操作"
+                            className="parameter-row-actions"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            {candidate.debuggable ? (
+                              <button
+                                type="button"
+                                className="button subtle dts-parameter-workbench-table__icon-action"
+                                aria-label={`编辑 ${candidate.displayName || candidate.propertyKey}`}
+                                title="编辑"
+                                onClick={() => openCandidateEditor(candidate)}
+                              >
+                                <Pencil size={16} strokeWidth={1.9} aria-hidden="true" />
+                              </button>
+                            ) : (
+                              <span
+                                className="dts-reload-status-text"
+                                title={
+                                  dtsReloadBlockReasonLabels[
+                                    candidate.blockReason ?? "unsupported-value-shape"
+                                  ]
+                                }
+                              >
+                                {
+                                  dtsReloadBlockReasonLabels[
+                                    candidate.blockReason ?? "unsupported-value-shape"
+                                  ]
+                                }
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+                </div>
+              </section>
             </div>
           </div>
+        </section>
 
-          {selectedHasSensitive ? (
-            <p role="status" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-              已选参数命中敏感节点规则：除 debugging:dts-reload 外还需要{" "}
-              {Array.from(
-                new Set(
-                  selectedCandidates
-                    .map((candidate) => candidate.sensitiveMatch?.requiredCapability)
-                    .filter((value): value is string => Boolean(value))
-                )
-              ).join(" / ") || "parameter:edit-critical"}
-              。
-              {selectedHasCriticalSensitive ? " critical 层级还需在下方明确确认。" : ""}
-            </p>
-          ) : null}
-
-          {selectedHasCriticalSensitive ? (
-            <label className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-950">
-              <input
-                type="checkbox"
-                className="mt-1"
-                checked={criticalConfirmed}
-                onChange={(event) => setCriticalConfirmed(event.target.checked)}
-                aria-label="确认 critical 敏感节点重载"
-              />
-              <span>
-                我确认要为 critical 敏感参数启动重载运行（发送 confirmationToken=
-                {SENSITIVE_RELOAD_CONFIRMATION_TOKEN}）。调试值不会写回参数库；设备部署需另行确认。
+        {run ? (
+          <section className="debug-table dts-reload-run-result" aria-live="polite">
+            <div className="panel-header">
+              <strong>运行结果</strong>
+              <span className={cn("dts-reload-status-pill", statusBadgeClass(run.status))}>
+                {dtsReloadStatusLabels[run.status]}
               </span>
-            </label>
-          ) : null}
-
-          <Button
-            type="button"
-            onClick={() => void onStart()}
-            disabled={
-              selectedCandidates.length === 0 ||
-              !canStartRun ||
-              starting ||
-              (selectedHasCriticalSensitive && !criticalConfirmed)
-            }
-          >
-            {starting ? "预检中…" : `启动重载运行（${selectedCandidates.length}）`}
-          </Button>
-
-          {run ? (
-            <div className="flex flex-col gap-3 border-t pt-4" aria-live="polite">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold">运行结果</h3>
-                <span className={cn("rounded-md px-2 py-0.5 text-xs font-medium", statusBadgeClass(run.status))}>
-                  {dtsReloadStatusLabels[run.status]}
-                </span>
-              </div>
-              {run.failureCode ? <p className="text-xs text-muted-foreground">失败码：{run.failureCode}</p> : null}
+            </div>
+            <div className="dts-reload-run-result__body">
+              {run.failureCode ? <p>失败码：{run.failureCode}</p> : null}
               {run.purpose === "restore-baseline" ? (
-                <p className="text-xs font-medium text-violet-900">
+                <p className="dts-reload-run-purpose">
                   目的：{dtsReloadPurposeLabels["restore-baseline"]}
                   {run.restoresSourceRunId ? `（源运行 ${run.restoresSourceRunId}）` : ""}
                 </p>
               ) : null}
               {run.bridgeMachineLabel || run.targetRef ? (
-                <div className="flex flex-col gap-2">
-                  <p className="text-xs text-muted-foreground">
+                <div className="dts-reload-run-target">
+                  <p>
                     目标设备：{run.deviceId ?? deviceId} · {run.targetRef ?? targetRef}
                     {run.bridgeMachineLabel ? ` · Bridge ${run.bridgeMachineLabel}` : ""}
                     {run.purpose === "restore-baseline" ? " · 补偿性恢复基线" : ""}
@@ -1928,16 +2133,10 @@ export function DtsReloadPage({
                   ) : null}
                 </div>
               ) : null}
-              {run.targets.length > 0 ? (
-                <p className="text-xs text-muted-foreground">本运行包含 {run.targets.length} 个参数目标。</p>
-              ) : null}
-              {run.integrityCheck ? (
-                <p className="text-xs text-muted-foreground">
-                  完整性校验：{integrityCheckLabel(run.integrityCheck)}
-                </p>
-              ) : null}
+              {run.targets.length > 0 ? <p>本运行包含 {run.targets.length} 个参数目标。</p> : null}
+              {run.integrityCheck ? <p>完整性校验：{integrityCheckLabel(run.integrityCheck)}</p> : null}
               {run.diagnostics.length > 0 ? (
-                <ul className="space-y-1 text-xs text-rose-900">
+                <ul className="dts-reload-diagnostics">
                   {run.diagnostics.map((diagnostic, index) => (
                     <li key={`${diagnostic.code}-${index}`}>{diagnostic.message}</li>
                   ))}
@@ -1946,222 +2145,230 @@ export function DtsReloadPage({
               <RunStepsList steps={run.steps} />
               {run.reloadSnapshot ? <ReloadSnapshotSummary snapshot={run.reloadSnapshot} /> : null}
               {run.overlaySource ? (
-                <label className="flex flex-col gap-1 text-sm">
-                  <span className="font-medium">Overlay 源码</span>
-                  <textarea
-                    aria-label="Overlay 源码"
-                    className="min-h-[220px] rounded-md border bg-muted/20 p-3 font-mono text-xs"
-                    readOnly
-                    value={run.overlaySource}
-                  />
+                <label className="dts-reload-overlay-source">
+                  <span>Overlay 源码</span>
+                  <textarea aria-label="Overlay 源码" readOnly value={run.overlaySource} />
                 </label>
               ) : null}
               {run.artifact ? (
-                <div className="flex flex-col gap-1">
-                  <Button
+                <div className="dts-reload-artifact">
+                  <button
                     type="button"
-                    variant="outline"
+                    className="button subtle"
                     disabled={run.artifactRetentionExpired === true}
                     onClick={() => void onDownload()}
                   >
                     {run.artifactRetentionExpired
                       ? "产物已过期（不可下载）"
                       : `下载编译产物 (${run.artifact.fileName})`}
-                  </Button>
-                  <p className="font-mono text-[11px] text-muted-foreground">sha256 {run.artifact.sha256}</p>
+                  </button>
+                  <p className="font-mono">sha256 {run.artifact.sha256}</p>
                 </div>
               ) : null}
               {canRetryDeploy && canStartRun ? (
-                <Button
+                <button
                   type="button"
-                  variant="outline"
+                  className="submit-round-button debugging-deploy-button"
                   disabled={!deployReady || deploying}
                   onClick={() => openDeployConfirm(run)}
                 >
                   {run.status === "failed" ? "重试部署到设备" : "部署到设备"}
-                </Button>
+                </button>
               ) : null}
             </div>
-          ) : null}
-        </div>
-      </div>
+          </section>
+        ) : null}
 
-      <div
-        className="flex flex-col gap-3 rounded-md border p-4"
-        aria-label="运行历史"
-        aria-labelledby="dts-reload-history-title"
-      >
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h3 id="dts-reload-history-title" className="text-sm font-semibold">
-              运行历史
-            </h3>
-            <p className="text-xs text-muted-foreground">
+        <details className="operation-history-panel dts-reload-history" aria-label="运行历史">
+          <summary id="dts-reload-history-title">
+            <strong>运行历史</strong>
+            <span>
+              {historyLoading
+                ? "加载中…"
+                : historyItems.length > 0
+                  ? `${historyItems.length} 条`
+                  : "暂无记录"}
+            </span>
+          </summary>
+          <div className="dts-reload-history__body">
+            <p className="dts-reload-history__hint">
               按项目列出（可选设备过滤），含已阻断与失败运行；恢复基线运行单独标注。
             </p>
+            <label className="dts-reload-history__filter">
+              <input
+                type="checkbox"
+                checked={Boolean(historyFilterDevice && deviceId.trim())}
+                disabled={!deviceId.trim()}
+                onChange={(event) => {
+                  if (!deviceId.trim()) return;
+                  setHistoryFilterDevice(event.target.checked);
+                }}
+                aria-label="仅显示当前设备的运行"
+              />
+              仅当前设备
+              {deviceId.trim() ? `（${deviceId.trim()}）` : "（先填写设备 ID）"}
+            </label>
+            {historyError ? (
+              <p role="alert" className="dts-reload-history__error">
+                {historyError}
+              </p>
+            ) : null}
+            {historyLoading ? (
+              <p>加载运行历史…</p>
+            ) : historyItems.length === 0 ? (
+              <p>暂无运行记录。</p>
+            ) : (
+              <ul className="dts-reload-history__list">
+                {historyItems.map((item) => (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      className={cn(run?.id === item.id && "is-active")}
+                      onClick={() => void onOpenHistoryRun(item.id)}
+                    >
+                      <div className="dts-reload-history__row-head">
+                        <span className={cn("dts-reload-status-pill", statusBadgeClass(item.status))}>
+                          {dtsReloadStatusLabels[item.status]}
+                        </span>
+                        {item.purpose === "restore-baseline" ? (
+                          <span className="dts-reload-purpose-pill">
+                            {dtsReloadPurposeLabels["restore-baseline"]}
+                          </span>
+                        ) : null}
+                        <span>{formatAttemptedAt(item.createdAt)}</span>
+                      </div>
+                      <div className="dts-reload-history__row-meta">
+                        {item.deviceId ?? "未绑定设备"} · {item.targetCount} 个参数
+                        {item.propertyKeys.length > 0 ? ` · ${item.propertyKeys.slice(0, 3).join(", ")}` : ""}
+                        {item.failureCode ? ` · ${item.failureCode}` : ""}
+                      </div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {historyNextCursor ? (
+              <button
+                type="button"
+                className="button subtle"
+                disabled={historyLoadingMore || historyLoading}
+                onClick={() => void onLoadMoreHistory()}
+              >
+                {historyLoadingMore ? "加载中…" : "加载更多"}
+              </button>
+            ) : null}
           </div>
-          <label className="flex items-center gap-2 text-xs">
-            <input
-              type="checkbox"
-              checked={Boolean(historyFilterDevice && deviceId.trim())}
-              disabled={!deviceId.trim()}
-              onChange={(event) => {
-                if (!deviceId.trim()) return;
-                setHistoryFilterDevice(event.target.checked);
-              }}
-              aria-label="仅显示当前设备的运行"
-            />
-            仅当前设备
-            {deviceId.trim() ? `（${deviceId.trim()}）` : "（先填写设备 ID）"}
-          </label>
-        </div>
-        {historyError ? (
-          <p role="alert" className="text-xs text-rose-900">
-            {historyError}
-          </p>
-        ) : null}
-        {historyLoading ? (
-          <p className="text-sm text-muted-foreground">加载运行历史…</p>
-        ) : historyItems.length === 0 ? (
-          <p className="text-sm text-muted-foreground">暂无运行记录。</p>
-        ) : (
-          <ul className="divide-y rounded-md border">
-            {historyItems.map((item) => (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  className={cn(
-                    "flex w-full flex-col gap-1 px-3 py-3 text-left hover:bg-muted/30",
-                    run?.id === item.id && "bg-sky-50"
-                  )}
-                  onClick={() => void onOpenHistoryRun(item.id)}
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className={cn("rounded-md px-2 py-0.5 text-xs font-medium", statusBadgeClass(item.status))}>
-                      {dtsReloadStatusLabels[item.status]}
-                    </span>
-                    {item.purpose === "restore-baseline" ? (
-                      <span className="rounded-md bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-950">
-                        {dtsReloadPurposeLabels["restore-baseline"]}
-                      </span>
-                    ) : null}
-                    <span className="text-xs text-muted-foreground">{formatAttemptedAt(item.createdAt)}</span>
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {item.deviceId ?? "未绑定设备"} · {item.targetCount} 个参数
-                    {item.propertyKeys.length > 0 ? ` · ${item.propertyKeys.slice(0, 3).join(", ")}` : ""}
-                    {item.failureCode ? ` · ${item.failureCode}` : ""}
-                  </div>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        {historyNextCursor ? (
-          <Button
-            type="button"
-            variant="outline"
-            disabled={historyLoadingMore || historyLoading}
-            onClick={() => void onLoadMoreHistory()}
-          >
-            {historyLoadingMore ? "加载中…" : "加载更多"}
-          </Button>
-        ) : null}
-      </div>
+        </details>
 
-      <ConfirmDialog
-        open={deployConfirmOpen}
-        title={confirmRun?.purpose === "restore-baseline" ? "确认补偿性恢复基线部署" : "确认部署到设备"}
-        description={
-          confirmRun ? (
-            <DeployConfirmBody
-              run={confirmRun}
-              deviceId={deviceId.trim()}
-              targetRef={targetRef.trim()}
-              bridgeMachineLabel={selectedBridge?.machineLabel ?? confirmRun.bridgeMachineLabel ?? "—"}
-              residue={residue}
-            />
-          ) : null
-        }
-        confirmLabel={confirmRun?.purpose === "restore-baseline" ? "确认补偿性部署" : "确认部署"}
-        tone="danger"
-        pending={deploying}
-        pendingLabel="部署中…"
-        error={
-          deployError ? (
-            <span className="flex flex-col gap-2">
-              <span>{deployError}</span>
-              {deployUpgradeReleasesPath ? (
-                <span>
-                  Bridge 版本过旧或缺少所需 RPC。请{" "}
-                  <a className="font-medium underline" href={BRIDGE_UPGRADE_ENTRY_PATH}>
-                    下载或升级 Bridge
-                  </a>
-                  （发布元数据：<code className="rounded bg-rose-100 px-1">{deployUpgradeReleasesPath}</code>）。
-                </span>
-              ) : null}
-            </span>
-          ) : (
-            ""
-          )
-        }
-        onCancel={closeDeployConfirm}
-        onConfirm={() => void onDeployConfirm()}
-      />
+        {editingCandidate ? (
+          <DtsReloadCandidateEditDialog
+            candidate={editingCandidate}
+            initialDebugValue={
+              debugValues[editingCandidate.bindingId] ?? editingCandidate.baselineValue ?? ""
+            }
+            alreadyInBatch={selectedBindingIds.includes(editingCandidate.bindingId)}
+            onClose={() => setEditingBindingId(null)}
+            onConfirm={(debugValue) => confirmCandidateDebugValue(editingCandidate, debugValue)}
+            onOpenHistoryRun={(runId) => {
+              void onOpenHistoryRun(runId);
+            }}
+          />
+        ) : null}
 
-      <ConfirmDialog
-        open={restoreConfirmOpen}
-        title="确认恢复基线（补偿性重载）"
-        description={
-          residue ? (
-            <div className="flex flex-col gap-3 text-sm">
-              <p className="text-xs leading-relaxed">
-                将启动一次<strong>新的重载运行</strong>，调试值取自残留产生运行的同一参数集的<strong>库基线值</strong>。
-                这是<strong>补偿性重载</strong>，不是撤销——已应用的 overlay 无法卸载。
-              </p>
-              <ResidueIndicator residue={residue} deviceId={deviceId.trim()} />
-              <p className="text-xs text-muted-foreground">
-                预检、敏感确认与部署确认路径与普通运行完全相同，不会走捷径。
-              </p>
-              {restoreHasSensitive ? (
-                <p className="text-xs text-amber-950">
-                  残留参数含敏感节点匹配；恢复基线仍须具备{" "}
-                  {Array.from(
-                    new Set(
-                      residueSensitiveCandidates
-                        .map((candidate) => candidate.sensitiveMatch?.requiredCapability)
-                        .filter((value): value is string => Boolean(value))
-                    )
-                  ).join(" / ") || "parameter:edit-critical"}
-                  。
-                </p>
-              ) : null}
-              {restoreHasCriticalSensitive ? (
-                <label className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-950">
-                  <input
-                    type="checkbox"
-                    className="mt-1"
-                    checked={restoreCriticalConfirmed}
-                    onChange={(event) => setRestoreCriticalConfirmed(event.target.checked)}
-                    aria-label="确认 critical 敏感节点补偿性恢复"
-                  />
+        <ConfirmDialog
+          open={deployConfirmOpen}
+          title={confirmRun?.purpose === "restore-baseline" ? "确认补偿性恢复基线部署" : "确认部署到设备"}
+          description={
+            confirmRun ? (
+              <DeployConfirmBody
+                run={confirmRun}
+                deviceId={deviceId.trim()}
+                targetRef={targetRef.trim()}
+                bridgeMachineLabel={selectedBridge?.machineLabel ?? confirmRun.bridgeMachineLabel ?? "—"}
+                residue={residue}
+              />
+            ) : null
+          }
+          confirmLabel={confirmRun?.purpose === "restore-baseline" ? "确认补偿性部署" : "确认部署"}
+          tone="danger"
+          pending={deploying}
+          pendingLabel="部署中…"
+          error={
+            deployError ? (
+              <span className="flex flex-col gap-2">
+                <span>{deployError}</span>
+                {deployUpgradeReleasesPath ? (
                   <span>
-                    我确认要以库基线值对 critical 敏感参数启动补偿性恢复（confirmationToken=
-                    {SENSITIVE_RELOAD_CONFIRMATION_TOKEN}）。这不是撤销。
+                    Bridge 版本过旧或缺少所需 RPC。请{" "}
+                    <a className="font-medium underline" href={BRIDGE_UPGRADE_ENTRY_PATH}>
+                      下载或升级 Bridge
+                    </a>
+                    （发布元数据：<code className="rounded bg-rose-100 px-1">{deployUpgradeReleasesPath}</code>）。
                   </span>
-                </label>
-              ) : null}
-            </div>
-          ) : null
-        }
-        confirmLabel="启动补偿性恢复"
-        tone="danger"
-        pending={restoring}
-        pendingLabel="启动中…"
-        error={restoreError}
-        onCancel={closeRestoreConfirm}
-        onConfirm={() => void onRestoreConfirm()}
-      />
-    </section>
+                ) : null}
+              </span>
+            ) : (
+              ""
+            )
+          }
+          onCancel={closeDeployConfirm}
+          onConfirm={() => void onDeployConfirm()}
+        />
+
+        <ConfirmDialog
+          open={restoreConfirmOpen}
+          title="确认恢复基线（补偿性重载）"
+          description={
+            residue ? (
+              <div className="flex flex-col gap-3 text-sm">
+                <p className="text-xs leading-relaxed">
+                  将启动一次<strong>新的重载运行</strong>，调试值取自残留产生运行的同一参数集的<strong>库基线值</strong>。
+                  这是<strong>补偿性重载</strong>，不是撤销——已应用的 overlay 无法卸载。
+                </p>
+                <ResidueIndicator residue={residue} deviceId={deviceId.trim()} />
+                <p className="text-xs text-muted-foreground">
+                  预检、敏感确认与部署确认路径与普通运行完全相同，不会走捷径。
+                </p>
+                {restoreHasSensitive ? (
+                  <p className="text-xs text-amber-950">
+                    残留参数含敏感节点匹配；恢复基线仍须具备{" "}
+                    {Array.from(
+                      new Set(
+                        residueSensitiveCandidates
+                          .map((candidate) => candidate.sensitiveMatch?.requiredCapability)
+                          .filter((value): value is string => Boolean(value))
+                      )
+                    ).join(" / ") || "parameter:edit-critical"}
+                    。
+                  </p>
+                ) : null}
+                {restoreHasCriticalSensitive ? (
+                  <label className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-950">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={restoreCriticalConfirmed}
+                      onChange={(event) => setRestoreCriticalConfirmed(event.target.checked)}
+                      aria-label="确认 critical 敏感节点补偿性恢复"
+                    />
+                    <span>
+                      我确认要以库基线值对 critical 敏感参数启动补偿性恢复（confirmationToken=
+                      {SENSITIVE_RELOAD_CONFIRMATION_TOKEN}）。这不是撤销。
+                    </span>
+                  </label>
+                ) : null}
+              </div>
+            ) : null
+          }
+          confirmLabel="启动补偿性恢复"
+          tone="danger"
+          pending={restoring}
+          pendingLabel="启动中…"
+          error={restoreError}
+          onCancel={closeRestoreConfirm}
+          onConfirm={() => void onRestoreConfirm()}
+        />
+      </div>
+    </div>
   );
 }

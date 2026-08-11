@@ -9,6 +9,57 @@ import { DTS_RELOAD_CONFIRMATION_TOKEN } from "@/domain/dtsReload/types";
 import { DtsReloadPage } from "./DtsReloadPage";
 import { getRequiredRoleForPage } from "@/app/permissions";
 
+vi.mock("@/infrastructure/http/bridgeConnectLauncher", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/infrastructure/http/bridgeConnectLauncher")>();
+  return {
+    ...actual,
+    probeLocalBridgeHealth: vi.fn(async () => null),
+    probeLocalBridgeHealthDetailed: vi.fn(async () => ({
+      health: null,
+      reachability: "offline" as const
+    }))
+  };
+});
+
+vi.mock("@/infrastructure/http/deviceBridgeClient", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/infrastructure/http/deviceBridgeClient")>();
+  return {
+    ...actual,
+    listMyBridges: vi.fn(async () => []),
+    listReleases: vi.fn(async () => ({
+      recommendedVersion: "0.0.0",
+      minCompatibleVersion: "0.0.0",
+      items: []
+    })),
+    createPairingCode: vi.fn(async () => ({
+      code: "123456",
+      expiresAt: new Date(Date.now() + 60_000).toISOString()
+    })),
+    renameBridge: vi.fn(async (id: string, machineLabel: string) => ({
+      id,
+      machineLabel,
+      platform: "darwin" as const,
+      arch: "arm64",
+      clientVersion: null,
+      capabilities: {},
+      createdAt: "1970-01-01T00:00:00.000Z",
+      lastSeenAt: null,
+      revokedAt: null
+    })),
+    revokeBridge: vi.fn(async (id: string) => ({
+      id,
+      machineLabel: "revoked",
+      platform: "darwin" as const,
+      arch: "arm64",
+      clientVersion: null,
+      capabilities: {},
+      createdAt: "1970-01-01T00:00:00.000Z",
+      lastSeenAt: null,
+      revokedAt: new Date().toISOString()
+    }))
+  };
+});
+
 const testBridges = [{ id: "bridge-1", machineLabel: "Lab Mac" }];
 
 function candidate(overrides: Partial<DtsReloadCandidate> = {}): DtsReloadCandidate {
@@ -167,13 +218,16 @@ function renderPage(repository: DtsReloadRepository, overrides: Partial<Componen
       repository={repository}
       canStartRun
       bridges={testBridges}
+      probeBridgeHealth={async () => ({ connected: true, bridgeId: "bridge-1" })}
+      initialTargetRef="device-serial-1"
+      moduleRegistryRepository={null}
       {...overrides}
     />
   );
 }
 
-async function fillDeployFields(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(screen.getByLabelText("目标标识 targetRef"), "device-serial-1");
+async function fillDeployFields(_user: ReturnType<typeof userEvent.setup>) {
+  // Deploy target comes from Bridge detect / initialTargetRef — no manual field.
 }
 
 afterEach(() => {
@@ -190,6 +244,157 @@ describe("DtsReloadPage", () => {
       <DtsReloadPage projects={[{ id: "project-1", name: "Demo" }]} repository={null} canStartRun={false} />
     );
     expect(screen.getByRole("status")).toHaveTextContent(/仅在 API 模式下可用/);
+  });
+
+  it("exposes workbench landmarks for protocol, candidates, start bar, and collapsed history", async () => {
+    const repository = createRepository();
+    renderPage(repository);
+    expect(await screen.findByRole("group", { name: "连接协议" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "本地设备连接" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "部署目标" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "可调试参数" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "模块导航" })).toBeInTheDocument();
+    expect(screen.getByRole("tree", { name: "业务模块树" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /模块/ })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "操作" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "筛选模块" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /编辑 Watchdog/ })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "本轮重载" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /下发参数/ })).toBeInTheDocument();
+    expect(screen.queryByLabelText("DTS 重载启动操作栏")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "已选调试值" })).not.toBeInTheDocument();
+    const history = screen.getByLabelText("运行历史");
+    expect(history.tagName.toLowerCase()).toBe("details");
+    expect(history).not.toHaveAttribute("open");
+  });
+
+  it("opens a side sheet to edit a debuggable candidate into the reload batch", async () => {
+    const user = userEvent.setup();
+    const repository = createRepository();
+    renderPage(repository);
+
+    await user.click(await screen.findByRole("button", { name: /编辑 Watchdog/ }));
+    const sheet = await screen.findByRole("dialog", { name: "Watchdog" });
+    expect(within(sheet).getByRole("heading", { name: "上次重载" })).toBeInTheDocument();
+    expect(within(sheet).getByText("暂无上次重载记录。")).toBeInTheDocument();
+    expect(within(sheet).getByLabelText("Watchdog 调试值")).toHaveValue("<6000>");
+    const valueInput = within(sheet).getByLabelText("Watchdog 调试值");
+    await user.clear(valueInput);
+    await user.type(valueInput, "<7000>");
+    await user.click(within(sheet).getByRole("button", { name: "更新本轮" }));
+
+    expect(screen.queryByRole("dialog", { name: "Watchdog" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "本轮重载" })).toBeInTheDocument();
+    expect(screen.getByDisplayValue("<7000>")).toBeInTheDocument();
+  });
+
+  it("edits the reload batch in a workbench-style tray with remove and reset actions", async () => {
+    const user = userEvent.setup();
+    const repository = createRepository({
+      listCandidates: vi.fn(async () => ({
+        items: [
+          candidate(),
+          candidate({
+            bindingId: "binding-2",
+            propertyKey: "compatible",
+            displayName: "Compatible",
+            module: "uart",
+            nodePath: "/amba/uart@2",
+            baselineValue: '"sc8562"',
+            valueShapeKind: "string-list",
+            constraints: {}
+          })
+        ]
+      }))
+    });
+    renderPage(repository);
+
+    expect(await screen.findByRole("region", { name: "本轮重载" })).toBeInTheDocument();
+    expect(screen.getByText(/本轮 1 项/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Watchdog 值变更")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("checkbox", { name: "选择 Compatible" }));
+    expect(screen.getByText(/本轮 2 项/)).toBeInTheDocument();
+
+    const compatibleInput = screen.getByLabelText("Compatible 调试值");
+    await user.clear(compatibleInput);
+    await user.type(compatibleInput, '"debug"');
+    expect(compatibleInput).toHaveValue('"debug"');
+
+    await user.click(screen.getByRole("button", { name: "重置为基线" }));
+    expect(compatibleInput).toHaveValue('"sc8562"');
+
+    await user.click(screen.getByRole("button", { name: "移出本轮重载 Compatible" }));
+    expect(screen.getByText(/本轮 1 项/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Compatible 调试值")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "清空本轮" }));
+    expect(screen.queryByRole("region", { name: "本轮重载" })).not.toBeInTheDocument();
+  });
+
+  it("keeps block reasons in the operations column for not-debuggable rows", async () => {
+    const user = userEvent.setup();
+    const repository = createRepository({
+      listCandidates: vi.fn(async () => ({
+        items: [
+          candidate({
+            bindingId: "binding-blocked",
+            displayName: "Blocked",
+            debuggable: false,
+            blockReason: "unsupported-value-shape"
+          })
+        ]
+      }))
+    });
+
+    renderPage(repository);
+
+    expect(await screen.findByText("Blocked")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /编辑 Blocked/ })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("table")).getByText(/u32 cell 数组与字符串列表/)).toBeInTheDocument();
+    await user.click(screen.getByText("Blocked"));
+    expect(screen.queryByRole("region", { name: "本轮重载" })).not.toBeInTheDocument();
+  });
+
+  it("filters candidates with the 模块 ColumnFilter multi-select", async () => {
+    const user = userEvent.setup();
+    const repository = createRepository({
+      listCandidates: vi.fn(async () => ({
+        items: [
+          candidate(),
+          candidate({
+            bindingId: "binding-2",
+            propertyKey: "compatible",
+            displayName: "Compatible",
+            module: "uart",
+            nodePath: "/amba/uart@2",
+            baselineValue: '"sc8562"',
+            valueShapeKind: "string-list",
+            constraints: {}
+          })
+        ]
+      }))
+    });
+    renderPage(repository);
+
+    expect(await screen.findByRole("checkbox", { name: "选择 Watchdog" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "选择 Compatible" })).toBeInTheDocument();
+
+    const trigger = screen.getByRole("button", { name: "筛选模块" });
+    await user.click(trigger);
+    const menu = screen.getByRole("group", { name: "模块筛选" });
+    await user.click(within(menu).getByRole("checkbox", { name: "uart" }));
+
+    expect(screen.queryByRole("checkbox", { name: "选择 Watchdog" })).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "选择 Compatible" })).toBeInTheDocument();
+    expect(screen.getByText("Showing 1 of 2")).toBeInTheDocument();
+    expect(trigger).toHaveClass("active");
+    expect(trigger).toHaveTextContent("1");
+
+    await user.click(within(menu).getByRole("button", { name: "清除" }));
+    expect(screen.getByRole("checkbox", { name: "选择 Watchdog" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "选择 Compatible" })).toBeInTheDocument();
+    expect(screen.getByText("Showing 2 of 2")).toBeInTheDocument();
   });
 
   it("lists candidates, starts a batch run, shows overlay source, and downloads the artifact", async () => {
@@ -226,10 +431,17 @@ describe("DtsReloadPage", () => {
     expect((await screen.findAllByText("Watchdog")).length).toBeGreaterThan(0);
     expect(screen.getByText(/合成 \/label 锚点/)).toBeInTheDocument();
 
-    await user.selectOptions(screen.getByLabelText("按模块筛选"), "uart");
+    const moduleTree = screen.getByRole("tree", { name: "业务模块树" });
+    const uartModule = within(moduleTree).getByRole("treeitem", {
+      name: (_name, element) =>
+        element.getAttribute("aria-level") === "1" &&
+        Boolean(element.querySelector(".dts-topology-navigator__label")?.textContent?.match(/^uart$/i))
+    });
+    await user.click(uartModule);
     expect(screen.queryByRole("checkbox", { name: "选择 Watchdog" })).not.toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "选择 Compatible" })).toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText("按模块筛选"), "");
+    await user.click(uartModule);
+    expect(screen.getByRole("checkbox", { name: "选择 Watchdog" })).toBeInTheDocument();
 
     await user.type(screen.getByLabelText("按名称搜索参数"), "Watch");
     expect(screen.getByRole("checkbox", { name: "选择 Watchdog" })).toBeInTheDocument();
@@ -237,13 +449,13 @@ describe("DtsReloadPage", () => {
     await user.clear(screen.getByLabelText("按名称搜索参数"));
 
     await user.click(screen.getByLabelText("选择 Compatible"));
-    expect(screen.getByText(/已选 2 个参数/)).toBeInTheDocument();
+    expect(screen.getByText(/本轮 2 项/)).toBeInTheDocument();
 
     const watchdogInput = screen.getByLabelText("Watchdog 调试值");
     await user.clear(watchdogInput);
     await user.type(watchdogInput, "<99999>");
     await fillDeployFields(user);
-    await user.click(screen.getByRole("button", { name: /启动重载运行/ }));
+    await user.click(screen.getByRole("button", { name: /下发参数/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/最大值/);
     expect(repository.startRun).not.toHaveBeenCalled();
 
@@ -252,7 +464,7 @@ describe("DtsReloadPage", () => {
     const compatibleInput = screen.getByLabelText("Compatible 调试值");
     await user.clear(compatibleInput);
     await user.type(compatibleInput, '"sc8562", "sc8562-v2"');
-    await user.click(screen.getByRole("button", { name: /启动重载运行/ }));
+    await user.click(screen.getByRole("button", { name: /下发参数/ }));
 
     await waitFor(() =>
       expect(repository.startRun).toHaveBeenCalledWith({
@@ -302,7 +514,7 @@ describe("DtsReloadPage", () => {
     const checkbox = screen.getByLabelText("选择 Blocked");
     expect(checkbox).toBeDisabled();
     await user.click(screen.getByText("Blocked"));
-    expect(screen.getByText(/已选 0 个参数/)).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "本轮重载" })).not.toBeInTheDocument();
     expect(within(screen.getByRole("table")).getByText(/u32 cell 数组与字符串列表/)).toBeInTheDocument();
   });
 
@@ -344,11 +556,15 @@ describe("DtsReloadPage", () => {
 
     renderPage(repository);
 
-    expect(await screen.findAllByText("敏感 · critical")).not.toHaveLength(0);
+    expect(await screen.findByRole("checkbox", { name: "选择 Safety Watchdog" })).toBeChecked();
+    expect(screen.getAllByText("敏感 · critical").length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("checkbox", { name: "选择 High Param" }));
     expect(screen.getAllByText("敏感 · high").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/parameter:edit-critical/).length).toBeGreaterThan(0);
+    await user.click(screen.getByRole("checkbox", { name: "选择 High Param" }));
 
-    const startButton = screen.getByRole("button", { name: /启动重载运行/ });
+    const startButton = screen.getByRole("button", { name: /下发参数/ });
     expect(startButton).toBeDisabled();
 
     await fillDeployFields(user);
@@ -373,7 +589,7 @@ describe("DtsReloadPage", () => {
     renderPage(repository);
     await screen.findAllByText("Watchdog");
     await fillDeployFields(user);
-    await user.click(screen.getByRole("button", { name: /启动重载运行/ }));
+    await user.click(screen.getByRole("button", { name: /下发参数/ }));
 
     await waitFor(() => expect(repository.startRun).toHaveBeenCalled());
     expect(repository.deployRun).not.toHaveBeenCalled();
@@ -471,7 +687,7 @@ describe("DtsReloadPage", () => {
     renderPage(repository);
     await screen.findAllByText("Watchdog");
     await fillDeployFields(user);
-    await user.click(screen.getByRole("button", { name: /启动重载运行/ }));
+    await user.click(screen.getByRole("button", { name: /下发参数/ }));
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "确认部署" }));
 
@@ -527,7 +743,7 @@ describe("DtsReloadPage", () => {
     renderPage(failedRepo);
     await screen.findAllByText("Watchdog");
     await fillDeployFields(user);
-    await user.click(screen.getByRole("button", { name: /启动重载运行/ }));
+    await user.click(screen.getByRole("button", { name: /下发参数/ }));
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "确认部署" }));
     await waitFor(() => expect(screen.getByText(/未获得内核日志信号/)).toBeInTheDocument());
@@ -662,9 +878,16 @@ describe("DtsReloadPage", () => {
     renderPage(repository, { canStartRun: false });
     await screen.findByText("运行历史");
     expect(screen.getByText(/仅有调试查看权限/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /启动重载运行/ })).toBeDisabled();
-    expect(screen.getByText("上次重载")).toBeInTheDocument();
-    expect(screen.getByText("<7000>")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /下发参数/ })).toBeDisabled();
+    expect(screen.queryByRole("columnheader", { name: "上次重载" })).not.toBeInTheDocument();
+
+    await user.click(await screen.findByRole("button", { name: /编辑 Watchdog/ }));
+    const sheet = await screen.findByRole("dialog", { name: "Watchdog" });
+    expect(within(sheet).getByRole("heading", { name: "上次重载" })).toBeInTheDocument();
+    expect(within(sheet).getByText("<7000>")).toBeInTheDocument();
+    expect(within(sheet).getByRole("button", { name: "查看该次运行详情" })).toBeInTheDocument();
+    await user.click(within(sheet).getByRole("button", { name: "取消" }));
+
     expect(screen.getAllByText(/恢复基线/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/已阻断|部署失败/).length).toBeGreaterThan(0);
 
@@ -697,13 +920,15 @@ describe("DtsReloadPage", () => {
     expect(within(historyRegion).getByText(/先填写设备 ID/)).toBeInTheDocument();
   });
 
-  it("distinguishes no paired bridge, paired-offline, and connected readiness", async () => {
+  it("reuses LocalDeviceBridgePanel readiness states for unpaired, paired-offline, and connected", async () => {
     const repository = createRepository();
     const { rerender } = renderPage(repository, {
       bridges: [],
-      probeBridgeHealth: async () => null
+      probeBridgeHealth: async () => null,
+      initialTargetRef: ""
     });
-    expect(await screen.findByRole("status", { name: /Bridge 就绪状态/ })).toHaveTextContent(/未配对 Bridge/);
+    expect(await screen.findByRole("region", { name: "本地设备连接" })).toBeInTheDocument();
+    expect(await screen.findByText(/未检测到本地 Bridge/)).toBeInTheDocument();
 
     rerender(
       <DtsReloadPage
@@ -712,9 +937,11 @@ describe("DtsReloadPage", () => {
         canStartRun
         bridges={[{ id: "bridge-1", machineLabel: "Lab Mac", lastSeenAt: null }]}
         probeBridgeHealth={async () => ({ connected: false, bridgeId: undefined })}
+        initialTargetRef=""
+        moduleRegistryRepository={null}
       />
     );
-    expect(await screen.findByRole("status", { name: /Bridge 就绪状态/ })).toHaveTextContent(/已配对但未连接/);
+    expect(await screen.findByText(/Bridge 已配对，但尚未连接到服务器/)).toBeInTheDocument();
 
     rerender(
       <DtsReloadPage
@@ -723,28 +950,33 @@ describe("DtsReloadPage", () => {
         canStartRun
         bridges={[{ id: "bridge-1", machineLabel: "Lab Mac", lastSeenAt: new Date().toISOString() }]}
         probeBridgeHealth={async () => ({ connected: true, bridgeId: "bridge-1" })}
+        initialTargetRef=""
+        moduleRegistryRepository={null}
       />
     );
-    expect(await screen.findByRole("status", { name: /Bridge 就绪状态/ })).toHaveTextContent(/已连接/);
+    expect(await screen.findByText(/Bridge 在线，请插入 USB 设备/)).toBeInTheDocument();
   });
 
   it("does not treat recent lastSeen as connected when health probe reports offline", async () => {
     const repository = createRepository();
     renderPage(repository, {
       bridges: [{ id: "bridge-1", machineLabel: "Lab Mac", lastSeenAt: new Date().toISOString() }],
-      probeBridgeHealth: async () => ({ connected: false, bridgeId: undefined })
+      probeBridgeHealth: async () => ({ connected: false, bridgeId: undefined }),
+      initialTargetRef: ""
     });
-    expect(await screen.findByRole("status", { name: /Bridge 就绪状态/ })).toHaveTextContent(/已配对但未连接/);
-    expect(screen.getByRole("status", { name: /Bridge 就绪状态/ })).not.toHaveTextContent(/已连接 ·/);
+    expect(await screen.findByText(/Bridge 已配对，但尚未连接到服务器/)).toBeInTheDocument();
+    expect(screen.queryByText(/Bridge 在线/)).not.toBeInTheDocument();
   });
 
   it("does not mark a different bridge connected when health is bound to another id", async () => {
     const repository = createRepository();
     renderPage(repository, {
       bridges: [{ id: "bridge-1", machineLabel: "Lab Mac", lastSeenAt: new Date().toISOString() }],
-      probeBridgeHealth: async () => ({ connected: true, bridgeId: "bridge-other" })
+      probeBridgeHealth: async () => ({ connected: true, bridgeId: "bridge-other" }),
+      initialTargetRef: ""
     });
-    expect(await screen.findByRole("status", { name: /Bridge 就绪状态/ })).toHaveTextContent(/已配对但未连接/);
+    // Pairing is stale relative to registered bridges → treat as not paired / reconnect.
+    expect(await screen.findByText(/配对已失效|尚未配对|连接本机/)).toBeInTheDocument();
   });
 
   it("lists reachable targets from detectTargets for selection context", async () => {
@@ -753,16 +985,20 @@ describe("DtsReloadPage", () => {
     renderPage(repository, {
       bridges: [{ id: "bridge-1", machineLabel: "Lab Mac", lastSeenAt: new Date().toISOString() }],
       probeBridgeHealth: async () => ({ connected: true, bridgeId: "bridge-1" }),
+      initialTargetRef: "",
       detectTargets: async () => [
         { targetRef: "AURORA-001", label: "Lab Mac · AURORA-001", bridgeId: "bridge-1" },
         { targetRef: "AURORA-002", label: "Lab Mac · AURORA-002", bridgeId: "bridge-1" }
       ]
     });
 
-    const targetList = await screen.findByLabelText("可达设备目标");
+    const targetList = await screen.findByLabelText("设备代理目标选择");
     expect(within(targetList).getByRole("button", { name: /AURORA-001/ })).toBeInTheDocument();
     await user.click(within(targetList).getByRole("button", { name: /AURORA-002/ }));
-    expect(screen.getByLabelText("目标标识 targetRef")).toHaveValue("AURORA-002");
+    expect(within(targetList).getByRole("button", { name: /AURORA-002/ })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
   });
 
   it("renders a navigable upgrade control when deploy fails with bridge-upgrade-required", async () => {
@@ -784,7 +1020,7 @@ describe("DtsReloadPage", () => {
     renderPage(repository);
     await screen.findAllByText("Watchdog");
     await fillDeployFields(user);
-    await user.click(screen.getByRole("button", { name: /启动重载运行/ }));
+    await user.click(screen.getByRole("button", { name: /下发参数/ }));
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "确认部署" }));
     const upgradeLink = await screen.findByRole("link", { name: /下载或升级 Bridge/ });

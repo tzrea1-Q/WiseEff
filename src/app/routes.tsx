@@ -278,7 +278,7 @@ export function PageRouter({
           unavailableReason={
             runtimeMode === "api"
               ? undefined
-              : "该页面仅在 API 模式下可用。Mock 运行时不提供 DTS 重载调试。"
+              : "该页面仅在 API 模式下可用。Mock 运行时不提供参数调试。"
           }
           detectTargets={
             runtimeMode === "api" && debuggingGateway

@@ -50,6 +50,7 @@ export type CandidateClassificationInput = {
   propertyKey: string;
   displayName: string;
   module: string;
+  moduleId?: string | null;
   nodePath: string | null;
   baselineValue: string | null;
   valueShape: CandidateValueShape;
@@ -65,6 +66,7 @@ export function classifyReloadCandidate(input: CandidateClassificationInput): Re
     propertyKey: input.propertyKey,
     displayName: input.displayName,
     module: input.module,
+    moduleId: input.moduleId ?? null,
     nodePath: input.nodePath,
     compatible: null as string | null,
     baselineValue: input.baselineValue,

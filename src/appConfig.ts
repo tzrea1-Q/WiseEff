@@ -112,11 +112,11 @@ export const navigationItems: PageConfig[] = [
   {
     key: "dts-reload",
     path: "/dts-reload",
-    label: "DTS 重载调试",
+    label: "参数调试",
     group: "调试平台",
     icon: Settings2,
-    title: "DTS 重载调试",
-    subtitle: "从参数库生成并预检调试 overlay，下载编译产物"
+    title: "参数调试",
+    subtitle: "DTS参数热重载，无需手动编译"
   },
   {
     key: "debugging-admin",

@@ -161,6 +161,7 @@ function rowToCandidate(row: ReloadCandidateRow): ReloadCandidateDto {
   });
   return {
     ...classified,
+    moduleId: row.module_id ?? null,
     compatible: row.compatible ?? null,
     sensitiveMatch: null,
     lastReload: null
