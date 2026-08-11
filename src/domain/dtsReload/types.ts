@@ -234,7 +234,7 @@ export type ReloadConfigurationAdminView = {
 export const dtsReloadBlockReasonLabels: Record<DtsReloadCandidateBlockReason, string> = {
   "no-node-path": "缺少绝对节点路径，无法作为 target-path",
   "synthesised-anchor": "定位器是合成 /label 锚点，不能作为 target-path",
-  "unsupported-value-shape": "当前仅支持 u32 cell 数组、字符串列表与 GPIO 风格 phandle 数组（如 <&gpioN pin flags>）",
+  "unsupported-value-shape": "当前仅支持 u32/u8/u16 cell 数组（含 /bits/ 8）、字符串列表与 GPIO 风格 phandle 数组（如 <&gpioN pin flags>）",
   "no-baseline-value": "缺少库基线值，无法对比调试值"
 };
 

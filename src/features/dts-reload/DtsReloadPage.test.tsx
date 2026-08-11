@@ -391,6 +391,7 @@ describe("DtsReloadPage", () => {
 
     expect(await screen.findByText("Blocked")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /编辑 Blocked/ })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("table")).getByText(/u32\/u8\/u16 cell 数组/)).toBeInTheDocument();
     expect(within(screen.getByRole("table")).getByText(/GPIO 风格 phandle 数组/)).toBeInTheDocument();
     await user.click(screen.getByText("Blocked"));
     expect(screen.queryByRole("region", { name: "本轮重载" })).not.toBeInTheDocument();
@@ -555,6 +556,7 @@ describe("DtsReloadPage", () => {
     expect(checkbox).toBeDisabled();
     await user.click(screen.getByText("Blocked"));
     expect(screen.queryByRole("region", { name: "本轮重载" })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("table")).getByText(/u32\/u8\/u16 cell 数组/)).toBeInTheDocument();
     expect(within(screen.getByRole("table")).getByText(/GPIO 风格 phandle 数组/)).toBeInTheDocument();
   });
 

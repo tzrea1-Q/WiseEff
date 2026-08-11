@@ -173,6 +173,13 @@ function sensitiveBadgeLabel(candidate: DtsReloadCandidate): string | null {
 
 function parseCellIntegers(raw: string): number[] | null {
   const trimmed = raw.trim();
+  const bracket = /^\[([0-9a-fA-F\s]+)\]$/.exec(trimmed);
+  if (bracket) {
+    const tokens = bracket[1]!.trim().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return null;
+    const values = tokens.map((token) => Number.parseInt(token, 16));
+    return values.every((value) => Number.isFinite(value)) ? values : null;
+  }
   const groups = trimmed.match(/<[^>]+>/g);
   if (!groups || groups.length === 0) {
     const bare = /^(0x[0-9a-fA-F]+|-?\d+)(?:\s+(0x[0-9a-fA-F]+|-?\d+))*$/.exec(trimmed);
@@ -225,6 +232,10 @@ function looksLikeStringList(raw: string): boolean {
   return /"(?:\\.|[^"\\])*"/.test(raw.trim());
 }
 
+function looksLikeBitsCellArray(raw: string): boolean {
+  return /^\/bits\/\s+(8|16)\s+<[^>]+>$/.test(raw.trim());
+}
+
 function validateDebugValueAgainstConstraints(
   raw: string,
   candidate: DtsReloadCandidate
@@ -257,6 +268,25 @@ function validateDebugValueAgainstConstraints(
     }
     if (max !== undefined && integers.some((value) => value > max)) {
       return `调试值超过声明的最大值 ${max}。`;
+    }
+    return null;
+  }
+
+  if (candidate.valueShapeKind === "bytes") {
+    if (!looksLikeBitsCellArray(trimmed)) {
+      return "调试值必须是 /bits/ 8 cell 数组，例如 /bits/ 8 <17>。";
+    }
+    const numeric = parseCellIntegers(trimmed);
+    if (numeric === null) {
+      return "调试值必须是 /bits/ 8 cell 数组，例如 /bits/ 8 <17>。";
+    }
+    if (numeric.some((value) => value < 0 || value > 255)) {
+      return "调试值中的每个 byte 必须在 0–255 范围内。";
+    }
+    const { constraints } = candidate;
+    const expectedCells = typeof constraints.cells === "number" ? constraints.cells : undefined;
+    if (expectedCells !== undefined && numeric.length !== expectedCells) {
+      return `调试值 cell 数量应为 ${expectedCells}，当前为 ${numeric.length}。`;
     }
     return null;
   }
@@ -1974,7 +2004,9 @@ export function DtsReloadPage({
                               ? '"okay"'
                               : isPhandleCellFamilyKind(candidate.valueShapeKind)
                                 ? "<&gpio13 29 0>"
-                                : "<7000>"
+                                : candidate.valueShapeKind === "bytes"
+                                  ? "/bits/ 8 <17>"
+                                  : "<7000>"
                           }
                         />
                       </label>

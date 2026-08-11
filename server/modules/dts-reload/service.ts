@@ -9,7 +9,15 @@ import type { SensitiveWriteActorType } from "../parameters/sensitiveNode";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { buildReloadBaseSource } from "./baseSource";
-import { classifyReloadCandidate, isPhandleCellArrayValue, normalizeReloadCandidates, resolveReloadValueShape, type CandidateValueShape } from "./candidates";
+import {
+  classifyReloadCandidate,
+  isIntegerCellArrayValue,
+  isPhandleCellArrayValue,
+  isSupportedCellBits,
+  normalizeReloadCandidates,
+  resolveReloadValueShape,
+  type CandidateValueShape
+} from "./candidates";
 import { assertDebugValueConstraints } from "./constraints";
 import {
   generateDebugOverlay,
@@ -126,7 +134,7 @@ const BLOCK_REASON_MESSAGES: Record<NonNullable<ReloadCandidateDto["blockReason"
   "synthesised-anchor":
     "parameter locator is a synthesised /label anchor, not a genuine device-tree path usable as target-path",
   "unsupported-value-shape":
-    "parameter value shape is outside the supported set (u32 cell arrays and string lists)",
+    "parameter value shape is outside the supported set (u32/u8/u16 cell arrays and string lists)",
   "no-baseline-value": "parameter has no library baseline value"
 };
 
@@ -438,17 +446,18 @@ function assertParsedValueMatchesShape(
     return;
   }
 
-  if (
-    parsedValue.kind !== "cells" ||
-    parsedValue.bits !== 32 ||
-    parsedValue.groups.length === 0 ||
-    parsedValue.groups.some((group) => group.length === 0 || group.some((cell) => cell.kind !== "integer"))
-  ) {
+  const expectedBits =
+    typeof valueShape?.bits === "number" && isSupportedCellBits(valueShape.bits) ? valueShape.bits : 32;
+
+  // Authoring form is `/bits/ N <…>` or `<…>` cells — not dtc's square-bracket `[…]` spelling.
+  if (parsedValue.kind !== "cells" || !isIntegerCellArrayValue(parsedValue, expectedBits)) {
     throw new ApiError(
       "VALIDATION_FAILED",
-      "Debug value must be an unsigned 32-bit cell array (for example <6000>, <0x1770>, or <1 2 3>).",
+      expectedBits === 32
+        ? "Debug value must be an unsigned 32-bit cell array (for example <6000>, <0x1770>, or <1 2 3>)."
+        : `Debug value must be a /bits/ ${expectedBits} cell array (for example /bits/ ${expectedBits} <17>).`,
       400,
-      { bindingId, debugValue }
+      { bindingId, debugValue, expectedBits }
     );
   }
 

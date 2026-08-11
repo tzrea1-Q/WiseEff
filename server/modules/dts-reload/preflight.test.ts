@@ -355,4 +355,45 @@ describe("runDebugOverlayPreflight", () => {
       }
     ]);
   });
+
+  it("passes a /bits/ 8 overlay and equates dtc square-bracket decompile spelling", async () => {
+    const bitsBase = `/dts-v1/;
+
+/ {
+	amba: amba {
+		i2c@FF24E000 {
+			mt5788@2B {
+				compatible = "mt,mt5788";
+				prevfod1_product_list = /bits/ 8 <17>;
+			};
+		};
+	};
+};
+`;
+    const nodePath = "/amba/i2c@FF24E000/mt5788@2B";
+    const value = {
+      kind: "cells" as const,
+      bits: 8 as const,
+      groups: [[{ kind: "integer" as const, raw: "34", value: "34" }]]
+    };
+    const targets = [{ nodePath, properties: [{ name: "prevfod1_product_list", value }] }];
+
+    const result = await runDebugOverlayPreflight({
+      baseSource: bitsBase,
+      overlaySource: generateDebugOverlay(targets),
+      targets
+    });
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.ok).toBe(true);
+    expect(result.overlayBlob?.byteLength).toBeGreaterThan(0);
+    expect(result.observedValues).toEqual([
+      {
+        nodePath,
+        propertyName: "prevfod1_product_list",
+        before: "17",
+        after: "34"
+      }
+    ]);
+  });
 });

@@ -74,6 +74,34 @@ lab:chip@6E {
     }
   });
 
+  it("parses dtc square-bracket byte array property values", () => {
+    const doc = parseDts(`/dts-v1/;
+
+/ {
+	amba {
+		prevfod1_product_list = [11];
+		rx_mod_cm_cfg = [05 05 05];
+	};
+};
+`);
+    const root = doc.topLevel[0];
+    expect(root.kind).toBe("node");
+    const amba = root.children.find((child) => child.kind === "node" && child.name === "amba");
+    expect(amba?.kind).toBe("node");
+    if (amba?.kind !== "node") throw new Error("expected amba node");
+    const props = Object.fromEntries(
+      amba.children.filter((child) => child.kind === "property").map((prop) => [prop.name, prop])
+    );
+    expect(props.prevfod1_product_list).toMatchObject({
+      rawText: "[11]",
+      value: { kind: "bytes", values: [0x11] }
+    });
+    expect(props.rx_mod_cm_cfg).toMatchObject({
+      rawText: "[05 05 05]",
+      value: { kind: "bytes", values: [5, 5, 5] }
+    });
+  });
+
   it("parses /dts-v1/ /plugin/ and marks /include/ unsupported without expanding", () => {
     const doc = parseDts(`/dts-v1/;
 /plugin/;

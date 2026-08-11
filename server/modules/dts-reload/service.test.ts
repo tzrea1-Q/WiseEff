@@ -348,6 +348,31 @@ describe("listReloadCandidates", () => {
     });
   });
 
+  it("marks catalog bytes /bits/ 8 candidates as debuggable", async () => {
+    const { db } = createFakeDb([
+      [
+        candidateRow({
+          property_key: "prevfod1_product_list",
+          display_name: "prevfod1_product_list",
+          node_path: "/amba/i2c@FF24E000/mt5788@2B",
+          value_shape: { kind: "bytes" },
+          baseline_value: "/bits/ 8 <17>",
+          constraints: {},
+          unit: null,
+          description: "product list"
+        })
+      ]
+    ]);
+
+    const result = await listReloadCandidates(db, auth(), "project-1");
+    expect(result.items[0]).toMatchObject({
+      propertyKey: "prevfod1_product_list",
+      valueShapeKind: "bytes",
+      debuggable: true,
+      baselineValue: "/bits/ 8 <17>"
+    });
+  });
+
   it("exposes server-computed sensitive matches so the UI can mark elevated requirements before start", async () => {
     const { db } = createFakeDb([
       [candidateRow()],
@@ -483,6 +508,34 @@ describe("startReloadRun", () => {
     expect(calls.some((call) => call.text.includes("insert into dts_reload_runs"))).toBe(false);
   });
 
+  it("refuses a /bits/ 8 debug value whose width does not match the baseline", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        candidateRow({
+          property_key: "prevfod1_product_list",
+          node_path: "/amba/i2c@FF24E000/mt5788@2B",
+          value_shape: { kind: "bytes" },
+          baseline_value: "/bits/ 8 <17>",
+          constraints: {}
+        })
+      ]
+    ]);
+    const { objectStore, put } = makeObjectStore();
+
+    await expect(
+      startReloadRun(db, objectStore, auth(), {
+        projectId: "project-1",
+        targets: [{ bindingId: "binding-1", debugValue: "/bits/ 8 <1 2>" }]
+      })
+    ).rejects.toMatchObject({
+      code: "VALIDATION_FAILED",
+      details: { expectedCellsPerGroup: 1 }
+    });
+
+    expect(put).not.toHaveBeenCalled();
+    expect(calls.some((call) => call.text.includes("insert into dts_reload_runs"))).toBe(false);
+  });
+
   it("persists a validated gpio_int phandle-cells reload", async () => {
     const baseKey = "org-1/board.dts";
     const gpioBase =
@@ -529,6 +582,63 @@ describe("startReloadRun", () => {
     expect(result.status).toBe("validated");
     expect(result.overlaySource).toContain("gpio_int = <&gpio13 30 0>");
     expect(result.overlaySource).toContain('target-path = "/amba/i2c@FDF5E000/sc8562@6E"');
+    expect(result.artifact?.sha256).toMatch(/^sha-/);
+    expect(Object.keys(files).some((key) => key.endsWith(".dtbo"))).toBe(true);
+  }, 60_000);
+
+  it("persists a validated /bits/ 8 bytes reload for prevfod1_product_list", async () => {
+    const baseKey = "org-1/board.dts";
+    const bitsBase = `/dts-v1/;
+
+/ {
+\tamba {
+\t\ti2c@FF24E000 {
+\t\t\tmt5788@2B {
+\t\t\t\tprevfod1_product_list = /bits/ 8 <17>;
+\t\t\t};
+\t\t};
+\t};
+};
+`;
+    const { objectStore, files } = makeObjectStore({ [baseKey]: Buffer.from(bitsBase, "utf8") });
+
+    const { db } = createFakeDb([
+      [
+        candidateRow({
+          property_key: "prevfod1_product_list",
+          display_name: "prevfod1_product_list",
+          node_path: "/amba/i2c@FF24E000/mt5788@2B",
+          value_shape: { kind: "bytes" },
+          baseline_value: "/bits/ 8 <17>",
+          constraints: {},
+          unit: null
+        })
+      ],
+      ...fingerprintParts(),
+      [{ id: "cs-1" }],
+      [{ file_name: "board.dts", role: "base", sort_order: 0, storage_key: baseKey, format: "dts" }],
+      ...fingerprintParts(),
+      blockedOrValidatedInsert("validated"),
+      [],
+      [
+        {
+          binding_id: "binding-1",
+          node_path: "/amba/i2c@FF24E000/mt5788@2B",
+          property_key: "prevfod1_product_list",
+          baseline_value: "/bits/ 8 <17>",
+          debug_value: "/bits/ 8 <34>",
+          sort_order: 0
+        }
+      ]
+    ]);
+
+    const result = await startReloadRun(db, objectStore, auth(), {
+      projectId: "project-1",
+      targets: [{ bindingId: "binding-1", debugValue: "/bits/ 8 <34>" }]
+    });
+
+    expect(result.status).toBe("validated");
+    expect(result.overlaySource).toContain("prevfod1_product_list = /bits/ 8 <34>");
     expect(result.artifact?.sha256).toMatch(/^sha-/);
     expect(Object.keys(files).some((key) => key.endsWith(".dtbo"))).toBe(true);
   }, 60_000);

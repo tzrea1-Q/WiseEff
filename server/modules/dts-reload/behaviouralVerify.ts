@@ -67,6 +67,9 @@ function parseIntegerToken(raw: string): number | null {
 }
 
 function cellIntegers(value: DtsValue): number[] | null {
+  if (value.kind === "bytes") {
+    return value.values.length > 0 ? [...value.values] : null;
+  }
   if (value.kind !== "cells") return null;
   const out: number[] = [];
   for (const group of value.groups) {
@@ -85,7 +88,7 @@ function coerceReadAsCells(propertyKey: string, readValue: string): DtsValue | n
   if (!trimmed) return null;
   try {
     const parsed = parseDtsValue(propertyKey, trimmed).value;
-    if (parsed.kind === "cells") return parsed;
+    if (parsed.kind === "cells" || parsed.kind === "bytes") return parsed;
   } catch {
     // Fall through to bare-token wrapping.
   }

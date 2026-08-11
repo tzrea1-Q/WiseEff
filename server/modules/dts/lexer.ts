@@ -4,6 +4,7 @@ export type DtsTokenKind =
   | "ident"
   | "number"
   | "string"
+  | "bytes"
   | "at"
   | "amp"
   | "colon"
@@ -102,6 +103,20 @@ export function lexDts(source: string): DtsToken[] {
       }
       push("string", i, j);
       i = j;
+      continue;
+    }
+
+    // dtc decompiles `/bits/ 8 <…>` to square-bracket byte arrays (`[11]`, `[05 05 05]`).
+    if (ch === "[") {
+      let j = i + 1;
+      while (j < text.length && text[j] !== "]") {
+        j += 1;
+      }
+      if (j >= text.length) {
+        throw new Error(`Unterminated byte array at offset ${i}`);
+      }
+      push("bytes", i, j + 1);
+      i = j + 1;
       continue;
     }
 

@@ -344,13 +344,29 @@ async function decompileNodes(
  * hexadecimal while a debug value may be entered in decimal, and string quotes may differ.
  * Phandle labels in debug values are resolved to the numeric phandle cells that `dtc -@`
  * assigns on labeled nodes (visible as each node's `phandle = <N>` property after decompile).
+ * `/bits/ 8` authoring forms and dtc's square-bracket `[…]` decompile spelling share one
+ * canonical decimal sequence so assert-effect can confirm the overlay took effect.
  */
 function normalizeValue(
   value: DtsValue | undefined,
   fallback: string,
   labelPhandles: ReadonlyMap<string, string> = new Map()
 ): string {
+  if (value?.kind === "bytes") {
+    return value.values.map((entry) => String(entry)).join(" ");
+  }
   if (value?.kind === "cells") {
+    const hasPhandle = value.groups.some((group) => group.some((cell) => cell.kind === "phandle"));
+    if (!hasPhandle && value.bits !== 32) {
+      const integers: string[] = [];
+      for (const group of value.groups) {
+        for (const cell of group) {
+          if (cell.kind !== "integer") return fallback.trim();
+          integers.push(decimal(cell));
+        }
+      }
+      return integers.join(" ");
+    }
     const groups = value.groups.map((group) =>
       group
         .map((cell) => {
