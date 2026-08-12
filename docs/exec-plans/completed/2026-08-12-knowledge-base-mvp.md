@@ -1,9 +1,9 @@
 # Knowledge base MVP
 
-> Status: **Active** — planning locked 2026-08-12; Phase 1 implemented on `feat/knowledge-base-foundation` (2026-08-12, merged); Phase 2 implemented on `feat/knowledge-base-rag` (2026-08-12, merged); Phase 3 implemented on `feat/knowledge-base-distillation` (2026-08-13)
+> Status: **Completed 2026-08-13** — Phase 1 merged via #330, Phase 2 via #370, Phase 3 via #385 (branches `feat/knowledge-base-foundation`, `feat/knowledge-base-rag`, `feat/knowledge-base-distillation`)
 > Date: 2026-08-12
 > Design: [`docs/design-docs/2026-08-12-knowledge-base-design.md`](../../design-docs/2026-08-12-knowledge-base-design.md)
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-12-knowledge-base-mvp.md`](../../zh-CN/exec-plans/active/2026-08-12-knowledge-base-mvp.md)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-12-knowledge-base-mvp.md`](../../zh-CN/exec-plans/completed/2026-08-12-knowledge-base-mvp.md)
 > ADR: [ADR-0025](../../adr/0025-knowledge-retrieval-lives-in-postgres.md)
 
 ## Goal
@@ -110,5 +110,5 @@ Per phase: targeted vitest for `server/modules/knowledge/` and knowledge compone
 - [x] ARCHITECTURE EN + zh map the knowledge module and Xiaoze knowledge tools (Phase 1/2 — knowledge module mapped in Phase 1; indexing worker seam + Xiaoze knowledge tools mapped in Phase 2)
 - [x] Coverage map and operation matrix EN + zh gain the KB-* IDs before each phase implements (all IDs registered — KB-READ/EDIT/FILE-001, KB-ASK-001, KB-INDEX-001, KB-DISTILL-001, KB-ADMIN-001)
 - [x] `docs/generated/db-schema.md` regenerated after migrations (Phase 1, Phase 2 (0104), and Phase 3 (0105) regenerated)
-- [ ] Deferred work recorded in `docs/exec-plans/tech-debt-tracker.md` (closeout — Phase 2 already recorded TD-083: pgvector late-install manual column step + missing pgvector CI coverage)
-- [ ] `npm run docs:check` green before moving this plan to `completed/`
+- [x] Deferred work recorded in `docs/exec-plans/tech-debt-tracker.md` (TD-083: pgvector late-install manual column step + missing pgvector CI coverage; no other deferrals left this plan)
+- [x] `npm run docs:check` green before moving this plan to `completed/` (verified in the closeout change)
