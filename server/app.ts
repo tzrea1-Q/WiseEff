@@ -223,6 +223,9 @@ export function createWiseEffServer(
     if (readyHealth.body.dependencies.xiaozeLlm) {
       metrics.setXiaozeLlmHealth({ ok: readyHealth.body.dependencies.xiaozeLlm.ok });
     }
+    if (readyHealth.body.dependencies.logAnalysisLlm) {
+      metrics.setDependencyHealth({ dependency: "logAnalysisLlm", ok: readyHealth.body.dependencies.logAnalysisLlm.ok });
+    }
     if (readyHealth.body.dependencies.workerQueue) {
       metrics.setQueueStats({
         queue: "log-analysis",

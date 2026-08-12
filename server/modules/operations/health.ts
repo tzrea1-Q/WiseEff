@@ -21,6 +21,13 @@ export type XiaozeLlmEnv = {
   XIAOZE_MODEL?: string;
 };
 
+export type LogAnalysisLlmEnv = {
+  LOG_ANALYSIS_API_BASE_URL?: string;
+  LOG_ANALYSIS_API_KEY?: string;
+  LOG_ANALYSIS_MODEL?: string;
+  LOG_ANALYSIS_DETERMINISTIC?: boolean;
+};
+
 export type OperationsHealthBody = {
   ok: boolean;
   service: "wiseeff-api";
@@ -32,6 +39,7 @@ export type OperationsHealthBody = {
     durableQueue?: CombinedDurableQueueHealth;
     notificationOutbox?: NotificationOutboxHealth;
     xiaozeLlm?: DependencyHealth;
+    logAnalysisLlm?: DependencyHealth;
     dtsToolchain?: DependencyHealth;
   };
 };
@@ -93,6 +101,54 @@ export function checkXiaozeLlmConfig(env?: XiaozeLlmEnv): DependencyHealth | und
     ok: true,
     status: "ready",
     message: "Xiaoze LLM configuration is available.",
+    details
+  };
+}
+
+/** Mirrors the Xiaoze LLM gate for the log-analysis provider family (`LOG_ANALYSIS_*`). */
+export function checkLogAnalysisLlmConfig(env?: LogAnalysisLlmEnv): DependencyHealth | undefined {
+  if (!env) {
+    return undefined;
+  }
+
+  if (env.LOG_ANALYSIS_DETERMINISTIC === true) {
+    return {
+      ok: true,
+      status: "ready",
+      message: "Log analysis deterministic mode; LLM API not required."
+    };
+  }
+
+  const baseUrl = readNonBlank(env.LOG_ANALYSIS_API_BASE_URL);
+  const apiKey = readNonBlank(env.LOG_ANALYSIS_API_KEY);
+  const missing: string[] = [];
+  if (!baseUrl) {
+    missing.push("LOG_ANALYSIS_API_BASE_URL");
+  }
+  if (!apiKey) {
+    missing.push("LOG_ANALYSIS_API_KEY");
+  }
+
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      status: "missing",
+      message: `Log analysis LLM configuration is incomplete; analyses degrade to the rule engine. Missing: ${missing.join(", ")}.`
+    };
+  }
+
+  const details: Record<string, string | number | boolean> = {
+    baseUrlConfigured: true
+  };
+  const model = readNonBlank(env.LOG_ANALYSIS_MODEL);
+  if (model) {
+    details.model = model;
+  }
+
+  return {
+    ok: true,
+    status: "ready",
+    message: "Log analysis LLM configuration is available.",
     details
   };
 }
@@ -209,11 +265,12 @@ export async function buildReadyHealth(options: {
   includeNotificationOutbox?: boolean;
   includeDtsToolchain?: boolean;
   durableQueue?: DurableQueueHealthCheck;
-  env?: XiaozeLlmEnv;
+  env?: XiaozeLlmEnv & LogAnalysisLlmEnv;
 }) {
   const database = await checkDatabase(options.db);
   const objectStore = await checkObjectStore(options.objectStore);
   const xiaozeLlm = checkXiaozeLlmConfig(options.env);
+  const logAnalysisLlm = checkLogAnalysisLlmConfig(options.env);
   const workerQueue = options.includeWorkerQueue ? await checkWorkerQueueHealth(options.db) : undefined;
   const notificationOutbox = options.includeNotificationOutbox ? await checkNotificationOutboxHealth(options.db) : undefined;
   const durableQueueTransport = await checkDurableQueue(options.durableQueue);
@@ -228,7 +285,8 @@ export async function buildReadyHealth(options: {
     (workerQueue?.ok ?? true) &&
     (notificationOutbox?.ok ?? true) &&
     (durableQueue?.ok ?? true) &&
-    (xiaozeLlm?.ok ?? true);
+    (xiaozeLlm?.ok ?? true) &&
+    (logAnalysisLlm?.ok ?? true);
   // dtsToolchain is reported but does not gate process readiness (release gate is fail-closed separately).
 
   return {
@@ -244,6 +302,7 @@ export async function buildReadyHealth(options: {
         ...(notificationOutbox ? { notificationOutbox } : {}),
         ...(durableQueue ? { durableQueue } : {}),
         ...(xiaozeLlm ? { xiaozeLlm } : {}),
+        ...(logAnalysisLlm ? { logAnalysisLlm } : {}),
         ...(dtsToolchain ? { dtsToolchain } : {})
       }
     } satisfies OperationsHealthBody

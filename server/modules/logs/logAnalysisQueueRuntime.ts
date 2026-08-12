@@ -4,6 +4,7 @@ import { createBullMqDurableQueue } from "../jobs/bullmqQueue";
 import type { MetricsRegistry } from "../../observability/metrics";
 import type { TracingBoundary } from "../../observability/tracing";
 import type { Database } from "../../shared/database/client";
+import type { LogAnalysisAdapter } from "./analyzer";
 import type { ObjectStore } from "./objectStore";
 import type { LogAnalysisQueuePayload } from "./logAnalysisQueue";
 import { processLogAnalysisJobById, type ProcessLogWorkerByIdOptions, type ProcessLogWorkerResult } from "./worker";
@@ -44,6 +45,7 @@ type CreateLogAnalysisQueueRuntimeOptions = {
   env: LogAnalysisQueueRuntimeEnv;
   db: Database;
   objectStore: ObjectStore;
+  analyzer?: LogAnalysisAdapter;
   QueueCtor?: BullMqQueueConstructor;
   WorkerCtor?: BullMqWorkerConstructor;
   processByJobId?: (options: ProcessLogWorkerByIdOptions) => Promise<ProcessLogWorkerResult>;
@@ -56,6 +58,7 @@ export function createLogAnalysisQueueRuntime({
   env,
   db,
   objectStore,
+  analyzer,
   QueueCtor = Queue as unknown as BullMqQueueConstructor,
   WorkerCtor = Worker as unknown as BullMqWorkerConstructor,
   processByJobId = processLogAnalysisJobById,
@@ -93,6 +96,7 @@ export function createLogAnalysisQueueRuntime({
           maxAttempts: env.LOG_ANALYSIS_QUEUE_ATTEMPTS,
           retryBaseDelayMs: env.LOG_ANALYSIS_QUEUE_BACKOFF_MS,
           metrics,
+          ...(analyzer ? { analyzer } : {}),
           ...(tracing ? { tracing } : {})
         });
         if (result.status === "retry") {

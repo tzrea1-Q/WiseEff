@@ -93,3 +93,79 @@ describe("parseLogText", () => {
     if (!result.ok) expect(result.reason).toMatch(/binary|null/i);
   });
 });
+
+describe("parseLogText with a format profile", () => {
+  it("uses the profile timestamp pattern and severity map", () => {
+    const result = parseLogText(
+      {
+        fileName: "kernel.log",
+        content: Buffer.from("[00012.345] <3> charge fault code=E42\n[00012.400] <6> heartbeat ok\n", "utf8")
+      },
+      {
+        profile: {
+          timestampPattern: "^\\[(\\d{5}\\.\\d{3})\\]",
+          severityMap: { error: ["<3>"], info: ["<6>"] }
+        }
+      }
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.entries[0]).toMatchObject({
+      lineNumber: 1,
+      timestamp: "00012.345",
+      severity: "error",
+      message: "<3> charge fault code=E42",
+      tokens: { code: "E42" }
+    });
+    expect(result.entries[1]).toMatchObject({ lineNumber: 2, severity: "info" });
+  });
+
+  it("merges continuation lines by start pattern while keeping stable raw line numbers", () => {
+    const content = [
+      "[001] ERROR stack trace follows",
+      "  at chargeController.start",
+      "  at scheduler.tick",
+      "[002] INFO recovered"
+    ].join("\n");
+
+    const result = parseLogText(
+      { fileName: "trace.log", content: Buffer.from(content, "utf8") },
+      { profile: { multiline: { mode: "start-pattern", startPattern: "^\\[\\d+\\]" }, severityMap: { error: ["ERROR"] } } }
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.rawLines).toHaveLength(4);
+    expect(result.entries.map((entry) => entry.lineNumber)).toEqual([1, 4]);
+    expect(result.entries[0].message).toContain("at chargeController.start");
+    expect(result.entries[0].severity).toBe("error");
+  });
+
+  it("merges indented continuation lines in indent mode", () => {
+    const result = parseLogText(
+      {
+        fileName: "trace.log",
+        content: Buffer.from("ERROR boom detail=first\n    caused by: overload\nINFO next entry\n", "utf8")
+      },
+      { profile: { multiline: { mode: "indent" } } }
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.entries.map((entry) => entry.lineNumber)).toEqual([1, 3]);
+    expect(result.entries[0].message).toContain("caused by: overload");
+  });
+
+  it("falls back to generic behavior when profile regexes do not match", () => {
+    const result = parseLogText(
+      { fileName: "sample.log", content: Buffer.from("2026-05-25T10:00:00Z ERROR bad thing\n", "utf8") },
+      { profile: { timestampPattern: "^NEVER-MATCHES" } }
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.entries[0].timestamp).toBeUndefined();
+    expect(result.entries[0].severity).toBe("error");
+  });
+});
