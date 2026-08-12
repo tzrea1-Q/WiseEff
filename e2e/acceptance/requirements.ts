@@ -77,6 +77,20 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "KB-DISTILL-001",
+    workflow: "J",
+    title:
+      "Editor distils a completed log-analysis conclusion into a pre-filled knowledge draft from the log result page, lands in the /knowledge draft editor via the entry deep link, and publishes the reviewed draft with source linkage and audit evidence.",
+    required: true
+  },
+  {
+    id: "KB-ADMIN-001",
+    workflow: "J",
+    title:
+      "An agent knowledge draft created through the approval-gated action.createKnowledgeDraft tool (deterministic Xiaoze interrupt, then approve) lands in the /knowledge-admin agent-draft publish queue with creator, session origin, and source analysis link; a reviewer publishes one draft and archive-rejects another, and drafts stay out of retrieval until published.",
+    required: true
+  },
+  {
     id: "SHELL-DIAG-001",
     workflow: "A",
     title: "Core routes fail acceptance on unexpected console, page, request, or critical API errors.",
