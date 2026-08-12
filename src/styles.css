@@ -27860,3 +27860,22 @@ button.dts-topology-navigator__disclosure:focus-visible {
   padding: 0;
   background: none;
 }
+
+/* ---------------------------------------------------------------------------
+ * Dialog width tiers (ui-design-system §Dialogs): sm 400 / md 560 / lg 720.
+ * Migrated dialogs snap to the nearest tier via these classes; cards with a
+ * justified special width (data-heavy detail/compare surfaces ≥ 900px) keep
+ * their own width class instead.
+ * ------------------------------------------------------------------------- */
+
+.modal-card--sm {
+  width: min(400px, calc(100vw - 48px));
+}
+
+.modal-card--md {
+  width: min(560px, calc(100vw - 48px));
+}
+
+.modal-card--lg {
+  width: min(720px, calc(100vw - 48px));
+}
