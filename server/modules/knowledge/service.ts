@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { createAuditEvent } from "../audit/repository";
+import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext, AuditSeverity } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
@@ -862,20 +863,15 @@ export async function rebuildKnowledgeIndex(
   let enqueued = 0;
   await db.transaction(async (tx) => {
     enqueued = await enqueueAllPublishedEntries(tx, auth.organization.id);
-    await createAuditEvent(tx, {
-      id: randomUUID(),
-      organizationId: auth.organization.id,
-      projectId: null,
-      actorUserId: auth.user.id,
-      actorType: "user",
+    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
       app: "knowledge",
       kind: "knowledge-index-rebuild",
       action: "index-rebuild",
       severity: "Medium",
+      projectId: null,
       targetType: "knowledge-index",
       targetId: auth.organization.id,
-      metadata: { enqueued },
-      traceId: context.requestId ?? randomUUID()
+      metadata: { enqueued }
     });
   });
   return { enqueued };
