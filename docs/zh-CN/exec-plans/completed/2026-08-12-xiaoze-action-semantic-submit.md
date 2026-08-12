@@ -1,9 +1,9 @@
 # 小泽行动工具改经类型化绑定草稿提交(TD-078)
 
-> 状态:**进行中**
+> 状态:**已完成**(2026-08-12 经 PR #326 与 #338 合并)
 > 日期:2026-08-12
 > 分支:`fix/xiaoze-action-semantic-submit`(叠在 `fix/xiaoze-approval-chain-single-seam` 之上)
-> English: [`docs/exec-plans/active/2026-08-12-xiaoze-action-semantic-submit.md`](../../../exec-plans/active/2026-08-12-xiaoze-action-semantic-submit.md)
+> English: [`docs/exec-plans/completed/2026-08-12-xiaoze-action-semantic-submit.md`](../../../exec-plans/completed/2026-08-12-xiaoze-action-semantic-submit.md)
 
 ## 目标
 
