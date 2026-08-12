@@ -21,6 +21,7 @@ import {
   type DtsToolchainResult
 } from "./dtsToolchain";
 import { getFileVersionById, getProjectParameterFileById } from "./repository";
+import { OVERLAY_ROLES } from "./types";
 
 export type ValidationGateResult = {
   ok: boolean;
@@ -256,7 +257,9 @@ export async function runValidationGate(
     if (role === "base" && sortOrder <= entrySort) {
       entryFile = member.fileName;
       entrySort = sortOrder;
-    } else if (role === "overlay") {
+    } else if (OVERLAY_ROLES.has(role)) {
+      // Mirror the config-revision assembly: overlay/charging/thermal/misc are
+      // all applied over the base, so all of them must be dtc-compiled here.
       overlays.push({ name: member.fileName, sortOrder });
     }
   }
