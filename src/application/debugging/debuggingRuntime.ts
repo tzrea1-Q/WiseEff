@@ -45,6 +45,8 @@ export type UpsertDebugNodeOperationAction = {
 export type UpsertDebugSnapshotAction = {
   type: "UPSERT_DEBUG_SNAPSHOT";
   snapshot: DebugSnapshotSummary;
+  /** Write operation that produced the snapshot; carries the before/after values for rollback UI. */
+  operation?: NodeOperationSnapshot;
 };
 
 export type DebuggingRuntimeDispatchAction =
@@ -205,10 +207,41 @@ function preserveNodeOperationMetadata(operation: NodeOperationSnapshot): NodeOp
   };
 }
 
-function dispatchSnapshot(dispatch: DebuggingRuntimeOptions["dispatch"], snapshot?: DebugSnapshotSummary) {
+function dispatchSnapshot(
+  dispatch: DebuggingRuntimeOptions["dispatch"],
+  snapshot?: DebugSnapshotSummary,
+  operation?: NodeOperationSnapshot
+) {
   if (snapshot) {
-    dispatch({ type: "UPSERT_DEBUG_SNAPSHOT", snapshot });
+    dispatch({ type: "UPSERT_DEBUG_SNAPSHOT", snapshot, ...(operation ? { operation } : {}) });
   }
+}
+
+/**
+ * The write endpoint responds with `{ operation }` only; the snapshot the
+ * server created for the write is referenced through `operation.snapshotId`.
+ * Derive the freshly-created (hence valid) snapshot summary so the rollback
+ * safety net works even when the gateway response omits the snapshot object.
+ */
+function writeSnapshotSummaryFromOperation(
+  operation: NodeOperationSnapshot | undefined,
+  getState: DebuggingRuntimeOptions["getState"]
+): DebugSnapshotSummary | undefined {
+  if (!operation?.snapshotId || operation.operationType !== "write") {
+    return undefined;
+  }
+  if (operation.status !== "succeeded" && operation.status !== "readback_mismatch") {
+    return undefined;
+  }
+  const parameterId = operation.parameterId ?? operation.nodeId;
+  const risk = getState().debugParameters.find((parameter) => parameter.id === parameterId)?.risk ?? "Low";
+  return {
+    id: operation.snapshotId,
+    sessionId: operation.sessionId,
+    status: "valid",
+    risk,
+    createdAt: operation.createdAt
+  };
 }
 
 async function runApi<T>(dispatch: DebuggingRuntimeOptions["dispatch"], action: () => Promise<T>): Promise<T> {
@@ -356,7 +389,11 @@ export function createDebuggingRuntimeActions({
         const { risk: _risk, ...writeInput } = input;
         const result = (await requireGateway(gateway).writeNode(writeInput)) as DebuggingGatewayWriteResult;
         dispatchOperation(dispatch, result.operation);
-        dispatchSnapshot(dispatch, result.snapshot);
+        dispatchSnapshot(
+          dispatch,
+          result.snapshot ?? writeSnapshotSummaryFromOperation(result.operation, getState),
+          result.operation
+        );
         return result;
       });
     },
@@ -386,7 +423,11 @@ export function createDebuggingRuntimeActions({
           };
           const result = (await requireGateway(gateway).writeNode(writeInput)) as DebuggingGatewayWriteResult;
           dispatchOperation(dispatch, result.operation);
-          dispatchSnapshot(dispatch, result.snapshot);
+          dispatchSnapshot(
+            dispatch,
+            result.snapshot ?? writeSnapshotSummaryFromOperation(result.operation, getState),
+            result.operation
+          );
         }
       });
     },

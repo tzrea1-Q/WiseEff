@@ -1334,11 +1334,35 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         debugEvents: [...state.debugEvents, event]
       };
     }
-    case "UPSERT_DEBUG_SNAPSHOT":
+    case "UPSERT_DEBUG_SNAPSHOT": {
       if (action.snapshot.status !== "valid") {
         return state;
       }
-      return state;
+      // Convert the API snapshot summary into the page-facing DebugSnapshot so
+      // the rollback safety net activates after API writes. The before/after
+      // values live on the write operation, not the summary.
+      const operation = action.operation;
+      const operationParameterId = operation?.parameterId ?? operation?.nodeId;
+      const entries =
+        operation && operation.operationType === "write" && operationParameterId
+          ? [
+              {
+                parameterId: operationParameterId,
+                previousValue: operation.previousValue ?? "",
+                nextValue: operation.readbackValue ?? operation.requestedValue ?? ""
+              }
+            ]
+          : [];
+      return {
+        ...state,
+        lastDebugSnapshot: {
+          id: action.snapshot.id,
+          createdAt: action.snapshot.createdAt,
+          entries,
+          risk: action.snapshot.risk
+        }
+      };
+    }
     case "UPSERT_LOG_RECORD": {
       const existingIndex = state.logs.findIndex((log) => log.id === action.log.id);
       const archivedLogIds = updateArchivedLogIdsForLog(state.archivedLogIds, action.log);

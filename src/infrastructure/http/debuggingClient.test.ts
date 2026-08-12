@@ -257,6 +257,28 @@ describe("createHttpDebuggingGateway", () => {
     );
   });
 
+  it("exposes the write operation and optional snapshot on the write result", async () => {
+    const withSnapshot = createGateway(createFetchMock({ operation: writeOperationDto, snapshot: snapshotDto }));
+    await expect(
+      withSnapshot.writeNode({ sessionId: "session-1", nodePath: "/sys/current", value: "3200", readBack: true })
+    ).resolves.toMatchObject({
+      operation: expect.objectContaining({ id: "op-write", snapshotId: "snapshot-1" }),
+      snapshot: expect.objectContaining({ id: "snapshot-1", status: "consumed" })
+    });
+
+    // The production write endpoint only returns the operation; the runtime
+    // derives the snapshot summary from operation.snapshotId in that case.
+    const operationOnly = createGateway(createFetchMock({ operation: writeOperationDto }));
+    const result = await operationOnly.writeNode({
+      sessionId: "session-1",
+      nodePath: "/sys/current",
+      value: "3200",
+      readBack: true
+    });
+    expect(result).toMatchObject({ operation: expect.objectContaining({ snapshotId: "snapshot-1" }) });
+    expect("snapshot" in result).toBe(false);
+  });
+
   it("omits nodePath from API writes when parameterId is present", async () => {
     const fetchMock = createFetchMock({ operation: writeOperationDto, snapshot: snapshotDto });
     const gateway = createGateway(fetchMock);

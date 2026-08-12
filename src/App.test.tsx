@@ -1439,8 +1439,23 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(next.configDraft.debugParameters).toEqual([apiDebugParameter]);
   });
 
-  it("stores API debug sessions and operation events while ignoring snapshot summaries", () => {
+  it("stores API debug sessions, operation events, and valid snapshot summaries", () => {
     const startedAt = "2026-05-25T08:01:00.000Z";
+    const writeOperation = {
+      id: "op-write-1",
+      sessionId: "session-1",
+      parameterId: initialState.debugParameters[0].id,
+      nodePath: initialState.debugParameters[0].nodePath ?? "/sys/node",
+      operationType: "write" as const,
+      status: "succeeded" as const,
+      requestedValue: "4200",
+      previousValue: "3600",
+      readbackValue: "4200",
+      verified: true,
+      durationMs: 12,
+      snapshotId: "snapshot-valid",
+      createdAt: "2026-05-25T08:02:00.000Z"
+    };
     const sessionState = appReducer(adminState, {
       type: "SET_DEBUG_ACTIVE_SESSION",
       session: {
@@ -1456,19 +1471,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     });
     const operationState = appReducer(sessionState, {
       type: "UPSERT_DEBUG_NODE_OPERATION",
-      operation: {
-        id: "op-write-1",
-        sessionId: "session-1",
-        parameterId: initialState.debugParameters[0].id,
-        nodePath: initialState.debugParameters[0].nodePath,
-        operationType: "write",
-        status: "succeeded",
-        requestedValue: "4200",
-        verified: true,
-        durationMs: 12,
-        snapshotId: "snapshot-valid",
-        createdAt: "2026-05-25T08:02:00.000Z"
-      }
+      operation: writeOperation
     });
     const invalidSnapshotState = appReducer(operationState, {
       type: "UPSERT_DEBUG_SNAPSHOT",
@@ -1488,7 +1491,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
         status: "valid",
         risk: "High",
         createdAt: "2026-05-25T08:03:00.000Z"
-      }
+      },
+      operation: writeOperation
     });
 
     expect(sessionState.debuggingSessionStartedAt).toBe(startedAt);
@@ -1499,10 +1503,21 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       parameterIds: [initialState.debugParameters[0].id]
     });
     expect(invalidSnapshotState.lastDebugSnapshot).toBeNull();
-    expect(validSnapshotState.lastDebugSnapshot).toBeNull();
+    expect(validSnapshotState.lastDebugSnapshot).toEqual({
+      id: "snapshot-valid",
+      createdAt: "2026-05-25T08:03:00.000Z",
+      risk: "High",
+      entries: [
+        {
+          parameterId: initialState.debugParameters[0].id,
+          previousValue: "3600",
+          nextValue: "4200"
+        }
+      ]
+    });
   });
 
-  it("does not convert valid API snapshot summaries into empty rollback snapshots", () => {
+  it("converts valid summary-only snapshots so the rollback button still activates", () => {
     const next = appReducer(initialState, {
       type: "UPSERT_DEBUG_SNAPSHOT",
       snapshot: {
@@ -1514,7 +1529,12 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       }
     });
 
-    expect(next.lastDebugSnapshot).toBeNull();
+    expect(next.lastDebugSnapshot).toEqual({
+      id: "snapshot-summary-only",
+      createdAt: "2026-05-25T08:03:00.000Z",
+      risk: "High",
+      entries: []
+    });
   });
 
   it("defaults mock parameter workflow assignees to concrete eligible users instead of global admin", () => {
