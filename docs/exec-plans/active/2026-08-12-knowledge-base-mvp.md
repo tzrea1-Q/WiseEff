@@ -4,7 +4,7 @@
 > Date: 2026-08-12
 > Design: [`docs/design-docs/2026-08-12-knowledge-base-design.md`](../../design-docs/2026-08-12-knowledge-base-design.md)
 > Chinese: [`docs/zh-CN/exec-plans/active/2026-08-12-knowledge-base-mvp.md`](../../zh-CN/exec-plans/active/2026-08-12-knowledge-base-mvp.md)
-> ADR: [ADR-0022](../../adr/0022-knowledge-retrieval-lives-in-postgres.md)
+> ADR: [ADR-0025](../../adr/0025-knowledge-retrieval-lives-in-postgres.md)
 
 ## Goal
 

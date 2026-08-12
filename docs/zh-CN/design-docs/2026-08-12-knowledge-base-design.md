@@ -4,7 +4,7 @@
 > 状态：**锁定设计**——D1–D20 于 2026-08-12 经拷问式设计会话敲定
 > 日期：2026-08-12
 > 执行计划：[`docs/zh-CN/exec-plans/active/2026-08-12-knowledge-base-mvp.md`](../exec-plans/active/2026-08-12-knowledge-base-mvp.md)
-> 相关文档：[`ARCHITECTURE.md`](../root/ARCHITECTURE.md)、[`docs/SECURITY.md`](../SECURITY.md)、ADR-0022（`docs/adr/0022-knowledge-retrieval-lives-in-postgres.md`，英文）
+> 相关文档：[`ARCHITECTURE.md`](../root/ARCHITECTURE.md)、[`docs/SECURITY.md`](../SECURITY.md)、ADR-0025（`docs/adr/0025-knowledge-retrieval-lives-in-postgres.md`，英文）
 
 ## 定位
 
@@ -44,7 +44,7 @@ MVP 中的 "agentic" 指两层含义，第三层显式保留演进空间：
 
 ## 检索与 RAG
 
-- **存储**：切块行存于 PostgreSQL，带 pgvector embedding 列及全文/trigram 索引（ADR-0022）。不引入独立向量数据库。
+- **存储**：切块行存于 PostgreSQL，带 pgvector embedding 列及全文/trigram 索引（ADR-0025）。不引入独立向量数据库。
 - **Embedding**：OpenAI 兼容的 `EMBEDDING_API_*` 端点，镜像 `AGENT_API_*` 的接缝。自托管部署可指向本地 OpenAI 兼容推理服务。未配置时知识库以纯全文检索模式运行：功能完整可用，仅无语义检索。
 - **索引管线**：异步 worker 接缝，镜像日志分析模块（默认轮询、可接队列）。发布、编辑、归档动作入队索引刷新；失败在 `/knowledge-admin` 按条目呈现状态并提供重建动作。索引永远可从已发布版本重建。
 - **切块**：markdown 按标题结构感知切分并带重叠；抽取文本按段落窗口切分。切块携带条目与版本标识，引用可深链接。
@@ -102,7 +102,7 @@ MVP 之后的候选项（按序），均与本模型兼容：
 | D3 | 组织级 + 项目标签；不做项目私有知识库 |
 | D4 | markdown 一等公民 + 文件型条目；外链延后 |
 | D5 | 小泽是唯一对话座席；知识库加的是工具，不是第二个聊天 |
-| D6 | PostgreSQL 内 pgvector；OpenAI 兼容 embedding 端点；纯全文检索降级（ADR-0022） |
+| D6 | PostgreSQL 内 pgvector；OpenAI 兼容 embedding 端点；纯全文检索降级（ADR-0025） |
 | D7 | 人写走 wiki 式轻治理；Agent 写落草稿由人发布；不设审批队列 |
 | D8 | MVP 联动：小泽引用锚定 + 日志结论沉淀 |
 | D9 | 仅产品内访问；MVP 不做 MCP 接入面 |

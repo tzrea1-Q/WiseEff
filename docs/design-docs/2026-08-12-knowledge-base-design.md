@@ -4,7 +4,7 @@
 > Date: 2026-08-12
 > Chinese: [`docs/zh-CN/design-docs/2026-08-12-knowledge-base-design.md`](../zh-CN/design-docs/2026-08-12-knowledge-base-design.md)
 > Execution plan: [`docs/exec-plans/active/2026-08-12-knowledge-base-mvp.md`](../exec-plans/active/2026-08-12-knowledge-base-mvp.md)
-> Related: [`ARCHITECTURE.md`](../../ARCHITECTURE.md), [Xiaoze agent design](2026-06-24-xiaoze-agent-design.md), [`docs/SECURITY.md`](../SECURITY.md), [ADR-0022](../adr/0022-knowledge-retrieval-lives-in-postgres.md)
+> Related: [`ARCHITECTURE.md`](../../ARCHITECTURE.md), [Xiaoze agent design](2026-06-24-xiaoze-agent-design.md), [`docs/SECURITY.md`](../SECURITY.md), [ADR-0025](../adr/0025-knowledge-retrieval-lives-in-postgres.md)
 
 ## Positioning
 
@@ -44,7 +44,7 @@ Scenario checks the model must satisfy:
 
 ## Retrieval and RAG
 
-- **Storage**: chunk rows in PostgreSQL with a pgvector embedding column plus full-text/trigram indexes ([ADR-0022](../adr/0022-knowledge-retrieval-lives-in-postgres.md)). No dedicated vector database.
+- **Storage**: chunk rows in PostgreSQL with a pgvector embedding column plus full-text/trigram indexes ([ADR-0025](../adr/0025-knowledge-retrieval-lives-in-postgres.md)). No dedicated vector database.
 - **Embeddings**: an OpenAI-compatible `EMBEDDING_API_*` endpoint, mirroring the `AGENT_API_*` seam. Self-hosted deployments may target a local OpenAI-compatible inference server. When unconfigured, the knowledge base runs in FTS-only mode: fully usable, no semantic retrieval.
 - **Indexing pipeline**: an asynchronous worker seam mirroring the log-analysis module (polling default, queue-ready). Publish, edit, and archive enqueue index refreshes; failures surface in `/knowledge-admin` with per-entry status and a rebuild action. The index is always rebuildable from published revisions.
 - **Chunking**: markdown splits heading-aware with overlap; extracted file text splits by paragraph windows. Chunks carry entry and revision identity so citations can deep-link.
@@ -102,7 +102,7 @@ Ordered next candidates after the MVP, all compatible with this model:
 | D3 | Organization-scoped with project tags; no project-private knowledge bases |
 | D4 | Markdown first-class plus file-form entries; external links deferred |
 | D5 | Xiaoze is the only conversational surface; knowledge adds tools, not a second chat |
-| D6 | pgvector in PostgreSQL; OpenAI-compatible embedding endpoint; FTS-only degradation (ADR-0022) |
+| D6 | pgvector in PostgreSQL; OpenAI-compatible embedding endpoint; FTS-only degradation (ADR-0025) |
 | D7 | Wiki-lite governance for humans; drafts plus human publish for agents; no approval queue |
 | D8 | MVP linkage: Xiaoze grounding with citations plus log-conclusion distillation |
 | D9 | In-product access only; no MCP surface in the MVP |

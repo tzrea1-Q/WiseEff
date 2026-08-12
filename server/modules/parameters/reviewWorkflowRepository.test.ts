@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { QueryResult, Queryable } from "../../shared/database/client";
+import { setParameterIdentityMode } from "./parameterIdentityMode";
 import { getProjectParameterForUpdate } from "./repository";
 import {
   createChangeRequest,
@@ -323,12 +324,10 @@ describe("review workflow repository", () => {
   });
 
   it("lists post-cutover submission items without retired flat identity tables", async () => {
+    setParameterIdentityMode("semantic");
     const calls: QueryCall[] = [];
     const db: Queryable = {
       query: async <Row,>(text: string, values: unknown[] = []) => {
-        if (text.includes("parameter_identity_cutovers")) {
-          return { rows: [{ c: "1" } as Row], rowCount: 1 };
-        }
         calls.push({ text, values });
         if (text.includes("from parameter_submission_rounds psr")) {
           return {

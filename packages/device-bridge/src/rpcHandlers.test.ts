@@ -390,6 +390,25 @@ describe("device bridge rpc handlers", () => {
     expect(hdc.calls).toEqual([["-t", "AURORA-001", "shell", "dmesg"]]);
   });
 
+  it("keeps the newest lines when an oversized dmesg dump is truncated", async () => {
+    const evidence = "overlay reload applied for wireless\n";
+    const oversized = "boot noise line\n".repeat(30_000) + evidence;
+    const hdc = makeRunner([{ code: 0, stdout: oversized, stderr: "", durationMs: 20 }]);
+    const rpc = createRpcHandlers({ hdcRunner: hdc.runner, adbRunner: makeRunner([]).runner });
+
+    const result = await rpc.handle("debug.readKernelLog", {
+      protocol: "hdc",
+      targetRef: "AURORA-001",
+      command: "dmesg"
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.truncated).toBe(true);
+    expect(typeof result.text).toBe("string");
+    expect((result.text as string).endsWith(evidence)).toBe(true);
+    expect(result.byteLength).toBeLessThanOrEqual(256 * 1024);
+  });
+
   it("refuses non-allowlisted kernel log commands without invoking the runner", async () => {
     const hdc = makeRunner([]);
     const rpc = createRpcHandlers({ hdcRunner: hdc.runner, adbRunner: makeRunner([]).runner });

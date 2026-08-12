@@ -4,7 +4,7 @@
 > 状态：**进行中**——2026-08-12 规划锁定；Phase 1 已在 `feat/knowledge-base-foundation` 实现（2026-08-12）；Phase 2–3 未开始
 > 日期：2026-08-12
 > 设计文档：[`docs/zh-CN/design-docs/2026-08-12-knowledge-base-design.md`](../../design-docs/2026-08-12-knowledge-base-design.md)
-> ADR：ADR-0022（`docs/adr/0022-knowledge-retrieval-lives-in-postgres.md`，英文）
+> ADR：ADR-0025（`docs/adr/0025-knowledge-retrieval-lives-in-postgres.md`，英文）
 
 ## 目标
 

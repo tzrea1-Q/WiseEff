@@ -17,7 +17,7 @@ import {
 } from "../../../testing/testDatabase";
 import { requestJson } from "../../../test/testClient";
 import type { AuthContext } from "../../auth/types";
-import { resetParameterIdentityCutoverCache } from "../cutoverAwareIdentity";
+import { resolveParameterIdentityMode } from "../parameterIdentityMode";
 import { registerParameterDashboardRoutes } from "./routes";
 import { aggregateHotspotGroups } from "./hotspotRepository";
 import {
@@ -337,7 +337,7 @@ async function bootstrapPostCutoverDatabase(db: Database) {
   });
   expect(report.blockers).toEqual([]);
   await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
-  resetParameterIdentityCutoverCache();
+  await resolveParameterIdentityMode(db);
 
   const legacyTables = await db.query(
     `select table_name from information_schema.tables
@@ -570,7 +570,7 @@ describe.skipIf(!databaseAvailable)("post-cutover dashboard API (temp DB)", () =
         );
 
         await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
-        resetParameterIdentityCutoverCache();
+        await resolveParameterIdentityMode(db);
 
         const legacyTables = await db.query(
           `select table_name from information_schema.tables

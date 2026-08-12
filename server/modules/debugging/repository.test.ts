@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { QueryResult, Queryable } from "../../shared/database/client";
-import { resetParameterIdentityCutoverCache } from "../parameters/cutoverAwareIdentity";
+import { setParameterIdentityMode } from "../parameters/parameterIdentityMode";
 import {
   acquireDebugDeviceLease,
   claimSnapshotForRollback,
@@ -64,7 +64,7 @@ function createFakeDb(results: QueuedResult[] = []) {
 }
 
 beforeEach(() => {
-  resetParameterIdentityCutoverCache();
+  setParameterIdentityMode(null);
 });
 
 const timestamp = "2026-05-27T10:00:00.000Z";

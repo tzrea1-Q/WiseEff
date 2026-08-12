@@ -1,5 +1,5 @@
 import type { Database } from "../../../shared/database/client";
-import { mustUseSemanticParameterIdentity } from "../semanticParameterReads";
+import { parameterIdentityMode } from "../parameterIdentityMode";
 import {
   SEMANTIC_ACTIVE_SPEC_VERSION_LATERAL,
   SEMANTIC_BINDING_ORG_SCOPE,
@@ -322,7 +322,7 @@ async function aggregateHotspotGroupsSemantic(
 }
 
 export async function aggregateHotspotGroups(db: Database, input: AggregateInput): Promise<HotspotGroupAggregate[]> {
-  if (await mustUseSemanticParameterIdentity(db)) {
+  if (parameterIdentityMode() === "semantic") {
     return aggregateHotspotGroupsSemantic(db, input);
   }
   return aggregateHotspotGroupsLegacy(db, input);

@@ -1,4 +1,4 @@
-# ADR-0022: Knowledge retrieval lives in PostgreSQL
+# ADR-0025: Knowledge retrieval lives in PostgreSQL
 
 - Status: Accepted
 - Date: 2026-08-12
