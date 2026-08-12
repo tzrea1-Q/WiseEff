@@ -2,8 +2,8 @@ import { ColumnFilter } from "@/components/ColumnFilter";
 import { useTopBarActions } from "@/components/layout";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "@/components/tableFilterUtils";
 import { type PageProps } from "@/app/routes";
-import { SEVERITY_LABELS, STAGE_LABELS, type LogEvidence, type LogRecord, type LogStageId } from "@/domain/prototype/types";
 import type { LogDomain } from "@/domain/logs/types";
+import { SEVERITY_LABELS, STAGE_LABELS, type LogEvidence, type LogRecord, type LogStageId } from "@/domain/prototype/types";
 import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { EmptyStateCard, PanelHeader, SectionLabel } from "@/workbenchUi";
 import {
