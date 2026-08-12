@@ -4,7 +4,8 @@ import App, { appReducer, type AppAction } from "./App";
 import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
 import { TopBarActionsContext } from "./components/layout";
 import { DebuggingPage } from "./DebuggingPage";
-import { initialState, type PrototypeState } from "./mockData";
+import { initialState } from "./mockData";
+import type { PrototypeState } from "@/domain/prototype/types";
 import { useMemo, useReducer, useState, type ReactNode } from "react";
 
 const userState = { ...initialState, activeRoleId: "user" };

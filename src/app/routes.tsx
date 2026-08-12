@@ -44,7 +44,7 @@ import { UserPermissionsPage } from "@/UserPermissionsPage";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
 import { NoEntryPage } from "@/components/NoEntryPage";
 import type { PageConfig } from "@/appConfig";
-import type { PrototypeState } from "@/mockData";
+import type { PrototypeState } from "@/domain/prototype/types";
 import type { ParameterDraftItem, ParameterRecord } from "@/domain/parameters/types";
 
 const NodeDebuggingPageWithRuntimeProps = NodeDebuggingPage as (

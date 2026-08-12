@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { reducer } from "./App";
-import { initialState, SEVERITY_LABELS, STAGE_LABELS, type LogSeverity, type LogStageId } from "./mockData";
+import { initialState } from "./mockData";
+import { SEVERITY_LABELS, STAGE_LABELS, type LogSeverity, type LogStageId } from "@/domain/prototype/types";
 
 describe("log mockData · label 常量", () => {
   it("STAGE_LABELS 覆盖所有 LogStageId 且为中文", () => {

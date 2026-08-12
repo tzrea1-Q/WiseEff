@@ -2,7 +2,7 @@ import { ArrowDownRight, ArrowRight, ArrowUpRight, ChevronRight } from "lucide-r
 import { useRef } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import type { DashboardHotspot } from "@/domain/parameters/dashboardTypes";
-import type { PrototypeState } from "@/mockData";
+import type { PrototypeState } from "@/domain/prototype/types";
 import { computeEyebrow } from "@/hotspotPresentation";
 import { cn } from "@/lib/utils";
 import { HotspotScorePanel } from "./HotspotScorePanel";

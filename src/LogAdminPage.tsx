@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { canPerform } from "@/app/permissions";
 import { cn } from "@/lib/utils";
 import { applyTableFilters, applyTimeWindow, deriveInsight, deriveMetrics } from "@/logAdminAnalytics";
-import { STAGE_LABELS, type LogRecord, type LogStatus, type PrototypeState, type TimeWindow } from "@/mockData";
+import { STAGE_LABELS, type LogRecord, type LogStatus, type PrototypeState, type TimeWindow } from "@/domain/prototype/types";
 import { useTopBarActions } from "@/components/layout";
 import { logRuntimeFailureNotification, type LogRuntimeActions } from "@/application/logs/logRuntime";
 import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";

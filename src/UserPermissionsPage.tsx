@@ -5,7 +5,7 @@ import type { AppAction } from "@/App";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "@/components/tableFilterUtils";
 import { migrateLegacyRoleId, platformRoles, type PermissionKey, type PlatformRoleId } from "@/domain/users/types";
-import type { PrototypeState, User } from "@/mockData";
+import type { PrototypeState, User } from "@/domain/prototype/types";
 
 type UserPermissionsPageProps = {
   state: PrototypeState;

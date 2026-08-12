@@ -6,7 +6,7 @@ import { ColumnFilter } from "./components/ColumnFilter";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "./components/tableFilterUtils";
 import { getInitializationScopeParameters, resolveInitializationConfig } from "./domain/parameters/initialization";
 import type { ProjectParameterInitializationSnapshotItem, RiskLevel } from "./domain/parameters/types";
-import type { PrototypeState } from "./mockData";
+import type { PrototypeState } from "@/domain/prototype/types";
 
 type Props = {
   state: PrototypeState;

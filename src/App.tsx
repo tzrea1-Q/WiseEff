@@ -148,31 +148,33 @@ import { buildDraftSubmissionRounds } from "@/domain/parameters/buildDraftSubmis
 import { LinearTemplateHome } from "./linear-template/LinearTemplateHome";
 import { readInitialNodeDebuggingProtocol } from "./NodeDebuggingPage";
 import {
-  AuditEvent,
-  ChangeRequest,
   derivePowerManagementRuntimeState,
-  DebugParameter,
-  DebugSnapshot,
   initialState,
-  LogAdminRole,
-  LogAdminUserAvatarTone,
-  LogEvidence,
-  LogStageId,
-  TimeWindow,
   mockDataFingerprint,
-  LogRecord,
-  ParameterRecord,
-  ParameterSubmissionRound,
-  ParameterSubmissionItem,
-  REVIEW_MOCK_NOW,
   projects,
-  PrototypeState,
-  RequestStatus,
-  roles,
+  REVIEW_MOCK_NOW,
+  roles
+} from "./mockData";
+import {
   SEVERITY_LABELS,
   STAGE_LABELS,
+  type AuditEvent,
+  type ChangeRequest,
+  type DebugParameter,
+  type DebugSnapshot,
+  type LogAdminRole,
+  type LogAdminUserAvatarTone,
+  type LogEvidence,
+  type LogRecord,
+  type LogStageId,
+  type ParameterRecord,
+  type ParameterSubmissionItem,
+  type ParameterSubmissionRound,
+  type PrototypeState,
+  type RequestStatus,
+  type TimeWindow,
   type User
-} from "./mockData";
+} from "@/domain/prototype/types";
 import { buildAISuggestion, buildImpactItems } from "./reviewMockData";
 import { buildAuditEvent } from "./parameterAdminAnalytics";
 import { buildParameterLibraryFromRecords, buildParameterModulesFromRecords } from "./parameterAdminLibrary";

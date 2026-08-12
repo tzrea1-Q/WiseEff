@@ -14,7 +14,7 @@ import { ProjectConfigurationWorkbench } from "@/components/project-configuratio
 import { migrateLegacyRoleId } from "@/domain/users/types";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
-import type { PrototypeState } from "@/mockData";
+import type { PrototypeState } from "@/domain/prototype/types";
 import {
   buildParameterAdminProjectsFromState,
   isEditableProjectStatus,

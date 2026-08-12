@@ -2,7 +2,7 @@ import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { AuditEventView } from "@/domain/audit/types";
-import type { RiskLevel } from "@/mockData";
+import type { RiskLevel } from "@/domain/prototype/types";
 
 export type AuditTimelineProps = {
   events: AuditEventView[];

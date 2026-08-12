@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { auditEvents, initialState, roles, users } from "./mockData";
-import type { AuditEventKind, ImportBatch, RoleCapability, UndoEntry } from "./mockData";
+import type { AuditEventKind, ImportBatch, RoleCapability, UndoEntry } from "@/domain/prototype/types";
 
 describe("parameter admin data contracts", () => {
   it("extends every role with permissions and description", () => {

@@ -1,6 +1,6 @@
 import { RotateCcw } from "lucide-react";
 import { deriveSessionMetrics } from "../debuggingAnalytics";
-import type { PrototypeState } from "../mockData";
+import type { PrototypeState } from "@/domain/prototype/types";
 
 export function SessionSummaryCard({
   state,

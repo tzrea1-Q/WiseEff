@@ -8,7 +8,7 @@ import { RollbackConfirmDialog } from "./components/RollbackConfirmDialog";
 import { SessionSummaryCard } from "./components/SessionSummaryCard";
 import { WorkbenchSheet } from "./components/WorkbenchSheet";
 import { useTopBarActions } from "./components/layout";
-import type { DebugParameter, PrototypeState } from "./mockData";
+import type { DebugParameter, PrototypeState } from "@/domain/prototype/types";
 import { RiskBadge, Badge, riskLabels } from "./workbenchUi";
 
 const riskFilterValues = ["High", "Medium", "Low"] as const;

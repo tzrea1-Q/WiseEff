@@ -2,7 +2,7 @@ import { useState, type Dispatch } from "react";
 import type { AppAction } from "@/App";
 import type { ParameterPageActions } from "@/app/routes";
 import type { ParameterImportBatchDto } from "@/application/ports/ParameterRepository";
-import type { Project } from "@/mockData";
+import type { Project } from "@/domain/prototype/types";
 import { buildImportReviewMetadata } from "@/application/parameters/import/buildImportReviewMetadata";
 import type { ReviewedImportRow } from "@/application/parameters/import/types";
 

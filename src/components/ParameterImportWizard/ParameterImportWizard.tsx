@@ -10,7 +10,7 @@ import type { ParameterImportBatchDto } from "@/application/ports/ParameterRepos
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
-import type { ParameterRecord, Project } from "@/mockData";
+import type { ParameterRecord, Project } from "@/domain/prototype/types";
 import { buildParameterLibraryFromRecords, buildParameterModulesFromRecords } from "@/parameterAdminLibrary";
 import { listParameterModuleNames } from "@/powerManagementConfig";
 import { StepBatchPreview } from "./steps/StepBatchPreview";

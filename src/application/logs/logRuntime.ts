@@ -8,7 +8,7 @@ import type {
 } from "@/application/ports/LogAnalysisRepository";
 import type { AppAction } from "@/App";
 import type { LogRecord } from "@/domain/logs/types";
-import type { PrototypeState } from "@/mockData";
+import type { PrototypeState } from "@/domain/prototype/types";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 
 export const logRuntimeFailureNotification = "日志操作未完成，请稍后重试。";
