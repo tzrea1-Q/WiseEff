@@ -23,7 +23,7 @@ const ALLOWED_PATH_SUBSTRINGS = [
   // Pre-cutover project delete still clears archived flat-identity rows.
   "/parameters/repository.ts",
   // Pre-cutover draft listing still joins the legacy PPV/definition tables.
-  "/parameters/draftRepository.ts",
+  "/parameter-drafts/repository.ts",
   // Conflict enrichment falls back to legacy PPV/definition columns pre-cutover.
   "/parameters/fileSyncConflictRepository.ts",
   "/parameters/dashboard/legacyDashboardAdapter.ts",

@@ -27,7 +27,7 @@ import {
   getChangeRequestWriteLock,
   listDraftsForUser,
   upsertDraft
-} from "../parameters/draftRepository";
+} from "../parameter-drafts/repository";
 import { deleteProject } from "../parameters/projectRepository";
 import {
   createChangeRequest,

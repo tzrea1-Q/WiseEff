@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { createAuditEvent } from "../audit/repository";
 import type { AuthContext } from "../auth/types";
-import { listDraftsForParameterValue } from "../parameters/draftRepository";
+import { listDraftsForParameterValue } from "../parameter-drafts/repository";
 import {
   insertFileSyncConflict,
   listFileSyncConflictsByIds,
