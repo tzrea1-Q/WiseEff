@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { makeTestAuthContext } from "../../testing/authContext";
 import { ingestConfigRevision } from "./ingestService";
 import type { ConfigRevisionManifest } from "./types";
 
@@ -26,19 +27,14 @@ const MT5788_LOCATOR = "/amba/i2c@FF24E000/mt5788@2B";
 const databaseAvailable = await isTestDatabaseAvailable();
 
 function makeAuth(): AuthContext {
-  return {
-    user: {
-      id: USER_ID,
-      organizationId: ORG_ID,
-      name: "Topo Ingest Admin",
-      email: "topo-ingest@example.com",
-      title: "Admin",
-      isActive: true,
-    },
-    organization: { id: ORG_ID, name: "Topo Ingest Org" },
-    roles: [{ projectId: null, roleId: "admin" }],
+  return makeTestAuthContext({
+    userId: USER_ID,
+    organizationId: ORG_ID,
+    name: "Topo Ingest Admin",
+    email: "topo-ingest@example.com",
+    organizationName: "Topo Ingest Org",
     permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
-  };
+  });
 }
 
 /** Label stubs only — keeps the manifest complete without adding base property rows. */

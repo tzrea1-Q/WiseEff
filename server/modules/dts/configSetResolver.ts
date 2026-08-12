@@ -1,7 +1,7 @@
 import posixPath from "node:path/posix";
 
 import { parseDts } from "./parser";
-import { stripDtsComments } from "../parameter-files/preprocess";
+import { stripDtsComments } from "./preprocess";
 import type { DtsDeleteNodeCst, DtsDeletePropertyCst, DtsNodeCst, DtsPropertyCst, DtsValue, DtsValueType } from "./types";
 
 /**

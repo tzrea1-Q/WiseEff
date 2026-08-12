@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { makeTestAuthContext } from "../../testing/authContext";
 import {
   activateParameterSpec,
   finalizeParameterSpecVersionCutover,
@@ -26,19 +27,14 @@ const V1_ID = `${ACTIVE_SPEC}:v1`;
 const databaseAvailable = await isTestDatabaseAvailable();
 
 function makeAuth(): AuthContext {
-  return {
-    user: {
-      id: USER_ID,
-      organizationId: ORG_ID,
-      name: "Cutover Admin",
-      email: "cutover@example.com",
-      title: "Admin",
-      isActive: true,
-    },
-    organization: { id: ORG_ID, name: "Cutover Org" },
-    roles: [{ projectId: null, roleId: "admin" }],
+  return makeTestAuthContext({
+    userId: USER_ID,
+    organizationId: ORG_ID,
+    name: "Cutover Admin",
+    email: "cutover@example.com",
+    organizationName: "Cutover Org",
     permissions: ["parameter:view", "parameter:edit", "admin:access"],
-  };
+  });
 }
 
 async function seedActiveSpec(db: InMemoryTestDatabase) {

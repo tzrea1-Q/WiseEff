@@ -1,10 +1,10 @@
-import { readFileSync } from "node:fs";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { UserPermissionsPage, type RegistrationRoleRequest, type UserGovernanceActions } from "./UserPermissionsPage";
 import { createPrototypeState } from "./mockData";
+import { declarationsFor, readStylesheet } from "./test/cssAssertions";
 import type { PlatformRoleId } from "./domain/users/types";
 
 afterEach(() => {
@@ -38,28 +38,6 @@ function renderPageWithActions(userGovernanceActions: UserGovernanceActions) {
   );
 
   return { ...utils, state, dispatch, onNavigate };
-}
-
-function readCssBlock(selector: string) {
-  const css = readFileSync("src/styles.css", "utf8");
-  const selectorIndex = css.indexOf(`${selector} {`);
-  expect(selectorIndex).toBeGreaterThanOrEqual(0);
-
-  const blockStart = css.indexOf("{", selectorIndex);
-  const blockEnd = css.indexOf("}", blockStart);
-
-  return css.slice(blockStart + 1, blockEnd);
-}
-
-function readLastCssBlock(selector: string) {
-  const css = readFileSync("src/styles.css", "utf8");
-  const selectorIndex = css.lastIndexOf(`${selector} {`);
-  expect(selectorIndex).toBeGreaterThanOrEqual(0);
-
-  const blockStart = css.indexOf("{", selectorIndex);
-  const blockEnd = css.indexOf("}", blockStart);
-
-  return css.slice(blockStart + 1, blockEnd);
 }
 
 function registrationRoleRequest(overrides: Partial<RegistrationRoleRequest> = {}): RegistrationRoleRequest {
@@ -555,38 +533,41 @@ describe("UserPermissionsPage", () => {
   });
 
   it("keeps role selectors wide enough for split committer role names", () => {
-    const tableCardStyles = readCssBlock(".user-permissions-table-card");
-    const roleCellStyles = readCssBlock(".user-permissions-role-cell");
-    const roleSelectStyles = readCssBlock(".user-permissions-role-select");
-    const roleTooltipStyles = readLastCssBlock(".user-permissions-role-tooltip");
+    const css = readStylesheet("src/styles.css");
+    const tableCardStyles = declarationsFor(css, ".user-permissions-table-card");
+    const roleCellStyles = declarationsFor(css, ".user-permissions-role-cell");
+    const roleSelectStyles = declarationsFor(css, ".user-permissions-role-select");
+    const roleTooltipStyles = declarationsFor(css, ".user-permissions-role-tooltip");
 
-    expect(tableCardStyles).toContain("overflow-x: auto;");
-    expect(tableCardStyles).toContain("max-width: 100%;");
-    const approvalItemStyles = readCssBlock(".user-permissions-approval-item");
-    const approvalUserStyles = readCssBlock(".user-permissions-approval-user strong");
-    expect(approvalItemStyles).toContain("grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto;");
-    const narrowApprovalItemStyles = readLastCssBlock("@media (max-width: 1100px) {\n  .user-permissions-approval-item");
-    expect(narrowApprovalItemStyles).toContain("grid-template-areas:");
-    expect(narrowApprovalItemStyles).toContain("\"user actions\"");
-    expect(approvalUserStyles).toContain("text-overflow: ellipsis;");
-    expect(roleCellStyles).toContain("width: 204px;");
-    expect(roleSelectStyles).toContain("min-width: 180px;");
-    expect(roleSelectStyles).toContain("width: 180px;");
-    expect(roleTooltipStyles).toContain("position: fixed;");
-    expect(roleTooltipStyles).toContain("max-height: calc(100vh - 32px);");
-    expect(roleTooltipStyles).toContain("overflow: auto;");
+    expect(tableCardStyles["overflow-x"]).toBe("auto");
+    expect(tableCardStyles["max-width"]).toBe("100%");
+    const approvalItemStyles = declarationsFor(css, ".user-permissions-approval-item");
+    const approvalUserStyles = declarationsFor(css, ".user-permissions-approval-user strong");
+    expect(approvalItemStyles["grid-template-columns"]).toBe("minmax(0, 1.2fr) minmax(0, 1fr) auto");
+    const narrowApprovalItemStyles = declarationsFor(css, ".user-permissions-approval-item", {
+      within: "(max-width: 1100px)"
+    });
+    expect(narrowApprovalItemStyles["grid-template-areas"]).toContain('"user actions"');
+    expect(approvalUserStyles["text-overflow"]).toBe("ellipsis");
+    expect(roleCellStyles.width).toBe("204px");
+    expect(roleSelectStyles["min-width"]).toBe("180px");
+    expect(roleSelectStyles.width).toBe("180px");
+    expect(roleTooltipStyles.position).toBe("fixed");
+    expect(roleTooltipStyles["max-height"]).toBe("calc(100vh - 32px)");
+    expect(roleTooltipStyles.overflow).toBe("auto");
   });
 
   it("gives user management action buttons visible chrome instead of text-only controls", () => {
-    const baseButtonStyles = readCssBlock(".user-permissions-page .button");
-    const primaryButtonStyles = readCssBlock(".user-permissions-page .button.primary");
+    const css = readStylesheet("src/styles.css");
+    const baseButtonStyles = declarationsFor(css, ".user-permissions-page .button");
+    const primaryButtonStyles = declarationsFor(css, ".user-permissions-page .button.primary");
 
-    expect(baseButtonStyles).toContain("display: inline-flex;");
-    expect(baseButtonStyles).toContain("background: #fff;");
-    expect(baseButtonStyles).toContain("border: 1px solid #d7dfec;");
-    expect(baseButtonStyles).toContain("border-radius: 8px;");
-    expect(primaryButtonStyles).toContain("background: var(--app-primary);");
-    expect(primaryButtonStyles).toContain("border-color: var(--app-primary);");
+    expect(baseButtonStyles.display).toBe("inline-flex");
+    expect(baseButtonStyles.background).toBe("#fff");
+    expect(baseButtonStyles.border).toBe("1px solid #d7dfec");
+    expect(baseButtonStyles["border-radius"]).toBe("8px");
+    expect(primaryButtonStyles.background).toBe("var(--app-primary)");
+    expect(primaryButtonStyles["border-color"]).toBe("var(--app-primary)");
   });
 
   it("renders and filters legacy role ids under their migrated platform role", async () => {

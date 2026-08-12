@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { allSelectors, declarationsFor, readStylesheet } from "../../test/cssAssertions";
 
 /**
  * The structured value editor shipped every one of its own class names with no rule
@@ -36,30 +37,25 @@ describe("StructuredValueEditor styling contract", () => {
   });
 
   it("styles every class the component emits", () => {
-    const styles = readFileSync(resolve(__dirname, "../../styles.css"), "utf8");
+    const selectors = allSelectors(readStylesheet("src/styles.css"));
     const unstyled = editorClassNames().filter(
-      (className) => !new RegExp(`\\.${className}[\\s,.:>{[]`).test(styles)
+      (className) =>
+        !selectors.some((selector) => new RegExp(`\\.${className}(?![\\w-])`).test(selector))
     );
 
     expect(unstyled).toEqual([]);
   });
 
   it("gives the editor's inputs and buttons a visible affordance", () => {
-    const styles = readFileSync(resolve(__dirname, "../../styles.css"), "utf8");
+    const styles = readStylesheet("src/styles.css");
+    const inputRule = declarationsFor(styles, '.structured-value-editor input:not([type="checkbox"])');
+    const buttonRule = declarationsFor(styles, ".structured-value-editor button");
+    const invalidInputRule = declarationsFor(styles, '.structured-value-editor input[aria-invalid="true"]');
 
-    const inputRule =
-      styles.match(
-        /\.structured-value-editor input:not\(\[type="checkbox"\]\),\s*\.structured-value-editor textarea\s*\{[^}]*\}/
-      )?.[0] ?? "";
-    const buttonRule =
-      styles.match(/\.structured-value-editor button\s*\{[^}]*\}/)?.[0] ?? "";
-
-    expect(inputRule).toMatch(/border:\s*1px solid/);
-    expect(buttonRule).toMatch(/border:\s*1px solid/);
+    expect(inputRule.border).toContain("1px solid");
+    expect(buttonRule.border).toContain("1px solid");
     // Touch target floor for the add-cell / add-byte / remove controls.
-    expect(buttonRule).toMatch(/min-height:\s*(?:3[0-9]|[4-9][0-9])px/);
-    expect(styles).toMatch(
-      /\.structured-value-editor input\[aria-invalid="true"\]\s*\{[^}]*border-color/
-    );
+    expect(Number.parseInt(buttonRule["min-height"] ?? "0", 10)).toBeGreaterThanOrEqual(30);
+    expect(invalidInputRule["border-color"]).toBeTruthy();
   });
 });

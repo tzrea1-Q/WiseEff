@@ -99,4 +99,40 @@ describe("pairingService", () => {
       })
     );
   });
+
+  it("writes a High-severity audit event on pair without leaking the token", async () => {
+    const repo = {
+      consumePairingCode: vi.fn().mockResolvedValue({ userId: "u-1", organizationId: "org-1" }),
+      listActiveBridgesForMachine: vi.fn().mockResolvedValue([]),
+      createBridge: vi.fn().mockResolvedValue(undefined),
+      createBridgeToken: vi.fn().mockResolvedValue(undefined)
+    };
+    const events: unknown[] = [];
+    const service = createPairingService({
+      repo: repo as never,
+      now: () => new Date("2026-06-23T00:00:00.000Z"),
+      randomCode: () => "123456",
+      issueToken: () => "wb_test_token",
+      createBridgeId: () => "br-1",
+      db: {} as never,
+      createAuditEvent: (async (_db: unknown, input: unknown) => {
+        events.push(input);
+      }) as never
+    });
+
+    await service.pairWithCode({ code: "123456", machineLabel: "WIN-PC", platform: "windows", arch: "amd64" });
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      app: "device-bridge",
+      kind: "device-bridge-pair",
+      action: "create",
+      severity: "High",
+      targetType: "device-bridge",
+      targetId: "br-1",
+      actorUserId: "u-1",
+      organizationId: "org-1"
+    });
+    expect(JSON.stringify(events[0])).not.toContain("wb_test_token");
+  });
 });

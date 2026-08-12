@@ -17,6 +17,7 @@
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 - 表格列多选筛选复用 `ColumnFilter`：见 [表格列多选筛选 UX](../design-docs/ux-table-column-filter.md)。
+- 前端视觉与交互标准见 [UI 设计系统](../design-docs/ui-design-system.md)；前端可见变更的完成门禁见 [UI 质量检查清单](../developer/ui-quality-checklist.md)。
 
 ## Agent skills
 

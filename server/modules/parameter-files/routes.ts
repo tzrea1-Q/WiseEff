@@ -274,7 +274,6 @@ export function registerParameterFileRoutes(
       body: {
         item: result.file,
         version: result.version,
-        ...(result.unsupportedConstructs ? { unsupportedConstructs: result.unsupportedConstructs } : {}),
         ...(result.driverSummary ? { driverSummary: result.driverSummary } : {}),
       }
     };
@@ -311,7 +310,6 @@ export function registerParameterFileRoutes(
       status: 201,
       body: {
         item: result.version,
-        ...(result.unsupportedConstructs ? { unsupportedConstructs: result.unsupportedConstructs } : {}),
         ...(result.driverSummary ? { driverSummary: result.driverSummary } : {}),
       }
     };
@@ -429,7 +427,7 @@ export function registerParameterFileRoutes(
     if (!versionId) {
       throw new ApiError("CONFLICT", "Project parameter file has no synced version.", 409, { fileId: params.fileId });
     }
-    const summary = await syncFileVersion(db, auth, { fileId: file.id, versionId });
+    const summary = await syncFileVersion(db, auth, { fileId: file.id, versionId }, { requestId: request.requestId });
 
     return { status: 200, body: { item: summary } };
   });
