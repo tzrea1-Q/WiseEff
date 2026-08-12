@@ -311,6 +311,7 @@ export function PageRouter({
           canStartRun={canStartDtsReload}
           bridges={mockSeams?.bridges}
           probeBridgeHealth={mockSeams?.probeBridgeHealth}
+          createBridgePairingCode={mockSeams?.createPairingCode}
           detectTargets={
             mockSeams
               ? mockSeams.detectTargets

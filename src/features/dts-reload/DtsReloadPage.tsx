@@ -40,7 +40,10 @@ import {
   EMPTY_PARAMETER_MODULE_REGISTRY,
   type ParameterModuleRegistry
 } from "@/domain/parameter-topology/moduleRegistry";
-import type { LocalBridgeHealthState } from "@/infrastructure/http/deviceBridgeClient";
+import type {
+  DeviceBridgePairingCode,
+  LocalBridgeHealthState
+} from "@/infrastructure/http/deviceBridgeClient";
 import { cn } from "@/lib/utils";
 
 export type DtsReloadBridgeOption = {
@@ -65,6 +68,8 @@ export type DtsReloadPageProps = {
   listBridges?: () => Promise<DtsReloadBridgeOption[]>;
   /** Optional local health probe — defaults to deviceBridgeClient.probeLocalBridgeHealth. */
   probeBridgeHealth?: () => Promise<Pick<LocalBridgeHealthState, "connected" | "bridgeId"> | null>;
+  /** Optional pairing-code seam for the bridge panel — defaults to the HTTP client. */
+  createBridgePairingCode?: () => Promise<DeviceBridgePairingCode>;
   /** Optional reachable-target detection (same seam as /node-debugging detectTargets). */
   detectTargets?: (protocol: DtsReloadDeployProtocol) => Promise<DtsReloadReachableTarget[]>;
   /** Test/demo seam: seed deploy target without the removed manual targetRef field. */
@@ -81,6 +86,7 @@ export function DtsReloadPage({
   bridges: bridgesProp,
   listBridges,
   probeBridgeHealth,
+  createBridgePairingCode,
   detectTargets,
   initialTargetRef,
   moduleRegistryRepository
@@ -421,6 +427,7 @@ export function DtsReloadPage({
           bridgesOverride={bridgesOverride}
           listBridges={listBridgesForPanel}
           probeHealth={probeHealthForPanel}
+          createPairingCode={createBridgePairingCode}
           onBridgeStateChange={handleBridgeStateChange}
         />
 

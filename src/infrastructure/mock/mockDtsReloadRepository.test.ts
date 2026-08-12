@@ -219,6 +219,28 @@ describe("createMockDtsReloadRepository (DtsReloadRepository contract)", () => {
     expect(unbound.items).toHaveLength(0);
   });
 
+  it("keeps cursor pages stable when a run is created between pages (no duplicate rows)", async () => {
+    const repo = createRepo();
+    const firstPage = await repo.listRuns({ projectId: PROJECT_ID, limit: 10 });
+    const bindingId = await firstDebuggableBindingId(repo);
+    const started = await repo.startRun({
+      projectId: PROJECT_ID,
+      targets: [{ bindingId, debugValue: "<7000>" }]
+    });
+
+    const secondPage = await repo.listRuns({
+      projectId: PROJECT_ID,
+      cursor: firstPage.nextCursor,
+      limit: 10
+    });
+    const ids = [...firstPage.items, ...secondPage.items].map((item) => item.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    // The new run belongs to a refreshed first page, not to the continuation page.
+    expect(ids).not.toContain(started.id);
+    const refreshed = await repo.listRuns({ projectId: PROJECT_ID, limit: 10 });
+    expect(refreshed.items[0]?.id).toBe(started.id);
+  });
+
   it("exposes seeded run detail for history rows and rejects unknown run ids", async () => {
     const repo = createRepo();
     const { items } = await repo.listRuns({ projectId: PROJECT_ID, limit: 10 });

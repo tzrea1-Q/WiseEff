@@ -64,7 +64,13 @@ export function createMockDtsReloadBridgeSeams() {
         label: `Mock Bridge · ${MOCK_DTS_RELOAD_TARGET_REF}`,
         bridgeId: MOCK_DTS_RELOAD_BRIDGE_ID
       }
-    ]
+    ],
+    // The bridge panel prefetches a pairing code while local health is still unknown;
+    // mock mode must satisfy that without HTTP.
+    createPairingCode: async () => ({
+      code: "000000",
+      expiresAt: new Date(Date.now() + 10 * 60_000).toISOString()
+    })
   };
 }
 
@@ -571,10 +577,18 @@ export function createMockDtsReloadRepository(): DtsReloadRepository {
       const limit = input.limit ?? 20;
       const filtered = [...runs.values()]
         .filter((run) => (input.deviceId ? run.deviceId === input.deviceId : true))
-        .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
-      const offset = input.cursor ? Number.parseInt(input.cursor, 10) || 0 : 0;
-      const page = filtered.slice(offset, offset + limit);
-      const nextOffset = offset + page.length;
+        .sort(
+          (left, right) =>
+            right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id)
+        );
+      // Keyset cursor (createdAt|id): stays stable when new runs are created between pages,
+      // mirroring the server's cursor semantics instead of a drifting offset.
+      const cursorIndex = input.cursor
+        ? filtered.findIndex((run) => `${run.createdAt}|${run.id}` === input.cursor)
+        : -1;
+      const start = cursorIndex >= 0 ? cursorIndex + 1 : 0;
+      const page = filtered.slice(start, start + limit);
+      const lastOfPage = page[page.length - 1];
       const items: DtsReloadRunListItem[] = page.map((run) => ({
         id: run.id,
         projectId: run.projectId,
@@ -591,7 +605,10 @@ export function createMockDtsReloadRepository(): DtsReloadRepository {
       }));
       return {
         items,
-        nextCursor: nextOffset < filtered.length ? String(nextOffset) : null
+        nextCursor:
+          lastOfPage && start + page.length < filtered.length
+            ? `${lastOfPage.createdAt}|${lastOfPage.id}`
+            : null
       };
     },
 
