@@ -1,0 +1,13 @@
+# Synthetic format-coverage case (JSON-lines format picture) in the uncategorized
+# domain: generic analysis with machine-readable error codes.
+domain: uncategorized
+summary: A sync worker batch aborts after repeated E_SCHEMA_MISMATCH write rejections.
+realLog: false
+rootCauseCategory: software-fault
+rootCausePoints:
+  - Writes were rejected with E_SCHEMA_MISMATCH because the target table is missing the device_class column.
+  - The batch aborted after repeated identical failures and will retry without a schema fix.
+keyEvidenceLines: [3, 4]
+expectedActions:
+  - Apply or verify the schema migration adding device_class on the target before retrying.
+  - Correlate the error code with recent deployment or migration history.
