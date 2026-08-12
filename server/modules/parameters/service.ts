@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 
 import { createAuditEvent } from "../audit/repository";
-import { withAuditedWrite, type AuditedWriteContext } from "../audit/auditedWrite";
+import {
+  asAuditTx,
+  withAuditedWrite,
+  writeAuditEventInTx,
+  type AuditTx,
+  type AuditedWriteContext
+} from "../audit/auditedWrite";
 import {
   notifyParameterImportCompleted,
   notifyParameterMergeCompleted,
@@ -807,7 +813,7 @@ function buildChangeRequestAuditMetadata(
 }
 
 async function createParameterReviewAudit(
-  db: Queryable,
+  tx: AuditTx,
   auth: AuthContext,
   input: {
     projectId?: string;
@@ -823,16 +829,14 @@ async function createParameterReviewAudit(
   },
   context: ServiceContext = {}
 ) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: input.projectId ?? null,
-    actorUserId: auth.user.id,
-    actorType: "user",
+  // requestId fallback survives only until review-flow contexts become mandatory
+  // (audited-write migration batches, ADR-0027).
+  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
     app: "parameter-management",
     kind: input.kind,
     action: input.action,
     severity: input.kind === "parameter-merge" ? "High" : "Medium",
+    projectId: input.projectId ?? null,
     targetType: "parameter-change-request",
     targetId: input.requestId,
     metadata: buildChangeRequestAuditMetadata(input.changeRequest, {
@@ -841,8 +845,7 @@ async function createParameterReviewAudit(
       note: input.note,
       expectedVersion: input.expectedVersion,
       participants: input.participants
-    }),
-    traceId: context.requestId ?? randomUUID()
+    })
   });
 }
 
@@ -1620,16 +1623,14 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
       items.push(submissionItem);
     }
 
-    await createAuditEvent(tx, {
-      id: randomUUID(),
-      organizationId: auth.organization.id,
-      projectId: input.projectId,
-      actorUserId: auth.user.id,
-      actorType: "user",
+    // requestId fallback survives only until this function's context becomes mandatory
+    // (audited-write migration batches, ADR-0027).
+    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
       app: "parameter-management",
       kind: "parameter-submit",
       action: "submit",
       severity: "Medium",
+      projectId: input.projectId,
       targetType: "parameter-submission-round",
       targetId: round.id,
       metadata: {
@@ -1646,8 +1647,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         ),
         actions: input.items.map((item) => ("draftId" in item ? item.action ?? "set" : "set")),
         candidateConfigRevisionIds: tipIds
-      },
-      traceId: context.requestId ?? randomUUID()
+      }
     });
 
     if (workflowAssignees?.hardwareCommitterId) {
@@ -1842,22 +1842,19 @@ export async function withdrawSubmissionRound(
       summary: `${round.summary} 已由提交人撤回。`
     });
 
-    await createAuditEvent(tx, {
-      id: randomUUID(),
-      organizationId: auth.organization.id,
-      projectId: round.projectId,
-      actorUserId: auth.user.id,
-      actorType: "user",
+    // requestId fallback survives only until this function's context becomes mandatory
+    // (audited-write migration batches, ADR-0027).
+    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
       app: "parameter-management",
       kind: "parameter-submission-withdraw",
       action: "withdraw",
       severity: "Medium",
+      projectId: round.projectId,
       targetType: "parameter-submission-round",
       targetId: roundId,
       metadata: {
         itemCount: round.items.length
-      },
-      traceId: context.requestId ?? randomUUID()
+      }
     });
 
     const updated = await getSubmissionRoundById(tx, {
@@ -1910,7 +1907,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
         note: input.note
       });
       await updateRoundStatusIfNeeded(tx, auth, request.submissionRoundId);
-      await createParameterReviewAudit(tx, auth, {
+      await createParameterReviewAudit(asAuditTx(tx), auth, {
         projectId: request.projectId,
         requestId: input.requestId,
         kind: "parameter-review-reject",
@@ -1984,7 +1981,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
         note: input.note
       });
       await updateRoundStatusIfNeeded(tx, auth, request.submissionRoundId);
-      await createParameterReviewAudit(tx, auth, {
+      await createParameterReviewAudit(asAuditTx(tx), auth, {
         projectId: request.projectId,
         requestId: input.requestId,
         kind: "parameter-review-advance",
@@ -2181,7 +2178,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
       note: mergeLink
     });
     await updateRoundStatusIfNeeded(tx, auth, request.submissionRoundId);
-    await createParameterReviewAudit(tx, auth, {
+    await createParameterReviewAudit(asAuditTx(tx), auth, {
       projectId: request.projectId,
       requestId: input.requestId,
       kind: "parameter-merge",
