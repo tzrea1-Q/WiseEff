@@ -519,6 +519,10 @@ export const routeManifest = [
   { id: "logs.archive", method: "POST", path: "/api/v1/logs/:logId/archive", module: "logs", stability: "mvp" },
   { id: "logs.unarchive", method: "POST", path: "/api/v1/logs/:logId/unarchive", module: "logs", stability: "mvp" },
   { id: "logs.feedback", method: "POST", path: "/api/v1/logs/:logId/feedback", module: "logs", stability: "mvp" },
+  { id: "logs.listDomains", method: "GET", path: "/api/v1/log-domains", module: "logs", stability: "mvp" },
+  { id: "logs.createDomain", method: "POST", path: "/api/v1/log-domains", module: "logs", stability: "mvp" },
+  { id: "logs.updateDomain", method: "PATCH", path: "/api/v1/log-domains/:domainId", module: "logs", stability: "mvp" },
+  { id: "logs.archiveDomain", method: "POST", path: "/api/v1/log-domains/:domainId/archive", module: "logs", stability: "mvp" },
 
   { id: "productFeedback.create", method: "POST", path: "/api/v1/product-feedback", module: "product-feedback", stability: "mvp" },
   { id: "productFeedback.list", method: "GET", path: "/api/v1/product-feedback", module: "product-feedback", stability: "mvp" },

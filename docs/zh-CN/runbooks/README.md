@@ -31,3 +31,4 @@
 - [docs/zh-CN/runbooks/platform-admin-and-schema-promotion.md](platform-admin-and-schema-promotion.md)
 - [docs/zh-CN/runbooks/hdc-device-lab.md](hdc-device-lab.md)
 - [docs/zh-CN/runbooks/adb-device-lab.md](adb-device-lab.md)：本机真实 ADB 设备证据采集。
+- [docs/zh-CN/runbooks/log-analysis-llm.md](log-analysis-llm.md)：日志分析 LLM 就绪、诚实降级链与证据纪律。

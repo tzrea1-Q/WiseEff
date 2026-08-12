@@ -246,6 +246,7 @@ stateDiagram-v2
 | --- | --- |
 | `LogRecord` | 日志文件业务记录 |
 | `LogFileObject` | 对象存储文件引用 |
+| `LogDomain` | 组织级日志业务域注册：组织内唯一 `name`、可选描述、`status`（`active` \| `archived`）、可选声明式 `format_profile` JSON（时间戳正则、多行合并规则、严重级映射） |
 | `LogAnalysisRun` | 一次分析任务 |
 | `LogAnalysisStage` | 分析阶段进度 |
 | `LogEvidence` | 证据行号、推断和建议动作 |
@@ -272,6 +273,15 @@ stateDiagram-v2
 - 不支持格式创建 `Failed` 记录，保留失败原因。
 - 分析结果必须能追溯到具体 run 和 stage。
 - 证据行号必须基于原始文本日志或解析后的稳定索引。
+- `LogRecord.log_domain_id` 可空：NULL 表示内建未分类域（通用分析，上传绝不因域选择被阻塞）；上传/rerun 传入的 `logDomainId` 必须属于本组织且为 `active`，否则 400。租户隔离仍由 `organization_id` 承担，`source` 字段仍表示接入渠道。
+- 业务域治理（创建/更新/归档）需要 `logs:admin-domains` 权限，保存时校验画像 JSON，并写 `log-domain-*` 审计事件。
+
+分析来源与降级（术语：降级分析）是报告的来源标注，不是 run 状态——run 仍正常完成：
+
+- LLM 内核给出接地结论 → `analysis_source = 'agent'`，无降级原因。
+- provider 瞬时故障走既有 job 重试/退避；重试将耗尽的最后一次尝试回退到确定性规则引擎 → `analysis_source = 'rules-fallback'`、`degraded_reason = 'provider-unavailable'`，job 正常完成（不进死信）。
+- 预算内单次调用无法给出有效接地输出（JSON 非法或引用全部被接地校验剔除）→ 立即回退并记 `degraded_reason = 'token-budget-exhausted'`。
+- 连回退也失败才走既有失败/死信路径。降级结果绝不冒充完整分析；UI 显示来源徽标与原因，报告同时记录 `prompt_version` 与 `model`。
 
 M2 implementation notes:
 

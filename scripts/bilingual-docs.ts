@@ -64,6 +64,7 @@ export const developerFacingBilingualDocs: BilingualDocEntry[] = [
   { en: "docs/runbooks/incidents.md", zh: "docs/zh-CN/runbooks/incidents.md", tier: "runbook", status: "required" },
   { en: "docs/runbooks/hdc-device-lab.md", zh: "docs/zh-CN/runbooks/hdc-device-lab.md", tier: "runbook", status: "required" },
   { en: "docs/runbooks/agent-provider.md", zh: "docs/zh-CN/runbooks/agent-provider.md", tier: "runbook", status: "required" },
+  { en: "docs/runbooks/log-analysis-llm.md", zh: "docs/zh-CN/runbooks/log-analysis-llm.md", tier: "runbook", status: "required" },
   { en: "docs/runbooks/platform-admin-and-schema-promotion.md", zh: "docs/zh-CN/runbooks/platform-admin-and-schema-promotion.md", tier: "runbook", status: "required" },
   { en: "docs/runbooks/wsl-linux-validation.md", zh: "docs/zh-CN/wsl-linux-validation.md", tier: "runbook", status: "required" },
   { en: "ops/self-hosted/README.md", zh: "ops/self-hosted/README.zh-CN.md", tier: "self-hosted", status: "required" },
