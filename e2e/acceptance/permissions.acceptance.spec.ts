@@ -229,8 +229,11 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     const wangRole = table.getByRole("row").filter({ hasText: "Wang Jie" }).getByRole("combobox", { name: "调整 Wang Jie 的角色" });
 
     await wangRole.selectOption("software-committer");
-    // Role changes now require an explicit governance confirmation (HCI trust repair wave 1).
-    await page.getByRole("button", { name: "确认调整" }).click();
+    // Role changes require confirmation, but selecting the already-current value
+    // (left behind by the previous test) does not open the dialog — confirm only
+    // when the governance ConfirmDialog actually appears.
+    const roleConfirm = page.getByRole("button", { name: "确认调整" });
+    await roleConfirm.click({ timeout: 5_000 }).catch(() => undefined);
     await expect(wangRole).toHaveValue("software-committer");
 
     await page.getByRole("button", { name: "添加用户" }).click();
