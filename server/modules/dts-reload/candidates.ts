@@ -37,8 +37,10 @@ export function classifyReloadCandidate(input: CandidateClassificationInput): Re
     compatible: null as string | null,
     baselineValue: input.baselineValue,
     description: input.description?.trim() ? input.description.trim() : null,
-    // Preserve catalog kind for UI/debug; resolved shape drives debuggability only.
+    // Preserve catalog kind for display; expose the resolved shape so clients validate
+    // against the same reload vocabulary the server does (never the raw catalog kind).
     valueShapeKind: input.valueShapeKind,
+    resolvedValueShape: resolvedShape,
     unit: input.unit,
     constraints: input.constraints,
     sensitiveMatch: null as ReloadCandidateDto["sensitiveMatch"],

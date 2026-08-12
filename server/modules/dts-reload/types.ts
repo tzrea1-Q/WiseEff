@@ -1,4 +1,5 @@
 import type { PreflightDiagnostic, PreflightStep } from "./preflight";
+import type { ReloadValueShape } from "./valueShape";
 
 /**
  * Why a listed parameter cannot carry a debug value yet. The full user-facing classification of
@@ -49,7 +50,15 @@ export interface ReloadCandidateDto {
    * Prefer spec documentation, then description; null when neither is set.
    */
   description: string | null;
+  /** Raw catalog shape kind, kept for display ("参数含义" side sheet). */
   valueShapeKind: string | null;
+  /**
+   * Server-resolved reload value shape (normalized onto the reload vocabulary), or null
+   * when the definition carries no shape. Clients read this — never the raw catalog kind —
+   * to drive authoring validation, placeholders, and examples; resolution needs a parser
+   * and the library baseline, so it cannot be recomputed client-side.
+   */
+  resolvedValueShape: ReloadValueShape;
   unit: string | null;
   constraints: Record<string, unknown>;
   debuggable: boolean;

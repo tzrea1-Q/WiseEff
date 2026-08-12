@@ -383,7 +383,7 @@ function throwAuthoringIssue(
   bindingId: string,
   debugValue: string
 ): never {
-  const { example } = describeReloadValueShapeAuthoring(valueShape);
+  const { placeholder } = describeReloadValueShapeAuthoring(valueShape);
   switch (issue.reason) {
     case "unparsable":
       throw new ApiError(
@@ -395,21 +395,21 @@ function throwAuthoringIssue(
     case "not-single-string":
       throw new ApiError(
         "VALIDATION_FAILED",
-        `Debug value must be a single string (for example ${example}).`,
+        `Debug value must be a single string (for example ${placeholder}).`,
         400,
         { bindingId, debugValue }
       );
     case "not-string-list":
       throw new ApiError(
         "VALIDATION_FAILED",
-        `Debug value must be a string list (for example ${example}).`,
+        `Debug value must be a string list (for example ${placeholder}).`,
         400,
         { bindingId, debugValue }
       );
     case "not-phandle-cell-array":
       throw new ApiError(
         "VALIDATION_FAILED",
-        `Debug value must be a GPIO-style phandle cell array (for example ${example}).`,
+        `Debug value must be a GPIO-style phandle cell array (for example ${placeholder}).`,
         400,
         { bindingId, debugValue }
       );
@@ -417,8 +417,8 @@ function throwAuthoringIssue(
       throw new ApiError(
         "VALIDATION_FAILED",
         issue.expectedBits === 32
-          ? `Debug value must be an unsigned 32-bit cell array (for example ${example}).`
-          : `Debug value must be a /bits/ ${issue.expectedBits} cell array (for example ${example}).`,
+          ? `Debug value must be an unsigned 32-bit cell array (for example ${placeholder}).`
+          : `Debug value must be a /bits/ ${issue.expectedBits} cell array (for example ${placeholder}).`,
         400,
         { bindingId, debugValue, expectedBits: issue.expectedBits }
       );

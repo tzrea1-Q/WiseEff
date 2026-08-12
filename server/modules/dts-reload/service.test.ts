@@ -249,7 +249,9 @@ describe("listReloadCandidates", () => {
       description: "Watchdog timeout for charger safety.",
       constraints: { min: 0, max: 20000, cells: 1 },
       debuggable: true,
-      sensitiveMatch: null
+      sensitiveMatch: null,
+      // Resolved shape is exposed so clients validate against the reload vocabulary.
+      resolvedValueShape: { kind: "cells", bits: 32, cellsPerGroup: 1, groups: 1 }
     });
     expect(result.items[1]).toMatchObject({
       bindingId: "binding-2",
