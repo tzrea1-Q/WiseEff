@@ -14,7 +14,7 @@ import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
-import { resetParameterIdentityCutoverCache } from "./cutoverAwareIdentity";
+import { resolveParameterIdentityMode, setParameterIdentityMode } from "./parameterIdentityMode";
 import { insertFileSyncConflict } from "./repository";
 import { listReviewDecisions, updateChangeRequestStatus } from "./reviewWorkflowRepository";
 import {
@@ -333,7 +333,7 @@ async function markIdentityCutoverComplete(db: Queryable) {
     `pic-srw-${randomUUID().slice(0, 8)}`,
     runId
   ]);
-  resetParameterIdentityCutoverCache();
+  await resolveParameterIdentityMode(db);
 }
 
 const decisionStageRank: Record<string, number> = {
@@ -367,7 +367,7 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
   afterEach(async () => {
     await db?.rollback();
     db = undefined;
-    resetParameterIdentityCutoverCache();
+    setParameterIdentityMode(null);
   });
 
   describe("workflow assignee discovery", () => {
