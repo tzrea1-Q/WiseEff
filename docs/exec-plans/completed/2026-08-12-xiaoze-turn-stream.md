@@ -1,9 +1,9 @@
 # Xiaoze turn stream: one module owns "what has streamed so far"
 
-> Status: **Active**
+> Status: **Completed 2026-08-12** — PR [#354](https://github.com/tzrea1-Q/WiseEff/pull/354) merged; acceptance authz drift from the concurrent #358/#363 hardening repaired in follow-up PR [#379](https://github.com/tzrea1-Q/WiseEff/pull/379)
 > Date: 2026-08-12
 > Branch: `refactor/xiaoze-turn-stream`
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-12-xiaoze-turn-stream.md`](../../zh-CN/exec-plans/active/2026-08-12-xiaoze-turn-stream.md)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-12-xiaoze-turn-stream.md`](../../zh-CN/exec-plans/completed/2026-08-12-xiaoze-turn-stream.md)
 > Source: 2026-08-12 architecture review, candidate 2 (Strong)
 
 ## Goal
@@ -61,4 +61,10 @@ Deepen the Xiaoze turn streaming pipeline into one module, `xiaozeTurnStream.ts`
 - [x] TD-070 moved to Completed with evidence
 - [x] `docs/PLANS.md` EN + zh list this plan
 - [x] `docs/FRONTEND.md` reviewed — no change needed (wire protocol untouched; no doc references the absorbed files)
-- [ ] `npm run docs:check` green before moving this plan to `completed/`
+- [x] `npm run docs:check` green before moving this plan to `completed/`
+
+## Completion evidence
+
+- `xiaozeTurnStream.test.ts` golden frame-sequence tests (12) plus two new endpoint cases (resume-with-steps, chained second interrupt); existing `agUiEndpoint.test.ts` assertions passed unchanged.
+- Isolated deterministic API (fresh Postgres, migrated + seeded): read turn streams steps/tool-calls/snapshots; approval interrupt carries the DB-backed approval id; an approved resume streams the submit tool step, the reply step, and answer deltas with phases thinking → tool → composing → done, and persists `runSteps` on the thread message; failed execution streams a failed step plus RUN_ERROR; reject returns the safe text without steps.
+- TD-083 recorded: approved turns persist the assistant text twice (approval-chain record + endpoint turn record); pre-existing, surfaced during verification.
