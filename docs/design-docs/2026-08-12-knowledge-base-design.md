@@ -3,7 +3,7 @@
 > Status: **Locked design** — decisions D1–D20 settled 2026-08-12 in a grilled design session
 > Date: 2026-08-12
 > Chinese: [`docs/zh-CN/design-docs/2026-08-12-knowledge-base-design.md`](../zh-CN/design-docs/2026-08-12-knowledge-base-design.md)
-> Execution plan: [`docs/exec-plans/active/2026-08-12-knowledge-base-mvp.md`](../exec-plans/active/2026-08-12-knowledge-base-mvp.md)
+> Execution plan: [`docs/exec-plans/completed/2026-08-12-knowledge-base-mvp.md`](../exec-plans/completed/2026-08-12-knowledge-base-mvp.md)
 > Related: [`ARCHITECTURE.md`](../../ARCHITECTURE.md), [Xiaoze agent design](2026-06-24-xiaoze-agent-design.md), [`docs/SECURITY.md`](../SECURITY.md), [ADR-0025](../adr/0025-knowledge-retrieval-lives-in-postgres.md)
 
 ## Positioning
