@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import { createAuditEvent } from "../audit/repository";
-import type { AuditCorrelationContext } from "../audit/types";
+import { withAuditedWrite, type AuditSpec } from "../audit/auditedWrite";
+import type { AuditedWriteContext } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -32,32 +32,22 @@ export type UpdateLogDomainInput = {
   status?: LogDomainStatus;
 };
 
-async function createLogDomainAudit(
-  db: Queryable,
-  auth: AuthContext,
-  input: {
-    kind: "log-domain-create" | "log-domain-update" | "log-domain-archive";
-    action: string;
-    domainId: string;
-    metadata?: Record<string, unknown>;
-  },
-  context: AuditCorrelationContext = {}
-) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: null,
-    actorUserId: auth.user.id,
-    actorType: "user",
+function logDomainAudit(input: {
+  kind: "log-domain-create" | "log-domain-update" | "log-domain-archive";
+  action: string;
+  domainId: string;
+  metadata?: Record<string, unknown>;
+}): AuditSpec {
+  return {
     app: "log-analysis",
     kind: input.kind,
     action: input.action,
     severity: "Medium",
+    projectId: null,
     targetType: "log-domain",
     targetId: input.domainId,
-    metadata: input.metadata ?? {},
-    traceId: context.requestId ?? randomUUID()
-  });
+    metadata: input.metadata ?? {}
+  };
 }
 
 function parseFormatProfileOrThrow(value: unknown): LogFormatProfile | undefined {
@@ -92,13 +82,13 @@ export async function createLogDomainRecord(
   db: Database,
   auth: AuthContext,
   input: CreateLogDomainInput,
-  context: AuditCorrelationContext = {}
+  context: AuditedWriteContext
 ): Promise<LogDomainDto> {
   requireLogAdminDomains(auth);
   const name = trimmedName(input.name);
   const formatProfile = parseFormatProfileOrThrow(input.formatProfile);
 
-  return db.transaction(async (tx) => {
+  return withAuditedWrite(db, auth, context, async (tx) => {
     const existing = await findLogDomainByName(tx, { organizationId: auth.organization.id, name });
     if (existing) {
       throw new ApiError("CONFLICT", "A log domain with this name already exists in the organization.", 409, {
@@ -113,19 +103,16 @@ export async function createLogDomainRecord(
       description: input.description,
       formatProfile
     });
-    await createLogDomainAudit(
-      tx,
-      auth,
-      {
+
+    return {
+      result: domain,
+      audit: logDomainAudit({
         kind: "log-domain-create",
         action: "create",
         domainId: domain.id,
         metadata: { name: domain.name, hasFormatProfile: Boolean(formatProfile) }
-      },
-      context
-    );
-
-    return domain;
+      })
+    };
   });
 }
 
@@ -133,14 +120,14 @@ export async function updateLogDomainRecord(
   db: Database,
   auth: AuthContext,
   input: UpdateLogDomainInput,
-  context: AuditCorrelationContext = {}
+  context: AuditedWriteContext
 ): Promise<LogDomainDto> {
   requireLogAdminDomains(auth);
   const name = input.name !== undefined ? trimmedName(input.name) : undefined;
   const formatProfile =
     input.formatProfile === undefined ? undefined : input.formatProfile === null ? null : parseFormatProfileOrThrow(input.formatProfile);
 
-  return db.transaction(async (tx) => {
+  return withAuditedWrite(db, auth, context, async (tx) => {
     const existing = await getLogDomainById(tx, { organizationId: auth.organization.id, domainId: input.domainId });
     if (!existing) {
       throw new ApiError("NOT_FOUND", "Log domain was not found.", 404, { domainId: input.domainId });
@@ -165,10 +152,10 @@ export async function updateLogDomainRecord(
     if (!domain) {
       throw new ApiError("NOT_FOUND", "Log domain was not found.", 404, { domainId: input.domainId });
     }
-    await createLogDomainAudit(
-      tx,
-      auth,
-      {
+
+    return {
+      result: domain,
+      audit: logDomainAudit({
         kind: "log-domain-update",
         action: "update",
         domainId: domain.id,
@@ -177,11 +164,8 @@ export async function updateLogDomainRecord(
           status: domain.status,
           formatProfileChanged: input.formatProfile !== undefined
         }
-      },
-      context
-    );
-
-    return domain;
+      })
+    };
   });
 }
 
@@ -189,11 +173,11 @@ export async function archiveLogDomainRecord(
   db: Database,
   auth: AuthContext,
   domainId: string,
-  context: AuditCorrelationContext = {}
+  context: AuditedWriteContext
 ): Promise<LogDomainDto> {
   requireLogAdminDomains(auth);
 
-  return db.transaction(async (tx) => {
+  return withAuditedWrite(db, auth, context, async (tx) => {
     const existing = await getLogDomainById(tx, { organizationId: auth.organization.id, domainId });
     if (!existing) {
       throw new ApiError("NOT_FOUND", "Log domain was not found.", 404, { domainId });
@@ -207,18 +191,15 @@ export async function archiveLogDomainRecord(
     if (!domain) {
       throw new ApiError("NOT_FOUND", "Log domain was not found.", 404, { domainId });
     }
-    await createLogDomainAudit(
-      tx,
-      auth,
-      {
+
+    return {
+      result: domain,
+      audit: logDomainAudit({
         kind: "log-domain-archive",
         action: "archive",
         domainId,
         metadata: { name: domain.name }
-      },
-      context
-    );
-
-    return domain;
+      })
+    };
   });
 }
