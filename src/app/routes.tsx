@@ -23,6 +23,8 @@ import type { DebuggingRuntimeActions } from "@/application/debugging/debuggingR
 import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogRuntimeActions } from "@/application/logs/logRuntime";
 import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
+import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
+import type { KnowledgeCapability } from "@/domain/knowledge/rules";
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type { ParameterInitializationRepository } from "@/application/ports/ParameterInitializationRepository";
@@ -32,12 +34,19 @@ import { canAccessPage, canPerform, getAccessibleFallbackPath, getRequiredRoleFo
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { AuditCenterPage } from "@/AuditCenterPage";
 import { migrateLegacyRoleId } from "@/domain/users/types";
+import { LinearTemplateHome } from "@/linear-template/LinearTemplateHome";
+import { LogDashboardPage } from "@/features/log-analysis/LogDashboardPage";
+import { LogsPage } from "@/features/log-analysis/LogsPage";
+import { ParameterReviewPage } from "@/features/parameter-review/ParameterReviewPage";
+import { ParameterSubmissionsPage } from "@/features/parameter-review/ParameterSubmissionsPage";
 import { LogAdminPage } from "@/LogAdminPage";
 import { NodeDebuggingPage } from "@/NodeDebuggingPage";
 import { PlatformConsolePage } from "@/PlatformConsolePage";
 import { ParameterAdminNextPage } from "@/ParameterAdminNextPage";
 import { ParameterHomePage } from "@/features/parameter-home/ParameterHomePage";
 import { FeedbackAdminPage } from "@/features/product-feedback/FeedbackAdminPage";
+import { KnowledgeAdminPage } from "@/features/knowledge/KnowledgeAdminPage";
+import { KnowledgePage } from "@/features/knowledge/KnowledgePage";
 import { DtsReloadPage } from "@/features/dts-reload/DtsReloadPage";
 import { ParametersPage as UserParametersPage } from "@/ParametersPage";
 import { UserPermissionsPage } from "@/UserPermissionsPage";
@@ -78,6 +87,8 @@ export type PageProps = {
   parameterTopologyRepository?: ParameterTopologyRepository;
   listParameterConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   productFeedbackRepository?: ProductFeedbackRepository;
+  knowledgeRepository?: KnowledgeRepository;
+  knowledgeCapability?: KnowledgeCapability;
   dtsReloadRepository?: DtsReloadRepository | null;
   canStartDtsReload?: boolean;
   parameterInitializationRepository?: ParameterInitializationRepository;
@@ -93,13 +104,8 @@ export type PageProps = {
 
 export type PageRouterProps = PageProps & {
   page: PageConfig;
-  HomePage: () => ReactNode;
-  ParameterSubmissionsPage: (props: PageProps) => ReactNode;
-  ParameterReviewPage: (props: PageProps) => ReactNode;
   onNewProject?: () => void;
   TopBarProjectId?: string;
-  LogDashboardPage: (props: { state: PrototypeState; onNavigate: (path: string) => void }) => ReactNode;
-  LogsPage: (props: PageProps) => ReactNode;
   DebuggingAdminPage: (props: PageProps & { area?: "parameter" | "nodes" }) => ReactNode;
 };
 
@@ -117,6 +123,8 @@ export function PageRouter({
   parameterTopologyRepository,
   listParameterConfigSets,
   productFeedbackRepository,
+  knowledgeRepository,
+  knowledgeCapability,
   dtsReloadRepository = null,
   canStartDtsReload = false,
   parameterInitializationRepository,
@@ -128,13 +136,8 @@ export function PageRouter({
   onDashboardDimensionChange,
   onDashboardOverviewScopeChange,
   onDashboardProjectChange,
-  HomePage,
-  ParameterSubmissionsPage,
-  ParameterReviewPage,
   onNewProject,
   TopBarProjectId,
-  LogDashboardPage,
-  LogsPage,
   DebuggingAdminPage
 }: PageRouterProps) {
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
@@ -245,11 +248,28 @@ export function PageRouter({
     case "log-dashboard":
       return <LogDashboardPage state={state} onNavigate={onNavigate} />;
     case "logs":
-      return <LogsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} logActions={logActions} parameterActions={parameterActions} />;
+      return (
+        <LogsPage
+          state={state}
+          dispatch={dispatch}
+          onNavigate={onNavigate}
+          search={search}
+          logActions={runtimeMode === "api" ? logActions : undefined}
+          parameterActions={parameterActions}
+        />
+      );
     case "log-admin":
       return <LogAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} logActions={logActions} />;
     case "feedback-admin":
       return productFeedbackRepository ? <FeedbackAdminPage productFeedbackRepository={productFeedbackRepository} /> : null;
+    case "knowledge":
+      return knowledgeRepository && knowledgeCapability ? (
+        <KnowledgePage repository={knowledgeRepository} capability={knowledgeCapability} />
+      ) : null;
+    case "knowledge-admin":
+      return knowledgeRepository && knowledgeCapability ? (
+        <KnowledgeAdminPage repository={knowledgeRepository} canManage={knowledgeCapability.canManage} />
+      ) : null;
     case "debugging":
       return (
         <NoEntryPage
@@ -324,6 +344,6 @@ export function PageRouter({
     case "platform-console":
       return <PlatformConsolePage />;
     default:
-      return <HomePage />;
+      return <LinearTemplateHome />;
   }
 }

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { makeTestAuthContext } from "../../testing/authContext";
 import { ApiError } from "../../shared/http/errors";
 import {
   activateParameterSpec,
@@ -23,19 +24,14 @@ const GLOBAL_ACTIVE = "pspec:versioning:global-active";
 const databaseAvailable = await isTestDatabaseAvailable();
 
 function makeAuth(): AuthContext {
-  return {
-    user: {
-      id: USER_ID,
-      organizationId: ORG_ID,
-      name: "Versioning Admin",
-      email: "versioning@example.com",
-      title: "Admin",
-      isActive: true,
-    },
-    organization: { id: ORG_ID, name: "Versioning Org" },
-    roles: [{ projectId: null, roleId: "admin" }],
+  return makeTestAuthContext({
+    userId: USER_ID,
+    organizationId: ORG_ID,
+    name: "Versioning Admin",
+    email: "versioning@example.com",
+    organizationName: "Versioning Org",
     permissions: ["parameter:view", "parameter:edit", "admin:access"],
-  };
+  });
 }
 
 async function seedSpec(

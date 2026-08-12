@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { makeTestAuthContext } from "../../testing/authContext";
 import type { AuthContext } from "../auth/types";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -33,18 +34,16 @@ type MappingRow = {
 
 function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
   return {
-    user: {
-      id: "user-1",
+    ...makeTestAuthContext({
+      userId: "user-1",
       organizationId: "org-1",
       name: "Admin",
       email: "admin@example.com",
-      isActive: true
-    },
-    organization: { id: "org-1", name: "ChargeLab" },
-    roles: [{ projectId: null, roleId: "admin" }],
-    permissions: ["parameter:view", "parameter:edit", "admin:access"],
+      organizationName: "ChargeLab",
+      permissions: ["parameter:view", "parameter:edit", "admin:access"]
+    }),
     ...overrides
-  } as AuthContext;
+  };
 }
 
 function toDbRow(module: ModuleRow) {

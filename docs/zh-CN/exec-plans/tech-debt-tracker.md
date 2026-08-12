@@ -47,6 +47,8 @@
 - **TD-079（日志分析置信度显示口径）：** LLM 分析器返回模型自估置信度，规则回退沿用确定性查表置信度，二者共用同一 UI 数字，除来源徽标外没有校准语义区分。需按 `analysisSource` 决定显示口径（标注、分档或在效果层评测校准前隐藏 LLM 置信度）。**负责人：Log analysis / Product。**
 - **TD-080（域治理错误透出）：** `/log-admin` 域治理的创建/更新失败只弹通用通知；服务端 `INVALID_LOG_FORMAT_PROFILE` 的 Zod 字段级细节没有映射回表单，行内仅有客户端 JSON 预检。需把 API 错误码与校验细节映射为表单行内错误。**负责人：Frontend / Log analysis。**
 - **TD-081（selfhost required-keys 纳管 `LOG_ANALYSIS_*`）：** `check-self-hosted-config.ts` 的必填键覆盖 `LOG_ANALYSIS_QUEUE_*` 但不含 P1 LLM 家族（`LOG_ANALYSIS_API_BASE_URL` / `LOG_ANALYSIS_MODEL` / `LOG_ANALYSIS_API_KEY` / `LOG_ANALYSIS_API_TIMEOUT_MS` / `LOG_ANALYSIS_TOKEN_BUDGET` / `LOG_ANALYSIS_DETERMINISTIC`），部署可能通过 `selfhost:check` 却未配置 LLM。需纳入必填键检查（并决定 deterministic 模式是否豁免 API key）与对应测试。**负责人：Ops / Log analysis。**
+- **TD-080（拓扑工作区测试隔离）：** `ApiProjectTopologyWorkspace.test.tsx` 在 jsdom 中发出真实 HTTP 请求；本机 `127.0.0.1:8787` 有开发 API 时套件不稳定（20 例中 8–9 例被真实数据打挂）。P0 美学提升验证期间发现。应注入可替换的 repository/fetch 接缝,测试不得拨真实端口。**负责人：Frontend。**
+- **TD-081（拓扑树元信息文字色）：** `.topology-tree__item small` 把近白的表面令牌 `var(--muted)` 当文字色,树上元信息几乎不可见（既有缺陷,P0 令牌审计浮出）。P1 原语收敛时改为 `var(--text-muted)` 并加结构化样式断言。**负责人：Frontend。**
 
 ## 近期关闭项
 

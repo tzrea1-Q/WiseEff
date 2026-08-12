@@ -1,3 +1,7 @@
+import type { ReloadValueShape } from "./valueShape";
+
+export type { ReloadValueShape } from "./valueShape";
+
 export type DtsReloadCandidateBlockReason =
   | "no-node-path"
   | "unsupported-value-shape"
@@ -26,7 +30,14 @@ export type DtsReloadCandidate = {
   baselineValue: string | null;
   /** Spec documentation, then description — shown as 参数含义 in the edit sheet. */
   description: string | null;
+  /** Raw catalog shape kind, kept for display. */
   valueShapeKind: string | null;
+  /**
+   * Server-resolved reload value shape (see backend `ReloadValueShape`). Drives authoring
+   * validation, input placeholders, and example tokens on this surface; the raw catalog
+   * kind must not be used for those, because only the server can resolve the shape.
+   */
+  resolvedValueShape: ReloadValueShape;
   unit: string | null;
   constraints: Record<string, unknown>;
   debuggable: boolean;

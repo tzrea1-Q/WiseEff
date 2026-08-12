@@ -1,9 +1,15 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore, StoredObject } from "../logs/objectStore";
-import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { makeTestAuthContext } from "../../testing/authContext";
+import {
+  createInMemoryTestDatabase,
+  isTestDatabaseAvailable,
+  type InMemoryTestDatabase
+} from "../../testing/testDatabase";
+import { seedCoreGraph } from "../../testing/fixtures";
 import {
   createProductFeedback,
   getProductFeedback,
@@ -12,54 +18,23 @@ import {
   updateProductFeedback
 } from "./service";
 
-type QueryCall = {
-  text: string;
-  values: unknown[];
-};
+const databaseAvailable = await isTestDatabaseAvailable();
 
-type QueuedResult = unknown[] | ((call: QueryCall) => unknown[]);
-
-function createFakeDb(results: QueuedResult[] = []) {
-  const calls: QueryCall[] = [];
-  const txCalls: QueryCall[] = [];
-  const transactions: QueryCall[][] = [];
-
-  const runQuery = async <Row,>(target: QueryCall[], text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
-    const call = { text, values };
-    target.push(call);
-    const next = results.shift() ?? [];
-    const rows = typeof next === "function" ? next(call) : next;
-    return { rows: rows as Row[], rowCount: rows.length };
-  };
-
-  const tx: Queryable = {
-    query: (text, values = []) => runQuery(txCalls, text, values)
-  };
-  const db: Database = {
-    query: (text, values = []) => runQuery(calls, text, values),
-    transaction: async <T,>(fn: (queryable: Queryable) => Promise<T>) => {
-      const result = await fn(tx);
-      transactions.push([...txCalls]);
-      return result;
-    }
-  };
-
-  return { calls, txCalls, transactions, db };
-}
+// product_feedback ids are uuid columns; absent-row probes need well-formed uuid literals.
+const MISSING_FEEDBACK_ID = "00000000-0000-4000-8000-00000000f404";
 
 function auth(overrides: Partial<AuthContext> = {}): AuthContext {
   return {
-    user: {
-      id: "user-1",
+    ...makeTestAuthContext({
+      userId: "user-1",
       organizationId: "org-1",
       name: "Riley Chen",
       email: "riley@example.com",
       title: "Software User",
-      isActive: true
-    },
-    organization: { id: "org-1", name: "ChargeLab" },
-    roles: [{ projectId: "project-1", roleId: "software-user" }],
-    permissions: [],
+      organizationName: "ChargeLab",
+      roles: [{ projectId: "project-1", roleId: "software-user" }],
+      permissions: []
+    }),
     ...overrides
   };
 }
@@ -70,39 +45,6 @@ function adminAuth(overrides: Partial<AuthContext> = {}): AuthContext {
     permissions: ["admin:access"],
     ...overrides
   });
-}
-
-function feedbackRow(overrides: Record<string, unknown> = {}) {
-  return {
-    id: "feedback-1",
-    organization_id: "org-1",
-    submitter_user_id: "user-1",
-    page_path: "/parameters",
-    page_title: "Project Parameters",
-    feedback_type: "experience",
-    description: "The buttons are hard to scan.",
-    status: "open",
-    admin_note: null,
-    created_at: "2026-07-08T09:00:00.000Z",
-    updated_at: "2026-07-08T09:00:00.000Z",
-    ...overrides
-  };
-}
-
-function attachmentRow(overrides: Record<string, unknown> = {}) {
-  return {
-    id: "attachment-1",
-    feedback_id: "feedback-1",
-    organization_id: "org-1",
-    storage_key: "org-1/checksum-shot.png",
-    file_name: "shot.png",
-    content_type: "image/png",
-    size_bytes: 1024,
-    checksum: "checksum",
-    sort_order: 0,
-    created_at: "2026-07-08T09:00:01.000Z",
-    ...overrides
-  };
 }
 
 function attachmentInput(fileName: string, sizeBytes = 4) {
@@ -139,9 +81,48 @@ function makeObjectStore() {
   return { objectStore: { put, get } as ObjectStore, get, put };
 }
 
-describe("product feedback service", () => {
+describe.skipIf(!databaseAvailable)("product feedback service", () => {
+  let db: InMemoryTestDatabase;
+
+  beforeEach(async () => {
+    db = await createInMemoryTestDatabase();
+    await seedCoreGraph(db, {
+      organization: { id: "org-1", name: "ChargeLab" },
+      users: [{ id: "user-1", name: "Riley Chen", email: "riley@example.com" }]
+    });
+  });
+
+  afterEach(async () => {
+    await db?.rollback();
+  });
+
+  async function feedbackCount(): Promise<number> {
+    const result = await db.query<{ count: string }>(
+      "select count(*)::text as count from product_feedback where organization_id = $1",
+      ["org-1"]
+    );
+    return Number(result.rows[0].count);
+  }
+
+  async function auditEvents(): Promise<
+    Array<{ kind: string; action: string; target_type: string | null; target_id: string | null; trace_id: string; app: string; metadata: Record<string, unknown> }>
+  > {
+    const result = await db.query<{
+      kind: string;
+      action: string;
+      target_type: string | null;
+      target_id: string | null;
+      trace_id: string;
+      app: string;
+      metadata: Record<string, unknown>;
+    }>(
+      "select kind, action, target_type, target_id, trace_id, app, metadata from audit_events where organization_id = $1 order by created_at asc, id asc",
+      ["org-1"]
+    );
+    return result.rows;
+  }
+
   it("rejects inactive submit before storing attachments", async () => {
-    const { db } = createFakeDb();
     const { objectStore, put } = makeObjectStore();
 
     await expect(
@@ -153,10 +134,10 @@ describe("product feedback service", () => {
       )
     ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Forbidden.", 403, { reason: "inactive" }));
     expect(put).not.toHaveBeenCalled();
+    expect(await feedbackCount()).toBe(0);
   });
 
   it("rejects non-admin list, get, patch, and attachment content", async () => {
-    const { db } = createFakeDb();
     const { objectStore } = makeObjectStore();
     const user = auth();
 
@@ -175,20 +156,6 @@ describe("product feedback service", () => {
   });
 
   it("creates feedback with two images, stores attachments, and writes product feedback audit", async () => {
-    const { db, txCalls } = createFakeDb([
-      [feedbackRow()],
-      [
-        attachmentRow({ id: "attachment-1", file_name: "shot-1.png", storage_key: "org-1/stored-shot-1.png", checksum: "checksum-shot-1.png" }),
-        attachmentRow({
-          id: "attachment-2",
-          file_name: "shot-2.png",
-          storage_key: "org-1/stored-shot-2.png",
-          checksum: "checksum-shot-2.png",
-          sort_order: 1
-        })
-      ],
-      []
-    ]);
     const { objectStore, put } = makeObjectStore();
 
     const feedback = await createProductFeedback(
@@ -205,30 +172,53 @@ describe("product feedback service", () => {
     expect(put.mock.calls[0][0]).toMatchObject({ organizationId: "org-1", fileName: "shot-1.png", contentType: "image/png" });
     expect(put.mock.calls[0][0].bytes.byteLength).toBe(8);
     expect(put.mock.calls[1][0].bytes.byteLength).toBe(16);
-    expect(txCalls.find((call) => call.text.includes("insert into product_feedback_attachments"))?.values).toEqual(
-      expect.arrayContaining(["org-1/stored-shot-1.png", "checksum-shot-1.png", "org-1/stored-shot-2.png", "checksum-shot-2.png"])
-    );
-    const auditCall = txCalls.find((call) => call.text.includes("insert into audit_events"));
-    expect(auditCall?.values).toContain("product-feedback");
-    expect(auditCall?.values).toContain("product-feedback-create");
-    expect(auditCall?.values).toContain("product-feedback");
-    expect(auditCall?.values).toContain("feedback-1");
-    expect(auditCall?.values[12]).toBe("request-feedback-create-1");
+
+    // The insert's RETURNING order is not guaranteed; sortOrder carries the contract.
     expect(feedback.attachments).toHaveLength(2);
+    const bySortOrder = [...feedback.attachments].sort((a, b) => a.sortOrder - b.sortOrder);
+    expect(bySortOrder[0]).toMatchObject({
+      storageKey: "org-1/stored-shot-1.png",
+      checksum: "checksum-shot-1.png",
+      sortOrder: 0
+    });
+    expect(bySortOrder[1]).toMatchObject({
+      storageKey: "org-1/stored-shot-2.png",
+      checksum: "checksum-shot-2.png",
+      sortOrder: 1
+    });
+
+    const stored = await db.query<{ storage_key: string; checksum: string; sort_order: number }>(
+      "select storage_key, checksum, sort_order from product_feedback_attachments where organization_id = $1 and feedback_id = $2 order by sort_order asc",
+      ["org-1", feedback.id]
+    );
+    expect(stored.rows).toEqual([
+      { storage_key: "org-1/stored-shot-1.png", checksum: "checksum-shot-1.png", sort_order: 0 },
+      { storage_key: "org-1/stored-shot-2.png", checksum: "checksum-shot-2.png", sort_order: 1 }
+    ]);
+
+    const audit = (await auditEvents()).find((event) => event.kind === "product-feedback-create");
+    expect(audit).toMatchObject({
+      app: "product-feedback",
+      kind: "product-feedback-create",
+      action: "create",
+      target_type: "product-feedback",
+      target_id: feedback.id,
+      trace_id: "request-feedback-create-1"
+    });
+    expect(audit?.metadata).toMatchObject({ attachmentCount: 2, pagePath: "/parameters", status: "open" });
   });
 
   it("rejects a single attachment over 5MB", async () => {
-    const { db } = createFakeDb();
     const { objectStore, put } = makeObjectStore();
 
     await expect(
       createProductFeedback(db, objectStore, auth(), createInput({ attachments: [attachmentInput("huge.png", 5 * 1024 * 1024 + 1)] }))
     ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Attachment exceeds the 5MB per-image limit.", 400));
     expect(put).not.toHaveBeenCalled();
+    expect(await feedbackCount()).toBe(0);
   });
 
   it("rejects total attachments over 15MB", async () => {
-    const { db } = createFakeDb();
     const { objectStore, put } = makeObjectStore();
 
     await expect(
@@ -247,61 +237,68 @@ describe("product feedback service", () => {
       )
     ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Attachments exceed the 15MB total limit.", 400));
     expect(put).not.toHaveBeenCalled();
+    expect(await feedbackCount()).toBe(0);
   });
 
   it("allows open to in_progress and rejects skip or closed updates", async () => {
-    const openDb = createFakeDb([
-      [feedbackRow({ status: "open" })],
-      [],
-      [feedbackRow({ status: "in_progress" })],
-      [feedbackRow({ status: "in_progress" })],
-      [],
-      []
-    ]);
+    const { objectStore } = makeObjectStore();
+    const open = await createProductFeedback(db, objectStore, auth(), createInput());
 
-    const updated = await updateProductFeedback(openDb.db, adminAuth(), "feedback-1", { status: "in_progress", adminNote: null });
-
+    const updated = await updateProductFeedback(db, adminAuth(), open.id, { status: "in_progress", adminNote: null });
     expect(updated.status).toBe("in_progress");
-    expect(openDb.txCalls.find((call) => call.text.includes("update product_feedback"))?.values).toEqual([
-      "org-1",
-      "feedback-1",
-      "in_progress",
-      null
-    ]);
+    expect(updated.adminNote).toBeNull();
+    await expect(getProductFeedback(db, adminAuth(), open.id)).resolves.toMatchObject({
+      status: "in_progress",
+      adminNote: null
+    });
 
-    const skipDb = createFakeDb([[feedbackRow({ status: "open" })], []]);
-    await expect(updateProductFeedback(skipDb.db, adminAuth(), "feedback-1", { status: "closed" })).rejects.toMatchObject(
+    // open -> closed skips in_progress and is refused; the row stays open.
+    const skipped = await createProductFeedback(db, objectStore, auth(), createInput());
+    await expect(updateProductFeedback(db, adminAuth(), skipped.id, { status: "closed" })).rejects.toMatchObject(
       new ApiError("VALIDATION_FAILED", "Illegal product feedback status transition: open -> closed.", 400)
     );
+    await expect(getProductFeedback(db, adminAuth(), skipped.id)).resolves.toMatchObject({ status: "open" });
 
-    const closedDb = createFakeDb([[feedbackRow({ status: "closed" })], []]);
-    await expect(updateProductFeedback(closedDb.db, adminAuth(), "feedback-1", { adminNote: "Already handled." })).rejects.toMatchObject(
+    // A closed row cannot be updated further, even to change the admin note.
+    await updateProductFeedback(db, adminAuth(), updated.id, { status: "closed" });
+    await expect(updateProductFeedback(db, adminAuth(), updated.id, { adminNote: "Already handled." })).rejects.toMatchObject(
       new ApiError("VALIDATION_FAILED", "Closed product feedback cannot be updated.", 400)
     );
   });
 
   it("returns NOT_FOUND for missing or cross-org feedback get", async () => {
-    const { db } = createFakeDb([[]]);
+    await expect(getProductFeedback(db, adminAuth(), MISSING_FEEDBACK_ID)).rejects.toMatchObject(
+      new ApiError("NOT_FOUND", "Product feedback was not found.", 404, { feedbackId: MISSING_FEEDBACK_ID })
+    );
 
-    await expect(getProductFeedback(db, adminAuth(), "missing")).rejects.toMatchObject(
-      new ApiError("NOT_FOUND", "Product feedback was not found.", 404, { feedbackId: "missing" })
+    await seedCoreGraph(db, {
+      organization: { id: "org-2", name: "OtherOrg" },
+      users: [{ id: "user-2", name: "Renn Ito", email: "renn@example.com" }]
+    });
+    const otherOrgAuth = makeTestAuthContext({
+      userId: "user-2",
+      organizationId: "org-2",
+      organizationName: "OtherOrg",
+      roleId: "software-user",
+      permissions: []
+    });
+    const { objectStore } = makeObjectStore();
+    const foreign = await createProductFeedback(db, objectStore, otherOrgAuth, createInput());
+
+    await expect(getProductFeedback(db, adminAuth(), foreign.id)).rejects.toMatchObject(
+      new ApiError("NOT_FOUND", "Product feedback was not found.", 404, { feedbackId: foreign.id })
     );
   });
 
   it("writes update audit events", async () => {
-    const { db, txCalls } = createFakeDb([
-      [feedbackRow({ status: "in_progress" })],
-      [],
-      [feedbackRow({ status: "closed" })],
-      [feedbackRow({ status: "closed" })],
-      [],
-      []
-    ]);
+    const { objectStore } = makeObjectStore();
+    const open = await createProductFeedback(db, objectStore, auth(), createInput());
+    await updateProductFeedback(db, adminAuth(), open.id, { status: "in_progress" });
 
     await updateProductFeedback(
       db,
       adminAuth(),
-      "feedback-1",
+      open.id,
       {
         status: "closed",
         adminNote: "Fixed in the next release."
@@ -309,11 +306,15 @@ describe("product feedback service", () => {
       { requestId: "request-feedback-update-1" }
     );
 
-    const auditCall = txCalls.find((call) => call.text.includes("insert into audit_events"));
-    expect(auditCall?.values).toContain("product-feedback");
-    expect(auditCall?.values).toContain("product-feedback-update");
-    expect(auditCall?.values).toContain("product-feedback");
-    expect(auditCall?.values).toContain("feedback-1");
-    expect(auditCall?.values[12]).toBe("request-feedback-update-1");
+    const audit = (await auditEvents()).find((event) => event.trace_id === "request-feedback-update-1");
+    expect(audit).toMatchObject({
+      app: "product-feedback",
+      kind: "product-feedback-update",
+      action: "update",
+      target_type: "product-feedback",
+      target_id: open.id,
+      trace_id: "request-feedback-update-1"
+    });
+    expect(audit?.metadata).toMatchObject({ previousStatus: "in_progress", nextStatus: "closed" });
   });
 });

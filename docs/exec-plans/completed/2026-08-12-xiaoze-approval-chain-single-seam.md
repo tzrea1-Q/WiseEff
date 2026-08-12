@@ -1,9 +1,9 @@
 # Xiaoze approval chain: one seam, DB-backed state, request-scoped context
 
-> Status: **Active**
+> Status: **Completed** (merged via PR #319 on 2026-08-12)
 > Date: 2026-08-12
 > Branch: `fix/xiaoze-approval-chain-single-seam`
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-12-xiaoze-approval-chain-single-seam.md`](../../zh-CN/exec-plans/active/2026-08-12-xiaoze-approval-chain-single-seam.md)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-12-xiaoze-approval-chain-single-seam.md`](../../zh-CN/exec-plans/completed/2026-08-12-xiaoze-approval-chain-single-seam.md)
 
 ## Goal
 

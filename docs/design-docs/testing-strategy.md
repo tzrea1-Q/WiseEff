@@ -44,6 +44,8 @@ Targeted unit coverage includes `server/modules/debugging/valueCodec.test.ts`, g
 ```bash
 npm test
 npm run test:server
+npm run test:scripts
+npm run bridge:test
 npm run test:all
 npm run build
 npm run contract:check

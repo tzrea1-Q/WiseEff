@@ -128,7 +128,7 @@ One phase → one branch → one PR. The planning branch `plan/agent-log-analysi
 
 ## Documentation Update Gate
 
-- [x] P1 PR updates: domain-model EN+zh, api-contract + OpenAPI, FRONTEND EN+zh, SECURITY EN+zh, environment-variables EN+zh + `.env.example`, runbook (`docs/runbooks/log-analysis-llm.md` EN+zh), ARCHITECTURE, product-spec EN+zh, acceptance coverage map + operation matrix (LOG-DOMAIN-001 / LOG-DEGRADED-001, EN+zh), db-schema regenerated via `npm run db:schema-doc` (migration `0103_log_domains.sql`) — all done on `feat/log-analysis-p1-domains-and-llm`
+- [x] P1 PR updates: domain-model EN+zh, api-contract + OpenAPI, FRONTEND EN+zh, SECURITY EN+zh, environment-variables EN+zh + `.env.example`, runbook (`docs/runbooks/log-analysis-llm.md` EN+zh), ARCHITECTURE, product-spec EN+zh, acceptance coverage map + operation matrix (LOG-DOMAIN-001 / LOG-DEGRADED-001, EN+zh), db-schema regenerated via `npm run db:schema-doc` (migration `0104_log_domains.sql`) — all done on `feat/log-analysis-p1-domains-and-llm`
 - [ ] P2 PR updates: testing-strategy (eval layers), verification-matrix (eval commands), QUALITY_SCORE review, eval reports + baseline committed
 - [ ] P3 PR updates: runbook monitoring section, RELIABILITY review, tech-debt entries for anything deferred
 - [ ] Every phase: `npm run docs:check` green before its PR merges; plan moves to `completed/` only after all rows above are Update-done or Review-recorded with evidence

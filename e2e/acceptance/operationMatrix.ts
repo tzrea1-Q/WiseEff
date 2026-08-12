@@ -5,7 +5,7 @@ export type AcceptanceOperationAssertion = "ui" | "api" | "db" | "audit" | "scre
 export type AcceptanceOperation = {
   id: string;
   priority: AcceptanceOperationPriority;
-  area: "auth" | "shell" | "parameters" | "logs" | "debugging" | "agent" | "permissions" | "notifications" | "product-feedback" | "platform";
+  area: "auth" | "shell" | "parameters" | "logs" | "debugging" | "agent" | "permissions" | "notifications" | "product-feedback" | "platform" | "knowledge";
   route: string;
   roles: string[];
   action: string;
@@ -88,6 +88,43 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     acceptanceIds: ["PFB-AUTHZ-001"],
     specFiles: ["e2e/acceptance/product-feedback.acceptance.spec.ts"],
     assertions: ["ui", "api", "db", "screenshot"]
+  },
+  {
+    id: "KB-READ-001",
+    priority: "P1",
+    area: "knowledge",
+    route: "/knowledge",
+    roles: ["Hardware User"],
+    action: "List knowledge entries, search published entries only (drafts stay invisible), and open a published entry detail.",
+    coverage: "automated",
+    acceptanceIds: ["KB-READ-001"],
+    specFiles: ["e2e/acceptance/knowledge.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db"]
+  },
+  {
+    id: "KB-EDIT-001",
+    priority: "P1",
+    area: "knowledge",
+    route: "/knowledge",
+    roles: ["Hardware User"],
+    action:
+      "Create a markdown knowledge entry, publish it, revise the published entry in place producing a new immutable revision, and restore a prior revision as a new revision.",
+    coverage: "automated",
+    acceptanceIds: ["KB-EDIT-001"],
+    specFiles: ["e2e/acceptance/knowledge.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit"]
+  },
+  {
+    id: "KB-FILE-001",
+    priority: "P1",
+    area: "knowledge",
+    route: "/knowledge",
+    roles: ["Hardware User"],
+    action: "Upload a file knowledge entry through the object-store seam and observe its text-extraction status.",
+    coverage: "automated",
+    acceptanceIds: ["KB-FILE-001"],
+    specFiles: ["e2e/acceptance/knowledge.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit"]
   },
   {
     id: "SHELL-DIAG-001",
@@ -668,7 +705,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     coverage: "future",
     acceptanceIds: ["BRIDGE-WIN-001"],
     specFiles: [
-      "e2e/acceptance/debugging-local-bridge.acceptance.spec.ts",
+      "e2e/acceptance/local-device-bridge.acceptance.spec.ts",
       "e2e/acceptance/local-device-bridge.acceptance.spec.ts"
     ],
     assertions: ["ui", "api"],
@@ -852,6 +889,18 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     action: "Resume an approved Xiaoze AG-UI native mutating action without reopening a change request.",
     coverage: "automated",
     acceptanceIds: ["XIAOZE-ACTION-RESUME-001"],
+    specFiles: ["e2e/acceptance/xiaoze-action.acceptance.spec.ts"],
+    assertions: ["api"]
+  },
+  {
+    id: "XIAOZE-ACTION-EDITEDARGS-001",
+    priority: "P1",
+    area: "agent",
+    route: "/parameters",
+    roles: ["Admin"],
+    action: "Approve a Xiaoze mutating action with edited arguments; the executed tool call uses the edited payload.",
+    coverage: "automated",
+    acceptanceIds: ["XIAOZE-ACTION-EDITEDARGS-001"],
     specFiles: ["e2e/acceptance/xiaoze-action.acceptance.spec.ts"],
     assertions: ["api"]
   },

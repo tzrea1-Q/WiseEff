@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { createAuditEvent } from "../audit/repository";
+import { withAuditedWrite, type AuditedWriteContext } from "../audit/auditedWrite";
 import {
   notifyParameterImportCompleted,
   notifyParameterMergeCompleted,
@@ -13,7 +14,7 @@ import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { nodePathToParameterIdentity } from "../parameter-files/pathMapper";
+import { nodePathToParameterIdentity } from "./pathMapper";
 import { getProjectParameterFileById } from "../parameter-files/repository";
 import { writebackMergedEnablementValue, writebackMergedParameterValue, type WritebackServiceContext } from "../parameter-files/writebackService";
 import { resolveInitializationSuggestion } from "../parameter-topology/editService";
@@ -275,12 +276,16 @@ export async function resolveStructuredEditToParameter(
 /**
  * Map structured DTS edits onto project parameter identity rows and submit via the
  * existing draft → submission_round → change_request flow. CR targetValue is rawText.
+ *
+ * Drafts, the submission itself, and the audit event commit in one transaction
+ * (ADR-0027): a failed submit no longer leaves committed drafts or a misleading
+ * "submitted" audit event behind.
  */
 export async function submitStructuredEdits(
   db: Database,
   auth: AuthContext,
   input: SubmitStructuredEditsInput,
-  context: ServiceContext = {}
+  context: ServiceContext & AuditedWriteContext
 ) {
   requireCanEdit(auth);
 
@@ -288,68 +293,79 @@ export async function submitStructuredEdits(
     throw new ApiError("VALIDATION_FAILED", "At least one structured edit is required.", 400);
   }
 
-  const seenKeys = new Set<string>();
-  const items: Array<Extract<SubmitParameterChangesInput["items"][number], { parameterId: string }>> = [];
+  return withAuditedWrite(db, auth, context, async (tx) => {
+    const seenKeys = new Set<string>();
+    const items: Array<Extract<SubmitParameterChangesInput["items"][number], { parameterId: string }>> = [];
 
-  for (const edit of input.edits) {
-    const key = `${edit.fileId}:${sourceNodePathForStructuredEdit(edit)}`;
-    if (seenKeys.has(key)) {
-      throw new ApiError("VALIDATION_FAILED", "Duplicate structured edit for the same property.", 400, {
-        fileId: edit.fileId,
-        nodePath: edit.nodePath,
-        propertyName: edit.propertyName
+    for (const edit of input.edits) {
+      const key = `${edit.fileId}:${sourceNodePathForStructuredEdit(edit)}`;
+      if (seenKeys.has(key)) {
+        throw new ApiError("VALIDATION_FAILED", "Duplicate structured edit for the same property.", 400, {
+          fileId: edit.fileId,
+          nodePath: edit.nodePath,
+          propertyName: edit.propertyName
+        });
+      }
+      seenKeys.add(key);
+
+      const parameter = await resolveStructuredEditToParameter(tx, auth, input.projectId, edit);
+      const reason =
+        edit.reason?.trim() ||
+        `Structured edit: ${sourceNodePathForStructuredEdit(edit)}`;
+
+      await upsertDraft(tx, {
+        id: randomUUID(),
+        organizationId: auth.organization.id,
+        projectId: input.projectId,
+        parameterId: parameter.id,
+        userId: auth.user.id,
+        targetValue: edit.rawText,
+        reason,
+        origin: "manual",
+        projectParameterBindingId: edit.projectParameterBindingId,
+        parameterSpecId: edit.parameterSpecId
+      });
+
+      items.push({
+        parameterId: parameter.id,
+        targetValue: edit.rawText,
+        reason,
+        projectParameterBindingId: edit.projectParameterBindingId,
+        parameterSpecId: edit.parameterSpecId
       });
     }
-    seenKeys.add(key);
 
-    const parameter = await resolveStructuredEditToParameter(db, auth, input.projectId, edit);
-    const reason =
-      edit.reason?.trim() ||
-      `Structured edit: ${sourceNodePathForStructuredEdit(edit)}`;
+    const result = await submitStructuredEditItems(tx, auth, input, items, context);
 
-    await upsertDraft(db, {
-      id: randomUUID(),
-      organizationId: auth.organization.id,
-      projectId: input.projectId,
-      parameterId: parameter.id,
-      userId: auth.user.id,
-      targetValue: edit.rawText,
-      reason,
-      origin: "manual",
-      projectParameterBindingId: edit.projectParameterBindingId,
-      parameterSpecId: edit.parameterSpecId
-    });
-
-    items.push({
-      parameterId: parameter.id,
-      targetValue: edit.rawText,
-      reason,
-      projectParameterBindingId: edit.projectParameterBindingId,
-      parameterSpecId: edit.parameterSpecId
-    });
-  }
-
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    actorUserId: auth.user.id,
-    actorType: context.actorType ?? "user",
-    app: "parameter-management",
-    kind: "parameter-structured-edit-submit",
-    action: "submit",
-    severity: "Medium",
-    targetType: "parameter-submission-round",
-    targetId: input.projectId,
-    metadata: {
-      editCount: input.edits.length,
-      parameterIds: items.map((item) => item.parameterId)
-    },
-    traceId: context.requestId ?? randomUUID()
+    return {
+      result,
+      audit: {
+        app: "parameter-management",
+        kind: "parameter-structured-edit-submit",
+        action: "submit",
+        severity: "Medium",
+        projectId: input.projectId,
+        targetType: "parameter-submission-round",
+        targetId: input.projectId,
+        metadata: {
+          editCount: input.edits.length,
+          parameterIds: items.map((item) => item.parameterId)
+        },
+        actorType: context.actorType ?? "user"
+      }
+    };
   });
+}
 
+function submitStructuredEditItems(
+  tx: Database,
+  auth: AuthContext,
+  input: SubmitStructuredEditsInput,
+  items: Array<Extract<SubmitParameterChangesInput["items"][number], { parameterId: string }>>,
+  context: ServiceContext
+) {
   return submitParameterChanges(
-    db,
+    tx,
     auth,
     {
       projectId: input.projectId,

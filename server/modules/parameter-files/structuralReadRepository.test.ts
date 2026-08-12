@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { seedCoreGraph } from "../../testing/fixtures";
 import { ingestDtsFileVersion } from "./structuralIngest";
 import { readDtsStructuralModel } from "./structuralReadRepository";
 import { getParameterFileVersionStructure } from "./structuralReadService";
@@ -19,15 +20,10 @@ describe.skipIf(!databaseAvailable)("readDtsStructuralModel", () => {
 
   beforeEach(async () => {
     db = await createInMemoryTestDatabase();
-    await db.query(
-      `insert into organizations (id, name) values ('org-struct-read', 'StructRead')
-       on conflict (id) do update set name = excluded.name`,
-    );
-    await db.query(
-      `insert into projects (id, organization_id, name, code, status)
-       values ('proj-struct-read', 'org-struct-read', 'P', 'P', 'initialized')
-       on conflict (id) do update set name = excluded.name`,
-    );
+    await seedCoreGraph(db, {
+      organization: { id: "org-struct-read", name: "StructRead" },
+      projects: [{ id: "proj-struct-read", name: "P", code: "P" }],
+    });
     await db.query(
       `insert into project_parameter_files (id, organization_id, project_id, file_name, format, enabled)
        values ('file-struct-read', 'org-struct-read', 'proj-struct-read', 'sample.dts', 'dts', true)`,

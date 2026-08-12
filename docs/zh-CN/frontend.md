@@ -16,7 +16,10 @@ WiseEff 前端是 Vite、React、TypeScript 单页应用。它同时支持 mock 
 - `src/infrastructure/http/`：HTTP API client、DTO、auth client、runtime mode。
 - `src/components/`：复用 UI、表格、弹窗、过滤器、图表。
 - `src/features/agent/`：Xiaoze（小泽）CopilotKit 表面（`XiaozeProvider`、`useXiaozePageContext`、`XiaozeApprovalCard`、前端工具）。
+- `src/features/log-analysis/`：`LogsPage`（上传、结论卡、证据链、原始日志查看器）与 `LogDashboardPage`。
+- `src/features/parameter-review/`：`ParameterReviewPage`、`ParameterSubmissionsPage`、提交历史 diff 与评审专用 UI 原子。
 - `src/features/product-feedback/`：侧边栏 `FeedbackDialog` 与 `/feedback-admin` 反馈处理 UI。
+- `src/features/knowledge/`：知识库页面（`/knowledge` 与 `/knowledge-admin`:列表、分栏编辑器、文件上传、修订历史）。
 - `src/test/setup.ts`：Vitest DOM 初始化。
 
 ## Runtime 模式
@@ -53,6 +56,7 @@ API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒
 - DTS 结构化产品面：`DtsStructuredRepository`（`resolveDtsStructuredRepository` → mock / `dtsStructuredClient`）
 - 日志分析：`LogAnalysisRepository`
 - 产品反馈：`ProductFeedbackRepository`
+- 知识库：`KnowledgeRepository`
 - 设备调试：`DebuggingGateway`
 每个 port 通常有两类实现：
 
@@ -172,6 +176,13 @@ mock mode 有意保留 12 个兼容参数，以保证组件测试与演示轻量
 - `/feedback-admin`：Admin-only 反馈处理页，通过同一 port 列表/搜索/筛选、查看详情与附件、填写 `adminNote`，并按 `open -> in_progress -> closed` 推进状态。
 - mock mode 使用 `src/infrastructure/mock/mockProductFeedbackRepository.ts`；API mode 使用 `src/infrastructure/http/productFeedbackClient.ts`，对接 `/api/v1/product-feedback` 及附件内容路由。
 
+知识库：
+
+- `/knowledge`（侧栏分组「知识库」）：条目列表用共享 `ColumnFilter` 做状态/标签列筛选;检索框只命中 `published` 条目;分栏编辑/预览的 Markdown 编辑器（`src/domain/knowledge/markdown.ts` 先转义再渲染）;文件条目上传后展示提取状态徽章;修订历史支持「恢复为新修订」。
+- `/knowledge-admin`：Phase 1 治理骨架——已归档条目恢复与 manage 门控的彻底删除（带确认勾选的 `ConfirmDialog`）;Agent 草稿队列与索引健康在后续阶段加入。
+- 端口 `KnowledgeRepository`:mock 用 `src/infrastructure/mock/mockKnowledgeRepository.ts`（fixtures 覆盖草稿/已发布/已归档与提取失败文件,端口形状一致）;API 用 `src/infrastructure/http/knowledgeClient.ts` 对接 `/api/v1/knowledge/*`。过期保存映射为 `KnowledgeRevisionConflictError`,编辑器渲染为可读的刷新重试冲突提示,绝不静默覆盖。
+- 能力接线:`App.tsx` 由 `/api/v1/me` 权限（API mode 的 `knowledge:edit` / `knowledge:manage`）或角色检查（mock mode）构造 `KnowledgeCapability`;UI 门控仅是 UX,后端路由才是安全边界。纯生命周期/可见性规则在 `src/domain/knowledge/rules.ts`。
+
 设备调试：
 
 - `/node-debugging`：通过 API mode gateway 读写节点、生成快照和审计（当前主入口）。
@@ -219,6 +230,10 @@ Xiaoze（小泽，唯一 Agent）：
 - `/api/v1/me` 在 OIDC、HMAC smoke 和本地账号下返回同一类 `AuthContext`。
 - `/user-permissions` 在 API mode 下通过 `/api/v1/users` 读取和写入用户治理数据，并通过 `/api/v1/users/registration-role-requests` 处理待审批的 Committer 注册申请。管理员在“添加用户”中创建的是本地账号：表单使用姓名、用户名、可选职务、初始密码和初始角色，不再把邮箱作为账号标识。该账号会加入当前管理员所在组织并立即启用；密码只提交给后端创建凭据，前端用户状态不会保存明文密码。
 - 前端权限检查只是 UX，后端仍必须执行 authz、self-lockout 防护和 audit。
+
+## UI 设计系统与质量门禁
+
+所有产品界面遵循 [UI 设计系统](design-docs/ui-design-system.md) 的可执行视觉标准:设计令牌是视觉取值的唯一来源、单一 accent、强制交互状态、共享原语(Button / ModalDialog / DataTable / ColumnFilter / SectionState)、令牌化动效与中文优先的产品语言。所有前端可见变更在宣称完成前必须通过 [UI 质量检查清单](developer/ui-quality-checklist.md) 的完成门禁。存量界面向该标准迁移由 `docs/zh-CN/exec-plans/active/2026-08-12-frontend-aesthetics-uplift.md` 跟踪。
 
 ## 按钮和操作样式
 

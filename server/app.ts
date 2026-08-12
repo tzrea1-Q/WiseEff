@@ -22,6 +22,7 @@ import { registerDeviceBridgeRoutes } from "./modules/deviceBridge/routes";
 import { registerDeviceBridgeDownloadRoutes } from "./modules/deviceBridge/downloadRoutes";
 import type { DeviceBridgeWsHandler } from "./modules/deviceBridge/wsHandler";
 import { attachDeviceBridgeWebSocket, createDeviceBridgeWsHandler } from "./modules/deviceBridge/wsHandler";
+import { registerKnowledgeRoutes } from "./modules/knowledge/routes";
 import { registerLogRoutes } from "./modules/logs/routes";
 import { buildReadyHealth, type DurableQueueHealthCheck } from "./modules/operations/health";
 import { registerOperationsRoutes, type PilotReadinessEnv } from "./modules/operations/routes";
@@ -77,23 +78,28 @@ type DeviceBridgeEnv = Pick<
   | "DEVICE_BRIDGE_WS_PATH"
 >;
 
-export function createWiseEffServer(
-  options: {
-    db?: Database;
-    objectStore?: ObjectStore;
-    objectStoreHealth?: ObjectStoreHealthCheck;
-    logAnalysisQueue?: LogAnalysisQueue;
-    debugGateway?: DebugDeviceGateway;
-    debugGatewayRegistry?: DebugDeviceGatewayRegistry;
-    durableQueue?: DurableQueueHealthCheck;
-    env?: PilotReadinessEnv & Partial<DeviceBridgeEnv>;
-    auth?: { mode: "development" | "production"; verifier?: TokenVerifier };
-    localAuthService?: LocalAuthService;
-    tracing?: Pick<TracingBoundary, "withSpan">;
-    metrics?: MetricsRegistry;
-    deviceBridge?: DeviceBridgeRuntimeOptions;
-  } = {}
-) {
+export type WiseEffServerOptions = {
+  db?: Database;
+  objectStore?: ObjectStore;
+  objectStoreHealth?: ObjectStoreHealthCheck;
+  logAnalysisQueue?: LogAnalysisQueue;
+  debugGateway?: DebugDeviceGateway;
+  debugGatewayRegistry?: DebugDeviceGatewayRegistry;
+  durableQueue?: DurableQueueHealthCheck;
+  env?: PilotReadinessEnv & Partial<DeviceBridgeEnv>;
+  auth?: { mode: "development" | "production"; verifier?: TokenVerifier };
+  localAuthService?: LocalAuthService;
+  tracing?: Pick<TracingBoundary, "withSpan">;
+  metrics?: MetricsRegistry;
+  deviceBridge?: DeviceBridgeRuntimeOptions;
+};
+
+/**
+ * Build the fully-registered WiseEff router without binding it to an HTTP server.
+ * This is the single place every module registers routes, so contract parity
+ * checks can enumerate the real registration via `router.listRoutes()`.
+ */
+export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   const router = createRouter();
   const metrics = options.metrics ?? createMetricsRegistry({ serviceName: "wiseeff-api" });
   const tracing = options.tracing ?? defaultTracingBoundary;
@@ -168,6 +174,11 @@ export function createWiseEffServer(
     objectStore: options.objectStore,
     getCurrentAuthContext: authResolver
   });
+  registerKnowledgeRoutes(router, {
+    db: options.db,
+    objectStore: options.objectStore,
+    getCurrentAuthContext: authResolver
+  });
   registerDtsReloadRoutes(router, {
     db: options.db,
     objectStore: options.objectStore,
@@ -204,6 +215,7 @@ export function createWiseEffServer(
   registerXiaozeRoutes(router, {
     db: options.db,
     env: options.env as ServerEnv | undefined,
+    objectStore: options.objectStore,
     getCurrentAuthContext: authResolver
   });
 
@@ -264,6 +276,11 @@ export function createWiseEffServer(
     };
   });
 
+  return { router, metrics, tracing };
+}
+
+export function createWiseEffServer(options: WiseEffServerOptions = {}) {
+  const { router, metrics, tracing } = buildWiseEffRouter(options);
   return attachDeviceBridgeServer(createHttpServer(router, { metrics, tracing }), options);
 }
 

@@ -2177,30 +2177,33 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     }
   });
 
+  // Planned markers (`@acceptance-planned` / `@operation-planned`) declare intended
+  // coverage without counting as automated coverage; the coverage gate only accepts
+  // plain markers carried by runnable tests.
   test.describe("Node enablement (ADR-0003) — pending browser automation", () => {
   test("PARAM-ENABLE-GATE-001: structural keys do not block publish gates", async () => {
-    // @acceptance PARAM-ENABLE-GATE-001
-    // @operation PARAM-ENABLE-GATE-001
+    // @acceptance-planned PARAM-ENABLE-GATE-001
+    // @operation-planned PARAM-ENABLE-GATE-001
     test.skip(true, "Pending: full disposable-DB gate evidence for structural review dismissal.");
   });
 
   test("PARAM-ENABLE-VISIBLE-001: topology badges and workbench no-effect notice", async ({ page }) => {
-    // @acceptance PARAM-ENABLE-VISIBLE-001
-    // @operation PARAM-ENABLE-VISIBLE-001
+    // @acceptance-planned PARAM-ENABLE-VISIBLE-001
+    // @operation-planned PARAM-ENABLE-VISIBLE-001
     test.skip(true, "Pending: playwright UI coverage for enablement badges and no-effect rows.");
     void page;
   });
 
   test("PARAM-ENABLE-TOGGLE-001: disable with reason shares working tip with binding edit", async ({ page }) => {
-    // @acceptance PARAM-ENABLE-TOGGLE-001
-    // @operation PARAM-ENABLE-TOGGLE-001
+    // @acceptance-planned PARAM-ENABLE-TOGGLE-001
+    // @operation-planned PARAM-ENABLE-TOGGLE-001
     test.skip(true, "Pending: mixed-round enablement + binding submit without mixed-working-tips.");
     void page;
   });
 
   test("PARAM-ENABLE-GUARD-001: non-standard status requires acknowledgement override", async ({ page }) => {
-    // @acceptance PARAM-ENABLE-GUARD-001
-    // @operation PARAM-ENABLE-GUARD-001
+    // @acceptance-planned PARAM-ENABLE-GUARD-001
+    // @operation-planned PARAM-ENABLE-GUARD-001
     test.skip(true, "Pending: reserved-status read-only path and secondary override dialog.");
     void page;
   });
@@ -2208,8 +2211,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
   test.describe("Module attribution redesign — pending browser automation", () => {
     test("MOD-ATTR-QUEUE-001: unclassified queue dismiss and restore", async ({ page }) => {
-      // @acceptance MOD-ATTR-QUEUE-001
-      // @operation MOD-ATTR-QUEUE-001
+      // @acceptance-planned MOD-ATTR-QUEUE-001
+      // @operation-planned MOD-ATTR-QUEUE-001
       test.skip(
         true,
         "Pending: playwright coverage for unclassified queue counts, dismiss, and restore with audit."
@@ -2218,8 +2221,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
 
     test("MOD-ATTR-CLASSIFY-001: classify with impact preview and scoped apply", async ({ page }) => {
-      // @acceptance MOD-ATTR-CLASSIFY-001
-      // @operation MOD-ATTR-CLASSIFY-001
+      // @acceptance-planned MOD-ATTR-CLASSIFY-001
+      // @operation-planned MOD-ATTR-CLASSIFY-001
       test.skip(
         true,
         "Pending: playwright coverage for classify dialog preview, apply, and emptied-bucket GC."
@@ -2228,15 +2231,15 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
 
     test("MOD-ATTR-BULK-001: bulk classify into one business category", async ({ page }) => {
-      // @acceptance MOD-ATTR-BULK-001
-      // @operation MOD-ATTR-BULK-001
+      // @acceptance-planned MOD-ATTR-BULK-001
+      // @operation-planned MOD-ATTR-BULK-001
       test.skip(true, "Pending: playwright coverage for multi-select bulk classify confirm.");
       void page;
     });
 
     test("MOD-ATTR-TREE-001: kind-scoped tree actions and adoption", async ({ page }) => {
-      // @acceptance MOD-ATTR-TREE-001
-      // @operation MOD-ATTR-TREE-001
+      // @acceptance-planned MOD-ATTR-TREE-001
+      // @operation-planned MOD-ATTR-TREE-001
       test.skip(
         true,
         "Pending: playwright coverage for kind-scoped actions (node-type/driver-group no-delete, node-type move) and rename adoption across re-ingest."
@@ -2245,8 +2248,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
 
     test("MOD-ATTR-RECLASSIFY-001: node-type to business kind correction", async ({ page }) => {
-      // @acceptance MOD-ATTR-RECLASSIFY-001
-      // @operation MOD-ATTR-RECLASSIFY-001
+      // @acceptance-planned MOD-ATTR-RECLASSIFY-001
+      // @operation-planned MOD-ATTR-RECLASSIFY-001
       test.skip(
         true,
         "Pending: playwright coverage for edit-dialog reclassify of node-type→business with curated kind surviving re-ingest."
@@ -2255,8 +2258,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
 
     test("MOD-ATTR-IMPORTANCE-001: business importance inheritance", async ({ page }) => {
-      // @acceptance MOD-ATTR-IMPORTANCE-001
-      // @operation MOD-ATTR-IMPORTANCE-001
+      // @acceptance-planned MOD-ATTR-IMPORTANCE-001
+      // @operation-planned MOD-ATTR-IMPORTANCE-001
       test.skip(
         true,
         "Pending: playwright coverage for business importance edit and workbench filter inheritance."
@@ -2267,8 +2270,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
   test.describe("Driver registry — pending browser automation", () => {
     test("DRV-REG-001: register driver before upload as not-yet-observed group", async ({ page }) => {
-      // @acceptance DRV-REG-001
-      // @operation DRV-REG-001
+      // @acceptance-planned DRV-REG-001
+      // @operation-planned DRV-REG-001
       test.skip(
         true,
         "Pending: playwright coverage for pre-upload driver registration appearing as not-yet-observed curated driver group with parse-coverage chip."
@@ -2277,8 +2280,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
 
     test("DRV-REG-002: claim observed-unregistered driver promotes curated", async ({ page }) => {
-      // @acceptance DRV-REG-002
-      // @operation DRV-REG-002
+      // @acceptance-planned DRV-REG-002
+      // @operation-planned DRV-REG-002
       test.skip(
         true,
         "Pending: playwright coverage for claiming an observed-but-unregistered driver from queue or module tree."
@@ -2287,8 +2290,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
 
     test("DRV-REG-003: upload ingest summary reports registered vs unregistered", async ({ page }) => {
-      // @acceptance DRV-REG-003
-      // @operation DRV-REG-003
+      // @acceptance-planned DRV-REG-003
+      // @operation-planned DRV-REG-003
       test.skip(
         true,
         "Pending: playwright coverage for one-shot upload ingest summary of matched registered and new unregistered compatibles."
@@ -2299,8 +2302,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     test("DRV-REG-004: editable nature/cardinality with authz and singleton publish gate", async ({
       page
     }) => {
-      // @acceptance DRV-REG-004
-      // @operation DRV-REG-004
+      // @acceptance-planned DRV-REG-004
+      // @operation-planned DRV-REG-004
       test.skip(
         true,
         "Pending: playwright coverage for editing driverNature/instanceCardinality, platform-subject 403 for Org Admin, org-audit for platform-admin, and singleton publish blockers."
@@ -2313,8 +2316,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     test("DRV-SCHEMA-001: author and activate overlay; chip shows organization coverage", async ({
       page
     }) => {
-      // @acceptance DRV-SCHEMA-001
-      // @operation DRV-SCHEMA-001
+      // @acceptance-planned DRV-SCHEMA-001
+      // @operation-planned DRV-SCHEMA-001
       test.skip(
         true,
         "Pending: playwright coverage for authoring/activating an org overlay from an uncovered driver group."
@@ -2325,8 +2328,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     test("DRV-SCHEMA-002: overlay-only compatible binds typed properties on upload", async ({
       page
     }) => {
-      // @acceptance DRV-SCHEMA-002
-      // @operation DRV-SCHEMA-002
+      // @acceptance-planned DRV-SCHEMA-002
+      // @operation-planned DRV-SCHEMA-002
       test.skip(
         true,
         "Pending: playwright + API coverage for DTS upload matching only an active organization overlay."
@@ -2335,8 +2338,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
 
     test("DRV-SCHEMA-003: reject overlay when pinned schema already covers", async ({ page }) => {
-      // @acceptance DRV-SCHEMA-003
-      // @operation DRV-SCHEMA-003
+      // @acceptance-planned DRV-SCHEMA-003
+      // @operation-planned DRV-SCHEMA-003
       test.skip(
         true,
         "Pending: playwright/API coverage for rejecting overlay activate when pinned schema covers the compatible."
@@ -2347,8 +2350,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     test("DRV-SCHEMA-004: activate upgrades provisional specs without re-upload", async ({
       page
     }) => {
-      // @acceptance DRV-SCHEMA-004
-      // @operation DRV-SCHEMA-004
+      // @acceptance-planned DRV-SCHEMA-004
+      // @operation-planned DRV-SCHEMA-004
       test.skip(
         true,
         "Pending: playwright/API coverage for retroactive provisional-spec upgrade on overlay activate."
@@ -2361,8 +2364,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     test("MOD-ATTR-CREATE-KIND-001: create business/driver-group with parent rules and not-yet-observed", async ({
       page
     }) => {
-      // @acceptance MOD-ATTR-CREATE-KIND-001
-      // @operation MOD-ATTR-CREATE-KIND-001
+      // @acceptance-planned MOD-ATTR-CREATE-KIND-001
+      // @operation-planned MOD-ATTR-CREATE-KIND-001
       test.skip(
         true,
         "Pending: playwright coverage for attribution-tree create of business/driver-group with parent-kind rules, required compatibles, not-yet-observed markers, and stated (non-predicted) spec attribution."

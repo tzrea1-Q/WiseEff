@@ -17,6 +17,13 @@
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 
+## 知识库权限速览
+
+- `knowledge:view`:读取已发布条目与检索;组织成员（Guest 及以上）默认具备。
+- `knowledge:edit`:创建条目;编辑/发布/归档**自己的**条目;Hardware/Software User 及以上默认具备。
+- `knowledge:manage`:治理任意条目（编辑、归档、恢复、彻底删除）;Admin 档位。
+- 发布者问责:`knowledge:edit` 不能发布或修改他人条目;草稿仅对拥有者与 manage 可见;彻底删除必须 `knowledge:manage` 并留 `High` 级审计。完整规则见英文版。
+
 ## 同类中文文档
 
 - [docs/zh-CN/security/README.md](README.md)

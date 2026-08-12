@@ -2158,7 +2158,7 @@ export async function getProjectParameterForUpdate(
         coalesce(dps.property_key, split_part(ps.specification_key, '/', 2), ps.specification_key) as name,
         split_part(ps.specification_key, '/', 1) as module,
         coalesce(psv.value_shape->>'unit', '') as unit,
-        'Low' as risk,
+        coalesce(ps.risk, 'Low') as risk,
         coalesce(bpr.raw_value, '') as current_value,
         '' as "initSuggestionText",
         coalesce(
