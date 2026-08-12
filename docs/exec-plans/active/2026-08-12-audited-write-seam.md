@@ -103,6 +103,22 @@ independent of the seam migration.
   transaction (a failed release must not erase the evidence that the gate ran).
 - Ratchet: all nine `parameter-files/*` entries reach zero (12 direct calls removed).
 
+## Batch 3 (branch `refactor/audited-write-migrate-platform`) — users/knowledge/feedback to zero
+
+- Shape migrations (all call sites already in-transaction): `users/service.ts` (2 helpers,
+  6 sites), `knowledge/service.ts` (1 helper, 7 sites), `product-feedback/service.ts`
+  (1 helper, 2 sites).
+- **Deliberate allowlist residents, now documented in code + ratchet:**
+  - `auth/bootstrapLocalAdmin.ts`, `auth/localAuth.ts`: bootstrap/register/login/logout
+    audits fire before an AuthContext exists, and the seam derives actor/org from auth;
+    every site is already in-transaction, so there is no atomicity gap to fix.
+  - `audit/routes.ts`: for `POST /api/v1/audit-events` the audit event *is* the domain
+    write; there is nothing else to be atomic with.
+- `dts-reload/*`, `parameter-modules`, `parameter-specs`, `parameter-topology`, `agent/*`,
+  `logs` batches are deferred: those files are being moved by the in-flight
+  parameter-kernel refactor (#376/#377) and active agent/logs work; migrating them now
+  would manufacture conflicts.
+
 ## PR2+ migration inventory (ratchet allowlist, 41 direct calls in 27 files)
 
 Migrate per module; each batch moves call sites to `withAuditedWrite`/`writeAuditEventInTx`

@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { createAuditEvent } from "../audit/repository";
-import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
+import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext, AuditSeverity } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
@@ -106,7 +105,7 @@ function buildSearchText(input: { title: string; tags: string[]; content: string
 }
 
 async function writeKnowledgeAudit(
-  db: Queryable,
+  tx: AuditTx,
   auth: AuthContext,
   input: {
     kind: string;
@@ -117,20 +116,16 @@ async function writeKnowledgeAudit(
   },
   context: KnowledgeServiceContext = {}
 ) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: null,
-    actorUserId: auth.user.id,
-    actorType: "user",
+  // requestId fallback survives only until knowledge contexts become mandatory (ADR-0027).
+  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
     app: "knowledge",
     kind: input.kind,
     action: input.action,
     severity: input.severity ?? "Medium",
+    projectId: null,
     targetType: "knowledge-entry",
     targetId: input.entryId,
-    metadata: input.metadata ?? {},
-    traceId: context.requestId ?? randomUUID()
+    metadata: input.metadata ?? {}
   });
 }
 
@@ -220,7 +215,7 @@ export async function createKnowledgeEntry(
         searchText: buildSearchText({ title: input.title, tags: input.tags, content: input.contentMarkdown })
       });
       await writeKnowledgeAudit(
-        tx,
+        asAuditTx(tx),
         auth,
         {
           kind: "knowledge-entry-create",
@@ -284,7 +279,7 @@ export async function createKnowledgeEntry(
       searchText: buildSearchText({ title: input.title, tags: input.tags, content: null })
     });
     await writeKnowledgeAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         kind: "knowledge-entry-create",
@@ -428,7 +423,7 @@ export async function updateKnowledgeEntry(
     }
 
     await writeKnowledgeAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         kind: "knowledge-entry-update",
@@ -493,7 +488,7 @@ async function transitionKnowledgeEntry(
     // it (the worker deletes chunks for any non-published entry).
     await enqueueEntryIndexRefresh(tx, { entryId, organizationId: auth.organization.id });
     await writeKnowledgeAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         kind: input.kind,
@@ -572,7 +567,7 @@ export async function hardDeleteKnowledgeEntry(
 
     await deleteEntry(tx, auth, entryId);
     await writeKnowledgeAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         kind: "knowledge-entry-delete",
@@ -673,7 +668,7 @@ export async function restoreKnowledgeRevision(
     });
 
     await writeKnowledgeAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         kind: "knowledge-revision-restore",
@@ -840,7 +835,7 @@ export async function retryKnowledgeEntryIndex(
     }
     await enqueueEntryIndexRefresh(tx, { entryId, organizationId: auth.organization.id });
     await writeKnowledgeAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         kind: "knowledge-index-retry",
