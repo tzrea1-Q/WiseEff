@@ -301,7 +301,9 @@
 }
 
 .button.ghost[aria-pressed="true"],
-.button.subtle[aria-pressed="true"] {
+.button.subtle[aria-pressed="true"],
+.button.ghost[aria-pressed="true"]:hover:not(:disabled),
+.button.subtle[aria-pressed="true"]:hover:not(:disabled) {
   color: var(--accent);
   background: var(--accent-soft);
   border-color: color-mix(in srgb, var(--accent) 24%, transparent);
@@ -1152,6 +1154,12 @@ body {
 .topbar-user-menu__actions .button.ghost {
   color: #9f1239;
   background: #fff7f8;
+  border-color: #fecdd3;
+}
+
+.topbar-user-menu__actions .button.ghost:hover:not(:disabled) {
+  color: #9f1239;
+  background: var(--danger-soft);
   border-color: #fecdd3;
 }
 
