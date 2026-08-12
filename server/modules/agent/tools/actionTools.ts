@@ -3,12 +3,13 @@ import type { Database } from "../../../shared/database/client";
 import type { ObjectStore } from "../../logs/objectStore";
 import type { DtsToolchainRunner } from "../../parameter-files/dtsToolchain";
 import { parseDtsValue } from "../../dts/valueAst";
-import { deleteDraft } from "../../parameters/repository";
+import { deleteDraft, getProjectParameterForUpdate } from "../../parameters/repository";
+import { mustUseSemanticParameterIdentity } from "../../parameters/semanticParameterReads";
 import { assertSensitiveNodeWriteAllowed } from "../../parameters/sensitiveNode";
 import { submitParameterChanges } from "../../parameters/service";
 import { loadBindingContext, resolveBindingHeadRevisionId } from "../../parameter-topology/editService";
 import { createBindingDraft } from "../../parameter-topology/service";
-import type { AgentToolDefinition } from "../toolRegistry";
+import type { AgentToolExecutionContext, AgentToolDefinition } from "../toolRegistry";
 
 type ToolOptions = {
   db: Database;
@@ -19,6 +20,66 @@ type ToolOptions = {
 
 function readProjectId(contextProjectId: string | undefined, payload: Record<string, unknown>) {
   return typeof payload.projectId === "string" ? payload.projectId : contextProjectId;
+}
+
+function submissionCitation(changeRequestId: string, projectId: string, targetValue: string) {
+  return [
+    {
+      type: "parameter" as const,
+      id: changeRequestId,
+      label: `Change request ${changeRequestId}`,
+      href: `/parameters/review?changeRequestId=${encodeURIComponent(changeRequestId)}`,
+      snippet: `${targetValue} pending review for ${projectId}.`
+    }
+  ];
+}
+
+/**
+ * Legacy-identity databases only (kept alive by CI for the identity-migration
+ * suites, TD-079): the flat submission shape is still the accepted contract
+ * there, and `parameterId` addresses the legacy flat parameter row.
+ */
+async function submitLegacyParameterChange(
+  db: Database,
+  context: AgentToolExecutionContext,
+  input: { projectId: string; parameterId: string; targetValue: string; reason: string }
+) {
+  const parameter = await getProjectParameterForUpdate(db, {
+    organizationId: context.auth.organization.id,
+    projectId: input.projectId,
+    parameterId: input.parameterId
+  });
+  if (parameter?.sourceNodePath) {
+    await assertSensitiveNodeWriteAllowed(db, context.auth, {
+      organizationId: context.auth.organization.id,
+      projectId: input.projectId,
+      nodePath: parameter.sourceNodePath,
+      sourceFileName: parameter.sourceFileName,
+      actorType: "agent",
+      requestId: context.requestId
+    });
+  }
+
+  const submission = await submitParameterChanges(
+    db,
+    context.auth,
+    {
+      projectId: input.projectId,
+      items: [{ parameterId: input.parameterId, targetValue: input.targetValue, reason: input.reason }]
+    },
+    { requestId: context.requestId, actorType: "agent" }
+  );
+  const changeRequestId = submission.items[0]?.requestId ?? submission.id;
+  return {
+    summary: `Submitted parameter change request ${changeRequestId} for review.`,
+    data: {
+      changeRequestId,
+      projectId: input.projectId,
+      parameterId: input.parameterId,
+      targetValue: input.targetValue
+    },
+    citations: submissionCitation(changeRequestId, input.projectId, input.targetValue)
+  };
 }
 
 export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
@@ -45,8 +106,12 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
         }
         const db = options.db;
 
-        // Semantic lookup works identically pre- and post-cutover, unlike the
-        // mode-branched legacy parameter reads.
+        if (!(await mustUseSemanticParameterIdentity(db))) {
+          return submitLegacyParameterChange(db, context, { projectId, parameterId, targetValue, reason });
+        }
+
+        // Post-cutover: semantic identity is the only accepted submission
+        // contract, and `parameterId` is the project parameter binding id.
         const binding = await loadBindingContext(db, context.auth, parameterId);
         if (binding.project_id !== projectId) {
           throw new ApiError("NOT_FOUND", "Parameter binding was not found for this project.", 404, {
@@ -139,15 +204,7 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
               targetValue: draft.rawText,
               draftId: draft.draftId
             },
-            citations: [
-              {
-                type: "parameter" as const,
-                id: changeRequestId,
-                label: `Change request ${changeRequestId}`,
-                href: `/parameters/review?changeRequestId=${encodeURIComponent(changeRequestId)}`,
-                snippet: `${draft.rawText} pending review for ${projectId}.`
-              }
-            ]
+            citations: submissionCitation(changeRequestId, projectId, draft.rawText)
           };
         } catch (error) {
           // Best-effort cleanup so a failed submission does not leave an

@@ -17,20 +17,35 @@ const actorUserId = "u-xu-yun";
 const threadId = "xiaoze-action-thread";
 
 /**
- * Post-cutover the mutating tool addresses parameters by their
- * project_parameter_binding id and expects DTS source text values, so the
- * fixture resolves a real seeded binding (and its current cell value) at
- * runtime instead of hardcoding the retired flat parameter id.
+ * The mutating tool follows the database's identity mode: post-cutover it
+ * addresses parameters by project_parameter_binding id and expects DTS source
+ * text values; legacy-identity databases (CI keeps one for the identity
+ * migration suites, TD-079) still use the flat parameter id and free-form
+ * values. The fixture resolves the mode and a real seeded target at runtime.
  */
 let parameterId = "";
 let baseCellValue = 3000;
+let semanticIdentityMode = true;
+let changeRequestParameterColumn = "project_parameter_binding_id";
 
 function cellValue(offset: number) {
-  return `<${baseCellValue + offset}>`;
+  return semanticIdentityMode ? `<${baseCellValue + offset}>` : `${14 + offset}A`;
 }
 
 async function resolveSeededBinding() {
   await withPgClient(async (client) => {
+    const cutover = await client.query<{ c: string }>(
+      `select count(*)::text as c from parameter_identity_cutovers`
+    );
+    semanticIdentityMode = Number(cutover.rows[0]?.c ?? 0) > 0;
+
+    if (!semanticIdentityMode) {
+      parameterId = "aurora-fast-charge-current";
+      changeRequestParameterColumn = "project_parameter_value_id";
+      return;
+    }
+
+    changeRequestParameterColumn = "project_parameter_binding_id";
     const result = await client.query<{ id: string; raw_value: string | null }>(
       `
       select b.id, latest.raw_value
@@ -183,7 +198,7 @@ async function resetOpenChangeRequestsForParameter() {
       set status = 'rejected', reject_reason = 'xiaoze acceptance reset', updated_at = now()
       where organization_id = 'org-chargelab'
         and project_id = $1
-        and project_parameter_binding_id = $2
+        and ${changeRequestParameterColumn} = $2
         and status not in ('merged', 'rejected')
       `,
       [projectId, parameterId]
@@ -199,7 +214,7 @@ async function countOpenChangeRequests() {
       from parameter_change_requests
       where organization_id = 'org-chargelab'
         and project_id = $1
-        and project_parameter_binding_id = $2
+        and ${changeRequestParameterColumn} = $2
         and status not in ('merged', 'rejected')
       `,
       [projectId, parameterId]
@@ -265,7 +280,7 @@ test.beforeAll(async () => {
       set status = 'rejected', reject_reason = 'xiaoze acceptance reset', updated_at = now()
       where organization_id = 'org-chargelab'
         and project_id = $1
-        and project_parameter_binding_id = $2
+        and ${changeRequestParameterColumn} = $2
         and status not in ('merged', 'rejected')
       `,
       [projectId, parameterId]

@@ -5,6 +5,7 @@ import type { AuthContext } from "../../auth/types";
 import type { DtsToolchainRunner } from "../../parameter-files/dtsToolchain";
 import type { InMemoryTestDatabase } from "../../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../../testing/testDatabase";
+import { isParameterIdentityCutoverComplete } from "../../parameters/cutoverAwareIdentity";
 import { resolveModuleIdForBinding } from "../../parameter-modules/resolveModuleForBinding";
 import { createOrReuseBinding, upsertBindingRevisionValues } from "../../parameter-topology/bindingService";
 import { ingestConfigRevision } from "../../parameter-topology/ingestService";
@@ -46,6 +47,23 @@ const SPEC_ID = "spec-agent-iin-max";
 const SPEC_VERSION_ID = "specver-agent-iin-max-1";
 
 const databaseAvailable = await isTestDatabaseAvailable();
+
+/**
+ * The semantic submission path is only meaningful on a post-cutover database.
+ * CI's shared test database intentionally stays legacy for the identity
+ * migration suites (TD-079), so this file self-skips there and runs against
+ * post-cutover databases (local dev, and CI once TD-079 lands).
+ */
+const semanticMode = databaseAvailable
+  ? await (async () => {
+      const probe = await createInMemoryTestDatabase();
+      try {
+        return await isParameterIdentityCutoverComplete(probe);
+      } finally {
+        await probe.rollback();
+      }
+    })()
+  : false;
 
 function makeAuth(): AuthContext {
   return {
@@ -272,7 +290,7 @@ function contextFor(auth: AuthContext): AgentToolExecutionContext {
   return { auth, requestId: `req-${randomUUID().slice(0, 8)}`, sessionId: "agent-session", projectId: PROJECT_ID };
 }
 
-describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (TD-078)", () => {
+describe.skipIf(!databaseAvailable || !semanticMode)("action.submitParameterChange integration (TD-078)", () => {
   let db: InMemoryTestDatabase | undefined;
   const auth = makeAuth();
 

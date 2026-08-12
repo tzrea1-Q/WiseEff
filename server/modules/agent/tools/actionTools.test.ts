@@ -10,7 +10,12 @@ vi.mock("../../parameters/sensitiveNode", () => ({
 }));
 
 vi.mock("../../parameters/repository", () => ({
-  deleteDraft: vi.fn()
+  deleteDraft: vi.fn(),
+  getProjectParameterForUpdate: vi.fn()
+}));
+
+vi.mock("../../parameters/semanticParameterReads", () => ({
+  mustUseSemanticParameterIdentity: vi.fn()
 }));
 
 vi.mock("../../parameter-topology/service", () => ({
@@ -24,7 +29,8 @@ vi.mock("../../parameter-topology/editService", () => ({
 
 import { createActionTools } from "./actionTools";
 import { submitParameterChanges } from "../../parameters/service";
-import { deleteDraft } from "../../parameters/repository";
+import { deleteDraft, getProjectParameterForUpdate } from "../../parameters/repository";
+import { mustUseSemanticParameterIdentity } from "../../parameters/semanticParameterReads";
 import { createBindingDraft } from "../../parameter-topology/service";
 import { loadBindingContext, resolveBindingHeadRevisionId } from "../../parameter-topology/editService";
 
@@ -33,6 +39,8 @@ const mockedLoadBinding = vi.mocked(loadBindingContext);
 const mockedDeleteDraft = vi.mocked(deleteDraft);
 const mockedCreateDraft = vi.mocked(createBindingDraft);
 const mockedResolveHead = vi.mocked(resolveBindingHeadRevisionId);
+const mockedMustUseSemantic = vi.mocked(mustUseSemanticParameterIdentity);
+const mockedGetLegacyParameter = vi.mocked(getProjectParameterForUpdate);
 
 const bindingContext = {
   binding_id: "binding-1",
@@ -86,6 +94,7 @@ function tool() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockedMustUseSemantic.mockResolvedValue(true);
   mockedLoadBinding.mockResolvedValue(bindingContext as never);
   mockedResolveHead.mockResolvedValue("rev-base");
   mockedCreateDraft.mockResolvedValue(draftResult as never);
@@ -174,6 +183,31 @@ describe("action.submitParameterChange", () => {
     ).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
 
     expect(mockedCreateDraft).not.toHaveBeenCalled();
+  });
+
+  it("submits the legacy flat shape on legacy-identity databases (TD-079)", async () => {
+    mockedMustUseSemantic.mockResolvedValue(false);
+    mockedGetLegacyParameter.mockResolvedValue({ name: "iin_max", sourceNodePath: undefined } as never);
+
+    const result = await tool().run(adminContext, {
+      projectId: "p1",
+      parameterId: "legacy-param-1",
+      targetValue: "18A",
+      reason: "tune"
+    });
+
+    expect(mockedSubmit).toHaveBeenCalledWith(
+      db,
+      (adminContext as { auth: unknown }).auth,
+      expect.objectContaining({
+        projectId: "p1",
+        items: [{ parameterId: "legacy-param-1", targetValue: "18A", reason: "tune" }]
+      }),
+      expect.objectContaining({ actorType: "agent" })
+    );
+    expect(mockedLoadBinding).not.toHaveBeenCalled();
+    expect(mockedCreateDraft).not.toHaveBeenCalled();
+    expect(result.data).toMatchObject({ changeRequestId: "cr-9", targetValue: "18A" });
   });
 
   it("cleans up the created draft when submission fails", async () => {

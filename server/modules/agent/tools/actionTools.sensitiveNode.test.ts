@@ -10,7 +10,12 @@ vi.mock("../../parameters/sensitiveNode", () => ({
 }));
 
 vi.mock("../../parameters/repository", () => ({
-  deleteDraft: vi.fn()
+  deleteDraft: vi.fn(),
+  getProjectParameterForUpdate: vi.fn()
+}));
+
+vi.mock("../../parameters/semanticParameterReads", () => ({
+  mustUseSemanticParameterIdentity: vi.fn().mockResolvedValue(true)
 }));
 
 vi.mock("../../parameter-topology/service", () => ({
