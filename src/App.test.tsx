@@ -15,6 +15,14 @@ import * as XLSX from "xlsx";
 import App from "./App";
 import { appReducer } from "@/application/state/appState";
 import { initialState } from "./mockData";
+import {
+  declarationFor,
+  declarationsFor,
+  hasAtRule,
+  hasRule,
+  readStylesheet,
+  rulesFor
+} from "./test/cssAssertions";
 import { selectModuleTreeFilter } from "./test/moduleTreeTestHelpers";
 import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
@@ -286,14 +294,6 @@ function changeSelectValue(trigger: HTMLElement, optionName: string | RegExp) {
 
   fireEvent.click(trigger);
   fireEvent.click(screen.getByRole("option", { name: optionName }));
-}
-
-function readCssBlock(css: string, selector: string) {
-  const start = css.indexOf(`${selector} {`);
-  expect(start).toBeGreaterThanOrEqual(0);
-  const end = css.indexOf("\n}", start);
-  expect(end).toBeGreaterThan(start);
-  return css.slice(start, end);
 }
 
 function findTableRowByText(text: string) {
@@ -581,13 +581,13 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   });
 
   it("keeps the auth screen scrollable when registration content exceeds the viewport", () => {
-    const css = readFileSync("src/styles.css", "utf8");
-    const authScreenCss = readCssBlock(css, ".auth-screen");
+    const css = readStylesheet("src/styles.css");
+    const authScreen = declarationsFor(css, ".auth-screen");
 
-    expect(authScreenCss).toContain("height: 100vh;");
-    expect(authScreenCss).toContain("overflow-y: auto;");
-    expect(authScreenCss).toContain("-webkit-overflow-scrolling: touch;");
-    expect(authScreenCss).toContain("align-items: start;");
+    expect(authScreen.height).toMatch(/^100d?vh$/);
+    expect(authScreen["overflow-y"]).toBe("auto");
+    expect(authScreen["-webkit-overflow-scrolling"]).toBe("touch");
+    expect(authScreen["align-items"]).toBe("start");
   });
 
   it("updates the current profile and logs out from the topbar menu", async () => {
@@ -2086,9 +2086,10 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     const detail = screen.getByRole("region", { name: "提交轮次详情" });
     expect(within(detail).getAllByText(/本轮提交包含\s*\d+\s*个参数/)).toHaveLength(1);
 
-    const css = readFileSync("src/styles.css", "utf8");
-    expect(css).toContain(".submission-timeline {");
-    expect(readCssBlock(css, ".submission-timeline")).toContain("grid-template-columns: repeat(5, minmax(0, 1fr));");
+    const css = readStylesheet("src/styles.css");
+    expect(declarationFor(css, ".submission-timeline", "grid-template-columns")).toBe(
+      "repeat(5, minmax(0, 1fr))"
+    );
   });
 
   it("renders complex DTS values in personal submission history without stretching the detail layout", () => {
@@ -2144,14 +2145,24 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(diff!.querySelector(".submission-preview-diff-row[data-kind='remove'] code")).toHaveTextContent('"burst"');
     expect(diff!.querySelector(".submission-preview-diff-row[data-kind='add'] code")).toHaveTextContent('"boost"');
 
-    const css = readFileSync("src/styles.css", "utf8");
-    expect(css).toContain(".submission-history-layout {\n  display: grid;\n  grid-template-columns: 320px minmax(0, 1fr);");
-    expect(readCssBlock(css, ".submission-history-layout")).toContain("grid-template-columns: 1fr;");
-    expect(css).toContain(".submission-history-layout .history-panel,\n.submission-history-layout .submission-round-detail {");
-    expect(css).toContain("grid-column: auto;");
-    expect(readCssBlock(css, ".submission-round-detail")).toContain("min-width: 0;");
-    expect(readCssBlock(css, ".history-diff-list")).toContain("overflow: hidden;");
-    expect(readCssBlock(css, ".history-submission-diff")).toContain("max-height: 300px;");
+    const css = readStylesheet("src/styles.css");
+    const historyLayout = declarationsFor(css, ".submission-history-layout");
+    expect(historyLayout.display).toBe("grid");
+    expect(historyLayout["grid-template-columns"]).toBe("320px minmax(0, 1fr)");
+    expect(
+      declarationFor(css, ".submission-history-layout", "grid-template-columns", {
+        within: "(max-width: 900px)"
+      })
+    ).toBe("1fr");
+    expect(
+      declarationFor(css, ".submission-history-layout .history-panel", "grid-column")
+    ).toBe("auto");
+    expect(
+      declarationFor(css, ".submission-history-layout .submission-round-detail", "grid-column")
+    ).toBe("auto");
+    expect(declarationFor(css, ".submission-round-detail", "min-width")).toBe("0");
+    expect(declarationFor(css, ".history-diff-list", "overflow")).toBe("hidden");
+    expect(declarationFor(css, ".history-submission-diff", "max-height")).toBe("300px");
   });
 
   it("uses the same history card structure for simple values and compacts the submission metrics", () => {
@@ -2207,11 +2218,12 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(diff!.querySelector(".submission-preview-diff-row[data-kind='remove'] code")).toHaveTextContent("3850 mA");
     expect(diff!.querySelector(".submission-preview-diff-row[data-kind='add'] code")).toHaveTextContent("3200 mA");
 
-    const css = readFileSync("src/styles.css", "utf8");
-    expect(readCssBlock(css, ".submission-history-summary")).toContain("display: grid;");
-    expect(readCssBlock(css, ".submission-history-summary")).toContain("grid-template-columns: repeat(3, minmax(0, 1fr));");
-    expect(readCssBlock(css, ".submission-history-summary .metric-card")).toContain("min-height: 96px;");
-    expect(readCssBlock(css, ".submission-history-summary .metric-bar")).toContain("height: 4px;");
+    const css = readStylesheet("src/styles.css");
+    const summary = declarationsFor(css, ".submission-history-summary");
+    expect(summary.display).toBe("grid");
+    expect(summary["grid-template-columns"]).toBe("repeat(3, minmax(0, 1fr))");
+    expect(declarationFor(css, ".submission-history-summary .metric-card", "min-height")).toBe("96px");
+    expect(declarationFor(css, ".submission-history-summary .metric-bar", "height")).toBe("4px");
   });
 
   it("keeps row-level detail view available without exposing a standalone comparison action", () => {
@@ -2483,10 +2495,11 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(within(table).getByText("快充输入电流调整")).toBeInTheDocument();
     expect(within(table).queryByText("电池目标温度下调")).not.toBeInTheDocument();
 
-    const styles = readFileSync("src/styles.css", "utf8");
-    const reviewTableContainerRule = readCssBlock(styles, ".review-table-wrap [data-slot=\"table-container\"]");
-    expect(reviewTableContainerRule).toContain("overflow-x: auto;");
-    expect(readCssBlock(styles, ".review-table-wrap table")).toContain("min-width:");
+    const styles = readStylesheet("src/styles.css");
+    expect(
+      declarationFor(styles, '.review-table-wrap [data-slot="table-container"]', "overflow-x")
+    ).toBe("auto");
+    expect(declarationFor(styles, ".review-table-wrap table", "min-width")).toBeTruthy();
   });
 
   it("keeps parameter review header filters only on project, module, submitter, and status", () => {
@@ -2534,11 +2547,11 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   });
 
   it("keeps Excel-style header filters next to their header labels", () => {
-    const styles = readFileSync("src/styles.css", "utf8");
-    const reviewHeaderRule = readCssBlock(styles, ".review-column-filter-head");
+    const styles = readStylesheet("src/styles.css");
+    const reviewHeader = declarationsFor(styles, ".review-column-filter-head");
 
-    expect(reviewHeaderRule).toContain("display: inline-flex;");
-    expect(reviewHeaderRule).toContain("gap: 4px;");
+    expect(reviewHeader.display).toBe("inline-flex");
+    expect(reviewHeader.gap).toBe("4px");
   });
 
   it("switches the review table between pending requests and role-specific review history", () => {
@@ -2861,8 +2874,10 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(dialog).toHaveTextContent("0.82 ratio");
     expect(dialog).toHaveTextContent("0.88 ratio");
 
-    const css = readFileSync("src/styles.css", "utf8");
-    expect(readCssBlock(css, ".submission-detail-dialog .history-submission-diff")).toContain("max-height: 340px;");
+    const css = readStylesheet("src/styles.css");
+    expect(
+      declarationFor(css, ".submission-detail-dialog .history-submission-diff", "max-height")
+    ).toBe("340px");
   });
 
   it("opens synthesized submission details when a review row has no stored submission round", () => {
@@ -3126,14 +3141,16 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     const feedbackEntry = screen.getByRole("button", { name: "问题反馈" });
     expect(feedbackEntry).toBeInTheDocument();
     expect(feedbackEntry.closest(".feedback-entry")).toBeInTheDocument();
-    const css = readFileSync("src/styles.css", "utf8");
-    const navItemCss = readCssBlock(css, ".nav-item");
-    const feedbackEntryCss = readCssBlock(css, ".feedback-entry");
-    expect(css).toMatch(/\.utility-nav \{\r?\n  flex: 0 0 auto;/);
-    expect(css).toMatch(/\.utility-nav \{\r?\n\s+display: block;/);
-    expect(navItemCss).toContain("justify-content: flex-start;");
-    expect(navItemCss).toContain("height: auto;");
-    expect(feedbackEntryCss).toContain("align-items: flex-start;");
+    const css = readStylesheet("src/styles.css");
+    const navItem = declarationsFor(css, ".nav-item");
+    const feedbackEntryDeclarations = declarationsFor(css, ".feedback-entry");
+    expect(declarationFor(css, ".utility-nav", "flex")).toBe("0 0 auto");
+    expect(
+      declarationFor(css, ".utility-nav", "display", { within: "(max-width: 900px)" })
+    ).toBe("block");
+    expect(navItem["justify-content"]).toBe("flex-start");
+    expect(navItem.height).toBe("auto");
+    expect(feedbackEntryDeclarations["align-items"]).toBe("flex-start");
 
     fireEvent.click(feedbackEntry);
 
@@ -3183,36 +3200,50 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(within(dialog).getByText("问题信息")).toBeInTheDocument();
     expect(within(dialog).getByText("粘贴上传截图")).toBeInTheDocument();
 
-    const css = readFileSync("src/styles.css", "utf8");
-    const feedbackDialogCss = readCssBlock(css, ".feedback-dialog");
-    const feedbackDialogFormCss = readCssBlock(css, ".feedback-dialog form");
-    const feedbackContextCss = readCssBlock(css, ".feedback-context");
-    const feedbackLayoutCss = readCssBlock(css, ".feedback-layout");
-    const feedbackActionsCss = readCssBlock(css, ".feedback-dialog .dialog-actions");
+    const css = readStylesheet("src/styles.css");
+    const feedbackDialog = declarationsFor(css, ".feedback-dialog");
+    const feedbackDialogForm = declarationsFor(css, ".feedback-dialog form");
+    const feedbackContext = declarationsFor(css, ".feedback-context");
+    const feedbackLayout = declarationsFor(css, ".feedback-layout");
+    const feedbackActions = declarationsFor(css, ".feedback-dialog .dialog-actions");
 
-    expect(feedbackDialogCss).toContain("max-width: min(900px, calc(100vw - 48px));");
-    expect(feedbackDialogCss).toContain("overflow: hidden;");
-    expect(feedbackDialogCss).toContain("padding: 0;");
-    expect(feedbackDialogFormCss).toContain("display: grid;");
-    expect(feedbackDialogFormCss).toContain("overflow: hidden;");
-    expect(feedbackContextCss).toContain("justify-self: center;");
-    expect(feedbackContextCss).toContain("width: calc(100% - 48px);");
-    expect(feedbackLayoutCss).toContain("grid-template-columns: minmax(300px, 1fr) minmax(280px, 360px);");
-    expect(feedbackLayoutCss).toContain("overflow: hidden;");
-    expect(feedbackActionsCss).toContain("margin: 0;");
-    expect(feedbackActionsCss).toContain("overflow: hidden;");
-    expect(css).toMatch(/\.feedback-section \[data-slot="textarea"\] \{\r?\n\s+min-height: 112px;/);
-    expect(css).toMatch(/\.feedback-screenshot-preview \{\r?\n\s+min-height: 132px;/);
+    expect(feedbackDialog["max-width"]).toBe("min(900px, calc(100vw - 48px))");
+    expect(feedbackDialog.overflow).toBe("hidden");
+    expect(feedbackDialog.padding).toBe("0");
+    expect(feedbackDialogForm.display).toBe("grid");
+    expect(feedbackDialogForm.overflow).toBe("hidden");
+    expect(feedbackContext["justify-self"]).toBe("center");
+    expect(feedbackContext.width).toBe("calc(100% - 48px)");
+    expect(feedbackLayout["grid-template-columns"]).toBe("minmax(300px, 1fr) minmax(280px, 360px)");
+    expect(feedbackLayout.overflow).toBe("hidden");
+    expect(feedbackActions.margin).toBe("0");
+    expect(feedbackActions.overflow).toBe("hidden");
+    expect(declarationFor(css, '.feedback-section [data-slot="textarea"]', "min-height")).toBe("156px");
+    expect(
+      declarationFor(css, '.feedback-section [data-slot="textarea"]', "min-height", {
+        within: "(max-width: 760px)"
+      })
+    ).toBe("112px");
+    expect(declarationFor(css, ".feedback-screenshot-preview", "min-height")).toBe("190px");
+    expect(
+      declarationFor(css, ".feedback-screenshot-preview", "min-height", {
+        within: "(max-width: 760px)"
+      })
+    ).toBe("132px");
   });
 
   it("includes responsive and reduced-motion styles for the log analysis workbench", () => {
-    const css = readFileSync("src/styles.css", "utf8");
+    const css = readStylesheet("src/styles.css");
 
-    expect(css).toContain(".logs-v2");
-    expect(css).toContain("@media (max-width: 1100px)");
-    expect(css).toContain("@media (max-width: 520px)");
-    expect(css).toContain("@media (prefers-reduced-motion: reduce)");
-    expect(css).toContain(".log-timeline__step--current span");
+    expect(hasRule(css, ".logs-v2")).toBe(true);
+    expect(hasAtRule(css, "@media (max-width: 1100px)")).toBe(true);
+    expect(hasAtRule(css, "@media (max-width: 520px)")).toBe(true);
+    expect(hasAtRule(css, "@media (prefers-reduced-motion: reduce)")).toBe(true);
+    expect(
+      rulesFor(css, ".log-timeline__step--current span", {
+        within: "@media (prefers-reduced-motion: reduce)"
+      }).length
+    ).toBeGreaterThan(0);
   });
 
   it("resolves direct tutorial urls back to the home surface", () => {
@@ -3302,24 +3333,24 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   });
 
   it("keeps the project shared parameter library list breathable and scannable", () => {
-    const css = readFileSync("src/styles.css", "utf8");
-    const listBlock = readCssBlock(css, ".project-parameter-library-list");
-    const rowBlock = readCssBlock(css, "[data-slot=\"button\"].project-parameter-list-row");
-    const selectedBlock = readCssBlock(css, "[data-slot=\"button\"].project-parameter-list-row.selected");
-    const nameBlock = readCssBlock(css, ".project-parameter-list-row strong");
+    const css = readStylesheet("src/styles.css");
+    const listBlock = declarationsFor(css, ".project-parameter-library-list");
+    const rowBlock = declarationsFor(css, '[data-slot="button"].project-parameter-list-row');
+    const selectedBlock = declarationsFor(css, '[data-slot="button"].project-parameter-list-row.selected');
+    const nameBlock = declarationsFor(css, ".project-parameter-list-row strong");
 
-    expect(listBlock).toContain("gap: 8px;");
-    expect(listBlock).toContain("max-height: 520px;");
-    expect(listBlock).toContain("overflow: auto;");
-    expect(rowBlock).toContain("grid-template-columns: minmax(0, 1fr) auto;");
-    expect(rowBlock).toContain("min-height: 68px;");
-    expect(rowBlock).toContain("border-radius: 8px;");
-    expect(rowBlock).toContain("transition: none;");
-    expect(selectedBlock).toContain("background-color: #eef4ff;");
-    expect(selectedBlock).toContain("box-shadow: inset 3px 0 0 var(--app-primary);");
-    expect(nameBlock).toContain("font-size: 14px;");
-    expect(nameBlock).toContain("overflow-wrap: anywhere;");
-    expect(nameBlock).toContain("white-space: normal;");
+    expect(listBlock.gap).toBe("8px");
+    expect(listBlock["max-height"]).toBe("520px");
+    expect(listBlock.overflow).toBe("auto");
+    expect(rowBlock["grid-template-columns"]).toBe("minmax(0, 1fr) auto");
+    expect(rowBlock["min-height"]).toBe("68px");
+    expect(rowBlock["border-radius"]).toBe("8px");
+    expect(rowBlock.transition).toBe("none");
+    expect(selectedBlock["background-color"]).toBe("#eef4ff");
+    expect(selectedBlock["box-shadow"]).toBe("inset 3px 0 0 var(--app-primary)");
+    expect(nameBlock["font-size"]).toBe("14px");
+    expect(nameBlock["overflow-wrap"]).toBe("anywhere");
+    expect(nameBlock["white-space"]).toBe("normal");
   });
 
   it("does not render WiseAgent actions on parameter admin in mock mode", () => {
@@ -3407,13 +3438,12 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   });
 
   it("keeps the debugging admin shell using the parameter-admin main surface layout", () => {
-    const styles = readFileSync("src/styles.css", "utf8");
-    const shellBlock = readCssBlock(styles, ".debug-admin-shell");
-    const mainBlock = readCssBlock(styles, ".param-admin-main");
+    const styles = readStylesheet("src/styles.css");
+    const mainBlock = declarationsFor(styles, ".param-admin-main");
 
-    expect(shellBlock.length).toBeGreaterThan(0);
-    expect(mainBlock).toContain("flex: 1;");
-    expect(mainBlock).toContain("min-height: 0;");
+    expect(hasRule(styles, ".debug-admin-shell")).toBe(true);
+    expect(mainBlock.flex).toBe("1");
+    expect(mainBlock["min-height"]).toBe("0");
   });
 
   it("does not expose mock JSON export controls in API mode", async () => {

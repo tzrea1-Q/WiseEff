@@ -20,6 +20,8 @@ WiseEff design should feel like an enterprise productivity system: dense enough 
 
 ## Current Design Sources
 
+- Operational visual standard: [`design-docs/ui-design-system.md`](design-docs/ui-design-system.md) (tokens, component contracts, states, motion, content language).
+- Completion gate for frontend-visible changes: [`developer/ui-quality-checklist.md`](developer/ui-quality-checklist.md).
 - Historical feature designs live in `design-docs/`.
 - UI implementation lives in `src/components/`, page files, and `src/styles.css`.
 - Product behavior and user roles live in `product-specs/`.

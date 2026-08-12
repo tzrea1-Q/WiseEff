@@ -400,7 +400,36 @@ stateDiagram-v2
 - `closed` 是 MVP 终态；当前不支持 reopen，也不支持从 `open` 直接跳到 `closed`。
 - 创建反馈写 `product-feedback-create` 审计；Admin 处理写 `product-feedback-update` 审计，并记录前后状态。
 
-### 2.7 Agent
+### 2.7 知识库
+
+设计来源：[知识库设计](2026-08-12-knowledge-base-design.md)（决策 D1–D20）。
+
+| 实体 | 说明 |
+| --- | --- |
+| `KnowledgeEntry` | 组织级工程知识单元。内容形式二选一（`markdown` 或 `file`），扁平多标签（可含项目标签），带头修订指针与 `head_revision_number`（乐观并发令牌）、Phase 1 检索用的冗余 `search_text`，以及 `human` \| `agent` 来源归属和会话元数据。 |
+| `KnowledgeRevision` | 不可变内容快照（`title`、`tags`、markdown 或文件引用），`revision_number` 按条目唯一，记录作者与可选 `restored_from_revision_id` 恢复出处。行永不更新。 |
+| `KnowledgeFile` | 文件型条目的元数据：对象存储 key、完整性校验和、诚实的提取状态（`pending` \| `succeeded` \| `failed`，失败带可读原因，成功带提取正文）。二进制可替换（新行 + 新修订）、不可编辑。 |
+
+状态机：
+
+```mermaid
+stateDiagram-v2
+  [*] --> draft
+  draft --> published
+  published --> archived
+  archived --> published
+```
+
+规则：
+
+- 每次保存（含恢复历史修订、替换文件）都追加一条修订并推进头指针;保存携带期望的头修订号,过期时返回结构化 `409` 冲突,绝无静默覆盖。
+- 只有 `published` 条目进入检索（拉丁文本 FTS + 中文 `pg_trgm` 三元组匹配）;草稿与已归档条目绝不出现在结果里,发布是唯一的信任门。
+- 草稿仅对拥有者和 `knowledge:manage` 可见。`knowledge:edit` 治理自己的条目（编辑/发布/归档）;`knowledge:manage` 治理任意条目。彻底删除要求 `knowledge:manage` 并写 `High` 级审计。
+- 已归档条目保留历史并退出检索;恢复回到 `published`。未恢复前拒绝编辑。
+- 每次变更写审计事件（`knowledge-entry-create/update/publish/archive/restore/delete`、`knowledge-revision-restore`）并携带请求 trace。
+- 彻底删除是 manage 级操作,任意状态可执行,连同修订与文件元数据一并删除（审计证据保留）。
+
+### 2.8 Agent
 
 | 实体 | 说明 |
 | --- | --- |
@@ -435,7 +464,7 @@ stateDiagram-v2
 - 变更型工具调用未审批前不能执行。
 - 工具执行结果必须关联审计事件。
 
-### 2.8 审计
+### 2.9 审计
 
 | 实体 | 说明 |
 | --- | --- |

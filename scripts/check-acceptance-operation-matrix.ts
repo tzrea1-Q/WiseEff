@@ -1,12 +1,12 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   acceptanceOperations,
   type AcceptanceOperation
 } from "../e2e/acceptance/operationMatrix";
 import { acceptanceRequirements } from "../e2e/acceptance/requirements";
-import type { AcceptanceSpecInput } from "./check-acceptance-coverage";
+import { readAcceptanceSpecFiles, type AcceptanceSpecInput } from "./check-acceptance-coverage";
 
 export type { AcceptanceOperation } from "../e2e/acceptance/operationMatrix";
 
@@ -14,23 +14,36 @@ export type OperationMatrixInput = {
   operations: AcceptanceOperation[];
   specFiles: AcceptanceSpecInput[];
   knownAcceptanceIds: string[];
+  /** Existence probe for matrix `specFiles` references; injectable for tests. */
+  specFileExists?: (path: string) => boolean;
 };
 
 export type OperationMatrixResult = {
   status: "passed" | "failed";
   coveredOperationIds: string[];
+  /** Declared-but-not-automated coverage: `@operation-planned` markers (skip stubs). */
+  plannedOperationIds: string[];
   missingAutomatedOperationIds: string[];
   deferredOperationIdsMissingReason: string[];
   operationsMissingAssertions: string[];
   unknownOperationIds: string[];
   unknownAcceptanceIds: string[];
+  /** Matrix `specFiles` path references that no longer exist on disk. */
+  missingSpecFileRefs: string[];
 };
 
+// `@operation <ID>` claims automated coverage; `@operation-planned <ID>` declares a
+// pending stub and never counts as automated coverage.
 const operationMarkerPattern = /@operation\s+([A-Z]+-[A-Z0-9-]+)/g;
+const plannedOperationMarkerPattern = /@operation-planned\s+([A-Z]+-[A-Z0-9-]+)/g;
 const defaultMatrixOut = "docs/developer/user-operation-coverage-matrix.md";
 
 export function parseOperationIdsFromSpec(content: string) {
   return Array.from(content.matchAll(operationMarkerPattern), (match) => match[1]);
+}
+
+export function parsePlannedOperationIdsFromSpec(content: string) {
+  return Array.from(content.matchAll(plannedOperationMarkerPattern), (match) => match[1]);
 }
 
 export function evaluateOperationMatrix(input: OperationMatrixInput): OperationMatrixResult {
@@ -39,6 +52,9 @@ export function evaluateOperationMatrix(input: OperationMatrixInput): OperationM
   const knownAcceptanceIds = new Set(input.knownAcceptanceIds);
   const coveredOperationIds = Array.from(
     new Set(input.specFiles.flatMap((specFile) => parseOperationIdsFromSpec(specFile.content)))
+  ).sort();
+  const plannedOperationIds = Array.from(
+    new Set(input.specFiles.flatMap((specFile) => parsePlannedOperationIdsFromSpec(specFile.content)))
   ).sort();
   const coveredOperationIdSet = new Set(coveredOperationIds);
 
@@ -51,12 +67,23 @@ export function evaluateOperationMatrix(input: OperationMatrixInput): OperationM
   const operationsMissingAssertions = requiredOperations
     .filter((operation) => operation.assertions.length === 0)
     .map((operation) => operation.id);
-  const unknownOperationIds = coveredOperationIds.filter((id) => !knownOperationIds.has(id));
+  const unknownOperationIds = Array.from(new Set([...coveredOperationIds, ...plannedOperationIds]))
+    .filter((id) => !knownOperationIds.has(id))
+    .sort();
   const unknownAcceptanceIds = Array.from(
     new Set(
       input.operations
         .flatMap((operation) => operation.acceptanceIds)
         .filter((acceptanceId) => !knownAcceptanceIds.has(acceptanceId))
+    )
+  ).sort();
+  // Renamed or deleted spec files must fail the gate instead of drifting silently.
+  const specFileExists = input.specFileExists ?? ((path: string) => existsSync(path));
+  const missingSpecFileRefs = Array.from(
+    new Set(
+      input.operations
+        .flatMap((operation) => operation.specFiles)
+        .filter((path) => path.includes("/") && !specFileExists(path))
     )
   ).sort();
 
@@ -65,36 +92,27 @@ export function evaluateOperationMatrix(input: OperationMatrixInput): OperationM
     deferredOperationIdsMissingReason.length === 0 &&
     operationsMissingAssertions.length === 0 &&
     unknownOperationIds.length === 0 &&
-    unknownAcceptanceIds.length === 0
+    unknownAcceptanceIds.length === 0 &&
+    missingSpecFileRefs.length === 0
       ? "passed"
       : "failed";
 
   return {
     status,
     coveredOperationIds,
+    plannedOperationIds,
     missingAutomatedOperationIds,
     deferredOperationIdsMissingReason,
     operationsMissingAssertions,
     unknownOperationIds,
-    unknownAcceptanceIds
+    unknownAcceptanceIds,
+    missingSpecFileRefs
   };
 }
 
+/** Same recursive reader as requirement coverage; one implementation for both gates. */
 export function readOperationSpecFiles(root = "e2e/acceptance"): AcceptanceSpecInput[] {
-  if (!existsSync(root)) {
-    return [];
-  }
-
-  return readdirSync(root)
-    .filter((name) => name.endsWith(".acceptance.spec.ts"))
-    .map((name) => {
-      const file = join(root, name);
-
-      return {
-        file,
-        content: readFileSync(file, "utf8")
-      };
-    });
+  return readAcceptanceSpecFiles(root);
 }
 
 export function renderOperationMatrixMarkdown(operations: AcceptanceOperation[]) {

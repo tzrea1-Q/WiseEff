@@ -4,7 +4,9 @@ import type { AuthContext } from "../../auth/types";
 import { ApiError } from "../../../shared/http/errors";
 import type { RouteRequest, RouteResponse, WiseEffRouter } from "../../../shared/http/router";
 import type { Database } from "../../../shared/database/client";
+import type { ObjectStore } from "../../logs/objectStore";
 import type { ServerEnv } from "../../../config/env";
+import { getAgentSession } from "../repository";
 import { createAgentToolRegistry } from "../toolRegistry";
 import type { AgentToolExecutionContext } from "../toolRegistry";
 import type { AgentToolName, AgentCitation } from "../types";
@@ -518,6 +520,8 @@ export function createXiaozeAgUiHandler(options: {
   resolveModelLabel?: () => string | undefined;
   persistTurn?: (input: PersistXiaozeTurnInput) => Promise<void>;
   reasoningClassifier?: ReasoningClassifier;
+  /** Rejects runs whose client-supplied threadId addresses another user's thread. */
+  assertThreadAccess?: (input: { auth: AuthContext; threadId: string }) => Promise<void>;
 }) {
   return async function handleXiaozeAgUi(request: XiaozeAgUiRequest): Promise<RouteResponse> {
     const auth = await options.resolveAuth(request);
@@ -533,6 +537,9 @@ export function createXiaozeAgUiHandler(options: {
       typeof (request.body as { threadId?: unknown }).threadId === "string"
         ? String((request.body as { threadId: string }).threadId)
         : randomUUID();
+    if (options.assertThreadAccess) {
+      await options.assertThreadAccess({ auth: verifiedAuth, threadId });
+    }
     const runId =
       typeof (request.body as { runId?: unknown }).runId === "string"
         ? String((request.body as { runId: string }).runId)
@@ -951,9 +958,11 @@ export function createXiaozeAgentFactory(options: {
   modelFactory?: typeof createProductionModel;
   checkpointer?: ReturnType<typeof createXiaozeCheckpointer>;
   toolRegistry?: ReturnType<typeof createAgentToolRegistry>;
+  objectStore?: ObjectStore;
   approvalResolver?: PlanningApprovalResolver;
 }) {
-  const registry = options.toolRegistry ?? createAgentToolRegistry({ db: options.db });
+  const registry =
+    options.toolRegistry ?? createAgentToolRegistry({ db: options.db, objectStore: options.objectStore });
   const perceptionTools = registry.list().filter((tool) => tool.name.startsWith("perception."));
   const actionTools = registry.list().filter((tool) => tool.name.startsWith("action."));
   const planningToolDescriptors = buildXiaozePlanningToolDescriptors([...perceptionTools, ...actionTools]);
@@ -1013,6 +1022,7 @@ export function registerXiaozeRoutes(
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
     createAgent?: (context: AgentToolExecutionContext) => XiaozePerceptionAgent;
     approvalChain?: XiaozeApprovalChain;
+    objectStore?: ObjectStore;
   }
 ) {
   if (!options.db) {
@@ -1029,7 +1039,7 @@ export function registerXiaozeRoutes(
     XIAOZE_REASONING_FALLBACK_HEURISTIC: false
   };
   const reasoningClassifier = createDefaultReasoningClassifier(envDefaults);
-  const registry = createAgentToolRegistry({ db: options.db });
+  const registry = createAgentToolRegistry({ db: options.db, objectStore: options.objectStore });
   const orchestrator = createAgentOrchestrator({ db: options.db, toolRegistry: registry });
   const createAgent =
     options.createAgent ??
@@ -1062,7 +1072,13 @@ export function registerXiaozeRoutes(
     approvalChain,
     persistTurn,
     resolveModelLabel: options.env ? () => resolveXiaozeModel(options.env!) : undefined,
-    reasoningClassifier
+    reasoningClassifier,
+    assertThreadAccess: async ({ auth, threadId }) => {
+      const session = await getAgentSession(options.db!, auth.organization.id, threadId);
+      if (session && session.actorUserId !== auth.user.id) {
+        throw new ApiError("FORBIDDEN", "This Xiaoze thread belongs to another user.", 403, { threadId });
+      }
+    }
   });
 
   router.post("/api/v1/agent/xiaoze", async (request) => handler(request));

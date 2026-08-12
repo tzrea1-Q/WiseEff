@@ -32,7 +32,6 @@ import type {
   ProjectParameterFileDto,
   ProjectParameterFileVersionDto
 } from "./types";
-import { detectUnsupportedDtsConstructs, type UnsupportedConstruct } from "./unsupported";
 import { listRegisteredCompatibles } from "../parameter-modules/repository";
 import {
   buildIngestDriverSummary,
@@ -243,7 +242,6 @@ export async function uploadProjectParameterFile(
 ): Promise<{
   file: ProjectParameterFileDto;
   version: ProjectParameterFileVersionDto;
-  unsupportedConstructs?: UnsupportedConstruct[];
   driverSummary?: IngestDriverSummary;
 }> {
   requireParameterFileAdmin(auth);
@@ -258,11 +256,6 @@ export async function uploadProjectParameterFile(
   }
 
   const source = normalized.bytes.toString("utf8");
-  // `/include/` is resolved by `resolveDtsConfigSet`; single-file upload no longer
-  // hard-rejects it. Remaining hard-unsupported constructs (if any) are still collected.
-  const unsupportedConstructs =
-    format === "dts" ? detectUnsupportedDtsConstructs(source) : [];
-
   const parsedIndex = buildParsedIndex(format, normalized.bytes);
 
   return db.transaction(async (tx) => {
@@ -311,7 +304,7 @@ export async function uploadProjectParameterFile(
         frozenSource: source
       });
     }
-    if (version.origin === "upload" && unsupportedConstructs.length === 0) {
+    if (version.origin === "upload") {
       await syncFileVersion(tx, auth, { fileId: file.id, versionId: version.id });
     }
     await createParameterFileUploadAudit(
@@ -337,7 +330,6 @@ export async function uploadProjectParameterFile(
     return {
       file: { ...file, currentVersionId: version.id, currentVersionNumber: version.versionNumber },
       version,
-      ...(unsupportedConstructs.length > 0 ? { unsupportedConstructs } : {}),
       ...(driverSummary ? { driverSummary } : {}),
     };
   });

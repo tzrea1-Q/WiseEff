@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { createAuditEvent } from "../audit/repository";
+import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { Database, Queryable } from "../../shared/database/client";
@@ -32,8 +32,9 @@ export type UpdateLogDomainInput = {
   status?: LogDomainStatus;
 };
 
+/** Audit inside the domain write's transaction (ADR-0027 audited-write seam). */
 async function createLogDomainAudit(
-  db: Queryable,
+  tx: Queryable,
   auth: AuthContext,
   input: {
     kind: "log-domain-create" | "log-domain-update" | "log-domain-archive";
@@ -43,20 +44,15 @@ async function createLogDomainAudit(
   },
   context: AuditCorrelationContext = {}
 ) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: null,
-    actorUserId: auth.user.id,
-    actorType: "user",
+  await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
     app: "log-analysis",
     kind: input.kind,
     action: input.action,
     severity: "Medium",
+    projectId: null,
     targetType: "log-domain",
     targetId: input.domainId,
-    metadata: input.metadata ?? {},
-    traceId: context.requestId ?? randomUUID()
+    metadata: input.metadata ?? {}
   });
 }
 

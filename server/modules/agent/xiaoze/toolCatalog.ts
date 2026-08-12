@@ -19,7 +19,7 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   "perception.getRecentLogConclusions":
     "Read recent log analysis conclusions and severity. Use on logs pages or log-related questions.",
   "action.submitParameterChange":
-    "Submit a parameter change request for human review. Never executes immediately; requires explicit user approval."
+    "Submit a parameter change request for human review. Never executes immediately; requires explicit user approval. Pass the binding id from perception.searchParameters as parameterId, and write targetValue as DTS source text in the same format as the parameter's current value (for example <3600> for cells or \"fast\" for strings)."
 };
 
 const TOOL_SCHEMAS: Record<string, Record<string, unknown>> = {
@@ -56,8 +56,15 @@ const TOOL_SCHEMAS: Record<string, Record<string, unknown>> = {
     type: "object",
     properties: {
       projectId: { type: "string", description: "Project that owns the parameter." },
-      parameterId: { type: "string", description: "Parameter definition id to change." },
-      targetValue: { type: "string", description: "Requested new value." },
+      parameterId: {
+        type: "string",
+        description: "Parameter binding id to change — use the id returned by perception.searchParameters."
+      },
+      targetValue: {
+        type: "string",
+        description:
+          'Requested new value as DTS source text, matching the format of the current value: cells like <3600>, strings like "fast", bytes like [01 02].'
+      },
       reason: { type: "string", description: "Human-readable reason for the change." }
     },
     required: ["projectId", "parameterId", "targetValue", "reason"],

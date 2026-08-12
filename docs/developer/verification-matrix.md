@@ -9,10 +9,13 @@ Use the narrowest command that proves the change while developing. Before finish
 | Command | Proves | Use when |
 | --- | --- | --- |
 | `npm test -- path/to/test.tsx` | Focused frontend behavior | Editing a component, page, domain helper, or frontend runtime. |
-| `npm run test:server -- path/to/test.ts` | Focused backend behavior | Editing server modules, scripts, migrations helpers, or docs governance script. |
-| `npm test` | Frontend/unit suite | Frontend-affecting changes. |
+| `npm run test:server -- path/to/test.ts` | Focused backend behavior | Editing server modules or migrations helpers. |
+| `npm run test:scripts -- path/to/test.ts` | Focused ops/governance script behavior in a Node environment | Editing `scripts/**` or `ops/**` automation or their tests. |
+| `npm test` | Frontend/unit suite (`src/**` only, jsdom) | Frontend-affecting changes. |
 | `npm run test:server` | Backend/unit suite | Backend-affecting changes. |
-| `npm run test:all` | Frontend plus backend unit suites | Shared contracts or broad behavior. |
+| `npm run test:scripts` | Ops/governance script suite (`scripts/**`, `ops/**`, Node) | Script or ops automation changes. |
+| `npm run bridge:test` | Device bridge workspace suite (`packages/**`, Node) | Device bridge or device-command-core changes. |
+| `npm run test:all` | Frontend, script, device-bridge, and backend unit suites | Shared contracts or broad behavior. |
 | `npm run build` | TypeScript and Vite production build | TypeScript, routing, shared type, or package changes. |
 | `npm run docs:check` | Documentation governance | Any non-trivial plan or documentation structure change. |
 | `npm run logs:eval` | Log-analysis behavior-layer eval (deterministic fake models; CI-gated): grounding, honest degradation marking, analysis-question injection, prompt-version recording, meta self-checks | After changing the log-analysis prompt, `llmAnalyzer`, prefilter, degradation chain, or eval scenarios. Writes `docs/generated/log-analysis-eval.{json,md}`. |
@@ -25,7 +28,7 @@ Use the narrowest command that proves the change while developing. Before finish
 | `npm run parameter-identities:migrate` | Dry-run (default) or gated `--apply` historical identity migration | Cutover rehearsal only; never dual-write in production. |
 | `npm run test:server -- server/modules/parameter-topology/legacyDependencyGuard.test.ts --run` | Vitest **source scanner** (not runtime middleware) forbidding retired flat-identity/shadow tokens outside migrations/cutovers/adapters/scripts/tests | After post-cutover workflow edits that might reintroduce legacy SQL or shadow PPV helpers. |
 | `npm run test:server -- server/modules/dts/goldenPowerFixture.test.ts server/modules/parameters/seedM1DtsFiles.test.ts server/modules/parameter-specs/matcher.test.ts --run` | Locked golden topology counts: **176** property occurrences, **528** `dts_properties` seed rows | After changing DTS seed fixtures, ingest, or matcher coverage. |
-| `npm run test:server -- scripts/vendorDtSchemaGenerator.test.ts --run` | Real `dt-validate` on golden DTBs; negative DTB fixtures fail with expected diagnostics | After vendor dt-schema generation or linux-binding schema changes. |
+| `npm run test:scripts -- scripts/vendorDtSchemaGenerator.test.ts --run` | Real `dt-validate` on golden DTBs; negative DTB fixtures fail with expected diagnostics | After vendor dt-schema generation or linux-binding schema changes. (`test:server` does not include `scripts/**` and would silently run nothing.) |
 | `npm run test:server -- server/modules/parameter-topology/migration.test.ts --run` | Durable `stage-review` → `finalize` across PostgreSQL transactions (reconnect + inject-fail) | After migration CLI or staged-run persistence changes. |
 | `npm run test:server -- server/modules/parameter-specs/matcherScope.integration.test.ts --run` | Matcher override locator fingerprint isolation; review `blocker_scope` gates | After matcher override or review blocker scope edits. |
 | `npm run test:server -- server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts server/modules/parameter-topology/schemaMigration.test.ts server/modules/parameters/schemas.test.ts --run` | Exact draft/action/candidate identity, two-connection draft+candidate locking, atomic `pending_approval` promotion, 0060→0061 invalidation and 0062→0063 rollback/idempotency, merge revalidation, immutable base revisions | After semantic submission, migrations 0059–0063, set/delete merge/writeback, concurrency, or binding-revision edits. Requires PostgreSQL. |
@@ -154,7 +157,7 @@ node -e "const fs=require('fs'); const text=fs.readFileSync('ops/self-hosted/obs
 If documentation changes include the docs checker itself, also run:
 
 ```bash
-npm run test:server -- scripts/check-doc-governance.test.ts
+npm run test:scripts -- scripts/check-doc-governance.test.ts
 ```
 
 ## Evidence Rules

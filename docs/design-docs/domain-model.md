@@ -17,6 +17,7 @@ The product model separates prototype display data into durable, auditable busin
 - Parameter and debugging **module taxonomies** are independent org-scoped trees (`parameter_modules`, `debug_node_modules`) with `parent_id` and materialized `path`. Parameters and logical debug nodes attach by `module_id` FK; filters accept `moduleId` with subtree include (parent selection returns descendants). Legacy flat `module` text columns remain transitional (TD-037 follow-up).
 - Log analysis separates uploaded object references, business records, analysis runs, stages, evidence, archive state, and feedback. Log records and file objects are scoped by `organization_id` only; optional `related_parameter_id` is a soft link to M1 definitions without FK. A log record may optionally bind a `log_domain_id`; NULL means the built-in uncategorized log domain (generic analysis, upload never blocked). Records may bind an optional org-scoped **log domain** (`log_domain_id`); `source` keeps meaning the intake channel and never the domain.
 - Product feedback persists Internal Beta sidebar reports and optional image attachments as an organization-scoped triage queue. It is separate from log-analysis feedback and uses admin-only review.
+- The knowledge base persists organization-scoped, flat, multi-tagged knowledge entries with immutable revisions and file metadata. Published entries are the only retrieval surface; source attribution (`human` | `agent`) is stated on the schema even though agents never write in Phase 1.
 - Debugging separates devices, detected targets, debug parameters, sessions, snapshots, node operations, and events.
 - Agent state separates sessions, messages, tool calls, approvals, and run traces.
 - Audit events connect cross-domain writes through actor, target, action, severity, metadata, and trace ID.
@@ -217,6 +218,36 @@ Degraded analysis (see the glossary entry in `CONTEXT.md`) is a provenance state
 - Transient provider failure rides the existing job retry/backoff; the retry-exhausting final attempt falls back to the deterministic rule engine → `analysis_source = 'rules-fallback'`, `degraded_reason = 'provider-unavailable'`, job completes normally (no dead letter).
 - The budgeted single shot cannot produce a valid grounded output (invalid JSON or every citation rejected by the grounding check) → immediate fallback with `degraded_reason = 'token-budget-exhausted'`.
 - Only a failing fallback continues into the existing failure/dead-letter path. Degraded results must never impersonate a full agent analysis; the UI shows the provenance badge and reason.
+
+### Knowledge Base
+
+Design source: [Knowledge Base Design](2026-08-12-knowledge-base-design.md) (decisions D1–D20).
+
+| Entity | Description |
+| --- | --- |
+| `KnowledgeEntry` | Organization-scoped unit of engineering knowledge. Content form is exactly one of `markdown` or `file`. Flat with multi-tags (project tags included), head-revision pointer plus `head_revision_number` for optimistic concurrency, denormalized `search_text` for Phase 1 retrieval, and source attribution `human` \| `agent` with session metadata. |
+| `KnowledgeRevision` | Immutable content snapshot (`title`, `tags`, markdown or file reference) with `revision_number` unique per entry, author, and optional `restored_from_revision_id` provenance. Rows are never updated. |
+| `KnowledgeFile` | File metadata for file-form entries: object-store key, integrity checksum, and honest extraction state (`pending` \| `succeeded` \| `failed` with a readable failure reason plus extracted text on success). Binaries are replaceable (new row + new revision), never edited. |
+
+Rules:
+
+- Every save — including restore-as-new-revision and file replacement — appends a revision and advances the head pointer. Saves carry the expected head revision number and fail with a structured `409` conflict when stale; there is no silent overwrite.
+- Published entries are the only search surface (FTS for latin text + `pg_trgm` trigram matching for CJK). Drafts and archived entries never appear in results; publishing is the single trust gate.
+- Drafts are visible to their owner and `knowledge:manage` holders only. `knowledge:edit` governs own entries (edit/publish/archive); `knowledge:manage` governs any entry. Hard delete requires `knowledge:manage` and writes a `High`-severity audit event.
+- Archived entries keep their history and leave retrieval; restore returns them to `published`. Editing an archived entry is rejected until it is restored.
+- Every mutation writes an audit event (`knowledge-entry-create/update/publish/archive/restore/delete`, `knowledge-revision-restore`) with the request trace.
+
+Status machine:
+
+```mermaid
+stateDiagram-v2
+  [*] --> draft
+  draft --> published
+  published --> archived
+  archived --> published
+```
+
+Hard delete is a manage-level act allowed from any state and removes the entry with its revisions and file metadata (audit evidence remains).
 
 ## Debugging Catalog Scope
 

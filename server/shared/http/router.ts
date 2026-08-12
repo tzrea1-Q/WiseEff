@@ -105,6 +105,9 @@ export function createRouter() {
     put: (path: string, handler: RouteHandler) => add("PUT", path, handler),
     patch: (path: string, handler: RouteHandler) => add("PATCH", path, handler),
     delete: (path: string, handler: RouteHandler) => add("DELETE", path, handler),
+    /** Registered routes, for contract parity checks (`routeParity.test.ts`). */
+    listRoutes: (): Array<{ method: HttpMethod; pattern: string }> =>
+      routes.map((route) => ({ method: route.method, pattern: route.pattern })),
     matchRoutePattern(method: HttpMethod, path: string) {
       const matchingRoutes = routes
         .map((route) => ({
