@@ -1045,8 +1045,24 @@ describe.skipIf(!databaseAvailable)("parameter identity migration", () => {
       applyParameterIdentityCutover(db!, { migrationRunId: fakeRunId })
     ).rejects.toThrow(/cutover blocked|inferred/i);
 
-    // Apply writes inside the shared test transaction survive the thrown apply block;
-    // reuse the inferred draft + open review task that apply already staged.
+    // The blocked apply rolls its staged writes back (real transaction
+    // semantics), so forge the open inferred review task that a finalized run
+    // with unaudited inferred specs would leave behind for the cutover gate.
+    await db!.query(
+      `
+      insert into parameter_spec_review_tasks (
+        id, organization_id, parameter_spec_id, source_evidence,
+        candidate_schemas, project_count, status, reason, blocker_scope,
+        migration_run_id
+      ) values (
+        'review-forged-inferred-block', $1, null,
+        '{"inferred": true, "module": "orphan_module"}'::jsonb,
+        '[]'::jsonb, 1, 'open', 'forged inferred review for cutover gate', 'platform', $2
+      )
+      `,
+      [ORG, fakeRunId]
+    );
+
     const openInferred = await db!.query<{ c: string }>(
       `
       select count(*)::text as c
