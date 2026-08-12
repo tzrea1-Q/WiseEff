@@ -95,6 +95,28 @@ describe("residueActionForTerminal", () => {
     expect(residueActionForTerminal({ purpose: "ordinary", status: "validated" })).toBe("none");
     expect(residueActionForTerminal({ purpose: "restore-baseline", status: "failed" })).toBe("none");
   });
+
+  it("sets residue for an ordinary run whose trigger did not confirm (device may be dirty)", () => {
+    expect(
+      residueActionForTerminal({
+        purpose: "ordinary",
+        status: "failed",
+        failureCode: "trigger-reload-unconfirmed"
+      })
+    ).toBe("set");
+    // Confirmed rejections (device refused the write) leave the device clean.
+    expect(
+      residueActionForTerminal({ purpose: "ordinary", status: "failed", failureCode: "trigger-reload-failed" })
+    ).toBe("none");
+    // A restore run that fails unconfirmed must not be re-interpreted as leaving new residue.
+    expect(
+      residueActionForTerminal({
+        purpose: "restore-baseline",
+        status: "failed",
+        failureCode: "trigger-reload-unconfirmed"
+      })
+    ).toBe("none");
+  });
 });
 
 describe("dts-reload residue persistence", () => {

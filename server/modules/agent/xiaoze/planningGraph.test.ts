@@ -26,6 +26,30 @@ describe("createPlanningAgent", () => {
     expect(result.text).toContain("12 parameters");
   });
 
+  it("namespaces checkpoints by organization and user when request context is bound", async () => {
+    const checkpointer = createXiaozeCheckpointer();
+    const putSpy = vi.spyOn(checkpointer, "put");
+    const runTool = vi.fn().mockResolvedValue({ summary: "ok", data: {}, citations: [] });
+    const model = fakeModelSequence([{ content: "hello there" }]);
+    const agent = createPlanningAgent({
+      model,
+      runTool,
+      listTools: () => [{ name: "perception.getProjectOverview", description: "x", schema: {} }],
+      checkpointer
+    });
+
+    await agent.run({
+      message: "hi",
+      context: {},
+      threadId: "t-shared",
+      requestContext: { auth: anyAuth, requestId: "req-ns", sessionId: "t-shared" }
+    });
+
+    // A user-supplied threadId must never address another org/user's state.
+    expect(putSpy).toHaveBeenCalledWith("org1:u1:t-shared", expect.anything());
+    expect(putSpy).not.toHaveBeenCalledWith("t-shared", expect.anything());
+  });
+
   it("returns an interrupt for a mutating tool without executing (P1 parity)", async () => {
     const runTool = vi.fn();
     const model = fakeModelSequence([
@@ -53,8 +77,8 @@ describe("createPlanningAgent", () => {
 
   it("resumes the plan after approval and observes the result", async () => {
     const checkpointer = createXiaozeCheckpointer();
-    const approvalBridge = {
-      resume: vi.fn().mockResolvedValue({ text: "change request cr-1 created" })
+    const approvalResolver = {
+      resolveApproval: vi.fn().mockResolvedValue({ text: "change request cr-1 created" })
     };
     const runTool = vi.fn().mockResolvedValue({ summary: "overview", data: {}, citations: [] });
     const model = fakeModelSequence([
@@ -66,25 +90,34 @@ describe("createPlanningAgent", () => {
       runTool,
       listTools: () => [{ name: "action.submitParameterChange", description: "x", schema: {}, requiresApproval: true }],
       checkpointer,
-      approvalBridge
+      approvalResolver
     });
 
-    const interrupted = await agent.run({ message: "set pd1 to 42", context: { projectId: "p1" }, threadId: "t9" });
+    // Production always binds the request context on every turn, so the
+    // interrupt turn and the resume turn share one checkpoint namespace.
+    const interrupted = await agent.run({
+      message: "set pd1 to 42",
+      context: { projectId: "p1" },
+      threadId: "t9",
+      requestContext: { auth: anyAuth, requestId: "req-0", sessionId: "t9" }
+    });
     expect(interrupted.interrupt?.toolName).toBe("action.submitParameterChange");
 
     const resumed = await agent.run({
       message: "",
       context: { projectId: "p1" },
       threadId: "t9",
+      requestContext: { auth: anyAuth, requestId: "req-1", sessionId: "t9" },
       resume: {
-        auth: anyAuth,
-        requestId: "req-1",
         approvalId: "approval-1",
         decision: "approve"
       }
     });
 
-    expect(approvalBridge.resume).toHaveBeenCalledOnce();
+    expect(approvalResolver.resolveApproval).toHaveBeenCalledOnce();
+    expect(approvalResolver.resolveApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ approvalId: "approval-1", decision: "approve", auth: anyAuth, requestId: "req-1" })
+    );
     expect(resumed.text).toContain("cr-1");
   });
 
@@ -185,8 +218,8 @@ describe("createPlanningAgent", () => {
 
   it("halts gracefully on reject without mutation", async () => {
     const checkpointer = createXiaozeCheckpointer();
-    const approvalBridge = {
-      resume: vi.fn().mockResolvedValue({ text: "The proposed action was rejected." })
+    const approvalResolver = {
+      resolveApproval: vi.fn().mockResolvedValue({ text: "The proposed action was rejected." })
     };
     const model = fakeModelSequence([
       { toolCalls: [toolCall("action.submitParameterChange", { projectId: "p1", parameterId: "pd1", targetValue: "42", reason: "x" })] }
@@ -196,17 +229,21 @@ describe("createPlanningAgent", () => {
       runTool: vi.fn(),
       listTools: () => [{ name: "action.submitParameterChange", description: "x", schema: {}, requiresApproval: true }],
       checkpointer,
-      approvalBridge
+      approvalResolver
     });
 
-    await agent.run({ message: "set pd1 to 42", context: { projectId: "p1" }, threadId: "t-reject" });
+    await agent.run({
+      message: "set pd1 to 42",
+      context: { projectId: "p1" },
+      threadId: "t-reject",
+      requestContext: { auth: anyAuth, requestId: "req-1", sessionId: "t-reject" }
+    });
     const result = await agent.run({
       message: "",
       context: { projectId: "p1" },
       threadId: "t-reject",
+      requestContext: { auth: anyAuth, requestId: "req-2", sessionId: "t-reject" },
       resume: {
-        auth: anyAuth,
-        requestId: "req-2",
         approvalId: "approval-2",
         decision: "reject",
         reason: "Not now"

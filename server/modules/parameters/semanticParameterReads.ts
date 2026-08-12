@@ -3,10 +3,6 @@
  * Must not query renamed flat-identity archive tables.
  */
 import type { Queryable } from "../../shared/database/client";
-import {
-  isParameterIdentityCutoverComplete,
-  legacyParameterIdentityTablesRetired
-} from "./cutoverAwareIdentity";
 
 export type SemanticParameterRow = {
   id: string;
@@ -28,13 +24,6 @@ export type SemanticParameterRow = {
   source_node_path: string | null;
   updated_at: string | Date;
 };
-
-export async function mustUseSemanticParameterIdentity(db: Queryable): Promise<boolean> {
-  return (
-    (await isParameterIdentityCutoverComplete(db)) ||
-    (await legacyParameterIdentityTablesRetired(db))
-  );
-}
 
 export async function listSemanticParameters(
   db: Queryable,
@@ -80,7 +69,7 @@ export async function listSemanticParameters(
       null::text as module_path,
       '' as default_range,
       coalesce(psv.value_shape->>'unit', '') as unit,
-      'Low' as risk,
+      coalesce(ps.risk, 'Low') as risk,
       coalesce(bpr.raw_value, '') as current_value,
       null::text as "initSuggestionText",
       null::text as source_file_name,

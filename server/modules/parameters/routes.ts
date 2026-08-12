@@ -21,13 +21,15 @@ import {
 } from "./projectService";
 import {
   getParameterById,
-  getProjectAdminDetail,
   listParameterHistory,
-  listParameters,
+  listParameters
+} from "./repository";
+import {
+  getProjectAdminDetail,
   listProjectAdminSummaries,
   listProjectModules,
   listProjects
-} from "./repository";
+} from "./projectRepository";
 import {
   applyImportBatch,
   createImportPreview,
@@ -506,7 +508,7 @@ export function registerParameterRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(createImportBatchBodySchema, request.body);
-    const item = await createImportPreview(db, auth, body);
+    const item = await createImportPreview(db, auth, body, { requestId: request.requestId });
 
     return { status: 201, body: { item } };
   });

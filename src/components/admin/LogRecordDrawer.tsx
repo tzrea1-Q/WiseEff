@@ -2,7 +2,7 @@ import { Archive, ExternalLink, RefreshCw, ThumbsUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { STAGE_LABELS, type LogRecord } from "@/mockData";
+import { STAGE_LABELS, type LogRecord } from "@/domain/prototype/types";
 
 export type LogRecordDrawerProps = {
   record: LogRecord | null;

@@ -1,11 +1,20 @@
 import type { Queryable } from "../../shared/database/client";
 import type { ReloadRunPurpose, ReloadRunStatus, ReloadRunTargetDto, ReloadResidueDto } from "./types";
+import { TRIGGER_RELOAD_UNCONFIRMED_FAILURE_CODE } from "./types";
 
 /** Terminal statuses that mean debug values were written to the device. */
 export const RESIDUE_LEAVING_STATUSES: ReadonlySet<ReloadRunStatus> = new Set([
   "unverifiable",
   "verified",
   "contradicted"
+]);
+
+/**
+ * Failure codes on a `failed` run that still mean the device may carry debug values.
+ * A trigger whose RPC did not confirm (timeout / transport drop) may have applied the overlay.
+ */
+export const RESIDUE_POSSIBLE_FAILURE_CODES: ReadonlySet<string> = new Set([
+  TRIGGER_RELOAD_UNCONFIRMED_FAILURE_CODE
 ]);
 
 export type ResidueParameterRecord = {
@@ -68,14 +77,26 @@ export function parametersFromTargets(targets: ReloadRunTargetDto[]): ResiduePar
  *
  * - Ordinary run + post-write terminal → set residue naming that run + parameters.
  * - Restore run + post-write terminal → clear residue for the device.
- * - failed / blocked / non-terminal → no residue mutation.
+ * - Ordinary run + failed-but-unconfirmed trigger → set residue defensively (device may be dirty).
+ * - Other failed / blocked / non-terminal → no residue mutation.
  */
 export function residueActionForTerminal(input: {
   purpose: ReloadRunPurpose;
   status: ReloadRunStatus;
+  failureCode?: string | null;
 }): "set" | "clear" | "none" {
-  if (!RESIDUE_LEAVING_STATUSES.has(input.status)) return "none";
-  return input.purpose === "restore-baseline" ? "clear" : "set";
+  if (RESIDUE_LEAVING_STATUSES.has(input.status)) {
+    return input.purpose === "restore-baseline" ? "clear" : "set";
+  }
+  if (
+    input.status === "failed" &&
+    input.purpose !== "restore-baseline" &&
+    input.failureCode != null &&
+    RESIDUE_POSSIBLE_FAILURE_CODES.has(input.failureCode)
+  ) {
+    return "set";
+  }
+  return "none";
 }
 
 export async function getDeviceResidue(
@@ -174,11 +195,16 @@ export async function applyResidueForDeployTerminal(
     runId: string;
     purpose: ReloadRunPurpose;
     status: ReloadRunStatus;
+    failureCode?: string | null;
     targets: ReloadRunTargetDto[];
     restoresSourceRunId?: string | null;
   }
 ): Promise<"set" | "clear" | "none"> {
-  const action = residueActionForTerminal({ purpose: input.purpose, status: input.status });
+  const action = residueActionForTerminal({
+    purpose: input.purpose,
+    status: input.status,
+    failureCode: input.failureCode
+  });
   if (action === "set") {
     await upsertDeviceResidue(db, {
       organizationId: input.organizationId,

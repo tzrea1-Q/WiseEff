@@ -214,14 +214,14 @@ describe("browser acceptance runner", () => {
     });
   });
 
-  it("maps Playwright results to the manual acceptance A-I workflow rows", () => {
+  it("maps Playwright results to the manual acceptance A-J workflow rows", () => {
     const workflows = buildDefaultBrowserAcceptanceWorkflows({
       playwrightStatus: "passed",
       hdcStatus: "skipped",
       artifactPath: "playwright-report/acceptance/index.html"
     });
 
-    expect(workflows.map((workflow) => workflow.id)).toEqual(["A", "B", "C", "D", "E", "F", "G", "H", "I"]);
+    expect(workflows.map((workflow) => workflow.id)).toEqual(["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]);
     expect(workflows).toContainEqual(
       expect.objectContaining({
         id: "F",

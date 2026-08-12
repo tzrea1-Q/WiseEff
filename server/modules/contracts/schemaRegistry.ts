@@ -788,6 +788,103 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
 
+  "knowledge.createEntry": {
+    summary: "Create a knowledge entry (markdown or file form)",
+    tags: ["knowledge"],
+    requestBody: "CreateKnowledgeEntryRequest",
+    responseBody: "KnowledgeEntryResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "knowledge.listEntries": {
+    summary: "List knowledge entries visible to the caller",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeEntryListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "knowledge.search": {
+    summary:
+      "Search published knowledge entries — hybrid vector+FTS when embeddings and pgvector are available, FTS+trigram otherwise; the response reports the retrieval mode that actually ran",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeSearchResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "knowledge.indexStatus": {
+    summary: "Read per-entry retrieval index health and the honest retrieval mode (knowledge:manage only)",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeIndexHealthResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "knowledge.indexRebuild": {
+    summary: "Re-enqueue every published entry for index rebuild (knowledge:manage only)",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeIndexRebuildResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "knowledge.indexRetryEntry": {
+    summary: "Re-enqueue one entry's index refresh (knowledge:manage only)",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeIndexRetryResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "knowledge.getEntry": {
+    summary: "Get a knowledge entry with head-revision content",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeEntryResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "knowledge.updateEntry": {
+    summary: "Save a knowledge entry edit as a new immutable revision (optimistic concurrency)",
+    tags: ["knowledge"],
+    requestBody: "UpdateKnowledgeEntryRequest",
+    responseBody: "KnowledgeEntryResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "knowledge.publishEntry": {
+    summary: "Publish a draft knowledge entry into retrieval",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeEntryResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "knowledge.archiveEntry": {
+    summary: "Archive a published knowledge entry out of retrieval",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeEntryResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "knowledge.restoreEntry": {
+    summary: "Restore an archived knowledge entry to published",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeEntryResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "knowledge.deleteEntry": {
+    summary: "Hard delete a knowledge entry (knowledge:manage only)",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeDeleteResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "knowledge.listRevisions": {
+    summary: "List immutable revisions of a knowledge entry",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeRevisionListResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "knowledge.restoreRevision": {
+    summary: "Restore a prior revision as a new head revision",
+    tags: ["knowledge"],
+    requestBody: "RestoreKnowledgeRevisionRequest",
+    responseBody: "KnowledgeEntryResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "knowledge.fileContent": {
+    summary: "Download the current file binary of a file-form knowledge entry",
+    tags: ["knowledge"],
+    responseBody: "BinaryAttachment",
+    responseMedia: "binary",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+
   "dtsReload.listCandidates": {
     summary: "List DTS reload debugging candidates for a project",
     tags: ["dts-reload"],
@@ -1089,5 +1186,218 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     summary: "Compatibility health check",
     tags: ["operations"],
     responseBody: "CompatHealthResponse"
+  },
+
+  "parameterFiles.listFiles": {
+    summary: "List project parameter files with current version metadata",
+    tags: ["parameter-files"],
+    responseBody: "ParameterFileListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "parameterFiles.uploadFile": {
+    summary: "Upload a project parameter file (new file or new version) and sync drafts",
+    tags: ["parameter-files"],
+    requestBody: "UploadParameterFileRequest",
+    responseBody: "ParameterFileUploadResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "parameterFiles.listFileVersions": {
+    summary: "List immutable versions of one project parameter file",
+    tags: ["parameter-files"],
+    responseBody: "ParameterFileVersionListResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameterFiles.uploadFileVersion": {
+    summary: "Upload a new version for an existing project parameter file",
+    tags: ["parameter-files"],
+    requestBody: "UploadParameterFileVersionRequest",
+    responseBody: "ParameterFileVersionUploadResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameterFiles.downloadFileVersionContent": {
+    summary: "Download the stored bytes of one parameter file version",
+    tags: ["parameter-files"],
+    responseBody: "ParameterFileVersionContent",
+    responseMedia: "binary",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameterFiles.syncFileVersion": {
+    summary: "Sync a parameter file version into project drafts and detect conflicts",
+    tags: ["parameter-files"],
+    requestBody: "SyncParameterFileRequest",
+    responseBody: "ParameterFileSyncResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.listConflicts": {
+    summary: "List file↔UI sync conflicts for a project",
+    tags: ["parameter-files"],
+    responseBody: "FileSyncConflictListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "parameterFiles.resolveConflict": {
+    summary: "Resolve one open file↔UI conflict toward the file or the UI draft",
+    tags: ["parameter-files"],
+    requestBody: "ResolveFileSyncConflictRequest",
+    responseBody: "FileSyncConflictResolveResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.previewBulkConflictResolution": {
+    summary: "Preview a bulk conflict resolution: eligible, ineligible, and impact",
+    tags: ["parameter-files"],
+    requestBody: "BulkConflictPreviewRequest",
+    responseBody: "BulkConflictPreviewResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "parameterFiles.resolveConflictsBulk": {
+    summary: "Resolve eligible conflicts as one atomic batch (ADR-0027); mid-batch failure rolls back",
+    tags: ["parameter-files"],
+    requestBody: "BulkConflictResolveRequest",
+    responseBody: "BulkConflictResolveResponse",
+    additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.listConfigSets": {
+    summary: "List project DTS config sets with members",
+    tags: ["parameter-files"],
+    responseBody: "ConfigSetListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "parameterFiles.createConfigSet": {
+    summary: "Create a project DTS config set",
+    tags: ["parameter-files"],
+    requestBody: "CreateConfigSetRequest",
+    responseBody: "ConfigSetResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.addConfigSetFile": {
+    summary: "Add a parameter file to a config set with role and sort order",
+    tags: ["parameter-files"],
+    requestBody: "AddConfigSetFileRequest",
+    responseBody: "ConfigSetMembershipResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.removeConfigSetFile": {
+    summary: "Remove a member file from a config set (requires confirmation semantics)",
+    tags: ["parameter-files"],
+    responseBody: "ConfigSetMembershipResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.exportConfigSet": {
+    summary: "Export a config set as a lossless manifest with validation evidence",
+    tags: ["parameter-files"],
+    responseBody: "ConfigSetExportResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.listConfigSetBaselines": {
+    summary: "List release baselines of a config set",
+    tags: ["parameter-files"],
+    responseBody: "ReleaseBaselineListResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameterFiles.createConfigSetBaseline": {
+    summary: "Create a release baseline snapshot of the working configuration (gate token required)",
+    tags: ["parameter-files"],
+    requestBody: "CreateReleaseBaselineRequest",
+    responseBody: "ReleaseBaselineResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.submitStructuredEdits": {
+    summary: "Submit structured DTS edits through the draft → submission round → change request flow",
+    tags: ["parameter-files"],
+    requestBody: "SubmitStructuredEditsRequest",
+    responseBody: "StructuredEditsSubmitResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterFiles.activateCandidate": {
+    summary: "Activate a staged candidate file version with expected-current-version CAS",
+    tags: ["parameter-files"],
+    requestBody: "ActivateParameterFileCandidateRequest",
+    responseBody: "ParameterFileCandidateActivateResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+
+  "parameters.deleteAdminProject": {
+    summary: "Delete a project and its parameter-management data (cascade)",
+    tags: ["parameters"],
+    responseBody: "ProjectDeleteResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameters.parseDtsImport": {
+    summary: "Parse a full DTS source into import preview rows",
+    tags: ["parameters"],
+    requestBody: "ParseDtsImportRequest",
+    responseBody: "DtsImportParseResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "parameters.listWorkflowAssignees": {
+    summary: "List selectable reviewer/assignee users for parameter workflows in a project",
+    tags: ["parameters"],
+    responseBody: "ParameterWorkflowAssigneeListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "parameterSpecs.update": {
+    summary: "Update a parameter definition (draft content or governed fields)",
+    tags: ["parameters"],
+    requestBody: "UpdateParameterSpecRequest",
+    responseBody: "ParameterSpecResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterSpecs.activate": {
+    summary: "Activate a draft parameter definition",
+    tags: ["parameters"],
+    responseBody: "ParameterSpecResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+
+  "deviceBridges.createPairingCode": {
+    summary: "Create a short-lived pairing code for a local device bridge",
+    tags: ["device-bridge"],
+    responseBody: "DeviceBridgePairingCodeResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "deviceBridges.pair": {
+    summary: "Exchange a pairing code for a bridge identity and token",
+    tags: ["device-bridge"],
+    requestBody: "DeviceBridgePairRequest",
+    responseBody: "DeviceBridgePairResponse",
+    successStatus: 201,
+    additionalResponses: { "409": "ErrorResponse" }
+  },
+  "deviceBridges.listMine": {
+    summary: "List the caller's paired device bridges",
+    tags: ["device-bridge"],
+    responseBody: "DeviceBridgeListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "deviceBridges.updateBridge": {
+    summary: "Update a paired bridge (for example its machine label)",
+    tags: ["device-bridge"],
+    requestBody: "UpdateDeviceBridgeRequest",
+    responseBody: "DeviceBridgeResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "deviceBridges.revokeBridge": {
+    summary: "Revoke a paired bridge's token",
+    tags: ["device-bridge"],
+    responseBody: "DeviceBridgeResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "deviceBridges.getReleaseManifest": {
+    summary: "Get the latest local device bridge release manifest",
+    tags: ["device-bridge"],
+    responseBody: "DeviceBridgeReleaseManifestResponse",
+    additionalResponses: { "404": "ErrorResponse" }
+  },
+  "deviceBridges.getToolReleaseManifest": {
+    summary: "Get the latest bridge tool (hdc/adb) release manifest",
+    tags: ["device-bridge"],
+    responseBody: "DeviceBridgeToolReleaseManifestResponse",
+    additionalResponses: { "404": "ErrorResponse" }
   }
 };

@@ -1,7 +1,8 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionSummaryCard } from "./SessionSummaryCard";
-import { createPrototypeState, type DebugSnapshot } from "../mockData";
+import { createPrototypeState } from "../mockData";
+import type { DebugSnapshot } from "@/domain/prototype/types";
 
 afterEach(() => cleanup());
 

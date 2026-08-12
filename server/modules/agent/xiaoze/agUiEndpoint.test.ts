@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { EventType } from "@ag-ui/core";
+import { ApiError } from "../../../shared/http/errors";
 import { createXiaozeAgUiHandler } from "./agUiEndpoint";
 
 const anyAuth = {
@@ -26,6 +27,30 @@ describe("createXiaozeAgUiHandler", () => {
     await expect(handler({ headers: {}, body: { messages: [] }, requestId: "req-1" })).rejects.toMatchObject({
       code: "UNAUTHENTICATED"
     });
+  });
+
+  it("refuses a run against a foreign thread before running the agent", async () => {
+    const run = vi.fn(async () => ({ text: "hi", citations: [] }));
+    const assertThreadAccess = vi.fn(async ({ threadId }: { threadId: string }) => {
+      throw new ApiError("FORBIDDEN", "This Xiaoze thread belongs to another user.", 403, { threadId });
+    });
+    const handler = createXiaozeAgUiHandler({
+      resolveAuth: async () => anyAuth,
+      createAgent: () => ({ run }),
+      assertThreadAccess
+    });
+
+    await expect(
+      handler({
+        headers: {},
+        body: { threadId: "thread-of-someone-else", messages: [{ role: "user", content: "hi" }] },
+        requestId: "req-deny"
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+    expect(assertThreadAccess).toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: "thread-of-someone-else" })
+    );
+    expect(run).not.toHaveBeenCalled();
   });
 
   it("keeps reasoning open while streaming and ends it when the turn is finalized", async () => {
@@ -397,15 +422,14 @@ describe("createXiaozeAgUiHandler", () => {
   });
 
   it("emits addressable interrupt ids in RUN_FINISHED outcome", async () => {
-    const approvalBridge = {
-      begin: vi.fn().mockResolvedValue({
+    const approvalChain = {
+      beginApproval: vi.fn().mockResolvedValue({
         approvalId: "approval-addr-1",
         toolCallId: "tool-call-1",
         toolName: "action.submitParameterChange",
         payload: { projectId: "aurora", parameterId: "pd1", targetValue: "18A" },
         citations: []
-      }),
-      resume: vi.fn()
+      })
     };
     const handler = createXiaozeAgUiHandler({
       resolveAuth: async () => anyAuth,
@@ -420,7 +444,7 @@ describe("createXiaozeAgUiHandler", () => {
           }
         })
       }),
-      approvalBridge: approvalBridge as never
+      approvalChain: approvalChain as never
     });
 
     const response = await handler({
@@ -442,11 +466,11 @@ describe("createXiaozeAgUiHandler", () => {
 
   it("reads AG-UI native resume entries produced by the browser agent bridge", async () => {
     const run = vi.fn().mockResolvedValue({ text: "Change submitted.", citations: [] });
-    const approvalBridge = { begin: vi.fn(), resume: vi.fn() };
+    const approvalChain = { beginApproval: vi.fn() };
     const handler = createXiaozeAgUiHandler({
       resolveAuth: async () => anyAuth,
       createAgent: () => ({ run }),
-      approvalBridge: approvalBridge as never
+      approvalChain: approvalChain as never
     });
 
     const response = await handler({

@@ -19,8 +19,8 @@ const testDatabaseUrl =
   process.env.XIAOZE_CHECKPOINTER_TEST_DATABASE_URL?.trim() || process.env.DATABASE_URL?.trim() || "";
 
 function buildPlanningAgent(checkpointer: ReturnType<typeof createXiaozeCheckpointer>) {
-  const approvalBridge = {
-    resume: vi.fn().mockResolvedValue({ text: "change request cr-1 created" })
+  const approvalResolver = {
+    resolveApproval: vi.fn().mockResolvedValue({ text: "change request cr-1 created" })
   };
   const model = fakeModelSequence([
     {
@@ -42,9 +42,9 @@ function buildPlanningAgent(checkpointer: ReturnType<typeof createXiaozeCheckpoi
       runTool: vi.fn(),
       listTools: () => [{ name: "action.submitParameterChange", description: "x", schema: {}, requiresApproval: true }],
       checkpointer,
-      approvalBridge
+      approvalResolver
     }),
-    approvalBridge
+    approvalResolver
   };
 }
 
@@ -58,10 +58,15 @@ describe.skipIf(!testDatabaseUrl)("postgres checkpointer durability", () => {
     const sharedCheckpointer = createXiaozeCheckpointer({ mode: "postgres", saver: handle.saver });
 
     const first = buildPlanningAgent(sharedCheckpointer);
+    // Both runs must carry the same requestContext: the checkpoint namespace is
+    // `${org}:${user}:${threadId}` when auth is present (tenant isolation), and the
+    // production endpoint always supplies it. Interrupting without it and resuming
+    // with it would write and read different namespaces.
     const interrupted = await first.agent.run({
       message: "set pd1 to 42",
       context: { projectId: "p1" },
-      threadId
+      threadId,
+      requestContext: { auth: anyAuth, requestId: "req-durability-first", sessionId: threadId }
     });
     expect(interrupted.interrupt?.toolName).toBe("action.submitParameterChange");
 
@@ -72,15 +77,14 @@ describe.skipIf(!testDatabaseUrl)("postgres checkpointer durability", () => {
       message: "",
       context: { projectId: "p1" },
       threadId,
+      requestContext: { auth: anyAuth, requestId: "req-durability", sessionId: threadId },
       resume: {
-        auth: anyAuth,
-        requestId: "req-durability",
         approvalId: "approval-durability",
         decision: "approve"
       }
     });
 
-    expect(second.approvalBridge.resume).toHaveBeenCalledOnce();
+    expect(second.approvalResolver.resolveApproval).toHaveBeenCalledOnce();
     expect(resumed.text).toContain("cr-1");
   });
 });

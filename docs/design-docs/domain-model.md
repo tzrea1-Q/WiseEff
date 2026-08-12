@@ -17,6 +17,7 @@ The product model separates prototype display data into durable, auditable busin
 - Parameter and debugging **module taxonomies** are independent org-scoped trees (`parameter_modules`, `debug_node_modules`) with `parent_id` and materialized `path`. Parameters and logical debug nodes attach by `module_id` FK; filters accept `moduleId` with subtree include (parent selection returns descendants). Legacy flat `module` text columns remain transitional (TD-037 follow-up).
 - Log analysis separates uploaded object references, business records, analysis runs, stages, evidence, archive state, and feedback. Log records and file objects are scoped by `organization_id` only; optional `related_parameter_id` is a soft link to M1 definitions without FK.
 - Product feedback persists Internal Beta sidebar reports and optional image attachments as an organization-scoped triage queue. It is separate from log-analysis feedback and uses admin-only review.
+- The knowledge base persists organization-scoped, flat, multi-tagged knowledge entries with immutable revisions and file metadata. Published entries are the only retrieval surface; source attribution (`human` | `agent`) is stated on the schema even though agents never write in Phase 1.
 - Debugging separates devices, detected targets, debug parameters, sessions, snapshots, node operations, and events.
 - Agent state separates sessions, messages, tool calls, approvals, and run traces.
 - Audit events connect cross-domain writes through actor, target, action, severity, metadata, and trace ID.
@@ -197,6 +198,36 @@ stateDiagram-v2
 
 `closed` is terminal for the MVP. Reopening or skipping directly from `open` to `closed` is intentionally not part of the shipped state machine.
 
+### Knowledge Base
+
+Design source: [Knowledge Base Design](2026-08-12-knowledge-base-design.md) (decisions D1–D20).
+
+| Entity | Description |
+| --- | --- |
+| `KnowledgeEntry` | Organization-scoped unit of engineering knowledge. Content form is exactly one of `markdown` or `file`. Flat with multi-tags (project tags included), head-revision pointer plus `head_revision_number` for optimistic concurrency, denormalized `search_text` for Phase 1 retrieval, and source attribution `human` \| `agent` with session metadata. |
+| `KnowledgeRevision` | Immutable content snapshot (`title`, `tags`, markdown or file reference) with `revision_number` unique per entry, author, and optional `restored_from_revision_id` provenance. Rows are never updated. |
+| `KnowledgeFile` | File metadata for file-form entries: object-store key, integrity checksum, and honest extraction state (`pending` \| `succeeded` \| `failed` with a readable failure reason plus extracted text on success). Binaries are replaceable (new row + new revision), never edited. |
+
+Rules:
+
+- Every save — including restore-as-new-revision and file replacement — appends a revision and advances the head pointer. Saves carry the expected head revision number and fail with a structured `409` conflict when stale; there is no silent overwrite.
+- Published entries are the only search surface (FTS for latin text + `pg_trgm` trigram matching for CJK). Drafts and archived entries never appear in results; publishing is the single trust gate.
+- Drafts are visible to their owner and `knowledge:manage` holders only. `knowledge:edit` governs own entries (edit/publish/archive); `knowledge:manage` governs any entry. Hard delete requires `knowledge:manage` and writes a `High`-severity audit event.
+- Archived entries keep their history and leave retrieval; restore returns them to `published`. Editing an archived entry is rejected until it is restored.
+- Every mutation writes an audit event (`knowledge-entry-create/update/publish/archive/restore/delete`, `knowledge-revision-restore`) with the request trace.
+
+Status machine:
+
+```mermaid
+stateDiagram-v2
+  [*] --> draft
+  draft --> published
+  published --> archived
+  archived --> published
+```
+
+Hard delete is a manage-level act allowed from any state and removes the entry with its revisions and file metadata (audit evidence remains).
+
 ## Debugging Catalog Scope
 
 Debugging parameters, logical debug nodes, and their protocol bindings are an organization-level catalog keyed by `organization_id`. Parameter management remains project-scoped through the M1 parameter-management tables.
@@ -230,8 +261,8 @@ DTS reload debugging is a separate domain from node debugging and from the retir
 - **Debug overlay**: platform-authored `/plugin/` DTS addressing nodes by absolute `target-path`, plus the compiled `dtbo`. Debug values never mutate binding revisions, drafts, or release baselines (ADR-0019).
 - **Reload candidacy**: a library parameter is debuggable when it has a nonempty absolute `nodePath`, a supported reload value shape, and a library baseline value. Supported shapes include integer cell arrays (8/16/32-bit, including `/bits/ 8`), catalog single `string`, `string-list`, and GPIO-style `phandle-cells`. Single-segment `/label` paths (including L1 self-anchored overlay-only roots) are not refused by path-shape heuristics; parent and descendant paths are classified equally. Whether a path exists in the project reload base is decided at preflight (`dtc` / `fdtoverlay`), not at candidate listing.
 - **Reload configuration** (`dts_reload_org_defaults`): destination path, trigger node/payload, and kernel-log command. Resolved server-side only from the organisation default (or seeded defaults).
-- **Reload snapshot** (JSON on the run, ADR-0021): library baselines, verified artifact digest + integrity strength, optional kernel signal, and per-parameter behavioural verification when debug-node bindings exist. Not stored in `debugging_snapshots`.
-- **Reload residue** (`dts_reload_device_residue`): platform bookkeeping that a device was left carrying debug values; cleared only by a successful restore-baseline that still targets the recorded source run.
+- **Reload snapshot** (JSON on the run, ADR-0021): library baselines, verified artifact digest + integrity strength, optional kernel signal, and per-parameter behavioural verification when debug-node bindings exist. Not stored in `debugging_snapshots`. Overlay blobs (source + `dtbo`) are physically reclaimed past `RELOAD_ARTIFACT_RETENTION_DAYS` by a maintenance sweep (`npm run reload:sweep-artifacts`, `sweepExpiredReloadArtifacts`); digests and the snapshot stay on the run, and download/deploy report the artifact as expired. The same housekeeping run also reclaims runs wedged in `deploying` by a crashed deployer — a deploy heartbeats `deploy_claimed_at`, and `reclaimStaleDeployingReloadRuns` resets runs whose heartbeat is older than the worst-case deploy window (beyond the device-lease TTL) to `failed` (`deploy-reclaimed`), never touching a live deploy.
+- **Reload residue** (`dts_reload_device_residue`): platform bookkeeping that a device was left carrying debug values; cleared only by a successful restore-baseline that still targets the recorded source run. Keyed to the bridge-derived device id (`bridge:<bridgeId>`, resolved server-side, never from a client-supplied device id). Set on ordinary post-write terminals and also on an unconfirmed trigger (RPC timeout / transport drop) since the overlay may have applied; a confirmed rejection leaves it clean. A restore-baseline refuses (`reload-residue-node-drift`) when a residue parameter's node path no longer matches the current binding.
 - **Sensitive-node extension**: the same `dts_sensitive_node_rules` used by library writes gate reload start (`parameter:edit-critical`, and `confirm-sensitive-reload` for critical). Deploy additionally requires `confirm-dts-reload`.
 
 Permission: mutate with `debugging:dts-reload`; view history/candidates/residue with `debugging:view` or `debugging:dts-reload`. Configuration CRUD requires `debugging:admin`.

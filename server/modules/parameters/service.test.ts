@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
+import { setParameterIdentityMode } from "./parameterIdentityMode";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { applyImportBatch, createImportPreview, listDrafts, listWorkflowAssignees, parseDtsImportForAuth, reviewChange, saveDraft, submitParameterChanges } from "./service";
+import { applyImportBatch, createImportPreview, listDrafts, parseDtsImportForAuth, reviewChange, saveDraft, submitParameterChanges } from "./service";
 import { createImportBatchBodySchema } from "./schemas";
 
 type QueryCall = {
@@ -15,7 +16,6 @@ type QueuedResult = unknown[] | ((call: QueryCall) => unknown[]);
 function createFakeDb(
   results: QueuedResult[] = [],
   options: {
-    readConflictChecksFromQueue?: boolean;
     /** When true, semantic/post-cutover identity path is active. */
     semanticCutoverComplete?: boolean;
   } = {}
@@ -23,8 +23,8 @@ function createFakeDb(
   const calls: QueryCall[] = [];
   const txCalls: QueryCall[] = [];
   const transactions: QueryCall[][] = [];
-  const readConflictChecksFromQueue = options.readConflictChecksFromQueue ?? false;
   const semanticCutoverComplete = options.semanticCutoverComplete ?? false;
+  setParameterIdentityMode(semanticCutoverComplete ? "semantic" : "legacy");
 
   const runQuery = async <Row,>(target: QueryCall[], text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
     const call = { text, values };
@@ -41,7 +41,7 @@ function createFakeDb(
       return { rows: [{ initialization_status: "initialized" } as Row], rowCount: 1 };
     }
     target.push(call);
-    if (!readConflictChecksFromQueue && text.includes("from parameter_file_sync_conflicts")) {
+    if (text.includes("from parameter_file_sync_conflicts")) {
       return { rows: [] as Row[], rowCount: 0 };
     }
     const next = results.shift() ?? [];
@@ -139,30 +139,6 @@ function definitionRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe("workflow assignee discovery", () => {
-  it("returns only project-scoped candidates for parameter editors", async () => {
-    const { db, calls } = createFakeDb([[
-      { id: "u-hw", name: "Hardware", role_id: "hardware-committer" },
-      { id: "u-sw", name: "Software", role_id: "software-committer" },
-    ]]);
-
-    await expect(listWorkflowAssignees(db, makeAuth(), "project-1")).resolves.toEqual({
-      hardwareCommitters: [{ id: "u-hw", name: "Hardware" }],
-      softwareCommitters: [{ id: "u-sw", name: "Software" }],
-      softwareUsers: [{ id: "u-sw", name: "Software" }],
-    });
-    expect(calls[0]?.values).toEqual(["org-1", "project-1"]);
-  });
-
-  it("rejects callers without parameter edit permission before querying candidates", async () => {
-    const { db, calls } = createFakeDb();
-    await expect(
-      listWorkflowAssignees(db, makeAuth({ permissions: ["parameter:view"] }), "project-1"),
-    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
-    expect(calls).toHaveLength(0);
-  });
-});
-
 function importBatchRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "batch-1",
@@ -233,20 +209,6 @@ function changeRequestRow(overrides: Record<string, unknown> = {}) {
     reviewer_note: null,
     reject_reason: null,
     fast_track: false,
-    ...overrides
-  };
-}
-
-function reviewDecisionRow(overrides: Record<string, unknown> = {}) {
-  return {
-    id: "decision-1",
-    request_id: "request-1",
-    reviewer_user_id: "reviewer-1",
-    decision: "advance",
-    from_status: "hardware_review",
-    to_status: "software_review",
-    note: "Hardware reviewed.",
-    created_at: "2026-05-25T05:10:00.000Z",
     ...overrides
   };
 }
@@ -465,7 +427,7 @@ describe("parameter service", () => {
   });
 
   it("preview classifies added updated unchanged conflict and flags high-risk value deltas", async () => {
-    const { db, calls } = createFakeDb([
+    const { db, calls, txCalls } = createFakeDb([
       [projectRow()],
       [
         definitionRow({ id: "definition-updated", project_parameter_value_id: "param-updated" }),
@@ -567,11 +529,11 @@ describe("parameter service", () => {
       ["fast_charge_current_limit_ma", "thermal_guard_threshold_c", "new_balancing_window_s", "pack_voltage_limit_v"],
       []
     ]);
-    expect(calls.some((call) => call.text.includes("insert into parameter_import_batches"))).toBe(true);
+    expect(txCalls.some((call) => call.text.includes("insert into parameter_import_batches"))).toBe(true);
   });
 
   it("createImportPreview with reviewMetadata writes audit metadata containing skippedRows", async () => {
-    const { db, calls } = createFakeDb([
+    const { db, calls, txCalls } = createFakeDb([
       [projectRow()],
       [],
       [
@@ -611,7 +573,7 @@ describe("parameter service", () => {
       reviewMetadata
     });
 
-    const auditCall = calls.find((call) => call.text.includes("insert into audit_events"));
+    const auditCall = txCalls.find((call) => call.text.includes("insert into audit_events"));
     expect(auditCall).toBeDefined();
     expect(auditCall?.values).toContain("batch-import");
     expect(JSON.parse(auditCall?.values[11] as string)).toMatchObject({
@@ -620,7 +582,7 @@ describe("parameter service", () => {
   });
 
   it("createImportPreview without reviewMetadata does not write import audit", async () => {
-    const { db, calls } = createFakeDb([
+    const { db, calls, txCalls } = createFakeDb([
       [projectRow()],
       [],
       [
@@ -655,6 +617,7 @@ describe("parameter service", () => {
     });
 
     expect(calls.some((call) => call.text.includes("insert into audit_events"))).toBe(false);
+    expect(txCalls.some((call) => call.text.includes("insert into audit_events"))).toBe(false);
   });
 
   it("applyImportBatch merges reviewMetadata into apply audit metadata", async () => {
@@ -1370,6 +1333,50 @@ describe("parameter service", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("rejects saving a draft for a project the editor is not bound to", async () => {
+    const { db, calls } = createFakeDb();
+
+    // software-user on project-1 carries the flat parameter:edit permission, but
+    // must not be able to write drafts into project-2.
+    await expect(
+      saveDraft(db, makeAuth({ roles: [{ projectId: "project-1", roleId: "software-user" }] }), {
+        projectId: "project-2",
+        parameterId: "param-1",
+        targetValue: "3100",
+        reason: "cross-project"
+      })
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter edit role is required for this project.", 403));
+
+    expect(calls).toHaveLength(0);
+  });
+
+  it("rejects submitting a change round for a project the editor is not bound to", async () => {
+    const { db, txCalls } = createFakeDb();
+
+    await expect(
+      submitParameterChanges(
+        db,
+        makeAuth({ roles: [{ projectId: "project-1", roleId: "software-user" }] }),
+        {
+          projectId: "project-2",
+          items: [
+            {
+              draftId: "draft-x",
+              projectParameterBindingId: "binding-x",
+              parameterSpecId: "spec-x",
+              action: "set",
+              targetValue: "<3000>",
+              reason: "cross-project"
+            }
+          ]
+        },
+        { requestId: "req-cross" }
+      )
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter edit role is required for this project.", 403));
+
+    expect(txCalls).toHaveLength(0);
+  });
+
   it("user can save and list own draft", async () => {
     const updatedAt = new Date("2026-05-25T04:00:00.000Z");
     const { db, calls } = createFakeDb([
@@ -1461,452 +1468,6 @@ describe("parameter service", () => {
     expect(calls[0].text).toContain("from project_parameter_values");
     expect(calls[0].values).toEqual(["org-1", "project-1", "param-from-other-project"]);
     expect(calls.some((call) => call.text.includes("insert into parameter_drafts"))).toBe(false);
-  });
-
-  it("submitting two items creates one round and two change requests", async () => {
-    const { db, txCalls } = createFakeDb([
-      [parameterRow()],
-      [],
-      [parameterRow({ id: "param-2", parameter_definition_id: "definition-2", name: "thermal_guard_threshold_c", value_version: 3 })],
-      [],
-      [
-        {
-          id: "round-1",
-          project_id: "project-1",
-          project_name: "Aurora",
-          submitter: "Riley Chen",
-          status: "submitted",
-          summary: "Tune charging parameters",
-          created_at: "2026-05-25T05:00:00.000Z"
-        }
-      ],
-      [],
-      [
-        {
-          id: "request-1",
-          submission_round_id: "round-1",
-          project_id: "project-1",
-          project_parameter_value_id: "param-1",
-          module: "Charging Policy",
-          title: "fast_charge_current_limit_ma",
-          current_value: "3200",
-          target_value: "3100",
-          submitter: "Riley Chen",
-          status: "submitted",
-          risk: "High",
-          created_at: "2026-05-25T05:00:01.000Z",
-          updated_at: "2026-05-25T05:00:01.000Z",
-          assigned_to: null,
-          reviewer_note: null,
-          reject_reason: null,
-          fast_track: false
-        }
-      ],
-      [
-        {
-          id: "item-1",
-          change_request_id: "request-1",
-          project_parameter_value_id: "param-1",
-          name: "fast_charge_current_limit_ma",
-          module: "Charging Policy",
-          current_value: "3200",
-          target_value: "3100",
-          unit: "mA",
-          risk: "High",
-          reason: "Reduce thermal risk."
-        }
-      ],
-      [],
-      [],
-      [
-        {
-          id: "request-2",
-          submission_round_id: "round-1",
-          project_id: "project-1",
-          project_parameter_value_id: "param-2",
-          module: "Charging Policy",
-          title: "thermal_guard_threshold_c",
-          current_value: "70",
-          target_value: "68",
-          submitter: "Riley Chen",
-          status: "submitted",
-          risk: "High",
-          created_at: "2026-05-25T05:00:02.000Z",
-          updated_at: "2026-05-25T05:00:02.000Z",
-          assigned_to: null,
-          reviewer_note: null,
-          reject_reason: null,
-          fast_track: false
-        }
-      ],
-      [
-        {
-          id: "item-2",
-          change_request_id: "request-2",
-          project_parameter_value_id: "param-2",
-          name: "thermal_guard_threshold_c",
-          module: "Charging Policy",
-          current_value: "70",
-          target_value: "68",
-          unit: "C",
-          risk: "High",
-          reason: "Match new cell pack."
-        }
-      ],
-      [],
-      []
-    ]);
-
-    const round = await submitParameterChanges(
-      db,
-      makeAuth(),
-      {
-        projectId: "project-1",
-        reason: "Tune charging parameters",
-        items: [
-          { parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." },
-          { parameterId: "param-2", targetValue: "68", reason: "Match new cell pack." }
-        ]
-      },
-      { requestId: "request-parameter-submit-1" }
-    );
-
-    expect(round).toMatchObject({
-      id: "round-1",
-      projectId: "project-1",
-      status: "submitted",
-      summary: "Tune charging parameters",
-      items: [
-        { requestId: "request-1", parameterId: "param-1", targetValue: "3100" },
-        { requestId: "request-2", parameterId: "param-2", targetValue: "68" }
-      ]
-    });
-    expect(txCalls.filter((call) => call.text.includes("insert into parameter_change_requests"))).toHaveLength(2);
-    expect(txCalls.filter((call) => call.text.includes("insert into parameter_submission_items"))).toHaveLength(2);
-    const auditCall = txCalls.find((call) => call.text.includes("insert into audit_events"));
-    expect(auditCall).toBeDefined();
-    expect(auditCall?.values[12]).toBe("request-parameter-submit-1");
-  });
-
-  it("submitting with assignees persists the initial reviewer and workflow assignee ids", async () => {
-    const workflowAssignees = {
-      hardwareCommitterId: "u-hardware",
-      softwareCommitterId: "u-software-committer",
-      softwareUserId: "u-software-user"
-    };
-    const { db, txCalls } = createFakeDb([
-      [parameterRow()],
-      [],
-      [{ id: "u-hardware" }],
-      [{ id: "u-software-committer" }],
-      [{ id: "u-software-user" }],
-      [
-        {
-          id: "round-1",
-          project_id: "project-1",
-          project_name: "Aurora",
-          submitter: "Riley Chen",
-          status: "hardware_review",
-          summary: "Parameter changes submitted.",
-          created_at: "2026-05-25T05:00:00.000Z"
-        }
-      ],
-      [],
-      [
-        changeRequestRow({
-          status: "hardware_review",
-          assigned_to_user_id: "u-hardware",
-          workflow_hardware_committer_user_id: "u-hardware",
-          workflow_software_committer_user_id: "u-software-committer",
-          workflow_software_user_id: "u-software-user"
-        })
-      ],
-      [
-        {
-          id: "item-1",
-          change_request_id: "request-1",
-          project_parameter_value_id: "param-1",
-          name: "fast_charge_current_limit_ma",
-          module: "Charging Policy",
-          current_value: "3200",
-          target_value: "3100",
-          unit: "mA",
-          risk: "High",
-          reason: "Reduce thermal risk."
-        }
-      ],
-      [],
-      []
-    ]);
-
-    const round = await submitParameterChanges(db, makeAuth(), {
-      projectId: "project-1",
-      items: [{ parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." }],
-      assignees: workflowAssignees
-    });
-
-    const insertRequest = txCalls.find((call) => call.text.includes("insert into parameter_change_requests"));
-    expect(insertRequest?.values).toEqual(expect.arrayContaining([
-      "u-hardware",
-      "u-software-committer",
-      "u-software-user"
-    ]));
-    expect(round).toMatchObject({
-      status: "hardware_review",
-      workflowAssignees
-    });
-  });
-
-  it("accepts a software committer as the software developer workflow assignee", async () => {
-    const workflowAssignees = {
-      hardwareCommitterId: "u-hardware",
-      softwareCommitterId: "u-software-committer",
-      softwareUserId: "u-software-committer"
-    };
-    const { db, txCalls } = createFakeDb([
-      [parameterRow()],
-      [],
-      [{ id: "u-hardware" }],
-      [{ id: "u-software-committer" }],
-      [{ id: "u-software-committer" }],
-      [
-        {
-          id: "round-1",
-          project_id: "project-1",
-          project_name: "Aurora",
-          submitter: "Riley Chen",
-          status: "hardware_review",
-          summary: "Parameter changes submitted.",
-          created_at: "2026-05-25T05:00:00.000Z"
-        }
-      ],
-      [],
-      [
-        changeRequestRow({
-          status: "hardware_review",
-          assigned_to_user_id: "u-hardware",
-          workflow_hardware_committer_user_id: "u-hardware",
-          workflow_software_committer_user_id: "u-software-committer",
-          workflow_software_user_id: "u-software-committer"
-        })
-      ],
-      [
-        {
-          id: "item-1",
-          change_request_id: "request-1",
-          project_parameter_value_id: "param-1",
-          name: "fast_charge_current_limit_ma",
-          module: "Charging Policy",
-          current_value: "3200",
-          target_value: "3100",
-          unit: "mA",
-          risk: "High",
-          reason: "Reduce thermal risk."
-        }
-      ],
-      [],
-      []
-    ]);
-
-    const round = await submitParameterChanges(db, makeAuth(), {
-      projectId: "project-1",
-      items: [{ parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." }],
-      assignees: workflowAssignees
-    });
-
-    const assigneeChecks = txCalls.filter((call) => call.text.includes("from users"));
-    expect(assigneeChecks).toHaveLength(3);
-    expect(assigneeChecks[2].values).toEqual([
-      "org-1",
-      "u-software-committer",
-      "project-1",
-      ["software-user", "software-committer"]
-    ]);
-    expect(round).toMatchObject({
-      status: "hardware_review",
-      workflowAssignees
-    });
-  });
-
-  it("submitting with an assignee lacking the project workflow role rejects before writes", async () => {
-    const { db, txCalls } = createFakeDb([
-      [parameterRow()],
-      [],
-      []
-    ]);
-
-    await expect(
-      submitParameterChanges(db, makeAuth(), {
-        projectId: "project-1",
-        items: [{ parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." }],
-        assignees: {
-          hardwareCommitterId: "u-wrong-role",
-          softwareCommitterId: "u-software-committer",
-          softwareUserId: "u-software-user"
-        }
-      })
-    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Workflow assignee is not eligible for the requested role.", 400));
-
-    expect(txCalls.some((call) => call.text.includes("insert into parameter_submission_rounds"))).toBe(false);
-  });
-
-  it("submitting with partial workflow assignees rejects before writes", async () => {
-    const { db, txCalls } = createFakeDb([
-      [parameterRow()],
-      []
-    ]);
-
-    await expect(
-      submitParameterChanges(db, makeAuth(), {
-        projectId: "project-1",
-        items: [{ parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." }],
-        assignees: {
-          hardwareCommitterId: "u-hardware"
-        }
-      })
-    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Workflow assignees must include all review roles or be omitted.", 400));
-
-    expect(txCalls.some((call) => call.text.includes("insert into parameter_submission_rounds"))).toBe(false);
-  });
-
-  it("submitting a parameter with an existing open request throws conflict", async () => {
-    const { db } = createFakeDb([
-      [parameterRow()],
-      [
-        {
-          id: "request-open",
-          submission_round_id: "round-open",
-          project_id: "project-1",
-          project_parameter_value_id: "param-1",
-          module: "Charging Policy",
-          title: "fast_charge_current_limit_ma",
-          current_value: "3200",
-          target_value: "3100",
-          submitter: "Riley Chen",
-          status: "submitted",
-          risk: "High",
-          created_at: "2026-05-25T05:00:01.000Z",
-          updated_at: "2026-05-25T05:00:01.000Z",
-          assigned_to: null,
-          reviewer_note: null,
-          reject_reason: null,
-          fast_track: false
-        }
-      ]
-    ]);
-
-    await expect(
-      submitParameterChanges(db, makeAuth(), {
-        projectId: "project-1",
-        items: [{ parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." }]
-      })
-    ).rejects.toMatchObject(new ApiError("CONFLICT", "Parameter already has an open change request.", 409));
-  });
-
-  it("submitParameterChanges blocks when file sync conflict is open", async () => {
-    const { db, txCalls } = createFakeDb(
-      [
-        [parameterRow()],
-        [],
-        [{ id: "conflict-open" }]
-      ],
-      { readConflictChecksFromQueue: true }
-    );
-
-    await expect(
-      submitParameterChanges(db, makeAuth(), {
-        projectId: "project-1",
-        items: [{ parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." }]
-      })
-    ).rejects.toMatchObject(new ApiError("CONFLICT", "Parameter has an open file sync conflict.", 409));
-
-    expect(txCalls.some((call) => call.text.includes("from parameter_file_sync_conflicts"))).toBe(true);
-    expect(txCalls.some((call) => call.text.includes("insert into parameter_submission_rounds"))).toBe(false);
-  });
-
-  it("submitting duplicate parameter ids rejects before write inserts", async () => {
-    const { db, txCalls } = createFakeDb();
-
-    await expect(
-      submitParameterChanges(db, makeAuth(), {
-        projectId: "project-1",
-        items: [
-          { parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." },
-          { parameterId: "param-1", targetValue: "3050", reason: "Duplicate edit." }
-        ]
-      })
-    ).rejects.toMatchObject(
-      new ApiError("VALIDATION_FAILED", "Each parameter can only appear once per submission round.", 400, {
-        parameterId: "param-1"
-      })
-    );
-
-    expect(txCalls.some((call) => call.text.includes("insert into parameter_submission_rounds"))).toBe(false);
-    expect(txCalls.some((call) => call.text.includes("insert into parameter_change_requests"))).toBe(false);
-  });
-
-  it("submit uses the current value_version as baseVersion", async () => {
-    const { db, txCalls } = createFakeDb([
-      [parameterRow({ value_version: 42 })],
-      [],
-      [
-        {
-          id: "round-1",
-          project_id: "project-1",
-          project_name: "Aurora",
-          submitter: "Riley Chen",
-          status: "submitted",
-          summary: "Parameter changes submitted.",
-          created_at: "2026-05-25T05:00:00.000Z"
-        }
-      ],
-      [],
-      [
-        {
-          id: "request-1",
-          submission_round_id: "round-1",
-          project_id: "project-1",
-          project_parameter_value_id: "param-1",
-          module: "Charging Policy",
-          title: "fast_charge_current_limit_ma",
-          current_value: "3200",
-          target_value: "3100",
-          submitter: "Riley Chen",
-          status: "submitted",
-          risk: "High",
-          created_at: "2026-05-25T05:00:01.000Z",
-          updated_at: "2026-05-25T05:00:01.000Z",
-          assigned_to: null,
-          reviewer_note: null,
-          reject_reason: null,
-          fast_track: false
-        }
-      ],
-      [
-        {
-          id: "item-1",
-          change_request_id: "request-1",
-          project_parameter_value_id: "param-1",
-          name: "fast_charge_current_limit_ma",
-          module: "Charging Policy",
-          current_value: "3200",
-          target_value: "3100",
-          unit: "mA",
-          risk: "High",
-          reason: "Reduce thermal risk."
-        }
-      ],
-      [],
-      []
-    ]);
-
-    await submitParameterChanges(db, makeAuth(), {
-      projectId: "project-1",
-      items: [{ parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." }]
-    });
-
-    const insertRequest = txCalls.find((call) => call.text.includes("insert into parameter_change_requests"));
-    expect(insertRequest?.values).toContain(42);
   });
 
   it("submitParameterChanges rejects mixed working tips in one batch", async () => {
@@ -2084,356 +1645,6 @@ describe("parameter service", () => {
     expect(txCalls.some((call) => call.text.includes("delete from parameter_drafts"))).toBe(true);
   });
 
-  it("ordinary user cannot advance review", async () => {
-    const { db, txCalls } = createFakeDb([[changeRequestRow()]]);
-
-    await expect(
-      reviewChange(db, makeAuth(), {
-        requestId: "request-1",
-        decision: "advance",
-        note: "Looks good."
-      })
-    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter hardware review role is required for this project.", 403));
-
-    expect(txCalls.some((call) => call.text.includes("update parameter_change_requests"))).toBe(false);
-    expect(txCalls.some((call) => call.text.includes("insert into parameter_review_decisions"))).toBe(false);
-  });
-
-  it("cross-project committer cannot advance review", async () => {
-    const { db, txCalls } = createFakeDb([[changeRequestRow({ project_id: "project-1", status: "hardware_review" })]]);
-
-    await expect(
-      reviewChange(
-        db,
-        makeAuth({ roles: [{ projectId: "project-2", roleId: "hardware-committer" }], permissions: ["parameter:review"] }),
-        {
-          requestId: "request-1",
-          decision: "advance",
-          note: "Wrong project."
-        }
-      )
-    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter hardware review role is required for this project.", 403));
-
-    expect(txCalls.some((call) => call.text.includes("update parameter_change_requests"))).toBe(false);
-  });
-
-  it("wrong-stage committer cannot advance review", async () => {
-    const { db, txCalls } = createFakeDb([[changeRequestRow({ status: "software_review" })]]);
-
-    await expect(
-      reviewChange(
-        db,
-        makeAuth({ roles: [{ projectId: "project-1", roleId: "hardware-committer" }], permissions: ["parameter:review"] }),
-        {
-          requestId: "request-1",
-          decision: "advance",
-          note: "Hardware committer at software stage."
-        }
-      )
-    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter software review role is required for this project.", 403));
-
-    expect(txCalls.some((call) => call.text.includes("update parameter_change_requests"))).toBe(false);
-  });
-
-  it("committer advances hardware review to software review", async () => {
-    const { db, txCalls } = createFakeDb([
-      [changeRequestRow({ status: "hardware_review" })],
-      [changeRequestRow({ status: "software_review", updated_at: "2026-05-25T05:11:00.000Z" })],
-      [reviewDecisionRow({ from_status: "hardware_review", to_status: "software_review" })],
-      [{ status: "software_review" }],
-      []
-    ]);
-
-    const request = await reviewChange(
-      db,
-      makeAuth({ permissions: ["parameter:view", "parameter:edit", "parameter:review"], roles: [{ projectId: "project-1", roleId: "hardware-committer" }] }),
-      {
-        requestId: "request-1",
-        decision: "advance",
-        note: "Hardware reviewed."
-      },
-      { requestId: "request-parameter-review-1" }
-    );
-
-    expect(request.status).toBe("software_review");
-    expect(txCalls.some((call) => call.text.includes("insert into parameter_review_decisions"))).toBe(true);
-    expect(txCalls.some((call) => call.text.includes("update parameter_submission_rounds"))).toBe(true);
-    const auditCall = txCalls.find((call) => call.text.includes("insert into audit_events"));
-    expect(auditCall?.values).toContain("parameter-review-advance");
-    expect(auditCall?.values[12]).toBe("request-parameter-review-1");
-  });
-
-  it("committer advances software review to software merge", async () => {
-    const { db } = createFakeDb([
-      [changeRequestRow({ status: "software_review" })],
-      [changeRequestRow({ status: "software_merge", updated_at: "2026-05-25T05:12:00.000Z" })],
-      [reviewDecisionRow({ from_status: "software_review", to_status: "software_merge" })],
-      [{ status: "software_merge" }],
-      []
-    ]);
-
-    const request = await reviewChange(
-      db,
-      makeAuth({ permissions: ["parameter:view", "parameter:edit", "parameter:review"], roles: [{ projectId: "project-1", roleId: "software-committer" }] }),
-      {
-        requestId: "request-1",
-        decision: "advance",
-        note: "Software reviewed."
-      }
-    );
-
-    expect(request.status).toBe("software_merge");
-  });
-
-  it("software user can merge software merge request", async () => {
-    const { db, txCalls } = createFakeDb([
-      [changeRequestRow({ status: "software_merge", risk: "Medium" })],
-      [],
-      [
-        {
-          id: "request-1",
-          project_parameter_value_id: "param-1",
-          parameter_definition_id: "definition-1",
-          project_id: "project-1",
-          target_value: "3100",
-          base_version: 7,
-          new_version: 8
-        }
-      ],
-      [changeRequestRow({ status: "merged", risk: "Medium", current_value: "3100", updated_at: "2026-05-25T05:13:00.000Z" })],
-      [reviewDecisionRow({ from_status: "software_merge", to_status: "merged" })],
-      [{ status: "merged" }],
-      []
-    ]);
-
-    const request = await reviewChange(db, makeAuth(), {
-      requestId: "request-1",
-      decision: "advance",
-      expectedVersion: 7,
-      note: "https://example.com/mr/merge-approved"
-    });
-
-    expect(request.status).toBe("merged");
-    expect(txCalls.some((call) => call.text.includes("insert into parameter_history_entries"))).toBe(true);
-    expect(txCalls.find((call) => call.text.includes("insert into audit_events"))?.values).toContain("parameter-merge");
-  });
-
-  it("rejects merge without an http(s) merge link note", async () => {
-    const missing = createFakeDb([[changeRequestRow({ status: "software_merge", risk: "Medium" })], []]);
-    await expect(
-      reviewChange(missing.db, makeAuth(), {
-        requestId: "request-1",
-        decision: "advance",
-        expectedVersion: 7
-      })
-    ).rejects.toMatchObject(
-      new ApiError("VALIDATION_FAILED", "Merge requires an http(s) merge link in note.", 400, {
-        requestId: "request-1"
-      })
-    );
-    expect(missing.txCalls.some((call) => call.text.includes("update project_parameter_values"))).toBe(false);
-
-    const invalid = createFakeDb([[changeRequestRow({ status: "software_merge", risk: "Medium" })], []]);
-    await expect(
-      reviewChange(invalid.db, makeAuth(), {
-        requestId: "request-1",
-        decision: "advance",
-        expectedVersion: 7,
-        note: "not a url"
-      })
-    ).rejects.toMatchObject(
-      new ApiError("VALIDATION_FAILED", "Merge requires an http(s) merge link in note.", 400, {
-        requestId: "request-1"
-      })
-    );
-    expect(invalid.txCalls.some((call) => call.text.includes("update project_parameter_values"))).toBe(false);
-  });
-
-  it("cross-project software user cannot merge software merge request", async () => {
-    const { db, txCalls } = createFakeDb([[changeRequestRow({ project_id: "project-1", status: "software_merge", risk: "Medium" })]]);
-
-    await expect(
-      reviewChange(
-        db,
-        makeAuth({ roles: [{ projectId: "project-2", roleId: "software-user" }], permissions: ["parameter:view", "parameter:edit"] }),
-        {
-          requestId: "request-1",
-          decision: "advance",
-          expectedVersion: 7
-        }
-      )
-    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter merge role is required for this project.", 403));
-
-    expect(txCalls.some((call) => call.text.includes("update project_parameter_values"))).toBe(false);
-  });
-
-  it("high-risk request cannot merge unless prior hardware and software decisions exist", async () => {
-    const { db } = createFakeDb([[changeRequestRow({ status: "software_merge", risk: "High" })], []]);
-
-    await expect(
-      reviewChange(db, makeAuth(), {
-        requestId: "request-1",
-        decision: "advance",
-        expectedVersion: 7
-      })
-    ).rejects.toMatchObject(
-      new ApiError(
-        "CONFLICT",
-        "High-risk parameter changes require hardware and software review before merge.",
-        409,
-        { requestId: "request-1" }
-      )
-    );
-  });
-
-  it("merge with stale expectedVersion throws conflict", async () => {
-    const { db, txCalls } = createFakeDb([
-      [changeRequestRow({ status: "software_merge", risk: "Medium" })],
-      []
-    ]);
-
-    await expect(
-      reviewChange(db, makeAuth(), {
-        requestId: "request-1",
-        decision: "advance",
-        expectedVersion: 6,
-        note: "https://example.com/mr/stale"
-      })
-    ).rejects.toMatchObject(new ApiError("CONFLICT", "Parameter value changed before merge.", 409));
-
-    expect(txCalls.some((call) => call.text.includes("insert into parameter_review_decisions"))).toBe(false);
-  });
-
-  it("merge updates parameter value, inserts history, inserts decision, writes audit", async () => {
-    const { db, txCalls } = createFakeDb([
-      [changeRequestRow({ status: "software_merge", risk: "High" })],
-      [
-        reviewDecisionRow({ id: "decision-hardware", from_status: "hardware_review", to_status: "software_review" }),
-        reviewDecisionRow({ id: "decision-software", from_status: "software_review", to_status: "software_merge" })
-      ],
-      [],
-      [
-        {
-          id: "request-1",
-          project_parameter_value_id: "param-1",
-          parameter_definition_id: "definition-1",
-          project_id: "project-1",
-          target_value: "3100",
-          base_version: 7,
-          new_version: 8
-        }
-      ],
-      [changeRequestRow({ status: "merged", current_value: "3100", updated_at: "2026-05-25T05:14:00.000Z" })],
-      [reviewDecisionRow({ from_status: "software_merge", to_status: "merged" })],
-      [{ status: "merged" }],
-      []
-    ]);
-
-    const request = await reviewChange(db, makeAuth(), {
-      requestId: "request-1",
-      decision: "advance",
-      expectedVersion: 7,
-      note: "https://example.com/mr/merge-updates"
-    });
-
-    expect(request.status).toBe("merged");
-    expect(txCalls.find((call) => call.text.includes("update project_parameter_values"))?.values).toEqual([
-      "org-1",
-      "request-1",
-      7,
-      "user-1",
-      expect.any(String)
-    ]);
-    expect(txCalls.some((call) => call.text.includes("insert into parameter_history_entries"))).toBe(true);
-    expect(txCalls.some((call) => call.text.includes("insert into parameter_review_decisions"))).toBe(true);
-    expect(txCalls.find((call) => call.text.includes("insert into audit_events"))?.values).toContain("parameter-merge");
-  });
-
-  it("high-risk submitted request advances through hardware and software review before merge", async () => {
-    const hardwareAuth = makeAuth({
-      roles: [{ projectId: "project-1", roleId: "hardware-committer" }],
-      permissions: ["parameter:view", "parameter:edit", "parameter:review"]
-    });
-    const softwareCommitterAuth = makeAuth({
-      roles: [{ projectId: "project-1", roleId: "software-committer" }],
-      permissions: ["parameter:view", "parameter:edit", "parameter:review"]
-    });
-    const softwareUserAuth = makeAuth({
-      roles: [{ projectId: "project-1", roleId: "software-user" }],
-      permissions: ["parameter:view", "parameter:edit"]
-    });
-
-    const { db } = createFakeDb([
-      [changeRequestRow({ status: "submitted", risk: "High" })],
-      [changeRequestRow({ status: "hardware_review", risk: "High" })],
-      [reviewDecisionRow({ from_status: "submitted", to_status: "hardware_review" })],
-      [{ status: "hardware_review" }],
-      [],
-      [],
-      [changeRequestRow({ status: "hardware_review", risk: "High" })],
-      [changeRequestRow({ status: "software_review", risk: "High" })],
-      [reviewDecisionRow({ from_status: "hardware_review", to_status: "software_review" })],
-      [{ status: "software_review" }],
-      [],
-      [],
-      [changeRequestRow({ status: "software_review", risk: "High" })],
-      [changeRequestRow({ status: "software_merge", risk: "High" })],
-      [reviewDecisionRow({ from_status: "software_review", to_status: "software_merge" })],
-      [{ status: "software_merge" }],
-      [],
-      [],
-      [changeRequestRow({ status: "software_merge", risk: "High" })],
-      [
-        reviewDecisionRow({ id: "decision-hardware", from_status: "hardware_review", to_status: "software_review" }),
-        reviewDecisionRow({ id: "decision-software", from_status: "software_review", to_status: "software_merge" })
-      ],
-      [],
-      [
-        {
-          id: "request-1",
-          project_parameter_value_id: "param-1",
-          parameter_definition_id: "definition-1",
-          project_id: "project-1",
-          target_value: "3100",
-          base_version: 7,
-          new_version: 8
-        }
-      ],
-      [changeRequestRow({ status: "merged", risk: "High", current_value: "3100" })],
-      [reviewDecisionRow({ from_status: "software_merge", to_status: "merged" })],
-      [{ status: "merged" }],
-      [],
-      []
-    ]);
-
-    const hardwareReview = await reviewChange(db, hardwareAuth, {
-      requestId: "request-1",
-      decision: "advance",
-      note: "Route high-risk request to hardware review."
-    });
-    const softwareReview = await reviewChange(db, hardwareAuth, {
-      requestId: "request-1",
-      decision: "advance",
-      note: "Hardware reviewed."
-    });
-    const softwareMerge = await reviewChange(db, softwareCommitterAuth, {
-      requestId: "request-1",
-      decision: "advance",
-      note: "Software reviewed."
-    });
-    const merged = await reviewChange(db, softwareUserAuth, {
-      requestId: "request-1",
-      decision: "advance",
-      expectedVersion: 7,
-      note: "https://example.com/mr/high-risk-merge"
-    });
-
-    expect(hardwareReview.status).toBe("hardware_review");
-    expect(softwareReview.status).toBe("software_review");
-    expect(softwareMerge.status).toBe("software_merge");
-    expect(merged.status).toBe("merged");
-  });
-
   describe("post-cutover semantic merge fail-closed preflight", () => {
     const mergeAuth = () =>
       makeAuth({
@@ -2447,32 +1658,10 @@ describe("parameter service", () => {
         ]
       });
 
-    it("rejects semantic merge when objectStore is missing", async () => {
-      const { db, txCalls } = createFakeDb(
-        [[changeRequestRow({ status: "software_merge", risk: "Medium" })], []],
-        { semanticCutoverComplete: true }
-      );
-
-      await expect(
-        reviewChange(db, mergeAuth(), {
-          requestId: "request-1",
-          decision: "advance",
-          expectedVersion: 7,
-          note: "https://example.com/mr/semantic"
-        })
-      ).rejects.toMatchObject(
-        new ApiError("CONFLICT", "Semantic merge requires object storage for DTS writeback.", 409, {
-          requestId: "request-1"
-        })
-      );
-
-      expect(txCalls.some((call) => call.text.includes("insert into parameter_history_entries"))).toBe(false);
-      expect(txCalls.some((call) => call.values?.includes("parameter-merge"))).toBe(false);
-      expect(txCalls.some((call) => call.text.includes("update parameter_change_requests") && call.values?.includes("merged"))).toBe(
-        false
-      );
-    });
-
+    // The objectStore-missing, binding-identity-missing, and env-bypass preflight
+    // cases live in serviceReviewWorkflow.integration.test.ts. This one stays on
+    // the fake db because parameter_change_requests.project_id is NOT NULL, so a
+    // project-less request cannot exist in a real database.
     it("rejects semantic merge when projectId is missing", async () => {
       const { db, txCalls } = createFakeDb(
         [[changeRequestRow({ status: "software_merge", risk: "Medium", project_id: null })], []],
@@ -2493,69 +1682,6 @@ describe("parameter service", () => {
       );
 
       expect(txCalls.some((call) => call.values?.includes("parameter-merge"))).toBe(false);
-    });
-
-    it("rejects semantic merge when binding identity is missing", async () => {
-      const { db, txCalls } = createFakeDb(
-        [
-          [
-            changeRequestRow({
-              status: "software_merge",
-              risk: "Medium",
-              project_parameter_value_id: ""
-            })
-          ],
-          []
-        ],
-        { semanticCutoverComplete: true }
-      );
-
-      await expect(
-        reviewChange(
-          db,
-          mergeAuth(),
-          { requestId: "request-1", decision: "advance", expectedVersion: 7, note: "https://example.com/mr/semantic" },
-          { objectStore: { get: async () => Buffer.alloc(0), put: async () => ({ storageKey: "x", checksumSha256: "y", fileSizeBytes: 0 }) } as never }
-        )
-      ).rejects.toMatchObject(
-        new ApiError("CONFLICT", "Semantic merge requires a project parameter binding write lock.", 409, {
-          requestId: "request-1"
-        })
-      );
-
-      expect(txCalls.some((call) => call.values?.includes("parameter-merge"))).toBe(false);
-    });
-
-    it("does not honor WISEEFF_WRITEBACK_SKIP_TOOLCHAIN env bypass", async () => {
-      const previous = process.env.WISEEFF_WRITEBACK_SKIP_TOOLCHAIN;
-      process.env.WISEEFF_WRITEBACK_SKIP_TOOLCHAIN = "1";
-      try {
-        const { db, txCalls } = createFakeDb(
-          [[changeRequestRow({ status: "software_merge", risk: "Medium" })], []],
-          { semanticCutoverComplete: true }
-        );
-
-        await expect(
-          reviewChange(db, mergeAuth(), {
-            requestId: "request-1",
-            decision: "advance",
-            expectedVersion: 7,
-            note: "https://example.com/mr/semantic"
-          })
-        ).rejects.toMatchObject(
-          new ApiError("CONFLICT", "Semantic merge requires object storage for DTS writeback.", 409, {
-            requestId: "request-1"
-          })
-        );
-
-        expect(txCalls.some((call) => call.values?.includes("parameter-merge"))).toBe(false);
-      } finally {
-        if (previous === undefined) {
-          delete process.env.WISEEFF_WRITEBACK_SKIP_TOOLCHAIN;
-        } else {
-          process.env.WISEEFF_WRITEBACK_SKIP_TOOLCHAIN = previous;
-        }
-      }
     });
   });
 });

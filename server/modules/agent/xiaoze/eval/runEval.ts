@@ -1,10 +1,17 @@
 import { ApiError } from "../../../../shared/http/errors";
 import type { AgentToolResult } from "../../types";
 import { createXiaozeCheckpointer } from "../checkpointer";
-import { createPlanningAgent, type PlanningApprovalBridge } from "../planningGraph";
+import { createPlanningAgent, type PlanningApprovalResolver } from "../planningGraph";
 import { XIAOZE_PROMPT_VERSION } from "../xiaozePrompt";
 import { evaluateAllExpectations, evaluateExpectation, type EvalExpectation, type EvalRunResult } from "./expectations";
-import { buildModelFromScript, EVAL_SCENARIOS, META_HALLUCINATED_WRITE_RESULT, STANDARD_TOOL_LIST, type EvalScenario } from "./scenarios";
+import {
+  buildModelFromScript,
+  EVAL_AUTH,
+  EVAL_SCENARIOS,
+  META_HALLUCINATED_WRITE_RESULT,
+  STANDARD_TOOL_LIST,
+  type EvalScenario
+} from "./scenarios";
 
 export type ScenarioEvalResult = {
   name: string;
@@ -44,9 +51,9 @@ export async function runScenario(scenario: EvalScenario): Promise<ScenarioEvalR
     };
   };
 
-  const approvalBridge: PlanningApprovalBridge | undefined = scenario.needsApprovalBridge
+  const approvalResolver: PlanningApprovalResolver | undefined = scenario.needsApprovalBridge
     ? {
-        resume: async (input) => {
+        resolveApproval: async (input) => {
           if (input.decision === "approve") {
             executedMutatingTools.push("action.submitParameterChange");
             return { text: scenario.approvalSuccessText ?? "Change request created." };
@@ -61,13 +68,20 @@ export async function runScenario(scenario: EvalScenario): Promise<ScenarioEvalR
     runTool,
     listTools: () => scenario.tools ?? STANDARD_TOOL_LIST,
     checkpointer: createXiaozeCheckpointer(),
-    approvalBridge
+    approvalResolver
   });
 
+  // Bind the request context on every turn like production does: the
+  // checkpoint namespace is derived from it, so begin and resume must match.
   let graphResult = await agent.run({
     message: scenario.userMessage,
     context: scenario.context,
-    threadId: scenario.threadId
+    threadId: scenario.threadId,
+    requestContext: {
+      auth: EVAL_AUTH,
+      requestId: `eval-${scenario.threadId}`,
+      sessionId: scenario.threadId
+    }
   });
 
   if (scenario.resume) {
@@ -75,6 +89,11 @@ export async function runScenario(scenario: EvalScenario): Promise<ScenarioEvalR
       message: "",
       context: scenario.context,
       threadId: scenario.threadId,
+      requestContext: {
+        auth: EVAL_AUTH,
+        requestId: `eval-${scenario.threadId}`,
+        sessionId: scenario.threadId
+      },
       resume: scenario.resume
     });
   }

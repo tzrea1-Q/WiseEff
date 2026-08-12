@@ -10,7 +10,7 @@ import {
 import { ApiError } from "../../../shared/http/errors";
 import type { AgentToolResult } from "../types";
 import type { AuthContext } from "../../auth/types";
-import type { ApprovalBridgeResumeInput, ApprovalBridgeResumeResult } from "./approvalBridge";
+import type { ApprovalResolveInput, ApprovalResolveResult } from "../orchestrator";
 import { createXiaozeCheckpointer, type XiaozeCheckpointer } from "./checkpointer";
 import type {
   PerceptionAgentContext,
@@ -28,23 +28,41 @@ import { startRunStep, type RunEventSink } from "./runEventSink";
 import { createToolCallId } from "./runTimelineEvents";
 import { XIAOZE_PROMPT_VERSION, XIAOZE_SYSTEM_PROMPT } from "./xiaozePrompt";
 
-export type PlanningResumeDecision = Pick<
-  ApprovalBridgeResumeInput,
-  "approvalId" | "decision" | "editedArgs" | "reason"
-> & {
+export type PlanningResumeDecision = Pick<ApprovalResolveInput, "approvalId" | "decision" | "editedArgs" | "reason">;
+
+export type PlanningRequestContext = {
   auth: AuthContext;
   requestId: string;
+  sessionId: string;
+  projectId?: string;
 };
 
 export type PlanningAgentRunInput = PerceptionAgentRunInput & {
   threadId: string;
   resume?: PlanningResumeDecision;
   sink?: RunEventSink;
+  requestContext?: PlanningRequestContext;
 };
 
-export type PlanningApprovalBridge = {
-  resume(input: ApprovalBridgeResumeInput): Promise<ApprovalBridgeResumeResult>;
+export type PlanningApprovalResolver = {
+  resolveApproval(input: ApprovalResolveInput): Promise<ApprovalResolveResult>;
 };
+
+const XIAOZE_RUN_SCOPE_KEY = "xiaozeRunScope";
+
+type XiaozeRunScope = {
+  sink?: RunEventSink;
+  requestContext?: PlanningRequestContext;
+};
+
+type PlanningNodeConfig = {
+  configurable?: Record<string, unknown>;
+};
+
+function readRunScope(config?: PlanningNodeConfig): XiaozeRunScope {
+  const value = config?.configurable?.[XIAOZE_RUN_SCOPE_KEY];
+  return value && typeof value === "object" ? (value as XiaozeRunScope) : {};
+}
 
 const SYSTEM_PROMPT = XIAOZE_SYSTEM_PROMPT;
 
@@ -161,25 +179,28 @@ function extractInterruptFromState(finalState: PlanningGraphState & { __interrup
 
 export function createPlanningAgent(options: {
   model: PerceptionChatModel;
-  runTool: (name: string, payload: Record<string, unknown>) => Promise<AgentToolResult>;
+  runTool: (
+    name: string,
+    payload: Record<string, unknown>,
+    requestContext?: PlanningRequestContext
+  ) => Promise<AgentToolResult>;
   listTools: () => PerceptionToolDescriptor[];
   checkpointer?: XiaozeCheckpointer;
-  approvalBridge?: PlanningApprovalBridge;
+  approvalResolver?: PlanningApprovalResolver;
 }) {
   const checkpointer = options.checkpointer ?? createXiaozeCheckpointer();
-  let activeSink: RunEventSink | undefined;
 
-  function pushSink(event: Parameters<RunEventSink["push"]>[0]) {
-    activeSink?.push(event);
+  function pushSink(config: PlanningNodeConfig | undefined, event: Parameters<RunEventSink["push"]>[0]) {
+    readRunScope(config).sink?.push(event);
   }
 
-  async function invokeModel(messages: unknown[]) {
+  async function invokeModel(messages: unknown[], config?: PlanningNodeConfig) {
     return invokeModelWithStreaming(options.model, messages, (chunk) => {
       if (chunk.reasoningDelta) {
-        pushSink({ type: "reasoning_delta", delta: chunk.reasoningDelta });
+        pushSink(config, { type: "reasoning_delta", delta: chunk.reasoningDelta });
       }
       if (chunk.answerDelta) {
-        pushSink({ type: "answer_delta", delta: chunk.answerDelta });
+        pushSink(config, { type: "answer_delta", delta: chunk.answerDelta });
       }
     });
   }
@@ -195,7 +216,10 @@ export function createPlanningAgent(options: {
     };
   }
 
-  async function perceiveNode(state: PlanningGraphState): Promise<Partial<PlanningGraphState>> {
+  async function perceiveNode(
+    state: PlanningGraphState,
+    config?: PlanningNodeConfig
+  ): Promise<Partial<PlanningGraphState>> {
     if (state.halted || state.text?.trim()) {
       return {};
     }
@@ -205,13 +229,13 @@ export function createPlanningAgent(options: {
 
     const response = await invokeModelTurnWithStreaming(options.model, state.messages, (chunk) => {
       if (chunk.reasoningDelta) {
-        pushSink({ type: "reasoning_delta", delta: chunk.reasoningDelta });
+        pushSink(config, { type: "reasoning_delta", delta: chunk.reasoningDelta });
       }
     });
     if (!response.toolCalls?.length) {
       const answer = response.content?.trim();
       if (answer) {
-        pushSink({ type: "answer_delta", delta: answer });
+        pushSink(config, { type: "answer_delta", delta: answer });
       }
       return {
         text: response.content,
@@ -235,24 +259,24 @@ export function createPlanningAgent(options: {
       const toolCallId = call.id || createToolCallId();
       const label = getXiaozeToolLabel(call.name);
       const { step, finish } = startRunStep({ kind: "tool", label, toolName: call.name });
-      pushSink({ type: "step_started", step });
-      pushSink({ type: "tool_call", toolCallId, toolName: call.name, args: payload });
+      pushSink(config, { type: "step_started", step });
+      pushSink(config, { type: "tool_call", toolCallId, toolName: call.name, args: payload });
       try {
-        const result = await options.runTool(call.name, payload);
+        const result = await options.runTool(call.name, payload, readRunScope(config).requestContext);
         citations.push(...result.citations);
         messages.push({
           role: "tool",
           tool_call_id: call.id,
           content: JSON.stringify({ summary: result.summary, data: result.data, citations: result.citations })
         });
-        pushSink({
+        pushSink(config, {
           type: "tool_result",
           toolCallId,
           toolName: call.name,
           summary: result.summary,
           status: "succeeded"
         });
-        pushSink(finish({ status: "succeeded", summary: result.summary }));
+        pushSink(config, finish({ status: "succeeded", summary: result.summary }));
       } catch (error) {
         if (isForbiddenError(error)) {
           const summary = "You are not permitted to access this data.";
@@ -261,16 +285,16 @@ export function createPlanningAgent(options: {
             tool_call_id: call.id,
             content: JSON.stringify({ error: "FORBIDDEN", message: summary })
           });
-          pushSink({
+          pushSink(config, {
             type: "tool_result",
             toolCallId,
             toolName: call.name,
             summary,
             status: "forbidden"
           });
-          pushSink(finish({ status: "forbidden", summary }));
+          pushSink(config, finish({ status: "forbidden", summary }));
         } else {
-          pushSink(finish({ status: "failed", summary: error instanceof Error ? error.message : "Tool failed." }));
+          pushSink(config, finish({ status: "failed", summary: error instanceof Error ? error.message : "Tool failed." }));
           throw error;
         }
       }
@@ -304,7 +328,10 @@ export function createPlanningAgent(options: {
     return {};
   }
 
-  async function actNode(state: PlanningGraphState): Promise<Partial<PlanningGraphState>> {
+  async function actNode(
+    state: PlanningGraphState,
+    config?: PlanningNodeConfig
+  ): Promise<Partial<PlanningGraphState>> {
     const pending = state.pendingMutatingCall;
     if (!pending) {
       return {};
@@ -318,13 +345,17 @@ export function createPlanningAgent(options: {
     };
 
     const resumeDecision = interrupt(interruptPayload) as PlanningResumeDecision;
-    if (!options.approvalBridge) {
-      throw new Error("Approval bridge is required to resume mutating actions.");
+    if (!options.approvalResolver) {
+      throw new Error("Approval resolver is required to resume mutating actions.");
+    }
+    const requestContext = readRunScope(config).requestContext;
+    if (!requestContext) {
+      throw new Error("Xiaoze request context is required to resolve approvals.");
     }
 
-    const resumed = await options.approvalBridge.resume({
-      auth: resumeDecision.auth,
-      requestId: resumeDecision.requestId,
+    const resumed = await options.approvalResolver.resolveApproval({
+      auth: requestContext.auth,
+      requestId: requestContext.requestId,
       approvalId: resumeDecision.approvalId,
       decision: resumeDecision.decision,
       editedArgs: resumeDecision.editedArgs,
@@ -358,14 +389,17 @@ export function createPlanningAgent(options: {
     };
   }
 
-  async function observeNode(state: PlanningGraphState): Promise<Partial<PlanningGraphState>> {
+  async function observeNode(
+    state: PlanningGraphState,
+    config?: PlanningNodeConfig
+  ): Promise<Partial<PlanningGraphState>> {
     if (state.halted || state.text) {
       return {};
     }
     const { step, finish } = startRunStep({ kind: "model", label: "生成回复" });
-    pushSink({ type: "step_started", step });
-    const normalized = await invokeModel(state.messages);
-    pushSink(finish({ status: "succeeded", summary: normalized.answer ? "Reply ready" : undefined }));
+    pushSink(config, { type: "step_started", step });
+    const normalized = await invokeModel(state.messages, config);
+    pushSink(config, finish({ status: "succeeded", summary: normalized.answer ? "Reply ready" : undefined }));
     if (normalized.answer || normalized.reasoning) {
       return {
         text: normalized.answer,
@@ -430,7 +464,17 @@ export function createPlanningAgent(options: {
   return {
     listTools: options.listTools,
     async run(input: PlanningAgentRunInput): Promise<PerceptionAgentRunResult & { threadId: string }> {
-      const config = { configurable: { thread_id: input.threadId } };
+      const runScope: XiaozeRunScope = {
+        sink: input.sink,
+        requestContext: input.requestContext
+      };
+      // The client supplies threadId, so the checkpoint namespace must carry the
+      // organization and user: otherwise replaying someone else's threadId would
+      // resume their conversation state across user or tenant boundaries.
+      const checkpointThreadId = input.requestContext
+        ? `${input.requestContext.auth.organization.id}:${input.requestContext.auth.user.id}:${input.threadId}`
+        : input.threadId;
+      const config = { configurable: { thread_id: checkpointThreadId, [XIAOZE_RUN_SCOPE_KEY]: runScope } };
       const tools = options.listTools();
       const buildPromptDebug = (llmMessages: unknown[]) =>
         input.includePromptDebug
@@ -445,7 +489,7 @@ export function createPlanningAgent(options: {
             })
           : undefined;
 
-      await checkpointer.put(input.threadId, {
+      await checkpointer.put(checkpointThreadId, {
         planSteps: ["Understand user intent", "Perceive relevant data", "Plan and act with approval"],
         step: 0
       });
@@ -457,9 +501,14 @@ export function createPlanningAgent(options: {
       };
 
       try {
-        activeSink = input.sink;
         if (input.resume) {
-          const finalState = (await graph.invoke(new Command({ resume: input.resume }), config)) as PlanningGraphState & {
+          const resumeValue: PlanningResumeDecision = {
+            approvalId: input.resume.approvalId,
+            decision: input.resume.decision,
+            editedArgs: input.resume.editedArgs,
+            reason: input.resume.reason
+          };
+          const finalState = (await graph.invoke(new Command({ resume: resumeValue }), config)) as PlanningGraphState & {
             __interrupt__?: Array<{ value?: unknown }>;
           };
           const interruptResult = extractInterruptFromState(finalState);
@@ -469,7 +518,7 @@ export function createPlanningAgent(options: {
             reasoning: finalState.reasoning || undefined,
             citations: finalState.perceivedCitations,
             interrupt: interruptResult ?? finalState.interrupt,
-            runSteps: activeSink?.getSteps()
+            runSteps: input.sink?.getSteps()
           };
         }
 
@@ -486,7 +535,7 @@ export function createPlanningAgent(options: {
           citations: finalState.perceivedCitations,
           promptDebug: buildPromptDebug(llmMessages),
           interrupt: interruptResult ?? finalState.interrupt,
-          runSteps: activeSink?.getSteps()
+          runSteps: input.sink?.getSteps()
         };
       } catch (error) {
         if (isGraphInterrupt(error)) {
@@ -509,13 +558,11 @@ export function createPlanningAgent(options: {
                 payload: value.payload,
                 citations: value.citations ?? []
               },
-              runSteps: activeSink?.getSteps()
+              runSteps: input.sink?.getSteps()
             };
           }
         }
         throw error;
-      } finally {
-        activeSink = undefined;
       }
     }
   };

@@ -4,7 +4,7 @@ import type { Database, QueryResult, Queryable } from "../../shared/database/cli
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
 import type { CreateAuditEventInput } from "../audit/types";
-import { resetParameterIdentityCutoverCache } from "../parameters/cutoverAwareIdentity";
+import { setParameterIdentityMode } from "../parameters/parameterIdentityMode";
 import type { DebugDeviceGateway, GatewayWriteResult } from "./gateway";
 import { createDebugDeviceGatewayRegistry } from "./gatewayRegistry";
 import { createDebuggingService } from "./service";
@@ -378,7 +378,7 @@ const multiProjectReadAuth = makeAuth(["debugging:view", "debugging:read"], [
 
 describe("debugging service", () => {
   beforeEach(() => {
-    resetParameterIdentityCutoverCache();
+    setParameterIdentityMode(null);
   });
 
   it("listAdminParameters requires debugging:admin, includes archived rows, and returns bindings", async () => {
@@ -1360,6 +1360,38 @@ describe("debugging service", () => {
 
     expect(rollbacks).toHaveLength(1);
     expect(rollbacks[0].some((call) => call.text.includes("insert into node_operations"))).toBe(true);
+  });
+
+  it("rejects a same-organization user operating another user's device session", async () => {
+    // The seeded session is owned by user-1; user-2 holds the same permissions but not the session.
+    const otherUser: AuthContext = {
+      ...writeAuth,
+      user: { ...writeAuth.user, id: "user-2" }
+    };
+
+    const readGateway = makeGateway();
+    const readService = createDebuggingService({
+      db: createFakeDb([[sessionRow()]]).db,
+      gateway: readGateway,
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+    await expect(
+      readService.readNode(otherUser, { sessionId: "session-1", parameterId: "param-1", nodePath: "/sys/current" })
+    ).rejects.toMatchObject(
+      new ApiError("FORBIDDEN", "Debug session belongs to another user.", 403, { sessionId: "session-1" })
+    );
+    expect(readGateway.readNode).not.toHaveBeenCalled();
+
+    const writeGateway = makeGateway();
+    const writeService = createDebuggingService({
+      db: createFakeDb([[sessionRow()]]).db,
+      gateway: writeGateway,
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+    await expect(
+      writeService.writeNode(otherUser, { sessionId: "session-1", parameterId: "param-1", value: "3200" })
+    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+    expect(writeGateway.writeNode).not.toHaveBeenCalled();
   });
 
   it("writeNode requires debugging:write and rejects inactive sessions before gateway call", async () => {

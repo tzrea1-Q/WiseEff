@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { formatAuditAbsoluteTime } from "@/domain/audit/formatAuditTime";
 import type { AuditEventView } from "@/domain/audit/types";
-import type { RiskLevel } from "@/mockData";
+import type { RiskLevel } from "@/domain/prototype/types";
 
 const severityBadge: Record<RiskLevel, string> = {
   High: "bg-destructive/10 text-destructive",

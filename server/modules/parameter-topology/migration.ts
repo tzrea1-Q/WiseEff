@@ -79,13 +79,6 @@ export type ApplyCutoverOptions = {
 /** Marker comment inside cutover SQL; apply splits here for mid-tx failure injection. */
 export const CUTOVER_FAILURE_INJECT_POINT = "-- CUTOVER_FAILURE_INJECT_POINT";
 
-function requireTransactionalDb(db: Queryable): Database {
-  if (typeof (db as Database).transaction === "function") {
-    return db as Database;
-  }
-  throw new Error("parameter identity apply/cutover requires Database.transaction()");
-}
-
 type SpecCandidate = {
   parameterSpecId: string;
   parameterSpecVersionId: string;
@@ -1007,7 +1000,7 @@ async function ensureMigrationRunShell(
 }
 
 export async function migrateParameterIdentities(
-  db: Queryable,
+  db: Database,
   options: MigrateParameterIdentitiesOptions
 ): Promise<ParameterIdentityMigrationReport> {
   assertApplyGates(options);
@@ -1020,15 +1013,14 @@ export async function migrateParameterIdentities(
   }
 
   if (options.mode === "apply" || options.mode === "stage-review" || options.mode === "finalize") {
-    return requireTransactionalDb(db).transaction((tx) =>
+    return db.transaction((tx) =>
       runParameterIdentityMigration(tx, options)
     );
   }
 
   // Dry-run is read-only: never CREATE/ALTER/INSERT/UPDATE. If a helper
   // accidentally writes, roll the whole transaction back on exit.
-  const database = requireTransactionalDb(db);
-  return database.transaction(async (tx) => {
+  return db.transaction(async (tx) => {
     const report = await runParameterIdentityMigration(tx, options);
     throw Object.assign(new Error("DRY_RUN_ROLLBACK"), { report });
   }).catch((error: unknown) => {
@@ -2033,10 +2025,9 @@ function defaultCutoverSqlPath(): string {
 }
 
 export async function applyParameterIdentityCutover(
-  db: Queryable,
+  db: Database,
   options: ApplyCutoverOptions
 ): Promise<void> {
-  const database = requireTransactionalDb(db);
   await requireMigrationInfrastructure(db);
 
   const run = await db.query<{ status: string }>(
@@ -2072,7 +2063,7 @@ export async function applyParameterIdentityCutover(
   const beforeInject = parts[0]?.trim() ?? "";
   const afterInject = parts.slice(1).join(CUTOVER_FAILURE_INJECT_POINT).trim();
 
-  await database.transaction(async (tx) => {
+  await db.transaction(async (tx) => {
     if (beforeInject) {
       await tx.query(beforeInject);
     }

@@ -1,4 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -6,17 +5,118 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * ── Design tokens ─────────────────────────────────────────────────────────
+ * Single authoritative token block. Raw color/size literals are allowed only
+ * here; everything else consumes var()/color-mix() over these tokens.
+ * Spec: docs/design-docs/ui-design-system.md
+ */
 :root {
   color-scheme: light;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #f9f9ff;
-  color: #101c2d;
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text);
+
+  /* ── Typography ── */
+  --font-sans: "Geist Variable", -apple-system, BlinkMacSystemFont, "PingFang SC",
+    "HarmonyOS Sans SC", "Microsoft YaHei", "Noto Sans SC", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  /* Type scale (size / line-height pairs) */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --leading-xs: 16px;
+  --leading-sm: 18px;
+  --leading-base: 20px;
+  --leading-md: 22px;
+  --leading-lg: 24px;
+  --leading-xl: 28px;
+  --leading-2xl: 32px;
+  /* Keep Tailwind text-* utilities on the same scale (paired line-height ratios). */
+  /* Pixel leading, not calc(length / number): that division yields a length
+     (e.g. 18px / 12 = 1.5px) and collapses every Tailwind text-* line box. */
+  --text-xs--line-height: var(--leading-xs);
+  --text-sm--line-height: var(--leading-sm);
+  --text-base--line-height: var(--leading-base);
+  --text-lg--line-height: var(--leading-lg);
+  --text-xl--line-height: var(--leading-xl);
+  --text-2xl--line-height: var(--leading-2xl);
+
+  /* ── Semantic color ── */
+  --accent: #0052cc;
+  --accent-hover: color-mix(in srgb, var(--accent) 88%, #000);
+  --accent-pressed: #003d9b;
+  --accent-soft: #dae2ff;
+  --bg: #f7f8fc;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f7f9fc;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --text: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --success: #0f7c55;
+  --success-soft: color-mix(in srgb, var(--success) 12%, white);
+  --warning: #d97706;
+  --warning-soft: color-mix(in srgb, var(--warning) 12%, white);
+  --danger: #ba1a1a;
+  --danger-soft: #ffdad6;
+  --info: #0284c7;
+  --info-soft: color-mix(in srgb, var(--info) 12%, white);
+  --ring: color-mix(in srgb, var(--accent) 45%, transparent);
+
+  /* ── Spacing (4px grid) ── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ── Radius ── */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 999px;
+
+  /* ── Elevation ── */
+  --shadow-1: 0 1px 2px rgba(15, 23, 42, 0.06), 0 0 0 1px rgba(15, 23, 42, 0.04);
+  --shadow-2: 0 8px 24px rgba(15, 23, 42, 0.08);
+  --shadow-3: 0 24px 56px rgba(15, 23, 42, 0.18), 0 8px 20px rgba(15, 23, 42, 0.08);
+  /* Legacy shadow aliases (near-equivalent strength to the retired one-offs). */
+  --shadow: var(--shadow-2);
+  --shadow-soft: var(--shadow-2);
+
+  /* ── Motion ── */
+  --duration-fast: 120ms;
+  --duration-base: 160ms;
+  --duration-slow: 240ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.45, 0, 0.25, 1);
 
   /*
-   * Overlay stacking scale. Declared in one place so a new dialog does not need to
-   * invent another number and accidentally land under the Xiaoze launcher.
-   * Order: Xiaoze FAB < dialog < nested dialog < Xiaoze chat popup < Xiaoze approval < global toast.
+   * ── Z-index ladder ──
+   * App layers below, overlay scale above. Declared in one place so a new
+   * dialog does not need to invent another number and accidentally land under
+   * the Xiaoze launcher. Order: sticky < topbar < sidebar < dropdown, then
+   * Xiaoze FAB < dialog < nested dialog < Xiaoze chat popup < Xiaoze approval
+   * < global toast.
    */
+  --z-sticky: 20;
+  --z-topbar: 30;
+  --z-sidebar: 40;
+  --z-dropdown: 60;
   --z-xiaoze-fab: 1100;
   --z-modal-backdrop: 1150;
   --z-modal-backdrop-nested: 1160;
@@ -24,73 +124,98 @@
   --z-approval: 1300;
   --z-toast: 1350;
 
-  --background: oklch(1 0 0);
-  --app-background: #f9f9ff;
-  --surface: #ffffff;
+  /* ── Layout ── */
+  --sidebar-width: 256px;
+  --topbar-height: 64px;
+
+  /* ── Legacy palette (kept as-is until surfaces migrate; do not extend) ── */
   --surface-low: #f0f3ff;
   --surface-mid: #e7eeff;
   --surface-high: #d7e3fb;
   --surface-bright: #f9f9ff;
-  --text: #101c2d;
-  --muted: oklch(0.97 0 0);
   --app-muted: #434654;
-  --outline: #c3c6d6;
   --outline-strong: #4d5668;
-  --primary: oklch(0.205 0 0);
-  --app-primary: #003d9b;
-  --primary-container: #0052cc;
-  --primary-soft: #dae2ff;
-  --secondary: oklch(0.97 0 0);
   --app-secondary: #00687b;
   --secondary-container: #50dcff;
   --secondary-soft: #afecff;
   --tertiary: #314367;
   --tertiary-soft: #d7e2ff;
-  --danger: #ba1a1a;
-  --danger-soft: #ffdad6;
-  --success: #0f7c55;
   --amber: #a05b00;
+  --amber-soft: rgba(160, 91, 0, 0.14);
   --risk-high: #d23c3c;
   --risk-medium: #e4953a;
   --risk-low: #6a8ad6;
-  --risk-high-soft: var(--danger-soft);
-  --risk-low-soft: rgba(15, 124, 85, 0.12);
-  --amber-soft: rgba(160, 91, 0, 0.14);
-  --shadow: 0 14px 38px rgba(0, 61, 155, 0.08);
-  --shadow-soft: 0 8px 24px rgba(16, 28, 45, 0.06);
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --sidebar-width: 256px;
-  --topbar-height: 64px;
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+
+  /* ── Legacy aliases (bridge onto semantic tokens; migrate consumers, then drop) ── */
+  --app-primary: var(--accent-pressed);
+  --primary-container: var(--accent);
+  --primary-soft: var(--accent-soft);
+  --outline: var(--border-strong);
+  --app-border: var(--border);
+  --app-surface: var(--surface);
+  --app-text: var(--text);
+  --app-ink: var(--text);
+  --ink: var(--text);
+  --border-subtle: var(--border);
+  --surface-muted: var(--surface-sunken);
+  --status-success: var(--success);
+  --status-danger: var(--danger);
+  --focus: var(--ring);
+
+  /* ── Xiaoze assistant tokens ── */
+  --xiaoze-brand: var(--app-primary);
+  --xiaoze-accent: var(--app-secondary);
+  --xiaoze-surface-muted: #eef3ff;
+  --xiaoze-border: rgba(0, 61, 155, 0.12);
+  --xiaoze-border-strong: rgba(0, 61, 155, 0.22);
+  --xiaoze-shadow: 0 28px 56px rgba(0, 32, 96, 0.18);
+  --xiaoze-shadow-soft: 0 10px 24px rgba(0, 61, 155, 0.08);
+  --xiaoze-radius-md: 12px;
+  --xiaoze-radius-sm: 6px;
+
+  /* ── shadcn keys (alias the semantic tokens; never a second palette) ── */
+  --background: var(--bg);
+  --foreground: var(--text);
+  --card: var(--surface);
+  --card-foreground: var(--text);
+  --popover: var(--surface-raised);
+  --popover-foreground: var(--text);
+  --primary: var(--accent);
+  --primary-foreground: #ffffff;
+  --secondary: var(--surface-sunken);
+  --secondary-foreground: var(--text);
+  --muted: var(--surface-sunken);
+  --muted-foreground: var(--text-muted);
+  --accent-foreground: var(--text);
+  --destructive: var(--danger);
+  --input: var(--border);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: var(--surface);
+  --sidebar-foreground: var(--text);
+  --sidebar-primary: var(--accent);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--accent-soft);
+  --sidebar-accent-foreground: var(--text);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+}
+
+/*
+ * Global focus-visible baseline. Lives in @layer base so that (a) legacy
+ * unlayered rules that manage their own focus styles keep winning, and
+ * (b) Tailwind/shadcn utility-driven focus rings (utilities layer) are not
+ * doubled up. Interactive elements without bespoke focus styles get a ring.
+ */
+@layer base {
+  :where(a[href], button, [role="button"], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
 }
 
 * {
@@ -168,7 +293,7 @@ body {
 
 .brand-title {
   color: #0040a2;
-  font-weight: 900;
+  font-weight: 700;
   font-size: 18px;
   line-height: 1.05;
 }
@@ -410,7 +535,7 @@ body {
   flex-shrink: 0;
   white-space: nowrap;
   font-size: 18px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0;
 }
 
@@ -479,7 +604,7 @@ body {
   cursor: pointer;
   font: inherit;
   font-size: 12.8px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1;
   white-space: nowrap;
 }
@@ -538,7 +663,7 @@ body {
   height: 28px;
   border-radius: 7px;
   font-size: 12.8px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1;
 }
 
@@ -565,7 +690,7 @@ body {
   border: 1px solid #dfe5f3;
   border-radius: 8px;
   font-size: 12.8px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1;
   white-space: nowrap;
 }
@@ -573,7 +698,7 @@ body {
 .topbar .debug-admin-strip--topbar .debug-admin-stat strong {
   margin-left: 0;
   color: #0f172a;
-  font-weight: 850;
+  font-weight: 700;
 }
 
 .topbar .debug-admin-strip--topbar .debug-admin-save-indicator {
@@ -608,7 +733,7 @@ body {
   border: 0;
   border-radius: 6px;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .topbar-time-window-control {
@@ -621,7 +746,7 @@ body {
 .topbar-time-window-control span {
   color: var(--outline-strong);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .searchbox {
@@ -672,7 +797,7 @@ body {
   background: var(--danger);
   border-radius: 999px;
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 16px;
   text-align: center;
 }
@@ -761,10 +886,14 @@ body {
   font: inherit;
 }
 
-.topbar-notification__item:hover,
+.topbar-notification__item:hover {
+  background: #f8fafc;
+}
+
 .topbar-notification__item:focus-visible {
   background: #f8fafc;
-  outline: none;
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
 .topbar-notification__item--unread {
@@ -849,14 +978,14 @@ body {
 
 .topbar-user-summary strong {
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 700;
 }
 
 .topbar-user-summary small {
   margin-top: 2px;
   color: var(--app-muted);
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .topbar-user-menu {
@@ -915,7 +1044,7 @@ body {
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   font-size: 13px;
-  font-weight: 760;
+  font-weight: 700;
 }
 
 .topbar-user-menu__actions {
@@ -935,7 +1064,7 @@ body {
   border-radius: 8px;
   font: inherit;
   font-size: 12.8px;
-  font-weight: 720;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -1028,7 +1157,7 @@ body {
   border-radius: 6px;
   font: inherit;
   font-size: 13px;
-  font-weight: 760;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -1049,7 +1178,7 @@ body {
   gap: 6px;
   color: #475569;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .auth-form input,
@@ -1108,7 +1237,7 @@ body {
   margin: 0;
   color: #334155;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.55;
 }
 
@@ -1130,14 +1259,14 @@ body {
 .auth-pending-notice dt {
   color: #64748b;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .auth-pending-notice dd {
   margin: 4px 0 0;
   color: #0f172a;
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .auth-submit {
@@ -1155,7 +1284,7 @@ body {
   box-shadow: 0 10px 22px rgba(0, 61, 155, 0.2);
   font: inherit;
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1.2;
   cursor: pointer;
 }
@@ -1231,7 +1360,7 @@ body {
   border: 1px solid transparent;
   font: inherit;
   font-size: 13px;
-  font-weight: 760;
+  font-weight: 700;
   line-height: 1.2;
   cursor: pointer;
   transition:
@@ -1354,7 +1483,7 @@ body {
   align-items: flex-start;
   gap: 12px;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -1371,7 +1500,7 @@ body {
 .dashboard-kicker {
   color: #7ee7ff;
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0.08em;
 }
 
@@ -1388,7 +1517,7 @@ body {
   background: var(--secondary-container);
   border-radius: 999px;
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0;
 }
 
@@ -1417,7 +1546,7 @@ body {
   display: block;
   color: #7ee7ff;
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -1461,7 +1590,7 @@ body {
 .agent-core-node span {
   color: #001f27;
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -1480,7 +1609,7 @@ body {
   color: #fff;
   font-size: 13px;
   line-height: 1.5;
-  font-weight: 800;
+  font-weight: 700;
   text-transform: none;
 }
 
@@ -1569,7 +1698,7 @@ body {
 .entry-metric span {
   color: var(--outline-strong);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -1625,7 +1754,7 @@ body {
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(80, 220, 255, 0.18);
   border-radius: 12px;
-  font-weight: 750;
+  font-weight: 700;
 }
 
 .dark-ai-band-head {
@@ -1651,7 +1780,7 @@ body {
   border: 1px solid rgba(126, 231, 255, 0.22);
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 700;
 }
 
 .ai-workflow-stats {
@@ -1728,7 +1857,7 @@ body {
 .ai-scenario-topline span {
   color: #7ee7ff;
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0.08em;
 }
 
@@ -1773,14 +1902,14 @@ body {
   border: 1px solid rgba(215, 226, 255, 0.14);
   border-radius: 10px;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1.35;
 }
 
 .ai-evidence-chain b {
   color: #7ee7ff;
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .ai-scenario-action {
@@ -1790,7 +1919,7 @@ body {
   width: fit-content;
   color: #dffaff;
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 700;
 }
 
 .ai-capability-grid {
@@ -1814,7 +1943,7 @@ body {
 .ai-capability-card span {
   color: #7ee7ff;
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -1823,7 +1952,7 @@ body {
   color: #fff;
   font-size: 14px;
   line-height: 1.65;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 @keyframes aiScenarioCarousel {
@@ -1870,7 +1999,7 @@ body {
 .metric-card span {
   color: var(--outline-strong);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -2118,7 +2247,7 @@ body {
   box-shadow: 0 8px 18px rgba(0, 61, 155, 0.16);
   font: inherit;
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 700;
   cursor: pointer;
   transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
 }
@@ -2155,7 +2284,7 @@ body {
   border-radius: 8px;
   font: inherit;
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 700;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, transform 0.1s;
 }
@@ -2188,7 +2317,7 @@ body {
   border-radius: 8px;
   font: inherit;
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 700;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.1s;
 }
@@ -2327,7 +2456,7 @@ body {
 .debug-detail-card textarea {
   min-height: 156px;
   resize: vertical;
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-mono);
   line-height: 1.55;
   white-space: pre-wrap;
 }
@@ -2335,7 +2464,7 @@ body {
 .parameter-target-editor {
   min-height: 124px;
   resize: vertical;
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-mono);
   line-height: 1.55;
   white-space: pre-wrap;
 }
@@ -2344,7 +2473,7 @@ body {
   display: block;
   max-width: 220px;
   color: var(--text);
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.45;
   white-space: pre-wrap;
@@ -2380,7 +2509,7 @@ body {
 .session-summary-primary strong {
   display: block;
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 700;
   overflow-wrap: anywhere;
 }
 
@@ -2403,7 +2532,7 @@ body {
   display: block;
   color: var(--outline-strong);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -2412,7 +2541,7 @@ body {
   display: block;
   margin-top: 4px;
   color: var(--app-primary);
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 18px;
 }
 
@@ -2426,7 +2555,7 @@ body {
 }
 
 .session-summary-snapshot strong {
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-mono);
   overflow-wrap: anywhere;
 }
 
@@ -2523,14 +2652,14 @@ body {
 
 .rollback-confirm-name strong {
   display: block;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .rollback-confirm-name small {
   display: block;
   margin-top: 3px;
   color: var(--app-muted);
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
 }
 
@@ -2538,7 +2667,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .operation-history-panel {
@@ -2566,7 +2695,7 @@ body {
 
 .operation-history-head strong {
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 700;
   letter-spacing: 0.04em;
 }
 
@@ -2620,7 +2749,7 @@ body {
 
 .operation-history-time {
   color: var(--app-muted);
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 
@@ -2657,7 +2786,7 @@ body {
   margin-top: 6px;
   color: var(--text);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .segmented {
@@ -2682,7 +2811,7 @@ body {
   color: var(--app-primary);
   background: var(--primary-soft);
   border-color: #b2c5ff;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .context-card,
@@ -2811,7 +2940,7 @@ th {
   color: var(--outline-strong);
   border-bottom: 1px solid var(--outline);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -2835,7 +2964,7 @@ tbody tr:hover,
 td strong {
   display: block;
   color: var(--text);
-  font-weight: 800;
+  font-weight: 700;
 }
 
 td small {
@@ -2852,13 +2981,13 @@ td small {
 }
 
 .mono {
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
 }
 
 .recommended,
 .change-cell {
   color: var(--app-primary);
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .value-change {
@@ -2867,7 +2996,7 @@ td small {
   gap: 7px;
   max-width: 100%;
   color: var(--app-primary);
-  font-weight: 800;
+  font-weight: 700;
   white-space: nowrap;
 }
 
@@ -2903,10 +3032,14 @@ td small {
   cursor: pointer;
 }
 
-.value-change-button:hover,
+.value-change-button:hover {
+  background: var(--primary-soft);
+}
+
 .value-change-button:focus-visible {
   background: var(--primary-soft);
-  outline: none;
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
 .value-change-button--complex {
@@ -2954,7 +3087,7 @@ td small {
   border-radius: 999px;
   font-family: inherit;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1.3;
 }
 
@@ -2963,7 +3096,7 @@ td small {
   color: var(--app-muted);
   font-family: var(--font-sans);
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -2998,7 +3131,7 @@ td small {
   margin: 0;
   color: var(--text);
   font-size: 15px;
-  font-weight: 850;
+  font-weight: 700;
   letter-spacing: 0;
 }
 
@@ -3049,7 +3182,7 @@ td small {
   margin-left: auto;
   color: var(--outline-strong);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .parameters-table-filters,
@@ -3147,7 +3280,7 @@ td small {
 .parameters-table-grid th {
   color: var(--outline-strong);
   font-size: 11px;
-  font-weight: 850;
+  font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   overflow-wrap: anywhere;
@@ -3276,7 +3409,7 @@ td small {
   max-width: 100%;
   gap: 6px;
   white-space: normal;
-  font-weight: 750;
+  font-weight: 700;
 }
 
 .parameter-value-diff > span,
@@ -3313,7 +3446,7 @@ td small {
   border-radius: 999px;
   font-family: inherit;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1.3;
 }
 
@@ -3340,7 +3473,7 @@ td small {
   color: var(--app-muted);
   font-family: var(--font-sans);
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3429,7 +3562,7 @@ td small {
   padding: 4px 8px;
   border-radius: 999px;
   font-size: 11px;
-  font-weight: 850;
+  font-weight: 700;
   line-height: 1.25;
 }
 
@@ -3499,7 +3632,7 @@ td small {
 
 .parameters-column-filter__trigger span {
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -3562,7 +3695,7 @@ td small {
   cursor: pointer;
   font: inherit;
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 700;
 }
 
 .parameters-column-filter__menu-head button:disabled {
@@ -3618,7 +3751,7 @@ td small {
 .parameters-table-empty p {
   margin: 0;
   font-size: 14px;
-  font-weight: 750;
+  font-weight: 700;
 }
 
 .risk-badge,
@@ -3631,7 +3764,7 @@ td small {
   padding: 4px 8px;
   border-radius: 999px;
   font-size: 11px;
-  font-weight: 850;
+  font-weight: 700;
   line-height: 1;
   white-space: nowrap;
 }
@@ -3870,7 +4003,7 @@ td small {
   background: #fff;
   border: 2px solid var(--outline);
   border-radius: 50%;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .timeline .done > span {
@@ -3942,7 +4075,7 @@ td small {
   cursor: pointer;
   font: inherit;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .review-filter-header .dropdown-trigger:hover,
@@ -4013,7 +4146,7 @@ td small {
 }
 
 .submission-detail-card .submission-diff-card strong {
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 
@@ -4046,7 +4179,7 @@ td small {
 
 .panel-header strong {
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -4057,7 +4190,7 @@ td small {
   background: var(--primary-soft);
   border-radius: 999px;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .review-view-tabs {
@@ -4084,7 +4217,7 @@ td small {
   border-radius: 6px;
   font: inherit;
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -4203,7 +4336,7 @@ td small {
   margin: 0;
   padding-top: 1px;
   color: var(--app-muted);
-  font-weight: 650;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -4262,10 +4395,14 @@ td small {
   cursor: pointer;
 }
 
-.review-detail-summary__link:hover,
+.review-detail-summary__link:hover {
+  color: #1d4ed8;
+}
+
 .review-detail-summary__link:focus-visible {
   color: #1d4ed8;
-  outline: none;
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
 .review-detail-summary__reasons {
@@ -4421,7 +4558,7 @@ td small {
 .vertical-timeline small {
   color: var(--app-secondary);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .vertical-timeline-current-badge {
@@ -4434,7 +4571,7 @@ td small {
   border: 1px solid #a8c9ff;
   border-radius: 999px;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .vertical-timeline strong {
@@ -4469,7 +4606,7 @@ td small {
   gap: 6px;
   color: #475569;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .review-merge-link > label {
@@ -4616,7 +4753,7 @@ td small {
   border-radius: 8px;
   font: inherit;
   font-size: 13px;
-  font-weight: 760;
+  font-weight: 700;
   line-height: 1.1;
   text-align: center;
   cursor: pointer;
@@ -4682,7 +4819,7 @@ td small {
   margin: 0;
   color: var(--text);
   font-size: 20px;
-  font-weight: 760;
+  font-weight: 700;
   line-height: 1.2;
 }
 
@@ -4746,7 +4883,7 @@ td small {
   background: #dbeafe;
   border-radius: 999px;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -4807,7 +4944,7 @@ td small {
   border-radius: 8px;
   font: inherit;
   font-size: 13px;
-  font-weight: 760;
+  font-weight: 700;
   line-height: 1.1;
   text-align: center;
   cursor: pointer;
@@ -4863,7 +5000,7 @@ td small {
   cursor: pointer;
   font: inherit;
   font-size: 13px;
-  font-weight: 760;
+  font-weight: 700;
   line-height: 1;
   white-space: nowrap;
 }
@@ -4923,7 +5060,7 @@ td small {
   position: relative;
   color: var(--outline-strong);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   text-transform: uppercase;
 }
 
@@ -4974,7 +5111,7 @@ td small {
   border-radius: 8px;
   font: inherit;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1;
   cursor: pointer;
 }
@@ -5073,7 +5210,7 @@ td small {
 .user-permissions-filter-label {
   color: var(--outline-strong);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0;
   line-height: 1;
   text-transform: uppercase;
@@ -5134,7 +5271,7 @@ td small {
 .user-permissions-approval-queue h3 {
   color: var(--text);
   font-size: 16px;
-  font-weight: 760;
+  font-weight: 700;
   line-height: 1.2;
 }
 
@@ -5153,7 +5290,7 @@ td small {
   border: 1px solid #d7e3ff;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -5188,7 +5325,7 @@ td small {
 .user-permissions-approval-user strong {
   color: var(--text);
   font-size: 13px;
-  font-weight: 760;
+  font-weight: 700;
   line-height: 1.25;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5264,7 +5401,7 @@ td small {
   border-bottom: 1px solid #e7ecf7;
   color: var(--text);
   font-size: 18px;
-  font-weight: 760;
+  font-weight: 700;
   line-height: 1.2;
 }
 
@@ -5279,7 +5416,7 @@ td small {
   gap: 6px;
   color: var(--outline-strong);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0;
   line-height: 1;
   text-transform: uppercase;
@@ -5336,7 +5473,7 @@ td small {
   border-radius: 8px;
   font: inherit;
   font-size: 13px;
-  font-weight: 760;
+  font-weight: 700;
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
@@ -5712,7 +5849,7 @@ td small {
 
 .reload-configuration-form__control.mono,
 .reload-configuration-form [data-slot="select-trigger"] {
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12.5px;
   color: var(--text);
 }
@@ -5969,7 +6106,7 @@ td small {
 .debug-admin-binding-panel h4 {
   margin: 0 0 8px;
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .debug-admin-binding-panel .debug-admin-field {
@@ -6202,7 +6339,7 @@ td small {
   gap: 7px;
   color: var(--app-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   text-align: left;
 }
 
@@ -6250,7 +6387,7 @@ td small {
   background: var(--surface-low);
   border-bottom: 1px solid #e7ecf7;
   font-size: 11px;
-  font-weight: 850;
+  font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -6281,7 +6418,7 @@ td small {
   margin: 0;
   color: var(--app-muted);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   text-align: left;
 }
 
@@ -6299,7 +6436,7 @@ td small {
   background: #253143;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.55;
   white-space: pre-wrap;
@@ -6381,9 +6518,9 @@ td small {
 .project-parameter-list-row strong {
   display: block;
   color: var(--text);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1.32;
   overflow-wrap: anywhere;
   white-space: normal;
@@ -6549,7 +6686,7 @@ td small {
   background: var(--secondary-container);
   border-radius: 6px;
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .evidence-box code,
@@ -6589,7 +6726,7 @@ td small {
 .evidence-chain-marker span {
   color: var(--app-primary);
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .evidence-chain-marker strong {
@@ -6644,10 +6781,14 @@ td small {
   text-align: left;
 }
 
-.history-item:hover,
+.history-item:hover {
+  background: var(--surface-low);
+}
+
 .history-item:focus-visible {
   background: var(--surface-low);
-  outline: none;
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
 .history-item.active {
@@ -6800,7 +6941,7 @@ td small {
   cursor: pointer;
   font: inherit;
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 700;
   line-height: 1.2;
 }
 
@@ -6851,7 +6992,7 @@ td small {
   margin-bottom: 3px;
   color: #0f56b3;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -6859,7 +7000,7 @@ td small {
 .workspace-header__title {
   color: var(--app-ink);
   font-size: 18px;
-  font-weight: 850;
+  font-weight: 700;
   line-height: 1.25;
   letter-spacing: 0;
 }
@@ -6887,7 +7028,7 @@ td small {
 .workspace-header__status {
   color: var(--app-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .workspace-header__actions,
@@ -6967,7 +7108,7 @@ td small {
   border: 1px solid #d8e0f0;
   border-radius: 8px;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .severity-badge {
@@ -6979,7 +7120,7 @@ td small {
   padding: 6px 9px;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .severity-badge--critical {
@@ -7009,7 +7150,7 @@ td small {
   gap: 12px;
   color: var(--app-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .confidence-bar > div[role="progressbar"] {
@@ -7109,12 +7250,12 @@ td small {
   border: 1px solid #d8e0f0;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .log-timeline__step small {
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .log-timeline__step--done span,
@@ -7186,14 +7327,14 @@ td small {
   background: #fff;
   border: 1px solid var(--outline);
   border-radius: 8px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .rawlog-toolbar output {
   min-width: 86px;
   color: var(--app-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .rawlog-viewer__body {
@@ -7223,7 +7364,7 @@ td small {
   padding: 6px 8px;
   color: #475569;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   text-align: left;
   white-space: nowrap;
   border-bottom: 1px solid #e2e8f0;
@@ -7262,7 +7403,7 @@ td small {
   border: 0;
   border-radius: 6px;
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .rawlog-line__num:disabled {
@@ -7330,7 +7471,7 @@ td small {
 .evidence-card header span {
   color: var(--app-primary);
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .evidence-card header strong {
@@ -7405,7 +7546,7 @@ td small {
   background: transparent;
   border: 0;
   border-radius: 8px;
-  font-weight: 850;
+  font-weight: 700;
 }
 
 .logs-aux-tabs button[aria-selected="true"] {
@@ -7436,14 +7577,14 @@ td small {
 .logs-metadata-list dt {
   color: var(--app-muted);
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .logs-metadata-list dd {
   margin: 0;
   overflow-wrap: anywhere;
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .upload-dialog {
@@ -7460,7 +7601,7 @@ td small {
 }
 
 .upload-dialog__header h2 {
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .upload-file-field {
@@ -7468,7 +7609,7 @@ td small {
   gap: 8px;
   color: var(--text);
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 700;
 }
 
 .upload-file-field input,
@@ -7487,7 +7628,7 @@ td small {
   gap: 8px;
   color: var(--text);
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 700;
 }
 
 .upload-question-field textarea {
@@ -7548,7 +7689,7 @@ td small {
   border-radius: 10px;
   box-shadow: var(--shadow);
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 700;
 }
 
 /* Xiaoze approval card portals to <body>, so it must outrank the chat popup
@@ -7632,7 +7773,7 @@ td small {
   border: 0;
   border-radius: 7px;
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1.2;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
 }
@@ -7681,7 +7822,7 @@ td small {
   display: block;
   color: #667085;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.08em;
 }
 
@@ -7704,14 +7845,14 @@ td small {
 .topic-primary-metric strong {
   color: var(--text);
   font-size: 36px;
-  font-weight: 850;
+  font-weight: 700;
   line-height: 1;
 }
 
 .topic-primary-metric span {
   color: var(--app-muted);
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 700;
 }
 
 .topic-decision-panel {
@@ -7756,7 +7897,7 @@ td small {
 .topic-section-head span {
   color: #667085;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .topic-decision-panel strong {
@@ -7806,7 +7947,7 @@ td small {
 .topic-section-head strong {
   color: var(--text);
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 700;
 }
 
 .topic-line-chart {
@@ -7845,7 +7986,7 @@ td small {
   align-self: start;
   color: #17324f;
   font-size: 11px;
-  font-weight: 850;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -7855,7 +7996,7 @@ td small {
   overflow: hidden;
   color: #667085;
   font-size: 9px;
-  font-weight: 750;
+  font-weight: 700;
   line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -7880,7 +8021,7 @@ td small {
 .topic-segmented-summary span {
   color: #667085;
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .topic-segmented-summary strong {
@@ -7996,7 +8137,7 @@ td small {
 .topic-review-queue span {
   color: #0052cc;
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 700;
 }
 
 .topic-review-queue strong {
@@ -8047,7 +8188,7 @@ td small {
   background: #0052cc;
   border-radius: 999px;
   font-size: 11px;
-  font-weight: 850;
+  font-weight: 700;
 }
 
 .topic-failure-record {
@@ -8062,7 +8203,7 @@ td small {
 .topic-failure-record span {
   color: #ef4444;
   font-size: 11px;
-  font-weight: 850;
+  font-weight: 700;
 }
 
 .topic-failure-record strong {
@@ -8322,7 +8463,7 @@ td small {
 
   .topic-line-chart__time {
     font-size: 8px;
-    font-weight: 850;
+    font-weight: 700;
   }
 
   .log-timeline {
@@ -8357,7 +8498,7 @@ td small {
   gap: 8px;
   color: var(--app-primary);
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -8412,7 +8553,7 @@ td small {
   border-radius: 999px;
   box-shadow: var(--shadow-soft);
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 700;
 }
 
 .live-dot,
@@ -8450,7 +8591,7 @@ td small {
   background: transparent;
   border: 0;
   border-radius: 6px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0;
   cursor: pointer;
 }
@@ -8539,7 +8680,6 @@ td small {
   --dts-workbench-border-strong: #bac8dc;
   --dts-workbench-surface: #ffffff;
   --dts-workbench-surface-soft: #f7f9fd;
-  --dts-workbench-surface-tint: #eff5ff;
   --dts-workbench-blue: #075bc4;
   --dts-reload-candidates-pane-height: min(70vh, calc(100vh - 220px));
   margin-top: 4px;
@@ -8630,7 +8770,7 @@ td small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-mono);
   line-height: 1.4;
 }
 
@@ -8893,7 +9033,7 @@ td small {
   padding: 10px 12px;
   border: 1px solid var(--outline);
   border-radius: 8px;
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.45;
   resize: vertical;
@@ -9047,7 +9187,7 @@ td small {
   padding: 0 14px;
   border-radius: 9px;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1.2;
   white-space: nowrap;
   cursor: pointer;
@@ -9170,7 +9310,7 @@ td small {
   margin: 0;
   color: #334155;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.02em;
 }
 
@@ -9281,7 +9421,7 @@ td small {
   background: #e2e8f0;
   color: #475569;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -9328,7 +9468,7 @@ td small {
   border-radius: 10px;
   background: #0f172a;
   color: #e2e8f0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.55;
   resize: vertical;
@@ -9581,7 +9721,7 @@ td small {
   min-width: 0;
   margin: 0;
   padding: 8px 10px;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.5;
   color: #0f172a;
@@ -9902,7 +10042,7 @@ td small {
   cursor: pointer;
   padding: 10px 12px;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   color: #0f172a;
 }
 
@@ -10054,7 +10194,7 @@ td small {
   border: 1px solid transparent;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 700;
   line-height: 1.2;
   white-space: nowrap;
 }
@@ -10115,7 +10255,7 @@ td small {
   margin: 0;
   color: var(--text);
   font-size: 14px;
-  font-weight: 850;
+  font-weight: 700;
 }
 
 .node-write-format-head span {
@@ -10124,7 +10264,7 @@ td small {
   background: #dbeafe;
   border-radius: 999px;
   font-size: 11px;
-  font-weight: 850;
+  font-weight: 700;
 }
 
 .node-write-format-panel p,
@@ -10150,14 +10290,14 @@ td small {
 .node-write-format-panel dt {
   color: var(--app-muted);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 700;
 }
 
 .node-write-format-panel dd {
   margin: 0;
   color: var(--text);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 700;
   text-align: right;
 }
 
@@ -10173,7 +10313,7 @@ td small {
 .node-write-format-example strong {
   color: var(--text);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 700;
 }
 
 .node-write-format-example code {
@@ -10199,7 +10339,7 @@ td small {
   display: block;
   max-width: 100%;
   color: #0f172a;
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.45;
   white-space: nowrap;
@@ -10249,7 +10389,7 @@ td small {
 .debug-value-code-block code {
   display: block;
   color: #e2e8f0;
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.55;
   white-space: pre;
@@ -10261,7 +10401,7 @@ td small {
 }
 
 .node-complex-target-editor {
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.55;
   white-space: pre;
@@ -10330,7 +10470,7 @@ td small {
     display: block;
     margin-top: 4px;
     color: var(--app-muted);
-    font-family: "SFMono-Regular", Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: 11px;
     line-height: 1.45;
     word-break: break-word;
@@ -10355,7 +10495,7 @@ td small {
 
 .link-button {
   padding: 0;
-  font-weight: 850;
+  font-weight: 700;
 }
 
 .table-actionbar {
@@ -10450,7 +10590,7 @@ td small {
 .parameter-focus-summary span {
   color: var(--app-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .draft-sheet-stack,
@@ -10623,7 +10763,7 @@ td small {
 .parameters-bottom-actions {
   color: var(--app-muted);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .parameters-bottom-actions {
@@ -10775,7 +10915,7 @@ td small {
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
   font: inherit;
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 700;
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
@@ -10819,7 +10959,7 @@ td small {
   border-radius: 9px;
   font: inherit;
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 700;
   line-height: 1;
   white-space: nowrap;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
@@ -10934,7 +11074,7 @@ td small {
   border-radius: 8px;
   background: #f8fafc;
   color: #0f172a;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.55;
   white-space: pre;
@@ -10990,7 +11130,7 @@ td small {
   border-radius: 9px;
   font: inherit;
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 700;
   line-height: 1;
   white-space: nowrap;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
@@ -11158,7 +11298,7 @@ td small {
   padding: 5px 9px;
   font: inherit;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
@@ -11222,7 +11362,7 @@ td small {
   padding: 5px 9px;
   font: inherit;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
@@ -11264,7 +11404,7 @@ td small {
 .parameter-detail-history__version {
   color: #0f172a;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1.5;
   white-space: nowrap;
 }
@@ -11396,7 +11536,7 @@ td small {
   border-radius: 999px;
   font-size: 11px;
   font-style: normal;
-  font-weight: 800;
+  font-weight: 700;
   white-space: nowrap;
 }
 
@@ -11539,7 +11679,7 @@ td small {
 .parameter-diff-summary__card > span {
   color: #64748b;
   font-size: 11px;
-  font-weight: 750;
+  font-weight: 700;
 }
 
 .parameter-diff-summary__card > strong,
@@ -11580,7 +11720,7 @@ td small {
   margin: 2px 0 0;
   color: #0f172a;
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 700;
   overflow-wrap: anywhere;
 }
 
@@ -11588,7 +11728,7 @@ td small {
   align-self: center;
   color: #64748b;
   font-size: 18px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .parameter-diff-section {
@@ -11612,7 +11752,7 @@ td small {
   color: #166534;
   background: #dcfce7;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .parameter-diff-section__head span[data-changed="true"] {
@@ -11632,7 +11772,7 @@ td small {
   min-width: max-content;
   border-top: 1px solid rgba(148, 163, 184, 0.12);
   color: #334155;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.55;
 }
@@ -11664,12 +11804,12 @@ td small {
 
 .parameter-diff-code-row[data-kind="remove"] .parameter-diff-code-row__marker {
   color: #dc2626;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .parameter-diff-code-row[data-kind="add"] .parameter-diff-code-row__marker {
   color: #16a34a;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .parameter-diff-code-row__line-number {
@@ -11760,13 +11900,13 @@ td small {
   color: #334155;
   font-size: 11px;
   font-style: normal;
-  font-weight: 750;
+  font-weight: 700;
   white-space: nowrap;
 }
 
 .parameter-detail-project-overview__meta small {
   color: #334155;
-  font-weight: 750;
+  font-weight: 700;
 }
 
 .parameter-detail-disabled-reason {
@@ -11915,7 +12055,7 @@ td small {
   gap: 6px;
   color: var(--app-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .submission-assignee-grid select {
@@ -11959,7 +12099,7 @@ td small {
   background: rgba(20, 184, 166, 0.12);
   border-radius: 999px;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   white-space: nowrap;
 }
 
@@ -11998,8 +12138,8 @@ td small {
   align-items: center;
   gap: 8px;
   color: var(--app-primary);
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-weight: 850;
+  font-family: var(--font-mono);
+  font-weight: 700;
   white-space: nowrap;
 }
 
@@ -12044,7 +12184,7 @@ td small {
   color: #0f766e;
   background: rgba(20, 184, 166, 0.12);
   border-radius: 999px;
-  font-weight: 800;
+  font-weight: 700;
   white-space: nowrap;
 }
 
@@ -12076,7 +12216,7 @@ td small {
   border-radius: 8px;
   background: #f8fafc;
   color: #0f172a;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.55;
   white-space: pre;
@@ -12092,7 +12232,7 @@ td small {
   border-radius: 8px;
   background: #ffffff;
   color: #0f172a;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.55;
   word-break: normal;
@@ -12182,7 +12322,7 @@ td small {
 .submission-config-format code {
   display: block;
   padding: 8px 12px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.5;
   border-radius: 6px;
@@ -12378,7 +12518,7 @@ td small {
   color: #0f766e;
   background: rgba(20, 184, 166, 0.12);
   border-radius: 999px;
-  font-weight: 800;
+  font-weight: 700;
   white-space: nowrap;
 }
 
@@ -12531,7 +12671,7 @@ td small {
 .feedback-context span {
   color: var(--outline-strong);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 700;
 }
 
 .feedback-context strong {
@@ -12542,7 +12682,7 @@ td small {
 .feedback-context code {
   color: var(--app-primary);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   word-break: break-all;
 }
 
@@ -12569,13 +12709,13 @@ td small {
   gap: 8px;
   color: var(--text);
   font-size: 14px;
-  font-weight: 850;
+  font-weight: 700;
 }
 
 .feedback-section-title small {
   color: var(--outline-strong);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .feedback-section [data-slot="select-trigger"],
@@ -12696,7 +12836,7 @@ td small {
 
 .feedback-capture-status.success {
   color: var(--success);
-  font-weight: 750;
+  font-weight: 700;
 }
 
 .feedback-success {
@@ -12708,7 +12848,7 @@ td small {
   border: 1px solid rgba(15, 124, 85, 0.2);
   border-radius: 8px;
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 700;
   line-height: 1.5;
 }
 
@@ -12721,7 +12861,7 @@ td small {
   border: 1px solid rgba(186, 26, 26, 0.2);
   border-radius: 8px;
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 700;
   line-height: 1.5;
 }
 
@@ -13033,7 +13173,7 @@ td small {
     content: attr(data-label);
     color: var(--app-muted);
     font-size: 11px;
-    font-weight: 850;
+    font-weight: 700;
   }
 
   .parameters-table-grid td:first-child {
@@ -13433,7 +13573,7 @@ td small {
   border-radius: 8px;
   box-shadow: var(--shadow-soft);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   pointer-events: none;
   white-space: nowrap;
 }
@@ -13475,18 +13615,23 @@ td small {
   cursor: pointer;
 }
 
-.project-risk-row:hover,
+.project-risk-row:hover {
+  background: var(--surface-low);
+  border-color: var(--outline);
+}
+
 .project-risk-row:focus-visible {
   background: var(--surface-low);
   border-color: var(--outline);
-  outline: none;
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
 .project-risk-row-label {
   max-width: 76px;
   color: var(--outline-strong);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   text-align: center;
   white-space: nowrap;
 }
@@ -13511,7 +13656,7 @@ td small {
   color: #fff;
   border-bottom: 1px solid #fff;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .project-risk-segment:last-child {
@@ -13533,7 +13678,7 @@ td small {
 .project-risk-row-total {
   color: var(--app-primary);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   text-align: center;
 }
 
@@ -13553,7 +13698,7 @@ td small {
   border-radius: 8px;
   box-shadow: var(--shadow-soft);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .project-risk-tooltip strong {
@@ -13562,8 +13707,10 @@ td small {
 
 
 @theme inline {
+  /* One sans stack product-wide: heading and body both resolve to --font-sans. */
   --font-heading: var(--font-sans);
-  --font-sans: 'Geist Variable', sans-serif;
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -13759,7 +13906,7 @@ td small {
   cursor: pointer;
   font: inherit;
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 700;
   line-height: 1.2;
 }
 
@@ -13809,7 +13956,7 @@ td small {
   border: 1px solid #fcd34d;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 700;
 }
 
 .dirty-dot {
@@ -13871,7 +14018,7 @@ td small {
 .kpi-value {
   color: var(--text);
   font-size: 18px;
-  font-weight: 750;
+  font-weight: 700;
 }
 
 .kpi-arrow {
@@ -13904,24 +14051,7 @@ td small {
   margin: 0;
 }
 
-/* ── Xiaoze design tokens ── */
-:root {
-  --xiaoze-brand: var(--app-primary);
-  --xiaoze-brand-deep: #002a73;
-  --xiaoze-accent: var(--app-secondary);
-  --xiaoze-surface: #ffffff;
-  --xiaoze-surface-soft: #f4f7ff;
-  --xiaoze-surface-muted: #eef3ff;
-  --xiaoze-border: rgba(0, 61, 155, 0.12);
-  --xiaoze-border-strong: rgba(0, 61, 155, 0.22);
-  --xiaoze-shadow: 0 28px 56px rgba(0, 32, 96, 0.18);
-  --xiaoze-shadow-soft: 0 10px 24px rgba(0, 61, 155, 0.08);
-  --xiaoze-radius-xl: 22px;
-  --xiaoze-radius-lg: 16px;
-  --xiaoze-radius-md: 12px;
-  --xiaoze-warm: #b45309;
-  --xiaoze-warm-soft: rgba(255, 247, 237, 0.92);
-}
+/* Xiaoze design tokens live in the single :root token block at the top of this file. */
 
 /* ── CopilotKit shell overrides ── */
 .xiaoze-popup-layer {
@@ -14364,10 +14494,14 @@ body.xiaoze-popup-resize-active {
   opacity: 0.85;
 }
 
-.xiaoze-popup-resize-handle:hover,
+.xiaoze-popup-resize-handle:hover {
+  background: linear-gradient(135deg, rgba(0, 61, 155, 0.28) 0%, rgba(0, 61, 155, 0.08) 55%, transparent 56%);
+}
+
 .xiaoze-popup-resize-handle:focus-visible {
   background: linear-gradient(135deg, rgba(0, 61, 155, 0.28) 0%, rgba(0, 61, 155, 0.08) 55%, transparent 56%);
-  outline: none;
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
 @media (max-width: 767px) {
@@ -14542,7 +14676,7 @@ body.xiaoze-popup-resize-active {
   margin: 0 0 8px;
   color: #0f172a;
   font-size: 22px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: -0.02em;
 }
 
@@ -14647,7 +14781,7 @@ body.xiaoze-popup-resize-active {
 .xiaoze-chat-header__title {
   color: #0f172a;
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1.1;
 }
 
@@ -14973,6 +15107,61 @@ body.xiaoze-popup-resize-active {
   min-width: 0;
 }
 
+/* ── Answer source citations ── */
+.xiaoze-citation-sources {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(100, 116, 139, 0.35);
+}
+
+.xiaoze-citation-sources__label {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.xiaoze-citation-sources__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.xiaoze-citation-sources__link,
+.xiaoze-citation-sources__chip {
+  display: inline-block;
+  max-width: 260px;
+  overflow: hidden;
+  padding: 2px 8px;
+  border: 1px solid rgba(0, 104, 123, 0.28);
+  border-radius: 999px;
+  background: rgba(236, 252, 255, 0.8);
+  color: #00687b;
+  font-size: 12px;
+  line-height: 1.5;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.xiaoze-citation-sources__link:hover {
+  border-color: rgba(0, 104, 123, 0.55);
+  background: rgba(220, 248, 255, 0.95);
+  text-decoration: underline;
+}
+
+.xiaoze-citation-sources__chip {
+  color: #475569;
+  border-color: rgba(100, 116, 139, 0.3);
+  background: rgba(241, 245, 249, 0.9);
+}
+
 /* ── Reasoning ── */
 .xiaoze-reasoning-message {
   margin: 8px 0 10px;
@@ -15247,7 +15436,7 @@ body.xiaoze-popup-resize-active {
   margin: 8px 0 0;
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.5;
 }
@@ -15572,7 +15761,7 @@ body.xiaoze-popup-resize-active {
 .insight-eyebrow {
   color: var(--app-muted);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -16693,7 +16882,7 @@ body.xiaoze-popup-resize-active {
   border: 1px solid var(--outline);
   border-radius: 6px;
   background: var(--surface-low);
-  font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.8125rem;
   overflow-wrap: anywhere;
 }
@@ -16904,7 +17093,7 @@ body.xiaoze-popup-resize-active {
 .delete-project-dialog h2 {
   margin: 0;
   font-size: 17px;
-  font-weight: 750;
+  font-weight: 700;
   line-height: 1.35;
 }
 
@@ -17432,7 +17621,7 @@ body.xiaoze-popup-resize-active {
 
 .param-admin-empty > p:first-child {
   color: var(--text);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .param-admin-empty > p:not(:first-child) {
@@ -17584,7 +17773,7 @@ body.xiaoze-popup-resize-active {
 .param-admin-module-table th {
   color: var(--app-muted);
   font-size: 11px;
-  font-weight: 850;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -17846,7 +18035,7 @@ body.xiaoze-popup-resize-active {
   color: var(--app-primary);
   font: inherit;
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -17946,7 +18135,7 @@ body.xiaoze-popup-resize-active {
   gap: 7px;
   color: var(--app-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .param-admin-module-add input {
@@ -18244,7 +18433,7 @@ body.xiaoze-popup-resize-active {
 }
 
 .param-admin-library-module strong {
-  font-weight: 650;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
@@ -18658,7 +18847,7 @@ body.xiaoze-popup-resize-active {
   border: 1px solid var(--outline);
   border-radius: 6px;
   font-size: 12px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
 .param-admin-confirm-field {
@@ -18669,7 +18858,7 @@ body.xiaoze-popup-resize-active {
   width: 100%;
   color: var(--app-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   text-align: left;
 }
 
@@ -18759,7 +18948,7 @@ body.xiaoze-popup-resize-active {
   width: 100%;
   color: var(--app-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   text-align: left;
 }
 
@@ -18850,7 +19039,7 @@ body.xiaoze-popup-resize-active {
   background: #f8fafc;
   border: 1px solid var(--outline);
   border-radius: 8px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.5;
   white-space: pre;
@@ -18892,7 +19081,7 @@ body.xiaoze-popup-resize-active {
 .pvm-value-complex-label {
   color: var(--outline-strong);
   font-size: 11px;
-  font-weight: 850;
+  font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -18906,7 +19095,7 @@ body.xiaoze-popup-resize-active {
 .pvm-recommended-complex strong {
   color: var(--outline-strong);
   font-size: 11px;
-  font-weight: 850;
+  font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -18920,7 +19109,7 @@ body.xiaoze-popup-resize-active {
   background: #f8fafc;
   border: 1px solid var(--outline);
   border-radius: 8px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.5;
   white-space: pre;
@@ -19847,7 +20036,7 @@ body.xiaoze-popup-resize-active {
 .param-group-header strong {
   color: var(--text);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 700;
 }
 
 .param-group-count {
@@ -19885,10 +20074,14 @@ body.xiaoze-popup-resize-active {
   text-align: left;
 }
 
-.param-admin-shell .library-row-button:hover,
+.param-admin-shell .library-row-button:hover {
+  background: rgba(0, 82, 204, 0.08);
+}
+
 .param-admin-shell .library-row-button:focus-visible {
   background: rgba(0, 82, 204, 0.08);
-  outline: none;
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
 .param-admin-shell .library-row-main {
@@ -19927,7 +20120,7 @@ body.xiaoze-popup-resize-active {
 .detail-empty p {
   margin: 0;
   color: var(--text);
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .detail-empty-actions {
@@ -19965,7 +20158,7 @@ body.xiaoze-popup-resize-active {
   padding: 12px 16px 0;
   color: var(--app-muted);
   font-size: 11px;
-  font-weight: 850;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -19988,7 +20181,7 @@ body.xiaoze-popup-resize-active {
   gap: 7px;
   color: var(--app-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   text-align: left;
 }
 
@@ -20003,7 +20196,7 @@ body.xiaoze-popup-resize-active {
 .def-group-fields .param-field-label {
   color: var(--app-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   text-align: left;
 }
 
@@ -20055,7 +20248,7 @@ body.xiaoze-popup-resize-active {
   background: var(--secondary-soft);
   border-radius: 999px;
   font-size: 11px;
-  font-weight: 850;
+  font-weight: 700;
 }
 
 .param-admin-field-info-tip {
@@ -20173,7 +20366,7 @@ body.xiaoze-popup-resize-active {
 .field-error {
   color: var(--danger);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1.45;
 }
 
@@ -20207,7 +20400,7 @@ body.xiaoze-popup-resize-active {
   cursor: pointer;
   font: inherit;
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 700;
 }
 
 .risk-picker-option.active {
@@ -20255,7 +20448,7 @@ body.xiaoze-popup-resize-active {
   background: var(--surface-low);
   border-bottom: 1px solid #e7ecf7;
   font-size: 11px;
-  font-weight: 850;
+  font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -20322,7 +20515,7 @@ body.xiaoze-popup-resize-active {
   border: 1px solid var(--outline);
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 700;
   text-align: center;
 }
 
@@ -20334,7 +20527,7 @@ body.xiaoze-popup-resize-active {
 .pvm-error {
   color: var(--danger);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .pvm-deviation {
@@ -20343,7 +20536,7 @@ body.xiaoze-popup-resize-active {
   padding: 6px 8px;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 700;
   text-align: center;
 }
 
@@ -20403,7 +20596,7 @@ body.xiaoze-popup-resize-active {
   gap: 6px;
   color: var(--app-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .create-param-fields label.wide {
@@ -20470,7 +20663,7 @@ body.xiaoze-popup-resize-active {
   border: 1px solid var(--outline);
   border-radius: 8px;
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 700;
   list-style: none;
 }
 
@@ -20534,7 +20727,7 @@ body.xiaoze-popup-resize-active {
 .del-projects {
   color: var(--text);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .del-consequences {
@@ -20571,7 +20764,7 @@ body.xiaoze-popup-resize-active {
   color: #fbbf24;
   background: transparent;
   border: 0;
-  font-weight: 900;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -21283,7 +21476,7 @@ body.xiaoze-popup-resize-active {
   color: var(--app-primary);
   font: inherit;
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -21360,14 +21553,14 @@ body.xiaoze-popup-resize-active {
 .project-init-parameter-detail__note span {
   color: #64748b;
   font-size: 0.74rem;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .project-init-parameter-detail dd,
 .project-init-parameter-detail code {
   color: #0f172a;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .project-init-parameter-detail code {
@@ -21409,7 +21602,7 @@ body.xiaoze-popup-resize-active {
   border-radius: 8px;
   font: inherit;
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 700;
   line-height: 1.2;
   cursor: pointer;
   transition:
@@ -21515,7 +21708,7 @@ body.xiaoze-popup-resize-active {
 .project-init-review-card dd {
   color: #0f172a;
   font-size: 0.92rem;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .project-init-preview {
@@ -21729,7 +21922,7 @@ body.xiaoze-popup-resize-active {
 .parameter-import-wizard .parameter-import-wizard-grid textarea {
   resize: vertical;
   min-height: 120px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family: var(--font-mono);
 }
 
 .parameter-import-wizard .parameter-import-wizard-sources {
@@ -21961,7 +22154,7 @@ body.xiaoze-popup-resize-active {
   border-radius: 8px;
   background: #fff;
   color: var(--text);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.45;
 }
@@ -22003,7 +22196,7 @@ body.xiaoze-popup-resize-active {
 .parameter-import-wizard .parameter-import-wizard-summary-item dd {
   margin: 0;
   font-size: 1.25rem;
-  font-weight: 800;
+  font-weight: 700;
   color: #0f172a;
 }
 
@@ -22182,7 +22375,7 @@ body.xiaoze-popup-resize-active {
 }
 
 .parameter-import-wizard .parameter-import-preview-table__value {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: #334155;
   word-break: break-word;
@@ -22674,7 +22867,6 @@ body.xiaoze-popup-resize-active {
   --dts-workbench-border-strong: #bac8dc;
   --dts-workbench-surface: #ffffff;
   --dts-workbench-surface-soft: #f7f9fd;
-  --dts-workbench-surface-tint: #eff5ff;
   --dts-workbench-blue: #075bc4;
   --dts-workbench-blue-soft: #e8f1ff;
   --dts-workbench-green: #117556;
@@ -22798,7 +22990,7 @@ body.xiaoze-popup-resize-active {
   border-radius: 8px;
   font: inherit;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   cursor: pointer;
   transition: color 140ms ease, background 140ms ease, box-shadow 140ms ease;
 }
@@ -22857,7 +23049,7 @@ body.xiaoze-popup-resize-active {
   gap: 6px;
   color: var(--dts-workbench-muted);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: .03em;
 }
 
@@ -22909,7 +23101,7 @@ body.xiaoze-popup-resize-active {
   padding: 0 13px;
   border-radius: 9px;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1.2;
   cursor: pointer;
   transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease, transform 100ms ease;
@@ -23226,7 +23418,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
   justify-content: flex-end;
   gap: 3px;
   color: var(--dts-workbench-amber);
-  font-weight: 750;
+  font-weight: 700;
 }
 
 .dts-topology-navigator__group {
@@ -23292,7 +23484,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
   background: var(--dts-workbench-surface-soft);
   border-bottom: 1px solid var(--dts-workbench-border);
   font-size: 10px;
-  font-weight: 850;
+  font-weight: 700;
   letter-spacing: .06em;
   text-transform: uppercase;
 }
@@ -23349,7 +23541,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
   display: inline-block;
   max-width: 100%;
   color: #294b78;
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
@@ -23385,7 +23577,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
 .dts-parameter-workbench-table__property > code {
   color: var(--dts-workbench-ink);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .dts-parameter-workbench-table__select {
@@ -23462,7 +23654,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
 
 .dts-parameter-workbench-table__importance > strong {
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 700;
   letter-spacing: 0.02em;
 }
 
@@ -23475,7 +23667,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
   padding: 3px 7px;
   border-radius: 999px;
   font-size: 10px;
-  font-weight: 850;
+  font-weight: 700;
   line-height: 1.25;
   white-space: normal;
 }
@@ -23657,7 +23849,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
 .dts-binding-draft-tray__diff code {
   min-width: 0;
   color: #344f73;
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
@@ -23699,7 +23891,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
 .dts-binding-draft-tray__identity dt {
   color: #78849a;
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .dts-binding-draft-tray__identity dd {
@@ -23744,7 +23936,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
   gap: 5px;
   color: var(--dts-workbench-muted);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .dts-binding-draft-tray .submission-assignee-grid select {
@@ -23832,7 +24024,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
   margin: 0 0 10px;
   color: var(--dts-workbench-ink);
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .dts-binding-detail-dialog__content > details > summary {
@@ -24009,7 +24201,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
 .dts-binding-compare__overview-label {
   color: var(--dts-workbench-muted);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .dts-binding-compare__overview-projects {
@@ -24052,7 +24244,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
 }
 
 .dts-binding-compare__overview-project-btn[data-active="true"] {
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .dts-binding-compare__overview em {
@@ -24066,7 +24258,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
 .dts-binding-detail-dialog__content dt {
   color: #58677a;
   font-size: 10px;
-  font-weight: 850;
+  font-weight: 700;
   letter-spacing: .03em;
   text-transform: uppercase;
 }
@@ -24098,7 +24290,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
   margin-bottom: 4px;
   color: #58677a;
   font-size: 10px;
-  font-weight: 850;
+  font-weight: 700;
   letter-spacing: .03em;
   text-transform: uppercase;
 }
@@ -24202,7 +24394,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
   display: block;
   color: var(--dts-workbench-ink);
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .dts-node-enablement-dialog__summary p,
@@ -24249,7 +24441,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
   margin: 0 0 8px;
   color: var(--dts-workbench-ink);
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .dts-node-enablement-dialog__choice-row {
@@ -24305,7 +24497,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
 .dts-node-enablement-dialog__field [data-slot="label"] {
   color: var(--dts-workbench-ink);
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .dts-node-enablement-dialog__hint {
@@ -24341,8 +24533,8 @@ button.dts-topology-navigator__disclosure:focus-visible {
 .dts-node-enablement-dialog__field select:focus,
 .dts-node-enablement-dialog__field textarea:focus {
   outline: none;
-  border-color: #8eacd7;
-  box-shadow: 0 0 0 1px #8eacd7;
+  border-color: var(--border-strong);
+  box-shadow: 0 0 0 2px var(--ring);
 }
 
 .dts-node-enablement-dialog__confirm {
@@ -24425,7 +24617,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
 }
 
 .dts-binding-draft-card__code-editor {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.45;
   white-space: pre;
@@ -24592,7 +24784,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
     content: attr(data-label);
     color: #52637a;
     font-size: 10px;
-    font-weight: 850;
+    font-weight: 700;
     letter-spacing: .03em;
     text-transform: uppercase;
   }
@@ -25294,7 +25486,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
 }
 
 .module-attribution-tree__label {
-  font-weight: 650;
+  font-weight: 600;
   font-size: 13px;
   color: #1c2b3d;
   overflow: hidden;
@@ -25566,7 +25758,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
 .module-edit-compatible-rules__head h3 {
   margin: 0 0 4px;
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .module-edit-compatible-rules__head .muted {
@@ -26926,7 +27118,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
   color: #94a3b8;
   background: rgba(248, 250, 252, 0.85);
   border-right: 1px solid rgba(148, 163, 184, 0.18);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.55;
   user-select: none;
@@ -26936,7 +27128,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
   display: block;
   min-height: 22px;
   padding: 2px 10px;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.55;
   white-space: pre;
@@ -26965,7 +27157,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
 .platform-console-page__title {
   margin: 0 0 12px;
   font-size: 1.35rem;
-  font-weight: 650;
+  font-weight: 600;
   color: var(--text);
 }
 
@@ -27051,7 +27243,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
   cursor: pointer;
   font: inherit;
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 700;
   line-height: 1.2;
   white-space: nowrap;
 }
@@ -27249,7 +27441,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
   flex: 0 0 auto;
   color: var(--app-primary) !important;
   font-size: 12px !important;
-  font-weight: 750 !important;
+  font-weight: 700 !important;
 }
 
 .configuration-workbench__project {
@@ -27307,7 +27499,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
 .configuration-workbench__working {
   padding: 4px 7px;
   color: var(--success);
-  font-weight: 800;
+  font-weight: 700;
   background: color-mix(in srgb, var(--success) 14%, var(--surface));
   border-radius: 999px;
   flex: 0 0 auto;
@@ -27762,7 +27954,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
   margin-bottom: 6px;
   color: var(--text);
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .configuration-workbench__ungrouped-file {
@@ -28158,11 +28350,11 @@ button.dts-topology-navigator__disclosure:focus-visible {
   padding: 12px 14px;
   overflow: auto;
   color: var(--configuration-source-text, var(--text));
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.45;
   white-space: pre;
-  background: var(--configuration-source-bg, var(--surface));
+  background: var(--surface);
 }
 
 .configuration-workbench__side-by-side {
@@ -28625,4 +28817,75 @@ button.dts-topology-navigator__disclosure:focus-visible {
 .configuration-workbench__baseline-compare ul {
   margin: 0.35rem 0 0;
   padding-left: 1rem;
+}
+
+/* Knowledge base (Phase 1) */
+
+.knowledge-markdown-preview h1,
+.knowledge-markdown-preview h2,
+.knowledge-markdown-preview h3,
+.knowledge-markdown-preview h4 {
+  margin: 0.6em 0 0.35em;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--app-text, inherit);
+}
+
+.knowledge-markdown-preview h1 {
+  font-size: 1.25rem;
+}
+
+.knowledge-markdown-preview h2 {
+  font-size: 1.1rem;
+}
+
+.knowledge-markdown-preview h3,
+.knowledge-markdown-preview h4 {
+  font-size: 1rem;
+}
+
+.knowledge-markdown-preview p {
+  margin: 0.4em 0;
+}
+
+.knowledge-markdown-preview ul,
+.knowledge-markdown-preview ol {
+  margin: 0.4em 0;
+  padding-left: 1.4em;
+}
+
+.knowledge-markdown-preview ul {
+  list-style: disc;
+}
+
+.knowledge-markdown-preview ol {
+  list-style: decimal;
+}
+
+.knowledge-markdown-preview blockquote {
+  margin: 0.5em 0;
+  padding: 0.25em 0.8em;
+  border-left: 3px solid var(--app-border, #cbd5e1);
+  color: var(--app-muted, #64748b);
+}
+
+.knowledge-markdown-preview code {
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: rgba(100, 116, 139, 0.14);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+}
+
+.knowledge-markdown-preview pre {
+  margin: 0.5em 0;
+  padding: 0.7em 0.9em;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.06);
+  overflow: auto;
+}
+
+.knowledge-markdown-preview pre code {
+  padding: 0;
+  background: none;
 }

@@ -11,20 +11,13 @@ import { randomUUID } from "node:crypto";
 import type { AuthContext } from "../auth/types";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import {
-  isParameterIdentityCutoverComplete,
-  legacyParameterIdentityTablesRetired
-} from "./cutoverAwareIdentity";
+import { parameterIdentityMode } from "./parameterIdentityMode";
 import { LEGACY_IDENTITY_SQL } from "./legacyParameterIdentityNames";
 
 export { LEGACY_IDENTITY_SQL };
 
-async function mustUseSemantic(db: Queryable): Promise<boolean> {
-  return (await isParameterIdentityCutoverComplete(db)) || (await legacyParameterIdentityTablesRetired(db));
-}
-
-export async function assertPreCutoverParameterIdentity(db: Queryable): Promise<void> {
-  if (await mustUseSemantic(db)) {
+export function assertPreCutoverParameterIdentity(): void {
+  if (parameterIdentityMode() === "semantic") {
     throw new ApiError(
       "GONE",
       "Pre-cutover parameter identity adapter is unreachable after identity cutover.",
@@ -49,7 +42,7 @@ export async function ensurePreCutoverLinkedParameterValue(
     currentRaw: string;
   }
 ): Promise<{ id: string }> {
-  await assertPreCutoverParameterIdentity(db);
+  assertPreCutoverParameterIdentity();
 
   const existing = await db.query<{ id: string }>(
     `
@@ -101,7 +94,7 @@ export async function deletePreCutoverProjectParameterValues(
   db: Queryable,
   input: { organizationId: string; projectId: string }
 ): Promise<void> {
-  await assertPreCutoverParameterIdentity(db);
+  assertPreCutoverParameterIdentity();
   await db.query(
     `
     delete from ${LEGACY_IDENTITY_SQL.valuesTable}
@@ -117,7 +110,7 @@ export async function loadPreCutoverWritebackSource(
   auth: AuthContext,
   input: { projectId: string; parameterDefinitionId: string }
 ): Promise<{ sourceFileName: string | null; sourceNodePath: string | null } | null> {
-  await assertPreCutoverParameterIdentity(db);
+  assertPreCutoverParameterIdentity();
   const result = await db.query<{
     source_file_name: string | null;
     source_node_path: string | null;
@@ -144,7 +137,7 @@ export async function countPreCutoverProjectParameters(
   db: Queryable,
   organizationId: string
 ): Promise<Map<string, number>> {
-  await assertPreCutoverParameterIdentity(db);
+  assertPreCutoverParameterIdentity();
   const result = await db.query<{ project_id: string; parameter_count: string }>(
     `
     select project_id, count(*)::int as parameter_count

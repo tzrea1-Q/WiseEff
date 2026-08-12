@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { getProjectById } from "../parameters/repository";
+import { makeTestAuthContext } from "../../testing/authContext";
+import { getProjectById } from "../parameters/projectRepository";
 import {
   getBindingForProject,
   listBindingCompareRows,
@@ -18,7 +19,7 @@ import {
   listProjectBindings
 } from "./service";
 
-vi.mock("../parameters/repository", () => ({
+vi.mock("../parameters/projectRepository", () => ({
   getProjectById: vi.fn()
 }));
 
@@ -48,19 +49,16 @@ vi.mock("./governanceAudit", () => ({
 }));
 
 function makeAuth(): AuthContext {
-  return {
-    user: {
-      id: "user-1",
-      organizationId: "org-1",
-      name: "Riley Chen",
-      email: "riley@example.com",
-      title: "Engineer",
-      isActive: true
-    },
-    organization: { id: "org-1", name: "ChargeLab" },
+  return makeTestAuthContext({
+    userId: "user-1",
+    organizationId: "org-1",
+    name: "Riley Chen",
+    email: "riley@example.com",
+    title: "Engineer",
+    organizationName: "ChargeLab",
     roles: [{ projectId: "project-1", roleId: "hardware-user" }],
     permissions: ["parameter:view"]
-  };
+  });
 }
 
 function makeDb(): Database {

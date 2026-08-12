@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { SectionStatus } from "@/application/parameters/dashboardState";
 import type { DashboardHotspot, DashboardSummary, HotspotDimension } from "@/domain/parameters/dashboardTypes";
-import type { PrototypeState } from "@/mockData";
+import type { PrototypeState } from "@/domain/prototype/types";
 import type { WorkbenchEmphasis } from "../workbench/derivePersonalWorkbench";
 import { useIsAccordionMode } from "@/components/hotspots/useIsAccordionMode";
 import { HotspotLeaderboard } from "./HotspotLeaderboard";

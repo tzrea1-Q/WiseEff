@@ -10,6 +10,7 @@ import type { AgentToolExecutionContext } from "./toolRegistry";
 import {
   appendAgentMessage,
   createAgentApproval,
+  createAgentSession,
   createAgentToolCall,
   getAgentApproval,
   getAgentSession,
@@ -21,7 +22,7 @@ import {
   markAgentApprovalRejected,
   updateAgentToolCall
 } from "./repository";
-import type { AgentToolCallDto, AgentToolRequest, AgentToolResult, AgentTurnDto } from "./types";
+import type { AgentCitation, AgentToolCallDto, AgentToolName, AgentToolRequest, AgentToolResult, AgentTurnDto } from "./types";
 
 type AgentRequestContext = {
   auth: AuthContext;
@@ -35,6 +36,38 @@ type ToolCallInput = AgentRequestContext & {
 type ApprovalInput = AgentRequestContext & {
   approvalId: string;
   reason: string;
+};
+
+export type ApprovalBeginInput = {
+  auth: AuthContext;
+  requestId: string;
+  sessionId: string;
+  toolName: AgentToolName;
+  payload: Record<string, unknown>;
+  citations: AgentCitation[];
+  pageKey?: string;
+  projectId?: string;
+};
+
+export type ApprovalBeginResult = {
+  approvalId: string;
+  toolCallId: string;
+  toolName: AgentToolName;
+  payload: Record<string, unknown>;
+  citations: AgentCitation[];
+};
+
+export type ApprovalResolveInput = {
+  auth: AuthContext;
+  requestId: string;
+  approvalId: string;
+  decision: "approve" | "reject";
+  editedArgs?: Record<string, unknown>;
+  reason?: string;
+};
+
+export type ApprovalResolveResult = {
+  text: string;
 };
 
 type ToolRegistry = ReturnType<typeof createAgentToolRegistry>;
@@ -51,6 +84,20 @@ function staleTransition(message: string, details: Record<string, unknown>) {
   return new ApiError("CONFLICT", message, 409, details);
 }
 
+/**
+ * HITL approvals are personal: the user whose turn requested the tool call is
+ * the only one who may approve, edit, or reject it. Without this gate any
+ * same-organization user holding an approvalId could execute someone else's
+ * pending write under their own auth.
+ */
+function requireApprovalRequester(approval: { id: string; requestedByUserId: string }, auth: AuthContext) {
+  if (approval.requestedByUserId !== auth.user.id) {
+    throw new ApiError("FORBIDDEN", "Only the user who requested this approval may decide it.", 403, {
+      approvalId: approval.id
+    });
+  }
+}
+
 export function createAgentOrchestrator(options: {
   db: Database;
   toolRegistry?: ToolRegistry;
@@ -62,7 +109,7 @@ export function createAgentOrchestrator(options: {
   const createAuditEvent = options.createAuditEvent ?? defaultCreateAuditEvent;
   const metrics = options.metrics;
   const tracing = options.tracing;
-  const registryFor = (queryable: Queryable) => options.toolRegistry ?? createAgentToolRegistry({ db: queryable });
+  const registryFor = (database: Database) => options.toolRegistry ?? createAgentToolRegistry({ db: database });
   const toolRegistry = registryFor(db);
 
   function toolMetricLabels(toolCall: Pick<AgentToolCallDto, "name">) {
@@ -316,6 +363,7 @@ export function createAgentOrchestrator(options: {
     if (approval.status !== "pending") {
       throw new ApiError("INVALID_APPROVAL_STATE", "Approval is not pending.", 409, { approvalId: input.approvalId });
     }
+    requireApprovalRequester(approval, input.auth);
     const toolCall = await getAgentToolCall(db, input.auth.organization.id, approval.toolCallId);
     if (!toolCall) {
       throw new ApiError("NOT_FOUND", "Agent tool call was not found.", 404, { toolCallId: approval.toolCallId });
@@ -409,6 +457,7 @@ export function createAgentOrchestrator(options: {
     if (!approval || approval.status !== "pending") {
       throw new ApiError("NOT_FOUND", "Pending Agent approval was not found.", 404, { approvalId: input.approvalId });
     }
+    requireApprovalRequester(approval, input.auth);
     const toolCall = await getAgentToolCall(db, input.auth.organization.id, approval.toolCallId);
     if (!toolCall) {
       throw new ApiError("NOT_FOUND", "Agent tool call was not found.", 404, { toolCallId: approval.toolCallId });
@@ -459,15 +508,105 @@ export function createAgentOrchestrator(options: {
     return assembleTurn(input, approval.sessionId);
   }
 
-  async function recordToolRequestForTest(input: AgentRequestContext & { sessionId: string; request: AgentToolRequest }) {
+  async function recordSessionToolRequest(input: AgentRequestContext & { sessionId: string; request: AgentToolRequest }) {
     await loadSessionOrThrow(input, input.sessionId);
     return recordToolRequest(input, input.sessionId, input.request);
+  }
+
+  async function ensureAgentSession(input: ApprovalBeginInput) {
+    const existing = await getAgentSession(db, input.auth.organization.id, input.sessionId);
+    if (existing) {
+      return;
+    }
+    await createAgentSession(db, {
+      id: input.sessionId,
+      organizationId: input.auth.organization.id,
+      projectId: input.projectId,
+      actorUserId: input.auth.user.id,
+      pageKey: input.pageKey ?? "xiaoze",
+      roleId: input.auth.roles[0]?.roleId,
+      context: {
+        path: "/",
+        pageKey: input.pageKey ?? "xiaoze",
+        projectId: input.projectId,
+        roleId: input.auth.roles[0]?.roleId
+      },
+      title: "Xiaoze Agent Session"
+    });
+  }
+
+  async function beginApproval(input: ApprovalBeginInput): Promise<ApprovalBeginResult> {
+    const definition = toolRegistry.require(input.toolName);
+    if (!definition.requiresApproval) {
+      throw new ApiError("VALIDATION_FAILED", "Tool does not require approval.", 400, { toolName: input.toolName });
+    }
+    await ensureAgentSession(input);
+    const toolCall = await recordToolRequest(
+      { auth: input.auth, requestId: input.requestId },
+      input.sessionId,
+      { name: input.toolName, label: definition.label, payload: input.payload }
+    );
+    if (!toolCall.approvalId) {
+      throw new ApiError("INTERNAL_ERROR", "Agent approval was not created for the tool call.", 500, {
+        toolCallId: toolCall.id
+      });
+    }
+    return {
+      approvalId: toolCall.approvalId,
+      toolCallId: toolCall.id,
+      toolName: input.toolName,
+      payload: input.payload,
+      citations: input.citations
+    };
+  }
+
+  async function resolveApproval(input: ApprovalResolveInput): Promise<ApprovalResolveResult> {
+    if (input.decision === "reject") {
+      const turn = await rejectToolCall({
+        auth: input.auth,
+        requestId: input.requestId,
+        approvalId: input.approvalId,
+        reason: input.reason ?? "Rejected from Xiaoze chat."
+      });
+      return { text: turn.messages.at(-1)?.content ?? "The proposed action was rejected." };
+    }
+
+    if (input.editedArgs) {
+      const approval = await getAgentApproval(db, input.auth.organization.id, input.approvalId);
+      if (!approval) {
+        throw new ApiError("NOT_FOUND", "Agent approval was not found.", 404, { approvalId: input.approvalId });
+      }
+      if (approval.status !== "pending") {
+        throw new ApiError("INVALID_APPROVAL_STATE", "Approval is not pending.", 409, { approvalId: input.approvalId });
+      }
+      // Checked before the payload rewrite so a non-requester cannot leave an
+      // edited payload behind even though approveToolCall would also refuse.
+      requireApprovalRequester(approval, input.auth);
+      const updated = await updateAgentToolCall(db, input.auth.organization.id, approval.toolCallId, {
+        payload: input.editedArgs
+      });
+      if (!updated) {
+        throw staleTransition("Agent tool call payload could not be updated.", { toolCallId: approval.toolCallId });
+      }
+    }
+
+    const turn = await approveToolCall({
+      auth: input.auth,
+      requestId: input.requestId,
+      approvalId: input.approvalId,
+      reason: input.reason ?? "Approved from Xiaoze chat."
+    });
+    return { text: turn.messages.at(-1)?.content ?? "The proposed action was approved and executed." };
   }
 
   return {
     runToolCall,
     approveToolCall,
     rejectToolCall,
-    recordToolRequestForTest
+    recordToolRequest: recordSessionToolRequest,
+    beginApproval,
+    resolveApproval
   };
 }
+
+export type AgentOrchestrator = ReturnType<typeof createAgentOrchestrator>;

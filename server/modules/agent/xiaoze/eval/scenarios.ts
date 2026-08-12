@@ -36,10 +36,12 @@ export const STANDARD_TOOL_LIST: PerceptionToolDescriptor[] = [
   { name: "perception.searchParameters", description: "Search parameters", schema },
   { name: "perception.getNodeSnapshot", description: "Node snapshot", schema },
   { name: "perception.getRecentLogConclusions", description: "Log conclusions", schema },
+  { name: "knowledge.search", description: "Search the knowledge base", schema },
+  { name: "knowledge.getDocument", description: "Read a knowledge entry", schema },
   { name: "action.submitParameterChange", description: "Submit change", schema, requiresApproval: true }
 ];
 
-const anyAuth = {
+export const EVAL_AUTH = {
   organization: { id: "org-eval", name: "Eval Org" },
   user: { id: "u-eval", organizationId: "org-eval", name: "Eval User", title: "Tester", isActive: true },
   permissions: ["parameter:edit"],
@@ -190,8 +192,6 @@ export const EVAL_SCENARIOS: EvalScenario[] = [
     needsApprovalBridge: true,
     approvalSuccessText: "Change request cr-1 created.",
     resume: {
-      auth: anyAuth,
-      requestId: "req-approve",
       approvalId: "approval-approve",
       decision: "approve"
     }
@@ -223,8 +223,6 @@ export const EVAL_SCENARIOS: EvalScenario[] = [
     ],
     needsApprovalBridge: true,
     resume: {
-      auth: anyAuth,
-      requestId: "req-reject",
       approvalId: "approval-reject",
       decision: "reject",
       reason: "Not now"
@@ -247,6 +245,43 @@ export const EVAL_SCENARIOS: EvalScenario[] = [
       }
     },
     expectations: [{ type: "expectsTurnCapFallback" }, { type: "mustNotClaimWriteWithoutApproval" }]
+  },
+  {
+    name: "knowledge-grounding",
+    category: "knowledge-grounding",
+    userMessage: "知识库里有哪些快充温控的调参经验?",
+    context: { pageKey: "knowledge" },
+    threadId: "eval-knowledge-grounding",
+    modelScript: [
+      { toolCalls: [toolCall("knowledge.search", { query: "快充温控" })] },
+      {
+        content:
+          "根据知识库《快充温控调参经验》:当电池温度超过 45 度时按 0.5A 步长下调快充电流。[citation:knowledge]"
+      }
+    ],
+    toolBehaviors: {
+      "knowledge.search": {
+        type: "success",
+        summary: 'Found 1 published knowledge entries for "快充温控" (fts_only).',
+        data: { retrievalMode: "fts_only" },
+        citations: [
+          {
+            type: "knowledge",
+            id: "kb-thermal-tuning",
+            label: "快充温控调参经验",
+            href: "/knowledge?entryId=kb-thermal-tuning",
+            snippet: "当电池温度超过 45 度时,按 0.5A 步长下调快充电流。"
+          }
+        ]
+      }
+    },
+    expectations: [
+      { type: "expectsToolCallOrder", tools: ["knowledge.search"] },
+      { type: "requiresCitationsWhenToolDataUsed" },
+      { type: "requiresSubstringsInAnswer", substrings: ["知识库"] },
+      { type: "expectsNoMutatingExecution" },
+      { type: "expectsNoInterrupt" }
+    ]
   },
   {
     name: "citations-when-tool-data-used",

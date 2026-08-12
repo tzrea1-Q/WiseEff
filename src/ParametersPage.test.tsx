@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ParametersPage } from "./ParametersPage";
+import { declarationsFor, parseCssRules, readStylesheet } from "./test/cssAssertions";
 import { TopBarActionsContext } from "./components/layout";
 import { initialState } from "./mockData";
 import type { ParameterPageActions } from "./app/routes";
@@ -1287,8 +1288,8 @@ describe("ParametersPage · 提交契约", () => {
   });
 
   it("does not let submission round reducer items fall back to a shared action reason", () => {
-    const appSource = readFileSync("src/App.tsx", "utf8");
-    const roundReducerSource = appSource.match(/case "ADD_PARAMETER_SUBMISSION_ROUND":[\s\S]*?\n    case "WITHDRAW_PARAMETER_SUBMISSION_ROUND":/)?.[0] ?? "";
+    const appStateSource = readFileSync("src/application/state/appState.ts", "utf8");
+    const roundReducerSource = appStateSource.match(/case "ADD_PARAMETER_SUBMISSION_ROUND":[\s\S]*?\n    case "WITHDRAW_PARAMETER_SUBMISSION_ROUND":/)?.[0] ?? "";
     const commandSource = readFileSync("src/domain/parameters/commands.ts", "utf8");
     const pageSource = readFileSync("src/ParametersPage.tsx", "utf8");
     const submitSource = pageSource.match(/const submitRound[\s\S]*?\r?\n  };\r?\n  const previewItems/)?.[0] ?? "";
@@ -1408,25 +1409,30 @@ describe("ParametersPage · 提交契约", () => {
     expect(diff!.querySelector(".submission-preview-diff-row[data-kind='remove'] .submission-preview-diff-row__marker")).toHaveTextContent("-");
     expect(diff!.querySelector(".submission-preview-diff-row[data-kind='add'] .submission-preview-diff-row__marker")).toHaveTextContent("+");
 
-    const styles = readFileSync("src/styles.css", "utf8");
-    const codeRule = styles.match(/\.submission-preview-diff\s*\{[^}]*\}/)?.[0] ?? "";
-    const rowCodeRule = styles.match(/\.submission-preview-diff-row code\s*\{[^}]*\}/)?.[0] ?? "";
-    const removeRowRule = styles.match(/\.submission-preview-diff-row\[data-kind="remove"\]\s*\{[^}]*\}/)?.[0] ?? "";
-    const addRowRule = styles.match(/\.submission-preview-diff-row\[data-kind="add"\]\s*\{[^}]*\}/)?.[0] ?? "";
-    const lineMetaRule =
-      styles.match(/\.submission-preview-diff-row__marker,\s*\.submission-preview-diff-row__line-number\s*\{[^}]*\}/)?.[0] ?? "";
-    const genericHeadingRuleIndex = /\.submission-diff-card strong,\s*\.submission-diff-card small\s*\{/.exec(styles)?.index ?? -1;
-    const complexHeadingRuleIndex =
-      Array.from(styles.matchAll(/\.submission-diff-card--complex strong,\s*\.submission-diff-card--complex small\s*\{/g)).at(-1)?.index ??
-      -1;
-    expect(codeRule).toMatch(/overflow:\s*auto/);
-    expect(codeRule).toContain("background: #ffffff;");
-    expect(codeRule).toContain("color: #0f172a;");
-    expect(removeRowRule).toContain("background: #fff1f2;");
-    expect(addRowRule).toContain("background: #ecfdf5;");
-    expect(lineMetaRule).toContain("background: #f8fafc;");
-    expect(rowCodeRule).toMatch(/white-space:\s*pre/);
-    expect(codeRule).toMatch(/word-break:\s*normal/);
+    const styles = readStylesheet("src/styles.css");
+    const codeRule = declarationsFor(styles, ".submission-preview-diff");
+    const rowCodeRule = declarationsFor(styles, ".submission-preview-diff-row code");
+    const removeRowRule = declarationsFor(styles, '.submission-preview-diff-row[data-kind="remove"]');
+    const addRowRule = declarationsFor(styles, '.submission-preview-diff-row[data-kind="add"]');
+    const lineMetaRule = declarationsFor(styles, ".submission-preview-diff-row__marker");
+    const allRules = parseCssRules(styles);
+    const genericHeadingRuleIndex = allRules.findIndex((rule) =>
+      rule.selectors.includes(".submission-diff-card strong")
+    );
+    const complexHeadingRuleIndex = allRules.findLastIndex((rule) =>
+      rule.selectors.includes(".submission-diff-card--complex strong")
+    );
+    expect(codeRule.overflow).toBe("auto");
+    expect(codeRule.background).toBe("#ffffff");
+    expect(codeRule.color).toBe("#0f172a");
+    expect(removeRowRule.background).toBe("#fff1f2");
+    expect(addRowRule.background).toBe("#ecfdf5");
+    expect(lineMetaRule.background).toBe("#f8fafc");
+    expect(rowCodeRule["white-space"]).toContain("pre");
+    expect(codeRule["word-break"]).toBe("normal");
+    // The complex-card heading override must stay after the generic heading
+    // rule so its equal-specificity declarations win the cascade.
+    expect(genericHeadingRuleIndex).toBeGreaterThanOrEqual(0);
     expect(complexHeadingRuleIndex).toBeGreaterThan(genericHeadingRuleIndex);
   });
 

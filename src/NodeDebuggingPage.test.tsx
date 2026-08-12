@@ -2,7 +2,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import type { ComponentProps, ReactNode } from "react";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import App, { appReducer } from "./App";
+import App from "./App";
+import { appReducer } from "@/application/state/appState";
 import { createDebuggingRuntimeActions, debuggingRuntimeFailureNotification } from "./application/debugging/debuggingRuntime";
 import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
 import type { DebuggingGateway } from "./application/ports/DebuggingGateway";

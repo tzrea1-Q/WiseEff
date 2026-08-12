@@ -30,6 +30,14 @@ const rawEnvSchema = z.object({
   AGENT_API_KEY: z.string().optional(),
   AGENT_API_BASE_URL: z.string().optional(),
   AGENT_API_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
+  EMBEDDING_API_BASE_URL: z.string().optional(),
+  EMBEDDING_MODEL: z.string().optional(),
+  EMBEDDING_API_KEY: z.string().optional(),
+  EMBEDDING_API_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
+  KNOWLEDGE_INDEX_WORKER_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((value) => value === "true"),
   LOG_WORKER_ENABLED: z
     .enum(["true", "false"])
     .default("true")

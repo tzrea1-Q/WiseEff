@@ -294,15 +294,27 @@ export async function resolveConflictsBulk(
     conflictIds: input.conflictIds
   });
 
-  const resolved: FileSyncConflictRecord[] = [];
-  for (const conflict of preview.eligible) {
-    const item = await resolveParameterFileConflict(db, auth, {
-      conflictId: conflict.id,
-      resolution: input.resolution,
-      reason: input.reason
-    });
-    resolved.push(item);
+  if (preview.eligible.length === 0) {
+    return { resolved: [], skipped: preview.ineligible };
   }
+
+  // A bulk arbitration is one human decision: every eligible conflict resolves or
+  // none does. Per-conflict transactions inside resolveParameterFileConflict degrade
+  // to savepoints under this outer transaction, so an unexpected mid-batch failure
+  // rolls the whole batch back instead of leaving it half-applied. `skipped` still
+  // reports the entries preview classified as ineligible up front.
+  const resolved = await db.transaction(async (tx) => {
+    const items: FileSyncConflictRecord[] = [];
+    for (const conflict of preview.eligible) {
+      const item = await resolveParameterFileConflict(tx, auth, {
+        conflictId: conflict.id,
+        resolution: input.resolution,
+        reason: input.reason
+      });
+      items.push(item);
+    }
+    return items;
+  });
 
   return {
     resolved,

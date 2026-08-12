@@ -6,6 +6,8 @@ const TOOL_LABELS_ZH: Record<string, string> = {
   "perception.searchParameters": "搜索参数定义",
   "perception.getNodeSnapshot": "读取节点快照",
   "perception.getRecentLogConclusions": "查看日志结论",
+  "knowledge.search": "检索知识库",
+  "knowledge.getDocument": "读取知识条目",
   "action.submitParameterChange": "提交参数变更"
 };
 
@@ -18,8 +20,12 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
     "Read debugging node bindings and current/target values. Use on debugging pages or node-related questions.",
   "perception.getRecentLogConclusions":
     "Read recent log analysis conclusions and severity. Use on logs pages or log-related questions.",
+  "knowledge.search":
+    "Search the organization's published knowledge base (tuning experience, fault cases, hardware manuals, process norms). Returns entries with citation-ready excerpts. Use when the user asks about documented experience or best practices; cite the returned sources in the answer.",
+  "knowledge.getDocument":
+    "Read the full content of one published knowledge entry by entryId (use ids returned by knowledge.search). Returns markdown or extracted file text plus citation metadata. Drafts and archived entries are never readable.",
   "action.submitParameterChange":
-    "Submit a parameter change request for human review. Never executes immediately; requires explicit user approval."
+    "Submit a parameter change request for human review. Never executes immediately; requires explicit user approval. Pass the binding id from perception.searchParameters as parameterId, and write targetValue as DTS source text in the same format as the parameter's current value (for example <3600> for cells or \"fast\" for strings)."
 };
 
 const TOOL_SCHEMAS: Record<string, Record<string, unknown>> = {
@@ -52,12 +58,39 @@ const TOOL_SCHEMAS: Record<string, Record<string, unknown>> = {
     },
     additionalProperties: false
   },
+  "knowledge.search": {
+    type: "object",
+    properties: {
+      query: { type: "string", description: "Search keywords for the published knowledge base (Chinese or English)." },
+      limit: { type: "number", description: "Maximum entries to return (1-10, default 5)." }
+    },
+    required: ["query"],
+    additionalProperties: false
+  },
+  "knowledge.getDocument": {
+    type: "object",
+    properties: {
+      entryId: {
+        type: "string",
+        description: "Knowledge entry id to read — use an entryId returned by knowledge.search."
+      }
+    },
+    required: ["entryId"],
+    additionalProperties: false
+  },
   "action.submitParameterChange": {
     type: "object",
     properties: {
       projectId: { type: "string", description: "Project that owns the parameter." },
-      parameterId: { type: "string", description: "Parameter definition id to change." },
-      targetValue: { type: "string", description: "Requested new value." },
+      parameterId: {
+        type: "string",
+        description: "Parameter binding id to change — use the id returned by perception.searchParameters."
+      },
+      targetValue: {
+        type: "string",
+        description:
+          'Requested new value as DTS source text, matching the format of the current value: cells like <3600>, strings like "fast", bytes like [01 02].'
+      },
       reason: { type: "string", description: "Human-readable reason for the change." }
     },
     required: ["projectId", "parameterId", "targetValue", "reason"],

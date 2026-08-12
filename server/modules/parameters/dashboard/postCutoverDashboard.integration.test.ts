@@ -2,22 +2,18 @@
  * Post-cutover dashboard/hotspot API integration on a temp PostgreSQL database.
  */
 import { createHash } from "node:crypto";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import pg from "pg";
 import { describe, expect, it } from "vitest";
 
-import { createDatabase, type Database } from "../../../shared/database/client";
-import { applyMigrations } from "../../../shared/database/migrations";
+import type { Database } from "../../../shared/database/client";
 import { createHttpServer } from "../../../shared/http/server";
 import { createRouter } from "../../../shared/http/router";
-import {
-  createSerializedTestQueryable,
-  isTestDatabaseAvailable
-} from "../../../testing/testDatabase";
+import { isTestDatabaseAvailable } from "../../../testing/testDatabase";
+import { withTempDatabase as withSharedTempDatabase } from "../../../testing/tempDatabase";
+import { makeTestAuthContext } from "../../../testing/authContext";
+import { seedCoreGraph } from "../../../testing/fixtures";
 import { requestJson } from "../../../test/testClient";
 import type { AuthContext } from "../../auth/types";
-import { resetParameterIdentityCutoverCache } from "../cutoverAwareIdentity";
+import { resolveParameterIdentityMode } from "../parameterIdentityMode";
 import { registerParameterDashboardRoutes } from "./routes";
 import { aggregateHotspotGroups } from "./hotspotRepository";
 import {
@@ -25,9 +21,6 @@ import {
   migrateParameterIdentities,
   stableSemanticId
 } from "../../parameter-topology/migration";
-
-const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
-const migrationsDir = path.join(projectRoot, "server", "migrations");
 
 const ORG = "org-pcd-dashboard";
 const PROJECT = "project-pcd-dashboard";
@@ -61,74 +54,19 @@ const applyGates = {
   writeLockConfirmed: true as const
 };
 
-function resolveTestDatabaseUrl() {
-  return (
-    process.env.TEST_DATABASE_URL?.trim() ||
-    process.env.DATABASE_URL?.trim() ||
-    "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff"
-  );
-}
-
-function adminConnectionString(database = "postgres") {
-  const url = new URL(resolveTestDatabaseUrl());
-  url.pathname = `/${database}`;
-  return url.toString();
-}
-
-async function withAdminClient<T>(fn: (client: pg.Client) => Promise<T>): Promise<T> {
-  const client = new pg.Client({ connectionString: adminConnectionString("postgres") });
-  await client.connect();
-  try {
-    return await fn(client);
-  } finally {
-    await client.end();
-  }
-}
-
 async function withTempDatabase(fn: (db: Database) => Promise<void>) {
-  const dbName = `wiseeff_pcd_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`.replace(
-    /[^a-z0-9_]/gi,
-    ""
-  );
-  await withAdminClient(async (admin) => {
-    await admin.query(`create database ${dbName}`);
-  });
-
-  const connectionString = adminConnectionString(dbName);
-  const client = new pg.Client({ connectionString });
-  await client.connect();
-  const db = createDatabase(
-    createSerializedTestQueryable(async (text, values = []) => {
-      const result = await client.query(text, values);
-      return { rows: result.rows, rowCount: result.rowCount };
-    })
-  );
-
-  try {
-    await applyMigrations(db, migrationsDir);
-    await fn(db);
-  } finally {
-    await client.end().catch(() => undefined);
-    await withAdminClient(async (admin) => {
-      await admin.query(`drop database if exists ${dbName} with (force)`);
-    });
-  }
+  await withSharedTempDatabase({ prefix: "pcd" }, ({ db }) => fn(db));
 }
 
 function makeAuth(): AuthContext {
-  return {
-    user: {
-      id: USER,
-      organizationId: ORG,
-      name: "PCD User",
-      email: "pcd@example.com",
-      title: "Admin",
-      isActive: true
-    },
-    organization: { id: ORG, name: "PCD Org" },
-    roles: [{ projectId: null, roleId: "admin" }],
+  return makeTestAuthContext({
+    userId: USER,
+    organizationId: ORG,
+    name: "PCD User",
+    email: "pcd@example.com",
+    organizationName: "PCD Org",
     permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"]
-  };
+  });
 }
 
 function makeDashboardServer(db: Database, auth = makeAuth()) {
@@ -167,17 +105,11 @@ async function seedPreCutoverDashboardGraph(db: Database) {
 `;
   const checksum = createHash("sha256").update(content, "utf8").digest("hex");
 
-  await db.query(`insert into organizations (id, name) values ($1, 'PCD Org')`, [ORG]);
-  await db.query(
-    `insert into users (id, organization_id, name, email, title, is_active)
-     values ($1, $2, 'PCD User', 'pcd@example.com', 'Admin', true)`,
-    [USER, ORG]
-  );
-  await db.query(
-    `insert into projects (id, organization_id, name, code, status)
-     values ($1, $2, 'PCD Project', 'PCD', 'initialized')`,
-    [PROJECT, ORG]
-  );
+  await seedCoreGraph(db, {
+    organization: { id: ORG, name: "PCD Org" },
+    users: [{ id: USER, name: "PCD User", email: "pcd@example.com" }],
+    projects: [{ id: PROJECT, name: "PCD Project", code: "PCD" }]
+  });
   await db.query(
     `insert into dts_config_set (id, organization_id, project_id, name, description)
      values ($1, $2, $3, 'pcd-power', 'dashboard')`,
@@ -310,19 +242,14 @@ async function seedPreCutoverDashboardGraph(db: Database) {
 }
 
 function makeAuthFor(organizationId: string, userId: string, organizationName: string): AuthContext {
-  return {
-    user: {
-      id: userId,
-      organizationId,
-      name: "Hotspot User",
-      email: `${userId}@example.com`,
-      title: "Admin",
-      isActive: true
-    },
-    organization: { id: organizationId, name: organizationName },
-    roles: [{ projectId: null, roleId: "admin" }],
+  return makeTestAuthContext({
+    userId,
+    organizationId,
+    name: "Hotspot User",
+    email: `${userId}@example.com`,
+    organizationName,
     permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"]
-  };
+  });
 }
 
 
@@ -337,7 +264,7 @@ async function bootstrapPostCutoverDatabase(db: Database) {
   });
   expect(report.blockers).toEqual([]);
   await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
-  resetParameterIdentityCutoverCache();
+  await resolveParameterIdentityMode(db);
 
   const legacyTables = await db.query(
     `select table_name from information_schema.tables
@@ -357,23 +284,16 @@ async function seedSemanticHotspotTenantGraph(db: Database) {
   const bindingGlobalB = stableSemanticId("project_parameter_binding", [PROJECT_B, logicalNodeB, GLOBAL_SPEC_ID]);
   const bindingOrgOwnedA = stableSemanticId("project_parameter_binding", [PROJECT_A, logicalNodeA, orgOwnedSpecId]);
 
-  await db.query(
-    `insert into organizations (id, name) values ($1, 'Hotspot Org A'), ($2, 'Hotspot Org B')
-     on conflict (id) do update set name = excluded.name`,
-    [ORG_A, ORG_B]
-  );
-  await db.query(
-    `insert into users (id, organization_id, name, email, title, is_active)
-     values ($1, $2, 'User A', 'a@example.com', 'Admin', true),
-            ($3, $4, 'User B', 'b@example.com', 'Admin', true)`,
-    [USER_A, ORG_A, USER_B, ORG_B]
-  );
-  await db.query(
-    `insert into projects (id, organization_id, name, code, status)
-     values ($1, $2, 'Project A', 'PRJ-A', 'initialized'),
-            ($3, $4, 'Project B', 'PRJ-B', 'initialized')`,
-    [PROJECT_A, ORG_A, PROJECT_B, ORG_B]
-  );
+  await seedCoreGraph(db, {
+    organization: { id: ORG_A, name: "Hotspot Org A" },
+    users: [{ id: USER_A, name: "User A", email: "a@example.com" }],
+    projects: [{ id: PROJECT_A, name: "Project A", code: "PRJ-A" }]
+  });
+  await seedCoreGraph(db, {
+    organization: { id: ORG_B, name: "Hotspot Org B" },
+    users: [{ id: USER_B, name: "User B", email: "b@example.com" }],
+    projects: [{ id: PROJECT_B, name: "Project B", code: "PRJ-B" }]
+  });
   await db.query(
     `insert into dts_config_set (id, organization_id, project_id, name, description)
      values ($1, $2, $3, 'cfg-a', 'hotspot-a'),
@@ -570,7 +490,7 @@ describe.skipIf(!databaseAvailable)("post-cutover dashboard API (temp DB)", () =
         );
 
         await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
-        resetParameterIdentityCutoverCache();
+        await resolveParameterIdentityMode(db);
 
         const legacyTables = await db.query(
           `select table_name from information_schema.tables

@@ -1,235 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { createTracingBoundary, type TraceExporter } from "../../observability/tracing";
-import type { Database, Queryable } from "../../shared/database/client";
+import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { developmentAuthContext } from "../auth/routes";
 import type { AuthContext } from "../auth/types";
 import { createAgentSession } from "./repository";
 import type { AgentToolExecutionContext } from "./toolRegistry";
-import { createAgentOrchestrator } from "./orchestrator";
+import { createAgentOrchestrator, type ApprovalBeginInput } from "./orchestrator";
 import type { AgentToolDefinition } from "./toolRegistry";
 import type { AgentToolName, AgentToolResult } from "./types";
-
-type MemoryRow = Record<string, unknown>;
-
-function isoNow() {
-  return "2026-05-28T00:00:00.000Z";
-}
-
-function createMemoryDb(
-  options: { failApprovalUpdates?: boolean; failToolUpdateStatuses?: string[]; failAuditActions?: string[] } = {}
-) {
-  const tables = {
-    sessions: [] as MemoryRow[],
-    messages: [] as MemoryRow[],
-    toolCalls: [] as MemoryRow[],
-    approvals: [] as MemoryRow[],
-    traces: [] as MemoryRow[],
-    audits: [] as MemoryRow[]
-  };
-
-  function cloneTables() {
-    return {
-      sessions: tables.sessions.map((row) => ({ ...row })),
-      messages: tables.messages.map((row) => ({ ...row })),
-      toolCalls: tables.toolCalls.map((row) => ({ ...row })),
-      approvals: tables.approvals.map((row) => ({ ...row })),
-      traces: tables.traces.map((row) => ({ ...row })),
-      audits: tables.audits.map((row) => ({ ...row }))
-    };
-  }
-
-  function replaceTables(nextTables: typeof tables) {
-    for (const key of Object.keys(tables) as Array<keyof typeof tables>) {
-      tables[key].splice(0, tables[key].length, ...nextTables[key].map((row) => ({ ...row })));
-    }
-  }
-
-  function queryableFor(targetTables: typeof tables): Queryable {
-    return {
-      query: async <Row,>(text: string, values: unknown[] = []) => {
-        const sql = text.replace(/\s+/g, " ").trim();
-
-        if (sql.includes("insert into agent_sessions")) {
-          targetTables.sessions.push({
-            id: values[0],
-            organization_id: values[1],
-            project_id: values[2],
-            actor_user_id: values[3],
-            page_key: values[4],
-            role_id: values[5],
-            context: values[6],
-            title: values[7],
-            status: "active",
-            created_at: isoNow(),
-            updated_at: isoNow()
-          });
-          return { rows: [] as Row[], rowCount: 1 };
-        }
-        if (sql.includes("from agent_sessions")) {
-          return {
-            rows: targetTables.sessions.filter((row) => row.organization_id === values[0] && row.id === values[1]) as Row[],
-            rowCount: 1
-          };
-        }
-        if (sql.includes("insert into agent_messages")) {
-          targetTables.messages.push({
-            id: values[0],
-            session_id: values[1],
-            organization_id: values[2],
-            role: values[3],
-            content: values[4],
-            citations: values[5],
-            confidence: values[6],
-            created_at: isoNow()
-          });
-          return { rows: [] as Row[], rowCount: 1 };
-        }
-        if (sql.includes("from agent_messages")) {
-          return {
-            rows: targetTables.messages.filter((row) => row.organization_id === values[0] && row.session_id === values[1]) as Row[],
-            rowCount: 1
-          };
-        }
-        if (sql.includes("insert into agent_tool_calls")) {
-          targetTables.toolCalls.push({
-            id: values[0],
-            session_id: values[1],
-            organization_id: values[2],
-            project_id: values[3],
-            name: values[4],
-            label: values[5],
-            payload: values[6],
-            requires_approval: values[7],
-            status: values[8],
-            result: null,
-            error_message: null,
-            audit_event_id: null,
-            created_at: isoNow(),
-            updated_at: isoNow()
-          });
-          return { rows: [] as Row[], rowCount: 1 };
-        }
-        if (sql.includes("update agent_tool_calls")) {
-          if (options.failToolUpdateStatuses?.includes(String(values[2]))) {
-            return { rows: [] as Row[], rowCount: 0 };
-          }
-          const row = targetTables.toolCalls.find((item) => item.organization_id === values[0] && item.id === values[1]);
-          if (!row) {
-            return { rows: [] as Row[], rowCount: 0 };
-          }
-          const nextStatus = values[2];
-          const isTerminal = ["succeeded", "failed", "rejected"].includes(String(row.status));
-          if (nextStatus !== null && row.status !== nextStatus && isTerminal) {
-            return { rows: [] as Row[], rowCount: 0 };
-          }
-          row.status = nextStatus ?? row.status;
-          row.result = values[3] ?? row.result;
-          row.error_message = values[4] ?? row.error_message;
-          row.audit_event_id = values[5] ?? row.audit_event_id;
-          row.updated_at = isoNow();
-          return { rows: [] as Row[], rowCount: 1 };
-        }
-        if (sql.includes("from agent_tool_calls")) {
-          const rows = targetTables.toolCalls
-            .filter((row) =>
-              sql.includes("session_id = $2")
-                ? row.organization_id === values[0] && row.session_id === values[1]
-                : row.organization_id === values[0] && row.id === values[1]
-            )
-            .map((row) => ({
-              ...row,
-              approval_id: targetTables.approvals.find((approval) => approval.tool_call_id === row.id)?.id ?? null
-            }));
-          return { rows: rows as Row[], rowCount: rows.length };
-        }
-        if (sql.includes("insert into agent_approvals")) {
-          targetTables.approvals.push({
-            id: values[0],
-            session_id: values[1],
-            tool_call_id: values[2],
-            organization_id: values[3],
-            project_id: values[4],
-            status: values[5],
-            title: values[6],
-            message: values[7],
-            requested_by_user_id: values[8],
-            requested_at: isoNow(),
-            decided_at: null,
-            decided_by_user_id: null,
-            decision_reason: null
-          });
-          return { rows: [] as Row[], rowCount: 1 };
-        }
-        if (sql.includes("update agent_approvals")) {
-          if (options.failApprovalUpdates) {
-            return { rows: [] as Row[], rowCount: 0 };
-          }
-          const row = targetTables.approvals.find(
-            (item) => item.organization_id === values[0] && item.id === values[1] && item.status === "pending"
-          );
-          if (!row) {
-            return { rows: [] as Row[], rowCount: 0 };
-          }
-          row.status = sql.includes("status = 'approved'") ? "approved" : "rejected";
-          row.decided_by_user_id = values[2];
-          row.decision_reason = values[3] ?? null;
-          row.decided_at = isoNow();
-          return { rows: [] as Row[], rowCount: 1 };
-        }
-        if (sql.includes("from agent_approvals")) {
-          return {
-            rows: targetTables.approvals.filter((row) =>
-              sql.includes("session_id = $2")
-                ? row.organization_id === values[0] && row.session_id === values[1]
-                : row.organization_id === values[0] && row.id === values[1]
-            ) as Row[],
-            rowCount: 1
-          };
-        }
-        if (sql.includes("insert into audit_events")) {
-          if (options.failAuditActions?.includes(String(values[7]))) {
-            throw new Error("Audit sink unavailable");
-          }
-          targetTables.audits.push({
-            id: values[0],
-            organization_id: values[1],
-            project_id: values[2],
-            actor_user_id: values[3],
-            actor_type: values[4],
-            app: values[5],
-            kind: values[6],
-            action: values[7],
-            severity: values[8],
-            target_type: values[9],
-            target_id: values[10],
-            metadata: values[11],
-            trace_id: values[12]
-          });
-          return { rows: [] as Row[], rowCount: 1 };
-        }
-
-        throw new Error(`Unhandled SQL in test DB: ${sql}`);
-      }
-    };
-  }
-
-  const queryable = queryableFor(tables);
-
-  const db: Database = {
-    ...queryable,
-    transaction: async (fn) => {
-      const txTables = cloneTables();
-      const tx = queryableFor(txTables);
-      const result = await fn(tx);
-      replaceTables(txTables);
-      return result;
-    }
-  };
-
-  return { db, tables };
-}
+import { createMemoryAgentDb as createMemoryDb } from "./testing/memoryAgentDb";
 
 function createToolDefinition(input: {
   name: AgentToolName;
@@ -318,7 +99,7 @@ describe("agent orchestrator", () => {
     );
     const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
     const sessionId = await createTestSession(db);
-    const toolCall = await orchestrator.recordToolRequestForTest({
+    const toolCall = await orchestrator.recordToolRequest({
       auth: developmentAuthContext,
       requestId: "req-agent-tool",
       sessionId,
@@ -381,7 +162,7 @@ describe("agent orchestrator", () => {
     const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry, metrics });
     const sessionId = await createTestSession(db);
 
-    const toolCall = await orchestrator.recordToolRequestForTest({
+    const toolCall = await orchestrator.recordToolRequest({
       auth: developmentAuthContext,
       requestId: "req-turn",
       sessionId,
@@ -402,6 +183,97 @@ describe("agent orchestrator", () => {
     });
   });
 
+  it("refuses approval decisions from a same-org user other than the requester", async () => {
+    const { db, tables } = createMemoryDb();
+    const registry = createRegistry(
+      [createToolDefinition({ name: "action.submitParameterChange", kind: "mutating", requiresApproval: true })],
+      async () => ({ summary: "executed", data: {}, citations: [] })
+    );
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const sessionId = await createTestSession(db);
+    const toolCall = await orchestrator.recordToolRequest({
+      auth: developmentAuthContext,
+      requestId: "req-owner-turn",
+      sessionId,
+      request: {
+        name: "action.submitParameterChange",
+        label: "Submit parameter change",
+        payload: { projectId: "aurora", parameterId: "pd-1", targetValue: "3100", reason: "Stage draft" }
+      }
+    });
+    const intruderAuth: AuthContext = {
+      ...developmentAuthContext,
+      user: { ...developmentAuthContext.user, id: "u-intruder" }
+    };
+
+    await expect(
+      orchestrator.approveToolCall({
+        auth: intruderAuth,
+        requestId: "req-intruder-approve",
+        approvalId: toolCall.approvalId ?? "",
+        reason: "hijack"
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+    await expect(
+      orchestrator.rejectToolCall({
+        auth: intruderAuth,
+        requestId: "req-intruder-reject",
+        approvalId: toolCall.approvalId ?? "",
+        reason: "hijack"
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+
+    expect(registry.run).not.toHaveBeenCalled();
+    expect(tables.approvals[0]?.status).toBe("pending");
+
+    // The requesting user can still decide their own approval.
+    await orchestrator.approveToolCall({
+      auth: developmentAuthContext,
+      requestId: "req-owner-approve",
+      approvalId: toolCall.approvalId ?? "",
+      reason: "Looks safe"
+    });
+    expect(registry.run).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses resolveApproval edited args from a non-requester before touching the payload", async () => {
+    const { db, tables } = createMemoryDb();
+    const registry = createRegistry(
+      [createToolDefinition({ name: "action.submitParameterChange", kind: "mutating", requiresApproval: true })],
+      async () => ({ summary: "executed", data: {}, citations: [] })
+    );
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const sessionId = await createTestSession(db);
+    const toolCall = await orchestrator.recordToolRequest({
+      auth: developmentAuthContext,
+      requestId: "req-owner-turn",
+      sessionId,
+      request: {
+        name: "action.submitParameterChange",
+        label: "Submit parameter change",
+        payload: { projectId: "aurora", parameterId: "pd-1", targetValue: "3100", reason: "Stage draft" }
+      }
+    });
+    const intruderAuth: AuthContext = {
+      ...developmentAuthContext,
+      user: { ...developmentAuthContext.user, id: "u-intruder" }
+    };
+
+    await expect(
+      orchestrator.resolveApproval({
+        auth: intruderAuth,
+        requestId: "req-intruder-resolve",
+        approvalId: toolCall.approvalId ?? "",
+        decision: "approve",
+        editedArgs: { projectId: "aurora", parameterId: "pd-1", targetValue: "9999", reason: "hijacked" }
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+
+    expect(registry.run).not.toHaveBeenCalled();
+    expect(tables.approvals[0]?.status).toBe("pending");
+    expect(JSON.stringify(tables.toolCalls)).not.toContain("9999");
+  });
+
   it("exports low-cardinality direct tool execution spans without payload or identifiers", async () => {
     const { db } = createMemoryDb();
     const { spans, tracing } = createTraceRecorder();
@@ -412,7 +284,7 @@ describe("agent orchestrator", () => {
     const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry, tracing });
     const sessionId = await createTestSession(db);
 
-    await orchestrator.recordToolRequestForTest({
+    await orchestrator.recordToolRequest({
       auth: developmentAuthContext,
       requestId: "req-turn-secret",
       sessionId,
@@ -448,7 +320,7 @@ describe("agent orchestrator", () => {
     const { db } = createMemoryDb();
     const orchestrator = createAgentOrchestrator({ db });
     const sessionId = await createTestSession(db);
-    const toolCall = await orchestrator.recordToolRequestForTest({
+    const toolCall = await orchestrator.recordToolRequest({
       auth: developmentAuthContext,
       requestId: "req-tool",
       sessionId,
@@ -485,7 +357,7 @@ describe("agent orchestrator", () => {
     );
     const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry, metrics });
     const sessionId = await createTestSession(db);
-    const toolCall = await orchestrator.recordToolRequestForTest({
+    const toolCall = await orchestrator.recordToolRequest({
       auth: developmentAuthContext,
       requestId: "req-tool",
       sessionId,
@@ -537,7 +409,7 @@ describe("agent orchestrator", () => {
     );
     const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry, tracing });
     const sessionId = await createTestSession(db);
-    const toolCall = await orchestrator.recordToolRequestForTest({
+    const toolCall = await orchestrator.recordToolRequest({
       auth: developmentAuthContext,
       requestId: "req-tool-secret",
       sessionId,
@@ -586,7 +458,7 @@ describe("agent orchestrator", () => {
     );
     const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
     const sessionId = await createTestSession(db);
-    const toolCall = await orchestrator.recordToolRequestForTest({
+    const toolCall = await orchestrator.recordToolRequest({
       auth: developmentAuthContext,
       requestId: "req-tool",
       sessionId,
@@ -611,9 +483,10 @@ describe("agent orchestrator", () => {
 
   it("approveToolCall preserves pending approval state when approval-time authorization fails", async () => {
     const { db, tables } = createMemoryDb();
+    // Same requesting user, but their permissions were downgraded between the
+    // request and the approval, so approval-time re-authorization must refuse.
     const guestAuthContext: AuthContext = {
       ...developmentAuthContext,
-      user: { ...developmentAuthContext.user, id: "u-guest" },
       roles: [{ projectId: "aurora", roleId: "guest" }],
       permissions: ["parameter:view"]
     };
@@ -626,7 +499,7 @@ describe("agent orchestrator", () => {
     });
     const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
     const sessionId = await createTestSession(db);
-    const toolCall = await orchestrator.recordToolRequestForTest({
+    const toolCall = await orchestrator.recordToolRequest({
       auth: developmentAuthContext,
       requestId: "req-tool",
       sessionId,
@@ -663,7 +536,7 @@ describe("agent orchestrator", () => {
     );
     const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry, metrics });
     const sessionId = await createTestSession(db);
-    const toolCall = await orchestrator.recordToolRequestForTest({
+    const toolCall = await orchestrator.recordToolRequest({
       auth: developmentAuthContext,
       requestId: "req-tool",
       sessionId,
@@ -713,7 +586,7 @@ describe("agent orchestrator", () => {
     );
     const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry, metrics });
     const sessionId = await createTestSession(db);
-    const toolCall = await orchestrator.recordToolRequestForTest({
+    const toolCall = await orchestrator.recordToolRequest({
       auth: developmentAuthContext,
       requestId: "req-tool",
       sessionId,
@@ -753,7 +626,7 @@ describe("agent orchestrator", () => {
     );
     const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry, metrics });
     const sessionId = await createTestSession(db);
-    const toolCall = await orchestrator.recordToolRequestForTest({
+    const toolCall = await orchestrator.recordToolRequest({
       auth: developmentAuthContext,
       requestId: "req-tool",
       sessionId,
@@ -800,7 +673,7 @@ describe("agent orchestrator", () => {
     );
     const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
     const sessionId = await createTestSession(db);
-    const toolCall = await orchestrator.recordToolRequestForTest({
+    const toolCall = await orchestrator.recordToolRequest({
       auth: developmentAuthContext,
       requestId: "req-tool",
       sessionId,
@@ -837,7 +710,7 @@ describe("agent orchestrator", () => {
     const sessionId = await createTestSession(db);
 
     await expect(
-      orchestrator.recordToolRequestForTest({
+      orchestrator.recordToolRequest({
         auth: developmentAuthContext,
         requestId: "req-tool",
         sessionId,
@@ -850,5 +723,159 @@ describe("agent orchestrator", () => {
     ).rejects.toMatchObject({ code: "CONFLICT" });
 
     expect(registry.run).not.toHaveBeenCalled();
+  });
+});
+
+describe("agent approval chain (beginApproval / resolveApproval)", () => {
+  const mutatingPayload = { projectId: "aurora", parameterId: "pd-1", targetValue: "3100", reason: "Stage draft" };
+
+  function createMutatingRegistry() {
+    return createRegistry(
+      [createToolDefinition({ name: "action.submitParameterChange", kind: "mutating", requiresApproval: true })],
+      async (_name, _context, payload) => ({
+        summary: `Submitted parameter change with target ${String(payload.targetValue)}.`,
+        data: { payload },
+        citations: []
+      })
+    );
+  }
+
+  function beginInput(sessionId: string, overrides: Partial<ApprovalBeginInput> = {}): ApprovalBeginInput {
+    return {
+      auth: developmentAuthContext,
+      requestId: "req-begin",
+      sessionId,
+      toolName: "action.submitParameterChange",
+      payload: mutatingPayload,
+      citations: [],
+      pageKey: "xiaoze",
+      projectId: "aurora",
+      ...overrides
+    };
+  }
+
+  it("beginApproval creates the session when missing and opens a pending approval without executing", async () => {
+    const { db, tables } = createMemoryDb();
+    const registry = createMutatingRegistry();
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+
+    const begun = await orchestrator.beginApproval(beginInput("thread-begin"));
+
+    expect(begun.approvalId).toBeTruthy();
+    expect(begun.toolCallId).toBeTruthy();
+    expect(begun.payload).toEqual(mutatingPayload);
+    expect(registry.run).not.toHaveBeenCalled();
+    expect(tables.sessions).toHaveLength(1);
+    expect(tables.sessions[0]).toMatchObject({ id: "thread-begin", page_key: "xiaoze" });
+    expect(tables.toolCalls[0]).toMatchObject({ status: "pending_approval" });
+    expect(tables.approvals[0]).toMatchObject({ status: "pending", tool_call_id: begun.toolCallId });
+  });
+
+  it("beginApproval refuses tools that do not require approval", async () => {
+    const { db } = createMemoryDb();
+    const registry = createRegistry(
+      [createToolDefinition({ name: "perception.getProjectOverview", requiresApproval: false })],
+      async () => ({ summary: "ok", data: {}, citations: [] })
+    );
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+
+    await expect(
+      orchestrator.beginApproval(beginInput("thread-read", { toolName: "perception.getProjectOverview" }))
+    ).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+  });
+
+  it("resolveApproval reject uses the default Xiaoze reason and does not execute", async () => {
+    const { db, tables } = createMemoryDb();
+    const registry = createMutatingRegistry();
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const begun = await orchestrator.beginApproval(beginInput("thread-reject"));
+
+    const resolved = await orchestrator.resolveApproval({
+      auth: developmentAuthContext,
+      requestId: "req-reject",
+      approvalId: begun.approvalId,
+      decision: "reject"
+    });
+
+    expect(registry.run).not.toHaveBeenCalled();
+    expect(tables.approvals[0]).toMatchObject({ status: "rejected", decision_reason: "Rejected from Xiaoze chat." });
+    expect(tables.toolCalls[0]).toMatchObject({ status: "rejected" });
+    expect(resolved.text.toLowerCase()).toContain("rejected");
+  });
+
+  it("resolveApproval approve with editedArgs replaces the payload before authorization and execution", async () => {
+    const { db, tables } = createMemoryDb();
+    const registry = createMutatingRegistry();
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const begun = await orchestrator.beginApproval(beginInput("thread-edited"));
+    const editedArgs = { ...mutatingPayload, targetValue: "9999" };
+
+    const resolved = await orchestrator.resolveApproval({
+      auth: developmentAuthContext,
+      requestId: "req-approve",
+      approvalId: begun.approvalId,
+      decision: "approve",
+      editedArgs
+    });
+
+    expect(registry.run).toHaveBeenCalledTimes(1);
+    expect(registry.run).toHaveBeenCalledWith(
+      "action.submitParameterChange",
+      expect.anything(),
+      expect.objectContaining({ targetValue: "9999" })
+    );
+    expect(JSON.parse(String(tables.toolCalls[0].payload))).toMatchObject({ targetValue: "9999" });
+    expect(tables.toolCalls[0]).toMatchObject({ status: "succeeded" });
+    expect(tables.approvals[0]).toMatchObject({ status: "approved" });
+    expect(resolved.text).toContain("9999");
+  });
+
+  it("resolveApproval with editedArgs on a decided approval raises an invalid-state conflict", async () => {
+    const { db } = createMemoryDb();
+    const registry = createMutatingRegistry();
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const begun = await orchestrator.beginApproval(beginInput("thread-decided"));
+    await orchestrator.resolveApproval({
+      auth: developmentAuthContext,
+      requestId: "req-approve",
+      approvalId: begun.approvalId,
+      decision: "approve"
+    });
+
+    await expect(
+      orchestrator.resolveApproval({
+        auth: developmentAuthContext,
+        requestId: "req-approve-again",
+        approvalId: begun.approvalId,
+        decision: "approve",
+        editedArgs: { ...mutatingPayload, targetValue: "1" }
+      })
+    ).rejects.toMatchObject({ code: "INVALID_APPROVAL_STATE", status: 409 });
+  });
+
+  it("resolves an approval begun by a different orchestrator instance over the same database", async () => {
+    const { db, tables } = createMemoryDb();
+    const registryA = createMutatingRegistry();
+    const registryB = createMutatingRegistry();
+    const instanceA = createAgentOrchestrator({ db, toolRegistry: registryA });
+    const instanceB = createAgentOrchestrator({ db, toolRegistry: registryB });
+
+    const begun = await instanceA.beginApproval(beginInput("thread-replica"));
+    const resolved = await instanceB.resolveApproval({
+      auth: developmentAuthContext,
+      requestId: "req-replica",
+      approvalId: begun.approvalId,
+      decision: "approve",
+      editedArgs: { ...mutatingPayload, targetValue: "4242" }
+    });
+
+    expect(registryA.run).not.toHaveBeenCalled();
+    expect(registryB.run).toHaveBeenCalledWith(
+      "action.submitParameterChange",
+      expect.anything(),
+      expect.objectContaining({ targetValue: "4242" })
+    );
+    expect(JSON.parse(String(tables.toolCalls[0].payload))).toMatchObject({ targetValue: "4242" });
+    expect(resolved.text).toContain("4242");
   });
 });

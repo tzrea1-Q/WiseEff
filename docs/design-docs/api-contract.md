@@ -24,6 +24,7 @@ Rules:
 - Semantic parameter topology (v2): parameter specs, spec review tasks, source/effective topology, project bindings, identity mapping tasks, and fail-closed config-revision validate under `/api/v2/*` (see below). Legacy flat parameter IDs are retired at cutover with `410 legacy-parameter-id-retired`.
 - Logs: upload/file records, analysis records, runs, rerun, archive, feedback.
 - Product feedback: Internal Beta sidebar feedback submission, admin triage, and attachment content.
+- Knowledge: organization-scoped knowledge entries, revisions, published-only search, and file content under `/api/v1/knowledge/*`.
 - Jobs: status and progress events.
 - Debugging: devices, target detection, sessions, node reads/writes, snapshots, rollback.
 - Agent: Xiaoze AG-UI run, proactive suggest, and thread persistence under `/api/v1/agent/xiaoze`.
@@ -89,7 +90,7 @@ Dedicated module under `/api/v1/dts-reload/*` (not the retired `/api/v1/debuggin
 
 | Method | Path | Authz | Purpose |
 | --- | --- | --- | --- |
-| `GET` | `/api/v1/dts-reload/projects/:projectId/candidates` | `debugging:view` or `debugging:dts-reload` | Project parameters with debuggability, `moduleId`, `description` (parameter meaning), sensitiveMatch, lastReload. Debuggable when nonempty absolute `nodePath`, supported reload value shape, and library baseline exist — including single-segment `/label` paths (no synthesised-anchor path-shape refuse). Supported shapes include u32/u8/u16 cells (incl. `/bits/ 8`), catalog `string` (single quoted string, e.g. `replace_sensor`), `string-list`, and GPIO-style `phandle-cells`. `u32-array` is treated as the same reload family as `cells` (width may be inferred from a regular library baseline). Catalog `mixed` / `phandle-list` baselines that match GPIO-style `<&label N …>` resolve to reload shape `phandle-cells` (e.g. `gpio_int`). Catalog `bytes` baselines authored as `/bits/ 8 <…>` resolve to reloadable 8-bit cell arrays (e.g. `prevfod1_product_list`). Rows that share the same overlay identity (`nodePath` + `propertyKey`) are collapsed to one candidate. |
+| `GET` | `/api/v1/dts-reload/projects/:projectId/candidates` | `debugging:view` or `debugging:dts-reload` | Project parameters with debuggability, `moduleId`, `description` (parameter meaning), sensitiveMatch, lastReload. Each candidate carries both the raw catalog `valueShapeKind` (display only) and the server-resolved `resolvedValueShape` (normalized reload vocabulary, or null); clients drive authoring validation, placeholders, and examples from `resolvedValueShape` — never the catalog kind — because resolution needs the DTS parser and the library baseline. Debuggable when nonempty absolute `nodePath`, supported reload value shape, and library baseline exist — including single-segment `/label` paths (no synthesised-anchor path-shape refuse). Supported shapes include u32/u8/u16 cells (incl. `/bits/ 8`), catalog `string` (single quoted string, e.g. `replace_sensor`), `string-list`, and GPIO-style `phandle-cells`. `u32-array` is treated as the same reload family as `cells` (width may be inferred from a regular library baseline). Catalog `mixed` / `phandle-list` baselines that match GPIO-style `<&label N …>` resolve to reload shape `phandle-cells` (e.g. `gpio_int`). Catalog `bytes` baselines authored as `/bits/ 8 <…>` resolve to reloadable 8-bit cell arrays (e.g. `prevfod1_product_list`). Rows that share the same overlay identity (`nodePath` + `propertyKey`) are collapsed to one candidate. |
 | `POST` | `/api/v1/dts-reload/projects/:projectId/runs` | `debugging:dts-reload` | Start run (batch targets); may require `confirm-sensitive-reload` |
 | `POST` | `/api/v1/dts-reload/runs/:runId/deploy` | `debugging:dts-reload` | In-request bridge deploy; requires `confirm-dts-reload` |
 | `GET` | `/api/v1/dts-reload/runs` / `.../:runId` | view path | History and detail including reload snapshot |
@@ -195,6 +196,32 @@ Create body:
 
 `feedbackType` is one of `experience`, `data`, `export_submit`, or `feature`. `status` is `open`, `in_progress`, or `closed`; the service allows `open -> in_progress -> closed` and rejects updates after `closed`. Attachments accept `image/png`, `image/jpeg`, and `image/webp`, with up to 5 images, 5 MB per image, and 15 MB total.
 
+## Knowledge Base
+
+Organization-scoped knowledge entries with immutable revisions (design: [Knowledge Base Design](2026-08-12-knowledge-base-design.md)). Reads require `knowledge:view`; creating and governing OWN entries requires `knowledge:edit`; governing any entry and hard delete require `knowledge:manage`. Drafts are visible to their owner and managers only. Every mutation writes an audit event with the request trace.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/v1/knowledge/entries` | Create a markdown or file entry as a draft. File uploads send base64 content through the object-store seam and run text extraction. Returns `201 { item }`. |
+| `GET` | `/api/v1/knowledge/entries` | List visible entries with optional `status`, `contentForm`, `tag`, `q` (title), and `limit` filters. |
+| `GET` | `/api/v1/knowledge/search` | Search **published entries only** (`q`, optional `limit`). Hybrid retrieval: when `EMBEDDING_API_*` is configured and pgvector is available, chunk vector similarity fuses with the FTS/trigram ranking (reciprocal-rank fusion); otherwise the FTS-only path runs unchanged. Items carry citation-ready fields (`entryId`, `title`, `revisionId`, `excerpt`) and the response carries an honest `retrieval` report: `{ mode: "semantic_fts" \| "fts_only", vectorAvailable, embeddingConfigured, degradedReason? }`. |
+| `GET` | `/api/v1/knowledge/index/status` | Per-entry retrieval index health (`knowledge:manage` only): `{ retrieval, items }` where each item carries `status` (`pending` \| `processing` \| `succeeded` \| `failed`), `error`, indexed revision, and chunk counts. |
+| `POST` | `/api/v1/knowledge/index/rebuild` | Re-enqueue every published entry for index rebuild (`knowledge:manage` only; e.g. after changing `EMBEDDING_MODEL`). Returns `{ enqueued }`. Audited. |
+| `POST` | `/api/v1/knowledge/entries/:entryId/index/retry` | Re-enqueue one entry's index refresh (`knowledge:manage` only). Returns `{ enqueued: true }`. Audited. |
+| `GET` | `/api/v1/knowledge/entries/:entryId` | Entry detail with head-revision content and file metadata (extraction status included). |
+| `PATCH` | `/api/v1/knowledge/entries/:entryId` | Save an edit (`title` / `tags` / `contentMarkdown` / replacement `file`) as a new immutable revision. Requires `expectedHeadRevisionNumber`; a stale save returns `409 CONFLICT` with `details.code: "knowledge-revision-conflict"`. |
+| `POST` | `/api/v1/knowledge/entries/:entryId/publish` | Publish a draft into retrieval (`draft → published`). |
+| `POST` | `/api/v1/knowledge/entries/:entryId/archive` | Archive a published entry out of retrieval (`published → archived`). |
+| `POST` | `/api/v1/knowledge/entries/:entryId/restore` | Restore an archived entry (`archived → published`). |
+| `DELETE` | `/api/v1/knowledge/entries/:entryId` | Hard delete with revisions and file metadata. `knowledge:manage` only; writes a `High`-severity audit event. |
+| `GET` | `/api/v1/knowledge/entries/:entryId/revisions` | List immutable revisions, newest first. |
+| `POST` | `/api/v1/knowledge/entries/:entryId/revisions/:revisionId/restore` | Restore a prior revision as a new head revision (requires `expectedHeadRevisionNumber`). |
+| `GET` | `/api/v1/knowledge/entries/:entryId/file/content` | Download the current binary of a file-form entry. |
+
+File uploads accept `application/pdf`, `.docx` (`application/vnd.openxmlformats-officedocument.wordprocessingml.document`), `application/msword`, `text/plain`, and `text/markdown`, up to 20 MB. Extraction failures are recorded honestly on the file row (`extractionStatus: "failed"` plus a readable `extractionError`) without failing the upload.
+
+Publish, edit-of-published, archive, and restore enqueue an asynchronous index refresh (chunking + optional embeddings); the index worker only ever materializes **published** revisions, so drafts and archived entries are never retrievable. Xiaoze grounds knowledge questions through the registered read tools `knowledge.search` / `knowledge.getDocument`, which run under the calling user's AuthContext (`knowledge:view` + organization scope) and return citation payloads that deep-link to `/knowledge?entryId=…`.
+
 ## Project Parameter Initialization
 
 One-time semantic binding library initialization for new projects (`projects.initialization_status`). Creator draft/submit; Admin approve/reject. Audit kinds: `project-initialization-submitted` / `approved` / `rejected`.
@@ -238,7 +265,7 @@ View routes require `canViewParameters`; upload, version upload, sync, and confl
 | `GET` | `/api/v1/projects/:projectId/parameter-file-conflicts` | List open file/UI draft conflicts for the project. Each item is enriched with `baseValue`, `parameterName` / `parameterModule`, human `fileVersionLabel` (and `fileVersionNumber` / times), source identities (`fileId`, `fileName`, `configSetId`, `nodePath`, `propertyName`, optional `source` locator). |
 | `POST` | `/api/v1/projects/:projectId/parameter-file-conflicts/:conflictId/resolve` | Resolve one conflict. Body: `{ "resolution": "file" \| "ui", "reason?" }`. Optional trimmed `reason` is stored on `parameter-file-conflict-resolve` audit metadata. |
 | `POST` | `/api/v1/projects/:projectId/parameter-file-conflicts/bulk-preview` | Preview eligible bulk arbitration. Body: `{ "resolution": "file" \| "ui", "conflictIds?" }`. Omitting `conflictIds` previews all open project conflicts. Returns `{ resolution, eligible, ineligible, impact }` (`impact` summarizes eligible/ineligible counts, parameter names, file ids). Ineligible reasons: `not_found`, `already_resolved`, `wrong_project`, `missing_values`. |
-| `POST` | `/api/v1/projects/:projectId/parameter-file-conflicts/bulk-resolve` | Apply one resolution to eligible conflict ids only. Body: `{ "resolution": "file" \| "ui", "conflictIds", "reason?" }`. Returns `{ resolved, skipped }` where `skipped` mirrors ineligible preview rows. |
+| `POST` | `/api/v1/projects/:projectId/parameter-file-conflicts/bulk-resolve` | Apply one resolution to eligible conflict ids only. Body: `{ "resolution": "file" \| "ui", "conflictIds", "reason?" }`. Returns `{ resolved, skipped }` where `skipped` mirrors ineligible preview rows. The eligible batch is atomic (ADR-0027): an unexpected mid-batch failure rolls back every resolution and the request fails, never leaving a half-applied batch. |
 
 Upload body:
 

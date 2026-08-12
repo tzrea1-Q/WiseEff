@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type Dispatch } from "react";
-import type { AppAction } from "@/App";
+import type { AppAction } from "@/application/state/appState";
 import type { ParameterPageActions } from "@/app/routes";
 import type { ParameterImportBatchDto, ParameterImportBatchItem } from "@/application/ports/ParameterRepository";
 import { isEligibleImportItem } from "@/application/parameters/import/isEligibleImportItem";

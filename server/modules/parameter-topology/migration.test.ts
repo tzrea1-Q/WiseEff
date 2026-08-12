@@ -2,16 +2,18 @@ import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import pg from "pg";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { createDatabase, type Database } from "../../shared/database/client";
-import { applyMigrations } from "../../shared/database/migrations";
+import type { Database } from "../../shared/database/client";
 import {
   createInMemoryTestDatabase,
   isTestDatabaseAvailable,
   type InMemoryTestDatabase
 } from "../../testing/testDatabase";
+import {
+  openDatabaseConnection,
+  withTempDatabase as withSharedTempDatabase
+} from "../../testing/tempDatabase";
 import {
   applyParameterIdentityCutover,
   checkParameterIdentityCutover,
@@ -19,8 +21,9 @@ import {
   stableSemanticId,
   type ParameterIdentityMigrationReport
 } from "./migration";
-import { resetParameterIdentityCutoverCache } from "../parameters/cutoverAwareIdentity";
-import { listParameters, listChangeRequests } from "../parameters/repository";
+import { resolveParameterIdentityMode } from "../parameters/parameterIdentityMode";
+import { listParameters } from "../parameters/repository";
+import { listChangeRequests } from "../parameters/reviewWorkflowRepository";
 import { ApiError } from "../../shared/http/errors";
 
 
@@ -31,7 +34,6 @@ const cutoverSqlPath = path.join(
   "cutovers",
   "2026-07-16-parameter-identity-cutover.sql"
 );
-const migrationsDir = path.join(projectRoot, "server", "migrations");
 
 const ORG = "org-mig-14";
 const PROJECT = "project-mig-14";
@@ -71,116 +73,16 @@ function expectedBindingId(specId: string, logicalNodeId: string) {
   return stableSemanticId("project_parameter_binding", [PROJECT, logicalNodeId, specId]);
 }
 
-function resolveTestDatabaseUrl() {
-  return (
-    process.env.TEST_DATABASE_URL?.trim() ||
-    process.env.DATABASE_URL?.trim() ||
-    "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff"
-  );
-}
-
-function adminConnectionString(database = "postgres") {
-  const url = new URL(resolveTestDatabaseUrl());
-  url.pathname = `/${database}`;
-  return url.toString();
-}
-
-async function withAdminClient<T>(fn: (client: pg.Client) => Promise<T>): Promise<T> {
-  const client = new pg.Client({ connectionString: adminConnectionString("postgres") });
-  await client.connect();
-  try {
-    return await fn(client);
-  } finally {
-    await client.end();
-  }
-}
-
 async function withTempDatabase(fn: (db: Database) => Promise<void>) {
-  const dbName = `wiseeff_mig14_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`.replace(
-    /[^a-z0-9_]/gi,
-    ""
-  );
-  await withAdminClient(async (admin) => {
-    await admin.query(`create database ${dbName}`);
-  });
-
-  const connectionString = adminConnectionString(dbName);
-  const client = new pg.Client({ connectionString });
-  await client.connect();
-  const db = createDatabase({
-    query: async (text, values = []) => {
-      const result = await client.query(text, values);
-      return { rows: result.rows, rowCount: result.rowCount };
-    }
-  });
-
-  try {
-    await applyMigrations(db, migrationsDir);
-    await fn(db);
-  } finally {
-    await client.end().catch(() => undefined);
-    await withAdminClient(async (admin) => {
-      await admin.query(`drop database if exists ${dbName} with (force)`);
-    });
-  }
-}
-
-function openDatabaseConnection(connectionString: string): {
-  db: Database;
-  close: () => Promise<void>;
-} {
-  const client = new pg.Client({ connectionString });
-  let connected = false;
-  const db = createDatabase({
-    query: async (text, values = []) => {
-      if (!connected) {
-        await client.connect();
-        connected = true;
-      }
-      const result = await client.query(text, values);
-      return { rows: result.rows, rowCount: result.rowCount };
-    }
-  });
-  return {
-    db,
-    close: async () => {
-      if (connected) {
-        await client.end().catch(() => undefined);
-      }
-    }
-  };
+  await withSharedTempDatabase({ prefix: "mig14" }, ({ db }) => fn(db));
 }
 
 async function withTempDatabaseConnection(
   fn: (ctx: { db: Database; connectionString: string }) => Promise<void>
 ) {
-  const dbName = `wiseeff_mig14_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`.replace(
-    /[^a-z0-9_]/gi,
-    ""
+  await withSharedTempDatabase({ prefix: "mig14" }, ({ db, connectionString }) =>
+    fn({ db, connectionString })
   );
-  await withAdminClient(async (admin) => {
-    await admin.query(`create database ${dbName}`);
-  });
-
-  const connectionString = adminConnectionString(dbName);
-  const client = new pg.Client({ connectionString });
-  await client.connect();
-  const db = createDatabase({
-    query: async (text, values = []) => {
-      const result = await client.query(text, values);
-      return { rows: result.rows, rowCount: result.rowCount };
-    }
-  });
-
-  try {
-    await applyMigrations(db, migrationsDir);
-    await fn({ db, connectionString });
-  } finally {
-    await client.end().catch(() => undefined);
-    await withAdminClient(async (admin) => {
-      await admin.query(`drop database if exists ${dbName} with (force)`);
-    });
-  }
 }
 
 async function seedLegacyGraph(db: InMemoryTestDatabase | Database) {
@@ -1045,8 +947,24 @@ describe.skipIf(!databaseAvailable)("parameter identity migration", () => {
       applyParameterIdentityCutover(db!, { migrationRunId: fakeRunId })
     ).rejects.toThrow(/cutover blocked|inferred/i);
 
-    // Apply writes inside the shared test transaction survive the thrown apply block;
-    // reuse the inferred draft + open review task that apply already staged.
+    // The blocked apply rolls its staged writes back (real transaction
+    // semantics), so forge the open inferred review task that a finalized run
+    // with unaudited inferred specs would leave behind for the cutover gate.
+    await db!.query(
+      `
+      insert into parameter_spec_review_tasks (
+        id, organization_id, parameter_spec_id, source_evidence,
+        candidate_schemas, project_count, status, reason, blocker_scope,
+        migration_run_id
+      ) values (
+        'review-forged-inferred-block', $1, null,
+        '{"inferred": true, "module": "orphan_module"}'::jsonb,
+        '[]'::jsonb, 1, 'open', 'forged inferred review for cutover gate', 'platform', $2
+      )
+      `,
+      [ORG, fakeRunId]
+    );
+
     const openInferred = await db!.query<{ c: string }>(
       `
       select count(*)::text as c
@@ -1320,7 +1238,7 @@ describe.skipIf(!databaseAvailable)("parameter identity cutover atomicity", () =
       );
       expect(Number(legacyPpvFks.rows[0]?.c ?? 0)).toBe(0);
 
-      resetParameterIdentityCutoverCache();
+      await resolveParameterIdentityMode(tempDb);
       const params = await listParameters(tempDb, { organizationId: ORG, projectId: PROJECT, limit: 10 });
       expect(params.length).toBeGreaterThan(0);
       expect(params.some((item) => item.id === expectedBindingId(expectedSpecId(), expectedLogicalNodeId()))).toBe(
@@ -1356,7 +1274,7 @@ describe.skipIf(!databaseAvailable)("post-cutover API smoke (temp DB)", () => {
       });
       expect(report.blockers).toEqual([]);
       await applyParameterIdentityCutover(tempDb, { migrationRunId: report.migrationRunId });
-      resetParameterIdentityCutoverCache();
+      await resolveParameterIdentityMode(tempDb);
 
       const activeDefs = await tempDb.query(
         `select 1 from information_schema.tables

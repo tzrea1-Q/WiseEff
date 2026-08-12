@@ -45,7 +45,8 @@ For code changes:
 - Run `npm run queue:check -- --base-url <target-url>` before claiming a self-hosted Redis/BullMQ queue target is ready.
 - Run `npm run acceptance:a11y`, `npm run acceptance:visual`, or `npm run acceptance:responsive` for UI-facing changes that affect semantics, layout, screenshots, or viewport usability.
 - Run `npm run docs:check` before completing non-trivial active plans.
-- Run `npm run test:server -- scripts/check-doc-governance.test.ts` when changing documentation governance automation.
+- Run `npm run test:scripts -- scripts/check-doc-governance.test.ts` when changing documentation governance automation.
+- Run `npm run test:scripts` for `scripts/**` or `ops/**` automation changes, and `npm run bridge:test` for `packages/**` device-bridge changes.
 
 ## M2 Coverage
 

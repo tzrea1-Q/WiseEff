@@ -9,6 +9,8 @@ import { createHdcDebugDeviceGateway } from "./modules/debugging/hdcGateway";
 import { createSimulatorDebugDeviceGateway } from "./modules/debugging/simulator";
 import { createBridgeConnectionPool } from "./modules/deviceBridge/connectionPool";
 import { createBridgeRpcClient } from "./modules/deviceBridge/rpc";
+import { resolveKnowledgeEmbeddingClient } from "./modules/knowledge/indexing/embeddingClient";
+import { startKnowledgeIndexWorkerLoop } from "./modules/knowledge/indexing/worker";
 import { createLogAnalysisQueueRuntime, createLogAnalysisQueueTransport } from "./modules/logs/logAnalysisQueueRuntime";
 import { startLogWorkerLoop } from "./modules/logs/worker";
 import { configureNotificationDelivery } from "./modules/notifications/delivery";
@@ -25,6 +27,7 @@ import {
   ensureLocalPostCutoverIdentity,
   shouldEnsureLocalPostCutoverOnApiBoot
 } from "./modules/parameter-topology/localPostCutover";
+import { resolveParameterIdentityMode } from "./modules/parameters/parameterIdentityMode";
 
 const env = loadServerEnv(process.env);
 const db = env.DATABASE_URL ? createPostgresDatabase(env.DATABASE_URL, { tracing: defaultTracingBoundary }) : undefined;
@@ -66,6 +69,11 @@ const logAnalysisQueueRuntime =
 const stopLogWorker =
   env.LOG_WORKER_ENABLED && env.LOG_ANALYSIS_QUEUE_MODE === "polling" && db && objectStore
     ? startLogWorkerLoop({ db, objectStore, metrics, tracing: defaultTracingBoundary })
+    : undefined;
+const knowledgeEmbeddingClient = resolveKnowledgeEmbeddingClient(env);
+const stopKnowledgeIndexWorker =
+  env.KNOWLEDGE_INDEX_WORKER_ENABLED && db
+    ? startKnowledgeIndexWorkerLoop({ db, embeddingClient: knowledgeEmbeddingClient })
     : undefined;
 const notificationQueueEnv = {
   REDIS_URL: env.REDIS_URL ?? "",
@@ -121,6 +129,7 @@ const server = createWiseEffServerFromEnv({
   durableQueue: logAnalysisQueueRuntime?.queue,
   env,
   metrics,
+  knowledgeEmbeddingClient,
   deviceBridge: {
     connectionPool: bridgeConnectionPool,
     rpcClient: bridgeRpcClient
@@ -129,6 +138,7 @@ const server = createWiseEffServerFromEnv({
 
 function shutdown() {
   stopLogWorker?.();
+  stopKnowledgeIndexWorker?.();
   stopNotificationWorker?.();
   void Promise.all([
     logAnalysisQueueRuntime?.close().catch((error) => {
@@ -166,6 +176,11 @@ async function start() {
       console.error("[local-post-cutover] refused to start API:", error);
       process.exit(1);
     }
+  }
+
+  if (db) {
+    const identityMode = await resolveParameterIdentityMode(db);
+    console.log(`[parameter-identity] mode: ${identityMode}`);
   }
 
   server.listen(env.PORT, env.HOST, () => {

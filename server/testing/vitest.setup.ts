@@ -1,7 +1,7 @@
 import { beforeEach } from "vitest";
 
-import { resetParameterIdentityCutoverCache } from "../modules/parameters/cutoverAwareIdentity";
+import { setParameterIdentityMode } from "../modules/parameters/parameterIdentityMode";
 
 beforeEach(() => {
-  resetParameterIdentityCutoverCache();
+  setParameterIdentityMode(null);
 });

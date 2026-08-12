@@ -192,10 +192,7 @@ export async function uploadLogFile(
   const result = await db.transaction(async (tx) => {
     const fileObject = await persistFileObject(tx, auth, { stored });
     const { log, job } = await createLogRecordWithRunAndJob(
-      {
-        query: tx.query,
-        transaction: async (fn) => fn(tx)
-      },
+      tx,
       {
         logId: randomUUID(),
         runId: randomUUID(),
@@ -288,10 +285,7 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
 
   const result = await db.transaction(async (tx) => {
     const result = await createLogRecordWithRunAndJob(
-      {
-        query: tx.query,
-        transaction: async (fn) => fn(tx)
-      },
+      tx,
       {
         logId: randomUUID(),
         runId: randomUUID(),

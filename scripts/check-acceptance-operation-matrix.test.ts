@@ -125,4 +125,101 @@ describe("acceptance operation matrix", () => {
       { id: "PERM-USER-MGMT-001", assertions: ["ui", "api", "db", "audit"] }
     ]);
   });
+
+  it("planned operation markers never satisfy an automated operation", () => {
+    const result = evaluateOperationMatrix({
+      operations: [baseOperation],
+      specFiles: [
+        {
+          file: "e2e/acceptance/parameters-negative.acceptance.spec.ts",
+          content: "// @operation-planned PARAM-DRAFT-EDIT-001"
+        }
+      ],
+      knownAcceptanceIds: ["PARAM-DRAFT-EDIT-001"],
+      specFileExists: () => true
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.coveredOperationIds).toEqual([]);
+    expect(result.plannedOperationIds).toEqual(["PARAM-DRAFT-EDIT-001"]);
+    expect(result.missingAutomatedOperationIds).toEqual(["PARAM-DRAFT-EDIT-001"]);
+  });
+
+  it("accepts planned markers for deferred operations with a reason", () => {
+    const result = evaluateOperationMatrix({
+      operations: [
+        {
+          ...baseOperation,
+          coverage: "future",
+          deferralReason: "Pending browser automation."
+        }
+      ],
+      specFiles: [
+        {
+          file: "e2e/acceptance/parameters-negative.acceptance.spec.ts",
+          content: "// @operation-planned PARAM-DRAFT-EDIT-001"
+        }
+      ],
+      knownAcceptanceIds: ["PARAM-DRAFT-EDIT-001"],
+      specFileExists: () => true
+    });
+
+    expect(result.status).toBe("passed");
+    expect(result.plannedOperationIds).toEqual(["PARAM-DRAFT-EDIT-001"]);
+  });
+
+  it("fails on unknown planned operation ids", () => {
+    const result = evaluateOperationMatrix({
+      operations: [baseOperation],
+      specFiles: [
+        {
+          file: "e2e/acceptance/parameters-negative.acceptance.spec.ts",
+          content: "// @operation PARAM-DRAFT-EDIT-001\n// @operation-planned RETIRED-001"
+        }
+      ],
+      knownAcceptanceIds: ["PARAM-DRAFT-EDIT-001"],
+      specFileExists: () => true
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.unknownOperationIds).toEqual(["RETIRED-001"]);
+  });
+
+  it("fails when a matrix specFiles reference no longer exists on disk", () => {
+    const result = evaluateOperationMatrix({
+      operations: [baseOperation],
+      specFiles: [
+        {
+          file: "e2e/acceptance/parameters-negative.acceptance.spec.ts",
+          content: "// @operation PARAM-DRAFT-EDIT-001"
+        }
+      ],
+      knownAcceptanceIds: ["PARAM-DRAFT-EDIT-001"],
+      specFileExists: (path) => path !== "e2e/acceptance/parameters-negative.acceptance.spec.ts"
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.missingSpecFileRefs).toEqual(["e2e/acceptance/parameters-negative.acceptance.spec.ts"]);
+  });
+
+  it("skips existence checks for non-path spec owner notes", () => {
+    const result = evaluateOperationMatrix({
+      operations: [
+        {
+          ...baseOperation,
+          specFiles: ["shared diagnostics helper"]
+        }
+      ],
+      specFiles: [
+        {
+          file: "e2e/acceptance/parameters-negative.acceptance.spec.ts",
+          content: "// @operation PARAM-DRAFT-EDIT-001"
+        }
+      ],
+      knownAcceptanceIds: ["PARAM-DRAFT-EDIT-001"],
+      specFileExists: () => false
+    });
+
+    expect(result.missingSpecFileRefs).toEqual([]);
+  });
 });

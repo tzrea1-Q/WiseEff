@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { makeTestAuthContext } from "../../testing/authContext";
 import type { AuthContext } from "../auth/types";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -6,6 +7,7 @@ import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
 import * as repository from "./repository";
+import * as projectRepository from "./projectRepository";
 import * as projectService from "./projectService";
 import { registerParameterRoutes } from "./routes";
 import * as service from "./service";
@@ -17,12 +19,15 @@ vi.mock("./projectService", () => ({
 }));
 
 vi.mock("./repository", () => ({
+  getParameterById: vi.fn(),
+  listParameterHistory: vi.fn(),
+  listParameters: vi.fn()
+}));
+
+vi.mock("./projectRepository", () => ({
   createProject: vi.fn(),
   deleteProject: vi.fn(),
-  getParameterById: vi.fn(),
   getProjectAdminDetail: vi.fn(),
-  listParameterHistory: vi.fn(),
-  listParameters: vi.fn(),
   listProjectAdminSummaries: vi.fn(),
   listProjectModules: vi.fn(),
   listProjects: vi.fn(),
@@ -52,17 +57,16 @@ vi.mock("./service", () => ({
 
 function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
   return {
-    user: {
-      id: "user-1",
+    ...makeTestAuthContext({
+      userId: "user-1",
       organizationId: "org-1",
       name: "Riley Chen",
       email: "riley@example.com",
       title: "Software User",
-      isActive: true
-    },
-    organization: { id: "org-1", name: "ChargeLab" },
-    roles: [{ projectId: "aurora", roleId: "software-user" }],
-    permissions: ["parameter:view", "parameter:edit"],
+      organizationName: "ChargeLab",
+      roles: [{ projectId: "aurora", roleId: "software-user" }],
+      permissions: ["parameter:view", "parameter:edit"]
+    }),
     ...overrides
   };
 }
@@ -91,13 +95,13 @@ describe("parameter routes", () => {
   it("GET /api/v1/projects returns items", async () => {
     const db = makeDb();
     const project = { id: "aurora", name: "Aurora", code: "AUR" };
-    vi.mocked(repository.listProjects).mockResolvedValue([project]);
+    vi.mocked(projectRepository.listProjects).mockResolvedValue([project]);
 
     const response = await requestJson<{ items: typeof project[] }>(makeServer({ db }), "/api/v1/projects");
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ items: [project] });
-    expect(repository.listProjects).toHaveBeenCalledWith(db, { organizationId: "org-1" });
+    expect(projectRepository.listProjects).toHaveBeenCalledWith(db, { organizationId: "org-1" });
   });
 
   it("GET project workflow assignees returns service-filtered candidates", async () => {
@@ -680,7 +684,7 @@ describe("parameter routes", () => {
     );
 
     expect(response.status).toBe(403);
-    expect(repository.listProjectAdminSummaries).not.toHaveBeenCalled();
+    expect(projectRepository.listProjectAdminSummaries).not.toHaveBeenCalled();
   });
 
   it("GET /api/v1/parameters/admin/projects returns admin summaries", async () => {
@@ -697,7 +701,7 @@ describe("parameter routes", () => {
       releasedBaselineCount: 2,
       updatedAt: "2026-07-02T00:00:00.000Z"
     };
-    vi.mocked(repository.listProjectAdminSummaries).mockResolvedValue([item]);
+    vi.mocked(projectRepository.listProjectAdminSummaries).mockResolvedValue([item]);
 
     const response = await requestJson<{ items: typeof item[] }>(
       makeServer({ db, auth: makeAuth({ permissions: ["parameter:view", "admin:access"] }) }),
@@ -749,7 +753,7 @@ describe("parameter routes", () => {
 
   it("DELETE /api/v1/parameters/admin/projects/:projectId deletes an empty project", async () => {
     const db = makeDb();
-    vi.mocked(repository.getProjectAdminDetail).mockResolvedValue({
+    vi.mocked(projectRepository.getProjectAdminDetail).mockResolvedValue({
       id: "nova",
       name: "Nova",
       code: "NOVA",
@@ -780,7 +784,7 @@ describe("parameter routes", () => {
 
   it("DELETE /api/v1/parameters/admin/projects/:projectId returns 404 when project is missing", async () => {
     const db = makeDb();
-    vi.mocked(repository.getProjectAdminDetail).mockResolvedValue(null);
+    vi.mocked(projectRepository.getProjectAdminDetail).mockResolvedValue(null);
 
     const response = await requestJson<{ error: { code: string } }>(
       makeServer({ db, auth: makeAuth({ permissions: ["parameter:view", "admin:access"] }) }),

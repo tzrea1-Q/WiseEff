@@ -113,6 +113,18 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 | `VITE_XIAOZE_PROMPT_DEBUG` | `false` | 前端开发工具 | opt-in 提示词/调试展示。 |
 | `VITE_XIAOZE_INSPECTOR` | `false` | 前端开发工具 | opt-in 管理员 CopilotKit AG-UI inspector（仅限非生产构建）。默认关闭：inspector 自带 CDN 推广横幅且上游无独立开关。 |
 
+## 知识库嵌入与索引
+
+知识库语义检索镜像 `AGENT_API_*` 接缝,使用 OpenAI-compatible `/v1/embeddings` 端点。整组留空即为 FTS-only 模式:知识库所有功能保持可用,只是没有语义检索。语义检索还额外要求 PostgreSQL 服务器安装 pgvector 扩展(见自托管 runbook);端点或扩展缺失时,检索响应会诚实上报 `fts_only`。
+
+| 变量 | 本地默认值 | 用途 | 说明 |
+| --- | --- | --- | --- |
+| `EMBEDDING_API_BASE_URL` | 空 | 知识库语义检索 | OpenAI-compatible 端点;带或不带末尾 `/v1` 均可。不要提交 secret 或私有端点。 |
+| `EMBEDDING_MODEL` | 空 | 知识库语义检索 | 发送给端点的嵌入模型名。更换模型后需在 `/knowledge-admin` 执行全量重建。 |
+| `EMBEDDING_API_KEY` | 空 | 知识库语义检索 | secret;端点无鉴权时可留空。 |
+| `EMBEDDING_API_TIMEOUT_MS` | `10000` | 知识库语义检索 | 单请求超时;超时的检索会对该次查询降级为 FTS-only 并如实上报。 |
+| `KNOWLEDGE_INDEX_WORKER_ENABLED` | `true` | 知识索引新鲜度 | 本地 API 进程内运行轮询索引 worker。自托管 API 容器可设为 `false` 并单独运行 worker 进程。 |
+
 ## 队列和 Worker
 
 | 变量 | 本地默认值 | 用途 | 说明 |

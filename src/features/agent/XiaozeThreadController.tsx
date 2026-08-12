@@ -12,15 +12,20 @@ const isApiRuntime = wiseEffRuntimeMode === "api";
 function mapThreadMessages(messages: Awaited<ReturnType<typeof getXiaozeThread>>["messages"]): Message[] {
   return messages
     .filter((message) => message.role === "user" || message.role === "assistant" || message.role === "reasoning")
-    .map(
-      (message) =>
-        ({
-          id: message.id,
-          role: message.role,
-          content: message.content,
-          ...(message.metadata ? { metadata: message.metadata } : {})
-        }) as Message
-    );
+    .map((message) => {
+      // Persisted citations travel in metadata so XiaozeTurnBlock renders
+      // source links for reloaded threads the same way as live turns.
+      const metadata =
+        message.metadata || message.citations?.length
+          ? { ...(message.metadata ?? {}), ...(message.citations?.length ? { citations: message.citations } : {}) }
+          : undefined;
+      return {
+        id: message.id,
+        role: message.role,
+        content: message.content,
+        ...(metadata ? { metadata } : {})
+      } as Message;
+    });
 }
 
 export function XiaozeThreadController() {

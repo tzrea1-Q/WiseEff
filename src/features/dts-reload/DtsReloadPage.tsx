@@ -8,6 +8,7 @@ import {
   dtsReloadStatusLabels,
   dtsReloadVerificationOutcomeLabels,
   DTS_RELOAD_CONFIRMATION_TOKEN,
+  isStreamingKernelLogCommand,
   SENSITIVE_RELOAD_CONFIRMATION_TOKEN
 } from "@/domain/dtsReload/types";
 import type {
@@ -19,6 +20,11 @@ import type {
   DtsReloadRunListItem,
   DtsReloadSnapshot
 } from "@/domain/dtsReload/types";
+import {
+  describeReloadValueShapeAuthoring,
+  isPhandleCellFamilyKind,
+  isSupportedCellBits
+} from "@/domain/dtsReload/valueShape";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import { ParameterValueDiff } from "@/components/ParameterValueDiff";
@@ -198,10 +204,6 @@ function parseCellIntegers(raw: string): number[] | null {
   return values.every((value) => Number.isFinite(value)) ? values : null;
 }
 
-function isPhandleCellFamilyKind(kind: string | null | undefined): boolean {
-  return kind === "mixed" || kind === "phandle-list" || kind === "phandle-cells";
-}
-
 /** GPIO-style groups: each `<&label N …>` with uniform width (phandle + ≥1 integers). */
 function parsePhandleCellGroups(
   raw: string
@@ -237,10 +239,14 @@ function looksLikeStringList(raw: string): boolean {
   return countQuotedStrings(raw) >= 1;
 }
 
-function looksLikeBitsCellArray(raw: string): boolean {
-  return /^\/bits\/\s+(8|16)\s+<[^>]+>$/.test(raw.trim());
-}
-
+/**
+ * Client-side authoring pre-check for immediate feedback. Dispatches on the server-resolved
+ * `resolvedValueShape` (never the raw catalog kind) and sources every example token from the
+ * shared `describeReloadValueShapeAuthoring`, so the family set and examples stay in one place.
+ * The server, through the real DTS parser, remains the source of truth (including per-width
+ * integer overflow); this is a best-effort structural mirror plus the declared min/max/cells
+ * constraint check.
+ */
 function validateDebugValueAgainstConstraints(
   raw: string,
   candidate: DtsReloadCandidate
@@ -248,24 +254,27 @@ function validateDebugValueAgainstConstraints(
   const trimmed = raw.trim();
   if (!trimmed) return "请输入调试值。";
 
-  if (candidate.valueShapeKind === "string") {
+  const shape = candidate.resolvedValueShape;
+  const example = describeReloadValueShapeAuthoring(shape).placeholder;
+
+  if (shape?.kind === "string") {
     if (countQuotedStrings(trimmed) !== 1) {
-      return '调试值必须是单个字符串，例如 "bat0_raw_temp"。';
+      return `调试值必须是单个字符串，例如 ${example}。`;
     }
     return null;
   }
 
-  if (candidate.valueShapeKind === "string-list") {
+  if (shape?.kind === "string-list") {
     if (!looksLikeStringList(trimmed)) {
-      return '调试值必须是字符串列表，例如 "okay" 或 "a", "b"。';
+      return `调试值必须是字符串列表，例如 ${example}。`;
     }
     return null;
   }
 
-  if (isPhandleCellFamilyKind(candidate.valueShapeKind)) {
+  if (isPhandleCellFamilyKind(shape?.kind)) {
     const groups = parsePhandleCellGroups(trimmed);
     if (!groups) {
-      return "调试值必须是 GPIO 风格 phandle 数组，例如 <&gpio13 29 0>。";
+      return `调试值必须是 GPIO 风格 phandle 数组，例如 ${example}。`;
     }
     const { constraints } = candidate;
     const expectedCells = typeof constraints.cells === "number" ? constraints.cells : undefined;
@@ -284,16 +293,19 @@ function validateDebugValueAgainstConstraints(
     return null;
   }
 
-  if (candidate.valueShapeKind === "bytes") {
-    if (!looksLikeBitsCellArray(trimmed)) {
-      return "调试值必须是 /bits/ 8 cell 数组，例如 /bits/ 8 <17>。";
+  // Integer cell family: sub-32-bit widths use the `/bits/ N <…>` authoring form.
+  const bits = isSupportedCellBits(shape?.bits) ? shape.bits : 32;
+  if (bits !== 32) {
+    if (!new RegExp(`^/bits/\\s+${bits}\\s+<[^>]+>$`).test(trimmed)) {
+      return `调试值必须是 /bits/ ${bits} cell 数组，例如 ${example}。`;
     }
     const numeric = parseCellIntegers(trimmed);
     if (numeric === null) {
-      return "调试值必须是 /bits/ 8 cell 数组，例如 /bits/ 8 <17>。";
+      return `调试值必须是 /bits/ ${bits} cell 数组，例如 ${example}。`;
     }
-    if (numeric.some((value) => value < 0 || value > 255)) {
-      return "调试值中的每个 byte 必须在 0–255 范围内。";
+    const maxUnsigned = 2 ** bits - 1;
+    if (numeric.some((value) => value < 0 || value > maxUnsigned)) {
+      return `调试值中的每个数值必须在 0–${maxUnsigned} 范围内。`;
     }
     const { constraints } = candidate;
     const expectedCells = typeof constraints.cells === "number" ? constraints.cells : undefined;
@@ -305,7 +317,7 @@ function validateDebugValueAgainstConstraints(
 
   const numeric = parseCellIntegers(trimmed);
   if (numeric === null) {
-    return "调试值必须是 u32 cell 数组，例如 <7000>、<0x1770> 或 <1 2 3>。";
+    return `调试值必须是 u32 cell 数组，例如 ${example}。`;
   }
 
   const { constraints } = candidate;
@@ -492,7 +504,11 @@ function ReloadSnapshotSummary({ snapshot }: { snapshot: DtsReloadSnapshot }) {
           {obtained ? (
             <>
               {signal.truncated ? (
-                <p className="text-amber-900">采集文本已按字节上限截断。</p>
+                <p className="text-amber-900">
+                  {isStreamingKernelLogCommand(signal.command)
+                    ? "采集超过字节上限，已截断并保留最早输出。"
+                    : "采集超过字节上限，已截断并保留最新输出。"}
+                </p>
               ) : null}
               {hasMatches ? (
                 <div className="space-y-2" aria-label="按参数名分组的匹配行">
@@ -508,7 +524,7 @@ function ReloadSnapshotSummary({ snapshot }: { snapshot: DtsReloadSnapshot }) {
                   )}
                 </div>
               ) : (
-                <p className="text-muted-foreground">已采集到内核日志，但没有匹配到本运行参数名的行。</p>
+                <p className="text-muted-foreground">已采集到内核日志，但没有匹配到本运行参数名或节点名的行。</p>
               )}
               {signal.rawText ? (
                 <details className="rounded-md border bg-background p-2">
@@ -839,6 +855,11 @@ export function DtsReloadPage({
   );
 
   const deployReady = Boolean(bridgeId.trim() && targetRef.trim() && deviceId.trim());
+
+  // The device a deploy writes to is derived server-side from the selected bridge
+  // (`bridge:<bridgeId>`); mirror that here so the confirmation and request always show the
+  // device the server will actually target, even after a historical run pinned a different id.
+  const deployDeviceId = bridgeId.trim() ? defaultDeviceId(bridgeId.trim()) : deviceId.trim();
 
   const bridgesOverride = useMemo(
     () => (bridgesProp ? asDeviceBridgeRecords(bridgesProp) : undefined),
@@ -1454,7 +1475,7 @@ export function DtsReloadPage({
     try {
       const deployed = await repository!.deployRun({
         runId: deployRun.id,
-        deviceId: deviceId.trim(),
+        deviceId: deployDeviceId,
         bridgeId: bridgeId.trim(),
         targetRef: targetRef.trim(),
         protocol,
@@ -2011,17 +2032,7 @@ export function DtsReloadPage({
                             }))
                           }
                           disabled={!canStartRun || starting}
-                          placeholder={
-                            candidate.valueShapeKind === "string"
-                              ? '"bat0_raw_temp"'
-                              : candidate.valueShapeKind === "string-list"
-                              ? '"okay"'
-                              : isPhandleCellFamilyKind(candidate.valueShapeKind)
-                                ? "<&gpio13 29 0>"
-                                : candidate.valueShapeKind === "bytes"
-                                  ? "/bits/ 8 <17>"
-                                  : "<7000>"
-                          }
+                          placeholder={describeReloadValueShapeAuthoring(candidate.resolvedValueShape).placeholder}
                         />
                       </label>
                     </article>
@@ -2494,7 +2505,7 @@ export function DtsReloadPage({
             confirmRun ? (
               <DeployConfirmBody
                 run={confirmRun}
-                deviceId={deviceId.trim()}
+                deviceId={deployDeviceId}
                 targetRef={targetRef.trim()}
                 bridgeMachineLabel={selectedBridge?.machineLabel ?? confirmRun.bridgeMachineLabel ?? "—"}
                 residue={residue}

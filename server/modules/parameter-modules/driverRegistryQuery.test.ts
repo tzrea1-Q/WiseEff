@@ -2,21 +2,18 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { AuthContext } from "../auth/types";
 import type { Database } from "../../shared/database/client";
+import { makeTestAuthContext } from "../../testing/authContext";
 import { listDriverRegistry } from "./service";
 
 function makeAuth(): AuthContext {
-  return {
-    user: {
-      id: "user-1",
-      organizationId: "org-1",
-      name: "Admin",
-      email: "admin@example.com",
-      isActive: true,
-    },
-    organization: { id: "org-1", name: "ChargeLab" },
-    roles: [{ projectId: null, roleId: "admin" }],
+  return makeTestAuthContext({
+    userId: "user-1",
+    organizationId: "org-1",
+    name: "Admin",
+    email: "admin@example.com",
+    organizationName: "ChargeLab",
     permissions: ["parameter:view", "parameter:edit", "admin:access"],
-  } as AuthContext;
+  });
 }
 
 describe("listDriverRegistry", () => {

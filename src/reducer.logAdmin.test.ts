@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reducer } from "./App";
+import { reducer } from "@/application/state/appState";
 import { createPrototypeState } from "./mockData";
 
 const createLogAdminState = () => ({ ...createPrototypeState(), activeRoleId: "admin" });

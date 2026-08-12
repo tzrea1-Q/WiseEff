@@ -18,6 +18,7 @@
 - 参数身份已从路径派生模型转向 `parameter-topology` / `parameter-specs`（源树 vs 生效树、稳定 binding、版本化规格）；生产切换见 `docs/runbooks/parameter-identity-cutover.md`。
 - 模块归属 v2 后端在 `server/modules/parameter-modules/`：注册表、发现 hints、compatible 忽略、映射预览/范围应用、binding 重算（`dryRun`）与驱动组解散；工作台与 `/parameter-admin/modules`（**模块归属**）共用该边界。
 - DTS 重载调试在 `server/modules/dts-reload/`：调试 overlay 生成与预检、重载配置、进程内桥接部署（ADR-0020）、重载快照（ADR-0021）、残留 / 恢复基线与运行历史。权限 `debugging:dts-reload`；UI 为 `/dts-reload`，配置在 `/debugging-admin`（节点目录对等页为 `/debugging-admin/nodes`）。
+- 知识库在 `server/modules/knowledge/`：组织级知识条目与不可变修订、经对象存储的文件上传与正文提取 seam（pdf-parse/mammoth）、仅 `published` 的混合检索,以及 `knowledge:view|edit|manage` 服务端强制。`knowledge/indexing/` 是异步分块索引 worker seam（默认轮询,镜像 logs worker）：发布/编辑/归档把逐条目刷新入队 `knowledge_index_status`,chunk 经 `EMBEDDING_API_*` seam 携带可选 pgvector 嵌入,检索用 RRF 融合向量与 FTS/trigram 排名,扩展或端点缺失时诚实降级为 FTS-only（ADR-0025）。小泽新增只读工具 `knowledge.search` / `knowledge.getDocument`（组织级、`knowledge:view`、仅 published、返回引用负载）。UI 为 `/knowledge`（检索、API 模式下的问小泽入口）,已归档治理与索引健康/重建在 `/knowledge-admin`;Agent 草稿在蒸馏阶段接入。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 
 ## 同类中文文档

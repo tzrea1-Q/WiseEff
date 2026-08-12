@@ -23,7 +23,11 @@ import {
   resolveEvidenceRunContext,
   type EvidenceRunContext
 } from "../e2e/acceptance/helpers/evidenceRun";
-import { evaluateAcceptanceCoverage, readAcceptanceSpecFiles } from "./check-acceptance-coverage";
+import {
+  evaluateAcceptanceCoverage,
+  readAcceptanceSpecFiles,
+  readCoverageMapIds
+} from "./check-acceptance-coverage";
 import { evaluateOperationMatrix, type OperationMatrixResult } from "./check-acceptance-operation-matrix";
 import {
   evaluateOperationEvidence,
@@ -140,6 +144,12 @@ const workflowDefinitions: BrowserAcceptanceWorkflowEvidence[] = [
     name: "Product feedback",
     status: "skipped",
     notes: "Sidebar feedback submission, admin triage, and admin-only access coverage."
+  },
+  {
+    id: "J",
+    name: "Knowledge base",
+    status: "skipped",
+    notes: "Knowledge entry list/search/read, markdown lifecycle with revisions, and file-entry extraction status coverage."
   }
 ];
 const workflowSpecs: Record<string, string[]> = {
@@ -155,7 +165,8 @@ const workflowSpecs: Record<string, string[]> = {
     "xiaoze-planning.acceptance.spec.ts"
   ],
   H: ["permissions.acceptance.spec.ts"],
-  I: ["product-feedback.acceptance.spec.ts"]
+  I: ["product-feedback.acceptance.spec.ts"],
+  J: ["knowledge.acceptance.spec.ts"]
 };
 
 export function npmCommand(platform = process.platform) {
@@ -504,7 +515,8 @@ async function main() {
   });
   const requirementCoverage = evaluateAcceptanceCoverage({
     requirements: acceptanceRequirements,
-    specFiles: readAcceptanceSpecFiles()
+    specFiles: readAcceptanceSpecFiles(),
+    coverageMapIds: readCoverageMapIds()
   });
   const operationMatrix = evaluateOperationMatrix({
     operations: acceptanceOperations,

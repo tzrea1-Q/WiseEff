@@ -294,6 +294,11 @@ export function createS3ObjectStore(options: S3ObjectStoreOptions): ObjectStore 
       return transport.get({ bucket: options.bucket, key: storageKey });
     },
 
+    async delete(storageKey) {
+      rejectUnsafeStorageKey(storageKey);
+      await transport.delete({ bucket: options.bucket, key: storageKey });
+    },
+
     async checkHealth() {
       const probeBytes = Buffer.from("wiseeff-s3-health", "utf8");
       const checksumSha256 = createHash("sha256").update(probeBytes).digest("hex");

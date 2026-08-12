@@ -1,49 +1,66 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Database, QueryResult, Queryable } from "../../shared/database/client";
+import type { Queryable } from "../../shared/database/client";
+import {
+  createInMemoryTestDatabase,
+  isTestDatabaseAvailable,
+  type InMemoryTestDatabase
+} from "../../testing/testDatabase";
+import { seedCoreGraph } from "../../testing/fixtures";
 import { SEEDED_RELOAD_CONFIGURATION } from "./configurationTypes";
+import { upsertOrganisationDefault } from "./configurationRepository";
 import { resolveReloadConfiguration } from "./resolveConfiguration";
 
-type QueryCall = { text: string; values: unknown[] };
-type QueuedResult = unknown[] | ((call: QueryCall) => unknown[]);
+const databaseAvailable = await isTestDatabaseAvailable();
 
-function createFakeDb(results: QueuedResult[] = []) {
+type QueryCall = { text: string; values: unknown[] };
+
+/**
+ * Thin recording layer over the real database: every query still executes for real,
+ * but text/values are captured so the request-isolation tests can keep proving that
+ * no client-supplied contract field ever reaches SQL.
+ */
+function withQueryRecorder(db: Queryable) {
   const calls: QueryCall[] = [];
-  const runQuery = async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
-    const call = { text, values };
-    calls.push(call);
-    const next = results.shift() ?? [];
-    const rows = typeof next === "function" ? next(call) : next;
-    return { rows: rows as Row[], rowCount: rows.length };
+  const recorded: Queryable = {
+    query: (text, values = []) => {
+      calls.push({ text, values });
+      return db.query(text, values);
+    }
   };
-  const db: Database = {
-    query: (text, values = []) => runQuery(text, values),
-    transaction: async <T,>(fn: (queryable: Queryable) => Promise<T>) =>
-      fn({ query: (text, values = []) => runQuery(text, values) })
-  };
-  return { calls, db };
+  return { calls, recorded };
 }
 
-function orgRow(overrides: Record<string, unknown> = {}) {
+function orgContract(overrides: Record<string, string> = {}) {
   return {
-    organization_id: "org-1",
-    destination_directory: "/vendor/firmware/",
-    destination_filename: "power_dts_overlay.dtbo",
-    trigger_node_path: "/sys/kernel/debug/power_debug/dts_overlay/trigger",
-    trigger_payload: "1",
-    kernel_log_command: "dmesg",
-    updated_by_user_id: "user-1",
-    updated_at: "2026-08-10T01:00:00.000Z",
-    created_at: "2026-08-10T01:00:00.000Z",
+    destinationDirectory: "/vendor/firmware/",
+    destinationFilename: "power_dts_overlay.dtbo",
+    triggerNodePath: "/sys/kernel/debug/power_debug/dts_overlay/trigger",
+    triggerPayload: "1",
+    kernelLogCommand: "dmesg",
     ...overrides
   };
 }
 
-describe("resolveReloadConfiguration", () => {
-  it("returns seeded defaults for a fresh organisation with no stored rows", async () => {
-    const { calls, db } = createFakeDb([[]]);
+describe.skipIf(!databaseAvailable)("resolveReloadConfiguration", () => {
+  let db: InMemoryTestDatabase;
 
-    const resolved = await resolveReloadConfiguration(db, {
+  beforeEach(async () => {
+    db = await createInMemoryTestDatabase();
+    await seedCoreGraph(db, {
+      organization: { id: "org-1", name: "ChargeLab" },
+      users: [{ id: "user-1", name: "Riley Chen", email: "riley@example.com" }]
+    });
+  });
+
+  afterEach(async () => {
+    await db?.rollback();
+  });
+
+  it("returns seeded defaults for a fresh organisation with no stored rows", async () => {
+    const { calls, recorded } = withQueryRecorder(db);
+
+    const resolved = await resolveReloadConfiguration(recorded, {
       organizationId: "org-fresh",
       deviceId: "device-1"
     });
@@ -58,14 +75,14 @@ describe("resolveReloadConfiguration", () => {
   });
 
   it("returns organisation defaults when a stored row exists", async () => {
-    const { db } = createFakeDb([
-      [
-        orgRow({
-          destination_directory: "/oem/firmware/",
-          kernel_log_command: "cat /proc/kmsg"
-        })
-      ]
-    ]);
+    await upsertOrganisationDefault(db, {
+      organizationId: "org-1",
+      contract: orgContract({
+        destinationDirectory: "/oem/firmware/",
+        kernelLogCommand: "cat /proc/kmsg"
+      }),
+      updatedByUserId: "user-1"
+    });
 
     const resolved = await resolveReloadConfiguration(db, {
       organizationId: "org-1",
@@ -79,7 +96,12 @@ describe("resolveReloadConfiguration", () => {
   });
 
   it("never consults request-body fields when resolving the effective contract", async () => {
-    const { calls, db } = createFakeDb([[orgRow()]]);
+    await upsertOrganisationDefault(db, {
+      organizationId: "org-1",
+      contract: orgContract(),
+      updatedByUserId: "user-1"
+    });
+    const { calls, recorded } = withQueryRecorder(db);
     const requestBody = {
       destinationDirectory: "/evil/",
       destinationFilename: "evil.dtbo",
@@ -88,7 +110,7 @@ describe("resolveReloadConfiguration", () => {
       kernelLogCommand: "rm -rf /"
     };
 
-    const resolved = await resolveReloadConfiguration(db, {
+    const resolved = await resolveReloadConfiguration(recorded, {
       organizationId: "org-1",
       deviceId: "device-9",
       // Deliberately pass a request-shaped object; resolution must ignore contract fields from it.
@@ -105,7 +127,6 @@ describe("resolveReloadConfiguration", () => {
 
   it("accepts only organizationId and deviceId as resolution inputs", async () => {
     const spy = vi.fn(resolveReloadConfiguration);
-    const { db } = createFakeDb([[]]);
     await spy(db, { organizationId: "org-1", deviceId: "device-1" });
     expect(spy.mock.calls[0]?.[1]).toEqual({ organizationId: "org-1", deviceId: "device-1" });
   });
