@@ -63,8 +63,12 @@ export function canReviewParameterStage(auth: AuthContext, projectId: string, fr
 export function canMergeParameters(auth: AuthContext, projectId?: string) {
   if (!isActive(auth)) return false;
   if (hasRole(auth, ["admin"])) return true;
-  if (!projectId) return hasRole(auth, ["software-user"]);
-  return hasRole(auth, ["software-user"], projectId);
+  // The merge (softwareUser) slot accepts either role at assignment time
+  // (see assertWorkflowAssigneesEligible), so the merge gate must match or a
+  // software-committer assigned to merge can never advance the round.
+  const mergeRoles: BackendRoleId[] = ["software-user", "software-committer"];
+  if (!projectId) return hasRole(auth, mergeRoles);
+  return hasRole(auth, mergeRoles, projectId);
 }
 
 export function canAdminParameters(auth: AuthContext) {
