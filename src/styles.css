@@ -28554,3 +28554,74 @@ button.dts-topology-navigator__disclosure:focus-visible {
   margin: 0.35rem 0 0;
   padding-left: 1rem;
 }
+
+/* Knowledge base (Phase 1) */
+
+.knowledge-markdown-preview h1,
+.knowledge-markdown-preview h2,
+.knowledge-markdown-preview h3,
+.knowledge-markdown-preview h4 {
+  margin: 0.6em 0 0.35em;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--app-text, inherit);
+}
+
+.knowledge-markdown-preview h1 {
+  font-size: 1.25rem;
+}
+
+.knowledge-markdown-preview h2 {
+  font-size: 1.1rem;
+}
+
+.knowledge-markdown-preview h3,
+.knowledge-markdown-preview h4 {
+  font-size: 1rem;
+}
+
+.knowledge-markdown-preview p {
+  margin: 0.4em 0;
+}
+
+.knowledge-markdown-preview ul,
+.knowledge-markdown-preview ol {
+  margin: 0.4em 0;
+  padding-left: 1.4em;
+}
+
+.knowledge-markdown-preview ul {
+  list-style: disc;
+}
+
+.knowledge-markdown-preview ol {
+  list-style: decimal;
+}
+
+.knowledge-markdown-preview blockquote {
+  margin: 0.5em 0;
+  padding: 0.25em 0.8em;
+  border-left: 3px solid var(--app-border, #cbd5e1);
+  color: var(--app-muted, #64748b);
+}
+
+.knowledge-markdown-preview code {
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: rgba(100, 116, 139, 0.14);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+}
+
+.knowledge-markdown-preview pre {
+  margin: 0.5em 0;
+  padding: 0.7em 0.9em;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.06);
+  overflow: auto;
+}
+
+.knowledge-markdown-preview pre code {
+  padding: 0;
+  background: none;
+}

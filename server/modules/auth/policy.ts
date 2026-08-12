@@ -11,7 +11,7 @@ const roleRank: Record<BackendRoleId, number> = {
 };
 
 const rolePermissions: Record<BackendRoleId, BackendPermission[]> = {
-  guest: ["parameter:view", "logs:view"],
+  guest: ["parameter:view", "logs:view", "knowledge:view"],
   "hardware-user": [
     "parameter:view",
     "parameter:edit",
@@ -20,7 +20,9 @@ const rolePermissions: Record<BackendRoleId, BackendPermission[]> = {
     "debugging:read",
     "logs:view",
     "logs:upload",
-    "logs:feedback"
+    "logs:feedback",
+    "knowledge:view",
+    "knowledge:edit"
   ],
   "software-user": [
     "parameter:view",
@@ -30,7 +32,9 @@ const rolePermissions: Record<BackendRoleId, BackendPermission[]> = {
     "debugging:read",
     "logs:view",
     "logs:upload",
-    "logs:feedback"
+    "logs:feedback",
+    "knowledge:view",
+    "knowledge:edit"
   ],
   "hardware-committer": [
     "parameter:view",
@@ -45,6 +49,8 @@ const rolePermissions: Record<BackendRoleId, BackendPermission[]> = {
     "logs:view",
     "logs:upload",
     "logs:feedback",
+    "knowledge:view",
+    "knowledge:edit",
     "parameter:review"
   ],
   "software-committer": [
@@ -60,6 +66,8 @@ const rolePermissions: Record<BackendRoleId, BackendPermission[]> = {
     "logs:view",
     "logs:upload",
     "logs:feedback",
+    "knowledge:view",
+    "knowledge:edit",
     "parameter:review"
   ],
   admin: [
@@ -78,6 +86,9 @@ const rolePermissions: Record<BackendRoleId, BackendPermission[]> = {
     "logs:feedback",
     "logs:analyze",
     "logs:archive",
+    "knowledge:view",
+    "knowledge:edit",
+    "knowledge:manage",
     "parameter:review",
     "admin:access",
     "users:manage"
@@ -98,6 +109,9 @@ const rolePermissions: Record<BackendRoleId, BackendPermission[]> = {
     "logs:feedback",
     "logs:analyze",
     "logs:archive",
+    "knowledge:view",
+    "knowledge:edit",
+    "knowledge:manage",
     "parameter:review",
     "admin:access",
     "users:manage",

@@ -13,7 +13,7 @@ Product specs define what WiseEff is, who it serves, what workflows matter, and 
 
 ## Product Summary
 
-WiseEff is an AI-assisted enterprise efficiency platform. The product unifies parameter management, log analysis, and parameter debugging into governed workspaces where AI can help with search, analysis, review, and preparation, while humans retain approval over risky state changes.
+WiseEff is an AI-assisted enterprise efficiency platform. The product unifies parameter management, log analysis, parameter debugging, and the engineering knowledge base into governed workspaces where AI can help with search, analysis, review, and preparation, while humans retain approval over risky state changes.
 
 ## Current Priorities
 

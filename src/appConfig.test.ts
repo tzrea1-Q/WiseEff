@@ -14,7 +14,9 @@ describe("WiseEff prototype configuration", () => {
       "/debugging-admin",
       "/log-dashboard",
       "/logs",
-      "/log-admin"
+      "/log-admin",
+      "/knowledge",
+      "/knowledge-admin"
     ]);
     expect(navigationItems.filter((item) => item.key === "parameter-admin")).toHaveLength(1);
   });
