@@ -6,12 +6,13 @@ const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 const isNestedWorktree = /[\\/]\.worktrees[\\/]/.test(projectRoot);
 const siblingWorktreeExclude = isNestedWorktree ? [] : [".worktrees/**"];
 
+// Ops/governance script tests are pure Node behavior tests; they do not need jsdom or the
+// React Testing Library setup that `npm test` applies.
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["packages/**/*.test.ts"],
+    include: ["scripts/**/*.test.ts", "ops/**/*.test.ts"],
     exclude: ["node_modules/**", ...siblingWorktreeExclude],
-    passWithNoTests: true,
-    pool: "threads"
+    passWithNoTests: true
   }
 });

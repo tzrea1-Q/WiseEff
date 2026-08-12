@@ -1,85 +1,61 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthContext } from "../auth/types";
-import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { makeTestAuthContext } from "../../testing/authContext";
+import {
+  createInMemoryTestDatabase,
+  isTestDatabaseAvailable,
+  type InMemoryTestDatabase
+} from "../../testing/testDatabase";
+import { seedCoreGraph } from "../../testing/fixtures";
+import { ensureDefaultConfigSetInTx } from "../parameter-files/configSetService";
 import { createProjectForAuth } from "./projectService";
 
-type QueryCall = {
-  text: string;
-  values: unknown[];
-};
-
-type QueuedResult = unknown[] | ((call: QueryCall) => unknown[]);
-
-function createFakeDb(results: QueuedResult[] = []) {
-  const txCalls: QueryCall[] = [];
-
-  const runQuery = async <Row,>(target: QueryCall[], text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
-    const call = { text, values };
-    target.push(call);
-    const next = results.shift() ?? [];
-    const rows = typeof next === "function" ? next(call) : next;
-    return { rows: rows as Row[], rowCount: rows.length };
-  };
-
-  const tx: Queryable = {
-    query: (text, values = []) => runQuery(txCalls, text, values)
-  };
-  const db: Database = {
-    query: (text, values = []) => runQuery(txCalls, text, values),
-    transaction: async <T,>(fn: (queryable: Queryable) => Promise<T>) => fn(tx)
-  };
-
-  return { db, txCalls };
-}
+const databaseAvailable = await isTestDatabaseAvailable();
 
 function adminAuth(overrides: Partial<AuthContext> = {}): AuthContext {
   return {
-    user: {
-      id: "user-1",
+    ...makeTestAuthContext({
+      userId: "user-1",
       organizationId: "org-1",
       name: "Riley Chen",
       email: "riley@example.com",
-      title: "Admin",
-      isActive: true
-    },
-    organization: { id: "org-1", name: "ChargeLab" },
-    roles: [{ projectId: null, roleId: "admin" }],
-    permissions: ["admin:access"],
+      organizationName: "ChargeLab",
+      roles: [{ projectId: null, roleId: "admin" }],
+      permissions: ["admin:access"]
+    }),
     ...overrides
   };
 }
 
-function projectRow(overrides: Record<string, unknown> = {}) {
-  return {
-    id: "nova",
-    name: "Nova",
-    code: "NOVA",
-    status: "initialized",
-    updated_at: new Date("2026-07-02T00:00:00.000Z"),
-    ...overrides
-  };
-}
+describe.skipIf(!databaseAvailable)("createProjectForAuth", () => {
+  let db: InMemoryTestDatabase;
 
-function configSetRow(overrides: Record<string, unknown> = {}) {
-  return {
-    id: "dcs-default-nova",
-    organization_id: "org-1",
-    project_id: "nova",
-    name: "default",
-    description: "Auto-created default configuration set.",
-    derived_from_id: null,
-    created_at: new Date("2026-07-02T00:00:00.000Z"),
-    updated_at: new Date("2026-07-02T00:00:00.000Z"),
-    ...overrides
-  };
-}
+  beforeEach(async () => {
+    db = await createInMemoryTestDatabase();
+    await seedCoreGraph(db, {
+      organization: { id: "org-1", name: "ChargeLab" },
+      users: [{ id: "user-1", name: "Riley Chen", email: "riley@example.com" }]
+    });
+  });
 
-describe("createProjectForAuth", () => {
+  afterEach(async () => {
+    await db?.rollback();
+  });
+
+  async function readState() {
+    const result = await db.query<{ projects: string; config_sets: string; config_set_audits: string }>(
+      `select
+         (select count(*) from projects where organization_id = $1)::text as projects,
+         (select count(*) from dts_config_set where organization_id = $1 and project_id = $2 and name = 'default')::text as config_sets,
+         (select count(*) from audit_events where organization_id = $1 and kind = 'config-set')::text as config_set_audits`,
+      ["org-1", "nova"]
+    );
+    return result.rows[0];
+  }
+
   it("creates a project and ensures a default dts_config_set named default", async () => {
-    const { db, txCalls } = createFakeDb([[projectRow()], [], [configSetRow()], []]);
-
     const item = await createProjectForAuth(db, adminAuth(), {
       id: "nova",
       name: "Nova",
@@ -87,66 +63,53 @@ describe("createProjectForAuth", () => {
     });
 
     expect(item).toMatchObject({ id: "nova", name: "Nova", code: "NOVA", status: "initialized" });
-    expect(txCalls.find((call) => call.text.includes("insert into projects"))).toBeTruthy();
-    expect(txCalls.find((call) => call.text.includes("insert into dts_config_set"))).toBeTruthy();
-    const configInsert = txCalls.find((call) => call.text.includes("insert into dts_config_set"));
-    expect(configInsert?.values).toEqual(
-      expect.arrayContaining(["org-1", "nova", "default"])
-    );
-    expect(txCalls.find((call) => call.text.includes("insert into audit_events"))).toBeTruthy();
+    const state = await readState();
+    expect(state.projects).toBe("1");
+    expect(state.config_sets).toBe("1");
+    expect(state.config_set_audits).toBe("1");
   });
 
   it("is idempotent when the default config set already exists for the project", async () => {
-    const { db, txCalls } = createFakeDb([[projectRow()], [configSetRow({ id: "dcs-existing" })]]);
+    await createProjectForAuth(db, adminAuth(), { id: "nova", name: "Nova", code: "NOVA" });
 
-    const item = await createProjectForAuth(db, adminAuth(), {
-      id: "nova",
-      name: "Nova",
-      code: "NOVA"
-    });
+    // Re-running the ensure step (as project creation does internally) must neither
+    // duplicate the default config set nor emit a second audit event.
+    await db.transaction((tx) => ensureDefaultConfigSetInTx(tx, adminAuth(), "nova", {}));
 
-    expect(item.id).toBe("nova");
-    expect(txCalls.find((call) => call.text.includes("insert into projects"))).toBeTruthy();
-    expect(txCalls.find((call) => call.text.includes("insert into dts_config_set"))).toBeFalsy();
-    expect(txCalls.find((call) => call.text.includes("insert into audit_events"))).toBeFalsy();
+    const state = await readState();
+    expect(state.config_sets).toBe("1");
+    expect(state.config_set_audits).toBe("1");
   });
 
   it("rejects callers without admin:access", async () => {
-    const { db, txCalls } = createFakeDb([]);
-
     await expect(
-      createProjectForAuth(
-        db,
-        adminAuth({ permissions: ["parameter:view"] }),
-        { id: "nova", name: "Nova", code: "NOVA" }
-      )
+      createProjectForAuth(db, adminAuth({ permissions: ["parameter:view"] }), {
+        id: "nova",
+        name: "Nova",
+        code: "NOVA"
+      })
     ).rejects.toMatchObject({ code: "FORBIDDEN" } satisfies Partial<ApiError>);
 
-    expect(txCalls).toHaveLength(0);
+    const state = await readState();
+    expect(state.projects).toBe("0");
+    expect(state.config_sets).toBe("0");
   });
 
   it("inserts new projects with initialization_status not_initialized", async () => {
-    const { db, txCalls } = createFakeDb([[projectRow()], [], [configSetRow()], []]);
-
     await createProjectForAuth(db, adminAuth(), {
       id: "nova",
       name: "Nova",
       code: "NOVA"
     });
 
-    const projectInsert = txCalls.find((call) => call.text.includes("insert into projects"));
-    expect(projectInsert?.text).toMatch(/initialization_status/);
-    expect(projectInsert?.text).toMatch(/'not_initialized'/);
+    const stored = await db.query<{ initialization_status: string }>(
+      "select initialization_status from projects where organization_id = $1 and id = $2",
+      ["org-1", "nova"]
+    );
+    expect(stored.rows).toEqual([{ initialization_status: "not_initialized" }]);
   });
 
   it("returns initializationStatus not_initialized on create even when ops status is initialized", async () => {
-    const { db } = createFakeDb([
-      [projectRow({ status: "initialized", initialization_status: "not_initialized" })],
-      [],
-      [configSetRow()],
-      []
-    ]);
-
     const item = await createProjectForAuth(db, adminAuth(), {
       id: "nova",
       name: "Nova",

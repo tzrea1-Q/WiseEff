@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { makeTestAuthContext } from "../../testing/authContext";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import type { ConfigRevisionManifest } from "../parameter-topology/types";
 import {
@@ -48,19 +49,14 @@ const TWIN_DTS = `/dts-v1/;
 const databaseAvailable = await isTestDatabaseAvailable();
 
 function makeAuth(orgId = ORG_ID): AuthContext {
-  return {
-    user: {
-      id: USER_ID,
-      organizationId: orgId,
-      name: "Matcher Scope Admin",
-      email: "matcher-scope@example.com",
-      title: "Admin",
-      isActive: true,
-    },
-    organization: { id: orgId, name: "Matcher Scope Org" },
-    roles: [{ projectId: null, roleId: "admin" }],
+  return makeTestAuthContext({
+    userId: USER_ID,
+    organizationId: orgId,
+    name: "Matcher Scope Admin",
+    email: "matcher-scope@example.com",
+    organizationName: "Matcher Scope Org",
     permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
-  };
+  });
 }
 
 async function seedGraph(db: InMemoryTestDatabase) {

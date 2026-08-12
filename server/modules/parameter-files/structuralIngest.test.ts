@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { seedCoreGraph } from "../../testing/fixtures";
 import { buildDtsParsedIndex } from "./parseIndex";
 import { ingestDtsFileVersion } from "./structuralIngest";
 
@@ -43,15 +44,10 @@ describe.skipIf(!databaseAvailable)("ingestDtsFileVersion", () => {
 
   beforeEach(async () => {
     db = await createInMemoryTestDatabase();
-    await db.query(
-      `insert into organizations (id, name) values ('org-struct', 'Struct')
-       on conflict (id) do update set name = excluded.name`,
-    );
-    await db.query(
-      `insert into projects (id, organization_id, name, code, status)
-       values ('proj-struct', 'org-struct', 'P', 'P', 'initialized')
-       on conflict (id) do update set name = excluded.name`,
-    );
+    await seedCoreGraph(db, {
+      organization: { id: "org-struct", name: "Struct" },
+      projects: [{ id: "proj-struct", name: "P", code: "P" }],
+    });
     await db.query(
       `insert into project_parameter_files (id, organization_id, project_id, file_name, format, enabled)
        values ('file-struct', 'org-struct', 'proj-struct', 'sample.dts', 'dts', true)`,

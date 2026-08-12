@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { seedCoreGraph } from "../../testing/fixtures";
 import { ingestDtsFileVersion } from "./structuralIngest";
 import { searchDtsStructuralModel } from "./dtsSearchRepository";
 import { searchProjectDts } from "./dtsSearchService";
@@ -22,15 +23,10 @@ describe.skipIf(!databaseAvailable)("searchDtsStructuralModel", () => {
     db = await createInMemoryTestDatabase();
     versionId = randomUUID();
 
-    await db.query(
-      `insert into organizations (id, name) values ('org-dts-search', 'DtsSearch')
-       on conflict (id) do update set name = excluded.name`,
-    );
-    await db.query(
-      `insert into projects (id, organization_id, name, code, status)
-       values ('proj-dts-search', 'org-dts-search', 'P', 'P', 'initialized')
-       on conflict (id) do update set name = excluded.name`,
-    );
+    await seedCoreGraph(db, {
+      organization: { id: "org-dts-search", name: "DtsSearch" },
+      projects: [{ id: "proj-dts-search", name: "P", code: "P" }],
+    });
     await db.query(
       `insert into project_parameter_files (id, organization_id, project_id, file_name, format, enabled)
        values ('file-dts-search', 'org-dts-search', 'proj-dts-search', 'teaching-sample.dts', 'dts', true)`,

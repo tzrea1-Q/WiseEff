@@ -23,7 +23,11 @@ import {
   resolveEvidenceRunContext,
   type EvidenceRunContext
 } from "../e2e/acceptance/helpers/evidenceRun";
-import { evaluateAcceptanceCoverage, readAcceptanceSpecFiles } from "./check-acceptance-coverage";
+import {
+  evaluateAcceptanceCoverage,
+  readAcceptanceSpecFiles,
+  readCoverageMapIds
+} from "./check-acceptance-coverage";
 import { evaluateOperationMatrix, type OperationMatrixResult } from "./check-acceptance-operation-matrix";
 import {
   evaluateOperationEvidence,
@@ -511,7 +515,8 @@ async function main() {
   });
   const requirementCoverage = evaluateAcceptanceCoverage({
     requirements: acceptanceRequirements,
-    specFiles: readAcceptanceSpecFiles()
+    specFiles: readAcceptanceSpecFiles(),
+    coverageMapIds: readCoverageMapIds()
   });
   const operationMatrix = evaluateOperationMatrix({
     operations: acceptanceOperations,
