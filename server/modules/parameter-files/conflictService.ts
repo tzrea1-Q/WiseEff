@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { createAuditEvent } from "../audit/repository";
+import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
 import { listDraftsForParameterValue } from "../parameters/draftRepository";
 import {
@@ -125,7 +125,8 @@ export type BulkConflictPreviewResult = {
 export async function resolveParameterFileConflict(
   db: Database,
   auth: AuthContext,
-  input: ResolveParameterFileConflictInput
+  input: ResolveParameterFileConflictInput,
+  context: { requestId?: string } = {}
 ) {
   if (!canReviewParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Parameter review permission is required.", 403);
@@ -167,16 +168,13 @@ export async function resolveParameterFileConflict(
       [auth.organization.id, draftIdToDelete]
     );
 
-    await createAuditEvent(tx, {
-      id: randomUUID(),
-      organizationId: auth.organization.id,
-      projectId: resolved.projectId,
-      actorUserId: auth.user.id,
-      actorType: "user",
+    // requestId fallback survives only until conflict contexts become mandatory (ADR-0027).
+    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
       app: "parameters",
       kind: "parameter-file-conflict-resolve",
       action: "resolve",
       severity: "Medium",
+      projectId: resolved.projectId,
       targetType: "parameter-file-sync-conflict",
       targetId: resolved.id,
       metadata: {
@@ -185,8 +183,7 @@ export async function resolveParameterFileConflict(
         uiDraftId: resolved.uiDraftId,
         projectParameterValueId: resolved.projectParameterValueId,
         ...(reason ? { reason } : {})
-      },
-      traceId: randomUUID()
+      }
     });
 
     return resolved;
@@ -282,7 +279,8 @@ export async function resolveConflictsBulk(
     resolution: "file" | "ui";
     conflictIds: string[];
     reason?: string;
-  }
+  },
+  context: { requestId?: string } = {}
 ) {
   if (!canReviewParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Parameter review permission is required.", 403);
@@ -310,7 +308,7 @@ export async function resolveConflictsBulk(
         conflictId: conflict.id,
         resolution: input.resolution,
         reason: input.reason
-      });
+      }, context);
       items.push(item);
     }
     return items;

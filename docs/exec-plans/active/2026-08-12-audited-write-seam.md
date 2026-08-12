@@ -79,6 +79,30 @@ contract from `withAuditedWrite`. They stay on the ratchet allowlist with a comm
 a deliberate refusal-audit design exists (post-rollback write on a fresh connection, or an
 outbox); do not mechanically migrate them.
 
+Evidence this needs fixing (found in batch 2): `assertSensitiveNodeWriteAllowed` is called
+inside the merge transaction (via `writebackMerged*`), so **today** an agent denied on a
+critical sensitive node loses its deny audit when the merge rolls back. Pre-existing bug,
+independent of the seam migration.
+
+## Batch 2 (branch `refactor/audited-write-migrate-parameter-files`) — parameter-files to zero
+
+- **Genuine gap**: the manual re-sync route (`POST …/parameter-files/:fileId/sync`) ran
+  `syncFileVersion`'s draft/binding/conflict writes and audits auto-committed; now one
+  audited write. `syncFileVersion` takes `AuditTx` (its other two callers already run in
+  upload/candidate-activation transactions).
+- Correlation gap: `resolveParameterFileConflict` (single + bulk) had `traceId:
+  randomUUID()`; both now accept a context and the routes pass `request.requestId`.
+- Shape migrations (already in-transaction): baseline create/rollback/release helpers,
+  config-set helper (`ensureDefaultConfigSetInTx` now takes `AuditTx`), candidate helper,
+  upload audit, writeback helper — `writebackMergedEnablementValue` /
+  `writebackMergedParameterValue` now take `AuditTx` (all three callers are the merge
+  transaction in `parameters/service.ts`).
+- **Audit-only writes**: export (file/config-set) and validation-gate runs have no domain
+  write; their audit event is the only persistent effect and now goes through
+  `withAuditedWrite` on its own — for the gate deliberately independent of any caller
+  transaction (a failed release must not erase the evidence that the gate ran).
+- Ratchet: all nine `parameter-files/*` entries reach zero (12 direct calls removed).
+
 ## PR2+ migration inventory (ratchet allowlist, 41 direct calls in 27 files)
 
 Migrate per module; each batch moves call sites to `withAuditedWrite`/`writeAuditEventInTx`
@@ -86,8 +110,7 @@ and lowers the ratchet. Suspected genuine gaps first:
 
 1. ~~`parameters/service.ts`, `parameters/initializationService.ts`~~ (done, batches 1a/1b);
    `parameters/sensitiveNode.ts` (1) stays — refusal audit, see above.
-2. `parameter-files/*` (12 across 9 files — baselineService 3, syncService 2, candidate/
-   configSet/conflict/export/service/validationGate/writeback 1 each).
+2. ~~`parameter-files/*`~~ (done, batch 2).
 3. `dts-reload/*` (4), `parameter-modules/service.ts` (2), `parameter-specs/
    driverSchemaOverlayService.ts` (1), `parameter-topology/governanceAudit.ts` (1).
 4. `agent/*` (4), `users/service.ts` (2), `auth/*` (2), `logs/service.ts` (1), `knowledge/service.ts` (1),

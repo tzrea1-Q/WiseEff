@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { createAuditEvent } from "../audit/repository";
+import { withAuditedWrite } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import { parseDts, serializeDts } from "../dts";
@@ -108,7 +108,7 @@ async function loadVersionSource(objectStore: ObjectStore, storageKey: string): 
 }
 
 async function writeExportAudit(
-  db: Queryable,
+  db: Database,
   auth: AuthContext,
   input: {
     action: "file" | "config-set";
@@ -118,21 +118,22 @@ async function writeExportAudit(
   },
   context: ExportServiceContext = {}
 ) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    actorUserId: auth.user.id,
-    actorType: "user",
-    app: "parameters",
-    kind: "export",
-    action: input.action,
-    severity: "Medium",
-    targetType: input.action === "file" ? "project-parameter-file" : "dts-config-set",
-    targetId: input.targetId,
-    metadata: input.metadata,
-    traceId: context.requestId ?? randomUUID()
-  });
+  // Exports have no domain write; the audit event is the only persistent effect,
+  // so it gets an audited write of its own (ADR-0027). requestId fallback survives
+  // only until export contexts become mandatory.
+  await withAuditedWrite(db, auth, { requestId: context.requestId ?? randomUUID() }, async () => ({
+    result: undefined,
+    audit: {
+      app: "parameters",
+      kind: "export",
+      action: input.action,
+      severity: "Medium",
+      projectId: input.projectId,
+      targetType: input.action === "file" ? "project-parameter-file" : "dts-config-set",
+      targetId: input.targetId,
+      metadata: input.metadata
+    }
+  }));
 }
 
 export async function exportFile(

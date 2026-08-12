@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { createAuditEvent } from "../audit/repository";
+import { writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import {
@@ -30,7 +30,7 @@ export type FileSyncSummary = {
 };
 
 export async function syncFileVersion(
-  db: Queryable,
+  db: AuditTx,
   auth: AuthContext,
   input: SyncFileVersionInput,
   context: AuditCorrelationContext = {}
@@ -118,17 +118,14 @@ export async function syncFileVersion(
     openedConflicts.push(...opened);
   }
 
+  // requestId fallback survives only until sync contexts become mandatory (ADR-0027).
   for (const conflict of openedConflicts) {
-    await createAuditEvent(db, {
-      id: randomUUID(),
-      organizationId: auth.organization.id,
-      projectId: file.projectId,
-      actorUserId: auth.user.id,
-      actorType: "user",
+    await writeAuditEventInTx(db, auth, { requestId: context.requestId ?? randomUUID() }, {
       app: "parameters",
       kind: "parameter-file-conflict-open",
       action: "open",
       severity: "Medium",
+      projectId: file.projectId,
       targetType: "parameter-file-sync-conflict",
       targetId: conflict.id,
       metadata: {
@@ -136,21 +133,16 @@ export async function syncFileVersion(
         uiDraftId: conflict.uiDraftId,
         projectParameterValueId: conflict.projectParameterValueId,
         fileVersionId: version.id
-      },
-      traceId: context.requestId ?? randomUUID()
+      }
     });
   }
 
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: file.projectId,
-    actorUserId: auth.user.id,
-    actorType: "user",
+  await writeAuditEventInTx(db, auth, { requestId: context.requestId ?? randomUUID() }, {
     app: "parameters",
     kind: "parameter-file-sync",
     action: "sync",
     severity: "Low",
+    projectId: file.projectId,
     targetType: "project-parameter-file",
     targetId: file.id,
     metadata: {
@@ -159,8 +151,7 @@ export async function syncFileVersion(
       unchanged,
       unmatched,
       conflictsOpened: openedConflicts.length
-    },
-    traceId: context.requestId ?? randomUUID()
+    }
   });
 
   return { draftsCreated, unchanged, unmatched, skipped: false, identityFallbackUses: 0 };

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { createAuditEvent } from "../audit/repository";
+import { writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
@@ -334,7 +334,7 @@ async function resolveLockedEnablementWritebackContext(
 }
 
 async function createWritebackAudit(
-  db: Queryable,
+  tx: AuditTx,
   auth: AuthContext,
   input: {
     projectId: string;
@@ -350,16 +350,13 @@ async function createWritebackAudit(
   },
   context: WritebackServiceContext = {}
 ) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    actorUserId: auth.user.id,
-    actorType: "user",
+  // requestId fallback survives only until writeback contexts become mandatory (ADR-0027).
+  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
     app: "parameters",
     kind: "parameter-writeback-to-file",
     action: "writeback",
     severity: "Medium",
+    projectId: input.projectId,
     targetType: "project-parameter-file",
     targetId: input.fileId,
     metadata: {
@@ -371,8 +368,7 @@ async function createWritebackAudit(
       versionNumber: input.versionNumber,
       candidateRevisionId: input.candidateRevisionId,
       changeAction: input.action,
-    },
-    traceId: context.requestId ?? randomUUID()
+    }
   });
 }
 
@@ -448,7 +444,7 @@ export function patchDtsProperty(content: string, nodePath: string, newValue: st
 }
 
 export async function writebackMergedEnablementValue(
-  db: Queryable,
+  db: AuditTx,
   objectStore: ObjectStore,
   auth: AuthContext,
   input: WritebackMergedEnablementValueInput,
@@ -516,7 +512,7 @@ export async function writebackMergedEnablementValue(
 }
 
 export async function writebackMergedParameterValue(
-  db: Queryable,
+  db: AuditTx,
   objectStore: ObjectStore,
   auth: AuthContext,
   input: WritebackMergedParameterValueInput,
