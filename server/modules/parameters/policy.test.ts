@@ -40,6 +40,33 @@ describe("parameter policy", () => {
     expect(canReviewParameters(auth({ permissions: [], user: { ...auth().user, isActive: true } }))).toBe(false);
   });
 
+  it("scopes edit to the target project when a projectId is supplied", () => {
+    const editor = auth({
+      roles: [{ projectId: "aurora", roleId: "hardware-user" }],
+      permissions: ["parameter:edit"]
+    });
+    // Same flat permission, but the role binding is only for `aurora`.
+    expect(canEditParameters(editor, "aurora")).toBe(true);
+    expect(canEditParameters(editor, "zephyr")).toBe(false);
+    // Backward-compatible: omitting the project keeps the permission-only gate.
+    expect(canEditParameters(editor)).toBe(true);
+  });
+
+  it("treats admin and platform-admin as global editors across projects", () => {
+    expect(canEditParameters(auth({ roles: [{ projectId: null, roleId: "admin" }], permissions: ["parameter:edit"] }), "zephyr")).toBe(
+      true
+    );
+    expect(
+      canEditParameters(auth({ roles: [{ projectId: null, roleId: "platform-admin" }], permissions: ["parameter:edit"] }), "zephyr")
+    ).toBe(true);
+  });
+
+  it("denies project-scoped edit without the flat edit permission even with a role binding", () => {
+    expect(
+      canEditParameters(auth({ roles: [{ projectId: "aurora", roleId: "hardware-user" }], permissions: [] }), "aurora")
+    ).toBe(false);
+  });
+
   it("requires active users and parameter:edit-critical for safety-critical writes", () => {
     expect(canEditCriticalParameters(auth({ permissions: ["parameter:edit-critical"] }))).toBe(true);
     expect(canEditCriticalParameters(auth({ permissions: ["parameter:edit"] }))).toBe(false);

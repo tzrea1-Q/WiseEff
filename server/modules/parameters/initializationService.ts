@@ -44,10 +44,14 @@ function requireCanView(auth: AuthContext) {
   }
 }
 
-function requireCanEdit(auth: AuthContext) {
-  if (!canEditParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter edit permission is required.", 403);
-  }
+function requireCanEdit(auth: AuthContext, projectId?: string) {
+  if (canEditParameters(auth, projectId)) return;
+  const scopedOnly = projectId !== undefined && canEditParameters(auth);
+  throw new ApiError(
+    "FORBIDDEN",
+    scopedOnly ? "Parameter edit role is required for this project." : "Parameter edit permission is required.",
+    403
+  );
 }
 
 function requireCanAdmin(auth: AuthContext) {
@@ -257,7 +261,7 @@ export async function upsertDraft(
   input: UpsertInitializationDraftInput,
   context: InitializationServiceContext = {}
 ): Promise<InitializationDraftDto> {
-  requireCanEdit(auth);
+  requireCanEdit(auth, input.projectId);
   validateDraftShape(input);
 
   return db.transaction(async (tx) => {
@@ -304,7 +308,7 @@ export async function previewSnapshot(
   auth: AuthContext,
   input: PreviewInitializationSnapshotInput
 ): Promise<InitializationSnapshotItemDto[]> {
-  requireCanEdit(auth);
+  requireCanEdit(auth, input.projectId);
 
   if (!input.primarySourceProjectId) {
     return [];
@@ -346,7 +350,7 @@ export async function submitDraft(
   input: { projectId: string },
   context: InitializationServiceContext = {}
 ): Promise<InitializationReviewDto> {
-  requireCanEdit(auth);
+  requireCanEdit(auth, input.projectId);
 
   return db.transaction(async (tx) => {
     const status = await loadProjectInitializationStatus(tx, {

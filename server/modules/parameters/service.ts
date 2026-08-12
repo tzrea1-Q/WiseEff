@@ -287,7 +287,7 @@ export async function submitStructuredEdits(
   input: SubmitStructuredEditsInput,
   context: ServiceContext & AuditedWriteContext
 ) {
-  requireCanEdit(auth);
+  requireCanEdit(auth, input.projectId);
 
   if (input.edits.length === 0) {
     throw new ApiError("VALIDATION_FAILED", "At least one structured edit is required.", 400);
@@ -424,10 +424,16 @@ function requireCanView(auth: AuthContext) {
   }
 }
 
-function requireCanEdit(auth: AuthContext) {
-  if (!canEditParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter edit permission is required.", 403);
-  }
+function requireCanEdit(auth: AuthContext, projectId?: string) {
+  if (canEditParameters(auth, projectId)) return;
+  // A caller who holds parameter:edit but not on this project failed the
+  // project scope, not the capability check.
+  const scopedOnly = projectId !== undefined && canEditParameters(auth);
+  throw new ApiError(
+    "FORBIDDEN",
+    scopedOnly ? "Parameter edit role is required for this project." : "Parameter edit permission is required.",
+    403
+  );
 }
 
 function requireCanAdminImport(auth: AuthContext) {
@@ -1116,7 +1122,7 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
 }
 
 export async function saveDraft(db: Queryable, auth: AuthContext, input: SaveDraftInput) {
-  requireCanEdit(auth);
+  requireCanEdit(auth, input.projectId);
   if (parameterIdentityMode() === "semantic") {
     throw new ApiError(
       "CONFLICT",
@@ -1158,7 +1164,7 @@ export async function listWorkflowAssignees(db: Queryable, auth: AuthContext, pr
 }
 
 export async function submitParameterChanges(db: Database, auth: AuthContext, input: SubmitParameterChangesInput, context: ServiceContext = {}) {
-  requireCanEdit(auth);
+  requireCanEdit(auth, input.projectId);
 
   if (input.items.length === 0) {
     throw new ApiError("VALIDATION_FAILED", "At least one parameter change is required.", 400);

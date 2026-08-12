@@ -24,8 +24,20 @@ export function canViewParameters(auth: AuthContext) {
   return hasPermission(auth, "parameter:view");
 }
 
-export function canEditParameters(auth: AuthContext) {
-  return isActive(auth) && hasPermission(auth, "parameter:edit");
+/** Roles whose binding to a project grants parameter editing there. */
+const projectEditRoles: BackendRoleId[] = ["hardware-user", "software-user", "hardware-committer", "software-committer"];
+
+/**
+ * `parameter:edit` is a flat permission unioned across every role binding, so a
+ * user bound to project A still carries it while acting on project B. When a
+ * target project is known, additionally require an edit-capable role bound to
+ * that project (admins remain global) so a write cannot cross project scope.
+ */
+export function canEditParameters(auth: AuthContext, projectId?: string) {
+  if (!isActive(auth) || !hasPermission(auth, "parameter:edit")) return false;
+  if (projectId === undefined) return true;
+  if (hasRole(auth, ["admin", "platform-admin"])) return true;
+  return hasRole(auth, projectEditRoles, projectId);
 }
 
 export function canEditCriticalParameters(auth: AuthContext) {
