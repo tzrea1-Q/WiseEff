@@ -418,4 +418,33 @@ describe.skipIf(!databaseAvailable)("parameter file conflict service", () => {
     // The losing UI draft is gone; only the winning file draft remains.
     expect(await draftIds("ppv-1")).toEqual([open.fileDraftId]);
   });
+
+  it("rolls the whole batch back when a mid-batch resolution fails (atomic bulk, ADR-0027)", async () => {
+    const open = await detectConflict({
+      ppvId: "ppv-1",
+      pdId: "pd-1",
+      fileValue: "85",
+      uiValue: "82",
+      suffix: "atomic"
+    });
+
+    // The same id twice: preview does not deduplicate, so both entries are eligible.
+    // The first resolution succeeds inside the batch transaction; the second finds the
+    // conflict no longer open and throws — the whole batch must roll back.
+    await expect(
+      resolveConflictsBulk(db, reviewerAuth(), {
+        projectId: "project-1",
+        resolution: "file",
+        conflictIds: [open.conflict.id, open.conflict.id]
+      })
+    ).rejects.toBeInstanceOf(ApiError);
+
+    const row = await db.query<{ status: string }>(
+      `select status from parameter_file_sync_conflicts where id = $1`,
+      [open.conflict.id]
+    );
+    expect(row.rows[0]?.status).toBe("open");
+    // Both drafts survive: the first (rolled-back) resolution deleted nothing durably.
+    expect(await draftIds("ppv-1")).toEqual([open.fileDraftId, open.uiDraftId].sort());
+  });
 });

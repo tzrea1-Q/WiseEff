@@ -45,32 +45,51 @@ describe.skipIf(!databaseAvailable)("createProjectForAuth", () => {
   });
 
   async function readState() {
-    const result = await db.query<{ projects: string; config_sets: string; config_set_audits: string }>(
+    const result = await db.query<{
+      projects: string;
+      config_sets: string;
+      config_set_audits: string;
+      project_created_audits: string;
+    }>(
       `select
          (select count(*) from projects where organization_id = $1)::text as projects,
          (select count(*) from dts_config_set where organization_id = $1 and project_id = $2 and name = 'default')::text as config_sets,
-         (select count(*) from audit_events where organization_id = $1 and kind = 'config-set')::text as config_set_audits`,
+         (select count(*) from audit_events where organization_id = $1 and kind = 'config-set')::text as config_set_audits,
+         (select count(*) from audit_events where organization_id = $1 and kind = 'project-created')::text as project_created_audits`,
       ["org-1", "nova"]
     );
     return result.rows[0];
   }
 
-  it("creates a project and ensures a default dts_config_set named default", async () => {
-    const item = await createProjectForAuth(db, adminAuth(), {
-      id: "nova",
-      name: "Nova",
-      code: "NOVA"
-    });
+  it("creates a project, ensures a default dts_config_set, and audits the creation in-transaction", async () => {
+    const item = await createProjectForAuth(
+      db,
+      adminAuth(),
+      { id: "nova", name: "Nova", code: "NOVA" },
+      { requestId: "req-create" }
+    );
 
     expect(item).toMatchObject({ id: "nova", name: "Nova", code: "NOVA", status: "initialized" });
     const state = await readState();
     expect(state.projects).toBe("1");
     expect(state.config_sets).toBe("1");
     expect(state.config_set_audits).toBe("1");
+    // Project creation itself is audited (ADR-0027) with the request trace id.
+    expect(state.project_created_audits).toBe("1");
+    const trace = await db.query<{ trace_id: string }>(
+      `select trace_id from audit_events where organization_id = $1 and kind = 'project-created'`,
+      ["org-1"]
+    );
+    expect(trace.rows).toEqual([{ trace_id: "req-create" }]);
   });
 
   it("is idempotent when the default config set already exists for the project", async () => {
-    await createProjectForAuth(db, adminAuth(), { id: "nova", name: "Nova", code: "NOVA" });
+    await createProjectForAuth(
+      db,
+      adminAuth(),
+      { id: "nova", name: "Nova", code: "NOVA" },
+      { requestId: "req-create" }
+    );
 
     // Re-running the ensure step (as project creation does internally) must neither
     // duplicate the default config set nor emit a second audit event.
@@ -79,28 +98,32 @@ describe.skipIf(!databaseAvailable)("createProjectForAuth", () => {
     const state = await readState();
     expect(state.config_sets).toBe("1");
     expect(state.config_set_audits).toBe("1");
+    expect(state.project_created_audits).toBe("1");
   });
 
   it("rejects callers without admin:access", async () => {
     await expect(
-      createProjectForAuth(db, adminAuth({ permissions: ["parameter:view"] }), {
-        id: "nova",
-        name: "Nova",
-        code: "NOVA"
-      })
+      createProjectForAuth(
+        db,
+        adminAuth({ permissions: ["parameter:view"] }),
+        { id: "nova", name: "Nova", code: "NOVA" },
+        { requestId: "req-create" }
+      )
     ).rejects.toMatchObject({ code: "FORBIDDEN" } satisfies Partial<ApiError>);
 
     const state = await readState();
     expect(state.projects).toBe("0");
     expect(state.config_sets).toBe("0");
+    expect(state.project_created_audits).toBe("0");
   });
 
   it("inserts new projects with initialization_status not_initialized", async () => {
-    await createProjectForAuth(db, adminAuth(), {
-      id: "nova",
-      name: "Nova",
-      code: "NOVA"
-    });
+    await createProjectForAuth(
+      db,
+      adminAuth(),
+      { id: "nova", name: "Nova", code: "NOVA" },
+      { requestId: "req-create" }
+    );
 
     const stored = await db.query<{ initialization_status: string }>(
       "select initialization_status from projects where organization_id = $1 and id = $2",
@@ -110,11 +133,12 @@ describe.skipIf(!databaseAvailable)("createProjectForAuth", () => {
   });
 
   it("returns initializationStatus not_initialized on create even when ops status is initialized", async () => {
-    const item = await createProjectForAuth(db, adminAuth(), {
-      id: "nova",
-      name: "Nova",
-      code: "NOVA"
-    });
+    const item = await createProjectForAuth(
+      db,
+      adminAuth(),
+      { id: "nova", name: "Nova", code: "NOVA" },
+      { requestId: "req-create" }
+    );
 
     expect(item).toMatchObject({
       id: "nova",
