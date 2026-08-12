@@ -52,6 +52,7 @@ export type KnowledgeEntryDto = {
   tags: string[];
   sourceType: KnowledgeSourceType;
   sourceSessionId: string | null;
+  sourceLogId: string | null;
   createdByUserId: string;
   headRevisionId: string | null;
   headRevisionNumber: number;
@@ -97,6 +98,8 @@ function entryFromDto(dto: KnowledgeEntryDto): KnowledgeEntry {
     status: dto.status,
     tags: dto.tags,
     sourceType: dto.sourceType,
+    sourceSessionId: dto.sourceSessionId,
+    sourceLogId: dto.sourceLogId,
     createdByUserId: dto.createdByUserId,
     headRevisionNumber: dto.headRevisionNumber,
     createdAt: dto.createdAt,
@@ -168,6 +171,7 @@ function buildListPath(query?: KnowledgeListQuery) {
   const params = new URLSearchParams();
   if (query?.status) params.set("status", query.status);
   if (query?.contentForm) params.set("contentForm", query.contentForm);
+  if (query?.sourceType) params.set("sourceType", query.sourceType);
   if (query?.tag) params.set("tag", query.tag);
   if (query?.q) params.set("q", query.q);
   const encoded = params.toString();
@@ -231,6 +235,13 @@ export function createHttpKnowledgeRepository(options: HttpKnowledgeRepositoryOp
       return entryFromDto(response.item);
     },
 
+    async distillFromLog(logId) {
+      const response = await apiClient.post<ItemEnvelope<KnowledgeEntryDto>>("/api/v1/knowledge/distill-from-log", {
+        logId
+      });
+      return entryFromDto(response.item);
+    },
+
     async update(entryId, input: UpdateKnowledgeInput) {
       try {
         const response = await apiClient.patch<ItemEnvelope<KnowledgeEntryDto>>(entryPath(entryId), {
@@ -258,6 +269,11 @@ export function createHttpKnowledgeRepository(options: HttpKnowledgeRepositoryOp
 
     async restore(entryId) {
       const response = await apiClient.post<ItemEnvelope<KnowledgeEntryDto>>(`${entryPath(entryId)}/restore`, {});
+      return entryFromDto(response.item);
+    },
+
+    async rejectAgentDraft(entryId) {
+      const response = await apiClient.post<ItemEnvelope<KnowledgeEntryDto>>(`${entryPath(entryId)}/reject`, {});
       return entryFromDto(response.item);
     },
 

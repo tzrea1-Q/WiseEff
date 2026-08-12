@@ -92,7 +92,13 @@ export function createAppRuntime(
       overrides.productFeedbackRepository ??
       (api ? createHttpProductFeedbackRepository() : createMockProductFeedbackRepository()),
     knowledgeRepository:
-      overrides.knowledgeRepository ?? (api ? createHttpKnowledgeRepository() : createMockKnowledgeRepository()),
+      overrides.knowledgeRepository ??
+      (api
+        ? createHttpKnowledgeRepository()
+        : createMockKnowledgeRepository({
+            // Mock distillation reads the prototype log records (same port shape as API mode).
+            getLogRecord: (logId) => deps.getState().logs.find((log) => log.id === logId)
+          })),
     dtsReloadRepository: overrides.dtsReloadRepository ?? resolveDtsReloadRepository(mode),
     parameterInitializationRepository:
       overrides.parameterInitializationRepository ?? resolveParameterInitializationRepository(mode),

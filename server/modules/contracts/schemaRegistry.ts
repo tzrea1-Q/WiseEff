@@ -825,6 +825,15 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "KnowledgeEntryListResponse",
     additionalResponses: { "403": "ErrorResponse" }
   },
+  "knowledge.distillFromLog": {
+    summary:
+      "Distil a completed log-analysis record into a pre-filled knowledge draft (knowledge:edit plus logs:view on the source record); the draft stays out of retrieval until published",
+    tags: ["knowledge"],
+    requestBody: "DistillKnowledgeFromLogRequest",
+    responseBody: "KnowledgeEntryResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "knowledge.search": {
     summary:
       "Search published knowledge entries — hybrid vector+FTS when embeddings and pgvector are available, FTS+trigram otherwise; the response reports the retrieval mode that actually ran",
@@ -877,6 +886,13 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   },
   "knowledge.restoreEntry": {
     summary: "Restore an archived knowledge entry to published",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeEntryResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "knowledge.rejectAgentDraft": {
+    summary:
+      "Archive-reject an agent-sourced knowledge draft from the publish queue (entry owner with knowledge:edit, or knowledge:manage)",
     tags: ["knowledge"],
     responseBody: "KnowledgeEntryResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }

@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "playwright/test";
 
 import { runNpmScript, withPgClient } from "./helpers/database";
@@ -29,6 +30,9 @@ type KnowledgeEntryApiItem = {
   contentForm: "markdown" | "file";
   status: "draft" | "published" | "archived";
   tags: string[];
+  sourceType: "human" | "agent";
+  sourceSessionId: string | null;
+  sourceLogId: string | null;
   headRevisionNumber: number;
   createdByUserId: string;
   contentMarkdown: string | null;
@@ -108,7 +112,84 @@ async function cleanupKnowledgeAcceptanceRows() {
       await client.query("update knowledge_entries set head_revision_id = null where id = any($1::uuid[])", [entryIds]);
       await client.query("delete from knowledge_entries where id = any($1::uuid[])", [entryIds]);
     }
+
+    // Distillation-source fixtures: seeded completed log analyses (KB-DISTILL/KB-ADMIN).
+    const logs = await client.query<{ id: string }>(`select id from log_records where file_name like 'kb-acceptance-distill-%'`);
+    const logIds = logs.rows.map((row) => row.id);
+    if (logIds.length > 0) {
+      await client.query("update log_records set current_run_id = null where id = any($1::text[])", [logIds]);
+      await client.query("delete from log_evidence where log_record_id = any($1::text[])", [logIds]);
+      await client.query("delete from log_analysis_reports where log_record_id = any($1::text[])", [logIds]);
+      await client.query("delete from log_analysis_runs where log_record_id = any($1::text[])", [logIds]);
+      await client.query("delete from log_records where id = any($1::text[])", [logIds]);
+      await client.query("delete from log_file_objects where file_name like 'kb-acceptance-distill-%'");
+    }
   });
+}
+
+type SeededCompletedLog = { logId: string; fileName: string; conclusion: string; keyword: string };
+
+/**
+ * Seeds a COMPLETED log-analysis record directly (record + succeeded run +
+ * report + evidence) so distillation does not depend on the async analysis
+ * worker. Coupled only to the stored analysis-record shape, like the API.
+ */
+async function seedCompletedLogAnalysis(): Promise<SeededCompletedLog> {
+  const logId = randomUUID();
+  const runId = randomUUID();
+  const fileObjectId = randomUUID();
+  const fileName = `kb-acceptance-distill-${runStamp}-${logId.slice(0, 8)}.log`;
+  const keyword = `温控降流阈值${logId.slice(0, 8)}`;
+  const conclusion = `${titlePrefix} 快充后段降频源于电池温度超过 45 度(${keyword})`;
+
+  await withPgClient(async (client) => {
+    await client.query(
+      `
+      insert into log_file_objects (id, organization_id, storage_key, file_name, content_type, file_size_bytes, checksum_sha256, uploaded_by_user_id)
+      values ($1, $2, $3, $4, 'text/plain', 2048, 'kb-acceptance-checksum', $5)
+      `,
+      [fileObjectId, organizationId, `acceptance/${fileObjectId}`, fileName, editorUserId]
+    );
+    await client.query(
+      `
+      insert into log_records (id, organization_id, file_object_id, file_name, source, status, analysis_question, submitted_by_user_id)
+      values ($1, $2, $3, $4, 'upload', 'complete', '为什么充电后段降频?', $5)
+      `,
+      [logId, organizationId, fileObjectId, fileName, editorUserId]
+    );
+    await client.query(
+      `
+      insert into log_analysis_runs (id, organization_id, log_record_id, status, current_stage, progress)
+      values ($1, $2, $3, 'succeeded', 'report', 100)
+      `,
+      [runId, organizationId, logId]
+    );
+    await client.query(`update log_records set current_run_id = $2 where id = $1`, [logId, runId]);
+    await client.query(
+      `
+      insert into log_analysis_reports (id, organization_id, log_record_id, run_id, confidence, conclusion, impact, severity, suggested_actions, raw_lines)
+      values ($1, $2, $3, $4, 87, $5, '夜间快充整体时长增加约 25 分钟。', 'Critical', $6, $7)
+      `,
+      [
+        `report-${runId}`,
+        organizationId,
+        logId,
+        runId,
+        conclusion,
+        JSON.stringify(["下调快充电流", "复核 NTC 采样间隔"]),
+        JSON.stringify(["boot ok", "temp=45.2C stage up", "current step down 0.5A"])
+      ]
+    );
+    await client.query(
+      `
+      insert into log_evidence (id, organization_id, log_record_id, run_id, stage, line_numbers, inference, suggested_action, rule_hit)
+      values ($1, $2, $3, $4, 'rootcause', $5, 'NTC 采样显示温度台阶式上升。', '按 0.5A 步长下调快充电流。', null)
+      `,
+      [`evidence-${runId}-0`, organizationId, logId, runId, [2, 3]]
+    );
+  });
+
+  return { logId, fileName, conclusion, keyword };
 }
 
 async function createMarkdownEntryViaApi(page: Page, input: { title: string; tags: string[]; contentMarkdown: string }) {
@@ -224,6 +305,29 @@ function readSseCustomEventValue<T>(responseBody: string, eventName: string): T 
       const payload = JSON.parse(dataLine.slice(5).trim()) as { type?: string; name?: string; value?: T };
       if (payload.type === "CUSTOM" && payload.name === eventName && payload.value !== undefined) {
         return payload.value;
+      }
+    } catch {
+      // Ignore non-JSON keepalive frames.
+    }
+  }
+  return undefined;
+}
+
+function readSseInterruptValue(responseBody: string): Record<string, unknown> | undefined {
+  const interrupt = readSseCustomEventValue<Record<string, unknown>>(responseBody, "on_interrupt");
+  if (interrupt) {
+    return interrupt;
+  }
+  for (const block of responseBody.split("\n\n")) {
+    const dataLine = block.split("\n").find((line) => line.startsWith("data:"));
+    if (!dataLine) continue;
+    try {
+      const payload = JSON.parse(dataLine.slice(5).trim()) as {
+        type?: string;
+        outcome?: { interrupts?: Array<{ metadata?: Record<string, unknown> }> };
+      };
+      if (payload.type === "RUN_FINISHED" && payload.outcome?.interrupts?.[0]?.metadata) {
+        return payload.outcome.interrupts[0].metadata;
       }
     } catch {
       // Ignore non-JSON keepalive frames.
@@ -662,6 +766,249 @@ test.describe("Knowledge base browser acceptance", () => {
         }
       ],
       db: [dbSummary]
+    });
+  });
+
+  test("distils a completed log analysis into a pre-filled draft and publishes it after review", async ({ page }, testInfo) => {
+    // @acceptance KB-DISTILL-001
+    // @operation KB-DISTILL-001
+    const seeded = await seedCompletedLogAnalysis();
+
+    await signInBrowserAsUser(page, editorUserId, editorEmail, editorName, "/logs");
+    const history = page.getByRole("complementary", { name: "历史日志记录" });
+    await history.getByRole("button", { name: new RegExp(seeded.fileName.slice(0, 40)) }).click();
+
+    // Distil the conclusion into a knowledge draft and hand off to /knowledge.
+    const distilButton = page.getByRole("button", { name: "沉淀为知识" });
+    await expect(distilButton).toBeEnabled();
+    await distilButton.click();
+    await page.waitForURL(/\/knowledge\?entryId=/);
+    const entryId = new URL(page.url()).searchParams.get("entryId")!;
+    expect(entryId).toBeTruthy();
+
+    // The deep link opens the pre-filled draft: title from the conclusion,
+    // seeded tags, and the assembled markdown body.
+    const detail = page.getByRole("dialog", { name: /快充后段降频源于电池温度超过 45 度/ });
+    await expect(detail).toBeVisible();
+    await expect(detail.locator('[data-status="draft"]')).toBeVisible();
+    await expect(detail.getByText("日志分析", { exact: true })).toBeVisible();
+    await expect(detail.getByText(/由日志分析记录沉淀/)).toBeVisible();
+    await expect(detail.getByText(/NTC 采样显示温度台阶式上升/)).toBeVisible();
+
+    // Drafts stay out of retrieval until published.
+    const beforePublish = await page.request.get(
+      apiRoute(`/api/v1/knowledge/search?q=${encodeURIComponent(seeded.keyword)}`),
+      { headers: editorHeaders() }
+    );
+    expect(beforePublish.ok()).toBe(true);
+    expect(((await beforePublish.json()) as { items: KnowledgeSearchApiItem[] }).items).toHaveLength(0);
+
+    // Publish the reviewed draft from the detail dialog.
+    await detail.getByRole("button", { name: "发布", exact: true }).click();
+    await expect(detail.locator('[data-status="published"]')).toBeVisible();
+
+    const afterPublish = await page.request.get(
+      apiRoute(`/api/v1/knowledge/search?q=${encodeURIComponent(seeded.keyword)}`),
+      { headers: editorHeaders() }
+    );
+    const afterBody = (await afterPublish.json()) as { items: KnowledgeSearchApiItem[] };
+    expect(afterBody.items.map((item) => item.entryId)).toContain(entryId);
+
+    // Source linkage is stored on the entry.
+    const entryResponse = await page.request.get(apiRoute(`/api/v1/knowledge/entries/${entryId}`), {
+      headers: editorHeaders()
+    });
+    expect(entryResponse.ok()).toBe(true);
+    const entryBody = (await entryResponse.json()) as { item: KnowledgeEntryApiItem };
+    expect(entryBody.item).toMatchObject({ sourceType: "human", sourceLogId: seeded.logId, status: "published" });
+
+    const dbSummary = await knowledgeEntryDbSummary(entryId);
+    expect(dbSummary.observed).toContain("status=published");
+
+    const audit = await knowledgeAuditSummaries(entryId);
+    expect(audit).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "knowledge-entry-distill", action: "distill" }),
+        expect.objectContaining({ kind: "knowledge-entry-publish", action: "publish" })
+      ])
+    );
+
+    await recordOperationEvidence({
+      operationId: "KB-DISTILL-001",
+      title: "distil log conclusion into pre-filled draft and publish",
+      status: "passed",
+      role: "Hardware User",
+      route: "/logs",
+      page,
+      testInfo,
+      api: [
+        summarizeApiResponse(entryResponse, {
+          method: "GET",
+          path: "/api/v1/knowledge/entries/:entryId",
+          responseSummary: `entry=${entryId}; sourceLogId=${seeded.logId}`
+        })
+      ],
+      db: [dbSummary],
+      audit
+    });
+  });
+
+  test("agent knowledge draft flows through approval into the admin publish queue for publish and reject", async ({ page }, testInfo) => {
+    // @acceptance KB-ADMIN-001
+    // @operation KB-ADMIN-001
+    const seeded = await seedCompletedLogAnalysis();
+    const publishTitle = `${titlePrefix} Agent沉淀待发布 ${runStamp}`;
+    const rejectTitle = `${titlePrefix} Agent沉淀待拒绝 ${runStamp}`;
+    const sseHeaders = { ...editorHeaders(), Accept: "text/event-stream" };
+
+    async function agentDraftCountByTitle(title: string) {
+      return withPgClient(async (client) => {
+        const result = await client.query<{ n: string }>(
+          `select count(*)::text as n from knowledge_entries where title = $1 and source_type = 'agent'`,
+          [title]
+        );
+        return Number(result.rows[0].n);
+      });
+    }
+
+    async function createAgentDraftViaApproval(input: { title: string; sourceLogId?: string; threadId: string }) {
+      const message = input.sourceLogId
+        ? `创建知识草稿:${input.title} 来源日志:${input.sourceLogId}`
+        : `创建知识草稿:${input.title}`;
+      const started = await page.request.post(apiRoute("/api/v1/agent/xiaoze"), {
+        headers: sseHeaders,
+        data: {
+          threadId: input.threadId,
+          runId: `run-${input.threadId}`,
+          messages: [{ id: `m-user-${input.threadId}`, role: "user", content: message }],
+          context: [{ description: "wiseeff.page", value: { pageKey: "logs", path: "/logs" } }]
+        }
+      });
+      expect(started.status()).toBe(200);
+      const interruptValue = readSseInterruptValue(await started.text());
+      expect(interruptValue?.approvalId).toBeTruthy();
+      // The approval interrupt paused BEFORE any write (draft-only tool included).
+      expect(await agentDraftCountByTitle(input.title)).toBe(0);
+
+      const resumed = await page.request.post(apiRoute("/api/v1/agent/xiaoze"), {
+        headers: sseHeaders,
+        data: {
+          threadId: input.threadId,
+          runId: `run-resume-${input.threadId}`,
+          messages: [{ id: `m-resume-${input.threadId}`, role: "user", content: "approve" }],
+          forwardedProps: {
+            command: { resume: { decision: "approve" }, interruptEvent: interruptValue }
+          }
+        }
+      });
+      expect(resumed.status()).toBe(200);
+      expect(await agentDraftCountByTitle(input.title)).toBe(1);
+      return { started, resumed, approvalId: String(interruptValue!.approvalId) };
+    }
+
+    const publishFlow = await createAgentDraftViaApproval({
+      title: publishTitle,
+      sourceLogId: seeded.logId,
+      threadId: `kb-admin-publish-${runStamp}`
+    });
+    await createAgentDraftViaApproval({ title: rejectTitle, threadId: `kb-admin-reject-${runStamp}` });
+
+    // Agent audit trail: actorType=agent on the draft-create event.
+    const agentAudit = await withPgClient(async (client) => {
+      const result = await client.query<{ actor_type: string; metadata: Record<string, unknown> }>(
+        `select actor_type, metadata from audit_events where kind = 'knowledge-entry-agent-draft' and metadata->>'title' = $1`,
+        [publishTitle]
+      );
+      return result.rows[0];
+    });
+    expect(agentAudit).toMatchObject({ actor_type: "agent" });
+    expect(agentAudit.metadata).toMatchObject({ sessionId: `kb-admin-publish-${runStamp}`, sourceLogId: seeded.logId });
+
+    // Review the queue on /knowledge-admin as the knowledge manager.
+    await signInBrowserAsRole(page, "admin", "/knowledge-admin");
+    const queue = page.getByRole("table", { name: "Agent 知识草稿队列" });
+    await expect(queue).toBeVisible();
+
+    const publishRow = queue.locator("tr", { hasText: publishTitle }).first();
+    await expect(publishRow).toBeVisible();
+    await expect(publishRow.getByText(new RegExp(`创建人 ${editorUserId}`))).toBeVisible();
+    await expect(publishRow.getByText(`kb-admin-publish-${runStamp}`)).toBeVisible();
+    await expect(publishRow.getByRole("button", { name: "查看日志分析" })).toBeVisible();
+
+    // Publish one draft from the queue.
+    await publishRow.getByRole("button", { name: "发布", exact: true }).click();
+    await expect(queue.locator("tr", { hasText: publishTitle })).toHaveCount(0);
+
+    // Archive-reject the other.
+    const rejectRow = queue.locator("tr", { hasText: rejectTitle }).first();
+    await rejectRow.getByRole("button", { name: "拒绝归档" }).click();
+    const confirm = page.getByRole("dialog", { name: /拒绝并归档/ });
+    await confirm.getByRole("button", { name: "拒绝归档" }).click();
+    await expect(queue.locator("tr", { hasText: rejectTitle })).toHaveCount(0);
+
+    const statuses = await withPgClient(async (client) => {
+      const result = await client.query<{ title: string; status: string; source_session_id: string; source_log_id: string | null }>(
+        `select title, status, source_session_id, source_log_id from knowledge_entries where title = any($1::text[]) order by title`,
+        [[publishTitle, rejectTitle]]
+      );
+      return result.rows;
+    });
+    expect(statuses.find((row) => row.title === publishTitle)).toMatchObject({
+      status: "published",
+      source_session_id: `kb-admin-publish-${runStamp}`,
+      source_log_id: seeded.logId
+    });
+    expect(statuses.find((row) => row.title === rejectTitle)).toMatchObject({ status: "archived" });
+
+    const publishedEntryId = await withPgClient(async (client) => {
+      const result = await client.query<{ id: string }>(`select id from knowledge_entries where title = $1`, [publishTitle]);
+      return result.rows[0].id;
+    });
+    const rejectedEntryId = await withPgClient(async (client) => {
+      const result = await client.query<{ id: string }>(`select id from knowledge_entries where title = $1`, [rejectTitle]);
+      return result.rows[0].id;
+    });
+    const publishAudit = await knowledgeAuditSummaries(publishedEntryId);
+    expect(publishAudit).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "knowledge-entry-agent-draft", action: "agent-draft-create" }),
+        expect.objectContaining({ kind: "knowledge-entry-publish", action: "publish" })
+      ])
+    );
+    const rejectAudit = await knowledgeAuditSummaries(rejectedEntryId);
+    expect(rejectAudit).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: "knowledge-entry-reject", action: "reject" })])
+    );
+
+    await recordOperationEvidence({
+      operationId: "KB-ADMIN-001",
+      title: "agent draft approval into admin publish queue with publish and reject",
+      status: "passed",
+      role: "Admin",
+      route: "/knowledge-admin",
+      page,
+      testInfo,
+      api: [
+        summarizeApiResponse(publishFlow.started, {
+          method: "POST",
+          path: "/api/v1/agent/xiaoze",
+          responseSummary: `interrupt approvalId=${publishFlow.approvalId}`
+        }),
+        summarizeApiResponse(publishFlow.resumed, {
+          method: "POST",
+          path: "/api/v1/agent/xiaoze",
+          responseSummary: "approved -> agent draft created"
+        })
+      ],
+      db: [
+        {
+          table: "knowledge_entries",
+          predicate: `title in (${publishTitle}, ${rejectTitle})`,
+          observed: statuses.map((row) => `${row.title}=${row.status}`).join("; "),
+          rowCount: statuses.length
+        }
+      ],
+      audit: [...publishAudit, ...rejectAudit]
     });
   });
 });

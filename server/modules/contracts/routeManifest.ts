@@ -533,6 +533,13 @@ export const routeManifest = [
   { id: "productFeedback.patch", method: "PATCH", path: "/api/v1/product-feedback/:id", module: "product-feedback", stability: "mvp" },
   { id: "knowledge.createEntry", method: "POST", path: "/api/v1/knowledge/entries", module: "knowledge", stability: "mvp" },
   { id: "knowledge.listEntries", method: "GET", path: "/api/v1/knowledge/entries", module: "knowledge", stability: "mvp" },
+  {
+    id: "knowledge.distillFromLog",
+    method: "POST",
+    path: "/api/v1/knowledge/distill-from-log",
+    module: "knowledge",
+    stability: "mvp"
+  },
   { id: "knowledge.search", method: "GET", path: "/api/v1/knowledge/search", module: "knowledge", stability: "mvp" },
   { id: "knowledge.indexStatus", method: "GET", path: "/api/v1/knowledge/index/status", module: "knowledge", stability: "mvp" },
   { id: "knowledge.indexRebuild", method: "POST", path: "/api/v1/knowledge/index/rebuild", module: "knowledge", stability: "mvp" },
@@ -563,6 +570,13 @@ export const routeManifest = [
     id: "knowledge.restoreEntry",
     method: "POST",
     path: "/api/v1/knowledge/entries/:entryId/restore",
+    module: "knowledge",
+    stability: "mvp"
+  },
+  {
+    id: "knowledge.rejectAgentDraft",
+    method: "POST",
+    path: "/api/v1/knowledge/entries/:entryId/reject",
     module: "knowledge",
     stability: "mvp"
   },

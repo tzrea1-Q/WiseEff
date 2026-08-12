@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { knowledgeContentForms, knowledgeStatuses } from "./types";
+import { knowledgeContentForms, knowledgeSourceTypes, knowledgeStatuses } from "./types";
 
 const nonEmptyString = z.string().min(1);
 const base64String = nonEmptyString.refine(
@@ -65,9 +65,14 @@ export const restoreKnowledgeRevisionBodySchema = z.object({
 export const listKnowledgeEntriesQuerySchema = z.object({
   status: z.enum(knowledgeStatuses).optional(),
   contentForm: z.enum(knowledgeContentForms).optional(),
+  sourceType: z.enum(knowledgeSourceTypes).optional(),
   tag: z.string().optional(),
   q: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(200).optional()
+});
+
+export const distillKnowledgeFromLogBodySchema = z.object({
+  logId: nonEmptyString.max(100)
 });
 
 export const searchKnowledgeQuerySchema = z.object({
@@ -76,6 +81,7 @@ export const searchKnowledgeQuerySchema = z.object({
 });
 
 export type CreateKnowledgeEntryBody = z.infer<typeof createKnowledgeEntryBodySchema>;
+export type DistillKnowledgeFromLogBody = z.infer<typeof distillKnowledgeFromLogBodySchema>;
 export type UpdateKnowledgeEntryBody = z.infer<typeof updateKnowledgeEntryBodySchema>;
 export type RestoreKnowledgeRevisionBody = z.infer<typeof restoreKnowledgeRevisionBodySchema>;
 export type ListKnowledgeEntriesQueryBody = z.infer<typeof listKnowledgeEntriesQuerySchema>;

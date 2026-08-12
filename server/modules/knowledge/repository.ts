@@ -21,6 +21,7 @@ type KnowledgeEntryRow = {
   tags: string[];
   source_type: KnowledgeEntryDto["sourceType"];
   source_session_id: string | null;
+  source_log_id: string | null;
   created_by_user_id: string;
   head_revision_id: string | null;
   head_revision_number: number | string;
@@ -134,6 +135,7 @@ function toEntryDto(
     tags: row.tags ?? [],
     sourceType: row.source_type,
     sourceSessionId: row.source_session_id,
+    sourceLogId: row.source_log_id,
     createdByUserId: row.created_by_user_id,
     headRevisionId: row.head_revision_id,
     headRevisionNumber: Number(row.head_revision_number),
@@ -184,9 +186,9 @@ export async function insertEntry(db: Queryable, auth: AuthContext, input: Inser
   await db.query(
     `
     insert into knowledge_entries (
-      id, organization_id, title, content_form, tags, source_type, source_session_id, created_by_user_id, search_text
+      id, organization_id, title, content_form, tags, source_type, source_session_id, source_log_id, created_by_user_id, search_text
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     `,
     [
       input.id,
@@ -196,6 +198,7 @@ export async function insertEntry(db: Queryable, auth: AuthContext, input: Inser
       input.tags,
       input.sourceType,
       input.sourceSessionId,
+      input.sourceLogId,
       auth.user.id,
       input.searchText
     ]
@@ -406,6 +409,10 @@ export async function listEntries(
   if (query.contentForm) {
     values.push(query.contentForm);
     where.push(`content_form = $${values.length}`);
+  }
+  if (query.sourceType) {
+    values.push(query.sourceType);
+    where.push(`source_type = $${values.length}`);
   }
   if (query.tag) {
     values.push(query.tag);

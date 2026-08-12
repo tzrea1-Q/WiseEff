@@ -18,11 +18,23 @@ describe("xiaoze toolCatalog", () => {
       "perception.getRecentLogConclusions",
       "knowledge.search",
       "knowledge.getDocument",
-      "action.submitParameterChange"
+      "action.submitParameterChange",
+      "action.createKnowledgeDraft"
     ]);
     expect(tools.find((tool) => tool.name === "action.submitParameterChange")?.requiresApproval).toBe(true);
+    expect(tools.find((tool) => tool.name === "action.createKnowledgeDraft")?.requiresApproval).toBe(true);
     expect(tools.find((tool) => tool.name === "knowledge.search")?.requiresApproval).toBeFalsy();
-    expect(toOpenAiToolDefinitions(tools)).toHaveLength(7);
+    expect(toOpenAiToolDefinitions(tools)).toHaveLength(8);
+  });
+
+  it("describes the knowledge draft action as draft-only with the required schema fields", () => {
+    const registry = createAgentToolRegistry({ db: { query: async () => ({ rows: [], rowCount: 0 }) } });
+    const tools = buildXiaozePlanningToolDescriptors(registry.list());
+
+    const draft = tools.find((tool) => tool.name === "action.createKnowledgeDraft");
+    expect(draft?.description).toContain("draft");
+    expect(draft?.description).toContain("never modifies existing entries");
+    expect(draft?.schema).toMatchObject({ required: ["title", "contentMarkdown"] });
   });
 
   it("describes knowledge tools with dedicated schemas and descriptions", () => {
