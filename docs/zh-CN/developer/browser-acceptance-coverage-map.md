@@ -25,6 +25,8 @@
 - `PFB-SUBMIT-001`：活跃用户从侧边栏提交产品反馈，包含描述和可选截图；API 持久化，UI 展示成功提示（`e2e/acceptance/product-feedback.acceptance.spec.ts`）。
 - `PFB-ADMIN-001`：Admin 在 `/feedback-admin` 列表打开详情，将反馈从 `open` 推进到 `in_progress` 再到 `closed`，并写入处理备注（`e2e/acceptance/product-feedback.acceptance.spec.ts`）。
 - `PFB-AUTHZ-001`：非 Admin 无法访问产品反馈管理 API 或 `/feedback-admin` 页面（`e2e/acceptance/product-feedback.acceptance.spec.ts`）。
+- `LOG-DOMAIN-001`：Admin 在 `/log-admin` 业务域治理区注册业务域（名称、描述、格式画像 JSON），上传时绑定该域，结论卡展示业务域标签（`e2e/acceptance/log-analysis.acceptance.spec.ts`）。
+- `LOG-DEGRADED-001`：模拟 provider 故障后分析降级到规则引擎，结果显著标注「降级分析 · 规则回退」与 provider-unavailable 原因，绝不静默冒充完整分析（`e2e/acceptance/log-analysis.acceptance.spec.ts`）。
 - `DEBUG-SIM-001`：模拟器读、写、回读不一致、回滚与审计路径，包含复杂 JSON 值元数据。
 - `DEBUG-ADMIN-001`：API mode 下调试管理后台可新增、编辑、归档、恢复，并维护 HDC/ADB binding 与复杂值元数据。
 - `DTS-RELOAD-DEPLOY-001`：经假本地设备桥部署已校验的重载 overlay（mount / pushFile / trigger）至 `unverifiable`；浏览器证据 `work/ui-checks/285-*`。
