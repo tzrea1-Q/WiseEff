@@ -502,7 +502,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       .poll(async () => gpioRows.count(), { timeout: 20_000 })
       .toBeGreaterThanOrEqual(2);
     await gpioRows.first().getByRole("button", { name: /编辑 gpio_int/ }).click();
-    await expect(page.getByRole("dialog", { name: /参数定义详情/ })).toBeVisible({ timeout: 15_000 });
+    // The spec editor ModalDialog is named by its <h2> primary label (the property key).
+    await expect(page.getByRole("dialog", { name: /^gpio_int$/ })).toBeVisible({ timeout: 15_000 });
 
     await recordOperationEvidence({
       operationId: "PARAM-SPEC-GOVERN-001",
