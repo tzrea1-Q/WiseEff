@@ -532,7 +532,7 @@ describe("OperationHistoryPanel 集成", () => {
 
 describe("/debugging-admin 节点元数据", () => {
   it("在调试管理页通过路径绑定弹窗保存节点路径与访问模式字段", async () => {
-    window.history.replaceState(null, "", "/debugging-admin");
+    window.history.replaceState(null, "", "/debugging-admin/nodes");
     render(<App initialAppState={adminState} runtimeMode="mock" />);
 
     const firstRow = screen.getByRole("row", { name: /充电输入限流/ });

@@ -7,7 +7,3 @@ export const reloadConfigurationContractBodySchema = z.object({
   triggerPayload: z.string().min(1),
   kernelLogCommand: z.string().min(1)
 });
-
-export const deviceIdParamsSchema = z.object({
-  deviceId: z.string().min(1)
-});

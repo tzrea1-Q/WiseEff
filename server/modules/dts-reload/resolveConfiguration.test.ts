@@ -39,26 +39,9 @@ function orgRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function deviceRow(overrides: Record<string, unknown> = {}) {
-  return {
-    id: "override-1",
-    organization_id: "org-1",
-    device_id: "device-1",
-    destination_directory: "/data/vendor/firmware/",
-    destination_filename: "device_overlay.dtbo",
-    trigger_node_path: "/sys/kernel/debug/alt/trigger",
-    trigger_payload: "reload",
-    kernel_log_command: "hilog",
-    updated_by_user_id: "user-2",
-    updated_at: "2026-08-10T02:00:00.000Z",
-    created_at: "2026-08-10T02:00:00.000Z",
-    ...overrides
-  };
-}
-
 describe("resolveReloadConfiguration", () => {
   it("returns seeded defaults for a fresh organisation with no stored rows", async () => {
-    const { calls, db } = createFakeDb([[], []]);
+    const { calls, db } = createFakeDb([[]]);
 
     const resolved = await resolveReloadConfiguration(db, {
       organizationId: "org-fresh",
@@ -74,9 +57,8 @@ describe("resolveReloadConfiguration", () => {
     expect(calls.every((call) => !JSON.stringify(call.values).includes("request"))).toBe(true);
   });
 
-  it("returns organisation defaults when no device override exists", async () => {
+  it("returns organisation defaults when a stored row exists", async () => {
     const { db } = createFakeDb([
-      [],
       [
         orgRow({
           destination_directory: "/oem/firmware/",
@@ -96,28 +78,8 @@ describe("resolveReloadConfiguration", () => {
     expect(resolved.destinationFilename).toBe("power_dts_overlay.dtbo");
   });
 
-  it("lets the device override win over the organisation default", async () => {
-    const { db } = createFakeDb([[deviceRow()], [orgRow()]]);
-
-    const resolved = await resolveReloadConfiguration(db, {
-      organizationId: "org-1",
-      deviceId: "device-1"
-    });
-
-    expect(resolved).toMatchObject({
-      organizationId: "org-1",
-      deviceId: "device-1",
-      source: "device-override",
-      destinationDirectory: "/data/vendor/firmware/",
-      destinationFilename: "device_overlay.dtbo",
-      triggerNodePath: "/sys/kernel/debug/alt/trigger",
-      triggerPayload: "reload",
-      kernelLogCommand: "hilog"
-    });
-  });
-
   it("never consults request-body fields when resolving the effective contract", async () => {
-    const { calls, db } = createFakeDb([[], [orgRow()]]);
+    const { calls, db } = createFakeDb([[orgRow()]]);
     const requestBody = {
       destinationDirectory: "/evil/",
       destinationFilename: "evil.dtbo",
@@ -143,7 +105,7 @@ describe("resolveReloadConfiguration", () => {
 
   it("accepts only organizationId and deviceId as resolution inputs", async () => {
     const spy = vi.fn(resolveReloadConfiguration);
-    const { db } = createFakeDb([[], []]);
+    const { db } = createFakeDb([[]]);
     await spy(db, { organizationId: "org-1", deviceId: "device-1" });
     expect(spy.mock.calls[0]?.[1]).toEqual({ organizationId: "org-1", deviceId: "device-1" });
   });

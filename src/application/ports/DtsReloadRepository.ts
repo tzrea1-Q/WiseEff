@@ -51,9 +51,4 @@ export interface DtsReloadRepository {
   updateOrganisationReloadConfiguration(
     contract: ReloadConfigurationContract
   ): Promise<ReloadConfigurationAdminView["organisation"]>;
-  upsertDeviceReloadConfiguration(
-    deviceId: string,
-    contract: ReloadConfigurationContract
-  ): Promise<ReloadConfigurationAdminView["deviceOverrides"][number]>;
-  deleteDeviceReloadConfiguration(deviceId: string): Promise<{ deviceId: string }>;
 }

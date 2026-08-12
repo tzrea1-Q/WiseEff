@@ -9,11 +9,9 @@ import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
   getReloadConfigurationAdminView,
-  removeDeviceReloadConfiguration,
-  updateOrganisationReloadConfiguration,
-  upsertDeviceReloadConfiguration
+  updateOrganisationReloadConfiguration
 } from "./configurationService";
-import { deviceIdParamsSchema, reloadConfigurationContractBodySchema } from "./configurationSchemas";
+import { reloadConfigurationContractBodySchema } from "./configurationSchemas";
 import {
   deployReloadRun,
   getReloadResidue,
@@ -110,27 +108,6 @@ export function registerDtsReloadRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(reloadConfigurationContractBodySchema, request.body);
     const item = await updateOrganisationReloadConfiguration(db, auth, body, {
-      requestId: request.requestId
-    });
-    return { status: 200, body: { item } };
-  });
-
-  router.put("/api/v1/dts-reload/configuration/devices/:deviceId", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    const params = parseWithSchema(deviceIdParamsSchema, request.params);
-    const body = parseWithSchema(reloadConfigurationContractBodySchema, request.body);
-    const item = await upsertDeviceReloadConfiguration(db, auth, params.deviceId, body, {
-      requestId: request.requestId
-    });
-    return { status: 200, body: { item } };
-  });
-
-  router.delete("/api/v1/dts-reload/configuration/devices/:deviceId", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    const params = parseWithSchema(deviceIdParamsSchema, request.params);
-    const item = await removeDeviceReloadConfiguration(db, auth, params.deviceId, {
       requestId: request.requestId
     });
     return { status: 200, body: { item } };

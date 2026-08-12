@@ -849,7 +849,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     }
   },
   "dtsReload.getConfiguration": {
-    summary: "Get organisation reload configuration defaults and per-device overrides",
+    summary: "Get organisation reload configuration defaults",
     tags: ["dts-reload"],
     responseBody: "DtsReloadConfigurationAdminResponse",
     additionalResponses: { "403": "ErrorResponse" }
@@ -860,19 +860,6 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     requestBody: "DtsReloadConfigurationContractRequest",
     responseBody: "DtsReloadOrganisationConfigurationResponse",
     additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse" }
-  },
-  "dtsReload.upsertDeviceConfiguration": {
-    summary: "Create or replace a per-device reload configuration override",
-    tags: ["dts-reload"],
-    requestBody: "DtsReloadConfigurationContractRequest",
-    responseBody: "DtsReloadDeviceConfigurationResponse",
-    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" }
-  },
-  "dtsReload.deleteDeviceConfiguration": {
-    summary: "Remove a per-device reload configuration override",
-    tags: ["dts-reload"],
-    responseBody: "DtsReloadDeviceConfigurationDeleteResponse",
-    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
 
   "jobs.get": { summary: "Get job status", tags: ["jobs"], responseBody: "JobResponse" },

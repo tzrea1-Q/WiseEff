@@ -206,8 +206,6 @@ function createRepository(overrides: Partial<DtsReloadRepository> = {}): DtsRelo
     downloadArtifact: vi.fn(async () => new Blob([Uint8Array.from([1, 2, 3])])),
     getReloadConfiguration: vi.fn(),
     updateOrganisationReloadConfiguration: vi.fn(),
-    upsertDeviceReloadConfiguration: vi.fn(),
-    deleteDeviceReloadConfiguration: vi.fn(),
     ...overrides
   };
 }

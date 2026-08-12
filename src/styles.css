@@ -5597,29 +5597,151 @@ td small {
   margin-bottom: 16px;
 }
 
+.reload-configuration-panel__header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.reload-configuration-panel__contract {
+  gap: 14px;
+}
+
+.reload-configuration-panel__section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.reload-configuration-panel__section-title {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.reload-configuration-panel__section-title h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
 .reload-configuration-muted {
   margin: 0;
   color: var(--text-muted, #64748b);
-  font-size: 0.9rem;
-  line-height: 1.45;
+  font-size: 0.875rem;
+  line-height: 1.5;
 }
 
 .reload-configuration-form {
-  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 18px;
+  margin: 0;
+  padding: 0;
 }
 
-.reload-configuration-form input,
-.reload-configuration-form select {
+.reload-configuration-form__field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
   min-width: 0;
+}
+
+.reload-configuration-form__field--wide {
+  grid-column: 1 / -1;
+}
+
+.reload-configuration-form__field [data-slot="label"] {
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.reload-configuration-form__hint {
+  margin: 0;
+  color: var(--text-muted, #64748b);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.reload-configuration-form__control {
   width: 100%;
-  overflow-x: auto;
+  min-width: 0;
+  height: 2.375rem;
+  background: #fff;
+  border-color: #cbd5e1;
+  box-shadow: inset 0 1px 1px rgba(15, 23, 42, 0.03);
+}
+
+.reload-configuration-form__control:hover:not(:disabled),
+.reload-configuration-form [data-slot="select-trigger"]:hover:not(:disabled) {
+  border-color: #94a3b8;
+}
+
+.reload-configuration-form__control:focus-visible,
+.reload-configuration-form [data-slot="select-trigger"]:focus-visible {
+  border-color: var(--app-primary, #2563eb);
+}
+
+.reload-configuration-form__control.mono,
+.reload-configuration-form [data-slot="select-trigger"] {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", ui-monospace, monospace;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.reload-configuration-form [data-slot="select-trigger"] {
+  width: 100%;
+  min-width: 0;
+  height: 2.375rem;
+  background: #fff;
+  border-color: #cbd5e1;
+  box-shadow: inset 0 1px 1px rgba(15, 23, 42, 0.03);
 }
 
 .reload-configuration-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px 14px;
+  margin-top: 2px;
+  padding-top: 14px;
+  border-top: 1px solid var(--outline);
+}
+
+.reload-configuration-actions .reload-configuration-status,
+.reload-configuration-actions .reload-configuration-muted {
+  margin-right: auto;
+}
+
+.reload-configuration-actions .button,
+.reload-configuration-actions [data-slot="button"],
+.reload-configuration-actions__save {
+  min-width: 9.5rem;
+}
+
+.reload-configuration-status {
+  margin: 0;
+  color: #0f766e;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .reload-configuration-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .reload-configuration-form__field--wide {
+    grid-column: auto;
+  }
 }
 
 .param-admin-shell .debug-admin-catalog-tabs {

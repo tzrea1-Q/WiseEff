@@ -100,7 +100,7 @@ export type PageRouterProps = PageProps & {
   TopBarProjectId?: string;
   LogDashboardPage: (props: { state: PrototypeState; onNavigate: (path: string) => void }) => ReactNode;
   LogsPage: (props: PageProps) => ReactNode;
-  DebuggingAdminPage: (props: PageProps) => ReactNode;
+  DebuggingAdminPage: (props: PageProps & { area?: "parameter" | "nodes" }) => ReactNode;
 };
 
 export function PageRouter({
@@ -298,8 +298,25 @@ export function PageRouter({
           }
         />
       );
-    case "debugging-admin":
-      return <DebuggingAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} debuggingActions={debuggingActions} debuggingGateway={debuggingGateway} logActions={logActions} parameterActions={parameterActions} />;
+    case "debugging-admin": {
+      const area =
+        page.path === "/debugging-admin/nodes" || page.path.startsWith("/debugging-admin/nodes/")
+          ? "nodes"
+          : "parameter";
+      return (
+        <DebuggingAdminPage
+          state={state}
+          dispatch={dispatch}
+          onNavigate={onNavigate}
+          search={search}
+          debuggingActions={debuggingActions}
+          debuggingGateway={debuggingGateway}
+          logActions={logActions}
+          parameterActions={parameterActions}
+          area={area}
+        />
+      );
+    }
     case "user-permissions":
       return <UserPermissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} userGovernanceActions={userGovernanceActions} />;
     case "audit":

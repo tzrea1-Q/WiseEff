@@ -6,7 +6,6 @@ import type {
   ListDtsReloadRunsInput
 } from "@/application/ports/DtsReloadRepository";
 import type {
-  DeviceReloadConfigurationOverride,
   DtsReloadCandidate,
   DtsReloadResidue,
   DtsReloadRun,
@@ -68,10 +67,6 @@ function artifactPath(runId: string) {
 
 function configurationPath() {
   return "/api/v1/dts-reload/configuration";
-}
-
-function deviceConfigurationPath(deviceId: string) {
-  return `${configurationPath()}/devices/${encodeURIComponent(deviceId)}`;
 }
 
 export function createHttpDtsReloadRepository(options: HttpDtsReloadRepositoryOptions = {}): DtsReloadRepository {
@@ -141,19 +136,6 @@ export function createHttpDtsReloadRepository(options: HttpDtsReloadRepositoryOp
 
     async updateOrganisationReloadConfiguration(contract: ReloadConfigurationContract) {
       const response = await apiClient.put<ItemEnvelope<OrganisationReloadConfiguration>>(configurationPath(), contract);
-      return response.item;
-    },
-
-    async upsertDeviceReloadConfiguration(deviceId: string, contract: ReloadConfigurationContract) {
-      const response = await apiClient.put<ItemEnvelope<DeviceReloadConfigurationOverride>>(
-        deviceConfigurationPath(deviceId),
-        contract
-      );
-      return response.item;
-    },
-
-    async deleteDeviceReloadConfiguration(deviceId: string) {
-      const response = await apiClient.delete<ItemEnvelope<{ deviceId: string }>>(deviceConfigurationPath(deviceId));
       return response.item;
     }
   };

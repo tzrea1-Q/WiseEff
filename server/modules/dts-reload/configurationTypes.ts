@@ -1,6 +1,6 @@
 /**
  * The device-side contract a reload run must obey. Resolved server-side from stored organisation
- * defaults and optional per-device overrides — never from request input.
+ * defaults (or seeded defaults) — never from request input.
  */
 export type ReloadConfigurationContract = {
   destinationDirectory: string;
@@ -10,28 +10,17 @@ export type ReloadConfigurationContract = {
   kernelLogCommand: string;
 };
 
-export type ReloadConfigurationScope = "organisation" | "device";
-
-export type ReloadConfigurationSource = "seeded-default" | "organisation" | "device-override";
+export type ReloadConfigurationSource = "seeded-default" | "organisation";
 
 export type OrganisationReloadConfigurationDto = ReloadConfigurationContract & {
   scope: "organisation";
-  source: "seeded-default" | "organisation";
+  source: ReloadConfigurationSource;
   updatedAt: string | null;
-  updatedByUserId: string | null;
-};
-
-export type DeviceReloadConfigurationOverrideDto = ReloadConfigurationContract & {
-  scope: "device";
-  deviceId: string;
-  deviceName: string | null;
-  updatedAt: string;
   updatedByUserId: string | null;
 };
 
 export type ReloadConfigurationAdminView = {
   organisation: OrganisationReloadConfigurationDto;
-  deviceOverrides: DeviceReloadConfigurationOverrideDto[];
 };
 
 export type ResolvedReloadConfiguration = ReloadConfigurationContract & {

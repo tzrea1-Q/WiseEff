@@ -2122,7 +2122,7 @@ function AppShell({
     [debuggingGatewayClient, runtimeMode]
   );
   const DebuggingAdminPageWithRuntime = useCallback(
-    (props: PageProps) => (
+    (props: PageProps & { area?: "parameter" | "nodes" }) => (
       <DebuggingAdminPage
         {...props}
         runtimeMode={runtimeMode}

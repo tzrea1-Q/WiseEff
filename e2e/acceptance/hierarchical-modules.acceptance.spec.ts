@@ -389,7 +389,7 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
       title: "nested debug module subtree filter",
       status: "passed",
       role: "Admin",
-      route: "/debugging-admin",
+      route: "/debugging-admin/nodes",
       page,
       testInfo,
       api: [

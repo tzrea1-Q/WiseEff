@@ -334,7 +334,7 @@ DTS 重载调试与节点调试、以及已退役的「参数重载」概念均�
 - **重载运行**（`dts_reload_runs` + `dts_reload_run_targets`）：一次对某项目+设备的一批调试值。状态含预检（`pending` / `blocked` / `validated`）、进程内部署（`deploying`）与诚实终端（`unverifiable` / `verified` / `contradicted` / `failed`）。`purpose` 为 `ordinary` 或 `restore-baseline`。
 - **调试 overlay**：平台生成的 `/plugin/` DTS（以绝对 `target-path` 寻址）及其编译产物 `dtbo`。调试值永不写入 binding 修订、草稿或发布基线（ADR-0019）。
 - **重载候选资格**：库参数在具备非空绝对 `nodePath`、支持的重载值形态与库基线值时可调试。已支持形态含整数 cell 数组（8/16/32 位，含 `/bits/ 8`）、目录单字符串 `string`、`string-list`、GPIO 风格 `phandle-cells`。不以单段 `/label` 路径形状启发式拒绝（含 L1 自锚的 overlay-only 根）；父子路径同等分类。路径是否存在于项目重载基树由预检（`dtc` / `fdtoverlay`）判定，不在候选列表阶段判定。
-- **重载配置**（`dts_reload_org_defaults` / `dts_reload_device_overrides`）：落地路径、触发节点/载荷、内核日志命令。仅服务端解析；设备覆盖优先。
+- **重载配置**（`dts_reload_org_defaults`）：落地路径、触发节点/载荷、内核日志命令。仅服务端从组织默认（或种子默认）解析。
 - **重载快照**（运行上的 JSON，ADR-0021）：库基线、已校验产物摘要与完整性强度、可选内核信号、以及在存在 debug-node binding 时的行为核对结果。不写入 `debugging_snapshots`。
 - **重载残留**（`dts_reload_device_residue`）：设备仍携带调试值的平台记账；仅当成功的恢复基线仍指向记录中的源运行时才清除。
 - **敏感节点扩展**：与库写入相同的 `dts_sensitive_node_rules` 在启动重载时生效（`parameter:edit-critical`；critical 另需 `confirm-sensitive-reload`）。部署另需 `confirm-dts-reload`。

@@ -95,7 +95,7 @@ Dedicated module under `/api/v1/dts-reload/*` (not the retired `/api/v1/debuggin
 | `GET` | `/api/v1/dts-reload/runs` / `.../:runId` | view path | History and detail including reload snapshot |
 | `GET` | `/api/v1/dts-reload/residue` | view path | Device residue bookkeeping |
 | `POST` | `/api/v1/dts-reload/projects/:projectId/restore-baseline` | `debugging:dts-reload` | Start compensating restore-baseline run |
-| `*` | `/api/v1/dts-reload/configuration*` | `debugging:admin` | Org defaults + device overrides |
+| `*` | `/api/v1/dts-reload/configuration` | `debugging:admin` | Organisation reload-configuration defaults |
 
 Committed OpenAPI (`docs/generated/openapi.json`) is authoritative for request/response schemas.
 

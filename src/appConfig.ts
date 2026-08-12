@@ -16,6 +16,11 @@ import {
 } from "lucide-react";
 
 import {
+  DEBUGGING_ADMIN_UI,
+  isDebuggingAdminPath,
+  parseDebuggingAdminArea
+} from "@/application/debugging/debuggingAdminPath";
+import {
   isParameterAdminOrganizationEntryPath,
   parseParameterAdminModulesSubView,
   parseParameterAdminOrganizationPath,
@@ -125,7 +130,7 @@ export const navigationItems: PageConfig[] = [
     group: "调试平台",
     icon: Gauge,
     title: "调试管理后台",
-    subtitle: "设备接入、可调节点目录、指标和权限管理"
+    subtitle: DEBUGGING_ADMIN_UI.parameterSubtitle
   },
   {
     key: "log-dashboard",
@@ -314,6 +319,18 @@ export function getPageByPath(path: string): PageConfig {
     };
   }
 
+  // Debugging-admin scope peers share one sidebar entry (parameter vs nodes).
+  if (isDebuggingAdminPath(path)) {
+    const adminNav = navigationItems.find((item) => item.key === "debugging-admin");
+    const area = parseDebuggingAdminArea(path) ?? "parameter";
+    return {
+      ...(adminNav as PageConfig),
+      path,
+      subtitle:
+        area === "nodes" ? DEBUGGING_ADMIN_UI.nodesSubtitle : DEBUGGING_ADMIN_UI.parameterSubtitle
+    };
+  }
+
   return navigationItems.find((item) => item.path === path) ?? navigationItems[0];
 }
 
@@ -366,7 +383,10 @@ export function getXiaozeContextSummary(path: string): string {
     case "log-admin":
       return "正在关注分析吞吐、失败记录、权限覆盖和使用趋势。";
     case "debugging-admin":
-      return "正在关注设备在线率、可调节点目录覆盖和节点访问策略。";
+      if (path === "/debugging-admin/nodes" || path.startsWith("/debugging-admin/nodes/")) {
+        return "正在关注设备在线率、可调节点目录覆盖和节点访问策略。";
+      }
+      return "正在关注 DTS 重载配置：落地路径、触发节点与内核日志命令。";
     case "feedback-admin":
       return "正在关注内测产品反馈、待处理问题、截图证据和分诊闭环。";
     default:
