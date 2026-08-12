@@ -1,27 +1,24 @@
 WiseEff design-system notes for LLM/agent use.
 
+Authoritative documents:
+- docs/design-docs/ui-design-system.md — binding visual standard (tokens, component contracts, states, motion, content language).
+- docs/developer/ui-quality-checklist.md — completion gate for every frontend-visible change.
+- docs/adr/0025-design-tokens-are-the-single-visual-source.md — token single-source decision.
+
 Audience:
 - Agents making UI changes in the WiseEff React app.
 
-Core style:
-- Enterprise productivity workbench.
-- Dense but readable information.
-- Restrained visual styling for operational pages.
-- More expressive visuals are acceptable on the home page and AI capability sections.
-
-Use existing components first:
-- src/components/ui/*
-- src/components/layout/*
-- src/components/admin/*
-- src/components/* table, filter, dialog, chart, and toast components
-
-Interaction rules:
-- Use visible role, project, state, risk, and audit cues near related actions.
-- Keep confirmation flows for state-changing operations.
-- Do not hide security or governance behind only color.
-- Avoid oversized hero type inside workbench panels.
-- Keep tables scan-friendly and controls close to the business object they modify.
+Core rules:
+- Visual values come only from the :root token block in src/styles.css. No raw hex/rgb, z-index numbers, font sizes, or invented box-shadows in component or page CSS.
+- One accent: brand blue (--accent #0052cc family). No black or teal one-off fills; one primary button per view.
+- Scales: 7-step type scale (--text-xs 11px .. --text-2xl 24px with --leading-*), 4px spacing grid (--space-1..16), radius 6/8/12/999 (--radius-sm/md/lg/full), elevation --shadow-1..3 + --ring, motion --duration-fast/base/slow with --ease-out / --ease-in-out, declared z-index ladder (--z-sticky/topbar/sidebar/dropdown + overlay scale).
+- Fonts: --font-sans = Geist Variable + CJK system fallback; --font-mono for identifiers, values, and source text. Weights 400/500/600/700 only. Never import remote fonts.
+- Every interactive element defines rest/hover/active/focus-visible/disabled (+ loading for async). Focus ring is 2px var(--ring); never remove an outline without an equivalent replacement.
+- Primitives first: src/components/ui/button, common/ModalDialog + ConfirmDialog, admin/DataTable, ColumnFilter, parameter-home SectionState. Never hand-roll a modal backdrop, never window.confirm, never fork a parallel primitive.
+- Chinese-first product language: no raw errors, event slugs, ISO timestamps, or English chrome fragments; dates and percentages go through shared formatters.
+- Dense but readable workbench: primary tables fit 1280px content width without chrome-induced horizontal scroll; card nesting at most two visible levels; the TopBar owns the page title.
 
 Testing:
-- Add or update Testing Library tests for UI state changes.
-- Verify permission-denied, empty, disabled, loading, and error states when relevant.
+- Style contracts assert structurally via src/test/cssAssertions.ts (selector/declaration helpers), not raw CSS-source regexes.
+- Add or update Testing Library tests for UI state changes; verify permission-denied, empty, disabled, loading, and error states when relevant.
+- Real-browser walkthrough per the checklist (1440x900 / 768x1024 / 390x844) with evidence under work/ui-checks/ before claiming completion.

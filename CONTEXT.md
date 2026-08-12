@@ -88,6 +88,9 @@ Expand lazily via `/domain-modeling` when terms are resolved. Prefer terms from 
 | Reload purpose | `ordinary` (put debug values on the device) or `restore-baseline` (compensating reload toward library baselines). Stored on `dts_reload_runs.purpose` and surfaced in history / last-reload projections |
 | Sensitive reload | The sensitive-node extension of reload start: matching `dts_sensitive_node_rules` additionally requires `parameter:edit-critical`, and critical-tier matches also require `confirmationToken: "confirm-sensitive-reload"`. Distinct from the deploy token `confirm-dts-reload` |
 | Parameter reload (retired) | The 2026 M1-era concept binding one parameter definition to one device node path and writing it through sysfs, which also wrote the accepted value back into project parameter values. Never shipped, HTTP surface returned `410` from its first commit, and its binding table was dropped in migration `0037`. Retained here only so the term is not confused with DTS reload debugging |
+| Design token | A named CSS custom property in the single `:root` block of `src/styles.css` that is the only allowed source of a visual value (color, type, spacing, radius, elevation, motion, z-index). Components consume tokens via `var()`/`color-mix()`; raw literals outside the token block are defects (ADR-0025). Scales are specified in `docs/design-docs/ui-design-system.md` |
+| Accent | The single interactive brand color family (`--accent`, blue). Buttons, links, active navigation, selection, and focus rings derive from it; a second filled accent (black, teal) on interactive elements is a defect |
+| Elevation | The four-level surface-depth vocabulary: `--shadow-1` (rest cards), `--shadow-2` (popovers), `--shadow-3` (dialogs), plus the `--ring` focus ring. Shadows are never invented inline |
 
 ## ADRs
 
@@ -111,3 +114,4 @@ Architectural decisions: [`docs/adr/`](docs/adr/) (created lazily). Feature-scop
 - [`0017`](docs/adr/0017-definition-identity-is-correctable.md) — definition identity is correctable and `parameter_specs.id` is a surrogate
 - [`0018`](docs/adr/0018-uploaded-file-versions-are-staged-before-activation.md) — uploaded file versions are staged before activation
 - [`0019`](docs/adr/0019-debug-values-never-mutate-the-parameter-library.md) — debug values never mutate the parameter library
+- [`0025`](docs/adr/0025-design-tokens-are-the-single-visual-source.md) — design tokens are the single visual source

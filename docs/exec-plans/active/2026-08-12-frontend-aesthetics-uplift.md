@@ -86,12 +86,12 @@ Severity: P0 = foundation defect that blocks convergence; P1 = product-visible q
 
 ### P0 — Foundation: tokens, fonts, unfreeze (branch `fix/ui-foundation-tokens`)
 
-- [ ] Migrate the 47 CSS-source regex assertions (18 test files) to behavioral/DOM assertions or scoped fixtures so the monolith can be refactored (FA-05).
-- [ ] Ratify the token block per the design system: semantic colors (single palette; shadcn keys aliased), type scale, spacing, radius, elevation, motion, extended z-index ladder (FA-01, FA-02, FA-07, FA-08, FA-09 foundations).
-- [ ] Define the 16 missing-but-referenced tokens; remove ~29 dead tokens (FA-04).
-- [ ] Fonts: delete the Google Fonts import; promote Geist Variable + CJK fallback chain as `--font-sans`; single `--font-mono`; clamp weights to 400/500/600/700 (FA-03).
-- [ ] Record the token decision as an ADR (next free number) and update `CONTEXT.md` vocabulary (design token, elevation, accent).
-- [ ] Global `:focus-visible` baseline using `--ring`; remove the 6 hover+focus merges (FA-11 baseline).
+- [x] Migrate the 47 CSS-source regex assertions (18 test files) to behavioral/DOM assertions or scoped fixtures so the monolith can be refactored (FA-05; shared helper `src/test/cssAssertions.ts`).
+- [x] Ratify the token block per the design system: semantic colors (single palette; shadcn keys aliased), type scale, spacing, radius, elevation, motion, extended z-index ladder (FA-01, FA-02, FA-07, FA-08, FA-09 foundations).
+- [x] Define the 16 missing-but-referenced tokens; remove ~29 dead tokens (FA-04; 25 removed after triple-verification, remainder listed in the P0 report).
+- [x] Fonts: delete the Google Fonts import; promote Geist Variable + CJK fallback chain as `--font-sans`; single `--font-mono`; clamp weights to 400/500/600/700 (FA-03).
+- [x] Record the token decision as an ADR (ADR-0025) and update `CONTEXT.md` vocabulary (design token, elevation, accent).
+- [x] Global `:focus-visible` baseline using `--ring`; remove the 6 hover+focus merges (FA-11 baseline).
 
 ### P1 — Primitive consolidation (branch `feat/ui-primitives-consolidation`)
 
@@ -181,7 +181,7 @@ Audit baseline evidence: `work/ui-checks/01-*.png` … `21-*.png` (2026-08-12 wa
 - [x] `docs/design-docs/ui-design-system.md` + zh companion created and linked from `docs/design-docs/index.md` (+ zh), `docs/FRONTEND.md` (+ zh), `docs/DESIGN.md`, `AGENTS.md` (+ zh)
 - [x] `docs/developer/ui-quality-checklist.md` + zh companion created and registered in `scripts/bilingual-docs.ts`
 - [x] `docs/PLANS.md` + `docs/zh-CN/PLANS.md` list this plan
-- [ ] P0: ADR recorded; `CONTEXT.md` + `docs/adr/README.md` updated; `design-system-reference-llms.txt` aligned
+- [x] P0: ADR-0025 recorded; `CONTEXT.md` + `docs/adr/README.md` updated; `design-system-reference-llms.txt` aligned; TD-070/TD-071 filed
 - [ ] P4: `docs/QUALITY_SCORE.md` + zh and `docs/developer/verification-matrix.md` + zh describe `ui:check` and expanded quality specs
 - [ ] Deferred findings recorded in `docs/exec-plans/tech-debt-tracker.md` + zh
 - [ ] `npm run docs:check` green before moving this plan to `completed/`
