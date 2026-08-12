@@ -3,7 +3,7 @@ import type { Database } from "../../shared/database/client";
 export type BaselineRoleSeed = readonly [id: string, name: string, level: string, permissions: readonly string[]];
 
 export const baselinePlatformRoles: BaselineRoleSeed[] = [
-  ["guest", "Guest", "guest", ["parameter:view", "logs:view"]],
+  ["guest", "Guest", "guest", ["parameter:view", "logs:view", "knowledge:view"]],
   [
     "hardware-user",
     "Hardware User",
@@ -16,7 +16,9 @@ export const baselinePlatformRoles: BaselineRoleSeed[] = [
       "debugging:read",
       "logs:view",
       "logs:upload",
-      "logs:feedback"
+      "logs:feedback",
+      "knowledge:view",
+      "knowledge:edit"
     ]
   ],
   [
@@ -31,7 +33,9 @@ export const baselinePlatformRoles: BaselineRoleSeed[] = [
       "debugging:read",
       "logs:view",
       "logs:upload",
-      "logs:feedback"
+      "logs:feedback",
+      "knowledge:view",
+      "knowledge:edit"
     ]
   ],
   [
@@ -51,6 +55,8 @@ export const baselinePlatformRoles: BaselineRoleSeed[] = [
       "logs:view",
       "logs:upload",
       "logs:feedback",
+      "knowledge:view",
+      "knowledge:edit",
       "parameter:review"
     ]
   ],
@@ -71,6 +77,8 @@ export const baselinePlatformRoles: BaselineRoleSeed[] = [
       "logs:view",
       "logs:upload",
       "logs:feedback",
+      "knowledge:view",
+      "knowledge:edit",
       "parameter:review"
     ]
   ],
@@ -94,6 +102,9 @@ export const baselinePlatformRoles: BaselineRoleSeed[] = [
       "logs:feedback",
       "logs:analyze",
       "logs:archive",
+      "knowledge:view",
+      "knowledge:edit",
+      "knowledge:manage",
       "parameter:review",
       "admin:access",
       "users:manage"
@@ -119,6 +130,9 @@ export const baselinePlatformRoles: BaselineRoleSeed[] = [
       "logs:feedback",
       "logs:analyze",
       "logs:archive",
+      "knowledge:view",
+      "knowledge:edit",
+      "knowledge:manage",
       "parameter:review",
       "admin:access",
       "users:manage",

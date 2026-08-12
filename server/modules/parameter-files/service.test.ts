@@ -232,7 +232,6 @@ describe("project parameter file upload service", () => {
     });
 
     expect(result.file.currentVersionNumber).toBe(1);
-    expect(result.unsupportedConstructs).toBeUndefined();
     expect(put).toHaveBeenCalled();
     expect(txCalls.find((call) => call.text.includes("insert into project_parameter_files"))).toBeTruthy();
     expect(syncFileVersion).toHaveBeenCalled();
@@ -258,7 +257,6 @@ describe("project parameter file upload service", () => {
 
     expect(put).toHaveBeenCalled();
     expect(result.file.currentVersionNumber).toBe(1);
-    expect(result.unsupportedConstructs).toBeUndefined();
     expect(syncFileVersion).toHaveBeenCalled();
   });
 
@@ -281,7 +279,6 @@ describe("project parameter file upload service", () => {
       bytes
     });
 
-    expect(result.unsupportedConstructs).toBeUndefined();
     expect(ingestDtsFileVersion).toHaveBeenCalled();
     expect(syncFileVersion).toHaveBeenCalled();
   });

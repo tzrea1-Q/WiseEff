@@ -3,21 +3,21 @@ import { createHash, randomUUID } from "node:crypto";
 import { createAuditEvent } from "../audit/repository";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
-import { parseDtsValue, type DtsValue } from "../dts";
+import type { DtsValue } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
 import type { SensitiveWriteActorType } from "../parameters/sensitiveNode";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { buildReloadBaseSource } from "./baseSource";
+import { classifyReloadCandidate, normalizeReloadCandidates } from "./candidates";
 import {
-  classifyReloadCandidate,
-  isIntegerCellArrayValue,
-  isPhandleCellArrayValue,
-  isSupportedCellBits,
-  normalizeReloadCandidates,
+  describeReloadValueShapeAuthoring,
   resolveReloadValueShape,
-  type CandidateValueShape
-} from "./candidates";
+  validateAuthoredDebugValue,
+  type CandidateValueShape,
+  type ReloadAuthoringIssue,
+  type ReloadValueShape
+} from "./valueShape";
 import { assertDebugValueConstraints } from "./constraints";
 import {
   generateDebugOverlay,
@@ -474,138 +474,80 @@ async function loadBaseSource(
   return { configSetId, baseSource: buildReloadBaseSource(sources) };
 }
 
-function assertParsedValueMatchesShape(
-  parsedValue: DtsValue,
-  valueShape: CandidateValueShape,
+/**
+ * Edge mapping from pure authoring issues (ReloadValueShape module) onto the HTTP error
+ * contract. Message wording and `details` fields are part of the API behavior — keep
+ * them stable; the validation rules themselves live in `validateAuthoredDebugValue`.
+ */
+function throwAuthoringIssue(
+  issue: ReloadAuthoringIssue,
+  valueShape: ReloadValueShape,
   bindingId: string,
   debugValue: string
-) {
-  if (valueShape?.kind === "string") {
-    if (parsedValue.kind !== "strings" || parsedValue.values.length !== 1) {
+): never {
+  const { placeholder } = describeReloadValueShapeAuthoring(valueShape);
+  switch (issue.reason) {
+    case "unparsable":
       throw new ApiError(
         "VALIDATION_FAILED",
-        'Debug value must be a single string (for example "bat0_raw_temp").',
+        `Debug value could not be parsed: ${issue.message}`,
         400,
         { bindingId, debugValue }
       );
-    }
-    return;
-  }
-
-  if (valueShape?.kind === "string-list") {
-    if (parsedValue.kind !== "strings" || parsedValue.values.length === 0) {
+    case "not-single-string":
       throw new ApiError(
         "VALIDATION_FAILED",
-        "Debug value must be a string list (for example \"okay\" or \"a\", \"b\").",
+        `Debug value must be a single string (for example ${placeholder}).`,
         400,
         { bindingId, debugValue }
       );
-    }
-    return;
-  }
-
-  if (valueShape?.kind === "phandle-cells") {
-    if (!isPhandleCellArrayValue(parsedValue)) {
+    case "not-string-list":
       throw new ApiError(
         "VALIDATION_FAILED",
-        "Debug value must be a GPIO-style phandle cell array (for example <&gpio13 29 0>).",
+        `Debug value must be a string list (for example ${placeholder}).`,
         400,
         { bindingId, debugValue }
       );
-    }
-
-    const cellsPerGroup = valueShape.cellsPerGroup;
-    if (typeof cellsPerGroup === "number" && Number.isInteger(cellsPerGroup) && cellsPerGroup >= 2) {
-      const mismatched =
-        parsedValue.kind === "cells" &&
-        parsedValue.groups.some((group) => group.length !== cellsPerGroup);
-      if (mismatched) {
-        throw new ApiError(
-          "VALIDATION_FAILED",
-          `Debug value must have ${cellsPerGroup} cell(s) per group.`,
-          400,
-          {
-            bindingId,
-            debugValue,
-            expectedCellsPerGroup: cellsPerGroup,
-            actualCellsPerGroup:
-              parsedValue.kind === "cells" ? parsedValue.groups.map((group) => group.length) : []
-          }
-        );
-      }
-    }
-
-    const expectedGroups = valueShape.groups;
-    if (
-      typeof expectedGroups === "number" &&
-      Number.isInteger(expectedGroups) &&
-      expectedGroups >= 1 &&
-      parsedValue.kind === "cells" &&
-      parsedValue.groups.length !== expectedGroups
-    ) {
+    case "not-phandle-cell-array":
       throw new ApiError(
         "VALIDATION_FAILED",
-        `Debug value must have ${expectedGroups} cell group(s).`,
+        `Debug value must be a GPIO-style phandle cell array (for example ${placeholder}).`,
+        400,
+        { bindingId, debugValue }
+      );
+    case "not-integer-cell-array":
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        issue.expectedBits === 32
+          ? `Debug value must be an unsigned 32-bit cell array (for example ${placeholder}).`
+          : `Debug value must be a /bits/ ${issue.expectedBits} cell array (for example ${placeholder}).`,
+        400,
+        { bindingId, debugValue, expectedBits: issue.expectedBits }
+      );
+    case "cells-per-group-mismatch":
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        `Debug value must have ${issue.expectedCellsPerGroup} cell(s) per group.`,
         400,
         {
           bindingId,
           debugValue,
-          expectedGroups,
-          actualGroups: parsedValue.groups.length
+          expectedCellsPerGroup: issue.expectedCellsPerGroup,
+          actualCellsPerGroup: issue.actualCellsPerGroup
         }
       );
-    }
-    return;
-  }
-
-  const expectedBits =
-    typeof valueShape?.bits === "number" && isSupportedCellBits(valueShape.bits) ? valueShape.bits : 32;
-
-  // Authoring form is `/bits/ N <…>` or `<…>` cells — not dtc's square-bracket `[…]` spelling.
-  if (parsedValue.kind !== "cells" || !isIntegerCellArrayValue(parsedValue, expectedBits)) {
-    throw new ApiError(
-      "VALIDATION_FAILED",
-      expectedBits === 32
-        ? "Debug value must be an unsigned 32-bit cell array (for example <6000>, <0x1770>, or <1 2 3>)."
-        : `Debug value must be a /bits/ ${expectedBits} cell array (for example /bits/ ${expectedBits} <17>).`,
-      400,
-      { bindingId, debugValue, expectedBits }
-    );
-  }
-
-  const cellsPerGroup = valueShape?.cellsPerGroup;
-  if (typeof cellsPerGroup === "number" && Number.isInteger(cellsPerGroup) && cellsPerGroup >= 1) {
-    const mismatched = parsedValue.groups.some((group) => group.length !== cellsPerGroup);
-    if (mismatched) {
+    case "group-count-mismatch":
       throw new ApiError(
         "VALIDATION_FAILED",
-        `Debug value must have ${cellsPerGroup} cell(s) per group.`,
+        `Debug value must have ${issue.expectedGroups} cell group(s).`,
         400,
         {
           bindingId,
           debugValue,
-          expectedCellsPerGroup: cellsPerGroup,
-          actualCellsPerGroup: parsedValue.groups.map((group) => group.length)
+          expectedGroups: issue.expectedGroups,
+          actualGroups: issue.actualGroups
         }
       );
-    }
-  }
-
-  const expectedGroups = valueShape?.groups;
-  if (typeof expectedGroups === "number" && Number.isInteger(expectedGroups) && expectedGroups >= 1) {
-    if (parsedValue.groups.length !== expectedGroups) {
-      throw new ApiError(
-        "VALIDATION_FAILED",
-        `Debug value must have ${expectedGroups} cell group(s).`,
-        400,
-        {
-          bindingId,
-          debugValue,
-          expectedGroups,
-          actualGroups: parsedValue.groups.length
-        }
-      );
-    }
   }
 }
 
@@ -672,24 +614,15 @@ async function resolveStartTargets(
     }
     seenOverlayIdentity.add(overlayIdentity);
 
-    let parsedValue: DtsValue;
-    try {
-      parsedValue = parseDtsValue(candidate.propertyKey, target.debugValue.trim()).value;
-    } catch (error) {
-      throw new ApiError(
-        "VALIDATION_FAILED",
-        `Debug value could not be parsed: ${error instanceof Error ? error.message : "invalid value"}`,
-        400,
-        { bindingId: candidate.bindingId, debugValue: target.debugValue }
-      );
-    }
-
-    assertParsedValueMatchesShape(
-      parsedValue,
-      resolvedShape,
-      candidate.bindingId,
-      target.debugValue
+    const validated = validateAuthoredDebugValue(
+      candidate.propertyKey,
+      target.debugValue,
+      resolvedShape
     );
+    if (!validated.ok) {
+      throwAuthoringIssue(validated.issue, resolvedShape, candidate.bindingId, target.debugValue);
+    }
+    const parsedValue = validated.parsed;
     assertDebugValueConstraints(parsedValue, candidate.constraints);
 
     resolved.push({

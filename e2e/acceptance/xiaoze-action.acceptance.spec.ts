@@ -13,9 +13,66 @@ import {
 
 const databaseUrl = process.env.DATABASE_URL;
 const projectId = "aurora";
-const parameterId = "aurora-fast-charge-current";
 const actorUserId = "u-xu-yun";
 const threadId = "xiaoze-action-thread";
+
+/**
+ * The mutating tool follows the database's identity mode: post-cutover it
+ * addresses parameters by project_parameter_binding id and expects DTS source
+ * text values; legacy-identity databases (CI keeps one for the identity
+ * migration suites, TD-079) still use the flat parameter id and free-form
+ * values. The fixture resolves the mode and a real seeded target at runtime.
+ */
+let parameterId = "";
+let baseCellValue = 3000;
+let semanticIdentityMode = true;
+let changeRequestParameterColumn = "project_parameter_binding_id";
+
+function cellValue(offset: number) {
+  return semanticIdentityMode ? `<${baseCellValue + offset}>` : `${14 + offset}A`;
+}
+
+async function resolveSeededBinding() {
+  await withPgClient(async (client) => {
+    const cutover = await client.query<{ c: string }>(
+      `select count(*)::text as c from parameter_identity_cutovers`
+    );
+    semanticIdentityMode = Number(cutover.rows[0]?.c ?? 0) > 0;
+
+    if (!semanticIdentityMode) {
+      parameterId = "aurora-fast-charge-current";
+      changeRequestParameterColumn = "project_parameter_value_id";
+      return;
+    }
+
+    changeRequestParameterColumn = "project_parameter_binding_id";
+    const result = await client.query<{ id: string; raw_value: string | null }>(
+      `
+      select b.id, latest.raw_value
+      from project_parameter_bindings b
+      join lateral (
+        select r.raw_value
+        from project_parameter_binding_revisions r
+        where r.binding_id = b.id
+        order by r.created_at desc
+        limit 1
+      ) latest on true
+      where b.organization_id = 'org-chargelab'
+        and b.project_id = $1
+        and latest.raw_value ~ '^<[0-9]+>$'
+      order by b.id
+      limit 1
+      `,
+      [projectId]
+    );
+    const row = result.rows[0];
+    if (!row) {
+      throw new Error("No seeded aurora binding with a single-cell value was found for Xiaoze action acceptance.");
+    }
+    parameterId = row.id;
+    baseCellValue = Number((row.raw_value ?? "<3000>").replace(/[<>]/g, ""));
+  });
+}
 
 function runNpmScript(script: string) {
   const invocation =
@@ -141,7 +198,7 @@ async function resetOpenChangeRequestsForParameter() {
       set status = 'rejected', reject_reason = 'xiaoze acceptance reset', updated_at = now()
       where organization_id = 'org-chargelab'
         and project_id = $1
-        and project_parameter_value_id = $2
+        and ${changeRequestParameterColumn} = $2
         and status not in ('merged', 'rejected')
       `,
       [projectId, parameterId]
@@ -157,7 +214,7 @@ async function countOpenChangeRequests() {
       from parameter_change_requests
       where organization_id = 'org-chargelab'
         and project_id = $1
-        and project_parameter_value_id = $2
+        and ${changeRequestParameterColumn} = $2
         and status not in ('merged', 'rejected')
       `,
       [projectId, parameterId]
@@ -195,6 +252,7 @@ test.beforeAll(async () => {
   runNpmScript("db:migrate");
   runNpmScript("db:seed:m0");
   runNpmScript("db:seed:m1");
+  await resolveSeededBinding();
   await withPgClient(async (client) => {
     await client.query(`update users set is_active = true where id = $1`, [actorUserId]);
     await client.query(
@@ -222,7 +280,7 @@ test.beforeAll(async () => {
       set status = 'rejected', reject_reason = 'xiaoze acceptance reset', updated_at = now()
       where organization_id = 'org-chargelab'
         and project_id = $1
-        and project_parameter_value_id = $2
+        and ${changeRequestParameterColumn} = $2
         and status not in ('merged', 'rejected')
       `,
       [projectId, parameterId]
@@ -239,7 +297,7 @@ test.describe("Xiaoze P1 action", () => {
     // @acceptance XIAOZE-ACTION-APPROVE-001
     // @operation XIAOZE-ACTION-APPROVE-001
     const openBefore = await countOpenChangeRequests();
-    const actionPrompt = `set ${parameterId} to 18A`;
+    const actionPrompt = `set ${parameterId} to ${cellValue(1)}`;
     const started = await postXiaoze(request, adminHeaders(), {
       threadId,
       runId: `run-action-${Date.now()}`,
@@ -340,7 +398,7 @@ test.describe("Xiaoze P1 action", () => {
     const started = await postXiaoze(request, adminHeaders(), {
       threadId: thread,
       runId: `run-action-edited-${Date.now()}`,
-      messages: [{ id: "m-user-edited", role: "user", content: `set ${parameterId} to 18A` }],
+      messages: [{ id: "m-user-edited", role: "user", content: `set ${parameterId} to ${cellValue(2)}` }],
       context: [
         {
           description: "wiseeff.page",
@@ -353,7 +411,7 @@ test.describe("Xiaoze P1 action", () => {
     const interruptValue = readInterruptValue(started.events);
     expect(interruptValue?.approvalId).toBeTruthy();
     const basePayload = (interruptValue?.payload ?? {}) as Record<string, unknown>;
-    const editedTargetValue = "21A";
+    const editedTargetValue = cellValue(3);
 
     const resumed = await postXiaoze(request, adminHeaders(), {
       threadId: thread,
@@ -443,7 +501,7 @@ test.describe("Xiaoze P1 action", () => {
     const started = await postXiaoze(request, adminHeaders(), {
       threadId: thread,
       runId: `run-action-native-${Date.now()}`,
-      messages: [{ id: "m-user", role: "user", content: `set ${parameterId} to 19A` }],
+      messages: [{ id: "m-user", role: "user", content: `set ${parameterId} to ${cellValue(4)}` }],
       context: [
         {
           description: "wiseeff.page",
@@ -485,7 +543,7 @@ test.describe("Xiaoze P1 action", () => {
     const rejectStarted = await postXiaoze(request, adminHeaders(), {
       threadId: `${thread}-reject`,
       runId: `run-action-native-reject-${Date.now()}`,
-      messages: [{ id: "m-user", role: "user", content: `set ${parameterId} to 15A` }],
+      messages: [{ id: "m-user", role: "user", content: `set ${parameterId} to ${cellValue(5)}` }],
       context: [
         {
           description: "wiseeff.page",
@@ -557,7 +615,7 @@ test.describe("Xiaoze P1 action", () => {
     const started = await postXiaoze(request, adminHeaders(), {
       threadId: `${threadId}-reject`,
       runId: `run-action-reject-${Date.now()}`,
-      messages: [{ id: "m-user", role: "user", content: `set ${parameterId} to 17A` }],
+      messages: [{ id: "m-user", role: "user", content: `set ${parameterId} to ${cellValue(6)}` }],
       context: [
         {
           description: "wiseeff.page",
@@ -615,7 +673,7 @@ test.describe("Xiaoze P1 action", () => {
     const started = await postXiaoze(request, adminHeaders(), {
       threadId: `${threadId}-authz`,
       runId: `run-action-authz-${Date.now()}`,
-      messages: [{ id: "m-user", role: "user", content: `set ${parameterId} to 16A` }],
+      messages: [{ id: "m-user", role: "user", content: `set ${parameterId} to ${cellValue(7)}` }],
       context: [
         {
           description: "wiseeff.page",

@@ -1,20 +1,20 @@
 # Database Layer Deepening Program (C1–C5)
 
-Status: **Active** · Started 2026-08-12 · Owner: architecture session 2026-08-12
+Status: **Active** (C1/C5/C3 merged; C2 conversion and C4 continue under shared/other ownership — see table) · Started 2026-08-12 · Owner: architecture session 2026-08-12
 
 ## Goal
 
 Execute the five deepening candidates from the 2026-08-12 database-layer architecture review, in dependency order. The aim is testability and AI-navigability: shrink interfaces, concentrate behaviour behind seams, and make the test surface behavioural instead of SQL-text-shaped.
 
-| Candidate | One-line goal | Branch | Depends on |
-| --- | --- | --- | --- |
-| C1 Transaction seam | `Database.transaction` hands the callback a full `Database` (savepoint-backed nesting); delete inline fakes, casts, duck-typing | `refactor/db-transaction-seam` | — |
-| C5 Migration paper cuts | Directory-computed pending expectations; shared `applyMigrationsThrough`; advisory lock + checksum in `applyMigrations`; generated `db-schema.md` with check gate | `refactor/db-migration-pipeline` | — |
-| C2 Test surface | Per-worker test databases replacing the global advisory-lock fixture; savepoint-real `transaction()`; exemplar behavioural repository tests | `refactor/db-test-fixture` | C1 |
-| C3 Identity single seam | Resolve semantic-vs-legacy parameter identity once at wiring; one query per repository function; legacy variants concentrated in one deletable adapter | `refactor/parameter-identity-single-seam` | C2 |
-| C4 Parameters repository split | Split the 5435-line function bag by domain subject (binding drafts / change-request workflow / projects / imports); shared change-request projection | `refactor/parameters-repository-split` | C2, C3 |
+| Candidate | One-line goal | Status |
+| --- | --- | --- |
+| C1 Transaction seam | `Database.transaction` hands the callback a full `Database` (savepoint-backed nesting); delete inline fakes, casts, duck-typing | **Merged** — #317 |
+| C5 Migration paper cuts | Directory-computed pending expectations; consolidated runner with `{ before \| through }`; advisory lock + checksum in `applyMigrations`; generated `db-schema.md` with check gate (closes TD-004) | **Merged** — #329 (replaced auto-closed #320) |
+| C3 Identity single seam | `parameterIdentityMode.ts` resolved once at wiring; all 33 fork sites dispatch synchronously; `cutoverAwareIdentity.ts` deleted; per-call DB probes gone | **Merged** — #328. Legacy SQL text intentionally stays inline until the repository split re-homes each function once (see C4) |
+| C2 Test surface | Per-worker template databases (fixture) + behavioural repository tests | **Split ownership**: the per-worker fingerprinted-template fixture was implemented by a parallel session (in flight); the behavioural test conversion is tracked as **TD-079** and rides on that fixture once it lands |
+| C4 Parameters repository split | Split the function bag by domain subject; shared change-request projection; concentrate legacy SQL into `legacyParameterIdentityAdapter` | **Ceded to** `docs/exec-plans/active/2026-08-12-parameters-repository-split.md` (slice 1 merged as #321: `projectRepository`, `reviewWorkflowRepository`). Carry-over asks for that plan: consolidate the six change-request projections (they differ subtly — `source_node_path` source and `getChangeRequestById` extra columns are intentional, design before merging), move legacy SQL branches into the adapter, and require `Database` in signatures of lock-taking functions |
 
-One branch per candidate; PRs land in the order above (C5 may land any time).
+TD-042 still gates deleting the legacy identity adapter; `legacyDependencyGuard.test.ts` keeps fencing legacy tokens.
 
 ## Background (review evidence)
 
@@ -107,6 +107,10 @@ Feature branches from latest `main`, one per candidate as tabled above. This ses
 
 Blocking before this plan moves to `completed/`:
 
-- [ ] Every `Update`/`Review` row above resolved or recorded as unchanged with evidence
-- [ ] `npm run docs:check` green
-- [ ] Deferred work (unconverted repository test files; legacy adapter deletion pending TD-042) recorded in `docs/exec-plans/tech-debt-tracker.md`
+- [x] `docs/PLANS.md` entry added; plan status kept current (this revision)
+- [x] `docs/generated/db-schema.md` regenerated and gated via `docs:check` (C5)
+- [x] `docs/design-docs/full-stack-architecture.md` reviewed for C1/C3 — unchanged: it states transaction/authz rules at a level that is unaffected (no callback-type or probe wording)
+- [x] `docs/runbooks/parameter-identity-cutover.md` reviewed for C3 — unchanged: it documents the maintenance-window procedure, not the runtime probe; `localPostCutover` still resolves the mode after applying cutover
+- [x] Deferred work recorded: behavioural test conversion → TD-079; legacy adapter deletion → TD-042 (unchanged blocker); repository split carry-overs → `2026-08-12-parameters-repository-split.md`
+- [ ] Remaining before `completed/`: TD-079 conversion done or explicitly re-scoped, and the C4 carry-overs above absorbed by the split plan
+- Testing-strategy doc note: the behavioural-test pattern write-up moves with TD-079 (the fixture that enables it landed outside this plan), so `docs/design-docs/testing-strategy.md` is intentionally not updated in this revision

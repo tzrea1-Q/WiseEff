@@ -18,6 +18,7 @@ function candidate(overrides: Partial<DtsReloadCandidate> = {}): DtsReloadCandid
     baselineValue: "<6000>",
     description: null,
     valueShapeKind: "cells",
+    resolvedValueShape: { kind: "cells", bits: 32, cellsPerGroup: 1, groups: 1 },
     unit: "ms",
     constraints: {},
     debuggable: true,

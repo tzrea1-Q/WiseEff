@@ -1,9 +1,9 @@
 # 小泽审批链:单一接缝、状态入库、请求级上下文
 
-> 状态:**进行中**
+> 状态:**已完成**(2026-08-12 经 PR #319 合并)
 > 日期:2026-08-12
 > 分支:`fix/xiaoze-approval-chain-single-seam`
-> English: [`docs/exec-plans/active/2026-08-12-xiaoze-approval-chain-single-seam.md`](../../../exec-plans/active/2026-08-12-xiaoze-approval-chain-single-seam.md)
+> English: [`docs/exec-plans/completed/2026-08-12-xiaoze-approval-chain-single-seam.md`](../../../exec-plans/completed/2026-08-12-xiaoze-approval-chain-single-seam.md)
 
 ## 目标
 
