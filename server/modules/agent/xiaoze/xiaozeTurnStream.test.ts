@@ -60,6 +60,20 @@ describe("createXiaozeTurnStream", () => {
     expect(stream.complete()[1]?.data.outcome).toEqual({ type: "success" });
   });
 
+  it("carries citation payloads on the live turn reply (Phase 2 grounding contract)", () => {
+    const stream = createXiaozeTurnStream(ids);
+    stream.open();
+    const citations = [
+      { type: "knowledge" as const, id: "kb-1", label: "快充温控调参经验", href: "/knowledge?entryId=kb-1" }
+    ];
+    const finalized = stream.finalize({ text: "答案。[citation:knowledge]", citations });
+
+    const turnReply = finalized.events.find(
+      (frame) => frame.data.type === EventType.CUSTOM && (frame.data as { name?: string }).name === XIAOZE_TURN_REPLY_EVENT
+    );
+    expect((turnReply?.data as { value?: { citations?: unknown } }).value?.citations).toEqual(citations);
+  });
+
   it("does not re-send an answer that fully streamed", () => {
     const stream = createXiaozeTurnStream(ids);
     stream.open();

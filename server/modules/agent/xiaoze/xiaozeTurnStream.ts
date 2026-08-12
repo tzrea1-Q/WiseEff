@@ -459,6 +459,10 @@ export function createXiaozeTurnStream(ids: XiaozeTurnStreamIds) {
             reasoningMessageId: ids.reasoningMessageId,
             text: reply.text,
             reasoning: reply.reasoning,
+            // Citation payloads are the Phase 2 grounding contract: the live
+            // turn reply must carry them or Xiaoze source links only render
+            // after a thread reload (persisted messages keep them separately).
+            citations: input.citations,
             runSteps
           })
         );

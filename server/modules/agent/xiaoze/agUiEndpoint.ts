@@ -398,6 +398,7 @@ export function createXiaozeAgUiHandler(options: {
         const finalized = stream.finalize({
           text: result.text,
           reasoning: result.reasoning,
+          citations: result.citations,
           runSteps: result.runSteps,
           promptDebug: result.promptDebug,
           promptDebugModel: options.resolveModelLabel?.()
