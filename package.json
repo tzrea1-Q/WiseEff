@@ -59,6 +59,7 @@
     "dts:toolchain:check": "tsx scripts/check-dts-toolchain.ts --required",
     "dts:config:validate": "tsx scripts/validate-dts-config-set.ts",
     "xiaoze:eval": "tsx scripts/run-xiaoze-eval.ts",
+    "logs:eval": "tsx scripts/run-log-analysis-eval.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "parameter-identities:migrate": "tsx scripts/migrate-parameter-identities.ts",
     "parameter-identities:cutover": "tsx scripts/apply-parameter-identity-cutover.ts",
