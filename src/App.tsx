@@ -226,6 +226,7 @@ import {
   type UpdateCurrentUserProfileInput
 } from "@/infrastructure/http/authClient";
 import { clearSessionDraftsForLogout } from "@/application/project-configuration/sessionDraftStorage";
+import { AppToastLayer } from "@/components/common/AppToastLayer";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 import { createMockParameterRepository } from "@/infrastructure/mock/mockParameterRepository";
 import { createMockRuntimeState, type MockRuntimeState } from "@/infrastructure/mock/mockState";
@@ -355,6 +356,7 @@ export type AppAction =
   | UpsertDebugSnapshotAction
   | { type: "CLEAR_PUSHED_DEBUG_IDS"; parameterIds: string[] }
   | { type: "ADD_NOTIFICATION"; message: string }
+  | { type: "DISMISS_NOTIFICATION" }
   | { type: "SET_NOTIFICATION_INBOX"; items: import("@/domain/notifications/types").NotificationItem[] }
   | { type: "UPDATE_DEBUG_PARAMETER"; parameterId: string; patch: Partial<DebugParameterEditorDraft> }
   | { type: "COMMIT_DEBUG_PARAMETER_DRAFT"; parameterId: string; draft: DebugParameterEditorDraft }
@@ -1721,6 +1723,14 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         notifications: [action.message, ...state.notifications],
         notificationInbox: prependMockNotificationMessage(state.notificationInbox, action.message)
       };
+    case "DISMISS_NOTIFICATION":
+      if (state.notifications.length === 0) {
+        return state;
+      }
+      return {
+        ...state,
+        notifications: state.notifications.slice(1)
+      };
     case "SET_NOTIFICATION_INBOX":
       return { ...state, notificationInbox: action.items };
     case "LOG_ADMIN_REANALYZE_LOG": {
@@ -2540,6 +2550,10 @@ function AppShell({
     setSidebarCollapsed((collapsed) => !collapsed);
   }, []);
 
+  const dismissNotification = useCallback(() => {
+    dispatch({ type: "DISMISS_NOTIFICATION" });
+  }, []);
+
   const handleAuthSession = useCallback(
     async (session: AuthSessionDto) => {
       const primaryRoleId = pickPrimaryPlatformRoleId(session.auth.roles.map((role) => role.roleId));
@@ -2744,6 +2758,7 @@ function AppShell({
             onClose={() => setProjectInitOpen(false)}
           />
         ) : null}
+      <AppToastLayer notifications={state.notifications} onDismiss={dismissNotification} />
       </div>
   );
 
@@ -5226,11 +5241,6 @@ function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
       {feedbackToast ? (
         <div className="logs-feedback-toast" role="status" aria-live="polite">
           {feedbackToast}
-        </div>
-      ) : null}
-      {wiseEffRuntimeMode !== "api" && state.notifications[0] ? (
-        <div className="logs-feedback-toast" role="status" aria-live="polite">
-          {state.notifications[0]}
         </div>
       ) : null}
     </div>

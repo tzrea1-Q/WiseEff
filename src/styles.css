@@ -15,12 +15,13 @@
   /*
    * Overlay stacking scale. Declared in one place so a new dialog does not need to
    * invent another number and accidentally land under the Xiaoze launcher.
-   * Order: Xiaoze FAB < dialog < nested dialog < Xiaoze chat popup.
+   * Order: Xiaoze FAB < dialog < nested dialog < Xiaoze chat popup < global toast.
    */
   --z-xiaoze-fab: 1100;
   --z-modal-backdrop: 1150;
   --z-modal-backdrop-nested: 1160;
   --z-xiaoze-popup: 1200;
+  --z-toast: 1350;
 
   --background: oklch(1 0 0);
   --app-background: #f9f9ff;
@@ -7528,6 +7529,46 @@ td small {
   box-shadow: var(--shadow);
   font-size: 13px;
   font-weight: 750;
+}
+
+/* Global notification toast: reuses the logs toast visuals but must sit above
+   every overlay (dialogs, Xiaoze popup) so runtime feedback stays visible. */
+.app-toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(420px, calc(100vw - 56px));
+  z-index: var(--z-toast);
+}
+
+.app-toast__message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.app-toast__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--app-muted);
+  cursor: pointer;
+}
+
+.app-toast__close:hover {
+  background: var(--surface-low);
+  color: var(--text);
+}
+
+.app-toast__close:focus-visible {
+  outline: 2px solid var(--app-primary);
+  outline-offset: 1px;
 }
 
 .log-dashboard-page {

@@ -1343,6 +1343,22 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(next.users).toBe(state.users);
   });
 
+  it("dismisses the newest notification and leaves the rest of the queue", () => {
+    const state = { ...initialState, notifications: ["latest", "older"] };
+
+    const next = appReducer(state, { type: "DISMISS_NOTIFICATION" });
+
+    expect(next.notifications).toEqual(["older"]);
+  });
+
+  it("ignores notification dismissal when the queue is already empty", () => {
+    const state = { ...initialState, notifications: [] };
+
+    const next = appReducer(state, { type: "DISMISS_NOTIFICATION" });
+
+    expect(next).toBe(state);
+  });
+
   it("clears cached API parameter drafts when hydrating a different authenticated user", () => {
     const apiDraft = {
       id: "api-draft-1",
@@ -1925,7 +1941,10 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     expect(screen.getByText("我的提交轮次")).toBeInTheDocument();
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
-    expect(screen.queryByText(/PRS-/)).not.toBeInTheDocument();
+    // Scope to the page content: the transient global toast legitimately
+    // announces the submitted round id, but the history list must not leak it.
+    const historyContent = document.querySelector("main.main-content") as HTMLElement;
+    expect(within(historyContent).queryByText(/PRS-/)).not.toBeInTheDocument();
     expect(screen.getAllByText(/本轮提交包含\s*2\s*个参数/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
     expect(screen.getByText("charge_voltage_limit_mv")).toBeInTheDocument();
