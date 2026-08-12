@@ -845,6 +845,11 @@ export function DtsReloadPage({
 
   const deployReady = Boolean(bridgeId.trim() && targetRef.trim() && deviceId.trim());
 
+  // The device a deploy writes to is derived server-side from the selected bridge
+  // (`bridge:<bridgeId>`); mirror that here so the confirmation and request always show the
+  // device the server will actually target, even after a historical run pinned a different id.
+  const deployDeviceId = bridgeId.trim() ? defaultDeviceId(bridgeId.trim()) : deviceId.trim();
+
   const bridgesOverride = useMemo(
     () => (bridgesProp ? asDeviceBridgeRecords(bridgesProp) : undefined),
     [bridgesProp]
@@ -1459,7 +1464,7 @@ export function DtsReloadPage({
     try {
       const deployed = await repository!.deployRun({
         runId: deployRun.id,
-        deviceId: deviceId.trim(),
+        deviceId: deployDeviceId,
         bridgeId: bridgeId.trim(),
         targetRef: targetRef.trim(),
         protocol,
@@ -2499,7 +2504,7 @@ export function DtsReloadPage({
             confirmRun ? (
               <DeployConfirmBody
                 run={confirmRun}
-                deviceId={deviceId.trim()}
+                deviceId={deployDeviceId}
                 targetRef={targetRef.trim()}
                 bridgeMachineLabel={selectedBridge?.machineLabel ?? confirmRun.bridgeMachineLabel ?? "—"}
                 residue={residue}
