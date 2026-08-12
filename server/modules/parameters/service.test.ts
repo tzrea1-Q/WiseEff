@@ -1332,6 +1332,50 @@ describe("parameter service", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("rejects saving a draft for a project the editor is not bound to", async () => {
+    const { db, calls } = createFakeDb();
+
+    // software-user on project-1 carries the flat parameter:edit permission, but
+    // must not be able to write drafts into project-2.
+    await expect(
+      saveDraft(db, makeAuth({ roles: [{ projectId: "project-1", roleId: "software-user" }] }), {
+        projectId: "project-2",
+        parameterId: "param-1",
+        targetValue: "3100",
+        reason: "cross-project"
+      })
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter edit role is required for this project.", 403));
+
+    expect(calls).toHaveLength(0);
+  });
+
+  it("rejects submitting a change round for a project the editor is not bound to", async () => {
+    const { db, txCalls } = createFakeDb();
+
+    await expect(
+      submitParameterChanges(
+        db,
+        makeAuth({ roles: [{ projectId: "project-1", roleId: "software-user" }] }),
+        {
+          projectId: "project-2",
+          items: [
+            {
+              draftId: "draft-x",
+              projectParameterBindingId: "binding-x",
+              parameterSpecId: "spec-x",
+              action: "set",
+              targetValue: "<3000>",
+              reason: "cross-project"
+            }
+          ]
+        },
+        { requestId: "req-cross" }
+      )
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter edit role is required for this project.", 403));
+
+    expect(txCalls).toHaveLength(0);
+  });
+
   it("user can save and list own draft", async () => {
     const updatedAt = new Date("2026-05-25T04:00:00.000Z");
     const { db, calls } = createFakeDb([
