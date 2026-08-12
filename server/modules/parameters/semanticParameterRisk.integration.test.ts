@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
-import { setParameterIdentityMode } from "./parameterIdentityMode";
+import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { getProjectParameterForUpdate } from "./repository";
 import { listSemanticParameters } from "./semanticParameterReads";
 
