@@ -85,7 +85,8 @@ export function isBridgeVersionBelowMinimum(version: string | null | undefined, 
 }
 
 function upgradeRequiredError(message: string, details: Record<string, unknown> = {}) {
-  return new ApiError("VALIDATION_FAILED", message, 409, {
+  // A too-old bridge is a state conflict with the request, not an invalid payload.
+  return new ApiError("CONFLICT", message, 409, {
     code: "bridge-upgrade-required",
     releasesPath: DEVICE_BRIDGE_RELEASES_PATH,
     ...details
