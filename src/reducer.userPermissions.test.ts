@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appReducer } from "./App";
+import { appReducer } from "@/application/state/appState";
 import { createPrototypeState } from "./mockData";
 
 describe("shared user permission reducer actions", () => {

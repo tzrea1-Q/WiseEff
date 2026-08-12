@@ -92,6 +92,20 @@ describe("ReloadConfigurationAdminPanel", () => {
     expect(screen.getByText("已保存")).toBeInTheDocument();
   });
 
+  it("warns about streaming kernel log commands and stays quiet for buffer dumps", async () => {
+    const repository = createRepository();
+    render(<ReloadConfigurationAdminPanel repository={repository} canEdit />);
+
+    await screen.findByDisplayValue("/vendor/firmware/");
+    expect(screen.queryByText(/该命令为持续输出/)).not.toBeInTheDocument();
+
+    await selectKernelLogCommand("hilog");
+    expect(await screen.findByText(/该命令为持续输出/)).toBeInTheDocument();
+
+    await selectKernelLogCommand("hilog -x");
+    await waitFor(() => expect(screen.queryByText(/该命令为持续输出/)).not.toBeInTheDocument());
+  });
+
   it("refuses load and save when the viewer lacks debugging:admin", () => {
     const repository = createRepository();
     render(<ReloadConfigurationAdminPanel repository={repository} canEdit={false} />);

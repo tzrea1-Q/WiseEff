@@ -11,7 +11,8 @@ vi.mock("@copilotkit/react-core/v2", () => ({
 }));
 import { readFileSync } from "node:fs";
 import { canAccessPage } from "./app/permissions";
-import App, { appReducer } from "./App";
+import App from "./App";
+import { appReducer } from "@/application/state/appState";
 import { initialState } from "./mockData";
 
 const guestState = { ...initialState, activeRoleId: "guest" };

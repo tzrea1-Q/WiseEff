@@ -1,4 +1,4 @@
-export type AcceptanceWorkflowId = "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I";
+export type AcceptanceWorkflowId = "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J";
 
 export type AcceptanceRequirement = {
   id: string;
@@ -42,6 +42,24 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "PFB-AUTHZ-001",
     workflow: "I",
     title: "Non-Admin users cannot access product feedback admin APIs or the feedback-admin page.",
+    required: true
+  },
+  {
+    id: "KB-READ-001",
+    workflow: "J",
+    title: "Org member lists knowledge entries, searches published entries only, and reads a published entry detail.",
+    required: true
+  },
+  {
+    id: "KB-EDIT-001",
+    workflow: "J",
+    title: "Editor creates a markdown knowledge entry, publishes it, revises it in place with a new immutable revision, and restores a prior revision as a new revision.",
+    required: true
+  },
+  {
+    id: "KB-FILE-001",
+    workflow: "J",
+    title: "Editor uploads a file knowledge entry through the object store and sees its text-extraction status on the entry.",
     required: true
   },
   {
@@ -368,6 +386,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "XIAOZE-ACTION-APPROVE-001",
     workflow: "G",
     title: "Xiaoze parameter change approval executes through the agent audit chain.",
+    required: true
+  },
+  {
+    id: "XIAOZE-ACTION-EDITEDARGS-001",
+    workflow: "G",
+    title: "Approving a Xiaoze action with edited arguments executes the edited payload into the change request.",
     required: true
   },
   {

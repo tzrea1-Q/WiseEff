@@ -7,7 +7,7 @@ import {
   WorkbenchLayout
 } from "./workbenchUi";
 import { projects } from "./mockData";
-import type { ParameterRecord, PrototypeState } from "./mockData";
+import type { ParameterRecord, PrototypeState } from "@/domain/prototype/types";
 import { roleCanBeAssignedToWorkflowSlot } from "@/domain/users/types";
 import { ParametersTable } from "./components/ParametersTable";
 import { ParameterDetailDialog } from "./components/ParameterDetailDialog";

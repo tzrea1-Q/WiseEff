@@ -1,6 +1,6 @@
-import type { RiskLevel } from "@/mockData";
+import type { RiskLevel } from "@/domain/prototype/types";
 
-export type { AuditEvent } from "@/mockData";
+export type { AuditEvent } from "@/domain/prototype/types";
 
 export type AuditActorType = "user" | "agent" | "system";
 

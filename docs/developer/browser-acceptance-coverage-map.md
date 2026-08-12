@@ -57,6 +57,7 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | `XIAOZE-PERCEPTION-001` | G | Yes | Xiaoze answers grounded read-only questions using page context and perception tools. | `e2e/acceptance/xiaoze-perception.acceptance.spec.ts` |
 | `XIAOZE-PERCEPTION-AUTHZ-001` | G | Yes | Out-of-scope Xiaoze questions return a safe non-data answer. | `e2e/acceptance/xiaoze-perception.acceptance.spec.ts` |
 | `XIAOZE-ACTION-APPROVE-001` | G | Yes | Xiaoze parameter change approval executes through the agent audit chain. | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
+| `XIAOZE-ACTION-EDITEDARGS-001` | G | Yes | Approving a Xiaoze action with edited arguments executes the edited payload into the change request. | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
 | `XIAOZE-ACTION-REJECT-001` | G | Yes | Rejecting a Xiaoze action approval does not mutate parameter state. | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
 | `XIAOZE-ACTION-AUTHZ-001` | G | Yes | Users without edit permission cannot approve Xiaoze mutating actions. | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
 | `XIAOZE-PLAN-MULTISTEP-001` | G | Yes | Xiaoze resumes a multi-step plan after approval and reports the observed execution result. | `e2e/acceptance/xiaoze-planning.acceptance.spec.ts` |
@@ -69,6 +70,9 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | `PFB-SUBMIT-001` | I | Yes | Active user submits feedback from the sidebar with description and optional images; API persists the item; success UI is shown. | `e2e/acceptance/product-feedback.acceptance.spec.ts` |
 | `PFB-ADMIN-001` | I | Yes | Admin lists `/feedback-admin`, opens detail, advances open to in_progress to closed, and sets an admin note. | `e2e/acceptance/product-feedback.acceptance.spec.ts` |
 | `PFB-AUTHZ-001` | I | Yes | Non-Admin users cannot access product feedback admin APIs or the feedback-admin page. | `e2e/acceptance/product-feedback.acceptance.spec.ts` |
+| `KB-READ-001` | J | Yes | Org member lists knowledge entries, searches published entries only (drafts and archived stay out of results), and reads a published entry detail. | `e2e/acceptance/knowledge.acceptance.spec.ts` |
+| `KB-EDIT-001` | J | Yes | Editor creates a markdown knowledge entry, publishes it, revises it in place producing a new immutable revision, and restores a prior revision as a new revision. | `e2e/acceptance/knowledge.acceptance.spec.ts` |
+| `KB-FILE-001` | J | Yes | Editor uploads a file knowledge entry through the object store and sees its text-extraction status on the entry. | `e2e/acceptance/knowledge.acceptance.spec.ts` |
 | `MOD-TREE-PARAM-001` | C | Yes | Admin creates nested parameter modules, assigns a parameter, and parent filtering includes the child subtree. | `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` |
 | `MOD-TREE-PARAM-002` | C | Yes | Admin moves a parameter module to a new parent and cycle moves are rejected. | `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` |
 | `MOD-TREE-DEBUG-001` | E | Yes | Admin creates nested debug node modules and parent filtering includes assigned child nodes. | `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` |

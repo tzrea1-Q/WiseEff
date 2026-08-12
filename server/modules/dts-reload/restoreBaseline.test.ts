@@ -282,6 +282,42 @@ describe("startRestoreBaselineRun", () => {
     ).rejects.toBeInstanceOf(ApiError);
   });
 
+  it("refuses restore when a residue parameter's node path has drifted from the current binding", async () => {
+    const { db, inserts } = createRestoreDb({
+      residue: {
+        organization_id: "org-1",
+        device_id: "bridge:lab-1",
+        project_id: "project-1",
+        source_run_id: "run-residue",
+        parameters: [
+          {
+            bindingId: "binding-1",
+            propertyKey: "watchdog_time",
+            // Recorded against a node the binding no longer resolves to (candidateRow is /amba/i2c@1/dev@6E).
+            nodePath: "/amba/i2c@1/dev@OLDADDR",
+            baselineValue: "<6000>",
+            debugValue: "<7000>"
+          }
+        ],
+        recorded_at: "2026-08-10T00:00:00.000Z"
+      }
+    });
+
+    await expect(
+      startRestoreBaselineRun(db, objectStore(), auth(), {
+        projectId: "project-1",
+        deviceId: "bridge:lab-1"
+      })
+    ).rejects.toMatchObject({
+      details: {
+        code: "reload-residue-node-drift",
+        recordedNodePath: "/amba/i2c@1/dev@OLDADDR",
+        currentNodePath: "/amba/i2c@1/dev@6E"
+      }
+    });
+    expect(inserts).toEqual([]);
+  });
+
   it("refuses callers lacking debugging:dts-reload", async () => {
     const { db } = createRestoreDb({ residue: null });
     await expect(

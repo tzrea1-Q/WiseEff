@@ -25,6 +25,7 @@ import {
   ensureLocalPostCutoverIdentity,
   shouldEnsureLocalPostCutoverOnApiBoot
 } from "./modules/parameter-topology/localPostCutover";
+import { resolveParameterIdentityMode } from "./modules/parameters/parameterIdentityMode";
 
 const env = loadServerEnv(process.env);
 const db = env.DATABASE_URL ? createPostgresDatabase(env.DATABASE_URL, { tracing: defaultTracingBoundary }) : undefined;
@@ -166,6 +167,11 @@ async function start() {
       console.error("[local-post-cutover] refused to start API:", error);
       process.exit(1);
     }
+  }
+
+  if (db) {
+    const identityMode = await resolveParameterIdentityMode(db);
+    console.log(`[parameter-identity] mode: ${identityMode}`);
   }
 
   server.listen(env.PORT, env.HOST, () => {

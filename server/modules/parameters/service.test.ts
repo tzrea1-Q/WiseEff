@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
+import { setParameterIdentityMode } from "./parameterIdentityMode";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { applyImportBatch, createImportPreview, listDrafts, listWorkflowAssignees, parseDtsImportForAuth, reviewChange, saveDraft, submitParameterChanges } from "./service";
@@ -25,6 +26,7 @@ function createFakeDb(
   const transactions: QueryCall[][] = [];
   const readConflictChecksFromQueue = options.readConflictChecksFromQueue ?? false;
   const semanticCutoverComplete = options.semanticCutoverComplete ?? false;
+  setParameterIdentityMode(semanticCutoverComplete ? "semantic" : "legacy");
 
   const runQuery = async <Row,>(target: QueryCall[], text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
     const call = { text, values };

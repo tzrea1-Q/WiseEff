@@ -34,6 +34,9 @@ OIDC token 必须包含身份和组织声明。只有当 token 包含 `email_ver
 - `parameter:edit-critical`（敏感/安全关键节点写；Hardware/Software Committer 与 Admin 默认具备）
 - `debugging:use`
 - `logs:upload`
+- `knowledge:view`（组织成员默认可读）
+- `knowledge:edit`（创建条目;治理**自己的**条目）
+- `knowledge:manage`（治理任意条目;彻底删除;Admin 档位）
 - `parameter:review`
 - `admin:access`
 - `users:manage`
@@ -60,6 +63,8 @@ OIDC token 必须包含身份和组织声明。只有当 token 包含 `email_ver
 
 产品反馈以 `organization_id` 做隔离，`product_feedback` 与 `product_feedback_attachments` 的读写都必须按认证组织过滤。附件只允许 `image/png`、`image/jpeg`、`image/webp`，最多 5 张，单张 5 MB，总量 15 MB；数据库只保存 metadata 和对象存储 key，不在行内保存图片 bytes。该反馈属于 Internal Beta 产品反馈，不能混用日志分析的 `logs:feedback` 权限和数据模型。
 
+知识库的每条 `/api/v1/knowledge/*` 路由都在服务端强制 `knowledge:view` / `knowledge:edit` / `knowledge:manage`;UI 门控仅是 UX。发布者问责（设计 D18）:`knowledge:edit` 只治理**自己的**条目（编辑/发布/归档）,绝不发布或修改他人作品;跨人治理与彻底删除集中在 `knowledge:manage`。草稿仅对拥有者与 `knowledge:manage` 可见;检索只覆盖 `published` 条目,草稿与已归档条目不可能经检索泄露。`knowledge_entries`、`knowledge_revisions`、`knowledge_files` 全部按认证组织过滤。文件上传接受 PDF、`.docx`、`.doc` 与纯文本/markdown,上限 20 MB;字节存对象存储,数据库只存元数据、校验和与诚实的提取状态。Phase 1 中 Agent 不是知识写入者（不存在知识 Agent 工具）;schema 已声明 `human | agent` 来源归属,后续阶段加入审批门控草稿工具时无需改模型。
+
 项目参数治理（`/parameter-admin/projects/:projectId/*`）的不可撤销动作必须先经过显式人工确认才发请求：发布基线、回滚基线、移除配置集成员，以及文件冲突的两侧裁决。每个确认框都要说明影响范围，裁决可填写操作原因并随审计提示一起记录。修订校验门禁返回 `requiresConfirmation` 时，发布在操作者勾选确认该风险之前保持拦截，门禁结论不得只当提示文案。修订校验只对调用方选定的真实配置修订开放，没有教学或兜底 revision id，避免合成 ID 进入审计记录。这些确认属于 UX 安全层而非授权边界：`/api/v1` 与 `/api/v2` 仍在服务端校验权限、项目范围与审计，并且必须拒绝客户端跳过确认的写入。
 
 Bridge-backed 调试会话还要求 bridge 属于当前用户、未撤销且在线；后端会持久化 `execution_mode=bridge` 与 `bridge_id`，保证审计、回滚和冲突检查与服务端执行路径一致。
@@ -68,7 +73,7 @@ Bridge-backed 调试会话还要求 bridge 属于当前用户、未撤销且在�
 
 审计记录应包含 actor、target、action、severity、metadata、trace/request id、timestamp，以及项目或组织 scope。
 
-必须覆盖的事件包括登录/安全事件、参数写入、审阅决策、日志上传/重跑/归档、产品反馈创建与处理、设备读写、Agent tool、管理员变更和导出。节点启用状态写入（共享拓扑草稿管线）产生 `parameter-topology-governance` / `enablement-changed` 审计，metadata 含原值、新值、理由与逻辑节点身份；鉴权复用 `canEditParameters` 与现有 `dts_sensitive_node_rules`（规则要求时须 `parameter:edit-critical`）。产品反馈写入会记录 `product-feedback-create` 和 `product-feedback-update`，metadata 包含反馈类型、状态、页面路径、附件数量，以及 Admin 处理时的前后状态；附件图片 bytes 不写入审计 metadata。调试 catalog metadata 与 binding 变更必须写审计；binding audit metadata 不应暴露 raw node path，除非部署策略明确允许。复杂调试写入还会在审计与操作记录中附加格式感知元数据：`valueKind`、`valueFormat`、`normalizationMode`、字节长度、digest，以及有大小上限的 `valuePreview`；大 payload 不得重复写入审计或验收 evidence，digest 与 preview 才是可比较的持久证据。`maxValueBytes` 与服务端默认值会在服务端限制写入 payload 大小；设备写入审批、lease、snapshot 与确认边界不变。本地账号路径会写 registration、login、logout 和当前用户 profile update 审计事件；用户治理后台还会记录本地 Committer 注册申请的 approve/reject 审计事件。退出登录必须服务端撤销当前 session token；当前用户资料更新不能修改 email、角色、激活状态或组织。
+必须覆盖的事件包括登录/安全事件、参数写入、审阅决策、日志上传/重跑/归档、产品反馈创建与处理、知识条目变更、设备读写、Agent tool、管理员变更和导出。知识库写入记录 `knowledge-entry-create/update/publish/archive/restore/delete`（delete 为 `High` 级）与 `knowledge-revision-restore`,metadata 含内容形式、标题、修订号与生命周期流转及请求 trace;提取正文不写入审计 metadata。节点启用状态写入（共享拓扑草稿管线）产生 `parameter-topology-governance` / `enablement-changed` 审计，metadata 含原值、新值、理由与逻辑节点身份；鉴权复用 `canEditParameters` 与现有 `dts_sensitive_node_rules`（规则要求时须 `parameter:edit-critical`）。产品反馈写入会记录 `product-feedback-create` 和 `product-feedback-update`，metadata 包含反馈类型、状态、页面路径、附件数量，以及 Admin 处理时的前后状态；附件图片 bytes 不写入审计 metadata。调试 catalog metadata 与 binding 变更必须写审计；binding audit metadata 不应暴露 raw node path，除非部署策略明确允许。复杂调试写入还会在审计与操作记录中附加格式感知元数据：`valueKind`、`valueFormat`、`normalizationMode`、字节长度、digest，以及有大小上限的 `valuePreview`；大 payload 不得重复写入审计或验收 evidence，digest 与 preview 才是可比较的持久证据。`maxValueBytes` 与服务端默认值会在服务端限制写入 payload 大小；设备写入审批、lease、snapshot 与确认边界不变。本地账号路径会写 registration、login、logout 和当前用户 profile update 审计事件；用户治理后台还会记录本地 Committer 注册申请的 approve/reject 审计事件。退出登录必须服务端撤销当前 session token；当前用户资料更新不能修改 email、角色、激活状态或组织。
 
 ## Agent 安全
 
@@ -82,9 +87,9 @@ Agent tool 分为：
 
 **Xiaoze P0 感知：** `perception.*` 工具为只读（`kind: read`，`requiresApproval: false`），必须通过与其他 Agent 工具相同的 `ToolRegistry.authorize` 边界。跨页面读取受调用方项目 scope 与权限限制；越权 tool call 返回 `FORBIDDEN`，Agent 必须给出安全的非数据回答。AG-UI 端点在流式事件前拒绝未认证请求。
 
-**Xiaoze P1 行动：** `action.submitParameterChange` 为 mutating 且 approval-gated。AG-UI runtime 持久化 orchestrator tool-call + approval 记录、发出 interrupt，且仅通过 `approveToolCall` / `rejectToolCall` 恢复，并在事务内重新鉴权、审计 `actorType=agent`。`editedArgs` 在批准前完整替换 tool payload。提交前走与人工相同的敏感节点守卫：命中 `critical` 规则立即拒绝（`403`、`requireHuman: true`），不会创建生产变更请求。设备写闸门在 P1 仍由调试界面与后端拥有，不在小泽内执行。
+**Xiaoze P1 行动：** `action.submitParameterChange` 为 mutating 且 approval-gated。AG-UI runtime 开启 orchestrator 自有的 Agent 审批链——`beginApproval` 持久化 tool-call + approval 记录并发出 interrupt——且仅通过 `resolveApproval` 恢复，在事务内重新鉴权、审计 `actorType=agent`。审批状态以数据库行（`agent_tool_calls` + `agent_approvals`）为唯一载体、绝不驻留进程内存，因此 begin 与 resolve 跨重启和多副本仍然正确（ADR-0024）。`editedArgs` 在批准时重鉴权与执行之前完整替换 tool payload。执行时工具走切换后的语义路径：创建类型化绑定草稿（schema 校验、写锁），以草稿身份经 `submitParameterChanges` 提交（`actorType: "agent"`）；提交失败会删除 Agent 建的草稿。任何草稿创建之前先走与人工相同的敏感节点守卫：命中 `critical` 规则立即拒绝（`403`、`requireHuman: true`），不会创建生产变更请求。设备写闸门在 P1 仍由调试界面与后端拥有，不在小泽内执行。
 
-**Xiaoze P2 规划：** 多步计划使用 LangGraph `StateGraph` 与按 `threadId` 的 checkpointer，使 mutating 步骤在批准后能从计划中途恢复而不丢失已感知上下文。当 `XIAOZE_CHECKPOINTER=postgres` 时，checkpoint 载荷（含 tool 参数与感知上下文）静态保存在 PostgreSQL 中，须与 Agent 业务表一样受数据库访问控制保护；与用户可见聊天历史（TD-030）分离。主动建议为只读、受 authz 限制且 opt-in（`XIAOZE_PROACTIVE_ENABLED` / `VITE_XIAOZE_PROACTIVE_ENABLED`，默认关闭）。suggest 通道仅通过 `POST /api/v1/agent/xiaoze/suggest` 调用 `perception.*` 工具，不写库且不提出调用方权限外的数据。计划中的 mutating 写入仍须逐步经 orchestrator approval 链人工批准；拒绝某步则安全终止计划且不产生 mutation。
+**Xiaoze P2 规划：** 多步计划使用 LangGraph `StateGraph` 与按 `threadId` 的 checkpointer，使 mutating 步骤在批准后能从计划中途恢复而不丢失已感知上下文。当 `XIAOZE_CHECKPOINTER=postgres` 时，checkpoint 载荷（含 tool 参数与感知上下文）静态保存在 PostgreSQL 中，须与 Agent 业务表一样受数据库访问控制保护；与用户可见聊天历史（TD-030）分离。resume 命令仅携带审批决定（`approvalId`、`decision`、`editedArgs`、`reason`）；请求级认证上下文经每次调用的配置传递，绝不进入图状态、也不会被序列化进 checkpoint（ADR-0024）。主动建议为只读、受 authz 限制且 opt-in（`XIAOZE_PROACTIVE_ENABLED` / `VITE_XIAOZE_PROACTIVE_ENABLED`，默认关闭）。suggest 通道仅通过 `POST /api/v1/agent/xiaoze/suggest` 调用 `perception.*` 工具，不写库且不提出调用方权限外的数据。计划中的 mutating 写入仍须逐步经 orchestrator approval 链人工批准；拒绝某步则安全终止计划且不产生 mutation。
 
 ## 设备安全
 

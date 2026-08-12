@@ -7,6 +7,7 @@ import { BRIDGE_RPC_METHODS, type BridgeRpcMethod } from "@wiseeff/device-comman
 import {
   isAllowedKernelLogCommand,
   KERNEL_LOG_CAPTURE_MAX_BYTES,
+  kernelLogTruncationKeep,
   truncateKernelLogText
 } from "@wiseeff/device-command-core/kernelLogCommand";
 import {
@@ -367,8 +368,9 @@ export function createRpcHandlers(options: {
     // Streaming readers (e.g. cat /proc/kmsg) may time out with partial stdout; keep non-empty text.
     // Do NOT run remoteShellDiagnostic over kernel log stdout — real dmesg/hilog lines often contain
     // [Fail], [E######], or "Permission denied" substrings that are evidence, not tool diagnostics.
+    // Buffer dumps keep the tail (newest lines carry the reload evidence); streams keep the head.
     const rawStdout = typeof result.stdout === "string" ? result.stdout : "";
-    const capped = truncateKernelLogText(rawStdout, KERNEL_LOG_CAPTURE_MAX_BYTES);
+    const capped = truncateKernelLogText(rawStdout, KERNEL_LOG_CAPTURE_MAX_BYTES, kernelLogTruncationKeep(command));
     const hasText = capped.text.length > 0;
     if (hasText) {
       return {

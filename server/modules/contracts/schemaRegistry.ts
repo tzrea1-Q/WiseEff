@@ -788,6 +788,84 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
 
+  "knowledge.createEntry": {
+    summary: "Create a knowledge entry (markdown or file form)",
+    tags: ["knowledge"],
+    requestBody: "CreateKnowledgeEntryRequest",
+    responseBody: "KnowledgeEntryResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "knowledge.listEntries": {
+    summary: "List knowledge entries visible to the caller",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeEntryListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "knowledge.search": {
+    summary: "Search published knowledge entries (FTS + trigram)",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeSearchResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "knowledge.getEntry": {
+    summary: "Get a knowledge entry with head-revision content",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeEntryResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "knowledge.updateEntry": {
+    summary: "Save a knowledge entry edit as a new immutable revision (optimistic concurrency)",
+    tags: ["knowledge"],
+    requestBody: "UpdateKnowledgeEntryRequest",
+    responseBody: "KnowledgeEntryResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "knowledge.publishEntry": {
+    summary: "Publish a draft knowledge entry into retrieval",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeEntryResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "knowledge.archiveEntry": {
+    summary: "Archive a published knowledge entry out of retrieval",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeEntryResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "knowledge.restoreEntry": {
+    summary: "Restore an archived knowledge entry to published",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeEntryResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "knowledge.deleteEntry": {
+    summary: "Hard delete a knowledge entry (knowledge:manage only)",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeDeleteResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "knowledge.listRevisions": {
+    summary: "List immutable revisions of a knowledge entry",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeRevisionListResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "knowledge.restoreRevision": {
+    summary: "Restore a prior revision as a new head revision",
+    tags: ["knowledge"],
+    requestBody: "RestoreKnowledgeRevisionRequest",
+    responseBody: "KnowledgeEntryResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "knowledge.fileContent": {
+    summary: "Download the current file binary of a file-form knowledge entry",
+    tags: ["knowledge"],
+    responseBody: "BinaryAttachment",
+    responseMedia: "binary",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+
   "dtsReload.listCandidates": {
     summary: "List DTS reload debugging candidates for a project",
     tags: ["dts-reload"],

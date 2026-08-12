@@ -1,9 +1,9 @@
 import { Upload } from "lucide-react";
 import { useContext, useMemo, useState, type Dispatch } from "react";
-import type { AppAction } from "@/App";
+import type { AppAction } from "@/application/state/appState";
 import type { ParameterPageActions } from "@/app/routes";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
-import type { ParameterRecord, Project } from "@/mockData";
+import type { ParameterRecord, Project } from "@/domain/prototype/types";
 import { ParameterImportWizard } from "@/components/ParameterImportWizard/ParameterImportWizard";
 import { TopBarActionsContext, useTopBarActions } from "@/components/layout";
 import { useRefreshParameterAdminRecentAudits } from "./useRefreshParameterAdminRecentAudits";

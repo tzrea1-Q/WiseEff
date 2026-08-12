@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { createParameterDashboardRuntime } from "@/application/parameters/parameterDashboardRuntime";
 import type { DashboardState } from "@/application/parameters/dashboardState";
 import type { DashboardWindow, HotspotDimension, OverviewScope, WorkbenchSignals } from "@/domain/parameters/dashboardTypes";
-import type { PrototypeState } from "@/mockData";
+import type { PrototypeState } from "@/domain/prototype/types";
 import { migrateLegacyRoleId } from "@/domain/users/types";
 import { useTopBarLeadingActions } from "@/components/layout";
 import { AnalysisContextControls } from "./components/AnalysisContextControls";

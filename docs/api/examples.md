@@ -93,6 +93,33 @@ $headers = @{ Authorization = $env:AUTHORIZATION }
 Invoke-RestMethod -Headers $headers -Uri "$env:WISEEFF_API_BASE_URL/api/v1/logs?projectId=aurora"
 ```
 
+## Knowledge Search
+
+Search covers published entries only; drafts and archived entries never appear in results.
+
+```bash
+curl -fsS \
+  -H "Authorization: $AUTHORIZATION" \
+  "$WISEEFF_API_BASE_URL/api/v1/knowledge/search?q=fast%20charge"
+```
+
+```powershell
+$headers = @{ Authorization = $env:AUTHORIZATION }
+Invoke-RestMethod -Headers $headers -Uri "$env:WISEEFF_API_BASE_URL/api/v1/knowledge/search?q=fast%20charge"
+```
+
+## Create Knowledge Entry
+
+```bash
+curl -fsS -X POST \
+  -H "Authorization: $AUTHORIZATION" \
+  -H "Content-Type: application/json" \
+  -d '{"contentForm":"markdown","title":"Fast charge tuning notes","tags":["project-aurora"],"contentMarkdown":"Increase current in 0.5A steps."}' \
+  "$WISEEFF_API_BASE_URL/api/v1/knowledge/entries"
+```
+
+Entries start as drafts; `POST /api/v1/knowledge/entries/{entryId}/publish` moves them into retrieval. Saves via `PATCH` must carry `expectedHeadRevisionNumber` and receive a structured `409` when stale.
+
 ## Xiaoze Threads
 
 ```bash

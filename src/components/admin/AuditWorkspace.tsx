@@ -4,7 +4,7 @@ import { AuditTimeline } from "./AuditTimeline";
 import { auditAppGroups } from "@/domain/audit/auditApps";
 import type { AuditQueryState } from "@/hooks/useAuditEvents";
 import { useAuditEvents, useAuditTraceEvents } from "@/hooks/useAuditEvents";
-import type { AuditEvent } from "@/mockData";
+import type { AuditEvent } from "@/domain/prototype/types";
 import { cn } from "@/lib/utils";
 
 export type AuditWorkspaceProps = {
