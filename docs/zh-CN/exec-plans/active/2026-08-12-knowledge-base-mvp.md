@@ -1,7 +1,7 @@
 # 知识库 MVP
 
 > English: [English](../../../exec-plans/active/2026-08-12-knowledge-base-mvp.md)
-> 状态：**进行中**——2026-08-12 规划锁定；实现尚未开始
+> 状态：**进行中**——2026-08-12 规划锁定；Phase 1 已在 `feat/knowledge-base-foundation` 实现（2026-08-12）；Phase 2–3 未开始
 > 日期：2026-08-12
 > 设计文档：[`docs/zh-CN/design-docs/2026-08-12-knowledge-base-design.md`](../../design-docs/2026-08-12-knowledge-base-design.md)
 > ADR：ADR-0022（`docs/adr/0022-knowledge-retrieval-lives-in-postgres.md`，英文）
@@ -89,14 +89,14 @@
 
 ## Documentation Update Gate
 
-- [ ] 产品规格英文 + 中文描述知识工作流（Phase 1）
-- [ ] 领域模型英文 + 中文记录知识实体、生命周期与仅发布可检索（Phase 1）
-- [ ] API 合同英文 + 中文及 OpenAPI 工件包含 `/api/v1/knowledge/*`（Phase 1）
-- [ ] FRONTEND 英文 + 中文记录 `/knowledge`、`/knowledge-admin`、port 与 mock 对等（Phase 1）
-- [ ] SECURITY 与 user-permission-design 英文 + 中文记录 `knowledge:*` 权限与 Agent 草稿工具（Phase 1/3）
+- [x] 产品规格英文 + 中文描述知识工作流（Phase 1）
+- [x] 领域模型英文 + 中文记录知识实体、生命周期与仅发布可检索（Phase 1）
+- [x] API 合同英文 + 中文及 OpenAPI 工件包含 `/api/v1/knowledge/*`（Phase 1）
+- [x] FRONTEND 英文 + 中文记录 `/knowledge`、`/knowledge-admin`、port 与 mock 对等（Phase 1）
+- [ ] SECURITY 与 user-permission-design 英文 + 中文记录 `knowledge:*` 权限与 Agent 草稿工具（Phase 1/3——`knowledge:*` 权限已在 Phase 1 完成;Agent 草稿工具待 Phase 3）
 - [ ] environment-variables 英文 + 中文与 `.env.example` 记录 `EMBEDDING_API_*`（Phase 2）
 - [ ] 自托管 runbook 英文 + 中文记录 pgvector 要求与纯全文检索降级（Phase 2）
-- [ ] ARCHITECTURE 英文 + 中文标注知识模块与小泽知识工具（Phase 1/2）
+- [ ] ARCHITECTURE 英文 + 中文标注知识模块与小泽知识工具（Phase 1/2——知识模块已在 Phase 1 标注;小泽工具待 Phase 2）
 - [ ] 覆盖图与操作矩阵英文 + 中文在各阶段实现前获得 KB-* ID（各阶段）
 - [ ] 迁移后重新生成 `docs/generated/db-schema.md`（含迁移的各阶段）
 - [ ] 延期工作记入 `docs/exec-plans/tech-debt-tracker.md`（收尾）

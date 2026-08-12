@@ -1,6 +1,6 @@
 # Knowledge base MVP
 
-> Status: **Active** — planning locked 2026-08-12; implementation not started
+> Status: **Active** — planning locked 2026-08-12; Phase 1 implemented on `feat/knowledge-base-foundation` (2026-08-12); Phases 2–3 not started
 > Date: 2026-08-12
 > Design: [`docs/design-docs/2026-08-12-knowledge-base-design.md`](../../design-docs/2026-08-12-knowledge-base-design.md)
 > Chinese: [`docs/zh-CN/exec-plans/active/2026-08-12-knowledge-base-mvp.md`](../../zh-CN/exec-plans/active/2026-08-12-knowledge-base-mvp.md)
@@ -89,14 +89,14 @@ Per phase: targeted vitest for `server/modules/knowledge/` and knowledge compone
 
 ## Documentation Update Gate
 
-- [ ] Product spec EN + zh describe the knowledge workflow (Phase 1)
-- [ ] Domain model EN + zh document knowledge entities, lifecycle, and published-only retrieval (Phase 1)
-- [ ] API contract EN + zh and the OpenAPI artifact include `/api/v1/knowledge/*` (Phase 1)
-- [ ] FRONTEND EN + zh document `/knowledge`, `/knowledge-admin`, ports, and mock parity (Phase 1)
-- [ ] SECURITY + user-permission-design EN + zh document `knowledge:*` permissions and the agent draft tool (Phase 1/3)
+- [x] Product spec EN + zh describe the knowledge workflow (Phase 1)
+- [x] Domain model EN + zh document knowledge entities, lifecycle, and published-only retrieval (Phase 1)
+- [x] API contract EN + zh and the OpenAPI artifact include `/api/v1/knowledge/*` (Phase 1)
+- [x] FRONTEND EN + zh document `/knowledge`, `/knowledge-admin`, ports, and mock parity (Phase 1)
+- [ ] SECURITY + user-permission-design EN + zh document `knowledge:*` permissions and the agent draft tool (Phase 1/3 — `knowledge:*` permissions done in Phase 1; agent draft tool pending Phase 3)
 - [ ] environment-variables EN + zh and `.env.example` document `EMBEDDING_API_*` (Phase 2)
 - [ ] Self-hosted runbook EN + zh document the pgvector requirement and FTS-only degradation (Phase 2)
-- [ ] ARCHITECTURE EN + zh map the knowledge module and Xiaoze knowledge tools (Phase 1/2)
+- [ ] ARCHITECTURE EN + zh map the knowledge module and Xiaoze knowledge tools (Phase 1/2 — knowledge module mapped in Phase 1; Xiaoze tools pending Phase 2)
 - [ ] Coverage map and operation matrix EN + zh gain the KB-* IDs before each phase implements (each phase)
 - [ ] `docs/generated/db-schema.md` regenerated after migrations (each phase with migrations)
 - [ ] Deferred work recorded in `docs/exec-plans/tech-debt-tracker.md` (closeout)
