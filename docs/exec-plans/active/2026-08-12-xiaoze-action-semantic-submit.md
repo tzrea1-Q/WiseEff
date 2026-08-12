@@ -2,7 +2,7 @@
 
 > Status: **Active**
 > Date: 2026-08-12
-> Branch: `fix/xiaoze-action-semantic-submit` (stacked on `fix/xiaoze-approval-chain-single-seam`)
+> Branch: `fix/xiaoze-action-semantic-submit` (stacked on `fix/xiaoze-approval-chain-single-seam`, merged via PR #319)
 > Chinese: [`docs/zh-CN/exec-plans/active/2026-08-12-xiaoze-action-semantic-submit.md`](../../zh-CN/exec-plans/active/2026-08-12-xiaoze-action-semantic-submit.md)
 
 ## Goal
