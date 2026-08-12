@@ -326,7 +326,45 @@ describe("user governance service", () => {
     ]);
   });
 
-  it("lists pending local registration role requests outside the Admin user's own organization", async () => {
+  it("scopes registration role request listing to the org admin's own organization", async () => {
+    const { calls, db } = createDb((text, values) =>
+      text.includes("from local_registration_role_requests") && values.includes("org-chargelab")
+        ? [
+            {
+              id: "registration-role-request-1",
+              organization_id: "org-chargelab",
+              user_id: "u-candidate",
+              user_name: "Committer Candidate",
+              username: "committer.candidate",
+              current_role_id: "software-user",
+              requested_role_id: "software-committer",
+              status: "pending",
+              created_at: "2026-06-12T00:00:00.000Z",
+              decided_at: null,
+              decided_by_user_id: null
+            }
+          ]
+        : []
+    );
+
+    const result = await listRegistrationRoleRequests(db, adminAuth);
+
+    expect(result).toEqual([
+      expect.objectContaining({ id: "registration-role-request-1", organizationId: "org-chargelab" })
+    ]);
+    expect(calls.find((call) => call.text.includes("from local_registration_role_requests"))?.values).toContain(
+      "org-chargelab"
+    );
+  });
+
+  it("lets a platform admin list pending registration role requests across organizations", async () => {
+    const platformAdminAuth: AuthContext = {
+      ...adminAuth,
+      roles: [
+        { projectId: null, roleId: "admin" },
+        { projectId: null, roleId: "platform-admin" }
+      ]
+    };
     const { calls, db } = createDb((text, values) =>
       text.includes("from local_registration_role_requests") && values.length === 0
         ? [
@@ -347,15 +385,45 @@ describe("user governance service", () => {
         : []
     );
 
-    const result = await listRegistrationRoleRequests(db, adminAuth);
+    const result = await listRegistrationRoleRequests(db, platformAdminAuth);
 
     expect(result).toEqual([
-      expect.objectContaining({
-        id: "registration-role-request-1",
-        organizationId: "org-hardware-department"
-      })
+      expect.objectContaining({ id: "registration-role-request-1", organizationId: "org-hardware-department" })
     ]);
     expect(calls.find((call) => call.text.includes("from local_registration_role_requests"))?.values).toEqual([]);
+  });
+
+  it("refuses org-admin decisions on registration role requests from another organization", async () => {
+    const otherOrgRow = {
+      id: "registration-role-request-1",
+      organization_id: "org-hardware-department",
+      user_id: "u-candidate",
+      user_name: "Committer Candidate",
+      username: "committer.candidate",
+      current_role_id: "hardware-user",
+      requested_role_id: "hardware-committer",
+      status: "pending",
+      created_at: "2026-06-12T00:00:00.000Z",
+      decided_at: null,
+      decided_by_user_id: null
+    };
+    // An org-scoped lookup cannot see the other organization's request, while the
+    // unscoped admin lookup (the escalation path) would return it.
+    const { db, txCalls } = createDb((text, values) =>
+      text.includes("from local_registration_role_requests") && !values.includes("org-chargelab")
+        ? [otherOrgRow]
+        : []
+    );
+
+    await expect(approveRegistrationRoleRequest(db, adminAuth, "registration-role-request-1")).rejects.toMatchObject({
+      code: "NOT_FOUND"
+    });
+    await expect(rejectRegistrationRoleRequest(db, adminAuth, "registration-role-request-1")).rejects.toMatchObject({
+      code: "NOT_FOUND"
+    });
+    expect(txCalls.some((call) => call.text.includes("insert into user_role_bindings"))).toBe(false);
+    expect(txCalls.some((call) => call.text.includes("update users") && call.text.includes("is_active"))).toBe(false);
+    expect(txCalls.some((call) => call.text.includes("update local_registration_role_requests"))).toBe(false);
   });
 
   it("approves a pending local registration role request by activating the user and assigning the requested committer role", async () => {
