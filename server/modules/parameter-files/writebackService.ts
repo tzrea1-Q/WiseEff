@@ -16,7 +16,7 @@ import { assertSensitiveNodeWriteAllowed } from "../parameters/sensitiveNode";
 import { parameterIdentityMode } from "../parameters/parameterIdentityMode";
 import { loadPreCutoverWritebackSource } from "../parameters/legacyParameterIdentityAdapter";
 import { getChangeRequestEnablementWriteLock, getChangeRequestWriteLock } from "../parameters/draftRepository";
-import { type BindingEditAction } from "../parameter-topology/editService";
+import { type BindingEditAction } from "../parameter-topology/overlayWriteback";
 import {
   applyLockedEnablementWriteback,
   applyLockedOverlayWriteback,

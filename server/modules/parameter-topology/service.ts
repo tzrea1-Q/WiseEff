@@ -41,9 +41,9 @@ import {
   createBindingDraft as createBindingDraftEdit,
   createNodeEnablementDraft as createNodeEnablementDraftEdit,
   type BindingDraftResult,
-  type CreateBindingDraftDeps,
   type NodeEnablementDraftResult
 } from "./editService";
+import { type CreateBindingDraftDeps } from "./overlayWriteback";
 import { writeGovernanceAudit } from "./governanceAudit";
 import { getProjectById } from "../parameters/projectRepository";
 import { listStructuralPropertyKeys } from "./parameterSurface";
