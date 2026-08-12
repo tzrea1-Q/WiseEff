@@ -9,7 +9,7 @@ import type { ParameterDraftDto, ParameterChangeAction } from "./types";
 import { upsertSemanticDraft } from "./semanticParameterReads";
 import { parameterIdentityMode } from "./parameterIdentityMode";
 import type { BindingWriteLockFields, EnablementWriteLockFields } from "../parameter-topology/writeLock";
-import { addCondition, dateTimeToIso } from "./repositoryShared";
+import { addCondition, dateTimeToIso } from "../../shared/database/sqlUtil";
 
 export type ParameterWriteLockRow = {
   base_config_revision_id: string | null;
