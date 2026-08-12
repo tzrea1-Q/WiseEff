@@ -5582,7 +5582,7 @@
     "/api/v1/knowledge/search": {
       "get": {
         "operationId": "knowledge.search",
-        "summary": "Search published knowledge entries (FTS + trigram)",
+        "summary": "Search published knowledge entries — hybrid vector+FTS when embeddings and pgvector are available, FTS+trigram otherwise; the response reports the retrieval mode that actually ran",
         "tags": [
           "knowledge"
         ],
@@ -5601,6 +5601,109 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/index/status": {
+      "get": {
+        "operationId": "knowledge.indexStatus",
+        "summary": "Read per-entry retrieval index health and the honest retrieval mode (knowledge:manage only)",
+        "tags": [
+          "knowledge"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeIndexHealthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/index/rebuild": {
+      "post": {
+        "operationId": "knowledge.indexRebuild",
+        "summary": "Re-enqueue every published entry for index rebuild (knowledge:manage only)",
+        "tags": [
+          "knowledge"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeIndexRebuildResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/entries/{entryId}/index/retry": {
+      "post": {
+        "operationId": "knowledge.indexRetryEntry",
+        "summary": "Re-enqueue one entry's index refresh (knowledge:manage only)",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "entryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeIndexRetryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -10202,6 +10305,18 @@
       "KnowledgeSearchResponse": {
         "type": "object",
         "x-wiseeff-schema": "KnowledgeSearchResponse"
+      },
+      "KnowledgeIndexHealthResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "KnowledgeIndexHealthResponse"
+      },
+      "KnowledgeIndexRebuildResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "KnowledgeIndexRebuildResponse"
+      },
+      "KnowledgeIndexRetryResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "KnowledgeIndexRetryResponse"
       },
       "UpdateKnowledgeEntryRequest": {
         "type": "object",

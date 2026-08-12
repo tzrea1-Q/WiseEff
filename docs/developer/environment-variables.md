@@ -130,6 +130,18 @@ API mode always includes Xiaoze; mock mode has no Agent UI. The backend always r
 | `VITE_XIAOZE_PROACTIVE_ENABLED` | `false` | proactive suggestions UI | Mounts `useXiaozeSuggestions` in `AgentInsightBar`. Requires API `XIAOZE_PROACTIVE_ENABLED=true`. Default off. |
 | `VITE_XIAOZE_PROMPT_DEBUG` | `false` | frontend dev tooling | Opt-in prompt/debug surfacing for Xiaoze development. |
 
+## Knowledge Base Embeddings And Indexing
+
+Semantic retrieval for the knowledge base mirrors the `AGENT_API_*` seam with an OpenAI-compatible `/v1/embeddings` endpoint. Leave the group blank for FTS-only mode: every knowledge surface stays fully usable without semantic search. Semantic retrieval additionally requires the pgvector extension on the PostgreSQL server (see the self-hosted runbook); when either the endpoint or the extension is missing, search responses honestly report `fts_only`.
+
+| Variable | Local default | Required for | Notes |
+| --- | --- | --- | --- |
+| `EMBEDDING_API_BASE_URL` | blank | semantic knowledge retrieval | OpenAI-compatible endpoint; accepts bases with or without a trailing `/v1`. Never commit secrets or private endpoints. |
+| `EMBEDDING_MODEL` | blank | semantic knowledge retrieval | Embedding model id sent to the endpoint. Changing it requires a rebuild from `/knowledge-admin`. |
+| `EMBEDDING_API_KEY` | blank | semantic knowledge retrieval | Secret. Optional when the endpoint does not authenticate. |
+| `EMBEDDING_API_TIMEOUT_MS` | `10000` | semantic knowledge retrieval | Per-request timeout; on timeout a search degrades to FTS-only for that query and reports it. |
+| `KNOWLEDGE_INDEX_WORKER_ENABLED` | `true` | knowledge index freshness | Local API runs the in-process polling index worker. Self-hosted API containers may set `false` and run a separate worker process. |
+
 ## M5 Evidence
 
 | Variable | Local default | Required for | Notes |

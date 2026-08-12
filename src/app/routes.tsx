@@ -264,7 +264,12 @@ export function PageRouter({
       return productFeedbackRepository ? <FeedbackAdminPage productFeedbackRepository={productFeedbackRepository} /> : null;
     case "knowledge":
       return knowledgeRepository && knowledgeCapability ? (
-        <KnowledgePage repository={knowledgeRepository} capability={knowledgeCapability} />
+        <KnowledgePage
+          repository={knowledgeRepository}
+          capability={knowledgeCapability}
+          askXiaozeEnabled={runtimeMode === "api"}
+          initialEntryId={new URLSearchParams(search).get("entryId")}
+        />
       ) : null;
     case "knowledge-admin":
       return knowledgeRepository && knowledgeCapability ? (

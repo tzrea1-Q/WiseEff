@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { evaluateExpectation } from "./expectations";
-import { runAllEvals, runMetaChecks } from "./runEval";
+import { runAllEvals, runMetaChecks, runScenario } from "./runEval";
 import { EVAL_SCENARIOS, META_HALLUCINATED_WRITE_RESULT } from "./scenarios";
 
 describe("xiaoze behavior eval harness", () => {
@@ -33,11 +33,27 @@ describe("xiaoze behavior eval harness", () => {
       "reject-halt",
       "turn-cap",
       "citations-grounding",
+      "knowledge-grounding",
       "project-scope"
     ];
     for (const category of required) {
       expect(categories.has(category), `missing category: ${category}`).toBe(true);
     }
+  });
+
+  it("knowledge grounding scenario answers via knowledge.search and carries deep-link citations", async () => {
+    const scenario = EVAL_SCENARIOS.find((candidate) => candidate.name === "knowledge-grounding");
+    expect(scenario).toBeTruthy();
+
+    const result = await runScenario(scenario!);
+    expect(result.pass, JSON.stringify(result.expectations, null, 2)).toBe(true);
+    expect(result.runResult.toolCallOrder).toEqual(["knowledge.search"]);
+    expect(result.runResult.citations).toEqual([
+      expect.objectContaining({
+        type: "knowledge",
+        href: expect.stringContaining("/knowledge?entryId=")
+      })
+    ]);
   });
 
   it("meta: harness flags hallucinated write claims (negative gate proof)", () => {
