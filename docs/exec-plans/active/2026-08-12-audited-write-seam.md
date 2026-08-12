@@ -64,7 +64,7 @@ and lowers the ratchet. Suspected genuine gaps first:
    conflict/export/service/validationGate/writeback 1 each).
 3. `dts-reload/*` (4), `parameter-modules/service.ts` (2), `parameter-specs/
    driverSchemaOverlayService.ts` (1), `parameter-topology/governanceAudit.ts` (1).
-4. `agent/*` (4), `users/service.ts` (2), `auth/*` (2), `logs/service.ts` (1),
+4. `agent/*` (4), `users/service.ts` (2), `auth/*` (2), `logs/service.ts` (1), `knowledge/service.ts` (1),
    `product-feedback/service.ts` (1), `audit/routes.ts` (1).
 
 Completion gate: ratchet allowlist empty → delete `createAuditEvent` + ratchet test →

@@ -26,6 +26,7 @@ const ALLOWED_DIRECT_CALLS: Record<string, number> = {
   "modules/dts-reload/policy.ts": 1,
   "modules/dts-reload/sensitiveGate.ts": 1,
   "modules/dts-reload/service.ts": 1,
+  "modules/knowledge/service.ts": 1,
   "modules/logs/service.ts": 1,
   "modules/parameter-files/baselineService.ts": 3,
   "modules/parameter-files/candidateService.ts": 1,
