@@ -389,7 +389,14 @@ function AppShell({
     [productFeedbackRepository, runtimeMode]
   );
   const knowledgeRepositoryClient = useMemo(
-    () => knowledgeRepository ?? (runtimeMode === "api" ? createHttpKnowledgeRepository() : createMockKnowledgeRepository()),
+    () =>
+      knowledgeRepository ??
+      (runtimeMode === "api"
+        ? createHttpKnowledgeRepository()
+        : createMockKnowledgeRepository({
+            // Mock distillation reads the prototype log records (same port shape as API mode).
+            getLogRecord: (logId) => stateRef.current.logs.find((log) => log.id === logId)
+          })),
     [knowledgeRepository, runtimeMode]
   );
   const knowledgeCapability = useMemo<KnowledgeCapability>(

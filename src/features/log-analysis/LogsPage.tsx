@@ -7,6 +7,7 @@ import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { EmptyStateCard, PanelHeader, SectionLabel } from "@/workbenchUi";
 import {
   AlertTriangle,
+  BookPlus,
   Bot,
   Check,
   Copy,
@@ -80,9 +81,10 @@ function createEmptyLogRecord(): LogRecord {
   };
 }
 
-export function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
+export function LogsPage({ state, dispatch, onNavigate, logActions, knowledgeRepository, knowledgeCapability }: PageProps) {
   const [selectedLogId, setSelectedLogId] = useState(state.logs[0]?.id ?? "");
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [distilPending, setDistilPending] = useState(false);
   const [pendingUpload, setPendingUpload] = useState<{ fileName: string; previousLogIds: Set<string> } | null>(null);
   const [feedbackLogId, setFeedbackLogId] = useState<string | null>(null);
   const [feedbackToast, setFeedbackToast] = useState("");
@@ -276,6 +278,28 @@ export function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps)
     document.querySelector<HTMLButtonElement>(".xiaoze-chat-toggle-anchor button")?.click();
   };
 
+  // Distil-to-knowledge (design D15): pre-fills a knowledge draft from this
+  // analysis record and hands off into the /knowledge draft editor deep link.
+  const canDistil = Boolean(knowledgeRepository && knowledgeCapability?.canEdit);
+  const onDistil = useCallback(async () => {
+    if (!knowledgeRepository || !hasActiveLog || distilPending) {
+      return;
+    }
+    setDistilPending(true);
+    try {
+      const draft = await knowledgeRepository.distillFromLog(activeLog.id);
+      dispatch({ type: "ADD_NOTIFICATION", message: "已生成知识草稿,请在知识库中审阅后发布" });
+      onNavigate(`/knowledge?entryId=${encodeURIComponent(draft.id)}`);
+    } catch (error) {
+      dispatch({
+        type: "ADD_NOTIFICATION",
+        message: error instanceof Error && error.message ? `沉淀为知识失败:${error.message}` : "沉淀为知识失败,请稍后重试"
+      });
+    } finally {
+      setDistilPending(false);
+    }
+  }, [activeLog.id, dispatch, distilPending, hasActiveLog, knowledgeRepository, onNavigate]);
+
   const selectedFeedbackLog = feedbackLogId ? state.logs.find((log) => log.id === feedbackLogId) ?? null : null;
   const openUploadDialog = useCallback(() => setUploadDialogOpen(true), []);
   const handleUploadLog = useCallback(
@@ -318,6 +342,8 @@ export function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps)
           log={activeLog}
           onAskAgent={onAskAgent}
           onCopyLink={onCopyLink}
+          onDistil={canDistil ? onDistil : undefined}
+          distilPending={distilPending}
           onExport={onExport}
           onFeedback={() => setFeedbackLogId(activeLog.id)}
           onPrimary={onPrimary}
@@ -628,6 +654,8 @@ function LogConclusionCard({
   onPrimary,
   onExport,
   onCopyLink,
+  onDistil,
+  distilPending = false,
   onFeedback,
   onRetry
 }: {
@@ -636,6 +664,9 @@ function LogConclusionCard({
   onPrimary: () => void;
   onExport: () => void;
   onCopyLink: () => void;
+  /** Present only when the user holds knowledge:edit (distil-to-knowledge). */
+  onDistil?: () => void;
+  distilPending?: boolean;
   onFeedback: () => void;
   onRetry: () => void;
 }) {
@@ -668,6 +699,18 @@ function LogConclusionCard({
           <Download size={16} />
           导出报告
         </button>
+        {onDistil ? (
+          <button
+            className="button subtle"
+            disabled={log.status !== "Complete" || distilPending}
+            aria-busy={distilPending || undefined}
+            type="button"
+            onClick={onDistil}
+          >
+            <BookPlus size={16} />
+            沉淀为知识
+          </button>
+        ) : null}
         <button className="button danger" disabled={log.status !== "Complete"} type="button" onClick={onRetry}>
           <RotateCcw size={16} />
           重新分析

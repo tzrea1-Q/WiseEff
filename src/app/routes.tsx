@@ -256,6 +256,8 @@ export function PageRouter({
           search={search}
           logActions={runtimeMode === "api" ? logActions : undefined}
           parameterActions={parameterActions}
+          knowledgeRepository={knowledgeRepository}
+          knowledgeCapability={knowledgeCapability}
         />
       );
     case "log-admin":
@@ -273,7 +275,7 @@ export function PageRouter({
       ) : null;
     case "knowledge-admin":
       return knowledgeRepository && knowledgeCapability ? (
-        <KnowledgeAdminPage repository={knowledgeRepository} canManage={knowledgeCapability.canManage} />
+        <KnowledgeAdminPage repository={knowledgeRepository} capability={knowledgeCapability} onNavigate={onNavigate} />
       ) : null;
     case "debugging":
       return (
