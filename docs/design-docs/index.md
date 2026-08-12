@@ -26,6 +26,7 @@ Current baseline: M0-M5 productization work is merged. These docs should describ
 | Current | [DTS Capability Cut Matrix](2026-07-21-dts-capability-cut-matrix.md) | Keep / demote / remove-from-hot-path matrix for topology, schema, toolchain, and UI capabilities. |
 | Current | [Project-Primary DTS Contract RFC](2026-07-21-project-primary-dts-contract-rfc.md) | Upload one project DTS; writeback always that final text; retire platform synthetic base; admin owns module↔driver only. |
 | Locked design | [Project Configuration Workbench](2026-08-06-project-configuration-workbench-design.md) | Replace the four-view project-operations dialog with one config-set/source-centered full-screen workbench; includes state and migration contracts. |
+| Locked design | [Knowledge Base](2026-08-12-knowledge-base-design.md) | Organization-scoped agentic knowledge base: flat tagged entries, wiki-lite lifecycle, published-only hybrid retrieval (ADR-0022), Xiaoze tools with citations, distillation loop. |
 | Current | [DTS Follow-up Scheme (Hardening + Import)](2026-07-15-dts-followup-scheme.md) | Post–P0–P3.1 follow-up scheme: hardening closeout (B) and import-wizard TD-035 alignment (C); Git publish deferred. |
 | Current | [Table Column Multi-Select Filter UX](ux-table-column-filter.md) | Standard header funnel + checkbox filter (`ColumnFilter`); reuse for all similar table column filters. |
 
