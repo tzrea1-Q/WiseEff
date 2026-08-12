@@ -429,6 +429,32 @@ describe("startReloadRun", () => {
     expect(put).not.toHaveBeenCalled();
   });
 
+  it("refuses a multi-string debug value when the catalog shape is a single string", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        candidateRow({
+          property_key: "replace_sensor",
+          value_shape: { kind: "string" },
+          baseline_value: '"bat0_raw_temp"',
+          constraints: {}
+        })
+      ]
+    ]);
+    const { objectStore, put } = makeObjectStore();
+
+    await expect(
+      startReloadRun(db, objectStore, auth(), {
+        projectId: "project-1",
+        targets: [{ bindingId: "binding-1", debugValue: '"a", "b"' }]
+      })
+    ).rejects.toMatchObject({
+      code: "VALIDATION_FAILED"
+    });
+
+    expect(put).not.toHaveBeenCalled();
+    expect(calls.some((call) => call.text.includes("insert into dts_reload_runs"))).toBe(false);
+  });
+
   it("refuses a debug value whose cell dimensions do not match the declared value shape", async () => {
     const { db, calls } = createFakeDb([
       [
@@ -639,6 +665,60 @@ describe("startReloadRun", () => {
 
     expect(result.status).toBe("validated");
     expect(result.overlaySource).toContain("prevfod1_product_list = /bits/ 8 <34>");
+    expect(result.artifact?.sha256).toMatch(/^sha-/);
+    expect(Object.keys(files).some((key) => key.endsWith(".dtbo"))).toBe(true);
+  }, 60_000);
+
+  it("persists a validated single-string reload for replace_sensor", async () => {
+    const baseKey = "org-1/board.dts";
+    const stringBase = `/dts-v1/;
+
+/ {
+\tbattery_temp_fitting {
+\t\treplace_sensor = "bat0_raw_temp";
+\t};
+};
+`;
+    const { objectStore, files } = makeObjectStore({ [baseKey]: Buffer.from(stringBase, "utf8") });
+
+    const { db } = createFakeDb([
+      [
+        candidateRow({
+          property_key: "replace_sensor",
+          display_name: "replace_sensor",
+          node_path: "/battery_temp_fitting",
+          value_shape: { kind: "string" },
+          baseline_value: '"bat0_raw_temp"',
+          constraints: {},
+          unit: null
+        })
+      ],
+      ...fingerprintParts(),
+      [{ id: "cs-1" }],
+      [{ file_name: "board.dts", role: "base", sort_order: 0, storage_key: baseKey, format: "dts" }],
+      ...fingerprintParts(),
+      blockedOrValidatedInsert("validated"),
+      [],
+      [
+        {
+          binding_id: "binding-1",
+          node_path: "/battery_temp_fitting",
+          property_key: "replace_sensor",
+          baseline_value: '"bat0_raw_temp"',
+          debug_value: '"bat1_raw_temp"',
+          sort_order: 0
+        }
+      ]
+    ]);
+
+    const result = await startReloadRun(db, objectStore, auth(), {
+      projectId: "project-1",
+      targets: [{ bindingId: "binding-1", debugValue: '"bat1_raw_temp"' }]
+    });
+
+    expect(result.status).toBe("validated");
+    expect(result.overlaySource).toContain('replace_sensor = "bat1_raw_temp"');
+    expect(result.overlaySource).toContain('target-path = "/battery_temp_fitting"');
     expect(result.artifact?.sha256).toMatch(/^sha-/);
     expect(Object.keys(files).some((key) => key.endsWith(".dtbo"))).toBe(true);
   }, 60_000);

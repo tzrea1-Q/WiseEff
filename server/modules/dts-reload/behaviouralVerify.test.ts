@@ -70,6 +70,25 @@ describe("compareReloadDebugValue", () => {
     ).toBe("contradicted");
   });
 
+  it("matches single-string debug values against a quoted or bare driver surface", () => {
+    expect(
+      compareReloadDebugValue({
+        propertyKey: "replace_sensor",
+        debugValue: '"bat0_raw_temp"',
+        readValue: "bat0_raw_temp",
+        valueShape: { kind: "string" }
+      })
+    ).toBe("matched");
+    expect(
+      compareReloadDebugValue({
+        propertyKey: "replace_sensor",
+        debugValue: '"bat0_raw_temp"',
+        readValue: "bat1_raw_temp",
+        valueShape: { kind: "string" }
+      })
+    ).toBe("contradicted");
+  });
+
   it("reports incomparable when the read-back cannot be coerced into the declared shape", () => {
     expect(
       compareReloadDebugValue({

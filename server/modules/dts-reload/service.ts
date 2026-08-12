@@ -132,7 +132,7 @@ type ResolvedReloadTarget = {
 const BLOCK_REASON_MESSAGES: Record<NonNullable<ReloadCandidateDto["blockReason"]>, string> = {
   "no-node-path": "parameter has no absolute device-tree node path",
   "unsupported-value-shape":
-    "parameter value shape is outside the supported set (u32/u8/u16 cell arrays and string lists)",
+    "parameter value shape is outside the supported set (u32/u8/u16 cell arrays, single strings, string lists, and GPIO-style phandle arrays)",
   "no-baseline-value": "parameter has no library baseline value"
 };
 
@@ -378,6 +378,18 @@ function assertParsedValueMatchesShape(
   bindingId: string,
   debugValue: string
 ) {
+  if (valueShape?.kind === "string") {
+    if (parsedValue.kind !== "strings" || parsedValue.values.length !== 1) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        'Debug value must be a single string (for example "bat0_raw_temp").',
+        400,
+        { bindingId, debugValue }
+      );
+    }
+    return;
+  }
+
   if (valueShape?.kind === "string-list") {
     if (parsedValue.kind !== "strings" || parsedValue.values.length === 0) {
       throw new ApiError(

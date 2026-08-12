@@ -39,7 +39,7 @@
 - **TD-033（遗留调试 catalog 表）：** `debugging_parameters` / `debugging_parameter_node_bindings` 仍为审计/历史保留。`parameter_reload_bindings` 已在迁移 `0037` **删除**，不得再写成存活 schema；`/debugging` 参数重载保持产品下线，且与 `/dts-reload`（DTS 重载）不是同一概念。详见英文版 Open 表。
 - **TD-063（调试值晋升为库变更请求）：** `/dts-reload` 按 ADR-0019 不回写参数库；已验证的调试值仍需另建治理变更请求。**负责人：Product / Debugging platform。**
 - **TD-064（工作台交接至 `/dts-reload`）：** 从参数工作台携带选中 binding 进入重载页被延后。**负责人：Product / Frontend。**
-- **TD-065（超出已支持值形态）：** 目前仅支持 u32 cell/数组与 string list；其余形态仍拒绝。**负责人：Debugging platform。**
+- **TD-065（超出已支持值形态）：** 目前已支持 u32/u8/u16 cell（含 `/bits/ 8`）、单字符串、string list、GPIO 风格 phandle-cells；布尔、empty、裸 phandle list（如 `<&gic>`）、mixed、属性删除仍拒绝。**负责人：Debugging platform。**
 - **TD-066（产物保留清理）：** 90 天下载 `410` 门禁之外，对象存储 blob 自动 GC 未建。**负责人：Debugging platform / Ops。**
 - **TD-067（多副本桥接路由）：** 桥接 WebSocket 单进程亲和；进程内 DTS 重载部署（ADR-0020）依赖持有 socket 的副本。**负责人：Platform / Reliability。**
 - **TD-068（DTS 重载 Agent actorType 信任边界）：** 闸门依赖调用方传入的进程内 `actorType`，非 `AuthContext` 已认证身份；持用户 HTTP token 的 Agent 与人类不可区分（与参数 `SensitiveWriteActorType` 相同）。**负责人：Security / Backend。** 见 `docs/SECURITY.md`（#304）。
