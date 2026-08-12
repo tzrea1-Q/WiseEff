@@ -415,7 +415,128 @@ export function runOperationEvidenceCheck() {
   return evaluation;
 }
 
+export type OperationEvidenceCheckCliOptions = {
+  /** Focused-run mode (TD-088): validate the evidence records of one run directory. */
+  runDir?: string;
+  /** Operation ids that MUST be covered by the focused run (fails when absent). */
+  requireOperationIds: string[];
+};
+
+export function parseOperationEvidenceCheckArgs(argv: readonly string[]): OperationEvidenceCheckCliOptions {
+  const options: OperationEvidenceCheckCliOptions = { requireOperationIds: [] };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    const next = argv[index + 1];
+    if (arg === "--run" && next) {
+      options.runDir = next;
+      index += 1;
+    } else if (arg.startsWith("--run=")) {
+      options.runDir = arg.slice("--run=".length);
+    } else if (arg === "--require" && next) {
+      options.requireOperationIds.push(...splitOperationIdList(next));
+      index += 1;
+    } else if (arg.startsWith("--require=")) {
+      options.requireOperationIds.push(...splitOperationIdList(arg.slice("--require=".length)));
+    } else {
+      throw new Error(`Unknown or incomplete check-operation-evidence argument: ${arg}`);
+    }
+  }
+
+  if (!options.runDir && options.requireOperationIds.length > 0) {
+    throw new Error("--require is only valid together with --run <dir>.");
+  }
+
+  return options;
+}
+
+function splitOperationIdList(value: string): string[] {
+  return value
+    .split(",")
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0);
+}
+
+export type FocusedRunEvidenceCheckInput = {
+  runDir: string;
+  requireOperationIds?: string[];
+  /** Injectable for tests; defaults to the real acceptance operation matrix. */
+  operations?: OperationEvidenceOperation[];
+};
+
+/**
+ * Focused-run validation (TD-088): validate the evidence records inside ONE
+ * run directory (a run root containing `records/`, or a records directory
+ * itself). Scope: every operation that has a record in the directory plus any
+ * `--require` ids must be covered by passed, forensically complete evidence.
+ * Run-identity gating (latest-full manifest) deliberately stays a full-run
+ * concern — focused runs get first-class record validation without it.
+ */
+export function runFocusedOperationEvidenceCheck(input: FocusedRunEvidenceCheckInput): OperationEvidenceEvaluation {
+  const operations = input.operations ?? acceptanceOperations;
+  const recordsRoot = existsSync(join(input.runDir, "records")) ? join(input.runDir, "records") : input.runDir;
+  if (!existsSync(recordsRoot)) {
+    throw new Error(`Evidence run directory does not exist: ${input.runDir}`);
+  }
+
+  const knownOperationIds = new Set(operations.map((operation) => operation.id));
+  const unknownRequired = (input.requireOperationIds ?? []).filter((id) => !knownOperationIds.has(id));
+  if (unknownRequired.length > 0) {
+    throw new Error(`--require references unknown operation ids: ${unknownRequired.join(", ")}.`);
+  }
+
+  const records = readOperationEvidenceRecords(recordsRoot);
+  const recordedParentIds = new Set(records.map((record) => parentOperationId(record.operationId)));
+  const requiredIds = new Set(input.requireOperationIds ?? []);
+  const scopedOperations = operations.filter(
+    (operation) => recordedParentIds.has(operation.id) || requiredIds.has(operation.id)
+  );
+
+  const evaluation = evaluateOperationEvidence({ operations: scopedOperations, records });
+  const coveredSet = new Set(evaluation.coveredOperationIds);
+  const missingOperationIds = Array.from(
+    new Set([...evaluation.missingOperationIds, ...[...requiredIds].filter((id) => !coveredSet.has(id))])
+  ).sort();
+  const runIdentity = singleRunIdentity(records);
+
+  return {
+    ...evaluation,
+    status: missingOperationIds.length === 0 && evaluation.validationErrors.length === 0 ? "passed" : "failed",
+    missingOperationIds,
+    runId: runIdentity?.runId,
+    sourceCommit: runIdentity?.sourceCommit
+  };
+}
+
+function singleRunIdentity(records: OperationEvidenceRecord[]): { runId?: string; sourceCommit?: string } | null {
+  const runIds = new Set(records.map((record) => record.runId).filter(Boolean));
+  const commits = new Set(records.map((record) => record.sourceCommit).filter(Boolean));
+  if (runIds.size !== 1 || commits.size !== 1) {
+    return null;
+  }
+  return { runId: [...runIds][0], sourceCommit: [...commits][0] };
+}
+
+function runFocusedOperationEvidenceCheckCli(options: OperationEvidenceCheckCliOptions & { runDir: string }) {
+  const evaluation = runFocusedOperationEvidenceCheck({
+    runDir: options.runDir,
+    requireOperationIds: options.requireOperationIds
+  });
+  // Focused checks report into the run directory; the docs/generated index
+  // stays reserved for the latest FULL acceptance run.
+  writeOperationEvidenceIndex({
+    evaluation,
+    markdownOut: join(options.runDir, "evidence-check.md"),
+    jsonOut: join(options.runDir, "evidence-check.json")
+  });
+  console.log(JSON.stringify(evaluation, null, 2));
+  return evaluation;
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const result = runOperationEvidenceCheck();
+  const options = parseOperationEvidenceCheckArgs(process.argv.slice(2));
+  const result = options.runDir
+    ? runFocusedOperationEvidenceCheckCli({ ...options, runDir: options.runDir })
+    : runOperationEvidenceCheck();
   process.exit(result.status === "passed" ? 0 : 1);
 }
