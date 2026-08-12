@@ -20,17 +20,12 @@ import type {
 import type { DashboardState } from "@/application/parameters/dashboardState";
 import type { createParameterDashboardRuntime } from "@/application/parameters/parameterDashboardRuntime";
 import type { DebuggingRuntimeActions } from "@/application/debugging/debuggingRuntime";
-import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogRuntimeActions } from "@/application/logs/logRuntime";
-import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
-import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
 import type { KnowledgeCapability } from "@/domain/knowledge/rules";
-import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import { resolveDtsReloadRepository } from "@/application/dts-reload/dtsReloadRuntime";
 import { createMockDtsReloadBridgeSeams } from "@/infrastructure/mock/mockDtsReloadRepository";
-import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
-import type { ParameterInitializationRepository } from "@/application/ports/ParameterInitializationRepository";
 import type { AppAction } from "@/application/state/appState";
+import type { AppRuntime } from "@/app/appRuntime";
 import type { DashboardWindow, HotspotDimension, OverviewScope } from "@/domain/parameters/dashboardTypes";
 import { canAccessPage, canPerform, getAccessibleFallbackPath, getRequiredRoleForPage, getRequiredRoleLabel } from "@/app/permissions";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
@@ -52,7 +47,6 @@ import { KnowledgePage } from "@/features/knowledge/KnowledgePage";
 import { DtsReloadPage } from "@/features/dts-reload/DtsReloadPage";
 import { ParametersPage as UserParametersPage } from "@/ParametersPage";
 import { UserPermissionsPage } from "@/UserPermissionsPage";
-import type { UserGovernanceActions } from "@/UserPermissionsPage";
 import { NoEntryPage } from "@/components/NoEntryPage";
 import type { PageConfig } from "@/appConfig";
 import type { PrototypeState } from "@/domain/prototype/types";
@@ -82,20 +76,13 @@ export type PageProps = {
   onNavigate: (path: string) => void;
   search: string;
   debuggingActions?: DebuggingRuntimeActions;
-  debuggingGateway?: DebuggingGateway;
   debuggingRuntimeReady?: boolean;
   logActions?: LogRuntimeActions;
   parameterActions?: ParameterPageActions;
-  parameterTopologyRepository?: ParameterTopologyRepository;
-  listParameterConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
-  productFeedbackRepository?: ProductFeedbackRepository;
-  knowledgeRepository?: KnowledgeRepository;
+  /** Mode-selected adapters assembled once by the shell (createAppRuntime). */
+  runtime?: AppRuntime;
   knowledgeCapability?: KnowledgeCapability;
-  /** Resolved by the App composition root for both runtimes (ADR-0002). */
-  dtsReloadRepository?: DtsReloadRepository;
   canStartDtsReload?: boolean;
-  parameterInitializationRepository?: ParameterInitializationRepository;
-  userGovernanceActions?: UserGovernanceActions;
   runtimeMode?: WiseEffRuntimeMode;
   dashboardState?: DashboardState;
   dashboardRuntime?: ReturnType<typeof createParameterDashboardRuntime>;
@@ -129,19 +116,12 @@ export function PageRouter({
   onNavigate,
   search,
   debuggingActions,
-  debuggingGateway,
   debuggingRuntimeReady = true,
   logActions,
   parameterActions,
-  parameterTopologyRepository,
-  listParameterConfigSets,
-  productFeedbackRepository,
-  knowledgeRepository,
+  runtime,
   knowledgeCapability,
-  dtsReloadRepository,
   canStartDtsReload = false,
-  parameterInitializationRepository,
-  userGovernanceActions,
   runtimeMode,
   dashboardState,
   dashboardRuntime,
@@ -153,6 +133,13 @@ export function PageRouter({
   TopBarProjectId,
   DebuggingAdminPage
 }: PageRouterProps) {
+  const debuggingGateway = runtime?.debuggingGateway;
+  const parameterTopologyRepository = runtime?.parameterTopologyRepository;
+  const listParameterConfigSets = runtime?.listParameterConfigSets;
+  const productFeedbackRepository = runtime?.productFeedbackRepository;
+  const knowledgeRepository = runtime?.knowledgeRepository;
+  const dtsReloadRepository = runtime?.dtsReloadRepository;
+  const userGovernanceActions = runtime?.userGovernanceActions;
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
   const searchProjectId = new URLSearchParams(search).get("project") ?? "";
   const effectiveParametersProjectId = searchProjectId || state.activeProjectId;
@@ -233,7 +220,7 @@ export function PageRouter({
           onNavigate={onNavigate}
           search={search}
           parameterActions={parameterActions}
-          parameterInitializationRepository={parameterInitializationRepository}
+          runtime={runtime}
           runtimeMode={runtimeMode}
         />
       );
@@ -350,7 +337,6 @@ export function PageRouter({
           onNavigate={onNavigate}
           search={search}
           debuggingActions={debuggingActions}
-          debuggingGateway={debuggingGateway}
           logActions={logActions}
           parameterActions={parameterActions}
           area={area}
