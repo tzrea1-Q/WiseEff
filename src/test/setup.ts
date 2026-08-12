@@ -24,8 +24,11 @@ beforeEach(() => {
     writeText: vi.fn().mockResolvedValue(undefined)
   };
 
+  // writable so tests may install their own clipboard spy via plain assignment
+  // (defineProperty defaults writable to false, which silently swallows overrides).
   Object.defineProperty(navigator, "clipboard", {
     configurable: true,
+    writable: true,
     value: clipboard
   });
 });

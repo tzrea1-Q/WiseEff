@@ -64,9 +64,16 @@ describe("ErrorBoundary", () => {
   });
 
   it("copies diagnostics to the clipboard", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.assign(navigator, { clipboard: { writeText } });
+    // userEvent.setup() installs its own non-writable clipboard stub; override it
+    // with defineProperty (plain assignment is silently swallowed) so the
+    // component's writeText call lands on this spy.
     const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      writable: true,
+      value: { writeText }
+    });
     render(
       <ErrorBoundary label="节点调试">
         <Boom shouldThrow />
