@@ -64,6 +64,7 @@ type AgentApprovalRow = {
   message: string;
   status: AgentApprovalStatus;
   requested_at: string | Date;
+  requested_by_user_id?: string | null;
   decided_at: string | Date | null;
   decided_by_user_id: string | null;
   decision_reason: string | null;
@@ -80,6 +81,8 @@ export type AgentApprovalRecord = AgentApprovalDto & {
   sessionId: string;
   organizationId: string;
   projectId?: string;
+  /** User whose turn requested this approval; only they may decide it. */
+  requestedByUserId: string;
 };
 
 export type AgentSessionRecord = {
@@ -255,7 +258,8 @@ function toAgentApprovalRecord(row: AgentApprovalRow): AgentApprovalRecord {
     ...toAgentApprovalDto(row),
     sessionId: String(row.session_id ?? ""),
     organizationId: String(row.organization_id ?? ""),
-    projectId: row.project_id ?? undefined
+    projectId: row.project_id ?? undefined,
+    requestedByUserId: String(row.requested_by_user_id ?? "")
   };
 }
 
@@ -541,7 +545,7 @@ export async function getAgentApproval(
     `
     select
       id, session_id, tool_call_id, organization_id, project_id, title, message, status,
-      requested_at, decided_at, decided_by_user_id, decision_reason
+      requested_at, requested_by_user_id, decided_at, decided_by_user_id, decision_reason
     from agent_approvals
     where organization_id = $1
       and id = $2

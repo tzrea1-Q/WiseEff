@@ -24,6 +24,27 @@ function ensureDatabaseUrl() {
   }
 }
 
+// This suite exercises acceptance-fixture cleanup, which talks to the raw
+// DATABASE_URL database (not the migrations-template worker databases the other
+// integration tests use). In CI's build-and-test job that database exists but has
+// never been migrated, so gate on the schema actually being present.
+async function isAcceptanceSchemaAvailable(): Promise<boolean> {
+  if (!databaseAvailable) return false;
+  ensureDatabaseUrl();
+  try {
+    return await withPgClient(async (client) => {
+      const result = await client.query<{ ok: string | null }>(
+        "select to_regclass('public.organizations') as ok",
+      );
+      return result.rows[0]?.ok != null;
+    });
+  } catch {
+    return false;
+  }
+}
+
+const schemaAvailable = await isAcceptanceSchemaAvailable();
+
 async function ensureTenantGraph() {
   ensureDatabaseUrl();
   const ids = {
@@ -84,7 +105,7 @@ async function wipeSharedName() {
   }
 }
 
-describe.skipIf(!databaseAvailable)("semanticFixtureCleanup tenant isolation", () => {
+describe.skipIf(!schemaAvailable)("semanticFixtureCleanup tenant isolation", () => {
   it("fail-closes when organizationId or projectId is missing", async () => {
     ensureDatabaseUrl();
     await expect(
