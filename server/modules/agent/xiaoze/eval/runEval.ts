@@ -71,10 +71,17 @@ export async function runScenario(scenario: EvalScenario): Promise<ScenarioEvalR
     approvalResolver
   });
 
+  // Bind the request context on every turn like production does: the
+  // checkpoint namespace is derived from it, so begin and resume must match.
   let graphResult = await agent.run({
     message: scenario.userMessage,
     context: scenario.context,
-    threadId: scenario.threadId
+    threadId: scenario.threadId,
+    requestContext: {
+      auth: EVAL_AUTH,
+      requestId: `eval-${scenario.threadId}`,
+      sessionId: scenario.threadId
+    }
   });
 
   if (scenario.resume) {

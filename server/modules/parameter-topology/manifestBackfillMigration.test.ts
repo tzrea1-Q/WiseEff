@@ -1,16 +1,16 @@
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import pg from "pg";
 import { describe, expect, it } from "vitest";
 
-import { createDatabase, type Database } from "../../shared/database/client";
+import type { Database } from "../../shared/database/client";
 import { applyMigrations } from "../../shared/database/migrations";
 import { isTestDatabaseAvailable } from "../../testing/testDatabase";
+import {
+  migrationsDir,
+  withTempDatabase as withSharedTempDatabase
+} from "../../testing/tempDatabase";
 
-const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-const migrationsDir = path.join(projectRoot, "server", "migrations");
 const migration0054 = "0054_config_revision_manifest_backfill.sql";
 
 const ORG = "org-mig-0054";
@@ -20,61 +20,13 @@ const CONFIG_SET = "dcs-mig-0054";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
-function resolveTestDatabaseUrl() {
-  return (
-    process.env.TEST_DATABASE_URL?.trim() ||
-    process.env.DATABASE_URL?.trim() ||
-    "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff"
-  );
-}
-
-function adminConnectionString(database = "postgres") {
-  const url = new URL(resolveTestDatabaseUrl());
-  url.pathname = `/${database}`;
-  return url.toString();
-}
-
 function checksum(content: string) {
   return createHash("sha256").update(content).digest("hex");
 }
 
-async function withAdminClient<T>(fn: (client: pg.Client) => Promise<T>): Promise<T> {
-  const client = new pg.Client({ connectionString: adminConnectionString("postgres") });
-  await client.connect();
-  try {
-    return await fn(client);
-  } finally {
-    await client.end();
-  }
-}
-
 async function withTempDatabase(fn: (db: Database) => Promise<void>) {
-  const dbName = `wiseeff_mig0054_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`.replace(
-    /[^a-z0-9_]/gi,
-    "",
-  );
-  await withAdminClient(async (admin) => {
-    await admin.query(`create database ${dbName}`);
-  });
-
-  const connectionString = adminConnectionString(dbName);
-  const client = new pg.Client({ connectionString });
-  await client.connect();
-  const db = createDatabase({
-    query: async (text, values = []) => {
-      const result = await client.query(text, values);
-      return { rows: result.rows, rowCount: result.rowCount };
-    },
-  });
-
-  try {
-    await fn(db);
-  } finally {
-    await client.end().catch(() => undefined);
-    await withAdminClient(async (admin) => {
-      await admin.query(`drop database if exists ${dbName} with (force)`);
-    });
-  }
+  // Migration replay suite: migrations are applied selectively via applyMigrations options.
+  await withSharedTempDatabase({ prefix: "mig0054", migrate: false }, ({ db }) => fn(db));
 }
 
 type RevisionRow = {

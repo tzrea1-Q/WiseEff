@@ -99,6 +99,8 @@ describe("ensureBridgeRunning", () => {
   });
 
   it("uses bundled node on Windows instead of .cmd launchers", () => {
+    // The fs mock reports the bundled node.exe next to cli.js as present, so the
+    // resolver must prefer it over the caller's execPath.
     expect(
       resolveDetachedBridgeStartCommand({
         platform: "win32",
@@ -106,7 +108,7 @@ describe("ensureBridgeRunning", () => {
         cliPath: "C:\\Users\\dev\\AppData\\Local\\WiseEff\\Bridge\\cli.js"
       })
     ).toEqual({
-      command: "C:\\Program Files\\nodejs\\node.exe",
+      command: "C:\\Users\\dev\\AppData\\Local\\WiseEff\\Bridge\\node.exe",
       args: ["C:\\Users\\dev\\AppData\\Local\\WiseEff\\Bridge\\cli.js", "start"]
     });
   });

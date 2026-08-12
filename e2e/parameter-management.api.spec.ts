@@ -1,6 +1,6 @@
-import { spawnSync } from "node:child_process";
 import { Client } from "pg";
 import { expect, test, type Page } from "playwright/test";
+import { runNpmScript } from "./acceptance/helpers/database";
 import { apiRoute, smokeHeaders } from "./acceptance/helpers/runtime";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -10,35 +10,6 @@ const parameterValueId = `${projectId}-fast-charge-current`;
 const actorUserId = "u-xu-yun";
 const targetValue = String(3300 + (Date.now() % 100));
 const changeReason = `M1 E2E acceptance ${Date.now()}`;
-
-function runNpmScript(script: string) {
-  const invocation =
-    process.platform === "win32"
-      ? { command: "cmd.exe", args: ["/d", "/s", "/c", `npm run ${script}`] }
-      : { command: "npm", args: ["run", script] };
-  const result = spawnSync(invocation.command, invocation.args, {
-    cwd: process.cwd(),
-    encoding: "utf8",
-    env: process.env
-  });
-
-  if (result.status !== 0) {
-    const stdout = typeof result.stdout === "string" ? result.stdout.trim() : "";
-    const stderr = typeof result.stderr === "string" ? result.stderr.trim() : "";
-    const errorDetails = result.error
-      ? `child_process error: ${result.error.code ?? "unknown"} ${result.error.message ?? ""}`.trimEnd()
-      : "";
-
-    throw new Error(
-      [
-        `npm run ${script} failed with exit code ${result.status}.`,
-        stdout,
-        stderr,
-        errorDetails
-      ].filter(Boolean).join("\n")
-    );
-  }
-}
 
 async function seedWorkflowUsers(client: Client) {
   const users = [

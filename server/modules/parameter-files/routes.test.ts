@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { makeTestAuthContext } from "../../testing/authContext";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import type { Database } from "../../shared/database/client";
@@ -24,7 +25,7 @@ vi.mock("./repository", () => ({
   listProjectParameterFiles: vi.fn()
 }));
 
-vi.mock("../parameters/repository", () => ({
+vi.mock("../parameters/fileSyncConflictRepository", () => ({
   listOpenConflicts: vi.fn()
 }));
 
@@ -47,17 +48,14 @@ vi.mock("./configSetService", () => ({
 
 function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
   return {
-    user: {
-      id: "user-1",
+    ...makeTestAuthContext({
+      userId: "user-1",
       organizationId: "org-1",
       name: "Riley Chen",
       email: "riley@example.com",
-      title: "Admin",
-      isActive: true
-    },
-    organization: { id: "org-1", name: "ChargeLab" },
-    roles: [{ projectId: null, roleId: "admin" }],
-    permissions: ["parameter:view", "admin:access"],
+      organizationName: "ChargeLab",
+      permissions: ["parameter:view", "admin:access"]
+    }),
     ...overrides
   };
 }
@@ -185,7 +183,8 @@ describe("parameter file routes", () => {
     expect(conflictService.resolveParameterFileConflict).toHaveBeenCalledWith(
       db,
       expect.any(Object),
-      { conflictId: "conflict-1", resolution: "file", reason: "keep file" }
+      { conflictId: "conflict-1", resolution: "file", reason: "keep file" },
+      { requestId: expect.any(String) }
     );
   });
 
@@ -230,7 +229,8 @@ describe("parameter file routes", () => {
     expect(conflictService.resolveConflictsBulk).toHaveBeenCalledWith(
       db,
       expect.any(Object),
-      { projectId: "project-1", resolution: "ui", conflictIds: ["conflict-1"], reason: "batch" }
+      { projectId: "project-1", resolution: "ui", conflictIds: ["conflict-1"], reason: "batch" },
+      { requestId: expect.any(String) }
     );
   });
 });

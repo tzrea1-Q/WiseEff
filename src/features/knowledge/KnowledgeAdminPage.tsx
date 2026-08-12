@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArchiveRestore, RefreshCw, Trash2 } from "lucide-react";
+import { ArchiveRestore, DatabaseZap, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
-import type { KnowledgeEntry } from "@/domain/knowledge/types";
-import { knowledgeContentFormLabels } from "@/domain/knowledge/types";
+import type { KnowledgeEntry, KnowledgeIndexHealth, KnowledgeIndexStatusItem } from "@/domain/knowledge/types";
+import {
+  knowledgeContentFormLabels,
+  knowledgeIndexStateLabels,
+  knowledgeRetrievalModeLabels,
+  knowledgeStatusLabels
+} from "@/domain/knowledge/types";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { DataTable, PageInsightBar, type Column } from "@/components/admin";
 import { Button } from "@/components/ui/button";
@@ -25,9 +30,9 @@ function formatDateTime(value: string | null) {
 }
 
 /**
- * Phase 1 admin skeleton: archived-entry management and manage-gated hard
- * delete. The agent-draft publish queue and index health/rebuild arrive with
- * Phases 2/3 of the knowledge plan.
+ * Knowledge governance: archived-entry management, manage-gated hard delete,
+ * and retrieval index health (per-entry status, retry, rebuild-all). The
+ * agent-draft publish queue arrives with Phase 3 of the knowledge plan.
  */
 export function KnowledgeAdminPage({ repository, canManage }: KnowledgeAdminPageProps) {
   const [rows, setRows] = useState<KnowledgeEntry[]>([]);
@@ -37,6 +42,12 @@ export function KnowledgeAdminPage({ repository, canManage }: KnowledgeAdminPage
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState("");
   const [restorePendingId, setRestorePendingId] = useState<string | null>(null);
+  const [indexHealth, setIndexHealth] = useState<KnowledgeIndexHealth | null>(null);
+  const [indexLoading, setIndexLoading] = useState(false);
+  const [indexError, setIndexError] = useState("");
+  const [indexActionPendingId, setIndexActionPendingId] = useState<string | null>(null);
+  const [rebuildPending, setRebuildPending] = useState(false);
+  const [rebuildNotice, setRebuildNotice] = useState("");
 
   const loadArchived = useCallback(async () => {
     setLoading(true);
@@ -51,9 +62,25 @@ export function KnowledgeAdminPage({ repository, canManage }: KnowledgeAdminPage
     }
   }, [repository]);
 
+  const loadIndexHealth = useCallback(async () => {
+    if (!canManage) {
+      return;
+    }
+    setIndexLoading(true);
+    setIndexError("");
+    try {
+      setIndexHealth(await repository.getIndexHealth());
+    } catch (error) {
+      setIndexError(error instanceof Error && error.message ? error.message : "索引健康加载失败,请稍后重试。");
+    } finally {
+      setIndexLoading(false);
+    }
+  }, [repository, canManage]);
+
   useEffect(() => {
     void loadArchived();
-  }, [loadArchived]);
+    void loadIndexHealth();
+  }, [loadArchived, loadIndexHealth]);
 
   const archivedCount = useMemo(() => rows.length, [rows]);
 
@@ -84,6 +111,102 @@ export function KnowledgeAdminPage({ repository, canManage }: KnowledgeAdminPage
       setDeletePending(false);
     }
   };
+
+  const retryIndex = async (item: KnowledgeIndexStatusItem) => {
+    setIndexActionPendingId(item.entryId);
+    setIndexError("");
+    try {
+      await repository.retryEntryIndex(item.entryId);
+      await loadIndexHealth();
+    } catch (error) {
+      setIndexError(error instanceof Error && error.message ? error.message : "重试入队失败,请稍后重试。");
+    } finally {
+      setIndexActionPendingId(null);
+    }
+  };
+
+  const rebuildIndex = async () => {
+    setRebuildPending(true);
+    setIndexError("");
+    setRebuildNotice("");
+    try {
+      const result = await repository.rebuildIndex();
+      setRebuildNotice(`已重新入队 ${result.enqueued} 条已发布条目,索引由后台 worker 逐条重建。`);
+      await loadIndexHealth();
+    } catch (error) {
+      setIndexError(error instanceof Error && error.message ? error.message : "全量重建入队失败,请稍后重试。");
+    } finally {
+      setRebuildPending(false);
+    }
+  };
+
+  const indexStateTone: Record<KnowledgeIndexStatusItem["status"], string> = {
+    pending: "bg-amber-100 text-amber-800",
+    processing: "bg-sky-100 text-sky-800",
+    succeeded: "bg-emerald-100 text-emerald-800",
+    failed: "bg-red-100 text-red-800"
+  };
+
+  const indexColumns: Column<KnowledgeIndexStatusItem>[] = [
+    {
+      key: "title",
+      header: "条目",
+      render: (item) => (
+        <div className="min-w-0">
+          <p className="truncate font-medium text-foreground">{item.title}</p>
+          <p className="text-xs text-muted-foreground">
+            {knowledgeStatusLabels[item.entryStatus]}
+            {item.indexedRevisionNumber !== null ? ` · 已索引修订 #${item.indexedRevisionNumber}` : ""}
+          </p>
+        </div>
+      ),
+      sortAccessor: (item) => item.title
+    },
+    {
+      key: "status",
+      header: "索引状态",
+      render: (item) => (
+        <span
+          data-index-status={item.status}
+          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${indexStateTone[item.status]}`}
+        >
+          {knowledgeIndexStateLabels[item.status]}
+        </span>
+      ),
+      sortAccessor: (item) => item.status,
+      widthClass: "w-24"
+    },
+    {
+      key: "chunks",
+      header: "分块",
+      render: (item) => (
+        <span className="text-xs text-muted-foreground">
+          {item.chunkCount}
+          {item.embeddedChunkCount > 0 ? ` (向量 ${item.embeddedChunkCount})` : ""}
+        </span>
+      ),
+      widthClass: "w-24"
+    },
+    {
+      key: "error",
+      header: "失败原因",
+      render: (item) =>
+        item.error ? (
+          <span className="block max-w-72 truncate text-xs text-destructive" title={item.error}>
+            {item.error}
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        )
+    },
+    {
+      key: "updatedAt",
+      header: "更新时间",
+      render: (item) => <span className="text-xs text-muted-foreground">{formatDateTime(item.updatedAt)}</span>,
+      sortAccessor: (item) => item.updatedAt,
+      widthClass: "w-28"
+    }
+  ];
 
   const columns: Column<KnowledgeEntry>[] = [
     {
@@ -124,9 +247,93 @@ export function KnowledgeAdminPage({ repository, canManage }: KnowledgeAdminPage
       <PageInsightBar
         variant={archivedCount > 0 ? "warn" : "info"}
         headline={`已归档 ${archivedCount} 条`}
-        description="治理已归档知识条目:恢复回已发布,或在确认后彻底删除。Agent 草稿发布队列与索引健康将在后续阶段加入。"
+        description="治理已归档知识条目与检索索引健康:恢复、彻底删除、单条重试或全量重建索引。Agent 草稿发布队列将在后续阶段加入。"
         actions={[]}
       />
+
+      <section className="flex flex-col gap-2" aria-label="检索索引健康">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-foreground">检索索引健康</h2>
+          <span className="flex items-center gap-2">
+            {canManage ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void rebuildIndex()}
+                disabled={rebuildPending || indexLoading}
+                aria-busy={rebuildPending || undefined}
+              >
+                <DatabaseZap data-icon="inline-start" />
+                全量重建索引
+              </Button>
+            ) : null}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void loadIndexHealth()}
+              disabled={indexLoading || !canManage}
+              aria-busy={indexLoading || undefined}
+            >
+              <RefreshCw data-icon="inline-start" />
+              刷新
+            </Button>
+          </span>
+        </div>
+
+        {indexHealth ? (
+          <p
+            className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-foreground"
+            data-retrieval-mode={indexHealth.retrieval.mode}
+            aria-label="检索模式"
+          >
+            当前检索模式:<strong>{knowledgeRetrievalModeLabels[indexHealth.retrieval.mode]}</strong>
+            <span className="ml-2 text-xs text-muted-foreground">
+              pgvector {indexHealth.retrieval.vectorAvailable ? "可用" : "不可用"} · 嵌入端点
+              {indexHealth.retrieval.embeddingConfigured ? "已配置" : "未配置"}
+              {indexHealth.retrieval.mode === "fts_only"
+                ? " —— 语义检索降级,知识库保持全文检索可用。"
+                : ""}
+            </span>
+          </p>
+        ) : null}
+
+        {indexError ? <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{indexError}</p> : null}
+        {rebuildNotice ? (
+          <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{rebuildNotice}</p>
+        ) : null}
+        {!canManage ? (
+          <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+            索引健康与重建操作需要知识管理员权限。
+          </p>
+        ) : (
+          <DataTable
+            aria-label="知识索引状态"
+            rows={indexHealth?.items ?? []}
+            rowKey={(item) => item.entryId}
+            columns={indexColumns}
+            pageSize={10}
+            renderRowActions={(item) => (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={indexActionPendingId !== null}
+                aria-busy={indexActionPendingId === item.entryId || undefined}
+                onClick={() => void retryIndex(item)}
+              >
+                <RotateCcw data-icon="inline-start" />
+                重试
+              </Button>
+            )}
+            emptyState={
+              indexLoading ? (
+                <p className="text-sm text-muted-foreground">正在加载索引状态…</p>
+              ) : (
+                <p className="text-sm text-muted-foreground">还没有索引记录。发布知识条目后会自动进入索引队列。</p>
+              )
+            }
+          />
+        )}
+      </section>
 
       <section className="flex flex-col gap-2" aria-label="已归档条目管理">
         <div className="flex items-center justify-between gap-3">

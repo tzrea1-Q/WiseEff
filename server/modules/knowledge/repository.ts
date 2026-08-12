@@ -66,6 +66,17 @@ type KnowledgeSearchRow = {
   content_form: KnowledgeEntryDto["contentForm"];
   tags: string[];
   search_text: string;
+  head_revision_id: string | null;
+  updated_at: string | Date;
+};
+
+type KnowledgeChunkSearchRow = {
+  entry_id: string;
+  title: string;
+  content_form: KnowledgeEntryDto["contentForm"];
+  tags: string[];
+  revision_id: string;
+  text: string;
   updated_at: string | Date;
 };
 
@@ -519,7 +530,7 @@ export async function searchPublishedEntries(
   const trimmed = query.q.trim();
   const result = await db.query<KnowledgeSearchRow>(
     `
-    select id, title, content_form, tags, search_text, updated_at
+    select id, title, content_form, tags, search_text, head_revision_id, updated_at
     from knowledge_entries
     where organization_id = $1
       and status = 'published'
@@ -542,6 +553,55 @@ export async function searchPublishedEntries(
     contentForm: row.content_form,
     tags: row.tags ?? [],
     excerpt: buildExcerpt(row.search_text, trimmed),
-    updatedAt: dateTimeToIso(row.updated_at)
+    updatedAt: dateTimeToIso(row.updated_at),
+    revisionId: row.head_revision_id
+  }));
+}
+
+function buildChunkExcerpt(text: string) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  return normalized.length > 200 ? `${normalized.slice(0, 200)}…` : normalized;
+}
+
+/**
+ * Semantic branch of hybrid retrieval: exact cosine scan over published chunk
+ * embeddings, deduplicated to the best chunk per entry. Callers must confirm
+ * pgvector support first — the `::vector` cast does not parse without it.
+ */
+export async function searchPublishedChunksByEmbedding(
+  db: Queryable,
+  auth: AuthContext,
+  query: { embedding: number[]; limit?: number }
+): Promise<KnowledgeSearchResultDto[]> {
+  const result = await db.query<KnowledgeChunkSearchRow>(
+    `
+    select best.*
+    from (
+      select distinct on (c.entry_id)
+        c.entry_id, e.title, e.content_form, e.tags, c.revision_id, c.text, e.updated_at,
+        c.embedding <=> $2::vector as distance
+      from knowledge_chunks c
+      join knowledge_entries e
+        on e.id = c.entry_id
+       and e.organization_id = c.organization_id
+      where c.organization_id = $1
+        and e.status = 'published'
+        and c.embedding is not null
+      order by c.entry_id, c.embedding <=> $2::vector asc
+    ) best
+    order by best.distance asc
+    limit $3
+    `,
+    [auth.organization.id, `[${query.embedding.join(",")}]`, query.limit ?? 20]
+  );
+
+  return result.rows.map((row) => ({
+    entryId: row.entry_id,
+    title: row.title,
+    contentForm: row.content_form,
+    tags: row.tags ?? [],
+    excerpt: buildChunkExcerpt(row.text),
+    updatedAt: dateTimeToIso(row.updated_at),
+    revisionId: row.revision_id
   }));
 }

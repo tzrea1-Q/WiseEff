@@ -1,9 +1,8 @@
 import "dotenv/config";
 import { createHmac } from "node:crypto";
-import { spawnSync } from "node:child_process";
 import { expect, test } from "playwright/test";
 
-import { withPgClient } from "./helpers/database";
+import { runNpmScript, withPgClient } from "./helpers/database";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import {
   recordOperationEvidence,
@@ -14,22 +13,6 @@ import {
 const databaseUrl = process.env.DATABASE_URL;
 const projectId = "aurora";
 const actorUserId = "u-xu-yun";
-
-function runNpmScript(script: string) {
-  const invocation =
-    process.platform === "win32"
-      ? { command: "cmd.exe", args: ["/d", "/s", "/c", `npm run ${script}`] }
-      : { command: "npm", args: ["run", script] };
-  const result = spawnSync(invocation.command, invocation.args, {
-    cwd: process.cwd(),
-    encoding: "utf8",
-    env: process.env
-  });
-
-  if (result.status !== 0) {
-    throw new Error(`npm run ${script} failed with exit code ${result.status}.`);
-  }
-}
 
 function bearerTokenFor(input: {
   userId: string;
@@ -113,12 +96,15 @@ async function postXiaozeQuestion(
   request: { post: (url: string, options?: object) => Promise<{ status: () => number; text: () => Promise<string>; headers: () => Record<string, string> }> },
   headers: Record<string, string>,
   message: string,
-  projectIdValue = projectId
+  projectIdValue = projectId,
+  // Xiaoze threads are owned by their first actor; questions asked under a
+  // different user must use their own thread or the run is refused with 403.
+  threadId = "xiaoze-thread-acceptance"
 ) {
   const response = await request.post(apiRoute("/api/v1/agent/xiaoze"), {
     headers,
     data: {
-      threadId: "xiaoze-thread-acceptance",
+      threadId,
       runId: `run-${Date.now()}`,
       messages: [{ id: "m-user", role: "user", content: message }],
       context: [
@@ -208,7 +194,8 @@ test.describe("Xiaoze P0 perception", () => {
       request,
       limitedProjectHeaders(),
       "summarize forbidden secret-project details",
-      "secret-project"
+      "secret-project",
+      "xiaoze-thread-acceptance-authz"
     );
     expect(result.status).toBe(200);
     const answer = readSseText(result.body);

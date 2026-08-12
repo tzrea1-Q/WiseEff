@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { EventType } from "@ag-ui/core";
 import type { AuthContext } from "../../auth/types";
 import { ApiError } from "../../../shared/http/errors";
 import type { RouteRequest, RouteResponse, WiseEffRouter } from "../../../shared/http/router";
 import type { Database } from "../../../shared/database/client";
+import type { KnowledgeEmbeddingClient } from "../../knowledge/indexing/embeddingClient";
 import type { ObjectStore } from "../../logs/objectStore";
 import type { ServerEnv } from "../../../config/env";
+import { getAgentSession } from "../repository";
 import { createAgentToolRegistry } from "../toolRegistry";
 import type { AgentToolExecutionContext } from "../toolRegistry";
 import type { AgentToolName, AgentCitation } from "../types";
@@ -16,34 +17,15 @@ import { registerXiaozeThreadRoutes } from "./threadRoutes";
 import { type PerceptionAgentRunResult, type PerceptionToolDescriptor, wrapLangChainChatModel } from "./perceptionAgent";
 import { createPlanningAgent, type PlanningApprovalResolver } from "./planningGraph";
 import { runXiaozeSuggest, type XiaozeSuggestContext } from "./suggest";
-import { createDefaultReasoningClassifier, type ReasoningClassifier } from "./reasoningClassifier";
-import { splitAssistantContent, mergeReasoningText } from "./splitAssistantContent";
+import { buildXiaozePlanningToolDescriptors, toOpenAiToolDefinitions } from "./toolCatalog";
+import { isXiaozeDeterministicMode } from "./runtimeMode";
+import { createRunEventSink, serializeTurnSteps, type RunEventSink } from "./runEventSink";
 import {
   createReasoningMessageId,
-  reasoningContentEvent,
-  reasoningEndEvent,
-  reasoningStartEvent,
-  yieldReasoningTurn,
-  type AgUiStreamEvent
-} from "./streamAssistantReply";
-import { buildXiaozePlanningToolDescriptors, toOpenAiToolDefinitions } from "./toolCatalog";
-import { XIAOZE_PROMPT_DEBUG_EVENT } from "./promptDebug";
-import { XIAOZE_TURN_REPLY_EVENT } from "./xiaozeTurnReply";
-import { isXiaozeDeterministicMode } from "./runtimeMode";
-import {
-  turnStateCustomEvent,
-  XiaozeTurnStateTracker,
-  type XiaozeTurnStateStep
-} from "./xiaozeTurnState";
-import { createRunEventSink, type RunEventSink, type RunEventSinkEvent } from "./runEventSink";
-import {
-  assistantShellStartEvent,
-  mapSinkEventToAgUi,
-  runStartedEvent,
-  runTimingEvent,
-  serializeTurnSteps,
-  type RunTimelineContext
-} from "./runTimelineEvents";
+  createXiaozeTurnStream,
+  type AgUiStreamEvent,
+  type XiaozeTurnStream
+} from "./xiaozeTurnStream";
 import { ChatOpenAI } from "@langchain/openai";
 
 export type XiaozeAgUiRequest = Pick<RouteRequest, "headers" | "body" | "requestId">;
@@ -66,147 +48,11 @@ export type XiaozePerceptionAgent = {
   }): Promise<PerceptionAgentRunResult>;
 };
 
-type TurnStreamFlags = {
-  streamedReasoning: boolean;
-  streamedReasoningText: string;
-  streamedAnswer: boolean;
-  streamedAnswerText: string;
-  assistantShellStarted: boolean;
-  reasoningEnded: boolean;
-};
-
-function createTurnStreamFlags(): TurnStreamFlags {
-  return {
-    streamedReasoning: false,
-    streamedReasoningText: "",
-    streamedAnswer: false,
-    streamedAnswerText: "",
-    assistantShellStarted: false,
-    reasoningEnded: false
-  };
-}
-
-function normalizeSinkEventForAgUi(
-  event: RunEventSinkEvent,
-  flags: TurnStreamFlags,
-  reasoningClassifier: ReasoningClassifier
-): RunEventSinkEvent {
-  return reasoningClassifier.normalizeSinkEvent(event, flags);
-}
-
-function normalizeStreamText(text: string) {
-  return text.replace(/\s+/g, " ").trim();
-}
-
-function hasStreamedCompleteAnswer(finalText: string, streamedText: string) {
-  const final = normalizeStreamText(finalText);
-  const streamed = normalizeStreamText(streamedText);
-  if (!final || !streamed) {
-    return false;
-  }
-  if (final === streamed) {
-    return true;
-  }
-  return final.startsWith(streamed) && streamed.length >= final.length * 0.9;
-}
-
-function computeRemainingStreamText(finalText: string, streamedText: string) {
-  if (!finalText.trim()) {
-    return "";
-  }
-  if (!streamedText) {
-    return finalText;
-  }
-  if (finalText.startsWith(streamedText)) {
-    return finalText.slice(streamedText.length);
-  }
-  return finalText;
-}
-
-function needsFullAnswerResync(finalText: string, streamedText: string) {
-  return Boolean(finalText.trim() && streamedText && !finalText.startsWith(streamedText));
-}
-
-function turnReplyCustomEvent(input: {
-  runId: string;
-  messageId: string;
-  reasoningMessageId: string;
-  text: string;
-  reasoning?: string;
-  runSteps?: ReturnType<typeof serializeTurnSteps>;
-}): AgUiStreamEvent {
-  return {
-    event: EventType.CUSTOM,
-    data: {
-      type: EventType.CUSTOM,
-      name: XIAOZE_TURN_REPLY_EVENT,
-      value: {
-        runId: input.runId,
-        messageId: input.messageId,
-        reasoningMessageId: input.reasoningMessageId,
-        text: input.text,
-        reasoning: input.reasoning,
-        runSteps: input.runSteps
-      }
-    }
-  };
-}
-
-async function* yieldMappedSinkEvents(
-  sink: RunEventSink,
-  context: RunTimelineContext,
-  flags: TurnStreamFlags,
-  reasoningClassifier: ReasoningClassifier,
-  turnStateTracker?: XiaozeTurnStateTracker
-) {
-  const events = await sink.drain();
-  for (const event of events) {
-    const normalized = normalizeSinkEventForAgUi(event, flags, reasoningClassifier);
-    if (turnStateTracker) {
-      if (normalized.type === "step_started") {
-        turnStateTracker.onSinkEvent({ type: "step_started", step: normalized.step as XiaozeTurnStateStep });
-      } else if (normalized.type === "step_finished") {
-        turnStateTracker.onSinkEvent({
-          type: "step_finished",
-          stepId: normalized.stepId,
-          status: normalized.status,
-          summary: normalized.summary,
-          durationMs: normalized.durationMs
-        });
-      } else if (normalized.type === "answer_delta") {
-        turnStateTracker.onSinkEvent({ type: "answer_delta", delta: normalized.delta });
-      } else if (normalized.type === "reasoning_delta") {
-        turnStateTracker.onSinkEvent({ type: "reasoning_delta", delta: normalized.delta });
-      }
-    }
-    if (
-      (normalized.type === "tool_call" || normalized.type === "answer_delta") &&
-      !flags.assistantShellStarted
-    ) {
-      flags.assistantShellStarted = true;
-      yield assistantShellStartEvent(context.assistantMessageId);
-    }
-    for (const mapped of mapSinkEventToAgUi(normalized, context)) {
-      yield mapped;
-    }
-    if (turnStateTracker) {
-      const custom = turnStateCustomEvent(turnStateTracker.snapshot());
-      yield {
-        event: EventType.CUSTOM,
-        data: { type: EventType.CUSTOM, ...custom }
-      };
-    }
-  }
-}
-
 async function* pumpAgentRun(input: {
   sink: RunEventSink;
-  context: RunTimelineContext;
+  stream: XiaozeTurnStream;
   run: () => Promise<PerceptionAgentRunResult>;
-  flags: TurnStreamFlags;
   outcome: { result?: PerceptionAgentRunResult; error?: unknown };
-  reasoningClassifier: ReasoningClassifier;
-  turnStateTracker?: XiaozeTurnStateTracker;
 }) {
   let settled = false;
 
@@ -224,7 +70,9 @@ async function* pumpAgentRun(input: {
     });
 
   while (true) {
-    yield* yieldMappedSinkEvents(input.sink, input.context, input.flags, input.reasoningClassifier, input.turnStateTracker);
+    for (const event of await input.sink.drain()) {
+      yield* input.stream.ingest(event);
+    }
     if (settled) {
       const leftover = await input.sink.drain(0);
       if (leftover.length > 0) {
@@ -238,101 +86,12 @@ async function* pumpAgentRun(input: {
   }
 }
 
-function buildAssistantReply(result: Pick<PerceptionAgentRunResult, "text" | "reasoning">) {
-  const raw = result.text.trim();
-  const fallback = splitAssistantContent(raw);
-  const reasoning = mergeReasoningText(result.reasoning, fallback.reasoning) || undefined;
-  return {
-    text: fallback.answer || raw,
-    reasoning
-  };
-}
-
-function* finalizeTurnReply(input: {
-  reply: { text: string; reasoning?: string };
-  reasoningMessageId: string;
-  messageId: string;
-  runId: string;
-  runSteps?: ReturnType<typeof serializeTurnSteps>;
-  flags: TurnStreamFlags;
-  turnStateTracker?: XiaozeTurnStateTracker;
-}) {
-  if (input.reply.reasoning && !input.flags.streamedReasoning) {
-    yield* yieldReasoningTurn({ reasoningMessageId: input.reasoningMessageId, reasoning: input.reply.reasoning });
-  } else if (input.reply.reasoning) {
-    const remainingReasoning = computeRemainingStreamText(
-      input.reply.reasoning,
-      input.flags.streamedReasoningText
-    );
-    if (remainingReasoning) {
-      yield reasoningContentEvent(input.reasoningMessageId, remainingReasoning);
-    }
-  }
-  if (!input.flags.reasoningEnded) {
-    yield reasoningEndEvent(input.reasoningMessageId);
-    input.flags.reasoningEnded = true;
-  }
-
-  const resyncAnswer =
-    needsFullAnswerResync(input.reply.text, input.flags.streamedAnswerText) &&
-    !hasStreamedCompleteAnswer(input.reply.text, input.flags.streamedAnswerText);
-  const remainingAnswer = resyncAnswer
-    ? input.reply.text
-    : computeRemainingStreamText(input.reply.text, input.flags.streamedAnswerText);
-  if (remainingAnswer && !hasStreamedCompleteAnswer(input.reply.text, input.flags.streamedAnswerText)) {
-    if (!input.flags.assistantShellStarted) {
-      yield assistantShellStartEvent(input.messageId);
-      input.flags.assistantShellStarted = true;
-    }
-    yield {
-      event: EventType.TEXT_MESSAGE_CONTENT,
-      data: { type: EventType.TEXT_MESSAGE_CONTENT, messageId: input.messageId, delta: remainingAnswer }
-    };
-    if (!resyncAnswer) {
-      input.flags.streamedAnswerText += remainingAnswer;
-      input.flags.streamedAnswer = true;
-    }
-  }
-  if (input.reply.text || input.flags.streamedAnswer) {
-    yield {
-      event: EventType.TEXT_MESSAGE_END,
-      data: { type: EventType.TEXT_MESSAGE_END, messageId: input.messageId }
-    };
-  }
-  if (input.reply.text.trim()) {
-    yield turnReplyCustomEvent({
-      runId: input.runId,
-      messageId: input.messageId,
-      reasoningMessageId: input.reasoningMessageId,
-      text: input.reply.text,
-      reasoning: input.reply.reasoning,
-      runSteps: input.runSteps
-    });
-    if (input.turnStateTracker) {
-      input.turnStateTracker.markDone({
-        text: input.reply.text,
-        reasoning: input.reply.reasoning,
-        steps: input.runSteps as XiaozeTurnStateStep[] | undefined
-      });
-      const custom = turnStateCustomEvent(
-        input.turnStateTracker.snapshot({ text: input.reply.text, reasoning: input.reply.reasoning })
-      );
-      yield {
-        event: EventType.CUSTOM,
-        data: { type: EventType.CUSTOM, ...custom }
-      };
-    }
-  }
-}
-
 type ResumeDecision = {
   approvalId: string;
   decision: "approve" | "reject";
   editedArgs?: Record<string, unknown>;
   reason?: string;
 };
-
-const XIAOZE_INTERRUPT_EVENT = "on_interrupt";
 
 function readBearerUserId(headers: RouteRequest["headers"]) {
   const header = headers.authorization ?? headers.Authorization;
@@ -472,16 +231,6 @@ function readResumeDecision(body: unknown): ResumeDecision | undefined {
   return undefined;
 }
 
-function buildInterruptValue(interrupt: ApprovalBeginResult) {
-  return {
-    approvalId: interrupt.approvalId,
-    toolCallId: interrupt.toolCallId,
-    toolName: interrupt.toolName,
-    payload: interrupt.payload,
-    citations: interrupt.citations
-  };
-}
-
 function resolveXiaozeModel(env: Pick<ServerEnv, "AGENT_MODEL" | "XIAOZE_MODEL">) {
   return env.XIAOZE_MODEL?.trim() || env.AGENT_MODEL?.trim() || "gpt-4o-mini";
 }
@@ -518,7 +267,8 @@ export function createXiaozeAgUiHandler(options: {
   allowPromptDebug?: boolean;
   resolveModelLabel?: () => string | undefined;
   persistTurn?: (input: PersistXiaozeTurnInput) => Promise<void>;
-  reasoningClassifier?: ReasoningClassifier;
+  /** Rejects runs whose client-supplied threadId addresses another user's thread. */
+  assertThreadAccess?: (input: { auth: AuthContext; threadId: string }) => Promise<void>;
 }) {
   return async function handleXiaozeAgUi(request: XiaozeAgUiRequest): Promise<RouteResponse> {
     const auth = await options.resolveAuth(request);
@@ -526,14 +276,14 @@ export function createXiaozeAgUiHandler(options: {
       throw new ApiError("UNAUTHENTICATED", "Authentication is required for Xiaoze.", 401);
     }
     const verifiedAuth = auth;
-    const reasoningClassifier =
-      options.reasoningClassifier ??
-      createDefaultReasoningClassifier({ XIAOZE_REASONING_FALLBACK_HEURISTIC: false });
 
     const threadId =
       typeof (request.body as { threadId?: unknown }).threadId === "string"
         ? String((request.body as { threadId: string }).threadId)
         : randomUUID();
+    if (options.assertThreadAccess) {
+      await options.assertThreadAccess({ auth: verifiedAuth, threadId });
+    }
     const runId =
       typeof (request.body as { runId?: unknown }).runId === "string"
         ? String((request.body as { runId: string }).runId)
@@ -551,6 +301,7 @@ export function createXiaozeAgUiHandler(options: {
     };
     const agent = options.createAgent(executionContext);
     const approvalChain = options.approvalChain;
+    const activeResume = approvalChain ? resumeDecision : undefined;
 
     async function persistSuccessfulTurn(persistInput: {
       userMessage?: { id: string; content: string };
@@ -581,133 +332,43 @@ export function createXiaozeAgUiHandler(options: {
       const runStartedAtMs = Date.now();
       const messageId = randomUUID();
       const reasoningMessageId = createReasoningMessageId();
-      const timelineContext: RunTimelineContext = {
+      const stream = createXiaozeTurnStream({
         threadId,
         runId,
         assistantMessageId: messageId,
         reasoningMessageId,
         runStartedAtMs
-      };
-
-      yield runStartedEvent({ threadId, runId, runStartedAtMs });
-      yield reasoningStartEvent(reasoningMessageId);
-      const streamFlags = createTurnStreamFlags();
-      const turnStateTracker = new XiaozeTurnStateTracker({
-        runId,
-        messageId,
-        reasoningMessageId
       });
-      yield {
-        event: EventType.CUSTOM,
-        data: { type: EventType.CUSTOM, ...turnStateCustomEvent(turnStateTracker.snapshot()) }
-      };
-      yield assistantShellStartEvent(messageId);
-      streamFlags.assistantShellStarted = true;
+
+      yield* stream.open();
 
       try {
-        if (resumeDecision && approvalChain) {
-          try {
-            const resumed = await agent.run({
-              message: "",
-              context: {
-                projectId: pageContext.projectId,
-                pageKey: pageContext.pageKey
-              },
-              threadId,
-              resume: {
-                approvalId: resumeDecision.approvalId,
-                decision: resumeDecision.decision,
-                editedArgs: resumeDecision.editedArgs,
-                reason: resumeDecision.reason
-              }
-            });
-            const reply = buildAssistantReply(resumed);
-            yield* yieldReasoningTurn({ reasoningMessageId, reasoning: reply.reasoning });
-            if (reply.text) {
-              yield {
-                event: EventType.TEXT_MESSAGE_CONTENT,
-                data: { type: EventType.TEXT_MESSAGE_CONTENT, messageId, delta: reply.text }
-              };
-              yield {
-                event: EventType.TEXT_MESSAGE_END,
-                data: { type: EventType.TEXT_MESSAGE_END, messageId }
-              };
-            }
-            await persistSuccessfulTurn({
-              assistantMessage: reply.text
-                ? {
-                    id: messageId,
-                    content: reply.text,
-                    citations: resumed.citations,
-                    runSteps: resumed.runSteps ? serializeTurnSteps(resumed.runSteps) : undefined
-                  }
-                : undefined,
-              reasoningMessage: reply.reasoning ? { id: reasoningMessageId, content: reply.reasoning } : undefined
-            });
-            const durationMs = Math.max(0, Date.now() - runStartedAtMs);
-            yield runTimingEvent({
-              runId,
-              reasoningMessageId,
-              startedAt: runStartedAtMs,
-              durationMs,
-              phase: "finished"
-            });
-            yield {
-              event: EventType.RUN_FINISHED,
-              data: { type: EventType.RUN_FINISHED, threadId, runId, outcome: { type: "success" } }
-            };
-          } catch (error) {
-            if (error instanceof ApiError && error.code === "FORBIDDEN") {
-              const safeMessage = "You are not permitted to perform that action.";
-              yield reasoningEndEvent(reasoningMessageId);
-              yield {
-                event: EventType.TEXT_MESSAGE_CONTENT,
-                data: { type: EventType.TEXT_MESSAGE_CONTENT, messageId, delta: safeMessage }
-              };
-              yield {
-                event: EventType.TEXT_MESSAGE_END,
-                data: { type: EventType.TEXT_MESSAGE_END, messageId }
-              };
-              await persistSuccessfulTurn({
-                assistantMessage: { id: messageId, content: safeMessage }
-              });
-              yield runTimingEvent({
-                runId,
-                reasoningMessageId,
-                startedAt: runStartedAtMs,
-                durationMs: Math.max(0, Date.now() - runStartedAtMs),
-                phase: "finished"
-              });
-              yield {
-                event: EventType.RUN_FINISHED,
-                data: { type: EventType.RUN_FINISHED, threadId, runId, outcome: { type: "success" } }
-              };
-            } else {
-              throw error;
-            }
-          }
-          return;
-        }
-
         const sink = createRunEventSink();
         const outcome: { result?: PerceptionAgentRunResult; error?: unknown } = {};
         yield* pumpAgentRun({
           sink,
-          context: timelineContext,
-          flags: streamFlags,
+          stream,
           outcome,
-          reasoningClassifier,
-          turnStateTracker,
           run: () =>
             agent.run({
-              message,
+              message: activeResume ? "" : message,
               context: {
                 projectId: pageContext.projectId,
                 pageKey: pageContext.pageKey
               },
               threadId,
               includePromptDebug,
-              sink
+              sink,
+              ...(activeResume
+                ? {
+                    resume: {
+                      approvalId: activeResume.approvalId,
+                      decision: activeResume.decision,
+                      editedArgs: activeResume.editedArgs,
+                      reason: activeResume.reason
+                    }
+                  }
+                : {})
             })
         });
 
@@ -717,7 +378,6 @@ export function createXiaozeAgUiHandler(options: {
         const result = outcome.result!;
 
         if (result.interrupt && approvalChain) {
-          yield reasoningEndEvent(reasoningMessageId);
           const interrupt = await approvalChain.beginApproval({
             auth: verifiedAuth,
             requestId: request.requestId,
@@ -728,156 +388,49 @@ export function createXiaozeAgUiHandler(options: {
             pageKey: pageContext.pageKey,
             projectId: pageContext.projectId
           });
-          const interruptValue = buildInterruptValue(interrupt);
-          const frontendToolCallId = randomUUID();
-
-          yield {
-            event: EventType.TOOL_CALL_START,
-            data: {
-              type: EventType.TOOL_CALL_START,
-              toolCallId: frontendToolCallId,
-              toolCallName: "xiaoze_approval",
-              parentMessageId: messageId
-            }
-          };
-          yield {
-            event: EventType.TOOL_CALL_ARGS,
-            data: {
-              type: EventType.TOOL_CALL_ARGS,
-              toolCallId: frontendToolCallId,
-              delta: JSON.stringify(interruptValue)
-            }
-          };
-          yield {
-            event: EventType.TOOL_CALL_END,
-            data: { type: EventType.TOOL_CALL_END, toolCallId: frontendToolCallId }
-          };
-          yield {
-            event: EventType.CUSTOM,
-            data: { type: EventType.CUSTOM, name: XIAOZE_INTERRUPT_EVENT, value: interruptValue }
-          };
-          yield runTimingEvent({
-            runId,
-            reasoningMessageId,
-            startedAt: runStartedAtMs,
-            durationMs: Math.max(0, Date.now() - runStartedAtMs),
-            phase: "finished"
-          });
-          yield {
-            event: EventType.RUN_FINISHED,
-            data: {
-              type: EventType.RUN_FINISHED,
-              threadId,
-              runId,
-              outcome: {
-                type: "interrupt",
-                interrupts: [
-                  {
-                    id: interrupt.approvalId,
-                    reason: "tool_call",
-                    toolCallId: frontendToolCallId,
-                    message: "Approval is required before executing this action.",
-                    metadata: interruptValue
-                  }
-                ]
-              }
-            }
-          };
-          if (userMessageEntry) {
+          yield* stream.interrupt(interrupt);
+          if (!activeResume && userMessageEntry) {
             await persistSuccessfulTurn({ userMessage: userMessageEntry });
           }
           return;
         }
 
-        const reply = buildAssistantReply(result);
-        if (result.promptDebug) {
-          const modelLabel = options.resolveModelLabel?.();
-          yield {
-            event: EventType.CUSTOM,
-            data: {
-              type: EventType.CUSTOM,
-              name: XIAOZE_PROMPT_DEBUG_EVENT,
-              value: {
-                runId,
-                messageId,
-                snapshot: modelLabel ? { ...result.promptDebug, model: modelLabel } : result.promptDebug
-              }
-            }
-          };
-        }
-        const runSteps = result.runSteps ? serializeTurnSteps(result.runSteps) : undefined;
-        yield* finalizeTurnReply({
-          reply,
-          reasoningMessageId,
-          messageId,
-          runId,
-          runSteps,
-          flags: streamFlags,
-          turnStateTracker
+        const finalized = stream.finalize({
+          text: result.text,
+          reasoning: result.reasoning,
+          runSteps: result.runSteps,
+          promptDebug: result.promptDebug,
+          promptDebugModel: options.resolveModelLabel?.()
         });
+        yield* finalized.events;
         await persistSuccessfulTurn({
-          userMessage: userMessageEntry,
-          assistantMessage: reply.text
-            ? { id: messageId, content: reply.text, citations: result.citations, runSteps }
+          userMessage: activeResume ? undefined : userMessageEntry,
+          assistantMessage: finalized.reply.text
+            ? {
+                id: messageId,
+                content: finalized.reply.text,
+                citations: result.citations,
+                runSteps: finalized.runSteps
+              }
             : undefined,
-          reasoningMessage: reply.reasoning ? { id: reasoningMessageId, content: reply.reasoning } : undefined
+          reasoningMessage: finalized.reply.reasoning
+            ? { id: reasoningMessageId, content: finalized.reply.reasoning }
+            : undefined
         });
-        yield runTimingEvent({
-          runId,
-          reasoningMessageId,
-          startedAt: runStartedAtMs,
-          durationMs: Math.max(0, Date.now() - runStartedAtMs),
-          phase: "finished"
-        });
-        yield {
-          event: EventType.RUN_FINISHED,
-          data: { type: EventType.RUN_FINISHED, threadId, runId, outcome: { type: "success" } }
-        };
+        yield* stream.complete();
       } catch (error) {
         if (error instanceof ApiError && error.code === "FORBIDDEN") {
           const safeMessage = "You are not permitted to perform that action.";
-          yield reasoningEndEvent(reasoningMessageId);
-          yield {
-            event: EventType.TEXT_MESSAGE_CONTENT,
-            data: { type: EventType.TEXT_MESSAGE_CONTENT, messageId, delta: safeMessage }
-          };
-          yield {
-            event: EventType.TEXT_MESSAGE_END,
-            data: { type: EventType.TEXT_MESSAGE_END, messageId }
-          };
+          yield* stream.forbidden(safeMessage);
           await persistSuccessfulTurn({
-            userMessage: userMessageEntry,
+            userMessage: activeResume ? undefined : userMessageEntry,
             assistantMessage: { id: messageId, content: safeMessage }
           });
-          yield runTimingEvent({
-            runId,
-            reasoningMessageId,
-            startedAt: runStartedAtMs,
-            durationMs: Math.max(0, Date.now() - runStartedAtMs),
-            phase: "finished"
-          });
-          yield {
-            event: EventType.RUN_FINISHED,
-            data: { type: EventType.RUN_FINISHED, threadId, runId, outcome: { type: "success" } }
-          };
+          yield* stream.complete();
           return;
         }
 
-        yield reasoningEndEvent(reasoningMessageId);
-        yield runTimingEvent({
-          runId,
-          reasoningMessageId,
-          startedAt: runStartedAtMs,
-          durationMs: Math.max(0, Date.now() - runStartedAtMs),
-          phase: "error"
-        });
-        yield {
-          event: EventType.RUN_ERROR,
-          data: {
-            type: EventType.RUN_ERROR,
-            message: error instanceof Error ? error.message : "Xiaoze run failed."
-          }
-        };
+        yield* stream.fail(error);
       }
     }
 
@@ -900,6 +453,20 @@ export function createDeterministicPerceptionModel(): import("./perceptionAgent"
         if (forbidden) {
           return {
             toolCalls: [{ id: "tc-forbidden", name: "perception.getProjectOverview", args: { projectId: "secret-project" } }]
+          };
+        }
+        // Deterministic knowledge grounding: `知识库检索:<keywords>` pins the
+        // query; any knowledge-base mention falls back to the full message.
+        const knowledgeQueryMatch = text.match(/(?:知识库检索|knowledge search)[:：]\s*(.+)/i);
+        if (knowledgeQueryMatch || /知识库|knowledge base/i.test(text)) {
+          return {
+            toolCalls: [
+              {
+                id: "tc-knowledge",
+                name: "knowledge.search",
+                args: { query: (knowledgeQueryMatch?.[1] ?? text).trim() }
+              }
+            ]
           };
         }
         const changeMatch = text.match(/(?:set|change)\s+([a-z0-9-]+)\s+(?:to|=)\s+(\S+)/i);
@@ -932,7 +499,11 @@ export function createDeterministicPerceptionModel(): import("./perceptionAgent"
       if (payload.error === "FORBIDDEN") {
         return { content: "You are not permitted to access that project. I cannot share its data." };
       }
-      return { content: `${payload.summary ?? "Grounded summary."} [citation:parameter]` };
+      const citationType =
+        Array.isArray(payload.citations) && typeof payload.citations[0]?.type === "string"
+          ? payload.citations[0].type
+          : "parameter";
+      return { content: `${payload.summary ?? "Grounded summary."} [citation:${citationType}]` };
     }
   };
 }
@@ -957,9 +528,10 @@ export function createXiaozeAgentFactory(options: {
 }) {
   const registry =
     options.toolRegistry ?? createAgentToolRegistry({ db: options.db, objectStore: options.objectStore });
-  const perceptionTools = registry.list().filter((tool) => tool.name.startsWith("perception."));
-  const actionTools = registry.list().filter((tool) => tool.name.startsWith("action."));
-  const planningToolDescriptors = buildXiaozePlanningToolDescriptors([...perceptionTools, ...actionTools]);
+  // Read tools (perception + knowledge) bind before approval-gated action tools.
+  const readTools = registry.list().filter((tool) => !tool.requiresApproval);
+  const actionTools = registry.list().filter((tool) => tool.requiresApproval);
+  const planningToolDescriptors = buildXiaozePlanningToolDescriptors([...readTools, ...actionTools]);
   const modelFactory = options.modelFactory ?? createProductionModel;
   const checkpointer = options.checkpointer ?? resolveXiaozeCheckpointerFromEnv(options.env);
   const approvalResolver =
@@ -1017,6 +589,7 @@ export function registerXiaozeRoutes(
     createAgent?: (context: AgentToolExecutionContext) => XiaozePerceptionAgent;
     approvalChain?: XiaozeApprovalChain;
     objectStore?: ObjectStore;
+    knowledgeEmbeddingClient?: KnowledgeEmbeddingClient;
   }
 ) {
   if (!options.db) {
@@ -1032,8 +605,11 @@ export function registerXiaozeRoutes(
     XIAOZE_CHECKPOINTER: "memory",
     XIAOZE_REASONING_FALLBACK_HEURISTIC: false
   };
-  const reasoningClassifier = createDefaultReasoningClassifier(envDefaults);
-  const registry = createAgentToolRegistry({ db: options.db, objectStore: options.objectStore });
+  const registry = createAgentToolRegistry({
+    db: options.db,
+    objectStore: options.objectStore,
+    knowledgeEmbeddingClient: options.knowledgeEmbeddingClient
+  });
   const orchestrator = createAgentOrchestrator({ db: options.db, toolRegistry: registry });
   const createAgent =
     options.createAgent ??
@@ -1066,7 +642,12 @@ export function registerXiaozeRoutes(
     approvalChain,
     persistTurn,
     resolveModelLabel: options.env ? () => resolveXiaozeModel(options.env!) : undefined,
-    reasoningClassifier
+    assertThreadAccess: async ({ auth, threadId }) => {
+      const session = await getAgentSession(options.db!, auth.organization.id, threadId);
+      if (session && session.actorUserId !== auth.user.id) {
+        throw new ApiError("FORBIDDEN", "This Xiaoze thread belongs to another user.", 403, { threadId });
+      }
+    }
   });
 
   router.post("/api/v1/agent/xiaoze", async (request) => handler(request));

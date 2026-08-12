@@ -24,8 +24,7 @@ import { invokeModelTurnWithStreaming, invokeModelWithStreaming } from "./percep
 import { mergeReasoningText } from "./splitAssistantContent";
 import { formatToolCatalogForSystemPrompt, getXiaozeToolLabel } from "./toolCatalog";
 import { buildXiaozePromptDebugSnapshot } from "./promptDebug";
-import { startRunStep, type RunEventSink } from "./runEventSink";
-import { createToolCallId } from "./runTimelineEvents";
+import { createToolCallId, startRunStep, type RunEventSink } from "./runEventSink";
 import { XIAOZE_PROMPT_VERSION, XIAOZE_SYSTEM_PROMPT } from "./xiaozePrompt";
 
 export type PlanningResumeDecision = Pick<ApprovalResolveInput, "approvalId" | "decision" | "editedArgs" | "reason">;
@@ -353,16 +352,14 @@ export function createPlanningAgent(options: {
       throw new Error("Xiaoze request context is required to resolve approvals.");
     }
 
-    const resumed = await options.approvalResolver.resolveApproval({
-      auth: requestContext.auth,
-      requestId: requestContext.requestId,
-      approvalId: resumeDecision.approvalId,
-      decision: resumeDecision.decision,
-      editedArgs: resumeDecision.editedArgs,
-      reason: resumeDecision.reason
-    });
-
     if (resumeDecision.decision === "reject") {
+      const resumed = await options.approvalResolver.resolveApproval({
+        auth: requestContext.auth,
+        requestId: requestContext.requestId,
+        approvalId: resumeDecision.approvalId,
+        decision: "reject",
+        reason: resumeDecision.reason
+      });
       return {
         text: resumed.text,
         halted: true,
@@ -371,6 +368,29 @@ export function createPlanningAgent(options: {
         step: state.step + 1
       };
     }
+
+    // Approved execution shows up on the step timeline like any other tool run.
+    const { step, finish } = startRunStep({
+      kind: "tool",
+      label: getXiaozeToolLabel(pending.name),
+      toolName: pending.name
+    });
+    pushSink(config, { type: "step_started", step });
+    let resumed: Awaited<ReturnType<typeof options.approvalResolver.resolveApproval>>;
+    try {
+      resumed = await options.approvalResolver.resolveApproval({
+        auth: requestContext.auth,
+        requestId: requestContext.requestId,
+        approvalId: resumeDecision.approvalId,
+        decision: resumeDecision.decision,
+        editedArgs: resumeDecision.editedArgs,
+        reason: resumeDecision.reason
+      });
+    } catch (error) {
+      pushSink(config, finish({ status: "failed", summary: error instanceof Error ? error.message : "Tool failed." }));
+      throw error;
+    }
+    pushSink(config, finish({ status: "succeeded", summary: resumed.text }));
 
     const messages = [
       ...state.messages,
@@ -468,7 +488,13 @@ export function createPlanningAgent(options: {
         sink: input.sink,
         requestContext: input.requestContext
       };
-      const config = { configurable: { thread_id: input.threadId, [XIAOZE_RUN_SCOPE_KEY]: runScope } };
+      // The client supplies threadId, so the checkpoint namespace must carry the
+      // organization and user: otherwise replaying someone else's threadId would
+      // resume their conversation state across user or tenant boundaries.
+      const checkpointThreadId = input.requestContext
+        ? `${input.requestContext.auth.organization.id}:${input.requestContext.auth.user.id}:${input.threadId}`
+        : input.threadId;
+      const config = { configurable: { thread_id: checkpointThreadId, [XIAOZE_RUN_SCOPE_KEY]: runScope } };
       const tools = options.listTools();
       const buildPromptDebug = (llmMessages: unknown[]) =>
         input.includePromptDebug
@@ -483,7 +509,7 @@ export function createPlanningAgent(options: {
             })
           : undefined;
 
-      await checkpointer.put(input.threadId, {
+      await checkpointer.put(checkpointThreadId, {
         planSteps: ["Understand user intent", "Perceive relevant data", "Plan and act with approval"],
         step: 0
       });

@@ -1,6 +1,6 @@
 # App Shell Decomposition (Architecture Review Candidates 1 + 2)
 
-- **Status:** Active — Wave 1 landed (`34305cc9`); Wave 2 landed on `refactor/app-state-module`
+- **Status:** Active — Wave 1 landed (`34305cc9`); Wave 2 landed via PR #324; Wave 4 landed via PR #342 (executed before Wave 3: pure verbatim move, and shrinking the shell first made the Wave 3 refactor smaller); Wave 3 landed on `refactor/app-runtime-composition`. Remaining: docs gate closeout + the deferred `page.key` data-loading descent (tracked below)
 - **Branch:** Wave 1 on `refactor/extract-app-state` (from `main` @ `8ab19113`); Wave 2 onward on `refactor/app-state-module` (from Wave 1 tip) after the original branch name was contested by parallel sessions sharing one worktree
 - **Owner:** Frontend
 - **Scope source:** 2026-08-12 architecture review. Candidate 1 (decompose the `App.tsx` prototype shell) plus Candidate 2 (move domain types out of `mockData.ts`). Backend candidates 3–4 are owned by `2026-08-12-database-layer-deepening.md`; candidate 5 remains tracked by TD-069; candidate 6 is not scheduled.
@@ -31,18 +31,24 @@ Each wave is one commit on the plan branch, gated by `npm run build` plus the ta
 - Dead exported types `ParameterValueDraft` / `ParameterEditorDraft` (zero importers) stay in `App.tsx` untouched; their disposal is Wave 4 cleanup at the earliest.
 - Gate (run): app-project `tsc --noEmit` clean; reducer suites (94 tests), page suites (73), `App.test.tsx` (118), `vite build`; mock-mode browser spot-check of `/logs`, `/log-dashboard`, `/parameter-review`, `/parameter-submissions`, `/user-permissions`, `/parameters` (0 console errors; review advance interaction exercised; evidence `work/ui-checks/appstate-*.png`).
 
-### Wave 3 — `createAppRuntime()` composition root (Candidate 1, step B)
+### Wave 3 — `createAppRuntime()` composition root (Candidate 1, step B) — **landed**
 
-- Create `src/app/appRuntime.ts`: an `AppRuntime` record of the ~12 port clients `AppShell` currently builds inline (parameter, topology, dashboard, log analysis, product feedback, DTS reload, parameter initialization, debugging gateway, debugging admin, user governance, notifications, auth), plus `createAppRuntime(mode, overrides?)` reusing the existing `resolve*Runtime` helpers where they exist.
-- Collapse `AppProps`' 14 injection props into `runtime?: Partial<AppRuntime>`; update `App.test.tsx` call sites mechanically (inject the same doubles through `runtime`). Thread one `runtime` value through `PageProps` in place of the six repository fields where that reduces prop count without changing page behavior; collapse the duplicated `<PageRouter>` prop lists.
-- Gate: `npm run build`; `npm test -- src/App.test src/app/`.
+- **As executed (branch `refactor/app-runtime-composition`):** `src/app/appRuntime.ts` owns `AppRuntime` (13 adapters incl. the knowledge repository added since planning, plus `authClient` — `WiseEffAuthClient` moved here) and `createAppRuntime(mode, deps, overrides)`; the two state-reading mock adapters receive `{ getState, mockParameterRuntime }` as explicit deps. `AppShell`'s 11 inline `useMemo` mode ternaries collapse into one `createAppRuntime` call destructured back into the original client identifiers, so the rest of the shell is untouched.
+- **Deviation from the planned `AppProps` collapse, recorded deliberately:** `AppProps` keeps its flat per-port override fields instead of becoming `runtime?: Partial<AppRuntime>`. The flat fields are the test-injection interface (~74 injection sites across `App.test.tsx` and the logsPage suites); the interface is the test surface, and rewriting every call site for a 14→3 prop-count win would be churn without leverage. The flat props now feed `createAppRuntime`'s `overrides` — depth moved inside; the interface stayed put. `App.test.tsx` passes unchanged (118/118), which is the point.
+- `PageProps` does collapse: the eight adapter fields (`debuggingGateway`, `parameterTopologyRepository`, `listParameterConfigSets`, `productFeedbackRepository`, `knowledgeRepository`, `dtsReloadRepository`, `parameterInitializationRepository`, `userGovernanceActions`) become one optional `runtime: AppRuntime`; `PageRouter` re-derives same-named locals so the route cases stay verbatim; `ParameterReviewPage` reads its initialization repository from `runtime`; the duplicated `<PageRouter>` prop lists shrink by 7 lines each.
+- Gate (run): app-project `tsc --noEmit` clean; `appRuntime.test.ts` (4 — per-port mode selection, override precedence incl. `null` DTS reload, mock state threading); core suites 331/331 with `App.test.tsx` unchanged; `vite build`; mock-mode browser spot-check.
 
-### Wave 4 — Move log-analysis and parameter-review surfaces into `src/features/` (Candidate 1, step C)
+### Wave 4 — Move log-analysis and parameter-review surfaces into `src/features/` (Candidate 1, step C) — **landed**
 
-- `src/features/log-analysis/`: `LogDashboardPage`, `LogsPage`, the 12 log panel components (`UploadLogDialog`, `RawLogViewer`, `EvidenceChainPanel`, `LogConclusionCard`, …), and pure helpers (`parseLogLine`, `createEmptyLogRecord`, `isSupportedLogFile`) — ~1400 lines out of `App.tsx`.
-- `src/features/parameter-review/`: `ParameterReviewPage`, `ParameterSubmissionsPage`, `RejectReviewDialog`, the submission-history view-model block, with the pure diff builders in a `submissionHistoryDiff.ts` — ~1330 lines out of `App.tsx`.
-- `src/app/routes.tsx` imports these pages directly; the page-component props disappear from `PageRouterProps`. Existing test files keep passing unchanged (they render `<App />`, which now composes the moved modules).
-- Gate: `npm run build`; `npm test -- src/App.test src/logsPage src/features/log-analysis src/features/parameter-review`.
+- **As executed:** `src/features/log-analysis/{LogsPage,LogDashboardPage}.tsx` (page + dialogs + the 11 log presentation components + `parseLogLine`/`classNames`/`logStatusLabels`/`createEmptyLogRecord`, ~1,459 lines) and `src/features/parameter-review/{ParameterReviewPage,ParameterSubmissionsPage,submissionHistoryDiff,reviewUi}.tsx` (~1,468 lines; `reviewUi` holds the App-variant `WorkbenchLayout`/`MetricCard`/`StatusBadge`/`VerticalTimeline` plus workflow text helpers).
+- Duplicate atoms died instead of moving: moved code now uses `@/workbenchUi`'s identical `riskLabels`/`getContextQuery`/`SectionLabel`; `PanelHeader` and the richer empty state (renamed `EmptyStateCard` — the sole non-verbatim rename, 5 call sites) joined `workbenchUi.tsx` as the shared home. The App-variant `WorkbenchLayout`/`EmptyState` differ structurally from `workbenchUi`'s (aria-label / Empty primitives), so they were relocated, not merged.
+- `src/app/routes.tsx` imports the pages and `LinearTemplateHome` directly; `HomePage` and the `LogsPageWithRuntime` wrapper are deleted (the mock-mode `logActions` strip now lives inline in the `logs` case); `PageRouterProps` keeps only `DebuggingAdminPage` (its wrapper carries shell-owned catalog client + permissions until Wave 3).
+- `App.tsx` lands at **1,566 lines** (from 4,524 after Wave 2; original 6,092), beating the ~1,800 goal before Wave 3 has run; `App.test.tsx` wall time dropped from ~182s to ~21s.
+- Gate (run): app-project `tsc --noEmit` clean; logsPage suites (63), reducer + page suites (236), `App.test.tsx` (118), `vite build`, mock-mode browser spot-check.
+
+### Deferred — page-owned data loading (not yet scheduled)
+
+`AppShell` still runs four `page.key === "…"`-guarded data-loading effects (parameter-home dashboard, user-permissions hydrate, node-debugging refresh, initialization refresh). Moving them into their pages removes the last per-feature knowledge from the shell; it touches page components, so it ships as its own wave with page-level tests. If this plan closes before that lands, record it in `tech-debt-tracker.md`.
 
 ## Verification
 

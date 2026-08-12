@@ -79,6 +79,8 @@ export function registerAuditRoutes(
     const body = auditBodySchema.parse(request.body);
     const id = randomUUID();
 
+    // Stays on the direct path (ratchet allowlist): for this endpoint the audit
+    // event IS the domain write — there is nothing else to be atomic with.
     await createAuditEvent(options.db, {
       id,
       organizationId: auth.organization.id,

@@ -1,8 +1,9 @@
 import type {
   KnowledgeContentForm,
   KnowledgeEntry,
+  KnowledgeIndexHealth,
   KnowledgeRevision,
-  KnowledgeSearchResult,
+  KnowledgeSearchResponse,
   KnowledgeStatus
 } from "@/domain/knowledge/types";
 
@@ -60,6 +61,11 @@ export interface KnowledgeRepository {
   hardDelete(entryId: string): Promise<void>;
   listRevisions(entryId: string): Promise<KnowledgeRevision[]>;
   restoreRevision(entryId: string, revisionId: string, expectedHeadRevisionNumber: number): Promise<KnowledgeEntry>;
-  search(q: string): Promise<KnowledgeSearchResult[]>;
+  /** Hybrid search response: items plus the retrieval mode that actually ran. */
+  search(q: string): Promise<KnowledgeSearchResponse>;
   getFileObjectUrl(entryId: string): Promise<string>;
+  /** Index health governance surface (knowledge:manage). */
+  getIndexHealth(): Promise<KnowledgeIndexHealth>;
+  retryEntryIndex(entryId: string): Promise<void>;
+  rebuildIndex(): Promise<{ enqueued: number }>;
 }

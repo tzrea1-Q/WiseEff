@@ -66,6 +66,24 @@ export type KnowledgeSearchResultDto = {
   tags: string[];
   excerpt: string;
   updatedAt: string;
+  /** Head revision at match time — citation-ready deep-link identity. */
+  revisionId: string | null;
+};
+
+export const knowledgeRetrievalModes = ["semantic_fts", "fts_only"] as const;
+export type KnowledgeRetrievalMode = (typeof knowledgeRetrievalModes)[number];
+
+/** Honest retrieval-mode report: what actually ran for this query and why. */
+export type KnowledgeRetrievalInfo = {
+  mode: KnowledgeRetrievalMode;
+  vectorAvailable: boolean;
+  embeddingConfigured: boolean;
+  degradedReason?: string;
+};
+
+export type KnowledgeSearchResponseDto = {
+  items: KnowledgeSearchResultDto[];
+  retrieval: KnowledgeRetrievalInfo;
 };
 
 export type ListKnowledgeEntriesQuery = {

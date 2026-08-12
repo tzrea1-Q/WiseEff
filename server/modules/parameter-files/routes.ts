@@ -1,9 +1,10 @@
 import { z } from "zod";
 
+import { asAuditTx, withAuditedWrite } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import { canAdminParameters, canEditParameters, canViewParameters } from "../parameters/policy";
-import { listOpenConflicts } from "../parameters/repository";
+import { listOpenConflicts } from "../parameters/fileSyncConflictRepository";
 import { submitStructuredEdits } from "../parameters/service";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -427,7 +428,12 @@ export function registerParameterFileRoutes(
     if (!versionId) {
       throw new ApiError("CONFLICT", "Project parameter file has no synced version.", 409, { fileId: params.fileId });
     }
-    const summary = await syncFileVersion(db, auth, { fileId: file.id, versionId }, { requestId: request.requestId });
+    // Manual re-sync previously ran its draft/binding/conflict writes and audits
+    // auto-committed; one audited write makes the whole sync atomic (ADR-0027).
+    const summary = await withAuditedWrite(db, auth, { requestId: request.requestId }, async (tx) => ({
+      result: await syncFileVersion(asAuditTx(tx), auth, { fileId: file.id, versionId }, { requestId: request.requestId }),
+      audit: null
+    }));
 
     return { status: 200, body: { item: summary } };
   });
@@ -455,7 +461,7 @@ export function registerParameterFileRoutes(
       conflictId: params.conflictId,
       resolution: body.resolution,
       reason: body.reason
-    });
+    }, { requestId: request.requestId });
 
     return { status: 200, body: { item } };
   });
@@ -494,7 +500,7 @@ export function registerParameterFileRoutes(
       resolution: body.resolution,
       conflictIds: body.conflictIds,
       reason: body.reason
-    });
+    }, { requestId: request.requestId });
 
     return { status: 200, body: result };
   });

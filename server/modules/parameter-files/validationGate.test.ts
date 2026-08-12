@@ -1,142 +1,88 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthContext } from "../auth/types";
-import type { ObjectStore } from "../logs/objectStore";
-import type { Database, QueryResult, Queryable } from "../../shared/database/client";
+import { makeTestAuthContext } from "../../testing/authContext";
+import { createMemoryObjectStore, type MemoryObjectStore } from "../../testing/objectStore";
+import {
+  createInMemoryTestDatabase,
+  isTestDatabaseAvailable,
+  type InMemoryTestDatabase
+} from "../../testing/testDatabase";
+import { seedCoreGraph } from "../../testing/fixtures";
+import { addConfigSetFile, createConfigSet } from "./configSetService";
 import { createStubDtcValidator } from "./dtcValidator";
+import { uploadProjectParameterFile } from "./service";
 import { runValidationGate } from "./validationGate";
 
-type QueryCall = {
-  text: string;
-  values: unknown[];
-};
+const databaseAvailable = await isTestDatabaseAvailable();
 
-type QueuedResult = unknown[] | ((call: QueryCall) => unknown[]);
-
-function createFakeDb(results: QueuedResult[] = []) {
-  const txCalls: QueryCall[] = [];
-
-  const runQuery = async <Row,>(target: QueryCall[], text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
-    const call = { text, values };
-    target.push(call);
-    const next = results.shift() ?? [];
-    const rows = typeof next === "function" ? next(call) : next;
-    return { rows: rows as Row[], rowCount: rows.length };
-  };
-
-  const tx: Queryable = {
-    query: (text, values = []) => runQuery(txCalls, text, values)
-  };
-  const db: Database = {
-    query: (text, values = []) => runQuery(txCalls, text, values),
-    transaction: async <T,>(fn: (queryable: Queryable) => Promise<T>) => fn(tx)
-  };
-
-  return { db, txCalls };
-}
+const boardSource = "/dts-v1/;\n/ {\n\tboard_id = <0>;\n};\n";
 
 function adminAuth(overrides: Partial<AuthContext> = {}): AuthContext {
   return {
-    user: {
-      id: "user-1",
+    ...makeTestAuthContext({
+      userId: "user-1",
       organizationId: "org-1",
       name: "Riley Chen",
       email: "riley@example.com",
-      title: "Admin",
-      isActive: true
-    },
-    organization: { id: "org-1", name: "ChargeLab" },
-    roles: [{ projectId: null, roleId: "admin" }],
-    permissions: ["admin:access"],
+      organizationName: "ChargeLab",
+      roles: [{ projectId: null, roleId: "admin" }],
+      permissions: ["admin:access"]
+    }),
     ...overrides
   };
 }
 
-function configSetRow(overrides: Record<string, unknown> = {}) {
-  const timestamp = "2026-07-14T09:00:00.000Z";
-  return {
-    id: "dcs-1",
-    organization_id: "org-1",
-    project_id: "project-1",
-    name: "board-a",
-    description: null,
-    derived_from_id: null,
-    created_at: timestamp,
-    updated_at: timestamp,
-    ...overrides
-  };
-}
+describe.skipIf(!databaseAvailable)("runValidationGate", () => {
+  let db: InMemoryTestDatabase;
+  let objectStore: MemoryObjectStore;
 
-function memberFileRow(overrides: Record<string, unknown> = {}) {
-  return {
-    file_id: "file-1",
-    file_name: "board-a.dts",
-    current_version_id: "fv-1",
-    version_number: 3,
-    ...overrides
-  };
-}
+  beforeEach(async () => {
+    db = await createInMemoryTestDatabase();
+    objectStore = createMemoryObjectStore();
+    await seedCoreGraph(db, {
+      organization: { id: "org-1", name: "ChargeLab" },
+      users: [{ id: "user-1", name: "Riley Chen", email: "riley@example.com" }],
+      projects: [{ id: "project-1", name: "Aurora", code: "AUR" }]
+    });
+  });
 
-function fileRow(overrides: Record<string, unknown> = {}) {
-  const timestamp = "2026-07-14T09:00:00.000Z";
-  return {
-    id: "file-1",
-    organization_id: "org-1",
-    project_id: "project-1",
-    file_name: "board-a.dts",
-    format: "dts",
-    module_hint: null,
-    current_version_id: "fv-1",
-    enabled: true,
-    created_at: timestamp,
-    updated_at: timestamp,
-    current_version_number: 3,
-    ...overrides
-  };
-}
+  afterEach(async () => {
+    await db?.rollback();
+  });
 
-function fileVersionRow(overrides: Record<string, unknown> = {}) {
-  const timestamp = "2026-07-14T09:00:00.000Z";
-  return {
-    id: "fv-1",
-    file_id: "file-1",
-    version_number: 3,
-    storage_key: "sk-1",
-    checksum: "checksum-1",
-    size_bytes: 100,
-    parsed_index: {},
-    origin: "upload",
-    created_by_user_id: null,
-    created_at: timestamp,
-    ...overrides
-  };
-}
+  /** Uploads board-a.dts and wires it into a fresh config set as the base member. */
+  async function seedConfigSetWithBoard() {
+    const upload = await uploadProjectParameterFile(db, objectStore, adminAuth(), {
+      projectId: "project-1",
+      fileName: "board-a.dts",
+      bytes: Buffer.from(boardSource, "utf8")
+    });
+    const configSet = await createConfigSet(db, adminAuth(), { projectId: "project-1", name: "board-a" });
+    await addConfigSetFile(db, adminAuth(), {
+      configSetId: configSet.id,
+      fileId: upload.file.id,
+      role: "base",
+      sortOrder: 0
+    });
+    return { configSet, upload };
+  }
 
-function fakeObjectStore(contents: Record<string, string>): ObjectStore {
-  return {
-    put: async () => {
-      throw new Error("not used in these tests");
-    },
-    get: async (storageKey: string) => {
-      const content = contents[storageKey];
-      if (content === undefined) {
-        throw new Error(`no fake content for storage key ${storageKey}`);
-      }
-      return Buffer.from(content, "utf8");
-    }
-  };
-}
+  async function validationGateAudits() {
+    const result = await db.query<{
+      target_type: string | null;
+      target_id: string | null;
+      project_id: string | null;
+      metadata: Record<string, unknown>;
+    }>(
+      `select target_type, target_id, project_id, metadata
+       from audit_events
+       where organization_id = $1 and kind = 'validation.gate' and action = 'run'`,
+      ["org-1"]
+    );
+    return result.rows;
+  }
 
-function findValidationGateAudit(calls: QueryCall[]) {
-  return calls.find(
-    (call) =>
-      call.text.includes("insert into audit_events") &&
-      call.values[6] === "validation.gate" &&
-      call.values[7] === "run"
-  );
-}
-
-describe("runValidationGate", () => {
   it("throws 409 CONFLICT with dts-validation-failed when block mode validation fails and writes audit first", async () => {
     const diagnostics = [{ file: "board-a.dts", line: 3, severity: "error" as const, message: "syntax error" }];
     const validator = createStubDtcValidator(() => ({
@@ -145,22 +91,13 @@ describe("runValidationGate", () => {
       compiler: "dtc",
       diagnostics
     }));
-
-    const { db, txCalls } = createFakeDb([
-      [configSetRow()],
-      [memberFileRow()],
-      [fileRow()],
-      [fileVersionRow()],
-      []
-    ]);
-
-    const objectStore = fakeObjectStore({ "sk-1": "/dts-v1/; / { };" });
+    const { configSet } = await seedConfigSetWithBoard();
 
     await expect(
       runValidationGate(
         db,
         adminAuth(),
-        { configSetId: "dcs-1", mode: "block" },
+        { configSetId: configSet.id, mode: "block" },
         { objectStore, validator }
       )
     ).rejects.toMatchObject({
@@ -174,12 +111,15 @@ describe("runValidationGate", () => {
       }
     });
 
-    const auditCall = findValidationGateAudit(txCalls);
-    expect(auditCall).toBeTruthy();
-    expect(auditCall?.values[9]).toBe("dts-config-set");
-    expect(auditCall?.values[10]).toBe("dcs-1");
-    const metadata = JSON.parse(auditCall?.values[11] as string);
-    expect(metadata).toMatchObject({
+    // The audit row survives the throw: it was written before the gate rejected.
+    const audits = await validationGateAudits();
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({
+      target_type: "dts-config-set",
+      target_id: configSet.id,
+      project_id: "project-1"
+    });
+    expect(audits[0].metadata).toMatchObject({
       ok: false,
       mode: "block",
       compiler: "dtc",
@@ -196,20 +136,13 @@ describe("runValidationGate", () => {
       compiler: "dtc",
       diagnostics: [{ file: "board-a.dts", severity: "error", message: "warn-only error" }]
     }));
-
-    const { db, txCalls } = createFakeDb([
-      [configSetRow()],
-      [memberFileRow()],
-      [fileRow()],
-      [fileVersionRow()],
-      []
-    ]);
+    const { configSet } = await seedConfigSetWithBoard();
 
     const result = await runValidationGate(
       db,
       adminAuth(),
-      { configSetId: "dcs-1", mode: "warn" },
-      { objectStore: fakeObjectStore({ "sk-1": "/dts-v1/; / { };" }), validator }
+      { configSetId: configSet.id, mode: "warn" },
+      { objectStore, validator }
     );
 
     expect(result).toEqual({
@@ -220,11 +153,9 @@ describe("runValidationGate", () => {
       compiler: "dtc"
     });
 
-    const auditCall = findValidationGateAudit(txCalls);
-    expect(auditCall).toBeTruthy();
-    const metadata = JSON.parse(auditCall?.values[11] as string);
-    expect(metadata.requiresConfirmation).toBe(true);
-    expect(metadata.ok).toBe(true);
+    const audits = await validationGateAudits();
+    expect(audits).toHaveLength(1);
+    expect(audits[0].metadata).toMatchObject({ ok: true, requiresConfirmation: true });
   });
 
   it("returns requiresConfirmation false when block mode passes", async () => {
@@ -234,20 +165,13 @@ describe("runValidationGate", () => {
       compiler: "dtc",
       diagnostics: []
     }));
-
-    const { db } = createFakeDb([
-      [configSetRow()],
-      [memberFileRow()],
-      [fileRow()],
-      [fileVersionRow()],
-      []
-    ]);
+    const { configSet } = await seedConfigSetWithBoard();
 
     const result = await runValidationGate(
       db,
       adminAuth(),
-      { configSetId: "dcs-1", mode: "block" },
-      { objectStore: fakeObjectStore({ "sk-1": "/dts-v1/; / { };" }), validator }
+      { configSetId: configSet.id, mode: "block" },
+      { objectStore, validator }
     );
 
     expect(result).toEqual({
@@ -266,20 +190,13 @@ describe("runValidationGate", () => {
       compiler: "unavailable",
       diagnostics: [{ file: "<validation>", severity: "warning", message: "skipped" }]
     }));
-
-    const { db } = createFakeDb([
-      [configSetRow()],
-      [memberFileRow()],
-      [fileRow()],
-      [fileVersionRow()],
-      []
-    ]);
+    const { configSet } = await seedConfigSetWithBoard();
 
     const result = await runValidationGate(
       db,
       adminAuth(),
-      { configSetId: "dcs-1", mode: "off" },
-      { objectStore: fakeObjectStore({ "sk-1": "/dts-v1/; / { };" }), validator }
+      { configSetId: configSet.id, mode: "off" },
+      { objectStore, validator }
     );
 
     expect(result.ok).toBe(true);
@@ -294,20 +211,13 @@ describe("runValidationGate", () => {
       compiler: "unavailable",
       diagnostics: [{ file: "<validation>", severity: "warning", message: "dtc unavailable" }]
     }));
-
-    const { db } = createFakeDb([
-      [configSetRow()],
-      [memberFileRow()],
-      [fileRow()],
-      [fileVersionRow()],
-      []
-    ]);
+    const { configSet } = await seedConfigSetWithBoard();
 
     const result = await runValidationGate(
       db,
       adminAuth(),
-      { configSetId: "dcs-1", mode: "warn" },
-      { objectStore: fakeObjectStore({ "sk-1": "/dts-v1/; / { };" }), validator }
+      { configSetId: configSet.id, mode: "warn" },
+      { objectStore, validator }
     );
 
     expect(result.requiresConfirmation).toBe(true);
@@ -320,68 +230,53 @@ describe("runValidationGate", () => {
       validatedFiles = files.map((file) => file.name);
       return { ok: true, mode: "block", compiler: "dtc", diagnostics: [] };
     });
-
-    const { db } = createFakeDb([
-      [configSetRow()],
-      [
-        memberFileRow(),
-        memberFileRow({
-          file_id: "file-2",
-          file_name: "params.json",
-          current_version_id: "fv-2",
-          version_number: 1
-        })
-      ],
-      [fileRow()],
-      [fileVersionRow()],
-      [fileRow({ id: "file-2", file_name: "params.json", format: "json", current_version_id: "fv-2", current_version_number: 1 })],
-      [fileVersionRow({ id: "fv-2", file_id: "file-2", storage_key: "sk-2" })],
-      []
-    ]);
+    const { configSet } = await seedConfigSetWithBoard();
+    const jsonUpload = await uploadProjectParameterFile(db, objectStore, adminAuth(), {
+      projectId: "project-1",
+      fileName: "params.json",
+      bytes: Buffer.from('{"foo": 1}', "utf8")
+    });
+    await addConfigSetFile(db, adminAuth(), {
+      configSetId: configSet.id,
+      fileId: jsonUpload.file.id,
+      role: "misc",
+      sortOrder: 1
+    });
 
     await runValidationGate(
       db,
       adminAuth(),
-      { configSetId: "dcs-1", mode: "block" },
-      {
-        objectStore: fakeObjectStore({
-          "sk-1": "/dts-v1/; / { };",
-          "sk-2": '{"foo": 1}'
-        }),
-        validator
-      }
+      { configSetId: configSet.id, mode: "block" },
+      { objectStore, validator }
     );
 
     expect(validatedFiles).toEqual(["board-a.dts"]);
   });
 
   it("returns 404 when the config set does not exist", async () => {
-    const { db } = createFakeDb([[]]);
-
     await expect(
       runValidationGate(
         db,
         adminAuth(),
         { configSetId: "missing", mode: "block" },
-        { objectStore: fakeObjectStore({}), validator: createStubDtcValidator(() => ({ ok: true, mode: "block", compiler: "dtc", diagnostics: [] })) }
+        {
+          objectStore,
+          validator: createStubDtcValidator(() => ({ ok: true, mode: "block", compiler: "dtc", diagnostics: [] }))
+        }
       )
     ).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
   });
 
   it("rejects empty config sets on the release/baseline path", async () => {
-    const { db, txCalls } = createFakeDb([
-      [configSetRow()],
-      [], // no members
-      []
-    ]);
+    const configSet = await createConfigSet(db, adminAuth(), { projectId: "project-1", name: "board-a" });
 
     await expect(
       runValidationGate(
         db,
         adminAuth(),
-        { configSetId: "dcs-1", mode: "block", forRelease: true },
+        { configSetId: configSet.id, mode: "block", forRelease: true },
         {
-          objectStore: fakeObjectStore({}),
+          objectStore,
           toolchain: {
             async validate() {
               throw new Error("toolchain must not run for an empty config set");
@@ -402,9 +297,56 @@ describe("runValidationGate", () => {
       details: { code: "dts-empty-config-set" }
     });
 
-    const auditCall = findValidationGateAudit(txCalls);
-    expect(auditCall).toBeTruthy();
-    const metadata = JSON.parse(auditCall?.values[11] as string);
-    expect(metadata.ok).toBe(false);
+    const audits = await validationGateAudits();
+    expect(audits).toHaveLength(1);
+    expect(audits[0].metadata).toMatchObject({ ok: false });
+  });
+
+  it("compiles functional-role members (charging/thermal/misc) as overlays so their DTS cannot bypass the release gate", async () => {
+    const { configSet } = await seedConfigSetWithBoard();
+    const chargingUpload = await uploadProjectParameterFile(db, objectStore, adminAuth(), {
+      projectId: "project-1",
+      fileName: "charging.dts",
+      bytes: Buffer.from("/dts-v1/;\n/ {\n\tcharging = <1>;\n};\n", "utf8")
+    });
+    await addConfigSetFile(db, adminAuth(), {
+      configSetId: configSet.id,
+      fileId: chargingUpload.file.id,
+      role: "charging",
+      sortOrder: 1
+    });
+
+    let captured: { entryFile: string; overlayOrder: string[] } | undefined;
+    const toolchain = {
+      async validate(input: { entryFile: string; overlayOrder: string[]; files: Map<string, { content: string }> }) {
+        captured = { entryFile: input.entryFile, overlayOrder: [...input.overlayOrder] };
+        return {
+          ok: true,
+          mode: "release" as const,
+          compiler: { dtc: "1.8.1", fdtoverlay: "1.8.1", dtschema: "2026.6" },
+          diagnostics: [],
+          artifacts: {}
+        };
+      },
+      async probe() {
+        return {
+          dtc: { path: "/usr/bin/dtc", version: "1.8.1" },
+          fdtoverlay: { path: "/usr/bin/fdtoverlay", version: "1.8.1" },
+          dtschema: { path: "/usr/bin/dt-validate", version: "2026.6" }
+        };
+      }
+    };
+
+    await runValidationGate(
+      db,
+      adminAuth(),
+      { configSetId: configSet.id, mode: "block", forRelease: true },
+      { objectStore, toolchain }
+    );
+
+    // The functional-role file must be applied as an overlay just like the real
+    // config-revision assembly (OVERLAY_ROLES); otherwise its DTS is never dtc-compiled.
+    expect(captured?.entryFile).toBe("board-a.dts");
+    expect(captured?.overlayOrder).toContain("charging.dts");
   });
 });

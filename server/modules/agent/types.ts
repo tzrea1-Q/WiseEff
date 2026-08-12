@@ -5,6 +5,8 @@ export type AgentToolName =
   | "perception.searchParameters"
   | "perception.getNodeSnapshot"
   | "perception.getRecentLogConclusions"
+  | "knowledge.search"
+  | "knowledge.getDocument"
   | "action.submitParameterChange";
 
 export type AgentToolRequest = {
@@ -21,7 +23,7 @@ export type AgentContext = {
 };
 
 export type AgentCitation = {
-  type: "parameter" | "log" | "audit" | "debugging";
+  type: "parameter" | "log" | "audit" | "debugging" | "knowledge";
   id: string;
   label: string;
   href?: string;

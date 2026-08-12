@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
-import type { QueryResult, Queryable } from "../../shared/database/client";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  createInMemoryTestDatabase,
+  isTestDatabaseAvailable,
+  type InMemoryTestDatabase
+} from "../../testing/testDatabase";
+import { seedCoreGraph } from "../../testing/fixtures";
+import { insertProjectParameterFile } from "./repository";
 import {
   clearFileConfigSetMembership,
   getConfigSetById,
@@ -11,53 +17,28 @@ import {
   updateConfigSetRow
 } from "./configSetRepository";
 
-type QueryCall = {
-  text: string;
-  values: unknown[];
-};
+const databaseAvailable = await isTestDatabaseAvailable();
 
-type QueuedResult = Record<string, unknown> | unknown[] | ((call: QueryCall) => unknown[]);
+describe.skipIf(!databaseAvailable)("configSet repository", () => {
+  let db: InMemoryTestDatabase;
 
-function createFakeDb(rowsOrQueue: QueuedResult[] = []) {
-  const calls: QueryCall[] = [];
-  const queueMode = rowsOrQueue.some((item) => typeof item === "function" || Array.isArray(item));
-  const db: Queryable = {
-    query: async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
-      const call = { text, values };
-      calls.push(call);
-      if (queueMode) {
-        const next = rowsOrQueue.shift() ?? [];
-        const rows = typeof next === "function" ? next(call) : Array.isArray(next) ? next : [next];
-        return { rows: rows as Row[], rowCount: rows.length };
-      }
+  beforeEach(async () => {
+    db = await createInMemoryTestDatabase();
+    await seedCoreGraph(db, {
+      organization: { id: "org-1", name: "ChargeLab" },
+      users: [{ id: "user-1", name: "Riley Chen", email: "riley@example.com" }],
+      projects: [
+        { id: "project-1", name: "Aurora", code: "AUR" },
+        { id: "project-2", name: "Borealis", code: "BOR" }
+      ]
+    });
+  });
 
-      const rows = rowsOrQueue as unknown[];
-      return { rows: rows as Row[], rowCount: rows.length };
-    }
-  };
+  afterEach(async () => {
+    await db?.rollback();
+  });
 
-  return { db, calls };
-}
-
-function configSetRow(overrides: Record<string, unknown> = {}) {
-  const timestamp = new Date("2026-07-14T09:00:00.000Z");
-  return {
-    id: "dcs-1",
-    organization_id: "org-1",
-    project_id: "project-1",
-    name: "board-a",
-    description: null,
-    derived_from_id: null,
-    created_at: timestamp,
-    updated_at: timestamp,
-    ...overrides
-  };
-}
-
-describe("configSet repository", () => {
   it("insertConfigSet inserts and maps a config set row", async () => {
-    const { db, calls } = createFakeDb([configSetRow()]);
-
     const configSet = await insertConfigSet(db, {
       id: "dcs-1",
       organizationId: "org-1",
@@ -65,22 +46,28 @@ describe("configSet repository", () => {
       name: "board-a"
     });
 
-    expect(calls[0].text).toContain("insert into dts_config_set");
-    expect(calls[0].values).toEqual(["dcs-1", "org-1", "project-1", "board-a", null, null]);
-    expect(configSet).toEqual({
+    expect(configSet).toMatchObject({
       id: "dcs-1",
       organizationId: "org-1",
       projectId: "project-1",
-      name: "board-a",
-      createdAt: "2026-07-14T09:00:00.000Z",
-      updatedAt: "2026-07-14T09:00:00.000Z"
+      name: "board-a"
     });
+    expect(configSet.description).toBeUndefined();
+    expect(configSet.derivedFromId).toBeUndefined();
+    expect(configSet.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(configSet.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+    const reloaded = await getConfigSetById(db, { organizationId: "org-1", configSetId: "dcs-1" });
+    expect(reloaded).toMatchObject({ id: "dcs-1", name: "board-a", projectId: "project-1" });
   });
 
   it("insertConfigSet persists derivedFromId and description", async () => {
-    const { db, calls } = createFakeDb([
-      configSetRow({ id: "dcs-2", name: "board-b", description: "variant of board-a", derived_from_id: "dcs-1" })
-    ]);
+    await insertConfigSet(db, {
+      id: "dcs-1",
+      organizationId: "org-1",
+      projectId: "project-1",
+      name: "board-a"
+    });
 
     const configSet = await insertConfigSet(db, {
       id: "dcs-2",
@@ -91,60 +78,99 @@ describe("configSet repository", () => {
       derivedFromId: "dcs-1"
     });
 
-    expect(calls[0].values).toEqual(["dcs-2", "org-1", "project-1", "board-b", "variant of board-a", "dcs-1"]);
     expect(configSet.derivedFromId).toBe("dcs-1");
     expect(configSet.description).toBe("variant of board-a");
+
+    const reloaded = await getConfigSetById(db, { organizationId: "org-1", configSetId: "dcs-2" });
+    expect(reloaded?.derivedFromId).toBe("dcs-1");
+    expect(reloaded?.description).toBe("variant of board-a");
   });
 
   it("listConfigSetsByProject scopes to organization and project", async () => {
-    const { db, calls } = createFakeDb([configSetRow()]);
+    await insertConfigSet(db, {
+      id: "dcs-1",
+      organizationId: "org-1",
+      projectId: "project-1",
+      name: "board-a"
+    });
+    await insertConfigSet(db, {
+      id: "dcs-other-project",
+      organizationId: "org-1",
+      projectId: "project-2",
+      name: "board-x"
+    });
 
     const items = await listConfigSetsByProject(db, { organizationId: "org-1", projectId: "project-1" });
+    const foreignOrg = await listConfigSetsByProject(db, { organizationId: "org-other", projectId: "project-1" });
 
-    expect(calls[0].text).toContain("from dts_config_set");
-    expect(calls[0].text).toContain("organization_id = $1");
-    expect(calls[0].text).toContain("project_id = $2");
-    expect(calls[0].values).toEqual(["org-1", "project-1"]);
-    expect(items).toEqual([
-      {
-        id: "dcs-1",
-        organizationId: "org-1",
-        projectId: "project-1",
-        name: "board-a",
-        createdAt: "2026-07-14T09:00:00.000Z",
-        updatedAt: "2026-07-14T09:00:00.000Z"
-      }
-    ]);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      id: "dcs-1",
+      organizationId: "org-1",
+      projectId: "project-1",
+      name: "board-a"
+    });
+    expect(foreignOrg).toEqual([]);
   });
 
   it("getConfigSetById returns null when no row matches", async () => {
-    const { db, calls } = createFakeDb([[]]);
+    await insertConfigSet(db, {
+      id: "dcs-1",
+      organizationId: "org-1",
+      projectId: "project-1",
+      name: "board-a"
+    });
 
-    const configSet = await getConfigSetById(db, { organizationId: "org-1", configSetId: "missing" });
+    const missing = await getConfigSetById(db, { organizationId: "org-1", configSetId: "missing" });
+    const foreignOrg = await getConfigSetById(db, { organizationId: "org-other", configSetId: "dcs-1" });
 
-    expect(calls[0].text).toContain("from dts_config_set");
-    expect(calls[0].values).toEqual(["org-1", "missing"]);
-    expect(configSet).toBeNull();
+    expect(missing).toBeNull();
+    expect(foreignOrg).toBeNull();
   });
 
   it("getConfigSetByProjectAndName finds a set by project and name", async () => {
-    const { db, calls } = createFakeDb([[configSetRow({ name: "default" })]]);
+    await insertConfigSet(db, {
+      id: "dcs-1",
+      organizationId: "org-1",
+      projectId: "project-1",
+      name: "default"
+    });
+    await insertConfigSet(db, {
+      id: "dcs-2",
+      organizationId: "org-1",
+      projectId: "project-1",
+      name: "board-a"
+    });
 
     const configSet = await getConfigSetByProjectAndName(db, {
       organizationId: "org-1",
       projectId: "project-1",
       name: "default"
     });
+    const wrongProject = await getConfigSetByProjectAndName(db, {
+      organizationId: "org-1",
+      projectId: "project-2",
+      name: "default"
+    });
 
-    expect(calls[0].text).toContain("name = $3");
-    expect(calls[0].values).toEqual(["org-1", "project-1", "default"]);
+    expect(configSet?.id).toBe("dcs-1");
     expect(configSet?.name).toBe("default");
+    expect(wrongProject).toBeNull();
   });
 
   it("updateConfigSetRow updates name/description/derivedFromId and reads back derivedFromId", async () => {
-    const { db, calls } = createFakeDb([
-      configSetRow({ name: "board-a-renamed", description: "updated desc", derived_from_id: "dcs-0" })
-    ]);
+    await insertConfigSet(db, {
+      id: "dcs-0",
+      organizationId: "org-1",
+      projectId: "project-1",
+      name: "board-base"
+    });
+    await insertConfigSet(db, {
+      id: "dcs-1",
+      organizationId: "org-1",
+      projectId: "project-1",
+      name: "board-a"
+    });
 
     const configSet = await updateConfigSetRow(db, {
       id: "dcs-1",
@@ -153,15 +179,32 @@ describe("configSet repository", () => {
       derivedFromId: "dcs-0"
     });
 
-    expect(calls[0].text).toContain("update dts_config_set");
-    expect(calls[0].values).toEqual(["dcs-1", "board-a-renamed", "updated desc", "dcs-0"]);
     expect(configSet.name).toBe("board-a-renamed");
     expect(configSet.description).toBe("updated desc");
     expect(configSet.derivedFromId).toBe("dcs-0");
+
+    const reloaded = await getConfigSetById(db, { organizationId: "org-1", configSetId: "dcs-1" });
+    expect(reloaded).toMatchObject({
+      name: "board-a-renamed",
+      description: "updated desc",
+      derivedFromId: "dcs-0"
+    });
   });
 
   it("setFileConfigSetMembership updates file membership columns", async () => {
-    const { db, calls } = createFakeDb([[]]);
+    await insertConfigSet(db, {
+      id: "dcs-1",
+      organizationId: "org-1",
+      projectId: "project-1",
+      name: "board-a"
+    });
+    await insertProjectParameterFile(db, {
+      id: "file-1",
+      organizationId: "org-1",
+      projectId: "project-1",
+      fileName: "board-a.dts",
+      format: "dts"
+    });
 
     await setFileConfigSetMembership(db, {
       fileId: "file-1",
@@ -170,41 +213,74 @@ describe("configSet repository", () => {
       sortOrder: 2
     });
 
-    expect(calls[0].text).toContain("update project_parameter_files");
-    expect(calls[0].text).toContain("config_set_id");
-    expect(calls[0].text).toContain("config_set_role");
-    expect(calls[0].text).toContain("config_set_sort_order");
-    expect(calls[0].values).toEqual(["file-1", "dcs-1", "base", 2]);
+    const membership = await getFileConfigSetMembership(db, { organizationId: "org-1", fileId: "file-1" });
+    expect(membership).toEqual({
+      fileId: "file-1",
+      organizationId: "org-1",
+      projectId: "project-1",
+      configSetId: "dcs-1",
+      configSetRole: "base",
+      configSetSortOrder: 2
+    });
   });
 
   it("clearFileConfigSetMembership nulls out membership columns", async () => {
-    const { db, calls } = createFakeDb([[]]);
+    await insertConfigSet(db, {
+      id: "dcs-1",
+      organizationId: "org-1",
+      projectId: "project-1",
+      name: "board-a"
+    });
+    await insertProjectParameterFile(db, {
+      id: "file-1",
+      organizationId: "org-1",
+      projectId: "project-1",
+      fileName: "board-a.dts",
+      format: "dts"
+    });
+    await setFileConfigSetMembership(db, {
+      fileId: "file-1",
+      configSetId: "dcs-1",
+      role: "base",
+      sortOrder: 2
+    });
 
     await clearFileConfigSetMembership(db, { fileId: "file-1" });
 
-    expect(calls[0].text).toContain("update project_parameter_files");
-    expect(calls[0].text).toContain("config_set_id = null");
-    expect(calls[0].values).toEqual(["file-1"]);
+    const membership = await getFileConfigSetMembership(db, { organizationId: "org-1", fileId: "file-1" });
+    expect(membership).toEqual({
+      fileId: "file-1",
+      organizationId: "org-1",
+      projectId: "project-1",
+      configSetId: undefined,
+      configSetRole: undefined,
+      configSetSortOrder: 0
+    });
   });
 
   it("getFileConfigSetMembership maps a file row's membership fields", async () => {
-    const { db, calls } = createFakeDb([
-      [
-        {
-          id: "file-1",
-          organization_id: "org-1",
-          project_id: "project-1",
-          config_set_id: "dcs-1",
-          config_set_role: "base",
-          config_set_sort_order: 3
-        }
-      ]
-    ]);
+    await insertConfigSet(db, {
+      id: "dcs-1",
+      organizationId: "org-1",
+      projectId: "project-1",
+      name: "board-a"
+    });
+    await insertProjectParameterFile(db, {
+      id: "file-1",
+      organizationId: "org-1",
+      projectId: "project-1",
+      fileName: "board-a.dts",
+      format: "dts"
+    });
+    await setFileConfigSetMembership(db, {
+      fileId: "file-1",
+      configSetId: "dcs-1",
+      role: "base",
+      sortOrder: 3
+    });
 
     const membership = await getFileConfigSetMembership(db, { organizationId: "org-1", fileId: "file-1" });
 
-    expect(calls[0].text).toContain("from project_parameter_files");
-    expect(calls[0].values).toEqual(["org-1", "file-1"]);
     expect(membership).toEqual({
       fileId: "file-1",
       organizationId: "org-1",
@@ -213,11 +289,12 @@ describe("configSet repository", () => {
       configSetRole: "base",
       configSetSortOrder: 3
     });
+
+    const foreignOrg = await getFileConfigSetMembership(db, { organizationId: "org-other", fileId: "file-1" });
+    expect(foreignOrg).toBeNull();
   });
 
   it("getFileConfigSetMembership returns null when file does not exist", async () => {
-    const { db } = createFakeDb([[]]);
-
     const membership = await getFileConfigSetMembership(db, { organizationId: "org-1", fileId: "missing" });
 
     expect(membership).toBeNull();

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { createAuditEvent } from "../audit/repository";
+import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import { canAdminParameters, canViewParameters } from "../parameters/policy";
@@ -36,7 +36,7 @@ function requireParameterFileView(auth: AuthContext) {
 }
 
 async function writeConfigSetAudit(
-  db: Queryable,
+  tx: AuditTx,
   auth: AuthContext,
   input: {
     action: "created" | "updated" | "member_changed";
@@ -46,20 +46,16 @@ async function writeConfigSetAudit(
   },
   context: ConfigSetServiceContext = {}
 ) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    actorUserId: auth.user.id,
-    actorType: "user",
+  // requestId fallback survives only until config-set contexts become mandatory (ADR-0027).
+  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
     app: "parameters",
     kind: "config-set",
     action: input.action,
     severity: "Medium",
+    projectId: input.projectId,
     targetType: "dts-config-set",
     targetId: input.targetId,
-    metadata: input.metadata,
-    traceId: context.requestId ?? randomUUID()
+    metadata: input.metadata
   });
 }
 
@@ -94,7 +90,7 @@ export async function createConfigSet(
     });
 
     await writeConfigSetAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         action: "created",
@@ -138,7 +134,7 @@ export async function listConfigSetFiles(
 
 /** Idempotent default config-set ensure for an open transaction / Queryable. */
 export async function ensureDefaultConfigSetInTx(
-  db: Queryable,
+  db: AuditTx,
   auth: AuthContext,
   projectId: string,
   context: ConfigSetServiceContext = {}
@@ -185,7 +181,7 @@ export async function ensureDefaultConfigSet(
 ): Promise<ConfigSetDto> {
   requireParameterFileAdmin(auth);
 
-  return db.transaction(async (tx) => ensureDefaultConfigSetInTx(tx, auth, projectId, context));
+  return db.transaction(async (tx) => ensureDefaultConfigSetInTx(asAuditTx(tx), auth, projectId, context));
 }
 
 export async function addConfigSetFile(
@@ -236,7 +232,7 @@ export async function addConfigSetFile(
     });
 
     await writeConfigSetAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         action: "member_changed",
@@ -274,7 +270,7 @@ export async function removeConfigSetFile(
     await clearFileConfigSetMembership(tx, { fileId: input.fileId });
 
     await writeConfigSetAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         action: "member_changed",
@@ -336,7 +332,7 @@ export async function updateConfigSet(
     });
 
     await writeConfigSetAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         action: "updated",

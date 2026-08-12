@@ -8,6 +8,7 @@ import { ApiError } from "../../shared/http/errors";
 import { createRouter } from "../../shared/http/router";
 import { createHttpServer } from "../../shared/http/server";
 import { requestJson } from "../../test/testClient";
+import { makeTestAuthContext } from "../../testing/authContext";
 import { registerProductFeedbackRoutes } from "./routes";
 import * as service from "./service";
 import type { ProductFeedbackDto } from "./types";
@@ -22,17 +23,16 @@ vi.mock("./service", () => ({
 
 function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
   return {
-    user: {
-      id: "user-1",
+    ...makeTestAuthContext({
+      userId: "user-1",
       organizationId: "org-1",
       name: "Riley Chen",
       email: "riley@example.com",
       title: "Software User",
-      isActive: true
-    },
-    organization: { id: "org-1", name: "ChargeLab" },
-    roles: [{ projectId: "aurora", roleId: "software-user" }],
-    permissions: ["admin:access"],
+      organizationName: "ChargeLab",
+      roles: [{ projectId: "aurora", roleId: "software-user" }],
+      permissions: ["admin:access"]
+    }),
     ...overrides
   };
 }

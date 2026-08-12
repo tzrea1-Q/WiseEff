@@ -109,6 +109,9 @@ export async function bootstrapLocalAdmin(
       `,
       [randomUUID(), userId, organization.id]
     );
+    // Stays on the direct path (ratchet allowlist): bootstrap runs before any
+    // AuthContext exists, and the audited-write seam derives actor/org from auth.
+    // Already in-transaction, so there is no atomicity gap.
     await createAuditEvent(tx, {
       id: randomUUID(),
       organizationId: organization.id,

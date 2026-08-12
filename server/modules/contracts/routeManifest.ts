@@ -7,6 +7,8 @@ export type RouteModule =
   | "users"
   | "parameters"
   | "parameter-modules"
+  | "parameter-files"
+  | "device-bridge"
   | "logs"
   | "product-feedback"
   | "knowledge"
@@ -528,6 +530,15 @@ export const routeManifest = [
   { id: "knowledge.createEntry", method: "POST", path: "/api/v1/knowledge/entries", module: "knowledge", stability: "mvp" },
   { id: "knowledge.listEntries", method: "GET", path: "/api/v1/knowledge/entries", module: "knowledge", stability: "mvp" },
   { id: "knowledge.search", method: "GET", path: "/api/v1/knowledge/search", module: "knowledge", stability: "mvp" },
+  { id: "knowledge.indexStatus", method: "GET", path: "/api/v1/knowledge/index/status", module: "knowledge", stability: "mvp" },
+  { id: "knowledge.indexRebuild", method: "POST", path: "/api/v1/knowledge/index/rebuild", module: "knowledge", stability: "mvp" },
+  {
+    id: "knowledge.indexRetryEntry",
+    method: "POST",
+    path: "/api/v1/knowledge/entries/:entryId/index/retry",
+    module: "knowledge",
+    stability: "mvp"
+  },
   { id: "knowledge.getEntry", method: "GET", path: "/api/v1/knowledge/entries/:entryId", module: "knowledge", stability: "mvp" },
   { id: "knowledge.updateEntry", method: "PATCH", path: "/api/v1/knowledge/entries/:entryId", module: "knowledge", stability: "mvp" },
   {
@@ -785,6 +796,112 @@ export const routeManifest = [
   { id: "xiaoze.getThread", method: "GET", path: "/api/v1/agent/xiaoze/threads/:threadId", module: "agent", stability: "mvp" },
   { id: "xiaoze.patchThread", method: "PATCH", path: "/api/v1/agent/xiaoze/threads/:threadId", module: "agent", stability: "mvp" },
   { id: "xiaoze.deleteThread", method: "DELETE", path: "/api/v1/agent/xiaoze/threads/:threadId", module: "agent", stability: "mvp" },
+
+  { id: "parameterFiles.listFiles", method: "GET", path: "/api/v1/projects/:projectId/parameter-files", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.uploadFile", method: "POST", path: "/api/v1/projects/:projectId/parameter-files", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.listFileVersions", method: "GET", path: "/api/v1/projects/:projectId/parameter-files/:fileId/versions", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.uploadFileVersion", method: "POST", path: "/api/v1/projects/:projectId/parameter-files/:fileId/versions", module: "parameter-files", stability: "mvp" },
+  {
+    id: "parameterFiles.downloadFileVersionContent",
+    method: "GET",
+    path: "/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/content",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+  { id: "parameterFiles.syncFileVersion", method: "POST", path: "/api/v1/projects/:projectId/parameter-files/:fileId/sync", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.listConflicts", method: "GET", path: "/api/v1/projects/:projectId/parameter-file-conflicts", module: "parameter-files", stability: "mvp" },
+  {
+    id: "parameterFiles.resolveConflict",
+    method: "POST",
+    path: "/api/v1/projects/:projectId/parameter-file-conflicts/:conflictId/resolve",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+  {
+    id: "parameterFiles.previewBulkConflictResolution",
+    method: "POST",
+    path: "/api/v1/projects/:projectId/parameter-file-conflicts/bulk-preview",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+  {
+    id: "parameterFiles.resolveConflictsBulk",
+    method: "POST",
+    path: "/api/v1/projects/:projectId/parameter-file-conflicts/bulk-resolve",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+  { id: "parameterFiles.listConfigSets", method: "GET", path: "/api/v1/projects/:projectId/config-sets", module: "parameter-files", stability: "mvp" },
+  { id: "parameterFiles.createConfigSet", method: "POST", path: "/api/v1/projects/:projectId/config-sets", module: "parameter-files", stability: "mvp" },
+  {
+    id: "parameterFiles.addConfigSetFile",
+    method: "POST",
+    path: "/api/v1/projects/:projectId/config-sets/:configSetId/files",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+  {
+    id: "parameterFiles.removeConfigSetFile",
+    method: "DELETE",
+    path: "/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+  {
+    id: "parameterFiles.exportConfigSet",
+    method: "GET",
+    path: "/api/v1/projects/:projectId/config-sets/:configSetId/export",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+  {
+    id: "parameterFiles.listConfigSetBaselines",
+    method: "GET",
+    path: "/api/v1/projects/:projectId/config-sets/:configSetId/baselines",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+  {
+    id: "parameterFiles.createConfigSetBaseline",
+    method: "POST",
+    path: "/api/v1/projects/:projectId/config-sets/:configSetId/baselines",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+  {
+    id: "parameterFiles.submitStructuredEdits",
+    method: "POST",
+    path: "/api/v1/projects/:projectId/dts-structured-edits/submit",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+  {
+    id: "parameterFiles.activateCandidate",
+    method: "POST",
+    path: "/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/activate",
+    module: "parameter-files",
+    stability: "mvp"
+  },
+
+  { id: "parameters.deleteAdminProject", method: "DELETE", path: "/api/v1/parameters/admin/projects/:projectId", module: "parameters", stability: "mvp" },
+  { id: "parameters.parseDtsImport", method: "POST", path: "/api/v1/parameter-import/parse-dts", module: "parameters", stability: "mvp" },
+  {
+    id: "parameters.listWorkflowAssignees",
+    method: "GET",
+    path: "/api/v1/projects/:projectId/parameter-workflow-assignees",
+    module: "parameters",
+    stability: "mvp"
+  },
+  { id: "parameterSpecs.update", method: "PATCH", path: "/api/v2/parameter-specs/:specId", module: "parameters", stability: "mvp" },
+  { id: "parameterSpecs.activate", method: "POST", path: "/api/v2/parameter-specs/:specId/activate", module: "parameters", stability: "mvp" },
+
+  { id: "deviceBridges.createPairingCode", method: "POST", path: "/api/v1/device-bridges/pairing-codes", module: "device-bridge", stability: "mvp" },
+  { id: "deviceBridges.pair", method: "POST", path: "/api/v1/device-bridges/pair", module: "device-bridge", stability: "mvp" },
+  { id: "deviceBridges.listMine", method: "GET", path: "/api/v1/device-bridges/mine", module: "device-bridge", stability: "mvp" },
+  { id: "deviceBridges.updateBridge", method: "PATCH", path: "/api/v1/device-bridges/:bridgeId", module: "device-bridge", stability: "mvp" },
+  { id: "deviceBridges.revokeBridge", method: "POST", path: "/api/v1/device-bridges/:bridgeId/revoke", module: "device-bridge", stability: "mvp" },
+  { id: "deviceBridges.getReleaseManifest", method: "GET", path: "/api/v1/device-bridges/releases", module: "device-bridge", stability: "mvp" },
+  { id: "deviceBridges.getToolReleaseManifest", method: "GET", path: "/api/v1/device-bridges/tool-releases", module: "device-bridge", stability: "mvp" },
 
   { id: "operations.live", method: "GET", path: "/health/live", module: "operations", stability: "commercial-readiness" },
   { id: "operations.ready", method: "GET", path: "/health/ready", module: "operations", stability: "commercial-readiness" },

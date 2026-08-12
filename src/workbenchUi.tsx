@@ -73,3 +73,12 @@ export function EmptyState({ text }: { text: string }) {
     </Empty>
   );
 }
+
+export function PanelHeader({ title, meta }: { title: ReactNode; meta?: string }) {
+  return (
+    <div className="panel-header">
+      <strong>{title}</strong>
+      {meta ? <span>{meta}</span> : null}
+    </div>
+  );
+}

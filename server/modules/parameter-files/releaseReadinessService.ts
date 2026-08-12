@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import { canAdminParameters } from "../parameters/policy";
-import { listOpenConflicts } from "../parameters/repository";
+import { listOpenConflicts } from "../parameters/fileSyncConflictRepository";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { listConfigSetMemberFiles, listReleaseBaselineMembers, listReleaseBaselinesByConfigSet } from "./baselineRepository";

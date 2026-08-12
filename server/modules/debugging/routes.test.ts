@@ -6,6 +6,7 @@ import { ApiError } from "../../shared/http/errors";
 import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
+import { makeTestAuthContext } from "../../testing/authContext";
 import type { DebugDeviceGateway } from "./gateway";
 import type { DebugDeviceGatewayRegistry } from "./gatewayRegistry";
 import { registerDebuggingRoutes } from "./routes";
@@ -58,17 +59,16 @@ vi.mock("./service", () => ({
 
 function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
   return {
-    user: {
-      id: "user-1",
+    ...makeTestAuthContext({
+      userId: "user-1",
       organizationId: "org-1",
       name: "Riley Chen",
       email: "riley@example.com",
       title: "Software User",
-      isActive: true
-    },
-    organization: { id: "org-1", name: "ChargeLab" },
-    roles: [{  roleId: "software-user" }],
-    permissions: ["debugging:view", "debugging:read", "debugging:write", "debugging:rollback"],
+      organizationName: "ChargeLab",
+      roles: [{ roleId: "software-user" }],
+      permissions: ["debugging:view", "debugging:read", "debugging:write", "debugging:rollback"]
+    }),
     ...overrides
   };
 }

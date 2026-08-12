@@ -6,6 +6,7 @@ import type { DtsToolchainRunner } from "../parameter-files/dtsToolchain";
 import { ApiError } from "../../shared/http/errors";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { makeTestAuthContext } from "../../testing/authContext";
 import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
 import { createOrReuseBinding, upsertBindingRevisionValues } from "./bindingService";
 import {
@@ -72,19 +73,14 @@ const SPEC_VERSION_ID = "specver-iin-max-1";
 const databaseAvailable = await isTestDatabaseAvailable();
 
 function makeAuth(): AuthContext {
-  return {
-    user: {
-      id: USER_ID,
-      organizationId: ORG_ID,
-      name: "Topo Edit Admin",
-      email: "topo-edit@example.com",
-      title: "Admin",
-      isActive: true,
-    },
-    organization: { id: ORG_ID, name: "Topo Edit Org" },
-    roles: [{ projectId: null, roleId: "admin" }],
+  return makeTestAuthContext({
+    userId: USER_ID,
+    organizationId: ORG_ID,
+    name: "Topo Edit Admin",
+    email: "topo-edit@example.com",
+    organizationName: "Topo Edit Org",
     permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
-  };
+  });
 }
 
 async function seedGraph(db: InMemoryTestDatabase) {
@@ -2249,7 +2245,7 @@ describe.skipIf(!databaseAvailable)("createNodeEnablementDraft", () => {
     expect(tips.rows[0]!.candidate_config_revision_id).toBe(binding.candidateRevisionId);
 
     const { getEnablementDraftForSubmission, getBindingDraftForSubmission } = await import(
-      "../parameters/repository"
+      "../parameter-drafts/repository"
     );
     const forSubmit = await getEnablementDraftForSubmission(db!, {
       organizationId: ORG_ID,

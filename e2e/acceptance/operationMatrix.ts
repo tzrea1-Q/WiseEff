@@ -127,6 +127,32 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "db", "audit"]
   },
   {
+    id: "KB-ASK-001",
+    priority: "P1",
+    area: "knowledge",
+    route: "/knowledge",
+    roles: ["Hardware User"],
+    action:
+      "Open the API-mode ask-the-knowledge-base entry on /knowledge into Xiaoze, then prove a deterministic Xiaoze run grounds the answer through knowledge.search with a citation deep link to the published entry (grounding loop asserted at the SSE API level like the other Xiaoze operations).",
+    coverage: "automated",
+    acceptanceIds: ["KB-ASK-001"],
+    specFiles: ["e2e/acceptance/knowledge.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
+    id: "KB-INDEX-001",
+    priority: "P1",
+    area: "knowledge",
+    route: "/knowledge-admin",
+    roles: ["Admin"],
+    action:
+      "Read per-entry knowledge index health (status, failure reason, indexed revision) and the honest retrieval-mode banner, then retry a single entry and rebuild the whole index.",
+    coverage: "automated",
+    acceptanceIds: ["KB-INDEX-001"],
+    specFiles: ["e2e/acceptance/knowledge.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db"]
+  },
+  {
     id: "SHELL-DIAG-001",
     priority: "P0",
     area: "shell",
@@ -681,7 +707,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     coverage: "future",
     acceptanceIds: ["BRIDGE-WIN-001"],
     specFiles: [
-      "e2e/acceptance/debugging-local-bridge.acceptance.spec.ts",
+      "e2e/acceptance/local-device-bridge.acceptance.spec.ts",
       "e2e/acceptance/local-device-bridge.acceptance.spec.ts"
     ],
     assertions: ["ui", "api"],
@@ -865,6 +891,18 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     action: "Resume an approved Xiaoze AG-UI native mutating action without reopening a change request.",
     coverage: "automated",
     acceptanceIds: ["XIAOZE-ACTION-RESUME-001"],
+    specFiles: ["e2e/acceptance/xiaoze-action.acceptance.spec.ts"],
+    assertions: ["api"]
+  },
+  {
+    id: "XIAOZE-ACTION-EDITEDARGS-001",
+    priority: "P1",
+    area: "agent",
+    route: "/parameters",
+    roles: ["Admin"],
+    action: "Approve a Xiaoze mutating action with edited arguments; the executed tool call uses the edited payload.",
+    coverage: "automated",
+    acceptanceIds: ["XIAOZE-ACTION-EDITEDARGS-001"],
     specFiles: ["e2e/acceptance/xiaoze-action.acceptance.spec.ts"],
     assertions: ["api"]
   },

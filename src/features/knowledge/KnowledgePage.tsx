@@ -1,11 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { FilePlus2, RefreshCw, SquarePen } from "lucide-react";
+import { Bot, FilePlus2, RefreshCw, SquarePen } from "lucide-react";
 
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
 import type { KnowledgeCapability } from "@/domain/knowledge/rules";
 import { canGovernEntry, collectKnownTags } from "@/domain/knowledge/rules";
-import type { KnowledgeEntry, KnowledgeSearchResult, KnowledgeStatus } from "@/domain/knowledge/types";
-import { knowledgeContentFormLabels, knowledgeStatusLabels } from "@/domain/knowledge/types";
+import type {
+  KnowledgeEntry,
+  KnowledgeRetrievalInfo,
+  KnowledgeSearchResult,
+  KnowledgeStatus
+} from "@/domain/knowledge/types";
+import {
+  knowledgeContentFormLabels,
+  knowledgeRetrievalModeLabels,
+  knowledgeStatusLabels
+} from "@/domain/knowledge/types";
+import { dispatchXiaozeOpenHandoff } from "@/features/agent/xiaozeOpenHandoff";
 import { DataTable, PageInsightBar, type Column } from "@/components/admin";
 import { Button } from "@/components/ui/button";
 import { KnowledgeExtractionBadge, KnowledgeStatusBadge, KnowledgeTagList } from "./badges";
@@ -17,6 +27,10 @@ import { KnowledgeRevisionsDialog } from "./KnowledgeRevisionsDialog";
 export type KnowledgePageProps = {
   repository: KnowledgeRepository;
   capability: KnowledgeCapability;
+  /** Ask-the-knowledge-base opens Xiaoze — API mode only (mock has no Agent UI). */
+  askXiaozeEnabled?: boolean;
+  /** Deep-linked entry id (e.g. from a Xiaoze citation /knowledge?entryId=…). */
+  initialEntryId?: string | null;
 };
 
 function formatDateTime(value: string) {
@@ -28,7 +42,7 @@ function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
-export function KnowledgePage({ repository, capability }: KnowledgePageProps) {
+export function KnowledgePage({ repository, capability, askXiaozeEnabled = false, initialEntryId = null }: KnowledgePageProps) {
   const [rows, setRows] = useState<KnowledgeEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
@@ -37,6 +51,7 @@ export function KnowledgePage({ repository, capability }: KnowledgePageProps) {
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<KnowledgeSearchResult[]>([]);
+  const [searchRetrieval, setSearchRetrieval] = useState<KnowledgeRetrievalInfo | null>(null);
   const [searching, setSearching] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -62,17 +77,36 @@ export function KnowledgePage({ repository, capability }: KnowledgePageProps) {
     void loadEntries();
   }, [loadEntries]);
 
+  // Citation deep link (/knowledge?entryId=…) opens the entry detail directly.
+  useEffect(() => {
+    if (!initialEntryId) {
+      return;
+    }
+    let cancelled = false;
+    void repository.get(initialEntryId).then((entry) => {
+      if (cancelled || !entry) return;
+      setRows((current) => (current.some((item) => item.id === entry.id) ? current : [entry, ...current]));
+      setSelectedId(entry.id);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [initialEntryId, repository]);
+
   const runSearch = async () => {
     const q = searchInput.trim();
     setSearchQuery(q);
     if (!q) {
       setSearchResults([]);
+      setSearchRetrieval(null);
       return;
     }
     setSearching(true);
     setErrorMessage("");
     try {
-      setSearchResults(await repository.search(q));
+      const response = await repository.search(q);
+      setSearchResults(response.items);
+      setSearchRetrieval(response.retrieval);
     } catch (error) {
       setErrorMessage(error instanceof Error && error.message ? error.message : "检索失败,请稍后重试。");
     } finally {
@@ -84,6 +118,7 @@ export function KnowledgePage({ repository, capability }: KnowledgePageProps) {
     setSearchInput("");
     setSearchQuery("");
     setSearchResults([]);
+    setSearchRetrieval(null);
   };
 
   const refreshEntry = async (entryId: string) => {
@@ -282,6 +317,17 @@ export function KnowledgePage({ repository, capability }: KnowledgePageProps) {
             </Button>
           ) : null}
           <span className="ml-auto flex items-center gap-2">
+            {askXiaozeEnabled ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => dispatchXiaozeOpenHandoff("knowledge-ask")}
+              >
+                <Bot data-icon="inline-start" />
+                问知识库(小泽)
+              </Button>
+            ) : null}
             {capability.canEdit ? (
               <>
                 <Button
@@ -321,6 +367,11 @@ export function KnowledgePage({ repository, capability }: KnowledgePageProps) {
           <div className="flex flex-col gap-2" aria-label="检索结果">
             <p className="text-xs text-muted-foreground">
               “{searchQuery}” 命中 {searchResults.length} 条已发布知识(草稿与已归档不参与检索)。
+              {searchRetrieval ? (
+                <span className="ml-1" data-retrieval-mode={searchRetrieval.mode}>
+                  检索模式:{knowledgeRetrievalModeLabels[searchRetrieval.mode]}
+                </span>
+              ) : null}
             </p>
             <ul className="flex flex-col gap-2">
               {searchResults.map((result) => (

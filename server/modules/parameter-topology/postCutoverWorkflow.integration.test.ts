@@ -11,20 +11,23 @@ import pg from "pg";
 import { describe, expect, it } from "vitest";
 
 import { createDatabase, type Database } from "../../shared/database/client";
-import { applyMigrations } from "../../shared/database/migrations";
 import { ApiError } from "../../shared/http/errors";
+import { makeTestAuthContext } from "../../testing/authContext";
+import { withTempDatabase as withSharedTempDatabase } from "../../testing/tempDatabase";
 import { isTestDatabaseAvailable } from "../../testing/testDatabase";
 import type { AuthContext } from "../auth/types";
 import { insertNodeOperation } from "../debugging/repository";
 import { writebackMergedParameterValue } from "../parameter-files/writebackService";
 import { resolveParameterIdentityMode } from "../parameters/parameterIdentityMode";
 import {
+  listParameterHistory,
+  listParameters
+} from "../parameters/repository";
+import {
   getChangeRequestWriteLock,
   listDraftsForUser,
-  listParameterHistory,
-  listParameters,
   upsertDraft
-} from "../parameters/repository";
+} from "../parameter-drafts/repository";
 import { deleteProject } from "../parameters/projectRepository";
 import {
   createChangeRequest,
@@ -42,7 +45,6 @@ import {
 } from "./migration";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-const migrationsDir = path.join(projectRoot, "server", "migrations");
 
 const ORG = "org-pcw-t1t2";
 const PROJECT = "project-pcw-t1t2";
@@ -77,74 +79,21 @@ function expectedBindingId(specId: string, logicalNodeId: string) {
   return stableSemanticId("project_parameter_binding", [PROJECT, logicalNodeId, specId]);
 }
 
-function resolveTestDatabaseUrl() {
-  return (
-    process.env.TEST_DATABASE_URL?.trim() ||
-    process.env.DATABASE_URL?.trim() ||
-    "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff"
-  );
-}
-
-function adminConnectionString(database = "postgres") {
-  const url = new URL(resolveTestDatabaseUrl());
-  url.pathname = `/${database}`;
-  return url.toString();
-}
-
-async function withAdminClient<T>(fn: (client: pg.Client) => Promise<T>): Promise<T> {
-  const client = new pg.Client({ connectionString: adminConnectionString("postgres") });
-  await client.connect();
-  try {
-    return await fn(client);
-  } finally {
-    await client.end();
-  }
-}
-
 async function withTempDatabase(fn: (db: Database, connectionString: string) => Promise<void>) {
-  const dbName = `wiseeff_pcw_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`.replace(
-    /[^a-z0-9_]/gi,
-    ""
+  await withSharedTempDatabase({ prefix: "pcw" }, ({ db, connectionString }) =>
+    fn(db, connectionString)
   );
-  await withAdminClient(async (admin) => {
-    await admin.query(`create database ${dbName}`);
-  });
-
-  const connectionString = adminConnectionString(dbName);
-  const client = new pg.Client({ connectionString });
-  await client.connect();
-  const db = createDatabase({
-    query: async (text, values = []) => {
-      const result = await client.query(text, values);
-      return { rows: result.rows, rowCount: result.rowCount };
-    }
-  });
-
-  try {
-    await applyMigrations(db, migrationsDir);
-    await fn(db, connectionString);
-  } finally {
-    await client.end().catch(() => undefined);
-    await withAdminClient(async (admin) => {
-      await admin.query(`drop database if exists ${dbName} with (force)`);
-    });
-  }
 }
 
 function makeAuth(): AuthContext {
-  return {
-    user: {
-      id: USER,
-      organizationId: ORG,
-      name: "PCW User",
-      email: "pcw@example.com",
-      title: "Admin",
-      isActive: true
-    },
-    organization: { id: ORG, name: "PCW Org" },
-    roles: [{ projectId: null, roleId: "admin" }],
+  return makeTestAuthContext({
+    userId: USER,
+    organizationId: ORG,
+    name: "PCW User",
+    email: "pcw@example.com",
+    organizationName: "PCW Org",
     permissions: ["parameter:view", "parameter:edit", "parameter:review", "parameter:merge", "admin:access"]
-  };
+  });
 }
 
 async function seedPreCutoverGraph(db: Database) {

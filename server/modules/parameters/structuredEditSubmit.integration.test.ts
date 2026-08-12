@@ -1,8 +1,11 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { makeTestAuthContext } from "../../testing/authContext";
+import { createMemoryObjectStore } from "../../testing/objectStore";
+import { seedCoreGraph } from "../../testing/fixtures";
 import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
@@ -27,41 +30,15 @@ const NORMALIZED_HEX = classifyDtsValue(RAW_HEX, "mixed_case_reg").normalizedVal
 
 function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
   return {
-    user: {
-      id: USER,
+    ...makeTestAuthContext({
+      userId: USER,
       organizationId: ORG,
       name: "P31 Editor",
       email: "p31-edit@example.com",
-      title: "Admin",
-      isActive: true
-    },
-    organization: { id: ORG, name: "P31 Org" },
-    roles: [{ projectId: null, roleId: "admin" }],
-    permissions: ["parameter:view", "parameter:edit", "parameter:review", "parameter:edit-critical", "admin:access"],
+      organizationName: "P31 Org",
+      permissions: ["parameter:view", "parameter:edit", "parameter:review", "parameter:edit-critical", "admin:access"]
+    }),
     ...overrides
-  };
-}
-
-function createMemoryObjectStore(): ObjectStore {
-  const entries = new Map<string, Buffer>();
-  return {
-    async put(input) {
-      const checksum = createHash("sha256").update(input.bytes).digest("hex");
-      const storageKey = `${input.organizationId}/${checksum}-${input.fileName}`;
-      entries.set(storageKey, Buffer.from(input.bytes));
-      return {
-        storageKey,
-        fileName: input.fileName,
-        contentType: input.contentType,
-        fileSizeBytes: input.bytes.byteLength,
-        checksumSha256: checksum
-      };
-    },
-    async get(storageKey) {
-      const value = entries.get(storageKey);
-      if (!value) throw new Error(`Missing object: ${storageKey}`);
-      return Buffer.from(value);
-    }
   };
 }
 
@@ -91,27 +68,11 @@ async function advanceReview(server: ReturnType<typeof createHttpServer>, reques
 }
 
 async function seedBaseline(db: InMemoryTestDatabase) {
-  await db.query(
-    `insert into organizations (id, name) values ($1, 'P31 Org')
-     on conflict (id) do update set name = excluded.name`,
-    [ORG]
-  );
-  await db.query(
-    `
-    insert into users (id, organization_id, name, email, title, is_active)
-    values ($1, $2, 'P31 Editor', 'p31-edit@example.com', 'Admin', true)
-    on conflict (id) do update set organization_id = excluded.organization_id
-    `,
-    [USER, ORG]
-  );
-  await db.query(
-    `
-    insert into projects (id, organization_id, name, code, status)
-    values ($1, $2, 'P31', 'P31', 'initialized')
-    on conflict (id) do update set name = excluded.name
-    `,
-    [PROJECT, ORG]
-  );
+  await seedCoreGraph(db, {
+    organization: { id: ORG, name: "P31 Org" },
+    users: [{ id: USER, name: "P31 Editor", email: "p31-edit@example.com" }],
+    projects: [{ id: PROJECT, name: "P31", code: "P31" }]
+  });
   await db.query(
     `
     insert into parameter_definitions (
@@ -223,7 +184,7 @@ describe.skipIf(!databaseAvailable)("P3.1 structured edit submit mapping", () =>
         }
       ],
       reason: "P3.1 structured edit submit"
-    });
+    }, { requestId: "req-it-structured-1" });
 
     expect(round.items).toHaveLength(1);
     expect(round.items[0]?.parameterId).toBe(PPV);
@@ -301,7 +262,7 @@ describe.skipIf(!databaseAvailable)("P3.1 structured edit submit mapping", () =>
           reason: "create-mapped structured edit"
         }
       ]
-    });
+    }, { requestId: "req-it-structured-2" });
 
     expect(round.items).toHaveLength(1);
     const parameterId = round.items[0]!.parameterId;
@@ -503,7 +464,7 @@ describe.skipIf(!databaseAvailable)("P3.1 structured edit submit mapping", () =>
             reason: "rbac deny"
           }
         ]
-      })
+      }, { requestId: "req-it-structured-3" })
     ).rejects.toMatchObject({
       code: "FORBIDDEN",
       status: 403
@@ -556,7 +517,7 @@ describe.skipIf(!databaseAvailable)("P3.1 structured edit submit mapping", () =>
             }
           ]
         },
-        { actorType: "agent" }
+        { actorType: "agent", requestId: "req-it-structured-4" }
       )
     ).rejects.toMatchObject({
       code: "FORBIDDEN",

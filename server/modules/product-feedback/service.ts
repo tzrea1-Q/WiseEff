@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { createAuditEvent } from "../audit/repository";
+import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
@@ -101,7 +101,7 @@ function decodeAndValidateAttachments(attachments: ProductFeedbackAttachmentInpu
 }
 
 async function createProductFeedbackAudit(
-  db: Queryable,
+  tx: AuditTx,
   auth: AuthContext,
   input: {
     kind: "product-feedback-create" | "product-feedback-update";
@@ -111,16 +111,13 @@ async function createProductFeedbackAudit(
   },
   context: ProductFeedbackServiceContext = {}
 ) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: null,
-    actorUserId: auth.user.id,
-    actorType: "user",
+  // requestId fallback survives only until feedback contexts become mandatory (ADR-0027).
+  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
     app: "product-feedback",
     kind: input.kind,
     action: input.action,
     severity: "Medium",
+    projectId: null,
     targetType: "product-feedback",
     targetId: input.feedback.id,
     metadata: {
@@ -129,8 +126,7 @@ async function createProductFeedbackAudit(
       pagePath: input.feedback.pagePath,
       attachmentCount: input.feedback.attachments.length,
       ...input.metadata
-    },
-    traceId: context.requestId ?? randomUUID()
+    }
   });
 }
 
@@ -192,7 +188,7 @@ export async function createProductFeedback(
     );
     const item = { ...feedback, attachments };
     await createProductFeedbackAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         kind: "product-feedback-create",
@@ -252,7 +248,7 @@ export async function updateProductFeedback(
       throw productFeedbackNotFound(feedbackId);
     }
     await createProductFeedbackAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         kind: "product-feedback-update",

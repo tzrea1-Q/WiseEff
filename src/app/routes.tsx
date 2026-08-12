@@ -20,20 +20,22 @@ import type {
 import type { DashboardState } from "@/application/parameters/dashboardState";
 import type { createParameterDashboardRuntime } from "@/application/parameters/parameterDashboardRuntime";
 import type { DebuggingRuntimeActions } from "@/application/debugging/debuggingRuntime";
-import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogRuntimeActions } from "@/application/logs/logRuntime";
-import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
-import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
 import type { KnowledgeCapability } from "@/domain/knowledge/rules";
-import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
-import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
-import type { ParameterInitializationRepository } from "@/application/ports/ParameterInitializationRepository";
+import { resolveDtsReloadRepository } from "@/application/dts-reload/dtsReloadRuntime";
+import { createMockDtsReloadBridgeSeams } from "@/infrastructure/mock/mockDtsReloadRepository";
 import type { AppAction } from "@/application/state/appState";
+import type { AppRuntime } from "@/app/appRuntime";
 import type { DashboardWindow, HotspotDimension, OverviewScope } from "@/domain/parameters/dashboardTypes";
 import { canAccessPage, canPerform, getAccessibleFallbackPath, getRequiredRoleForPage, getRequiredRoleLabel } from "@/app/permissions";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { AuditCenterPage } from "@/AuditCenterPage";
 import { migrateLegacyRoleId } from "@/domain/users/types";
+import { LinearTemplateHome } from "@/linear-template/LinearTemplateHome";
+import { LogDashboardPage } from "@/features/log-analysis/LogDashboardPage";
+import { LogsPage } from "@/features/log-analysis/LogsPage";
+import { ParameterReviewPage } from "@/features/parameter-review/ParameterReviewPage";
+import { ParameterSubmissionsPage } from "@/features/parameter-review/ParameterSubmissionsPage";
 import { LogAdminPage } from "@/LogAdminPage";
 import { NodeDebuggingPage } from "@/NodeDebuggingPage";
 import { PlatformConsolePage } from "@/PlatformConsolePage";
@@ -45,7 +47,6 @@ import { KnowledgePage } from "@/features/knowledge/KnowledgePage";
 import { DtsReloadPage } from "@/features/dts-reload/DtsReloadPage";
 import { ParametersPage as UserParametersPage } from "@/ParametersPage";
 import { UserPermissionsPage } from "@/UserPermissionsPage";
-import type { UserGovernanceActions } from "@/UserPermissionsPage";
 import { NoEntryPage } from "@/components/NoEntryPage";
 import type { PageConfig } from "@/appConfig";
 import type { PrototypeState } from "@/domain/prototype/types";
@@ -75,19 +76,13 @@ export type PageProps = {
   onNavigate: (path: string) => void;
   search: string;
   debuggingActions?: DebuggingRuntimeActions;
-  debuggingGateway?: DebuggingGateway;
   debuggingRuntimeReady?: boolean;
   logActions?: LogRuntimeActions;
   parameterActions?: ParameterPageActions;
-  parameterTopologyRepository?: ParameterTopologyRepository;
-  listParameterConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
-  productFeedbackRepository?: ProductFeedbackRepository;
-  knowledgeRepository?: KnowledgeRepository;
+  /** Mode-selected adapters assembled once by the shell (createAppRuntime). */
+  runtime?: AppRuntime;
   knowledgeCapability?: KnowledgeCapability;
-  dtsReloadRepository?: DtsReloadRepository | null;
   canStartDtsReload?: boolean;
-  parameterInitializationRepository?: ParameterInitializationRepository;
-  userGovernanceActions?: UserGovernanceActions;
   runtimeMode?: WiseEffRuntimeMode;
   dashboardState?: DashboardState;
   dashboardRuntime?: ReturnType<typeof createParameterDashboardRuntime>;
@@ -97,15 +92,20 @@ export type PageProps = {
   onDashboardProjectChange?: (projectId: string | null) => void;
 };
 
+/**
+ * Stable mock bridge seams for `/dts-reload` in mock mode. Created once so re-renders do
+ * not churn the LocalDeviceBridgePanel override identities (and thus its refresh effect).
+ */
+let cachedMockDtsReloadBridgeSeams: ReturnType<typeof createMockDtsReloadBridgeSeams> | null = null;
+function mockDtsReloadBridgeSeams() {
+  cachedMockDtsReloadBridgeSeams ??= createMockDtsReloadBridgeSeams();
+  return cachedMockDtsReloadBridgeSeams;
+}
+
 export type PageRouterProps = PageProps & {
   page: PageConfig;
-  HomePage: () => ReactNode;
-  ParameterSubmissionsPage: (props: PageProps) => ReactNode;
-  ParameterReviewPage: (props: PageProps) => ReactNode;
   onNewProject?: () => void;
   TopBarProjectId?: string;
-  LogDashboardPage: (props: { state: PrototypeState; onNavigate: (path: string) => void }) => ReactNode;
-  LogsPage: (props: PageProps) => ReactNode;
   DebuggingAdminPage: (props: PageProps & { area?: "parameter" | "nodes" }) => ReactNode;
 };
 
@@ -116,19 +116,12 @@ export function PageRouter({
   onNavigate,
   search,
   debuggingActions,
-  debuggingGateway,
   debuggingRuntimeReady = true,
   logActions,
   parameterActions,
-  parameterTopologyRepository,
-  listParameterConfigSets,
-  productFeedbackRepository,
-  knowledgeRepository,
+  runtime,
   knowledgeCapability,
-  dtsReloadRepository = null,
   canStartDtsReload = false,
-  parameterInitializationRepository,
-  userGovernanceActions,
   runtimeMode,
   dashboardState,
   dashboardRuntime,
@@ -136,15 +129,17 @@ export function PageRouter({
   onDashboardDimensionChange,
   onDashboardOverviewScopeChange,
   onDashboardProjectChange,
-  HomePage,
-  ParameterSubmissionsPage,
-  ParameterReviewPage,
   onNewProject,
   TopBarProjectId,
-  LogDashboardPage,
-  LogsPage,
   DebuggingAdminPage
 }: PageRouterProps) {
+  const debuggingGateway = runtime?.debuggingGateway;
+  const parameterTopologyRepository = runtime?.parameterTopologyRepository;
+  const listParameterConfigSets = runtime?.listParameterConfigSets;
+  const productFeedbackRepository = runtime?.productFeedbackRepository;
+  const knowledgeRepository = runtime?.knowledgeRepository;
+  const dtsReloadRepository = runtime?.dtsReloadRepository;
+  const userGovernanceActions = runtime?.userGovernanceActions;
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
   const searchProjectId = new URLSearchParams(search).get("project") ?? "";
   const effectiveParametersProjectId = searchProjectId || state.activeProjectId;
@@ -225,7 +220,7 @@ export function PageRouter({
           onNavigate={onNavigate}
           search={search}
           parameterActions={parameterActions}
-          parameterInitializationRepository={parameterInitializationRepository}
+          runtime={runtime}
           runtimeMode={runtimeMode}
         />
       );
@@ -253,14 +248,28 @@ export function PageRouter({
     case "log-dashboard":
       return <LogDashboardPage state={state} onNavigate={onNavigate} />;
     case "logs":
-      return <LogsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} logActions={logActions} parameterActions={parameterActions} />;
+      return (
+        <LogsPage
+          state={state}
+          dispatch={dispatch}
+          onNavigate={onNavigate}
+          search={search}
+          logActions={runtimeMode === "api" ? logActions : undefined}
+          parameterActions={parameterActions}
+        />
+      );
     case "log-admin":
       return <LogAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} logActions={logActions} />;
     case "feedback-admin":
       return productFeedbackRepository ? <FeedbackAdminPage productFeedbackRepository={productFeedbackRepository} /> : null;
     case "knowledge":
       return knowledgeRepository && knowledgeCapability ? (
-        <KnowledgePage repository={knowledgeRepository} capability={knowledgeCapability} />
+        <KnowledgePage
+          repository={knowledgeRepository}
+          capability={knowledgeCapability}
+          askXiaozeEnabled={runtimeMode === "api"}
+          initialEntryId={new URLSearchParams(search).get("entryId")}
+        />
       ) : null;
     case "knowledge-admin":
       return knowledgeRepository && knowledgeCapability ? (
@@ -284,36 +293,38 @@ export function PageRouter({
           runtimeReady={runtimeMode === "api" ? debuggingRuntimeReady : true}
         />
       );
-    case "dts-reload":
+    case "dts-reload": {
+      const mockSeams = runtimeMode === "api" ? null : mockDtsReloadBridgeSeams();
       return (
         <DtsReloadPage
           projects={state.configDraft.projects.map((project) => ({ id: project.id, name: project.name }))}
           initialProjectId={state.activeProjectId}
-          repository={runtimeMode === "api" ? dtsReloadRepository ?? null : null}
-          canStartRun={runtimeMode === "api" && canStartDtsReload}
-          unavailableReason={
-            runtimeMode === "api"
-              ? undefined
-              : "该页面仅在 API 模式下可用。Mock 运行时不提供参数调试。"
-          }
+          repository={dtsReloadRepository ?? resolveDtsReloadRepository(runtimeMode)}
+          canStartRun={canStartDtsReload}
+          bridges={mockSeams?.bridges}
+          probeBridgeHealth={mockSeams?.probeBridgeHealth}
+          createBridgePairingCode={mockSeams?.createPairingCode}
           detectTargets={
-            runtimeMode === "api" && debuggingGateway
-              ? async (protocol) => {
-                  const targets = await debuggingGateway.detectTargets({ protocol });
-                  return targets
-                    .filter((target) => Boolean(target.targetRef?.trim()))
-                    .map((target) => ({
-                      targetRef: target.targetRef!.trim(),
-                      label: target.bridgeMachineLabel?.trim()
-                        ? `${target.bridgeMachineLabel.trim()} · ${target.targetRef!.trim()}`
-                        : target.label || target.targetRef!.trim(),
-                      bridgeId: target.bridgeId
-                    }));
-                }
-              : undefined
+            mockSeams
+              ? mockSeams.detectTargets
+              : debuggingGateway
+                ? async (protocol) => {
+                    const targets = await debuggingGateway.detectTargets({ protocol });
+                    return targets
+                      .filter((target) => Boolean(target.targetRef?.trim()))
+                      .map((target) => ({
+                        targetRef: target.targetRef!.trim(),
+                        label: target.bridgeMachineLabel?.trim()
+                          ? `${target.bridgeMachineLabel.trim()} · ${target.targetRef!.trim()}`
+                          : target.label || target.targetRef!.trim(),
+                        bridgeId: target.bridgeId
+                      }));
+                  }
+                : undefined
           }
         />
       );
+    }
     case "debugging-admin": {
       const area =
         page.path === "/debugging-admin/nodes" || page.path.startsWith("/debugging-admin/nodes/")
@@ -326,7 +337,6 @@ export function PageRouter({
           onNavigate={onNavigate}
           search={search}
           debuggingActions={debuggingActions}
-          debuggingGateway={debuggingGateway}
           logActions={logActions}
           parameterActions={parameterActions}
           area={area}
@@ -340,6 +350,6 @@ export function PageRouter({
     case "platform-console":
       return <PlatformConsolePage />;
     default:
-      return <HomePage />;
+      return <LinearTemplateHome />;
   }
 }

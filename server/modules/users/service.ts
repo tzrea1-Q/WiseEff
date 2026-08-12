@@ -2,7 +2,7 @@ import { randomBytes, randomUUID, scrypt } from "node:crypto";
 import { promisify } from "node:util";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { createAuditEvent } from "../audit/repository";
+import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext, BackendRoleId, RoleBinding } from "../auth/types";
 import {
@@ -135,7 +135,7 @@ async function assertNoSelfLockout(
 }
 
 async function auditUserMutation(
-  db: Queryable,
+  tx: AuditTx,
   auth: AuthContext,
   input: {
     kind: "user-create" | "user-update" | "user-activation" | "user-role-replace";
@@ -145,25 +145,21 @@ async function auditUserMutation(
   },
   context: AuditCorrelationContext = {}
 ) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: null,
-    actorUserId: auth.user.id,
-    actorType: "user",
+  // requestId fallback survives only until user-governance contexts become mandatory (ADR-0027).
+  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
     app: "user-governance",
     kind: input.kind,
     action: input.action,
     severity: "High",
+    projectId: null,
     targetType: "user",
     targetId: input.userId,
-    metadata: input.metadata,
-    traceId: context.requestId ?? randomUUID()
+    metadata: input.metadata
   });
 }
 
 async function auditRegistrationRoleRequestDecision(
-  db: Queryable,
+  tx: AuditTx,
   auth: AuthContext,
   input: {
     action: "approve" | "reject";
@@ -173,20 +169,15 @@ async function auditRegistrationRoleRequestDecision(
   },
   context: AuditCorrelationContext = {}
 ) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: null,
-    actorUserId: auth.user.id,
-    actorType: "user",
+  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
     app: "user-governance",
     kind: "registration-role-request",
     action: input.action,
     severity: "High",
+    projectId: null,
     targetType: "user",
     targetId: input.userId,
-    metadata: { requestId: input.requestId, ...input.metadata },
-    traceId: context.requestId ?? randomUUID()
+    metadata: { requestId: input.requestId, ...input.metadata }
   });
 }
 
@@ -227,7 +218,7 @@ export async function createUser(db: Database, auth: AuthContext, input: CreateU
       passwordHash: await hashPassword(input.password)
     });
     await replaceRoleBindings(tx, { organizationId: auth.organization.id, userId: user.id, roles });
-    await auditUserMutation(tx, auth, {
+    await auditUserMutation(asAuditTx(tx), auth, {
       kind: "user-create",
       action: "create",
       userId: user.id,
@@ -258,7 +249,7 @@ export async function updateUserProfile(
     if (!user) {
       throw new ApiError("NOT_FOUND", "User was not found.", 404, { userId });
     }
-    await auditUserMutation(tx, auth, {
+    await auditUserMutation(asAuditTx(tx), auth, {
       kind: "user-update",
       action: "update",
       userId,
@@ -284,7 +275,7 @@ export async function deactivateUser(
     if (!user) {
       throw new ApiError("NOT_FOUND", "User was not found.", 404, { userId });
     }
-    await auditUserMutation(tx, auth, {
+    await auditUserMutation(asAuditTx(tx), auth, {
       kind: "user-activation",
       action: input.isActive ? "activate" : "deactivate",
       userId,
@@ -323,7 +314,7 @@ export async function replaceUserRoles(
     }
     assertPlatformAdminGrantAllowed(auth, user.roles, roles);
     await replaceRoleBindings(tx, { organizationId: auth.organization.id, userId, roles });
-    await auditUserMutation(tx, auth, {
+    await auditUserMutation(asAuditTx(tx), auth, {
       kind: "user-role-replace",
       action: "replace-roles",
       userId,
@@ -345,7 +336,11 @@ export async function replaceUserRoles(
 
 export async function listRegistrationRoleRequests(db: Queryable, auth: AuthContext) {
   requireUserManager(auth);
-  return hasAdminRole(auth.roles) ? listAllPendingRegistrationRoleRequests(db) : listPendingRegistrationRoleRequests(db, auth.organization.id);
+  // Cross-organization visibility is a platform-admin capability; an org admin
+  // only governs registrations inside their own tenant.
+  return callerHasPlatformAdmin(auth)
+    ? listAllPendingRegistrationRoleRequests(db)
+    : listPendingRegistrationRoleRequests(db, auth.organization.id);
 }
 
 export async function approveRegistrationRoleRequest(
@@ -357,7 +352,7 @@ export async function approveRegistrationRoleRequest(
   requireUserManager(auth);
 
   return db.transaction(async (tx) => {
-    const request = hasAdminRole(auth.roles)
+    const request = callerHasPlatformAdmin(auth)
       ? await getPendingRegistrationRoleRequestByIdForAdmin(tx, requestId)
       : await getPendingRegistrationRoleRequestById(tx, { organizationId: auth.organization.id, requestId });
     if (!request) {
@@ -387,7 +382,7 @@ export async function approveRegistrationRoleRequest(
     if (!decided) {
       throw new ApiError("CONFLICT", "Registration role request was already decided.", 409, { requestId });
     }
-    await auditRegistrationRoleRequestDecision(tx, auth, {
+    await auditRegistrationRoleRequestDecision(asAuditTx(tx), auth, {
       action: "approve",
       requestId,
       userId: request.userId,
@@ -420,7 +415,7 @@ export async function rejectRegistrationRoleRequest(
   requireUserManager(auth);
 
   return db.transaction(async (tx) => {
-    const request = hasAdminRole(auth.roles)
+    const request = callerHasPlatformAdmin(auth)
       ? await getPendingRegistrationRoleRequestByIdForAdmin(tx, requestId)
       : await getPendingRegistrationRoleRequestById(tx, { organizationId: auth.organization.id, requestId });
     if (!request) {
@@ -437,7 +432,7 @@ export async function rejectRegistrationRoleRequest(
     if (!decided) {
       throw new ApiError("CONFLICT", "Registration role request was already decided.", 409, { requestId });
     }
-    await auditRegistrationRoleRequestDecision(tx, auth, {
+    await auditRegistrationRoleRequestDecision(asAuditTx(tx), auth, {
       action: "reject",
       requestId,
       userId: request.userId,

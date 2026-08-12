@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,6 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { makeTestAuthContext } from "../../testing/authContext";
+import { createMemoryObjectStore } from "../../testing/objectStore";
+import { seedCoreGraph } from "../../testing/fixtures";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import { parseDts, serializeDts } from "../dts";
@@ -34,63 +36,22 @@ function withSingleValue(source: string, value: string): string {
 }
 
 function makeAuth(): AuthContext {
-  return {
-    user: {
-      id: "user-csb-int",
-      organizationId: "org-csb-int",
-      name: "Config Set Baseline Admin",
-      email: "csb-int@example.com",
-      title: "Admin",
-      isActive: true
-    },
-    organization: { id: "org-csb-int", name: "CSB Org" },
-    roles: [{ projectId: null, roleId: "admin" }],
+  return makeTestAuthContext({
+    userId: "user-csb-int",
+    organizationId: "org-csb-int",
+    name: "Config Set Baseline Admin",
+    email: "csb-int@example.com",
+    organizationName: "CSB Org",
     permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"]
-  };
-}
-
-function createMemoryObjectStore(): ObjectStore {
-  const entries = new Map<string, Buffer>();
-  return {
-    async put(input) {
-      const checksum = createHash("sha256").update(input.bytes).digest("hex");
-      const storageKey = `${input.organizationId}/${checksum}-${input.fileName}`;
-      entries.set(storageKey, Buffer.from(input.bytes));
-      return {
-        storageKey,
-        fileName: input.fileName,
-        contentType: input.contentType,
-        fileSizeBytes: input.bytes.byteLength,
-        checksumSha256: checksum
-      };
-    },
-    async get(storageKey) {
-      const value = entries.get(storageKey);
-      if (!value) throw new Error(`Missing object: ${storageKey}`);
-      return Buffer.from(value);
-    }
-  };
+  });
 }
 
 async function seedBaseline(db: InMemoryTestDatabase) {
-  await db.query(
-    `insert into organizations (id, name) values ('org-csb-int', 'CSB Org')
-     on conflict (id) do update set name = excluded.name`
-  );
-  await db.query(
-    `
-    insert into users (id, organization_id, name, email, title, is_active)
-    values ('user-csb-int', 'org-csb-int', 'Config Set Baseline Admin', 'csb-int@example.com', 'Admin', true)
-    on conflict (id) do update set organization_id = excluded.organization_id
-    `
-  );
-  await db.query(
-    `
-    insert into projects (id, organization_id, name, code, status)
-    values ('project-csb-int', 'org-csb-int', 'Config Set Baseline', 'CSB', 'initialized')
-    on conflict (id) do update set name = excluded.name
-    `
-  );
+  await seedCoreGraph(db, {
+    organization: { id: "org-csb-int", name: "CSB Org" },
+    users: [{ id: "user-csb-int", name: "Config Set Baseline Admin", email: "csb-int@example.com" }],
+    projects: [{ id: "project-csb-int", name: "Config Set Baseline", code: "CSB" }]
+  });
 }
 
 /** Always-off stub so export/release tests never depend on a real `dtc` binary being installed. */
