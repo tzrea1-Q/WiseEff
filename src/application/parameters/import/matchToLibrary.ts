@@ -1,4 +1,4 @@
-import type { ParameterRecord } from "@/mockData";
+import type { ParameterRecord } from "@/domain/prototype/types";
 import type { ParsedImportRow, ReviewedImportRow } from "./types";
 
 function buildMatchKey(name: string, module: string): string {

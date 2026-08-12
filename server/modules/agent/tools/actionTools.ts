@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { ApiError } from "../../../shared/http/errors";
 import type { Database } from "../../../shared/database/client";
 import { getProjectParameterForUpdate } from "../../parameters/repository";
@@ -7,10 +6,7 @@ import { submitParameterChanges } from "../../parameters/service";
 import type { AgentToolDefinition } from "../toolRegistry";
 
 type ToolOptions = {
-  db: {
-    query<Row>(text: string, values?: unknown[]): Promise<{ rows: Row[]; rowCount: number | null }>;
-    transaction?: Database["transaction"];
-  };
+  db: Database;
 };
 
 function readProjectId(contextProjectId: string | undefined, payload: Record<string, unknown>) {
@@ -40,13 +36,13 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
           );
         }
 
-        const parameter = await getProjectParameterForUpdate(options.db as Database, {
+        const parameter = await getProjectParameterForUpdate(options.db, {
           organizationId: context.auth.organization.id,
           projectId,
           parameterId
         });
         if (parameter?.sourceNodePath) {
-          await assertSensitiveNodeWriteAllowed(options.db as Database, context.auth, {
+          await assertSensitiveNodeWriteAllowed(options.db, context.auth, {
             organizationId: context.auth.organization.id,
             projectId,
             nodePath: parameter.sourceNodePath,
@@ -56,36 +52,11 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
           });
         }
 
-        if (typeof options.db.transaction === "function") {
-          const submission = await submitParameterChanges(options.db as Database, context.auth, {
-            projectId,
-            items: [{ parameterId, targetValue, reason }]
-          }, { requestId: context.requestId, actorType: "agent" });
-          const changeRequestId = submission.items[0]?.requestId ?? submission.id;
-          return {
-            summary: `Submitted parameter change request ${changeRequestId} for review.`,
-            data: { changeRequestId, projectId, parameterId, targetValue },
-            citations: [
-              {
-                type: "parameter" as const,
-                id: changeRequestId,
-                label: `Change request ${changeRequestId}`,
-                href: `/parameters/review?changeRequestId=${encodeURIComponent(changeRequestId)}`,
-                snippet: `${targetValue} pending review for ${projectId}.`
-              }
-            ]
-          };
-        }
-
-        const inserted = await options.db.query<{ id: string }>(
-          `
-insert into parameter_change_requests (id, organization_id, project_id, status)
-values ($1, $2, $3, 'submitted')
-returning id
-          `,
-          [randomUUID(), context.auth.organization.id, projectId]
-        );
-        const changeRequestId = inserted.rows[0]?.id ?? randomUUID();
+        const submission = await submitParameterChanges(options.db, context.auth, {
+          projectId,
+          items: [{ parameterId, targetValue, reason }]
+        }, { requestId: context.requestId, actorType: "agent" });
+        const changeRequestId = submission.items[0]?.requestId ?? submission.id;
         return {
           summary: `Submitted parameter change request ${changeRequestId} for review.`,
           data: { changeRequestId, projectId, parameterId, targetValue },

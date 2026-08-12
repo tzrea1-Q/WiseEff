@@ -12,7 +12,7 @@ import type { AuthContext } from "../auth/types";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { createDatabase, type Database } from "../../shared/database/client";
-import { getPendingMigrations } from "../../shared/database/migrations";
+import { applyMigrations } from "../../shared/database/migrations";
 import { ApiError } from "../../shared/http/errors";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import type { ConfigRevisionManifest } from "../parameter-topology/types";
@@ -115,38 +115,6 @@ async function withTempDatabase(fn: (db: Database) => Promise<void>) {
       await admin.query(`drop database if exists ${dbName} with (force)`);
     });
   }
-}
-
-async function applyMigrationsThrough(db: Database, maxInclusive: string): Promise<string[]> {
-  await db.query(`
-    create table if not exists schema_migrations (
-      name text primary key,
-      applied_at timestamptz not null default now()
-    )
-  `);
-
-  const files = (await fs.readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
-  const limited = files.filter((file) => file <= maxInclusive);
-  const applied = await db.query<{ name: string }>("select name from schema_migrations order by name");
-  const pending = getPendingMigrations(
-    limited,
-    applied.rows.map((row) => row.name),
-  );
-
-  for (const file of pending) {
-    const sql = await fs.readFile(path.join(migrationsDir, file), "utf8");
-    await db.query("begin");
-    try {
-      await db.query(sql);
-      await db.query("insert into schema_migrations (name) values ($1)", [file]);
-      await db.query("commit");
-    } catch (error) {
-      await db.query("rollback");
-      throw error;
-    }
-  }
-
-  return pending;
 }
 
 async function applySingleMigration(db: Database, file: string) {
@@ -572,7 +540,7 @@ describe.skipIf(!databaseAvailable)("0055/0057 review task scope backfill", () =
     "only backfills tenant-valid ids, marks invalid evidence with diagnostics, and re-runs idempotently",
     async () => {
     await withTempDatabase(async (db) => {
-      await applyMigrationsThrough(db, "0054_config_revision_manifest_backfill.sql");
+      await applyMigrations(db, migrationsDir, { through: "0054_config_revision_manifest_backfill.sql" });
       await seedGraph(db);
 
       const validRevisionId = randomUUID();
@@ -764,7 +732,7 @@ describe.skipIf(!databaseAvailable)("0058 evidence-only scope reconcile from pol
     "clears cross-tenant FKs preserved by 0057 coalesce, keeps valid rows, and rolls back mid-failure",
     async () => {
     await withTempDatabase(async (db) => {
-      await applyMigrationsThrough(db, migration0057);
+      await applyMigrations(db, migrationsDir, { through: migration0057 });
       await seedGraph(db);
 
       const validRevisionId = randomUUID();

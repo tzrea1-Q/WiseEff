@@ -4,7 +4,7 @@ import {
 } from "@/application/parameters/import/buildImportReviewMetadata";
 import { ClipboardPaste, Upload } from "lucide-react";
 import { useRef, useState, type DragEvent } from "react";
-import type { Project } from "@/mockData";
+import type { Project } from "@/domain/prototype/types";
 import { cn } from "@/lib/utils";
 import { PasteImportContentDialog } from "./PasteImportContentDialog";
 

@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "../../shared/database/client";
-import { applyMigrations, getPendingMigrations } from "../../shared/database/migrations";
+import { applyMigrations } from "../../shared/database/migrations";
 import { isTestDatabaseAvailable } from "../../testing/testDatabase";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
@@ -14,81 +14,16 @@ const migration0060 = "0060_parameter_draft_candidate_identity_gate.sql";
 const migration0061 = "0061_parameter_draft_candidate_identity_all_origins.sql";
 const migration0062 = "0062_parameter_change_action.sql";
 const migration0063 = "0063_parameter_submission_candidate_identity.sql";
-const migration0066 = "0066_parameter_module_mappings.sql";
-const migration0067 = "0067_binding_module_id.sql";
-const migration0068 = "0068_dismiss_structural_spec_reviews.sql";
-const migration0069 = "0069_node_enablement_drafts.sql";
-const migration0070 = "0070_node_enablement_change_requests.sql";
-const migration0071 = "0071_relax_enablement_subject_checks.sql";
-const migration0072 = "0072_module_kind_origin.sql";
-const migration0073 = "0073_dismissed_compatibles.sql";
-const migration0074 = "0074_fix_business_misclassified_as_instance.sql";
-const migration0075 = "0075_module_logical_kind.sql";
-const migration0076 = "0076_organization_driver_schemas.sql";
-const migration0077 = "0077_organization_driver_schema_properties_link_specs.sql";
-const migration0078 = "0078_platform_admin_role.sql";
-const migration0079 = "0079_driver_schema_platform_tier.sql";
-const migration0080 = "0080_attribution_taxonomy.sql";
-const migration0081 = "0081_remove_structural_parameter_specs.sql";
-const migration0082 = "0082_attribution_subjects.sql";
-const migration0083 = "0083_parameter_spec_versioning.sql";
-const migration0084 = "0084_parameter_spec_version_cutover.sql";
-const migration0085 = "0085_identity_mapping_and_singleton_blockers.sql";
-const migration0086 = "0086_retire_config_revision_published.sql";
-const migration0087 = "0087_relax_ppv_null_for_enablement_drafts.sql";
-const migration0088 = "0088_parameter_spec_subject_required.sql";
-const migration0089 = "0089_driver_registration_default_business_category.sql";
-const migration0090 = "0090_parameter_spec_identity_surrogate.sql";
-const migration0091 = "0091_project_parameter_initialization.sql";
-const migration0092 = "0092_dts_structural_spans.sql";
-const migration0093 = "0093_project_parameter_file_candidates.sql";
-const migration0094 = "0094_project_parameter_file_candidate_activation.sql";
-const migration0095 = "0095_dts_release_baseline_historical.sql";
-const migration0096 = "0096_dts_reload_runs.sql";
-const migration0097 = "0097_dts_reload_configuration.sql";
-const migration0098 = "0098_dts_reload_deploy.sql";
-const migration0099 = "0099_dts_reload_behavioural_verify.sql";
-const migration0100 = "0100_dts_reload_residue.sql";
-const migration0101 = "0101_drop_dts_reload_device_overrides.sql";
-const migration0102 = "0102_dts_reload_deploy_claimed_at.sql";
 
-const enablementMigrations = [
-  migration0068,
-  migration0069,
-  migration0070,
-  migration0071,
-  migration0072,
-  migration0073,
-  migration0074,
-  migration0075,
-  migration0076,
-  migration0077,
-  migration0078,
-  migration0079,
-  migration0080,
-  migration0081,
-  migration0082,
-  migration0083,
-  migration0084,
-  migration0085,
-  migration0086,
-  migration0087,
-  migration0088,
-  migration0089,
-  migration0090,
-  migration0091,
-  migration0092,
-  migration0093,
-  migration0094,
-  migration0095,
-  migration0096,
-  migration0097,
-  migration0098,
-  migration0099,
-  migration0100,
-  migration0101,
-  migration0102,
-] as const;
+/**
+ * Expected pending list computed from the migrations directory, so appending a
+ * new migration never requires editing this test again.
+ */
+async function migrationsFromInclusive(first: string): Promise<string[]> {
+  const files = await fs.readdir(migrationsDir);
+  return files.filter((file) => file.endsWith(".sql") && file >= first).sort();
+}
+
 const REQUIRED_TABLES = [
   "parameter_specs",
   "parameter_spec_versions",
@@ -239,41 +174,6 @@ async function withTempDatabase(fn: (db: Database, connectionString: string) => 
   }
 }
 
-async function applyMigrationsThrough(
-  db: Database,
-  maxExclusive: string | null
-): Promise<string[]> {
-  await db.query(`
-    create table if not exists schema_migrations (
-      name text primary key,
-      applied_at timestamptz not null default now()
-    )
-  `);
-
-  const files = (await fs.readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
-  const limited = maxExclusive ? files.filter((file) => file < maxExclusive) : files;
-  const applied = await db.query<{ name: string }>("select name from schema_migrations order by name");
-  const pending = getPendingMigrations(
-    limited,
-    applied.rows.map((row) => row.name)
-  );
-
-  for (const file of pending) {
-    const sql = await fs.readFile(path.join(migrationsDir, file), "utf8");
-    await db.query("begin");
-    try {
-      await db.query(sql);
-      await db.query("insert into schema_migrations (name) values ($1)", [file]);
-      await db.query("commit");
-    } catch (error) {
-      await db.query("rollback");
-      throw error;
-    }
-  }
-
-  return pending;
-}
-
 describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () => {
   beforeAll(() => {
     expect(databaseAvailable).toBe(true);
@@ -333,7 +233,7 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
 
   it("applies 0048 on a database already at 0047", async () => {
     await withTempDatabase(async (db) => {
-      const through0047 = await applyMigrationsThrough(db, migration0048);
+      const through0047 = await applyMigrations(db, migrationsDir, { before: migration0048 });
       expect(through0047.at(-1)).toBe("0047_dts_phandle_target_on_delete.sql");
 
       const before = await listPublicTables(db);
@@ -355,7 +255,7 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
 
   it("invalidates pre-0060 manual drafts without candidate identity transactionally and idempotently", async () => {
     await withTempDatabase(async (db) => {
-      await applyMigrationsThrough(db, migration0060);
+      await applyMigrations(db, migrationsDir, { before: migration0060 });
       await db.query(`insert into organizations (id, name) values ('org-0060', 'Org 0060')`);
       await db.query(
         `insert into users (id, organization_id, name, email, title)
@@ -421,15 +321,7 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
       expect(await columnExists(db, "parameter_draft_identity_invalidations", "draft_id")).toBe(false);
 
       const pending = await applyMigrations(db, migrationsDir);
-      expect(pending).toEqual([
-        migration0060,
-        migration0061,
-        migration0062,
-        migration0063,
-        migration0066,
-        migration0067,
-        ...enablementMigrations
-      ]);
+      expect(pending).toEqual(await migrationsFromInclusive(migration0060));
       expect((await db.query(`select id from parameter_drafts order by id`)).rows).toEqual([]);
       expect(
         (
@@ -460,7 +352,7 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
 
   it("invalidates every candidate-less draft after 0060, including file_sync conflict rows", async () => {
     await withTempDatabase(async (db) => {
-      await applyMigrationsThrough(db, migration0061);
+      await applyMigrations(db, migrationsDir, { before: migration0061 });
       await db.query(`insert into organizations (id, name) values ('org-0061', 'Org 0061')`);
       await db.query(
         `insert into users (id, organization_id, name, email, title)
@@ -569,14 +461,7 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
       expect(await columnExists(db, "parameter_draft_identity_invalidations", "draft_origin")).toBe(false);
 
       const pending = await applyMigrations(db, migrationsDir);
-      expect(pending).toEqual([
-        migration0061,
-        migration0062,
-        migration0063,
-        migration0066,
-        migration0067,
-        ...enablementMigrations
-      ]);
+      expect(pending).toEqual(await migrationsFromInclusive(migration0061));
       expect((await db.query(`select id from parameter_drafts order by id`)).rows).toEqual([
         { id: "draft-0061-valid" }
       ]);
@@ -624,19 +509,13 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
 
   it("adds durable set/delete action columns with fail-closed defaults and checks", async () => {
     await withTempDatabase(async (db) => {
-      await applyMigrationsThrough(db, migration0062);
+      await applyMigrations(db, migrationsDir, { before: migration0062 });
       for (const table of ["parameter_drafts", "parameter_submission_items", "parameter_change_requests"]) {
         expect(await columnExists(db, table, "action")).toBe(false);
       }
 
       const pending = await applyMigrations(db, migrationsDir);
-      expect(pending).toEqual([
-        migration0062,
-        migration0063,
-        migration0066,
-        migration0067,
-        ...enablementMigrations
-      ]);
+      expect(pending).toEqual(await migrationsFromInclusive(migration0062));
 
       for (const table of ["parameter_drafts", "parameter_submission_items", "parameter_change_requests"]) {
         expect(await columnDefinition(db, table, "action")).toEqual({
@@ -651,7 +530,7 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
 
   it("adds durable candidate identity to submitted workflow rows transactionally and idempotently", async () => {
     await withTempDatabase(async (db) => {
-      await applyMigrationsThrough(db, migration0063);
+      await applyMigrations(db, migrationsDir, { before: migration0063 });
       for (const table of ["parameter_submission_items", "parameter_change_requests"]) {
         expect(await columnExists(db, table, "candidate_config_revision_id")).toBe(false);
       }
@@ -669,12 +548,9 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
         expect(await columnExists(db, table, "candidate_config_revision_id")).toBe(false);
       }
 
-      expect(await applyMigrations(db, migrationsDir)).toEqual([
-        migration0063,
-        migration0066,
-        migration0067,
-        ...enablementMigrations
-      ]);
+      expect(await applyMigrations(db, migrationsDir)).toEqual(
+        await migrationsFromInclusive(migration0063)
+      );
       for (const table of ["parameter_submission_items", "parameter_change_requests"]) {
         expect(await columnDefinition(db, table, "candidate_config_revision_id")).toEqual({
           is_nullable: "YES",

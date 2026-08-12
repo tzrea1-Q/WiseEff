@@ -88,6 +88,7 @@ Expand lazily via `/domain-modeling` when terms are resolved. Prefer terms from 
 | Reload purpose | `ordinary` (put debug values on the device) or `restore-baseline` (compensating reload toward library baselines). Stored on `dts_reload_runs.purpose` and surfaced in history / last-reload projections |
 | Sensitive reload | The sensitive-node extension of reload start: matching `dts_sensitive_node_rules` additionally requires `parameter:edit-critical`, and critical-tier matches also require `confirmationToken: "confirm-sensitive-reload"`. Distinct from the deploy token `confirm-dts-reload` |
 | Parameter reload (retired) | The 2026 M1-era concept binding one parameter definition to one device node path and writing it through sysfs, which also wrote the accepted value back into project parameter values. Never shipped, HTTP surface returned `410` from its first commit, and its binding table was dropped in migration `0037`. Retained here only so the term is not confused with DTS reload debugging |
+| Agent approval chain | The orchestrator-owned path every mutating Agent tool call must cross: `beginApproval` persists `agent_tool_calls` + `agent_approvals` rows and raises the interrupt; `resolveApproval` carries the human decision, applies `editedArgs` as a full payload replacement, re-authorizes transactionally, and executes. Its only state is those database rows — never process memory — so begin and resolve may land on different processes (ADR-0024) |
 
 ## ADRs
 
@@ -104,6 +105,7 @@ Architectural decisions: [`docs/adr/`](docs/adr/) (created lazily). Feature-scop
 - [`0009`](docs/adr/0009-overlay-parsing-knowledge-promotes-into-a-platform-tier.md) — overlay parsing knowledge promotes into a platform tier
 - [`0010`](docs/adr/0010-attribution-tree-is-taxonomy-not-topology.md) — attribution tree is taxonomy, not topology
 - [`0011`](docs/adr/0011-spec-deprecation-is-soft-retirement.md) — parameter definition deprecation is soft retirement
+- [`0012`](docs/adr/0012-releasing-happens-at-the-file-layer.md) — releasing happens at the file layer
 - [`0013`](docs/adr/0013-attribution-subjects-are-stable-catalog-entities.md) — attribution subjects are stable catalog entities
 - [`0014`](docs/adr/0014-parameter-definitions-are-versioned-subjects.md) — parameter definitions are versioned subjects with soft retirement
 - [`0015`](docs/adr/0015-governance-queues-live-with-the-object-they-govern.md) — organization admin subdivides by governance object; queues nest under the object they govern
@@ -111,3 +113,6 @@ Architectural decisions: [`docs/adr/`](docs/adr/) (created lazily). Feature-scop
 - [`0017`](docs/adr/0017-definition-identity-is-correctable.md) — definition identity is correctable and `parameter_specs.id` is a surrogate
 - [`0018`](docs/adr/0018-uploaded-file-versions-are-staged-before-activation.md) — uploaded file versions are staged before activation
 - [`0019`](docs/adr/0019-debug-values-never-mutate-the-parameter-library.md) — debug values never mutate the parameter library
+- [`0020`](docs/adr/0020-reload-runs-execute-in-request-on-bridge-holding-process.md) — reload runs execute in-request on the bridge-holding process
+- [`0021`](docs/adr/0021-reload-snapshot-satisfies-device-write-snapshot-non-negotiable.md) — reload snapshot satisfies the device-write snapshot non-negotiable
+- [`0024`](docs/adr/0024-agent-approval-state-is-db-backed.md) — Agent approval state is DB-backed; request context flows through invocation config

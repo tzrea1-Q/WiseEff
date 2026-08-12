@@ -26,7 +26,7 @@ import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedb
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type { ParameterInitializationRepository } from "@/application/ports/ParameterInitializationRepository";
-import type { AppAction } from "@/App";
+import type { AppAction } from "@/application/state/appState";
 import type { DashboardWindow, HotspotDimension, OverviewScope } from "@/domain/parameters/dashboardTypes";
 import { canAccessPage, canPerform, getAccessibleFallbackPath, getRequiredRoleForPage, getRequiredRoleLabel } from "@/app/permissions";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
@@ -44,7 +44,7 @@ import { UserPermissionsPage } from "@/UserPermissionsPage";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
 import { NoEntryPage } from "@/components/NoEntryPage";
 import type { PageConfig } from "@/appConfig";
-import type { PrototypeState } from "@/mockData";
+import type { PrototypeState } from "@/domain/prototype/types";
 import type { ParameterDraftItem, ParameterRecord } from "@/domain/parameters/types";
 
 const NodeDebuggingPageWithRuntimeProps = NodeDebuggingPage as (

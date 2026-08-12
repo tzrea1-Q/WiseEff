@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { deriveSubmissionTimeline, SUBMISSION_TIMELINE_STEPS } from "./parameterSubmissionTimeline";
-import type { ParameterSubmissionItem, ParameterSubmissionRound } from "./mockData";
+import type { ParameterSubmissionItem, ParameterSubmissionRound } from "@/domain/prototype/types";
 
 const submissionItem: ParameterSubmissionItem = {
   requestId: "PRQ-test",

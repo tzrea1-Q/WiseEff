@@ -1,5 +1,5 @@
 import type { KeyboardEvent } from "react";
-import type { RiskLevel } from "../mockData";
+import type { RiskLevel } from "@/domain/prototype/types";
 
 const ORDER: RiskLevel[] = ["High", "Medium", "Low"];
 const LABEL: Record<RiskLevel, string> = { High: "高", Medium: "中", Low: "低" };

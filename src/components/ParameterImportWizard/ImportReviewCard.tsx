@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ParameterDefinitionForm } from "@/components/ParameterDefinitionForm";
 import { RiskPicker } from "@/components/RiskPicker";
 import type { ParsedImportRow, ReviewedImportRow } from "@/application/parameters/import/types";
-import type { Project } from "@/mockData";
+import type { Project } from "@/domain/prototype/types";
 import { buildParameterModuleTree } from "@/parameterAdminLibrary";
 import { createEmptyParameterModule, type PowerManagementParameterTemplate } from "@/powerManagementConfig";
 
