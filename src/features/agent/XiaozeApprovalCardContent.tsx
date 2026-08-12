@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 export type XiaozeApprovalInterrupt = {
   approvalId: string;
@@ -31,6 +32,8 @@ export type XiaozeApprovalResolveValue = {
   reason?: string;
 };
 
+export const XIAOZE_APPROVAL_DEFAULT_REJECT_REASON = "在小泽对话中被拒绝";
+
 export function XiaozeApprovalCardContent({
   interrupt,
   resolve
@@ -40,6 +43,8 @@ export function XiaozeApprovalCardContent({
 }) {
   const [targetValue, setTargetValue] = useState(interrupt.payload.targetValue ?? "");
   const [reason] = useState(interrupt.payload.reason ?? "");
+  const [rejectReason, setRejectReason] = useState("");
+  const aiReason = interrupt.payload.reason?.trim() ?? "";
 
   const editedArgs = useMemo(
     () => ({
@@ -73,14 +78,20 @@ export function XiaozeApprovalCardContent({
             {interrupt.payload.parameterId ?? "—"}
           </p>
           <div className="grid gap-1">
-            <Label htmlFor="xiaoze-target-value">Target value</Label>
+            <Label htmlFor="xiaoze-target-value">目标值</Label>
             <Input
               id="xiaoze-target-value"
-              aria-label="Target value"
+              aria-label="目标值"
               value={targetValue}
               onChange={(event) => setTargetValue(event.target.value)}
             />
           </div>
+          {aiReason ? (
+            <div className="grid gap-1 xiaoze-approval-reason" role="note" aria-label="变更理由">
+              <strong>变更理由</strong>
+              <p>{aiReason}</p>
+            </div>
+          ) : null}
           {interrupt.citations?.length ? (
             <ul className="agent-citation-list">
               {interrupt.citations.map((citation) => (
@@ -90,13 +101,32 @@ export function XiaozeApprovalCardContent({
               ))}
             </ul>
           ) : null}
+          <div className="grid gap-1">
+            <Label htmlFor="xiaoze-reject-reason">拒绝理由（可选）</Label>
+            <Textarea
+              id="xiaoze-reject-reason"
+              aria-label="拒绝理由"
+              value={rejectReason}
+              rows={2}
+              placeholder="告诉小泽为什么拒绝，帮助它修正建议"
+              onChange={(event) => setRejectReason(event.target.value)}
+            />
+          </div>
         </div>
         <AlertDialogFooter>
-          <AlertDialogCancel type="button" onClick={() => resolve({ decision: "reject", reason: "Rejected in Xiaoze chat." })}>
-            Reject
+          <AlertDialogCancel
+            type="button"
+            onClick={() =>
+              resolve({
+                decision: "reject",
+                reason: rejectReason.trim() || XIAOZE_APPROVAL_DEFAULT_REJECT_REASON
+              })
+            }
+          >
+            拒绝
           </AlertDialogCancel>
           <AlertDialogAction type="button" onClick={() => resolve({ decision: "approve", editedArgs })}>
-            Approve
+            批准
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
