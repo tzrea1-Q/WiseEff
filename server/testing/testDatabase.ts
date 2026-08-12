@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import {
   createDatabase,
+  createSavepointDatabase,
   type Database,
   type Queryable,
   type QueryResult
@@ -123,10 +124,12 @@ export async function createInMemoryTestDatabase(): Promise<InMemoryTestDatabase
   });
 
   // Keep all writes inside the outer BEGIN so afterEach rollback isolates tests.
-  // createDatabase().transaction() issues COMMIT and would persist nested service writes.
+  // transaction() maps to savepoints inside that BEGIN, so nested service
+  // transactions keep real commit/rollback semantics without persisting.
+  const savepointDb = createSavepointDatabase(queryable);
   return {
     query: queryable.query,
-    transaction: async <T,>(fn: (tx: typeof queryable) => Promise<T>) => fn(queryable),
+    transaction: savepointDb.transaction,
     rollback: async () => {
       try {
         await queryable.query("rollback");

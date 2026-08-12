@@ -34,7 +34,11 @@ describe("createPerceptionAgent", () => {
       listTools: () => [{ name: "perception.getProjectOverview", description: "x", schema: {} }]
     });
     const result = await agent.run({ message: "summarize project p1", context: { projectId: "p1", pageKey: "parameters" } });
-    expect(runTool).toHaveBeenCalledWith("perception.getProjectOverview", expect.objectContaining({ projectId: "p1" }));
+    expect(runTool).toHaveBeenCalledWith(
+      "perception.getProjectOverview",
+      expect.objectContaining({ projectId: "p1" }),
+      undefined
+    );
     expect(result.text).toContain("12 parameters");
   });
 

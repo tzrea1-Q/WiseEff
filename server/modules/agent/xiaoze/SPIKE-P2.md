@@ -2,6 +2,8 @@
 
 Date: 2026-06-24
 
+> **Superseded in part 2026-08-12:** `approvalBridge.begin/resume` became the orchestrator's `beginApproval` / `resolveApproval`; resume commands now carry only the approval decision, and per-request auth/sink flow through per-invoke `config.configurable` instead of module slots. See ADR-0024. Kept as historical spike evidence.
+
 ## 1. Checkpointer choice
 
 **Decision: `MemorySaver` (process-local) for P2 v1.**

@@ -8,7 +8,7 @@ import {
 
 export { looksLikeInternalReasoning } from "./splitAssistantContent";
 import { createXiaozeCheckpointer, type XiaozeCheckpointer } from "./checkpointer";
-import { createPlanningAgent, type PlanningApprovalBridge } from "./planningGraph";
+import { createPlanningAgent, type PlanningApprovalResolver } from "./planningGraph";
 import type { XiaozePromptDebugSnapshot } from "./promptDebug";
 
 export type PerceptionToolDescriptor = {
@@ -128,7 +128,7 @@ export function createPerceptionAgent(options: {
   runTool: (name: string, payload: Record<string, unknown>) => Promise<AgentToolResult>;
   listTools: () => PerceptionToolDescriptor[];
   checkpointer?: XiaozeCheckpointer;
-  approvalBridge?: PlanningApprovalBridge;
+  approvalResolver?: PlanningApprovalResolver;
 }) {
   const planningAgent = createPlanningAgent(options);
 

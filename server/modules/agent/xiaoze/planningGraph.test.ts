@@ -53,8 +53,8 @@ describe("createPlanningAgent", () => {
 
   it("resumes the plan after approval and observes the result", async () => {
     const checkpointer = createXiaozeCheckpointer();
-    const approvalBridge = {
-      resume: vi.fn().mockResolvedValue({ text: "change request cr-1 created" })
+    const approvalResolver = {
+      resolveApproval: vi.fn().mockResolvedValue({ text: "change request cr-1 created" })
     };
     const runTool = vi.fn().mockResolvedValue({ summary: "overview", data: {}, citations: [] });
     const model = fakeModelSequence([
@@ -66,7 +66,7 @@ describe("createPlanningAgent", () => {
       runTool,
       listTools: () => [{ name: "action.submitParameterChange", description: "x", schema: {}, requiresApproval: true }],
       checkpointer,
-      approvalBridge
+      approvalResolver
     });
 
     const interrupted = await agent.run({ message: "set pd1 to 42", context: { projectId: "p1" }, threadId: "t9" });
@@ -76,15 +76,17 @@ describe("createPlanningAgent", () => {
       message: "",
       context: { projectId: "p1" },
       threadId: "t9",
+      requestContext: { auth: anyAuth, requestId: "req-1", sessionId: "t9" },
       resume: {
-        auth: anyAuth,
-        requestId: "req-1",
         approvalId: "approval-1",
         decision: "approve"
       }
     });
 
-    expect(approvalBridge.resume).toHaveBeenCalledOnce();
+    expect(approvalResolver.resolveApproval).toHaveBeenCalledOnce();
+    expect(approvalResolver.resolveApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ approvalId: "approval-1", decision: "approve", auth: anyAuth, requestId: "req-1" })
+    );
     expect(resumed.text).toContain("cr-1");
   });
 
@@ -185,8 +187,8 @@ describe("createPlanningAgent", () => {
 
   it("halts gracefully on reject without mutation", async () => {
     const checkpointer = createXiaozeCheckpointer();
-    const approvalBridge = {
-      resume: vi.fn().mockResolvedValue({ text: "The proposed action was rejected." })
+    const approvalResolver = {
+      resolveApproval: vi.fn().mockResolvedValue({ text: "The proposed action was rejected." })
     };
     const model = fakeModelSequence([
       { toolCalls: [toolCall("action.submitParameterChange", { projectId: "p1", parameterId: "pd1", targetValue: "42", reason: "x" })] }
@@ -196,7 +198,7 @@ describe("createPlanningAgent", () => {
       runTool: vi.fn(),
       listTools: () => [{ name: "action.submitParameterChange", description: "x", schema: {}, requiresApproval: true }],
       checkpointer,
-      approvalBridge
+      approvalResolver
     });
 
     await agent.run({ message: "set pd1 to 42", context: { projectId: "p1" }, threadId: "t-reject" });
@@ -204,9 +206,8 @@ describe("createPlanningAgent", () => {
       message: "",
       context: { projectId: "p1" },
       threadId: "t-reject",
+      requestContext: { auth: anyAuth, requestId: "req-2", sessionId: "t-reject" },
       resume: {
-        auth: anyAuth,
-        requestId: "req-2",
         approvalId: "approval-2",
         decision: "reject",
         reason: "Not now"
