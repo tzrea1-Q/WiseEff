@@ -619,22 +619,52 @@ export type RecomputeBindingModulesResult = {
  * with an existing binding on the new key, nothing is written and the conflicting binding
  * ids are returned as a 409 (no silent skip, no dual path).
  */
+class RecomputeDryRunRollback extends Error {
+  constructor(readonly result: RecomputeBindingModulesResult) {
+    super("recompute-dry-run-rollback");
+    this.name = "RecomputeDryRunRollback";
+  }
+}
+
 export async function recomputeBindingModules(
   db: Database,
   auth: AuthContext,
   input: { projectId?: string; dryRun?: boolean }
 ): Promise<RecomputeBindingModulesResult> {
   requireCanAdmin(auth);
+
+  if (input.dryRun) {
+    // Preview only: plan + summarize inside a transaction, then force a rollback so the
+    // auto-discovery module/subject materialization that planScopedMoves performs has zero
+    // side effects (mirrors previewModuleMapping).
+    try {
+      await db.transaction(async (tx) => {
+        const { moves, conflicts } = await planScopedMoves(tx, {
+          organizationId: auth.organization.id,
+          projectId: input.projectId ?? null,
+        });
+        const preview = await summarizeMoves(tx, auth.organization.id, moves, conflicts);
+        throw new RecomputeDryRunRollback({
+          updated: preview.affectedBindings,
+          conflicts,
+          dryRun: true,
+          preview,
+        });
+      });
+      throw new ApiError("INTERNAL_ERROR", "Recompute dry-run transaction completed unexpectedly.", 500);
+    } catch (error) {
+      if (error instanceof RecomputeDryRunRollback) {
+        return error.result;
+      }
+      throw error;
+    }
+  }
+
   return db.transaction(async (tx) => {
     const { moves, conflicts } = await planScopedMoves(tx, {
       organizationId: auth.organization.id,
       projectId: input.projectId ?? null,
     });
-
-    if (input.dryRun) {
-      const preview = await summarizeMoves(tx, auth.organization.id, moves, conflicts);
-      return { updated: preview.affectedBindings, conflicts, dryRun: true, preview };
-    }
 
     if (conflicts.length > 0) {
       throw new ApiError(

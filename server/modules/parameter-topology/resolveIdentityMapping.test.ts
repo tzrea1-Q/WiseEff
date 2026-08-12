@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { makeTestAuthContext } from "../../testing/authContext";
 import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
 import { createOrReuseBinding, upsertBindingRevisionValues } from "./bindingService";
 import { reopenIdentityMappingTask, resolveIdentityMappingTask } from "./service";
@@ -29,19 +30,14 @@ const LOCATOR_B1 = "/amba/i2c@2/dev_b@20";
 const LOCATOR_B2 = "/amba/i2c@2/dev_b_dup@20";
 
 function makeAuth(): AuthContext {
-  return {
-    user: {
-      id: USER_ID,
-      organizationId: ORG_ID,
-      name: "Map Resolve Admin",
-      email: "map-resolve@example.com",
-      title: "Admin",
-      isActive: true,
-    },
-    organization: { id: ORG_ID, name: "Map Resolve Org" },
-    roles: [{ projectId: null, roleId: "admin" }],
+  return makeTestAuthContext({
+    userId: USER_ID,
+    organizationId: ORG_ID,
+    name: "Map Resolve Admin",
+    email: "map-resolve@example.com",
+    organizationName: "Map Resolve Org",
     permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
-  };
+  });
 }
 
 async function seedGraph(db: InMemoryTestDatabase) {

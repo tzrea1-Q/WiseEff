@@ -1,7 +1,4 @@
-import { randomUUID } from "node:crypto";
-
-import { createAuditEvent } from "../audit/repository";
-import type { AuditCorrelationContext } from "../audit/types";
+import { withAuditedWrite, type AuditedWriteContext } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
 import { ensureDefaultConfigSetInTx } from "../parameter-files/configSetService";
 import type { Database } from "../../shared/database/client";
@@ -30,7 +27,8 @@ export type DeleteProjectForAuthInput = {
   projectName: string;
 };
 
-export type ProjectServiceContext = AuditCorrelationContext;
+/** Project mutations are audited writes: correlation is mandatory (ADR-0027). */
+export type ProjectServiceContext = AuditedWriteContext;
 
 function requireCanAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
@@ -40,17 +38,18 @@ function requireCanAdmin(auth: AuthContext) {
 
 /**
  * Creates a project and idempotently ensures the implicit `default` config set
- * in the same transaction (decision B1).
+ * in the same transaction (decision B1). The creation audit event commits in
+ * that same transaction.
  */
 export async function createProjectForAuth(
   db: Database,
   auth: AuthContext,
   input: CreateProjectForAuthInput,
-  context: ProjectServiceContext = {}
+  context: ProjectServiceContext
 ): Promise<ProjectAdminSummaryDto> {
   requireCanAdmin(auth);
 
-  return db.transaction(async (tx) => {
+  return withAuditedWrite(db, auth, context, async (tx) => {
     const item = await createProject(tx, {
       organizationId: auth.organization.id,
       id: input.id,
@@ -61,7 +60,23 @@ export async function createProjectForAuth(
 
     await ensureDefaultConfigSetInTx(tx, auth, item.id, context);
 
-    return item;
+    return {
+      result: item,
+      audit: {
+        app: "parameter-admin",
+        kind: "project-created",
+        action: `已创建项目「${item.name}」`,
+        severity: "Medium",
+        projectId: item.id,
+        targetType: "project",
+        targetId: item.id,
+        metadata: {
+          name: item.name,
+          code: item.code,
+          status: item.status
+        }
+      }
+    };
   });
 }
 
@@ -69,77 +84,73 @@ export async function updateProjectForAuth(
   db: Database,
   auth: AuthContext,
   input: UpdateProjectForAuthInput,
-  context: ProjectServiceContext = {}
+  context: ProjectServiceContext
 ): Promise<ProjectAdminSummaryDto | null> {
   requireCanAdmin(auth);
 
-  const item = await updateProject(db, {
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    name: input.name,
-    code: input.code,
-    status: input.status
+  return withAuditedWrite(db, auth, context, async (tx) => {
+    const item = await updateProject(tx, {
+      organizationId: auth.organization.id,
+      projectId: input.projectId,
+      name: input.name,
+      code: input.code,
+      status: input.status
+    });
+
+    if (!item) {
+      return { result: null, audit: null };
+    }
+
+    return {
+      result: item,
+      audit: {
+        app: "parameter-admin",
+        kind: "project-updated",
+        action: `已更新项目「${item.name}」`,
+        severity: "Low",
+        projectId: item.id,
+        targetType: "project",
+        targetId: item.id,
+        metadata: {
+          name: item.name,
+          code: item.code,
+          status: item.status
+        }
+      }
+    };
   });
-
-  if (!item) {
-    return null;
-  }
-
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: item.id,
-    actorUserId: auth.user.id,
-    actorType: "user",
-    app: "parameter-admin",
-    kind: "project-updated",
-    action: `已更新项目「${item.name}」`,
-    severity: "Low",
-    targetType: "project",
-    targetId: item.id,
-    metadata: {
-      name: item.name,
-      code: item.code,
-      status: item.status
-    },
-    traceId: context.requestId ?? randomUUID()
-  });
-
-  return item;
 }
 
 export async function deleteProjectForAuth(
   db: Database,
   auth: AuthContext,
   input: DeleteProjectForAuthInput,
-  context: ProjectServiceContext = {}
+  context: ProjectServiceContext
 ): Promise<{ deleted: boolean; reason?: "not_found" }> {
   requireCanAdmin(auth);
 
-  const result = await deleteProject(db, {
-    organizationId: auth.organization.id,
-    projectId: input.projectId
+  return withAuditedWrite(db, auth, context, async (tx) => {
+    const result = await deleteProject(tx, {
+      organizationId: auth.organization.id,
+      projectId: input.projectId
+    });
+
+    if (!result.deleted) {
+      return { result, audit: null };
+    }
+
+    return {
+      result,
+      audit: {
+        app: "parameter-admin",
+        kind: "project-deleted",
+        action: `已删除项目「${input.projectName}」`,
+        severity: "Medium",
+        projectId: input.projectId,
+        targetType: "project",
+        targetId: input.projectId,
+        metadata: { name: input.projectName }
+      }
+    };
   });
-
-  if (!result.deleted) {
-    return result;
-  }
-
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    actorUserId: auth.user.id,
-    actorType: "user",
-    app: "parameter-admin",
-    kind: "project-deleted",
-    action: `已删除项目「${input.projectName}」`,
-    severity: "Medium",
-    targetType: "project",
-    targetId: input.projectId,
-    metadata: { name: input.projectName },
-    traceId: context.requestId ?? randomUUID()
-  });
-
-  return result;
 }

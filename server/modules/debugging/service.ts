@@ -346,6 +346,19 @@ function ensureActiveSession(session: DebugSessionRecord | null): DebugSessionRe
   return session;
 }
 
+/**
+ * Device read/write/rollback operate a live device through the session's connection and lease,
+ * so they are restricted to the session's own actor — a same-organization user holding another
+ * user's sessionId must not drive their device session.
+ */
+function requireOwnedActiveSession(session: DebugSessionRecord | null, auth: AuthContext): DebugSessionRecord {
+  const active = ensureActiveSession(session);
+  if (active.actorUserId !== auth.user.id) {
+    throw new ApiError("FORBIDDEN", "Debug session belongs to another user.", 403, { sessionId: active.id });
+  }
+  return active;
+}
+
 function resolveExecutionMode(session: DebugSessionRecord): DebugSessionExecutionMode {
   return session.executionMode ?? "server";
 }
@@ -1826,7 +1839,7 @@ export function createDebuggingService(options: ServiceOptions) {
       const organizationId = organizationIdFor(auth);
 
       return db.transaction(async (tx) => {
-        const session = ensureActiveSession(await getDebugSessionRecord(tx, { organizationId, sessionId: input.sessionId }));
+        const session = requireOwnedActiveSession(await getDebugSessionRecord(tx, { organizationId, sessionId: input.sessionId }), auth);
         const protocol = session.protocol ?? defaultDebugConnectionProtocol;
         let catalogParameter: DebugParameterRecord | null = null;
         let catalogNodeId: string | null = null;
@@ -1952,7 +1965,7 @@ export function createDebuggingService(options: ServiceOptions) {
       const isReload = Boolean(input.parameterDefinitionId?.trim());
 
       return db.transaction(async (tx) => {
-        const session = ensureActiveSession(await getDebugSessionRecord(tx, { organizationId, sessionId: input.sessionId }));
+        const session = requireOwnedActiveSession(await getDebugSessionRecord(tx, { organizationId, sessionId: input.sessionId }), auth);
         const protocol = session.protocol ?? defaultDebugConnectionProtocol;
         let parameter: DebugParameterRecord;
         let parameterId: string | null = null;
@@ -2205,7 +2218,7 @@ export function createDebuggingService(options: ServiceOptions) {
         if (!snapshot) {
           throw new ApiError("NOT_FOUND", "Snapshot was not found.", 404);
         }
-        const session = ensureActiveSession(await getDebugSessionRecord(tx, { organizationId, sessionId: snapshot.sessionId }));
+        const session = requireOwnedActiveSession(await getDebugSessionRecord(tx, { organizationId, sessionId: snapshot.sessionId }), auth);
         if (snapshot.status !== "valid" || snapshot.sessionId !== session.id) {
           throw new ApiError("VALIDATION_FAILED", "Snapshot is not valid for this session.", 400);
         }

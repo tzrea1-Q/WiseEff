@@ -2,25 +2,20 @@ import { describe, expect, it } from "vitest";
 
 import type { AuthContext, BackendPermission } from "../auth/types";
 import { ApiError } from "../../shared/http/errors";
+import { makeTestAuthContext } from "../../testing/authContext";
 import { requireLogAnalyze, requireLogArchive, requireLogFeedback, requireLogUpload, requireLogView } from "./policy";
 
 function authContext(permissions: BackendPermission[], isActive = true): AuthContext {
-  return {
-    user: {
-      id: "user-1",
-      organizationId: "org-1",
-      name: "Test User",
-      email: "test@example.com",
-      title: "Engineer",
-      isActive
-    },
-    organization: {
-      id: "org-1",
-      name: "ChargeLab"
-    },
+  return makeTestAuthContext({
+    userId: "user-1",
+    organizationId: "org-1",
+    email: "test@example.com",
+    title: "Engineer",
+    isActive,
+    organizationName: "ChargeLab",
     roles: [],
     permissions
-  };
+  });
 }
 
 function expectForbidden(action: () => void, permission: BackendPermission) {

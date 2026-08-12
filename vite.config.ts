@@ -112,7 +112,20 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
-    exclude: [...configDefaults.exclude, ...siblingWorktreeExclude, "e2e/**", "server/**"],
+    // packages/** run in node via vitest.bridge.config.ts; scripts/** and ops/** run in
+    // node via vitest.scripts.config.ts. Keeping them out of the jsdom suite avoids
+    // double-running bridge tests and avoids DOM patches leaking into pure-node tests.
+    exclude: [
+      ...configDefaults.exclude,
+      ...siblingWorktreeExclude,
+      "e2e/**",
+      "server/**",
+      "packages/**",
+      "scripts/**",
+      "ops/**",
+      // Gitignored scratch area; stray *.test.* files there must not join the suite.
+      "work/**"
+    ],
     setupFiles: "./src/test/setup.ts",
     env: {
       VITE_WISEEFF_RUNTIME_MODE: "mock"

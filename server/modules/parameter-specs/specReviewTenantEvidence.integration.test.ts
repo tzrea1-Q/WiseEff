@@ -4,14 +4,17 @@
 import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import pg from "pg";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthContext } from "../auth/types";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
-import { createDatabase, type Database } from "../../shared/database/client";
+import { makeTestAuthContext } from "../../testing/authContext";
+import {
+  migrationsDir,
+  withTempDatabase as withSharedTempDatabase
+} from "../../testing/tempDatabase";
+import type { Database } from "../../shared/database/client";
 import { applyMigrations } from "../../shared/database/migrations";
 import { ApiError } from "../../shared/http/errors";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
@@ -40,8 +43,6 @@ const UNMATCHED_DTS = `/dts-v1/;
 };
 `;
 
-const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-const migrationsDir = path.join(projectRoot, "server", "migrations");
 const migration0055 = "0055_parameter_spec_review_task_scope_backfill.sql";
 const migration0057 = "0057_parameter_spec_review_task_scope_reconcile.sql";
 const migration0058 = "0058_parameter_spec_review_task_scope_evidence_only.sql";
@@ -49,72 +50,19 @@ const migration0058 = "0058_parameter_spec_review_task_scope_evidence_only.sql";
 const databaseAvailable = await isTestDatabaseAvailable();
 
 function makeAuth(orgId = ORG_A): AuthContext {
-  return {
-    user: {
-      id: USER_ID,
-      organizationId: orgId,
-      name: "Tenant Evidence Admin",
-      email: "tenant-evidence@example.com",
-      title: "Admin",
-      isActive: true,
-    },
-    organization: { id: orgId, name: "Tenant Evidence Org" },
-    roles: [{ projectId: null, roleId: "admin" }],
-    permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
-  };
-}
-
-function resolveTestDatabaseUrl() {
-  return (
-    process.env.TEST_DATABASE_URL?.trim() ||
-    process.env.DATABASE_URL?.trim() ||
-    "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff"
-  );
-}
-
-function adminConnectionString(database = "postgres") {
-  const url = new URL(resolveTestDatabaseUrl());
-  url.pathname = `/${database}`;
-  return url.toString();
-}
-
-async function withAdminClient<T>(fn: (client: pg.Client) => Promise<T>): Promise<T> {
-  const client = new pg.Client({ connectionString: adminConnectionString("postgres") });
-  await client.connect();
-  try {
-    return await fn(client);
-  } finally {
-    await client.end();
-  }
+  return makeTestAuthContext({
+    userId: USER_ID,
+    organizationId: orgId,
+    name: "Tenant Evidence Admin",
+    email: "tenant-evidence@example.com",
+    organizationName: "Tenant Evidence Org",
+    permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"]
+  });
 }
 
 async function withTempDatabase(fn: (db: Database) => Promise<void>) {
-  const dbName = `wiseeff_mig0055_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`.replace(
-    /[^a-z0-9_]/gi,
-    "",
-  );
-  await withAdminClient(async (admin) => {
-    await admin.query(`create database ${dbName}`);
-  });
-
-  const connectionString = adminConnectionString(dbName);
-  const client = new pg.Client({ connectionString });
-  await client.connect();
-  const db = createDatabase({
-    query: async (text, values = []) => {
-      const result = await client.query(text, values);
-      return { rows: result.rows, rowCount: result.rowCount };
-    },
-  });
-
-  try {
-    await fn(db);
-  } finally {
-    await client.end().catch(() => undefined);
-    await withAdminClient(async (admin) => {
-      await admin.query(`drop database if exists ${dbName} with (force)`);
-    });
-  }
+  // Migration replay suite: migrations are applied selectively via applyMigrations options.
+  await withSharedTempDatabase({ prefix: "mig0055", migrate: false }, ({ db }) => fn(db));
 }
 
 async function applySingleMigration(db: Database, file: string) {

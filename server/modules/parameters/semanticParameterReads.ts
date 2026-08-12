@@ -69,7 +69,7 @@ export async function listSemanticParameters(
       null::text as module_path,
       '' as default_range,
       coalesce(psv.value_shape->>'unit', '') as unit,
-      'Low' as risk,
+      coalesce(ps.risk, 'Low') as risk,
       coalesce(bpr.raw_value, '') as current_value,
       null::text as "initSuggestionText",
       null::text as source_file_name,
