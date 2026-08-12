@@ -6,17 +6,21 @@ import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import { createDefaultKnowledgeTextExtractor, type KnowledgeTextExtractor } from "./extraction";
+import type { KnowledgeEmbeddingClient } from "./indexing/embeddingClient";
 import {
   archiveKnowledgeEntry,
   createKnowledgeEntry,
   getKnowledgeEntry,
   getKnowledgeFileContent,
+  getKnowledgeIndexHealth,
   hardDeleteKnowledgeEntry,
   listKnowledgeEntries,
   listKnowledgeRevisions,
   publishKnowledgeEntry,
+  rebuildKnowledgeIndex,
   restoreKnowledgeEntry,
   restoreKnowledgeRevision,
+  retryKnowledgeEntryIndex,
   searchKnowledge,
   updateKnowledgeEntry
 } from "./service";
@@ -72,10 +76,13 @@ export function registerKnowledgeRoutes(
     db?: Database;
     objectStore?: ObjectStore;
     textExtractor?: KnowledgeTextExtractor;
+    /** Optional embedding client; absent means FTS-only retrieval. */
+    knowledgeEmbeddingClient?: KnowledgeEmbeddingClient;
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
   }
 ) {
   const extractor = options.textExtractor ?? createDefaultKnowledgeTextExtractor();
+  const embeddingClient = options.knowledgeEmbeddingClient;
 
   router.post("/api/v1/knowledge/entries", async (request) => {
     const db = requireDb(options.db);
@@ -100,9 +107,34 @@ export function registerKnowledgeRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const query = parseWithSchema(searchKnowledgeQuerySchema, flattenQuery(request.query));
-    const items = await searchKnowledge(db, auth, query);
+    const result = await searchKnowledge(db, auth, query, { embeddingClient });
 
-    return { status: 200, body: { items } };
+    return { status: 200, body: { items: result.items, retrieval: result.retrieval } };
+  });
+
+  router.get("/api/v1/knowledge/index/status", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const health = await getKnowledgeIndexHealth(db, auth, { embeddingClient });
+
+    return { status: 200, body: health };
+  });
+
+  router.post("/api/v1/knowledge/index/rebuild", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const result = await rebuildKnowledgeIndex(db, auth, { requestId: request.requestId });
+
+    return { status: 200, body: result };
+  });
+
+  router.post("/api/v1/knowledge/entries/:entryId/index/retry", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(paramsWithEntryIdSchema, request.params);
+    await retryKnowledgeEntryIndex(db, auth, params.entryId, { requestId: request.requestId });
+
+    return { status: 200, body: { enqueued: true } };
   });
 
   router.get("/api/v1/knowledge/entries/:entryId", async (request) => {

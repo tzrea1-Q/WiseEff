@@ -46,6 +46,15 @@ Fill every blank value in `.env`. The self-hosted API container uses:
 
 The separate worker service runs `npm run worker:logs`. In M6.4 durable mode, API and worker both use Redis/BullMQ through `REDIS_URL`, while PostgreSQL remains the source of truth for job state.
 
+### Knowledge Retrieval: pgvector And FTS-Only Degradation
+
+Semantic knowledge retrieval needs two optional pieces; missing either one degrades the knowledge base to FTS-only mode (full-text + trigram search), which stays fully usable and is reported honestly by the search API and the `/knowledge-admin` retrieval-mode banner:
+
+- **pgvector extension** on the PostgreSQL server. Migration `0104_knowledge_retrieval.sql` installs it only when `pg_available_extensions` offers it and never fails the migration pipeline without it. The chunk `embedding` column exists only when the extension was present at migration time. To enable semantic retrieval on a deployment that migrated without pgvector, install the extension and add the column manually (`CREATE EXTENSION IF NOT EXISTS vector; ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS embedding vector;`), restart the API, then run rebuild-all from `/knowledge-admin`. The honest current state is always visible in the `/knowledge-admin` retrieval-mode banner.
+- **`EMBEDDING_API_*` endpoint** (OpenAI-compatible `/v1/embeddings`; see `docs/developer/environment-variables.md`). Self-hosted deployments may target a local inference server.
+
+The knowledge index worker runs in-process with the API by default (`KNOWLEDGE_INDEX_WORKER_ENABLED=true`, polling). Chunks and embeddings are derived data: they are rebuilt from published revisions, not restored from backups. Changing `EMBEDDING_MODEL` requires the rebuild-all action in `/knowledge-admin`, which re-enqueues every published entry.
+
 Do not commit `ops/self-hosted/.env`. The repository `.dockerignore` also excludes `.env` files from image build contexts so operator secrets do not get baked into container layers.
 
 `VITE_WISEEFF_API_BASE_URL` is a build-time frontend value. Set it to the final public WiseEff URL before running `./scripts/compose --env-file .env up -d --build`; rebuilding is required when that URL changes.

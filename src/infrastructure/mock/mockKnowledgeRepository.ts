@@ -6,6 +6,7 @@ import type {
 import { KnowledgeRevisionConflictError } from "@/application/ports/KnowledgeRepository";
 import type {
   KnowledgeEntry,
+  KnowledgeIndexState,
   KnowledgeRevision,
   KnowledgeSearchResult
 } from "@/domain/knowledge/types";
@@ -13,10 +14,18 @@ import type {
 const MOCK_KNOWLEDGE_NOW = "2026-08-12T00:00:00.000Z";
 const MOCK_USER_ID = "u-xu-yun";
 
+type MockIndexRecord = {
+  status: KnowledgeIndexState;
+  error: string | null;
+  indexedRevisionNumber: number | null;
+  chunkCount: number;
+};
+
 type MockStore = {
   entries: KnowledgeEntry[];
   revisions: KnowledgeRevision[];
   files: Map<string, File>;
+  index: Map<string, MockIndexRecord>;
   counter: number;
 };
 
@@ -227,8 +236,48 @@ export function createMockKnowledgeRepository(
     entries: fixtures.entries.map(clone),
     revisions: fixtures.revisions.map(clone),
     counter: fixtures.entries.length,
-    files: new Map()
+    files: new Map(),
+    index: new Map()
   };
+
+  // Simulated index states: published entries are indexed; one carries a
+  // deterministic failure so the admin health UI has a retry path to show.
+  for (const entry of store.entries) {
+    if (entry.status !== "published") continue;
+    if (entry.id === "mock-kb-3") {
+      store.index.set(entry.id, {
+        status: "failed",
+        error: "Embedding failed (FTS chunks kept): Embedding API timed out after 10000ms.",
+        indexedRevisionNumber: entry.headRevisionNumber,
+        chunkCount: 3
+      });
+    } else {
+      store.index.set(entry.id, {
+        status: "succeeded",
+        error: null,
+        indexedRevisionNumber: entry.headRevisionNumber,
+        chunkCount: 2
+      });
+    }
+  }
+
+  function markIndexed(entry: KnowledgeEntry) {
+    if (entry.status === "published") {
+      store.index.set(entry.id, {
+        status: "succeeded",
+        error: null,
+        indexedRevisionNumber: entry.headRevisionNumber,
+        chunkCount: Math.max(1, Math.ceil((entry.contentMarkdown ?? "").length / 400))
+      });
+    } else if (store.index.has(entry.id)) {
+      store.index.set(entry.id, {
+        status: "succeeded",
+        error: null,
+        indexedRevisionNumber: entry.headRevisionNumber,
+        chunkCount: 0
+      });
+    }
+  }
 
   function findEntry(entryId: string): KnowledgeEntry | undefined {
     const entry = store.entries.find((item) => item.id === entryId);
@@ -385,6 +434,7 @@ export function createMockKnowledgeRepository(
       entry.status = "published";
       entry.publishedAt = MOCK_KNOWLEDGE_NOW;
       entry.updatedAt = MOCK_KNOWLEDGE_NOW;
+      markIndexed(entry);
       return clone(entry);
     },
 
@@ -394,6 +444,7 @@ export function createMockKnowledgeRepository(
       entry.status = "archived";
       entry.archivedAt = MOCK_KNOWLEDGE_NOW;
       entry.updatedAt = MOCK_KNOWLEDGE_NOW;
+      markIndexed(entry);
       return clone(entry);
     },
 
@@ -403,6 +454,7 @@ export function createMockKnowledgeRepository(
       entry.status = "published";
       entry.archivedAt = null;
       entry.updatedAt = MOCK_KNOWLEDGE_NOW;
+      markIndexed(entry);
       return clone(entry);
     },
 
@@ -411,6 +463,7 @@ export function createMockKnowledgeRepository(
       requireEntry(entryId);
       store.entries = store.entries.filter((entry) => entry.id !== entryId);
       store.revisions = store.revisions.filter((revision) => revision.entryId !== entryId);
+      store.index.delete(entryId);
     },
 
     async listRevisions(entryId) {
@@ -449,23 +502,29 @@ export function createMockKnowledgeRepository(
 
     async search(q) {
       const query = q.trim().toLocaleLowerCase();
-      if (!query) return [];
-      return store.entries
+      const retrieval = { mode: "fts_only" as const, vectorAvailable: false, embeddingConfigured: false };
+      if (!query) return { items: [], retrieval };
+      const items = store.entries
         .filter((entry) => entry.status === "published")
         .filter((entry) => searchableText(entry).toLocaleLowerCase().includes(query))
         .map<KnowledgeSearchResult>((entry) => {
           const text = searchableText(entry).replace(/\s+/g, " ");
           const index = text.toLocaleLowerCase().indexOf(query);
           const start = Math.max(0, index - 30);
+          const headRevision = store.revisions
+            .filter((revision) => revision.entryId === entry.id)
+            .sort((a, b) => b.revisionNumber - a.revisionNumber)[0];
           return {
             entryId: entry.id,
             title: entry.title,
             contentForm: entry.contentForm,
             tags: [...entry.tags],
             excerpt: text.slice(start, start + 120),
-            updatedAt: entry.updatedAt
+            updatedAt: entry.updatedAt,
+            revisionId: headRevision?.id ?? null
           };
         });
+      return { items, retrieval };
     },
 
     async getFileObjectUrl(entryId) {
@@ -475,6 +534,55 @@ export function createMockKnowledgeRepository(
         return URL.createObjectURL(file);
       }
       return `mock-knowledge://${encodeURIComponent(entry.file?.fileName ?? entryId)}`;
+    },
+
+    async getIndexHealth() {
+      if (!canManage) throw new Error("Index health requires knowledge:manage.");
+      return {
+        retrieval: { mode: "fts_only" as const, vectorAvailable: false, embeddingConfigured: false },
+        items: Array.from(store.index.entries())
+          .map(([entryId, record]) => {
+            const entry = store.entries.find((item) => item.id === entryId);
+            if (!entry) return null;
+            return {
+              entryId,
+              title: entry.title,
+              entryStatus: entry.status,
+              status: record.status,
+              error: record.error,
+              indexedRevisionNumber: record.indexedRevisionNumber,
+              chunkCount: record.chunkCount,
+              embeddedChunkCount: 0,
+              updatedAt: entry.updatedAt
+            };
+          })
+          .filter((item): item is NonNullable<typeof item> => item !== null)
+      };
+    },
+
+    async retryEntryIndex(entryId) {
+      if (!canManage) throw new Error("Index retry requires knowledge:manage.");
+      const entry = requireEntry(entryId);
+      store.index.set(entryId, {
+        status: "pending",
+        error: null,
+        indexedRevisionNumber: entry.headRevisionNumber,
+        chunkCount: store.index.get(entryId)?.chunkCount ?? 0
+      });
+    },
+
+    async rebuildIndex() {
+      if (!canManage) throw new Error("Index rebuild requires knowledge:manage.");
+      const published = store.entries.filter((entry) => entry.status === "published");
+      for (const entry of published) {
+        store.index.set(entry.id, {
+          status: "pending",
+          error: null,
+          indexedRevisionNumber: entry.headRevisionNumber,
+          chunkCount: store.index.get(entry.id)?.chunkCount ?? 0
+        });
+      }
+      return { enqueued: published.length };
     }
   };
 }

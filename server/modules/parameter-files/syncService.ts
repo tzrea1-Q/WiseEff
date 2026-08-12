@@ -5,10 +5,10 @@ import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import {
   bindParameterSource,
-  findProjectValueBySource,
-  upsertFileSyncDraft,
-  type FileSyncConflictRecord
+  findProjectValueBySource
 } from "../parameters/repository";
+import type { FileSyncConflictRecord } from "../parameters/fileSyncConflictRepository";
+import { upsertFileSyncDraft } from "../parameters/draftRepository";
 import { parameterIdentityMode } from "../parameters/parameterIdentityMode";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";

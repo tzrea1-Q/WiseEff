@@ -1,9 +1,8 @@
 import "dotenv/config";
-import { spawnSync } from "node:child_process";
 import { expect, test, type Page } from "playwright/test";
 
-import { withPgClient } from "./helpers/database";
-import { authHeadersForUser, signInBrowserAsUser } from "./helpers/bearerAuth";
+import { runNpmScript, withPgClient } from "./helpers/database";
+import { authHeadersForRole, authHeadersForUser, signInBrowserAsRole, signInBrowserAsUser } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
@@ -36,7 +35,24 @@ type KnowledgeEntryApiItem = {
   file: { id: string; fileName: string; extractionStatus: "pending" | "succeeded" | "failed"; extractionError: string | null } | null;
 };
 
-type KnowledgeSearchApiItem = { entryId: string; title: string; excerpt: string };
+type KnowledgeSearchApiItem = { entryId: string; title: string; excerpt: string; revisionId?: string | null };
+
+type KnowledgeIndexStatusApiItem = {
+  entryId: string;
+  title: string;
+  entryStatus: string;
+  status: "pending" | "processing" | "succeeded" | "failed";
+  error: string | null;
+  indexedRevisionNumber: number | null;
+  chunkCount: number;
+};
+
+type KnowledgeIndexHealthApiBody = {
+  retrieval: { mode: string; vectorAvailable: boolean; embeddingConfigured: boolean };
+  items: KnowledgeIndexStatusApiItem[];
+};
+
+type XiaozeCitationApiItem = { type: string; id: string; label: string; href?: string };
 
 type AuditApiItem = {
   id?: string;
@@ -46,30 +62,6 @@ type AuditApiItem = {
   traceId?: string;
   metadata?: Record<string, unknown>;
 };
-
-function runNpmScript(script: string) {
-  const invocation =
-    process.platform === "win32"
-      ? { command: "cmd.exe", args: ["/d", "/s", "/c", `npm run ${script}`] }
-      : { command: "npm", args: ["run", script] };
-  const result = spawnSync(invocation.command, invocation.args, {
-    cwd: process.cwd(),
-    encoding: "utf8",
-    env: process.env
-  });
-
-  if (result.status !== 0) {
-    const stdout = typeof result.stdout === "string" ? result.stdout.trim() : "";
-    const stderr = typeof result.stderr === "string" ? result.stderr.trim() : "";
-    const errorDetails = result.error
-      ? `child_process error: ${result.error.code ?? "unknown"} ${result.error.message ?? ""}`.trimEnd()
-      : "";
-
-    throw new Error(
-      [`npm run ${script} failed with exit code ${result.status}.`, stdout, stderr, errorDetails].filter(Boolean).join("\n")
-    );
-  }
-}
 
 function editorHeaders() {
   return authHeadersForUser(editorUserId, editorEmail, editorName);
@@ -195,6 +187,69 @@ async function knowledgeAuditSummaries(entryId: string) {
 async function openKnowledgePage(page: Page) {
   await signInBrowserAsUser(page, editorUserId, editorEmail, editorName, "/knowledge");
   await expect(page.getByRole("table", { name: "知识条目列表" })).toBeVisible();
+}
+
+async function fetchIndexHealth(page: Page): Promise<KnowledgeIndexHealthApiBody> {
+  const response = await page.request.get(apiRoute("/api/v1/knowledge/index/status"), {
+    headers: authHeadersForRole("admin")
+  });
+  expect(response.status()).toBe(200);
+  return (await response.json()) as KnowledgeIndexHealthApiBody;
+}
+
+async function waitForIndexStatus(
+  page: Page,
+  entryId: string,
+  predicate: (item: KnowledgeIndexStatusApiItem) => boolean,
+  timeoutMs = 30_000
+): Promise<KnowledgeIndexStatusApiItem> {
+  const deadline = Date.now() + timeoutMs;
+  let last: KnowledgeIndexStatusApiItem | undefined;
+  while (Date.now() < deadline) {
+    const health = await fetchIndexHealth(page);
+    last = health.items.find((item) => item.entryId === entryId);
+    if (last && predicate(last)) {
+      return last;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(`Index status for ${entryId} did not reach the expected state: ${JSON.stringify(last)}`);
+}
+
+function readSseCustomEventValue<T>(responseBody: string, eventName: string): T | undefined {
+  for (const block of responseBody.split("\n\n")) {
+    const dataLine = block.split("\n").find((line) => line.startsWith("data:"));
+    if (!dataLine) continue;
+    try {
+      const payload = JSON.parse(dataLine.slice(5).trim()) as { type?: string; name?: string; value?: T };
+      if (payload.type === "CUSTOM" && payload.name === eventName && payload.value !== undefined) {
+        return payload.value;
+      }
+    } catch {
+      // Ignore non-JSON keepalive frames.
+    }
+  }
+  return undefined;
+}
+
+function readSseAnswerText(responseBody: string) {
+  const chunks: string[] = [];
+  for (const block of responseBody.split("\n\n")) {
+    const dataLine = block.split("\n").find((line) => line.startsWith("data:"));
+    if (!dataLine) continue;
+    try {
+      const payload = JSON.parse(dataLine.slice(5).trim()) as { type?: string; delta?: string; message?: string };
+      if (payload.type === "TEXT_MESSAGE_CONTENT" && payload.delta) {
+        chunks.push(payload.delta);
+      }
+      if (payload.type === "RUN_ERROR" && payload.message) {
+        chunks.push(payload.message);
+      }
+    } catch {
+      // Ignore non-JSON keepalive frames.
+    }
+  }
+  return chunks.join("");
 }
 
 test.describe("Knowledge base browser acceptance", () => {
@@ -455,6 +510,158 @@ test.describe("Knowledge base browser acceptance", () => {
       ],
       db: [dbSummary],
       audit
+    });
+  });
+
+  test("asks the knowledge base through the Xiaoze entry with citation deep links", async ({ page }, testInfo) => {
+    // @acceptance KB-ASK-001
+    // @operation KB-ASK-001
+    const title = `${titlePrefix} 快充温控问答条目 ${runStamp}`;
+    const entry = await createMarkdownEntryViaApi(page, {
+      title,
+      tags: ["快充"],
+      contentMarkdown: `当电池温度超过 45 度时,按 0.5A 步长下调快充电流。问答关键词${runStamp}`
+    });
+    await publishEntryViaApi(page, entry.id);
+
+    // Browser part: the API-mode ask entry opens Xiaoze on /knowledge.
+    await openKnowledgePage(page);
+    const askButton = page.getByRole("button", { name: /问知识库/ });
+    await expect(askButton).toBeVisible();
+    await askButton.click();
+    await expect(page.getByTestId("xiaoze-popup-layer")).toBeVisible();
+
+    // Grounding loop: deterministic Xiaoze run calls knowledge.search and the
+    // turn reply carries knowledge citations with /knowledge deep links (the
+    // full Xiaoze browser loop has no deterministic browser acceptance today,
+    // so this is asserted at the SSE API level like XIAOZE-PERCEPTION-001).
+    const sseResponse = await page.request.post(apiRoute("/api/v1/agent/xiaoze"), {
+      headers: { ...editorHeaders(), Accept: "text/event-stream" },
+      data: {
+        threadId: `kb-ask-${runStamp}`,
+        runId: `run-kb-ask-${runStamp}`,
+        messages: [{ id: "m-user-kb-ask", role: "user", content: `知识库检索:快充温控问答条目 ${runStamp}` }],
+        context: [
+          {
+            description: "wiseeff.page",
+            value: { pageKey: "knowledge", path: "/knowledge" }
+          }
+        ]
+      }
+    });
+    expect(sseResponse.status()).toBe(200);
+    const sseBody = await sseResponse.text();
+    const answer = readSseAnswerText(sseBody);
+    expect(answer).toContain("[citation:knowledge]");
+
+    const turnReply = readSseCustomEventValue<{ citations?: XiaozeCitationApiItem[] }>(sseBody, "xiaoze_turn_reply");
+    expect(turnReply?.citations?.length ?? 0).toBeGreaterThan(0);
+    const citation = turnReply!.citations!.find((item) => item.id === entry.id);
+    expect(citation).toMatchObject({ type: "knowledge", label: title, href: `/knowledge?entryId=${entry.id}` });
+
+    // The citation deep link opens the published entry detail on /knowledge.
+    await page.goto(`/knowledge?entryId=${entry.id}`, { waitUntil: "domcontentloaded" });
+    const detail = page.getByRole("dialog", { name: new RegExp(title) });
+    await expect(detail).toBeVisible();
+    await expect(detail.locator('[data-status="published"]')).toBeVisible();
+
+    await recordOperationEvidence({
+      operationId: "KB-ASK-001",
+      title: "ask the knowledge base via Xiaoze with citation deep link",
+      status: "passed",
+      role: "Hardware User",
+      route: "/knowledge",
+      page,
+      testInfo,
+      api: [
+        summarizeApiResponse(sseResponse, {
+          method: "POST",
+          path: "/api/v1/agent/xiaoze",
+          responseSummary: `answer="${answer.slice(0, 120)}"; citation=${citation?.href ?? "missing"}`
+        })
+      ]
+    });
+  });
+
+  test("shows index health with retry and rebuild on /knowledge-admin", async ({ page }, testInfo) => {
+    // @acceptance KB-INDEX-001
+    // @operation KB-INDEX-001
+    const title = `${titlePrefix} 索引健康条目 ${runStamp}`;
+    const entry = await createMarkdownEntryViaApi(page, {
+      title,
+      tags: [],
+      contentMarkdown: `索引健康验证内容。${runStamp}`
+    });
+    await publishEntryViaApi(page, entry.id);
+
+    // The in-process polling worker indexes the published entry.
+    const indexed = await waitForIndexStatus(page, entry.id, (item) => item.status === "succeeded");
+    expect(indexed.indexedRevisionNumber).toBe(1);
+    expect(indexed.chunkCount).toBeGreaterThan(0);
+
+    await signInBrowserAsRole(page, "admin", "/knowledge-admin");
+    const banner = page.getByLabel("检索模式");
+    await expect(banner).toBeVisible();
+    // Honest retrieval-mode banner: this local/CI PostgreSQL has no pgvector.
+    const health = await fetchIndexHealth(page);
+    if (health.retrieval.mode === "fts_only") {
+      await expect(banner).toContainText("仅全文检索");
+    } else {
+      await expect(banner).toContainText("语义 + 全文混合检索");
+    }
+
+    const indexTable = page.getByRole("table", { name: "知识索引状态" });
+    const row = indexTable.locator("tr", { hasText: title }).first();
+    await expect(row).toBeVisible();
+    await expect(row.locator('[data-index-status="succeeded"]')).toBeVisible();
+
+    // Retry re-enqueues the entry and the worker converges back to succeeded.
+    await row.getByRole("button", { name: "重试" }).click();
+    await waitForIndexStatus(page, entry.id, (item) => item.status === "succeeded");
+
+    // Rebuild-all enqueues every published entry.
+    await page.getByRole("button", { name: "全量重建索引" }).click();
+    await expect(page.getByText(/已重新入队 \d+ 条已发布条目/)).toBeVisible();
+    await waitForIndexStatus(page, entry.id, (item) => item.status === "succeeded");
+
+    const dbSummary = await withPgClient(async (client) => {
+      const result = await client.query<{ status: string; chunk_count: number; indexed_revision_number: number }>(
+        `select status, chunk_count, indexed_revision_number from knowledge_index_status where entry_id = $1`,
+        [entry.id]
+      );
+      const chunkResult = await client.query<{ n: string }>(
+        `select count(*)::text as n from knowledge_chunks where entry_id = $1`,
+        [entry.id]
+      );
+      const row0 = result.rows[0];
+      return {
+        table: "knowledge_index_status,knowledge_chunks",
+        predicate: `entryId=${entry.id}`,
+        observed: row0
+          ? `status=${row0.status}; chunkCount=${row0.chunk_count}; indexedRevision=${row0.indexed_revision_number}; chunkRows=${chunkResult.rows[0].n}`
+          : "missing",
+        rowCount: result.rowCount ?? result.rows.length
+      };
+    });
+    expect(dbSummary.observed).toContain("status=succeeded");
+
+    await recordOperationEvidence({
+      operationId: "KB-INDEX-001",
+      title: "knowledge index health with retry and rebuild",
+      status: "passed",
+      role: "Admin",
+      route: "/knowledge-admin",
+      page,
+      testInfo,
+      api: [
+        {
+          method: "GET",
+          path: "/api/v1/knowledge/index/status",
+          status: 200,
+          responseSummary: `mode=${health.retrieval.mode}; vectorAvailable=${health.retrieval.vectorAvailable}`
+        }
+      ],
+      db: [dbSummary]
     });
   });
 });

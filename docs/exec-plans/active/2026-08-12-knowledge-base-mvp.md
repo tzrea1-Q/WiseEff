@@ -1,6 +1,6 @@
 # Knowledge base MVP
 
-> Status: **Active** — planning locked 2026-08-12; Phase 1 implemented on `feat/knowledge-base-foundation` (2026-08-12); Phases 2–3 not started
+> Status: **Active** — planning locked 2026-08-12; Phase 1 implemented on `feat/knowledge-base-foundation` (2026-08-12, merged); Phase 2 implemented on `feat/knowledge-base-rag` (2026-08-12); Phase 3 not started
 > Date: 2026-08-12
 > Design: [`docs/design-docs/2026-08-12-knowledge-base-design.md`](../../design-docs/2026-08-12-knowledge-base-design.md)
 > Chinese: [`docs/zh-CN/exec-plans/active/2026-08-12-knowledge-base-mvp.md`](../../zh-CN/exec-plans/active/2026-08-12-knowledge-base-mvp.md)
@@ -38,6 +38,12 @@ One branch per phase, each checked out from the latest `main` after the previous
 4. Xiaoze: register `knowledge.search` / `knowledge.getDocument` read tools (tool registry, catalog labels/descriptions/schemas); citation rendering as source links in the Xiaoze UI; ask-the-knowledge-base entry on `/knowledge` (API mode only); an eval scenario for knowledge grounding.
 5. Env and docs: `.env.example` gains `EMBEDDING_API_BASE_URL`, `EMBEDDING_MODEL`, `EMBEDDING_API_KEY`, `EMBEDDING_API_TIMEOUT_MS`; environment-variables docs (EN + zh); self-hosted runbook notes the pgvector requirement and degradation.
 6. Acceptance: add KB-ASK-001 (and an index-health operation ID) before implementation.
+
+**Phase 2 status notes (2026-08-12, `feat/knowledge-base-rag`):**
+
+- Delivered as planned: migration `0104_knowledge_retrieval.sql` (guarded extension install that never fails without pgvector; `knowledge_chunks` with a **conditional** embedding column — the column exists only when pgvector was present at migration time; `knowledge_index_status` doubling as the polling queue); `server/modules/knowledge/indexing/` (chunking, embedding client + deterministic fake via `EMBEDDING_DETERMINISTIC`, SKIP-LOCKED worker with stale reclaim); publish/edit-of-published/archive/restore/extraction-completion triggers; hybrid RRF search with the honest `retrieval` report; `knowledge.search` / `knowledge.getDocument` org-scoped read tools + `knowledge-grounding` eval scenario; Xiaoze citation source links (live + persisted threads); ask-the-knowledge-base entry (API mode only); `/knowledge-admin` index health with retry/rebuild; `KNOWLEDGE_INDEX_WORKER_ENABLED` (default on, in-process polling).
+- Honest boundaries: the local dev and CI PostgreSQL (postgres:16) have **no pgvector**, so FTS-only is the fully-tested default; vector-path logic is covered by scripted-SQL unit tests with the deterministic embedding client, and the real pgvector integration test (`vectorSearch.integration.test.ts`) skips with a reason when the extension is absent. Enabling semantic retrieval on a deployment that migrated without pgvector requires the manual column add documented in the self-hosted runbook. KB-ASK-001's Xiaoze grounding loop is asserted at the SSE API level (deterministic mode) plus eval, not as a browser chat loop — recorded in the coverage map.
+- Deferred to Phase 3 (unchanged plan): `action.createKnowledgeDraft`, distillation, agent-draft publish queue.
 
 ## Phase 3 — distillation loop (`feat/knowledge-base-distillation`)
 
@@ -94,10 +100,10 @@ Per phase: targeted vitest for `server/modules/knowledge/` and knowledge compone
 - [x] API contract EN + zh and the OpenAPI artifact include `/api/v1/knowledge/*` (Phase 1)
 - [x] FRONTEND EN + zh document `/knowledge`, `/knowledge-admin`, ports, and mock parity (Phase 1)
 - [ ] SECURITY + user-permission-design EN + zh document `knowledge:*` permissions and the agent draft tool (Phase 1/3 — `knowledge:*` permissions done in Phase 1; agent draft tool pending Phase 3)
-- [ ] environment-variables EN + zh and `.env.example` document `EMBEDDING_API_*` (Phase 2)
-- [ ] Self-hosted runbook EN + zh document the pgvector requirement and FTS-only degradation (Phase 2)
-- [ ] ARCHITECTURE EN + zh map the knowledge module and Xiaoze knowledge tools (Phase 1/2 — knowledge module mapped in Phase 1; Xiaoze tools pending Phase 2)
-- [ ] Coverage map and operation matrix EN + zh gain the KB-* IDs before each phase implements (each phase)
-- [ ] `docs/generated/db-schema.md` regenerated after migrations (each phase with migrations)
-- [ ] Deferred work recorded in `docs/exec-plans/tech-debt-tracker.md` (closeout)
+- [x] environment-variables EN + zh and `.env.example` document `EMBEDDING_API_*` (Phase 2 — plus `KNOWLEDGE_INDEX_WORKER_ENABLED`)
+- [x] Self-hosted runbook EN + zh document the pgvector requirement and FTS-only degradation (Phase 2)
+- [x] ARCHITECTURE EN + zh map the knowledge module and Xiaoze knowledge tools (Phase 1/2 — knowledge module mapped in Phase 1; indexing worker seam + Xiaoze knowledge tools mapped in Phase 2)
+- [ ] Coverage map and operation matrix EN + zh gain the KB-* IDs before each phase implements (Phase 1 + Phase 2 IDs registered — KB-READ/EDIT/FILE-001, KB-ASK-001, KB-INDEX-001; Phase 3 IDs pending)
+- [ ] `docs/generated/db-schema.md` regenerated after migrations (Phase 1 + Phase 2 (0104) regenerated; each later phase with migrations)
+- [ ] Deferred work recorded in `docs/exec-plans/tech-debt-tracker.md` (closeout — Phase 2 already recorded TD-083: pgvector late-install manual column step + missing pgvector CI coverage)
 - [ ] `npm run docs:check` green before moving this plan to `completed/`

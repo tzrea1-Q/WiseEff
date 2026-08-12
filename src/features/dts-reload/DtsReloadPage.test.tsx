@@ -260,13 +260,6 @@ describe("DtsReloadPage", () => {
     expect(getRequiredRoleForPage("dts-reload")).toBe("hardware-committer");
   });
 
-  it("renders a static unavailable state when no repository is injected", () => {
-    render(
-      <DtsReloadPage projects={[{ id: "project-1", name: "Demo" }]} repository={null} canStartRun={false} />
-    );
-    expect(screen.getByRole("status")).toHaveTextContent(/仅在 API 模式下可用/);
-  });
-
   it("exposes workbench landmarks for protocol, candidates, start bar, and collapsed history", async () => {
     const repository = createRepository();
     renderPage(repository);

@@ -3,6 +3,7 @@ import type { AuthContext } from "../../auth/types";
 import { ApiError } from "../../../shared/http/errors";
 import type { RouteRequest, RouteResponse, WiseEffRouter } from "../../../shared/http/router";
 import type { Database } from "../../../shared/database/client";
+import type { KnowledgeEmbeddingClient } from "../../knowledge/indexing/embeddingClient";
 import type { ObjectStore } from "../../logs/objectStore";
 import type { ServerEnv } from "../../../config/env";
 import { getAgentSession } from "../repository";
@@ -454,6 +455,20 @@ export function createDeterministicPerceptionModel(): import("./perceptionAgent"
             toolCalls: [{ id: "tc-forbidden", name: "perception.getProjectOverview", args: { projectId: "secret-project" } }]
           };
         }
+        // Deterministic knowledge grounding: `知识库检索:<keywords>` pins the
+        // query; any knowledge-base mention falls back to the full message.
+        const knowledgeQueryMatch = text.match(/(?:知识库检索|knowledge search)[:：]\s*(.+)/i);
+        if (knowledgeQueryMatch || /知识库|knowledge base/i.test(text)) {
+          return {
+            toolCalls: [
+              {
+                id: "tc-knowledge",
+                name: "knowledge.search",
+                args: { query: (knowledgeQueryMatch?.[1] ?? text).trim() }
+              }
+            ]
+          };
+        }
         const changeMatch = text.match(/(?:set|change)\s+([a-z0-9-]+)\s+(?:to|=)\s+(\S+)/i);
         if (changeMatch) {
           return {
@@ -484,7 +499,11 @@ export function createDeterministicPerceptionModel(): import("./perceptionAgent"
       if (payload.error === "FORBIDDEN") {
         return { content: "You are not permitted to access that project. I cannot share its data." };
       }
-      return { content: `${payload.summary ?? "Grounded summary."} [citation:parameter]` };
+      const citationType =
+        Array.isArray(payload.citations) && typeof payload.citations[0]?.type === "string"
+          ? payload.citations[0].type
+          : "parameter";
+      return { content: `${payload.summary ?? "Grounded summary."} [citation:${citationType}]` };
     }
   };
 }
@@ -509,9 +528,10 @@ export function createXiaozeAgentFactory(options: {
 }) {
   const registry =
     options.toolRegistry ?? createAgentToolRegistry({ db: options.db, objectStore: options.objectStore });
-  const perceptionTools = registry.list().filter((tool) => tool.name.startsWith("perception."));
-  const actionTools = registry.list().filter((tool) => tool.name.startsWith("action."));
-  const planningToolDescriptors = buildXiaozePlanningToolDescriptors([...perceptionTools, ...actionTools]);
+  // Read tools (perception + knowledge) bind before approval-gated action tools.
+  const readTools = registry.list().filter((tool) => !tool.requiresApproval);
+  const actionTools = registry.list().filter((tool) => tool.requiresApproval);
+  const planningToolDescriptors = buildXiaozePlanningToolDescriptors([...readTools, ...actionTools]);
   const modelFactory = options.modelFactory ?? createProductionModel;
   const checkpointer = options.checkpointer ?? resolveXiaozeCheckpointerFromEnv(options.env);
   const approvalResolver =
@@ -569,6 +589,7 @@ export function registerXiaozeRoutes(
     createAgent?: (context: AgentToolExecutionContext) => XiaozePerceptionAgent;
     approvalChain?: XiaozeApprovalChain;
     objectStore?: ObjectStore;
+    knowledgeEmbeddingClient?: KnowledgeEmbeddingClient;
   }
 ) {
   if (!options.db) {
@@ -584,7 +605,11 @@ export function registerXiaozeRoutes(
     XIAOZE_CHECKPOINTER: "memory",
     XIAOZE_REASONING_FALLBACK_HEURISTIC: false
   };
-  const registry = createAgentToolRegistry({ db: options.db, objectStore: options.objectStore });
+  const registry = createAgentToolRegistry({
+    db: options.db,
+    objectStore: options.objectStore,
+    knowledgeEmbeddingClient: options.knowledgeEmbeddingClient
+  });
   const orchestrator = createAgentOrchestrator({ db: options.db, toolRegistry: registry });
   const createAgent =
     options.createAgent ??

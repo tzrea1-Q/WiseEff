@@ -301,4 +301,52 @@ describe.skipIf(!databaseAvailable)("runValidationGate", () => {
     expect(audits).toHaveLength(1);
     expect(audits[0].metadata).toMatchObject({ ok: false });
   });
+
+  it("compiles functional-role members (charging/thermal/misc) as overlays so their DTS cannot bypass the release gate", async () => {
+    const { configSet } = await seedConfigSetWithBoard();
+    const chargingUpload = await uploadProjectParameterFile(db, objectStore, adminAuth(), {
+      projectId: "project-1",
+      fileName: "charging.dts",
+      bytes: Buffer.from("/dts-v1/;\n/ {\n\tcharging = <1>;\n};\n", "utf8")
+    });
+    await addConfigSetFile(db, adminAuth(), {
+      configSetId: configSet.id,
+      fileId: chargingUpload.file.id,
+      role: "charging",
+      sortOrder: 1
+    });
+
+    let captured: { entryFile: string; overlayOrder: string[] } | undefined;
+    const toolchain = {
+      async validate(input: { entryFile: string; overlayOrder: string[]; files: Map<string, { content: string }> }) {
+        captured = { entryFile: input.entryFile, overlayOrder: [...input.overlayOrder] };
+        return {
+          ok: true,
+          mode: "release" as const,
+          compiler: { dtc: "1.8.1", fdtoverlay: "1.8.1", dtschema: "2026.6" },
+          diagnostics: [],
+          artifacts: {}
+        };
+      },
+      async probe() {
+        return {
+          dtc: { path: "/usr/bin/dtc", version: "1.8.1" },
+          fdtoverlay: { path: "/usr/bin/fdtoverlay", version: "1.8.1" },
+          dtschema: { path: "/usr/bin/dt-validate", version: "2026.6" }
+        };
+      }
+    };
+
+    await runValidationGate(
+      db,
+      adminAuth(),
+      { configSetId: configSet.id, mode: "block", forRelease: true },
+      { objectStore, toolchain }
+    );
+
+    // The functional-role file must be applied as an overlay just like the real
+    // config-revision assembly (OVERLAY_ROLES); otherwise its DTS is never dtc-compiled.
+    expect(captured?.entryFile).toBe("board-a.dts");
+    expect(captured?.overlayOrder).toContain("charging.dts");
+  });
 });
