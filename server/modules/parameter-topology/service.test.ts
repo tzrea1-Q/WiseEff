@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { getProjectById } from "../parameters/repository";
+import { getProjectById } from "../parameters/projectRepository";
 import {
   getBindingForProject,
   listBindingCompareRows,
@@ -18,7 +18,7 @@ import {
   listProjectBindings
 } from "./service";
 
-vi.mock("../parameters/repository", () => ({
+vi.mock("../parameters/projectRepository", () => ({
   getProjectById: vi.fn()
 }));
 

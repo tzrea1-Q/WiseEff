@@ -39,7 +39,7 @@ export const STANDARD_TOOL_LIST: PerceptionToolDescriptor[] = [
   { name: "action.submitParameterChange", description: "Submit change", schema, requiresApproval: true }
 ];
 
-const anyAuth = {
+export const EVAL_AUTH = {
   organization: { id: "org-eval", name: "Eval Org" },
   user: { id: "u-eval", organizationId: "org-eval", name: "Eval User", title: "Tester", isActive: true },
   permissions: ["parameter:edit"],
@@ -190,8 +190,6 @@ export const EVAL_SCENARIOS: EvalScenario[] = [
     needsApprovalBridge: true,
     approvalSuccessText: "Change request cr-1 created.",
     resume: {
-      auth: anyAuth,
-      requestId: "req-approve",
       approvalId: "approval-approve",
       decision: "approve"
     }
@@ -223,8 +221,6 @@ export const EVAL_SCENARIOS: EvalScenario[] = [
     ],
     needsApprovalBridge: true,
     resume: {
-      auth: anyAuth,
-      requestId: "req-reject",
       approvalId: "approval-reject",
       decision: "reject",
       reason: "Not now"

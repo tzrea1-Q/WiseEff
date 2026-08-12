@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
-import { mustUseSemanticParameterIdentity } from "../parameters/semanticParameterReads";
+import { parameterIdentityMode } from "../parameters/parameterIdentityMode";
 import { buildDebugNodeModuleNameSubtreeFilter } from "./debugNodeModuleRepository";
 import type {
   DebugDeviceRecord,
@@ -967,7 +967,7 @@ export async function listDebugSessionEvents(
   db: Queryable,
   input: { organizationId: string; sessionId: string }
 ): Promise<NodeOperationRecord[]> {
-  const semantic = await mustUseSemanticParameterIdentity(db);
+  const semantic = parameterIdentityMode() === "semantic";
   const result = await db.query<NodeOperationRow>(
     `
     select ${semantic ? nodeOperationColumnsSemantic : nodeOperationColumnsLegacy}
@@ -1384,7 +1384,7 @@ export async function insertNodeOperation(
     actorUserId: string;
   }
 ): Promise<NodeOperationRecord> {
-  const semantic = await mustUseSemanticParameterIdentity(db);
+  const semantic = parameterIdentityMode() === "semantic";
   const result = await db.query<NodeOperationRow>(
     semantic
       ? `

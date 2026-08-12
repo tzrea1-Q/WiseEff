@@ -2,6 +2,8 @@
 
 Date: 2026-06-24
 
+> **Superseded 2026-08-12:** the separate approval bridge (and its in-memory `pendingToolCalls` map) was folded into the orchestrator-owned, DB-backed Agent approval chain (`beginApproval` / `resolveApproval`); `recordToolRequestForTest` is now `recordToolRequest`. See ADR-0024 and `docs/exec-plans/active/2026-08-12-xiaoze-approval-chain-single-seam.md`. Kept as historical spike evidence.
+
 ## 1. Orchestrator session + pending approval (no auto-execute)
 
 **Yes.** Reuse `createAgentOrchestrator` from `server/modules/agent/orchestrator.ts`:

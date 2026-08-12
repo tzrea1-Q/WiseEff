@@ -9,12 +9,12 @@ import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testi
 import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
 import { createOrReuseBinding, upsertBindingRevisionValues } from "./bindingService";
 import {
-  applyLockedOverlayWriteback,
   createBindingDraft,
   createNodeEnablementDraft,
-  resolveBindingWriteLock,
   unchangedSourceBytes,
 } from "./editService";
+import { applyLockedOverlayWriteback } from "./overlayWriteback";
+import { resolveBindingWriteLock } from "./writeLock";
 import { ingestConfigRevision } from "./ingestService";
 import type { ConfigRevisionManifest } from "./types";
 
@@ -2276,8 +2276,8 @@ describe.skipIf(!databaseAvailable)("createNodeEnablementDraft", () => {
       writeLockMatchesBinding: true,
     });
 
-    const { mustUseSemanticParameterIdentity } = await import("../parameters/semanticParameterReads");
-    if (!(await mustUseSemanticParameterIdentity(db!))) {
+    const { resolveParameterIdentityMode } = await import("../parameters/parameterIdentityMode");
+    if ((await resolveParameterIdentityMode(db!)) !== "semantic") {
       // Enablement submission is post-cutover-only; tip sharing + write-lock proofs above still apply.
       return;
     }

@@ -8,12 +8,12 @@ import type { ServerEnv } from "../../../config/env";
 import { createAgentToolRegistry } from "../toolRegistry";
 import type { AgentToolExecutionContext } from "../toolRegistry";
 import type { AgentToolName, AgentCitation } from "../types";
-import { createOrchestratorApprovalBridge, type ApprovalBridgeBeginResult } from "./approvalBridge";
+import { createAgentOrchestrator, type AgentOrchestrator, type ApprovalBeginResult } from "../orchestrator";
 import { createXiaozeCheckpointer, resolveXiaozeCheckpointerFromEnv } from "./checkpointer";
 import { type PersistXiaozeTurnInput, createXiaozeTurnPersister } from "./threadPersistence";
 import { registerXiaozeThreadRoutes } from "./threadRoutes";
 import { type PerceptionAgentRunResult, type PerceptionToolDescriptor, wrapLangChainChatModel } from "./perceptionAgent";
-import { createPlanningAgent } from "./planningGraph";
+import { createPlanningAgent, type PlanningApprovalResolver } from "./planningGraph";
 import { runXiaozeSuggest, type XiaozeSuggestContext } from "./suggest";
 import { createDefaultReasoningClassifier, type ReasoningClassifier } from "./reasoningClassifier";
 import { splitAssistantContent, mergeReasoningText } from "./splitAssistantContent";
@@ -47,6 +47,8 @@ import { ChatOpenAI } from "@langchain/openai";
 
 export type XiaozeAgUiRequest = Pick<RouteRequest, "headers" | "body" | "requestId">;
 
+export type XiaozeApprovalChain = Pick<AgentOrchestrator, "beginApproval">;
+
 export type XiaozePerceptionAgent = {
   run(input: {
     message: string;
@@ -55,8 +57,6 @@ export type XiaozePerceptionAgent = {
     includePromptDebug?: boolean;
     sink?: RunEventSink;
     resume?: {
-      auth: AuthContext;
-      requestId: string;
       approvalId: string;
       decision: "approve" | "reject";
       editedArgs?: Record<string, unknown>;
@@ -471,7 +471,7 @@ function readResumeDecision(body: unknown): ResumeDecision | undefined {
   return undefined;
 }
 
-function buildInterruptValue(interrupt: ApprovalBridgeBeginResult) {
+function buildInterruptValue(interrupt: ApprovalBeginResult) {
   return {
     approvalId: interrupt.approvalId,
     toolCallId: interrupt.toolCallId,
@@ -513,7 +513,7 @@ function createProductionModel(
 export function createXiaozeAgUiHandler(options: {
   resolveAuth: (request: XiaozeAgUiRequest) => Promise<AuthContext | undefined>;
   createAgent: (context: AgentToolExecutionContext) => XiaozePerceptionAgent;
-  approvalBridge?: ReturnType<typeof createOrchestratorApprovalBridge>;
+  approvalChain?: XiaozeApprovalChain;
   allowPromptDebug?: boolean;
   resolveModelLabel?: () => string | undefined;
   persistTurn?: (input: PersistXiaozeTurnInput) => Promise<void>;
@@ -549,7 +549,7 @@ export function createXiaozeAgUiHandler(options: {
       projectId: pageContext.projectId
     };
     const agent = options.createAgent(executionContext);
-    const approvalBridge = options.approvalBridge;
+    const approvalChain = options.approvalChain;
 
     async function persistSuccessfulTurn(persistInput: {
       userMessage?: { id: string; content: string };
@@ -604,7 +604,7 @@ export function createXiaozeAgUiHandler(options: {
       streamFlags.assistantShellStarted = true;
 
       try {
-        if (resumeDecision && approvalBridge) {
+        if (resumeDecision && approvalChain) {
           try {
             const resumed = await agent.run({
               message: "",
@@ -614,8 +614,6 @@ export function createXiaozeAgUiHandler(options: {
               },
               threadId,
               resume: {
-                auth: verifiedAuth,
-                requestId: request.requestId,
                 approvalId: resumeDecision.approvalId,
                 decision: resumeDecision.decision,
                 editedArgs: resumeDecision.editedArgs,
@@ -717,9 +715,9 @@ export function createXiaozeAgUiHandler(options: {
         }
         const result = outcome.result!;
 
-        if (result.interrupt && approvalBridge) {
+        if (result.interrupt && approvalChain) {
           yield reasoningEndEvent(reasoningMessageId);
-          const interrupt = await approvalBridge.begin({
+          const interrupt = await approvalChain.beginApproval({
             auth: verifiedAuth,
             requestId: request.requestId,
             sessionId: threadId,
@@ -952,50 +950,49 @@ export function createXiaozeAgentFactory(options: {
   >;
   modelFactory?: typeof createProductionModel;
   checkpointer?: ReturnType<typeof createXiaozeCheckpointer>;
-  approvalBridge?: ReturnType<typeof createOrchestratorApprovalBridge>;
+  toolRegistry?: ReturnType<typeof createAgentToolRegistry>;
+  approvalResolver?: PlanningApprovalResolver;
 }) {
-  const registry = createAgentToolRegistry({ db: options.db });
+  const registry = options.toolRegistry ?? createAgentToolRegistry({ db: options.db });
   const perceptionTools = registry.list().filter((tool) => tool.name.startsWith("perception."));
   const actionTools = registry.list().filter((tool) => tool.name.startsWith("action."));
   const planningToolDescriptors = buildXiaozePlanningToolDescriptors([...perceptionTools, ...actionTools]);
   const modelFactory = options.modelFactory ?? createProductionModel;
   const checkpointer = options.checkpointer ?? resolveXiaozeCheckpointerFromEnv(options.env);
-  const approvalBridge = options.approvalBridge ?? createOrchestratorApprovalBridge({ db: options.db, toolRegistry: registry });
-  const executionContextRef: { current: AgentToolExecutionContext | null } = { current: null };
+  const approvalResolver =
+    options.approvalResolver ?? createAgentOrchestrator({ db: options.db, toolRegistry: registry });
   const planningAgent = createPlanningAgent({
     model: isXiaozeDeterministicMode()
       ? createDeterministicPerceptionModel()
       : modelFactory(options.env, planningToolDescriptors),
-    runTool: (name, payload) => {
-      if (!executionContextRef.current) {
+    runTool: (name, payload, requestContext) => {
+      if (!requestContext) {
         throw new Error("Xiaoze execution context is not bound for this request.");
       }
-      return registry.run(name as never, executionContextRef.current, payload);
+      return registry.run(name as never, requestContext, payload);
     },
     listTools: () => planningToolDescriptors,
     checkpointer,
-    approvalBridge
+    approvalResolver
   });
 
-  return (executionContext: AgentToolExecutionContext): XiaozePerceptionAgent => {
-    executionContextRef.current = executionContext;
-    return {
-      async run(input) {
-        const result = await planningAgent.run({
-          ...input,
-          threadId: input.threadId
-        });
-        return {
-          text: result.text,
-          reasoning: result.reasoning,
-          citations: result.citations,
-          promptDebug: result.promptDebug,
-          interrupt: result.interrupt,
-          runSteps: result.runSteps
-        };
-      }
-    };
-  };
+  return (executionContext: AgentToolExecutionContext): XiaozePerceptionAgent => ({
+    async run(input) {
+      const result = await planningAgent.run({
+        ...input,
+        threadId: input.threadId,
+        requestContext: executionContext
+      });
+      return {
+        text: result.text,
+        reasoning: result.reasoning,
+        citations: result.citations,
+        promptDebug: result.promptDebug,
+        interrupt: result.interrupt,
+        runSteps: result.runSteps
+      };
+    }
+  });
 }
 
 export function registerXiaozeRoutes(
@@ -1015,7 +1012,7 @@ export function registerXiaozeRoutes(
     >;
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
     createAgent?: (context: AgentToolExecutionContext) => XiaozePerceptionAgent;
-    approvalBridge?: ReturnType<typeof createOrchestratorApprovalBridge>;
+    approvalChain?: XiaozeApprovalChain;
   }
 ) {
   if (!options.db) {
@@ -1032,18 +1029,22 @@ export function registerXiaozeRoutes(
     XIAOZE_REASONING_FALLBACK_HEURISTIC: false
   };
   const reasoningClassifier = createDefaultReasoningClassifier(envDefaults);
+  const registry = createAgentToolRegistry({ db: options.db });
+  const orchestrator = createAgentOrchestrator({ db: options.db, toolRegistry: registry });
   const createAgent =
     options.createAgent ??
     createXiaozeAgentFactory({
       db: options.db,
       env: envDefaults,
+      toolRegistry: registry,
+      approvalResolver: orchestrator,
       ...(options.env
         ? {}
         : {
             modelFactory: (_env, _tools) => createDeterministicPerceptionModel()
           })
     });
-  const approvalBridge = options.approvalBridge ?? createOrchestratorApprovalBridge({ db: options.db });
+  const approvalChain = options.approvalChain ?? orchestrator;
   const persistTurn = createXiaozeTurnPersister({ db: options.db });
 
   const handler = createXiaozeAgUiHandler({
@@ -1058,7 +1059,7 @@ export function registerXiaozeRoutes(
       }
     },
     createAgent,
-    approvalBridge,
+    approvalChain,
     persistTurn,
     resolveModelLabel: options.env ? () => resolveXiaozeModel(options.env!) : undefined,
     reasoningClassifier
@@ -1066,7 +1067,6 @@ export function registerXiaozeRoutes(
 
   router.post("/api/v1/agent/xiaoze", async (request) => handler(request));
 
-  const registry = createAgentToolRegistry({ db: options.db });
   router.post("/api/v1/agent/xiaoze/suggest", async (request) => {
     if (!options.env?.XIAOZE_PROACTIVE_ENABLED) {
       return { status: 200, body: { suggestions: [] } };

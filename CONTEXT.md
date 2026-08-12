@@ -98,6 +98,7 @@ Expand lazily via `/domain-modeling` when terms are resolved. Prefer terms from 
 | Domain knowledge document | 「领域知识文档」— admin-maintained markdown attached to one log domain (error-code meanings, known failure modes, module background), retrieved by the log analysis agent during analysis. The MVP knowledge source; migrates behind the Knowledge base workflow once that exists |
 | Behavior-layer eval | 「行为层评测」— deterministic fake-model evaluation of the log analysis agent's conduct: tool-call legality, in-budget convergence, honest degradation marking, no conclusion without cited evidence. Runs in CI on every change at zero API cost — the log-analysis sibling of the Xiaoze eval harness |
 | Quality-layer eval | 「效果层评测」— real-model evaluation scoring golden-case runs: root-cause accuracy (rubric plus LLM-as-judge with sampled human review), deterministic evidence-line overlap, hallucination and refusal rates. Runs on prompt or model change and before release, gated against the previous baseline minus a stated tolerance |
+| Agent approval chain | The orchestrator-owned path every mutating Agent tool call must cross: `beginApproval` persists `agent_tool_calls` + `agent_approvals` rows and raises the interrupt; `resolveApproval` carries the human decision, applies `editedArgs` as a full payload replacement, re-authorizes transactionally, and executes. Its only state is those database rows — never process memory — so begin and resolve may land on different processes (ADR-0024) |
 
 ## ADRs
 
@@ -125,3 +126,5 @@ Architectural decisions: [`docs/adr/`](docs/adr/) (created lazily). Feature-scop
 - [`0020`](docs/adr/0020-reload-runs-execute-in-request-on-bridge-holding-process.md) — reload runs execute in-request on the bridge-holding process
 - [`0021`](docs/adr/0021-reload-snapshot-satisfies-device-write-snapshot-non-negotiable.md) — reload snapshot satisfies the device-write snapshot non-negotiable
 - [`0022`](docs/adr/0022-log-analysis-agent-runs-outside-the-xiaoze-stack.md) — log analysis agent runs outside the Xiaoze stack
+- [`0023`](docs/adr/0023-app-state-transitions-live-in-application-state.md) — frontend app state transitions live in application/state, not App.tsx
+- [`0024`](docs/adr/0024-agent-approval-state-is-db-backed.md) — Agent approval state is DB-backed; request context flows through invocation config

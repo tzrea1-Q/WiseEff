@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { OperationHistoryPanel } from "./OperationHistoryPanel";
-import type { DebugEvent } from "../mockData";
+import type { DebugEvent } from "@/domain/prototype/types";
 
 const events: DebugEvent[] = [
   { kind: "connect", deviceId: "device-x01", at: "2026-05-10T20:00:00.000Z" },
