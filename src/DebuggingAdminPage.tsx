@@ -80,13 +80,13 @@ export function DebuggingAdminPage({
   area = "parameter",
   runtimeMode = wiseEffRuntimeMode,
   debuggingAdminClient,
-  dtsReloadRepository = null,
+  dtsReloadRepository,
   apiAuthPermissions = []
 }: PageProps & {
   area?: "parameter" | "nodes";
   runtimeMode?: WiseEffRuntimeMode;
   debuggingAdminClient?: ReturnType<typeof createDebuggingAdminClient>;
-  dtsReloadRepository?: DtsReloadRepository | null;
+  dtsReloadRepository?: DtsReloadRepository;
   apiAuthPermissions?: string[];
 }) {
   const [adminNodes, setAdminNodes] = useState<DebugNodeRegistryEntry[]>([]);
@@ -540,7 +540,7 @@ export function DebuggingAdminPage({
             <p className="debug-admin-error">缺少 debugging:admin 权限，目录仅可查看。</p>
           ) : null}
           <ReloadConfigurationAdminPanel
-            repository={isApiMode ? dtsReloadRepository : null}
+            repository={isApiMode ? dtsReloadRepository ?? null : null}
             canEdit={canEditAdminCatalog}
             unavailableReason={isApiMode ? undefined : "重载配置仅在 API 模式下可用。"}
           />
