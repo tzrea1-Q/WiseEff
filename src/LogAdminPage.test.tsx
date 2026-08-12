@@ -5,6 +5,8 @@ import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { TopBarActionsContext } from "./components/layout";
 import { LogAdminPage } from "./LogAdminPage";
 import type { LogRuntimeActions } from "./application/logs/logRuntime";
+import type { KnowledgeRepository } from "./application/ports/KnowledgeRepository";
+import type { KnowledgeEntry } from "./domain/knowledge/types";
 import { createPrototypeState } from "./mockData";
 
 afterEach(() => {
@@ -43,6 +45,8 @@ function createLogActions(overrides: Partial<LogRuntimeActions> = {}): LogRuntim
     createLogDomain: vi.fn().mockResolvedValue(null),
     updateLogDomain: vi.fn().mockResolvedValue(null),
     archiveLogDomain: vi.fn().mockResolvedValue(null),
+    listLogDomainKnowledgeLinks: vi.fn().mockResolvedValue([]),
+    setLogDomainKnowledgeLinks: vi.fn().mockResolvedValue(null),
     ...overrides
   };
 }
@@ -57,13 +61,23 @@ function deferred<T = void>() {
   return { promise, resolve, reject };
 }
 
-function renderPage({ logActions }: { logActions?: LogRuntimeActions } = {}) {
+function renderPage({
+  logActions,
+  knowledgeRepository
+}: { logActions?: LogRuntimeActions; knowledgeRepository?: KnowledgeRepository } = {}) {
   const state = { ...createPrototypeState(), activeRoleId: "admin" };
   const dispatch = vi.fn();
   const onNavigate = vi.fn();
   const utils = render(
     <TopBarActionsHarness>
-      <LogAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search="" logActions={logActions} />
+      <LogAdminPage
+        state={state}
+        dispatch={dispatch}
+        onNavigate={onNavigate}
+        search=""
+        logActions={logActions}
+        knowledgeRepository={knowledgeRepository}
+      />
     </TopBarActionsHarness>
   );
 
@@ -578,5 +592,125 @@ describe("LogAdminPage 业务域治理", () => {
 
     expect(screen.getByTestId("log-domain-governance")).toHaveTextContent(/需要 Admin 权限/);
     expect(screen.queryByRole("button", { name: "新建业务域" })).not.toBeInTheDocument();
+  });
+});
+
+describe("LogAdminPage 业务域知识条目关联", () => {
+  const chargingDomain = {
+    id: "domain-charging",
+    name: "charging-power",
+    description: "充电/电源子系统内核日志",
+    status: "active" as const,
+    formatProfile: undefined,
+    createdAt: "2026-08-12T00:00:00.000Z",
+    updatedAt: "2026-08-12T00:00:00.000Z"
+  };
+
+  function makePublishedEntry(overrides: Partial<KnowledgeEntry> = {}): KnowledgeEntry {
+    return {
+      id: "entry-1",
+      title: "E_THERMAL_FOLDBACK handbook",
+      contentForm: "markdown",
+      status: "published",
+      tags: ["charging"],
+      sourceType: "human",
+      sourceSessionId: null,
+      sourceLogId: null,
+      createdByUserId: "u-1",
+      headRevisionNumber: 1,
+      createdAt: "2026-08-12T00:00:00.000Z",
+      updatedAt: "2026-08-12T00:00:00.000Z",
+      publishedAt: "2026-08-12T00:00:00.000Z",
+      archivedAt: null,
+      contentMarkdown: "docs",
+      file: null,
+      ...overrides
+    };
+  }
+
+  function makeKnowledgeRepository(entries: KnowledgeEntry[]): KnowledgeRepository {
+    return {
+      list: vi.fn().mockResolvedValue({ items: entries })
+    } as unknown as KnowledgeRepository;
+  }
+
+  it("opens the editor, offers only published entries, and saves the selected link set", async () => {
+    const logActions = createLogActions({
+      listLogDomains: vi.fn().mockResolvedValue([chargingDomain]),
+      listLogDomainKnowledgeLinks: vi.fn().mockResolvedValue([]),
+      setLogDomainKnowledgeLinks: vi.fn().mockResolvedValue([
+        {
+          id: "link-1",
+          logDomainId: "domain-charging",
+          knowledgeEntryId: "entry-1",
+          entryTitle: "E_THERMAL_FOLDBACK handbook",
+          entryStatus: "published" as const,
+          entryTags: ["charging"],
+          linkedAt: "2026-08-13T00:00:00.000Z"
+        }
+      ])
+    });
+    const knowledgeRepository = makeKnowledgeRepository([makePublishedEntry()]);
+    renderPage({ logActions, knowledgeRepository });
+
+    const table = await screen.findByRole("table", { name: "业务域列表" });
+    await userEvent.click(within(table).getByRole("button", { name: "知识条目" }));
+
+    const editor = await screen.findByTestId("domain-knowledge-links-editor");
+    await waitFor(() => expect(logActions.listLogDomainKnowledgeLinks).toHaveBeenCalledWith("domain-charging"));
+    expect(knowledgeRepository.list).toHaveBeenCalledWith({ status: "published" });
+
+    await userEvent.click(await within(editor).findByRole("checkbox", { name: /E_THERMAL_FOLDBACK handbook/ }));
+    await userEvent.click(within(editor).getByRole("button", { name: "保存关联" }));
+
+    await waitFor(() =>
+      expect(logActions.setLogDomainKnowledgeLinks).toHaveBeenCalledWith({
+        domainId: "domain-charging",
+        knowledgeEntryIds: ["entry-1"]
+      })
+    );
+    expect(await within(editor).findByRole("status")).toHaveTextContent("已保存");
+  });
+
+  it("marks stale non-published links and drops them from the saved set", async () => {
+    const logActions = createLogActions({
+      listLogDomains: vi.fn().mockResolvedValue([chargingDomain]),
+      listLogDomainKnowledgeLinks: vi.fn().mockResolvedValue([
+        {
+          id: "link-live",
+          logDomainId: "domain-charging",
+          knowledgeEntryId: "entry-1",
+          entryTitle: "E_THERMAL_FOLDBACK handbook",
+          entryStatus: "published" as const,
+          entryTags: [],
+          linkedAt: "2026-08-13T00:00:00.000Z"
+        },
+        {
+          id: "link-stale",
+          logDomainId: "domain-charging",
+          knowledgeEntryId: "entry-archived",
+          entryTitle: "Archived charging note",
+          entryStatus: "archived" as const,
+          entryTags: [],
+          linkedAt: "2026-08-13T00:00:00.000Z"
+        }
+      ]),
+      setLogDomainKnowledgeLinks: vi.fn().mockResolvedValue([])
+    });
+    renderPage({ logActions, knowledgeRepository: makeKnowledgeRepository([makePublishedEntry()]) });
+
+    const table = await screen.findByRole("table", { name: "业务域列表" });
+    await userEvent.click(within(table).getByRole("button", { name: "知识条目" }));
+    const editor = await screen.findByTestId("domain-knowledge-links-editor");
+
+    expect(await within(editor).findByRole("note")).toHaveTextContent(/Archived charging note/);
+
+    await userEvent.click(within(editor).getByRole("button", { name: "保存关联" }));
+    await waitFor(() =>
+      expect(logActions.setLogDomainKnowledgeLinks).toHaveBeenCalledWith({
+        domainId: "domain-charging",
+        knowledgeEntryIds: ["entry-1"]
+      })
+    );
   });
 });

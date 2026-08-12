@@ -302,6 +302,8 @@ GET  /api/v1/log-domains
 POST /api/v1/log-domains
 PATCH /api/v1/log-domains/:domainId
 POST /api/v1/log-domains/:domainId/archive
+GET  /api/v1/log-domains/:domainId/knowledge-links
+PUT  /api/v1/log-domains/:domainId/knowledge-links
 GET  /api/v1/jobs/:jobId
 GET  /api/v1/jobs/:jobId/events
 ```
@@ -321,6 +323,8 @@ GET  /api/v1/jobs/:jobId/events
 | `POST` | `/api/v1/log-domains` | 创建业务域（`logs:admin-domains`；组织内重名 `409`；画像 JSON 非法 `400`） |
 | `PATCH` | `/api/v1/log-domains/:domainId` | 更新名称/描述/格式画像/状态（`formatProfile: null` 清空画像） |
 | `POST` | `/api/v1/log-domains/:domainId/archive` | 归档业务域；既有日志记录保留绑定 |
+| `GET` | `/api/v1/log-domains/:domainId/knowledge-links` | P2：列出业务域的知识条目关联及各条目当前状态（`logs:admin-domains`） |
+| `PUT` | `/api/v1/log-domains/:domainId/knowledge-links` | P2：整组替换关联集合（`{ knowledgeEntryIds: uuid[] }`）。只接受本组织**已发布**知识条目（草稿/已归档 `400`，未知条目 `404`）；写 `log-domain-knowledge-links-update` 审计 |
 
 `POST /api/v1/log-files` 在 M2 接受 JSON base64 内容，后续可替换为签名上传凭证而不改变 `POST /api/v1/logs` 的分析合同。
 

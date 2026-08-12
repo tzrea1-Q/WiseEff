@@ -700,6 +700,18 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "db", "audit"]
   },
   {
+    id: "LOG-DOMAIN-KNOWLEDGE-001",
+    priority: "P1",
+    area: "logs",
+    route: "/log-admin",
+    roles: ["Admin"],
+    action: "Link published knowledge entries to a log domain in /log-admin governance (published-only selection, replace-set save, audited).",
+    coverage: "automated",
+    acceptanceIds: ["LOG-DOMAIN-KNOWLEDGE-001"],
+    specFiles: ["e2e/acceptance/log-analysis.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit"]
+  },
+  {
     id: "LOG-DEGRADED-001",
     priority: "P1",
     area: "logs",

@@ -7,6 +7,8 @@ export type LogEvalRunResult = {
   parsedLineNumbers: number[];
   /** Prompt messages the analyzer sent to the (fake) model, captured by the harness. */
   promptMessages: LogAnalysisChatMessage[];
+  /** Number of model invocations the kernel made (loop scenarios: budget adherence). */
+  modelCallCount?: number;
 };
 
 export type LogEvalExpectation =
@@ -17,7 +19,9 @@ export type LogEvalExpectation =
   | { type: "expectsEvidenceNotCitingLines"; lineNumbers: number[] }
   | { type: "expectsPromptVersionRecorded"; promptVersion: string }
   | { type: "expectsPromptContains"; substrings: string[] }
-  | { type: "requiresSubstringsInConclusion"; substrings: string[] };
+  | { type: "requiresSubstringsInConclusion"; substrings: string[] }
+  | { type: "expectsConfidenceAtMost"; value: number }
+  | { type: "expectsModelCallCount"; count: number };
 
 export type LogEvalExpectationResult = {
   pass: boolean;
@@ -94,6 +98,24 @@ export function evaluateLogEvalExpectation(
       return missing.length === 0
         ? { pass: true }
         : { pass: false, message: `Conclusion is missing: ${missing.join(" | ")}` };
+    }
+    case "expectsConfidenceAtMost": {
+      const pass = result.output.confidence <= expectation.value;
+      return pass
+        ? { pass: true }
+        : {
+            pass: false,
+            message: `Expected confidence <= ${expectation.value}, got ${result.output.confidence}`
+          };
+    }
+    case "expectsModelCallCount": {
+      const pass = result.modelCallCount === expectation.count;
+      return pass
+        ? { pass: true }
+        : {
+            pass: false,
+            message: `Expected ${expectation.count} model call(s), got ${result.modelCallCount ?? "unknown"}`
+          };
     }
   }
 }

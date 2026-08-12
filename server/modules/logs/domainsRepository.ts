@@ -169,3 +169,131 @@ export async function getActiveLogDomainForBinding(
   const domain = await getLogDomainById(db, query);
   return domain && domain.status === "active" ? domain : null;
 }
+
+/**
+ * A log domain's link to a published knowledge entry (P2). The link carries the
+ * current entry status so governance can spot entries that were archived after
+ * linking — retrieval itself stays published-only regardless of stale links.
+ */
+export type LogDomainKnowledgeLinkDto = {
+  id: string;
+  logDomainId: string;
+  knowledgeEntryId: string;
+  entryTitle: string;
+  entryStatus: "draft" | "published" | "archived";
+  entryTags: string[];
+  linkedAt: string;
+};
+
+type LogDomainKnowledgeLinkRow = {
+  id: string;
+  log_domain_id: string;
+  knowledge_entry_id: string;
+  entry_title: string;
+  entry_status: "draft" | "published" | "archived";
+  entry_tags: string[];
+  created_at: string | Date;
+};
+
+function toLogDomainKnowledgeLinkDto(row: LogDomainKnowledgeLinkRow): LogDomainKnowledgeLinkDto {
+  return {
+    id: row.id,
+    logDomainId: row.log_domain_id,
+    knowledgeEntryId: row.knowledge_entry_id,
+    entryTitle: row.entry_title,
+    entryStatus: row.entry_status,
+    entryTags: row.entry_tags ?? [],
+    linkedAt: dateTimeToIso(row.created_at)
+  };
+}
+
+export async function listLogDomainKnowledgeLinks(
+  db: Queryable,
+  query: { organizationId: string; domainId: string }
+): Promise<LogDomainKnowledgeLinkDto[]> {
+  const result = await db.query<LogDomainKnowledgeLinkRow>(
+    `
+    select
+      link.id,
+      link.log_domain_id,
+      link.knowledge_entry_id::text as knowledge_entry_id,
+      entry.title as entry_title,
+      entry.status as entry_status,
+      entry.tags as entry_tags,
+      link.created_at
+    from log_domain_knowledge_links link
+    inner join knowledge_entries entry
+      on entry.id = link.knowledge_entry_id
+      and entry.organization_id = link.organization_id
+    where link.organization_id = $1
+      and link.log_domain_id = $2
+    order by entry.title asc, link.id asc
+    `,
+    [query.organizationId, query.domainId]
+  );
+
+  return result.rows.map(toLogDomainKnowledgeLinkDto);
+}
+
+/** Worker-side lookup: the linked entry ids that bound `read_domain_knowledge` retrieval. */
+export async function listLogDomainKnowledgeLinkEntryIds(
+  db: Queryable,
+  query: { organizationId: string; domainId: string }
+): Promise<string[]> {
+  const result = await db.query<{ knowledge_entry_id: string }>(
+    `
+    select knowledge_entry_id::text as knowledge_entry_id
+    from log_domain_knowledge_links
+    where organization_id = $1
+      and log_domain_id = $2
+    order by created_at asc, id asc
+    `,
+    [query.organizationId, query.domainId]
+  );
+
+  return result.rows.map((row) => row.knowledge_entry_id);
+}
+
+/** Replaces the domain's link set; returns what changed for the audit metadata. */
+export async function replaceLogDomainKnowledgeLinks(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    domainId: string;
+    knowledgeEntryIds: string[];
+    createdByUserId: string;
+    newLinkId: () => string;
+  }
+): Promise<{ added: string[]; removed: string[] }> {
+  const existing = await listLogDomainKnowledgeLinkEntryIds(db, {
+    organizationId: input.organizationId,
+    domainId: input.domainId
+  });
+  const nextSet = new Set(input.knowledgeEntryIds);
+  const existingSet = new Set(existing);
+  const added = input.knowledgeEntryIds.filter((entryId) => !existingSet.has(entryId));
+  const removed = existing.filter((entryId) => !nextSet.has(entryId));
+
+  if (removed.length > 0) {
+    await db.query(
+      `
+      delete from log_domain_knowledge_links
+      where organization_id = $1
+        and log_domain_id = $2
+        and knowledge_entry_id = any($3::uuid[])
+      `,
+      [input.organizationId, input.domainId, removed]
+    );
+  }
+  for (const entryId of added) {
+    await db.query(
+      `
+      insert into log_domain_knowledge_links (id, organization_id, log_domain_id, knowledge_entry_id, created_by_user_id)
+      values ($1, $2, $3, $4::uuid, $5)
+      `,
+      [input.newLinkId(), input.organizationId, input.domainId, entryId, input.createdByUserId]
+    );
+  }
+
+  return { added, removed };
+}

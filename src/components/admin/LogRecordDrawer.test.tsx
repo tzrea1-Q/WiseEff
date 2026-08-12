@@ -208,4 +208,20 @@ describe("LogRecordDrawer", () => {
 
     expect(screen.queryByTestId("drawer-analysis-provenance")).not.toBeInTheDocument();
   });
+
+  it("marks an early-converged agent conclusion as degraded instead of a full analysis", () => {
+    render(
+      <LogRecordDrawer
+        record={{ ...record, analysisSource: "agent", degradedReason: "token-budget-exhausted" }}
+        open
+        {...handlers}
+        canAct
+      />
+    );
+
+    const provenance = screen.getByTestId("drawer-analysis-provenance");
+    expect(provenance).toHaveTextContent("降级分析 · 提前收敛");
+    expect(provenance).toHaveTextContent(/提前收敛为低置信结论/);
+    expect(provenance).not.toHaveTextContent("降级分析 · 规则回退");
+  });
 });

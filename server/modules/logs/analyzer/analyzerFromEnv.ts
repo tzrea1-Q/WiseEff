@@ -1,7 +1,10 @@
 import { ChatOpenAI } from "@langchain/openai";
 
+import type { KnowledgeEmbeddingClient } from "../../knowledge/indexing/embeddingClient";
+import type { Queryable } from "../../../shared/database/client";
 import type { LogAnalysisAdapter } from "../analyzer";
-import { createDeterministicLogAnalysisModel } from "./deterministicModel";
+import { createAgentLoopLogAnalyzer } from "./agentLoop";
+import { createDeterministicLogAnalysisLoopModel, createDeterministicLogAnalysisModel } from "./deterministicModel";
 import {
   createLlmLogAnalyzer,
   LogAnalysisProviderError,
@@ -9,6 +12,7 @@ import {
   type LogAnalysisChatModel,
   type LogAnalysisLlmTelemetry
 } from "./llmAnalyzer";
+import { createDbLogAnalysisToolBackends } from "./tools/dbToolBackends";
 
 export type LogAnalyzerEnv = {
   LOG_ANALYSIS_API_BASE_URL?: string;
@@ -17,6 +21,9 @@ export type LogAnalyzerEnv = {
   LOG_ANALYSIS_API_TIMEOUT_MS: number;
   LOG_ANALYSIS_TOKEN_BUDGET: number;
   LOG_ANALYSIS_DETERMINISTIC: boolean;
+  /** P2: "loop" (default, multi-step agent) or "single-shot" (P1 kernel kept as a config fallback). */
+  LOG_ANALYSIS_KERNEL: "loop" | "single-shot";
+  LOG_ANALYSIS_MAX_STEPS: number;
 };
 
 function readNonBlank(value: string | undefined) {
@@ -79,26 +86,65 @@ function createUnconfiguredModel(): LogAnalysisChatModel {
   };
 }
 
+export type CreateLogAnalyzerFromEnvOptions = {
+  telemetry?: LogAnalysisLlmTelemetry;
+  /**
+   * Database handle for the loop kernel's organization-scoped tool backends
+   * (`read_domain_knowledge`, `get_related_parameter_context`). Absent (offline
+   * eval, unit tests) the two tools honestly report themselves unavailable.
+   */
+  db?: Queryable;
+  /** Embedding client for hybrid domain-knowledge retrieval; absent = FTS-only. */
+  embeddingClient?: KnowledgeEmbeddingClient;
+};
+
 /**
- * Builds the default `LogAnalysisAdapter` for the worker: the single-shot LLM analyzer
- * with the rule engine as its degradation fallback. An unconfigured provider behaves
- * like an unavailable one — retries, then an honestly marked rules-fallback report.
+ * Builds the default `LogAnalysisAdapter` for the worker. P2 default is the
+ * bounded agent loop (`LOG_ANALYSIS_KERNEL=loop`); the P1 single-shot analyzer
+ * stays available as a config fallback (`LOG_ANALYSIS_KERNEL=single-shot`).
+ * Both share the rule engine as their degradation fallback, and an unconfigured
+ * provider behaves like an unavailable one — retries, then an honestly marked
+ * rules-fallback report.
  */
 export function createLogAnalyzerFromEnv(
   env: LogAnalyzerEnv,
-  options: { telemetry?: LogAnalysisLlmTelemetry } = {}
+  options: CreateLogAnalyzerFromEnvOptions = {}
 ): LogAnalysisAdapter {
   const modelLabel = resolveLogAnalysisModelLabel(env);
+  const useLoopKernel = env.LOG_ANALYSIS_KERNEL === "loop";
   const model = env.LOG_ANALYSIS_DETERMINISTIC
-    ? createDeterministicLogAnalysisModel()
+    ? useLoopKernel
+      ? createDeterministicLogAnalysisLoopModel()
+      : createDeterministicLogAnalysisModel()
     : readNonBlank(env.LOG_ANALYSIS_API_BASE_URL) && readNonBlank(env.LOG_ANALYSIS_API_KEY)
       ? createChatOpenAiModel(env)
       : createUnconfiguredModel();
 
-  return createLlmLogAnalyzer({
+  if (!useLoopKernel) {
+    return createLlmLogAnalyzer({
+      model,
+      modelLabel,
+      tokenBudget: env.LOG_ANALYSIS_TOKEN_BUDGET,
+      telemetry: options.telemetry
+    });
+  }
+
+  const db = options.db;
+  return createAgentLoopLogAnalyzer({
     model,
     modelLabel,
     tokenBudget: env.LOG_ANALYSIS_TOKEN_BUDGET,
-    telemetry: options.telemetry
+    maxSteps: env.LOG_ANALYSIS_MAX_STEPS,
+    telemetry: options.telemetry,
+    bindToolBackends: (input) =>
+      db && input.organizationId
+        ? createDbLogAnalysisToolBackends({
+            db,
+            organizationId: input.organizationId,
+            logDomainId: input.logDomainId,
+            relatedParameterId: input.relatedParameterId,
+            embeddingClient: options.embeddingClient
+          })
+        : {}
   });
 }

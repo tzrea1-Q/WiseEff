@@ -135,6 +135,15 @@ npm run acceptance:e2e -- e2e/acceptance/xiaoze-action.acceptance.spec.ts
 
 Xiaoze 测试覆盖 AG-UI endpoint、read-only `perception.*` tools、mutating action approval/resume、LangGraph planning/checkpoint，以及 orchestrator approval 边界。负面测试应覆盖 `APPROVAL_REQUIRED`、`INVALID_APPROVAL_STATE`、`FORBIDDEN`、`VALIDATION_FAILED`、错误 session approval、inactive user、missing permissions 和 tool execution failures。
 
+### 日志分析两层评测
+
+日志分析在常规测试之外带一套两层 AI 评测：
+
+- **行为层评测**（`npm run logs:eval`，CI 门禁，零 API 成本）：确定性脚本化模型驱动真实内核——P1 单发分析器加 P2 有界 agent 循环（经 `scriptedModel.ts` 脚本化「工具调用序列+最终结论」）。场景钉住接地、诚实降级标注、工具调用合法性（非法名/参数被拒且纠正）、步数/预算收敛（置信度封顶）、证据不足时诚实拒答。meta 自检证明 harness 能判负已知坏行为（幻觉引用、静默降级、过度自信的提前收敛、静默接受非法工具）。报告：`docs/generated/log-analysis-eval.{json,md}`。
+- **效果层评测**（`npm run logs:eval:quality`，提示词/模型变更与发布前运行）：对金标准案例集（`eval-cases/logs/`，loader 校验的 `log.txt` + `case.yaml`）跑当前内核。确定性指标（证据行重叠命中/漏引/多引、幻觉率、拒答恰当率）在进程内计算；根因正确性走 rubric judge 接缝——真模型模式用 `LOG_ANALYSIS_JUDGE_*` LLM-as-judge，离线用确定性可脚本化桩。只有 `realLog: true` 案例计入基线门禁（`eval-cases/logs/baseline.json`，容差在报告中声明）；合成案例只记录格式覆盖。报告：`docs/generated/log-analysis-quality.{json,md}`。
+
+提示词变更需递增 `LOG_ANALYSIS_PROMPT_VERSION` / `LOG_ANALYSIS_LOOP_PROMPT_VERSION` 并保持 `logs:eval` 常绿；金标准集标注与脱敏规则见 `eval-cases/logs/README.zh-CN.md`。
+
 ## 6. 契约测试
 
 每次 API 合同变更必须：

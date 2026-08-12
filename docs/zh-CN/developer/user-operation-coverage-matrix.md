@@ -59,6 +59,7 @@
 - `PFB-ADMIN-001`：Admin 在 `/feedback-admin` 查看反馈列表与详情，推进状态并保存备注，断言覆盖 UI、API、DB、audit 和截图证据。
 - `PFB-AUTHZ-001`：Hardware User 访问产品反馈管理 API 和 `/feedback-admin` 时被拒绝，断言覆盖 UI、API、DB 和截图证据。
 - `LOG-DOMAIN-001`：Admin 在 `/log-admin` 业务域治理区注册业务域并在 `/logs` 上传时绑定该域，断言覆盖 UI、API、DB 和 audit（`e2e/acceptance/log-analysis.acceptance.spec.ts`；`coverage: automated`）。
+- `LOG-DOMAIN-KNOWLEDGE-001`：Admin 在 `/log-admin` 业务域治理区为业务域关联已发布知识条目（只列已发布条目、整组替换保存），断言覆盖 UI、API、DB 和 audit（`e2e/acceptance/log-analysis.acceptance.spec.ts`；`coverage: automated`）。
 - `LOG-DEGRADED-001`：上传含确定性故障标记的日志触发 provider 故障，分析降级为规则回退并在 UI 显著标注来源与原因，断言覆盖 UI、API 和 DB（`e2e/acceptance/log-analysis.acceptance.spec.ts`；`coverage: automated`）。
 - `KB-READ-001`：Hardware User 在 `/knowledge` 浏览条目列表并搜索，检索只返回 `published` 条目，断言覆盖 UI、API、DB（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-EDIT-001`：Hardware User 在 `/knowledge` 创建 markdown 条目、发布、就地修订并恢复历史修订，断言覆盖 UI、API、DB、audit（`e2e/acceptance/knowledge.acceptance.spec.ts`）。

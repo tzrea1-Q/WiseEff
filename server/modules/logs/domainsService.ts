@@ -5,13 +5,17 @@ import type { AuditedWriteContext } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { getEntryById as getKnowledgeEntryById } from "../knowledge/repository";
 import {
   findLogDomainByName,
   getLogDomainById,
   insertLogDomain,
+  listLogDomainKnowledgeLinks,
   listLogDomains,
+  replaceLogDomainKnowledgeLinks,
   updateLogDomainRow,
   type LogDomainDto,
+  type LogDomainKnowledgeLinkDto,
   type LogDomainStatus
 } from "./domainsRepository";
 import { validateLogFormatProfile, type LogFormatProfile } from "./formatProfile";
@@ -33,7 +37,7 @@ export type UpdateLogDomainInput = {
 };
 
 function logDomainAudit(input: {
-  kind: "log-domain-create" | "log-domain-update" | "log-domain-archive";
+  kind: "log-domain-create" | "log-domain-update" | "log-domain-archive" | "log-domain-knowledge-links-update";
   action: string;
   domainId: string;
   metadata?: Record<string, unknown>;
@@ -202,4 +206,79 @@ export async function archiveLogDomainRecord(
       })
     };
   });
+}
+
+export async function listLogDomainKnowledgeLinkRecords(
+  db: Queryable,
+  auth: AuthContext,
+  domainId: string
+): Promise<{ items: LogDomainKnowledgeLinkDto[] }> {
+  requireLogAdminDomains(auth);
+  const domain = await getLogDomainById(db, { organizationId: auth.organization.id, domainId });
+  if (!domain) {
+    throw new ApiError("NOT_FOUND", "Log domain was not found.", 404, { domainId });
+  }
+  return { items: await listLogDomainKnowledgeLinks(db, { organizationId: auth.organization.id, domainId }) };
+}
+
+/**
+ * Replaces a domain's knowledge-entry link set (P2). Only PUBLISHED entries are
+ * linkable — the link set bounds `read_domain_knowledge` retrieval, and publishing
+ * stays the single trust gate for anything an agent reads (design D13). Entries
+ * archived after linking simply drop out of retrieval; the stale link stays
+ * visible to governance.
+ */
+export async function setLogDomainKnowledgeLinkRecords(
+  db: Database,
+  auth: AuthContext,
+  input: { domainId: string; knowledgeEntryIds: string[] },
+  context: AuditedWriteContext
+): Promise<{ items: LogDomainKnowledgeLinkDto[] }> {
+  requireLogAdminDomains(auth);
+  const knowledgeEntryIds = [...new Set(input.knowledgeEntryIds)];
+
+  const items = await withAuditedWrite(db, auth, context, async (tx) => {
+    const domain = await getLogDomainById(tx, { organizationId: auth.organization.id, domainId: input.domainId });
+    if (!domain) {
+      throw new ApiError("NOT_FOUND", "Log domain was not found.", 404, { domainId: input.domainId });
+    }
+
+    for (const entryId of knowledgeEntryIds) {
+      const entry = await getKnowledgeEntryById(tx, auth, entryId);
+      if (!entry) {
+        throw new ApiError("NOT_FOUND", "Knowledge entry was not found.", 404, { knowledgeEntryId: entryId });
+      }
+      if (entry.status !== "published") {
+        throw new ApiError("VALIDATION_FAILED", "Only published knowledge entries can be linked to a log domain.", 400, {
+          knowledgeEntryId: entryId,
+          status: entry.status
+        });
+      }
+    }
+
+    const { added, removed } = await replaceLogDomainKnowledgeLinks(tx, {
+      organizationId: auth.organization.id,
+      domainId: input.domainId,
+      knowledgeEntryIds,
+      createdByUserId: auth.user.id,
+      newLinkId: () => randomUUID()
+    });
+
+    return {
+      result: await listLogDomainKnowledgeLinks(tx, { organizationId: auth.organization.id, domainId: input.domainId }),
+      audit: logDomainAudit({
+        kind: "log-domain-knowledge-links-update",
+        action: "update-knowledge-links",
+        domainId: input.domainId,
+        metadata: {
+          name: domain.name,
+          linkedCount: knowledgeEntryIds.length,
+          addedCount: added.length,
+          removedCount: removed.length
+        }
+      })
+    };
+  });
+
+  return { items };
 }

@@ -1,0 +1,14 @@
+# Synthetic format-coverage case (syslog-style prefix, WARNING spelled out) with
+# an analysis question the conclusion must answer.
+domain: charging-power
+summary: Syslog-format foldback capture with an explicit analysis question about charge speed.
+realLog: false
+rootCauseCategory: thermal-protection
+rootCausePoints:
+  - Pack temperature exceeded the 50C soft limit while fast charging.
+  - Thermal foldback protection reduced the delivered current below the requested profile.
+keyEvidenceLines: [5, 6]
+expectedActions:
+  - Check station cooling and ambient temperature around the event window.
+  - Review the thermal soft-limit configuration against the requested charge profile.
+analysisQuestion: Why did charging slow down halfway through the session?

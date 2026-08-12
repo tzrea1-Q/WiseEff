@@ -1,6 +1,7 @@
 import type {
   LogAnalysisRepository,
   LogDomainCreateInput,
+  LogDomainKnowledgeLinksInput,
   LogDomainListQuery,
   LogDomainUpdateInput,
   LogFeedbackInput,
@@ -13,10 +14,12 @@ import { createApiClient, WiseEffApiError } from "./apiClient";
 import {
   jobSnapshotFromDto,
   logDomainFromDto,
+  logDomainKnowledgeLinkFromDto,
   logDomainListFromDto,
   logListFromDto,
   logRecordFromDto,
   type LogDomainDto,
+  type LogDomainKnowledgeLinkDto,
   type LogJobDto,
   type LogRecordDto
 } from "./logDtos";
@@ -262,6 +265,19 @@ export function createHttpLogAnalysisRepository(
         {}
       );
       return logDomainFromDto(response.item);
+    },
+    async listLogDomainKnowledgeLinks(domainId: string) {
+      const response = await apiClient.get<{ items: LogDomainKnowledgeLinkDto[] }>(
+        `/api/v1/log-domains/${encodeURIComponent(domainId)}/knowledge-links`
+      );
+      return response.items.map(logDomainKnowledgeLinkFromDto);
+    },
+    async setLogDomainKnowledgeLinks(input: LogDomainKnowledgeLinksInput) {
+      const response = await apiClient.put<{ items: LogDomainKnowledgeLinkDto[] }>(
+        `/api/v1/log-domains/${encodeURIComponent(input.domainId)}/knowledge-links`,
+        { knowledgeEntryIds: input.knowledgeEntryIds }
+      );
+      return response.items.map(logDomainKnowledgeLinkFromDto);
     }
   };
 

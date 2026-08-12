@@ -1,0 +1,8 @@
+[  512.398765] chg-ctrl: link up, negotiating profile
+[  512.412001] chg-ctrl: profile fast-6a accepted requested_ma=6000
+[  514.020933] chg-ctrl: modbus read holding-reg 0x21 no response, retry 1/3
+[  515.522104] chg-ctrl: modbus read holding-reg 0x21 no response, retry 2/3
+[  517.023551] chg-ctrl: modbus read holding-reg 0x21 no response, retry 3/3
+[  517.024119] chg-ctrl: code=E_TIMEOUT controller communication timeout after 3 retries
+[  517.025002] chg-ctrl: holding charge at safe level charge_current_ma=1000
+[  530.110478] chg-ctrl: link recovered, resuming telemetry

@@ -1,0 +1,19 @@
+# Synthetic format-coverage case (kernel-style bracketed monotonic timestamps,
+# no severity keywords) exercising a declarative format profile: severity comes
+# from the profile's severityMap instead of INFO/WARN/ERROR tokens.
+domain: charging-power
+summary: Controller communication times out after three modbus retries; charging holds at a safe level.
+realLog: false
+rootCauseCategory: communication-failure
+rootCausePoints:
+  - Modbus reads to the charge controller went unanswered through all three retries.
+  - The E_TIMEOUT communication timeout forced charging to hold at a reduced safe level.
+keyEvidenceLines: [5, 6]
+expectedActions:
+  - Check the modbus link, wiring, and controller availability around the timeout window.
+  - Review retry counts and timeout thresholds for the controller channel.
+formatProfile:
+  timestampPattern: '^\[\s*(\d+\.\d+)\]'
+  severityMap:
+    error: ['E_TIMEOUT', 'no response, retry 3/3']
+    warn: ['no response, retry']

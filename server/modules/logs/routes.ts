@@ -19,7 +19,9 @@ import {
 import {
   archiveLogDomainRecord,
   createLogDomainRecord,
+  listLogDomainKnowledgeLinkRecords,
   listLogDomainRecords,
+  setLogDomainKnowledgeLinkRecords,
   updateLogDomainRecord
 } from "./domainsService";
 import {
@@ -30,6 +32,7 @@ import {
   listLogsQuerySchema,
   logFeedbackBodySchema,
   rerunLogBodySchema,
+  setLogDomainKnowledgeLinksBodySchema,
   updateLogDomainBodySchema
 } from "./schemas";
 
@@ -233,5 +236,29 @@ export function registerLogRoutes(
     const item = await archiveLogDomainRecord(db, auth, params.domainId, { requestId: request.requestId });
 
     return { status: 200, body: { item } };
+  });
+
+  router.get("/api/v1/log-domains/:domainId/knowledge-links", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const params = parseWithSchema(paramsWithDomainIdSchema, request.params);
+    const result = await listLogDomainKnowledgeLinkRecords(db, auth, params.domainId);
+
+    return { status: 200, body: result };
+  });
+
+  router.put("/api/v1/log-domains/:domainId/knowledge-links", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const params = parseWithSchema(paramsWithDomainIdSchema, request.params);
+    const body = parseWithSchema(setLogDomainKnowledgeLinksBodySchema, request.body);
+    const result = await setLogDomainKnowledgeLinkRecords(
+      db,
+      auth,
+      { domainId: params.domainId, knowledgeEntryIds: body.knowledgeEntryIds },
+      { requestId: request.requestId }
+    );
+
+    return { status: 200, body: result };
   });
 }

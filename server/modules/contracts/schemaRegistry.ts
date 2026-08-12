@@ -776,6 +776,19 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["logs"],
     responseBody: "LogDomainResponse"
   },
+  "logs.listDomainKnowledgeLinks": {
+    summary: "List a log domain's linked knowledge entries",
+    tags: ["logs"],
+    responseBody: "LogDomainKnowledgeLinkListResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "logs.setDomainKnowledgeLinks": {
+    summary: "Replace a log domain's knowledge-entry links (published entries only)",
+    tags: ["logs"],
+    requestBody: "SetLogDomainKnowledgeLinksRequest",
+    responseBody: "LogDomainKnowledgeLinkListResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
 
   "productFeedback.create": {
     summary: "Create product feedback",

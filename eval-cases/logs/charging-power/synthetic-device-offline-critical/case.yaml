@@ -1,0 +1,13 @@
+# Synthetic format-coverage case (space-padded columnar format, millisecond
+# timestamps without timezone) for the device-offline family.
+domain: charging-power
+summary: Pack controller misses heartbeats, goes offline mid-session, and reconnects keep failing.
+realLog: false
+rootCauseCategory: device-unavailable
+rootCausePoints:
+  - The pack controller stopped answering heartbeats and was declared offline (DEVICE_UNAVAILABLE).
+  - The charging session aborted because of the device disconnect, and reconnect attempts kept failing.
+keyEvidenceLines: [5, 6]
+expectedActions:
+  - Verify device power, link status, and reconnect behavior.
+  - Inspect the controller's own logs for the window before the missed heartbeats.

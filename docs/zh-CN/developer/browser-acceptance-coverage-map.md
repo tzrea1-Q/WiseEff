@@ -27,6 +27,7 @@
 - `PFB-AUTHZ-001`：非 Admin 无法访问产品反馈管理 API 或 `/feedback-admin` 页面（`e2e/acceptance/product-feedback.acceptance.spec.ts`）。
 - `LOG-DOMAIN-001`：Admin 在 `/log-admin` 业务域治理区注册业务域（名称、描述、格式画像 JSON），上传时绑定该域，结论卡展示业务域标签（`e2e/acceptance/log-analysis.acceptance.spec.ts`）。
 - `LOG-DEGRADED-001`：模拟 provider 故障后分析降级到规则引擎，结果显著标注「降级分析 · 规则回退」与 provider-unavailable 原因，绝不静默冒充完整分析（`e2e/acceptance/log-analysis.acceptance.spec.ts`）。
+- `LOG-DOMAIN-KNOWLEDGE-001`：Admin 在 `/log-admin` 业务域治理区打开「知识条目」编辑器，仅能选择已发布的知识条目，保存关联集合（整组替换语义），变更落到 API、关联表与审计事件（`e2e/acceptance/log-analysis.acceptance.spec.ts`）。
 - `KB-READ-001`：组织成员在 `/knowledge` 浏览知识条目列表，搜索只命中 `published` 条目（draft 和 archived 不进检索结果），并打开已发布条目详情（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-EDIT-001`：编辑者创建 markdown 知识条目、发布、就地修订产生新的不可变修订，并把历史修订恢复为新修订（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-FILE-001`：编辑者经对象存储上传文件型知识条目，并在条目上看到文本提取状态（`e2e/acceptance/knowledge.acceptance.spec.ts`）。

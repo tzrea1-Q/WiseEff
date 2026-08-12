@@ -19,6 +19,7 @@ const supportedFileName = "charging-foldback.log";
 const unsupportedFileName = "unsupported.bin";
 const providerOutageFileName = "provider-outage.log";
 const acceptanceLogDomainName = "acceptance-charging-power";
+const acceptanceKnowledgeTitlePrefix = "acceptance-log-domain-knowledge";
 
 function runNpmScript(script: string) {
   const invocation =
@@ -120,6 +121,49 @@ async function cleanupAcceptanceLogDomains() {
     await client.query("update log_records set log_domain_id = null where log_domain_id = any($1::text[])", [domainIds]);
     await client.query("delete from audit_events where target_type = 'log-domain' and target_id = any($1::text[])", [domainIds]);
     await client.query("delete from log_domains where id = any($1::text[])", [domainIds]);
+  });
+}
+
+async function cleanupAcceptanceKnowledgeEntries() {
+  await withPgClient(async (client) => {
+    const entries = await client.query<{ id: string }>(
+      "select id from knowledge_entries where organization_id = $1 and title like $2",
+      [organizationId, `${acceptanceKnowledgeTitlePrefix}%`]
+    );
+    const entryIds = entries.rows.map((row) => row.id);
+    if (entryIds.length === 0) {
+      return;
+    }
+    await client.query("update knowledge_entries set head_revision_id = null where id = any($1::uuid[])", [entryIds]);
+    await client.query("delete from audit_events where target_type = 'knowledge-entry' and target_id = any($1::text[])", [entryIds]);
+    // Revisions, chunks, index status, and log-domain links all cascade from the entry rows.
+    await client.query("delete from knowledge_entries where id = any($1::uuid[])", [entryIds]);
+  });
+}
+
+async function domainKnowledgeLinkDbSummary(domainId: string) {
+  return withPgClient(async (client) => {
+    const result = await client.query<{ knowledge_entry_id: string; entry_title: string }>(
+      `
+      select link.knowledge_entry_id::text as knowledge_entry_id, entry.title as entry_title
+      from log_domain_knowledge_links link
+      inner join knowledge_entries entry on entry.id = link.knowledge_entry_id
+      where link.organization_id = $1
+        and link.log_domain_id = $2
+      order by entry.title asc
+      `,
+      [organizationId, domainId]
+    );
+
+    return {
+      table: "log_domain_knowledge_links",
+      predicate: `organization_id=${organizationId}; log_domain_id=${domainId}`,
+      observed:
+        result.rows.length > 0
+          ? result.rows.map((row) => `${row.entry_title} (${row.knowledge_entry_id})`).join("; ")
+          : "no links",
+      rowCount: result.rowCount ?? result.rows.length
+    };
   });
 }
 
@@ -589,6 +633,130 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       db: [await logDomainDbSummary(acceptanceLogDomainName), await logRecordDbSummary(boundLog.id)],
       audit: [auditSummaryFor(auditBody.items, { kind: "log-domain-create", targetId: createdDomain!.id })],
       notes: `Domain ${createdDomain!.id} was registered through /log-admin governance and upload ${boundLog.id} bound to it; the conclusion card shows the domain provenance chip.`
+    });
+  });
+
+  test("links published knowledge entries to a log domain with published-only selection and audit", async ({ page }, testInfo) => {
+    // @acceptance LOG-DOMAIN-KNOWLEDGE-001
+    // @operation LOG-DOMAIN-KNOWLEDGE-001
+    await cleanupAcceptanceLogs();
+    await cleanupAcceptanceLogDomains();
+    await cleanupAcceptanceKnowledgeEntries();
+
+    const domainResponse = await page.request.post(apiRoute("/api/v1/log-domains"), {
+      headers: smokeHeaders(),
+      data: { name: acceptanceLogDomainName, description: "Acceptance domain for knowledge links" }
+    });
+    expect(domainResponse.status()).toBe(201);
+    const domain = ((await domainResponse.json()) as { item: { id: string } }).item;
+
+    const publishedTitle = `${acceptanceKnowledgeTitlePrefix} published handbook`;
+    const draftTitle = `${acceptanceKnowledgeTitlePrefix} draft note`;
+    const createPublished = await page.request.post(apiRoute("/api/v1/knowledge/entries"), {
+      headers: smokeHeaders(),
+      data: {
+        contentForm: "markdown",
+        title: publishedTitle,
+        tags: ["charging"],
+        contentMarkdown: "E_THERMAL_FOLDBACK 表示热保护降流；先检查散热路径与阈值配置。"
+      }
+    });
+    expect(createPublished.status()).toBe(201);
+    const publishedEntry = ((await createPublished.json()) as { item: { id: string } }).item;
+    const publishResponse = await page.request.post(
+      apiRoute(`/api/v1/knowledge/entries/${publishedEntry.id}/publish`),
+      { headers: smokeHeaders(), data: {} }
+    );
+    expect(publishResponse.ok()).toBe(true);
+
+    const createDraft = await page.request.post(apiRoute("/api/v1/knowledge/entries"), {
+      headers: smokeHeaders(),
+      data: {
+        contentForm: "markdown",
+        title: draftTitle,
+        tags: [],
+        contentMarkdown: "草稿内容不得进入检索或关联。"
+      }
+    });
+    expect(createDraft.status()).toBe(201);
+
+    await page.goto("/log-admin");
+    await prepareInteractionSurface(page);
+    const governance = page.getByTestId("log-domain-governance");
+    const domainsTable = governance.getByRole("table", { name: "业务域列表" });
+    await domainsTable
+      .getByRole("row")
+      .filter({ hasText: acceptanceLogDomainName })
+      .getByRole("button", { name: "知识条目" })
+      .click();
+
+    const editor = page.getByTestId("domain-knowledge-links-editor");
+    await expect(editor).toBeVisible();
+    const publishedCheckbox = editor.getByRole("checkbox", { name: `关联知识条目 ${publishedTitle}` });
+    await expect(publishedCheckbox).toBeVisible({ timeout: 10_000 });
+    // Published-only invariant: the draft entry never appears as a selectable link.
+    await expect(editor.getByRole("checkbox", { name: `关联知识条目 ${draftTitle}` })).toHaveCount(0);
+
+    await publishedCheckbox.check();
+    const saveResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "PUT" &&
+        response.url().includes(`/api/v1/log-domains/${domain.id}/knowledge-links`)
+    );
+    await editor.getByRole("button", { name: "保存关联" }).click();
+    const saveResponse = await saveResponsePromise;
+    expect(saveResponse.ok()).toBe(true);
+    await expect(editor.getByRole("status")).toHaveText(/已保存/);
+
+    const linksResponse = await page.request.get(
+      apiRoute(`/api/v1/log-domains/${domain.id}/knowledge-links`),
+      { headers: smokeHeaders() }
+    );
+    expect(linksResponse.ok()).toBe(true);
+    const linksBody = (await linksResponse.json()) as {
+      items: Array<{ knowledgeEntryId: string; entryTitle: string; entryStatus: string }>;
+    };
+    expect(linksBody.items).toEqual([
+      expect.objectContaining({ knowledgeEntryId: publishedEntry.id, entryStatus: "published" })
+    ]);
+
+    await expect
+      .poll(async () => {
+        const response = await page.request.get(apiRoute("/api/v1/audit-events"), { headers: smokeHeaders() });
+        const body = (await response.json()) as { items: Array<{ kind: string; targetId: string | null }> };
+        return body.items.some(
+          (item) => item.kind === "log-domain-knowledge-links-update" && item.targetId === domain.id
+        );
+      })
+      .toBe(true);
+
+    const auditResponse = await page.request.get(apiRoute("/api/v1/audit-events"), { headers: smokeHeaders() });
+    expect(auditResponse.ok()).toBe(true);
+    const auditBody = (await auditResponse.json()) as {
+      items: Array<{ id?: string; kind: string; action?: string; targetId: string | null; traceId?: string; metadata?: Record<string, unknown> }>;
+    };
+
+    await recordOperationEvidence({
+      operationId: "LOG-DOMAIN-KNOWLEDGE-001",
+      title: "log domain linked to published knowledge entries with audit",
+      status: "passed",
+      page,
+      testInfo,
+      api: [
+        summarizeApiResponse(saveResponse, {
+          method: "PUT",
+          path: `/api/v1/log-domains/${domain.id}/knowledge-links`,
+          responseSummary: `linked entries=[${publishedEntry.id}]`
+        }),
+        summarizeApiResponse(linksResponse, {
+          method: "GET",
+          path: `/api/v1/log-domains/${domain.id}/knowledge-links`,
+          responseSummary: `links=${linksBody.items.length}; first=${linksBody.items[0]?.entryTitle ?? "none"} (${linksBody.items[0]?.entryStatus ?? "-"})`
+        })
+      ],
+      db: [await logDomainDbSummary(acceptanceLogDomainName), await domainKnowledgeLinkDbSummary(domain.id)],
+      audit: [auditSummaryFor(auditBody.items, { kind: "log-domain-knowledge-links-update", targetId: domain.id })],
+      notes: `Domain ${domain.id} was linked to published knowledge entry ${publishedEntry.id} through the /log-admin governance editor; the draft entry stayed unselectable (published-only invariant) and the replace-set save was audited.`
     });
   });
 

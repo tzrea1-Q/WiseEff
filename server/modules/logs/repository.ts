@@ -80,6 +80,7 @@ type WorkerLogRunSnapshotRow = {
   file_name: string;
   storage_key: string;
   analysis_question: string | null;
+  related_parameter_id: string | null;
   submitted_by_user_id: string | null;
   job_status: LogRunStatus;
   run_status: LogRunStatus;
@@ -135,6 +136,8 @@ export type LogWorkerRunSnapshot = {
   fileName: string;
   storageKey: string;
   analysisQuestion: string | null;
+  /** Parameter binding the log was uploaded against; feeds get_related_parameter_context (P2). */
+  relatedParameterId: string | null;
   submittedByUserId: string | null;
   jobStatus: LogRunStatus;
   runStatus: LogRunStatus;
@@ -277,6 +280,7 @@ function toWorkerLogRunSnapshot(row: WorkerLogRunSnapshotRow): LogWorkerRunSnaps
     fileName: row.file_name,
     storageKey: row.storage_key,
     analysisQuestion: row.analysis_question,
+    relatedParameterId: row.related_parameter_id,
     submittedByUserId: row.submitted_by_user_id,
     jobStatus: row.job_status,
     runStatus: row.run_status,
@@ -695,6 +699,7 @@ export async function getLogWorkerRunSnapshot(db: Queryable, jobId: string) {
       lr.file_name,
       lfo.storage_key,
       lr.analysis_question,
+      lr.related_parameter_id,
       lr.submitted_by_user_id,
       job.status as job_status,
       run.status as run_status,

@@ -5,7 +5,9 @@ import { ApiError } from "../../shared/http/errors";
 import {
   archiveLogDomainRecord,
   createLogDomainRecord,
+  listLogDomainKnowledgeLinkRecords,
   listLogDomainRecords,
+  setLogDomainKnowledgeLinkRecords,
   updateLogDomainRecord
 } from "./domainsService";
 
@@ -165,6 +167,146 @@ describe("updateLogDomainRecord", () => {
     await expect(
       updateLogDomainRecord(db, adminAuth, { domainId: "domain-1", formatProfile: { unknownKey: true } }, { requestId: "req-test" })
     ).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+  });
+});
+
+const publishedEntryRow = {
+  id: "5f3a1f8e-52f2-4a11-9a53-0f2a5a4c1a01",
+  organization_id: "org-1",
+  title: "E_THERMAL_FOLDBACK handbook",
+  content_form: "markdown",
+  status: "published",
+  tags: ["charging"],
+  source_type: "human",
+  source_session_id: null,
+  source_log_id: null,
+  created_by_user_id: "u-1",
+  head_revision_id: null,
+  head_revision_number: 1,
+  created_at: "2026-08-12T00:00:00.000Z",
+  updated_at: "2026-08-12T00:00:00.000Z",
+  published_at: "2026-08-12T00:00:00.000Z",
+  archived_at: null
+};
+
+const linkRow = {
+  id: "link-1",
+  log_domain_id: "domain-1",
+  knowledge_entry_id: publishedEntryRow.id,
+  entry_title: publishedEntryRow.title,
+  entry_status: "published",
+  entry_tags: ["charging"],
+  created_at: "2026-08-13T00:00:00.000Z"
+};
+
+describe("listLogDomainKnowledgeLinkRecords", () => {
+  it("requires logs:admin-domains", async () => {
+    const { db } = createFakeDb();
+    await expect(listLogDomainKnowledgeLinkRecords(db, makeAuth(["logs:view"]), "domain-1")).rejects.toMatchObject({
+      code: "FORBIDDEN"
+    });
+  });
+
+  it("lists links with the current entry status", async () => {
+    const { db } = createFakeDb([[domainRow], [linkRow]]);
+
+    const result = await listLogDomainKnowledgeLinkRecords(db, adminAuth, "domain-1");
+
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        knowledgeEntryId: publishedEntryRow.id,
+        entryTitle: "E_THERMAL_FOLDBACK handbook",
+        entryStatus: "published"
+      })
+    ]);
+  });
+
+  it("returns 404 for unknown domains", async () => {
+    const { db } = createFakeDb([[]]);
+    await expect(listLogDomainKnowledgeLinkRecords(db, adminAuth, "missing")).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
+describe("setLogDomainKnowledgeLinkRecords", () => {
+  it("requires logs:admin-domains", async () => {
+    const { db } = createFakeDb();
+    await expect(
+      setLogDomainKnowledgeLinkRecords(
+        db,
+        makeAuth(["logs:view"]),
+        { domainId: "domain-1", knowledgeEntryIds: [] },
+        { requestId: "req-test" }
+      )
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("replaces the link set with published entries and audits the change", async () => {
+    const { db, txCalls } = createFakeDb([
+      [domainRow],
+      [publishedEntryRow],
+      [],
+      [],
+      [linkRow],
+      []
+    ]);
+
+    const result = await setLogDomainKnowledgeLinkRecords(
+      db,
+      adminAuth,
+      { domainId: "domain-1", knowledgeEntryIds: [publishedEntryRow.id] },
+      { requestId: "req-test" }
+    );
+
+    expect(result.items).toEqual([expect.objectContaining({ knowledgeEntryId: publishedEntryRow.id })]);
+    const insertCall = txCalls.find((call) => call.text.includes("insert into log_domain_knowledge_links"));
+    expect(insertCall?.values).toContain(publishedEntryRow.id);
+    const auditCall = txCalls.find((call) => call.text.includes("insert into audit_events"));
+    expect(auditCall?.values).toContain("log-domain-knowledge-links-update");
+  });
+
+  it("rejects non-published entries — publishing stays the single trust gate", async () => {
+    const { db } = createFakeDb([
+      [domainRow],
+      [{ ...publishedEntryRow, status: "draft" }]
+    ]);
+
+    await expect(
+      setLogDomainKnowledgeLinkRecords(
+        db,
+        adminAuth,
+        { domainId: "domain-1", knowledgeEntryIds: [publishedEntryRow.id] },
+        { requestId: "req-test" }
+      )
+    ).rejects.toMatchObject({ code: "VALIDATION_FAILED", status: 400 });
+  });
+
+  it("rejects entries missing from the organization with 404", async () => {
+    const { db } = createFakeDb([
+      [domainRow],
+      []
+    ]);
+
+    await expect(
+      setLogDomainKnowledgeLinkRecords(
+        db,
+        adminAuth,
+        { domainId: "domain-1", knowledgeEntryIds: [publishedEntryRow.id] },
+        { requestId: "req-test" }
+      )
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("returns 404 for unknown domains", async () => {
+    const { db } = createFakeDb([[]]);
+
+    await expect(
+      setLogDomainKnowledgeLinkRecords(
+        db,
+        adminAuth,
+        { domainId: "missing", knowledgeEntryIds: [] },
+        { requestId: "req-test" }
+      )
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });
 
