@@ -15,6 +15,9 @@ import { STAGE_LABELS, type LogRecord, type LogStatus, type PrototypeState, type
 import type { LogDomain } from "@/domain/logs/types";
 import { useTopBarActions } from "@/components/layout";
 import { logRuntimeFailureNotification, type LogRuntimeActions } from "@/application/logs/logRuntime";
+import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
+import type { KnowledgeEntry } from "@/domain/knowledge/types";
+import type { LogDomainKnowledgeLink } from "@/domain/logs/types";
 import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { dispatchXiaozeOpenHandoff } from "@/features/agent/xiaozeOpenHandoff";
 import type { AppAction } from "@/application/state/appState";
@@ -25,6 +28,8 @@ export type LogAdminPageProps = {
   onNavigate: (path: string) => void;
   search: string;
   logActions?: LogRuntimeActions;
+  /** Published-entry catalog for the domain ↔ knowledge link editor (API mode only). */
+  knowledgeRepository?: KnowledgeRepository;
 };
 
 const statusLabels: Record<LogStatus, string> = {
@@ -108,18 +113,192 @@ function formatProfileText(profile: unknown): string {
   return JSON.stringify(profile, null, 2);
 }
 
+/**
+ * Domain ↔ knowledge link editor (P2): the link set bounds `read_domain_knowledge`
+ * retrieval, so only PUBLISHED entries are selectable; entries archived after
+ * linking show up as stale and drop out of the saved set (retrieval already
+ * ignores them — publishing stays the single trust gate).
+ */
+function DomainKnowledgeLinksEditor({
+  domain,
+  logActions,
+  knowledgeRepository,
+  onClose
+}: {
+  domain: LogDomain;
+  logActions: LogRuntimeActions;
+  knowledgeRepository?: KnowledgeRepository;
+  onClose: () => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [links, setLinks] = useState<LogDomainKnowledgeLink[]>([]);
+  const [publishedEntries, setPublishedEntries] = useState<KnowledgeEntry[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setSaved(false);
+    void (async () => {
+      const [currentLinks, entries] = await Promise.all([
+        logActions.listLogDomainKnowledgeLinks(domain.id),
+        knowledgeRepository
+          ? knowledgeRepository.list({ status: "published" }).then((response) => response.items).catch(() => [])
+          : Promise.resolve([])
+      ]);
+      if (cancelled) {
+        return;
+      }
+      setLinks(currentLinks);
+      setPublishedEntries(entries);
+      setSelectedIds(new Set(currentLinks.filter((link) => link.entryStatus === "published").map((link) => link.knowledgeEntryId)));
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [domain.id, logActions, knowledgeRepository]);
+
+  const staleLinks = links.filter((link) => link.entryStatus !== "published");
+  const filteredEntries = publishedEntries.filter((entry) =>
+    filter.trim() === "" ? true : entry.title.toLowerCase().includes(filter.trim().toLowerCase())
+  );
+
+  const toggleEntry = (entryId: string) => {
+    setSaved(false);
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(entryId)) {
+        next.delete(entryId);
+      } else {
+        next.add(entryId);
+      }
+      return next;
+    });
+  };
+
+  const save = async () => {
+    if (saving) {
+      return;
+    }
+    setSaving(true);
+    try {
+      const result = await logActions.setLogDomainKnowledgeLinks({
+        domainId: domain.id,
+        knowledgeEntryIds: [...selectedIds]
+      });
+      if (result) {
+        setLinks(result);
+        setSelectedIds(new Set(result.filter((link) => link.entryStatus === "published").map((link) => link.knowledgeEntryId)));
+        setSaved(true);
+      }
+    } catch {
+      // The runtime already surfaced a notification; keep the editor open for correction.
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4"
+      role="group"
+      aria-label={`业务域 ${domain.name} 的知识条目关联`}
+      data-testid="domain-knowledge-links-editor"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">关联知识条目 · {domain.name}</h3>
+          <p className="text-xs text-muted-foreground">
+            仅可关联<strong>已发布</strong>的知识条目；分析时 read_domain_knowledge 检索限定在关联集合内，未关联时退化为组织内通用检索。
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={onClose}>
+          关闭
+        </Button>
+      </div>
+
+      {loading ? (
+        <p className="text-xs text-muted-foreground">正在加载知识条目…</p>
+      ) : (
+        <>
+          {staleLinks.length > 0 ? (
+            <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900" role="note">
+              {staleLinks.length} 条已关联条目当前非已发布状态（检索已自动忽略）；保存后这些失效关联将被移除：
+              {staleLinks.map((link) => ` ${link.entryTitle}`).join("、")}
+            </p>
+          ) : null}
+
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground" htmlFor={`domain-knowledge-filter-${domain.id}`}>
+            按标题筛选已发布条目
+            <input
+              id={`domain-knowledge-filter-${domain.id}`}
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+              className="h-8 rounded-md border border-border bg-background px-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              placeholder="例如：E_THERMAL_FOLDBACK"
+            />
+          </label>
+
+          {publishedEntries.length === 0 ? (
+            <p className="text-xs text-muted-foreground">组织内暂无已发布的知识条目；请先在 /knowledge 发布领域知识。</p>
+          ) : (
+            <ul className="flex max-h-56 flex-col gap-1 overflow-y-auto rounded-md border border-border p-2" aria-label="可关联的已发布知识条目">
+              {filteredEntries.map((entry) => (
+                <li key={entry.id}>
+                  <label className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-foreground hover:bg-muted/60">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(entry.id)}
+                      onChange={() => toggleEntry(entry.id)}
+                      aria-label={`关联知识条目 ${entry.title}`}
+                    />
+                    <span className="truncate">{entry.title}</span>
+                    {entry.tags.length > 0 ? (
+                      <span className="truncate text-xs text-muted-foreground">{entry.tags.join(" · ")}</span>
+                    ) : null}
+                  </label>
+                </li>
+              ))}
+              {filteredEntries.length === 0 ? (
+                <li className="px-1.5 py-1 text-xs text-muted-foreground">没有匹配筛选条件的已发布条目。</li>
+              ) : null}
+            </ul>
+          )}
+
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground" data-testid="domain-knowledge-links-count">
+              已选 {selectedIds.size} 条
+              {saved ? <span className="ml-2 text-emerald-700" role="status">已保存</span> : null}
+            </p>
+            <Button size="sm" onClick={() => void save()} disabled={saving} aria-busy={saving || undefined}>
+              保存关联
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function LogDomainGovernanceSection({
   canGovern,
-  logActions
+  logActions,
+  knowledgeRepository
 }: {
   canGovern: boolean;
   logActions?: LogRuntimeActions;
+  knowledgeRepository?: KnowledgeRepository;
 }) {
   const [domains, setDomains] = useState<LogDomain[]>([]);
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<LogDomainFormState>(emptyLogDomainForm);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [linksDomain, setLinksDomain] = useState<LogDomain | null>(null);
 
   const refreshDomains = useCallback(async () => {
     if (!logActions) {
@@ -268,6 +447,16 @@ function LogDomainGovernanceSection({
                           </Button>
                           {domain.status === "active" ? (
                             <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={pending}
+                              onClick={() => setLinksDomain((current) => (current?.id === domain.id ? null : domain))}
+                            >
+                              知识条目
+                            </Button>
+                          ) : null}
+                          {domain.status === "active" ? (
+                            <Button
                               variant="destructive"
                               size="sm"
                               disabled={pending}
@@ -340,13 +529,22 @@ function LogDomainGovernanceSection({
               </div>
             </form>
           ) : null}
+
+          {linksDomain && logActions ? (
+            <DomainKnowledgeLinksEditor
+              domain={linksDomain}
+              logActions={logActions}
+              knowledgeRepository={knowledgeRepository}
+              onClose={() => setLinksDomain(null)}
+            />
+          ) : null}
         </>
       )}
     </section>
   );
 }
 
-export function LogAdminPage({ state, dispatch, onNavigate, search: _search, logActions }: LogAdminPageProps) {
+export function LogAdminPage({ state, dispatch, onNavigate, search: _search, logActions, knowledgeRepository }: LogAdminPageProps) {
   const [timeWindow, setTimeWindow] = useState<TimeWindow>("today");
   const [tableQuery, setTableQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<LogStatus[]>([]);
@@ -615,6 +813,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
         <LogDomainGovernanceSection
           canGovern={canPerform(state.activeRoleId, "logs.admin-domains")}
           logActions={logActions}
+          knowledgeRepository={knowledgeRepository}
         />
         <section className="flex flex-col gap-2">
           <div>

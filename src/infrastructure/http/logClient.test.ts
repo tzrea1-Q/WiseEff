@@ -298,4 +298,37 @@ describe("createHttpLogAnalysisRepository", () => {
 
     await expect(repository.listLogs()).rejects.toBeInstanceOf(WiseEffApiError);
   });
+
+  it("lists a domain's knowledge links", async () => {
+    const fetchMock = createFetchMock({
+      items: [
+        {
+          id: "link-1",
+          logDomainId: "domain-1",
+          knowledgeEntryId: "entry-1",
+          entryTitle: "E_THERMAL_FOLDBACK handbook",
+          entryStatus: "published",
+          entryTags: ["charging"],
+          linkedAt: "2026-08-13T00:00:00.000Z"
+        }
+      ]
+    });
+    const repository = createRepository(fetchMock);
+
+    await expect(repository.listLogDomainKnowledgeLinks?.("domain-1")).resolves.toEqual([
+      expect.objectContaining({ knowledgeEntryId: "entry-1", entryStatus: "published" })
+    ]);
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:8787/api/v1/log-domains/domain-1/knowledge-links");
+  });
+
+  it("replaces a domain's knowledge links with PUT semantics", async () => {
+    const fetchMock = createFetchMock({ items: [] });
+    const repository = createRepository(fetchMock);
+
+    await repository.setLogDomainKnowledgeLinks?.({ domainId: "domain-1", knowledgeEntryIds: ["entry-1", "entry-2"] });
+
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:8787/api/v1/log-domains/domain-1/knowledge-links");
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("PUT");
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ knowledgeEntryIds: ["entry-1", "entry-2"] });
+  });
 });

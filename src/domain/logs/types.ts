@@ -29,6 +29,21 @@ export type LogDomain = {
   updatedAt: string;
 };
 
+/**
+ * A domain's link to a published knowledge-base entry (P2). The link carries the
+ * entry's CURRENT status so governance can spot entries archived after linking —
+ * retrieval itself stays published-only.
+ */
+export type LogDomainKnowledgeLink = {
+  id: string;
+  logDomainId: string;
+  knowledgeEntryId: string;
+  entryTitle: string;
+  entryStatus: "draft" | "published" | "archived";
+  entryTags: string[];
+  linkedAt: string;
+};
+
 export type LogEvidence = {
   id: string;
   stageId: LogStageId;
