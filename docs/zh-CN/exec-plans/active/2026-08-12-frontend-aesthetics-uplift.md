@@ -90,7 +90,7 @@
 - [x] 按设计系统定案令牌块:语义色(单一色板;shadcn 键做别名)、字阶、间距、圆角、层次、动效、扩展 z-index 阶梯(FA-01、FA-02、FA-07、FA-08、FA-09 地基)。
 - [x] 补定义 16 个被引用未定义的令牌;删除约 29 个死令牌(FA-04;三重验证后删 25 个,其余见 P0 报告)。
 - [x] 字体:删除 Google Fonts import;`--font-sans` 以 Geist Variable + CJK 回退链定案;统一 `--font-mono`;字重收敛到 400/500/600/700(FA-03)。
-- [x] 以 ADR-0025 记录令牌单一来源决策,并更新 `CONTEXT.md` 词汇(design token、elevation、accent)。
+- [x] 以 ADR-0026 记录令牌单一来源决策,并更新 `CONTEXT.md` 词汇(design token、elevation、accent)。
 - [x] 基于 `--ring` 的全局 `:focus-visible` 基线;移除 6 处 hover+focus 合并(FA-11 基线)。
 
 ### P1 — 原语收敛(分支 `feat/ui-primitives-consolidation`)
@@ -181,7 +181,7 @@ npm run acceptance:responsive
 - [x] `docs/design-docs/ui-design-system.md` + 中文伴侣创建,并从 `docs/design-docs/index.md`(+ zh)、`docs/FRONTEND.md`(+ zh)、`docs/DESIGN.md`、`AGENTS.md`(+ zh)接入
 - [x] `docs/developer/ui-quality-checklist.md` + 中文伴侣创建,并登记进 `scripts/bilingual-docs.ts`
 - [x] `docs/PLANS.md` + `docs/zh-CN/PLANS.md` 列入本计划
-- [x] P0:ADR-0025 记录;`CONTEXT.md` + `docs/adr/README.md` 更新;`design-system-reference-llms.txt` 对齐;TD-079/TD-080 登记
+- [x] P0:ADR-0026 记录;`CONTEXT.md` + `docs/adr/README.md` 更新;`design-system-reference-llms.txt` 对齐;TD-080/TD-081 登记
 - [ ] P4:`docs/QUALITY_SCORE.md` + zh 与 `docs/developer/verification-matrix.md` + zh 描述 `ui:check` 与扩展质量 spec
 - [ ] 递延发现登记 `docs/exec-plans/tech-debt-tracker.md` + zh
 - [ ] 移入 `completed/` 前 `npm run docs:check` 通过

@@ -58,6 +58,7 @@ Rules:
 - `server/modules/dts/`: pure DTS lexer/parser (CST), value typing, overlay/label resolver, config-set effective-tree resolver, and lossless serializer (no `src/` imports).
 - `server/modules/logs/`: M2 log upload, analysis records, object storage, and worker boundary.
 - `server/modules/product-feedback/`: Internal Beta feedback submission, image attachment metadata, and Admin triage routes.
+- `server/modules/knowledge/`: organization-scoped knowledge entries with immutable revisions, file uploads with text extraction (seam over pdf-parse/mammoth), published-only FTS + trigram search, and `knowledge:view|edit|manage` enforcement. UI at `/knowledge` plus archived governance on `/knowledge-admin`; Xiaoze retrieval tools and agent drafts arrive with later knowledge phases.
 - `server/modules/debugging/`: M3 simulator/HDC gateway boundary and node-debugging routes.
 - `server/modules/dts-reload/`: DTS reload debugging — debug-overlay generation and pre-flight, reload configuration, in-request bridge deploy (ADR-0020), reload snapshot (ADR-0021), residue / restore-baseline, and run history. Permission `debugging:dts-reload`; UI at `/dts-reload` plus configuration on `/debugging-admin` (node catalog peer at `/debugging-admin/nodes`).
 - `server/modules/agent/`: Xiaoze AG-UI endpoint, LangGraph planning agent, tool registry, the orchestrator-owned Agent approval chain (`beginApproval` / `resolveApproval`), and persisted thread metadata (`server/modules/agent/xiaoze/`).

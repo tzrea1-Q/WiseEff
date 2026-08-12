@@ -1,4 +1,4 @@
-# ADR-0025: Design tokens are the single visual source
+# ADR-0026: Design tokens are the single visual source
 
 - Status: Accepted
 - Date: 2026-08-12

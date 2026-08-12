@@ -2,7 +2,7 @@
 
 > Chinese: [Chinese](../zh-CN/product-specs/product-spec.md)
 
-WiseEff is an AI-assisted enterprise efficiency platform for governed engineering workflows. It focuses on parameter management, log analysis, and debugging, with an Agent layer that can help search, summarize, prepare drafts, and explain evidence while humans retain approval over risky changes.
+WiseEff is an AI-assisted enterprise efficiency platform for governed engineering workflows. It focuses on parameter management, log analysis, debugging, and the knowledge base, with an Agent layer that can help search, summarize, prepare drafts, and explain evidence while humans retain approval over risky changes.
 
 ## Users
 
@@ -29,6 +29,10 @@ Users upload logs, track staged analysis, review evidence and reports, archive o
 **Parameter debugging** (`/dts-reload`, shell title/nav **Parameter debugging**) validates candidate library parameter values on a real device by generating, compiling, and deploying a debug overlay through the local device bridge, then capturing a reload snapshot (baselines, artifact integrity, optional kernel log, behavioural verification). Debug values never mutate the parameter library. Sensitive-node rules and `confirm-dts-reload` / `confirm-sensitive-reload` gate privileged steps. Admins govern reload configuration on `/debugging-admin` (parameter-debug scope; node catalog at `/debugging-admin/nodes`). The technical capability remains DTS overlay reload and must not be confused with the retired M1-era parameter-reload surface.
 
 **Legacy parameter debugging workspace** (`/debugging`) remains product-offline (TD-032). Do not confuse it with the `/dts-reload` product title.
+
+### Knowledge Base
+
+The knowledge base (`/knowledge`) is the organization-scoped home for enterprise engineering knowledge: tuning experience, fault cases, hardware manuals, and process norms. Entries are flat and multi-tagged (project tags included) in exactly one content form — `markdown` written in the product's split edit/preview editor, or `file` uploaded through the object store with server-side text extraction and a visible extraction status. The lifecycle is `draft → published → archived`: every save produces an immutable revision, restore brings a prior revision back as a new revision, and publishing is the single gate into search — drafts and archived entries never appear in results. `knowledge:view` is the default for organization members, `knowledge:edit` governs own entries, and `knowledge:manage` governs any entry including audited hard delete from `/knowledge-admin`. Xiaoze retrieval grounding and agent-distilled drafts arrive with later phases of the knowledge plan.
 
 ### Agent Assistance
 

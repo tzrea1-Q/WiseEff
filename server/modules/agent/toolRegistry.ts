@@ -1,5 +1,6 @@
 import { ApiError } from "../../shared/http/errors";
 import type { Database } from "../../shared/database/client";
+import type { ObjectStore } from "../logs/objectStore";
 import type { AuthContext } from "../auth/types";
 import type { AgentToolName, AgentToolResult } from "./types";
 import { requireAgentPermission, requireAgentProjectAccess } from "./policy";
@@ -42,7 +43,7 @@ function authorizeTool(tool: AgentToolDefinition, context: AgentToolExecutionCon
   requireAgentProjectAccess(context.auth, projectId);
 }
 
-export function createAgentToolRegistry(options: { db: Database }) {
+export function createAgentToolRegistry(options: { db: Database; objectStore?: ObjectStore }) {
   const tools = [...createPerceptionTools(options), ...createActionTools(options)];
   const byName = new Map<string, AgentToolDefinition>(tools.map((tool) => [tool.name, tool]));
 

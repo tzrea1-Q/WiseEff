@@ -34,4 +34,5 @@ See also: [`CONTEXT.md`](../../CONTEXT.md), [`docs/design-docs/domain-model.md`]
 | [0022](0022-log-analysis-agent-runs-outside-the-xiaoze-stack.md) | Log analysis agent runs outside the Xiaoze stack |
 | [0023](0023-app-state-transitions-live-in-application-state.md) | Frontend app state transitions live in application/state, not App.tsx |
 | [0024](0024-agent-approval-state-is-db-backed.md) | Agent approval state is DB-backed; request context flows through invocation config |
-| [0025](0025-design-tokens-are-the-single-visual-source.md) | Design tokens are the single visual source |
+| [0025](0025-knowledge-retrieval-lives-in-postgres.md) | Knowledge retrieval lives in PostgreSQL |
+| [0026](0026-design-tokens-are-the-single-visual-source.md) | Design tokens are the single visual source |

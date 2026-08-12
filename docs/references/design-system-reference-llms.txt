@@ -3,7 +3,7 @@ WiseEff design-system notes for LLM/agent use.
 Authoritative documents:
 - docs/design-docs/ui-design-system.md — binding visual standard (tokens, component contracts, states, motion, content language).
 - docs/developer/ui-quality-checklist.md — completion gate for every frontend-visible change.
-- docs/adr/0025-design-tokens-are-the-single-visual-source.md — token single-source decision.
+- docs/adr/0026-design-tokens-are-the-single-visual-source.md — token single-source decision.
 
 Audience:
 - Agents making UI changes in the WiseEff React app.
