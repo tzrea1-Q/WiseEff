@@ -40,6 +40,7 @@ import {
   listReloadRunTargets,
   readLibraryFingerprint,
   claimReloadRunForDeploy,
+  reclaimStaleDeployingReloadRunRows,
   toReloadRunDto,
   updateReloadRunDeployState,
   type LibraryFingerprint,
@@ -70,7 +71,12 @@ import type {
   ReloadRunPurpose,
   ReloadRunStatus
 } from "./types";
-import { DTS_RELOAD_CONFIRMATION_TOKEN, RELOAD_ARTIFACT_RETENTION_DAYS } from "./types";
+import {
+  DEPLOY_RECLAIMED_FAILURE_CODE,
+  DTS_RELOAD_CONFIRMATION_TOKEN,
+  RELOAD_ARTIFACT_RETENTION_DAYS,
+  RELOAD_DEPLOY_RECLAIM_AFTER_MS
+} from "./types";
 
 export { RELOAD_ARTIFACT_RETENTION_DAYS } from "./types";
 
@@ -1214,6 +1220,35 @@ export async function getReloadRunArtifact(
     bytes,
     sha256: row.overlay_artifact_sha256
   };
+}
+
+export type ReclaimStaleDeployingResult = {
+  reclaimedRuns: number;
+  runIds: string[];
+};
+
+/**
+ * Reclaim reload runs wedged in `deploying` by a crashed deployer: those whose deploy heartbeat is
+ * older than `RELOAD_DEPLOY_RECLAIM_AFTER_MS` are reset to `failed` (`deploy-reclaimed`) so they can
+ * be deployed again. The in-request try/finally already handles thrown errors; this covers process
+ * death. Cross-organization platform maintenance intended for a scheduled / ops invocation. The
+ * time gate exceeds the worst-case deploy window, so a live deployer's run is never reclaimed.
+ */
+export async function reclaimStaleDeployingReloadRuns(
+  db: Database,
+  options: { now?: () => Date; staleAfterMs?: number; batchLimit?: number } = {}
+): Promise<ReclaimStaleDeployingResult> {
+  const now = options.now ?? (() => new Date());
+  const staleAfterMs = options.staleAfterMs ?? RELOAD_DEPLOY_RECLAIM_AFTER_MS;
+  const batchLimit = options.batchLimit ?? 200;
+  const olderThanIso = new Date(now().getTime() - staleAfterMs).toISOString();
+
+  const reclaimed = await reclaimStaleDeployingReloadRunRows(db, {
+    olderThanIso,
+    failureCode: DEPLOY_RECLAIMED_FAILURE_CODE,
+    limit: batchLimit
+  });
+  return { reclaimedRuns: reclaimed.length, runIds: reclaimed.map((row) => row.id) };
 }
 
 export type SweepReloadArtifactsResult = {

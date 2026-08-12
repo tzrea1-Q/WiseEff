@@ -495,7 +495,8 @@ export async function updateReloadRunDeployState(
       protocol = $10,
       integrity_check = $11,
       reload_snapshot = $12::jsonb,
-      completed_at = $13
+      completed_at = $13,
+      deploy_claimed_at = case when $3 = 'deploying' then now() else deploy_claimed_at end
     where organization_id = $1 and id = $2
     returning *
     `,
@@ -532,7 +533,8 @@ export async function claimReloadRunForDeploy(
       protocol = $10,
       integrity_check = $11,
       reload_snapshot = $12::jsonb,
-      completed_at = $13
+      completed_at = $13,
+      deploy_claimed_at = now()
     where organization_id = $1
       and id = $2
       and status = any($14::text[])
@@ -541,6 +543,42 @@ export async function claimReloadRunForDeploy(
     [...deployStateUpdateParams(input), ["validated", "failed"]]
   );
   return result.rows[0] ?? null;
+}
+
+export type ReclaimedDeployingRunRow = {
+  id: string;
+  organization_id: string;
+};
+
+/**
+ * Reset runs wedged in `deploying` — heartbeat (`deploy_claimed_at`, else `created_at`) older than
+ * `olderThanIso` — back to `failed` so they can be deployed again. Cross-organization platform
+ * maintenance. The time gate must exceed the worst-case deploy window so a live deployer's run is
+ * never reclaimed mid-flight. Batched via a bounded subselect.
+ */
+export async function reclaimStaleDeployingReloadRunRows(
+  db: Queryable,
+  input: { olderThanIso: string; failureCode: string; limit: number }
+): Promise<ReclaimedDeployingRunRow[]> {
+  const result = await db.query<ReclaimedDeployingRunRow>(
+    `
+    update dts_reload_runs
+    set status = 'failed',
+        failure_code = $2,
+        completed_at = now()
+    where id in (
+      select id
+      from dts_reload_runs
+      where status = 'deploying'
+        and coalesce(deploy_claimed_at, created_at) < $1::timestamptz
+      order by coalesce(deploy_claimed_at, created_at) asc
+      limit $3
+    )
+    returning id, organization_id
+    `,
+    [input.olderThanIso, input.failureCode, input.limit]
+  );
+  return result.rows;
 }
 
 export type ExpiredReloadArtifactRow = {

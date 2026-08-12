@@ -50,6 +50,7 @@ const migration0098 = "0098_dts_reload_deploy.sql";
 const migration0099 = "0099_dts_reload_behavioural_verify.sql";
 const migration0100 = "0100_dts_reload_residue.sql";
 const migration0101 = "0101_drop_dts_reload_device_overrides.sql";
+const migration0102 = "0102_dts_reload_deploy_claimed_at.sql";
 
 const enablementMigrations = [
   migration0068,
@@ -86,6 +87,7 @@ const enablementMigrations = [
   migration0099,
   migration0100,
   migration0101,
+  migration0102,
 ] as const;
 const REQUIRED_TABLES = [
   "parameter_specs",

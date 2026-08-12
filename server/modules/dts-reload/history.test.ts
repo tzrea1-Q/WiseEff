@@ -10,6 +10,7 @@ import {
   getReloadRunArtifact,
   listReloadCandidates,
   listReloadRuns,
+  reclaimStaleDeployingReloadRuns,
   startReloadRun,
   sweepExpiredReloadArtifacts
 } from "./service";
@@ -359,6 +360,57 @@ describe("sweepExpiredReloadArtifacts", () => {
     expect(result).toEqual({ scannedRuns: 0, reclaimedRuns: 0, deletedBlobs: 0 });
     // never queried for expired runs because the store cannot reclaim
     expect(query).not.toHaveBeenCalled();
+  });
+});
+
+describe("reclaimStaleDeployingReloadRuns", () => {
+  it("resets stale deploying runs to failed via a time-gated, bounded update", async () => {
+    const fixedNow = new Date("2026-08-12T12:00:00.000Z");
+    let capturedOlderThan: string | undefined;
+    let capturedFailureCode: string | undefined;
+    let capturedLimit: unknown;
+    const runQuery = async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
+      if (text.includes("update dts_reload_runs") && text.includes("status = 'deploying'")) {
+        capturedOlderThan = String(values[0]);
+        capturedFailureCode = String(values[1]);
+        capturedLimit = values[2];
+        return {
+          rows: [
+            { id: "run-1", organization_id: "org-1" },
+            { id: "run-2", organization_id: "org-2" }
+          ] as Row[],
+          rowCount: 2
+        };
+      }
+      return { rows: [] as Row[], rowCount: 0 };
+    };
+    const db: Database = {
+      query: (text, values = []) => runQuery(text, values),
+      transaction: async <T,>(fn: (q: Queryable) => Promise<T>) => fn({ query: (text, values = []) => runQuery(text, values) })
+    };
+
+    const result = await reclaimStaleDeployingReloadRuns(db, {
+      now: () => fixedNow,
+      staleAfterMs: 30 * 60 * 1000,
+      batchLimit: 100
+    });
+
+    expect(result).toEqual({ reclaimedRuns: 2, runIds: ["run-1", "run-2"] });
+    expect(capturedFailureCode).toBe("deploy-reclaimed");
+    expect(capturedLimit).toBe(100);
+    // now (12:00) minus 30 minutes → only runs last touched before 11:30 are reclaimed
+    expect(capturedOlderThan).toBe("2026-08-12T11:30:00.000Z");
+  });
+
+  it("reports zero when nothing is stale", async () => {
+    const db: Database = {
+      query: async () => ({ rows: [], rowCount: 0 }),
+      transaction: async <T,>(fn: (q: Queryable) => Promise<T>) => fn({ query: async () => ({ rows: [], rowCount: 0 }) })
+    };
+
+    const result = await reclaimStaleDeployingReloadRuns(db);
+
+    expect(result).toEqual({ reclaimedRuns: 0, runIds: [] });
   });
 });
 
