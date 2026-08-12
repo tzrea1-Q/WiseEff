@@ -30,14 +30,53 @@ describe("createMockKnowledgeRepository", () => {
     expect(restored.status).toBe("published");
   });
 
-  it("searches published entries only", async () => {
+  it("searches published entries only and reports FTS-only retrieval", async () => {
     const repository = createMockKnowledgeRepository();
     const entry = await repository.createMarkdown({ title: "检索目标草稿", tags: [], contentMarkdown: "唯一关键词甲乙丙" });
 
-    expect(await repository.search("唯一关键词甲乙丙")).toHaveLength(0);
+    expect((await repository.search("唯一关键词甲乙丙")).items).toHaveLength(0);
     await repository.publish(entry.id);
-    const results = await repository.search("唯一关键词甲乙丙");
-    expect(results.map((item) => item.entryId)).toContain(entry.id);
+    const response = await repository.search("唯一关键词甲乙丙");
+    expect(response.items.map((item) => item.entryId)).toContain(entry.id);
+    expect(response.retrieval).toEqual({ mode: "fts_only", vectorAvailable: false, embeddingConfigured: false });
+  });
+
+  it("simulates index health with a failed row, retry, and rebuild (port-shape parity)", async () => {
+    const repository = createMockKnowledgeRepository();
+
+    const health = await repository.getIndexHealth();
+    expect(health.retrieval.mode).toBe("fts_only");
+    expect(health.items.length).toBeGreaterThan(0);
+    const failed = health.items.find((item) => item.status === "failed");
+    expect(failed?.error).toBeTruthy();
+
+    await repository.retryEntryIndex(failed!.entryId);
+    const afterRetry = await repository.getIndexHealth();
+    expect(afterRetry.items.find((item) => item.entryId === failed!.entryId)?.status).toBe("pending");
+
+    const rebuild = await repository.rebuildIndex();
+    expect(rebuild.enqueued).toBeGreaterThan(0);
+    const afterRebuild = await repository.getIndexHealth();
+    expect(afterRebuild.items.every((item) => item.entryStatus !== "published" || item.status === "pending")).toBe(true);
+  });
+
+  it("denies index governance without manage capability", async () => {
+    const repository = createMockKnowledgeRepository({ canManage: false });
+    await expect(repository.getIndexHealth()).rejects.toThrow(/knowledge:manage/);
+    await expect(repository.rebuildIndex()).rejects.toThrow(/knowledge:manage/);
+  });
+
+  it("publishing adds an entry to the simulated index; hard delete removes it", async () => {
+    const repository = createMockKnowledgeRepository();
+    const entry = await repository.createMarkdown({ title: "索引条目", tags: [], contentMarkdown: "内容" });
+    await repository.publish(entry.id);
+
+    const health = await repository.getIndexHealth();
+    expect(health.items.some((item) => item.entryId === entry.id && item.status === "succeeded")).toBe(true);
+
+    await repository.hardDelete(entry.id);
+    const afterDelete = await repository.getIndexHealth();
+    expect(afterDelete.items.some((item) => item.entryId === entry.id)).toBe(false);
   });
 
   it("appends immutable revisions on update and rejects stale saves", async () => {

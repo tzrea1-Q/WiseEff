@@ -174,6 +174,19 @@ export type UpdateParameterFileCandidateParseResultInput = {
 
 export type ConfigSetRole = "base" | "overlay" | "charging" | "thermal" | "misc";
 
+/**
+ * Roles applied on top of the `base` entry when a config set is compiled. The
+ * config-revision assembly and the DTS validation gate must use the same set,
+ * or a functional-role file (charging/thermal/misc) would be released without
+ * ever being dtc-compiled.
+ */
+export const OVERLAY_ROLES: ReadonlySet<ConfigSetRole> = new Set<ConfigSetRole>([
+  "overlay",
+  "charging",
+  "thermal",
+  "misc"
+]);
+
 export type ConfigSetDto = {
   id: string;
   organizationId: string;

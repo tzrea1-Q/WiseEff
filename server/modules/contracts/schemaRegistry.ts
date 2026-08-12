@@ -803,10 +803,29 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse" }
   },
   "knowledge.search": {
-    summary: "Search published knowledge entries (FTS + trigram)",
+    summary:
+      "Search published knowledge entries — hybrid vector+FTS when embeddings and pgvector are available, FTS+trigram otherwise; the response reports the retrieval mode that actually ran",
     tags: ["knowledge"],
     responseBody: "KnowledgeSearchResponse",
     additionalResponses: { "403": "ErrorResponse" }
+  },
+  "knowledge.indexStatus": {
+    summary: "Read per-entry retrieval index health and the honest retrieval mode (knowledge:manage only)",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeIndexHealthResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "knowledge.indexRebuild": {
+    summary: "Re-enqueue every published entry for index rebuild (knowledge:manage only)",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeIndexRebuildResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "knowledge.indexRetryEntry": {
+    summary: "Re-enqueue one entry's index refresh (knowledge:manage only)",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeIndexRetryResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
   "knowledge.getEntry": {
     summary: "Get a knowledge entry with head-revision content",

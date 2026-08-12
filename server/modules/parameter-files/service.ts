@@ -32,6 +32,7 @@ import type {
   ProjectParameterFileDto,
   ProjectParameterFileVersionDto
 } from "./types";
+import { OVERLAY_ROLES } from "./types";
 import { listRegisteredCompatibles } from "../parameter-modules/repository";
 import {
   buildIngestDriverSummary,
@@ -132,8 +133,6 @@ async function createParameterFileUploadAudit(
     traceId: context.requestId ?? randomUUID()
   });
 }
-
-const OVERLAY_ROLES = new Set<ConfigSetRole>(["overlay", "charging", "thermal", "misc"]);
 
 /**
  * After a member file version is frozen, ingest a semantic config revision only when the

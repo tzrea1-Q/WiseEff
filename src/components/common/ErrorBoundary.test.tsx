@@ -64,9 +64,14 @@ describe("ErrorBoundary", () => {
   });
 
   it("copies diagnostics to the clipboard", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.assign(navigator, { clipboard: { writeText } });
     const user = userEvent.setup();
+    // navigator.clipboard is a read-only accessor in jsdom, so Object.assign throws.
+    // Define after userEvent.setup() so its own clipboard stub does not shadow ours.
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(window.navigator, "clipboard", {
+      value: { writeText },
+      configurable: true
+    });
     render(
       <ErrorBoundary label="节点调试">
         <Boom shouldThrow />

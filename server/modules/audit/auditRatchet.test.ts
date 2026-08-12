@@ -40,9 +40,9 @@ const ALLOWED_DIRECT_CALLS: Record<string, number> = {
   "modules/parameter-modules/service.ts": 2,
   "modules/parameter-specs/driverSchemaOverlayService.ts": 1,
   "modules/parameter-topology/governanceAudit.ts": 1,
-  "modules/parameters/initializationService.ts": 3,
+  // parameters/sensitiveNode.ts stays: it is a REFUSAL audit (deny + throw) that must
+  // survive the caller's rollback, i.e. deliberately outside the audited write seam.
   "modules/parameters/sensitiveNode.ts": 1,
-  "modules/parameters/service.ts": 5,
   "modules/product-feedback/service.ts": 1,
   "modules/users/service.ts": 2
 };

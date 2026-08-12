@@ -2,14 +2,14 @@ import { randomUUID } from "node:crypto";
 
 import { createAuditEvent } from "../audit/repository";
 import type { AuthContext } from "../auth/types";
+import { listDraftsForParameterValue } from "../parameters/draftRepository";
 import {
   insertFileSyncConflict,
-  listDraftsForParameterValue,
   listFileSyncConflictsByIds,
   listOpenConflicts,
   resolveConflict,
   type FileSyncConflictRecord
-} from "../parameters/repository";
+} from "../parameters/fileSyncConflictRepository";
 import { canReviewParameters } from "../parameters/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";

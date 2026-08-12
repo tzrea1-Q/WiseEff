@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { withPgClient } from "../../../e2e/acceptance/helpers/database";
 import { cleanupSemanticAcceptanceArtifacts } from "../../../e2e/acceptance/helpers/semanticFixtureCleanup";
-import { isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { isTestDatabaseAvailable, resolveWorkerDatabaseUrl } from "../../testing/testDatabase";
 
 const ORG_A = "org-cleanup-iso-a";
 const ORG_B = "org-cleanup-iso-b";
@@ -17,15 +17,37 @@ const SHARED_NAME = "shared-acceptance-cs-r6";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
-function ensureDatabaseUrl() {
-  if (!process.env.DATABASE_URL?.trim()) {
-    process.env.DATABASE_URL =
-      process.env.TEST_DATABASE_URL?.trim() || "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff";
+async function ensureDatabaseUrl() {
+  // The e2e helpers read DATABASE_URL directly. Point them at the migrated
+  // per-worker database: the base database behind DATABASE_URL is no longer
+  // migrated by the test harness (template/worker scheme), so raw clients
+  // would otherwise hit an unmigrated schema in CI.
+  process.env.DATABASE_URL = await resolveWorkerDatabaseUrl();
+}
+
+// This suite exercises acceptance-fixture cleanup, which talks to the raw
+// DATABASE_URL database (not the migrations-template worker databases the other
+// integration tests use). In CI's build-and-test job that database exists but has
+// never been migrated, so gate on the schema actually being present.
+async function isAcceptanceSchemaAvailable(): Promise<boolean> {
+  if (!databaseAvailable) return false;
+  await ensureDatabaseUrl();
+  try {
+    return await withPgClient(async (client) => {
+      const result = await client.query<{ ok: string | null }>(
+        "select to_regclass('public.organizations') as ok",
+      );
+      return result.rows[0]?.ok != null;
+    });
+  } catch {
+    return false;
   }
 }
 
+const schemaAvailable = await isAcceptanceSchemaAvailable();
+
 async function ensureTenantGraph() {
-  ensureDatabaseUrl();
+  await ensureDatabaseUrl();
   const ids = {
     a1: `dcs-cleanup-a1-${randomUUID().slice(0, 8)}`,
     a2: `dcs-cleanup-a2-${randomUUID().slice(0, 8)}`,
@@ -70,7 +92,7 @@ async function ensureTenantGraph() {
 }
 
 async function wipeSharedName() {
-  ensureDatabaseUrl();
+  await ensureDatabaseUrl();
   for (const [orgId, projectId] of [
     [ORG_A, PROJECT_A1],
     [ORG_A, PROJECT_A2],
@@ -84,9 +106,9 @@ async function wipeSharedName() {
   }
 }
 
-describe.skipIf(!databaseAvailable)("semanticFixtureCleanup tenant isolation", () => {
+describe.skipIf(!schemaAvailable)("semanticFixtureCleanup tenant isolation", () => {
   it("fail-closes when organizationId or projectId is missing", async () => {
-    ensureDatabaseUrl();
+    await ensureDatabaseUrl();
     await expect(
       cleanupSemanticAcceptanceArtifacts({
         organizationId: "",

@@ -19,7 +19,7 @@ vi.mock("./repository", () => ({
   getFileVersionById: vi.fn()
 }));
 
-vi.mock("../parameters/repository", () => ({
+vi.mock("../parameters/fileSyncConflictRepository", () => ({
   listOpenConflicts: vi.fn()
 }));
 
@@ -43,7 +43,7 @@ import {
   listReleaseBaselinesByConfigSet
 } from "./baselineRepository";
 import { getFileVersionById } from "./repository";
-import { listOpenConflicts } from "../parameters/repository";
+import { listOpenConflicts } from "../parameters/fileSyncConflictRepository";
 import { getLatestConfigRevision } from "../parameter-topology/repository";
 import {
   countBlockingIdentityMappingTasksForRevision,
