@@ -7830,6 +7830,13 @@ td small {
   line-height: 1.55;
 }
 
+.topic-trend-note {
+  margin: 6px 0 0;
+  color: #8a94a6;
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
 .topic-evidence-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.02fr) minmax(0, 0.98fr);

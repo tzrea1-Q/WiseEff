@@ -157,7 +157,7 @@ describe("LogsPage · Header", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "提交反馈" }));
 
     expect(screen.queryByRole("dialog", { name: "反馈分析质量" })).not.toBeInTheDocument();
-    expect(screen.getByText(/反馈已记录/)).toBeInTheDocument();
+    expect(screen.getByText(/已记录 RPT-9092 的分析反馈/)).toBeInTheDocument();
   });
 
   it("切换日志时 Live Region 播报文件名和状态", () => {
