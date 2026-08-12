@@ -1,9 +1,9 @@
 # 小泽回合流:一个模块拥有"已经流出了什么"
 
-> 状态:**进行中**
+> 状态:**已完成 2026-08-12**——PR [#354](https://github.com/tzrea1-Q/WiseEff/pull/354) 已合并;并行加固 #358/#363 造成的验收漂移由后续 PR [#379](https://github.com/tzrea1-Q/WiseEff/pull/379) 修复
 > 日期:2026-08-12
 > 分支:`refactor/xiaoze-turn-stream`
-> English: [`docs/exec-plans/active/2026-08-12-xiaoze-turn-stream.md`](../../../exec-plans/active/2026-08-12-xiaoze-turn-stream.md)
+> English: [`docs/exec-plans/completed/2026-08-12-xiaoze-turn-stream.md`](../../../exec-plans/completed/2026-08-12-xiaoze-turn-stream.md)
 > 来源:2026-08-12 架构审查候选 2(Strong)
 
 ## 目标
@@ -61,4 +61,10 @@
 - [x] TD-070 移入 Completed 并附证据
 - [x] `docs/PLANS.md` 中英文列出本计划
 - [x] `docs/FRONTEND.md` 已复核——线协议未动,无需变更(无文档引用被吸收的文件)
-- [ ] 移入 `completed/` 前 `npm run docs:check` 全绿
+- [x] 移入 `completed/` 前 `npm run docs:check` 全绿
+
+## 完成证据
+
+- `xiaozeTurnStream.test.ts` golden 帧序测试(12 个)+ 端点两个新用例(resume 带步骤、resume 后二次 interrupt);既有 `agUiEndpoint.test.ts` 断言原样通过。
+- 隔离 deterministic API(全新 Postgres,迁移+种子):只读回合流出步骤/工具调用/快照;审批中断携带 DB 背书的审批 id;批准回合流出提交工具步骤、生成回复步骤与答案增量,相位 thinking → tool → composing → done,线程消息持久化 `runSteps`;执行失败流出 failed 步骤 + RUN_ERROR;拒绝返回安全文本且无步骤。
+- 记录 TD-083:批准回合的助手文本被持久化两次(审批链记录 + 端点回合记录);既有问题,验证过程中暴露。
