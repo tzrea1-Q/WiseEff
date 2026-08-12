@@ -73,6 +73,7 @@ function candidate(overrides: Partial<DtsReloadCandidate> = {}): DtsReloadCandid
     baselineValue: "<6000>",
     description: "Watchdog timeout for charger safety.",
     valueShapeKind: "cells",
+    resolvedValueShape: { kind: "cells", bits: 32, cellsPerGroup: 1, groups: 1 },
     unit: "ms",
     constraints: { min: 0, max: 20000, cells: 1 },
     debuggable: true,
@@ -333,6 +334,7 @@ describe("DtsReloadPage", () => {
             nodePath: "/amba/uart@2",
             baselineValue: '"sc8562"',
             valueShapeKind: "string-list",
+            resolvedValueShape: { kind: "string-list" },
             constraints: {}
           })
         ]
@@ -409,6 +411,7 @@ describe("DtsReloadPage", () => {
             nodePath: "/amba/uart@2",
             baselineValue: '"sc8562"',
             valueShapeKind: "string-list",
+            resolvedValueShape: { kind: "string-list" },
             constraints: {}
           })
         ]
@@ -450,6 +453,7 @@ describe("DtsReloadPage", () => {
             nodePath: "/amba/uart@2",
             baselineValue: '"sc8562"',
             valueShapeKind: "string-list",
+            resolvedValueShape: { kind: "string-list" },
             constraints: {}
           }),
           candidate({

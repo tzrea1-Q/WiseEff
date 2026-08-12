@@ -160,7 +160,7 @@ M2 日志与 M3 调试运行时/catalog API 以认证用户的 `organization_id`
 
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
-| `GET` | `/api/v1/dts-reload/projects/:projectId/candidates` | `debugging:view` 或 `debugging:dts-reload` | 项目候选参数（可调试性、sensitiveMatch、lastReload）。具备非空绝对 `nodePath`、支持的重载值形态与库基线即可调试（含单段 `/label`，不再有 synthesised-anchor 路径形状拒绝）。已支持形态含 u32/u8/u16 cell（含 `/bits/ 8`）、目录 `string` 单字符串（如 `replace_sensor`）、`string-list`、GPIO 风格 `phandle-cells`。 |
+| `GET` | `/api/v1/dts-reload/projects/:projectId/candidates` | `debugging:view` 或 `debugging:dts-reload` | 项目候选参数（可调试性、sensitiveMatch、lastReload）。每个候选同时返回目录原始 `valueShapeKind`（仅展示）与服务端解析的 `resolvedValueShape`（归一化的重载值形态词汇，或 null）；客户端的录入校验、占位符与示例一律以 `resolvedValueShape` 为准，绝不使用目录原始 kind——解析需要 DTS 解析器与库基线。具备非空绝对 `nodePath`、支持的重载值形态与库基线即可调试（含单段 `/label`，不再有 synthesised-anchor 路径形状拒绝）。已支持形态含 u32/u8/u16 cell（含 `/bits/ 8`）、目录 `string` 单字符串（如 `replace_sensor`）、`string-list`、GPIO 风格 `phandle-cells`。 |
 | `POST` | `/api/v1/dts-reload/projects/:projectId/runs` | `debugging:dts-reload` | 启动运行（批量 targets；critical 可能需 `confirm-sensitive-reload`） |
 | `POST` | `/api/v1/dts-reload/runs/:runId/deploy` | `debugging:dts-reload` | 进程内桥接部署；需 `confirm-dts-reload` |
 | `GET` | `/api/v1/dts-reload/runs` / `.../:runId` | 查看路径 | 历史与含重载快照的详情 |
@@ -378,6 +378,27 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 ```
 
 `feedbackType` 可为 `experience`、`data`、`export_submit`、`feature`。`status` 可为 `open`、`in_progress`、`closed`，状态流转为 `open -> in_progress -> closed`；`closed` 后不允许继续更新。附件只接受 `image/png`、`image/jpeg`、`image/webp`，最多 5 张，单张 5 MB，总量 15 MB。
+
+## 7.1 知识库
+
+组织级知识条目与不可变修订（设计来源：[知识库设计](2026-08-12-knowledge-base-design.md)）。读取要求 `knowledge:view`；创建与治理**自己的**条目要求 `knowledge:edit`；治理任意条目与彻底删除要求 `knowledge:manage`。草稿仅对拥有者和管理者可见。每次变更写审计事件并携带请求 trace。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `POST` | `/api/v1/knowledge/entries` | 创建 markdown 或文件条目（草稿）。文件以 base64 经对象存储上传并执行正文提取。返回 `201 { item }`。 |
+| `GET` | `/api/v1/knowledge/entries` | 列出可见条目；支持 `status`、`contentForm`、`tag`、`q`（标题）、`limit`。 |
+| `GET` | `/api/v1/knowledge/search` | 仅检索 **published** 条目（`q`、可选 `limit`）：拉丁文本走 PostgreSQL FTS,中文走 `pg_trgm` 三元组匹配;返回摘录。 |
+| `GET` | `/api/v1/knowledge/entries/:entryId` | 条目详情,含头修订内容与文件元数据（含提取状态）。 |
+| `PATCH` | `/api/v1/knowledge/entries/:entryId` | 保存编辑（`title` / `tags` / `contentMarkdown` / 替换 `file`）为新的不可变修订。必须携带 `expectedHeadRevisionNumber`;过期保存返回 `409 CONFLICT`,`details.code: "knowledge-revision-conflict"`。 |
+| `POST` | `/api/v1/knowledge/entries/:entryId/publish` | 发布草稿进入检索（`draft → published`）。 |
+| `POST` | `/api/v1/knowledge/entries/:entryId/archive` | 归档已发布条目并退出检索（`published → archived`）。 |
+| `POST` | `/api/v1/knowledge/entries/:entryId/restore` | 恢复已归档条目（`archived → published`）。 |
+| `DELETE` | `/api/v1/knowledge/entries/:entryId` | 彻底删除条目及修订与文件元数据。仅 `knowledge:manage`;写 `High` 级审计。 |
+| `GET` | `/api/v1/knowledge/entries/:entryId/revisions` | 列出不可变修订,新在前。 |
+| `POST` | `/api/v1/knowledge/entries/:entryId/revisions/:revisionId/restore` | 把历史修订恢复为新的头修订（携带 `expectedHeadRevisionNumber`）。 |
+| `GET` | `/api/v1/knowledge/entries/:entryId/file/content` | 下载文件型条目当前二进制。 |
+
+文件上传接受 `application/pdf`、`.docx`（`application/vnd.openxmlformats-officedocument.wordprocessingml.document`）、`application/msword`、`text/plain`、`text/markdown`,上限 20 MB。提取失败诚实落在文件行上（`extractionStatus: "failed"` + 可读 `extractionError`）,不阻断上传。
 
 ## 项目参数初始化
 

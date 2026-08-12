@@ -1,6 +1,5 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { allSelectors, declarationsFor, readStylesheet } from "../../test/cssAssertions";
 
 /**
  * ModalDialog portals into document.body, so a dialog is no longer a descendant of
@@ -8,22 +7,9 @@ import { describe, expect, it } from "vitest";
  * how the governance confirmations first shipped with unstyled action buttons. These
  * checks keep the backdrop-scoped counterpart of each shared dialog rule in place.
  */
-function stylesheet(): string {
-  return readFileSync(resolve(__dirname, "../../styles.css"), "utf8");
-}
-
-function selectors(styles: string): string[] {
-  return styles
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .split("}")
-    .flatMap((block) => (block.includes("{") ? block.slice(0, block.indexOf("{")).split(",") : []))
-    .map((selector) => selector.trim().replace(/\s+/g, " "))
-    .filter(Boolean);
-}
-
 describe("param-admin dialog styling survives the portal", () => {
   it("mirrors shell-scoped button and action rules onto the dialog backdrop", () => {
-    const all = selectors(stylesheet());
+    const all = allSelectors(readStylesheet("src/styles.css"));
     const shellScoped = all.filter(
       (selector) =>
         selector.startsWith(".param-admin-shell ") &&
@@ -45,10 +31,9 @@ describe("param-admin dialog styling survives the portal", () => {
   });
 
   it("gives the governance confirmation its own spacing instead of inheriting the page's", () => {
-    const rule =
-      stylesheet().match(/\.governance-confirm-dialog[^{}]*\{[^}]*\}/)?.[0] ?? "";
+    const dialog = declarationsFor(readStylesheet("src/styles.css"), ".governance-confirm-dialog");
 
-    expect(rule).toMatch(/display:\s*grid/);
-    expect(rule).toMatch(/gap:/);
+    expect(dialog.display).toBe("grid");
+    expect(dialog.gap).toBeTruthy();
   });
 });

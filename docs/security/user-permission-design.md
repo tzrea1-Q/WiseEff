@@ -35,6 +35,18 @@ Workflow-slot assignability answers: "Can this concrete user be selected for thi
 
 Those are separate checks. A role may inherit Hardware User operations while still being excluded from a specific slot if the slot calls for a concrete hardware committer, software committer, or software developer assignee.
 
+## Knowledge Base Permissions
+
+The knowledge workflow uses three permissions with ownership-based governance instead of workflow slots:
+
+| Permission | Grants | Default roles |
+| --- | --- | --- |
+| `knowledge:view` | Read published entries and search. | Every organization member (Guest and above). |
+| `knowledge:edit` | Create entries; edit, publish, and archive OWN entries; restore own revisions. | Hardware/Software User and above. |
+| `knowledge:manage` | Govern any entry (edit, archive, restore, hard delete) regardless of ownership. | Admin tier. |
+
+Publisher accountability: `knowledge:edit` never publishes or edits another person's entry; cross-person governance concentrates in `knowledge:manage`. Draft entries are visible to their owner and managers only. Hard delete always requires `knowledge:manage` and leaves a `High`-severity audit record.
+
 ## Workflow Slot Examples
 
 Current parameter workflow slots use concrete eligible users:

@@ -11,6 +11,7 @@ export type RouteModule =
   | "device-bridge"
   | "logs"
   | "product-feedback"
+  | "knowledge"
   | "dts-reload"
   | "jobs"
   | "debugging"
@@ -526,6 +527,55 @@ export const routeManifest = [
   { id: "productFeedback.list", method: "GET", path: "/api/v1/product-feedback", module: "product-feedback", stability: "mvp" },
   { id: "productFeedback.get", method: "GET", path: "/api/v1/product-feedback/:id", module: "product-feedback", stability: "mvp" },
   { id: "productFeedback.patch", method: "PATCH", path: "/api/v1/product-feedback/:id", module: "product-feedback", stability: "mvp" },
+  { id: "knowledge.createEntry", method: "POST", path: "/api/v1/knowledge/entries", module: "knowledge", stability: "mvp" },
+  { id: "knowledge.listEntries", method: "GET", path: "/api/v1/knowledge/entries", module: "knowledge", stability: "mvp" },
+  { id: "knowledge.search", method: "GET", path: "/api/v1/knowledge/search", module: "knowledge", stability: "mvp" },
+  { id: "knowledge.getEntry", method: "GET", path: "/api/v1/knowledge/entries/:entryId", module: "knowledge", stability: "mvp" },
+  { id: "knowledge.updateEntry", method: "PATCH", path: "/api/v1/knowledge/entries/:entryId", module: "knowledge", stability: "mvp" },
+  {
+    id: "knowledge.publishEntry",
+    method: "POST",
+    path: "/api/v1/knowledge/entries/:entryId/publish",
+    module: "knowledge",
+    stability: "mvp"
+  },
+  {
+    id: "knowledge.archiveEntry",
+    method: "POST",
+    path: "/api/v1/knowledge/entries/:entryId/archive",
+    module: "knowledge",
+    stability: "mvp"
+  },
+  {
+    id: "knowledge.restoreEntry",
+    method: "POST",
+    path: "/api/v1/knowledge/entries/:entryId/restore",
+    module: "knowledge",
+    stability: "mvp"
+  },
+  { id: "knowledge.deleteEntry", method: "DELETE", path: "/api/v1/knowledge/entries/:entryId", module: "knowledge", stability: "mvp" },
+  {
+    id: "knowledge.listRevisions",
+    method: "GET",
+    path: "/api/v1/knowledge/entries/:entryId/revisions",
+    module: "knowledge",
+    stability: "mvp"
+  },
+  {
+    id: "knowledge.restoreRevision",
+    method: "POST",
+    path: "/api/v1/knowledge/entries/:entryId/revisions/:revisionId/restore",
+    module: "knowledge",
+    stability: "mvp"
+  },
+  {
+    id: "knowledge.fileContent",
+    method: "GET",
+    path: "/api/v1/knowledge/entries/:entryId/file/content",
+    module: "knowledge",
+    stability: "mvp"
+  },
+
   {
     id: "productFeedback.attachmentContent",
     method: "GET",
