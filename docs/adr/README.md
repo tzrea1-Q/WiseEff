@@ -36,3 +36,4 @@ See also: [`CONTEXT.md`](../../CONTEXT.md), [`docs/design-docs/domain-model.md`]
 | [0024](0024-agent-approval-state-is-db-backed.md) | Agent approval state is DB-backed; request context flows through invocation config |
 | [0025](0025-knowledge-retrieval-lives-in-postgres.md) | Knowledge retrieval lives in PostgreSQL |
 | [0026](0026-design-tokens-are-the-single-visual-source.md) | Design tokens are the single visual source |
+| [0028](0028-parameter-drafts-are-a-standalone-staging-module.md) | Parameter drafts are a standalone staging module |

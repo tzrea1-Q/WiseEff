@@ -15,7 +15,8 @@ import { ingestDtsFileVersion } from "./structuralIngest";
 import { assertSensitiveNodeWriteAllowed } from "../parameters/sensitiveNode";
 import { parameterIdentityMode } from "../parameters/parameterIdentityMode";
 import { loadPreCutoverWritebackSource } from "../parameters/legacyParameterIdentityAdapter";
-import { getChangeRequestEnablementWriteLock, getChangeRequestWriteLock } from "../parameters/draftRepository";
+import { getChangeRequestEnablementWriteLock, getChangeRequestWriteLock } from "../parameter-drafts/repository";
+import type { BindingWriteLockFields, EnablementWriteLockFields } from "../parameter-drafts/types";
 import { type BindingEditAction } from "../parameter-topology/overlayWriteback";
 import {
   applyLockedEnablementWriteback,
@@ -25,9 +26,7 @@ import {
   resolveBindingWriteLock,
   resolveEnablementWriteLock,
   type BindingWriteLockContext,
-  type BindingWriteLockFields,
   type EnablementWriteLockContext,
-  type EnablementWriteLockFields,
 } from "../parameter-topology/writeLock";
 import { createDtsToolchainRunner } from "./dtsToolchain";
 import type { ParameterFileFormat } from "./types";

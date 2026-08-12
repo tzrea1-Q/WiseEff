@@ -8,7 +8,7 @@ import {
   findProjectValueBySource
 } from "../parameters/repository";
 import type { FileSyncConflictRecord } from "../parameters/fileSyncConflictRepository";
-import { upsertFileSyncDraft } from "../parameters/draftRepository";
+import { upsertFileSyncDraft } from "../parameter-drafts/repository";
 import { parameterIdentityMode } from "../parameters/parameterIdentityMode";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";

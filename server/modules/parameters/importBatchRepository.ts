@@ -12,7 +12,7 @@ import type {
 import { type ParameterRiskLevel } from "./status";
 import { LEGACY_SQL } from "../parameter-topology/migration";
 import { LEGACY_IDENTITY_SQL } from "./legacyParameterIdentityNames";
-import { dateTimeToIso } from "./repositoryShared";
+import { dateTimeToIso } from "../../shared/database/sqlUtil";
 
 export type ImportPreviewClassification = "added" | "updated" | "unchanged" | "conflict";
 

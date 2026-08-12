@@ -60,7 +60,7 @@ import {
   listDraftsForUser,
   promoteBindingDraftCandidateForReview,
   upsertDraft
-} from "./draftRepository";
+} from "../parameter-drafts/repository";
 import { hasOpenFileSyncConflict } from "./fileSyncConflictRepository";
 import {
   applyAddedImportItem,
@@ -111,7 +111,8 @@ import {
 } from "./schemas";
 import { parseDtsImportSource } from "./importDtsParse";
 import { getNextParameterStatus, parameterStatusLabels, type ParameterChangeRequestStatus, type ParameterSubmissionRoundStatus } from "./status";
-import type { ChangeRequestDto, ParameterChangeAction, ParameterImportSourceItemDto, ParameterImportSummaryDto, ParameterModuleDto } from "./types";
+import type { ParameterChangeAction } from "../parameter-drafts/types";
+import type { ChangeRequestDto, ParameterImportSourceItemDto, ParameterImportSummaryDto, ParameterModuleDto } from "./types";
 import { buildSubmissionWorkflowTrail } from "../../../src/domain/parameters/submissionWorkflowTrail";
 import { deriveSubmissionTimeline } from "../../../src/parameterSubmissionTimeline";
 
