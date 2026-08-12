@@ -62,7 +62,7 @@ export function createAgentOrchestrator(options: {
   const createAuditEvent = options.createAuditEvent ?? defaultCreateAuditEvent;
   const metrics = options.metrics;
   const tracing = options.tracing;
-  const registryFor = (queryable: Queryable) => options.toolRegistry ?? createAgentToolRegistry({ db: queryable });
+  const registryFor = (database: Database) => options.toolRegistry ?? createAgentToolRegistry({ db: database });
   const toolRegistry = registryFor(db);
 
   function toolMetricLabels(toolCall: Pick<AgentToolCallDto, "name">) {
