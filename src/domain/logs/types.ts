@@ -12,6 +12,23 @@ export type LogAdminRole = "Admin" | "Editor" | "Viewer";
 
 export type LogAdminUserAvatarTone = "blue" | "teal" | "violet" | "slate";
 
+export type LogAnalysisSource = "agent" | "rules-fallback";
+
+export type LogDegradedReason = "provider-unavailable" | "token-budget-exhausted";
+
+export type LogDomainStatus = "active" | "archived";
+
+/** Org-scoped log domain registration (业务域); absence on a record = 未分类域. */
+export type LogDomain = {
+  id: string;
+  name: string;
+  description?: string;
+  status: LogDomainStatus;
+  formatProfile?: unknown;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type LogEvidence = {
   id: string;
   stageId: LogStageId;
@@ -45,6 +62,11 @@ export type LogRecord = {
   failureReason?: string;
   analysisQuestion?: string;
   archiveState?: LogArchiveState;
+  logDomainId?: string;
+  logDomainName?: string;
+  /** Analyzer provenance; "rules-fallback" marks a degraded analysis and must stay visible. */
+  analysisSource?: LogAnalysisSource;
+  degradedReason?: LogDegradedReason;
 };
 
 export type LogAdminUser = {

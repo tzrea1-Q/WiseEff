@@ -173,4 +173,39 @@ describe("LogRecordDrawer", () => {
     expect(screen.getByRole("button", { name: /归档/ })).toHaveAttribute("aria-busy", "true");
     expect(screen.getByRole("button", { name: /有帮助/ })).toHaveAttribute("aria-busy", "true");
   });
+
+  it("marks degraded rules-fallback results prominently with the reason", () => {
+    render(
+      <LogRecordDrawer
+        record={{
+          ...record,
+          analysisSource: "rules-fallback",
+          degradedReason: "provider-unavailable",
+          logDomainName: "charging-power"
+        }}
+        open
+        {...handlers}
+        canAct
+      />
+    );
+
+    const provenance = screen.getByTestId("drawer-analysis-provenance");
+    expect(provenance).toHaveTextContent("降级分析 · 规则回退");
+    expect(provenance).toHaveTextContent(/AI 分析服务不可用/);
+    expect(provenance).toHaveTextContent("业务域 · charging-power");
+  });
+
+  it("shows the agent provenance badge without a degraded warning", () => {
+    render(<LogRecordDrawer record={{ ...record, analysisSource: "agent" }} open {...handlers} canAct />);
+
+    const provenance = screen.getByTestId("drawer-analysis-provenance");
+    expect(provenance).toHaveTextContent("Agent 分析");
+    expect(provenance).not.toHaveTextContent("降级分析");
+  });
+
+  it("renders no provenance block for legacy records without a source", () => {
+    render(<LogRecordDrawer record={record} open {...handlers} canAct />);
+
+    expect(screen.queryByTestId("drawer-analysis-provenance")).not.toBeInTheDocument();
+  });
 });

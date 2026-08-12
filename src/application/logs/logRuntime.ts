@@ -1,5 +1,8 @@
 import type {
   LogAnalysisRepository,
+  LogDomainCreateInput,
+  LogDomainListQuery,
+  LogDomainUpdateInput,
   LogFeedbackInput,
   LogJobSnapshot,
   LogListQuery,
@@ -7,11 +10,12 @@ import type {
   LogUploadInput
 } from "@/application/ports/LogAnalysisRepository";
 import type { AppAction } from "@/App";
-import type { LogRecord } from "@/domain/logs/types";
+import type { LogDomain, LogRecord } from "@/domain/logs/types";
 import type { PrototypeState } from "@/mockData";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 
 export const logRuntimeFailureNotification = "日志操作未完成，请稍后重试。";
+export const logDomainMockModeNotification = "业务域治理需在 API 模式下使用。";
 
 export type HydrateLogRuntimeAction = {
   type: "HYDRATE_LOG_RUNTIME";
@@ -25,6 +29,10 @@ export type LogRuntimeActions = {
   archive(logId: string): Promise<void>;
   unarchive(logId: string): Promise<void>;
   submitFeedback(input: LogFeedbackInput): Promise<void>;
+  listLogDomains(query?: LogDomainListQuery): Promise<LogDomain[]>;
+  createLogDomain(input: LogDomainCreateInput): Promise<LogDomain | null>;
+  updateLogDomain(input: LogDomainUpdateInput): Promise<LogDomain | null>;
+  archiveLogDomain(domainId: string): Promise<LogDomain | null>;
 };
 
 export type LogRuntimeDispatchAction =
@@ -45,8 +53,12 @@ type LogRuntimeOptions = {
   dispatch: (action: LogRuntimeDispatchAction) => void;
   getState: () => PrototypeState;
   repository?: LogAnalysisRepository;
+  /** Fixed poll interval override (tests); absent = adaptive backoff 1s×30 → 2s×45 → 5s. */
   pollIntervalMs?: number;
+  /** Attempt-count safety cap; the primary cap is maxPollDurationMs. */
   maxPollAttempts?: number;
+  /** Total scheduled polling time cap, aligned to the p95 ≤ 3min SLO plus headroom. */
+  maxPollDurationMs?: number;
 };
 
 const terminalJobStatuses = new Set<LogJobSnapshot["status"]>(["complete", "failed"]);
@@ -89,12 +101,28 @@ function isSupportedMockUpload(fileName: string) {
   return extension ? supportedMockUploadExtensions.has(extension) : false;
 }
 
+/** Adaptive backoff schedule: 1s for 30 attempts, then 2s for 45, then 5s. */
+export function adaptivePollDelayMs(attempt: number) {
+  if (attempt < 30) {
+    return 1000;
+  }
+  if (attempt < 75) {
+    return 2000;
+  }
+  return 5000;
+}
+
+type PollSchedule = {
+  pollIntervalMs?: number;
+  maxPollAttempts: number;
+  maxPollDurationMs: number;
+};
+
 async function pollJobUntilTerminal(
   api: LogAnalysisRepository,
   initialJob: LogJobSnapshot,
   dispatch: LogRuntimeOptions["dispatch"],
-  pollIntervalMs: number,
-  maxPollAttempts: number,
+  schedule: PollSchedule,
   generations: PollGenerationTracker,
   activeGeneration: ActiveLogGeneration
 ) {
@@ -103,10 +131,17 @@ async function pollJobUntilTerminal(
     return;
   }
 
-  for (let attempt = 0; attempt < maxPollAttempts && !terminalJobStatuses.has(job.status); attempt += 1) {
-    if (pollIntervalMs > 0) {
-      await delay(pollIntervalMs);
+  let scheduledMs = 0;
+  for (
+    let attempt = 0;
+    attempt < schedule.maxPollAttempts && scheduledMs < schedule.maxPollDurationMs && !terminalJobStatuses.has(job.status);
+    attempt += 1
+  ) {
+    const delayMs = schedule.pollIntervalMs ?? adaptivePollDelayMs(attempt);
+    if (delayMs > 0) {
+      await delay(delayMs);
     }
+    scheduledMs += delayMs;
     job = await api.getJob(job.id);
     if (!generations.isCurrent(job.logId, activeGeneration.generation)) {
       return;
@@ -138,9 +173,11 @@ export function createLogRuntimeActions({
   repository,
   dispatch,
   getState,
-  pollIntervalMs = 1000,
-  maxPollAttempts = 60
+  pollIntervalMs,
+  maxPollAttempts = 240,
+  maxPollDurationMs = 300_000
 }: LogRuntimeOptions): LogRuntimeActions {
+  const pollSchedule: PollSchedule = { pollIntervalMs, maxPollAttempts, maxPollDurationMs };
   const pollGenerations = new Map<string, number>();
   let nextPollGeneration = 0;
   let nextUploadReservation = 0;
@@ -221,7 +258,7 @@ export function createLogRuntimeActions({
         }
         dispatch({ type: "UPSERT_LOG_RECORD", log: result.log });
         if (result.job) {
-          await pollJobUntilTerminal(api, result.job, dispatch, pollIntervalMs, maxPollAttempts, generations, activeGeneration);
+          await pollJobUntilTerminal(api, result.job, dispatch, pollSchedule, generations, activeGeneration);
         }
       });
     },
@@ -238,7 +275,7 @@ export function createLogRuntimeActions({
           return;
         }
         dispatch({ type: "UPSERT_LOG_RECORD", log: result.log });
-        await pollJobUntilTerminal(api, result.job, dispatch, pollIntervalMs, maxPollAttempts, generations, activeGeneration);
+        await pollJobUntilTerminal(api, result.job, dispatch, pollSchedule, generations, activeGeneration);
       });
     },
     async archive(logId) {
@@ -274,6 +311,55 @@ export function createLogRuntimeActions({
         await api.submitFeedback(input);
         await refresh();
       });
+    },
+    async listLogDomains(query) {
+      if (mode !== "api") {
+        return [];
+      }
+
+      try {
+        const api = requireRepository(repository);
+        return (await api.listLogDomains?.(query)) ?? [];
+      } catch {
+        // Domain listing must never block the upload flow; the selector just falls back to 未分类.
+        return [];
+      }
+    },
+    async createLogDomain(input) {
+      if (mode !== "api") {
+        dispatch({ type: "ADD_NOTIFICATION", message: logDomainMockModeNotification });
+        return null;
+      }
+
+      let created: LogDomain | null = null;
+      await runApiMutation(async (api) => {
+        created = (await api.createLogDomain?.(input)) ?? null;
+      });
+      return created;
+    },
+    async updateLogDomain(input) {
+      if (mode !== "api") {
+        dispatch({ type: "ADD_NOTIFICATION", message: logDomainMockModeNotification });
+        return null;
+      }
+
+      let updated: LogDomain | null = null;
+      await runApiMutation(async (api) => {
+        updated = (await api.updateLogDomain?.(input)) ?? null;
+      });
+      return updated;
+    },
+    async archiveLogDomain(domainId) {
+      if (mode !== "api") {
+        dispatch({ type: "ADD_NOTIFICATION", message: logDomainMockModeNotification });
+        return null;
+      }
+
+      let archived: LogDomain | null = null;
+      await runApiMutation(async (api) => {
+        archived = (await api.archiveLogDomain?.(domainId)) ?? null;
+      });
+      return archived;
     }
   };
 }
