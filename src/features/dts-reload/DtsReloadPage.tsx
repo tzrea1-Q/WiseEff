@@ -58,9 +58,9 @@ export type DtsReloadReachableTarget = {
 export type DtsReloadPageProps = {
   projects: Array<{ id: string; name: string }>;
   initialProjectId?: string;
-  repository: DtsReloadRepository | null;
+  /** Resolved per runtime mode by the composition root (ADR-0002); never null. */
+  repository: DtsReloadRepository;
   canStartRun: boolean;
-  unavailableReason?: string;
   bridges?: DtsReloadBridgeOption[];
   listBridges?: () => Promise<DtsReloadBridgeOption[]>;
   /** Optional local health probe — defaults to deviceBridgeClient.probeLocalBridgeHealth. */
@@ -78,7 +78,6 @@ export function DtsReloadPage({
   initialProjectId,
   repository,
   canStartRun,
-  unavailableReason,
   bridges: bridgesProp,
   listBridges,
   probeBridgeHealth,
@@ -311,39 +310,24 @@ export function DtsReloadPage({
   }, [detectTargets, protocol, session]);
 
   useEffect(() => {
-    if (!repository || !detectTargets || bridges.length === 0) {
+    if (!detectTargets || bridges.length === 0) {
       setReachableTargets([]);
       return;
     }
     void runDetectTargets();
-  }, [repository, detectTargets, protocol, bridges.length, runDetectTargets]);
+  }, [detectTargets, protocol, bridges.length, runDetectTargets]);
 
   useEffect(() => {
-    if (!repository) return;
     void session.loadResidue(repository);
   }, [repository, session, deviceId]);
 
   useEffect(() => {
-    if (!repository) return;
     void session.refreshHistory(repository);
   }, [repository, session, projectId, historyFilterDevice, historyFilterDevice ? deviceId : ""]);
 
   useEffect(() => {
-    if (!repository) return;
     void session.loadCandidates(repository);
   }, [repository, session, projectId]);
-
-  if (!repository) {
-    return (
-      <div className="workbench-page dts-reload-page">
-        <div className="workbench-one-col">
-          <p role="status" className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-            {unavailableReason ?? "该页面仅在 API 模式下可用。Mock 运行时不提供参数调试。"}
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   const openCandidateEditor = (candidate: DtsReloadCandidate) => {
     if (!candidate.debuggable) return;

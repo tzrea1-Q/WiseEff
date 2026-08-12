@@ -26,6 +26,8 @@ import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedb
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
 import type { KnowledgeCapability } from "@/domain/knowledge/rules";
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
+import { resolveDtsReloadRepository } from "@/application/dts-reload/dtsReloadRuntime";
+import { createMockDtsReloadBridgeSeams } from "@/infrastructure/mock/mockDtsReloadRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type { ParameterInitializationRepository } from "@/application/ports/ParameterInitializationRepository";
 import type { AppAction } from "@/application/state/appState";
@@ -89,7 +91,8 @@ export type PageProps = {
   productFeedbackRepository?: ProductFeedbackRepository;
   knowledgeRepository?: KnowledgeRepository;
   knowledgeCapability?: KnowledgeCapability;
-  dtsReloadRepository?: DtsReloadRepository | null;
+  /** Resolved by the App composition root for both runtimes (ADR-0002). */
+  dtsReloadRepository?: DtsReloadRepository;
   canStartDtsReload?: boolean;
   parameterInitializationRepository?: ParameterInitializationRepository;
   userGovernanceActions?: UserGovernanceActions;
@@ -101,6 +104,16 @@ export type PageProps = {
   onDashboardOverviewScopeChange?: (scope: OverviewScope) => void;
   onDashboardProjectChange?: (projectId: string | null) => void;
 };
+
+/**
+ * Stable mock bridge seams for `/dts-reload` in mock mode. Created once so re-renders do
+ * not churn the LocalDeviceBridgePanel override identities (and thus its refresh effect).
+ */
+let cachedMockDtsReloadBridgeSeams: ReturnType<typeof createMockDtsReloadBridgeSeams> | null = null;
+function mockDtsReloadBridgeSeams() {
+  cachedMockDtsReloadBridgeSeams ??= createMockDtsReloadBridgeSeams();
+  return cachedMockDtsReloadBridgeSeams;
+}
 
 export type PageRouterProps = PageProps & {
   page: PageConfig;
@@ -125,7 +138,7 @@ export function PageRouter({
   productFeedbackRepository,
   knowledgeRepository,
   knowledgeCapability,
-  dtsReloadRepository = null,
+  dtsReloadRepository,
   canStartDtsReload = false,
   parameterInitializationRepository,
   userGovernanceActions,
@@ -288,36 +301,37 @@ export function PageRouter({
           runtimeReady={runtimeMode === "api" ? debuggingRuntimeReady : true}
         />
       );
-    case "dts-reload":
+    case "dts-reload": {
+      const mockSeams = runtimeMode === "api" ? null : mockDtsReloadBridgeSeams();
       return (
         <DtsReloadPage
           projects={state.configDraft.projects.map((project) => ({ id: project.id, name: project.name }))}
           initialProjectId={state.activeProjectId}
-          repository={runtimeMode === "api" ? dtsReloadRepository ?? null : null}
-          canStartRun={runtimeMode === "api" && canStartDtsReload}
-          unavailableReason={
-            runtimeMode === "api"
-              ? undefined
-              : "该页面仅在 API 模式下可用。Mock 运行时不提供参数调试。"
-          }
+          repository={dtsReloadRepository ?? resolveDtsReloadRepository(runtimeMode)}
+          canStartRun={canStartDtsReload}
+          bridges={mockSeams?.bridges}
+          probeBridgeHealth={mockSeams?.probeBridgeHealth}
           detectTargets={
-            runtimeMode === "api" && debuggingGateway
-              ? async (protocol) => {
-                  const targets = await debuggingGateway.detectTargets({ protocol });
-                  return targets
-                    .filter((target) => Boolean(target.targetRef?.trim()))
-                    .map((target) => ({
-                      targetRef: target.targetRef!.trim(),
-                      label: target.bridgeMachineLabel?.trim()
-                        ? `${target.bridgeMachineLabel.trim()} · ${target.targetRef!.trim()}`
-                        : target.label || target.targetRef!.trim(),
-                      bridgeId: target.bridgeId
-                    }));
-                }
-              : undefined
+            mockSeams
+              ? mockSeams.detectTargets
+              : debuggingGateway
+                ? async (protocol) => {
+                    const targets = await debuggingGateway.detectTargets({ protocol });
+                    return targets
+                      .filter((target) => Boolean(target.targetRef?.trim()))
+                      .map((target) => ({
+                        targetRef: target.targetRef!.trim(),
+                        label: target.bridgeMachineLabel?.trim()
+                          ? `${target.bridgeMachineLabel.trim()} · ${target.targetRef!.trim()}`
+                          : target.label || target.targetRef!.trim(),
+                        bridgeId: target.bridgeId
+                      }));
+                  }
+                : undefined
           }
         />
       );
+    }
     case "debugging-admin": {
       const area =
         page.path === "/debugging-admin/nodes" || page.path.startsWith("/debugging-admin/nodes/")
