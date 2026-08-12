@@ -1,7 +1,7 @@
 import { Eye, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch } from "react";
-import type { AppAction } from "./App";
+import type { AppAction } from "@/application/state/appState";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "./components/tableFilterUtils";
 import { getInitializationScopeParameters, resolveInitializationConfig } from "./domain/parameters/initialization";

@@ -8,6 +8,7 @@ WiseEff frontend is a Vite, React, TypeScript SPA. It supports a rich mock-backe
 
 - `src/app/`: page routing, navigation, permission checks.
 - `src/domain/`: role, parameter, log, debugging, audit, and Agent domain types and pure logic.
+- `src/application/state/`: the global prototype state machine — `AppAction`, `reducer`/`appReducer`, and reducer-only transition helpers. Import state types from here, never from `@/App` (ADR-0023).
 - `src/application/ports/`: frontend-facing business interfaces.
 - `src/infrastructure/mock/`: mock state and mock implementations for demos/tests.
 - `src/infrastructure/http/`: API client, DTOs, auth client, runtime mode.

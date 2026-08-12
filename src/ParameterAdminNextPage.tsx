@@ -1,5 +1,5 @@
 import { useEffect, useMemo, type Dispatch } from "react";
-import type { AppAction } from "@/App";
+import type { AppAction } from "@/application/state/appState";
 import type { ParameterPageActions } from "@/app/routes";
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";

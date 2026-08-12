@@ -1,7 +1,7 @@
 # App Shell Decomposition (Architecture Review Candidates 1 + 2)
 
-- **Status:** Active
-- **Branch:** `refactor/extract-app-state` (created from `main` @ `8ab19113`)
+- **Status:** Active — Wave 1 landed (`34305cc9`); Wave 2 landed on `refactor/app-state-module`
+- **Branch:** Wave 1 on `refactor/extract-app-state` (from `main` @ `8ab19113`); Wave 2 onward on `refactor/app-state-module` (from Wave 1 tip) after the original branch name was contested by parallel sessions sharing one worktree
 - **Owner:** Frontend
 - **Scope source:** 2026-08-12 architecture review. Candidate 1 (decompose the `App.tsx` prototype shell) plus Candidate 2 (move domain types out of `mockData.ts`). Backend candidates 3–4 are owned by `2026-08-12-database-layer-deepening.md`; candidate 5 remains tracked by TD-069; candidate 6 is not scheduled.
 
@@ -24,11 +24,12 @@ Each wave is one commit on the plan branch, gated by `npm run build` plus the ta
 - Rewrite all importers (~92 files): moved names now import from `@/domain/prototype/types`; fixture names keep importing from `mockData`; mixed imports split.
 - Gate: `npm run build`; `npm test -- src/reducer src/reducerReview src/domain`.
 
-### Wave 2 — Extract the reducer and `AppAction` into `src/state/` (Candidate 1, step A)
+### Wave 2 — Extract the reducer and `AppAction` into `src/application/state/` (Candidate 1, step A) — **landed**
 
-- Create `src/state/appActions.ts` (`AppAction` union, `ParameterValueDraft`, `ParameterEditorDraft`, related exported action payload types) and `src/state/appReducer.ts` (`reducer`/`appReducer`, `initialAppState` if colocated, plus reducer-only helpers such as `getNextReviewStep`, `updateRoundStatusAfterRequest`, `addAuditEvent`, permission predicates — any helper used only by the reducer moves with it; helpers used by pages stay).
-- `App.tsx` imports from `src/state/`; the ~32 files importing `reducer`/`appReducer`/`type AppAction` from `@/App` retarget to `src/state/` (including the five reducer test files: `reducer.debugging.test.ts`, `reducer.logAdmin.test.ts`, `reducer.userPermissions.test.ts`, `reducerReview.test.ts`, `appReducer.parameterAdmin.test.ts`). `App.tsx` stops exporting them.
-- Gate: `npm run build`; `npm test -- src/reducer src/appReducer`.
+- **As executed (ADR-0023):** one module `src/application/state/appState.ts` owns `AppAction`, `reducer`/`appReducer`, and the reducer-only transition helpers (`addAuditEvent`, `getNextReviewStep`, `updateRoundStatusAfterRequest`, `canAdvanceReviewRequest`, `isAdminCapabilityRole`, `wouldHaveActiveAdmin`, `canManageUsers`, `canSubmitParameterChangesForProject`, `isEditableProjectLifecycleStatus`, `buildRuntimeReviewFields`, `updateArchivedLogIdsForLog`, `archivedLogIdsFromHydratedLogs`, `initialsOf`, `pickAvatarTone`, plus UI-shared `activeRoleLabel`). The location is `src/application/state/` (not top-level `src/state/`) so the state machine sits in the existing application layer per `docs/FRONTEND.md` key directories; splitting into per-domain slice files stays a local follow-up inside the module.
+- 13 non-test importers of `AppAction` plus the reducer test files retarget from `@/App` to `@/application/state/appState`; `App.tsx` stops exporting them; `main.tsx`'s default `App` import is the only remaining non-test import from `@/App`. `application/logs/logRuntime.ts` and `application/debugging/debuggingRuntime.ts` no longer import from the UI entry (layering inversion removed).
+- Dead exported types `ParameterValueDraft` / `ParameterEditorDraft` (zero importers) stay in `App.tsx` untouched; their disposal is Wave 4 cleanup at the earliest.
+- Gate (run): app-project `tsc --noEmit` clean; reducer suites (94 tests), page suites (73), `App.test.tsx` (118), `vite build`; mock-mode browser spot-check of `/logs`, `/log-dashboard`, `/parameter-review`, `/parameter-submissions`, `/user-permissions`, `/parameters` (0 console errors; review advance interaction exercised; evidence `work/ui-checks/appstate-*.png`).
 
 ### Wave 3 — `createAppRuntime()` composition root (Candidate 1, step B)
 
@@ -73,7 +74,8 @@ Behavior-preserving refactor: no route, form, table, filter, upload, modal, appr
 | Plans index (zh) | `docs/zh-CN/PLANS.md` | Review — mirror if the English index row is added |
 | Tech debt | `docs/exec-plans/tech-debt-tracker.md` | Update at closeout — record App.tsx residual (target 800–1000 lines) if not reached; close nothing |
 | Tech debt (zh) | `docs/zh-CN/exec-plans/tech-debt-tracker.md` | Update alongside the English row |
-| Domain glossary | `CONTEXT.md` | Review — add "App runtime" / "Prototype state" terms only if they prove load-bearing (hunk-staged if so) |
+| ADR | `docs/adr/0023-app-state-transitions-live-in-application-state.md` | Added in Wave 2 (numbered 0023 because two parallel uncommitted ADRs already claim 0022) |
+| Domain glossary | `CONTEXT.md` | Update (deferred) — index ADR-0023 once the parallel uncommitted edits to `CONTEXT.md` / `docs/adr/README.md` land, to avoid entangling in-progress work; add "App runtime" / "Prototype state" terms only if they prove load-bearing |
 | Product specs | `docs/product-specs/*` | No change (no product behavior change) |
 | Design docs | `docs/design-docs/*` | No change (no domain/API/design change) |
 | Quality/testing | `docs/QUALITY_SCORE.md`, `docs/design-docs/testing-strategy.md` | No change (test files move import targets only) |

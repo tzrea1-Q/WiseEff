@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties, type Dispatch, type FormEvent } from "react";
 import { UserPlus } from "lucide-react";
 
-import type { AppAction } from "@/App";
+import type { AppAction } from "@/application/state/appState";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "@/components/tableFilterUtils";
 import { migrateLegacyRoleId, platformRoles, type PermissionKey, type PlatformRoleId } from "@/domain/users/types";

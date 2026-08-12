@@ -14,7 +14,7 @@ import type {
 import type { DebugConnectionProtocol, DebugDeviceTransport } from "@/domain/debugging/types";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
-import type { AppAction } from "@/App";
+import type { AppAction } from "@/application/state/appState";
 import type { DebugParameter, Device, PrototypeState } from "@/domain/prototype/types";
 
 type DebuggingGatewayReadResult = NodeReadResult & { operation?: NodeOperationSnapshot };

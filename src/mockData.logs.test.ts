@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reducer } from "./App";
+import { reducer } from "@/application/state/appState";
 import { initialState } from "./mockData";
 import { SEVERITY_LABELS, STAGE_LABELS, type LogSeverity, type LogStageId } from "@/domain/prototype/types";
 

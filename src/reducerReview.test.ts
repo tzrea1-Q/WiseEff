@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reducer, type AppAction } from "./App";
+import { reducer, type AppAction } from "@/application/state/appState";
 import { initialState } from "./mockData";
 
 const reviewerState = { ...initialState, activeRoleId: "hardware-committer" };

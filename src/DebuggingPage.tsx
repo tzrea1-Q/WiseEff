@@ -1,6 +1,6 @@
 import { Pencil, Search, Send } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AppAction } from "./App";
+import type { AppAction } from "@/application/state/appState";
 import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { OperationHistoryPanel } from "./components/OperationHistoryPanel";

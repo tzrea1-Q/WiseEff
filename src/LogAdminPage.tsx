@@ -16,7 +16,7 @@ import { useTopBarActions } from "@/components/layout";
 import { logRuntimeFailureNotification, type LogRuntimeActions } from "@/application/logs/logRuntime";
 import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { dispatchXiaozeOpenHandoff } from "@/features/agent/xiaozeOpenHandoff";
-import type { AppAction } from "./App";
+import type { AppAction } from "@/application/state/appState";
 
 export type LogAdminPageProps = {
   state: PrototypeState;

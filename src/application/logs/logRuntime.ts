@@ -6,7 +6,7 @@ import type {
   LogRerunInput,
   LogUploadInput
 } from "@/application/ports/LogAnalysisRepository";
-import type { AppAction } from "@/App";
+import type { AppAction } from "@/application/state/appState";
 import type { LogRecord } from "@/domain/logs/types";
 import type { PrototypeState } from "@/domain/prototype/types";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";

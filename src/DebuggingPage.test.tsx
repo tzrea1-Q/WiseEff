@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import App, { appReducer, type AppAction } from "./App";
+import App from "./App";
+import { appReducer, type AppAction } from "@/application/state/appState";
 import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
 import { TopBarActionsContext } from "./components/layout";
 import { DebuggingPage } from "./DebuggingPage";

@@ -1,6 +1,6 @@
 import { CircleX } from "lucide-react";
 import { useEffect, useMemo, useState, type Dispatch } from "react";
-import type { AppAction } from "@/App";
+import type { AppAction } from "@/application/state/appState";
 import type { ParameterPageActions } from "@/app/routes";
 import { buildImportTemplateWorkbook } from "@/application/parameters/import/buildImportTemplate";
 import { parseImportSource } from "@/application/parameters/import/detectImportFormat";

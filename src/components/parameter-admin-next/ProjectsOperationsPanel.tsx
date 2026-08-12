@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type Dispatch } from "react";
-import type { AppAction } from "@/App";
+import type { AppAction } from "@/application/state/appState";
 import { canPerform } from "@/app/permissions";
 import type { ParameterPageActions } from "@/app/routes";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
