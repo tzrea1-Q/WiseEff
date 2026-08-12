@@ -1,76 +1,87 @@
 import { withPgClient } from "./database";
+import {
+  ACCEPTANCE_ORGANIZATION,
+  acceptanceCast,
+  castByRole,
+  type AcceptanceRoleId
+} from "./cast";
 
-const organizationId = "org-chargelab";
+const organizationId = ACCEPTANCE_ORGANIZATION.id;
 
 /** Org-Admin-only actor for PERM-MATRIX (seed-m0 also binds platform-admin on u-xu-yun). */
 export const acceptanceAdminOnlyUser = {
-  userId: "acceptance-role-admin",
-  name: "Acceptance Admin",
-  email: "acceptance.admin@chargelab.cn"
+  userId: acceptanceCast.acceptanceAdmin.userId,
+  name: acceptanceCast.acceptanceAdmin.name,
+  email: acceptanceCast.acceptanceAdmin.email
 } as const;
 
-const acceptanceRoleBindings = [
-  { bindingId: "acceptance-role-guest-binding", userId: "acceptance-role-guest", roleId: "guest" },
-  { bindingId: "acceptance-role-hardware-user-binding", userId: "u-zhao-heng", roleId: "hardware-user" },
-  { bindingId: "acceptance-role-software-user-binding", userId: "u-liu-min", roleId: "software-user" },
-  { bindingId: "acceptance-role-hardware-committer-binding", userId: "u-wang-jie", roleId: "hardware-committer" },
-  { bindingId: "acceptance-role-software-committer-binding", userId: "u-sun-mei", roleId: "software-committer" },
+/**
+ * One org-wide binding per role. Sign-in users come from the shared cast; the admin
+ * binding deliberately uses the synthetic admin-only actor instead of the cast's
+ * default admin (u-xu-yun) so PERM-MATRIX can separate org-admin from platform-admin.
+ */
+const acceptanceRoleBindings: ReadonlyArray<{
+  bindingId: string;
+  userId: string;
+  roleId: AcceptanceRoleId;
+}> = [
+  { bindingId: "acceptance-role-guest-binding", userId: castByRole.guest.userId, roleId: "guest" },
+  {
+    bindingId: "acceptance-role-hardware-user-binding",
+    userId: castByRole["hardware-user"].userId,
+    roleId: "hardware-user"
+  },
+  {
+    bindingId: "acceptance-role-software-user-binding",
+    userId: castByRole["software-user"].userId,
+    roleId: "software-user"
+  },
+  {
+    bindingId: "acceptance-role-hardware-committer-binding",
+    userId: castByRole["hardware-committer"].userId,
+    roleId: "hardware-committer"
+  },
+  {
+    bindingId: "acceptance-role-software-committer-binding",
+    userId: castByRole["software-committer"].userId,
+    roleId: "software-committer"
+  },
   {
     bindingId: "acceptance-role-admin-binding",
     userId: acceptanceAdminOnlyUser.userId,
     roleId: "admin"
   },
-  { bindingId: "acceptance-role-platform-admin-binding", userId: "u-platform-admin", roleId: "platform-admin" }
+  {
+    bindingId: "acceptance-role-platform-admin-binding",
+    userId: castByRole["platform-admin"].userId,
+    roleId: "platform-admin"
+  }
+];
+
+/** Users this seed must upsert itself (the ChargeLab seven come from db:seed:m0). */
+const seededActors = [
+  acceptanceCast.acceptanceGuest,
+  acceptanceCast.acceptanceAdmin,
+  acceptanceCast.platformOperator
 ] as const;
 
 export async function seedAcceptanceRoleMatrix() {
   await withPgClient(async (client) => {
-    await client.query(
-      `
-      insert into users (id, organization_id, name, email, title, is_active)
-      values ($1, $2, 'Acceptance Guest', 'acceptance.guest@chargelab.cn', 'Guest Viewer', true)
-      on conflict (id) do update set
-        organization_id = excluded.organization_id,
-        name = excluded.name,
-        email = excluded.email,
-        title = excluded.title,
-        is_active = excluded.is_active
-      `,
-      ["acceptance-role-guest", organizationId]
-    );
-
-    await client.query(
-      `
-      insert into users (id, organization_id, name, email, title, is_active)
-      values ($1, $2, $3, $4, 'Org Admin', true)
-      on conflict (id) do update set
-        organization_id = excluded.organization_id,
-        name = excluded.name,
-        email = excluded.email,
-        title = excluded.title,
-        is_active = excluded.is_active
-      `,
-      [
-        acceptanceAdminOnlyUser.userId,
-        organizationId,
-        acceptanceAdminOnlyUser.name,
-        acceptanceAdminOnlyUser.email
-      ]
-    );
-
-    await client.query(
-      `
-      insert into users (id, organization_id, name, email, title, is_active)
-      values ($1, $2, 'Platform Operator', 'platform@chargelab.cn', 'Platform Super Admin', true)
-      on conflict (id) do update set
-        organization_id = excluded.organization_id,
-        name = excluded.name,
-        email = excluded.email,
-        title = excluded.title,
-        is_active = excluded.is_active
-      `,
-      ["u-platform-admin", organizationId]
-    );
+    for (const actor of seededActors) {
+      await client.query(
+        `
+        insert into users (id, organization_id, name, email, title, is_active)
+        values ($1, $2, $3, $4, $5, true)
+        on conflict (id) do update set
+          organization_id = excluded.organization_id,
+          name = excluded.name,
+          email = excluded.email,
+          title = excluded.title,
+          is_active = excluded.is_active
+        `,
+        [actor.userId, organizationId, actor.name, actor.email, actor.title]
+      );
+    }
 
     for (const binding of acceptanceRoleBindings) {
       // Keep exactly one org-level role so pickPrimaryPlatformRoleId cannot elevate.

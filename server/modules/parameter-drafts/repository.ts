@@ -5,11 +5,13 @@
  */
 
 import type { Queryable } from "../../shared/database/client";
-import type { ParameterDraftDto, ParameterChangeAction } from "./types";
-import { upsertSemanticDraft } from "./semanticParameterReads";
-import { parameterIdentityMode } from "./parameterIdentityMode";
-import type { BindingWriteLockFields, EnablementWriteLockFields } from "../parameter-topology/writeLock";
-import { addCondition, dateTimeToIso } from "./repositoryShared";
+import type { BindingWriteLockFields, EnablementWriteLockFields, ParameterChangeAction, ParameterDraftDto } from "./types";
+import { upsertSemanticDraft } from "./semanticDraftUpsert";
+// Deferred shared-kernel edge: identity mode stays in parameters until the
+// shared-kernel slice moves it (see ADR-0028); this is the module's only
+// import from a parameter workflow module.
+import { parameterIdentityMode } from "../parameters/parameterIdentityMode";
+import { addCondition, dateTimeToIso } from "../../shared/database/sqlUtil";
 
 export type ParameterWriteLockRow = {
   base_config_revision_id: string | null;

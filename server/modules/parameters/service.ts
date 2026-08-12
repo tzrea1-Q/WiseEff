@@ -60,7 +60,7 @@ import {
   listDraftsForUser,
   promoteBindingDraftCandidateForReview,
   upsertDraft
-} from "./draftRepository";
+} from "../parameter-drafts/repository";
 import { hasOpenFileSyncConflict } from "./fileSyncConflictRepository";
 import {
   applyAddedImportItem,
@@ -111,7 +111,8 @@ import {
 } from "./schemas";
 import { parseDtsImportSource } from "./importDtsParse";
 import { getNextParameterStatus, parameterStatusLabels, type ParameterChangeRequestStatus, type ParameterSubmissionRoundStatus } from "./status";
-import type { ChangeRequestDto, ParameterChangeAction, ParameterImportSourceItemDto, ParameterImportSummaryDto, ParameterModuleDto } from "./types";
+import type { ParameterChangeAction } from "../parameter-drafts/types";
+import type { ChangeRequestDto, ParameterImportSourceItemDto, ParameterImportSummaryDto, ParameterModuleDto } from "./types";
 import { buildSubmissionWorkflowTrail } from "../../../src/domain/parameters/submissionWorkflowTrail";
 import { deriveSubmissionTimeline } from "../../../src/parameterSubmissionTimeline";
 
@@ -2129,7 +2130,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
     if (semanticIdentity) {
       const writeback = isEnablementMerge
         ? await writebackMergedEnablementValue(
-            tx,
+            asAuditTx(tx),
             context.objectStore!,
             auth,
             {
@@ -2142,7 +2143,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
             context
           )
         : await writebackMergedParameterValue(
-            tx,
+            asAuditTx(tx),
             context.objectStore!,
             auth,
             {
@@ -2203,7 +2204,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
 
     if (!semanticIdentity && context.objectStore && request.projectId) {
       await writebackMergedParameterValue(
-        tx,
+        asAuditTx(tx),
         context.objectStore,
         auth,
         {

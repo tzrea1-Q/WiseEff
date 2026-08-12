@@ -12,10 +12,11 @@ import {
 } from "../../../server/modules/parameter-topology/migration";
 import { createDatabase, type Database } from "../../../server/shared/database/client";
 import { applyMigrations } from "../../../server/shared/database/migrations";
+import { ACCEPTANCE_ORGANIZATION, acceptanceCast, chargeLabCast } from "./cast";
 
 const databasePrefix = "wiseeff_acceptance_disposable_";
 const markerPurpose = "parameter-topology";
-const organizationId = "org-chargelab";
+const organizationId = ACCEPTANCE_ORGANIZATION.id;
 const projectId = "aurora";
 const maintenanceToken = "round6-disposable-acceptance-only";
 const migrationsDir = path.resolve(process.cwd(), "server/migrations");
@@ -131,27 +132,18 @@ async function seedAcceptanceScope(db: Database) {
     `insert into organizations (id, name) values ($1, 'ChargeLab')`,
     [organizationId],
   );
-  const users = [
-    ["u-xu-yun", "Xu Yun", "xu@chargelab.cn", "Platform Owner"],
-    ["u-zhao-heng", "Zhao Heng", "zhao@chargelab.cn", "Hardware Engineer"],
-    ["u-liu-min", "Liu Min", "liu@chargelab.cn", "Software Engineer"],
-    ["u-wang-jie", "Wang Jie", "wang@chargelab.cn", "Hardware Reviewer"],
-    ["u-chen-na", "Chen Na", "chen@chargelab.cn", "Software Integrator"],
-    ["u-li-peng", "Li Peng", "lipeng@chargelab.cn", "Hardware Committer"],
-    ["u-sun-mei", "Sun Mei", "sun@chargelab.cn", "Software Reviewer"],
-  ] as const;
-  for (const [id, name, email, title] of users) {
+  for (const member of chargeLabCast) {
     await db.query(
       `insert into users (id, organization_id, name, email, title, is_active)
        values ($1, $2, $3, $4, $5, true)`,
-      [id, organizationId, name, email, title],
+      [member.userId, organizationId, member.name, member.email, member.title],
     );
   }
   await seedBaselinePlatformRoles(db);
   await db.query(
     `insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
-     values ('urb-disposable-admin', 'u-xu-yun', $1, null, 'admin')`,
-    [organizationId],
+     values ('urb-disposable-admin', $2, $1, null, 'admin')`,
+    [organizationId, acceptanceCast.xuYun.userId],
   );
   await db.query(
     `insert into projects (id, organization_id, name, code, status)
@@ -159,11 +151,11 @@ async function seedAcceptanceScope(db: Database) {
     [projectId, organizationId],
   );
   const bindings = [
-    ["u-wang-jie", "hardware-committer"],
-    ["u-li-peng", "hardware-committer"],
-    ["u-sun-mei", "software-committer"],
-    ["u-liu-min", "software-user"],
-    ["u-chen-na", "software-user"],
+    [acceptanceCast.wangJie.userId, "hardware-committer"],
+    [acceptanceCast.liPeng.userId, "hardware-committer"],
+    [acceptanceCast.sunMei.userId, "software-committer"],
+    [acceptanceCast.liuMin.userId, "software-user"],
+    [acceptanceCast.chenNa.userId, "software-user"],
   ] as const;
   for (const [userId, roleId] of bindings) {
     await db.query(

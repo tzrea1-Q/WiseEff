@@ -1,9 +1,8 @@
 import "dotenv/config";
 import { createHmac } from "node:crypto";
-import { spawnSync } from "node:child_process";
 import { expect, test } from "playwright/test";
 
-import { withPgClient } from "./helpers/database";
+import { runNpmScript, withPgClient } from "./helpers/database";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import {
   recordOperationEvidence,
@@ -72,22 +71,6 @@ async function resolveSeededBinding() {
     parameterId = row.id;
     baseCellValue = Number((row.raw_value ?? "<3000>").replace(/[<>]/g, ""));
   });
-}
-
-function runNpmScript(script: string) {
-  const invocation =
-    process.platform === "win32"
-      ? { command: "cmd.exe", args: ["/d", "/s", "/c", `npm run ${script}`] }
-      : { command: "npm", args: ["run", script] };
-  const result = spawnSync(invocation.command, invocation.args, {
-    cwd: process.cwd(),
-    encoding: "utf8",
-    env: process.env
-  });
-
-  if (result.status !== 0) {
-    throw new Error(`npm run ${script} failed with exit code ${result.status}.`);
-  }
 }
 
 function bearerTokenFor(input: {

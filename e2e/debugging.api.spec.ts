@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { Client } from "pg";
 import { expect, test, type Locator, type Page } from "playwright/test";
 import { WebSocket } from "ws";
+import { runNpmScript } from "./acceptance/helpers/database";
 import { apiRoute, smokeHeaders } from "./acceptance/helpers/runtime";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -61,35 +62,6 @@ type HdcSmokeConfig = {
   writeValue: string;
   userId: string;
 };
-
-function runNpmScript(script: string) {
-  const invocation =
-    process.platform === "win32"
-      ? { command: "cmd.exe", args: ["/d", "/s", "/c", `npm run ${script}`] }
-      : { command: "npm", args: ["run", script] };
-  const result = spawnSync(invocation.command, invocation.args, {
-    cwd: process.cwd(),
-    encoding: "utf8",
-    env: process.env
-  });
-
-  if (result.status !== 0) {
-    const stdout = typeof result.stdout === "string" ? result.stdout.trim() : "";
-    const stderr = typeof result.stderr === "string" ? result.stderr.trim() : "";
-    const errorDetails = result.error
-      ? `child_process error: ${result.error.code ?? "unknown"} ${result.error.message ?? ""}`.trimEnd()
-      : "";
-
-    throw new Error(
-      [
-        `npm run ${script} failed with exit code ${result.status}.`,
-        stdout,
-        stderr,
-        errorDetails
-      ].filter(Boolean).join("\n")
-    );
-  }
-}
 
 function runTsxScript(scriptPath: string) {
   const result = spawnSync("npx", ["tsx", scriptPath], {

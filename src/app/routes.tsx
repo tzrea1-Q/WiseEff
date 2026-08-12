@@ -22,6 +22,8 @@ import type { createParameterDashboardRuntime } from "@/application/parameters/p
 import type { DebuggingRuntimeActions } from "@/application/debugging/debuggingRuntime";
 import type { LogRuntimeActions } from "@/application/logs/logRuntime";
 import type { KnowledgeCapability } from "@/domain/knowledge/rules";
+import { resolveDtsReloadRepository } from "@/application/dts-reload/dtsReloadRuntime";
+import { createMockDtsReloadBridgeSeams } from "@/infrastructure/mock/mockDtsReloadRepository";
 import type { AppAction } from "@/application/state/appState";
 import type { AppRuntime } from "@/app/appRuntime";
 import type { DashboardWindow, HotspotDimension, OverviewScope } from "@/domain/parameters/dashboardTypes";
@@ -90,6 +92,16 @@ export type PageProps = {
   onDashboardProjectChange?: (projectId: string | null) => void;
 };
 
+/**
+ * Stable mock bridge seams for `/dts-reload` in mock mode. Created once so re-renders do
+ * not churn the LocalDeviceBridgePanel override identities (and thus its refresh effect).
+ */
+let cachedMockDtsReloadBridgeSeams: ReturnType<typeof createMockDtsReloadBridgeSeams> | null = null;
+function mockDtsReloadBridgeSeams() {
+  cachedMockDtsReloadBridgeSeams ??= createMockDtsReloadBridgeSeams();
+  return cachedMockDtsReloadBridgeSeams;
+}
+
 export type PageRouterProps = PageProps & {
   page: PageConfig;
   onNewProject?: () => void;
@@ -126,7 +138,7 @@ export function PageRouter({
   const listParameterConfigSets = runtime?.listParameterConfigSets;
   const productFeedbackRepository = runtime?.productFeedbackRepository;
   const knowledgeRepository = runtime?.knowledgeRepository;
-  const dtsReloadRepository = runtime?.dtsReloadRepository ?? null;
+  const dtsReloadRepository = runtime?.dtsReloadRepository;
   const userGovernanceActions = runtime?.userGovernanceActions;
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
   const searchProjectId = new URLSearchParams(search).get("project") ?? "";
@@ -281,36 +293,38 @@ export function PageRouter({
           runtimeReady={runtimeMode === "api" ? debuggingRuntimeReady : true}
         />
       );
-    case "dts-reload":
+    case "dts-reload": {
+      const mockSeams = runtimeMode === "api" ? null : mockDtsReloadBridgeSeams();
       return (
         <DtsReloadPage
           projects={state.configDraft.projects.map((project) => ({ id: project.id, name: project.name }))}
           initialProjectId={state.activeProjectId}
-          repository={runtimeMode === "api" ? dtsReloadRepository ?? null : null}
-          canStartRun={runtimeMode === "api" && canStartDtsReload}
-          unavailableReason={
-            runtimeMode === "api"
-              ? undefined
-              : "该页面仅在 API 模式下可用。Mock 运行时不提供参数调试。"
-          }
+          repository={dtsReloadRepository ?? resolveDtsReloadRepository(runtimeMode)}
+          canStartRun={canStartDtsReload}
+          bridges={mockSeams?.bridges}
+          probeBridgeHealth={mockSeams?.probeBridgeHealth}
+          createBridgePairingCode={mockSeams?.createPairingCode}
           detectTargets={
-            runtimeMode === "api" && debuggingGateway
-              ? async (protocol) => {
-                  const targets = await debuggingGateway.detectTargets({ protocol });
-                  return targets
-                    .filter((target) => Boolean(target.targetRef?.trim()))
-                    .map((target) => ({
-                      targetRef: target.targetRef!.trim(),
-                      label: target.bridgeMachineLabel?.trim()
-                        ? `${target.bridgeMachineLabel.trim()} · ${target.targetRef!.trim()}`
-                        : target.label || target.targetRef!.trim(),
-                      bridgeId: target.bridgeId
-                    }));
-                }
-              : undefined
+            mockSeams
+              ? mockSeams.detectTargets
+              : debuggingGateway
+                ? async (protocol) => {
+                    const targets = await debuggingGateway.detectTargets({ protocol });
+                    return targets
+                      .filter((target) => Boolean(target.targetRef?.trim()))
+                      .map((target) => ({
+                        targetRef: target.targetRef!.trim(),
+                        label: target.bridgeMachineLabel?.trim()
+                          ? `${target.bridgeMachineLabel.trim()} · ${target.targetRef!.trim()}`
+                          : target.label || target.targetRef!.trim(),
+                        bridgeId: target.bridgeId
+                      }));
+                  }
+                : undefined
           }
         />
       );
+    }
     case "debugging-admin": {
       const area =
         page.path === "/debugging-admin/nodes" || page.path.startsWith("/debugging-admin/nodes/")

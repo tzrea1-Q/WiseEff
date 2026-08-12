@@ -213,7 +213,7 @@ type AppProps = {
   listParameterConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   productFeedbackRepository?: ProductFeedbackRepository;
   knowledgeRepository?: KnowledgeRepository;
-  dtsReloadRepository?: DtsReloadRepository | null;
+  dtsReloadRepository?: DtsReloadRepository;
   runtimeMode?: WiseEffRuntimeMode;
   userGovernanceActions?: UserGovernanceActions;
 };
@@ -284,7 +284,7 @@ function AppShell({
   parameterInitializationRepository?: ParameterInitializationRepository;
   productFeedbackRepository?: ProductFeedbackRepository;
   knowledgeRepository?: KnowledgeRepository;
-  dtsReloadRepository?: DtsReloadRepository | null;
+  dtsReloadRepository?: DtsReloadRepository;
   runtimeMode: WiseEffRuntimeMode;
   userGovernanceActions?: UserGovernanceActions;
 }) {
@@ -398,7 +398,9 @@ function AppShell({
     }),
     [apiAuthPermissions, currentRoleId, runtimeMode, state.currentUserId]
   );
-  const canStartDtsReload = runtimeMode === "api" && apiAuthPermissions.includes("debugging:dts-reload");
+  // Mock mode is a data-source substitution (ADR-0002): the demo account may start runs.
+  const canStartDtsReload =
+    runtimeMode === "api" ? apiAuthPermissions.includes("debugging:dts-reload") : true;
   const parameterActions = useMemo<ParameterRuntimeActions>(
     () =>
       createParameterRuntimeActions({

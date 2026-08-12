@@ -14,7 +14,7 @@ describe("createAppRuntime", () => {
     const runtime = createAppRuntime("api", deps());
 
     expect(runtime.logAnalysisRepository).toBeDefined();
-    expect(runtime.dtsReloadRepository).not.toBeNull();
+    expect(runtime.dtsReloadRepository).toBeDefined();
     expect(runtime.debuggingGateway).toBeDefined();
     expect(runtime.debuggingAdminClient).toBeDefined();
     expect(runtime.userGovernanceActions).toBeDefined();
@@ -24,7 +24,6 @@ describe("createAppRuntime", () => {
     const runtime = createAppRuntime("mock", deps());
 
     expect(runtime.logAnalysisRepository).toBeUndefined();
-    expect(runtime.dtsReloadRepository).toBeNull();
     expect(runtime.debuggingGateway).toBeUndefined();
     expect(runtime.debuggingAdminClient).toBeUndefined();
     expect(runtime.userGovernanceActions).toBeUndefined();
@@ -32,18 +31,21 @@ describe("createAppRuntime", () => {
     expect(runtime.productFeedbackRepository).toBeDefined();
     expect(runtime.knowledgeRepository).toBeDefined();
     expect(runtime.parameterDashboardRepository).toBeDefined();
+    // ADR-0002: mock mode substitutes the data source, so DTS reload stays available.
+    expect(runtime.dtsReloadRepository).toBeDefined();
   });
 
-  it("prefers overrides over mode selection, including null dtsReloadRepository", () => {
+  it("prefers overrides over mode selection", () => {
     const parameterRepository = { marker: "override" } as never;
+    const dtsReloadRepository = { marker: "reload-override" } as never;
     const runtime = createAppRuntime("api", deps(), {
       parameterRepository,
-      dtsReloadRepository: null,
+      dtsReloadRepository,
       listParameterConfigSets: async () => []
     });
 
     expect(runtime.parameterRepository).toBe(parameterRepository);
-    expect(runtime.dtsReloadRepository).toBeNull();
+    expect(runtime.dtsReloadRepository).toBe(dtsReloadRepository);
     expect(runtime.listParameterConfigSets).toBeDefined();
   });
 

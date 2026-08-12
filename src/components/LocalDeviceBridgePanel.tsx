@@ -53,6 +53,8 @@ export type LocalDeviceBridgePanelProps = {
   bridgesOverride?: DeviceBridgeRecord[] | null;
   listBridges?: () => Promise<DeviceBridgeRecord[]>;
   probeHealth?: () => Promise<LocalBridgeProbeResult>;
+  /** Pairing-code seam for non-API runtimes; defaults to the HTTP client. */
+  createPairingCode?: () => Promise<DeviceBridgePairingCode>;
   onBridgeStateChange?: (state: LocalDeviceBridgePanelState) => void;
 };
 
@@ -64,6 +66,7 @@ export function LocalDeviceBridgePanel({
   bridgesOverride,
   listBridges,
   probeHealth,
+  createPairingCode: createPairingCodeProp,
   onBridgeStateChange
 }: LocalDeviceBridgePanelProps) {
   const [checking, setChecking] = useState(false);
@@ -267,7 +270,7 @@ export function LocalDeviceBridgePanel({
 
     let cancelled = false;
     setPairingCodeLoading(true);
-    void createPairingCode()
+    void (createPairingCodeProp ?? createPairingCode)()
       .then((code) => {
         if (!cancelled) {
           setPairingCode(code);
@@ -287,7 +290,7 @@ export function LocalDeviceBridgePanel({
     return () => {
       cancelled = true;
     };
-  }, [panelStatus, pairingStale, pairingAuthFailure, health]);
+  }, [panelStatus, pairingStale, pairingAuthFailure, health, createPairingCodeProp]);
 
   const handleRenameBridge = async (bridge: DeviceBridgeRecord) => {
     const draft = (renameDraftById[bridge.id] ?? bridge.machineLabel).trim();

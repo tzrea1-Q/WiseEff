@@ -9,6 +9,7 @@
 import type { AuthContext } from "../auth/types";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import type { BindingWriteLockFields, EnablementWriteLockFields } from "../parameter-drafts/types";
 import { getConfigRevisionById } from "./repository";
 
 export type BindingDraftWriteTarget = {
@@ -26,16 +27,6 @@ export type BindingDraftWriteTarget = {
   targetRef?: string;
 };
 
-/** Persisted on drafts/change requests for exact merge writeback identity. */
-export type BindingWriteLockFields = {
-  baseConfigRevisionId: string;
-  bindingRevisionId: string;
-  propertyOccurrenceId?: string | null;
-  sourceFileVersionId: string;
-  expectedChecksum: string;
-  occurrenceSpan?: { start: number; end: number } | null;
-};
-
 export type BindingWriteLockContext = BindingWriteLockFields & {
   propertyKey: string;
   targetRef: string;
@@ -45,9 +36,6 @@ export type BindingWriteLockContext = BindingWriteLockFields & {
   overlayFileName: string;
   overlayFileVersionId: string;
 };
-
-/** Enablement write locks omit bindingRevisionId — status is not a binding. */
-export type EnablementWriteLockFields = Omit<BindingWriteLockFields, "bindingRevisionId">;
 
 export type EnablementWriteLockContext = EnablementWriteLockFields & {
   propertyKey: "status";

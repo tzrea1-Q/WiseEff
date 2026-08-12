@@ -7,6 +7,7 @@ import type { ParameterInitializationRepository } from "@/application/ports/Para
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
+import { resolveDtsReloadRepository } from "@/application/dts-reload/dtsReloadRuntime";
 import { resolveParameterInitializationRepository } from "@/application/parameters/parameterInitializationRuntime";
 import { resolveParameterTopologyRepository } from "@/application/parameters/parameterTopologyResolve";
 import type { PrototypeState } from "@/domain/prototype/types";
@@ -21,7 +22,6 @@ import {
 } from "@/infrastructure/http/authClient";
 import { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
 import { createHttpDebuggingGateway } from "@/infrastructure/http/debuggingClient";
-import { createHttpDtsReloadRepository } from "@/infrastructure/http/dtsReloadClient";
 import { createHttpKnowledgeRepository } from "@/infrastructure/http/knowledgeClient";
 import { createHttpLogAnalysisRepository } from "@/infrastructure/http/logClient";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
@@ -57,7 +57,7 @@ export type AppRuntime = {
   logAnalysisRepository?: LogAnalysisRepository;
   productFeedbackRepository: ProductFeedbackRepository;
   knowledgeRepository: KnowledgeRepository;
-  dtsReloadRepository: DtsReloadRepository | null;
+  dtsReloadRepository: DtsReloadRepository;
   parameterInitializationRepository: ParameterInitializationRepository;
   debuggingGateway?: DebuggingGateway;
   debuggingAdminClient?: ReturnType<typeof createDebuggingAdminClient>;
@@ -93,12 +93,7 @@ export function createAppRuntime(
       (api ? createHttpProductFeedbackRepository() : createMockProductFeedbackRepository()),
     knowledgeRepository:
       overrides.knowledgeRepository ?? (api ? createHttpKnowledgeRepository() : createMockKnowledgeRepository()),
-    dtsReloadRepository:
-      overrides.dtsReloadRepository !== undefined
-        ? overrides.dtsReloadRepository
-        : api
-          ? createHttpDtsReloadRepository()
-          : null,
+    dtsReloadRepository: overrides.dtsReloadRepository ?? resolveDtsReloadRepository(mode),
     parameterInitializationRepository:
       overrides.parameterInitializationRepository ?? resolveParameterInitializationRepository(mode),
     debuggingGateway: overrides.debuggingGateway ?? (api ? createHttpDebuggingGateway() : undefined),

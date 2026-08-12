@@ -9,7 +9,7 @@ import {
   bindParameterSource,
   findProjectValueBySource
 } from "../parameters/repository";
-import { upsertFileSyncDraft } from "../parameters/draftRepository";
+import { upsertFileSyncDraft } from "../parameter-drafts/repository";
 import { setParameterIdentityMode } from "../parameters/parameterIdentityMode";
 
 vi.mock("./repository", () => ({
@@ -26,7 +26,7 @@ vi.mock("../parameters/repository", () => ({
   bindParameterSource: vi.fn()
 }));
 
-vi.mock("../parameters/draftRepository", () => ({
+vi.mock("../parameter-drafts/repository", () => ({
   upsertFileSyncDraft: vi.fn()
 }));
 
