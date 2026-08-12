@@ -1,5 +1,6 @@
 import { Check, Info } from "lucide-react";
 import type { ReactNode } from "react";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 
 export const riskLabels: Record<"High" | "Medium" | "Low", string> = {
   High: "高",
@@ -92,5 +93,28 @@ export function EmptyState({ text }: { text: string }) {
       <Info size={20} />
       {text}
     </div>
+  );
+}
+
+export function PanelHeader({ title, meta }: { title: ReactNode; meta?: string }) {
+  return (
+    <div className="panel-header">
+      <strong>{title}</strong>
+      {meta ? <span>{meta}</span> : null}
+    </div>
+  );
+}
+
+export function EmptyStateCard({ text }: { text: string }) {
+  return (
+    <Empty className="empty-state">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <Info size={20} />
+        </EmptyMedia>
+        <EmptyTitle>暂无内容</EmptyTitle>
+        <EmptyDescription>{text}</EmptyDescription>
+      </EmptyHeader>
+    </Empty>
   );
 }

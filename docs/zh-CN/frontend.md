@@ -16,6 +16,8 @@ WiseEff 前端是 Vite、React、TypeScript 单页应用。它同时支持 mock 
 - `src/infrastructure/http/`：HTTP API client、DTO、auth client、runtime mode。
 - `src/components/`：复用 UI、表格、弹窗、过滤器、图表。
 - `src/features/agent/`：Xiaoze（小泽）CopilotKit 表面（`XiaozeProvider`、`useXiaozePageContext`、`XiaozeApprovalCard`、前端工具）。
+- `src/features/log-analysis/`：`LogsPage`（上传、结论卡、证据链、原始日志查看器）与 `LogDashboardPage`。
+- `src/features/parameter-review/`：`ParameterReviewPage`、`ParameterSubmissionsPage`、提交历史 diff 与评审专用 UI 原子。
 - `src/features/product-feedback/`：侧边栏 `FeedbackDialog` 与 `/feedback-admin` 反馈处理 UI。
 - `src/features/knowledge/`：知识库页面（`/knowledge` 与 `/knowledge-admin`:列表、分栏编辑器、文件上传、修订历史）。
 - `src/test/setup.ts`：Vitest DOM 初始化。
