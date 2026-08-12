@@ -24,6 +24,10 @@ export type KnowledgeEntry = {
   status: KnowledgeStatus;
   tags: string[];
   sourceType: KnowledgeSourceType;
+  /** Xiaoze session that distilled this entry (agent-sourced drafts only). */
+  sourceSessionId: string | null;
+  /** Log-analysis record this entry was distilled from, if any. */
+  sourceLogId: string | null;
   createdByUserId: string;
   headRevisionNumber: number;
   createdAt: string;

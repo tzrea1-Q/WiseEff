@@ -18,7 +18,9 @@ Extract two cohesive modules from `editService.ts`, keeping every moved function
 
 `editService.ts` keeps draft creation (`createBindingDraft`, `createNodeEnablementDraft`), the draft DTO types, `resolveInitializationSuggestion`, `unchangedSourceBytes` (a draft-result assertion helper used only by tests — verified not part of the writeback pipeline), `assertCandidateToolchainRelease`, and draft-only private helpers. It imports the moved pieces from the two new modules.
 
-Shared helpers were sunk into the new modules (rather than left behind) so runtime dependencies stay acyclic: `editService → overlayWriteback → writeLock → (repository, shared)`. The only references back into `editService.ts` are compile-time-erased `import type` lines (`BindingDraftWriteTarget`, `BindingEditAction`, `CreateBindingDraftDeps`), which is why `loadLogicalNodeEnablementContext` had to move to `writeLock.ts` instead of staying behind.
+Shared helpers were sunk into the new modules (rather than left behind) so runtime dependencies stay acyclic: `editService → overlayWriteback → writeLock → (repository, shared)`. At merge time the only references back into `editService.ts` were compile-time-erased `import type` lines (`BindingDraftWriteTarget`, `BindingEditAction`, `CreateBindingDraftDeps`), which is why `loadLogicalNodeEnablementContext` had to move to `writeLock.ts` instead of staying behind.
+
+**Follow-up done (2026-08-12, `refactor/parameters-repository-split-2`):** the three types were re-homed — `BindingDraftWriteTarget` to `writeLock.ts` (its producer via `resolveWriteTarget`), `BindingEditAction` and `CreateBindingDraftDeps` to `overlayWriteback.ts` (their primary consumer). `writeLock.ts` and `overlayWriteback.ts` now import nothing from `editService.ts`; `editService.ts`, `parameter-topology/service.ts`, and `parameter-files/writebackService.ts` import the types from their new homes. The type graph matches the runtime graph: `editService → overlayWriteback → writeLock`, no back-references.
 
 No compatibility re-exports: every importer was repointed. Updated import sites:
 

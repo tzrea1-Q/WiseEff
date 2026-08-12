@@ -5352,6 +5352,152 @@
         }
       }
     },
+    "/api/v1/log-domains": {
+      "get": {
+        "operationId": "logs.listDomains",
+        "summary": "List log domains",
+        "tags": [
+          "logs"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogDomainListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "post": {
+        "operationId": "logs.createDomain",
+        "summary": "Create a log domain",
+        "tags": [
+          "logs"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLogDomainRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogDomainResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/log-domains/{domainId}": {
+      "patch": {
+        "operationId": "logs.updateDomain",
+        "summary": "Update a log domain",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "domainId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLogDomainRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogDomainResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/log-domains/{domainId}/archive": {
+      "post": {
+        "operationId": "logs.archiveDomain",
+        "summary": "Archive a log domain",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "domainId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogDomainResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/product-feedback": {
       "post": {
         "operationId": "productFeedback.create",
@@ -5571,6 +5717,49 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/distill-from-log": {
+      "post": {
+        "operationId": "knowledge.distillFromLog",
+        "summary": "Distil a completed log-analysis record into a pre-filled knowledge draft (knowledge:edit plus logs:view on the source record); the draft stays out of retrieval until published",
+        "tags": [
+          "knowledge"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DistillKnowledgeFromLogRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeEntryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -5940,6 +6129,49 @@
       "post": {
         "operationId": "knowledge.restoreEntry",
         "summary": "Restore an archived knowledge entry to published",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "entryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeEntryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/entries/{entryId}/reject": {
+      "post": {
+        "operationId": "knowledge.rejectAgentDraft",
+        "summary": "Archive-reject an agent-sourced knowledge draft from the publish queue (entry owner with knowledge:edit, or knowledge:manage)",
         "tags": [
           "knowledge"
         ],
@@ -10269,6 +10501,22 @@
         "type": "object",
         "x-wiseeff-schema": "LogFeedbackResponse"
       },
+      "LogDomainListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "LogDomainListResponse"
+      },
+      "CreateLogDomainRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "CreateLogDomainRequest"
+      },
+      "LogDomainResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "LogDomainResponse"
+      },
+      "UpdateLogDomainRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "UpdateLogDomainRequest"
+      },
       "CreateProductFeedbackRequest": {
         "type": "object",
         "x-wiseeff-schema": "CreateProductFeedbackRequest"
@@ -10301,6 +10549,10 @@
       "KnowledgeEntryListResponse": {
         "type": "object",
         "x-wiseeff-schema": "KnowledgeEntryListResponse"
+      },
+      "DistillKnowledgeFromLogRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "DistillKnowledgeFromLogRequest"
       },
       "KnowledgeSearchResponse": {
         "type": "object",

@@ -18,6 +18,7 @@ Use the narrowest command that proves the change while developing. Before finish
 | `npm run test:all` | Frontend, script, device-bridge, and backend unit suites | Shared contracts or broad behavior. |
 | `npm run build` | TypeScript and Vite production build | TypeScript, routing, shared type, or package changes. |
 | `npm run docs:check` | Documentation governance | Any non-trivial plan or documentation structure change. |
+| `npm run logs:eval` | Log-analysis behavior-layer eval (deterministic fake models; CI-gated): grounding, honest degradation marking, analysis-question injection, prompt-version recording, meta self-checks | After changing the log-analysis prompt, `llmAnalyzer`, prefilter, degradation chain, or eval scenarios. Writes `docs/generated/log-analysis-eval.{json,md}`. |
 | `git diff --check` | Whitespace safety | Before committing or handing off. |
 | `npm run dtc:check -- --required` | A real Device Tree Compiler is present on PATH | Before M1 seeding, DTS validation work, or self-hosted image acceptance. |
 | `npm run dtc:seed:compile` | All three committed project seed overlays compile with real `dtc -@` | After changing DTS fixtures, seed generation, validation, or dtc deployment wiring. |

@@ -26,6 +26,7 @@ Expand lazily via `/domain-modeling` when terms are resolved. Prefer terms from 
 | Parameter surface | Manageable parameter rows bound to topology, not raw DTS paths alone |
 | Project-primary DTS | One uploaded DTS per project; merges update that file |
 | Binding | Stable link between a parameter row and topology/schema identity |
+| Parameter draft | A user's staged pending change (binding value or node enablement) held in `parameter_drafts` between editing and submission. Editing writes drafts, submission/review reads them, so the staging area is a standalone module (`server/modules/parameter-drafts/`) both workflows depend on (ADR-0028) |
 | Xiaoze | WiseEff Agent assistant surface in the product |
 | Parameter admin | Governance surface for parameter specs, review queues, module/driver mappings, project files, config sets, and baselines. Does not own everyday binding edits |
 | Parameter workbench | Everyday surface where users read topology and propose binding changes. Does not own governance queues or catalog upkeep |
@@ -142,3 +143,4 @@ Architectural decisions: [`docs/adr/`](docs/adr/) (created lazily). Feature-scop
 - [`0025`](docs/adr/0025-knowledge-retrieval-lives-in-postgres.md) — knowledge retrieval lives in PostgreSQL (pgvector + FTS degradation)
 - [`0026`](docs/adr/0026-design-tokens-are-the-single-visual-source.md) — design tokens are the single visual source
 - [`0027`](docs/adr/0027-audit-events-commit-with-their-domain-write.md) — audit events commit in the same transaction as their domain write
+- [`0028`](docs/adr/0028-parameter-drafts-are-a-standalone-staging-module.md) — parameter drafts are a standalone staging module

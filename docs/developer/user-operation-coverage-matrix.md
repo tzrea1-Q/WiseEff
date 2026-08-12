@@ -17,6 +17,8 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `KB-FILE-001` | P1 | knowledge | automated | `/knowledge` | Hardware User | ui, api, db, audit | `e2e/acceptance/knowledge.acceptance.spec.ts` |
 | `KB-ASK-001` | P1 | knowledge | automated | `/knowledge` | Hardware User | ui, api | `e2e/acceptance/knowledge.acceptance.spec.ts` |
 | `KB-INDEX-001` | P1 | knowledge | automated | `/knowledge-admin` | Admin | ui, api, db | `e2e/acceptance/knowledge.acceptance.spec.ts` |
+| `KB-DISTILL-001` | P1 | knowledge | automated | `/logs` | Hardware User | ui, api, db, audit | `e2e/acceptance/knowledge.acceptance.spec.ts` |
+| `KB-ADMIN-001` | P1 | knowledge | automated | `/knowledge-admin` | Admin | ui, api, db, audit | `e2e/acceptance/knowledge.acceptance.spec.ts` |
 | `SHELL-DIAG-001` | P0 | shell | automated | `core routes` | Admin | ui | `e2e/acceptance/shell-navigation.acceptance.spec.ts` |
 | `PARAM-REASON-001` | P0 | parameters | automated | `/parameters` | Hardware User | ui | `e2e/acceptance/parameters-negative.acceptance.spec.ts` |
 | `PARAM-ASSIGNEE-001` | P0 | parameters | automated | `/parameters` | Software User | ui | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
@@ -55,6 +57,8 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `PARAM-REJECT-001` | P1 | parameters | automated | `/parameter-review` | Hardware Committer, Software Committer | ui, api, db, audit | `e2e/acceptance/parameters.acceptance.spec.ts` |
 | `LOG-HAPPY-001` | P0 | logs | automated | `/logs` | Software User, Software Committer, Admin | ui, api, db, audit | `e2e/acceptance/log-analysis.acceptance.spec.ts` |
 | `LOG-REANALYZE-001` | P1 | logs | automated | `/logs` | Software User, Software Committer, Admin | ui, api, db, audit | `e2e/acceptance/log-analysis.acceptance.spec.ts` |
+| `LOG-DOMAIN-001` | P1 | logs | automated | `/log-admin` | Admin | ui, api, db, audit | `e2e/acceptance/log-analysis.acceptance.spec.ts` |
+| `LOG-DEGRADED-001` | P1 | logs | automated | `/logs` | Software User, Software Committer, Admin | ui, api, db | `e2e/acceptance/log-analysis.acceptance.spec.ts` |
 | `DEBUG-SIM-001` | P0 | debugging | automated | `/node-debugging` | Hardware Committer, Admin | ui, api, db, audit | `e2e/acceptance/debugging-simulator.acceptance.spec.ts` |
 | `DEBUG-PERM-001` | P1 | debugging | automated | `/node-debugging` | Guest, Hardware User, Software User | ui, api | `e2e/acceptance/debugging-simulator.acceptance.spec.ts` |
 | `DEBUG-ADMIN-001` | P1 | debugging | automated | `/debugging-admin/nodes` | Admin | ui, api, db, audit | `e2e/acceptance/debugging-admin.acceptance.spec.ts` |

@@ -8,7 +8,7 @@ WiseEff 前端是 Vite、React、TypeScript 单页应用。它同时支持 mock 
 
 ## 关键目录
 
-- `src/app/`：路由、导航、权限和页面装配。
+- `src/app/`：路由、导航、权限、页面装配，以及组合根 `appRuntime.ts`——`createAppRuntime` 按运行时模式一次性选好全部适配器，页面经 `PageProps.runtime` 接收。
 - `src/domain/`：角色、参数、日志、调试、审计、Agent 的类型和纯规则。
 - `src/application/state/`：全局原型状态机——`AppAction`、`reducer`/`appReducer` 与仅供 reducer 使用的迁移助手。状态类型一律从这里导入，禁止从 `@/App` 导入（ADR-0023）。
 - `src/application/ports/`：前端调用业务能力的接口。
@@ -173,8 +173,8 @@ mock mode 有意保留 12 个兼容参数，以保证组件测试与演示轻量
 
 日志分析：
 
-- `/logs`：上传日志、轮询任务、展示报告和证据。「反馈分析质量」对话框在 API 模式下经 `submitFeedback`（`POST /api/v1/logs/:id/feedback`）真实落库：评级映射高→`helpful`、其余→`not_helpful`，问题描述作为 `note`；对话框带提交中/内联错误态，服务端接受后才关闭（mock 模式保留本地通知）。
-- `/log-admin`：反馈、归档、重跑、治理操作。新增「已归档」视图（经 `refresh({ includeArchived: true })` 加载）并提供行内「恢复」，归档随时可逆；归档后的撤销窗口延长为 10 秒。
+- `/logs`：上传日志、轮询任务、展示报告和证据。上传弹窗含可选「业务域」下拉（API mode 经 `logActions.listLogDomains()` 拉取活跃域；默认「未分类（通用分析）」，域选择绝不阻塞上传；mock mode 仅显示默认项）。结论卡按 additive 的 `analysisSource` / `degradedReason` 渲染来源徽标：`rules-fallback` 显示醒目的琥珀色「降级分析 · 规则回退」徽标与原因说明，`agent` 显示轻量「Agent 分析」徽标，绑定业务域时显示业务域标签；无来源的历史规则报告不渲染徽标。任务轮询改为自适应退避（1s×30 → 2s×45 → 5s，计划轮询总时长上限约 5 分钟，对齐 p95 ≤ 3min SLO 加余量），并保留按日志的 generation 守卫。「反馈分析质量」对话框在 API 模式下经 `submitFeedback`（`POST /api/v1/logs/:id/feedback`）真实落库：评级映射高→`helpful`、其余→`not_helpful`，问题描述作为 `note`；对话框带提交中/内联错误态，服务端接受后才关闭（mock 模式保留本地通知）。
+- `/log-admin`：反馈、归档、重跑、治理操作；新增「业务域治理」区（列表 + 新建/编辑表单 + 画像 JSON 校验 + 归档），前端按 `logs.admin-domains`（Admin）门控，后端路由强制真实 `logs:admin-domains` 权限；`LogRecordDrawer` 同样展示来源/降级徽标。新增「已归档」视图（经 `refresh({ includeArchived: true })` 加载）并提供行内「恢复」，归档随时可逆；归档后的撤销窗口延长为 10 秒。
 
 产品反馈：
 
@@ -185,15 +185,16 @@ mock mode 有意保留 12 个兼容参数，以保证组件测试与演示轻量
 知识库：
 
 - `/knowledge`（侧栏分组「知识库」）：条目列表用共享 `ColumnFilter` 做状态/标签列筛选;检索框只命中 `published` 条目,结果如实标注检索模式（语义 + 全文 vs 仅全文）;分栏编辑/预览的 Markdown 编辑器（`src/domain/knowledge/markdown.ts` 先转义再渲染）;文件条目上传后展示提取状态徽章;修订历史支持「恢复为新修订」。API 模式额外提供「问知识库(小泽)」入口,派发小泽打开 handoff——mock 模式无 Agent UI,入口隐藏。`?entryId=…` 深链（小泽引用使用）直接打开条目详情。
-- `/knowledge-admin`：已归档条目恢复、manage 门控的彻底删除（带确认勾选的 `ConfirmDialog`）,以及检索索引健康区——诚实的检索模式横幅（pgvector/嵌入可用性）、逐条目索引状态与失败原因、单条重试与全量重建。Agent 草稿队列在蒸馏阶段加入。
-- 端口 `KnowledgeRepository`:mock 用 `src/infrastructure/mock/mockKnowledgeRepository.ts`（fixtures 覆盖草稿/已发布/已归档与提取失败文件,并模拟索引状态,端口形状一致）;API 用 `src/infrastructure/http/knowledgeClient.ts` 对接 `/api/v1/knowledge/*`（含 `index/status`、`index/rebuild`、`entries/:id/index/retry`）。过期保存映射为 `KnowledgeRevisionConflictError`,编辑器渲染为可读的刷新重试冲突提示,绝不静默覆盖。
+- `/knowledge-admin`：Agent 草稿发布队列（Phase 3）——`list({ status: "draft", sourceType: "agent" })` 行含创建人、会话来源、来源分析深链（`/logs?logId=…`）与创建时间;逐行审阅（`/knowledge?entryId=…`）、发布、以及 `ConfirmDialog` 确认后的拒绝归档（`rejectAgentDraft`）;另有已归档条目恢复、manage 门控的彻底删除（带确认勾选的 `ConfirmDialog`）,以及检索索引健康区——诚实的检索模式横幅（pgvector/嵌入可用性）、逐条目索引状态与失败原因、单条重试与全量重建。
+- 沉淀为知识（Phase 3）:日志分析结果页（`src/features/log-analysis/LogsPage.tsx`）在分析完成且用户持有 `knowledge:edit` 时显示「沉淀为知识」;点击调用 `KnowledgeRepository.distillFromLog(logId)`,随后经 `/knowledge?entryId=…` 深链交接到草稿详情审阅并发布。mock 模式用 `src/domain/knowledge/distill.ts` 从原型日志记录构建同样的预填草稿（端口形状一致）;服务端预填只耦合已存储的分析记录 DTO。
+- 端口 `KnowledgeRepository`:mock 用 `src/infrastructure/mock/mockKnowledgeRepository.ts`（fixtures 覆盖草稿/已发布/已归档、提取失败文件与两条 Agent 草稿队列态,并模拟索引状态,端口形状一致）;API 用 `src/infrastructure/http/knowledgeClient.ts` 对接 `/api/v1/knowledge/*`（含 `distill-from-log`、`entries/:id/reject`、`index/status`、`index/rebuild`、`entries/:id/index/retry`）。过期保存映射为 `KnowledgeRevisionConflictError`,编辑器渲染为可读的刷新重试冲突提示,绝不静默覆盖。
 - 能力接线:`App.tsx` 由 `/api/v1/me` 权限（API mode 的 `knowledge:edit` / `knowledge:manage`）或角色检查（mock mode）构造 `KnowledgeCapability`;UI 门控仅是 UX,后端路由才是安全边界。纯生命周期/可见性规则在 `src/domain/knowledge/rules.ts`。
 - 小泽回答在助手 markdown 下渲染引用来源（`src/features/agent/XiaozeCitationSources.tsx`）：turn-reply 自定义事件与持久化线程消息携带 `citations`,知识引用深链到 `/knowledge?entryId=…`。
 
 设备调试：
 
 - `/node-debugging`：通过 API mode gateway 读写节点、生成快照和审计（当前主入口）。
-- `/dts-reload`：参数调试（产品名；技术能力仍为 DTS overlay 重载，与已退役的「参数重载」无关）。壳层与 `/node-debugging` 同族 workbench 节奏（`workbench-page` / `workbench-one-col`）：表前协议切换与共享 `LocalDeviceBridgePanel`（安装/配对/连接向导）、多目标时同款 `bridge-target-picker`（`targetRef`/`deviceId` 由 Bridge 检测与所选代理推导，不再单独放部署目标卡）、候选区 **左模块导航 + 右表**（复用参数修改页的 `DtsTopologyNavigator` 与 `buildModuleTree`：模块注册表嵌套 + `groupByDevice` 器件层，可展开树状；选中节点按子树 binding 过滤表格；表头 **模块** 列另接共享 `ColumnFilter` 多选筛选；末列 **操作**：不可调试显示阻断原因，可调试显示铅笔「编辑」，打开 `WorkbenchSheet` 侧栏查看详情、上次重载历史并填写调试值，确认后写入本轮重载托盘；表内不再单独放「上次重载」列）、**本轮重载** 托盘对齐参数工作台「本轮已修改」：仅在有选中项时显示，并作为独立区块放在「可调试参数」上方（`Reload batch` eyebrow、基线→调试值 diff、就地编辑、主 CTA「下发参数」）、有运行时的结果面板，以及**默认折叠**的运行历史；标题依赖 shell（`appConfig`），页内不再重复 `h2`。Bridge 就绪 UI 与节点调试复用同一组件（`src/components/LocalDeviceBridgePanel.tsx`）。API mode 下列出项目候选参数、下发参数、预检 overlay、以 `confirm-dts-reload`（critical 敏感命中另需 `confirm-sensitive-reload`）部署，并展示重载快照、残留、恢复基线与运行历史。Mock mode 仅静态不可用。配置 CRUD 在 `/debugging-admin`（参数调试范围）。客户端：`src/infrastructure/http/dtsReloadClient.ts`。实现：`src/features/dts-reload/DtsReloadPage.tsx`（大文件拆分见 TD-069）。
+- `/dts-reload`：参数调试（产品名；技术能力仍为 DTS overlay 重载，与已退役的「参数重载」无关）。壳层与 `/node-debugging` 同族 workbench 节奏（`workbench-page` / `workbench-one-col`）：表前协议切换与共享 `LocalDeviceBridgePanel`（安装/配对/连接向导）、多目标时同款 `bridge-target-picker`（`targetRef`/`deviceId` 由 Bridge 检测与所选代理推导，不再单独放部署目标卡）、候选区 **左模块导航 + 右表**（复用参数修改页的 `DtsTopologyNavigator` 与 `buildModuleTree`：模块注册表嵌套 + `groupByDevice` 器件层，可展开树状；选中节点按子树 binding 过滤表格；表头 **模块** 列另接共享 `ColumnFilter` 多选筛选；末列 **操作**：不可调试显示阻断原因，可调试显示铅笔「编辑」，打开 `WorkbenchSheet` 侧栏查看详情、上次重载历史并填写调试值，确认后写入本轮重载托盘；表内不再单独放「上次重载」列）、**本轮重载** 托盘对齐参数工作台「本轮已修改」：仅在有选中项时显示，并作为独立区块放在「可调试参数」上方（`Reload batch` eyebrow、基线→调试值 diff、就地编辑、主 CTA「下发参数」）、有运行时的结果面板，以及**默认折叠**的运行历史；标题依赖 shell（`appConfig`），页内不再重复 `h2`。Bridge 就绪 UI 与节点调试复用同一组件（`src/components/LocalDeviceBridgePanel.tsx`）。API mode 下列出项目候选参数、下发参数、预检 overlay、以 `confirm-dts-reload`（critical 敏感命中另需 `confirm-sensitive-reload`）部署，并展示重载快照、残留、恢复基线与运行历史。Mock mode 通过 `src/infrastructure/mock/mockDtsReloadRepository.ts` 以同一端口提供同一语义模型（2026-08-13 恢复 ADR-0002）：候选覆盖全部已支持值形态、可完整走通的运行生命周期（含重载快照证据）、分页运行历史、残留与恢复基线，并镜像同样的确认令牌闸门；端口用 `resolveDtsReloadRepository(runtimeMode)`（`src/application/dts-reload/dtsReloadRuntime.ts`）选择，路由在 mock 下注入稳定的 Bridge/目标/配对码座席，部署流程无需真机即可走通。配置 CRUD 在 `/debugging-admin`（参数调试范围）。客户端：`src/infrastructure/http/dtsReloadClient.ts`。编排状态机：**DtsReloadRunSession**（`src/application/dts-reload/dtsReloadRunSession.ts` + `useDtsReloadRunSession`，Workbench session 同款：snapshot + subscribe + 命令动词，逐方法窄 `Pick<DtsReloadRepository, …>` 依赖；候选加载、URL run 参数再水化、本轮编辑校验、启动、部署确认——`confirm-dts-reload` 只在显式确认命令中附加——恢复基线、部署目标与运行/历史/残留加载分页都在 session 内；优先对 session 命令接口做单元测试）。实现：`src/features/dts-reload/DtsReloadPage.tsx` 已是 session hook 之上的渲染层，展示辅助在同目录 `dtsReloadPresentation.tsx`，纯调试值预检在 `src/domain/dtsReload/debugValue.ts`（TD-069 拆分，计划 `2026-08-13-dts-reload-run-session.md`）。
 - `/debugging`：**产品下线**（TD-032）；路由显示不可用页并引导至节点调试。迁移 `0037` 已删除 `parameter_reload_bindings`；遗留 HTTP 仍返回 `410`。`DebuggingPage` 组件仅供历史组件测试保留，不可与 `/dts-reload`（现 UI 标题「参数调试」）混淆。
 - `/debugging-admin`：范围导航拆为参数调试（重载配置）与节点调试（`/debugging-admin/nodes`）。API mode 下节点范围通过 `src/infrastructure/http/debuggingAdminClient.ts` 管理调试 catalog，可查询、新增、更新、归档、恢复并维护 HDC/ADB bindings。mock mode 保留本地 `configDraft` 和 JSON 编辑路径，用于演示和组件测试。
 

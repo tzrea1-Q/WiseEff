@@ -1,8 +1,51 @@
-import { Archive, ExternalLink, RefreshCw, ThumbsUp } from "lucide-react";
+import { Archive, ExternalLink, RefreshCw, Sparkles, ThumbsUp, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { STAGE_LABELS, type LogRecord } from "@/domain/prototype/types";
+
+const drawerDegradedReasonLabels: Record<NonNullable<LogRecord["degradedReason"]>, string> = {
+  "provider-unavailable": "AI 分析服务不可用，本结论由规则引擎回退生成",
+  "token-budget-exhausted": "预算内未能得到有效接地结论，本结论由规则引擎回退生成"
+};
+
+function DrawerProvenanceBadges({ record }: { record: LogRecord }) {
+  const degraded = record.analysisSource === "rules-fallback";
+  if (!degraded && record.analysisSource !== "agent" && !record.logDomainName) {
+    return null;
+  }
+
+  return (
+    <div className="mt-2 space-y-1.5" data-testid="drawer-analysis-provenance">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {degraded ? (
+          <span
+            role="status"
+            className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900"
+          >
+            <TriangleAlert className="size-3" />
+            降级分析 · 规则回退
+          </span>
+        ) : record.analysisSource === "agent" ? (
+          <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-800">
+            <Sparkles className="size-3" />
+            Agent 分析
+          </span>
+        ) : null}
+        {record.logDomainName ? (
+          <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+            业务域 · {record.logDomainName}
+          </span>
+        ) : null}
+      </div>
+      {degraded ? (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] leading-relaxed text-amber-900">
+          {record.degradedReason ? drawerDegradedReasonLabels[record.degradedReason] : "本结论由规则引擎回退生成"}
+        </p>
+      ) : null}
+    </div>
+  );
+}
 
 export type LogRecordDrawerProps = {
   record: LogRecord | null;
@@ -59,6 +102,7 @@ export function LogRecordDrawer({
           <section>
             <h4 className="text-xs font-semibold uppercase text-muted-foreground">AI 摘要</h4>
             <p className="mt-2 text-sm text-foreground">{record.conclusion}</p>
+            <DrawerProvenanceBadges record={record} />
             <div className="mt-3 flex items-center gap-3 text-xs">
               <span className="text-muted-foreground">置信度</span>
               <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">

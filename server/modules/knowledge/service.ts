@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 
-import { createAuditEvent } from "../audit/repository";
-import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
+import { asAuditTx, writeAuditEventInTx, type AuditSpec, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext, AuditSeverity } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
+import { getLogRecord } from "../logs/service";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { buildLogDistillationDraft } from "./distillation";
 import type { KnowledgeTextExtractor } from "./extraction";
 import { fuseKnowledgeSearchResults } from "./hybridSearch";
 import type { KnowledgeEmbeddingClient } from "./indexing/embeddingClient";
@@ -47,6 +48,7 @@ import type {
   KnowledgeFileDto,
   KnowledgeRetrievalInfo,
   KnowledgeSearchResponseDto,
+  KnowledgeSourceType,
   KnowledgeStatus,
   ListKnowledgeEntriesQuery
 } from "./types";
@@ -106,7 +108,7 @@ function buildSearchText(input: { title: string; tags: string[]; content: string
 }
 
 async function writeKnowledgeAudit(
-  db: Queryable,
+  tx: AuditTx,
   auth: AuthContext,
   input: {
     kind: string;
@@ -117,20 +119,16 @@ async function writeKnowledgeAudit(
   },
   context: KnowledgeServiceContext = {}
 ) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: null,
-    actorUserId: auth.user.id,
-    actorType: "user",
+  // requestId fallback survives only until knowledge contexts become mandatory (ADR-0027).
+  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
     app: "knowledge",
     kind: input.kind,
     action: input.action,
     severity: input.severity ?? "Medium",
+    projectId: null,
     targetType: "knowledge-entry",
     targetId: input.entryId,
-    metadata: input.metadata ?? {},
-    traceId: context.requestId ?? randomUUID()
+    metadata: input.metadata ?? {}
   });
 }
 
@@ -199,6 +197,7 @@ export async function createKnowledgeEntry(
         tags: input.tags,
         sourceType: "human",
         sourceSessionId: null,
+        sourceLogId: null,
         searchText: buildSearchText({ title: input.title, tags: input.tags, content: input.contentMarkdown })
       });
       await insertRevision(tx, auth, {
@@ -220,7 +219,7 @@ export async function createKnowledgeEntry(
         searchText: buildSearchText({ title: input.title, tags: input.tags, content: input.contentMarkdown })
       });
       await writeKnowledgeAudit(
-        tx,
+        asAuditTx(tx),
         auth,
         {
           kind: "knowledge-entry-create",
@@ -254,6 +253,7 @@ export async function createKnowledgeEntry(
       tags: input.tags,
       sourceType: "human",
       sourceSessionId: null,
+      sourceLogId: null,
       searchText: buildSearchText({ title: input.title, tags: input.tags, content: null })
     });
     const file = await insertFile(tx, auth, {
@@ -284,7 +284,7 @@ export async function createKnowledgeEntry(
       searchText: buildSearchText({ title: input.title, tags: input.tags, content: null })
     });
     await writeKnowledgeAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         kind: "knowledge-entry-create",
@@ -306,6 +306,214 @@ export async function createKnowledgeEntry(
 
   // Extraction runs after the entry is durable; failures land on the file row.
   await runFileExtraction(db, extractor, auth, { entryId, file: storedFile, bytes });
+
+  const entry = await getEntryById(db, auth, entryId);
+  if (!entry) throw knowledgeEntryNotFound(entryId);
+  return entry;
+}
+
+/**
+ * Shared markdown-draft creation for the distillation paths (Phase 3). Unlike
+ * `createKnowledgeEntry` it carries explicit source attribution and writes its
+ * audit evidence through the ADR-0027 seam inside the same transaction.
+ */
+async function createMarkdownDraftWithSource(
+  db: Database,
+  auth: AuthContext,
+  input: {
+    title: string;
+    tags: string[];
+    contentMarkdown: string;
+    sourceType: KnowledgeSourceType;
+    sourceSessionId: string | null;
+    sourceLogId: string | null;
+    audit: Pick<AuditSpec, "kind" | "action" | "metadata" | "actorType">;
+  },
+  context: KnowledgeServiceContext = {}
+): Promise<KnowledgeEntryDto> {
+  const entryId = randomUUID();
+  const revisionId = randomUUID();
+  const searchText = buildSearchText({ title: input.title, tags: input.tags, content: input.contentMarkdown });
+
+  await db.transaction(async (tx) => {
+    await insertEntry(tx, auth, {
+      id: entryId,
+      title: input.title,
+      contentForm: "markdown",
+      tags: input.tags,
+      sourceType: input.sourceType,
+      sourceSessionId: input.sourceSessionId,
+      sourceLogId: input.sourceLogId,
+      searchText
+    });
+    await insertRevision(tx, auth, {
+      id: revisionId,
+      entryId,
+      revisionNumber: 1,
+      title: input.title,
+      tags: input.tags,
+      contentMarkdown: input.contentMarkdown,
+      fileId: null,
+      restoredFromRevisionId: null
+    });
+    await setEntryHead(tx, auth, {
+      entryId,
+      headRevisionId: revisionId,
+      headRevisionNumber: 1,
+      title: input.title,
+      tags: input.tags,
+      searchText
+    });
+    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
+      app: "knowledge",
+      kind: input.audit.kind,
+      action: input.audit.action,
+      actorType: input.audit.actorType,
+      severity: "Medium",
+      projectId: null,
+      targetType: "knowledge-entry",
+      targetId: entryId,
+      metadata: input.audit.metadata
+    });
+  });
+
+  const entry = await getEntryById(db, auth, entryId);
+  if (!entry) throw knowledgeEntryNotFound(entryId);
+  return entry;
+}
+
+/**
+ * Distils a completed log-analysis record into a pre-filled knowledge DRAFT
+ * (design D15). The caller needs `knowledge:edit` to create the draft and must
+ * be able to read the source record (`logs:view` + organization scope, enforced
+ * by the logs service). The draft follows every Phase 1 rule: revision 1 is
+ * created, the write is audited, and it stays invisible to retrieval until a
+ * human publishes it.
+ */
+export async function distillKnowledgeFromLog(
+  db: Database,
+  auth: AuthContext,
+  input: { logId: string },
+  context: KnowledgeServiceContext = {}
+): Promise<KnowledgeEntryDto> {
+  requireKnowledgeEdit(auth);
+
+  const log = await getLogRecord(db, auth, input.logId);
+  if (log.status !== "complete") {
+    throw new ApiError("VALIDATION_FAILED", "Only completed log analyses can be distilled into knowledge.", 400, {
+      logId: input.logId,
+      status: log.status
+    });
+  }
+
+  const draft = buildLogDistillationDraft(log);
+  return createMarkdownDraftWithSource(
+    db,
+    auth,
+    {
+      ...draft,
+      sourceType: "human",
+      sourceSessionId: null,
+      sourceLogId: log.id,
+      audit: {
+        kind: "knowledge-entry-distill",
+        action: "distill",
+        metadata: { logId: log.id, fileName: log.fileName, severity: log.severity, title: draft.title }
+      }
+    },
+    context
+  );
+}
+
+/**
+ * Agent-facing draft creation for `action.createKnowledgeDraft` (design D2/D14):
+ * runs under the calling user's AuthContext (`knowledge:edit` enforced), records
+ * the creating session and user so the publisher-accountability rule works, and
+ * only ever creates a NEW draft — agents never modify existing entries.
+ */
+export async function createAgentKnowledgeDraft(
+  db: Database,
+  auth: AuthContext,
+  input: {
+    title: string;
+    tags: string[];
+    contentMarkdown: string;
+    sessionId: string;
+    sourceLogId?: string;
+  },
+  context: KnowledgeServiceContext = {}
+): Promise<KnowledgeEntryDto> {
+  requireKnowledgeEdit(auth);
+
+  let sourceLogId: string | null = null;
+  if (input.sourceLogId) {
+    // Linking is a read of the analysis record: same logs:view + org scope gate.
+    const log = await getLogRecord(db, auth, input.sourceLogId);
+    sourceLogId = log.id;
+  }
+
+  return createMarkdownDraftWithSource(
+    db,
+    auth,
+    {
+      title: input.title,
+      tags: input.tags,
+      contentMarkdown: input.contentMarkdown,
+      sourceType: "agent",
+      sourceSessionId: input.sessionId,
+      sourceLogId,
+      audit: {
+        kind: "knowledge-entry-agent-draft",
+        action: "agent-draft-create",
+        actorType: "agent",
+        metadata: { sessionId: input.sessionId, title: input.title, sourceLogId, tagCount: input.tags.length }
+      }
+    },
+    context
+  );
+}
+
+/**
+ * Archive-reject for the agent-draft publish queue: the reviewer (entry owner
+ * with `knowledge:edit`, or `knowledge:manage`) moves an agent-sourced draft to
+ * `archived` without ever publishing it. Human drafts keep the normal
+ * draft → published lifecycle and cannot be rejected through this path.
+ */
+export async function rejectAgentKnowledgeDraft(
+  db: Database,
+  auth: AuthContext,
+  entryId: string,
+  context: KnowledgeServiceContext = {}
+): Promise<KnowledgeEntryDto> {
+  await db.transaction(async (tx) => {
+    const entry = await getEntryForUpdate(tx, auth, entryId);
+    if (!entry || !canReadEntry(auth, entry)) {
+      throw knowledgeEntryNotFound(entryId);
+    }
+    requireKnowledgeGovern(auth, entry);
+
+    if (entry.status !== "draft" || entry.sourceType !== "agent") {
+      throw new ApiError("VALIDATION_FAILED", "Only agent-sourced drafts can be archive-rejected.", 400, {
+        entryId,
+        status: entry.status,
+        sourceType: entry.sourceType
+      });
+    }
+
+    // A draft was never indexed (published-only retrieval), so no index refresh
+    // is enqueued here — the entry goes straight to archived.
+    await setEntryStatus(tx, auth, { entryId, status: "archived" });
+    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
+      app: "knowledge",
+      kind: "knowledge-entry-reject",
+      action: "reject",
+      severity: "Medium",
+      projectId: null,
+      targetType: "knowledge-entry",
+      targetId: entryId,
+      metadata: { title: entry.title, sourceSessionId: entry.sourceSessionId, sourceLogId: entry.sourceLogId }
+    });
+  });
 
   const entry = await getEntryById(db, auth, entryId);
   if (!entry) throw knowledgeEntryNotFound(entryId);
@@ -428,7 +636,7 @@ export async function updateKnowledgeEntry(
     }
 
     await writeKnowledgeAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         kind: "knowledge-entry-update",
@@ -493,7 +701,7 @@ async function transitionKnowledgeEntry(
     // it (the worker deletes chunks for any non-published entry).
     await enqueueEntryIndexRefresh(tx, { entryId, organizationId: auth.organization.id });
     await writeKnowledgeAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         kind: input.kind,
@@ -572,7 +780,7 @@ export async function hardDeleteKnowledgeEntry(
 
     await deleteEntry(tx, auth, entryId);
     await writeKnowledgeAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         kind: "knowledge-entry-delete",
@@ -673,7 +881,7 @@ export async function restoreKnowledgeRevision(
     });
 
     await writeKnowledgeAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         kind: "knowledge-revision-restore",
@@ -840,7 +1048,7 @@ export async function retryKnowledgeEntryIndex(
     }
     await enqueueEntryIndexRefresh(tx, { entryId, organizationId: auth.organization.id });
     await writeKnowledgeAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         kind: "knowledge-index-retry",

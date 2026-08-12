@@ -5,7 +5,14 @@ import type { ObjectStoreHealthCheck } from "../logs/objectStore";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import type { DebugDeviceGateway } from "../debugging/gateway";
 import type { DebugDeviceGatewayRegistry } from "../debugging/gatewayRegistry";
-import { buildLiveHealth, buildReadyHealth, checkXiaozeLlmConfig, type DurableQueueHealthCheck, type XiaozeLlmEnv } from "./health";
+import {
+  buildLiveHealth,
+  buildReadyHealth,
+  checkXiaozeLlmConfig,
+  type DurableQueueHealthCheck,
+  type LogAnalysisLlmEnv,
+  type XiaozeLlmEnv
+} from "./health";
 import { buildPilotReadiness, type PilotReadinessGateStatus } from "./pilotReadiness";
 
 export type PilotReadinessEnv = {
@@ -26,7 +33,8 @@ export type PilotReadinessEnv = {
   NOTIFICATION_WORKER_ENABLED?: boolean;
   /** CI/test-only hook; not part of ServerEnv or .env.example. */
   XIAOZE_DETERMINISTIC?: boolean;
-} & XiaozeLlmEnv;
+} & XiaozeLlmEnv &
+  LogAnalysisLlmEnv;
 
 function requireAdminAccess(auth: AuthContext) {
   if (!auth.permissions.includes("admin:access")) {

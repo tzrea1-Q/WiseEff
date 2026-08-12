@@ -131,6 +131,19 @@ API mode always includes Xiaoze; mock mode has no Agent UI. The backend always r
 | `VITE_XIAOZE_PROMPT_DEBUG` | `false` | frontend dev tooling | Opt-in prompt/debug surfacing for Xiaoze development. |
 | `VITE_XIAOZE_INSPECTOR` | `false` | frontend dev tooling | Opt-in CopilotKit AG-UI inspector for admins (non-production only). Off by default because the inspector ships a CDN announcement banner with no separate switch. |
 
+## Log Analysis LLM
+
+Separate `LOG_ANALYSIS_*` family so log analysis and Xiaoze can point at different providers (ADR-0022). Unconfigured + non-deterministic counts as provider-unavailable: `/health/ready` reports `logAnalysisLlm` as missing and analyses degrade to the rule engine with an explicit degraded marker. See `docs/runbooks/log-analysis-llm.md`.
+
+| Variable | Local default | Required for | Notes |
+| --- | --- | --- | --- |
+| `LOG_ANALYSIS_API_BASE_URL` | blank | live log-analysis LLM | OpenAI-compatible endpoint. Never commit secrets or private endpoints. |
+| `LOG_ANALYSIS_MODEL` | blank | live log-analysis LLM | Model id recorded on every report (`model` column) and metrics label. |
+| `LOG_ANALYSIS_API_KEY` | blank | live log-analysis LLM | Secret. |
+| `LOG_ANALYSIS_API_TIMEOUT_MS` | `30000` | live log-analysis LLM | Request timeout for the single-shot `ChatOpenAI` call. |
+| `LOG_ANALYSIS_TOKEN_BUDGET` | `8000` | analysis cost bound | Per-analysis token budget; bounds the prompt excerpt (≈4 chars/token) and the response `maxTokens`. |
+| `LOG_ANALYSIS_DETERMINISTIC` | `true` in `.env.example`, `false` in code | offline dev/test/eval | Runs the deterministic stub model (`model` recorded as `deterministic`); no provider required and readiness reports ready. Production must configure a real provider and keep this `false`. |
+
 ## Knowledge Base Embeddings And Indexing
 
 Semantic retrieval for the knowledge base mirrors the `AGENT_API_*` seam with an OpenAI-compatible `/v1/embeddings` endpoint. Leave the group blank for FTS-only mode: every knowledge surface stays fully usable without semantic search. Semantic retrieval additionally requires the pgvector extension on the PostgreSQL server (see the self-hosted runbook); when either the endpoint or the extension is missing, search responses honestly report `fts_only`.

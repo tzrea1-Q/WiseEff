@@ -1,0 +1,5 @@
+2026-05-25T11:00:00.000Z INFO charger session started device=PACK-B02 mode=fast_charge
+2026-05-25T11:00:05.250Z WARN battery_temp_c=48.1 threshold_c=45 action=monitor
+2026-05-25T11:00:07.400Z ERROR code=E_THERMAL_FOLDBACK module=bms detail="current reduced to protect pack"
+2026-05-25T11:00:09.100Z INFO test-hook WISEEFF_SIMULATE_LLM_PROVIDER_DOWN
+2026-05-25T11:00:12.000Z INFO charger session stabilized current_ma=2600

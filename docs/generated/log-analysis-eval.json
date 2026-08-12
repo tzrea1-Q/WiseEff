@@ -1,0 +1,322 @@
+{
+  "generatedAt": "2026-08-12T20:59:32.615Z",
+  "promptVersion": "2026-08-12.1",
+  "total": 8,
+  "passed": 8,
+  "failed": 0,
+  "scenarios": [
+    {
+      "name": "grounded-normal-conclusion",
+      "category": "grounding",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "agent"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsNoDegradation"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsPromptVersionRecorded",
+            "promptVersion": "2026-08-12.1"
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "agent",
+        "promptVersion": "2026-08-12.1",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          [
+            3,
+            4
+          ]
+        ],
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+      }
+    },
+    {
+      "name": "hallucinated-citations-rejected",
+      "category": "grounding",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "rules-fallback"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsDegradedReason",
+            "reason": "token-budget-exhausted"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsEvidenceNotCitingLines",
+            "lineNumbers": [
+              999,
+              1234
+            ]
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "rules-fallback",
+        "degradedReason": "token-budget-exhausted",
+        "promptVersion": "2026-08-12.1",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          [
+            2,
+            3,
+            4
+          ],
+          [
+            4
+          ],
+          [
+            4
+          ]
+        ],
+        "conclusion": "Charging behavior is consistent with thermal foldback protection."
+      }
+    },
+    {
+      "name": "partially-hallucinated-citations-pruned",
+      "category": "grounding",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "agent"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsEvidenceNotCitingLines",
+            "lineNumbers": [
+              999
+            ]
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "agent",
+        "promptVersion": "2026-08-12.1",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          [
+            4
+          ]
+        ],
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+      }
+    },
+    {
+      "name": "provider-outage-degrades-honestly",
+      "category": "degradation",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "rules-fallback"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsDegradedReason",
+            "reason": "provider-unavailable"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsPromptVersionRecorded",
+            "promptVersion": "2026-08-12.1"
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "rules-fallback",
+        "degradedReason": "provider-unavailable",
+        "promptVersion": "2026-08-12.1",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          [
+            2,
+            3,
+            4
+          ],
+          [
+            4
+          ],
+          [
+            4
+          ]
+        ],
+        "conclusion": "Charging behavior is consistent with thermal foldback protection."
+      }
+    },
+    {
+      "name": "budget-exhausted-marked",
+      "category": "degradation",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "rules-fallback"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsDegradedReason",
+            "reason": "token-budget-exhausted"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "rules-fallback",
+        "degradedReason": "token-budget-exhausted",
+        "promptVersion": "2026-08-12.1",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          [
+            2,
+            3,
+            4
+          ],
+          [
+            4
+          ],
+          [
+            4
+          ]
+        ],
+        "conclusion": "Charging behavior is consistent with thermal foldback protection."
+      }
+    },
+    {
+      "name": "analysis-question-injected-and-answered",
+      "category": "analysis-question",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "agent"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsPromptContains",
+            "substrings": [
+              "Why did fast charging fold back?",
+              "charging-power"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "requiresSubstringsInConclusion",
+            "substrings": [
+              "Why did fast charging fold back?"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsPromptVersionRecorded",
+            "promptVersion": "2026-08-12.1"
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "agent",
+        "promptVersion": "2026-08-12.1",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          [
+            3,
+            4
+          ]
+        ],
+        "conclusion": "Answering 'Why did fast charging fold back?': the pack hit 52C and thermal foldback reduced the current."
+      }
+    }
+  ],
+  "metaChecks": [
+    {
+      "name": "meta-hallucinated-citation-detector",
+      "pass": true,
+      "message": "Harness correctly flags evidence citing nonexistent lines"
+    },
+    {
+      "name": "meta-silent-degradation-detector",
+      "pass": true,
+      "message": "Harness correctly flags degraded output missing its degraded reason"
+    }
+  ]
+}

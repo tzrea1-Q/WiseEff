@@ -1,6 +1,6 @@
 # Agent 日志分析系统
 
-> Status: **Active（规划已确认，实施未开始）**
+> Status: **Active（P1 已在 `feat/log-analysis-p1-domains-and-llm` 分支实现，评审中；P2/P3 未开始）**
 > Date: 2026-08-12
 > 规划分支：`plan/agent-log-analysis`（本文档、词汇表、ADR-0022）
 > 实施分支：`feat/log-analysis-p1-domains-and-llm`、`feat/log-analysis-p2-agent-loop-and-golden-set`、`feat/log-analysis-p3-eval-maturation`（每阶段一支，均从最新 `main` 拉出）
@@ -57,4 +57,4 @@
 
 ## 文档影响矩阵与更新门禁
 
-见英文版同名计划；中英文配套同步更新。
+见英文版同名计划；中英文配套同步更新。P1 行已勾选完成：domain-model、api-contract + OpenAPI、FRONTEND、SECURITY、environment-variables、runbook（`docs/runbooks/log-analysis-llm.md`）、ARCHITECTURE、product-spec、验收覆盖图与操作矩阵（LOG-DOMAIN-001 / LOG-DEGRADED-001）均已中英同步更新，db-schema 经 `npm run db:schema-doc` 再生成（迁移 `0105_log_domains.sql`）。

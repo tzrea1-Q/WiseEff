@@ -22,7 +22,6 @@ import {
   type DebuggingRuntimeActions
 } from "@/application/debugging/debuggingRuntime";
 import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
-import { createHttpDebuggingGateway } from "@/infrastructure/http/debuggingClient";
 import { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
 import {
   createLogRuntimeActions,
@@ -32,10 +31,6 @@ import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepos
 import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
 import type { KnowledgeCapability } from "@/domain/knowledge/rules";
-import { createHttpLogAnalysisRepository } from "@/infrastructure/http/logClient";
-import { createHttpProductFeedbackRepository } from "@/infrastructure/http/productFeedbackClient";
-import { createHttpKnowledgeRepository } from "@/infrastructure/http/knowledgeClient";
-import { createHttpDtsReloadRepository } from "@/infrastructure/http/dtsReloadClient";
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import {
   createParameterRuntimeActions,
@@ -49,7 +44,6 @@ import { createParameterDashboardRuntime } from "@/application/parameters/parame
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type { ParameterInitializationRepository } from "@/application/ports/ParameterInitializationRepository";
-import { resolveParameterInitializationRepository } from "@/application/parameters/parameterInitializationRuntime";
 import {
   toLegacyInitializationDraft,
   toLegacyInitializationReview
@@ -73,6 +67,7 @@ import { FeedbackDialog } from "@/features/product-feedback/FeedbackDialog";
 import { xiaozeProactiveEnabled } from "@/infrastructure/http/runtimeMode";
 import { getPageByPath, getXiaozeContextSummary, navigationItems, pageUsesProjectScope, PageConfig, utilityItems } from "./appConfig";
 import { reducer, type AppAction, type ApiRuntimeDataDomain } from "@/application/state/appState";
+import { createAppRuntime, type WiseEffAuthClient } from "@/app/appRuntime";
 
 function isStaticDownloadPath(pathname: string) {
   return pathname.startsWith("/downloads/");
@@ -96,12 +91,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   clearLocalAuthToken,
-  createAuthClient,
   type AuthContextDto,
   type AuthSessionDto,
-  type LoginLocalAccountInput,
   type PendingRegistrationDto,
-  type RegisterLocalAccountInput,
   type RegisterLocalAccountResponseDto,
   type UpdateCurrentUserProfileInput
 } from "@/infrastructure/http/authClient";
@@ -109,25 +101,9 @@ import { clearSessionDraftsForLogout } from "@/application/project-configuration
 import { AppToastLayer } from "@/components/common/AppToastLayer";
 import { unsavedParameterWorkCount } from "@/application/parameters/unsavedParameterWork";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
-import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
-import { createMockParameterRepository } from "@/infrastructure/mock/mockParameterRepository";
 import { createMockRuntimeState, type MockRuntimeState } from "@/infrastructure/mock/mockState";
-import { createHttpParameterDashboardRepository } from "@/infrastructure/http/parameterDashboardClient";
-import { createMockParameterDashboardRepository } from "@/infrastructure/mock/mockParameterDashboardRepository";
-import { createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowledgeRepository";
-import { createMockProductFeedbackRepository } from "@/infrastructure/mock/mockProductFeedbackRepository";
-import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
 import { wiseEffRuntimeMode, xiaozeInspectorEnabled, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
-import { resolveParameterTopologyRepository } from "@/application/parameters/parameterTopologyResolve";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
-
-type WiseEffAuthClient = {
-  getCurrentAuthContext(): Promise<AuthContextDto>;
-  register?(input: RegisterLocalAccountInput): Promise<RegisterLocalAccountResponseDto>;
-  login?(input: LoginLocalAccountInput): Promise<AuthSessionDto>;
-  logout?(): Promise<void>;
-  updateCurrentUserProfile?(input: UpdateCurrentUserProfileInput): Promise<AuthContextDto>;
-};
 
 type ApiAuthStatus = "checking" | "authenticated" | "unauthenticated" | "unreachable";
 
@@ -252,7 +228,7 @@ type AppProps = {
   listParameterConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   productFeedbackRepository?: ProductFeedbackRepository;
   knowledgeRepository?: KnowledgeRepository;
-  dtsReloadRepository?: DtsReloadRepository | null;
+  dtsReloadRepository?: DtsReloadRepository;
   runtimeMode?: WiseEffRuntimeMode;
   userGovernanceActions?: UserGovernanceActions;
 };
@@ -328,7 +304,7 @@ function AppShell({
   parameterInitializationRepository?: ParameterInitializationRepository;
   productFeedbackRepository?: ProductFeedbackRepository;
   knowledgeRepository?: KnowledgeRepository;
-  dtsReloadRepository?: DtsReloadRepository | null;
+  dtsReloadRepository?: DtsReloadRepository;
   runtimeMode: WiseEffRuntimeMode;
   userGovernanceActions?: UserGovernanceActions;
 }) {
@@ -377,41 +353,57 @@ function AppShell({
   } else {
     mockParameterRuntimeRef.current.current = state;
   }
-  const parameterRepositoryClient = useMemo(
+  const appRuntime = useMemo(
     () =>
-      parameterRepository ??
-      (runtimeMode === "api"
-        ? createHttpParameterRepository()
-        : createMockParameterRepository(mockParameterRuntimeRef.current!)),
-    [parameterRepository, runtimeMode]
+      createAppRuntime(
+        runtimeMode,
+        { getState: () => stateRef.current, mockParameterRuntime: mockParameterRuntimeRef.current! },
+        {
+          authClient,
+          parameterRepository,
+          parameterTopologyRepository,
+          logAnalysisRepository,
+          productFeedbackRepository,
+          knowledgeRepository,
+          dtsReloadRepository,
+          parameterInitializationRepository,
+          debuggingGateway,
+          debuggingAdminClient,
+          userGovernanceActions,
+          listParameterConfigSets
+        }
+      ),
+    [
+      runtimeMode,
+      authClient,
+      parameterRepository,
+      parameterTopologyRepository,
+      logAnalysisRepository,
+      productFeedbackRepository,
+      knowledgeRepository,
+      dtsReloadRepository,
+      parameterInitializationRepository,
+      debuggingGateway,
+      debuggingAdminClient,
+      userGovernanceActions,
+      listParameterConfigSets
+    ]
   );
-  const parameterTopologyRepositoryClient = useMemo(
-    () => parameterTopologyRepository ?? resolveParameterTopologyRepository(runtimeMode),
-    [parameterTopologyRepository, runtimeMode]
-  );
-  const dashboardRepository = useMemo(
-    () =>
-      runtimeMode === "api"
-        ? createHttpParameterDashboardRepository()
-        : createMockParameterDashboardRepository(() => stateRef.current),
-    [runtimeMode]
-  );
+  const {
+    parameterRepository: parameterRepositoryClient,
+    parameterDashboardRepository: dashboardRepository,
+    logAnalysisRepository: logAnalysisRepositoryClient,
+    productFeedbackRepository: productFeedbackRepositoryClient,
+    dtsReloadRepository: dtsReloadRepositoryClient,
+    parameterInitializationRepository: parameterInitializationRepositoryClient,
+    userGovernanceActions: userGovernanceActionsClient,
+    debuggingGateway: debuggingGatewayClient,
+    debuggingAdminClient: debuggingAdminCatalogClient
+  } = appRuntime;
   const [dashboardState, dashboardDispatch] = useReducer(dashboardReducer, initialDashboardState);
   const dashboardRuntime = useMemo(
     () => createParameterDashboardRuntime({ repository: dashboardRepository, dispatch: dashboardDispatch }),
     [dashboardRepository]
-  );
-  const logAnalysisRepositoryClient = useMemo(
-    () => logAnalysisRepository ?? (runtimeMode === "api" ? createHttpLogAnalysisRepository() : undefined),
-    [logAnalysisRepository, runtimeMode]
-  );
-  const productFeedbackRepositoryClient = useMemo(
-    () => productFeedbackRepository ?? (runtimeMode === "api" ? createHttpProductFeedbackRepository() : createMockProductFeedbackRepository()),
-    [productFeedbackRepository, runtimeMode]
-  );
-  const knowledgeRepositoryClient = useMemo(
-    () => knowledgeRepository ?? (runtimeMode === "api" ? createHttpKnowledgeRepository() : createMockKnowledgeRepository()),
-    [knowledgeRepository, runtimeMode]
   );
   const knowledgeCapability = useMemo<KnowledgeCapability>(
     () => ({
@@ -427,32 +419,9 @@ function AppShell({
     }),
     [apiAuthPermissions, currentRoleId, runtimeMode, state.currentUserId]
   );
-  const dtsReloadRepositoryClient = useMemo(
-    () =>
-      dtsReloadRepository !== undefined
-        ? dtsReloadRepository
-        : runtimeMode === "api"
-          ? createHttpDtsReloadRepository()
-          : null,
-    [dtsReloadRepository, runtimeMode]
-  );
-  const canStartDtsReload = runtimeMode === "api" && apiAuthPermissions.includes("debugging:dts-reload");
-  const parameterInitializationRepositoryClient = useMemo(
-    () => parameterInitializationRepository ?? resolveParameterInitializationRepository(runtimeMode),
-    [parameterInitializationRepository, runtimeMode]
-  );
-  const debuggingGatewayClient = useMemo(
-    () => debuggingGateway ?? (runtimeMode === "api" ? createHttpDebuggingGateway() : undefined),
-    [debuggingGateway, runtimeMode]
-  );
-  const debuggingAdminCatalogClient = useMemo(
-    () => debuggingAdminClient ?? (runtimeMode === "api" ? createDebuggingAdminClient() : undefined),
-    [debuggingAdminClient, runtimeMode]
-  );
-  const userGovernanceActionsClient = useMemo(
-    () => userGovernanceActions ?? (runtimeMode === "api" ? createUserGovernanceClient() : undefined),
-    [runtimeMode, userGovernanceActions]
-  );
+  // Mock mode is a data-source substitution (ADR-0002): the demo account may start runs.
+  const canStartDtsReload =
+    runtimeMode === "api" ? apiAuthPermissions.includes("debugging:dts-reload") : true;
   const parameterActions = useMemo<ParameterRuntimeActions>(
     () =>
       createParameterRuntimeActions({
@@ -786,7 +755,7 @@ function AppShell({
     }
 
     const cancelledRef = { current: false };
-    const client = authClient ?? createAuthClient();
+    const client = appRuntime.authClient;
 
     client
       .getCurrentAuthContext()
@@ -815,7 +784,7 @@ function AppShell({
     return () => {
       cancelledRef.current = true;
     };
-  }, [authClient, authProbeAttempt, hydrateAuthContext, refreshApiRuntimeData, runtimeMode]);
+  }, [appRuntime.authClient, authProbeAttempt, hydrateAuthContext, refreshApiRuntimeData, runtimeMode]);
 
   useEffect(() => {
     if (runtimeMode !== "api" || page.key !== "user-permissions" || !userGovernanceActionsClient || !canPerform(currentRoleId, "users.manage")) {
@@ -949,7 +918,7 @@ function AppShell({
   );
 
   const handleLogout = useCallback(async () => {
-    const client = authClient ?? createAuthClient();
+    const client = appRuntime.authClient;
     try {
       await client.logout?.();
     } catch {
@@ -961,11 +930,11 @@ function AppShell({
     setApiAuthStatus("unauthenticated");
     setApiAuthError("");
     dispatch({ type: "ADD_NOTIFICATION", message: "已退出登录" });
-  }, [authClient]);
+  }, [appRuntime.authClient]);
 
   const handleUpdateCurrentUserProfile = useCallback(
     async (input: UpdateCurrentUserProfileInput) => {
-      const client = authClient ?? createAuthClient();
+      const client = appRuntime.authClient;
       if (!client.updateCurrentUserProfile) {
         throw new Error("当前认证方式不支持资料更新。");
       }
@@ -973,7 +942,7 @@ function AppShell({
       hydrateAuthContext(context);
       dispatch({ type: "ADD_NOTIFICATION", message: "个人资料已更新" });
     },
-    [authClient, hydrateAuthContext]
+    [appRuntime.authClient, hydrateAuthContext]
   );
 
   const appShellClassName = isPlatformHome
@@ -991,7 +960,7 @@ function AppShell({
     }
     return (
       <ApiAuthPage
-        authClient={authClient ?? createAuthClient()}
+        authClient={appRuntime.authClient}
         error={apiAuthError}
         status={apiAuthStatus}
         onAuthenticated={handleAuthSession}
@@ -1084,19 +1053,12 @@ function AppShell({
                 onNavigate={navigate}
                 onNewProject={() => setProjectInitOpen(true)}
                 debuggingActions={debuggingActions}
-                debuggingGateway={debuggingGatewayClient}
                 debuggingRuntimeReady={debuggingRuntimeReady}
                 logActions={logActions}
                 parameterActions={parameterActions}
-                parameterTopologyRepository={parameterTopologyRepositoryClient}
-                listParameterConfigSets={listParameterConfigSets}
-                productFeedbackRepository={productFeedbackRepositoryClient}
-                knowledgeRepository={knowledgeRepositoryClient}
+                runtime={appRuntime}
                 knowledgeCapability={knowledgeCapability}
-                dtsReloadRepository={dtsReloadRepositoryClient}
                 canStartDtsReload={canStartDtsReload}
-                parameterInitializationRepository={parameterInitializationRepositoryClient}
-                userGovernanceActions={userGovernanceActionsClient}
                 runtimeMode={runtimeMode}
                 search={search}
                 dashboardState={dashboardState}
@@ -1125,19 +1087,12 @@ function AppShell({
                 onNavigate={navigate}
                 onNewProject={() => setProjectInitOpen(true)}
                 debuggingActions={debuggingActions}
-                debuggingGateway={debuggingGatewayClient}
                 debuggingRuntimeReady={debuggingRuntimeReady}
                 logActions={logActions}
                 parameterActions={parameterActions}
-                parameterTopologyRepository={parameterTopologyRepositoryClient}
-                listParameterConfigSets={listParameterConfigSets}
-                productFeedbackRepository={productFeedbackRepositoryClient}
-                knowledgeRepository={knowledgeRepositoryClient}
+                runtime={appRuntime}
                 knowledgeCapability={knowledgeCapability}
-                dtsReloadRepository={dtsReloadRepositoryClient}
                 canStartDtsReload={canStartDtsReload}
-                parameterInitializationRepository={parameterInitializationRepositoryClient}
-                userGovernanceActions={userGovernanceActionsClient}
                 runtimeMode={runtimeMode}
                 search={search}
                 dashboardState={dashboardState}

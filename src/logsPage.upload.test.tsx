@@ -197,6 +197,39 @@ describe("LogsPage api upload wiring", () => {
     });
   });
 
+  it("lists log domains in the upload dialog and passes the selected logDomainId", async () => {
+    const chargingDomain = {
+      id: "domain-charging",
+      name: "charging-power",
+      status: "active" as const,
+      createdAt: "2026-08-12T00:00:00.000Z",
+      updatedAt: "2026-08-12T00:00:00.000Z"
+    };
+    const repository = renderApiLogs(
+      createLogRepository({ listLogDomains: vi.fn().mockResolvedValue([chargingDomain]) })
+    );
+    const file = new File(["line"], "charging.log", { type: "text/plain" });
+    await waitForApiRuntime(repository);
+
+    openUploadDialog();
+    await waitFor(() => expect(repository.listLogDomains).toHaveBeenCalled());
+    const domainSelect = (await screen.findByLabelText(/业务域/)) as HTMLSelectElement;
+    expect(within(domainSelect).getByRole("option", { name: /未分类/ })).toBeInTheDocument();
+    await waitFor(() => expect(within(domainSelect).getByRole("option", { name: "charging-power" })).toBeInTheDocument());
+
+    vi.useFakeTimers();
+    fireEvent.change(domainSelect, { target: { value: "domain-charging" } });
+    chooseFile(file);
+    await confirmSelectedFile();
+
+    expect(repository.uploadLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        file,
+        logDomainId: "domain-charging"
+      })
+    );
+  });
+
   it("allows unsupported extensions to reach the runtime", async () => {
     const failedLog = {
       ...apiLog,

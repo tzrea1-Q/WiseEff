@@ -12,6 +12,9 @@ import { indentDtsRawValueForWriteback } from "../dts/rawValueWriteback";
 import { parseDtsValue } from "../dts/valueAst";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
+import {
+  type DtsToolchainRunner,
+} from "../parameter-files/dtsToolchain";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { countOpenSpecReviewTasksForRevision } from "../parameter-specs/repository";
@@ -33,7 +36,6 @@ import { ingestConfigRevisionInTransaction } from "./ingestService";
 import { listStructuralPropertyKeys } from "./parameterSurface";
 import { getConfigRevisionById, updateConfigRevisionStatus } from "./repository";
 import type { ConfigRevisionManifest, ConfigRevisionManifestMember } from "./types";
-import type { BindingEditAction, CreateBindingDraftDeps } from "./editService";
 import {
   verifyBindingWriteLock,
   verifyEnablementWriteLock,
@@ -41,6 +43,17 @@ import {
   type BindingWriteLockContext,
   type EnablementWriteLockContext,
 } from "./writeLock";
+
+export type BindingEditAction = "set" | "delete";
+
+export type CreateBindingDraftDeps = {
+  /** Injected for tests; production defaults to the real Task 8 runner. */
+  toolchain?: DtsToolchainRunner;
+  /** Preferred source of file bytes by version storage key. */
+  objectStore?: ObjectStore;
+  /** Test-only: skip semantic promotion gates after resolve/toolchain. */
+  skipSemanticGates?: boolean;
+};
 
 export function throwIfManifestNeedsReview(revision: { id: string; manifestState?: string }): void {
   const gate = assertManifestStateReady(

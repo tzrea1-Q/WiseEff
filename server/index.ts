@@ -11,6 +11,7 @@ import { createBridgeConnectionPool } from "./modules/deviceBridge/connectionPoo
 import { createBridgeRpcClient } from "./modules/deviceBridge/rpc";
 import { resolveKnowledgeEmbeddingClient } from "./modules/knowledge/indexing/embeddingClient";
 import { startKnowledgeIndexWorkerLoop } from "./modules/knowledge/indexing/worker";
+import { createLogAnalyzerFromEnv } from "./modules/logs/analyzer/analyzerFromEnv";
 import { createLogAnalysisQueueRuntime, createLogAnalysisQueueTransport } from "./modules/logs/logAnalysisQueueRuntime";
 import { startLogWorkerLoop } from "./modules/logs/worker";
 import { configureNotificationDelivery } from "./modules/notifications/delivery";
@@ -60,15 +61,28 @@ const logAnalysisQueueEnv = {
   LOG_ANALYSIS_QUEUE_BACKOFF_MS: env.LOG_ANALYSIS_QUEUE_BACKOFF_MS,
   LOG_ANALYSIS_QUEUE_CONCURRENCY: env.LOG_ANALYSIS_QUEUE_CONCURRENCY
 };
+const logAnalyzer = createLogAnalyzerFromEnv(env, {
+  telemetry: {
+    recordLlmCall: (input) => metrics.recordLogAnalysisLlmCall(input),
+    recordDegraded: (input) => metrics.recordLogAnalysisDegraded(input)
+  }
+});
 const logAnalysisQueueRuntime =
   env.LOG_ANALYSIS_QUEUE_MODE === "durable" && db && objectStore
     ? env.LOG_WORKER_ENABLED
-      ? createLogAnalysisQueueRuntime({ env: logAnalysisQueueEnv, db, objectStore, metrics, tracing: defaultTracingBoundary })
+      ? createLogAnalysisQueueRuntime({
+          env: logAnalysisQueueEnv,
+          db,
+          objectStore,
+          analyzer: logAnalyzer,
+          metrics,
+          tracing: defaultTracingBoundary
+        })
       : createLogAnalysisQueueTransport({ env: logAnalysisQueueEnv })
     : undefined;
 const stopLogWorker =
   env.LOG_WORKER_ENABLED && env.LOG_ANALYSIS_QUEUE_MODE === "polling" && db && objectStore
-    ? startLogWorkerLoop({ db, objectStore, metrics, tracing: defaultTracingBoundary })
+    ? startLogWorkerLoop({ db, objectStore, analyzer: logAnalyzer, metrics, tracing: defaultTracingBoundary })
     : undefined;
 const knowledgeEmbeddingClient = resolveKnowledgeEmbeddingClient(env);
 const stopKnowledgeIndexWorker =

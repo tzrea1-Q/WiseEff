@@ -1,7 +1,7 @@
 # 知识库 MVP
 
-> English: [English](../../../exec-plans/active/2026-08-12-knowledge-base-mvp.md)
-> 状态：**进行中**——2026-08-12 规划锁定；Phase 1 已在 `feat/knowledge-base-foundation` 实现（2026-08-12,已合并）；Phase 2 已在 `feat/knowledge-base-rag` 实现（2026-08-12）；Phase 3 未开始
+> English: [English](../../../exec-plans/completed/2026-08-12-knowledge-base-mvp.md)
+> 状态：**已完成 2026-08-13**——Phase 1 经 #330 合并、Phase 2 经 #370 合并、Phase 3 经 #385 合并（分支 `feat/knowledge-base-foundation`、`feat/knowledge-base-rag`、`feat/knowledge-base-distillation`）
 > 日期：2026-08-12
 > 设计文档：[`docs/zh-CN/design-docs/2026-08-12-knowledge-base-design.md`](../../design-docs/2026-08-12-knowledge-base-design.md)
 > ADR：ADR-0025（`docs/adr/0025-knowledge-retrieval-lives-in-postgres.md`，英文）
@@ -53,6 +53,11 @@
 4. `/knowledge-admin` Agent 草稿发布队列：列表、审阅、发布（edit 权限者发布自己会话的草稿；manage 发布任意）、归档拒绝。
 5. 验收：实现前加入 KB-DISTILL-001、KB-ADMIN-001。
 
+**Phase 3 状态说明（2026-08-13,`feat/knowledge-base-distillation`）：**
+
+- 按计划交付：迁移 `0105_knowledge_distillation_source.sql`（增量列 `knowledge_entries.source_log_id`——Phase 1 归因列回答"谁写的",本列回答"从哪条分析来"）;`POST /api/v1/knowledge/distill-from-log`（`knowledge:edit` + 对来源记录的 `logs:view`/组织隔离,仅接受已完成分析,预填只耦合已存储的分析记录 DTO 且排除规则 ID）;日志结果页「沉淀为知识」经 `/knowledge?entryId=…` 深链交接草稿详情;`action.createKnowledgeDraft` 按 `action.submitParameterChange` 模式注册（requiresApproval、组织范围、执行时强制 `knowledge:edit`、会话记录于 `source_session_id`、目录标签「创建知识草稿」、确定性模型路由、`knowledge-agent-draft` eval 场景断言中断与批准落草稿）;`/knowledge-admin` Agent 草稿发布队列（创建人、会话来源、来源分析链接、审阅深链、发布、经 `POST /api/v1/knowledge/entries/:entryId/reject` 拒绝归档）;mock 端口模拟同样的沉淀/队列行为;KB-DISTILL-001 与 KB-ADMIN-001 先注册后实现,并已在 `knowledge.acceptance.spec.ts` 自动化。
+- 设计说明：发布权无需新策略——Agent 草稿的 `created_by_user_id` 即批准会话的用户,既有"拥有者或 manage"治理规则天然实现"edit 发布本人会话草稿;manage 发布任意"。拒绝归档复用 `archived` 状态（被拒草稿的恢复是拥有者/manage 的自觉行为,按标准生命周期回到 `published`）。拒绝从未发布的草稿时跳过索引刷新入队（草稿没有 chunk）。
+
 ## 新增面汇总
 
 - 权限：`knowledge:view`、`knowledge:edit`、`knowledge:manage`（角色种子 + 权限文档）。
@@ -99,11 +104,11 @@
 - [x] 领域模型英文 + 中文记录知识实体、生命周期与仅发布可检索（Phase 1）
 - [x] API 合同英文 + 中文及 OpenAPI 工件包含 `/api/v1/knowledge/*`（Phase 1）
 - [x] FRONTEND 英文 + 中文记录 `/knowledge`、`/knowledge-admin`、port 与 mock 对等（Phase 1）
-- [ ] SECURITY 与 user-permission-design 英文 + 中文记录 `knowledge:*` 权限与 Agent 草稿工具（Phase 1/3——`knowledge:*` 权限已在 Phase 1 完成;Agent 草稿工具待 Phase 3）
+- [x] SECURITY 与 user-permission-design 英文 + 中文记录 `knowledge:*` 权限与 Agent 草稿工具（Phase 1/3——`knowledge:*` 权限已在 Phase 1 完成;Agent 草稿工具、蒸馏门控与发布权规则已在 Phase 3 完成）
 - [x] environment-variables 英文 + 中文与 `.env.example` 记录 `EMBEDDING_API_*`（Phase 2——另含 `KNOWLEDGE_INDEX_WORKER_ENABLED`）
 - [x] 自托管 runbook 英文 + 中文记录 pgvector 要求与纯全文检索降级（Phase 2）
 - [x] ARCHITECTURE 英文 + 中文标注知识模块与小泽知识工具（Phase 1/2——知识模块已在 Phase 1 标注;索引 worker seam 与小泽知识工具已在 Phase 2 标注）
-- [ ] 覆盖图与操作矩阵英文 + 中文在各阶段实现前获得 KB-* ID（Phase 1 + Phase 2 ID 已注册——KB-READ/EDIT/FILE-001、KB-ASK-001、KB-INDEX-001;Phase 3 ID 待注册）
-- [ ] 迁移后重新生成 `docs/generated/db-schema.md`（Phase 1 与 Phase 2（0104）已重新生成;后续含迁移阶段继续）
-- [ ] 延期工作记入 `docs/exec-plans/tech-debt-tracker.md`（收尾——Phase 2 已记 TD-083:pgvector 后装手动补列 + CI 缺 pgvector 覆盖）
-- [ ] 本计划移入 `completed/` 前 `npm run docs:check` 通过
+- [x] 覆盖图与操作矩阵英文 + 中文在各阶段实现前获得 KB-* ID（全部 ID 已注册——KB-READ/EDIT/FILE-001、KB-ASK-001、KB-INDEX-001、KB-DISTILL-001、KB-ADMIN-001）
+- [x] 迁移后重新生成 `docs/generated/db-schema.md`（Phase 1、Phase 2（0104）与 Phase 3（0105）均已重新生成）
+- [x] 延期工作记入 `docs/exec-plans/tech-debt-tracker.md`（TD-083:pgvector 后装手动补列 + CI 缺 pgvector 覆盖；本计划无其他延期项）
+- [x] 本计划移入 `completed/` 前 `npm run docs:check` 通过（收尾变更中验证）

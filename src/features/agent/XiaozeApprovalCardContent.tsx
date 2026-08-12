@@ -22,6 +22,11 @@ export type XiaozeApprovalInterrupt = {
     parameterId?: string;
     targetValue?: string;
     reason?: string;
+    /** action.createKnowledgeDraft fields. */
+    title?: string;
+    contentMarkdown?: string;
+    tags?: string[];
+    sourceLogId?: string;
   };
   citations?: Array<{ id: string; label: string; href?: string; snippet?: string }>;
 };
@@ -33,6 +38,72 @@ export type XiaozeApprovalResolveValue = {
 };
 
 export const XIAOZE_APPROVAL_DEFAULT_REJECT_REASON = "在小泽对话中被拒绝";
+/**
+ * Approval card for the draft-only knowledge tool: shows what the draft will
+ * contain (editable title, tags, source, content preview) and reminds the
+ * reviewer that approving only creates a DRAFT a human still has to publish.
+ */
+function KnowledgeDraftApprovalContent({
+  interrupt,
+  resolve
+}: {
+  interrupt: XiaozeApprovalInterrupt;
+  resolve: (value: XiaozeApprovalResolveValue) => void;
+}) {
+  const [title, setTitle] = useState(interrupt.payload.title ?? "");
+  const editedArgs = useMemo(() => ({ ...interrupt.payload, title }), [interrupt.payload, title]);
+  const contentPreview = interrupt.payload.contentMarkdown ?? "";
+
+  return (
+    <AlertDialog open onOpenChange={() => undefined}>
+      <AlertDialogContent className="confirm-dialog" data-testid="xiaoze-approval-card">
+        <AlertDialogHeader>
+          <AlertDialogTitle>确认创建知识草稿</AlertDialogTitle>
+          <AlertDialogDescription>
+            小泽建议把本次结论沉淀为知识草稿，请审阅后批准或拒绝。批准只创建草稿，发布前不会进入检索，仍需人工在知识库中发布。
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <div className="grid gap-3 py-2">
+          <div className="grid gap-1">
+            <Label htmlFor="xiaoze-knowledge-draft-title">草稿标题</Label>
+            <Input
+              id="xiaoze-knowledge-draft-title"
+              aria-label="草稿标题"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+            />
+          </div>
+          <p>
+            <strong>标签：</strong>
+            {interrupt.payload.tags?.length ? interrupt.payload.tags.join("、") : "—"}
+          </p>
+          {interrupt.payload.sourceLogId ? (
+            <p>
+              <strong>来源分析：</strong>
+              {interrupt.payload.sourceLogId}
+            </p>
+          ) : null}
+          {contentPreview ? (
+            <div className="grid gap-1">
+              <Label>内容预览</Label>
+              <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-muted/40 p-2 text-xs">
+                {contentPreview.length > 1200 ? `${contentPreview.slice(0, 1200)}…` : contentPreview}
+              </pre>
+            </div>
+          ) : null}
+        </div>
+        <AlertDialogFooter>
+          <AlertDialogCancel type="button" onClick={() => resolve({ decision: "reject", reason: "Rejected in Xiaoze chat." })}>
+            Reject
+          </AlertDialogCancel>
+          <AlertDialogAction type="button" onClick={() => resolve({ decision: "approve", editedArgs })}>
+            Approve
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
 
 export function XiaozeApprovalCardContent({
   interrupt,
@@ -54,6 +125,10 @@ export function XiaozeApprovalCardContent({
     }),
     [interrupt.payload, reason, targetValue]
   );
+
+  if (interrupt.toolName === "action.createKnowledgeDraft") {
+    return <KnowledgeDraftApprovalContent interrupt={interrupt} resolve={resolve} />;
+  }
 
   return (
     <AlertDialog open onOpenChange={() => undefined}>

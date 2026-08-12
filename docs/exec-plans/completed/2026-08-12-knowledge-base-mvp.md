@@ -1,9 +1,9 @@
 # Knowledge base MVP
 
-> Status: **Active** — planning locked 2026-08-12; Phase 1 implemented on `feat/knowledge-base-foundation` (2026-08-12, merged); Phase 2 implemented on `feat/knowledge-base-rag` (2026-08-12); Phase 3 not started
+> Status: **Completed 2026-08-13** — Phase 1 merged via #330, Phase 2 via #370, Phase 3 via #385 (branches `feat/knowledge-base-foundation`, `feat/knowledge-base-rag`, `feat/knowledge-base-distillation`)
 > Date: 2026-08-12
 > Design: [`docs/design-docs/2026-08-12-knowledge-base-design.md`](../../design-docs/2026-08-12-knowledge-base-design.md)
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-12-knowledge-base-mvp.md`](../../zh-CN/exec-plans/active/2026-08-12-knowledge-base-mvp.md)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-12-knowledge-base-mvp.md`](../../zh-CN/exec-plans/completed/2026-08-12-knowledge-base-mvp.md)
 > ADR: [ADR-0025](../../adr/0025-knowledge-retrieval-lives-in-postgres.md)
 
 ## Goal
@@ -53,6 +53,11 @@ One branch per phase, each checked out from the latest `main` after the previous
 4. `/knowledge-admin` agent-draft publish queue: list, review, publish (edit-permission holders for own-session drafts; manage for any), archive-reject.
 5. Acceptance: add KB-DISTILL-001, KB-ADMIN-001 before implementation.
 
+**Phase 3 status notes (2026-08-13, `feat/knowledge-base-distillation`):**
+
+- Delivered as planned: migration `0105_knowledge_distillation_source.sql` (additive `knowledge_entries.source_log_id` — Phase 1's attribution columns cover who authored, this covers which analysis it came from); `POST /api/v1/knowledge/distill-from-log` (`knowledge:edit` + `logs:view`/org scope on the source, complete analyses only, prefill coupled to the stored analysis-record DTO with rule ids excluded); the 沉淀为知识 action on the log result page handing off into the `/knowledge?entryId=…` draft detail; `action.createKnowledgeDraft` registered like `action.submitParameterChange` (requiresApproval, organization scope, `knowledge:edit` at execution, session recorded on `source_session_id`, catalog label 创建知识草稿, deterministic-model route, `knowledge-agent-draft` eval scenarios for interrupt + approve-lands); the `/knowledge-admin` agent-draft publish queue (creator, session origin, source-analysis link, review deep link, publish, archive-reject via `POST /api/v1/knowledge/entries/:entryId/reject`); mock ports simulate the same distil/queue behavior; KB-DISTILL-001 + KB-ADMIN-001 registered before implementation and automated in `knowledge.acceptance.spec.ts`.
+- Design notes: publish rights needed no new policy — the agent draft's `created_by_user_id` is the approving session user, so the existing owner-or-manage governance rule implements "edit publishes own-session drafts; manage publishes any". Archive-reject reuses the `archived` state (restore of a rejected draft is a deliberate owner/manage act and goes to `published` per the standard lifecycle). Rejecting a never-published draft skips the index-refresh enqueue (drafts have no chunks).
+
 ## New surface summary
 
 - Permissions: `knowledge:view`, `knowledge:edit`, `knowledge:manage` (role seeds + permission docs).
@@ -99,11 +104,11 @@ Per phase: targeted vitest for `server/modules/knowledge/` and knowledge compone
 - [x] Domain model EN + zh document knowledge entities, lifecycle, and published-only retrieval (Phase 1)
 - [x] API contract EN + zh and the OpenAPI artifact include `/api/v1/knowledge/*` (Phase 1)
 - [x] FRONTEND EN + zh document `/knowledge`, `/knowledge-admin`, ports, and mock parity (Phase 1)
-- [ ] SECURITY + user-permission-design EN + zh document `knowledge:*` permissions and the agent draft tool (Phase 1/3 — `knowledge:*` permissions done in Phase 1; agent draft tool pending Phase 3)
+- [x] SECURITY + user-permission-design EN + zh document `knowledge:*` permissions and the agent draft tool (Phase 1/3 — `knowledge:*` permissions done in Phase 1; agent draft tool, distillation gates, and publish-rights rule done in Phase 3)
 - [x] environment-variables EN + zh and `.env.example` document `EMBEDDING_API_*` (Phase 2 — plus `KNOWLEDGE_INDEX_WORKER_ENABLED`)
 - [x] Self-hosted runbook EN + zh document the pgvector requirement and FTS-only degradation (Phase 2)
 - [x] ARCHITECTURE EN + zh map the knowledge module and Xiaoze knowledge tools (Phase 1/2 — knowledge module mapped in Phase 1; indexing worker seam + Xiaoze knowledge tools mapped in Phase 2)
-- [ ] Coverage map and operation matrix EN + zh gain the KB-* IDs before each phase implements (Phase 1 + Phase 2 IDs registered — KB-READ/EDIT/FILE-001, KB-ASK-001, KB-INDEX-001; Phase 3 IDs pending)
-- [ ] `docs/generated/db-schema.md` regenerated after migrations (Phase 1 + Phase 2 (0104) regenerated; each later phase with migrations)
-- [ ] Deferred work recorded in `docs/exec-plans/tech-debt-tracker.md` (closeout — Phase 2 already recorded TD-083: pgvector late-install manual column step + missing pgvector CI coverage)
-- [ ] `npm run docs:check` green before moving this plan to `completed/`
+- [x] Coverage map and operation matrix EN + zh gain the KB-* IDs before each phase implements (all IDs registered — KB-READ/EDIT/FILE-001, KB-ASK-001, KB-INDEX-001, KB-DISTILL-001, KB-ADMIN-001)
+- [x] `docs/generated/db-schema.md` regenerated after migrations (Phase 1, Phase 2 (0104), and Phase 3 (0105) regenerated)
+- [x] Deferred work recorded in `docs/exec-plans/tech-debt-tracker.md` (TD-083: pgvector late-install manual column step + missing pgvector CI coverage; no other deferrals left this plan)
+- [x] `npm run docs:check` green before moving this plan to `completed/` (verified in the closeout change)

@@ -522,6 +522,10 @@ export const routeManifest = [
   { id: "logs.archive", method: "POST", path: "/api/v1/logs/:logId/archive", module: "logs", stability: "mvp" },
   { id: "logs.unarchive", method: "POST", path: "/api/v1/logs/:logId/unarchive", module: "logs", stability: "mvp" },
   { id: "logs.feedback", method: "POST", path: "/api/v1/logs/:logId/feedback", module: "logs", stability: "mvp" },
+  { id: "logs.listDomains", method: "GET", path: "/api/v1/log-domains", module: "logs", stability: "mvp" },
+  { id: "logs.createDomain", method: "POST", path: "/api/v1/log-domains", module: "logs", stability: "mvp" },
+  { id: "logs.updateDomain", method: "PATCH", path: "/api/v1/log-domains/:domainId", module: "logs", stability: "mvp" },
+  { id: "logs.archiveDomain", method: "POST", path: "/api/v1/log-domains/:domainId/archive", module: "logs", stability: "mvp" },
 
   { id: "productFeedback.create", method: "POST", path: "/api/v1/product-feedback", module: "product-feedback", stability: "mvp" },
   { id: "productFeedback.list", method: "GET", path: "/api/v1/product-feedback", module: "product-feedback", stability: "mvp" },
@@ -529,6 +533,13 @@ export const routeManifest = [
   { id: "productFeedback.patch", method: "PATCH", path: "/api/v1/product-feedback/:id", module: "product-feedback", stability: "mvp" },
   { id: "knowledge.createEntry", method: "POST", path: "/api/v1/knowledge/entries", module: "knowledge", stability: "mvp" },
   { id: "knowledge.listEntries", method: "GET", path: "/api/v1/knowledge/entries", module: "knowledge", stability: "mvp" },
+  {
+    id: "knowledge.distillFromLog",
+    method: "POST",
+    path: "/api/v1/knowledge/distill-from-log",
+    module: "knowledge",
+    stability: "mvp"
+  },
   { id: "knowledge.search", method: "GET", path: "/api/v1/knowledge/search", module: "knowledge", stability: "mvp" },
   { id: "knowledge.indexStatus", method: "GET", path: "/api/v1/knowledge/index/status", module: "knowledge", stability: "mvp" },
   { id: "knowledge.indexRebuild", method: "POST", path: "/api/v1/knowledge/index/rebuild", module: "knowledge", stability: "mvp" },
@@ -559,6 +570,13 @@ export const routeManifest = [
     id: "knowledge.restoreEntry",
     method: "POST",
     path: "/api/v1/knowledge/entries/:entryId/restore",
+    module: "knowledge",
+    stability: "mvp"
+  },
+  {
+    id: "knowledge.rejectAgentDraft",
+    method: "POST",
+    path: "/api/v1/knowledge/entries/:entryId/reject",
     module: "knowledge",
     stability: "mvp"
   },

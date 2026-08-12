@@ -2245,7 +2245,7 @@ describe.skipIf(!databaseAvailable)("createNodeEnablementDraft", () => {
     expect(tips.rows[0]!.candidate_config_revision_id).toBe(binding.candidateRevisionId);
 
     const { getEnablementDraftForSubmission, getBindingDraftForSubmission } = await import(
-      "../parameters/repository"
+      "../parameter-drafts/repository"
     );
     const forSubmit = await getEnablementDraftForSubmission(db!, {
       organizationId: ORG_ID,

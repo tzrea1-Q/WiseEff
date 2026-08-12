@@ -3,7 +3,7 @@
 > English: [English](../../design-docs/2026-08-12-knowledge-base-design.md)
 > 状态：**锁定设计**——D1–D20 于 2026-08-12 经拷问式设计会话敲定
 > 日期：2026-08-12
-> 执行计划：[`docs/zh-CN/exec-plans/active/2026-08-12-knowledge-base-mvp.md`](../exec-plans/active/2026-08-12-knowledge-base-mvp.md)
+> 执行计划：[`docs/zh-CN/exec-plans/completed/2026-08-12-knowledge-base-mvp.md`](../exec-plans/completed/2026-08-12-knowledge-base-mvp.md)
 > 相关文档：[`ARCHITECTURE.md`](../root/ARCHITECTURE.md)、[`docs/SECURITY.md`](../SECURITY.md)、ADR-0025（`docs/adr/0025-knowledge-retrieval-lives-in-postgres.md`，英文）
 
 ## 定位

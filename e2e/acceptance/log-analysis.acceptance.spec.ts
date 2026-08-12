@@ -14,8 +14,11 @@ const organizationId = "org-chargelab";
 const analysisQuestion = "Why did fast charging fold back?";
 const supportedFixture = path.resolve("test-fixtures/logs/charging-foldback.log");
 const unsupportedFixture = path.resolve("test-fixtures/logs/unsupported.bin");
+const providerOutageFixture = path.resolve("test-fixtures/logs/provider-outage.log");
 const supportedFileName = "charging-foldback.log";
 const unsupportedFileName = "unsupported.bin";
+const providerOutageFileName = "provider-outage.log";
+const acceptanceLogDomainName = "acceptance-charging-power";
 
 function runNpmScript(script: string) {
   const invocation =
@@ -55,10 +58,10 @@ async function cleanupAcceptanceLogs() {
       where organization_id = $1
         and (
           analysis_question = $2
-          or file_name in ($3, $4)
+          or file_name in ($3, $4, $5)
         )
       `,
-      [organizationId, analysisQuestion, supportedFileName, unsupportedFileName]
+      [organizationId, analysisQuestion, supportedFileName, unsupportedFileName, providerOutageFileName]
     );
     const logIds = logs.rows.map((row) => row.id);
     const fileObjectIds = logs.rows.map((row) => row.file_object_id);
@@ -104,6 +107,22 @@ async function cleanupAcceptanceLogs() {
   });
 }
 
+async function cleanupAcceptanceLogDomains() {
+  await withPgClient(async (client) => {
+    const domains = await client.query<{ id: string }>(
+      "select id from log_domains where organization_id = $1 and name = $2",
+      [organizationId, acceptanceLogDomainName]
+    );
+    const domainIds = domains.rows.map((row) => row.id);
+    if (domainIds.length === 0) {
+      return;
+    }
+    await client.query("update log_records set log_domain_id = null where log_domain_id = any($1::text[])", [domainIds]);
+    await client.query("delete from audit_events where target_type = 'log-domain' and target_id = any($1::text[])", [domainIds]);
+    await client.query("delete from log_domains where id = any($1::text[])", [domainIds]);
+  });
+}
+
 async function seedLogAdminUser() {
   await withPgClient(async (client) => {
     await client.query(
@@ -137,7 +156,17 @@ async function latestLogByFile(page: Page, fileName: string) {
   );
   expect(response.ok()).toBe(true);
   const body = (await response.json()) as {
-    items: Array<{ id: string; fileName: string; status: string; archiveState?: string; failureReason?: string | null }>;
+    items: Array<{
+      id: string;
+      fileName: string;
+      status: string;
+      archiveState?: string;
+      failureReason?: string | null;
+      logDomainId?: string;
+      logDomainName?: string;
+      analysisSource?: string;
+      degradedReason?: string;
+    }>;
   };
   const matches = body.items.filter((item) => item.fileName === fileName);
   expect(matches.length).toBeGreaterThan(0);
@@ -200,6 +229,47 @@ async function logRunDbSummary(runId: string) {
   });
 }
 
+async function logReportDbSummary(logId: string) {
+  return withPgClient(async (client) => {
+    const result = await client.query<{ analysis_source: string | null; degraded_reason: string | null; prompt_version: string | null; model: string | null }>(
+      `
+      select report.analysis_source, report.degraded_reason, report.prompt_version, report.model
+      from log_records lr
+      inner join log_analysis_reports report on report.run_id = lr.current_run_id
+      where lr.id = $1
+      `,
+      [logId]
+    );
+    const row = result.rows[0];
+
+    return {
+      table: "log_analysis_reports",
+      predicate: `log_record_id=${logId} (current run)`,
+      observed: row
+        ? `analysisSource=${row.analysis_source ?? "none"}; degradedReason=${row.degraded_reason ?? "none"}; promptVersion=${row.prompt_version ?? "none"}; model=${row.model ?? "none"}`
+        : "missing",
+      rowCount: result.rowCount ?? result.rows.length
+    };
+  });
+}
+
+async function logDomainDbSummary(domainName: string) {
+  return withPgClient(async (client) => {
+    const result = await client.query<{ id: string; status: string }>(
+      "select id, status from log_domains where organization_id = $1 and name = $2",
+      [organizationId, domainName]
+    );
+    const row = result.rows[0];
+
+    return {
+      table: "log_domains",
+      predicate: `organization_id=${organizationId}; name=${domainName}`,
+      observed: row ? `id=${row.id}; status=${row.status}` : "missing",
+      rowCount: result.rowCount ?? result.rows.length
+    };
+  });
+}
+
 function auditSummaryFor(
   items: Array<{ id?: string; kind: string; action?: string; targetId: string | null; traceId?: string; metadata?: Record<string, unknown> }>,
   match: { kind: string; targetId: string }
@@ -217,10 +287,14 @@ function auditSummaryFor(
   };
 }
 
-async function uploadLogThroughUi(page: Page, filePath: string, question?: string) {
+async function uploadLogThroughUi(page: Page, filePath: string, question?: string, domainName?: string) {
   await prepareInteractionSurface(page);
   await page.getByRole("toolbar", { name: /日志(?:分析工作台|智能分析)页面操作/ }).getByRole("button", { name: "上传新日志" }).click();
   const dialog = page.getByRole("dialog", { name: "上传日志" });
+  if (domainName) {
+    await expect(dialog.locator("#upload-log-domain option", { hasText: domainName })).toHaveCount(1, { timeout: 10_000 });
+    await dialog.locator("#upload-log-domain").selectOption({ label: domainName });
+  }
   await dialog.getByLabel("选择日志文件").setInputFiles(filePath);
   if (question) {
     await dialog.locator("#upload-analysis-question").fill(question);
@@ -446,6 +520,130 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       db: [await logRecordDbSummary(completedLog.id), await logRunDbSummary(latestRun!.id)],
       audit: [auditSummaryFor(auditBody.items, { kind: "log-rerun", targetId: completedLog.id })],
       notes: `Log ${completedLog.id} created rerun ${latestRun!.id}; UI refreshed the log workbench and audit recorded log-rerun with job metadata.`
+    });
+  });
+
+  test("registers a log domain in /log-admin and binds an upload to it", async ({ page }, testInfo) => {
+    // @acceptance LOG-DOMAIN-001
+    // @operation LOG-DOMAIN-001
+    await cleanupAcceptanceLogs();
+    await cleanupAcceptanceLogDomains();
+
+    await page.goto("/log-admin");
+    await prepareInteractionSurface(page);
+
+    const governance = page.getByTestId("log-domain-governance");
+    await governance.getByRole("button", { name: "新建业务域" }).click();
+    await page.getByLabel(/名称/).fill(acceptanceLogDomainName);
+    await page.getByLabel(/描述/).fill("Acceptance charging/power subsystem log domain");
+    await page.getByLabel(/格式画像 JSON/).fill('{"severityMap": {"error": ["E_THERMAL_FOLDBACK"]}}');
+    const createResponsePromise = page.waitForResponse(
+      (response) => response.request().method() === "POST" && response.url().includes("/api/v1/log-domains")
+    );
+    await page.getByRole("button", { name: "创建业务域" }).click();
+    const createResponse = await createResponsePromise;
+    expect(createResponse.ok()).toBe(true);
+    await expect(governance.getByRole("table", { name: "业务域列表" }).getByText(acceptanceLogDomainName)).toBeVisible();
+
+    const domainsResponse = await page.request.get(apiRoute("/api/v1/log-domains"), { headers: smokeHeaders() });
+    expect(domainsResponse.ok()).toBe(true);
+    const domainsBody = (await domainsResponse.json()) as { items: Array<{ id: string; name: string; status: string }> };
+    const createdDomain = domainsBody.items.find((item) => item.name === acceptanceLogDomainName);
+    expect(createdDomain).toBeTruthy();
+
+    await page.goto("/logs");
+    await uploadLogThroughUi(page, supportedFixture, analysisQuestion, acceptanceLogDomainName);
+    const boundLog = await latestLogByFile(page, supportedFileName);
+    expect(boundLog.logDomainId).toBe(createdDomain!.id);
+    expect(boundLog.logDomainName).toBe(acceptanceLogDomainName);
+    await expect
+      .poll(async () => (await latestLogByFile(page, supportedFileName)).status, { timeout: 70_000 })
+      .toBe("complete");
+    await historyItem(page, supportedFileName).click();
+    await expect(page.getByTestId("analysis-provenance")).toContainText(`业务域 · ${acceptanceLogDomainName}`);
+
+    const auditResponse = await page.request.get(apiRoute("/api/v1/audit-events"), { headers: smokeHeaders() });
+    expect(auditResponse.ok()).toBe(true);
+    const auditBody = (await auditResponse.json()) as {
+      items: Array<{ id?: string; kind: string; action?: string; targetId: string | null; traceId?: string; metadata?: Record<string, unknown> }>;
+    };
+
+    await recordOperationEvidence({
+      operationId: "LOG-DOMAIN-001",
+      title: "log domain registered in governance and upload bound to it",
+      status: "passed",
+      page,
+      testInfo,
+      api: [
+        summarizeApiResponse(createResponse, {
+          method: "POST",
+          path: "/api/v1/log-domains",
+          responseSummary: `created domain=${createdDomain!.id}`
+        }),
+        summarizeApiResponse(domainsResponse, {
+          method: "GET",
+          path: "/api/v1/log-domains",
+          responseSummary: `domains=${domainsBody.items.length}; contains ${acceptanceLogDomainName}`
+        })
+      ],
+      db: [await logDomainDbSummary(acceptanceLogDomainName), await logRecordDbSummary(boundLog.id)],
+      audit: [auditSummaryFor(auditBody.items, { kind: "log-domain-create", targetId: createdDomain!.id })],
+      notes: `Domain ${createdDomain!.id} was registered through /log-admin governance and upload ${boundLog.id} bound to it; the conclusion card shows the domain provenance chip.`
+    });
+  });
+
+  test("marks a degraded rules-fallback analysis visibly after a provider outage", async ({ page }, testInfo) => {
+    // @acceptance LOG-DEGRADED-001
+    // @operation LOG-DEGRADED-001
+    await cleanupAcceptanceLogs();
+
+    await page.goto("/logs");
+    await uploadLogThroughUi(page, providerOutageFixture, "为什么分析发生降级？");
+    await expect
+      .poll(async () => (await latestLogByFile(page, providerOutageFileName)).status, { timeout: 90_000 })
+      .toBe("complete");
+
+    const degradedLogsResponse = await page.request.get(
+      apiRoute("/api/v1/logs?includeArchived=true"),
+      { headers: smokeHeaders() }
+    );
+    expect(degradedLogsResponse.ok()).toBe(true);
+    const degradedLogsBody = (await degradedLogsResponse.json()) as {
+      items: Array<{
+        id: string;
+        fileName: string;
+        status: string;
+        analysisSource?: string;
+        degradedReason?: string;
+      }>;
+    };
+    const degradedLog = degradedLogsBody.items.find((item) => item.fileName === providerOutageFileName)!;
+    expect(degradedLog).toBeTruthy();
+    expect(degradedLog.analysisSource).toBe("rules-fallback");
+    expect(degradedLog.degradedReason).toBe("provider-unavailable");
+
+    await historyItem(page, providerOutageFileName).click();
+    const provenance = page.getByTestId("analysis-provenance");
+    await expect(provenance).toBeVisible();
+    await expect(provenance).toContainText("降级分析 · 规则回退");
+    await expect(provenance).toContainText("AI 分析服务不可用");
+
+    await recordOperationEvidence({
+      operationId: "LOG-DEGRADED-001",
+      title: "provider outage degrades honestly to marked rules fallback",
+      status: "passed",
+      page,
+      testInfo,
+      api: [
+        summarizeApiResponse(degradedLogsResponse, {
+          method: "GET",
+          path: "/api/v1/logs?includeArchived=true",
+          responseSummary: `log ${degradedLog.id} status=${degradedLog.status}; analysisSource=${degradedLog.analysisSource}; degradedReason=${degradedLog.degradedReason}`
+        })
+      ],
+      db: [await logRecordDbSummary(degradedLog.id), await logReportDbSummary(degradedLog.id)],
+      audit: [],
+      notes: `Log ${degradedLog.id} completed as an honestly marked degraded analysis (rules-fallback / provider-unavailable) after the simulated provider outage; the conclusion card shows the prominent degraded badge instead of impersonating a full analysis.`
     });
   });
 });

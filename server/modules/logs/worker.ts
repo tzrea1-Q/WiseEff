@@ -4,7 +4,9 @@ import type { Database } from "../../shared/database/client";
 import { decideRetry } from "../jobs/retryPolicy";
 import type { LogAnalysisJobFailureReason, MetricsRegistry } from "../../observability/metrics";
 import type { TracingBoundary } from "../../observability/tracing";
-import { createRuleBasedLogAnalyzer, type LogAnalysisAdapter } from "./analyzer";
+import { createRuleBasedLogAnalyzer, type AnalyzeLogInput, type AnalyzeLogOutput, type LogAnalysisAdapter } from "./analyzer";
+import { LogAnalysisProviderError, LOG_ANALYSIS_PROMPT_VERSION } from "./analyzer/llmAnalyzer";
+import { readStoredLogFormatProfile } from "./formatProfile";
 import type { ObjectStore } from "./objectStore";
 import { parseLogText } from "./parser";
 import {
@@ -16,6 +18,9 @@ import {
 import { notifyLogAnalysisCompleted, notifyLogAnalysisFailed } from "../notifications/producers";
 import type { LogStage } from "./status";
 
+type LogWorkerMetrics = Pick<MetricsRegistry, "recordLogAnalysisJobResult"> &
+  Partial<Pick<MetricsRegistry, "recordLogAnalysisDegraded">>;
+
 export type ProcessLogWorkerOptions = {
   db: Database;
   objectStore: ObjectStore;
@@ -25,7 +30,7 @@ export type ProcessLogWorkerOptions = {
   maxAttempts?: number;
   retryBaseDelayMs?: number;
   now?: () => Date;
-  metrics?: Pick<MetricsRegistry, "recordLogAnalysisJobResult">;
+  metrics?: LogWorkerMetrics;
   tracing?: Pick<TracingBoundary, "withSpan">;
 };
 
@@ -109,6 +114,53 @@ async function markProgress(
 
 function readableError(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Honest degradation (glossary: Degraded analysis): a transient provider failure keeps
+ * riding the existing job retry/backoff; the retry-exhausting final attempt falls back
+ * to the deterministic rule analyzer with explicit provenance instead of dead-lettering.
+ * Only a failing fallback continues into the existing failure/dead-letter path.
+ * Exported for the behavior-layer eval harness, which exercises the same chain.
+ */
+export async function analyzeWithDegradation(input: {
+  analyzer: LogAnalysisAdapter;
+  analyzeInput: AnalyzeLogInput;
+  job: Pick<ClaimedLogAnalysisJobDto, "attemptCount">;
+  maxAttempts: number;
+  retryBaseDelayMs: number;
+  now: () => Date;
+  metrics?: LogWorkerMetrics;
+}): Promise<AnalyzeLogOutput> {
+  try {
+    return await input.analyzer.analyze(input.analyzeInput);
+  } catch (error) {
+    if (!(error instanceof LogAnalysisProviderError)) {
+      throw error;
+    }
+    const decision = decideRetry({
+      attemptCount: input.job.attemptCount,
+      maxAttempts: input.maxAttempts,
+      baseDelayMs: input.retryBaseDelayMs,
+      now: input.now()
+    });
+    if (decision.action === "retry") {
+      throw error;
+    }
+
+    input.metrics?.recordLogAnalysisDegraded?.({
+      reason: "provider-unavailable",
+      model: error.modelLabel ?? "unknown"
+    });
+    const fallback = await createRuleBasedLogAnalyzer().analyze(input.analyzeInput);
+    return {
+      ...fallback,
+      analysisSource: "rules-fallback",
+      degradedReason: "provider-unavailable",
+      promptVersion: LOG_ANALYSIS_PROMPT_VERSION,
+      model: error.modelLabel
+    };
+  }
 }
 
 async function processClaimedLogAnalysisJob(
@@ -201,7 +253,8 @@ async function processClaimedLogAnalysisJob(
     currentFailureReason = "object_store_error";
     const bytes = await objectStore.get(snapshot.storageKey);
     currentFailureReason = "parse_error";
-    const parsed = parseLogText({ fileName: snapshot.fileName, content: bytes });
+    const formatProfile = readStoredLogFormatProfile(snapshot.logDomain?.formatProfile ?? undefined);
+    const parsed = parseLogText({ fileName: snapshot.fileName, content: bytes }, { profile: formatProfile });
     if (!parsed.ok) {
       throw new Error(parsed.reason);
     }
@@ -232,9 +285,23 @@ async function processClaimedLogAnalysisJob(
     });
     currentProgress = 40;
 
-    const analysis = await analyzer.analyze({
-      parsed,
-      analysisQuestion: snapshot.analysisQuestion ?? undefined
+    const analysis = await analyzeWithDegradation({
+      analyzer,
+      analyzeInput: {
+        parsed,
+        analysisQuestion: snapshot.analysisQuestion ?? undefined,
+        logDomain: snapshot.logDomain
+          ? {
+              name: snapshot.logDomain.name,
+              description: snapshot.logDomain.description ?? undefined
+            }
+          : undefined
+      },
+      job,
+      maxAttempts,
+      retryBaseDelayMs,
+      now,
+      metrics
     });
 
     await markProgress(options, {
@@ -299,7 +366,11 @@ async function processClaimedLogAnalysisJob(
         impact: analysis.impact,
         severity: analysis.severity,
         suggestedActions: analysis.suggestedActions,
-        rawLines: parsed.rawLines
+        rawLines: parsed.rawLines,
+        analysisSource: analysis.analysisSource,
+        degradedReason: analysis.degradedReason,
+        promptVersion: analysis.promptVersion,
+        model: analysis.model
       },
       evidence: analysis.evidence
     });

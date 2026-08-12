@@ -233,6 +233,10 @@ export type LogRecord = {
   failureReason?: string;
   analysisQuestion?: string;
   archiveState?: LogArchiveState;
+  logDomainId?: string;
+  logDomainName?: string;
+  analysisSource?: "agent" | "rules-fallback";
+  degradedReason?: "provider-unavailable" | "token-budget-exhausted";
 };
 
 export type Device = {

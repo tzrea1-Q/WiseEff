@@ -22,7 +22,7 @@ Rules:
 - Projects and modules: project metadata and module lookup.
 - Parameters: parameter listing, detail, history, drafts, submission rounds, change requests, imports, dashboard aggregation (`/parameters/dashboard/summary`, `/parameters/dashboard/hotspots`), org module tree CRUD (`/parameter-modules`), **project parameter initialization** (`/parameters/projects/:projectId/initialization*`, `/parameters/admin/initialization-reviews*`), per-project parameter file hosting with sync, conflict resolution, and staged candidates (`/projects/:projectId/parameter-files*`, `/projects/:projectId/parameter-file-candidates*`), structured DTS read/search (`.../structure`, `/projects/:projectId/dts-search`), and per-project DTS config sets, release baselines, validation gate, and lossless export (`/projects/:projectId/config-sets*`, `/projects/:projectId/baselines/:baselineId/*`).
 - Semantic parameter topology (v2): parameter specs, spec review tasks, source/effective topology, project bindings, identity mapping tasks, and fail-closed config-revision validate under `/api/v2/*` (see below). Legacy flat parameter IDs are retired at cutover with `410 legacy-parameter-id-retired`.
-- Logs: upload/file records, analysis records, runs, rerun, archive, feedback.
+- Logs: upload/file records, analysis records, runs, rerun, archive, feedback, and org-scoped log-domain governance (`/log-domains`).
 - Product feedback: Internal Beta sidebar feedback submission, admin triage, and attachment content.
 - Knowledge: organization-scoped knowledge entries, revisions, published-only search, and file content under `/api/v1/knowledge/*`.
 - Jobs: status and progress events.
@@ -34,6 +34,21 @@ Rules:
 ## Log and Debugging Scope
 
 M2 log upload/list and M3 debugging runtime/catalog APIs are scoped by authenticated `organization_id`. They do not accept `projectId` query parameters or body fields. Log records may include optional `relatedParameterId` as a soft link to M1 definitions.
+
+## Log Domains and Analyzer Provenance
+
+Log domains are org-scoped registrations of a business's log intake (name, description, optional declarative format profile). Governance requires `logs:admin-domains` and every mutation writes a `log-domain-*` audit event.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/log-domains` | List domains (`logs:view`; `includeArchived=true` adds archived rows). |
+| `POST` | `/api/v1/log-domains` | Create a domain (`{ name, description?, formatProfile? }`). Duplicate name in the organization → `409`; invalid format profile → `400` with issues. Returns `201 { item }`. |
+| `PATCH` | `/api/v1/log-domains/:domainId` | Update name/description/format profile/status (`formatProfile: null` clears the stored profile). |
+| `POST` | `/api/v1/log-domains/:domainId/archive` | Archive the domain; existing log records keep their binding. |
+
+`POST /api/v1/log-files`, `POST /api/v1/logs`, and `POST /api/v1/logs/:logId/rerun` accept an optional `logDomainId`. The domain must belong to the organization and be `active`, otherwise `400`; omitting it keeps the built-in uncategorized log domain semantics (generic analysis, upload never blocked).
+
+Log record DTOs gained additive provenance fields: `logDomainId?`, `logDomainName?`, `analysisSource?: "agent" | "rules-fallback"`, and `degradedReason?: "provider-unavailable" | "token-budget-exhausted"`. A `rules-fallback` source marks a degraded analysis and must stay visible to clients; the rest of the log output contract is unchanged.
 
 ## Debugging Parameter Semantics
 
@@ -203,7 +218,8 @@ Organization-scoped knowledge entries with immutable revisions (design: [Knowled
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `POST` | `/api/v1/knowledge/entries` | Create a markdown or file entry as a draft. File uploads send base64 content through the object-store seam and run text extraction. Returns `201 { item }`. |
-| `GET` | `/api/v1/knowledge/entries` | List visible entries with optional `status`, `contentForm`, `tag`, `q` (title), and `limit` filters. |
+| `GET` | `/api/v1/knowledge/entries` | List visible entries with optional `status`, `contentForm`, `sourceType` (`human` \| `agent` — the `/knowledge-admin` agent-draft queue lists `status=draft&sourceType=agent`), `tag`, `q` (title), and `limit` filters. |
+| `POST` | `/api/v1/knowledge/distill-from-log` | Distil a COMPLETED log-analysis record into a pre-filled markdown **draft** (`{ logId }` → `201 { item }`): title from the conclusion, body assembled from conclusion/impact/severity/evidence line references/suggested actions, tags seeded (the log-analysis tag plus the severity label), and `sourceLogId` stored on the entry. Requires `knowledge:edit` plus `logs:view` and organization scope on the source record; non-complete analyses are `400`. Audited as `knowledge-entry-distill`. |
 | `GET` | `/api/v1/knowledge/search` | Search **published entries only** (`q`, optional `limit`). Hybrid retrieval: when `EMBEDDING_API_*` is configured and pgvector is available, chunk vector similarity fuses with the FTS/trigram ranking (reciprocal-rank fusion); otherwise the FTS-only path runs unchanged. Items carry citation-ready fields (`entryId`, `title`, `revisionId`, `excerpt`) and the response carries an honest `retrieval` report: `{ mode: "semantic_fts" \| "fts_only", vectorAvailable, embeddingConfigured, degradedReason? }`. |
 | `GET` | `/api/v1/knowledge/index/status` | Per-entry retrieval index health (`knowledge:manage` only): `{ retrieval, items }` where each item carries `status` (`pending` \| `processing` \| `succeeded` \| `failed`), `error`, indexed revision, and chunk counts. |
 | `POST` | `/api/v1/knowledge/index/rebuild` | Re-enqueue every published entry for index rebuild (`knowledge:manage` only; e.g. after changing `EMBEDDING_MODEL`). Returns `{ enqueued }`. Audited. |
@@ -213,6 +229,7 @@ Organization-scoped knowledge entries with immutable revisions (design: [Knowled
 | `POST` | `/api/v1/knowledge/entries/:entryId/publish` | Publish a draft into retrieval (`draft → published`). |
 | `POST` | `/api/v1/knowledge/entries/:entryId/archive` | Archive a published entry out of retrieval (`published → archived`). |
 | `POST` | `/api/v1/knowledge/entries/:entryId/restore` | Restore an archived entry (`archived → published`). |
+| `POST` | `/api/v1/knowledge/entries/:entryId/reject` | Archive-reject an **agent-sourced draft** from the publish queue (`draft → archived`, never published). Entry owner with `knowledge:edit`, or `knowledge:manage`; human drafts and non-drafts are `400`. Audited as `knowledge-entry-reject`. |
 | `DELETE` | `/api/v1/knowledge/entries/:entryId` | Hard delete with revisions and file metadata. `knowledge:manage` only; writes a `High`-severity audit event. |
 | `GET` | `/api/v1/knowledge/entries/:entryId/revisions` | List immutable revisions, newest first. |
 | `POST` | `/api/v1/knowledge/entries/:entryId/revisions/:revisionId/restore` | Restore a prior revision as a new head revision (requires `expectedHeadRevisionNumber`). |
@@ -220,7 +237,7 @@ Organization-scoped knowledge entries with immutable revisions (design: [Knowled
 
 File uploads accept `application/pdf`, `.docx` (`application/vnd.openxmlformats-officedocument.wordprocessingml.document`), `application/msword`, `text/plain`, and `text/markdown`, up to 20 MB. Extraction failures are recorded honestly on the file row (`extractionStatus: "failed"` plus a readable `extractionError`) without failing the upload.
 
-Publish, edit-of-published, archive, and restore enqueue an asynchronous index refresh (chunking + optional embeddings); the index worker only ever materializes **published** revisions, so drafts and archived entries are never retrievable. Xiaoze grounds knowledge questions through the registered read tools `knowledge.search` / `knowledge.getDocument`, which run under the calling user's AuthContext (`knowledge:view` + organization scope) and return citation payloads that deep-link to `/knowledge?entryId=…`.
+Publish, edit-of-published, archive, and restore enqueue an asynchronous index refresh (chunking + optional embeddings); the index worker only ever materializes **published** revisions, so drafts and archived entries are never retrievable. Xiaoze grounds knowledge questions through the registered read tools `knowledge.search` / `knowledge.getDocument`, which run under the calling user's AuthContext (`knowledge:view` + organization scope) and return citation payloads that deep-link to `/knowledge?entryId=…`. The approval-gated write tool `action.createKnowledgeDraft` (input: `title`, `contentMarkdown`, `tags`, optional `sourceLogId`) creates a NEW agent-sourced draft through the DB-backed approval chain — it interrupts for explicit human approval, executes under the calling user's AuthContext (`knowledge:edit`), records the creating session on `sourceSessionId`, and its drafts stay out of retrieval until published from `/knowledge-admin` or by the owning engineer.
 
 ## Project Parameter Initialization
 

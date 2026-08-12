@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { extname } from "node:path";
 
-import { createAuditEvent } from "../audit/repository";
+import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
@@ -32,6 +32,7 @@ import type {
   ProjectParameterFileDto,
   ProjectParameterFileVersionDto
 } from "./types";
+import { OVERLAY_ROLES } from "./types";
 import { listRegisteredCompatibles } from "../parameter-modules/repository";
 import {
   buildIngestDriverSummary,
@@ -102,7 +103,7 @@ function buildParsedIndex(format: ParameterFileFormat, bytes: Buffer) {
 }
 
 async function createParameterFileUploadAudit(
-  db: Queryable,
+  tx: AuditTx,
   auth: AuthContext,
   input: {
     projectId: string;
@@ -111,16 +112,13 @@ async function createParameterFileUploadAudit(
   },
   context: ParameterFileServiceContext = {}
 ) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    actorUserId: auth.user.id,
-    actorType: "user",
+  // requestId fallback survives only until upload contexts become mandatory (ADR-0027).
+  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
     app: "parameters",
     kind: "parameter-file-upload",
     action: "upload",
     severity: "Medium",
+    projectId: input.projectId,
     targetType: "project-parameter-file",
     targetId: input.file.id,
     metadata: {
@@ -128,12 +126,9 @@ async function createParameterFileUploadAudit(
       format: input.file.format,
       versionNumber: input.version.versionNumber,
       sizeBytes: input.version.sizeBytes
-    },
-    traceId: context.requestId ?? randomUUID()
+    }
   });
 }
-
-const OVERLAY_ROLES = new Set<ConfigSetRole>(["overlay", "charging", "thermal", "misc"]);
 
 /**
  * After a member file version is frozen, ingest a semantic config revision only when the
@@ -305,10 +300,10 @@ export async function uploadProjectParameterFile(
       });
     }
     if (version.origin === "upload") {
-      await syncFileVersion(tx, auth, { fileId: file.id, versionId: version.id });
+      await syncFileVersion(asAuditTx(tx), auth, { fileId: file.id, versionId: version.id });
     }
     await createParameterFileUploadAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         projectId: normalized.projectId,

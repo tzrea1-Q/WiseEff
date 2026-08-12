@@ -1,4 +1,4 @@
-import type { LogRecord, TimeWindow } from "@/domain/logs/types";
+import type { LogDomain, LogDomainStatus, LogRecord, TimeWindow } from "@/domain/logs/types";
 
 export type LogRunStatus = "queued" | "processing" | "complete" | "failed";
 
@@ -24,11 +24,33 @@ export type LogUploadInput = {
   file: File;
   analysisQuestion?: string;
   relatedParameterId?: string;
+  /** Optional log-domain binding; absent = 未分类域 (upload is never blocked by domain selection). */
+  logDomainId?: string;
 };
 
 export type LogRerunInput = {
   logId: string;
   analysisQuestion?: string;
+  logDomainId?: string;
+};
+
+export type LogDomainListQuery = {
+  includeArchived?: boolean;
+};
+
+export type LogDomainCreateInput = {
+  name: string;
+  description?: string;
+  formatProfile?: unknown;
+};
+
+export type LogDomainUpdateInput = {
+  domainId: string;
+  name?: string;
+  description?: string | null;
+  /** undefined = keep; null = clear the stored profile. */
+  formatProfile?: unknown;
+  status?: LogDomainStatus;
 };
 
 export type LogFeedbackInput = {
@@ -47,4 +69,8 @@ export interface LogAnalysisRepository {
   archiveLog(logId: string): Promise<void>;
   unarchiveLog(logId: string): Promise<void>;
   submitFeedback(input: LogFeedbackInput): Promise<void>;
+  listLogDomains?(query?: LogDomainListQuery): Promise<LogDomain[]>;
+  createLogDomain?(input: LogDomainCreateInput): Promise<LogDomain>;
+  updateLogDomain?(input: LogDomainUpdateInput): Promise<LogDomain>;
+  archiveLogDomain?(domainId: string): Promise<LogDomain>;
 }

@@ -35,28 +35,11 @@ import { assertSensitiveNodeWriteAllowed } from "./sensitiveNode";
 import { parameterIdentityMode } from "./parameterIdentityMode";
 import type { InitializationSuggestionDto } from "./types";
 import {
-  applyAddedImportItem,
-  applyUpdatedImportItem,
   bindParameterSource,
-  getImportBatchForUpdate,
-  deleteDraft as deleteDraftRow,
-  deleteDraftForParameter,
   findProjectValueBySource,
-  getBindingDraftForSubmission,
-  getEnablementDraftForSubmission,
-  getDraftWriteLock,
   getProjectParameterForUpdate,
-  hasOpenFileSyncConflict,
-  insertImportBatch,
   insertProjectParameterValueWithSource,
-  listParameterDefinitionsForImport,
-  listDraftsForUser,
-  markImportBatchApplied,
-  promoteBindingDraftCandidateForReview,
-  type ParameterDefinitionImportCandidate,
-  type PersistedImportBatchItem,
   type ProjectParameterValueMatch,
-  upsertDraft,
   countParameterModuleChildren,
   countParametersForModule,
   createParameterModule,
@@ -68,6 +51,27 @@ import {
   updateParameterModule,
   type ListParametersQuery as RepositoryListParametersQuery
 } from "./repository";
+import {
+  deleteDraft as deleteDraftRow,
+  deleteDraftForParameter,
+  getBindingDraftForSubmission,
+  getEnablementDraftForSubmission,
+  getDraftWriteLock,
+  listDraftsForUser,
+  promoteBindingDraftCandidateForReview,
+  upsertDraft
+} from "../parameter-drafts/repository";
+import { hasOpenFileSyncConflict } from "./fileSyncConflictRepository";
+import {
+  applyAddedImportItem,
+  applyUpdatedImportItem,
+  getImportBatchForUpdate,
+  insertImportBatch,
+  listParameterDefinitionsForImport,
+  markImportBatchApplied,
+  type ParameterDefinitionImportCandidate,
+  type PersistedImportBatchItem
+} from "./importBatchRepository";
 import { getProjectById } from "./projectRepository";
 import {
   createChangeRequest,
@@ -107,7 +111,8 @@ import {
 } from "./schemas";
 import { parseDtsImportSource } from "./importDtsParse";
 import { getNextParameterStatus, parameterStatusLabels, type ParameterChangeRequestStatus, type ParameterSubmissionRoundStatus } from "./status";
-import type { ChangeRequestDto, ParameterChangeAction, ParameterImportSourceItemDto, ParameterImportSummaryDto, ParameterModuleDto } from "./types";
+import type { ParameterChangeAction } from "../parameter-drafts/types";
+import type { ChangeRequestDto, ParameterImportSourceItemDto, ParameterImportSummaryDto, ParameterModuleDto } from "./types";
 import { buildSubmissionWorkflowTrail } from "../../../src/domain/parameters/submissionWorkflowTrail";
 import { deriveSubmissionTimeline } from "../../../src/parameterSubmissionTimeline";
 
@@ -2125,7 +2130,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
     if (semanticIdentity) {
       const writeback = isEnablementMerge
         ? await writebackMergedEnablementValue(
-            tx,
+            asAuditTx(tx),
             context.objectStore!,
             auth,
             {
@@ -2138,7 +2143,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
             context
           )
         : await writebackMergedParameterValue(
-            tx,
+            asAuditTx(tx),
             context.objectStore!,
             auth,
             {
@@ -2199,7 +2204,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
 
     if (!semanticIdentity && context.objectStore && request.projectId) {
       await writebackMergedParameterValue(
-        tx,
+        asAuditTx(tx),
         context.objectStore,
         auth,
         {

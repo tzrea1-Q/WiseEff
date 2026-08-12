@@ -103,7 +103,9 @@ For the knowledge base:
 - Draft entries are visible to their owner and `knowledge:manage` holders only; search covers published entries only, so drafts and archived entries cannot leak through retrieval.
 - `knowledge_entries`, `knowledge_revisions`, and `knowledge_files` are organization-scoped and every repository read/write filters by the authenticated `organization_id`.
 - File uploads accept PDF, `.docx`, `.doc`, and plain text/markdown up to 20 MB; bytes live in the shared object store while the database stores metadata, checksums, and honest extraction state.
-- Agents are not knowledge actors in Phase 1 (no knowledge Agent tools exist); the schema already states source attribution (`human` | `agent`) so later phases can add the approval-gated draft tool without a model change.
+- Distillation (`POST /api/v1/knowledge/distill-from-log`) is a double-gated read-then-create: the caller needs `knowledge:edit` to create the draft AND `logs:view` plus organization scope on the source analysis record (enforced by the logs service). The pre-filled draft couples only to the stored analysis-record DTO — analyzer rule ids never enter knowledge content.
+- The agent write tool `action.createKnowledgeDraft` (Phase 3) follows the standard mutating-tool contract: it always pauses for explicit human approval through the DB-backed approval chain before any write, executes under the calling user's AuthContext (`knowledge:edit` enforced at execution), creates a NEW draft only (agents never modify existing entries), and records the creating session (`source_session_id`) and user for publisher accountability. Its audit trail carries `actorType=agent`.
+- Agent-draft publish rights: `knowledge:edit` may publish or archive-reject drafts distilled in their OWN sessions (the draft's `created_by_user_id` is the session user); `knowledge:manage` may publish or reject any agent draft from the `/knowledge-admin` queue. Rejecting archives the draft without ever publishing it.
 
 For M3 debugging:
 
@@ -137,7 +139,7 @@ M2 log-analysis writes emit backend audit events for `log-upload`, `log-upload-f
 
 Product feedback writes emit backend audit events for `product-feedback-create` and `product-feedback-update`. Audit metadata includes feedback type, status, page path, attachment count, and previous/next status for admin triage updates; attachment object bytes are not copied into audit metadata.
 
-Knowledge base writes emit backend audit events for `knowledge-entry-create`, `knowledge-entry-update`, `knowledge-entry-publish`, `knowledge-entry-archive`, `knowledge-entry-restore`, `knowledge-revision-restore`, and `knowledge-entry-delete` (severity `High`). Metadata carries content form, title, revision numbers, and lifecycle transitions with the request trace; extracted file text is not copied into audit metadata.
+Knowledge base writes emit backend audit events for `knowledge-entry-create`, `knowledge-entry-update`, `knowledge-entry-publish`, `knowledge-entry-archive`, `knowledge-entry-restore`, `knowledge-revision-restore`, and `knowledge-entry-delete` (severity `High`). Phase 3 adds `knowledge-entry-distill` (draft distilled from a log analysis, metadata carries the source `logId`), `knowledge-entry-agent-draft` (`actorType=agent`, metadata carries the creating `sessionId` and optional `sourceLogId`), and `knowledge-entry-reject` (agent-draft archive-reject from the publish queue). Metadata carries content form, title, revision numbers, and lifecycle transitions with the request trace; extracted file text is not copied into audit metadata.
 
 M3 debugging emits backend audit events for target detection, session creation, node reads, node writes, and snapshot rollback. Write audit metadata includes the session, operation, node path, requested value, previous value, readback value, verification result, failure reason, and snapshot id when applicable.
 
@@ -180,6 +182,15 @@ Agent-generated parameter changes may prepare drafts or recommendations, but pro
 The live Xiaoze LLM uses LangChain `ChatOpenAI` against OpenAI-compatible `AGENT_API_*` configuration. Model output remains advisory until the WiseEff tool registry, authorization, approval, and audit paths accept it. Safe readiness evidence may expose model id and base URL configuration status; it must not expose API keys, Authorization headers, raw prompts, raw provider payloads, or customer data. Provider traces capture latency, token usage, estimated cost, safety status, safety reasons, and fallback reason so security review can distinguish grounded planning from degraded output.
 
 Provider outages must not silently execute tools. A degraded assistant response is allowed only when the provider health check fails or the transport is unavailable, and the fallback path must skip tool execution entirely. Provider outages and device failures must leave audit/readiness evidence rather than silently passing.
+
+### Log Analysis LLM (P1)
+
+The log analysis kernel behind `LogAnalysisAdapter` runs outside the Xiaoze stack (ADR-0022): it reuses only the `ChatOpenAI` client pattern against the separate `LOG_ANALYSIS_*` env family, with no LangGraph, no `ToolRegistry`, and no approval chain — because it has **no write path**. Its entire output is an advisory, evidence-grounded report; it never touches devices, parameters, or any mutating API.
+
+- **Untrusted input:** uploaded log content (and, from P2, domain knowledge documents) is untrusted model input. The prompt instructs the model to never follow instructions found inside log lines, and structural controls do not rely on that instruction: the output is schema-validated strict JSON, and a grounding check drops any cited line number that does not exist in the parsed log. Output that cannot be grounded is discarded in favor of the deterministic rule fallback with an explicit degraded marker.
+- **Honest degradation:** provider failures ride the existing job retry/backoff; the final attempt falls back to the rule engine with `analysis_source = 'rules-fallback'` and a `degraded_reason`. Degraded results never impersonate full analyses — the UI must keep the provenance badge visible.
+- **Evidence discipline:** logs, audit, and metrics record model label, latency, token counts, degradation reason, and trace/request ids. They must never record API keys, raw prompts, raw provider payloads, or raw log content. `/health/ready` exposes `logAnalysisLlm` configuration status (mirroring `xiaozeLlm`), not credentials.
+- **Tenant isolation:** the worker reads log bytes and log-domain rows through organization-scoped repository queries; log-domain governance requires `logs:admin-domains` and is audited (`log-domain-*`).
 
 ## Backup And Object Storage Security
 

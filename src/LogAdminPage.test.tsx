@@ -39,6 +39,10 @@ function createLogActions(overrides: Partial<LogRuntimeActions> = {}): LogRuntim
     archive: vi.fn().mockResolvedValue(undefined),
     unarchive: vi.fn().mockResolvedValue(undefined),
     submitFeedback: vi.fn().mockResolvedValue(undefined),
+    listLogDomains: vi.fn().mockResolvedValue([]),
+    createLogDomain: vi.fn().mockResolvedValue(null),
+    updateLogDomain: vi.fn().mockResolvedValue(null),
+    archiveLogDomain: vi.fn().mockResolvedValue(null),
     ...overrides
   };
 }
@@ -514,5 +518,101 @@ describe("LogAdminPage · page header actions", () => {
     await waitFor(() => {
       expect(syncButton).not.toBeDisabled();
     });
+  });
+});
+
+describe("LogAdminPage 业务域治理", () => {
+  const chargingDomain = {
+    id: "domain-charging",
+    name: "charging-power",
+    description: "充电/电源子系统内核日志",
+    status: "active" as const,
+    formatProfile: { timestampPattern: "^\\[" },
+    createdAt: "2026-08-12T00:00:00.000Z",
+    updatedAt: "2026-08-12T00:00:00.000Z"
+  };
+
+  it("lists governed domains including archived ones", async () => {
+    const logActions = createLogActions({
+      listLogDomains: vi.fn().mockResolvedValue([chargingDomain, { ...chargingDomain, id: "domain-old", name: "legacy", status: "archived" as const }])
+    });
+    renderPage({ logActions });
+
+    await waitFor(() => expect(logActions.listLogDomains).toHaveBeenCalledWith({ includeArchived: true }));
+    const table = await screen.findByRole("table", { name: "业务域列表" });
+    expect(within(table).getByText("charging-power")).toBeInTheDocument();
+    expect(within(table).getByText("legacy")).toBeInTheDocument();
+    expect(within(table).getByText("已归档")).toBeInTheDocument();
+  });
+
+  it("creates a domain through the form with a valid profile JSON", async () => {
+    const logActions = createLogActions({
+      listLogDomains: vi.fn().mockResolvedValue([]),
+      createLogDomain: vi.fn().mockResolvedValue(chargingDomain)
+    });
+    renderPage({ logActions });
+
+    await userEvent.click(await screen.findByRole("button", { name: "新建业务域" }));
+    await userEvent.type(screen.getByLabelText(/名称/), "charging-power");
+    await userEvent.type(screen.getByLabelText(/描述/), "充电域");
+    const profileInput = screen.getByLabelText(/格式画像 JSON/);
+    await userEvent.click(profileInput);
+    await userEvent.paste('{"timestampPattern": "^x"}');
+    await userEvent.click(screen.getByRole("button", { name: "创建业务域" }));
+
+    await waitFor(() =>
+      expect(logActions.createLogDomain).toHaveBeenCalledWith({
+        name: "charging-power",
+        description: "充电域",
+        formatProfile: { timestampPattern: "^x" }
+      })
+    );
+  });
+
+  it("blocks submission and shows a readable error for invalid profile JSON", async () => {
+    const logActions = createLogActions({ listLogDomains: vi.fn().mockResolvedValue([]) });
+    renderPage({ logActions });
+
+    await userEvent.click(await screen.findByRole("button", { name: "新建业务域" }));
+    await userEvent.type(screen.getByLabelText(/名称/), "broken");
+    const profileInput = screen.getByLabelText(/格式画像 JSON/);
+    await userEvent.click(profileInput);
+    await userEvent.paste("{not json");
+    await userEvent.click(screen.getByRole("button", { name: "创建业务域" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/画像 JSON 无法解析/);
+    expect(logActions.createLogDomain).not.toHaveBeenCalled();
+  });
+
+  it("archives a domain from the list", async () => {
+    const logActions = createLogActions({
+      listLogDomains: vi.fn().mockResolvedValue([chargingDomain]),
+      archiveLogDomain: vi.fn().mockResolvedValue({ ...chargingDomain, status: "archived" as const })
+    });
+    renderPage({ logActions });
+
+    const table = await screen.findByRole("table", { name: "业务域列表" });
+    await userEvent.click(within(table).getByRole("button", { name: "归档" }));
+
+    await waitFor(() => expect(logActions.archiveLogDomain).toHaveBeenCalledWith("domain-charging"));
+  });
+
+  it("shows the mock-mode hint without runtime actions", () => {
+    renderPage();
+
+    expect(screen.getByTestId("log-domain-governance")).toHaveTextContent(/业务域治理需在 API 模式下使用/);
+  });
+
+  it("gates governance behind the admin role", () => {
+    const state = { ...createPrototypeState(), activeRoleId: "user" };
+    const dispatch = vi.fn();
+    render(
+      <TopBarActionsHarness>
+        <LogAdminPage state={state} dispatch={dispatch} onNavigate={vi.fn()} search="" logActions={createLogActions()} />
+      </TopBarActionsHarness>
+    );
+
+    expect(screen.getByTestId("log-domain-governance")).toHaveTextContent(/需要 Admin 权限/);
+    expect(screen.queryByRole("button", { name: "新建业务域" })).not.toBeInTheDocument();
   });
 });

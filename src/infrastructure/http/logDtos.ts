@@ -1,5 +1,5 @@
 import type { LogJobSnapshot } from "@/application/ports/LogAnalysisRepository";
-import type { LogEvidence, LogRecord } from "@/domain/logs/types";
+import type { LogDomain, LogEvidence, LogRecord } from "@/domain/logs/types";
 
 export type LogEvidenceDto = {
   id: string;
@@ -33,6 +33,20 @@ export type LogRecordDto = {
   device?: string;
   failureReason?: string;
   analysisQuestion?: string;
+  logDomainId?: string;
+  logDomainName?: string;
+  analysisSource?: "agent" | "rules-fallback";
+  degradedReason?: "provider-unavailable" | "token-budget-exhausted";
+};
+
+export type LogDomainDto = {
+  id: string;
+  name: string;
+  description?: string;
+  status: "active" | "archived";
+  formatProfile?: unknown;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type LogJobDto = LogJobSnapshot;
@@ -78,12 +92,32 @@ export function logRecordFromDto(dto: LogRecordDto): LogRecord {
     device: dto.device,
     failureReason: dto.failureReason,
     analysisQuestion: dto.analysisQuestion,
-    archiveState: dto.archiveState
+    archiveState: dto.archiveState,
+    logDomainId: dto.logDomainId,
+    logDomainName: dto.logDomainName,
+    analysisSource: dto.analysisSource,
+    degradedReason: dto.degradedReason
   };
 }
 
 export function logListFromDto(response: { items: LogRecordDto[] }): LogRecord[] {
   return response.items.map(logRecordFromDto);
+}
+
+export function logDomainFromDto(dto: LogDomainDto): LogDomain {
+  return {
+    id: dto.id,
+    name: dto.name,
+    description: dto.description,
+    status: dto.status,
+    formatProfile: dto.formatProfile,
+    createdAt: dto.createdAt,
+    updatedAt: dto.updatedAt
+  };
+}
+
+export function logDomainListFromDto(response: { items: LogDomainDto[] }): LogDomain[] {
+  return response.items.map(logDomainFromDto);
 }
 
 export function jobSnapshotFromDto(dto: LogJobDto): LogJobSnapshot {

@@ -7,7 +7,8 @@ export type AgentToolName =
   | "perception.getRecentLogConclusions"
   | "knowledge.search"
   | "knowledge.getDocument"
-  | "action.submitParameterChange";
+  | "action.submitParameterChange"
+  | "action.createKnowledgeDraft";
 
 export type AgentToolRequest = {
   name: AgentToolName;
