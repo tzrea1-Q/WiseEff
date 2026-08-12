@@ -427,7 +427,7 @@ export function registerParameterFileRoutes(
     if (!versionId) {
       throw new ApiError("CONFLICT", "Project parameter file has no synced version.", 409, { fileId: params.fileId });
     }
-    const summary = await syncFileVersion(db, auth, { fileId: file.id, versionId });
+    const summary = await syncFileVersion(db, auth, { fileId: file.id, versionId }, { requestId: request.requestId });
 
     return { status: 200, body: { item: summary } };
   });
