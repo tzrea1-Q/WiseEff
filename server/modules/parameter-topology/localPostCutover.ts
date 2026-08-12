@@ -4,9 +4,9 @@
  */
 import type { Database, Queryable } from "../../shared/database/client";
 import {
-  isParameterIdentityCutoverComplete,
-  resetParameterIdentityCutoverCache
-} from "../parameters/cutoverAwareIdentity";
+  probeCutoverComplete,
+  resolveParameterIdentityMode
+} from "../parameters/parameterIdentityMode";
 import {
   applyParameterIdentityCutover,
   migrateParameterIdentities
@@ -111,7 +111,7 @@ export async function assertLocalDatabaseCleanForPostCutover(db: Queryable): Pro
 export async function ensureLocalPostCutoverIdentity(
   db: Database
 ): Promise<LocalPostCutoverResult> {
-  if (await isParameterIdentityCutoverComplete(db)) {
+  if (await probeCutoverComplete(db)) {
     return { status: "already-complete" };
   }
 
@@ -133,6 +133,6 @@ export async function ensureLocalPostCutoverIdentity(
   }
 
   await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
-  resetParameterIdentityCutoverCache();
+  await resolveParameterIdentityMode(db);
   return { status: "applied", migrationRunId: report.migrationRunId };
 }

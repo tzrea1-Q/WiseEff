@@ -5,7 +5,7 @@ import type {
   ProjectDto,
   ProjectModuleDto
 } from "./types";
-import { mustUseSemanticParameterIdentity } from "./semanticParameterReads";
+import { parameterIdentityMode } from "./parameterIdentityMode";
 import { LEGACY_IDENTITY_SQL } from "./legacyParameterIdentityNames";
 import { deletePreCutoverProjectParameterValues } from "./legacyParameterIdentityAdapter";
 import { dateTimeToIso } from "./repository";
@@ -100,7 +100,7 @@ export async function getProjectById(db: Queryable, query: { organizationId: str
 }
 
 export async function listProjectAdminSummaries(db: Queryable, query: { organizationId: string }) {
-  const semantic = await mustUseSemanticParameterIdentity(db);
+  const semantic = parameterIdentityMode() === "semantic";
   const parameterCountSql = semantic
     ? `
       select project_id, count(*)::int as parameter_count
@@ -351,7 +351,7 @@ export async function deleteProject(
 
   // Post-cutover: clear semantic topology without querying renamed flat tables.
   // Pre-cutover: delete flat values via explicit transitional adapter only.
-  if (!(await mustUseSemanticParameterIdentity(db))) {
+  if (parameterIdentityMode() !== "semantic") {
     await deletePreCutoverProjectParameterValues(db, { organizationId, projectId });
   } else {
     await db.query(

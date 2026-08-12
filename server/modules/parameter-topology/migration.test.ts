@@ -19,7 +19,7 @@ import {
   stableSemanticId,
   type ParameterIdentityMigrationReport
 } from "./migration";
-import { resetParameterIdentityCutoverCache } from "../parameters/cutoverAwareIdentity";
+import { resolveParameterIdentityMode } from "../parameters/parameterIdentityMode";
 import { listParameters } from "../parameters/repository";
 import { listChangeRequests } from "../parameters/reviewWorkflowRepository";
 import { ApiError } from "../../shared/http/errors";
@@ -1337,7 +1337,7 @@ describe.skipIf(!databaseAvailable)("parameter identity cutover atomicity", () =
       );
       expect(Number(legacyPpvFks.rows[0]?.c ?? 0)).toBe(0);
 
-      resetParameterIdentityCutoverCache();
+      await resolveParameterIdentityMode(tempDb);
       const params = await listParameters(tempDb, { organizationId: ORG, projectId: PROJECT, limit: 10 });
       expect(params.length).toBeGreaterThan(0);
       expect(params.some((item) => item.id === expectedBindingId(expectedSpecId(), expectedLogicalNodeId()))).toBe(
@@ -1373,7 +1373,7 @@ describe.skipIf(!databaseAvailable)("post-cutover API smoke (temp DB)", () => {
       });
       expect(report.blockers).toEqual([]);
       await applyParameterIdentityCutover(tempDb, { migrationRunId: report.migrationRunId });
-      resetParameterIdentityCutoverCache();
+      await resolveParameterIdentityMode(tempDb);
 
       const activeDefs = await tempDb.query(
         `select 1 from information_schema.tables
