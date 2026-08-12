@@ -4,7 +4,7 @@
  */
 
 import type { Queryable } from "../../shared/database/client";
-import { parameterIdentityMode } from "./parameterIdentityMode";
+import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { addCondition, dateTimeToIso } from "../../shared/database/sqlUtil";
 
 type FileSyncConflictSourceLocator = {

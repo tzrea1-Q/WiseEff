@@ -21,7 +21,7 @@ import {
   stableSemanticId,
   type ParameterIdentityMigrationReport
 } from "./migration";
-import { resolveParameterIdentityMode } from "../parameters/parameterIdentityMode";
+import { resolveParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { listParameters } from "../parameters/repository";
 import { listChangeRequests } from "../parameters/reviewWorkflowRepository";
 import { ApiError } from "../../shared/http/errors";

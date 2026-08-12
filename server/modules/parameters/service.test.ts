@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
-import { setParameterIdentityMode } from "./parameterIdentityMode";
+import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { applyImportBatch, createImportPreview, listDrafts, parseDtsImportForAuth, reviewChange, saveDraft, submitParameterChanges } from "./service";

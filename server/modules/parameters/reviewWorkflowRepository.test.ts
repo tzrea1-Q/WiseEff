@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { QueryResult, Queryable } from "../../shared/database/client";
-import { setParameterIdentityMode } from "./parameterIdentityMode";
+import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { getProjectParameterForUpdate } from "./repository";
 import {
   createChangeRequest,

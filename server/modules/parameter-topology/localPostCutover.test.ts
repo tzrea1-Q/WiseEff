@@ -7,7 +7,7 @@ const resolveParameterIdentityMode = vi.fn();
 const migrateParameterIdentities = vi.fn();
 const applyParameterIdentityCutover = vi.fn();
 
-vi.mock("../parameters/parameterIdentityMode", () => ({
+vi.mock("../parameter-kernel/parameterIdentityMode", () => ({
   probeCutoverComplete: (...args: unknown[]) => probeCutoverComplete(...args),
   resolveParameterIdentityMode: (...args: unknown[]) => resolveParameterIdentityMode(...args)
 }));

@@ -1,5 +1,5 @@
 import type { Database } from "../../../shared/database/client";
-import { parameterIdentityMode } from "../parameterIdentityMode";
+import { parameterIdentityMode } from "../../parameter-kernel/parameterIdentityMode";
 import {
   SEMANTIC_ACTIVE_SPEC_VERSION_LATERAL,
   SEMANTIC_BINDING_ORG_SCOPE,

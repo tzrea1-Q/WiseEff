@@ -9,7 +9,7 @@ import type { LogAnalysisAdapter } from "./analyzer";
 import { createLogAnalyzerFromEnv } from "./analyzer/analyzerFromEnv";
 import type { ObjectStore } from "./objectStore";
 import { createLogAnalysisQueueRuntime, type LogAnalysisQueueRuntimeEnv } from "./logAnalysisQueueRuntime";
-import { resolveParameterIdentityMode } from "../parameters/parameterIdentityMode";
+import { resolveParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { startLogWorkerLoop, type ProcessLogWorkerOptions } from "./worker";
 
 type RawWorkerEnv = {

@@ -17,7 +17,7 @@ vi.mock("../../parameters/repository", () => ({
   getProjectParameterForUpdate: vi.fn()
 }));
 
-vi.mock("../../parameters/parameterIdentityMode", () => ({
+vi.mock("../../parameter-kernel/parameterIdentityMode", () => ({
   resolveParameterIdentityMode: vi.fn()
 }));
 
@@ -34,7 +34,7 @@ import { createActionTools } from "./actionTools";
 import { submitParameterChanges } from "../../parameters/service";
 import { deleteDraft } from "../../parameter-drafts/repository";
 import { getProjectParameterForUpdate } from "../../parameters/repository";
-import { resolveParameterIdentityMode } from "../../parameters/parameterIdentityMode";
+import { resolveParameterIdentityMode } from "../../parameter-kernel/parameterIdentityMode";
 import { createBindingDraft } from "../../parameter-topology/service";
 import { loadBindingContext, resolveBindingHeadRevisionId } from "../../parameter-topology/writeLock";
 

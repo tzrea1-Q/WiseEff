@@ -23,8 +23,8 @@ import {
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { canEditParameters } from "../parameters/policy";
-import { parameterIdentityMode } from "../parameters/parameterIdentityMode";
-import { ensurePreCutoverLinkedParameterValue } from "../parameters/legacyParameterIdentityAdapter";
+import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
+import { ensurePreCutoverLinkedParameterValue } from "../parameter-kernel/legacyParameterIdentityAdapter";
 import { assertSensitiveNodeWriteAllowed } from "../parameters/sensitiveNode";
 import {
   upsertDraft,

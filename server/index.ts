@@ -28,7 +28,7 @@ import {
   ensureLocalPostCutoverIdentity,
   shouldEnsureLocalPostCutoverOnApiBoot
 } from "./modules/parameter-topology/localPostCutover";
-import { resolveParameterIdentityMode } from "./modules/parameters/parameterIdentityMode";
+import { resolveParameterIdentityMode } from "./modules/parameter-kernel/parameterIdentityMode";
 
 const env = loadServerEnv(process.env);
 const db = env.DATABASE_URL ? createPostgresDatabase(env.DATABASE_URL, { tracing: defaultTracingBoundary }) : undefined;

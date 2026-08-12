@@ -18,8 +18,8 @@ const ALLOWED_PATH_SUBSTRINGS = [
   "/parameter-topology/migration.test.ts",
   // Local-dev post-cutover finalize probes retired flat tables before rename.
   "/parameter-topology/localPostCutover.ts",
-  "/parameters/legacyParameterIdentityAdapter.ts",
-  "/parameters/legacyParameterIdentityNames.ts",
+  "/parameter-kernel/legacyParameterIdentityAdapter.ts",
+  "/parameter-kernel/legacyParameterIdentityNames.ts",
   // Pre-cutover project delete still clears archived flat-identity rows.
   "/parameters/repository.ts",
   // Pre-cutover draft listing still joins the legacy PPV/definition tables.

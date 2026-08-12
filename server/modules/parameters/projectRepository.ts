@@ -5,9 +5,9 @@ import type {
   ProjectDto,
   ProjectModuleDto
 } from "./types";
-import { parameterIdentityMode } from "./parameterIdentityMode";
-import { LEGACY_IDENTITY_SQL } from "./legacyParameterIdentityNames";
-import { deletePreCutoverProjectParameterValues } from "./legacyParameterIdentityAdapter";
+import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
+import { LEGACY_IDENTITY_SQL } from "../parameter-kernel/legacyParameterIdentityNames";
+import { deletePreCutoverProjectParameterValues } from "../parameter-kernel/legacyParameterIdentityAdapter";
 import { dateTimeToIso } from "../../shared/database/sqlUtil";
 
 type ProjectRow = {

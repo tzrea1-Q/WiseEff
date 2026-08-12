@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
-import { parameterIdentityMode } from "../parameters/parameterIdentityMode";
+import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { buildDebugNodeModuleNameSubtreeFilter } from "./debugNodeModuleRepository";
 import type {
   DebugDeviceRecord,
