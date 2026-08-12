@@ -61,6 +61,28 @@ export async function createProjectForAuth(
 
     await ensureDefaultConfigSetInTx(tx, auth, item.id, context);
 
+    // Written inside the same transaction so a created project can never
+    // exist without its audit evidence (docs/SECURITY.md production writes).
+    await createAuditEvent(tx, {
+      id: randomUUID(),
+      organizationId: auth.organization.id,
+      projectId: item.id,
+      actorUserId: auth.user.id,
+      actorType: "user",
+      app: "parameter-admin",
+      kind: "project-created",
+      action: `已创建项目「${item.name}」`,
+      severity: "Low",
+      targetType: "project",
+      targetId: item.id,
+      metadata: {
+        name: item.name,
+        code: item.code,
+        status: item.status
+      },
+      traceId: context.requestId ?? randomUUID()
+    });
+
     return item;
   });
 }

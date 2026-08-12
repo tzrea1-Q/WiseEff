@@ -97,7 +97,7 @@ describe("createProjectForAuth", () => {
   });
 
   it("is idempotent when the default config set already exists for the project", async () => {
-    const { db, txCalls } = createFakeDb([[projectRow()], [configSetRow({ id: "dcs-existing" })]]);
+    const { db, txCalls } = createFakeDb([[projectRow()], [configSetRow({ id: "dcs-existing" })], []]);
 
     const item = await createProjectForAuth(db, adminAuth(), {
       id: "nova",
@@ -108,7 +108,29 @@ describe("createProjectForAuth", () => {
     expect(item.id).toBe("nova");
     expect(txCalls.find((call) => call.text.includes("insert into projects"))).toBeTruthy();
     expect(txCalls.find((call) => call.text.includes("insert into dts_config_set"))).toBeFalsy();
-    expect(txCalls.find((call) => call.text.includes("insert into audit_events"))).toBeFalsy();
+    // Reusing the existing config set must not re-audit it, but the project
+    // creation itself is still a production write and must leave evidence.
+    const auditInserts = txCalls.filter((call) => call.text.includes("insert into audit_events"));
+    expect(auditInserts).toHaveLength(1);
+    expect(auditInserts[0]?.values).toContain("project-created");
+    expect(auditInserts[0]?.values).not.toContain("config-set");
+  });
+
+  it("writes a project-created audit event inside the create transaction", async () => {
+    const { db, txCalls } = createFakeDb([[projectRow()], [], [configSetRow()], [], []]);
+
+    await createProjectForAuth(
+      db,
+      adminAuth(),
+      { id: "nova", name: "Nova", code: "NOVA" },
+      { requestId: "req-42" }
+    );
+
+    const auditInserts = txCalls.filter((call) => call.text.includes("insert into audit_events"));
+    const projectCreated = auditInserts.find((call) => call.values.includes("project-created"));
+    expect(projectCreated).toBeTruthy();
+    // org scope, project target, and the request-scoped trace id must all land in the row.
+    expect(projectCreated?.values).toEqual(expect.arrayContaining(["org-1", "nova", "req-42"]));
   });
 
   it("rejects callers without admin:access", async () => {
