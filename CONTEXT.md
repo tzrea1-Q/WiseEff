@@ -105,6 +105,9 @@ Expand lazily via `/domain-modeling` when terms are resolved. Prefer terms from 
 | Agent knowledge draft | A knowledge entry Xiaoze creates through its approval-gated draft tool. Always born `draft`, never modifies an existing entry, and stays invisible to retrieval until a human publishes it; whoever publishes takes responsibility for the content |
 | Knowledge distillation | Turning a structured analysis outcome into a pre-filled knowledge draft carrying references to its evidence. MVP distils log-analysis conclusions; DTS reload runs are a planned later source |
 | Published-only retrieval | Search, RAG, and Xiaoze only ever see `published` knowledge entries. Draft and archived entries never enter the retrieval index, which makes publishing the single trust gate for knowledge |
+| Design token | A named CSS custom property in the single `:root` block of `src/styles.css` that is the only allowed source of a visual value (color, type, spacing, radius, elevation, motion, z-index). Components consume tokens via `var()`/`color-mix()`; raw literals outside the token block are defects (ADR-0026). Scales are specified in `docs/design-docs/ui-design-system.md` |
+| Accent | The single interactive brand color family (`--accent`, blue). Buttons, links, active navigation, selection, and focus rings derive from it; a second filled accent (black, teal) on interactive elements is a defect |
+| Elevation | The four-level surface-depth vocabulary: `--shadow-1` (rest cards), `--shadow-2` (popovers), `--shadow-3` (dialogs), plus the `--ring` focus ring. Shadows are never invented inline |
 
 ## ADRs
 
@@ -135,3 +138,4 @@ Architectural decisions: [`docs/adr/`](docs/adr/) (created lazily). Feature-scop
 - [`0023`](docs/adr/0023-app-state-transitions-live-in-application-state.md) — frontend app state transitions live in application/state, not App.tsx
 - [`0024`](docs/adr/0024-agent-approval-state-is-db-backed.md) — Agent approval state is DB-backed; request context flows through invocation config
 - [`0025`](docs/adr/0025-knowledge-retrieval-lives-in-postgres.md) — knowledge retrieval lives in PostgreSQL (pgvector + FTS degradation)
+- [`0026`](docs/adr/0026-design-tokens-are-the-single-visual-source.md) — design tokens are the single visual source

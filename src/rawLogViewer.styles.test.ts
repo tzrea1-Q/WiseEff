@@ -1,24 +1,15 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { declarationFor as cssDeclarationFor, readStylesheet } from "./test/cssAssertions";
 
-const cssText = readFileSync("src/styles.css", "utf8");
-
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
+const cssText = readStylesheet("src/styles.css");
 
 function declarationFor(selector: string, property: string) {
-  const rule = cssText.match(new RegExp(`${escapeRegExp(selector)}\\s*\\{([^}]*)\\}`, "s"));
-  if (!rule) {
-    throw new Error(`Missing CSS rule for ${selector}`);
+  const value = cssDeclarationFor(cssText, selector, property);
+  if (!value || !/^#[0-9a-fA-F]{6}$/.test(value)) {
+    throw new Error(`Missing hex ${property} declaration for ${selector}`);
   }
 
-  const declaration = rule[1].match(new RegExp(`${property}\\s*:\\s*(#[0-9a-fA-F]{6})\\s*;`));
-  if (!declaration) {
-    throw new Error(`Missing ${property} declaration for ${selector}`);
-  }
-
-  return declaration[1];
+  return value;
 }
 
 function hexToRgb(hex: string) {

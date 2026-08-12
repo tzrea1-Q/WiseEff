@@ -1,8 +1,7 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ParameterRecord } from "@/domain/parameters/types";
+import { declarationsFor, readStylesheet } from "../test/cssAssertions";
 import { ParameterDraftDialog, type ParameterDraftDialogItem } from "./ParameterDraftDialog";
 
 const parameter: ParameterRecord = {
@@ -161,22 +160,25 @@ describe("ParameterDraftDialog", () => {
   });
 
   it("keeps draft action buttons visually styled as buttons", () => {
-    const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
-    const bodyButtonRule = styles.match(/\.parameter-draft-dialog__body \.button\s*\{[^}]*\}/)?.[0] ?? "";
-    const bodySubtleRule = styles.match(/\.parameter-draft-dialog__body \.button\.subtle\s*\{[^}]*\}/)?.[0] ?? "";
-    const bodyHoverRule = styles.match(/\.parameter-draft-dialog__body \.button\.subtle:hover:not\(:disabled\)\s*\{[^}]*\}/)?.[0] ?? "";
-    const submitLinkRule = styles.match(/\.parameter-draft-dialog__submit-link\s*\{[^}]*\}/)?.[0] ?? "";
+    const styles = readStylesheet("src/styles.css");
+    const bodyButtonRule = declarationsFor(styles, ".parameter-draft-dialog__body .button");
+    const bodySubtleRule = declarationsFor(styles, ".parameter-draft-dialog__body .button.subtle");
+    const bodyHoverRule = declarationsFor(
+      styles,
+      ".parameter-draft-dialog__body .button.subtle:hover:not(:disabled)"
+    );
+    const submitLinkRule = declarationsFor(styles, ".parameter-draft-dialog__submit-link");
 
-    expect(bodyButtonRule).toContain("display: inline-flex;");
-    expect(bodyButtonRule).toContain("min-height: 36px;");
-    expect(bodyButtonRule).toContain("padding: 0 14px;");
-    expect(bodyButtonRule).toContain("border-radius: 9px;");
-    expect(bodyButtonRule).toContain("box-shadow:");
-    expect(bodySubtleRule).toContain("background: #ffffff;");
-    expect(bodySubtleRule).toContain("border: 1px solid rgba(148, 163, 184, 0.64);");
-    expect(bodyHoverRule).toContain("box-shadow:");
-    expect(submitLinkRule).toContain("display: inline-flex;");
-    expect(submitLinkRule).toContain("border: 1px solid rgba(148, 163, 184, 0.64);");
+    expect(bodyButtonRule.display).toBe("inline-flex");
+    expect(bodyButtonRule["min-height"]).toBe("36px");
+    expect(bodyButtonRule.padding).toBe("0 14px");
+    expect(bodyButtonRule["border-radius"]).toBe("9px");
+    expect(bodyButtonRule["box-shadow"]).toBeTruthy();
+    expect(bodySubtleRule.background).toBe("#ffffff");
+    expect(bodySubtleRule.border).toBe("1px solid rgba(148, 163, 184, 0.64)");
+    expect(bodyHoverRule["box-shadow"]).toBeTruthy();
+    expect(submitLinkRule.display).toBe("inline-flex");
+    expect(submitLinkRule.border).toBe("1px solid rgba(148, 163, 184, 0.64)");
   });
 
   it("does not render when closed", () => {
