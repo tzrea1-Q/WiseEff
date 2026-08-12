@@ -175,10 +175,25 @@ export function DebuggingAdminPage({
     };
   }, [area, debuggingAdminClient, isApiMode]);
 
+  const saveFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      // The flash timer must not fire setState after unmount (it leaks into torn-down
+      // jsdom environments as "window is not defined" unhandled errors in CI).
+      if (saveFlashTimer.current) {
+        clearTimeout(saveFlashTimer.current);
+      }
+    },
+    []
+  );
+
   const flashSaved = (nextStatus: string) => {
     setSaveStatus(nextStatus);
     setSaveFlash(true);
-    setTimeout(() => setSaveFlash(false), 1500);
+    if (saveFlashTimer.current) {
+      clearTimeout(saveFlashTimer.current);
+    }
+    saveFlashTimer.current = setTimeout(() => setSaveFlash(false), 1500);
   };
 
   const replaceAdminNode = (node: DebugNodeRegistryEntry) => {

@@ -1,11 +1,11 @@
 import "dotenv/config";
-import { spawnSync } from "node:child_process";
 import { expect, test, type Page } from "playwright/test";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
-import { withPgClient } from "./helpers/database";
+import { runNpmScript, withPgClient } from "./helpers/database";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { signInBrowserAsRole } from "./helpers/bearerAuth";
+import { castByRole } from "./helpers/cast";
 import { prepareInteractionSurface } from "./helpers/interactionSurface";
 
 useBrowserDiagnostics(test);
@@ -19,44 +19,15 @@ const rejectReasonPrefix = "M5.8 PARAM-REJECT-001 browser acceptance";
 const draftEditReasonPrefix = "M5.8 PARAM-DRAFT-EDIT-001 browser acceptance";
 const rejectionReason = `${rejectReasonPrefix} needs supplemental thermal evidence`;
 
-function runNpmScript(script: string) {
-  const invocation =
-    process.platform === "win32"
-      ? { command: "cmd.exe", args: ["/d", "/s", "/c", `npm run ${script}`] }
-      : { command: "npm", args: ["run", script] };
-  const result = spawnSync(invocation.command, invocation.args, {
-    cwd: process.cwd(),
-    encoding: "utf8",
-    env: process.env
-  });
-
-  if (result.status !== 0) {
-    const stdout = typeof result.stdout === "string" ? result.stdout.trim() : "";
-    const stderr = typeof result.stderr === "string" ? result.stderr.trim() : "";
-    const errorDetails = result.error
-      ? `child_process error: ${result.error.code ?? "unknown"} ${result.error.message ?? ""}`.trimEnd()
-      : "";
-
-    throw new Error(
-      [
-        `npm run ${script} failed with exit code ${result.status}.`,
-        stdout,
-        stderr,
-        errorDetails
-      ].filter(Boolean).join("\n")
-    );
-  }
-}
-
 async function seedWorkflowUsers() {
   const users = [
-    ["u-wang-jie", "Wang Jie", "wang@chargelab.cn", "Hardware Reviewer", "hardware-committer"],
-    ["u-sun-mei", "Sun Mei", "sun@chargelab.cn", "Software Reviewer", "software-committer"],
-    ["u-liu-min", "Liu Min", "liu@chargelab.cn", "Software Engineer", "software-user"]
+    [castByRole["hardware-committer"], "hardware-committer"],
+    [castByRole["software-committer"], "software-committer"],
+    [castByRole["software-user"], "software-user"]
   ] as const;
 
   await withPgClient(async (client) => {
-    for (const [userId, name, email, title, roleId] of users) {
+    for (const [{ userId, name, email, title }, roleId] of users) {
       await client.query(
         `
         insert into users (id, organization_id, name, email, title, is_active)
