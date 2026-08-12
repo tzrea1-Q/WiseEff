@@ -5579,6 +5579,49 @@
         }
       }
     },
+    "/api/v1/knowledge/distill-from-log": {
+      "post": {
+        "operationId": "knowledge.distillFromLog",
+        "summary": "Distil a completed log-analysis record into a pre-filled knowledge draft (knowledge:edit plus logs:view on the source record); the draft stays out of retrieval until published",
+        "tags": [
+          "knowledge"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DistillKnowledgeFromLogRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeEntryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/knowledge/search": {
       "get": {
         "operationId": "knowledge.search",
@@ -5940,6 +5983,49 @@
       "post": {
         "operationId": "knowledge.restoreEntry",
         "summary": "Restore an archived knowledge entry to published",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "entryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeEntryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/entries/{entryId}/reject": {
+      "post": {
+        "operationId": "knowledge.rejectAgentDraft",
+        "summary": "Archive-reject an agent-sourced knowledge draft from the publish queue (entry owner with knowledge:edit, or knowledge:manage)",
         "tags": [
           "knowledge"
         ],
@@ -10301,6 +10387,10 @@
       "KnowledgeEntryListResponse": {
         "type": "object",
         "x-wiseeff-schema": "KnowledgeEntryListResponse"
+      },
+      "DistillKnowledgeFromLogRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "DistillKnowledgeFromLogRequest"
       },
       "KnowledgeSearchResponse": {
         "type": "object",

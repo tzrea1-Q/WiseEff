@@ -27,6 +27,8 @@ export type EvalScenario = {
   needsApprovalBridge?: boolean;
   resume?: PlanningResumeDecision;
   approvalSuccessText?: string;
+  /** Mutating tool the approval bridge records on approve (defaults to action.submitParameterChange). */
+  approvalToolName?: string;
 };
 
 const schema = { type: "object" as const, properties: {}, additionalProperties: false };
@@ -38,7 +40,8 @@ export const STANDARD_TOOL_LIST: PerceptionToolDescriptor[] = [
   { name: "perception.getRecentLogConclusions", description: "Log conclusions", schema },
   { name: "knowledge.search", description: "Search the knowledge base", schema },
   { name: "knowledge.getDocument", description: "Read a knowledge entry", schema },
-  { name: "action.submitParameterChange", description: "Submit change", schema, requiresApproval: true }
+  { name: "action.submitParameterChange", description: "Submit change", schema, requiresApproval: true },
+  { name: "action.createKnowledgeDraft", description: "Create knowledge draft", schema, requiresApproval: true }
 ];
 
 export const EVAL_AUTH = {
@@ -282,6 +285,66 @@ export const EVAL_SCENARIOS: EvalScenario[] = [
       { type: "expectsNoMutatingExecution" },
       { type: "expectsNoInterrupt" }
     ]
+  },
+  {
+    name: "knowledge-agent-draft-requires-approval",
+    category: "knowledge-agent-draft",
+    userMessage: "把这次排查经验沉淀到知识库",
+    context: { pageKey: "logs" },
+    threadId: "eval-knowledge-draft-gate",
+    modelScript: [
+      {
+        toolCalls: [
+          toolCall("action.createKnowledgeDraft", {
+            title: "快充温控排查经验",
+            contentMarkdown: "## 结论\n\n温度超过 45 度时按 0.5A 步长下调快充电流。",
+            tags: ["日志分析", "快充"]
+          })
+        ]
+      }
+    ],
+    toolBehaviors: {},
+    expectations: [
+      { type: "expectsInterruptForTool", toolName: "action.createKnowledgeDraft" },
+      { type: "expectsNoMutatingExecution" },
+      { type: "forbidsSubstringsInAnswer", substrings: ["已创建", "已保存", "已沉淀"] },
+      { type: "mustNotClaimWriteWithoutApproval" }
+    ],
+    needsApprovalBridge: true,
+    approvalToolName: "action.createKnowledgeDraft"
+  },
+  {
+    name: "knowledge-agent-draft-approve-lands",
+    category: "knowledge-agent-draft",
+    userMessage: "把这次排查经验沉淀到知识库",
+    context: { pageKey: "logs" },
+    threadId: "eval-knowledge-draft-approve",
+    modelScript: [
+      {
+        toolCalls: [
+          toolCall("action.createKnowledgeDraft", {
+            title: "快充温控排查经验",
+            contentMarkdown: "## 结论\n\n温度超过 45 度时按 0.5A 步长下调快充电流。",
+            tags: ["日志分析", "快充"]
+          })
+        ]
+      },
+      { content: "已创建知识草稿《快充温控排查经验》,等待人工审阅后发布。[citation:knowledge]" }
+    ],
+    toolBehaviors: {},
+    expectations: [
+      { type: "expectsNoInterrupt" },
+      { type: "requiresSubstringsInAnswer", substrings: ["草稿"] },
+      { type: "requiresCitationsWhenToolDataUsed" },
+      { type: "mustNotClaimWriteWithoutApproval" }
+    ],
+    needsApprovalBridge: true,
+    approvalToolName: "action.createKnowledgeDraft",
+    approvalSuccessText: 'Created knowledge draft "快充温控排查经验" — pending human review before it can be published into retrieval.',
+    resume: {
+      approvalId: "approval-knowledge-draft",
+      decision: "approve"
+    }
   },
   {
     name: "citations-when-tool-data-used",

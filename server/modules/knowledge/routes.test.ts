@@ -14,12 +14,14 @@ import type { KnowledgeEntryDto } from "./types";
 vi.mock("./service", () => ({
   archiveKnowledgeEntry: vi.fn(),
   createKnowledgeEntry: vi.fn(),
+  distillKnowledgeFromLog: vi.fn(),
   getKnowledgeEntry: vi.fn(),
   getKnowledgeFileContent: vi.fn(),
   hardDeleteKnowledgeEntry: vi.fn(),
   listKnowledgeEntries: vi.fn(),
   listKnowledgeRevisions: vi.fn(),
   publishKnowledgeEntry: vi.fn(),
+  rejectAgentKnowledgeDraft: vi.fn(),
   restoreKnowledgeEntry: vi.fn(),
   restoreKnowledgeRevision: vi.fn(),
   searchKnowledge: vi.fn(),
@@ -68,6 +70,7 @@ function entryRecord(overrides: Partial<KnowledgeEntryDto> = {}): KnowledgeEntry
     tags: ["tuning"],
     sourceType: "human",
     sourceSessionId: null,
+    sourceLogId: null,
     createdByUserId: "user-1",
     headRevisionId: REVISION_ID,
     headRevisionNumber: 1,
@@ -218,6 +221,56 @@ describe("knowledge routes", () => {
       body: "{}"
     });
     expect(restore.status).toBe(200);
+  });
+
+  it("POST /api/v1/knowledge/distill-from-log validates the log id and delegates to distillation", async () => {
+    const db = makeDb();
+    const item = entryRecord({ sourceLogId: "log-1", tags: ["日志分析", "严重"] });
+    vi.mocked(service.distillKnowledgeFromLog).mockResolvedValue(item);
+
+    const missing = await requestJson<{ error: { code: string } }>(
+      makeServer({ db, objectStore: makeObjectStore() }),
+      "/api/v1/knowledge/distill-from-log",
+      { method: "POST", body: "{}" }
+    );
+    expect(missing.status).toBe(400);
+
+    const response = await requestJson<{ item: KnowledgeEntryDto }>(
+      makeServer({ db, objectStore: makeObjectStore() }),
+      "/api/v1/knowledge/distill-from-log",
+      { method: "POST", body: JSON.stringify({ logId: "log-1" }) }
+    );
+    expect(response.status).toBe(201);
+    expect(response.body.item.sourceLogId).toBe("log-1");
+    expect(service.distillKnowledgeFromLog).toHaveBeenCalledWith(db, makeAuth(), { logId: "log-1" }, { requestId: "test-request" });
+  });
+
+  it("POST /api/v1/knowledge/entries/:entryId/reject delegates to the agent-draft reject", async () => {
+    const db = makeDb();
+    vi.mocked(service.rejectAgentKnowledgeDraft).mockResolvedValue(entryRecord({ status: "archived", sourceType: "agent" }));
+
+    const response = await requestJson<{ item: KnowledgeEntryDto }>(
+      makeServer({ db, objectStore: makeObjectStore() }),
+      `/api/v1/knowledge/entries/${ENTRY_ID}/reject`,
+      { method: "POST", body: "{}" }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.item.status).toBe("archived");
+    expect(service.rejectAgentKnowledgeDraft).toHaveBeenCalledWith(db, makeAuth(), ENTRY_ID, { requestId: "test-request" });
+  });
+
+  it("GET /api/v1/knowledge/entries accepts the sourceType filter", async () => {
+    const db = makeDb();
+    vi.mocked(service.listKnowledgeEntries).mockResolvedValue([]);
+
+    const response = await requestJson<{ items: unknown[] }>(
+      makeServer({ db, objectStore: makeObjectStore() }),
+      "/api/v1/knowledge/entries?status=draft&sourceType=agent"
+    );
+
+    expect(response.status).toBe(200);
+    expect(service.listKnowledgeEntries).toHaveBeenCalledWith(db, makeAuth(), { status: "draft", sourceType: "agent" });
   });
 
   it("DELETE /api/v1/knowledge/entries/:entryId delegates to hard delete", async () => {

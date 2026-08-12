@@ -914,6 +914,27 @@ export function createDeterministicPerceptionModel(): import("./perceptionAgent"
             toolCalls: [{ id: "tc-forbidden", name: "perception.getProjectOverview", args: { projectId: "secret-project" } }]
           };
         }
+        // Deterministic distillation: `创建知识草稿:<标题>`(可选 `来源日志:<logId>`)
+        // pins the approval-gated draft tool so acceptance can drive the interrupt.
+        const draftMatch = text.match(
+          /(?:创建知识草稿|create knowledge draft)[:：]\s*(.+?)(?:\s+(?:来源日志|source-log)[:：]\s*(\S+))?\s*$/i
+        );
+        if (draftMatch) {
+          return {
+            toolCalls: [
+              {
+                id: "tc-knowledge-draft",
+                name: "action.createKnowledgeDraft",
+                args: {
+                  title: draftMatch[1].trim(),
+                  contentMarkdown: `## 结论\n\n${draftMatch[1].trim()}\n\n(由小泽在对话中沉淀,待人工审阅发布。)`,
+                  tags: ["小泽沉淀"],
+                  ...(draftMatch[2] ? { sourceLogId: draftMatch[2] } : {})
+                }
+              }
+            ]
+          };
+        }
         // Deterministic knowledge grounding: `知识库检索:<keywords>` pins the
         // query; any knowledge-base mention falls back to the full message.
         const knowledgeQueryMatch = text.match(/(?:知识库检索|knowledge search)[:：]\s*(.+)/i);

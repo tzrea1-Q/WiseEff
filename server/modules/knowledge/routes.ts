@@ -10,6 +10,7 @@ import type { KnowledgeEmbeddingClient } from "./indexing/embeddingClient";
 import {
   archiveKnowledgeEntry,
   createKnowledgeEntry,
+  distillKnowledgeFromLog,
   getKnowledgeEntry,
   getKnowledgeFileContent,
   getKnowledgeIndexHealth,
@@ -18,6 +19,7 @@ import {
   listKnowledgeRevisions,
   publishKnowledgeEntry,
   rebuildKnowledgeIndex,
+  rejectAgentKnowledgeDraft,
   restoreKnowledgeEntry,
   restoreKnowledgeRevision,
   retryKnowledgeEntryIndex,
@@ -26,6 +28,7 @@ import {
 } from "./service";
 import {
   createKnowledgeEntryBodySchema,
+  distillKnowledgeFromLogBodySchema,
   listKnowledgeEntriesQuerySchema,
   restoreKnowledgeRevisionBodySchema,
   searchKnowledgeQuerySchema,
@@ -101,6 +104,15 @@ export function registerKnowledgeRoutes(
     const items = await listKnowledgeEntries(db, auth, query);
 
     return { status: 200, body: { items } };
+  });
+
+  router.post("/api/v1/knowledge/distill-from-log", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const body = parseWithSchema(distillKnowledgeFromLogBodySchema, request.body);
+    const item = await distillKnowledgeFromLog(db, auth, body, { requestId: request.requestId });
+
+    return { status: 201, body: { item } };
   });
 
   router.get("/api/v1/knowledge/search", async (request) => {
@@ -182,6 +194,15 @@ export function registerKnowledgeRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(paramsWithEntryIdSchema, request.params);
     const item = await restoreKnowledgeEntry(db, auth, params.entryId, { requestId: request.requestId });
+
+    return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v1/knowledge/entries/:entryId/reject", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(paramsWithEntryIdSchema, request.params);
+    const item = await rejectAgentKnowledgeDraft(db, auth, params.entryId, { requestId: request.requestId });
 
     return { status: 200, body: { item } };
   });
