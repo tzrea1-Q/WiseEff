@@ -67,6 +67,15 @@ npm run build
 
 These tests cover AG-UI endpoint wiring, read-only perception tools, mutating action approval/resume, LangGraph planning/checkpoint behavior, safe readiness evidence, and the existing WiseEff approval boundary for mutating tool plans. Set `XIAOZE_DETERMINISTIC=true` for offline acceptance without live `AGENT_API_*` values.
 
+## Log Analysis Eval (two layers)
+
+Log analysis carries a two-layer AI evaluation system alongside the ordinary suites:
+
+- **Behavior-layer eval** (`npm run logs:eval`, CI-gated, zero API cost): deterministic scripted models drive the real kernels — the P1 single-shot analyzer plus the P2 bounded agent loop (scripted tool-call sequences + final conclusions through `server/modules/logs/analyzer/scriptedModel.ts`). Scenarios pin grounding, honest degradation marking, tool-call legality (illegal names/arguments rejected and corrected), step/token-budget convergence with capped confidence, and honest refusal on insufficient evidence. Meta self-checks prove the harness flags known-bad behaviors (hallucinated citations, silent degradation, overconfident early convergence, silently accepted illegal tools). Report: `docs/generated/log-analysis-eval.{json,md}`.
+- **Quality-layer eval** (`npm run logs:eval:quality`, on prompt/model change and pre-release): runs the current kernel over the golden case set (`eval-cases/logs/`, loader-validated `log.txt` + `case.yaml` pairs). Deterministic metrics (evidence-line overlap hit/missed/extra, hallucination rate, refusal appropriateness) are computed in-process; root-cause correctness goes through a rubric judge seam — `LOG_ANALYSIS_JUDGE_*` LLM-as-judge in real mode, a deterministic scriptable stub offline. Only `realLog: true` cases count toward the baseline gate (`eval-cases/logs/baseline.json`, tolerances stated in the report); synthetic cases document format coverage. Report: `docs/generated/log-analysis-quality.{json,md}`.
+
+Prompt changes bump `LOG_ANALYSIS_PROMPT_VERSION` / `LOG_ANALYSIS_LOOP_PROMPT_VERSION` and must keep `logs:eval` green; golden-set annotation and de-identification rules live in `eval-cases/logs/README.md`.
+
 ## Parameter Topology (round 4)
 
 Round 4 closes parent-agent review blockers on branch `fix/parameter-topology-round4-review-blockers`. **TD-042 remains a BLOCKER** — these gates prove local/temp-DB behavior, not production cutover readiness.

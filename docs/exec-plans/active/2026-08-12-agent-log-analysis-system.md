@@ -1,6 +1,6 @@
 # Agent log analysis system
 
-> Status: **Active (P1 implemented on `feat/log-analysis-p1-domains-and-llm`, in review; P2/P3 not started)**
+> Status: **Active (P1 merged; P2 implemented on `feat/log-analysis-p2-agent-loop-and-golden-set`, in review; P3 not started)**
 > Date: 2026-08-12
 > Planning branch: `plan/agent-log-analysis` (this document, glossary, ADR-0022)
 > Implementation branches: `feat/log-analysis-p1-domains-and-llm`, `feat/log-analysis-p2-agent-loop-and-golden-set`, `feat/log-analysis-p3-eval-maturation` (one branch per phase; each checked out from the latest `main`)
@@ -50,7 +50,7 @@ One phase → one branch → one PR. The planning branch `plan/agent-log-analysi
 
 ## Architecture
 
-- **Domains**: new tables `log_domains` (org-scoped: name, status, format profile JSON) and `log_domain_knowledge_docs` (P2; admin-maintained markdown), next free migration numbers. `log_records.log_domain_id` nullable reference; `source` keeps meaning intake channel.
+- **Domains**: new tables `log_domains` (org-scoped: name, status, format profile JSON) and — P2, adapted — `log_domain_knowledge_links` instead of the originally planned `log_domain_knowledge_docs`: the knowledge base landed first (0103–0105), so domain knowledge lives there and a domain links to **published knowledge entries** (composite-FK org consistency; `read_domain_knowledge` retrieval bounded to the linked set, organization-generic fallback when empty). `log_records.log_domain_id` nullable reference; `source` keeps meaning intake channel.
 - **Parsing**: `parser.ts` gains format-profile awareness (timestamp shape, multi-line merge, severity mapping, structured-field hints) while preserving stable line numbers.
 - **Prefilter**: extract the rule analyzer's matching into `prefilter.ts`; `pattern` stage output (candidate anomaly lines, error-code stats, rule hits) becomes prefilter findings handed to the kernel.
 - **Kernel** (`server/modules/logs/analyzer/`): P1 `llmAnalyzer.ts` — single-shot budgeted call implementing `LogAnalysisAdapter`, structured output validated against the contract, every cited evidence line checked to exist (grounding check), `analysisQuestion` injected. P2 `agentLoop.ts` — plain bounded loop (max steps + token budget, deterministic fake-model seam) with five read-only tools in `analyzer/tools/`: `search_log_lines`, `read_line_range`, `get_prefilter_findings`, `read_domain_knowledge`, `get_related_parameter_context`. Versioned prompt constant (`LOG_ANALYSIS_PROMPT_VERSION`).
@@ -81,6 +81,12 @@ One phase → one branch → one PR. The planning branch `plan/agent-log-analysi
 6. Behavior-layer scenarios extended to the loop: tool-call legality, in-budget convergence, refusal honesty on insufficient evidence.
 
 **P2 acceptance**: agent loop beats the rule baseline on golden set v1 (report artifact committed); `logs:eval` green in CI; `logs:eval:quality` produces gated reports; behavior + quality reports land under `docs/generated/`.
+
+**P2 status notes (2026-08-13, `feat/log-analysis-p2-agent-loop-and-golden-set`):**
+
+- Delivered: `agentLoop.ts` bounded loop as the default kernel (`LOG_ANALYSIS_KERNEL=loop`, `LOG_ANALYSIS_MAX_STEPS` default 6; single-shot kept as config fallback); five read-only org-scoped tools in `analyzer/tools/` (zod-validated, truncated); loop progress mapped onto the `rootcause` 65→80 range; deterministic loop-protocol stub model; migration `0106_log_domain_knowledge_links` + `logs:admin-domains` link governance (`GET`/`PUT /api/v1/log-domains/:domainId/knowledge-links`, published-only, audited) + the `/log-admin` 知识条目 editor (`LOG-DOMAIN-KNOWLEDGE-001` automated); `read_domain_knowledge` through the knowledge module's hybrid retrieval (`knowledge/logDomainRetrieval.ts`, RRF, published-only in SQL, deterministic fake embeddings in tests); golden case set v1 mechanism (`eval-cases/logs/` schema/loader/README EN+zh, six synthetic `realLog: false` format-coverage seeds); quality-layer runner (`logs:eval:quality`, evidence overlap + hallucination + refusal metrics, rubric judge seam with `LOG_ANALYSIS_JUDGE_*` + deterministic stub, baseline gate honestly `inactive-pending-real-cases`); behavior eval extended with 8 loop scenarios + 2 loop meta self-checks.
+- **Adaptation (approved)**: the planned `log_domain_knowledge_docs` table was NOT built — the knowledge base landed on main first, so domains link to published knowledge entries instead and the `CONTEXT.md` "Domain knowledge document" term was updated accordingly.
+- **Open external dependencies (not blockers, honestly tracked)**: (1) inventory of existing labelled logs with domain experts — not performable in-repo, owner: product owner + domain experts; (2) the second real pilot domain named by the product owner; (3) 20–50 de-identified expert-annotated real cases per domain — until they land, quality scores cover synthetic format-coverage cases only and the baseline gate stays inactive (`quality baseline pending real cases`).
 
 ## Phase P3 — eval maturation + intake expansion
 
@@ -129,7 +135,7 @@ One phase → one branch → one PR. The planning branch `plan/agent-log-analysi
 ## Documentation Update Gate
 
 - [x] P1 PR updates: domain-model EN+zh, api-contract + OpenAPI, FRONTEND EN+zh, SECURITY EN+zh, environment-variables EN+zh + `.env.example`, runbook (`docs/runbooks/log-analysis-llm.md` EN+zh), ARCHITECTURE, product-spec EN+zh, acceptance coverage map + operation matrix (LOG-DOMAIN-001 / LOG-DEGRADED-001, EN+zh), db-schema regenerated via `npm run db:schema-doc` (migration `0105_log_domains.sql`) — all done on `feat/log-analysis-p1-domains-and-llm`
-- [ ] P2 PR updates: testing-strategy (eval layers), verification-matrix (eval commands), QUALITY_SCORE review, eval reports + baseline committed
+- [x] P2 PR updates: testing-strategy EN+zh (two eval layers), verification-matrix EN+zh (`logs:eval` / `logs:eval:quality`), QUALITY_SCORE gate row, domain-model EN+zh (loop kernel, knowledge links), api-contract EN+zh + OpenAPI (`knowledge-links` routes), FRONTEND EN+zh (link editor), SECURITY EN+zh (knowledge text as untrusted prompt input, published-only), environment-variables EN+zh + `.env.example` (`LOG_ANALYSIS_KERNEL`/`MAX_STEPS`/`JUDGE_*`), runbook EN+zh (loop params, quality eval), ARCHITECTURE EN+zh, `CONTEXT.md` (Domain knowledge document term migrated), coverage map + operation matrix EN+zh (LOG-DOMAIN-KNOWLEDGE-001), db-schema regenerated (migration `0106_log_domain_knowledge_links.sql`), eval reports + `eval-cases/logs/baseline.json` committed — done on `feat/log-analysis-p2-agent-loop-and-golden-set`. Honest exception: quality scores/gate cover synthetic cases only until the expert-annotated real cases (external dependency) land.
 - [ ] P3 PR updates: runbook monitoring section, RELIABILITY review, tech-debt entries for anything deferred
 - [ ] Every phase: `npm run docs:check` green before its PR merges; plan moves to `completed/` only after all rows above are Update-done or Review-recorded with evidence
 

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-12T21:37:53.153Z",
+  "generatedAt": "2026-08-12T22:05:59.875Z",
   "kernel": "loop",
   "deterministic": true,
   "modelLabel": "deterministic",
@@ -62,7 +62,7 @@
       "analysisSource": "agent",
       "model": "deterministic",
       "promptVersion": "2026-08-13.loop.1",
-      "latencyMs": 1,
+      "latencyMs": 0,
       "confidence": 0.82,
       "evidence": {
         "expectedLines": [
@@ -106,7 +106,7 @@
       "analysisSource": "agent",
       "model": "deterministic",
       "promptVersion": "2026-08-13.loop.1",
-      "latencyMs": 0,
+      "latencyMs": 1,
       "confidence": 0.82,
       "evidence": {
         "expectedLines": [

@@ -1,6 +1,6 @@
 # Agent 日志分析系统
 
-> Status: **Active（P1 已在 `feat/log-analysis-p1-domains-and-llm` 分支实现，评审中；P2/P3 未开始）**
+> Status: **Active（P1 已合并；P2 已在 `feat/log-analysis-p2-agent-loop-and-golden-set` 分支实现，评审中；P3 未开始）**
 > Date: 2026-08-12
 > 规划分支：`plan/agent-log-analysis`（本文档、词汇表、ADR-0022）
 > 实施分支：`feat/log-analysis-p1-domains-and-llm`、`feat/log-analysis-p2-agent-loop-and-golden-set`、`feat/log-analysis-p3-eval-maturation`（每阶段一支，均从最新 `main` 拉出）
@@ -44,7 +44,13 @@
 ## 架构与阶段
 
 - **P1（业务域 + LLM 单次分析 + 诚实降级 + 行为评测）**：`log_domains` 表与治理面；格式画像感知的解析；`llmAnalyzer.ts`（单次预算调用、接地校验拒绝引用不存在的行、注入 `analysisQuestion`、版本化提示词）；降级链（provider 故障 → 重试 → 规则回退并标注；预算耗尽 → 提前收敛低置信）；`LOG_ANALYSIS_*` 配置 + 就绪检查 + 指标；前端业务域选择器、降级徽标、自适应轮询上限；`logs:eval` 行为评测进 CI（含"脚本化幻觉模型必须被 harness 抓住"的元自检）。
-- **P2（agent 循环 + 工具 + 领域知识 + 金标准 v1 + 效果评测）**：首任务盘点存量标注；有界循环内核（映射 `rootcause` 阶段进度）+ 5 个只读工具（`search_log_lines`、`read_line_range`、`get_prefilter_findings`、`read_domain_knowledge`、`get_related_parameter_context`）；领域知识文档表与检索；金标准集 v1（`eval-cases/logs/`，脱敏 + YAML 标注）；效果层评测（真模型、基线对照、`logs:eval:quality`、容差门禁）。
+- **P2（agent 循环 + 工具 + 领域知识 + 金标准 v1 + 效果评测）**：首任务盘点存量标注；有界循环内核（映射 `rootcause` 阶段进度）+ 5 个只读工具（`search_log_lines`、`read_line_range`、`get_prefilter_findings`、`read_domain_knowledge`、`get_related_parameter_context`）；领域知识检索；金标准集 v1（`eval-cases/logs/`，脱敏 + YAML 标注）；效果层评测（真模型、基线对照、`logs:eval:quality`、容差门禁）。
+
+**P2 状态注记（2026-08-13，`feat/log-analysis-p2-agent-loop-and-golden-set`）：**
+
+- 已交付：`agentLoop.ts` 有界循环成为默认内核（`LOG_ANALYSIS_KERNEL=loop`、`LOG_ANALYSIS_MAX_STEPS` 默认 6；单发内核保留为配置回退）；`analyzer/tools/` 五个只读组织级工具（zod 校验、结果截断）；循环进度映射 `rootcause` 65→80 区间；确定性循环协议桩模型；迁移 `0106_log_domain_knowledge_links` + 关联治理（`GET`/`PUT /api/v1/log-domains/:domainId/knowledge-links`，仅已发布条目，审计）+ `/log-admin` 知识条目编辑器（`LOG-DOMAIN-KNOWLEDGE-001` 自动化）；`read_domain_knowledge` 走知识模块混合检索（RRF、SQL 层 published-only、测试用确定性假嵌入）；金标准案例集 v1 机制（schema/loader/README 中英，六条 `realLog: false` 合成格式覆盖种子）；效果层 runner（`logs:eval:quality`，证据重叠/幻觉率/拒答恰当率 + rubric judge 接缝 + 基线门禁，当前如实输出 `quality baseline pending real cases`）；行为层新增 8 个循环场景 + 2 个循环 meta 自检。
+- **适配（已批准）**：未建计划原文的 `log_domain_knowledge_docs` 平行表——知识库先落地 main，业务域改为关联已发布知识条目，`CONTEXT.md`「Domain knowledge document」词条已同步更新。
+- **未决外部依赖（不阻塞、如实跟踪）**：(1) 与领域专家盘点存量标注数据——无法在仓库内完成，归属产品负责人 + 领域专家；(2) 第二个真实试点域由产品负责人点名；(3) 每域 20–50 条脱敏真实标注案例——落地前质量分只覆盖合成格式案例，基线门禁保持不激活。
 - **P3（评测进阶 + 接入扩展）**：judge 校准与门禁自动化；`log_feedback` 线上看板进 `/log-admin`；线上案例一键转标注草稿；SDK/回调、压缩包解包、按域模型覆盖（仅当真实需求出现）。
 
 ## 安全与隐私
@@ -53,8 +59,8 @@
 
 ## 验证
 
-每阶段：定向 vitest、`npm run build`、`npm run docs:check`；`npm run logs:eval`（P1 起进 CI）、`npm run logs:eval:quality`（P2 起）；前端可见阶段用 playwright-cli 检查 `/logs` 与 `/log-admin`（1440x900 / 768x1024 / 390x844，snapshot + screenshot + console error）。验收 ID:现有 `LOG-HAPPY-001`、`LOG-REANALYZE-001`;P1 实施前新增 `LOG-DOMAIN-001`、`LOG-DEGRADED-001` 并扩展 `e2e/acceptance/log-analysis.acceptance.spec.ts`。
+每阶段：定向 vitest、`npm run build`、`npm run docs:check`；`npm run logs:eval`（P1 起进 CI）、`npm run logs:eval:quality`（P2 起）；前端可见阶段用 playwright-cli 检查 `/logs` 与 `/log-admin`（1440x900 / 768x1024 / 390x844，snapshot + screenshot + console error）。验收 ID:现有 `LOG-HAPPY-001`、`LOG-REANALYZE-001`;P1 新增 `LOG-DOMAIN-001`、`LOG-DEGRADED-001`;P2 新增 `LOG-DOMAIN-KNOWLEDGE-001`,均在 `e2e/acceptance/log-analysis.acceptance.spec.ts`。
 
 ## 文档影响矩阵与更新门禁
 
-见英文版同名计划；中英文配套同步更新。P1 行已勾选完成：domain-model、api-contract + OpenAPI、FRONTEND、SECURITY、environment-variables、runbook（`docs/runbooks/log-analysis-llm.md`）、ARCHITECTURE、product-spec、验收覆盖图与操作矩阵（LOG-DOMAIN-001 / LOG-DEGRADED-001）均已中英同步更新，db-schema 经 `npm run db:schema-doc` 再生成（迁移 `0105_log_domains.sql`）。
+见英文版同名计划；中英文配套同步更新。P1 行已勾选完成：domain-model、api-contract + OpenAPI、FRONTEND、SECURITY、environment-variables、runbook（`docs/runbooks/log-analysis-llm.md`）、ARCHITECTURE、product-spec、验收覆盖图与操作矩阵（LOG-DOMAIN-001 / LOG-DEGRADED-001）均已中英同步更新，db-schema 经 `npm run db:schema-doc` 再生成（迁移 `0105_log_domains.sql`）。P2 行已勾选完成：testing-strategy（两层评测）、verification-matrix（`logs:eval` / `logs:eval:quality`）、QUALITY_SCORE 验证门、domain-model（循环内核、知识关联）、api-contract + OpenAPI（knowledge-links 路由）、FRONTEND（关联编辑器）、SECURITY（知识文本按不可信提示词输入、published-only）、environment-variables + `.env.example`（`LOG_ANALYSIS_KERNEL`/`MAX_STEPS`/`JUDGE_*`）、runbook（循环参数、quality eval）、ARCHITECTURE、`CONTEXT.md` 词条迁移、覆盖图与操作矩阵（LOG-DOMAIN-KNOWLEDGE-001）均中英同步，db-schema 经 `npm run db:schema-doc` 再生成（迁移 `0106_log_domain_knowledge_links.sql`），评测报告与 `eval-cases/logs/baseline.json` 已提交。如实例外：真实标注案例落地前，质量分与门禁只覆盖合成案例。

@@ -121,9 +121,15 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 | `LOG_ANALYSIS_API_BASE_URL` | 空 | live 日志分析 LLM | OpenAI-compatible 端点；不得提交 secret 或私有端点。 |
 | `LOG_ANALYSIS_MODEL` | 空 | live 日志分析 LLM | 模型名会写入报告 `model` 列并作为指标标签。 |
 | `LOG_ANALYSIS_API_KEY` | 空 | live 日志分析 LLM | secret。 |
-| `LOG_ANALYSIS_API_TIMEOUT_MS` | `30000` | live 日志分析 LLM | 单次 `ChatOpenAI` 调用超时。 |
-| `LOG_ANALYSIS_TOKEN_BUDGET` | `8000` | 单次分析成本上界 | 限定提示词摘录（约 4 字符/token 折算）与响应 `maxTokens`。 |
+| `LOG_ANALYSIS_API_TIMEOUT_MS` | `30000` | live 日志分析 LLM | 单次 `ChatOpenAI` 调用超时（循环内核每步一次调用）。 |
+| `LOG_ANALYSIS_TOKEN_BUDGET` | `8000` | 单次分析成本上界 | 单发内核：限定提示词摘录（约 4 字符/token 折算）与响应 `maxTokens`。循环内核：跨步累计输入+输出 token；耗尽触发显式标注的提前收敛。 |
 | `LOG_ANALYSIS_DETERMINISTIC` | `.env.example` 为 `true`，代码默认 `false` | 离线开发/测试/评测 | 使用确定性桩模型（`model` 记 `deterministic`），无需 provider 且就绪检查通过。生产必须配置真实 provider 并保持 `false`。 |
+| `LOG_ANALYSIS_KERNEL` | `loop` | 分析内核选择 | `loop` = P2 有界多步 agent（五个只读工具，默认）；`single-shot` = P1 单发内核，保留为配置回退。 |
+| `LOG_ANALYSIS_MAX_STEPS` | `6` | 循环步数上界 | 每次分析的最大模型步数；超出触发标注为 `token-budget-exhausted` 的提前收敛。 |
+| `LOG_ANALYSIS_JUDGE_API_BASE_URL` | 空 | 效果层评测 judge | `npm run logs:eval:quality` 真模型模式下 LLM-as-judge 的 OpenAI-compatible 端点；未配置时使用确定性 rubric 桩。 |
+| `LOG_ANALYSIS_JUDGE_MODEL` | 空 | 效果层评测 judge | judge 模型名，写入质量报告。 |
+| `LOG_ANALYSIS_JUDGE_API_KEY` | 空 | 效果层评测 judge | secret。 |
+| `LOG_ANALYSIS_JUDGE_API_TIMEOUT_MS` | `30000` | 效果层评测 judge | judge 请求超时。 |
 
 ## 知识库嵌入与索引
 

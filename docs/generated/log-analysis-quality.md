@@ -1,6 +1,6 @@
 # Log Analysis Quality Eval Report
 
-- Generated: 2026-08-12T21:37:53.153Z
+- Generated: 2026-08-12T22:05:59.875Z
 - Kernel: `loop` (deterministic mode)
 - Model: `deterministic`
 - Judge: `deterministic-rubric-stub`
@@ -24,8 +24,8 @@
 | Case | Real | Source | Degraded | Latency (ms) | Evidence recall | Hallucination | Root-cause | Category | Refusal |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | charging-power/synthetic-comm-timeout-kernel-format | no | agent | - | 1 | 0.50 | 0.00 | 0.00 | match | - |
-| charging-power/synthetic-device-offline-critical | no | agent | - | 1 | 1.00 | 0.00 | 0.00 | match | - |
-| charging-power/synthetic-thermal-foldback-basic | no | agent | - | 0 | 0.00 | 0.00 | 1.00 | match | - |
+| charging-power/synthetic-device-offline-critical | no | agent | - | 0 | 1.00 | 0.00 | 0.00 | match | - |
+| charging-power/synthetic-thermal-foldback-basic | no | agent | - | 1 | 0.00 | 0.00 | 1.00 | match | - |
 | charging-power/synthetic-thermal-foldback-question | no | agent | - | 0 | 1.00 | 0.00 | 0.50 | match | - |
 | uncategorized/synthetic-json-lines-error-codes | no | agent | - | 0 | 0.00 | 0.00 | 0.00 | miss | - |
 | uncategorized/synthetic-nominal-heartbeat-refusal | no | agent | - | 0 | n/a | 0.00 | n/a | n/a | appropriate |
