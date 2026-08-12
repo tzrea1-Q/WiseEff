@@ -704,7 +704,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
       path: "/parameter-admin/specs?spec=spec-sc8562-gpio-int"
     });
 
-    const detail = await screen.findByRole("dialog", { name: new RegExp(`参数定义详情 ${SPEC_PRIMARY_LABEL}`) });
+    const detail = await screen.findByRole("dialog", { name: new RegExp(SPEC_PRIMARY_LABEL) });
     expect(within(detail).getByRole("heading", { name: SPEC_PRIMARY_LABEL })).toBeInTheDocument();
     expect(within(detail).getByLabelText("属性键")).toHaveValue("gpio_int");
     expect(within(detail).getByLabelText("展示名")).toHaveValue("SC8562 GPIO interrupt");
@@ -731,7 +731,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
       path: "/parameter-admin/specs?spec=spec-sc8562-gpio-int"
     });
 
-    const detail = await screen.findByRole("dialog", { name: new RegExp(`参数定义详情 ${SPEC_PRIMARY_LABEL}`) });
+    const detail = await screen.findByRole("dialog", { name: new RegExp(SPEC_PRIMARY_LABEL) });
     fireEvent.click(within(detail).getByRole("button", { name: "废弃" }));
     const lifecycleDialog = await screen.findByRole("dialog", { name: "废弃参数定义" });
     fireEvent.change(within(lifecycleDialog).getByLabelText("废弃原因"), {
@@ -760,7 +760,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
       path: "/parameter-admin/specs?spec=spec-sc8562-gpio-int"
     });
 
-    const detail = await screen.findByRole("dialog", { name: new RegExp(`参数定义详情 ${SPEC_PRIMARY_LABEL}`) });
+    const detail = await screen.findByRole("dialog", { name: new RegExp(SPEC_PRIMARY_LABEL) });
     fireEvent.click(within(detail).getByRole("button", { name: "恢复" }));
     const lifecycleDialog = await screen.findByRole("dialog", { name: "恢复参数定义" });
     fireEvent.change(within(lifecycleDialog).getByLabelText("恢复原因"), {
@@ -790,7 +790,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     expect(within(queue).getByText("gpio_int")).toBeInTheDocument();
 
     fireEvent.click(within(queue).getByRole("button", { name: "编辑 gpio_int" }));
-    const dialog = screen.getByRole("dialog", { name: "定义匹配审核 gpio_int" });
+    const dialog = screen.getByRole("dialog", { name: "gpio_int" });
     expect(within(dialog).getByLabelText("匹配依据")).toHaveValue("compatible unmatched");
     fireEvent.change(within(dialog).getByRole("combobox", { name: "选择参数定义" }), {
       target: { value: "spec-sc8562-gpio-int" }
@@ -823,7 +823,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
 
     const queue = await screen.findByRole("region", { name: "定义匹配审核队列" });
     fireEvent.click(within(queue).getByRole("button", { name: "编辑 gpio_int" }));
-    const dialog = screen.getByRole("dialog", { name: "定义匹配审核 gpio_int" });
+    const dialog = screen.getByRole("dialog", { name: "gpio_int" });
     fireEvent.change(within(dialog).getByLabelText("审核原因"), {
       target: { value: "Not actionable" }
     });
@@ -859,7 +859,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
 
     const queue = await screen.findByRole("region", { name: "定义匹配审核队列" });
     fireEvent.click(within(queue).getByRole("button", { name: "编辑 mystery_prop" }));
-    const dialog = screen.getByRole("dialog", { name: "定义匹配审核 mystery_prop" });
+    const dialog = screen.getByRole("dialog", { name: "mystery_prop" });
     fireEvent.change(within(dialog).getByLabelText("审核原因"), {
       target: { value: "Need manual draft" }
     });
@@ -908,7 +908,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     expect(within(queue).queryByRole("button", { name: "加载更多" })).not.toBeInTheDocument();
 
     fireEvent.click(within(queue).getByRole("button", { name: "编辑 gpio_int" }));
-    expect(screen.getByRole("dialog", { name: "定义匹配审核 gpio_int" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "gpio_int" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "选择参数定义" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
@@ -925,7 +925,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     expect(await within(queue).findByText("status")).toBeInTheDocument();
 
     fireEvent.click(within(queue).getByRole("button", { name: "编辑 status" }));
-    expect(screen.getByRole("dialog", { name: "定义匹配审核 status" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "status" })).toBeInTheDocument();
     expect(within(queue).getByRole("button", { name: "编辑 gpio_int" })).toBeInTheDocument();
     expect(screen.getAllByRole("combobox", { name: "选择参数定义" })).toHaveLength(1);
   });
@@ -1005,7 +1005,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
 
     const queue = await screen.findByRole("region", { name: "定义匹配审核队列" });
     fireEvent.click(within(queue).getByRole("button", { name: "编辑 gpio_int" }));
-    const dialog = screen.getByRole("dialog", { name: "定义匹配审核 gpio_int" });
+    const dialog = screen.getByRole("dialog", { name: "gpio_int" });
     fireEvent.change(within(dialog).getByRole("combobox", { name: "选择参数定义" }), {
       target: { value: "spec-sc8562-gpio-int" }
     });
@@ -1063,7 +1063,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     );
 
     fireEvent.click(within(panel).getByRole("button", { name: "修改模块 电源路径" }));
-    const editDialog = screen.getByRole("dialog", { name: "修改模块 电源路径" });
+    const editDialog = screen.getByRole("dialog", { name: "电源路径" });
     fireEvent.change(within(editDialog).getByLabelText("模块名称"), {
       target: { value: "电源路径组" }
     });
@@ -1081,7 +1081,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
 
     fireEvent.click(within(panel).getByRole("button", { name: "电源路径组 更多操作" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "移动模块 电源路径组" }));
-    const moveDialog = screen.getByRole("dialog", { name: "移动模块 电源路径组" });
+    const moveDialog = screen.getByRole("dialog", { name: "移动「电源路径组」" });
     fireEvent.click(within(moveDialog).getByRole("button", { name: /根级（无父模块）|目标业务分类/ }));
     fireEvent.click(within(moveDialog).getByRole("button", { name: "充电策略" }));
     fireEvent.click(within(moveDialog).getByRole("button", { name: "确认移动" }));
@@ -1112,18 +1112,18 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
 
     const panel = await screen.findByRole("region", { name: "模块归属" });
     fireEvent.click(within(panel).getByRole("button", { name: "修改模块 SC8562" }));
-    const editDialog = screen.getByRole("dialog", { name: "修改模块 SC8562" });
+    const editDialog = screen.getByRole("dialog", { name: "SC8562" });
     expect(within(editDialog).getByText("compatible:vendor,sc8562")).toBeInTheDocument();
 
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     fireEvent.click(
       within(editDialog).getByRole("button", { name: "移除规则 compatible:vendor,sc8562" })
     );
+    const removeConfirm = screen.getByRole("dialog", { name: "移除 compatible 规则" });
+    fireEvent.click(within(removeConfirm).getByRole("button", { name: "移除" }));
     await waitFor(() => expect(moduleRegistry.deleteMapping).toHaveBeenCalled());
     await waitFor(() =>
       expect(within(editDialog).queryByText("compatible:vendor,sc8562")).not.toBeInTheDocument()
     );
-    confirmSpy.mockRestore();
   });
 
   it("keeps the module tree primary and opens the unclassified queue via secondary nav", async () => {

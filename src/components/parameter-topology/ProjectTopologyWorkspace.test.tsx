@@ -213,7 +213,8 @@ describe("ProjectTopologyWorkspace", () => {
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
     fireEvent.click(within(workspace).getByRole("cell", { name: "gpio_int" }));
 
-    expect(within(workspace).getByRole("dialog", { name: "项目参数详情" })).toBeVisible();
+    // The shared modal contract portals the drawer dialog to document.body.
+    expect(screen.getByRole("dialog", { name: /gpio_int/ })).toBeVisible();
   });
 
   it("uses tree → properties → detail navigation with breadcrumb on mobile", () => {

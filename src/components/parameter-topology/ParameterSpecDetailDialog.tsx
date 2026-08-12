@@ -2,6 +2,7 @@ import { CircleX } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
+import { ModalDialog } from "@/components/common/ModalDialog";
 import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
 import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
 
@@ -36,8 +37,8 @@ export type ParameterSpecDetailDialogProps = {
 };
 
 /**
- * Spec editor dialog — legacy parameter-admin shell
- * (`modal-backdrop` + `submission-dialog param-admin-editor-dialog`).
+ * Spec editor dialog on the shared ModalDialog contract
+ * (card: `submission-dialog param-admin-editor-dialog`).
  * Org-owned drafts save via activate; org-owned active specs via update.
  * Soft retirement: deprecate / restore with required reason.
  * Save / activate / cutover finalize collect audit reason in a confirm step.
@@ -250,21 +251,18 @@ export function ParameterSpecDetailDialog({
 
   return (
     <>
-      <div
-      className="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`${PARAMETER_ADMIN_UI.specDetail} ${primaryLabel}`}
-      onClick={pending ? undefined : onClose}
-    >
-      <div
+      <ModalDialog
+        open
+        onDismiss={pending ? undefined : onClose}
         className="submission-dialog param-admin-editor-dialog submission-dialog--wide"
-        onClick={(event) => event.stopPropagation()}
+        backdropClassName="param-admin-modal-backdrop"
       >
+        {({ titleId }) => (
+          <>
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
             <span className="eyebrow">{editable ? PARAMETER_ADMIN_UI.specDetailEyebrowEditable : PARAMETER_ADMIN_UI.specDetailEyebrowReadonly}</span>
-            <h2 id="parameter-spec-detail-dialog-title">{primaryLabel}</h2>
+            <h2 id={titleId}>{primaryLabel}</h2>
             <p>
               {editable
                 ? isDraft
@@ -419,23 +417,28 @@ export function ParameterSpecDetailDialog({
             </button>
           )}
         </div>
-      </div>
-      </div>
+          </>
+        )}
+      </ModalDialog>
       {saveConfirmOpen ? (
-        <div
-          className="modal-backdrop"
-          role="dialog"
-          aria-modal="true"
-          aria-label={isDraft ? "确认激活参数定义" : "确认保存参数定义"}
+        <ModalDialog
+          open
+          onDismiss={
+            pending
+              ? undefined
+              : () => {
+                  setSaveConfirmOpen(false);
+                  setSaveReason("");
+                }
+          }
+          className="submission-dialog param-admin-confirm-dialog"
         >
-          <div
-            className="submission-dialog param-admin-confirm-dialog"
-            onClick={(event) => event.stopPropagation()}
-          >
+          {({ titleId }) => (
+            <>
             <div className="submission-dialog-head param-admin-editor-dialog-head">
               <div className="param-admin-editor-dialog-head-text">
                 <span className="eyebrow">参数定义库</span>
-                <h2>{isDraft ? "确认激活" : "确认保存"}</h2>
+                <h2 id={titleId}>{isDraft ? "确认激活" : "确认保存"}</h2>
                 <p>
                   {isDraft
                     ? `将激活「${primaryLabel}」；请填写激活原因以便审计留痕。`
@@ -493,24 +496,29 @@ export function ParameterSpecDetailDialog({
                 {pending ? (isDraft ? "激活中…" : "保存中…") : isDraft ? "确认激活" : "确认保存"}
               </button>
             </div>
-          </div>
-        </div>
+            </>
+          )}
+        </ModalDialog>
       ) : null}
       {cutoverConfirmOpen ? (
-        <div
-          className="modal-backdrop"
-          role="dialog"
-          aria-modal="true"
-          aria-label="确认完成版本切换"
+        <ModalDialog
+          open
+          onDismiss={
+            pending
+              ? undefined
+              : () => {
+                  setCutoverConfirmOpen(false);
+                  setCutoverFinalizeReason("");
+                }
+          }
+          className="submission-dialog param-admin-confirm-dialog"
         >
-          <div
-            className="submission-dialog param-admin-confirm-dialog"
-            onClick={(event) => event.stopPropagation()}
-          >
+          {({ titleId }) => (
+            <>
             <div className="submission-dialog-head param-admin-editor-dialog-head">
               <div className="param-admin-editor-dialog-head-text">
                 <span className="eyebrow">版本切换</span>
-                <h2>确认完成切换</h2>
+                <h2 id={titleId}>确认完成切换</h2>
                 <p>
                   将完成「{primaryLabel}」的语义版本切换
                   {cutover ? `（v${cutover.fromVersion} → v${cutover.toVersion}）` : ""}
@@ -568,24 +576,29 @@ export function ParameterSpecDetailDialog({
                 {pending ? "切换中…" : "确认完成切换"}
               </button>
             </div>
-          </div>
-        </div>
+            </>
+          )}
+        </ModalDialog>
       ) : null}
       {lifecycleKind ? (
-        <div
-          className="modal-backdrop"
-          role="dialog"
-          aria-modal="true"
-          aria-label={lifecycleKind === "restore" ? "恢复参数定义" : "废弃参数定义"}
+        <ModalDialog
+          open
+          onDismiss={
+            pending
+              ? undefined
+              : () => {
+                  setLifecycleKind(null);
+                  setLifecycleReason("");
+                }
+          }
+          className="submission-dialog param-admin-confirm-dialog"
         >
-          <div
-            className="submission-dialog param-admin-confirm-dialog"
-            onClick={(event) => event.stopPropagation()}
-          >
+          {({ titleId }) => (
+            <>
             <div className="submission-dialog-head param-admin-editor-dialog-head">
               <div className="param-admin-editor-dialog-head-text">
                 <span className="eyebrow">参数定义库</span>
-                <h2>{lifecycleKind === "restore" ? "恢复参数定义" : "废弃参数定义"}</h2>
+                <h2 id={titleId}>{lifecycleKind === "restore" ? "恢复参数定义" : "废弃参数定义"}</h2>
                 <p>
                   {lifecycleKind === "restore"
                     ? `将恢复「${primaryLabel}」为可用状态；请填写原因以便审计留痕。`
@@ -642,24 +655,29 @@ export function ParameterSpecDetailDialog({
                 {lifecycleKind === "restore" ? "确认恢复" : "确认废弃"}
               </button>
             </div>
-          </div>
-        </div>
+            </>
+          )}
+        </ModalDialog>
       ) : null}
       {identityKind ? (
-        <div
-          className="modal-backdrop"
-          role="dialog"
-          aria-modal="true"
-          aria-label={identityKind === "reattribute" ? "修正归属主体" : "修正属性键"}
+        <ModalDialog
+          open
+          onDismiss={
+            pending
+              ? undefined
+              : () => {
+                  setIdentityKind(null);
+                  setIdentityReason("");
+                }
+          }
+          className="submission-dialog param-admin-confirm-dialog"
         >
-          <div
-            className="submission-dialog param-admin-confirm-dialog"
-            onClick={(event) => event.stopPropagation()}
-          >
+          {({ titleId }) => (
+            <>
             <div className="submission-dialog-head param-admin-editor-dialog-head">
               <div className="param-admin-editor-dialog-head-text">
                 <span className="eyebrow">身份纠错</span>
-                <h2>{identityKind === "reattribute" ? "修正归属主体" : "修正属性键"}</h2>
+                <h2 id={titleId}>{identityKind === "reattribute" ? "修正归属主体" : "修正属性键"}</h2>
               </div>
               <button
                 type="button"
@@ -767,8 +785,9 @@ export function ParameterSpecDetailDialog({
                 {identityKind === "reattribute" ? "确认修正归属" : "确认修正属性键"}
               </button>
             </div>
-          </div>
-        </div>
+            </>
+          )}
+        </ModalDialog>
       ) : null}
     </>
   );

@@ -3,6 +3,7 @@ import { useEffect, useId, useMemo, useState } from "react";
 
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import type { RegisterOrClaimDriverInput } from "@/application/ports/ParameterModuleRegistryRepository";
+import { ModalDialog } from "@/components/common/ModalDialog";
 import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
 import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
 import { toBusinessFlatNodes } from "./moduleAttributionTreeUtils";
@@ -44,14 +45,6 @@ export function RegisterDriverDialog({
     setCompatiblesText(initialCompatibles.join("\n"));
   }, [initialCompatibles, initialDisplayName]);
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCancel();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onCancel]);
-
   const compatibles = compatiblesText
     .split("\n")
     .map((line) => line.trim())
@@ -63,17 +56,18 @@ export function RegisterDriverDialog({
     !busy;
 
   return (
-    <div
-      className="modal-backdrop param-admin-module-edit-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-label={PARAMETER_ADMIN_UI.driverRegistryRegisterDialogTitle}
+    <ModalDialog
+      open
+      onDismiss={onCancel}
+      className="submission-dialog param-admin-module-edit-dialog register-driver-dialog"
+      backdropClassName="param-admin-modal-backdrop"
     >
-      <div className="submission-dialog param-admin-module-edit-dialog register-driver-dialog">
+      {({ titleId }) => (
+        <>
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
             <span className="eyebrow">{PARAMETER_ADMIN_UI.driverRegistryRegisterDialogTitle}</span>
-            <h2>{PARAMETER_ADMIN_UI.driverRegistryRegisterDialogTitle}</h2>
+            <h2 id={titleId}>{PARAMETER_ADMIN_UI.driverRegistryRegisterDialogTitle}</h2>
           </div>
           <button
             type="button"
@@ -168,7 +162,8 @@ export function RegisterDriverDialog({
             </button>
           </div>
         </form>
-      </div>
-    </div>
+        </>
+      )}
+    </ModalDialog>
   );
 }
