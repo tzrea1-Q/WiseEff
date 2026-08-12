@@ -427,7 +427,9 @@ describe("createDebuggingRuntimeActions", () => {
     expect(gateway.writeNode).toHaveBeenCalledWith(expect.not.objectContaining({ confirmationToken: "confirm-high-risk-write" }));
     expect(result).toEqual({ ok: true, value: "15", verified: true, operation: writeOperation, snapshot: apiSnapshot });
     expect(dispatch).toHaveBeenCalledWith({ type: "UPSERT_DEBUG_NODE_OPERATION", operation: writeOperation });
-    expect(dispatch).toHaveBeenCalledWith({ type: "UPSERT_DEBUG_SNAPSHOT", snapshot: apiSnapshot });
+    // The snapshot dispatch now forwards the originating write operation so the
+    // reducer can populate lastDebugSnapshot with before/after values.
+    expect(dispatch).toHaveBeenCalledWith({ type: "UPSERT_DEBUG_SNAPSHOT", snapshot: apiSnapshot, operation: writeOperation });
   });
 
   it("forwards an explicit high-risk confirmation token on API writes", async () => {
