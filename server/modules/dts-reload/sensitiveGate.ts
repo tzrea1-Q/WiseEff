@@ -11,7 +11,7 @@ import {
   type SensitiveNodeRule,
   type SensitiveRiskTier,
   type SensitiveWriteActorType
-} from "../parameters/sensitiveNode";
+} from "../parameter-kernel/sensitiveNode";
 
 /** Explicit confirmation required when a reload batch includes a critical-tier sensitive match. */
 export const SENSITIVE_RELOAD_CONFIRMATION_TOKEN = "confirm-sensitive-reload";

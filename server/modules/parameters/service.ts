@@ -31,7 +31,7 @@ import {
 import { assertProjectAllowsParameterSubmit } from "./initializationService";
 import { canAdminParameters, canEditParameters, canMergeParameters, canReviewParameterStage, canViewParameters } from "../parameter-kernel/policy";
 import { isValidMergeLink } from "./mergeLink";
-import { assertSensitiveNodeWriteAllowed } from "./sensitiveNode";
+import { assertSensitiveNodeWriteAllowed } from "../parameter-kernel/sensitiveNode";
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import type { InitializationSuggestionDto } from "./types";
 import {

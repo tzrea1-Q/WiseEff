@@ -4,7 +4,7 @@ import { createAuditEvent } from "../audit/repository";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import { requireDebugAdmin } from "../debugging/policy";
-import type { SensitiveWriteActorType } from "../parameters/sensitiveNode";
+import type { SensitiveWriteActorType } from "../parameter-kernel/sensitiveNode";
 import type { Database, Queryable } from "../../shared/database/client";
 import {
   SEEDED_RELOAD_CONFIGURATION,

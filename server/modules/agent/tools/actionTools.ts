@@ -7,7 +7,7 @@ import { parseDtsValue } from "../../dts/valueAst";
 import { deleteDraft } from "../../parameter-drafts/repository";
 import { getProjectParameterForUpdate } from "../../parameters/repository";
 import { resolveParameterIdentityMode } from "../../parameter-kernel/parameterIdentityMode";
-import { assertSensitiveNodeWriteAllowed } from "../../parameters/sensitiveNode";
+import { assertSensitiveNodeWriteAllowed } from "../../parameter-kernel/sensitiveNode";
 import { submitParameterChanges } from "../../parameters/service";
 import { loadBindingContext, resolveBindingHeadRevisionId } from "../../parameter-topology/writeLock";
 import { createBindingDraft } from "../../parameter-topology/service";

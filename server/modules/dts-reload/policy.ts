@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { createAuditEvent } from "../audit/repository";
 import type { AuthContext, BackendPermission } from "../auth/types";
-import type { SensitiveWriteActorType } from "../parameters/sensitiveNode";
+import type { SensitiveWriteActorType } from "../parameter-kernel/sensitiveNode";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 
