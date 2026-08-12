@@ -198,6 +198,9 @@ export async function listGovernedUsers(db: Queryable, auth: AuthContext) {
 export async function createUser(db: Database, auth: AuthContext, input: CreateUserInput, context: AuditCorrelationContext = {}) {
   requireUserManager(auth);
   const roles = normalizeRoles(input.roles);
+  // A new user starts with no roles; block granting platform-admin unless the caller holds it,
+  // matching replaceUserRoles so user creation cannot be a platform-admin escalation path.
+  assertPlatformAdminGrantAllowed(auth, [], roles);
   const name = input.name.trim();
   const username = normalizeUsername(input.username);
   requireUsername(username);
