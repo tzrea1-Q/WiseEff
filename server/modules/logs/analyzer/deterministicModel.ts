@@ -1,10 +1,11 @@
-import { LogAnalysisProviderError, type LogAnalysisChatModel } from "./llmAnalyzer";
+import { LogAnalysisProviderError, type LogAnalysisChatMessage, type LogAnalysisChatModel } from "./llmAnalyzer";
 
 /**
- * Deterministic offline stub for `LOG_ANALYSIS_DETERMINISTIC=true` (local dev, CI, eval).
- * It reads the prefilter findings and excerpt from the prompt and answers with strict,
- * grounded JSON. A log containing the outage marker simulates a provider failure so the
- * honest-degradation chain can be exercised without a real provider.
+ * Deterministic offline stubs for `LOG_ANALYSIS_DETERMINISTIC=true` (local dev, CI, eval).
+ * The single-shot variant reads the prefilter findings and excerpt from the prompt and
+ * answers with strict, grounded JSON; the loop variant walks the P2 tool protocol
+ * (prefilter → line read → grounded final). A log containing the outage marker simulates
+ * a provider failure so the honest-degradation chain can be exercised without a provider.
  */
 export const LOG_ANALYSIS_SIMULATED_OUTAGE_MARKER = "WISEEFF_SIMULATE_LLM_PROVIDER_DOWN";
 
@@ -122,6 +123,153 @@ export function createDeterministicLogAnalysisModel(): LogAnalysisChatModel {
           outputTokens: Math.ceil(content.length / 4)
         }
       };
+    }
+  };
+}
+
+type PrefilterToolResult = {
+  ruleHits?: string[];
+  evidence?: Array<{ ruleHit?: string; lineNumbers?: number[] }>;
+  anomalyLineNumbers?: number[];
+};
+
+type LineRangeToolResult = {
+  lines?: Array<{ lineNumber: number; content: string }>;
+};
+
+function parseToolResult<T>(messages: LogAnalysisChatMessage[], toolName: string): T | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role !== "user" || !message.content.startsWith(`Tool result for ${toolName}:`)) {
+      continue;
+    }
+    const payload = message.content.slice(message.content.indexOf("\n") + 1);
+    try {
+      return JSON.parse(payload) as T;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+function withUsage(payload: unknown, messages: LogAnalysisChatMessage[]) {
+  const content = typeof payload === "string" ? payload : JSON.stringify(payload);
+  const promptChars = messages.reduce((total, message) => total + message.content.length, 0);
+  return {
+    content,
+    usage: {
+      inputTokens: Math.ceil(promptChars / 4),
+      outputTokens: Math.ceil(content.length / 4)
+    }
+  };
+}
+
+/**
+ * Loop-protocol deterministic stub: investigates like the real kernel would —
+ * pull the prefilter findings, read the neighborhood of the strongest signal,
+ * then converge on a grounded conclusion citing only lines it has actually read.
+ */
+export function createDeterministicLogAnalysisLoopModel(): LogAnalysisChatModel {
+  return {
+    async invoke(messages) {
+      const promptText = messages.map((message) => message.content).join("\n");
+      if (promptText.includes(LOG_ANALYSIS_SIMULATED_OUTAGE_MARKER)) {
+        throw new LogAnalysisProviderError("Simulated log-analysis provider outage (deterministic mode).");
+      }
+
+      const analysisQuestion = parseAnalysisQuestion(promptText);
+      const prefilterResult = parseToolResult<PrefilterToolResult>(messages, "get_prefilter_findings");
+      const lineRangeResult = parseToolResult<LineRangeToolResult>(messages, "read_line_range");
+      const mustConverge = messages.some(
+        (message) => message.role === "user" && message.content.startsWith("Budget exhausted:")
+      );
+
+      if (!prefilterResult && !mustConverge) {
+        return withUsage({ action: "tool", tool: "get_prefilter_findings", args: {} }, messages);
+      }
+
+      if (prefilterResult && !lineRangeResult && !mustConverge) {
+        const focusLine =
+          prefilterResult.evidence?.find((item) => (item.lineNumbers?.length ?? 0) > 0)?.lineNumbers?.[0] ??
+          prefilterResult.anomalyLineNumbers?.[0] ??
+          1;
+        return withUsage(
+          {
+            action: "tool",
+            tool: "read_line_range",
+            args: { startLine: Math.max(1, focusLine - 2), endLine: focusLine + 2 }
+          },
+          messages
+        );
+      }
+
+      const seenLines = (lineRangeResult?.lines ?? []).map((line) => line.lineNumber);
+      const matched = conclusionByRuleHit.find((candidate) =>
+        (prefilterResult?.evidence ?? []).some(
+          (item) => item.ruleHit === candidate.ruleHit && (item.lineNumbers ?? []).some((line) => seenLines.includes(line))
+        )
+      );
+      const matchedEvidence = matched
+        ? prefilterResult?.evidence?.find((item) => item.ruleHit === matched.ruleHit)
+        : undefined;
+      const citedLines = (
+        matchedEvidence?.lineNumbers?.filter((line) => seenLines.includes(line)) ?? seenLines
+      ).slice(0, 3);
+
+      if (citedLines.length === 0) {
+        // Nothing was actually read: converge honestly on the anomaly lines the
+        // prefilter reported (they exist in the parsed log by construction).
+        const fallbackLines = (prefilterResult?.anomalyLineNumbers ?? [1]).slice(0, 3);
+        return withUsage(
+          {
+            action: "final",
+            conclusion: "Evidence was insufficient for a confident root cause within the budget.",
+            impact: "No confirmed operational impact could be established from the lines reviewed.",
+            severity: "Info",
+            confidence: 0.3,
+            suggestedActions: ["Collect more context from the device and adjacent logs before escalating."],
+            evidence: [
+              {
+                lineNumbers: fallbackLines,
+                inference: "The reviewed window did not confirm a known anomaly pattern.",
+                suggestedAction: "Re-run the analysis with a longer log capture if symptoms persist."
+              }
+            ]
+          },
+          messages
+        );
+      }
+
+      const baseConclusion = matched?.conclusion ?? "No known anomaly pattern was detected; the log looks nominal.";
+      const conclusion = analysisQuestion
+        ? `${baseConclusion} Regarding the question "${analysisQuestion}": the cited lines are the directly relevant evidence.`
+        : baseConclusion;
+
+      return withUsage(
+        {
+          action: "final",
+          conclusion,
+          impact: matched?.impact ?? "No immediate operational impact was identified from the cited lines.",
+          severity: matched?.severity ?? "Info",
+          confidence: matched ? 0.82 : 0.45,
+          suggestedActions: matched
+            ? ["Review the cited lines with the owning team.", "Correlate the finding with recent parameter changes."]
+            : ["Collect more context from the device and adjacent logs before escalating."],
+          evidence: [
+            {
+              lineNumbers: citedLines,
+              inference: matched
+                ? `Deterministic loop analysis matched the ${matched.ruleHit} pattern on the lines read in this run.`
+                : "Deterministic loop analysis found no anomaly pattern; the cited lines summarize the reviewed window.",
+              suggestedAction: matched
+                ? "Confirm the pattern against device telemetry before acting."
+                : "No action required unless symptoms persist."
+            }
+          ]
+        },
+        messages
+      );
     }
   };
 }

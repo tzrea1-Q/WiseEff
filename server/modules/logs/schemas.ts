@@ -65,6 +65,11 @@ export const updateLogDomainBodySchema = z.object({
   status: z.enum(["active", "archived"]).optional()
 });
 
+/** Replace-set semantics; entries must be published knowledge entries in the caller's org. */
+export const setLogDomainKnowledgeLinksBodySchema = z.object({
+  knowledgeEntryIds: z.array(z.string().uuid()).max(50)
+});
+
 export type CreateLogFileBody = z.infer<typeof createLogFileBodySchema>;
 export type CreateLogBody = z.infer<typeof createLogBodySchema>;
 export type ListLogsQuery = z.infer<typeof listLogsQuerySchema>;
@@ -73,3 +78,4 @@ export type RerunLogBody = z.infer<typeof rerunLogBodySchema>;
 export type ListLogDomainsQuery = z.infer<typeof listLogDomainsQuerySchema>;
 export type CreateLogDomainBody = z.infer<typeof createLogDomainBodySchema>;
 export type UpdateLogDomainBody = z.infer<typeof updateLogDomainBodySchema>;
+export type SetLogDomainKnowledgeLinksBody = z.infer<typeof setLogDomainKnowledgeLinksBodySchema>;

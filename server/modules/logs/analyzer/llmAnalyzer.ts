@@ -33,7 +33,7 @@ export class LogAnalysisProviderError extends Error {
   }
 }
 
-export type LogAnalysisChatMessage = { role: "system" | "user"; content: string };
+export type LogAnalysisChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
 /** Minimal chat-model seam: production binds ChatOpenAI, eval binds deterministic scripted fakes. */
 export type LogAnalysisChatModel = {
@@ -70,7 +70,8 @@ const llmEvidenceSchema = z.object({
   suggestedAction: z.string().min(1)
 });
 
-const llmOutputSchema = z.object({
+/** The P1 output contract shape; the P2 loop kernel validates its final step against the same schema. */
+export const llmOutputSchema = z.object({
   conclusion: z.string().min(1),
   impact: z.string().min(1),
   severity: z.enum(["Critical", "Warning", "Info"]),
@@ -99,7 +100,7 @@ function buildSystemPrompt(): string {
   ].join("\n");
 }
 
-function formatPrefilterFindings(findings: PrefilterFindings): string {
+export function formatPrefilterFindings(findings: PrefilterFindings): string {
   const ruleLines = findings.evidence.map(
     (item) => `- ${item.ruleHit}: lines ${item.lineNumbers.slice(0, 20).join(", ")} (${item.inference})`
   );
@@ -200,7 +201,7 @@ function buildUserPrompt(input: AnalyzeLogInput, findings: PrefilterFindings, ex
   return sections.join("\n\n");
 }
 
-function extractJsonPayload(content: string): string {
+export function extractJsonPayload(content: string): string {
   const trimmed = content.trim();
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
   return fenced ? fenced[1] : trimmed;

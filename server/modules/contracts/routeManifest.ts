@@ -526,6 +526,20 @@ export const routeManifest = [
   { id: "logs.createDomain", method: "POST", path: "/api/v1/log-domains", module: "logs", stability: "mvp" },
   { id: "logs.updateDomain", method: "PATCH", path: "/api/v1/log-domains/:domainId", module: "logs", stability: "mvp" },
   { id: "logs.archiveDomain", method: "POST", path: "/api/v1/log-domains/:domainId/archive", module: "logs", stability: "mvp" },
+  {
+    id: "logs.listDomainKnowledgeLinks",
+    method: "GET",
+    path: "/api/v1/log-domains/:domainId/knowledge-links",
+    module: "logs",
+    stability: "mvp"
+  },
+  {
+    id: "logs.setDomainKnowledgeLinks",
+    method: "PUT",
+    path: "/api/v1/log-domains/:domainId/knowledge-links",
+    module: "logs",
+    stability: "mvp"
+  },
 
   { id: "productFeedback.create", method: "POST", path: "/api/v1/product-feedback", module: "product-feedback", stability: "mvp" },
   { id: "productFeedback.list", method: "GET", path: "/api/v1/product-feedback", module: "product-feedback", stability: "mvp" },

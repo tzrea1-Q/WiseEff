@@ -21,6 +21,16 @@ export type AnalyzeLogInput = {
     name: string;
     description?: string;
   };
+  /**
+   * P2 loop-kernel run context (internal input, not part of the output contract):
+   * lets the kernel bind organization-scoped tool backends and map loop steps onto
+   * the `rootcause` stage progress range. All optional — the single-shot kernel and
+   * offline eval runs ignore them.
+   */
+  organizationId?: string;
+  logDomainId?: string;
+  relatedParameterId?: string;
+  onProgress?: (progress: { step: number; maxSteps: number }) => void | Promise<void>;
 };
 
 export type AnalyzeLogEvidence = {
