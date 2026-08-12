@@ -240,6 +240,93 @@ describe("log service", () => {
     expect(txCalls.find((call) => call.text.includes("insert into audit_events"))?.values).toContain("log-upload");
   });
 
+  it("binds an active log domain on upload and stores log_domain_id", async () => {
+    const activeDomainRow = {
+      id: "domain-1",
+      name: "charging-power",
+      description: null,
+      status: "active",
+      format_profile: null,
+      created_at: "2026-05-25T02:00:00.000Z",
+      updated_at: "2026-05-25T02:00:00.000Z"
+    };
+    const { db, txCalls } = createFakeDb([
+      [activeDomainRow],
+      [
+        {
+          id: "file-1",
+          organization_id: "org-1",
+          storage_key: "org-1/checksum-pack-controller.log",
+          file_name: "pack-controller.log",
+          content_type: "text/plain",
+          file_size_bytes: 2048,
+          checksum_sha256: "checksum",
+          uploaded_by_user_id: "user-1",
+          created_at: "2026-05-25T02:00:00.000Z"
+        }
+      ],
+      [logRow()],
+      [{ id: "run-1", log_record_id: "log-1", status: "queued", current_stage: "parse", progress: 0, error_message: null, updated_at: "2026-05-25T02:00:00.000Z" }],
+      [{ id: "job-1", kind: "log-analysis", target_id: "run-1", status: "queued", progress: 0, current_stage: "parse", error_message: null, updated_at: "2026-05-25T02:00:00.000Z" }],
+      [logRow({ log_domain_id: "domain-1", log_domain_name: "charging-power" })],
+      []
+    ]);
+    const { objectStore } = makeObjectStore();
+
+    const result = await uploadLogFile(db, objectStore, makeAuth(), {
+      fileName: "pack-controller.log",
+      contentType: "text/plain",
+      bytes: Buffer.from("line one"),
+      logDomainId: "domain-1"
+    });
+
+    expect(result.log.logDomainId).toBe("domain-1");
+    expect(result.log.logDomainName).toBe("charging-power");
+    const recordInsert = txCalls.find((call) => call.text.includes("insert into log_records"));
+    expect(recordInsert?.values).toContain("domain-1");
+    const auditInsert = txCalls.find((call) => call.text.includes("insert into audit_events"));
+    expect(JSON.stringify(auditInsert?.values)).toContain("domain-1");
+  });
+
+  it("rejects an unknown log domain on upload with 400 before storing bytes", async () => {
+    const { db } = createFakeDb([[]]);
+    const { objectStore, puts } = makeObjectStore();
+
+    await expect(
+      uploadLogFile(db, objectStore, makeAuth(), {
+        fileName: "pack-controller.log",
+        contentType: "text/plain",
+        bytes: Buffer.from("line one"),
+        logDomainId: "domain-missing"
+      })
+    ).rejects.toMatchObject({ code: "VALIDATION_FAILED", status: 400 });
+    expect(puts).toHaveLength(0);
+  });
+
+  it("rejects an archived log domain on upload with 400", async () => {
+    const archivedDomainRow = {
+      id: "domain-1",
+      name: "charging-power",
+      description: null,
+      status: "archived",
+      format_profile: null,
+      created_at: "2026-05-25T02:00:00.000Z",
+      updated_at: "2026-05-25T02:00:00.000Z"
+    };
+    const { db } = createFakeDb([[archivedDomainRow]]);
+    const { objectStore, puts } = makeObjectStore();
+
+    await expect(
+      uploadLogFile(db, objectStore, makeAuth(), {
+        fileName: "pack-controller.log",
+        contentType: "text/plain",
+        bytes: Buffer.from("line one"),
+        logDomainId: "domain-1"
+      })
+    ).rejects.toMatchObject({ code: "VALIDATION_FAILED", status: 400 });
+    expect(puts).toHaveLength(0);
+  });
+
   it("dispatches supported log uploads to the durable queue after the database job is created", async () => {
     const { db } = createFakeDb([
       [

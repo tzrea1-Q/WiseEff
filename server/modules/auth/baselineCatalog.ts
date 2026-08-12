@@ -94,6 +94,7 @@ export const baselinePlatformRoles: BaselineRoleSeed[] = [
       "logs:feedback",
       "logs:analyze",
       "logs:archive",
+      "logs:admin-domains",
       "parameter:review",
       "admin:access",
       "users:manage"
@@ -119,6 +120,7 @@ export const baselinePlatformRoles: BaselineRoleSeed[] = [
       "logs:feedback",
       "logs:analyze",
       "logs:archive",
+      "logs:admin-domains",
       "parameter:review",
       "admin:access",
       "users:manage",

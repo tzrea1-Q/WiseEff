@@ -33,3 +33,7 @@ export function requireLogArchive(auth: AuthContext) {
 export function requireLogFeedback(auth: AuthContext) {
   requirePermission(auth, "logs:feedback", { requireActive: true });
 }
+
+export function requireLogAdminDomains(auth: AuthContext) {
+  requirePermission(auth, "logs:admin-domains", { requireActive: true });
+}

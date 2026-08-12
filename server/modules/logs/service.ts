@@ -8,6 +8,7 @@ import type { LogAnalysisJobDto } from "../jobs/types";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { enqueueLogAnalysisJob, type LogAnalysisQueue } from "./logAnalysisQueue";
+import { getActiveLogDomainForBinding } from "./domainsRepository";
 import type { ObjectStore, StoredObject } from "./objectStore";
 import {
   appendFeedback,
@@ -40,6 +41,7 @@ export type UploadLogFileInput = {
   bytes: Buffer | Uint8Array;
   analysisQuestion?: string;
   relatedParameterId?: string;
+  logDomainId?: string;
 };
 
 export type CreateLogFromFileInput = {
@@ -47,6 +49,7 @@ export type CreateLogFromFileInput = {
   fileName: string;
   analysisQuestion?: string;
   relatedParameterId?: string;
+  logDomainId?: string;
 };
 
 export type ListLogRecordsQuery = {
@@ -58,6 +61,7 @@ export type ListLogRecordsQuery = {
 export type RerunLogAnalysisInput = {
   logId: string;
   analysisQuestion?: string;
+  logDomainId?: string;
 };
 
 export type SubmitLogFeedbackInput = {
@@ -74,6 +78,29 @@ const supportedExtensions = new Set<string>(supportedLogExtensions);
 
 function unsupportedReason() {
   return `Unsupported log format. Supported extensions: ${supportedLogExtensions.join(", ")}.`;
+}
+
+/**
+ * Optional log-domain binding: the domain must belong to the organization and be
+ * active, otherwise the request fails with 400. Absence keeps the uncategorized
+ * log domain semantics — uploads are never blocked by domain selection.
+ */
+async function requireBindableLogDomainId(db: Queryable, auth: AuthContext, logDomainId: string | undefined) {
+  if (logDomainId === undefined) {
+    return undefined;
+  }
+
+  const domain = await getActiveLogDomainForBinding(db, {
+    organizationId: auth.organization.id,
+    domainId: logDomainId
+  });
+  if (!domain) {
+    throw new ApiError("VALIDATION_FAILED", "Log domain is unknown or not active in this organization.", 400, {
+      logDomainId
+    });
+  }
+
+  return domain.id;
 }
 
 function isSupportedLogFile(fileName: string) {
@@ -145,6 +172,7 @@ export async function uploadLogFile(
   context: ServiceContext = {}
 ): Promise<{ fileObject: LogFileObjectDto; log: LogRecordDto; job: LogAnalysisJobDto | null }> {
   requireLogUpload(auth);
+  const logDomainId = await requireBindableLogDomainId(db, auth, input.logDomainId);
   const supported = isSupportedLogFile(input.fileName);
   const stored = supported
     ? await objectStore.put({
@@ -167,7 +195,8 @@ export async function uploadLogFile(
         submittedByUserId: auth.user.id,
         failureReason: unsupportedReason(),
         analysisQuestion: input.analysisQuestion,
-        relatedParameterId: input.relatedParameterId
+        relatedParameterId: input.relatedParameterId,
+        logDomainId
       });
       if (!log) {
         throw new ApiError("NOT_FOUND", "Log record was not created.", 404);
@@ -206,7 +235,8 @@ export async function uploadLogFile(
         source: "upload",
         submittedByUserId: auth.user.id,
         analysisQuestion: input.analysisQuestion,
-        relatedParameterId: input.relatedParameterId
+        relatedParameterId: input.relatedParameterId,
+        logDomainId
       }
     );
     await createLogAudit(
@@ -216,7 +246,7 @@ export async function uploadLogFile(
         kind: "log-upload",
         action: "upload",
         logId: log.id,
-        metadata: { fileName: input.fileName, runId: job.runId, jobId: job.id }
+        metadata: { fileName: input.fileName, runId: job.runId, jobId: job.id, logDomainId: logDomainId ?? null }
       },
       context
     );
@@ -236,6 +266,7 @@ export async function uploadLogFile(
 
 export async function createLogFromFile(db: Database, auth: AuthContext, input: CreateLogFromFileInput, context: ServiceContext = {}) {
   requireLogUpload(auth);
+  const logDomainId = await requireBindableLogDomainId(db, auth, input.logDomainId);
 
   const fileObject = await getFileObjectById(db, {
     organizationId: auth.organization.id,
@@ -267,7 +298,8 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
         submittedByUserId: auth.user.id,
         failureReason: unsupportedReason(),
         analysisQuestion: input.analysisQuestion,
-        relatedParameterId: input.relatedParameterId
+        relatedParameterId: input.relatedParameterId,
+        logDomainId
       });
       if (!log) throw new ApiError("NOT_FOUND", "Log record was not created.", 404);
       await createLogAudit(
@@ -302,7 +334,8 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
         source: "upload",
         submittedByUserId: auth.user.id,
         analysisQuestion: input.analysisQuestion,
-        relatedParameterId: input.relatedParameterId
+        relatedParameterId: input.relatedParameterId,
+        logDomainId
       }
     );
     await createLogAudit(
@@ -312,7 +345,7 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
         kind: "log-upload",
         action: "upload",
         logId: result.log.id,
-        metadata: { fileName: fileObject.fileName, runId: result.job.runId, jobId: result.job.id }
+        metadata: { fileName: fileObject.fileName, runId: result.job.runId, jobId: result.job.id, logDomainId: logDomainId ?? null }
       },
       context
     );
@@ -357,13 +390,15 @@ export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: R
     if (!existing) {
       throw new ApiError("NOT_FOUND", "Log record was not found.", 404, { logId: input.logId });
     }
+    const logDomainId = await requireBindableLogDomainId(tx, auth, input.logDomainId);
 
     const job = await createRerunWithJob(tx, {
       runId: randomUUID(),
       jobId: randomUUID(),
       organizationId: auth.organization.id,
       logId: input.logId,
-      analysisQuestion: input.analysisQuestion
+      analysisQuestion: input.analysisQuestion,
+      logDomainId
     });
     const log = await getLogDetail(tx, auth, input.logId);
     if (!log) {
@@ -376,7 +411,12 @@ export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: R
         kind: "log-rerun",
         action: "rerun",
         logId: input.logId,
-        metadata: { runId: job.runId, jobId: job.id, analysisQuestion: input.analysisQuestion }
+        metadata: {
+          runId: job.runId,
+          jobId: job.id,
+          analysisQuestion: input.analysisQuestion,
+          logDomainId: logDomainId ?? existing.logDomainId ?? null
+        }
       },
       context
     );

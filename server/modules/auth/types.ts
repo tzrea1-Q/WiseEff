@@ -23,6 +23,7 @@ export type BackendPermission =
   | "logs:analyze"
   | "logs:archive"
   | "logs:feedback"
+  | "logs:admin-domains"
   | "parameter:review"
   | "admin:access"
   | "users:manage"
