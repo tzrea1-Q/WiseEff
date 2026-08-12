@@ -1061,6 +1061,7 @@ export async function ensureBridgeDebugDevice(
       status = 'online',
       last_seen_at = now(),
       updated_at = now()
+    where debugging_devices.organization_id = $2
     `,
     [input.deviceId, input.organizationId, input.name.trim() || input.deviceId, input.protocol]
   );
@@ -1097,6 +1098,7 @@ export async function ensureDtsReloadLeaseSession(
       bridge_id = excluded.bridge_id,
       status = 'detected',
       detected_at = now()
+    where debugging_targets.organization_id = $1
     returning id
     `,
     [
@@ -1137,6 +1139,7 @@ export async function ensureDtsReloadLeaseSession(
       actor_user_id = excluded.actor_user_id,
       status = 'active',
       ended_at = null
+    where debugging_sessions.organization_id = excluded.organization_id
     `,
     [
       input.sessionId,

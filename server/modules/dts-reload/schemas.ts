@@ -5,9 +5,12 @@ export const startReloadRunTargetSchema = z.object({
   debugValue: z.string().min(1)
 });
 
+/** Upper bound on reload targets per run — bounds overlay size, audit metadata, and worst-case deploy duration against the device lease. */
+export const MAX_RELOAD_TARGETS_PER_RUN = 50;
+
 /** Batch start body: one or more parameter debug values for a single reload run (preflight only). */
 export const startReloadRunBodySchema = z.object({
-  targets: z.array(startReloadRunTargetSchema).min(1),
+  targets: z.array(startReloadRunTargetSchema).min(1).max(MAX_RELOAD_TARGETS_PER_RUN),
   /**
    * Required when any selected target matches a critical-tier sensitive-node rule.
    * Must equal `confirm-sensitive-reload`. Device-deploy confirmation is collected on deploy.
