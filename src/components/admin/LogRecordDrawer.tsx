@@ -10,7 +10,11 @@ const drawerDegradedReasonLabels: Record<NonNullable<LogRecord["degradedReason"]
 };
 
 function DrawerProvenanceBadges({ record }: { record: LogRecord }) {
-  const degraded = record.analysisSource === "rules-fallback";
+  const isFallback = record.analysisSource === "rules-fallback";
+  // P2 loop kernel: an exhausted budget converges early into a marked low-confidence
+  // agent conclusion — still degraded analysis, never presented as a full analysis.
+  const isEarlyConverged = record.analysisSource === "agent" && record.degradedReason !== undefined;
+  const degraded = isFallback || isEarlyConverged;
   if (!degraded && record.analysisSource !== "agent" && !record.logDomainName) {
     return null;
   }
@@ -24,7 +28,7 @@ function DrawerProvenanceBadges({ record }: { record: LogRecord }) {
             className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900"
           >
             <TriangleAlert className="size-3" />
-            降级分析 · 规则回退
+            {isFallback ? "降级分析 · 规则回退" : "降级分析 · 提前收敛"}
           </span>
         ) : record.analysisSource === "agent" ? (
           <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-800">
@@ -40,7 +44,11 @@ function DrawerProvenanceBadges({ record }: { record: LogRecord }) {
       </div>
       {degraded ? (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] leading-relaxed text-amber-900">
-          {record.degradedReason ? drawerDegradedReasonLabels[record.degradedReason] : "本结论由规则引擎回退生成"}
+          {isFallback
+            ? record.degradedReason
+              ? drawerDegradedReasonLabels[record.degradedReason]
+              : "本结论由规则引擎回退生成"
+            : "分析步数或 token 预算耗尽，Agent 基于已读证据提前收敛为低置信结论"}
         </p>
       ) : null}
     </div>
