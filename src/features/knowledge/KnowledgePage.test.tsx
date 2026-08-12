@@ -8,9 +8,18 @@ import { KnowledgePage } from "./KnowledgePage";
 const editorCapability = { userId: "u-xu-yun", canEdit: true, canManage: false };
 const viewerCapability = { userId: "u-viewer", canEdit: false, canManage: false };
 
-function renderPage(overrides: Partial<{ capability: typeof editorCapability }> = {}) {
+function renderPage(
+  overrides: Partial<{ capability: typeof editorCapability; askXiaozeEnabled: boolean; initialEntryId: string | null }> = {}
+) {
   const repository = createMockKnowledgeRepository();
-  const utils = render(<KnowledgePage repository={repository} capability={overrides.capability ?? editorCapability} />);
+  const utils = render(
+    <KnowledgePage
+      repository={repository}
+      capability={overrides.capability ?? editorCapability}
+      askXiaozeEnabled={overrides.askXiaozeEnabled ?? false}
+      initialEntryId={overrides.initialEntryId ?? null}
+    />
+  );
   return { repository, ...utils };
 }
 
@@ -33,7 +42,7 @@ describe("KnowledgePage", () => {
     expect(screen.queryByRole("button", { name: /上传文件条目/ })).not.toBeInTheDocument();
   });
 
-  it("searches published entries only", async () => {
+  it("searches published entries only and states the retrieval mode honestly", async () => {
     renderPage();
     const user = userEvent.setup();
 
@@ -43,11 +52,37 @@ describe("KnowledgePage", () => {
 
     const results = await screen.findByLabelText("检索结果");
     expect(within(results).getByText("快充温控调参经验")).toBeInTheDocument();
+    expect(within(results).getByText(/检索模式:仅全文检索/)).toBeInTheDocument();
     // The draft entry mentions sc8562 but drafts stay out of retrieval.
     await user.clear(screen.getByRole("searchbox", { name: "检索知识库" }));
     await user.type(screen.getByRole("searchbox", { name: "检索知识库" }), "充电泵比率切换");
     await user.click(screen.getByRole("button", { name: "检索" }));
     expect(await screen.findByText("没有命中已发布的知识条目。")).toBeInTheDocument();
+  });
+
+  it("shows the ask-the-knowledge-base entry in API mode only and dispatches the Xiaoze handoff", async () => {
+    renderPage({ askXiaozeEnabled: true });
+    const user = userEvent.setup();
+    const handoff = new Promise<Event>((resolve) => {
+      window.addEventListener("wiseeff:xiaoze-open-handoff", resolve, { once: true });
+    });
+
+    await screen.findByRole("table", { name: "知识条目列表" });
+    await user.click(screen.getByRole("button", { name: /问知识库/ }));
+    const event = (await handoff) as CustomEvent<{ preset: string }>;
+    expect(event.detail.preset).toBe("knowledge-ask");
+  });
+
+  it("hides the ask entry when Xiaoze is unavailable (mock mode)", async () => {
+    renderPage({ askXiaozeEnabled: false });
+    await screen.findByRole("table", { name: "知识条目列表" });
+    expect(screen.queryByRole("button", { name: /问知识库/ })).not.toBeInTheDocument();
+  });
+
+  it("opens the entry detail from a citation deep link (?entryId=…)", async () => {
+    renderPage({ initialEntryId: "mock-kb-1" });
+    const detail = await screen.findByRole("dialog", { name: /快充温控调参经验/ });
+    expect(within(detail).getByText(/当电池温度超过 45 度/)).toBeInTheDocument();
   });
 
   it("creates a markdown draft through the split editor", async () => {

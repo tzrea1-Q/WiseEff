@@ -7,6 +7,15 @@ import type { ObjectStore } from "../logs/objectStore";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { KnowledgeTextExtractor } from "./extraction";
+import { fuseKnowledgeSearchResults } from "./hybridSearch";
+import type { KnowledgeEmbeddingClient } from "./indexing/embeddingClient";
+import {
+  enqueueAllPublishedEntries,
+  enqueueEntryIndexRefresh,
+  hasKnowledgeVectorSupport,
+  listIndexStatuses,
+  type KnowledgeIndexStatusDto
+} from "./indexing/repository";
 import {
   canReadEntry,
   hasKnowledgeManage,
@@ -25,6 +34,7 @@ import {
   insertRevision,
   listEntries,
   listRevisions,
+  searchPublishedChunksByEmbedding,
   searchPublishedEntries,
   setEntryHead,
   setEntrySearchText,
@@ -34,6 +44,8 @@ import {
 import type {
   KnowledgeEntryDto,
   KnowledgeFileDto,
+  KnowledgeRetrievalInfo,
+  KnowledgeSearchResponseDto,
   KnowledgeStatus,
   ListKnowledgeEntriesQuery
 } from "./types";
@@ -153,6 +165,12 @@ async function runFileExtraction(
           entryId: input.entryId,
           searchText: buildSearchText({ title: entry.title, tags: entry.tags, content: outcome.text })
         });
+        if (entry.status === "published") {
+          // The chunk projection reads the extracted text, so a published file
+          // entry re-enqueues once extraction lands (covers the worker racing
+          // ahead of a file replacement's extraction).
+          await enqueueEntryIndexRefresh(tx, { entryId: input.entryId, organizationId: auth.organization.id });
+        }
       }
     }
   });
@@ -402,6 +420,12 @@ export async function updateKnowledgeEntry(
       });
     }
 
+    if (entry.status === "published") {
+      // Edit-of-published refreshes the retrieval projection (D13: only
+      // published content is ever indexed, so draft edits never enqueue).
+      await enqueueEntryIndexRefresh(tx, { entryId, organizationId: auth.organization.id });
+    }
+
     await writeKnowledgeAudit(
       tx,
       auth,
@@ -464,6 +488,9 @@ async function transitionKnowledgeEntry(
     }
 
     await setEntryStatus(tx, auth, { entryId, status: input.toStatus });
+    // Publish and restore add the entry to the retrieval index; archive removes
+    // it (the worker deletes chunks for any non-published entry).
+    await enqueueEntryIndexRefresh(tx, { entryId, organizationId: auth.organization.id });
     await writeKnowledgeAudit(
       tx,
       auth,
@@ -699,7 +726,157 @@ export async function getKnowledgeFileContent(
   };
 }
 
-export async function searchKnowledge(db: Queryable, auth: AuthContext, query: { q: string; limit?: number }) {
+/**
+ * Hybrid retrieval behind the existing search endpoint: when embeddings are
+ * configured AND pgvector is available, the vector ranking is fused with the
+ * FTS/trigram ranking via reciprocal-rank fusion; otherwise the Phase 1
+ * FTS-only path runs unchanged. The response reports the mode that actually
+ * ran so the UI can state it honestly.
+ */
+export async function searchKnowledge(
+  db: Queryable,
+  auth: AuthContext,
+  query: { q: string; limit?: number },
+  options: { embeddingClient?: KnowledgeEmbeddingClient } = {}
+): Promise<KnowledgeSearchResponseDto> {
   requireKnowledgeView(auth);
-  return searchPublishedEntries(db, auth, query);
+
+  const limit = query.limit ?? 20;
+  const ftsItems = await searchPublishedEntries(db, auth, query);
+  const vectorAvailable = await hasKnowledgeVectorSupport(db).catch(() => false);
+  const embeddingConfigured = Boolean(options.embeddingClient);
+
+  if (!vectorAvailable || !options.embeddingClient) {
+    return {
+      items: ftsItems,
+      retrieval: { mode: "fts_only", vectorAvailable, embeddingConfigured }
+    };
+  }
+
+  try {
+    const [queryEmbedding] = await options.embeddingClient.embed([query.q.trim()]);
+    const vectorItems = await searchPublishedChunksByEmbedding(db, auth, {
+      embedding: queryEmbedding,
+      limit
+    });
+    return {
+      items: fuseKnowledgeSearchResults({ fts: ftsItems, vector: vectorItems, limit }),
+      retrieval: { mode: "semantic_fts", vectorAvailable, embeddingConfigured }
+    };
+  } catch (error) {
+    // Per-query degradation stays honest: the FTS results are still valid.
+    return {
+      items: ftsItems,
+      retrieval: {
+        mode: "fts_only",
+        vectorAvailable,
+        embeddingConfigured,
+        degradedReason: error instanceof Error ? error.message : String(error)
+      }
+    };
+  }
+}
+
+/**
+ * Read surface for the Xiaoze knowledge.getDocument tool: strictly published
+ * entries only (D13) — drafts stay invisible to agents even for their owner.
+ */
+export async function getPublishedKnowledgeDocument(
+  db: Queryable,
+  auth: AuthContext,
+  entryId: string
+): Promise<{ entry: KnowledgeEntryDto; contentText: string }> {
+  const entry = await getKnowledgeEntry(db, auth, entryId);
+  if (entry.status !== "published") {
+    throw knowledgeEntryNotFound(entryId);
+  }
+
+  let contentText = entry.contentMarkdown ?? "";
+  if (entry.contentForm === "file" && entry.file) {
+    contentText =
+      entry.file.extractionStatus === "succeeded"
+        ? (await getFileByIdForSearch(db, auth, entry.file.id)) ?? ""
+        : "";
+  }
+  return { entry, contentText };
+}
+
+export type KnowledgeIndexHealthDto = {
+  retrieval: KnowledgeRetrievalInfo;
+  items: Array<KnowledgeIndexStatusDto & { title: string; entryStatus: string }>;
+};
+
+/** Index health is a governance surface: knowledge:manage only. */
+export async function getKnowledgeIndexHealth(
+  db: Queryable,
+  auth: AuthContext,
+  options: { embeddingClient?: KnowledgeEmbeddingClient } = {}
+): Promise<KnowledgeIndexHealthDto> {
+  requireKnowledgeManage(auth);
+  const vectorAvailable = await hasKnowledgeVectorSupport(db).catch(() => false);
+  const embeddingConfigured = Boolean(options.embeddingClient);
+  return {
+    retrieval: {
+      mode: vectorAvailable && embeddingConfigured ? "semantic_fts" : "fts_only",
+      vectorAvailable,
+      embeddingConfigured
+    },
+    items: await listIndexStatuses(db, auth.organization.id)
+  };
+}
+
+export async function retryKnowledgeEntryIndex(
+  db: Database,
+  auth: AuthContext,
+  entryId: string,
+  context: KnowledgeServiceContext = {}
+): Promise<void> {
+  requireKnowledgeManage(auth);
+  await db.transaction(async (tx) => {
+    const entry = await getEntryById(tx, auth, entryId);
+    if (!entry) {
+      throw knowledgeEntryNotFound(entryId);
+    }
+    await enqueueEntryIndexRefresh(tx, { entryId, organizationId: auth.organization.id });
+    await writeKnowledgeAudit(
+      tx,
+      auth,
+      {
+        kind: "knowledge-index-retry",
+        action: "index-retry",
+        entryId,
+        metadata: { title: entry.title, status: entry.status }
+      },
+      context
+    );
+  });
+}
+
+/** Rebuild-all maintenance action (e.g. after changing the embedding model). */
+export async function rebuildKnowledgeIndex(
+  db: Database,
+  auth: AuthContext,
+  context: KnowledgeServiceContext = {}
+): Promise<{ enqueued: number }> {
+  requireKnowledgeManage(auth);
+  let enqueued = 0;
+  await db.transaction(async (tx) => {
+    enqueued = await enqueueAllPublishedEntries(tx, auth.organization.id);
+    await createAuditEvent(tx, {
+      id: randomUUID(),
+      organizationId: auth.organization.id,
+      projectId: null,
+      actorUserId: auth.user.id,
+      actorType: "user",
+      app: "knowledge",
+      kind: "knowledge-index-rebuild",
+      action: "index-rebuild",
+      severity: "Medium",
+      targetType: "knowledge-index",
+      targetId: auth.organization.id,
+      metadata: { enqueued },
+      traceId: context.requestId ?? randomUUID()
+    });
+  });
+  return { enqueued };
 }

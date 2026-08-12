@@ -177,19 +177,22 @@ describe.skipIf(!databaseAvailable)("knowledge service", () => {
       markdownInput({ title: "Thermal derating case", contentMarkdown: "Derating threshold analysis for aurora." })
     );
 
-    expect(await searchKnowledge(db, viewer, { q: "derating" })).toHaveLength(0);
+    expect((await searchKnowledge(db, viewer, { q: "derating" })).items).toHaveLength(0);
 
     await publishKnowledgeEntry(db, editor, entry.id);
     const published = await searchKnowledge(db, viewer, { q: "derating" });
-    expect(published).toHaveLength(1);
-    expect(published[0].entryId).toBe(entry.id);
-    expect(published[0].excerpt.length).toBeGreaterThan(0);
+    expect(published.items).toHaveLength(1);
+    expect(published.items[0].entryId).toBe(entry.id);
+    expect(published.items[0].excerpt.length).toBeGreaterThan(0);
+    expect(published.items[0].revisionId).toBeTruthy();
+    // No embedding client configured: the response must honestly report FTS-only.
+    expect(published.retrieval).toMatchObject({ mode: "fts_only", embeddingConfigured: false });
 
     await archiveKnowledgeEntry(db, editor, entry.id);
-    expect(await searchKnowledge(db, viewer, { q: "derating" })).toHaveLength(0);
+    expect((await searchKnowledge(db, viewer, { q: "derating" })).items).toHaveLength(0);
 
     await restoreKnowledgeEntry(db, editor, entry.id);
-    expect(await searchKnowledge(db, viewer, { q: "derating" })).toHaveLength(1);
+    expect((await searchKnowledge(db, viewer, { q: "derating" })).items).toHaveLength(1);
   });
 
   it("matches CJK queries through the trigram branch", async () => {
@@ -205,10 +208,10 @@ describe.skipIf(!databaseAvailable)("knowledge service", () => {
     await publishKnowledgeEntry(db, editor, entry.id);
 
     const results = await searchKnowledge(db, viewer, { q: "温控" });
-    expect(results.map((item) => item.entryId)).toContain(entry.id);
+    expect(results.items.map((item) => item.entryId)).toContain(entry.id);
 
     const contentHit = await searchKnowledge(db, viewer, { q: "快充电流" });
-    expect(contentHit.map((item) => item.entryId)).toContain(entry.id);
+    expect(contentHit.items.map((item) => item.entryId)).toContain(entry.id);
   });
 
   it("scopes list and search to the caller organization", async () => {
@@ -223,7 +226,7 @@ describe.skipIf(!databaseAvailable)("knowledge service", () => {
     await publishKnowledgeEntry(db, editor, entry.id);
 
     const foreign = makeAuth(OTHER_ORG_EDITOR, viewEdit, OTHER_ORG_ID);
-    expect(await searchKnowledge(db, foreign, { q: "isolation" })).toHaveLength(0);
+    expect((await searchKnowledge(db, foreign, { q: "isolation" })).items).toHaveLength(0);
     expect((await listKnowledgeEntries(db, foreign)).map((item) => item.id)).not.toContain(entry.id);
     await expect(getKnowledgeEntry(db, foreign, entry.id)).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
@@ -428,10 +431,10 @@ describe.skipIf(!databaseAvailable)("knowledge service", () => {
     expect(entry.file?.fileName).toBe("sc8562-notes.txt");
     expect(objectStore.objects.size).toBe(1);
 
-    expect(await searchKnowledge(db, viewer, { q: "charge pump ratio" })).toHaveLength(0);
+    expect((await searchKnowledge(db, viewer, { q: "charge pump ratio" })).items).toHaveLength(0);
     await publishKnowledgeEntry(db, editor, entry.id);
     const results = await searchKnowledge(db, viewer, { q: "charge pump ratio" });
-    expect(results.map((item) => item.entryId)).toContain(entry.id);
+    expect(results.items.map((item) => item.entryId)).toContain(entry.id);
 
     const download = await getKnowledgeFileContent(db, objectStore, viewer, entry.id);
     expect(download.bytes.toString("utf8")).toContain("charge pump ratio");

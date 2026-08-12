@@ -16,4 +16,12 @@ export type XiaozeTurnReplyPayload = {
     startedAtMs: number;
     durationMs?: number;
   }>;
+  /** Source citations for the answer; the UI renders them as source links. */
+  citations?: Array<{
+    type: string;
+    id: string;
+    label: string;
+    href?: string;
+    snippet?: string;
+  }>;
 };

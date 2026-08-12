@@ -54,6 +54,43 @@ export type KnowledgeSearchResult = {
   tags: string[];
   excerpt: string;
   updatedAt: string;
+  /** Head revision at match time — citation-ready deep-link identity. */
+  revisionId: string | null;
+};
+
+export type KnowledgeRetrievalMode = "semantic_fts" | "fts_only";
+
+/** Honest retrieval-mode report from the search/index APIs. */
+export type KnowledgeRetrievalInfo = {
+  mode: KnowledgeRetrievalMode;
+  vectorAvailable: boolean;
+  embeddingConfigured: boolean;
+  degradedReason?: string;
+};
+
+export type KnowledgeSearchResponse = {
+  items: KnowledgeSearchResult[];
+  retrieval: KnowledgeRetrievalInfo;
+};
+
+export const knowledgeIndexStates = ["pending", "processing", "succeeded", "failed"] as const;
+export type KnowledgeIndexState = (typeof knowledgeIndexStates)[number];
+
+export type KnowledgeIndexStatusItem = {
+  entryId: string;
+  title: string;
+  entryStatus: KnowledgeStatus;
+  status: KnowledgeIndexState;
+  error: string | null;
+  indexedRevisionNumber: number | null;
+  chunkCount: number;
+  embeddedChunkCount: number;
+  updatedAt: string;
+};
+
+export type KnowledgeIndexHealth = {
+  retrieval: KnowledgeRetrievalInfo;
+  items: KnowledgeIndexStatusItem[];
 };
 
 export const knowledgeStatusLabels: Record<KnowledgeStatus, string> = {
@@ -76,4 +113,16 @@ export const knowledgeExtractionStatusLabels: Record<KnowledgeExtractionStatus, 
 export const knowledgeSourceTypeLabels: Record<KnowledgeSourceType, string> = {
   human: "人工",
   agent: "Agent"
+};
+
+export const knowledgeIndexStateLabels: Record<KnowledgeIndexState, string> = {
+  pending: "排队中",
+  processing: "索引中",
+  succeeded: "已索引",
+  failed: "失败"
+};
+
+export const knowledgeRetrievalModeLabels: Record<KnowledgeRetrievalMode, string> = {
+  semantic_fts: "语义 + 全文混合检索",
+  fts_only: "仅全文检索(FTS-only)"
 };

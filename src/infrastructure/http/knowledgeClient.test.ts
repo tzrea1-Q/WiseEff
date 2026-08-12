@@ -124,15 +124,71 @@ describe("createHttpKnowledgeRepository", () => {
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ expectedHeadRevisionNumber: 4 });
   });
 
-  it("searches published entries", async () => {
+  it("searches published entries and surfaces the honest retrieval mode", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () =>
-      jsonResponse({ items: [{ entryId: "entry-1", title: "t", contentForm: "markdown", tags: [], excerpt: "e", updatedAt: "2026-08-12T08:00:00.000Z" }] })
+      jsonResponse({
+        items: [
+          {
+            entryId: "entry-1",
+            title: "t",
+            contentForm: "markdown",
+            tags: [],
+            excerpt: "e",
+            updatedAt: "2026-08-12T08:00:00.000Z",
+            revisionId: "rev-1"
+          }
+        ],
+        retrieval: { mode: "semantic_fts", vectorAvailable: true, embeddingConfigured: true }
+      })
     );
     const repository = createRepository(fetchMock);
 
-    const results = await repository.search("温控");
-    expect(results).toHaveLength(1);
+    const response = await repository.search("温控");
+    expect(response.items).toHaveLength(1);
+    expect(response.items[0].revisionId).toBe("rev-1");
+    expect(response.retrieval).toEqual({ mode: "semantic_fts", vectorAvailable: true, embeddingConfigured: true });
     expect(String(fetchMock.mock.calls[0][0])).toBe("http://127.0.0.1:8787/api/v1/knowledge/search?q=%E6%B8%A9%E6%8E%A7");
+  });
+
+  it("reads index health and posts retry/rebuild actions", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/knowledge/index/status")) {
+        return jsonResponse({
+          retrieval: { mode: "fts_only", vectorAvailable: false, embeddingConfigured: false },
+          items: [
+            {
+              entryId: "entry-1",
+              title: "t",
+              entryStatus: "published",
+              status: "failed",
+              error: "Embedding failed",
+              indexedRevisionNumber: 2,
+              chunkCount: 3,
+              embeddedChunkCount: 0,
+              updatedAt: "2026-08-12T08:00:00.000Z"
+            }
+          ]
+        });
+      }
+      if (url.endsWith("/index/rebuild")) {
+        return jsonResponse({ enqueued: 4 });
+      }
+      return jsonResponse({ enqueued: true });
+    });
+    const repository = createRepository(fetchMock);
+
+    const health = await repository.getIndexHealth();
+    expect(health.retrieval.mode).toBe("fts_only");
+    expect(health.items[0]).toMatchObject({ entryId: "entry-1", status: "failed" });
+
+    await repository.retryEntryIndex("entry-1");
+    expect(String(fetchMock.mock.calls[1][0])).toContain("/api/v1/knowledge/entries/entry-1/index/retry");
+    expect(fetchMock.mock.calls[1][1]?.method).toBe("POST");
+
+    const rebuild = await repository.rebuildIndex();
+    expect(rebuild).toEqual({ enqueued: 4 });
+    expect(String(fetchMock.mock.calls[2][0])).toContain("/api/v1/knowledge/index/rebuild");
   });
 
   it("normalizes file content types from extensions", () => {
