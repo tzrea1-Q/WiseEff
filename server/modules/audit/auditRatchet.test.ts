@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 /**
- * Migration ratchet for ADR-0025. Direct `createAuditEvent(...)` calls cannot prove
+ * Migration ratchet for ADR-0027. Direct `createAuditEvent(...)` calls cannot prove
  * they share the audited write's transaction, so they are being replaced by
  * `withAuditedWrite` / `writeAuditEventInTx` call site by call site. This test pins
  * the remaining direct calls per file: counts may only go DOWN. When the allowlist
@@ -78,7 +78,7 @@ function countDirectCalls(): Map<string, number> {
   return counts;
 }
 
-describe("audit write ratchet (ADR-0025)", () => {
+describe("audit write ratchet (ADR-0027)", () => {
   it("direct createAuditEvent call sites only ever decrease", () => {
     const actual = countDirectCalls();
 

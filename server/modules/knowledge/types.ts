@@ -1,0 +1,108 @@
+export const knowledgeContentForms = ["markdown", "file"] as const;
+export const knowledgeStatuses = ["draft", "published", "archived"] as const;
+export const knowledgeSourceTypes = ["human", "agent"] as const;
+export const knowledgeExtractionStatuses = ["pending", "succeeded", "failed"] as const;
+
+export type KnowledgeContentForm = (typeof knowledgeContentForms)[number];
+export type KnowledgeStatus = (typeof knowledgeStatuses)[number];
+export type KnowledgeSourceType = (typeof knowledgeSourceTypes)[number];
+export type KnowledgeExtractionStatus = (typeof knowledgeExtractionStatuses)[number];
+
+export type KnowledgeFileDto = {
+  id: string;
+  entryId: string;
+  organizationId: string;
+  storageKey: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  checksum: string;
+  extractionStatus: KnowledgeExtractionStatus;
+  extractionError: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type KnowledgeEntryDto = {
+  id: string;
+  organizationId: string;
+  title: string;
+  contentForm: KnowledgeContentForm;
+  status: KnowledgeStatus;
+  tags: string[];
+  sourceType: KnowledgeSourceType;
+  sourceSessionId: string | null;
+  createdByUserId: string;
+  headRevisionId: string | null;
+  headRevisionNumber: number;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt: string | null;
+  archivedAt: string | null;
+  /** Head-revision markdown content for markdown-form entries. */
+  contentMarkdown: string | null;
+  /** Current file metadata for file-form entries. */
+  file: KnowledgeFileDto | null;
+};
+
+export type KnowledgeRevisionDto = {
+  id: string;
+  entryId: string;
+  organizationId: string;
+  revisionNumber: number;
+  title: string;
+  tags: string[];
+  contentMarkdown: string | null;
+  fileId: string | null;
+  authorUserId: string;
+  restoredFromRevisionId: string | null;
+  createdAt: string;
+};
+
+export type KnowledgeSearchResultDto = {
+  entryId: string;
+  title: string;
+  contentForm: KnowledgeContentForm;
+  tags: string[];
+  excerpt: string;
+  updatedAt: string;
+};
+
+export type ListKnowledgeEntriesQuery = {
+  status?: KnowledgeStatus;
+  contentForm?: KnowledgeContentForm;
+  tag?: string;
+  q?: string;
+  limit?: number;
+};
+
+export type InsertKnowledgeEntryInput = {
+  id: string;
+  title: string;
+  contentForm: KnowledgeContentForm;
+  tags: string[];
+  sourceType: KnowledgeSourceType;
+  sourceSessionId: string | null;
+  searchText: string;
+};
+
+export type InsertKnowledgeRevisionInput = {
+  id: string;
+  entryId: string;
+  revisionNumber: number;
+  title: string;
+  tags: string[];
+  contentMarkdown: string | null;
+  fileId: string | null;
+  restoredFromRevisionId: string | null;
+};
+
+export type InsertKnowledgeFileInput = {
+  id: string;
+  entryId: string;
+  storageKey: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  checksum: string;
+};

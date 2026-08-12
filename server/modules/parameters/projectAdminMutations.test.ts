@@ -79,7 +79,7 @@ describe("updateProjectForAuth", () => {
     );
 
     expect(result).toEqual(item);
-    // Domain write and audit write share the transaction handle (ADR-0025).
+    // Domain write and audit write share the transaction handle (ADR-0027).
     expect(mockedUpdateProject).toHaveBeenCalledWith(tx, {
       organizationId: "org-1",
       projectId: "nova",

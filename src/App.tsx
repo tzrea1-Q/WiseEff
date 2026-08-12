@@ -51,8 +51,11 @@ import {
 } from "@/application/logs/logRuntime";
 import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
 import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
+import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
+import type { KnowledgeCapability } from "@/domain/knowledge/rules";
 import { createHttpLogAnalysisRepository } from "@/infrastructure/http/logClient";
 import { createHttpProductFeedbackRepository } from "@/infrastructure/http/productFeedbackClient";
+import { createHttpKnowledgeRepository } from "@/infrastructure/http/knowledgeClient";
 import { createHttpDtsReloadRepository } from "@/infrastructure/http/dtsReloadClient";
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import {
@@ -187,6 +190,7 @@ import { createMockParameterRepository } from "@/infrastructure/mock/mockParamet
 import { createMockRuntimeState, type MockRuntimeState } from "@/infrastructure/mock/mockState";
 import { createHttpParameterDashboardRepository } from "@/infrastructure/http/parameterDashboardClient";
 import { createMockParameterDashboardRepository } from "@/infrastructure/mock/mockParameterDashboardRepository";
+import { createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowledgeRepository";
 import { createMockProductFeedbackRepository } from "@/infrastructure/mock/mockProductFeedbackRepository";
 import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
 import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
@@ -353,6 +357,7 @@ type AppProps = {
   parameterInitializationRepository?: ParameterInitializationRepository;
   listParameterConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   productFeedbackRepository?: ProductFeedbackRepository;
+  knowledgeRepository?: KnowledgeRepository;
   dtsReloadRepository?: DtsReloadRepository | null;
   runtimeMode?: WiseEffRuntimeMode;
   userGovernanceActions?: UserGovernanceActions;
@@ -369,6 +374,7 @@ function App({
   parameterTopologyRepository,
   parameterInitializationRepository,
   productFeedbackRepository,
+  knowledgeRepository,
   dtsReloadRepository,
   runtimeMode = wiseEffRuntimeMode,
   userGovernanceActions
@@ -387,6 +393,7 @@ function App({
         parameterTopologyRepository={parameterTopologyRepository}
         parameterInitializationRepository={parameterInitializationRepository}
         productFeedbackRepository={productFeedbackRepository}
+        knowledgeRepository={knowledgeRepository}
         dtsReloadRepository={dtsReloadRepository}
         runtimeMode={runtimeMode}
         userGovernanceActions={userGovernanceActions}
@@ -406,6 +413,7 @@ function AppShell({
   parameterTopologyRepository,
   parameterInitializationRepository,
   productFeedbackRepository,
+  knowledgeRepository,
   dtsReloadRepository,
   runtimeMode,
   userGovernanceActions
@@ -420,6 +428,7 @@ function AppShell({
   parameterTopologyRepository?: ParameterTopologyRepository;
   parameterInitializationRepository?: ParameterInitializationRepository;
   productFeedbackRepository?: ProductFeedbackRepository;
+  knowledgeRepository?: KnowledgeRepository;
   dtsReloadRepository?: DtsReloadRepository | null;
   runtimeMode: WiseEffRuntimeMode;
   userGovernanceActions?: UserGovernanceActions;
@@ -499,6 +508,24 @@ function AppShell({
   const productFeedbackRepositoryClient = useMemo(
     () => productFeedbackRepository ?? (runtimeMode === "api" ? createHttpProductFeedbackRepository() : createMockProductFeedbackRepository()),
     [productFeedbackRepository, runtimeMode]
+  );
+  const knowledgeRepositoryClient = useMemo(
+    () => knowledgeRepository ?? (runtimeMode === "api" ? createHttpKnowledgeRepository() : createMockKnowledgeRepository()),
+    [knowledgeRepository, runtimeMode]
+  );
+  const knowledgeCapability = useMemo<KnowledgeCapability>(
+    () => ({
+      userId: state.currentUserId,
+      canEdit:
+        runtimeMode === "api"
+          ? apiAuthPermissions.includes("knowledge:edit")
+          : canPerform(currentRoleId, "knowledge.edit"),
+      canManage:
+        runtimeMode === "api"
+          ? apiAuthPermissions.includes("knowledge:manage")
+          : canPerform(currentRoleId, "knowledge.manage")
+    }),
+    [apiAuthPermissions, currentRoleId, runtimeMode, state.currentUserId]
   );
   const dtsReloadRepositoryClient = useMemo(
     () =>
@@ -1091,6 +1118,8 @@ function AppShell({
                 parameterTopologyRepository={parameterTopologyRepositoryClient}
                 listParameterConfigSets={listParameterConfigSets}
                 productFeedbackRepository={productFeedbackRepositoryClient}
+                knowledgeRepository={knowledgeRepositoryClient}
+                knowledgeCapability={knowledgeCapability}
                 dtsReloadRepository={dtsReloadRepositoryClient}
                 canStartDtsReload={canStartDtsReload}
                 parameterInitializationRepository={parameterInitializationRepositoryClient}
@@ -1134,6 +1163,8 @@ function AppShell({
                 parameterTopologyRepository={parameterTopologyRepositoryClient}
                 listParameterConfigSets={listParameterConfigSets}
                 productFeedbackRepository={productFeedbackRepositoryClient}
+                knowledgeRepository={knowledgeRepositoryClient}
+                knowledgeCapability={knowledgeCapability}
                 dtsReloadRepository={dtsReloadRepositoryClient}
                 canStartDtsReload={canStartDtsReload}
                 parameterInitializationRepository={parameterInitializationRepositoryClient}

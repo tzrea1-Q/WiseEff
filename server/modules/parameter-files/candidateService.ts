@@ -34,7 +34,6 @@ import { detectFormat, extractCompatiblesFromDtsSource, MAX_FILE_BYTES, maybeIng
 import { ingestDtsFileVersion } from "./structuralIngest";
 import { isDtsStructuralIngestEnabled } from "./structuralFlag";
 import { syncFileVersion } from "./syncService";
-import { detectUnsupportedDtsConstructs } from "./unsupported";
 import type {
   CandidateBlocker,
   CandidateDiagnostic,
@@ -152,16 +151,6 @@ export async function computeCandidateImpact(input: {
 }> {
   const diagnostics: CandidateDiagnostic[] = [];
   const blockers: CandidateBlocker[] = [];
-
-  if (input.format === "dts") {
-    for (const item of detectUnsupportedDtsConstructs(input.candidateSource)) {
-      diagnostics.push({
-        severity: "warning",
-        code: `unsupported:${item.code}`,
-        message: item.message
-      });
-    }
-  }
 
   let parsedIndexOk = true;
   try {

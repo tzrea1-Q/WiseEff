@@ -1,9 +1,8 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ComparisonProject } from "@/domain/parameters/singleParameterComparison";
 import type { ParameterRecord } from "@/domain/parameters/types";
+import { declarationFor, declarationsFor, readStylesheet } from "../test/cssAssertions";
 import { ParameterDetailDialog } from "./ParameterDetailDialog";
 
 const projects: ComparisonProject[] = [
@@ -612,39 +611,39 @@ describe("ParameterDetailDialog", () => {
   });
 
   it("keeps long header titles from pushing the close button offscreen", () => {
-    const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
+    const styles = readStylesheet("src/styles.css");
+    const headerTitle = declarationsFor(styles, ".parameter-detail-dialog__header h2");
 
-    expect(styles).toMatch(/\.parameter-detail-dialog__header > div\s*\{[^}]*min-width:\s*0;/s);
-    expect(styles).toContain("overflow-wrap: anywhere;");
-    expect(styles).toContain("word-break: break-word;");
+    expect(declarationFor(styles, ".parameter-detail-dialog__header > div", "min-width")).toBe("0");
+    expect(headerTitle["overflow-wrap"]).toBe("anywhere");
+    expect(headerTitle["word-break"]).toBe("break-word");
   });
 
   it("keeps footer actions visually styled as buttons", () => {
-    const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
-    const baseRule = styles.match(/\.parameter-detail-dialog__actions \.button\s*\{[^}]*\}/)?.[0] ?? "";
-    const subtleRule = styles.match(/\.parameter-detail-dialog__actions \.button\.subtle\s*\{[^}]*\}/)?.[0] ?? "";
-    const primaryRule = styles.match(/\.parameter-detail-dialog__actions \.button\.primary\s*\{[^}]*\}/)?.[0] ?? "";
+    const styles = readStylesheet("src/styles.css");
+    const baseRule = declarationsFor(styles, ".parameter-detail-dialog__actions .button");
+    const subtleRule = declarationsFor(styles, ".parameter-detail-dialog__actions .button.subtle");
+    const primaryRule = declarationsFor(styles, ".parameter-detail-dialog__actions .button.primary");
 
-    expect(baseRule).toContain("height: 38px;");
-    expect(baseRule).toContain("border-radius: 9px;");
-    expect(baseRule).toContain("box-shadow:");
-    expect(baseRule).toContain("cursor: pointer;");
-    expect(subtleRule).toContain("background: #ffffff;");
-    expect(subtleRule).toContain("border: 1px solid rgba(148, 163, 184, 0.64);");
-    expect(primaryRule).toContain("background: var(--app-primary);");
-    expect(primaryRule).toContain("border: 1px solid var(--app-primary);");
+    expect(baseRule.height).toBe("38px");
+    expect(baseRule["border-radius"]).toBe("9px");
+    expect(baseRule["box-shadow"]).toBeTruthy();
+    expect(baseRule.cursor).toBe("pointer");
+    expect(subtleRule.background).toBe("#ffffff");
+    expect(subtleRule.border).toBe("1px solid rgba(148, 163, 184, 0.64)");
+    expect(primaryRule.background).toBe("var(--app-primary)");
+    expect(primaryRule.border).toBe("1px solid var(--app-primary)");
   });
 
   it("keeps long DTS config lines unwrapped with horizontal scrolling", () => {
-    const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
-    const codeRule = styles.match(/\.parameter-detail-copy code\s*\{[^}]*\}/)?.[0] ?? "";
-    const wideRule = styles.match(/\.parameter-detail-dialog--wide\s*\{[^}]*\}/)?.[0] ?? "";
+    const styles = readStylesheet("src/styles.css");
+    const codeRule = declarationsFor(styles, ".parameter-detail-copy code");
+    const wideRule = declarationsFor(styles, ".parameter-detail-dialog--wide");
 
-    expect(wideRule).toContain("width: min(1500px, calc(100vw - 48px));");
-    expect(codeRule).toContain("white-space: pre;");
-    expect(codeRule).toContain("overflow: auto;");
-    expect(codeRule).toContain("max-width: 100%;");
-    expect(codeRule).not.toContain("white-space: pre-wrap;");
-    expect(codeRule).not.toContain("overflow-wrap: anywhere;");
+    expect(wideRule.width).toBe("min(1500px, calc(100vw - 48px))");
+    expect(codeRule["white-space"]).toBe("pre");
+    expect(codeRule.overflow).toBe("auto");
+    expect(codeRule["max-width"]).toBe("100%");
+    expect(codeRule["overflow-wrap"]).toBeUndefined();
   });
 });

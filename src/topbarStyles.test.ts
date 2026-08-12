@@ -1,31 +1,24 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { declarationFor, declarationsFor, readStylesheet } from "./test/cssAssertions";
 
-function blockFor(selector: string) {
-  const css = readFileSync("src/styles.css", "utf8");
-  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = css.match(new RegExp(`${escapedSelector}\\s*\\{([^}]*)\\}`));
-  return match?.[1] ?? "";
-}
+const css = readStylesheet("src/styles.css");
 
 describe("topbar control styles", () => {
   it("keeps the global search field compact in the topbar", () => {
-    const searchboxStyles = blockFor(".searchbox");
-    const searchInputStyles = blockFor(".searchbox input");
+    const searchbox = declarationsFor(css, ".searchbox");
 
-    expect(searchboxStyles).toContain("height: 32px;");
-    expect(searchboxStyles).toContain("padding: 0 12px;");
-    expect(searchInputStyles).toContain("height: 100%;");
+    expect(searchbox.height).toBe("32px");
+    expect(searchbox.padding).toBe("0 12px");
+    expect(declarationFor(css, ".searchbox input", "height")).toBe("100%");
   });
 
   it("constrains the project selector to the narrow topbar width", () => {
-    const css = readFileSync("src/styles.css", "utf8");
-    const mobileRule = css.match(
-      /@media \(max-width: 900px\)[\s\S]*?\.topbar-project-select\s*\{([^}]*)\}/,
-    )?.[1] ?? "";
+    const mobile = declarationsFor(css, ".topbar-project-select", {
+      within: "(max-width: 900px)"
+    });
 
-    expect(mobileRule).toContain("width: 100%;");
-    expect(mobileRule).toContain("max-width: 100%;");
-    expect(mobileRule).toContain("min-width: 0;");
+    expect(mobile.width).toBe("100%");
+    expect(mobile["max-width"]).toBe("100%");
+    expect(mobile["min-width"]).toBe("0");
   });
 });

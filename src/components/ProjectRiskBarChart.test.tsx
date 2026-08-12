@@ -1,6 +1,6 @@
-import { readFileSync } from "node:fs";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { declarationsFor, readStylesheet } from "../test/cssAssertions";
 import { ProjectRiskBarChart } from "./ProjectRiskBarChart";
 import type { ProjectRiskBucket } from "@/domain/parameters/dashboardTypes";
 
@@ -38,13 +38,7 @@ const buckets: ProjectRiskBucket[] = [
   }
 ];
 
-const styles = readFileSync("src/styles.css", "utf8");
-
-function cssRule(selector: string) {
-  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = styles.match(new RegExp(`${escapedSelector}\\s*\\{([^}]*)\\}`, "s"));
-  return match?.[1] ?? "";
-}
+const styles = readStylesheet("src/styles.css");
 
 describe("ProjectRiskBarChart", () => {
   it("renders one vertical column per project bucket", () => {
@@ -104,9 +98,9 @@ describe("ProjectRiskBarChart", () => {
   });
 
   it("keeps the hover tooltip out of normal layout flow", () => {
-    const tooltipRule = cssRule(".project-risk-tooltip");
+    const tooltipRule = declarationsFor(styles, ".project-risk-tooltip");
 
-    expect(tooltipRule).toContain("position: absolute;");
-    expect(tooltipRule).not.toContain("margin-top:");
+    expect(tooltipRule.position).toBe("absolute");
+    expect(tooltipRule["margin-top"]).toBeUndefined();
   });
 });

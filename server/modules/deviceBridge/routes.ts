@@ -12,7 +12,10 @@ import type { BridgeReleaseManifest } from "./releaseManifest";
 import type { BridgeToolReleaseManifest } from "./toolReleaseManifest";
 import { registerDeviceBridgeToolRoutes } from "./toolRoutes";
 import { bridgeIdParamsSchema, pairWithCodeBodySchema, renameBridgeBodySchema } from "./schemas";
+import { randomUUID } from "node:crypto";
+
 import type { DeviceBridgeRecord } from "./types";
+import { createAuditEvent as defaultCreateAuditEvent } from "../audit/repository";
 
 function requireDb(db: Database | undefined) {
   if (!db) {
@@ -51,8 +54,12 @@ function toBridgeItem(record: DeviceBridgeRecord) {
   };
 }
 
-function resolvePairingService(db: Database, pairingService?: PairingService) {
-  return pairingService ?? createPairingService({ repo: createDeviceBridgeRepository(db) });
+function resolvePairingService(
+  db: Database,
+  pairingService: PairingService | undefined,
+  createAuditEvent?: typeof defaultCreateAuditEvent
+) {
+  return pairingService ?? createPairingService({ repo: createDeviceBridgeRepository(db), db, createAuditEvent });
 }
 
 export function registerDeviceBridgeRoutes(
@@ -64,9 +71,11 @@ export function registerDeviceBridgeRoutes(
     loadReleaseManifest?: () => Promise<BridgeReleaseManifest>;
     loadToolReleaseManifest?: () => Promise<BridgeToolReleaseManifest>;
     now?: () => Date;
+    createAuditEvent?: typeof defaultCreateAuditEvent;
   }
 ) {
   const now = options.now ?? (() => new Date());
+  const writeAudit = options.createAuditEvent ?? defaultCreateAuditEvent;
 
   registerDeviceBridgeToolRoutes(router, {
     loadToolReleaseManifest: options.loadToolReleaseManifest
@@ -91,6 +100,22 @@ export function registerDeviceBridgeRoutes(
       organizationId: auth.user.organizationId
     });
 
+    await writeAudit(db, {
+      id: randomUUID(),
+      organizationId: auth.user.organizationId,
+      projectId: null,
+      actorUserId: auth.user.id,
+      actorType: "user",
+      app: "device-bridge",
+      kind: "device-bridge-pairing-code-issue",
+      action: "create",
+      severity: "High",
+      targetType: "device-bridge-pairing-code",
+      targetId: null,
+      metadata: { expiresAt: issued.expiresAt },
+      traceId: request.requestId ?? randomUUID()
+    });
+
     return { status: 201, body: issued };
   });
 
@@ -98,7 +123,7 @@ export function registerDeviceBridgeRoutes(
     const db = requireDb(options.db);
     const body = parseWithSchema(pairWithCodeBodySchema, request.body);
 
-    const paired = await resolvePairingService(db, options.pairingService).pairWithCode(body);
+    const paired = await resolvePairingService(db, options.pairingService, writeAudit).pairWithCode(body);
     return { status: 201, body: paired };
   });
 
@@ -140,6 +165,22 @@ export function registerDeviceBridgeRoutes(
       throw new ApiError("NOT_FOUND", "Device bridge was not found.", 404, { bridgeId: params.bridgeId });
     }
 
+    await writeAudit(db, {
+      id: randomUUID(),
+      organizationId: auth.user.organizationId,
+      projectId: null,
+      actorUserId: auth.user.id,
+      actorType: "user",
+      app: "device-bridge",
+      kind: "device-bridge-rename",
+      action: "update",
+      severity: "Medium",
+      targetType: "device-bridge",
+      targetId: updated.id,
+      metadata: { platform: updated.platform, arch: updated.arch },
+      traceId: request.requestId ?? randomUUID()
+    });
+
     return {
       status: 200,
       body: {
@@ -165,6 +206,22 @@ export function registerDeviceBridgeRoutes(
     if (!revoked) {
       throw new ApiError("NOT_FOUND", "Device bridge was not found.", 404, { bridgeId: params.bridgeId });
     }
+
+    await writeAudit(db, {
+      id: randomUUID(),
+      organizationId: auth.user.organizationId,
+      projectId: null,
+      actorUserId: auth.user.id,
+      actorType: "user",
+      app: "device-bridge",
+      kind: "device-bridge-revoke",
+      action: "revoke",
+      severity: "High",
+      targetType: "device-bridge",
+      targetId: revoked.id,
+      metadata: { platform: revoked.platform, arch: revoked.arch, clientVersion: revoked.clientVersion },
+      traceId: request.requestId ?? randomUUID()
+    });
 
     return {
       status: 200,

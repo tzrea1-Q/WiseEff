@@ -8,6 +8,8 @@ export type ActionKey =
   | "parameter.merge"
   | "debugging.use"
   | "logs.upload"
+  | "knowledge.edit"
+  | "knowledge.manage"
   | "admin.access"
   | "users.manage"
   | "platform.schema-promote";
@@ -30,7 +32,9 @@ const pageRequiredRoles: Record<PageKey, PlatformRoleId> = {
   "user-permissions": "admin",
   "feedback-admin": "admin",
   audit: "admin",
-  "platform-console": "platform-admin"
+  "platform-console": "platform-admin",
+  knowledge: "guest",
+  "knowledge-admin": "admin"
 };
 
 const actionRequiredRoles: Record<ActionKey, PlatformRoleId> = {
@@ -40,6 +44,8 @@ const actionRequiredRoles: Record<ActionKey, PlatformRoleId> = {
   "parameter.merge": "software-user",
   "debugging.use": "hardware-user",
   "logs.upload": "hardware-user",
+  "knowledge.edit": "hardware-user",
+  "knowledge.manage": "admin",
   "admin.access": "admin",
   "users.manage": "admin",
   "platform.schema-promote": "platform-admin"

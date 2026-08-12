@@ -94,7 +94,7 @@ describe("createProjectForAuth", () => {
     expect(configInsert?.values).toEqual(
       expect.arrayContaining(["org-1", "nova", "default"])
     );
-    // Config-set audit plus the project-created audit, both inside the transaction (ADR-0025).
+    // Config-set audit plus the project-created audit, both inside the transaction (ADR-0027).
     const auditInserts = txCalls.filter((call) => call.text.includes("insert into audit_events"));
     expect(auditInserts.length).toBe(2);
     expect(

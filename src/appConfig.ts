@@ -1,10 +1,12 @@
 import {
   Activity,
+  BookOpen,
   ChartNoAxesCombined,
   Database,
   FileText,
   Gauge,
   Home,
+  LibraryBig,
   LucideIcon,
   MessageSquareText,
   ScrollText,
@@ -44,6 +46,8 @@ export type PageKey =
   | "node-debugging"
   | "dts-reload"
   | "debugging-admin"
+  | "knowledge"
+  | "knowledge-admin"
   | "user-permissions"
   | "feedback-admin"
   | "audit"
@@ -53,7 +57,7 @@ export type PageConfig = {
   key: PageKey;
   path: string;
   label: string;
-  group: "平台总览" | "参数管理" | "调试平台" | "日志分析";
+  group: "平台总览" | "参数管理" | "调试平台" | "日志分析" | "知识库";
   icon: LucideIcon;
   title: string;
   subtitle: string;
@@ -158,6 +162,24 @@ export const navigationItems: PageConfig[] = [
     icon: Activity,
     title: "日志分析管理后台",
     subtitle: "日志分析应用指标、记录和后台权限配置"
+  },
+  {
+    key: "knowledge",
+    path: "/knowledge",
+    label: "知识库",
+    group: "知识库",
+    icon: BookOpen,
+    title: "工程知识库",
+    subtitle: "沉淀调参经验、故障案例、硬件手册与流程规范,发布后进入检索"
+  },
+  {
+    key: "knowledge-admin",
+    path: "/knowledge-admin",
+    label: "知识后台",
+    group: "知识库",
+    icon: LibraryBig,
+    title: "知识库管理后台",
+    subtitle: "已归档条目治理与彻底删除;Agent 草稿队列与索引健康后续阶段加入"
   }
 ];
 
@@ -389,6 +411,10 @@ export function getXiaozeContextSummary(path: string): string {
       return "正在关注 DTS 重载配置：落地路径、触发节点与内核日志命令。";
     case "feedback-admin":
       return "正在关注内测产品反馈、待处理问题、截图证据和分诊闭环。";
+    case "knowledge":
+      return "正在关注工程知识条目、发布状态、标签与全文检索命中。";
+    case "knowledge-admin":
+      return "正在关注已归档知识条目的恢复与彻底删除治理。";
     default:
       return "正在跨充电参数、日志、调试三个场景识别效率提升机会。";
   }

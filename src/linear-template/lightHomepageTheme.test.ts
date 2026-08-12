@@ -2,81 +2,45 @@ import { render } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { describe, expect, it } from "vitest";
+import { declarationFor, declarationsFor, readStylesheet } from "../test/cssAssertions";
 import { LinearTemplateHome } from "./LinearTemplateHome";
 
-const cssText = readFileSync("src/linear-template/linear-template.css", "utf8");
+const cssText = readStylesheet("src/linear-template/linear-template.css");
 const homeSource = readFileSync("src/linear-template/LinearTemplateHome.tsx", "utf8");
-
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function getCssRule(selector: string) {
-  const match = cssText.match(new RegExp(`${escapeRegExp(selector)}\\s*\\{([^}]*)\\}`, "s"));
-  if (!match) {
-    throw new Error(`Missing CSS rule for ${selector}`);
-  }
-
-  return match[1];
-}
-
-function getMediaRule(mediaQuery: string, selector: string) {
-  const mediaIndex = cssText.indexOf(mediaQuery);
-  if (mediaIndex === -1) {
-    throw new Error(`Missing media query for ${mediaQuery}`);
-  }
-
-  const scopedCss = cssText.slice(mediaIndex);
-  const rule = scopedCss.match(new RegExp(`${escapeRegExp(selector)}\\s*\\{([^}]*)\\}`, "s"));
-  if (!rule) {
-    throw new Error(`Missing CSS rule for ${selector} inside ${mediaQuery}`);
-  }
-
-  return rule[1];
-}
 
 describe("WiseEff mature homepage theme", () => {
   it("keeps the page foundation light and the three entry cards restrained", () => {
-    const root = getCssRule(".linear-template-home");
-    const page = getCssRule(".linear-page-gradient");
-    const card = getCssRule(".sub-app-card");
-    const hoverCard = getCssRule(".sub-app-card:hover");
-    const icon = getCssRule(".sub-app-card-icon");
-    const kicker = getCssRule(".sub-app-card-kicker");
-    const ctas = getCssRule(".sub-app-card-ctas");
-    const primary = getCssRule(".sub-app-card-primary");
-    const secondary = getCssRule(".sub-app-card-secondary");
+    const card = declarationsFor(cssText, ".sub-app-card");
+    const hoverCard = declarationsFor(cssText, ".sub-app-card:hover");
 
-    expect(root).toContain("--linear-bg: #fbfcff");
-    expect(root).toContain("--linear-surface: #ffffff");
-    expect(root).toContain("--linear-soft-surface: #f0f3ff");
-    expect(page).toContain("linear-gradient(180deg, #fbfcff 0%, #f4f7ff 56%, #fbfcff 100%)");
-    expect(card).toContain("border-radius: 8px");
-    expect(card).toContain("#ffffff");
-    expect(card).toContain("box-shadow");
-    expect(card).toContain("min-height: 328px");
-    expect(card).toContain("transform 180ms ease");
-    expect(hoverCard).toContain("translateY(-4px)");
-    expect(hoverCard).toContain("var(--sub-app-accent)");
-    expect(icon).toContain("box-shadow");
-    expect(kicker).toContain("background: #ffffff");
-    expect(ctas).toContain("border-top: 1px solid");
-    expect(ctas).toContain("flex-direction: column");
-    expect(primary).toContain("background: linear-gradient(180deg, #075cd8 0%, var(--linear-primary-blue) 100%)");
-    expect(secondary).toContain("font-weight: 600");
+    expect(declarationFor(cssText, ".linear-template-home", "background")).toBe("#fbfcff");
+    expect(declarationFor(cssText, ".linear-page-gradient", "background")).toContain(
+      "linear-gradient(180deg, #fbfcff 0%, #f4f7ff 56%, #fbfcff 100%)"
+    );
+    expect(card["border-radius"]).toBe("8px");
+    expect(card.background).toContain("#ffffff");
+    expect(card["box-shadow"]).toBeTruthy();
+    expect(card["min-height"]).toBe("328px");
+    expect(card.transition).toContain("transform 180ms ease");
+    expect(hoverCard.transform).toContain("translateY(-4px)");
+    expect(hoverCard["border-color"]).toContain("var(--sub-app-accent)");
+    expect(declarationFor(cssText, ".sub-app-card-icon", "box-shadow")).toBeTruthy();
+    expect(declarationFor(cssText, ".sub-app-card-kicker", "background")).toBe("#ffffff");
+    expect(declarationFor(cssText, ".sub-app-card-ctas", "border-top")).toContain("1px solid");
+    expect(declarationFor(cssText, ".sub-app-card-ctas", "flex-direction")).toBe("column");
+    expect(declarationFor(cssText, ".sub-app-card-primary", "background")).toBe(
+      "linear-gradient(180deg, #075cd8 0%, var(--linear-primary-blue) 100%)"
+    );
+    expect(declarationFor(cssText, ".sub-app-card-secondary", "font-weight")).toBe("600");
   });
 
   it("keeps the workflow band and footer on light surfaces", () => {
-    const section = getCssRule(".platform-flow-section");
-    const tablist = getCssRule(".platform-flow-tablist");
-    const preview = getCssRule(".platform-flow-preview");
-    const footer = getCssRule(".linear-footer");
-
-    expect(section).toContain("#f4f7ff");
-    expect(section).not.toContain("#0e111a");
-    expect(tablist).toContain("background: rgba(255, 255, 255, 0.66)");
-    expect(preview).toContain("#ffffff");
-    expect(footer).toContain("#ffffff");
+    expect(declarationFor(cssText, ".platform-flow-section", "background")).toBe("#f4f7ff");
+    expect(declarationFor(cssText, ".platform-flow-tablist", "background")).toBe(
+      "rgba(255, 255, 255, 0.66)"
+    );
+    expect(declarationFor(cssText, ".platform-flow-preview", "background")).toBe("#ffffff");
+    expect(declarationFor(cssText, ".linear-footer", "background")).toBe("#ffffff");
   });
 
   it("renders three sub-app entry cards before the merged platform flow section", () => {
@@ -118,13 +82,15 @@ describe("WiseEff mature homepage theme", () => {
   });
 
   it("keeps the hero headline compact for the shortened homepage", () => {
-    const heroTitle = getCssRule(".linear-hero h1");
-    const mobileHeroTitle = getMediaRule("@media (max-width: 760px)", ".linear-hero h1");
+    const heroTitle = declarationsFor(cssText, ".linear-hero h1");
+    const mobileHeroTitle = declarationsFor(cssText, ".linear-hero h1", {
+      within: "@media (max-width: 760px)"
+    });
 
-    expect(heroTitle).toContain("font-size: 56px");
-    expect(heroTitle).toContain("line-height: 1.08");
-    expect(heroTitle).toContain("letter-spacing: 0");
-    expect(mobileHeroTitle).toContain("font-size: 36px");
+    expect(heroTitle["font-size"]).toBe("56px");
+    expect(heroTitle["line-height"]).toBe("1.08");
+    expect(heroTitle["letter-spacing"]).toBe("0");
+    expect(mobileHeroTitle["font-size"]).toBe("36px");
   });
 
   it("removes retired marketing and carousel components from the homepage source", () => {

@@ -44,7 +44,7 @@ function toListItem(row: AuditEventRow): AuditEventListItemDto {
 
 /**
  * @deprecated Direct audit writes cannot prove they share the domain write's
- * transaction (ADR-0025). Use `withAuditedWrite` (or `writeAuditEventInTx` with an
+ * transaction (ADR-0027). Use `withAuditedWrite` (or `writeAuditEventInTx` with an
  * `AuditTx` obtained via `asAuditTx` inside your transaction) from `./auditedWrite`.
  * Remaining legacy call sites are pinned by `auditRatchet.test.ts` and migrate batch
  * by batch; this function is removed when that ratchet reaches zero.

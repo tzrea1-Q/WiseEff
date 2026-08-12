@@ -14,7 +14,7 @@ import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { nodePathToParameterIdentity } from "../parameter-files/pathMapper";
+import { nodePathToParameterIdentity } from "./pathMapper";
 import { getProjectParameterFileById } from "../parameter-files/repository";
 import { writebackMergedEnablementValue, writebackMergedParameterValue, type WritebackServiceContext } from "../parameter-files/writebackService";
 import { resolveInitializationSuggestion } from "../parameter-topology/editService";
@@ -278,7 +278,7 @@ export async function resolveStructuredEditToParameter(
  * existing draft → submission_round → change_request flow. CR targetValue is rawText.
  *
  * Drafts, the submission itself, and the audit event commit in one transaction
- * (ADR-0025): a failed submit no longer leaves committed drafts or a misleading
+ * (ADR-0027): a failed submit no longer leaves committed drafts or a misleading
  * "submitted" audit event behind.
  */
 export async function submitStructuredEdits(

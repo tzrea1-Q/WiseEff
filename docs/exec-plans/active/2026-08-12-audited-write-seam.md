@@ -1,7 +1,7 @@
 # Audited write seam — audit events commit with their domain write
 
 Architecture-review candidate C2 (2026-08-12 backend review); design settled through a
-six-decision grilling session; recorded as ADR-0025.
+six-decision grilling session; recorded as ADR-0027.
 
 ## Goal
 
@@ -44,7 +44,7 @@ arbitration ran N transactions with no compensation.
   `ProjectServiceContext` now requires `requestId`.
 - `server/modules/parameters/service.ts`: `submitStructuredEdits` through the seam.
 - `server/modules/parameter-files/conflictService.ts`: atomic bulk resolve.
-- ADR-0025, CONTEXT.md glossary ("Audited write"), api-contract.md (en+zh).
+- ADR-0027, CONTEXT.md glossary ("Audited write"), api-contract.md (en+zh).
 
 Notes: `createParameterReviewAudit` call sites were re-verified as already in-transaction
 (helper parameter is merely named `db`) — not gaps. `submitStructuredEdits` has no
@@ -92,10 +92,10 @@ move this plan to `completed/`.
 | --- | --- | --- | --- |
 | Repository maps | `AGENTS.md`, `ARCHITECTURE.md` | No change | Write-path pattern text already mandates audit; seam is the enforcement |
 | Planning | `docs/PLANS.md` | Update | Plan registered (done) |
-| Domain glossary | `CONTEXT.md` | Update | "Audited write" row + ADR-0025 index (done) |
+| Domain glossary | `CONTEXT.md` | Update | "Audited write" row + ADR-0027 index (done) |
 | ADR | `docs/adr/0025-…` | Update | New (done) |
 | API contract | `docs/design-docs/api-contract.md` (+ zh) | Update | bulk-resolve atomicity (done) |
-| Security | `docs/SECURITY.md`, `docs/security/*` | Review (PR2) | Audit-integrity section may cite ADR-0025 once migration completes |
+| Security | `docs/SECURITY.md`, `docs/security/*` | Review (PR2) | Audit-integrity section may cite ADR-0027 once migration completes |
 | Product specs / frontend / quality / reliability / generated / references | — | No change | No product-visible behavior change beyond bulk atomicity documented above |
 
 ## Documentation Update Gate

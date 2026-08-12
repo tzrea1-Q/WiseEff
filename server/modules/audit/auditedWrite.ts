@@ -1,5 +1,5 @@
 /**
- * Audited write seam (ADR-0025): an audit event must commit in the same transaction
+ * Audited write seam (ADR-0027): an audit event must commit in the same transaction
  * as the domain write it describes. `AuditTx` is the proof-of-transaction brand —
  * `withAuditedWrite` is the normal way to obtain it, `asAuditTx` is the explicit
  * escape hatch for callers that already orchestrate their own transaction.

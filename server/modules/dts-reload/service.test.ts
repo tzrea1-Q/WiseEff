@@ -249,7 +249,9 @@ describe("listReloadCandidates", () => {
       description: "Watchdog timeout for charger safety.",
       constraints: { min: 0, max: 20000, cells: 1 },
       debuggable: true,
-      sensitiveMatch: null
+      sensitiveMatch: null,
+      // Resolved shape is exposed so clients validate against the reload vocabulary.
+      resolvedValueShape: { kind: "cells", bits: 32, cellsPerGroup: 1, groups: 1 }
     });
     expect(result.items[1]).toMatchObject({
       bindingId: "binding-2",
@@ -556,6 +558,35 @@ describe("startReloadRun", () => {
     ).rejects.toMatchObject({
       code: "VALIDATION_FAILED",
       details: { expectedCellsPerGroup: 1 }
+    });
+
+    expect(put).not.toHaveBeenCalled();
+    expect(calls.some((call) => call.text.includes("insert into dts_reload_runs"))).toBe(false);
+  });
+
+  it("refuses a debug value beyond the unsigned range of the declared cell width", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        candidateRow({
+          property_key: "prevfod1_product_list",
+          node_path: "/amba/i2c@FF24E000/mt5788@2B",
+          value_shape: { kind: "bytes" },
+          baseline_value: "/bits/ 8 <17>",
+          constraints: {}
+        })
+      ]
+    ]);
+    const { objectStore, put } = makeObjectStore();
+
+    await expect(
+      startReloadRun(db, objectStore, auth(), {
+        projectId: "project-1",
+        targets: [{ bindingId: "binding-1", debugValue: "/bits/ 8 <300>" }]
+      })
+    ).rejects.toMatchObject({
+      code: "VALIDATION_FAILED",
+      message: expect.stringContaining('Integer literal "300" overflows a 8-bit cell'),
+      details: { bindingId: "binding-1", debugValue: "/bits/ 8 <300>" }
     });
 
     expect(put).not.toHaveBeenCalled();

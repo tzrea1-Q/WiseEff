@@ -1,5 +1,4 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { readFileSync } from "node:fs";
 import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -9,6 +8,7 @@ import type {
   SourceTopologyNode,
   TopologyDiagnostic
 } from "@/domain/parameter-topology/types";
+import { declarationsFor, readStylesheet } from "../../test/cssAssertions";
 import { ProjectTopologyWorkspace } from "./ProjectTopologyWorkspace";
 import {
   TOPOLOGY_TEACHING_BINDINGS,
@@ -232,31 +232,23 @@ describe("ProjectTopologyWorkspace", () => {
   });
 
   it("wraps long binding identity and provenance tokens inside the mobile detail pane", () => {
-    const styles = readFileSync("src/styles.css", "utf8");
-    const minWidthRule =
-      styles.match(
-        /\.binding-detail-panel__header,\s*\.binding-detail-panel__meta,\s*\.binding-detail-panel__meta > div,\s*\.binding-detail-panel section\s*\{[^}]*\}/s
-      )?.[0] ?? "";
-    const tokenRule =
-      styles.match(
-        /\.binding-detail-panel__header p,\s*\.binding-detail-panel__meta dd,\s*\.binding-detail-panel section p,\s*\.binding-detail-panel section li,\s*\.binding-detail-panel code\s*\{[^}]*\}/s
-      )?.[0] ?? "";
+    const styles = readStylesheet("src/styles.css");
+    const minWidthRule = declarationsFor(styles, ".binding-detail-panel__header");
+    const tokenRule = declarationsFor(styles, ".binding-detail-panel__header p");
 
-    expect(minWidthRule).toMatch(/min-width:\s*0/);
-    expect(tokenRule).toMatch(/overflow-wrap:\s*anywhere/);
-    expect(tokenRule).toMatch(/word-break:\s*break-word/);
+    expect(minWidthRule["min-width"]).toBe("0");
+    expect(tokenRule["overflow-wrap"]).toBe("anywhere");
+    expect(tokenRule["word-break"]).toBe("break-word");
   });
 
   it("allows topology panes and long locator labels to shrink inside the mobile viewport", () => {
-    const styles = readFileSync("src/styles.css", "utf8");
-    const paneItemRule =
-      styles.match(/\.project-topology-workspace__panes\s*>\s*\*\s*\{[^}]*\}/s)?.[0] ?? "";
-    const treeTokenRule =
-      styles.match(/\.topology-tree__item code,\s*\.topology-tree__item small\s*\{[^}]*\}/s)?.[0] ?? "";
+    const styles = readStylesheet("src/styles.css");
+    const paneItemRule = declarationsFor(styles, ".project-topology-workspace__panes > *");
+    const treeTokenRule = declarationsFor(styles, ".topology-tree__item code");
 
-    expect(paneItemRule).toMatch(/min-width:\s*0/);
-    expect(treeTokenRule).toMatch(/overflow-wrap:\s*anywhere/);
-    expect(treeTokenRule).toMatch(/word-break:\s*break-word/);
+    expect(paneItemRule["min-width"]).toBe("0");
+    expect(treeTokenRule["overflow-wrap"]).toBe("anywhere");
+    expect(treeTokenRule["word-break"]).toBe("break-word");
   });
 });
 

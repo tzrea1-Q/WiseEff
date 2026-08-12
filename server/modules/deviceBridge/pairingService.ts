@@ -4,6 +4,8 @@ import { ApiError } from "../../shared/http/errors";
 import type { DeviceBridgeRepository } from "./repository";
 import { normalizeMachineLabel, pickBridgeToReuse } from "./machineIdentity";
 import type { DeviceBridgePlatform } from "./types";
+import type { Database } from "../../shared/database/client";
+import { createAuditEvent as defaultCreateAuditEvent } from "../audit/repository";
 import {
   bridgeTokenExpiresAt,
   createBridgeId,
@@ -25,6 +27,8 @@ export type PairingServiceOptions = {
   randomCode?: () => string;
   issueToken?: () => string;
   createBridgeId?: () => string;
+  db?: Database;
+  createAuditEvent?: typeof defaultCreateAuditEvent;
 };
 
 export function createPairingService(options: PairingServiceOptions) {
@@ -34,6 +38,33 @@ export function createPairingService(options: PairingServiceOptions) {
   const randomCode = options.randomCode ?? generatePairingCode;
   const issueToken = options.issueToken ?? issueBridgeToken;
   const nextBridgeId = options.createBridgeId ?? createBridgeId;
+  const writeAudit = options.createAuditEvent ?? defaultCreateAuditEvent;
+
+  async function auditPair(
+    bridgeId: string,
+    pairing: { userId: string; organizationId: string },
+    platform: string,
+    arch: string
+  ) {
+    if (!options.db) {
+      return;
+    }
+    await writeAudit(options.db, {
+      id: randomUUID(),
+      organizationId: pairing.organizationId,
+      projectId: null,
+      actorUserId: pairing.userId,
+      actorType: "user",
+      app: "device-bridge",
+      kind: "device-bridge-pair",
+      action: "create",
+      severity: "High",
+      targetType: "device-bridge",
+      targetId: bridgeId,
+      metadata: { platform, arch },
+      traceId: randomUUID()
+    });
+  }
 
   return {
     async issuePairingCode(input: { userId: string; organizationId: string }) {
@@ -118,6 +149,8 @@ export function createPairingService(options: PairingServiceOptions) {
           expiresAt: tokenExpiresAt
         });
 
+        await auditPair(reuseBridge.id, pairing, input.platform, input.arch);
+
         return {
           bridgeId: reuseBridge.id,
           bridgeToken,
@@ -144,6 +177,8 @@ export function createPairingService(options: PairingServiceOptions) {
         scopes: defaultBridgeTokenScopes(),
         expiresAt: tokenExpiresAt
       });
+
+      await auditPair(bridgeId, pairing, input.platform, input.arch);
 
       return {
         bridgeId,

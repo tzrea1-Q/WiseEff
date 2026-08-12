@@ -223,7 +223,7 @@ describe.skipIf(!databaseAvailable)("P3.1 structured edit submit mapping", () =>
         }
       ],
       reason: "P3.1 structured edit submit"
-    });
+    }, { requestId: "req-it-structured-1" });
 
     expect(round.items).toHaveLength(1);
     expect(round.items[0]?.parameterId).toBe(PPV);
@@ -301,7 +301,7 @@ describe.skipIf(!databaseAvailable)("P3.1 structured edit submit mapping", () =>
           reason: "create-mapped structured edit"
         }
       ]
-    });
+    }, { requestId: "req-it-structured-2" });
 
     expect(round.items).toHaveLength(1);
     const parameterId = round.items[0]!.parameterId;
@@ -503,7 +503,7 @@ describe.skipIf(!databaseAvailable)("P3.1 structured edit submit mapping", () =>
             reason: "rbac deny"
           }
         ]
-      })
+      }, { requestId: "req-it-structured-3" })
     ).rejects.toMatchObject({
       code: "FORBIDDEN",
       status: 403
@@ -556,7 +556,7 @@ describe.skipIf(!databaseAvailable)("P3.1 structured edit submit mapping", () =>
             }
           ]
         },
-        { actorType: "agent" }
+        { actorType: "agent", requestId: "req-it-structured-4" }
       )
     ).rejects.toMatchObject({
       code: "FORBIDDEN",

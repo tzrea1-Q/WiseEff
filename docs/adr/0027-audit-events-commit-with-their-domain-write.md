@@ -1,4 +1,4 @@
-# ADR-0025: Audit events commit in the same transaction as their domain write
+# ADR-0027: Audit events commit in the same transaction as their domain write
 
 - Status: Accepted
 - Date: 2026-08-12

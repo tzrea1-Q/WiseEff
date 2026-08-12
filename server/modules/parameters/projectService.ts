@@ -27,7 +27,7 @@ export type DeleteProjectForAuthInput = {
   projectName: string;
 };
 
-/** Project mutations are audited writes: correlation is mandatory (ADR-0025). */
+/** Project mutations are audited writes: correlation is mandatory (ADR-0027). */
 export type ProjectServiceContext = AuditedWriteContext;
 
 function requireCanAdmin(auth: AuthContext) {
