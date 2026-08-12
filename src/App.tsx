@@ -13,6 +13,7 @@ import {
   Info,
   Link2,
   ListChecks,
+  LoaderCircle,
   MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
@@ -150,6 +151,7 @@ import { readInitialNodeDebuggingProtocol } from "./NodeDebuggingPage";
 import {
   AuditEvent,
   ChangeRequest,
+  createApiInitialState,
   derivePowerManagementRuntimeState,
   DebugParameter,
   DebugSnapshot,
@@ -293,6 +295,9 @@ function writeSidebarCollapsedPreference(isCollapsed: boolean) {
   }
 }
 
+/** API-mode data domains refreshed by refreshApiRuntimeData. */
+export type ApiRuntimeDataDomain = "parameters" | "logs" | "debugging";
+
 export type AppAction =
   | { type: "SET_PROJECT"; projectId: string }
   | { type: "UPDATE_PROJECT"; projectId: string; patch: { name?: string; code?: string; status?: ProjectInitializationStatus } }
@@ -365,6 +370,7 @@ export type AppAction =
   | UpsertDebugNodeOperationAction
   | UpsertDebugSnapshotAction
   | { type: "CLEAR_PUSHED_DEBUG_IDS"; parameterIds: string[] }
+  | { type: "CLEAR_API_RUNTIME_DOMAIN"; domain: ApiRuntimeDataDomain }
   | { type: "ADD_NOTIFICATION"; message: string }
   | { type: "DISMISS_NOTIFICATION" }
   | { type: "SET_NOTIFICATION_INBOX"; items: import("@/domain/notifications/types").NotificationItem[] }
@@ -777,8 +783,14 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       const projects = action.projects.map((project) => ({ ...project }));
       const parameterLibrary = buildParameterLibraryFromRecords(action.parameters, projects);
       const parameterModules = buildParameterModulesFromRecords(action.parameters, state.configDraft.parameterModules);
+      // Keep the active project pointed at real server data, never at a stale demo id.
+      const activeProjectId =
+        projects.length > 0 && !projects.some((project) => project.id === state.activeProjectId)
+          ? projects[0].id
+          : state.activeProjectId;
       return {
         ...state,
+        activeProjectId,
         parameters: action.parameters,
         changeRequests: action.changeRequests,
         parameterDrafts: action.parameterDrafts ?? [],
@@ -789,6 +801,42 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
           projects,
           parameterLibrary,
           parameterModules
+        }
+      };
+    }
+    case "CLEAR_API_RUNTIME_DOMAIN": {
+      // API refresh failed: purge the domain's business data instead of showing
+      // demo records as if they were live (mock data must never look real).
+      if (action.domain === "parameters") {
+        return {
+          ...state,
+          parameters: [],
+          changeRequests: [],
+          parameterDrafts: [],
+          parameterSubmissionRounds: [],
+          parameterReviewDecisions: [],
+          configDraft: {
+            ...state.configDraft,
+            projects: [],
+            parameterLibrary: [],
+            parameterModules: []
+          }
+        };
+      }
+      if (action.domain === "logs") {
+        return {
+          ...state,
+          logs: [],
+          archivedLogIds: []
+        };
+      }
+      return {
+        ...state,
+        devices: [],
+        debugParameters: [],
+        configDraft: {
+          ...state.configDraft,
+          debugParameters: []
         }
       };
     }
@@ -1971,7 +2019,7 @@ function App({
   authClient,
   debuggingAdminClient,
   debuggingGateway,
-  initialAppState = initialState,
+  initialAppState,
   logAnalysisRepository,
   listParameterConfigSets,
   parameterRepository,
@@ -1982,13 +2030,18 @@ function App({
   runtimeMode = wiseEffRuntimeMode,
   userGovernanceActions
 }: AppProps = {}) {
+  // API mode boots from empty business slices (no demo data flash); mock mode
+  // keeps the full prototype state for demos and component tests.
+  const [resolvedInitialAppState] = useState(
+    () => initialAppState ?? (runtimeMode === "api" ? createApiInitialState() : initialState)
+  );
   return (
     <TooltipProvider delayDuration={0}>
       <AppShell
         authClient={authClient}
         debuggingAdminClient={debuggingAdminClient}
         debuggingGateway={debuggingGateway}
-        initialAppState={initialAppState}
+        initialAppState={resolvedInitialAppState}
         key={mockDataFingerprint}
         logAnalysisRepository={logAnalysisRepository}
         listParameterConfigSets={listParameterConfigSets}
@@ -2353,54 +2406,52 @@ function AppShell({
   const parameterRuntimeConnectedRef = useRef(false);
   const logRuntimeConnectedRef = useRef(false);
   const debuggingRuntimeConnectedRef = useRef(false);
+  const [apiRuntimeFailures, setApiRuntimeFailures] = useState<ReadonlySet<ApiRuntimeDataDomain>>(
+    () => new Set()
+  );
+  const [apiRuntimeSynced, setApiRuntimeSynced] = useState(runtimeMode !== "api");
+  const [apiRuntimeRetrying, setApiRuntimeRetrying] = useState(false);
 
   const refreshApiRuntimeData = useCallback(
     async (cancelledRef?: { current: boolean }, roleId = stateRef.current.activeRoleId) => {
       const runtimeRoleId = migrateLegacyRoleId(roleId);
       const debuggingProtocol = pageKeyRef.current === "node-debugging" ? readInitialNodeDebuggingProtocol() : "hdc";
-      const debuggingRefresh = canPerform(runtimeRoleId, "debugging.use")
-        ? debuggingActions.refresh({ protocol: debuggingProtocol })
+      const canUseDebugging = canPerform(runtimeRoleId, "debugging.use");
+      const debuggingRefresh = canUseDebugging
+        ? debuggingActions.refresh({ protocol: debuggingProtocol }, { notifyOnFailure: false })
         : Promise.resolve("skipped" as const);
       const [parameterRefreshResult, logRefreshResult, debuggingRefreshResult] = await Promise.allSettled([
         parameterActions.refresh({ notifyOnFailure: false }),
-        logActions.refresh(),
+        logActions.refresh(undefined, { notifyOnFailure: false }),
         debuggingRefresh
       ]);
       if (cancelledRef?.current) return;
+      // Failed domains drop to empty slices + a persistent page banner. Demo data
+      // must never stand in for live data in API mode.
+      const failures = new Set<ApiRuntimeDataDomain>();
       if (
         parameterRefreshResult.status === "rejected" ||
         (parameterRefreshResult.value && "notification" in parameterRefreshResult.value)
       ) {
-        dispatch({ type: "ADD_NOTIFICATION", message: "无法连接雷泽参数 API，已保留本地演示数据" });
+        failures.add("parameters");
+        dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "parameters" });
       } else if (!parameterRuntimeConnectedRef.current) {
         parameterRuntimeConnectedRef.current = true;
         dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽参数 API" });
       }
       if (logRefreshResult.status === "rejected") {
-        if (
-          !(
-            logRefreshResult.reason instanceof Error &&
-            (logRefreshResult.reason as { alreadyNotified?: unknown }).alreadyNotified === true
-          )
-        ) {
-          dispatch({ type: "ADD_NOTIFICATION", message: "无法加载雷泽日志 API，已保留本地演示数据" });
-        }
+        failures.add("logs");
+        dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "logs" });
       } else if (!logRuntimeConnectedRef.current) {
         logRuntimeConnectedRef.current = true;
         dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽日志 API" });
       }
-      if (!canPerform(runtimeRoleId, "debugging.use")) {
+      if (!canUseDebugging) {
         setDebuggingRuntimeReady(true);
       } else if (debuggingRefreshResult.status === "rejected") {
         setDebuggingRuntimeReady(false);
-        if (
-          !(
-            debuggingRefreshResult.reason instanceof Error &&
-            (debuggingRefreshResult.reason as { alreadyNotified?: unknown }).alreadyNotified === true
-          )
-        ) {
-          dispatch({ type: "ADD_NOTIFICATION", message: "无法加载雷泽调试 API，已保留本地演示数据" });
-        }
+        failures.add("debugging");
+        dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "debugging" });
       } else {
         setDebuggingRuntimeReady(true);
         if (!debuggingRuntimeConnectedRef.current) {
@@ -2408,9 +2459,20 @@ function AppShell({
           dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽调试 API" });
         }
       }
+      setApiRuntimeFailures(failures);
+      setApiRuntimeSynced(true);
     },
     [debuggingActions, logActions, parameterActions]
   );
+
+  const retryApiRuntimeData = useCallback(async () => {
+    setApiRuntimeRetrying(true);
+    try {
+      await refreshApiRuntimeData();
+    } finally {
+      setApiRuntimeRetrying(false);
+    }
+  }, [refreshApiRuntimeData]);
   const mockNotificationsClient = useMemo(
     () =>
       runtimeMode === "mock"
@@ -2679,6 +2741,37 @@ function AppShell({
     </div>
   ) : null;
 
+  const apiRuntimeDomainLabels: Record<ApiRuntimeDataDomain, string> = {
+    parameters: "参数",
+    logs: "日志",
+    debugging: "调试"
+  };
+  const apiRuntimeStatusBanner =
+    runtimeMode !== "api" || isPlatformHome ? null : apiRuntimeFailures.size > 0 ? (
+      <div className="api-runtime-error-banner" role="alert" aria-live="assertive">
+        <AlertTriangle size={18} aria-hidden="true" />
+        <div className="api-runtime-error-banner__body">
+          <strong>
+            无法连接雷泽{[...apiRuntimeFailures].map((domain) => apiRuntimeDomainLabels[domain]).join("、")} API，当前无数据
+          </strong>
+          <p>为避免误读，连接失败时不展示演示数据；请确认后端服务可用后重试。</p>
+        </div>
+        <button
+          type="button"
+          className="button"
+          disabled={apiRuntimeRetrying}
+          onClick={() => void retryApiRuntimeData()}
+        >
+          {apiRuntimeRetrying ? "重试中…" : "重试"}
+        </button>
+      </div>
+    ) : !apiRuntimeSynced ? (
+      <div className="api-runtime-sync-banner" role="status">
+        <LoaderCircle size={16} className="api-runtime-sync-banner__spinner" aria-hidden="true" />
+        正在连接雷泽服务，加载真实数据…
+      </div>
+    ) : null;
+
   const appShell = (
     <div className={appShellClassName}>
         {!isPlatformHome ? (
@@ -2753,6 +2846,7 @@ function AppShell({
             </div>
           ) : (
             <main className="main-content" aria-label={isParameterHome ? "参数管理首页" : undefined}>
+              {apiRuntimeStatusBanner}
               {proactiveInsightsBanner}
               <PageRouter
                 page={page}

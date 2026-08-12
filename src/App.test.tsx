@@ -1417,6 +1417,83 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(next.users).toBe(state.users);
   });
 
+  it("repoints activeProjectId at server data when the demo project id is unknown", () => {
+    const state = { ...initialState, activeProjectId: "demo-only-project" };
+    const next = appReducer(state, {
+      type: "HYDRATE_PARAMETER_RUNTIME",
+      projects: [apiProject],
+      parameters: [apiParameter],
+      changeRequests: [],
+      parameterSubmissionRounds: [],
+      parameterDrafts: []
+    });
+
+    expect(next.activeProjectId).toBe(apiProject.id);
+  });
+
+  it("clears each API runtime domain to empty business slices instead of demo records", () => {
+    const parametersCleared = appReducer(initialState, {
+      type: "CLEAR_API_RUNTIME_DOMAIN",
+      domain: "parameters"
+    });
+    expect(parametersCleared.parameters).toEqual([]);
+    expect(parametersCleared.changeRequests).toEqual([]);
+    expect(parametersCleared.parameterSubmissionRounds).toEqual([]);
+    expect(parametersCleared.parameterDrafts).toEqual([]);
+    expect(parametersCleared.configDraft.projects).toEqual([]);
+    expect(parametersCleared.logs).toBe(initialState.logs);
+
+    const logsCleared = appReducer(initialState, {
+      type: "CLEAR_API_RUNTIME_DOMAIN",
+      domain: "logs"
+    });
+    expect(logsCleared.logs).toEqual([]);
+    expect(logsCleared.archivedLogIds).toEqual([]);
+    expect(logsCleared.parameters).toBe(initialState.parameters);
+
+    const debuggingCleared = appReducer(initialState, {
+      type: "CLEAR_API_RUNTIME_DOMAIN",
+      domain: "debugging"
+    });
+    expect(debuggingCleared.devices).toEqual([]);
+    expect(debuggingCleared.debugParameters).toEqual([]);
+    expect(debuggingCleared.configDraft.debugParameters).toEqual([]);
+  });
+
+  it("shows a persistent no-data banner when API refresh fails and recovers via retry", async () => {
+    window.history.replaceState(null, "", "/parameter-home");
+    const listProjects = vi.fn()
+      .mockRejectedValueOnce(new Error("api down"))
+      .mockResolvedValue([apiProject]);
+    const parameterRepository = createAppParameterRepository({ listProjects });
+
+    render(
+      <App
+        authClient={createResolvedAuthClient()}
+        initialAppState={initialState}
+        parameterRepository={parameterRepository}
+        logAnalysisRepository={createAppLogAnalysisRepository()}
+        debuggingGateway={createAppDebuggingGateway()}
+        runtimeMode="api"
+      />
+    );
+
+    await waitFor(() => {
+      expect(document.querySelector(".api-runtime-error-banner")).toBeInTheDocument();
+    });
+    const banner = document.querySelector(".api-runtime-error-banner") as HTMLElement;
+    expect(banner).toHaveAttribute("role", "alert");
+    expect(banner).toHaveTextContent("无法连接雷泽参数 API，当前无数据");
+    expect(banner).toHaveTextContent("不展示演示数据");
+
+    fireEvent.click(within(banner).getByRole("button", { name: "重试" }));
+
+    await waitFor(() => {
+      expect(document.querySelector(".api-runtime-error-banner")).not.toBeInTheDocument();
+    });
+    expect(listProjects.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
   it("dismisses the newest notification and leaves the rest of the queue", () => {
     const state = { ...initialState, notifications: ["latest", "older"] };
 
