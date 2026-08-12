@@ -88,6 +88,12 @@ Expand lazily via `/domain-modeling` when terms are resolved. Prefer terms from 
 | Reload purpose | `ordinary` (put debug values on the device) or `restore-baseline` (compensating reload toward library baselines). Stored on `dts_reload_runs.purpose` and surfaced in history / last-reload projections |
 | Sensitive reload | The sensitive-node extension of reload start: matching `dts_sensitive_node_rules` additionally requires `parameter:edit-critical`, and critical-tier matches also require `confirmationToken: "confirm-sensitive-reload"`. Distinct from the deploy token `confirm-dts-reload` |
 | Parameter reload (retired) | The 2026 M1-era concept binding one parameter definition to one device node path and writing it through sysfs, which also wrote the accepted value back into project parameter values. Never shipped, HTTP surface returned `410` from its first commit, and its binding table was dropped in migration `0037`. Retained here only so the term is not confused with DTS reload debugging |
+| Knowledge base | The in-product, organization-scoped home for enterprise engineering knowledge: tuning experience, fault cases, hardware manuals, and process norms. A fourth workflow peer to parameter management, log analysis, and debugging. Never means the repository `docs/` developer documentation, which is a development artifact rather than a product surface. Xiaoze reads it through registered tools; agent-authored knowledge always lands as a draft that a human must publish |
+| Knowledge entry | The unit of knowledge in the knowledge base. Its content form is exactly one of markdown (created and edited in product) or file (an uploaded binary whose extracted text is searchable while the binary itself is only replaceable). Organization is flat: multi-tags including project tags, never a hierarchy. Lifecycle is `draft → published → archived` |
+| Knowledge revision | The immutable snapshot produced by every save of a knowledge entry. Published entries edit in place wiki-style — there is no pending-changes state — and any prior revision can be restored, which itself produces a new revision |
+| Agent knowledge draft | A knowledge entry Xiaoze creates through its approval-gated draft tool. Always born `draft`, never modifies an existing entry, and stays invisible to retrieval until a human publishes it; whoever publishes takes responsibility for the content |
+| Knowledge distillation | Turning a structured analysis outcome into a pre-filled knowledge draft carrying references to its evidence. MVP distils log-analysis conclusions; DTS reload runs are a planned later source |
+| Published-only retrieval | Search, RAG, and Xiaoze only ever see `published` knowledge entries. Draft and archived entries never enter the retrieval index, which makes publishing the single trust gate for knowledge |
 
 ## ADRs
 
@@ -111,3 +117,6 @@ Architectural decisions: [`docs/adr/`](docs/adr/) (created lazily). Feature-scop
 - [`0017`](docs/adr/0017-definition-identity-is-correctable.md) — definition identity is correctable and `parameter_specs.id` is a surrogate
 - [`0018`](docs/adr/0018-uploaded-file-versions-are-staged-before-activation.md) — uploaded file versions are staged before activation
 - [`0019`](docs/adr/0019-debug-values-never-mutate-the-parameter-library.md) — debug values never mutate the parameter library
+- [`0020`](docs/adr/0020-reload-runs-execute-in-request-on-bridge-holding-process.md) — reload runs execute in-request on the bridge-holding process
+- [`0021`](docs/adr/0021-reload-snapshot-satisfies-device-write-snapshot-non-negotiable.md) — reload snapshot satisfies the device-write snapshot non-negotiable
+- [`0022`](docs/adr/0022-knowledge-retrieval-lives-in-postgres.md) — knowledge retrieval lives in PostgreSQL (pgvector + FTS degradation)

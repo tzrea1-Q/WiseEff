@@ -31,3 +31,4 @@ See also: [`CONTEXT.md`](../../CONTEXT.md), [`docs/design-docs/domain-model.md`]
 | [0019](0019-debug-values-never-mutate-the-parameter-library.md) | Debug values never mutate the parameter library |
 | [0020](0020-reload-runs-execute-in-request-on-bridge-holding-process.md) | Reload runs execute in-request on the bridge-holding process |
 | [0021](0021-reload-snapshot-satisfies-device-write-snapshot-non-negotiable.md) | Reload snapshot satisfies the device-write snapshot non-negotiable |
+| [0022](0022-knowledge-retrieval-lives-in-postgres.md) | Knowledge retrieval lives in PostgreSQL |
