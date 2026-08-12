@@ -238,7 +238,7 @@ export function KnowledgePage({ repository, capability }: KnowledgePageProps) {
   return (
     <div className="knowledge-page flex flex-col gap-5 p-6">
       <PageInsightBar
-        severity="info"
+        variant="info"
         headline={`已发布 ${publishedCount} 条 · 草稿 ${draftCount} 条`}
         description="组织级工程知识库:调参经验、故障案例、硬件手册与流程规范。发布是进入检索的唯一门槛。"
         actions={
@@ -250,7 +250,7 @@ export function KnowledgePage({ repository, capability }: KnowledgePageProps) {
                     setEditorEntry(null);
                     setEditorOpen(true);
                   },
-                  tone: "primary"
+                  variant: "primary"
                 }
               ]
             : []

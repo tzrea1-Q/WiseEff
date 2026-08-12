@@ -122,7 +122,7 @@ export function KnowledgeAdminPage({ repository, canManage }: KnowledgeAdminPage
   return (
     <div className="knowledge-admin-page flex flex-col gap-5 p-6">
       <PageInsightBar
-        severity={archivedCount > 0 ? "warn" : "info"}
+        variant={archivedCount > 0 ? "warn" : "info"}
         headline={`已归档 ${archivedCount} 条`}
         description="治理已归档知识条目:恢复回已发布,或在确认后彻底删除。Agent 草稿发布队列与索引健康将在后续阶段加入。"
         actions={[]}

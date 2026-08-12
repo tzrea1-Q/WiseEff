@@ -9,9 +9,9 @@ afterEach(() => {
 function sampleItems(): KpiItem[] {
   return [
     { id: "shared", label: "共享参数", value: 10 },
-    { id: "high-risk", label: "高风险", value: 4, interactive: true, onClick: vi.fn(), tone: "warning" },
+    { id: "high-risk", label: "高风险", value: 4, interactive: true, onClick: vi.fn(), variant: "warning" },
     { id: "today", label: "今日变更", value: 3, interactive: true, onClick: vi.fn() },
-    { id: "orphan", label: "闲置参数", value: 2, interactive: true, onClick: vi.fn(), tone: "warning" },
+    { id: "orphan", label: "闲置参数", value: 2, interactive: true, onClick: vi.fn(), variant: "warning" },
     { id: "last-import", label: "最近导入", value: "2h 前", interactive: true, onClick: vi.fn() }
   ];
 }

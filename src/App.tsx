@@ -174,7 +174,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Badge as UiBadge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { EmptyState, SectionLabel, WorkbenchLayout } from "./workbenchUi";
 import {
   clearLocalAuthToken,
   createAuthClient,
@@ -2918,10 +2918,7 @@ function ParameterReviewPage({
     : [];
 
   return (
-    <WorkbenchLayout
-      title={reviewPageTitle}
-      hideHeader
-    >
+    <WorkbenchLayout title={reviewPageTitle}>
       <section className="review-queue">
         <div className="review-queue-header">
           <PanelHeader
@@ -4464,22 +4461,9 @@ function LogsAuxPanel({
   );
 }
 
-function WorkbenchLayout({
-  children
-}: {
-  title: string;
-  subtitle?: string;
-  actions?: ReactNode;
-  hideHeader?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <div className="workbench-page">
-      <div className="workbench-grid">{children}</div>
-    </div>
-  );
-}
-
+// MetricCard stays local: admin/MetricBentoCard is a large dashboard
+// visualization card (spark/radial/pulse/peak, 160px chart area) and is not a
+// drop-in replacement for this compact stat card.
 function MetricCard({ title, value, trend, tone }: { title: string; value: string; trend: string; tone: "blue" | "teal" | "purple" }) {
   return (
     <Card className={`metric-card ${tone}`} size="sm">
@@ -4503,15 +4487,6 @@ function StatusBadge({ status }: { status: string }) {
       <span />
       {formatWorkflowDisplayText(status || "未知")}
     </UiBadge>
-  );
-}
-
-function SectionLabel({ icon, label }: { icon: ReactNode; label: string }) {
-  return (
-    <div className="section-label">
-      {icon}
-      <span>{label}</span>
-    </div>
   );
 }
 
@@ -4539,20 +4514,6 @@ function VerticalTimeline({ items }: { items: VerticalTimelineItem[] }) {
         </div>
       ))}
     </div>
-  );
-}
-
-function EmptyState({ text }: { text: string }) {
-  return (
-    <Empty className="empty-state">
-      <EmptyHeader>
-        <EmptyMedia variant="icon">
-          <Info size={20} />
-        </EmptyMedia>
-        <EmptyTitle>暂无内容</EmptyTitle>
-        <EmptyDescription>{text}</EmptyDescription>
-      </EmptyHeader>
-    </Empty>
   );
 }
 

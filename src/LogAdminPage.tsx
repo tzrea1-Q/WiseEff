@@ -329,7 +329,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
     <div className="log-admin-page flex flex-col gap-5 p-6">
       {insight && !insightDismissed ? (
         <PageInsightBar
-          severity={insight.severity}
+          variant={insight.severity}
           headline={insight.headline}
           description={insight.description}
           onDismiss={() => {
@@ -339,7 +339,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
           actions={insight.actions.map((action) => ({
             label: action.label,
             onClick: () => handleInsightAction(action.kind),
-            tone: action.kind === "locate-failures" ? ("primary" as const) : ("subtle" as const)
+            variant: action.kind === "locate-failures" ? ("primary" as const) : ("subtle" as const)
           }))}
         />
       ) : null}

@@ -1,5 +1,6 @@
 import { Check, Info } from "lucide-react";
 import type { ReactNode } from "react";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 
 export const riskLabels: Record<"High" | "Medium" | "Low", string> = {
   High: "高",
@@ -21,16 +22,7 @@ export function escapeExcelCell(value: string) {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-export function WorkbenchLayout({
-  title,
-  children
-}: {
-  title: string;
-  subtitle?: string;
-  header?: ReactNode;
-  actions?: ReactNode;
-  children: ReactNode;
-}) {
+export function WorkbenchLayout({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="workbench-page" aria-label={title}>
       <div className="workbench-grid">{children}</div>
@@ -42,8 +34,8 @@ export function RiskBadge({ risk }: { risk: "High" | "Medium" | "Low" }) {
   return <span className={`risk-badge ${risk.toLowerCase()}`}>{riskLabels[risk]}</span>;
 }
 
-export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "tertiary" | "secondary" }) {
-  return <span className={`badge ${tone}`}>{children}</span>;
+export function Badge({ children, variant = "neutral" }: { children: ReactNode; variant?: "neutral" | "tertiary" | "secondary" }) {
+  return <span className={`badge ${variant}`}>{children}</span>;
 }
 
 export function SectionLabel({ icon, label }: { icon: ReactNode; label: string }) {
@@ -70,9 +62,14 @@ export function Timeline({ steps, activeIndex }: { steps: string[]; activeIndex:
 
 export function EmptyState({ text }: { text: string }) {
   return (
-    <div className="empty-state">
-      <Info size={20} />
-      {text}
-    </div>
+    <Empty className="empty-state">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <Info size={20} />
+        </EmptyMedia>
+        <EmptyTitle>暂无内容</EmptyTitle>
+        <EmptyDescription>{text}</EmptyDescription>
+      </EmptyHeader>
+    </Empty>
   );
 }
