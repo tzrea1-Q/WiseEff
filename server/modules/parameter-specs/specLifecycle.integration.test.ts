@@ -224,6 +224,43 @@ describe.skipIf(!databaseAvailable)("parameter spec lifecycle deprecate/restore"
     expect(restored.item.lifecycle).toBe("active");
   });
 
+  it("rejects org admin updating a platform-global definition", async () => {
+    await expect(
+      updateParameterSpec(db!, makeAuth(), {
+        specId: GLOBAL_ACTIVE,
+        documentation: "org admin cannot edit platform rows",
+        reason: "org admin edit attempt",
+        constraints: {},
+      }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 } satisfies Partial<ApiError>);
+  });
+
+  it("platform super admin updates a platform-global definition in place", async () => {
+    const platformAuth = makeAuth();
+    platformAuth.roles = [{ projectId: null, roleId: "platform-admin" }];
+    platformAuth.permissions = [
+      "parameter:view",
+      "parameter:edit",
+      "admin:access",
+      "platform:access",
+      "platform:schema-promote",
+    ];
+
+    const result = await updateParameterSpec(db!, platformAuth, {
+      specId: GLOBAL_ACTIVE,
+      documentation: "platform edit of a global row",
+      reason: "platform edit",
+      constraints: { min: 0 },
+    });
+    expect(result.item.lifecycle).toBe("active");
+
+    const audits = await db!.query<{ metadata: Record<string, unknown> }>(
+      `select metadata from audit_events where target_id = $1 and action = 'spec-updated' order by created_at desc limit 1`,
+      [GLOBAL_ACTIVE],
+    );
+    expect(audits.rows).toHaveLength(1);
+  });
+
   it("HTTP deprecate then restore round-trips lifecycle on the public routes", async () => {
     const auth = makeAuth();
     const router = createRouter();
