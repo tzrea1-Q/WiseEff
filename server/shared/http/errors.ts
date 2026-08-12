@@ -44,7 +44,7 @@ export class ApiError extends Error {
     /**
      * @deprecated The HTTP status is derived from `code`; this argument is ignored.
      * It is kept only so the ~840 pre-table call sites keep compiling until the
-     * codemod removes the argument everywhere (TD-079). New call sites must omit it.
+     * codemod removes the argument everywhere (TD-082). New call sites must omit it.
      */
     _ignoredStatus?: number,
     public readonly details: Record<string, unknown> = {}

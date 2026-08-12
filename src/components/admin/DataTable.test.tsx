@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
-import { readFileSync } from "node:fs";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { declarationsFor, readStylesheet } from "../../test/cssAssertions";
 import { DataTable, type Column, type DataTableColumn } from "./DataTable";
 import { ColumnFilter } from "../ColumnFilter";
 
@@ -324,11 +324,11 @@ describe("DataTable planned API", () => {
   });
 
   it("keeps data table header filters adjacent to header labels", () => {
-    const styles = readFileSync("src/styles.css", "utf8");
-    const dataFilterRule = styles.match(/\.data-table-column-filter\s*\{[^}]*\}/)?.[0] ?? "";
+    const styles = readStylesheet("src/styles.css");
+    const dataFilterRule = declarationsFor(styles, ".data-table-column-filter");
 
-    expect(dataFilterRule).toMatch(/margin-left:\s*4px/);
-    expect(dataFilterRule).not.toMatch(/float:\s*right/);
+    expect(dataFilterRule["margin-left"]).toBe("4px");
+    expect(dataFilterRule.float).toBeUndefined();
   });
 
   it("supports aria-label on the table element", () => {

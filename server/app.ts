@@ -22,6 +22,7 @@ import { registerDeviceBridgeRoutes } from "./modules/deviceBridge/routes";
 import { registerDeviceBridgeDownloadRoutes } from "./modules/deviceBridge/downloadRoutes";
 import type { DeviceBridgeWsHandler } from "./modules/deviceBridge/wsHandler";
 import { attachDeviceBridgeWebSocket, createDeviceBridgeWsHandler } from "./modules/deviceBridge/wsHandler";
+import { registerKnowledgeRoutes } from "./modules/knowledge/routes";
 import { registerLogRoutes } from "./modules/logs/routes";
 import { buildReadyHealth, type DurableQueueHealthCheck } from "./modules/operations/health";
 import { registerOperationsRoutes, type PilotReadinessEnv } from "./modules/operations/routes";
@@ -168,6 +169,11 @@ export function createWiseEffServer(
     objectStore: options.objectStore,
     getCurrentAuthContext: authResolver
   });
+  registerKnowledgeRoutes(router, {
+    db: options.db,
+    objectStore: options.objectStore,
+    getCurrentAuthContext: authResolver
+  });
   registerDtsReloadRoutes(router, {
     db: options.db,
     objectStore: options.objectStore,
@@ -204,6 +210,7 @@ export function createWiseEffServer(
   registerXiaozeRoutes(router, {
     db: options.db,
     env: options.env as ServerEnv | undefined,
+    objectStore: options.objectStore,
     getCurrentAuthContext: authResolver
   });
 

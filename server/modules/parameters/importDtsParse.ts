@@ -1,6 +1,5 @@
 import { parseDts, resolveDts } from "../dts";
-import { detectUnsupportedDtsConstructs } from "../parameter-files/unsupported";
-import { nodePathToParameterIdentity } from "../parameter-files/pathMapper";
+import { nodePathToParameterIdentity } from "./pathMapper";
 import { ApiError } from "../../shared/http/errors";
 
 export type DtsImportParseRow = {
@@ -50,16 +49,6 @@ export function parseDtsImportSource(
       maxBytes,
       sizeBytes: byteLength
     });
-  }
-
-  const unsupported = detectUnsupportedDtsConstructs(input.content);
-  if (unsupported.some((finding) => finding.code === "include")) {
-    throw new ApiError(
-      "VALIDATION_FAILED",
-      "DTS /include/ 暂不支持，请提供展开后的文件。",
-      400,
-      { code: "dts-include-unsupported" }
-    );
   }
 
   const resolved = resolveDts(parseDts(input.content));

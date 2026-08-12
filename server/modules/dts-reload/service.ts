@@ -3,21 +3,21 @@ import { createHash, randomUUID } from "node:crypto";
 import { createAuditEvent } from "../audit/repository";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
-import { parseDtsValue, type DtsValue } from "../dts";
+import type { DtsValue } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
 import type { SensitiveWriteActorType } from "../parameters/sensitiveNode";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { buildReloadBaseSource } from "./baseSource";
+import { classifyReloadCandidate, normalizeReloadCandidates } from "./candidates";
 import {
-  classifyReloadCandidate,
-  isIntegerCellArrayValue,
-  isPhandleCellArrayValue,
-  isSupportedCellBits,
-  normalizeReloadCandidates,
+  describeReloadValueShapeAuthoring,
   resolveReloadValueShape,
-  type CandidateValueShape
-} from "./candidates";
+  validateAuthoredDebugValue,
+  type CandidateValueShape,
+  type ReloadAuthoringIssue,
+  type ReloadValueShape
+} from "./valueShape";
 import { assertDebugValueConstraints } from "./constraints";
 import {
   generateDebugOverlay,
@@ -27,10 +27,12 @@ import {
 import { assertDtsReloadHumanActor, requireDtsReload, requireDtsReloadView } from "./policy";
 import { runDebugOverlayPreflight } from "./preflight";
 import {
+  clearReloadRunStorageKeys,
   getReloadCandidateRow,
   getReloadRunRow,
   insertReloadRun,
   insertReloadRunTarget,
+  listExpiredReloadArtifactRuns,
   listLastReloadByBindingIds,
   listProjectDtsMemberSources,
   listReloadCandidateRows,
@@ -38,6 +40,7 @@ import {
   listReloadRunTargets,
   readLibraryFingerprint,
   claimReloadRunForDeploy,
+  reclaimStaleDeployingReloadRunRows,
   toReloadRunDto,
   updateReloadRunDeployState,
   type LibraryFingerprint,
@@ -50,9 +53,15 @@ import {
 import {
   assertSensitiveReloadBatchAllowed,
   matchReloadCandidatesSensitive,
+  SENSITIVE_RELOAD_CONFIRMATION_TOKEN,
   type ReloadTargetSensitiveHit
 } from "./sensitiveGate";
-import { executeReloadDeploy, type DeployReloadDeps, type DeployReloadRunInput } from "./deploy";
+import {
+  bridgeCanonicalDeviceId,
+  executeReloadDeploy,
+  type DeployReloadDeps,
+  type DeployReloadRunInput
+} from "./deploy";
 import type {
   ReloadCandidateDto,
   ReloadResidueDto,
@@ -62,7 +71,12 @@ import type {
   ReloadRunPurpose,
   ReloadRunStatus
 } from "./types";
-import { DTS_RELOAD_CONFIRMATION_TOKEN, RELOAD_ARTIFACT_RETENTION_DAYS } from "./types";
+import {
+  DEPLOY_RECLAIMED_FAILURE_CODE,
+  DTS_RELOAD_CONFIRMATION_TOKEN,
+  RELOAD_ARTIFACT_RETENTION_DAYS,
+  RELOAD_DEPLOY_RECLAIM_AFTER_MS
+} from "./types";
 
 export { RELOAD_ARTIFACT_RETENTION_DAYS } from "./types";
 
@@ -260,6 +274,77 @@ function sensitiveAuditSummary(hits: ReloadTargetSensitiveHit[]) {
   }));
 }
 
+/**
+ * Compact reload-snapshot view for audit metadata. Deliberately drops the verbatim kernel log
+ * (`rawText`, up to 256 KiB) and the matched-line contents — the full snapshot is already
+ * persisted on the run row, so copying it into every audit event only bloats the audit table.
+ */
+function reloadSnapshotAuditSummary(snapshot: ReloadRunDto["reloadSnapshot"]) {
+  if (!snapshot) return null;
+  return {
+    libraryBaselineCount: snapshot.libraryBaselines.length,
+    artifactDigest: snapshot.artifactDigest,
+    kernelSignal: snapshot.kernelSignal
+      ? {
+          command: snapshot.kernelSignal.command,
+          captureStatus: snapshot.kernelSignal.captureStatus,
+          captureError: snapshot.kernelSignal.captureError,
+          truncated: snapshot.kernelSignal.truncated,
+          matchedParameterCount: snapshot.kernelSignal.matchedByParameter.length,
+          hasRawText: typeof snapshot.kernelSignal.rawText === "string" && snapshot.kernelSignal.rawText.length > 0
+        }
+      : null,
+    behaviouralVerification: snapshot.behaviouralVerification
+      ? {
+          outcomes: snapshot.behaviouralVerification.outcomes.map((outcome) => ({
+            bindingId: outcome.bindingId,
+            propertyKey: outcome.propertyKey,
+            outcome: outcome.outcome
+          }))
+        }
+      : null
+  };
+}
+
+/**
+ * Re-evaluate organisation sensitive-node rules against a persisted run's pinned targets, using
+ * the CURRENT compatible for each binding. Device writes happen at deploy, so the deployer must
+ * independently satisfy elevated capability + confirmation — the start-time gate cannot vouch for
+ * a different subject who later triggers the actual write.
+ */
+async function assertDeploySensitiveReloadAllowed(
+  db: Database,
+  auth: AuthContext,
+  run: ReloadRunDto,
+  input: DeployReloadRunInput,
+  context: DtsReloadServiceContext
+): Promise<void> {
+  const sensitiveTargets = [];
+  for (const target of run.targets) {
+    const candidate = await getReloadCandidateRow(db, {
+      organizationId: auth.organization.id,
+      projectId: run.projectId,
+      bindingId: target.bindingId
+    });
+    sensitiveTargets.push({
+      bindingId: target.bindingId,
+      propertyKey: target.propertyKey,
+      nodePath: target.nodePath,
+      compatible: candidate?.compatible ?? null
+    });
+  }
+
+  await assertSensitiveReloadBatchAllowed(db, auth, {
+    projectId: run.projectId,
+    actorType: context.actorType ?? "user",
+    confirmationToken: input.confirmationTokens.includes(SENSITIVE_RELOAD_CONFIRMATION_TOKEN)
+      ? SENSITIVE_RELOAD_CONFIRMATION_TOKEN
+      : undefined,
+    targets: sensitiveTargets,
+    requestId: context.requestId
+  });
+}
+
 export async function listReloadCandidates(
   db: Queryable,
   auth: AuthContext,
@@ -360,7 +445,24 @@ async function loadBaseSource(
 
   const sources = [];
   for (const member of members) {
-    const bytes = await objectStore.get(member.storage_key);
+    let bytes: Buffer;
+    try {
+      bytes = await objectStore.get(member.storage_key);
+    } catch (error) {
+      // A storage read failure is not a "missing config set" — surface it distinctly so the
+      // blocked run does not mislead operators into thinking the project has no DTS members.
+      throw new ApiError(
+        "CONFLICT",
+        `Failed to read DTS configuration-set member "${member.file_name}" from storage.`,
+        409,
+        {
+          code: "reload-base-read-failed",
+          projectId,
+          fileName: member.file_name,
+          cause: error instanceof Error ? error.message : String(error)
+        }
+      );
+    }
     sources.push({
       fileName: member.file_name,
       role: member.role,
@@ -372,138 +474,80 @@ async function loadBaseSource(
   return { configSetId, baseSource: buildReloadBaseSource(sources) };
 }
 
-function assertParsedValueMatchesShape(
-  parsedValue: DtsValue,
-  valueShape: CandidateValueShape,
+/**
+ * Edge mapping from pure authoring issues (ReloadValueShape module) onto the HTTP error
+ * contract. Message wording and `details` fields are part of the API behavior — keep
+ * them stable; the validation rules themselves live in `validateAuthoredDebugValue`.
+ */
+function throwAuthoringIssue(
+  issue: ReloadAuthoringIssue,
+  valueShape: ReloadValueShape,
   bindingId: string,
   debugValue: string
-) {
-  if (valueShape?.kind === "string") {
-    if (parsedValue.kind !== "strings" || parsedValue.values.length !== 1) {
+): never {
+  const { placeholder } = describeReloadValueShapeAuthoring(valueShape);
+  switch (issue.reason) {
+    case "unparsable":
       throw new ApiError(
         "VALIDATION_FAILED",
-        'Debug value must be a single string (for example "bat0_raw_temp").',
+        `Debug value could not be parsed: ${issue.message}`,
         400,
         { bindingId, debugValue }
       );
-    }
-    return;
-  }
-
-  if (valueShape?.kind === "string-list") {
-    if (parsedValue.kind !== "strings" || parsedValue.values.length === 0) {
+    case "not-single-string":
       throw new ApiError(
         "VALIDATION_FAILED",
-        "Debug value must be a string list (for example \"okay\" or \"a\", \"b\").",
+        `Debug value must be a single string (for example ${placeholder}).`,
         400,
         { bindingId, debugValue }
       );
-    }
-    return;
-  }
-
-  if (valueShape?.kind === "phandle-cells") {
-    if (!isPhandleCellArrayValue(parsedValue)) {
+    case "not-string-list":
       throw new ApiError(
         "VALIDATION_FAILED",
-        "Debug value must be a GPIO-style phandle cell array (for example <&gpio13 29 0>).",
+        `Debug value must be a string list (for example ${placeholder}).`,
         400,
         { bindingId, debugValue }
       );
-    }
-
-    const cellsPerGroup = valueShape.cellsPerGroup;
-    if (typeof cellsPerGroup === "number" && Number.isInteger(cellsPerGroup) && cellsPerGroup >= 2) {
-      const mismatched =
-        parsedValue.kind === "cells" &&
-        parsedValue.groups.some((group) => group.length !== cellsPerGroup);
-      if (mismatched) {
-        throw new ApiError(
-          "VALIDATION_FAILED",
-          `Debug value must have ${cellsPerGroup} cell(s) per group.`,
-          400,
-          {
-            bindingId,
-            debugValue,
-            expectedCellsPerGroup: cellsPerGroup,
-            actualCellsPerGroup:
-              parsedValue.kind === "cells" ? parsedValue.groups.map((group) => group.length) : []
-          }
-        );
-      }
-    }
-
-    const expectedGroups = valueShape.groups;
-    if (
-      typeof expectedGroups === "number" &&
-      Number.isInteger(expectedGroups) &&
-      expectedGroups >= 1 &&
-      parsedValue.kind === "cells" &&
-      parsedValue.groups.length !== expectedGroups
-    ) {
+    case "not-phandle-cell-array":
       throw new ApiError(
         "VALIDATION_FAILED",
-        `Debug value must have ${expectedGroups} cell group(s).`,
+        `Debug value must be a GPIO-style phandle cell array (for example ${placeholder}).`,
+        400,
+        { bindingId, debugValue }
+      );
+    case "not-integer-cell-array":
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        issue.expectedBits === 32
+          ? `Debug value must be an unsigned 32-bit cell array (for example ${placeholder}).`
+          : `Debug value must be a /bits/ ${issue.expectedBits} cell array (for example ${placeholder}).`,
+        400,
+        { bindingId, debugValue, expectedBits: issue.expectedBits }
+      );
+    case "cells-per-group-mismatch":
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        `Debug value must have ${issue.expectedCellsPerGroup} cell(s) per group.`,
         400,
         {
           bindingId,
           debugValue,
-          expectedGroups,
-          actualGroups: parsedValue.groups.length
+          expectedCellsPerGroup: issue.expectedCellsPerGroup,
+          actualCellsPerGroup: issue.actualCellsPerGroup
         }
       );
-    }
-    return;
-  }
-
-  const expectedBits =
-    typeof valueShape?.bits === "number" && isSupportedCellBits(valueShape.bits) ? valueShape.bits : 32;
-
-  // Authoring form is `/bits/ N <…>` or `<…>` cells — not dtc's square-bracket `[…]` spelling.
-  if (parsedValue.kind !== "cells" || !isIntegerCellArrayValue(parsedValue, expectedBits)) {
-    throw new ApiError(
-      "VALIDATION_FAILED",
-      expectedBits === 32
-        ? "Debug value must be an unsigned 32-bit cell array (for example <6000>, <0x1770>, or <1 2 3>)."
-        : `Debug value must be a /bits/ ${expectedBits} cell array (for example /bits/ ${expectedBits} <17>).`,
-      400,
-      { bindingId, debugValue, expectedBits }
-    );
-  }
-
-  const cellsPerGroup = valueShape?.cellsPerGroup;
-  if (typeof cellsPerGroup === "number" && Number.isInteger(cellsPerGroup) && cellsPerGroup >= 1) {
-    const mismatched = parsedValue.groups.some((group) => group.length !== cellsPerGroup);
-    if (mismatched) {
+    case "group-count-mismatch":
       throw new ApiError(
         "VALIDATION_FAILED",
-        `Debug value must have ${cellsPerGroup} cell(s) per group.`,
+        `Debug value must have ${issue.expectedGroups} cell group(s).`,
         400,
         {
           bindingId,
           debugValue,
-          expectedCellsPerGroup: cellsPerGroup,
-          actualCellsPerGroup: parsedValue.groups.map((group) => group.length)
+          expectedGroups: issue.expectedGroups,
+          actualGroups: issue.actualGroups
         }
       );
-    }
-  }
-
-  const expectedGroups = valueShape?.groups;
-  if (typeof expectedGroups === "number" && Number.isInteger(expectedGroups) && expectedGroups >= 1) {
-    if (parsedValue.groups.length !== expectedGroups) {
-      throw new ApiError(
-        "VALIDATION_FAILED",
-        `Debug value must have ${expectedGroups} cell group(s).`,
-        400,
-        {
-          bindingId,
-          debugValue,
-          expectedGroups,
-          actualGroups: parsedValue.groups.length
-        }
-      );
-    }
   }
 }
 
@@ -570,24 +614,15 @@ async function resolveStartTargets(
     }
     seenOverlayIdentity.add(overlayIdentity);
 
-    let parsedValue: DtsValue;
-    try {
-      parsedValue = parseDtsValue(candidate.propertyKey, target.debugValue.trim()).value;
-    } catch (error) {
-      throw new ApiError(
-        "VALIDATION_FAILED",
-        `Debug value could not be parsed: ${error instanceof Error ? error.message : "invalid value"}`,
-        400,
-        { bindingId: candidate.bindingId, debugValue: target.debugValue }
-      );
-    }
-
-    assertParsedValueMatchesShape(
-      parsedValue,
-      resolvedShape,
-      candidate.bindingId,
-      target.debugValue
+    const validated = validateAuthoredDebugValue(
+      candidate.propertyKey,
+      target.debugValue,
+      resolvedShape
     );
+    if (!validated.ok) {
+      throwAuthoringIssue(validated.issue, resolvedShape, candidate.bindingId, target.debugValue);
+    }
+    const parsedValue = validated.parsed;
     assertDebugValueConstraints(parsedValue, candidate.constraints);
 
     resolved.push({
@@ -871,6 +906,22 @@ export async function startRestoreBaselineRun(
         { code: "reload-residue-binding-missing", bindingId: parameter.bindingId }
       );
     }
+    // The residue was written against a specific node path. If the library has since re-anchored
+    // this binding to a different node, a compensating overlay would restore the wrong node while
+    // the original node keeps its debug values — refuse rather than silently clearing residue later.
+    if ((candidate.node_path ?? "") !== parameter.nodePath) {
+      throw new ApiError(
+        "CONFLICT",
+        `Residue parameter ${parameter.propertyKey} now resolves to a different device-tree node than when its debug value was written; refuse restore to avoid stranding debug values on the original node.`,
+        409,
+        {
+          code: "reload-residue-node-drift",
+          bindingId: parameter.bindingId,
+          recordedNodePath: parameter.nodePath,
+          currentNodePath: candidate.node_path
+        }
+      );
+    }
     const baselineValue = candidate.baseline_value;
     if (baselineValue === null || baselineValue === undefined || baselineValue === "") {
       throw new ApiError(
@@ -1062,14 +1113,6 @@ export async function getReloadRunArtifact(
   if (!row) {
     throw new ApiError("NOT_FOUND", "Reload run was not found.", 404, { runId });
   }
-  if (!row.overlay_artifact_storage_key || !row.overlay_artifact_sha256) {
-    throw new ApiError(
-      "CONFLICT",
-      "This reload run has no compiled artifact to download (it may have been blocked).",
-      409,
-      { runId, status: row.status }
-    );
-  }
 
   const createdAt = row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at);
   const completedAt = row.completed_at
@@ -1077,6 +1120,8 @@ export async function getReloadRunArtifact(
       ? row.completed_at.toISOString()
       : String(row.completed_at)
     : null;
+  // Retention is checked before artifact presence so a swept run (blob deleted, key nulled) still
+  // reports the honest 410-expired rather than a misleading 409 "may have been blocked".
   if (isReloadArtifactRetentionExpired(createdAt, completedAt)) {
     throw new ApiError(
       "GONE",
@@ -1092,6 +1137,15 @@ export async function getReloadRunArtifact(
     );
   }
 
+  if (!row.overlay_artifact_storage_key || !row.overlay_artifact_sha256) {
+    throw new ApiError(
+      "CONFLICT",
+      "This reload run has no compiled artifact to download (it may have been blocked).",
+      409,
+      { runId, status: row.status }
+    );
+  }
+
   const bytes = await objectStore.get(row.overlay_artifact_storage_key);
   return {
     fileName: `debug-overlay-${runId}.dtbo`,
@@ -1099,6 +1153,87 @@ export async function getReloadRunArtifact(
     bytes,
     sha256: row.overlay_artifact_sha256
   };
+}
+
+export type ReclaimStaleDeployingResult = {
+  reclaimedRuns: number;
+  runIds: string[];
+};
+
+/**
+ * Reclaim reload runs wedged in `deploying` by a crashed deployer: those whose deploy heartbeat is
+ * older than `RELOAD_DEPLOY_RECLAIM_AFTER_MS` are reset to `failed` (`deploy-reclaimed`) so they can
+ * be deployed again. The in-request try/finally already handles thrown errors; this covers process
+ * death. Cross-organization platform maintenance intended for a scheduled / ops invocation. The
+ * time gate exceeds the worst-case deploy window, so a live deployer's run is never reclaimed.
+ */
+export async function reclaimStaleDeployingReloadRuns(
+  db: Database,
+  options: { now?: () => Date; staleAfterMs?: number; batchLimit?: number } = {}
+): Promise<ReclaimStaleDeployingResult> {
+  const now = options.now ?? (() => new Date());
+  const staleAfterMs = options.staleAfterMs ?? RELOAD_DEPLOY_RECLAIM_AFTER_MS;
+  const batchLimit = options.batchLimit ?? 200;
+  const olderThanIso = new Date(now().getTime() - staleAfterMs).toISOString();
+
+  const reclaimed = await reclaimStaleDeployingReloadRunRows(db, {
+    olderThanIso,
+    failureCode: DEPLOY_RECLAIMED_FAILURE_CODE,
+    limit: batchLimit
+  });
+  return { reclaimedRuns: reclaimed.length, runIds: reclaimed.map((row) => row.id) };
+}
+
+export type SweepReloadArtifactsResult = {
+  scannedRuns: number;
+  reclaimedRuns: number;
+  deletedBlobs: number;
+};
+
+/**
+ * Physically reclaim overlay blobs (artifact + source) for reload runs past the retention window
+ * and null their storage keys. Digests, byte sizes, and the reload snapshot stay on the row, and
+ * retention checks keep reporting the artifact as expired by timestamp — this only reclaims storage.
+ *
+ * Cross-organization platform maintenance intended for a scheduled / ops invocation. No-op when the
+ * object store cannot delete. Per-run failures leave that run's keys in place so a later sweep
+ * retries rather than orphaning an undeleted blob.
+ */
+export async function sweepExpiredReloadArtifacts(
+  db: Database,
+  objectStore: ObjectStore,
+  options: { now?: () => Date; batchLimit?: number } = {}
+): Promise<SweepReloadArtifactsResult> {
+  const remove = objectStore.delete?.bind(objectStore);
+  if (!remove) {
+    return { scannedRuns: 0, reclaimedRuns: 0, deletedBlobs: 0 };
+  }
+
+  const now = options.now ?? (() => new Date());
+  const batchLimit = options.batchLimit ?? 200;
+  const retentionMs = RELOAD_ARTIFACT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  const olderThanIso = new Date(now().getTime() - retentionMs).toISOString();
+
+  const expired = await listExpiredReloadArtifactRuns(db, { olderThanIso, limit: batchLimit });
+  let reclaimedRuns = 0;
+  let deletedBlobs = 0;
+  for (const run of expired) {
+    const keys = [run.overlay_artifact_storage_key, run.overlay_source_storage_key].filter(
+      (key): key is string => typeof key === "string" && key.length > 0
+    );
+    try {
+      for (const key of keys) {
+        await remove(key);
+        deletedBlobs += 1;
+      }
+      await clearReloadRunStorageKeys(db, { organizationId: run.organization_id, runId: run.id });
+      reclaimedRuns += 1;
+    } catch {
+      // Leave this run's keys in place so a later sweep retries; never null a key whose blob survived.
+    }
+  }
+
+  return { scannedRuns: expired.length, reclaimedRuns, deletedBlobs };
 }
 
 export async function deployReloadRun(
@@ -1135,6 +1270,19 @@ export async function deployReloadRun(
     });
   }
 
+  // An artifact past its retention window must not be deployed — deploy is more dangerous than
+  // download (which already refuses expired artifacts), and the library has likely drifted.
+  if (run.artifactRetentionExpired) {
+    throw new ApiError(
+      "GONE",
+      "This reload run's overlay artifact has passed its retention window and can no longer be deployed. Start a fresh run.",
+      410,
+      { code: "reload-artifact-expired", runId: run.id, retentionDays: RELOAD_ARTIFACT_RETENTION_DAYS }
+    );
+  }
+
+  // Device identity is derived from the bridge server-side; the pinned restore device must match it.
+  const canonicalDeviceId = bridgeCanonicalDeviceId(input.bridgeId);
   if (run.purpose === "restore-baseline") {
     if (!run.deviceId?.trim()) {
       throw new ApiError(
@@ -1144,7 +1292,7 @@ export async function deployReloadRun(
         { code: "restore-device-unpinned", runId: run.id }
       );
     }
-    if (input.deviceId !== run.deviceId) {
+    if (canonicalDeviceId !== run.deviceId) {
       throw new ApiError(
         "CONFLICT",
         "Restore-baseline deploy must target the same device the restore run was started for.",
@@ -1153,11 +1301,15 @@ export async function deployReloadRun(
           code: "restore-device-mismatch",
           runId: run.id,
           pinnedDeviceId: run.deviceId,
-          deployDeviceId: input.deviceId
+          deployDeviceId: canonicalDeviceId
         }
       );
     }
   }
+
+  // Re-run the sensitive-node gate against the deployer's capability + confirmation. The start-time
+  // gate cannot vouch for a different subject who triggers the actual device write here.
+  await assertDeploySensitiveReloadAllowed(db, auth, run, input, context);
 
   const row = await getReloadRunRow(db, { organizationId: auth.organization.id, runId: input.runId });
   if (!row?.overlay_artifact_storage_key) {
@@ -1170,6 +1322,8 @@ export async function deployReloadRun(
 
   const audits = auditKindsForPurpose(run.purpose);
 
+  // Emitted only after every cheap refusal above has passed, so a rejected deploy never leaves a
+  // dangling "deploy-started" with no terminal counterpart.
   await writeReloadAudit(
     db,
     auth,
@@ -1182,7 +1336,7 @@ export async function deployReloadRun(
       metadata: {
         phase: "deploy",
         purpose: run.purpose,
-        deviceId: input.deviceId,
+        deviceId: canonicalDeviceId,
         bridgeId: input.bridgeId,
         targetRef: input.targetRef,
         protocol: input.protocol,
@@ -1193,58 +1347,94 @@ export async function deployReloadRun(
     context
   );
 
-  const result = await executeReloadDeploy({
-    db,
-    auth,
-    run,
-    artifactBytes,
-    deploy: input,
-    deps,
-    persistProgress: async (update, options) => {
-      const payload = {
-        runId: run.id,
-        organizationId: auth.organization.id,
-        status: update.status,
-        failureCode: update.failureCode,
-        steps: update.steps,
-        deviceId: update.deviceId,
-        bridgeId: update.bridgeId,
-        bridgeMachineLabel: update.bridgeMachineLabel,
-        targetRef: update.targetRef,
-        protocol: update.protocol,
-        integrityCheck: update.integrityCheck,
-        reloadSnapshot: update.reloadSnapshot,
-        completedAt: update.completedAt
-      };
-      if (options?.claim) {
-        const claimed = await claimReloadRunForDeploy(db, payload);
-        if (!claimed) {
-          throw new ApiError(
-            "CONFLICT",
-            "Reload run is already being deployed (or is no longer deployable).",
-            409,
-            { code: "reload-deploy-already-in-progress", runId: run.id, status: run.status }
-          );
-        }
-        return toReloadRunDto(claimed, run.targets, run.overlaySource);
-      }
-      const updated = await updateReloadRunDeployState(db, payload);
-      return toReloadRunDto(updated, run.targets, run.overlaySource);
-    }
-  });
+  // Residue is applied inside the persistProgress callback so it runs while the device lease is
+  // still held (executeReloadDeploy releases the lease only after this callback returns). This
+  // serialises residue bookkeeping against a concurrent restore-baseline on the same device.
+  let residueAction: "set" | "clear" | "none" = "none";
 
-  const residueAction = result.deviceId
-    ? await applyResidueForDeployTerminal(db, {
-        organizationId: auth.organization.id,
-        deviceId: result.deviceId,
-        projectId: result.projectId,
-        runId: result.id,
-        purpose: result.purpose,
-        status: result.status,
-        targets: result.targets,
-        restoresSourceRunId: result.restoresSourceRunId
-      })
-    : "none";
+  let result: ReloadRunDto;
+  try {
+    result = await executeReloadDeploy({
+      db,
+      auth,
+      run,
+      artifactBytes,
+      deploy: input,
+      deps,
+      persistProgress: async (update, options) => {
+        const payload = {
+          runId: run.id,
+          organizationId: auth.organization.id,
+          status: update.status,
+          failureCode: update.failureCode,
+          steps: update.steps,
+          deviceId: update.deviceId,
+          bridgeId: update.bridgeId,
+          bridgeMachineLabel: update.bridgeMachineLabel,
+          targetRef: update.targetRef,
+          protocol: update.protocol,
+          integrityCheck: update.integrityCheck,
+          reloadSnapshot: update.reloadSnapshot,
+          completedAt: update.completedAt
+        };
+        if (options?.claim) {
+          const claimed = await claimReloadRunForDeploy(db, payload);
+          if (!claimed) {
+            throw new ApiError(
+              "CONFLICT",
+              "Reload run is already being deployed (or is no longer deployable).",
+              409,
+              { code: "reload-deploy-already-in-progress", runId: run.id, status: run.status }
+            );
+          }
+          return toReloadRunDto(claimed, run.targets, run.overlaySource);
+        }
+        const updated = await updateReloadRunDeployState(db, payload);
+        const dto = toReloadRunDto(updated, run.targets, run.overlaySource);
+        // Terminal persist (has completedAt) → mutate residue while the lease is still held.
+        if (update.completedAt !== null && update.deviceId) {
+          residueAction = await applyResidueForDeployTerminal(db, {
+            organizationId: auth.organization.id,
+            deviceId: update.deviceId,
+            projectId: run.projectId,
+            runId: run.id,
+            purpose: run.purpose,
+            status: update.status,
+            failureCode: update.failureCode,
+            targets: run.targets,
+            restoresSourceRunId: run.restoresSourceRunId
+          });
+        }
+        return dto;
+      }
+    });
+  } catch (error) {
+    // A throw after the deploy-started audit (bridge offline / not-found / upgrade required /
+    // claim conflict) still gets a terminal audit so the started event is never left dangling.
+    await writeReloadAudit(
+      db,
+      auth,
+      {
+        kind: audits.failed,
+        action: "failed",
+        projectId: run.projectId,
+        runId: run.id,
+        severity: "High",
+        metadata: {
+          phase: "deploy",
+          purpose: run.purpose,
+          status: "failed",
+          bridgeId: input.bridgeId,
+          deviceId: canonicalDeviceId,
+          refused: true,
+          failureCode: error instanceof ApiError ? String(error.details?.code ?? error.code) : "deploy-error",
+          message: error instanceof Error ? error.message : String(error)
+        }
+      },
+      context
+    );
+    throw error;
+  }
 
   const terminalAudit =
     result.status === "verified"
@@ -1272,8 +1462,7 @@ export async function deployReloadRun(
         deviceId: result.deviceId,
         bridgeId: result.bridgeId,
         integrityCheck: result.integrityCheck,
-        reloadSnapshot: result.reloadSnapshot,
-        behaviouralVerification: result.reloadSnapshot?.behaviouralVerification ?? null,
+        reloadSnapshot: reloadSnapshotAuditSummary(result.reloadSnapshot),
         residueAction
       }
     },

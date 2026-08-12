@@ -13,7 +13,7 @@ import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { nodePathToParameterIdentity } from "../parameter-files/pathMapper";
+import { nodePathToParameterIdentity } from "./pathMapper";
 import { getProjectParameterFileById } from "../parameter-files/repository";
 import { writebackMergedEnablementValue, writebackMergedParameterValue, type WritebackServiceContext } from "../parameter-files/writebackService";
 import { resolveInitializationSuggestion } from "../parameter-topology/editService";
@@ -26,7 +26,7 @@ import { assertProjectAllowsParameterSubmit } from "./initializationService";
 import { canAdminParameters, canEditParameters, canMergeParameters, canReviewParameterStage, canViewParameters } from "./policy";
 import { isValidMergeLink } from "./mergeLink";
 import { assertSensitiveNodeWriteAllowed } from "./sensitiveNode";
-import { mustUseSemanticParameterIdentity } from "./semanticParameterReads";
+import { parameterIdentityMode } from "./parameterIdentityMode";
 import type { InitializationSuggestionDto } from "./types";
 import {
   applyAddedImportItem,
@@ -1101,7 +1101,7 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
 
 export async function saveDraft(db: Queryable, auth: AuthContext, input: SaveDraftInput) {
   requireCanEdit(auth);
-  if (await mustUseSemanticParameterIdentity(db)) {
+  if (parameterIdentityMode() === "semantic") {
     throw new ApiError(
       "CONFLICT",
       "Legacy parameter drafts are retired after semantic identity cutover; create a typed binding draft instead.",
@@ -1153,7 +1153,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
   return db.transaction(async (tx) => {
     await assertProjectAllowsParameterSubmit(tx, auth.organization.id, input.projectId);
 
-    const useSemanticIdentity = await mustUseSemanticParameterIdentity(tx);
+    const useSemanticIdentity = parameterIdentityMode() === "semantic";
     if (useSemanticIdentity && input.items.some((item) => !("draftId" in item))) {
       throw new ApiError(
         "CONFLICT",
@@ -2047,7 +2047,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
       note: mergeLink
     });
 
-    const semanticIdentity = await mustUseSemanticParameterIdentity(tx);
+    const semanticIdentity = parameterIdentityMode() === "semantic";
     const isEnablementMerge =
       request.editSubjectKind === "node-enablement" || Boolean(request.logicalNodeId);
     if (semanticIdentity) {

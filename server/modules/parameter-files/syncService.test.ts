@@ -10,7 +10,7 @@ import {
   findProjectValueBySource,
   upsertFileSyncDraft
 } from "../parameters/repository";
-import { mustUseSemanticParameterIdentity } from "../parameters/semanticParameterReads";
+import { setParameterIdentityMode } from "../parameters/parameterIdentityMode";
 
 vi.mock("./repository", () => ({
   getProjectParameterFileById: vi.fn(),
@@ -31,10 +31,6 @@ vi.mock("../audit/repository", () => ({
   createAuditEvent: vi.fn()
 }));
 
-vi.mock("../parameters/semanticParameterReads", () => ({
-  mustUseSemanticParameterIdentity: vi.fn()
-}));
-
 const mockedGetProjectParameterFileById = vi.mocked(getProjectParameterFileById);
 const mockedGetFileVersionById = vi.mocked(getFileVersionById);
 const mockedFindProjectValueBySource = vi.mocked(findProjectValueBySource);
@@ -42,8 +38,6 @@ const mockedBindParameterSource = vi.mocked(bindParameterSource);
 const mockedUpsertFileSyncDraft = vi.mocked(upsertFileSyncDraft);
 const mockedDetectFileUiDraftConflict = vi.mocked(detectFileUiDraftConflict);
 const mockedCreateAuditEvent = vi.mocked(createAuditEvent);
-const mockedMustUseSemanticParameterIdentity = vi.mocked(mustUseSemanticParameterIdentity);
-
 const fakeDb = {
   query: vi.fn()
 };
@@ -81,7 +75,7 @@ describe("syncFileVersion", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();
-    mockedMustUseSemanticParameterIdentity.mockResolvedValue(false);
+    setParameterIdentityMode("legacy");
     mockedGetProjectParameterFileById.mockResolvedValue({
       id: "file-1",
       projectId: "project-1",
@@ -206,7 +200,7 @@ describe("syncFileVersion", () => {
 
   it("post-cutover upload skips the retired flat-identity source-sync adapter", async () => {
     mockUploadVersion();
-    mockedMustUseSemanticParameterIdentity.mockResolvedValue(true);
+    setParameterIdentityMode("semantic");
 
     const result = await syncFileVersion(fakeDb, adminAuth(), {
       fileId: "file-1",
