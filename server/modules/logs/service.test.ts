@@ -16,6 +16,7 @@ import {
   archiveLogRecord,
   createLogFromFile,
   getLogRecord,
+  listLogFeedbackInsights,
   listLogRecords,
   rerunLogAnalysis,
   submitLogFeedback,
@@ -474,6 +475,21 @@ describe.skipIf(!databaseAvailable)("log service", () => {
     expect(audit).toBeDefined();
     expect(audit?.project_id).toBeNull();
     expect(audit?.trace_id).toBe("request-log-feedback-1");
+  });
+
+  it("feedback insights require logs:view and aggregate helpful rate per group", async () => {
+    const uploaded = await uploadSampleLog();
+    await submitLogFeedback(db, makeAuth(), { logId: uploaded.log.id, rating: "helpful" });
+    await submitLogFeedback(db, makeAuth(), { logId: uploaded.log.id, rating: "not_helpful" });
+
+    await expect(
+      listLogFeedbackInsights(db, makeAuth({ permissions: ["logs:feedback"] }), {})
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Forbidden.", 403, { permission: "logs:view" }));
+
+    const insights = await listLogFeedbackInsights(db, makeAuth(), { timeWindow: "7d" });
+    expect(insights.items).toEqual([
+      expect.objectContaining({ totalCount: 2, helpfulCount: 1, helpfulRate: 0.5 })
+    ]);
   });
 
   it("rerun requires logs:analyze or admin, creates a new run and job, and keeps old run history", async () => {

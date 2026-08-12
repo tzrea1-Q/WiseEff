@@ -753,6 +753,11 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     requestBody: "LogFeedbackRequest",
     responseBody: "LogFeedbackResponse"
   },
+  "logs.feedbackInsights": {
+    summary: "Aggregate log feedback quality insights",
+    tags: ["logs"],
+    responseBody: "LogFeedbackInsightsResponse"
+  },
   "logs.listDomains": {
     summary: "List log domains",
     tags: ["logs"],

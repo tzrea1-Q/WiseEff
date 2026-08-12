@@ -11,6 +11,7 @@ import { enqueueLogAnalysisJob, type LogAnalysisQueue } from "./logAnalysisQueue
 import { getActiveLogDomainForBinding } from "./domainsRepository";
 import type { ObjectStore, StoredObject } from "./objectStore";
 import {
+  aggregateFeedbackInsights,
   appendFeedback,
   archiveLog,
   createFileObject,
@@ -22,6 +23,7 @@ import {
   listRuns,
   markUnsupportedLog,
   unarchiveLog,
+  type LogFeedbackInsightDto,
   type LogFileObjectDto,
   type LogRunDto
 } from "./repository";
@@ -479,6 +481,20 @@ export async function unarchiveLogRecord(db: Database, auth: AuthContext, logId:
     );
     return log;
   });
+}
+
+export type ListLogFeedbackInsightsQuery = {
+  timeWindow?: "today" | "7d" | "30d";
+};
+
+/** Feedback quality insights for the `/log-admin` dashboard (org-scoped, read-only). */
+export async function listLogFeedbackInsights(
+  db: Queryable,
+  auth: AuthContext,
+  query: ListLogFeedbackInsightsQuery = {}
+): Promise<{ items: LogFeedbackInsightDto[] }> {
+  requireLogView(auth);
+  return { items: await aggregateFeedbackInsights(db, auth, query) };
 }
 
 export async function submitLogFeedback(db: Database, auth: AuthContext, input: SubmitLogFeedbackInput, context: ServiceContext = {}) {
