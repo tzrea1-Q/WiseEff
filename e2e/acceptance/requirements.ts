@@ -63,6 +63,20 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "KB-ASK-001",
+    workflow: "J",
+    title:
+      "Org member asks the knowledge base from /knowledge (API mode only): the entry point opens Xiaoze, and a deterministic Xiaoze run grounds the answer via knowledge.search with a citation deep link to the published entry.",
+    required: true
+  },
+  {
+    id: "KB-INDEX-001",
+    workflow: "J",
+    title:
+      "Knowledge admin sees per-entry retrieval index health (status, failure reason, indexed revision) with the honest retrieval-mode banner on /knowledge-admin, and can retry one entry or rebuild the whole index.",
+    required: true
+  },
+  {
     id: "SHELL-DIAG-001",
     workflow: "A",
     title: "Core routes fail acceptance on unexpected console, page, request, or critical API errors.",
