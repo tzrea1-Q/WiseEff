@@ -20,11 +20,8 @@ import type {
   DtsReloadRunListItem,
   DtsReloadSnapshot
 } from "@/domain/dtsReload/types";
-import {
-  describeReloadValueShapeAuthoring,
-  isPhandleCellFamilyKind,
-  isSupportedCellBits
-} from "@/domain/dtsReload/valueShape";
+import { describeReloadValueShapeAuthoring } from "@/domain/dtsReload/valueShape";
+import { validateDebugValue } from "@/domain/dtsReload/debugValue";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import { ParameterValueDiff } from "@/components/ParameterValueDiff";
@@ -175,165 +172,6 @@ function sensitiveBadgeLabel(candidate: DtsReloadCandidate): string | null {
   const match = candidate.sensitiveMatch;
   if (!match) return null;
   return match.riskTier === "critical" ? "敏感 · critical" : "敏感 · high";
-}
-
-function parseCellIntegers(raw: string): number[] | null {
-  const trimmed = raw.trim();
-  const bracket = /^\[([0-9a-fA-F\s]+)\]$/.exec(trimmed);
-  if (bracket) {
-    const tokens = bracket[1]!.trim().split(/\s+/).filter(Boolean);
-    if (tokens.length === 0) return null;
-    const values = tokens.map((token) => Number.parseInt(token, 16));
-    return values.every((value) => Number.isFinite(value)) ? values : null;
-  }
-  const groups = trimmed.match(/<[^>]+>/g);
-  if (!groups || groups.length === 0) {
-    const bare = /^(0x[0-9a-fA-F]+|-?\d+)(?:\s+(0x[0-9a-fA-F]+|-?\d+))*$/.exec(trimmed);
-    if (!bare) return null;
-    return trimmed.split(/\s+/).map((token) => Number(token));
-  }
-  const values: number[] = [];
-  for (const group of groups) {
-    const body = group.slice(1, -1).trim();
-    if (!body) return null;
-    for (const token of body.split(/\s+/)) {
-      if (!/^(0x[0-9a-fA-F]+|-?\d+)$/.test(token)) return null;
-      values.push(Number(token));
-    }
-  }
-  return values.every((value) => Number.isFinite(value)) ? values : null;
-}
-
-/** GPIO-style groups: each `<&label N …>` with uniform width (phandle + ≥1 integers). */
-function parsePhandleCellGroups(
-  raw: string
-): Array<{ label: string; integers: number[]; width: number }> | null {
-  const trimmed = raw.trim();
-  const groups = trimmed.match(/<[^>]+>/g);
-  if (!groups || groups.length === 0) return null;
-  const parsed: Array<{ label: string; integers: number[]; width: number }> = [];
-  for (const group of groups) {
-    const tokens = group.slice(1, -1).trim().split(/\s+/).filter(Boolean);
-    if (tokens.length < 2) return null;
-    const labelMatch = /^&([A-Za-z_][\w]*)$/.exec(tokens[0]!);
-    if (!labelMatch) return null;
-    const integers: number[] = [];
-    for (const token of tokens.slice(1)) {
-      if (!/^(0x[0-9a-fA-F]+|-?\d+)$/.test(token)) return null;
-      integers.push(Number(token));
-    }
-    if (integers.length === 0 || integers.some((value) => !Number.isFinite(value))) return null;
-    parsed.push({ label: labelMatch[1]!, integers, width: integers.length + 1 });
-  }
-  const width = parsed[0]!.width;
-  if (parsed.some((group) => group.width !== width)) return null;
-  return parsed;
-}
-
-function countQuotedStrings(raw: string): number {
-  const matches = raw.match(/"(?:\\.|[^"\\])*"/g);
-  return matches?.length ?? 0;
-}
-
-function looksLikeStringList(raw: string): boolean {
-  return countQuotedStrings(raw) >= 1;
-}
-
-/**
- * Client-side authoring pre-check for immediate feedback. Dispatches on the server-resolved
- * `resolvedValueShape` (never the raw catalog kind) and sources every example token from the
- * shared `describeReloadValueShapeAuthoring`, so the family set and examples stay in one place.
- * The server, through the real DTS parser, remains the source of truth (including per-width
- * integer overflow); this is a best-effort structural mirror plus the declared min/max/cells
- * constraint check.
- */
-function validateDebugValueAgainstConstraints(
-  raw: string,
-  candidate: DtsReloadCandidate
-): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return "请输入调试值。";
-
-  const shape = candidate.resolvedValueShape;
-  const example = describeReloadValueShapeAuthoring(shape).placeholder;
-
-  if (shape?.kind === "string") {
-    if (countQuotedStrings(trimmed) !== 1) {
-      return `调试值必须是单个字符串，例如 ${example}。`;
-    }
-    return null;
-  }
-
-  if (shape?.kind === "string-list") {
-    if (!looksLikeStringList(trimmed)) {
-      return `调试值必须是字符串列表，例如 ${example}。`;
-    }
-    return null;
-  }
-
-  if (isPhandleCellFamilyKind(shape?.kind)) {
-    const groups = parsePhandleCellGroups(trimmed);
-    if (!groups) {
-      return `调试值必须是 GPIO 风格 phandle 数组，例如 ${example}。`;
-    }
-    const { constraints } = candidate;
-    const expectedCells = typeof constraints.cells === "number" ? constraints.cells : undefined;
-    const min = typeof constraints.min === "number" ? constraints.min : undefined;
-    const max = typeof constraints.max === "number" ? constraints.max : undefined;
-    if (expectedCells !== undefined && groups.some((group) => group.width !== expectedCells)) {
-      return `调试值 cell 数量应为 ${expectedCells}，当前为 ${groups.map((group) => group.width).join(", ")}。`;
-    }
-    const integers = groups.flatMap((group) => group.integers);
-    if (min !== undefined && integers.some((value) => value < min)) {
-      return `调试值低于声明的最小值 ${min}。`;
-    }
-    if (max !== undefined && integers.some((value) => value > max)) {
-      return `调试值超过声明的最大值 ${max}。`;
-    }
-    return null;
-  }
-
-  // Integer cell family: sub-32-bit widths use the `/bits/ N <…>` authoring form.
-  const bits = isSupportedCellBits(shape?.bits) ? shape.bits : 32;
-  if (bits !== 32) {
-    if (!new RegExp(`^/bits/\\s+${bits}\\s+<[^>]+>$`).test(trimmed)) {
-      return `调试值必须是 /bits/ ${bits} cell 数组，例如 ${example}。`;
-    }
-    const numeric = parseCellIntegers(trimmed);
-    if (numeric === null) {
-      return `调试值必须是 /bits/ ${bits} cell 数组，例如 ${example}。`;
-    }
-    const maxUnsigned = 2 ** bits - 1;
-    if (numeric.some((value) => value < 0 || value > maxUnsigned)) {
-      return `调试值中的每个数值必须在 0–${maxUnsigned} 范围内。`;
-    }
-    const { constraints } = candidate;
-    const expectedCells = typeof constraints.cells === "number" ? constraints.cells : undefined;
-    if (expectedCells !== undefined && numeric.length !== expectedCells) {
-      return `调试值 cell 数量应为 ${expectedCells}，当前为 ${numeric.length}。`;
-    }
-    return null;
-  }
-
-  const numeric = parseCellIntegers(trimmed);
-  if (numeric === null) {
-    return `调试值必须是 u32 cell 数组，例如 ${example}。`;
-  }
-
-  const { constraints } = candidate;
-  const expectedCells = typeof constraints.cells === "number" ? constraints.cells : undefined;
-  const min = typeof constraints.min === "number" ? constraints.min : undefined;
-  const max = typeof constraints.max === "number" ? constraints.max : undefined;
-  if (expectedCells !== undefined && numeric.length !== expectedCells) {
-    return `调试值 cell 数量应为 ${expectedCells}，当前为 ${numeric.length}。`;
-  }
-  if (min !== undefined && numeric.some((value) => value < min)) {
-    return `调试值低于声明的最小值 ${min}。`;
-  }
-  if (max !== undefined && numeric.some((value) => value > max)) {
-    return `调试值超过声明的最大值 ${max}。`;
-  }
-  return null;
 }
 
 function readRunIdFromSearch(): string | null {
@@ -1611,7 +1449,7 @@ export function DtsReloadPage({
         ? "调试值与库基线相同，无需加入本轮。"
         : "请输入调试值。";
     }
-    const constraintError = validateDebugValueAgainstConstraints(debugValue, candidate);
+    const constraintError = validateDebugValue(debugValue, candidate);
     if (constraintError) return constraintError;
     setErrorMessage("");
     setDebugValues((values) => ({
@@ -1633,7 +1471,7 @@ export function DtsReloadPage({
     }
 
     for (const candidate of selectedCandidates) {
-      const constraintError = validateDebugValueAgainstConstraints(
+      const constraintError = validateDebugValue(
         debugValues[candidate.bindingId] ?? "",
         candidate
       );
