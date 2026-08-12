@@ -32,6 +32,8 @@ export type KnowledgeEntryDto = {
   tags: string[];
   sourceType: KnowledgeSourceType;
   sourceSessionId: string | null;
+  /** Log-analysis record this entry was distilled from (Phase 3 distillation). */
+  sourceLogId: string | null;
   createdByUserId: string;
   headRevisionId: string | null;
   headRevisionNumber: number;
@@ -89,6 +91,7 @@ export type KnowledgeSearchResponseDto = {
 export type ListKnowledgeEntriesQuery = {
   status?: KnowledgeStatus;
   contentForm?: KnowledgeContentForm;
+  sourceType?: KnowledgeSourceType;
   tag?: string;
   q?: string;
   limit?: number;
@@ -101,6 +104,7 @@ export type InsertKnowledgeEntryInput = {
   tags: string[];
   sourceType: KnowledgeSourceType;
   sourceSessionId: string | null;
+  sourceLogId: string | null;
   searchText: string;
 };
 

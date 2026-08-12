@@ -8,7 +8,8 @@ const TOOL_LABELS_ZH: Record<string, string> = {
   "perception.getRecentLogConclusions": "查看日志结论",
   "knowledge.search": "检索知识库",
   "knowledge.getDocument": "读取知识条目",
-  "action.submitParameterChange": "提交参数变更"
+  "action.submitParameterChange": "提交参数变更",
+  "action.createKnowledgeDraft": "创建知识草稿"
 };
 
 const TOOL_DESCRIPTIONS: Record<string, string> = {
@@ -25,7 +26,9 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   "knowledge.getDocument":
     "Read the full content of one published knowledge entry by entryId (use ids returned by knowledge.search). Returns markdown or extracted file text plus citation metadata. Drafts and archived entries are never readable.",
   "action.submitParameterChange":
-    "Submit a parameter change request for human review. Never executes immediately; requires explicit user approval. Pass the binding id from perception.searchParameters as parameterId, and write targetValue as DTS source text in the same format as the parameter's current value (for example <3600> for cells or \"fast\" for strings)."
+    "Submit a parameter change request for human review. Never executes immediately; requires explicit user approval. Pass the binding id from perception.searchParameters as parameterId, and write targetValue as DTS source text in the same format as the parameter's current value (for example <3600> for cells or \"fast\" for strings).",
+  "action.createKnowledgeDraft":
+    "Distil the current conversation's conclusions into a NEW knowledge base draft for human review. Never executes immediately; requires explicit user approval. Creates a draft only — it never modifies existing entries and stays out of retrieval until a human publishes it. Use when the user wants to save tuning experience, a fault case, or process knowledge; write contentMarkdown as well-structured markdown and pass the log-analysis record id as sourceLogId when the knowledge comes from a log analysis."
 };
 
 const TOOL_SCHEMAS: Record<string, Record<string, unknown>> = {
@@ -94,6 +97,27 @@ const TOOL_SCHEMAS: Record<string, Record<string, unknown>> = {
       reason: { type: "string", description: "Human-readable reason for the change." }
     },
     required: ["projectId", "parameterId", "targetValue", "reason"],
+    additionalProperties: false
+  },
+  "action.createKnowledgeDraft": {
+    type: "object",
+    properties: {
+      title: { type: "string", description: "Draft title (at most 200 characters), e.g. the distilled conclusion." },
+      contentMarkdown: {
+        type: "string",
+        description: "Draft body as markdown: conclusion, evidence, and suggested actions distilled from the conversation."
+      },
+      tags: {
+        type: "array",
+        items: { type: "string" },
+        description: "Knowledge tags (at most 20), e.g. project or topic labels."
+      },
+      sourceLogId: {
+        type: "string",
+        description: "Optional log-analysis record id this draft was distilled from (use ids from perception.getRecentLogConclusions)."
+      }
+    },
+    required: ["title", "contentMarkdown"],
     additionalProperties: false
   }
 };

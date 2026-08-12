@@ -1,5 +1,6 @@
 import { ApiError } from "../../../shared/http/errors";
 import type { Database } from "../../../shared/database/client";
+import { createAgentKnowledgeDraft } from "../../knowledge/service";
 import type { ObjectStore } from "../../logs/objectStore";
 import type { DtsToolchainRunner } from "../../parameter-files/dtsToolchain";
 import { parseDtsValue } from "../../dts/valueAst";
@@ -10,6 +11,7 @@ import { assertSensitiveNodeWriteAllowed } from "../../parameters/sensitiveNode"
 import { submitParameterChanges } from "../../parameters/service";
 import { loadBindingContext, resolveBindingHeadRevisionId } from "../../parameter-topology/writeLock";
 import { createBindingDraft } from "../../parameter-topology/service";
+import { knowledgeEntryHref } from "./knowledgeTools";
 import type { AgentToolExecutionContext, AgentToolDefinition } from "../toolRegistry";
 
 type ToolOptions = {
@@ -33,6 +35,22 @@ function submissionCitation(changeRequestId: string, projectId: string, targetVa
       snippet: `${targetValue} pending review for ${projectId}.`
     }
   ];
+}
+
+const MAX_DRAFT_TITLE_CHARS = 200;
+const MAX_DRAFT_CONTENT_CHARS = 200_000;
+const MAX_DRAFT_TAGS = 20;
+const MAX_DRAFT_TAG_CHARS = 60;
+
+function readDraftTags(payload: Record<string, unknown>): string[] {
+  if (!Array.isArray(payload.tags)) {
+    return [];
+  }
+  return payload.tags
+    .filter((tag): tag is string => typeof tag === "string")
+    .map((tag) => tag.trim().slice(0, MAX_DRAFT_TAG_CHARS))
+    .filter((tag) => tag.length > 0)
+    .slice(0, MAX_DRAFT_TAGS);
 }
 
 /**
@@ -221,6 +239,69 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
           }
           throw error;
         }
+      }
+    },
+    {
+      name: "action.createKnowledgeDraft",
+      label: "Create knowledge draft",
+      kind: "mutating",
+      permission: "knowledge:edit",
+      requiresApproval: true,
+      // Knowledge is organization-scoped (D3): no project gate, the knowledge
+      // service enforces knowledge:edit plus org isolation itself.
+      scope: "organization",
+      run: async (context, payload) => {
+        const title = typeof payload.title === "string" ? payload.title.trim().slice(0, MAX_DRAFT_TITLE_CHARS) : "";
+        const contentMarkdown =
+          typeof payload.contentMarkdown === "string" ? payload.contentMarkdown.slice(0, MAX_DRAFT_CONTENT_CHARS) : "";
+        const sourceLogId =
+          typeof payload.sourceLogId === "string" && payload.sourceLogId.trim() ? payload.sourceLogId.trim() : undefined;
+
+        if (!title || !contentMarkdown.trim()) {
+          throw new ApiError(
+            "VALIDATION_FAILED",
+            "Title and markdown content are required to create a knowledge draft.",
+            400,
+            { title }
+          );
+        }
+
+        // Draft-only semantics (D11): always a NEW draft under the calling
+        // user's identity; the creating session is recorded so the
+        // publisher-accountability rule can attribute it.
+        const entry = await createAgentKnowledgeDraft(
+          options.db,
+          context.auth,
+          {
+            title,
+            tags: readDraftTags(payload),
+            contentMarkdown,
+            sessionId: context.sessionId,
+            sourceLogId
+          },
+          { requestId: context.requestId }
+        );
+
+        return {
+          summary: `Created knowledge draft "${entry.title}" — pending human review before it can be published into retrieval.`,
+          data: {
+            entryId: entry.id,
+            title: entry.title,
+            status: entry.status,
+            tags: entry.tags,
+            sourceLogId: entry.sourceLogId,
+            sessionId: context.sessionId
+          },
+          citations: [
+            {
+              type: "knowledge" as const,
+              id: entry.id,
+              label: entry.title,
+              href: knowledgeEntryHref(entry.id),
+              snippet: contentMarkdown.slice(0, 200)
+            }
+          ]
+        };
       }
     }
   ];

@@ -47,6 +47,12 @@ The knowledge workflow uses three permissions with ownership-based governance in
 
 Publisher accountability: `knowledge:edit` never publishes or edits another person's entry; cross-person governance concentrates in `knowledge:manage`. Draft entries are visible to their owner and managers only. Hard delete always requires `knowledge:manage` and leaves a `High`-severity audit record.
 
+Phase 3 distillation and agent drafts extend the same model without new permissions:
+
+- Distil-from-log (`POST /api/v1/knowledge/distill-from-log`) requires `knowledge:edit` to create the draft plus `logs:view` (and organization scope) on the source analysis record.
+- The approval-gated agent tool `action.createKnowledgeDraft` executes under the calling user's AuthContext and requires `knowledge:edit` at execution time; every invocation pauses for explicit human approval before any write and creates a NEW draft only.
+- Agent-draft publish rights: the draft's creator is the session user, so `knowledge:edit` publishes or archive-rejects drafts distilled in their OWN sessions; `knowledge:manage` publishes or rejects any agent draft from the `/knowledge-admin` queue. Archive-reject (`POST /api/v1/knowledge/entries/:entryId/reject`) only accepts agent-sourced drafts.
+
 ## Workflow Slot Examples
 
 Current parameter workflow slots use concrete eligible users:

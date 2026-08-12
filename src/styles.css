@@ -120,6 +120,7 @@
   --z-modal-backdrop: 1150;
   --z-modal-backdrop-nested: 1160;
   --z-xiaoze-popup: 1200;
+  --z-xiaoze-approval: 1250;
 
   /* ── Layout ── */
   --sidebar-width: 256px;
@@ -13979,6 +13980,18 @@ td small {
 }
 
 /* Xiaoze design tokens live in the single :root token block at the top of this file. */
+
+/* The approval interrupt card portals to <body> with the library default z-50,
+   which sits UNDER the Xiaoze popup (--z-xiaoze-popup) that spawned it — the
+   scrim swallowed every Approve/Reject click. Lift the card and its overlay
+   onto the declared scale above the popup. */
+[data-slot="alert-dialog-overlay"]:has(+ [data-testid="xiaoze-approval-card"]) {
+  z-index: var(--z-xiaoze-approval);
+}
+
+[data-testid="xiaoze-approval-card"] {
+  z-index: var(--z-xiaoze-approval);
+}
 
 /* ── CopilotKit shell overrides ── */
 .xiaoze-popup-layer {
