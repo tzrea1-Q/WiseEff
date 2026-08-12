@@ -54,8 +54,12 @@ function toBridgeItem(record: DeviceBridgeRecord) {
   };
 }
 
-function resolvePairingService(db: Database, pairingService?: PairingService) {
-  return pairingService ?? createPairingService({ repo: createDeviceBridgeRepository(db) });
+function resolvePairingService(
+  db: Database,
+  pairingService: PairingService | undefined,
+  createAuditEvent?: typeof defaultCreateAuditEvent
+) {
+  return pairingService ?? createPairingService({ repo: createDeviceBridgeRepository(db), db, createAuditEvent });
 }
 
 export function registerDeviceBridgeRoutes(
@@ -119,7 +123,7 @@ export function registerDeviceBridgeRoutes(
     const db = requireDb(options.db);
     const body = parseWithSchema(pairWithCodeBodySchema, request.body);
 
-    const paired = await resolvePairingService(db, options.pairingService).pairWithCode(body);
+    const paired = await resolvePairingService(db, options.pairingService, writeAudit).pairWithCode(body);
     return { status: 201, body: paired };
   });
 
