@@ -34,7 +34,7 @@ import {
   updateChangeRequestStatus
 } from "../parameters/reviewWorkflowRepository";
 import { reviewChange, saveDraft, submitParameterChanges } from "../parameters/service";
-import { resolveBindingWriteLock } from "./editService";
+import { resolveBindingWriteLock } from "./writeLock";
 import {
   applyParameterIdentityCutover,
   migrateParameterIdentities,

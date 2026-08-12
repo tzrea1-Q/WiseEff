@@ -16,17 +16,19 @@ import { assertSensitiveNodeWriteAllowed } from "../parameters/sensitiveNode";
 import { mustUseSemanticParameterIdentity } from "../parameters/semanticParameterReads";
 import { loadPreCutoverWritebackSource } from "../parameters/legacyParameterIdentityAdapter";
 import { getChangeRequestEnablementWriteLock, getChangeRequestWriteLock } from "../parameters/repository";
+import { type BindingEditAction } from "../parameter-topology/editService";
 import {
   applyLockedEnablementWriteback,
   applyLockedOverlayWriteback,
+} from "../parameter-topology/overlayWriteback";
+import {
   resolveBindingWriteLock,
   resolveEnablementWriteLock,
-  type BindingEditAction,
   type BindingWriteLockContext,
   type BindingWriteLockFields,
   type EnablementWriteLockContext,
   type EnablementWriteLockFields,
-} from "../parameter-topology/editService";
+} from "../parameter-topology/writeLock";
 import { createDtsToolchainRunner } from "./dtsToolchain";
 import type { ParameterFileFormat } from "./types";
 
