@@ -9,20 +9,12 @@ vi.mock("@/features/agent/XiaozeProvider", () => ({
 vi.mock("@copilotkit/react-core/v2", () => ({
   useAgentContext: vi.fn()
 }));
-import { readFileSync } from "node:fs";
 import { canAccessPage } from "./app/permissions";
 import App, { appReducer } from "./App";
 import { initialState } from "./mockData";
+import { declarationsFor, readStylesheet } from "./test/cssAssertions";
 
 const guestState = { ...initialState, activeRoleId: "guest" };
-
-function readCssBlock(css: string, selector: string) {
-  const start = css.indexOf(`${selector} {`);
-  expect(start).toBeGreaterThanOrEqual(0);
-  const end = css.indexOf("\n}", start);
-  expect(end).toBeGreaterThan(start);
-  return css.slice(start, end);
-}
 
 afterEach(() => {
   cleanup();
@@ -132,16 +124,16 @@ describe("permission-aware routing", () => {
   });
 
   it("keeps the permission denied action from rendering as text-only", () => {
-    const css = readFileSync("src/styles.css", "utf8");
-    const actionStyles = readCssBlock(css, ".permission-denied-page .permission-denied-action");
-    const primaryStyles = readCssBlock(css, ".permission-denied-page .permission-denied-action.primary");
+    const css = readStylesheet("src/styles.css");
+    const actionStyles = declarationsFor(css, ".permission-denied-page .permission-denied-action");
+    const primaryStyles = declarationsFor(css, ".permission-denied-page .permission-denied-action.primary");
 
-    expect(actionStyles).toContain("display: inline-flex;");
-    expect(actionStyles).toContain("border: 1px solid");
-    expect(actionStyles).toContain("border-radius: 8px;");
-    expect(primaryStyles).toContain("background: var(--app-primary);");
-    expect(primaryStyles).toContain("color: #fff;");
-    expect(primaryStyles).toContain("box-shadow:");
+    expect(actionStyles.display).toBe("inline-flex");
+    expect(actionStyles.border).toContain("1px solid");
+    expect(actionStyles["border-radius"]).toBe("8px");
+    expect(primaryStyles.background).toBe("var(--app-primary)");
+    expect(primaryStyles.color).toBe("#fff");
+    expect(primaryStyles["box-shadow"]).toBeTruthy();
   });
 });
 

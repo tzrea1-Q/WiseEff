@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ParameterRecord } from "../mockData";
+import { declarationFor, declarationsFor, readStylesheet } from "../test/cssAssertions";
 import { ParametersTable, type ParametersTableProps } from "./ParametersTable";
 
 const rows: ParameterRecord[] = [
@@ -376,76 +377,72 @@ describe("ParametersTable", () => {
   });
 
   it("keeps sticky columns anchored and gives the search wrapper a focus ring", () => {
-    const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
+    const styles = readStylesheet("src/styles.css");
+    const firstColumn = declarationsFor(styles, ".parameters-table-grid th:first-child");
+    const nameColumn = declarationsFor(styles, ".parameters-table-grid th:nth-child(2)");
 
-    expect(styles).toMatch(
-      /\.parameters-table-grid th:first-child,\s*\.parameters-table-grid td:first-child\s*\{[^}]*position:\s*sticky;[^}]*left:\s*0;/s
-    );
-    expect(styles).toMatch(
-      /\.parameters-table-grid th:nth-child\(2\),\s*\.parameters-table-grid td:nth-child\(2\)\s*\{[^}]*left:\s*48px;/s
-    );
-    expect(styles).toMatch(/\.parameters-table-search:focus-within\s*\{[^}]*box-shadow:/s);
+    expect(firstColumn.position).toBe("sticky");
+    expect(firstColumn.left).toBe("0");
+    expect(nameColumn.left).toBe("48px");
+    expect(declarationFor(styles, ".parameters-table-search:focus-within", "box-shadow")).toBeTruthy();
   });
 
   it("does not force desktop horizontal scrolling with a wide table min-width", () => {
-    const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
-    const tableGridRule = styles.match(/\.parameters-table-grid\s*\{[^}]*\}/)?.[0] ?? "";
-    const tableHeaderRule = styles.match(/\.parameters-table-grid th\s*\{[^}]*\}/)?.[0] ?? "";
-    const nameColumnRule = styles.match(/\.parameters-table-grid th:nth-child\(2\),\s*\.parameters-table-grid td:nth-child\(2\)\s*\{[^}]*\}/)?.[0] ?? "";
-    const scrollRule = styles.match(/\.parameters-table-scroll\s*\{[^}]*\}/)?.[0] ?? "";
+    const styles = readStylesheet("src/styles.css");
+    const tableGrid = declarationsFor(styles, ".parameters-table-grid");
+    const tableHeader = declarationsFor(styles, ".parameters-table-grid th");
+    const nameColumn = declarationsFor(styles, ".parameters-table-grid th:nth-child(2)");
+    const scroll = declarationsFor(styles, ".parameters-table-scroll");
 
-    expect(tableGridRule).not.toMatch(/min-width:\s*980px/);
-    expect(tableGridRule).toMatch(/min-width:\s*0/);
-    expect(tableGridRule).toMatch(/table-layout:\s*fixed/);
-    expect(tableHeaderRule).not.toMatch(/white-space:\s*nowrap/);
-    expect(nameColumnRule).toMatch(/clamp\(/);
-    expect(scrollRule).toMatch(/overflow-x:\s*auto/);
+    expect(tableGrid["min-width"]).toBe("0");
+    expect(tableGrid["table-layout"]).toBe("fixed");
+    expect(tableHeader["white-space"]).toBeUndefined();
+    expect(nameColumn.width).toContain("clamp(");
+    expect(scroll["overflow-x"]).toBe("auto");
   });
 
   it("lets long DTS-style parameter descriptions wrap inside the name column", () => {
-    const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
+    const styles = readStylesheet("src/styles.css");
+    const nameContent = declarationsFor(styles, ".parameters-table-grid td:nth-child(2) strong");
+    const nameMeta = declarationsFor(styles, ".parameters-table-grid td:nth-child(2) small");
 
-    expect(styles).toMatch(
-      /\.parameters-table-grid td:nth-child\(2\) strong,\s*\.parameters-table-grid td:nth-child\(2\) small\s*\{[^}]*white-space:\s*normal;[^}]*\}/s
-    );
-    expect(styles).toMatch(
-      /\.parameters-table-grid td:nth-child\(2\) strong,\s*\.parameters-table-grid td:nth-child\(2\) small\s*\{[^}]*overflow-wrap:\s*anywhere;[^}]*\}/s
-    );
+    expect(nameContent["white-space"]).toBe("normal");
+    expect(nameContent["overflow-wrap"]).toBe("anywhere");
+    expect(nameMeta["white-space"]).toBe("normal");
+    expect(nameMeta["overflow-wrap"]).toBe("anywhere");
   });
 
   it("keeps multiline parameter values inside the current-to-recommended column", () => {
-    const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
-    const diffRule = styles.match(/\.parameter-value-diff\s*\{[^}]*\}/)?.[0] ?? "";
-    const diffChildRule = styles.match(/\.parameter-value-diff\s*>\s*span,\s*\.parameter-value-diff\s*>\s*strong\s*\{[^}]*\}/)?.[0] ?? "";
+    const styles = readStylesheet("src/styles.css");
+    const diff = declarationsFor(styles, ".parameter-value-diff");
+    const diffChildSpan = declarationsFor(styles, ".parameter-value-diff > span");
+    const diffChildStrong = declarationsFor(styles, ".parameter-value-diff > strong");
 
-    expect(diffRule).toMatch(/display:\s*grid/);
-    expect(diffRule).toMatch(/white-space:\s*normal/);
-    expect(diffRule).toMatch(/max-width:\s*100%/);
-    expect(diffChildRule).toMatch(/overflow-wrap:\s*anywhere/);
-    expect(diffChildRule).toMatch(/white-space:\s*pre-wrap/);
+    expect(diff.display).toBe("grid");
+    expect(diff["white-space"]).toBe("normal");
+    expect(diff["max-width"]).toBe("100%");
+    expect(diffChildSpan["overflow-wrap"]).toBe("anywhere");
+    expect(diffChildSpan["white-space"]).toBe("pre-wrap");
+    expect(diffChildStrong["overflow-wrap"]).toBe("anywhere");
+    expect(diffChildStrong["white-space"]).toBe("pre-wrap");
   });
 
   it("keeps column filter menus usable while the table scrolls horizontally", () => {
-    const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
-    const filteredTableRule =
-      styles.match(/\.parameters-table--column-filters\s+\.parameters-table-scroll\s*\{[^}]*\}/)?.[0] ?? "";
-    const parametersWorkbenchRule =
-      styles.match(/\.parameters-page-layout\s+\.workbench-main\s*\{[^}]*\}/)?.[0] ?? "";
-    const fixedMenuRule =
-      styles.match(/\.parameters-column-filter__menu--fixed\s*\{[^}]*\}/)?.[0] ?? "";
+    const styles = readStylesheet("src/styles.css");
 
-    expect(filteredTableRule).toMatch(/overflow-x:\s*auto/);
-    expect(parametersWorkbenchRule).toMatch(/overflow:\s*hidden/);
-    expect(fixedMenuRule).toMatch(/position:\s*fixed/);
+    expect(
+      declarationFor(styles, ".parameters-table--column-filters .parameters-table-scroll", "overflow-x")
+    ).toBe("auto");
+    expect(declarationFor(styles, ".parameters-page-layout .workbench-main", "overflow")).toBe("hidden");
+    expect(declarationFor(styles, ".parameters-column-filter__menu--fixed", "position")).toBe("fixed");
   });
 
   it("keeps header filter buttons adjacent to header labels", () => {
-    const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
-    const headCellRule = styles.match(/\.parameters-table-head-cell\s*\{[^}]*\}/)?.[0] ?? "";
+    const styles = readStylesheet("src/styles.css");
+    const headCell = declarationsFor(styles, ".parameters-table-head-cell");
 
-    expect(headCellRule).toMatch(/justify-content:\s*flex-start/);
-    expect(headCellRule).toMatch(/width:\s*fit-content/);
-    expect(headCellRule).not.toMatch(/justify-content:\s*space-between/);
+    expect(headCell["justify-content"]).toBe("flex-start");
+    expect(headCell.width).toBe("fit-content");
   });
 
   it("right-aligns the importance filter menu away from row actions", () => {
@@ -464,24 +461,30 @@ describe("ParametersTable", () => {
   });
 
   it("turns the parameter table into mobile cards instead of a forced wide grid", () => {
-    const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
+    const styles = readStylesheet("src/styles.css");
+    const mobile = { within: "(max-width: 960px)" };
 
-    expect(styles).toContain("@media (max-width: 960px)");
-    expect(styles).toContain(".parameters-table-grid thead");
-    expect(styles).toContain("display: none");
-    expect(styles).toContain(".parameters-table-grid tbody tr");
-    expect(styles).toContain("display: grid");
-    expect(styles).not.toMatch(/@media \(max-width: 900px\)[\s\S]*?\.parameters-table-grid\s*\{[^}]*min-width:\s*980px/);
+    expect(declarationFor(styles, ".parameters-table-grid thead", "display", mobile)).toBe("none");
+    expect(declarationFor(styles, ".parameters-table-grid tbody tr", "display", mobile)).toBe("grid");
+    expect(
+      declarationFor(styles, ".parameters-table-grid", "min-width", { within: "(max-width: 900px)" })
+    ).toBe("0");
   });
 
   it("keeps mobile card table values readable beside their labels", () => {
-    const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
+    const styles = readStylesheet("src/styles.css");
+    const mobile = { within: "(max-width: 960px)" };
+    const mobileRow = declarationsFor(styles, ".parameters-table-grid tbody tr", mobile);
+    const mobileCell = declarationsFor(styles, ".parameters-table-grid td", mobile);
+    const mobileBodyCell = declarationsFor(styles, ".parameters-table-grid tbody td", mobile);
+    const mobileAnyBodyCell = declarationsFor(styles, ".parameters-table-grid tbody td:nth-child(n)", mobile);
 
-    expect(styles).toMatch(/\.parameters-table-grid tbody tr\s*\{[^}]*min-width:\s*0;/s);
-    expect(styles).toMatch(/\.parameters-table-grid td\s*\{[^}]*grid-template-columns:\s*minmax\(76px,\s*0\.32fr\)\s*minmax\(0,\s*1fr\);/s);
-    expect(styles).toMatch(/\.parameters-table-grid tbody td\s*\{[^}]*width:\s*auto;/s);
-    expect(styles).toMatch(/\.parameters-table-grid tbody td:nth-child\(n\)\s*\{[^}]*width:\s*auto;[^}]*left:\s*auto;/s);
-    expect(styles).toMatch(/\.parameters-table-grid td\s*\{[^}]*overflow-wrap:\s*anywhere;/s);
-    expect(styles).toMatch(/\.parameters-table-grid td\s*\{[^}]*word-break:\s*normal;/s);
+    expect(mobileRow["min-width"]).toBe("0");
+    expect(mobileCell["grid-template-columns"]).toBe("minmax(76px, 0.32fr) minmax(0, 1fr)");
+    expect(mobileBodyCell.width).toBe("auto");
+    expect(mobileAnyBodyCell.width).toBe("auto");
+    expect(mobileAnyBodyCell.left).toBe("auto");
+    expect(mobileCell["overflow-wrap"]).toBe("anywhere");
+    expect(mobileCell["word-break"]).toBe("normal");
   });
 });
