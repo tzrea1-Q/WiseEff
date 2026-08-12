@@ -39,12 +39,14 @@
   --leading-xl: 28px;
   --leading-2xl: 32px;
   /* Keep Tailwind text-* utilities on the same scale (paired line-height ratios). */
-  --text-xs--line-height: calc(var(--leading-xs) / 11);
-  --text-sm--line-height: calc(var(--leading-sm) / 12);
-  --text-base--line-height: calc(var(--leading-base) / 13);
-  --text-lg--line-height: calc(var(--leading-lg) / 16);
-  --text-xl--line-height: calc(var(--leading-xl) / 20);
-  --text-2xl--line-height: calc(var(--leading-2xl) / 24);
+  /* Pixel leading, not calc(length / number): that division yields a length
+     (e.g. 18px / 12 = 1.5px) and collapses every Tailwind text-* line box. */
+  --text-xs--line-height: var(--leading-xs);
+  --text-sm--line-height: var(--leading-sm);
+  --text-base--line-height: var(--leading-base);
+  --text-lg--line-height: var(--leading-lg);
+  --text-xl--line-height: var(--leading-xl);
+  --text-2xl--line-height: var(--leading-2xl);
 
   /* ── Semantic color ── */
   --accent: #0052cc;
