@@ -2,13 +2,14 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { parseDts, resolveDts, type DtsValue, type ResolvedNode } from "../dts";
+import { parseDts, resolveDts, type ResolvedNode } from "../dts";
 import {
   probeDtsToolchain,
   resolveDtsToolchainCommands,
   runDtsToolchainCommand
 } from "../parameter-files/dtsToolchain";
 import type { DebugOverlayTarget } from "./debugOverlay";
+import { canonicalizeReloadValue, decimalCellText } from "./valueShape";
 
 export type PreflightStepName = "compile-base" | "compile-overlay" | "dry-run-merge" | "assert-effect";
 
@@ -259,6 +260,7 @@ function assertOverlayEffect(
   const observedValues: PreflightObservedValue[] = [];
   // Decompiled trees expose phandle numbers; debug overlays still carry `&label` cells.
   const labelPhandles = buildLabelPhandleMap(baseNodes);
+  const resolvePhandle = (label: string) => labelPhandles.get(label) ?? null;
 
   for (const target of targets) {
     const baseNode = baseNodes.get(target.nodePath);
@@ -288,8 +290,10 @@ function assertOverlayEffect(
       }
 
       const after = mergedNode.properties.find((candidate) => candidate.name === property.name);
-      const expected = normalizeValue(property.value, property.name, labelPhandles);
-      const observed = after ? normalizeValue(after.cst.value, after.rawText, labelPhandles) : null;
+      const expected = canonicalizeReloadValue(property.value, property.name, resolvePhandle);
+      const observed = after
+        ? canonicalizeReloadValue(after.cst.value, after.rawText, resolvePhandle)
+        : null;
 
       if (observed === null || observed !== expected) {
         diagnostics.push({
@@ -305,7 +309,7 @@ function assertOverlayEffect(
       observedValues.push({
         nodePath: target.nodePath,
         propertyName: property.name,
-        before: normalizeValue(before.cst.value, before.rawText, labelPhandles),
+        before: canonicalizeReloadValue(before.cst.value, before.rawText, resolvePhandle),
         after: observed
       });
     }
@@ -339,51 +343,6 @@ async function decompileNodes(
   }
 }
 
-/**
- * Compare values by cell or string content, not by text spelling: `dtc` decompiles to
- * hexadecimal while a debug value may be entered in decimal, and string quotes may differ.
- * Phandle labels in debug values are resolved to the numeric phandle cells that `dtc -@`
- * assigns on labeled nodes (visible as each node's `phandle = <N>` property after decompile).
- * `/bits/ 8` authoring forms and dtc's square-bracket `[…]` decompile spelling share one
- * canonical decimal sequence so assert-effect can confirm the overlay took effect.
- */
-function normalizeValue(
-  value: DtsValue | undefined,
-  fallback: string,
-  labelPhandles: ReadonlyMap<string, string> = new Map()
-): string {
-  if (value?.kind === "bytes") {
-    return value.values.map((entry) => String(entry)).join(" ");
-  }
-  if (value?.kind === "cells") {
-    const hasPhandle = value.groups.some((group) => group.some((cell) => cell.kind === "phandle"));
-    if (!hasPhandle && value.bits !== 32) {
-      const integers: string[] = [];
-      for (const group of value.groups) {
-        for (const cell of group) {
-          if (cell.kind !== "integer") return fallback.trim();
-          integers.push(decimal(cell));
-        }
-      }
-      return integers.join(" ");
-    }
-    const groups = value.groups.map((group) =>
-      group
-        .map((cell) => {
-          if (cell.kind === "integer") return decimal(cell);
-          const resolved = labelPhandles.get(cell.label);
-          return resolved ?? `&${cell.label}`;
-        })
-        .join(" ")
-    );
-    return groups.map((group) => `<${group}>`).join(" ");
-  }
-  if (value?.kind === "strings") {
-    return value.values.map((entry) => JSON.stringify(entry)).join(", ");
-  }
-  return fallback.trim();
-}
-
 function buildLabelPhandleMap(nodes: Map<string, ResolvedNode>): Map<string, string> {
   const map = new Map<string, string>();
   for (const node of nodes.values()) {
@@ -392,15 +351,10 @@ function buildLabelPhandleMap(nodes: Map<string, ResolvedNode>): Map<string, str
     if (!phandleValue || phandleValue.kind !== "cells") continue;
     const cell = phandleValue.groups[0]?.[0];
     if (!cell || cell.kind !== "integer") continue;
-    const numeric = decimal(cell);
+    const numeric = decimalCellText(cell);
     for (const label of node.labels) {
       map.set(label, numeric);
     }
   }
   return map;
-}
-
-function decimal(cell: { raw: string; value: string }): string {
-  const parsed = BigInt(cell.value.length > 0 ? cell.value : cell.raw);
-  return parsed.toString(10);
 }
