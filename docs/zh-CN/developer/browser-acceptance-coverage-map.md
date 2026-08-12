@@ -25,6 +25,9 @@
 - `PFB-SUBMIT-001`：活跃用户从侧边栏提交产品反馈，包含描述和可选截图；API 持久化，UI 展示成功提示（`e2e/acceptance/product-feedback.acceptance.spec.ts`）。
 - `PFB-ADMIN-001`：Admin 在 `/feedback-admin` 列表打开详情，将反馈从 `open` 推进到 `in_progress` 再到 `closed`，并写入处理备注（`e2e/acceptance/product-feedback.acceptance.spec.ts`）。
 - `PFB-AUTHZ-001`：非 Admin 无法访问产品反馈管理 API 或 `/feedback-admin` 页面（`e2e/acceptance/product-feedback.acceptance.spec.ts`）。
+- `KB-READ-001`：组织成员在 `/knowledge` 浏览知识条目列表，搜索只命中 `published` 条目（draft 和 archived 不进检索结果），并打开已发布条目详情（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
+- `KB-EDIT-001`：编辑者创建 markdown 知识条目、发布、就地修订产生新的不可变修订，并把历史修订恢复为新修订（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
+- `KB-FILE-001`：编辑者经对象存储上传文件型知识条目，并在条目上看到文本提取状态（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `DEBUG-SIM-001`：模拟器读、写、回读不一致、回滚与审计路径，包含复杂 JSON 值元数据。
 - `DEBUG-ADMIN-001`：API mode 下调试管理后台可新增、编辑、归档、恢复，并维护 HDC/ADB binding 与复杂值元数据。
 - `DTS-RELOAD-DEPLOY-001`：经假本地设备桥部署已校验的重载 overlay（mount / pushFile / trigger）至 `unverifiable`；浏览器证据 `work/ui-checks/285-*`。

@@ -140,6 +140,12 @@ const workflowDefinitions: BrowserAcceptanceWorkflowEvidence[] = [
     name: "Product feedback",
     status: "skipped",
     notes: "Sidebar feedback submission, admin triage, and admin-only access coverage."
+  },
+  {
+    id: "J",
+    name: "Knowledge base",
+    status: "skipped",
+    notes: "Knowledge entry list/search/read, markdown lifecycle with revisions, and file-entry extraction status coverage."
   }
 ];
 const workflowSpecs: Record<string, string[]> = {
@@ -155,7 +161,8 @@ const workflowSpecs: Record<string, string[]> = {
     "xiaoze-planning.acceptance.spec.ts"
   ],
   H: ["permissions.acceptance.spec.ts"],
-  I: ["product-feedback.acceptance.spec.ts"]
+  I: ["product-feedback.acceptance.spec.ts"],
+  J: ["knowledge.acceptance.spec.ts"]
 };
 
 export function npmCommand(platform = process.platform) {
