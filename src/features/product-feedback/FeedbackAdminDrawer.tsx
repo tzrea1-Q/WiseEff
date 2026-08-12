@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { ProductFeedback, ProductFeedbackStatus } from "@/domain/productFeedback/types";
 import { productFeedbackStatusLabels, productFeedbackTypeLabels } from "@/domain/productFeedback/types";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
@@ -48,6 +49,7 @@ export function FeedbackAdminDrawer({
   const [expandedPreview, setExpandedPreview] = useState<AttachmentPreview | null>(null);
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
 
   useEffect(() => {
     setAdminNote(feedback?.adminNote ?? "");
@@ -104,15 +106,27 @@ export function FeedbackAdminDrawer({
     setPending(true);
     setErrorMessage("");
     try {
+      // The current admin note is submitted together with the status change.
       await onUpdate(feedback.id, {
         status: action.status,
         adminNote: adminNote.trim() || null
       });
+      setCloseConfirmOpen(false);
     } catch (error) {
       setErrorMessage(error instanceof Error && error.message ? error.message : "反馈状态更新失败，请稍后重试。");
     } finally {
       setPending(false);
     }
+  };
+
+  const handlePrimaryAction = () => {
+    if (!action) return;
+    if (action.status === "closed") {
+      // Closing is irreversible (the feedback becomes read-only) — confirm first.
+      setCloseConfirmOpen(true);
+      return;
+    }
+    void handleStatusAction();
   };
 
   return (
@@ -205,7 +219,7 @@ export function FeedbackAdminDrawer({
 
         {action && ActionIcon ? (
           <div className="flex flex-wrap items-center gap-2 border-t border-border p-4">
-            <Button size="sm" onClick={handleStatusAction} disabled={pending} aria-busy={pending || undefined}>
+            <Button size="sm" onClick={handlePrimaryAction} disabled={pending} aria-busy={pending || undefined}>
               <ActionIcon data-icon="inline-start" />
               {pending ? "处理中..." : action.label}
             </Button>
@@ -213,6 +227,27 @@ export function FeedbackAdminDrawer({
         ) : null}
         </SheetContent>
       </Sheet>
+
+      <ConfirmDialog
+        open={closeConfirmOpen}
+        title="确认关闭反馈"
+        description={
+          <p>
+            关闭「{feedback.pageTitle}」后该反馈进入只读状态，不能再编辑状态或备注；
+            当前填写的处理备注将随关闭一并保存。
+          </p>
+        }
+        confirmLabel="确认关闭"
+        tone="danger"
+        pending={pending}
+        pendingLabel="关闭中…"
+        error={errorMessage}
+        onCancel={() => {
+          if (pending) return;
+          setCloseConfirmOpen(false);
+        }}
+        onConfirm={() => void handleStatusAction()}
+      />
 
       <Dialog open={expandedPreview !== null} onOpenChange={(isOpen) => !isOpen && setExpandedPreview(null)}>
         <DialogContent

@@ -229,6 +229,7 @@ import {
 } from "@/infrastructure/http/authClient";
 import { clearSessionDraftsForLogout } from "@/application/project-configuration/sessionDraftStorage";
 import { AppToastLayer } from "@/components/common/AppToastLayer";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 import { createMockParameterRepository } from "@/infrastructure/mock/mockParameterRepository";
@@ -4141,6 +4142,7 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate, parameterAction
   const myRounds = state.parameterSubmissionRounds.filter((round) => submitterAliases.has(round.submitter));
   const [selectedRoundId, setSelectedRoundId] = useState(myRounds[0]?.id ?? "");
   const [withdrawingRound, setWithdrawingRound] = useState(false);
+  const [withdrawConfirmOpen, setWithdrawConfirmOpen] = useState(false);
   const selectedRound = myRounds.find((round) => round.id === selectedRoundId) ?? myRounds[0];
   const timelineView = deriveSubmissionTimeline(selectedRound ?? null);
   const workflowStages = useMemo(() => {
@@ -4204,6 +4206,7 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate, parameterAction
       dispatch({ type: "WITHDRAW_PARAMETER_SUBMISSION_ROUND", roundId: selectedRound.id });
     } finally {
       setWithdrawingRound(false);
+      setWithdrawConfirmOpen(false);
     }
   };
 
@@ -4260,7 +4263,7 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate, parameterAction
                   type="button"
                   variant="destructive"
                   disabled={!canWithdrawSubmissionRound(selectedRound.status) || withdrawingRound}
-                  onClick={withdrawSelectedRound}
+                  onClick={() => setWithdrawConfirmOpen(true)}
                 >
                   <RotateCcw size={16} />
                   撤回本轮提交
@@ -4272,6 +4275,27 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate, parameterAction
           )}
         </section>
       </section>
+      <ConfirmDialog
+        open={withdrawConfirmOpen && Boolean(selectedRound)}
+        title="确认撤回本轮提交"
+        description={
+          selectedRound ? (
+            <p>
+              撤回后本轮 {selectedRound.items.length} 项变更将退出评审流程，审阅人不再收到该轮请求；
+              如需继续变更需要重新提交一轮。
+            </p>
+          ) : null
+        }
+        confirmLabel="确认撤回"
+        tone="danger"
+        pending={withdrawingRound}
+        pendingLabel="撤回中…"
+        onCancel={() => {
+          if (withdrawingRound) return;
+          setWithdrawConfirmOpen(false);
+        }}
+        onConfirm={() => void withdrawSelectedRound()}
+      />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import { ModuleCreateDialog, type ModuleCreateSaveDraft } from "@/components/admin/ModuleCreateDialog";
 import { ModuleEditDialog, type ModuleEditSavePatch } from "@/components/admin/ModuleEditDialog";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { MultiSelectDropdown } from "@/components/MultiSelectDropdown";
 import type {
   DriverNature,
@@ -371,6 +372,7 @@ export function ModuleAttributionTree({
   const [createParentId, setCreateParentId] = useState<string | null | undefined>(undefined);
   const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
   const [viewingUnclassifiedId, setViewingUnclassifiedId] = useState<string | null>(null);
+  const [deleteModuleId, setDeleteModuleId] = useState<string | null>(null);
   const [dialogMutationBusy, setDialogMutationBusy] = useState(false);
   const [dialogMutationError, setDialogMutationError] = useState<string | null>(null);
 
@@ -538,6 +540,34 @@ export function ModuleAttributionTree({
     }
   };
 
+  const deletingModule = deleteModuleId ? (modulesById.get(deleteModuleId) ?? null) : null;
+  const deletingChildCount = deletingModule
+    ? modules.filter((module) => module.parentId === deletingModule.id).length
+    : 0;
+  const deletingCompatibleCount = deletingModule
+    ? mappingsForModule(mappings, deletingModule.id).filter(
+        (mapping) => mapping.matchKind === "compatible"
+      ).length
+    : 0;
+
+  const handleConfirmDelete = () => {
+    if (!deleteModuleId) return;
+    const moduleId = deleteModuleId;
+    setDialogMutationBusy(true);
+    setDialogMutationError(null);
+    void (async () => {
+      try {
+        await onDelete(moduleId);
+        setDeleteModuleId(null);
+        setDialogMutationError(null);
+      } catch (error) {
+        setDialogMutationError(describeMutationError(error, "删除模块失败，请重试。"));
+      } finally {
+        setDialogMutationBusy(false);
+      }
+    })();
+  };
+
   return (
     <section className="module-attribution-tree" aria-labelledby="module-attribution-tree-title">
       <div className="module-attribution-tree__head">
@@ -640,7 +670,11 @@ export function ModuleAttributionTree({
                 setDialogMutationError(null);
                 setMoveModuleId(id);
               }}
-              onDelete={(id) => void onDelete(id)}
+              onDelete={(id) => {
+                // Deletion/dissolution is irreversible: always confirm with impact first.
+                setDialogMutationError(null);
+                setDeleteModuleId(id);
+              }}
               onReorder={canAdmin ? (id, direction) => void handleReorder(id, direction) : undefined}
             />
           ))}
@@ -751,6 +785,46 @@ export function ModuleAttributionTree({
           onClose={() => setViewingUnclassifiedId(null)}
         />
       ) : null}
+
+      <ConfirmDialog
+        open={deletingModule !== null}
+        title={
+          deletingModule?.kind === "driver-group"
+            ? `解散驱动组「${deletingModule.name}」`
+            : `删除模块「${deletingModule?.name ?? ""}」`
+        }
+        description={
+          deletingModule ? (
+            <div>
+              {deletingModule.kind === "driver-group" ? (
+                <>
+                  <p>
+                    解散后不可恢复：该驱动组的 {deletingCompatibleCount} 条 compatible 匹配规则将一并移除，
+                    组内 {deletingModule.parameterCount} 个参数及其子模块（{deletingChildCount} 个）
+                    的绑定将退回「未分类」，需要重新归类或重建匹配规则。
+                  </p>
+                </>
+              ) : (
+                <p>
+                  删除后不可恢复。当前子模块 {deletingChildCount} 个、关联参数 {deletingModule.parameterCount} 个；
+                  仍有子模块或参数引用时服务端会拒绝删除。
+                </p>
+              )}
+            </div>
+          ) : null
+        }
+        confirmLabel={deletingModule?.kind === "driver-group" ? "确认解散" : "确认删除"}
+        tone="danger"
+        pending={dialogMutationBusy}
+        pendingLabel={deletingModule?.kind === "driver-group" ? "解散中…" : "删除中…"}
+        error={dialogMutationError ?? ""}
+        onCancel={() => {
+          if (dialogMutationBusy) return;
+          setDeleteModuleId(null);
+          setDialogMutationError(null);
+        }}
+        onConfirm={handleConfirmDelete}
+      />
     </section>
   );
 }

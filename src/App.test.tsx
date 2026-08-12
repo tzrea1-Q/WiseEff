@@ -750,6 +750,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     const row = await screen.findByText("Liu Min").then((cell) => cell.closest("tr")!);
     changeSelectValue(within(row).getByRole("combobox", { name: "调整 Liu Min 的角色" }), "software-committer");
+    const confirmDialog = await screen.findByRole("dialog", { name: "确认调整用户角色" });
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "确认调整" }));
     await waitFor(() => expect(userGovernanceActions.assignUserRole).toHaveBeenCalledWith("u-liu-min", "software-committer"));
   });
 
@@ -2167,6 +2169,57 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.getByRole("region", { name: "提交轮次详情" })).toHaveTextContent("Zhao Heng");
     expect(screen.queryByText("当前还没有你的历史提交。")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "撤回本轮提交" })).toBeEnabled();
+  });
+
+  it("withdraws a submission round only after the confirm dialog is accepted", async () => {
+    window.history.replaceState(null, "", "/parameter-submissions");
+    const simpleParameter = initialState.parameters.find((parameter) => parameter.name === "fast_charge_current_limit_ma");
+    expect(simpleParameter).toBeDefined();
+    const zhaoRound = {
+      ...initialState.parameterSubmissionRounds[0],
+      id: "api-zhao-withdraw-round",
+      projectId: simpleParameter!.projectId,
+      projectName: "Aurora 量产平台",
+      submitter: "Zhao Heng",
+      createdAt: "刚刚",
+      status: "硬件Committer检视" as const,
+      summary: "待撤回轮次。",
+      items: [
+        {
+          requestId: "api-zhao-withdraw-request",
+          parameterId: simpleParameter!.id,
+          name: simpleParameter!.name,
+          module: simpleParameter!.module,
+          currentValue: "3850",
+          targetValue: "3200",
+          unit: simpleParameter!.unit,
+          risk: simpleParameter!.risk,
+          reason: "验证撤回确认"
+        }
+      ]
+    };
+
+    render(
+      <App
+        initialAppState={{
+          ...initialState,
+          currentUserId: "u-zhao-heng",
+          activeRoleId: "hardware-user",
+          parameterSubmissionRounds: [zhaoRound]
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "撤回本轮提交" }));
+    // Nothing is withdrawn before confirmation.
+    expect(screen.getByRole("region", { name: "提交轮次详情" })).not.toHaveTextContent("已撤回");
+    const confirmDialog = await screen.findByRole("dialog", { name: "确认撤回本轮提交" });
+    expect(confirmDialog).toHaveTextContent(/本轮 1 项变更将退出评审流程/);
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "确认撤回" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "提交轮次详情" })).toHaveTextContent("已撤回");
+    });
   });
 
   it("formats ISO submission timestamps on the personal history page", () => {

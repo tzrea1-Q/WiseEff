@@ -3,6 +3,7 @@ import { UserPlus } from "lucide-react";
 
 import type { AppAction } from "@/App";
 import { ColumnFilter } from "@/components/ColumnFilter";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "@/components/tableFilterUtils";
 import { migrateLegacyRoleId, platformRoles, type PermissionKey, type PlatformRoleId } from "@/domain/users/types";
 import type { PrototypeState, User } from "@/mockData";
@@ -95,6 +96,10 @@ type RoleHintState = {
   y: number;
 };
 
+type PendingGovernanceAction =
+  | { kind: "role"; user: User; nextRoleId: PlatformRoleId }
+  | { kind: "active"; user: User; nextActive: boolean };
+
 function roleLabelOf(roleId: PlatformRoleId) {
   const normalizedRoleId = migrateLegacyRoleId(roleId);
   return roleLabels[normalizedRoleId] ?? normalizedRoleId;
@@ -186,6 +191,9 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
   const [decidingRequestId, setDecidingRequestId] = useState("");
   const [activeRoleHint, setActiveRoleHint] = useState<RoleHintState | null>(null);
   const [workspace, setWorkspace] = useState<UserPermissionsWorkspace>("accounts");
+  const [pendingGovernance, setPendingGovernance] = useState<PendingGovernanceAction | null>(null);
+  const [governancePending, setGovernancePending] = useState(false);
+  const [governanceError, setGovernanceError] = useState<string | null>(null);
 
   const approvalWorkflowEnabled = Boolean(userGovernanceActions?.listRegistrationRoleRequests);
   const pendingApprovalCount = registrationRoleRequests.length;
@@ -318,6 +326,41 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
       setRegistrationRoleRequestError(error instanceof Error ? error.message : "注册角色申请处理失败。");
     } finally {
       setDecidingRequestId("");
+    }
+  }
+
+  // Role and activation changes are irreversible-in-effect governance actions:
+  // both go through a light confirm dialog and an awaited, error-projected call.
+  async function confirmGovernanceAction() {
+    if (!pendingGovernance || governancePending) return;
+    setGovernancePending(true);
+    setGovernanceError(null);
+    try {
+      if (pendingGovernance.kind === "role") {
+        await userGovernanceActions?.assignUserRole(pendingGovernance.user.id, pendingGovernance.nextRoleId);
+        dispatch({
+          type: "ASSIGN_USER_ROLE",
+          userId: pendingGovernance.user.id,
+          roleId: pendingGovernance.nextRoleId
+        });
+      } else {
+        await userGovernanceActions?.setUserActive(pendingGovernance.user.id, pendingGovernance.nextActive);
+        dispatch({
+          type: "TOGGLE_USER_ACTIVE",
+          userId: pendingGovernance.user.id,
+          isActive: pendingGovernance.nextActive
+        });
+      }
+      setPendingGovernance(null);
+    } catch (error) {
+      // Server refusals (e.g. self-lock protection) must be visible, not swallowed.
+      setGovernanceError(
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : "用户治理操作失败，请稍后重试。"
+      );
+    } finally {
+      setGovernancePending(false);
     }
   }
 
@@ -472,6 +515,8 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
                   {filteredUsers.map((user) => {
                     const isCurrentUser = user.id === state.currentUserId;
                     const normalizedRoleId = migrateLegacyRoleId(user.roleId);
+                    const platformAdminLocked =
+                      normalizedRoleId === "platform-admin" && !canGrantPlatformAdmin(state);
 
                     return (
                       <tr key={user.id}>
@@ -490,17 +535,19 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
                               className="user-permissions-role-select"
                               aria-label={`调整 ${user.name} 的角色`}
                               value={normalizedRoleId}
-                              disabled={isCurrentUser}
+                              disabled={isCurrentUser || platformAdminLocked}
+                              title={
+                                platformAdminLocked
+                                  ? "只有平台超级管理员可以调整平台超级管理员的角色。"
+                                  : undefined
+                              }
                               onFocus={(event) => showRoleHint(user.id, event.currentTarget)}
                               onBlur={() => hideRoleHint(user.id)}
-                              onChange={async (event) => {
+                              onChange={(event) => {
                                 const roleId = event.target.value as PlatformRoleId;
-                                await userGovernanceActions?.assignUserRole(user.id, roleId);
-                                dispatch({
-                                  type: "ASSIGN_USER_ROLE",
-                                  userId: user.id,
-                                  roleId
-                                });
+                                if (roleId === normalizedRoleId) return;
+                                setGovernanceError(null);
+                                setPendingGovernance({ kind: "role", user, nextRoleId: roleId });
                               }}
                             >
                               {assignableRolesForUser(state, normalizedRoleId).map((role) => (
@@ -518,15 +565,15 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
                           <button
                             className="button"
                             type="button"
-                            disabled={isCurrentUser}
-                            onClick={async () => {
-                              const isActive = !user.isActive;
-                              await userGovernanceActions?.setUserActive(user.id, isActive);
-                              dispatch({
-                                type: "TOGGLE_USER_ACTIVE",
-                                userId: user.id,
-                                isActive
-                              });
+                            disabled={isCurrentUser || platformAdminLocked}
+                            title={
+                              platformAdminLocked
+                                ? "只有平台超级管理员可以停用平台超级管理员。"
+                                : undefined
+                            }
+                            onClick={() => {
+                              setGovernanceError(null);
+                              setPendingGovernance({ kind: "active", user, nextActive: !user.isActive });
                             }}
                           >
                             {user.isActive ? "停用" : "启用"}
@@ -599,6 +646,51 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
           )}
         </section>
       )}
+
+      <ConfirmDialog
+        open={pendingGovernance !== null}
+        title={
+          pendingGovernance?.kind === "role"
+            ? "确认调整用户角色"
+            : pendingGovernance?.nextActive
+              ? "确认启用用户"
+              : "确认停用用户"
+        }
+        description={
+          pendingGovernance ? (
+            pendingGovernance.kind === "role" ? (
+              <p>
+                将把 <strong>{pendingGovernance.user.name}</strong> 的角色从「
+                {roleLabelOf(migrateLegacyRoleId(pendingGovernance.user.roleId))}」调整为「
+                {roleLabelOf(pendingGovernance.nextRoleId)}」，新权限立即生效。
+              </p>
+            ) : pendingGovernance.nextActive ? (
+              <p>
+                将启用 <strong>{pendingGovernance.user.name}</strong>（
+                {userAccountIdentifier(pendingGovernance.user)}），该账号将恢复登录与操作权限。
+              </p>
+            ) : (
+              <p>
+                将停用 <strong>{pendingGovernance.user.name}</strong>（
+                {userAccountIdentifier(pendingGovernance.user)}），停用后该账号无法登录平台。
+              </p>
+            )
+          ) : null
+        }
+        confirmLabel={
+          pendingGovernance?.kind === "role" ? "确认调整" : pendingGovernance?.nextActive ? "确认启用" : "确认停用"
+        }
+        tone={pendingGovernance?.kind === "active" && !pendingGovernance.nextActive ? "danger" : "primary"}
+        pending={governancePending}
+        pendingLabel="提交中…"
+        error={governanceError}
+        onCancel={() => {
+          if (governancePending) return;
+          setPendingGovernance(null);
+          setGovernanceError(null);
+        }}
+        onConfirm={() => void confirmGovernanceAction()}
+      />
 
       {addUserOpen && (
         <div role="dialog" aria-modal="true" aria-labelledby="add-user-title" className="user-permissions-modal">
