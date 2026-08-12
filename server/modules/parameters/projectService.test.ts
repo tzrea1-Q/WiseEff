@@ -80,11 +80,12 @@ describe("createProjectForAuth", () => {
   it("creates a project and ensures a default dts_config_set named default", async () => {
     const { db, txCalls } = createFakeDb([[projectRow()], [], [configSetRow()], []]);
 
-    const item = await createProjectForAuth(db, adminAuth(), {
-      id: "nova",
-      name: "Nova",
-      code: "NOVA"
-    });
+    const item = await createProjectForAuth(
+      db,
+      adminAuth(),
+      { id: "nova", name: "Nova", code: "NOVA" },
+      { requestId: "req-create" }
+    );
 
     expect(item).toMatchObject({ id: "nova", name: "Nova", code: "NOVA", status: "initialized" });
     expect(txCalls.find((call) => call.text.includes("insert into projects"))).toBeTruthy();
@@ -93,22 +94,31 @@ describe("createProjectForAuth", () => {
     expect(configInsert?.values).toEqual(
       expect.arrayContaining(["org-1", "nova", "default"])
     );
-    expect(txCalls.find((call) => call.text.includes("insert into audit_events"))).toBeTruthy();
+    // Config-set audit plus the project-created audit, both inside the transaction (ADR-0025).
+    const auditInserts = txCalls.filter((call) => call.text.includes("insert into audit_events"));
+    expect(auditInserts.length).toBe(2);
+    expect(
+      auditInserts.some((call) => call.values.includes("project-created") && call.values.includes("req-create"))
+    ).toBe(true);
   });
 
   it("is idempotent when the default config set already exists for the project", async () => {
     const { db, txCalls } = createFakeDb([[projectRow()], [configSetRow({ id: "dcs-existing" })]]);
 
-    const item = await createProjectForAuth(db, adminAuth(), {
-      id: "nova",
-      name: "Nova",
-      code: "NOVA"
-    });
+    const item = await createProjectForAuth(
+      db,
+      adminAuth(),
+      { id: "nova", name: "Nova", code: "NOVA" },
+      { requestId: "req-create" }
+    );
 
     expect(item.id).toBe("nova");
     expect(txCalls.find((call) => call.text.includes("insert into projects"))).toBeTruthy();
     expect(txCalls.find((call) => call.text.includes("insert into dts_config_set"))).toBeFalsy();
-    expect(txCalls.find((call) => call.text.includes("insert into audit_events"))).toBeFalsy();
+    // No config-set audit on the idempotent path; project creation itself is still audited.
+    const auditInserts = txCalls.filter((call) => call.text.includes("insert into audit_events"));
+    expect(auditInserts.length).toBe(1);
+    expect(auditInserts[0]?.values).toEqual(expect.arrayContaining(["project-created"]));
   });
 
   it("rejects callers without admin:access", async () => {
@@ -118,7 +128,8 @@ describe("createProjectForAuth", () => {
       createProjectForAuth(
         db,
         adminAuth({ permissions: ["parameter:view"] }),
-        { id: "nova", name: "Nova", code: "NOVA" }
+        { id: "nova", name: "Nova", code: "NOVA" },
+        { requestId: "req-create" }
       )
     ).rejects.toMatchObject({ code: "FORBIDDEN" } satisfies Partial<ApiError>);
 
@@ -128,11 +139,12 @@ describe("createProjectForAuth", () => {
   it("inserts new projects with initialization_status not_initialized", async () => {
     const { db, txCalls } = createFakeDb([[projectRow()], [], [configSetRow()], []]);
 
-    await createProjectForAuth(db, adminAuth(), {
-      id: "nova",
-      name: "Nova",
-      code: "NOVA"
-    });
+    await createProjectForAuth(
+      db,
+      adminAuth(),
+      { id: "nova", name: "Nova", code: "NOVA" },
+      { requestId: "req-create" }
+    );
 
     const projectInsert = txCalls.find((call) => call.text.includes("insert into projects"));
     expect(projectInsert?.text).toMatch(/initialization_status/);
@@ -147,11 +159,12 @@ describe("createProjectForAuth", () => {
       []
     ]);
 
-    const item = await createProjectForAuth(db, adminAuth(), {
-      id: "nova",
-      name: "Nova",
-      code: "NOVA"
-    });
+    const item = await createProjectForAuth(
+      db,
+      adminAuth(),
+      { id: "nova", name: "Nova", code: "NOVA" },
+      { requestId: "req-create" }
+    );
 
     expect(item).toMatchObject({
       id: "nova",

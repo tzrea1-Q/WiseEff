@@ -99,6 +99,7 @@ Expand lazily via `/domain-modeling` when terms are resolved. Prefer terms from 
 | Behavior-layer eval | 「行为层评测」— deterministic fake-model evaluation of the log analysis agent's conduct: tool-call legality, in-budget convergence, honest degradation marking, no conclusion without cited evidence. Runs in CI on every change at zero API cost — the log-analysis sibling of the Xiaoze eval harness |
 | Quality-layer eval | 「效果层评测」— real-model evaluation scoring golden-case runs: root-cause accuracy (rubric plus LLM-as-judge with sampled human review), deterministic evidence-line overlap, hallucination and refusal rates. Runs on prompt or model change and before release, gated against the previous baseline minus a stated tolerance |
 | Agent approval chain | The orchestrator-owned path every mutating Agent tool call must cross: `beginApproval` persists `agent_tool_calls` + `agent_approvals` rows and raises the interrupt; `resolveApproval` carries the human decision, applies `editedArgs` as a full payload replacement, re-authorizes transactionally, and executes. Its only state is those database rows — never process memory — so begin and resolve may land on different processes (ADR-0024) |
+| Audited write | A domain write whose audit event commits in the same database transaction — both land or both roll back (ADR-0025). Carried by the `withAuditedWrite` seam and the `AuditTx` proof-of-transaction brand rather than by call-site discipline; correlation (`requestId`) is mandatory at the seam. The legacy audit-outside-the-transaction path is pinned by a ratchet test and retires call site by call site |
 
 ## ADRs
 
@@ -128,3 +129,4 @@ Architectural decisions: [`docs/adr/`](docs/adr/) (created lazily). Feature-scop
 - [`0022`](docs/adr/0022-log-analysis-agent-runs-outside-the-xiaoze-stack.md) — log analysis agent runs outside the Xiaoze stack
 - [`0023`](docs/adr/0023-app-state-transitions-live-in-application-state.md) — frontend app state transitions live in application/state, not App.tsx
 - [`0024`](docs/adr/0024-agent-approval-state-is-db-backed.md) — Agent approval state is DB-backed; request context flows through invocation config
+- [`0025`](docs/adr/0025-audit-events-commit-with-their-domain-write.md) — audit events commit in the same transaction as their domain write

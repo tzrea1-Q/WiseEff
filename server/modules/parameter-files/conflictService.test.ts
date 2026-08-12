@@ -37,12 +37,14 @@ function createFakeDb(results: QueuedResult[] = []) {
     return { rows: rows as Row[], rowCount: rows.length };
   };
 
-  const tx: Queryable = {
-    query: (text, values = []) => runQuery(txCalls, text, values)
+  const tx: Database = {
+    query: (text, values = []) => runQuery(txCalls, text, values),
+    // Nested transactions (savepoints under the bulk transaction) reuse the same handle.
+    transaction: async <T,>(fn: (nested: Database) => Promise<T>) => fn(tx)
   };
   const db: Database = {
     query: (text, values = []) => runQuery(calls, text, values),
-    transaction: async <T,>(fn: (queryable: Queryable) => Promise<T>) => fn(tx)
+    transaction: async <T,>(fn: (queryable: Database) => Promise<T>) => fn(tx)
   };
 
   return { db, calls, txCalls };
@@ -430,5 +432,53 @@ describe("parameter file conflict service", () => {
     expect(result.skipped).toEqual([
       expect.objectContaining({ reason: "not_found" })
     ]);
+  });
+
+  it("resolveConflictsBulk propagates a mid-batch failure so the whole batch rolls back", async () => {
+    const openRowA = {
+      id: "conflict-a",
+      organization_id: "org-1",
+      project_id: "project-1",
+      project_parameter_value_id: "ppv-1",
+      parameter_definition_id: "pd-1",
+      file_version_id: "version-1",
+      file_draft_id: "draft-file-a",
+      ui_draft_id: "draft-ui-a",
+      file_value: "85",
+      ui_draft_value: "82",
+      status: "open",
+      resolved_by_user_id: null,
+      resolved_at: null,
+      created_at: "2026-07-11T10:02:00.000Z"
+    };
+    const openRowB = { ...openRowA, id: "conflict-b", file_draft_id: "draft-file-b", ui_draft_id: "draft-ui-b" };
+    const resolvedRowA = {
+      ...openRowA,
+      status: "resolved_file",
+      resolved_by_user_id: "reviewer-1",
+      resolved_at: "2026-07-11T10:03:00.000Z"
+    };
+
+    // preview (both open) → resolve A (4 steps) → resolve B fails on its first step.
+    const { db } = createFakeDb([
+      [openRowA, openRowB],
+      [openRowA],
+      [resolvedRowA],
+      [],
+      [],
+      () => {
+        throw new Error("mid-batch boom");
+      }
+    ]);
+
+    // The single bulk transaction propagates the failure instead of returning a
+    // half-applied batch; the shared database client rolls the transaction back.
+    await expect(
+      resolveConflictsBulk(db, reviewerAuth(), {
+        projectId: "project-1",
+        resolution: "file",
+        conflictIds: ["conflict-a", "conflict-b"]
+      })
+    ).rejects.toThrow("mid-batch boom");
   });
 });
