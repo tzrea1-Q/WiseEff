@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { createAuditEvent } from "../audit/repository";
+import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
@@ -94,7 +94,7 @@ export function buildUnifiedTextDiff(before: string, after: string, beforeLabel:
 }
 
 function writeCandidateAudit(
-  db: Queryable,
+  tx: AuditTx,
   auth: AuthContext,
   input: {
     projectId: string;
@@ -105,16 +105,13 @@ function writeCandidateAudit(
   },
   context: CandidateServiceContext = {}
 ) {
-  return createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    actorUserId: auth.user.id,
-    actorType: "user",
+  // requestId fallback survives only until candidate contexts become mandatory (ADR-0027).
+  return writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
     app: "parameters",
     kind: input.kind,
     action: input.action,
     severity: "Medium",
+    projectId: input.projectId,
     targetType: "project-parameter-file-candidate",
     targetId: input.candidate.id,
     metadata: {
@@ -123,8 +120,7 @@ function writeCandidateAudit(
       status: input.candidate.status,
       sizeBytes: input.candidate.sizeBytes ?? null,
       ...(input.metadata ?? {})
-    },
-    traceId: context.requestId ?? randomUUID()
+    }
   });
 }
 
@@ -368,7 +364,7 @@ export async function createCandidate(
         throw new ApiError("INTERNAL_ERROR", "Failed to persist candidate parse failure.", 500);
       }
       await writeCandidateAudit(
-        tx,
+        asAuditTx(tx),
         auth,
         { projectId: input.projectId, candidate: failed, action: "create", kind: "parameter-file-candidate-create" },
         context
@@ -416,7 +412,7 @@ export async function createCandidate(
     }
 
     await writeCandidateAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       { projectId: input.projectId, candidate: updated, action: "create", kind: "parameter-file-candidate-create" },
       context
@@ -524,7 +520,7 @@ export async function abandonCandidate(
       });
     }
     await writeCandidateAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         projectId: input.projectId,
@@ -628,7 +624,7 @@ export async function recomputeCandidateImpact(
       throw new ApiError("INTERNAL_ERROR", "Failed to persist recomputed candidate impact.", 500);
     }
     await writeCandidateAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         projectId: input.projectId,
@@ -760,7 +756,7 @@ export async function activateCandidate(
         });
       }
       await writeCandidateAudit(
-        tx,
+        asAuditTx(tx),
         auth,
         {
           projectId: input.projectId,
@@ -842,7 +838,7 @@ export async function activateCandidate(
         frozenVersionId: version.id,
         frozenSource: source
       });
-      await syncFileVersion(tx, auth, { fileId: file.id, versionId: version.id });
+      await syncFileVersion(asAuditTx(tx), auth, { fileId: file.id, versionId: version.id });
     }
 
     const activated = await markParameterFileCandidateActive(tx, {
@@ -859,7 +855,7 @@ export async function activateCandidate(
     }
 
     await writeCandidateAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         projectId: input.projectId,

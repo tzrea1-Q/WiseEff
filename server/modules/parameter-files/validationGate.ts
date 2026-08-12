@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { createAuditEvent } from "../audit/repository";
+import { withAuditedWrite } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
@@ -77,7 +77,7 @@ function computeRequiresConfirmation(result: {
 }
 
 async function writeValidationGateAudit(
-  db: Queryable,
+  db: Database,
   auth: AuthContext,
   input: {
     configSetId: string;
@@ -91,28 +91,30 @@ async function writeValidationGateAudit(
   context: AuditCorrelationContext = {}
 ) {
   const errorCount = countErrors(input.diagnostics);
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    actorUserId: auth.user.id,
-    actorType: "user",
-    app: "parameters",
-    kind: "validation.gate",
-    action: "run",
-    severity: input.ok ? "Medium" : "High",
-    targetType: "dts-config-set",
-    targetId: input.configSetId,
-    metadata: {
-      ok: input.ok,
-      mode: input.mode,
-      compiler: input.compiler,
-      diagnosticCount: input.diagnostics.length,
-      errorCount,
-      requiresConfirmation: input.requiresConfirmation
-    },
-    traceId: context.requestId ?? randomUUID()
-  });
+  // A gate run has no domain write; the audit event is the only persistent effect,
+  // so it gets an audited write of its own (ADR-0027) — deliberately independent of
+  // any caller transaction: a failed release must not erase the evidence that the
+  // gate ran. requestId fallback survives only until gate contexts become mandatory.
+  await withAuditedWrite(db, auth, { requestId: context.requestId ?? randomUUID() }, async () => ({
+    result: undefined,
+    audit: {
+      app: "parameters",
+      kind: "validation.gate",
+      action: "run",
+      severity: input.ok ? ("Medium" as const) : ("High" as const),
+      projectId: input.projectId,
+      targetType: "dts-config-set",
+      targetId: input.configSetId,
+      metadata: {
+        ok: input.ok,
+        mode: input.mode,
+        compiler: input.compiler,
+        diagnosticCount: input.diagnostics.length,
+        errorCount,
+        requiresConfirmation: input.requiresConfirmation
+      }
+    }
+  }));
 }
 
 function toGateDiagnostics(result: DtsToolchainResult): DtcDiagnostic[] {

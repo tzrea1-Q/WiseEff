@@ -2129,7 +2129,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
     if (semanticIdentity) {
       const writeback = isEnablementMerge
         ? await writebackMergedEnablementValue(
-            tx,
+            asAuditTx(tx),
             context.objectStore!,
             auth,
             {
@@ -2142,7 +2142,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
             context
           )
         : await writebackMergedParameterValue(
-            tx,
+            asAuditTx(tx),
             context.objectStore!,
             auth,
             {
@@ -2203,7 +2203,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
 
     if (!semanticIdentity && context.objectStore && request.projectId) {
       await writebackMergedParameterValue(
-        tx,
+        asAuditTx(tx),
         context.objectStore,
         auth,
         {
