@@ -58,10 +58,15 @@ describe.skipIf(!testDatabaseUrl)("postgres checkpointer durability", () => {
     const sharedCheckpointer = createXiaozeCheckpointer({ mode: "postgres", saver: handle.saver });
 
     const first = buildPlanningAgent(sharedCheckpointer);
+    // Both runs must carry the same requestContext: the checkpoint namespace is
+    // `${org}:${user}:${threadId}` when auth is present (tenant isolation), and the
+    // production endpoint always supplies it. Interrupting without it and resuming
+    // with it would write and read different namespaces.
     const interrupted = await first.agent.run({
       message: "set pd1 to 42",
       context: { projectId: "p1" },
-      threadId
+      threadId,
+      requestContext: { auth: anyAuth, requestId: "req-durability-first", sessionId: threadId }
     });
     expect(interrupted.interrupt?.toolName).toBe("action.submitParameterChange");
 

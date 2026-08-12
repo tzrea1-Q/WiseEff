@@ -1,6 +1,7 @@
 import type { Message } from "@ag-ui/core";
 import { xiaozePromptDebugEnabled } from "@/infrastructure/http/runtimeMode";
 import { XiaozeUserMessage } from "./XiaozeUserMessage";
+import { XiaozeCitationSources, readCitationsFromMetadata } from "./XiaozeCitationSources";
 import { XiaozeThinkingIndicator } from "./XiaozeThinkingIndicator";
 import { XiaozeTurnReasoningPanel } from "./XiaozeTurnReasoningPanel";
 import { readRunStepsFromMetadata } from "./XiaozeTurnTimeline";
@@ -49,6 +50,7 @@ export function XiaozeTurnBlock({ turn, messages, isLatest, isRunning }: XiaozeT
       ? turnState.steps
       : readRunStepsFromMetadata(metadata);
   const rawSteps = isActiveTurn && liveRunSteps.length > 0 ? liveRunSteps : persistedSteps;
+  const citations = turnReply?.citations?.length ? turnReply.citations : readCitationsFromMetadata(metadata);
   const steps = rawSteps.map(presentRunStep);
   const deferPartial = shouldDeferTurnAnswer({
     isActiveTurn,
@@ -107,6 +109,7 @@ export function XiaozeTurnBlock({ turn, messages, isLatest, isRunning }: XiaozeT
               content={answerText}
               isStreaming={isActiveTurn && isRunning && turnState?.phase === "composing"}
             />
+            <XiaozeCitationSources citations={citations} />
           </div>
         </div>
       ) : null}

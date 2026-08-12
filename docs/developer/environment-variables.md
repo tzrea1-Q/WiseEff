@@ -143,6 +143,18 @@ Separate `LOG_ANALYSIS_*` family so log analysis and Xiaoze can point at differe
 | `LOG_ANALYSIS_TOKEN_BUDGET` | `8000` | analysis cost bound | Per-analysis token budget; bounds the prompt excerpt (≈4 chars/token) and the response `maxTokens`. |
 | `LOG_ANALYSIS_DETERMINISTIC` | `true` in `.env.example`, `false` in code | offline dev/test/eval | Runs the deterministic stub model (`model` recorded as `deterministic`); no provider required and readiness reports ready. Production must configure a real provider and keep this `false`. |
 
+## Knowledge Base Embeddings And Indexing
+
+Semantic retrieval for the knowledge base mirrors the `AGENT_API_*` seam with an OpenAI-compatible `/v1/embeddings` endpoint. Leave the group blank for FTS-only mode: every knowledge surface stays fully usable without semantic search. Semantic retrieval additionally requires the pgvector extension on the PostgreSQL server (see the self-hosted runbook); when either the endpoint or the extension is missing, search responses honestly report `fts_only`.
+
+| Variable | Local default | Required for | Notes |
+| --- | --- | --- | --- |
+| `EMBEDDING_API_BASE_URL` | blank | semantic knowledge retrieval | OpenAI-compatible endpoint; accepts bases with or without a trailing `/v1`. Never commit secrets or private endpoints. |
+| `EMBEDDING_MODEL` | blank | semantic knowledge retrieval | Embedding model id sent to the endpoint. Changing it requires a rebuild from `/knowledge-admin`. |
+| `EMBEDDING_API_KEY` | blank | semantic knowledge retrieval | Secret. Optional when the endpoint does not authenticate. |
+| `EMBEDDING_API_TIMEOUT_MS` | `10000` | semantic knowledge retrieval | Per-request timeout; on timeout a search degrades to FTS-only for that query and reports it. |
+| `KNOWLEDGE_INDEX_WORKER_ENABLED` | `true` | knowledge index freshness | Local API runs the in-process polling index worker. Self-hosted API containers may set `false` and run a separate worker process. |
+
 ## M5 Evidence
 
 | Variable | Local default | Required for | Notes |

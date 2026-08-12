@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import { canAdminParameters, canEditParameters, canViewParameters } from "../parameters/policy";
-import { listOpenConflicts } from "../parameters/repository";
+import { listOpenConflicts } from "../parameters/fileSyncConflictRepository";
 import { submitStructuredEdits } from "../parameters/service";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";

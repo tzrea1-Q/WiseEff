@@ -219,7 +219,10 @@ Organization-scoped knowledge entries with immutable revisions (design: [Knowled
 | --- | --- | --- |
 | `POST` | `/api/v1/knowledge/entries` | Create a markdown or file entry as a draft. File uploads send base64 content through the object-store seam and run text extraction. Returns `201 { item }`. |
 | `GET` | `/api/v1/knowledge/entries` | List visible entries with optional `status`, `contentForm`, `tag`, `q` (title), and `limit` filters. |
-| `GET` | `/api/v1/knowledge/search` | Search **published entries only** (`q`, optional `limit`): PostgreSQL FTS for latin text plus `pg_trgm` trigram matching for CJK. Returns excerpts. |
+| `GET` | `/api/v1/knowledge/search` | Search **published entries only** (`q`, optional `limit`). Hybrid retrieval: when `EMBEDDING_API_*` is configured and pgvector is available, chunk vector similarity fuses with the FTS/trigram ranking (reciprocal-rank fusion); otherwise the FTS-only path runs unchanged. Items carry citation-ready fields (`entryId`, `title`, `revisionId`, `excerpt`) and the response carries an honest `retrieval` report: `{ mode: "semantic_fts" \| "fts_only", vectorAvailable, embeddingConfigured, degradedReason? }`. |
+| `GET` | `/api/v1/knowledge/index/status` | Per-entry retrieval index health (`knowledge:manage` only): `{ retrieval, items }` where each item carries `status` (`pending` \| `processing` \| `succeeded` \| `failed`), `error`, indexed revision, and chunk counts. |
+| `POST` | `/api/v1/knowledge/index/rebuild` | Re-enqueue every published entry for index rebuild (`knowledge:manage` only; e.g. after changing `EMBEDDING_MODEL`). Returns `{ enqueued }`. Audited. |
+| `POST` | `/api/v1/knowledge/entries/:entryId/index/retry` | Re-enqueue one entry's index refresh (`knowledge:manage` only). Returns `{ enqueued: true }`. Audited. |
 | `GET` | `/api/v1/knowledge/entries/:entryId` | Entry detail with head-revision content and file metadata (extraction status included). |
 | `PATCH` | `/api/v1/knowledge/entries/:entryId` | Save an edit (`title` / `tags` / `contentMarkdown` / replacement `file`) as a new immutable revision. Requires `expectedHeadRevisionNumber`; a stale save returns `409 CONFLICT` with `details.code: "knowledge-revision-conflict"`. |
 | `POST` | `/api/v1/knowledge/entries/:entryId/publish` | Publish a draft into retrieval (`draft → published`). |
@@ -231,6 +234,8 @@ Organization-scoped knowledge entries with immutable revisions (design: [Knowled
 | `GET` | `/api/v1/knowledge/entries/:entryId/file/content` | Download the current binary of a file-form entry. |
 
 File uploads accept `application/pdf`, `.docx` (`application/vnd.openxmlformats-officedocument.wordprocessingml.document`), `application/msword`, `text/plain`, and `text/markdown`, up to 20 MB. Extraction failures are recorded honestly on the file row (`extractionStatus: "failed"` plus a readable `extractionError`) without failing the upload.
+
+Publish, edit-of-published, archive, and restore enqueue an asynchronous index refresh (chunking + optional embeddings); the index worker only ever materializes **published** revisions, so drafts and archived entries are never retrievable. Xiaoze grounds knowledge questions through the registered read tools `knowledge.search` / `knowledge.getDocument`, which run under the calling user's AuthContext (`knowledge:view` + organization scope) and return citation payloads that deep-link to `/knowledge?entryId=…`.
 
 ## Project Parameter Initialization
 

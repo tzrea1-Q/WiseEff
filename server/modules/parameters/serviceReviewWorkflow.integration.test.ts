@@ -15,7 +15,7 @@ import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testi
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import { resolveParameterIdentityMode, setParameterIdentityMode } from "./parameterIdentityMode";
-import { insertFileSyncConflict } from "./repository";
+import { insertFileSyncConflict } from "./fileSyncConflictRepository";
 import { listReviewDecisions, updateChangeRequestStatus } from "./reviewWorkflowRepository";
 import {
   listChangeRequests,

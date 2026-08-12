@@ -10,6 +10,8 @@ import type {
   KnowledgeContentForm,
   KnowledgeEntry,
   KnowledgeExtractionStatus,
+  KnowledgeIndexHealth,
+  KnowledgeRetrievalInfo,
   KnowledgeRevision,
   KnowledgeSearchResult,
   KnowledgeSourceType,
@@ -282,8 +284,10 @@ export function createHttpKnowledgeRepository(options: HttpKnowledgeRepositoryOp
 
     async search(q) {
       const params = new URLSearchParams({ q });
-      const response = await apiClient.get<ListEnvelope<KnowledgeSearchResult>>(`/api/v1/knowledge/search?${params.toString()}`);
-      return response.items;
+      const response = await apiClient.get<ListEnvelope<KnowledgeSearchResult> & { retrieval: KnowledgeRetrievalInfo }>(
+        `/api/v1/knowledge/search?${params.toString()}`
+      );
+      return { items: response.items, retrieval: response.retrieval };
     },
 
     async getFileObjectUrl(entryId) {
@@ -292,6 +296,18 @@ export function createHttpKnowledgeRepository(options: HttpKnowledgeRepositoryOp
         headers: { Accept: "*/*" }
       });
       return URL.createObjectURL(await response.blob());
+    },
+
+    async getIndexHealth() {
+      return apiClient.get<KnowledgeIndexHealth>("/api/v1/knowledge/index/status");
+    },
+
+    async retryEntryIndex(entryId) {
+      await apiClient.post<{ enqueued: boolean }>(`${entryPath(entryId)}/index/retry`, {});
+    },
+
+    async rebuildIndex() {
+      return apiClient.post<{ enqueued: number }>("/api/v1/knowledge/index/rebuild", {});
     }
   };
 }

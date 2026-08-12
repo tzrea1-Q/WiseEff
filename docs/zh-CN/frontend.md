@@ -178,10 +178,11 @@ mock mode 有意保留 12 个兼容参数，以保证组件测试与演示轻量
 
 知识库：
 
-- `/knowledge`（侧栏分组「知识库」）：条目列表用共享 `ColumnFilter` 做状态/标签列筛选;检索框只命中 `published` 条目;分栏编辑/预览的 Markdown 编辑器（`src/domain/knowledge/markdown.ts` 先转义再渲染）;文件条目上传后展示提取状态徽章;修订历史支持「恢复为新修订」。
-- `/knowledge-admin`：Phase 1 治理骨架——已归档条目恢复与 manage 门控的彻底删除（带确认勾选的 `ConfirmDialog`）;Agent 草稿队列与索引健康在后续阶段加入。
-- 端口 `KnowledgeRepository`:mock 用 `src/infrastructure/mock/mockKnowledgeRepository.ts`（fixtures 覆盖草稿/已发布/已归档与提取失败文件,端口形状一致）;API 用 `src/infrastructure/http/knowledgeClient.ts` 对接 `/api/v1/knowledge/*`。过期保存映射为 `KnowledgeRevisionConflictError`,编辑器渲染为可读的刷新重试冲突提示,绝不静默覆盖。
+- `/knowledge`（侧栏分组「知识库」）：条目列表用共享 `ColumnFilter` 做状态/标签列筛选;检索框只命中 `published` 条目,结果如实标注检索模式（语义 + 全文 vs 仅全文）;分栏编辑/预览的 Markdown 编辑器（`src/domain/knowledge/markdown.ts` 先转义再渲染）;文件条目上传后展示提取状态徽章;修订历史支持「恢复为新修订」。API 模式额外提供「问知识库(小泽)」入口,派发小泽打开 handoff——mock 模式无 Agent UI,入口隐藏。`?entryId=…` 深链（小泽引用使用）直接打开条目详情。
+- `/knowledge-admin`：已归档条目恢复、manage 门控的彻底删除（带确认勾选的 `ConfirmDialog`）,以及检索索引健康区——诚实的检索模式横幅（pgvector/嵌入可用性）、逐条目索引状态与失败原因、单条重试与全量重建。Agent 草稿队列在蒸馏阶段加入。
+- 端口 `KnowledgeRepository`:mock 用 `src/infrastructure/mock/mockKnowledgeRepository.ts`（fixtures 覆盖草稿/已发布/已归档与提取失败文件,并模拟索引状态,端口形状一致）;API 用 `src/infrastructure/http/knowledgeClient.ts` 对接 `/api/v1/knowledge/*`（含 `index/status`、`index/rebuild`、`entries/:id/index/retry`）。过期保存映射为 `KnowledgeRevisionConflictError`,编辑器渲染为可读的刷新重试冲突提示,绝不静默覆盖。
 - 能力接线:`App.tsx` 由 `/api/v1/me` 权限（API mode 的 `knowledge:edit` / `knowledge:manage`）或角色检查（mock mode）构造 `KnowledgeCapability`;UI 门控仅是 UX,后端路由才是安全边界。纯生命周期/可见性规则在 `src/domain/knowledge/rules.ts`。
+- 小泽回答在助手 markdown 下渲染引用来源（`src/features/agent/XiaozeCitationSources.tsx`）：turn-reply 自定义事件与持久化线程消息携带 `citations`,知识引用深链到 `/knowledge?entryId=…`。
 
 设备调试：
 

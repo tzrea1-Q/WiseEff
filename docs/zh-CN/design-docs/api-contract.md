@@ -399,7 +399,10 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 | --- | --- | --- |
 | `POST` | `/api/v1/knowledge/entries` | 创建 markdown 或文件条目（草稿）。文件以 base64 经对象存储上传并执行正文提取。返回 `201 { item }`。 |
 | `GET` | `/api/v1/knowledge/entries` | 列出可见条目；支持 `status`、`contentForm`、`tag`、`q`（标题）、`limit`。 |
-| `GET` | `/api/v1/knowledge/search` | 仅检索 **published** 条目（`q`、可选 `limit`）：拉丁文本走 PostgreSQL FTS,中文走 `pg_trgm` 三元组匹配;返回摘录。 |
+| `GET` | `/api/v1/knowledge/search` | 仅检索 **published** 条目（`q`、可选 `limit`）。混合检索：配置了 `EMBEDDING_API_*` 且 pgvector 可用时,chunk 向量相似度与 FTS/trigram 排名做 RRF 融合;否则 FTS-only 路径保持不变。结果携带可引用字段（`entryId`、`title`、`revisionId`、`excerpt`）,响应携带诚实的 `retrieval` 报告：`{ mode: "semantic_fts" \| "fts_only", vectorAvailable, embeddingConfigured, degradedReason? }`。 |
+| `GET` | `/api/v1/knowledge/index/status` | 逐条目检索索引健康（仅 `knowledge:manage`）：`{ retrieval, items }`,每项含 `status`（`pending` \| `processing` \| `succeeded` \| `failed`）、`error`、已索引修订与 chunk 计数。 |
+| `POST` | `/api/v1/knowledge/index/rebuild` | 把全部已发布条目重新入队重建索引（仅 `knowledge:manage`;如更换 `EMBEDDING_MODEL` 后）。返回 `{ enqueued }`。写审计。 |
+| `POST` | `/api/v1/knowledge/entries/:entryId/index/retry` | 单条目重新入队索引刷新（仅 `knowledge:manage`）。返回 `{ enqueued: true }`。写审计。 |
 | `GET` | `/api/v1/knowledge/entries/:entryId` | 条目详情,含头修订内容与文件元数据（含提取状态）。 |
 | `PATCH` | `/api/v1/knowledge/entries/:entryId` | 保存编辑（`title` / `tags` / `contentMarkdown` / 替换 `file`）为新的不可变修订。必须携带 `expectedHeadRevisionNumber`;过期保存返回 `409 CONFLICT`,`details.code: "knowledge-revision-conflict"`。 |
 | `POST` | `/api/v1/knowledge/entries/:entryId/publish` | 发布草稿进入检索（`draft → published`）。 |
@@ -411,6 +414,8 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 | `GET` | `/api/v1/knowledge/entries/:entryId/file/content` | 下载文件型条目当前二进制。 |
 
 文件上传接受 `application/pdf`、`.docx`（`application/vnd.openxmlformats-officedocument.wordprocessingml.document`）、`application/msword`、`text/plain`、`text/markdown`,上限 20 MB。提取失败诚实落在文件行上（`extractionStatus: "failed"` + 可读 `extractionError`）,不阻断上传。
+
+发布、编辑已发布、归档与恢复会把该条目的索引刷新异步入队（分块 + 可选嵌入）;索引 worker 只物化 **published** 修订,草稿与已归档条目永远不可检索。小泽通过注册的只读工具 `knowledge.search` / `knowledge.getDocument` 落地知识问题,工具在调用用户的 AuthContext 下执行（`knowledge:view` + 组织隔离）,返回可深链到 `/knowledge?entryId=…` 的引用负载。
 
 ## 项目参数初始化
 

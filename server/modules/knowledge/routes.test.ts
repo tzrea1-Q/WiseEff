@@ -149,9 +149,12 @@ describe("knowledge routes", () => {
     });
   });
 
-  it("GET /api/v1/knowledge/search requires q and delegates", async () => {
+  it("GET /api/v1/knowledge/search requires q, delegates, and reports the retrieval mode", async () => {
     const db = makeDb();
-    vi.mocked(service.searchKnowledge).mockResolvedValue([]);
+    vi.mocked(service.searchKnowledge).mockResolvedValue({
+      items: [],
+      retrieval: { mode: "fts_only", vectorAvailable: false, embeddingConfigured: false }
+    });
 
     const missing = await requestJson<{ error: { code: string } }>(
       makeServer({ db, objectStore: makeObjectStore() }),
@@ -159,12 +162,13 @@ describe("knowledge routes", () => {
     );
     expect(missing.status).toBe(400);
 
-    const response = await requestJson<{ items: unknown[] }>(
+    const response = await requestJson<{ items: unknown[]; retrieval: { mode: string } }>(
       makeServer({ db, objectStore: makeObjectStore() }),
       "/api/v1/knowledge/search?q=%E5%BF%AB%E5%85%85"
     );
     expect(response.status).toBe(200);
-    expect(service.searchKnowledge).toHaveBeenCalledWith(db, makeAuth(), { q: "快充" });
+    expect(response.body.retrieval).toMatchObject({ mode: "fts_only" });
+    expect(service.searchKnowledge).toHaveBeenCalledWith(db, makeAuth(), { q: "快充" }, { embeddingClient: undefined });
   });
 
   it("PATCH /api/v1/knowledge/entries/:entryId surfaces structured 409 conflicts", async () => {
