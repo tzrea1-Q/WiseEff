@@ -23,6 +23,8 @@ import type { DebuggingRuntimeActions } from "@/application/debugging/debuggingR
 import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogRuntimeActions } from "@/application/logs/logRuntime";
 import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
+import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
+import type { KnowledgeCapability } from "@/domain/knowledge/rules";
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type { ParameterInitializationRepository } from "@/application/ports/ParameterInitializationRepository";
@@ -38,6 +40,8 @@ import { PlatformConsolePage } from "@/PlatformConsolePage";
 import { ParameterAdminNextPage } from "@/ParameterAdminNextPage";
 import { ParameterHomePage } from "@/features/parameter-home/ParameterHomePage";
 import { FeedbackAdminPage } from "@/features/product-feedback/FeedbackAdminPage";
+import { KnowledgeAdminPage } from "@/features/knowledge/KnowledgeAdminPage";
+import { KnowledgePage } from "@/features/knowledge/KnowledgePage";
 import { DtsReloadPage } from "@/features/dts-reload/DtsReloadPage";
 import { ParametersPage as UserParametersPage } from "@/ParametersPage";
 import { UserPermissionsPage } from "@/UserPermissionsPage";
@@ -78,6 +82,8 @@ export type PageProps = {
   parameterTopologyRepository?: ParameterTopologyRepository;
   listParameterConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   productFeedbackRepository?: ProductFeedbackRepository;
+  knowledgeRepository?: KnowledgeRepository;
+  knowledgeCapability?: KnowledgeCapability;
   dtsReloadRepository?: DtsReloadRepository | null;
   canStartDtsReload?: boolean;
   parameterInitializationRepository?: ParameterInitializationRepository;
@@ -117,6 +123,8 @@ export function PageRouter({
   parameterTopologyRepository,
   listParameterConfigSets,
   productFeedbackRepository,
+  knowledgeRepository,
+  knowledgeCapability,
   dtsReloadRepository = null,
   canStartDtsReload = false,
   parameterInitializationRepository,
@@ -250,6 +258,14 @@ export function PageRouter({
       return <LogAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} logActions={logActions} />;
     case "feedback-admin":
       return productFeedbackRepository ? <FeedbackAdminPage productFeedbackRepository={productFeedbackRepository} /> : null;
+    case "knowledge":
+      return knowledgeRepository && knowledgeCapability ? (
+        <KnowledgePage repository={knowledgeRepository} capability={knowledgeCapability} />
+      ) : null;
+    case "knowledge-admin":
+      return knowledgeRepository && knowledgeCapability ? (
+        <KnowledgeAdminPage repository={knowledgeRepository} canManage={knowledgeCapability.canManage} />
+      ) : null;
     case "debugging":
       return (
         <NoEntryPage

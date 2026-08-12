@@ -54,7 +54,11 @@ function flattenQuery(query: Record<string, string | string[]>) {
   return Object.fromEntries(Object.entries(query).map(([key, value]) => [key, Array.isArray(value) ? value[0] : value]));
 }
 
-function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Invalid knowledge route input.") {
+function parseWithSchema<Schema extends z.ZodTypeAny>(
+  schema: Schema,
+  value: unknown,
+  message = "Invalid knowledge route input."
+): z.infer<Schema> {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
     throw new ApiError("VALIDATION_FAILED", message, 400, { issues: parsed.error.issues });
