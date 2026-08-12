@@ -361,6 +361,10 @@ M5 extends that baseline with the release smoke and pilot acceptance artifact. D
 - Preserve mock mode when adding API mode unless the task explicitly removes a prototype path.
 - Prefer existing component patterns and tests before adding new primitives.
 
+## UI Design System And Quality Gate
+
+Every product surface follows the operational visual standard in [UI Design System](design-docs/ui-design-system.md): design tokens as the only source of visual values, one accent, mandatory interaction states (rest/hover/active/focus-visible/disabled/loading), shared primitives (Button, `ModalDialog`, `DataTable`, `ColumnFilter`, `SectionState`), tokenized motion, and Chinese-first product language with shared formatters. Every frontend-visible change must pass the completion gate in [UI Quality Checklist](developer/ui-quality-checklist.md) before it is called done. Migration of legacy surfaces to this standard is tracked in `docs/exec-plans/active/2026-08-12-frontend-aesthetics-uplift.md`.
+
 ## Button And Action Styling
 
 Buttons must look and behave like buttons. Do not rely on a bare `.button` class, raw `<button>` browser defaults, or text-only styling for actions that mutate state, submit forms, close dialogs, navigate workflows, or open menus. Use the existing button component or an established local variant; if a scoped button variant is needed, define the full visual contract in that scope:

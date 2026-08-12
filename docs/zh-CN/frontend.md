@@ -219,6 +219,10 @@ Xiaoze（小泽，唯一 Agent）：
 - `/user-permissions` 在 API mode 下通过 `/api/v1/users` 读取和写入用户治理数据，并通过 `/api/v1/users/registration-role-requests` 处理待审批的 Committer 注册申请。管理员在“添加用户”中创建的是本地账号：表单使用姓名、用户名、可选职务、初始密码和初始角色，不再把邮箱作为账号标识。该账号会加入当前管理员所在组织并立即启用；密码只提交给后端创建凭据，前端用户状态不会保存明文密码。
 - 前端权限检查只是 UX，后端仍必须执行 authz、self-lockout 防护和 audit。
 
+## UI 设计系统与质量门禁
+
+所有产品界面遵循 [UI 设计系统](design-docs/ui-design-system.md) 的可执行视觉标准:设计令牌是视觉取值的唯一来源、单一 accent、强制交互状态、共享原语(Button / ModalDialog / DataTable / ColumnFilter / SectionState)、令牌化动效与中文优先的产品语言。所有前端可见变更在宣称完成前必须通过 [UI 质量检查清单](developer/ui-quality-checklist.md) 的完成门禁。存量界面向该标准迁移由 `docs/zh-CN/exec-plans/active/2026-08-12-frontend-aesthetics-uplift.md` 跟踪。
+
 ## 按钮和操作样式
 
 按钮必须看起来就是按钮。不要依赖裸 `.button` class、浏览器默认 `<button>` 样式，或把会写入状态、提交表单、关闭弹窗、推进流程、打开菜单的操作做成纯文字。优先复用已有 Button 组件或本地已有变体；如果某个区域需要局部按钮变体，必须在该作用域内补齐完整视觉契约：
