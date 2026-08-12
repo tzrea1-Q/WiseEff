@@ -114,6 +114,7 @@ Architectural decisions: [`docs/adr/`](docs/adr/) (created lazily). Feature-scop
 - [`0009`](docs/adr/0009-overlay-parsing-knowledge-promotes-into-a-platform-tier.md) — overlay parsing knowledge promotes into a platform tier
 - [`0010`](docs/adr/0010-attribution-tree-is-taxonomy-not-topology.md) — attribution tree is taxonomy, not topology
 - [`0011`](docs/adr/0011-spec-deprecation-is-soft-retirement.md) — parameter definition deprecation is soft retirement
+- [`0012`](docs/adr/0012-releasing-happens-at-the-file-layer.md) — releasing happens at the file layer
 - [`0013`](docs/adr/0013-attribution-subjects-are-stable-catalog-entities.md) — attribution subjects are stable catalog entities
 - [`0014`](docs/adr/0014-parameter-definitions-are-versioned-subjects.md) — parameter definitions are versioned subjects with soft retirement
 - [`0015`](docs/adr/0015-governance-queues-live-with-the-object-they-govern.md) — organization admin subdivides by governance object; queues nest under the object they govern
@@ -121,3 +122,6 @@ Architectural decisions: [`docs/adr/`](docs/adr/) (created lazily). Feature-scop
 - [`0017`](docs/adr/0017-definition-identity-is-correctable.md) — definition identity is correctable and `parameter_specs.id` is a surrogate
 - [`0018`](docs/adr/0018-uploaded-file-versions-are-staged-before-activation.md) — uploaded file versions are staged before activation
 - [`0019`](docs/adr/0019-debug-values-never-mutate-the-parameter-library.md) — debug values never mutate the parameter library
+- [`0020`](docs/adr/0020-reload-runs-execute-in-request-on-bridge-holding-process.md) — reload runs execute in-request on the bridge-holding process
+- [`0021`](docs/adr/0021-reload-snapshot-satisfies-device-write-snapshot-non-negotiable.md) — reload snapshot satisfies the device-write snapshot non-negotiable
+- [`0022`](docs/adr/0022-log-analysis-agent-runs-outside-the-xiaoze-stack.md) — log analysis agent runs outside the Xiaoze stack
