@@ -19,7 +19,8 @@ import type { ChangeRequest, ParameterHistoryEntry, ParameterRecord, ParameterSu
 import { requestStatusToBackend } from "@/domain/parameters/submissionWorkflowTrail";
 import { canPerform } from "@/app/permissions";
 import { roleSupportsWorkflowSlot } from "@/domain/users/types";
-import { projects, roles, type PrototypeState } from "@/mockData";
+import { projects, roles } from "@/mockData";
+import type { PrototypeState } from "@/domain/prototype/types";
 import { buildAISuggestion, buildImpactItems, REVIEW_MOCK_NOW } from "@/reviewMockData";
 import { type MockRuntimeState, readMockState, writeMockState } from "./mockState";
 import { buildPowerManagementModuleTree } from "@/powerManagementConfig";

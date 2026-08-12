@@ -6,7 +6,7 @@ import pg from "pg";
 import { describe, expect, it } from "vitest";
 
 import { createDatabase, type Database } from "../../shared/database/client";
-import { applyMigrations, getPendingMigrations } from "../../shared/database/migrations";
+import { applyMigrations } from "../../shared/database/migrations";
 import { isTestDatabaseAvailable } from "../../testing/testDatabase";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
@@ -75,38 +75,6 @@ async function withTempDatabase(fn: (db: Database) => Promise<void>) {
       await admin.query(`drop database if exists ${dbName} with (force)`);
     });
   }
-}
-
-async function applyMigrationsThrough(db: Database, maxExclusive: string): Promise<string[]> {
-  await db.query(`
-    create table if not exists schema_migrations (
-      name text primary key,
-      applied_at timestamptz not null default now()
-    )
-  `);
-
-  const files = (await fs.readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
-  const limited = files.filter((file) => file < maxExclusive);
-  const applied = await db.query<{ name: string }>("select name from schema_migrations order by name");
-  const pending = getPendingMigrations(
-    limited,
-    applied.rows.map((row) => row.name),
-  );
-
-  for (const file of pending) {
-    const sql = await fs.readFile(path.join(migrationsDir, file), "utf8");
-    await db.query("begin");
-    try {
-      await db.query(sql);
-      await db.query("insert into schema_migrations (name) values ($1)", [file]);
-      await db.query("commit");
-    } catch (error) {
-      await db.query("rollback");
-      throw error;
-    }
-  }
-
-  return pending;
 }
 
 type RevisionRow = {
@@ -271,7 +239,7 @@ async function seedPre0054HistoricalRevisions(db: Database) {
 describe.skipIf(!databaseAvailable)("0054 config revision manifest backfill", () => {
   it("backfills from pinned members and marks uncertain manifests needs_review", async () => {
     await withTempDatabase(async (db) => {
-      const through0053 = await applyMigrationsThrough(db, migration0054);
+      const through0053 = await applyMigrations(db, migrationsDir, { before: migration0054 });
       expect(through0053.at(-1)).toBe("0053_topology_round3_scoping_writeback.sql");
 
       await seedPre0054HistoricalRevisions(db);

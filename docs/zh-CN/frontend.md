@@ -10,6 +10,7 @@ WiseEff 前端是 Vite、React、TypeScript 单页应用。它同时支持 mock 
 
 - `src/app/`：路由、导航、权限和页面装配。
 - `src/domain/`：角色、参数、日志、调试、审计、Agent 的类型和纯规则。
+- `src/application/state/`：全局原型状态机——`AppAction`、`reducer`/`appReducer` 与仅供 reducer 使用的迁移助手。状态类型一律从这里导入，禁止从 `@/App` 导入（ADR-0023）。
 - `src/application/ports/`：前端调用业务能力的接口。
 - `src/infrastructure/mock/`：mock state 和 mock repository/gateway。
 - `src/infrastructure/http/`：HTTP API client、DTO、auth client、runtime mode。

@@ -182,7 +182,7 @@ function deriveLevel(input: {
  * Callers must not reconstruct create/release permission from unrelated client counts.
  */
 export async function evaluateReleaseReadiness(
-  db: Database | Queryable,
+  db: Database,
   auth: AuthContext,
   input: EvaluateReleaseReadinessInput,
   deps: EvaluateReleaseReadinessDeps = {}
@@ -380,7 +380,7 @@ export async function evaluateReleaseReadiness(
     } else {
       try {
         gate = await runValidationGate(
-          db as Database,
+          db,
           auth,
           { configSetId: input.configSetId, forRelease: false },
           { objectStore: deps.objectStore, validator: deps.validator, toolchain: deps.toolchain }
@@ -517,7 +517,7 @@ export async function evaluateReleaseReadiness(
 }
 
 export async function assertReleaseGateAllows(
-  db: Database | Queryable,
+  db: Database,
   auth: AuthContext,
   input: {
     configSetId: string;
