@@ -796,6 +796,18 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["api", "audit"]
   },
   {
+    id: "XIAOZE-ACTION-EDITEDARGS-001",
+    priority: "P1",
+    area: "agent",
+    route: "/parameters",
+    roles: ["Admin"],
+    action: "Approve a Xiaoze parameter change with edited arguments and persist the edited payload.",
+    coverage: "automated",
+    acceptanceIds: ["XIAOZE-ACTION-EDITEDARGS-001"],
+    specFiles: ["e2e/acceptance/xiaoze-action.acceptance.spec.ts"],
+    assertions: ["api", "audit"]
+  },
+  {
     id: "XIAOZE-ACTION-REJECT-001",
     priority: "P1",
     area: "agent",
