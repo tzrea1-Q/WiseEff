@@ -11,6 +11,27 @@ import {
   releaseReadinessAllowsCreate,
   releaseReadinessAllowsRelease
 } from "@/application/project-configuration/releaseReadinessGates";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
+
+/**
+ * Every command failure must land in `actionError` — repo throws (network,
+ * stale gateToken, 409) included, not only the local pre-flight gates.
+ */
+function describeBaselineActionError(error: unknown, fallback: string): string {
+  if (error instanceof WiseEffApiError) {
+    const detailCode = typeof error.details?.code === "string" ? error.details.code : "";
+    if (detailCode.startsWith("readiness-")) {
+      return "就绪状态已变化，请重新查看就绪问题后再操作。";
+    }
+    if (error.message.trim()) {
+      return error.message;
+    }
+  }
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return fallback;
+}
 
 export type ReleaseBaselineRepository = Pick<
   DtsStructuredRepository,
@@ -326,40 +347,56 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
       }
       actionError = "";
       emit();
-      const nextReadiness = await repo.getReleaseReadiness(projectId, configSetId, {
-        acknowledgedWarningIds: [...acknowledgedWarningIds]
-      });
-      readiness = nextReadiness;
-      emit();
-      if (!releaseReadinessAllowsCreate(nextReadiness, input.localSessionDirty)) {
-        actionError = input.localSessionDirty
-          ? "还有未保存的本机会话变更，不能创建基线。"
-          : nextReadiness.unavailableReason ?? "发布就绪门禁阻止创建基线。";
+      try {
+        const nextReadiness = await repo.getReleaseReadiness(projectId, configSetId, {
+          acknowledgedWarningIds: [...acknowledgedWarningIds]
+        });
+        readiness = nextReadiness;
         emit();
-        throw new Error(actionError);
+        if (!releaseReadinessAllowsCreate(nextReadiness, input.localSessionDirty)) {
+          actionError = input.localSessionDirty
+            ? "还有未保存的本机会话变更，不能创建基线。"
+            : nextReadiness.unavailableReason ?? "发布就绪门禁阻止创建基线。";
+          emit();
+          throw new Error(actionError);
+        }
+        const created = await repo.createBaseline(projectId, configSetId, {
+          name,
+          gateToken: nextReadiness.gateToken,
+          acknowledgedWarningIds: [...acknowledgedWarningIds]
+        });
+        baselines = [created, ...baselines.filter((item) => item.id !== created.id)];
+        actionError = "";
+        emit();
+        return created;
+      } catch (error) {
+        if (!actionError) {
+          actionError = describeBaselineActionError(error, "创建基线失败，请重试。");
+          emit();
+        }
+        throw error;
       }
-      const created = await repo.createBaseline(projectId, configSetId, {
-        name,
-        gateToken: nextReadiness.gateToken,
-        acknowledgedWarningIds: [...acknowledgedWarningIds]
-      });
-      baselines = [created, ...baselines.filter((item) => item.id !== created.id)];
-      actionError = "";
-      emit();
-      return created;
     },
 
     async compare(projectId, against, repo) {
       if (!selectedBaselineId) {
-        throw new Error("请先选择基线。");
+        actionError = "请先选择基线。";
+        emit();
+        throw new Error(actionError);
       }
       actionError = "";
       emit();
-      const result = await repo.compareBaseline(projectId, selectedBaselineId, { against });
-      compareResult = result;
-      compareAgainst = against;
-      emit();
-      return result;
+      try {
+        const result = await repo.compareBaseline(projectId, selectedBaselineId, { against });
+        compareResult = result;
+        compareAgainst = against;
+        emit();
+        return result;
+      } catch (error) {
+        actionError = describeBaselineActionError(error, "对比基线失败，请重试。");
+        emit();
+        throw error;
+      }
     },
 
     clearCompare() {
@@ -375,56 +412,74 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
 
     async release(projectId, configSetId, input, repo) {
       if (!selectedBaselineId) {
-        throw new Error("请先选择基线。");
+        actionError = "请先选择基线。";
+        emit();
+        throw new Error(actionError);
       }
       actionError = "";
       emit();
-      const nextReadiness = await repo.getReleaseReadiness(projectId, configSetId, {
-        acknowledgedWarningIds: [...acknowledgedWarningIds]
-      });
-      readiness = nextReadiness;
-      emit();
-      if (!releaseReadinessAllowsRelease(nextReadiness, input.localSessionDirty)) {
-        actionError = input.localSessionDirty
-          ? "还有未保存的本机会话变更，不能发布基线。"
-          : nextReadiness.unavailableReason ?? "发布就绪门禁阻止发布基线。";
+      try {
+        const nextReadiness = await repo.getReleaseReadiness(projectId, configSetId, {
+          acknowledgedWarningIds: [...acknowledgedWarningIds]
+        });
+        readiness = nextReadiness;
         emit();
-        throw new Error(actionError);
-      }
-      const unacked = nextReadiness.warnings.filter(
-        (item) => item.acknowledgementRequired && !acknowledgedWarningIds.has(item.id)
-      );
-      if (unacked.length > 0) {
-        actionError = "请先在 Issues 坞确认策略允许的警告，再发布。";
-        emit();
-        throw new Error(actionError);
-      }
-      const result = await repo.releaseBaseline(projectId, selectedBaselineId, {
-        gateToken: nextReadiness.gateToken,
-        acknowledgedWarningIds: [...acknowledgedWarningIds]
-      });
-      baselines = baselines.map((item) => {
-        if (item.id === result.item.id) return result.item;
-        if (item.configSetId === configSetId && item.status === "released") {
-          return { ...item, status: "historical" as const };
+        if (!releaseReadinessAllowsRelease(nextReadiness, input.localSessionDirty)) {
+          actionError = input.localSessionDirty
+            ? "还有未保存的本机会话变更，不能发布基线。"
+            : nextReadiness.unavailableReason ?? "发布就绪门禁阻止发布基线。";
+          emit();
+          throw new Error(actionError);
         }
-        return item;
-      });
-      actionError = "";
-      emit();
-      return result;
+        const unacked = nextReadiness.warnings.filter(
+          (item) => item.acknowledgementRequired && !acknowledgedWarningIds.has(item.id)
+        );
+        if (unacked.length > 0) {
+          actionError = "请先在 Issues 坞确认策略允许的警告，再发布。";
+          emit();
+          throw new Error(actionError);
+        }
+        const result = await repo.releaseBaseline(projectId, selectedBaselineId, {
+          gateToken: nextReadiness.gateToken,
+          acknowledgedWarningIds: [...acknowledgedWarningIds]
+        });
+        baselines = baselines.map((item) => {
+          if (item.id === result.item.id) return result.item;
+          if (item.configSetId === configSetId && item.status === "released") {
+            return { ...item, status: "historical" as const };
+          }
+          return item;
+        });
+        actionError = "";
+        emit();
+        return result;
+      } catch (error) {
+        if (!actionError) {
+          actionError = describeBaselineActionError(error, "发布基线失败，请重试。");
+          emit();
+        }
+        throw error;
+      }
     },
 
     async previewRestore(projectId, repo) {
       if (!selectedBaselineId) {
-        throw new Error("请先选择基线。");
+        actionError = "请先选择基线。";
+        emit();
+        throw new Error(actionError);
       }
       actionError = "";
       emit();
-      const preview = await repo.previewRestoreBaseline(projectId, selectedBaselineId);
-      restorePreview = preview;
-      emit();
-      return preview;
+      try {
+        const preview = await repo.previewRestoreBaseline(projectId, selectedBaselineId);
+        restorePreview = preview;
+        emit();
+        return preview;
+      } catch (error) {
+        actionError = describeBaselineActionError(error, "加载恢复预览失败，请重试。");
+        emit();
+        throw error;
+      }
     },
 
     clearRestorePreview() {
@@ -434,18 +489,26 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
 
     async restore(projectId, configSetId, repo) {
       if (!selectedBaselineId) {
-        throw new Error("请先选择基线。");
+        actionError = "请先选择基线。";
+        emit();
+        throw new Error(actionError);
       }
       actionError = "";
       emit();
-      const tipBefore = latestReleased(baselines)?.id;
-      const result = await repo.rollbackBaseline(projectId, selectedBaselineId);
-      restorePreview = null;
-      const refreshed = await repo.listBaselines(projectId, configSetId);
-      baselines = refreshed;
-      const tipAfter = latestReleased(refreshed)?.id;
-      emit();
-      return { result, tipUnchanged: Boolean(tipBefore && tipAfter && tipBefore === tipAfter) };
+      try {
+        const tipBefore = latestReleased(baselines)?.id;
+        const result = await repo.rollbackBaseline(projectId, selectedBaselineId);
+        restorePreview = null;
+        const refreshed = await repo.listBaselines(projectId, configSetId);
+        baselines = refreshed;
+        const tipAfter = latestReleased(refreshed)?.id;
+        emit();
+        return { result, tipUnchanged: Boolean(tipBefore && tipAfter && tipBefore === tipAfter) };
+      } catch (error) {
+        actionError = describeBaselineActionError(error, "恢复基线失败，请重试。");
+        emit();
+        throw error;
+      }
     }
   };
 

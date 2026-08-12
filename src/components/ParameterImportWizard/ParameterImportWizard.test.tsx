@@ -73,6 +73,53 @@ describe("ParameterImportWizard", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("closes directly on Escape while the wizard is still clean", () => {
+    const { onClose } = renderWizard();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog", { name: "退出批量导入向导？" })).not.toBeInTheDocument();
+  });
+
+  it("guards Escape/close with a discard confirmation once parse progress exists", async () => {
+    const { onClose } = renderWizard();
+
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
+    fillPasteImportContent(
+      dialog,
+      JSON.stringify([
+        {
+          name: "guarded_param",
+          module: "Guard Module",
+          currentValue: "1",
+          recommendedValue: "2",
+          range: "0 - 10",
+          unit: "unit",
+          risk: "Low"
+        }
+      ])
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+    await screen.findByText(/解析校验/);
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+    const confirmDialog = screen.getByRole("dialog", { name: "退出批量导入向导？" });
+    expect(confirmDialog).toHaveTextContent(/丢弃当前导入进度/);
+
+    // 继续导入 keeps everything.
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "继续导入" }));
+    expect(onClose).not.toHaveBeenCalled();
+
+    // Explicit discard is the only way out.
+    fireEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "退出批量导入向导？" })).getByRole("button", { name: "丢弃并退出" })
+    );
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("opens the project creation dialog and dispatches a local project in mock mode", () => {
     const { dispatch } = renderWizard();
 

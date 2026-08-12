@@ -1,5 +1,5 @@
 import { useTopBarActions } from "@/components/layout";
-import { applyTimeWindow, deriveMetrics } from "@/logAdminAnalytics";
+import { applyTimeWindow, deriveMetrics, isSparseSparkline } from "@/logAdminAnalytics";
 import { STAGE_LABELS, type LogRecord, type PrototypeState } from "@/domain/prototype/types";
 import { AlertTriangle, CheckCircle2, FileText, Info } from "lucide-react";
 import { useMemo, type CSSProperties } from "react";
@@ -45,6 +45,30 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
     date.setDate(date.getDate() - (6 - index));
     return `${date.getMonth() + 1}月${date.getDate()}日`;
   });
+  const trendSampleSparse = isSparseSparkline(metrics.todayCount.sparkline);
+  // The queue verdict is earned from real failure / stuck-processing counts,
+  // never asserted unconditionally.
+  const stalledProcessingLogs = todayLogs.filter(
+    (log) => log.status === "Processing" && Date.now() - Date.parse(log.updatedAtIso) > 10 * 60_000
+  );
+  const queueJudgement =
+    failedLogs.length > 0
+      ? {
+          tone: "risk" as const,
+          headline: `${failedLogs.length} 条失败待处理`,
+          detail: `今日覆盖 ${totalCount} 份日志，其中 ${failedLogs.length} 份解析失败，请优先处理失败记录。`
+        }
+      : stalledProcessingLogs.length > 0
+        ? {
+            tone: "risk" as const,
+            headline: `${stalledProcessingLogs.length} 条分析滞留`,
+            detail: `今日覆盖 ${totalCount} 份日志，${stalledProcessingLogs.length} 份分析超过 10 分钟未完成。`
+          }
+        : {
+            tone: "ok" as const,
+            headline: "处理队列稳定",
+            detail: `今日覆盖 ${totalCount} 份日志，最新样本 ${compactLogLabel(latestLog)} 已进入看板监控。`
+          };
   const topActions = Array.from(
     new Set(
       [...failedLogs, ...lowConfidenceLogs, ...sortedByUpdate]
@@ -79,12 +103,12 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
             </div>
           </div>
 
-          <div className="topic-decision-panel">
-            <CheckCircle2 size={18} />
+          <div className={`topic-decision-panel${queueJudgement.tone === "risk" ? " is-risk" : ""}`}>
+            {queueJudgement.tone === "risk" ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />}
             <div>
               <span>关键判断</span>
-              <strong>处理队列稳定</strong>
-              <p>今日覆盖 {totalCount} 份日志，最新样本 {compactLogLabel(latestLog)} 已进入看板监控。</p>
+              <strong>{queueJudgement.headline}</strong>
+              <p>{queueJudgement.detail}</p>
             </div>
           </div>
 
@@ -103,6 +127,9 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
                   </span>
                 ))}
               </div>
+              {trendSampleSparse ? (
+                <p className="topic-trend-note" role="note">样本不足，趋势仅供参考。</p>
+              ) : null}
             </section>
 
             <section className="topic-evidence-block">

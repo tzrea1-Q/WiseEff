@@ -1,6 +1,8 @@
 import {
+  AlertTriangle,
   ChevronDown,
   FileText,
+  LoaderCircle,
   MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
@@ -70,7 +72,7 @@ import { supportsXiaozeProactiveInsights } from "@/features/agent/xiaozeProactiv
 import { FeedbackDialog } from "@/features/product-feedback/FeedbackDialog";
 import { xiaozeProactiveEnabled } from "@/infrastructure/http/runtimeMode";
 import { getPageByPath, getXiaozeContextSummary, navigationItems, pageUsesProjectScope, PageConfig, utilityItems } from "./appConfig";
-import { reducer, type AppAction } from "@/application/state/appState";
+import { reducer, type AppAction, type ApiRuntimeDataDomain } from "@/application/state/appState";
 
 function isStaticDownloadPath(pathname: string) {
   return pathname.startsWith("/downloads/");
@@ -78,6 +80,7 @@ function isStaticDownloadPath(pathname: string) {
 import { TopBarActionsContext } from "./components/layout";
 import { readInitialNodeDebuggingProtocol } from "./NodeDebuggingPage";
 import {
+  createApiInitialState,
   initialState,
   mockDataFingerprint,
   roles
@@ -104,6 +107,7 @@ import {
 } from "@/infrastructure/http/authClient";
 import { clearSessionDraftsForLogout } from "@/application/project-configuration/sessionDraftStorage";
 import { AppToastLayer } from "@/components/common/AppToastLayer";
+import { unsavedParameterWorkCount } from "@/application/parameters/unsavedParameterWork";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 import { createMockParameterRepository } from "@/infrastructure/mock/mockParameterRepository";
@@ -257,7 +261,7 @@ function App({
   authClient,
   debuggingAdminClient,
   debuggingGateway,
-  initialAppState = initialState,
+  initialAppState,
   logAnalysisRepository,
   listParameterConfigSets,
   parameterRepository,
@@ -269,13 +273,18 @@ function App({
   runtimeMode = wiseEffRuntimeMode,
   userGovernanceActions
 }: AppProps = {}) {
+  // API mode boots from empty business slices (no demo data flash); mock mode
+  // keeps the full prototype state for demos and component tests.
+  const [resolvedInitialAppState] = useState(
+    () => initialAppState ?? (runtimeMode === "api" ? createApiInitialState() : initialState)
+  );
   return (
     <TooltipProvider delayDuration={0}>
       <AppShell
         authClient={authClient}
         debuggingAdminClient={debuggingAdminClient}
         debuggingGateway={debuggingGateway}
-        initialAppState={initialAppState}
+        initialAppState={resolvedInitialAppState}
         key={mockDataFingerprint}
         logAnalysisRepository={logAnalysisRepository}
         listParameterConfigSets={listParameterConfigSets}
@@ -656,54 +665,52 @@ function AppShell({
   const parameterRuntimeConnectedRef = useRef(false);
   const logRuntimeConnectedRef = useRef(false);
   const debuggingRuntimeConnectedRef = useRef(false);
+  const [apiRuntimeFailures, setApiRuntimeFailures] = useState<ReadonlySet<ApiRuntimeDataDomain>>(
+    () => new Set()
+  );
+  const [apiRuntimeSynced, setApiRuntimeSynced] = useState(runtimeMode !== "api");
+  const [apiRuntimeRetrying, setApiRuntimeRetrying] = useState(false);
 
   const refreshApiRuntimeData = useCallback(
     async (cancelledRef?: { current: boolean }, roleId = stateRef.current.activeRoleId) => {
       const runtimeRoleId = migrateLegacyRoleId(roleId);
       const debuggingProtocol = pageKeyRef.current === "node-debugging" ? readInitialNodeDebuggingProtocol() : "hdc";
-      const debuggingRefresh = canPerform(runtimeRoleId, "debugging.use")
-        ? debuggingActions.refresh({ protocol: debuggingProtocol })
+      const canUseDebugging = canPerform(runtimeRoleId, "debugging.use");
+      const debuggingRefresh = canUseDebugging
+        ? debuggingActions.refresh({ protocol: debuggingProtocol }, { notifyOnFailure: false })
         : Promise.resolve("skipped" as const);
       const [parameterRefreshResult, logRefreshResult, debuggingRefreshResult] = await Promise.allSettled([
         parameterActions.refresh({ notifyOnFailure: false }),
-        logActions.refresh(),
+        logActions.refresh(undefined, { notifyOnFailure: false }),
         debuggingRefresh
       ]);
       if (cancelledRef?.current) return;
+      // Failed domains drop to empty slices + a persistent page banner. Demo data
+      // must never stand in for live data in API mode.
+      const failures = new Set<ApiRuntimeDataDomain>();
       if (
         parameterRefreshResult.status === "rejected" ||
         (parameterRefreshResult.value && "notification" in parameterRefreshResult.value)
       ) {
-        dispatch({ type: "ADD_NOTIFICATION", message: "无法连接雷泽参数 API，已保留本地演示数据" });
+        failures.add("parameters");
+        dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "parameters" });
       } else if (!parameterRuntimeConnectedRef.current) {
         parameterRuntimeConnectedRef.current = true;
         dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽参数 API" });
       }
       if (logRefreshResult.status === "rejected") {
-        if (
-          !(
-            logRefreshResult.reason instanceof Error &&
-            (logRefreshResult.reason as { alreadyNotified?: unknown }).alreadyNotified === true
-          )
-        ) {
-          dispatch({ type: "ADD_NOTIFICATION", message: "无法加载雷泽日志 API，已保留本地演示数据" });
-        }
+        failures.add("logs");
+        dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "logs" });
       } else if (!logRuntimeConnectedRef.current) {
         logRuntimeConnectedRef.current = true;
         dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽日志 API" });
       }
-      if (!canPerform(runtimeRoleId, "debugging.use")) {
+      if (!canUseDebugging) {
         setDebuggingRuntimeReady(true);
       } else if (debuggingRefreshResult.status === "rejected") {
         setDebuggingRuntimeReady(false);
-        if (
-          !(
-            debuggingRefreshResult.reason instanceof Error &&
-            (debuggingRefreshResult.reason as { alreadyNotified?: unknown }).alreadyNotified === true
-          )
-        ) {
-          dispatch({ type: "ADD_NOTIFICATION", message: "无法加载雷泽调试 API，已保留本地演示数据" });
-        }
+        failures.add("debugging");
+        dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "debugging" });
       } else {
         setDebuggingRuntimeReady(true);
         if (!debuggingRuntimeConnectedRef.current) {
@@ -711,9 +718,20 @@ function AppShell({
           dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽调试 API" });
         }
       }
+      setApiRuntimeFailures(failures);
+      setApiRuntimeSynced(true);
     },
     [debuggingActions, logActions, parameterActions]
   );
+
+  const retryApiRuntimeData = useCallback(async () => {
+    setApiRuntimeRetrying(true);
+    try {
+      await refreshApiRuntimeData();
+    } finally {
+      setApiRuntimeRetrying(false);
+    }
+  }, [refreshApiRuntimeData]);
   const mockNotificationsClient = useMemo(
     () =>
       runtimeMode === "mock"
@@ -871,6 +889,20 @@ function AppShell({
     };
   }, []);
 
+  // Unsubmitted parameter drafts must survive accidental reloads/navigation.
+  useEffect(() => {
+    const guardUnload = (event: BeforeUnloadEvent) => {
+      if (unsavedParameterWorkCount() > 0) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", guardUnload);
+    return () => {
+      window.removeEventListener("beforeunload", guardUnload);
+    };
+  }, []);
+
   const navigate = useCallback((nextPath: string) => {
     const url = new URL(nextPath, window.location.origin);
     if (isStaticDownloadPath(url.pathname)) {
@@ -982,6 +1014,37 @@ function AppShell({
     </div>
   ) : null;
 
+  const apiRuntimeDomainLabels: Record<ApiRuntimeDataDomain, string> = {
+    parameters: "参数",
+    logs: "日志",
+    debugging: "调试"
+  };
+  const apiRuntimeStatusBanner =
+    runtimeMode !== "api" || isPlatformHome ? null : apiRuntimeFailures.size > 0 ? (
+      <div className="api-runtime-error-banner" role="alert" aria-live="assertive">
+        <AlertTriangle size={18} aria-hidden="true" />
+        <div className="api-runtime-error-banner__body">
+          <strong>
+            无法连接雷泽{[...apiRuntimeFailures].map((domain) => apiRuntimeDomainLabels[domain]).join("、")} API，当前无数据
+          </strong>
+          <p>为避免误读，连接失败时不展示演示数据；请确认后端服务可用后重试。</p>
+        </div>
+        <button
+          type="button"
+          className="button"
+          disabled={apiRuntimeRetrying}
+          onClick={() => void retryApiRuntimeData()}
+        >
+          {apiRuntimeRetrying ? "重试中…" : "重试"}
+        </button>
+      </div>
+    ) : !apiRuntimeSynced ? (
+      <div className="api-runtime-sync-banner" role="status">
+        <LoaderCircle size={16} className="api-runtime-sync-banner__spinner" aria-hidden="true" />
+        正在连接雷泽服务，加载真实数据…
+      </div>
+    ) : null;
+
   const appShell = (
     <div className={appShellClassName}>
         {!isPlatformHome ? (
@@ -1053,6 +1116,7 @@ function AppShell({
             </div>
           ) : (
             <main className="main-content" aria-label={isParameterHome ? "参数管理首页" : undefined}>
+              {apiRuntimeStatusBanner}
               {proactiveInsightsBanner}
               <PageRouter
                 page={page}
@@ -1299,6 +1363,17 @@ function TopBar({
   const selectedProjectId =
     page.key === "parameters" ? new URLSearchParams(search).get("project") || state.activeProjectId : state.activeProjectId;
   const handleProjectChange = (projectId: string) => {
+    // Switching projects tears down the parameter workbench; unsaved drafts
+    // must be acknowledged before they are dropped.
+    if (page.key === "parameters") {
+      const unsavedCount = unsavedParameterWorkCount();
+      if (
+        unsavedCount > 0 &&
+        !window.confirm(`有 ${unsavedCount} 项未保存的修改，切换项目将丢弃这些修改。确定切换吗？`)
+      ) {
+        return;
+      }
+    }
     dispatch({ type: "SET_PROJECT", projectId });
 
     if (page.key === "parameters") {

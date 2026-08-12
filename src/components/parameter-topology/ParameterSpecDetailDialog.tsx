@@ -190,7 +190,13 @@ export function ParameterSpecDetailDialog({
       setLocalError(built.error);
       return;
     }
-    await onSave(built.payload);
+    try {
+      await onSave(built.payload);
+    } catch {
+      // Keep the confirm layer (and the typed audit reason) on failure;
+      // the panel-provided `error` prop renders inside the layer.
+      return;
+    }
     setSaveConfirmOpen(false);
     setSaveReason("");
   };
@@ -201,10 +207,14 @@ export function ParameterSpecDetailDialog({
       setLocalError(lifecycleKind === "restore" ? "请填写恢复原因。" : "请填写废弃原因。");
       return;
     }
-    if (lifecycleKind === "deprecate") {
-      await onDeprecate?.({ reason });
-    } else if (lifecycleKind === "restore") {
-      await onRestore?.({ reason });
+    try {
+      if (lifecycleKind === "deprecate") {
+        await onDeprecate?.({ reason });
+      } else if (lifecycleKind === "restore") {
+        await onRestore?.({ reason });
+      }
+    } catch {
+      return;
     }
     setLifecycleKind(null);
     setLifecycleReason("");
@@ -216,7 +226,11 @@ export function ParameterSpecDetailDialog({
       setLocalError("请填写完成切换原因。");
       return;
     }
-    await onFinalizeCutover?.({ reason });
+    try {
+      await onFinalizeCutover?.({ reason });
+    } catch {
+      return;
+    }
     setCutoverConfirmOpen(false);
     setCutoverFinalizeReason("");
   };
@@ -227,22 +241,26 @@ export function ParameterSpecDetailDialog({
       setLocalError("请填写修正原因。");
       return;
     }
-    if (identityKind === "reattribute") {
-      const nextSubject = subjects.find((subject) => subject.moduleId === nextModuleId);
-      if (!nextSubject?.attributionSubjectId) {
-        setLocalError("请选择新的归属主体。");
-        return;
+    try {
+      if (identityKind === "reattribute") {
+        const nextSubject = subjects.find((subject) => subject.moduleId === nextModuleId);
+        if (!nextSubject?.attributionSubjectId) {
+          setLocalError("请选择新的归属主体。");
+          return;
+        }
+        await onReattribute?.({
+          attributionSubjectId: nextSubject.attributionSubjectId,
+          reason,
+        });
+      } else if (identityKind === "rename") {
+        if (!nextPropertyKey.trim()) {
+          setLocalError("请填写新的属性键。");
+          return;
+        }
+        await onRenamePropertyKey?.({ propertyKey: nextPropertyKey.trim(), reason });
       }
-      await onReattribute?.({
-        attributionSubjectId: nextSubject.attributionSubjectId,
-        reason,
-      });
-    } else if (identityKind === "rename") {
-      if (!nextPropertyKey.trim()) {
-        setLocalError("请填写新的属性键。");
-        return;
-      }
-      await onRenamePropertyKey?.({ propertyKey: nextPropertyKey.trim(), reason });
+    } catch {
+      return;
     }
     setIdentityKind(null);
     setIdentityReason("");
@@ -470,7 +488,7 @@ export function ParameterSpecDetailDialog({
                   }}
                 />
               </label>
-              {localError ? <p className="form-error" role="alert">{localError}</p> : null}
+              {localError || error ? <p className="form-error" role="alert">{localError || error}</p> : null}
             </div>
             <div className="dialog-actions">
               <button
@@ -545,7 +563,7 @@ export function ParameterSpecDetailDialog({
                   }}
                 />
               </label>
-              {localError ? <p className="form-error" role="alert">{localError}</p> : null}
+              {localError || error ? <p className="form-error" role="alert">{localError || error}</p> : null}
             </div>
             <div className="dialog-actions">
               <button
@@ -619,7 +637,7 @@ export function ParameterSpecDetailDialog({
                   }}
                 />
               </label>
-              {localError ? <p className="form-error" role="alert">{localError}</p> : null}
+              {localError || error ? <p className="form-error" role="alert">{localError || error}</p> : null}
             </div>
             <div className="dialog-actions">
               <button
@@ -744,7 +762,7 @@ export function ParameterSpecDetailDialog({
                   }}
                 />
               </label>
-              {localError ? <p className="form-error" role="alert">{localError}</p> : null}
+              {localError || error ? <p className="form-error" role="alert">{localError || error}</p> : null}
             </div>
             <div className="dialog-actions">
               <button

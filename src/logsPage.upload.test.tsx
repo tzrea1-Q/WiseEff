@@ -442,3 +442,63 @@ describe("LogsPage · 上传日志对话框", () => {
     expect(screen.getByRole("dialog", { name: "上传日志" })).toBeInTheDocument();
   });
 });
+
+describe("LogsPage api feedback wiring", () => {
+  it("submits real feedback through logActions and closes only after success", async () => {
+    const submitFeedback = vi.fn().mockResolvedValue(undefined);
+    const repository = renderApiLogs(createLogRepository({ submitFeedback }));
+    await waitForApiRuntime(repository);
+
+    fireEvent.click(screen.getByRole("button", { name: /反馈分析质量/ }));
+    const dialog = screen.getByRole("dialog", { name: "反馈分析质量" });
+    fireEvent.change(within(dialog).getByLabelText("置信度反馈"), { target: { value: "low" } });
+    fireEvent.change(within(dialog).getByLabelText("可能存在的问题"), {
+      target: { value: "证据链缺少温控阈值来源" }
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "提交反馈" }));
+
+    await waitFor(() => {
+      expect(submitFeedback).toHaveBeenCalledWith({
+        logId: "log-active",
+        rating: "not_helpful",
+        note: "证据链缺少温控阈值来源"
+      });
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "反馈分析质量" })).not.toBeInTheDocument();
+    });
+    expect(document.body).toHaveTextContent(/已提交 RPT-9092 的分析反馈/);
+  });
+
+  it("maps a high confidence rating to helpful", async () => {
+    const submitFeedback = vi.fn().mockResolvedValue(undefined);
+    const repository = renderApiLogs(createLogRepository({ submitFeedback }));
+    await waitForApiRuntime(repository);
+
+    fireEvent.click(screen.getByRole("button", { name: /反馈分析质量/ }));
+    const dialog = screen.getByRole("dialog", { name: "反馈分析质量" });
+    fireEvent.change(within(dialog).getByLabelText("置信度反馈"), { target: { value: "high" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "提交反馈" }));
+
+    await waitFor(() => {
+      expect(submitFeedback).toHaveBeenCalledWith({
+        logId: "log-active",
+        rating: "helpful"
+      });
+    });
+  });
+
+  it("keeps the feedback dialog open with an inline error when submission fails", async () => {
+    const submitFeedback = vi.fn().mockRejectedValue(new Error("feedback api down"));
+    const repository = renderApiLogs(createLogRepository({ submitFeedback }));
+    await waitForApiRuntime(repository);
+
+    fireEvent.click(screen.getByRole("button", { name: /反馈分析质量/ }));
+    const dialog = screen.getByRole("dialog", { name: "反馈分析质量" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "提交反馈" }));
+
+    await waitFor(() => expect(submitFeedback).toHaveBeenCalled());
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(logRuntimeFailureNotification);
+    expect(screen.getByRole("dialog", { name: "反馈分析质量" })).toBeInTheDocument();
+  });
+});

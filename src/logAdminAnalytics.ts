@@ -114,22 +114,28 @@ export type LogAdminMetrics = {
   };
 };
 
-function bucketByHour(logs: LogRecord[], buckets: number, now: Date): number[] {
-  const end = now.getTime();
-  const spanMs = buckets * 60 * 60 * 1000;
-  const start = end - spanMs;
-  const counts = Array<number>(buckets).fill(0);
+/** Daily log counts for the trailing `days` days ending today (oldest first). */
+function bucketByDay(logs: LogRecord[], days: number, now: Date): number[] {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const todayStartMs = startOfDay(now).getTime();
+  const startMs = todayStartMs - (days - 1) * dayMs;
+  const counts = Array<number>(days).fill(0);
 
   for (const log of logs) {
     const time = Date.parse(log.updatedAtIso);
-    if (time < start || time > end) {
+    if (Number.isNaN(time) || time < startMs || time > now.getTime()) {
       continue;
     }
-    const index = Math.min(buckets - 1, Math.floor((time - start) / (spanMs / buckets)));
+    const index = Math.min(days - 1, Math.floor((time - startMs) / dayMs));
     counts[index] += 1;
   }
 
   return counts;
+}
+
+/** Fewer than three non-zero buckets means the trend is anecdotal, not a pattern. */
+export function isSparseSparkline(sparkline: number[]): boolean {
+  return sparkline.filter((value) => value > 0).length <= 2;
 }
 
 function bucketSizes(logs: LogRecord[], buckets: number): number[] {
@@ -173,9 +179,9 @@ export function deriveMetrics(
     severity = "warn";
   }
 
-  const rawSparkline = bucketByHour(logs, 24, now);
-  const nonZero = rawSparkline.filter((v) => v > 0).length;
-  const sparkline = nonZero <= 2 ? [2, 3, 2, 4, 3, 5, 3] : rawSparkline;
+  // Honest 7-day trend from real records; sparse data stays sparse (the
+  // dashboard annotates it) instead of being replaced by fabricated bars.
+  const sparkline = bucketByDay(allLogs, 7, now);
 
   return {
     todayCount: {

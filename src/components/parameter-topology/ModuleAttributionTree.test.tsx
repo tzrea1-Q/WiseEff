@@ -165,6 +165,133 @@ describe("ModuleAttributionTree", () => {
     );
   });
 
+  it("disbands a driver group only after the impact confirmation is accepted", async () => {
+    const onDelete = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <ModuleAttributionTree
+        canAdmin
+        modules={modules}
+        mappings={mappings}
+        onUpdateModule={vi.fn()}
+        onMove={vi.fn()}
+        onDelete={onDelete}
+        onRemoveMapping={vi.fn()}
+        onCreateModule={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "SC8562 更多操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "解散驱动组 SC8562" }));
+
+    // No mutation before confirmation.
+    expect(onDelete).not.toHaveBeenCalled();
+    const confirmDialog = screen.getByRole("dialog", { name: "解散驱动组「SC8562」" });
+    expect(confirmDialog).toHaveTextContent(/1 条 compatible 匹配规则将一并移除/);
+    expect(confirmDialog).toHaveTextContent(/4 个参数/);
+    expect(confirmDialog).toHaveTextContent(/子模块（1 个）/);
+    expect(confirmDialog).toHaveTextContent(/退回「未分类」/);
+
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "确认解散" }));
+    await waitFor(() => expect(onDelete).toHaveBeenCalledWith("mod-group"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "解散驱动组「SC8562」" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps the delete confirmation open with an inline error when deletion fails", async () => {
+    const onDelete = vi.fn().mockRejectedValue(new Error("仍有参数引用，服务端拒绝删除"));
+
+    render(
+      <ModuleAttributionTree
+        canAdmin
+        modules={modules}
+        mappings={mappings}
+        onUpdateModule={vi.fn()}
+        onMove={vi.fn()}
+        onDelete={onDelete}
+        onRemoveMapping={vi.fn()}
+        onCreateModule={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Power 更多操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "删除模块 Power" }));
+    const confirmDialog = screen.getByRole("dialog", { name: "删除模块「Power」" });
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "确认删除" }));
+
+    await waitFor(() => expect(onDelete).toHaveBeenCalledWith("mod-power"));
+    expect(screen.getByRole("dialog", { name: "删除模块「Power」" })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("dialog", { name: "删除模块「Power」" })).getByRole("alert")
+    ).toHaveTextContent("仍有参数引用，服务端拒绝删除");
+  });
+
+  it("keeps the edit dialog open with an inline error when the save mutation rejects", async () => {
+    const onUpdateModule = vi.fn().mockRejectedValue(new Error("保存冲突：模块已被其他管理员修改"));
+
+    render(
+      <ModuleAttributionTree
+        canAdmin
+        modules={modules}
+        mappings={mappings}
+        onUpdateModule={onUpdateModule}
+        onMove={vi.fn()}
+        onDelete={vi.fn()}
+        onRemoveMapping={vi.fn()}
+        onCreateModule={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "修改模块 Power" }));
+    const editDialog = screen.getByRole("dialog", { name: "修改模块 Power" });
+    fireEvent.change(within(editDialog).getByLabelText("模块重要性"), {
+      target: { value: "low" }
+    });
+    fireEvent.click(within(editDialog).getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(onUpdateModule).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("dialog", { name: "修改模块 Power" })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("dialog", { name: "修改模块 Power" })).getByRole("alert")
+    ).toHaveTextContent("保存冲突：模块已被其他管理员修改");
+  });
+
+  it("closes the edit dialog only after the save mutation resolves", async () => {
+    let resolveSave!: () => void;
+    const savePromise = new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    });
+    const onUpdateModule = vi.fn(() => savePromise);
+
+    render(
+      <ModuleAttributionTree
+        canAdmin
+        modules={modules}
+        mappings={mappings}
+        onUpdateModule={onUpdateModule}
+        onMove={vi.fn()}
+        onDelete={vi.fn()}
+        onRemoveMapping={vi.fn()}
+        onCreateModule={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "修改模块 Power" }));
+    const editDialog = screen.getByRole("dialog", { name: "修改模块 Power" });
+    fireEvent.change(within(editDialog).getByLabelText("模块重要性"), {
+      target: { value: "low" }
+    });
+    fireEvent.click(within(editDialog).getByRole("button", { name: "保存" }));
+
+    // Pending: dialog stays open until the mutation settles.
+    expect(screen.getByRole("dialog", { name: "修改模块 Power" })).toBeInTheDocument();
+    resolveSave();
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "修改模块 Power" })).not.toBeInTheDocument();
+    });
+  });
+
   it("edits importance inside the module dialog, not on the tree row", () => {
     const onUpdateModule = vi.fn();
 
@@ -202,7 +329,7 @@ describe("ModuleAttributionTree", () => {
     });
   });
 
-  it("opens create and edit dialogs for module details including importance", () => {
+  it("opens create and edit dialogs for module details including importance", async () => {
     const onCreateModule = vi.fn();
     const onUpdateModule = vi.fn();
 
@@ -244,6 +371,10 @@ describe("ModuleAttributionTree", () => {
         kind: "business"
       })
     );
+    // The dialog closes once the awaited create mutation resolves.
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "新建模块" })).not.toBeInTheDocument();
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "修改模块 Power" }));
     const editDialog = screen.getByRole("dialog", { name: "修改模块 Power" });
