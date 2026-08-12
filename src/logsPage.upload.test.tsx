@@ -298,7 +298,7 @@ describe("LogsPage api upload wiring", () => {
     });
     expect(screen.getByTestId("app-toast")).toHaveTextContent(logRuntimeFailureNotification);
 
-    fireEvent.click(screen.getByRole("button", { name: "关闭通知" }));
+    fireEvent.click(screen.getByRole("button", { name: "关闭提示" }));
     expect(screen.queryByTestId("app-toast")).not.toBeInTheDocument();
   });
 

@@ -35,7 +35,7 @@ export function AppToastLayer({
           <button
             className="app-toast__close"
             type="button"
-            aria-label="关闭通知"
+            aria-label="关闭提示"
             onClick={onDismiss}
           >
             <X size={14} aria-hidden="true" />

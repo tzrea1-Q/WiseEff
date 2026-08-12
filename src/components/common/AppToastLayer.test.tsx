@@ -56,7 +56,7 @@ describe("AppToastLayer", () => {
     const onDismiss = vi.fn();
     render(<AppToastLayer notifications={["需要手动关闭"]} onDismiss={onDismiss} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "关闭通知" }));
+    fireEvent.click(screen.getByRole("button", { name: "关闭提示" }));
 
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
