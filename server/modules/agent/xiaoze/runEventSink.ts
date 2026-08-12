@@ -97,6 +97,23 @@ export function createRunEventSink(): RunEventSink {
   };
 }
 
+export function serializeTurnSteps(steps: XiaozeRunStepRecord[]) {
+  return steps.map((step) => ({
+    id: step.id,
+    kind: step.kind,
+    label: step.label,
+    toolName: step.toolName,
+    status: step.status,
+    summary: step.summary,
+    startedAtMs: step.startedAtMs,
+    durationMs: step.durationMs
+  }));
+}
+
+export function createToolCallId() {
+  return randomUUID();
+}
+
 export function startRunStep(input: {
   kind: XiaozeRunStepKind;
   label: string;

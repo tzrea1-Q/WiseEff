@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { EventType } from "@ag-ui/core";
 import { createXiaozeAgUiHandler } from "./agUiEndpoint";
+import type { RunEventSink } from "./runEventSink";
 
 const anyAuth = {
   organization: { id: "org1" },
@@ -482,5 +483,106 @@ describe("createXiaozeAgUiHandler", () => {
     );
     expect(events.some((event) => event.event === EventType.TEXT_MESSAGE_CONTENT)).toBe(true);
     expect(events.at(-1)?.event).toBe(EventType.RUN_FINISHED);
+  });
+
+  it("streams run steps and turn state on resumed turns (TD-070)", async () => {
+    const run = vi.fn().mockImplementation(async (input: { sink?: RunEventSink }) => {
+      input.sink?.push({
+        type: "step_started",
+        step: {
+          id: "step-approve-1",
+          kind: "tool",
+          label: "提交参数修改",
+          toolName: "action.submitParameterChange",
+          status: "running",
+          startedAtMs: Date.now()
+        }
+      });
+      input.sink?.push({
+        type: "step_finished",
+        stepId: "step-approve-1",
+        status: "succeeded",
+        summary: "submitted",
+        durationMs: 5
+      });
+      return { text: "Change submitted.", citations: [] };
+    });
+    const handler = createXiaozeAgUiHandler({
+      resolveAuth: async () => anyAuth,
+      createAgent: () => ({ run }),
+      approvalChain: { beginApproval: vi.fn() } as never
+    });
+
+    const response = await handler({
+      headers: { authorization: "Bearer test" },
+      body: {
+        threadId: "thread-resume-steps",
+        runId: "run-resume-steps",
+        messages: [{ role: "user", content: "approve" }],
+        resume: [
+          {
+            interruptId: "approval-addr-2",
+            status: "resolved",
+            payload: { approvalId: "approval-addr-2", decision: "approve" }
+          }
+        ]
+      },
+      requestId: "req-resume-steps"
+    });
+
+    const events = await collectSseEvents(response as { sse: AsyncIterable<{ event: string; data: unknown }> });
+    expect(events.some((event) => event.event === EventType.STEP_STARTED)).toBe(true);
+    expect(events.some((event) => event.event === EventType.STEP_FINISHED)).toBe(true);
+    expect(events.some((event) => event.event === EventType.TEXT_MESSAGE_CONTENT)).toBe(true);
+    expect(events.at(-1)?.event).toBe(EventType.RUN_FINISHED);
+  });
+
+  it("surfaces a chained second interrupt after a resumed turn", async () => {
+    const run = vi.fn().mockResolvedValue({
+      text: "",
+      citations: [],
+      interrupt: {
+        toolName: "action.submitParameterChange",
+        payload: { projectId: "aurora", parameterId: "pd2", targetValue: "9A" },
+        citations: []
+      }
+    });
+    const approvalChain = {
+      beginApproval: vi.fn().mockResolvedValue({
+        approvalId: "approval-chained-2",
+        toolCallId: "tool-call-2",
+        toolName: "action.submitParameterChange",
+        payload: { projectId: "aurora", parameterId: "pd2", targetValue: "9A" },
+        citations: []
+      })
+    };
+    const handler = createXiaozeAgUiHandler({
+      resolveAuth: async () => anyAuth,
+      createAgent: () => ({ run }),
+      approvalChain: approvalChain as never
+    });
+
+    const response = await handler({
+      headers: { authorization: "Bearer test" },
+      body: {
+        threadId: "thread-chained",
+        runId: "run-chained",
+        messages: [{ role: "user", content: "approve" }],
+        resume: [
+          {
+            interruptId: "approval-addr-3",
+            status: "resolved",
+            payload: { approvalId: "approval-addr-3", decision: "approve" }
+          }
+        ]
+      },
+      requestId: "req-chained"
+    });
+
+    const events = await collectSseEvents(response as { sse: AsyncIterable<{ event: string; data: unknown }> });
+    const finished = events.find((event) => event.event === EventType.RUN_FINISHED);
+    const outcome = (finished?.data as { outcome?: { type?: string; interrupts?: Array<{ id?: string }> } })?.outcome;
+    expect(outcome?.type).toBe("interrupt");
+    expect(outcome?.interrupts?.[0]?.id).toBe("approval-chained-2");
   });
 });
