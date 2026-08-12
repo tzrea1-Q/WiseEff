@@ -17,7 +17,7 @@ import {
 import { buildChangeRequestImpact } from "./impact";
 import { mustUseSemanticParameterIdentity } from "./semanticParameterReads";
 import { LEGACY_IDENTITY_SQL } from "./legacyParameterIdentityNames";
-import type { BindingWriteLockFields, EnablementWriteLockFields } from "../parameter-topology/editService";
+import type { BindingWriteLockFields, EnablementWriteLockFields } from "../parameter-topology/writeLock";
 import { addCondition, dateTimeToIso, resolveParameterValueKind } from "./repository";
 
 export async function findOpenEnablementChangeRequest(
