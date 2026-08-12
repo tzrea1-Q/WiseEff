@@ -1,11 +1,18 @@
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { Client } from "pg";
-import { npmCommand } from "../../../scripts/run-browser-acceptance";
 
 export type AcceptanceDatabaseEnv = Record<string, string | undefined>;
 
+/**
+ * The one npm-script runner for acceptance code. Windows cannot spawn `npm` directly
+ * (EINVAL); route through cmd.exe exactly like scripts/run-vitest.ts does.
+ */
 export function runNpmScript(script: string): SpawnSyncReturns<Buffer> {
-  const result = spawnSync(npmCommand(), ["run", script], {
+  const invocation =
+    process.platform === "win32"
+      ? { command: "cmd.exe", args: ["/d", "/s", "/c", `npm run ${script}`] }
+      : { command: "npm", args: ["run", script] };
+  const result = spawnSync(invocation.command, invocation.args, {
     cwd: process.cwd(),
     stdio: "inherit"
   });
