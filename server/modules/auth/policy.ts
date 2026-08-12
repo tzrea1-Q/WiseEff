@@ -78,6 +78,7 @@ const rolePermissions: Record<BackendRoleId, BackendPermission[]> = {
     "logs:feedback",
     "logs:analyze",
     "logs:archive",
+    "logs:admin-domains",
     "parameter:review",
     "admin:access",
     "users:manage"
@@ -98,6 +99,7 @@ const rolePermissions: Record<BackendRoleId, BackendPermission[]> = {
     "logs:feedback",
     "logs:analyze",
     "logs:archive",
+    "logs:admin-domains",
     "parameter:review",
     "admin:access",
     "users:manage",
