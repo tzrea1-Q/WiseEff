@@ -19,18 +19,20 @@ import { insertNodeOperation } from "../debugging/repository";
 import { writebackMergedParameterValue } from "../parameter-files/writebackService";
 import { resetParameterIdentityCutoverCache } from "../parameters/cutoverAwareIdentity";
 import {
-  createChangeRequest,
-  createSubmissionItem,
-  createSubmissionRound,
   getChangeRequestWriteLock,
   listDraftsForUser,
   listParameterHistory,
   listParameters,
-  mergeChangeRequest,
-  updateChangeRequestStatus,
   upsertDraft
 } from "../parameters/repository";
 import { deleteProject } from "../parameters/projectRepository";
+import {
+  createChangeRequest,
+  createSubmissionItem,
+  createSubmissionRound,
+  mergeChangeRequest,
+  updateChangeRequestStatus
+} from "../parameters/reviewWorkflowRepository";
 import { reviewChange, saveDraft, submitParameterChanges } from "../parameters/service";
 import { resolveBindingWriteLock } from "./editService";
 import {
