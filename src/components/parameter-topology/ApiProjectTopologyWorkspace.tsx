@@ -68,6 +68,8 @@ export type ApiProjectTopologyWorkspaceProps = {
   parameterFileRepository?: ParameterFileRepository;
   listConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   listDrafts?: (projectId: string) => Promise<ParameterDraftDto[]>;
+  /** Server-side draft delete; tray removal must not leave the draft alive on the server. */
+  deleteDraft?: (draftId: string) => Promise<void>;
   listWorkflowAssignees?: (projectId: string) => Promise<WorkflowAssigneeCandidates>;
   submitBindingChanges?: (
     input: SubmitParameterChangesInput
@@ -295,6 +297,7 @@ export function ApiProjectTopologyWorkspace({
   parameterFileRepository,
   listConfigSets,
   listDrafts,
+  deleteDraft,
   listWorkflowAssignees,
   submitBindingChanges,
   onNavigate = () => undefined
@@ -320,6 +323,8 @@ export function ApiProjectTopologyWorkspace({
   listConfigSetsRef.current = listConfigSets;
   const listDraftsRef = useRef(listDrafts);
   listDraftsRef.current = listDrafts;
+  const deleteDraftRef = useRef(deleteDraft);
+  deleteDraftRef.current = deleteDraft;
   const activeProjectIdRef = useRef(projectId);
   const projectGenerationRef = useRef(0);
   const lastProjectIdRef = useRef(projectId);
@@ -335,6 +340,7 @@ export function ApiProjectTopologyWorkspace({
 
   const [loadState, setLoadState] = useState<LoadState>({ kind: "loading" });
   const [reloadToken, setReloadToken] = useState(0);
+  const [draftsReloadToken, setDraftsReloadToken] = useState(0);
   const [preferredRevision, setPreferredRevision] = useState<{
     projectId: string;
     revisionId: string;
@@ -342,6 +348,9 @@ export function ApiProjectTopologyWorkspace({
   const preferredRevisionId =
     preferredRevision?.projectId === projectId ? preferredRevision.revisionId : undefined;
   const [pendingDrafts, setPendingDrafts] = useState<PendingTopologyDraft[]>([]);
+  const pendingDraftsRef = useRef(pendingDrafts);
+  pendingDraftsRef.current = pendingDrafts;
+  const [submitSuccessNotice, setSubmitSuccessNotice] = useState<string | null>(null);
   const [serverDrafts, setServerDrafts] = useState<ParameterDraftDto[] | null>(null);
   const [selectedDraftBindingIds, setSelectedDraftBindingIds] = useState<Set<string>>(new Set());
   const [enablementDialogTarget, setEnablementDialogTarget] = useState<{
@@ -389,6 +398,8 @@ export function ApiProjectTopologyWorkspace({
     setPreferredRevision(null);
     setPendingDrafts([]);
     setServerDrafts(null);
+    setSelectedDraftBindingIds(new Set());
+    setSubmitSuccessNotice(null);
     setEnablementDialogTarget(null);
     setEnablementDialogError(null);
     setWorkflowCandidates(null);
@@ -417,7 +428,7 @@ export function ApiProjectTopologyWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [projectId, runtimeMode]);
+  }, [projectId, runtimeMode, draftsReloadToken]);
 
   useEffect(() => {
     if (!serverDrafts || loadState.kind !== "ready") return;
@@ -434,17 +445,23 @@ export function ApiProjectTopologyWorkspace({
       return;
     }
 
-    setPendingDrafts((current) => {
-      if (current.some((draft) => draft.projectId === projectId)) return current;
-      return mapServerDraftsToPending(
-        projectId,
-        bindingDrafts,
-        loadState.bindings,
-        loadState.effectiveNodes,
-        moduleRegistry,
-        sharedTip
-      );
-    });
+    if (pendingDraftsRef.current.some((draft) => draft.projectId === projectId)) return;
+    const hydrated = mapServerDraftsToPending(
+      projectId,
+      bindingDrafts,
+      loadState.bindings,
+      loadState.effectiveNodes,
+      moduleRegistry,
+      sharedTip
+    );
+    setPendingDrafts(hydrated);
+    // WYSIWYG submission: hydrated drafts start fully checked.
+    const hydratedBindingIds = hydrated
+      .filter((draft) => draft.kind === "binding")
+      .map((draft) => (draft.kind === "binding" ? draft.projectParameterBindingId : ""));
+    if (hydratedBindingIds.length > 0) {
+      setSelectedDraftBindingIds((selected) => new Set([...selected, ...hydratedBindingIds]));
+    }
   }, [loadState, moduleRegistry, projectId, serverDrafts]);
 
   useEffect(() => {
@@ -664,6 +681,13 @@ export function ApiProjectTopologyWorkspace({
           diagnostics: [{ message: "项目已切换，已忽略上一项目的草稿响应。", code: "PROJECT_CHANGED" }]
         };
       }
+      // WYSIWYG submission: new drafts join the checked submit scope by default.
+      setSelectedDraftBindingIds((selected) =>
+        selected.has(draft.projectParameterBindingId)
+          ? selected
+          : new Set([...selected, draft.projectParameterBindingId])
+      );
+      setSubmitSuccessNotice(null);
       setPreferredRevision({ projectId: requestProjectId, revisionId: draft.workingCandidateRevisionId ?? draft.candidateRevisionId });
       if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) {
         return {
@@ -818,6 +842,7 @@ export function ApiProjectTopologyWorkspace({
         return [...aligned, nextDraft];
       });
       if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
+      setSubmitSuccessNotice(null);
       setPreferredRevision({ projectId: requestProjectId, revisionId: draft.workingCandidateRevisionId ?? draft.candidateRevisionId });
       if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
       setReloadToken((token) => token + 1);
@@ -834,6 +859,53 @@ export function ApiProjectTopologyWorkspace({
     }
   };
 
+  const handleRemoveDraft = async (draftId: string) => {
+    const requestProjectId = projectId;
+    const requestGeneration = projectGenerationRef.current;
+    const resolveDeleteDraft =
+      deleteDraftRef.current ??
+      (runtimeMode === "api"
+        ? (id: string) => createHttpParameterRepository().deleteDraft(id)
+        : undefined);
+    if (!resolveDeleteDraft) {
+      throw new Error("草稿删除入口未配置，无法移除服务端草稿。");
+    }
+    const mutationToken = acquireProjectMutation(requestProjectId, "draft", requestGeneration);
+    if (!mutationToken) {
+      throw new Error("该项目已有 mutation 正在处理中，请稍后再移除草稿。");
+    }
+    try {
+      await resolveDeleteDraft(draftId);
+      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
+      const removed = pendingDraftsRef.current.find((draft) => draft.draftId === draftId);
+      const remaining = pendingDraftsRef.current.filter((draft) => draft.draftId !== draftId);
+      setPendingDrafts(remaining);
+      // Keep the cached server list consistent so hydrate never revives a deleted draft.
+      setServerDrafts((current) => current?.filter((draft) => draft.id !== draftId) ?? current);
+      if (removed?.kind === "binding") {
+        setSelectedDraftBindingIds((selected) => {
+          if (!selected.has(removed.projectParameterBindingId)) return selected;
+          const next = new Set(selected);
+          next.delete(removed.projectParameterBindingId);
+          return next;
+        });
+      }
+      if (!remaining.some((draft) => draft.projectId === requestProjectId)) {
+        setPreferredRevision((preferred) =>
+          preferred?.projectId === requestProjectId ? null : preferred
+        );
+      }
+      setDraftsReloadToken((token) => token + 1);
+      setReloadToken((token) => token + 1);
+    } catch (error) {
+      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
+      const mapped = mapParameterTopologyError(error);
+      throw new Error(`移除草稿失败：${mapped.message}`);
+    } finally {
+      releaseProjectMutation(requestProjectId, "draft", mutationToken);
+    }
+  };
+
   const handleSubmitBindingChanges = submitBindingChanges
     ? async (input: SubmitParameterChangesInput) => {
       const submittingProjectId = input.projectId;
@@ -842,8 +914,45 @@ export function ApiProjectTopologyWorkspace({
           const activeKind = projectMutationsRef.current.get(submittingProjectId)?.kind ?? "unknown";
           return { notification: `该项目已有 ${activeKind} mutation 正在处理中，已阻止正式提交。` };
         }
+        const requestGeneration = projectGenerationRef.current;
         try {
-          return await submitBindingChanges(input);
+          const result = await submitBindingChanges(input);
+          const failed = Boolean(result && "notification" in result);
+          if (!failed && isCurrentProjectRequest(submittingProjectId, requestGeneration)) {
+            // Submitted drafts are consumed server-side: clear them locally so the
+            // tray empties and a consumed draftId can never be submitted again.
+            const submittedDraftIds = new Set(
+              input.items.map((item) => ("draftId" in item ? item.draftId : null)).filter(Boolean)
+            );
+            const remaining = pendingDraftsRef.current.filter(
+              (draft) =>
+                !(draft.projectId === submittingProjectId && submittedDraftIds.has(draft.draftId))
+            );
+            const remainingBindingIds = new Set(
+              remaining
+                .filter((draft) => draft.kind === "binding" && draft.projectId === submittingProjectId)
+                .map((draft) => (draft.kind === "binding" ? draft.projectParameterBindingId : ""))
+            );
+            setPendingDrafts(remaining);
+            setSelectedDraftBindingIds((selected) => {
+              const next = new Set([...selected].filter((id) => remainingBindingIds.has(id)));
+              return next.size === selected.size ? selected : next;
+            });
+            if (!remaining.some((draft) => draft.projectId === submittingProjectId)) {
+              setPreferredRevision((preferred) =>
+                preferred?.projectId === submittingProjectId ? null : preferred
+              );
+            }
+            if (submittingProjectId === activeProjectIdRef.current) {
+              setSubmitSuccessNotice(
+                `已提交正式审核（${submittedDraftIds.size} 项），后续阶段将在审核队列中按角色推进。`
+              );
+            }
+            // Refresh drafts + topology so table badges and revision leave the consumed candidate.
+            setDraftsReloadToken((token) => token + 1);
+            setReloadToken((token) => token + 1);
+          }
+          return result;
         } finally {
           releaseProjectMutation(submittingProjectId, "submit", mutationToken);
         }
@@ -1000,12 +1109,27 @@ export function ApiProjectTopologyWorkspace({
           ? "该项目正在创建 typed draft，正式提交已暂时锁定。"
           : null
       }
-      onRemove={(draftId) => {
-        setPendingDrafts((current) => current.filter((draft) => draft.draftId !== draftId));
-      }}
+      onRemove={handleRemoveDraft}
       onSubmit={handleSubmitBindingChanges}
       onNavigate={onNavigate}
     />
+  ) : submitSuccessNotice ? (
+    <section className="dts-binding-draft-tray dts-draft-tray" role="region" aria-label="参数提交结果">
+      <p role="status">{submitSuccessNotice}</p>
+      <div className="binding-draft-submission__actions">
+        <button type="button" className="button subtle" onClick={() => onNavigate("/parameter-review")}>
+          查看变更审阅
+        </button>
+        <button
+          type="button"
+          className="button subtle"
+          aria-label="关闭提交结果提示"
+          onClick={() => setSubmitSuccessNotice(null)}
+        >
+          知道了
+        </button>
+      </div>
+    </section>
   ) : null;
 
   return (
