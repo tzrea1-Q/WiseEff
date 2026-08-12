@@ -29,7 +29,7 @@ import {
   listProjectAdminSummaries,
   listProjectModules,
   listProjects
-} from "./projectRepository";
+} from "../projects/repository";
 import {
   applyImportBatch,
   createImportPreview,

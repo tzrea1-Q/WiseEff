@@ -72,7 +72,7 @@ import {
   type ParameterDefinitionImportCandidate,
   type PersistedImportBatchItem
 } from "./importBatchRepository";
-import { getProjectById } from "./projectRepository";
+import { getProjectById } from "../projects/repository";
 import {
   createChangeRequest,
   createEnablementChangeRequest,

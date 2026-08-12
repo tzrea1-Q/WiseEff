@@ -45,7 +45,7 @@ import {
 } from "./editService";
 import { type CreateBindingDraftDeps } from "./overlayWriteback";
 import { writeGovernanceAudit } from "./governanceAudit";
-import { getProjectById } from "../parameters/projectRepository";
+import { getProjectById } from "../projects/repository";
 import { listStructuralPropertyKeys } from "./parameterSurface";
 import {
   assertManifestStateReady,
