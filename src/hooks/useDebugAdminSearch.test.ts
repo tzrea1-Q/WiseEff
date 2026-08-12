@@ -32,7 +32,7 @@ describe("parseDebugAdminSearch", () => {
 
 describe("useDebugAdminSearch", () => {
   beforeEach(() => {
-    window.history.replaceState(null, "", "/debugging-admin");
+    window.history.replaceState(null, "", "/debugging-admin/nodes");
   });
 
   it("reads default values", () => {
@@ -50,7 +50,7 @@ describe("useDebugAdminSearch", () => {
     window.history.replaceState(
       null,
       "",
-      "/debugging-admin?q=charge&risk=high&module=Battery,Device%20Lab&coverage=hdc-only&sort=risk-desc&id=p1"
+      "/debugging-admin/nodes?q=charge&risk=high&module=Battery,Device%20Lab&coverage=hdc-only&sort=risk-desc&id=p1"
     );
 
     const { result } = renderHook(() => useDebugAdminSearch());
@@ -73,7 +73,7 @@ describe("useDebugAdminSearch", () => {
   });
 
   it("removes default values from the URL", () => {
-    window.history.replaceState(null, "", "/debugging-admin?risk=high&sort=risk-desc");
+    window.history.replaceState(null, "", "/debugging-admin/nodes?risk=high&sort=risk-desc");
     const { result } = renderHook(() => useDebugAdminSearch());
 
     act(() => result.current.updateSearch({ risk: "all", sort: "name-asc" }));

@@ -1,18 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import type { ReloadConfigurationContract } from "@/domain/dtsReload/types";
 import { KERNEL_LOG_COMMAND_ALLOWLIST } from "@/domain/dtsReload/types";
+import { DebugAdminSelectControl } from "@/components/admin/DebugAdminSelectControl";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-
-export type ReloadConfigurationDeviceOption = {
-  id: string;
-  name: string;
-};
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export type ReloadConfigurationAdminPanelProps = {
   repository: DtsReloadRepository | null;
-  devices: readonly ReloadConfigurationDeviceOption[];
   canEdit: boolean;
   unavailableReason?: string;
 };
@@ -25,6 +23,14 @@ const EMPTY_CONTRACT: ReloadConfigurationContract = {
   kernelLogCommand: ""
 };
 
+const FIELD_HINTS = {
+  destinationDirectory: "设备上放置 overlay 产物的目录，须以 / 结尾。",
+  destinationFilename: "写入该目录的文件名，通常为 .dtbo。",
+  triggerNodePath: "写入后触发内核重载的 debugfs / sysfs 节点。",
+  triggerPayload: "写入触发节点的载荷，常见为 1。",
+  kernelLogCommand: "仅允许列表中的精确命令；桥接侧会再次校验。"
+} as const;
+
 function contractFields(contract: ReloadConfigurationContract): ReloadConfigurationContract {
   return {
     destinationDirectory: contract.destinationDirectory,
@@ -35,9 +41,35 @@ function contractFields(contract: ReloadConfigurationContract): ReloadConfigurat
   };
 }
 
+function contractsEqual(left: ReloadConfigurationContract, right: ReloadConfigurationContract): boolean {
+  return (
+    left.destinationDirectory === right.destinationDirectory &&
+    left.destinationFilename === right.destinationFilename &&
+    left.triggerNodePath === right.triggerNodePath &&
+    left.triggerPayload === right.triggerPayload &&
+    left.kernelLogCommand === right.kernelLogCommand
+  );
+}
+
+function PanelShell({
+  children,
+  title = "DTS 重载配置"
+}: {
+  children: ReactNode;
+  title?: string;
+}) {
+  return (
+    <section className="param-admin-panel reload-configuration-panel" aria-label="重载配置">
+      <header className="reload-configuration-panel__header">
+        <h3>{title}</h3>
+      </header>
+      {children}
+    </section>
+  );
+}
+
 export function ReloadConfigurationAdminPanel({
   repository,
-  devices,
   canEdit,
   unavailableReason
 }: ReloadConfigurationAdminPanelProps) {
@@ -46,22 +78,13 @@ export function ReloadConfigurationAdminPanel({
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [organisationDraft, setOrganisationDraft] = useState<ReloadConfigurationContract>(EMPTY_CONTRACT);
+  const [savedContract, setSavedContract] = useState<ReloadConfigurationContract>(EMPTY_CONTRACT);
   const [organisationSource, setOrganisationSource] = useState<"seeded-default" | "organisation">("seeded-default");
-  const [overrides, setOverrides] = useState<
-    Array<ReloadConfigurationContract & { deviceId: string; deviceName: string | null }>
-  >([]);
-  const [selectedDeviceId, setSelectedDeviceId] = useState("");
-  const [deviceDraft, setDeviceDraft] = useState<ReloadConfigurationContract>(EMPTY_CONTRACT);
-
-  const selectedOverride = useMemo(
-    () => overrides.find((item) => item.deviceId === selectedDeviceId) ?? null,
-    [overrides, selectedDeviceId]
-  );
 
   useEffect(() => {
     if (!repository || !canEdit) {
       setOrganisationDraft(EMPTY_CONTRACT);
-      setOverrides([]);
+      setSavedContract(EMPTY_CONTRACT);
       return;
     }
     let cancelled = false;
@@ -71,13 +94,10 @@ export function ReloadConfigurationAdminPanel({
       .getReloadConfiguration()
       .then((view) => {
         if (cancelled) return;
-        setOrganisationDraft(contractFields(view.organisation));
+        const next = contractFields(view.organisation);
+        setOrganisationDraft(next);
+        setSavedContract(next);
         setOrganisationSource(view.organisation.source);
-        setOverrides(view.deviceOverrides.map((item) => ({ ...contractFields(item), deviceId: item.deviceId, deviceName: item.deviceName })));
-        if (!selectedDeviceId && view.deviceOverrides[0]) {
-          setSelectedDeviceId(view.deviceOverrides[0].deviceId);
-          setDeviceDraft(contractFields(view.deviceOverrides[0]));
-        }
       })
       .catch((error: unknown) => {
         if (cancelled) return;
@@ -89,34 +109,37 @@ export function ReloadConfigurationAdminPanel({
     return () => {
       cancelled = true;
     };
-    // selectedDeviceId intentionally omitted — initial hydrate only.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repository, canEdit]);
 
-  useEffect(() => {
-    if (selectedOverride) {
-      setDeviceDraft(contractFields(selectedOverride));
-      return;
-    }
-    setDeviceDraft(contractFields(organisationDraft));
-  }, [organisationDraft, selectedOverride]);
-
   const updateOrganisationField = <K extends keyof ReloadConfigurationContract>(key: K, value: string) => {
+    setStatusMessage("");
     setOrganisationDraft((current) => ({ ...current, [key]: value }));
   };
 
-  const updateDeviceField = <K extends keyof ReloadConfigurationContract>(key: K, value: string) => {
-    setDeviceDraft((current) => ({ ...current, [key]: value }));
-  };
+  const kernelLogOptions = useMemo(() => {
+    const allowlist = [...KERNEL_LOG_COMMAND_ALLOWLIST];
+    if (
+      organisationDraft.kernelLogCommand &&
+      !allowlist.includes(organisationDraft.kernelLogCommand as (typeof allowlist)[number])
+    ) {
+      allowlist.unshift(organisationDraft.kernelLogCommand as (typeof allowlist)[number]);
+    }
+    return allowlist.map((command) => ({ value: command, label: command }));
+  }, [organisationDraft.kernelLogCommand]);
+
+  const isDirty = !contractsEqual(organisationDraft, savedContract);
+  const fieldsDisabled = !canEdit || saving || loading;
 
   const saveOrganisation = async () => {
-    if (!repository || !canEdit) return;
+    if (!repository || !canEdit || !isDirty) return;
     setSaving(true);
     setErrorMessage("");
     setStatusMessage("");
     try {
       const saved = await repository.updateOrganisationReloadConfiguration(organisationDraft);
-      setOrganisationDraft(contractFields(saved));
+      const next = contractFields(saved);
+      setOrganisationDraft(next);
+      setSavedContract(next);
       setOrganisationSource(saved.source);
       setStatusMessage("组织默认重载配置已保存");
     } catch (error: unknown) {
@@ -126,230 +149,141 @@ export function ReloadConfigurationAdminPanel({
     }
   };
 
-  const saveDeviceOverride = async () => {
-    if (!repository || !canEdit || !selectedDeviceId) return;
-    setSaving(true);
-    setErrorMessage("");
-    setStatusMessage("");
-    try {
-      const saved = await repository.upsertDeviceReloadConfiguration(selectedDeviceId, deviceDraft);
-      setOverrides((current) => {
-        const next = current.filter((item) => item.deviceId !== selectedDeviceId);
-        return [
-          ...next,
-          {
-            ...contractFields(saved),
-            deviceId: saved.deviceId,
-            deviceName: saved.deviceName
-          }
-        ];
-      });
-      setDeviceDraft(contractFields(saved));
-      setStatusMessage("设备覆盖已保存");
-    } catch (error: unknown) {
-      setErrorMessage(error instanceof Error ? error.message : "保存设备覆盖失败。");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const removeDeviceOverride = async () => {
-    if (!repository || !canEdit || !selectedDeviceId || !selectedOverride) return;
-    setSaving(true);
-    setErrorMessage("");
-    setStatusMessage("");
-    try {
-      await repository.deleteDeviceReloadConfiguration(selectedDeviceId);
-      setOverrides((current) => current.filter((item) => item.deviceId !== selectedDeviceId));
-      setStatusMessage("设备覆盖已删除");
-    } catch (error: unknown) {
-      setErrorMessage(error instanceof Error ? error.message : "删除设备覆盖失败。");
-    } finally {
-      setSaving(false);
-    }
-  };
-
   if (!repository) {
     return (
-      <section className="param-admin-panel reload-configuration-panel" aria-label="重载配置">
-        <div className="param-admin-panel__section">
-          <h3>DTS 重载配置</h3>
-          <p className="reload-configuration-muted">{unavailableReason ?? "重载配置仅在 API 模式下可用。"}</p>
-        </div>
-      </section>
+      <PanelShell>
+        <p className="reload-configuration-muted">{unavailableReason ?? "重载配置仅在 API 模式下可用。"}</p>
+      </PanelShell>
     );
   }
 
   if (!canEdit) {
     return (
-      <section className="param-admin-panel reload-configuration-panel" aria-label="重载配置">
-        <div className="param-admin-panel__section">
-          <h3>DTS 重载配置</h3>
-          <p className="debug-admin-error" role="alert">
-            缺少 debugging:admin 权限，无法读取或修改重载配置。
-          </p>
-        </div>
-      </section>
+      <PanelShell>
+        <p className="debug-admin-error" role="alert">
+          缺少 debugging:admin 权限，无法读取或修改重载配置。
+        </p>
+      </PanelShell>
     );
   }
 
   return (
-    <section className="param-admin-panel reload-configuration-panel" aria-label="重载配置">
-      <div className="param-admin-panel__section">
-        <h3>DTS 重载配置</h3>
-        <p className="reload-configuration-muted">
-          组织默认值与可选的设备覆盖。运行时始终由服务端从已存储记录解析；浏览器请求体不能影响有效合约。
-          内核日志命令须与允许列表完全一致：{KERNEL_LOG_COMMAND_ALLOWLIST.join("、")}。
-        </p>
-        {loading ? <p className="reload-configuration-muted">正在加载…</p> : null}
+    <PanelShell>
+      <p className="reload-configuration-muted">
+        组织级设备侧合约。运行时由服务端从已存储记录解析，浏览器请求体不能覆盖有效值。内核日志命令须与允许列表完全一致。
+      </p>
+
+      <div className="param-admin-panel__section reload-configuration-panel__contract">
+        <div className="reload-configuration-panel__section-head">
+          <div className="reload-configuration-panel__section-title">
+            <h3>组织默认值</h3>
+            <Badge variant={organisationSource === "seeded-default" ? "secondary" : "outline"}>
+              {organisationSource === "seeded-default" ? "种子默认" : "已保存"}
+            </Badge>
+          </div>
+          {loading ? <p className="reload-configuration-muted">正在加载…</p> : null}
+        </div>
+
         {errorMessage ? (
           <p className="debug-admin-error" role="alert">
             {errorMessage}
           </p>
         ) : null}
-        {statusMessage ? <p className="reload-configuration-muted">{statusMessage}</p> : null}
-      </div>
 
-      <div className="param-admin-panel__section">
-        <h3>组织默认值{organisationSource === "seeded-default" ? "（种子默认）" : ""}</h3>
-        <div className="config-form-grid reload-configuration-form">
-          <label>
-            <span>Overlay 目标目录</span>
-            <input
+        <div className="reload-configuration-form">
+          <div className="reload-configuration-form__field">
+            <Label htmlFor="reload-org-destination-directory">Overlay 目标目录</Label>
+            <Input
+              id="reload-org-destination-directory"
               aria-label="组织 Overlay 目标目录"
+              className="reload-configuration-form__control mono"
               value={organisationDraft.destinationDirectory}
-              disabled={!canEdit || saving}
+              disabled={fieldsDisabled}
+              placeholder="/vendor/firmware/"
+              spellCheck={false}
+              autoComplete="off"
               onChange={(event) => updateOrganisationField("destinationDirectory", event.target.value)}
             />
-          </label>
-          <label>
-            <span>Overlay 目标文件名</span>
-            <input
+            <p className="reload-configuration-form__hint">{FIELD_HINTS.destinationDirectory}</p>
+          </div>
+
+          <div className="reload-configuration-form__field">
+            <Label htmlFor="reload-org-destination-filename">Overlay 目标文件名</Label>
+            <Input
+              id="reload-org-destination-filename"
               aria-label="组织 Overlay 目标文件名"
+              className="reload-configuration-form__control mono"
               value={organisationDraft.destinationFilename}
-              disabled={!canEdit || saving}
+              disabled={fieldsDisabled}
+              placeholder="power_dts_overlay.dtbo"
+              spellCheck={false}
+              autoComplete="off"
               onChange={(event) => updateOrganisationField("destinationFilename", event.target.value)}
             />
-          </label>
-          <label className="wide">
-            <span>触发节点路径</span>
-            <input
+            <p className="reload-configuration-form__hint">{FIELD_HINTS.destinationFilename}</p>
+          </div>
+
+          <div className="reload-configuration-form__field reload-configuration-form__field--wide">
+            <Label htmlFor="reload-org-trigger-node-path">触发节点路径</Label>
+            <Input
+              id="reload-org-trigger-node-path"
               aria-label="组织触发节点路径"
+              className="reload-configuration-form__control mono"
               value={organisationDraft.triggerNodePath}
-              disabled={!canEdit || saving}
+              disabled={fieldsDisabled}
+              placeholder="/sys/kernel/debug/.../trigger"
+              spellCheck={false}
+              autoComplete="off"
               onChange={(event) => updateOrganisationField("triggerNodePath", event.target.value)}
             />
-          </label>
-          <label>
-            <span>触发载荷</span>
-            <input
+            <p className="reload-configuration-form__hint">{FIELD_HINTS.triggerNodePath}</p>
+          </div>
+
+          <div className="reload-configuration-form__field">
+            <Label htmlFor="reload-org-trigger-payload">触发载荷</Label>
+            <Input
+              id="reload-org-trigger-payload"
               aria-label="组织触发载荷"
+              className="reload-configuration-form__control mono"
               value={organisationDraft.triggerPayload}
-              disabled={!canEdit || saving}
+              disabled={fieldsDisabled}
+              placeholder="1"
+              spellCheck={false}
+              autoComplete="off"
               onChange={(event) => updateOrganisationField("triggerPayload", event.target.value)}
             />
-          </label>
-          <label>
-            <span>内核日志命令</span>
-            <input
-              aria-label="组织内核日志命令"
-              value={organisationDraft.kernelLogCommand}
-              disabled={!canEdit || saving}
-              onChange={(event) => updateOrganisationField("kernelLogCommand", event.target.value)}
-            />
-          </label>
-        </div>
-        <div className="reload-configuration-actions">
-          <Button type="button" disabled={!canEdit || saving || loading} onClick={() => void saveOrganisation()}>
-            保存组织默认值
-          </Button>
-        </div>
-      </div>
+            <p className="reload-configuration-form__hint">{FIELD_HINTS.triggerPayload}</p>
+          </div>
 
-      <div className="param-admin-panel__section">
-        <h3>设备覆盖</h3>
-        <div className="config-form-grid reload-configuration-form">
-          <label className="wide">
-            <span>设备</span>
-            <select
-              aria-label="覆盖设备"
-              value={selectedDeviceId}
-              disabled={!canEdit || saving}
-              onChange={(event) => setSelectedDeviceId(event.target.value)}
-            >
-              <option value="">选择设备…</option>
-              {devices.map((device) => (
-                <option key={device.id} value={device.id}>
-                  {device.name}
-                  {overrides.some((item) => item.deviceId === device.id) ? "（已覆盖）" : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Overlay 目标目录</span>
-            <input
-              aria-label="设备 Overlay 目标目录"
-              value={deviceDraft.destinationDirectory}
-              disabled={!canEdit || saving || !selectedDeviceId}
-              onChange={(event) => updateDeviceField("destinationDirectory", event.target.value)}
+          <div className="reload-configuration-form__field">
+            <Label>内核日志命令</Label>
+            <DebugAdminSelectControl
+              value={organisationDraft.kernelLogCommand}
+              onValueChange={(value) => updateOrganisationField("kernelLogCommand", value)}
+              options={kernelLogOptions}
+              ariaLabel="组织内核日志命令"
+              disabled={fieldsDisabled}
             />
-          </label>
-          <label>
-            <span>Overlay 目标文件名</span>
-            <input
-              aria-label="设备 Overlay 目标文件名"
-              value={deviceDraft.destinationFilename}
-              disabled={!canEdit || saving || !selectedDeviceId}
-              onChange={(event) => updateDeviceField("destinationFilename", event.target.value)}
-            />
-          </label>
-          <label className="wide">
-            <span>触发节点路径</span>
-            <input
-              aria-label="设备触发节点路径"
-              value={deviceDraft.triggerNodePath}
-              disabled={!canEdit || saving || !selectedDeviceId}
-              onChange={(event) => updateDeviceField("triggerNodePath", event.target.value)}
-            />
-          </label>
-          <label>
-            <span>触发载荷</span>
-            <input
-              aria-label="设备触发载荷"
-              value={deviceDraft.triggerPayload}
-              disabled={!canEdit || saving || !selectedDeviceId}
-              onChange={(event) => updateDeviceField("triggerPayload", event.target.value)}
-            />
-          </label>
-          <label>
-            <span>内核日志命令</span>
-            <input
-              aria-label="设备内核日志命令"
-              value={deviceDraft.kernelLogCommand}
-              disabled={!canEdit || saving || !selectedDeviceId}
-              onChange={(event) => updateDeviceField("kernelLogCommand", event.target.value)}
-            />
-          </label>
+            <p className="reload-configuration-form__hint">{FIELD_HINTS.kernelLogCommand}</p>
+          </div>
         </div>
+
         <div className="reload-configuration-actions">
+          {statusMessage ? <p className="reload-configuration-status">{statusMessage}</p> : null}
+          {!statusMessage && isDirty ? (
+            <p className="reload-configuration-muted">有未保存的更改</p>
+          ) : null}
           <Button
             type="button"
-            disabled={!canEdit || saving || loading || !selectedDeviceId}
-            onClick={() => void saveDeviceOverride()}
+            size="lg"
+            className="reload-configuration-actions__save"
+            disabled={fieldsDisabled || !isDirty}
+            onClick={() => void saveOrganisation()}
           >
-            保存设备覆盖
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={!canEdit || saving || loading || !selectedOverride}
-            onClick={() => void removeDeviceOverride()}
-          >
-            删除设备覆盖
+            {saving ? "保存中…" : "保存组织默认值"}
           </Button>
         </div>
       </div>
-    </section>
+    </PanelShell>
   );
 }

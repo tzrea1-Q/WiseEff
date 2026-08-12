@@ -19,6 +19,19 @@ describe("WiseEff prototype configuration", () => {
     expect(navigationItems.filter((item) => item.key === "parameter-admin")).toHaveLength(1);
   });
 
+  it("keeps one debugging-admin page key while resolving scope peers", () => {
+    const parameter = getPageByPath("/debugging-admin");
+    const nodes = getPageByPath("/debugging-admin/nodes");
+
+    expect(parameter.key).toBe("debugging-admin");
+    expect(parameter.subtitle).toContain("重载配置");
+    expect(nodes.key).toBe("debugging-admin");
+    expect(nodes.path).toBe("/debugging-admin/nodes");
+    expect(nodes.subtitle).toContain("可调节点");
+    expect(getXiaozeContextSummary("/debugging-admin")).toContain("重载配置");
+    expect(getXiaozeContextSummary("/debugging-admin/nodes")).toContain("可调节点");
+  });
+
   it("keeps one admin page key while resolving project deep links", () => {
     const organization = getPageByPath("/parameter-admin");
     const projects = getPageByPath("/parameter-admin/projects");

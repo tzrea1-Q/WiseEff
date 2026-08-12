@@ -309,6 +309,7 @@ function stateForCurrentPath() {
     case "/parameter-admin/projects":
     case "/log-admin":
     case "/debugging-admin":
+    case "/debugging-admin/nodes":
       return adminState;
     case "/logs":
     case "/log-dashboard":
@@ -895,7 +896,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
   it("refreshes debugging runtime when navigating back to node debugging", async () => {
     window.localStorage.setItem("wiseeff.nodeDebugging.protocol", "hdc");
-    window.history.replaceState(null, "", "/debugging-admin");
+    window.history.replaceState(null, "", "/debugging-admin/nodes");
     const debuggingGateway = createAppDebuggingGateway({
       listRuntimeNodes: vi.fn().mockResolvedValue([apiDebugParameter])
     });
@@ -927,7 +928,9 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     await screen.findByText("可调节点目录");
     expect(debuggingGateway.listRuntimeNodes).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "节点调试" }));
+    fireEvent.click(
+      within(screen.getByRole("navigation", { name: "主导航" })).getByRole("button", { name: "节点调试" })
+    );
 
     await waitFor(() => expect(debuggingGateway.listRuntimeNodes).toHaveBeenCalledTimes(2));
     expect(debuggingGateway.listRuntimeNodes).toHaveBeenLastCalledWith({
@@ -3038,7 +3041,12 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       },
       {
         path: "/debugging-admin",
-        present: ["调试管理后台", "可调节点"],
+        present: ["调试管理后台", "参数调试", "节点调试", "DTS 重载配置"],
+        absent: ["参数调试 Admin", "Ready"]
+      },
+      {
+        path: "/debugging-admin/nodes",
+        present: ["调试管理后台", "参数调试", "节点调试", "可调节点"],
         absent: ["参数调试 Admin", "Ready"]
       }
     ];
@@ -3091,7 +3099,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       );
     });
 
-    ["/parameter-home", "/parameter-admin", "/parameter-admin/projects", "/logs", "/log-admin", "/node-debugging", "/debugging-admin"].forEach((path) => {
+    ["/parameter-home", "/parameter-admin", "/parameter-admin/projects", "/logs", "/log-admin", "/node-debugging", "/debugging-admin", "/debugging-admin/nodes"].forEach((path) => {
       cleanup();
       window.history.replaceState(null, "", path);
       renderAppForCurrentPath();
@@ -3347,7 +3355,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   });
 
   it("edits debug node config from the debugging admin catalog", () => {
-    window.history.replaceState(null, "", "/debugging-admin");
+    window.history.replaceState(null, "", "/debugging-admin/nodes");
 
     render(<App initialAppState={adminState} runtimeMode="mock" />);
 
@@ -3365,7 +3373,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   });
 
   it("adds and disables debug nodes from the debugging admin catalog", () => {
-    window.history.replaceState(null, "", "/debugging-admin");
+    window.history.replaceState(null, "", "/debugging-admin/nodes");
     const nextName = "新调试节点";
 
     render(<App initialAppState={adminState} runtimeMode="mock" />);
@@ -3385,7 +3393,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   });
 
   it("renders the debugging admin context in a normalized workspace header", () => {
-    window.history.replaceState(null, "", "/debugging-admin");
+    window.history.replaceState(null, "", "/debugging-admin/nodes");
 
     render(<App initialAppState={stateForCurrentPath()} runtimeMode="mock" />);
 
@@ -3408,7 +3416,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   });
 
   it("does not expose mock JSON export controls in API mode", async () => {
-    window.history.replaceState(null, "", "/debugging-admin");
+    window.history.replaceState(null, "", "/debugging-admin/nodes");
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ ok: true })
@@ -3435,7 +3443,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   });
 
   it("does not save debug admin catalog without debugging:admin permission in API mode", async () => {
-    window.history.replaceState(null, "", "/debugging-admin");
+    window.history.replaceState(null, "", "/debugging-admin/nodes");
     const apiClient = createAppDebuggingAdminApiMock();
 
     render(

@@ -89,7 +89,7 @@ MVP 成功标准：
 
 **节点调试**（`/node-debugging`）是节点读写主路径，负责设备连接、节点读取/写入、读回校验、快照与调试审计。
 
-**参数调试**（`/dts-reload`，壳层标题/侧栏文案）在真实设备上验证参数库候选值：生成并编译调试 overlay，经本地设备桥部署，并采集重载快照（库基线、产物完整性、可选内核日志、行为核对）。调试值永不回写参数库。敏感节点规则与 `confirm-dts-reload` / `confirm-sensitive-reload` 约束特权步骤。Admin 在 `/debugging-admin` 治理重载配置。技术能力仍称 DTS overlay 重载，与已退役的 M1「参数重载」无关。
+**参数调试**（`/dts-reload`，壳层标题/侧栏文案）在真实设备上验证参数库候选值：生成并编译调试 overlay，经本地设备桥部署，并采集重载快照（库基线、产物完整性、可选内核日志、行为核对）。调试值永不回写参数库。敏感节点规则与 `confirm-dts-reload` / `confirm-sensitive-reload` 约束特权步骤。Admin 在 `/debugging-admin`（参数调试范围；节点目录在 `/debugging-admin/nodes`）治理重载配置。技术能力仍称 DTS overlay 重载，与已退役的 M1「参数重载」无关。
 
 **旧参数调试工作区**（`/debugging`）保持**产品下线**（TD-032）。不得与 `/dts-reload` 的「参数调试」产品标题混淆。
 

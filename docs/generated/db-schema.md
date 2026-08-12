@@ -607,7 +607,7 @@ Indexes and constraints:
 
 Migration `0037_debug_logs_org_scope_decoupling.sql` dropped cross-domain `parameter_reload_bindings` and removed `project_id` from all M2/M3 tables listed above.
 
-### DTS reload debugging (migrations `0096`–`0100`)
+### DTS reload debugging (migrations `0096`–`0101`)
 
 Separate from node debugging and from the retired parameter-reload table.
 
@@ -617,9 +617,9 @@ Separate from node debugging and from the retired parameter-reload table.
 - Status check includes `pending` | `blocked` | `validated` | `deploying` | `unverifiable` | `verified` | `contradicted` | `failed`.
 - Targets: one row per binding with `node_path`, `property_key`, `baseline_value`, `debug_value`, `sort_order`.
 
-#### `dts_reload_org_defaults` / `dts_reload_device_overrides` (`0097`)
+#### `dts_reload_org_defaults` (`0097`; per-device overrides dropped in `0101`)
 
-Device-side contract: destination directory/filename, trigger node/payload, kernel log command. Device override wins over org default. Never accepted from the client at run time.
+Device-side contract: destination directory/filename, trigger node/payload, kernel log command. Resolved from the organisation default (or seeded defaults). Never accepted from the client at run time.
 
 #### `dts_reload_device_residue` (`0100`)
 
@@ -629,7 +629,6 @@ Indexes:
 
 - `dts_reload_runs_project_created_idx`, `dts_reload_runs_device_created_idx` (partial)
 - `dts_reload_run_targets_run_idx`
-- `dts_reload_device_overrides_org_idx` / `_device_idx`
 - `dts_reload_device_residue_project_idx`
 
 Permission seed: `debugging:dts-reload` appended to committer/admin roles in `0096`.

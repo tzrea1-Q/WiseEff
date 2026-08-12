@@ -208,7 +208,7 @@ Parameter and debugging domains each maintain an independent org-scoped module t
 
 - `/parameters` — module filter and library grouping use `moduleId` with subtree include (parent selection returns descendant parameters). Deep links use `?module=<moduleId>`.
 - `/parameter-admin/modules` — `ModuleAttributionTree` governs business / driver-group / node-type attribution; **New module** uses `ModuleCreateDialog` with a kind picker (parent filter, required driver-group compatibles, optional `sourceKey` for node-type); edit uses `ModuleEditDialog` (name, controlled kind reclassify among `{business, node-type}`, importance for business categories, description, scope), with move/delete guards. Library filters and import preview use `ModuleTreeSelect`.
-- `/debugging-admin` — `DebugModuleManagementDialog` governs the debug node module tree; `DebugNodeLibraryTable`, `DebugParameterLibraryTable`, and `DebugNodeEditorDialog` pick modules via `ModuleTreeSelect`.
+- `/debugging-admin` — scope peers (same chrome as parameter-admin organization/projects): **Parameter debugging** at `/debugging-admin` hosts reload-configuration admin; **Node debugging** at `/debugging-admin/nodes` hosts the logical debug-node catalog. `DebugModuleManagementDialog` governs the debug node module tree; `DebugNodeLibraryTable`, `DebugParameterLibraryTable`, and `DebugNodeEditorDialog` pick modules via `ModuleTreeSelect`.
 
 API mode loads trees from `/api/v1/parameter-modules` and `/api/v1/debugging/admin/modules`. Mock mode derives trees from nested `parent`/`path` fields in `src/config/power-management.json` through `buildPowerManagementModuleTree()` in `src/powerManagementConfig.ts`.
 
@@ -274,7 +274,7 @@ API-mode page for validating project parameter candidates on a bridge-reachable 
 - Lists reload candidates for a project (debuggable vs blocked reasons, baseline vs debug value, sensitive-match badges, last-reload projection).
 - Starts a reload run (batch targets), shows overlay preview / preflight diagnostics, then deploys with explicit `confirm-dts-reload` (and `confirm-sensitive-reload` when critical rules match).
 - Shows in-request deploy progress, reload snapshot evidence (artifact integrity, unjudged kernel log, behavioural verification), residue indicator, restore-baseline confirmation, and run history.
-- Mock mode is unavailable for this surface (static unavailable copy only). Reload configuration CRUD for admins lives on `/debugging-admin`.
+- Mock mode is unavailable for this surface (static unavailable copy only). Reload configuration CRUD for admins lives on `/debugging-admin` (parameter-debug scope peer; node catalog is `/debugging-admin/nodes`).
 - Client: `src/infrastructure/http/dtsReloadClient.ts` (and related ports under `src/application/ports/`).
 - Implementation: `src/features/dts-reload/DtsReloadPage.tsx` (large page file; split tracked as TD-069).
 
@@ -292,7 +292,7 @@ The browser health probe is UI guidance only; bridge-backed device execution rem
 
 Bridge management (rename/revoke, multi-bridge target picker) behavior is unchanged from Phase 2.
 
-`/debugging-admin` (debug management console) uses API-backed **logical debug node** catalog management in `api` mode. It calls `src/infrastructure/http/debuggingAdminClient.ts` to list, create, update, and archive adjustable nodes (`debug_nodes`). Protocol-specific device paths live in separate **`debug_node_bindings`** rows (HDC and ADB per logical node). Legacy parameter catalog APIs remain on the server for audit/history but are no longer exposed in this Admin UI. `mock` mode keeps a slim local path for demos and component tests.
+`/debugging-admin` (debug management console) uses peer scope navigation: `/debugging-admin` for DTS reload configuration, `/debugging-admin/nodes` for API-backed **logical debug node** catalog management in `api` mode. The nodes scope calls `src/infrastructure/http/debuggingAdminClient.ts` to list, create, update, and archive adjustable nodes (`debug_nodes`). Protocol-specific device paths live in separate **`debug_node_bindings`** rows (HDC and ADB per logical node). Legacy parameter catalog APIs remain on the server for audit/history but are no longer exposed in this Admin UI. `mock` mode keeps a slim local path for demos and component tests.
 
 ### Debugging Admin UI
 

@@ -12,9 +12,7 @@ vi.mock("../audit/repository", () => ({
 import { createAuditEvent } from "../audit/repository";
 import {
   getReloadConfigurationAdminView,
-  removeDeviceReloadConfiguration,
-  updateOrganisationReloadConfiguration,
-  upsertDeviceReloadConfiguration
+  updateOrganisationReloadConfiguration
 } from "./configurationService";
 
 type QueryCall = { text: string; values: unknown[] };
@@ -127,7 +125,7 @@ describe("reload configuration service", () => {
   });
 
   it("returns seeded organisation defaults when no row exists", async () => {
-    const { db } = createFakeDb([[], []]);
+    const { db } = createFakeDb([[]]);
     const view = await getReloadConfigurationAdminView(db, auth());
     expect(view.organisation).toMatchObject({
       scope: "organisation",
@@ -135,7 +133,6 @@ describe("reload configuration service", () => {
       ...SEEDED_RELOAD_CONFIGURATION,
       updatedAt: null
     });
-    expect(view.deviceOverrides).toEqual([]);
   });
 
   it("updates organisation defaults, validates the log command, and writes audit evidence", async () => {
@@ -143,10 +140,7 @@ describe("reload configuration service", () => {
       destination_directory: "/oem/firmware/",
       kernel_log_command: "hilog"
     });
-    const { db } = createFakeDb([
-      [orgRow()],
-      [saved]
-    ]);
+    const { db } = createFakeDb([[orgRow()], [saved]]);
 
     const next = await updateOrganisationReloadConfiguration(
       db,
@@ -189,101 +183,5 @@ describe("reload configuration service", () => {
       })
     ).rejects.toBeInstanceOf(ApiError);
     expect(createAuditEvent).not.toHaveBeenCalled();
-  });
-
-  it("upserts a per-device override for a known device and audits previous/next values", async () => {
-    const { db } = createFakeDb([
-      [{ id: "device-1", name: "Aurora-A" }],
-      [],
-      [
-        {
-          id: "override-1",
-          organization_id: "org-1",
-          device_id: "device-1",
-          destination_directory: "/data/vendor/firmware/",
-          destination_filename: "power_dts_overlay.dtbo",
-          trigger_node_path: "/sys/kernel/debug/power_debug/dts_overlay/trigger",
-          trigger_payload: "1",
-          kernel_log_command: "cat /proc/kmsg",
-          updated_by_user_id: "user-1",
-          updated_at: "2026-08-10T03:00:00.000Z",
-          created_at: "2026-08-10T03:00:00.000Z"
-        }
-      ]
-    ]);
-
-    const item = await upsertDeviceReloadConfiguration(
-      db,
-      auth(),
-      "device-1",
-      {
-        ...SEEDED_RELOAD_CONFIGURATION,
-        destinationDirectory: "/data/vendor/firmware/",
-        kernelLogCommand: "cat /proc/kmsg"
-      },
-      { requestId: "req-2" }
-    );
-
-    expect(item).toMatchObject({
-      scope: "device",
-      deviceId: "device-1",
-      deviceName: "Aurora-A",
-      destinationDirectory: "/data/vendor/firmware/",
-      kernelLogCommand: "cat /proc/kmsg"
-    });
-    expect(createAuditEvent).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        metadata: expect.objectContaining({
-          scope: "device",
-          deviceId: "device-1",
-          previous: null,
-          next: expect.objectContaining({ destinationDirectory: "/data/vendor/firmware/" })
-        })
-      })
-    );
-  });
-
-  it("refuses a device override for an unknown device", async () => {
-    const { db } = createFakeDb([[]]);
-    await expect(
-      upsertDeviceReloadConfiguration(db, auth(), "missing-device", SEEDED_RELOAD_CONFIGURATION)
-    ).rejects.toMatchObject({ code: "NOT_FOUND" });
-  });
-
-  it("deletes a device override and audits the removal", async () => {
-    const { db } = createFakeDb([
-      [
-        {
-          id: "override-1",
-          organization_id: "org-1",
-          device_id: "device-1",
-          destination_directory: "/data/vendor/firmware/",
-          destination_filename: "power_dts_overlay.dtbo",
-          trigger_node_path: "/sys/kernel/debug/power_debug/dts_overlay/trigger",
-          trigger_payload: "1",
-          kernel_log_command: "dmesg",
-          updated_by_user_id: "user-1",
-          updated_at: "2026-08-10T03:00:00.000Z",
-          created_at: "2026-08-10T03:00:00.000Z"
-        }
-      ]
-    ]);
-
-    await expect(removeDeviceReloadConfiguration(db, auth(), "device-1", { requestId: "req-3" })).resolves.toEqual({
-      deviceId: "device-1"
-    });
-    expect(createAuditEvent).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        kind: "dts-reload-configuration-delete",
-        action: "delete",
-        metadata: expect.objectContaining({
-          scope: "device",
-          previous: expect.objectContaining({ destinationDirectory: "/data/vendor/firmware/" }),
-          next: null
-        })
-      })
-    );
   });
 });

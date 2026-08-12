@@ -54,6 +54,7 @@ function renderDebuggingAdminPage(apiClient = createDebuggingAdminApiMock()) {
         dispatch={vi.fn()}
         onNavigate={vi.fn()}
         search=""
+        area="nodes"
         runtimeMode="api"
         debuggingAdminClient={createDebuggingAdminClient(apiClient as never)}
         apiAuthPermissions={["debugging:admin"]}
@@ -76,6 +77,32 @@ afterEach(() => {
 });
 
 describe("/debugging-admin API mode", () => {
+  it("switches scope peers between parameter reload config and node catalog", async () => {
+    const onNavigate = vi.fn();
+    render(
+      <TopBarActionsContext.Provider value={{ setActions: vi.fn() }}>
+        <DebuggingAdminPage
+          state={adminState}
+          dispatch={vi.fn()}
+          onNavigate={onNavigate}
+          search=""
+          area="parameter"
+          runtimeMode="api"
+          debuggingAdminClient={createDebuggingAdminClient(createDebuggingAdminApiMock() as never)}
+          apiAuthPermissions={["debugging:admin"]}
+        />
+      </TopBarActionsContext.Provider>
+    );
+
+    const scopeNav = screen.getByRole("navigation", { name: "调试后台范围" });
+    expect(within(scopeNav).getByRole("button", { name: "参数调试" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("main", { name: "参数调试" })).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "可调节点目录" })).not.toBeInTheDocument();
+
+    fireEvent.click(within(scopeNav).getByRole("button", { name: "节点调试" }));
+    expect(onNavigate).toHaveBeenCalledWith("/debugging-admin/nodes");
+  });
+
   it("loads API node catalog, edits in node dialog, and saves through PATCH", async () => {
     const apiClient = renderDebuggingAdminPage();
 

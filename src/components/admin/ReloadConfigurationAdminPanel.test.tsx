@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
@@ -22,7 +22,6 @@ function seededView(overrides: Partial<ReloadConfigurationAdminView> = {}): Relo
       updatedAt: null,
       updatedByUserId: null
     },
-    deviceOverrides: [],
     ...overrides
   };
 }
@@ -45,17 +44,14 @@ function createRepository(overrides: Partial<DtsReloadRepository> = {}): DtsRelo
       updatedAt: "2026-08-10T04:00:00.000Z",
       updatedByUserId: "user-1"
     })),
-    upsertDeviceReloadConfiguration: vi.fn(async (deviceId, contract) => ({
-      scope: "device" as const,
-      deviceId,
-      deviceName: "Aurora-A",
-      ...contract,
-      updatedAt: "2026-08-10T04:00:00.000Z",
-      updatedByUserId: "user-1"
-    })),
-    deleteDeviceReloadConfiguration: vi.fn(async (deviceId) => ({ deviceId })),
     ...overrides
   };
+}
+
+async function selectKernelLogCommand(command: string) {
+  fireEvent.click(screen.getByLabelText("组织内核日志命令"));
+  const listbox = await screen.findByRole("listbox");
+  fireEvent.click(within(listbox).getByRole("option", { name: command }));
 }
 
 describe("ReloadConfigurationAdminPanel", () => {
@@ -63,7 +59,6 @@ describe("ReloadConfigurationAdminPanel", () => {
     render(
       <ReloadConfigurationAdminPanel
         repository={null}
-        devices={[]}
         canEdit={false}
         unavailableReason="重载配置仅在 API 模式下可用。"
       />
@@ -73,19 +68,20 @@ describe("ReloadConfigurationAdminPanel", () => {
 
   it("loads organisation defaults through the injected repository and saves edits", async () => {
     const repository = createRepository();
-    render(
-      <ReloadConfigurationAdminPanel
-        repository={repository}
-        devices={[{ id: "device-1", name: "Aurora-A" }]}
-        canEdit
-      />
-    );
+    render(<ReloadConfigurationAdminPanel repository={repository} canEdit />);
 
     expect(await screen.findByDisplayValue("/vendor/firmware/")).toBeInTheDocument();
     expect(repository.getReloadConfiguration).toHaveBeenCalled();
+    expect(screen.getByText("种子默认")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("组织内核日志命令"), { target: { value: "hilog" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存组织默认值" }));
+    const saveButton = screen.getByRole("button", { name: "保存组织默认值" });
+    expect(saveButton).toBeDisabled();
+
+    await selectKernelLogCommand("hilog");
+    expect(await screen.findByText("有未保存的更改")).toBeInTheDocument();
+    expect(saveButton).not.toBeDisabled();
+
+    fireEvent.click(saveButton);
 
     await waitFor(() =>
       expect(repository.updateOrganisationReloadConfiguration).toHaveBeenCalledWith(
@@ -93,45 +89,12 @@ describe("ReloadConfigurationAdminPanel", () => {
       )
     );
     expect(await screen.findByText("组织默认重载配置已保存")).toBeInTheDocument();
-  });
-
-  it("saves and deletes a per-device override through the injected repository", async () => {
-    const repository = createRepository();
-    render(
-      <ReloadConfigurationAdminPanel
-        repository={repository}
-        devices={[{ id: "device-1", name: "Aurora-A" }]}
-        canEdit
-      />
-    );
-
-    await screen.findByDisplayValue("/vendor/firmware/");
-    fireEvent.change(screen.getByLabelText("覆盖设备"), { target: { value: "device-1" } });
-    fireEvent.change(screen.getByLabelText("设备 Overlay 目标目录"), {
-      target: { value: "/data/vendor/firmware/" }
-    });
-    fireEvent.click(screen.getByRole("button", { name: "保存设备覆盖" }));
-
-    await waitFor(() =>
-      expect(repository.upsertDeviceReloadConfiguration).toHaveBeenCalledWith(
-        "device-1",
-        expect.objectContaining({ destinationDirectory: "/data/vendor/firmware/" })
-      )
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "删除设备覆盖" }));
-    await waitFor(() => expect(repository.deleteDeviceReloadConfiguration).toHaveBeenCalledWith("device-1"));
+    expect(screen.getByText("已保存")).toBeInTheDocument();
   });
 
   it("refuses load and save when the viewer lacks debugging:admin", () => {
     const repository = createRepository();
-    render(
-      <ReloadConfigurationAdminPanel
-        repository={repository}
-        devices={[{ id: "device-1", name: "Aurora-A" }]}
-        canEdit={false}
-      />
-    );
+    render(<ReloadConfigurationAdminPanel repository={repository} canEdit={false} />);
     expect(screen.getByText(/缺少 debugging:admin 权限，无法读取或修改/)).toBeInTheDocument();
     expect(repository.getReloadConfiguration).not.toHaveBeenCalled();
   });

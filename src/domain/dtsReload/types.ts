@@ -217,17 +217,8 @@ export type OrganisationReloadConfiguration = ReloadConfigurationContract & {
   updatedByUserId: string | null;
 };
 
-export type DeviceReloadConfigurationOverride = ReloadConfigurationContract & {
-  scope: "device";
-  deviceId: string;
-  deviceName: string | null;
-  updatedAt: string;
-  updatedByUserId: string | null;
-};
-
 export type ReloadConfigurationAdminView = {
   organisation: OrganisationReloadConfiguration;
-  deviceOverrides: DeviceReloadConfigurationOverride[];
 };
 
 export const dtsReloadBlockReasonLabels: Record<DtsReloadCandidateBlockReason, string> = {

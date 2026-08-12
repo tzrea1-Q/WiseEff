@@ -202,7 +202,7 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     const nodeName = `${acceptanceNodeNamePrefix} ${suffix}`;
     const editedName = `${acceptanceNodeNamePrefix} edited ${suffix}`;
 
-    await page.goto("/debugging-admin");
+    await page.goto("/debugging-admin/nodes");
     await expect(page.getByRole("table", { name: "可调节点目录" })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("button", { name: "新增节点" })).toBeEnabled();
 

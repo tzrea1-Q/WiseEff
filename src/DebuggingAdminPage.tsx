@@ -18,6 +18,7 @@ import {
 } from "@/domain/debugging/bindingNodePath";
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import { ReloadConfigurationAdminPanel } from "@/components/admin/ReloadConfigurationAdminPanel";
+import { DebuggingAdminScopeNav } from "@/components/admin/DebuggingAdminScopeNav";
 import { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
 import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { ParameterModuleDraft } from "@/powerManagementConfig";
@@ -75,11 +76,14 @@ function mergeNodeBinding(
 export function DebuggingAdminPage({
   state,
   dispatch,
+  onNavigate,
+  area = "parameter",
   runtimeMode = wiseEffRuntimeMode,
   debuggingAdminClient,
   dtsReloadRepository = null,
   apiAuthPermissions = []
 }: PageProps & {
+  area?: "parameter" | "nodes";
   runtimeMode?: WiseEffRuntimeMode;
   debuggingAdminClient?: ReturnType<typeof createDebuggingAdminClient>;
   dtsReloadRepository?: DtsReloadRepository | null;
@@ -139,7 +143,7 @@ export function DebuggingAdminPage({
   );
 
   useEffect(() => {
-    if (!isApiMode || !debuggingAdminClient) {
+    if (area !== "nodes" || !isApiMode || !debuggingAdminClient) {
       return;
     }
 
@@ -169,7 +173,7 @@ export function DebuggingAdminPage({
     return () => {
       cancelled = true;
     };
-  }, [debuggingAdminClient, isApiMode]);
+  }, [area, debuggingAdminClient, isApiMode]);
 
   const flashSaved = (nextStatus: string) => {
     setSaveStatus(nextStatus);
@@ -517,100 +521,114 @@ export function DebuggingAdminPage({
   ];
 
   useTopBarActions(
-    <div className="debug-admin-strip debug-admin-strip--topbar">
-      <span className={`debug-admin-save-indicator${saveFlash || saveStatus ? " visible" : ""}`}>{saveStatus || "✓ 已自动保存"}</span>
-    </div>,
-    [saveFlash, saveStatus]
+    area === "nodes" ? (
+      <div className="debug-admin-strip debug-admin-strip--topbar">
+        <span className={`debug-admin-save-indicator${saveFlash || saveStatus ? " visible" : ""}`}>{saveStatus || "✓ 已自动保存"}</span>
+      </div>
+    ) : null,
+    [area, saveFlash, saveStatus]
   );
 
   const disableTarget = disableNodeId ? library.find((node) => node.id === disableNodeId) : null;
 
   return (
     <div className="debug-admin-shell param-admin-shell">
-      <KpiStrip items={kpiItems} />
-      <main className="param-admin-main">
-        {adminError ? <p className="debug-admin-error" role="alert">{adminError}</p> : null}
-        {isApiMode && !canEditAdminCatalog ? <p className="debug-admin-error">缺少 debugging:admin 权限，目录仅可查看。</p> : null}
-        <ReloadConfigurationAdminPanel
-          repository={isApiMode ? dtsReloadRepository : null}
-          devices={state.devices.map((device) => ({ id: device.id, name: device.name }))}
-          canEdit={canEditAdminCatalog}
-          unavailableReason={isApiMode ? undefined : "重载配置仅在 API 模式下可用。"}
-        />
-        <DebugNodeLibraryTable
-          nodes={library}
-          moduleNodes={moduleNodes}
-          search={nodeSearch}
-          onUpdateSearch={(patch) => setNodeSearch((current) => ({ ...current, ...patch }))}
-          onEdit={(nodeId) => {
-            setEditorMode("edit");
-            setEditorNodeId(nodeId);
-          }}
-          onEditBindings={setBindingsNodeId}
-          onDisable={setDisableNodeId}
-          onCreate={() => {
-            setEditorMode("create");
-            setEditorNodeId(null);
-          }}
-          onManageModules={() => setModuleDialogOpen(true)}
-          canEdit={canEditAdminCatalog}
-          loading={adminLoading}
-        />
-      </main>
+      <DebuggingAdminScopeNav active={area} onNavigate={onNavigate} />
+      {area === "parameter" ? (
+        <main className="param-admin-main" aria-label="参数调试">
+          {isApiMode && !canEditAdminCatalog ? (
+            <p className="debug-admin-error">缺少 debugging:admin 权限，目录仅可查看。</p>
+          ) : null}
+          <ReloadConfigurationAdminPanel
+            repository={isApiMode ? dtsReloadRepository : null}
+            canEdit={canEditAdminCatalog}
+            unavailableReason={isApiMode ? undefined : "重载配置仅在 API 模式下可用。"}
+          />
+        </main>
+      ) : (
+        <>
+          <KpiStrip items={kpiItems} />
+          <main className="param-admin-main" aria-label="节点调试">
+            {adminError ? <p className="debug-admin-error" role="alert">{adminError}</p> : null}
+            {isApiMode && !canEditAdminCatalog ? (
+              <p className="debug-admin-error">缺少 debugging:admin 权限，目录仅可查看。</p>
+            ) : null}
+            <DebugNodeLibraryTable
+              nodes={library}
+              moduleNodes={moduleNodes}
+              search={nodeSearch}
+              onUpdateSearch={(patch) => setNodeSearch((current) => ({ ...current, ...patch }))}
+              onEdit={(nodeId) => {
+                setEditorMode("edit");
+                setEditorNodeId(nodeId);
+              }}
+              onEditBindings={setBindingsNodeId}
+              onDisable={setDisableNodeId}
+              onCreate={() => {
+                setEditorMode("create");
+                setEditorNodeId(null);
+              }}
+              onManageModules={() => setModuleDialogOpen(true)}
+              canEdit={canEditAdminCatalog}
+              loading={adminLoading}
+            />
+          </main>
 
-      <DebugNodeEditorDialog
-        open={editorMode !== null}
-        mode={editorMode === "create" ? "create" : "edit"}
-        node={editorNode}
-        moduleNodes={moduleNodes}
-        loading={adminLoading}
-        canEdit={canEditAdminCatalog}
-        onSave={(draft) => void saveNode(draft)}
-        onClose={() => {
-          setEditorMode(null);
-          setEditorNodeId(null);
-        }}
-      />
+          <DebugNodeEditorDialog
+            open={editorMode !== null}
+            mode={editorMode === "create" ? "create" : "edit"}
+            node={editorNode}
+            moduleNodes={moduleNodes}
+            loading={adminLoading}
+            canEdit={canEditAdminCatalog}
+            onSave={(draft) => void saveNode(draft)}
+            onClose={() => {
+              setEditorMode(null);
+              setEditorNodeId(null);
+            }}
+          />
 
-      {bindingsNode ? (
-        <DebugNodeBindingsDialog
-          nodeName={bindingsNode.name}
-          draft={bindingsDraft}
-          nodeId={bindingsNode.id}
-          isApiMode={isApiMode}
-          canEdit={canEditAdminCatalog}
-          loading={adminLoading}
-          onBindingChange={(protocol, patch) => setBindingsDraft((current) => mergeNodeBinding(current, protocol, patch))}
-          onSave={saveBindingsDialog}
-          onSaveBinding={(protocol) => void saveNodeBinding(protocol)}
-          onArchiveBinding={(protocol) => void archiveNodeBinding(protocol)}
-          onClose={() => setBindingsNodeId(null)}
-        />
-      ) : null}
+          {bindingsNode ? (
+            <DebugNodeBindingsDialog
+              nodeName={bindingsNode.name}
+              draft={bindingsDraft}
+              nodeId={bindingsNode.id}
+              isApiMode={isApiMode}
+              canEdit={canEditAdminCatalog}
+              loading={adminLoading}
+              onBindingChange={(protocol, patch) => setBindingsDraft((current) => mergeNodeBinding(current, protocol, patch))}
+              onSave={saveBindingsDialog}
+              onSaveBinding={(protocol) => void saveNodeBinding(protocol)}
+              onArchiveBinding={(protocol) => void archiveNodeBinding(protocol)}
+              onClose={() => setBindingsNodeId(null)}
+            />
+          ) : null}
 
-      <ArchiveDebugNodeDialog
-        open={Boolean(disableTarget)}
-        nodeName={disableTarget?.name ?? ""}
-        loading={adminLoading}
-        onCancel={() => setDisableNodeId(null)}
-        onConfirm={() => {
-          if (!disableTarget) return;
-          void disableNode(disableTarget);
-          setDisableNodeId(null);
-        }}
-      />
+          <ArchiveDebugNodeDialog
+            open={Boolean(disableTarget)}
+            nodeName={disableTarget?.name ?? ""}
+            loading={adminLoading}
+            onCancel={() => setDisableNodeId(null)}
+            onConfirm={() => {
+              if (!disableTarget) return;
+              void disableNode(disableTarget);
+              setDisableNodeId(null);
+            }}
+          />
 
-      <DebugModuleManagementDialog
-        open={moduleDialogOpen}
-        moduleNodes={moduleNodes}
-        nodes={library}
-        onClose={() => setModuleDialogOpen(false)}
-        onAddModule={addDebugModule}
-        onUpdateModule={(moduleId, patch) => void updateDebugModule(moduleId, patch)}
-        onMoveModule={moveDebugModule}
-        onDeleteModule={(moduleId) => void deleteDebugModule(moduleId)}
-        onEditNode={openNodeEditorFromModule}
-      />
+          <DebugModuleManagementDialog
+            open={moduleDialogOpen}
+            moduleNodes={moduleNodes}
+            nodes={library}
+            onClose={() => setModuleDialogOpen(false)}
+            onAddModule={addDebugModule}
+            onUpdateModule={(moduleId, patch) => void updateDebugModule(moduleId, patch)}
+            onMoveModule={moveDebugModule}
+            onDeleteModule={(moduleId) => void deleteDebugModule(moduleId)}
+            onEditNode={openNodeEditorFromModule}
+          />
+        </>
+      )}
     </div>
   );
 }
