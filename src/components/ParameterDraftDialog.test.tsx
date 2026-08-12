@@ -160,23 +160,22 @@ describe("ParameterDraftDialog", () => {
   });
 
   it("keeps draft action buttons visually styled as buttons", () => {
+    // Dialog buttons consume the shared `.button` base contract; the scope no
+    // longer redefines geometry (FA-10).
     const styles = readStylesheet("src/styles.css");
-    const bodyButtonRule = declarationsFor(styles, ".parameter-draft-dialog__body .button");
-    const bodySubtleRule = declarationsFor(styles, ".parameter-draft-dialog__body .button.subtle");
-    const bodyHoverRule = declarationsFor(
-      styles,
-      ".parameter-draft-dialog__body .button.subtle:hover:not(:disabled)"
-    );
+    const baseButtonRule = declarationsFor(styles, ".button");
+    const baseSubtleRule = declarationsFor(styles, ".button.subtle");
+    const baseSubtleHoverRule = declarationsFor(styles, ".button.subtle:hover:not(:disabled)");
     const submitLinkRule = declarationsFor(styles, ".parameter-draft-dialog__submit-link");
 
-    expect(bodyButtonRule.display).toBe("inline-flex");
-    expect(bodyButtonRule["min-height"]).toBe("36px");
-    expect(bodyButtonRule.padding).toBe("0 14px");
-    expect(bodyButtonRule["border-radius"]).toBe("9px");
-    expect(bodyButtonRule["box-shadow"]).toBeTruthy();
-    expect(bodySubtleRule.background).toBe("#ffffff");
-    expect(bodySubtleRule.border).toBe("1px solid rgba(148, 163, 184, 0.64)");
-    expect(bodyHoverRule["box-shadow"]).toBeTruthy();
+    expect(baseButtonRule.display).toBe("inline-flex");
+    expect(baseButtonRule["min-height"]).toBe("32px");
+    expect(baseButtonRule.padding).toBe("0 var(--space-3)");
+    expect(baseButtonRule["border-radius"]).toBe("var(--radius-md)");
+    expect(baseButtonRule.cursor).toBe("pointer");
+    expect(baseSubtleRule.background).toBe("var(--surface)");
+    expect(baseSubtleRule["border-color"]).toBe("var(--border)");
+    expect(baseSubtleHoverRule.background).toBe("var(--surface-sunken)");
     expect(submitLinkRule.display).toBe("inline-flex");
     expect(submitLinkRule.border).toBe("1px solid rgba(148, 163, 184, 0.64)");
   });

@@ -620,19 +620,22 @@ describe("ParameterDetailDialog", () => {
   });
 
   it("keeps footer actions visually styled as buttons", () => {
+    // Footer buttons consume the shared `.button` base contract (FA-10); the
+    // scope only keeps the stable CTA min-width.
     const styles = readStylesheet("src/styles.css");
-    const baseRule = declarationsFor(styles, ".parameter-detail-dialog__actions .button");
-    const subtleRule = declarationsFor(styles, ".parameter-detail-dialog__actions .button.subtle");
-    const primaryRule = declarationsFor(styles, ".parameter-detail-dialog__actions .button.primary");
+    const scopeRule = declarationsFor(styles, ".parameter-detail-dialog__actions .button");
+    const baseRule = declarationsFor(styles, ".button");
+    const subtleRule = declarationsFor(styles, ".button.subtle");
+    const primaryRule = declarationsFor(styles, ".button.primary");
 
-    expect(baseRule.height).toBe("38px");
-    expect(baseRule["border-radius"]).toBe("9px");
-    expect(baseRule["box-shadow"]).toBeTruthy();
+    expect(scopeRule["min-width"]).toBe("112px");
+    expect(baseRule["min-height"]).toBe("32px");
+    expect(baseRule["border-radius"]).toBe("var(--radius-md)");
     expect(baseRule.cursor).toBe("pointer");
-    expect(subtleRule.background).toBe("#ffffff");
-    expect(subtleRule.border).toBe("1px solid rgba(148, 163, 184, 0.64)");
-    expect(primaryRule.background).toBe("var(--app-primary)");
-    expect(primaryRule.border).toBe("1px solid var(--app-primary)");
+    expect(subtleRule.background).toBe("var(--surface)");
+    expect(subtleRule["border-color"]).toBe("var(--border)");
+    expect(primaryRule.background).toBe("var(--accent)");
+    expect(primaryRule["border-color"]).toBe("var(--accent)");
   });
 
   it("keeps long DTS config lines unwrapped with horizontal scrolling", () => {

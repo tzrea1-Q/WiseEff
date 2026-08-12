@@ -558,16 +558,18 @@ describe("UserPermissionsPage", () => {
   });
 
   it("gives user management action buttons visible chrome instead of text-only controls", () => {
+    // Buttons on this page consume the shared `.button` base contract; the
+    // scope no longer redefines geometry or colors (FA-10).
     const css = readStylesheet("src/styles.css");
-    const baseButtonStyles = declarationsFor(css, ".user-permissions-page .button");
-    const primaryButtonStyles = declarationsFor(css, ".user-permissions-page .button.primary");
+    const baseButtonStyles = declarationsFor(css, ".button");
+    const primaryButtonStyles = declarationsFor(css, ".button.primary");
 
     expect(baseButtonStyles.display).toBe("inline-flex");
-    expect(baseButtonStyles.background).toBe("#fff");
-    expect(baseButtonStyles.border).toBe("1px solid #d7dfec");
-    expect(baseButtonStyles["border-radius"]).toBe("8px");
-    expect(primaryButtonStyles.background).toBe("var(--app-primary)");
-    expect(primaryButtonStyles["border-color"]).toBe("var(--app-primary)");
+    expect(baseButtonStyles.background).toBe("var(--surface)");
+    expect(baseButtonStyles.border).toBe("1px solid var(--border)");
+    expect(baseButtonStyles["border-radius"]).toBe("var(--radius-md)");
+    expect(primaryButtonStyles.background).toBe("var(--accent)");
+    expect(primaryButtonStyles["border-color"]).toBe("var(--accent)");
   });
 
   it("renders and filters legacy role ids under their migrated platform role", async () => {
