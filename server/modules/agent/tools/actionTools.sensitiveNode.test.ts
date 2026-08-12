@@ -14,8 +14,8 @@ vi.mock("../../parameters/repository", () => ({
   getProjectParameterForUpdate: vi.fn()
 }));
 
-vi.mock("../../parameters/semanticParameterReads", () => ({
-  mustUseSemanticParameterIdentity: vi.fn().mockResolvedValue(true)
+vi.mock("../../parameters/parameterIdentityMode", () => ({
+  resolveParameterIdentityMode: vi.fn().mockResolvedValue("semantic")
 }));
 
 vi.mock("../../parameter-topology/service", () => ({
