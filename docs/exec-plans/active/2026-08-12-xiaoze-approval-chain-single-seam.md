@@ -73,6 +73,22 @@ npm run docs:check
 npx playwright test e2e/acceptance/xiaoze-action.acceptance.spec.ts
 ```
 
+## Verification results (2026-08-12)
+
+- `npx vitest run server/modules/agent --config vitest.server.config.ts`: 33 files green in a clean branch worktree (assembly editedArgs regression, concurrency isolation, dual-orchestrator multi-replica test included). With `DATABASE_URL` present, the live-postgres checkpointer durability test also ran and passed (cross-instance resume on the new resolver path).
+- `npm run build` and `npm run docs:check`: green in a clean branch worktree (the developer's unrelated WIP in the shared worktree carries its own type error in `server/testing/testDatabase.ts` and broken links from an untracked draft doc; both pre-date/parallel this change).
+- Live-API evidence (isolated DB `wiseeff_acceptance_xiaoze`, deterministic model, port 8799): first POST raised the interrupt; resume with `editedArgs targetValue=3600` **persisted the edited payload** (`agent_tool_calls.payload → 3600`, previously the original payload would have executed), approval row `approved`, audit `approval-requested` + `approval-execution-failed` (`actor_type=agent`).
+- The tool execution itself failed with "Legacy parameter submission is retired after semantic identity cutover": `action.submitParameterChange` still submits the retired flat shape, so every approved Xiaoze write has been failing at execution since the cutover — a pre-existing defect recorded as **TD-078** (out of scope here; unit tests mock the parameters service and never saw it).
+- `xiaoze-action.acceptance.spec.ts` cannot run against a post-cutover schema (its `beforeAll` filters on the dropped `project_parameter_value_id` column) — same drift family as TD-078; the new `XIAOZE-ACTION-EDITEDARGS-001` case follows the file's pattern minus the retired column and activates when the spec drift is repaired.
+
+## Verification results (2026-08-12)
+
+- `npx vitest run server/modules/agent --config vitest.server.config.ts`: 33 files green in a clean branch worktree (assembly editedArgs regression, concurrency isolation, dual-orchestrator multi-replica test included). With `DATABASE_URL` present, the live-postgres checkpointer durability test also ran and passed (cross-instance resume on the new resolver path).
+- `npm run build` and `npm run docs:check`: green in a clean branch worktree (the shared developer worktree carries unrelated parallel WIP with its own type error and doc-link drafts; verified clean-tree instead).
+- Live-API evidence (isolated DB `wiseeff_acceptance_xiaoze`, deterministic model, port 8799): first POST raised the interrupt; resume with `editedArgs targetValue=3600` **persisted the edited payload** (`agent_tool_calls.payload → 3600`; before this fix the original payload executed), approval row `approved`, audit `approval-requested` + `approval-execution-failed` (`actor_type=agent`).
+- The tool execution itself failed with "Legacy parameter submission is retired after semantic identity cutover": `action.submitParameterChange` still submits the retired flat shape, so every approved Xiaoze write has been failing at execution since the cutover — a pre-existing defect recorded as **TD-078** (out of scope here; unit tests mock the parameters service and never saw it).
+- `xiaoze-action.acceptance.spec.ts` cannot run against a post-cutover schema (its `beforeAll` filters on the dropped `project_parameter_value_id` column) — same drift family as TD-078; the new `XIAOZE-ACTION-EDITEDARGS-001` case follows the file's pattern minus the retired column and activates when the spec drift is repaired.
+
 ## Documentation Impact Matrix
 
 | Area | Action | Paths |
@@ -91,11 +107,11 @@ npx playwright test e2e/acceptance/xiaoze-action.acceptance.spec.ts
 
 ## Documentation Update Gate
 
-- [x] ADR-0024 written (`docs/adr/0024-agent-approval-state-is-db-backed.md`) and linked from `CONTEXT.md` — commit pending session owner (ADR-0024 also claimed by the parallel `knowledge-base-mvp` branch; resolve the number at merge time)
-- [x] `CONTEXT.md` glossary states Agent approval chain; ADR index lists 0012/0020/0021/0022 (duplicate 0020/0021 index lines removed)
-- [x] `ARCHITECTURE.md` describes begin/resolve and DB-backed approval state (EN §Backend; `docs/zh-CN/root/ARCHITECTURE.md` has no agent-seam section to mirror)
-- [x] `docs/SECURITY.md` updated for begin/resolve and resume-payload hardening (Xiaoze P1/P2)
-- [x] Coverage map + operation matrix list `XIAOZE-ACTION-EDITEDARGS-001`; acceptance spec updated
-- [x] TD-070 recorded (resume branch bypasses the run-step sink)
+- [x] ADR-0024 committed (`docs/adr/0024-agent-approval-state-is-db-backed.md`) and linked from `CONTEXT.md` + `docs/adr/README.md` (renumbered from the draft's 0022 after parallel work claimed 0022/0023)
+- [x] `CONTEXT.md` glossary states Agent approval chain; ADR index backfilled 0012/0020/0021 and lists 0024
+- [x] `ARCHITECTURE.md` describes begin/resolve and DB-backed approval state; zh evidence: `docs/zh-CN/root/ARCHITECTURE.md` is a condensed map without the approval-chain sentence (no stale text), and the zh detail in `docs/zh-CN/design-docs/full-stack-architecture.md` was updated
+- [x] `docs/SECURITY.md` + `docs/zh-CN/SECURITY.md` updated for begin/resolve and resume-payload hardening (Xiaoze P1/P2)
+- [x] Coverage map + operation matrix list `XIAOZE-ACTION-EDITEDARGS-001`; acceptance spec updated (execution blocked by pre-existing spec/tool drift — TD-078)
+- [x] TD-070 recorded (resume branch bypasses the run-step sink); TD-078 recorded (retired-shape tool submission found during live verification)
 - [x] `docs/PLANS.md` EN + zh list this plan
-- [x] `npm run docs:check` green — move this plan to `completed/` as part of the closeout commit (deferred: working tree co-hosts other uncommitted workstreams)
+- [x] `npm run docs:check` green in a clean branch worktree (2026-08-12); move to `completed/` after PR review

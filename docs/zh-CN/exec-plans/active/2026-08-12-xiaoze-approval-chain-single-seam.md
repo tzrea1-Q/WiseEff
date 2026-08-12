@@ -73,6 +73,14 @@ npm run docs:check
 npx playwright test e2e/acceptance/xiaoze-action.acceptance.spec.ts
 ```
 
+## 验证结果(2026-08-12)
+
+- `npx vitest run server/modules/agent --config vitest.server.config.ts`:干净分支 worktree 中 33 个测试文件全绿(含装配级 editedArgs 回归、并发隔离、双 orchestrator 多副本测试)。存在 `DATABASE_URL` 时,活 postgres checkpointer 持久化集成测试也真实运行并通过(新 resolver 路径上的跨实例 resume)。
+- `npm run build` 与 `npm run docs:check`:干净分支 worktree 中全绿(共享开发工作区还载有无关的并行 WIP,自带类型错误与文档草稿破链;故以干净树为准验证)。
+- 活 API 证据(隔离库 `wiseeff_acceptance_xiaoze`、确定性模型、端口 8799):第一次 POST 正常产生 interrupt;携 `editedArgs targetValue=3600` 的 resume **落库了编辑后的载荷**(`agent_tool_calls.payload → 3600`;修复前执行的是原始载荷),审批行 `approved`,审计 `approval-requested` + `approval-execution-failed`(`actor_type=agent`)。
+- 工具执行本身失败:"Legacy parameter submission is retired after semantic identity cutover"——`action.submitParameterChange` 仍在提交已退役的扁平形状,语义切换以来任何被批准的小泽写入都会在执行阶段失败;主干既有缺陷,记为 **TD-078**(超出本计划范围;单元测试 mock 了 parameters 服务所以从未暴露)。
+- `xiaoze-action.acceptance.spec.ts` 无法在切换后 schema 上运行(其 `beforeAll` 过滤已删除的 `project_parameter_value_id` 列)——与 TD-078 同源漂移;新用例 `XIAOZE-ACTION-EDITEDARGS-001` 沿用文件模式但不引用退役列,待 spec 漂移修复后即可激活。
+
 ## 文档影响矩阵
 
 | 领域 | 动作 | 路径 |
@@ -91,11 +99,11 @@ npx playwright test e2e/acceptance/xiaoze-action.acceptance.spec.ts
 
 ## 文档更新门禁
 
-- [ ] ADR-0024 提交并从 `CONTEXT.md` 链接
-- [ ] `CONTEXT.md` 术语表载明 Agent 审批链;ADR 索引列出 0012/0020/0021/0022
-- [ ] `ARCHITECTURE.md` 中英文均描述 begin/resolve 与状态入库
-- [ ] `docs/SECURITY.md`(含中文伴页,如成对)更新 begin/resolve 与 resume 载荷加固
-- [ ] 覆盖矩阵与操作矩阵列出 `XIAOZE-ACTION-EDITEDARGS-001`;验收用例已更新
-- [ ] TD-070 已记录(resume 分支绕过步骤 sink)
-- [ ] `docs/PLANS.md` 中英文列出本计划
-- [ ] 移入 `completed/` 前 `npm run docs:check` 全绿
+- [x] ADR-0024 已提交(`docs/adr/0024-agent-approval-state-is-db-backed.md`)并从 `CONTEXT.md` 与 `docs/adr/README.md` 链接(并行工作占用 0022/0023 后由草案的 0022 改号)
+- [x] `CONTEXT.md` 术语表载明 Agent 审批链;ADR 索引补列 0012/0020/0021 并列出 0024
+- [x] `ARCHITECTURE.md` 描述 begin/resolve 与状态入库;中文证据:`docs/zh-CN/root/ARCHITECTURE.md` 为精简地图、本无审批链语句(无陈旧文本),中文细节在已更新的 `docs/zh-CN/design-docs/full-stack-architecture.md`
+- [x] `docs/SECURITY.md` 与 `docs/zh-CN/SECURITY.md` 已更新 begin/resolve 与 resume 载荷加固(Xiaoze P1/P2)
+- [x] 覆盖矩阵与操作矩阵列出 `XIAOZE-ACTION-EDITEDARGS-001`;验收用例已更新(执行被既有 spec/工具漂移阻塞——TD-078)
+- [x] TD-070 已记录(resume 分支绕过步骤 sink);TD-078 已记录(活体验证发现的退役形状工具提交)
+- [x] `docs/PLANS.md` 中英文列出本计划
+- [x] 干净分支 worktree 中 `npm run docs:check` 全绿(2026-08-12);PR 评审后移入 `completed/`

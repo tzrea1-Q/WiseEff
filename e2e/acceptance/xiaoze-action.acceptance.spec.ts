@@ -380,11 +380,10 @@ test.describe("Xiaoze P1 action", () => {
         from parameter_change_requests
         where organization_id = 'org-chargelab'
           and project_id = $1
-          and project_parameter_value_id = $2
         order by created_at desc
         limit 1
         `,
-        [projectId, parameterId]
+        [projectId]
       );
       return result.rows[0];
     });
