@@ -19,14 +19,16 @@ import { getChangeRequestEnablementWriteLock, getChangeRequestWriteLock } from "
 import {
   applyLockedEnablementWriteback,
   applyLockedOverlayWriteback,
+  type BindingEditAction,
+} from "../parameter-topology/editService";
+import {
   resolveBindingWriteLock,
   resolveEnablementWriteLock,
-  type BindingEditAction,
   type BindingWriteLockContext,
   type BindingWriteLockFields,
   type EnablementWriteLockContext,
   type EnablementWriteLockFields,
-} from "../parameter-topology/editService";
+} from "../parameter-topology/writeLock";
 import { createDtsToolchainRunner } from "./dtsToolchain";
 import type { ParameterFileFormat } from "./types";
 

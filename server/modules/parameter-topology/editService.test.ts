@@ -12,9 +12,9 @@ import {
   applyLockedOverlayWriteback,
   createBindingDraft,
   createNodeEnablementDraft,
-  resolveBindingWriteLock,
   unchangedSourceBytes,
 } from "./editService";
+import { resolveBindingWriteLock } from "./writeLock";
 import { ingestConfigRevision } from "./ingestService";
 import type { ConfigRevisionManifest } from "./types";
 

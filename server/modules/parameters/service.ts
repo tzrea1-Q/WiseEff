@@ -16,12 +16,12 @@ import { ApiError } from "../../shared/http/errors";
 import { nodePathToParameterIdentity } from "../parameter-files/pathMapper";
 import { getProjectParameterFileById } from "../parameter-files/repository";
 import { writebackMergedEnablementValue, writebackMergedParameterValue, type WritebackServiceContext } from "../parameter-files/writebackService";
+import { resolveInitializationSuggestion } from "../parameter-topology/editService";
 import {
   loadLogicalNodeEnablementContext,
-  resolveInitializationSuggestion,
   verifyBindingWriteLock,
   verifyEnablementWriteLock
-} from "../parameter-topology/editService";
+} from "../parameter-topology/writeLock";
 import { assertProjectAllowsParameterSubmit } from "./initializationService";
 import { canAdminParameters, canEditParameters, canMergeParameters, canReviewParameterStage, canViewParameters } from "./policy";
 import { isValidMergeLink } from "./mergeLink";
