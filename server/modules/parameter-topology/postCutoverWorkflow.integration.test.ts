@@ -22,7 +22,6 @@ import {
   createChangeRequest,
   createSubmissionItem,
   createSubmissionRound,
-  deleteProject,
   getChangeRequestWriteLock,
   listDraftsForUser,
   listParameterHistory,
@@ -31,6 +30,7 @@ import {
   updateChangeRequestStatus,
   upsertDraft
 } from "../parameters/repository";
+import { deleteProject } from "../parameters/projectRepository";
 import { reviewChange, saveDraft, submitParameterChanges } from "../parameters/service";
 import { resolveBindingWriteLock } from "./editService";
 import {
@@ -1589,7 +1589,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         expect(opRow.rows[0]?.project_parameter_binding_id).toBe(seeded.bindingId);
 
         const deleteSqlProbe = await fs.readFile(
-          path.join(projectRoot, "server/modules/parameters/repository.ts"),
+          path.join(projectRoot, "server/modules/parameters/projectRepository.ts"),
           "utf8"
         );
         expect(deleteSqlProbe).not.toMatch(/delete from project_parameter_values/);

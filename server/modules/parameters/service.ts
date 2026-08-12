@@ -47,7 +47,6 @@ import {
   getBindingDraftForSubmission,
   getEnablementDraftForSubmission,
   getDraftWriteLock,
-  getProjectById,
   getProjectParameterForUpdate,
   getSubmissionRoundById,
   getSubmissionRoundSubmitterUserId,
@@ -87,6 +86,7 @@ import {
   updateParameterModule,
   type ListParametersQuery as RepositoryListParametersQuery
 } from "./repository";
+import { getProjectById } from "./projectRepository";
 import {
   applyImportBatchBodySchema,
   createImportBatchBodySchema,
