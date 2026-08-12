@@ -60,8 +60,8 @@ and lowers the ratchet. Suspected genuine gaps first:
 1. `parameters/service.ts` (5: module-CRUD helper ×1 shared by 5 call sites, import
    preview, review helpers already in-tx via `tx` argument — verify each), 
    `parameters/initializationService.ts` (3), `parameters/sensitiveNode.ts` (1).
-2. `parameter-files/*` (10 across 8 files — baselineService 3, candidate/configSet/
-   conflict/export/service/validationGate/writeback 1 each).
+2. `parameter-files/*` (12 across 9 files — baselineService 3, syncService 2, candidate/
+   configSet/conflict/export/service/validationGate/writeback 1 each).
 3. `dts-reload/*` (4), `parameter-modules/service.ts` (2), `parameter-specs/
    driverSchemaOverlayService.ts` (1), `parameter-topology/governanceAudit.ts` (1).
 4. `agent/*` (4), `users/service.ts` (2), `auth/*` (2), `logs/service.ts` (1), `knowledge/service.ts` (1),

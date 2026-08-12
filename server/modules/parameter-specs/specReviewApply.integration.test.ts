@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { makeTestAuthContext } from "../../testing/authContext";
 import { ApiError } from "../../shared/http/errors";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import type { ConfigRevisionManifest } from "../parameter-topology/types";
@@ -38,19 +39,14 @@ const UNMATCHED_DTS = `/dts-v1/;
 const databaseAvailable = await isTestDatabaseAvailable();
 
 function makeAuth(orgId = ORG_ID): AuthContext {
-  return {
-    user: {
-      id: USER_ID,
-      organizationId: orgId,
-      name: "Spec Review Admin",
-      email: "spec-review@example.com",
-      title: "Admin",
-      isActive: true,
-    },
-    organization: { id: orgId, name: "Spec Review Org" },
-    roles: [{ projectId: null, roleId: "admin" }],
+  return makeTestAuthContext({
+    userId: USER_ID,
+    organizationId: orgId,
+    name: "Spec Review Admin",
+    email: "spec-review@example.com",
+    organizationName: "Spec Review Org",
     permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
-  };
+  });
 }
 
 async function seedGraph(db: InMemoryTestDatabase) {

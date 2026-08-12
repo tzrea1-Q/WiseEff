@@ -34,6 +34,7 @@ const ALLOWED_DIRECT_CALLS: Record<string, number> = {
   "modules/parameter-files/conflictService.ts": 1,
   "modules/parameter-files/exportService.ts": 1,
   "modules/parameter-files/service.ts": 1,
+  "modules/parameter-files/syncService.ts": 2,
   "modules/parameter-files/validationGate.ts": 1,
   "modules/parameter-files/writebackService.ts": 1,
   "modules/parameter-modules/service.ts": 2,

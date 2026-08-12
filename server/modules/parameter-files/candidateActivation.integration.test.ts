@@ -1,11 +1,13 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ApiError } from "../../shared/http/errors";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { makeTestAuthContext } from "../../testing/authContext";
+import { createMemoryObjectStore } from "../../testing/objectStore";
+import { seedCoreGraph } from "../../testing/fixtures";
 import type { AuthContext } from "../auth/types";
-import type { ObjectStore } from "../logs/objectStore";
 import {
   activateCandidate,
   abandonCandidate,
@@ -19,63 +21,24 @@ import { uploadProjectParameterFile } from "./service";
 
 function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
   return {
-    user: {
-      id: "user-act-int",
+    ...makeTestAuthContext({
+      userId: "user-act-int",
       organizationId: "org-act-int",
       name: "Activation Admin",
       email: "act-int@example.com",
-      title: "Admin",
-      isActive: true
-    },
-    organization: { id: "org-act-int", name: "Activation Org" },
-    roles: [{ projectId: null, roleId: "admin" }],
-    permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
+      organizationName: "Activation Org",
+      permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"]
+    }),
     ...overrides
   };
 }
 
-function createMemoryObjectStore(): ObjectStore {
-  const entries = new Map<string, Buffer>();
-  return {
-    async put(input) {
-      const checksum = createHash("sha256").update(input.bytes).digest("hex");
-      const storageKey = `${input.organizationId}/${checksum}-${input.fileName}`;
-      entries.set(storageKey, Buffer.from(input.bytes));
-      return {
-        storageKey,
-        fileName: input.fileName,
-        contentType: input.contentType,
-        fileSizeBytes: input.bytes.byteLength,
-        checksumSha256: checksum
-      };
-    },
-    async get(storageKey) {
-      const value = entries.get(storageKey);
-      if (!value) throw new Error(`Missing object: ${storageKey}`);
-      return Buffer.from(value);
-    }
-  };
-}
-
 async function seedBaseline(db: InMemoryTestDatabase) {
-  await db.query(
-    `insert into organizations (id, name) values ('org-act-int', 'Activation Org')
-     on conflict (id) do update set name = excluded.name`
-  );
-  await db.query(
-    `
-    insert into users (id, organization_id, name, email, title, is_active)
-    values ('user-act-int', 'org-act-int', 'Activation Admin', 'act-int@example.com', 'Admin', true)
-    on conflict (id) do update set organization_id = excluded.organization_id
-    `
-  );
-  await db.query(
-    `
-    insert into projects (id, organization_id, name, code, status)
-    values ('project-act-int', 'org-act-int', 'Activation Project', 'ACT', 'initialized')
-    on conflict (id) do update set name = excluded.name
-    `
-  );
+  await seedCoreGraph(db, {
+    organization: { id: "org-act-int", name: "Activation Org" },
+    users: [{ id: "user-act-int", name: "Activation Admin", email: "act-int@example.com" }],
+    projects: [{ id: "project-act-int", name: "Activation Project", code: "ACT" }]
+  });
 }
 
 const v1 = `/dts-v1/;

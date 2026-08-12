@@ -2,21 +2,21 @@ import { describe, expect, it } from "vitest";
 
 import type { AuthContext } from "../auth/types";
 import { ApiError } from "../../shared/http/errors";
+import { makeTestAuthContext } from "../../testing/authContext";
 import { requireProductFeedbackAdmin, requireProductFeedbackSubmit } from "./policy";
 
 function auth(overrides: Partial<AuthContext> = {}): AuthContext {
   return {
-    user: {
-      id: "user-1",
+    ...makeTestAuthContext({
+      userId: "user-1",
       organizationId: "org-1",
       name: "Riley Chen",
       email: "riley@example.com",
       title: "Software User",
-      isActive: true
-    },
-    organization: { id: "org-1", name: "ChargeLab" },
-    roles: [{ projectId: "project-1", roleId: "software-user" }],
-    permissions: [],
+      organizationName: "ChargeLab",
+      roles: [{ projectId: "project-1", roleId: "software-user" }],
+      permissions: []
+    }),
     ...overrides
   };
 }

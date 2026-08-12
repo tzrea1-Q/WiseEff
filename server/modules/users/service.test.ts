@@ -158,6 +158,53 @@ describe("user governance service", () => {
     expect(txCalls.some((call) => call.text.includes("insert into users"))).toBe(false);
   });
 
+  it("rejects non-platform-admin callers creating a platform-admin user", async () => {
+    const { db, txCalls } = createDb();
+
+    await expect(
+      createUser(
+        db,
+        adminAuth,
+        {
+          name: "Escalation Target",
+          username: "escalation.target",
+          password: "WiseEff@2026",
+          roles: [{ projectId: null, roleId: "platform-admin" }]
+        },
+        { requestId: "request-1" }
+      )
+    ).rejects.toThrow("Only a platform super admin may grant or revoke the platform-admin role.");
+    expect(txCalls).toHaveLength(0);
+  });
+
+  it("allows platform-admin callers to create a platform-admin user", async () => {
+    const platformAdminAuth: AuthContext = {
+      ...adminAuth,
+      roles: [{ projectId: null, roleId: "platform-admin" }],
+      permissions: [...adminAuth.permissions, "platform:access", "platform:schema-promote"]
+    };
+    const { db, txCalls } = createDb((text) => {
+      if (text.includes("from user_password_credentials")) return [];
+      return text.includes("returning") || text.includes("select")
+        ? [userRow({ roles: [{ projectId: null, roleId: "platform-admin" }] })]
+        : [];
+    });
+
+    await createUser(
+      db,
+      platformAdminAuth,
+      {
+        name: "Platform Admin",
+        username: "platform.admin",
+        password: "WiseEff@2026",
+        roles: [{ projectId: null, roleId: "platform-admin" }]
+      },
+      { requestId: "request-1" }
+    );
+
+    expect(txCalls.some((call) => call.text.includes("insert into user_role_bindings"))).toBe(true);
+  });
+
   it("prevents the active admin from disabling itself", async () => {
     const { db } = createDb();
 
