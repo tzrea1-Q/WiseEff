@@ -2,7 +2,7 @@
  * Local-dev only: finish semantic-identity cutover after a semantic-only M1 seed.
  * Does not weaken production `parameter-identities:*` gates; refuse dirty dual-track DBs.
  */
-import type { Queryable } from "../../shared/database/client";
+import type { Database, Queryable } from "../../shared/database/client";
 import {
   isParameterIdentityCutoverComplete,
   resetParameterIdentityCutoverCache
@@ -54,7 +54,7 @@ export function shouldEnsureLocalPostCutoverOnApiBoot(
  * process on failure so a dirty dual-track DB cannot serve typed submit.
  */
 export async function maybeEnsureLocalPostCutoverOnApiBoot(
-  db: Queryable,
+  db: Database,
   env: LocalPostCutoverBootEnv = process.env
 ): Promise<LocalPostCutoverResult | { status: "skipped" }> {
   if (!shouldEnsureLocalPostCutoverOnApiBoot(env)) {
@@ -109,7 +109,7 @@ export async function assertLocalDatabaseCleanForPostCutover(db: Queryable): Pro
 }
 
 export async function ensureLocalPostCutoverIdentity(
-  db: Queryable
+  db: Database
 ): Promise<LocalPostCutoverResult> {
   if (await isParameterIdentityCutoverComplete(db)) {
     return { status: "already-complete" };

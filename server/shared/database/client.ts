@@ -11,23 +11,62 @@ export type Queryable = {
 };
 
 export type Database = Queryable & {
-  transaction<T>(fn: (tx: Queryable) => Promise<T>): Promise<T>;
+  transaction<T>(fn: (tx: Database) => Promise<T>): Promise<T>;
 };
 
 type DatabaseOptions = {
   tracing?: Pick<TracingBoundary, "withSpan">;
 };
 
+/**
+ * Transaction handle bound to one already-open session/transaction.
+ * Nested transaction() calls map to SAVEPOINT / RELEASE / ROLLBACK TO on the
+ * same session, so inner failures roll back only the inner scope.
+ */
+function savepointHandle(session: Queryable, depth: number): Database {
+  return {
+    query: (text, values) => session.query(text, values),
+    transaction: async (fn) => {
+      const savepoint = `wiseeff_sp_${depth}`;
+      await session.query(`savepoint ${savepoint}`);
+      try {
+        const result = await fn(savepointHandle(session, depth + 1));
+        await session.query(`release savepoint ${savepoint}`);
+        return result;
+      } catch (error) {
+        await session.query(`rollback to savepoint ${savepoint}`);
+        await session.query(`release savepoint ${savepoint}`);
+        throw error;
+      }
+    }
+  };
+}
+
+/**
+ * Wraps a session that is already inside an externally-owned transaction
+ * (for example the test fixture's outer BEGIN). transaction() starts at
+ * savepoint depth 1 and never issues BEGIN/COMMIT of its own.
+ */
+export function createSavepointDatabase(session: Queryable): Database {
+  return savepointHandle(session, 1);
+}
+
+/**
+ * Wraps a single-session Queryable (one pg.Client or equivalent).
+ * Must not be given a connection pool: transaction() issues BEGIN/COMMIT on
+ * the shared session, which is only correct when every query runs on the
+ * same connection. Pooled access goes through createPostgresDatabase.
+ */
 export function createDatabase(queryable: Queryable, options: DatabaseOptions = {}): Database {
   const query = <Row,>(text: string, values: unknown[] = []) => traceQuery(options.tracing, text, values, () => queryable.query<Row>(text, values));
+  const session: Queryable = { query };
 
   return {
     query,
     transaction: async (fn) => {
       await query("begin");
-      const tx: Queryable = { query };
       try {
-        const result = await fn(tx);
+        const result = await fn(savepointHandle(session, 1));
         await query("commit");
         return result;
       } catch (error) {
@@ -83,7 +122,7 @@ export function createPostgresDatabase(connectionString: string, options: Databa
     query,
     transaction: async (fn) => {
       const client = await pool.connect();
-      const tx: Queryable = {
+      const session: Queryable = {
         query: <Row,>(text: string, values: unknown[] = []) =>
           traceQuery(options.tracing, text, values, async () => {
             const result = await client.query(text, values);
@@ -92,12 +131,12 @@ export function createPostgresDatabase(connectionString: string, options: Databa
       };
 
       try {
-        await tx.query("begin");
-        const result = await fn(tx);
-        await tx.query("commit");
+        await session.query("begin");
+        const result = await fn(savepointHandle(session, 1));
+        await session.query("commit");
         return result;
       } catch (error) {
-        await tx.query("rollback");
+        await session.query("rollback");
         throw error;
       } finally {
         client.release();
