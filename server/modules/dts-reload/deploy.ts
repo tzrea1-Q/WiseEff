@@ -36,7 +36,8 @@ import {
   RELOAD_MOUNT_TIMEOUT_MS,
   RELOAD_PUSH_FILE_TIMEOUT_MS,
   RELOAD_READ_NODE_TIMEOUT_MS,
-  RELOAD_TRIGGER_TIMEOUT_MS
+  RELOAD_TRIGGER_TIMEOUT_MS,
+  TRIGGER_RELOAD_UNCONFIRMED_FAILURE_CODE
 } from "./types";
 
 export type DeployReloadRunInput = {
@@ -63,6 +64,36 @@ export type DeployReloadDeps = {
 
 function hasConfirmationToken(tokens: string[], expected: string) {
   return tokens.includes(expected);
+}
+
+/**
+ * Server-authoritative device identity for a bridge-attached reload target.
+ * The device a reload writes to is fully determined by the owned bridge, so the
+ * canonical id is derived here and never taken from the client — this binds
+ * residue/lease bookkeeping to the bridge and guarantees the `bridge:` prefix
+ * that `ensureBridgeDebugDevice` requires.
+ */
+export function bridgeCanonicalDeviceId(bridgeId: string): string {
+  return `bridge:${bridgeId}`;
+}
+
+/** Worst-case device lease TTL must outlive mount + transfer + trigger + kernel-log + per-target reads. */
+export function computeReloadLeaseTtlMs(input: {
+  targetCount: number;
+  mountTimeoutMs: number;
+  pushFileTimeoutMs: number;
+  triggerTimeoutMs: number;
+  kernelLogTimeoutMs: number;
+  readNodeTimeoutMs: number;
+}): number {
+  const worstCaseMs =
+    input.mountTimeoutMs +
+    input.pushFileTimeoutMs +
+    input.triggerTimeoutMs +
+    input.kernelLogTimeoutMs +
+    Math.max(0, input.targetCount) * input.readNodeTimeoutMs +
+    60_000;
+  return Math.max(5 * 60 * 1000, worstCaseMs);
 }
 
 function parseSemverParts(version: string): number[] | null {
@@ -201,7 +232,11 @@ export async function executeReloadDeploy(input: {
   const mountTimeoutMs = deps.mountTimeoutMs ?? RELOAD_MOUNT_TIMEOUT_MS;
   const pushFileTimeoutMs = deps.pushFileTimeoutMs ?? RELOAD_PUSH_FILE_TIMEOUT_MS;
   const triggerTimeoutMs = deps.triggerTimeoutMs ?? RELOAD_TRIGGER_TIMEOUT_MS;
+  const kernelLogTimeoutMs = deps.kernelLogTimeoutMs ?? RELOAD_KERNEL_LOG_TIMEOUT_MS;
+  const readNodeTimeoutMs = deps.readNodeTimeoutMs ?? RELOAD_READ_NODE_TIMEOUT_MS;
   const pushFileMaxBytes = deps.pushFileMaxBytes ?? PUSH_FILE_MAX_BYTES;
+  // Server-authoritative device identity — never trust the client's deviceId for device writes.
+  const deviceId = bridgeCanonicalDeviceId(deploy.bridgeId);
 
   if (!hasConfirmationToken(deploy.confirmationTokens, DTS_RELOAD_CONFIRMATION_TOKEN)) {
     throw new ApiError(
@@ -236,12 +271,8 @@ export async function executeReloadDeploy(input: {
     );
   }
 
-  if (!deps.bridgeConnectionPool.isConnected(deploy.bridgeId)) {
-    throw new ApiError("DEVICE_UNAVAILABLE", "Selected device bridge is offline.", 409, {
-      bridgeId: deploy.bridgeId
-    });
-  }
-
+  // Ownership check precedes the connection probe so a caller cannot use the
+  // offline-vs-online response difference to enumerate bridges they do not own.
   const bridges = await listBridgesForUser(input.db, {
     userId: auth.user.id,
     organizationId: auth.organization.id
@@ -249,6 +280,12 @@ export async function executeReloadDeploy(input: {
   const bridge = bridges.find((item) => item.id === deploy.bridgeId && item.revokedAt === null);
   if (!bridge) {
     throw new ApiError("NOT_FOUND", "Device bridge was not found.", 404, { bridgeId: deploy.bridgeId });
+  }
+
+  if (!deps.bridgeConnectionPool.isConnected(deploy.bridgeId)) {
+    throw new ApiError("DEVICE_UNAVAILABLE", "Selected device bridge is offline.", 409, {
+      bridgeId: deploy.bridgeId
+    });
   }
 
   await assertBridgeSupportsReloadDeploy({
@@ -260,7 +297,7 @@ export async function executeReloadDeploy(input: {
 
   const configuration = await resolveReloadConfiguration(input.db, {
     organizationId: auth.organization.id,
-    deviceId: deploy.deviceId
+    deviceId
   });
 
   const preflightSteps = (run.steps as ReloadStep[]).filter((step) =>
@@ -279,66 +316,6 @@ export async function executeReloadDeploy(input: {
     onDeviceDigest: null,
     integrityCheck: null
   });
-
-  // Claim before lease so a lost race never releases another deployer's same-session lease.
-  await input.persistProgress(
-    {
-      status: "deploying",
-      failureCode: null,
-      steps,
-      deviceId: deploy.deviceId,
-      bridgeId: deploy.bridgeId,
-      bridgeMachineLabel: bridge.machineLabel,
-      targetRef: deploy.targetRef,
-      protocol: deploy.protocol,
-      integrityCheck: null,
-      reloadSnapshot: emptySnapshot,
-      completedAt: null
-    },
-    { claim: true }
-  );
-
-  await ensureBridgeDebugDevice(input.db, {
-    organizationId: auth.organization.id,
-    deviceId: deploy.deviceId,
-    name: bridge.machineLabel,
-    protocol: deploy.protocol
-  });
-
-  const leaseSessionId = `dts-reload:${run.id}`;
-  await ensureDtsReloadLeaseSession(input.db, {
-    organizationId: auth.organization.id,
-    sessionId: leaseSessionId,
-    deviceId: deploy.deviceId,
-    bridgeId: deploy.bridgeId,
-    bridgeMachineLabel: bridge.machineLabel,
-    protocol: deploy.protocol,
-    targetRef: deploy.targetRef,
-    actorUserId: auth.user.id
-  });
-
-  const lease = await acquireDebugDeviceLease(input.db, {
-    organizationId: auth.organization.id,
-    deviceId: deploy.deviceId,
-    sessionId: leaseSessionId,
-    actorUserId: auth.user.id,
-    leaseTtlMs: 5 * 60 * 1000
-  });
-  if (!lease) {
-    return input.persistProgress({
-      status: "failed",
-      failureCode: "device-lease-held",
-      steps: [...steps],
-      deviceId: deploy.deviceId,
-      bridgeId: deploy.bridgeId,
-      bridgeMachineLabel: bridge.machineLabel,
-      targetRef: deploy.targetRef,
-      protocol: deploy.protocol,
-      integrityCheck: null,
-      reloadSnapshot: emptySnapshot,
-      completedAt: now().toISOString()
-    });
-  }
 
   const markStep = (name: ReloadStep["step"], patch: Partial<ReloadStep>) => {
     steps.splice(
@@ -365,7 +342,7 @@ export async function executeReloadDeploy(input: {
       status: "failed",
       failureCode: "deploy-aborted",
       steps: [...steps],
-      deviceId: deploy.deviceId,
+      deviceId,
       bridgeId: deploy.bridgeId,
       bridgeMachineLabel: bridge.machineLabel,
       targetRef: deploy.targetRef,
@@ -376,14 +353,86 @@ export async function executeReloadDeploy(input: {
     });
   };
 
+  // Claim before lease so a lost race never releases another deployer's same-session lease.
+  await input.persistProgress(
+    {
+      status: "deploying",
+      failureCode: null,
+      steps,
+      deviceId,
+      bridgeId: deploy.bridgeId,
+      bridgeMachineLabel: bridge.machineLabel,
+      targetRef: deploy.targetRef,
+      protocol: deploy.protocol,
+      integrityCheck: null,
+      reloadSnapshot: emptySnapshot,
+      completedAt: null
+    },
+    { claim: true }
+  );
+
+  // Everything after the claim runs inside try/finally: a throw during device/lease
+  // setup must still drive the run to a terminal state via failAborted (never leave it
+  // wedged in "deploying") and release the lease only when it was actually acquired.
+  const leaseSessionId = `dts-reload:${run.id}`;
+  let leaseAcquired = false;
   try {
+    await ensureBridgeDebugDevice(input.db, {
+      organizationId: auth.organization.id,
+      deviceId,
+      name: bridge.machineLabel,
+      protocol: deploy.protocol
+    });
+
+    await ensureDtsReloadLeaseSession(input.db, {
+      organizationId: auth.organization.id,
+      sessionId: leaseSessionId,
+      deviceId,
+      bridgeId: deploy.bridgeId,
+      bridgeMachineLabel: bridge.machineLabel,
+      protocol: deploy.protocol,
+      targetRef: deploy.targetRef,
+      actorUserId: auth.user.id
+    });
+
+    const lease = await acquireDebugDeviceLease(input.db, {
+      organizationId: auth.organization.id,
+      deviceId,
+      sessionId: leaseSessionId,
+      actorUserId: auth.user.id,
+      leaseTtlMs: computeReloadLeaseTtlMs({
+        targetCount: run.targets.length,
+        mountTimeoutMs,
+        pushFileTimeoutMs,
+        triggerTimeoutMs,
+        kernelLogTimeoutMs,
+        readNodeTimeoutMs
+      })
+    });
+    if (!lease) {
+      return await input.persistProgress({
+        status: "failed",
+        failureCode: "device-lease-held",
+        steps: [...steps],
+        deviceId,
+        bridgeId: deploy.bridgeId,
+        bridgeMachineLabel: bridge.machineLabel,
+        targetRef: deploy.targetRef,
+        protocol: deploy.protocol,
+        integrityCheck: null,
+        reloadSnapshot: emptySnapshot,
+        completedAt: now().toISOString()
+      });
+    }
+    leaseAcquired = true;
+
     // 1) Mount
     markStep("mount-target", { outcome: "running", startedAt: now().toISOString(), error: undefined });
     await input.persistProgress({
       status: "deploying",
       failureCode: null,
       steps: [...steps],
-      deviceId: deploy.deviceId,
+      deviceId,
       bridgeId: deploy.bridgeId,
       bridgeMachineLabel: bridge.machineLabel,
       targetRef: deploy.targetRef,
@@ -413,7 +462,7 @@ export async function executeReloadDeploy(input: {
         status: "failed",
         failureCode: "mount-target-failed",
         steps: [...steps],
-        deviceId: deploy.deviceId,
+        deviceId,
         bridgeId: deploy.bridgeId,
         bridgeMachineLabel: bridge.machineLabel,
         targetRef: deploy.targetRef,
@@ -431,7 +480,7 @@ export async function executeReloadDeploy(input: {
       status: "deploying",
       failureCode: null,
       steps: [...steps],
-      deviceId: deploy.deviceId,
+      deviceId,
       bridgeId: deploy.bridgeId,
       bridgeMachineLabel: bridge.machineLabel,
       targetRef: deploy.targetRef,
@@ -507,7 +556,7 @@ export async function executeReloadDeploy(input: {
             ? "artifact-integrity-mismatch"
             : "transfer-artifact-failed",
         steps: [...steps],
-        deviceId: deploy.deviceId,
+        deviceId,
         bridgeId: deploy.bridgeId,
         bridgeMachineLabel: bridge.machineLabel,
         targetRef: deploy.targetRef,
@@ -538,7 +587,7 @@ export async function executeReloadDeploy(input: {
       status: "deploying",
       failureCode: null,
       steps: [...steps],
-      deviceId: deploy.deviceId,
+      deviceId,
       bridgeId: deploy.bridgeId,
       bridgeMachineLabel: bridge.machineLabel,
       targetRef: deploy.targetRef,
@@ -548,35 +597,92 @@ export async function executeReloadDeploy(input: {
       completedAt: null
     });
 
-    const triggerResult = await deps.bridgeRpcClient.call(
-      deploy.bridgeId,
-      "debug.writeNode",
-      {
-        protocol: deploy.protocol,
-        targetRef: deploy.targetRef,
-        nodePath: configuration.triggerNodePath,
-        value: configuration.triggerPayload,
-        readBack: false,
-        preserveExactRead: false
-      },
-      { timeoutMs: triggerTimeoutMs }
-    );
+    // Kernel log capture is unjudged evidence; run outcome is never derived from log text.
+    // Captured after a successful trigger, and also after a failed/unconfirmed trigger — the log
+    // is most valuable exactly when the reload went wrong (permission denied, parse errors).
+    const captureKernelSignal = async () => {
+      try {
+        const captureResult = await deps.bridgeRpcClient.call(
+          deploy.bridgeId,
+          "debug.readKernelLog",
+          {
+            protocol: deploy.protocol,
+            targetRef: deploy.targetRef,
+            command: configuration.kernelLogCommand
+          },
+          { timeoutMs: kernelLogTimeoutMs }
+        );
+        const rawText = typeof captureResult.text === "string" ? captureResult.text : "";
+        // Prefer non-empty verbatim text even when the bridge reports ok:false — kernel log lines
+        // may look like tool diagnostics, and the capture is unjudged evidence either way.
+        if (rawText.length > 0) {
+          return buildObtainedKernelSignal({
+            command: configuration.kernelLogCommand,
+            rawText,
+            truncated: captureResult.truncated === true,
+            targets: run.targets
+          });
+        }
+        if (captureResult.ok === true) {
+          return buildNotObtainedKernelSignal({
+            command: configuration.kernelLogCommand,
+            captureError: "Kernel log capture returned no text."
+          });
+        }
+        const message =
+          typeof captureResult.error === "string" && captureResult.error.trim()
+            ? captureResult.error
+            : "Kernel log capture failed.";
+        return buildNotObtainedKernelSignal({
+          command: configuration.kernelLogCommand,
+          captureError: message
+        });
+      } catch (error) {
+        return buildNotObtainedKernelSignal({
+          command: configuration.kernelLogCommand,
+          captureError: error instanceof Error && error.message.trim() ? error.message : "Kernel log capture threw."
+        });
+      }
+    };
 
-    if (triggerResult.ok !== true) {
-      const message =
-        typeof triggerResult.error === "string" && triggerResult.error.trim()
-          ? triggerResult.error
-          : "Failed to write the reload trigger node.";
+    // A trigger RPC that throws (timeout / transport drop) is UNCONFIRMED: the write may have
+    // reached the device and applied the overlay. Treat it as a distinct terminal that still
+    // captures kernel evidence, and record residue defensively for ordinary runs (in the service
+    // layer) so a restore-baseline is offered even though the deploy did not confirm.
+    let triggerResult: Awaited<ReturnType<typeof deps.bridgeRpcClient.call>> | null = null;
+    let triggerUnconfirmedMessage: string | null = null;
+    try {
+      triggerResult = await deps.bridgeRpcClient.call(
+        deploy.bridgeId,
+        "debug.writeNode",
+        {
+          protocol: deploy.protocol,
+          targetRef: deploy.targetRef,
+          nodePath: configuration.triggerNodePath,
+          value: configuration.triggerPayload,
+          readBack: false,
+          preserveExactRead: false
+        },
+        { timeoutMs: triggerTimeoutMs }
+      );
+    } catch (error) {
+      triggerUnconfirmedMessage =
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : "Reload trigger write did not confirm (bridge RPC error).";
+    }
+
+    if (triggerUnconfirmedMessage !== null) {
       markStep("trigger-reload", {
         outcome: "failed",
         completedAt: now().toISOString(),
-        error: message
+        error: triggerUnconfirmedMessage
       });
-      return input.persistProgress({
+      return await input.persistProgress({
         status: "failed",
-        failureCode: "trigger-reload-failed",
+        failureCode: TRIGGER_RELOAD_UNCONFIRMED_FAILURE_CODE,
         steps: [...steps],
-        deviceId: deploy.deviceId,
+        deviceId,
         bridgeId: deploy.bridgeId,
         bridgeMachineLabel: bridge.machineLabel,
         targetRef: deploy.targetRef,
@@ -586,7 +692,39 @@ export async function executeReloadDeploy(input: {
           targets: run.targets,
           artifactSha256: contentSha256,
           onDeviceDigest: remoteDigest,
-          integrityCheck
+          integrityCheck,
+          kernelSignal: await captureKernelSignal()
+        }),
+        completedAt: now().toISOString()
+      });
+    }
+
+    if (triggerResult!.ok !== true) {
+      const message =
+        typeof triggerResult!.error === "string" && triggerResult!.error.trim()
+          ? triggerResult!.error
+          : "Failed to write the reload trigger node.";
+      markStep("trigger-reload", {
+        outcome: "failed",
+        completedAt: now().toISOString(),
+        error: message
+      });
+      return await input.persistProgress({
+        status: "failed",
+        failureCode: "trigger-reload-failed",
+        steps: [...steps],
+        deviceId,
+        bridgeId: deploy.bridgeId,
+        bridgeMachineLabel: bridge.machineLabel,
+        targetRef: deploy.targetRef,
+        protocol: deploy.protocol,
+        integrityCheck,
+        reloadSnapshot: buildReloadSnapshot({
+          targets: run.targets,
+          artifactSha256: contentSha256,
+          onDeviceDigest: remoteDigest,
+          integrityCheck,
+          kernelSignal: await captureKernelSignal()
         }),
         completedAt: now().toISOString()
       });
@@ -594,59 +732,11 @@ export async function executeReloadDeploy(input: {
 
     markStep("trigger-reload", { outcome: "passed", completedAt: now().toISOString() });
 
-    // Capture kernel log evidence after a successful trigger. Never derive run outcome from log text.
-    const kernelLogTimeoutMs = deps.kernelLogTimeoutMs ?? RELOAD_KERNEL_LOG_TIMEOUT_MS;
-    let kernelSignal = buildNotObtainedKernelSignal({
-      command: configuration.kernelLogCommand,
-      captureError: "Kernel log capture did not run."
-    });
-    try {
-      const captureResult = await deps.bridgeRpcClient.call(
-        deploy.bridgeId,
-        "debug.readKernelLog",
-        {
-          protocol: deploy.protocol,
-          targetRef: deploy.targetRef,
-          command: configuration.kernelLogCommand
-        },
-        { timeoutMs: kernelLogTimeoutMs }
-      );
-      const rawText = typeof captureResult.text === "string" ? captureResult.text : "";
-      // Prefer non-empty verbatim text even when the bridge reports ok:false — kernel log lines
-      // may look like tool diagnostics, and the capture is unjudged evidence either way.
-      if (rawText.length > 0) {
-        kernelSignal = buildObtainedKernelSignal({
-          command: configuration.kernelLogCommand,
-          rawText,
-          truncated: captureResult.truncated === true,
-          targets: run.targets
-        });
-      } else if (captureResult.ok === true) {
-        kernelSignal = buildNotObtainedKernelSignal({
-          command: configuration.kernelLogCommand,
-          captureError: "Kernel log capture returned no text."
-        });
-      } else {
-        const message =
-          typeof captureResult.error === "string" && captureResult.error.trim()
-            ? captureResult.error
-            : "Kernel log capture failed.";
-        kernelSignal = buildNotObtainedKernelSignal({
-          command: configuration.kernelLogCommand,
-          captureError: message
-        });
-      }
-    } catch (error) {
-      kernelSignal = buildNotObtainedKernelSignal({
-        command: configuration.kernelLogCommand,
-        captureError: error instanceof Error && error.message.trim() ? error.message : "Kernel log capture threw."
-      });
-    }
+    const kernelSignal = await captureKernelSignal();
 
     // Behavioural verification via existing debug.readNode only — after kernel log capture.
     // Kernel log remains unjudged evidence; outcomes come only from debug-node read-back.
     // Never fail the whole deploy after a successful trigger — degrade to unverifiable.
-    const readNodeTimeoutMs = deps.readNodeTimeoutMs ?? RELOAD_READ_NODE_TIMEOUT_MS;
     let verification: {
       status: Extract<ReloadRunDto["status"], "verified" | "contradicted" | "unverifiable">;
       behaviouralVerification: BehaviouralVerificationDto;
@@ -697,7 +787,7 @@ export async function executeReloadDeploy(input: {
       status: verification.status,
       failureCode: null,
       steps: [...steps],
-      deviceId: deploy.deviceId,
+      deviceId,
       bridgeId: deploy.bridgeId,
       bridgeMachineLabel: bridge.machineLabel,
       targetRef: deploy.targetRef,
@@ -709,10 +799,12 @@ export async function executeReloadDeploy(input: {
   } catch (error) {
     return failAborted(error);
   } finally {
-    await releaseDebugDeviceLease(input.db, {
-      organizationId: auth.organization.id,
-      deviceId: deploy.deviceId,
-      sessionId: leaseSessionId
-    });
+    if (leaseAcquired) {
+      await releaseDebugDeviceLease(input.db, {
+        organizationId: auth.organization.id,
+        deviceId,
+        sessionId: leaseSessionId
+      });
+    }
   }
 }

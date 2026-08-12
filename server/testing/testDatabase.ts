@@ -3,11 +3,13 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import {
   createDatabase,
+  createSavepointDatabase,
   type Database,
   type Queryable,
   type QueryResult
 } from "../shared/database/client";
 import { applyMigrations } from "../shared/database/migrations";
+import { resolveParameterIdentityMode } from "../modules/parameters/parameterIdentityMode";
 
 const projectRoot = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const migrationsDir = path.join(projectRoot, "server", "migrations");
@@ -123,10 +125,15 @@ export async function createInMemoryTestDatabase(): Promise<InMemoryTestDatabase
   });
 
   // Keep all writes inside the outer BEGIN so afterEach rollback isolates tests.
-  // createDatabase().transaction() issues COMMIT and would persist nested service writes.
+  // transaction() maps to savepoints inside that BEGIN, so nested service
+  // transactions keep real commit/rollback semantics without persisting.
+  const savepointDb = createSavepointDatabase(queryable);
+  // The fixture is the test's wiring: pin the identity mode from the real
+  // database exactly like production entrypoints do at boot.
+  await resolveParameterIdentityMode(queryable);
   return {
     query: queryable.query,
-    transaction: async <T,>(fn: (tx: typeof queryable) => Promise<T>) => fn(queryable),
+    transaction: savepointDb.transaction,
     rollback: async () => {
       try {
         await queryable.query("rollback");

@@ -1288,8 +1288,8 @@ describe("ParametersPage · 提交契约", () => {
   });
 
   it("does not let submission round reducer items fall back to a shared action reason", () => {
-    const appSource = readFileSync("src/App.tsx", "utf8");
-    const roundReducerSource = appSource.match(/case "ADD_PARAMETER_SUBMISSION_ROUND":[\s\S]*?\n    case "WITHDRAW_PARAMETER_SUBMISSION_ROUND":/)?.[0] ?? "";
+    const appStateSource = readFileSync("src/application/state/appState.ts", "utf8");
+    const roundReducerSource = appStateSource.match(/case "ADD_PARAMETER_SUBMISSION_ROUND":[\s\S]*?\n    case "WITHDRAW_PARAMETER_SUBMISSION_ROUND":/)?.[0] ?? "";
     const commandSource = readFileSync("src/domain/parameters/commands.ts", "utf8");
     const pageSource = readFileSync("src/ParametersPage.tsx", "utf8");
     const submitSource = pageSource.match(/const submitRound[\s\S]*?\r?\n  };\r?\n  const previewItems/)?.[0] ?? "";

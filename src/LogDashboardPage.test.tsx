@@ -1,7 +1,8 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { initialState, type LogRecord } from "./mockData";
+import { initialState } from "./mockData";
+import type { LogRecord } from "@/domain/prototype/types";
 
 const userState = { ...initialState, activeRoleId: "user" };
 const adminState = { ...initialState, activeRoleId: "admin" };

@@ -179,7 +179,7 @@ Agent 不直接访问数据库，不直接执行生产变更。它通过工具�
 
 小泽是 WiseEff 唯一 Agent 表面。API mode 始终挂载 CopilotKit；mock mode 无 Agent UI。后端暴露 `POST /api/v1/agent/xiaoze` AG-UI SSE 端点。LangGraph.js agent 通过现有 `ToolRegistry` 调用工具；只读 `perception.*` 工具经 `ToolRegistry.authorize` 后自动执行，越权返回 `FORBIDDEN` 并给出安全非数据回答。
 
-P1 增加 mutating `action.submitParameterChange`（`requiresApproval: true`）。AG-UI runtime 持久化 orchestrator tool-call + approval、发出 interrupt，仅通过 `approveToolCall` / `rejectToolCall` 恢复并在事务内重新鉴权、审计 `actorType=agent`。前端 CopilotKit 挂载 `XiaozeApprovalCard`（`useInterrupt`）与低风险前端工具。live LLM 使用 OpenAI-compatible `AGENT_API_*`；验收可用 `XIAOZE_DETERMINISTIC=true`。
+P1 增加 mutating `action.submitParameterChange`（`requiresApproval: true`）。AG-UI runtime 开启 orchestrator 自有的 Agent 审批链：`beginApproval` 持久化 tool-call + approval 记录并发出 interrupt，仅通过 `resolveApproval` 恢复并在事务内重新鉴权、审计 `actorType=agent`；审批状态以数据库行为唯一载体、绝不驻留进程内存，`editedArgs` 在批准时重鉴权前完整替换载荷（ADR-0024）。前端 CopilotKit 挂载 `XiaozeApprovalCard`（`useInterrupt`）与低风险前端工具。live LLM 使用 OpenAI-compatible `AGENT_API_*`；验收可用 `XIAOZE_DETERMINISTIC=true`。
 
 ### 小泽 P2 规划
 

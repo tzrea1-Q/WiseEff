@@ -10,7 +10,9 @@ import {
   getReloadRunArtifact,
   listReloadCandidates,
   listReloadRuns,
-  startReloadRun
+  reclaimStaleDeployingReloadRuns,
+  startReloadRun,
+  sweepExpiredReloadArtifacts
 } from "./service";
 
 vi.mock("../audit/repository", () => ({
@@ -183,7 +185,7 @@ describe("listReloadRuns", () => {
 
     const sql = calls[0]?.text ?? "";
     expect(sql).toMatch(/project_id/i);
-    expect(sql).toMatch(/order by r\.created_at desc/i);
+    expect(sql).toMatch(/order by date_trunc\('milliseconds', r\.created_at\) desc/i);
   });
 
   it("filters by deviceId and surfaces restore-baseline purpose", async () => {
@@ -272,6 +274,143 @@ describe("reload artifact retention", () => {
     expect(item.overlaySource).toBeNull();
     expect(item.artifactRetentionExpired).toBe(true);
     expect(get).not.toHaveBeenCalled();
+  });
+
+  it("still reports reload-artifact-expired (not a 409) after the blob was swept and the key nulled", async () => {
+    const expiredAt = new Date(
+      Date.now() - (RELOAD_ARTIFACT_RETENTION_DAYS + 3) * 24 * 60 * 60 * 1000
+    ).toISOString();
+    const { db } = createFakeDb([
+      [
+        runRow({
+          completed_at: expiredAt,
+          created_at: expiredAt,
+          overlay_artifact_storage_key: null,
+          overlay_source_storage_key: null
+        })
+      ]
+    ]);
+    const { objectStore, get } = makeObjectStore();
+
+    await expect(getReloadRunArtifact(db, objectStore, auth(), "run-1")).rejects.toMatchObject({
+      code: "GONE",
+      status: 410,
+      details: { code: "reload-artifact-expired" }
+    });
+    expect(get).not.toHaveBeenCalled();
+  });
+});
+
+describe("sweepExpiredReloadArtifacts", () => {
+  it("deletes expired blobs, nulls the storage keys, and reports counts", async () => {
+    const deletedKeys: string[] = [];
+    const clearedRuns: string[] = [];
+    const runQuery = async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
+      if (text.includes("from dts_reload_runs") && text.includes("coalesce(completed_at, created_at)")) {
+        return {
+          rows: [
+            {
+              id: "run-1",
+              organization_id: "org-1",
+              overlay_artifact_storage_key: "org-1/a.dtbo",
+              overlay_source_storage_key: "org-1/a.dts"
+            },
+            {
+              id: "run-2",
+              organization_id: "org-2",
+              overlay_artifact_storage_key: "org-2/b.dtbo",
+              overlay_source_storage_key: null
+            }
+          ] as Row[],
+          rowCount: 2
+        };
+      }
+      if (text.includes("update dts_reload_runs") && text.includes("overlay_artifact_storage_key = null")) {
+        clearedRuns.push(String(values[1]));
+        return { rows: [] as Row[], rowCount: 1 };
+      }
+      return { rows: [] as Row[], rowCount: 0 };
+    };
+    const db: Database = {
+      query: (text, values = []) => runQuery(text, values),
+      transaction: async <T,>(fn: (q: Queryable) => Promise<T>) => fn({ query: (text, values = []) => runQuery(text, values) })
+    };
+    const objectStore: ObjectStore = {
+      put: vi.fn() as ObjectStore["put"],
+      get: vi.fn() as ObjectStore["get"],
+      delete: vi.fn(async (key: string) => {
+        deletedKeys.push(key);
+      })
+    };
+
+    const result = await sweepExpiredReloadArtifacts(db, objectStore, { batchLimit: 50 });
+
+    expect(result).toEqual({ scannedRuns: 2, reclaimedRuns: 2, deletedBlobs: 3 });
+    expect(deletedKeys.sort()).toEqual(["org-1/a.dtbo", "org-1/a.dts", "org-2/b.dtbo"].sort());
+    expect(clearedRuns.sort()).toEqual(["run-1", "run-2"]);
+  });
+
+  it("is a safe no-op when the object store cannot delete", async () => {
+    const query = vi.fn(async () => ({ rows: [] as unknown[], rowCount: 0 }));
+    const db = { query, transaction: async <T,>(fn: (q: Queryable) => Promise<T>) => fn({ query } as unknown as Queryable) } as unknown as Database;
+    const objectStore: ObjectStore = { put: vi.fn() as ObjectStore["put"], get: vi.fn() as ObjectStore["get"] };
+
+    const result = await sweepExpiredReloadArtifacts(db, objectStore);
+
+    expect(result).toEqual({ scannedRuns: 0, reclaimedRuns: 0, deletedBlobs: 0 });
+    // never queried for expired runs because the store cannot reclaim
+    expect(query).not.toHaveBeenCalled();
+  });
+});
+
+describe("reclaimStaleDeployingReloadRuns", () => {
+  it("resets stale deploying runs to failed via a time-gated, bounded update", async () => {
+    const fixedNow = new Date("2026-08-12T12:00:00.000Z");
+    let capturedOlderThan: string | undefined;
+    let capturedFailureCode: string | undefined;
+    let capturedLimit: unknown;
+    const runQuery = async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
+      if (text.includes("update dts_reload_runs") && text.includes("status = 'deploying'")) {
+        capturedOlderThan = String(values[0]);
+        capturedFailureCode = String(values[1]);
+        capturedLimit = values[2];
+        return {
+          rows: [
+            { id: "run-1", organization_id: "org-1" },
+            { id: "run-2", organization_id: "org-2" }
+          ] as Row[],
+          rowCount: 2
+        };
+      }
+      return { rows: [] as Row[], rowCount: 0 };
+    };
+    const db: Database = {
+      query: (text, values = []) => runQuery(text, values),
+      transaction: async <T,>(fn: (q: Queryable) => Promise<T>) => fn({ query: (text, values = []) => runQuery(text, values) })
+    };
+
+    const result = await reclaimStaleDeployingReloadRuns(db, {
+      now: () => fixedNow,
+      staleAfterMs: 30 * 60 * 1000,
+      batchLimit: 100
+    });
+
+    expect(result).toEqual({ reclaimedRuns: 2, runIds: ["run-1", "run-2"] });
+    expect(capturedFailureCode).toBe("deploy-reclaimed");
+    expect(capturedLimit).toBe(100);
+    // now (12:00) minus 30 minutes → only runs last touched before 11:30 are reclaimed
+    expect(capturedOlderThan).toBe("2026-08-12T11:30:00.000Z");
+  });
+
+  it("reports zero when nothing is stale", async () => {
+    const db: Database = {
+      query: async () => ({ rows: [], rowCount: 0 }),
+      transaction: async <T,>(fn: (q: Queryable) => Promise<T>) => fn({ query: async () => ({ rows: [], rowCount: 0 }) })
+    };
+
+    const result = await reclaimStaleDeployingReloadRuns(db);
+
+    expect(result).toEqual({ reclaimedRuns: 0, runIds: [] });
   });
 });
 

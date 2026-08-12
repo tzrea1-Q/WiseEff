@@ -17,7 +17,7 @@ import {
 } from "@/domain/parameters/projectHotspotScoring";
 import { canActOnReviewRequest } from "@/domain/parameters/reviewQueue";
 import { getPlatformRole, migrateLegacyRoleId } from "@/domain/users/types";
-import type { ChangeRequest, ParameterRecord, PrototypeState } from "@/mockData";
+import type { ChangeRequest, ParameterRecord, PrototypeState } from "@/domain/prototype/types";
 
 const windowLabels: Record<DashboardWindow, string> = {
   "7d": "近 7 天",

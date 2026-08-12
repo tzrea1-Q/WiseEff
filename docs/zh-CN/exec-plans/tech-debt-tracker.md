@@ -44,8 +44,8 @@
 - **TD-067（多副本桥接路由）：** 桥接 WebSocket 单进程亲和；进程内 DTS 重载部署（ADR-0020）依赖持有 socket 的副本。**负责人：Platform / Reliability。**
 - **TD-068（DTS 重载 Agent actorType 信任边界）：** 闸门依赖调用方传入的进程内 `actorType`，非 `AuthContext` 已认证身份；持用户 HTTP token 的 Agent 与人类不可区分（与参数 `SensitiveWriteActorType` 相同）。**负责人：Security / Backend。** 见 `docs/SECURITY.md`（#304）。
 - **TD-069（`DtsReloadPage.tsx` 体积）：** 记录时为 **2188** 行（#304）；拆分延后以免淹没本轮安全/助手漂移修复。**负责人：Frontend / Debugging platform。**
-- **TD-070（拓扑工作区测试隔离）：** `ApiProjectTopologyWorkspace.test.tsx` 在 jsdom 中发出真实 HTTP 请求；本机 `127.0.0.1:8787` 有开发 API 时套件不稳定（20 例中 8–9 例被真实数据打挂）。P0 美学提升验证期间发现。应注入可替换的 repository/fetch 接缝,测试不得拨真实端口。**负责人：Frontend。**
-- **TD-071（拓扑树元信息文字色）：** `.topology-tree__item small` 把近白的表面令牌 `var(--muted)` 当文字色,树上元信息几乎不可见（既有缺陷,P0 令牌审计浮出）。P1 原语收敛时改为 `var(--text-muted)` 并加结构化样式断言。**负责人：Frontend。**
+- **TD-079（拓扑工作区测试隔离）：** `ApiProjectTopologyWorkspace.test.tsx` 在 jsdom 中发出真实 HTTP 请求；本机 `127.0.0.1:8787` 有开发 API 时套件不稳定（20 例中 8–9 例被真实数据打挂）。P0 美学提升验证期间发现。应注入可替换的 repository/fetch 接缝,测试不得拨真实端口。**负责人：Frontend。**
+- **TD-080（拓扑树元信息文字色）：** `.topology-tree__item small` 把近白的表面令牌 `var(--muted)` 当文字色,树上元信息几乎不可见（既有缺陷,P0 令牌审计浮出）。P1 原语收敛时改为 `var(--text-muted)` 并加结构化样式断言。**负责人：Frontend。**
 
 ## 近期关闭项
 

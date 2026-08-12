@@ -5,7 +5,8 @@ import {
   deriveSessionMetrics,
   parseRange
 } from "./debuggingAnalytics";
-import { createPrototypeState, type DebugParameter } from "./mockData";
+import { createPrototypeState } from "./mockData";
+import type { DebugParameter } from "@/domain/prototype/types";
 
 describe("parseRange", () => {
   it("解析 '2500 - 4500' 形状", () => {

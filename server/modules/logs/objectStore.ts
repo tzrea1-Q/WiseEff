@@ -26,6 +26,11 @@ export type ObjectStoreHealth = {
 export interface ObjectStore {
   put(input: { organizationId: string; fileName: string; contentType: string; bytes: Buffer }): Promise<StoredObject>;
   get(storageKey: string): Promise<Buffer>;
+  /**
+   * Physically remove an object for retention/cleanup. Optional so existing stores/mocks stay valid;
+   * callers must treat it as best-effort and idempotent (deleting a missing key is a no-op).
+   */
+  delete?(storageKey: string): Promise<void>;
 }
 
 export interface ObjectStoreHealthCheck {
@@ -144,6 +149,11 @@ export function createLocalObjectStore(rootDir: string, options: LocalObjectStor
     async get(storageKey) {
       const { objectPath } = resolveInsideRoot(rootDir, storageKey);
       return fsReadFile(objectPath);
+    },
+
+    async delete(storageKey) {
+      const { objectPath } = resolveInsideRoot(rootDir, storageKey);
+      await fsRm(objectPath, { force: true });
     },
 
     async checkHealth() {

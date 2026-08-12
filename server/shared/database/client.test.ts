@@ -64,6 +64,72 @@ describe("createDatabase", () => {
     ]);
   });
 
+  it("maps nested transactions to savepoints on the same session", async () => {
+    const calls: string[] = [];
+    const queryable: Queryable = {
+      query: async <Row,>(text: string) => {
+        calls.push(text);
+        return { rows: [] as Row[], rowCount: null };
+      }
+    };
+    const db = createDatabase(queryable);
+
+    await db.transaction(async (tx) => {
+      await tx.query("insert into outer_rows default values");
+      await tx.transaction(async (inner) => {
+        await inner.query("insert into inner_rows default values");
+        await inner.transaction(async (deepest) => {
+          await deepest.query("insert into deepest_rows default values");
+        });
+      });
+    });
+
+    expect(calls).toEqual([
+      "begin",
+      "insert into outer_rows default values",
+      "savepoint wiseeff_sp_1",
+      "insert into inner_rows default values",
+      "savepoint wiseeff_sp_2",
+      "insert into deepest_rows default values",
+      "release savepoint wiseeff_sp_2",
+      "release savepoint wiseeff_sp_1",
+      "commit"
+    ]);
+  });
+
+  it("rolls back only the inner savepoint when a caught nested transaction fails", async () => {
+    const calls: string[] = [];
+    const queryable: Queryable = {
+      query: async <Row,>(text: string) => {
+        calls.push(text);
+        return { rows: [] as Row[], rowCount: null };
+      }
+    };
+    const db = createDatabase(queryable);
+
+    await db.transaction(async (tx) => {
+      await tx.query("insert into outer_rows default values");
+      await tx
+        .transaction(async (inner) => {
+          await inner.query("insert into inner_rows default values");
+          throw new Error("inner write failed");
+        })
+        .catch(() => undefined);
+      await tx.query("insert into after_recovery default values");
+    });
+
+    expect(calls).toEqual([
+      "begin",
+      "insert into outer_rows default values",
+      "savepoint wiseeff_sp_1",
+      "insert into inner_rows default values",
+      "rollback to savepoint wiseeff_sp_1",
+      "release savepoint wiseeff_sp_1",
+      "insert into after_recovery default values",
+      "commit"
+    ]);
+  });
+
   it("exports low-cardinality database query spans without SQL text or values", async () => {
     const spans: Parameters<TraceExporter>[0][] = [];
     const queryable: Queryable = {

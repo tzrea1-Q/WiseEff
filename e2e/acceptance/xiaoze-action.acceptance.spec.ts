@@ -333,6 +333,108 @@ test.describe("Xiaoze P1 action", () => {
     });
   });
 
+  test("approving with edited arguments executes the edited payload", async ({ request }, testInfo) => {
+    // @acceptance XIAOZE-ACTION-EDITEDARGS-001
+    // @operation XIAOZE-ACTION-EDITEDARGS-001
+    const thread = `${threadId}-edited-args`;
+    const started = await postXiaoze(request, adminHeaders(), {
+      threadId: thread,
+      runId: `run-action-edited-${Date.now()}`,
+      messages: [{ id: "m-user-edited", role: "user", content: `set ${parameterId} to 18A` }],
+      context: [
+        {
+          description: "wiseeff.page",
+          value: { pageKey: "parameters", projectId, path: `/parameters?project=${projectId}` }
+        }
+      ]
+    });
+
+    expect(started.status).toBe(200);
+    const interruptValue = readInterruptValue(started.events);
+    expect(interruptValue?.approvalId).toBeTruthy();
+    const basePayload = (interruptValue?.payload ?? {}) as Record<string, unknown>;
+    const editedTargetValue = "21A";
+
+    const resumed = await postXiaoze(request, adminHeaders(), {
+      threadId: thread,
+      runId: `run-resume-edited-${Date.now()}`,
+      messages: [{ id: "m-resume-edited", role: "user", content: "approve with edits" }],
+      forwardedProps: {
+        command: {
+          resume: {
+            decision: "approve",
+            editedArgs: { ...basePayload, targetValue: editedTargetValue }
+          },
+          interruptEvent: interruptValue
+        }
+      }
+    });
+
+    expect(resumed.status).toBe(200);
+    expect(resumed.events.some((event) => event.type === "RUN_ERROR")).toBe(false);
+
+    const latestChangeRequest = await withPgClient(async (client) => {
+      const result = await client.query<{ target_value: string | null; status: string }>(
+        `
+        select target_value, status
+        from parameter_change_requests
+        where organization_id = 'org-chargelab'
+          and project_id = $1
+        order by created_at desc
+        limit 1
+        `,
+        [projectId]
+      );
+      return result.rows[0];
+    });
+    expect(String(latestChangeRequest?.target_value ?? "")).toContain(editedTargetValue);
+
+    const auditRows = await latestAgentAuditForSession(thread);
+    const approvalAudit = auditRows.find((row) => row.action === "approval-executed" && row.actor_type === "agent");
+    expect(approvalAudit).toBeTruthy();
+
+    const editedArtifact = await writeOperationJsonArtifact(testInfo, "xiaoze-action-edited-args.json", {
+      approvalId: interruptValue?.approvalId,
+      startedStatus: started.status,
+      resumedStatus: resumed.status,
+      editedTargetValue,
+      persistedTargetValue: latestChangeRequest?.target_value,
+      audit: approvalAudit
+    });
+
+    await recordOperationEvidence({
+      operationId: "XIAOZE-ACTION-EDITEDARGS-001",
+      title: "xiaoze approve parameter change with edited arguments",
+      status: "passed",
+      route: "/parameters",
+      testInfo,
+      artifacts: [editedArtifact],
+      api: [
+        summarizeApiResponse(started.response, {
+          method: "POST",
+          path: "/api/v1/agent/xiaoze",
+          responseSummary: String(interruptValue?.approvalId ?? "interrupt")
+        }),
+        summarizeApiResponse(resumed.response, {
+          method: "POST",
+          path: "/api/v1/agent/xiaoze",
+          responseSummary: "approved-with-edited-args"
+        })
+      ],
+      audit: [
+        {
+          id: approvalAudit?.id,
+          kind: approvalAudit!.kind,
+          action: approvalAudit!.action,
+          targetId: approvalAudit?.target_id,
+          requestId: approvalAudit?.trace_id ?? undefined,
+          metadataSummary: `actorType=${approvalAudit?.actor_type}; sessionId=${thread}`
+        }
+      ],
+      notes: "Approval with editedArgs executed the edited payload; the change request carries the edited target value."
+    });
+  });
+
   test("resumes with AG-UI native resume entries after interrupt", async ({ request }, testInfo) => {
     // @acceptance XIAOZE-ACTION-RESUME-001
     // @operation XIAOZE-ACTION-RESUME-001

@@ -12,7 +12,8 @@ vi.mock("@copilotkit/react-core/v2", () => ({
 
 import { existsSync, readFileSync } from "node:fs";
 import * as XLSX from "xlsx";
-import App, { appReducer } from "./App";
+import App from "./App";
+import { appReducer } from "@/application/state/appState";
 import { initialState } from "./mockData";
 import {
   declarationFor,

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { reducer } from "./App";
+import { reducer } from "@/application/state/appState";
 import { createPrototypeState } from "./mockData";
 
 const createDebuggingState = () => ({ ...createPrototypeState(), activeRoleId: "user" });

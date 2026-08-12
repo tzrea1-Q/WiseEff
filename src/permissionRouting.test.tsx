@@ -10,7 +10,8 @@ vi.mock("@copilotkit/react-core/v2", () => ({
   useAgentContext: vi.fn()
 }));
 import { canAccessPage } from "./app/permissions";
-import App, { appReducer } from "./App";
+import App from "./App";
+import { appReducer } from "@/application/state/appState";
 import { initialState } from "./mockData";
 import { declarationsFor, readStylesheet } from "./test/cssAssertions";
 

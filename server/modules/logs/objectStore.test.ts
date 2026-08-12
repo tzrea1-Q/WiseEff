@@ -34,6 +34,24 @@ describe("createLocalObjectStore", () => {
     });
   });
 
+  it("deletes an object by storage key and is idempotent", async () => {
+    await withTempStore(async (rootDir) => {
+      const store = createLocalObjectStore(rootDir);
+      const stored = await store.put({
+        organizationId: "org-chargelab",
+        fileName: "overlay.dtbo",
+        contentType: "application/octet-stream",
+        bytes: Buffer.from("dtbo", "utf8")
+      });
+
+      await expect(store.get(stored.storageKey)).resolves.toBeInstanceOf(Buffer);
+      await store.delete!(stored.storageKey);
+      await expect(store.get(stored.storageKey)).rejects.toBeTruthy();
+      // Deleting a missing key is a no-op, so a repeat sweep cannot fail.
+      await expect(store.delete!(stored.storageKey)).resolves.toBeUndefined();
+    });
+  });
+
   it("returns checksum and file size metadata", async () => {
     await withTempStore(async (rootDir) => {
       const store = createLocalObjectStore(rootDir);

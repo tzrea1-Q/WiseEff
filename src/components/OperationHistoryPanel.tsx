@@ -1,6 +1,6 @@
 import { ChevronRight, Link2, RotateCcw, Send, Undo2 } from "lucide-react";
 import { useState } from "react";
-import type { DebugEvent } from "../mockData";
+import type { DebugEvent } from "@/domain/prototype/types";
 
 function formatTime(iso: string) {
   try {

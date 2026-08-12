@@ -2,16 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Database, QueryResult } from "../../shared/database/client";
 
-const isParameterIdentityCutoverComplete = vi.fn();
-const resetParameterIdentityCutoverCache = vi.fn();
+const probeCutoverComplete = vi.fn();
+const resolveParameterIdentityMode = vi.fn();
 const migrateParameterIdentities = vi.fn();
 const applyParameterIdentityCutover = vi.fn();
 
-vi.mock("../parameters/cutoverAwareIdentity", () => ({
-  isParameterIdentityCutoverComplete: (...args: unknown[]) =>
-    isParameterIdentityCutoverComplete(...args),
-  resetParameterIdentityCutoverCache: (...args: unknown[]) =>
-    resetParameterIdentityCutoverCache(...args)
+vi.mock("../parameters/parameterIdentityMode", () => ({
+  probeCutoverComplete: (...args: unknown[]) => probeCutoverComplete(...args),
+  resolveParameterIdentityMode: (...args: unknown[]) => resolveParameterIdentityMode(...args)
 }));
 
 vi.mock("./migration", () => ({
@@ -41,7 +39,7 @@ function createDb(handlers: Array<(text: string) => QueryResult<Record<string, s
 describe("ensureLocalPostCutoverIdentity", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    isParameterIdentityCutoverComplete.mockResolvedValue(false);
+    probeCutoverComplete.mockResolvedValue(false);
     migrateParameterIdentities.mockResolvedValue({
       migrationRunId: "run-local-1",
       blockers: []
@@ -50,7 +48,7 @@ describe("ensureLocalPostCutoverIdentity", () => {
   });
 
   it("is idempotent when cutover is already complete", async () => {
-    isParameterIdentityCutoverComplete.mockResolvedValue(true);
+    probeCutoverComplete.mockResolvedValue(true);
     const db = createDb([]);
 
     const result = await ensureLocalPostCutoverIdentity(db);
@@ -122,7 +120,7 @@ describe("ensureLocalPostCutoverIdentity", () => {
     expect(applyParameterIdentityCutover).toHaveBeenCalledWith(db, {
       migrationRunId: "run-local-1"
     });
-    expect(resetParameterIdentityCutoverCache).toHaveBeenCalled();
+    expect(resolveParameterIdentityMode).toHaveBeenCalled();
   });
 
   it("fails when migrate reports blockers on an otherwise empty legacy graph", async () => {

@@ -181,7 +181,7 @@ npm run acceptance:responsive
 - [x] `docs/design-docs/ui-design-system.md` + 中文伴侣创建,并从 `docs/design-docs/index.md`(+ zh)、`docs/FRONTEND.md`(+ zh)、`docs/DESIGN.md`、`AGENTS.md`(+ zh)接入
 - [x] `docs/developer/ui-quality-checklist.md` + 中文伴侣创建,并登记进 `scripts/bilingual-docs.ts`
 - [x] `docs/PLANS.md` + `docs/zh-CN/PLANS.md` 列入本计划
-- [x] P0:ADR-0025 记录;`CONTEXT.md` + `docs/adr/README.md` 更新;`design-system-reference-llms.txt` 对齐;TD-070/TD-071 登记
+- [x] P0:ADR-0025 记录;`CONTEXT.md` + `docs/adr/README.md` 更新;`design-system-reference-llms.txt` 对齐;TD-079/TD-080 登记
 - [ ] P4:`docs/QUALITY_SCORE.md` + zh 与 `docs/developer/verification-matrix.md` + zh 描述 `ui:check` 与扩展质量 spec
 - [ ] 递延发现登记 `docs/exec-plans/tech-debt-tracker.md` + zh
 - [ ] 移入 `completed/` 前 `npm run docs:check` 通过

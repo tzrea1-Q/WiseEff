@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appReducer } from "./App";
+import { appReducer } from "@/application/state/appState";
 import { initialState } from "./mockData";
 
 const adminState = { ...initialState, activeRoleId: "admin" };

@@ -181,7 +181,7 @@ Audit baseline evidence: `work/ui-checks/01-*.png` … `21-*.png` (2026-08-12 wa
 - [x] `docs/design-docs/ui-design-system.md` + zh companion created and linked from `docs/design-docs/index.md` (+ zh), `docs/FRONTEND.md` (+ zh), `docs/DESIGN.md`, `AGENTS.md` (+ zh)
 - [x] `docs/developer/ui-quality-checklist.md` + zh companion created and registered in `scripts/bilingual-docs.ts`
 - [x] `docs/PLANS.md` + `docs/zh-CN/PLANS.md` list this plan
-- [x] P0: ADR-0025 recorded; `CONTEXT.md` + `docs/adr/README.md` updated; `design-system-reference-llms.txt` aligned; TD-070/TD-071 filed
+- [x] P0: ADR-0025 recorded; `CONTEXT.md` + `docs/adr/README.md` updated; `design-system-reference-llms.txt` aligned; TD-079/TD-080 filed
 - [ ] P4: `docs/QUALITY_SCORE.md` + zh and `docs/developer/verification-matrix.md` + zh describe `ui:check` and expanded quality specs
 - [ ] Deferred findings recorded in `docs/exec-plans/tech-debt-tracker.md` + zh
 - [ ] `npm run docs:check` green before moving this plan to `completed/`
