@@ -41,7 +41,7 @@ const ALLOWED_DIRECT_CALLS: Record<string, number> = {
   "modules/parameter-topology/governanceAudit.ts": 1,
   "modules/parameters/initializationService.ts": 3,
   "modules/parameters/sensitiveNode.ts": 1,
-  "modules/parameters/service.ts": 5,
+  "modules/parameters/service.ts": 2,
   "modules/product-feedback/service.ts": 1,
   "modules/users/service.ts": 2
 };
