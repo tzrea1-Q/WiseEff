@@ -82,7 +82,7 @@ describe("createLogDomainRecord", () => {
   it("requires logs:admin-domains", async () => {
     const { db } = createFakeDb();
     await expect(
-      createLogDomainRecord(db, makeAuth(["logs:view"]), { name: "charging-power" })
+      createLogDomainRecord(db, makeAuth(["logs:view"]), { name: "charging-power" }, { requestId: "req-test" })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
@@ -96,7 +96,7 @@ describe("createLogDomainRecord", () => {
     const created = await createLogDomainRecord(db, adminAuth, {
       name: "charging-power",
       description: "Charging subsystem"
-    });
+    }, { requestId: "req-test" });
 
     expect(created).toMatchObject({ id: "domain-1", name: "charging-power" });
     const auditCall = txCalls.find((call) => call.text.includes("insert into audit_events"));
@@ -109,7 +109,7 @@ describe("createLogDomainRecord", () => {
     const { db } = createFakeDb([[domainRow]]);
 
     await expect(
-      createLogDomainRecord(db, adminAuth, { name: "charging-power" })
+      createLogDomainRecord(db, adminAuth, { name: "charging-power" }, { requestId: "req-test" })
     ).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
   });
 
@@ -117,7 +117,7 @@ describe("createLogDomainRecord", () => {
     const { db } = createFakeDb();
 
     await expect(
-      createLogDomainRecord(db, adminAuth, { name: "charging-power", formatProfile: { timestampPattern: "([" } })
+      createLogDomainRecord(db, adminAuth, { name: "charging-power", formatProfile: { timestampPattern: "([" } }, { requestId: "req-test" })
     ).rejects.toMatchObject({ code: "VALIDATION_FAILED", status: 400 });
   });
 });
@@ -133,7 +133,7 @@ describe("updateLogDomainRecord", () => {
     const updated = await updateLogDomainRecord(db, adminAuth, {
       domainId: "domain-1",
       description: "updated"
-    });
+    }, { requestId: "req-test" });
 
     expect(updated.description).toBe("updated");
     const auditCall = txCalls.find((call) => call.text.includes("insert into audit_events"));
@@ -147,7 +147,7 @@ describe("updateLogDomainRecord", () => {
     ]);
 
     await expect(
-      updateLogDomainRecord(db, adminAuth, { domainId: "domain-1", name: "other" })
+      updateLogDomainRecord(db, adminAuth, { domainId: "domain-1", name: "other" }, { requestId: "req-test" })
     ).rejects.toMatchObject({ code: "CONFLICT" });
   });
 
@@ -155,7 +155,7 @@ describe("updateLogDomainRecord", () => {
     const { db } = createFakeDb([[]]);
 
     await expect(
-      updateLogDomainRecord(db, adminAuth, { domainId: "missing", description: "x" })
+      updateLogDomainRecord(db, adminAuth, { domainId: "missing", description: "x" }, { requestId: "req-test" })
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
@@ -163,7 +163,7 @@ describe("updateLogDomainRecord", () => {
     const { db } = createFakeDb();
 
     await expect(
-      updateLogDomainRecord(db, adminAuth, { domainId: "domain-1", formatProfile: { unknownKey: true } })
+      updateLogDomainRecord(db, adminAuth, { domainId: "domain-1", formatProfile: { unknownKey: true } }, { requestId: "req-test" })
     ).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
   });
 });
@@ -176,7 +176,7 @@ describe("archiveLogDomainRecord", () => {
       []
     ]);
 
-    const archived = await archiveLogDomainRecord(db, adminAuth, "domain-1");
+    const archived = await archiveLogDomainRecord(db, adminAuth, "domain-1", { requestId: "req-test" });
 
     expect(archived.status).toBe("archived");
     const auditCall = txCalls.find((call) => call.text.includes("insert into audit_events"));
@@ -185,7 +185,7 @@ describe("archiveLogDomainRecord", () => {
 
   it("requires logs:admin-domains", async () => {
     const { db } = createFakeDb();
-    await expect(archiveLogDomainRecord(db, makeAuth(["logs:view"]), "domain-1")).rejects.toMatchObject({
+    await expect(archiveLogDomainRecord(db, makeAuth(["logs:view"]), "domain-1", { requestId: "req-test" })).rejects.toMatchObject({
       code: "FORBIDDEN"
     });
   });
