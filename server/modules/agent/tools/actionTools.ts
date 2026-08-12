@@ -4,7 +4,7 @@ import type { ObjectStore } from "../../logs/objectStore";
 import type { DtsToolchainRunner } from "../../parameter-files/dtsToolchain";
 import { parseDtsValue } from "../../dts/valueAst";
 import { deleteDraft, getProjectParameterForUpdate } from "../../parameters/repository";
-import { mustUseSemanticParameterIdentity } from "../../parameters/semanticParameterReads";
+import { resolveParameterIdentityMode } from "../../parameters/parameterIdentityMode";
 import { assertSensitiveNodeWriteAllowed } from "../../parameters/sensitiveNode";
 import { submitParameterChanges } from "../../parameters/service";
 import { loadBindingContext, resolveBindingHeadRevisionId } from "../../parameter-topology/writeLock";
@@ -106,7 +106,7 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
         }
         const db = options.db;
 
-        if (!(await mustUseSemanticParameterIdentity(db))) {
+        if ((await resolveParameterIdentityMode(db)) === "legacy") {
           return submitLegacyParameterChange(db, context, { projectId, parameterId, targetValue, reason });
         }
 
