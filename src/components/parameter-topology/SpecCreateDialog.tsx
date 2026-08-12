@@ -144,23 +144,6 @@ export function SpecCreateDialog({
     }
   }, [selectedModuleId, subjects]);
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        if (busy) return;
-        if (confirmOpen) {
-          setConfirmOpen(false);
-          return;
-        }
-        onCancel();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [busy, onCancel, confirmOpen]);
-
   const selected = useMemo(
     () => subjects.find((subject) => subject.moduleId === selectedModuleId) ?? null,
     [selectedModuleId, subjects],

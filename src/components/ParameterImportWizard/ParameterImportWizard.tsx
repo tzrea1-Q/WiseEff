@@ -157,19 +157,6 @@ export function ParameterImportWizard({
     setSelectedItemIds(new Set());
   }, [open, activeProjectId]);
 
-  useEffect(() => {
-    if (!open) {
-      return undefined;
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !createProjectPending) {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, onClose, createProjectPending]);
-
   if (!open) {
     return null;
   }
@@ -275,9 +262,11 @@ export function ParameterImportWizard({
 
   return (
     <>
-      {/* Deliberately non-dismissible (no onDismiss): the wizard collects multi-step
-          input and closes only from its explicit close/cancel controls. */}
-      <ModalDialog open className="submission-dialog submission-dialog--wide parameter-import-wizard">
+      <ModalDialog
+        open
+        onDismiss={createProjectPending ? undefined : onClose}
+        className="submission-dialog submission-dialog--wide parameter-import-wizard"
+      >
         {({ titleId }) => (
           <>
           <div className="submission-dialog-head param-admin-editor-dialog-head">

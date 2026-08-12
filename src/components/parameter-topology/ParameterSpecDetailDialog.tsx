@@ -116,32 +116,6 @@ export function ParameterSpecDetailDialog({
     setIdentityReason("");
   }, [detail.id]);
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !pending) {
-        if (saveConfirmOpen) {
-          setSaveConfirmOpen(false);
-          return;
-        }
-        if (cutoverConfirmOpen) {
-          setCutoverConfirmOpen(false);
-          return;
-        }
-        if (identityKind) {
-          setIdentityKind(null);
-          return;
-        }
-        if (lifecycleKind) {
-          setLifecycleKind(null);
-          return;
-        }
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, pending, identityKind, lifecycleKind, saveConfirmOpen, cutoverConfirmOpen]);
-
   const saveLabel = useMemo(() => {
     if (!editable) return "完成";
     if (pending) return isDraft ? "激活中…" : "保存中…";
