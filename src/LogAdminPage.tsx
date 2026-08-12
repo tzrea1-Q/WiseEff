@@ -507,6 +507,10 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
 
           void runPendingAction("archive", id, async () => {
             await logActions.archive(id);
+            // The post-archive refresh only returns active logs, so the archived
+            // record drops out of local state; force the archived view to reload
+            // from the server next time it opens instead of showing a stale blank.
+            setArchivedLoaded(false);
             if (log) {
               setUndoArchive({ logId: id, fileName: log.fileName });
             }
