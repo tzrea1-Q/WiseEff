@@ -6,14 +6,24 @@
 -- inside the linked entry set (falling back to organization-wide generic retrieval when
 -- a domain has no links) and inherits the published-only invariant from the knowledge
 -- module — links never widen retrieval to drafts or archived entries.
+--
+-- Every statement is re-application-safe: this file was briefly numbered 0106 (and
+-- 0106_log_domains was 0105) before the duplicate-0105 renumbering, so databases that
+-- applied it under the old name replay it cleanly under this one.
 
 -- Composite uniques so the link table can enforce organization consistency with
 -- composite foreign keys instead of trusting call-site discipline.
-alter table log_domains
-  add constraint log_domains_id_org_unique unique (id, organization_id);
-
-alter table knowledge_entries
-  add constraint knowledge_entries_id_org_unique unique (id, organization_id);
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'log_domains_id_org_unique') then
+    alter table log_domains
+      add constraint log_domains_id_org_unique unique (id, organization_id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'knowledge_entries_id_org_unique') then
+    alter table knowledge_entries
+      add constraint knowledge_entries_id_org_unique unique (id, organization_id);
+  end if;
+end $$;
 
 create table if not exists log_domain_knowledge_links (
   id text primary key,
