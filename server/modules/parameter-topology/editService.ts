@@ -32,7 +32,7 @@ import {
   upsertEnablementDraft,
   listOpenBindingDraftsForUser,
   rebaseOpenBindingDraftCandidates,
-} from "../parameters/repository";
+} from "../parameters/draftRepository";
 import { upsertBindingRevisionValues } from "./bindingService";
 import { assertCanPromoteCandidateToDraft } from "./candidateRevisionStateMachine";
 import { normalizePersistedManifest } from "./configRevisionManifest";

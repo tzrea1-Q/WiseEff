@@ -301,7 +301,9 @@ describe.skipIf(!databaseAvailable)("parameter file integration", () => {
   it("enriches open conflicts, audits resolve reason, and supports bulk preview/resolve", async () => {
     const { resolveParameterFileConflict, previewBulkConflictResolution, resolveConflictsBulk } =
       await import("./conflictService");
-    const { insertFileSyncConflict, listOpenConflicts } = await import("../parameters/repository");
+    const { insertFileSyncConflict, listOpenConflicts } = await import(
+      "../parameters/fileSyncConflictRepository"
+    );
 
     const auth = makeAuth();
     const objectStore = createMemoryObjectStore();

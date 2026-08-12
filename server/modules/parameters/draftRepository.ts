@@ -1,0 +1,1160 @@
+/**
+ * Draft-lifecycle repository for `parameter_drafts`: write-lock row mapping,
+ * draft-for-submission readers, change-request write-lock getters, and the
+ * upsert/list/rebase/delete surface for binding and node-enablement drafts.
+ */
+
+import type { Queryable } from "../../shared/database/client";
+import type { ParameterDraftDto, ParameterChangeAction } from "./types";
+import { upsertSemanticDraft } from "./semanticParameterReads";
+import { parameterIdentityMode } from "./parameterIdentityMode";
+import type { BindingWriteLockFields, EnablementWriteLockFields } from "../parameter-topology/writeLock";
+import { addCondition, dateTimeToIso } from "./repositoryShared";
+
+export type ParameterWriteLockRow = {
+  base_config_revision_id: string | null;
+  binding_revision_id: string | null;
+  property_occurrence_id: string | null;
+  source_file_version_id: string | null;
+  expected_checksum: string | null;
+  occurrence_span: { start: number; end: number } | null;
+};
+
+export function toWriteLockFields(row: ParameterWriteLockRow): BindingWriteLockFields | null {
+  if (
+    !row.base_config_revision_id ||
+    !row.binding_revision_id ||
+    !row.source_file_version_id ||
+    !row.expected_checksum
+  ) {
+    return null;
+  }
+  return {
+    baseConfigRevisionId: row.base_config_revision_id,
+    bindingRevisionId: row.binding_revision_id,
+    propertyOccurrenceId: row.property_occurrence_id,
+    sourceFileVersionId: row.source_file_version_id,
+    expectedChecksum: row.expected_checksum,
+    occurrenceSpan: row.occurrence_span,
+  };
+}
+
+export async function getDraftWriteLock(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    bindingId: string;
+    userId: string;
+  }
+): Promise<BindingWriteLockFields | null> {
+  const result = await db.query<ParameterWriteLockRow>(
+    `
+    select
+      base_config_revision_id,
+      binding_revision_id,
+      property_occurrence_id,
+      source_file_version_id,
+      expected_checksum,
+      occurrence_span
+    from parameter_drafts
+    where organization_id = $1
+      and project_id = $2
+      and project_parameter_binding_id = $3
+      and user_id = $4
+    limit 1
+    `,
+    [input.organizationId, input.projectId, input.bindingId, input.userId]
+  );
+  const row = result.rows[0];
+  return row ? toWriteLockFields(row) : null;
+}
+
+export type BindingDraftForSubmission = {
+  id: string;
+  projectId: string;
+  bindingId: string;
+  parameterSpecId: string;
+  candidateConfigRevisionId: string | null;
+  candidateStatus: string | null;
+  candidateHasBindingRevision: boolean;
+  candidateValueMatchesDraft: boolean;
+  candidateDeleteTombstone: boolean;
+  candidateActionProven: boolean;
+  targetValue: string;
+  action: ParameterChangeAction;
+  reason: string;
+  writeLock: BindingWriteLockFields | null;
+  writeLockMatchesBinding: boolean;
+};
+
+export async function getBindingDraftForSubmission(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    userId: string;
+    draftId: string;
+  }
+): Promise<BindingDraftForSubmission | null> {
+  const result = await db.query<
+    ParameterWriteLockRow & {
+      id: string;
+      project_id: string;
+      project_parameter_binding_id: string;
+      parameter_spec_id: string;
+      candidate_config_revision_id: string | null;
+      candidate_status: string | null;
+      candidate_has_binding_revision: boolean;
+      candidate_value_matches_draft: boolean;
+      candidate_delete_tombstone: boolean;
+      candidate_action_proven: boolean;
+      write_lock_matches_binding: boolean;
+      target_value: string;
+      action: ParameterChangeAction;
+      reason: string;
+    }
+  >(
+    `
+    with locked_draft as materialized (
+      select d.*, b.parameter_spec_id, b.logical_node_id as binding_logical_node_id
+      from parameter_drafts d
+      inner join project_parameter_bindings b
+        on b.id = d.project_parameter_binding_id
+       and b.organization_id = d.organization_id
+       and b.project_id = d.project_id
+      where d.organization_id = $1
+        and d.project_id = $2
+        and d.user_id = $3
+        and d.id = $4
+      limit 1
+      for update of d
+    ),
+    locked_candidate as materialized (
+      select candidate.id, candidate.status, candidate.config_set_id
+      from dts_config_revisions candidate
+      inner join locked_draft d
+        on candidate.id = d.candidate_config_revision_id
+       and candidate.organization_id = d.organization_id
+       and candidate.project_id = d.project_id
+      inner join dts_config_revisions base_candidate
+        on base_candidate.id = d.base_config_revision_id
+       and base_candidate.organization_id = d.organization_id
+       and base_candidate.project_id = d.project_id
+       and base_candidate.config_set_id = candidate.config_set_id
+      for update of candidate
+    ),
+    locked_candidate_bindings as materialized (
+      select candidate_bpr.id, candidate_bpr.raw_value
+      from project_parameter_binding_revisions candidate_bpr
+      inner join locked_draft d
+        on candidate_bpr.binding_id = d.project_parameter_binding_id
+       and candidate_bpr.config_revision_id = d.candidate_config_revision_id
+      inner join locked_candidate candidate
+        on candidate.id = candidate_bpr.config_revision_id
+      for update of candidate_bpr
+    ),
+    locked_delete_effects as materialized (
+      select candidate_effect.id
+      from dts_logical_node_revisions candidate_lnr
+      inner join dts_occurrence_effects candidate_effect
+        on candidate_effect.logical_node_revision_id = candidate_lnr.id
+       and candidate_effect.config_revision_id = candidate_lnr.config_revision_id
+      inner join locked_draft d
+        on candidate_lnr.logical_node_id = d.binding_logical_node_id
+       and candidate_lnr.config_revision_id = d.candidate_config_revision_id
+      inner join locked_candidate candidate
+        on candidate.id = candidate_lnr.config_revision_id
+      inner join dts_property_specs candidate_property
+        on candidate_property.parameter_spec_id = d.parameter_spec_id
+       and candidate_effect.property_name = candidate_property.property_key
+      where candidate_effect.effect_kind = 'delete'
+      for update of candidate_lnr, candidate_effect
+    )
+    select
+      d.id,
+      d.project_id,
+      d.project_parameter_binding_id,
+      d.parameter_spec_id,
+      d.candidate_config_revision_id,
+      candidate.status as candidate_status,
+      exists (
+        select 1 from locked_candidate_bindings
+      ) as candidate_has_binding_revision,
+      exists (
+        select 1 from locked_candidate_bindings candidate_bpr
+        where candidate_bpr.raw_value = d.target_value
+      ) as candidate_value_matches_draft,
+      (
+        not exists (select 1 from locked_candidate_bindings)
+        and exists (select 1 from locked_delete_effects)
+      ) as candidate_delete_tombstone,
+      case d.action
+        when 'set' then exists (
+          select 1 from locked_candidate_bindings candidate_bpr
+          where candidate_bpr.raw_value = d.target_value
+        )
+        when 'delete' then (
+          not exists (select 1 from locked_candidate_bindings)
+          and exists (select 1 from locked_delete_effects)
+        )
+        else false
+      end as candidate_action_proven,
+      exists (
+        select 1
+        from project_parameter_binding_revisions locked_bpr
+        where locked_bpr.id = d.binding_revision_id
+          and locked_bpr.binding_id = d.project_parameter_binding_id
+          and locked_bpr.config_revision_id = d.base_config_revision_id
+      ) as write_lock_matches_binding,
+      d.target_value,
+      d.action,
+      d.reason,
+      d.base_config_revision_id,
+      d.binding_revision_id,
+      d.property_occurrence_id,
+      d.source_file_version_id,
+      d.expected_checksum,
+      d.occurrence_span
+    from locked_draft d
+    left join locked_candidate candidate on candidate.id = d.candidate_config_revision_id
+    `,
+    [input.organizationId, input.projectId, input.userId, input.draftId]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    bindingId: row.project_parameter_binding_id,
+    parameterSpecId: row.parameter_spec_id,
+    candidateConfigRevisionId: row.candidate_config_revision_id,
+    candidateStatus: row.candidate_status,
+    candidateHasBindingRevision: row.candidate_has_binding_revision,
+    candidateValueMatchesDraft: row.candidate_value_matches_draft,
+    candidateDeleteTombstone: row.candidate_delete_tombstone,
+    candidateActionProven: row.candidate_action_proven,
+    targetValue: row.target_value,
+    action: row.action,
+    reason: row.reason,
+    writeLock: toWriteLockFields(row),
+    writeLockMatchesBinding: row.write_lock_matches_binding
+  };
+}
+
+export function toEnablementWriteLockFields(
+  row: ParameterWriteLockRow
+): EnablementWriteLockFields | null {
+  if (!row.base_config_revision_id || !row.source_file_version_id || !row.expected_checksum) {
+    return null;
+  }
+  return {
+    baseConfigRevisionId: row.base_config_revision_id,
+    propertyOccurrenceId: row.property_occurrence_id,
+    sourceFileVersionId: row.source_file_version_id,
+    expectedChecksum: row.expected_checksum,
+    occurrenceSpan: row.occurrence_span,
+  };
+}
+
+export type EnablementDraftForSubmission = {
+  id: string;
+  projectId: string;
+  logicalNodeId: string;
+  candidateConfigRevisionId: string | null;
+  candidateStatus: string | null;
+  candidateHasStatusEffect: boolean;
+  candidateValueMatchesDraft: boolean;
+  candidateDeleteTombstone: boolean;
+  candidateActionProven: boolean;
+  targetValue: string;
+  action: ParameterChangeAction;
+  reason: string;
+  writeLock: EnablementWriteLockFields | null;
+  writeLockMatchesRevision: boolean;
+};
+
+/**
+ * Enablement twin of getBindingDraftForSubmission.
+ * Candidate proof comes from `status` occurrence effects on the logical node,
+ * not from binding revisions, and the write lock carries no binding_revision_id.
+ */
+export async function getEnablementDraftForSubmission(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    userId: string;
+    draftId: string;
+  }
+): Promise<EnablementDraftForSubmission | null> {
+  const result = await db.query<
+    ParameterWriteLockRow & {
+      id: string;
+      project_id: string;
+      logical_node_id: string;
+      candidate_config_revision_id: string | null;
+      candidate_status: string | null;
+      candidate_has_status_effect: boolean;
+      candidate_value_matches_draft: boolean;
+      candidate_delete_tombstone: boolean;
+      candidate_action_proven: boolean;
+      write_lock_matches_revision: boolean;
+      target_value: string;
+      action: ParameterChangeAction;
+      reason: string;
+    }
+  >(
+    `
+    with locked_draft as materialized (
+      select d.*, base_lnr.node_locator as base_node_locator
+      from parameter_drafts d
+      inner join dts_logical_nodes ln
+        on ln.id = d.logical_node_id
+       and ln.organization_id = d.organization_id
+       and ln.project_id = d.project_id
+      -- Tip candidates may mint a new logical_node_id for the same locator when
+      -- continuity rematches; prove status by node_locator, not stable id equality.
+      inner join dts_logical_node_revisions base_lnr
+        on base_lnr.logical_node_id = d.logical_node_id
+       and base_lnr.config_revision_id = d.base_config_revision_id
+      where d.organization_id = $1
+        and d.project_id = $2
+        and d.user_id = $3
+        and d.id = $4
+        and d.edit_subject_kind = 'node-enablement'
+      limit 1
+      for update of d
+    ),
+    locked_candidate as materialized (
+      select candidate.id, candidate.status, candidate.config_set_id
+      from dts_config_revisions candidate
+      inner join locked_draft d
+        on candidate.id = d.candidate_config_revision_id
+       and candidate.organization_id = d.organization_id
+       and candidate.project_id = d.project_id
+      inner join dts_config_revisions base_candidate
+        on base_candidate.id = d.base_config_revision_id
+       and base_candidate.organization_id = d.organization_id
+       and base_candidate.project_id = d.project_id
+       and base_candidate.config_set_id = candidate.config_set_id
+      for update of candidate
+    ),
+    locked_status_effects as materialized (
+      select candidate_effect.id, candidate_effect.effect_kind, candidate_occurrence.raw_text
+      from dts_logical_node_revisions candidate_lnr
+      inner join dts_occurrence_effects candidate_effect
+        on candidate_effect.logical_node_revision_id = candidate_lnr.id
+       and candidate_effect.config_revision_id = candidate_lnr.config_revision_id
+       and candidate_effect.property_name = 'status'
+      inner join locked_draft d
+        on candidate_lnr.node_locator = d.base_node_locator
+       and candidate_lnr.config_revision_id = d.candidate_config_revision_id
+      inner join locked_candidate candidate
+        on candidate.id = candidate_lnr.config_revision_id
+      left join dts_property_occurrences candidate_occurrence
+        on candidate_occurrence.id = candidate_effect.property_occurrence_id
+      for update of candidate_lnr, candidate_effect
+    )
+    select
+      d.id,
+      d.project_id,
+      d.logical_node_id,
+      d.candidate_config_revision_id,
+      candidate.status as candidate_status,
+      exists (
+        select 1 from locked_status_effects where effect_kind in ('set', 'override')
+      ) as candidate_has_status_effect,
+      exists (
+        select 1
+        from locked_status_effects
+        where effect_kind in ('set', 'override')
+          and raw_text = d.target_value
+      ) as candidate_value_matches_draft,
+      (
+        not exists (
+          select 1 from locked_status_effects where effect_kind in ('set', 'override')
+        )
+        and exists (select 1 from locked_status_effects where effect_kind = 'delete')
+      ) as candidate_delete_tombstone,
+      case d.action
+        when 'set' then exists (
+          select 1
+          from locked_status_effects
+          where effect_kind in ('set', 'override')
+            and raw_text = d.target_value
+        )
+        when 'delete' then (
+          not exists (
+            select 1 from locked_status_effects where effect_kind in ('set', 'override')
+          )
+          and exists (select 1 from locked_status_effects where effect_kind = 'delete')
+        )
+        else false
+      end as candidate_action_proven,
+      exists (
+        select 1
+        from dts_config_revision_members locked_member
+        inner join dts_config_revisions base_revision
+          on base_revision.id = locked_member.config_revision_id
+         and base_revision.organization_id = d.organization_id
+         and base_revision.project_id = d.project_id
+        where locked_member.config_revision_id = d.base_config_revision_id
+          and locked_member.file_version_id = d.source_file_version_id
+      ) as write_lock_matches_revision,
+      d.target_value,
+      d.action,
+      d.reason,
+      d.base_config_revision_id,
+      d.binding_revision_id,
+      d.property_occurrence_id,
+      d.source_file_version_id,
+      d.expected_checksum,
+      d.occurrence_span
+    from locked_draft d
+    left join locked_candidate candidate on candidate.id = d.candidate_config_revision_id
+    `,
+    [input.organizationId, input.projectId, input.userId, input.draftId]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    logicalNodeId: row.logical_node_id,
+    candidateConfigRevisionId: row.candidate_config_revision_id,
+    candidateStatus: row.candidate_status,
+    candidateHasStatusEffect: row.candidate_has_status_effect,
+    candidateValueMatchesDraft: row.candidate_value_matches_draft,
+    candidateDeleteTombstone: row.candidate_delete_tombstone,
+    candidateActionProven: row.candidate_action_proven,
+    targetValue: row.target_value,
+    action: row.action,
+    reason: row.reason,
+    writeLock: toEnablementWriteLockFields(row),
+    writeLockMatchesRevision: row.write_lock_matches_revision
+  };
+}
+
+export async function promoteBindingDraftCandidateForReview(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    draftId: string;
+    candidateConfigRevisionId: string;
+  }
+): Promise<boolean> {
+  const result = await db.query<{ id: string }>(
+    `
+    update dts_config_revisions candidate
+    set status = 'pending_approval'
+    from parameter_drafts draft
+    inner join dts_config_revisions base_candidate
+      on base_candidate.id = draft.base_config_revision_id
+     and base_candidate.organization_id = draft.organization_id
+     and base_candidate.project_id = draft.project_id
+    where draft.id = $1
+      and draft.organization_id = $2
+      and draft.project_id = $3
+      and draft.candidate_config_revision_id = $4
+      and candidate.id = draft.candidate_config_revision_id
+      and candidate.organization_id = draft.organization_id
+      and candidate.project_id = draft.project_id
+      and candidate.config_set_id = base_candidate.config_set_id
+      and candidate.status = 'draft'
+    returning candidate.id
+    `,
+    [input.draftId, input.organizationId, input.projectId, input.candidateConfigRevisionId]
+  );
+  return result.rows.length === 1;
+}
+
+export async function getChangeRequestWriteLock(
+  db: Queryable,
+  input: { organizationId: string; requestId: string }
+): Promise<BindingWriteLockFields | null> {
+  const result = await db.query<ParameterWriteLockRow>(
+    `
+    select
+      base_config_revision_id,
+      binding_revision_id,
+      property_occurrence_id,
+      source_file_version_id,
+      expected_checksum,
+      occurrence_span
+    from parameter_change_requests
+    where organization_id = $1
+      and id = $2
+      and edit_subject_kind = 'binding'
+    limit 1
+    `,
+    [input.organizationId, input.requestId]
+  );
+  const row = result.rows[0];
+  return row ? toWriteLockFields(row) : null;
+}
+
+export async function getChangeRequestEnablementWriteLock(
+  db: Queryable,
+  input: { organizationId: string; requestId: string }
+): Promise<EnablementWriteLockFields | null> {
+  const result = await db.query<ParameterWriteLockRow>(
+    `
+    select
+      base_config_revision_id,
+      binding_revision_id,
+      property_occurrence_id,
+      source_file_version_id,
+      expected_checksum,
+      occurrence_span
+    from parameter_change_requests
+    where organization_id = $1
+      and id = $2
+      and edit_subject_kind = 'node-enablement'
+    limit 1
+    `,
+    [input.organizationId, input.requestId]
+  );
+  const row = result.rows[0];
+  return row ? toEnablementWriteLockFields(row) : null;
+}
+
+type DraftRow = {
+  id: string;
+  project_id: string;
+  project_parameter_value_id: string;
+  user_id?: string;
+  target_value: string;
+  action?: ParameterChangeAction;
+  reason: string;
+  origin?: "manual" | "file_sync";
+  origin_file_version_id?: string | null;
+  updated_at: string | Date;
+  project_parameter_binding_id?: string | null;
+  candidate_config_revision_id?: string | null;
+  parameter_spec_id?: string | null;
+  base_raw_value?: string | null;
+  property_name?: string | null;
+  driver_module?: string | null;
+};
+
+export type ParameterDraftWithOrigin = {
+  id: string;
+  userId: string;
+  projectId: string;
+  projectParameterValueId: string;
+  targetValue: string;
+  action: ParameterChangeAction;
+  origin: "manual" | "file_sync";
+  originFileVersionId?: string;
+  updatedAt: string;
+};
+
+function toDraftDto(row: DraftRow): ParameterDraftDto {
+  const bindingId = row.project_parameter_binding_id ?? undefined;
+  // Post-cutover: parameterId DTO field carries the semantic binding id.
+  const parameterId = bindingId ?? row.project_parameter_value_id;
+  const currentValue = row.base_raw_value ?? undefined;
+  const name = row.property_name?.trim() || undefined;
+  const module = row.driver_module?.trim() || undefined;
+  const candidateConfigRevisionId = row.candidate_config_revision_id?.trim() || undefined;
+  const parameterSpecId = row.parameter_spec_id?.trim() || undefined;
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    parameterId,
+    targetValue: row.target_value,
+    action: row.action ?? "set",
+    reason: row.reason,
+    updatedAt: dateTimeToIso(row.updated_at),
+    ...(bindingId ? { projectParameterBindingId: bindingId } : {}),
+    ...(candidateConfigRevisionId ? { candidateConfigRevisionId } : {}),
+    ...(parameterSpecId ? { parameterSpecId } : {}),
+    ...(name ? { name } : {}),
+    ...(module ? { module } : {}),
+    ...(currentValue !== undefined && currentValue !== null ? { currentValue } : {})
+  };
+}
+
+function toDraftWithOrigin(row: DraftRow): ParameterDraftWithOrigin {
+  return {
+    id: row.id,
+    userId: row.user_id ?? "",
+    projectId: row.project_id,
+    projectParameterValueId: row.project_parameter_value_id,
+    targetValue: row.target_value,
+    action: row.action ?? "set",
+    origin: row.origin ?? "manual",
+    originFileVersionId: row.origin_file_version_id ?? undefined,
+    updatedAt: dateTimeToIso(row.updated_at)
+  };
+}
+
+export async function listDraftsForUser(
+  db: Queryable,
+  query: { organizationId: string; userId: string; projectId?: string }
+) {
+  const values: unknown[] = [query.organizationId, query.userId];
+  const where = ["d.organization_id = $1", "d.user_id = $2"];
+
+  if (query.projectId) {
+    addCondition(where, values, (placeholder) => `d.project_id = ${placeholder}`, query.projectId);
+  }
+
+  const semantic = parameterIdentityMode() === "semantic";
+  const result = await db.query<DraftRow>(
+    semantic
+      ? `
+    select
+      d.id,
+      d.project_id,
+      coalesce(d.project_parameter_binding_id, '') as project_parameter_value_id,
+      d.target_value,
+      d.action,
+      d.reason,
+      d.updated_at,
+      d.project_parameter_binding_id,
+      d.candidate_config_revision_id,
+      b.parameter_spec_id,
+      locked_bpr.raw_value as base_raw_value,
+      coalesce(
+        dps.property_key,
+        nullif(split_part(ps.specification_key, '/', 2), ''),
+        ps.specification_key
+      ) as property_name,
+      coalesce(pm.name, nullif(split_part(ps.specification_key, '/', 1), '')) as driver_module
+    from parameter_drafts d
+    left join project_parameter_bindings b
+      on b.id = d.project_parameter_binding_id
+    left join parameter_modules pm
+      on pm.id = b.module_id
+    left join parameter_specs ps
+      on ps.id = b.parameter_spec_id
+    left join dts_property_specs dps
+      on dps.parameter_spec_id = ps.id
+    left join project_parameter_binding_revisions locked_bpr
+      on locked_bpr.id = d.binding_revision_id
+    where ${where.join("\n      and ")}
+    order by d.updated_at desc
+    `
+      : `
+    select
+      d.id,
+      d.project_id,
+      d.project_parameter_value_id,
+      d.target_value,
+      d.action,
+      d.reason,
+      d.updated_at,
+      d.project_parameter_binding_id,
+      d.candidate_config_revision_id,
+      coalesce(b.parameter_spec_id, null) as parameter_spec_id,
+      coalesce(locked_bpr.raw_value, ppv.current_value) as base_raw_value,
+      coalesce(
+        dps.property_key,
+        nullif(split_part(ps.specification_key, '/', 2), ''),
+        ps.specification_key,
+        pd.name
+      ) as property_name,
+      coalesce(
+        pm.name,
+        nullif(split_part(ps.specification_key, '/', 1), ''),
+        pd.module
+      ) as driver_module
+    from parameter_drafts d
+    left join project_parameter_values ppv
+      on ppv.id = d.project_parameter_value_id
+    left join parameter_definitions pd
+      on pd.id = ppv.parameter_definition_id
+    left join project_parameter_bindings b
+      on b.id = d.project_parameter_binding_id
+    left join parameter_modules pm
+      on pm.id = b.module_id
+    left join parameter_specs ps
+      on ps.id = b.parameter_spec_id
+    left join dts_property_specs dps
+      on dps.parameter_spec_id = ps.id
+    left join project_parameter_binding_revisions locked_bpr
+      on locked_bpr.id = d.binding_revision_id
+    where ${where.join("\n      and ")}
+    order by d.updated_at desc
+    `,
+    values
+  );
+
+  return result.rows.map(toDraftDto);
+}
+
+export async function listDraftsForParameterValue(
+  db: Queryable,
+  query: { projectParameterValueId: string }
+) {
+  const semantic = parameterIdentityMode() === "semantic";
+  const result = await db.query<DraftRow>(
+    semantic
+      ? `
+    select
+      id,
+      user_id,
+      project_id,
+      coalesce(project_parameter_binding_id, '') as project_parameter_value_id,
+      target_value,
+      action,
+      origin,
+      origin_file_version_id,
+      updated_at,
+      project_parameter_binding_id
+    from parameter_drafts
+    where project_parameter_binding_id = $1
+    order by updated_at desc, id asc
+    `
+      : `
+    select id, user_id, project_id, project_parameter_value_id, target_value, action, origin, origin_file_version_id, updated_at, project_parameter_binding_id
+    from parameter_drafts
+    where project_parameter_value_id = $1
+    order by updated_at desc, id asc
+    `,
+    [query.projectParameterValueId]
+  );
+
+  return result.rows.map(toDraftWithOrigin);
+}
+
+export async function listOpenBindingDraftsForUser(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; userId: string },
+): Promise<
+  Array<{
+    id: string;
+    candidateConfigRevisionId: string | null;
+    projectParameterBindingId: string | null;
+    editSubjectKind: "binding" | "node-enablement";
+    logicalNodeId: string | null;
+    updatedAt: string;
+  }>
+> {
+  const result = await db.query<{
+    id: string;
+    candidate_config_revision_id: string | null;
+    project_parameter_binding_id: string | null;
+    edit_subject_kind: string;
+    logical_node_id: string | null;
+    updated_at: Date | string;
+  }>(
+    `
+    select id, candidate_config_revision_id, project_parameter_binding_id,
+           edit_subject_kind, logical_node_id, updated_at
+    from parameter_drafts
+    where organization_id = $1
+      and project_id = $2
+      and user_id = $3
+    order by updated_at desc, id asc
+    `,
+    [input.organizationId, input.projectId, input.userId],
+  );
+  return result.rows.map((row) => ({
+    id: row.id,
+    candidateConfigRevisionId: row.candidate_config_revision_id,
+    projectParameterBindingId: row.project_parameter_binding_id,
+    editSubjectKind:
+      row.edit_subject_kind === "node-enablement" ? "node-enablement" : "binding",
+    logicalNodeId: row.logical_node_id,
+    updatedAt: typeof row.updated_at === "string" ? row.updated_at : row.updated_at.toISOString(),
+  }));
+}
+
+export async function rebaseOpenBindingDraftCandidates(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    userId: string;
+    candidateConfigRevisionId: string;
+    excludeDraftId?: string;
+  },
+): Promise<string[]> {
+  const result = await db.query<{ id: string }>(
+    `
+    update parameter_drafts
+    set candidate_config_revision_id = $4,
+        updated_at = now()
+    where organization_id = $1
+      and project_id = $2
+      and user_id = $3
+      and candidate_config_revision_id is distinct from $4
+      and ($5::text is null or id <> $5)
+    returning id
+    `,
+    [
+      input.organizationId,
+      input.projectId,
+      input.userId,
+      input.candidateConfigRevisionId,
+      input.excludeDraftId ?? null,
+    ],
+  );
+  return result.rows.map((row) => row.id);
+}
+
+/**
+ * Upsert an open node-enablement draft for (project, logical node, user).
+ * Uses select-then-update/insert so binding drafts' partial unique index is untouched.
+ */
+export async function upsertEnablementDraft(
+  db: Queryable,
+  input: {
+    id: string;
+    organizationId: string;
+    projectId: string;
+    logicalNodeId: string;
+    userId: string;
+    targetValue: string;
+    action?: ParameterChangeAction;
+    reason: string;
+    origin?: "manual" | "file_sync";
+    originFileVersionId?: string;
+    writeLock?: {
+      baseConfigRevisionId?: string;
+      propertyOccurrenceId?: string | null;
+      sourceFileVersionId?: string;
+      expectedChecksum?: string;
+      occurrenceSpan?: { start: number; end: number } | null;
+    };
+    candidateConfigRevisionId?: string;
+  },
+): Promise<{ id: string; projectId: string; targetValue: string; action: ParameterChangeAction; reason: string; updatedAt: string }> {
+  const existing = await db.query<{ id: string }>(
+    `
+    select id
+    from parameter_drafts
+    where project_id = $1
+      and user_id = $2
+      and logical_node_id = $3
+      and edit_subject_kind = 'node-enablement'
+    limit 1
+    `,
+    [input.projectId, input.userId, input.logicalNodeId],
+  );
+
+  const draftId = existing.rows[0]?.id ?? input.id;
+  const occurrenceSpanJson = input.writeLock?.occurrenceSpan
+    ? JSON.stringify(input.writeLock.occurrenceSpan)
+    : null;
+
+  if (existing.rows[0]) {
+    const updated = await db.query<{
+      id: string;
+      project_id: string;
+      target_value: string;
+      action: ParameterChangeAction;
+      reason: string;
+      updated_at: Date | string;
+    }>(
+      `
+      update parameter_drafts
+      set target_value = $2,
+          reason = $3,
+          origin = $4,
+          origin_file_version_id = $5,
+          action = $6,
+          project_parameter_binding_id = null,
+          base_config_revision_id = coalesce($7, base_config_revision_id),
+          binding_revision_id = null,
+          property_occurrence_id = coalesce($8, property_occurrence_id),
+          source_file_version_id = coalesce($9, source_file_version_id),
+          expected_checksum = coalesce($10, expected_checksum),
+          occurrence_span = coalesce($11::jsonb, occurrence_span),
+          candidate_config_revision_id = coalesce($12, candidate_config_revision_id),
+          updated_at = now()
+      where id = $1
+      returning id, project_id, target_value, action, reason, updated_at
+      `,
+      [
+        draftId,
+        input.targetValue,
+        input.reason,
+        input.origin ?? "manual",
+        input.originFileVersionId ?? null,
+        input.action ?? "set",
+        input.writeLock?.baseConfigRevisionId ?? null,
+        input.writeLock?.propertyOccurrenceId ?? null,
+        input.writeLock?.sourceFileVersionId ?? null,
+        input.writeLock?.expectedChecksum ?? null,
+        occurrenceSpanJson,
+        input.candidateConfigRevisionId ?? null,
+      ],
+    );
+    const row = updated.rows[0]!;
+    return {
+      id: row.id,
+      projectId: row.project_id,
+      targetValue: row.target_value,
+      action: row.action,
+      reason: row.reason,
+      updatedAt: typeof row.updated_at === "string" ? row.updated_at : row.updated_at.toISOString(),
+    };
+  }
+
+  const inserted = await db.query<{
+    id: string;
+    project_id: string;
+    target_value: string;
+    action: ParameterChangeAction;
+    reason: string;
+    updated_at: Date | string;
+  }>(
+    `
+    insert into parameter_drafts (
+      id, organization_id, project_id, user_id,
+      target_value, reason, origin, origin_file_version_id,
+      action, edit_subject_kind, logical_node_id, project_parameter_binding_id,
+      base_config_revision_id, binding_revision_id, property_occurrence_id,
+      source_file_version_id, expected_checksum, occurrence_span,
+      candidate_config_revision_id
+    )
+    values (
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, 'node-enablement', $10, null,
+      $11, null, $12, $13, $14, $15::jsonb, $16
+    )
+    returning id, project_id, target_value, action, reason, updated_at
+    `,
+    [
+      draftId,
+      input.organizationId,
+      input.projectId,
+      input.userId,
+      input.targetValue,
+      input.reason,
+      input.origin ?? "manual",
+      input.originFileVersionId ?? null,
+      input.action ?? "set",
+      input.logicalNodeId,
+      input.writeLock?.baseConfigRevisionId ?? null,
+      input.writeLock?.propertyOccurrenceId ?? null,
+      input.writeLock?.sourceFileVersionId ?? null,
+      input.writeLock?.expectedChecksum ?? null,
+      occurrenceSpanJson,
+      input.candidateConfigRevisionId ?? null,
+    ],
+  );
+  const row = inserted.rows[0]!;
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    targetValue: row.target_value,
+    action: row.action,
+    reason: row.reason,
+    updatedAt: typeof row.updated_at === "string" ? row.updated_at : row.updated_at.toISOString(),
+  };
+}
+
+export async function upsertDraft(
+  db: Queryable,
+  input: {
+    id: string;
+    organizationId: string;
+    projectId: string;
+    parameterId: string;
+    userId: string;
+    targetValue: string;
+    action?: ParameterChangeAction;
+    reason: string;
+    origin?: "manual" | "file_sync";
+    originFileVersionId?: string;
+    /** Semantic binding identity — required for topology-aware drafts. */
+    projectParameterBindingId?: string;
+    parameterSpecId?: string;
+    writeLock?: BindingWriteLockFields;
+    candidateConfigRevisionId?: string;
+  }
+) {
+  if (parameterIdentityMode() === "semantic") {
+    const bindingId = input.projectParameterBindingId ?? input.parameterId;
+    const row = await upsertSemanticDraft(db, {
+      id: input.id,
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      bindingId,
+      userId: input.userId,
+      targetValue: input.targetValue,
+      action: input.action,
+      reason: input.reason,
+      origin: input.origin,
+      originFileVersionId: input.originFileVersionId,
+      baseConfigRevisionId: input.writeLock?.baseConfigRevisionId,
+      bindingRevisionId: input.writeLock?.bindingRevisionId,
+      propertyOccurrenceId: input.writeLock?.propertyOccurrenceId,
+      sourceFileVersionId: input.writeLock?.sourceFileVersionId,
+      expectedChecksum: input.writeLock?.expectedChecksum,
+      occurrenceSpan: input.writeLock?.occurrenceSpan,
+      candidateConfigRevisionId: input.candidateConfigRevisionId,
+    });
+    void input.parameterSpecId;
+    if (!row) {
+      throw new Error("Failed to upsert semantic parameter draft");
+    }
+    return toDraftDto({
+      id: row.id,
+      project_id: row.project_id,
+      project_parameter_value_id: bindingId,
+      target_value: row.target_value,
+      action: row.action,
+      reason: row.reason,
+      updated_at: row.updated_at,
+      project_parameter_binding_id: row.project_parameter_binding_id
+    });
+  }
+
+  const result = await db.query<DraftRow>(
+    `
+    insert into parameter_drafts (
+      id, organization_id, project_id, project_parameter_value_id, user_id,
+      target_value, reason, origin, origin_file_version_id,
+      action, project_parameter_binding_id, candidate_config_revision_id,
+      base_config_revision_id, binding_revision_id, property_occurrence_id,
+      source_file_version_id, expected_checksum, occurrence_span
+    )
+    values (
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+      $13, $14, $15, $16, $17, $18::jsonb
+    )
+    on conflict (project_id, project_parameter_value_id, user_id)
+    do update set
+      target_value = excluded.target_value,
+      reason = excluded.reason,
+      origin = excluded.origin,
+      origin_file_version_id = excluded.origin_file_version_id,
+      action = excluded.action,
+      project_parameter_binding_id = coalesce(
+        excluded.project_parameter_binding_id,
+        parameter_drafts.project_parameter_binding_id
+      ),
+      candidate_config_revision_id = coalesce(
+        excluded.candidate_config_revision_id,
+        parameter_drafts.candidate_config_revision_id
+      ),
+      base_config_revision_id = coalesce(
+        excluded.base_config_revision_id,
+        parameter_drafts.base_config_revision_id
+      ),
+      binding_revision_id = coalesce(
+        excluded.binding_revision_id,
+        parameter_drafts.binding_revision_id
+      ),
+      property_occurrence_id = coalesce(
+        excluded.property_occurrence_id,
+        parameter_drafts.property_occurrence_id
+      ),
+      source_file_version_id = coalesce(
+        excluded.source_file_version_id,
+        parameter_drafts.source_file_version_id
+      ),
+      expected_checksum = coalesce(
+        excluded.expected_checksum,
+        parameter_drafts.expected_checksum
+      ),
+      occurrence_span = coalesce(
+        excluded.occurrence_span,
+        parameter_drafts.occurrence_span
+      ),
+      updated_at = now()
+    returning id, project_id, project_parameter_value_id, target_value, action, reason, updated_at
+    `,
+    [
+      input.id,
+      input.organizationId,
+      input.projectId,
+      input.parameterId,
+      input.userId,
+      input.targetValue,
+      input.reason,
+      input.origin ?? "manual",
+      input.originFileVersionId ?? null,
+      input.action ?? "set",
+      input.projectParameterBindingId ?? null,
+      input.candidateConfigRevisionId ?? null,
+      input.writeLock?.baseConfigRevisionId ?? null,
+      input.writeLock?.bindingRevisionId ?? null,
+      input.writeLock?.propertyOccurrenceId ?? null,
+      input.writeLock?.sourceFileVersionId ?? null,
+      input.writeLock?.expectedChecksum ?? null,
+      input.writeLock?.occurrenceSpan ? JSON.stringify(input.writeLock.occurrenceSpan) : null
+    ]
+  );
+
+  // parameter_spec_id is stored on change requests / history; drafts carry binding id.
+  void input.parameterSpecId;
+
+  return toDraftDto(result.rows[0]);
+}
+
+export async function upsertFileSyncDraft(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    projectParameterValueId: string;
+    userId: string;
+    targetValue: string;
+    reason: string;
+    originFileVersionId: string;
+  }
+) {
+  return upsertDraft(db, {
+    id: `${input.projectParameterValueId}-${input.userId}-file-sync`,
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    parameterId: input.projectParameterValueId,
+    userId: input.userId,
+    targetValue: input.targetValue,
+    reason: input.reason,
+    origin: "file_sync",
+    originFileVersionId: input.originFileVersionId
+  });
+}
+
+export async function deleteDraft(
+  db: Queryable,
+  input: { organizationId: string; userId: string; draftId: string }
+) {
+  await db.query(
+    `
+    delete from parameter_drafts
+    where organization_id = $1
+      and user_id = $2
+      and id = $3
+    `,
+    [input.organizationId, input.userId, input.draftId]
+  );
+}
+
+export async function deleteDraftForParameter(
+  db: Queryable,
+  input: { organizationId: string; userId: string; projectId: string; parameterId: string }
+) {
+  if (parameterIdentityMode() === "semantic") {
+    await db.query(
+      `
+      delete from parameter_drafts
+      where organization_id = $1
+        and user_id = $2
+        and project_id = $3
+        and project_parameter_binding_id = $4
+      `,
+      [input.organizationId, input.userId, input.projectId, input.parameterId]
+    );
+    return;
+  }
+
+  await db.query(
+    `
+    delete from parameter_drafts
+    where organization_id = $1
+      and user_id = $2
+      and project_id = $3
+      and project_parameter_value_id = $4
+    `,
+    [input.organizationId, input.userId, input.projectId, input.parameterId]
+  );
+}
