@@ -974,6 +974,37 @@ describe("deployReloadRun", () => {
     });
   });
 
+  it("captures kernel log evidence even when the trigger write fails", async () => {
+    const artifactSha = createHash("sha256").update("dtbo").digest("hex");
+    const call = vi.fn(async (_bridgeId: string, method: string) => {
+      if (method === "bridge.getCapabilities") {
+        return { methods: [...DTS_RELOAD_BRIDGE_RPC_METHODS, "bridge.getCapabilities", "debug.readNode"] };
+      }
+      if (method === "debug.mountTarget") return { ok: true };
+      if (method === "debug.pushFile") {
+        return { ok: true, localDigest: artifactSha, remoteDigest: artifactSha, integrityCheck: "sha256" };
+      }
+      if (method === "debug.writeNode") return { ok: false, error: "sh: permission denied" };
+      if (method === "debug.readKernelLog") {
+        return { ok: true, text: "kernel: dts_overlay trigger write rejected\n", truncated: false };
+      }
+      throw new Error(`unexpected ${method}`);
+    });
+
+    const result = await runSuccessfulDeployThroughTrigger({ call });
+
+    expect(result.status).toBe("failed");
+    expect(result.failureCode).toBe("trigger-reload-failed");
+    expect(result.steps.find((step) => step.step === "trigger-reload")?.outcome).toBe("failed");
+    expect(result.reloadSnapshot?.kernelSignal).toMatchObject({
+      command: "dmesg",
+      captureStatus: "obtained",
+      rawText: "kernel: dts_overlay trigger write rejected\n"
+    });
+    expect(call.mock.calls.some((entry) => entry[1] === "debug.readKernelLog")).toBe(true);
+    expect(call.mock.calls.some((entry) => entry[1] === "debug.readNode")).toBe(false);
+  });
+
   it("reads bound parameters through debug.readNode and reports behaviourally verified", async () => {
     const bridgeRpcClient = {
       call: successfulDeployRpcHandlers(

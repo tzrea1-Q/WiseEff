@@ -562,6 +562,55 @@ export async function executeReloadDeploy(input: {
       { timeoutMs: triggerTimeoutMs }
     );
 
+    // Kernel log capture is unjudged evidence; run outcome is never derived from log text.
+    // Captured after a successful trigger, and also after a failed trigger — the log is
+    // most valuable exactly when the reload went wrong (permission denied, parse errors).
+    const kernelLogTimeoutMs = deps.kernelLogTimeoutMs ?? RELOAD_KERNEL_LOG_TIMEOUT_MS;
+    const captureKernelSignal = async () => {
+      try {
+        const captureResult = await deps.bridgeRpcClient.call(
+          deploy.bridgeId,
+          "debug.readKernelLog",
+          {
+            protocol: deploy.protocol,
+            targetRef: deploy.targetRef,
+            command: configuration.kernelLogCommand
+          },
+          { timeoutMs: kernelLogTimeoutMs }
+        );
+        const rawText = typeof captureResult.text === "string" ? captureResult.text : "";
+        // Prefer non-empty verbatim text even when the bridge reports ok:false — kernel log lines
+        // may look like tool diagnostics, and the capture is unjudged evidence either way.
+        if (rawText.length > 0) {
+          return buildObtainedKernelSignal({
+            command: configuration.kernelLogCommand,
+            rawText,
+            truncated: captureResult.truncated === true,
+            targets: run.targets
+          });
+        }
+        if (captureResult.ok === true) {
+          return buildNotObtainedKernelSignal({
+            command: configuration.kernelLogCommand,
+            captureError: "Kernel log capture returned no text."
+          });
+        }
+        const message =
+          typeof captureResult.error === "string" && captureResult.error.trim()
+            ? captureResult.error
+            : "Kernel log capture failed.";
+        return buildNotObtainedKernelSignal({
+          command: configuration.kernelLogCommand,
+          captureError: message
+        });
+      } catch (error) {
+        return buildNotObtainedKernelSignal({
+          command: configuration.kernelLogCommand,
+          captureError: error instanceof Error && error.message.trim() ? error.message : "Kernel log capture threw."
+        });
+      }
+    };
+
     if (triggerResult.ok !== true) {
       const message =
         typeof triggerResult.error === "string" && triggerResult.error.trim()
@@ -586,7 +635,8 @@ export async function executeReloadDeploy(input: {
           targets: run.targets,
           artifactSha256: contentSha256,
           onDeviceDigest: remoteDigest,
-          integrityCheck
+          integrityCheck,
+          kernelSignal: await captureKernelSignal()
         }),
         completedAt: now().toISOString()
       });
@@ -594,54 +644,7 @@ export async function executeReloadDeploy(input: {
 
     markStep("trigger-reload", { outcome: "passed", completedAt: now().toISOString() });
 
-    // Capture kernel log evidence after a successful trigger. Never derive run outcome from log text.
-    const kernelLogTimeoutMs = deps.kernelLogTimeoutMs ?? RELOAD_KERNEL_LOG_TIMEOUT_MS;
-    let kernelSignal = buildNotObtainedKernelSignal({
-      command: configuration.kernelLogCommand,
-      captureError: "Kernel log capture did not run."
-    });
-    try {
-      const captureResult = await deps.bridgeRpcClient.call(
-        deploy.bridgeId,
-        "debug.readKernelLog",
-        {
-          protocol: deploy.protocol,
-          targetRef: deploy.targetRef,
-          command: configuration.kernelLogCommand
-        },
-        { timeoutMs: kernelLogTimeoutMs }
-      );
-      const rawText = typeof captureResult.text === "string" ? captureResult.text : "";
-      // Prefer non-empty verbatim text even when the bridge reports ok:false — kernel log lines
-      // may look like tool diagnostics, and the capture is unjudged evidence either way.
-      if (rawText.length > 0) {
-        kernelSignal = buildObtainedKernelSignal({
-          command: configuration.kernelLogCommand,
-          rawText,
-          truncated: captureResult.truncated === true,
-          targets: run.targets
-        });
-      } else if (captureResult.ok === true) {
-        kernelSignal = buildNotObtainedKernelSignal({
-          command: configuration.kernelLogCommand,
-          captureError: "Kernel log capture returned no text."
-        });
-      } else {
-        const message =
-          typeof captureResult.error === "string" && captureResult.error.trim()
-            ? captureResult.error
-            : "Kernel log capture failed.";
-        kernelSignal = buildNotObtainedKernelSignal({
-          command: configuration.kernelLogCommand,
-          captureError: message
-        });
-      }
-    } catch (error) {
-      kernelSignal = buildNotObtainedKernelSignal({
-        command: configuration.kernelLogCommand,
-        captureError: error instanceof Error && error.message.trim() ? error.message : "Kernel log capture threw."
-      });
-    }
+    const kernelSignal = await captureKernelSignal();
 
     // Behavioural verification via existing debug.readNode only — after kernel log capture.
     // Kernel log remains unjudged evidence; outcomes come only from debug-node read-back.

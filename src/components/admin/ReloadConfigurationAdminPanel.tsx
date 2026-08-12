@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import type { ReloadConfigurationContract } from "@/domain/dtsReload/types";
-import { KERNEL_LOG_COMMAND_ALLOWLIST } from "@/domain/dtsReload/types";
+import { isStreamingKernelLogCommand, KERNEL_LOG_COMMAND_ALLOWLIST } from "@/domain/dtsReload/types";
 import { DebugAdminSelectControl } from "@/components/admin/DebugAdminSelectControl";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,9 +27,13 @@ const FIELD_HINTS = {
   destinationDirectory: "设备上放置 overlay 产物的目录，须以 / 结尾。",
   destinationFilename: "写入该目录的文件名，通常为 .dtbo。",
   triggerNodePath: "写入后触发内核重载的 debugfs / sysfs 节点。",
-  triggerPayload: "写入触发节点的载荷，常见为 1。",
-  kernelLogCommand: "仅允许列表中的精确命令；桥接侧会再次校验。"
+  triggerPayload: "向触发节点写入的内容，写入后内核开始重载，常见为 1。",
+  kernelLogCommand:
+    "仅允许列表中的精确命令；桥接侧会再次校验。设备侧不支持管道过滤（如 | grep）——采集后由平台按参数名与节点名自动筛选匹配行。"
 } as const;
+
+const STREAMING_COMMAND_WARNING =
+  "该命令为持续输出，每次采集会等待约 10 秒超时后截取已输出内容。如需一次性转储完整内核缓冲区，建议选择 dmesg 或 hilog -x。";
 
 function contractFields(contract: ReloadConfigurationContract): ReloadConfigurationContract {
   return {
@@ -240,10 +244,10 @@ export function ReloadConfigurationAdminPanel({
           </div>
 
           <div className="reload-configuration-form__field">
-            <Label htmlFor="reload-org-trigger-payload">触发载荷</Label>
+            <Label htmlFor="reload-org-trigger-payload">触发写入值</Label>
             <Input
               id="reload-org-trigger-payload"
-              aria-label="组织触发载荷"
+              aria-label="组织触发写入值"
               className="reload-configuration-form__control mono"
               value={organisationDraft.triggerPayload}
               disabled={fieldsDisabled}
@@ -265,6 +269,11 @@ export function ReloadConfigurationAdminPanel({
               disabled={fieldsDisabled}
             />
             <p className="reload-configuration-form__hint">{FIELD_HINTS.kernelLogCommand}</p>
+            {isStreamingKernelLogCommand(organisationDraft.kernelLogCommand) ? (
+              <p className="reload-configuration-form__hint text-amber-900" role="note">
+                {STREAMING_COMMAND_WARNING}
+              </p>
+            ) : null}
           </div>
         </div>
 
