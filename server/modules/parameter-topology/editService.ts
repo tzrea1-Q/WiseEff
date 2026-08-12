@@ -315,7 +315,12 @@ function assertSchemaAllows(value: DtsValue, constraints: unknown): void {
   }
 }
 
-async function loadBindingContext(
+/**
+ * Semantic binding lookup (works the same pre- and post-cutover). Exported for
+ * workbench-less callers such as the Xiaoze action tool that need the binding's
+ * project, property key, and node locator without the mode-branched legacy reads.
+ */
+export async function loadBindingContext(
   db: Queryable,
   auth: AuthContext,
   bindingId: string,

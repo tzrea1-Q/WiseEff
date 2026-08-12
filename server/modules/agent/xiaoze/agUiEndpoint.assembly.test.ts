@@ -10,7 +10,6 @@ vi.mock("../../parameters/sensitiveNode", () => ({
 }));
 
 vi.mock("../../parameters/repository", () => ({
-  getProjectParameterForUpdate: vi.fn(),
   deleteDraft: vi.fn()
 }));
 
@@ -19,6 +18,7 @@ vi.mock("../../parameter-topology/service", () => ({
 }));
 
 vi.mock("../../parameter-topology/editService", () => ({
+  loadBindingContext: vi.fn(),
   resolveBindingHeadRevisionId: vi.fn()
 }));
 
@@ -27,17 +27,28 @@ import { developmentAuthContext } from "../../auth/routes";
 import { createMemoryAgentDb } from "../testing/memoryAgentDb";
 import { registerXiaozeRoutes } from "./agUiEndpoint";
 import { submitParameterChanges } from "../../parameters/service";
-import { getProjectParameterForUpdate } from "../../parameters/repository";
 import { createBindingDraft } from "../../parameter-topology/service";
-import { resolveBindingHeadRevisionId } from "../../parameter-topology/editService";
+import { loadBindingContext, resolveBindingHeadRevisionId } from "../../parameter-topology/editService";
 
 const mockedSubmit = vi.mocked(submitParameterChanges);
-const mockedGetParameter = vi.mocked(getProjectParameterForUpdate);
+const mockedLoadBinding = vi.mocked(loadBindingContext);
 const mockedCreateDraft = vi.mocked(createBindingDraft);
 const mockedResolveHead = vi.mocked(resolveBindingHeadRevisionId);
 
 function primeParameterMocks(editedRawText: string) {
-  mockedGetParameter.mockResolvedValue({ name: "pd-1", sourceNodePath: undefined } as never);
+  mockedLoadBinding.mockResolvedValue({
+    binding_id: "pd-1",
+    organization_id: "org-chargelab",
+    project_id: "aurora",
+    parameter_spec_id: "spec-1",
+    logical_node_id: "ln-1",
+    property_key: "pd-1",
+    node_locator: null,
+    constraints: {},
+    schema_default: null,
+    example_value: null,
+    policy_target: null
+  } as never);
   mockedResolveHead.mockResolvedValue("rev-base" as never);
   mockedCreateDraft.mockResolvedValue({
     draftId: "draft-1",
@@ -193,7 +204,6 @@ describe("registerXiaozeRoutes approval assembly", () => {
   });
 
   it("rejects an approval through the same chain without executing the tool", async () => {
-    mockedGetParameter.mockResolvedValue(null as never);
     mockedSubmit.mockReset();
 
     const { db, tables } = createMemoryAgentDb();

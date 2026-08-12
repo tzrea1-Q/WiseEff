@@ -10,7 +10,6 @@ vi.mock("../../parameters/sensitiveNode", () => ({
 }));
 
 vi.mock("../../parameters/repository", () => ({
-  getProjectParameterForUpdate: vi.fn(),
   deleteDraft: vi.fn()
 }));
 
@@ -19,20 +18,35 @@ vi.mock("../../parameter-topology/service", () => ({
 }));
 
 vi.mock("../../parameter-topology/editService", () => ({
+  loadBindingContext: vi.fn(),
   resolveBindingHeadRevisionId: vi.fn()
 }));
 
 import { createActionTools } from "./actionTools";
 import { submitParameterChanges } from "../../parameters/service";
-import { deleteDraft, getProjectParameterForUpdate } from "../../parameters/repository";
+import { deleteDraft } from "../../parameters/repository";
 import { createBindingDraft } from "../../parameter-topology/service";
-import { resolveBindingHeadRevisionId } from "../../parameter-topology/editService";
+import { loadBindingContext, resolveBindingHeadRevisionId } from "../../parameter-topology/editService";
 
 const mockedSubmit = vi.mocked(submitParameterChanges);
-const mockedGetParameter = vi.mocked(getProjectParameterForUpdate);
+const mockedLoadBinding = vi.mocked(loadBindingContext);
 const mockedDeleteDraft = vi.mocked(deleteDraft);
 const mockedCreateDraft = vi.mocked(createBindingDraft);
 const mockedResolveHead = vi.mocked(resolveBindingHeadRevisionId);
+
+const bindingContext = {
+  binding_id: "binding-1",
+  organization_id: "org1",
+  project_id: "p1",
+  parameter_spec_id: "spec-1",
+  logical_node_id: "ln-1",
+  property_key: "iin_max",
+  node_locator: null,
+  constraints: {},
+  schema_default: null,
+  example_value: null,
+  policy_target: null
+};
 
 const db = {
   query: vi.fn(),
@@ -72,7 +86,7 @@ function tool() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockedGetParameter.mockResolvedValue({ name: "iin_max", sourceNodePath: undefined } as never);
+  mockedLoadBinding.mockResolvedValue(bindingContext as never);
   mockedResolveHead.mockResolvedValue("rev-base");
   mockedCreateDraft.mockResolvedValue(draftResult as never);
   mockedSubmit.mockResolvedValue({ id: "round-1", items: [{ requestId: "cr-9" }] } as never);
@@ -142,11 +156,11 @@ describe("action.submitParameterChange", () => {
     expect(mockedSubmit).not.toHaveBeenCalled();
   });
 
-  it("returns 404 when the binding does not exist in the project", async () => {
-    mockedGetParameter.mockResolvedValue(null as never);
+  it("returns 404 when the binding belongs to a different project", async () => {
+    mockedLoadBinding.mockResolvedValue({ ...bindingContext, project_id: "other-project" } as never);
 
     await expect(
-      tool().run(adminContext, { projectId: "p1", parameterId: "missing", targetValue: "<1>", reason: "tune" })
+      tool().run(adminContext, { projectId: "p1", parameterId: "binding-1", targetValue: "<1>", reason: "tune" })
     ).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
 
     expect(mockedCreateDraft).not.toHaveBeenCalled();

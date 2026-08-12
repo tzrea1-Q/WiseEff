@@ -3,10 +3,10 @@ import type { Database } from "../../../shared/database/client";
 import type { ObjectStore } from "../../logs/objectStore";
 import type { DtsToolchainRunner } from "../../parameter-files/dtsToolchain";
 import { parseDtsValue } from "../../dts/valueAst";
-import { deleteDraft, getProjectParameterForUpdate } from "../../parameters/repository";
+import { deleteDraft } from "../../parameters/repository";
 import { assertSensitiveNodeWriteAllowed } from "../../parameters/sensitiveNode";
 import { submitParameterChanges } from "../../parameters/service";
-import { resolveBindingHeadRevisionId } from "../../parameter-topology/editService";
+import { loadBindingContext, resolveBindingHeadRevisionId } from "../../parameter-topology/editService";
 import { createBindingDraft } from "../../parameter-topology/service";
 import type { AgentToolDefinition } from "../toolRegistry";
 
@@ -55,12 +55,10 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
         }
         const db = options.db as Database;
 
-        const parameter = await getProjectParameterForUpdate(db, {
-          organizationId: context.auth.organization.id,
-          projectId,
-          parameterId
-        });
-        if (!parameter) {
+        // Semantic lookup works identically pre- and post-cutover, unlike the
+        // mode-branched legacy parameter reads.
+        const binding = await loadBindingContext(db, context.auth, parameterId);
+        if (binding.project_id !== projectId) {
           throw new ApiError("NOT_FOUND", "Parameter binding was not found for this project.", 404, {
             projectId,
             parameterId
@@ -68,12 +66,12 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
         }
         // Early sensitive-node guard: refuse critical writes before any draft or
         // candidate revision is created. submitParameterChanges re-checks later.
-        if (parameter.sourceNodePath) {
+        if (binding.node_locator) {
           await assertSensitiveNodeWriteAllowed(db, context.auth, {
             organizationId: context.auth.organization.id,
             projectId,
-            nodePath: parameter.sourceNodePath,
-            sourceFileName: parameter.sourceFileName,
+            nodePath: binding.node_locator,
+            sourceFileName: undefined,
             actorType: "agent",
             requestId: context.requestId
           });
@@ -81,7 +79,7 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
 
         let parsedValue: ReturnType<typeof parseDtsValue>;
         try {
-          parsedValue = parseDtsValue(parameter.name, targetValue);
+          parsedValue = parseDtsValue(binding.property_key || "value", targetValue);
         } catch (error) {
           throw new ApiError(
             "VALIDATION_FAILED",

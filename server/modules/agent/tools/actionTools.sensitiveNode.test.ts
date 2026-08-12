@@ -10,7 +10,6 @@ vi.mock("../../parameters/sensitiveNode", () => ({
 }));
 
 vi.mock("../../parameters/repository", () => ({
-  getProjectParameterForUpdate: vi.fn(),
   deleteDraft: vi.fn()
 }));
 
@@ -19,6 +18,7 @@ vi.mock("../../parameter-topology/service", () => ({
 }));
 
 vi.mock("../../parameter-topology/editService", () => ({
+  loadBindingContext: vi.fn(),
   resolveBindingHeadRevisionId: vi.fn()
 }));
 
@@ -29,19 +29,19 @@ vi.mock("../../audit/repository", () => ({
 import { createActionTools } from "./actionTools";
 import { submitParameterChanges } from "../../parameters/service";
 import { assertSensitiveNodeWriteAllowed } from "../../parameters/sensitiveNode";
-import { getProjectParameterForUpdate } from "../../parameters/repository";
+import { loadBindingContext } from "../../parameter-topology/editService";
 import { createBindingDraft } from "../../parameter-topology/service";
 
 const mockedSubmit = vi.mocked(submitParameterChanges);
 const mockedAssert = vi.mocked(assertSensitiveNodeWriteAllowed);
-const mockedGetParameter = vi.mocked(getProjectParameterForUpdate);
+const mockedLoadBinding = vi.mocked(loadBindingContext);
 const mockedCreateDraft = vi.mocked(createBindingDraft);
 
 describe("action.submitParameterChange sensitive node guard", () => {
   beforeEach(() => {
     mockedSubmit.mockReset();
     mockedAssert.mockReset();
-    mockedGetParameter.mockReset();
+    mockedLoadBinding.mockReset();
   });
 
   it("denies agent writes to critical nodes early and does not submit", async () => {
@@ -49,19 +49,19 @@ describe("action.submitParameterChange sensitive node guard", () => {
       query: vi.fn(),
       transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn({ query: vi.fn() }))
     };
-    mockedGetParameter.mockResolvedValue({
-      id: "pd1",
-      projectId: "p1",
-      parameterDefinitionId: "def-1",
-      name: "safety_status",
-      module: "Safety",
-      unit: "",
-      risk: "High",
-      currentValue: "okay",
-      recommendedValue: "okay",
-      valueVersion: 1,
-      sourceNodePath: "safety/cutover/status"
-    } as Awaited<ReturnType<typeof getProjectParameterForUpdate>>);
+    mockedLoadBinding.mockResolvedValue({
+      binding_id: "pd1",
+      organization_id: "org1",
+      project_id: "p1",
+      parameter_spec_id: "def-1",
+      logical_node_id: "ln-1",
+      property_key: "status",
+      node_locator: "safety/cutover/status",
+      constraints: {},
+      schema_default: null,
+      example_value: null,
+      policy_target: null
+    } as never);
 
     mockedAssert.mockRejectedValue(
       new ApiError("FORBIDDEN", "Agent writes to critical sensitive nodes require a human.", 403, {
