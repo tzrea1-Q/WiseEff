@@ -1,4 +1,4 @@
-import { stripDtsComments } from "../parameter-files/preprocess";
+import { stripDtsComments } from "./preprocess";
 
 export type DtsTokenKind =
   | "ident"
