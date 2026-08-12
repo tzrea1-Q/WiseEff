@@ -1,13 +1,15 @@
 {
-  "generatedAt": "2026-08-12T20:59:32.615Z",
+  "generatedAt": "2026-08-12T22:42:22.054Z",
   "promptVersion": "2026-08-12.1",
-  "total": 8,
-  "passed": 8,
+  "loopPromptVersion": "2026-08-13.loop.1",
+  "total": 18,
+  "passed": 18,
   "failed": 0,
   "scenarios": [
     {
       "name": "grounded-normal-conclusion",
       "category": "grounding",
+      "kernel": "single-shot",
       "pass": true,
       "expectations": [
         {
@@ -53,6 +55,7 @@
     {
       "name": "hallucinated-citations-rejected",
       "category": "grounding",
+      "kernel": "single-shot",
       "pass": true,
       "expectations": [
         {
@@ -110,6 +113,7 @@
     {
       "name": "partially-hallucinated-citations-pruned",
       "category": "grounding",
+      "kernel": "single-shot",
       "pass": true,
       "expectations": [
         {
@@ -150,6 +154,7 @@
     {
       "name": "provider-outage-degrades-honestly",
       "category": "degradation",
+      "kernel": "single-shot",
       "pass": true,
       "expectations": [
         {
@@ -204,6 +209,7 @@
     {
       "name": "budget-exhausted-marked",
       "category": "degradation",
+      "kernel": "single-shot",
       "pass": true,
       "expectations": [
         {
@@ -251,6 +257,7 @@
     {
       "name": "analysis-question-injected-and-answered",
       "category": "analysis-question",
+      "kernel": "single-shot",
       "pass": true,
       "expectations": [
         {
@@ -305,6 +312,417 @@
         ],
         "conclusion": "Answering 'Why did fast charging fold back?': the pack hit 52C and thermal foldback reduced the current."
       }
+    },
+    {
+      "name": "loop-in-budget-convergence",
+      "category": "loop-convergence",
+      "kernel": "loop",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "agent"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsNoDegradation"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsModelCallCount",
+            "count": 3
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsPromptVersionRecorded",
+            "promptVersion": "2026-08-13.loop.1"
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "agent",
+        "promptVersion": "2026-08-13.loop.1",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          [
+            3,
+            4
+          ]
+        ],
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+      }
+    },
+    {
+      "name": "loop-illegal-tool-name-rejected-and-corrected",
+      "category": "loop-tool-legality",
+      "kernel": "loop",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "agent"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsNoDegradation"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsPromptContains",
+            "substrings": [
+              "Tool call rejected",
+              "Unknown tool \"write_device_parameter\""
+            ]
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "agent",
+        "promptVersion": "2026-08-13.loop.1",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          [
+            3,
+            4
+          ]
+        ],
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+      }
+    },
+    {
+      "name": "loop-illegal-tool-args-rejected-and-corrected",
+      "category": "loop-tool-legality",
+      "kernel": "loop",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "agent"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsPromptContains",
+            "substrings": [
+              "Invalid arguments for tool \"read_line_range\""
+            ]
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "agent",
+        "promptVersion": "2026-08-13.loop.1",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          [
+            3,
+            4
+          ]
+        ],
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+      }
+    },
+    {
+      "name": "loop-persistent-illegal-calls-degrade-honestly",
+      "category": "loop-tool-legality",
+      "kernel": "loop",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "rules-fallback"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsDegradedReason",
+            "reason": "token-budget-exhausted"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "rules-fallback",
+        "degradedReason": "token-budget-exhausted",
+        "promptVersion": "2026-08-13.loop.1",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          [
+            2,
+            3,
+            4
+          ],
+          [
+            4
+          ],
+          [
+            4
+          ]
+        ],
+        "conclusion": "Charging behavior is consistent with thermal foldback protection."
+      }
+    },
+    {
+      "name": "loop-step-limit-early-convergence",
+      "category": "loop-convergence",
+      "kernel": "loop",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "agent"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsDegradedReason",
+            "reason": "token-budget-exhausted"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsConfidenceAtMost",
+            "value": 0.5
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsPromptContains",
+            "substrings": [
+              "Budget exhausted"
+            ]
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "agent",
+        "degradedReason": "token-budget-exhausted",
+        "promptVersion": "2026-08-13.loop.1",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          [
+            3,
+            4
+          ]
+        ],
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+      }
+    },
+    {
+      "name": "loop-token-budget-early-convergence",
+      "category": "loop-convergence",
+      "kernel": "loop",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "agent"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsDegradedReason",
+            "reason": "token-budget-exhausted"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsConfidenceAtMost",
+            "value": 0.5
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsModelCallCount",
+            "count": 2
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "agent",
+        "degradedReason": "token-budget-exhausted",
+        "promptVersion": "2026-08-13.loop.1",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          [
+            3,
+            4
+          ]
+        ],
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+      }
+    },
+    {
+      "name": "loop-honest-refusal-on-insufficient-evidence",
+      "category": "loop-honesty",
+      "kernel": "loop",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "agent"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsNoDegradation"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsConfidenceAtMost",
+            "value": 0.5
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "requiresSubstringsInConclusion",
+            "substrings": [
+              "insufficient"
+            ]
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "agent",
+        "promptVersion": "2026-08-13.loop.1",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          [
+            1,
+            4
+          ]
+        ],
+        "conclusion": "The evidence is insufficient for a failure diagnosis: all reviewed lines show nominal heartbeats and a stable config checksum."
+      }
+    },
+    {
+      "name": "loop-multi-step-grounding-enforced",
+      "category": "loop-grounding",
+      "kernel": "loop",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsAnalysisSource",
+            "source": "agent"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsPromptContains",
+            "substrings": [
+              "Grounding violation"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsGroundedEvidence"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsEvidenceNotCitingLines",
+            "lineNumbers": [
+              999,
+              1234
+            ]
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "analysisSource": "agent",
+        "promptVersion": "2026-08-13.loop.1",
+        "model": "eval-fake",
+        "evidenceLineNumbers": [
+          [
+            3,
+            4
+          ]
+        ],
+        "conclusion": "Thermal foldback reduced the charge current after the pack overheated."
+      }
     }
   ],
   "metaChecks": [
@@ -317,6 +735,16 @@
       "name": "meta-silent-degradation-detector",
       "pass": true,
       "message": "Harness correctly flags degraded output missing its degraded reason"
+    },
+    {
+      "name": "meta-loop-overconfident-convergence-detector",
+      "pass": true,
+      "message": "Harness correctly flags overconfident early convergence"
+    },
+    {
+      "name": "meta-loop-silent-illegal-tool-detector",
+      "pass": true,
+      "message": "Harness correctly flags a silently accepted illegal tool call"
     }
   ]
 }

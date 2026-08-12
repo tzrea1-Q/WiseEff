@@ -203,20 +203,25 @@ stateDiagram-v2
 | Entity | Description |
 | --- | --- |
 | `LogDomain` | Org-scoped registration of one business's log intake: unique `name` per organization, optional description, `status` (`active` \| `archived`), and an optional declarative `format_profile` JSON (timestamp pattern, multi-line merge rule, severity mapping). |
+| `LogDomainKnowledgeLink` | P2: a domain's link to a published knowledge-base entry (`log_domain_knowledge_links`, composite FKs enforce organization consistency). The link set bounds `read_domain_knowledge` retrieval; entries archived after linking drop out of retrieval automatically while the stale link stays visible to governance. |
 | Analyzer provenance | Additive columns on `log_analysis_reports`: `analysis_source` (`agent` \| `rules-fallback`, NULL for legacy rule reports), `degraded_reason` (`provider-unavailable` \| `token-budget-exhausted`), `prompt_version`, and `model`. |
 
 Rules:
 
 - Tenant isolation stays on `organization_id`; the log domain never carries tenant meaning, and `log_records.source` keeps meaning the intake channel (`upload`).
 - Upload and rerun accept an optional `logDomainId` validated as organization-owned and `active` (otherwise 400). Absence keeps uncategorized-domain semantics; domain selection never blocks an upload.
-- Domain governance (`create`/`update`/`archive`) requires `logs:admin-domains`, validates the format profile JSON on save, and writes `log-domain-*` audit events. Archiving a domain stops new bindings but keeps existing log records readable.
+- Domain governance (`create`/`update`/`archive`, knowledge-link replace) requires `logs:admin-domains`, validates the format profile JSON on save, and writes `log-domain-*` audit events. Archiving a domain stops new bindings but keeps existing log records readable.
+- Knowledge links accept **published** entries only (design D13: publishing is the single trust gate for anything an agent reads); the link set is replaced as a whole and audited (`log-domain-knowledge-links-update`).
 - Parsing applies the bound domain's format profile while preserving stable raw line numbers; evidence always cites original lines.
+
+The analysis kernel (P2 default `LOG_ANALYSIS_KERNEL=loop`; P1 `single-shot` kept as a config fallback) is a plain bounded loop (ADR-0022) of at most `LOG_ANALYSIS_MAX_STEPS` model steps over five read-only, organization-scoped tools (`search_log_lines`, `read_line_range`, `get_prefilter_findings`, `read_domain_knowledge`, `get_related_parameter_context`). It runs inside the `rootcause` stage, mapping step progress onto the 65→80 range; the four-stage vocabulary and the output contract are unchanged.
 
 Degraded analysis (see the glossary entry in `CONTEXT.md`) is a provenance state, not a run state — the run still completes:
 
 - LLM kernel succeeds with grounded output → `analysis_source = 'agent'`, no degraded reason.
 - Transient provider failure rides the existing job retry/backoff; the retry-exhausting final attempt falls back to the deterministic rule engine → `analysis_source = 'rules-fallback'`, `degraded_reason = 'provider-unavailable'`, job completes normally (no dead letter).
 - The budgeted single shot cannot produce a valid grounded output (invalid JSON or every citation rejected by the grounding check) → immediate fallback with `degraded_reason = 'token-budget-exhausted'`.
+- Loop kernel: exhausted steps/tokens or repeated protocol violations trigger one early-convergence attempt; a grounded convergence returns `analysis_source = 'agent'` with `degraded_reason = 'token-budget-exhausted'` and confidence capped at 0.5 (the glossary's "early-converged low-confidence agent conclusion"); anything less lands on the rule fallback with the same reason.
 - Only a failing fallback continues into the existing failure/dead-letter path. Degraded results must never impersonate a full agent analysis; the UI shows the provenance badge and reason.
 
 ### Knowledge Base

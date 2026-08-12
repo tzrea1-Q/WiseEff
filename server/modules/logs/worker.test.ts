@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { claimNextJob } from "../jobs/repository";
 import { createTracingBoundary, type TraceExporter } from "../../observability/tracing";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
+import { createRuleBasedLogAnalyzer, type AnalyzeLogInput, type AnalyzeLogOutput } from "./analyzer";
 import type { ObjectStore } from "./objectStore";
 import { processLogAnalysisJobById, processNextLogAnalysisJob, startLogWorkerLoop } from "./worker";
 
@@ -517,6 +518,37 @@ describe("log worker", () => {
       stage: "report",
       durationMs: 1250
     });
+  });
+
+  it("maps agent-loop steps onto the rootcause 65→80 progress range", async () => {
+    const { db, fixture } = createFakeWorkerDb();
+    const objectStore = createObjectStore(Buffer.from("2026-05-25T02:00:00Z WARN thermal foldback battery_temp=74\n"));
+    const maxSteps = 6;
+    const loopAnalyzer = {
+      async analyze(input: AnalyzeLogInput): Promise<AnalyzeLogOutput> {
+        for (let step = 1; step <= maxSteps; step += 1) {
+          await input.onProgress?.({ step, maxSteps });
+        }
+        return createRuleBasedLogAnalyzer().analyze(input);
+      }
+    };
+
+    const result = await processNextLogAnalysisJob({ db, objectStore, analyzer: loopAnalyzer });
+
+    expect(result).toBe("processed");
+    const rootcauseProgress = fixture.stages
+      .filter((stage) => stage.stage === "rootcause" && stage.status === "processing")
+      .map((stage) => stage.progress);
+    // Step 1 stays at the already-marked 65; later steps advance strictly inside (65, 80).
+    expect(rootcauseProgress[0]).toBe(65);
+    expect(rootcauseProgress.length).toBeGreaterThan(1);
+    expect(rootcauseProgress).toEqual([...rootcauseProgress].sort((left, right) => left - right));
+    for (const progress of rootcauseProgress.slice(1)) {
+      expect(progress).toBeGreaterThan(65);
+      expect(progress).toBeLessThan(80);
+    }
+    const completeRow = fixture.stages.find((stage) => stage.stage === "rootcause" && stage.status === "complete");
+    expect(completeRow?.progress).toBe(80);
   });
 
   it("exports low-cardinality job processing spans without job, run, or object identifiers", async () => {

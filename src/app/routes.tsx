@@ -261,7 +261,16 @@ export function PageRouter({
         />
       );
     case "log-admin":
-      return <LogAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} logActions={logActions} />;
+      return (
+        <LogAdminPage
+          state={state}
+          dispatch={dispatch}
+          onNavigate={onNavigate}
+          search={search}
+          logActions={logActions}
+          knowledgeRepository={knowledgeRepository}
+        />
+      );
     case "feedback-admin":
       return productFeedbackRepository ? <FeedbackAdminPage productFeedbackRepository={productFeedbackRepository} /> : null;
     case "knowledge":

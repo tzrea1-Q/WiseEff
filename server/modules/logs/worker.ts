@@ -285,25 +285,6 @@ async function processClaimedLogAnalysisJob(
     });
     currentProgress = 40;
 
-    const analysis = await analyzeWithDegradation({
-      analyzer,
-      analyzeInput: {
-        parsed,
-        analysisQuestion: snapshot.analysisQuestion ?? undefined,
-        logDomain: snapshot.logDomain
-          ? {
-              name: snapshot.logDomain.name,
-              description: snapshot.logDomain.description ?? undefined
-            }
-          : undefined
-      },
-      job,
-      maxAttempts,
-      retryBaseDelayMs,
-      now,
-      metrics
-    });
-
     await markProgress(options, {
       organizationId: snapshot.organizationId,
       jobId: snapshot.jobId,
@@ -328,6 +309,48 @@ async function processClaimedLogAnalysisJob(
       leaseOwner
     });
     currentProgress = 65;
+
+    // P2: the analysis kernel runs inside the rootcause stage (the agent loop's
+    // natural home); loop steps advance the progress bar inside the 65→80 range.
+    const analysis = await analyzeWithDegradation({
+      analyzer,
+      analyzeInput: {
+        parsed,
+        analysisQuestion: snapshot.analysisQuestion ?? undefined,
+        logDomain: snapshot.logDomain
+          ? {
+              name: snapshot.logDomain.name,
+              description: snapshot.logDomain.description ?? undefined
+            }
+          : undefined,
+        organizationId: snapshot.organizationId,
+        logDomainId: snapshot.logDomain?.id,
+        relatedParameterId: snapshot.relatedParameterId ?? undefined,
+        onProgress: async ({ step, maxSteps }) => {
+          const boundedStep = Math.min(Math.max(step, 1), Math.max(maxSteps, 1));
+          const progress = 65 + Math.min(14, Math.floor(((boundedStep - 1) / Math.max(maxSteps, 1)) * 15));
+          if (progress <= currentProgress) {
+            return;
+          }
+          await markProgress(options, {
+            organizationId: snapshot.organizationId,
+            jobId: snapshot.jobId,
+            runId: snapshot.runId,
+            stage: "rootcause",
+            status: "processing",
+            progress,
+            message: `Analysis step ${boundedStep}/${maxSteps}.`,
+            leaseOwner
+          });
+          currentProgress = progress;
+        }
+      },
+      job,
+      maxAttempts,
+      retryBaseDelayMs,
+      now,
+      metrics
+    });
 
     await markProgress(options, {
       organizationId: snapshot.organizationId,

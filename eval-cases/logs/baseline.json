@@ -1,0 +1,12 @@
+{
+  "note": "quality baseline pending real cases — the gate mechanism is armed but inactive until expert-annotated realLog cases land (external dependency, see README.md)",
+  "createdAt": "2026-08-13T00:00:00.000Z",
+  "kernel": "loop",
+  "promptVersion": "2026-08-13.loop.1",
+  "model": "deterministic",
+  "tolerances": {
+    "rootCauseScoreMean": 0.02,
+    "evidenceRecallMean": 0.05
+  },
+  "realCaseAggregates": null
+}

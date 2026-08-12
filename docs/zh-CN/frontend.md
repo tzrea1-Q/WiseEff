@@ -167,8 +167,8 @@ mock mode 有意保留 12 个兼容参数，以保证组件测试与演示轻量
 
 日志分析：
 
-- `/logs`：上传日志、轮询任务、展示报告和证据。上传弹窗含可选「业务域」下拉（API mode 经 `logActions.listLogDomains()` 拉取活跃域；默认「未分类（通用分析）」，域选择绝不阻塞上传；mock mode 仅显示默认项）。结论卡按 additive 的 `analysisSource` / `degradedReason` 渲染来源徽标：`rules-fallback` 显示醒目的琥珀色「降级分析 · 规则回退」徽标与原因说明，`agent` 显示轻量「Agent 分析」徽标，绑定业务域时显示业务域标签；无来源的历史规则报告不渲染徽标。任务轮询改为自适应退避（1s×30 → 2s×45 → 5s，计划轮询总时长上限约 5 分钟，对齐 p95 ≤ 3min SLO 加余量），并保留按日志的 generation 守卫。
-- `/log-admin`：反馈、归档、重跑、治理操作；新增「业务域治理」区（列表 + 新建/编辑表单 + 画像 JSON 校验 + 归档），前端按 `logs.admin-domains`（Admin）门控，后端路由强制真实 `logs:admin-domains` 权限；`LogRecordDrawer` 同样展示来源/降级徽标。
+- `/logs`：上传日志、轮询任务、展示报告和证据。上传弹窗含可选「业务域」下拉（API mode 经 `logActions.listLogDomains()` 拉取活跃域；默认「未分类（通用分析）」，域选择绝不阻塞上传；mock mode 仅显示默认项）。结论卡按 additive 的 `analysisSource` / `degradedReason` 渲染来源徽标：`rules-fallback` 显示醒目的琥珀色「降级分析 · 规则回退」徽标与原因说明；P2 提前收敛的 agent 结论（`analysisSource: "agent"` 且带 `degradedReason`）显示「降级分析 · 提前收敛」徽标与说明，绝不冒充完整分析；完整 `agent` 结果显示轻量「Agent 分析」徽标，绑定业务域时显示业务域标签；无来源的历史规则报告不渲染徽标。任务轮询改为自适应退避（1s×30 → 2s×45 → 5s，计划轮询总时长上限约 5 分钟，对齐 p95 ≤ 3min SLO 加余量），并保留按日志的 generation 守卫。
+- `/log-admin`：反馈、归档、重跑、治理操作；新增「业务域治理」区（列表 + 新建/编辑表单 + 画像 JSON 校验 + 归档），前端按 `logs.admin-domains`（Admin）门控，后端路由强制真实 `logs:admin-domains` 权限；`LogRecordDrawer` 同样展示来源/降级徽标。P2 起每个活跃域行提供「知识条目」编辑器（`DomainKnowledgeLinksEditor`）：从知识仓储列出**已发布**条目（带标题筛选）供勾选关联；条目不再是已发布的失效关联被标注并在整组替换保存时移除。关联集合限定分析 agent 的 `read_domain_knowledge` 检索（为空时退化为组织内通用检索）。与其余域治理一样仅 API mode 可用。
 
 产品反馈：
 

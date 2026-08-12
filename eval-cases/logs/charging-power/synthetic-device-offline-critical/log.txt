@@ -1,0 +1,9 @@
+2026-08-11 22:14:02.114 INFO  supervisor  device pack-ctrl-anon-9 heartbeat ok uptime_s=86211
+2026-08-11 22:14:32.117 INFO  supervisor  device pack-ctrl-anon-9 heartbeat ok uptime_s=86241
+2026-08-11 22:15:02.559 WARN  supervisor  device pack-ctrl-anon-9 heartbeat late by 12s
+2026-08-11 22:15:32.804 ERROR supervisor  device pack-ctrl-anon-9 heartbeat missed, marking suspect
+2026-08-11 22:16:02.911 ERROR supervisor  code=DEVICE_UNAVAILABLE device pack-ctrl-anon-9 offline after 2 missed heartbeats
+2026-08-11 22:16:03.002 ERROR chargerd    aborting session: device disconnect detected
+2026-08-11 22:16:03.150 INFO  supervisor  reconnect scheduled backoff_s=30
+2026-08-11 22:16:33.301 INFO  supervisor  reconnect attempt 1 failed
+2026-08-11 22:17:03.523 INFO  supervisor  reconnect attempt 2 failed

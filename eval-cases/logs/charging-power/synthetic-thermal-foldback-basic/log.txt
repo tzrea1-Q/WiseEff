@@ -1,0 +1,10 @@
+2026-08-10T08:00:01Z INFO chargerd charge session started session_id=cs-4021 requested_ma=6000
+2026-08-10T08:00:02Z INFO bms battery_temp=38C pack ok cell_delta_mv=12
+2026-08-10T08:00:04Z INFO chargerd negotiated profile=fast-6a bus_mv=11000
+2026-08-10T08:00:09Z INFO bms battery_temp=44C pack ok cell_delta_mv=14
+2026-08-10T08:00:15Z WARN bms battery_temp=51C approaching thermal limit
+2026-08-10T08:00:16Z WARN thermal foldback engaged battery_temp=52C threshold=50C
+2026-08-10T08:00:17Z ERROR chargerd charge current reduced code=E_THERMAL_FOLDBACK requested_ma=6000 charge_current_ma=2000
+2026-08-10T08:00:18Z INFO chargerd charge continuing at reduced rate charge_current_ma=2000
+2026-08-10T08:00:40Z INFO bms battery_temp=49C pack cooling cell_delta_mv=13
+2026-08-10T08:01:10Z INFO chargerd session heartbeat ok charge_current_ma=2000

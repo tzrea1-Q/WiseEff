@@ -339,6 +339,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "LOG-DOMAIN-KNOWLEDGE-001",
+    workflow: "D",
+    title: "Admin links published knowledge entries to a log domain in /log-admin; only published entries are selectable and the link set is audited.",
+    required: true
+  },
+  {
     id: "DEBUG-SIM-001",
     workflow: "E",
     title: "Simulator read, write, mismatch, rollback, and audit path work, including complex JSON value metadata.",
