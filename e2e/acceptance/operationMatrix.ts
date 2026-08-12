@@ -153,6 +153,32 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "db"]
   },
   {
+    id: "KB-DISTILL-001",
+    priority: "P1",
+    area: "knowledge",
+    route: "/logs",
+    roles: ["Hardware User"],
+    action:
+      "Distil a completed log-analysis conclusion into a pre-filled knowledge draft from the log result page, hand off into the /knowledge draft editor via the entry deep link, and publish the reviewed draft with source linkage stored on the entry.",
+    coverage: "automated",
+    acceptanceIds: ["KB-DISTILL-001"],
+    specFiles: ["e2e/acceptance/knowledge.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit"]
+  },
+  {
+    id: "KB-ADMIN-001",
+    priority: "P1",
+    area: "knowledge",
+    route: "/knowledge-admin",
+    roles: ["Admin"],
+    action:
+      "Create an agent knowledge draft through the approval-gated action.createKnowledgeDraft tool (deterministic Xiaoze interrupt then approve, asserted at the SSE API level like XIAOZE-ACTION-APPROVE-001), review it in the /knowledge-admin agent-draft publish queue (creator, session origin, source analysis link), publish one draft, and archive-reject another.",
+    coverage: "automated",
+    acceptanceIds: ["KB-ADMIN-001"],
+    specFiles: ["e2e/acceptance/knowledge.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit"]
+  },
+  {
     id: "SHELL-DIAG-001",
     priority: "P0",
     area: "shell",
@@ -660,6 +686,30 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     acceptanceIds: ["LOG-REANALYZE-001"],
     specFiles: ["e2e/acceptance/log-analysis.acceptance.spec.ts"],
     assertions: ["ui", "api", "db", "audit"]
+  },
+  {
+    id: "LOG-DOMAIN-001",
+    priority: "P1",
+    area: "logs",
+    route: "/log-admin",
+    roles: ["Admin"],
+    action: "Register a log domain in /log-admin governance and upload a log bound to that domain.",
+    coverage: "automated",
+    acceptanceIds: ["LOG-DOMAIN-001"],
+    specFiles: ["e2e/acceptance/log-analysis.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit"]
+  },
+  {
+    id: "LOG-DEGRADED-001",
+    priority: "P1",
+    area: "logs",
+    route: "/logs",
+    roles: ["Software User", "Software Committer", "Admin"],
+    action: "Force a provider outage so the analysis degrades to the rule engine and verify the visible degraded badge and provenance.",
+    coverage: "automated",
+    acceptanceIds: ["LOG-DEGRADED-001"],
+    specFiles: ["e2e/acceptance/log-analysis.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db"]
   },
   {
     id: "DEBUG-SIM-001",

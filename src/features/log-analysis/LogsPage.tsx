@@ -4,11 +4,13 @@ import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "@
 import { type PageProps } from "@/app/routes";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { useToast } from "@/components/common/toast/ToastProvider";
+import type { LogDomain } from "@/domain/logs/types";
 import { SEVERITY_LABELS, STAGE_LABELS, type LogEvidence, type LogRecord, type LogStageId } from "@/domain/prototype/types";
 import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { EmptyState, PanelHeader, SectionLabel } from "@/workbenchUi";
 import {
   AlertTriangle,
+  BookPlus,
   Bot,
   Check,
   Copy,
@@ -82,10 +84,13 @@ function createEmptyLogRecord(): LogRecord {
   };
 }
 
-export function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
+export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, knowledgeCapability }: PageProps) {
   const { toast } = useToast();
+  const knowledgeRepository = runtime?.knowledgeRepository;
   const [selectedLogId, setSelectedLogId] = useState(state.logs[0]?.id ?? "");
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [uploadLogDomains, setUploadLogDomains] = useState<LogDomain[]>([]);
+  const [distilPending, setDistilPending] = useState(false);
   const [pendingUpload, setPendingUpload] = useState<{ fileName: string; previousLogIds: Set<string> } | null>(null);
   const [feedbackLogId, setFeedbackLogId] = useState<string | null>(null);
   const [auxTab, setAuxTab] = useState<LogsAuxTab>("history");
@@ -289,10 +294,49 @@ export function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps)
     document.querySelector<HTMLButtonElement>(".xiaoze-chat-toggle-anchor button")?.click();
   };
 
+  // Distil-to-knowledge (design D15): pre-fills a knowledge draft from this
+  // analysis record and hands off into the /knowledge draft editor deep link.
+  const canDistil = Boolean(knowledgeRepository && knowledgeCapability?.canEdit);
+  const onDistil = useCallback(async () => {
+    if (!knowledgeRepository || !hasActiveLog || distilPending) {
+      return;
+    }
+    setDistilPending(true);
+    try {
+      const draft = await knowledgeRepository.distillFromLog(activeLog.id);
+      dispatch({ type: "ADD_NOTIFICATION", message: "已生成知识草稿,请在知识库中审阅后发布" });
+      onNavigate(`/knowledge?entryId=${encodeURIComponent(draft.id)}`);
+    } catch (error) {
+      dispatch({
+        type: "ADD_NOTIFICATION",
+        message: error instanceof Error && error.message ? `沉淀为知识失败:${error.message}` : "沉淀为知识失败,请稍后重试"
+      });
+    } finally {
+      setDistilPending(false);
+    }
+  }, [activeLog.id, dispatch, distilPending, hasActiveLog, knowledgeRepository, onNavigate]);
+
   const selectedFeedbackLog = feedbackLogId ? state.logs.find((log) => log.id === feedbackLogId) ?? null : null;
   const openUploadDialog = useCallback(() => setUploadDialogOpen(true), []);
+
+  useEffect(() => {
+    if (!uploadDialogOpen || !logActions) {
+      return;
+    }
+
+    let cancelled = false;
+    void logActions.listLogDomains().then((domains) => {
+      if (!cancelled) {
+        setUploadLogDomains(domains);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [logActions, uploadDialogOpen]);
+
   const handleUploadLog = useCallback(
-    async (file: File, supported: boolean, question?: string) => {
+    async (file: File, supported: boolean, question?: string, logDomainId?: string) => {
       if (!logActions) {
         dispatch({ type: "SIMULATE_LOG_UPLOAD", fileName: file.name, supported, question });
         setUploadDialogOpen(false);
@@ -303,7 +347,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps)
       setPendingUpload({ fileName: file.name, previousLogIds: beforeLogIds });
 
       try {
-        await logActions.upload({ file, analysisQuestion: question });
+        await logActions.upload({ file, analysisQuestion: question, logDomainId });
       } catch (error) {
         setPendingUpload(null);
         throw error;
@@ -331,6 +375,8 @@ export function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps)
           log={activeLog}
           onAskAgent={onAskAgent}
           onCopyLink={onCopyLink}
+          onDistil={canDistil ? onDistil : undefined}
+          distilPending={distilPending}
           onExport={onExport}
           onFeedback={() => setFeedbackLogId(activeLog.id)}
           onPrimary={onPrimary}
@@ -376,6 +422,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps)
       {uploadDialogOpen ? (
         <UploadLogDialog
           accept={logActions ? null : ".log,.txt,.json"}
+          domains={uploadLogDomains}
           onClose={() => setUploadDialogOpen(false)}
           onUpload={handleUploadLog}
         />
@@ -402,24 +449,30 @@ function isSupportedLogFile(fileName: string) {
   return /\.(log|txt|json)$/i.test(fileName);
 }
 
+const UNCATEGORIZED_LOG_DOMAIN_VALUE = "";
+
 function UploadLogDialog({
   accept = ".log,.txt,.json",
+  domains = [],
   onClose,
   onUpload
 }: {
   accept?: string | null;
+  domains?: LogDomain[];
   onClose: () => void;
-  onUpload: (file: File, supported: boolean, question?: string) => Promise<void> | void;
+  onUpload: (file: File, supported: boolean, question?: string, logDomainId?: string) => Promise<void> | void;
 }) {
   const [phase, setPhase] = useState<UploadDialogPhase>("idle");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedFileName, setSelectedFileName] = useState("");
   const [question, setQuestion] = useState("");
+  const [selectedDomainId, setSelectedDomainId] = useState<string>(UNCATEGORIZED_LOG_DOMAIN_VALUE);
   const [supported, setSupported] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const timerRef = useRef<number | null>(null);
+  const resolvedDomainId = selectedDomainId === UNCATEGORIZED_LOG_DOMAIN_VALUE ? undefined : selectedDomainId;
 
   useEffect(() => {
     return () => {
@@ -457,7 +510,7 @@ function UploadLogDialog({
     }
     if (files.length > 1) {
       for (let i = 0; i < files.length; i++) {
-        void Promise.resolve(onUpload(files[i], isSupportedLogFile(files[i].name), question)).catch(() => undefined);
+        void Promise.resolve(onUpload(files[i], isSupportedLogFile(files[i].name), question, resolvedDomainId)).catch(() => undefined);
       }
       return;
     }
@@ -471,7 +524,7 @@ function UploadLogDialog({
     if (!files || files.length === 0) return;
     if (files.length > 1) {
       for (let i = 0; i < files.length; i++) {
-        void Promise.resolve(onUpload(files[i], isSupportedLogFile(files[i].name), question)).catch(() => undefined);
+        void Promise.resolve(onUpload(files[i], isSupportedLogFile(files[i].name), question, resolvedDomainId)).catch(() => undefined);
       }
       return;
     }
@@ -495,7 +548,7 @@ function UploadLogDialog({
       return;
     }
     setUploading(true);
-    void Promise.resolve(onUpload(selectedFile, supported, question))
+    void Promise.resolve(onUpload(selectedFile, supported, question, resolvedDomainId))
       .catch(() => undefined)
       .finally(() => setUploading(false));
   };
@@ -521,6 +574,21 @@ function UploadLogDialog({
         >
           <span>选择日志文件（支持拖放多份）</span>
           <input aria-label="选择日志文件" ref={fileInputRef} type="file" accept={accept ?? undefined} multiple onChange={handleFileChange} />
+        </label>
+        <label className="upload-question-field" htmlFor="upload-log-domain">
+          <span>业务域（可选）</span>
+          <select
+            id="upload-log-domain"
+            value={selectedDomainId}
+            onChange={(event) => setSelectedDomainId(event.target.value)}
+          >
+            <option value={UNCATEGORIZED_LOG_DOMAIN_VALUE}>未分类（通用分析）</option>
+            {domains.map((domain) => (
+              <option key={domain.id} value={domain.id}>
+                {domain.name}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="upload-question-field" htmlFor="upload-analysis-question">
           <span>分析问题（可选）</span>
@@ -611,12 +679,52 @@ function ConfidenceBar({ value, status }: { value: number; status: LogRecord["st
   );
 }
 
+const degradedReasonLabels: Record<NonNullable<LogRecord["degradedReason"]>, string> = {
+  "provider-unavailable": "AI 分析服务不可用，本结论由规则引擎回退生成",
+  "token-budget-exhausted": "预算内未能得到有效接地结论，本结论由规则引擎回退生成"
+};
+
+function AnalysisProvenanceBadges({ log }: { log: LogRecord }) {
+  const degraded = log.analysisSource === "rules-fallback";
+  if (!degraded && log.analysisSource !== "agent" && !log.logDomainName) {
+    return null;
+  }
+
+  return (
+    <div className="analysis-provenance" data-testid="analysis-provenance">
+      <div className="analysis-provenance__badges">
+        {degraded ? (
+          <span className="analysis-provenance__badge analysis-provenance__badge--degraded" role="status">
+            <AlertTriangle size={13} />
+            降级分析 · 规则回退
+          </span>
+        ) : log.analysisSource === "agent" ? (
+          <span className="analysis-provenance__badge analysis-provenance__badge--agent">
+            <Sparkles size={13} />
+            Agent 分析
+          </span>
+        ) : null}
+        {log.logDomainName ? (
+          <span className="analysis-provenance__badge analysis-provenance__badge--domain">业务域 · {log.logDomainName}</span>
+        ) : null}
+      </div>
+      {degraded ? (
+        <p className="analysis-provenance__reason">
+          {log.degradedReason ? degradedReasonLabels[log.degradedReason] : "本结论由规则引擎回退生成"}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function LogConclusionCard({
   log,
   onAskAgent,
   onPrimary,
   onExport,
   onCopyLink,
+  onDistil,
+  distilPending = false,
   onFeedback,
   onRetry
 }: {
@@ -625,6 +733,9 @@ function LogConclusionCard({
   onPrimary: () => void;
   onExport: () => void;
   onCopyLink: () => void;
+  /** Present only when the user holds knowledge:edit (distil-to-knowledge). */
+  onDistil?: () => void;
+  distilPending?: boolean;
   onFeedback: () => void;
   onRetry: () => void;
 }) {
@@ -641,6 +752,7 @@ function LogConclusionCard({
           <p>{log.status === "Complete" ? log.impact : log.conclusion}</p>
         </div>
       </div>
+      {log.status !== "Processing" ? <AnalysisProvenanceBadges log={log} /> : null}
       {log.analysisQuestion ? (
         <div className="logs-analysis-question">
           <strong>用户问题</strong>
@@ -657,6 +769,18 @@ function LogConclusionCard({
           <Download size={16} />
           导出报告
         </button>
+        {onDistil ? (
+          <button
+            className="button subtle"
+            disabled={log.status !== "Complete" || distilPending}
+            aria-busy={distilPending || undefined}
+            type="button"
+            onClick={onDistil}
+          >
+            <BookPlus size={16} />
+            沉淀为知识
+          </button>
+        ) : null}
         <button className="button danger" disabled={log.status !== "Complete"} type="button" onClick={onRetry}>
           <RotateCcw size={16} />
           重新分析

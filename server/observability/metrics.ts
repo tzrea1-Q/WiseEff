@@ -20,6 +20,8 @@ export type NotificationDeliveryMetricStatus = "delivered" | "retry" | "dead_let
 export type LogAnalysisJobMetricStatus = "complete" | "retry" | "dead_lettered" | "failed";
 export type LogAnalysisJobMetricStage = "parse" | "pattern" | "rootcause" | "report";
 export type LogAnalysisJobFailureReason = "parse_error" | "object_store_error" | "stale_run" | "unknown";
+export type LogAnalysisLlmCallOutcome = "ok" | "provider_error" | "invalid_output";
+export type LogAnalysisDegradedMetricReason = "provider-unavailable" | "token-budget-exhausted";
 export type AgentToolMetricKind = "read" | "preparation" | "mutating";
 export type AgentApprovalMetricAction = "requested" | "approved" | "rejected";
 export type AgentToolMetricStatus = "succeeded" | "failed" | "rejected";
@@ -35,7 +37,8 @@ const httpDurationBucketsSeconds = [0.05, 0.1, 0.25, 0.5, 0.8, 1, 2.5, 5, Number
 const dependencyMetricNames: Record<string, string> = {
   database: "wiseeff_database_ready",
   objectStore: "wiseeff_object_store_ready",
-  xiaozeLlm: "wiseeff_xiaoze_llm_ready"
+  xiaozeLlm: "wiseeff_xiaoze_llm_ready",
+  logAnalysisLlm: "wiseeff_log_analysis_llm_ready"
 };
 
 function escapeLabel(value: string | number | boolean) {
@@ -181,6 +184,33 @@ export function createMetricsRegistry(options: { serviceName: string }) {
           stage: input.stage
         });
       }
+    },
+    recordLogAnalysisLlmCall(input: {
+      model: string;
+      outcome: LogAnalysisLlmCallOutcome;
+      latencyMs: number;
+      inputTokens?: number;
+      outputTokens?: number;
+    }) {
+      const labels = { model: input.model };
+      incrementCounter("wiseeff_log_analysis_llm_calls_total", "WiseEff log-analysis LLM calls by model and outcome.", {
+        ...labels,
+        outcome: input.outcome
+      });
+      incrementCounter("wiseeff_log_analysis_llm_latency_ms_sum", "Total WiseEff log-analysis LLM call latency in milliseconds.", labels, input.latencyMs);
+      incrementCounter("wiseeff_log_analysis_llm_latency_ms_count", "Count of WiseEff log-analysis LLM latency samples.", labels);
+      if (input.inputTokens !== undefined) {
+        incrementCounter("wiseeff_log_analysis_llm_tokens_total", "WiseEff log-analysis LLM tokens by model and direction.", { ...labels, direction: "input" }, input.inputTokens);
+      }
+      if (input.outputTokens !== undefined) {
+        incrementCounter("wiseeff_log_analysis_llm_tokens_total", "WiseEff log-analysis LLM tokens by model and direction.", { ...labels, direction: "output" }, input.outputTokens);
+      }
+    },
+    recordLogAnalysisDegraded(input: { reason: LogAnalysisDegradedMetricReason; model: string }) {
+      incrementCounter("wiseeff_log_analysis_degraded_total", "WiseEff degraded log analyses by reason and model.", {
+        reason: input.reason,
+        model: input.model
+      });
     },
     recordNotificationDeliveryResult(input: { status: NotificationDeliveryMetricStatus; durationMs: number }) {
       const labels = { status: input.status };

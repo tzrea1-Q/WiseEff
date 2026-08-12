@@ -112,6 +112,19 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 | `VITE_XIAOZE_PROACTIVE_ENABLED` | `false` | 主动建议 UI | 在 `AgentInsightBar` 挂载 `useXiaozeSuggestions`。须 API `XIAOZE_PROACTIVE_ENABLED=true`。 |
 | `VITE_XIAOZE_PROMPT_DEBUG` | `false` | 前端开发工具 | opt-in 提示词/调试展示。 |
 
+## 日志分析 LLM
+
+独立的 `LOG_ANALYSIS_*` 家族，使日志分析与小泽可指向不同 provider（ADR-0022）。未配置且未开确定性模式时按 provider 不可用处理：`/health/ready` 的 `logAnalysisLlm` 报告 missing，分析降级到规则引擎并显式标注。详见 `docs/runbooks/log-analysis-llm.md`。
+
+| 变量 | 本地默认值 | 用途 | 说明 |
+| --- | --- | --- | --- |
+| `LOG_ANALYSIS_API_BASE_URL` | 空 | live 日志分析 LLM | OpenAI-compatible 端点；不得提交 secret 或私有端点。 |
+| `LOG_ANALYSIS_MODEL` | 空 | live 日志分析 LLM | 模型名会写入报告 `model` 列并作为指标标签。 |
+| `LOG_ANALYSIS_API_KEY` | 空 | live 日志分析 LLM | secret。 |
+| `LOG_ANALYSIS_API_TIMEOUT_MS` | `30000` | live 日志分析 LLM | 单次 `ChatOpenAI` 调用超时。 |
+| `LOG_ANALYSIS_TOKEN_BUDGET` | `8000` | 单次分析成本上界 | 限定提示词摘录（约 4 字符/token 折算）与响应 `maxTokens`。 |
+| `LOG_ANALYSIS_DETERMINISTIC` | `.env.example` 为 `true`，代码默认 `false` | 离线开发/测试/评测 | 使用确定性桩模型（`model` 记 `deterministic`），无需 provider 且就绪检查通过。生产必须配置真实 provider 并保持 `false`。 |
+
 ## 知识库嵌入与索引
 
 知识库语义检索镜像 `AGENT_API_*` 接缝,使用 OpenAI-compatible `/v1/embeddings` 端点。整组留空即为 FTS-only 模式:知识库所有功能保持可用,只是没有语义检索。语义检索还额外要求 PostgreSQL 服务器安装 pgvector 扩展(见自托管 runbook);端点或扩展缺失时,检索响应会诚实上报 `fts_only`。

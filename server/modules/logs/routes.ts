@@ -17,15 +17,28 @@ import {
   uploadLogFile
 } from "./service";
 import {
+  archiveLogDomainRecord,
+  createLogDomainRecord,
+  listLogDomainRecords,
+  updateLogDomainRecord
+} from "./domainsService";
+import {
   createLogBodySchema,
+  createLogDomainBodySchema,
   createLogFileBodySchema,
+  listLogDomainsQuerySchema,
   listLogsQuerySchema,
   logFeedbackBodySchema,
-  rerunLogBodySchema
+  rerunLogBodySchema,
+  updateLogDomainBodySchema
 } from "./schemas";
 
 const paramsWithLogIdSchema = z.object({
   logId: z.string().min(1)
+});
+
+const paramsWithDomainIdSchema = z.object({
+  domainId: z.string().min(1)
 });
 
 function requireDb(db: Database | undefined) {
@@ -83,7 +96,8 @@ export function registerLogRoutes(
       contentType: body.contentType,
       bytes,
       analysisQuestion: body.analysisQuestion,
-      relatedParameterId: body.relatedParameterId
+      relatedParameterId: body.relatedParameterId,
+      logDomainId: body.logDomainId
     }, { requestId: request.requestId, logAnalysisQueue: options.logAnalysisQueue });
 
     return { status: 201, body: { fileObject: result.fileObject, log: result.log, job: result.job } };
@@ -136,7 +150,8 @@ export function registerLogRoutes(
     const body = parseWithSchema(rerunLogBodySchema, request.body ?? {});
     const result = await rerunLogAnalysis(db, auth, {
       logId: params.logId,
-      analysisQuestion: body.analysisQuestion
+      analysisQuestion: body.analysisQuestion,
+      logDomainId: body.logDomainId
     }, { requestId: request.requestId, logAnalysisQueue: options.logAnalysisQueue });
 
     return { status: 200, body: result };
@@ -173,5 +188,50 @@ export function registerLogRoutes(
     }, { requestId: request.requestId });
 
     return { status: 200, body: { ok: true } };
+  });
+
+  router.get("/api/v1/log-domains", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const query = parseWithSchema(listLogDomainsQuerySchema, request.query);
+    const result = await listLogDomainRecords(db, auth, {
+      includeArchived: typeof query.includeArchived === "boolean" ? query.includeArchived : undefined
+    });
+
+    return { status: 200, body: result };
+  });
+
+  router.post("/api/v1/log-domains", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const body = parseWithSchema(createLogDomainBodySchema, request.body);
+    const item = await createLogDomainRecord(db, auth, body, { requestId: request.requestId });
+
+    return { status: 201, body: { item } };
+  });
+
+  router.patch("/api/v1/log-domains/:domainId", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const params = parseWithSchema(paramsWithDomainIdSchema, request.params);
+    const body = parseWithSchema(updateLogDomainBodySchema, request.body ?? {});
+    const item = await updateLogDomainRecord(db, auth, {
+      domainId: params.domainId,
+      name: body.name,
+      description: body.description,
+      formatProfile: body.formatProfile,
+      status: body.status
+    }, { requestId: request.requestId });
+
+    return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v1/log-domains/:domainId/archive", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const params = parseWithSchema(paramsWithDomainIdSchema, request.params);
+    const item = await archiveLogDomainRecord(db, auth, params.domainId, { requestId: request.requestId });
+
+    return { status: 200, body: { item } };
   });
 }

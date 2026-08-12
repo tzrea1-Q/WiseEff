@@ -298,6 +298,10 @@ POST /api/v1/logs/:logId/rerun
 POST /api/v1/logs/:logId/archive
 POST /api/v1/logs/:logId/unarchive
 POST /api/v1/logs/:logId/feedback
+GET  /api/v1/log-domains
+POST /api/v1/log-domains
+PATCH /api/v1/log-domains/:domainId
+POST /api/v1/log-domains/:domainId/archive
 GET  /api/v1/jobs/:jobId
 GET  /api/v1/jobs/:jobId/events
 ```
@@ -313,8 +317,14 @@ GET  /api/v1/jobs/:jobId/events
 | `POST` | `/api/v1/logs/:logId/archive` | 归档 |
 | `POST` | `/api/v1/logs/:logId/unarchive` | 取消归档 |
 | `POST` | `/api/v1/logs/:logId/feedback` | 用户反馈 |
+| `GET` | `/api/v1/log-domains` | 业务域列表（`logs:view`；`includeArchived=true` 含已归档） |
+| `POST` | `/api/v1/log-domains` | 创建业务域（`logs:admin-domains`；组织内重名 `409`；画像 JSON 非法 `400`） |
+| `PATCH` | `/api/v1/log-domains/:domainId` | 更新名称/描述/格式画像/状态（`formatProfile: null` 清空画像） |
+| `POST` | `/api/v1/log-domains/:domainId/archive` | 归档业务域；既有日志记录保留绑定 |
 
 `POST /api/v1/log-files` 在 M2 接受 JSON base64 内容，后续可替换为签名上传凭证而不改变 `POST /api/v1/logs` 的分析合同。
+
+上传、创建与 rerun 接受可选 `logDomainId`：必须属于本组织且为 `active`，否则 `400`；缺省即内建未分类域语义（通用分析，上传绝不因域选择被阻塞）。日志 DTO 新增 additive 来源字段：`logDomainId?`、`logDomainName?`、`analysisSource?: "agent" | "rules-fallback"`、`degradedReason?: "provider-unavailable" | "token-budget-exhausted"`；`rules-fallback` 表示降级分析，客户端必须保持其可见，其余输出契约不变。
 
 创建日志文件：
 
@@ -324,7 +334,8 @@ GET  /api/v1/jobs/:jobId/events
   "contentType": "text/plain",
   "contentBase64": "V0FSTiB0ZW1wPTc1",
   "analysisQuestion": "Why did fast charging fold back?",
-  "relatedParameterId": "fast-charge-current"
+  "relatedParameterId": "fast-charge-current",
+  "logDomainId": "domain_123"
 }
 ```
 
@@ -335,7 +346,8 @@ GET  /api/v1/jobs/:jobId/events
   "fileObjectId": "file_123",
   "fileName": "charging_thermal_trace.log",
   "analysisQuestion": "Why did fast charging fold back?",
-  "relatedParameterId": "fast-charge-current"
+  "relatedParameterId": "fast-charge-current",
+  "logDomainId": "domain_123"
 }
 ```
 
@@ -386,7 +398,8 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `POST` | `/api/v1/knowledge/entries` | 创建 markdown 或文件条目（草稿）。文件以 base64 经对象存储上传并执行正文提取。返回 `201 { item }`。 |
-| `GET` | `/api/v1/knowledge/entries` | 列出可见条目；支持 `status`、`contentForm`、`tag`、`q`（标题）、`limit`。 |
+| `GET` | `/api/v1/knowledge/entries` | 列出可见条目；支持 `status`、`contentForm`、`sourceType`（`human` \| `agent`,`/knowledge-admin` 的 Agent 草稿队列即 `status=draft&sourceType=agent`）、`tag`、`q`（标题）、`limit`。 |
+| `POST` | `/api/v1/knowledge/distill-from-log` | 把一条**已完成**的日志分析记录沉淀为预填 markdown **草稿**（`{ logId }` → `201 { item }`）：标题取分析结论,正文由结论/影响/严重度/证据行引用/建议处置组装,标签预置（`日志分析` + 严重度）,来源关联存入 `sourceLogId`。要求 `knowledge:edit`,且对来源记录要求 `logs:view` 加组织隔离;未完成的分析返回 `400`。审计 kind `knowledge-entry-distill`。 |
 | `GET` | `/api/v1/knowledge/search` | 仅检索 **published** 条目（`q`、可选 `limit`）。混合检索：配置了 `EMBEDDING_API_*` 且 pgvector 可用时,chunk 向量相似度与 FTS/trigram 排名做 RRF 融合;否则 FTS-only 路径保持不变。结果携带可引用字段（`entryId`、`title`、`revisionId`、`excerpt`）,响应携带诚实的 `retrieval` 报告：`{ mode: "semantic_fts" \| "fts_only", vectorAvailable, embeddingConfigured, degradedReason? }`。 |
 | `GET` | `/api/v1/knowledge/index/status` | 逐条目检索索引健康（仅 `knowledge:manage`）：`{ retrieval, items }`,每项含 `status`（`pending` \| `processing` \| `succeeded` \| `failed`）、`error`、已索引修订与 chunk 计数。 |
 | `POST` | `/api/v1/knowledge/index/rebuild` | 把全部已发布条目重新入队重建索引（仅 `knowledge:manage`;如更换 `EMBEDDING_MODEL` 后）。返回 `{ enqueued }`。写审计。 |
@@ -396,6 +409,7 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 | `POST` | `/api/v1/knowledge/entries/:entryId/publish` | 发布草稿进入检索（`draft → published`）。 |
 | `POST` | `/api/v1/knowledge/entries/:entryId/archive` | 归档已发布条目并退出检索（`published → archived`）。 |
 | `POST` | `/api/v1/knowledge/entries/:entryId/restore` | 恢复已归档条目（`archived → published`）。 |
+| `POST` | `/api/v1/knowledge/entries/:entryId/reject` | 从发布队列拒绝归档一条 **Agent 来源草稿**（`draft → archived`,永不发布）。条目拥有者（`knowledge:edit`）或 `knowledge:manage`;人工草稿与非草稿返回 `400`。审计 kind `knowledge-entry-reject`。 |
 | `DELETE` | `/api/v1/knowledge/entries/:entryId` | 彻底删除条目及修订与文件元数据。仅 `knowledge:manage`;写 `High` 级审计。 |
 | `GET` | `/api/v1/knowledge/entries/:entryId/revisions` | 列出不可变修订,新在前。 |
 | `POST` | `/api/v1/knowledge/entries/:entryId/revisions/:revisionId/restore` | 把历史修订恢复为新的头修订（携带 `expectedHeadRevisionNumber`）。 |
@@ -403,7 +417,7 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 
 文件上传接受 `application/pdf`、`.docx`（`application/vnd.openxmlformats-officedocument.wordprocessingml.document`）、`application/msword`、`text/plain`、`text/markdown`,上限 20 MB。提取失败诚实落在文件行上（`extractionStatus: "failed"` + 可读 `extractionError`）,不阻断上传。
 
-发布、编辑已发布、归档与恢复会把该条目的索引刷新异步入队（分块 + 可选嵌入）;索引 worker 只物化 **published** 修订,草稿与已归档条目永远不可检索。小泽通过注册的只读工具 `knowledge.search` / `knowledge.getDocument` 落地知识问题,工具在调用用户的 AuthContext 下执行（`knowledge:view` + 组织隔离）,返回可深链到 `/knowledge?entryId=…` 的引用负载。
+发布、编辑已发布、归档与恢复会把该条目的索引刷新异步入队（分块 + 可选嵌入）;索引 worker 只物化 **published** 修订,草稿与已归档条目永远不可检索。小泽通过注册的只读工具 `knowledge.search` / `knowledge.getDocument` 落地知识问题,工具在调用用户的 AuthContext 下执行（`knowledge:view` + 组织隔离）,返回可深链到 `/knowledge?entryId=…` 的引用负载。审批门控写工具 `action.createKnowledgeDraft`（入参:`title`、`contentMarkdown`、`tags`、可选 `sourceLogId`）经 DB 落库审批链创建**新的** Agent 来源草稿——先中断等待人工明确批准,再在调用用户的 AuthContext 下执行（`knowledge:edit`）,创建会话记录在 `sourceSessionId` 上;草稿在 `/knowledge-admin` 队列或由沉淀工程师本人发布前不进入检索。
 
 ## 项目参数初始化
 

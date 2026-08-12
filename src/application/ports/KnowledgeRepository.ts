@@ -4,12 +4,14 @@ import type {
   KnowledgeIndexHealth,
   KnowledgeRevision,
   KnowledgeSearchResponse,
+  KnowledgeSourceType,
   KnowledgeStatus
 } from "@/domain/knowledge/types";
 
 export type KnowledgeListQuery = {
   status?: KnowledgeStatus;
   contentForm?: KnowledgeContentForm;
+  sourceType?: KnowledgeSourceType;
   tag?: string;
   q?: string;
 };
@@ -54,10 +56,14 @@ export interface KnowledgeRepository {
   get(entryId: string): Promise<KnowledgeEntry | null>;
   createMarkdown(input: CreateMarkdownKnowledgeInput): Promise<KnowledgeEntry>;
   createFile(input: CreateFileKnowledgeInput): Promise<KnowledgeEntry>;
+  /** Distil a completed log-analysis record into a pre-filled knowledge draft. */
+  distillFromLog(logId: string): Promise<KnowledgeEntry>;
   update(entryId: string, input: UpdateKnowledgeInput): Promise<KnowledgeEntry>;
   publish(entryId: string): Promise<KnowledgeEntry>;
   archive(entryId: string): Promise<KnowledgeEntry>;
   restore(entryId: string): Promise<KnowledgeEntry>;
+  /** Archive-reject an agent-sourced draft from the publish queue. */
+  rejectAgentDraft(entryId: string): Promise<KnowledgeEntry>;
   hardDelete(entryId: string): Promise<void>;
   listRevisions(entryId: string): Promise<KnowledgeRevision[]>;
   restoreRevision(entryId: string, revisionId: string, expectedHeadRevisionNumber: number): Promise<KnowledgeEntry>;

@@ -1,5 +1,5 @@
 import { Download, RefreshCw } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DataTable,
   LogRecordDrawer,
@@ -12,6 +12,7 @@ import { canPerform } from "@/app/permissions";
 import { cn } from "@/lib/utils";
 import { applyTableFilters, applyTimeWindow, deriveInsight, deriveMetrics } from "@/logAdminAnalytics";
 import { STAGE_LABELS, type LogRecord, type LogStatus, type PrototypeState, type TimeWindow } from "@/domain/prototype/types";
+import type { LogDomain } from "@/domain/logs/types";
 import { useTopBarActions } from "@/components/layout";
 import { logRuntimeFailureNotification, type LogRuntimeActions } from "@/application/logs/logRuntime";
 import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
@@ -77,6 +78,272 @@ function pendingKey(kind: PendingLogAction, logId: string): string {
 
 function runtimeAlreadyNotified(error: unknown): boolean {
   return error instanceof Error && (error as { alreadyNotified?: unknown }).alreadyNotified === true;
+}
+
+type LogDomainFormState = {
+  domainId?: string;
+  name: string;
+  description: string;
+  profileText: string;
+};
+
+const emptyLogDomainForm: LogDomainFormState = { name: "", description: "", profileText: "" };
+
+function parseProfileText(profileText: string): { ok: true; profile: unknown } | { ok: false; error: string } {
+  const trimmed = profileText.trim();
+  if (trimmed.length === 0) {
+    return { ok: true, profile: undefined };
+  }
+  try {
+    return { ok: true, profile: JSON.parse(trimmed) };
+  } catch (error) {
+    return { ok: false, error: `画像 JSON 无法解析：${error instanceof Error ? error.message : String(error)}` };
+  }
+}
+
+function formatProfileText(profile: unknown): string {
+  if (profile === undefined || profile === null) {
+    return "";
+  }
+  return JSON.stringify(profile, null, 2);
+}
+
+function LogDomainGovernanceSection({
+  canGovern,
+  logActions
+}: {
+  canGovern: boolean;
+  logActions?: LogRuntimeActions;
+}) {
+  const [domains, setDomains] = useState<LogDomain[]>([]);
+  const [formOpen, setFormOpen] = useState(false);
+  const [form, setForm] = useState<LogDomainFormState>(emptyLogDomainForm);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  const refreshDomains = useCallback(async () => {
+    if (!logActions) {
+      return;
+    }
+    setDomains(await logActions.listLogDomains({ includeArchived: true }));
+  }, [logActions]);
+
+  useEffect(() => {
+    void refreshDomains();
+  }, [refreshDomains]);
+
+  const openCreateForm = () => {
+    setForm(emptyLogDomainForm);
+    setProfileError(null);
+    setFormOpen(true);
+  };
+
+  const openEditForm = (domain: LogDomain) => {
+    setForm({
+      domainId: domain.id,
+      name: domain.name,
+      description: domain.description ?? "",
+      profileText: formatProfileText(domain.formatProfile)
+    });
+    setProfileError(null);
+    setFormOpen(true);
+  };
+
+  const submitForm = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!logActions || pending) {
+      return;
+    }
+    const parsedProfile = parseProfileText(form.profileText);
+    if (!parsedProfile.ok) {
+      setProfileError(parsedProfile.error);
+      return;
+    }
+    setProfileError(null);
+    setPending(true);
+    try {
+      const saved = form.domainId
+        ? await logActions.updateLogDomain({
+            domainId: form.domainId,
+            name: form.name.trim(),
+            description: form.description.trim() === "" ? null : form.description.trim(),
+            formatProfile: form.profileText.trim() === "" ? null : parsedProfile.profile
+          })
+        : await logActions.createLogDomain({
+            name: form.name.trim(),
+            description: form.description.trim() === "" ? undefined : form.description.trim(),
+            formatProfile: parsedProfile.profile
+          });
+      if (saved) {
+        setFormOpen(false);
+        setForm(emptyLogDomainForm);
+        await refreshDomains();
+      }
+    } catch {
+      // The runtime has already surfaced a notification; keep the form open for correction.
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const archiveDomain = async (domainId: string) => {
+    if (!logActions || pending) {
+      return;
+    }
+    setPending(true);
+    try {
+      await logActions.archiveLogDomain(domainId);
+      await refreshDomains();
+    } catch {
+      // Already notified by the runtime.
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-2" aria-label="日志业务域治理" data-testid="log-domain-governance">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">业务域治理</h2>
+          <p className="text-xs text-muted-foreground">
+            注册业务域（格式画像 + 分析侧重），上传时可绑定；未绑定的日志走未分类域通用分析。
+          </p>
+        </div>
+        {canGovern ? (
+          <Button size="sm" onClick={openCreateForm} disabled={!logActions}>
+            新建业务域
+          </Button>
+        ) : null}
+      </div>
+
+      {!canGovern ? (
+        <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          业务域治理需要 Admin 权限（logs:admin-domains）。
+        </p>
+      ) : !logActions ? (
+        <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          业务域治理需在 API 模式下使用；mock 模式仅展示静态日志种子。
+        </p>
+      ) : (
+        <>
+          <div className="overflow-hidden rounded-lg border border-border">
+            <table className="w-full text-left text-sm" aria-label="业务域列表">
+              <thead className="bg-muted/60 text-xs text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 font-medium">名称</th>
+                  <th className="px-3 py-2 font-medium">描述</th>
+                  <th className="px-3 py-2 font-medium">格式画像</th>
+                  <th className="px-3 py-2 font-medium">状态</th>
+                  <th className="px-3 py-2 text-right font-medium">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {domains.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-4 text-center text-xs text-muted-foreground">
+                      暂无业务域；未分类域始终可用（通用分析）。
+                    </td>
+                  </tr>
+                ) : (
+                  domains.map((domain) => (
+                    <tr key={domain.id} className={cn("border-t border-border", domain.status === "archived" && "opacity-60")}>
+                      <td className="px-3 py-2 font-medium text-foreground">{domain.name}</td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">{domain.description ?? "-"}</td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">{domain.formatProfile ? "已配置" : "未配置"}</td>
+                      <td className="px-3 py-2 text-xs">
+                        <span
+                          className={cn(
+                            "inline-flex h-5 items-center rounded-md px-1.5 text-[11px] font-medium",
+                            domain.status === "active" ? "bg-emerald-100 text-emerald-900" : "bg-muted text-muted-foreground"
+                          )}
+                        >
+                          {domain.status === "active" ? "启用" : "已归档"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <div className="flex justify-end gap-1.5">
+                          <Button variant="outline" size="sm" disabled={pending} onClick={() => openEditForm(domain)}>
+                            编辑
+                          </Button>
+                          {domain.status === "active" ? (
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              disabled={pending}
+                              onClick={() => void archiveDomain(domain.id)}
+                            >
+                              归档
+                            </Button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {formOpen ? (
+            <form
+              className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4"
+              aria-label={form.domainId ? "编辑业务域" : "新建业务域"}
+              onSubmit={(event) => void submitForm(event)}
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground" htmlFor="log-domain-name">
+                  名称（组织内唯一）
+                  <input
+                    id="log-domain-name"
+                    required
+                    value={form.name}
+                    onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                    className="h-8 rounded-md border border-border bg-background px-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    placeholder="例如：charging-power"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground" htmlFor="log-domain-description">
+                  描述（可选）
+                  <input
+                    id="log-domain-description"
+                    value={form.description}
+                    onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
+                    className="h-8 rounded-md border border-border bg-background px-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    placeholder="例如：充电/电源子系统内核日志"
+                  />
+                </label>
+              </div>
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground" htmlFor="log-domain-profile">
+                格式画像 JSON（可选：timestampPattern / multiline / severityMap）
+                <textarea
+                  id="log-domain-profile"
+                  value={form.profileText}
+                  rows={6}
+                  onChange={(event) => setForm((current) => ({ ...current, profileText: event.target.value }))}
+                  className="rounded-md border border-border bg-background px-2.5 py-2 font-mono text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  placeholder={'{\n  "timestampPattern": "^\\\\[(\\\\d+\\\\.\\\\d+)\\\\]",\n  "severityMap": { "error": ["<3>"] }\n}'}
+                />
+              </label>
+              {profileError ? (
+                <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive">
+                  {profileError}
+                </p>
+              ) : null}
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => setFormOpen(false)}>
+                  取消
+                </Button>
+                <Button type="submit" size="sm" disabled={pending || form.name.trim() === ""} aria-busy={pending || undefined}>
+                  {form.domainId ? "保存修改" : "创建业务域"}
+                </Button>
+              </div>
+            </form>
+          ) : null}
+        </>
+      )}
+    </section>
+  );
 }
 
 export function LogAdminPage({ state, dispatch, onNavigate, search: _search, logActions }: LogAdminPageProps) {
@@ -345,6 +612,10 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
       ) : null}
 
       <div className="grid grid-cols-1 gap-4">
+        <LogDomainGovernanceSection
+          canGovern={canPerform(state.activeRoleId, "logs.admin-domains")}
+          logActions={logActions}
+        />
         <section className="flex flex-col gap-2">
           <div>
             <h2 className="text-sm font-semibold text-foreground">日志分析记录</h2>

@@ -753,6 +753,29 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     requestBody: "LogFeedbackRequest",
     responseBody: "LogFeedbackResponse"
   },
+  "logs.listDomains": {
+    summary: "List log domains",
+    tags: ["logs"],
+    responseBody: "LogDomainListResponse"
+  },
+  "logs.createDomain": {
+    summary: "Create a log domain",
+    tags: ["logs"],
+    requestBody: "CreateLogDomainRequest",
+    responseBody: "LogDomainResponse",
+    successStatus: 201
+  },
+  "logs.updateDomain": {
+    summary: "Update a log domain",
+    tags: ["logs"],
+    requestBody: "UpdateLogDomainRequest",
+    responseBody: "LogDomainResponse"
+  },
+  "logs.archiveDomain": {
+    summary: "Archive a log domain",
+    tags: ["logs"],
+    responseBody: "LogDomainResponse"
+  },
 
   "productFeedback.create": {
     summary: "Create product feedback",
@@ -801,6 +824,15 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["knowledge"],
     responseBody: "KnowledgeEntryListResponse",
     additionalResponses: { "403": "ErrorResponse" }
+  },
+  "knowledge.distillFromLog": {
+    summary:
+      "Distil a completed log-analysis record into a pre-filled knowledge draft (knowledge:edit plus logs:view on the source record); the draft stays out of retrieval until published",
+    tags: ["knowledge"],
+    requestBody: "DistillKnowledgeFromLogRequest",
+    responseBody: "KnowledgeEntryResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
   "knowledge.search": {
     summary:
@@ -854,6 +886,13 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   },
   "knowledge.restoreEntry": {
     summary: "Restore an archived knowledge entry to published",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeEntryResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "knowledge.rejectAgentDraft": {
+    summary:
+      "Archive-reject an agent-sourced knowledge draft from the publish queue (entry owner with knowledge:edit, or knowledge:manage)",
     tags: ["knowledge"],
     responseBody: "KnowledgeEntryResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArchiveRestore, DatabaseZap, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
+import { ArchiveRestore, ArchiveX, DatabaseZap, ExternalLink, RefreshCw, RotateCcw, Trash2, Upload } from "lucide-react";
 
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
+import type { KnowledgeCapability } from "@/domain/knowledge/rules";
+import { canGovernEntry } from "@/domain/knowledge/rules";
 import type { KnowledgeEntry, KnowledgeIndexHealth, KnowledgeIndexStatusItem } from "@/domain/knowledge/types";
 import {
   knowledgeContentFormLabels,
@@ -16,7 +18,9 @@ import { KnowledgeTagList } from "./badges";
 
 export type KnowledgeAdminPageProps = {
   repository: KnowledgeRepository;
-  canManage: boolean;
+  capability: KnowledgeCapability;
+  /** Opens review deep links (/knowledge?entryId=… and /logs?logId=…). */
+  onNavigate?: (path: string) => void;
 };
 
 function formatDateTime(value: string | null) {
@@ -30,11 +34,12 @@ function formatDateTime(value: string | null) {
 }
 
 /**
- * Knowledge governance: archived-entry management, manage-gated hard delete,
- * and retrieval index health (per-entry status, retry, rebuild-all). The
- * agent-draft publish queue arrives with Phase 3 of the knowledge plan.
+ * Knowledge governance: the agent-draft publish queue (review, publish,
+ * archive-reject), archived-entry management, manage-gated hard delete, and
+ * retrieval index health (per-entry status, retry, rebuild-all).
  */
-export function KnowledgeAdminPage({ repository, canManage }: KnowledgeAdminPageProps) {
+export function KnowledgeAdminPage({ repository, capability, onNavigate }: KnowledgeAdminPageProps) {
+  const canManage = capability.canManage;
   const [rows, setRows] = useState<KnowledgeEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
@@ -48,6 +53,13 @@ export function KnowledgeAdminPage({ repository, canManage }: KnowledgeAdminPage
   const [indexActionPendingId, setIndexActionPendingId] = useState<string | null>(null);
   const [rebuildPending, setRebuildPending] = useState(false);
   const [rebuildNotice, setRebuildNotice] = useState("");
+  const [agentDrafts, setAgentDrafts] = useState<KnowledgeEntry[]>([]);
+  const [agentDraftsLoading, setAgentDraftsLoading] = useState(true);
+  const [agentDraftError, setAgentDraftError] = useState("");
+  const [agentActionPendingId, setAgentActionPendingId] = useState<string | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<KnowledgeEntry | null>(null);
+  const [rejectPending, setRejectPending] = useState(false);
+  const [rejectError, setRejectError] = useState("");
 
   const loadArchived = useCallback(async () => {
     setLoading(true);
@@ -77,12 +89,106 @@ export function KnowledgeAdminPage({ repository, canManage }: KnowledgeAdminPage
     }
   }, [repository, canManage]);
 
+  const loadAgentDrafts = useCallback(async () => {
+    setAgentDraftsLoading(true);
+    setAgentDraftError("");
+    try {
+      const result = await repository.list({ status: "draft", sourceType: "agent" });
+      setAgentDrafts(result.items);
+    } catch (error) {
+      setAgentDraftError(error instanceof Error && error.message ? error.message : "Agent 草稿加载失败,请稍后重试。");
+    } finally {
+      setAgentDraftsLoading(false);
+    }
+  }, [repository]);
+
   useEffect(() => {
+    void loadAgentDrafts();
     void loadArchived();
     void loadIndexHealth();
-  }, [loadArchived, loadIndexHealth]);
+  }, [loadAgentDrafts, loadArchived, loadIndexHealth]);
 
   const archivedCount = useMemo(() => rows.length, [rows]);
+
+  const publishAgentDraft = async (entry: KnowledgeEntry) => {
+    setAgentActionPendingId(entry.id);
+    setAgentDraftError("");
+    try {
+      await repository.publish(entry.id);
+      setAgentDrafts((current) => current.filter((item) => item.id !== entry.id));
+    } catch (error) {
+      setAgentDraftError(error instanceof Error && error.message ? error.message : "发布失败,请稍后重试。");
+    } finally {
+      setAgentActionPendingId(null);
+    }
+  };
+
+  const confirmRejectAgentDraft = async () => {
+    if (!rejectTarget) return;
+    setRejectPending(true);
+    setRejectError("");
+    try {
+      await repository.rejectAgentDraft(rejectTarget.id);
+      setAgentDrafts((current) => current.filter((item) => item.id !== rejectTarget.id));
+      setRejectTarget(null);
+      // The rejected draft lands in the archived table below.
+      await loadArchived();
+    } catch (error) {
+      setRejectError(error instanceof Error && error.message ? error.message : "拒绝失败,请稍后重试。");
+    } finally {
+      setRejectPending(false);
+    }
+  };
+
+  const agentDraftColumns: Column<KnowledgeEntry>[] = [
+    {
+      key: "title",
+      header: "草稿",
+      render: (entry) => (
+        <div className="min-w-0">
+          <p className="truncate font-medium text-foreground">{entry.title}</p>
+          <p className="text-xs text-muted-foreground">创建人 {entry.createdByUserId} · 修订 #{entry.headRevisionNumber}</p>
+        </div>
+      ),
+      sortAccessor: (entry) => entry.title
+    },
+    {
+      key: "session",
+      header: "会话来源",
+      render: (entry) => (
+        <span className="block max-w-44 truncate text-xs text-muted-foreground" title={entry.sourceSessionId ?? undefined}>
+          {entry.sourceSessionId ?? "—"}
+        </span>
+      ),
+      widthClass: "w-40"
+    },
+    {
+      key: "sourceLog",
+      header: "来源分析",
+      render: (entry) =>
+        entry.sourceLogId ? (
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto px-0 text-xs"
+            onClick={() => onNavigate?.(`/logs?logId=${encodeURIComponent(entry.sourceLogId!)}`)}
+          >
+            <ExternalLink data-icon="inline-start" />
+            查看日志分析
+          </Button>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        ),
+      widthClass: "w-32"
+    },
+    {
+      key: "createdAt",
+      header: "创建时间",
+      render: (entry) => <span className="text-xs text-muted-foreground">{formatDateTime(entry.createdAt)}</span>,
+      sortAccessor: (entry) => entry.createdAt,
+      widthClass: "w-28"
+    }
+  ];
 
   const restoreEntry = async (entry: KnowledgeEntry) => {
     setRestorePendingId(entry.id);
@@ -245,11 +351,79 @@ export function KnowledgeAdminPage({ repository, canManage }: KnowledgeAdminPage
   return (
     <div className="knowledge-admin-page flex flex-col gap-5 p-6">
       <PageInsightBar
-        variant={archivedCount > 0 ? "warn" : "info"}
-        headline={`已归档 ${archivedCount} 条`}
-        description="治理已归档知识条目与检索索引健康:恢复、彻底删除、单条重试或全量重建索引。Agent 草稿发布队列将在后续阶段加入。"
+        variant={agentDrafts.length > 0 ? "warn" : "info"}
+        headline={`待审阅 Agent 草稿 ${agentDrafts.length} 条 · 已归档 ${archivedCount} 条`}
+        description="知识治理:审阅 Agent 沉淀的知识草稿(发布或拒绝归档),管理已归档条目与检索索引健康。草稿在发布前不进入检索。"
         actions={[]}
       />
+
+      <section className="flex flex-col gap-2" aria-label="Agent 草稿发布队列">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-foreground">Agent 草稿发布队列</h2>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void loadAgentDrafts()}
+            disabled={agentDraftsLoading}
+            aria-busy={agentDraftsLoading || undefined}
+          >
+            <RefreshCw data-icon="inline-start" />
+            刷新
+          </Button>
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          小泽经审批创建的知识草稿在此审阅:knowledge:edit 可发布本人会话沉淀的草稿,knowledge:manage 可发布任意草稿;拒绝会将草稿归档。
+        </p>
+
+        {agentDraftError ? (
+          <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{agentDraftError}</p>
+        ) : null}
+
+        <DataTable
+          aria-label="Agent 知识草稿队列"
+          rows={agentDrafts}
+          rowKey={(entry) => entry.id}
+          columns={agentDraftColumns}
+          pageSize={10}
+          renderRowActions={(entry) => {
+            const canGovern = canGovernEntry(entry, capability);
+            return (
+              <span className="flex items-center justify-end gap-2">
+                <Button variant="outline" size="sm" onClick={() => onNavigate?.(`/knowledge?entryId=${encodeURIComponent(entry.id)}`)}>
+                  <ExternalLink data-icon="inline-start" />
+                  审阅
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={!canGovern || agentActionPendingId !== null}
+                  aria-busy={agentActionPendingId === entry.id || undefined}
+                  onClick={() => void publishAgentDraft(entry)}
+                >
+                  <Upload data-icon="inline-start" />
+                  发布
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={!canGovern || agentActionPendingId !== null}
+                  onClick={() => setRejectTarget(entry)}
+                >
+                  <ArchiveX data-icon="inline-start" />
+                  拒绝归档
+                </Button>
+              </span>
+            );
+          }}
+          emptyState={
+            agentDraftsLoading ? (
+              <p className="text-sm text-muted-foreground">正在加载 Agent 草稿…</p>
+            ) : (
+              <p className="text-sm text-muted-foreground">当前没有待审阅的 Agent 知识草稿。</p>
+            )
+          }
+        />
+      </section>
 
       <section className="flex flex-col gap-2" aria-label="检索索引健康">
         <div className="flex items-center justify-between gap-3">
@@ -386,6 +560,26 @@ export function KnowledgeAdminPage({ repository, canManage }: KnowledgeAdminPage
           }
         />
       </section>
+
+      <ConfirmDialog
+        open={Boolean(rejectTarget)}
+        title={`拒绝并归档「${rejectTarget?.title ?? ""}」`}
+        description={
+          <p>
+            该 Agent 草稿将被归档,不会发布进入检索。归档后可在下方「已归档条目」中查看;操作会写入审计记录。
+          </p>
+        }
+        confirmLabel="拒绝归档"
+        tone="danger"
+        pending={rejectPending}
+        pendingLabel="归档中…"
+        error={rejectError}
+        onConfirm={() => void confirmRejectAgentDraft()}
+        onCancel={() => {
+          setRejectTarget(null);
+          setRejectError("");
+        }}
+      />
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}

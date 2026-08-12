@@ -171,3 +171,71 @@ describe("LogsPage · Header", () => {
     expect(screen.getByTestId("log-live-region")).toHaveTextContent(/已完成/);
   });
 });
+
+describe("LogsPage · 分析来源与降级标注", () => {
+  const completedTemplate = initialState.logs.find((log) => log.status === "Complete")!;
+
+  it("规则回退结果显著标注降级来源与原因", () => {
+    window.history.replaceState(null, "", "/logs");
+    const degradedState = {
+      ...userState,
+      logs: [
+        {
+          ...completedTemplate,
+          id: "log-degraded",
+          reportId: "RPT-DEGRADED",
+          fileName: "degraded_fallback.log",
+          analysisSource: "rules-fallback" as const,
+          degradedReason: "provider-unavailable" as const,
+          logDomainName: "charging-power"
+        },
+        ...userState.logs
+      ]
+    };
+
+    render(<App initialAppState={degradedState} />);
+
+    const provenance = screen.getByTestId("analysis-provenance");
+    expect(within(provenance).getByRole("status")).toHaveTextContent("降级分析 · 规则回退");
+    expect(provenance).toHaveTextContent(/AI 分析服务不可用/);
+    expect(provenance).toHaveTextContent("业务域 · charging-power");
+  });
+
+  it("Agent 结果显示来源徽标且不显示降级提示", () => {
+    window.history.replaceState(null, "", "/logs");
+    const agentState = {
+      ...userState,
+      logs: [
+        {
+          ...completedTemplate,
+          id: "log-agent",
+          reportId: "RPT-AGENT",
+          fileName: "agent_analysis.log",
+          analysisSource: "agent" as const
+        },
+        ...userState.logs
+      ]
+    };
+
+    render(<App initialAppState={agentState} />);
+
+    const provenance = screen.getByTestId("analysis-provenance");
+    expect(provenance).toHaveTextContent("Agent 分析");
+    expect(provenance).not.toHaveTextContent("降级分析");
+  });
+
+  it("没有来源标注的历史结果不渲染来源徽标", () => {
+    window.history.replaceState(null, "", "/logs");
+    const legacyState = {
+      ...userState,
+      logs: [
+        { ...completedTemplate, id: "log-legacy", reportId: "RPT-LEGACY", fileName: "legacy.log" },
+        ...userState.logs
+      ]
+    };
+
+    render(<App initialAppState={legacyState} />);
+
+    expect(screen.queryByTestId("analysis-provenance")).not.toBeInTheDocument();
+  });
+});

@@ -8,6 +8,7 @@ export type ActionKey =
   | "parameter.merge"
   | "debugging.use"
   | "logs.upload"
+  | "logs.admin-domains"
   | "knowledge.edit"
   | "knowledge.manage"
   | "admin.access"
@@ -44,6 +45,7 @@ const actionRequiredRoles: Record<ActionKey, PlatformRoleId> = {
   "parameter.merge": "software-user",
   "debugging.use": "hardware-user",
   "logs.upload": "hardware-user",
+  "logs.admin-domains": "admin",
   "knowledge.edit": "hardware-user",
   "knowledge.manage": "admin",
   "admin.access": "admin",

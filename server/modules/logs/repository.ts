@@ -2,7 +2,13 @@ import type { AuthContext } from "../auth/types";
 import { completeJob, createLogAnalysisJob, updateJobProgress } from "../jobs/repository";
 import type { LogAnalysisJobDto } from "../jobs/types";
 import type { Database, Queryable } from "../../shared/database/client";
-import type { AnalyzeLogEvidence, LogAnalysisSeverity } from "./analyzer";
+import type {
+  AnalyzeLogEvidence,
+  LogAnalysisDegradedReason,
+  LogAnalysisSeverity,
+  LogAnalysisSource
+} from "./analyzer";
+import type { LogFormatProfile } from "./formatProfile";
 import type { LogArchiveState, LogFeedbackRating, LogRecordDto } from "./types";
 import type { LogRecordStatus, LogRunStatus, LogStage } from "./status";
 
@@ -40,6 +46,10 @@ type LogRecordRow = {
   related_parameter_id: string | null;
   failure_reason: string | null;
   analysis_question: string | null;
+  log_domain_id?: string | null;
+  log_domain_name?: string | null;
+  analysis_source?: LogAnalysisSource | null;
+  degraded_reason?: LogAnalysisDegradedReason | null;
 };
 
 type EvidenceRow = {
@@ -74,6 +84,10 @@ type WorkerLogRunSnapshotRow = {
   job_status: LogRunStatus;
   run_status: LogRunStatus;
   record_status: LogRecordStatus;
+  log_domain_id: string | null;
+  log_domain_name: string | null;
+  log_domain_description: string | null;
+  log_domain_format_profile: LogFormatProfile | null;
 };
 
 export type LogFileObjectDto = {
@@ -109,6 +123,7 @@ export type CreateLogRecordWithRunAndJobInput = {
   submittedByUserId: string;
   analysisQuestion?: string;
   relatedParameterId?: string;
+  logDomainId?: string;
 };
 
 export type LogWorkerRunSnapshot = {
@@ -124,6 +139,13 @@ export type LogWorkerRunSnapshot = {
   jobStatus: LogRunStatus;
   runStatus: LogRunStatus;
   recordStatus: LogRecordStatus;
+  /** Bound log domain (glossary: Log domain); null = uncategorized log domain. */
+  logDomain: {
+    id: string;
+    name: string;
+    description: string | null;
+    formatProfile: LogFormatProfile | null;
+  } | null;
 };
 
 export type PersistLogAnalysisReportInput = {
@@ -137,6 +159,10 @@ export type PersistLogAnalysisReportInput = {
     severity: LogAnalysisSeverity;
     suggestedActions: string[];
     rawLines: string[];
+    analysisSource?: LogAnalysisSource;
+    degradedReason?: LogAnalysisDegradedReason;
+    promptVersion?: string;
+    model?: string;
   };
   evidence: AnalyzeLogEvidence[];
 };
@@ -210,7 +236,11 @@ function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"]):
     submittedBy: row.submitted_by ?? "",
     relatedParameterId: row.related_parameter_id ?? undefined,
     failureReason: row.failure_reason ?? undefined,
-    analysisQuestion: row.analysis_question ?? undefined
+    analysisQuestion: row.analysis_question ?? undefined,
+    logDomainId: row.log_domain_id ?? undefined,
+    logDomainName: row.log_domain_name ?? undefined,
+    analysisSource: row.analysis_source ?? undefined,
+    degradedReason: row.degraded_reason ?? undefined
   };
 }
 
@@ -250,7 +280,15 @@ function toWorkerLogRunSnapshot(row: WorkerLogRunSnapshotRow): LogWorkerRunSnaps
     submittedByUserId: row.submitted_by_user_id,
     jobStatus: row.job_status,
     runStatus: row.run_status,
-    recordStatus: row.record_status
+    recordStatus: row.record_status,
+    logDomain: row.log_domain_id
+      ? {
+          id: row.log_domain_id,
+          name: row.log_domain_name ?? row.log_domain_id,
+          description: row.log_domain_description,
+          formatProfile: row.log_domain_format_profile
+        }
+      : null
   };
 }
 
@@ -271,17 +309,22 @@ const logSelect = `
     report.suggested_actions,
     report.severity,
     report.raw_lines,
+    report.analysis_source,
+    report.degraded_reason,
     lr.captured_at,
     lr.updated_at,
     users.name as submitted_by,
     lr.related_parameter_id,
     lr.failure_reason,
-    lr.analysis_question
+    lr.analysis_question,
+    lr.log_domain_id,
+    ld.name as log_domain_name
   from log_records lr
   inner join log_file_objects lfo on lfo.id = lr.file_object_id
   left join log_analysis_runs lar on lar.id = lr.current_run_id
   left join log_analysis_reports report on report.run_id = lr.current_run_id
   left join users on users.id = lr.submitted_by_user_id
+  left join log_domains ld on ld.id = lr.log_domain_id
 `;
 
 function addCondition(parts: string[], values: unknown[], condition: (placeholder: string) => string, value: unknown) {
@@ -353,9 +396,9 @@ export async function createLogRecordWithRunAndJob(db: Database, input: CreateLo
       `
       insert into log_records (
         id, organization_id, file_object_id, file_name, source, status,
-        analysis_question, related_parameter_id, submitted_by_user_id
+        analysis_question, related_parameter_id, submitted_by_user_id, log_domain_id
       )
-      values ($1, $2, $3, $4, $5, 'processing', $6, $7, $8)
+      values ($1, $2, $3, $4, $5, 'processing', $6, $7, $8, $9)
       returning id
       `,
       [
@@ -366,7 +409,8 @@ export async function createLogRecordWithRunAndJob(db: Database, input: CreateLo
         input.source,
         input.analysisQuestion ?? null,
         input.relatedParameterId ?? null,
-        input.submittedByUserId
+        input.submittedByUserId,
+        input.logDomainId ?? null
       ]
     );
     await tx.query<RunRow>(
@@ -408,12 +452,16 @@ export async function createLogRecordWithRunAndJob(db: Database, input: CreateLo
         null::jsonb as suggested_actions,
         null::text as severity,
         null::jsonb as raw_lines,
+        null::text as analysis_source,
+        null::text as degraded_reason,
         captured_at,
         updated_at,
         (select name from users where id = log_records.submitted_by_user_id) as submitted_by,
         related_parameter_id,
         failure_reason,
-        analysis_question
+        analysis_question,
+        log_domain_id,
+        (select name from log_domains where id = log_records.log_domain_id) as log_domain_name
       `,
       [input.organizationId, input.logId, input.runId]
     );
@@ -434,15 +482,16 @@ export async function markUnsupportedLog(
     failureReason: string;
     analysisQuestion?: string;
     relatedParameterId?: string;
+    logDomainId?: string;
   }
 ) {
   const result = await db.query<LogRecordRow>(
     `
     insert into log_records (
       id, organization_id, file_object_id, file_name, source, status,
-      failure_reason, analysis_question, related_parameter_id, submitted_by_user_id
+      failure_reason, analysis_question, related_parameter_id, submitted_by_user_id, log_domain_id
     )
-    values ($1, $2, $3, $4, $5, 'failed', $6, $7, $8, $9)
+    values ($1, $2, $3, $4, $5, 'failed', $6, $7, $8, $9, $10)
     returning
       id,
       current_run_id,
@@ -459,12 +508,16 @@ export async function markUnsupportedLog(
       null::jsonb as suggested_actions,
       null::text as severity,
       null::jsonb as raw_lines,
+      null::text as analysis_source,
+      null::text as degraded_reason,
       captured_at,
       updated_at,
       (select name from users where id = log_records.submitted_by_user_id) as submitted_by,
       related_parameter_id,
       failure_reason,
-      analysis_question
+      analysis_question,
+      log_domain_id,
+      (select name from log_domains where id = log_records.log_domain_id) as log_domain_name
     `,
     [
       input.id,
@@ -475,7 +528,8 @@ export async function markUnsupportedLog(
       input.failureReason,
       input.analysisQuestion ?? null,
       input.relatedParameterId ?? null,
-      input.submittedByUserId
+      input.submittedByUserId,
+      input.logDomainId ?? null
     ]
   );
 
@@ -644,7 +698,11 @@ export async function getLogWorkerRunSnapshot(db: Queryable, jobId: string) {
       lr.submitted_by_user_id,
       job.status as job_status,
       run.status as run_status,
-      lr.status as record_status
+      lr.status as record_status,
+      lr.log_domain_id,
+      ld.name as log_domain_name,
+      ld.description as log_domain_description,
+      ld.format_profile as log_domain_format_profile
     from jobs job
     inner join log_analysis_runs run
       on run.id = job.target_id
@@ -656,6 +714,9 @@ export async function getLogWorkerRunSnapshot(db: Queryable, jobId: string) {
     inner join log_file_objects lfo
       on lfo.id = lr.file_object_id
       and lfo.organization_id = job.organization_id
+    left join log_domains ld
+      on ld.id = lr.log_domain_id
+      and ld.organization_id = job.organization_id
     where job.id = $1
     limit 1
     `,
@@ -671,16 +732,20 @@ export async function persistLogAnalysisReport(db: Database, input: PersistLogAn
       `
       insert into log_analysis_reports (
         id, organization_id, log_record_id, run_id, confidence, conclusion, impact,
-        severity, suggested_actions, raw_lines
+        severity, suggested_actions, raw_lines, analysis_source, degraded_reason, prompt_version, model
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       on conflict (id) do update
       set confidence = excluded.confidence,
         conclusion = excluded.conclusion,
         impact = excluded.impact,
         severity = excluded.severity,
         suggested_actions = excluded.suggested_actions,
-        raw_lines = excluded.raw_lines
+        raw_lines = excluded.raw_lines,
+        analysis_source = excluded.analysis_source,
+        degraded_reason = excluded.degraded_reason,
+        prompt_version = excluded.prompt_version,
+        model = excluded.model
       `,
       [
         `report-${input.runId}`,
@@ -692,7 +757,11 @@ export async function persistLogAnalysisReport(db: Database, input: PersistLogAn
         input.report.impact,
         input.report.severity,
         jsonb(input.report.suggestedActions),
-        jsonb(input.report.rawLines)
+        jsonb(input.report.rawLines),
+        input.report.analysisSource ?? null,
+        input.report.degradedReason ?? null,
+        input.report.promptVersion ?? null,
+        input.report.model ?? null
       ]
     );
     await tx.query(
@@ -722,7 +791,7 @@ export async function persistLogAnalysisReport(db: Database, input: PersistLogAn
           evidence.lineNumbers,
           evidence.inference,
           evidence.suggestedAction,
-          evidence.ruleHit
+          evidence.ruleHit ?? null
         ]
       );
     }
@@ -747,16 +816,20 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
         `
         insert into log_analysis_reports (
           id, organization_id, log_record_id, run_id, confidence, conclusion, impact,
-          severity, suggested_actions, raw_lines
+          severity, suggested_actions, raw_lines, analysis_source, degraded_reason, prompt_version, model
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         on conflict (id) do update
         set confidence = excluded.confidence,
           conclusion = excluded.conclusion,
           impact = excluded.impact,
           severity = excluded.severity,
           suggested_actions = excluded.suggested_actions,
-          raw_lines = excluded.raw_lines
+          raw_lines = excluded.raw_lines,
+          analysis_source = excluded.analysis_source,
+          degraded_reason = excluded.degraded_reason,
+          prompt_version = excluded.prompt_version,
+          model = excluded.model
         `,
         [
           `report-${input.runId}`,
@@ -768,7 +841,11 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
           input.report.impact,
           input.report.severity,
           jsonb(input.report.suggestedActions),
-          jsonb(input.report.rawLines)
+          jsonb(input.report.rawLines),
+          input.report.analysisSource ?? null,
+          input.report.degradedReason ?? null,
+          input.report.promptVersion ?? null,
+          input.report.model ?? null
         ]
       );
       await tx.query(
@@ -798,7 +875,7 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
             evidence.lineNumbers,
             evidence.inference,
             evidence.suggestedAction,
-            evidence.ruleHit
+            evidence.ruleHit ?? null
           ]
         );
       }
@@ -967,7 +1044,14 @@ export async function appendFeedback(
 
 export async function createRerunWithJob(
   db: Queryable,
-  input: { runId: string; jobId: string; organizationId: string; logId: string; analysisQuestion?: string }
+  input: {
+    runId: string;
+    jobId: string;
+    organizationId: string;
+    logId: string;
+    analysisQuestion?: string;
+    logDomainId?: string;
+  }
 ): Promise<LogAnalysisJobDto> {
   await db.query<RunRow>(
     `
@@ -991,12 +1075,13 @@ export async function createRerunWithJob(
     set status = 'processing',
       current_run_id = $3,
       analysis_question = coalesce($4, analysis_question),
+      log_domain_id = coalesce($5, log_domain_id),
       failure_reason = null,
       updated_at = now()
     where organization_id = $1
       and id = $2
     `,
-    [input.organizationId, input.logId, input.runId, input.analysisQuestion ?? null]
+    [input.organizationId, input.logId, input.runId, input.analysisQuestion ?? null, input.logDomainId ?? null]
   );
 
   return job;

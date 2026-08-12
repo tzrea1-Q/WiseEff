@@ -121,6 +121,7 @@
   --z-modal-backdrop-nested: 1160;
   --z-toast: 1180;
   --z-xiaoze-popup: 1200;
+  --z-xiaoze-approval: 1250;
 
   /* ── Layout ── */
   --sidebar-width: 256px;
@@ -6774,6 +6775,57 @@ td small {
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
+}
+
+.analysis-provenance {
+  display: grid;
+  gap: 6px;
+}
+
+.analysis-provenance__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.analysis-provenance__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.analysis-provenance__badge--agent {
+  color: #1d4ed8;
+  background: #e8effd;
+  border: 1px solid #c4d5f8;
+}
+
+.analysis-provenance__badge--degraded {
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fbbf77;
+}
+
+.analysis-provenance__badge--domain {
+  color: var(--app-muted);
+  background: var(--surface-low);
+  border: 1px solid var(--outline);
+}
+
+.analysis-provenance__reason {
+  margin: 0;
+  padding: 8px 12px;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .logs-analysis-question {
@@ -13664,6 +13716,18 @@ td small {
 }
 
 /* Xiaoze design tokens live in the single :root token block at the top of this file. */
+
+/* The approval interrupt card portals to <body> with the library default z-50,
+   which sits UNDER the Xiaoze popup (--z-xiaoze-popup) that spawned it — the
+   scrim swallowed every Approve/Reject click. Lift the card and its overlay
+   onto the declared scale above the popup. */
+[data-slot="alert-dialog-overlay"]:has(+ [data-testid="xiaoze-approval-card"]) {
+  z-index: var(--z-xiaoze-approval);
+}
+
+[data-testid="xiaoze-approval-card"] {
+  z-index: var(--z-xiaoze-approval);
+}
 
 /* ── CopilotKit shell overrides ── */
 .xiaoze-popup-layer {

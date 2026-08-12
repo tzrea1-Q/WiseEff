@@ -167,8 +167,8 @@ mock mode 有意保留 12 个兼容参数，以保证组件测试与演示轻量
 
 日志分析：
 
-- `/logs`：上传日志、轮询任务、展示报告和证据。
-- `/log-admin`：反馈、归档、重跑、治理操作。
+- `/logs`：上传日志、轮询任务、展示报告和证据。上传弹窗含可选「业务域」下拉（API mode 经 `logActions.listLogDomains()` 拉取活跃域；默认「未分类（通用分析）」，域选择绝不阻塞上传；mock mode 仅显示默认项）。结论卡按 additive 的 `analysisSource` / `degradedReason` 渲染来源徽标：`rules-fallback` 显示醒目的琥珀色「降级分析 · 规则回退」徽标与原因说明，`agent` 显示轻量「Agent 分析」徽标，绑定业务域时显示业务域标签；无来源的历史规则报告不渲染徽标。任务轮询改为自适应退避（1s×30 → 2s×45 → 5s，计划轮询总时长上限约 5 分钟，对齐 p95 ≤ 3min SLO 加余量），并保留按日志的 generation 守卫。
+- `/log-admin`：反馈、归档、重跑、治理操作；新增「业务域治理」区（列表 + 新建/编辑表单 + 画像 JSON 校验 + 归档），前端按 `logs.admin-domains`（Admin）门控，后端路由强制真实 `logs:admin-domains` 权限；`LogRecordDrawer` 同样展示来源/降级徽标。
 
 产品反馈：
 
@@ -179,8 +179,9 @@ mock mode 有意保留 12 个兼容参数，以保证组件测试与演示轻量
 知识库：
 
 - `/knowledge`（侧栏分组「知识库」）：条目列表用共享 `ColumnFilter` 做状态/标签列筛选;检索框只命中 `published` 条目,结果如实标注检索模式（语义 + 全文 vs 仅全文）;分栏编辑/预览的 Markdown 编辑器（`src/domain/knowledge/markdown.ts` 先转义再渲染）;文件条目上传后展示提取状态徽章;修订历史支持「恢复为新修订」。API 模式额外提供「问知识库(小泽)」入口,派发小泽打开 handoff——mock 模式无 Agent UI,入口隐藏。`?entryId=…` 深链（小泽引用使用）直接打开条目详情。
-- `/knowledge-admin`：已归档条目恢复、manage 门控的彻底删除（带确认勾选的 `ConfirmDialog`）,以及检索索引健康区——诚实的检索模式横幅（pgvector/嵌入可用性）、逐条目索引状态与失败原因、单条重试与全量重建。Agent 草稿队列在蒸馏阶段加入。
-- 端口 `KnowledgeRepository`:mock 用 `src/infrastructure/mock/mockKnowledgeRepository.ts`（fixtures 覆盖草稿/已发布/已归档与提取失败文件,并模拟索引状态,端口形状一致）;API 用 `src/infrastructure/http/knowledgeClient.ts` 对接 `/api/v1/knowledge/*`（含 `index/status`、`index/rebuild`、`entries/:id/index/retry`）。过期保存映射为 `KnowledgeRevisionConflictError`,编辑器渲染为可读的刷新重试冲突提示,绝不静默覆盖。
+- `/knowledge-admin`：Agent 草稿发布队列（Phase 3）——`list({ status: "draft", sourceType: "agent" })` 行含创建人、会话来源、来源分析深链（`/logs?logId=…`）与创建时间;逐行审阅（`/knowledge?entryId=…`）、发布、以及 `ConfirmDialog` 确认后的拒绝归档（`rejectAgentDraft`）;另有已归档条目恢复、manage 门控的彻底删除（带确认勾选的 `ConfirmDialog`）,以及检索索引健康区——诚实的检索模式横幅（pgvector/嵌入可用性）、逐条目索引状态与失败原因、单条重试与全量重建。
+- 沉淀为知识（Phase 3）:日志分析结果页（`src/features/log-analysis/LogsPage.tsx`）在分析完成且用户持有 `knowledge:edit` 时显示「沉淀为知识」;点击调用 `KnowledgeRepository.distillFromLog(logId)`,随后经 `/knowledge?entryId=…` 深链交接到草稿详情审阅并发布。mock 模式用 `src/domain/knowledge/distill.ts` 从原型日志记录构建同样的预填草稿（端口形状一致）;服务端预填只耦合已存储的分析记录 DTO。
+- 端口 `KnowledgeRepository`:mock 用 `src/infrastructure/mock/mockKnowledgeRepository.ts`（fixtures 覆盖草稿/已发布/已归档、提取失败文件与两条 Agent 草稿队列态,并模拟索引状态,端口形状一致）;API 用 `src/infrastructure/http/knowledgeClient.ts` 对接 `/api/v1/knowledge/*`（含 `distill-from-log`、`entries/:id/reject`、`index/status`、`index/rebuild`、`entries/:id/index/retry`）。过期保存映射为 `KnowledgeRevisionConflictError`,编辑器渲染为可读的刷新重试冲突提示,绝不静默覆盖。
 - 能力接线:`App.tsx` 由 `/api/v1/me` 权限（API mode 的 `knowledge:edit` / `knowledge:manage`）或角色检查（mock mode）构造 `KnowledgeCapability`;UI 门控仅是 UX,后端路由才是安全边界。纯生命周期/可见性规则在 `src/domain/knowledge/rules.ts`。
 - 小泽回答在助手 markdown 下渲染引用来源（`src/features/agent/XiaozeCitationSources.tsx`）：turn-reply 自定义事件与持久化线程消息携带 `citations`,知识引用深链到 `/knowledge?entryId=…`。
 

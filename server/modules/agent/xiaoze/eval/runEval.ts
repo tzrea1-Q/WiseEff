@@ -55,7 +55,7 @@ export async function runScenario(scenario: EvalScenario): Promise<ScenarioEvalR
     ? {
         resolveApproval: async (input) => {
           if (input.decision === "approve") {
-            executedMutatingTools.push("action.submitParameterChange");
+            executedMutatingTools.push(scenario.approvalToolName ?? "action.submitParameterChange");
             return { text: scenario.approvalSuccessText ?? "Change request created." };
           }
           return { text: "The proposed action was rejected." };

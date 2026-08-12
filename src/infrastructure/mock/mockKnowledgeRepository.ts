@@ -4,12 +4,14 @@ import type {
   UpdateKnowledgeInput
 } from "@/application/ports/KnowledgeRepository";
 import { KnowledgeRevisionConflictError } from "@/application/ports/KnowledgeRepository";
+import { buildLogDistillationDraft } from "@/domain/knowledge/distill";
 import type {
   KnowledgeEntry,
   KnowledgeIndexState,
   KnowledgeRevision,
   KnowledgeSearchResult
 } from "@/domain/knowledge/types";
+import type { LogRecord } from "@/domain/prototype/types";
 
 const MOCK_KNOWLEDGE_NOW = "2026-08-12T00:00:00.000Z";
 const MOCK_USER_ID = "u-xu-yun";
@@ -32,6 +34,8 @@ type MockStore = {
 export type MockKnowledgeCapability = {
   userId?: string;
   canManage?: boolean;
+  /** Mock distillation source: resolves a frontend log record by id (App wires state.logs). */
+  getLogRecord?: (logId: string) => LogRecord | undefined;
 };
 
 function clone<T>(value: T): T {
@@ -50,6 +54,8 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
     status: "published",
     tags: ["project-aurora", "快充", "温控"],
     sourceType: "human",
+    sourceSessionId: null,
+    sourceLogId: null,
     createdByUserId: MOCK_USER_ID,
     headRevisionNumber: 2,
     createdAt: "2026-08-01T02:00:00.000Z",
@@ -68,6 +74,8 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
     status: "draft",
     tags: ["硬件", "sc8562"],
     sourceType: "human",
+    sourceSessionId: null,
+    sourceLogId: null,
     createdByUserId: MOCK_USER_ID,
     headRevisionNumber: 1,
     createdAt: "2026-08-11T03:00:00.000Z",
@@ -85,6 +93,8 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
     status: "published",
     tags: ["project-nebula", "无线充"],
     sourceType: "human",
+    sourceSessionId: null,
+    sourceLogId: null,
     createdByUserId: "u-li-fang",
     headRevisionNumber: 1,
     createdAt: "2026-08-05T08:00:00.000Z",
@@ -110,6 +120,8 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
     status: "draft",
     tags: ["流程规范"],
     sourceType: "human",
+    sourceSessionId: null,
+    sourceLogId: null,
     createdByUserId: MOCK_USER_ID,
     headRevisionNumber: 1,
     createdAt: "2026-08-09T01:00:00.000Z",
@@ -135,6 +147,8 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
     status: "archived",
     tags: ["日志"],
     sourceType: "human",
+    sourceSessionId: null,
+    sourceLogId: null,
     createdByUserId: "u-li-fang",
     headRevisionNumber: 3,
     createdAt: "2026-07-01T02:00:00.000Z",
@@ -142,6 +156,48 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
     publishedAt: "2026-07-02T02:00:00.000Z",
     archivedAt: "2026-08-08T02:00:00.000Z",
     contentMarkdown: "旧平台日志格式已下线,保留历史供追溯。",
+    file: null
+  };
+
+  // Agent-draft publish-queue states: one draft distilled in the current
+  // user's session (publishable by them), one from another engineer's session
+  // (manage-only governance) — so the /knowledge-admin queue has both rows.
+  const agentDraftOwn: KnowledgeEntry = {
+    id: "mock-kb-agent-1",
+    title: "小泽沉淀:充电异常断电根因排查",
+    contentForm: "markdown",
+    status: "draft",
+    tags: ["日志分析", "严重"],
+    sourceType: "agent",
+    sourceSessionId: "mock-xiaoze-session-1",
+    sourceLogId: "log-auth",
+    createdByUserId: MOCK_USER_ID,
+    headRevisionNumber: 1,
+    createdAt: "2026-08-11T09:20:00.000Z",
+    updatedAt: "2026-08-11T09:20:00.000Z",
+    publishedAt: null,
+    archivedAt: null,
+    contentMarkdown:
+      "## 结论\n\n充电异常断电与鉴权重试风暴相关,建议限制重试频率。\n\n(由小泽在会话中沉淀,待人工审阅发布。)",
+    file: null
+  };
+
+  const agentDraftOther: KnowledgeEntry = {
+    id: "mock-kb-agent-2",
+    title: "小泽沉淀:无线充异物检测误报处置",
+    contentForm: "markdown",
+    status: "draft",
+    tags: ["小泽沉淀"],
+    sourceType: "agent",
+    sourceSessionId: "mock-xiaoze-session-2",
+    sourceLogId: null,
+    createdByUserId: "u-li-fang",
+    headRevisionNumber: 1,
+    createdAt: "2026-08-11T11:05:00.000Z",
+    updatedAt: "2026-08-11T11:05:00.000Z",
+    publishedAt: null,
+    archivedAt: null,
+    contentMarkdown: "## 结论\n\nFOD 阈值偏严导致金属边框误报,建议按整机型号分档配置。",
     file: null
   };
 
@@ -217,11 +273,35 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
       authorUserId: "u-li-fang",
       restoredFromRevisionId: null,
       createdAt: archivedMarkdown.updatedAt
+    },
+    {
+      id: "mock-kb-agent-1-r1",
+      entryId: "mock-kb-agent-1",
+      revisionNumber: 1,
+      title: agentDraftOwn.title,
+      tags: agentDraftOwn.tags,
+      contentMarkdown: agentDraftOwn.contentMarkdown ?? "",
+      fileId: null,
+      authorUserId: MOCK_USER_ID,
+      restoredFromRevisionId: null,
+      createdAt: agentDraftOwn.createdAt
+    },
+    {
+      id: "mock-kb-agent-2-r1",
+      entryId: "mock-kb-agent-2",
+      revisionNumber: 1,
+      title: agentDraftOther.title,
+      tags: agentDraftOther.tags,
+      contentMarkdown: agentDraftOther.contentMarkdown ?? "",
+      fileId: null,
+      authorUserId: "u-li-fang",
+      restoredFromRevisionId: null,
+      createdAt: agentDraftOther.createdAt
     }
   ];
 
   return {
-    entries: [publishedMarkdown, draftMarkdown, publishedFile, failedExtractionFile, archivedMarkdown],
+    entries: [publishedMarkdown, draftMarkdown, publishedFile, failedExtractionFile, archivedMarkdown, agentDraftOwn, agentDraftOther],
     revisions
   };
 }
@@ -318,6 +398,7 @@ export function createMockKnowledgeRepository(
         if (entry.status === "draft" && !canManage && entry.createdByUserId !== userId) return false;
         if (query?.status && entry.status !== query.status) return false;
         if (query?.contentForm && entry.contentForm !== query.contentForm) return false;
+        if (query?.sourceType && entry.sourceType !== query.sourceType) return false;
         if (query?.tag && !entry.tags.includes(query.tag)) return false;
         if (query?.q && !entry.title.toLocaleLowerCase().includes(query.q.toLocaleLowerCase())) return false;
         return true;
@@ -339,6 +420,8 @@ export function createMockKnowledgeRepository(
         status: "draft",
         tags: [...input.tags],
         sourceType: "human",
+        sourceSessionId: null,
+        sourceLogId: null,
         createdByUserId: userId,
         headRevisionNumber: 0,
         createdAt: MOCK_KNOWLEDGE_NOW,
@@ -365,6 +448,8 @@ export function createMockKnowledgeRepository(
         status: "draft",
         tags: [...input.tags],
         sourceType: "human",
+        sourceSessionId: null,
+        sourceLogId: null,
         createdByUserId: userId,
         headRevisionNumber: 0,
         createdAt: MOCK_KNOWLEDGE_NOW,
@@ -388,6 +473,54 @@ export function createMockKnowledgeRepository(
       appendRevision(entry);
       entry.headRevisionNumber = 1;
       store.entries = [entry, ...store.entries];
+      return clone(entry);
+    },
+
+    async distillFromLog(logId) {
+      const log = capability.getLogRecord?.(logId);
+      if (!log) {
+        throw new Error(`Log record not found: ${logId}`);
+      }
+      if (log.status !== "Complete") {
+        throw new Error("只有已完成的日志分析才能沉淀为知识。");
+      }
+      const draft = buildLogDistillationDraft(log);
+      store.counter += 1;
+      const entry: KnowledgeEntry = {
+        id: `mock-kb-${store.counter}`,
+        title: draft.title,
+        contentForm: "markdown",
+        status: "draft",
+        tags: [...draft.tags],
+        sourceType: "human",
+        sourceSessionId: null,
+        sourceLogId: log.id,
+        createdByUserId: userId,
+        headRevisionNumber: 0,
+        createdAt: MOCK_KNOWLEDGE_NOW,
+        updatedAt: MOCK_KNOWLEDGE_NOW,
+        publishedAt: null,
+        archivedAt: null,
+        contentMarkdown: draft.contentMarkdown,
+        file: null
+      };
+      appendRevision(entry);
+      entry.headRevisionNumber = 1;
+      store.entries = [entry, ...store.entries];
+      return clone(entry);
+    },
+
+    async rejectAgentDraft(entryId) {
+      const entry = requireEntry(entryId);
+      if (!canManage && entry.createdByUserId !== userId) {
+        throw new Error("Rejecting someone else's agent draft requires knowledge:manage.");
+      }
+      if (entry.status !== "draft" || entry.sourceType !== "agent") {
+        throw new Error("Only agent-sourced drafts can be archive-rejected.");
+      }
+      entry.status = "archived";
+      entry.archivedAt = MOCK_KNOWLEDGE_NOW;
+      entry.updatedAt = MOCK_KNOWLEDGE_NOW;
       return clone(entry);
     },
 

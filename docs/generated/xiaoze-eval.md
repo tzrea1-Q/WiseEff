@@ -1,8 +1,8 @@
 # Xiaoze Behavior Eval Report
 
-- Generated: 2026-08-12T16:41:17.235Z
+- Generated: 2026-08-12T20:08:45.536Z
 - Prompt version: `2026-06-29.1`
-- Scenarios: 10 (10 passed)
+- Scenarios: 12 (12 passed)
 - Meta checks: 1/1 passed
 
 ## Scenario Results
@@ -17,6 +17,8 @@
 | reject-halt | reject-halt | PASS |
 | turn-cap-graceful | turn-cap | PASS |
 | knowledge-grounding | knowledge-grounding | PASS |
+| knowledge-agent-draft-requires-approval | knowledge-agent-draft | PASS |
+| knowledge-agent-draft-approve-lands | knowledge-agent-draft | PASS |
 | citations-when-tool-data-used | citations-grounding | PASS |
 | project-scope-forbidden | project-scope | PASS |
 

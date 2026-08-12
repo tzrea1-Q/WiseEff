@@ -382,6 +382,10 @@ export function createXiaozeTurnStream(ids: XiaozeTurnStreamIds) {
           event: EventType.TOOL_CALL_END,
           data: { type: EventType.TOOL_CALL_END, toolCallId: frontendToolCallId }
         },
+        // The assistant text message opened by `open()` must close before
+        // RUN_FINISHED: the AG-UI client refuses to finish a run with an
+        // active text message, which broke every browser approval interrupt.
+        ...(assistantShellStarted ? [answerEndEvent()] : []),
         custom(XIAOZE_INTERRUPT_EVENT, interruptValue),
         timingEvent("finished"),
         runFinishedEvent({
@@ -455,6 +459,10 @@ export function createXiaozeTurnStream(ids: XiaozeTurnStreamIds) {
             reasoningMessageId: ids.reasoningMessageId,
             text: reply.text,
             reasoning: reply.reasoning,
+            // Citation payloads are the Phase 2 grounding contract: the live
+            // turn reply must carry them or Xiaoze source links only render
+            // after a thread reload (persisted messages keep them separately).
+            citations: input.citations,
             runSteps
           })
         );

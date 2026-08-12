@@ -13,6 +13,7 @@ const baseEntryDto: KnowledgeEntryDto = {
   tags: ["快充"],
   sourceType: "human",
   sourceSessionId: null,
+  sourceLogId: null,
   createdByUserId: "user-1",
   headRevisionId: "rev-1",
   headRevisionNumber: 1,
@@ -76,6 +77,43 @@ describe("createHttpKnowledgeRepository", () => {
       tags: [],
       file: { fileName: "manual.pdf", contentType: "application/pdf", contentBase64: btoa("pdf-bytes") }
     });
+  });
+
+  it("distils a log record into a pre-filled draft and maps the source linkage", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse(
+        { item: { ...baseEntryDto, sourceLogId: "log-9", tags: ["日志分析", "严重"] } },
+        201
+      )
+    );
+    const repository = createRepository(fetchMock);
+
+    const entry = await repository.distillFromLog("log-9");
+    expect(entry.sourceLogId).toBe("log-9");
+    expect(String(fetchMock.mock.calls[0][0])).toBe("http://127.0.0.1:8787/api/v1/knowledge/distill-from-log");
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ logId: "log-9" });
+  });
+
+  it("archive-rejects an agent draft through the reject endpoint", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({ item: { ...baseEntryDto, sourceType: "agent", status: "archived" } })
+    );
+    const repository = createRepository(fetchMock);
+
+    const entry = await repository.rejectAgentDraft("entry-1");
+    expect(entry.status).toBe("archived");
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/api/v1/knowledge/entries/entry-1/reject");
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
+  });
+
+  it("passes the sourceType filter when listing the agent-draft queue", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({ items: [] }));
+    const repository = createRepository(fetchMock);
+
+    await repository.list({ status: "draft", sourceType: "agent" });
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      "http://127.0.0.1:8787/api/v1/knowledge/entries?status=draft&sourceType=agent"
+    );
   });
 
   it("translates 409 CONFLICT into KnowledgeRevisionConflictError", async () => {

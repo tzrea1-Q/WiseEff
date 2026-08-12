@@ -313,7 +313,8 @@ describe("operations health", () => {
         env: {
           AGENT_API_BASE_URL: "https://agent.example.com",
           AGENT_API_KEY: "test-key",
-          XIAOZE_MODEL: "xiaoze-model"
+          XIAOZE_MODEL: "xiaoze-model",
+          LOG_ANALYSIS_DETERMINISTIC: true
         }
       })
     ).resolves.toMatchObject({
@@ -328,6 +329,111 @@ describe("operations health", () => {
               baseUrlConfigured: true,
               model: "xiaoze-model"
             }
+          }
+        }
+      }
+    });
+  });
+
+  it("includes log analysis LLM readiness when env is provided", async () => {
+    const db: Pick<Queryable, "query"> = {
+      query: async <Row,>() => ({ rows: [{ ok: 1 } as Row], rowCount: 1 })
+    };
+    const objectStore = {
+      checkHealth: async () => ({ ok: true as const, status: "ready" as const })
+    };
+
+    await expect(
+      buildReadyHealth({
+        db,
+        objectStore,
+        env: {
+          AGENT_API_BASE_URL: "https://agent.example.com",
+          AGENT_API_KEY: "test-key",
+          LOG_ANALYSIS_API_BASE_URL: "https://llm.example.com",
+          LOG_ANALYSIS_API_KEY: "log-key",
+          LOG_ANALYSIS_MODEL: "log-model"
+        }
+      })
+    ).resolves.toMatchObject({
+      status: 200,
+      body: {
+        ok: true,
+        dependencies: {
+          logAnalysisLlm: {
+            ok: true,
+            status: "ready",
+            details: {
+              baseUrlConfigured: true,
+              model: "log-model"
+            }
+          }
+        }
+      }
+    });
+  });
+
+  it("reports missing log analysis LLM config and degrades readiness", async () => {
+    const db: Pick<Queryable, "query"> = {
+      query: async <Row,>() => ({ rows: [{ ok: 1 } as Row], rowCount: 1 })
+    };
+    const objectStore = {
+      checkHealth: async () => ({ ok: true as const, status: "ready" as const })
+    };
+
+    await expect(
+      buildReadyHealth({
+        db,
+        objectStore,
+        env: {
+          AGENT_API_BASE_URL: "https://agent.example.com",
+          AGENT_API_KEY: "test-key",
+          LOG_ANALYSIS_API_BASE_URL: "https://llm.example.com"
+        }
+      })
+    ).resolves.toMatchObject({
+      status: 503,
+      body: {
+        ok: false,
+        dependencies: {
+          logAnalysisLlm: {
+            ok: false,
+            status: "missing",
+            message:
+              "Log analysis LLM configuration is incomplete; analyses degrade to the rule engine. Missing: LOG_ANALYSIS_API_KEY."
+          }
+        }
+      }
+    });
+  });
+
+  it("treats deterministic log analysis mode as ready without LLM credentials", async () => {
+    const db: Pick<Queryable, "query"> = {
+      query: async <Row,>() => ({ rows: [{ ok: 1 } as Row], rowCount: 1 })
+    };
+    const objectStore = {
+      checkHealth: async () => ({ ok: true as const, status: "ready" as const })
+    };
+
+    await expect(
+      buildReadyHealth({
+        db,
+        objectStore,
+        env: {
+          AGENT_API_BASE_URL: "https://agent.example.com",
+          AGENT_API_KEY: "test-key",
+          LOG_ANALYSIS_DETERMINISTIC: true
+        }
+      })
+    ).resolves.toMatchObject({
+      status: 200,
+      body: {
+        ok: true,
+        dependencies: {
+          logAnalysisLlm: {
+            ok: true,
+            status: "ready",
+            message: "Log analysis deterministic mode; LLM API not required."
           }
         }
       }
@@ -379,7 +485,7 @@ describe("operations health", () => {
         buildReadyHealth({
           db,
           objectStore,
-          env: {}
+          env: { LOG_ANALYSIS_DETERMINISTIC: true }
         })
       ).resolves.toMatchObject({
         status: 200,

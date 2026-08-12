@@ -213,6 +213,66 @@ describe.skipIf(!databaseAvailable)("log service", () => {
     expect(events.map((row) => row.kind)).toContain("log-upload");
   });
 
+  async function seedLogDomain(input: { id: string; name: string; status?: "active" | "archived" }) {
+    await db.query(
+      "insert into log_domains (id, organization_id, name, status) values ($1, $2, $3, $4)",
+      [input.id, "org-1", input.name, input.status ?? "active"]
+    );
+  }
+
+  it("binds an active log domain on upload and stores log_domain_id", async () => {
+    await seedLogDomain({ id: "domain-1", name: "charging-power" });
+
+    const result = await uploadLogFile(db, createMemoryObjectStore(), makeAuth(), {
+      fileName: "pack-controller.log",
+      contentType: "text/plain",
+      bytes: Buffer.from("line one"),
+      logDomainId: "domain-1"
+    });
+
+    expect(result.log.logDomainId).toBe("domain-1");
+    expect(result.log.logDomainName).toBe("charging-power");
+    const stored = await db.query<{ log_domain_id: string | null }>(
+      "select log_domain_id from log_records where id = $1",
+      [result.log.id]
+    );
+    expect(stored.rows[0]?.log_domain_id).toBe("domain-1");
+    const uploadAudit = await db.query<{ metadata: Record<string, unknown> }>(
+      "select metadata from audit_events where kind = 'log-upload' and organization_id = $1",
+      ["org-1"]
+    );
+    expect(JSON.stringify(uploadAudit.rows[0]?.metadata)).toContain("domain-1");
+  });
+
+  it("rejects an unknown log domain on upload with 400 before storing bytes", async () => {
+    const objectStore = createMemoryObjectStore();
+
+    await expect(
+      uploadLogFile(db, objectStore, makeAuth(), {
+        fileName: "pack-controller.log",
+        contentType: "text/plain",
+        bytes: Buffer.from("line one"),
+        logDomainId: "domain-missing"
+      })
+    ).rejects.toMatchObject({ code: "VALIDATION_FAILED", status: 400 });
+    expect(objectStore.entries.size).toBe(0);
+  });
+
+  it("rejects an archived log domain on upload with 400", async () => {
+    await seedLogDomain({ id: "domain-1", name: "charging-power", status: "archived" });
+    const objectStore = createMemoryObjectStore();
+
+    await expect(
+      uploadLogFile(db, objectStore, makeAuth(), {
+        fileName: "pack-controller.log",
+        contentType: "text/plain",
+        bytes: Buffer.from("line one"),
+        logDomainId: "domain-1"
+      })
+    ).rejects.toMatchObject({ code: "VALIDATION_FAILED", status: 400 });
+    expect(objectStore.entries.size).toBe(0);
+  });
+
   it("dispatches supported log uploads to the durable queue after the database job is created", async () => {
     const { queue, enqueued } = makeQueue();
 
