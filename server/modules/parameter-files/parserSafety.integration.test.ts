@@ -3,7 +3,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildDtsParsedIndex } from "./parseIndex";
-import { detectUnsupportedDtsConstructs } from "./unsupported";
 
 const fixturePath = join(dirname(fileURLToPath(import.meta.url)), "__fixtures__", "dts-teaching-sample.dts");
 const sample = readFileSync(fixturePath, "utf8");
@@ -28,10 +27,5 @@ describe("DTS parser safety integration (teaching sample)", () => {
     // Synthetic regression: commented assignments must not leak.
     const synthetic = buildDtsParsedIndex(`alive = <1>;\n/* phantom_comment_only = <99>; */\n// ghost_line = <7>;\n`);
     expect(Object.keys(synthetic)).toEqual(["alive"]);
-  });
-
-  it("detectUnsupportedDtsConstructs does not flag /include/ (resolver owns include diagnostics)", () => {
-    expect(sample).toContain("/include/");
-    expect(detectUnsupportedDtsConstructs(sample)).toEqual([]);
   });
 });

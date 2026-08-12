@@ -13,7 +13,7 @@ import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { nodePathToParameterIdentity } from "../parameter-files/pathMapper";
+import { nodePathToParameterIdentity } from "./pathMapper";
 import { getProjectParameterFileById } from "../parameter-files/repository";
 import { writebackMergedEnablementValue, writebackMergedParameterValue, type WritebackServiceContext } from "../parameter-files/writebackService";
 import {
