@@ -45,7 +45,7 @@ import {
   type NodeEnablementDraftResult
 } from "./editService";
 import { writeGovernanceAudit } from "./governanceAudit";
-import { getProjectById } from "../parameters/repository";
+import { getProjectById } from "../parameters/projectRepository";
 import { listStructuralPropertyKeys } from "./parameterSurface";
 import {
   assertManifestStateReady,

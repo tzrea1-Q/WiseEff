@@ -20,7 +20,8 @@ import {
   type ParameterIdentityMigrationReport
 } from "./migration";
 import { resetParameterIdentityCutoverCache } from "../parameters/cutoverAwareIdentity";
-import { listParameters, listChangeRequests } from "../parameters/repository";
+import { listParameters } from "../parameters/repository";
+import { listChangeRequests } from "../parameters/reviewWorkflowRepository";
 import { ApiError } from "../../shared/http/errors";
 
 
