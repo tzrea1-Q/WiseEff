@@ -59,7 +59,7 @@ This file is the short map for agents working in this repository. Keep it small.
 WiseEff is an AI-assisted enterprise efficiency platform prototype. It centers on three workflows:
 
 - Parameter management: project parameter viewing, editing, review, admin governance, audit, and import/export.
-- Log analysis: log upload, staged analysis progress, evidence, history, and admin governance.
+- Log analysis: log upload with optional org-scoped log-domain binding, staged analysis progress, an LLM analysis kernel with honest degradation to the rules engine (provenance surfaced in UI and reports), evidence, history, and admin governance including domain governance.
 - Debugging: device or node connection, safe parameter reads/writes, rollback preparation, and operation history.
 
 Internal Beta product feedback is a cross-cutting utility: users submit sidebar feedback with image attachments, while Admins triage it from `/feedback-admin`.
