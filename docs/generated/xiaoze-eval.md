@@ -1,6 +1,6 @@
 # Xiaoze Behavior Eval Report
 
-- Generated: 2026-08-12T18:50:25.535Z
+- Generated: 2026-08-12T19:53:00.819Z
 - Prompt version: `2026-06-29.1`
 - Scenarios: 12 (12 passed)
 - Meta checks: 1/1 passed
