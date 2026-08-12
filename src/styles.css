@@ -4950,7 +4950,6 @@ td small {
 }
 
 .user-permissions-panel,
-.user-permissions-table-card,
 .user-permissions-dialog,
 .user-permissions-modal-card,
 .role-capability-card,
@@ -4960,56 +4959,6 @@ td small {
   border: 1px solid var(--outline);
   border-radius: 8px;
   box-shadow: var(--shadow-soft);
-}
-
-.user-permissions-table-card {
-  max-width: 100%;
-  overflow-x: auto;
-  overflow-y: visible;
-  overscroll-behavior-x: contain;
-  -webkit-overflow-scrolling: touch;
-}
-
-.user-permissions-table-card table {
-  width: 100%;
-  min-width: 680px;
-  border-collapse: collapse;
-  table-layout: auto;
-}
-
-.user-permissions-table-card th,
-.user-permissions-table-card td {
-  padding: 12px 14px;
-  border-bottom: 1px solid #e7ecf7;
-  text-align: left;
-  vertical-align: middle;
-}
-
-.user-permissions-table-card th {
-  position: relative;
-  color: var(--outline-strong);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.user-permissions-table-head {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.user-permissions-table-card td {
-  color: var(--text);
-  font-size: 13px;
-}
-
-.user-permissions-table-card td:last-child {
-  white-space: nowrap;
-}
-
-.user-permissions-table-card tr:last-child td {
-  border-bottom: 0;
 }
 
 .user-permissions-role-header,

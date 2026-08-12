@@ -38,24 +38,6 @@ export function WorkbenchLayout({
   );
 }
 
-export function DataTable<T>({ headers, rows, renderRow }: { headers: string[]; rows: T[]; renderRow: (row: T) => ReactNode }) {
-  return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            {headers.map((header) => (
-              <th key={header}>{header}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>{rows.map(renderRow)}</tbody>
-      </table>
-      {rows.length === 0 ? <EmptyState text="当前筛选条件下没有数据。" /> : null}
-    </div>
-  );
-}
-
 export function RiskBadge({ risk }: { risk: "High" | "Medium" | "Low" }) {
   return <span className={`risk-badge ${risk.toLowerCase()}`}>{riskLabels[risk]}</span>;
 }

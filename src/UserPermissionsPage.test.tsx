@@ -84,7 +84,9 @@ describe("UserPermissionsPage", () => {
   it("shows role capabilities only while a role cell is hovered", async () => {
     renderPage();
     const row = screen.getByText("Liu Min").closest("tr")!;
-    const roleCell = within(row).getByRole("combobox", { name: "调整 Liu Min 的角色" }).closest("td")!;
+    const roleCell = within(row).getByRole("combobox", { name: "调整 Liu Min 的角色" }).closest(
+      ".user-permissions-role-control"
+    )! as HTMLElement;
 
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
 
@@ -130,13 +132,13 @@ describe("UserPermissionsPage", () => {
     expect(screen.getByText("Xu Yun")).toBeInTheDocument();
   });
 
-  it("uses the operational permissions layout classes", () => {
+  it("uses the operational permissions layout classes with the shared table shell", () => {
     render(<UserPermissionsPage state={{ ...createPrototypeState(), activeRoleId: "admin" }} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />);
 
     expect(document.querySelector(".user-permissions-page")).toBeInTheDocument();
     expect(document.querySelector(".user-permissions-toolbar")).toBeInTheDocument();
     expect(document.querySelector(".user-permissions-grid")).toBeInTheDocument();
-    expect(document.querySelector(".user-permissions-table-card")).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "平台用户" })).toBeInTheDocument();
   });
 
   it("renders user filters as grouped toolbar fields", () => {
@@ -167,7 +169,7 @@ describe("UserPermissionsPage", () => {
     expect(page).toHaveTextContent("添加用户");
     expect(page).toHaveTextContent("搜索");
     expect(page).toHaveTextContent("账号库");
-    expect(page).toHaveTextContent("平台用户");
+    expect(screen.getByRole("table", { name: "平台用户" })).toBeInTheDocument();
     expect(page).toHaveTextContent("硬件开发");
     expect(page).toHaveTextContent("软件开发");
     expect(page).toHaveTextContent("硬件MDE");
@@ -532,15 +534,36 @@ describe("UserPermissionsPage", () => {
     expect(within(table).queryByText("Liu Min")).not.toBeInTheDocument();
   });
 
+  it("sorts accounts from the shared table shell and exposes aria-sort", async () => {
+    renderPage();
+
+    const table = screen.getByRole("table", { name: "平台用户" });
+    const userHeader = within(table).getByRole("columnheader", { name: /用户/ });
+    expect(userHeader).toHaveAttribute("aria-sort", "none");
+
+    await userEvent.click(within(userHeader).getByRole("button", { name: "用户" }));
+    expect(userHeader).toHaveAttribute("aria-sort", "ascending");
+
+    await userEvent.click(within(userHeader).getByRole("button", { name: "用户" }));
+    expect(userHeader).toHaveAttribute("aria-sort", "descending");
+  });
+
+  it("shows an empty state when search filters match no accounts", async () => {
+    renderPage();
+
+    await userEvent.type(screen.getByPlaceholderText("搜索用户"), "不存在的账号名");
+
+    const table = screen.getByRole("table", { name: "平台用户" });
+    expect(within(table).getByText("没有符合筛选条件的用户，请调整搜索或筛选条件。")).toBeInTheDocument();
+    expect(within(table).queryByText("Xu Yun")).not.toBeInTheDocument();
+  });
+
   it("keeps role selectors wide enough for split committer role names", () => {
     const css = readStylesheet("src/styles.css");
-    const tableCardStyles = declarationsFor(css, ".user-permissions-table-card");
     const roleCellStyles = declarationsFor(css, ".user-permissions-role-cell");
     const roleSelectStyles = declarationsFor(css, ".user-permissions-role-select");
     const roleTooltipStyles = declarationsFor(css, ".user-permissions-role-tooltip");
 
-    expect(tableCardStyles["overflow-x"]).toBe("auto");
-    expect(tableCardStyles["max-width"]).toBe("100%");
     const approvalItemStyles = declarationsFor(css, ".user-permissions-approval-item");
     const approvalUserStyles = declarationsFor(css, ".user-permissions-approval-user strong");
     expect(approvalItemStyles["grid-template-columns"]).toBe("minmax(0, 1.2fr) minmax(0, 1fr) auto");
@@ -603,7 +626,11 @@ describe("UserPermissionsPage", () => {
 
     render(<UserPermissionsPage state={state} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />);
 
+    // 11 users paginate at 10 per page in the shared table shell.
+    expect(screen.getByText(/第 1 \/ 2 页 · 共 11 条/)).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "调整 Legacy Reviewer 的角色" })).toHaveValue("software-committer");
+
+    await userEvent.click(screen.getByRole("button", { name: "下一页" }));
     expect(screen.getByRole("combobox", { name: "调整 Legacy Viewer 的角色" })).toHaveValue("hardware-user");
 
     await userEvent.selectOptions(screen.getByLabelText("角色"), "software-committer");
