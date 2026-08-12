@@ -227,6 +227,7 @@ import {
 } from "@/infrastructure/http/authClient";
 import { clearSessionDraftsForLogout } from "@/application/project-configuration/sessionDraftStorage";
 import { AppToastLayer } from "@/components/common/AppToastLayer";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 import { createMockParameterRepository } from "@/infrastructure/mock/mockParameterRepository";
 import { createMockRuntimeState, type MockRuntimeState } from "@/infrastructure/mock/mockState";
@@ -246,7 +247,7 @@ type WiseEffAuthClient = {
   updateCurrentUserProfile?(input: UpdateCurrentUserProfileInput): Promise<AuthContextDto>;
 };
 
-type ApiAuthStatus = "checking" | "authenticated" | "unauthenticated";
+type ApiAuthStatus = "checking" | "authenticated" | "unauthenticated" | "unreachable";
 
 function isPendingRegistrationResponse(response: RegisterLocalAccountResponseDto): response is PendingRegistrationDto {
   return "status" in response && response.status === "pending_approval";
@@ -255,6 +256,15 @@ function isPendingRegistrationResponse(response: RegisterLocalAccountResponseDto
 function authProbeErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "";
   return ["Authorization bearer token is required.", "Session is not active.", "User is not authenticated."].includes(message) ? "" : message;
+}
+
+/**
+ * Only an explicit backend rejection (401/403 -> UNAUTHENTICATED/FORBIDDEN)
+ * should end the local session. Network failures, timeouts, and 5xx responses
+ * mean the backend is unreachable, so the token must survive the outage.
+ */
+function isAuthRejectionError(error: unknown) {
+  return error instanceof WiseEffApiError && (error.code === "UNAUTHENTICATED" || error.code === "FORBIDDEN");
 }
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "wiseeff.sidebar.collapsed";
@@ -2033,6 +2043,7 @@ function AppShell({
   const [debuggingRuntimeReady, setDebuggingRuntimeReady] = useState(runtimeMode !== "api");
   const [apiAuthStatus, setApiAuthStatus] = useState<ApiAuthStatus>(runtimeMode === "api" ? "checking" : "authenticated");
   const [apiAuthError, setApiAuthError] = useState("");
+  const [authProbeAttempt, setAuthProbeAttempt] = useState(0);
   const [apiAuthPermissions, setApiAuthPermissions] = useState<string[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsedPreference);
   const page = getPageByPath(path);
@@ -2468,15 +2479,22 @@ function AppShell({
       })
       .catch((error) => {
         if (cancelledRef.current) return;
-        clearLocalAuthToken();
-        setApiAuthStatus("unauthenticated");
-        setApiAuthError(authProbeErrorMessage(error));
+        if (isAuthRejectionError(error)) {
+          clearLocalAuthToken();
+          setApiAuthStatus("unauthenticated");
+          setApiAuthError(authProbeErrorMessage(error));
+          return;
+        }
+        // Backend restart or network blip: keep the token so the session
+        // resumes as soon as the server is reachable again.
+        setApiAuthStatus("unreachable");
+        setApiAuthError("");
       });
 
     return () => {
       cancelledRef.current = true;
     };
-  }, [authClient, hydrateAuthContext, refreshApiRuntimeData, runtimeMode]);
+  }, [authClient, authProbeAttempt, hydrateAuthContext, refreshApiRuntimeData, runtimeMode]);
 
   useEffect(() => {
     if (runtimeMode !== "api" || page.key !== "user-permissions" || !userGovernanceActionsClient || !canPerform(currentRoleId, "users.manage")) {
@@ -2578,6 +2596,11 @@ function AppShell({
     dispatch({ type: "DISMISS_NOTIFICATION" });
   }, []);
 
+  const retryAuthProbe = useCallback(() => {
+    setApiAuthStatus("checking");
+    setAuthProbeAttempt((attempt) => attempt + 1);
+  }, []);
+
   const handleAuthSession = useCallback(
     async (session: AuthSessionDto) => {
       const primaryRoleId = pickPrimaryPlatformRoleId(session.auth.roles.map((role) => role.roleId));
@@ -2625,6 +2648,12 @@ function AppShell({
       : "app-shell";
 
   if (runtimeMode === "api" && apiAuthStatus !== "authenticated") {
+    if (apiAuthStatus === "checking") {
+      return <ApiAuthCheckingScreen />;
+    }
+    if (apiAuthStatus === "unreachable") {
+      return <ApiUnreachableScreen onRetry={retryAuthProbe} />;
+    }
     return (
       <ApiAuthPage
         authClient={authClient ?? createAuthClient()}
@@ -3370,6 +3399,47 @@ function TopBar({
         />
       ) : null}
     </header>
+  );
+}
+
+function ApiAuthCheckingScreen() {
+  return (
+    <main className="auth-screen" aria-busy="true" aria-labelledby="auth-checking-title">
+      <section className="auth-panel auth-status-panel">
+        <div className="auth-brand">
+          <WiseEffIcon className="auth-brand-icon" title="雷泽" />
+          <div>
+            <span className="eyebrow">WiseEff</span>
+            <h1 id="auth-checking-title">正在恢复会话…</h1>
+          </div>
+        </div>
+        <p className="auth-status-note">正在验证登录状态，请稍候。</p>
+      </section>
+    </main>
+  );
+}
+
+function ApiUnreachableScreen({ onRetry }: { onRetry: () => void }) {
+  return (
+    <main className="auth-screen" aria-labelledby="auth-unreachable-title">
+      <section className="auth-panel auth-status-panel">
+        <div className="auth-brand">
+          <WiseEffIcon className="auth-brand-icon" title="雷泽" />
+          <div>
+            <span className="eyebrow">WiseEff</span>
+            <h1 id="auth-unreachable-title">无法连接服务器</h1>
+          </div>
+        </div>
+        <p className="auth-status-note">
+          雷泽后端暂时不可达，可能是网络波动或服务正在重启。您的登录状态已保留，服务恢复后点击重试即可继续使用，无需重新登录。
+        </p>
+        <div className="auth-status-actions">
+          <button className="button primary" type="button" onClick={onRetry}>
+            重试
+          </button>
+        </div>
+      </section>
+    </main>
   );
 }
 

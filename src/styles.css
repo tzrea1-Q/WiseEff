@@ -970,6 +970,25 @@ body {
   box-shadow: 0 24px 64px rgba(15, 23, 42, 0.16);
 }
 
+/* Session-restore and backend-unreachable screens share the auth panel look
+   but stay lightweight: brand, one explanatory note, and an optional action. */
+.auth-status-panel {
+  align-self: center;
+  gap: 14px;
+}
+
+.auth-status-note {
+  margin: 0;
+  color: #475569;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.auth-status-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .auth-brand {
   display: flex;
   align-items: center;

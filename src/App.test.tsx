@@ -19,6 +19,7 @@ import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
 import {
@@ -260,8 +261,13 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
   localStorage.removeItem("wiseeff.sidebar.collapsed");
+  localStorage.removeItem("wiseeff.localAuthToken");
   window.history.replaceState(null, "", "/");
 });
+
+function unauthenticatedProbeError(message: string) {
+  return new WiseEffApiError("UNAUTHENTICATED", message, {}, "req-auth-probe");
+}
 
 function expectSelectValue(trigger: HTMLElement, value: string) {
   if (trigger instanceof HTMLSelectElement) {
@@ -426,7 +432,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   it("shows local login when API auth context is unauthenticated and enters the app after login", async () => {
     window.history.replaceState(null, "", "/parameter-home");
     const authClient = {
-      getCurrentAuthContext: vi.fn().mockRejectedValue(new Error("Session is not active.")),
+      getCurrentAuthContext: vi.fn().mockRejectedValue(unauthenticatedProbeError("Session is not active.")),
       login: vi.fn(async () => ({
         token: "we_local_test",
         expiresAt: "2026-06-19T00:00:00.000Z",
@@ -457,10 +463,78 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(authClient.login).toHaveBeenCalledWith({ username: "local.admin", password: "strong-password" });
   });
 
+  it("clears the stored token and shows login when the auth probe is rejected as unauthenticated", async () => {
+    window.history.replaceState(null, "", "/parameter-home");
+    window.localStorage.setItem("wiseeff.localAuthToken", "stale-token");
+    const authClient = {
+      getCurrentAuthContext: vi.fn().mockRejectedValue(unauthenticatedProbeError("Session is not active."))
+    };
+
+    render(<App authClient={authClient} initialAppState={initialState} parameterRepository={createAppParameterRepository()} runtimeMode="api" />);
+
+    expect(await screen.findByRole("heading", { name: "登录雷泽" })).toBeInTheDocument();
+    expect(window.localStorage.getItem("wiseeff.localAuthToken")).toBeNull();
+  });
+
+  it("keeps the token and recovers through retry when the auth probe hits a network error", async () => {
+    window.history.replaceState(null, "", "/parameter-home");
+    window.localStorage.setItem("wiseeff.localAuthToken", "live-token");
+    const getCurrentAuthContext = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce({
+        user: {
+          id: "u-api-admin",
+          organizationId: "org-chargelab",
+          name: "API Admin",
+          email: "api-admin@chargelab.cn",
+          title: "API Platform Owner",
+          isActive: true
+        },
+        organization: { id: "org-chargelab", name: "ChargeLab" },
+        roles: [{ projectId: null, roleId: "admin" }],
+        permissions: ["admin:access"]
+      });
+
+    render(
+      <App
+        authClient={{ getCurrentAuthContext }}
+        initialAppState={initialState}
+        parameterRepository={createAppParameterRepository()}
+        runtimeMode="api"
+      />
+    );
+
+    expect(await screen.findByRole("heading", { name: "无法连接服务器" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("用户名")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "登录" })).not.toBeInTheDocument();
+    expect(window.localStorage.getItem("wiseeff.localAuthToken")).toBe("live-token");
+
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+
+    expect(await screen.findByText("API Admin")).toBeInTheDocument();
+    expect(window.localStorage.getItem("wiseeff.localAuthToken")).toBe("live-token");
+    expect(getCurrentAuthContext).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows the session-restore screen instead of an interactive login form while the probe is pending", () => {
+    window.history.replaceState(null, "", "/parameter-home");
+    const authClient = {
+      getCurrentAuthContext: vi.fn().mockReturnValue(new Promise<never>(() => undefined))
+    };
+
+    render(<App authClient={authClient} initialAppState={initialState} parameterRepository={createAppParameterRepository()} runtimeMode="api" />);
+
+    expect(screen.getByRole("heading", { name: "正在恢复会话…" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("用户名")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("密码")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "登录" })).not.toBeInTheDocument();
+  });
+
   it("registers a local user account from the auth screen", async () => {
     window.history.replaceState(null, "", "/parameter-home");
     const authClient = {
-      getCurrentAuthContext: vi.fn().mockRejectedValue(new Error("Authorization bearer token is required.")),
+      getCurrentAuthContext: vi.fn().mockRejectedValue(unauthenticatedProbeError("Authorization bearer token is required.")),
       register: vi.fn(async () => ({
         token: "we_local_registered",
         expiresAt: "2026-06-19T00:00:00.000Z",
@@ -505,7 +579,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     window.history.replaceState(null, "", "/parameter-home");
     const parameterRepository = createAppParameterRepository();
     const authClient = {
-      getCurrentAuthContext: vi.fn().mockRejectedValue(new Error("Authorization bearer token is required.")),
+      getCurrentAuthContext: vi.fn().mockRejectedValue(unauthenticatedProbeError("Authorization bearer token is required.")),
       register: vi.fn(async () => ({
         status: "pending_approval" as const,
         user: {
@@ -558,7 +632,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   it("does not offer Admin as a self-service registration role", async () => {
     window.history.replaceState(null, "", "/parameter-home");
     const authClient = {
-      getCurrentAuthContext: vi.fn().mockRejectedValue(new Error("Authorization bearer token is required.")),
+      getCurrentAuthContext: vi.fn().mockRejectedValue(unauthenticatedProbeError("Authorization bearer token is required.")),
       register: vi.fn()
     };
 
