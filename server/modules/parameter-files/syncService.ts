@@ -9,7 +9,7 @@ import {
 } from "../parameters/repository";
 import type { FileSyncConflictRecord } from "../parameters/fileSyncConflictRepository";
 import { upsertFileSyncDraft } from "../parameter-drafts/repository";
-import { parameterIdentityMode } from "../parameters/parameterIdentityMode";
+import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { detectFileUiDraftConflict } from "./conflictService";

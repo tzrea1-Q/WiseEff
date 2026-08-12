@@ -10,7 +10,7 @@ import {
   findProjectValueBySource
 } from "../parameters/repository";
 import { upsertFileSyncDraft } from "../parameter-drafts/repository";
-import { setParameterIdentityMode } from "../parameters/parameterIdentityMode";
+import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 
 vi.mock("./repository", () => ({
   getProjectParameterFileById: vi.fn(),

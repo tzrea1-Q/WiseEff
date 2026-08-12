@@ -1,4 +1,4 @@
-import { LEGACY_IDENTITY_SQL } from "./legacyParameterIdentityNames";
+import { LEGACY_IDENTITY_SQL } from "../parameter-kernel/legacyParameterIdentityNames";
 import { randomUUID } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
 import { assertNoCycle, buildPath, depthOf } from "../shared/moduleTree";

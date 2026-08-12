@@ -13,8 +13,8 @@ import { getFileVersionById, getProjectParameterFileByName, insertFileVersion, s
 import { isDtsStructuralIngestEnabled } from "./structuralFlag";
 import { ingestDtsFileVersion } from "./structuralIngest";
 import { assertSensitiveNodeWriteAllowed } from "../parameters/sensitiveNode";
-import { parameterIdentityMode } from "../parameters/parameterIdentityMode";
-import { loadPreCutoverWritebackSource } from "../parameters/legacyParameterIdentityAdapter";
+import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
+import { loadPreCutoverWritebackSource } from "../parameter-kernel/legacyParameterIdentityAdapter";
 import { getChangeRequestEnablementWriteLock, getChangeRequestWriteLock } from "../parameter-drafts/repository";
 import type { BindingWriteLockFields, EnablementWriteLockFields } from "../parameter-drafts/types";
 import { type BindingEditAction } from "../parameter-topology/overlayWriteback";

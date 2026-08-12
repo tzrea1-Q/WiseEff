@@ -11,7 +11,7 @@ import {
   type QueryResult
 } from "../shared/database/client";
 import { applyMigrations } from "../shared/database/migrations";
-import { resolveParameterIdentityMode } from "../modules/parameters/parameterIdentityMode";
+import { resolveParameterIdentityMode } from "../modules/parameter-kernel/parameterIdentityMode";
 
 const projectRoot = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const migrationsDir = path.join(projectRoot, "server", "migrations");

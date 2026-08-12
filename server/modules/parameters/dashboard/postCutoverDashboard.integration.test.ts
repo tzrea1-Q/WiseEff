@@ -13,7 +13,7 @@ import { makeTestAuthContext } from "../../../testing/authContext";
 import { seedCoreGraph } from "../../../testing/fixtures";
 import { requestJson } from "../../../test/testClient";
 import type { AuthContext } from "../../auth/types";
-import { resolveParameterIdentityMode } from "../parameterIdentityMode";
+import { resolveParameterIdentityMode } from "../../parameter-kernel/parameterIdentityMode";
 import { registerParameterDashboardRoutes } from "./routes";
 import { aggregateHotspotGroups } from "./hotspotRepository";
 import {

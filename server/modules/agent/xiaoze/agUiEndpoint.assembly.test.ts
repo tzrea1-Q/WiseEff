@@ -14,7 +14,7 @@ vi.mock("../../parameters/repository", () => ({
   getProjectParameterForUpdate: vi.fn()
 }));
 
-vi.mock("../../parameters/parameterIdentityMode", () => ({
+vi.mock("../../parameter-kernel/parameterIdentityMode", () => ({
   resolveParameterIdentityMode: vi.fn().mockResolvedValue("semantic")
 }));
 

@@ -6,7 +6,7 @@ import { createPostgresDatabase } from "../../shared/database/client";
 import { createObjectStoreFromEnv } from "../../objectStoreFactory";
 import type { ObjectStore } from "./objectStore";
 import { createLogAnalysisQueueRuntime, type LogAnalysisQueueRuntimeEnv } from "./logAnalysisQueueRuntime";
-import { resolveParameterIdentityMode } from "../parameters/parameterIdentityMode";
+import { resolveParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { startLogWorkerLoop, type ProcessLogWorkerOptions } from "./worker";
 
 type RawWorkerEnv = {
