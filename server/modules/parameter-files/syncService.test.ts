@@ -7,9 +7,9 @@ import { detectFileUiDraftConflict } from "./conflictService";
 import { getFileVersionById, getProjectParameterFileById } from "./repository";
 import {
   bindParameterSource,
-  findProjectValueBySource,
-  upsertFileSyncDraft
+  findProjectValueBySource
 } from "../parameters/repository";
+import { upsertFileSyncDraft } from "../parameter-drafts/repository";
 import { setParameterIdentityMode } from "../parameters/parameterIdentityMode";
 
 vi.mock("./repository", () => ({
@@ -23,7 +23,10 @@ vi.mock("./conflictService", () => ({
 
 vi.mock("../parameters/repository", () => ({
   findProjectValueBySource: vi.fn(),
-  bindParameterSource: vi.fn(),
+  bindParameterSource: vi.fn()
+}));
+
+vi.mock("../parameter-drafts/repository", () => ({
   upsertFileSyncDraft: vi.fn()
 }));
 

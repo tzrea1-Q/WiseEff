@@ -19,32 +19,24 @@ const ALLOWED_DIRECT_CALLS: Record<string, number> = {
   "modules/agent/orchestrator.ts": 1,
   "modules/agent/xiaoze/threadPersistence.ts": 1,
   "modules/agent/xiaoze/threadRoutes.ts": 2,
+  // audit/routes.ts stays: for POST /audit-events the audit event IS the domain write.
   "modules/audit/routes.ts": 1,
+  // auth/* stay: bootstrap/register/login/logout audits fire before an AuthContext
+  // exists and the seam derives actor/org from auth; all sites are in-transaction.
   "modules/auth/bootstrapLocalAdmin.ts": 1,
   "modules/auth/localAuth.ts": 1,
   "modules/dts-reload/configurationService.ts": 1,
+  // dts-reload/policy.ts + sensitiveGate.ts are REFUSAL audits (deny + throw) that must
+  // survive the caller's rollback, i.e. deliberately outside the audited write seam.
   "modules/dts-reload/policy.ts": 1,
   "modules/dts-reload/sensitiveGate.ts": 1,
   "modules/dts-reload/service.ts": 1,
-  "modules/knowledge/service.ts": 1,
   "modules/logs/service.ts": 1,
-  "modules/parameter-files/baselineService.ts": 3,
-  "modules/parameter-files/candidateService.ts": 1,
-  "modules/parameter-files/configSetService.ts": 1,
-  "modules/parameter-files/conflictService.ts": 1,
-  "modules/parameter-files/exportService.ts": 1,
-  "modules/parameter-files/service.ts": 1,
-  "modules/parameter-files/syncService.ts": 2,
-  "modules/parameter-files/validationGate.ts": 1,
-  "modules/parameter-files/writebackService.ts": 1,
   "modules/parameter-modules/service.ts": 2,
   "modules/parameter-specs/driverSchemaOverlayService.ts": 1,
   "modules/parameter-topology/governanceAudit.ts": 1,
-  // parameters/sensitiveNode.ts stays: it is a REFUSAL audit (deny + throw) that must
-  // survive the caller's rollback, i.e. deliberately outside the audited write seam.
-  "modules/parameters/sensitiveNode.ts": 1,
-  "modules/product-feedback/service.ts": 1,
-  "modules/users/service.ts": 2
+  // parameters/sensitiveNode.ts stays: refusal audit, same as dts-reload/policy.ts.
+  "modules/parameters/sensitiveNode.ts": 1
 };
 
 /** Files where direct calls are the implementation of the seam itself. */

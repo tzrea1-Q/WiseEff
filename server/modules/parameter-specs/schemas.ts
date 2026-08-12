@@ -261,13 +261,25 @@ export type FinalizeParameterSpecCutoverBody = z.infer<typeof finalizeParameterS
 
 export type ResolveSpecReviewTaskResultDto = z.infer<typeof resolveSpecReviewTaskResultSchema>;
 
+// Layout fields the value-shape model carries per kind (see DraftValueShape in
+// valueShapeInference.ts). A bare `z.object({ kind })` strips these, so declare
+// them explicitly; the union member preserves and validates the layout instead
+// of silently dropping bits/groups/cellsPerGroup/length.
+const cellLayoutFields = {
+  bits: z.union([z.literal(8), z.literal(16), z.literal(32), z.literal(64)]),
+  groups: z.number(),
+  cellsPerGroup: z.number(),
+};
+
 const propertyValueShapeSchema = z.union([
   z.object({ kind: z.literal("bool") }),
   z.object({ kind: z.literal("empty") }),
+  z.object({ kind: z.literal("string") }),
   z.object({ kind: z.literal("string-list") }),
-  z.object({ kind: z.literal("u32-array") }),
-  z.object({ kind: z.literal("phandle-list") }),
-  z.object({ kind: z.literal("bytes") }),
+  z.object({ kind: z.literal("cells"), ...cellLayoutFields }),
+  z.object({ kind: z.literal("bytes"), length: z.number() }),
+  z.object({ kind: z.literal("phandle-list"), ...cellLayoutFields }),
+  z.object({ kind: z.literal("u32-array"), bits: z.literal(32), groups: z.number(), cellsPerGroup: z.number() }),
   z.object({ kind: z.literal("mixed") }),
   z.object({ kind: z.literal("unknown") }),
   z.record(z.string(), z.unknown()),

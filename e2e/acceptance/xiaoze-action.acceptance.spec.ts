@@ -1,9 +1,8 @@
 import "dotenv/config";
 import { createHmac } from "node:crypto";
-import { spawnSync } from "node:child_process";
 import { expect, test } from "playwright/test";
 
-import { withPgClient } from "./helpers/database";
+import { runNpmScript, withPgClient } from "./helpers/database";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import {
   recordOperationEvidence,
@@ -74,22 +73,6 @@ async function resolveSeededBinding() {
   });
 }
 
-function runNpmScript(script: string) {
-  const invocation =
-    process.platform === "win32"
-      ? { command: "cmd.exe", args: ["/d", "/s", "/c", `npm run ${script}`] }
-      : { command: "npm", args: ["run", script] };
-  const result = spawnSync(invocation.command, invocation.args, {
-    cwd: process.cwd(),
-    encoding: "utf8",
-    env: process.env
-  });
-
-  if (result.status !== 0) {
-    throw new Error(`npm run ${script} failed with exit code ${result.status}.`);
-  }
-}
-
 function bearerTokenFor(input: {
   userId: string;
   roleId: string;
@@ -149,6 +132,7 @@ function readOnlyHeaders() {
     "x-wiseeff-user": "acceptance-xiaoze-readonly"
   };
 }
+
 
 function parseSseEvents(responseBody: string) {
   const events: Array<Record<string, unknown>> = [];
@@ -684,14 +668,47 @@ test.describe("Xiaoze P1 action", () => {
     const interruptValue = readInterruptValue(started.events);
     expect(interruptValue?.approvalId).toBeTruthy();
 
-    const resumed = await postXiaoze(request, readOnlyHeaders(), {
+    // Another user holding the approvalId is refused outright: the thread is
+    // owned by the requester and approvals are requester-only decisions.
+    const crossUser = await postXiaoze(request, readOnlyHeaders(), {
       threadId: `${threadId}-authz`,
-      runId: `run-resume-authz-${Date.now()}`,
+      runId: `run-resume-authz-cross-${Date.now()}`,
       messages: [{ id: "m-resume", role: "user", content: "approve" }],
       forwardedProps: {
         command: {
           resume: { decision: "approve" },
           interruptEvent: interruptValue
+        }
+      }
+    });
+    expect(crossUser.status).toBe(403);
+    expect(await countOpenChangeRequests()).toBe(openBefore);
+
+    // A requester without the write capability (guest role) can plan and
+    // approve their own action, but execution is refused with the
+    // in-conversation safe reply instead of an executed write.
+    const readOnlyStarted = await postXiaoze(request, readOnlyHeaders(), {
+      threadId: `${threadId}-authz-self`,
+      runId: `run-action-authz-self-${Date.now()}`,
+      messages: [{ id: "m-user", role: "user", content: `set ${parameterId} to ${cellValue(9)}` }],
+      context: [
+        {
+          description: "wiseeff.page",
+          value: { pageKey: "parameters", projectId, path: `/parameters?project=${projectId}` }
+        }
+      ]
+    });
+    const readOnlyInterrupt = readInterruptValue(readOnlyStarted.events);
+    expect(readOnlyInterrupt?.approvalId).toBeTruthy();
+
+    const resumed = await postXiaoze(request, readOnlyHeaders(), {
+      threadId: `${threadId}-authz-self`,
+      runId: `run-resume-authz-${Date.now()}`,
+      messages: [{ id: "m-resume", role: "user", content: "approve" }],
+      forwardedProps: {
+        command: {
+          resume: { decision: "approve" },
+          interruptEvent: readOnlyInterrupt
         }
       }
     });
@@ -705,7 +722,8 @@ test.describe("Xiaoze P1 action", () => {
     const openAfter = await countOpenChangeRequests();
     expect(openAfter).toBe(openBefore);
     const authzArtifact = await writeOperationJsonArtifact(testInfo, "xiaoze-action-authz-denied.json", {
-      approvalId: interruptValue?.approvalId,
+      approvalId: readOnlyInterrupt?.approvalId,
+      crossUserStatus: crossUser.status,
       resumedStatus: resumed.status,
       answer,
       openBefore,

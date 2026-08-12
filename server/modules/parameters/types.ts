@@ -5,8 +5,7 @@ import type {
   ParameterRiskLevel,
   ParameterSubmissionRoundStatus
 } from "./status";
-
-export type ParameterChangeAction = "set" | "delete";
+import type { ParameterChangeAction } from "../parameter-drafts/types";
 
 export type ProjectDto = {
   id: string;
@@ -96,35 +95,6 @@ export type ParameterRecordDto = {
   updatedAt: string;
   updatedAtTs: string;
   history: ParameterHistoryEntryDto[];
-};
-
-export type ParameterDraftDto = {
-  id: string;
-  projectId: string;
-  /**
-   * DTO compatibility field.
-   * Pre-cutover: project_parameter_value id.
-   * Post-cutover: semantic project_parameter_binding id (same as projectParameterBindingId).
-   */
-  parameterId: string;
-  targetValue: string;
-  action: ParameterChangeAction;
-  reason: string;
-  updatedAt: string;
-  /** Semantic binding identity for topology-aware drafts. */
-  projectParameterBindingId?: string;
-  /** Working candidate revision tip for binding draft rounds. */
-  candidateConfigRevisionId?: string;
-  /** Spec id for topology-aware submit / tray hydration. */
-  parameterSpecId?: string;
-  /** Property / parameter display name for history surfaces. */
-  name?: string;
-  module?: string;
-  /**
-   * Baseline value for history diffs (write-lock base raw, else PPV current).
-   * Must not silently fall back to the candidate tip.
-   */
-  currentValue?: string;
 };
 
 /**

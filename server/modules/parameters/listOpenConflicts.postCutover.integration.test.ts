@@ -9,7 +9,7 @@ import {
   isTestDatabaseAvailable,
   type InMemoryTestDatabase
 } from "../../testing/testDatabase";
-import { listOpenConflicts } from "./repository";
+import { listOpenConflicts } from "./fileSyncConflictRepository";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
