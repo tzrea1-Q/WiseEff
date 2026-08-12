@@ -9,7 +9,7 @@ vi.mock("../../parameters/sensitiveNode", () => ({
   assertSensitiveNodeWriteAllowed: vi.fn()
 }));
 
-vi.mock("../../parameters/draftRepository", () => ({
+vi.mock("../../parameter-drafts/repository", () => ({
   deleteDraft: vi.fn()
 }));
 
@@ -32,7 +32,7 @@ vi.mock("../../parameter-topology/writeLock", () => ({
 
 import { createActionTools } from "./actionTools";
 import { submitParameterChanges } from "../../parameters/service";
-import { deleteDraft } from "../../parameters/draftRepository";
+import { deleteDraft } from "../../parameter-drafts/repository";
 import { getProjectParameterForUpdate } from "../../parameters/repository";
 import { resolveParameterIdentityMode } from "../../parameters/parameterIdentityMode";
 import { createBindingDraft } from "../../parameter-topology/service";

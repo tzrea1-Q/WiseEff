@@ -3,7 +3,7 @@ import type { Database } from "../../../shared/database/client";
 import type { ObjectStore } from "../../logs/objectStore";
 import type { DtsToolchainRunner } from "../../parameter-files/dtsToolchain";
 import { parseDtsValue } from "../../dts/valueAst";
-import { deleteDraft } from "../../parameters/draftRepository";
+import { deleteDraft } from "../../parameter-drafts/repository";
 import { getProjectParameterForUpdate } from "../../parameters/repository";
 import { resolveParameterIdentityMode } from "../../parameters/parameterIdentityMode";
 import { assertSensitiveNodeWriteAllowed } from "../../parameters/sensitiveNode";

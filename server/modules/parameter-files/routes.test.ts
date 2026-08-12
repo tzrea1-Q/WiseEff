@@ -183,7 +183,8 @@ describe("parameter file routes", () => {
     expect(conflictService.resolveParameterFileConflict).toHaveBeenCalledWith(
       db,
       expect.any(Object),
-      { conflictId: "conflict-1", resolution: "file", reason: "keep file" }
+      { conflictId: "conflict-1", resolution: "file", reason: "keep file" },
+      { requestId: expect.any(String) }
     );
   });
 
@@ -228,7 +229,8 @@ describe("parameter file routes", () => {
     expect(conflictService.resolveConflictsBulk).toHaveBeenCalledWith(
       db,
       expect.any(Object),
-      { projectId: "project-1", resolution: "ui", conflictIds: ["conflict-1"], reason: "batch" }
+      { projectId: "project-1", resolution: "ui", conflictIds: ["conflict-1"], reason: "batch" },
+      { requestId: expect.any(String) }
     );
   });
 });

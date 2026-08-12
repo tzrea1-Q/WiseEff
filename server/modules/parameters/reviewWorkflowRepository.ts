@@ -1,7 +1,6 @@
 import type { Queryable } from "../../shared/database/client";
 import type {
   ChangeRequestDto,
-  ParameterChangeAction,
   ParameterSubmissionItemDto,
   ParameterSubmissionRoundDto,
   ParameterWorkflowAssigneesDto
@@ -17,8 +16,9 @@ import {
 import { buildChangeRequestImpact } from "./impact";
 import { parameterIdentityMode } from "./parameterIdentityMode";
 import { LEGACY_IDENTITY_SQL } from "./legacyParameterIdentityNames";
-import type { BindingWriteLockFields, EnablementWriteLockFields } from "../parameter-topology/writeLock";
-import { addCondition, dateTimeToIso, resolveParameterValueKind } from "./repositoryShared";
+import type { BindingWriteLockFields, EnablementWriteLockFields, ParameterChangeAction } from "../parameter-drafts/types";
+import { addCondition, dateTimeToIso } from "../../shared/database/sqlUtil";
+import { resolveParameterValueKind } from "./repositoryShared";
 
 export async function findOpenEnablementChangeRequest(
   db: Queryable,

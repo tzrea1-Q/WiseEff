@@ -193,6 +193,22 @@ export async function setupTestDatabaseRun(): Promise<void> {
     await acquireTemplateLock(admin);
     try {
       await ensureTemplateDatabase(admin, fingerprint);
+      // Suites that read DATABASE_URL directly (cross-connection durability tests,
+      // acceptance-helper isolation tests) still expect the shared database to be
+      // migrated — the retired shared-fixture path used to do this as a side effect.
+      const shared = new pg.Client({ connectionString: resolveTestDatabaseUrl() });
+      await shared.connect();
+      try {
+        const sharedDb = createDatabase({
+          query: async (text, values = []) => {
+            const result = await shared.query(text, values);
+            return { rows: result.rows, rowCount: result.rowCount };
+          }
+        });
+        await applyMigrations(sharedDb, migrationsDir);
+      } finally {
+        await shared.end().catch(() => undefined);
+      }
       const orphans = await admin.query<{ datname: string }>(
         `select datname
          from pg_database d

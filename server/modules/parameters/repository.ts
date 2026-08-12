@@ -25,7 +25,8 @@ import { LEGACY_SQL } from "../parameter-topology/migration";
 import { listSemanticParameters } from "./semanticParameterReads";
 import { parameterIdentityMode } from "./parameterIdentityMode";
 import { LEGACY_IDENTITY_SQL } from "./legacyParameterIdentityNames";
-import { addCondition, dateTimeToIso, resolveParameterValueKind } from "./repositoryShared";
+import { addCondition, dateTimeToIso } from "../../shared/database/sqlUtil";
+import { resolveParameterValueKind } from "./repositoryShared";
 
 type ParameterRow = {
   id: string;

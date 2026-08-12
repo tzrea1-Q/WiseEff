@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { createAuditEvent } from "../audit/repository";
+import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
@@ -90,7 +90,7 @@ function requireParameterFileAdmin(auth: AuthContext) {
 }
 
 async function writeBaselineAudit(
-  db: Queryable,
+  tx: AuditTx,
   auth: AuthContext,
   input: {
     action: "created";
@@ -100,20 +100,16 @@ async function writeBaselineAudit(
   },
   context: BaselineServiceContext = {}
 ) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    actorUserId: auth.user.id,
-    actorType: "user",
+  // requestId fallback survives only until baseline contexts become mandatory (ADR-0027).
+  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
     app: "parameters",
     kind: "baseline",
     action: input.action,
     severity: "Medium",
+    projectId: input.projectId,
     targetType: "dts-release-baseline",
     targetId: input.targetId,
-    metadata: input.metadata,
-    traceId: context.requestId ?? randomUUID()
+    metadata: input.metadata
   });
 }
 
@@ -189,7 +185,7 @@ export async function createBaseline(
     }
 
     await writeBaselineAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         action: "created",
@@ -470,7 +466,7 @@ export async function previewRestoreBaseline(
 }
 
 async function writeBaselineRolledBackAudit(
-  db: Queryable,
+  tx: AuditTx,
   auth: AuthContext,
   input: {
     projectId: string | null;
@@ -481,24 +477,19 @@ async function writeBaselineRolledBackAudit(
   },
   context: BaselineServiceContext = {}
 ) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    actorUserId: auth.user.id,
-    actorType: "user",
+  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
     app: "parameters",
     kind: "baseline",
     action: "rolled_back",
     severity: "High",
+    projectId: input.projectId,
     targetType: "dts-release-baseline",
     targetId: input.baselineId,
     metadata: {
       configSetId: input.configSetId,
       restored: input.restored,
       memberCount: input.memberCount
-    },
-    traceId: context.requestId ?? randomUUID()
+    }
   });
 }
 
@@ -576,7 +567,7 @@ export async function rollbackToBaseline(
     }
 
     await writeBaselineRolledBackAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         projectId: configSet?.projectId ?? null,
@@ -593,7 +584,7 @@ export async function rollbackToBaseline(
 }
 
 async function writeBaselineReleasedAudit(
-  db: Queryable,
+  tx: AuditTx,
   auth: AuthContext,
   input: {
     projectId: string | null;
@@ -603,16 +594,12 @@ async function writeBaselineReleasedAudit(
   },
   context: BaselineServiceContext = {}
 ) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    actorUserId: auth.user.id,
-    actorType: "user",
+  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
     app: "parameters",
     kind: "baseline",
     action: "released",
     severity: "High",
+    projectId: input.projectId,
     targetType: "dts-release-baseline",
     targetId: input.baselineId,
     metadata: {
@@ -620,8 +607,7 @@ async function writeBaselineReleasedAudit(
       validationOk: input.gate.ok,
       validationMode: input.gate.mode,
       requiresConfirmation: input.gate.requiresConfirmation
-    },
-    traceId: context.requestId ?? randomUUID()
+    }
   });
 }
 
@@ -695,7 +681,7 @@ export async function releaseBaseline(
     const updated = await updateBaselineStatus(tx, { baselineId, status: "released" });
 
     await writeBaselineReleasedAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         projectId: configSet?.projectId ?? null,

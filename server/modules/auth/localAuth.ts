@@ -170,6 +170,9 @@ async function verifyPassword(password: string, passwordHash: string) {
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
+// Stays on the direct path (ratchet allowlist): register/login/logout audits fire
+// before an AuthContext exists, and the audited-write seam derives actor/org from
+// auth. Every call site is already inside its operation's transaction.
 async function auditAuthEvent(
   db: Queryable,
   input: {

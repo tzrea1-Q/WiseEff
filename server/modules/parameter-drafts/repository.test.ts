@@ -7,7 +7,7 @@ import {
   listOpenBindingDraftsForUser,
   rebaseOpenBindingDraftCandidates,
   upsertDraft
-} from "./draftRepository";
+} from "./repository";
 
 type QueryCall = {
   text: string;
