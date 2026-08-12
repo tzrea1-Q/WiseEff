@@ -81,8 +81,20 @@ export function parseXiaozePromptDebugEnabled(value: string | undefined) {
   return value?.trim().toLowerCase() === "true";
 }
 
+/**
+ * The CopilotKit AG-UI inspector is a development tool; upstream offers no way
+ * to suppress its CDN-fed announcement banner separately, so mounting it in
+ * regular API sessions leaks promo banners over the TopBar. Keep it strictly
+ * opt-in via VITE_XIAOZE_INSPECTOR=true.
+ */
+export function parseXiaozeInspectorEnabled(value: string | undefined) {
+  return value?.trim().toLowerCase() === "true";
+}
+
 export const xiaozeProactiveEnabled = parseXiaozeProactiveEnabled(import.meta.env.VITE_XIAOZE_PROACTIVE_ENABLED);
 export const xiaozeReasoningDevExpanded =
   import.meta.env.MODE !== "production" && parseXiaozeReasoningDevExpanded(import.meta.env.VITE_XIAOZE_REASONING_DEV_EXPANDED);
 export const xiaozePromptDebugEnabled =
   import.meta.env.MODE !== "production" && parseXiaozePromptDebugEnabled(import.meta.env.VITE_XIAOZE_PROMPT_DEBUG);
+export const xiaozeInspectorEnabled =
+  import.meta.env.MODE !== "production" && parseXiaozeInspectorEnabled(import.meta.env.VITE_XIAOZE_INSPECTOR);

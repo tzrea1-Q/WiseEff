@@ -235,7 +235,7 @@ import { createHttpParameterDashboardRepository } from "@/infrastructure/http/pa
 import { createMockParameterDashboardRepository } from "@/infrastructure/mock/mockParameterDashboardRepository";
 import { createMockProductFeedbackRepository } from "@/infrastructure/mock/mockProductFeedbackRepository";
 import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
-import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
+import { wiseEffRuntimeMode, xiaozeInspectorEnabled, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { resolveParameterTopologyRepository } from "@/application/parameters/parameterTopologyResolve";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
 
@@ -2664,7 +2664,9 @@ function AppShell({
     );
   }
 
-  const enableXiaozeInspector = canPerform(currentRoleId, "admin.access");
+  // Explicit opt-in only: mounting the inspector drags in the CopilotKit
+  // announcement banner, which has no standalone off switch upstream.
+  const enableXiaozeInspector = xiaozeInspectorEnabled && canPerform(currentRoleId, "admin.access");
   const showXiaozeProactiveInsights =
     runtimeMode === "api" &&
     xiaozeProactiveEnabled &&

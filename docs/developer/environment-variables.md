@@ -129,6 +129,7 @@ API mode always includes Xiaoze; mock mode has no Agent UI. The backend always r
 | `XIAOZE_PROACTIVE_ENABLED` | `false` | proactive suggest API | Set `true` to register read-only `POST /api/v1/agent/xiaoze/suggest`. Default off; opt-in only. |
 | `VITE_XIAOZE_PROACTIVE_ENABLED` | `false` | proactive suggestions UI | Mounts `useXiaozeSuggestions` in `AgentInsightBar`. Requires API `XIAOZE_PROACTIVE_ENABLED=true`. Default off. |
 | `VITE_XIAOZE_PROMPT_DEBUG` | `false` | frontend dev tooling | Opt-in prompt/debug surfacing for Xiaoze development. |
+| `VITE_XIAOZE_INSPECTOR` | `false` | frontend dev tooling | Opt-in CopilotKit AG-UI inspector for admins (non-production only). Off by default because the inspector ships a CDN announcement banner with no separate switch. |
 
 ## M5 Evidence
 
