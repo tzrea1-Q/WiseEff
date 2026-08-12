@@ -253,8 +253,8 @@ describe("listReloadCandidates", () => {
     });
     expect(result.items[1]).toMatchObject({
       bindingId: "binding-2",
-      debuggable: false,
-      blockReason: "synthesised-anchor",
+      debuggable: true,
+      nodePath: "/amba",
       sensitiveMatch: null
     });
   });
@@ -413,7 +413,7 @@ describe("startReloadRun", () => {
 
   it("refuses a not-debuggable parameter through the API", async () => {
     const { db } = createFakeDb([
-      [candidateRow({ binding_id: "binding-bad", node_path: "/amba" })]
+      [candidateRow({ binding_id: "binding-bad", node_path: null })]
     ]);
     const { objectStore, put } = makeObjectStore();
 
@@ -424,7 +424,7 @@ describe("startReloadRun", () => {
       })
     ).rejects.toMatchObject({
       code: "VALIDATION_FAILED",
-      details: { blockReason: "synthesised-anchor" }
+      details: { blockReason: "no-node-path" }
     });
     expect(put).not.toHaveBeenCalled();
   });

@@ -1,17 +1,6 @@
 import { parseDtsValue, type DtsValue } from "../dts";
 import type { ReloadCandidateBlockReason, ReloadCandidateDto } from "./types";
 
-/**
- * A synthesised dangling-label anchor is a single root segment with no unit address
- * (shape `/label`). Real hardware nodes usually carry `@unit`; descendants hanging under
- * a synthesised parent (e.g. `/amba/i2c@…`) keep multi-segment absolute paths and stay
- * debuggable — only the parameter's *own* locator being that synthesised shape is refused.
- */
-export function isSynthesisedAnchorLocator(nodePath: string | null | undefined): boolean {
-  if (!nodePath) return false;
-  return /^\/[A-Za-z_][\w-]*$/.test(nodePath);
-}
-
 export type CandidateValueShape = {
   kind?: string;
   bits?: number;
@@ -321,9 +310,6 @@ function classifyBlockReason(
 ): ReloadCandidateBlockReason | undefined {
   if (!input.nodePath || input.nodePath.trim().length === 0) {
     return "no-node-path";
-  }
-  if (isSynthesisedAnchorLocator(input.nodePath)) {
-    return "synthesised-anchor";
   }
   if (!isSupportedReloadValueShape(resolvedShape)) {
     return "unsupported-value-shape";

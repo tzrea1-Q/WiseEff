@@ -131,8 +131,6 @@ type ResolvedReloadTarget = {
 
 const BLOCK_REASON_MESSAGES: Record<NonNullable<ReloadCandidateDto["blockReason"]>, string> = {
   "no-node-path": "parameter has no absolute device-tree node path",
-  "synthesised-anchor":
-    "parameter locator is a synthesised /label anchor, not a genuine device-tree path usable as target-path",
   "unsupported-value-shape":
     "parameter value shape is outside the supported set (u32/u8/u16 cell arrays and string lists)",
   "no-baseline-value": "parameter has no library baseline value"
