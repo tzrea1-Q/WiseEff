@@ -162,6 +162,9 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
     await expect(addUserDialog.getByRole("option", { name: "平台超级管理员" })).toHaveCount(0);
     await addUserDialog.getByRole("button", { name: "取消" }).click();
 
+    // The accounts table is a paginated DataTable (10 rows per page); narrow via
+    // the search filter so Zhao Heng's row is on the visible page.
+    await page.getByRole("search", { name: "用户筛选" }).getByLabel("搜索").fill("Zhao Heng");
     const assignableSelect = page.getByLabel("调整 Zhao Heng 的角色");
     await expect(assignableSelect).toBeVisible();
     await expect(assignableSelect.getByRole("option", { name: "平台超级管理员" })).toHaveCount(0);
