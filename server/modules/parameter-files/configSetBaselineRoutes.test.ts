@@ -27,7 +27,7 @@ vi.mock("./repository", () => ({
   listProjectParameterFiles: vi.fn()
 }));
 
-vi.mock("../parameters/repository", () => ({
+vi.mock("../parameters/fileSyncConflictRepository", () => ({
   listOpenConflicts: vi.fn()
 }));
 

@@ -284,6 +284,15 @@ async function ensureWorkerDatabase(): Promise<string> {
   return workerDatabaseUrl;
 }
 
+/**
+ * Resolve the migrated per-worker database URL for tests that must drive raw
+ * clients outside the rollback fixture (e.g. e2e helpers reading DATABASE_URL).
+ * The base database behind DATABASE_URL is not migrated by this harness.
+ */
+export async function resolveWorkerDatabaseUrl(): Promise<string> {
+  return ensureWorkerDatabase();
+}
+
 export async function createInMemoryTestDatabase(): Promise<InMemoryTestDatabase> {
   const connectionString = await ensureWorkerDatabase();
   const client = new pg.Client({ connectionString });

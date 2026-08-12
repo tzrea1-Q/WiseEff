@@ -20,12 +20,14 @@ import { insertNodeOperation } from "../debugging/repository";
 import { writebackMergedParameterValue } from "../parameter-files/writebackService";
 import { resolveParameterIdentityMode } from "../parameters/parameterIdentityMode";
 import {
+  listParameterHistory,
+  listParameters
+} from "../parameters/repository";
+import {
   getChangeRequestWriteLock,
   listDraftsForUser,
-  listParameterHistory,
-  listParameters,
   upsertDraft
-} from "../parameters/repository";
+} from "../parameters/draftRepository";
 import { deleteProject } from "../parameters/projectRepository";
 import {
   createChangeRequest,

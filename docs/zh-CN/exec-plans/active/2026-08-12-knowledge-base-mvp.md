@@ -1,7 +1,7 @@
 # 知识库 MVP
 
 > English: [English](../../../exec-plans/active/2026-08-12-knowledge-base-mvp.md)
-> 状态：**进行中**——2026-08-12 规划锁定；Phase 1 已在 `feat/knowledge-base-foundation` 实现（2026-08-12）；Phase 2–3 未开始
+> 状态：**进行中**——2026-08-12 规划锁定；Phase 1 已在 `feat/knowledge-base-foundation` 实现（2026-08-12,已合并）；Phase 2 已在 `feat/knowledge-base-rag` 实现（2026-08-12）；Phase 3 未开始
 > 日期：2026-08-12
 > 设计文档：[`docs/zh-CN/design-docs/2026-08-12-knowledge-base-design.md`](../../design-docs/2026-08-12-knowledge-base-design.md)
 > ADR：ADR-0025（`docs/adr/0025-knowledge-retrieval-lives-in-postgres.md`，英文）
@@ -38,6 +38,12 @@
 4. 小泽：注册 `knowledge.search` / `knowledge.getDocument` 只读工具（工具注册表、目录标签/描述/schema）；小泽 UI 将引用渲染为来源链接；`/knowledge` 的"问知识库"入口（仅 API 模式）；新增知识锚定 eval 场景。
 5. 环境与文档：`.env.example` 新增 `EMBEDDING_API_BASE_URL`、`EMBEDDING_MODEL`、`EMBEDDING_API_KEY`、`EMBEDDING_API_TIMEOUT_MS`；环境变量文档（英文 + 中文）；自托管 runbook 说明 pgvector 要求与降级。
 6. 验收：实现前加入 KB-ASK-001（及索引健康操作 ID）。
+
+**Phase 2 状态说明（2026-08-12,`feat/knowledge-base-rag`）：**
+
+- 按计划交付：迁移 `0104_knowledge_retrieval.sql`（受保护扩展安装,缺 pgvector 时不失败;`knowledge_chunks` 的 embedding 列为**条件列**——仅在迁移时扩展已存在才创建;`knowledge_index_status` 兼作轮询队列）;`server/modules/knowledge/indexing/`（分块、嵌入客户端 + `EMBEDDING_DETERMINISTIC` 确定性假实现、SKIP LOCKED 领用与过期回收 worker）;发布/编辑已发布/归档/恢复/提取完成触发入队;混合 RRF 检索与诚实的 `retrieval` 上报;`knowledge.search` / `knowledge.getDocument` 组织级只读工具 + `knowledge-grounding` eval 场景;小泽引用来源链接（实时 + 持久化线程）;问知识库入口（仅 API 模式）;`/knowledge-admin` 索引健康与重试/重建;`KNOWLEDGE_INDEX_WORKER_ENABLED`（默认开,进程内轮询）。
+- 诚实边界：本地开发与 CI 的 PostgreSQL（postgres:16）**均无 pgvector**,FTS-only 是被完整测试的默认模式;向量路径逻辑由确定性嵌入客户端 + 脚本化 SQL 单测覆盖,真实 pgvector 集成测试（`vectorSearch.integration.test.ts`）在扩展缺失时带原因跳过。在无 pgvector 迁移过的部署上启用语义检索需按自托管 runbook 手动补列。KB-ASK-001 的小泽落地循环在 SSE API 层（确定性模式）+ eval 断言,而非浏览器聊天循环——已记录在覆盖图。
+- 延后至 Phase 3（计划不变）：`action.createKnowledgeDraft`、沉淀、Agent 草稿发布队列。
 
 ## Phase 3——沉淀回路（`feat/knowledge-base-distillation`）
 
@@ -94,10 +100,10 @@
 - [x] API 合同英文 + 中文及 OpenAPI 工件包含 `/api/v1/knowledge/*`（Phase 1）
 - [x] FRONTEND 英文 + 中文记录 `/knowledge`、`/knowledge-admin`、port 与 mock 对等（Phase 1）
 - [ ] SECURITY 与 user-permission-design 英文 + 中文记录 `knowledge:*` 权限与 Agent 草稿工具（Phase 1/3——`knowledge:*` 权限已在 Phase 1 完成;Agent 草稿工具待 Phase 3）
-- [ ] environment-variables 英文 + 中文与 `.env.example` 记录 `EMBEDDING_API_*`（Phase 2）
-- [ ] 自托管 runbook 英文 + 中文记录 pgvector 要求与纯全文检索降级（Phase 2）
-- [ ] ARCHITECTURE 英文 + 中文标注知识模块与小泽知识工具（Phase 1/2——知识模块已在 Phase 1 标注;小泽工具待 Phase 2）
-- [ ] 覆盖图与操作矩阵英文 + 中文在各阶段实现前获得 KB-* ID（各阶段）
-- [ ] 迁移后重新生成 `docs/generated/db-schema.md`（含迁移的各阶段）
-- [ ] 延期工作记入 `docs/exec-plans/tech-debt-tracker.md`（收尾）
+- [x] environment-variables 英文 + 中文与 `.env.example` 记录 `EMBEDDING_API_*`（Phase 2——另含 `KNOWLEDGE_INDEX_WORKER_ENABLED`）
+- [x] 自托管 runbook 英文 + 中文记录 pgvector 要求与纯全文检索降级（Phase 2）
+- [x] ARCHITECTURE 英文 + 中文标注知识模块与小泽知识工具（Phase 1/2——知识模块已在 Phase 1 标注;索引 worker seam 与小泽知识工具已在 Phase 2 标注）
+- [ ] 覆盖图与操作矩阵英文 + 中文在各阶段实现前获得 KB-* ID（Phase 1 + Phase 2 ID 已注册——KB-READ/EDIT/FILE-001、KB-ASK-001、KB-INDEX-001;Phase 3 ID 待注册）
+- [ ] 迁移后重新生成 `docs/generated/db-schema.md`（Phase 1 与 Phase 2（0104）已重新生成;后续含迁移阶段继续）
+- [ ] 延期工作记入 `docs/exec-plans/tech-debt-tracker.md`（收尾——Phase 2 已记 TD-083:pgvector 后装手动补列 + CI 缺 pgvector 覆盖）
 - [ ] 本计划移入 `completed/` 前 `npm run docs:check` 通过

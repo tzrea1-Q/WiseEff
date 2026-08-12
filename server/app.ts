@@ -22,6 +22,7 @@ import { registerDeviceBridgeRoutes } from "./modules/deviceBridge/routes";
 import { registerDeviceBridgeDownloadRoutes } from "./modules/deviceBridge/downloadRoutes";
 import type { DeviceBridgeWsHandler } from "./modules/deviceBridge/wsHandler";
 import { attachDeviceBridgeWebSocket, createDeviceBridgeWsHandler } from "./modules/deviceBridge/wsHandler";
+import type { KnowledgeEmbeddingClient } from "./modules/knowledge/indexing/embeddingClient";
 import { registerKnowledgeRoutes } from "./modules/knowledge/routes";
 import { registerLogRoutes } from "./modules/logs/routes";
 import { buildReadyHealth, type DurableQueueHealthCheck } from "./modules/operations/health";
@@ -92,6 +93,8 @@ export type WiseEffServerOptions = {
   tracing?: Pick<TracingBoundary, "withSpan">;
   metrics?: MetricsRegistry;
   deviceBridge?: DeviceBridgeRuntimeOptions;
+  /** Embedding seam for knowledge retrieval and Xiaoze knowledge tools; absent means FTS-only. */
+  knowledgeEmbeddingClient?: KnowledgeEmbeddingClient;
 };
 
 /**
@@ -177,6 +180,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   registerKnowledgeRoutes(router, {
     db: options.db,
     objectStore: options.objectStore,
+    knowledgeEmbeddingClient: options.knowledgeEmbeddingClient,
     getCurrentAuthContext: authResolver
   });
   registerDtsReloadRoutes(router, {
@@ -216,6 +220,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
     db: options.db,
     env: options.env as ServerEnv | undefined,
     objectStore: options.objectStore,
+    knowledgeEmbeddingClient: options.knowledgeEmbeddingClient,
     getCurrentAuthContext: authResolver
   });
 
@@ -434,6 +439,7 @@ export function createWiseEffServerFromEnv(
     authVerifierFactory?: (env: ServerEnv) => TokenVerifier;
     metrics?: MetricsRegistry;
     deviceBridge?: DeviceBridgeRuntimeOptions;
+    knowledgeEmbeddingClient?: KnowledgeEmbeddingClient;
   }
 ) {
   const verifier =

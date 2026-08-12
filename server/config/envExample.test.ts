@@ -8,7 +8,17 @@ import { loadServerEnv } from "./env";
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const envExamplePath = path.join(projectRoot, ".env.example");
 const gitignorePath = path.join(projectRoot, ".gitignore");
-const allowedBlankKeys = new Set(["AGENT_API_BASE_URL", "AGENT_MODEL", "AGENT_API_KEY", "XIAOZE_MODEL"]);
+// Live LLM/embedding endpoints stay blank locally: Xiaoze chat (AGENT_*/XIAOZE_*)
+// and knowledge-base embeddings (EMBEDDING_* — blank means FTS-only retrieval).
+const allowedBlankKeys = new Set([
+  "AGENT_API_BASE_URL",
+  "AGENT_MODEL",
+  "AGENT_API_KEY",
+  "XIAOZE_MODEL",
+  "EMBEDDING_API_BASE_URL",
+  "EMBEDDING_MODEL",
+  "EMBEDDING_API_KEY"
+]);
 
 function parseEnvExample(contents: string) {
   return Object.fromEntries(
@@ -84,6 +94,8 @@ describe(".env.example", () => {
     expect(serverEnv.DEBUG_DEVICE_GATEWAY_MODE).toBe("multi");
     expect(serverEnv.DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION).toBe(true);
     expect(serverEnv.AGENT_API_TIMEOUT_MS).toBe(30000);
+    expect(serverEnv.EMBEDDING_API_TIMEOUT_MS).toBe(10000);
+    expect(serverEnv.KNOWLEDGE_INDEX_WORKER_ENABLED).toBe(true);
   });
 
   it("keeps generated local storage and restore artifacts out of git", async () => {

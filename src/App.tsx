@@ -33,7 +33,7 @@ import type { KnowledgeCapability } from "@/domain/knowledge/rules";
 import { createHttpLogAnalysisRepository } from "@/infrastructure/http/logClient";
 import { createHttpProductFeedbackRepository } from "@/infrastructure/http/productFeedbackClient";
 import { createHttpKnowledgeRepository } from "@/infrastructure/http/knowledgeClient";
-import { createHttpDtsReloadRepository } from "@/infrastructure/http/dtsReloadClient";
+import { resolveDtsReloadRepository } from "@/application/dts-reload/dtsReloadRuntime";
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import {
   createParameterRuntimeActions,
@@ -237,7 +237,7 @@ type AppProps = {
   listParameterConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   productFeedbackRepository?: ProductFeedbackRepository;
   knowledgeRepository?: KnowledgeRepository;
-  dtsReloadRepository?: DtsReloadRepository | null;
+  dtsReloadRepository?: DtsReloadRepository;
   runtimeMode?: WiseEffRuntimeMode;
   userGovernanceActions?: UserGovernanceActions;
 };
@@ -308,7 +308,7 @@ function AppShell({
   parameterInitializationRepository?: ParameterInitializationRepository;
   productFeedbackRepository?: ProductFeedbackRepository;
   knowledgeRepository?: KnowledgeRepository;
-  dtsReloadRepository?: DtsReloadRepository | null;
+  dtsReloadRepository?: DtsReloadRepository;
   runtimeMode: WiseEffRuntimeMode;
   userGovernanceActions?: UserGovernanceActions;
 }) {
@@ -407,15 +407,12 @@ function AppShell({
     [apiAuthPermissions, currentRoleId, runtimeMode, state.currentUserId]
   );
   const dtsReloadRepositoryClient = useMemo(
-    () =>
-      dtsReloadRepository !== undefined
-        ? dtsReloadRepository
-        : runtimeMode === "api"
-          ? createHttpDtsReloadRepository()
-          : null,
+    () => dtsReloadRepository ?? resolveDtsReloadRepository(runtimeMode),
     [dtsReloadRepository, runtimeMode]
   );
-  const canStartDtsReload = runtimeMode === "api" && apiAuthPermissions.includes("debugging:dts-reload");
+  // Mock mode is a data-source substitution (ADR-0002): the demo account may start runs.
+  const canStartDtsReload =
+    runtimeMode === "api" ? apiAuthPermissions.includes("debugging:dts-reload") : true;
   const parameterInitializationRepositoryClient = useMemo(
     () => parameterInitializationRepository ?? resolveParameterInitializationRepository(runtimeMode),
     [parameterInitializationRepository, runtimeMode]

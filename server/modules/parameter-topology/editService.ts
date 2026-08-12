@@ -17,7 +17,6 @@ import {
 import type { AuthContext } from "../auth/types";
 import type { DtsValue } from "../dts/types";
 import { renderDtsValue } from "../dts/valueAst";
-import type { ObjectStore } from "../logs/objectStore";
 import {
   type DtsToolchainRunner,
 } from "../parameter-files/dtsToolchain";
@@ -32,7 +31,7 @@ import {
   upsertEnablementDraft,
   listOpenBindingDraftsForUser,
   rebaseOpenBindingDraftCandidates,
-} from "../parameters/repository";
+} from "../parameters/draftRepository";
 import { upsertBindingRevisionValues } from "./bindingService";
 import { assertCanPromoteCandidateToDraft } from "./candidateRevisionStateMachine";
 import { normalizePersistedManifest } from "./configRevisionManifest";
@@ -53,14 +52,15 @@ import {
   loadCandidateSemanticGateCounts,
   loadFileContentFromVersion,
   throwIfManifestNeedsReview,
+  type BindingEditAction,
+  type CreateBindingDraftDeps,
 } from "./overlayWriteback";
 import {
   loadBindingContext,
   loadLogicalNodeEnablementContext,
   resolveWriteTarget,
+  type BindingDraftWriteTarget,
 } from "./writeLock";
-
-export type BindingEditAction = "set" | "delete";
 
 export type CreateBindingDraftInput = {
   bindingId: string;
@@ -74,30 +74,6 @@ export type CreateBindingDraftInput = {
    * Callers cannot disable it; this field is ignored when false.
    */
   enforceSchema?: boolean;
-};
-
-export type CreateBindingDraftDeps = {
-  /** Injected for tests; production defaults to the real Task 8 runner. */
-  toolchain?: DtsToolchainRunner;
-  /** Preferred source of file bytes by version storage key. */
-  objectStore?: ObjectStore;
-  /** Test-only: skip semantic promotion gates after resolve/toolchain. */
-  skipSemanticGates?: boolean;
-};
-
-export type BindingDraftWriteTarget = {
-  /** `base` when the project-primary DTS is the sole config member; `overlay` for legacy base+overlay sets. */
-  role: "base" | "overlay" | "project-occurrence";
-  propertyKey: string;
-  fileId?: string;
-  fileName?: string;
-  fileVersionId?: string;
-  checksum?: string;
-  nodeLocator?: string;
-  occurrenceId?: string;
-  occurrenceSpan?: { start: number; end: number };
-  nodeSpan?: { start: number; end: number };
-  targetRef?: string;
 };
 
 export type BindingDraftResult = {
