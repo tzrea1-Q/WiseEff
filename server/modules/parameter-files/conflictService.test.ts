@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { resetParameterIdentityCutoverCache } from "../parameters/cutoverAwareIdentity";
+import { setParameterIdentityMode } from "../parameters/parameterIdentityMode";
 import {
   detectFileUiDraftConflict,
   previewBulkConflictResolution,
@@ -66,7 +66,7 @@ function reviewerAuth(): AuthContext {
 
 describe("parameter file conflict service", () => {
   beforeEach(() => {
-    resetParameterIdentityCutoverCache();
+    setParameterIdentityMode(null);
   });
 
   it("file_sync + manual with different value creates conflict", async () => {

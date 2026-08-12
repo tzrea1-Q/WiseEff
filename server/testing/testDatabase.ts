@@ -9,6 +9,7 @@ import {
   type QueryResult
 } from "../shared/database/client";
 import { applyMigrations } from "../shared/database/migrations";
+import { resolveParameterIdentityMode } from "../modules/parameters/parameterIdentityMode";
 
 const projectRoot = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const migrationsDir = path.join(projectRoot, "server", "migrations");
@@ -127,6 +128,9 @@ export async function createInMemoryTestDatabase(): Promise<InMemoryTestDatabase
   // transaction() maps to savepoints inside that BEGIN, so nested service
   // transactions keep real commit/rollback semantics without persisting.
   const savepointDb = createSavepointDatabase(queryable);
+  // The fixture is the test's wiring: pin the identity mode from the real
+  // database exactly like production entrypoints do at boot.
+  await resolveParameterIdentityMode(queryable);
   return {
     query: queryable.query,
     transaction: savepointDb.transaction,

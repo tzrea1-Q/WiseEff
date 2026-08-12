@@ -15,7 +15,7 @@ import {
   type ParameterSubmissionRoundStatus
 } from "./status";
 import { buildChangeRequestImpact } from "./impact";
-import { mustUseSemanticParameterIdentity } from "./semanticParameterReads";
+import { parameterIdentityMode } from "./parameterIdentityMode";
 import { LEGACY_IDENTITY_SQL } from "./legacyParameterIdentityNames";
 import type { BindingWriteLockFields, EnablementWriteLockFields } from "../parameter-topology/writeLock";
 import { addCondition, dateTimeToIso, resolveParameterValueKind } from "./repository";
@@ -470,7 +470,7 @@ export async function createChangeRequest(
     writeLock?: BindingWriteLockFields;
   }
 ) {
-  if (await mustUseSemanticParameterIdentity(db)) {
+  if (parameterIdentityMode() === "semantic") {
     const bindingId = input.projectParameterBindingId ?? input.parameterId;
     const result = await db.query<ChangeRequestRow>(
       `
@@ -802,7 +802,7 @@ export async function createSubmissionItem(
     candidateConfigRevisionId?: string;
   }
 ) {
-  if (await mustUseSemanticParameterIdentity(db)) {
+  if (parameterIdentityMode() === "semantic") {
     const bindingId = input.projectParameterBindingId ?? input.parameterId;
     const result = await db.query<SubmissionItemRow>(
       `
@@ -1122,7 +1122,7 @@ export async function listChangeRequests(
     addCondition(where, values, (placeholder) => `pcr.assigned_to_user_id = ${placeholder}`, query.assignedTo);
   }
 
-  const semantic = await mustUseSemanticParameterIdentity(db);
+  const semantic = parameterIdentityMode() === "semantic";
   const result = await db.query<ChangeRequestRow>(
     semantic
       ? `
@@ -1238,7 +1238,7 @@ export async function findOpenChangeRequest(
   db: Queryable,
   query: { organizationId: string; projectId: string; parameterId: string }
 ) {
-  if (await mustUseSemanticParameterIdentity(db)) {
+  if (parameterIdentityMode() === "semantic") {
     const result = await db.query<ChangeRequestRow>(
       `
       select
@@ -1353,7 +1353,7 @@ export async function getChangeRequestById(
   db: Queryable,
   query: { organizationId: string; requestId: string }
 ) {
-  if (await mustUseSemanticParameterIdentity(db)) {
+  if (parameterIdentityMode() === "semantic") {
     const result = await db.query<ChangeRequestRow>(
       `
       select
@@ -1616,7 +1616,7 @@ export async function updateChangeRequestStatus(
   }
 ) {
   const rejectReason = input.status === "rejected" ? input.note ?? null : null;
-  if (await mustUseSemanticParameterIdentity(db)) {
+  if (parameterIdentityMode() === "semantic") {
     const result = await db.query<ChangeRequestRow>(
       `
       update parameter_change_requests
@@ -1912,7 +1912,7 @@ export async function mergeChangeRequest(
     actorUserId: string;
   }
 ) {
-  if (await mustUseSemanticParameterIdentity(db)) {
+  if (parameterIdentityMode() === "semantic") {
     const subject = await db.query<{ edit_subject_kind: string }>(
       `
       select edit_subject_kind
@@ -2211,7 +2211,7 @@ async function listSubmissionItemsByRoundIds(
   db: Queryable,
   query: { organizationId: string; roundIds: string[] }
 ) {
-  const semantic = await mustUseSemanticParameterIdentity(db);
+  const semantic = parameterIdentityMode() === "semantic";
   const result = await db.query<SubmissionItemRow & { submission_round_id: string }>(
     semantic
       ? `

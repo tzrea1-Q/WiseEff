@@ -49,10 +49,11 @@ function traceObjectStore(
   mode: ObjectStoreRuntimeEnv["OBJECT_STORE_MODE"],
   tracing: Pick<TracingBoundary, "withSpan"> | undefined
 ): ObjectStore & ObjectStoreHealthCheck {
-  const trace = <T>(operation: "put" | "get" | "checkHealth", fn: () => Promise<T>) => {
+  const trace = <T>(operation: "put" | "get" | "delete" | "checkHealth", fn: () => Promise<T>) => {
     return tracing ? tracing.withSpan("object_store.operation", { operation, mode }, fn) : fn();
   };
 
+  const sourceDelete = store.delete?.bind(store);
   return {
     put(input) {
       return trace("put", () => store.put(input));
@@ -62,6 +63,9 @@ function traceObjectStore(
     },
     checkHealth() {
       return trace("checkHealth", () => store.checkHealth());
-    }
+    },
+    ...(sourceDelete
+      ? { delete: (storageKey: string) => trace("delete", () => sourceDelete(storageKey)) }
+      : {})
   };
 }
