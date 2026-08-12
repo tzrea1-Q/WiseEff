@@ -27,10 +27,12 @@ import {
 import { assertDtsReloadHumanActor, requireDtsReload, requireDtsReloadView } from "./policy";
 import { runDebugOverlayPreflight } from "./preflight";
 import {
+  clearReloadRunStorageKeys,
   getReloadCandidateRow,
   getReloadRunRow,
   insertReloadRun,
   insertReloadRunTarget,
+  listExpiredReloadArtifactRuns,
   listLastReloadByBindingIds,
   listProjectDtsMemberSources,
   listReloadCandidateRows,
@@ -1172,14 +1174,6 @@ export async function getReloadRunArtifact(
   if (!row) {
     throw new ApiError("NOT_FOUND", "Reload run was not found.", 404, { runId });
   }
-  if (!row.overlay_artifact_storage_key || !row.overlay_artifact_sha256) {
-    throw new ApiError(
-      "CONFLICT",
-      "This reload run has no compiled artifact to download (it may have been blocked).",
-      409,
-      { runId, status: row.status }
-    );
-  }
 
   const createdAt = row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at);
   const completedAt = row.completed_at
@@ -1187,6 +1181,8 @@ export async function getReloadRunArtifact(
       ? row.completed_at.toISOString()
       : String(row.completed_at)
     : null;
+  // Retention is checked before artifact presence so a swept run (blob deleted, key nulled) still
+  // reports the honest 410-expired rather than a misleading 409 "may have been blocked".
   if (isReloadArtifactRetentionExpired(createdAt, completedAt)) {
     throw new ApiError(
       "GONE",
@@ -1202,6 +1198,15 @@ export async function getReloadRunArtifact(
     );
   }
 
+  if (!row.overlay_artifact_storage_key || !row.overlay_artifact_sha256) {
+    throw new ApiError(
+      "CONFLICT",
+      "This reload run has no compiled artifact to download (it may have been blocked).",
+      409,
+      { runId, status: row.status }
+    );
+  }
+
   const bytes = await objectStore.get(row.overlay_artifact_storage_key);
   return {
     fileName: `debug-overlay-${runId}.dtbo`,
@@ -1209,6 +1214,58 @@ export async function getReloadRunArtifact(
     bytes,
     sha256: row.overlay_artifact_sha256
   };
+}
+
+export type SweepReloadArtifactsResult = {
+  scannedRuns: number;
+  reclaimedRuns: number;
+  deletedBlobs: number;
+};
+
+/**
+ * Physically reclaim overlay blobs (artifact + source) for reload runs past the retention window
+ * and null their storage keys. Digests, byte sizes, and the reload snapshot stay on the row, and
+ * retention checks keep reporting the artifact as expired by timestamp — this only reclaims storage.
+ *
+ * Cross-organization platform maintenance intended for a scheduled / ops invocation. No-op when the
+ * object store cannot delete. Per-run failures leave that run's keys in place so a later sweep
+ * retries rather than orphaning an undeleted blob.
+ */
+export async function sweepExpiredReloadArtifacts(
+  db: Database,
+  objectStore: ObjectStore,
+  options: { now?: () => Date; batchLimit?: number } = {}
+): Promise<SweepReloadArtifactsResult> {
+  const remove = objectStore.delete?.bind(objectStore);
+  if (!remove) {
+    return { scannedRuns: 0, reclaimedRuns: 0, deletedBlobs: 0 };
+  }
+
+  const now = options.now ?? (() => new Date());
+  const batchLimit = options.batchLimit ?? 200;
+  const retentionMs = RELOAD_ARTIFACT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  const olderThanIso = new Date(now().getTime() - retentionMs).toISOString();
+
+  const expired = await listExpiredReloadArtifactRuns(db, { olderThanIso, limit: batchLimit });
+  let reclaimedRuns = 0;
+  let deletedBlobs = 0;
+  for (const run of expired) {
+    const keys = [run.overlay_artifact_storage_key, run.overlay_source_storage_key].filter(
+      (key): key is string => typeof key === "string" && key.length > 0
+    );
+    try {
+      for (const key of keys) {
+        await remove(key);
+        deletedBlobs += 1;
+      }
+      await clearReloadRunStorageKeys(db, { organizationId: run.organization_id, runId: run.id });
+      reclaimedRuns += 1;
+    } catch {
+      // Leave this run's keys in place so a later sweep retries; never null a key whose blob survived.
+    }
+  }
+
+  return { scannedRuns: expired.length, reclaimedRuns, deletedBlobs };
 }
 
 export async function deployReloadRun(

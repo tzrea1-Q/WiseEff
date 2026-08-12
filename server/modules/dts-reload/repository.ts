@@ -543,6 +543,56 @@ export async function claimReloadRunForDeploy(
   return result.rows[0] ?? null;
 }
 
+export type ExpiredReloadArtifactRow = {
+  id: string;
+  organization_id: string;
+  overlay_artifact_storage_key: string | null;
+  overlay_source_storage_key: string | null;
+};
+
+/**
+ * Runs whose retention anchor (completed_at, else created_at) is older than `olderThanIso` and
+ * that still hold at least one object-store key. Cross-organization by design — this is a
+ * platform maintenance sweep, not a tenant-scoped read.
+ */
+export async function listExpiredReloadArtifactRuns(
+  db: Queryable,
+  input: { olderThanIso: string; limit: number }
+): Promise<ExpiredReloadArtifactRow[]> {
+  const result = await db.query<ExpiredReloadArtifactRow>(
+    `
+    select id, organization_id, overlay_artifact_storage_key, overlay_source_storage_key
+    from dts_reload_runs
+    where coalesce(completed_at, created_at) < $1::timestamptz
+      and (overlay_artifact_storage_key is not null or overlay_source_storage_key is not null)
+    order by coalesce(completed_at, created_at) asc
+    limit $2
+    `,
+    [input.olderThanIso, input.limit]
+  );
+  return result.rows;
+}
+
+/**
+ * Null the object-store keys after their blobs are physically deleted. Digests, byte sizes, and the
+ * reload snapshot stay on the row so history and audit remain intact; retention checks report the
+ * artifact as expired by timestamp regardless of key presence.
+ */
+export async function clearReloadRunStorageKeys(
+  db: Queryable,
+  input: { organizationId: string; runId: string }
+): Promise<void> {
+  await db.query(
+    `
+    update dts_reload_runs
+    set overlay_artifact_storage_key = null,
+        overlay_source_storage_key = null
+    where organization_id = $1 and id = $2
+    `,
+    [input.organizationId, input.runId]
+  );
+}
+
 export async function getReloadRunRow(
   db: Queryable,
   input: { organizationId: string; runId: string }
