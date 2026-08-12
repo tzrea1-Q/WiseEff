@@ -33,7 +33,7 @@ import {
 } from "./semanticParameterReads";
 import { resetParameterIdentityCutoverCache } from "./cutoverAwareIdentity";
 import { LEGACY_IDENTITY_SQL } from "./legacyParameterIdentityNames";
-import type { BindingWriteLockFields, EnablementWriteLockFields } from "../parameter-topology/editService";
+import type { BindingWriteLockFields, EnablementWriteLockFields } from "../parameter-topology/writeLock";
 
 export type ParameterWriteLockRow = {
   base_config_revision_id: string | null;

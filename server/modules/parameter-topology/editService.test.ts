@@ -9,12 +9,12 @@ import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testi
 import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
 import { createOrReuseBinding, upsertBindingRevisionValues } from "./bindingService";
 import {
-  applyLockedOverlayWriteback,
   createBindingDraft,
   createNodeEnablementDraft,
-  resolveBindingWriteLock,
   unchangedSourceBytes,
 } from "./editService";
+import { applyLockedOverlayWriteback } from "./overlayWriteback";
+import { resolveBindingWriteLock } from "./writeLock";
 import { ingestConfigRevision } from "./ingestService";
 import type { ConfigRevisionManifest } from "./types";
 

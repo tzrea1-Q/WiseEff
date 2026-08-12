@@ -4,7 +4,7 @@ import type {
   ImpactItem,
   ParameterHistoryEntry,
   RequestStatus
-} from "./mockData";
+} from "@/domain/prototype/types";
 import { bundledPowerManagementConfig, flattenProjectParameters } from "./powerManagementConfig";
 
 const parameterValueKindById = new Map(

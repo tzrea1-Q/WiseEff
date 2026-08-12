@@ -22,7 +22,7 @@ vi.mock("../../parameter-topology/service", () => ({
   createBindingDraft: vi.fn()
 }));
 
-vi.mock("../../parameter-topology/editService", () => ({
+vi.mock("../../parameter-topology/writeLock", () => ({
   loadBindingContext: vi.fn(),
   resolveBindingHeadRevisionId: vi.fn()
 }));
@@ -34,7 +34,7 @@ vi.mock("../../audit/repository", () => ({
 import { createActionTools } from "./actionTools";
 import { submitParameterChanges } from "../../parameters/service";
 import { assertSensitiveNodeWriteAllowed } from "../../parameters/sensitiveNode";
-import { loadBindingContext } from "../../parameter-topology/editService";
+import { loadBindingContext } from "../../parameter-topology/writeLock";
 import { createBindingDraft } from "../../parameter-topology/service";
 
 const mockedSubmit = vi.mocked(submitParameterChanges);

@@ -3,7 +3,7 @@ import { matchesAuditAppGroup, getAuditAppGroup, type AuditAppGroupId } from "@/
 import { mapApiAuditEventToView, mapMockAuditEventToView } from "@/domain/audit/mapAuditEventView";
 import type { AuditEventView, ListAuditEventsParams } from "@/domain/audit/types";
 import { createAuditClient } from "@/infrastructure/http/auditClient";
-import type { AuditEvent, RiskLevel } from "@/mockData";
+import type { AuditEvent, RiskLevel } from "@/domain/prototype/types";
 
 export type AuditQueryState = {
   appGroup: AuditAppGroupId;

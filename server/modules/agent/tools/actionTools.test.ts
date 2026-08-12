@@ -22,7 +22,7 @@ vi.mock("../../parameter-topology/service", () => ({
   createBindingDraft: vi.fn()
 }));
 
-vi.mock("../../parameter-topology/editService", () => ({
+vi.mock("../../parameter-topology/writeLock", () => ({
   loadBindingContext: vi.fn(),
   resolveBindingHeadRevisionId: vi.fn()
 }));
@@ -32,7 +32,7 @@ import { submitParameterChanges } from "../../parameters/service";
 import { deleteDraft, getProjectParameterForUpdate } from "../../parameters/repository";
 import { mustUseSemanticParameterIdentity } from "../../parameters/semanticParameterReads";
 import { createBindingDraft } from "../../parameter-topology/service";
-import { loadBindingContext, resolveBindingHeadRevisionId } from "../../parameter-topology/editService";
+import { loadBindingContext, resolveBindingHeadRevisionId } from "../../parameter-topology/writeLock";
 
 const mockedSubmit = vi.mocked(submitParameterChanges);
 const mockedLoadBinding = vi.mocked(loadBindingContext);

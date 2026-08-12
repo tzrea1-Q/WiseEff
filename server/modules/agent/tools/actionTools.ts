@@ -7,7 +7,7 @@ import { deleteDraft, getProjectParameterForUpdate } from "../../parameters/repo
 import { mustUseSemanticParameterIdentity } from "../../parameters/semanticParameterReads";
 import { assertSensitiveNodeWriteAllowed } from "../../parameters/sensitiveNode";
 import { submitParameterChanges } from "../../parameters/service";
-import { loadBindingContext, resolveBindingHeadRevisionId } from "../../parameter-topology/editService";
+import { loadBindingContext, resolveBindingHeadRevisionId } from "../../parameter-topology/writeLock";
 import { createBindingDraft } from "../../parameter-topology/service";
 import type { AgentToolExecutionContext, AgentToolDefinition } from "../toolRegistry";
 

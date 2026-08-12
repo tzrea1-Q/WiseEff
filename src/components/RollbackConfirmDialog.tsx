@@ -1,5 +1,5 @@
 import { ArrowRight, RotateCcw } from "lucide-react";
-import type { DebugParameter, DebugSnapshot } from "../mockData";
+import type { DebugParameter, DebugSnapshot } from "@/domain/prototype/types";
 
 const riskLabels: Record<DebugParameter["risk"], string> = {
   High: "高",
