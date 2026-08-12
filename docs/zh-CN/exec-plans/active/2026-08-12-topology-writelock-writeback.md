@@ -18,7 +18,9 @@
 
 `editService.ts` 保留草稿创建（`createBindingDraft`、`createNodeEnablementDraft`）、草稿 DTO 类型、`resolveInitializationSuggestion`、`unchangedSourceBytes`（仅测试用的草稿结果断言辅助——已核实不属于回写管线）、`assertCandidateToolchainRelease` 及仅草稿使用的私有辅助，并从两个新模块导入被移走的部分。
 
-共享辅助函数下沉进新模块（而非留在原处），以保证运行时依赖无环：`editService → overlayWriteback → writeLock →（repository、shared）`。唯一指回 `editService.ts` 的引用是编译期擦除的 `import type` 行（`BindingDraftWriteTarget`、`BindingEditAction`、`CreateBindingDraftDeps`）——这也是 `loadLogicalNodeEnablementContext` 必须移入 `writeLock.ts` 而非留在原文件的原因。
+共享辅助函数下沉进新模块（而非留在原处），以保证运行时依赖无环：`editService → overlayWriteback → writeLock →（repository、shared）`。合并当时唯一指回 `editService.ts` 的引用是编译期擦除的 `import type` 行（`BindingDraftWriteTarget`、`BindingEditAction`、`CreateBindingDraftDeps`）——这也是 `loadLogicalNodeEnablementContext` 必须移入 `writeLock.ts` 而非留在原文件的原因。
+
+**后续已完成（2026-08-12，`refactor/parameters-repository-split-2`）：** 三个类型已迁至新家——`BindingDraftWriteTarget` 移入 `writeLock.ts`（经 `resolveWriteTarget` 生产它的模块），`BindingEditAction` 与 `CreateBindingDraftDeps` 移入 `overlayWriteback.ts`（主要消费方）。`writeLock.ts` 与 `overlayWriteback.ts` 不再从 `editService.ts` 导入任何内容；`editService.ts`、`parameter-topology/service.ts`、`parameter-files/writebackService.ts` 均改从新位置导入这些类型。类型依赖图与运行时依赖图一致：`editService → overlayWriteback → writeLock`，无回向引用。
 
 不设兼容性 re-export：所有导入方一并改指向。更新的导入位置：
 
