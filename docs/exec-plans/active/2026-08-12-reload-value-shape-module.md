@@ -99,9 +99,9 @@ PR2 (follow-up, contract + frontend):
 | Planning (zh) | `docs/zh-CN/PLANS.md` | No change | Page states the active list is governed by the English page |
 | Domain glossary | `CONTEXT.md` | Update | "Reload value shape" row (done, PR1) |
 | Product specs | `docs/product-specs/*` | No change | No product behavior change |
-| Architecture/design | `docs/design-docs/domain-model.md` | Review (PR2) | Check whether the value-shape vocabulary needs a subsection when the DTO field ships |
-| API contract | `docs/design-docs/api-contract.md` | Review (PR2) | PR1 contract-neutral; PR2 adds `resolvedValueShape` and must update |
-| Frontend | `docs/FRONTEND.md` | No change (PR1) | Review in PR2 with the page rewiring |
+| Architecture/design | `docs/design-docs/domain-model.md` | Reviewed (PR2) | No change: the domain model documents the reload run/snapshot state, not the value-shape vocabulary, which is captured in the CONTEXT.md glossary and the api-contract candidate row |
+| API contract | `docs/design-docs/api-contract.md` (+ zh) | Updated (PR2) | `resolvedValueShape` added to the candidates row in both English and the required Chinese companion |
+| Frontend | `docs/FRONTEND.md` | Reviewed (PR2) | No change: the page still renders state and calls the port; validation now reads a server-provided DTO field instead of re-deriving, no new frontend architecture rule |
 | Quality/testing | `docs/QUALITY_SCORE.md`, `docs/design-docs/testing-strategy.md` | No change | Test counts move between files; strategy unchanged |
 | Reliability/runbooks | `docs/RELIABILITY.md`, `docs/runbooks/*` | No change | No operational surface change |
 | Security | `docs/SECURITY.md`, `docs/security/*` | No change | No authz/audit surface change |
@@ -112,9 +112,10 @@ PR2 (follow-up, contract + frontend):
 
 - PR1: `CONTEXT.md` and `docs/PLANS.md` updated in-branch; all other rows recorded
   `No change` with reasons above; `npm run docs:check` green before merge.
-- PR2 (blocking before this plan moves to `completed/`): resolve both `Review (PR2)` rows —
-  update `docs/design-docs/api-contract.md` for `resolvedValueShape` and record the
-  domain-model decision; re-run `npm run docs:check`.
+- PR2: `docs/design-docs/api-contract.md` and its Chinese companion updated for
+  `resolvedValueShape`; domain-model and FRONTEND rows reviewed and recorded `No change`
+  with reasons above; `npm run docs:check` green before merge. Both documentation `Review`
+  rows are now resolved, so this plan is eligible to move to `completed/` after PR2 merges.
 
 ## UI Interaction Automation Review
 

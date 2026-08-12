@@ -116,31 +116,30 @@ export type ReloadAuthoringIssue =
   | { reason: "group-count-mismatch"; expectedGroups: number; actualGroups: number };
 
 export type ReloadValueShapeAuthoringExpectation = {
-  /** Input placeholder for the debug-value field. */
+  /**
+   * Canonical, language-neutral example token for a resolved shape. Used verbatim as the
+   * debug-value input placeholder and embedded in each edge's own prose ("for example X" /
+   * "例如 X"), so the example lives in one place while the sentence wrapping stays local.
+   */
   placeholder: string;
-  /** Example text used inside validation messages ("for example …"). */
-  example: string;
 };
 
-/**
- * Authoring expectation for a resolved shape. Single source for the examples that were
- * previously duplicated between server validation messages and frontend placeholders.
- */
+/** Single source for the example token both runtimes show for a resolved shape. */
 export function describeReloadValueShapeAuthoring(
   valueShape: ReloadValueShape
 ): ReloadValueShapeAuthoringExpectation {
   if (valueShape?.kind === "string") {
-    return { placeholder: '"bat0_raw_temp"', example: '"bat0_raw_temp"' };
+    return { placeholder: '"bat0_raw_temp"' };
   }
   if (valueShape?.kind === "string-list") {
-    return { placeholder: '"okay"', example: '"okay" or "a", "b"' };
+    return { placeholder: '"okay"' };
   }
   if (isPhandleCellFamilyKind(valueShape?.kind)) {
-    return { placeholder: "<&gpio13 29 0>", example: "<&gpio13 29 0>" };
+    return { placeholder: "<&gpio13 29 0>" };
   }
   const bits = isSupportedCellBits(valueShape?.bits) ? valueShape!.bits! : 32;
   if (bits !== 32) {
-    return { placeholder: `/bits/ ${bits} <17>`, example: `/bits/ ${bits} <17>` };
+    return { placeholder: `/bits/ ${bits} <17>` };
   }
-  return { placeholder: "<7000>", example: "<6000>, <0x1770>, or <1 2 3>" };
+  return { placeholder: "<7000>" };
 }

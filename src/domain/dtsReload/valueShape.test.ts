@@ -77,42 +77,27 @@ describe("isSupportedReloadValueShape", () => {
 });
 
 describe("describeReloadValueShapeAuthoring", () => {
-  it("states the single-string and string-list examples once for both runtimes", () => {
-    expect(describeReloadValueShapeAuthoring({ kind: "string" })).toEqual({
-      placeholder: '"bat0_raw_temp"',
-      example: '"bat0_raw_temp"'
-    });
-    expect(describeReloadValueShapeAuthoring({ kind: "string-list" })).toEqual({
-      placeholder: '"okay"',
-      example: '"okay" or "a", "b"'
-    });
+  it("states the single-string and string-list example tokens once for both runtimes", () => {
+    expect(describeReloadValueShapeAuthoring({ kind: "string" })).toEqual({ placeholder: '"bat0_raw_temp"' });
+    expect(describeReloadValueShapeAuthoring({ kind: "string-list" })).toEqual({ placeholder: '"okay"' });
   });
 
-  it("states the GPIO phandle example for every phandle-family kind", () => {
+  it("states the GPIO phandle example token for every phandle-family kind", () => {
     for (const kind of ["phandle-cells", "mixed", "phandle-list"]) {
-      expect(describeReloadValueShapeAuthoring({ kind })).toEqual({
-        placeholder: "<&gpio13 29 0>",
-        example: "<&gpio13 29 0>"
-      });
+      expect(describeReloadValueShapeAuthoring({ kind })).toEqual({ placeholder: "<&gpio13 29 0>" });
     }
   });
 
-  it("states /bits/ examples for sub-32-bit widths and the u32 example otherwise", () => {
+  it("states /bits/ example tokens for sub-32-bit widths and the u32 token otherwise", () => {
     expect(describeReloadValueShapeAuthoring({ kind: "cells", bits: 8, cellsPerGroup: 1 })).toEqual({
-      placeholder: "/bits/ 8 <17>",
-      example: "/bits/ 8 <17>"
+      placeholder: "/bits/ 8 <17>"
     });
     expect(describeReloadValueShapeAuthoring({ kind: "cells", bits: 16, cellsPerGroup: 2 })).toEqual({
-      placeholder: "/bits/ 16 <17>",
-      example: "/bits/ 16 <17>"
+      placeholder: "/bits/ 16 <17>"
     });
     expect(describeReloadValueShapeAuthoring({ kind: "cells", bits: 32, cellsPerGroup: 1 })).toEqual({
-      placeholder: "<7000>",
-      example: "<6000>, <0x1770>, or <1 2 3>"
+      placeholder: "<7000>"
     });
-    expect(describeReloadValueShapeAuthoring(null)).toEqual({
-      placeholder: "<7000>",
-      example: "<6000>, <0x1770>, or <1 2 3>"
-    });
+    expect(describeReloadValueShapeAuthoring(null)).toEqual({ placeholder: "<7000>" });
   });
 });
