@@ -8601,7 +8601,7 @@
     "/api/v1/projects/{projectId}/parameter-file-conflicts/bulk-resolve": {
       "post": {
         "operationId": "parameterFiles.resolveConflictsBulk",
-        "summary": "Resolve eligible conflicts as one atomic batch (ADR-0025); mid-batch failure rolls back",
+        "summary": "Resolve eligible conflicts as one atomic batch (ADR-0027); mid-batch failure rolls back",
         "tags": [
           "parameter-files"
         ],
