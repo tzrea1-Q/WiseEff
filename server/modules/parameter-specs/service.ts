@@ -1231,11 +1231,16 @@ export async function updateParameterSpec(
   requireCanAdmin(auth);
 
   return db.transaction(async (tx) => {
-    // Admins may update org-owned or platform-global catalog specs in place.
-    const spec = await requireOrgOrGlobalSpec(tx, {
-      organizationId: auth.organization.id,
-      parameterSpecId: input.specId,
-    });
+    // Org admins update org-owned specs; platform super admins may also update platform-global specs.
+    const spec = isPlatformSuperAdmin(auth)
+      ? await requireOrgOrGlobalSpec(tx, {
+          organizationId: auth.organization.id,
+          parameterSpecId: input.specId,
+        })
+      : await requireOrgOwnedSpec(tx, {
+          organizationId: auth.organization.id,
+          parameterSpecId: input.specId,
+        });
     if (spec.lifecycle === "draft") {
       throw new ApiError("CONFLICT", "Draft specs must be activated, not updated.", 409, {
         parameterSpecId: input.specId,

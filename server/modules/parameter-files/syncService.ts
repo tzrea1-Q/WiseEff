@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 
 import { createAuditEvent } from "../audit/repository";
+import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import {
   bindParameterSource,
   findProjectValueBySource,
-  upsertFileSyncDraft
+  upsertFileSyncDraft,
+  type FileSyncConflictRecord
 } from "../parameters/repository";
 import { parameterIdentityMode } from "../parameters/parameterIdentityMode";
 import type { Queryable } from "../../shared/database/client";
@@ -30,7 +32,8 @@ export type FileSyncSummary = {
 export async function syncFileVersion(
   db: Queryable,
   auth: AuthContext,
-  input: SyncFileVersionInput
+  input: SyncFileVersionInput,
+  context: AuditCorrelationContext = {}
 ): Promise<FileSyncSummary> {
   const file = await getProjectParameterFileById(db, {
     organizationId: auth.organization.id,
@@ -60,6 +63,7 @@ export async function syncFileVersion(
   let draftsCreated = 0;
   let unchanged = 0;
   let unmatched = 0;
+  const openedConflicts: FileSyncConflictRecord[] = [];
   const entries = Object.entries(version.parsedIndex);
 
   for (const [nodePath, entry] of entries) {
@@ -102,7 +106,7 @@ export async function syncFileVersion(
       sourceFileName: file.fileName,
       sourceNodePath: nodePath
     });
-    await detectFileUiDraftConflict(db, {
+    const opened = await detectFileUiDraftConflict(db, {
       organizationId: auth.organization.id,
       projectId: file.projectId,
       projectParameterValueId: resolved.id,
@@ -111,7 +115,53 @@ export async function syncFileVersion(
       fileDraftId: fileDraft.id,
       fileValue: targetValue
     });
+    openedConflicts.push(...opened);
   }
+
+  for (const conflict of openedConflicts) {
+    await createAuditEvent(db, {
+      id: randomUUID(),
+      organizationId: auth.organization.id,
+      projectId: file.projectId,
+      actorUserId: auth.user.id,
+      actorType: "user",
+      app: "parameters",
+      kind: "parameter-file-conflict-open",
+      action: "open",
+      severity: "Medium",
+      targetType: "parameter-file-sync-conflict",
+      targetId: conflict.id,
+      metadata: {
+        fileDraftId: conflict.fileDraftId,
+        uiDraftId: conflict.uiDraftId,
+        projectParameterValueId: conflict.projectParameterValueId,
+        fileVersionId: version.id
+      },
+      traceId: context.requestId ?? randomUUID()
+    });
+  }
+
+  await createAuditEvent(db, {
+    id: randomUUID(),
+    organizationId: auth.organization.id,
+    projectId: file.projectId,
+    actorUserId: auth.user.id,
+    actorType: "user",
+    app: "parameters",
+    kind: "parameter-file-sync",
+    action: "sync",
+    severity: "Low",
+    targetType: "project-parameter-file",
+    targetId: file.id,
+    metadata: {
+      fileVersionId: version.id,
+      draftsCreated,
+      unchanged,
+      unmatched,
+      conflictsOpened: openedConflicts.length
+    },
+    traceId: context.requestId ?? randomUUID()
+  });
 
   return { draftsCreated, unchanged, unmatched, skipped: false, identityFallbackUses: 0 };
 }
