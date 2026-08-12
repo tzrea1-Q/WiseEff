@@ -119,6 +119,7 @@
   --z-xiaoze-fab: 1100;
   --z-modal-backdrop: 1150;
   --z-modal-backdrop-nested: 1160;
+  --z-toast: 1180;
   --z-xiaoze-popup: 1200;
 
   /* ── Layout ── */
@@ -7550,20 +7551,101 @@ td small {
   width: min(520px, 100%);
 }
 
-.logs-feedback-toast {
+.toast-viewport {
   position: fixed;
-  right: 28px;
-  bottom: 28px;
-  z-index: 45;
-  padding: 12px 14px;
-  color: var(--text);
-  background: #fff;
-  border: 1px solid var(--outline);
-  border-radius: 10px;
-  box-shadow: var(--shadow);
-  font-size: 13px;
-  font-weight: 700;
+  right: var(--space-6);
+  bottom: var(--space-6);
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+  pointer-events: none;
 }
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 420px;
+  padding: var(--space-3) var(--space-4);
+  color: var(--text);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+  font-size: var(--text-base);
+  line-height: var(--leading-base);
+  font-weight: 500;
+  animation: toast-enter var(--duration-base) var(--ease-out);
+}
+
+.toast__icon {
+  flex: 0 0 auto;
+}
+
+.toast--success .toast__icon {
+  color: var(--success);
+}
+
+.toast--info .toast__icon {
+  color: var(--info);
+}
+
+.toast--danger .toast__icon {
+  color: var(--danger);
+}
+
+.toast__message {
+  min-width: 0;
+}
+
+.toast__action {
+  flex: 0 0 auto;
+  margin-left: var(--space-2);
+  padding: 0;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.toast__action:hover {
+  color: var(--accent-hover);
+}
+
+.toast__action:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+  border-radius: var(--radius-sm);
+}
+
+.toast__action:active {
+  color: var(--accent-pressed);
+}
+
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
+}
+
 
 .log-dashboard-page {
   display: grid;

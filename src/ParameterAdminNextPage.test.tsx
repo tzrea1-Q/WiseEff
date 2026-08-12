@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ParameterPageActions } from "@/app/routes";
+import { ToastProvider } from "@/components/common/toast/ToastProvider";
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type { ParameterModuleRegistry } from "@/domain/parameter-topology/moduleRegistry";
@@ -540,24 +541,26 @@ function renderPage(options: {
   const pathname = path.includes("?") ? path.slice(0, path.indexOf("?")) : path;
 
   const page = (nextPath: string) => (
-    <ParameterAdminNextPage
-      area={area}
-      onNavigate={onNavigate}
-      search={nextPath.includes("?") ? nextPath.slice(nextPath.indexOf("?") + 1) : ""}
-      pathname={nextPath.includes("?") ? nextPath.slice(0, nextPath.indexOf("?")) : nextPath}
-      runtimeMode={options.runtimeMode ?? "mock"}
-      parameterTopologyRepository={repository}
-      parameterModuleRegistryRepository={moduleRegistry}
-      parameterFileRepository={options.parameterFileRepository}
-      dtsStructuredRepository={options.dtsStructuredRepository}
-      configurationWorkbenchEnabled={options.configurationWorkbenchEnabled}
-      projects={(options.state ?? initialState).configDraft.projects}
-      parameters={(options.state ?? initialState).parameters}
-      activeProjectId={(options.state ?? initialState).activeProjectId}
-      dispatch={dispatch}
-      parameterActions={parameterActions}
-      state={options.state ?? initialState}
-    />
+    <ToastProvider>
+      <ParameterAdminNextPage
+        area={area}
+        onNavigate={onNavigate}
+        search={nextPath.includes("?") ? nextPath.slice(nextPath.indexOf("?") + 1) : ""}
+        pathname={nextPath.includes("?") ? nextPath.slice(0, nextPath.indexOf("?")) : nextPath}
+        runtimeMode={options.runtimeMode ?? "mock"}
+        parameterTopologyRepository={repository}
+        parameterModuleRegistryRepository={moduleRegistry}
+        parameterFileRepository={options.parameterFileRepository}
+        dtsStructuredRepository={options.dtsStructuredRepository}
+        configurationWorkbenchEnabled={options.configurationWorkbenchEnabled}
+        projects={(options.state ?? initialState).configDraft.projects}
+        parameters={(options.state ?? initialState).parameters}
+        activeProjectId={(options.state ?? initialState).activeProjectId}
+        dispatch={dispatch}
+        parameterActions={parameterActions}
+        state={options.state ?? initialState}
+      />
+    </ToastProvider>
   );
 
   const { rerender: rerenderPage } = render(page(`${pathname}${search ? `?${search}` : ""}`));

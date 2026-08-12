@@ -24,6 +24,7 @@ import {
   X
 } from "lucide-react";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { ToastProvider, useToast } from "@/components/common/toast/ToastProvider";
 import { TopBarNotifications } from "./components/notifications/TopBarNotifications";
 import { createStateBackedNotificationsClient } from "@/infrastructure/mock/mockNotificationsGateway";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
@@ -381,23 +382,25 @@ function App({
 }: AppProps = {}) {
   return (
     <TooltipProvider delayDuration={0}>
-      <AppShell
-        authClient={authClient}
-        debuggingAdminClient={debuggingAdminClient}
-        debuggingGateway={debuggingGateway}
-        initialAppState={initialAppState}
-        key={mockDataFingerprint}
-        logAnalysisRepository={logAnalysisRepository}
-        listParameterConfigSets={listParameterConfigSets}
-        parameterRepository={parameterRepository}
-        parameterTopologyRepository={parameterTopologyRepository}
-        parameterInitializationRepository={parameterInitializationRepository}
-        productFeedbackRepository={productFeedbackRepository}
-        knowledgeRepository={knowledgeRepository}
-        dtsReloadRepository={dtsReloadRepository}
-        runtimeMode={runtimeMode}
-        userGovernanceActions={userGovernanceActions}
-      />
+      <ToastProvider>
+        <AppShell
+          authClient={authClient}
+          debuggingAdminClient={debuggingAdminClient}
+          debuggingGateway={debuggingGateway}
+          initialAppState={initialAppState}
+          key={mockDataFingerprint}
+          logAnalysisRepository={logAnalysisRepository}
+          listParameterConfigSets={listParameterConfigSets}
+          parameterRepository={parameterRepository}
+          parameterTopologyRepository={parameterTopologyRepository}
+          parameterInitializationRepository={parameterInitializationRepository}
+          productFeedbackRepository={productFeedbackRepository}
+          knowledgeRepository={knowledgeRepository}
+          dtsReloadRepository={dtsReloadRepository}
+          runtimeMode={runtimeMode}
+          userGovernanceActions={userGovernanceActions}
+        />
+      </ToastProvider>
     </TooltipProvider>
   );
 }
@@ -3394,11 +3397,11 @@ function createEmptyLogRecord(): LogRecord {
 }
 
 function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
+  const { toast } = useToast();
   const [selectedLogId, setSelectedLogId] = useState(state.logs[0]?.id ?? "");
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [pendingUpload, setPendingUpload] = useState<{ fileName: string; previousLogIds: Set<string> } | null>(null);
   const [feedbackLogId, setFeedbackLogId] = useState<string | null>(null);
-  const [feedbackToast, setFeedbackToast] = useState("");
   const [auxTab, setAuxTab] = useState<LogsAuxTab>("history");
   const [hoveredEvidenceId, setHoveredEvidenceId] = useState<string | null>(null);
   const [focusedEvidenceId, setFocusedEvidenceId] = useState<string | null>(null);
@@ -3443,6 +3446,17 @@ function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
     }
     prevLogCount.current = state.logs.length;
   }, [state.logs]);
+
+  // Mock-mode workflow feedback: surface the latest prototype notification
+  // through the shared toast pipeline (API mode has real notification delivery).
+  const lastToastedNotificationRef = useRef<string | null>(null);
+  useEffect(() => {
+    const latest = state.notifications[0];
+    if (wiseEffRuntimeMode !== "api" && latest && latest !== lastToastedNotificationRef.current) {
+      lastToastedNotificationRef.current = latest;
+      toast({ tone: "info", message: latest });
+    }
+  }, [state.notifications, toast]);
 
   useEffect(() => {
     setSearchQuery("");
@@ -3689,20 +3703,10 @@ function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
               type: "ADD_NOTIFICATION",
               message: `已记录 ${selectedFeedbackLog.reportId} 的分析反馈：${confidence}${issue ? `，${issue}` : ""}`
             });
-            setFeedbackToast("反馈已记录，感谢补充分析质量线索。");
+            toast({ tone: "success", message: "反馈已记录，感谢补充分析质量线索。" });
             setFeedbackLogId(null);
           }}
         />
-      ) : null}
-      {feedbackToast ? (
-        <div className="logs-feedback-toast" role="status" aria-live="polite">
-          {feedbackToast}
-        </div>
-      ) : null}
-      {wiseEffRuntimeMode !== "api" && state.notifications[0] ? (
-        <div className="logs-feedback-toast" role="status" aria-live="polite">
-          {state.notifications[0]}
-        </div>
       ) : null}
     </div>
   );
