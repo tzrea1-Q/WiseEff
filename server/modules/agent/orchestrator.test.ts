@@ -183,6 +183,97 @@ describe("agent orchestrator", () => {
     });
   });
 
+  it("refuses approval decisions from a same-org user other than the requester", async () => {
+    const { db, tables } = createMemoryDb();
+    const registry = createRegistry(
+      [createToolDefinition({ name: "action.submitParameterChange", kind: "mutating", requiresApproval: true })],
+      async () => ({ summary: "executed", data: {}, citations: [] })
+    );
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const sessionId = await createTestSession(db);
+    const toolCall = await orchestrator.recordToolRequest({
+      auth: developmentAuthContext,
+      requestId: "req-owner-turn",
+      sessionId,
+      request: {
+        name: "action.submitParameterChange",
+        label: "Submit parameter change",
+        payload: { projectId: "aurora", parameterId: "pd-1", targetValue: "3100", reason: "Stage draft" }
+      }
+    });
+    const intruderAuth: AuthContext = {
+      ...developmentAuthContext,
+      user: { ...developmentAuthContext.user, id: "u-intruder" }
+    };
+
+    await expect(
+      orchestrator.approveToolCall({
+        auth: intruderAuth,
+        requestId: "req-intruder-approve",
+        approvalId: toolCall.approvalId ?? "",
+        reason: "hijack"
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+    await expect(
+      orchestrator.rejectToolCall({
+        auth: intruderAuth,
+        requestId: "req-intruder-reject",
+        approvalId: toolCall.approvalId ?? "",
+        reason: "hijack"
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+
+    expect(registry.run).not.toHaveBeenCalled();
+    expect(tables.approvals[0]?.status).toBe("pending");
+
+    // The requesting user can still decide their own approval.
+    await orchestrator.approveToolCall({
+      auth: developmentAuthContext,
+      requestId: "req-owner-approve",
+      approvalId: toolCall.approvalId ?? "",
+      reason: "Looks safe"
+    });
+    expect(registry.run).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses resolveApproval edited args from a non-requester before touching the payload", async () => {
+    const { db, tables } = createMemoryDb();
+    const registry = createRegistry(
+      [createToolDefinition({ name: "action.submitParameterChange", kind: "mutating", requiresApproval: true })],
+      async () => ({ summary: "executed", data: {}, citations: [] })
+    );
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const sessionId = await createTestSession(db);
+    const toolCall = await orchestrator.recordToolRequest({
+      auth: developmentAuthContext,
+      requestId: "req-owner-turn",
+      sessionId,
+      request: {
+        name: "action.submitParameterChange",
+        label: "Submit parameter change",
+        payload: { projectId: "aurora", parameterId: "pd-1", targetValue: "3100", reason: "Stage draft" }
+      }
+    });
+    const intruderAuth: AuthContext = {
+      ...developmentAuthContext,
+      user: { ...developmentAuthContext.user, id: "u-intruder" }
+    };
+
+    await expect(
+      orchestrator.resolveApproval({
+        auth: intruderAuth,
+        requestId: "req-intruder-resolve",
+        approvalId: toolCall.approvalId ?? "",
+        decision: "approve",
+        editedArgs: { projectId: "aurora", parameterId: "pd-1", targetValue: "9999", reason: "hijacked" }
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+
+    expect(registry.run).not.toHaveBeenCalled();
+    expect(tables.approvals[0]?.status).toBe("pending");
+    expect(JSON.stringify(tables.toolCalls)).not.toContain("9999");
+  });
+
   it("exports low-cardinality direct tool execution spans without payload or identifiers", async () => {
     const { db } = createMemoryDb();
     const { spans, tracing } = createTraceRecorder();
@@ -392,9 +483,10 @@ describe("agent orchestrator", () => {
 
   it("approveToolCall preserves pending approval state when approval-time authorization fails", async () => {
     const { db, tables } = createMemoryDb();
+    // Same requesting user, but their permissions were downgraded between the
+    // request and the approval, so approval-time re-authorization must refuse.
     const guestAuthContext: AuthContext = {
       ...developmentAuthContext,
-      user: { ...developmentAuthContext.user, id: "u-guest" },
       roles: [{ projectId: "aurora", roleId: "guest" }],
       permissions: ["parameter:view"]
     };
