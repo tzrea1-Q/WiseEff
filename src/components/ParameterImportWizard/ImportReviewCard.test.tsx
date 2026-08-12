@@ -111,7 +111,7 @@ describe("ImportReviewCard", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "预填并创建" }));
 
-    const dialog = screen.getByRole("dialog", { name: "预填并创建参数 brand_new_param" });
+    const dialog = screen.getByRole("dialog", { name: "预填并创建" });
     expect(within(dialog).getByLabelText("参数名")).toHaveValue("brand_new_param");
     expect(within(dialog).getByLabelText(/推荐值/)).toHaveValue("42");
 

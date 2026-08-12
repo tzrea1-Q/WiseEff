@@ -87,7 +87,7 @@ describe("ParameterDraftDialog", () => {
     const props = renderDialog();
 
     const dialog = screen.getByRole("dialog", { name: "修改草稿" });
-    expect(dialog.querySelector(".parameter-draft-dialog")).toBeInTheDocument();
+    expect(dialog).toHaveClass("parameter-draft-dialog");
     expect(dialog.querySelector(".workbench-sheet")).not.toBeInTheDocument();
     expect(within(dialog).queryByRole("heading", { name: "修改草稿" })).not.toBeInTheDocument();
     expect(within(dialog).getByText("本轮提交 1 项")).toBeInTheDocument();
@@ -109,7 +109,7 @@ describe("ParameterDraftDialog", () => {
 
     expect(simpleCard).toHaveClass("parameter-draft-card--simple");
     expect(complexCard).toHaveClass("parameter-draft-card--complex");
-    expect(dialog.querySelector(".parameter-draft-dialog")).toHaveClass("parameter-draft-dialog--wide");
+    expect(dialog).toHaveClass("parameter-draft-dialog--wide");
     expect(within(complexCard as HTMLElement).getByText("变更 diff")).toBeInTheDocument();
     expect(within(complexCard as HTMLElement).getByText("目标配置")).toBeInTheDocument();
     expect(within(complexCard as HTMLElement).getByText("复杂配置")).toBeInTheDocument();

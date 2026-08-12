@@ -156,7 +156,7 @@ describe("ParameterDetailDialog", () => {
     );
 
     const dialog = screen.getByRole("dialog", { name: /dts_fast_charge_profile_matrix/ });
-    expect(dialog.querySelector(".parameter-detail-dialog")).toHaveClass("parameter-detail-dialog--wide");
+    expect(dialog).toHaveClass("parameter-detail-dialog--wide");
     const definitionSection = within(dialog).getByRole("region", { name: "参数定义" });
     expect(within(definitionSection).getByText("当前配置")).toBeInTheDocument();
     expect(within(definitionSection).getByText("推荐配置")).toBeInTheDocument();
@@ -284,7 +284,7 @@ describe("ParameterDetailDialog", () => {
 
     fireEvent.click(within(historySection).getByRole("button", { name: "查看历史差异" }));
 
-    const historyDialog = screen.getByRole("dialog", { name: "历史差异 fast_charge_current_limit_ma" });
+    const historyDialog = screen.getByRole("dialog", { name: "近期历史" });
     expect(historyDialog).toHaveTextContent("v5.0 → v5.1");
     expect(historyDialog).toHaveTextContent("v5.1 → v5.2");
     expect(historyDialog.querySelectorAll(".parameter-history-diff-card")).toHaveLength(2);
@@ -294,7 +294,7 @@ describe("ParameterDetailDialog", () => {
 
     fireEvent.click(within(historyDialog).getByRole("button", { name: "关闭历史差异" }));
 
-    expect(screen.queryByRole("dialog", { name: "历史差异 fast_charge_current_limit_ma" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "近期历史" })).not.toBeInTheDocument();
   });
 
   it("adds the recommended config value to the draft from the definition action", () => {
@@ -385,10 +385,11 @@ describe("ParameterDetailDialog", () => {
       />
     );
 
-    const closeButton = screen.getByRole("button", { name: "关闭参数详情" });
-    expect(closeButton).toHaveFocus();
+    // The shared modal contract moves initial focus onto the dialog card.
+    const dialog = screen.getByRole("dialog", { name: /fast_charge_current_limit_ma/ });
+    expect(dialog).toHaveFocus();
 
-    fireEvent.click(closeButton);
+    fireEvent.click(screen.getByRole("button", { name: "关闭参数详情" }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -408,38 +409,18 @@ describe("ParameterDetailDialog", () => {
       />
     );
 
+    // The shared modal contract wraps Tab at the edges of the dialog card.
+    const dialog = screen.getByRole("dialog", { name: /fast_charge_current_limit_ma/ });
     const closeButton = screen.getByRole("button", { name: "关闭参数详情" });
-    const configFormatCode = screen.getByText("charging.fast_charge_current_limit_ma=3850");
-    const targetSelect = screen.getByLabelText("对比目标项目");
-    const recommendedConfigButton = screen.getByRole("button", { name: "使用推荐配置加入草稿" });
-    const targetProjectConfigButton = screen.getByRole("button", { name: "使用该项目配置加入草稿" });
-    const footerClose = screen.getByRole("button", { name: "关闭" });
     const draftButton = screen.getByRole("button", { name: "加入修改草稿" });
 
+    expect(dialog).toHaveFocus();
+
+    draftButton.focus();
+    fireEvent.keyDown(dialog, { key: "Tab" });
     expect(closeButton).toHaveFocus();
 
-    fireEvent.keyDown(closeButton, { key: "Tab" });
-    expect(recommendedConfigButton).toHaveFocus();
-
-    fireEvent.keyDown(recommendedConfigButton, { key: "Tab" });
-    expect(configFormatCode).toHaveFocus();
-
-    fireEvent.keyDown(configFormatCode, { key: "Tab" });
-    expect(targetSelect).toHaveFocus();
-
-    fireEvent.keyDown(targetSelect, { key: "Tab" });
-    expect(targetProjectConfigButton).toHaveFocus();
-
-    fireEvent.keyDown(targetProjectConfigButton, { key: "Tab" });
-    expect(footerClose).toHaveFocus();
-
-    fireEvent.keyDown(footerClose, { key: "Tab" });
-    expect(draftButton).toHaveFocus();
-
-    fireEvent.keyDown(draftButton, { key: "Tab" });
-    expect(closeButton).toHaveFocus();
-
-    fireEvent.keyDown(closeButton, { key: "Tab", shiftKey: true });
+    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
     expect(draftButton).toHaveFocus();
   });
 

@@ -3,6 +3,7 @@ import { UserPlus } from "lucide-react";
 
 import type { AppAction } from "@/application/state/appState";
 import { ColumnFilter } from "@/components/ColumnFilter";
+import { ModalDialog } from "@/components/common/ModalDialog";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "@/components/tableFilterUtils";
 import { migrateLegacyRoleId, platformRoles, type PermissionKey, type PlatformRoleId } from "@/domain/users/types";
 import type { PrototypeState, User } from "@/domain/prototype/types";
@@ -601,9 +602,15 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
       )}
 
       {addUserOpen && (
-        <div role="dialog" aria-modal="true" aria-labelledby="add-user-title" className="user-permissions-modal">
-          <form className="user-permissions-modal-card" onSubmit={handleAddUserSubmit}>
-            <h3 id="add-user-title">添加用户</h3>
+        <ModalDialog
+          open
+          onDismiss={() => setAddUserOpen(false)}
+          className="user-permissions-modal-card modal-card--sm"
+          backdropClassName="user-permissions-modal"
+        >
+          {({ titleId }) => (
+          <form className="modal-form-contents" onSubmit={handleAddUserSubmit}>
+            <h3 id={titleId}>添加用户</h3>
             <div className="user-permissions-modal-fields">
               <label className="user-permissions-modal-field">
                 <span>姓名</span>
@@ -693,7 +700,8 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
               </button>
             </div>
           </form>
-        </div>
+          )}
+        </ModalDialog>
       )}
     </section>
   );

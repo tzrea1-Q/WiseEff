@@ -1915,7 +1915,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: /提交本轮/ })[0]);
 
-    const dialog = screen.getByRole("dialog", { name: "提交本轮参数" });
+    const dialog = screen.getByRole("dialog", { name: "参数提交预览" });
     expect(within(dialog).getByText(/本轮提交包含\s*2\s*个参数修改/)).toBeInTheDocument();
     expect(within(dialog).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
     expect(within(dialog).getByText("charge_voltage_limit_mv")).toBeInTheDocument();
@@ -2079,7 +2079,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
     fireEvent.click(screen.getAllByRole("button", { name: /提交本轮/ })[0]);
 
-    const dialog = screen.getByRole("dialog", { name: "提交本轮参数" });
+    const dialog = screen.getByRole("dialog", { name: "参数提交预览" });
     fireEvent.click(within(dialog).getByRole("button", { name: "确认提交" }));
     fireEvent.click(screen.getByRole("button", { name: "历史提交" }));
 
@@ -2864,7 +2864,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     fireEvent.click(within(row).getByRole("button", { name: "查看 dts_fast_charge_profile_matrix 提交详情" }));
 
     const dialog = screen.getByRole("dialog", { name: "提交详情" });
-    expect(dialog.querySelector(".submission-dialog")).toHaveClass("submission-dialog--wide");
+    expect(dialog).toHaveClass("submission-dialog--wide");
     expect(within(dialog).getByText("dts_fast_charge_profile_matrix")).toBeInTheDocument();
     expect(within(dialog).getByText("soc_estimation_smoothing")).toBeInTheDocument();
     expect(dialog.querySelector(".diff-values")).not.toBeInTheDocument();

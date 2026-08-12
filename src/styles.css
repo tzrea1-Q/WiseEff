@@ -27879,3 +27879,10 @@ button.dts-topology-navigator__disclosure:focus-visible {
 .modal-card--lg {
   width: min(720px, calc(100vw - 48px));
 }
+
+/* Form-card dialogs migrated to ModalDialog keep their grid card class on the
+ * dialog card; the inner <form> becomes a pass-through so its children remain
+ * direct grid items of the card. */
+.modal-form-contents {
+  display: contents;
+}

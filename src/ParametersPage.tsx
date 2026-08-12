@@ -10,6 +10,7 @@ import { projects } from "./mockData";
 import type { ParameterRecord, PrototypeState } from "@/domain/prototype/types";
 import { roleCanBeAssignedToWorkflowSlot } from "@/domain/users/types";
 import { ParametersTable } from "./components/ParametersTable";
+import { ModalDialog } from "@/components/common/ModalDialog";
 import { ParameterDetailDialog } from "./components/ParameterDetailDialog";
 import { ParameterValueDiff } from "./components/ParameterValueDiff";
 import { ParameterDraftDialog } from "./components/ParameterDraftDialog";
@@ -1003,11 +1004,16 @@ function ParameterSubmissionDialog({
   };
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="提交本轮参数">
-      <div className={["submission-dialog", hasComplexItems ? "submission-dialog--wide" : ""].filter(Boolean).join(" ")}>
+    <ModalDialog
+      open
+      onDismiss={submitting ? undefined : onCancel}
+      className={["submission-dialog", hasComplexItems ? "submission-dialog--wide" : ""].filter(Boolean).join(" ")}
+    >
+      {({ titleId }) => (
+        <>
         <div className="submission-dialog-head">
           <div>
-            <span className="eyebrow">参数提交预览</span>
+            <span className="eyebrow" id={titleId}>参数提交预览</span>
             <p>本轮提交包含 {items.length} 个参数修改，确认后进入硬件与软件协同审阅流程。</p>
           </div>
           <Badge tone="secondary">Diff 预览</Badge>
@@ -1097,7 +1103,8 @@ function ParameterSubmissionDialog({
             {submitting ? "提交中" : "确认提交"}
           </button>
         </div>
-      </div>
-    </div>
+        </>
+      )}
+    </ModalDialog>
   );
 }

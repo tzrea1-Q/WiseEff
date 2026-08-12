@@ -231,7 +231,10 @@ describe("ProjectParameterInitializationWizard", () => {
 
     onClose.mockClear();
     rerender(<ProjectParameterInitializationWizard state={initialState} dispatch={vi.fn()} onClose={onClose} />);
-    fireEvent.mouseDown(screen.getByRole("dialog"));
+    // The shared modal contract dismisses only when press and release both land on the backdrop.
+    const backdrop = screen.getByRole("dialog").parentElement!;
+    fireEvent.pointerDown(backdrop);
+    fireEvent.pointerUp(backdrop);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 

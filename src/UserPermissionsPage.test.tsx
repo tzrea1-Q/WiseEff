@@ -328,10 +328,10 @@ describe("UserPermissionsPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "添加用户" }));
 
     const dialog = screen.getByRole("dialog", { name: "添加用户" });
-    const form = dialog.querySelector("form")!;
     const fields = dialog.querySelector(".user-permissions-modal-fields")!;
 
-    expect(form).toHaveClass("user-permissions-modal-card");
+    // The shared modal contract owns the dialog card, which carries the card class.
+    expect(dialog).toHaveClass("user-permissions-modal-card");
     expect(fields).toBeInTheDocument();
     expect(screen.getByLabelText("姓名").closest("label")).toHaveClass("user-permissions-modal-field");
     expect(screen.getByLabelText("用户名").closest("label")).toHaveClass("user-permissions-modal-field");

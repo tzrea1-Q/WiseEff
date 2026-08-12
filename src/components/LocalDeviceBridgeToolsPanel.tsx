@@ -1,6 +1,7 @@
 import { Download } from "lucide-react";
 import { useState } from "react";
 
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import {
   buildBridgeToolInstallUrl,
   launchBridgeToolInstall,
@@ -44,6 +45,7 @@ export function LocalDeviceBridgeToolsPanel({
   onInstallComplete
 }: LocalDeviceBridgeToolsPanelProps) {
   const [localInstalling, setLocalInstalling] = useState(false);
+  const [installConfirmOpen, setInstallConfirmOpen] = useState(false);
   const tools = health?.tools;
   if (!tools) {
     return null;
@@ -57,13 +59,7 @@ export function LocalDeviceBridgeToolsPanel({
     localInstalling || installing || health?.toolsInstall?.status === "running";
   const advancedInstallCommand = `wiseeff-bridge tools install --protocol ${installProtocol === "all" ? "all" : installProtocol}`;
 
-  const handleInstall = async () => {
-    if (installRunning) {
-      return;
-    }
-    if (shouldConfirmBridgeToolInstall() && !window.confirm("即将打开 WiseEff Bridge 安装调试工具。是否继续？")) {
-      return;
-    }
+  const runInstall = async () => {
     rememberBridgeToolInstallConfirm();
     setLocalInstalling(true);
     onInstallError("");
@@ -79,6 +75,17 @@ export function LocalDeviceBridgeToolsPanel({
     } finally {
       setLocalInstalling(false);
     }
+  };
+
+  const handleInstall = () => {
+    if (installRunning) {
+      return;
+    }
+    if (shouldConfirmBridgeToolInstall()) {
+      setInstallConfirmOpen(true);
+      return;
+    }
+    void runInstall();
   };
 
   return (
@@ -118,6 +125,17 @@ export function LocalDeviceBridgeToolsPanel({
         </small>
         <small className="local-device-bridge-tools-panel__cli">高级 CLI：{advancedInstallCommand}</small>
       </details>
+      <ConfirmDialog
+        open={installConfirmOpen}
+        title="安装调试工具"
+        description="即将打开 WiseEff Bridge 安装调试工具。是否继续？"
+        confirmLabel="继续"
+        onConfirm={() => {
+          setInstallConfirmOpen(false);
+          void runInstall();
+        }}
+        onCancel={() => setInstallConfirmOpen(false)}
+      />
     </div>
   );
 }

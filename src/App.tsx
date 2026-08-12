@@ -23,7 +23,7 @@ import {
   UserRound,
   X
 } from "lucide-react";
-import { createPortal } from "react-dom";
+import { ModalDialog } from "@/components/common/ModalDialog";
 import { TopBarNotifications } from "./components/notifications/TopBarNotifications";
 import { createStateBackedNotificationsClient } from "@/infrastructure/mock/mockNotificationsGateway";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
@@ -1999,34 +1999,35 @@ function ProfileDialog({
     }
   }
 
-  return createPortal(
-    <div className="modal-backdrop profile-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="profile-dialog-title">
-      <form className="profile-dialog" onSubmit={submit}>
-        <header>
-          <span className="eyebrow">Account</span>
-          <h2 id="profile-dialog-title">个人资料</h2>
-          <p>{userAccountIdentifier(user)}</p>
-        </header>
-        <label>
-          <span>姓名</span>
-          <input value={name} onChange={(event) => setName(event.target.value)} required />
-        </label>
-        <label>
-          <span>职务</span>
-          <input value={title} onChange={(event) => setTitle(event.target.value)} required />
-        </label>
-        {error ? <p role="alert" className="auth-error">{error}</p> : null}
-        <footer>
-          <button type="button" className="button profile-dialog__button profile-dialog__button--secondary" onClick={onCancel}>
-            取消
-          </button>
-          <button type="submit" className="button primary profile-dialog__button profile-dialog__button--primary" disabled={submitting}>
-            保存
-          </button>
-        </footer>
-      </form>
-    </div>,
-    document.body
+  return (
+    <ModalDialog open onDismiss={submitting ? undefined : onCancel} className="profile-dialog">
+      {({ titleId }) => (
+        <form className="modal-form-contents" onSubmit={submit}>
+          <header>
+            <span className="eyebrow">Account</span>
+            <h2 id={titleId}>个人资料</h2>
+            <p>{userAccountIdentifier(user)}</p>
+          </header>
+          <label>
+            <span>姓名</span>
+            <input value={name} onChange={(event) => setName(event.target.value)} required />
+          </label>
+          <label>
+            <span>职务</span>
+            <input value={title} onChange={(event) => setTitle(event.target.value)} required />
+          </label>
+          {error ? <p role="alert" className="auth-error">{error}</p> : null}
+          <footer>
+            <button type="button" className="button profile-dialog__button profile-dialog__button--secondary" onClick={onCancel}>
+              取消
+            </button>
+            <button type="submit" className="button primary profile-dialog__button profile-dialog__button--primary" disabled={submitting}>
+              保存
+            </button>
+          </footer>
+        </form>
+      )}
+    </ModalDialog>
   );
 }
 
@@ -3286,32 +3287,36 @@ function ParameterReviewPage({
         />
       ) : null}
       {detailOpen && selectedDetailRound ? (
-        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="submission-detail-title">
-          <div
-            className={[
-              "submission-dialog",
-              selectedDetailRound.items.some(isComplexSubmissionHistoryItem) ? "submission-dialog--wide" : "",
-              "submission-detail-dialog"
-            ]
-              .filter(Boolean)
-              .join(" ")}
-          >
-            <div className="submission-dialog-head">
-              <div>
-                <span className="eyebrow">{selectedDetailRound.projectName}</span>
-                <h2 id="submission-detail-title">提交详情</h2>
-                <p>本轮提交包含 {selectedDetailRound.items.length} 个参数修改，由 {selectedDetailRound.submitter} 提交。</p>
-                {shouldShowSubmissionRoundSummary(selectedDetailRound) ? <p>{selectedDetailRound.summary}</p> : null}
+        <ModalDialog
+          open
+          onDismiss={() => setDetailOpen(false)}
+          className={[
+            "submission-dialog",
+            selectedDetailRound.items.some(isComplexSubmissionHistoryItem) ? "submission-dialog--wide" : "",
+            "submission-detail-dialog"
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          {({ titleId }) => (
+            <>
+              <div className="submission-dialog-head">
+                <div>
+                  <span className="eyebrow">{selectedDetailRound.projectName}</span>
+                  <h2 id={titleId}>提交详情</h2>
+                  <p>本轮提交包含 {selectedDetailRound.items.length} 个参数修改，由 {selectedDetailRound.submitter} 提交。</p>
+                  {shouldShowSubmissionRoundSummary(selectedDetailRound) ? <p>{selectedDetailRound.summary}</p> : null}
+                </div>
               </div>
-            </div>
-            <div className="submission-diff-list">
-              {selectedDetailRound.items.map((item) => <SubmissionHistoryDiffCard item={item} key={item.requestId} />)}
-            </div>
-            <div className="dialog-actions">
-              <button className="button subtle" type="button" onClick={() => setDetailOpen(false)}>关闭</button>
-            </div>
-          </div>
-        </div>
+              <div className="submission-diff-list">
+                {selectedDetailRound.items.map((item) => <SubmissionHistoryDiffCard item={item} key={item.requestId} />)}
+              </div>
+              <div className="dialog-actions">
+                <button className="button subtle" type="button" onClick={() => setDetailOpen(false)}>关闭</button>
+              </div>
+            </>
+          )}
+        </ModalDialog>
       ) : null}
     </WorkbenchLayout>
   );
@@ -3822,11 +3827,12 @@ function UploadLogDialog({
   };
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="upload-dialog-title">
-      <div className="confirm-dialog upload-dialog">
+    <ModalDialog open onDismiss={uploading ? undefined : onClose} className="confirm-dialog upload-dialog">
+      {({ titleId }) => (
+        <>
         <div className="upload-dialog__header">
           <div>
-            <h2 id="upload-dialog-title"><strong>上传日志</strong></h2>
+            <h2 id={titleId}><strong>上传日志</strong></h2>
             <p>选择 .log、.txt 或 .json 文本日志，雷泽会模拟创建分析任务。</p>
           </div>
           <button className="icon-button" type="button" aria-label="关闭上传日志" onClick={onClose}>
@@ -3884,8 +3890,9 @@ function UploadLogDialog({
             </button>
           ) : null}
         </div>
-      </div>
-    </div>
+        </>
+      )}
+    </ModalDialog>
   );
 }
 
@@ -4015,11 +4022,12 @@ function LogAnalysisFeedbackDialog({
   };
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="log-feedback-title">
-      <form className="confirm-dialog log-feedback-dialog" onSubmit={submitFeedback}>
+    <ModalDialog open onDismiss={onClose} className="confirm-dialog log-feedback-dialog">
+      {({ titleId }) => (
+      <form className="modal-form-contents" onSubmit={submitFeedback}>
         <div className="upload-dialog__header">
           <div>
-            <h2 id="log-feedback-title">
+            <h2 id={titleId}>
               <strong>反馈分析质量</strong>
             </h2>
             <p>{log.fileName}</p>
@@ -4055,7 +4063,8 @@ function LogAnalysisFeedbackDialog({
           </button>
         </div>
       </form>
-    </div>
+      )}
+    </ModalDialog>
   );
 }
 
