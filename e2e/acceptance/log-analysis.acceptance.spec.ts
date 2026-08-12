@@ -1,6 +1,8 @@
 import "dotenv/config";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import path from "node:path";
+import { gzipSync } from "node:zlib";
 import { expect, test, type Locator, type Page } from "playwright/test";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import { withPgClient } from "./helpers/database";
@@ -18,6 +20,7 @@ const providerOutageFixture = path.resolve("test-fixtures/logs/provider-outage.l
 const supportedFileName = "charging-foldback.log";
 const unsupportedFileName = "unsupported.bin";
 const providerOutageFileName = "provider-outage.log";
+const archiveFileName = "charging-foldback.log.gz";
 const acceptanceLogDomainName = "acceptance-charging-power";
 const acceptanceKnowledgeTitlePrefix = "acceptance-log-domain-knowledge";
 
@@ -59,10 +62,10 @@ async function cleanupAcceptanceLogs() {
       where organization_id = $1
         and (
           analysis_question = $2
-          or file_name in ($3, $4, $5)
+          or file_name in ($3, $4, $5, $6)
         )
       `,
-      [organizationId, analysisQuestion, supportedFileName, unsupportedFileName, providerOutageFileName]
+      [organizationId, analysisQuestion, supportedFileName, unsupportedFileName, providerOutageFileName, archiveFileName]
     );
     const logIds = logs.rows.map((row) => row.id);
     const fileObjectIds = logs.rows.map((row) => row.file_object_id);
@@ -292,6 +295,28 @@ async function logReportDbSummary(logId: string) {
       observed: row
         ? `analysisSource=${row.analysis_source ?? "none"}; degradedReason=${row.degraded_reason ?? "none"}; promptVersion=${row.prompt_version ?? "none"}; model=${row.model ?? "none"}`
         : "missing",
+      rowCount: result.rowCount ?? result.rows.length
+    };
+  });
+}
+
+async function logFeedbackDbSummary(logId: string) {
+  return withPgClient(async (client) => {
+    const result = await client.query<{ rating: string }>(
+      `
+      select rating
+      from log_feedback
+      where organization_id = $1
+        and log_record_id = $2
+      order by created_at asc, id asc
+      `,
+      [organizationId, logId]
+    );
+
+    return {
+      table: "log_feedback",
+      predicate: `organization_id=${organizationId}; log_record_id=${logId}`,
+      observed: result.rows.length > 0 ? result.rows.map((row) => row.rating).join("; ") : "no feedback",
       rowCount: result.rowCount ?? result.rows.length
     };
   });
@@ -812,6 +837,188 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       db: [await logRecordDbSummary(degradedLog.id), await logReportDbSummary(degradedLog.id)],
       audit: [],
       notes: `Log ${degradedLog.id} completed as an honestly marked degraded analysis (rules-fallback / provider-unavailable) after the simulated provider outage; the conclusion card shows the prominent degraded badge instead of impersonating a full analysis.`
+    });
+  });
+
+  test("aggregates feedback helpful rate into the /log-admin analysis-quality section", async ({ page }, testInfo) => {
+    // @acceptance LOG-FEEDBACK-INSIGHTS-001
+    // @operation LOG-FEEDBACK-INSIGHTS-001
+    await cleanupAcceptanceLogs();
+
+    await page.goto("/logs");
+    await uploadLogThroughUi(page, supportedFixture, analysisQuestion);
+    const completedLog = await latestLogByFile(page, supportedFileName);
+    await expect
+      .poll(async () => (await latestLogByFile(page, supportedFileName)).status, { timeout: 70_000 })
+      .toBe("complete");
+
+    const helpfulResponse = await page.request.post(apiRoute(`/api/v1/logs/${completedLog.id}/feedback`), {
+      headers: smokeHeaders(),
+      data: { rating: "helpful", note: "Insights acceptance: matched the incident." }
+    });
+    expect(helpfulResponse.ok()).toBe(true);
+    const notHelpfulResponse = await page.request.post(apiRoute(`/api/v1/logs/${completedLog.id}/feedback`), {
+      headers: smokeHeaders(),
+      data: { rating: "not_helpful" }
+    });
+    expect(notHelpfulResponse.ok()).toBe(true);
+
+    const insightsResponse = await page.request.get(
+      apiRoute("/api/v1/logs/feedback-insights?timeWindow=today"),
+      { headers: smokeHeaders() }
+    );
+    expect(insightsResponse.ok()).toBe(true);
+    const insightsBody = (await insightsResponse.json()) as {
+      items: Array<{
+        logDomainName: string | null;
+        analysisSource: string | null;
+        promptVersion: string | null;
+        totalCount: number;
+        helpfulCount: number;
+        helpfulRate: number;
+      }>;
+    };
+    const insightRow = insightsBody.items.find((item) => item.totalCount >= 2);
+    expect(insightRow).toBeTruthy();
+    expect(insightRow!.helpfulCount).toBe(1);
+
+    await page.goto("/log-admin");
+    await prepareInteractionSurface(page);
+    const insightsSection = page.getByTestId("feedback-quality-insights");
+    await expect(insightsSection).toBeVisible();
+    const insightsTable = insightsSection.getByRole("table", { name: "分析质量反馈聚合" });
+    await expect(insightsTable).toContainText("50%（1/2）");
+    await expect(insightsTable).toContainText(/未分类/);
+
+    await recordOperationEvidence({
+      operationId: "LOG-FEEDBACK-INSIGHTS-001",
+      title: "feedback aggregates into the analysis quality dashboard",
+      status: "passed",
+      page,
+      testInfo,
+      api: [
+        summarizeApiResponse(helpfulResponse, {
+          method: "POST",
+          path: `/api/v1/logs/${completedLog.id}/feedback`,
+          responseSummary: "rating=helpful recorded"
+        }),
+        summarizeApiResponse(insightsResponse, {
+          method: "GET",
+          path: "/api/v1/logs/feedback-insights?timeWindow=today",
+          responseSummary: `rows=${insightsBody.items.length}; top row total=${insightRow!.totalCount} helpful=${insightRow!.helpfulCount} rate=${insightRow!.helpfulRate}`
+        })
+      ],
+      db: [await logFeedbackDbSummary(completedLog.id)],
+      audit: [],
+      notes: `Two feedback entries (helpful + not_helpful) on log ${completedLog.id} aggregate to a 50% (1/2) helpful-rate row in the /log-admin 分析质量 section for the today window, grouped by domain x analysis source x prompt version.`
+    });
+  });
+
+  test("exports an eval-case annotation draft with the de-identification checklist from the record drawer", async ({ page }, testInfo) => {
+    // @acceptance LOG-EVAL-DRAFT-001
+    // @operation LOG-EVAL-DRAFT-001
+    await cleanupAcceptanceLogs();
+
+    await page.goto("/logs");
+    await uploadLogThroughUi(page, supportedFixture, analysisQuestion);
+    await expect
+      .poll(async () => (await latestLogByFile(page, supportedFileName)).status, { timeout: 70_000 })
+      .toBe("complete");
+
+    await page.goto("/log-admin");
+    await prepareInteractionSurface(page);
+    await page.locator('input[type="search"]').fill(supportedFileName);
+    await page.getByRole("row").filter({ hasText: supportedFileName }).first().click();
+
+    await page.getByRole("button", { name: "导出评测案例草稿" }).click();
+    const dialog = page.getByTestId("export-eval-case-draft-dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("eval-cases/logs/uncategorized/");
+    await expect(dialog).toContainText("无个人姓名、电话、邮箱或账号标识");
+    await expect(dialog).toContainText(/把 deIdentified 改为 true/);
+    await expect(dialog).toContainText("无法完全脱敏的案例不得进入仓库");
+
+    const caseYamlDownloadPromise = page.waitForEvent("download");
+    await dialog.getByRole("button", { name: "下载 case.yaml 草稿" }).click();
+    const caseYamlDownload = await caseYamlDownloadPromise;
+    expect(caseYamlDownload.suggestedFilename()).toMatch(/case\.yaml$/);
+    const caseYaml = readFileSync((await caseYamlDownload.path())!, "utf8");
+    expect(caseYaml).toContain("domain: uncategorized");
+    expect(caseYaml).toContain("realLog: true");
+    expect(caseYaml).toContain("deIdentified: false");
+    expect(caseYaml).toContain("rootCauseCategory: TODO");
+    expect(caseYaml).toContain(`analysisQuestion: ${JSON.stringify(analysisQuestion)}`);
+
+    const logTxtDownloadPromise = page.waitForEvent("download");
+    await dialog.getByRole("button", { name: "下载 log.txt" }).click();
+    const logTxtDownload = await logTxtDownloadPromise;
+    expect(logTxtDownload.suggestedFilename()).toMatch(/log\.txt$/);
+    const logText = readFileSync((await logTxtDownload.path())!, "utf8");
+    expect(logText).toContain("charger session started device=PACK-A01");
+
+    await recordOperationEvidence({
+      operationId: "LOG-EVAL-DRAFT-001",
+      title: "eval case draft export shows checklist and downloads draft files",
+      status: "passed",
+      page,
+      testInfo,
+      notes:
+        "The drawer's 导出评测案例草稿 action opened the de-identification checklist dialog and downloaded a schema-aligned case.yaml draft (realLog: true, deIdentified: false, rootCauseCategory TODO, prefilled evidence/actions/question) plus log.txt; no repository write or auto-commit happens by design."
+    });
+  });
+
+  test("unpacks a .gz upload server-side and completes analysis end to end", async ({ page }, testInfo) => {
+    // @acceptance LOG-ARCHIVE-UPLOAD-001
+    // @operation LOG-ARCHIVE-UPLOAD-001
+    await cleanupAcceptanceLogs();
+
+    const gzBuffer = gzipSync(readFileSync(supportedFixture));
+    await page.goto("/logs");
+    await prepareInteractionSurface(page);
+    await page.getByRole("toolbar", { name: /日志(?:分析工作台|智能分析)页面操作/ }).getByRole("button", { name: "上传新日志" }).click();
+    const uploadDialog = page.getByRole("dialog", { name: "上传日志" });
+    await expect(uploadDialog).toContainText(/\.gz、单条目 \.zip 压缩包/);
+    await uploadDialog.getByLabel("选择日志文件").setInputFiles({
+      name: archiveFileName,
+      mimeType: "application/gzip",
+      buffer: gzBuffer
+    });
+    await uploadDialog.locator("#upload-analysis-question").fill(analysisQuestion);
+    await uploadDialog.getByRole("button", { name: "确认上传" }).click();
+    await expect(uploadDialog).not.toBeVisible({ timeout: 70_000 });
+
+    const archiveLog = await latestLogByFile(page, archiveFileName);
+    await expect
+      .poll(async () => (await latestLogByFile(page, archiveFileName)).status, { timeout: 70_000 })
+      .toBe("complete");
+    await historyItem(page, archiveFileName).click();
+    await expect(page.locator("#log-conclusion-title")).toContainText(/thermal|foldback/i, { timeout: 30_000 });
+
+    const archiveLogsResponse = await page.request.get(apiRoute("/api/v1/logs"), { headers: smokeHeaders() });
+    expect(archiveLogsResponse.ok()).toBe(true);
+    const archiveLogsBody = (await archiveLogsResponse.json()) as {
+      items: Array<{ id: string; fileName: string; status: string }>;
+    };
+    expect(archiveLogsBody.items).toEqual(
+      expect.arrayContaining([expect.objectContaining({ fileName: archiveFileName, status: "complete" })])
+    );
+
+    await recordOperationEvidence({
+      operationId: "LOG-ARCHIVE-UPLOAD-001",
+      title: "gz upload unpacked server-side completes analysis",
+      status: "passed",
+      page,
+      testInfo,
+      api: [
+        summarizeApiResponse(archiveLogsResponse, {
+          method: "GET",
+          path: "/api/v1/logs",
+          responseSummary: `log ${archiveLog.id} fileName=${archiveFileName} status=complete after server-side unpack`
+        })
+      ],
+      db: [await logRecordDbSummary(archiveLog.id)],
+      audit: [],
+      notes: `A gzip-compressed charging log uploaded as ${archiveFileName} was unpacked at intake, analyzed end to end, and produced the same thermal-foldback conclusion as the plain-text fixture; the upload dialog states archive support.`
     });
   });
 });
