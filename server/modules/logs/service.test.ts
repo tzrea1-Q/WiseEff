@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
-import type { Database, QueryResult, Queryable } from "../../shared/database/client";
+import type { Database, QueryResult } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { LogAnalysisQueue } from "./logAnalysisQueue";
 import type { ObjectStore, StoredObject } from "./objectStore";
@@ -35,12 +35,13 @@ function createFakeDb(results: QueuedResult[] = []) {
     return { rows: rows as Row[], rowCount: rows.length };
   };
 
-  const tx: Queryable = {
-    query: (text, values = []) => runQuery(txCalls, text, values)
+  const tx: Database = {
+    query: (text, values = []) => runQuery(txCalls, text, values),
+    transaction: async <T,>(fn: (queryable: Database) => Promise<T>) => fn(tx)
   };
   const db: Database = {
     query: (text, values = []) => runQuery(calls, text, values),
-    transaction: async <T,>(fn: (queryable: Queryable) => Promise<T>) => {
+    transaction: async <T,>(fn: (queryable: Database) => Promise<T>) => {
       const result = await fn(tx);
       transactions.push([...txCalls]);
       return result;

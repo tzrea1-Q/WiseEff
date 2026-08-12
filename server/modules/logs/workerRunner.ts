@@ -8,6 +8,7 @@ import type { LogAnalysisAdapter } from "./analyzer";
 import { createLogAnalyzerFromEnv } from "./analyzer/analyzerFromEnv";
 import type { ObjectStore } from "./objectStore";
 import { createLogAnalysisQueueRuntime, type LogAnalysisQueueRuntimeEnv } from "./logAnalysisQueueRuntime";
+import { resolveParameterIdentityMode } from "../parameters/parameterIdentityMode";
 import { startLogWorkerLoop, type ProcessLogWorkerOptions } from "./worker";
 
 type RawWorkerEnv = {
@@ -103,8 +104,11 @@ export async function createLogWorkerRuntimeFromEnv(raw: NodeJS.ProcessEnv = pro
   const env = loadServerEnv(raw);
   validateLogWorkerConfig(env);
 
+  const db = createPostgresDatabase(env.DATABASE_URL!, { tracing: defaultTracingBoundary });
+  await resolveParameterIdentityMode(db);
+
   return createLogWorkerRuntime({
-    db: createPostgresDatabase(env.DATABASE_URL!, { tracing: defaultTracingBoundary }),
+    db,
     objectStore: createObjectStoreFromEnv(env, { tracing: defaultTracingBoundary }),
     analyzer: createLogAnalyzerFromEnv(env),
     queueMode: env.LOG_ANALYSIS_QUEUE_MODE,

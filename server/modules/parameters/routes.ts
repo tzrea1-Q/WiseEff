@@ -21,13 +21,15 @@ import {
 } from "./projectService";
 import {
   getParameterById,
-  getProjectAdminDetail,
   listParameterHistory,
-  listParameters,
+  listParameters
+} from "./repository";
+import {
+  getProjectAdminDetail,
   listProjectAdminSummaries,
   listProjectModules,
   listProjects
-} from "./repository";
+} from "./projectRepository";
 import {
   applyImportBatch,
   createImportPreview,

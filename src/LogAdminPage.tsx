@@ -11,13 +11,13 @@ import { Button } from "@/components/ui/button";
 import { canPerform } from "@/app/permissions";
 import { cn } from "@/lib/utils";
 import { applyTableFilters, applyTimeWindow, deriveInsight, deriveMetrics } from "@/logAdminAnalytics";
-import { STAGE_LABELS, type LogRecord, type LogStatus, type PrototypeState, type TimeWindow } from "@/mockData";
+import { STAGE_LABELS, type LogRecord, type LogStatus, type PrototypeState, type TimeWindow } from "@/domain/prototype/types";
 import type { LogDomain } from "@/domain/logs/types";
 import { useTopBarActions } from "@/components/layout";
 import { logRuntimeFailureNotification, type LogRuntimeActions } from "@/application/logs/logRuntime";
 import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { dispatchXiaozeOpenHandoff } from "@/features/agent/xiaozeOpenHandoff";
-import type { AppAction } from "./App";
+import type { AppAction } from "@/application/state/appState";
 
 export type LogAdminPageProps = {
   state: PrototypeState;

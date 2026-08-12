@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ImportReviewCard } from "./ImportReviewCard";
 import type { ReviewedImportRow } from "@/application/parameters/import/types";
-import type { ParameterRecord, Project } from "@/mockData";
+import type { ParameterRecord, Project } from "@/domain/prototype/types";
 import type { PowerManagementParameterTemplate } from "@/powerManagementConfig";
 
 const projects: Project[] = [{ id: "aurora", name: "Aurora", code: "AUR" }];

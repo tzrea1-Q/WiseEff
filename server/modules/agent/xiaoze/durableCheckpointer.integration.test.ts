@@ -19,8 +19,8 @@ const testDatabaseUrl =
   process.env.XIAOZE_CHECKPOINTER_TEST_DATABASE_URL?.trim() || process.env.DATABASE_URL?.trim() || "";
 
 function buildPlanningAgent(checkpointer: ReturnType<typeof createXiaozeCheckpointer>) {
-  const approvalBridge = {
-    resume: vi.fn().mockResolvedValue({ text: "change request cr-1 created" })
+  const approvalResolver = {
+    resolveApproval: vi.fn().mockResolvedValue({ text: "change request cr-1 created" })
   };
   const model = fakeModelSequence([
     {
@@ -42,9 +42,9 @@ function buildPlanningAgent(checkpointer: ReturnType<typeof createXiaozeCheckpoi
       runTool: vi.fn(),
       listTools: () => [{ name: "action.submitParameterChange", description: "x", schema: {}, requiresApproval: true }],
       checkpointer,
-      approvalBridge
+      approvalResolver
     }),
-    approvalBridge
+    approvalResolver
   };
 }
 
@@ -72,15 +72,14 @@ describe.skipIf(!testDatabaseUrl)("postgres checkpointer durability", () => {
       message: "",
       context: { projectId: "p1" },
       threadId,
+      requestContext: { auth: anyAuth, requestId: "req-durability", sessionId: threadId },
       resume: {
-        auth: anyAuth,
-        requestId: "req-durability",
         approvalId: "approval-durability",
         decision: "approve"
       }
     });
 
-    expect(second.approvalBridge.resume).toHaveBeenCalledOnce();
+    expect(second.approvalResolver.resolveApproval).toHaveBeenCalledOnce();
     expect(resumed.text).toContain("cr-1");
   });
 });

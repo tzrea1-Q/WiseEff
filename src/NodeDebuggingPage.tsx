@@ -31,7 +31,7 @@ import {
 } from "./debugValueKind";
 import { resolveWriteFormatExample, resolveWriteFormatHint } from "@/domain/debugging/writeFormat";
 import { nodeRowSubtitle } from "@/domain/debugging/nodeRowSubtitle";
-import type { DebugParameter, PrototypeState } from "./mockData";
+import type { DebugParameter, PrototypeState } from "@/domain/prototype/types";
 
 type NodeRuntimeStatus =
   | "未检测"

@@ -2,7 +2,7 @@ import { Archive, ExternalLink, RefreshCw, Sparkles, ThumbsUp, TriangleAlert } f
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { STAGE_LABELS, type LogRecord } from "@/mockData";
+import { STAGE_LABELS, type LogRecord } from "@/domain/prototype/types";
 
 const drawerDegradedReasonLabels: Record<NonNullable<LogRecord["degradedReason"]>, string> = {
   "provider-unavailable": "AI 分析服务不可用，本结论由规则引擎回退生成",

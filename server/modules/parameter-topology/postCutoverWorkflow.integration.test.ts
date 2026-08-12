@@ -17,22 +17,24 @@ import { isTestDatabaseAvailable } from "../../testing/testDatabase";
 import type { AuthContext } from "../auth/types";
 import { insertNodeOperation } from "../debugging/repository";
 import { writebackMergedParameterValue } from "../parameter-files/writebackService";
-import { resetParameterIdentityCutoverCache } from "../parameters/cutoverAwareIdentity";
+import { resolveParameterIdentityMode } from "../parameters/parameterIdentityMode";
 import {
-  createChangeRequest,
-  createSubmissionItem,
-  createSubmissionRound,
-  deleteProject,
   getChangeRequestWriteLock,
   listDraftsForUser,
   listParameterHistory,
   listParameters,
-  mergeChangeRequest,
-  updateChangeRequestStatus,
   upsertDraft
 } from "../parameters/repository";
+import { deleteProject } from "../parameters/projectRepository";
+import {
+  createChangeRequest,
+  createSubmissionItem,
+  createSubmissionRound,
+  mergeChangeRequest,
+  updateChangeRequestStatus
+} from "../parameters/reviewWorkflowRepository";
 import { reviewChange, saveDraft, submitParameterChanges } from "../parameters/service";
-import { resolveBindingWriteLock } from "./editService";
+import { resolveBindingWriteLock } from "./writeLock";
 import {
   applyParameterIdentityCutover,
   migrateParameterIdentities,
@@ -456,7 +458,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         });
         expect(report.blockers).toEqual([]);
         await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
-        resetParameterIdentityCutoverCache();
+        await resolveParameterIdentityMode(db);
 
         await expect(
           saveDraft(db, makeAuth(), {
@@ -640,7 +642,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         });
         expect(report.blockers).toEqual([]);
         await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
-        resetParameterIdentityCutoverCache();
+        await resolveParameterIdentityMode(db);
         await db.query(`delete from parameter_drafts where organization_id = $1 and project_id = $2`, [
           ORG,
           PROJECT
@@ -768,7 +770,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         });
         expect(report.blockers).toEqual([]);
         await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
-        resetParameterIdentityCutoverCache();
+        await resolveParameterIdentityMode(db);
         await db.query(`delete from parameter_drafts where organization_id = $1 and project_id = $2`, [ORG, PROJECT]);
 
         const candidateRevisionId = "rev-pcw-binding-concurrent-candidate";
@@ -939,7 +941,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         });
         expect(report.blockers).toEqual([]);
         await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
-        resetParameterIdentityCutoverCache();
+        await resolveParameterIdentityMode(db);
         await db.query(`delete from parameter_drafts where organization_id = $1 and project_id = $2`, [ORG, PROJECT]);
 
         const candidateRevisionId = "rev-pcw-candidate-concurrent";
@@ -1082,7 +1084,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         });
         expect(report.blockers).toEqual([]);
         await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
-        resetParameterIdentityCutoverCache();
+        await resolveParameterIdentityMode(db);
         await db.query(`delete from parameter_drafts where organization_id = $1 and project_id = $2`, [
           ORG,
           PROJECT
@@ -1291,7 +1293,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         });
         expect(report.blockers).toEqual([]);
         await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
-        resetParameterIdentityCutoverCache();
+        await resolveParameterIdentityMode(db);
 
         const activeDefs = await db.query(
           `select 1 from information_schema.tables
@@ -1589,7 +1591,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         expect(opRow.rows[0]?.project_parameter_binding_id).toBe(seeded.bindingId);
 
         const deleteSqlProbe = await fs.readFile(
-          path.join(projectRoot, "server/modules/parameters/repository.ts"),
+          path.join(projectRoot, "server/modules/parameters/projectRepository.ts"),
           "utf8"
         );
         expect(deleteSqlProbe).not.toMatch(/delete from project_parameter_values/);
@@ -1621,7 +1623,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         });
         expect(report.blockers).toEqual([]);
         await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
-        resetParameterIdentityCutoverCache();
+        await resolveParameterIdentityMode(db);
 
         const auth = makeAuth();
         const writeLock = await resolveBindingWriteLock(db, auth, { bindingId: seeded.bindingId });
@@ -1765,7 +1767,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         });
         expect(report.blockers).toEqual([]);
         await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
-        resetParameterIdentityCutoverCache();
+        await resolveParameterIdentityMode(db);
 
         const auth = makeAuth();
         const writeLock = await resolveBindingWriteLock(db, auth, { bindingId: seeded.bindingId });
@@ -2002,7 +2004,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         });
         expect(report.blockers).toEqual([]);
         await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
-        resetParameterIdentityCutoverCache();
+        await resolveParameterIdentityMode(db);
 
         const auth = makeAuth();
         const writeLock = await resolveBindingWriteLock(db, auth, { bindingId: seeded.bindingId });
@@ -2104,7 +2106,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           });
           expect(report.blockers).toEqual([]);
           await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
-          resetParameterIdentityCutoverCache();
+          await resolveParameterIdentityMode(db);
 
           const auth = makeAuth();
           const writeLock = await resolveBindingWriteLock(db, auth, { bindingId: seeded.bindingId });

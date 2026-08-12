@@ -1,5 +1,5 @@
 import type { ParameterImportSourceItem } from "@/application/ports/ParameterRepository";
-import type { ParameterRecord } from "@/mockData";
+import type { ParameterRecord } from "@/domain/prototype/types";
 import type { ParameterValueKind } from "@/powerManagementConfig";
 
 export type ImportSourceFormat = "spreadsheet" | "json" | "dts-fragment" | "dts-full";

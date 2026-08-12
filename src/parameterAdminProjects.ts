@@ -1,6 +1,6 @@
 import type { ProjectInitializationStatus } from "@/domain/parameters/types";
 import type { ProjectAdminSummaryDto } from "@/infrastructure/http/parameterAdminClient";
-import type { Project, PrototypeState } from "@/mockData";
+import type { Project, PrototypeState } from "@/domain/prototype/types";
 
 export type ParameterAdminProjectRow = {
   id: string;

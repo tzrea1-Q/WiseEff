@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import type { AuditAppGroupId } from "@/domain/audit/auditApps";
 import type { AuditQueryState } from "@/hooks/useAuditEvents";
-import type { RiskLevel } from "@/mockData";
+import type { RiskLevel } from "@/domain/prototype/types";
 
 const defaultState: AuditQueryState = {
   appGroup: "all",

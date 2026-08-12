@@ -1,6 +1,6 @@
 import { Pencil, Search, Send } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AppAction } from "./App";
+import type { AppAction } from "@/application/state/appState";
 import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { OperationHistoryPanel } from "./components/OperationHistoryPanel";
@@ -8,7 +8,7 @@ import { RollbackConfirmDialog } from "./components/RollbackConfirmDialog";
 import { SessionSummaryCard } from "./components/SessionSummaryCard";
 import { WorkbenchSheet } from "./components/WorkbenchSheet";
 import { useTopBarActions } from "./components/layout";
-import type { DebugParameter, PrototypeState } from "./mockData";
+import type { DebugParameter, PrototypeState } from "@/domain/prototype/types";
 import { RiskBadge, Badge, riskLabels } from "./workbenchUi";
 
 const riskFilterValues = ["High", "Medium", "Low"] as const;

@@ -1,5 +1,5 @@
 import { FileText, SlidersHorizontal, TerminalSquare } from "lucide-react";
-import type { PrototypeState } from "../mockData";
+import type { PrototypeState } from "@/domain/prototype/types";
 import { SubAppCard, type SubAppCardProps } from "./SubAppCard";
 
 type SubAppEntryRowProps = {
