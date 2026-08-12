@@ -284,6 +284,12 @@ export interface ReloadResidueDto {
 /** Always required before any device deploy for a reload run. Never inject from runtime. */
 export const DTS_RELOAD_CONFIRMATION_TOKEN = "confirm-dts-reload";
 
+/**
+ * A trigger whose RPC threw / timed out: the write may have reached the device and applied the
+ * overlay, so the run is failed but the device is treated as possibly carrying debug values.
+ */
+export const TRIGGER_RELOAD_UNCONFIRMED_FAILURE_CODE = "trigger-reload-unconfirmed";
+
 export const PUSH_FILE_MAX_BYTES = 1 * 1024 * 1024;
 
 export const RELOAD_MOUNT_TIMEOUT_MS = 15_000;

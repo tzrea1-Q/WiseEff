@@ -183,7 +183,7 @@ describe("listReloadRuns", () => {
 
     const sql = calls[0]?.text ?? "";
     expect(sql).toMatch(/project_id/i);
-    expect(sql).toMatch(/order by r\.created_at desc/i);
+    expect(sql).toMatch(/order by date_trunc\('milliseconds', r\.created_at\) desc/i);
   });
 
   it("filters by deviceId and surfaces restore-baseline purpose", async () => {

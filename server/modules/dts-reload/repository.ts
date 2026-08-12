@@ -628,8 +628,13 @@ export async function listReloadRunRows(
     where.push(`r.device_id = $${values.length}`);
   }
   if (query.cursor) {
+    // The cursor carries millisecond-precision timestamps (JS ISO strings), while created_at is
+    // microsecond-precision timestamptz. Truncate both sides to milliseconds so same-millisecond
+    // rows fall back to the id tie-break instead of being skipped or repeated at the page boundary.
     values.push(query.cursor.createdAt, query.cursor.id);
-    where.push(`(r.created_at, r.id) < ($${values.length - 1}::timestamptz, $${values.length})`);
+    where.push(
+      `(date_trunc('milliseconds', r.created_at), r.id) < (date_trunc('milliseconds', $${values.length - 1}::timestamptz), $${values.length})`
+    );
   }
 
   values.push(query.limit + 1);
@@ -658,7 +663,7 @@ export async function listReloadRunRows(
       where reload_run_id = r.id
     ) t on true
     where ${where.join("\n      and ")}
-    order by r.created_at desc, r.id desc
+    order by date_trunc('milliseconds', r.created_at) desc, r.id desc
     limit $${values.length}
     `,
     values
