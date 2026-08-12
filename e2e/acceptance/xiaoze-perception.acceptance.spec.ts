@@ -113,12 +113,15 @@ async function postXiaozeQuestion(
   request: { post: (url: string, options?: object) => Promise<{ status: () => number; text: () => Promise<string>; headers: () => Record<string, string> }> },
   headers: Record<string, string>,
   message: string,
-  projectIdValue = projectId
+  projectIdValue = projectId,
+  // Xiaoze threads are owned by their first actor; questions asked under a
+  // different user must use their own thread or the run is refused with 403.
+  threadId = "xiaoze-thread-acceptance"
 ) {
   const response = await request.post(apiRoute("/api/v1/agent/xiaoze"), {
     headers,
     data: {
-      threadId: "xiaoze-thread-acceptance",
+      threadId,
       runId: `run-${Date.now()}`,
       messages: [{ id: "m-user", role: "user", content: message }],
       context: [
@@ -208,7 +211,8 @@ test.describe("Xiaoze P0 perception", () => {
       request,
       limitedProjectHeaders(),
       "summarize forbidden secret-project details",
-      "secret-project"
+      "secret-project",
+      "xiaoze-thread-acceptance-authz"
     );
     expect(result.status).toBe(200);
     const answer = readSseText(result.body);
