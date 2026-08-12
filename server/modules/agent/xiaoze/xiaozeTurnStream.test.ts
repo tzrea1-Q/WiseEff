@@ -181,6 +181,9 @@ describe("createXiaozeTurnStream", () => {
       EventType.TOOL_CALL_START,
       EventType.TOOL_CALL_ARGS,
       EventType.TOOL_CALL_END,
+      // The assistant shell opened by open() closes before RUN_FINISHED: the
+      // AG-UI client refuses to finish a run with an active text message.
+      EventType.TEXT_MESSAGE_END,
       `CUSTOM:${XIAOZE_INTERRUPT_EVENT}`,
       `CUSTOM:${XIAOZE_RUN_TIMING_EVENT}`,
       EventType.RUN_FINISHED
