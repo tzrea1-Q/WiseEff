@@ -58,9 +58,10 @@ export function ParameterReviewPage({
   dispatch,
   search,
   parameterActions,
-  parameterInitializationRepository,
+  runtime,
   runtimeMode
 }: PageProps) {
+  const parameterInitializationRepository = runtime?.parameterInitializationRepository;
   const [selectedId, setSelectedId] = useState(
     state.parameterInitializationReviews[0]?.id ?? state.changeRequests[0]?.id ?? ""
   );

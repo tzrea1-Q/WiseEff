@@ -52,13 +52,16 @@ describe("LogsPage · 沉淀为知识", () => {
   });
 
   it("无 knowledge:edit 能力时不渲染沉淀入口", () => {
+    const runtime = { knowledgeRepository: createMockKnowledgeRepository() } as unknown as NonNullable<
+      Parameters<typeof LogsPage>[0]["runtime"]
+    >;
     render(
       <LogsPage
         state={userState}
         dispatch={() => undefined}
         onNavigate={() => undefined}
         search=""
-        knowledgeRepository={createMockKnowledgeRepository()}
+        runtime={runtime}
         knowledgeCapability={{ userId: "u-xu-yun", canEdit: false, canManage: false }}
       />
     );
