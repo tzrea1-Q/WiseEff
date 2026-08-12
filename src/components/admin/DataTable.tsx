@@ -238,7 +238,6 @@ export function DataTable<TData>({
                     {accessor ? (
                       <button
                         type="button"
-                        aria-sort={sortState}
                         onClick={() => handleSort(column)}
                         className={cn(
                           "inline-flex items-center gap-1 rounded-md transition-colors hover:text-foreground",

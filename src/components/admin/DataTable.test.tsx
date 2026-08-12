@@ -72,7 +72,9 @@ describe("DataTable", () => {
     await userEvent.click(screen.getByRole("button", { name: /文件名/ }));
 
     expect(onSort).toHaveBeenCalledWith("name");
-    expect(screen.getByRole("button", { name: /文件名/ })).toHaveAttribute("aria-sort", "ascending");
+    // aria-sort belongs on the columnheader, not the sort button (axe aria-allowed-attr).
+    expect(screen.getByRole("columnheader", { name: /文件名/ })).toHaveAttribute("aria-sort", "ascending");
+    expect(screen.getByRole("button", { name: /文件名/ })).not.toHaveAttribute("aria-sort");
   });
 
   it("renders selected row with aria-selected", () => {
