@@ -11,10 +11,7 @@ import { createBindingDraft } from "../../parameter-topology/service";
 import type { AgentToolDefinition } from "../toolRegistry";
 
 type ToolOptions = {
-  db: {
-    query<Row>(text: string, values?: unknown[]): Promise<{ rows: Row[]; rowCount: number | null }>;
-    transaction?: Database["transaction"];
-  };
+  db: Database;
   objectStore?: ObjectStore;
   /** Injected by tests; production uses the real toolchain runner. */
   toolchain?: DtsToolchainRunner;
@@ -46,14 +43,7 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
             { projectId, parameterId, targetValue }
           );
         }
-        if (typeof options.db.transaction !== "function") {
-          throw new ApiError(
-            "INTERNAL_ERROR",
-            "Parameter change submission requires a transactional database.",
-            500
-          );
-        }
-        const db = options.db as Database;
+        const db = options.db;
 
         // Semantic lookup works identically pre- and post-cutover, unlike the
         // mode-branched legacy parameter reads.

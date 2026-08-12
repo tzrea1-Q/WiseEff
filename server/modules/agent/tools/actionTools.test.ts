@@ -189,14 +189,4 @@ describe("action.submitParameterChange", () => {
       draftId: "draft-1"
     });
   });
-
-  it("requires a transactional database instead of pretending to submit", async () => {
-    const readOnlyTool = createActionTools({ db: { query: vi.fn() } }).find(
-      (t) => t.name === "action.submitParameterChange"
-    )!;
-
-    await expect(
-      readOnlyTool.run(adminContext, { projectId: "p1", parameterId: "binding-1", targetValue: "<1>", reason: "x" })
-    ).rejects.toMatchObject({ code: "INTERNAL_ERROR", status: 500 });
-  });
 });

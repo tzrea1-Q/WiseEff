@@ -1,13 +1,13 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { Queryable } from "./client";
+import type { Database } from "./client";
 
 export function getPendingMigrations(allMigrations: string[], appliedMigrations: string[]) {
   const applied = new Set(appliedMigrations);
   return allMigrations.filter((migration) => !applied.has(migration));
 }
 
-export async function applyMigrations(db: Queryable, migrationsDir: string) {
+export async function applyMigrations(db: Database, migrationsDir: string) {
   await db.query(`
     create table if not exists schema_migrations (
       name text primary key,
@@ -24,15 +24,10 @@ export async function applyMigrations(db: Queryable, migrationsDir: string) {
 
   for (const file of pending) {
     const sql = await fs.readFile(path.join(migrationsDir, file), "utf8");
-    await db.query("begin");
-    try {
-      await db.query(sql);
-      await db.query("insert into schema_migrations (name) values ($1)", [file]);
-      await db.query("commit");
-    } catch (error) {
-      await db.query("rollback");
-      throw error;
-    }
+    await db.transaction(async (tx) => {
+      await tx.query(sql);
+      await tx.query("insert into schema_migrations (name) values ($1)", [file]);
+    });
   }
 
   return pending;
