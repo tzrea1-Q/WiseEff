@@ -1,8 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext } from "../auth/types";
-import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import {
+  createInMemoryTestDatabase,
+  isTestDatabaseAvailable,
+  type InMemoryTestDatabase
+} from "../../testing/testDatabase";
+import { seedCoreGraph } from "../../testing/fixtures";
 import { SEEDED_RELOAD_CONFIGURATION } from "./configurationTypes";
 
 vi.mock("../audit/repository", () => ({
@@ -10,30 +15,13 @@ vi.mock("../audit/repository", () => ({
 }));
 
 import { createAuditEvent } from "../audit/repository";
+import { upsertOrganisationDefault } from "./configurationRepository";
 import {
   getReloadConfigurationAdminView,
   updateOrganisationReloadConfiguration
 } from "./configurationService";
 
-type QueryCall = { text: string; values: unknown[] };
-type QueuedResult = unknown[] | ((call: QueryCall) => unknown[]);
-
-function createFakeDb(results: QueuedResult[] = []) {
-  const calls: QueryCall[] = [];
-  const runQuery = async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
-    const call = { text, values };
-    calls.push(call);
-    const next = results.shift() ?? [];
-    const rows = typeof next === "function" ? next(call) : next;
-    return { rows: rows as Row[], rowCount: rows.length };
-  };
-  const db: Database = {
-    query: (text, values = []) => runQuery(text, values),
-    transaction: async <T,>(fn: (queryable: Queryable) => Promise<T>) =>
-      fn({ query: (text, values = []) => runQuery(text, values) })
-  };
-  return { calls, db };
-}
+const databaseAvailable = await isTestDatabaseAvailable();
 
 function auth(overrides: Partial<AuthContext> = {}): AuthContext {
   return {
@@ -52,28 +40,31 @@ function auth(overrides: Partial<AuthContext> = {}): AuthContext {
   };
 }
 
-function orgRow(overrides: Record<string, unknown> = {}) {
-  return {
-    organization_id: "org-1",
-    destination_directory: "/vendor/firmware/",
-    destination_filename: "power_dts_overlay.dtbo",
-    trigger_node_path: "/sys/kernel/debug/power_debug/dts_overlay/trigger",
-    trigger_payload: "1",
-    kernel_log_command: "dmesg",
-    updated_by_user_id: "user-1",
-    updated_at: "2026-08-10T01:00:00.000Z",
-    created_at: "2026-08-10T01:00:00.000Z",
-    ...overrides
-  };
-}
+describe.skipIf(!databaseAvailable)("reload configuration service", () => {
+  let db: InMemoryTestDatabase;
 
-describe("reload configuration service", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.mocked(createAuditEvent).mockClear();
+    db = await createInMemoryTestDatabase();
+    await seedCoreGraph(db, {
+      organization: { id: "org-1", name: "ChargeLab" },
+      users: [{ id: "user-1", name: "Riley Chen", email: "riley@example.com" }]
+    });
   });
 
+  afterEach(async () => {
+    await db?.rollback();
+  });
+
+  async function storedRowCount(): Promise<number> {
+    const result = await db.query<{ count: string }>(
+      "select count(*)::text as count from dts_reload_org_defaults where organization_id = $1",
+      ["org-1"]
+    );
+    return Number(result.rows[0].count);
+  }
+
   it("refuses viewers without debugging:admin", async () => {
-    const { db } = createFakeDb();
     await expect(
       getReloadConfigurationAdminView(db, auth({ permissions: ["debugging:view"] }))
     ).rejects.toMatchObject({
@@ -89,7 +80,6 @@ describe("reload configuration service", () => {
   });
 
   it("refuses an agent actor on configuration write and audits dts-reload-agent-refused", async () => {
-    const { db } = createFakeDb();
     await expect(
       updateOrganisationReloadConfiguration(db, auth(), SEEDED_RELOAD_CONFIGURATION, {
         actorType: "agent",
@@ -122,10 +112,10 @@ describe("reload configuration service", () => {
       expect.anything(),
       expect.objectContaining({ kind: "dts-reload-configuration-update" })
     );
+    expect(await storedRowCount()).toBe(0);
   });
 
   it("returns seeded organisation defaults when no row exists", async () => {
-    const { db } = createFakeDb([[]]);
     const view = await getReloadConfigurationAdminView(db, auth());
     expect(view.organisation).toMatchObject({
       scope: "organisation",
@@ -136,11 +126,11 @@ describe("reload configuration service", () => {
   });
 
   it("updates organisation defaults, validates the log command, and writes audit evidence", async () => {
-    const saved = orgRow({
-      destination_directory: "/oem/firmware/",
-      kernel_log_command: "hilog"
+    await upsertOrganisationDefault(db, {
+      organizationId: "org-1",
+      contract: { ...SEEDED_RELOAD_CONFIGURATION },
+      updatedByUserId: "user-1"
     });
-    const { db } = createFakeDb([[orgRow()], [saved]]);
 
     const next = await updateOrganisationReloadConfiguration(
       db,
@@ -172,10 +162,19 @@ describe("reload configuration service", () => {
         })
       })
     );
+
+    // The saved row is what admins and later runs read back.
+    const view = await getReloadConfigurationAdminView(db, auth());
+    expect(view.organisation).toMatchObject({
+      source: "organisation",
+      destinationDirectory: "/oem/firmware/",
+      kernelLogCommand: "hilog",
+      updatedByUserId: "user-1"
+    });
+    expect(view.organisation.updatedAt).not.toBeNull();
   });
 
   it("rejects a disallowed kernel log command on save", async () => {
-    const { db } = createFakeDb();
     await expect(
       updateOrganisationReloadConfiguration(db, auth(), {
         ...SEEDED_RELOAD_CONFIGURATION,
@@ -183,5 +182,6 @@ describe("reload configuration service", () => {
       })
     ).rejects.toBeInstanceOf(ApiError);
     expect(createAuditEvent).not.toHaveBeenCalled();
+    expect(await storedRowCount()).toBe(0);
   });
 });

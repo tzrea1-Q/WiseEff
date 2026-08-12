@@ -76,6 +76,8 @@ describe("syncFileVersion", () => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();
     setParameterIdentityMode("legacy");
+    // Matches the real contract: detectFileUiDraftConflict resolves to the opened conflicts.
+    mockedDetectFileUiDraftConflict.mockResolvedValue([]);
     mockedGetProjectParameterFileById.mockResolvedValue({
       id: "file-1",
       projectId: "project-1",
