@@ -96,6 +96,22 @@ export function registerDeviceBridgeRoutes(
       organizationId: auth.user.organizationId
     });
 
+    await writeAudit(db, {
+      id: randomUUID(),
+      organizationId: auth.user.organizationId,
+      projectId: null,
+      actorUserId: auth.user.id,
+      actorType: "user",
+      app: "device-bridge",
+      kind: "device-bridge-pairing-code-issue",
+      action: "create",
+      severity: "High",
+      targetType: "device-bridge-pairing-code",
+      targetId: null,
+      metadata: { expiresAt: issued.expiresAt },
+      traceId: request.requestId ?? randomUUID()
+    });
+
     return { status: 201, body: issued };
   });
 
@@ -144,6 +160,22 @@ export function registerDeviceBridgeRoutes(
     if (!updated) {
       throw new ApiError("NOT_FOUND", "Device bridge was not found.", 404, { bridgeId: params.bridgeId });
     }
+
+    await writeAudit(db, {
+      id: randomUUID(),
+      organizationId: auth.user.organizationId,
+      projectId: null,
+      actorUserId: auth.user.id,
+      actorType: "user",
+      app: "device-bridge",
+      kind: "device-bridge-rename",
+      action: "update",
+      severity: "Medium",
+      targetType: "device-bridge",
+      targetId: updated.id,
+      metadata: { platform: updated.platform, arch: updated.arch },
+      traceId: request.requestId ?? randomUUID()
+    });
 
     return {
       status: 200,
