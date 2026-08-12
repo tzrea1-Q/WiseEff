@@ -1,6 +1,6 @@
 import { CircleX } from "lucide-react";
 import { useEffect, useMemo, useState, type Dispatch } from "react";
-import type { AppAction } from "@/App";
+import type { AppAction } from "@/application/state/appState";
 import type { ParameterPageActions } from "@/app/routes";
 import { buildImportTemplateWorkbook } from "@/application/parameters/import/buildImportTemplate";
 import { parseImportSource } from "@/application/parameters/import/detectImportFormat";
@@ -10,7 +10,7 @@ import type { ParameterImportBatchDto } from "@/application/ports/ParameterRepos
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
-import type { ParameterRecord, Project } from "@/mockData";
+import type { ParameterRecord, Project } from "@/domain/prototype/types";
 import { buildParameterLibraryFromRecords, buildParameterModulesFromRecords } from "@/parameterAdminLibrary";
 import { listParameterModuleNames } from "@/powerManagementConfig";
 import { StepBatchPreview } from "./steps/StepBatchPreview";

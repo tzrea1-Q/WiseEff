@@ -42,7 +42,7 @@ function authorizeTool(tool: AgentToolDefinition, context: AgentToolExecutionCon
   requireAgentProjectAccess(context.auth, projectId);
 }
 
-export function createAgentToolRegistry(options: { db: Database | { query: Database["query"] } }) {
+export function createAgentToolRegistry(options: { db: Database }) {
   const tools = [...createPerceptionTools(options), ...createActionTools(options)];
   const byName = new Map<string, AgentToolDefinition>(tools.map((tool) => [tool.name, tool]));
 

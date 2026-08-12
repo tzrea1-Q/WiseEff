@@ -1,4 +1,4 @@
-import type { AuditEvent, AuditEventKind, RiskLevel } from "./mockData";
+import type { AuditEvent, AuditEventKind, RiskLevel } from "@/domain/prototype/types";
 
 export type ParameterRange = {
   min?: number;

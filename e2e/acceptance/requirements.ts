@@ -389,6 +389,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "XIAOZE-ACTION-EDITEDARGS-001",
+    workflow: "G",
+    title: "Approving a Xiaoze action with edited arguments executes the edited payload into the change request.",
+    required: true
+  },
+  {
     id: "XIAOZE-ACTION-REJECT-001",
     workflow: "G",
     title: "Rejecting a Xiaoze action approval does not mutate parameter state.",

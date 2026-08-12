@@ -1,7 +1,7 @@
 // Hotspot presentation-layer derivations: archetype, status, trend, action templates.
 // Pure functions only; no React imports.
 
-import type { PrototypeState } from "./mockData";
+import type { PrototypeState } from "@/domain/prototype/types";
 import type { DashboardWindow, HotspotScoreBreakdown, LegacyHotspotScoreBreakdown } from "@/domain/parameters/dashboardTypes";
 import { formatAuditRelativeTime } from "@/domain/audit/formatAuditTime";
 

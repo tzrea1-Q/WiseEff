@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RollbackConfirmDialog } from "./RollbackConfirmDialog";
-import type { DebugParameter, DebugSnapshot } from "../mockData";
+import type { DebugParameter, DebugSnapshot } from "@/domain/prototype/types";
 
 const snapshot: DebugSnapshot = {
   id: "snap-0003",

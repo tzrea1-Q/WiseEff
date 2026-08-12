@@ -2,7 +2,7 @@ import { ChevronDown, UserRound } from "lucide-react";
 import { useState } from "react";
 import { presentAuditEvent } from "@/domain/audit/presentAuditEvent";
 import type { AuditEventView } from "@/domain/audit/types";
-import type { RiskLevel } from "@/mockData";
+import type { RiskLevel } from "@/domain/prototype/types";
 import { cn } from "@/lib/utils";
 
 const severityBadge: Record<RiskLevel, string> = {
