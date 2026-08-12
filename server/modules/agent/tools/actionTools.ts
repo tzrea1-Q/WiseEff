@@ -1,9 +1,13 @@
-import { randomUUID } from "node:crypto";
 import { ApiError } from "../../../shared/http/errors";
 import type { Database } from "../../../shared/database/client";
-import { getProjectParameterForUpdate } from "../../parameters/repository";
+import type { ObjectStore } from "../../logs/objectStore";
+import type { DtsToolchainRunner } from "../../parameter-files/dtsToolchain";
+import { parseDtsValue } from "../../dts/valueAst";
+import { deleteDraft, getProjectParameterForUpdate } from "../../parameters/repository";
 import { assertSensitiveNodeWriteAllowed } from "../../parameters/sensitiveNode";
 import { submitParameterChanges } from "../../parameters/service";
+import { resolveBindingHeadRevisionId } from "../../parameter-topology/editService";
+import { createBindingDraft } from "../../parameter-topology/service";
 import type { AgentToolDefinition } from "../toolRegistry";
 
 type ToolOptions = {
@@ -11,6 +15,9 @@ type ToolOptions = {
     query<Row>(text: string, values?: unknown[]): Promise<{ rows: Row[]; rowCount: number | null }>;
     transaction?: Database["transaction"];
   };
+  objectStore?: ObjectStore;
+  /** Injected by tests; production uses the real toolchain runner. */
+  toolchain?: DtsToolchainRunner;
 };
 
 function readProjectId(contextProjectId: string | undefined, payload: Record<string, unknown>) {
@@ -39,14 +46,30 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
             { projectId, parameterId, targetValue }
           );
         }
+        if (typeof options.db.transaction !== "function") {
+          throw new ApiError(
+            "INTERNAL_ERROR",
+            "Parameter change submission requires a transactional database.",
+            500
+          );
+        }
+        const db = options.db as Database;
 
-        const parameter = await getProjectParameterForUpdate(options.db as Database, {
+        const parameter = await getProjectParameterForUpdate(db, {
           organizationId: context.auth.organization.id,
           projectId,
           parameterId
         });
-        if (parameter?.sourceNodePath) {
-          await assertSensitiveNodeWriteAllowed(options.db as Database, context.auth, {
+        if (!parameter) {
+          throw new ApiError("NOT_FOUND", "Parameter binding was not found for this project.", 404, {
+            projectId,
+            parameterId
+          });
+        }
+        // Early sensitive-node guard: refuse critical writes before any draft or
+        // candidate revision is created. submitParameterChanges re-checks later.
+        if (parameter.sourceNodePath) {
+          await assertSensitiveNodeWriteAllowed(db, context.auth, {
             organizationId: context.auth.organization.id,
             projectId,
             nodePath: parameter.sourceNodePath,
@@ -56,49 +79,102 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
           });
         }
 
-        if (typeof options.db.transaction === "function") {
-          const submission = await submitParameterChanges(options.db as Database, context.auth, {
+        let parsedValue: ReturnType<typeof parseDtsValue>;
+        try {
+          parsedValue = parseDtsValue(parameter.name, targetValue);
+        } catch (error) {
+          throw new ApiError(
+            "VALIDATION_FAILED",
+            `targetValue must be DTS source text such as <3600>, "fast" or [01 02]: ${
+              error instanceof Error ? error.message : "unrecognized value"
+            }`,
+            400,
+            { parameterId, targetValue }
+          );
+        }
+
+        const baseRevisionId = await resolveBindingHeadRevisionId(db, {
+          organizationId: context.auth.organization.id,
+          projectId,
+          bindingId: parameterId
+        });
+        if (!baseRevisionId) {
+          throw new ApiError(
+            "CONFLICT",
+            "No config revision is available for this parameter binding yet.",
+            409,
+            { projectId, parameterId }
+          );
+        }
+
+        const draft = await createBindingDraft(
+          db,
+          context.auth,
+          {
             projectId,
-            items: [{ parameterId, targetValue, reason }]
-          }, { requestId: context.requestId, actorType: "agent" });
+            bindingId: parameterId,
+            baseRevisionId,
+            targetValue: parsedValue.value,
+            action: "set",
+            reason
+          },
+          { objectStore: options.objectStore, toolchain: options.toolchain }
+        );
+
+        try {
+          const submission = await submitParameterChanges(
+            db,
+            context.auth,
+            {
+              projectId,
+              items: [
+                {
+                  draftId: draft.draftId,
+                  editSubjectKind: "binding",
+                  projectParameterBindingId: draft.projectParameterBindingId,
+                  parameterSpecId: draft.parameterSpecId,
+                  action: draft.action,
+                  targetValue: draft.rawText,
+                  reason
+                }
+              ]
+            },
+            { requestId: context.requestId, actorType: "agent" }
+          );
           const changeRequestId = submission.items[0]?.requestId ?? submission.id;
           return {
             summary: `Submitted parameter change request ${changeRequestId} for review.`,
-            data: { changeRequestId, projectId, parameterId, targetValue },
+            data: {
+              changeRequestId,
+              projectId,
+              parameterId,
+              targetValue: draft.rawText,
+              draftId: draft.draftId
+            },
             citations: [
               {
                 type: "parameter" as const,
                 id: changeRequestId,
                 label: `Change request ${changeRequestId}`,
                 href: `/parameters/review?changeRequestId=${encodeURIComponent(changeRequestId)}`,
-                snippet: `${targetValue} pending review for ${projectId}.`
+                snippet: `${draft.rawText} pending review for ${projectId}.`
               }
             ]
           };
+        } catch (error) {
+          // Best-effort cleanup so a failed submission does not leave an
+          // agent-created draft parked in the user's workbench.
+          try {
+            await deleteDraft(db, {
+              organizationId: context.auth.organization.id,
+              userId: context.auth.user.id,
+              draftId: draft.draftId
+            });
+          } catch {
+            // keep the submission error as the caller-visible failure
+          }
+          throw error;
         }
-
-        const inserted = await options.db.query<{ id: string }>(
-          `
-insert into parameter_change_requests (id, organization_id, project_id, status)
-values ($1, $2, $3, 'submitted')
-returning id
-          `,
-          [randomUUID(), context.auth.organization.id, projectId]
-        );
-        const changeRequestId = inserted.rows[0]?.id ?? randomUUID();
-        return {
-          summary: `Submitted parameter change request ${changeRequestId} for review.`,
-          data: { changeRequestId, projectId, parameterId, targetValue },
-          citations: [
-            {
-              type: "parameter" as const,
-              id: changeRequestId,
-              label: `Change request ${changeRequestId}`,
-              href: `/parameters/review?changeRequestId=${encodeURIComponent(changeRequestId)}`,
-              snippet: `${targetValue} pending review for ${projectId}.`
-            }
-          ]
-        };
       }
     }
   ];

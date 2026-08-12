@@ -2073,6 +2073,32 @@ export async function assertCandidateToolchainRelease(
 }
 
 /** Resolve exact writeback lock metadata for a binding at a config revision head. */
+/**
+ * Newest non-`resolving` config revision that carries a binding revision for this
+ * binding — the base a fresh typed draft should target when the caller has no
+ * explicit revision (workbench-less callers such as the Xiaoze action tool).
+ */
+export async function resolveBindingHeadRevisionId(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; bindingId: string },
+): Promise<string | undefined> {
+  const head = await db.query<{ config_revision_id: string }>(
+    `
+    select bpr.config_revision_id
+    from project_parameter_binding_revisions bpr
+    inner join dts_config_revisions cr on cr.id = bpr.config_revision_id
+    where bpr.binding_id = $1
+      and cr.organization_id = $2
+      and cr.project_id = $3
+      and cr.status <> 'resolving'
+    order by cr.revision_number desc
+    limit 1
+    `,
+    [input.bindingId, input.organizationId, input.projectId],
+  );
+  return head.rows[0]?.config_revision_id;
+}
+
 export async function resolveBindingWriteLock(
   db: Queryable,
   auth: AuthContext,
@@ -2080,24 +2106,13 @@ export async function resolveBindingWriteLock(
 ): Promise<BindingWriteLockContext> {
   const binding = await loadBindingContext(db, auth, input.bindingId);
 
-  let baseRevisionId = input.baseRevisionId;
-  if (!baseRevisionId) {
-    const head = await db.query<{ config_revision_id: string }>(
-      `
-      select bpr.config_revision_id
-      from project_parameter_binding_revisions bpr
-      inner join dts_config_revisions cr on cr.id = bpr.config_revision_id
-      where bpr.binding_id = $1
-        and cr.organization_id = $2
-        and cr.project_id = $3
-        and cr.status <> 'resolving'
-      order by cr.revision_number desc
-      limit 1
-      `,
-      [input.bindingId, auth.organization.id, binding.project_id],
-    );
-    baseRevisionId = head.rows[0]?.config_revision_id;
-  }
+  const baseRevisionId =
+    input.baseRevisionId ??
+    (await resolveBindingHeadRevisionId(db, {
+      organizationId: auth.organization.id,
+      projectId: binding.project_id,
+      bindingId: input.bindingId,
+    }));
   if (!baseRevisionId) {
     throw new ApiError("CONFLICT", "No config revision is available for binding write lock.", 409, {
       reason: "stale-revision",

@@ -10,7 +10,16 @@ vi.mock("../../parameters/sensitiveNode", () => ({
 }));
 
 vi.mock("../../parameters/repository", () => ({
-  getProjectParameterForUpdate: vi.fn()
+  getProjectParameterForUpdate: vi.fn(),
+  deleteDraft: vi.fn()
+}));
+
+vi.mock("../../parameter-topology/service", () => ({
+  createBindingDraft: vi.fn()
+}));
+
+vi.mock("../../parameter-topology/editService", () => ({
+  resolveBindingHeadRevisionId: vi.fn()
 }));
 
 vi.mock("../../audit/repository", () => ({
@@ -21,10 +30,12 @@ import { createActionTools } from "./actionTools";
 import { submitParameterChanges } from "../../parameters/service";
 import { assertSensitiveNodeWriteAllowed } from "../../parameters/sensitiveNode";
 import { getProjectParameterForUpdate } from "../../parameters/repository";
+import { createBindingDraft } from "../../parameter-topology/service";
 
 const mockedSubmit = vi.mocked(submitParameterChanges);
 const mockedAssert = vi.mocked(assertSensitiveNodeWriteAllowed);
 const mockedGetParameter = vi.mocked(getProjectParameterForUpdate);
+const mockedCreateDraft = vi.mocked(createBindingDraft);
 
 describe("action.submitParameterChange sensitive node guard", () => {
   beforeEach(() => {
@@ -91,6 +102,7 @@ describe("action.submitParameterChange sensitive node guard", () => {
         projectId: "p1"
       })
     );
+    expect(mockedCreateDraft).not.toHaveBeenCalled();
     expect(mockedSubmit).not.toHaveBeenCalled();
   });
 });

@@ -204,6 +204,7 @@ export function createWiseEffServer(
   registerXiaozeRoutes(router, {
     db: options.db,
     env: options.env as ServerEnv | undefined,
+    objectStore: options.objectStore,
     getCurrentAuthContext: authResolver
   });
 

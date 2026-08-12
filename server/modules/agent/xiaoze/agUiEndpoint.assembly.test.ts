@@ -10,7 +10,16 @@ vi.mock("../../parameters/sensitiveNode", () => ({
 }));
 
 vi.mock("../../parameters/repository", () => ({
-  getProjectParameterForUpdate: vi.fn()
+  getProjectParameterForUpdate: vi.fn(),
+  deleteDraft: vi.fn()
+}));
+
+vi.mock("../../parameter-topology/service", () => ({
+  createBindingDraft: vi.fn()
+}));
+
+vi.mock("../../parameter-topology/editService", () => ({
+  resolveBindingHeadRevisionId: vi.fn()
 }));
 
 import { createRouter } from "../../../shared/http/router";
@@ -19,9 +28,32 @@ import { createMemoryAgentDb } from "../testing/memoryAgentDb";
 import { registerXiaozeRoutes } from "./agUiEndpoint";
 import { submitParameterChanges } from "../../parameters/service";
 import { getProjectParameterForUpdate } from "../../parameters/repository";
+import { createBindingDraft } from "../../parameter-topology/service";
+import { resolveBindingHeadRevisionId } from "../../parameter-topology/editService";
 
 const mockedSubmit = vi.mocked(submitParameterChanges);
 const mockedGetParameter = vi.mocked(getProjectParameterForUpdate);
+const mockedCreateDraft = vi.mocked(createBindingDraft);
+const mockedResolveHead = vi.mocked(resolveBindingHeadRevisionId);
+
+function primeParameterMocks(editedRawText: string) {
+  mockedGetParameter.mockResolvedValue({ name: "pd-1", sourceNodePath: undefined } as never);
+  mockedResolveHead.mockResolvedValue("rev-base" as never);
+  mockedCreateDraft.mockResolvedValue({
+    draftId: "draft-1",
+    parameterId: "pd-1",
+    candidateRevisionId: "rev-c1",
+    workingCandidateRevisionId: "rev-c1",
+    rebasedDraftIds: [],
+    rawText: editedRawText,
+    action: "set",
+    parameterSpecId: "spec-1",
+    projectParameterBindingId: "pd-1",
+    writeTarget: {},
+    overlayFileId: "file-overlay",
+    overlayFileName: "edit-overlay.dts"
+  } as never);
+}
 
 type SseEvent = { event: string; data: unknown };
 
@@ -59,7 +91,7 @@ function readInterruptApprovalId(events: SseEvent[]) {
  */
 describe("registerXiaozeRoutes approval assembly", () => {
   it("executes the edited payload when an approval is resumed with editedArgs", async () => {
-    mockedGetParameter.mockResolvedValue(null as never);
+    primeParameterMocks("<3600>");
     mockedSubmit.mockResolvedValue({ id: "batch-1", items: [{ requestId: "cr-777" }] } as never);
 
     const { db, tables } = createMemoryAgentDb();
@@ -91,7 +123,7 @@ describe("registerXiaozeRoutes approval assembly", () => {
     const editedArgs = {
       projectId: "aurora",
       parameterId: "pd-1",
-      targetValue: "3600",
+      targetValue: "<3600>",
       reason: "edited before approval"
     };
     const resumed = await postXiaoze(router, "req-assembly-2", {
@@ -111,17 +143,39 @@ describe("registerXiaozeRoutes approval assembly", () => {
       ]
     });
 
+    expect(mockedCreateDraft).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        projectId: "aurora",
+        bindingId: "pd-1",
+        baseRevisionId: "rev-base",
+        targetValue: {
+          kind: "cells",
+          bits: 32,
+          groups: [[{ kind: "integer", raw: "3600", value: "3600" }]]
+        }
+      }),
+      expect.anything()
+    );
     expect(mockedSubmit).toHaveBeenCalledTimes(1);
     expect(mockedSubmit).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
       expect.objectContaining({
         projectId: "aurora",
-        items: [expect.objectContaining({ parameterId: "pd-1", targetValue: "3600" })]
+        items: [
+          expect.objectContaining({
+            draftId: "draft-1",
+            projectParameterBindingId: "pd-1",
+            parameterSpecId: "spec-1",
+            targetValue: "<3600>"
+          })
+        ]
       }),
       expect.objectContaining({ actorType: "agent" })
     );
-    expect(JSON.parse(String(tables.toolCalls[0].payload))).toMatchObject({ targetValue: "3600" });
+    expect(JSON.parse(String(tables.toolCalls[0].payload))).toMatchObject({ targetValue: "<3600>" });
     expect(tables.toolCalls[0]).toMatchObject({ status: "succeeded" });
     expect(tables.approvals[0]).toMatchObject({ status: "approved" });
 
