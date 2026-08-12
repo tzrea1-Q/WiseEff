@@ -33,13 +33,9 @@
 - `exec-plans/completed/2026-08-09-pcw-workbench-shell-wave-2.md`：PCW 壳层 wave-2——Inspector + CommandBar + 源结构树/画布/任务坞展示适配器与 ConfigSetOpsSession；壳 ≤ ~2500 行（分支 `feat/pcw-workbench-shell-wave-2`）。
 - `exec-plans/completed/2026-08-10-dts-reload-debugging.md`：DTS 重载调试（#280 系列；#281–#289 已合并；#290 收口于 `feat/dts-reload-closeout`——文档门禁、中文配套、退役参数重载清理、TD-063–067）。
 - `exec-plans/active/2026-08-12-dts-reload-drop-synthesised-anchor-gate.md`：废除不对称的 `synthesised-anchor` 重载候选门禁，使父 `/label` 与子孙路径同等分类；路径适用性仍由 preflight 负责（分支 `fix/dts-reload-drop-synthesised-anchor-gate`）。
-<<<<<<< HEAD
-- `exec-plans/completed/2026-08-12-xiaoze-approval-chain-single-seam.md`：把重复构造的小泽审批桥收拢为 orchestrator 自有、状态入库的 Agent 审批链（`beginApproval` / `resolveApproval`），请求上下文与运行 sink 经每次调用的配置传递，修复 `editedArgs` 丢弃与并发请求上下文串扰（分支 `fix/xiaoze-approval-chain-single-seam`；ADR-0024）。
-- `exec-plans/active/2026-08-12-xiaoze-action-semantic-submit.md`：让 `action.submitParameterChange` 走切换后语义路径——类型化绑定草稿 + 草稿身份提交并携 `actorType: "agent"`——并修复 `xiaoze-action` 验收文件的退役身份漂移（分支 `fix/xiaoze-action-semantic-submit`；关闭 TD-078，记录 TD-079）。
-=======
 - `exec-plans/active/2026-08-12-agent-log-analysis-system.md`：Agent 日志分析系统——把 `LogAnalysisAdapter` 背后的 4 条规则内核替换为证据接地的日志分析 Agent，新增组织作用域日志业务域（声明式格式画像、诚实降级），并建设两层评测体系（行为层进 CI、效果层跑脱敏金标准案例集）；P1–P3 分阶段（规划分支 `plan/agent-log-analysis`；实施自 `feat/log-analysis-p1-domains-and-llm` 起；ADR-0022；中文伴随页 `docs/zh-CN/exec-plans/active/2026-08-12-agent-log-analysis-system.md`）。
-- `exec-plans/active/2026-08-12-xiaoze-approval-chain-single-seam.md`：把重复构造的小泽审批桥收拢为 orchestrator 自有、状态入库的 Agent 审批链（`beginApproval` / `resolveApproval`），请求上下文与运行 sink 经每次调用的配置传递，修复 `editedArgs` 丢弃与并发请求上下文串扰（分支 `fix/xiaoze-approval-chain-single-seam`；ADR-0024）。
->>>>>>> origin/main
+- `exec-plans/completed/2026-08-12-xiaoze-approval-chain-single-seam.md`：把重复构造的小泽审批桥收拢为 orchestrator 自有、状态入库的 Agent 审批链（`beginApproval` / `resolveApproval`），请求上下文与运行 sink 经每次调用的配置传递，修复 `editedArgs` 丢弃与并发请求上下文串扰（分支 `fix/xiaoze-approval-chain-single-seam`；ADR-0024）。
+- `exec-plans/completed/2026-08-12-xiaoze-action-semantic-submit.md`：让 `action.submitParameterChange` 走切换后语义路径——类型化绑定草稿 + 草稿身份提交并携 `actorType: "agent"`——并修复 `xiaoze-action` 验收文件的退役身份漂移（分支 `fix/xiaoze-action-semantic-submit`；关闭 TD-078，记录 TD-079）。
 - `exec-plans/active/2026-08-08-project-configuration-workbench-defect-repair.md`：修复已上线的配置工作台——恢复被 `listOpenConflicts` 结构漂移阻断的发布通路（原始数据库错误被当作产品阻断项展示，并禁用基线创建与发布），缩减承载过载、实测产生 15 处元素重叠的命令栏，修复移动端操作行与源结构排序错误，让源结构树具备真实层级，并强化那条"在重叠存在时仍然通过"的 `PROJ-CONFIG-READ-001` 布局断言（分支 `fix/project-configuration-workbench-defects`）。
 - `exec-plans/active/2026-07-16-parameter-topology-round6-review-blockers.md`：第六轮 Review 阻断——历史 scope 校正、无损规格 ID、全局规格激活权限、完整 valueShape、真实 merge 验收、cleanup 租户隔离、稳定 test:all（分支 `fix/parameter-topology-round6-review-blockers`）。TD-042 仍为 BLOCKER。
 - `exec-plans/active/2026-07-19-dts-parameter-workbench-redesign.md`：以成熟参数工作台重新承载 API 模式参数页面，深度融合嵌套 DTS 拓扑、语义 binding 行、来源链、类型化草稿、响应式 UX 和可见验收，不恢复扁平身份。

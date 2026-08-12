@@ -1,9 +1,9 @@
 # Xiaoze action tool submits through typed binding drafts (TD-078)
 
-> Status: **Active**
+> Status: **Completed** (merged via PR #326 + #338 on 2026-08-12)
 > Date: 2026-08-12
 > Branch: `fix/xiaoze-action-semantic-submit` (stacked on `fix/xiaoze-approval-chain-single-seam`, merged via PR #319)
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-12-xiaoze-action-semantic-submit.md`](../../zh-CN/exec-plans/active/2026-08-12-xiaoze-action-semantic-submit.md)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-12-xiaoze-action-semantic-submit.md`](../../zh-CN/exec-plans/completed/2026-08-12-xiaoze-action-semantic-submit.md)
 
 ## Goal
 
