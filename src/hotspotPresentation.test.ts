@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { PrototypeState } from "./mockData";
+import type { PrototypeState } from "@/domain/prototype/types";
 import type { DashboardWindow, HotspotScoreBreakdown } from "@/domain/parameters/dashboardTypes";
 import {
   classifyHotspotArchetype,

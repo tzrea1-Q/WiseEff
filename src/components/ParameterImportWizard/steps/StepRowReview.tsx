@@ -1,5 +1,5 @@
 import type { ParsedImportRow, ReviewedImportRow } from "@/application/parameters/import/types";
-import type { Project } from "@/mockData";
+import type { Project } from "@/domain/prototype/types";
 import type { PowerManagementParameterTemplate } from "@/powerManagementConfig";
 import { ImportReviewCard } from "../ImportReviewCard";
 

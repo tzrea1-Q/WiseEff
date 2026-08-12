@@ -1,4 +1,4 @@
-import type { DebugParameter, PrototypeState } from "./mockData";
+import type { DebugParameter, PrototypeState } from "@/domain/prototype/types";
 
 export function parseRange(range: string): [number, number] | null {
   const match = range.match(/^\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*$/);

@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ParameterRecord } from "../mockData";
+import type { ParameterRecord } from "@/domain/prototype/types";
 import { ParametersTable, type ParametersTableProps } from "./ParametersTable";
 
 const rows: ParameterRecord[] = [

@@ -1,7 +1,7 @@
 import { getAuditAppLabel } from "./auditApps";
 import { formatAuditAbsoluteTime } from "./formatAuditTime";
 import type { AuditEventView } from "./types";
-import type { RiskLevel } from "@/mockData";
+import type { RiskLevel } from "@/domain/prototype/types";
 
 export type AuditParticipantView = {
   role: string;

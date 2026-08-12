@@ -1,5 +1,5 @@
 import { useEffect, useMemo, type Dispatch } from "react";
-import type { AppAction } from "@/App";
+import type { AppAction } from "@/application/state/appState";
 import type { ParameterPageActions } from "@/app/routes";
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
@@ -19,7 +19,7 @@ import {
   projectConfigurationWorkbenchEnabled as defaultConfigurationWorkbenchEnabled,
   type WiseEffRuntimeMode
 } from "@/infrastructure/http/runtimeMode";
-import type { ParameterRecord, Project, PrototypeState } from "@/mockData";
+import type { ParameterRecord, Project, PrototypeState } from "@/domain/prototype/types";
 import { OrganizationBulkImportPanel } from "@/components/parameter-admin-next/OrganizationBulkImportPanel";
 import { OrganizationModuleGovernancePanel } from "@/components/parameter-admin-next/OrganizationModuleGovernancePanel";
 import { OrganizationSpecsArea } from "@/components/parameter-admin-next/OrganizationSpecsArea";
