@@ -20,7 +20,7 @@ Developers can browse project parameters, inspect current/recommended values, cr
 
 ### Log Analysis
 
-Users upload logs, track staged analysis, review evidence and reports, archive or rerun records, and capture feedback. Production-oriented flows store raw files through the object-store seam and job state in PostgreSQL.
+Users upload logs — optionally bound to an Admin-registered log domain (business-specific format profile and analysis emphasis; unbound uploads use the built-in uncategorized domain) — track staged analysis, review evidence-grounded reports with visible analyzer provenance, archive or rerun records, and capture feedback. Analysis runs on an LLM kernel whose conclusions must cite real log lines; when the provider is unavailable or the budget cannot produce a grounded answer, the result degrades to the deterministic rule engine and is clearly marked as a degraded analysis instead of impersonating a full one. Production-oriented flows store raw files through the object-store seam and job state in PostgreSQL.
 
 ### Debugging
 

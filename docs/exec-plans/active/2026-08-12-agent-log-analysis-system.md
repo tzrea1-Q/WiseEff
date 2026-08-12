@@ -1,6 +1,6 @@
 # Agent log analysis system
 
-> Status: **Active (planning confirmed, implementation not started)**
+> Status: **Active (P1 implemented on `feat/log-analysis-p1-domains-and-llm`, in review; P2/P3 not started)**
 > Date: 2026-08-12
 > Planning branch: `plan/agent-log-analysis` (this document, glossary, ADR-0022)
 > Implementation branches: `feat/log-analysis-p1-domains-and-llm`, `feat/log-analysis-p2-agent-loop-and-golden-set`, `feat/log-analysis-p3-eval-maturation` (one branch per phase; each checked out from the latest `main`)
@@ -128,7 +128,7 @@ One phase → one branch → one PR. The planning branch `plan/agent-log-analysi
 
 ## Documentation Update Gate
 
-- [ ] P1 PR updates: domain-model EN+zh, api-contract + OpenAPI, FRONTEND EN+zh, SECURITY EN+zh, environment-variables EN+zh + `.env.example`, runbook, ARCHITECTURE, product-spec, acceptance coverage map + operation matrix, db-schema regenerate
+- [x] P1 PR updates: domain-model EN+zh, api-contract + OpenAPI, FRONTEND EN+zh, SECURITY EN+zh, environment-variables EN+zh + `.env.example`, runbook (`docs/runbooks/log-analysis-llm.md` EN+zh), ARCHITECTURE, product-spec EN+zh, acceptance coverage map + operation matrix (LOG-DOMAIN-001 / LOG-DEGRADED-001, EN+zh), db-schema regenerated via `npm run db:schema-doc` (migration `0105_log_domains.sql`) — all done on `feat/log-analysis-p1-domains-and-llm`
 - [ ] P2 PR updates: testing-strategy (eval layers), verification-matrix (eval commands), QUALITY_SCORE review, eval reports + baseline committed
 - [ ] P3 PR updates: runbook monitoring section, RELIABILITY review, tech-debt entries for anything deferred
 - [ ] Every phase: `npm run docs:check` green before its PR merges; plan moves to `completed/` only after all rows above are Update-done or Review-recorded with evidence

@@ -1,4 +1,5 @@
 import type { ParsedLogEntry, ParseResult } from "./parser";
+import { collectRuleEvidence, prefilterRules } from "./prefilter";
 
 export type LogAnalysisSeverity = "Critical" | "Warning" | "Info";
 export type LogAnalysisStageId = "pattern" | "rootcause";
@@ -9,9 +10,17 @@ export type LogRuleHit =
   | "device-offline"
   | "error-code";
 
+/** Analyzer provenance for the additive output contract: degraded analysis never impersonates a full agent analysis. */
+export type LogAnalysisSource = "agent" | "rules-fallback";
+export type LogAnalysisDegradedReason = "provider-unavailable" | "token-budget-exhausted";
+
 export type AnalyzeLogInput = {
   parsed: Extract<ParseResult, { ok: true }>;
   analysisQuestion?: string;
+  logDomain?: {
+    name: string;
+    description?: string;
+  };
 };
 
 export type AnalyzeLogEvidence = {
@@ -19,7 +28,8 @@ export type AnalyzeLogEvidence = {
   lineNumbers: number[];
   inference: string;
   suggestedAction: string;
-  ruleHit: LogRuleHit;
+  /** Absent for agent-generated evidence; set when the deterministic prefilter rules produced the item. */
+  ruleHit?: LogRuleHit;
 };
 
 export type AnalyzeLogOutput = {
@@ -34,58 +44,24 @@ export type AnalyzeLogOutput = {
     lineCount: number;
     entryCount: number;
   };
+  /** Absent on legacy rule-analyzer output; "agent" or "rules-fallback" once the LLM kernel is in play. */
+  analysisSource?: LogAnalysisSource;
+  degradedReason?: LogAnalysisDegradedReason;
+  promptVersion?: string;
+  model?: string;
 };
 
 export interface LogAnalysisAdapter {
   analyze(input: AnalyzeLogInput): Promise<AnalyzeLogOutput>;
 }
 
-type Rule = {
-  id: LogRuleHit;
-  patterns: RegExp[];
-  stageId: LogAnalysisStageId;
-  inference: string;
-  suggestedAction: string;
-  matches?: (entry: ParsedLogEntry) => boolean;
-};
-
-const rules: Rule[] = [
-  {
-    id: "thermal-foldback",
-    patterns: [/thermal/i, /battery_temp/i, /foldback/i, /E_THERMAL_FOLDBACK/i],
-    stageId: "rootcause",
-    inference: "Thermal protection reduced charging output.",
-    suggestedAction: "Inspect pack temperature, cooling path, and BMS thermal thresholds before resuming fast charge."
-  },
-  {
-    id: "charge-current-reduction",
-    patterns: [/current reduced/i, /reduced current/i, /charge current reduced/i],
-    stageId: "pattern",
-    inference: "Requested charge current was reduced by the controller.",
-    suggestedAction: "Compare requested and delivered current around the event window.",
-    matches: matchesChargeCurrentReduction
-  },
-  {
-    id: "communication-timeout",
-    patterns: [/timeout/i, /retry/i, /E_TIMEOUT/i],
-    stageId: "pattern",
-    inference: "Controller communication showed timeout or retry behavior.",
-    suggestedAction: "Check network latency, controller availability, and retry counts."
-  },
-  {
-    id: "device-offline",
-    patterns: [/offline/i, /disconnect/i, /DEVICE_UNAVAILABLE/i],
-    stageId: "rootcause",
-    inference: "The device became unavailable or disconnected.",
-    suggestedAction: "Verify device power, link status, and reconnect behavior."
-  }
-];
-
 export function createRuleBasedLogAnalyzer(): LogAnalysisAdapter {
   return {
     async analyze(input) {
-      const evidence = collectEvidence(input.parsed.entries);
-      const ruleHits = new Set(evidence.map((item) => item.ruleHit));
+      const evidence = collectRuleEvidence(input.parsed.entries);
+      const ruleHits = new Set(
+        evidence.map((item) => item.ruleHit).filter((ruleHit): ruleHit is LogRuleHit => ruleHit !== undefined)
+      );
       const hasErrorEvidence = input.parsed.entries.some((entry) => entry.severity === "error" && evidenceLineHit(evidence, entry));
 
       return {
@@ -103,65 +79,6 @@ export function createRuleBasedLogAnalyzer(): LogAnalysisAdapter {
       };
     }
   };
-}
-
-function collectEvidence(entries: ParsedLogEntry[]): AnalyzeLogEvidence[] {
-  const evidence = rules.flatMap((rule) => {
-    const lineNumbers = entries.filter((entry) => matchesRule(rule, entry)).map((entry) => entry.lineNumber);
-    if (lineNumbers.length === 0) {
-      return [];
-    }
-
-    return [
-      {
-        stageId: rule.stageId,
-        lineNumbers,
-        inference: rule.inference,
-        suggestedAction: rule.suggestedAction,
-        ruleHit: rule.id
-      }
-    ];
-  });
-
-  const errorCodeLines = entries
-    .filter((entry) => entry.severity === "error" && typeof entry.tokens.code === "string" && entry.tokens.code.length > 0)
-    .map((entry) => entry.lineNumber);
-
-  if (errorCodeLines.length > 0) {
-    evidence.push({
-      stageId: "pattern",
-      lineNumbers: errorCodeLines,
-      inference: "Error lines include explicit machine-readable error codes.",
-      suggestedAction: "Use the error code to correlate firmware diagnostics and incident history.",
-      ruleHit: "error-code"
-    });
-  }
-
-  return evidence;
-}
-
-function matchesRule(rule: Rule, entry: ParsedLogEntry): boolean {
-  const searchable = `${entry.message} ${Object.entries(entry.tokens)
-    .map(([key, value]) => `${key}=${value}`)
-    .join(" ")}`;
-
-  return rule.patterns.some((pattern) => pattern.test(searchable)) || rule.matches?.(entry) === true;
-}
-
-function matchesChargeCurrentReduction(entry: ParsedLogEntry): boolean {
-  const requestedCurrent = parseNumericToken(entry.tokens.requested_ma);
-  const deliveredCurrent = parseNumericToken(entry.tokens.charge_current_ma ?? entry.tokens.current_ma);
-
-  return requestedCurrent !== undefined && deliveredCurrent !== undefined && deliveredCurrent < requestedCurrent;
-}
-
-function parseNumericToken(value: string | undefined): number | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-
-  const numericValue = Number(value);
-  return Number.isFinite(numericValue) ? numericValue : undefined;
 }
 
 function evidenceLineHit(evidence: AnalyzeLogEvidence[], entry: ParsedLogEntry): boolean {
@@ -239,7 +156,7 @@ function buildSuggestedActions(ruleHits: Set<LogRuleHit>): string[] {
   }
 
   const actions = new Set<string>();
-  for (const rule of rules) {
+  for (const rule of prefilterRules) {
     if (ruleHits.has(rule.id)) {
       actions.add(rule.suggestedAction);
     }

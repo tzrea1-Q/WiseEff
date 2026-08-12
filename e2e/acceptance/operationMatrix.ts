@@ -688,6 +688,30 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "db", "audit"]
   },
   {
+    id: "LOG-DOMAIN-001",
+    priority: "P1",
+    area: "logs",
+    route: "/log-admin",
+    roles: ["Admin"],
+    action: "Register a log domain in /log-admin governance and upload a log bound to that domain.",
+    coverage: "automated",
+    acceptanceIds: ["LOG-DOMAIN-001"],
+    specFiles: ["e2e/acceptance/log-analysis.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit"]
+  },
+  {
+    id: "LOG-DEGRADED-001",
+    priority: "P1",
+    area: "logs",
+    route: "/logs",
+    roles: ["Software User", "Software Committer", "Admin"],
+    action: "Force a provider outage so the analysis degrades to the rule engine and verify the visible degraded badge and provenance.",
+    coverage: "automated",
+    acceptanceIds: ["LOG-DEGRADED-001"],
+    specFiles: ["e2e/acceptance/log-analysis.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db"]
+  },
+  {
     id: "DEBUG-SIM-001",
     priority: "P0",
     area: "debugging",

@@ -91,6 +91,15 @@ Agent tool 分为：
 
 **Xiaoze P2 规划：** 多步计划使用 LangGraph `StateGraph` 与按 `threadId` 的 checkpointer，使 mutating 步骤在批准后能从计划中途恢复而不丢失已感知上下文。当 `XIAOZE_CHECKPOINTER=postgres` 时，checkpoint 载荷（含 tool 参数与感知上下文）静态保存在 PostgreSQL 中，须与 Agent 业务表一样受数据库访问控制保护；与用户可见聊天历史（TD-030）分离。resume 命令仅携带审批决定（`approvalId`、`decision`、`editedArgs`、`reason`）；请求级认证上下文经每次调用的配置传递，绝不进入图状态、也不会被序列化进 checkpoint（ADR-0024）。主动建议为只读、受 authz 限制且 opt-in（`XIAOZE_PROACTIVE_ENABLED` / `VITE_XIAOZE_PROACTIVE_ENABLED`，默认关闭）。suggest 通道仅通过 `POST /api/v1/agent/xiaoze/suggest` 调用 `perception.*` 工具，不写库且不提出调用方权限外的数据。计划中的 mutating 写入仍须逐步经 orchestrator approval 链人工批准；拒绝某步则安全终止计划且不产生 mutation。
 
+### 日志分析 LLM（P1）
+
+`LogAnalysisAdapter` 背后的日志分析内核运行在小泽栈之外（ADR-0022）：仅复用 `ChatOpenAI` 客户端模式并使用独立的 `LOG_ANALYSIS_*` 环境变量家族，不用 LangGraph、不进 `ToolRegistry`、不接 approval 链——因为它**没有任何写路径**。其全部输出是仅供参考、证据接地的报告；绝不触碰设备、参数或任何 mutating API。
+
+- **不可信输入：** 上传的日志内容（P2 起还包括域知识文档）按不可信模型输入对待。提示词要求模型不得执行日志行内的指令，且结构性控制不依赖该指令：输出必须是通过 schema 校验的严格 JSON，接地校验会剔除任何在解析行中不存在的引用行号；无法接地的输出直接弃用，改用确定性规则回退并显式标注降级。
+- **诚实降级：** provider 故障走既有 job 重试/退避；最后一次尝试回退到规则引擎并记 `analysis_source = 'rules-fallback'` 与 `degraded_reason`。降级结果绝不冒充完整分析，UI 必须保持来源徽标可见。
+- **证据纪律：** 日志、审计与指标记录 model 标签、latency、token 数、降级原因与 trace/request id；绝不记录 API key、原始 prompt、原始 provider payload 或原始日志内容。`/health/ready` 暴露 `logAnalysisLlm` 配置状态（与 `xiaozeLlm` 同语义），不暴露凭据。
+- **租户隔离：** worker 通过组织级仓储查询读取日志字节与业务域行；业务域治理需要 `logs:admin-domains` 并写 `log-domain-*` 审计。
+
 ## 设备安全
 
 设备访问必须经过 gateway boundary。写请求需要 request id、用户和权限上下文、设备和 node target、access mode、目标值、风险等级、确认或 approval id、写前快照，以及 readback 结果或失败原因。

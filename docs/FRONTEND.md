@@ -247,7 +247,15 @@ Browser acceptance for the production dashboard path lives in `e2e/acceptance/pa
 
 In `mock` mode, uploads use the reducer's simulated log path: supported `.log`, `.txt`, and `.json` files become processing records that can be promoted through prototype state, while unsupported files become failed mock records. This keeps component tests and demos independent from PostgreSQL and object storage.
 
-In `api` mode, `src/infrastructure/http/logClient.ts` maps the port to `/api/v1/log-files`, `/api/v1/logs`, `/api/v1/jobs`, archive/unarchive, rerun, and feedback endpoints. Uploads send base64 file content without `projectId` (organization inferred from auth), hydrate the created `LogRecord`, poll the job until a terminal state, then refresh the completed report and evidence. Archive and feedback actions refresh active logs afterward, so default `/logs` excludes archived records.
+In `api` mode, `src/infrastructure/http/logClient.ts` maps the port to `/api/v1/log-files`, `/api/v1/logs`, `/api/v1/jobs`, archive/unarchive, rerun, feedback, and `/api/v1/log-domains` endpoints. Uploads send base64 file content without `projectId` (organization inferred from auth), hydrate the created `LogRecord`, poll the job until a terminal state, then refresh the completed report and evidence. Archive and feedback actions refresh active logs afterward, so default `/logs` excludes archived records.
+
+Job polling uses adaptive backoff instead of a fixed 1s interval: 1s for 30 attempts, then 2s for 45, then 5s, capped at ~5 minutes of scheduled polling (aligned to the p95 ≤ 3 min analysis SLO plus headroom). The per-log generation guard still discards stale poll results when a newer upload or rerun supersedes the same log.
+
+Log-domain UI (P1):
+
+- The upload dialog shows an optional log-domain selector. API mode fetches active domains through `logActions.listLogDomains()`; the default stays the uncategorized domain (generic analysis) and domain selection never blocks an upload. Mock mode keeps its static seeds and shows only the default option.
+- `LogConclusionCard` (and the `/log-admin` `LogRecordDrawer`) render analyzer provenance from the additive `analysisSource` / `degradedReason` fields: a prominent amber degraded badge (rules fallback) with the reason for `rules-fallback` reports, a subtle agent badge for agent reports, and a domain chip when the record is bound to a domain. Records without a source (legacy rule reports) render no badge.
+- `/log-admin` gains a log-domain governance section (list, create/edit form with format-profile JSON validation, archive) gated by the frontend `logs.admin-domains` action (Admin); backend routes enforce the real `logs:admin-domains` permission.
 
 The M2 API smoke lives in `e2e/log-analysis.api.spec.ts` and requires `DATABASE_URL` plus `db:migrate`, `db:seed:m0`, `db:seed:m1`, and `db:seed:m2`.
 

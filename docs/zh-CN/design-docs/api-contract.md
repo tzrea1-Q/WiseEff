@@ -298,6 +298,10 @@ POST /api/v1/logs/:logId/rerun
 POST /api/v1/logs/:logId/archive
 POST /api/v1/logs/:logId/unarchive
 POST /api/v1/logs/:logId/feedback
+GET  /api/v1/log-domains
+POST /api/v1/log-domains
+PATCH /api/v1/log-domains/:domainId
+POST /api/v1/log-domains/:domainId/archive
 GET  /api/v1/jobs/:jobId
 GET  /api/v1/jobs/:jobId/events
 ```
@@ -313,8 +317,14 @@ GET  /api/v1/jobs/:jobId/events
 | `POST` | `/api/v1/logs/:logId/archive` | 归档 |
 | `POST` | `/api/v1/logs/:logId/unarchive` | 取消归档 |
 | `POST` | `/api/v1/logs/:logId/feedback` | 用户反馈 |
+| `GET` | `/api/v1/log-domains` | 业务域列表（`logs:view`；`includeArchived=true` 含已归档） |
+| `POST` | `/api/v1/log-domains` | 创建业务域（`logs:admin-domains`；组织内重名 `409`；画像 JSON 非法 `400`） |
+| `PATCH` | `/api/v1/log-domains/:domainId` | 更新名称/描述/格式画像/状态（`formatProfile: null` 清空画像） |
+| `POST` | `/api/v1/log-domains/:domainId/archive` | 归档业务域；既有日志记录保留绑定 |
 
 `POST /api/v1/log-files` 在 M2 接受 JSON base64 内容，后续可替换为签名上传凭证而不改变 `POST /api/v1/logs` 的分析合同。
+
+上传、创建与 rerun 接受可选 `logDomainId`：必须属于本组织且为 `active`，否则 `400`；缺省即内建未分类域语义（通用分析，上传绝不因域选择被阻塞）。日志 DTO 新增 additive 来源字段：`logDomainId?`、`logDomainName?`、`analysisSource?: "agent" | "rules-fallback"`、`degradedReason?: "provider-unavailable" | "token-budget-exhausted"`；`rules-fallback` 表示降级分析，客户端必须保持其可见，其余输出契约不变。
 
 创建日志文件：
 
@@ -324,7 +334,8 @@ GET  /api/v1/jobs/:jobId/events
   "contentType": "text/plain",
   "contentBase64": "V0FSTiB0ZW1wPTc1",
   "analysisQuestion": "Why did fast charging fold back?",
-  "relatedParameterId": "fast-charge-current"
+  "relatedParameterId": "fast-charge-current",
+  "logDomainId": "domain_123"
 }
 ```
 
@@ -335,7 +346,8 @@ GET  /api/v1/jobs/:jobId/events
   "fileObjectId": "file_123",
   "fileName": "charging_thermal_trace.log",
   "analysisQuestion": "Why did fast charging fold back?",
-  "relatedParameterId": "fast-charge-current"
+  "relatedParameterId": "fast-charge-current",
+  "logDomainId": "domain_123"
 }
 ```
 

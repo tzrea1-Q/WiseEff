@@ -427,7 +427,8 @@ describe("WiseEff API", () => {
         },
         env: {
           AGENT_API_BASE_URL: "https://agent.example.com",
-          AGENT_API_KEY: "test-key"
+          AGENT_API_KEY: "test-key",
+          LOG_ANALYSIS_DETERMINISTIC: true
         }
       }),
       "/metrics"
@@ -439,6 +440,7 @@ describe("WiseEff API", () => {
     expect(response.bodyText).toContain('wiseeff_database_ready 1');
     expect(response.bodyText).toContain('wiseeff_object_store_ready 1');
     expect(response.bodyText).toContain('wiseeff_xiaoze_llm_ready 1');
+    expect(response.bodyText).toContain('wiseeff_log_analysis_llm_ready 1');
     expect(response.bodyText).toContain('wiseeff_queue_backlog{queue="log-analysis"} 3');
   });
 
@@ -487,7 +489,8 @@ describe("WiseEff API", () => {
         env: {
           AGENT_API_BASE_URL: "https://agent.example.com",
           AGENT_API_KEY: "test-key",
-          XIAOZE_MODEL: "model-a"
+          XIAOZE_MODEL: "model-a",
+          LOG_ANALYSIS_DETERMINISTIC: true
         }
       }),
       "/metrics"
@@ -496,6 +499,7 @@ describe("WiseEff API", () => {
     expect(response.status).toBe(200);
     expect(response.bodyText).toContain("wiseeff_xiaoze_llm_ready 1");
     expect(response.bodyText).toContain('wiseeff_dependency_health{dependency="xiaozeLlm"} 1');
+    expect(response.bodyText).toContain('wiseeff_dependency_health{dependency="logAnalysisLlm"} 1');
     expect(response.bodyText).not.toContain("model-a");
     expect(response.bodyText).not.toContain("test-key");
   });
@@ -836,6 +840,9 @@ describe("WiseEff API", () => {
           AGENT_API_BASE_URL: "https://agent.example.com",
           AGENT_API_TIMEOUT_MS: 5000,
           LOG_WORKER_ENABLED: false,
+          LOG_ANALYSIS_API_TIMEOUT_MS: 30000,
+          LOG_ANALYSIS_TOKEN_BUDGET: 8000,
+          LOG_ANALYSIS_DETERMINISTIC: false,
           LOG_ANALYSIS_QUEUE_MODE: "polling",
           LOG_ANALYSIS_QUEUE_PREFIX: "wiseeff",
           LOG_ANALYSIS_QUEUE_ATTEMPTS: 4,
@@ -944,6 +951,9 @@ describe("WiseEff API", () => {
           AGENT_API_BASE_URL: "https://agent.example.com",
           AGENT_API_TIMEOUT_MS: 5000,
           LOG_WORKER_ENABLED: false,
+          LOG_ANALYSIS_API_TIMEOUT_MS: 30000,
+          LOG_ANALYSIS_TOKEN_BUDGET: 8000,
+          LOG_ANALYSIS_DETERMINISTIC: false,
           LOG_ANALYSIS_QUEUE_MODE: "polling",
           LOG_ANALYSIS_QUEUE_PREFIX: "wiseeff",
           LOG_ANALYSIS_QUEUE_ATTEMPTS: 4,

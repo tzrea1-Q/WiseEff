@@ -327,6 +327,18 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "LOG-DOMAIN-001",
+    workflow: "D",
+    title: "Admin registers a log domain in /log-admin and an upload binds to it end to end.",
+    required: true
+  },
+  {
+    id: "LOG-DEGRADED-001",
+    workflow: "D",
+    title: "A degraded analysis (rules fallback) is visibly marked with its provenance and reason.",
+    required: true
+  },
+  {
     id: "DEBUG-SIM-001",
     workflow: "E",
     title: "Simulator read, write, mismatch, rollback, and audit path work, including complex JSON value metadata.",

@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { LogAnalysisRepository, LogJobSnapshot } from "@/application/ports/LogAnalysisRepository";
-import type { LogRecord } from "@/domain/logs/types";
+import type { LogDomain, LogRecord } from "@/domain/logs/types";
 import { initialState } from "@/mockData";
-import { createLogRuntimeActions, logRuntimeFailureNotification } from "./logRuntime";
+import {
+  adaptivePollDelayMs,
+  createLogRuntimeActions,
+  logDomainMockModeNotification,
+  logRuntimeFailureNotification
+} from "./logRuntime";
 
 const apiLog: LogRecord = {
   ...initialState.logs[0],
@@ -396,6 +401,104 @@ describe("createLogRuntimeActions", () => {
     expect(repository.getLog).toHaveBeenCalledWith(apiLog.id);
     expect(dispatch).toHaveBeenCalledWith({ type: "LOG_JOB_PROGRESS", job: stillProcessingJob });
     expect(dispatch).toHaveBeenCalledWith({ type: "UPSERT_LOG_RECORD", log: latestProcessingLog });
+    expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: logRuntimeFailureNotification });
+  });
+
+  it("uses the adaptive backoff schedule 1s×30 → 2s×45 → 5s with a ~5min total cap", () => {
+    expect(adaptivePollDelayMs(0)).toBe(1000);
+    expect(adaptivePollDelayMs(29)).toBe(1000);
+    expect(adaptivePollDelayMs(30)).toBe(2000);
+    expect(adaptivePollDelayMs(74)).toBe(2000);
+    expect(adaptivePollDelayMs(75)).toBe(5000);
+    expect(adaptivePollDelayMs(200)).toBe(5000);
+
+    let scheduledMs = 0;
+    let attempts = 0;
+    while (scheduledMs < 300_000) {
+      scheduledMs += adaptivePollDelayMs(attempts);
+      attempts += 1;
+    }
+    expect(scheduledMs).toBe(300_000);
+    expect(attempts).toBe(111);
+  });
+
+  it("stops polling when the scheduled duration cap is reached", async () => {
+    const dispatch = vi.fn();
+    const stillProcessingJob: LogJobSnapshot = { ...processingJob, id: queuedJob.id };
+    const repository = createRepository({
+      getJob: vi.fn().mockResolvedValue(stillProcessingJob),
+      getLog: vi.fn().mockResolvedValue(apiLog)
+    });
+    const actions = createLogRuntimeActions({
+      mode: "api",
+      repository,
+      dispatch,
+      getState: () => initialState,
+      pollIntervalMs: 1,
+      maxPollDurationMs: 3
+    });
+
+    await actions.upload({ file: createFile("slow.log") });
+
+    expect(repository.getJob).toHaveBeenCalledTimes(3);
+    expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: logRuntimeFailureNotification });
+  });
+
+  it("returns an empty domain list in mock mode and notifies on domain mutations", async () => {
+    const dispatch = vi.fn();
+    const actions = createLogRuntimeActions({ mode: "mock", dispatch, getState: () => initialState });
+
+    await expect(actions.listLogDomains()).resolves.toEqual([]);
+    await expect(actions.createLogDomain({ name: "x" })).resolves.toBeNull();
+    expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: logDomainMockModeNotification });
+  });
+
+  it("lists, creates, updates, and archives domains through the repository in api mode", async () => {
+    const dispatch = vi.fn();
+    const domain: LogDomain = {
+      id: "domain-1",
+      name: "charging-power",
+      status: "active",
+      createdAt: "2026-08-12T00:00:00.000Z",
+      updatedAt: "2026-08-12T00:00:00.000Z"
+    };
+    const repository = createRepository({
+      listLogDomains: vi.fn().mockResolvedValue([domain]),
+      createLogDomain: vi.fn().mockResolvedValue(domain),
+      updateLogDomain: vi.fn().mockResolvedValue({ ...domain, description: "updated" }),
+      archiveLogDomain: vi.fn().mockResolvedValue({ ...domain, status: "archived" })
+    });
+    const actions = createLogRuntimeActions({ mode: "api", repository, dispatch, getState: () => initialState });
+
+    await expect(actions.listLogDomains({ includeArchived: true })).resolves.toEqual([domain]);
+    expect(repository.listLogDomains).toHaveBeenCalledWith({ includeArchived: true });
+    await expect(actions.createLogDomain({ name: "charging-power" })).resolves.toEqual(domain);
+    await expect(actions.updateLogDomain({ domainId: "domain-1", description: "updated" })).resolves.toMatchObject({
+      description: "updated"
+    });
+    await expect(actions.archiveLogDomain("domain-1")).resolves.toMatchObject({ status: "archived" });
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("falls back to an empty domain list when listing fails so uploads stay unblocked", async () => {
+    const dispatch = vi.fn();
+    const repository = createRepository({
+      listLogDomains: vi.fn().mockRejectedValue(new Error("domains unavailable"))
+    });
+    const actions = createLogRuntimeActions({ mode: "api", repository, dispatch, getState: () => initialState });
+
+    await expect(actions.listLogDomains()).resolves.toEqual([]);
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("notifies and rejects when a domain mutation fails", async () => {
+    const dispatch = vi.fn();
+    const repository = createRepository({
+      createLogDomain: vi.fn().mockRejectedValue(new Error("conflict"))
+    });
+    const actions = createLogRuntimeActions({ mode: "api", repository, dispatch, getState: () => initialState });
+
+    await expect(actions.createLogDomain({ name: "dup" })).rejects.toThrow(logRuntimeFailureNotification);
     expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: logRuntimeFailureNotification });
   });
 });

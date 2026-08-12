@@ -183,6 +183,15 @@ The live Xiaoze LLM uses LangChain `ChatOpenAI` against OpenAI-compatible `AGENT
 
 Provider outages must not silently execute tools. A degraded assistant response is allowed only when the provider health check fails or the transport is unavailable, and the fallback path must skip tool execution entirely. Provider outages and device failures must leave audit/readiness evidence rather than silently passing.
 
+### Log Analysis LLM (P1)
+
+The log analysis kernel behind `LogAnalysisAdapter` runs outside the Xiaoze stack (ADR-0022): it reuses only the `ChatOpenAI` client pattern against the separate `LOG_ANALYSIS_*` env family, with no LangGraph, no `ToolRegistry`, and no approval chain — because it has **no write path**. Its entire output is an advisory, evidence-grounded report; it never touches devices, parameters, or any mutating API.
+
+- **Untrusted input:** uploaded log content (and, from P2, domain knowledge documents) is untrusted model input. The prompt instructs the model to never follow instructions found inside log lines, and structural controls do not rely on that instruction: the output is schema-validated strict JSON, and a grounding check drops any cited line number that does not exist in the parsed log. Output that cannot be grounded is discarded in favor of the deterministic rule fallback with an explicit degraded marker.
+- **Honest degradation:** provider failures ride the existing job retry/backoff; the final attempt falls back to the rule engine with `analysis_source = 'rules-fallback'` and a `degraded_reason`. Degraded results never impersonate full analyses — the UI must keep the provenance badge visible.
+- **Evidence discipline:** logs, audit, and metrics record model label, latency, token counts, degradation reason, and trace/request ids. They must never record API keys, raw prompts, raw provider payloads, or raw log content. `/health/ready` exposes `logAnalysisLlm` configuration status (mirroring `xiaozeLlm`), not credentials.
+- **Tenant isolation:** the worker reads log bytes and log-domain rows through organization-scoped repository queries; log-domain governance requires `logs:admin-domains` and is audited (`log-domain-*`).
+
 ## Backup And Object Storage Security
 
 - S3-compatible object storage credentials, signed URLs, database URLs with passwords, and bearer tokens must never be committed.

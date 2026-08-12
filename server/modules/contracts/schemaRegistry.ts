@@ -753,6 +753,29 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     requestBody: "LogFeedbackRequest",
     responseBody: "LogFeedbackResponse"
   },
+  "logs.listDomains": {
+    summary: "List log domains",
+    tags: ["logs"],
+    responseBody: "LogDomainListResponse"
+  },
+  "logs.createDomain": {
+    summary: "Create a log domain",
+    tags: ["logs"],
+    requestBody: "CreateLogDomainRequest",
+    responseBody: "LogDomainResponse",
+    successStatus: 201
+  },
+  "logs.updateDomain": {
+    summary: "Update a log domain",
+    tags: ["logs"],
+    requestBody: "UpdateLogDomainRequest",
+    responseBody: "LogDomainResponse"
+  },
+  "logs.archiveDomain": {
+    summary: "Archive a log domain",
+    tags: ["logs"],
+    responseBody: "LogDomainResponse"
+  },
 
   "productFeedback.create": {
     summary: "Create product feedback",

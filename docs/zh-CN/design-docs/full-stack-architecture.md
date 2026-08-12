@@ -30,6 +30,8 @@ M6.5 observability note: `server/observability/` provides correlation, structure
 
 **DTS 重载调试：** `server/modules/dts-reload/` 提供调试 overlay 生成与预检、重载配置、进程内桥接部署（ADR-0020）、重载快照（ADR-0021）、残留/恢复基线与运行历史。UI 为 `/dts-reload`；与已退役的参数重载 HTTP（`410`）无关。详见英文版 Backend 节。
 
+**日志分析 LLM（P1）：** `server/modules/logs/analyzer/` 用单次 LangChain `ChatOpenAI` 调用（OpenAI 兼容的 `LOG_ANALYSIS_*` 端点；`LOG_ANALYSIS_DETERMINISTIC=true` 时为确定性桩模型）替换 `LogAnalysisAdapter` 缝隙后的规则内核。worker 按绑定业务域的声明式格式画像解析日志，将预筛信号与 token 预算内的日志摘录喂给模型，强制严格 JSON 输出并做接地校验（拒绝引用不存在的行）。降级是诚实的：瞬时 provider 故障重试；重试耗尽、预算耗尽或输出无法接地时回退规则引擎，报告记录 `analysis_source="rules-fallback"` 与 `degraded_reason` 并在 UI 呈现。该路径在小泽栈之外（ADR-0022）：只读、无工具、无审批链；行为层评测 `npm run logs:eval` 进 CI 门禁。详见英文版 Backend 节。
+
 ## 2. 推荐技术栈
 
 | 层级 | 推荐 |

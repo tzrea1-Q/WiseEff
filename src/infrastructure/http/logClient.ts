@@ -1,5 +1,8 @@
 import type {
   LogAnalysisRepository,
+  LogDomainCreateInput,
+  LogDomainListQuery,
+  LogDomainUpdateInput,
   LogFeedbackInput,
   LogListQuery,
   LogRerunInput,
@@ -9,8 +12,11 @@ import type { LogRecord } from "@/domain/logs/types";
 import { createApiClient, WiseEffApiError } from "./apiClient";
 import {
   jobSnapshotFromDto,
+  logDomainFromDto,
+  logDomainListFromDto,
   logListFromDto,
   logRecordFromDto,
+  type LogDomainDto,
   type LogJobDto,
   type LogRecordDto
 } from "./logDtos";
@@ -71,13 +77,38 @@ function uploadBody(input: LogUploadInput, contentBase64: string) {
     contentType: input.file.type || "application/octet-stream",
     contentBase64,
     ...(input.analysisQuestion !== undefined ? { analysisQuestion: input.analysisQuestion } : {}),
-    ...(input.relatedParameterId !== undefined ? { relatedParameterId: input.relatedParameterId } : {})
+    ...(input.relatedParameterId !== undefined ? { relatedParameterId: input.relatedParameterId } : {}),
+    ...(input.logDomainId !== undefined ? { logDomainId: input.logDomainId } : {})
   };
 }
 
 function rerunBody(input: LogRerunInput) {
   return {
-    ...(input.analysisQuestion !== undefined ? { analysisQuestion: input.analysisQuestion } : {})
+    ...(input.analysisQuestion !== undefined ? { analysisQuestion: input.analysisQuestion } : {}),
+    ...(input.logDomainId !== undefined ? { logDomainId: input.logDomainId } : {})
+  };
+}
+
+function buildLogDomainsPath(query?: LogDomainListQuery) {
+  const params = new URLSearchParams();
+  if (query?.includeArchived !== undefined) params.set("includeArchived", String(query.includeArchived));
+  return appendQuery("/api/v1/log-domains", params);
+}
+
+function logDomainCreateBody(input: LogDomainCreateInput) {
+  return {
+    name: input.name,
+    ...(input.description !== undefined ? { description: input.description } : {}),
+    ...(input.formatProfile !== undefined ? { formatProfile: input.formatProfile } : {})
+  };
+}
+
+function logDomainUpdateBody(input: LogDomainUpdateInput) {
+  return {
+    ...(input.name !== undefined ? { name: input.name } : {}),
+    ...(input.description !== undefined ? { description: input.description } : {}),
+    ...(input.formatProfile !== undefined ? { formatProfile: input.formatProfile } : {}),
+    ...(input.status !== undefined ? { status: input.status } : {})
   };
 }
 
@@ -209,6 +240,28 @@ export function createHttpLogAnalysisRepository(
     },
     async submitFeedback(input: LogFeedbackInput) {
       await apiClient.post<OkEnvelope>(`${routeLogPath(input.logId)}/feedback`, feedbackBody(input));
+    },
+    async listLogDomains(query?: LogDomainListQuery) {
+      const response = await apiClient.get<{ items: LogDomainDto[] }>(buildLogDomainsPath(query));
+      return logDomainListFromDto(response);
+    },
+    async createLogDomain(input: LogDomainCreateInput) {
+      const response = await apiClient.post<ItemEnvelope<LogDomainDto>>("/api/v1/log-domains", logDomainCreateBody(input));
+      return logDomainFromDto(response.item);
+    },
+    async updateLogDomain(input: LogDomainUpdateInput) {
+      const response = await apiClient.patch<ItemEnvelope<LogDomainDto>>(
+        `/api/v1/log-domains/${encodeURIComponent(input.domainId)}`,
+        logDomainUpdateBody(input)
+      );
+      return logDomainFromDto(response.item);
+    },
+    async archiveLogDomain(domainId: string) {
+      const response = await apiClient.post<ItemEnvelope<LogDomainDto>>(
+        `/api/v1/log-domains/${encodeURIComponent(domainId)}/archive`,
+        {}
+      );
+      return logDomainFromDto(response.item);
     }
   };
 

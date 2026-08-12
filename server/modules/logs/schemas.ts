@@ -20,14 +20,16 @@ export const createLogFileBodySchema = z.object({
   contentType: nonEmptyString,
   contentBase64: base64String,
   analysisQuestion: z.string().optional(),
-  relatedParameterId: nonEmptyString.optional()
+  relatedParameterId: nonEmptyString.optional(),
+  logDomainId: nonEmptyString.optional()
 });
 
 export const createLogBodySchema = z.object({
   fileObjectId: nonEmptyString,
   fileName: nonEmptyString,
   analysisQuestion: z.string().optional(),
-  relatedParameterId: nonEmptyString.optional()
+  relatedParameterId: nonEmptyString.optional(),
+  logDomainId: nonEmptyString.optional()
 });
 
 export const listLogsQuerySchema = z.object({
@@ -42,7 +44,25 @@ export const logFeedbackBodySchema = z.object({
 });
 
 export const rerunLogBodySchema = z.object({
-  analysisQuestion: z.string().optional()
+  analysisQuestion: z.string().optional(),
+  logDomainId: nonEmptyString.optional()
+});
+
+export const listLogDomainsQuerySchema = z.object({
+  includeArchived: booleanQuerySchema.optional()
+});
+
+export const createLogDomainBodySchema = z.object({
+  name: nonEmptyString.max(120),
+  description: z.string().max(2000).optional(),
+  formatProfile: z.unknown().optional()
+});
+
+export const updateLogDomainBodySchema = z.object({
+  name: nonEmptyString.max(120).optional(),
+  description: z.string().max(2000).nullable().optional(),
+  formatProfile: z.unknown().optional(),
+  status: z.enum(["active", "archived"]).optional()
 });
 
 export type CreateLogFileBody = z.infer<typeof createLogFileBodySchema>;
@@ -50,3 +70,6 @@ export type CreateLogBody = z.infer<typeof createLogBodySchema>;
 export type ListLogsQuery = z.infer<typeof listLogsQuerySchema>;
 export type LogFeedbackBody = z.infer<typeof logFeedbackBodySchema>;
 export type RerunLogBody = z.infer<typeof rerunLogBodySchema>;
+export type ListLogDomainsQuery = z.infer<typeof listLogDomainsQuerySchema>;
+export type CreateLogDomainBody = z.infer<typeof createLogDomainBodySchema>;
+export type UpdateLogDomainBody = z.infer<typeof updateLogDomainBodySchema>;

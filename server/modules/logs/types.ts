@@ -1,3 +1,4 @@
+import type { LogAnalysisDegradedReason, LogAnalysisSource } from "./analyzer";
 import type { LogRecordStatus, LogRunStatus, LogStage } from "./status";
 export type LogArchiveState = "active" | "archived";
 export type LogFeedbackRating = "helpful" | "not_helpful";
@@ -34,6 +35,12 @@ export type LogRecordDto = {
   device?: string;
   failureReason?: string;
   analysisQuestion?: string;
+  /** Bound log domain; absent = uncategorized log domain. */
+  logDomainId?: string;
+  logDomainName?: string;
+  /** Analyzer provenance; absent on legacy rule-analyzer reports. */
+  analysisSource?: LogAnalysisSource;
+  degradedReason?: LogAnalysisDegradedReason;
 };
 
 export type LogJobDto = {

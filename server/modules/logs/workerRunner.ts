@@ -4,6 +4,8 @@ import { defaultTracingBoundary } from "../../observability/tracing";
 import type { Database } from "../../shared/database/client";
 import { createPostgresDatabase } from "../../shared/database/client";
 import { createObjectStoreFromEnv } from "../../objectStoreFactory";
+import type { LogAnalysisAdapter } from "./analyzer";
+import { createLogAnalyzerFromEnv } from "./analyzer/analyzerFromEnv";
 import type { ObjectStore } from "./objectStore";
 import { createLogAnalysisQueueRuntime, type LogAnalysisQueueRuntimeEnv } from "./logAnalysisQueueRuntime";
 import { resolveParameterIdentityMode } from "../parameters/parameterIdentityMode";
@@ -25,6 +27,7 @@ type RawWorkerEnv = {
 type LogWorkerRuntimeOptions = {
   db: Database;
   objectStore: ObjectStore;
+  analyzer?: LogAnalysisAdapter;
   startLoop?: (options: ProcessLogWorkerOptions, intervalMs?: number) => () => void;
   createDurableRuntime?: typeof createLogAnalysisQueueRuntime;
   queueMode?: "polling" | "durable";
@@ -63,6 +66,7 @@ export function validateLogWorkerConfig(raw: RawWorkerEnv) {
 export function createLogWorkerRuntime({
   db,
   objectStore,
+  analyzer,
   startLoop = startLogWorkerLoop,
   createDurableRuntime = createLogAnalysisQueueRuntime,
   queueMode = "polling",
@@ -78,11 +82,19 @@ export function createLogWorkerRuntime({
         if (!env) {
           throw new Error("Durable log worker runtime requires Redis queue environment.");
         }
-        const runtime = createDurableRuntime({ env, db, objectStore, workerId, metrics, tracing: defaultTracingBoundary });
+        const runtime = createDurableRuntime({
+          env,
+          db,
+          objectStore,
+          workerId,
+          metrics,
+          tracing: defaultTracingBoundary,
+          ...(analyzer ? { analyzer } : {})
+        });
         return () => runtime.close();
       }
 
-      return startLoop({ db, objectStore, workerId, leaseTtlMs, metrics }, intervalMs);
+      return startLoop({ db, objectStore, workerId, leaseTtlMs, metrics, ...(analyzer ? { analyzer } : {}) }, intervalMs);
     }
   };
 }
@@ -98,6 +110,7 @@ export async function createLogWorkerRuntimeFromEnv(raw: NodeJS.ProcessEnv = pro
   return createLogWorkerRuntime({
     db,
     objectStore: createObjectStoreFromEnv(env, { tracing: defaultTracingBoundary }),
+    analyzer: createLogAnalyzerFromEnv(env),
     queueMode: env.LOG_ANALYSIS_QUEUE_MODE,
     env: {
       REDIS_URL: env.REDIS_URL ?? "",

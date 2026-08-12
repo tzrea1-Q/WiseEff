@@ -8,13 +8,17 @@ import { loadServerEnv } from "./env";
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const envExamplePath = path.join(projectRoot, ".env.example");
 const gitignorePath = path.join(projectRoot, ".gitignore");
-// Live LLM/embedding endpoints stay blank locally: Xiaoze chat (AGENT_*/XIAOZE_*)
+// Live LLM/embedding endpoints stay blank locally: Xiaoze chat (AGENT_*/XIAOZE_*),
+// log analysis (LOG_ANALYSIS_* — blank + deterministic runs the offline stub),
 // and knowledge-base embeddings (EMBEDDING_* — blank means FTS-only retrieval).
 const allowedBlankKeys = new Set([
   "AGENT_API_BASE_URL",
   "AGENT_MODEL",
   "AGENT_API_KEY",
   "XIAOZE_MODEL",
+  "LOG_ANALYSIS_API_BASE_URL",
+  "LOG_ANALYSIS_MODEL",
+  "LOG_ANALYSIS_API_KEY",
   "EMBEDDING_API_BASE_URL",
   "EMBEDDING_MODEL",
   "EMBEDDING_API_KEY"
