@@ -5,7 +5,7 @@ import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWr
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
-import { canAdminParameters } from "../parameters/policy";
+import { canAdminParameters } from "../parameter-kernel/policy";
 import { ingestConfigRevisionInTransaction } from "../parameter-topology/ingestService";
 import type { ConfigRevisionManifest, ConfigRevisionManifestMember } from "../parameter-topology/types";
 import type { Database, Queryable } from "../../shared/database/client";

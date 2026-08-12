@@ -4,7 +4,7 @@ import { createAuditEvent } from "../audit/repository";
 import type { AuthContext } from "../auth/types";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { canEditCriticalParameters } from "../parameters/policy";
+import { canEditCriticalParameters } from "../parameter-kernel/policy";
 import {
   listSensitiveNodeRules,
   matchSensitiveRules,

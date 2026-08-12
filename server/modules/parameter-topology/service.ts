@@ -13,7 +13,7 @@ import {
   countDismissedSpecBlockersForRevision,
   countOpenSpecReviewTasksForRevision
 } from "../parameter-specs/repository";
-import { canAdminParameters, canEditParameters, canViewParameters } from "../parameters/policy";
+import { canAdminParameters, canEditParameters, canViewParameters } from "../parameter-kernel/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import {

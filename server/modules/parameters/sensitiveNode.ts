@@ -3,7 +3,7 @@ import { createAuditEvent } from "../audit/repository";
 import type { AuthContext, BackendPermission } from "../auth/types";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { canEditCriticalParameters } from "./policy";
+import { canEditCriticalParameters } from "../parameter-kernel/policy";
 import { nodePathFromSourceNodePath } from "./impact";
 
 export type SensitiveRiskTier = "high" | "critical";

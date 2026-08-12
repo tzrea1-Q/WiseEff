@@ -3,7 +3,7 @@ import type { AuthContext } from "../../auth/types";
 import type { Database } from "../../../shared/database/client";
 import { ApiError } from "../../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../../shared/http/router";
-import { canViewParameters } from "../policy";
+import { canViewParameters } from "../../parameter-kernel/policy";
 import { dashboardHotspotsQuerySchema, dashboardSummaryQuerySchema } from "./schemas";
 import { getDashboardHotspots, getDashboardSummary } from "./service";
 

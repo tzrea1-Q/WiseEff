@@ -10,7 +10,7 @@ import {
   resolveConflict,
   type FileSyncConflictRecord
 } from "../parameters/fileSyncConflictRepository";
-import { canReviewParameters } from "../parameters/policy";
+import { canReviewParameters } from "../parameter-kernel/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 

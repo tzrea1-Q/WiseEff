@@ -1,10 +1,10 @@
 import type {
   ImportPreviewClassification,
-  ParameterChangeRequestStatus,
   ParameterImportBatchStatus,
   ParameterRiskLevel,
   ParameterSubmissionRoundStatus
 } from "./status";
+import type { ParameterChangeRequestStatus } from "../parameter-kernel/workflowStatus";
 import type { ParameterChangeAction } from "../parameter-drafts/types";
 
 export type ProjectDto = {

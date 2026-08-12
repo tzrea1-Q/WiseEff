@@ -3,7 +3,7 @@ import type { AuthContext } from "../auth/types";
 import { ensureDefaultConfigSetInTx } from "../parameter-files/configSetService";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { canAdminParameters } from "./policy";
+import { canAdminParameters } from "../parameter-kernel/policy";
 import { createProject, deleteProject, updateProject } from "./projectRepository";
 import type { ProjectAdminSummaryDto } from "./types";
 

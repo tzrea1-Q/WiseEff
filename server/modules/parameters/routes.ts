@@ -71,8 +71,9 @@ import {
   updateProjectBodySchema
 } from "./schemas";
 import type { ListParametersQuery } from "./schemas";
-import { canAdminParameters, canMergeParameters, canReviewParameters, canViewParameters } from "./policy";
-import { parameterChangeRequestStatuses, parameterSubmissionRoundStatuses } from "./status";
+import { canAdminParameters, canMergeParameters, canReviewParameters, canViewParameters } from "../parameter-kernel/policy";
+import { parameterSubmissionRoundStatuses } from "./status";
+import { parameterChangeRequestStatuses } from "../parameter-kernel/workflowStatus";
 
 const paramsWithProjectIdSchema = z.object({
   projectId: z.string().min(1)
