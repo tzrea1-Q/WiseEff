@@ -90,6 +90,13 @@ describe("parameter policy", () => {
     );
   });
 
+  it("allows a software-committer assigned to the merge slot to merge (matches assignment eligibility)", () => {
+    // The softwareUser merge slot accepts software-user or software-committer at
+    // assignment; the merge policy must accept the same so the round cannot deadlock.
+    expect(canMergeParameters(auth({ roles: [{ projectId: "aurora", roleId: "software-committer" }] }), "aurora")).toBe(true);
+    expect(canMergeParameters(auth({ roles: [{ projectId: "zephyr", roleId: "software-committer" }] }), "aurora")).toBe(false);
+  });
+
   it("requires project-scoped stage roles for review", () => {
     expect(
       canReviewParameterStage(
