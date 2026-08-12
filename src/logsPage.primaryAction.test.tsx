@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { getContextQuery } from "./App";
+import { getContextQuery } from "@/workbenchUi";
 import { logRuntimeFailureNotification } from "@/application/logs/logRuntime";
 import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogAnalysisRepository, LogJobSnapshot } from "@/application/ports/LogAnalysisRepository";

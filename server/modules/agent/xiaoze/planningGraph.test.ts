@@ -26,6 +26,30 @@ describe("createPlanningAgent", () => {
     expect(result.text).toContain("12 parameters");
   });
 
+  it("namespaces checkpoints by organization and user when request context is bound", async () => {
+    const checkpointer = createXiaozeCheckpointer();
+    const putSpy = vi.spyOn(checkpointer, "put");
+    const runTool = vi.fn().mockResolvedValue({ summary: "ok", data: {}, citations: [] });
+    const model = fakeModelSequence([{ content: "hello there" }]);
+    const agent = createPlanningAgent({
+      model,
+      runTool,
+      listTools: () => [{ name: "perception.getProjectOverview", description: "x", schema: {} }],
+      checkpointer
+    });
+
+    await agent.run({
+      message: "hi",
+      context: {},
+      threadId: "t-shared",
+      requestContext: { auth: anyAuth, requestId: "req-ns", sessionId: "t-shared" }
+    });
+
+    // A user-supplied threadId must never address another org/user's state.
+    expect(putSpy).toHaveBeenCalledWith("org1:u1:t-shared", expect.anything());
+    expect(putSpy).not.toHaveBeenCalledWith("t-shared", expect.anything());
+  });
+
   it("returns an interrupt for a mutating tool without executing (P1 parity)", async () => {
     const runTool = vi.fn();
     const model = fakeModelSequence([
@@ -69,7 +93,14 @@ describe("createPlanningAgent", () => {
       approvalResolver
     });
 
-    const interrupted = await agent.run({ message: "set pd1 to 42", context: { projectId: "p1" }, threadId: "t9" });
+    // Production always binds the request context on every turn, so the
+    // interrupt turn and the resume turn share one checkpoint namespace.
+    const interrupted = await agent.run({
+      message: "set pd1 to 42",
+      context: { projectId: "p1" },
+      threadId: "t9",
+      requestContext: { auth: anyAuth, requestId: "req-0", sessionId: "t9" }
+    });
     expect(interrupted.interrupt?.toolName).toBe("action.submitParameterChange");
 
     const resumed = await agent.run({
@@ -201,7 +232,12 @@ describe("createPlanningAgent", () => {
       approvalResolver
     });
 
-    await agent.run({ message: "set pd1 to 42", context: { projectId: "p1" }, threadId: "t-reject" });
+    await agent.run({
+      message: "set pd1 to 42",
+      context: { projectId: "p1" },
+      threadId: "t-reject",
+      requestContext: { auth: anyAuth, requestId: "req-1", sessionId: "t-reject" }
+    });
     const result = await agent.run({
       message: "",
       context: { projectId: "p1" },

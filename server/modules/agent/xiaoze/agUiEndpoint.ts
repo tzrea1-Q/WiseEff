@@ -6,6 +6,7 @@ import type { RouteRequest, RouteResponse, WiseEffRouter } from "../../../shared
 import type { Database } from "../../../shared/database/client";
 import type { ObjectStore } from "../../logs/objectStore";
 import type { ServerEnv } from "../../../config/env";
+import { getAgentSession } from "../repository";
 import { createAgentToolRegistry } from "../toolRegistry";
 import type { AgentToolExecutionContext } from "../toolRegistry";
 import type { AgentToolName, AgentCitation } from "../types";
@@ -519,6 +520,8 @@ export function createXiaozeAgUiHandler(options: {
   resolveModelLabel?: () => string | undefined;
   persistTurn?: (input: PersistXiaozeTurnInput) => Promise<void>;
   reasoningClassifier?: ReasoningClassifier;
+  /** Rejects runs whose client-supplied threadId addresses another user's thread. */
+  assertThreadAccess?: (input: { auth: AuthContext; threadId: string }) => Promise<void>;
 }) {
   return async function handleXiaozeAgUi(request: XiaozeAgUiRequest): Promise<RouteResponse> {
     const auth = await options.resolveAuth(request);
@@ -534,6 +537,9 @@ export function createXiaozeAgUiHandler(options: {
       typeof (request.body as { threadId?: unknown }).threadId === "string"
         ? String((request.body as { threadId: string }).threadId)
         : randomUUID();
+    if (options.assertThreadAccess) {
+      await options.assertThreadAccess({ auth: verifiedAuth, threadId });
+    }
     const runId =
       typeof (request.body as { runId?: unknown }).runId === "string"
         ? String((request.body as { runId: string }).runId)
@@ -1066,7 +1072,13 @@ export function registerXiaozeRoutes(
     approvalChain,
     persistTurn,
     resolveModelLabel: options.env ? () => resolveXiaozeModel(options.env!) : undefined,
-    reasoningClassifier
+    reasoningClassifier,
+    assertThreadAccess: async ({ auth, threadId }) => {
+      const session = await getAgentSession(options.db!, auth.organization.id, threadId);
+      if (session && session.actorUserId !== auth.user.id) {
+        throw new ApiError("FORBIDDEN", "This Xiaoze thread belongs to another user.", 403, { threadId });
+      }
+    }
   });
 
   router.post("/api/v1/agent/xiaoze", async (request) => handler(request));

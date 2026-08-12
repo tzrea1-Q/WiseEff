@@ -84,6 +84,20 @@ function staleTransition(message: string, details: Record<string, unknown>) {
   return new ApiError("CONFLICT", message, 409, details);
 }
 
+/**
+ * HITL approvals are personal: the user whose turn requested the tool call is
+ * the only one who may approve, edit, or reject it. Without this gate any
+ * same-organization user holding an approvalId could execute someone else's
+ * pending write under their own auth.
+ */
+function requireApprovalRequester(approval: { id: string; requestedByUserId: string }, auth: AuthContext) {
+  if (approval.requestedByUserId !== auth.user.id) {
+    throw new ApiError("FORBIDDEN", "Only the user who requested this approval may decide it.", 403, {
+      approvalId: approval.id
+    });
+  }
+}
+
 export function createAgentOrchestrator(options: {
   db: Database;
   toolRegistry?: ToolRegistry;
@@ -349,6 +363,7 @@ export function createAgentOrchestrator(options: {
     if (approval.status !== "pending") {
       throw new ApiError("INVALID_APPROVAL_STATE", "Approval is not pending.", 409, { approvalId: input.approvalId });
     }
+    requireApprovalRequester(approval, input.auth);
     const toolCall = await getAgentToolCall(db, input.auth.organization.id, approval.toolCallId);
     if (!toolCall) {
       throw new ApiError("NOT_FOUND", "Agent tool call was not found.", 404, { toolCallId: approval.toolCallId });
@@ -442,6 +457,7 @@ export function createAgentOrchestrator(options: {
     if (!approval || approval.status !== "pending") {
       throw new ApiError("NOT_FOUND", "Pending Agent approval was not found.", 404, { approvalId: input.approvalId });
     }
+    requireApprovalRequester(approval, input.auth);
     const toolCall = await getAgentToolCall(db, input.auth.organization.id, approval.toolCallId);
     if (!toolCall) {
       throw new ApiError("NOT_FOUND", "Agent tool call was not found.", 404, { toolCallId: approval.toolCallId });
@@ -563,6 +579,9 @@ export function createAgentOrchestrator(options: {
       if (approval.status !== "pending") {
         throw new ApiError("INVALID_APPROVAL_STATE", "Approval is not pending.", 409, { approvalId: input.approvalId });
       }
+      // Checked before the payload rewrite so a non-requester cannot leave an
+      // edited payload behind even though approveToolCall would also refuse.
+      requireApprovalRequester(approval, input.auth);
       const updated = await updateAgentToolCall(db, input.auth.organization.id, approval.toolCallId, {
         payload: input.editedArgs
       });

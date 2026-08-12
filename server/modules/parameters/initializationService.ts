@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { AuditCorrelationContext } from "../audit/types";
-import { createAuditEvent } from "../audit/repository";
+import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
 import { getConfigSetByProjectAndName } from "../parameter-files/configSetRepository";
 import { createOrReuseBinding, upsertBindingRevisionValues } from "../parameter-topology/bindingService";
@@ -44,10 +44,14 @@ function requireCanView(auth: AuthContext) {
   }
 }
 
-function requireCanEdit(auth: AuthContext) {
-  if (!canEditParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter edit permission is required.", 403);
-  }
+function requireCanEdit(auth: AuthContext, projectId?: string) {
+  if (canEditParameters(auth, projectId)) return;
+  const scopedOnly = projectId !== undefined && canEditParameters(auth);
+  throw new ApiError(
+    "FORBIDDEN",
+    scopedOnly ? "Parameter edit role is required for this project." : "Parameter edit permission is required.",
+    403
+  );
 }
 
 function requireCanAdmin(auth: AuthContext) {
@@ -257,7 +261,7 @@ export async function upsertDraft(
   input: UpsertInitializationDraftInput,
   context: InitializationServiceContext = {}
 ): Promise<InitializationDraftDto> {
-  requireCanEdit(auth);
+  requireCanEdit(auth, input.projectId);
   validateDraftShape(input);
 
   return db.transaction(async (tx) => {
@@ -304,7 +308,7 @@ export async function previewSnapshot(
   auth: AuthContext,
   input: PreviewInitializationSnapshotInput
 ): Promise<InitializationSnapshotItemDto[]> {
-  requireCanEdit(auth);
+  requireCanEdit(auth, input.projectId);
 
   if (!input.primarySourceProjectId) {
     return [];
@@ -346,7 +350,7 @@ export async function submitDraft(
   input: { projectId: string },
   context: InitializationServiceContext = {}
 ): Promise<InitializationReviewDto> {
-  requireCanEdit(auth);
+  requireCanEdit(auth, input.projectId);
 
   return db.transaction(async (tx) => {
     const status = await loadProjectInitializationStatus(tx, {
@@ -391,16 +395,12 @@ export async function submitDraft(
       status: "initialization_pending_review"
     });
 
-    await createAuditEvent(tx, {
-      id: randomUUID(),
-      organizationId: auth.organization.id,
-      projectId: input.projectId,
-      actorUserId: auth.user.id,
-      actorType: "user",
+    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
       app: "parameter-admin",
       kind: "project-initialization-submitted",
       action: "submit",
       severity: "Medium",
+      projectId: input.projectId,
       targetType: "project-parameter-initialization-review",
       targetId: review.id,
       metadata: {
@@ -410,8 +410,7 @@ export async function submitDraft(
         emptyLibrary: draft.emptyLibrary,
         bindingCount: draft.bindingSnapshots.length,
         sourceProjectIds: draft.sourceProjectIds
-      },
-      traceId: context.requestId ?? randomUUID()
+      }
     });
 
     return review;
@@ -488,16 +487,12 @@ export async function approveReview(
       status: "initialized"
     });
 
-    await createAuditEvent(tx, {
-      id: randomUUID(),
-      organizationId: auth.organization.id,
-      projectId: review.projectId,
-      actorUserId: auth.user.id,
-      actorType: "user",
+    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
       app: "parameter-admin",
       kind: "project-initialization-approved",
       action: "approve",
       severity: "Medium",
+      projectId: review.projectId,
       targetType: "project-parameter-initialization-review",
       targetId: approved.id,
       metadata: {
@@ -506,8 +501,7 @@ export async function approveReview(
         projectId: review.projectId,
         emptyLibrary: draft.emptyLibrary,
         bindingCount: draft.bindingSnapshots.length
-      },
-      traceId: context.requestId ?? randomUUID()
+      }
     });
 
     return approved;
@@ -568,16 +562,12 @@ export async function rejectReview(
       status: "initialization_rejected"
     });
 
-    await createAuditEvent(tx, {
-      id: randomUUID(),
-      organizationId: auth.organization.id,
-      projectId: review.projectId,
-      actorUserId: auth.user.id,
-      actorType: "user",
+    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
       app: "parameter-admin",
       kind: "project-initialization-rejected",
       action: "reject",
       severity: "Medium",
+      projectId: review.projectId,
       targetType: "project-parameter-initialization-review",
       targetId: rejected.id,
       metadata: {
@@ -585,8 +575,7 @@ export async function rejectReview(
         reviewId: rejected.id,
         projectId: review.projectId,
         reason
-      },
-      traceId: context.requestId ?? randomUUID()
+      }
     });
 
     return rejected;

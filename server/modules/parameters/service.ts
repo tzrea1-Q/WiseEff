@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 
-import { createAuditEvent } from "../audit/repository";
+import {
+  asAuditTx,
+  withAuditedWrite,
+  writeAuditEventInTx,
+  type AuditTx,
+  type AuditedWriteContext
+} from "../audit/auditedWrite";
 import {
   notifyParameterImportCompleted,
   notifyParameterMergeCompleted,
@@ -275,81 +281,96 @@ export async function resolveStructuredEditToParameter(
 /**
  * Map structured DTS edits onto project parameter identity rows and submit via the
  * existing draft → submission_round → change_request flow. CR targetValue is rawText.
+ *
+ * Drafts, the submission itself, and the audit event commit in one transaction
+ * (ADR-0027): a failed submit no longer leaves committed drafts or a misleading
+ * "submitted" audit event behind.
  */
 export async function submitStructuredEdits(
   db: Database,
   auth: AuthContext,
   input: SubmitStructuredEditsInput,
-  context: ServiceContext = {}
+  context: ServiceContext & AuditedWriteContext
 ) {
-  requireCanEdit(auth);
+  requireCanEdit(auth, input.projectId);
 
   if (input.edits.length === 0) {
     throw new ApiError("VALIDATION_FAILED", "At least one structured edit is required.", 400);
   }
 
-  const seenKeys = new Set<string>();
-  const items: Array<Extract<SubmitParameterChangesInput["items"][number], { parameterId: string }>> = [];
+  return withAuditedWrite(db, auth, context, async (tx) => {
+    const seenKeys = new Set<string>();
+    const items: Array<Extract<SubmitParameterChangesInput["items"][number], { parameterId: string }>> = [];
 
-  for (const edit of input.edits) {
-    const key = `${edit.fileId}:${sourceNodePathForStructuredEdit(edit)}`;
-    if (seenKeys.has(key)) {
-      throw new ApiError("VALIDATION_FAILED", "Duplicate structured edit for the same property.", 400, {
-        fileId: edit.fileId,
-        nodePath: edit.nodePath,
-        propertyName: edit.propertyName
+    for (const edit of input.edits) {
+      const key = `${edit.fileId}:${sourceNodePathForStructuredEdit(edit)}`;
+      if (seenKeys.has(key)) {
+        throw new ApiError("VALIDATION_FAILED", "Duplicate structured edit for the same property.", 400, {
+          fileId: edit.fileId,
+          nodePath: edit.nodePath,
+          propertyName: edit.propertyName
+        });
+      }
+      seenKeys.add(key);
+
+      const parameter = await resolveStructuredEditToParameter(tx, auth, input.projectId, edit);
+      const reason =
+        edit.reason?.trim() ||
+        `Structured edit: ${sourceNodePathForStructuredEdit(edit)}`;
+
+      await upsertDraft(tx, {
+        id: randomUUID(),
+        organizationId: auth.organization.id,
+        projectId: input.projectId,
+        parameterId: parameter.id,
+        userId: auth.user.id,
+        targetValue: edit.rawText,
+        reason,
+        origin: "manual",
+        projectParameterBindingId: edit.projectParameterBindingId,
+        parameterSpecId: edit.parameterSpecId
+      });
+
+      items.push({
+        parameterId: parameter.id,
+        targetValue: edit.rawText,
+        reason,
+        projectParameterBindingId: edit.projectParameterBindingId,
+        parameterSpecId: edit.parameterSpecId
       });
     }
-    seenKeys.add(key);
 
-    const parameter = await resolveStructuredEditToParameter(db, auth, input.projectId, edit);
-    const reason =
-      edit.reason?.trim() ||
-      `Structured edit: ${sourceNodePathForStructuredEdit(edit)}`;
+    const result = await submitStructuredEditItems(tx, auth, input, items, context);
 
-    await upsertDraft(db, {
-      id: randomUUID(),
-      organizationId: auth.organization.id,
-      projectId: input.projectId,
-      parameterId: parameter.id,
-      userId: auth.user.id,
-      targetValue: edit.rawText,
-      reason,
-      origin: "manual",
-      projectParameterBindingId: edit.projectParameterBindingId,
-      parameterSpecId: edit.parameterSpecId
-    });
-
-    items.push({
-      parameterId: parameter.id,
-      targetValue: edit.rawText,
-      reason,
-      projectParameterBindingId: edit.projectParameterBindingId,
-      parameterSpecId: edit.parameterSpecId
-    });
-  }
-
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    actorUserId: auth.user.id,
-    actorType: context.actorType ?? "user",
-    app: "parameter-management",
-    kind: "parameter-structured-edit-submit",
-    action: "submit",
-    severity: "Medium",
-    targetType: "parameter-submission-round",
-    targetId: input.projectId,
-    metadata: {
-      editCount: input.edits.length,
-      parameterIds: items.map((item) => item.parameterId)
-    },
-    traceId: context.requestId ?? randomUUID()
+    return {
+      result,
+      audit: {
+        app: "parameter-management",
+        kind: "parameter-structured-edit-submit",
+        action: "submit",
+        severity: "Medium",
+        projectId: input.projectId,
+        targetType: "parameter-submission-round",
+        targetId: input.projectId,
+        metadata: {
+          editCount: input.edits.length,
+          parameterIds: items.map((item) => item.parameterId)
+        },
+        actorType: context.actorType ?? "user"
+      }
+    };
   });
+}
 
+function submitStructuredEditItems(
+  tx: Database,
+  auth: AuthContext,
+  input: SubmitStructuredEditsInput,
+  items: Array<Extract<SubmitParameterChangesInput["items"][number], { parameterId: string }>>,
+  context: ServiceContext
+) {
   return submitParameterChanges(
-    db,
+    tx,
     auth,
     {
       projectId: input.projectId,
@@ -408,10 +429,16 @@ function requireCanView(auth: AuthContext) {
   }
 }
 
-function requireCanEdit(auth: AuthContext) {
-  if (!canEditParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter edit permission is required.", 403);
-  }
+function requireCanEdit(auth: AuthContext, projectId?: string) {
+  if (canEditParameters(auth, projectId)) return;
+  // A caller who holds parameter:edit but not on this project failed the
+  // project scope, not the capability check.
+  const scopedOnly = projectId !== undefined && canEditParameters(auth);
+  throw new ApiError(
+    "FORBIDDEN",
+    scopedOnly ? "Parameter edit role is required for this project." : "Parameter edit permission is required.",
+    403
+  );
 }
 
 function requireCanAdminImport(auth: AuthContext) {
@@ -785,7 +812,7 @@ function buildChangeRequestAuditMetadata(
 }
 
 async function createParameterReviewAudit(
-  db: Queryable,
+  tx: AuditTx,
   auth: AuthContext,
   input: {
     projectId?: string;
@@ -801,16 +828,14 @@ async function createParameterReviewAudit(
   },
   context: ServiceContext = {}
 ) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: input.projectId ?? null,
-    actorUserId: auth.user.id,
-    actorType: "user",
+  // requestId fallback survives only until review-flow contexts become mandatory
+  // (audited-write migration batches, ADR-0027).
+  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
     app: "parameter-management",
     kind: input.kind,
     action: input.action,
     severity: input.kind === "parameter-merge" ? "High" : "Medium",
+    projectId: input.projectId ?? null,
     targetType: "parameter-change-request",
     targetId: input.requestId,
     metadata: buildChangeRequestAuditMetadata(input.changeRequest, {
@@ -819,13 +844,12 @@ async function createParameterReviewAudit(
       note: input.note,
       expectedVersion: input.expectedVersion,
       participants: input.participants
-    }),
-    traceId: context.requestId ?? randomUUID()
+    })
   });
 }
 
 async function createImportAudit(
-  db: Queryable,
+  tx: AuditTx,
   auth: AuthContext,
   input: {
     projectId: string;
@@ -836,28 +860,30 @@ async function createImportAudit(
   },
   context: ServiceContext = {}
 ) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    actorUserId: auth.user.id,
-    actorType: "user",
+  // requestId fallback survives only until import contexts become mandatory
+  // (audited-write migration batches, ADR-0027).
+  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
     app: "parameter-management",
     kind: "batch-import",
     action: input.action ?? "apply",
     severity: "High",
+    projectId: input.projectId,
     targetType: "parameter-import-batch",
     targetId: input.batchId,
     metadata: {
       batchId: input.batchId,
       summary: input.summary,
       ...(input.reviewMetadata ? { reviewMetadata: input.reviewMetadata } : {})
-    },
-    traceId: context.requestId ?? randomUUID()
+    }
   });
 }
 
-export async function createImportPreview(db: Queryable, auth: AuthContext, input: CreateImportPreviewInput) {
+export async function createImportPreview(
+  db: Database,
+  auth: AuthContext,
+  input: CreateImportPreviewInput,
+  context: ServiceContext = {}
+) {
   requireCanAdminImport(auth);
   const parsed = assertValidCreateImportInput(input);
   await loadProjectForImport(db, auth, parsed.projectId);
@@ -915,31 +941,36 @@ export async function createImportPreview(db: Queryable, auth: AuthContext, inpu
   }
 
   const summary = summarizeImportItems(previewItems);
-  const batch = await insertImportBatch(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: parsed.projectId,
-    createdByUserId: auth.user.id,
-    sourceName: parsed.sourceName,
-    summary,
-    items: previewItems
-  });
-
-  if (parsed.reviewMetadata) {
-    await createImportAudit(db, auth, {
+  // Batch row and its preview audit commit together (ADR-0027); previously the batch
+  // insert ran auto-committed and the audit could be lost after it.
+  // requestId fallback survives only until import contexts become mandatory.
+  return withAuditedWrite(db, auth, { requestId: context.requestId ?? randomUUID() }, async (tx) => {
+    const batch = await insertImportBatch(tx, {
+      id: randomUUID(),
+      organizationId: auth.organization.id,
       projectId: parsed.projectId,
-      batchId: batch.id,
-      summary: {
-        added: summary.added,
-        updated: summary.updated,
-        skipped: parsed.reviewMetadata.skippedRows?.length ?? 0
-      },
-      action: "preview",
-      reviewMetadata: parsed.reviewMetadata
+      createdByUserId: auth.user.id,
+      sourceName: parsed.sourceName,
+      summary,
+      items: previewItems
     });
-  }
 
-  return batch;
+    if (parsed.reviewMetadata) {
+      await createImportAudit(asAuditTx(tx), auth, {
+        projectId: parsed.projectId,
+        batchId: batch.id,
+        summary: {
+          added: summary.added,
+          updated: summary.updated,
+          skipped: parsed.reviewMetadata.skippedRows?.length ?? 0
+        },
+        action: "preview",
+        reviewMetadata: parsed.reviewMetadata
+      }, context);
+    }
+
+    return { result: batch, audit: null };
+  });
 }
 
 export async function applyImportBatch(db: Database, auth: AuthContext, input: ApplyImportBatchInput, context: ServiceContext = {}) {
@@ -1070,7 +1101,7 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
       throw new ApiError("NOT_FOUND", "Parameter import batch was not found.", 404, { batchId: parsed.batchId });
     }
 
-    await createImportAudit(tx, auth, {
+    await createImportAudit(asAuditTx(tx), auth, {
       projectId: batch.projectId,
       batchId: batch.id,
       summary: {
@@ -1100,7 +1131,7 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
 }
 
 export async function saveDraft(db: Queryable, auth: AuthContext, input: SaveDraftInput) {
-  requireCanEdit(auth);
+  requireCanEdit(auth, input.projectId);
   if (parameterIdentityMode() === "semantic") {
     throw new ApiError(
       "CONFLICT",
@@ -1142,7 +1173,7 @@ export async function listWorkflowAssignees(db: Queryable, auth: AuthContext, pr
 }
 
 export async function submitParameterChanges(db: Database, auth: AuthContext, input: SubmitParameterChangesInput, context: ServiceContext = {}) {
-  requireCanEdit(auth);
+  requireCanEdit(auth, input.projectId);
 
   if (input.items.length === 0) {
     throw new ApiError("VALIDATION_FAILED", "At least one parameter change is required.", 400);
@@ -1598,16 +1629,14 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
       items.push(submissionItem);
     }
 
-    await createAuditEvent(tx, {
-      id: randomUUID(),
-      organizationId: auth.organization.id,
-      projectId: input.projectId,
-      actorUserId: auth.user.id,
-      actorType: "user",
+    // requestId fallback survives only until this function's context becomes mandatory
+    // (audited-write migration batches, ADR-0027).
+    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
       app: "parameter-management",
       kind: "parameter-submit",
       action: "submit",
       severity: "Medium",
+      projectId: input.projectId,
       targetType: "parameter-submission-round",
       targetId: round.id,
       metadata: {
@@ -1624,8 +1653,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         ),
         actions: input.items.map((item) => ("draftId" in item ? item.action ?? "set" : "set")),
         candidateConfigRevisionIds: tipIds
-      },
-      traceId: context.requestId ?? randomUUID()
+      }
     });
 
     if (workflowAssignees?.hardwareCommitterId) {
@@ -1820,22 +1848,19 @@ export async function withdrawSubmissionRound(
       summary: `${round.summary} 已由提交人撤回。`
     });
 
-    await createAuditEvent(tx, {
-      id: randomUUID(),
-      organizationId: auth.organization.id,
-      projectId: round.projectId,
-      actorUserId: auth.user.id,
-      actorType: "user",
+    // requestId fallback survives only until this function's context becomes mandatory
+    // (audited-write migration batches, ADR-0027).
+    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
       app: "parameter-management",
       kind: "parameter-submission-withdraw",
       action: "withdraw",
       severity: "Medium",
+      projectId: round.projectId,
       targetType: "parameter-submission-round",
       targetId: roundId,
       metadata: {
         itemCount: round.items.length
-      },
-      traceId: context.requestId ?? randomUUID()
+      }
     });
 
     const updated = await getSubmissionRoundById(tx, {
@@ -1888,7 +1913,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
         note: input.note
       });
       await updateRoundStatusIfNeeded(tx, auth, request.submissionRoundId);
-      await createParameterReviewAudit(tx, auth, {
+      await createParameterReviewAudit(asAuditTx(tx), auth, {
         projectId: request.projectId,
         requestId: input.requestId,
         kind: "parameter-review-reject",
@@ -1962,7 +1987,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
         note: input.note
       });
       await updateRoundStatusIfNeeded(tx, auth, request.submissionRoundId);
-      await createParameterReviewAudit(tx, auth, {
+      await createParameterReviewAudit(asAuditTx(tx), auth, {
         projectId: request.projectId,
         requestId: input.requestId,
         kind: "parameter-review-advance",
@@ -2159,7 +2184,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
       note: mergeLink
     });
     await updateRoundStatusIfNeeded(tx, auth, request.submissionRoundId);
-    await createParameterReviewAudit(tx, auth, {
+    await createParameterReviewAudit(asAuditTx(tx), auth, {
       projectId: request.projectId,
       requestId: input.requestId,
       kind: "parameter-merge",
@@ -2218,7 +2243,7 @@ function requireParameterAdmin(auth: AuthContext) {
 }
 
 async function createParameterModuleAudit(
-  db: Queryable,
+  tx: AuditTx,
   auth: AuthContext,
   input: {
     kind: "parameter-module-admin-create" | "parameter-module-admin-update" | "parameter-module-admin-move" | "parameter-module-admin-delete";
@@ -2228,16 +2253,14 @@ async function createParameterModuleAudit(
   },
   context: ServiceContext = {}
 ) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: null,
-    actorUserId: auth.user.id,
-    actorType: "user",
+  // requestId fallback survives only until module-admin contexts become mandatory
+  // (audited-write migration batches, ADR-0027).
+  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
     app: "parameter-management",
     kind: input.kind,
     action: input.action,
     severity: "Low",
+    projectId: null,
     targetType: "parameter-module",
     targetId: input.module.id,
     metadata: {
@@ -2245,8 +2268,7 @@ async function createParameterModuleAudit(
       path: input.module.path,
       parentId: input.module.parentId,
       ...input.metadata
-    },
-    traceId: context.requestId ?? randomUUID()
+    }
   });
 }
 
@@ -2401,7 +2423,7 @@ export async function createParameterModuleForAuth(
     });
 
     await createParameterModuleAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         kind: "parameter-module-admin-create",
@@ -2532,7 +2554,7 @@ export async function updateParameterModuleForAuth(
     }
 
     await createParameterModuleAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         kind: "parameter-module-admin-update",
@@ -2597,7 +2619,7 @@ export async function moveParameterModuleForAuth(
       }
 
       await createParameterModuleAudit(
-        tx,
+        asAuditTx(tx),
         auth,
         {
           kind: "parameter-module-admin-move",
@@ -2633,18 +2655,23 @@ export async function deleteParameterModuleForAuth(
 
   if (current.kind === "driver-group") {
     const { disbandDriverGroupModule } = await import("../parameter-modules/service");
-    await disbandDriverGroupModule(db, auth, { moduleId });
-    await createParameterModuleAudit(
-      db,
-      auth,
-      {
-        kind: "parameter-module-admin-delete",
-        action: "delete",
-        module: current,
-        metadata: { disbanded: true }
-      },
-      context
-    );
+    // Disband and its audit commit together (ADR-0027); the disband's own transaction
+    // degrades to a savepoint. requestId fallback survives until contexts are mandatory.
+    await withAuditedWrite(db, auth, { requestId: context.requestId ?? randomUUID() }, async (tx) => {
+      await disbandDriverGroupModule(tx, auth, { moduleId });
+      await createParameterModuleAudit(
+        asAuditTx(tx),
+        auth,
+        {
+          kind: "parameter-module-admin-delete",
+          action: "delete",
+          module: current,
+          metadata: { disbanded: true }
+        },
+        context
+      );
+      return { result: undefined, audit: null };
+    });
     return;
   }
 
@@ -2671,7 +2698,7 @@ export async function deleteParameterModuleForAuth(
     }
 
     await createParameterModuleAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         kind: "parameter-module-admin-delete",

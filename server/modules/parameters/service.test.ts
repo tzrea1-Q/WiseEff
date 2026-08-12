@@ -427,7 +427,7 @@ describe("parameter service", () => {
   });
 
   it("preview classifies added updated unchanged conflict and flags high-risk value deltas", async () => {
-    const { db, calls } = createFakeDb([
+    const { db, calls, txCalls } = createFakeDb([
       [projectRow()],
       [
         definitionRow({ id: "definition-updated", project_parameter_value_id: "param-updated" }),
@@ -529,11 +529,11 @@ describe("parameter service", () => {
       ["fast_charge_current_limit_ma", "thermal_guard_threshold_c", "new_balancing_window_s", "pack_voltage_limit_v"],
       []
     ]);
-    expect(calls.some((call) => call.text.includes("insert into parameter_import_batches"))).toBe(true);
+    expect(txCalls.some((call) => call.text.includes("insert into parameter_import_batches"))).toBe(true);
   });
 
   it("createImportPreview with reviewMetadata writes audit metadata containing skippedRows", async () => {
-    const { db, calls } = createFakeDb([
+    const { db, calls, txCalls } = createFakeDb([
       [projectRow()],
       [],
       [
@@ -573,7 +573,7 @@ describe("parameter service", () => {
       reviewMetadata
     });
 
-    const auditCall = calls.find((call) => call.text.includes("insert into audit_events"));
+    const auditCall = txCalls.find((call) => call.text.includes("insert into audit_events"));
     expect(auditCall).toBeDefined();
     expect(auditCall?.values).toContain("batch-import");
     expect(JSON.parse(auditCall?.values[11] as string)).toMatchObject({
@@ -582,7 +582,7 @@ describe("parameter service", () => {
   });
 
   it("createImportPreview without reviewMetadata does not write import audit", async () => {
-    const { db, calls } = createFakeDb([
+    const { db, calls, txCalls } = createFakeDb([
       [projectRow()],
       [],
       [
@@ -617,6 +617,7 @@ describe("parameter service", () => {
     });
 
     expect(calls.some((call) => call.text.includes("insert into audit_events"))).toBe(false);
+    expect(txCalls.some((call) => call.text.includes("insert into audit_events"))).toBe(false);
   });
 
   it("applyImportBatch merges reviewMetadata into apply audit metadata", async () => {
@@ -1330,6 +1331,50 @@ describe("parameter service", () => {
     ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter edit permission is required.", 403));
 
     expect(calls).toHaveLength(0);
+  });
+
+  it("rejects saving a draft for a project the editor is not bound to", async () => {
+    const { db, calls } = createFakeDb();
+
+    // software-user on project-1 carries the flat parameter:edit permission, but
+    // must not be able to write drafts into project-2.
+    await expect(
+      saveDraft(db, makeAuth({ roles: [{ projectId: "project-1", roleId: "software-user" }] }), {
+        projectId: "project-2",
+        parameterId: "param-1",
+        targetValue: "3100",
+        reason: "cross-project"
+      })
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter edit role is required for this project.", 403));
+
+    expect(calls).toHaveLength(0);
+  });
+
+  it("rejects submitting a change round for a project the editor is not bound to", async () => {
+    const { db, txCalls } = createFakeDb();
+
+    await expect(
+      submitParameterChanges(
+        db,
+        makeAuth({ roles: [{ projectId: "project-1", roleId: "software-user" }] }),
+        {
+          projectId: "project-2",
+          items: [
+            {
+              draftId: "draft-x",
+              projectParameterBindingId: "binding-x",
+              parameterSpecId: "spec-x",
+              action: "set",
+              targetValue: "<3000>",
+              reason: "cross-project"
+            }
+          ]
+        },
+        { requestId: "req-cross" }
+      )
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter edit role is required for this project.", 403));
+
+    expect(txCalls).toHaveLength(0);
   });
 
   it("user can save and list own draft", async () => {
