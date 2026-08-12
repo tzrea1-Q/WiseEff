@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-import { createAuditEvent } from "../audit/repository";
 import {
   asAuditTx,
   withAuditedWrite,
@@ -850,7 +849,7 @@ async function createParameterReviewAudit(
 }
 
 async function createImportAudit(
-  db: Queryable,
+  tx: AuditTx,
   auth: AuthContext,
   input: {
     projectId: string;
@@ -861,28 +860,30 @@ async function createImportAudit(
   },
   context: ServiceContext = {}
 ) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    actorUserId: auth.user.id,
-    actorType: "user",
+  // requestId fallback survives only until import contexts become mandatory
+  // (audited-write migration batches, ADR-0027).
+  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
     app: "parameter-management",
     kind: "batch-import",
     action: input.action ?? "apply",
     severity: "High",
+    projectId: input.projectId,
     targetType: "parameter-import-batch",
     targetId: input.batchId,
     metadata: {
       batchId: input.batchId,
       summary: input.summary,
       ...(input.reviewMetadata ? { reviewMetadata: input.reviewMetadata } : {})
-    },
-    traceId: context.requestId ?? randomUUID()
+    }
   });
 }
 
-export async function createImportPreview(db: Queryable, auth: AuthContext, input: CreateImportPreviewInput) {
+export async function createImportPreview(
+  db: Database,
+  auth: AuthContext,
+  input: CreateImportPreviewInput,
+  context: ServiceContext = {}
+) {
   requireCanAdminImport(auth);
   const parsed = assertValidCreateImportInput(input);
   await loadProjectForImport(db, auth, parsed.projectId);
@@ -940,31 +941,36 @@ export async function createImportPreview(db: Queryable, auth: AuthContext, inpu
   }
 
   const summary = summarizeImportItems(previewItems);
-  const batch = await insertImportBatch(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: parsed.projectId,
-    createdByUserId: auth.user.id,
-    sourceName: parsed.sourceName,
-    summary,
-    items: previewItems
-  });
-
-  if (parsed.reviewMetadata) {
-    await createImportAudit(db, auth, {
+  // Batch row and its preview audit commit together (ADR-0027); previously the batch
+  // insert ran auto-committed and the audit could be lost after it.
+  // requestId fallback survives only until import contexts become mandatory.
+  return withAuditedWrite(db, auth, { requestId: context.requestId ?? randomUUID() }, async (tx) => {
+    const batch = await insertImportBatch(tx, {
+      id: randomUUID(),
+      organizationId: auth.organization.id,
       projectId: parsed.projectId,
-      batchId: batch.id,
-      summary: {
-        added: summary.added,
-        updated: summary.updated,
-        skipped: parsed.reviewMetadata.skippedRows?.length ?? 0
-      },
-      action: "preview",
-      reviewMetadata: parsed.reviewMetadata
+      createdByUserId: auth.user.id,
+      sourceName: parsed.sourceName,
+      summary,
+      items: previewItems
     });
-  }
 
-  return batch;
+    if (parsed.reviewMetadata) {
+      await createImportAudit(asAuditTx(tx), auth, {
+        projectId: parsed.projectId,
+        batchId: batch.id,
+        summary: {
+          added: summary.added,
+          updated: summary.updated,
+          skipped: parsed.reviewMetadata.skippedRows?.length ?? 0
+        },
+        action: "preview",
+        reviewMetadata: parsed.reviewMetadata
+      }, context);
+    }
+
+    return { result: batch, audit: null };
+  });
 }
 
 export async function applyImportBatch(db: Database, auth: AuthContext, input: ApplyImportBatchInput, context: ServiceContext = {}) {
@@ -1095,7 +1101,7 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
       throw new ApiError("NOT_FOUND", "Parameter import batch was not found.", 404, { batchId: parsed.batchId });
     }
 
-    await createImportAudit(tx, auth, {
+    await createImportAudit(asAuditTx(tx), auth, {
       projectId: batch.projectId,
       batchId: batch.id,
       summary: {
@@ -2237,7 +2243,7 @@ function requireParameterAdmin(auth: AuthContext) {
 }
 
 async function createParameterModuleAudit(
-  db: Queryable,
+  tx: AuditTx,
   auth: AuthContext,
   input: {
     kind: "parameter-module-admin-create" | "parameter-module-admin-update" | "parameter-module-admin-move" | "parameter-module-admin-delete";
@@ -2247,16 +2253,14 @@ async function createParameterModuleAudit(
   },
   context: ServiceContext = {}
 ) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: null,
-    actorUserId: auth.user.id,
-    actorType: "user",
+  // requestId fallback survives only until module-admin contexts become mandatory
+  // (audited-write migration batches, ADR-0027).
+  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
     app: "parameter-management",
     kind: input.kind,
     action: input.action,
     severity: "Low",
+    projectId: null,
     targetType: "parameter-module",
     targetId: input.module.id,
     metadata: {
@@ -2264,8 +2268,7 @@ async function createParameterModuleAudit(
       path: input.module.path,
       parentId: input.module.parentId,
       ...input.metadata
-    },
-    traceId: context.requestId ?? randomUUID()
+    }
   });
 }
 
@@ -2420,7 +2423,7 @@ export async function createParameterModuleForAuth(
     });
 
     await createParameterModuleAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         kind: "parameter-module-admin-create",
@@ -2551,7 +2554,7 @@ export async function updateParameterModuleForAuth(
     }
 
     await createParameterModuleAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         kind: "parameter-module-admin-update",
@@ -2616,7 +2619,7 @@ export async function moveParameterModuleForAuth(
       }
 
       await createParameterModuleAudit(
-        tx,
+        asAuditTx(tx),
         auth,
         {
           kind: "parameter-module-admin-move",
@@ -2652,18 +2655,23 @@ export async function deleteParameterModuleForAuth(
 
   if (current.kind === "driver-group") {
     const { disbandDriverGroupModule } = await import("../parameter-modules/service");
-    await disbandDriverGroupModule(db, auth, { moduleId });
-    await createParameterModuleAudit(
-      db,
-      auth,
-      {
-        kind: "parameter-module-admin-delete",
-        action: "delete",
-        module: current,
-        metadata: { disbanded: true }
-      },
-      context
-    );
+    // Disband and its audit commit together (ADR-0027); the disband's own transaction
+    // degrades to a savepoint. requestId fallback survives until contexts are mandatory.
+    await withAuditedWrite(db, auth, { requestId: context.requestId ?? randomUUID() }, async (tx) => {
+      await disbandDriverGroupModule(tx, auth, { moduleId });
+      await createParameterModuleAudit(
+        asAuditTx(tx),
+        auth,
+        {
+          kind: "parameter-module-admin-delete",
+          action: "delete",
+          module: current,
+          metadata: { disbanded: true }
+        },
+        context
+      );
+      return { result: undefined, audit: null };
+    });
     return;
   }
 
@@ -2690,7 +2698,7 @@ export async function deleteParameterModuleForAuth(
     }
 
     await createParameterModuleAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         kind: "parameter-module-admin-delete",

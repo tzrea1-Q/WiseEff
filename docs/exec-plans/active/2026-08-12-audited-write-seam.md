@@ -52,14 +52,40 @@ queue-style unit test by design (that fake pattern is the C10 review finding); i
 covered by the seam's own transaction-order tests, type-level changes, and the
 `dts-structured` acceptance spec.
 
+## Batch 1a (branch `refactor/audited-write-migrate-parameters`, PR #362) — review audits
+
+`parameters/service.ts` review helpers (`createParameterReviewAudit`,
+`createStructuredEditAudit`) now take `AuditTx`; call sites brand via `asAuditTx(tx)`.
+Pure shape migration — both were already in-transaction.
+
+## Batch 1b (branch `refactor/audited-write-migrate-parameters-1b`, stacked on 1a)
+
+- **Import preview was a genuine gap ×2**: the batch insert ran auto-committed with the
+  preview audit lossable after it, and `createImportPreview` had no context parameter so
+  the audit `traceId` was always a random UUID. Now `withAuditedWrite` + `ServiceContext`;
+  the route passes `request.requestId`.
+- **Driver-group module delete was a genuine gap**: `disbandDriverGroupModule` committed
+  its own transaction before the audit was written outside it. Now one audited write
+  (the disband's inner transaction degrades to a savepoint).
+- Shape migrations: `createImportAudit` / `createParameterModuleAudit` take `AuditTx`
+  (module CRUD call sites were already in-tx); `initializationService` submit/approve/
+  reject audits use `writeAuditEventInTx` inside their existing transactions.
+- Ratchet: `parameters/service.ts` and `parameters/initializationService.ts` reach zero.
+
+**Refusal audits are out of scope for this seam.** `parameters/sensitiveNode.ts` (and the
+same pattern in `dts-reload/policy.ts`, `dts-reload/sensitiveGate.ts`) write a deny audit
+and then *throw*. That evidence must **survive** the caller's rollback — the opposite
+contract from `withAuditedWrite`. They stay on the ratchet allowlist with a comment until
+a deliberate refusal-audit design exists (post-rollback write on a fresh connection, or an
+outbox); do not mechanically migrate them.
+
 ## PR2+ migration inventory (ratchet allowlist, 41 direct calls in 27 files)
 
 Migrate per module; each batch moves call sites to `withAuditedWrite`/`writeAuditEventInTx`
 and lowers the ratchet. Suspected genuine gaps first:
 
-1. `parameters/service.ts` (5: module-CRUD helper ×1 shared by 5 call sites, import
-   preview, review helpers already in-tx via `tx` argument — verify each), 
-   `parameters/initializationService.ts` (3), `parameters/sensitiveNode.ts` (1).
+1. ~~`parameters/service.ts`, `parameters/initializationService.ts`~~ (done, batches 1a/1b);
+   `parameters/sensitiveNode.ts` (1) stays — refusal audit, see above.
 2. `parameter-files/*` (12 across 9 files — baselineService 3, syncService 2, candidate/
    configSet/conflict/export/service/validationGate/writeback 1 each).
 3. `dts-reload/*` (4), `parameter-modules/service.ts` (2), `parameter-specs/

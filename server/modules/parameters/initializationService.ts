@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { AuditCorrelationContext } from "../audit/types";
-import { createAuditEvent } from "../audit/repository";
+import { asAuditTx, writeAuditEventInTx } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
 import { getConfigSetByProjectAndName } from "../parameter-files/configSetRepository";
 import { createOrReuseBinding, upsertBindingRevisionValues } from "../parameter-topology/bindingService";
@@ -395,16 +395,12 @@ export async function submitDraft(
       status: "initialization_pending_review"
     });
 
-    await createAuditEvent(tx, {
-      id: randomUUID(),
-      organizationId: auth.organization.id,
-      projectId: input.projectId,
-      actorUserId: auth.user.id,
-      actorType: "user",
+    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
       app: "parameter-admin",
       kind: "project-initialization-submitted",
       action: "submit",
       severity: "Medium",
+      projectId: input.projectId,
       targetType: "project-parameter-initialization-review",
       targetId: review.id,
       metadata: {
@@ -414,8 +410,7 @@ export async function submitDraft(
         emptyLibrary: draft.emptyLibrary,
         bindingCount: draft.bindingSnapshots.length,
         sourceProjectIds: draft.sourceProjectIds
-      },
-      traceId: context.requestId ?? randomUUID()
+      }
     });
 
     return review;
@@ -492,16 +487,12 @@ export async function approveReview(
       status: "initialized"
     });
 
-    await createAuditEvent(tx, {
-      id: randomUUID(),
-      organizationId: auth.organization.id,
-      projectId: review.projectId,
-      actorUserId: auth.user.id,
-      actorType: "user",
+    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
       app: "parameter-admin",
       kind: "project-initialization-approved",
       action: "approve",
       severity: "Medium",
+      projectId: review.projectId,
       targetType: "project-parameter-initialization-review",
       targetId: approved.id,
       metadata: {
@@ -510,8 +501,7 @@ export async function approveReview(
         projectId: review.projectId,
         emptyLibrary: draft.emptyLibrary,
         bindingCount: draft.bindingSnapshots.length
-      },
-      traceId: context.requestId ?? randomUUID()
+      }
     });
 
     return approved;
@@ -572,16 +562,12 @@ export async function rejectReview(
       status: "initialization_rejected"
     });
 
-    await createAuditEvent(tx, {
-      id: randomUUID(),
-      organizationId: auth.organization.id,
-      projectId: review.projectId,
-      actorUserId: auth.user.id,
-      actorType: "user",
+    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
       app: "parameter-admin",
       kind: "project-initialization-rejected",
       action: "reject",
       severity: "Medium",
+      projectId: review.projectId,
       targetType: "project-parameter-initialization-review",
       targetId: rejected.id,
       metadata: {
@@ -589,8 +575,7 @@ export async function rejectReview(
         reviewId: rejected.id,
         projectId: review.projectId,
         reason
-      },
-      traceId: context.requestId ?? randomUUID()
+      }
     });
 
     return rejected;
