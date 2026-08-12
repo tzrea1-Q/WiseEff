@@ -1,7 +1,7 @@
-# Parameters Repository Split — Slices 1–2 (Architecture Review Candidate 3)
+# Parameters Repository Split — Slices 1–3 (Architecture Review Candidate 3)
 
-- **Status:** Active (slice 1 merged as PR #321; slice 2 implemented)
-- **Branch:** slice 1 `refactor/parameters-repository-split-1` (from `main` @ `faa6cc19`); slice 2 `refactor/parameters-repository-split-2` (from `main` @ `5826b2b2`, after PR #328's identity-mode single seam)
+- **Status:** Active (slice 1 merged as PR #321; slice 2 in review as PR #340; slice 3 implemented)
+- **Branch:** slice 1 `refactor/parameters-repository-split-1` (from `main` @ `faa6cc19`); slice 2 `refactor/parameters-repository-split-2` (from `main` @ `5826b2b2`, after PR #328's identity-mode single seam); slice 3 `refactor/parameter-drafts-module` (stacked on slice 2 @ `6ffb07e8`, after the #336 test repoint)
 - **Owner:** Backend
 - **Scope source:** 2026-08-12 architecture review, Candidate 3: `server/modules/parameters/repository.ts` is a god module — 5,435 lines, 68 exported functions touching ~35 tables in one flat namespace, imported by 40+ files including 12+ other backend modules. Candidates 1–2 (frontend shell) are owned by `2026-08-12-app-shell-decomposition.md`.
 
@@ -34,11 +34,24 @@ Slice 2 import sites repointed: `parameters/service.ts`, `parameters/listOpenCon
 
 Slice 2 also closes the PR #327 type residue in `parameter-topology`: `BindingDraftWriteTarget` now lives in `writeLock.ts` (its producer), `BindingEditAction` and `CreateBindingDraftDeps` in `overlayWriteback.ts` (their primary consumer); `writeLock.ts` and `overlayWriteback.ts` no longer import anything from `editService.ts`, making the runtime and type graphs both acyclic (`editService → overlayWriteback → writeLock`).
 
+## Slice 3 — parameter drafts become a standalone staging module (implemented)
+
+Slice 3 resolves the drafts-ownership decision slice 2 deferred (ADR-0028): the draft aggregate belongs to neither workflow module, because editing (`parameter-topology`) writes drafts and submission/review (`parameters`) reads them. Same verbatim rules; no re-exports; all import sites repointed.
+
+1. **`server/modules/parameter-drafts/repository.ts`** — the entire `parameters/draftRepository.ts`, verbatim (only import lines changed). `draftRepository.test.ts` moves alongside as `repository.test.ts`.
+2. **`server/modules/parameter-drafts/types.ts`** — the staging vocabulary, moved verbatim: `ParameterChangeAction` and `ParameterDraftDto` from `parameters/types.ts` (the draft DTO had exactly one importer — the draft repository), plus the persisted write-lock field shapes `BindingWriteLockFields` / `EnablementWriteLockFields` from `parameter-topology/writeLock.ts`. Write-lock resolution/verification and the `*WriteLockContext` types stay in `writeLock.ts`.
+3. **`server/modules/parameter-drafts/semanticDraftUpsert.ts`** — `upsertSemanticDraft` moved verbatim out of `parameters/semanticParameterReads.ts` (it writes `parameter_drafts` and had one importer, the draft repository; the source file keeps only reads, matching its name).
+4. **`server/shared/database/sqlUtil.ts`** — `dateTimeToIso` and `addCondition` moved verbatim from `parameters/repositoryShared.ts`, which keeps only `resolveParameterValueKind` (drafts code does not use it).
+
+**Dependency-direction invariant:** `server/modules/parameter-drafts/**` imports nothing from `server/modules/parameter-topology/**`; its parameters imports are limited to `parameterIdentityMode` — part of the deferred shared-kernel seam (`policy` / `parameterIdentityMode` / `sensitiveNode` / `legacyParameterIdentityAdapter`), deliberately left in place until the shared-kernel slice (proof: `rg "from \"\.\./(parameters|parameter-topology)/" server/modules/parameter-drafts/` returns exactly the one `parameterIdentityMode` line).
+
+Slice 3 import sites repointed: `parameters/service.ts` (draft repository + `ParameterChangeAction`), `parameters/types.ts` (imports `ParameterChangeAction` from the drafts module for change-request DTOs), `parameters/reviewWorkflowRepository.ts` (lock-field types + `ParameterChangeAction`), `parameters/{repository,projectRepository,importBatchRepository,fileSyncConflictRepository}.ts` (shared SQL helpers), `parameter-topology/writeLock.ts` (imports the moved field types), `parameter-topology/editService.ts` (+ `editService.test.ts` dynamic import, `postCutoverWorkflow.integration.test.ts`, `legacyDependencyGuard.test.ts` allowlist path), `parameter-files/{writebackService,syncService,conflictService}.ts` (+ `syncService.test.ts` import and mock), `agent/tools/actionTools.ts` (+ its test's import and mock). `contracts/routeManifest.ts` unchanged — the module registers no routes, and `RouteModule` only enumerates route-owning modules.
+
 ## Non-goals (deferred by design)
 
 - ~~**The draft cluster stays in `repository.ts`**~~ — done in slice 2 (see above).
 - **No port interface.** A formal repository port is deferred to the test-foundation follow-up (`2026-08-12-test-foundation-deepening.md` stream), when a second adapter exists to justify it.
-- **No parameters↔parameter-topology cycle break.** After slice 2 the cross-module edges are: `repository.ts`/`importBatchRepository.ts` import `LEGACY_SQL` from `parameter-topology/migration`, `draftRepository.ts`/`reviewWorkflowRepository.ts` import the write-lock types from `parameter-topology/writeLock`, while parameter-topology services import parameters repositories. Breaking the module-level cycle needs a drafts-ownership design decision (which module owns `parameter_drafts` and the write-lock vocabulary) that these slices do not preempt.
+- ~~**No parameters↔parameter-topology cycle break.**~~ — the drafts-ownership decision landed in slice 3 (ADR-0028): the draft edge (topology → parameters) and the lock-type edges (parameters → topology) are gone. The cycle still closes through the shared-kernel seam (topology → parameters: `policy`, `parameterIdentityMode`, `sensitiveNode`, `legacyParameterIdentityAdapter`) and through parameters → topology imports of write-lock verification, `resolveInitializationSuggestion`, and migration `LEGACY_SQL`; that shared-kernel slice remains deferred and is not preempted here.
 - No frontend, agent-logic, packages, or dts-reload changes beyond import-path updates.
 
 ## Import sites repointed (slice 1)
@@ -56,6 +69,7 @@ Slice 2 also closes the PR #327 type residue in `parameter-topology`: `BindingDr
 - `npm run test:server` (full suite); at minimum all `server/modules/parameters/*.test.ts`, `server/modules/parameter-files/*.test.ts`, `server/modules/parameter-topology/service.test.ts`, and every edited test file.
 - `npm run docs:check`.
 - Slice 2: `npx tsc -b` exit 0 (pipestatus-verified); `npm run test:server -- parameters parameter-topology parameter-files` — 651 passed / 45 failed, with the failing files and counts byte-identical to a detached `main` checkout run (pre-existing local-DB schema issue: `relation "project_parameter_values" does not exist` in integration/dashboard suites); mechanical multiset line-diff of old vs. new files confirms all moved bodies verbatim (only import lines and the dropped re-export differ); `npm run docs:check` green.
+- Slice 3: `npx tsc -b` exit 0 (captured directly, not through a pipe); `npm run build` exit 0; `npm run test:server -- parameter-drafts parameters parameter-topology parameter-files actionTools` — 552 passed / 146 failed in 95 files, with the failing-file list byte-identical (timings stripped) to the same command on a detached checkout of the slice-2 base `6ffb07e8`. All failures are shared-local-DB environment drift, not slice changes: the long-standing `relation "project_parameter_values" does not exist` issue plus a knowledge-migration numbering collision (the shared test DB has `0102_knowledge_foundation.sql` recorded from the in-flight knowledge worktree, so main's `0103_knowledge_foundation.sql` replay fails on `knowledge_entries_head_revision_fk` already existing). `parameter-drafts/repository.test.ts`, `actionTools` suites, and `legacyDependencyGuard` pass. Segment diffs against `git show` of the base prove `repository.ts`, `repository.test.ts`, the `types.ts` definitions, and `upsertSemanticDraft` byte-identical apart from import lines; dependency invariant proven by `rg` (one `parameterIdentityMode` hit, zero parameter-topology hits); `npm run docs:check` green.
 
 ## UI Interaction Automation Review
 
@@ -65,6 +79,7 @@ Behavior-preserving backend refactor: no route, endpoint, DTO, permission, or UI
 
 - Slice 1: branch `refactor/parameters-repository-split-1` from `main`. Logical commits: project cluster extraction, review-workflow cluster extraction, plan doc.
 - Slice 2: branch `refactor/parameters-repository-split-2` from `main` @ `5826b2b2`. Logical commits: repository split (draft/fileSyncConflict/importBatch + shared helpers), edit-type re-home, plan docs.
+- Slice 3: branch `refactor/parameter-drafts-module` stacked on slice 2 @ `6ffb07e8`. Logical commits: shared SQL helpers, drafts module extraction, docs (ADR + plan + architecture).
 - Implementation agent commits on the feature branch only; the parent agent reviews, opens the GitHub PR, merges, and syncs local `main`.
 
 ## Documentation Impact Matrix
@@ -72,8 +87,9 @@ Behavior-preserving backend refactor: no route, endpoint, DTO, permission, or UI
 | Doc | Path | Impact |
 | --- | --- | --- |
 | Repository map | `AGENTS.md` | No change (module map lists directories, not files) |
-| Architecture | `ARCHITECTURE.md` | No change (documents the `server/modules/*` boundary, not intra-module file layout) |
-| Architecture (zh) | `docs/zh-CN/architecture.md` | No change |
+| Architecture | `ARCHITECTURE.md` | Slices 1–2: no change. Slice 3: added the `server/modules/parameter-drafts/` bullet to the backend boundaries list |
+| Architecture (zh) | `docs/zh-CN/architecture.md` | No change — that file keeps a condensed module summary that already omits `parameter-files`/`parameter-topology`/`parameter-specs` etc.; it does not track the per-module list |
+| ADRs / domain index | `docs/adr/README.md`, `CONTEXT.md` | Slice 3: ADR-0028 added to both indexes; `Parameter draft` glossary entry added to `CONTEXT.md` |
 | Full-stack architecture | `docs/design-docs/full-stack-architecture.md` | Review — mentions module repository files generically; no row names `parameters/repository.ts` explicitly (verified via search; unchanged) |
 | Domain model | `docs/design-docs/domain-model.md` | No change (entities and state machines unchanged) |
 | Plans index | `docs/PLANS.md` | Update at closeout — add this plan to Current Active Plan when the parent merges |
@@ -95,4 +111,5 @@ This plan cannot move to `completed/` until every Update/Review row above is eit
 
 - Slice 1: `repository.ts` shrinks from 5,435 to ~2,690 lines; `projectRepository.ts` ~456 lines (8 exported functions); `reviewWorkflowRepository.ts` ~2,317 lines (24 exported functions + 3 private helpers).
 - Slice 2: `repository.ts` 2,674 → 660 lines (listing/detail/history + value/source binding only); `draftRepository.ts` 1,160 lines; `fileSyncConflictRepository.ts` 432 lines; `importBatchRepository.ts` 426 lines; `repositoryShared.ts` 27 lines; `editService.ts` 1,241 → 1,217 lines with `writeLock.ts`/`overlayWriteback.ts` importing nothing from it.
+- Slice 3: `server/modules/parameter-drafts/` exists (`repository.ts` + `types.ts` + `semanticDraftUpsert.ts` + `repository.test.ts`) with the dependency-direction invariant above; `parameters/draftRepository.ts` is gone; `shared/database/sqlUtil.ts` holds the generic SQL helpers.
 - Zero behavior change: moved bodies are byte-identical to the originals; no extracted module imports from `./repository`; no compatibility re-exports.
