@@ -35,6 +35,9 @@ Current frontend permissions include:
 - `parameter:edit-critical` (safety-critical / sensitive-node writes; Hardware/Software Committer and Admin have it by default)
 - `debugging:use`
 - `logs:upload`
+- `knowledge:view` (default for all organization members)
+- `knowledge:edit` (create entries; govern OWN entries)
+- `knowledge:manage` (govern any entry; hard delete; admin-tier)
 - `parameter:review`
 - `admin:access`
 - `users:manage`
@@ -93,6 +96,15 @@ For product feedback:
 - Attachments are limited to `image/png`, `image/jpeg`, or `image/webp`, up to 5 images, 5 MB per image, and 15 MB total. The database stores metadata and object-store keys, not inline image bytes.
 - Product feedback is product-level beta feedback and must remain separate from M2 log-analysis feedback and its `logs:feedback` permission.
 
+For the knowledge base:
+
+- Every `/api/v1/knowledge/*` route enforces `knowledge:view` / `knowledge:edit` / `knowledge:manage` server-side; UI gating is UX only.
+- Publisher accountability (design D18): `knowledge:edit` creates entries and governs OWN entries (edit, publish, archive); it never publishes or edits another person's work. Cross-person governance and hard delete concentrate in `knowledge:manage`.
+- Draft entries are visible to their owner and `knowledge:manage` holders only; search covers published entries only, so drafts and archived entries cannot leak through retrieval.
+- `knowledge_entries`, `knowledge_revisions`, and `knowledge_files` are organization-scoped and every repository read/write filters by the authenticated `organization_id`.
+- File uploads accept PDF, `.docx`, `.doc`, and plain text/markdown up to 20 MB; bytes live in the shared object store while the database stores metadata, checksums, and honest extraction state.
+- Agents are not knowledge actors in Phase 1 (no knowledge Agent tools exist); the schema already states source attribution (`human` | `agent`) so later phases can add the approval-gated draft tool without a model change.
+
 For M3 debugging:
 
 - Device and parameter reads require `debugging:view` and `debugging:read`.
@@ -124,6 +136,8 @@ M1 parameter-management writes emit audit events from the backend for `parameter
 M2 log-analysis writes emit backend audit events for `log-upload`, `log-upload-failed`, `log-rerun`, `log-archive`, `log-unarchive`, and `log-feedback`. The UI may hide or disable actions by role, but the server permission check and audit write are the authoritative boundary.
 
 Product feedback writes emit backend audit events for `product-feedback-create` and `product-feedback-update`. Audit metadata includes feedback type, status, page path, attachment count, and previous/next status for admin triage updates; attachment object bytes are not copied into audit metadata.
+
+Knowledge base writes emit backend audit events for `knowledge-entry-create`, `knowledge-entry-update`, `knowledge-entry-publish`, `knowledge-entry-archive`, `knowledge-entry-restore`, `knowledge-revision-restore`, and `knowledge-entry-delete` (severity `High`). Metadata carries content form, title, revision numbers, and lifecycle transitions with the request trace; extracted file text is not copied into audit metadata.
 
 M3 debugging emits backend audit events for target detection, session creation, node reads, node writes, and snapshot rollback. Write audit metadata includes the session, operation, node path, requested value, previous value, readback value, verification result, failure reason, and snapshot id when applicable.
 

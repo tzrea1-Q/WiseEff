@@ -16,6 +16,7 @@ WiseEff 前端是 Vite、React、TypeScript 单页应用。它同时支持 mock 
 - `src/components/`：复用 UI、表格、弹窗、过滤器、图表。
 - `src/features/agent/`：Xiaoze（小泽）CopilotKit 表面（`XiaozeProvider`、`useXiaozePageContext`、`XiaozeApprovalCard`、前端工具）。
 - `src/features/product-feedback/`：侧边栏 `FeedbackDialog` 与 `/feedback-admin` 反馈处理 UI。
+- `src/features/knowledge/`：知识库页面（`/knowledge` 与 `/knowledge-admin`:列表、分栏编辑器、文件上传、修订历史）。
 - `src/test/setup.ts`：Vitest DOM 初始化。
 
 ## Runtime 模式
@@ -52,6 +53,7 @@ API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒
 - DTS 结构化产品面：`DtsStructuredRepository`（`resolveDtsStructuredRepository` → mock / `dtsStructuredClient`）
 - 日志分析：`LogAnalysisRepository`
 - 产品反馈：`ProductFeedbackRepository`
+- 知识库：`KnowledgeRepository`
 - 设备调试：`DebuggingGateway`
 每个 port 通常有两类实现：
 
@@ -170,6 +172,13 @@ mock mode 有意保留 12 个兼容参数，以保证组件测试与演示轻量
 - 全局「问题反馈」入口打开 `FeedbackDialog`，通过 `ProductFeedbackRepository.submit` 提交当前 `pagePath`、`pageTitle`、反馈类型、描述和图片文件。
 - `/feedback-admin`：Admin-only 反馈处理页，通过同一 port 列表/搜索/筛选、查看详情与附件、填写 `adminNote`，并按 `open -> in_progress -> closed` 推进状态。
 - mock mode 使用 `src/infrastructure/mock/mockProductFeedbackRepository.ts`；API mode 使用 `src/infrastructure/http/productFeedbackClient.ts`，对接 `/api/v1/product-feedback` 及附件内容路由。
+
+知识库：
+
+- `/knowledge`（侧栏分组「知识库」）：条目列表用共享 `ColumnFilter` 做状态/标签列筛选;检索框只命中 `published` 条目;分栏编辑/预览的 Markdown 编辑器（`src/domain/knowledge/markdown.ts` 先转义再渲染）;文件条目上传后展示提取状态徽章;修订历史支持「恢复为新修订」。
+- `/knowledge-admin`：Phase 1 治理骨架——已归档条目恢复与 manage 门控的彻底删除（带确认勾选的 `ConfirmDialog`）;Agent 草稿队列与索引健康在后续阶段加入。
+- 端口 `KnowledgeRepository`:mock 用 `src/infrastructure/mock/mockKnowledgeRepository.ts`（fixtures 覆盖草稿/已发布/已归档与提取失败文件,端口形状一致）;API 用 `src/infrastructure/http/knowledgeClient.ts` 对接 `/api/v1/knowledge/*`。过期保存映射为 `KnowledgeRevisionConflictError`,编辑器渲染为可读的刷新重试冲突提示,绝不静默覆盖。
+- 能力接线:`App.tsx` 由 `/api/v1/me` 权限（API mode 的 `knowledge:edit` / `knowledge:manage`）或角色检查（mock mode）构造 `KnowledgeCapability`;UI 门控仅是 UX,后端路由才是安全边界。纯生命周期/可见性规则在 `src/domain/knowledge/rules.ts`。
 
 设备调试：
 
