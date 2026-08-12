@@ -198,6 +198,9 @@ export async function listGovernedUsers(db: Queryable, auth: AuthContext) {
 export async function createUser(db: Database, auth: AuthContext, input: CreateUserInput, context: AuditCorrelationContext = {}) {
   requireUserManager(auth);
   const roles = normalizeRoles(input.roles);
+  // A new user starts with no roles; block granting platform-admin unless the caller holds it,
+  // matching replaceUserRoles so user creation cannot be a platform-admin escalation path.
+  assertPlatformAdminGrantAllowed(auth, [], roles);
   const name = input.name.trim();
   const username = normalizeUsername(input.username);
   requireUsername(username);
@@ -342,7 +345,11 @@ export async function replaceUserRoles(
 
 export async function listRegistrationRoleRequests(db: Queryable, auth: AuthContext) {
   requireUserManager(auth);
-  return hasAdminRole(auth.roles) ? listAllPendingRegistrationRoleRequests(db) : listPendingRegistrationRoleRequests(db, auth.organization.id);
+  // Cross-organization visibility is a platform-admin capability; an org admin
+  // only governs registrations inside their own tenant.
+  return callerHasPlatformAdmin(auth)
+    ? listAllPendingRegistrationRoleRequests(db)
+    : listPendingRegistrationRoleRequests(db, auth.organization.id);
 }
 
 export async function approveRegistrationRoleRequest(
@@ -354,7 +361,7 @@ export async function approveRegistrationRoleRequest(
   requireUserManager(auth);
 
   return db.transaction(async (tx) => {
-    const request = hasAdminRole(auth.roles)
+    const request = callerHasPlatformAdmin(auth)
       ? await getPendingRegistrationRoleRequestByIdForAdmin(tx, requestId)
       : await getPendingRegistrationRoleRequestById(tx, { organizationId: auth.organization.id, requestId });
     if (!request) {
@@ -417,7 +424,7 @@ export async function rejectRegistrationRoleRequest(
   requireUserManager(auth);
 
   return db.transaction(async (tx) => {
-    const request = hasAdminRole(auth.roles)
+    const request = callerHasPlatformAdmin(auth)
       ? await getPendingRegistrationRoleRequestByIdForAdmin(tx, requestId)
       : await getPendingRegistrationRoleRequestById(tx, { organizationId: auth.organization.id, requestId });
     if (!request) {

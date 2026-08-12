@@ -29,6 +29,7 @@ Current baseline: M0-M5 productization work is merged. These docs should describ
 | Locked design | [Knowledge Base](2026-08-12-knowledge-base-design.md) | Organization-scoped agentic knowledge base: flat tagged entries, wiki-lite lifecycle, published-only hybrid retrieval (ADR-0025), Xiaoze tools with citations, distillation loop. |
 | Current | [DTS Follow-up Scheme (Hardening + Import)](2026-07-15-dts-followup-scheme.md) | Post–P0–P3.1 follow-up scheme: hardening closeout (B) and import-wizard TD-035 alignment (C); Git publish deferred. |
 | Current | [Table Column Multi-Select Filter UX](ux-table-column-filter.md) | Standard header funnel + checkbox filter (`ColumnFilter`); reuse for all similar table column filters. |
+| Current | [UI Design System](ui-design-system.md) | Operational visual standard: design tokens, component contracts, interaction states, motion, layout, and content language for every product surface. |
 
 ## Historical Feature Designs
 

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { makeTestAuthContext } from "../../testing/authContext";
 import { ApiError } from "../../shared/http/errors";
 import { activateParameterSpec, createParameterSpec } from "./service";
 
@@ -18,19 +19,14 @@ const NODE_SUBJECT = "asub:nodetype:create-spec-charger";
 const databaseAvailable = await isTestDatabaseAvailable();
 
 function makeAuth(): AuthContext {
-  return {
-    user: {
-      id: USER_ID,
-      organizationId: ORG_ID,
-      name: "Create Spec Admin",
-      email: "create-spec@example.com",
-      title: "Admin",
-      isActive: true,
-    },
-    organization: { id: ORG_ID, name: "Create Spec Org" },
-    roles: [{ projectId: null, roleId: "admin" }],
+  return makeTestAuthContext({
+    userId: USER_ID,
+    organizationId: ORG_ID,
+    name: "Create Spec Admin",
+    email: "create-spec@example.com",
+    organizationName: "Create Spec Org",
     permissions: ["parameter:view", "parameter:edit", "admin:access"],
-  };
+  });
 }
 
 async function seedSubjects(db: InMemoryTestDatabase) {

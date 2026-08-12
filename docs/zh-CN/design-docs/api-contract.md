@@ -160,7 +160,7 @@ M2 日志与 M3 调试运行时/catalog API 以认证用户的 `organization_id`
 
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
-| `GET` | `/api/v1/dts-reload/projects/:projectId/candidates` | `debugging:view` 或 `debugging:dts-reload` | 项目候选参数（可调试性、sensitiveMatch、lastReload）。具备非空绝对 `nodePath`、支持的重载值形态与库基线即可调试（含单段 `/label`，不再有 synthesised-anchor 路径形状拒绝）。已支持形态含 u32/u8/u16 cell（含 `/bits/ 8`）、目录 `string` 单字符串（如 `replace_sensor`）、`string-list`、GPIO 风格 `phandle-cells`。 |
+| `GET` | `/api/v1/dts-reload/projects/:projectId/candidates` | `debugging:view` 或 `debugging:dts-reload` | 项目候选参数（可调试性、sensitiveMatch、lastReload）。每个候选同时返回目录原始 `valueShapeKind`（仅展示）与服务端解析的 `resolvedValueShape`（归一化的重载值形态词汇，或 null）；客户端的录入校验、占位符与示例一律以 `resolvedValueShape` 为准，绝不使用目录原始 kind——解析需要 DTS 解析器与库基线。具备非空绝对 `nodePath`、支持的重载值形态与库基线即可调试（含单段 `/label`，不再有 synthesised-anchor 路径形状拒绝）。已支持形态含 u32/u8/u16 cell（含 `/bits/ 8`）、目录 `string` 单字符串（如 `replace_sensor`）、`string-list`、GPIO 风格 `phandle-cells`。 |
 | `POST` | `/api/v1/dts-reload/projects/:projectId/runs` | `debugging:dts-reload` | 启动运行（批量 targets；critical 可能需 `confirm-sensitive-reload`） |
 | `POST` | `/api/v1/dts-reload/runs/:runId/deploy` | `debugging:dts-reload` | 进程内桥接部署；需 `confirm-dts-reload` |
 | `GET` | `/api/v1/dts-reload/runs` / `.../:runId` | 查看路径 | 历史与含重载快照的详情 |
@@ -448,7 +448,7 @@ Admin 项目摘要（`GET/POST /api/v1/parameters/admin/projects`）同时返回
 | `GET` | `/api/v1/projects/:projectId/parameter-file-conflicts` | 列出项目内 open 冲突。每条含 `baseValue`、`parameterName` / `parameterModule`、可读 `fileVersionLabel`（及版本号/时间）、来源身份（`fileId`、`fileName`、`configSetId`、`nodePath`、`propertyName`，可选 `source` 定位）。 |
 | `POST` | `/api/v1/projects/:projectId/parameter-file-conflicts/:conflictId/resolve` | 裁决冲突。请求体：`{ "resolution": "file" \| "ui", "reason?" }`。可选 `reason` 去空白后写入 `parameter-file-conflict-resolve` 审计 metadata。 |
 | `POST` | `/api/v1/projects/:projectId/parameter-file-conflicts/bulk-preview` | 批量裁决影响预览。请求体：`{ "resolution": "file" \| "ui", "conflictIds?" }`；省略 `conflictIds` 时预览项目全部 open 冲突。返回 `{ resolution, eligible, ineligible, impact }`。不合格原因：`not_found`、`already_resolved`、`wrong_project`、`missing_values`。 |
-| `POST` | `/api/v1/projects/:projectId/parameter-file-conflicts/bulk-resolve` | 仅对合格冲突 ID 应用同一裁决。请求体：`{ "resolution": "file" \| "ui", "conflictIds", "reason?" }`。返回 `{ resolved, skipped }`。 |
+| `POST` | `/api/v1/projects/:projectId/parameter-file-conflicts/bulk-resolve` | 仅对合格冲突 ID 应用同一裁决。请求体：`{ "resolution": "file" \| "ui", "conflictIds", "reason?" }`。返回 `{ resolved, skipped }`。合格批次为原子操作（ADR-0027）：执行中途意外失败会回滚整批并使请求失败，绝不留下半生效批次。 |
 
 上传请求体：
 

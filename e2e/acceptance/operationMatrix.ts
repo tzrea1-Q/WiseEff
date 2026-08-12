@@ -707,7 +707,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     coverage: "future",
     acceptanceIds: ["BRIDGE-WIN-001"],
     specFiles: [
-      "e2e/acceptance/debugging-local-bridge.acceptance.spec.ts",
+      "e2e/acceptance/local-device-bridge.acceptance.spec.ts",
       "e2e/acceptance/local-device-bridge.acceptance.spec.ts"
     ],
     assertions: ["ui", "api"],
@@ -891,6 +891,18 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     action: "Resume an approved Xiaoze AG-UI native mutating action without reopening a change request.",
     coverage: "automated",
     acceptanceIds: ["XIAOZE-ACTION-RESUME-001"],
+    specFiles: ["e2e/acceptance/xiaoze-action.acceptance.spec.ts"],
+    assertions: ["api"]
+  },
+  {
+    id: "XIAOZE-ACTION-EDITEDARGS-001",
+    priority: "P1",
+    area: "agent",
+    route: "/parameters",
+    roles: ["Admin"],
+    action: "Approve a Xiaoze mutating action with edited arguments; the executed tool call uses the edited payload.",
+    coverage: "automated",
+    acceptanceIds: ["XIAOZE-ACTION-EDITEDARGS-001"],
     specFiles: ["e2e/acceptance/xiaoze-action.acceptance.spec.ts"],
     assertions: ["api"]
   },

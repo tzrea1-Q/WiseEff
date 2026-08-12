@@ -63,7 +63,7 @@ Rules:
 - `server/modules/dts-reload/`: DTS reload debugging — debug-overlay generation and pre-flight, reload configuration, in-request bridge deploy (ADR-0020), reload snapshot (ADR-0021), residue / restore-baseline, and run history. Permission `debugging:dts-reload`; UI at `/dts-reload` plus configuration on `/debugging-admin` (node catalog peer at `/debugging-admin/nodes`).
 - `server/modules/agent/`: Xiaoze AG-UI endpoint, LangGraph planning agent, tool registry, the orchestrator-owned Agent approval chain (`beginApproval` / `resolveApproval`), and persisted thread metadata (`server/modules/agent/xiaoze/`).
 - `server/modules/operations/`: liveness, readiness, and pilot readiness checks for release operations.
-- `server/observability/`: correlation context, structured log helpers, metrics registry, and tracing boundary.
+- `server/observability/`: metrics registry and tracing boundary.
 - `server/migrations/`: SQL schema baseline.
 
 The backend remains a modular monolith. New modules should keep auth, audit, database, object-store, worker, device, and Agent boundaries explicit instead of dissolving them into page or route logic.
@@ -97,7 +97,7 @@ M6.3 keeps object storage self-hosted by targeting an S3-compatible contract rat
 
 M6.4 adds Redis/BullMQ as the durable log-analysis dispatch transport. PostgreSQL remains the source of truth for job state, leases, retries, dead-letter metadata, audit, and evidence. API processes enqueue `log-analysis` messages after the PostgreSQL job is committed; worker processes consume queue payloads by `jobId` and must claim the PostgreSQL job before writing progress or terminal state. Database polling mode remains available for local development and compensation.
 
-M6.5 adds a self-hosted observability baseline. The API exposes `GET /metrics` as Prometheus text, refreshes readiness, dependency, and worker queue gauges before rendering the scrape response, and records HTTP request counts and duration buckets through the shared HTTP adapter. The observability helpers keep correlation IDs, structured logs, metrics, and tracing boundaries in `server/observability/` without requiring a SaaS vendor.
+M6.5 adds a self-hosted observability baseline. The API exposes `GET /metrics` as Prometheus text, refreshes readiness, dependency, and worker queue gauges before rendering the scrape response, and records HTTP request counts and duration buckets through the shared HTTP adapter. The observability helpers keep metrics and tracing boundaries in `server/observability/` without requiring a SaaS vendor; request correlation ids flow through the shared HTTP adapter into audit events.
 
 Prometheus, alert rules, and Grafana dashboard templates live in `ops/self-hosted/observability/`. `/metrics` is internal operations data and must be scraped only over a private network, VPN, reverse-proxy allowlist, mTLS, or a stronger equivalent control.
 

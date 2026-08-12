@@ -1,10 +1,12 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { makeTestAuthContext } from "../../testing/authContext";
+import { createMemoryObjectStore } from "../../testing/objectStore";
+import { seedCoreGraph } from "../../testing/fixtures";
 import type { AuthContext } from "../auth/types";
-import type { ObjectStore } from "../logs/objectStore";
 import { createCandidate, abandonCandidate, getCandidateImpact } from "./candidateService";
 import { addConfigSetFile, createConfigSet } from "./configSetService";
 import { getFileConfigSetMembership } from "./configSetRepository";
@@ -12,63 +14,22 @@ import { getProjectParameterFileById } from "./repository";
 import { uploadProjectParameterFile } from "./service";
 
 function makeAuth(): AuthContext {
-  return {
-    user: {
-      id: "user-cand-int",
-      organizationId: "org-cand-int",
-      name: "Candidate Admin",
-      email: "cand-int@example.com",
-      title: "Admin",
-      isActive: true
-    },
-    organization: { id: "org-cand-int", name: "Candidate Org" },
-    roles: [{ projectId: null, roleId: "admin" }],
+  return makeTestAuthContext({
+    userId: "user-cand-int",
+    organizationId: "org-cand-int",
+    name: "Candidate Admin",
+    email: "cand-int@example.com",
+    organizationName: "Candidate Org",
     permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"]
-  };
-}
-
-function createMemoryObjectStore(): ObjectStore {
-  const entries = new Map<string, Buffer>();
-  return {
-    async put(input) {
-      const checksum = createHash("sha256").update(input.bytes).digest("hex");
-      const storageKey = `${input.organizationId}/${checksum}-${input.fileName}`;
-      entries.set(storageKey, Buffer.from(input.bytes));
-      return {
-        storageKey,
-        fileName: input.fileName,
-        contentType: input.contentType,
-        fileSizeBytes: input.bytes.byteLength,
-        checksumSha256: checksum
-      };
-    },
-    async get(storageKey) {
-      const value = entries.get(storageKey);
-      if (!value) throw new Error(`Missing object: ${storageKey}`);
-      return Buffer.from(value);
-    }
-  };
+  });
 }
 
 async function seedBaseline(db: InMemoryTestDatabase) {
-  await db.query(
-    `insert into organizations (id, name) values ('org-cand-int', 'Candidate Org')
-     on conflict (id) do update set name = excluded.name`
-  );
-  await db.query(
-    `
-    insert into users (id, organization_id, name, email, title, is_active)
-    values ('user-cand-int', 'org-cand-int', 'Candidate Admin', 'cand-int@example.com', 'Admin', true)
-    on conflict (id) do update set organization_id = excluded.organization_id
-    `
-  );
-  await db.query(
-    `
-    insert into projects (id, organization_id, name, code, status)
-    values ('project-cand-int', 'org-cand-int', 'Candidate Project', 'CND', 'initialized')
-    on conflict (id) do update set name = excluded.name
-    `
-  );
+  await seedCoreGraph(db, {
+    organization: { id: "org-cand-int", name: "Candidate Org" },
+    users: [{ id: "user-cand-int", name: "Candidate Admin", email: "cand-int@example.com" }],
+    projects: [{ id: "project-cand-int", name: "Candidate Project", code: "CND" }]
+  });
 }
 
 const v1 = `/dts-v1/;

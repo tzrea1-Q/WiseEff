@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { makeTestAuthContext } from "../../testing/authContext";
 import { ApiError } from "../../shared/http/errors";
 import { findParameterSpecByIdentity } from "./repository";
 import {
@@ -25,19 +26,14 @@ const PROPERTY_KEY = "correct_me_prop";
 const databaseAvailable = await isTestDatabaseAvailable();
 
 function makeAuth(): AuthContext {
-  return {
-    user: {
-      id: USER_ID,
-      organizationId: ORG_ID,
-      name: "Identity Correct Admin",
-      email: "identity-correct@example.com",
-      title: "Admin",
-      isActive: true,
-    },
-    organization: { id: ORG_ID, name: "Identity Correct Org" },
-    roles: [{ projectId: null, roleId: "admin" }],
+  return makeTestAuthContext({
+    userId: USER_ID,
+    organizationId: ORG_ID,
+    name: "Identity Correct Admin",
+    email: "identity-correct@example.com",
+    organizationName: "Identity Correct Org",
     permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
-  };
+  });
 }
 
 async function seedSubject(db: InMemoryTestDatabase, id: string, sourceKey: string) {

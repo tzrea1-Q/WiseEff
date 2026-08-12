@@ -14,6 +14,8 @@ WiseEff frontend is a Vite, React, TypeScript SPA. It supports a rich mock-backe
 - `src/infrastructure/http/`: API client, DTOs, auth client, runtime mode.
 - `src/components/`: reusable UI, layout, tables, dialogs, filters, charts.
 - `src/features/agent/`: Xiaoze CopilotKit surface (`XiaozeProvider`, `useXiaozePageContext`, `XiaozeApprovalCard`, frontend tools).
+- `src/features/log-analysis/`: `LogsPage` (upload, conclusion, evidence chain, raw viewer) and `LogDashboardPage`.
+- `src/features/parameter-review/`: `ParameterReviewPage`, `ParameterSubmissionsPage`, submission-history diff, and review-specific UI atoms.
 - `src/features/product-feedback/`: sidebar `FeedbackDialog` and Admin triage UI for `/feedback-admin`.
 - `src/features/knowledge/`: knowledge base pages for `/knowledge` and `/knowledge-admin` (list, split editor, upload, revisions).
 - `src/test/setup.ts`: Vitest DOM setup.
@@ -371,6 +373,10 @@ M5 extends that baseline with the release smoke and pilot acceptance artifact. D
 - Do not let UI permission checks become the security boundary; backend writes must enforce permissions.
 - Preserve mock mode when adding API mode unless the task explicitly removes a prototype path.
 - Prefer existing component patterns and tests before adding new primitives.
+
+## UI Design System And Quality Gate
+
+Every product surface follows the operational visual standard in [UI Design System](design-docs/ui-design-system.md): design tokens as the only source of visual values, one accent, mandatory interaction states (rest/hover/active/focus-visible/disabled/loading), shared primitives (Button, `ModalDialog`, `DataTable`, `ColumnFilter`, `SectionState`), tokenized motion, and Chinese-first product language with shared formatters. Every frontend-visible change must pass the completion gate in [UI Quality Checklist](developer/ui-quality-checklist.md) before it is called done. Migration of legacy surfaces to this standard is tracked in `docs/exec-plans/active/2026-08-12-frontend-aesthetics-uplift.md`.
 
 ## Button And Action Styling
 

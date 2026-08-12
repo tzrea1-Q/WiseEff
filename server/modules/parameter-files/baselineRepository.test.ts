@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
-import type { QueryResult, Queryable } from "../../shared/database/client";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  createInMemoryTestDatabase,
+  isTestDatabaseAvailable,
+  type InMemoryTestDatabase
+} from "../../testing/testDatabase";
+import { seedCoreGraph } from "../../testing/fixtures";
+import { insertConfigSet, setFileConfigSetMembership } from "./configSetRepository";
+import { insertFileVersion, insertProjectParameterFile, setCurrentVersion } from "./repository";
 import {
   getReleaseBaselineByConfigSetAndName,
   getReleaseBaselineById,
@@ -10,64 +17,63 @@ import {
   listReleaseBaselinesByConfigSet
 } from "./baselineRepository";
 
-type QueryCall = {
-  text: string;
-  values: unknown[];
-};
+const databaseAvailable = await isTestDatabaseAvailable();
 
-type QueuedResult = Record<string, unknown> | unknown[] | ((call: QueryCall) => unknown[]);
+describe.skipIf(!databaseAvailable)("baseline repository", () => {
+  let db: InMemoryTestDatabase;
 
-function createFakeDb(rowsOrQueue: QueuedResult[] = []) {
-  const calls: QueryCall[] = [];
-  const queueMode = rowsOrQueue.some((item) => typeof item === "function" || Array.isArray(item));
-  const db: Queryable = {
-    query: async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
-      const call = { text, values };
-      calls.push(call);
-      if (queueMode) {
-        const next = rowsOrQueue.shift() ?? [];
-        const rows = typeof next === "function" ? next(call) : Array.isArray(next) ? next : [next];
-        return { rows: rows as Row[], rowCount: rows.length };
-      }
+  beforeEach(async () => {
+    db = await createInMemoryTestDatabase();
+    await seedCoreGraph(db, {
+      organization: { id: "org-1", name: "ChargeLab" },
+      users: [{ id: "user-1", name: "Riley Chen", email: "riley@example.com" }],
+      projects: [{ id: "project-1", name: "Aurora", code: "AUR" }]
+    });
+    await insertConfigSet(db, {
+      id: "dcs-1",
+      organizationId: "org-1",
+      projectId: "project-1",
+      name: "board-a"
+    });
+  });
 
-      const rows = rowsOrQueue as unknown[];
-      return { rows: rows as Row[], rowCount: rows.length };
+  afterEach(async () => {
+    await db?.rollback();
+  });
+
+  /** Creates a file plus `versionCount` uploaded versions; the newest version takes `currentVersionId`. */
+  async function seedFileWithCurrentVersion(input: {
+    fileId: string;
+    fileName: string;
+    currentVersionId: string;
+    versionCount?: number;
+  }) {
+    await insertProjectParameterFile(db, {
+      id: input.fileId,
+      organizationId: "org-1",
+      projectId: "project-1",
+      fileName: input.fileName,
+      format: "dts"
+    });
+    const versionCount = input.versionCount ?? 1;
+    for (let index = 1; index <= versionCount; index += 1) {
+      const versionId = index === versionCount ? input.currentVersionId : `${input.fileId}-v${index}`;
+      await insertFileVersion(db, {
+        id: versionId,
+        fileId: input.fileId,
+        versionNumber: index,
+        storageKey: `org-1/files/${input.fileName}-v${index}`,
+        checksum: `checksum-${input.fileId}-${index}`,
+        sizeBytes: 100 + index,
+        parsedIndex: {},
+        origin: "upload",
+        createdByUserId: "user-1"
+      });
     }
-  };
+    await setCurrentVersion(db, { fileId: input.fileId, versionId: input.currentVersionId });
+  }
 
-  return { db, calls };
-}
-
-function baselineRow(overrides: Record<string, unknown> = {}) {
-  const timestamp = new Date("2026-07-14T09:00:00.000Z");
-  return {
-    id: "baseline-1",
-    organization_id: "org-1",
-    config_set_id: "dcs-1",
-    name: "release-1.0",
-    notes: null,
-    status: "draft",
-    created_by_user_id: "user-1",
-    created_at: timestamp,
-    ...overrides
-  };
-}
-
-function baselineMemberRow(overrides: Record<string, unknown> = {}) {
-  return {
-    id: "bm-1",
-    baseline_id: "baseline-1",
-    file_id: "file-1",
-    file_version_id: "fv-1",
-    version_number: 3,
-    ...overrides
-  };
-}
-
-describe("baseline repository", () => {
   it("insertReleaseBaseline inserts and maps a baseline row", async () => {
-    const { db, calls } = createFakeDb([baselineRow()]);
-
     const baseline = await insertReleaseBaseline(db, {
       id: "baseline-1",
       organizationId: "org-1",
@@ -76,22 +82,22 @@ describe("baseline repository", () => {
       createdByUserId: "user-1"
     });
 
-    expect(calls[0].text).toContain("insert into dts_release_baseline");
-    expect(calls[0].values).toEqual(["baseline-1", "org-1", "dcs-1", "release-1.0", null, "user-1"]);
-    expect(baseline).toEqual({
+    expect(baseline).toMatchObject({
       id: "baseline-1",
       organizationId: "org-1",
       configSetId: "dcs-1",
       name: "release-1.0",
       status: "draft",
-      createdBy: "user-1",
-      createdAt: "2026-07-14T09:00:00.000Z"
+      createdBy: "user-1"
     });
+    expect(baseline.notes).toBeUndefined();
+    expect(baseline.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+    const reloaded = await getReleaseBaselineById(db, { organizationId: "org-1", baselineId: "baseline-1" });
+    expect(reloaded).toMatchObject({ id: "baseline-1", name: "release-1.0", status: "draft" });
   });
 
   it("insertReleaseBaseline persists notes", async () => {
-    const { db, calls } = createFakeDb([baselineRow({ notes: "pre-release snapshot" })]);
-
     const baseline = await insertReleaseBaseline(db, {
       id: "baseline-1",
       organizationId: "org-1",
@@ -100,61 +106,96 @@ describe("baseline repository", () => {
       notes: "pre-release snapshot"
     });
 
-    expect(calls[0].values).toEqual(["baseline-1", "org-1", "dcs-1", "release-1.0", "pre-release snapshot", null]);
     expect(baseline.notes).toBe("pre-release snapshot");
+    expect(baseline.createdBy).toBeUndefined();
+
+    const reloaded = await getReleaseBaselineById(db, { organizationId: "org-1", baselineId: "baseline-1" });
+    expect(reloaded?.notes).toBe("pre-release snapshot");
   });
 
   it("getReleaseBaselineByConfigSetAndName returns null when no row matches", async () => {
-    const { db, calls } = createFakeDb([[]]);
-
     const baseline = await getReleaseBaselineByConfigSetAndName(db, { configSetId: "dcs-1", name: "missing" });
 
-    expect(calls[0].text).toContain("from dts_release_baseline");
-    expect(calls[0].values).toEqual(["dcs-1", "missing"]);
     expect(baseline).toBeNull();
   });
 
   it("getReleaseBaselineByConfigSetAndName finds an existing baseline by name", async () => {
-    const { db } = createFakeDb([[baselineRow({ name: "release-1.0" })]]);
+    await insertReleaseBaseline(db, {
+      id: "baseline-1",
+      organizationId: "org-1",
+      configSetId: "dcs-1",
+      name: "release-1.0"
+    });
 
     const baseline = await getReleaseBaselineByConfigSetAndName(db, { configSetId: "dcs-1", name: "release-1.0" });
 
+    expect(baseline?.id).toBe("baseline-1");
     expect(baseline?.name).toBe("release-1.0");
   });
 
   it("getReleaseBaselineById scopes lookup to organization", async () => {
-    const { db, calls } = createFakeDb([[baselineRow()]]);
+    await insertReleaseBaseline(db, {
+      id: "baseline-1",
+      organizationId: "org-1",
+      configSetId: "dcs-1",
+      name: "release-1.0"
+    });
 
-    const baseline = await getReleaseBaselineById(db, { organizationId: "org-1", baselineId: "baseline-1" });
+    const owned = await getReleaseBaselineById(db, { organizationId: "org-1", baselineId: "baseline-1" });
+    const foreign = await getReleaseBaselineById(db, { organizationId: "org-other", baselineId: "baseline-1" });
 
-    expect(calls[0].text).toContain("organization_id = $1");
-    expect(calls[0].values).toEqual(["org-1", "baseline-1"]);
-    expect(baseline?.id).toBe("baseline-1");
+    expect(owned?.id).toBe("baseline-1");
+    expect(foreign).toBeNull();
   });
 
   it("getReleaseBaselineById returns null when missing", async () => {
-    const { db } = createFakeDb([[]]);
-
     const baseline = await getReleaseBaselineById(db, { organizationId: "org-1", baselineId: "missing" });
 
     expect(baseline).toBeNull();
   });
 
   it("listReleaseBaselinesByConfigSet scopes to the config set", async () => {
-    const { db, calls } = createFakeDb([
-      [baselineRow(), baselineRow({ id: "baseline-2", name: "release-1.1" })]
-    ]);
+    await insertConfigSet(db, {
+      id: "dcs-2",
+      organizationId: "org-1",
+      projectId: "project-1",
+      name: "board-b"
+    });
+    await insertReleaseBaseline(db, {
+      id: "baseline-1",
+      organizationId: "org-1",
+      configSetId: "dcs-1",
+      name: "release-1.0"
+    });
+    await insertReleaseBaseline(db, {
+      id: "baseline-2",
+      organizationId: "org-1",
+      configSetId: "dcs-1",
+      name: "release-1.1"
+    });
+    await insertReleaseBaseline(db, {
+      id: "baseline-other",
+      organizationId: "org-1",
+      configSetId: "dcs-2",
+      name: "release-x"
+    });
 
     const baselines = await listReleaseBaselinesByConfigSet(db, { configSetId: "dcs-1" });
 
-    expect(calls[0].text).toContain("from dts_release_baseline");
-    expect(calls[0].values).toEqual(["dcs-1"]);
     expect(baselines).toHaveLength(2);
-    expect(baselines[1].name).toBe("release-1.1");
+    // created_at is frozen inside the rollback transaction, so assert membership, not order.
+    expect(baselines.map((baseline) => baseline.name).sort()).toEqual(["release-1.0", "release-1.1"]);
+    expect(baselines.every((baseline) => baseline.configSetId === "dcs-1")).toBe(true);
   });
 
   it("insertReleaseBaselineMember inserts and maps a member row", async () => {
-    const { db, calls } = createFakeDb([baselineMemberRow()]);
+    await seedFileWithCurrentVersion({ fileId: "file-1", fileName: "board-a.dts", currentVersionId: "fv-1", versionCount: 3 });
+    await insertReleaseBaseline(db, {
+      id: "baseline-1",
+      organizationId: "org-1",
+      configSetId: "dcs-1",
+      name: "release-1.0"
+    });
 
     const member = await insertReleaseBaselineMember(db, {
       id: "bm-1",
@@ -164,47 +205,60 @@ describe("baseline repository", () => {
       versionNumber: 3
     });
 
-    expect(calls[0].text).toContain("insert into dts_release_baseline_members");
-    expect(calls[0].values).toEqual(["bm-1", "baseline-1", "file-1", "fv-1", 3]);
     expect(member).toEqual({
       baselineId: "baseline-1",
       fileId: "file-1",
       fileVersionId: "fv-1",
       versionNumber: 3
     });
+
+    const reloaded = await listReleaseBaselineMembers(db, { baselineId: "baseline-1" });
+    expect(reloaded).toEqual([member]);
   });
 
   it("listReleaseBaselineMembers lists all members pinned to a baseline", async () => {
-    const { db, calls } = createFakeDb([
-      [baselineMemberRow(), baselineMemberRow({ id: "bm-2", file_id: "file-2", version_number: 1 })]
-    ]);
+    await seedFileWithCurrentVersion({ fileId: "file-1", fileName: "board-a.dts", currentVersionId: "fv-1", versionCount: 3 });
+    await seedFileWithCurrentVersion({ fileId: "file-2", fileName: "board-a.overlay.dts", currentVersionId: "fv-2" });
+    await insertReleaseBaseline(db, {
+      id: "baseline-1",
+      organizationId: "org-1",
+      configSetId: "dcs-1",
+      name: "release-1.0"
+    });
+    await insertReleaseBaselineMember(db, {
+      id: "bm-1",
+      baselineId: "baseline-1",
+      fileId: "file-1",
+      fileVersionId: "fv-1",
+      versionNumber: 3
+    });
+    await insertReleaseBaselineMember(db, {
+      id: "bm-2",
+      baselineId: "baseline-1",
+      fileId: "file-2",
+      fileVersionId: "fv-2",
+      versionNumber: 1
+    });
 
     const members = await listReleaseBaselineMembers(db, { baselineId: "baseline-1" });
 
-    expect(calls[0].text).toContain("from dts_release_baseline_members");
-    expect(calls[0].values).toEqual(["baseline-1"]);
     expect(members).toHaveLength(2);
     expect(members[1]).toEqual({
       baselineId: "baseline-1",
       fileId: "file-2",
-      fileVersionId: "fv-1",
+      fileVersionId: "fv-2",
       versionNumber: 1
     });
   });
 
   it("listConfigSetMemberFiles joins current version info for each member file", async () => {
-    const { db, calls } = createFakeDb([
-      [
-        { config_set_id: "dcs-1", file_id: "file-1", file_name: "board-a.dts", format: "dts", config_set_role: "base", config_set_sort_order: 0, current_version_id: "fv-1", version_number: 3 },
-        { config_set_id: "dcs-1", file_id: "file-2", file_name: "board-a.overlay.dts", format: "dts", config_set_role: "overlay", config_set_sort_order: 1, current_version_id: "fv-9", version_number: 1 }
-      ]
-    ]);
+    await seedFileWithCurrentVersion({ fileId: "file-1", fileName: "board-a.dts", currentVersionId: "fv-1", versionCount: 3 });
+    await seedFileWithCurrentVersion({ fileId: "file-2", fileName: "board-a.overlay.dts", currentVersionId: "fv-9" });
+    await setFileConfigSetMembership(db, { fileId: "file-1", configSetId: "dcs-1", role: "base", sortOrder: 0 });
+    await setFileConfigSetMembership(db, { fileId: "file-2", configSetId: "dcs-1", role: "overlay", sortOrder: 1 });
 
     const members = await listConfigSetMemberFiles(db, "dcs-1");
 
-    expect(calls[0].text).toContain("from project_parameter_files ppf");
-    expect(calls[0].text).toContain("left join project_parameter_file_versions");
-    expect(calls[0].values).toEqual(["dcs-1"]);
     expect(members).toEqual([
       { configSetId: "dcs-1", fileId: "file-1", fileName: "board-a.dts", format: "dts", role: "base", sortOrder: 0, currentVersionId: "fv-1", currentVersionNumber: 3 },
       { configSetId: "dcs-1", fileId: "file-2", fileName: "board-a.overlay.dts", format: "dts", role: "overlay", sortOrder: 1, currentVersionId: "fv-9", currentVersionNumber: 1 }
@@ -212,9 +266,14 @@ describe("baseline repository", () => {
   });
 
   it("listConfigSetMemberFiles reports members with no current version as undefined", async () => {
-    const { db } = createFakeDb([
-      [{ config_set_id: "dcs-1", file_id: "file-1", file_name: "board-a.dts", format: "dts", config_set_role: "base", config_set_sort_order: 0, current_version_id: null, version_number: null }]
-    ]);
+    await insertProjectParameterFile(db, {
+      id: "file-1",
+      organizationId: "org-1",
+      projectId: "project-1",
+      fileName: "board-a.dts",
+      format: "dts"
+    });
+    await setFileConfigSetMembership(db, { fileId: "file-1", configSetId: "dcs-1", role: "base", sortOrder: 0 });
 
     const members = await listConfigSetMemberFiles(db, "dcs-1");
 
@@ -224,9 +283,14 @@ describe("baseline repository", () => {
   });
 
   it("normalizes legacy members with no stored role to misc", async () => {
-    const { db } = createFakeDb([
-      [{ config_set_id: "dcs-1", file_id: "file-legacy", file_name: "legacy.dts", format: "dts", config_set_role: null, config_set_sort_order: 0, current_version_id: "fv-1", version_number: 1 }]
-    ]);
+    await seedFileWithCurrentVersion({ fileId: "file-legacy", fileName: "legacy.dts", currentVersionId: "fv-1" });
+    // Migration 0043 backfill attached files to the default set before the role column
+    // existed; the repository interface cannot produce a null role, so recreate it directly.
+    await db.query(
+      `update project_parameter_files
+       set config_set_id = 'dcs-1', config_set_role = null, config_set_sort_order = 0
+       where id = 'file-legacy'`
+    );
 
     await expect(listConfigSetMemberFiles(db, "dcs-1")).resolves.toEqual([
       expect.objectContaining({ fileId: "file-legacy", role: "misc" })

@@ -1,12 +1,14 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { makeTestAuthContext } from "../../testing/authContext";
+import { createMemoryObjectStore } from "../../testing/objectStore";
+import { seedCoreGraph } from "../../testing/fixtures";
 import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
-import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import { registerParameterFileRoutes } from "./routes";
 import { registerParameterRoutes } from "../parameters/routes";
@@ -37,76 +39,23 @@ async function advanceReview(server: ReturnType<typeof createHttpServer>, reques
   return response.body.item.status;
 }
 
-function makeAuth(): AuthContext {
-  return {
-    user: {
-      id: "user-pf-int",
-      organizationId: "org-pf-int",
-      name: "Riley Chen",
-      email: "riley-pf-int@example.com",
-      title: "Admin",
-      isActive: true
-    },
-    organization: { id: "org-pf-int", name: "ChargeLab PF" },
-    roles: [{ projectId: null, roleId: "admin" }],
+function makeAuth() {
+  return makeTestAuthContext({
+    userId: "user-pf-int",
+    organizationId: "org-pf-int",
+    name: "Riley Chen",
+    email: "riley-pf-int@example.com",
+    organizationName: "ChargeLab PF",
     permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"]
-  };
-}
-
-function createMemoryObjectStore(): ObjectStore {
-  const entries = new Map<string, Buffer>();
-
-  return {
-    async put(input) {
-      const checksum = createHash("sha256").update(input.bytes).digest("hex");
-      const storageKey = `${input.organizationId}/${checksum}-${input.fileName}`;
-      entries.set(storageKey, Buffer.from(input.bytes));
-      return {
-        storageKey,
-        fileName: input.fileName,
-        contentType: input.contentType,
-        fileSizeBytes: input.bytes.byteLength,
-        checksumSha256: checksum
-      };
-    },
-    async get(storageKey) {
-      const value = entries.get(storageKey);
-      if (!value) {
-        throw new Error(`Missing object for storage key: ${storageKey}`);
-      }
-      return Buffer.from(value);
-    }
-  };
+  });
 }
 
 async function seedBaseline(db: InMemoryTestDatabase) {
-  await db.query(
-    `insert into organizations (id, name) values ('org-pf-int', 'ChargeLab PF')
-     on conflict (id) do update set name = excluded.name`
-  );
-  await db.query(
-    `
-    insert into users (id, organization_id, name, email, title, is_active)
-    values ('user-pf-int', 'org-pf-int', 'Riley Chen', 'riley-pf-int@example.com', 'Admin', true)
-    on conflict (id) do update set
-      organization_id = excluded.organization_id,
-      name = excluded.name,
-      email = excluded.email,
-      title = excluded.title,
-      is_active = excluded.is_active
-    `
-  );
-  await db.query(
-    `
-    insert into projects (id, organization_id, name, code, status)
-    values ('project-pf-int', 'org-pf-int', 'Aurora', 'AUR', 'initialized')
-    on conflict (id) do update set
-      organization_id = excluded.organization_id,
-      name = excluded.name,
-      code = excluded.code,
-      status = excluded.status
-    `
-  );
+  await seedCoreGraph(db, {
+    organization: { id: "org-pf-int", name: "ChargeLab PF" },
+    users: [{ id: "user-pf-int", name: "Riley Chen", email: "riley-pf-int@example.com" }],
+    projects: [{ id: "project-pf-int", name: "Aurora", code: "AUR" }]
+  });
   await db.query(
     `
     insert into parameter_definitions (

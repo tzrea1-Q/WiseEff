@@ -44,7 +44,9 @@
 - **TD-067（多副本桥接路由）：** 桥接 WebSocket 单进程亲和；进程内 DTS 重载部署（ADR-0020）依赖持有 socket 的副本。**负责人：Platform / Reliability。**
 - **TD-068（DTS 重载 Agent actorType 信任边界）：** 闸门依赖调用方传入的进程内 `actorType`，非 `AuthContext` 已认证身份；持用户 HTTP token 的 Agent 与人类不可区分（与参数 `SensitiveWriteActorType` 相同）。**负责人：Security / Backend。** 见 `docs/SECURITY.md`（#304）。
 - **TD-069（`DtsReloadPage.tsx` 体积）：** 记录时为 **2188** 行（#304）；拆分延后以免淹没本轮安全/助手漂移修复。**负责人：Frontend / Debugging platform。**
-- **TD-080（知识检索 pgvector 后装与 CI 向量覆盖）：** 迁移 `0104` 只在迁移时已装 pgvector 的库上创建 `knowledge_chunks.embedding` 列；先迁移后装扩展的部署需按自托管 runbook 手动补列并全量重建。本地与 CI 的 postgres:16 均无 pgvector,真实向量检索集成测试（`vectorSearch.integration.test.ts`）带原因跳过,向量 SQL 路径目前由脚本化 SQL 单测 + eval 覆盖。**负责人：Knowledge platform。** 后续:补一条「扩展出现时补列」的迁移或启动 ensure,并给 CI 加 pgvector 镜像任务（如 `pgvector/pgvector:pg16`）让该集成测试在 CI 运行。
+- **TD-080（拓扑工作区测试隔离）：** `ApiProjectTopologyWorkspace.test.tsx` 在 jsdom 中发出真实 HTTP 请求；本机 `127.0.0.1:8787` 有开发 API 时套件不稳定（20 例中 8–9 例被真实数据打挂）。P0 美学提升验证期间发现。应注入可替换的 repository/fetch 接缝,测试不得拨真实端口。**负责人：Frontend。**
+- **TD-081（拓扑树元信息文字色）：** `.topology-tree__item small` 把近白的表面令牌 `var(--muted)` 当文字色,树上元信息几乎不可见（既有缺陷,P0 令牌审计浮出）。P1 原语收敛时改为 `var(--text-muted)` 并加结构化样式断言。**负责人：Frontend。**
+- **TD-083（知识检索 pgvector 后装与 CI 向量覆盖）：** 迁移 `0104` 只在迁移时已装 pgvector 的库上创建 `knowledge_chunks.embedding` 列；先迁移后装扩展的部署需按自托管 runbook 手动补列并全量重建。本地与 CI 的 postgres:16 均无 pgvector,真实向量检索集成测试（`vectorSearch.integration.test.ts`）带原因跳过,向量 SQL 路径目前由脚本化 SQL 单测 + eval 覆盖。**负责人：Knowledge platform。** 后续:补一条「扩展出现时补列」的迁移或启动 ensure,并给 CI 加 pgvector 镜像任务（如 `pgvector/pgvector:pg16`）让该集成测试在 CI 运行。
 
 ## 近期关闭项
 

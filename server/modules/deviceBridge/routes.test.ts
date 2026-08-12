@@ -4,6 +4,7 @@ import type { Database } from "../../shared/database/client";
 import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
+import { makeTestAuthContext } from "../../testing/authContext";
 import type { PairingService } from "./pairingService";
 import type { BridgeReleaseManifest } from "./releaseManifest";
 import * as repository from "./repository";
@@ -15,17 +16,16 @@ vi.mock("./repository", () => ({
 
 function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
   return {
-    user: {
-      id: "user-1",
+    ...makeTestAuthContext({
+      userId: "user-1",
       organizationId: "org-1",
       name: "Riley Chen",
       email: "riley@example.com",
       title: "Software User",
-      isActive: true
-    },
-    organization: { id: "org-1", name: "ChargeLab" },
-    roles: [{ projectId: "aurora", roleId: "software-user" }],
-    permissions: ["debugging:use"],
+      organizationName: "ChargeLab",
+      roles: [{ projectId: "aurora", roleId: "software-user" }],
+      permissions: ["debugging:use"]
+    }),
     ...overrides
   };
 }
@@ -92,7 +92,8 @@ function makeServer(options: {
           }
         ]
       })),
-    now: options.now
+    now: options.now,
+    createAuditEvent: (async () => {}) as never
   });
   return createHttpServer(router);
 }

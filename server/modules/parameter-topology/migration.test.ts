@@ -2,16 +2,18 @@ import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import pg from "pg";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { createDatabase, type Database } from "../../shared/database/client";
-import { applyMigrations } from "../../shared/database/migrations";
+import type { Database } from "../../shared/database/client";
 import {
   createInMemoryTestDatabase,
   isTestDatabaseAvailable,
   type InMemoryTestDatabase
 } from "../../testing/testDatabase";
+import {
+  openDatabaseConnection,
+  withTempDatabase as withSharedTempDatabase
+} from "../../testing/tempDatabase";
 import {
   applyParameterIdentityCutover,
   checkParameterIdentityCutover,
@@ -32,7 +34,6 @@ const cutoverSqlPath = path.join(
   "cutovers",
   "2026-07-16-parameter-identity-cutover.sql"
 );
-const migrationsDir = path.join(projectRoot, "server", "migrations");
 
 const ORG = "org-mig-14";
 const PROJECT = "project-mig-14";
@@ -72,116 +73,16 @@ function expectedBindingId(specId: string, logicalNodeId: string) {
   return stableSemanticId("project_parameter_binding", [PROJECT, logicalNodeId, specId]);
 }
 
-function resolveTestDatabaseUrl() {
-  return (
-    process.env.TEST_DATABASE_URL?.trim() ||
-    process.env.DATABASE_URL?.trim() ||
-    "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff"
-  );
-}
-
-function adminConnectionString(database = "postgres") {
-  const url = new URL(resolveTestDatabaseUrl());
-  url.pathname = `/${database}`;
-  return url.toString();
-}
-
-async function withAdminClient<T>(fn: (client: pg.Client) => Promise<T>): Promise<T> {
-  const client = new pg.Client({ connectionString: adminConnectionString("postgres") });
-  await client.connect();
-  try {
-    return await fn(client);
-  } finally {
-    await client.end();
-  }
-}
-
 async function withTempDatabase(fn: (db: Database) => Promise<void>) {
-  const dbName = `wiseeff_mig14_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`.replace(
-    /[^a-z0-9_]/gi,
-    ""
-  );
-  await withAdminClient(async (admin) => {
-    await admin.query(`create database ${dbName}`);
-  });
-
-  const connectionString = adminConnectionString(dbName);
-  const client = new pg.Client({ connectionString });
-  await client.connect();
-  const db = createDatabase({
-    query: async (text, values = []) => {
-      const result = await client.query(text, values);
-      return { rows: result.rows, rowCount: result.rowCount };
-    }
-  });
-
-  try {
-    await applyMigrations(db, migrationsDir);
-    await fn(db);
-  } finally {
-    await client.end().catch(() => undefined);
-    await withAdminClient(async (admin) => {
-      await admin.query(`drop database if exists ${dbName} with (force)`);
-    });
-  }
-}
-
-function openDatabaseConnection(connectionString: string): {
-  db: Database;
-  close: () => Promise<void>;
-} {
-  const client = new pg.Client({ connectionString });
-  let connected = false;
-  const db = createDatabase({
-    query: async (text, values = []) => {
-      if (!connected) {
-        await client.connect();
-        connected = true;
-      }
-      const result = await client.query(text, values);
-      return { rows: result.rows, rowCount: result.rowCount };
-    }
-  });
-  return {
-    db,
-    close: async () => {
-      if (connected) {
-        await client.end().catch(() => undefined);
-      }
-    }
-  };
+  await withSharedTempDatabase({ prefix: "mig14" }, ({ db }) => fn(db));
 }
 
 async function withTempDatabaseConnection(
   fn: (ctx: { db: Database; connectionString: string }) => Promise<void>
 ) {
-  const dbName = `wiseeff_mig14_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`.replace(
-    /[^a-z0-9_]/gi,
-    ""
+  await withSharedTempDatabase({ prefix: "mig14" }, ({ db, connectionString }) =>
+    fn({ db, connectionString })
   );
-  await withAdminClient(async (admin) => {
-    await admin.query(`create database ${dbName}`);
-  });
-
-  const connectionString = adminConnectionString(dbName);
-  const client = new pg.Client({ connectionString });
-  await client.connect();
-  const db = createDatabase({
-    query: async (text, values = []) => {
-      const result = await client.query(text, values);
-      return { rows: result.rows, rowCount: result.rowCount };
-    }
-  });
-
-  try {
-    await applyMigrations(db, migrationsDir);
-    await fn({ db, connectionString });
-  } finally {
-    await client.end().catch(() => undefined);
-    await withAdminClient(async (admin) => {
-      await admin.query(`drop database if exists ${dbName} with (force)`);
-    });
-  }
 }
 
 async function seedLegacyGraph(db: InMemoryTestDatabase | Database) {

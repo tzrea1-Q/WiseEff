@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { ProjectParameterInitializationWizard } from "./ProjectParameterInitializationWizard";
 import { initialState } from "./mockData";
+import { declarationsFor, readStylesheet } from "./test/cssAssertions";
 
 describe("ProjectParameterInitializationWizard", () => {
   function fillProjectInfoAndContinue() {
@@ -316,21 +316,21 @@ describe("ProjectParameterInitializationWizard", () => {
   });
 
   it("styles table filter menus as compact floating panels", () => {
-    const styles = readFileSync("src/styles.css", "utf8");
-    const menuRule = styles.match(/\.parameters-column-filter__menu\s*\{[^}]*\}/)?.[0] ?? "";
-    const menuHeadRule = styles.match(/\.parameters-column-filter__menu-head\s*\{[^}]*\}/)?.[0] ?? "";
-    const optionLabelRule = styles.match(/\.parameters-column-filter__options label\s*\{[^}]*\}/)?.[0] ?? "";
-    const optionLabelHoverRule = styles.match(/\.parameters-column-filter__options label:hover\s*\{[^}]*\}/)?.[0] ?? "";
+    const styles = readStylesheet("src/styles.css");
+    const menuRule = declarationsFor(styles, ".parameters-column-filter__menu");
+    const menuHeadRule = declarationsFor(styles, ".parameters-column-filter__menu-head");
+    const optionLabelRule = declarationsFor(styles, ".parameters-column-filter__options label");
+    const optionLabelHoverRule = declarationsFor(styles, ".parameters-column-filter__options label:hover");
 
-    expect(menuRule).toMatch(/background:\s*#fff/);
-    expect(menuRule).toMatch(/border-radius:\s*8px/);
-    expect(menuRule).toMatch(/box-shadow:/);
-    expect(menuHeadRule).toMatch(/padding-bottom:\s*8px/);
-    expect(menuHeadRule).toMatch(/border-bottom:/);
-    expect(optionLabelRule).toMatch(/display:\s*flex/);
-    expect(optionLabelRule).toMatch(/border-radius:\s*6px/);
-    expect(optionLabelRule).toMatch(/padding:\s*6px 8px/);
-    expect(optionLabelHoverRule).toMatch(/background:\s*#f4f7ff/);
+    expect(menuRule.background).toContain("#fff");
+    expect(menuRule["border-radius"]).toBe("8px");
+    expect(menuRule["box-shadow"]).toBeTruthy();
+    expect(menuHeadRule["padding-bottom"]).toBe("8px");
+    expect(menuHeadRule["border-bottom"]).toBeTruthy();
+    expect(optionLabelRule.display).toBe("flex");
+    expect(optionLabelRule["border-radius"]).toBe("6px");
+    expect(optionLabelRule.padding).toBe("6px 8px");
+    expect(optionLabelHoverRule.background).toBe("#f4f7ff");
   });
 
   it("keeps the initialization parameter table columns readable", () => {
@@ -358,18 +358,18 @@ describe("ProjectParameterInitializationWizard", () => {
     expect(firstParameterCell).toHaveClass("project-init-table__parameter");
     expect(firstSourceCell).toHaveClass("project-init-table__source");
 
-    const styles = readFileSync("src/styles.css", "utf8");
-    const tableRule = styles.match(/\.project-init-table table\s*\{[^}]*\}/)?.[0] ?? "";
-    const parameterCellRule = styles.match(/\.project-init-table__parameter\s*\{[^}]*\}/)?.[0] ?? "";
-    const sourceCellRule = styles.match(/\.project-init-table__source\s*\{[^}]*\}/)?.[0] ?? "";
+    const styles = readStylesheet("src/styles.css");
+    const tableRule = declarationsFor(styles, ".project-init-table table");
+    const parameterCellRule = declarationsFor(styles, ".project-init-table__parameter");
+    const sourceCellRule = declarationsFor(styles, ".project-init-table__source");
 
-    expect(tableRule).toMatch(/table-layout:\s*fixed/);
-    expect(tableRule).toMatch(/min-width:\s*860px/);
-    expect(parameterCellRule).toMatch(/overflow:\s*hidden/);
-    expect(parameterCellRule).toMatch(/text-overflow:\s*ellipsis/);
-    expect(parameterCellRule).toMatch(/white-space:\s*nowrap/);
-    expect(sourceCellRule).toMatch(/white-space:\s*nowrap/);
-    expect(sourceCellRule).toMatch(/text-overflow:\s*ellipsis/);
+    expect(tableRule["table-layout"]).toBe("fixed");
+    expect(tableRule["min-width"]).toBe("860px");
+    expect(parameterCellRule.overflow).toBe("hidden");
+    expect(parameterCellRule["text-overflow"]).toBe("ellipsis");
+    expect(parameterCellRule["white-space"]).toBe("nowrap");
+    expect(sourceCellRule["white-space"]).toBe("nowrap");
+    expect(sourceCellRule["text-overflow"]).toBe("ellipsis");
   });
 
   it("shows parameter details from a candidate row", () => {
@@ -400,30 +400,30 @@ describe("ProjectParameterInitializationWizard", () => {
   });
 
   it("keeps footer actions in a stable bottom action bar", () => {
-    const styles = readFileSync("src/styles.css", "utf8");
-    const wizardRule = styles.match(/\.project-init-wizard\s*\{[^}]*\}/)?.[0] ?? "";
-    const mainRule = styles.match(/\.project-init-main\s*\{[^}]*\}/)?.[0] ?? "";
-    const footerRule = styles.match(/\.project-init-footer\s*\{[^}]*\}/)?.[0] ?? "";
-    const footerButtonRule = styles.match(/\.project-init-footer \.button\s*\{[^}]*\}/)?.[0] ?? "";
-    const footerSubtleButtonRule = styles.match(/\.project-init-footer \.button\.subtle\s*\{[^}]*\}/)?.[0] ?? "";
-    const footerPrimaryButtonRule = styles.match(/\.project-init-footer \.button\.primary\s*\{[^}]*\}/)?.[0] ?? "";
+    const styles = readStylesheet("src/styles.css");
+    const wizardRule = declarationsFor(styles, ".project-init-wizard");
+    const mainRule = declarationsFor(styles, ".project-init-main");
+    const footerRule = declarationsFor(styles, ".project-init-footer");
+    const footerButtonRule = declarationsFor(styles, ".project-init-footer .button");
+    const footerSubtleButtonRule = declarationsFor(styles, ".project-init-footer .button.subtle");
+    const footerPrimaryButtonRule = declarationsFor(styles, ".project-init-footer .button.primary");
 
-    expect(wizardRule).toMatch(/display:\s*flex/);
-    expect(wizardRule).toMatch(/flex-direction:\s*column/);
-    expect(wizardRule).toMatch(/overflow:\s*hidden/);
-    expect(mainRule).toMatch(/flex:\s*1/);
-    expect(mainRule).toMatch(/overflow:\s*auto/);
-    expect(footerRule).toMatch(/background:\s*#fbfcff/);
-    expect(footerRule).toMatch(/box-shadow:/);
-    expect(footerButtonRule).toMatch(/display:\s*inline-flex/);
-    expect(footerButtonRule).toMatch(/justify-content:\s*center/);
-    expect(footerButtonRule).toMatch(/min-width:\s*96px/);
-    expect(footerButtonRule).toMatch(/padding:\s*0 18px/);
-    expect(footerButtonRule).toMatch(/border:\s*1px solid/);
-    expect(footerButtonRule).toMatch(/border-radius:\s*8px/);
-    expect(footerSubtleButtonRule).toMatch(/background:\s*#fff/);
-    expect(footerPrimaryButtonRule).toMatch(/color:\s*#fff/);
-    expect(footerPrimaryButtonRule).toMatch(/background:\s*var\(--app-primary\)/);
+    expect(wizardRule.display).toBe("flex");
+    expect(wizardRule["flex-direction"]).toBe("column");
+    expect(wizardRule.overflow).toBe("hidden");
+    expect(mainRule.flex).toContain("1");
+    expect(mainRule.overflow).toBe("auto");
+    expect(footerRule.background).toBe("#fbfcff");
+    expect(footerRule["box-shadow"]).toBeTruthy();
+    expect(footerButtonRule.display).toBe("inline-flex");
+    expect(footerButtonRule["justify-content"]).toBe("center");
+    expect(footerButtonRule["min-width"]).toBe("96px");
+    expect(footerButtonRule.padding).toBe("0 18px");
+    expect(footerButtonRule.border).toContain("1px solid");
+    expect(footerButtonRule["border-radius"]).toBe("8px");
+    expect(footerSubtleButtonRule.background).toBe("#fff");
+    expect(footerPrimaryButtonRule.color).toBe("#fff");
+    expect(footerPrimaryButtonRule.background).toBe("var(--app-primary)");
   });
 
   it("allows selecting parameters from the library when starting from empty", () => {
@@ -463,11 +463,10 @@ describe("ProjectParameterInitializationWizard", () => {
     expect(screen.getByText(/12 个参数库条目可选/)).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "参数库选择表" })).toBeInTheDocument();
 
-    const styles = readFileSync("src/styles.css", "utf8");
-    const scopePanelRule = styles.match(/\.project-init-step-panel--scope\s*\{[^}]*\}/)?.[0] ?? "";
+    const styles = readStylesheet("src/styles.css");
+    const scopePanelRule = declarationsFor(styles, ".project-init-step-panel--scope");
 
-    expect(scopePanelRule).toMatch(/grid-template-columns:\s*1fr/);
-    expect(scopePanelRule).not.toMatch(/minmax\(220px/);
+    expect(scopePanelRule["grid-template-columns"]).toBe("1fr");
   });
 
   it("filters source projects with search when many projects exist", () => {
@@ -509,13 +508,13 @@ describe("ProjectParameterInitializationWizard", () => {
     expect(screen.getByRole("table", { name: "可选来源项目" })).toBeInTheDocument();
     expect(screen.getByRole("searchbox", { name: "搜索来源项目" })).toBeInTheDocument();
 
-    const styles = readFileSync("src/styles.css", "utf8");
-    const sourcePanelRule = styles.match(/\.project-init-step-panel--source\s*\{[^}]*\}/)?.[0] ?? "";
-    const sourceTableWrapRule = styles.match(/\.project-init-source-table-wrap\s*\{[^}]*\}/)?.[0] ?? "";
+    const styles = readStylesheet("src/styles.css");
+    const sourcePanelRule = declarationsFor(styles, ".project-init-step-panel--source");
+    const sourceTableWrapRule = declarationsFor(styles, ".project-init-source-table-wrap");
 
-    expect(sourcePanelRule).toMatch(/grid-template-columns:\s*1fr/);
-    expect(sourceTableWrapRule).toMatch(/max-height:\s*260px/);
-    expect(sourceTableWrapRule).toMatch(/overflow:\s*auto/);
+    expect(sourcePanelRule["grid-template-columns"]).toBe("1fr");
+    expect(sourceTableWrapRule["max-height"]).toBe("260px");
+    expect(sourceTableWrapRule.overflow).toBe("auto");
   });
 
   it("presents the project information step as a focused two-column form card", () => {
@@ -526,18 +525,18 @@ describe("ProjectParameterInitializationWizard", () => {
     expect(projectInfoRegion.closest(".project-init-step-panel")).toHaveClass("project-init-step-panel--project");
     expect(projectInfoRegion.querySelector(".project-init-form-card__fields")).toBeInTheDocument();
 
-    const styles = readFileSync("src/styles.css", "utf8");
-    const projectPanelRule = styles.match(/\.project-init-step-panel--project\s*\{[^}]*\}/)?.[0] ?? "";
-    const formCardRule = styles.match(/\.project-init-form-card\s*\{[^}]*\}/)?.[0] ?? "";
-    const formFieldsRule = styles.match(/\.project-init-form-card__fields\s*\{[^}]*\}/)?.[0] ?? "";
+    const styles = readStylesheet("src/styles.css");
+    const projectPanelRule = declarationsFor(styles, ".project-init-step-panel--project");
+    const formCardRule = declarationsFor(styles, ".project-init-form-card");
+    const formFieldsRule = declarationsFor(styles, ".project-init-form-card__fields");
 
-    expect(projectPanelRule).toMatch(/grid-template-columns:\s*minmax\(220px,\s*0\.72fr\) minmax\(0,\s*1fr\)/);
-    expect(projectPanelRule).toMatch(/align-items:\s*start/);
-    expect(projectPanelRule).toMatch(/min-height:\s*360px/);
-    expect(formCardRule).toMatch(/padding:\s*22px/);
-    expect(formCardRule).toMatch(/border:\s*1px solid/);
-    expect(formCardRule).toMatch(/border-radius:\s*10px/);
-    expect(formCardRule).toMatch(/box-shadow:/);
-    expect(formFieldsRule).toMatch(/grid-template-columns:\s*1fr/);
+    expect(projectPanelRule["grid-template-columns"]).toBe("minmax(220px, 0.72fr) minmax(0, 1fr)");
+    expect(projectPanelRule["align-items"]).toBe("start");
+    expect(projectPanelRule["min-height"]).toBe("360px");
+    expect(formCardRule.padding).toBe("22px");
+    expect(formCardRule.border).toContain("1px solid");
+    expect(formCardRule["border-radius"]).toBe("10px");
+    expect(formCardRule["box-shadow"]).toBeTruthy();
+    expect(formFieldsRule["grid-template-columns"]).toBe("1fr");
   });
 });

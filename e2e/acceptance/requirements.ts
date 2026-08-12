@@ -583,133 +583,137 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     title: "Publish is blocked by compiler/edit diagnostics; clean revisions validate/publish with audit and semantic persistence after reload.",
     required: true
   },
+  // The next 19 requirements have no browser automation yet: their specs carry
+  // `@acceptance-planned` stubs in parameter-topology.acceptance.spec.ts. They stay
+  // required: false until the automation lands, so the coverage gate reports the
+  // truth instead of being satisfied by skipped stubs.
   {
     id: "PARAM-ENABLE-GATE-001",
     workflow: "B",
     title: "Structural properties do not create spec review tasks or block candidate promotion or migration finalize.",
-    required: true
+    required: false
   },
   {
     id: "PARAM-ENABLE-VISIBLE-001",
     workflow: "B",
     title: "Topology shows node enablement badges and workbench no-effect notices for disabled nodes.",
-    required: true
+    required: false
   },
   {
     id: "PARAM-ENABLE-TOGGLE-001",
     workflow: "B",
     title: "Node disable requires reason and confirmation; enablement drafts share the working tip with binding edits.",
-    required: true
+    required: false
   },
   {
     id: "PARAM-ENABLE-GUARD-001",
     workflow: "B",
     title: "Non-standard status values are read-only unless explicitly acknowledged for override.",
-    required: true
+    required: false
   },
   {
     id: "MOD-ATTR-QUEUE-001",
     workflow: "C",
     title:
       "The unclassified compatible queue lists only non-scaffolding, non-dismissed compatibles with parameter and project counts; dismissing removes an entry and restoring brings it back, both audited.",
-    required: true
+    required: false
   },
   {
     id: "MOD-ATTR-CLASSIFY-001",
     workflow: "C",
     title:
       "Classifying a compatible shows the impact preview, applies on confirm, moves parameters into the new driver group, and removes the emptied unclassified bucket.",
-    required: true
+    required: false
   },
   {
     id: "MOD-ATTR-BULK-001",
     workflow: "C",
     title: "Several selected compatibles are filed into one business category in a single confirmed action.",
-    required: true
+    required: false
   },
   {
     id: "MOD-ATTR-TREE-001",
     workflow: "C",
     title:
       "Tree actions are kind-scoped: node-type and driver-group modules offer no delete, node-type modules can move, renaming an auto module adopts it, and the adopted name survives a re-ingest.",
-    required: true
+    required: false
   },
   {
     id: "MOD-ATTR-RECLASSIFY-001",
     workflow: "C",
     title:
       "Admin reclassifies a node-type module to a business category in the edit dialog; the tree kind badge and filters update, and re-ingest does not revert the curated kind.",
-    required: true
+    required: false
   },
   {
     id: "MOD-ATTR-IMPORTANCE-001",
     workflow: "C",
     title:
       "Importance set on a business category is inherited by its driver groups and node-type units and drives the workbench importance filter.",
-    required: true
+    required: false
   },
   {
     id: "DRV-REG-001",
     workflow: "C",
     title:
       "Admin registers a driver before any DTS upload; it appears in the module tree as a not-yet-observed curated driver group with a parse-coverage chip.",
-    required: true
+    required: false
   },
   {
     id: "DRV-REG-002",
     workflow: "C",
     title:
       "Admin claims an observed-but-unregistered driver from the queue or module tree; the driver group origin becomes curated.",
-    required: true
+    required: false
   },
   {
     id: "DRV-REG-003",
     workflow: "C",
     title:
       "After a DTS upload, the one-shot ingest summary reports matched registered drivers and newly observed unregistered compatibles.",
-    required: true
+    required: false
   },
   {
     id: "DRV-REG-004",
     workflow: "C",
     title:
       "Admin edits driverNature / instanceCardinality on an org registration; platform-admin edits appear in org audit; Org Admin cannot edit platform-tier registrations; changing to singleton-per-project opens/refreshes singleton-cardinality publish blockers without rewriting topology.",
-    required: true
+    required: false
   },
   {
     id: "DRV-SCHEMA-001",
     workflow: "C",
     title:
       "Admin authors a draft organization overlay schema from an uncovered driver group, activates it, and sees the coverage chip change to organization-covered.",
-    required: true
+    required: false
   },
   {
     id: "DRV-SCHEMA-002",
     workflow: "C",
     title:
       "Uploading a DTS whose compatible only the organization overlay claims binds typed properties and does not open unmatched review tasks for those properties.",
-    required: true
+    required: false
   },
   {
     id: "DRV-SCHEMA-003",
     workflow: "C",
     title:
       "Activating an overlay for a compatible a pinned schema already covers is rejected with an explanation.",
-    required: true
+    required: false
   },
   {
     id: "DRV-SCHEMA-004",
     workflow: "C",
     title:
       "Activating an overlay for an already-uploaded device upgrades existing provisional specs in place without a re-upload and closes related review tasks.",
-    required: true
+    required: false
   },
   {
     id: "MOD-ATTR-CREATE-KIND-001",
     workflow: "C",
     title:
       "Admin creates empty business or driver-group modules from the attribution tree with parent-kind rules, required compatibles for driver groups, and not-yet-observed markers on empty curated nodes; node-type units are ingest-only.",
-    required: true
+    required: false
   },
   {
     id: "PLAT-ROLE-001",
@@ -811,6 +815,28 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "MOD-ATTR-SORT-001",
     workflow: "C",
     title: "Module tree up/down reorder persists via sortOrder PATCH.",
+    required: false
+  },
+  {
+    id: "XIAOZE-ACTION-EDITEDARGS-001",
+    workflow: "G",
+    title: "Approval card argument edits are sent on approve and the executed tool call uses the edited arguments.",
+    required: true
+  },
+  // Unit/component-covered requirements referenced by the coverage map. They carry no
+  // browser-spec markers; the map row names the owning non-browser tests.
+  {
+    id: "BRIDGE-TOOLS-001",
+    workflow: "E",
+    title:
+      "Connected bridge with tools.adb.available false shows tools-missing copy and an install-tools CTA instead of bridge-missing copy.",
+    required: false
+  },
+  {
+    id: "PARAM-ADMIN-AUDIT-RECENT-001",
+    workflow: "C",
+    title:
+      "After an admin mutation that audits server-side, the recent strip shows a matching audit-center event via listAuditEvents projection.",
     required: false
   }
 ];

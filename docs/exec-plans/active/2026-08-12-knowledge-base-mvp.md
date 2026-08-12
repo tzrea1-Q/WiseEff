@@ -105,5 +105,5 @@ Per phase: targeted vitest for `server/modules/knowledge/` and knowledge compone
 - [x] ARCHITECTURE EN + zh map the knowledge module and Xiaoze knowledge tools (Phase 1/2 — knowledge module mapped in Phase 1; indexing worker seam + Xiaoze knowledge tools mapped in Phase 2)
 - [ ] Coverage map and operation matrix EN + zh gain the KB-* IDs before each phase implements (Phase 1 + Phase 2 IDs registered — KB-READ/EDIT/FILE-001, KB-ASK-001, KB-INDEX-001; Phase 3 IDs pending)
 - [ ] `docs/generated/db-schema.md` regenerated after migrations (Phase 1 + Phase 2 (0104) regenerated; each later phase with migrations)
-- [ ] Deferred work recorded in `docs/exec-plans/tech-debt-tracker.md` (closeout — Phase 2 already recorded TD-080: pgvector late-install manual column step + missing pgvector CI coverage)
+- [ ] Deferred work recorded in `docs/exec-plans/tech-debt-tracker.md` (closeout — Phase 2 already recorded TD-083: pgvector late-install manual column step + missing pgvector CI coverage)
 - [ ] `npm run docs:check` green before moving this plan to `completed/`

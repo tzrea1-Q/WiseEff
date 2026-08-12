@@ -58,7 +58,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `DEBUG-SIM-001` | P0 | debugging | automated | `/node-debugging` | Hardware Committer, Admin | ui, api, db, audit | `e2e/acceptance/debugging-simulator.acceptance.spec.ts` |
 | `DEBUG-PERM-001` | P1 | debugging | automated | `/node-debugging` | Guest, Hardware User, Software User | ui, api | `e2e/acceptance/debugging-simulator.acceptance.spec.ts` |
 | `DEBUG-ADMIN-001` | P1 | debugging | automated | `/debugging-admin/nodes` | Admin | ui, api, db, audit | `e2e/acceptance/debugging-admin.acceptance.spec.ts` |
-| `BRIDGE-WIN-001` | P1 | debugging | future | `/node-debugging` | Hardware Committer, Admin | ui, api | `e2e/acceptance/debugging-local-bridge.acceptance.spec.ts`<br>`e2e/acceptance/local-device-bridge.acceptance.spec.ts` |
+| `BRIDGE-WIN-001` | P1 | debugging | future | `/node-debugging` | Hardware Committer, Admin | ui, api | `e2e/acceptance/local-device-bridge.acceptance.spec.ts`<br>`e2e/acceptance/local-device-bridge.acceptance.spec.ts` |
 | `BRIDGE-HDC-001` | P1 | debugging | conditional | `/node-debugging` | Hardware Committer, Admin | ui, api | `e2e/acceptance/local-device-bridge.acceptance.spec.ts` |
 | `DTS-RELOAD-DEPLOY-001` | P0 | debugging | automated | `/dts-reload` | Hardware Committer, Admin | api | `e2e/acceptance/dts-reload-deploy.acceptance.spec.ts` |
 | `DTS-RELOAD-KERNEL-001` | P0 | debugging | automated | `/dts-reload` | Hardware Committer, Admin | api | `e2e/acceptance/dts-reload-deploy.acceptance.spec.ts` |
@@ -73,6 +73,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `XIAOZE-ACTION-EDITEDARGS-001` | P1 | agent | automated | `/parameters` | Admin | api, audit | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
 | `XIAOZE-ACTION-REJECT-001` | P1 | agent | automated | `/parameters` | Admin | api | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
 | `XIAOZE-ACTION-RESUME-001` | P1 | agent | automated | `/parameters` | Admin | api | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
+| `XIAOZE-ACTION-EDITEDARGS-001` | P1 | agent | automated | `/parameters` | Admin | api | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
 | `XIAOZE-ACTION-AUTHZ-001` | P1 | agent | automated | `/parameters` | Guest | api | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
 | `XIAOZE-PLAN-MULTISTEP-001` | P2 | agent | automated | `/parameters` | Admin | api | `e2e/acceptance/xiaoze-planning.acceptance.spec.ts` |
 | `XIAOZE-PROACTIVE-001` | P2 | agent | automated | `/parameters` | Admin | api | `e2e/acceptance/xiaoze-planning.acceptance.spec.ts` |

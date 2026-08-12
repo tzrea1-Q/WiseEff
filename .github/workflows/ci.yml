@@ -83,6 +83,12 @@ jobs:
       - name: Frontend tests
         run: npm test
 
+      - name: Script tests
+        run: npm run test:scripts
+
+      - name: Device bridge tests
+        run: npm run bridge:test
+
       - name: Backend tests
         run: npm run test:server
 

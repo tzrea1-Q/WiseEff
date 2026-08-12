@@ -38,11 +38,17 @@ function adminAuth(overrides: Partial<AuthContext> = {}): AuthContext {
   };
 }
 
-function makeDb(): Database {
-  return {
-    query: vi.fn(),
-    transaction: vi.fn()
+/** Fake Database whose transaction() actually runs the callback on a distinct tx handle. */
+function makeDb(): { db: Database; tx: Database } {
+  const tx: Database = {
+    query: vi.fn(async () => ({ rows: [], rowCount: 0 })),
+    transaction: async (fn) => fn(tx)
   };
+  const db: Database = {
+    query: vi.fn(async () => ({ rows: [], rowCount: 0 })),
+    transaction: vi.fn(async (fn) => fn(tx))
+  };
+  return { db, tx };
 }
 
 describe("updateProjectForAuth", () => {
@@ -50,8 +56,8 @@ describe("updateProjectForAuth", () => {
     vi.clearAllMocks();
   });
 
-  it("updates a project and writes a parameter-admin audit event", async () => {
-    const db = makeDb();
+  it("updates a project and writes the audit event on the same transaction handle", async () => {
+    const { db, tx } = makeDb();
     const item = {
       id: "nova",
       name: "Nova Renamed",
@@ -73,7 +79,8 @@ describe("updateProjectForAuth", () => {
     );
 
     expect(result).toEqual(item);
-    expect(mockedUpdateProject).toHaveBeenCalledWith(db, {
+    // Domain write and audit write share the transaction handle (ADR-0027).
+    expect(mockedUpdateProject).toHaveBeenCalledWith(tx, {
       organizationId: "org-1",
       projectId: "nova",
       name: "Nova Renamed",
@@ -81,7 +88,7 @@ describe("updateProjectForAuth", () => {
       status: undefined
     });
     expect(mockedCreateAuditEvent).toHaveBeenCalledWith(
-      db,
+      tx,
       expect.objectContaining({
         organizationId: "org-1",
         projectId: "nova",
@@ -97,13 +104,15 @@ describe("updateProjectForAuth", () => {
   });
 
   it("rejects callers without admin:access before mutating", async () => {
-    const db = makeDb();
+    const { db } = makeDb();
 
     await expect(
-      updateProjectForAuth(db, adminAuth({ permissions: ["parameter:view"] }), {
-        projectId: "nova",
-        name: "Nope"
-      })
+      updateProjectForAuth(
+        db,
+        adminAuth({ permissions: ["parameter:view"] }),
+        { projectId: "nova", name: "Nope" },
+        { requestId: "req-update-2" }
+      )
     ).rejects.toMatchObject({ code: "FORBIDDEN" } satisfies Partial<ApiError>);
 
     expect(mockedUpdateProject).not.toHaveBeenCalled();
@@ -111,13 +120,15 @@ describe("updateProjectForAuth", () => {
   });
 
   it("does not write audit when the project is missing", async () => {
-    const db = makeDb();
+    const { db } = makeDb();
     mockedUpdateProject.mockResolvedValue(null);
 
-    const result = await updateProjectForAuth(db, adminAuth(), {
-      projectId: "missing",
-      name: "Missing"
-    });
+    const result = await updateProjectForAuth(
+      db,
+      adminAuth(),
+      { projectId: "missing", name: "Missing" },
+      { requestId: "req-update-3" }
+    );
 
     expect(result).toBeNull();
     expect(mockedCreateAuditEvent).not.toHaveBeenCalled();
@@ -129,8 +140,8 @@ describe("deleteProjectForAuth", () => {
     vi.clearAllMocks();
   });
 
-  it("deletes a project and writes a parameter-admin audit event", async () => {
-    const db = makeDb();
+  it("deletes a project and writes the audit event on the same transaction handle", async () => {
+    const { db, tx } = makeDb();
     mockedDeleteProject.mockResolvedValue({ deleted: true });
 
     const result = await deleteProjectForAuth(
@@ -141,12 +152,12 @@ describe("deleteProjectForAuth", () => {
     );
 
     expect(result).toEqual({ deleted: true });
-    expect(mockedDeleteProject).toHaveBeenCalledWith(db, {
+    expect(mockedDeleteProject).toHaveBeenCalledWith(tx, {
       organizationId: "org-1",
       projectId: "nova"
     });
     expect(mockedCreateAuditEvent).toHaveBeenCalledWith(
-      db,
+      tx,
       expect.objectContaining({
         organizationId: "org-1",
         projectId: "nova",
@@ -161,13 +172,15 @@ describe("deleteProjectForAuth", () => {
   });
 
   it("does not write audit when the project is missing", async () => {
-    const db = makeDb();
+    const { db } = makeDb();
     mockedDeleteProject.mockResolvedValue({ deleted: false, reason: "not_found" });
 
-    const result = await deleteProjectForAuth(db, adminAuth(), {
-      projectId: "missing",
-      projectName: "Missing"
-    });
+    const result = await deleteProjectForAuth(
+      db,
+      adminAuth(),
+      { projectId: "missing", projectName: "Missing" },
+      { requestId: "req-delete-2" }
+    );
 
     expect(result).toEqual({ deleted: false, reason: "not_found" });
     expect(mockedCreateAuditEvent).not.toHaveBeenCalled();

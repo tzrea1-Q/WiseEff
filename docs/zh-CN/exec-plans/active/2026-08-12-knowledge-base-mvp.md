@@ -105,5 +105,5 @@
 - [x] ARCHITECTURE 英文 + 中文标注知识模块与小泽知识工具（Phase 1/2——知识模块已在 Phase 1 标注;索引 worker seam 与小泽知识工具已在 Phase 2 标注）
 - [ ] 覆盖图与操作矩阵英文 + 中文在各阶段实现前获得 KB-* ID（Phase 1 + Phase 2 ID 已注册——KB-READ/EDIT/FILE-001、KB-ASK-001、KB-INDEX-001;Phase 3 ID 待注册）
 - [ ] 迁移后重新生成 `docs/generated/db-schema.md`（Phase 1 与 Phase 2（0104）已重新生成;后续含迁移阶段继续）
-- [ ] 延期工作记入 `docs/exec-plans/tech-debt-tracker.md`（收尾——Phase 2 已记 TD-080:pgvector 后装手动补列 + CI 缺 pgvector 覆盖）
+- [ ] 延期工作记入 `docs/exec-plans/tech-debt-tracker.md`（收尾——Phase 2 已记 TD-083:pgvector 后装手动补列 + CI 缺 pgvector 覆盖）
 - [ ] 本计划移入 `completed/` 前 `npm run docs:check` 通过
