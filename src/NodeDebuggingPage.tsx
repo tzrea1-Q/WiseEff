@@ -479,6 +479,11 @@ export function NodeDebuggingPage({
   const [bridgeTargetCandidates, setBridgeTargetCandidates] = useState<DeviceTarget[]>([]);
   const [selectingBridgeTargetId, setSelectingBridgeTargetId] = useState<string | null>(null);
   const [pendingHighRiskWrite, setPendingHighRiskWrite] = useState<RuntimeRow | null>(null);
+  const [pendingBulkWrite, setPendingBulkWrite] = useState<{
+    rows: RuntimeRow[];
+    highRiskRows: RuntimeRow[];
+  } | null>(null);
+  const [bulkWriteSummary, setBulkWriteSummary] = useState<string | null>(null);
   const [rollbackDialogOpen, setRollbackDialogOpen] = useState(false);
   const autoReadSignatureRef = useRef("");
   const protocolRef = useRef(protocol);
@@ -903,11 +908,12 @@ export function NodeDebuggingPage({
     void detect();
   }, [protocol, runtimeReady]);
 
-  const writeRow = async (row: RuntimeRow, confirmationToken?: string) => {
-    if ((!target && !activeSessionId) || !canWrite(row)) return;
+  /** Returns true when the write landed (and, for RW rows, read back consistent). */
+  const writeRow = async (row: RuntimeRow, confirmationToken?: string): Promise<boolean> => {
+    if ((!target && !activeSessionId) || !canWrite(row)) return false;
     if (debuggingActions && row.risk === "High" && !confirmationToken) {
       setPendingHighRiskWrite(row);
-      return;
+      return false;
     }
     const readBack = row.accessMode === "RW";
     const requestProtocol = protocolRef.current;
@@ -928,7 +934,7 @@ export function NodeDebuggingPage({
           })
         : await writeNodeValue({ target: target ?? "", nodePath: row.nodePath, value: row.draftValue, readBack });
 
-      if (!isLatestRowOperation(row.id, operationSeq, generation, requestProtocol)) return;
+      if (!isLatestRowOperation(row.id, operationSeq, generation, requestProtocol)) return false;
 
       if (!result.ok) {
         updateRow(row.id, {
@@ -986,6 +992,7 @@ export function NodeDebuggingPage({
           }, result.value ?? result.readResult?.stdout?.trim() ?? row.draftValue)
         });
       }
+      return Boolean(result.ok) && (!readBack || Boolean(result.verified));
     } catch (error) {
       const message = readFailureMessage(error);
       if (isLatestRowOperation(row.id, operationSeq, generation, requestProtocol)) {
@@ -1005,23 +1012,54 @@ export function NodeDebuggingPage({
         stderr: (error as DiagnosticError | undefined)?.stderr || message,
         nodePath: row.nodePath
       });
+      return false;
     }
+  };
+
+  /** Batch dispatch after any required aggregate confirmation; token covers high-risk rows. */
+  const runBulkWrite = async (rowsToWrite: RuntimeRow[], confirmationToken?: string) => {
+    let succeeded = 0;
+    let failed = 0;
+    for (const row of rowsToWrite) {
+      const ok = await writeRow(
+        row,
+        row.risk === "High" ? confirmationToken : undefined
+      );
+      if (ok) {
+        succeeded += 1;
+      } else {
+        failed += 1;
+      }
+    }
+    // Only rows that were actually dispatched leave the selection.
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      rowsToWrite.forEach((row) => next.delete(row.id));
+      return next;
+    });
+    setBulkWriteSummary(`批量写入完成：成功 ${succeeded} / 失败 ${failed}`);
   };
 
   const bulkWriteRows = async () => {
     const rowsToWrite = selectedIds.size > 0 ? pendingSelectedRows : pendingRows;
     if (!connected || rowsToWrite.length === 0) return;
 
-    for (const row of rowsToWrite) {
-      await writeRow(row);
+    // High-risk rows require a single aggregate confirmation before dispatch —
+    // never per-row dialogs that overwrite each other or silent skips.
+    const highRiskRows = debuggingActions ? rowsToWrite.filter((row) => row.risk === "High") : [];
+    if (highRiskRows.length > 0) {
+      setPendingBulkWrite({ rows: rowsToWrite, highRiskRows });
+      return;
     }
 
-    setSelectedIds((current) => {
-      const next = new Set(current);
-      rowsToWrite.forEach((row) => next.delete(row.id));
-      return next;
-    });
+    await runBulkWrite(rowsToWrite);
   };
+
+  useEffect(() => {
+    if (!bulkWriteSummary) return undefined;
+    const timer = window.setTimeout(() => setBulkWriteSummary(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [bulkWriteSummary]);
 
   const batchTargetRows = selectedIds.size > 0 ? pendingSelectedRows : pendingRows;
 
@@ -1371,6 +1409,47 @@ export function NodeDebuggingPage({
           }
         }}
       />
+
+      <ConfirmDialog
+        open={pendingBulkWrite !== null}
+        title={`批量写入包含 ${pendingBulkWrite?.highRiskRows.length ?? 0} 个高风险节点`}
+        description={
+          pendingBulkWrite ? (
+            <div>
+              <p>
+                本次批量共 {pendingBulkWrite.rows.length} 个节点，其中高风险 {pendingBulkWrite.highRiskRows.length} 个。
+                确认后高风险节点将统一携带 confirmation token 下发；取消则不写入任何节点。
+              </p>
+              <ul className="node-bulk-high-risk-list" aria-label="高风险节点清单">
+                {pendingBulkWrite.highRiskRows.map((row) => (
+                  <li key={row.id}>
+                    <strong>{row.name}</strong>
+                    <span>
+                      {(row.runtimeCurrentValue || row.currentValue || "未知") + " → " + row.draftValue}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null
+        }
+        confirmLabel={`确认写入（含 ${pendingBulkWrite?.highRiskRows.length ?? 0} 个高风险）`}
+        tone="danger"
+        onCancel={() => setPendingBulkWrite(null)}
+        onConfirm={() => {
+          const batch = pendingBulkWrite;
+          setPendingBulkWrite(null);
+          if (batch) {
+            void runBulkWrite(batch.rows, "confirm-high-risk-write");
+          }
+        }}
+      />
+
+      {bulkWriteSummary ? (
+        <div className="node-bulk-write-summary" role="status" aria-live="polite">
+          {bulkWriteSummary}
+        </div>
+      ) : null}
 
       {rollbackDialogOpen && state.lastDebugSnapshot ? (
         <RollbackConfirmDialog

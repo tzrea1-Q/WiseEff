@@ -50,7 +50,7 @@ describe("FeedbackAdminDrawer", () => {
     );
   });
 
-  it("closes in-progress feedback", async () => {
+  it("closes in-progress feedback only after the irreversibility confirmation", async () => {
     const onUpdate = vi.fn().mockResolvedValue(feedback({ status: "closed", adminNote: "已确认修复" }));
 
     render(
@@ -67,12 +67,40 @@ describe("FeedbackAdminDrawer", () => {
     fireEvent.change(within(drawer).getByLabelText("处理备注"), { target: { value: "已确认修复" } });
     fireEvent.click(within(drawer).getByRole("button", { name: "关闭反馈" }));
 
+    // Closing is irreversible: nothing happens before the confirm dialog.
+    expect(onUpdate).not.toHaveBeenCalled();
+    const confirmDialog = screen.getByRole("dialog", { name: "确认关闭反馈" });
+    expect(confirmDialog).toHaveTextContent(/只读状态/);
+    expect(confirmDialog).toHaveTextContent(/处理备注将随关闭一并保存/);
+
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "确认关闭" }));
     await waitFor(() =>
       expect(onUpdate).toHaveBeenCalledWith("feedback-1", {
         status: "closed",
         adminNote: "已确认修复"
       })
     );
+  });
+
+  it("does not close feedback when the confirmation is cancelled", () => {
+    const onUpdate = vi.fn();
+
+    render(
+      <FeedbackAdminDrawer
+        feedback={feedback({ status: "in_progress" })}
+        open
+        onClose={vi.fn()}
+        onUpdate={onUpdate}
+        getAttachmentObjectUrl={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭反馈" }));
+    const confirmDialog = screen.getByRole("dialog", { name: "确认关闭反馈" });
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "取消" }));
+
+    expect(onUpdate).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog", { name: "确认关闭反馈" })).not.toBeInTheDocument();
   });
 
   it("opens attachment preview when thumbnail is clicked", async () => {

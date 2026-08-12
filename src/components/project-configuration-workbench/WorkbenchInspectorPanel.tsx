@@ -62,6 +62,7 @@ export type WorkbenchInspectorPanelProps = {
   selectedBaselineId: string | null;
   baselinesLoading: boolean;
   baselinesError: string;
+  baselineActionError: string;
   baselineCompare: DtsCompareBaselineResult | null;
   baselineCompareAgainst: "working" | "released";
   baselinePinnedMembers: Array<{ fileId: string; fileVersionId: string; versionNumber: number }>;
@@ -132,6 +133,7 @@ export function WorkbenchInspectorPanel({
   selectedBaselineId,
   baselinesLoading,
   baselinesError,
+  baselineActionError,
   baselineCompare,
   baselineCompareAgainst,
   baselinePinnedMembers,
@@ -230,6 +232,7 @@ export function WorkbenchInspectorPanel({
           selectedBaselineId={selectedBaselineId}
           loading={baselinesLoading}
           error={baselinesError}
+          actionError={baselineActionError}
           compareMembers={baselineCompare?.members ?? null}
           compareAgainst={baselineCompareAgainst}
           pinnedMembers={baselinePinnedMembers}

@@ -13,6 +13,7 @@ import {
   Info,
   Link2,
   ListChecks,
+  LoaderCircle,
   MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
@@ -123,7 +124,7 @@ function isStaticDownloadPath(pathname: string) {
   return pathname.startsWith("/downloads/");
 }
 import { TopBarActionsContext, useTopBarActions } from "./components/layout";
-import { applyTimeWindow, deriveMetrics } from "./logAdminAnalytics";
+import { applyTimeWindow, deriveMetrics, isSparseSparkline } from "./logAdminAnalytics";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { ReviewImpactList } from "./components/parameters/ReviewImpactList";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "./components/tableFilterUtils";
@@ -150,6 +151,7 @@ import { readInitialNodeDebuggingProtocol } from "./NodeDebuggingPage";
 import {
   AuditEvent,
   ChangeRequest,
+  createApiInitialState,
   derivePowerManagementRuntimeState,
   DebugParameter,
   DebugSnapshot,
@@ -227,6 +229,8 @@ import {
 } from "@/infrastructure/http/authClient";
 import { clearSessionDraftsForLogout } from "@/application/project-configuration/sessionDraftStorage";
 import { AppToastLayer } from "@/components/common/AppToastLayer";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { unsavedParameterWorkCount } from "@/application/parameters/unsavedParameterWork";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 import { createMockParameterRepository } from "@/infrastructure/mock/mockParameterRepository";
@@ -292,6 +296,9 @@ function writeSidebarCollapsedPreference(isCollapsed: boolean) {
     // Keep the toggle usable when storage is unavailable.
   }
 }
+
+/** API-mode data domains refreshed by refreshApiRuntimeData. */
+export type ApiRuntimeDataDomain = "parameters" | "logs" | "debugging";
 
 export type AppAction =
   | { type: "SET_PROJECT"; projectId: string }
@@ -365,6 +372,7 @@ export type AppAction =
   | UpsertDebugNodeOperationAction
   | UpsertDebugSnapshotAction
   | { type: "CLEAR_PUSHED_DEBUG_IDS"; parameterIds: string[] }
+  | { type: "CLEAR_API_RUNTIME_DOMAIN"; domain: ApiRuntimeDataDomain }
   | { type: "ADD_NOTIFICATION"; message: string }
   | { type: "DISMISS_NOTIFICATION" }
   | { type: "SET_NOTIFICATION_INBOX"; items: import("@/domain/notifications/types").NotificationItem[] }
@@ -777,8 +785,14 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       const projects = action.projects.map((project) => ({ ...project }));
       const parameterLibrary = buildParameterLibraryFromRecords(action.parameters, projects);
       const parameterModules = buildParameterModulesFromRecords(action.parameters, state.configDraft.parameterModules);
+      // Keep the active project pointed at real server data, never at a stale demo id.
+      const activeProjectId =
+        projects.length > 0 && !projects.some((project) => project.id === state.activeProjectId)
+          ? projects[0].id
+          : state.activeProjectId;
       return {
         ...state,
+        activeProjectId,
         parameters: action.parameters,
         changeRequests: action.changeRequests,
         parameterDrafts: action.parameterDrafts ?? [],
@@ -789,6 +803,42 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
           projects,
           parameterLibrary,
           parameterModules
+        }
+      };
+    }
+    case "CLEAR_API_RUNTIME_DOMAIN": {
+      // API refresh failed: purge the domain's business data instead of showing
+      // demo records as if they were live (mock data must never look real).
+      if (action.domain === "parameters") {
+        return {
+          ...state,
+          parameters: [],
+          changeRequests: [],
+          parameterDrafts: [],
+          parameterSubmissionRounds: [],
+          parameterReviewDecisions: [],
+          configDraft: {
+            ...state.configDraft,
+            projects: [],
+            parameterLibrary: [],
+            parameterModules: []
+          }
+        };
+      }
+      if (action.domain === "logs") {
+        return {
+          ...state,
+          logs: [],
+          archivedLogIds: []
+        };
+      }
+      return {
+        ...state,
+        devices: [],
+        debugParameters: [],
+        configDraft: {
+          ...state.configDraft,
+          debugParameters: []
         }
       };
     }
@@ -1971,7 +2021,7 @@ function App({
   authClient,
   debuggingAdminClient,
   debuggingGateway,
-  initialAppState = initialState,
+  initialAppState,
   logAnalysisRepository,
   listParameterConfigSets,
   parameterRepository,
@@ -1982,13 +2032,18 @@ function App({
   runtimeMode = wiseEffRuntimeMode,
   userGovernanceActions
 }: AppProps = {}) {
+  // API mode boots from empty business slices (no demo data flash); mock mode
+  // keeps the full prototype state for demos and component tests.
+  const [resolvedInitialAppState] = useState(
+    () => initialAppState ?? (runtimeMode === "api" ? createApiInitialState() : initialState)
+  );
   return (
     <TooltipProvider delayDuration={0}>
       <AppShell
         authClient={authClient}
         debuggingAdminClient={debuggingAdminClient}
         debuggingGateway={debuggingGateway}
-        initialAppState={initialAppState}
+        initialAppState={resolvedInitialAppState}
         key={mockDataFingerprint}
         logAnalysisRepository={logAnalysisRepository}
         listParameterConfigSets={listParameterConfigSets}
@@ -2353,54 +2408,52 @@ function AppShell({
   const parameterRuntimeConnectedRef = useRef(false);
   const logRuntimeConnectedRef = useRef(false);
   const debuggingRuntimeConnectedRef = useRef(false);
+  const [apiRuntimeFailures, setApiRuntimeFailures] = useState<ReadonlySet<ApiRuntimeDataDomain>>(
+    () => new Set()
+  );
+  const [apiRuntimeSynced, setApiRuntimeSynced] = useState(runtimeMode !== "api");
+  const [apiRuntimeRetrying, setApiRuntimeRetrying] = useState(false);
 
   const refreshApiRuntimeData = useCallback(
     async (cancelledRef?: { current: boolean }, roleId = stateRef.current.activeRoleId) => {
       const runtimeRoleId = migrateLegacyRoleId(roleId);
       const debuggingProtocol = pageKeyRef.current === "node-debugging" ? readInitialNodeDebuggingProtocol() : "hdc";
-      const debuggingRefresh = canPerform(runtimeRoleId, "debugging.use")
-        ? debuggingActions.refresh({ protocol: debuggingProtocol })
+      const canUseDebugging = canPerform(runtimeRoleId, "debugging.use");
+      const debuggingRefresh = canUseDebugging
+        ? debuggingActions.refresh({ protocol: debuggingProtocol }, { notifyOnFailure: false })
         : Promise.resolve("skipped" as const);
       const [parameterRefreshResult, logRefreshResult, debuggingRefreshResult] = await Promise.allSettled([
         parameterActions.refresh({ notifyOnFailure: false }),
-        logActions.refresh(),
+        logActions.refresh(undefined, { notifyOnFailure: false }),
         debuggingRefresh
       ]);
       if (cancelledRef?.current) return;
+      // Failed domains drop to empty slices + a persistent page banner. Demo data
+      // must never stand in for live data in API mode.
+      const failures = new Set<ApiRuntimeDataDomain>();
       if (
         parameterRefreshResult.status === "rejected" ||
         (parameterRefreshResult.value && "notification" in parameterRefreshResult.value)
       ) {
-        dispatch({ type: "ADD_NOTIFICATION", message: "无法连接雷泽参数 API，已保留本地演示数据" });
+        failures.add("parameters");
+        dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "parameters" });
       } else if (!parameterRuntimeConnectedRef.current) {
         parameterRuntimeConnectedRef.current = true;
         dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽参数 API" });
       }
       if (logRefreshResult.status === "rejected") {
-        if (
-          !(
-            logRefreshResult.reason instanceof Error &&
-            (logRefreshResult.reason as { alreadyNotified?: unknown }).alreadyNotified === true
-          )
-        ) {
-          dispatch({ type: "ADD_NOTIFICATION", message: "无法加载雷泽日志 API，已保留本地演示数据" });
-        }
+        failures.add("logs");
+        dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "logs" });
       } else if (!logRuntimeConnectedRef.current) {
         logRuntimeConnectedRef.current = true;
         dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽日志 API" });
       }
-      if (!canPerform(runtimeRoleId, "debugging.use")) {
+      if (!canUseDebugging) {
         setDebuggingRuntimeReady(true);
       } else if (debuggingRefreshResult.status === "rejected") {
         setDebuggingRuntimeReady(false);
-        if (
-          !(
-            debuggingRefreshResult.reason instanceof Error &&
-            (debuggingRefreshResult.reason as { alreadyNotified?: unknown }).alreadyNotified === true
-          )
-        ) {
-          dispatch({ type: "ADD_NOTIFICATION", message: "无法加载雷泽调试 API，已保留本地演示数据" });
-        }
+        failures.add("debugging");
+        dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "debugging" });
       } else {
         setDebuggingRuntimeReady(true);
         if (!debuggingRuntimeConnectedRef.current) {
@@ -2408,9 +2461,20 @@ function AppShell({
           dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽调试 API" });
         }
       }
+      setApiRuntimeFailures(failures);
+      setApiRuntimeSynced(true);
     },
     [debuggingActions, logActions, parameterActions]
   );
+
+  const retryApiRuntimeData = useCallback(async () => {
+    setApiRuntimeRetrying(true);
+    try {
+      await refreshApiRuntimeData();
+    } finally {
+      setApiRuntimeRetrying(false);
+    }
+  }, [refreshApiRuntimeData]);
   const mockNotificationsClient = useMemo(
     () =>
       runtimeMode === "mock"
@@ -2568,6 +2632,20 @@ function AppShell({
     };
   }, []);
 
+  // Unsubmitted parameter drafts must survive accidental reloads/navigation.
+  useEffect(() => {
+    const guardUnload = (event: BeforeUnloadEvent) => {
+      if (unsavedParameterWorkCount() > 0) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", guardUnload);
+    return () => {
+      window.removeEventListener("beforeunload", guardUnload);
+    };
+  }, []);
+
   const navigate = useCallback((nextPath: string) => {
     const url = new URL(nextPath, window.location.origin);
     if (isStaticDownloadPath(url.pathname)) {
@@ -2679,6 +2757,37 @@ function AppShell({
     </div>
   ) : null;
 
+  const apiRuntimeDomainLabels: Record<ApiRuntimeDataDomain, string> = {
+    parameters: "参数",
+    logs: "日志",
+    debugging: "调试"
+  };
+  const apiRuntimeStatusBanner =
+    runtimeMode !== "api" || isPlatformHome ? null : apiRuntimeFailures.size > 0 ? (
+      <div className="api-runtime-error-banner" role="alert" aria-live="assertive">
+        <AlertTriangle size={18} aria-hidden="true" />
+        <div className="api-runtime-error-banner__body">
+          <strong>
+            无法连接雷泽{[...apiRuntimeFailures].map((domain) => apiRuntimeDomainLabels[domain]).join("、")} API，当前无数据
+          </strong>
+          <p>为避免误读，连接失败时不展示演示数据；请确认后端服务可用后重试。</p>
+        </div>
+        <button
+          type="button"
+          className="button"
+          disabled={apiRuntimeRetrying}
+          onClick={() => void retryApiRuntimeData()}
+        >
+          {apiRuntimeRetrying ? "重试中…" : "重试"}
+        </button>
+      </div>
+    ) : !apiRuntimeSynced ? (
+      <div className="api-runtime-sync-banner" role="status">
+        <LoaderCircle size={16} className="api-runtime-sync-banner__spinner" aria-hidden="true" />
+        正在连接雷泽服务，加载真实数据…
+      </div>
+    ) : null;
+
   const appShell = (
     <div className={appShellClassName}>
         {!isPlatformHome ? (
@@ -2753,6 +2862,7 @@ function AppShell({
             </div>
           ) : (
             <main className="main-content" aria-label={isParameterHome ? "参数管理首页" : undefined}>
+              {apiRuntimeStatusBanner}
               {proactiveInsightsBanner}
               <PageRouter
                 page={page}
@@ -2867,6 +2977,30 @@ function LogDashboardPage({ state, onNavigate }: { state: PrototypeState; onNavi
     date.setDate(date.getDate() - (6 - index));
     return `${date.getMonth() + 1}月${date.getDate()}日`;
   });
+  const trendSampleSparse = isSparseSparkline(metrics.todayCount.sparkline);
+  // The queue verdict is earned from real failure / stuck-processing counts,
+  // never asserted unconditionally.
+  const stalledProcessingLogs = todayLogs.filter(
+    (log) => log.status === "Processing" && Date.now() - Date.parse(log.updatedAtIso) > 10 * 60_000
+  );
+  const queueJudgement =
+    failedLogs.length > 0
+      ? {
+          tone: "risk" as const,
+          headline: `${failedLogs.length} 条失败待处理`,
+          detail: `今日覆盖 ${totalCount} 份日志，其中 ${failedLogs.length} 份解析失败，请优先处理失败记录。`
+        }
+      : stalledProcessingLogs.length > 0
+        ? {
+            tone: "risk" as const,
+            headline: `${stalledProcessingLogs.length} 条分析滞留`,
+            detail: `今日覆盖 ${totalCount} 份日志，${stalledProcessingLogs.length} 份分析超过 10 分钟未完成。`
+          }
+        : {
+            tone: "ok" as const,
+            headline: "处理队列稳定",
+            detail: `今日覆盖 ${totalCount} 份日志，最新样本 ${compactLogLabel(latestLog)} 已进入看板监控。`
+          };
   const topActions = Array.from(
     new Set(
       [...failedLogs, ...lowConfidenceLogs, ...sortedByUpdate]
@@ -2901,12 +3035,12 @@ function LogDashboardPage({ state, onNavigate }: { state: PrototypeState; onNavi
             </div>
           </div>
 
-          <div className="topic-decision-panel">
-            <CheckCircle2 size={18} />
+          <div className={`topic-decision-panel${queueJudgement.tone === "risk" ? " is-risk" : ""}`}>
+            {queueJudgement.tone === "risk" ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />}
             <div>
               <span>关键判断</span>
-              <strong>处理队列稳定</strong>
-              <p>今日覆盖 {totalCount} 份日志，最新样本 {compactLogLabel(latestLog)} 已进入看板监控。</p>
+              <strong>{queueJudgement.headline}</strong>
+              <p>{queueJudgement.detail}</p>
             </div>
           </div>
 
@@ -2925,6 +3059,9 @@ function LogDashboardPage({ state, onNavigate }: { state: PrototypeState; onNavi
                   </span>
                 ))}
               </div>
+              {trendSampleSparse ? (
+                <p className="topic-trend-note" role="note">样本不足，趋势仅供参考。</p>
+              ) : null}
             </section>
 
             <section className="topic-evidence-block">
@@ -3303,6 +3440,17 @@ function TopBar({
   const selectedProjectId =
     page.key === "parameters" ? new URLSearchParams(search).get("project") || state.activeProjectId : state.activeProjectId;
   const handleProjectChange = (projectId: string) => {
+    // Switching projects tears down the parameter workbench; unsaved drafts
+    // must be acknowledged before they are dropped.
+    if (page.key === "parameters") {
+      const unsavedCount = unsavedParameterWorkCount();
+      if (
+        unsavedCount > 0 &&
+        !window.confirm(`有 ${unsavedCount} 项未保存的修改，切换项目将丢弃这些修改。确定切换吗？`)
+      ) {
+        return;
+      }
+    }
     dispatch({ type: "SET_PROJECT", projectId });
 
     if (page.key === "parameters") {
@@ -4020,6 +4168,7 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate, parameterAction
   const myRounds = state.parameterSubmissionRounds.filter((round) => submitterAliases.has(round.submitter));
   const [selectedRoundId, setSelectedRoundId] = useState(myRounds[0]?.id ?? "");
   const [withdrawingRound, setWithdrawingRound] = useState(false);
+  const [withdrawConfirmOpen, setWithdrawConfirmOpen] = useState(false);
   const selectedRound = myRounds.find((round) => round.id === selectedRoundId) ?? myRounds[0];
   const timelineView = deriveSubmissionTimeline(selectedRound ?? null);
   const workflowStages = useMemo(() => {
@@ -4083,6 +4232,7 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate, parameterAction
       dispatch({ type: "WITHDRAW_PARAMETER_SUBMISSION_ROUND", roundId: selectedRound.id });
     } finally {
       setWithdrawingRound(false);
+      setWithdrawConfirmOpen(false);
     }
   };
 
@@ -4139,7 +4289,7 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate, parameterAction
                   type="button"
                   variant="destructive"
                   disabled={!canWithdrawSubmissionRound(selectedRound.status) || withdrawingRound}
-                  onClick={withdrawSelectedRound}
+                  onClick={() => setWithdrawConfirmOpen(true)}
                 >
                   <RotateCcw size={16} />
                   撤回本轮提交
@@ -4151,6 +4301,27 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate, parameterAction
           )}
         </section>
       </section>
+      <ConfirmDialog
+        open={withdrawConfirmOpen && Boolean(selectedRound)}
+        title="确认撤回本轮提交"
+        description={
+          selectedRound ? (
+            <p>
+              撤回后本轮 {selectedRound.items.length} 项变更将退出评审流程，审阅人不再收到该轮请求；
+              如需继续变更需要重新提交一轮。
+            </p>
+          ) : null
+        }
+        confirmLabel="确认撤回"
+        tone="danger"
+        pending={withdrawingRound}
+        pendingLabel="撤回中…"
+        onCancel={() => {
+          if (withdrawingRound) return;
+          setWithdrawConfirmOpen(false);
+        }}
+        onConfirm={() => void withdrawSelectedRound()}
+      />
     </div>
   );
 }
@@ -5038,7 +5209,8 @@ function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [pendingUpload, setPendingUpload] = useState<{ fileName: string; previousLogIds: Set<string> } | null>(null);
   const [feedbackLogId, setFeedbackLogId] = useState<string | null>(null);
-  const [feedbackToast, setFeedbackToast] = useState("");
+  const [feedbackPending, setFeedbackPending] = useState(false);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
   const [auxTab, setAuxTab] = useState<LogsAuxTab>("history");
   const [hoveredEvidenceId, setHoveredEvidenceId] = useState<string | null>(null);
   const [focusedEvidenceId, setFocusedEvidenceId] = useState<string | null>(null);
@@ -5323,21 +5495,47 @@ function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
       {selectedFeedbackLog ? (
         <LogAnalysisFeedbackDialog
           log={selectedFeedbackLog}
-          onClose={() => setFeedbackLogId(null)}
-          onSubmit={(confidence, issue) => {
-            dispatch({
-              type: "ADD_NOTIFICATION",
-              message: `已记录 ${selectedFeedbackLog.reportId} 的分析反馈：${confidence}${issue ? `，${issue}` : ""}`
-            });
-            setFeedbackToast("反馈已记录，感谢补充分析质量线索。");
+          pending={feedbackPending}
+          error={feedbackError}
+          onClose={() => {
+            if (feedbackPending) return;
             setFeedbackLogId(null);
+            setFeedbackError(null);
+          }}
+          onSubmit={(confidence, issue) => {
+            const feedbackLog = selectedFeedbackLog;
+            if (!logActions) {
+              // Mock mode keeps the local acknowledgement through the global toast layer.
+              dispatch({
+                type: "ADD_NOTIFICATION",
+                message: `已记录 ${feedbackLog.reportId} 的分析反馈：${confidence}${issue ? `，${issue}` : ""}`
+              });
+              setFeedbackLogId(null);
+              return;
+            }
+            setFeedbackPending(true);
+            setFeedbackError(null);
+            void logActions
+              .submitFeedback({
+                logId: feedbackLog.id,
+                rating: confidence === "high" ? "helpful" : "not_helpful",
+                ...(issue ? { note: issue } : {})
+              })
+              .then(() => {
+                setFeedbackLogId(null);
+                dispatch({
+                  type: "ADD_NOTIFICATION",
+                  message: `已提交 ${feedbackLog.reportId} 的分析反馈`
+                });
+              })
+              .catch((error: unknown) => {
+                setFeedbackError(error instanceof Error ? error.message : "反馈提交失败，请重试。");
+              })
+              .finally(() => {
+                setFeedbackPending(false);
+              });
           }}
         />
-      ) : null}
-      {feedbackToast ? (
-        <div className="logs-feedback-toast" role="status" aria-live="polite">
-          {feedbackToast}
-        </div>
       ) : null}
     </div>
   );
@@ -5639,10 +5837,14 @@ function LogConclusionCard({
 
 function LogAnalysisFeedbackDialog({
   log,
+  pending = false,
+  error = null,
   onClose,
   onSubmit
 }: {
   log: LogRecord;
+  pending?: boolean;
+  error?: string | null;
   onClose: () => void;
   onSubmit: (confidence: string, issue: string) => void;
 }) {
@@ -5651,6 +5853,7 @@ function LogAnalysisFeedbackDialog({
 
   const submitFeedback = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (pending) return;
     onSubmit(confidence, issue.trim());
   };
 
@@ -5664,13 +5867,13 @@ function LogAnalysisFeedbackDialog({
             </h2>
             <p>{log.fileName}</p>
           </div>
-          <button className="icon-button" type="button" aria-label="关闭反馈分析质量" onClick={onClose}>
+          <button className="icon-button" type="button" aria-label="关闭反馈分析质量" disabled={pending} onClick={onClose}>
             <X size={18} />
           </button>
         </div>
         <label className="upload-question-field" htmlFor="log-feedback-confidence">
           <span>置信度反馈</span>
-          <select id="log-feedback-confidence" value={confidence} onChange={(event) => setConfidence(event.target.value)}>
+          <select id="log-feedback-confidence" value={confidence} disabled={pending} onChange={(event) => setConfidence(event.target.value)}>
             <option value="high">高：判断可信</option>
             <option value="medium">中：需要复核</option>
             <option value="low">低：可能误判</option>
@@ -5683,15 +5886,21 @@ function LogAnalysisFeedbackDialog({
             value={issue}
             placeholder="例如：证据链不足、根因误判、缺少关键日志片段"
             rows={4}
+            disabled={pending}
             onChange={(event) => setIssue(event.target.value)}
           />
         </label>
+        {error ? (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        ) : null}
         <div className="upload-dialog__actions">
-          <button className="button subtle" type="button" onClick={onClose}>
+          <button className="button subtle" type="button" disabled={pending} onClick={onClose}>
             取消
           </button>
-          <button className="button primary" type="submit">
-            提交反馈
+          <button className="button primary" type="submit" disabled={pending}>
+            {pending ? "提交中…" : "提交反馈"}
           </button>
         </div>
       </form>

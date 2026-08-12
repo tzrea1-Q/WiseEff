@@ -69,6 +69,7 @@ export function ModuleEditDialog({
   compatibleMappings,
   compatibleCoverages,
   busy = false,
+  error = null,
   onSave,
   onCancel,
   onRemoveCompatibleMapping,
@@ -94,6 +95,8 @@ export function ModuleEditDialog({
   /** Optional parse-coverage detail per compatible (from driver registry). */
   compatibleCoverages?: readonly ModuleEditCompatibleCoverage[];
   busy?: boolean;
+  /** Save failure — the dialog stays open and shows it in place. */
+  error?: string | null;
   onSave: (patch: ModuleEditSavePatch) => void;
   onCancel: () => void;
   onRemoveCompatibleMapping?: (mappingId: string) => void | Promise<void>;
@@ -567,6 +570,11 @@ export function ModuleEditDialog({
           ) : null}
         </div>
 
+          {error ? (
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+          ) : null}
           <div className="dialog-actions">
             <button className="button subtle" type="button" onClick={onCancel} disabled={busy}>
               取消

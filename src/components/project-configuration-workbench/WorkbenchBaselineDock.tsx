@@ -38,6 +38,8 @@ export type WorkbenchBaselineDockProps = {
   selectedBaselineId: string | null;
   loading?: boolean;
   error?: string;
+  /** Failure from the latest baseline command (compare / restore preview…). */
+  actionError?: string;
   compareMembers?: DtsBaselineMemberComparison[] | null;
   compareAgainst?: "working" | "released";
   pinnedMembers?: Array<{ fileId: string; fileVersionId: string; versionNumber: number }>;
@@ -61,6 +63,7 @@ export function WorkbenchBaselineDock({
   selectedBaselineId,
   loading,
   error,
+  actionError,
   compareMembers,
   compareAgainst,
   pinnedMembers,
@@ -98,6 +101,7 @@ export function WorkbenchBaselineDock({
             ) : null}
           </span>
         ) : null}
+        {actionError && !error ? <span role="alert">{actionError}</span> : null}
       </header>
 
       {baselines.length === 0 && !loading ? (

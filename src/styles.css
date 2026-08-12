@@ -4657,6 +4657,62 @@ td small {
   min-width: 0;
 }
 
+.api-runtime-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  color: #7f1d1d;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+}
+
+.api-runtime-error-banner > svg {
+  flex-shrink: 0;
+  color: #dc2626;
+}
+
+.api-runtime-error-banner__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.api-runtime-error-banner__body strong {
+  display: block;
+  font-size: 14px;
+}
+
+.api-runtime-error-banner__body p {
+  margin: 2px 0 0;
+  color: #991b1b;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.api-runtime-error-banner .button {
+  flex-shrink: 0;
+}
+
+.api-runtime-sync-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 8px 14px;
+  color: #334155;
+  font-size: 13px;
+  background: #f8fafc;
+  border: 1px solid #dfe5f3;
+  border-radius: 10px;
+}
+
+.api-runtime-sync-banner__spinner {
+  animation: spin 1s linear infinite;
+  color: var(--app-muted);
+}
+
 .permission-inline-note span {
   color: var(--app-muted);
   font-size: 13px;
@@ -7774,6 +7830,56 @@ td small {
   line-height: 1.55;
 }
 
+.node-bulk-high-risk-list {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.node-bulk-high-risk-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+
+.node-bulk-high-risk-list li span {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: #7f1d1d;
+  word-break: break-all;
+}
+
+.node-bulk-write-summary {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  padding: 10px 16px;
+  color: var(--text, #0f172a);
+  font-size: 13px;
+  background: #fff;
+  border: 1px solid #dfe5f3;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+.topic-trend-note {
+  margin: 6px 0 0;
+  color: #8a94a6;
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
 .topic-evidence-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.02fr) minmax(0, 0.98fr);
@@ -10705,6 +10811,9 @@ td small {
   justify-content: center;
   padding: 24px;
   background: rgba(16, 28, 45, 0.4);
+  /* Radix modal dialogs set body { pointer-events: none }; a confirm dialog
+     stacked above them must stay interactive. */
+  pointer-events: auto;
 }
 
 /*

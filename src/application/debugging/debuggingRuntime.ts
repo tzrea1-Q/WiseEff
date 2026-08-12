@@ -57,7 +57,10 @@ export type DebuggingRuntimeDispatchAction =
   | Extract<AppAction, { type: "CONNECT_DEVICE" } | { type: "PUSH_DEBUG_VALUES" } | { type: "ROLLBACK_LAST_SNAPSHOT" } | { type: "ADD_NOTIFICATION" }>;
 
 export type DebuggingRuntimeActions = {
-  refresh(query?: { protocol?: DebugConnectionProtocol }): Promise<void>;
+  refresh(
+    query?: { protocol?: DebugConnectionProtocol },
+    options?: { notifyOnFailure?: boolean }
+  ): Promise<void>;
   detectAndStartSession(
     options?: { protocol?: DebugConnectionProtocol; targetId?: string; bridgeId?: string; sessionKind?: "node" | "parameter_reload" }
   ): Promise<
@@ -269,12 +272,15 @@ export function createDebuggingRuntimeActions({
   dispatch,
   getState
 }: DebuggingRuntimeOptions): DebuggingRuntimeActions {
-  const refresh = async (query?: { protocol?: DebugConnectionProtocol }) => {
+  const refresh = async (
+    query?: { protocol?: DebugConnectionProtocol },
+    options?: { notifyOnFailure?: boolean }
+  ) => {
     if (mode !== "api") {
       return;
     }
 
-    await runApi(dispatch, async () => {
+    const load = async () => {
       const api = requireGateway(gateway);
       const parameterQuery = { protocol: query?.protocol ?? "hdc" as const };
       const [devices, debugParameters] = await Promise.all([
@@ -289,7 +295,14 @@ export function createDebuggingRuntimeActions({
         devices: devices.map(deviceFromApi),
         debugParameters
       });
-    });
+    };
+
+    // Callers such as the page-level API banner own the failure projection.
+    if (options?.notifyOnFailure === false) {
+      await load();
+      return;
+    }
+    await runApi(dispatch, load);
   };
 
   return {

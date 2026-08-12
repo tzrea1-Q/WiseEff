@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch } from "react";
 import type { AppAction } from "./App";
 import { ColumnFilter } from "./components/ColumnFilter";
+import { ConfirmDialog } from "./components/common/ConfirmDialog";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "./components/tableFilterUtils";
 import { getInitializationScopeParameters, resolveInitializationConfig } from "./domain/parameters/initialization";
 import type { ProjectParameterInitializationSnapshotItem, RiskLevel } from "./domain/parameters/types";
@@ -72,6 +73,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
   const [startFromEmpty, setStartFromEmpty] = useState(false);
   const [sourceProjectSearchQuery, setSourceProjectSearchQuery] = useState("");
   const [error, setError] = useState("");
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
 
   const activeStep = wizardSteps[currentStepIndex];
   const projects = state.configDraft.projects;
@@ -166,10 +168,32 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
     ).filter((element) => !element.hasAttribute("disabled") && element.tabIndex !== -1);
   }
 
+  // Any field or selection the user has made counts as protected work.
+  const wizardDirty =
+    currentStepIndex > 0 ||
+    Boolean(projectName.trim()) ||
+    Boolean(projectCode.trim()) ||
+    Boolean(notes.trim()) ||
+    ownerUserId !== state.currentUserId ||
+    sourceProjectIds.length > 0 ||
+    Boolean(primarySourceProjectId) ||
+    selectedModules.length > 0 ||
+    selectedRisks.length > 0 ||
+    selectedParameterIds.length > 0 ||
+    startFromEmpty;
+
+  function requestClose() {
+    if (wizardDirty) {
+      setCloseConfirmOpen(true);
+      return;
+    }
+    onClose();
+  }
+
   function handleDialogKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     if (event.key === "Escape") {
       event.stopPropagation();
-      onClose();
+      requestClose();
       return;
     }
 
@@ -310,7 +334,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
 
   function goToPreviousStep() {
     if (currentStepIndex === 0) {
-      onClose();
+      requestClose();
       return;
     }
 
@@ -855,7 +879,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
       onKeyDown={handleDialogKeyDown}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
-          onClose();
+          requestClose();
         }
       }}
     >
@@ -870,7 +894,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
             className="button subtle"
             type="button"
             aria-label="关闭项目初始化向导"
-            onClick={onClose}
+            onClick={requestClose}
             ref={closeButtonRef}
           >
             <X size={16} />
@@ -922,6 +946,19 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
           </div>
         </footer>
       </section>
+      <ConfirmDialog
+        open={closeConfirmOpen}
+        title="放弃项目初始化？"
+        description={<p>已填写的项目信息与参数选择尚未提交，关闭向导后将全部丢失。</p>}
+        confirmLabel="放弃并关闭"
+        cancelLabel="继续填写"
+        tone="danger"
+        onCancel={() => setCloseConfirmOpen(false)}
+        onConfirm={() => {
+          setCloseConfirmOpen(false);
+          onClose();
+        }}
+      />
     </div>
   );
 }

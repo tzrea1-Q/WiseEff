@@ -9,6 +9,8 @@ export type ModuleMoveDialogProps = {
   module: ParameterModule;
   modules: readonly ParameterModule[];
   busy?: boolean;
+  /** Move failure — the dialog stays open and shows it in place. */
+  error?: string | null;
   onConfirm: (parentId: string | null) => void;
   onCancel: () => void;
 };
@@ -20,6 +22,7 @@ export function ModuleMoveDialog({
   module,
   modules,
   busy = false,
+  error = null,
   onConfirm,
   onCancel
 }: ModuleMoveDialogProps) {
@@ -89,6 +92,11 @@ export function ModuleMoveDialog({
           </div>
         </div>
 
+        {error ? (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        ) : null}
         <div className="dialog-actions">
           <button className="button subtle" type="button" disabled={busy} onClick={onCancel}>
             取消
@@ -99,7 +107,7 @@ export function ModuleMoveDialog({
             disabled={busy}
             onClick={() => onConfirm(parentId || null)}
           >
-            确认移动
+            {busy ? "移动中…" : "确认移动"}
           </button>
         </div>
       </div>

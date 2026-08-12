@@ -1,17 +1,6 @@
 import { z } from "zod";
 import { useFrontendTool } from "@copilotkit/react-core/v2";
 
-type PrefillRegistry = {
-  parameterId?: string;
-  value?: string;
-};
-
-const prefillRegistry: PrefillRegistry = {};
-
-export function getXiaozePrefillRegistry() {
-  return prefillRegistry;
-}
-
 function navigateToPath(path: string) {
   const url = new URL(path, window.location.origin);
   const next = `${url.pathname}${url.search}${url.hash}`;
@@ -22,6 +11,11 @@ function navigateToPath(path: string) {
   }
 }
 
+/**
+ * Frontend tools must produce user-visible effects. The former
+ * `prefillParameterValue` tool wrote to a registry no page consumed, so the
+ * agent claimed "已预填" while the UI never changed — it has been removed.
+ */
 export function useXiaozeFrontendTools() {
   useFrontendTool({
     name: "navigateTo",
@@ -34,23 +28,4 @@ export function useXiaozeFrontendTools() {
       return { navigatedTo: path };
     }
   });
-
-  useFrontendTool({
-    name: "prefillParameterValue",
-    description: "Pre-fill a parameter form value locally without submitting a change.",
-    parameters: z.object({
-      parameterId: z.string(),
-      value: z.string()
-    }),
-    handler: async ({ parameterId, value }) => {
-      prefillRegistry.parameterId = parameterId;
-      prefillRegistry.value = value;
-      return { parameterId, value };
-    }
-  });
-}
-
-export function resetXiaozePrefillRegistry() {
-  delete prefillRegistry.parameterId;
-  delete prefillRegistry.value;
 }

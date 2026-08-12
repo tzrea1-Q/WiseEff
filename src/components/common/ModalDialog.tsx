@@ -144,8 +144,16 @@ export function ModalDialog({
     if (!open || !onDismiss) {
       return undefined;
     }
+    const mountedAt = performance.now();
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") {
+        return;
+      }
+      // When an inner layer (e.g. a Radix dialog routing Escape into a dirty-state
+      // confirmation) consumes the keydown and opens this dialog, React can attach
+      // this listener while that same event is still propagating towards `window`.
+      // Without these checks the event would instantly dismiss the dialog it opened.
+      if (event.defaultPrevented || event.timeStamp < mountedAt) {
         return;
       }
       if (dialogStack[dialogStack.length - 1] !== generatedId) {

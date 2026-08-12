@@ -26,6 +26,8 @@ export type SpecReviewTaskDialogProps = {
   }) => void;
   pendingTaskId?: string | null;
   pendingAction?: "approve" | "dismiss" | "create" | null;
+  /** Action failure to render inside the dialog (above the action row). */
+  error?: string | null;
 };
 
 type DraftState = {
@@ -54,7 +56,8 @@ export function SpecReviewTaskDialog({
   onDismiss,
   onCreateSpec,
   pendingTaskId = null,
-  pendingAction = null
+  pendingAction = null,
+  error = null
 }: SpecReviewTaskDialogProps) {
   const [draft, setDraft] = useState<DraftState>(EMPTY_DRAFT);
   const isPending = pendingTaskId === task.id;
@@ -284,6 +287,11 @@ export function SpecReviewTaskDialog({
           </section>
         </div>
 
+        {error ? (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        ) : null}
         <div className="dialog-actions">
           <button type="button" className="button subtle" onClick={onClose} disabled={isPending}>
             取消

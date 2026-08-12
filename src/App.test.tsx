@@ -750,6 +750,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     const row = await screen.findByText("Liu Min").then((cell) => cell.closest("tr")!);
     changeSelectValue(within(row).getByRole("combobox", { name: "调整 Liu Min 的角色" }), "software-committer");
+    const confirmDialog = await screen.findByRole("dialog", { name: "确认调整用户角色" });
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "确认调整" }));
     await waitFor(() => expect(userGovernanceActions.assignUserRole).toHaveBeenCalledWith("u-liu-min", "software-committer"));
   });
 
@@ -1415,6 +1417,83 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(next.logs).toBe(state.logs);
     expect(next.debugParameters).toBe(state.debugParameters);
     expect(next.users).toBe(state.users);
+  });
+
+  it("repoints activeProjectId at server data when the demo project id is unknown", () => {
+    const state = { ...initialState, activeProjectId: "demo-only-project" };
+    const next = appReducer(state, {
+      type: "HYDRATE_PARAMETER_RUNTIME",
+      projects: [apiProject],
+      parameters: [apiParameter],
+      changeRequests: [],
+      parameterSubmissionRounds: [],
+      parameterDrafts: []
+    });
+
+    expect(next.activeProjectId).toBe(apiProject.id);
+  });
+
+  it("clears each API runtime domain to empty business slices instead of demo records", () => {
+    const parametersCleared = appReducer(initialState, {
+      type: "CLEAR_API_RUNTIME_DOMAIN",
+      domain: "parameters"
+    });
+    expect(parametersCleared.parameters).toEqual([]);
+    expect(parametersCleared.changeRequests).toEqual([]);
+    expect(parametersCleared.parameterSubmissionRounds).toEqual([]);
+    expect(parametersCleared.parameterDrafts).toEqual([]);
+    expect(parametersCleared.configDraft.projects).toEqual([]);
+    expect(parametersCleared.logs).toBe(initialState.logs);
+
+    const logsCleared = appReducer(initialState, {
+      type: "CLEAR_API_RUNTIME_DOMAIN",
+      domain: "logs"
+    });
+    expect(logsCleared.logs).toEqual([]);
+    expect(logsCleared.archivedLogIds).toEqual([]);
+    expect(logsCleared.parameters).toBe(initialState.parameters);
+
+    const debuggingCleared = appReducer(initialState, {
+      type: "CLEAR_API_RUNTIME_DOMAIN",
+      domain: "debugging"
+    });
+    expect(debuggingCleared.devices).toEqual([]);
+    expect(debuggingCleared.debugParameters).toEqual([]);
+    expect(debuggingCleared.configDraft.debugParameters).toEqual([]);
+  });
+
+  it("shows a persistent no-data banner when API refresh fails and recovers via retry", async () => {
+    window.history.replaceState(null, "", "/parameter-home");
+    const listProjects = vi.fn()
+      .mockRejectedValueOnce(new Error("api down"))
+      .mockResolvedValue([apiProject]);
+    const parameterRepository = createAppParameterRepository({ listProjects });
+
+    render(
+      <App
+        authClient={createResolvedAuthClient()}
+        initialAppState={initialState}
+        parameterRepository={parameterRepository}
+        logAnalysisRepository={createAppLogAnalysisRepository()}
+        debuggingGateway={createAppDebuggingGateway()}
+        runtimeMode="api"
+      />
+    );
+
+    await waitFor(() => {
+      expect(document.querySelector(".api-runtime-error-banner")).toBeInTheDocument();
+    });
+    const banner = document.querySelector(".api-runtime-error-banner") as HTMLElement;
+    expect(banner).toHaveAttribute("role", "alert");
+    expect(banner).toHaveTextContent("无法连接雷泽参数 API，当前无数据");
+    expect(banner).toHaveTextContent("不展示演示数据");
+
+    fireEvent.click(within(banner).getByRole("button", { name: "重试" }));
+
+    await waitFor(() => {
+      expect(document.querySelector(".api-runtime-error-banner")).not.toBeInTheDocument();
+    });
+    expect(listProjects.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
   it("dismisses the newest notification and leaves the rest of the queue", () => {
@@ -2090,6 +2169,57 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.getByRole("region", { name: "提交轮次详情" })).toHaveTextContent("Zhao Heng");
     expect(screen.queryByText("当前还没有你的历史提交。")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "撤回本轮提交" })).toBeEnabled();
+  });
+
+  it("withdraws a submission round only after the confirm dialog is accepted", async () => {
+    window.history.replaceState(null, "", "/parameter-submissions");
+    const simpleParameter = initialState.parameters.find((parameter) => parameter.name === "fast_charge_current_limit_ma");
+    expect(simpleParameter).toBeDefined();
+    const zhaoRound = {
+      ...initialState.parameterSubmissionRounds[0],
+      id: "api-zhao-withdraw-round",
+      projectId: simpleParameter!.projectId,
+      projectName: "Aurora 量产平台",
+      submitter: "Zhao Heng",
+      createdAt: "刚刚",
+      status: "硬件Committer检视" as const,
+      summary: "待撤回轮次。",
+      items: [
+        {
+          requestId: "api-zhao-withdraw-request",
+          parameterId: simpleParameter!.id,
+          name: simpleParameter!.name,
+          module: simpleParameter!.module,
+          currentValue: "3850",
+          targetValue: "3200",
+          unit: simpleParameter!.unit,
+          risk: simpleParameter!.risk,
+          reason: "验证撤回确认"
+        }
+      ]
+    };
+
+    render(
+      <App
+        initialAppState={{
+          ...initialState,
+          currentUserId: "u-zhao-heng",
+          activeRoleId: "hardware-user",
+          parameterSubmissionRounds: [zhaoRound]
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "撤回本轮提交" }));
+    // Nothing is withdrawn before confirmation.
+    expect(screen.getByRole("region", { name: "提交轮次详情" })).not.toHaveTextContent("已撤回");
+    const confirmDialog = await screen.findByRole("dialog", { name: "确认撤回本轮提交" });
+    expect(confirmDialog).toHaveTextContent(/本轮 1 项变更将退出评审流程/);
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "确认撤回" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "提交轮次详情" })).toHaveTextContent("已撤回");
+    });
   });
 
   it("formats ISO submission timestamps on the personal history page", () => {

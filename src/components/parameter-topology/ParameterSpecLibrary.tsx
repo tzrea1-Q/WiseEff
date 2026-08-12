@@ -287,6 +287,9 @@ export type ParameterSpecLibraryProps = {
   detail?: ParameterSpecDetailView | null;
   reviewQueueSlot?: ReactNode;
   loading?: boolean;
+  /** Library list failed to load — render an error state, never a fake empty library. */
+  loadError?: string | null;
+  onRetryLoad?: () => void;
   /** Hide page heading when embedded in another dialog. */
   embedded?: boolean;
   /** When both are provided, filters are controlled by the parent (URL SoT). */
@@ -326,6 +329,8 @@ export function ParameterSpecLibrary({
   detail = null,
   reviewQueueSlot = null,
   loading = false,
+  loadError = null,
+  onRetryLoad,
   embedded = false,
   filters: controlledFilters,
   onFiltersChange,
@@ -620,14 +625,38 @@ export function ParameterSpecLibrary({
           </div>
         ) : null}
 
-        {filtered.length === 0 ? (
-          <div className="parameters-table-empty">
-            <p>{loading ? PARAMETER_ADMIN_UI.specLibraryLoading : PARAMETER_ADMIN_UI.specLibraryEmpty}</p>
-            {filtersActive ? (
-              <button type="button" className="button subtle" onClick={clearFilters}>
-                清除筛选条件
+        {loadError && filtered.length > 0 ? (
+          <p className="form-error" role="alert">
+            {loadError}（当前显示上一次成功加载的数据）
+            {onRetryLoad ? (
+              <button type="button" className="button subtle" disabled={loading} onClick={onRetryLoad}>
+                重试
               </button>
             ) : null}
+          </p>
+        ) : null}
+
+        {filtered.length === 0 ? (
+          <div className="parameters-table-empty">
+            {loadError ? (
+              <>
+                <p role="alert">{loadError}</p>
+                {onRetryLoad ? (
+                  <button type="button" className="button subtle" disabled={loading} onClick={onRetryLoad}>
+                    重试
+                  </button>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <p>{loading ? PARAMETER_ADMIN_UI.specLibraryLoading : PARAMETER_ADMIN_UI.specLibraryEmpty}</p>
+                {filtersActive ? (
+                  <button type="button" className="button subtle" onClick={clearFilters}>
+                    清除筛选条件
+                  </button>
+                ) : null}
+              </>
+            )}
           </div>
         ) : null}
       </section>
