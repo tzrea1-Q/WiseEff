@@ -40,8 +40,8 @@ describe("normalized workspace headers", () => {
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
   });
 
-  it("exposes compact status controls on debugging admin", () => {
-    window.history.replaceState(null, "", "/debugging-admin");
+  it("exposes compact status controls on debugging admin node catalog", () => {
+    window.history.replaceState(null, "", "/debugging-admin/nodes");
 
     render(<App initialAppState={adminState} runtimeMode="mock" />);
 
@@ -50,5 +50,15 @@ describe("normalized workspace headers", () => {
 
     expect(compactMetrics).toBeInTheDocument();
     expect(compactMetrics?.querySelectorAll(".debug-admin-stat")).toHaveLength(0);
+  });
+
+  it("keeps parameter-debug admin scope without node-catalog topbar strip", () => {
+    window.history.replaceState(null, "", "/debugging-admin");
+
+    render(<App initialAppState={adminState} runtimeMode="mock" />);
+
+    const debuggingTopbar = document.querySelector(".topbar") as HTMLElement;
+    expect(debuggingTopbar.querySelector(".debug-admin-strip--topbar")).not.toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "调试后台范围" })).toBeInTheDocument();
   });
 });
