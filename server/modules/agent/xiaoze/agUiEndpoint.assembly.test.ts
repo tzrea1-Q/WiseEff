@@ -29,6 +29,7 @@ vi.mock("../../parameter-topology/writeLock", () => ({
 
 import { createRouter } from "../../../shared/http/router";
 import { developmentAuthContext } from "../../auth/routes";
+import { createAgentSession } from "../repository";
 import { createMemoryAgentDb } from "../testing/memoryAgentDb";
 import { registerXiaozeRoutes } from "./agUiEndpoint";
 import { submitParameterChanges } from "../../parameters/service";
@@ -253,5 +254,55 @@ describe("registerXiaozeRoutes approval assembly", () => {
     expect(mockedSubmit).not.toHaveBeenCalled();
     expect(tables.toolCalls[0]).toMatchObject({ status: "rejected" });
     expect(tables.approvals[0]).toMatchObject({ status: "rejected", decision_reason: "Not now" });
+  });
+
+  it("refuses to run against a thread owned by another same-org user", async () => {
+    const { db, tables } = createMemoryAgentDb();
+    const owner = developmentAuthContext;
+    const intruder = {
+      ...owner,
+      user: { ...owner.user, id: "u-intruder" }
+    };
+    let currentAuth = owner;
+    const router = createRouter();
+    registerXiaozeRoutes(router, {
+      db,
+      getCurrentAuthContext: () => currentAuth
+    });
+
+    const threadId = "thread-assembly-ownership";
+    await createAgentSession(db, {
+      id: threadId,
+      organizationId: owner.organization.id,
+      projectId: "aurora",
+      actorUserId: owner.user.id,
+      pageKey: "xiaoze",
+      roleId: "hardware-user",
+      context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" },
+      title: "Owner thread"
+    });
+    const messagesBefore = tables.messages.length;
+
+    currentAuth = intruder;
+    await expect(
+      postXiaoze(router, "req-assembly-intruder", {
+        threadId,
+        runId: "run-assembly-intruder",
+        messages: [{ id: "m-intruder", role: "user", content: "inject into someone else's thread" }]
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+    // No message may be appended to the owner's thread by the intruder.
+    expect(tables.messages.length).toBe(messagesBefore);
+
+    // The owner still passes the ownership gate: the run starts streaming
+    // instead of being rejected up front (tool SQL support in the memory DB is
+    // out of scope here).
+    currentAuth = owner;
+    const ownerRun = await postXiaoze(router, "req-assembly-owner", {
+      threadId,
+      runId: "run-assembly-owner",
+      messages: [{ id: "m-owner", role: "user", content: "你好" }]
+    });
+    expect(ownerRun.events.some((event) => event.event === EventType.RUN_STARTED)).toBe(true);
   });
 });

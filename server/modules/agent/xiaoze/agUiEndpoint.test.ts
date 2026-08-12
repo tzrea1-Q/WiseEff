@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { EventType } from "@ag-ui/core";
+import { ApiError } from "../../../shared/http/errors";
 import { createXiaozeAgUiHandler } from "./agUiEndpoint";
 
 const anyAuth = {
@@ -26,6 +27,30 @@ describe("createXiaozeAgUiHandler", () => {
     await expect(handler({ headers: {}, body: { messages: [] }, requestId: "req-1" })).rejects.toMatchObject({
       code: "UNAUTHENTICATED"
     });
+  });
+
+  it("refuses a run against a foreign thread before running the agent", async () => {
+    const run = vi.fn(async () => ({ text: "hi", citations: [] }));
+    const assertThreadAccess = vi.fn(async ({ threadId }: { threadId: string }) => {
+      throw new ApiError("FORBIDDEN", "This Xiaoze thread belongs to another user.", 403, { threadId });
+    });
+    const handler = createXiaozeAgUiHandler({
+      resolveAuth: async () => anyAuth,
+      createAgent: () => ({ run }),
+      assertThreadAccess
+    });
+
+    await expect(
+      handler({
+        headers: {},
+        body: { threadId: "thread-of-someone-else", messages: [{ role: "user", content: "hi" }] },
+        requestId: "req-deny"
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+    expect(assertThreadAccess).toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: "thread-of-someone-else" })
+    );
+    expect(run).not.toHaveBeenCalled();
   });
 
   it("keeps reasoning open while streaming and ends it when the turn is finalized", async () => {

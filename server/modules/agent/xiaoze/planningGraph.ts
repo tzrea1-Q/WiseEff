@@ -468,7 +468,13 @@ export function createPlanningAgent(options: {
         sink: input.sink,
         requestContext: input.requestContext
       };
-      const config = { configurable: { thread_id: input.threadId, [XIAOZE_RUN_SCOPE_KEY]: runScope } };
+      // The client supplies threadId, so the checkpoint namespace must carry the
+      // organization and user: otherwise replaying someone else's threadId would
+      // resume their conversation state across user or tenant boundaries.
+      const checkpointThreadId = input.requestContext
+        ? `${input.requestContext.auth.organization.id}:${input.requestContext.auth.user.id}:${input.threadId}`
+        : input.threadId;
+      const config = { configurable: { thread_id: checkpointThreadId, [XIAOZE_RUN_SCOPE_KEY]: runScope } };
       const tools = options.listTools();
       const buildPromptDebug = (llmMessages: unknown[]) =>
         input.includePromptDebug
@@ -483,7 +489,7 @@ export function createPlanningAgent(options: {
             })
           : undefined;
 
-      await checkpointer.put(input.threadId, {
+      await checkpointer.put(checkpointThreadId, {
         planSteps: ["Understand user intent", "Perceive relevant data", "Plan and act with approval"],
         step: 0
       });
