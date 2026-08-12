@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { XiaozePopupView } from "./XiaozePopupView";
 import { XIAOZE_POPUP_OPEN_SESSION_KEY, writeXiaozePopupOpenSession } from "./xiaozePopupOpenState";
@@ -80,5 +80,56 @@ describe("XiaozePopupView", () => {
     rerender(<XiaozePopupView />);
 
     expect(screen.getByTestId("xiaoze-popup-layer")).toHaveAttribute("data-motion", "visible");
+  });
+
+  it("does not close the popup when a pointer-down lands inside the approval card", () => {
+    isModalOpen = true;
+    render(<XiaozePopupView />);
+    setModalOpen.mockClear();
+
+    // Approval card portals to <body>, outside the popup container.
+    const approvalContent = document.createElement("div");
+    approvalContent.setAttribute("data-slot", "alert-dialog-content");
+    const approveButton = document.createElement("button");
+    approveButton.textContent = "Approve";
+    approvalContent.appendChild(approveButton);
+    document.body.appendChild(approvalContent);
+
+    fireEvent.pointerDown(approveButton);
+
+    expect(setModalOpen).not.toHaveBeenCalled();
+
+    document.body.removeChild(approvalContent);
+  });
+
+  it("does not close the popup when the approval overlay is clicked as a scrim", () => {
+    isModalOpen = true;
+    render(<XiaozePopupView />);
+    setModalOpen.mockClear();
+
+    const overlay = document.createElement("div");
+    overlay.setAttribute("data-slot", "alert-dialog-overlay");
+    document.body.appendChild(overlay);
+
+    fireEvent.pointerDown(overlay);
+
+    expect(setModalOpen).not.toHaveBeenCalled();
+
+    document.body.removeChild(overlay);
+  });
+
+  it("still closes the popup on a genuine outside pointer-down", () => {
+    isModalOpen = true;
+    render(<XiaozePopupView />);
+    setModalOpen.mockClear();
+
+    const outside = document.createElement("div");
+    document.body.appendChild(outside);
+
+    fireEvent.pointerDown(outside);
+
+    expect(setModalOpen).toHaveBeenCalledWith(false);
+
+    document.body.removeChild(outside);
   });
 });

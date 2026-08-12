@@ -15,12 +15,13 @@
   /*
    * Overlay stacking scale. Declared in one place so a new dialog does not need to
    * invent another number and accidentally land under the Xiaoze launcher.
-   * Order: Xiaoze FAB < dialog < nested dialog < Xiaoze chat popup < global toast.
+   * Order: Xiaoze FAB < dialog < nested dialog < Xiaoze chat popup < Xiaoze approval < global toast.
    */
   --z-xiaoze-fab: 1100;
   --z-modal-backdrop: 1150;
   --z-modal-backdrop-nested: 1160;
   --z-xiaoze-popup: 1200;
+  --z-approval: 1300;
   --z-toast: 1350;
 
   --background: oklch(1 0 0);
@@ -7548,6 +7549,17 @@ td small {
   box-shadow: var(--shadow);
   font-size: 13px;
   font-weight: 750;
+}
+
+/* Xiaoze approval card portals to <body>, so it must outrank the chat popup
+   (--z-xiaoze-popup) or the scrim buries it. Restack both the overlay and the
+   content; !important overrides the Tailwind z-50 utility on these slots. */
+.xiaoze-approval-overlay {
+  z-index: var(--z-approval) !important;
+}
+
+.xiaoze-approval-dialog {
+  z-index: var(--z-approval) !important;
 }
 
 /* Global notification toast: reuses the logs toast visuals but must sit above
