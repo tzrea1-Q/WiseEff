@@ -1,7 +1,7 @@
 # 知识库 MVP
 
-> English: [English](../../../exec-plans/active/2026-08-12-knowledge-base-mvp.md)
-> 状态：**进行中**——2026-08-12 规划锁定；Phase 1 已在 `feat/knowledge-base-foundation` 实现（2026-08-12,已合并）；Phase 2 已在 `feat/knowledge-base-rag` 实现（2026-08-12,已合并）；Phase 3 已在 `feat/knowledge-base-distillation` 实现（2026-08-13）
+> English: [English](../../../exec-plans/completed/2026-08-12-knowledge-base-mvp.md)
+> 状态：**已完成 2026-08-13**——Phase 1 经 #330 合并、Phase 2 经 #370 合并、Phase 3 经 #385 合并（分支 `feat/knowledge-base-foundation`、`feat/knowledge-base-rag`、`feat/knowledge-base-distillation`）
 > 日期：2026-08-12
 > 设计文档：[`docs/zh-CN/design-docs/2026-08-12-knowledge-base-design.md`](../../design-docs/2026-08-12-knowledge-base-design.md)
 > ADR：ADR-0025（`docs/adr/0025-knowledge-retrieval-lives-in-postgres.md`，英文）
@@ -110,5 +110,5 @@
 - [x] ARCHITECTURE 英文 + 中文标注知识模块与小泽知识工具（Phase 1/2——知识模块已在 Phase 1 标注;索引 worker seam 与小泽知识工具已在 Phase 2 标注）
 - [x] 覆盖图与操作矩阵英文 + 中文在各阶段实现前获得 KB-* ID（全部 ID 已注册——KB-READ/EDIT/FILE-001、KB-ASK-001、KB-INDEX-001、KB-DISTILL-001、KB-ADMIN-001）
 - [x] 迁移后重新生成 `docs/generated/db-schema.md`（Phase 1、Phase 2（0104）与 Phase 3（0105）均已重新生成）
-- [ ] 延期工作记入 `docs/exec-plans/tech-debt-tracker.md`（收尾——Phase 2 已记 TD-083:pgvector 后装手动补列 + CI 缺 pgvector 覆盖）
-- [ ] 本计划移入 `completed/` 前 `npm run docs:check` 通过
+- [x] 延期工作记入 `docs/exec-plans/tech-debt-tracker.md`（TD-083:pgvector 后装手动补列 + CI 缺 pgvector 覆盖；本计划无其他延期项）
+- [x] 本计划移入 `completed/` 前 `npm run docs:check` 通过（收尾变更中验证）
