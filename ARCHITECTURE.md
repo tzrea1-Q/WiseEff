@@ -51,6 +51,7 @@ Rules:
 - `server/modules/users/`: durable backend user-governance routes, role replacement, activation, and audit.
 - `server/modules/audit/`: audit write/query boundary.
 - `server/modules/parameters/`: M1 parameter workflow routes and services.
+- `server/modules/parameter-kernel/`: routes-less cross-cutting parameter primitives — the identity-mode seam and the transitional legacy-identity compatibility layer (deleted at the TD-042 cutover); imported by parameters, parameter-topology, parameter-files, parameter-drafts, debugging, logs, and agent; never imports the parameter workflow modules (ADR-0029).
 - `server/modules/parameter-drafts/`: standalone draft staging shared by both parameter workflows — editing writes drafts, submission/review reads them; owns `parameter_drafts` access and the draft/write-lock field vocabulary (ADR-0028).
 - `server/modules/parameter-files/`: project DTS/JSON parameter file upload, sync, conflicts, and writeback; P2 adds board-level config sets grouping files into a buildable unit (`project → dts_config_set → files`), immutable release baselines for compare/rollback/release, a `dtc`-backed validation gate, and lossless export; P3 adds structured read/search HTTP, sensitive-node RBAC (`0045`), and Admin UI panels wired through `DtsStructuredRepository`.
 - `server/modules/parameter-topology/`: semantic config revisions, source occurrences, effective logical nodes, project bindings, identity mapping tasks, ingest/edit services, and maintenance-only identity migration/cutover.

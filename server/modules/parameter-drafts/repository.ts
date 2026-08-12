@@ -7,9 +7,8 @@
 import type { Queryable } from "../../shared/database/client";
 import type { BindingWriteLockFields, EnablementWriteLockFields, ParameterChangeAction, ParameterDraftDto } from "./types";
 import { upsertSemanticDraft } from "./semanticDraftUpsert";
-// Deferred shared-kernel edge: identity mode stays in parameters until the
-// shared-kernel slice moves it (see ADR-0028); this is the module's only
-// import from a parameter workflow module.
+// Identity mode lives in the parameter kernel (ADR-0029); this is the
+// module's only import outside shared/.
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { addCondition, dateTimeToIso } from "../../shared/database/sqlUtil";
 
