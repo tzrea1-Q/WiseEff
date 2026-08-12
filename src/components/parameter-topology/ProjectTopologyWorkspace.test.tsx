@@ -250,6 +250,15 @@ describe("ProjectTopologyWorkspace", () => {
     expect(treeTokenRule["overflow-wrap"]).toBe("anywhere");
     expect(treeTokenRule["word-break"]).toBe("break-word");
   });
+
+  it("keeps tree item meta text on the readable muted-text token (TD-081)", () => {
+    // `--muted` is the shadcn surface alias (near-white); meta text must use
+    // the semantic `--text-muted` token to stay readable on white rows.
+    const styles = readStylesheet("src/styles.css");
+    const treeMetaRule = declarationsFor(styles, ".topology-tree__item small");
+
+    expect(treeMetaRule.color).toBe("var(--text-muted)");
+  });
 });
 
 describe("topology teaching fixtures", () => {
