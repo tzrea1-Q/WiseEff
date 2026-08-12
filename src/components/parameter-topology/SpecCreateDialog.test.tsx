@@ -169,4 +169,23 @@ describe("SpecCreateDialog", () => {
     expect(screen.getByText("正在加载归属主体…")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
   });
+
+  it("renders the server error inside the confirm layer instead of suppressing it", async () => {
+    const user = userEvent.setup();
+    render(
+      <SpecCreateDialog
+        modules={sampleModules}
+        error="创建冲突：同名定义已存在"
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+      />,
+    );
+
+    await user.clear(screen.getByLabelText("属性键"));
+    await user.type(screen.getByLabelText("属性键"), "gpio_int");
+    await user.click(screen.getByRole("button", { name: "保存草稿" }));
+
+    const confirmLayer = screen.getByRole("dialog", { name: "确认新建参数定义" });
+    expect(within(confirmLayer).getByRole("alert")).toHaveTextContent("创建冲突：同名定义已存在");
+  });
 });

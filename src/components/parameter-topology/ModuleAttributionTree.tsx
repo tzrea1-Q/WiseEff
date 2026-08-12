@@ -371,6 +371,8 @@ export function ModuleAttributionTree({
   const [createParentId, setCreateParentId] = useState<string | null | undefined>(undefined);
   const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
   const [viewingUnclassifiedId, setViewingUnclassifiedId] = useState<string | null>(null);
+  const [dialogMutationBusy, setDialogMutationBusy] = useState(false);
+  const [dialogMutationError, setDialogMutationError] = useState<string | null>(null);
 
   useEffect(() => {
     setExpandedIds((current) => {
@@ -442,52 +444,88 @@ export function ModuleAttributionTree({
 
   const closeCreateDialog = () => {
     setCreateParentId(undefined);
+    setDialogMutationError(null);
   };
 
+  const describeMutationError = (error: unknown, fallback: string) =>
+    error instanceof Error && error.message.trim() ? error.message : fallback;
+
+  // Dialog mutations await the repository call: the dialog only closes on
+  // success; failures keep it open with an in-place error and pending state.
   const handleCreate = (draft: ModuleCreateSaveDraft) => {
-    void onCreateModule({
-      name: draft.name,
-      description: draft.description,
-      scope: draft.scope,
-      importance: draft.importance,
-      parentId: draft.parentId !== undefined ? draft.parentId : (createParentId ?? null),
-      kind: draft.kind ?? "business",
-      compatibles: draft.compatibles,
-      sourceKey: draft.sourceKey
-    });
-    closeCreateDialog();
+    setDialogMutationBusy(true);
+    setDialogMutationError(null);
+    void (async () => {
+      try {
+        await onCreateModule({
+          name: draft.name,
+          description: draft.description,
+          scope: draft.scope,
+          importance: draft.importance,
+          parentId: draft.parentId !== undefined ? draft.parentId : (createParentId ?? null),
+          kind: draft.kind ?? "business",
+          compatibles: draft.compatibles,
+          sourceKey: draft.sourceKey
+        });
+        closeCreateDialog();
+      } catch (error) {
+        setDialogMutationError(describeMutationError(error, "创建模块失败，请重试。"));
+      } finally {
+        setDialogMutationBusy(false);
+      }
+    })();
   };
 
   const handleSaveEdit = (patch: ModuleEditSavePatch) => {
     if (!editingModuleId) return;
     const moduleId = editingModuleId;
+    setDialogMutationBusy(true);
+    setDialogMutationError(null);
     void (async () => {
-      await onUpdateModule(moduleId, {
-        name: patch.name,
-        description: patch.description,
-        scope: patch.scope,
-        ...(patch.importance !== undefined ? { importance: patch.importance } : {}),
-        ...(patch.kind !== undefined ? { kind: patch.kind } : {})
-      });
-      if (
-        onUpdateDriverRegistration &&
-        (patch.driverNature !== undefined || patch.instanceCardinality !== undefined)
-      ) {
-        await onUpdateDriverRegistration(moduleId, {
-          ...(patch.driverNature !== undefined ? { driverNature: patch.driverNature } : {}),
-          ...(patch.instanceCardinality !== undefined
-            ? { instanceCardinality: patch.instanceCardinality }
-            : {})
+      try {
+        await onUpdateModule(moduleId, {
+          name: patch.name,
+          description: patch.description,
+          scope: patch.scope,
+          ...(patch.importance !== undefined ? { importance: patch.importance } : {}),
+          ...(patch.kind !== undefined ? { kind: patch.kind } : {})
         });
+        if (
+          onUpdateDriverRegistration &&
+          (patch.driverNature !== undefined || patch.instanceCardinality !== undefined)
+        ) {
+          await onUpdateDriverRegistration(moduleId, {
+            ...(patch.driverNature !== undefined ? { driverNature: patch.driverNature } : {}),
+            ...(patch.instanceCardinality !== undefined
+              ? { instanceCardinality: patch.instanceCardinality }
+              : {})
+          });
+        }
+        setEditingModuleId(null);
+        setDialogMutationError(null);
+      } catch (error) {
+        setDialogMutationError(describeMutationError(error, "保存模块失败，请重试。"));
+      } finally {
+        setDialogMutationBusy(false);
       }
     })();
-    setEditingModuleId(null);
   };
 
   const handleConfirmMove = (parentId: string | null) => {
     if (!moveModuleId) return;
-    void onMove(moveModuleId, parentId);
-    setMoveModuleId(null);
+    setDialogMutationBusy(true);
+    setDialogMutationError(null);
+    void (async () => {
+      try {
+        await onMove(moveModuleId, parentId);
+        setMoveModuleId(null);
+        setDialogMutationError(null);
+      } catch (error) {
+        setDialogMutationError(describeMutationError(error, "移动模块失败，请重试。"));
+      } finally {
+        setDialogMutationBusy(false);
+      }
+    })();
   };
 
   const handleReorder = async (moduleId: string, direction: "up" | "down") => {
@@ -590,9 +628,18 @@ export function ModuleAttributionTree({
               busy={busy}
               onToggle={toggleExpanded}
               onView={handleViewUnclassified}
-              onEdit={(id) => setEditingModuleId(id)}
-              onAddChild={(id) => setCreateParentId(id)}
-              onStartMove={(id) => setMoveModuleId(id)}
+              onEdit={(id) => {
+                setDialogMutationError(null);
+                setEditingModuleId(id);
+              }}
+              onAddChild={(id) => {
+                setDialogMutationError(null);
+                setCreateParentId(id);
+              }}
+              onStartMove={(id) => {
+                setDialogMutationError(null);
+                setMoveModuleId(id);
+              }}
               onDelete={(id) => void onDelete(id)}
               onReorder={canAdmin ? (id, direction) => void handleReorder(id, direction) : undefined}
             />
@@ -608,6 +655,8 @@ export function ModuleAttributionTree({
           allowKindSelect
           modules={modules}
           initialParentId={createParentId ?? null}
+          busy={dialogMutationBusy}
+          error={dialogMutationError}
           onCancel={closeCreateDialog}
           onCreate={handleCreate}
         />
@@ -619,7 +668,8 @@ export function ModuleAttributionTree({
           module={editingModule}
           showImportance={editShowsImportance}
           showKind={editShowsKind}
-          busy={busy}
+          busy={busy || dialogMutationBusy}
+          error={dialogMutationError}
           compatibleMappings={
             editingModule.kind === "driver-group"
               ? mappingsForModule(mappings, editingModule.id).filter(
@@ -631,7 +681,10 @@ export function ModuleAttributionTree({
           overlaySchemas={editingOverlaySchemas}
           onPreviewOverlayDeprecation={onPreviewOverlayDeprecation}
           onDeprecateOverlaySchema={onDeprecateOverlaySchema}
-          onCancel={() => setEditingModuleId(null)}
+          onCancel={() => {
+            setEditingModuleId(null);
+            setDialogMutationError(null);
+          }}
           onSave={handleSaveEdit}
           driverNature={editingDriverRegistration?.driverNature ?? null}
           instanceCardinality={editingDriverRegistration?.instanceCardinality ?? null}
@@ -680,8 +733,12 @@ export function ModuleAttributionTree({
         <ModuleMoveDialog
           module={movingModule}
           modules={modules}
-          busy={busy}
-          onCancel={() => setMoveModuleId(null)}
+          busy={busy || dialogMutationBusy}
+          error={dialogMutationError}
+          onCancel={() => {
+            setMoveModuleId(null);
+            setDialogMutationError(null);
+          }}
           onConfirm={handleConfirmMove}
         />
       ) : null}

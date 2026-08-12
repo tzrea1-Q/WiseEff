@@ -165,6 +165,71 @@ describe("ModuleAttributionTree", () => {
     );
   });
 
+  it("keeps the edit dialog open with an inline error when the save mutation rejects", async () => {
+    const onUpdateModule = vi.fn().mockRejectedValue(new Error("保存冲突：模块已被其他管理员修改"));
+
+    render(
+      <ModuleAttributionTree
+        canAdmin
+        modules={modules}
+        mappings={mappings}
+        onUpdateModule={onUpdateModule}
+        onMove={vi.fn()}
+        onDelete={vi.fn()}
+        onRemoveMapping={vi.fn()}
+        onCreateModule={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "修改模块 Power" }));
+    const editDialog = screen.getByRole("dialog", { name: "修改模块 Power" });
+    fireEvent.change(within(editDialog).getByLabelText("模块重要性"), {
+      target: { value: "low" }
+    });
+    fireEvent.click(within(editDialog).getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(onUpdateModule).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("dialog", { name: "修改模块 Power" })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("dialog", { name: "修改模块 Power" })).getByRole("alert")
+    ).toHaveTextContent("保存冲突：模块已被其他管理员修改");
+  });
+
+  it("closes the edit dialog only after the save mutation resolves", async () => {
+    let resolveSave!: () => void;
+    const savePromise = new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    });
+    const onUpdateModule = vi.fn(() => savePromise);
+
+    render(
+      <ModuleAttributionTree
+        canAdmin
+        modules={modules}
+        mappings={mappings}
+        onUpdateModule={onUpdateModule}
+        onMove={vi.fn()}
+        onDelete={vi.fn()}
+        onRemoveMapping={vi.fn()}
+        onCreateModule={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "修改模块 Power" }));
+    const editDialog = screen.getByRole("dialog", { name: "修改模块 Power" });
+    fireEvent.change(within(editDialog).getByLabelText("模块重要性"), {
+      target: { value: "low" }
+    });
+    fireEvent.click(within(editDialog).getByRole("button", { name: "保存" }));
+
+    // Pending: dialog stays open until the mutation settles.
+    expect(screen.getByRole("dialog", { name: "修改模块 Power" })).toBeInTheDocument();
+    resolveSave();
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "修改模块 Power" })).not.toBeInTheDocument();
+    });
+  });
+
   it("edits importance inside the module dialog, not on the tree row", () => {
     const onUpdateModule = vi.fn();
 
@@ -202,7 +267,7 @@ describe("ModuleAttributionTree", () => {
     });
   });
 
-  it("opens create and edit dialogs for module details including importance", () => {
+  it("opens create and edit dialogs for module details including importance", async () => {
     const onCreateModule = vi.fn();
     const onUpdateModule = vi.fn();
 
@@ -244,6 +309,10 @@ describe("ModuleAttributionTree", () => {
         kind: "business"
       })
     );
+    // The dialog closes once the awaited create mutation resolves.
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "新建模块" })).not.toBeInTheDocument();
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "修改模块 Power" }));
     const editDialog = screen.getByRole("dialog", { name: "修改模块 Power" });
