@@ -23,6 +23,16 @@ export type DtsReloadDebugValueTarget = Pick<
   "resolvedValueShape" | "constraints"
 >;
 
+/** True when the draft debug value is non-empty and differs from the library baseline. */
+export function hasMeaningfulDebugChange(
+  debugValue: string,
+  baselineValue: string | null | undefined
+): boolean {
+  const trimmed = debugValue.trim();
+  if (!trimmed) return false;
+  return trimmed !== (baselineValue ?? "").trim();
+}
+
 function parseCellIntegers(raw: string): number[] | null {
   const trimmed = raw.trim();
   const bracket = /^\[([0-9a-fA-F\s]+)\]$/.exec(trimmed);

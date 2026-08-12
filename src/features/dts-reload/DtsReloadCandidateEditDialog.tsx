@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from "react";
 
 import { ParameterValueDiff } from "@/components/ParameterValueDiff";
 import { WorkbenchSheet } from "@/components/WorkbenchSheet";
+import { hasMeaningfulDebugChange } from "@/domain/dtsReload/debugValue";
 import {
   dtsReloadPurposeLabels,
   dtsReloadStatusLabels,
@@ -21,15 +22,7 @@ export type DtsReloadCandidateEditDialogProps = {
   onOpenHistoryRun?: (runId: string) => void;
 };
 
-/** True when the draft debug value is non-empty and differs from the library baseline. */
-export function hasMeaningfulDebugChange(
-  debugValue: string,
-  baselineValue: string | null | undefined
-): boolean {
-  const trimmed = debugValue.trim();
-  if (!trimmed) return false;
-  return trimmed !== (baselineValue ?? "").trim();
-}
+export { hasMeaningfulDebugChange };
 
 function constraintSummary(constraints: Record<string, unknown>): string {
   const parts: string[] = [];
