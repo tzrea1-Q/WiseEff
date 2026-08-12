@@ -427,7 +427,7 @@ describe("parameter service", () => {
   });
 
   it("preview classifies added updated unchanged conflict and flags high-risk value deltas", async () => {
-    const { db, calls } = createFakeDb([
+    const { db, calls, txCalls } = createFakeDb([
       [projectRow()],
       [
         definitionRow({ id: "definition-updated", project_parameter_value_id: "param-updated" }),
@@ -529,11 +529,11 @@ describe("parameter service", () => {
       ["fast_charge_current_limit_ma", "thermal_guard_threshold_c", "new_balancing_window_s", "pack_voltage_limit_v"],
       []
     ]);
-    expect(calls.some((call) => call.text.includes("insert into parameter_import_batches"))).toBe(true);
+    expect(txCalls.some((call) => call.text.includes("insert into parameter_import_batches"))).toBe(true);
   });
 
   it("createImportPreview with reviewMetadata writes audit metadata containing skippedRows", async () => {
-    const { db, calls } = createFakeDb([
+    const { db, calls, txCalls } = createFakeDb([
       [projectRow()],
       [],
       [
@@ -573,7 +573,7 @@ describe("parameter service", () => {
       reviewMetadata
     });
 
-    const auditCall = calls.find((call) => call.text.includes("insert into audit_events"));
+    const auditCall = txCalls.find((call) => call.text.includes("insert into audit_events"));
     expect(auditCall).toBeDefined();
     expect(auditCall?.values).toContain("batch-import");
     expect(JSON.parse(auditCall?.values[11] as string)).toMatchObject({
@@ -582,7 +582,7 @@ describe("parameter service", () => {
   });
 
   it("createImportPreview without reviewMetadata does not write import audit", async () => {
-    const { db, calls } = createFakeDb([
+    const { db, calls, txCalls } = createFakeDb([
       [projectRow()],
       [],
       [
@@ -617,6 +617,7 @@ describe("parameter service", () => {
     });
 
     expect(calls.some((call) => call.text.includes("insert into audit_events"))).toBe(false);
+    expect(txCalls.some((call) => call.text.includes("insert into audit_events"))).toBe(false);
   });
 
   it("applyImportBatch merges reviewMetadata into apply audit metadata", async () => {
