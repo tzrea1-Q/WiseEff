@@ -16,6 +16,8 @@ export type StepConfirmApplyProps = {
   dispatch: Dispatch<AppAction>;
   onBack: () => void;
   onApplied: () => void;
+  /** Lets the wizard shell block closing while the apply request is in flight. */
+  onPendingChange?: (pending: boolean) => void;
 };
 
 export function StepConfirmApply({
@@ -27,17 +29,23 @@ export function StepConfirmApply({
   parameterActions,
   dispatch,
   onBack,
-  onApplied
+  onApplied,
+  onPendingChange
 }: StepConfirmApplyProps) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+
+  const updatePending = (next: boolean) => {
+    setPending(next);
+    onPendingChange?.(next);
+  };
 
   const handleApply = async () => {
     if (!previewBatch || !parameterActions) {
       setError("导入预览不可用，请返回上一步重新生成。");
       return;
     }
-    setPending(true);
+    updatePending(true);
     setError("");
     try {
       const result = await parameterActions.applyImportBatch({
@@ -57,7 +65,7 @@ export function StepConfirmApply({
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "应用导入批次失败。");
     } finally {
-      setPending(false);
+      updatePending(false);
     }
   };
 

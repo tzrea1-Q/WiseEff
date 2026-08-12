@@ -235,6 +235,28 @@ describe("ProjectParameterInitializationWizard", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("guards Escape with a discard confirmation once any field is filled", () => {
+    const onClose = vi.fn();
+    render(<ProjectParameterInitializationWizard state={initialState} dispatch={vi.fn()} onClose={onClose} />);
+
+    fireEvent.change(screen.getByLabelText(/项目名称/), { target: { value: "Halo 台架" } });
+    fireEvent.keyDown(screen.getByRole("dialog", { name: /新项目参数初始化/ }), { key: "Escape" });
+
+    expect(onClose).not.toHaveBeenCalled();
+    const confirmDialog = screen.getByRole("dialog", { name: "放弃项目初始化？" });
+    expect(confirmDialog).toHaveTextContent(/尚未提交，关闭向导后将全部丢失/);
+
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "继续填写" }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/项目名称/)).toHaveValue("Halo 台架");
+
+    fireEvent.mouseDown(screen.getByRole("dialog", { name: /新项目参数初始化/ }));
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "放弃项目初始化？" })).getByRole("button", { name: "放弃并关闭" })
+    );
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("integrates module and risk filters into the parameter table headers", () => {
     render(<ProjectParameterInitializationWizard state={initialState} dispatch={vi.fn()} onClose={() => {}} />);
 

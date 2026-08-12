@@ -157,4 +157,37 @@ describe("FeedbackDialog", () => {
     expect(await screen.findByText("网络暂时不可用")).toBeInTheDocument();
     expect(within(dialog).getByLabelText("问题描述")).toHaveValue("参数首页加载很慢");
   });
+
+  it("closes directly when the form is clean", () => {
+    const { onOpenChange } = renderDialog();
+
+    const dialog = screen.getByRole("dialog", { name: "问题反馈" });
+    fireEvent.keyDown(dialog, { key: "Escape" });
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(screen.queryByRole("dialog", { name: "放弃当前反馈？" })).not.toBeInTheDocument();
+  });
+
+  it("guards Escape and close with a discard confirmation while the form is dirty", async () => {
+    const { onOpenChange } = renderDialog();
+
+    const dialog = screen.getByRole("dialog", { name: "问题反馈" });
+    fireEvent.change(within(dialog).getByLabelText("问题描述"), { target: { value: "还没写完的反馈" } });
+
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+    const confirmDialog = await screen.findByRole("dialog", { name: "放弃当前反馈？" });
+    expect(confirmDialog).toHaveTextContent("尚未提交的反馈将丢失");
+
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "继续填写" }));
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+    expect(within(dialog).getByLabelText("问题描述")).toHaveValue("还没写完的反馈");
+
+    // Both the header icon and the footer button route through the same guard.
+    fireEvent.click(within(dialog).getAllByRole("button", { name: "关闭" })[0]!);
+    fireEvent.click(
+      within(await screen.findByRole("dialog", { name: "放弃当前反馈？" })).getByRole("button", { name: "放弃反馈" })
+    );
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
 });

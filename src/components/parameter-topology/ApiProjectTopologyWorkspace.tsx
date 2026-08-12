@@ -50,6 +50,10 @@ import { DtsParameterWorkbench } from "./DtsParameterWorkbench";
 import { buildDtsWorkbenchRows } from "@/application/parameters/buildDtsWorkbenchRows";
 import { downloadSemanticWorkbenchCsv } from "@/application/parameters/exportSemanticWorkbenchRows";
 import {
+  clearUnsavedParameterWork,
+  reportUnsavedParameterWork
+} from "@/application/parameters/unsavedParameterWork";
+import {
   filterProductWorkbenchDiagnostics,
   partitionDanglingReferenceDiagnostics
 } from "@/domain/parameter-topology/toolchainDiagnostics";
@@ -367,6 +371,14 @@ export function ApiProjectTopologyWorkspace({
   );
   const projectDrafts = pendingDrafts.filter((draft) => draft.projectId === projectId);
   const hasProjectDrafts = projectDrafts.length > 0;
+
+  // Feed the navigation guards (top-bar project switch + beforeunload).
+  useEffect(() => {
+    reportUnsavedParameterWork("topology-pending-drafts", projectDrafts.length);
+    return () => {
+      clearUnsavedParameterWork("topology-pending-drafts");
+    };
+  }, [projectDrafts.length]);
   const projectMutationLock = projectMutationKinds.get(projectId);
   const projectMutationKind = projectMutationLock?.kind ?? null;
 

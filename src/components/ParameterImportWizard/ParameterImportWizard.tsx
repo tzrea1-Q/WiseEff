@@ -1,5 +1,5 @@
 import { CircleX } from "lucide-react";
-import { useEffect, useMemo, useState, type Dispatch } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch } from "react";
 import type { AppAction } from "@/App";
 import type { ParameterPageActions } from "@/app/routes";
 import { buildImportTemplateWorkbook } from "@/application/parameters/import/buildImportTemplate";
@@ -8,6 +8,7 @@ import { findExistingParameter, matchToLibrary } from "@/application/parameters/
 import type { ParsedImportRow, ReviewedImportRow } from "@/application/parameters/import/types";
 import type { ParameterImportBatchDto } from "@/application/ports/ParameterRepository";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { ParameterRecord, Project } from "@/mockData";
@@ -124,6 +125,8 @@ export function ParameterImportWizard({
   const [parseErrors, setParseErrors] = useState<string[]>([]);
   const [previewBatch, setPreviewBatch] = useState<ParameterImportBatchDto | null>(null);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
+  const [applyPending, setApplyPending] = useState(false);
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
 
   const libraryParameters = useMemo(() => buildParameterLibraryFromRecords(parameters, projects), [parameters, projects]);
   const moduleNames = useMemo(
@@ -152,20 +155,42 @@ export function ParameterImportWizard({
     setParseErrors([]);
     setPreviewBatch(null);
     setSelectedItemIds(new Set());
+    setApplyPending(false);
+    setCloseConfirmOpen(false);
   }, [open, activeProjectId]);
+
+  // Progress worth protecting: any step past the source picker, or parse /
+  // review state already produced on step 1.
+  const hasGuardedProgress =
+    step >= 2 || parsedRows.length > 0 || reviewedRows.length > 0 || parseErrors.length > 0;
+  const reviewedProgressCount = reviewedRows.filter((row) => RESOLVED_ROW_STATUSES.has(row.status)).length;
+
+  const requestClose = () => {
+    // Never allow closing while the apply request is in flight.
+    if (createProjectPending || applyPending) {
+      return;
+    }
+    if (hasGuardedProgress) {
+      setCloseConfirmOpen(true);
+      return;
+    }
+    onClose();
+  };
+  const requestCloseRef = useRef(requestClose);
+  requestCloseRef.current = requestClose;
 
   useEffect(() => {
     if (!open) {
       return undefined;
     }
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !createProjectPending) {
-        onClose();
+      if (event.key === "Escape") {
+        requestCloseRef.current();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, onClose, createProjectPending]);
+  }, [open]);
 
   if (!open) {
     return null;
@@ -279,7 +304,7 @@ export function ParameterImportWizard({
               <h2>步骤 {step} / 5</h2>
               <p>选择目标项目与导入来源，逐步核对后再应用变更。</p>
             </div>
-            <button type="button" className="audit-dialog-close-icon" onClick={onClose} aria-label="关闭">
+            <button type="button" className="audit-dialog-close-icon" onClick={requestClose} aria-label="关闭">
               <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
             </button>
           </div>
@@ -381,10 +406,31 @@ export function ParameterImportWizard({
               dispatch={dispatch}
               onBack={() => setStep(4)}
               onApplied={onClose}
+              onPendingChange={setApplyPending}
             />
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={closeConfirmOpen}
+        title="退出批量导入向导？"
+        description={
+          <p>
+            关闭后将丢弃当前导入进度
+            {reviewedProgressCount > 0 ? `（已核对 ${reviewedProgressCount} 行）` : ""}
+            ，下次需要重新上传并核对。
+          </p>
+        }
+        confirmLabel="丢弃并退出"
+        cancelLabel="继续导入"
+        tone="danger"
+        onCancel={() => setCloseConfirmOpen(false)}
+        onConfirm={() => {
+          setCloseConfirmOpen(false);
+          onClose();
+        }}
+      />
 
       <ProjectAdminFormDialog
         open={createProjectOpen}

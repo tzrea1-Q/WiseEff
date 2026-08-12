@@ -230,6 +230,7 @@ import {
 import { clearSessionDraftsForLogout } from "@/application/project-configuration/sessionDraftStorage";
 import { AppToastLayer } from "@/components/common/AppToastLayer";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { unsavedParameterWorkCount } from "@/application/parameters/unsavedParameterWork";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 import { createMockParameterRepository } from "@/infrastructure/mock/mockParameterRepository";
@@ -2631,6 +2632,20 @@ function AppShell({
     };
   }, []);
 
+  // Unsubmitted parameter drafts must survive accidental reloads/navigation.
+  useEffect(() => {
+    const guardUnload = (event: BeforeUnloadEvent) => {
+      if (unsavedParameterWorkCount() > 0) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", guardUnload);
+    return () => {
+      window.removeEventListener("beforeunload", guardUnload);
+    };
+  }, []);
+
   const navigate = useCallback((nextPath: string) => {
     const url = new URL(nextPath, window.location.origin);
     if (isStaticDownloadPath(url.pathname)) {
@@ -3425,6 +3440,17 @@ function TopBar({
   const selectedProjectId =
     page.key === "parameters" ? new URLSearchParams(search).get("project") || state.activeProjectId : state.activeProjectId;
   const handleProjectChange = (projectId: string) => {
+    // Switching projects tears down the parameter workbench; unsaved drafts
+    // must be acknowledged before they are dropped.
+    if (page.key === "parameters") {
+      const unsavedCount = unsavedParameterWorkCount();
+      if (
+        unsavedCount > 0 &&
+        !window.confirm(`有 ${unsavedCount} 项未保存的修改，切换项目将丢弃这些修改。确定切换吗？`)
+      ) {
+        return;
+      }
+    }
     dispatch({ type: "SET_PROJECT", projectId });
 
     if (page.key === "parameters") {

@@ -10811,6 +10811,9 @@ td small {
   justify-content: center;
   padding: 24px;
   background: rgba(16, 28, 45, 0.4);
+  /* Radix modal dialogs set body { pointer-events: none }; a confirm dialog
+     stacked above them must stay interactive. */
+  pointer-events: auto;
 }
 
 /*
