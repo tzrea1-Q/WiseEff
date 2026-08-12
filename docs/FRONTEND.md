@@ -8,12 +8,14 @@ WiseEff frontend is a Vite, React, TypeScript SPA. It supports a rich mock-backe
 
 - `src/app/`: page routing, navigation, permission checks.
 - `src/domain/`: role, parameter, log, debugging, audit, and Agent domain types and pure logic.
+- `src/application/state/`: the global prototype state machine — `AppAction`, `reducer`/`appReducer`, and reducer-only transition helpers. Import state types from here, never from `@/App` (ADR-0023).
 - `src/application/ports/`: frontend-facing business interfaces.
 - `src/infrastructure/mock/`: mock state and mock implementations for demos/tests.
 - `src/infrastructure/http/`: API client, DTOs, auth client, runtime mode.
 - `src/components/`: reusable UI, layout, tables, dialogs, filters, charts.
 - `src/features/agent/`: Xiaoze CopilotKit surface (`XiaozeProvider`, `useXiaozePageContext`, `XiaozeApprovalCard`, frontend tools).
 - `src/features/product-feedback/`: sidebar `FeedbackDialog` and Admin triage UI for `/feedback-admin`.
+- `src/features/knowledge/`: knowledge base pages for `/knowledge` and `/knowledge-admin` (list, split editor, upload, revisions).
 - `src/test/setup.ts`: Vitest DOM setup.
 
 ## Runtime Modes
@@ -255,6 +257,14 @@ In API mode, submit maps to `POST /api/v1/product-feedback`, list/detail/update 
 
 `/feedback-admin` is a utility Admin page mounted from `src/features/product-feedback/FeedbackAdminPage.tsx`. It uses the same port to filter and search feedback, inspect details in `FeedbackAdminDrawer`, view attachments, write `adminNote`, and move status through `open -> in_progress -> closed`. The route is gated by the frontend Admin role for UX, while backend routes remain the security boundary.
 
+## Knowledge Repository
+
+`KnowledgeRepository` (`src/application/ports/KnowledgeRepository.ts`) is the frontend port for the knowledge base workflow. Mock mode uses `src/infrastructure/mock/mockKnowledgeRepository.ts` with fixtures covering draft/published/archived entries and a failed-extraction file (same port shape, ADR-0002 parity); API mode uses `src/infrastructure/http/knowledgeClient.ts` against `/api/v1/knowledge/*`. Stale saves surface as `KnowledgeRevisionConflictError` (mapped from the structured `409`), which the editor renders as a readable reload-and-retry conflict instead of overwriting.
+
+- `/knowledge` (`src/features/knowledge/KnowledgePage.tsx`, its own knowledge sidebar group) lists entries with shared `ColumnFilter` status/tag column filters, searches published entries only through the search endpoint, creates markdown entries in a split edit/preview editor (`renderMarkdownPreview` in `src/domain/knowledge/markdown.ts` escapes input before rendering), uploads file entries with a visible extraction status badge, and offers revision history with restore-as-new-revision.
+- `/knowledge-admin` (`KnowledgeAdminPage.tsx`) is the Phase 1 governance skeleton: archived-entry management (restore) plus manage-gated hard delete behind an acknowledged `ConfirmDialog`. The agent-draft publish queue and index health arrive with later knowledge phases.
+- Capability wiring: `App.tsx` builds a `KnowledgeCapability` (`userId`, `canEdit`, `canManage`) from `/api/v1/me` permissions in API mode (`knowledge:edit` / `knowledge:manage`) or role checks in mock mode. UI gating is UX only; backend routes remain the security boundary. Pure lifecycle/visibility rules live in `src/domain/knowledge/rules.ts`.
+
 ## Debugging Gateway
 
 `DebuggingGateway` is the frontend port for M3 device debugging. Page components call runtime actions from `src/application/debugging/debuggingRuntime.ts`; those actions keep mock/HDC demos available outside API mode and call the HTTP gateway in API mode for HDC or ADB sessions.
@@ -360,6 +370,10 @@ M5 extends that baseline with the release smoke and pilot acceptance artifact. D
 - Do not let UI permission checks become the security boundary; backend writes must enforce permissions.
 - Preserve mock mode when adding API mode unless the task explicitly removes a prototype path.
 - Prefer existing component patterns and tests before adding new primitives.
+
+## UI Design System And Quality Gate
+
+Every product surface follows the operational visual standard in [UI Design System](design-docs/ui-design-system.md): design tokens as the only source of visual values, one accent, mandatory interaction states (rest/hover/active/focus-visible/disabled/loading), shared primitives (Button, `ModalDialog`, `DataTable`, `ColumnFilter`, `SectionState`), tokenized motion, and Chinese-first product language with shared formatters. Every frontend-visible change must pass the completion gate in [UI Quality Checklist](developer/ui-quality-checklist.md) before it is called done. Migration of legacy surfaces to this standard is tracked in `docs/exec-plans/active/2026-08-12-frontend-aesthetics-uplift.md`.
 
 ## Button And Action Styling
 

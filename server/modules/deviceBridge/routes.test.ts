@@ -92,7 +92,8 @@ function makeServer(options: {
           }
         ]
       })),
-    now: options.now
+    now: options.now,
+    createAuditEvent: (async () => {}) as never
   });
   return createHttpServer(router);
 }

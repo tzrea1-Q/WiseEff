@@ -267,5 +267,6 @@ export const dtsReloadVerificationOutcomeLabels: Record<
 /** Closed allowlist of exact kernel log commands — shared with bridge/server via device-command-core. */
 export {
   KERNEL_LOG_COMMAND_ALLOWLIST,
-  KERNEL_LOG_COMMAND_ALLOWLIST_PREFIXES
+  KERNEL_LOG_COMMAND_ALLOWLIST_PREFIXES,
+  isStreamingKernelLogCommand
 } from "@wiseeff/device-command-core/kernelLogCommand";

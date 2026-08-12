@@ -1,5 +1,5 @@
 import type { Database } from "../../../shared/database/client";
-import { mustUseSemanticParameterIdentity } from "../semanticParameterReads";
+import { parameterIdentityMode } from "../parameterIdentityMode";
 import { SEMANTIC_IDENTITY_SQL, SEMANTIC_RISK_EXPR } from "../semanticParameterIdentityNames";
 import {
   actionableReviewStatusesForRole,
@@ -43,7 +43,7 @@ export async function countKpis(
   db: Database,
   input: OrgScope & { windowStart: string }
 ) {
-  if (!(await mustUseSemanticParameterIdentity(db))) {
+  if (parameterIdentityMode() !== "semantic") {
     return countKpisLegacy(db, input);
   }
 
@@ -159,7 +159,7 @@ export async function countPersonalKpis(db: Database, input: PersonalKpiInput) {
 }
 
 async function countUserPersonalKpis(db: Database, input: PersonalKpiInput) {
-  if (!(await mustUseSemanticParameterIdentity(db))) {
+  if (parameterIdentityMode() !== "semantic") {
     return countUserPersonalKpisLegacy(db, input);
   }
 
@@ -206,7 +206,7 @@ async function countUserPersonalKpis(db: Database, input: PersonalKpiInput) {
 }
 
 async function countCommitterPersonalKpis(db: Database, input: PersonalKpiInput) {
-  if (!(await mustUseSemanticParameterIdentity(db))) {
+  if (parameterIdentityMode() !== "semantic") {
     return countCommitterPersonalKpisLegacy(db, input);
   }
 
@@ -530,7 +530,7 @@ export async function aggregateRiskDistribution(
   db: Database,
   input: OrgScope
 ): Promise<Array<{ projectId: string; projectCode: string; projectName: string; high: number; medium: number; low: number; total: number }>> {
-  if (!(await mustUseSemanticParameterIdentity(db))) {
+  if (parameterIdentityMode() !== "semantic") {
     return aggregateRiskDistributionLegacy(db, input);
   }
 

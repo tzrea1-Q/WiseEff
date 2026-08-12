@@ -1,4 +1,4 @@
-import type { AuditEvent } from "@/mockData";
+import type { AuditEvent } from "@/domain/prototype/types";
 import { formatAuditRelativeTime } from "./formatAuditTime";
 import type { AuditActorType, AuditEventDto, AuditEventView } from "./types";
 

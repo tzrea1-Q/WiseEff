@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type Dispatch } from "react";
-import type { AppAction } from "@/App";
+import type { AppAction } from "@/application/state/appState";
 import { canPerform } from "@/app/permissions";
 import type { ParameterPageActions } from "@/app/routes";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
@@ -14,7 +14,7 @@ import { ProjectConfigurationWorkbench } from "@/components/project-configuratio
 import { migrateLegacyRoleId } from "@/domain/users/types";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
-import type { PrototypeState } from "@/mockData";
+import type { PrototypeState } from "@/domain/prototype/types";
 import {
   buildParameterAdminProjectsFromState,
   isEditableProjectStatus,

@@ -19,8 +19,9 @@ import {
   stableSemanticId,
   type ParameterIdentityMigrationReport
 } from "./migration";
-import { resetParameterIdentityCutoverCache } from "../parameters/cutoverAwareIdentity";
-import { listParameters, listChangeRequests } from "../parameters/repository";
+import { resolveParameterIdentityMode } from "../parameters/parameterIdentityMode";
+import { listParameters } from "../parameters/repository";
+import { listChangeRequests } from "../parameters/reviewWorkflowRepository";
 import { ApiError } from "../../shared/http/errors";
 
 
@@ -1045,8 +1046,24 @@ describe.skipIf(!databaseAvailable)("parameter identity migration", () => {
       applyParameterIdentityCutover(db!, { migrationRunId: fakeRunId })
     ).rejects.toThrow(/cutover blocked|inferred/i);
 
-    // Apply writes inside the shared test transaction survive the thrown apply block;
-    // reuse the inferred draft + open review task that apply already staged.
+    // The blocked apply rolls its staged writes back (real transaction
+    // semantics), so forge the open inferred review task that a finalized run
+    // with unaudited inferred specs would leave behind for the cutover gate.
+    await db!.query(
+      `
+      insert into parameter_spec_review_tasks (
+        id, organization_id, parameter_spec_id, source_evidence,
+        candidate_schemas, project_count, status, reason, blocker_scope,
+        migration_run_id
+      ) values (
+        'review-forged-inferred-block', $1, null,
+        '{"inferred": true, "module": "orphan_module"}'::jsonb,
+        '[]'::jsonb, 1, 'open', 'forged inferred review for cutover gate', 'platform', $2
+      )
+      `,
+      [ORG, fakeRunId]
+    );
+
     const openInferred = await db!.query<{ c: string }>(
       `
       select count(*)::text as c
@@ -1320,7 +1337,7 @@ describe.skipIf(!databaseAvailable)("parameter identity cutover atomicity", () =
       );
       expect(Number(legacyPpvFks.rows[0]?.c ?? 0)).toBe(0);
 
-      resetParameterIdentityCutoverCache();
+      await resolveParameterIdentityMode(tempDb);
       const params = await listParameters(tempDb, { organizationId: ORG, projectId: PROJECT, limit: 10 });
       expect(params.length).toBeGreaterThan(0);
       expect(params.some((item) => item.id === expectedBindingId(expectedSpecId(), expectedLogicalNodeId()))).toBe(
@@ -1356,7 +1373,7 @@ describe.skipIf(!databaseAvailable)("post-cutover API smoke (temp DB)", () => {
       });
       expect(report.blockers).toEqual([]);
       await applyParameterIdentityCutover(tempDb, { migrationRunId: report.migrationRunId });
-      resetParameterIdentityCutoverCache();
+      await resolveParameterIdentityMode(tempDb);
 
       const activeDefs = await tempDb.query(
         `select 1 from information_schema.tables

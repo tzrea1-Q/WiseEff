@@ -293,6 +293,23 @@ export interface ReloadResidueDto {
 /** Always required before any device deploy for a reload run. Never inject from runtime. */
 export const DTS_RELOAD_CONFIRMATION_TOKEN = "confirm-dts-reload";
 
+/**
+ * A trigger whose RPC threw / timed out: the write may have reached the device and applied the
+ * overlay, so the run is failed but the device is treated as possibly carrying debug values.
+ */
+export const TRIGGER_RELOAD_UNCONFIRMED_FAILURE_CODE = "trigger-reload-unconfirmed";
+
+/** Failure code stamped when a maintenance sweep reclaims a run wedged in `deploying` by a crashed deployer. */
+export const DEPLOY_RECLAIMED_FAILURE_CODE = "deploy-reclaimed";
+
+/**
+ * A `deploying` run whose heartbeat (`deploy_claimed_at`) is older than this is treated as
+ * abandoned by a crashed deployer and reset to `failed` so it can be deployed again. Must exceed
+ * the worst-case deploy duration (bounded by the device-lease TTL) by a generous margin so an
+ * actively-deploying run is never reclaimed out from under a live deployer.
+ */
+export const RELOAD_DEPLOY_RECLAIM_AFTER_MS = 30 * 60 * 1000;
+
 export const PUSH_FILE_MAX_BYTES = 1 * 1024 * 1024;
 
 export const RELOAD_MOUNT_TIMEOUT_MS = 15_000;

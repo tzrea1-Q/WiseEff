@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { canAccessPage } from "./app/permissions";
 import * as logAdminAnalytics from "./logAdminAnalytics";
 import { applyTableFilters, applyTimeWindow, deriveInsight, deriveMetrics } from "./logAdminAnalytics";
-import type { LogRecord } from "./mockData";
+import type { LogRecord } from "@/domain/prototype/types";
 
 describe("log admin role policy compatibility", () => {
   it("uses Admin-only page access for log admin", () => {

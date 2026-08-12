@@ -7,7 +7,7 @@ import { ensureDefaultConfigSetInTx } from "../parameter-files/configSetService"
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { canAdminParameters } from "./policy";
-import { createProject, deleteProject, updateProject } from "./repository";
+import { createProject, deleteProject, updateProject } from "./projectRepository";
 import type { ProjectAdminSummaryDto } from "./types";
 
 export type CreateProjectForAuthInput = {

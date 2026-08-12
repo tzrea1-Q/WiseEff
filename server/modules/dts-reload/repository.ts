@@ -495,7 +495,8 @@ export async function updateReloadRunDeployState(
       protocol = $10,
       integrity_check = $11,
       reload_snapshot = $12::jsonb,
-      completed_at = $13
+      completed_at = $13,
+      deploy_claimed_at = case when $3 = 'deploying' then now() else deploy_claimed_at end
     where organization_id = $1 and id = $2
     returning *
     `,
@@ -532,7 +533,8 @@ export async function claimReloadRunForDeploy(
       protocol = $10,
       integrity_check = $11,
       reload_snapshot = $12::jsonb,
-      completed_at = $13
+      completed_at = $13,
+      deploy_claimed_at = now()
     where organization_id = $1
       and id = $2
       and status = any($14::text[])
@@ -541,6 +543,92 @@ export async function claimReloadRunForDeploy(
     [...deployStateUpdateParams(input), ["validated", "failed"]]
   );
   return result.rows[0] ?? null;
+}
+
+export type ReclaimedDeployingRunRow = {
+  id: string;
+  organization_id: string;
+};
+
+/**
+ * Reset runs wedged in `deploying` — heartbeat (`deploy_claimed_at`, else `created_at`) older than
+ * `olderThanIso` — back to `failed` so they can be deployed again. Cross-organization platform
+ * maintenance. The time gate must exceed the worst-case deploy window so a live deployer's run is
+ * never reclaimed mid-flight. Batched via a bounded subselect.
+ */
+export async function reclaimStaleDeployingReloadRunRows(
+  db: Queryable,
+  input: { olderThanIso: string; failureCode: string; limit: number }
+): Promise<ReclaimedDeployingRunRow[]> {
+  const result = await db.query<ReclaimedDeployingRunRow>(
+    `
+    update dts_reload_runs
+    set status = 'failed',
+        failure_code = $2,
+        completed_at = now()
+    where id in (
+      select id
+      from dts_reload_runs
+      where status = 'deploying'
+        and coalesce(deploy_claimed_at, created_at) < $1::timestamptz
+      order by coalesce(deploy_claimed_at, created_at) asc
+      limit $3
+    )
+    returning id, organization_id
+    `,
+    [input.olderThanIso, input.failureCode, input.limit]
+  );
+  return result.rows;
+}
+
+export type ExpiredReloadArtifactRow = {
+  id: string;
+  organization_id: string;
+  overlay_artifact_storage_key: string | null;
+  overlay_source_storage_key: string | null;
+};
+
+/**
+ * Runs whose retention anchor (completed_at, else created_at) is older than `olderThanIso` and
+ * that still hold at least one object-store key. Cross-organization by design — this is a
+ * platform maintenance sweep, not a tenant-scoped read.
+ */
+export async function listExpiredReloadArtifactRuns(
+  db: Queryable,
+  input: { olderThanIso: string; limit: number }
+): Promise<ExpiredReloadArtifactRow[]> {
+  const result = await db.query<ExpiredReloadArtifactRow>(
+    `
+    select id, organization_id, overlay_artifact_storage_key, overlay_source_storage_key
+    from dts_reload_runs
+    where coalesce(completed_at, created_at) < $1::timestamptz
+      and (overlay_artifact_storage_key is not null or overlay_source_storage_key is not null)
+    order by coalesce(completed_at, created_at) asc
+    limit $2
+    `,
+    [input.olderThanIso, input.limit]
+  );
+  return result.rows;
+}
+
+/**
+ * Null the object-store keys after their blobs are physically deleted. Digests, byte sizes, and the
+ * reload snapshot stay on the row so history and audit remain intact; retention checks report the
+ * artifact as expired by timestamp regardless of key presence.
+ */
+export async function clearReloadRunStorageKeys(
+  db: Queryable,
+  input: { organizationId: string; runId: string }
+): Promise<void> {
+  await db.query(
+    `
+    update dts_reload_runs
+    set overlay_artifact_storage_key = null,
+        overlay_source_storage_key = null
+    where organization_id = $1 and id = $2
+    `,
+    [input.organizationId, input.runId]
+  );
 }
 
 export async function getReloadRunRow(
@@ -628,8 +716,13 @@ export async function listReloadRunRows(
     where.push(`r.device_id = $${values.length}`);
   }
   if (query.cursor) {
+    // The cursor carries millisecond-precision timestamps (JS ISO strings), while created_at is
+    // microsecond-precision timestamptz. Truncate both sides to milliseconds so same-millisecond
+    // rows fall back to the id tie-break instead of being skipped or repeated at the page boundary.
     values.push(query.cursor.createdAt, query.cursor.id);
-    where.push(`(r.created_at, r.id) < ($${values.length - 1}::timestamptz, $${values.length})`);
+    where.push(
+      `(date_trunc('milliseconds', r.created_at), r.id) < (date_trunc('milliseconds', $${values.length - 1}::timestamptz), $${values.length})`
+    );
   }
 
   values.push(query.limit + 1);
@@ -658,7 +751,7 @@ export async function listReloadRunRows(
       where reload_run_id = r.id
     ) t on true
     where ${where.join("\n      and ")}
-    order by r.created_at desc, r.id desc
+    order by date_trunc('milliseconds', r.created_at) desc, r.id desc
     limit $${values.length}
     `,
     values
