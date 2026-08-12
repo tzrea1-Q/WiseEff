@@ -6,7 +6,6 @@ import type { PreflightDiagnostic, PreflightStep } from "./preflight";
  */
 export type ReloadCandidateBlockReason =
   | "no-node-path"
-  | "synthesised-anchor"
   | "unsupported-value-shape"
   | "no-baseline-value";
 

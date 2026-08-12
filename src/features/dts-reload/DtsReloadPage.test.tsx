@@ -459,7 +459,7 @@ describe("DtsReloadPage", () => {
             displayName: "Blocked",
             nodePath: "/amba",
             debuggable: false,
-            blockReason: "synthesised-anchor"
+            blockReason: "no-baseline-value"
           })
         ]
       }))
@@ -470,7 +470,7 @@ describe("DtsReloadPage", () => {
     renderPage(repository);
 
     expect((await screen.findAllByText("Watchdog")).length).toBeGreaterThan(0);
-    expect(screen.getByText(/合成 \/label 锚点/)).toBeInTheDocument();
+    expect(screen.getByText(/缺少库基线值/)).toBeInTheDocument();
 
     const moduleTree = screen.getByRole("tree", { name: "业务模块树" });
     const uartModule = within(moduleTree).getByRole("treeitem", {

@@ -4,31 +4,10 @@ import {
   classifyReloadCandidate,
   inferCellsPerGroupFromBaseline,
   isSupportedReloadValueShape,
-  isSynthesisedAnchorLocator,
   normalizeReloadCandidates,
   resolveReloadValueShape
 } from "./candidates";
 import type { ReloadCandidateDto } from "./types";
-
-describe("isSynthesisedAnchorLocator", () => {
-  it("refuses a single-segment label-shaped locator", () => {
-    expect(isSynthesisedAnchorLocator("/amba")).toBe(true);
-    expect(isSynthesisedAnchorLocator("/charger")).toBe(true);
-  });
-
-  it("allows a descendant hanging under a synthesised parent", () => {
-    expect(isSynthesisedAnchorLocator("/amba/i2c@FDF5E000/sc8562@6E")).toBe(false);
-  });
-
-  it("allows a real unit-addressed root node", () => {
-    expect(isSynthesisedAnchorLocator("/soc@0")).toBe(false);
-  });
-
-  it("treats null or empty as not synthesised (handled by no-node-path)", () => {
-    expect(isSynthesisedAnchorLocator(null)).toBe(false);
-    expect(isSynthesisedAnchorLocator("")).toBe(false);
-  });
-});
 
 describe("resolveReloadValueShape", () => {
   it("aliases complete u32-array onto cells", () => {
@@ -187,11 +166,10 @@ describe("classifyReloadCandidate", () => {
     expect(classifyReloadCandidate({ ...base, description: "   " }).description).toBeNull();
   });
 
-  it("blocks a synthesised-anchor locator on the parameter itself", () => {
-    expect(classifyReloadCandidate({ ...base, nodePath: "/amba" })).toMatchObject({
-      debuggable: false,
-      blockReason: "synthesised-anchor"
-    });
+  it("treats a single-segment /label path the same as any other absolute path", () => {
+    const candidate = classifyReloadCandidate({ ...base, nodePath: "/amba" });
+    expect(candidate.debuggable).toBe(true);
+    expect(candidate.blockReason).toBeUndefined();
   });
 
   it("blocks missing path, unsupported shape, and missing baseline", () => {

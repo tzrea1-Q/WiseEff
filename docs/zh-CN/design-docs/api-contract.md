@@ -160,7 +160,7 @@ M2 日志与 M3 调试运行时/catalog API 以认证用户的 `organization_id`
 
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
-| `GET` | `/api/v1/dts-reload/projects/:projectId/candidates` | `debugging:view` 或 `debugging:dts-reload` | 项目候选参数（可调试性、sensitiveMatch、lastReload） |
+| `GET` | `/api/v1/dts-reload/projects/:projectId/candidates` | `debugging:view` 或 `debugging:dts-reload` | 项目候选参数（可调试性、sensitiveMatch、lastReload）。具备非空绝对 `nodePath`、支持的重载值形态与库基线即可调试（含单段 `/label`，不再有 synthesised-anchor 路径形状拒绝）。 |
 | `POST` | `/api/v1/dts-reload/projects/:projectId/runs` | `debugging:dts-reload` | 启动运行（批量 targets；critical 可能需 `confirm-sensitive-reload`） |
 | `POST` | `/api/v1/dts-reload/runs/:runId/deploy` | `debugging:dts-reload` | 进程内桥接部署；需 `confirm-dts-reload` |
 | `GET` | `/api/v1/dts-reload/runs` / `.../:runId` | 查看路径 | 历史与含重载快照的详情 |
