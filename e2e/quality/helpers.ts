@@ -76,7 +76,11 @@ export function stableMasks(page: Page, routePath = ""): Locator[] {
     page.locator(".operation-history-list"),
     page.locator(".audit-column"),
     page.locator(".review-detail"),
-    page.locator("[aria-live]")
+    page.locator("[aria-live]"),
+    // The global toast layer is fixed-positioned outside its zero-height
+    // aria-live wrapper, so mask the toast card itself; runtime-connect
+    // notifications are timing-dependent and must never enter a baseline.
+    page.locator(".app-toast")
   ];
 
   if (routePath === "/parameters") {
