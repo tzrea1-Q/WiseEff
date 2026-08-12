@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-06-29T15:15:35.211Z",
+  "generatedAt": "2026-08-12T16:41:17.235Z",
   "promptVersion": "2026-06-29.1",
-  "total": 10,
-  "passed": 10,
+  "total": 11,
+  "passed": 11,
   "failed": 0,
   "scenarios": [
     {
@@ -318,6 +318,65 @@
         ],
         "executedMutatingTools": [],
         "citations": []
+      }
+    },
+    {
+      "name": "knowledge-grounding",
+      "category": "knowledge-grounding",
+      "pass": true,
+      "expectations": [
+        {
+          "expectation": {
+            "type": "expectsToolCallOrder",
+            "tools": [
+              "knowledge.search"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "requiresCitationsWhenToolDataUsed"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "requiresSubstringsInAnswer",
+            "substrings": [
+              "知识库"
+            ]
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsNoMutatingExecution"
+          },
+          "pass": true
+        },
+        {
+          "expectation": {
+            "type": "expectsNoInterrupt"
+          },
+          "pass": true
+        }
+      ],
+      "runResult": {
+        "answer": "根据知识库《快充温控调参经验》:当电池温度超过 45 度时按 0.5A 步长下调快充电流。[citation:knowledge]",
+        "toolCallOrder": [
+          "knowledge.search"
+        ],
+        "executedMutatingTools": [],
+        "citations": [
+          {
+            "type": "knowledge",
+            "id": "kb-thermal-tuning",
+            "label": "快充温控调参经验",
+            "href": "/knowledge?entryId=kb-thermal-tuning",
+            "snippet": "当电池温度超过 45 度时,按 0.5A 步长下调快充电流。"
+          }
+        ]
       }
     },
     {

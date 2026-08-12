@@ -638,7 +638,7 @@ test.describe("Knowledge base browser acceptance", () => {
     const indexTable = page.getByRole("table", { name: "知识索引状态" });
     const row = indexTable.locator("tr", { hasText: title }).first();
     await expect(row).toBeVisible();
-    await expect(row.getByText("已索引")).toBeVisible();
+    await expect(row.locator('[data-index-status="succeeded"]')).toBeVisible();
 
     // Retry re-enqueues the entry and the worker converges back to succeeded.
     await row.getByRole("button", { name: "重试" }).click();
