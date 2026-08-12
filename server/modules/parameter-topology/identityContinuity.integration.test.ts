@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { makeTestAuthContext } from "../../testing/authContext";
 import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
 import {
   applyReviewedContinuityToSnapshots,
@@ -54,19 +55,14 @@ const AMBIGUOUS_SOURCE = `/dts-v1/;
 `;
 
 function makeAuth(): AuthContext {
-  return {
-    user: {
-      id: USER_ID,
-      organizationId: ORG_ID,
-      name: "Continuity Admin",
-      email: "continuity@example.com",
-      title: "Admin",
-      isActive: true,
-    },
-    organization: { id: ORG_ID, name: "Continuity Org" },
-    roles: [{ projectId: null, roleId: "admin" }],
+  return makeTestAuthContext({
+    userId: USER_ID,
+    organizationId: ORG_ID,
+    name: "Continuity Admin",
+    email: "continuity@example.com",
+    organizationName: "Continuity Org",
     permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
-  };
+  });
 }
 
 async function seedGraph(db: InMemoryTestDatabase) {

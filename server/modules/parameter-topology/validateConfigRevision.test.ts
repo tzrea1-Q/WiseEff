@@ -5,6 +5,7 @@ import type { AuthContext } from "../auth/types";
 import type { DtsToolchainRunner, DtsToolchainResult } from "../parameter-files/dtsToolchain";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { makeTestAuthContext } from "../../testing/authContext";
 import { ingestConfigRevision } from "./ingestService";
 import { validateConfigRevision } from "./service";
 import type { ConfigRevisionManifest } from "./types";
@@ -36,19 +37,14 @@ const OVERLAY_DTS = `/dts-v1/;
 `;
 
 function makeAuth(): AuthContext {
-  return {
-    user: {
-      id: USER_ID,
-      organizationId: ORG_ID,
-      name: "Topo Validate Admin",
-      email: "topo-validate@example.com",
-      title: "Admin",
-      isActive: true
-    },
-    organization: { id: ORG_ID, name: "Topo Validate Org" },
-    roles: [{ projectId: null, roleId: "admin" }],
+  return makeTestAuthContext({
+    userId: USER_ID,
+    organizationId: ORG_ID,
+    name: "Topo Validate Admin",
+    email: "topo-validate@example.com",
+    organizationName: "Topo Validate Org",
     permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"]
-  };
+  });
 }
 
 function toolchainResult(overrides: Partial<DtsToolchainResult> = {}): DtsToolchainResult {

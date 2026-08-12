@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { makeTestAuthContext } from "../../testing/authContext";
 import type { AuthContext } from "../auth/types";
 import type { Database } from "../../shared/database/client";
 import { createHttpServer } from "../../shared/http/server";
@@ -41,17 +42,14 @@ vi.mock("./dtsSearchService", () => ({
 
 function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
   return {
-    user: {
-      id: "user-1",
+    ...makeTestAuthContext({
+      userId: "user-1",
       organizationId: "org-1",
       name: "Riley Chen",
       email: "riley@example.com",
-      title: "Admin",
-      isActive: true,
-    },
-    organization: { id: "org-1", name: "ChargeLab" },
-    roles: [{ projectId: null, roleId: "admin" }],
-    permissions: ["parameter:view", "admin:access"],
+      organizationName: "ChargeLab",
+      permissions: ["parameter:view", "admin:access"],
+    }),
     ...overrides,
   };
 }

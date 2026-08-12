@@ -5,6 +5,7 @@ import type { Database } from "../../shared/database/client";
 import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
+import { makeTestAuthContext } from "../../testing/authContext";
 import { registerParameterSpecRoutes } from "../parameter-specs/routes";
 import { registerParameterTopologyRoutes } from "./routes";
 import * as specService from "../parameter-specs/service";
@@ -30,17 +31,16 @@ vi.mock("./service", () => ({
 
 function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
   return {
-    user: {
-      id: "user-1",
+    ...makeTestAuthContext({
+      userId: "user-1",
       organizationId: "org-1",
       name: "Riley Chen",
       email: "riley@example.com",
       title: "Engineer",
-      isActive: true
-    },
-    organization: { id: "org-1", name: "ChargeLab" },
-    roles: [{ projectId: "project-1", roleId: "hardware-user" }],
-    permissions: ["parameter:view"],
+      organizationName: "ChargeLab",
+      roles: [{ projectId: "project-1", roleId: "hardware-user" }],
+      permissions: ["parameter:view"]
+    }),
     ...overrides
   };
 }

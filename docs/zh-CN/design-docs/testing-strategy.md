@@ -183,7 +183,7 @@ npm run test:m5
 M6.1 adds deployment-shape tests rather than product workflow tests:
 
 ```bash
-npm test -- ops/self-hosted/scripts/check-self-hosted-config.test.ts ops/self-hosted/scripts/run-self-hosted-smoke.test.ts
+npm run test:scripts -- ops/self-hosted/scripts/check-self-hosted-config.test.ts ops/self-hosted/scripts/run-self-hosted-smoke.test.ts
 npm run selfhost:check
 npm run selfhost:smoke -- --base-url <target-url>
 ```
@@ -222,7 +222,8 @@ Local evidence proves the scripts and safety gates. Target readiness requires th
 M6.5 adds local observability configuration and runtime checks:
 
 ```bash
-npm test -- scripts/check-observability-config.test.ts server/observability/*.test.ts server/app.test.ts server/shared/http/router.test.ts server/modules/agent/orchestrator.test.ts server/modules/agent/routes.test.ts server/modules/debugging/service.test.ts server/modules/debugging/routes.test.ts
+npm run test:scripts -- scripts/check-observability-config.test.ts
+npm run test:server -- server/observability server/app.test.ts server/shared/http/router.test.ts server/modules/agent/orchestrator.test.ts server/modules/agent/routes.test.ts server/modules/debugging/service.test.ts server/modules/debugging/routes.test.ts
 npm run observability:check
 ```
 
@@ -233,7 +234,7 @@ npm run observability:check
 M6.6 adds release-operation tests and evidence writers rather than new product workflow tests:
 
 ```bash
-npm test -- scripts/run-self-hosted-release-gate.test.ts scripts/run-capacity-gate.test.ts
+npm run test:scripts -- scripts/run-self-hosted-release-gate.test.ts scripts/run-capacity-gate.test.ts
 npm run identity:check
 npm run rollback:rehearsal
 npm run capacity:gate -- --target-url <target-url>

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { makeTestAuthContext } from "../../testing/authContext";
 import { ApiError } from "../../shared/http/errors";
 import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
@@ -24,19 +25,14 @@ const ORG_DRAFT = "pspec:org:round6-draft";
 const databaseAvailable = await isTestDatabaseAvailable();
 
 function makeAuth(orgId: string, userId: string, permissions = ["parameter:view", "parameter:edit", "parameter:review", "admin:access"]): AuthContext {
-  return {
-    user: {
-      id: userId,
-      organizationId: orgId,
-      name: `Admin ${orgId}`,
-      email: `${userId}@example.com`,
-      title: "Admin",
-      isActive: true,
-    },
-    organization: { id: orgId, name: orgId },
-    roles: [{ projectId: null, roleId: "admin" }],
+  return makeTestAuthContext({
+    userId,
+    organizationId: orgId,
+    name: `Admin ${orgId}`,
+    email: `${userId}@example.com`,
+    organizationName: orgId,
     permissions,
-  };
+  });
 }
 
 async function seed(db: InMemoryTestDatabase) {

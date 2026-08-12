@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,8 +6,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { makeTestAuthContext } from "../../testing/authContext";
+import { createMemoryObjectStore } from "../../testing/objectStore";
+import { seedCoreGraph } from "../../testing/fixtures";
 import type { AuthContext } from "../auth/types";
-import type { ObjectStore } from "../logs/objectStore";
 import { buildDtsParsedIndex } from "./parseIndex";
 import { parseDts, serializeDts } from "../dts";
 import { uploadProjectParameterFile } from "./service";
@@ -20,63 +22,22 @@ const teachingSample = readFileSync(fixturePath, "utf8");
 const uploadableSample = teachingSample.replace(/\n\/include\/[^\n]*/g, "\n");
 
 function makeAuth(): AuthContext {
-  return {
-    user: {
-      id: "user-struct-int",
-      organizationId: "org-struct-int",
-      name: "Struct Admin",
-      email: "struct-int@example.com",
-      title: "Admin",
-      isActive: true,
-    },
-    organization: { id: "org-struct-int", name: "Struct Org" },
-    roles: [{ projectId: null, roleId: "admin" }],
+  return makeTestAuthContext({
+    userId: "user-struct-int",
+    organizationId: "org-struct-int",
+    name: "Struct Admin",
+    email: "struct-int@example.com",
+    organizationName: "Struct Org",
     permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"],
-  };
-}
-
-function createMemoryObjectStore(): ObjectStore {
-  const entries = new Map<string, Buffer>();
-  return {
-    async put(input) {
-      const checksum = createHash("sha256").update(input.bytes).digest("hex");
-      const storageKey = `${input.organizationId}/${checksum}-${input.fileName}`;
-      entries.set(storageKey, Buffer.from(input.bytes));
-      return {
-        storageKey,
-        fileName: input.fileName,
-        contentType: input.contentType,
-        fileSizeBytes: input.bytes.byteLength,
-        checksumSha256: checksum,
-      };
-    },
-    async get(storageKey) {
-      const value = entries.get(storageKey);
-      if (!value) throw new Error(`Missing object: ${storageKey}`);
-      return Buffer.from(value);
-    },
-  };
+  });
 }
 
 async function seedBaseline(db: InMemoryTestDatabase) {
-  await db.query(
-    `insert into organizations (id, name) values ('org-struct-int', 'Struct Org')
-     on conflict (id) do update set name = excluded.name`,
-  );
-  await db.query(
-    `
-    insert into users (id, organization_id, name, email, title, is_active)
-    values ('user-struct-int', 'org-struct-int', 'Struct Admin', 'struct-int@example.com', 'Admin', true)
-    on conflict (id) do update set organization_id = excluded.organization_id
-    `,
-  );
-  await db.query(
-    `
-    insert into projects (id, organization_id, name, code, status)
-    values ('project-struct-int', 'org-struct-int', 'Struct', 'STR', 'initialized')
-    on conflict (id) do update set name = excluded.name
-    `,
-  );
+  await seedCoreGraph(db, {
+    organization: { id: "org-struct-int", name: "Struct Org" },
+    users: [{ id: "user-struct-int", name: "Struct Admin", email: "struct-int@example.com" }],
+    projects: [{ id: "project-struct-int", name: "Struct", code: "STR" }],
+  });
   for (const [id, name, module] of [
     ["pd-bc0", "status", "demo_multi_instance/battery_checker@0"],
     ["pd-bc1", "status", "demo_multi_instance/battery_checker@1"],
