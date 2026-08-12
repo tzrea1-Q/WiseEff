@@ -1,6 +1,6 @@
 # Log Analysis Behavior Eval Report
 
-- Generated: 2026-08-12T12:30:18.302Z
+- Generated: 2026-08-12T13:49:19.095Z
 - Prompt version: `2026-08-12.1`
 - Scenarios: 6 (6 passed)
 - Meta checks: 2/2 passed
