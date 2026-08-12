@@ -16,11 +16,11 @@ import { assertSensitiveNodeWriteAllowed } from "../parameters/sensitiveNode";
 import { mustUseSemanticParameterIdentity } from "../parameters/semanticParameterReads";
 import { loadPreCutoverWritebackSource } from "../parameters/legacyParameterIdentityAdapter";
 import { getChangeRequestEnablementWriteLock, getChangeRequestWriteLock } from "../parameters/repository";
+import { type BindingEditAction } from "../parameter-topology/editService";
 import {
   applyLockedEnablementWriteback,
   applyLockedOverlayWriteback,
-  type BindingEditAction,
-} from "../parameter-topology/editService";
+} from "../parameter-topology/overlayWriteback";
 import {
   resolveBindingWriteLock,
   resolveEnablementWriteLock,
