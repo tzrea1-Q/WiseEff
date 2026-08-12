@@ -1380,10 +1380,6 @@ body {
   box-shadow: none;
 }
 
-.profile-modal-backdrop {
-  z-index: 130;
-}
-
 .profile-dialog {
   width: min(100%, 420px);
   display: grid;
@@ -5301,15 +5297,8 @@ td small {
   white-space: normal;
 }
 
-.user-permissions-modal {
-  position: fixed;
-  inset: 0;
-  z-index: 120;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: rgba(16, 28, 45, 0.32);
-}
+/* `.user-permissions-modal` is now only a backdrop scope for the add-user dialog
+ * (positioning, dimming, and stacking come from the shared `.modal-backdrop`). */
 
 .user-permissions-dialog,
 .user-permissions-modal-card {
@@ -10502,7 +10491,34 @@ td small {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(16, 28, 45, 0.4);
+  /* The one dialog dimming value (ui-design-system §Dialogs). */
+  background: color-mix(in srgb, var(--text) 40%, transparent);
+  animation: modal-backdrop-enter var(--duration-slow) var(--ease-out);
+}
+
+/* Dialog cards enter with a fade + subtle scale (§Motion: opacity/transform only). */
+.modal-backdrop > [role="dialog"] {
+  animation: modal-card-enter var(--duration-slow) var(--ease-out);
+}
+
+@keyframes modal-backdrop-enter {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes modal-card-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-backdrop,
+  .modal-backdrop > [role="dialog"] {
+    animation: none;
+  }
 }
 
 /*
@@ -10514,7 +10530,7 @@ td small {
 .modal-backdrop.param-admin-modal-backdrop {
   display: grid;
   place-items: center;
-  background: rgba(16, 28, 45, 0.32);
+  background: color-mix(in srgb, var(--text) 32%, transparent);
   backdrop-filter: blur(6px);
 }
 
@@ -10995,11 +11011,6 @@ td small {
   font-weight: 600;
   line-height: 1.55;
   white-space: pre;
-}
-
-.parameter-history-backdrop {
-  z-index: 85;
-  background: rgba(15, 23, 42, 0.32);
 }
 
 .parameter-history-diff-dialog {
@@ -17274,10 +17285,6 @@ body.xiaoze-popup-resize-active {
   line-height: 1.45;
   color: var(--text-muted);
   overflow-wrap: anywhere;
-}
-
-.param-admin-module-edit-backdrop {
-  z-index: 120;
 }
 
 .param-admin-module-edit-dialog {
