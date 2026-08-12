@@ -123,6 +123,7 @@ export function inferPhandleCellsPerGroupFromBaseline(
  * - `u32-array` / `cells` → `cells` (width may be inferred from a regular integer baseline)
  * - catalog `bytes` with `/bits/ 8 <…>` (or `[…]`) baselines → `cells` with bits=8
  * - `mixed` / `phandle-list` that match GPIO-style `<&label N …>` → `phandle-cells`
+ * - catalog `string` (single quoted string) stays `string`; `string-list` stays `string-list`
  */
 export function resolveReloadValueShape(
   valueShape: CandidateValueShape,
@@ -131,6 +132,9 @@ export function resolveReloadValueShape(
   if (!valueShape || typeof valueShape !== "object") return null;
   if (valueShape.kind === "string-list") {
     return { kind: "string-list" };
+  }
+  if (valueShape.kind === "string") {
+    return { kind: "string" };
   }
 
   if (isPhandleCellFamilyKind(valueShape.kind)) {
@@ -216,11 +220,11 @@ export function resolveReloadValueShape(
 
 /**
  * Supported reload shapes: integer cell arrays at bits 8/16/32 (including catalog `bytes`
- * authored as `/bits/ 8 <…>`), string lists, and GPIO-style phandle cell arrays.
+ * authored as `/bits/ 8 <…>`), single strings, string lists, and GPIO-style phandle cell arrays.
  */
 export function isSupportedReloadValueShape(valueShape: CandidateValueShape): boolean {
   if (!valueShape || typeof valueShape !== "object") return false;
-  if (valueShape.kind === "string-list") return true;
+  if (valueShape.kind === "string-list" || valueShape.kind === "string") return true;
 
   if (valueShape.kind === "phandle-cells") {
     if (valueShape.bits !== undefined && valueShape.bits !== 32) return false;

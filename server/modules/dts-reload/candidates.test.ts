@@ -10,6 +10,10 @@ import {
 import type { ReloadCandidateDto } from "./types";
 
 describe("resolveReloadValueShape", () => {
+  it("aliases catalog string onto string", () => {
+    expect(resolveReloadValueShape({ kind: "string" }, '"bat0_raw_temp"')).toEqual({ kind: "string" });
+  });
+
   it("aliases complete u32-array onto cells", () => {
     expect(resolveReloadValueShape({ kind: "u32-array", bits: 32, cellsPerGroup: 3 }, null)).toEqual({
       kind: "cells",
@@ -115,6 +119,10 @@ describe("isSupportedReloadValueShape", () => {
     expect(isSupportedReloadValueShape({ kind: "string-list" })).toBe(true);
   });
 
+  it("accepts catalog single strings", () => {
+    expect(isSupportedReloadValueShape({ kind: "string" })).toBe(true);
+  });
+
   it("accepts complete GPIO-style phandle-cells", () => {
     expect(isSupportedReloadValueShape({ kind: "phandle-cells", bits: 32, cellsPerGroup: 3 })).toBe(true);
   });
@@ -201,6 +209,16 @@ describe("classifyReloadCandidate", () => {
         valueShape: { kind: "string-list" },
         valueShapeKind: "string-list",
         baselineValue: '"okay"'
+      }).debuggable
+    ).toBe(true);
+    expect(
+      classifyReloadCandidate({
+        ...base,
+        propertyKey: "replace_sensor",
+        displayName: "replace_sensor",
+        valueShape: { kind: "string" },
+        valueShapeKind: "string",
+        baselineValue: '"bat0_raw_temp"'
       }).debuggable
     ).toBe(true);
     expect(

@@ -187,8 +187,9 @@ export function compareReloadDebugValue(input: {
     return "incomparable";
   }
 
-  if (input.valueShape?.kind === "string-list") {
+  if (input.valueShape?.kind === "string-list" || input.valueShape?.kind === "string") {
     if (expected.kind !== "strings") return "incomparable";
+    if (input.valueShape.kind === "string" && expected.values.length !== 1) return "incomparable";
     const actual = coerceReadAsStrings(input.propertyKey, input.readValue);
     if (!actual) return "incomparable";
     if (actual.length !== expected.values.length) return "contradicted";

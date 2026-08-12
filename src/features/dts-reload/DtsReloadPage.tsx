@@ -228,8 +228,13 @@ function parsePhandleCellGroups(
   return parsed;
 }
 
+function countQuotedStrings(raw: string): number {
+  const matches = raw.match(/"(?:\\.|[^"\\])*"/g);
+  return matches?.length ?? 0;
+}
+
 function looksLikeStringList(raw: string): boolean {
-  return /"(?:\\.|[^"\\])*"/.test(raw.trim());
+  return countQuotedStrings(raw) >= 1;
 }
 
 function looksLikeBitsCellArray(raw: string): boolean {
@@ -242,6 +247,13 @@ function validateDebugValueAgainstConstraints(
 ): string | null {
   const trimmed = raw.trim();
   if (!trimmed) return "请输入调试值。";
+
+  if (candidate.valueShapeKind === "string") {
+    if (countQuotedStrings(trimmed) !== 1) {
+      return '调试值必须是单个字符串，例如 "bat0_raw_temp"。';
+    }
+    return null;
+  }
 
   if (candidate.valueShapeKind === "string-list") {
     if (!looksLikeStringList(trimmed)) {
@@ -2000,7 +2012,9 @@ export function DtsReloadPage({
                           }
                           disabled={!canStartRun || starting}
                           placeholder={
-                            candidate.valueShapeKind === "string-list"
+                            candidate.valueShapeKind === "string"
+                              ? '"bat0_raw_temp"'
+                              : candidate.valueShapeKind === "string-list"
                               ? '"okay"'
                               : isPhandleCellFamilyKind(candidate.valueShapeKind)
                                 ? "<&gpio13 29 0>"
