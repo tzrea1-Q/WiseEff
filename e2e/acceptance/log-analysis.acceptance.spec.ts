@@ -603,7 +603,22 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       .poll(async () => (await latestLogByFile(page, providerOutageFileName)).status, { timeout: 90_000 })
       .toBe("complete");
 
-    const degradedLog = await latestLogByFile(page, providerOutageFileName);
+    const degradedLogsResponse = await page.request.get(
+      apiRoute("/api/v1/logs?includeArchived=true"),
+      { headers: smokeHeaders() }
+    );
+    expect(degradedLogsResponse.ok()).toBe(true);
+    const degradedLogsBody = (await degradedLogsResponse.json()) as {
+      items: Array<{
+        id: string;
+        fileName: string;
+        status: string;
+        analysisSource?: string;
+        degradedReason?: string;
+      }>;
+    };
+    const degradedLog = degradedLogsBody.items.find((item) => item.fileName === providerOutageFileName)!;
+    expect(degradedLog).toBeTruthy();
     expect(degradedLog.analysisSource).toBe("rules-fallback");
     expect(degradedLog.degradedReason).toBe("provider-unavailable");
 
@@ -619,7 +634,13 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       status: "passed",
       page,
       testInfo,
-      api: [],
+      api: [
+        summarizeApiResponse(degradedLogsResponse, {
+          method: "GET",
+          path: "/api/v1/logs?includeArchived=true",
+          responseSummary: `log ${degradedLog.id} status=${degradedLog.status}; analysisSource=${degradedLog.analysisSource}; degradedReason=${degradedLog.degradedReason}`
+        })
+      ],
       db: [await logRecordDbSummary(degradedLog.id), await logReportDbSummary(degradedLog.id)],
       audit: [],
       notes: `Log ${degradedLog.id} completed as an honestly marked degraded analysis (rules-fallback / provider-unavailable) after the simulated provider outage; the conclusion card shows the prominent degraded badge instead of impersonating a full analysis.`
