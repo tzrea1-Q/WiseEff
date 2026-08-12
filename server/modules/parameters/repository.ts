@@ -28,10 +28,9 @@ import { type ParameterRiskLevel } from "./status";
 import { LEGACY_SQL } from "../parameter-topology/migration";
 import {
   listSemanticParameters,
-  mustUseSemanticParameterIdentity,
   upsertSemanticDraft
 } from "./semanticParameterReads";
-import { resetParameterIdentityCutoverCache } from "./cutoverAwareIdentity";
+import { parameterIdentityMode } from "./parameterIdentityMode";
 import { LEGACY_IDENTITY_SQL } from "./legacyParameterIdentityNames";
 import type { BindingWriteLockFields, EnablementWriteLockFields } from "../parameter-topology/editService";
 
@@ -545,8 +544,6 @@ export async function getChangeRequestEnablementWriteLock(
   const row = result.rows[0];
   return row ? toEnablementWriteLockFields(row) : null;
 }
-
-export { resetParameterIdentityCutoverCache };
 
 export type ImportPreviewClassification = "added" | "updated" | "unchanged" | "conflict";
 
@@ -1102,7 +1099,7 @@ export function addCondition(parts: string[], values: unknown[], condition: (pla
 }
 
 export async function listParameters(db: Queryable, query: ListParametersQuery) {
-  if (await mustUseSemanticParameterIdentity(db)) {
+  if (parameterIdentityMode() === "semantic") {
     const limit = Math.min(Math.max(query.limit ?? 100, 1), 500);
     const rows = await listSemanticParameters(db, {
       organizationId: query.organizationId,
@@ -1210,7 +1207,7 @@ export async function listParameters(db: Queryable, query: ListParametersQuery) 
 }
 
 export async function getParameterById(db: Queryable, query: { organizationId: string; parameterId: string }) {
-  if (await mustUseSemanticParameterIdentity(db)) {
+  if (parameterIdentityMode() === "semantic") {
     const rows = await listSemanticParameters(db, {
       organizationId: query.organizationId,
       limit: 500
@@ -1280,7 +1277,7 @@ export async function getParameterById(db: Queryable, query: { organizationId: s
 }
 
 export async function listParameterHistory(db: Queryable, query: { organizationId: string; parameterId: string }) {
-  if (await mustUseSemanticParameterIdentity(db)) {
+  if (parameterIdentityMode() === "semantic") {
     const result = await db.query<ParameterHistoryRow>(
       `
       select
@@ -1335,7 +1332,7 @@ export async function listDraftsForUser(
     addCondition(where, values, (placeholder) => `d.project_id = ${placeholder}`, query.projectId);
   }
 
-  const semantic = await mustUseSemanticParameterIdentity(db);
+  const semantic = parameterIdentityMode() === "semantic";
   const result = await db.query<DraftRow>(
     semantic
       ? `
@@ -1423,7 +1420,7 @@ export async function listDraftsForParameterValue(
   db: Queryable,
   query: { projectParameterValueId: string }
 ) {
-  const semantic = await mustUseSemanticParameterIdentity(db);
+  const semantic = parameterIdentityMode() === "semantic";
   const result = await db.query<DraftRow>(
     semantic
       ? `
@@ -1702,7 +1699,7 @@ export async function upsertDraft(
     candidateConfigRevisionId?: string;
   }
 ) {
-  if (await mustUseSemanticParameterIdentity(db)) {
+  if (parameterIdentityMode() === "semantic") {
     const bindingId = input.projectParameterBindingId ?? input.parameterId;
     const row = await upsertSemanticDraft(db, {
       id: input.id,
@@ -1866,7 +1863,7 @@ export async function deleteDraftForParameter(
   db: Queryable,
   input: { organizationId: string; userId: string; projectId: string; parameterId: string }
 ) {
-  if (await mustUseSemanticParameterIdentity(db)) {
+  if (parameterIdentityMode() === "semantic") {
     await db.query(
       `
       delete from parameter_drafts
@@ -1896,7 +1893,7 @@ export async function hasOpenFileSyncConflict(
   db: Queryable,
   query: { projectParameterValueId: string }
 ) {
-  if (await mustUseSemanticParameterIdentity(db)) {
+  if (parameterIdentityMode() === "semantic") {
     const result = await db.query<{ id: string }>(
       `
       select id
@@ -2151,7 +2148,7 @@ export async function getProjectParameterForUpdate(
   db: Queryable,
   query: { organizationId: string; projectId: string; parameterId: string }
 ) {
-  if (await mustUseSemanticParameterIdentity(db)) {
+  if (parameterIdentityMode() === "semantic") {
     const result = await db.query<ProjectParameterForUpdateRow>(
       `
       select

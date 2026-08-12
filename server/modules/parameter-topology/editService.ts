@@ -27,7 +27,7 @@ import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { countOpenSpecReviewTasksForRevision } from "../parameter-specs/repository";
 import { canEditParameters } from "../parameters/policy";
-import { mustUseSemanticParameterIdentity } from "../parameters/semanticParameterReads";
+import { parameterIdentityMode } from "../parameters/parameterIdentityMode";
 import { ensurePreCutoverLinkedParameterValue } from "../parameters/legacyParameterIdentityAdapter";
 import { assertSensitiveNodeWriteAllowed } from "../parameters/sensitiveNode";
 import {
@@ -1329,7 +1329,7 @@ export async function createBindingDraft(
   // Post-cutover drafts key only on project_parameter_binding_id.
   // Pre-cutover still needs a linked PPV row for the legacy unique constraint —
   // that dual-write lives solely in the transitional adapter (unreachable post-cutover).
-  const useSemantic = await mustUseSemanticParameterIdentity(db);
+  const useSemantic = parameterIdentityMode() === "semantic";
   let draftParameterId = binding.binding_id;
   if (!useSemantic) {
     const linked = await ensurePreCutoverLinkedParameterValue(db, auth, {

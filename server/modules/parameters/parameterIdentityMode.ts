@@ -69,12 +69,3 @@ export async function resolveParameterIdentityMode(db: Queryable): Promise<Param
   activeMode = semantic ? "semantic" : "legacy";
   return activeMode;
 }
-
-/**
- * Transitional helper for call sites that still receive a db handle: reuse
- * the pinned mode, or probe-and-pin when no entrypoint resolved it yet.
- */
-export async function resolveParameterIdentityModeIfUnset(db: Queryable): Promise<ParameterIdentityMode> {
-  if (activeMode !== null) return activeMode;
-  return resolveParameterIdentityMode(db);
-}

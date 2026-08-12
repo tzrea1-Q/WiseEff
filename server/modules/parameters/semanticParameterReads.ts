@@ -3,7 +3,6 @@
  * Must not query renamed flat-identity archive tables.
  */
 import type { Queryable } from "../../shared/database/client";
-import { resolveParameterIdentityModeIfUnset } from "./parameterIdentityMode";
 
 export type SemanticParameterRow = {
   id: string;
@@ -25,10 +24,6 @@ export type SemanticParameterRow = {
   source_node_path: string | null;
   updated_at: string | Date;
 };
-
-export async function mustUseSemanticParameterIdentity(db: Queryable): Promise<boolean> {
-  return (await resolveParameterIdentityModeIfUnset(db)) === "semantic";
-}
 
 export async function listSemanticParameters(
   db: Queryable,

@@ -13,7 +13,7 @@ import { getFileVersionById, getProjectParameterFileByName, insertFileVersion, s
 import { isDtsStructuralIngestEnabled } from "./structuralFlag";
 import { ingestDtsFileVersion } from "./structuralIngest";
 import { assertSensitiveNodeWriteAllowed } from "../parameters/sensitiveNode";
-import { mustUseSemanticParameterIdentity } from "../parameters/semanticParameterReads";
+import { parameterIdentityMode } from "../parameters/parameterIdentityMode";
 import { loadPreCutoverWritebackSource } from "../parameters/legacyParameterIdentityAdapter";
 import { getChangeRequestEnablementWriteLock, getChangeRequestWriteLock } from "../parameters/repository";
 import {
@@ -195,7 +195,7 @@ async function loadWritebackSource(
     "projectId" | "parameterDefinitionId" | "projectParameterBindingId"
   >
 ): Promise<WritebackSource | null> {
-  if (await mustUseSemanticParameterIdentity(db)) {
+  if (parameterIdentityMode() === "semantic") {
     return loadSemanticWritebackSource(db, auth, input);
   }
 
@@ -530,7 +530,7 @@ export async function writebackMergedParameterValue(
       bindingRevisionId?: string;
     }
 > {
-  if (await mustUseSemanticParameterIdentity(db)) {
+  if (parameterIdentityMode() === "semantic") {
     if (!input.projectParameterBindingId) {
       throw new ApiError("CONFLICT", "Semantic writeback requires bound source file and occurrence.", 409, {
         projectId: input.projectId,
