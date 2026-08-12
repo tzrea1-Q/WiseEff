@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, describe, expect, it } from "vitest";
 
 import App from "./App";
+import { ToastProvider } from "@/components/common/toast/ToastProvider";
 import { LogsPage } from "@/features/log-analysis/LogsPage";
 import { createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowledgeRepository";
 import { initialState } from "./mockData";
@@ -56,14 +57,16 @@ describe("LogsPage · 沉淀为知识", () => {
       Parameters<typeof LogsPage>[0]["runtime"]
     >;
     render(
-      <LogsPage
-        state={userState}
-        dispatch={() => undefined}
-        onNavigate={() => undefined}
-        search=""
-        runtime={runtime}
-        knowledgeCapability={{ userId: "u-xu-yun", canEdit: false, canManage: false }}
-      />
+      <ToastProvider>
+        <LogsPage
+          state={userState}
+          dispatch={() => undefined}
+          onNavigate={() => undefined}
+          search=""
+          runtime={runtime}
+          knowledgeCapability={{ userId: "u-xu-yun", canEdit: false, canManage: false }}
+        />
+      </ToastProvider>
     );
 
     expect(screen.queryByRole("button", { name: /沉淀为知识/ })).not.toBeInTheDocument();
