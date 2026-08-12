@@ -3,10 +3,7 @@
  * Must not query renamed flat-identity archive tables.
  */
 import type { Queryable } from "../../shared/database/client";
-import {
-  isParameterIdentityCutoverComplete,
-  legacyParameterIdentityTablesRetired
-} from "./cutoverAwareIdentity";
+import { resolveParameterIdentityModeIfUnset } from "./parameterIdentityMode";
 
 export type SemanticParameterRow = {
   id: string;
@@ -30,10 +27,7 @@ export type SemanticParameterRow = {
 };
 
 export async function mustUseSemanticParameterIdentity(db: Queryable): Promise<boolean> {
-  return (
-    (await isParameterIdentityCutoverComplete(db)) ||
-    (await legacyParameterIdentityTablesRetired(db))
-  );
+  return (await resolveParameterIdentityModeIfUnset(db)) === "semantic";
 }
 
 export async function listSemanticParameters(
