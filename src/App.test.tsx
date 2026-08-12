@@ -458,6 +458,19 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(authClient.login).toHaveBeenCalledWith({ username: "local.admin", password: "strong-password" });
   });
 
+  it("renders the app-shell skeleton instead of a blank screen while the session probe is pending", () => {
+    window.history.replaceState(null, "", "/parameter-home");
+    const authClient = {
+      getCurrentAuthContext: vi.fn(() => new Promise<never>(() => {}))
+    };
+
+    render(<App authClient={authClient} initialAppState={initialState} parameterRepository={createAppParameterRepository()} runtimeMode="api" />);
+
+    expect(screen.getByRole("status", { name: "正在进入工作台" })).toBeInTheDocument();
+    expect(document.querySelector(".app-shell-skeleton")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "登录雷泽" })).not.toBeInTheDocument();
+  });
+
   it("registers a local user account from the auth screen", async () => {
     window.history.replaceState(null, "", "/parameter-home");
     const authClient = {

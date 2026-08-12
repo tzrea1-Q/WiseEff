@@ -7645,6 +7645,115 @@ td small {
     animation: none;
   }
 }
+/* Shared loading / empty / error trio (promoted from parameter-home). */
+.section-skeleton {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.section-skeleton__line {
+  height: var(--space-3);
+  border-radius: var(--radius-full);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent-soft) 75%, transparent),
+    color-mix(in srgb, var(--accent-soft) 34%, transparent),
+    color-mix(in srgb, var(--accent-soft) 75%, transparent)
+  );
+  background-size: 200% 100%;
+  animation: section-skeleton-shimmer 1.2s var(--ease-in-out) infinite;
+}
+
+.section-skeleton__line.wide {
+  width: 72%;
+}
+
+.section-skeleton__line.medium {
+  width: 48%;
+}
+
+.section-empty,
+.section-error {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  color: var(--text-muted);
+}
+
+@keyframes section-skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .section-skeleton__line {
+    animation: none;
+    background: color-mix(in srgb, var(--accent-soft) 55%, transparent);
+  }
+}
+
+/* App-bootstrap shell skeleton (API session probe in flight). */
+.app-shell-skeleton {
+  display: flex;
+  min-height: 100vh;
+  background: var(--bg);
+}
+
+.app-shell-skeleton__sidebar {
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+  width: var(--sidebar-width);
+  padding: var(--space-6) var(--space-5);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+
+.app-shell-skeleton__main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.app-shell-skeleton__topbar {
+  display: flex;
+  align-items: center;
+  height: var(--topbar-height);
+  padding: 0 var(--space-6);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.app-shell-skeleton__topbar .section-skeleton__line {
+  width: 220px;
+}
+
+.app-shell-skeleton__content {
+  display: grid;
+  flex: 1;
+  align-content: start;
+  gap: var(--space-6);
+  padding: var(--space-6);
+}
+
+.app-shell-skeleton__panel {
+  padding: var(--space-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+@media (max-width: 768px) {
+  .app-shell-skeleton__sidebar {
+    display: none;
+  }
+}
 
 
 .log-dashboard-page {

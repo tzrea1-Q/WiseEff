@@ -23,6 +23,7 @@ import {
   UserRound,
   X
 } from "lucide-react";
+import { AppShellSkeleton } from "@/components/common/AppShellSkeleton";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { ToastProvider, useToast } from "@/components/common/toast/ToastProvider";
 import { TopBarNotifications } from "./components/notifications/TopBarNotifications";
@@ -1050,6 +1051,12 @@ function AppShell({
     : sidebarCollapsed
       ? "app-shell sidebar-is-collapsed"
       : "app-shell";
+
+  if (runtimeMode === "api" && apiAuthStatus === "checking") {
+    // Session probe in flight: show the app-shell skeleton instead of a blank
+    // screen (or a flash of the login form) while `/api/v1/me` resolves.
+    return <AppShellSkeleton />;
+  }
 
   if (runtimeMode === "api" && apiAuthStatus !== "authenticated") {
     return (
