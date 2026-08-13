@@ -122,6 +122,8 @@ Simulator-backed path 只用于本地验证。ADB/HDC 都必须经过同一个�
 
 本地 Device Bridge 连接采用短时配对码和带 scope 的 bridge token（`device-bridge:connect`、`device-bridge:execute`）。这些 token 仅在服务端校验通过后用于 WebSocket 注册与 RPC 执行；浏览器中的 bridge 健康探测或配对 UI 本身不授予设备写入权限。
 
+本地桥监听回环地址（`127.0.0.1:18787`），其 HTTP 面按 CORS 策略刻意分层（决策 TD-108，以方案 B2 关闭）。`/tools/install` 限定于配对来源白名单（`[webOrigin, serverUrl]`）。`/connect` **有意**保持开放 CORS 加 Private Network Access：它是首次接触端点，让任意 WiseEff 来源请求一个已在运行的桥去连接，且其副作用无论来源都有门控——`runConnectCommand` 在没有合法的短时效、一次性配对码时拒绝配对，除非桥已配对到请求中指定的那个确切服务器,因此任意网页无法把桥配对到攻击者控制的服务器。`/health` 同样保持开放 CORS，让任意 WiseEff 来源能探测到桥在运行，但**对非白名单浏览器来源脱敏身份字段**：只有配对来源（白名单命中）或本机工具（无 `Origin` 头）能拿到 `bridgeId`、`serverUrl`、`launcherPath`、`tokenExpiresAt` 和工具状态；其余浏览器来源只拿到存活信号（`{ ok, paired, connected, updatedAt }`）。这样既保留零摩擦的存在性探测，又让操作者偶然访问的网页无法指纹识别桥 ID、配对服务器或操作者的启动器文件系统路径。残余且已接受的暴露面是跨来源存活信号加一个针对桥自身已配对服务器的 CSRF 式重连触发；它不暴露设备写入权限——写入始终经由已认证、有审计的服务端路由。
+
 Bridge 重命名（`PATCH /api/v1/device-bridges/:bridgeId`）与撤销（`POST /api/v1/device-bridges/:bridgeId/revoke`）需要 `debugging:use`，且只能操作当前用户拥有的 Bridge；撤销会立即使 bridge token 失效，阻止新的 WebSocket 连接。重命名只更新展示用机器标签，不轮换凭据，也不扩展 scope。
 
 ## 不可信子进程执行（DTS 校验门禁）
