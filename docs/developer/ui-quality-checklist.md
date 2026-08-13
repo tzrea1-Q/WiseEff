@@ -34,6 +34,7 @@ Run all of these before claiming completion:
 
 ```bash
 npm test -- <targeted test files>
+npm run ui:check
 npm run build
 ```
 
