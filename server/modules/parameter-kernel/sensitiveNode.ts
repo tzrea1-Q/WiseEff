@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createAuditEvent } from "../audit/repository";
+import { writeRefusalAudit } from "../audit/auditedWrite";
+import type { Database } from "../../shared/database/client";
 import type { AuthContext, BackendPermission } from "../auth/types";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -179,7 +181,18 @@ export async function assertSensitiveNodeWriteAllowed(
     compatible?: string | null;
     actorType: SensitiveWriteActorType;
     requestId?: string;
-  }
+  },
+  deps: {
+    /**
+     * Pool handle for the deny audit. When this guard runs inside a caller's
+     * transaction (merge, structured-edit submit), the refusal evidence must be
+     * written OUTSIDE that transaction or the rollback triggered by the throw
+     * erases it. Callers in a transaction must pass the pool `Database`; the
+     * `db` fallback only preserves behavior for the callers that already run
+     * outside any transaction.
+     */
+    refusalDb?: Database;
+  } = {}
 ) {
   const nodePath = input.nodePath.trim();
   if (!nodePath) return;
@@ -206,28 +219,51 @@ export async function assertSensitiveNodeWriteAllowed(
   if (!matched) return;
 
   if (input.actorType === "agent" && matched.riskTier === "critical") {
-    await createAuditEvent(db, {
-      id: randomUUID(),
-      organizationId: input.organizationId,
-      projectId: input.projectId,
-      actorUserId: auth.user.id,
-      actorType: "agent",
-      app: "parameter-management",
-      kind: "parameter-sensitive-node-denied",
-      action: "deny",
-      severity: "High",
-      targetType: "sensitive-node",
-      targetId: matched.id,
-      metadata: {
-        riskTier: matched.riskTier,
-        requireHuman: true,
-        nodePath,
-        matchType: matched.matchType,
-        pattern: matched.pattern,
-        requiredCapability: matched.requiredCapability
-      },
-      traceId: input.requestId ?? randomUUID()
-    });
+    if (deps.refusalDb) {
+      await writeRefusalAudit(deps.refusalDb, auth, { requestId: input.requestId ?? randomUUID() }, {
+        app: "parameter-management",
+        kind: "parameter-sensitive-node-denied",
+        action: "deny",
+        severity: "High",
+        projectId: input.projectId,
+        targetType: "sensitive-node",
+        targetId: matched.id,
+        actorType: "agent",
+        metadata: {
+          riskTier: matched.riskTier,
+          requireHuman: true,
+          nodePath,
+          matchType: matched.matchType,
+          pattern: matched.pattern,
+          requiredCapability: matched.requiredCapability
+        }
+      });
+    } else {
+      // Transitional: callers that have not wired a pool handle yet keep the old
+      // behavior (deny audit on `db` — lost if `db` is a transaction that rolls back).
+      await createAuditEvent(db, {
+        id: randomUUID(),
+        organizationId: input.organizationId,
+        projectId: input.projectId,
+        actorUserId: auth.user.id,
+        actorType: "agent",
+        app: "parameter-management",
+        kind: "parameter-sensitive-node-denied",
+        action: "deny",
+        severity: "High",
+        targetType: "sensitive-node",
+        targetId: matched.id,
+        metadata: {
+          riskTier: matched.riskTier,
+          requireHuman: true,
+          nodePath,
+          matchType: matched.matchType,
+          pattern: matched.pattern,
+          requiredCapability: matched.requiredCapability
+        },
+        traceId: input.requestId ?? randomUUID()
+      });
+    }
     throw new ApiError(
       "FORBIDDEN",
       "Agent writes to critical sensitive nodes require a human.",

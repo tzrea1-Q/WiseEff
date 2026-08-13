@@ -1294,7 +1294,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
           compatible: nodeContext.compatible,
           actorType: context.actorType ?? "user",
           requestId: context.requestId
-        });
+        }, { refusalDb: db });
 
         enablementEntries.push({
           item,
@@ -1401,7 +1401,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
           sourceFileName: parameter.sourceFileName,
           actorType: context.actorType ?? "user",
           requestId: context.requestId
-        });
+        }, { refusalDb: db });
       }
 
       if ("draftId" in item) {
@@ -2141,7 +2141,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
               action: merged.action,
               changeRequestId: input.requestId,
             },
-            context
+            { ...context, refusalDb: db }
           )
         : await writebackMergedParameterValue(
             asAuditTx(tx),
@@ -2156,7 +2156,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
               parameterSpecId: merged.parameterSpecId,
               changeRequestId: input.requestId,
             },
-            context
+            { ...context, refusalDb: db }
           );
       if (writeback.skipped) {
         throw new ApiError(
@@ -2217,7 +2217,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
           parameterSpecId: merged.parameterSpecId,
           changeRequestId: input.requestId,
         },
-        context
+        { ...context, refusalDb: db }
       );
     }
 
