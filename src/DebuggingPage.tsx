@@ -1,6 +1,7 @@
 import { Pencil, Search, Send } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AppAction } from "@/application/state/appState";
+import { presentError } from "@/infrastructure/http/presentError";
 import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { OperationHistoryPanel } from "./components/OperationHistoryPanel";
@@ -216,7 +217,7 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
       await run();
     } catch (error) {
       if (runtimeRequestSeqRef.current[action] === requestSeq) {
-        setRuntimeNotice(error instanceof Error ? error.message : fallbackMessage);
+        setRuntimeNotice(presentError(error, fallbackMessage));
       }
     } finally {
       if (runtimeRequestSeqRef.current[action] === requestSeq) {

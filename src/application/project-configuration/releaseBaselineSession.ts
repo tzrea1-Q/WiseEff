@@ -11,6 +11,7 @@ import {
   releaseReadinessAllowsCreate,
   releaseReadinessAllowsRelease
 } from "@/application/project-configuration/releaseReadinessGates";
+import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
 
 export type ReleaseBaselineRepository = Pick<
   DtsStructuredRepository,
@@ -241,7 +242,7 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
       } catch (err: unknown) {
         if (generation !== baselinesGeneration) return;
         baselines = [];
-        baselinesError = err instanceof Error ? err.message : "发布基线加载失败。";
+        baselinesError = presentError(err, "发布基线加载失败。");
       } finally {
         if (generation === baselinesGeneration) {
           baselinesLoading = false;
@@ -271,7 +272,7 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
       } catch (err: unknown) {
         if (generation !== readinessGeneration) return;
         readiness = null;
-        readinessError = err instanceof Error ? err.message : "发布就绪评估失败。";
+        readinessError = presentError(err, "发布就绪评估失败。");
       } finally {
         if (generation === readinessGeneration) {
           readinessLoading = false;
@@ -334,7 +335,7 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
       if (!releaseReadinessAllowsCreate(nextReadiness, input.localSessionDirty)) {
         actionError = input.localSessionDirty
           ? "还有未保存的本机会话变更，不能创建基线。"
-          : nextReadiness.unavailableReason ?? "发布就绪门禁阻止创建基线。";
+          : presentErrorMessage(nextReadiness.unavailableReason, "发布就绪门禁阻止创建基线。");
         emit();
         throw new Error(actionError);
       }
@@ -387,7 +388,7 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
       if (!releaseReadinessAllowsRelease(nextReadiness, input.localSessionDirty)) {
         actionError = input.localSessionDirty
           ? "还有未保存的本机会话变更，不能发布基线。"
-          : nextReadiness.unavailableReason ?? "发布就绪门禁阻止发布基线。";
+          : presentErrorMessage(nextReadiness.unavailableReason, "发布就绪门禁阻止发布基线。");
         emit();
         throw new Error(actionError);
       }

@@ -103,12 +103,13 @@ describe("createReleaseBaselineSession", () => {
       readiness({
         canCreateBaseline: false,
         available: false,
-        unavailableReason: "open conflict"
+        unavailableReason: "Release readiness could not load open conflicts."
       })
     );
     const createBaseline = vi.fn();
     const session = createReleaseBaselineSession();
 
+    // The raw English backend reason maps to product copy before it reaches the UI.
     await expect(
       session.create(
         "proj-1",
@@ -116,7 +117,7 @@ describe("createReleaseBaselineSession", () => {
         { name: "x", localSessionDirty: false },
         { getReleaseReadiness, createBaseline }
       )
-    ).rejects.toThrow(/open conflict/);
+    ).rejects.toThrow(/冲突清单加载失败/);
     expect(createBaseline).not.toHaveBeenCalled();
   });
 

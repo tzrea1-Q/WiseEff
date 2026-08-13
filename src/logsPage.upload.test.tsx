@@ -253,7 +253,9 @@ describe("LogsPage api upload wiring", () => {
         file
       })
     );
-    expect(document.body).toHaveTextContent("Unsupported file extension");
+    // The raw English failureReason maps to product copy in the error alert.
+    expect(document.body).toHaveTextContent("暂不支持该日志格式");
+    expect(document.body).not.toHaveTextContent("Unsupported file extension");
   });
 
   it("disables the upload action while the runtime upload is pending", async () => {

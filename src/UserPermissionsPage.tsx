@@ -12,6 +12,7 @@ import {
 } from "@/components/tableFilterUtils";
 import { formatAbsolute } from "@/domain/format/formatDateTime";
 import { formatLastActive } from "@/domain/format/formatLastActive";
+import { presentError } from "@/infrastructure/http/presentError";
 import { migrateLegacyRoleId, platformRoles, type PermissionKey, type PlatformRoleId } from "@/domain/users/types";
 import type { PrototypeState, User } from "@/domain/prototype/types";
 
@@ -291,7 +292,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
       })
       .catch((error) => {
         if (!cancelled) {
-          setRegistrationRoleRequestError(error instanceof Error ? error.message : "加载注册角色申请失败。");
+          setRegistrationRoleRequestError(presentError(error, "加载注册角色申请失败，请稍后重试。"));
         }
       });
 
@@ -319,7 +320,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
       }
       setRegistrationRoleRequests((items) => items.filter((item) => item.id !== request.id));
     } catch (error) {
-      setRegistrationRoleRequestError(error instanceof Error ? error.message : "注册角色申请处理失败。");
+      setRegistrationRoleRequestError(presentError(error, "注册角色申请处理失败，请稍后重试。"));
     } finally {
       setDecidingRequestId("");
     }
@@ -358,7 +359,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
         roleId: createdUser?.roleId ?? initialRoleId
       });
     } catch (error) {
-      setAddUserError(error instanceof Error ? error.message : "创建用户失败。");
+      setAddUserError(presentError(error, "创建用户失败，请稍后重试。"));
       return;
     }
 

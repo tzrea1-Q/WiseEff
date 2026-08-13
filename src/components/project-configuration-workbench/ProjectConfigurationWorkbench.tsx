@@ -10,6 +10,7 @@ import type {
   ProjectParameterFileVersion
 } from "@/application/ports/ParameterFileRepository";
 import { useToast } from "@/components/common/toast/ToastProvider";
+import { presentError } from "@/infrastructure/http/presentError";
 import type { AuditEventListResponse, ListAuditEventsParams } from "@/domain/audit/types";
 import {
   presentWorkbenchActivity,
@@ -437,7 +438,7 @@ export function ProjectConfigurationWorkbench({
       .catch((error: unknown) => {
         if (!cancelled) {
           setFileVersions([]);
-          setVersionsError(error instanceof Error ? error.message : "版本历史加载失败。");
+          setVersionsError(presentError(error, "版本历史加载失败，请稍后重试。"));
         }
       })
       .finally(() => {

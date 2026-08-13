@@ -20,6 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { formatAbsolute, formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
 import { isValidMergeLink } from "@/domain/parameters/mergeLink";
+import { presentError } from "@/infrastructure/http/presentError";
 import { canActOnReviewRequest, isReviewHistoryForRole, splitChangeRequestsForReviewQueue } from "@/domain/parameters/reviewQueue";
 import { type ProjectParameterInitializationDraft, type ProjectParameterInitializationReview } from "@/domain/parameters/types";
 import { type ChangeRequest, type ParameterSubmissionRound } from "@/domain/prototype/types";
@@ -324,8 +325,7 @@ export function ParameterReviewPage({
           });
           dispatch({ type: "ADD_NOTIFICATION", message: `参数初始化已驳回：${reason}` });
         } catch (error) {
-          const message = error instanceof Error ? error.message : "参数初始化驳回失败";
-          dispatch({ type: "ADD_NOTIFICATION", message });
+          dispatch({ type: "ADD_NOTIFICATION", message: presentError(error, "参数初始化驳回失败，请稍后重试。") });
           return;
         }
       } else {
@@ -698,8 +698,7 @@ export function ParameterReviewPage({
                             status: "initialized"
                           });
                         } catch (error) {
-                          const message = error instanceof Error ? error.message : "参数初始化通过失败";
-                          dispatch({ type: "ADD_NOTIFICATION", message });
+                          dispatch({ type: "ADD_NOTIFICATION", message: presentError(error, "参数初始化通过失败，请稍后重试。") });
                         }
                         return;
                       }

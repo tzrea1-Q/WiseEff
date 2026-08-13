@@ -7,6 +7,7 @@ import { parseImportSource } from "@/application/parameters/import/detectImportF
 import { findExistingParameter, matchToLibrary } from "@/application/parameters/import/matchToLibrary";
 import type { ParsedImportRow, ReviewedImportRow } from "@/application/parameters/import/types";
 import type { ParameterImportBatchDto } from "@/application/ports/ParameterRepository";
+import { presentError } from "@/infrastructure/http/presentError";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
@@ -181,9 +182,9 @@ export function ParameterImportWizard({
           ? (error as { details?: { code?: string } }).details
           : undefined;
       if (details?.code === "dts-include-unsupported") {
-        errors.push(error instanceof Error ? error.message : "DTS /include/ 暂不支持，请提供展开后的文件。");
+        errors.push(presentError(error, "DTS /include/ 暂不支持，请提供展开后的文件。"));
       } else {
-        errors.push(error instanceof Error ? error.message : "解析失败，请检查文件内容。");
+        errors.push(presentError(error, "解析失败，请检查文件内容。"));
       }
     }
     setParsedRows(parsed);
@@ -231,7 +232,7 @@ export function ParameterImportWizard({
       }
       setCreateProjectOpen(false);
     } catch (error) {
-      setCreateProjectError(error instanceof Error ? error.message : "创建项目失败。");
+      setCreateProjectError(presentError(error, "创建项目失败，请稍后重试。"));
     } finally {
       setCreateProjectPending(false);
     }

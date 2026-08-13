@@ -97,6 +97,7 @@ import {
 } from "@/infrastructure/http/authClient";
 import { clearSessionDraftsForLogout } from "@/application/project-configuration/sessionDraftStorage";
 import { createMockRuntimeState, type MockRuntimeState } from "@/infrastructure/mock/mockState";
+import { presentError } from "@/infrastructure/http/presentError";
 import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
 
@@ -108,7 +109,12 @@ function isPendingRegistrationResponse(response: RegisterLocalAccountResponseDto
 
 function authProbeErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "";
-  return ["Authorization bearer token is required.", "Session is not active.", "User is not authenticated."].includes(message) ? "" : message;
+  // Expected "not signed in yet" probe outcomes stay silent; anything else
+  // (network failure, server error) surfaces as product copy on the login form.
+  if (["Authorization bearer token is required.", "Session is not active.", "User is not authenticated.", ""].includes(message)) {
+    return "";
+  }
+  return presentError(error, "无法验证登录状态，请稍后重试。");
 }
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "wiseeff.sidebar.collapsed";
@@ -575,8 +581,7 @@ function AppShell({
         dispatch({ type: "ADD_NOTIFICATION", message: `${draft.projectName} 参数初始化已提交审阅。` });
         setProjectInitOpen(false);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "参数初始化提交失败";
-        dispatch({ type: "ADD_NOTIFICATION", message });
+        dispatch({ type: "ADD_NOTIFICATION", message: presentError(error, "参数初始化提交失败，请稍后重试。") });
       }
     },
     [parameterInitializationRepositoryClient]
@@ -1398,7 +1403,7 @@ function ApiAuthPage({
         await onAuthenticated(response);
       }
     } catch (submitError) {
-      setFormError(submitError instanceof Error ? submitError.message : "认证请求失败。");
+      setFormError(presentError(submitError, mode === "login" ? "登录失败，请稍后重试。" : "注册失败，请稍后重试。"));
     } finally {
       setSubmitting(false);
     }

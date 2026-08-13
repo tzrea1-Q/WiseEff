@@ -1,6 +1,7 @@
 import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { presentAuditAction, presentAuditKind } from "@/domain/audit/auditSlugLabels";
 import type { AuditEventView } from "@/domain/audit/types";
 import type { RiskLevel } from "@/domain/prototype/types";
 
@@ -45,6 +46,8 @@ export function AuditTimeline({ events, initialVisible = 5, selectedId, onSelect
             {visibleEvents.map((event) => {
               const selected = selectedId === event.id;
               const index = events.findIndex((item) => item.id === event.id) + 1;
+              const action = presentAuditAction(event.action);
+              const kind = presentAuditKind(event.kind);
               return (
                 <li key={event.id} className="audit-timeline-list-item">
                   <button
@@ -66,11 +69,13 @@ export function AuditTimeline({ events, initialVisible = 5, selectedId, onSelect
                       {severityLabel[event.severity]}
                     </span>
                     <div className="audit-timeline-content min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-foreground">{event.action}</p>
+                      <p className="truncate text-sm font-medium text-foreground">
+                        {action.isRaw ? <code>{action.label}</code> : action.label}
+                      </p>
                       <p className="text-xs text-muted-foreground">
                         <span>{event.actor}</span>
                         <span className="mx-1">·</span>
-                        <span>{event.kind}</span>
+                        <span>{kind.isRaw ? <code>{kind.label}</code> : kind.label}</span>
                         <span className="mx-1">·</span>
                         <span>{event.timeLabel}</span>
                       </p>

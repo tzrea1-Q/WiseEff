@@ -7,6 +7,7 @@ import { useToast } from "@/components/common/toast/ToastProvider";
 import type { LogDomain } from "@/domain/logs/types";
 import { formatPercent, normalizePercentValue } from "@/domain/format/formatPercent";
 import { SEVERITY_LABELS, STAGE_LABELS, type LogEvidence, type LogRecord, type LogStageId } from "@/domain/prototype/types";
+import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
 import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { EmptyState, PanelHeader, SectionLabel } from "@/workbenchUi";
 import {
@@ -310,7 +311,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
     } catch (error) {
       dispatch({
         type: "ADD_NOTIFICATION",
-        message: error instanceof Error && error.message ? `沉淀为知识失败:${error.message}` : "沉淀为知识失败,请稍后重试"
+        message: presentError(error, "沉淀为知识失败,请稍后重试")
       });
     } finally {
       setDistilPending(false);
@@ -877,12 +878,18 @@ function LogAnalysisFeedbackDialog({
 }
 
 function LogErrorAlert({ log, onRetry }: { log: LogRecord; onRetry: () => void }) {
+  // Fixed short title + one mapped reason line: the backend failureReason is
+  // English and used to render twice (conclusion falls back to failureReason).
+  const reason = presentErrorMessage(
+    log.failureReason ?? log.conclusion,
+    "日志处理失败，请重试或重新上传。"
+  );
   return (
     <section className="log-error-alert" role="alert">
       <AlertTriangle size={22} />
       <div>
-        <strong>{log.conclusion}</strong>
-        <p>{log.failureReason ?? "格式不支持，请上传 .log / .txt / .json 文本日志。"}</p>
+        <strong>日志处理失败</strong>
+        <p>{reason}</p>
         <button className="button danger" type="button" onClick={onRetry}>
           重新上传
         </button>
