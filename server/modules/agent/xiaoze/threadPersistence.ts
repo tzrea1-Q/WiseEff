@@ -1,7 +1,6 @@
-import { randomUUID } from "node:crypto";
 import type { Database } from "../../../shared/database/client";
 import type { AuthContext } from "../../auth/types";
-import { createAuditEvent } from "../../audit/repository";
+import { withAuditedWrite, type AuditSpec } from "../../audit/auditedWrite";
 import { getAgentSession } from "../repository";
 import type { AgentCitation } from "../types";
 import {
@@ -58,44 +57,12 @@ function buildPersistMessages(input: PersistXiaozeTurnInput): XiaozePersistableM
   return messages;
 }
 
-async function writeAudit(
-  db: Database,
-  input: {
-    auth: AuthContext;
-    requestId: string;
-    kind: string;
-    action: string;
-    targetType: string;
-    targetId: string;
-    metadata?: Record<string, unknown>;
-    projectId?: string;
-  }
-) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: input.auth.organization.id,
-    projectId: input.projectId ?? null,
-    actorUserId: input.auth.user.id,
-    actorType: "user",
-    app: "wiseeff",
-    kind: input.kind,
-    action: input.action,
-    severity: "Low",
-    targetType: input.targetType,
-    targetId: input.targetId,
-    metadata: input.metadata ?? {},
-    traceId: input.requestId
-  });
-}
-
 export function createXiaozeTurnPersister(options: { db: Database }) {
   return async function persistXiaozeTurn(input: PersistXiaozeTurnInput): Promise<void> {
     const messages = buildPersistMessages(input);
     if (messages.length === 0) {
       return;
     }
-
-    const sessionStarted = !(await getAgentSession(options.db, input.auth.organization.id, input.threadId));
 
     const pageContext = normalizePageContext(input.pageContext);
 
@@ -108,37 +75,44 @@ export function createXiaozeTurnPersister(options: { db: Database }) {
       messages
     };
 
-    const persisted = await persistXiaozeTurnMessages(options.db, payload);
-    if (!persisted) {
-      return;
-    }
+    // Persisted messages and their audit evidence commit together (ADR-0027);
+    // previously the messages auto-committed and the session-start/append audits
+    // could be lost after them.
+    await withAuditedWrite(options.db, input.auth, { requestId: input.requestId }, async (tx) => {
+      const sessionStarted = !(await getAgentSession(tx, input.auth.organization.id, input.threadId));
+      const persisted = await persistXiaozeTurnMessages(tx, payload);
+      if (!persisted) {
+        return { result: undefined, audit: null };
+      }
 
-    if (sessionStarted) {
-      await writeAudit(options.db, {
-        auth: input.auth,
-        requestId: input.requestId,
-        kind: "agent-session",
-        action: "started",
+      const audits: AuditSpec[] = [];
+      if (sessionStarted) {
+        audits.push({
+          app: "wiseeff",
+          kind: "agent-session",
+          action: "started",
+          severity: "Low",
+          projectId: pageContext.projectId ?? null,
+          targetType: "agent_session",
+          targetId: input.threadId,
+          metadata: { sessionId: input.threadId, pageKey: "xiaoze" }
+        });
+      }
+      audits.push({
+        app: "wiseeff",
+        kind: "agent-message",
+        action: "appended",
+        severity: "Low",
+        projectId: pageContext.projectId ?? null,
         targetType: "agent_session",
         targetId: input.threadId,
-        projectId: pageContext.projectId,
-        metadata: { sessionId: input.threadId, pageKey: "xiaoze" }
+        metadata: {
+          sessionId: input.threadId,
+          messageIds: messages.map((message) => message.id),
+          roles: messages.map((message) => message.role)
+        }
       });
-    }
-
-    await writeAudit(options.db, {
-      auth: input.auth,
-      requestId: input.requestId,
-      kind: "agent-message",
-      action: "appended",
-      targetType: "agent_session",
-      targetId: input.threadId,
-      projectId: pageContext.projectId,
-      metadata: {
-        sessionId: input.threadId,
-        messageIds: messages.map((message) => message.id),
-        roles: messages.map((message) => message.role)
-      }
+      return { result: undefined, audit: audits };
     });
   };
 }
