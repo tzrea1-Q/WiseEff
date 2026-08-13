@@ -1,7 +1,6 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { createParameterTopologyRuntime } from "@/application/parameters/parameterTopologyRuntime";
 import { createMockParameterTopologyRepository } from "@/infrastructure/mock/mockParameterTopologyRepository";
 import {
   mapParameterSpecToLibraryRow,
@@ -12,20 +11,10 @@ import {
 describe("mock runtime semantic parameter model (seam)", () => {
   it("existing ParameterSpecLibrary renders specs loaded from the mock topology adapter", async () => {
     const repository = createMockParameterTopologyRepository();
-    const dispatch = vi.fn();
-    const runtime = createParameterTopologyRuntime({
-      runtimeMode: "mock",
-      dispatch,
-      repository
-    });
 
-    const result = await runtime.listSpecs({});
-    expect(result.ok).toBe(true);
-    if (!result.ok) {
-      return;
-    }
+    const specs = await repository.listSpecs({});
 
-    const rows = result.value.map((item) =>
+    const rows = specs.map((item) =>
       mapParameterSpecToLibraryRow({
         id: item.id,
         organizationId: item.organizationId ?? null,
