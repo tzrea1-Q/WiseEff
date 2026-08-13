@@ -4,20 +4,21 @@ import type { AgentCitation } from "../types";
 import { splitAssistantContent, mergeReasoningText } from "./splitAssistantContent";
 import { getXiaozeToolLabel } from "./toolCatalog";
 import type { XiaozePromptDebugSnapshot } from "./modelTypes";
-import { XIAOZE_PROMPT_DEBUG_EVENT } from "./promptDebug";
-import { XIAOZE_TURN_REPLY_EVENT } from "./xiaozeTurnReply";
+import { serializeTurnSteps, type RunEventSinkEvent } from "./runEventSink";
 import {
-  turnStateCustomEvent,
+  XIAOZE_INTERRUPT_EVENT,
+  XIAOZE_PROMPT_DEBUG_EVENT,
+  XIAOZE_RUN_TIMING_EVENT,
+  XIAOZE_TURN_REPLY_EVENT,
+  XIAOZE_TURN_STATE_EVENT,
+  type XiaozeRunStep,
   type XiaozeTurnPhase,
-  type XiaozeTurnStatePayload,
-  type XiaozeTurnStateStep
-} from "./xiaozeTurnState";
-import { serializeTurnSteps, type RunEventSinkEvent, type XiaozeRunStepRecord } from "./runEventSink";
+  type XiaozeTurnStatePayload
+} from "@wiseeff/xiaoze-protocol";
 
 export type AgUiStreamEvent = { event: string; data: Record<string, unknown> };
 
-export const XIAOZE_RUN_TIMING_EVENT = "xiaoze_run_timing";
-export const XIAOZE_INTERRUPT_EVENT = "on_interrupt";
+export { XIAOZE_INTERRUPT_EVENT, XIAOZE_RUN_TIMING_EVENT } from "@wiseeff/xiaoze-protocol";
 
 export type XiaozeTurnStreamIds = {
   threadId: string;
@@ -36,7 +37,7 @@ export type XiaozeTurnFinalizeInput = {
   text: string;
   reasoning?: string;
   citations?: AgentCitation[];
-  runSteps?: XiaozeRunStepRecord[];
+  runSteps?: XiaozeRunStep[];
   promptDebug?: XiaozePromptDebugSnapshot;
   promptDebugModel?: string;
 };
@@ -115,7 +116,7 @@ export function createXiaozeTurnStream(ids: XiaozeTurnStreamIds) {
   let reasoningEnded = false;
   let phase: XiaozeTurnPhase = "thinking";
   let hadToolActivity = false;
-  const steps = new Map<string, XiaozeTurnStateStep>();
+  const steps = new Map<string, XiaozeRunStep>();
 
   function custom(name: string, value: unknown): AgUiStreamEvent {
     return {
@@ -185,8 +186,7 @@ export function createXiaozeTurnStream(ids: XiaozeTurnStreamIds) {
   }
 
   function turnStateEvent(extra?: Parameters<typeof snapshot>[0]): AgUiStreamEvent {
-    const payload = turnStateCustomEvent(snapshot(extra));
-    return custom(payload.name, payload.value);
+    return custom(XIAOZE_TURN_STATE_EVENT, snapshot(extra));
   }
 
   function timingEvent(timingPhase: "finished" | "error"): AgUiStreamEvent {
@@ -468,7 +468,7 @@ export function createXiaozeTurnStream(ids: XiaozeTurnStreamIds) {
         );
         phase = "done";
         if (runSteps?.length) {
-          for (const step of runSteps as XiaozeTurnStateStep[]) {
+          for (const step of runSteps as XiaozeRunStep[]) {
             steps.set(step.id, step);
           }
         }

@@ -94,6 +94,7 @@
     "@tailwindcss/vite": "^4.3.0",
     "@vitejs/plugin-react": "^5.1.1",
     "@wiseeff/device-command-core": "workspace:*",
+    "@wiseeff/xiaoze-protocol": "workspace:*",
     "bullmq": "^5.78.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

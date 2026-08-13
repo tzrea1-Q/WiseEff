@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { EventType } from "@ag-ui/core";
 import { createXiaozeTurnStream, XIAOZE_INTERRUPT_EVENT, XIAOZE_RUN_TIMING_EVENT } from "./xiaozeTurnStream";
-import { XIAOZE_TURN_STATE_EVENT, type XiaozeTurnStatePayload } from "./xiaozeTurnState";
-import { XIAOZE_TURN_REPLY_EVENT } from "./xiaozeTurnReply";
+import { XIAOZE_TURN_REPLY_EVENT, XIAOZE_TURN_STATE_EVENT, type XiaozeTurnStatePayload } from "@wiseeff/xiaoze-protocol";
 
 const ids = {
   threadId: "thread-1",

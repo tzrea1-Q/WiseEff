@@ -1,16 +1,16 @@
+import { type XiaozeRunStep } from "@wiseeff/xiaoze-protocol";
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
-import type { XiaozeRunStepSnapshot } from "./xiaozeRunTimingTypes";
 
 type XiaozeRunStepsContextValue = {
-  liveSteps: XiaozeRunStepSnapshot[];
+  liveSteps: XiaozeRunStep[];
   resetLiveSteps: () => void;
-  upsertLiveStep: (step: XiaozeRunStepSnapshot) => void;
+  upsertLiveStep: (step: XiaozeRunStep) => void;
 };
 
 const XiaozeRunStepsContext = createContext<XiaozeRunStepsContextValue | null>(null);
 
 export function XiaozeRunStepsProvider({ children }: { children: ReactNode }) {
-  const [liveSteps, setLiveSteps] = useState<XiaozeRunStepSnapshot[]>([]);
+  const [liveSteps, setLiveSteps] = useState<XiaozeRunStep[]>([]);
 
   const value = useMemo<XiaozeRunStepsContextValue>(
     () => ({

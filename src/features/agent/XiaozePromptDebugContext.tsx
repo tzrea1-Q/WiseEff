@@ -1,5 +1,5 @@
+import { type XiaozePromptDebugSnapshot } from "@wiseeff/xiaoze-protocol";
 import { createContext, useContext, useMemo, useSyncExternalStore, type ReactNode } from "react";
-import type { XiaozePromptDebugSnapshot } from "./xiaozePromptDebugTypes";
 
 type PromptDebugStore = Map<string, XiaozePromptDebugSnapshot>;
 

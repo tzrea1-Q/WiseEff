@@ -40,3 +40,4 @@ See also: [`CONTEXT.md`](../../CONTEXT.md), [`docs/design-docs/domain-model.md`]
 | [0028](0028-parameter-drafts-are-a-standalone-staging-module.md) | Parameter drafts are a standalone staging module |
 | [0029](0029-parameter-platform-primitives-live-in-a-standalone-kernel-module.md) | Parameter platform primitives live in a standalone kernel module |
 | [0030](0030-projects-are-a-standalone-module.md) | Projects are a standalone module |
+| [0031](0031-xiaoze-wire-contract-is-a-shared-package.md) | The Xiaoze wire contract is a shared package |
