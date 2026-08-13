@@ -12,11 +12,7 @@ import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
 import { getFileVersionById, getProjectParameterFileByName, insertFileVersion, setCurrentVersion } from "./repository";
 import { isDtsStructuralIngestEnabled } from "./structuralFlag";
 import { ingestDtsFileVersion } from "./structuralIngest";
-<<<<<<< HEAD
 import { assertSensitiveNodeWriteAllowed } from "../parameter-kernel/sensitiveNode";
-=======
-import { assertSensitiveNodeWriteAllowed } from "../parameters/sensitiveNode";
->>>>>>> origin/main
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { loadPreCutoverWritebackSource } from "../parameter-kernel/legacyParameterIdentityAdapter";
 import { getChangeRequestEnablementWriteLock, getChangeRequestWriteLock } from "../parameter-drafts/repository";
