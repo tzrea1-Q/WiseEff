@@ -16,9 +16,10 @@ import { describe, expect, it } from "vitest";
  * to the new, lower value in the same change.
  */
 const ALLOWED_DIRECT_CALLS: Record<string, number> = {
+  // orchestrator.ts stays for now: the M4 agent session state machine commits in
+  // deliberate steps (pending approval must be visible while a human decides), so
+  // its audit boundaries need an owner decision, not a mechanical migration.
   "modules/agent/orchestrator.ts": 1,
-  "modules/agent/xiaoze/threadPersistence.ts": 1,
-  "modules/agent/xiaoze/threadRoutes.ts": 2,
   // audit/routes.ts stays: for POST /audit-events the audit event IS the domain write.
   "modules/audit/routes.ts": 1,
   // auth/* stay: bootstrap/register/login/logout audits fire before an AuthContext
@@ -31,7 +32,6 @@ const ALLOWED_DIRECT_CALLS: Record<string, number> = {
   "modules/dts-reload/policy.ts": 1,
   "modules/dts-reload/sensitiveGate.ts": 1,
   "modules/dts-reload/service.ts": 1,
-  "modules/logs/service.ts": 1,
   "modules/parameter-modules/service.ts": 2,
   "modules/parameter-specs/driverSchemaOverlayService.ts": 1,
   "modules/parameter-topology/governanceAudit.ts": 1,
