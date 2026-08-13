@@ -77,7 +77,7 @@ export function registerParameterModuleRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(dismissCompatibleBodySchema, request.body ?? {});
-    const result = await dismissCompatible(db, auth, body);
+    const result = await dismissCompatible(db, auth, body, { requestId: request.requestId });
     return { status: 200, body: result };
   });
 
@@ -87,7 +87,7 @@ export function registerParameterModuleRoutes(
     const params = parseWithSchema(dismissedCompatibleParamsSchema, {
       compatible: decodeURIComponent(request.params.compatible ?? "")
     });
-    const result = await restoreDismissedCompatible(db, auth, params);
+    const result = await restoreDismissedCompatible(db, auth, params, { requestId: request.requestId });
     return { status: 200, body: result };
   });
 
