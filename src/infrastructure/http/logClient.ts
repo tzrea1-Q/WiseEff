@@ -5,6 +5,7 @@ import type {
   LogDomainListQuery,
   LogDomainUpdateInput,
   LogFeedbackInput,
+  LogFeedbackInsightsQuery,
   LogListQuery,
   LogRerunInput,
   LogUploadInput
@@ -16,10 +17,12 @@ import {
   logDomainFromDto,
   logDomainKnowledgeLinkFromDto,
   logDomainListFromDto,
+  logFeedbackInsightFromDto,
   logListFromDto,
   logRecordFromDto,
   type LogDomainDto,
   type LogDomainKnowledgeLinkDto,
+  type LogFeedbackInsightDto,
   type LogJobDto,
   type LogRecordDto
 } from "./logDtos";
@@ -278,6 +281,14 @@ export function createHttpLogAnalysisRepository(
         { knowledgeEntryIds: input.knowledgeEntryIds }
       );
       return response.items.map(logDomainKnowledgeLinkFromDto);
+    },
+    async listFeedbackInsights(query?: LogFeedbackInsightsQuery) {
+      const params = new URLSearchParams();
+      if (query?.timeWindow) params.set("timeWindow", query.timeWindow);
+      const response = await apiClient.get<{ items: LogFeedbackInsightDto[] }>(
+        appendQuery("/api/v1/logs/feedback-insights", params)
+      );
+      return response.items.map(logFeedbackInsightFromDto);
     }
   };
 

@@ -352,6 +352,24 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "LOG-FEEDBACK-INSIGHTS-001",
+    workflow: "D",
+    title: "The /log-admin analysis-quality section aggregates log feedback helpful rate per domain, analysis source, and prompt version over the selected time window.",
+    required: true
+  },
+  {
+    id: "LOG-EVAL-DRAFT-001",
+    workflow: "D",
+    title: "Admin exports an eval-case annotation draft (case.yaml with deIdentified: false + log.txt) from a completed log record with the de-identification checklist shown.",
+    required: true
+  },
+  {
+    id: "LOG-ARCHIVE-UPLOAD-001",
+    workflow: "D",
+    title: "A .gz log upload is unpacked server-side and completes analysis end to end like a plain text upload.",
+    required: true
+  },
+  {
     id: "DEBUG-SIM-001",
     workflow: "E",
     title: "Simulator read, write, mismatch, rollback, and audit path work, including complex JSON value metadata.",

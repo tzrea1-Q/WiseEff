@@ -1,8 +1,8 @@
-import { extname } from "node:path";
 import { TextDecoder } from "node:util";
 
 import type { LogFormatProfile } from "./formatProfile";
 import { supportedLogExtensions } from "./status";
+import { isSupportedStoredLogFileName, supportedLogArchiveExtensions } from "./unpack";
 
 export type ParsedLogSeverity = "error" | "warn" | "info";
 
@@ -28,17 +28,16 @@ export type ParseResult =
   | { ok: true; rawLines: string[]; entries: ParsedLogEntry[] }
   | { ok: false; reason: string };
 
-const supportedExtensions = new Set<string>(supportedLogExtensions);
 const isoishTimestampPattern = /^\d{4}-\d{2}-\d{2}(?:T[^\s]+| \d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?)/;
 const keyValuePattern = /(?:^|\s)([A-Za-z_][A-Za-z0-9_.-]*)=("[^"]*"|'[^']*'|\S+)/g;
 
 export function parseLogText(input: ParseLogTextInput, options: ParseLogTextOptions = {}): ParseResult {
-  const extension = extname(input.fileName).toLowerCase();
-
-  if (!supportedExtensions.has(extension)) {
+  // Archive-named stored objects (.gz/.zip) hold text unpacked at intake, so
+  // the support check runs on the effective inner name; content stays UTF-8.
+  if (!isSupportedStoredLogFileName(input.fileName)) {
     return {
       ok: false,
-      reason: `Unsupported log format. Supported extensions: ${supportedLogExtensions.join(", ")}.`
+      reason: `Unsupported log format. Supported extensions: ${supportedLogExtensions.join(", ")} (archives: ${supportedLogArchiveExtensions.join(", ")}).`
     };
   }
 

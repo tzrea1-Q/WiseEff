@@ -22,7 +22,7 @@ Rules:
 - Projects and modules: project metadata and module lookup.
 - Parameters: parameter listing, detail, history, drafts, submission rounds, change requests, imports, dashboard aggregation (`/parameters/dashboard/summary`, `/parameters/dashboard/hotspots`), org module tree CRUD (`/parameter-modules`), **project parameter initialization** (`/parameters/projects/:projectId/initialization*`, `/parameters/admin/initialization-reviews*`), per-project parameter file hosting with sync, conflict resolution, and staged candidates (`/projects/:projectId/parameter-files*`, `/projects/:projectId/parameter-file-candidates*`), structured DTS read/search (`.../structure`, `/projects/:projectId/dts-search`), and per-project DTS config sets, release baselines, validation gate, and lossless export (`/projects/:projectId/config-sets*`, `/projects/:projectId/baselines/:baselineId/*`).
 - Semantic parameter topology (v2): parameter specs, spec review tasks, source/effective topology, project bindings, identity mapping tasks, and fail-closed config-revision validate under `/api/v2/*` (see below). Legacy flat parameter IDs are retired at cutover with `410 legacy-parameter-id-retired`.
-- Logs: upload/file records, analysis records, runs, rerun, archive, feedback, and org-scoped log-domain governance (`/log-domains`).
+- Logs: upload/file records (plain text plus `.gz` / single-entry `.zip` archives unpacked at intake), analysis records, runs, rerun, archive, feedback, feedback-quality insights (`/logs/feedback-insights`), and org-scoped log-domain governance (`/log-domains`).
 - Product feedback: Internal Beta sidebar feedback submission, admin triage, and attachment content.
 - Knowledge: organization-scoped knowledge entries, revisions, published-only search, and file content under `/api/v1/knowledge/*`.
 - Jobs: status and progress events.
@@ -51,6 +51,14 @@ Log domains are org-scoped registrations of a business's log intake (name, descr
 `POST /api/v1/log-files`, `POST /api/v1/logs`, and `POST /api/v1/logs/:logId/rerun` accept an optional `logDomainId`. The domain must belong to the organization and be `active`, otherwise `400`; omitting it keeps the built-in uncategorized log domain semantics (generic analysis, upload never blocked).
 
 Log record DTOs gained additive provenance fields: `logDomainId?`, `logDomainName?`, `analysisSource?: "agent" | "rules-fallback"`, and `degradedReason?: "provider-unavailable" | "token-budget-exhausted"`. A `rules-fallback` source marks a degraded analysis and must stay visible to clients; the rest of the log output contract is unchanged.
+
+### Compressed uploads (P3)
+
+Upload file names may carry `.gz` (single gzip file whose inner name keeps a supported text extension, e.g. `app.log.gz`) or `.zip` (exactly one non-directory entry with a supported text extension; stored or deflate compression, no encryption). The server unpacks archives at intake, so the stored object and all downstream evidence line numbers reference the unpacked UTF-8 text. Unpack failures (corrupt stream, multi-entry zip, unsupported entry name, size bound) create a `failed` log record with a readable `failureReason` and no analysis job — the same path as unsupported extensions. Size discipline (zip-bomb guard, constants in `server/modules/logs/unpack.ts`): unpacked content is capped at **100 MB** absolute (the documented text-log bound) and at **200×** the compressed upload size, with a 1 MB floor so small archives are never over-restricted.
+
+### Feedback quality insights (P3)
+
+`GET /api/v1/logs/feedback-insights` (`logs:view`, org-scoped) aggregates `log_feedback` into the `/log-admin` analysis-quality dashboard: one row per log domain × `analysisSource` × `promptVersion` with `totalCount`, `helpfulCount`, `helpfulRate` (0..1), and `lastFeedbackAt`. Optional `timeWindow=today|7d|30d` filters by feedback creation time (same interval semantics as `GET /api/v1/logs`). Feedback is attributed to the log's **current run's** report, matching the list/detail read path; `logDomainId`/`logDomainName` are `null` for the uncategorized domain and `analysisSource`/`promptVersion` are `null` for legacy reports without provenance.
 
 ## Debugging Parameter Semantics
 

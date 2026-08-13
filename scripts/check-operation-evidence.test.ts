@@ -4,8 +4,10 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   evaluateOperationEvidence,
+  parseOperationEvidenceCheckArgs,
   readOperationEvidenceRecords,
   renderOperationEvidenceMarkdown,
+  runFocusedOperationEvidenceCheck,
   writeOperationEvidenceIndex,
   type OperationEvidenceRecord
 } from "./check-operation-evidence";
@@ -666,6 +668,145 @@ describe("operation evidence checker", () => {
 
       expect(indexPath).toBe(join(root, "index.md"));
       expect(readOperationEvidenceRecords(root)).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("focused run evidence check (--run mode, TD-088)", () => {
+  const operations = [
+    { id: "LOG-HAPPY-001", priority: "P0", coverage: "automated" },
+    { id: "LOG-DEGRADED-001", priority: "P1", coverage: "automated" }
+  ];
+
+  function writeRunRecord(runRoot: string, record: OperationEvidenceRecord) {
+    writeFileSync(join(runRoot, "records", `${record.operationId.replace(/[^A-Za-z0-9-]/g, "-")}.json`), JSON.stringify(record), "utf8");
+  }
+
+  function makeFocusedRun(records: OperationEvidenceRecord[]): { root: string; runRoot: string } {
+    const root = mkdtempSync(join(tmpdir(), "wiseeff-focused-evidence-"));
+    const runRoot = join(root, "runs", "abc123", "focused-run-1");
+    const context = resolveEvidenceRunContext({
+      WISEEFF_ACCEPTANCE_EVIDENCE_ROOT: root,
+      WISEEFF_ACCEPTANCE_EVIDENCE_RUN_ID: "focused-run-1",
+      WISEEFF_ACCEPTANCE_EVIDENCE_SOURCE_COMMIT: "abc123",
+      WISEEFF_ACCEPTANCE_EVIDENCE_RUN_KIND: "focused"
+    });
+    prepareEvidenceRun(context);
+    for (const record of records) {
+      writeRunRecord(runRoot, record);
+    }
+    return { root, runRoot };
+  }
+
+  function validFocusedRecord(root: string, operationId: string): OperationEvidenceRecord {
+    const artifactPath = join(root, `${operationId}.png`);
+    writeFileSync(artifactPath, "fake-png", "utf8");
+    return {
+      operationId,
+      status: "passed",
+      runId: "focused-run-1",
+      sourceCommit: "abc123",
+      runKind: "focused",
+      role: "Admin",
+      route: "/logs",
+      assertions: ["ui"],
+      artifacts: [artifactPath],
+      runtime: { mode: "api", apiBaseUrl: "http://127.0.0.1:8787" },
+      report: { path: "playwright-report/acceptance/index.html", format: "html" },
+      trace: { mode: "retain-on-failure", path: "test-results/acceptance" },
+      reproduction: { steps: ["Open /logs", "Run the focused operation"] }
+    };
+  }
+
+  it("parses --run and --require arguments in both syntaxes", () => {
+    expect(parseOperationEvidenceCheckArgs([])).toEqual({ requireOperationIds: [] });
+    expect(parseOperationEvidenceCheckArgs(["--run", "some/dir"])).toEqual({
+      runDir: "some/dir",
+      requireOperationIds: []
+    });
+    expect(
+      parseOperationEvidenceCheckArgs(["--run=some/dir", "--require=LOG-HAPPY-001, LOG-DEGRADED-001"])
+    ).toEqual({
+      runDir: "some/dir",
+      requireOperationIds: ["LOG-HAPPY-001", "LOG-DEGRADED-001"]
+    });
+    expect(() => parseOperationEvidenceCheckArgs(["--unknown"])).toThrow(/Unknown or incomplete/);
+    expect(() => parseOperationEvidenceCheckArgs(["--require", "LOG-HAPPY-001"])).toThrow(/--require is only valid/);
+  });
+
+  it("passes a focused run whose records are forensically complete", () => {
+    const { root, runRoot } = makeFocusedRun([]);
+    try {
+      writeRunRecord(runRoot, validFocusedRecord(root, "LOG-HAPPY-001"));
+
+      const result = runFocusedOperationEvidenceCheck({ runDir: runRoot, operations });
+
+      expect(result.status).toBe("passed");
+      expect(result.coveredOperationIds).toEqual(["LOG-HAPPY-001"]);
+      expect(result.missingOperationIds).toEqual([]);
+      // Focused runs report their own identity without latest-full gating.
+      expect(result).toMatchObject({ runId: "focused-run-1", sourceCommit: "abc123" });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does not demand operations the focused run never touched, unless required explicitly", () => {
+    const { root, runRoot } = makeFocusedRun([]);
+    try {
+      writeRunRecord(runRoot, validFocusedRecord(root, "LOG-HAPPY-001"));
+
+      const withoutRequire = runFocusedOperationEvidenceCheck({ runDir: runRoot, operations });
+      expect(withoutRequire.status).toBe("passed");
+      expect(withoutRequire.missingOperationIds).toEqual([]);
+
+      const withRequire = runFocusedOperationEvidenceCheck({
+        runDir: runRoot,
+        operations,
+        requireOperationIds: ["LOG-DEGRADED-001"]
+      });
+      expect(withRequire.status).toBe("failed");
+      expect(withRequire.missingOperationIds).toEqual(["LOG-DEGRADED-001"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("fails a focused run whose evidence lacks declared assertion payloads", () => {
+    const { root, runRoot } = makeFocusedRun([]);
+    try {
+      const record = validFocusedRecord(root, "LOG-HAPPY-001");
+      // Declares api evidence but records no API summary — the P1 lesson.
+      record.assertions = ["ui", "api"];
+      writeRunRecord(runRoot, record);
+
+      const result = runFocusedOperationEvidenceCheck({ runDir: runRoot, operations });
+
+      expect(result.status).toBe("failed");
+      expect(result.validationErrors).toEqual(
+        expect.arrayContaining([expect.objectContaining({ operationId: "LOG-HAPPY-001", field: "api" })])
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts a records directory directly and rejects unknown --require ids and missing dirs", () => {
+    const { root, runRoot } = makeFocusedRun([]);
+    try {
+      writeRunRecord(runRoot, validFocusedRecord(root, "LOG-HAPPY-001"));
+
+      const direct = runFocusedOperationEvidenceCheck({ runDir: join(runRoot, "records"), operations });
+      expect(direct.status).toBe("passed");
+
+      expect(() =>
+        runFocusedOperationEvidenceCheck({ runDir: runRoot, operations, requireOperationIds: ["NOPE-001"] })
+      ).toThrow(/unknown operation ids/);
+      expect(() =>
+        runFocusedOperationEvidenceCheck({ runDir: join(root, "does-not-exist"), operations })
+      ).toThrow(/does not exist/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

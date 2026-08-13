@@ -48,6 +48,18 @@ Verify the degraded path visibly: kill or misconfigure the provider, upload a lo
 - Real-model run: configure `LOG_ANALYSIS_API_*` (and optionally `LOG_ANALYSIS_JUDGE_*` for the LLM-as-judge) and run `npm run logs:eval:quality`.
 - Reports land in `docs/generated/log-analysis-quality.{json,md}` with kernel, model, prompt version, and judge label. The baseline gate (`eval-cases/logs/baseline.json`) compares realLog-case scores against the committed baseline minus stated tolerances; while the set has no real cases the report states `quality baseline pending real cases` and the gate stays inactive.
 
+## Online Feedback Monitoring (P3)
+
+- The `/log-admin` analysis-quality section reads `GET /api/v1/logs/feedback-insights` (`logs:view`): helpful rate per log domain × analysis source × prompt version over today/7d/30d. It watches live feedback drift between quality-eval runs; the golden case set stays the quality anchor.
+- Operational reading: a helpful-rate drop scoped to one `promptVersion` points at a prompt/model regression (compare against the previous version's rows and re-run `logs:eval:quality`); a drop scoped to one domain with stable prompt version points at domain knowledge / format-profile gaps; rows with `analysisSource = rules-fallback` climbing means the degradation chain is firing — check provider health first (`/health/ready`, degradation counters).
+- Sparse feedback makes rates noisy; treat cells with a single-digit `totalCount` as anecdotes, not signals.
+
+## Archive Intake (P3)
+
+- Uploads may be `.gz` (single file, inner name keeps a supported text extension) or `.zip` (exactly one non-directory entry, stored/deflate, no encryption). Unpacking happens at intake; the object store always holds plain UTF-8 text, so reruns never re-unpack.
+- Zip-bomb bounds (constants in `server/modules/logs/unpack.ts`, documented in the API contract): unpacked size ≤ 100 MB absolute and ≤ 200× the compressed upload (1 MB floor). Oversized or corrupt archives become `failed` records with a readable `failureReason` and no analysis job — they never reach the worker or the retry loop.
+- Triage: a user reporting a "failed" compressed upload should read the record's failure reason first; multi-entry zips are the most common cause (macOS Finder compression adds `__MACOSX` metadata entries — re-zip only the single log file, or gzip it).
+
 ## Evidence
 
 Record:
@@ -69,4 +81,4 @@ npm run logs:eval:quality
 npm run acceptance:e2e -- e2e/acceptance/log-analysis.acceptance.spec.ts
 ```
 
-The behavior-layer eval report lands in `docs/generated/log-analysis-eval.{json,md}` and the quality-layer report in `docs/generated/log-analysis-quality.{json,md}`; acceptance IDs `LOG-DOMAIN-001`, `LOG-DEGRADED-001`, and `LOG-DOMAIN-KNOWLEDGE-001` cover domain governance, visible degradation, and knowledge-entry links.
+The behavior-layer eval report lands in `docs/generated/log-analysis-eval.{json,md}` and the quality-layer report in `docs/generated/log-analysis-quality.{json,md}`; acceptance IDs `LOG-DOMAIN-001`, `LOG-DEGRADED-001`, and `LOG-DOMAIN-KNOWLEDGE-001` cover domain governance, visible degradation, and knowledge-entry links, and the P3a IDs `LOG-FEEDBACK-INSIGHTS-001`, `LOG-EVAL-DRAFT-001`, and `LOG-ARCHIVE-UPLOAD-001` cover the feedback-quality dashboard, the annotation-draft export, and compressed uploads.

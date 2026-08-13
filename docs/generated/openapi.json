@@ -5120,6 +5120,33 @@
         }
       }
     },
+    "/api/v1/logs/feedback-insights": {
+      "get": {
+        "operationId": "logs.feedbackInsights",
+        "summary": "Aggregate log feedback quality insights",
+        "tags": [
+          "logs"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogFeedbackInsightsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/logs/{logId}": {
       "get": {
         "operationId": "logs.get",
@@ -10627,6 +10654,10 @@
       "LogFeedbackResponse": {
         "type": "object",
         "x-wiseeff-schema": "LogFeedbackResponse"
+      },
+      "LogFeedbackInsightsResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "LogFeedbackInsightsResponse"
       },
       "LogDomainListResponse": {
         "type": "object",

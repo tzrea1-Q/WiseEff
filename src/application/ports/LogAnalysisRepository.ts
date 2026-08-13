@@ -1,4 +1,11 @@
-import type { LogDomain, LogDomainKnowledgeLink, LogDomainStatus, LogRecord, TimeWindow } from "@/domain/logs/types";
+import type {
+  LogDomain,
+  LogDomainKnowledgeLink,
+  LogDomainStatus,
+  LogFeedbackInsight,
+  LogRecord,
+  TimeWindow
+} from "@/domain/logs/types";
 
 export type LogRunStatus = "queued" | "processing" | "complete" | "failed";
 
@@ -65,6 +72,10 @@ export type LogDomainKnowledgeLinksInput = {
   knowledgeEntryIds: string[];
 };
 
+export type LogFeedbackInsightsQuery = {
+  timeWindow?: TimeWindow;
+};
+
 export interface LogAnalysisRepository {
   listLogs(query?: LogListQuery): Promise<LogRecord[]>;
   getLog(logId: string): Promise<LogRecord | null>;
@@ -81,4 +92,5 @@ export interface LogAnalysisRepository {
   archiveLogDomain?(domainId: string): Promise<LogDomain>;
   listLogDomainKnowledgeLinks?(domainId: string): Promise<LogDomainKnowledgeLink[]>;
   setLogDomainKnowledgeLinks?(input: LogDomainKnowledgeLinksInput): Promise<LogDomainKnowledgeLink[]>;
+  listFeedbackInsights?(query?: LogFeedbackInsightsQuery): Promise<LogFeedbackInsight[]>;
 }
