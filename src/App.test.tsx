@@ -3241,6 +3241,21 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(window.location.pathname).toBe("/logs");
   });
 
+  it("resets the main content scroll position when the route changes", () => {
+    window.history.replaceState(null, "", "/parameter-home");
+
+    renderAppForCurrentPath();
+
+    const mainContent = document.querySelector<HTMLElement>(".main-content");
+    expect(mainContent).not.toBeNull();
+    mainContent!.scrollTop = 480;
+
+    fireEvent.click(screen.getByRole("button", { name: "智能分析" }));
+
+    expect(window.location.pathname).toBe("/logs");
+    expect(mainContent!.scrollTop).toBe(0);
+  });
+
   it("keeps the drawer and rail styles on one owner in the stylesheet", () => {
     const css = readStylesheet("src/styles.css");
 

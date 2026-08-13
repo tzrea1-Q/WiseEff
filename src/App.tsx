@@ -885,6 +885,15 @@ function AppShell({
     }
   }, [isMobileNavViewport]);
 
+  // Route changes reset the main scroll position (ui-design-system §Layout);
+  // search-only updates (filters, project switches) keep the current position.
+  useEffect(() => {
+    const mainContent = document.querySelector(".main-content");
+    if (mainContent) {
+      mainContent.scrollTop = 0;
+    }
+  }, [path]);
+
   useEffect(() => {
     if (!mobileNavOpen) {
       return undefined;

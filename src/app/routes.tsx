@@ -361,6 +361,6 @@ export function PageRouter({
     case "platform-console":
       return <PlatformConsolePage />;
     default:
-      return <LinearTemplateHome />;
+      return <LinearTemplateHome onNavigate={onNavigate} />;
   }
 }
