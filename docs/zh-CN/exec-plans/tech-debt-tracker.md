@@ -46,7 +46,6 @@
 - **TD-069（`DtsReloadPage.tsx` 体积）：** 记录时为 **2188** 行（#304）；拆分延后以免淹没本轮安全/助手漂移修复。**2026-08-13 进展**（`refactor/dts-reload-run-session`，计划 `2026-08-13-dts-reload-run-session.md`）：调试值校验抽到 `src/domain/dtsReload/debugValue.ts`（表驱动测试）；编排状态机抽到 `src/application/dts-reload/dtsReloadRunSession.ts`（含确认令牌门控测试）；展示辅助移至同目录 `dtsReloadPresentation.tsx`；新增 mock `DtsReloadRepository` 适配器恢复 ADR-0002 双运行时一致性。页面现为 **917** 行。分支合并后可关闭。**负责人：Frontend / Debugging platform。**
 - **TD-080（拓扑工作区测试隔离）：** `ApiProjectTopologyWorkspace.test.tsx` 在 jsdom 中发出真实 HTTP 请求；本机 `127.0.0.1:8787` 有开发 API 时套件不稳定（20 例中 8–9 例被真实数据打挂）。P0 美学提升验证期间发现。应注入可替换的 repository/fetch 接缝,测试不得拨真实端口。**负责人：Frontend。**
 - **TD-081（拓扑树元信息文字色）：** `.topology-tree__item small` 把近白的表面令牌 `var(--muted)` 当文字色,树上元信息几乎不可见（既有缺陷,P0 令牌审计浮出）。P1 原语收敛时改为 `var(--text-muted)` 并加结构化样式断言。**负责人：Frontend。**
-- **TD-083（知识检索 pgvector 后装与 CI 向量覆盖）：** 迁移 `0104` 只在迁移时已装 pgvector 的库上创建 `knowledge_chunks.embedding` 列；先迁移后装扩展的部署需按自托管 runbook 手动补列并全量重建。本地与 CI 的 postgres:16 均无 pgvector,真实向量检索集成测试（`vectorSearch.integration.test.ts`）带原因跳过,向量 SQL 路径目前由脚本化 SQL 单测 + eval 覆盖。**负责人：Knowledge platform。** 后续:补一条「扩展出现时补列」的迁移或启动 ensure,并给 CI 加 pgvector 镜像任务（如 `pgvector/pgvector:pg16`）让该集成测试在 CI 运行。
 - **TD-084（确认对话框超高不可达）：** `ConfirmDialog`/`ModalDialog` 内容超过视口高度时页脚按钮鼠标不可达（`.governance-confirm-dialog` 无 max-height/overflow）。TD-069 浏览器验证在 1440×900 发现：`/dts-reload` 补偿性恢复部署确认（残留横幅 + 基线值 + Overlay 源码）把确认/取消挤出视口且无滚动；键盘焦点仍可达。属既有缺陷，`main` API 模式同内容可复现。应在共享模态层加 `max-height` + 内部滚动（页脚固定），随美学提升的原语收敛落地，不做逐对话框补丁。**负责人：Frontend / UI primitives。**
 - **TD-085（日志分析置信度显示口径）：** LLM 分析器返回模型自估置信度，规则回退沿用确定性查表置信度，二者共用同一 UI 数字，除来源徽标外没有校准语义区分。需按 `analysisSource` 决定显示口径（标注、分档或在效果层评测校准前隐藏 LLM 置信度）。**负责人：Log analysis / Product。**
 - **TD-086（域治理错误透出）：** `/log-admin` 域治理的创建/更新失败只弹通用通知；服务端 `INVALID_LOG_FORMAT_PROFILE` 的 Zod 字段级细节没有映射回表单，行内仅有客户端 JSON 预检。需把 API 错误码与校验细节映射为表单行内错误。**负责人：Frontend / Log analysis。**
@@ -57,6 +56,7 @@
 
 ## 近期关闭项
 
+- **TD-083（知识检索 pgvector 后装与 CI 向量覆盖）：** 已于 2026-08-13 在 `fix/knowledge-pgvector-td083` 关闭。启动 ensure（`server/modules/knowledge/indexing/vectorEnsure.ts`，在 `server/index.ts` 中先于索引 worker 运行）在 pgvector 后装后自动创建扩展、补 `knowledge_chunks.embedding` 列并全量重建入队（专用 advisory lock，双会话集成测试证明多副本 exactly-once；无扩展服务器静默 no-op，权限拒绝诚实记日志并保持 FTS-only）。CI postgres 服务镜像切换为 `pgvector/pgvector:pg16`（build-and-test 与 acceptance 两个 job），`vectorSearch.integration.test.ts` 与新增 `vectorEnsure` 套件在 CI 真实运行；真正无扩展的环境仍保留带原因跳过。自托管 runbook 英中两版改为「重启自动补装」，手动 SQL 降为参考。详见英文版 Completed 表。
 - **TD-058（冲突裁决批量处理与可读版本标签）：** 已于 2026-08-07 经 #235（`feat/project-configuration-workbench-conflict-arbitration`）关闭。冲突列表 DTO 含 `baseValue` 与可读 `fileVersionLabel`；裁决可写 `reason` 进审计；`bulk-preview` / `bulk-resolve` 落地 API/端口/工作台冲突坞并带影响预览；验收 `PROJ-CONFIG-CONFLICT-001`。详见英文版 Completed 表。
 - **TD-015（节点调试快照回滚 UI）：** 已于 2026-08-05 在 `feat/node-debugging-ui-closure`（C2）关闭。会话事件 hydrate、回滚 UI 与高风险写确认已落地。详见英文版 Completed 表。
 - **TD-060（项目参数初始化）：** 已于 2026-08-05 在 `feat/project-parameter-initialization`（C1）关闭。迁移 `0091` + draft/review API；语义 binding 合并/物化；Port/HTTP/mock；API hydrate + 锁；设计修订告别扁平 `recommendedValue` SSOT。详见英文版 Completed 表。
