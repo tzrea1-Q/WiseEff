@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { createXiaozeCheckpointer } from "./checkpointer";
-import { createPlanningAgent, fakeModelSequence, toolCall } from "./planningGraph";
+import { createPlanningAgent } from "./planningGraph";
+import { fakeModelSequence, toolCall } from "./testing/fakeModel";
 import { createRunEventSink } from "./runEventSink";
-import type { PerceptionChatModel } from "./perceptionAgent";
+import type { PerceptionChatModel } from "./modelTypes";
 import { invokeModelTurnWithStreaming } from "./perceptionAgent";
 
 describe("planningGraph run event sink", () => {

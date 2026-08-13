@@ -1,8 +1,8 @@
 import type { AgentCitation } from "../../types";
 import type { AuthContext } from "../../../auth/types";
-import type { PerceptionAgentContext, PerceptionModelToolCall, PerceptionToolDescriptor } from "../perceptionAgent";
+import type { PerceptionAgentContext, PerceptionModelToolCall, PerceptionToolDescriptor } from "../modelTypes";
 import type { PlanningResumeDecision } from "../planningGraph";
-import { fakeModelSequence, toolCall } from "../planningGraph";
+import { fakeModelSequence, toolCall } from "../testing/fakeModel";
 import type { EvalExpectation } from "./expectations";
 
 export type ToolBehavior =
