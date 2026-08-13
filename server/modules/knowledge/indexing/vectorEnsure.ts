@@ -24,7 +24,7 @@ export type KnowledgeVectorEnsureResult =
   | { outcome: "installed"; enqueued: number };
 
 /**
- * Startup ensure for pgvector late installs (TD-090): migration 0104 only adds
+ * Startup ensure for pgvector late installs (TD-091): migration 0104 only adds
  * `knowledge_chunks.embedding` when pgvector was installed at migration time.
  * When an operator installs the extension afterwards, this ensure completes the
  * schema on the next restart — column add plus a full reindex enqueue so
