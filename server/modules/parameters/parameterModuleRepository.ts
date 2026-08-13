@@ -493,7 +493,7 @@ async function reparentParameterModule(
     `
     update parameter_modules
     set
-      parent_id = $3,
+      parent_id = case when id = $2 then $3 else parent_id end,
       path = case
         when id = $2 then $4
         else $4 || substring(path from length($5) + 1)
