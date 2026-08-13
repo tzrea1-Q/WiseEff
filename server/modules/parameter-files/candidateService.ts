@@ -705,7 +705,59 @@ export async function activateCandidate(
   const expectedCurrentVersionId =
     input.expectedCurrentVersionId === undefined ? null : input.expectedCurrentVersionId;
 
-  return db.transaction(async (tx) => {
+  try {
+    return await runActivationTransaction();
+  } catch (error) {
+    if (!(error instanceof StaleBaseDetected)) {
+      throw error;
+    }
+    // The activation transaction rolled back without touching anything; flip
+    // the candidate to stale (and audit it) in its own committed transaction
+    // so the state the 409 reports is the state the database keeps.
+    const actualCurrentVersionId = error.actualCurrentVersionId;
+    const stale = await db.transaction(async (tx) => {
+      const marked = await markParameterFileCandidateStale(tx, { candidateId: input.candidateId });
+      if (!marked) {
+        throw new ApiError("CONFLICT", "Candidate base changed and could not be marked stale.", 409, {
+          reason: "stale-base",
+          candidateId: input.candidateId,
+          expectedCurrentVersionId,
+          actualCurrentVersionId
+        });
+      }
+      await writeCandidateAudit(
+        asAuditTx(tx),
+        auth,
+        {
+          projectId: input.projectId,
+          candidate: marked,
+          action: "stale",
+          kind: "parameter-file-candidate-stale",
+          metadata: {
+            expectedCurrentVersionId,
+            actualCurrentVersionId,
+            preservedWorkingConfiguration: true
+          }
+        },
+        context
+      );
+      return marked;
+    });
+    throw new ApiError(
+      "CONFLICT",
+      "Candidate base is stale; Working configuration was preserved. Recompute impact before activating.",
+      409,
+      {
+        reason: "stale-base",
+        candidate: stale,
+        expectedCurrentVersionId,
+        actualCurrentVersionId
+      }
+    );
+  }
+
+  function runActivationTransaction(): Promise<ActivateCandidateResult> {
+    return db.transaction(async (tx) => {
     const locked = await getParameterFileCandidateById(tx, {
       organizationId: auth.organization.id,
       projectId: input.projectId,
@@ -746,42 +798,10 @@ export async function activateCandidate(
       (locked.baseVersionId ?? null) === (expectedCurrentVersionId ?? null);
 
     if (!casMatches) {
-      const stale = await markParameterFileCandidateStale(tx, { candidateId: locked.id });
-      if (!stale) {
-        throw new ApiError("CONFLICT", "Candidate base changed and could not be marked stale.", 409, {
-          reason: "stale-base",
-          candidateId: locked.id,
-          expectedCurrentVersionId,
-          actualCurrentVersionId
-        });
-      }
-      await writeCandidateAudit(
-        asAuditTx(tx),
-        auth,
-        {
-          projectId: input.projectId,
-          candidate: stale,
-          action: "stale",
-          kind: "parameter-file-candidate-stale",
-          metadata: {
-            expectedCurrentVersionId,
-            actualCurrentVersionId,
-            preservedWorkingConfiguration: true
-          }
-        },
-        context
-      );
-      throw new ApiError(
-        "CONFLICT",
-        "Candidate base is stale; Working configuration was preserved. Recompute impact before activating.",
-        409,
-        {
-          reason: "stale-base",
-          candidate: stale,
-          expectedCurrentVersionId,
-          actualCurrentVersionId
-        }
-      );
+      // Do not mark stale here: this transaction is about to abort, which
+      // would roll the status flip and its audit back while the 409 response
+      // still claims the candidate went stale. Signal the caller instead.
+      throw new StaleBaseDetected(actualCurrentVersionId);
     }
 
     if (isNewFile) {
@@ -881,5 +901,15 @@ export async function activateCandidate(
       },
       version
     };
-  });
+    });
+  }
+}
+
+/**
+ * Control-flow signal thrown inside the activation transaction when the CAS
+ * check fails: the surrounding transaction must roll back untouched, and the
+ * stale flip + audit then commit in their own transaction.
+ */
+class StaleBaseDetected {
+  constructor(readonly actualCurrentVersionId: string | null) {}
 }
