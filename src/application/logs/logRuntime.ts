@@ -25,7 +25,7 @@ export type HydrateLogRuntimeAction = {
 };
 
 export type LogRuntimeActions = {
-  refresh(query?: LogListQuery): Promise<void>;
+  refresh(query?: LogListQuery, options?: { notifyOnFailure?: boolean }): Promise<void>;
   upload(input: LogUploadInput): Promise<void>;
   rerun(input: LogRerunInput): Promise<void>;
   archive(logId: string): Promise<void>;
@@ -217,7 +217,7 @@ export function createLogRuntimeActions({
     generation: generations.begin(logId)
   });
 
-  const refresh = async (query?: LogListQuery) => {
+  const refresh = async (query?: LogListQuery, options?: { notifyOnFailure?: boolean }) => {
     if (mode !== "api") {
       return;
     }
@@ -225,7 +225,11 @@ export function createLogRuntimeActions({
     try {
       const logs = await requireRepository(repository).listLogs(query);
       dispatch({ type: "HYDRATE_LOG_RUNTIME", logs });
-    } catch {
+    } catch (error) {
+      // Callers such as the page-level API banner own the failure projection.
+      if (options?.notifyOnFailure === false) {
+        throw error instanceof Error ? error : new Error(logRuntimeFailureNotification);
+      }
       throw notifyFailure(dispatch);
     }
   };

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { createAuditEvent } from "../audit/repository";
+import { writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { Queryable } from "../../shared/database/client";
@@ -32,7 +32,7 @@ export type GovernanceAuditAction =
  * Store IDs and evidence hashes only — never full source text.
  */
 export async function writeGovernanceAudit(
-  db: Queryable,
+  tx: AuditTx,
   auth: AuthContext,
   input: {
     action: GovernanceAuditAction;
@@ -43,20 +43,16 @@ export async function writeGovernanceAudit(
   },
   context: AuditCorrelationContext = {}
 ) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: input.projectId ?? null,
-    actorUserId: auth.user.id,
-    actorType: "user",
+  // requestId fallback survives only until governance contexts become mandatory (ADR-0027).
+  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
     app: "parameters",
     kind: "parameter-topology-governance",
     action: input.action,
     severity: "Medium",
+    projectId: input.projectId ?? null,
     targetType: input.targetType,
     targetId: input.targetId,
-    metadata: input.metadata,
-    traceId: context.requestId ?? randomUUID()
+    metadata: input.metadata
   });
 }
 

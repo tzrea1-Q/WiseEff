@@ -173,7 +173,8 @@ describe("registerXiaozeRoutes approval assembly", () => {
           groups: [[{ kind: "integer", raw: "3600", value: "3600" }]]
         }
       }),
-      expect.anything()
+      expect.anything(),
+      expect.objectContaining({ requestId: expect.any(String) })
     );
     expect(mockedSubmit).toHaveBeenCalledTimes(1);
     expect(mockedSubmit).toHaveBeenCalledWith(

@@ -48,6 +48,8 @@ export function ModuleCreateDialog({
   allowKindSelect = false,
   modules = [],
   initialParentId = null,
+  busy = false,
+  error = null,
   onCreate,
   onCancel
 }: {
@@ -60,6 +62,9 @@ export function ModuleCreateDialog({
   allowKindSelect?: boolean;
   modules?: readonly ParameterModule[];
   initialParentId?: string | null;
+  busy?: boolean;
+  /** Create failure — the dialog stays open and shows it in place. */
+  error?: string | null;
   onCreate: (draft: ModuleCreateSaveDraft) => void;
   onCancel: () => void;
 }) {
@@ -266,16 +271,21 @@ export function ModuleCreateDialog({
           />
         </div>
 
+        {error ? (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        ) : null}
         <div className="dialog-actions">
-          <button className="button subtle" type="button" onClick={onCancel}>
+          <button className="button subtle" type="button" disabled={busy} onClick={onCancel}>
             取消
           </button>
           <button
             className="button primary"
             type="button"
-            disabled={!canCreate}
+            disabled={!canCreate || busy}
             onClick={() => {
-              if (!canCreate) {
+              if (!canCreate || busy) {
                 return;
               }
               onCreate({
@@ -296,7 +306,7 @@ export function ModuleCreateDialog({
               });
             }}
           >
-            创建
+            {busy ? "创建中…" : "创建"}
           </button>
         </div>
         </>

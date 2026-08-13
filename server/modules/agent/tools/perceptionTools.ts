@@ -1,4 +1,5 @@
 import type { AgentToolDefinition } from "../toolRegistry";
+import { requireAgentToolMetadata } from "../toolMetadata";
 
 type ToolOptions = {
   db: { query<Row>(text: string, values?: unknown[]): Promise<{ rows: Row[]; rowCount: number | null }> };
@@ -48,11 +49,7 @@ function readProjectId(contextProjectId: string | undefined, payload: Record<str
 export function createPerceptionTools(options: ToolOptions): AgentToolDefinition[] {
   return [
     {
-      name: "perception.getProjectOverview",
-      label: "Get project overview",
-      kind: "read",
-      permission: "parameter:view",
-      requiresApproval: false,
+      ...requireAgentToolMetadata("perception.getProjectOverview"),
       run: async (context, payload) => {
         const projectId = readProjectId(context.projectId, payload);
         const { rows } = await options.db.query<OverviewRow>(
@@ -75,11 +72,7 @@ select $2::text as project_id,
       }
     },
     {
-      name: "perception.searchParameters",
-      label: "Search parameters",
-      kind: "read",
-      permission: "parameter:view",
-      requiresApproval: false,
+      ...requireAgentToolMetadata("perception.searchParameters"),
       run: async (context, payload) => {
         const projectId = readProjectId(context.projectId, payload);
         const query = typeof payload.query === "string" ? payload.query.trim() : "";
@@ -167,11 +160,7 @@ limit 20
       }
     },
     {
-      name: "perception.getNodeSnapshot",
-      label: "Get node snapshot",
-      kind: "read",
-      permission: "debugging:view",
-      requiresApproval: false,
+      ...requireAgentToolMetadata("perception.getNodeSnapshot"),
       run: async (context, _payload) => {
         const { rows } = await options.db.query<NodeSnapshotRow>(
           `
@@ -208,11 +197,7 @@ limit 20
       }
     },
     {
-      name: "perception.getRecentLogConclusions",
-      label: "Get recent log conclusions",
-      kind: "read",
-      permission: "logs:view",
-      requiresApproval: false,
+      ...requireAgentToolMetadata("perception.getRecentLogConclusions"),
       run: async (context, _payload) => {
         const { rows } = await options.db.query<LogConclusionRow>(
           `

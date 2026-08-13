@@ -134,7 +134,8 @@ describe("action.submitParameterChange", () => {
           groups: [[{ kind: "integer", raw: "3600", value: "3600" }]]
         }
       }),
-      expect.anything()
+      expect.anything(),
+      expect.objectContaining({ requestId: expect.any(String) })
     );
     expect(mockedSubmit).toHaveBeenCalledWith(
       db,

@@ -97,9 +97,51 @@ describe("LogDashboardPage", () => {
     expect(screen.queryByText("1 份仍在分析链路中")).not.toBeInTheDocument();
     expect(screen.queryByText("优先抽查需复核样本")).not.toBeInTheDocument();
     expect(screen.queryByText("单份大日志主导今日吞吐")).not.toBeInTheDocument();
-    expect(screen.getByText("处理队列稳定")).toBeInTheDocument();
+    // Failed logs exist today: the queue verdict must reflect them instead of
+    // unconditionally asserting stability alongside 需要人工介入.
+    expect(screen.getByText(/条失败待处理/)).toBeInTheDocument();
+    expect(screen.queryByText("处理队列稳定")).not.toBeInTheDocument();
     expect(screen.getByText("需要人工介入")).toBeInTheDocument();
     expect(screen.queryByText("charging_thermal_trace_20260504.log")).not.toBeInTheDocument();
+  });
+
+  it("shows a stable queue verdict only when there are no failures or stalled analyses", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-26T12:00:00+08:00"));
+    window.history.replaceState(null, "", "/log-dashboard");
+
+    render(
+      <App
+        initialAppState={{
+          ...initialState,
+          activeRoleId: "user",
+          logs: [completedApiLog],
+          archivedLogIds: []
+        }}
+      />
+    );
+
+    expect(screen.getByText("处理队列稳定")).toBeInTheDocument();
+    expect(screen.queryByText(/条失败待处理/)).not.toBeInTheDocument();
+  });
+
+  it("annotates the trend card when the 7-day sample is sparse", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-26T12:00:00+08:00"));
+    window.history.replaceState(null, "", "/log-dashboard");
+
+    render(
+      <App
+        initialAppState={{
+          ...initialState,
+          activeRoleId: "user",
+          logs: [completedApiLog],
+          archivedLogIds: []
+        }}
+      />
+    );
+
+    expect(screen.getByText("样本不足，趋势仅供参考。")).toBeInTheDocument();
   });
 
   it("hydrates completed and failed API logs into dashboard counts and failure summary", () => {

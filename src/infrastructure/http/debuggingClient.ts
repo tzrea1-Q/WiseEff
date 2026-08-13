@@ -2,7 +2,10 @@ import type { DebugConnectionProtocol } from "@/domain/debugging/types";
 import type {
   DebuggingGateway,
   DebugSessionSnapshot,
+  DebugSnapshotSummary,
   DetectTargetsInput,
+  NodeOperationSnapshot,
+  NodeWriteResult,
   ReadNodeInput,
   RollbackSnapshotInput,
   WriteNodeInput
@@ -124,7 +127,14 @@ export function createHttpDebuggingGateway(apiClient: ApiClient = createDefaultA
     },
     async writeNode(input: WriteNodeInput) {
       const response = await apiClient.post<WriteNodeResponse>("/api/v1/debugging/nodes/write", writeNodeRequestBody(input));
-      return nodeWriteResultFromDto(response);
+      // Expose the operation (and snapshot when the backend sends one) so the
+      // debugging runtime can record history and hydrate the rollback snapshot.
+      const result: NodeWriteResult & { operation: NodeOperationSnapshot; snapshot?: DebugSnapshotSummary } = {
+        ...nodeWriteResultFromDto(response),
+        operation: nodeOperationFromDto(response.operation),
+        ...(response.snapshot ? { snapshot: debugSnapshotFromDto(response.snapshot) } : {})
+      };
+      return result;
     },
     async rollbackSnapshot(input: RollbackSnapshotInput) {
       const response = await apiClient.post<RollbackSnapshotResponse>(snapshotRollbackPath(input.snapshotId), {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createDeterministicPerceptionModel } from "./agUiEndpoint";
+import { createDeterministicPerceptionModel } from "./deterministicModel";
 
 /**
  * The planner appends page context lines to the user content

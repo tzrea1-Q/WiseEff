@@ -133,7 +133,8 @@ export function useWorkbenchBaselineOrchestration(params: UseWorkbenchBaselineOr
       setBaselinesRetry((value) => value + 1);
       notifyMutation(`已创建基线「${created.name}」。`);
     } catch {
-      // actionError is owned by ReleaseBaselineSession
+      // ReleaseBaselineSession writes actionError for every failure path
+      // (gates and repo throws); the create dialog stays open and renders it.
     }
   }, [
     canAdmin,
@@ -192,7 +193,13 @@ export function useWorkbenchBaselineOrchestration(params: UseWorkbenchBaselineOr
           baseline: selectedBaselineId
         })
       );
-      const result = await releaseBaselineSession.compare(projectId, against, dtsRepository);
+      let result;
+      try {
+        result = await releaseBaselineSession.compare(projectId, against, dtsRepository);
+      } catch {
+        // Failure is projected through the session actionError in the baseline dock.
+        return;
+      }
       const firstDrift = result.members.find(
         (member) => member.status === "version_changed" && member.baselineVersionId
       );
@@ -291,6 +298,8 @@ export function useWorkbenchBaselineOrchestration(params: UseWorkbenchBaselineOr
       setBaselinesRetry((value) => value + 1);
       notifyMutation(`已发布基线「${result.item.name}」。`);
     } catch (error: unknown) {
+      // Session actionError renders inside the still-open release dialog;
+      // unacknowledged-warning failures additionally open the Issues dock.
       const message = error instanceof Error ? error.message : "";
       if (message.includes("确认策略允许的警告")) {
         setTasksOpen(true);
@@ -311,18 +320,30 @@ export function useWorkbenchBaselineOrchestration(params: UseWorkbenchBaselineOr
   const openRestoreWorkbenchBaseline = useCallback(async () => {
     if (!selectedBaselineId) return;
     releaseBaselineSession.clearActionError();
-    await releaseBaselineSession.previewRestore(projectId, dtsRepository);
+    try {
+      await releaseBaselineSession.previewRestore(projectId, dtsRepository);
+    } catch {
+      // Preview failed: keep the dialog closed; actionError renders in the dock.
+      return;
+    }
     setRestoreBaselineOpen(true);
   }, [dtsRepository, projectId, releaseBaselineSession, selectedBaselineId]);
 
   const restoreWorkbenchBaseline = useCallback(async () => {
     if (!canAdmin || !selectedConfigSet || !selectedBaselineId) return;
     releaseBaselineSession.clearActionError();
-    const { result, tipUnchanged } = await releaseBaselineSession.restore(
-      projectId,
-      selectedConfigSet.id,
-      dtsRepository
-    );
+    let restored;
+    try {
+      restored = await releaseBaselineSession.restore(
+        projectId,
+        selectedConfigSet.id,
+        dtsRepository
+      );
+    } catch {
+      // Restore failed: the confirm dialog stays open and renders actionError.
+      return;
+    }
+    const { result, tipUnchanged } = restored;
     setRestoreBaselineOpen(false);
     workspaceLoadSession.retryMembers();
     setBaselinesRetry((value) => value + 1);

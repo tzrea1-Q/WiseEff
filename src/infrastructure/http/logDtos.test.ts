@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  confidencePercentFromDto,
   jobSnapshotFromDto,
   logListFromDto,
   logRecordFromDto,
@@ -67,6 +68,23 @@ describe("log http dto mappers", () => {
 
     expect(failed.status).toBe("Failed");
     expect(failed.failureReason).toBe("Unsupported encoding.");
+  });
+
+  it("normalizes analyzer ratio confidence to percent", () => {
+    expect(confidencePercentFromDto(0.85)).toBe(85);
+    expect(confidencePercentFromDto(0.856)).toBe(86);
+    expect(confidencePercentFromDto(0)).toBe(0);
+    expect(confidencePercentFromDto(1)).toBe(100);
+  });
+
+  it("keeps confidence values that are already percentages", () => {
+    expect(confidencePercentFromDto(92)).toBe(92);
+    expect(confidencePercentFromDto(100)).toBe(100);
+  });
+
+  it("maps record confidence through the percent normalization", () => {
+    expect(logRecordFromDto(baseLogDto).confidence).toBe(91);
+    expect(logRecordFromDto({ ...baseLogDto, confidence: 88 }).confidence).toBe(88);
   });
 
   it("preserves evidence line numbers and raw lines exactly", () => {

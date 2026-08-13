@@ -13,6 +13,7 @@ import { loadBindingContext, resolveBindingHeadRevisionId } from "../../paramete
 import { createBindingDraft } from "../../parameter-topology/service";
 import { knowledgeEntryHref } from "./knowledgeTools";
 import type { AgentToolExecutionContext, AgentToolDefinition } from "../toolRegistry";
+import { requireAgentToolMetadata } from "../toolMetadata";
 
 type ToolOptions = {
   db: Database;
@@ -104,11 +105,7 @@ async function submitLegacyParameterChange(
 export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
   return [
     {
-      name: "action.submitParameterChange",
-      label: "Submit parameter change",
-      kind: "mutating",
-      permission: "parameter:edit",
-      requiresApproval: true,
+      ...requireAgentToolMetadata("action.submitParameterChange"),
       run: async (context, payload) => {
         const projectId = readProjectId(context.projectId, payload);
         const parameterId = typeof payload.parameterId === "string" ? payload.parameterId : undefined;
@@ -190,7 +187,8 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
             action: "set",
             reason
           },
-          { objectStore: options.objectStore, toolchain: options.toolchain }
+          { objectStore: options.objectStore, toolchain: options.toolchain },
+          { requestId: context.requestId }
         );
 
         try {
@@ -242,14 +240,7 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
       }
     },
     {
-      name: "action.createKnowledgeDraft",
-      label: "Create knowledge draft",
-      kind: "mutating",
-      permission: "knowledge:edit",
-      requiresApproval: true,
-      // Knowledge is organization-scoped (D3): no project gate, the knowledge
-      // service enforces knowledge:edit plus org isolation itself.
-      scope: "organization",
+      ...requireAgentToolMetadata("action.createKnowledgeDraft"),
       run: async (context, payload) => {
         const title = typeof payload.title === "string" ? payload.title.trim().slice(0, MAX_DRAFT_TITLE_CHARS) : "";
         const contentMarkdown =

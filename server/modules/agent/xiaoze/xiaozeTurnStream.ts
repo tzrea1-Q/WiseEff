@@ -3,7 +3,7 @@ import { EventType } from "@ag-ui/core";
 import type { AgentCitation } from "../types";
 import { splitAssistantContent, mergeReasoningText } from "./splitAssistantContent";
 import { getXiaozeToolLabel } from "./toolCatalog";
-import type { XiaozePromptDebugSnapshot } from "./promptDebug";
+import type { XiaozePromptDebugSnapshot } from "./modelTypes";
 import { XIAOZE_PROMPT_DEBUG_EVENT } from "./promptDebug";
 import { XIAOZE_TURN_REPLY_EVENT } from "./xiaozeTurnReply";
 import {

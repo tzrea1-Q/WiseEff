@@ -156,3 +156,7 @@ Default five-role vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `
 ### Domain docs
 
 Single-context: root `CONTEXT.md` + `docs/adr/`. See `docs/agents/domain.md`.
+
+### Fleet coordination
+
+Parallel sessions (multiple worktrees merging to `main`): claim main-red repairs before fixing, re-check ADR/migration/TD numbers at merge time, typecheck and run affected tests after every rebase. See `docs/agents/fleet-coordination.md`.

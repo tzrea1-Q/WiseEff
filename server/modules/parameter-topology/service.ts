@@ -45,6 +45,7 @@ import {
 } from "./editService";
 import { type CreateBindingDraftDeps } from "./overlayWriteback";
 import { writeGovernanceAudit } from "./governanceAudit";
+import { asAuditTx, withAuditedWrite } from "../audit/auditedWrite";
 import { getProjectById } from "../projects/repository";
 import { listStructuralPropertyKeys } from "./parameterSurface";
 import {
@@ -514,7 +515,7 @@ export async function resolveIdentityMappingTask(
           });
         }
         await writeGovernanceAudit(
-          tx,
+          asAuditTx(tx),
           auth,
           {
             action: "identity-mapping-resolved",
@@ -653,7 +654,7 @@ export async function resolveIdentityMappingTask(
     });
 
     await writeGovernanceAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         action:
@@ -739,7 +740,7 @@ export async function reopenIdentityMappingTask(
       resolvedAt: null
     });
     await writeGovernanceAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         action: "identity-mapping-reopened",
@@ -859,58 +860,63 @@ async function persistFailedValidation(
   context: AuditCorrelationContext
 ) {
   const runId = randomUUID();
-  await insertValidationRun(db, {
-    id: runId,
-    organizationId: auth.organization.id,
-    configRevisionId: input.revisionId,
-    stage: input.stage,
-    status: "failed",
-    toolchain: input.toolchain ?? {},
-    artifactHashes: input.artifactHashes ?? {}
-  });
-  if (input.diagnostics.length > 0) {
-    await insertValidationDiagnostics(db, runId, input.diagnostics);
-  }
-
-  const currentStatus =
-    (input.currentStatus as ConfigRevisionStatus | undefined) ??
-    (
-      await db.query<{ status: ConfigRevisionStatus }>(
-        `select status from dts_config_revisions where id = $1`,
-        [input.revisionId]
-      )
-    ).rows[0]?.status ??
-    "resolved";
-  const nextStatus = clearStatusAfterValidationFailure(currentStatus, input.failureCode);
-  if (nextStatus !== currentStatus) {
-    await updateConfigRevisionStatus(db, {
-      id: input.revisionId,
-      status: nextStatus,
-      resolvedAt: new Date().toISOString()
+  // Run record, revision status, and audit commit together (ADR-0027); previously
+  // each write auto-committed and a mid-sequence failure left partial evidence.
+  const nextStatus = await withAuditedWrite(db, auth, { requestId: context.requestId ?? randomUUID() }, async (tx) => {
+    await insertValidationRun(tx, {
+      id: runId,
+      organizationId: auth.organization.id,
+      configRevisionId: input.revisionId,
+      stage: input.stage,
+      status: "failed",
+      toolchain: input.toolchain ?? {},
+      artifactHashes: input.artifactHashes ?? {}
     });
-  }
+    if (input.diagnostics.length > 0) {
+      await insertValidationDiagnostics(tx, runId, input.diagnostics);
+    }
 
-  await writeGovernanceAudit(
-    db,
-    auth,
-    {
-      action: "config-revision-validated",
-      projectId: input.projectId,
-      targetType: "dts-config-revision",
-      targetId: input.revisionId,
-      metadata: {
-        validationRunId: runId,
-        configRevisionId: input.revisionId,
-        configSetId: input.configSetId,
-        stage: input.stage,
-        status: "failed",
-        failureCode: input.failureCode,
-        revisionStatus: nextStatus,
-        artifactHashes: input.artifactHashes ?? {}
-      }
-    },
-    context
-  );
+    const currentStatus =
+      (input.currentStatus as ConfigRevisionStatus | undefined) ??
+      (
+        await tx.query<{ status: ConfigRevisionStatus }>(
+          `select status from dts_config_revisions where id = $1`,
+          [input.revisionId]
+        )
+      ).rows[0]?.status ??
+      "resolved";
+    const next = clearStatusAfterValidationFailure(currentStatus, input.failureCode);
+    if (next !== currentStatus) {
+      await updateConfigRevisionStatus(tx, {
+        id: input.revisionId,
+        status: next,
+        resolvedAt: new Date().toISOString()
+      });
+    }
+
+    await writeGovernanceAudit(
+      asAuditTx(tx),
+      auth,
+      {
+        action: "config-revision-validated",
+        projectId: input.projectId,
+        targetType: "dts-config-revision",
+        targetId: input.revisionId,
+        metadata: {
+          validationRunId: runId,
+          configRevisionId: input.revisionId,
+          configSetId: input.configSetId,
+          stage: input.stage,
+          status: "failed",
+          failureCode: input.failureCode,
+          revisionStatus: next,
+          artifactHashes: input.artifactHashes ?? {}
+        }
+      },
+      context
+    );
+    return { result: next, audit: null };
+  });
   return {
     id: runId,
     status: "failed" as const,
@@ -1367,61 +1373,66 @@ export async function validateConfigRevision(
   }
 
   const runId = randomUUID();
-  await insertValidationRun(db, {
-    id: runId,
-    organizationId: auth.organization.id,
-    configRevisionId: revision.id,
-    stage,
-    status: "passed",
-    toolchain: toolchainPayload,
-    artifactHashes
-  });
+  // Run record, revision status, and audit commit together (ADR-0027); the toolchain
+  // execution above deliberately stays outside the transaction.
+  await withAuditedWrite(db, auth, { requestId: context.requestId ?? randomUUID() }, async (tx) => {
+    await insertValidationRun(tx, {
+      id: runId,
+      organizationId: auth.organization.id,
+      configRevisionId: revision.id,
+      stage,
+      status: "passed",
+      toolchain: toolchainPayload,
+      artifactHashes
+    });
 
-  if (toolchainResult.diagnostics.length > 0) {
-    await insertValidationDiagnostics(
-      db,
-      runId,
-      toPersistedDiagnostics(
-        toolchainResult.diagnostics.map((diagnostic) => ({
-          code: diagnostic.code ?? "toolchain",
-          severity: diagnostic.severity,
-          stage: diagnostic.stage ?? "toolchain",
-          message: diagnostic.message,
-          file: diagnostic.file,
-          line: diagnostic.line
-        })),
-        "toolchain",
-        "toolchain"
-      )
+    if (toolchainResult.diagnostics.length > 0) {
+      await insertValidationDiagnostics(
+        tx,
+        runId,
+        toPersistedDiagnostics(
+          toolchainResult.diagnostics.map((diagnostic) => ({
+            code: diagnostic.code ?? "toolchain",
+            severity: diagnostic.severity,
+            stage: diagnostic.stage ?? "toolchain",
+            message: diagnostic.message,
+            file: diagnostic.file,
+            line: diagnostic.line
+          })),
+          "toolchain",
+          "toolchain"
+        )
+      );
+    }
+
+    await updateConfigRevisionStatus(tx, {
+      id: revision.id,
+      status: "validated",
+      resolvedAt: new Date().toISOString()
+    });
+
+    await writeGovernanceAudit(
+      asAuditTx(tx),
+      auth,
+      {
+        action: "config-revision-validated",
+        projectId: revision.projectId,
+        targetType: "dts-config-revision",
+        targetId: revision.id,
+        metadata: {
+          validationRunId: runId,
+          configRevisionId: revision.id,
+          configSetId: revision.configSetId,
+          stage,
+          status: "passed",
+          toolchain: toolchainPayload,
+          artifactHashes
+        }
+      },
+      context
     );
-  }
-
-  await updateConfigRevisionStatus(db, {
-    id: revision.id,
-    status: "validated",
-    resolvedAt: new Date().toISOString()
+    return { result: undefined, audit: null };
   });
-
-  await writeGovernanceAudit(
-    db,
-    auth,
-    {
-      action: "config-revision-validated",
-      projectId: revision.projectId,
-      targetType: "dts-config-revision",
-      targetId: revision.id,
-      metadata: {
-        validationRunId: runId,
-        configRevisionId: revision.id,
-        configSetId: revision.configSetId,
-        stage,
-        status: "passed",
-        toolchain: toolchainPayload,
-        artifactHashes
-      }
-    },
-    context
-  );
 
   return {
     id: runId,
@@ -1457,7 +1468,8 @@ export async function createBindingDraft(
     projectId: string;
     bindingId: string;
   } & CreateBindingDraftBody,
-  deps: CreateBindingDraftDeps = {}
+  deps: CreateBindingDraftDeps = {},
+  context: AuditCorrelationContext = {}
 ): Promise<CreateBindingDraftServiceResult> {
   requireCanEdit(auth);
 
@@ -1497,7 +1509,8 @@ export async function createBindingDraft(
       action: input.action,
       reason: input.reason
     },
-    deps
+    deps,
+    context
   );
 
   return {
@@ -1527,7 +1540,8 @@ export async function createNodeEnablementDraft(
   input: {
     projectId: string;
   } & CreateNodeEnablementDraftBody,
-  deps: CreateBindingDraftDeps = {}
+  deps: CreateBindingDraftDeps = {},
+  context: AuditCorrelationContext = {}
 ): Promise<CreateNodeEnablementDraftServiceResult> {
   requireCanEdit(auth);
 
@@ -1553,6 +1567,7 @@ export async function createNodeEnablementDraft(
       acknowledgeNonstandard: input.acknowledgeNonstandard,
       spellingOverride: input.spellingOverride
     },
-    deps
+    deps,
+    context
   );
 }
