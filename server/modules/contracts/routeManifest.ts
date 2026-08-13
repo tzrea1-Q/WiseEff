@@ -571,6 +571,13 @@ export const routeManifest = [
     stability: "mvp"
   },
   { id: "knowledge.search", method: "GET", path: "/api/v1/knowledge/search", module: "knowledge", stability: "mvp" },
+  {
+    id: "knowledge.relatedToLog",
+    method: "GET",
+    path: "/api/v1/knowledge/related-to-log",
+    module: "knowledge",
+    stability: "mvp"
+  },
   { id: "knowledge.indexStatus", method: "GET", path: "/api/v1/knowledge/index/status", module: "knowledge", stability: "mvp" },
   { id: "knowledge.indexRebuild", method: "POST", path: "/api/v1/knowledge/index/rebuild", module: "knowledge", stability: "mvp" },
   {

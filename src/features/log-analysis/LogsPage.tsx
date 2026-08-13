@@ -3,6 +3,7 @@ import { useTopBarActions } from "@/components/layout";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "@/components/tableFilterUtils";
 import { type PageProps } from "@/app/routes";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { RelatedKnowledgeSection } from "@/features/log-analysis/RelatedKnowledgeSection";
 import type { LogDomain } from "@/domain/logs/types";
 import { SEVERITY_LABELS, STAGE_LABELS, type LogEvidence, type LogRecord, type LogStageId } from "@/domain/prototype/types";
 import { EmptyState, PanelHeader, SectionLabel } from "@/workbenchUi";
@@ -403,6 +404,11 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
             />
           </div>
         </section>
+        {/* Related knowledge (design deferred roadmap item 1): completed
+            analyses only, visible to knowledge:view holders in both modes. */}
+        {hasActiveLog && activeLog.status === "Complete" && knowledgeRepository && knowledgeCapability?.canView ? (
+          <RelatedKnowledgeSection logId={activeLog.id} repository={knowledgeRepository} onNavigate={onNavigate} />
+        ) : null}
       </div>
       <LogsAuxPanel
         activeLog={activeLog}

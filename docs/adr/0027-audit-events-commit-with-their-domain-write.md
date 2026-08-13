@@ -33,9 +33,18 @@ guards that by design run before any transaction (`assertDtsReloadHumanActor`,
 `assertSensitiveReloadBatchAllowed`) take `Database` directly so the type states the
 requirement.
 
+Stepwise flows (the reload deploy state machine, the agent tool/approval state machine)
+add a third shape: **milestone evidence** (`writeMilestoneAudit`, same standalone-write
+mechanics as refusals). A milestone marks "this step was reached" — reload started,
+deploy started — and is recorded immediately on the pool handle so it exists even if a
+later step fails, throws, or never completes. A step's **result** (blocked/validated,
+the deploy terminal, tool succeeded/failed) is not a milestone: it commits with that
+step's state write.
+
 An audit event is therefore exactly one of: **audited write evidence** (commits with the
-write, `writeAuditEventInTx`/`withAuditedWrite`) or **refusal evidence** (survives the
-rollback, `writeRefusalAudit`). Which one is a semantic decision made at the call site,
+write, `writeAuditEventInTx`/`withAuditedWrite`), **refusal evidence** (survives the
+rollback, `writeRefusalAudit`), or **milestone evidence** (recorded before the outcome
+exists, `writeMilestoneAudit`). Which one is a semantic decision made at the call site,
 never a default.
 
 ## Consequences

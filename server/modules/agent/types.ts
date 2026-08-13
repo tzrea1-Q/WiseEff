@@ -1,14 +1,5 @@
-import type { BackendPermission } from "../auth/types";
-
-export type AgentToolName =
-  | "perception.getProjectOverview"
-  | "perception.searchParameters"
-  | "perception.getNodeSnapshot"
-  | "perception.getRecentLogConclusions"
-  | "knowledge.search"
-  | "knowledge.getDocument"
-  | "action.submitParameterChange"
-  | "action.createKnowledgeDraft";
+export type { AgentToolName } from "./toolMetadata";
+import type { AgentToolName } from "./toolMetadata";
 
 export type AgentToolRequest = {
   name: AgentToolName;
@@ -23,18 +14,12 @@ export type AgentContext = {
   roleId?: string;
 };
 
-export type AgentCitation = {
-  type: "parameter" | "log" | "audit" | "debugging" | "knowledge";
-  id: string;
-  label: string;
-  href?: string;
-  snippet?: string;
-  confidence?: number;
-};
+export type { XiaozeCitation as AgentCitation } from "@wiseeff/xiaoze-protocol";
+import type { XiaozeCitation as AgentCitation } from "@wiseeff/xiaoze-protocol";
 
 export type AgentToolStatus = "requested" | "pending_approval" | "running" | "succeeded" | "failed" | "rejected";
 export type AgentApprovalStatus = "pending" | "approved" | "rejected";
-export type AgentToolKind = "read" | "preparation" | "mutating";
+export type { AgentToolKind } from "./toolMetadata";
 
 export type AgentMessageDto = {
   id: string;
@@ -90,12 +75,4 @@ export type AgentTurnDto = {
   messages: AgentMessageDto[];
   toolCalls: AgentToolCallDto[];
   approvals: AgentApprovalDto[];
-};
-
-export type AgentToolDefinition = {
-  name: AgentToolName;
-  label: string;
-  kind: AgentToolKind;
-  permission: BackendPermission;
-  requiresApproval: boolean;
 };

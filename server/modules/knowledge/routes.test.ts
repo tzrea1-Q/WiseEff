@@ -15,6 +15,7 @@ vi.mock("./service", () => ({
   archiveKnowledgeEntry: vi.fn(),
   createKnowledgeEntry: vi.fn(),
   distillKnowledgeFromLog: vi.fn(),
+  findRelatedKnowledgeForLog: vi.fn(),
   getKnowledgeEntry: vi.fn(),
   getKnowledgeFileContent: vi.fn(),
   hardDeleteKnowledgeEntry: vi.fn(),
@@ -172,6 +173,34 @@ describe("knowledge routes", () => {
     expect(response.status).toBe(200);
     expect(response.body.retrieval).toMatchObject({ mode: "fts_only" });
     expect(service.searchKnowledge).toHaveBeenCalledWith(db, makeAuth(), { q: "快充" }, { embeddingClient: undefined });
+  });
+
+  it("GET /api/v1/knowledge/related-to-log requires logId, delegates, and reports the retrieval mode", async () => {
+    const db = makeDb();
+    vi.mocked(service.findRelatedKnowledgeForLog).mockResolvedValue({
+      items: [],
+      retrieval: { mode: "fts_only", vectorAvailable: false, embeddingConfigured: false }
+    });
+
+    const missing = await requestJson<{ error: { code: string } }>(
+      makeServer({ db, objectStore: makeObjectStore() }),
+      "/api/v1/knowledge/related-to-log"
+    );
+    expect(missing.status).toBe(400);
+    expect(service.findRelatedKnowledgeForLog).not.toHaveBeenCalled();
+
+    const response = await requestJson<{ items: unknown[]; retrieval: { mode: string } }>(
+      makeServer({ db, objectStore: makeObjectStore() }),
+      "/api/v1/knowledge/related-to-log?logId=log-1&limit=3"
+    );
+    expect(response.status).toBe(200);
+    expect(response.body.retrieval).toMatchObject({ mode: "fts_only" });
+    expect(service.findRelatedKnowledgeForLog).toHaveBeenCalledWith(
+      db,
+      makeAuth(),
+      { logId: "log-1", limit: 3 },
+      { embeddingClient: undefined }
+    );
   });
 
   it("PATCH /api/v1/knowledge/entries/:entryId surfaces structured 409 conflicts", async () => {

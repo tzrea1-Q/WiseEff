@@ -1,8 +1,8 @@
+import { XIAOZE_TURN_STATE_EVENT, type XiaozeTurnStatePayload } from "@wiseeff/xiaoze-protocol";
 import { useEffect } from "react";
 import { EventType } from "@ag-ui/core";
 import { useAgent } from "@copilotkit/react-core/v2";
 import { useXiaozeTurnStateActions } from "./XiaozeTurnStateContext";
-import { XIAOZE_TURN_STATE_EVENT, type XiaozeTurnStatePayload } from "./xiaozeTurnStateTypes";
 
 export function XiaozeTurnStateCapture() {
   const { agent } = useAgent({ agentId: "default" });

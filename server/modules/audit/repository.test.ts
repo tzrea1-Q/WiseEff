@@ -149,6 +149,38 @@ describe("audit repository", () => {
     expect(calls[0].values).toContain("aurora");
   });
 
+  it("pushes q down as an escaped ILIKE across action, kind, target id, and actor name", async () => {
+    const calls: Array<{ text: string; values: unknown[] }> = [];
+    const db: Queryable = {
+      query: async <Row,>(text: string, values: unknown[] = []) => {
+        calls.push({ text, values });
+        return { rows: [] as Row[], rowCount: 0 };
+      }
+    };
+
+    await listAuditEvents(db, { organizationId: "org-chargelab", q: "50%_关机" });
+
+    expect(calls[0].text).toContain("ae.action ilike");
+    expect(calls[0].text).toContain("ae.kind ilike");
+    expect(calls[0].text).toContain("coalesce(ae.target_id, '') ilike");
+    expect(calls[0].text).toContain("coalesce(u.name, '') ilike");
+    expect(calls[0].values).toContain("%50\\%\\_关机%");
+  });
+
+  it("ignores blank q values", async () => {
+    const calls: Array<{ text: string; values: unknown[] }> = [];
+    const db: Queryable = {
+      query: async <Row,>(text: string, values: unknown[] = []) => {
+        calls.push({ text, values });
+        return { rows: [] as Row[], rowCount: 0 };
+      }
+    };
+
+    await listAuditEvents(db, { organizationId: "org-chargelab", q: "   " });
+
+    expect(calls[0].text).not.toContain("ilike");
+  });
+
   it("returns nextCursor when more rows exist than limit", async () => {
     const db: Queryable = {
       query: async <Row,>() => ({

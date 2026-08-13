@@ -643,7 +643,7 @@ describe("createDebuggingRuntimeActions", () => {
   it("formats WiseEff API failures with the server message", () => {
     expect(
       formatDebuggingRuntimeError(new WiseEffApiError("NOT_FOUND", "Debug protocol binding was not found.", {}, "req-1"))
-    ).toBe("Debug protocol binding was not found.");
+    ).toBe("目标数据不存在或已被删除，请刷新后重试。（请求编号 req-1）");
   });
 
   it("falls back to the generic debugging notification for unknown failures", () => {

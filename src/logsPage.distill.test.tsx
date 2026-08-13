@@ -64,7 +64,7 @@ describe("LogsPage · 沉淀为知识", () => {
           onNavigate={() => undefined}
           search=""
           runtime={runtime}
-          knowledgeCapability={{ userId: "u-xu-yun", canEdit: false, canManage: false }}
+          knowledgeCapability={{ userId: "u-xu-yun", canView: true, canEdit: false, canManage: false }}
         />
       </ToastProvider>
     );

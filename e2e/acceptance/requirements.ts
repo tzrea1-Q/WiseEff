@@ -91,6 +91,13 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "KB-REC-001",
+    workflow: "J",
+    title:
+      "A completed log-analysis record shows a related-knowledge section derived from its stored conclusion/impact text: related published entries appear with a citation deep link into /knowledge, draft and archived entries never appear, and the section reports the retrieval mode that actually ran.",
+    required: true
+  },
+  {
     id: "SHELL-DIAG-001",
     workflow: "A",
     title: "Core routes fail acceptance on unexpected console, page, request, or critical API errors.",

@@ -20,6 +20,7 @@ import type {
 } from "@/domain/parameters/types";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
+import { toUserErrorMessage } from "@/infrastructure/http/userErrorMessage";
 
 export const parameterRuntimeFailureNotification = "参数操作未完成，请稍后重试。";
 
@@ -53,9 +54,7 @@ export function formatParameterRuntimeError(error: unknown): string {
       if (parameterId && error.message.toLowerCase().includes("open change request")) {
         return formatOpenChangeRequestBlockerMessage(parameterId);
       }
-      if (error.message) {
-        return error.message;
-      }
+      return toUserErrorMessage(error);
     }
     if (error.code === "UNAUTHENTICATED" || error.code === "FORBIDDEN") {
       return "当前账号无权执行此操作，请重新登录或切换角色。";
@@ -69,13 +68,11 @@ export function formatParameterRuntimeError(error: unknown): string {
         return path ? `导入预览校验失败（${path}）：${detail}` : detail || "导入预览校验失败，请检查逐条核对中的字段是否完整。";
       }
       if (error.message && error.message !== "Invalid parameter route input.") {
-        return error.message;
+        return toUserErrorMessage(error);
       }
       return "导入预览校验失败，请检查逐条核对中的字段是否完整。";
     }
-    if (error.message) {
-      return error.message;
-    }
+    return toUserErrorMessage(error, parameterRuntimeFailureNotification);
   }
   return parameterRuntimeFailureNotification;
 }

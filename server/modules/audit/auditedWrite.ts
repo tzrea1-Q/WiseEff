@@ -81,15 +81,7 @@ export async function writeAuditEventInTx(
   });
 }
 
-/**
- * Write refusal evidence that must SURVIVE the caller's rollback. A refusal audit
- * describes a deny-then-throw: there is no domain write to be atomic with, and if
- * the surrounding transaction rolls back, the evidence must remain. The spec is
- * therefore written through the POOL handle as its own auto-committed statement,
- * deliberately outside any transaction — the opposite contract from
- * `writeAuditEventInTx`. Pass the pool `Database`, never the enclosing tx.
- */
-export async function writeRefusalAudit(
+async function writeStandaloneAuditEvent(
   db: Database,
   auth: AuthContext,
   context: AuditedWriteContext,
@@ -110,6 +102,39 @@ export async function writeRefusalAudit(
     metadata: spec.metadata,
     traceId: context.requestId
   });
+}
+
+/**
+ * Write refusal evidence that must SURVIVE the caller's rollback. A refusal audit
+ * describes a deny-then-throw: there is no domain write to be atomic with, and if
+ * the surrounding transaction rolls back, the evidence must remain. The spec is
+ * therefore written through the POOL handle as its own auto-committed statement,
+ * deliberately outside any transaction — the opposite contract from
+ * `writeAuditEventInTx`. Pass the pool `Database`, never the enclosing tx.
+ */
+export async function writeRefusalAudit(
+  db: Database,
+  auth: AuthContext,
+  context: AuditedWriteContext,
+  spec: AuditSpec
+): Promise<void> {
+  await writeStandaloneAuditEvent(db, auth, context, spec);
+}
+
+/**
+ * Write milestone evidence for a long-running, stepwise flow (a reload deploy, an
+ * agent tool run): "this step was reached", recorded immediately on the pool handle
+ * so it exists even if a later step fails, throws, or never completes. Milestones
+ * mark intent/progress, not results — a step's RESULT commits with that step's
+ * state write via `withAuditedWrite`/`writeAuditEventInTx` instead.
+ */
+export async function writeMilestoneAudit(
+  db: Database,
+  auth: AuthContext,
+  context: AuditedWriteContext,
+  spec: AuditSpec
+): Promise<void> {
+  await writeStandaloneAuditEvent(db, auth, context, spec);
 }
 
 export type AuditedWriteOutcome<T> = {

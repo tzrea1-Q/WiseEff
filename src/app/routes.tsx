@@ -152,17 +152,17 @@ export function PageRouter({
   if (!canAccessPage(currentRoleId, page.key)) {
     const requiredRole = getRequiredRoleForPage(page.key);
     return (
-      <section className="permission-denied-page" aria-label="Permission denied">
-        <span className="eyebrow">Access control</span>
-        <h2>Permission denied</h2>
-        <p>Current role: {getRequiredRoleLabel(currentRoleId)}</p>
-        <p>Required role: {getRequiredRoleLabel(requiredRole)}</p>
+      <section className="permission-denied-page" aria-label="无权访问">
+        <span className="eyebrow">访问控制</span>
+        <h2>无权访问该页面</h2>
+        <p>当前角色：{getRequiredRoleLabel(currentRoleId)}</p>
+        <p>所需角色：{getRequiredRoleLabel(requiredRole)}</p>
         <button
           className="button primary permission-denied-action"
           type="button"
           onClick={() => onNavigate(getAccessibleFallbackPath(currentRoleId))}
         >
-          Back to accessible workspace
+          返回可访问的工作台
         </button>
       </section>
     );

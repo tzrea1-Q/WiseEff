@@ -1,12 +1,10 @@
+import { type XiaozeRunStep, type XiaozeTurnReplyPayload, type XiaozeTurnStatePayload } from "@wiseeff/xiaoze-protocol";
 import { describe, expect, it } from "vitest";
 import type { AssistantMessage, Message } from "@ag-ui/core";
 import { groupMessagesIntoTurns, pickAssistantForTurn } from "./xiaozeTurnGrouping";
-import type { XiaozeRunStepSnapshot } from "./xiaozeRunTimingTypes";
-import type { XiaozeTurnReplyPayload } from "./xiaozeTurnReplyTypes";
-import type { XiaozeTurnStatePayload } from "./xiaozeTurnStateTypes";
 import { resolveTurnAnswerText, resolveXiaozeTurnView, shouldDeferTurnAnswer, type XiaozeTurnViewInput } from "./xiaozeTurnView";
 
-function step(overrides: Partial<XiaozeRunStepSnapshot> = {}): XiaozeRunStepSnapshot {
+function step(overrides: Partial<XiaozeRunStep> = {}): XiaozeRunStep {
   return {
     id: "s1",
     kind: "tool",

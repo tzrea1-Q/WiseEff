@@ -1089,11 +1089,16 @@ describe.skipIf(!databaseAvailable)("parameter service", () => {
 // - "rejects semantic merge when projectId is missing": parameter_change_requests
 //   .project_id is NOT NULL, so a project-less request cannot exist in a real
 //   database; the check is defensive-only.
-// - The two semantic submit tests need full post-cutover topology graphs
-//   (candidate revisions, binding revisions, write locks). The merged behavior
-//   is covered on a temp database by
-//   server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts;
-//   migrating these two remains the follow-up noted in the plan doc.
+// - The two semantic submit tests need full post-cutover topology graphs.
+//   Slice 4 re-evaluated them against the shared seedSpecBindingGraph fixture:
+//   the fixture covers the spec/binding/config-revision spine, but these paths
+//   additionally require candidate-proof state that getBindingDraftForSubmission
+//   computes from write-lock rows (binding revisions on both base and candidate
+//   revisions, file versions with matching checksums, and — for enablement —
+//   logical-node status occurrence effects). That per-test graph is exactly what
+//   parameter-topology/postCutoverWorkflow.integration.test.ts already builds on
+//   a temp database where the merged behavior is covered end to end, so these
+//   two stay fake-db preflight-order guards rather than duplicating that harness.
 // ---------------------------------------------------------------------------
 
 type QueryCall = {
@@ -1307,7 +1312,7 @@ describe("parameter service (fake-db residuals)", () => {
   // Post-cutover semantic submit needs a full topology graph (candidate revisions,
   // binding revisions, write locks); the merged behavior runs on a temp database in
   // parameter-topology/postCutoverWorkflow.integration.test.ts. Kept on the fake db
-  // until that follow-up slice.
+  // per the slice-4 evaluation in the section comment above.
   it("submitParameterChanges rejects mixed working tips in one batch", async () => {
     const draftA = "draft-a";
     const draftB = "draft-b";

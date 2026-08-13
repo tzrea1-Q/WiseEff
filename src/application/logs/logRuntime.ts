@@ -1,3 +1,4 @@
+import { toUserErrorMessage } from "@/infrastructure/http/userErrorMessage";
 import type {
   LogAnalysisRepository,
   LogDomainCreateInput,
@@ -91,9 +92,10 @@ function requireRepository(repository?: LogAnalysisRepository): LogAnalysisRepos
   return repository;
 }
 
-function notifyFailure(dispatch: LogRuntimeOptions["dispatch"]): LogRuntimeNotifiedFailure {
-  dispatch({ type: "ADD_NOTIFICATION", message: logRuntimeFailureNotification });
-  return Object.assign(new Error(logRuntimeFailureNotification), { alreadyNotified: true as const });
+function notifyFailure(dispatch: LogRuntimeOptions["dispatch"], cause?: unknown): LogRuntimeNotifiedFailure {
+  const message = cause === undefined ? logRuntimeFailureNotification : toUserErrorMessage(cause, logRuntimeFailureNotification);
+  dispatch({ type: "ADD_NOTIFICATION", message });
+  return Object.assign(new Error(message), { alreadyNotified: true as const });
 }
 
 function isAlreadyNotified(error: unknown): error is LogRuntimeNotifiedFailure {
@@ -235,7 +237,7 @@ export function createLogRuntimeActions({
       if (options?.notifyOnFailure === false) {
         throw error instanceof Error ? error : new Error(logRuntimeFailureNotification);
       }
-      throw notifyFailure(dispatch);
+      throw notifyFailure(dispatch, error);
     }
   };
 
@@ -246,7 +248,7 @@ export function createLogRuntimeActions({
       if (isAlreadyNotified(error)) {
         throw error;
       }
-      throw notifyFailure(dispatch);
+      throw notifyFailure(dispatch, error);
     }
   };
 

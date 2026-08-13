@@ -13,6 +13,7 @@ import type {
 } from "@/application/ports/DebuggingGateway";
 import type { DebugConnectionProtocol, DebugDeviceTransport } from "@/domain/debugging/types";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
+import { toUserErrorMessage } from "@/infrastructure/http/userErrorMessage";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { AppAction } from "@/application/state/appState";
 import type { DebugParameter, Device, PrototypeState } from "@/domain/prototype/types";
@@ -108,9 +109,7 @@ export function formatDebuggingRuntimeError(error: unknown): string {
     if (cause.code === "FORBIDDEN") {
       return "当前账号无权执行此调试操作。";
     }
-    if (cause.message.trim()) {
-      return cause.message;
-    }
+    return toUserErrorMessage(cause, debuggingRuntimeFailureNotification);
   }
 
   if (error instanceof Error && error.message.trim() && error.message !== debuggingRuntimeFailureNotification) {

@@ -1,4 +1,4 @@
-import type { XiaozeRunStepSnapshot } from "./xiaozeRunTimingTypes";
+import { type XiaozeRunStep } from "@wiseeff/xiaoze-protocol";
 
 export function localizeStepSummary(summary: string | undefined, toolName?: string) {
   if (!summary?.trim()) {
@@ -31,7 +31,7 @@ export function localizeStepSummary(summary: string | undefined, toolName?: stri
   return undefined;
 }
 
-export function presentRunStep(step: XiaozeRunStepSnapshot): XiaozeRunStepSnapshot {
+export function presentRunStep(step: XiaozeRunStep): XiaozeRunStep {
   const summary = localizeStepSummary(step.summary, step.toolName);
   return summary ? { ...step, summary } : { ...step, summary: undefined };
 }

@@ -10,7 +10,7 @@ import {
   isTestDatabaseAvailable,
   type InMemoryTestDatabase
 } from "../../testing/testDatabase";
-import { seedCoreGraph } from "../../testing/fixtures";
+import { seedCoreGraph, seedSpecBindingGraph } from "../../testing/fixtures";
 import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import {
   hasOpenFileSyncConflict,
@@ -181,48 +181,43 @@ describe.skipIf(!databaseAvailable)("file sync conflict repository", () => {
 
   it("listOpenConflicts enriches binding-identified conflicts for the arbitration DTO", async () => {
     // Semantic identity graph: spec + property spec + binding + revision + occurrence.
-    await db.query(
-      `insert into parameter_specs (id, organization_id, source_kind, specification_key)
-       values ('spec-1', 'org-1', 'dts', 'battery/temp_max')`
-    );
-    await db.query(
-      `insert into parameter_spec_versions (id, parameter_spec_id, version, display_name, description, value_shape, lifecycle)
-       values ('psv-1', 'spec-1', 1, 'temp_max', 'battery max temperature', '{}', 'active')`
-    );
-    await db.query(
-      `insert into dts_property_specs (id, parameter_spec_id, property_key, schema_namespace)
-       values ('dps-1', 'spec-1', 'temp_max', 'wiseeff')`
-    );
-    await db.query(
-      `insert into dts_config_set (id, organization_id, project_id, name)
-       values ('set-1', 'org-1', 'project-1', 'main')`
-    );
+    await seedSpecBindingGraph(db, {
+      organizationId: "org-1",
+      specs: [
+        {
+          id: "spec-1",
+          specificationKey: "battery/temp_max",
+          versions: [{ id: "psv-1", displayName: "temp_max", description: "battery max temperature" }],
+          propertySpec: { id: "dps-1", propertyKey: "temp_max" }
+        }
+      ],
+      modules: [{ id: "pm-battery", name: "battery" }],
+      configSets: [
+        {
+          id: "set-1",
+          projectId: "project-1",
+          revisions: [{ id: "rev-1" }],
+          logicalNodes: [
+            {
+              id: "ln-1",
+              revisions: [{ id: "lnr-1", configRevisionId: "rev-1", nodeLocator: "/battery", name: "battery" }]
+            }
+          ]
+        }
+      ],
+      bindings: [
+        {
+          id: "binding-1",
+          projectId: "project-1",
+          parameterSpecId: "spec-1",
+          moduleId: "pm-battery",
+          logicalNodeId: "ln-1",
+          revisions: [{ id: "bpr-1", configRevisionId: "rev-1", parameterSpecVersionId: "psv-1", rawValue: "80" }]
+        }
+      ]
+    });
     await seedFileWithVersion({ configSetId: "set-1" });
     await seedDraftPair();
-    await db.query(
-      `insert into dts_config_revisions (id, organization_id, project_id, config_set_id, revision_number, status)
-       values ('rev-1', 'org-1', 'project-1', 'set-1', 1, 'resolved')`
-    );
-    await db.query(
-      `insert into dts_logical_nodes (id, organization_id, project_id, config_set_id)
-       values ('ln-1', 'org-1', 'project-1', 'set-1')`
-    );
-    await db.query(
-      `insert into dts_logical_node_revisions (id, logical_node_id, config_revision_id, node_locator, name)
-       values ('lnr-1', 'ln-1', 'rev-1', '/battery', 'battery')`
-    );
-    await db.query(
-      `insert into parameter_modules (id, organization_id, name, path, depth)
-       values ('pm-battery', 'org-1', 'battery', 'pm-battery', 1)`
-    );
-    await db.query(
-      `insert into project_parameter_bindings (id, organization_id, project_id, logical_node_id, parameter_spec_id, module_id)
-       values ('binding-1', 'org-1', 'project-1', 'ln-1', 'spec-1', 'pm-battery')`
-    );
-    await db.query(
-      `insert into project_parameter_binding_revisions (id, binding_id, config_revision_id, parameter_spec_version_id, typed_value, raw_value)
-       values ('bpr-1', 'binding-1', 'rev-1', 'psv-1', '"80"', '80')`
-    );
     await db.query(
       `insert into dts_node_occurrences (
          id, config_revision_id, file_version_id, name, node_path,

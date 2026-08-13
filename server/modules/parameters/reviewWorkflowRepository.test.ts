@@ -13,7 +13,7 @@ import {
   isTestDatabaseAvailable,
   type InMemoryTestDatabase
 } from "../../testing/testDatabase";
-import { seedCoreGraph } from "../../testing/fixtures";
+import { seedCoreGraph, seedSpecBindingGraph } from "../../testing/fixtures";
 import {
   resolveParameterIdentityMode,
   setParameterIdentityMode
@@ -354,29 +354,26 @@ describe.skipIf(!databaseAvailable)("review workflow repository", () => {
     await resolveParameterIdentityMode(db);
 
     // Semantic identity graph; the submission rows never reference flat identity ids.
-    await db.query(
-      `insert into parameter_specs (id, organization_id, source_kind, specification_key)
-       values ('spec-gpio', $1, 'dts', 'manual/gpio_int')`,
-      [ORG]
-    );
-    await db.query(
-      `insert into parameter_spec_versions (id, parameter_spec_id, version, display_name, description, value_shape, lifecycle)
-       values ('psv-gpio', 'spec-gpio', 1, 'gpio_int', 'interrupt pin', '{"kind":"phandle-list"}', 'active')`
-    );
-    await db.query(
-      `insert into dts_property_specs (id, parameter_spec_id, property_key, schema_namespace)
-       values ('dps-gpio', 'spec-gpio', 'gpio_int', 'wiseeff')`
-    );
-    await db.query(
-      `insert into parameter_modules (id, organization_id, name, path, depth)
-       values ('pm-manual', $1, 'manual', 'pm-manual', 1)`,
-      [ORG]
-    );
-    await db.query(
-      `insert into project_parameter_bindings (id, organization_id, project_id, parameter_spec_id, module_id)
-       values ('binding-1', $1, $2, 'spec-gpio', 'pm-manual')`,
-      [ORG, PROJECT]
-    );
+    await seedSpecBindingGraph(db, {
+      organizationId: ORG,
+      specs: [
+        {
+          id: "spec-gpio",
+          specificationKey: "manual/gpio_int",
+          versions: [
+            {
+              id: "psv-gpio",
+              displayName: "gpio_int",
+              description: "interrupt pin",
+              valueShape: { kind: "phandle-list" }
+            }
+          ],
+          propertySpec: { id: "dps-gpio", propertyKey: "gpio_int" }
+        }
+      ],
+      modules: [{ id: "pm-manual", name: "manual" }],
+      bindings: [{ id: "binding-1", projectId: PROJECT, parameterSpecId: "spec-gpio", moduleId: "pm-manual" }]
+    });
 
     await createRound({ id: "round-semantic", status: "hardware_review", summary: "Semantic submission" });
     await createChangeRequest(db, {
