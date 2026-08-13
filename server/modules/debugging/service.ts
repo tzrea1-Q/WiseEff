@@ -48,6 +48,7 @@ import {
   listDebugParameters,
   listDebugSessionEvents,
   markSnapshotConsumed,
+  resolveDebugNodeIdByBinding,
   restoreSnapshotValid,
   restoreDebugParameter,
   updateDebugParameter,
@@ -1864,7 +1865,10 @@ export function createDebuggingService(options: ServiceOptions) {
           ensureReadable(catalogParameter, binding.accessMode);
           nodePath = binding.nodePath;
           accessMode = binding.accessMode;
-          catalogNodeId = input.parameterId;
+          // The catalog linkage travels in parameter_id; node_id may only carry
+          // a real debug_nodes id (FK), resolved through debug_node_bindings
+          // when one covers the same protocol + path (#416).
+          catalogNodeId = await resolveDebugNodeIdByBinding(tx, { organizationId, protocol, nodePath: binding.nodePath });
         }
 
         if (!nodePath) {
@@ -1991,12 +1995,17 @@ export function createDebuggingService(options: ServiceOptions) {
           accessMode = binding.accessMode;
         } else if (input.parameterId?.trim()) {
           parameterId = input.parameterId.trim();
-          catalogNodeId = parameterId;
           const parameterRecord = await getDebugParameter(tx, { organizationId, parameterId });
           const binding = await requireProtocolBinding(tx, { organizationId, parameterId, protocol });
           parameter = ensureWritable(parameterRecord, input, binding.accessMode);
           nodePath = binding.nodePath;
           accessMode = binding.accessMode;
+          // Resolved before any gateway I/O on purpose: every FK value the
+          // post-device-write operation insert references (parameter_id,
+          // node_id) is verified here, so that insert can no longer fault and
+          // roll back the snapshot + audit evidence of a completed physical
+          // write (#416; ADR-0021 snapshot, ADR-0027 audit atomicity).
+          catalogNodeId = await resolveDebugNodeIdByBinding(tx, { organizationId, protocol, nodePath: binding.nodePath });
         } else {
           throw new ApiError("VALIDATION_FAILED", "nodeId or parameterId is required.", 400);
         }

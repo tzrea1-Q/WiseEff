@@ -633,6 +633,36 @@ describe.skipIf(!databaseAvailable)("debugging repository (behavior)", () => {
       expect(await listDebugSessionEvents(db, { organizationId: ORG_B, sessionId: session.id })).toEqual([]);
     });
 
+    it("insertNodeOperation never falls a parameterId back into the node_id FK column, in either identity mode (#416)", async () => {
+      const session = await seedSession();
+      const parameter = await createDebugParameter(db, parameterInput());
+
+      // No debug_nodes row shares the parameter's id (production admin creation
+      // never writes one), so these inserts only succeed because node_id stays
+      // null instead of borrowing the parameter id.
+      for (const mode of ["semantic", "legacy"] as const) {
+        setParameterIdentityMode(mode);
+        const operation = await insertNodeOperation(db, {
+          organizationId: ORG_A,
+          sessionId: session.id,
+          parameterId: parameter.id,
+          nodePath: "/sys/class/power/debug/fast_charge/current",
+          operationType: "read",
+          status: "succeeded",
+          readValue: "3000",
+          verified: true,
+          durationMs: 3,
+          actorUserId: USER_A
+        });
+
+        const row = await db.query<{ parameter_id: string | null; node_id: string | null }>(
+          `select parameter_id, node_id from node_operations where id = $1`,
+          [operation.id]
+        );
+        expect(row.rows, `identity mode: ${mode}`).toEqual([{ parameter_id: parameter.id, node_id: null }]);
+      }
+    });
+
     it("snapshot lifecycle: valid → rollback_pending → valid → consumed, each edge scoped and single-shot", async () => {
       const session = await seedSession();
       const snapshot = await createDebugSnapshot(db, {
