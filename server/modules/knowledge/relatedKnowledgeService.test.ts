@@ -149,7 +149,11 @@ describe.skipIf(!databaseAvailable)("findRelatedKnowledgeForLog", () => {
 
     const result = await findRelatedKnowledgeForLog(db, makeAuth(VIEWER, readerPermissions), { logId: log.logId });
 
-    expect(result.retrieval).toEqual({ mode: "fts_only", vectorAvailable: false, embeddingConfigured: false });
+    // vectorAvailable follows the host PostgreSQL (false on extension-less local,
+    // true on the pgvector CI image); the honest invariant here is that without an
+    // embedding client the mode stays fts_only.
+    expect(result.retrieval).toMatchObject({ mode: "fts_only", embeddingConfigured: false });
+    expect(typeof result.retrieval.vectorAvailable).toBe("boolean");
     const ids = result.items.map((item) => item.entryId);
     expect(ids).toContain(related.id);
     expect(ids).not.toContain(unrelated.id);
