@@ -24,7 +24,7 @@ describe("DriverUploadSummaryDialog", () => {
       />,
     );
 
-    expect(screen.getByRole("dialog", { name: "上传驱动对照摘要" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "上传对照摘要" })).toBeInTheDocument();
     expect(screen.getByText("sc8562")).toBeInTheDocument();
     expect(screen.getByText("huawei,orphan")).toBeInTheDocument();
 

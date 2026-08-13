@@ -26,11 +26,12 @@ Quality benchmark: a focused, dense, fast workbench in the spirit of Linear — 
 | Piece | Canonical location | Notes |
 | --- | --- | --- |
 | Token layer | `src/styles.css` `:root` block (single block) | Single source; shadcn `@theme inline` keys must map to the same semantic tokens, never a second palette |
-| Button | `src/components/ui/button.tsx` (cva) unified with `.button` base class | Target: one implementation; see Buttons below |
-| Dialog | `src/components/common/ModalDialog.tsx` + `ConfirmDialog` | Portal, focus trap, `inert` background, top-most Escape, paired backdrop dismissal, declared z-index scale |
-| Table | `src/components/admin/DataTable.tsx` pattern | Pagination, `aria-sort`, keyboard row navigation, `ColumnFilter` integration |
+| Button | `.button` base layer in `src/styles.css` + `src/components/ui/button.tsx` (cva) on the same tokens | One geometry: sizes sm 28 / md 32 / lg 36; variants `primary`/`subtle`/`ghost`/`danger`; scopes may only add layout, never geometry or color |
+| Dialog | `src/components/common/ModalDialog.tsx` + `ConfirmDialog` | Portal, focus trap, `inert` background, top-most Escape, paired backdrop dismissal, declared z-index scale, tokenized backdrop dim + enter motion |
+| Toast | `src/components/common/toast/ToastProvider.tsx` (`useToast()`) | Single portal queue, tones success/info/danger, bottom-right, 4s auto-dismiss with hover pause, `--z-toast` |
+| Table | `src/components/admin/DataTable.tsx` | Standard list shell: pagination, `aria-sort`, keyboard row navigation, filter empty state, `ColumnFilter` integration |
 | Column filter | `src/components/ColumnFilter.tsx` | Spec: [Table Column Multi-Select Filter UX](ux-table-column-filter.md) |
-| Loading/Empty/Error | `src/features/parameter-home/components/SectionState.tsx` pattern | Skeleton + empty + error-with-retry trio; to be promoted to a shared component |
+| Loading/Empty/Error | `src/components/common/SectionState.tsx` (+ `AppShellSkeleton` for auth bootstrap) | Skeleton + empty + error-with-retry trio; parameter-home re-exports the same components |
 | Local token derivation | `src/features/parameter-home/parameter-home.css` | Derive scoped tokens from global tokens via `color-mix()`; never invent new literals |
 | Icons | `lucide-react` | No emoji glyphs, no `✓`/`↗` text characters as icons |
 
@@ -138,7 +139,7 @@ Rules: no `ease` keyword; no UI transition above 400ms; entrances animate opacit
 
 ### Z-Index
 
-One declared ladder in `:root`; raw numbers in component CSS or TSX are forbidden. The ladder extends the existing overlay scale (`--z-xiaoze-fab: 1100`, `--z-modal-backdrop: 1150`, `--z-modal-backdrop-nested: 1160`, `--z-xiaoze-popup: 1200`) downward with app-layer tokens (sticky header, sidebar, dropdown/popover). "+1 escape hatches" (40 vs 41, 60 vs 61) are defects.
+One declared ladder in `:root`; raw numbers in component CSS or TSX are forbidden. The ladder extends the existing overlay scale (`--z-xiaoze-fab: 1100`, `--z-modal-backdrop: 1150`, `--z-modal-backdrop-nested: 1160`, `--z-toast: 1180`, `--z-xiaoze-popup: 1200`) downward with app-layer tokens (sticky header, sidebar, dropdown/popover). "+1 escape hatches" (40 vs 41, 60 vs 61) are defects.
 
 ## Interaction States
 
@@ -183,7 +184,7 @@ Hover and focus-visible must remain visually distinguishable (do not merge them 
 
 ### Feedback
 
-- One toast pipeline: single portal, queue, three tones (success/info/danger), auto-dismiss 4s + optional action, stacked bottom-center or top-right (one choice product-wide).
+- One toast pipeline (`useToast()` from `src/components/common/toast`): single portal, queue, three tones (success/info/danger), auto-dismiss 4s with hover pause + optional action, stacked bottom-right product-wide.
 - Banners are reserved for persistent context (degraded mode, permission scope), not action results.
 - Errors shown to users are mapped to product language; raw `error.message`, HTTP payloads, and stack fragments never render. Field errors sit under the field, linked with `aria-describedby` and `aria-invalid`.
 

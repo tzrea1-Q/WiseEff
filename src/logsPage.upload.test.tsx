@@ -349,7 +349,7 @@ describe("LogsPage api upload wiring", () => {
 });
 
 describe("LogsPage · 上传日志对话框", () => {
-  it("打开时聚焦文件选择入口并设置 aria-modal", () => {
+  it("打开时焦点进入对话框并设置 aria-modal", () => {
     window.history.replaceState(null, "", "/logs");
     render(<App initialAppState={userState} />);
 
@@ -357,7 +357,8 @@ describe("LogsPage · 上传日志对话框", () => {
 
     const dialog = screen.getByRole("dialog", { name: "上传日志" });
     expect(dialog).toHaveAttribute("aria-modal", "true");
-    expect(screen.getByLabelText("选择日志文件")).toHaveFocus();
+    // The shared modal contract moves initial focus onto the dialog card.
+    expect(dialog).toHaveFocus();
   });
 
   it("选择支持格式后先显示 validating，再确认上传并新增 Processing 日志", () => {

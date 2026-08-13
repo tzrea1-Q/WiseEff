@@ -37,7 +37,7 @@ describe("AuditCenterPage", () => {
     expect(timeline).toBeTruthy();
     fireEvent.click(within(timeline!).getByRole("button", { name: /导入 8 条混合参数草稿/ }));
 
-    const dialog = screen.getByRole("dialog", { name: "审计事件详情" });
+    const dialog = screen.getByRole("dialog", { name: "操作证据与变更摘要" });
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).getByText("同一 Trace 链路")).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Trace 关联事件")).toBeInTheDocument();

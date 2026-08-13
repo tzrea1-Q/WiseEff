@@ -26,11 +26,12 @@
 | 部件 | 规范位置 | 说明 |
 | --- | --- | --- |
 | 令牌层 | `src/styles.css` 的单一 `:root` 块 | 唯一来源;shadcn `@theme inline` 键必须映射到同一套语义令牌,不许第二套色板 |
-| Button | `src/components/ui/button.tsx`（cva）与 `.button` 基类统一 | 目标:一套实现;见下文「按钮」 |
-| Dialog | `src/components/common/ModalDialog.tsx` + `ConfirmDialog` | portal、焦点陷阱、背景 `inert`、仅最顶层 Escape、遮罩关闭成对判定、统一 z-index 刻度 |
-| 表格 | `src/components/admin/DataTable.tsx` 模式 | 分页、`aria-sort`、键盘行导航、集成 `ColumnFilter` |
+| Button | `src/styles.css` 的 `.button` 基础层 + `src/components/ui/button.tsx`(cva),同一套令牌 | 单一几何:尺寸 sm 28 / md 32 / lg 36;变体 `primary`/`subtle`/`ghost`/`danger`;作用域只允许加布局,不允许改几何或配色 |
+| Dialog | `src/components/common/ModalDialog.tsx` + `ConfirmDialog` | portal、焦点陷阱、背景 `inert`、仅最顶层 Escape、遮罩关闭成对判定、统一 z-index 刻度、令牌化遮罩变暗与入场动效 |
+| Toast | `src/components/common/toast/ToastProvider.tsx`(`useToast()`) | 单一 portal 队列、success/info/danger 三语气、右下角、4 秒自动消失 + 悬停暂停、`--z-toast` |
+| 表格 | `src/components/admin/DataTable.tsx` | 标准列表外壳:分页、`aria-sort`、键盘行导航、筛选空态、集成 `ColumnFilter` |
 | 列筛选 | `src/components/ColumnFilter.tsx` | 规格:[表格列多选筛选 UX](ux-table-column-filter.md) |
-| 加载/空/错误 | `src/features/parameter-home/components/SectionState.tsx` 模式 | 骨架 + 空态 + 可重试错误三件套;待提升为共享组件 |
+| 加载/空/错误 | `src/components/common/SectionState.tsx`(认证启动期另有 `AppShellSkeleton`) | 骨架 + 空态 + 可重试错误三件套;parameter-home 转为 re-export 同一组件 |
 | 局部令牌派生 | `src/features/parameter-home/parameter-home.css` | 用 `color-mix()` 从全局令牌派生局部语义色,不发明新字面量 |
 | 图标 | `lucide-react` | 不用 emoji,不用 `✓`/`↗` 等文本字符当图标 |
 
@@ -138,7 +139,7 @@
 
 ### z-index
 
-`:root` 中只声明一条阶梯;组件 CSS 或 TSX 里的裸数字一律禁止。阶梯向下扩展现有浮层刻度（`--z-xiaoze-fab: 1100`、`--z-modal-backdrop: 1150`、`--z-modal-backdrop-nested: 1160`、`--z-xiaoze-popup: 1200`）,补充应用层令牌（吸顶头、侧边栏、下拉/浮层）。「+1 逃生舱」（40 对 41、60 对 61）是缺陷。
+`:root` 中只声明一条阶梯;组件 CSS 或 TSX 里的裸数字一律禁止。阶梯向下扩展现有浮层刻度（`--z-xiaoze-fab: 1100`、`--z-modal-backdrop: 1150`、`--z-modal-backdrop-nested: 1160`、`--z-toast: 1180`、`--z-xiaoze-popup: 1200`）,补充应用层令牌（吸顶头、侧边栏、下拉/浮层）。「+1 逃生舱」（40 对 41、60 对 61）是缺陷。
 
 ## 交互状态
 
@@ -183,7 +184,7 @@ hover 与 focus-visible 必须保持视觉可区分（不得合并成同一条�
 
 ### 反馈
 
-- 一条 toast 管线:单一 portal、队列、三种语气（成功/信息/危险）、4 秒自动消失 + 可选操作,位置全产品统一（底部居中或右上,二选一）。
+- 一条 toast 管线（`src/components/common/toast` 的 `useToast()`）:单一 portal、队列、三种语气（成功/信息/危险）、4 秒自动消失（悬停暂停）+ 可选操作,全产品统一右下角堆叠。
 - 横幅只用于持续性上下文（降级模式、权限范围）,不用于操作结果。
 - 展示给用户的错误一律映射为产品语言;原始 `error.message`、HTTP 载荷、堆栈片段不得渲染。字段错误位于字段下方,以 `aria-describedby` 与 `aria-invalid` 关联。
 

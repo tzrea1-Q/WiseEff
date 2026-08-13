@@ -22,16 +22,7 @@ export function escapeExcelCell(value: string) {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-export function WorkbenchLayout({
-  title,
-  children
-}: {
-  title: string;
-  subtitle?: string;
-  header?: ReactNode;
-  actions?: ReactNode;
-  children: ReactNode;
-}) {
+export function WorkbenchLayout({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="workbench-page" aria-label={title}>
       <div className="workbench-grid">{children}</div>
@@ -39,30 +30,12 @@ export function WorkbenchLayout({
   );
 }
 
-export function DataTable<T>({ headers, rows, renderRow }: { headers: string[]; rows: T[]; renderRow: (row: T) => ReactNode }) {
-  return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            {headers.map((header) => (
-              <th key={header}>{header}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>{rows.map(renderRow)}</tbody>
-      </table>
-      {rows.length === 0 ? <EmptyState text="当前筛选条件下没有数据。" /> : null}
-    </div>
-  );
-}
-
 export function RiskBadge({ risk }: { risk: "High" | "Medium" | "Low" }) {
   return <span className={`risk-badge ${risk.toLowerCase()}`}>{riskLabels[risk]}</span>;
 }
 
-export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "tertiary" | "secondary" }) {
-  return <span className={`badge ${tone}`}>{children}</span>;
+export function Badge({ children, variant = "neutral" }: { children: ReactNode; variant?: "neutral" | "tertiary" | "secondary" }) {
+  return <span className={`badge ${variant}`}>{children}</span>;
 }
 
 export function SectionLabel({ icon, label }: { icon: ReactNode; label: string }) {
@@ -89,24 +62,6 @@ export function Timeline({ steps, activeIndex }: { steps: string[]; activeIndex:
 
 export function EmptyState({ text }: { text: string }) {
   return (
-    <div className="empty-state">
-      <Info size={20} />
-      {text}
-    </div>
-  );
-}
-
-export function PanelHeader({ title, meta }: { title: ReactNode; meta?: string }) {
-  return (
-    <div className="panel-header">
-      <strong>{title}</strong>
-      {meta ? <span>{meta}</span> : null}
-    </div>
-  );
-}
-
-export function EmptyStateCard({ text }: { text: string }) {
-  return (
     <Empty className="empty-state">
       <EmptyHeader>
         <EmptyMedia variant="icon">
@@ -116,5 +71,14 @@ export function EmptyStateCard({ text }: { text: string }) {
         <EmptyDescription>{text}</EmptyDescription>
       </EmptyHeader>
     </Empty>
+  );
+}
+
+export function PanelHeader({ title, meta }: { title: ReactNode; meta?: string }) {
+  return (
+    <div className="panel-header">
+      <strong>{title}</strong>
+      {meta ? <span>{meta}</span> : null}
+    </div>
   );
 }

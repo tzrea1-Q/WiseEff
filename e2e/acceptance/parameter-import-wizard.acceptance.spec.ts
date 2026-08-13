@@ -173,7 +173,8 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
     const openImport = page.getByRole("button", { name: "打开批量参数导入" });
     await expect(openImport).toBeVisible({ timeout: 30_000 });
     await openImport.click();
-    const wizard = page.getByRole("dialog", { name: "批量参数导入向导" });
+    // The wizard dialog is named by its eyebrow title "批量参数导入" (stable across steps).
+    const wizard = page.getByRole("dialog", { name: "批量参数导入" });
     await expect(wizard).toBeVisible();
 
     await expect(wizard.getByRole("region", { name: "选择来源与目标项目" })).toBeVisible();

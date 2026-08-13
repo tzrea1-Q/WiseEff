@@ -5,9 +5,9 @@ import { PageInsightBar } from "./PageInsightBar";
 
 describe("PageInsightBar", () => {
   const defaultProps = {
-    severity: "info" as const,
+    variant: "info" as const,
     headline: "检测到 1 份日志解析失败",
-    actions: [{ label: "定位失败记录", onClick: vi.fn(), tone: "primary" as const }]
+    actions: [{ label: "定位失败记录", onClick: vi.fn(), variant: "primary" as const }]
   };
 
   it("renders headline and actions", () => {
@@ -18,13 +18,13 @@ describe("PageInsightBar", () => {
   });
 
   it("renders with role=status for info severity", () => {
-    render(<PageInsightBar {...defaultProps} severity="info" />);
+    render(<PageInsightBar {...defaultProps} variant="info" />);
 
     expect(screen.getByRole("status")).toBeInTheDocument();
   });
 
   it("renders with role=alert for error severity", () => {
-    render(<PageInsightBar {...defaultProps} severity="error" />);
+    render(<PageInsightBar {...defaultProps} variant="error" />);
 
     expect(screen.getByRole("alert")).toBeInTheDocument();
   });
@@ -60,10 +60,10 @@ describe("PageInsightBar", () => {
   });
 
   it("applies different styling per severity", () => {
-    const { container, rerender } = render(<PageInsightBar {...defaultProps} severity="info" />);
+    const { container, rerender } = render(<PageInsightBar {...defaultProps} variant="info" />);
     const infoClass = (container.firstChild as HTMLElement).className;
 
-    rerender(<PageInsightBar {...defaultProps} severity="error" />);
+    rerender(<PageInsightBar {...defaultProps} variant="error" />);
 
     expect((container.firstChild as HTMLElement).className).not.toEqual(infoClass);
   });

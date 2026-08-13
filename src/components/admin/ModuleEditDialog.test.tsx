@@ -25,7 +25,7 @@ describe("ModuleEditDialog", () => {
       />
     );
 
-    const dialog = screen.getByRole("dialog", { name: "修改模块 SC8562" });
+    const dialog = screen.getByRole("dialog", { name: "SC8562" });
     const nature = within(dialog).getByLabelText("驱动性质");
     const cardinality = within(dialog).getByLabelText("实例基数");
     expect(nature.tagName).toBe("SELECT");
@@ -64,7 +64,7 @@ describe("ModuleEditDialog", () => {
       />
     );
 
-    const dialog = screen.getByRole("dialog", { name: "修改模块 SC8562" });
+    const dialog = screen.getByRole("dialog", { name: "SC8562" });
     expect(within(dialog).getByLabelText("驱动性质")).toHaveValue("物理设备");
     expect(within(dialog).getByLabelText("实例基数")).toHaveValue("单例/项目");
     expect(within(dialog).getByLabelText("驱动性质").tagName).toBe("INPUT");
@@ -105,7 +105,7 @@ describe("ModuleEditDialog", () => {
       />
     );
 
-    const dialog = screen.getByRole("dialog", { name: "修改模块 SC8562" });
+    const dialog = screen.getByRole("dialog", { name: "SC8562" });
     expect(within(dialog).getByText(/组织级解析覆盖 · vendor,sc8562\*/)).toBeInTheDocument();
     expect(within(dialog).getByText("解析未覆盖")).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "配置组织级解析" }));
@@ -137,7 +137,7 @@ describe("ModuleEditDialog", () => {
       />
     );
 
-    const dialog = screen.getByRole("dialog", { name: "修改模块 SC8562" });
+    const dialog = screen.getByRole("dialog", { name: "SC8562" });
     expect(within(dialog).getByText("compatible:vendor,sc8562")).toBeInTheDocument();
     expect(within(dialog).getByText(/平台级解析覆盖 · vendor,sc8562\*/)).toBeInTheDocument();
     expect(within(dialog).getByText("解析未覆盖")).toBeInTheDocument();
@@ -156,7 +156,7 @@ describe("ModuleEditDialog", () => {
       />
     );
 
-    const dialog = screen.getByRole("dialog", { name: "修改模块 Power" });
+    const dialog = screen.getByRole("dialog", { name: "Power" });
     fireEvent.change(within(dialog).getByLabelText("模块展示描述"), {
       target: { value: "新描述" }
     });
@@ -227,7 +227,7 @@ describe("ModuleEditDialog", () => {
       />
     );
 
-    const dialog = screen.getByRole("dialog", { name: "修改模块 SC8562" });
+    const dialog = screen.getByRole("dialog", { name: "SC8562" });
     expect(within(dialog).getByText(/自动发现的驱动组跟随此默认分类/)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "从注册回放放置" }));
     expect(onReplayPlacement).toHaveBeenCalled();
@@ -276,12 +276,12 @@ describe("ModuleEditDialog", () => {
       />
     );
 
-    const editor = screen.getByRole("dialog", { name: "修改模块 SC8562" });
+    const editor = screen.getByRole("dialog", { name: "SC8562" });
     expect(within(editor).getByText("已提升至平台层")).toBeInTheDocument();
     expect(within(editor).getByText(/后继来源：平台层解析 platform-overlay-1/)).toBeInTheDocument();
     fireEvent.click(within(editor).getByRole("button", { name: "停用解析 SC8562 组织解析" }));
 
-    const impactDialog = await screen.findByRole("dialog", { name: "停用解析影响预览" });
+    const impactDialog = await screen.findByRole("dialog", { name: "SC8562 组织解析" });
     expect(within(impactDialog).getByText("解析覆盖将丢失")).toBeInTheDocument();
     expect(within(impactDialog).getByText("定义 2 项")).toBeInTheDocument();
     expect(within(impactDialog).getByText("项目 3 个")).toBeInTheDocument();

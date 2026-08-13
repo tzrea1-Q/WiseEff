@@ -3,6 +3,7 @@ import { toggleFilterValue, uniqueFilterValues } from "@/components/tableFilterU
 import { canPerform } from "@/app/permissions";
 import { type PageProps } from "@/app/routes";
 import { toLegacyInitializationReview } from "@/application/parameters/initializationUiMappers";
+import { ModalDialog } from "@/components/common/ModalDialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,7 +26,6 @@ import { migrateLegacyRoleId } from "@/domain/users/types";
 import {
   StatusBadge,
   VerticalTimeline,
-  WorkbenchLayout,
   formatWorkflowDisplayText,
   getParameterInitializationReviewStatusLabel,
   getUserName,
@@ -39,7 +39,7 @@ import {
   shouldShowSubmissionRoundSummary
 } from "@/features/parameter-review/submissionHistoryDiff";
 import { shouldSummarizeReviewChange } from "@/parameterValueKind";
-import { EmptyStateCard, PanelHeader, SectionLabel, getContextQuery } from "@/workbenchUi";
+import { EmptyState, PanelHeader, SectionLabel, WorkbenchLayout, getContextQuery } from "@/workbenchUi";
 import { ArrowRight, CheckCircle2, CircleOff, FileText, History, Link2, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
@@ -450,10 +450,7 @@ export function ParameterReviewPage({
     : [];
 
   return (
-    <WorkbenchLayout
-      title={reviewPageTitle}
-      hideHeader
-    >
+    <WorkbenchLayout title={reviewPageTitle}>
       <section className="review-queue">
         <div className="review-queue-header">
           <PanelHeader
@@ -626,7 +623,7 @@ export function ParameterReviewPage({
               })}
             </TableBody>
           </Table>
-          {reviewRows.length === 0 ? <EmptyStateCard text="当前筛选条件下没有数据。" /> : null}
+          {reviewRows.length === 0 ? <EmptyState text="当前筛选条件下没有数据。" /> : null}
         </div>
       </section>
       <aside className="review-detail" aria-label="审阅详情">
@@ -819,7 +816,7 @@ export function ParameterReviewPage({
             ) : null}
           </>
         ) : (
-          <EmptyStateCard text={reviewMode === "history" ? "当前没有历史审阅。" : "当前没有待审阅请求。"} />
+          <EmptyState text={reviewMode === "history" ? "当前没有历史审阅。" : "当前没有待审阅请求。"} />
         )}
       </aside>
       {rejectOpen && (selected || selectedInitialization) ? (
@@ -829,32 +826,36 @@ export function ParameterReviewPage({
         />
       ) : null}
       {detailOpen && selectedDetailRound ? (
-        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="submission-detail-title">
-          <div
-            className={[
-              "submission-dialog",
-              selectedDetailRound.items.some(isComplexSubmissionHistoryItem) ? "submission-dialog--wide" : "",
-              "submission-detail-dialog"
-            ]
-              .filter(Boolean)
-              .join(" ")}
-          >
-            <div className="submission-dialog-head">
-              <div>
-                <span className="eyebrow">{selectedDetailRound.projectName}</span>
-                <h2 id="submission-detail-title">提交详情</h2>
-                <p>本轮提交包含 {selectedDetailRound.items.length} 个参数修改，由 {selectedDetailRound.submitter} 提交。</p>
-                {shouldShowSubmissionRoundSummary(selectedDetailRound) ? <p>{selectedDetailRound.summary}</p> : null}
+        <ModalDialog
+          open
+          onDismiss={() => setDetailOpen(false)}
+          className={[
+            "submission-dialog",
+            selectedDetailRound.items.some(isComplexSubmissionHistoryItem) ? "submission-dialog--wide" : "",
+            "submission-detail-dialog"
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          {({ titleId }) => (
+            <>
+              <div className="submission-dialog-head">
+                <div>
+                  <span className="eyebrow">{selectedDetailRound.projectName}</span>
+                  <h2 id={titleId}>提交详情</h2>
+                  <p>本轮提交包含 {selectedDetailRound.items.length} 个参数修改，由 {selectedDetailRound.submitter} 提交。</p>
+                  {shouldShowSubmissionRoundSummary(selectedDetailRound) ? <p>{selectedDetailRound.summary}</p> : null}
+                </div>
               </div>
-            </div>
-            <div className="submission-diff-list">
-              {selectedDetailRound.items.map((item) => <SubmissionHistoryDiffCard item={item} key={item.requestId} />)}
-            </div>
-            <div className="dialog-actions">
-              <button className="button subtle" type="button" onClick={() => setDetailOpen(false)}>关闭</button>
-            </div>
-          </div>
-        </div>
+              <div className="submission-diff-list">
+                {selectedDetailRound.items.map((item) => <SubmissionHistoryDiffCard item={item} key={item.requestId} />)}
+              </div>
+              <div className="dialog-actions">
+                <button className="button subtle" type="button" onClick={() => setDetailOpen(false)}>关闭</button>
+              </div>
+            </>
+          )}
+        </ModalDialog>
       ) : null}
     </WorkbenchLayout>
   );

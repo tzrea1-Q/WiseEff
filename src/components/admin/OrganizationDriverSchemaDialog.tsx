@@ -1,6 +1,7 @@
 import { CircleX, Plus, Trash2 } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 
+import { ModalDialog } from "@/components/common/ModalDialog";
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import type {
   CreateOrganizationDriverSchemaInput,
@@ -63,37 +64,26 @@ export function OrganizationDriverSchemaDialog({
     setNotes("");
   }, [compatible]);
 
-  useEffect(() => {
-    if (suspended) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCancel();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onCancel, suspended]);
-
   const canSubmit = useMemo(() => {
     if (busy || displayName.trim().length === 0) return false;
     return linkedSpecs.length > 0;
   }, [busy, displayName, linkedSpecs.length]);
 
   return (
-    <div
-      className={`modal-backdrop param-admin-module-edit-backdrop${suspended ? " is-suspended" : ""}`}
-      role="dialog"
-      aria-modal="true"
-      aria-hidden={suspended || undefined}
-      aria-label={PARAMETER_ADMIN_UI.organizationDriverSchemaDialogTitle}
+    <ModalDialog
+      open
+      onDismiss={suspended ? undefined : onCancel}
+      className={`submission-dialog param-admin-module-edit-dialog organization-driver-schema-dialog${
+        suspended ? " is-suspended" : ""
+      }`}
+      backdropClassName={`param-admin-modal-backdrop${suspended ? " is-suspended" : ""}`}
     >
-      <div
-        className={`submission-dialog param-admin-module-edit-dialog organization-driver-schema-dialog${
-          suspended ? " is-suspended" : ""
-        }`}
-      >
+      {({ titleId }) => (
+        <>
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
             <span className="eyebrow">{PARAMETER_ADMIN_UI.organizationDriverSchemaDialogTitle}</span>
-            <h2>{PARAMETER_ADMIN_UI.organizationDriverSchemaDialogTitle}</h2>
+            <h2 id={titleId}>{PARAMETER_ADMIN_UI.organizationDriverSchemaDialogTitle}</h2>
             <p>
               为该 compatible 配置组织级解析定义：从定义库选用或新建参数定义，保存后立即激活并刷新解析覆盖状态。
             </p>
@@ -220,7 +210,8 @@ export function OrganizationDriverSchemaDialog({
             {PARAMETER_ADMIN_UI.organizationDriverSchemaSaveActivate}
           </button>
         </div>
-      </div>
-    </div>
+        </>
+      )}
+    </ModalDialog>
   );
 }

@@ -22,6 +22,8 @@ import type {
   InstanceCardinality,
 } from "@/application/ports/ParameterModuleRegistryRepository";
 import { canSubmitModuleDraft, ModuleDefinitionForm } from "./ModuleDefinitionForm";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { ModalDialog } from "@/components/common/ModalDialog";
 import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
 import { toBusinessFlatNodes } from "@/components/parameter-topology/moduleAttributionTreeUtils";
 
@@ -137,6 +139,7 @@ export function ModuleEditDialog({
   const [deprecatingSchema, setDeprecatingSchema] = useState<OrganizationDriverSchema | null>(
     null
   );
+  const [removingMapping, setRemovingMapping] = useState<ModuleEditCompatibleMapping | null>(null);
   const [deprecationImpact, setDeprecationImpact] =
     useState<OrganizationDriverSchemaDeprecationImpact | null>(null);
   const [impactError, setImpactError] = useState<string | null>(null);
@@ -169,17 +172,6 @@ export function ModuleEditDialog({
     setNatureDraft(driverNature);
     setCardinalityDraft(instanceCardinality);
   }, [driverNature, instanceCardinality]);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onCancel();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onCancel]);
 
   const canSubmit = canSubmitModuleDraft(draft, existingNames, module.name);
   const importanceVisible = showImportance && (!showKind || kind === "business");
@@ -228,12 +220,18 @@ export function ModuleEditDialog({
 
   return (
     <>
-      <div className="modal-backdrop param-admin-module-edit-backdrop" role="dialog" aria-modal="true" aria-label={`修改模块 ${module.name}`}>
-      <div className="submission-dialog param-admin-module-edit-dialog">
+      <ModalDialog
+        open
+        onDismiss={onCancel}
+        className="submission-dialog param-admin-module-edit-dialog"
+        backdropClassName="param-admin-modal-backdrop"
+      >
+        {({ titleId }) => (
+          <>
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
             <span className="eyebrow">模块修改</span>
-            <h2>{module.name}</h2>
+            <h2 id={titleId}>{module.name}</h2>
             <p>
               {showCompatibleRules
                 ? "更新驱动组名称、描述与适用范围，并维护它认领的 compatible 匹配规则。"
@@ -454,17 +452,7 @@ export function ModuleEditDialog({
                             className="button ghost"
                             disabled={busy}
                             aria-label={`移除规则 ${mapping.matchKind}:${mapping.matchValue}`}
-                            onClick={() => {
-                              const label = `${mapping.matchKind}:${mapping.matchValue}`;
-                              if (
-                                !window.confirm(
-                                  `确定移除规则 ${label}？\n命中该 compatible 的参数将在下次归属解析时重新落点。`
-                                )
-                              ) {
-                                return;
-                              }
-                              void onRemoveCompatibleMapping(mapping.id);
-                            }}
+                            onClick={() => setRemovingMapping(mapping)}
                           >
                             移除
                           </button>
@@ -601,20 +589,44 @@ export function ModuleEditDialog({
               </button>
             )}
           </div>
-      </div>
-      </div>
+          </>
+        )}
+      </ModalDialog>
+      <ConfirmDialog
+        open={removingMapping !== null}
+        title="移除 compatible 规则"
+        description={
+          removingMapping ? (
+            <>
+              <p>确定移除规则 {`${removingMapping.matchKind}:${removingMapping.matchValue}`}？</p>
+              <p>命中该 compatible 的参数将在下次归属解析时重新落点。</p>
+            </>
+          ) : null
+        }
+        confirmLabel="移除"
+        tone="danger"
+        pending={busy}
+        onConfirm={() => {
+          if (removingMapping) {
+            void onRemoveCompatibleMapping?.(removingMapping.id);
+          }
+          setRemovingMapping(null);
+        }}
+        onCancel={() => setRemovingMapping(null)}
+      />
       {deprecatingSchema && deprecationImpact ? (
-        <div
-          className="modal-backdrop"
-          role="dialog"
-          aria-modal="true"
-          aria-label="停用解析影响预览"
+        <ModalDialog
+          open
+          onDismiss={closeDeprecationPreview}
+          className="submission-dialog param-admin-editor-dialog"
+          backdropClassName="param-admin-modal-backdrop"
         >
-          <div className="submission-dialog param-admin-editor-dialog">
+          {({ titleId }) => (
+            <>
             <div className="submission-dialog-head">
               <div>
                 <span className="eyebrow">组织级解析 · 停用</span>
-                <h2>{deprecatingSchema.displayName}</h2>
+                <h2 id={titleId}>{deprecatingSchema.displayName}</h2>
               </div>
             </div>
             <div className="form-stack">
@@ -660,8 +672,9 @@ export function ModuleEditDialog({
                 确认{PARAMETER_ADMIN_UI.organizationDriverSchemaDeprecate}
               </button>
             </div>
-          </div>
-        </div>
+            </>
+          )}
+        </ModalDialog>
       ) : null}
     </>
   );

@@ -23,7 +23,7 @@ import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry
 import { useParameterAdmin } from "./ParameterAdminProvider";
 import { useParameterAdminUrl } from "./useParameterAdminUrl";
 import { useRefreshParameterAdminRecentAudits } from "./useRefreshParameterAdminRecentAudits";
-import { GovernanceToast, useGovernanceToast } from "./useGovernanceToast";
+import { useToast } from "@/components/common/toast/ToastProvider";
 
 function toSpecDetailView(
   detail: ParameterSpecDetail,
@@ -149,7 +149,8 @@ export function OrganizationSpecGovernancePanel({
   const [createError, setCreateError] = useState<string | null>(null);
   const [createModules, setCreateModules] = useState<ParameterModule[]>([]);
   const [createSubjectsLoading, setCreateSubjectsLoading] = useState(false);
-  const { message: toastMessage, showToast } = useGovernanceToast();
+  const { toast } = useToast();
+  const showToast = useCallback((message: string) => toast({ tone: "success", message }), [toast]);
 
   const reloadSpecs = useCallback(async () => {
     setSpecLoading(true);
@@ -597,8 +598,6 @@ export function OrganizationSpecGovernancePanel({
 
   return (
     <div className="param-admin-main">
-      <GovernanceToast message={toastMessage} />
-
       {reviewActionError ? (
         <p className="form-error" role="alert">
           {reviewActionError}

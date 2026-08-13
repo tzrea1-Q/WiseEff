@@ -2,10 +2,12 @@ import { ColumnFilter } from "@/components/ColumnFilter";
 import { useTopBarActions } from "@/components/layout";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "@/components/tableFilterUtils";
 import { type PageProps } from "@/app/routes";
+import { ModalDialog } from "@/components/common/ModalDialog";
+import { useToast } from "@/components/common/toast/ToastProvider";
 import type { LogDomain } from "@/domain/logs/types";
 import { SEVERITY_LABELS, STAGE_LABELS, type LogEvidence, type LogRecord, type LogStageId } from "@/domain/prototype/types";
 import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
-import { EmptyStateCard, PanelHeader, SectionLabel } from "@/workbenchUi";
+import { EmptyState, PanelHeader, SectionLabel } from "@/workbenchUi";
 import {
   AlertTriangle,
   BookPlus,
@@ -83,6 +85,7 @@ function createEmptyLogRecord(): LogRecord {
 }
 
 export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, knowledgeCapability }: PageProps) {
+  const { toast } = useToast();
   const knowledgeRepository = runtime?.knowledgeRepository;
   const [selectedLogId, setSelectedLogId] = useState(state.logs[0]?.id ?? "");
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
@@ -90,7 +93,6 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   const [distilPending, setDistilPending] = useState(false);
   const [pendingUpload, setPendingUpload] = useState<{ fileName: string; previousLogIds: Set<string> } | null>(null);
   const [feedbackLogId, setFeedbackLogId] = useState<string | null>(null);
-  const [feedbackToast, setFeedbackToast] = useState("");
   const [auxTab, setAuxTab] = useState<LogsAuxTab>("history");
   const [hoveredEvidenceId, setHoveredEvidenceId] = useState<string | null>(null);
   const [focusedEvidenceId, setFocusedEvidenceId] = useState<string | null>(null);
@@ -135,6 +137,17 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
     }
     prevLogCount.current = state.logs.length;
   }, [state.logs]);
+
+  // Mock-mode workflow feedback: surface the latest prototype notification
+  // through the shared toast pipeline (API mode has real notification delivery).
+  const lastToastedNotificationRef = useRef<string | null>(null);
+  useEffect(() => {
+    const latest = state.notifications[0];
+    if (wiseEffRuntimeMode !== "api" && latest && latest !== lastToastedNotificationRef.current) {
+      lastToastedNotificationRef.current = latest;
+      toast({ tone: "info", message: latest });
+    }
+  }, [state.notifications, toast]);
 
   useEffect(() => {
     setSearchQuery("");
@@ -423,20 +436,10 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
               type: "ADD_NOTIFICATION",
               message: `已记录 ${selectedFeedbackLog.reportId} 的分析反馈：${confidence}${issue ? `，${issue}` : ""}`
             });
-            setFeedbackToast("反馈已记录，感谢补充分析质量线索。");
+            toast({ tone: "success", message: "反馈已记录，感谢补充分析质量线索。" });
             setFeedbackLogId(null);
           }}
         />
-      ) : null}
-      {feedbackToast ? (
-        <div className="logs-feedback-toast" role="status" aria-live="polite">
-          {feedbackToast}
-        </div>
-      ) : null}
-      {wiseEffRuntimeMode !== "api" && state.notifications[0] ? (
-        <div className="logs-feedback-toast" role="status" aria-live="polite">
-          {state.notifications[0]}
-        </div>
       ) : null}
     </div>
   );
@@ -470,22 +473,6 @@ function UploadLogDialog({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const timerRef = useRef<number | null>(null);
   const resolvedDomainId = selectedDomainId === UNCATEGORIZED_LOG_DOMAIN_VALUE ? undefined : selectedDomainId;
-
-  useEffect(() => {
-    fileInputRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onClose();
-      }
-    };
-
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [onClose]);
 
   useEffect(() => {
     return () => {
@@ -567,11 +554,12 @@ function UploadLogDialog({
   };
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="upload-dialog-title">
-      <div className="confirm-dialog upload-dialog">
+    <ModalDialog open onDismiss={uploading ? undefined : onClose} className="confirm-dialog upload-dialog">
+      {({ titleId }) => (
+        <>
         <div className="upload-dialog__header">
           <div>
-            <h2 id="upload-dialog-title"><strong>上传日志</strong></h2>
+            <h2 id={titleId}><strong>上传日志</strong></h2>
             <p>选择 .log、.txt 或 .json 文本日志，雷泽会模拟创建分析任务。</p>
           </div>
           <button className="icon-button" type="button" aria-label="关闭上传日志" onClick={onClose}>
@@ -644,8 +632,9 @@ function UploadLogDialog({
             </button>
           ) : null}
         </div>
-      </div>
-    </div>
+        </>
+      )}
+    </ModalDialog>
   );
 }
 
@@ -839,11 +828,12 @@ function LogAnalysisFeedbackDialog({
   };
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="log-feedback-title">
-      <form className="confirm-dialog log-feedback-dialog" onSubmit={submitFeedback}>
+    <ModalDialog open onDismiss={onClose} className="confirm-dialog log-feedback-dialog">
+      {({ titleId }) => (
+      <form className="modal-form-contents" onSubmit={submitFeedback}>
         <div className="upload-dialog__header">
           <div>
-            <h2 id="log-feedback-title">
+            <h2 id={titleId}>
               <strong>反馈分析质量</strong>
             </h2>
             <p>{log.fileName}</p>
@@ -879,7 +869,8 @@ function LogAnalysisFeedbackDialog({
           </button>
         </div>
       </form>
-    </div>
+      )}
+    </ModalDialog>
   );
 }
 
@@ -1278,7 +1269,7 @@ function LogsAuxPanel({
             </div>
           </dl>
         ) : null}
-        {auxTab === "related" ? <EmptyStateCard text="没有找到关联日志。" /> : null}
+        {auxTab === "related" ? <EmptyState text="没有找到关联日志。" /> : null}
       </div>
     </aside>
   );

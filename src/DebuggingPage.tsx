@@ -388,7 +388,7 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
                       </td>
                       <td data-label="范围">{p.range} {p.unit}</td>
                       <td data-label="风险"><RiskBadge risk={p.risk} /></td>
-                      <td data-label="状态"><Badge tone={p.status === "待下发" ? "secondary" : "neutral"}>{p.status}</Badge></td>
+                      <td data-label="状态"><Badge variant={p.status === "待下发" ? "secondary" : "neutral"}>{p.status}</Badge></td>
                       <td className="parameter-row-actions" data-label="操作">
                         <button
                           className="icon-button parameter-row-edit"
@@ -498,7 +498,7 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
                 </div>
                 <div className="debug-detail-row">
                   <span>状态</span>
-                  <Badge tone={editingParameter.status === "待下发" ? "secondary" : "neutral"}>{editingParameter.status}</Badge>
+                  <Badge variant={editingParameter.status === "待下发" ? "secondary" : "neutral"}>{editingParameter.status}</Badge>
                 </div>
               </div>
               <label className="field-label" htmlFor={`debug-target-${editingParameter.id}`}>目标设定值</label>

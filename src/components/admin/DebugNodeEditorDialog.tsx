@@ -1,6 +1,7 @@
 import { CircleX } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { ModalDialog } from "@/components/common/ModalDialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
@@ -70,41 +71,27 @@ export function DebugNodeEditorDialog({
   const [draft, setDraft] = useState<DebugNodeDraft>(() => emptyDraft(moduleNodes));
 
   useEffect(() => {
-    if (!open) {
-      return undefined;
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, open]);
-
-  useEffect(() => {
     if (open) {
       setDraft(mode === "edit" && node ? draftFromNode(node) : emptyDraft(moduleNodes));
     }
   }, [mode, moduleNodes, node, open]);
-
-  if (!open) {
-    return null;
-  }
 
   const fieldsDisabled = !canEdit || loading;
   const selectedModuleId = draft.moduleId ?? "";
   const canSubmit = draft.name.trim().length > 0 && selectedModuleId.length > 0 && !fieldsDisabled;
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label={mode === "create" ? "创建调试节点" : "编辑调试节点"}>
-      <div className="submission-dialog param-admin-editor-dialog debug-admin-definition-dialog">
+    <ModalDialog
+      open={open}
+      onDismiss={onClose}
+      className="submission-dialog param-admin-editor-dialog debug-admin-definition-dialog"
+    >
+      {({ titleId }) => (
+        <>
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
             <span className="eyebrow">节点注册表</span>
-            <h2>{mode === "create" ? "创建节点" : "编辑节点"}</h2>
+            <h2 id={titleId}>{mode === "create" ? "创建节点" : "编辑节点"}</h2>
             <p>维护节点名称、简述与详细描述；协议路径请在「路径绑定」中配置。</p>
           </div>
           <button type="button" className="audit-dialog-close-icon" onClick={onClose} disabled={loading} aria-label="关闭">
@@ -203,7 +190,8 @@ export function DebugNodeEditorDialog({
             {loading ? "保存中…" : "保存"}
           </button>
         </div>
-      </div>
-    </div>
+        </>
+      )}
+    </ModalDialog>
   );
 }

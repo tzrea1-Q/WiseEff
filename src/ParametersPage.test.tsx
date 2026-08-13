@@ -139,7 +139,7 @@ describe("ParametersPage read-only access", () => {
     const editButton = container.querySelector<HTMLButtonElement>(".edit-row-button");
     expect(editButton).not.toBeNull();
     fireEvent.click(editButton!);
-    expect(container.querySelector(".parameter-draft-dialog")).toBeInTheDocument();
+    expect(document.body.querySelector(".parameter-draft-dialog")).toBeInTheDocument();
 
     rerender(
       <TopBarActionsHarness>
@@ -536,7 +536,7 @@ describe("ParametersPage parameter detail modal", () => {
     fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
     fireEvent.click(screen.getByRole("button", { name: "加入修改草稿" }));
 
-    expect(container.querySelector(".parameter-draft-dialog")).toBeInTheDocument();
+    expect(document.body.querySelector(".parameter-draft-dialog")).toBeInTheDocument();
     expect(screen.getByDisplayValue("3200")).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "fast_charge_current_limit_ma" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
@@ -579,7 +579,7 @@ describe("ParametersPage parameter detail modal", () => {
     fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
 
     expect(screen.getByRole("button", { name: "已在草稿中" })).toBeDisabled();
-    expect(container.querySelectorAll(".draft-card")).toHaveLength(1);
+    expect(document.body.querySelectorAll(".draft-card")).toHaveLength(1);
     expect(screen.getByDisplayValue("3200")).toBeInTheDocument();
   });
 
@@ -717,7 +717,7 @@ describe("ParametersPage draft edge cases", () => {
     fireEvent.click(screen.getByRole("button", { name: "编辑 fast_charge_current_limit_ma" }));
 
     const dialog = screen.getByRole("dialog", { name: "修改草稿" });
-    expect(dialog.querySelector(".parameter-draft-dialog")).toBeInTheDocument();
+    expect(dialog).toHaveClass("parameter-draft-dialog");
     expect(dialog.querySelector(".workbench-sheet")).not.toBeInTheDocument();
   });
 
@@ -814,15 +814,15 @@ describe("ParametersPage draft edge cases", () => {
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
 
     const searchTable = screen.getByRole("region", { name: "检索参数表" });
-    const footer = container.querySelector<HTMLElement>(".parameter-draft-dialog .parameter-detail-dialog__footer");
+    const footer = document.body.querySelector<HTMLElement>(".parameter-draft-dialog .parameter-detail-dialog__footer");
     expect(footer).not.toBeNull();
     expect(within(searchTable).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "本轮已修改参数表" })).not.toBeInTheDocument();
     expect(within(footer!).queryByRole("button", { name: /暂存本轮/ })).not.toBeInTheDocument();
     expect(within(footer!).queryByRole("button", { name: /提交本轮/ })).not.toBeInTheDocument();
-    expect(container.querySelector(".parameter-draft-dialog")).toBeInTheDocument();
-    expect(container.querySelector(".parameter-draft-dialog__body")).toBeInTheDocument();
-    expect(container.querySelector(".parameter-draft-dialog__body")).toHaveClass("parameter-draft-dialog__body");
+    expect(document.body.querySelector(".parameter-draft-dialog")).toBeInTheDocument();
+    expect(document.body.querySelector(".parameter-draft-dialog__body")).toBeInTheDocument();
+    expect(document.body.querySelector(".parameter-draft-dialog__body")).toHaveClass("parameter-draft-dialog__body");
 
     const submitParameter = within(footer!).getByRole("button", { name: "提交参数" });
     fillVisibleDraftReasons("保留在本轮已修改");
@@ -830,7 +830,7 @@ describe("ParametersPage draft edge cases", () => {
     fireEvent.click(submitParameter);
 
     expect(container.querySelector(".workbench-sheet")).not.toBeInTheDocument();
-    expect(screen.queryByRole("dialog", { name: /提交本轮参数/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /参数提交预览/ })).not.toBeInTheDocument();
     const modifiedSection = screen.getByRole("region", { name: "本轮已修改参数区" });
     const modifiedTable = within(modifiedSection).getByRole("region", { name: "本轮已修改参数表" });
     expect(within(modifiedTable).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
@@ -845,8 +845,8 @@ describe("ParametersPage draft edge cases", () => {
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
     fireEvent.click(screen.getAllByText("charge_voltage_limit_mv")[0]);
 
-    expect(container.querySelector(".parameter-draft-dialog")).toBeInTheDocument();
-    expect(container.querySelector(".focused-draft-editor")).not.toBeInTheDocument();
+    expect(document.body.querySelector(".parameter-draft-dialog")).toBeInTheDocument();
+    expect(document.body.querySelector(".focused-draft-editor")).not.toBeInTheDocument();
   });
 
   it("keeps preview closed when any selected draft has a blank target value", () => {
@@ -854,12 +854,12 @@ describe("ParametersPage draft edge cases", () => {
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
     fireEvent.click(screen.getByRole("button", { name: /编辑 charge_voltage_limit_mv/ }));
 
-    const targetInput = container.querySelector<HTMLTextAreaElement>(".draft-card textarea[aria-label*='目标值']");
+    const targetInput = document.body.querySelector<HTMLTextAreaElement>(".draft-card textarea[aria-label*='目标值']");
     expect(targetInput).not.toBeNull();
     fireEvent.change(targetInput!, { target: { value: "   " } });
 
     expect(container.querySelector(".parameters-bottom-actions")).not.toBeInTheDocument();
-    expect(container.querySelector(".submission-dialog")).not.toBeInTheDocument();
+    expect(document.body.querySelector(".submission-dialog")).not.toBeInTheDocument();
   });
 
   it("keeps drafts out of the modified table when the reason is blank", () => {
@@ -924,7 +924,7 @@ describe("ParametersPage draft edge cases", () => {
     const dispatch = vi.fn();
     const { container } = renderPage(dispatch);
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
-    const reasonInput = container.querySelector<HTMLTextAreaElement>(".draft-card textarea[aria-label*='修改原因']");
+    const reasonInput = document.body.querySelector<HTMLTextAreaElement>(".draft-card textarea[aria-label*='修改原因']");
     expect(reasonInput).not.toBeNull();
     fireEvent.change(reasonInput!, {
       target: { value: "submit cleanup reason" }
@@ -932,7 +932,7 @@ describe("ParametersPage draft edge cases", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
     fireEvent.click(screen.getByRole("button", { name: "提交本轮 (1 项)" }));
-    const confirmButton = container.querySelector<HTMLButtonElement>(".dialog-actions .button.primary");
+    const confirmButton = document.body.querySelector<HTMLButtonElement>(".dialog-actions .button.primary");
     expect(confirmButton).not.toBeNull();
     fireEvent.click(confirmButton!);
 
@@ -1163,11 +1163,11 @@ describe("ParametersPage · 提交契约", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
     fireEvent.click(screen.getByRole("button", { name: "提交本轮 (1 项)" }));
-    const dialog = screen.getByRole("dialog", { name: /提交本轮参数/ });
+    const dialog = screen.getByRole("dialog", { name: /参数提交预览/ });
     fireEvent.change(within(dialog).getByLabelText("硬件 MDE"), { target: { value: "u-wang-jie" } });
     fireEvent.change(within(dialog).getByLabelText("软件 MDE"), { target: { value: "u-sun-mei" } });
     fireEvent.change(within(dialog).getByLabelText("软件开发"), { target: { value: "u-sun-mei" } });
-    fireEvent.click(container.querySelector<HTMLButtonElement>(".dialog-actions .button.primary")!);
+    fireEvent.click(document.body.querySelector<HTMLButtonElement>(".dialog-actions .button.primary")!);
 
     await waitFor(() => expect(parameterActions.submitChanges).toHaveBeenCalledWith({
       projectId: initialState.activeProjectId,
@@ -1220,7 +1220,7 @@ describe("ParametersPage · 提交契约", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
     fireEvent.click(screen.getByRole("button", { name: "提交本轮 (1 项)" }));
-    const confirmButton = container.querySelector<HTMLButtonElement>(".dialog-actions .button.primary");
+    const confirmButton = document.body.querySelector<HTMLButtonElement>(".dialog-actions .button.primary");
     expect(confirmButton).not.toBeNull();
     fireEvent.click(confirmButton!);
 
@@ -1230,7 +1230,7 @@ describe("ParametersPage · 提交契约", () => {
     });
 
     deferred.resolve(undefined);
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: /提交本轮参数/ })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /参数提交预览/ })).not.toBeInTheDocument());
   });
 
   it("action rejection displays a notification and keeps drafts visible", async () => {
@@ -1246,10 +1246,10 @@ describe("ParametersPage · 提交契约", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
     fireEvent.click(screen.getByRole("button", { name: "提交本轮 (1 项)" }));
-    fireEvent.click(container.querySelector<HTMLButtonElement>(".dialog-actions .button.primary")!);
+    fireEvent.click(document.body.querySelector<HTMLButtonElement>(".dialog-actions .button.primary")!);
 
     await waitFor(() => expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: "api submit failed" }));
-    expect(screen.getByRole("dialog", { name: /提交本轮参数/ })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: /参数提交预览/ })).toBeInTheDocument();
     expect(screen.getByText("keep this draft")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "本轮已修改参数区" })).toBeInTheDocument();
   });
@@ -1267,11 +1267,11 @@ describe("ParametersPage · 提交契约", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
     fireEvent.click(screen.getByRole("button", { name: "提交本轮 (1 项)" }));
-    fireEvent.click(container.querySelector<HTMLButtonElement>(".dialog-actions .button.primary")!);
+    fireEvent.click(document.body.querySelector<HTMLButtonElement>(".dialog-actions .button.primary")!);
 
     await waitFor(() => expect(parameterActions.submitChanges).toHaveBeenCalledTimes(1));
     expect(dispatch).not.toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: "api submit failed" });
-    expect(screen.getByRole("dialog", { name: /提交本轮参数/ })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: /参数提交预览/ })).toBeInTheDocument();
   });
 
   it("builds preview and submit items from selected draft entries only", () => {
@@ -1334,7 +1334,7 @@ describe("ParametersPage · 提交契约", () => {
     fillVisibleDraftReasons("提交预览数量");
     fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
     fireEvent.click(screen.getAllByRole("button", { name: "提交本轮 (2 项)" })[0]);
-    const dialog = screen.getByRole("dialog", { name: /提交本轮参数/ });
+    const dialog = screen.getByRole("dialog", { name: /参数提交预览/ });
     expect(within(dialog).getAllByText(/→/).length).toBeGreaterThanOrEqual(2);
   });
 
@@ -1347,10 +1347,10 @@ describe("ParametersPage · 提交契约", () => {
     fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
     fireEvent.click(screen.getAllByRole("button", { name: "提交本轮 (1 项)" })[0]);
 
-    const dialog = screen.getByRole("dialog", { name: /提交本轮参数/ });
+    const dialog = screen.getByRole("dialog", { name: /参数提交预览/ });
     expect(dialog).toBeInTheDocument();
-    expect(within(dialog).queryByRole("heading", { name: "提交本轮参数" })).not.toBeInTheDocument();
-    expect(container.querySelector("#submission-preview-title")).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("heading", { name: "参数提交预览" })).not.toBeInTheDocument();
+    expect(document.body.querySelector("#submission-preview-title")).not.toBeInTheDocument();
   });
 
   it("用代码预览布局展示复杂 DTS 参数的提交 diff", () => {
@@ -1361,7 +1361,7 @@ describe("ParametersPage · 提交契约", () => {
     expect(editButton).not.toBeNull();
 
     fireEvent.click(editButton!);
-    const targetEditor = container.querySelector<HTMLTextAreaElement>(".parameter-draft-code-editor");
+    const targetEditor = document.body.querySelector<HTMLTextAreaElement>(".parameter-draft-code-editor");
     expect(targetEditor).not.toBeNull();
     fireEvent.change(targetEditor!, {
       target: {
@@ -1374,7 +1374,7 @@ describe("ParametersPage · 提交契约", () => {
     fireEvent.change(screen.getByLabelText("修改原因"), {
       target: { value: "验证复杂 DTS diff" }
     });
-    const submitDraftButton = container.querySelector<HTMLButtonElement>(
+    const submitDraftButton = document.body.querySelector<HTMLButtonElement>(
       ".parameter-draft-dialog .parameter-detail-dialog__footer .button.primary"
     );
     expect(submitDraftButton).not.toBeNull();
@@ -1384,7 +1384,7 @@ describe("ParametersPage · 提交契约", () => {
     expect(submitRoundButton).not.toBeNull();
     fireEvent.click(submitRoundButton!);
 
-    const dialog = container.querySelector<HTMLElement>(".submission-dialog");
+    const dialog = document.body.querySelector<HTMLElement>(".submission-dialog");
     expect(dialog).not.toBeNull();
     const complexCard = dialog!.querySelector<HTMLElement>(".submission-diff-card--complex");
     expect(complexCard).not.toBeNull();
@@ -1446,7 +1446,7 @@ describe("ParametersPage · 提交契约", () => {
     fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
     fireEvent.click(screen.getAllByRole("button", { name: "提交本轮 (1 项)" })[0]);
 
-    const dialog = screen.getByRole("dialog", { name: /提交本轮参数/ });
+    const dialog = screen.getByRole("dialog", { name: /参数提交预览/ });
     fireEvent.change(within(dialog).getByLabelText("硬件 MDE"), { target: { value: "u-wang-jie" } });
     fireEvent.change(within(dialog).getByLabelText("软件 MDE"), { target: { value: "u-sun-mei" } });
     fireEvent.change(within(dialog).getByLabelText("软件开发"), { target: { value: "u-sun-mei" } });
@@ -1471,7 +1471,7 @@ describe("ParametersPage · 提交契约", () => {
     fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
     fireEvent.click(screen.getAllByRole("button", { name: "提交本轮 (1 项)" })[0]);
 
-    const dialog = screen.getByRole("dialog", { name: /提交本轮参数/ });
+    const dialog = screen.getByRole("dialog", { name: /参数提交预览/ });
 
     expect(within(dialog).getByLabelText("硬件 MDE")).toHaveValue("u-wang-jie");
     expect(within(dialog).getByLabelText("软件 MDE")).toHaveValue("u-sun-mei");
@@ -1487,7 +1487,7 @@ describe("ParametersPage · 提交契约", () => {
     fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
     fireEvent.click(screen.getAllByRole("button", { name: "提交本轮 (1 项)" })[0]);
 
-    const dialog = screen.getByRole("dialog", { name: /提交本轮参数/ });
+    const dialog = screen.getByRole("dialog", { name: /参数提交预览/ });
     const hardwareOptions = within(within(dialog).getByLabelText("硬件 MDE")).getAllByRole("option");
     const softwareCommitterOptions = within(within(dialog).getByLabelText("软件 MDE")).getAllByRole("option");
     const softwareUserOptions = within(within(dialog).getByLabelText("软件开发")).getAllByRole("option");
@@ -1516,7 +1516,7 @@ describe("ParametersPage · 提交契约", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
     fireEvent.click(screen.getAllByRole("button", { name: "提交本轮 (2 项)" })[0]);
-    const dialog = screen.getByRole("dialog", { name: /提交本轮参数/ });
+    const dialog = screen.getByRole("dialog", { name: /参数提交预览/ });
 
     expect(within(dialog).getByText("第一行的专属原因")).toBeInTheDocument();
     expect(within(dialog).getAllByText("第一行的专属原因")).toHaveLength(1);
@@ -1555,7 +1555,7 @@ describe("ParametersPage · 布局与 Sheet", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /编辑 charge_voltage_limit_mv/ }));
 
-    const firstDraftCard = container.querySelector<HTMLElement>(".parameter-draft-card");
+    const firstDraftCard = document.body.querySelector<HTMLElement>(".parameter-draft-card");
     expect(firstDraftCard).toHaveTextContent("charge_voltage_limit_mv");
     expect(firstDraftCard).not.toHaveTextContent("fast_charge_current_limit_ma");
   });

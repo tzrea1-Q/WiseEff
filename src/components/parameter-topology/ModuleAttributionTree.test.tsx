@@ -102,23 +102,23 @@ describe("ModuleAttributionTree", () => {
     expect(screen.getByRole("menuitem", { name: /添加子模块到 SC8562/ })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("menuitem", { name: "移动模块 SC8562" }));
-    const moveDialog = screen.getByRole("dialog", { name: "移动模块 SC8562" });
+    const moveDialog = screen.getByRole("dialog", { name: "移动「SC8562」" });
     expect(moveDialog).toBeInTheDocument();
     expect(within(moveDialog).getByText(/移动「SC8562」/)).toBeInTheDocument();
     fireEvent.click(within(moveDialog).getByRole("button", { name: "取消" }));
-    expect(screen.queryByRole("dialog", { name: "移动模块 SC8562" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "移动「SC8562」" })).not.toBeInTheDocument();
 
     fireEvent.click(within(tree).getByRole("button", { name: "修改模块 SC8562" }));
-    const editDialog = screen.getByRole("dialog", { name: "修改模块 SC8562" });
+    const editDialog = screen.getByRole("dialog", { name: "SC8562" });
     expect(within(editDialog).getByText("compatible 匹配规则")).toBeInTheDocument();
     expect(within(editDialog).getByText("compatible:vendor,sc8562")).toBeInTheDocument();
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     fireEvent.click(
       within(editDialog).getByRole("button", { name: "移除规则 compatible:vendor,sc8562" })
     );
-    expect(confirmSpy).toHaveBeenCalled();
+    const removeConfirm = screen.getByRole("dialog", { name: "移除 compatible 规则" });
+    expect(within(removeConfirm).getByText(/下次归属解析时重新落点/)).toBeInTheDocument();
+    fireEvent.click(within(removeConfirm).getByRole("button", { name: "移除" }));
     expect(onRemoveMapping).toHaveBeenCalledWith("map-1");
-    confirmSpy.mockRestore();
   });
 
   it("reorders siblings and keeps forbidden actions visible with reasons", async () => {
@@ -187,7 +187,7 @@ describe("ModuleAttributionTree", () => {
     expect(within(tree).queryByRole("combobox", { name: "重要性 Power" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "修改模块 Power" }));
-    const editDialog = screen.getByRole("dialog", { name: "修改模块 Power" });
+    const editDialog = screen.getByRole("dialog", { name: "Power" });
     expect(within(editDialog).getByLabelText("模块重要性")).toHaveValue("high");
     fireEvent.change(within(editDialog).getByLabelText("模块重要性"), {
       target: { value: "low" }
@@ -246,7 +246,7 @@ describe("ModuleAttributionTree", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "修改模块 Power" }));
-    const editDialog = screen.getByRole("dialog", { name: "修改模块 Power" });
+    const editDialog = screen.getByRole("dialog", { name: "Power" });
     fireEvent.change(within(editDialog).getByLabelText("模块展示描述"), {
       target: { value: "更新后的电源说明" }
     });
@@ -322,7 +322,7 @@ describe("ModuleAttributionTree", () => {
     // Name already says 未分类 — do not repeat the kind badge.
     expect(within(unclassifiedRow).getAllByText("未分类")).toHaveLength(1);
     fireEvent.click(within(tree).getByRole("button", { name: "查看 未分类" }));
-    const viewDialog = screen.getByRole("dialog", { name: "查看未分类" });
+    const viewDialog = screen.getByRole("dialog", { name: "未分类" });
     expect(viewDialog).toBeInTheDocument();
     const closeButtons = within(viewDialog).getAllByRole("button", { name: "关闭" });
     fireEvent.click(closeButtons[closeButtons.length - 1]!);
@@ -344,7 +344,7 @@ describe("ModuleAttributionTree", () => {
 
     fireEvent.click(within(tree).getByRole("button", { name: "查看 未分类" }));
     expect(onOpenUnclassifiedQueue).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("dialog", { name: "查看未分类" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "未分类" })).not.toBeInTheDocument();
   });
 
   it("shows overlay coverage chip when fully covered by organization schema", () => {
@@ -439,7 +439,7 @@ describe("ModuleAttributionTree", () => {
     expect(within(tree).getByText("SC8562")).toBeInTheDocument();
 
     fireEvent.click(within(tree).getByRole("button", { name: "修改模块 SC8562" }));
-    const editDialog = screen.getByRole("dialog", { name: "修改模块 SC8562" });
+    const editDialog = screen.getByRole("dialog", { name: "SC8562" });
     expect(within(editDialog).getByText("官方解析覆盖")).toBeInTheDocument();
     expect(within(editDialog).getByText("解析未覆盖")).toBeInTheDocument();
   });
@@ -482,10 +482,10 @@ describe("ModuleAttributionTree", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "修改模块 SC8562" }));
-    expect(screen.getByRole("dialog", { name: "修改模块 SC8562" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "SC8562" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "配置组织级解析" }));
     expect(onAuthorOverlaySchema).toHaveBeenCalledWith("vendor,orphan");
-    expect(screen.queryByRole("dialog", { name: "修改模块 SC8562" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "SC8562" })).not.toBeInTheDocument();
   });
 });

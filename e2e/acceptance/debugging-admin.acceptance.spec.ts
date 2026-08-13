@@ -167,7 +167,8 @@ function savedIndicator(page: Page) {
 
 async function configureProtocolBindings(page: Page, nodeName: string, suffix: string) {
   await nodeRow(page, nodeName).getByRole("button", { name: "路径绑定" }).click();
-  const bindingsDialog = page.getByRole("dialog", { name: `${nodeName} 路径绑定` });
+  // ModalDialog names the bindings dialog by its visible <h2>, which is the node name.
+  const bindingsDialog = page.getByRole("dialog", { name: nodeName });
 
   const hdcPanel = bindingsDialog.locator(".debug-admin-binding-panel").filter({ hasText: "HDC" });
   await hdcPanel.getByLabel("HDC 节点路径").fill(`/tmp/wiseeff/acceptance/${suffix}/hdc`);
@@ -207,7 +208,7 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     await expect(page.getByRole("button", { name: "新增节点" })).toBeEnabled();
 
     await page.getByRole("button", { name: "新增节点" }).click();
-    const createDialog = page.getByRole("dialog", { name: "创建调试节点" });
+    const createDialog = page.getByRole("dialog", { name: "创建节点" });
     await createDialog.getByLabel("名称").fill(nodeName);
     await createDialog.getByLabel("简述").fill("Acceptance debug node");
     await createDialog.getByRole("button", { name: "保存" }).click();
@@ -217,7 +218,7 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     await expect(nodeRow(page, nodeName)).toBeVisible();
 
     await nodeRow(page, nodeName).getByRole("button", { name: "编辑" }).click();
-    const definitionDialog = page.getByRole("dialog", { name: "编辑调试节点" });
+    const definitionDialog = page.getByRole("dialog", { name: "编辑节点" });
     await definitionDialog.getByLabel("名称").fill(editedName);
     await definitionDialog.getByLabel("详细描述").fill("Acceptance node detailed description");
     await definitionDialog.getByRole("button", { name: "保存" }).click();

@@ -2,6 +2,7 @@ import { CircleX } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 
 import type { CreateParameterSpecInput } from "@/application/ports/ParameterTopologyRepository";
+import { ModalDialog } from "@/components/common/ModalDialog";
 import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
 import {
   MODULE_KIND_LABEL,
@@ -143,23 +144,6 @@ export function SpecCreateDialog({
     }
   }, [selectedModuleId, subjects]);
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        if (busy) return;
-        if (confirmOpen) {
-          setConfirmOpen(false);
-          return;
-        }
-        onCancel();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [busy, onCancel, confirmOpen]);
-
   const selected = useMemo(
     () => subjects.find((subject) => subject.moduleId === selectedModuleId) ?? null,
     [selectedModuleId, subjects],
@@ -242,23 +226,18 @@ export function SpecCreateDialog({
 
   return (
     <>
-    <div
-      className="modal-backdrop param-admin-module-edit-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-label="新建参数定义"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !busy && !confirmOpen) onCancel();
-      }}
+    <ModalDialog
+      open
+      onDismiss={busy ? undefined : onCancel}
+      className="submission-dialog param-admin-module-edit-dialog spec-create-dialog"
+      backdropClassName="param-admin-modal-backdrop"
     >
-      <div
-        className="submission-dialog param-admin-module-edit-dialog spec-create-dialog"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
+      {({ titleId }) => (
+        <>
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
             <span className="eyebrow">参数定义库</span>
-            <h2>新建参数定义</h2>
+            <h2 id={titleId}>新建参数定义</h2>
             <p>
               先选择归属主体，再填写可写入创建契约的字段。保存为草稿；激活前需显式挂上解析覆盖。
             </p>
@@ -448,23 +427,28 @@ export function SpecCreateDialog({
             {busy ? "保存中…" : "保存草稿"}
           </button>
         </div>
-      </div>
-    </div>
+        </>
+      )}
+    </ModalDialog>
       {confirmOpen ? (
-        <div
-          className="modal-backdrop"
-          role="dialog"
-          aria-modal="true"
-          aria-label="确认新建参数定义"
+        <ModalDialog
+          open
+          onDismiss={
+            busy
+              ? undefined
+              : () => {
+                  setConfirmOpen(false);
+                  setReason("");
+                }
+          }
+          className="submission-dialog param-admin-confirm-dialog"
         >
-          <div
-            className="submission-dialog param-admin-confirm-dialog"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
+          {({ titleId }) => (
+            <>
             <div className="submission-dialog-head param-admin-editor-dialog-head">
               <div className="param-admin-editor-dialog-head-text">
                 <span className="eyebrow">参数定义库</span>
-                <h2>确认新建</h2>
+                <h2 id={titleId}>确认新建</h2>
                 <p>
                   将创建属性键「{propertyKey.trim() || "—"}」的草稿定义；请填写变更原因以便审计留痕。
                 </p>
@@ -526,8 +510,9 @@ export function SpecCreateDialog({
                 {busy ? "保存中…" : "确认创建"}
               </button>
             </div>
-          </div>
-        </div>
+            </>
+          )}
+        </ModalDialog>
       ) : null}
     </>
   );

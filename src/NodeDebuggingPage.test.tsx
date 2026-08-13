@@ -1063,7 +1063,6 @@ describe("/node-debugging", () => {
       }
       return new Response(JSON.stringify({ ok: true }));
     }) as typeof fetch);
-    vi.spyOn(window, "confirm").mockReturnValue(true);
 
     renderNodeDebuggingPage({ state: userState, debuggingActions });
     fireEvent.click(await screen.findByRole("button", { name: "ADB" }));
@@ -1079,6 +1078,9 @@ describe("/node-debugging", () => {
     expect(await screen.findByDisplayValue("Desk-PC")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "撤销" }));
+    const revokeConfirm = await screen.findByRole("dialog", { name: "撤销设备代理" });
+    expect(within(revokeConfirm).getByText(/确认撤销设备代理「Desk-PC」吗？/)).toBeInTheDocument();
+    fireEvent.click(within(revokeConfirm).getByRole("button", { name: "撤销" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/api/v1/device-bridges/br-1/revoke"),
       expect.objectContaining({ method: "POST" })

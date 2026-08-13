@@ -213,7 +213,8 @@ describe("ProjectTopologyWorkspace", () => {
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
     fireEvent.click(within(workspace).getByRole("cell", { name: "gpio_int" }));
 
-    expect(within(workspace).getByRole("dialog", { name: "项目参数详情" })).toBeVisible();
+    // The shared modal contract portals the drawer dialog to document.body.
+    expect(screen.getByRole("dialog", { name: /gpio_int/ })).toBeVisible();
   });
 
   it("uses tree → properties → detail navigation with breadcrumb on mobile", () => {
@@ -249,6 +250,15 @@ describe("ProjectTopologyWorkspace", () => {
     expect(paneItemRule["min-width"]).toBe("0");
     expect(treeTokenRule["overflow-wrap"]).toBe("anywhere");
     expect(treeTokenRule["word-break"]).toBe("break-word");
+  });
+
+  it("keeps tree item meta text on the readable muted-text token (TD-081)", () => {
+    // `--muted` is the shadcn surface alias (near-white); meta text must use
+    // the semantic `--text-muted` token to stay readable on white rows.
+    const styles = readStylesheet("src/styles.css");
+    const treeMetaRule = declarationsFor(styles, ".topology-tree__item small");
+
+    expect(treeMetaRule.color).toBe("var(--text-muted)");
   });
 });
 
