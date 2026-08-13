@@ -179,6 +179,19 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "db", "audit"]
   },
   {
+    id: "KB-REC-001",
+    priority: "P1",
+    area: "knowledge",
+    route: "/logs",
+    roles: ["Hardware User"],
+    action:
+      "Open a completed log-analysis record and read its related-knowledge section: related published entries appear with a citation deep link into /knowledge, draft and archived entries never appear, and the section reports the retrieval mode that actually ran.",
+    coverage: "automated",
+    acceptanceIds: ["KB-REC-001"],
+    specFiles: ["e2e/acceptance/knowledge.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db"]
+  },
+  {
     id: "SHELL-DIAG-001",
     priority: "P0",
     area: "shell",

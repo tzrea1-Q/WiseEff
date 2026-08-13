@@ -35,6 +35,7 @@
 - `KB-INDEX-001`：知识管理员在 `/knowledge-admin` 查看逐条目检索索引健康（状态、失败原因、已索引修订）与诚实的检索模式横幅（语义 vs 仅全文），可单条重试或全量重建（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-DISTILL-001`：编辑者在日志分析结果页把已完成的分析结论一键沉淀为预填知识草稿（标题取自结论；正文由结论、影响、严重度、证据行引用与建议处置组装；条目上保存来源关联），经条目深链交接到 `/knowledge` 草稿编辑器审阅后发布（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-ADMIN-001`：经审批门控工具 `action.createKnowledgeDraft` 创建的 Agent 知识草稿（确定性小泽先中断、后批准——同 `XIAOZE-ACTION-APPROVE-001` 在 SSE API 层断言，另有 `knowledge-agent-draft` eval 场景兜底）进入 `/knowledge-admin` 的 Agent 草稿发布队列（含创建人、会话来源、来源分析链接）；审阅者发布其一、归档拒绝其一，Agent 草稿在发布前不进入检索（`e2e/acceptance/knowledge.acceptance.spec.ts`；`server/modules/agent/xiaoze/eval/scenarios.ts`）。
+- `KB-REC-001`：已完成的日志分析记录展示由存储的结论/影响文本推导的「相关知识」区块：相关已发布条目带 `/knowledge?entryId=…` 引用深链出现，草稿与归档条目永不出现，区块诚实标注实际运行的检索模式，无相关条目时展示诚实空态（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `DEBUG-SIM-001`：模拟器读、写、回读不一致、回滚与审计路径，包含复杂 JSON 值元数据。
 - `DEBUG-ADMIN-001`：API mode 下调试管理后台可新增、编辑、归档、恢复，并维护 HDC/ADB binding 与复杂值元数据。
 - `DTS-RELOAD-DEPLOY-001`：经假本地设备桥部署已校验的重载 overlay（mount / pushFile / trigger）至 `unverifiable`；浏览器证据 `work/ui-checks/285-*`。

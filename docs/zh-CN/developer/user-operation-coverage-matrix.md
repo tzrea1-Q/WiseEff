@@ -68,6 +68,7 @@
 - `KB-INDEX-001`：Admin 在 `/knowledge-admin` 查看逐条目索引健康与检索模式横幅，执行单条重试与全量重建，断言覆盖 UI、API、DB（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-DISTILL-001`：Hardware User 在 `/logs` 把已完成的日志分析结论沉淀为预填知识草稿，经深链交接到 `/knowledge` 草稿编辑器并发布，断言覆盖 UI、API、DB、审计（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-ADMIN-001`：Admin 经确定性小泽审批流创建 Agent 知识草稿后，在 `/knowledge-admin` 的 Agent 草稿发布队列审阅（创建人、会话来源、来源分析链接）、发布其一并归档拒绝其一，断言覆盖 UI、API、DB、审计（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
+- `KB-REC-001`：Hardware User 在 `/logs` 查看已完成分析的「相关知识」区块（仅已发布条目、引用深链进入 `/knowledge`、草稿与归档永不出现），断言覆盖 UI、API、DB（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `PARAM-HOME-001`：Admin 在 `/parameter-home` 加载 dashboard summary/hotspots API，并切换页面内时间窗口与热榜维度（`e2e/acceptance/parameter-home.acceptance.spec.ts`）。
 - `DEBUG-ADMIN-001`：Admin 在 `/debugging-admin/nodes` 通过 API mode 完成调试参数新增、编辑、归档、恢复和 HDC/ADB binding 维护，断言覆盖 UI、API、DB 和 audit。
 - `XIAOZE-PERCEPTION-001`：Admin 在 `/parameters` 向小泽提问，验收基于页面上下文与感知工具的只读 grounded 回答（`e2e/acceptance/xiaoze-perception.acceptance.spec.ts`）。
