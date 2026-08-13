@@ -4,7 +4,7 @@
 
 状态：**Current** · 日期：2026-08-12
 
-这是 WiseEff 全部产品界面的可执行视觉与交互标准。它把 [`docs/DESIGN.md`](../../DESIGN.md) 的原则落成可强制执行的规则：设计令牌、组件契约、交互状态、动效、布局与产品文案语言。强制执行本规范的完成门禁是 [`docs/zh-CN/developer/ui-quality-checklist.md`](../developer/ui-quality-checklist.md)。存量代码向本标准迁移由 [`docs/zh-CN/exec-plans/active/2026-08-12-frontend-aesthetics-uplift.md`](../exec-plans/active/2026-08-12-frontend-aesthetics-uplift.md) 跟踪。
+这是 WiseEff 全部产品界面的可执行视觉与交互标准。它把 [`docs/DESIGN.md`](../../DESIGN.md) 的原则落成可强制执行的规则：设计令牌、组件契约、交互状态、动效、布局与产品文案语言。强制执行本规范的完成门禁是 [`docs/zh-CN/developer/ui-quality-checklist.md`](../developer/ui-quality-checklist.md)。存量代码向本标准的迁移由 [`docs/zh-CN/exec-plans/completed/2026-08-12-frontend-aesthetics-uplift.md`](../exec-plans/completed/2026-08-12-frontend-aesthetics-uplift.md) 交付完成;剩余存量以技术债 TD-111–TD-115 追踪。
 
 质量基准：对标 Linear 的专注、高密度、快速工作台——克制的色彩、严格的字阶与间距刻度、严格的层次（elevation）、细腻一致的动效、零内部信息泄漏。
 
