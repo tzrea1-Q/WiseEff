@@ -1,9 +1,10 @@
 # Parameters Service & Repository Behavior-Test Migration
 
-- Status: Active
+- Status: Completed (Slice 4, 2026-08-13) — scope closed; residual fake-db files outside this
+  program are listed with owners/reasons in the Slice 4 sweep table
 - Owner: test-foundation stream
 - Created: 2026-08-12
-- Updated: 2026-08-13 (Slice 3)
+- Updated: 2026-08-13 (Slice 4)
 
 ## Background
 
@@ -70,10 +71,10 @@ Notes:
 
 ## Follow-up slices
 
-1. ~~Migrate the remaining `service.test.ts` fake-db blocks: import preview/apply (`createImportPreview`, `applyImportBatch`), draft save/list~~ — done in Slice 3 below. The two semantic submit tests remain fake-db (see Slice 3 “Kept”).
-2. `server/modules/dts-reload/service.test.ts` — next-worst SQL-text-welded file.
-3. `server/modules/debugging/repository.test.ts`.
-4. Re-measure repo-wide SQL-text assertion count after each slice against the 458 baseline.
+1. ~~Migrate the remaining `service.test.ts` fake-db blocks: import preview/apply (`createImportPreview`, `applyImportBatch`), draft save/list~~ — done in Slice 3 below. The two semantic submit tests remain fake-db (re-evaluated and kept in Slice 4, see below).
+2. ~~`server/modules/dts-reload/service.test.ts`~~ — already migrated on `main` by the test-foundation deepening commit (`772f7cd0`, per-worker template DBs); nothing left for this program.
+3. ~~`server/modules/debugging/repository.test.ts`~~ — migrated by the sibling TD-079 slice-2 stream (`5e7e134f`, now `repository.integration.test.ts`).
+4. Re-measure repo-wide SQL-text assertion count after each slice against the 458 baseline — final numbers in Slice 4.
 
 ## Verification (Slice 1)
 
@@ -216,6 +217,209 @@ the same file; pure parse/schema tests unchanged. Notable rows:
 - Post-migration `rg -c "calls\[|\.text\)\.toContain"` over the six files → no matches.
 - `npm run docs:check` → pass.
 
+## Slice 4 (2026-08-13): shared spec+binding fixture, remaining parameters family, debugging service, sweep
+
+Branch `test/behavior-tests-slice-4`. Final slice: extracts the shared semantic-graph
+fixture Slice 3 asked for, migrates every remaining `createFakeDb`/SQL-text file this
+program owns, and disposes of the sweep leftovers explicitly. No production code changed.
+
+### Shared fixture decision
+
+`seedSpecBindingGraph` (named alongside `seedCoreGraph`) now lives in
+`server/testing/fixtures.ts` and seeds the semantic identity spine:
+`parameter_specs` (+`parameter_spec_versions`, +`dts_property_specs`), `parameter_modules`,
+`dts_config_set` (+`dts_config_revisions`, +`dts_logical_nodes` with node revisions), and
+`project_parameter_bindings` (+binding revisions). One helper serves all three
+near-duplicate seeds without contortions; the three suites
+(`parameter-drafts/repository.test.ts`, `parameters/fileSyncConflictRepository.test.ts`,
+`parameters/reviewWorkflowRepository.test.ts`) were refactored onto it with behavior
+assertions unchanged (24 tests green before and after). Two deliberate boundaries:
+occurrence rows (`dts_node_occurrences`/`dts_property_occurrences`/`dts_occurrence_effects`)
+stay in the suites because they encode test-specific source positions, and
+`dts-reload/service.test.ts`'s `seedCandidate` was left alone — it is already
+behavior-level and its per-candidate parameterization (structural-key skip, compatible,
+revision-number arithmetic) is reload-specific, not shared identity.
+
+### SQL-text assertion counts (`rg -c "calls\[|\.text\)\.toContain"`)
+
+| File | Before | After |
+| --- | --- | --- |
+| `server/modules/debugging/catalogSplitRepository.test.ts` | 26 | 0 |
+| `server/modules/debugging/service.test.ts` | 20 | 0 |
+| `server/modules/parameters/parameterModuleRepository.test.ts` | 8 | 0 |
+| `server/modules/deviceBridge/repository.test.ts` | 8 | 0 |
+| `server/modules/projects/repository.test.ts` | 7 | 0 |
+| `server/modules/parameters/impact.test.ts` | 0 (guards were `text.includes` handlers) | 0 |
+| `server/modules/parameters/initializationService.test.ts` | 0 (fake db + `vi.mock`'d repositories) | 0 |
+| `server/modules/auth/bootstrapLocalAdmin.test.ts` | 0 (`text.includes` handlers) | 0 |
+| `server/modules/auth/seedLocalDemoCredentials.test.ts` | 0 (call-list assertions) | 0 |
+
+Every per-file `createFakeDb` harness in these files was deleted; the only remaining
+`createFakeDb` in the parameters family is the trimmed host for the three kept tests in
+`parameters/service.test.ts`.
+
+### Old → new mapping: `parameters/impact.test.ts` (5 → 5)
+
+| Old fake-db test | New behavior test |
+| --- | --- |
+| buildTemplateImpact returns the exact legacy two-item template | unchanged (pure function) |
+| falls back to template when source binding is missing | same (the “issues no queries” call-count assertion became: template returned on a real db) |
+| falls back to template when source file/node has no dts rows | falls back to template when the source file and node have no dts rows (file + current version seeded, no matching node) |
+| includes phandle, compatible, and config-set impact kinds for structural changes | same — full structural graph seeded; asserts the exact five-item impact. Decoys: same-named file in another project, different-compatible node, other-config-set file, phandle ref resolved to a different node. Config-set peers inserted out of sort order to prove DB ordering |
+| falls back to template when structural queries all return empty | same (bound node with no compatible/config set/phandles) |
+
+### Old → new mapping: `parameters/initializationService.test.ts` (6 → 6)
+
+All `vi.mock`'d repositories/binding services dropped; the real service runs its real
+repositories, and audit rows are read from `audit_events`.
+
+| Old mocked-repo test | New behavior test |
+| --- | --- |
+| empty submit then approve reaches initialized without materializing bindings | same — project status read back per step; zero `project_parameter_bindings`/`dts_config_revisions` rows instead of “mock not called” |
+| reject keeps draft and sets initialization_rejected | reject keeps the draft and sets initialization_rejected (draft row read back) |
+| forbids double-approve of a non-pending review | same (real approved review, second approve conflicts) |
+| forbids non-admin approve | same |
+| assertProjectAllowsParameterSubmit blocks when pending review | assertProjectAllowsParameterSubmit blocks while initialization review is pending (pending state produced by a real submit) |
+| upsertDraft sets initialization_draft for empty library | upsertDraft sets initialization_draft for an empty library and persists the draft (adds: second save updates the same row) |
+
+### Old → new mapping: `parameters/parameterModuleRepository.test.ts` (6 → 6)
+
+| Old fake-db test | New behavior test |
+| --- | --- |
+| listParameterModules returns tree rows | listParameterModules returns the organization's tree rows ordered by path (later-path root inserted first; cross-org module excluded) |
+| createParameterModule computes path from parent | createParameterModule computes path and depth from the parent (read-back; missing parent refused) |
+| moveParameterModule recomputes descendant paths | moveParameterModule recomputes descendant paths and depths (real grandchild; cycle move refused). Found: the UPDATE also cascades the new `parent_id` onto every descendant — pm-c ends up claiming the move target as its parent while its path still nests under pm-b. Looks like a latent repository bug (noted in-test); the test pins only the path/depth contract |
+| reparentAutoParameterModule does not promote auto to curated | same (real 0082 constraint required seeding the attribution subject; adds: curated module reparent is skipped) |
+| listParameters uses subtree filter when includeDescendants is true | returns the module and its descendants when includeDescendants is true (parent+child parameters returned, unrelated root excluded) |
+| listParameters uses exact module id filter when includeDescendants is false | returns only the exact module when includeDescendants is false (child-only, then parent-only) |
+
+### Old → new mapping: `debugging/catalogSplitRepository.test.ts` (8 → 8)
+
+| Old fake-db test | New behavior test |
+| --- | --- |
+| creates logical debug nodes without protocol columns | creates logical debug nodes carrying metadata only, with no protocol binding attached (the “no protocol columns in SQL” checks became: fresh node has zero bindings and is invisible to runtime protocol lists) |
+| upserts and archives debug node bindings scoped to the logical node | same (second upsert proven to update the same row id; archive hides from enabled-only reads) |
+| returns null when upserting a binding for a node outside the organization scope | same (plus: no row written for either org) |
+| lists bindings for a logical node | lists bindings for a logical node ordered by protocol (hdc inserted before adb; other node's binding excluded) |
+| returns enabled debug node bindings by node and protocol | returns enabled debug node bindings by node and protocol, hiding disabled ones unless asked |
+| listRuntimeDebugNodes inner-joins enabled bindings and filters by protocol | listRuntimeDebugNodes returns only enabled nodes with an enabled binding for the protocol (decoys: disabled binding, wrong protocol, unbound node, foreign org) |
+| listRuntimeDebugNodes omits nodes without an enabled binding for the requested protocol | same |
+| creates, lists, updates, renames references, and deletes debug node modules | same flow, plus a contract the fake's zero-count queue hid: deleting a module still referenced by debug nodes is refused; an empty module deletes cleanly |
+
+### Old → new mapping: `debugging/service.test.ts` (64 → 63)
+
+The gateway, bridge-RPC client, audit writer, metrics, and tracing stay as
+dependency-injected mocks (they are ports, not the database). Every database effect —
+operations, snapshots, events, targets, parameter values — is asserted by reading rows
+back. Group-level mapping, with by-name changes called out:
+
+- Admin catalog (7 tests): unchanged names; positional `values[N]` assertions became
+  read-backs of `debugging_parameters`/`debugging_parameter_node_bindings`; audit
+  metadata/no-node-path-leak assertions unchanged against the audit port.
+- Runtime listings (4): org scoping now proven with seeded org-2 decoys. “lists
+  selected-protocol parameter bindings” corrected a fake-fixture fiction: a
+  protocol-scoped listing loads only that protocol's bindings — the fake returned both
+  protocols, which the real query never did.
+- detectTargets (7, includes “requires an explicit registry for non-default protocols”):
+  persisted targets read from `debugging_targets` (including the requested-protocol
+  override and bridge-backed rows); the failed-detect event read from `debugging_events`.
+- createSession (4): offline/lost/mismatch preconditions staged as real rows; the
+  bridge-metadata and session-created-event assertions read their rows back.
+- readNode (9): binding-path resolution asserted through the gateway port; operations
+  read from `node_operations`; “treats audit write failure as transaction failure”
+  asserts zero surviving rows (savepoint rollback) instead of replaying a fake rollback
+  log. Old “reads a parameter through the active session protocol binding” became
+  “reads a parameter through a read-only session protocol binding” (its distinct bit —
+  RO is readable — kept; the rest duplicated the ADB-binding test).
+- writeNode (17): snapshot-before-write ordering proven by querying
+  `debugging_snapshots` from inside the gateway mocks (empty at pre-read, one valid
+  snapshot with previous/target values and digests at write time); the
+  lease-conflict test acquires a real rival-session lease; verified-write value
+  updates, complex-JSON validation/readback, and audit digest/preview behavior
+  unchanged in intent.
+- rollbackSnapshot (6): claim-before-write proven by reading the snapshot status
+  (`rollback_pending`) from inside the gateway write mock; partial failure restores
+  `valid` and writes the rollback-failed event; success consumes the snapshot and writes
+  the succeeded event. “rejects missing, consumed, invalid, or cross-session snapshots”
+  became “rejects missing, consumed, and rollback-pending snapshots”: the cross-session
+  variant staged a fake state (snapshot.session_id disagreeing with the row returned by
+  the session lookup keyed on that same id) that a real database cannot produce.
+- Dropped with reason (1): “rollbackSnapshot claims snapshot before gateway writes and
+  conflicts when claim fails” — the CONFLICT branch needs a concurrent claimer between
+  the read and the claim on one connection, which the single-connection fixture cannot
+  produce; the claim-ordering half survives via the status probe above.
+
+Found while migrating (flagged, not fixed — test-only change): `insertNodeOperation`
+falls `node_id` back to the parameter id, and that column's FK references
+`debug_nodes` — so the API-reachable `parameterId` read/write path can only record an
+operation when a same-id `debug_nodes` row exists, which no migration maintains. The
+suite seeds that mirror row (documented in-code) so the rest of the path stays testable.
+
+### Old → new mapping: sweep migrations
+
+`projects/repository.test.ts` (3 → 3): listProjects org filter (foreign org seeded and
+excluded); getProjectById org scoping (foreign project id resolves to null); delete
+cascade — real parameter data on the doomed and a sibling project, sibling rows and the
+shared `parameter_definitions` row proven to survive, not-found unchanged.
+
+`deviceBridge/repository.test.ts` (4 → 4): pairing-code insert read back; one-shot
+consume (second consume and unknown hash both null); bridge + scoped token rows read
+back; revoked-bridge filtering behavioral (revoked and other-user bridges seeded and
+excluded).
+
+`auth/bootstrapLocalAdmin.test.ts` (3 → 3): first bootstrap reads back user, scrypt
+credential, org-wide admin binding, and the audit event; second bootstrap conflicts and
+writes no second credential; `countLocalAdminBindings` counts a real binding.
+
+`auth/seedLocalDemoCredentials.test.ts` (4 → 4): roster/gate tests unchanged (pure);
+development seed reads seven scrypt credentials back and re-seeding stays at seven
+(upsert proven); production seed leaves zero rows.
+
+### Kept on the fake db (Slice 4 evaluation)
+
+- `parameters/service.test.ts` › “rejects semantic merge when projectId is missing”:
+  unchanged rationale — the guarded state cannot exist in a real database (NOT NULL).
+- `parameters/service.test.ts` › the two semantic submit tests (“mixed working tips”,
+  “enablement change requests”): re-evaluated against `seedSpecBindingGraph`. The
+  fixture covers the spec/binding/config-revision spine, but these paths additionally
+  need the candidate-proof graph `getBindingDraftForSubmission` computes from write-lock
+  rows — binding revisions on both base and candidate revisions, file versions with
+  matching checksums, and (for enablement) logical-node `status` occurrence effects.
+  That is exactly the per-test graph `parameter-topology/postCutoverWorkflow.integration.test.ts`
+  already builds on a temp database where the merged behavior is covered end to end, so
+  duplicating it here buys no coverage. Kept with updated in-file annotations.
+
+### Sweep: remaining `createFakeDb` files (out of this program's scope)
+
+`rg -l "createFakeDb" server/modules -g '*.test.ts'` after this slice:
+
+| File | Disposition |
+| --- | --- |
+| `parameters/service.test.ts` | The three kept tests above (annotated in-file). |
+| `debugging/debugNodeModuleRepository.test.ts` | Same tree-repository shape as the migrated `parameterModuleRepository`; owned by the debugging follow-up under TD-096's remaining-files bucket, not this program's file list. |
+| `dts-reload/deploy.test.ts` | 1,482 lines of bridge-RPC deploy orchestration; the DB surface is thin next to its RPC fakes, and the dts-reload service suite is already behavioral. Deserves its own slice. |
+| `logs/domainsService.test.ts` | logs family — outside the parameters/debugging scope of this plan (TD-072/TD-096 note logs repositories already converted; this service file remains). |
+| `parameter-files/releaseReadinessService.test.ts` | parameter-files family; readiness aggregation over many fake counts — needs its own seed design. |
+| `parameter-modules/ensureAttributionModuleForBinding.test.ts`, `parameter-modules/resolveModuleForBinding.test.ts` | parameter-modules family (attribution/driver-registry graph); not in this plan's file list. |
+| `parameter-specs/driverSchemaOverlayRepository.test.ts` | parameter-specs family; 2 tests over overlay jsonb round-trips. |
+| `auth/…`, `projects/…`, `deviceBridge/…` | Migrated in this slice (tables above). |
+
+Repo-wide `rg -c "calls\[|\.text\)\.toContain" server/modules -g '*.test.ts'` now
+matches 108 lines across 36 files (down from the 458-assertion baseline the review
+measured), the large majority of which are vitest mock-call inspections against DI
+ports (gateways, RPC clients, fetch/embedding stubs — e.g. `agent/`, `knowledge/`,
+`logs/analyzer/`), not SQL-text assertions; the largest genuinely SQL-flavored counts
+left are `audit/repository.test.ts` (11) and `debugging/debugNodeModuleRepository.test.ts`
+(7), both outside this program's file list.
+
+### Verification (Slice 4)
+
+- `npx tsc -b 2>&1 | rg "error TS"` → no matches.
+- `npm run test:server -- parameters parameter-drafts dts-reload debugging parameter-files auth/bootstrapLocalAdmin auth/seedLocalDemoCredentials projects/repository deviceBridge/repository` → all files green (counts in the final report).
+- Skip path (`TEST_DATABASE_URL` at an unreachable port) → skips, not failures.
+- Post-migration `rg -c "calls\[|\.text\)\.toContain"` over the nine migrated files → no matches.
+- `npm run docs:check` → pass.
+
 ## Documentation Impact Matrix
 
 | Area | Files | Impact |
@@ -240,3 +444,4 @@ UI Interaction Automation Rule: not applicable — no user-facing interaction be
 - [x] No Chinese developer-doc update needed: no architecture, runtime, environment, API, security, reliability, or quality-gate semantics changed; this plan is a stream-internal execution artifact.
 - [x] `npm run docs:check` run before completing this slice.
 - [x] Slice 3 re-reviewed the matrix (still accurate — test-only change, no production code) and re-ran `npm run docs:check`.
+- [x] Slice 4 re-reviewed the matrix (still accurate — test-only change; the two latent-defect findings are flagged in the plan/tests for follow-up, not doc-bearing changes), updated the TD-096 progress note in `docs/exec-plans/tech-debt-tracker.md`, and re-ran `npm run docs:check`.

@@ -31,6 +31,8 @@
 - `LOG-FEEDBACK-INSIGHTS-001`：提交日志反馈后，`/log-admin`「分析质量」区按业务域 × 分析来源 × Prompt 版本聚合展示所选时间窗口内的有帮助率，数据来自 `GET /api/v1/logs/feedback-insights`（`e2e/acceptance/log-analysis.acceptance.spec.ts`）。
 - `LOG-EVAL-DRAFT-001`：Admin 在已完成记录的抽屉中导出评测案例草稿：弹层展示脱敏清单，下载物为 schema 对齐的 `case.yaml`（realLog: true、deIdentified: false、rootCauseCategory TODO、预填证据行号/建议动作）与 `log.txt`（`e2e/acceptance/log-analysis.acceptance.spec.ts`）。
 - `LOG-ARCHIVE-UPLOAD-001`：经上传对话框上传的 `.gz` 压缩日志由服务端解压并端到端完成分析，证据行号锚定解压后的文本行（`e2e/acceptance/log-analysis.acceptance.spec.ts`）。
+- `LOG-DOMAIN-WEBHOOK-001`：Admin 在 `/log-admin` 业务域治理区配置结果 Webhook（https 或本地联调 URL、只写密钥仅显示末四位、启用开关，写 `log-domain-webhook-config` 审计）；域绑定分析完成后向接收端投递 HMAC 签名载荷（签名可验、不含原始日志内容），最近投递列表显示已送达尝试（`e2e/acceptance/log-analysis.acceptance.spec.ts`）。
+- `LOG-DOMAIN-MODEL-001`：Admin 通过 `/log-admin` 域表单设置按域模型覆盖（placeholder 注明留空使用全局模型）；覆盖在域 API/DB 持久化、域列表可见，域绑定分析的报告 `model` 溯源记录该覆盖名（`e2e/acceptance/log-analysis.acceptance.spec.ts`）。
 - `KB-READ-001`：组织成员在 `/knowledge` 浏览知识条目列表，搜索只命中 `published` 条目（draft 和 archived 不进检索结果），并打开已发布条目详情（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-EDIT-001`：编辑者创建 markdown 知识条目、发布、就地修订产生新的不可变修订，并把历史修订恢复为新修订（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-FILE-001`：编辑者经对象存储上传文件型知识条目，并在条目上看到文本提取状态（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
@@ -38,6 +40,7 @@
 - `KB-INDEX-001`：知识管理员在 `/knowledge-admin` 查看逐条目检索索引健康（状态、失败原因、已索引修订）与诚实的检索模式横幅（语义 vs 仅全文），可单条重试或全量重建（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-DISTILL-001`：编辑者在日志分析结果页把已完成的分析结论一键沉淀为预填知识草稿（标题取自结论；正文由结论、影响、严重度、证据行引用与建议处置组装；条目上保存来源关联），经条目深链交接到 `/knowledge` 草稿编辑器审阅后发布（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-ADMIN-001`：经审批门控工具 `action.createKnowledgeDraft` 创建的 Agent 知识草稿（确定性小泽先中断、后批准——同 `XIAOZE-ACTION-APPROVE-001` 在 SSE API 层断言，另有 `knowledge-agent-draft` eval 场景兜底）进入 `/knowledge-admin` 的 Agent 草稿发布队列（含创建人、会话来源、来源分析链接）；审阅者发布其一、归档拒绝其一，Agent 草稿在发布前不进入检索（`e2e/acceptance/knowledge.acceptance.spec.ts`；`server/modules/agent/xiaoze/eval/scenarios.ts`）。
+- `KB-REC-001`：已完成的日志分析记录展示由存储的结论/影响文本推导的「相关知识」区块：相关已发布条目带 `/knowledge?entryId=…` 引用深链出现，草稿与归档条目永不出现，区块诚实标注实际运行的检索模式，无相关条目时展示诚实空态（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `DEBUG-SIM-001`：模拟器读、写、回读不一致、回滚与审计路径，包含复杂 JSON 值元数据。
 - `DEBUG-ADMIN-001`：API mode 下调试管理后台可新增、编辑、归档、恢复，并维护 HDC/ADB binding 与复杂值元数据。
 - `DTS-RELOAD-DEPLOY-001`：经假本地设备桥部署已校验的重载 overlay（mount / pushFile / trigger）至 `unverifiable`；浏览器证据 `work/ui-checks/285-*`。

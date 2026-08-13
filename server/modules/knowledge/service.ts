@@ -27,6 +27,12 @@ import {
   requireKnowledgeView
 } from "./policy";
 import {
+  deriveRelatedKnowledgeQuery,
+  RELATED_KNOWLEDGE_DEFAULT_LIMIT,
+  RELATED_KNOWLEDGE_MAX_VECTOR_DISTANCE,
+  RELATED_KNOWLEDGE_MIN_TEXT_SIMILARITY
+} from "./relatedKnowledge";
+import {
   deleteEntry,
   getEntryById,
   getEntryForUpdate,
@@ -38,6 +44,7 @@ import {
   listRevisions,
   searchPublishedChunksByEmbedding,
   searchPublishedEntries,
+  searchPublishedEntriesByTextSimilarity,
   setEntryHead,
   setEntrySearchText,
   setEntryStatus,
@@ -976,6 +983,84 @@ export async function searchKnowledge(
     // Per-query degradation stays honest: the FTS results are still valid.
     return {
       items: ftsItems,
+      retrieval: {
+        mode: "fts_only",
+        vectorAvailable,
+        embeddingConfigured,
+        degradedReason: error instanceof Error ? error.message : String(error)
+      }
+    };
+  }
+}
+
+/**
+ * Related-knowledge recommendations for a completed log-analysis record
+ * (design deferred roadmap item 1). Pure read: the caller needs
+ * `knowledge:view`, and reading the source record enforces `logs:view` plus
+ * organization scope through the logs service — no audit event, matching
+ * `searchKnowledge`. The similarity query derives from the stored
+ * conclusion/impact text only; retrieval reuses the hybrid machinery
+ * (trigram ranking fused with vector ranking when embeddings run, trigram-only
+ * otherwise) with relevance cutoffs so unrelated entries are dropped rather
+ * than padded in, and the response reports the mode that actually ran.
+ */
+export async function findRelatedKnowledgeForLog(
+  db: Queryable,
+  auth: AuthContext,
+  input: { logId: string; limit?: number },
+  options: { embeddingClient?: KnowledgeEmbeddingClient } = {}
+): Promise<KnowledgeSearchResponseDto> {
+  requireKnowledgeView(auth);
+
+  const log = await getLogRecord(db, auth, input.logId);
+  if (log.status !== "complete") {
+    throw new ApiError("VALIDATION_FAILED", "Only completed log analyses have related knowledge.", 400, {
+      logId: input.logId,
+      status: log.status
+    });
+  }
+
+  const limit = input.limit ?? RELATED_KNOWLEDGE_DEFAULT_LIMIT;
+  const query = deriveRelatedKnowledgeQuery(log);
+  const vectorAvailable = await hasKnowledgeVectorSupport(db).catch(() => false);
+  const embeddingConfigured = Boolean(options.embeddingClient);
+
+  if (!query) {
+    return {
+      items: [],
+      retrieval: {
+        mode: vectorAvailable && embeddingConfigured ? "semantic_fts" : "fts_only",
+        vectorAvailable,
+        embeddingConfigured
+      }
+    };
+  }
+
+  const textItems = await searchPublishedEntriesByTextSimilarity(db, auth, {
+    q: query,
+    minSimilarity: RELATED_KNOWLEDGE_MIN_TEXT_SIMILARITY,
+    limit
+  });
+
+  if (!vectorAvailable || !options.embeddingClient) {
+    return { items: textItems, retrieval: { mode: "fts_only", vectorAvailable, embeddingConfigured } };
+  }
+
+  try {
+    const [queryEmbedding] = await options.embeddingClient.embed([query]);
+    const vectorItems = await searchPublishedChunksByEmbedding(db, auth, {
+      embedding: queryEmbedding,
+      limit,
+      maxDistance: RELATED_KNOWLEDGE_MAX_VECTOR_DISTANCE
+    });
+    return {
+      items: fuseKnowledgeSearchResults({ fts: textItems, vector: vectorItems, limit }),
+      retrieval: { mode: "semantic_fts", vectorAvailable, embeddingConfigured }
+    };
+  } catch (error) {
+    // Per-query degradation stays honest: the trigram results are still valid.
+    return {
+      items: textItems,
       retrieval: {
         mode: "fts_only",
         vectorAvailable,

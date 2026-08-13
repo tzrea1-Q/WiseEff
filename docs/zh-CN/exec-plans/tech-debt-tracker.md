@@ -55,6 +55,15 @@
 - **TD-092（反馈归因粒度）：** `feedback-insights` 把反馈归因到日志**当前 run** 的报告；频繁重析后旧反馈会跟随新结论的来源/提示词版本，按版本的质量读数可能被扭曲。需给 `log_feedback` 加 `run_id`（additive 迁移）与回填策略，存在时按 run 归因。**负责人：Log analysis。**
 - **TD-093（上传预检与服务端支持集不一致）：** 前端 API 模式预检接受 `.log/.txt/.csv/.json/.gz/.zip`，但服务端拒绝 `.json`（mock 模式反而支持）；P3a 只追加了归档扩展未动存量口径。用户可能选中通过预检却被服务端拒绝的文件,且 mock/API 行为分叉。需一次性对齐三方口径（决定 `.json` 转正还是移出预检）。**负责人：Log analysis / Frontend。**
 - **TD-095（CI 波动：checkpointer 恢复测试与 /logs 视觉基线）：** 2026-08-12/13 并行代理车队期间观察到两类同代码不同结果：(a) `durableCheckpointer.integration.test.ts › resumes an interrupted plan from a fresh agent instance on the same thread` 在同一 commit `f71744bc` 的两次 CI 运行中一红一绿（PR 运行 31621021416 失败、push 运行 31621018056 通过，相隔 3 秒），重跑通过；(b) `/logs` 视觉基线（`e2e/quality/visual.quality.spec.ts`）在 #336 的 merge-ref 运行（31607966985 attempt 1）失败——该 PR 不改任何前端文件、相同前端内容在 `main` 上是绿的——attempt 2 原样通过。同代码运行结果分叉迫使「重跑碰运气」，在繁忙车队里每次合入都排在非确定性门禁后面。下一步：稳定 checkpointer 恢复测试的同步时序；审计 /logs 基线页面的非确定性内容（时间戳/相对时间）并冻结或遮罩。**负责人：Agent platform / QA。**
+- **TD-097（HCI Wave 2–3 遗留）：** 信任修复计划（2026-08-13 完成）延期了语言与效率波次：术语清洗（中英混排、AI 输出中文化）、审计中心产品化（时间筛选 + 搜索下推 + 导出 + 事件类型中文化）、评审批量操作、macOS 快捷键约定、详情深链、a11y 系统化、表格/工具栏响应式收敛。约 60 个已审计 P1/P2 摩擦点仍在产品中。需作为后继执行计划规划 Wave 2（语言与效率）；审批链计划进行期间避免改动 agent 模块的服务端。**负责人：Frontend。**
+- **TD-098（通知双轨收敛）：** `AppToastLayer` 渲染 reducer `state.notifications` 队列（双运行时），美学计划的 `ToastProvider` 提供命令式 `useToast()`（带 tone/action）；两者都渲染在右下角可能视觉堆叠。瞬时反馈出现两个事实源，新代码需要猜调用哪个。需收敛：把 `ADD_NOTIFICATION` 桥接进 `ToastProvider`（单一渲染器）或把 `useToast` 调用折回 reducer 队列，删除败者。**负责人：Frontend。**
+- **TD-099（审批层级规则冗余 + jsdom 守卫测试 skip）：** 审批卡抬升到聊天弹窗之上由两套并行 CSS 规则指向同一 token（wave-0 的 `.xiaoze-approval-overlay` 类与 main 的 `:has(+ [data-testid])` 选择器）；另外初始化向导的 Escape 脏守卫测试被 skip：jsdom 下确认层的 open 状态被第二次渲染回滚，而导入向导的同构流程与真实浏览器均正常（skip 说明见测试文件内）。需保留一套层级规则；根因排查 jsdom 双渲染（疑点：window 监听器内 setState 的 flush 交错）后恢复用例。**负责人：Frontend。**
+- **TD-100（合并后端到端验证欠账）：** (1) main 修复 SSE 缺陷（#333）后，小泽审批流未在真实浏览器对真实 agent 走查（批准 / 拒绝 / 带理由拒绝三路径）；(2) 批量高风险设备写入仍缺 HDC 真机手工验证（聚合确认、写入/跳过记账）。两个最高风险的人工闸门在大幅变更后缺新鲜实证。需按手工验收 runbook 走查审批流；随试点清单安排设备实验室验证。**负责人：QA / 父会话。**
+- **TD-101（验收覆盖 id 补登）：** 信任修复计划承诺的新验收 requirement id（聊天打开时审批卡可用、草稿移除跨刷新持久、置信度按百分比渲染）只做了既有 spec 适配，覆盖图未扩展。三个信任关键行为没有命名验收 id 守护。需按 UI 交互自动化规则补登到 `e2e/acceptance/` 与覆盖图。**负责人：QA / Frontend。**
+- **TD-102（Webhook 至多一次投递语义）：** 结果回调的重试链在进程内（fire-and-forget + in-flight 集合），进程崩溃会丢失当次剩余重试；集成指南已写明 Webhook 是通知通道、REST API 才是事实来源。若真实消费方需要更强保证，把投递落库为 outbox（复用通知 outbox 范式）由 worker 循环排空。**负责人：Log analysis。**
+- **TD-103（Webhook 签名密钥明文存储）：** `log_domains.webhook_secret` 明文存库（HMAC 需原文），API 只写不读、响应/审计仅含已配置态与末四位；数据库泄露将允许伪造投递签名。平台具备 KMS/信封加密基础设施后升级静态加密并轮换。**负责人：Security / Log analysis。**
+- **TD-104（验收 webServer 冷启动级联超时）：** playwright 验收的 webServer 首次 tsx/vite 编译可把首条用例逼近 90s 超时并级联误报（P3b 验证首轮 9 条假失败,预热重跑全绿）。加 ready 后预热请求（先编译入口路由）或放宽首条用例超时。**负责人：Quality / Acceptance tooling。**
+- **TD-105（投递记录无保留策略）：** `log_webhook_deliveries` 每次尝试一行、无清理机制,投递量大的域将无限增长。真实投递量出现后加保留策略（按域保留最近 N 条或按天龄清理,可挂 worker 循环或定时任务）。**负责人：Log analysis / Ops。**
 
 ## 近期关闭项
 

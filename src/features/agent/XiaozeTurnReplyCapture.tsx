@@ -1,8 +1,8 @@
+import { XIAOZE_TURN_REPLY_EVENT, type XiaozeTurnReplyPayload } from "@wiseeff/xiaoze-protocol";
 import { useEffect } from "react";
 import { EventType } from "@ag-ui/core";
 import { useAgent } from "@copilotkit/react-core/v2";
 import { useXiaozeTurnReplyActions } from "./XiaozeTurnReplyContext";
-import { XIAOZE_TURN_REPLY_EVENT, type XiaozeTurnReplyPayload } from "./xiaozeTurnReplyTypes";
 
 export function XiaozeTurnReplyCapture() {
   const { agent } = useAgent({ agentId: "default" });

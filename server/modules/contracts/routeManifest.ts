@@ -541,6 +541,21 @@ export const routeManifest = [
     module: "logs",
     stability: "mvp"
   },
+  { id: "logs.setDomainWebhook", method: "PUT", path: "/api/v1/log-domains/:domainId/webhook", module: "logs", stability: "mvp" },
+  {
+    id: "logs.listDomainWebhookDeliveries",
+    method: "GET",
+    path: "/api/v1/log-domains/:domainId/webhook-deliveries",
+    module: "logs",
+    stability: "mvp"
+  },
+  {
+    id: "logs.sendDomainWebhookTest",
+    method: "POST",
+    path: "/api/v1/log-domains/:domainId/webhook-test",
+    module: "logs",
+    stability: "mvp"
+  },
 
   { id: "productFeedback.create", method: "POST", path: "/api/v1/product-feedback", module: "product-feedback", stability: "mvp" },
   { id: "productFeedback.list", method: "GET", path: "/api/v1/product-feedback", module: "product-feedback", stability: "mvp" },
@@ -556,6 +571,13 @@ export const routeManifest = [
     stability: "mvp"
   },
   { id: "knowledge.search", method: "GET", path: "/api/v1/knowledge/search", module: "knowledge", stability: "mvp" },
+  {
+    id: "knowledge.relatedToLog",
+    method: "GET",
+    path: "/api/v1/knowledge/related-to-log",
+    module: "knowledge",
+    stability: "mvp"
+  },
   { id: "knowledge.indexStatus", method: "GET", path: "/api/v1/knowledge/index/status", module: "knowledge", stability: "mvp" },
   { id: "knowledge.indexRebuild", method: "POST", path: "/api/v1/knowledge/index/rebuild", module: "knowledge", stability: "mvp" },
   {

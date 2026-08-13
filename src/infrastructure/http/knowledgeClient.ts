@@ -306,6 +306,14 @@ export function createHttpKnowledgeRepository(options: HttpKnowledgeRepositoryOp
       return { items: response.items, retrieval: response.retrieval };
     },
 
+    async relatedToLog(logId) {
+      const params = new URLSearchParams({ logId });
+      const response = await apiClient.get<ListEnvelope<KnowledgeSearchResult> & { retrieval: KnowledgeRetrievalInfo }>(
+        `/api/v1/knowledge/related-to-log?${params.toString()}`
+      );
+      return { items: response.items, retrieval: response.retrieval };
+    },
+
     async getFileObjectUrl(entryId) {
       const response = await apiClient.raw(`${entryPath(entryId)}/file/content`, {
         method: "GET",

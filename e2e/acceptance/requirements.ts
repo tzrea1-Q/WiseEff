@@ -91,6 +91,13 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "KB-REC-001",
+    workflow: "J",
+    title:
+      "A completed log-analysis record shows a related-knowledge section derived from its stored conclusion/impact text: related published entries appear with a citation deep link into /knowledge, draft and archived entries never appear, and the section reports the retrieval mode that actually ran.",
+    required: true
+  },
+  {
     id: "SHELL-DIAG-001",
     workflow: "A",
     title: "Core routes fail acceptance on unexpected console, page, request, or critical API errors.",
@@ -360,6 +367,20 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "LOG-ARCHIVE-UPLOAD-001",
     workflow: "D",
     title: "A .gz log upload is unpacked server-side and completes analysis end to end like a plain text upload.",
+    required: true
+  },
+  {
+    id: "LOG-DOMAIN-WEBHOOK-001",
+    workflow: "D",
+    title:
+      "Admin configures a domain result webhook in /log-admin (write-only secret, audited); a domain-bound analysis delivers a signed payload to the receiver and the recent-deliveries list shows the attempt.",
+    required: true
+  },
+  {
+    id: "LOG-DOMAIN-MODEL-001",
+    workflow: "D",
+    title:
+      "Admin sets a per-domain model override in /log-admin; the override persists on the domain and is recorded as the report's model provenance for analyses bound to that domain.",
     required: true
   },
   {

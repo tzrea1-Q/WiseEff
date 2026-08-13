@@ -305,6 +305,9 @@ PATCH /api/v1/log-domains/:domainId
 POST /api/v1/log-domains/:domainId/archive
 GET  /api/v1/log-domains/:domainId/knowledge-links
 PUT  /api/v1/log-domains/:domainId/knowledge-links
+PUT  /api/v1/log-domains/:domainId/webhook
+GET  /api/v1/log-domains/:domainId/webhook-deliveries
+POST /api/v1/log-domains/:domainId/webhook-test
 GET  /api/v1/jobs/:jobId
 GET  /api/v1/jobs/:jobId/events
 ```
@@ -323,10 +326,15 @@ GET  /api/v1/jobs/:jobId/events
 | `GET` | `/api/v1/logs/feedback-insights` | P3：反馈质量聚合（`logs:view`；可选 `timeWindow=today\|7d\|30d`） |
 | `GET` | `/api/v1/log-domains` | 业务域列表（`logs:view`；`includeArchived=true` 含已归档） |
 | `POST` | `/api/v1/log-domains` | 创建业务域（`logs:admin-domains`；组织内重名 `409`；画像 JSON 非法 `400`） |
-| `PATCH` | `/api/v1/log-domains/:domainId` | 更新名称/描述/格式画像/状态（`formatProfile: null` 清空画像） |
+| `PATCH` | `/api/v1/log-domains/:domainId` | 更新名称/描述/格式画像/状态/模型覆盖（`formatProfile: null` 清空画像；`modelOverride: null` 清空回全局 `LOG_ANALYSIS_MODEL`） |
 | `POST` | `/api/v1/log-domains/:domainId/archive` | 归档业务域；既有日志记录保留绑定 |
 | `GET` | `/api/v1/log-domains/:domainId/knowledge-links` | P2：列出业务域的知识条目关联及各条目当前状态（`logs:admin-domains`） |
 | `PUT` | `/api/v1/log-domains/:domainId/knowledge-links` | P2：整组替换关联集合（`{ knowledgeEntryIds: uuid[] }`）。只接受本组织**已发布**知识条目（草稿/已归档 `400`，未知条目 `404`）；写 `log-domain-knowledge-links-update` 审计 |
+| `PUT` | `/api/v1/log-domains/:domainId/webhook` | P3b：整组替换结果 Webhook 配置（`{ url: string\|null, enabled: boolean, secret?: string\|null }`；省略 `secret` 保持现有密钥）。URL 必须通过 SSRF 策略（仅 https、禁止内嵌凭据、禁止私网/环回/元数据地址——`400` 带 `reason` 码 `webhook-url-scheme` / `webhook-url-private-address` / `webhook-url-required` / `webhook-secret-required`）。写 `log-domain-webhook-config` 审计；密钥绝不回显 |
+| `GET` | `/api/v1/log-domains/:domainId/webhook-deliveries` | P3b：最近投递尝试（`limit` 1..50，默认 10）——每次尝试一行，含 `kind`（`result`/`test`）、`attempt`、`status`（`delivered`/`retrying`/`failed`）、`httpStatus?`、`error?` |
+| `POST` | `/api/v1/log-domains/:domainId/webhook-test` | P3b：经同一 SSRF 防护的签名发送端发出单次测试投递；返回 `{ outcome: { status, attempts, httpStatus?, error? } }`，写 `log-domain-webhook-test` 审计 |
+
+业务域 DTO 携带 `modelOverride?` 与 Webhook 摘要 `{ enabled, url?, secretConfigured, secretLastFour? }`——签名密钥本身只写不读。出站结果 Webhook 的载荷与签名方案（`X-WiseEff-Signature` = 对 `timestamp.rawBody` 的 HMAC-SHA256,`X-WiseEff-Timestamp` 重放窗口）见 [`docs/zh-CN/api/log-analysis-integration.md`](../api/log-analysis-integration.md);投递尽力而为,绝不阻塞分析。
 
 `POST /api/v1/log-files` 在 M2 接受 JSON base64 内容，后续可替换为签名上传凭证而不改变 `POST /api/v1/logs` 的分析合同。
 
@@ -411,6 +419,7 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 | `GET` | `/api/v1/knowledge/entries` | 列出可见条目；支持 `status`、`contentForm`、`sourceType`（`human` \| `agent`,`/knowledge-admin` 的 Agent 草稿队列即 `status=draft&sourceType=agent`）、`tag`、`q`（标题）、`limit`。 |
 | `POST` | `/api/v1/knowledge/distill-from-log` | 把一条**已完成**的日志分析记录沉淀为预填 markdown **草稿**（`{ logId }` → `201 { item }`）：标题取分析结论,正文由结论/影响/严重度/证据行引用/建议处置组装,标签预置（`日志分析` + 严重度）,来源关联存入 `sourceLogId`。要求 `knowledge:edit`,且对来源记录要求 `logs:view` 加组织隔离;未完成的分析返回 `400`。审计 kind `knowledge-entry-distill`。 |
 | `GET` | `/api/v1/knowledge/search` | 仅检索 **published** 条目（`q`、可选 `limit`）。混合检索：配置了 `EMBEDDING_API_*` 且 pgvector 可用时,chunk 向量相似度与 FTS/trigram 排名做 RRF 融合;否则 FTS-only 路径保持不变。结果携带可引用字段（`entryId`、`title`、`revisionId`、`excerpt`）,响应携带诚实的 `retrieval` 报告：`{ mode: "semantic_fts" \| "fts_only", vectorAvailable, embeddingConfigured, degradedReason? }`。 |
+| `GET` | `/api/v1/knowledge/related-to-log` | 一条**已完成**日志分析记录的相关**已发布**知识（`logId`、可选 `limit`,默认 5）：相似度查询只从存储的结论/影响文本推导（绝不读分析器内部或规则 ID）,走同一套混合检索并施加相关度截断（trigram `word_similarity` ≥ 0.2;向量余弦距离 ≤ 0.75）,不相关条目被丢弃而非凑数。要求 `knowledge:view`,且对来源记录要求 `logs:view` 加组织隔离;未完成的分析返回 `400`,跨组织记录 `404`。响应形状与 search 相同（`items` + 诚实 `retrieval`）。纯读端点,与 search 一样不写审计。 |
 | `GET` | `/api/v1/knowledge/index/status` | 逐条目检索索引健康（仅 `knowledge:manage`）：`{ retrieval, items }`,每项含 `status`（`pending` \| `processing` \| `succeeded` \| `failed`）、`error`、已索引修订与 chunk 计数。 |
 | `POST` | `/api/v1/knowledge/index/rebuild` | 把全部已发布条目重新入队重建索引（仅 `knowledge:manage`;如更换 `EMBEDDING_MODEL` 后）。返回 `{ enqueued }`。写审计。 |
 | `POST` | `/api/v1/knowledge/entries/:entryId/index/retry` | 单条目重新入队索引刷新（仅 `knowledge:manage`）。返回 `{ enqueued: true }`。写审计。 |

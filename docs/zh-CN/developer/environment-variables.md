@@ -120,7 +120,7 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 | 变量 | 本地默认值 | 用途 | 说明 |
 | --- | --- | --- | --- |
 | `LOG_ANALYSIS_API_BASE_URL` | 空 | live 日志分析 LLM | OpenAI-compatible 端点；不得提交 secret 或私有端点。 |
-| `LOG_ANALYSIS_MODEL` | 空 | live 日志分析 LLM | 模型名会写入报告 `model` 列并作为指标标签。 |
+| `LOG_ANALYSIS_MODEL` | 空 | live 日志分析 LLM | **全局**模型名，写入报告 `model` 列并作为指标标签。业务域的 `modelOverride`（P3b，`/log-admin` 治理）只对绑定该域的分析替换这个模型名——端点、key、超时与 token 预算仍用全局配置。 |
 | `LOG_ANALYSIS_API_KEY` | 空 | live 日志分析 LLM | secret。 |
 | `LOG_ANALYSIS_API_TIMEOUT_MS` | `30000` | live 日志分析 LLM | 单次 `ChatOpenAI` 调用超时（循环内核每步一次调用）。 |
 | `LOG_ANALYSIS_TOKEN_BUDGET` | `8000` | 单次分析成本上界 | 单发内核：限定提示词摘录（约 4 字符/token 折算）与响应 `maxTokens`。循环内核：跨步累计输入+输出 token；耗尽触发显式标注的提前收敛。 |
@@ -131,6 +131,18 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 | `LOG_ANALYSIS_JUDGE_MODEL` | 空 | 效果层评测 judge | judge 模型名，写入质量报告。 |
 | `LOG_ANALYSIS_JUDGE_API_KEY` | 空 | 效果层评测 judge | secret。 |
 | `LOG_ANALYSIS_JUDGE_API_TIMEOUT_MS` | `30000` | 效果层评测 judge | judge 请求超时。 |
+| `LOG_ANALYSIS_JUDGE_SAMPLE_RATE` | `0.2` | judge 校准 | `docs/generated/log-analysis-judge-sample.md` 人工复核清单的确定性抽样率（0..1）；至少抽 1 条已评分案例。 |
+
+## 日志分析结果 Webhook
+
+按域结果 Webhook（P3b）在 `/log-admin` 配置（URL、只写签名密钥、启用开关）；本组环境变量只调节共享发送端。投递尽力而为、绝不阻塞分析；SSRF 约束见 `docs/zh-CN/SECURITY.md`。
+
+| 变量 | 本地默认值 | 用途 | 说明 |
+| --- | --- | --- | --- |
+| `LOG_WEBHOOK_TIMEOUT_MS` | `5000` | webhook 发送端 | 单次尝试请求超时；响应体一律丢弃。 |
+| `LOG_WEBHOOK_MAX_ATTEMPTS` | `3` | webhook 发送端 | 每次投递的尝试上限，超过后标记失败（尝试间指数退避）。 |
+| `LOG_WEBHOOK_RETRY_BASE_DELAY_MS` | `1000` | webhook 发送端 | 退避基数：第 n 次尝试前等待 `base * 2^(n-1)` 毫秒。 |
+| `LOG_WEBHOOK_ALLOW_INSECURE_LOCAL` | `.env.example` 为 `true`，代码默认 `false` | 本地 webhook 联调 | 放行明文 http 环回接收端（`http://127.0.0.1`），便于本地集成测试与验收运行。生产环境由 env 校验直接拒绝。 |
 
 ## 知识库嵌入与索引
 

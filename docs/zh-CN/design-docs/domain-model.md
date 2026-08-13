@@ -246,8 +246,9 @@ stateDiagram-v2
 | --- | --- |
 | `LogRecord` | 日志文件业务记录 |
 | `LogFileObject` | 对象存储文件引用 |
-| `LogDomain` | 组织级日志业务域注册：组织内唯一 `name`、可选描述、`status`（`active` \| `archived`）、可选声明式 `format_profile` JSON（时间戳正则、多行合并规则、严重级映射） |
+| `LogDomain` | 组织级日志业务域注册：组织内唯一 `name`、可选描述、`status`（`active` \| `archived`）、可选声明式 `format_profile` JSON（时间戳正则、多行合并规则、严重级映射）、P3b Webhook 配置列（`webhook_url`、只写 `webhook_secret`、`webhook_enabled`）与可选 `model_override`（仅替换该域分析的模型名，端点/key/预算仍全局） |
 | `LogDomainKnowledgeLink` | P2：业务域到已发布知识条目的关联（`log_domain_knowledge_links`，复合外键强制组织一致性）。关联集合限定 `read_domain_knowledge` 检索；关联后被归档的条目自动退出检索，失效关联对治理仍可见 |
+| `LogWebhookDelivery` | P3b：结果 Webhook 的一次投递**尝试**（`log_webhook_deliveries`，沿用 0107 复合组织外键，随域/记录级联删除）：`kind`（`result` \| `test`）、`attempt`、`status`（`delivered` \| `retrying` \| `failed`）、`http_status?`、`error?`、时间戳。管理员测试投递的 `log_record_id`/`run_id` 为 NULL。尽力而为通道——记录只承载诚实性，绝不承载分析状态 |
 | `LogAnalysisRun` | 一次分析任务 |
 | `LogAnalysisStage` | 分析阶段进度 |
 | `LogEvidence` | 证据行号、推断和建议动作 |
@@ -276,8 +277,9 @@ stateDiagram-v2
 - 证据行号必须基于原始文本日志或解析后的稳定索引。
 - `LogRecord.log_domain_id` 可空：NULL 表示内建未分类域（通用分析，上传绝不因域选择被阻塞）；上传/rerun 传入的 `logDomainId` 必须属于本组织且为 `active`，否则 400。租户隔离仍由 `organization_id` 承担，`source` 字段仍表示接入渠道。
 - P3：接入额外接受 `.gz`（单文件）与单条目 `.zip` 压缩包，上传时解包并带防炸弹上限（绝对 100MB / 压缩体 200 倍）——文件对象始终保存纯 UTF-8 文本，run/证据语义不变；解包失败走"不支持格式"路径成为带明确原因的失败记录。
-- 业务域治理（创建/更新/归档、知识条目关联替换）需要 `logs:admin-domains` 权限，保存时校验画像 JSON，并写 `log-domain-*` 审计事件。
+- 业务域治理（创建/更新/归档、知识条目关联替换、Webhook 配置、模型覆盖）需要 `logs:admin-domains` 权限，保存时校验画像 JSON，并写 `log-domain-*` 审计事件。
 - 知识条目关联只接受**已发布**条目（设计 D13：发布是 agent 可读内容的唯一信任门）；关联集合整组替换并写 `log-domain-knowledge-links-update` 审计。
+- P3b 结果 Webhook：绑定业务域的分析到达终态（完成——含降级——或死信失败）后，worker 发出尽力而为、签名且带 SSRF 防护的精简摘要投递（绝不含原始日志内容），并把每次尝试记入 `log_webhook_deliveries`。投递绝不阻塞、失败或重试分析本身；未分类域没有 Webhook。配置保存经 SSRF 校验并返回明确错误码、写 `log-domain-webhook-config` 审计；管理员测试投递写 `log-domain-webhook-test` 审计。详见 `docs/zh-CN/SECURITY.md` 与 `docs/zh-CN/api/log-analysis-integration.md`。
 
 分析内核（P2 默认 `LOG_ANALYSIS_KERNEL=loop`；P1 `single-shot` 保留为配置回退）是一个普通有界循环（ADR-0022）：至多 `LOG_ANALYSIS_MAX_STEPS` 步模型调用，驱动五个只读、组织隔离的工具（`search_log_lines`、`read_line_range`、`get_prefilter_findings`、`read_domain_knowledge`、`get_related_parameter_context`），在 `rootcause` 阶段内运行并把步进映射到 65→80 进度区间；四阶段词表与输出契约不变。
 
@@ -287,7 +289,7 @@ stateDiagram-v2
 - provider 瞬时故障走既有 job 重试/退避；重试将耗尽的最后一次尝试回退到确定性规则引擎 → `analysis_source = 'rules-fallback'`、`degraded_reason = 'provider-unavailable'`，job 正常完成（不进死信）。
 - 预算内单次调用无法给出有效接地输出（JSON 非法或引用全部被接地校验剔除）→ 立即回退并记 `degraded_reason = 'token-budget-exhausted'`。
 - 循环内核：步数/token 耗尽或连续协议违规触发一次提前收敛尝试；收敛成功返回 `analysis_source = 'agent'` + `degraded_reason = 'token-budget-exhausted'`、置信度封顶 0.5（词汇表所述「提前收敛的低置信 agent 结论」）；仍失败则同因走规则回退。
-- 连回退也失败才走既有失败/死信路径。降级结果绝不冒充完整分析；UI 显示来源徽标与原因，报告同时记录 `prompt_version` 与 `model`。
+- 连回退也失败才走既有失败/死信路径。降级结果绝不冒充完整分析；UI 显示来源徽标与原因，报告同时记录 `prompt_version` 与 `model`（生效模型——业务域设置了 `model_override` 时即覆盖名）。
 
 M2 implementation notes:
 

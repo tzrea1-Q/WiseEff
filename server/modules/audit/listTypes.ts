@@ -11,6 +11,8 @@ export type ListAuditEventsQuery = {
   targetType?: string;
   targetId?: string;
   traceId?: string;
+  /** Case-insensitive text search over action, kind, target id, and actor name. */
+  q?: string;
   from?: string;
   to?: string;
   cursor?: string;

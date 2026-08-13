@@ -24,7 +24,7 @@ import type { DeviceBridgeWsHandler } from "./modules/deviceBridge/wsHandler";
 import { attachDeviceBridgeWebSocket, createDeviceBridgeWsHandler } from "./modules/deviceBridge/wsHandler";
 import type { KnowledgeEmbeddingClient } from "./modules/knowledge/indexing/embeddingClient";
 import { registerKnowledgeRoutes } from "./modules/knowledge/routes";
-import { registerLogRoutes } from "./modules/logs/routes";
+import { registerLogRoutes, type LogWebhookRouteContext } from "./modules/logs/routes";
 import { buildReadyHealth, type DurableQueueHealthCheck } from "./modules/operations/health";
 import { registerOperationsRoutes, type PilotReadinessEnv } from "./modules/operations/routes";
 import { createMetricsRegistry, type MetricsRegistry } from "./observability/metrics";
@@ -95,6 +95,8 @@ export type WiseEffServerOptions = {
   deviceBridge?: DeviceBridgeRuntimeOptions;
   /** Embedding seam for knowledge retrieval and Xiaoze knowledge tools; absent means FTS-only. */
   knowledgeEmbeddingClient?: KnowledgeEmbeddingClient;
+  /** Domain result-webhook governance context (P3b): test-delivery sender + SSRF dev flag. */
+  logWebhooks?: LogWebhookRouteContext;
 };
 
 /**
@@ -170,6 +172,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
     db: options.db,
     objectStore: options.objectStore,
     logAnalysisQueue: options.logAnalysisQueue,
+    webhooks: options.logWebhooks,
     getCurrentAuthContext: authResolver
   });
   registerProductFeedbackRoutes(router, {
@@ -443,6 +446,7 @@ export function createWiseEffServerFromEnv(
     metrics?: MetricsRegistry;
     deviceBridge?: DeviceBridgeRuntimeOptions;
     knowledgeEmbeddingClient?: KnowledgeEmbeddingClient;
+    logWebhooks?: LogWebhookRouteContext;
   }
 ) {
   const verifier =

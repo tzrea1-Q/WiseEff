@@ -1,5 +1,5 @@
+import { XIAOZE_TURN_STATE_EVENT, type XiaozeTurnStatePayload } from "@wiseeff/xiaoze-protocol";
 import { describe, expect, it } from "vitest";
-import { XIAOZE_TURN_STATE_EVENT, type XiaozeTurnStatePayload } from "./xiaozeTurnStateTypes";
 
 describe("xiaozeTurnStateTypes", () => {
   it("uses a stable custom event name", () => {

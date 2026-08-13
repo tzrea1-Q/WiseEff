@@ -86,7 +86,7 @@ Scenario checks the model must satisfy:
 
 Ordered next candidates after the MVP, all compatible with this model:
 
-1. Related-knowledge recommendations on log-analysis results (similarity search from conclusion text).
+1. Related-knowledge recommendations on log-analysis results (similarity search from conclusion text). — **Shipped 2026-08-13** via [`2026-08-13-knowledge-log-recommendations.md`](../exec-plans/completed/2026-08-13-knowledge-log-recommendations.md): `GET /api/v1/knowledge/related-to-log` plus the log result page's related-knowledge section.
 2. Structural parameter-to-knowledge references with integrity rules (behavior on spec deprecation and entry archive).
 3. DTS-reload run distillation.
 4. Single-level collections, if tag navigation proves insufficient.

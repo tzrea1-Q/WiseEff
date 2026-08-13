@@ -56,6 +56,8 @@ export type ListAuditEventsParams = {
   targetType?: string;
   targetId?: string;
   traceId?: string;
+  /** Server-side case-insensitive search over action, kind, target id, and actor name. */
+  q?: string;
   from?: string;
   to?: string;
   cursor?: string;

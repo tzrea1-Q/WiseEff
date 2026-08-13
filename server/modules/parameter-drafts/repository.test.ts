@@ -11,7 +11,7 @@ import {
   isTestDatabaseAvailable,
   type InMemoryTestDatabase
 } from "../../testing/testDatabase";
-import { seedCoreGraph } from "../../testing/fixtures";
+import { seedCoreGraph, seedSpecBindingGraph } from "../../testing/fixtures";
 import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import {
   deleteDraft,
@@ -66,48 +66,37 @@ describe.skipIf(!databaseAvailable)("draft repository", () => {
     await db?.rollback();
   });
 
-  /** Candidate revisions carry an FK to dts_config_revisions; seed real rows. */
-  async function seedConfigRevisions(revisionIds: string[]) {
-    await db.query(
-      `insert into dts_config_set (id, organization_id, project_id, name)
-       values ('set-1', 'org-1', 'project-1', 'main')
-       on conflict (id) do nothing`
-    );
-    for (const [index, revisionId] of revisionIds.entries()) {
-      await db.query(
-        `insert into dts_config_revisions (id, organization_id, project_id, config_set_id, revision_number, status)
-         values ($1, 'org-1', 'project-1', 'set-1', $2, 'resolved')`,
-        [revisionId, index + 1]
-      );
-    }
-  }
-
-  /** Spec + binding graph for binding-identified drafts (FKs require real rows). */
-  async function seedBindingGraph() {
-    await db.query(
-      `insert into parameter_specs (id, organization_id, source_kind, specification_key)
-       values
-         ('spec-thermal', 'org-1', 'dts', 'Power/thermal-limit'),
-         ('spec-current', 'org-1', 'dts', 'Power/current-limit')`
-    );
-    await db.query(
-      `insert into parameter_spec_versions (id, parameter_spec_id, version, display_name, description, value_shape, lifecycle)
-       values ('psv-thermal', 'spec-thermal', 1, 'thermal-limit', 'thermal limit', '{}', 'active')`
-    );
-    await db.query(
-      `insert into dts_property_specs (id, parameter_spec_id, property_key, schema_namespace)
-       values ('dps-thermal', 'spec-thermal', 'thermal-limit', 'wiseeff')`
-    );
-    await db.query(
-      `insert into parameter_modules (id, organization_id, name, path, depth)
-       values ('pm-power', 'org-1', 'Power', 'pm-power', 1)`
-    );
-    await db.query(
-      `insert into project_parameter_bindings (id, organization_id, project_id, parameter_spec_id, module_id)
-       values
-         ('binding-1', 'org-1', 'project-1', 'spec-thermal', 'pm-power'),
-         ('binding-b', 'org-1', 'project-1', 'spec-current', 'pm-power')`
-    );
+  /**
+   * Spec + binding graph for binding-identified drafts (FKs require real rows).
+   * Candidate revisions carry an FK to dts_config_revisions; logical nodes back
+   * enablement drafts.
+   */
+  async function seedBindingGraph(input: { revisionIds?: string[]; logicalNodeIds?: string[] } = {}) {
+    await seedSpecBindingGraph(db, {
+      organizationId: "org-1",
+      specs: [
+        {
+          id: "spec-thermal",
+          specificationKey: "Power/thermal-limit",
+          versions: [{ id: "psv-thermal", displayName: "thermal-limit", description: "thermal limit" }],
+          propertySpec: { id: "dps-thermal", propertyKey: "thermal-limit" }
+        },
+        { id: "spec-current", specificationKey: "Power/current-limit" }
+      ],
+      modules: [{ id: "pm-power", name: "Power" }],
+      configSets: [
+        {
+          id: "set-1",
+          projectId: "project-1",
+          revisions: (input.revisionIds ?? []).map((id) => ({ id })),
+          logicalNodes: (input.logicalNodeIds ?? []).map((id) => ({ id }))
+        }
+      ],
+      bindings: [
+        { id: "binding-1", projectId: "project-1", parameterSpecId: "spec-thermal", moduleId: "pm-power" },
+        { id: "binding-b", projectId: "project-1", parameterSpecId: "spec-current", moduleId: "pm-power" }
+      ]
+    });
   }
 
   async function draftRows(where: string, values: unknown[] = []) {
@@ -219,8 +208,7 @@ describe.skipIf(!databaseAvailable)("draft repository", () => {
   });
 
   it("listDraftsForUser maps binding identity, candidate revision, and locked base value", async () => {
-    await seedBindingGraph();
-    await seedConfigRevisions(["base-rev-1", "rev-shared-tip"]);
+    await seedBindingGraph({ revisionIds: ["base-rev-1", "rev-shared-tip"] });
     await db.query(
       `insert into project_parameter_binding_revisions (id, binding_id, config_revision_id, parameter_spec_version_id, typed_value, raw_value)
        values ('bpr-1', 'binding-1', 'base-rev-1', 'psv-thermal', '"3000"', '3000')`
@@ -310,12 +298,7 @@ describe.skipIf(!databaseAvailable)("draft repository", () => {
   });
 
   it("listOpenBindingDraftsForUser returns binding and enablement drafts ordered by updated_at desc then id asc", async () => {
-    await seedBindingGraph();
-    await seedConfigRevisions(["rev-new", "rev-old", "rev-x"]);
-    await db.query(
-      `insert into dts_logical_nodes (id, organization_id, project_id, config_set_id)
-       values ('node-a', 'org-1', 'project-1', 'set-1')`
-    );
+    await seedBindingGraph({ revisionIds: ["rev-new", "rev-old", "rev-x"], logicalNodeIds: ["node-a"] });
     await db.query(
       `insert into parameter_drafts (
          id, organization_id, project_id, project_parameter_value_id, user_id,
@@ -355,12 +338,7 @@ describe.skipIf(!databaseAvailable)("draft repository", () => {
   });
 
   it("rebaseOpenBindingDraftCandidates moves stale sibling drafts (including enablement) to the shared tip", async () => {
-    await seedBindingGraph();
-    await seedConfigRevisions(["rev-fresh", "rev-old", "rev-shared"]);
-    await db.query(
-      `insert into dts_logical_nodes (id, organization_id, project_id, config_set_id)
-       values ('node-a', 'org-1', 'project-1', 'set-1')`
-    );
+    await seedBindingGraph({ revisionIds: ["rev-fresh", "rev-old", "rev-shared"], logicalNodeIds: ["node-a"] });
     await db.query(
       `insert into parameter_drafts (
          id, organization_id, project_id, project_parameter_value_id, user_id,

@@ -1354,6 +1354,33 @@ export async function releaseDebugDeviceLease(
   return result.rows[0] ? toDebugDeviceLeaseRecord(result.rows[0]) : null;
 }
 
+/**
+ * Resolve the debug_nodes id bound to a protocol + node path, when a
+ * debug_node_bindings row exists. parameterId-addressed operations use this
+ * to record an honest node_id linkage: node_operations.node_id has an FK to
+ * debug_nodes(id), so writing a debugging_parameters id there faults for any
+ * parameter without a same-id mirror row (#416).
+ */
+export async function resolveDebugNodeIdByBinding(
+  db: Queryable,
+  input: { organizationId: string; protocol: DebugConnectionProtocol; nodePath: string }
+): Promise<string | null> {
+  const result = await db.query<{ node_id: string }>(
+    `
+    select node_id
+    from debug_node_bindings
+    where organization_id = $1
+      and protocol = $2
+      and node_path = $3
+    order by enabled desc, updated_at desc, id asc
+    limit 1
+    `,
+    [input.organizationId, input.protocol, input.nodePath]
+  );
+
+  return result.rows[0]?.node_id ?? null;
+}
+
 export async function insertNodeOperation(
   db: Queryable,
   input: {
@@ -1422,7 +1449,10 @@ export async function insertNodeOperation(
           input.organizationId,
           input.sessionId,
           input.parameterId,
-          input.nodeId ?? input.parameterId,
+          // Never fall back to parameterId: node_id's FK targets debug_nodes,
+          // and a debugging_parameters id only satisfies it for seeded rows
+          // that happen to have a same-id mirror (#416).
+          input.nodeId ?? null,
           input.protocol ?? defaultDebugConnectionProtocol,
           input.nodePath,
           input.operationType,
@@ -1452,7 +1482,7 @@ export async function insertNodeOperation(
           input.organizationId,
           input.sessionId,
           input.parameterId,
-          input.nodeId ?? input.parameterId,
+          input.nodeId ?? null,
           input.parameterDefinitionId ?? null,
           input.protocol ?? defaultDebugConnectionProtocol,
           input.nodePath,

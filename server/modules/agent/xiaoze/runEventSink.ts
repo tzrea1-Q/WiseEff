@@ -1,21 +1,10 @@
 import { randomUUID } from "node:crypto";
+import type { XiaozeRunStep } from "@wiseeff/xiaoze-protocol";
 
-export type XiaozeRunStepKind = "graph" | "tool" | "model";
-export type XiaozeRunStepStatus = "running" | "succeeded" | "failed" | "forbidden";
-
-export type XiaozeRunStepRecord = {
-  id: string;
-  kind: XiaozeRunStepKind;
-  label: string;
-  toolName?: string;
-  status: XiaozeRunStepStatus;
-  summary?: string;
-  startedAtMs: number;
-  durationMs?: number;
-};
+export type XiaozeRunStepStatus = XiaozeRunStep["status"];
 
 export type RunEventSinkEvent =
-  | { type: "step_started"; step: XiaozeRunStepRecord }
+  | { type: "step_started"; step: XiaozeRunStep }
   | {
       type: "step_finished";
       stepId: string;
@@ -38,12 +27,12 @@ export type RunEventSink = {
   push: (event: RunEventSinkEvent) => void;
   close: () => void;
   drain: (timeoutMs?: number) => Promise<RunEventSinkEvent[]>;
-  getSteps: () => XiaozeRunStepRecord[];
+  getSteps: () => XiaozeRunStep[];
 };
 
 export function createRunEventSink(): RunEventSink {
   const queue: RunEventSinkEvent[] = [];
-  const steps = new Map<string, XiaozeRunStepRecord>();
+  const steps = new Map<string, XiaozeRunStep>();
   let closed = false;
   let notify: (() => void) | undefined;
 
@@ -97,7 +86,7 @@ export function createRunEventSink(): RunEventSink {
   };
 }
 
-export function serializeTurnSteps(steps: XiaozeRunStepRecord[]) {
+export function serializeTurnSteps(steps: XiaozeRunStep[]) {
   return steps.map((step) => ({
     id: step.id,
     kind: step.kind,
@@ -115,12 +104,12 @@ export function createToolCallId() {
 }
 
 export function startRunStep(input: {
-  kind: XiaozeRunStepKind;
+  kind: XiaozeRunStep["kind"];
   label: string;
   toolName?: string;
   startedAtMs?: number;
-}): { step: XiaozeRunStepRecord; finish: (result: { status: Exclude<XiaozeRunStepStatus, "running">; summary?: string }) => RunEventSinkEvent } {
-  const step: XiaozeRunStepRecord = {
+}): { step: XiaozeRunStep; finish: (result: { status: Exclude<XiaozeRunStepStatus, "running">; summary?: string }) => RunEventSinkEvent } {
+  const step: XiaozeRunStep = {
     id: randomUUID(),
     kind: input.kind,
     label: input.label,

@@ -1,0 +1,63 @@
+# Log-analysis quality gate (P3b): runs the quality-layer eval over the golden
+# case set on demand (release checklists) and weekly (drift watch).
+#
+# CI has no real provider key, so the workflow runs in deterministic mode
+# (LOG_ANALYSIS_DETERMINISTIC=true): the pipeline, judge sampling, review-file
+# loading, and the baseline gate all execute for real, and the run FAILS when a
+# committed baseline gate is active and violated. While the expert-annotated
+# real cases are still pending, the report honestly shows
+# "inactive-pending-real-cases" and the workflow stays green.
+#
+# Switching to the real model: configure repository secrets and replace the env
+# block of the eval step with
+#   LOG_ANALYSIS_API_BASE_URL: ${{ secrets.LOG_ANALYSIS_API_BASE_URL }}
+#   LOG_ANALYSIS_API_KEY: ${{ secrets.LOG_ANALYSIS_API_KEY }}
+#   LOG_ANALYSIS_MODEL: ${{ vars.LOG_ANALYSIS_MODEL }}
+#   LOG_ANALYSIS_JUDGE_API_BASE_URL: ${{ secrets.LOG_ANALYSIS_JUDGE_API_BASE_URL }}
+#   LOG_ANALYSIS_JUDGE_API_KEY: ${{ secrets.LOG_ANALYSIS_JUDGE_API_KEY }}
+#   LOG_ANALYSIS_JUDGE_MODEL: ${{ vars.LOG_ANALYSIS_JUDGE_MODEL }}
+# (and drop LOG_ANALYSIS_DETERMINISTIC).
+
+name: Log analysis quality gate
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly drift watch: Mondays 02:30 UTC.
+    - cron: "30 2 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  quality-eval:
+    name: Quality-layer eval (deterministic)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run quality-layer eval (gated)
+        env:
+          LOG_ANALYSIS_DETERMINISTIC: "true"
+        run: npm run logs:eval:quality
+
+      - name: Upload quality report and judge sample
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: log-analysis-quality-report
+          path: |
+            docs/generated/log-analysis-quality.json
+            docs/generated/log-analysis-quality.md
+            docs/generated/log-analysis-judge-sample.md

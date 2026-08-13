@@ -42,6 +42,8 @@ type Fixture = {
     current_run_id: string;
     analysis_question: string | null;
     failure_reason: string | null;
+    /** Bound log domain for webhook/model-override tests; absent = uncategorized. */
+    log_domain?: { id: string; name: string; model_override?: string | null } | null;
   };
   file: {
     id: string;
@@ -220,7 +222,12 @@ function createFakeWorkerDb(fixture = createFixture()) {
               analysis_question: fixture.log.analysis_question,
               job_status: fixture.job.status,
               run_status: fixture.run.status,
-              record_status: fixture.log.status
+              record_status: fixture.log.status,
+              log_domain_id: fixture.log.log_domain?.id ?? null,
+              log_domain_name: fixture.log.log_domain?.name ?? null,
+              log_domain_description: null,
+              log_domain_format_profile: null,
+              log_domain_model_override: fixture.log.log_domain?.model_override ?? null
             } as Row
           ],
           rowCount: 1
@@ -776,6 +783,93 @@ describe("log worker", () => {
 
     expect(secondResult).toBe("idle");
     expect(fixture.evidence).toEqual(evidenceAfterFirstRun);
+  });
+
+  it("fires the domain result webhook after a completed analysis without blocking on it", async () => {
+    const fixture = createFixture();
+    fixture.log.log_domain = { id: "domain-1", name: "charging-power" };
+    const { db } = createFakeWorkerDb(fixture);
+    const objectStore = createObjectStore(Buffer.from("WARN thermal foldback\n"));
+    const webhooks = { notifyAnalysisTerminal: vi.fn() };
+
+    const result = await processNextLogAnalysisJob({ db, objectStore, webhooks });
+
+    expect(result).toBe("processed");
+    expect(webhooks.notifyAnalysisTerminal).toHaveBeenCalledOnce();
+    expect(webhooks.notifyAnalysisTerminal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: "org-1",
+        logDomainId: "domain-1",
+        logId: "log-1",
+        runId: "run-1",
+        fileName: "pack-controller.log",
+        status: "complete",
+        severity: expect.any(String),
+        confidence: expect.any(Number),
+        conclusion: expect.any(String)
+      })
+    );
+  });
+
+  it("does not fire the webhook for uncategorized logs (no domain, no config)", async () => {
+    const { db } = createFakeWorkerDb();
+    const objectStore = createObjectStore(Buffer.from("WARN thermal foldback\n"));
+    const webhooks = { notifyAnalysisTerminal: vi.fn() };
+
+    const result = await processNextLogAnalysisJob({ db, objectStore, webhooks });
+
+    expect(result).toBe("processed");
+    expect(webhooks.notifyAnalysisTerminal).not.toHaveBeenCalled();
+  });
+
+  it("fires the domain result webhook with status failed after dead-lettering", async () => {
+    const fixture = createFixture({
+      job: {
+        ...createFixture().job,
+        attempt_count: 3
+      }
+    });
+    fixture.log.log_domain = { id: "domain-1", name: "charging-power" };
+    const { db } = createFakeWorkerDb(fixture);
+    const webhooks = { notifyAnalysisTerminal: vi.fn() };
+
+    const result = await processNextLogAnalysisJob({
+      db,
+      objectStore: createObjectStore(Buffer.from([0, 0, 0, 0, 1])),
+      webhooks
+    });
+
+    expect(result).toBe("processed");
+    expect(webhooks.notifyAnalysisTerminal).toHaveBeenCalledOnce();
+    expect(webhooks.notifyAnalysisTerminal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        logDomainId: "domain-1",
+        logId: "log-1",
+        status: "failed",
+        conclusion: "Job exhausted 4 attempts."
+      })
+    );
+  });
+
+  it("hands the domain model override to the analyzer input (P3b)", async () => {
+    const fixture = createFixture();
+    fixture.log.log_domain = { id: "domain-1", name: "charging-power", model_override: "domain-model-x" };
+    const { db } = createFakeWorkerDb(fixture);
+    const objectStore = createObjectStore(Buffer.from("WARN thermal foldback\n"));
+    const seenInputs: AnalyzeLogInput[] = [];
+    const analyzer = {
+      async analyze(input: AnalyzeLogInput): Promise<AnalyzeLogOutput> {
+        seenInputs.push(input);
+        return createRuleBasedLogAnalyzer().analyze(input);
+      }
+    };
+
+    const result = await processNextLogAnalysisJob({ db, objectStore, analyzer });
+
+    expect(result).toBe("processed");
+    expect(seenInputs[0].logDomain).toEqual(
+      expect.objectContaining({ name: "charging-power", modelOverride: "domain-model-x" })
+    );
   });
 
   it("fails a stale queued run when the job is no longer current", async () => {

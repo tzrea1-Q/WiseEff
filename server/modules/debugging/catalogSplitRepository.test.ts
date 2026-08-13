@@ -1,5 +1,18 @@
-import { describe, expect, it } from "vitest";
-import type { QueryResult, Queryable } from "../../shared/database/client";
+/**
+ * Behavior-level integration coverage for the debug node/binding catalog
+ * split: logical nodes without protocol columns, per-protocol bindings with
+ * organization scoping, runtime listings, and debug node module CRUD against
+ * a real database. Asserts returned records and subsequent reads — never SQL
+ * text.
+ */
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import {
+  createInMemoryTestDatabase,
+  isTestDatabaseAvailable,
+  type InMemoryTestDatabase
+} from "../../testing/testDatabase";
+import { seedCoreGraph } from "../../testing/fixtures";
 import {
   archiveDebugNodeBinding,
   countDebugNodesForModule,
@@ -7,234 +20,241 @@ import {
   createDebugNodeModule,
   deleteDebugNodeModule,
   getDebugNodeBinding,
+  getDebugNodeModuleByName,
   listDebugNodeBindings,
   listDebugNodeModules,
+  listDebugNodes,
   listRuntimeDebugNodes,
   renameDebugNodeModuleReferences,
   updateDebugNodeModule,
   upsertDebugNodeBinding
 } from "./catalogSplitRepository";
 
-type QueryCall = {
-  text: string;
-  values: unknown[];
-};
+const databaseAvailable = await isTestDatabaseAvailable();
 
-type QueuedResult = unknown[] | ((call: QueryCall) => unknown[]);
+describe.skipIf(!databaseAvailable)("catalogSplitRepository", () => {
+  let db: InMemoryTestDatabase;
 
-function createFakeDb(results: QueuedResult[] = []) {
-  const calls: QueryCall[] = [];
-  const db: Queryable = {
-    query: async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
-      const call = { text, values };
-      calls.push(call);
-      const next = results.shift() ?? [];
-      const rows = typeof next === "function" ? next(call) : next;
-      return { rows: rows as Row[], rowCount: rows.length };
-    }
-  };
+  beforeEach(async () => {
+    db = await createInMemoryTestDatabase();
+    await seedCoreGraph(db, { organization: { id: "org-1", name: "ChargeLab" } });
+    await seedCoreGraph(db, { organization: { id: "org-2", name: "Foreign Org" } });
+  });
 
-  return { calls, db };
-}
+  afterEach(async () => {
+    await db?.rollback();
+  });
 
-const timestamp = "2026-07-01T10:00:00.000Z";
-
-function debugNodeRow(overrides: Partial<Record<string, unknown>> = {}) {
-  return {
-    id: "node-1",
-    organization_id: "org-1",
-    name: "Battery current",
-    description: "Charge current node",
-    detailed_description: "",
-    write_format_example: "",
-    write_format_hint: "",
-    module: "Battery",
-    debug_node_module_id: "dm-1",
-    module_path: "Battery",
-    value_kind: "scalar",
-    value_format: "raw",
-    normalization_mode: "trim",
-    max_value_bytes: null,
-    enabled: true,
-    archived_at: null,
-    archived_by: null,
-    archive_reason: null,
-    created_at: timestamp,
-    updated_at: timestamp,
-    ...overrides
-  };
-}
-
-function debugNodeBindingRow(overrides: Partial<Record<string, unknown>> = {}) {
-  return {
-    id: "node-1:hdc",
-    organization_id: "org-1",
-    node_id: "node-1",
-    protocol: "hdc",
-    node_path: "/sys/class/power_supply/battery/current",
-    access_mode: "RW",
-    enabled: true,
-    notes: null,
-    created_at: timestamp,
-    updated_at: timestamp,
-    ...overrides
-  };
-}
-
-describe("catalogSplitRepository", () => {
-  it("creates logical debug nodes without protocol columns", async () => {
-    const { db, calls } = createFakeDb([[debugNodeRow({ id: "node-created", name: "Created node" })]]);
-
+  it("creates logical debug nodes carrying metadata only, with no protocol binding attached", async () => {
     const created = await createDebugNode(db, {
       organizationId: "org-1",
       name: "Created node",
       description: "Node metadata only"
     });
 
-    expect(calls[0].text).toContain("insert into debug_nodes");
-    expect(calls[0].text).not.toContain("protocol");
-    expect(calls[0].text).not.toContain("node_path");
-    expect(calls[0].text).not.toContain("access_mode");
-    expect(calls[0].values).toEqual([
-      expect.any(String),
-      "org-1",
-      "Created node",
-      "Node metadata only",
-      "",
-      "",
-      "",
-      "",
-      null,
-      "scalar",
-      "raw",
-      "trim",
-      null,
-      true
-    ]);
-    expect(created).toMatchObject({ id: "node-created", name: "Created node" });
+    expect(created).toMatchObject({
+      organizationId: "org-1",
+      name: "Created node",
+      description: "Node metadata only",
+      valueKind: "scalar",
+      valueFormat: "raw",
+      normalizationMode: "trim",
+      maxValueBytes: null,
+      enabled: true,
+      archivedAt: null
+    });
+    // The catalog split keeps protocol/node-path/access-mode off the node itself:
+    // a fresh node has no bindings and is invisible to every runtime protocol list.
+    await expect(listDebugNodeBindings(db, { organizationId: "org-1", nodeId: created.id })).resolves.toEqual([]);
+    await expect(listRuntimeDebugNodes(db, { organizationId: "org-1", protocol: "hdc" })).resolves.toEqual([]);
+    const listed = await listDebugNodes(db, { organizationId: "org-1" });
+    expect(listed.map((node) => node.id)).toEqual([created.id]);
   });
 
   it("upserts and archives debug node bindings scoped to the logical node", async () => {
-    const { db, calls } = createFakeDb([
-      [debugNodeBindingRow({ protocol: "adb", id: "node-1:adb", enabled: true })],
-      [debugNodeBindingRow({ protocol: "adb", id: "node-1:adb", enabled: false })]
-    ]);
+    const node = await createDebugNode(db, { organizationId: "org-1", name: "Battery current" });
 
-    await upsertDebugNodeBinding(db, {
+    const created = await upsertDebugNodeBinding(db, {
       organizationId: "org-1",
-      nodeId: "node-1",
+      nodeId: node.id,
       protocol: "adb",
       nodePath: "/sys/adb/current",
       accessMode: "RO",
       enabled: true,
       notes: "ADB lab path"
     });
-    await archiveDebugNodeBinding(db, {
-      organizationId: "org-1",
-      nodeId: "node-1",
-      protocol: "adb"
+    expect(created).toMatchObject({
+      nodeId: node.id,
+      protocol: "adb",
+      nodePath: "/sys/adb/current",
+      accessMode: "RO",
+      enabled: true,
+      notes: "ADB lab path"
     });
 
-    expect(calls[0].text).toContain("insert into debug_node_bindings");
-    expect(calls[0].text).toContain("from debug_nodes n");
-    expect(calls[0].text).toContain("n.id = $3");
-    expect(calls[0].text).toContain("n.organization_id = $2");
-    expect(calls[0].text).toContain("on conflict (node_id, protocol) do update");
-    expect(calls[0].text).toContain("where debug_node_bindings.organization_id = excluded.organization_id");
-    expect(calls[0].values).toEqual([
-      "node-1:adb",
-      "org-1",
-      "node-1",
-      "adb",
-      "/sys/adb/current",
-      "RO",
-      true,
-      "ADB lab path"
-    ]);
-    expect(calls[1].text).toContain("enabled = false");
-    expect(calls[1].values).toEqual(["org-1", "node-1", "adb"]);
+    // A second upsert for the same (node, protocol) updates the same binding row.
+    const updated = await upsertDebugNodeBinding(db, {
+      organizationId: "org-1",
+      nodeId: node.id,
+      protocol: "adb",
+      nodePath: "/sys/adb/updated",
+      accessMode: "RW",
+      enabled: true,
+      notes: null
+    });
+    expect(updated?.id).toBe(created?.id);
+    expect(updated).toMatchObject({ nodePath: "/sys/adb/updated", accessMode: "RW", notes: null });
+
+    const archived = await archiveDebugNodeBinding(db, {
+      organizationId: "org-1",
+      nodeId: node.id,
+      protocol: "adb"
+    });
+    expect(archived?.enabled).toBe(false);
+    // Enabled-only reads no longer see the archived binding.
+    await expect(
+      getDebugNodeBinding(db, { organizationId: "org-1", nodeId: node.id, protocol: "adb" })
+    ).resolves.toBeNull();
   });
 
   it("returns null when upserting a binding for a node outside the organization scope", async () => {
-    const { db, calls } = createFakeDb([[]]);
+    const foreignNode = await createDebugNode(db, { organizationId: "org-2", name: "Foreign node" });
 
     const binding = await upsertDebugNodeBinding(db, {
       organizationId: "org-1",
-      nodeId: "node-other-org",
+      nodeId: foreignNode.id,
       protocol: "hdc",
       nodePath: "/sys/hdc/current",
       accessMode: "RW",
       enabled: true
     });
 
-    expect(calls[0].text).toContain("from debug_nodes n");
     expect(binding).toBeNull();
+    // Nothing was written for either organization.
+    await expect(listDebugNodeBindings(db, { organizationId: "org-1", nodeId: foreignNode.id })).resolves.toEqual([]);
+    await expect(listDebugNodeBindings(db, { organizationId: "org-2", nodeId: foreignNode.id })).resolves.toEqual([]);
   });
 
-  it("lists bindings for a logical node", async () => {
-    const { db, calls } = createFakeDb([
-      [
-        debugNodeBindingRow({ protocol: "hdc" }),
-        debugNodeBindingRow({ protocol: "adb", id: "node-1:adb", node_path: "/sys/adb/current" })
-      ]
-    ]);
-
-    const bindings = await listDebugNodeBindings(db, { organizationId: "org-1", nodeId: "node-1" });
-
-    expect(calls[0].text).toContain("from debug_node_bindings");
-    expect(calls[0].values).toEqual(["org-1", "node-1"]);
-    expect(bindings).toEqual([
-      expect.objectContaining({ nodeId: "node-1", protocol: "hdc", enabled: true }),
-      expect.objectContaining({ nodeId: "node-1", protocol: "adb", nodePath: "/sys/adb/current" })
-    ]);
-  });
-
-  it("returns enabled debug node bindings by node and protocol", async () => {
-    const { db, calls } = createFakeDb([[debugNodeBindingRow()]]);
-
-    const binding = await getDebugNodeBinding(db, {
+  it("lists bindings for a logical node ordered by protocol", async () => {
+    const node = await createDebugNode(db, { organizationId: "org-1", name: "Battery current" });
+    const otherNode = await createDebugNode(db, { organizationId: "org-1", name: "Voltage" });
+    // Insert hdc before adb: the listing order must come from the database.
+    await upsertDebugNodeBinding(db, {
       organizationId: "org-1",
-      nodeId: "node-1",
-      protocol: "hdc"
-    });
-
-    expect(calls[0].text).toContain("from debug_node_bindings");
-    expect(calls[0].text).toContain("enabled = true");
-    expect(calls[0].values).toEqual(["org-1", "node-1", "hdc"]);
-    expect(binding).toMatchObject({
-      nodeId: "node-1",
+      nodeId: node.id,
       protocol: "hdc",
       nodePath: "/sys/class/power_supply/battery/current",
       accessMode: "RW",
       enabled: true
     });
-  });
-
-  it("listRuntimeDebugNodes inner-joins enabled bindings and filters by protocol", async () => {
-    const { db, calls } = createFakeDb([
-      [
-        {
-          ...debugNodeRow(),
-          protocol: "hdc",
-          node_path: "/sys/class/power_supply/battery/current",
-          access_mode: "RW"
-        }
-      ]
-    ]);
-
-    const nodes = await listRuntimeDebugNodes(db, {
+    await upsertDebugNodeBinding(db, {
       organizationId: "org-1",
-      protocol: "hdc"
+      nodeId: node.id,
+      protocol: "adb",
+      nodePath: "/sys/adb/current",
+      accessMode: "RW",
+      enabled: true
+    });
+    // Another node's binding stays out of this node's listing.
+    await upsertDebugNodeBinding(db, {
+      organizationId: "org-1",
+      nodeId: otherNode.id,
+      protocol: "hdc",
+      nodePath: "/sys/voltage",
+      accessMode: "RO",
+      enabled: true
     });
 
-    expect(calls[0].text).toContain("from debug_nodes n");
-    expect(calls[0].text).toContain("inner join debug_node_bindings b on b.node_id = n.id");
-    expect(calls[0].text).toContain("b.enabled = true");
-    expect(calls[0].text).toContain("b.protocol = $2");
-    expect(calls[0].values).toEqual(["org-1", "hdc"]);
+    const bindings = await listDebugNodeBindings(db, { organizationId: "org-1", nodeId: node.id });
+
+    expect(bindings).toEqual([
+      expect.objectContaining({ nodeId: node.id, protocol: "adb", nodePath: "/sys/adb/current" }),
+      expect.objectContaining({ nodeId: node.id, protocol: "hdc", nodePath: "/sys/class/power_supply/battery/current" })
+    ]);
+  });
+
+  it("returns enabled debug node bindings by node and protocol, hiding disabled ones unless asked", async () => {
+    const node = await createDebugNode(db, { organizationId: "org-1", name: "Battery current" });
+    await upsertDebugNodeBinding(db, {
+      organizationId: "org-1",
+      nodeId: node.id,
+      protocol: "hdc",
+      nodePath: "/sys/class/power_supply/battery/current",
+      accessMode: "RW",
+      enabled: true
+    });
+    await upsertDebugNodeBinding(db, {
+      organizationId: "org-1",
+      nodeId: node.id,
+      protocol: "adb",
+      nodePath: "/sys/adb/current",
+      accessMode: "RO",
+      enabled: false
+    });
+
+    await expect(
+      getDebugNodeBinding(db, { organizationId: "org-1", nodeId: node.id, protocol: "hdc" })
+    ).resolves.toMatchObject({
+      nodeId: node.id,
+      protocol: "hdc",
+      nodePath: "/sys/class/power_supply/battery/current",
+      accessMode: "RW",
+      enabled: true
+    });
+    // The disabled adb binding is invisible to the enabled-only read but reachable when asked.
+    await expect(
+      getDebugNodeBinding(db, { organizationId: "org-1", nodeId: node.id, protocol: "adb" })
+    ).resolves.toBeNull();
+    await expect(
+      getDebugNodeBinding(db, { organizationId: "org-1", nodeId: node.id, protocol: "adb", includeDisabled: true })
+    ).resolves.toMatchObject({ protocol: "adb", enabled: false });
+  });
+
+  it("listRuntimeDebugNodes returns only enabled nodes with an enabled binding for the protocol", async () => {
+    const bound = await createDebugNode(db, { organizationId: "org-1", name: "Battery current" });
+    await upsertDebugNodeBinding(db, {
+      organizationId: "org-1",
+      nodeId: bound.id,
+      protocol: "hdc",
+      nodePath: "/sys/class/power_supply/battery/current",
+      accessMode: "RW",
+      enabled: true
+    });
+    // Decoys: disabled binding, wrong protocol, unbound node, and a foreign-org pair.
+    const disabledBinding = await createDebugNode(db, { organizationId: "org-1", name: "Disabled binding" });
+    await upsertDebugNodeBinding(db, {
+      organizationId: "org-1",
+      nodeId: disabledBinding.id,
+      protocol: "hdc",
+      nodePath: "/sys/disabled",
+      accessMode: "RW",
+      enabled: false
+    });
+    const adbOnly = await createDebugNode(db, { organizationId: "org-1", name: "ADB only" });
+    await upsertDebugNodeBinding(db, {
+      organizationId: "org-1",
+      nodeId: adbOnly.id,
+      protocol: "adb",
+      nodePath: "/sys/adb/only",
+      accessMode: "RW",
+      enabled: true
+    });
+    await createDebugNode(db, { organizationId: "org-1", name: "Unbound" });
+    const foreign = await createDebugNode(db, { organizationId: "org-2", name: "Foreign" });
+    await upsertDebugNodeBinding(db, {
+      organizationId: "org-2",
+      nodeId: foreign.id,
+      protocol: "hdc",
+      nodePath: "/sys/foreign",
+      accessMode: "RW",
+      enabled: true
+    });
+
+    const nodes = await listRuntimeDebugNodes(db, { organizationId: "org-1", protocol: "hdc" });
+
     expect(nodes).toEqual([
       expect.objectContaining({
-        id: "node-1",
+        id: bound.id,
         protocol: "hdc",
         nodePath: "/sys/class/power_supply/battery/current",
         accessMode: "RW"
@@ -243,68 +263,67 @@ describe("catalogSplitRepository", () => {
   });
 
   it("listRuntimeDebugNodes omits nodes without an enabled binding for the requested protocol", async () => {
-    const { db } = createFakeDb([[]]);
-
-    const nodes = await listRuntimeDebugNodes(db, {
+    const node = await createDebugNode(db, { organizationId: "org-1", name: "HDC only" });
+    await upsertDebugNodeBinding(db, {
       organizationId: "org-1",
-      protocol: "adb"
+      nodeId: node.id,
+      protocol: "hdc",
+      nodePath: "/sys/hdc/only",
+      accessMode: "RW",
+      enabled: true
     });
 
-    expect(nodes).toEqual([]);
+    await expect(listRuntimeDebugNodes(db, { organizationId: "org-1", protocol: "adb" })).resolves.toEqual([]);
   });
 
   it("creates, lists, updates, renames references, and deletes debug node modules", async () => {
-    const moduleRow = {
-      id: "dm-1",
-      organization_id: "org-1",
-      parent_id: null,
-      name: "Battery",
-      path: "dm-1",
-      depth: 1,
-      sort_order: 0,
-      description: "Battery nodes",
-      scope: "Lab",
-      created_at: timestamp,
-      updated_at: timestamp
-    };
-    const renamedRow = { ...moduleRow, name: "Battery Charging" };
-    const { db, calls } = createFakeDb([
-      [moduleRow],
-      [moduleRow],
-      [{ count: "2" }],
-      [moduleRow],
-      [moduleRow],
-      [renamedRow],
-      [],
-      [{ count: "0" }],
-      [{ count: "0" }],
-      []
-    ]);
-
-    await createDebugNodeModule(db, {
+    const module = await createDebugNodeModule(db, {
       organizationId: "org-1",
       name: "Battery",
       description: "Battery nodes",
       scope: "Lab"
     });
+    expect(module).toMatchObject({ name: "Battery", description: "Battery nodes", scope: "Lab" });
+
     const listed = await listDebugNodeModules(db, { organizationId: "org-1" });
-    const nodeCount = await countDebugNodesForModule(db, { organizationId: "org-1", moduleName: "Battery" });
-    await updateDebugNodeModule(db, {
+    expect(listed.map((row) => row.id)).toEqual([module.id]);
+
+    // Two nodes reference the module by name; a third belongs to another module.
+    await createDebugNode(db, { organizationId: "org-1", name: "Current", module: "Battery", moduleId: module.id });
+    await createDebugNode(db, { organizationId: "org-1", name: "Voltage", module: "Battery", moduleId: module.id });
+    await createDebugNode(db, { organizationId: "org-1", name: "Other", module: "Thermal" });
+    await expect(countDebugNodesForModule(db, { organizationId: "org-1", moduleName: "Battery" })).resolves.toBe(2);
+
+    const renamed = await updateDebugNodeModule(db, {
       organizationId: "org-1",
-      moduleId: "dm-1",
+      moduleId: module.id,
       name: "Battery Charging"
     });
+    expect(renamed?.name).toBe("Battery Charging");
     await renameDebugNodeModuleReferences(db, {
       organizationId: "org-1",
       fromModule: "Battery",
       toModule: "Battery Charging"
     });
-    await deleteDebugNodeModule(db, { organizationId: "org-1", moduleName: "Battery Charging" });
+    // Node references follow the rename; the unrelated module's node does not.
+    await expect(
+      countDebugNodesForModule(db, { organizationId: "org-1", moduleName: "Battery Charging" })
+    ).resolves.toBe(2);
+    await expect(countDebugNodesForModule(db, { organizationId: "org-1", moduleName: "Battery" })).resolves.toBe(0);
+    await expect(countDebugNodesForModule(db, { organizationId: "org-1", moduleName: "Thermal" })).resolves.toBe(1);
 
-    expect(calls[0].text).toContain("insert into debug_node_modules");
-    expect(listed).toHaveLength(1);
-    expect(nodeCount).toBe(2);
-    expect(calls.some((call) => call.text.includes("update debug_nodes"))).toBe(true);
-    expect(calls.some((call) => call.text.includes("delete from debug_node_modules"))).toBe(true);
+    // Deleting a module still referenced by nodes is refused (the fake-db
+    // predecessor queued zero counts and never saw this guard).
+    await expect(
+      deleteDebugNodeModule(db, { organizationId: "org-1", moduleName: "Battery Charging" })
+    ).rejects.toThrow("Cannot delete debug node module referenced by debug nodes");
+
+    const empty = await createDebugNodeModule(db, { organizationId: "org-1", name: "Empty" });
+    const deleted = await deleteDebugNodeModule(db, { organizationId: "org-1", moduleName: "Empty" });
+    expect(deleted).toBe(true);
+    await expect(getDebugNodeModuleByName(db, { organizationId: "org-1", name: "Empty" })).resolves.toBeNull();
+    const remaining = await listDebugNodeModules(db, { organizationId: "org-1" });
+    expect(remaining.map((row) => row.id)).toEqual([module.id]);
+    expect(remaining.map((row) => row.id)).not.toContain(empty.id);
   });
 });

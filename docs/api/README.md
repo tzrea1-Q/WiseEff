@@ -9,8 +9,9 @@ WiseEff API documentation starts here. The design contract remains in [../design
 1. [Authentication](authentication.md): development auth, production-mode bearer token, and smoke token usage.
 2. [Errors](errors.md): structured error envelope and request id behavior.
 3. [Examples](examples.md): curl examples for health, current user, parameters, logs, debugging, Agent, and pilot readiness.
-4. [API Contract Design](../design-docs/api-contract.md): endpoint groups and domain contracts.
-5. [OpenAPI Artifact](../generated/openapi.json): generated route/schema artifact checked by `npm run contract:check`.
+4. [Log Analysis Integration](log-analysis-integration.md): push logs, poll jobs, fetch results, and verify result-webhook signatures.
+5. [API Contract Design](../design-docs/api-contract.md): endpoint groups and domain contracts.
+6. [OpenAPI Artifact](../generated/openapi.json): generated route/schema artifact checked by `npm run contract:check`.
 
 ## Contract Workflow
 

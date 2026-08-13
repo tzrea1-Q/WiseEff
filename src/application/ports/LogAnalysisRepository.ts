@@ -4,6 +4,7 @@ import type {
   LogDomainStatus,
   LogFeedbackInsight,
   LogRecord,
+  LogWebhookDelivery,
   TimeWindow
 } from "@/domain/logs/types";
 
@@ -58,6 +59,23 @@ export type LogDomainUpdateInput = {
   /** undefined = keep; null = clear the stored profile. */
   formatProfile?: unknown;
   status?: LogDomainStatus;
+  /** undefined = keep; null = clear back to the global model (P3b). */
+  modelOverride?: string | null;
+};
+
+/** Replace-style webhook config; `secret` undefined keeps the stored secret, null clears it. */
+export type LogDomainWebhookInput = {
+  domainId: string;
+  url: string | null;
+  enabled: boolean;
+  secret?: string | null;
+};
+
+export type LogWebhookTestOutcome = {
+  status: "delivered" | "failed" | "skipped";
+  attempts: number;
+  httpStatus?: number;
+  error?: string;
 };
 
 export type LogFeedbackInput = {
@@ -93,4 +111,7 @@ export interface LogAnalysisRepository {
   listLogDomainKnowledgeLinks?(domainId: string): Promise<LogDomainKnowledgeLink[]>;
   setLogDomainKnowledgeLinks?(input: LogDomainKnowledgeLinksInput): Promise<LogDomainKnowledgeLink[]>;
   listFeedbackInsights?(query?: LogFeedbackInsightsQuery): Promise<LogFeedbackInsight[]>;
+  setLogDomainWebhook?(input: LogDomainWebhookInput): Promise<LogDomain>;
+  listLogDomainWebhookDeliveries?(domainId: string, limit?: number): Promise<LogWebhookDelivery[]>;
+  sendLogDomainWebhookTest?(domainId: string): Promise<LogWebhookTestOutcome>;
 }

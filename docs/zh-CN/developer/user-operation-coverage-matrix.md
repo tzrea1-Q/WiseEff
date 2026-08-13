@@ -64,6 +64,8 @@
 - `LOG-FEEDBACK-INSIGHTS-001`：Admin 提交日志反馈后在 `/log-admin`「分析质量」区看到按业务域 × 分析来源 × Prompt 版本聚合的有帮助率，断言覆盖 UI、API 和 DB（`e2e/acceptance/log-analysis.acceptance.spec.ts`；`coverage: automated`）。
 - `LOG-EVAL-DRAFT-001`：Admin 在 `/log-admin` 已完成记录抽屉中导出评测案例草稿（脱敏清单弹层 + case.yaml/log.txt 下载内容校验），断言覆盖 UI（`e2e/acceptance/log-analysis.acceptance.spec.ts`；`coverage: automated`）。
 - `LOG-ARCHIVE-UPLOAD-001`：在 `/logs` 上传 `.gz` 压缩日志，服务端解压后分析端到端完成，断言覆盖 UI、API 和 DB（`e2e/acceptance/log-analysis.acceptance.spec.ts`；`coverage: automated`）。
+- `LOG-DOMAIN-WEBHOOK-001`：Admin 在 `/log-admin` 业务域治理区配置结果 Webhook 并触发域绑定分析，接收端收到签名载荷、最近投递列表展示尝试，断言覆盖 UI、API、DB 和 audit（`e2e/acceptance/log-analysis.acceptance.spec.ts`；`coverage: automated`）。
+- `LOG-DOMAIN-MODEL-001`：Admin 在 `/log-admin` 域表单设置模型覆盖，覆盖持久化并成为域绑定分析报告的 `model` 溯源，断言覆盖 UI、API、DB 和 audit（`e2e/acceptance/log-analysis.acceptance.spec.ts`；`coverage: automated`）。
 - `KB-READ-001`：Hardware User 在 `/knowledge` 浏览条目列表并搜索，检索只返回 `published` 条目，断言覆盖 UI、API、DB（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-EDIT-001`：Hardware User 在 `/knowledge` 创建 markdown 条目、发布、就地修订并恢复历史修订，断言覆盖 UI、API、DB、audit（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-FILE-001`：Hardware User 在 `/knowledge` 经对象存储上传文件条目并查看提取状态，断言覆盖 UI、API、DB、audit（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
@@ -71,6 +73,7 @@
 - `KB-INDEX-001`：Admin 在 `/knowledge-admin` 查看逐条目索引健康与检索模式横幅，执行单条重试与全量重建，断言覆盖 UI、API、DB（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-DISTILL-001`：Hardware User 在 `/logs` 把已完成的日志分析结论沉淀为预填知识草稿，经深链交接到 `/knowledge` 草稿编辑器并发布，断言覆盖 UI、API、DB、审计（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-ADMIN-001`：Admin 经确定性小泽审批流创建 Agent 知识草稿后，在 `/knowledge-admin` 的 Agent 草稿发布队列审阅（创建人、会话来源、来源分析链接）、发布其一并归档拒绝其一，断言覆盖 UI、API、DB、审计（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
+- `KB-REC-001`：Hardware User 在 `/logs` 查看已完成分析的「相关知识」区块（仅已发布条目、引用深链进入 `/knowledge`、草稿与归档永不出现），断言覆盖 UI、API、DB（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `PARAM-HOME-001`：Admin 在 `/parameter-home` 加载 dashboard summary/hotspots API，并切换页面内时间窗口与热榜维度（`e2e/acceptance/parameter-home.acceptance.spec.ts`）。
 - `DEBUG-ADMIN-001`：Admin 在 `/debugging-admin/nodes` 通过 API mode 完成调试参数新增、编辑、归档、恢复和 HDC/ADB binding 维护，断言覆盖 UI、API、DB 和 audit。
 - `XIAOZE-PERCEPTION-001`：Admin 在 `/parameters` 向小泽提问，验收基于页面上下文与感知工具的只读 grounded 回答（`e2e/acceptance/xiaoze-perception.acceptance.spec.ts`）。

@@ -794,6 +794,26 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "LogDomainKnowledgeLinkListResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "logs.setDomainWebhook": {
+    summary: "Replace a log domain's result-webhook config (SSRF-validated URL; write-only secret)",
+    tags: ["logs"],
+    requestBody: "SetLogDomainWebhookRequest",
+    responseBody: "LogDomainResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "logs.listDomainWebhookDeliveries": {
+    summary: "List a log domain's recent webhook delivery attempts",
+    tags: ["logs"],
+    responseBody: "LogWebhookDeliveryListResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "logs.sendDomainWebhookTest": {
+    summary: "Send an audited single-attempt test delivery through the SSRF-guarded webhook sender",
+    tags: ["logs"],
+    requestBody: "SendLogDomainWebhookTestRequest",
+    responseBody: "LogWebhookTestOutcomeResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
 
   "productFeedback.create": {
     summary: "Create product feedback",
@@ -858,6 +878,13 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["knowledge"],
     responseBody: "KnowledgeSearchResponse",
     additionalResponses: { "403": "ErrorResponse" }
+  },
+  "knowledge.relatedToLog": {
+    summary:
+      "Related published knowledge for a completed log-analysis record (knowledge:view plus logs:view and organization scope on the record) — the similarity query derives from the stored conclusion/impact text, runs through hybrid retrieval with a relevance cutoff so unrelated entries are dropped, and the response reports the retrieval mode that actually ran",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeSearchResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
   "knowledge.indexStatus": {
     summary: "Read per-entry retrieval index health and the honest retrieval mode (knowledge:manage only)",
