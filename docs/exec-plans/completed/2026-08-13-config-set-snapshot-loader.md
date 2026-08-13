@@ -1,5 +1,7 @@
 # Config-set snapshot loader (C6)
 
+> **Completed 2026-08-13** via PR #414. Loader + both validation-gate branches and config-set export migrated; entry/overlay semantics preserved verbatim.
+
 Architecture-review candidate C6 (2026-08-12 backend review): "the current content of
 a config set" was assembled by hand at every consumer — a serial loop of list →
 per-member file lookup (for the format) → membership lookup (for the role/sortOrder) →

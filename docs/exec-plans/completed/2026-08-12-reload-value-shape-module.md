@@ -1,5 +1,7 @@
 # Reload value shape — deepen shape knowledge into one module
 
+> **Completed 2026-08-12** via PRs #315 (server engine + shared vocabulary) and #318 (frontend mirror replaced by `resolvedValueShape` from the API).
+
 Consolidate DTS reload debugging value-shape knowledge (families, resolution, authored-value
 validation, read-back coercion, canonical comparison forms, authoring examples) into a single
 `ReloadValueShape` module instead of five copies. Architecture-review candidate C1
