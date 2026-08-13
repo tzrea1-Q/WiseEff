@@ -1073,11 +1073,13 @@ test.describe("Knowledge base browser acceptance", () => {
       .locator("li", { hasText: pickerSpec.propertyKey })
       .getByRole("button", { name: "关联", exact: true })
       .click();
-    await expect(picker.getByText(new RegExp(`${pickerSpec.propertyKey} · ${pickerSpec.subjectName}`))).toBeVisible();
+    // The chip renders the definition's display name (server reference DTO).
+    const pickerChipLabel = `${pickerSpec.displayName} · ${pickerSpec.subjectName}`;
+    await expect(picker.getByText(pickerChipLabel)).toBeVisible();
 
     // Remove the picker-added reference again from the editor (audited).
-    await picker.getByRole("button", { name: `移除引用 ${pickerSpec.propertyKey}` }).click();
-    await expect(picker.getByText(new RegExp(`${pickerSpec.propertyKey} · ${pickerSpec.subjectName}`))).toHaveCount(0);
+    await picker.getByRole("button", { name: `移除引用 ${pickerSpec.displayName}` }).click();
+    await expect(picker.getByText(pickerChipLabel)).toHaveCount(0);
     await editor.getByRole("button", { name: "取消" }).click();
 
     // Deprecation is soft retirement (ADR-0011): the reference SURVIVES and
@@ -1101,9 +1103,10 @@ test.describe("Knowledge base browser acceptance", () => {
     await signInBrowserAsRole(page, "admin", `/parameter-admin?spec=${encodeURIComponent(spec.specId)}`);
     const relatedSection = page.getByTestId("spec-related-knowledge");
     await expect(relatedSection).toBeVisible();
-    await expect(relatedSection.getByText(publishedTitle)).toBeVisible();
+    const publishedRelatedItem = relatedSection.getByRole("button", { name: new RegExp(publishedTitle) });
+    await expect(publishedRelatedItem).toBeVisible();
     await expect(relatedSection.getByText(draftTitle)).toHaveCount(0);
-    await relatedSection.getByRole("button", { name: new RegExp(publishedTitle) }).click();
+    await publishedRelatedItem.click();
     await page.waitForURL((url) => url.pathname === "/knowledge" && url.searchParams.get("entryId") === published.id);
     await expect(page.getByRole("dialog", { name: new RegExp(publishedTitle) })).toBeVisible();
 
