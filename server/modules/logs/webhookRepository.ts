@@ -90,7 +90,7 @@ export async function listRecentLogWebhookDeliveries(
     from log_webhook_deliveries
     where organization_id = $1
       and log_domain_id = $2
-    order by created_at desc, id desc
+    order by created_at desc, attempt desc, id desc
     limit $3
     `,
     [query.organizationId, query.domainId, limit]
