@@ -233,7 +233,7 @@ Design source: [Knowledge Base Design](2026-08-12-knowledge-base-design.md) (dec
 
 | Entity | Description |
 | --- | --- |
-| `KnowledgeEntry` | Organization-scoped unit of engineering knowledge. Content form is exactly one of `markdown` or `file`. Flat with multi-tags (project tags included), head-revision pointer plus `head_revision_number` for optimistic concurrency, denormalized `search_text` for Phase 1 retrieval, and source attribution `human` \| `agent` with session metadata. |
+| `KnowledgeEntry` | Organization-scoped unit of engineering knowledge. Content form is exactly one of `markdown` or `file`. Flat with multi-tags (project tags included), head-revision pointer plus `head_revision_number` for optimistic concurrency, denormalized `search_text` for Phase 1 retrieval, and source attribution `human` \| `agent` with session metadata. Distillation now has two sources, recorded as durable linkage columns: `source_log_id` (a completed log-analysis record) and `source_reload_run_id` (a terminal DTS reload run — the run is the audit and evidence subject). |
 | `KnowledgeRevision` | Immutable content snapshot (`title`, `tags`, markdown or file reference) with `revision_number` unique per entry, author, and optional `restored_from_revision_id` provenance. Rows are never updated. |
 | `KnowledgeFile` | File metadata for file-form entries: object-store key, integrity checksum, and honest extraction state (`pending` \| `succeeded` \| `failed` with a readable failure reason plus extracted text on success). Binaries are replaceable (new row + new revision), never edited. |
 

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Archive, ArchiveRestore, Download, History, Pencil, Send, Upload } from "lucide-react";
+import { Archive, ArchiveRestore, Download, ExternalLink, History, Pencil, Send, Upload } from "lucide-react";
 
 import { renderMarkdownPreview } from "@/domain/knowledge/markdown";
 import type { KnowledgeCapability } from "@/domain/knowledge/rules";
@@ -21,6 +21,8 @@ export type KnowledgeEntryDetailDialogProps = {
   onArchive: (entry: KnowledgeEntry) => Promise<void>;
   onRestore: (entry: KnowledgeEntry) => Promise<void>;
   onDownloadFile: (entry: KnowledgeEntry) => Promise<void>;
+  /** Router navigation for distillation source links; absent hides them. */
+  onNavigate?: (path: string) => void;
   onClose: () => void;
 };
 
@@ -52,6 +54,7 @@ export function KnowledgeEntryDetailDialog({
   onArchive,
   onRestore,
   onDownloadFile,
+  onNavigate,
   onClose
 }: KnowledgeEntryDetailDialogProps) {
   const [pendingAction, setPendingAction] = useState<"publish" | "archive" | "restore" | "download" | null>(null);
@@ -102,6 +105,32 @@ export function KnowledgeEntryDetailDialog({
               <div className="mt-2">
                 <KnowledgeTagList tags={entry.tags} />
               </div>
+              {onNavigate && (entry.sourceLogId || entry.sourceReloadRunId) ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2" aria-label="蒸馏来源">
+                  {entry.sourceLogId ? (
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="h-auto px-0 text-xs"
+                      onClick={() => onNavigate(`/logs?logId=${encodeURIComponent(entry.sourceLogId!)}`)}
+                    >
+                      <ExternalLink data-icon="inline-start" />
+                      查看日志分析
+                    </Button>
+                  ) : null}
+                  {entry.sourceReloadRunId ? (
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="h-auto px-0 text-xs"
+                      onClick={() => onNavigate(`/dts-reload?runId=${encodeURIComponent(entry.sourceReloadRunId!)}`)}
+                    >
+                      <ExternalLink data-icon="inline-start" />
+                      查看重载运行
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </div>
 

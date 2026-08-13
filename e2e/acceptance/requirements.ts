@@ -84,6 +84,13 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "KB-DISTILL-002",
+    workflow: "J",
+    title:
+      "Editor distils a terminal DTS reload run (behaviourally verified / unverifiable / contradicted / failed) into a pre-filled knowledge draft from the /dts-reload run history/detail surface with the run outcome stated honestly, lands in the /knowledge draft editor via the entry deep link, and publishes the reviewed draft with reload-run source linkage and audit evidence.",
+    required: true
+  },
+  {
     id: "KB-ADMIN-001",
     workflow: "J",
     title:

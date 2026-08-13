@@ -88,7 +88,7 @@ Ordered next candidates after the MVP, all compatible with this model:
 
 1. Related-knowledge recommendations on log-analysis results (similarity search from conclusion text). — **Shipped 2026-08-13** via [`2026-08-13-knowledge-log-recommendations.md`](../exec-plans/completed/2026-08-13-knowledge-log-recommendations.md): `GET /api/v1/knowledge/related-to-log` plus the log result page's related-knowledge section.
 2. Structural parameter-to-knowledge references with integrity rules (behavior on spec deprecation and entry archive).
-3. DTS-reload run distillation.
+3. DTS-reload run distillation. — **Shipped 2026-08-13** via [`2026-08-13-knowledge-reload-distillation.md`](../exec-plans/active/2026-08-13-knowledge-reload-distillation.md): terminal reload runs (verified / unverifiable / contradicted / failed) distil into pre-filled drafts through `POST /api/v1/knowledge/distill-from-reload-run` with `source_reload_run_id` linkage and the outcome stated honestly.
 4. Single-level collections, if tag navigation proves insufficient.
 5. External agent surface (an MCP wrapper over the HTTP API).
 6. Agent-curated maintenance: dedup, staleness flags, knowledge-gap detection.

@@ -284,6 +284,7 @@ export function PageRouter({
           capability={knowledgeCapability}
           askXiaozeEnabled={runtimeMode === "api"}
           initialEntryId={new URLSearchParams(search).get("entryId")}
+          onNavigate={onNavigate}
         />
       ) : null;
     case "knowledge-admin":
@@ -324,6 +325,10 @@ export function PageRouter({
           initialProjectId={state.activeProjectId}
           repository={dtsReloadRepository ?? resolveDtsReloadRepository(runtimeMode)}
           canStartRun={canStartDtsReload}
+          knowledgeRepository={knowledgeRepository}
+          knowledgeCapability={knowledgeCapability}
+          onNavigate={onNavigate}
+          initialRunId={new URLSearchParams(search).get("runId")}
           bridges={mockSeams?.bridges}
           probeBridgeHealth={mockSeams?.probeBridgeHealth}
           createBridgePairingCode={mockSeams?.createPairingCode}

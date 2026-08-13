@@ -31,6 +31,8 @@ export type KnowledgePageProps = {
   askXiaozeEnabled?: boolean;
   /** Deep-linked entry id (e.g. from a Xiaoze citation /knowledge?entryId=…). */
   initialEntryId?: string | null;
+  /** Router navigation for distillation source links (log / reload run). */
+  onNavigate?: (path: string) => void;
 };
 
 function formatDateTime(value: string) {
@@ -42,7 +44,13 @@ function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
-export function KnowledgePage({ repository, capability, askXiaozeEnabled = false, initialEntryId = null }: KnowledgePageProps) {
+export function KnowledgePage({
+  repository,
+  capability,
+  askXiaozeEnabled = false,
+  initialEntryId = null,
+  onNavigate
+}: KnowledgePageProps) {
   const [rows, setRows] = useState<KnowledgeEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
@@ -444,6 +452,7 @@ export function KnowledgePage({ repository, capability, askXiaozeEnabled = false
           setRows((current) => current.map((item) => (item.id === updated.id ? updated : item)));
         }}
         onDownloadFile={handleDownload}
+        onNavigate={onNavigate}
         onClose={() => setSelectedId(null)}
       />
 

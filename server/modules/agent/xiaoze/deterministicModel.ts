@@ -22,12 +22,17 @@ export function createDeterministicPerceptionModel(): PerceptionChatModel {
             toolCalls: [{ id: "tc-forbidden", name: "perception.getProjectOverview", args: { projectId: "secret-project" } }]
           };
         }
-        // Deterministic distillation: `创建知识草稿:<标题>`(可选 `来源日志:<logId>`)
-        // pins the approval-gated draft tool so acceptance can drive the interrupt.
-        // Match a single line only: the planner appends page context on new lines.
+        // Deterministic distillation: `创建知识草稿:<标题>`(可选 `来源日志:<logId>`
+        // 或 `来源重载:<runId>`)pins the approval-gated draft tool so acceptance
+        // can drive the interrupt. Match a single line only: the planner appends
+        // page context on new lines.
         const draftMatch = text.match(/(?:创建知识草稿|create knowledge draft)[:：]\s*([^\n]+)/i);
         if (draftMatch) {
-          const draftLine = draftMatch[1].trim();
+          let draftLine = draftMatch[1].trim();
+          const reloadSourceMatch = draftLine.match(/\s+(?:来源重载|source-reload-run)[:：]\s*(\S+)\s*$/i);
+          if (reloadSourceMatch) {
+            draftLine = draftLine.slice(0, reloadSourceMatch.index).trim();
+          }
           const sourceMatch = draftLine.match(/\s+(?:来源日志|source-log)[:：]\s*(\S+)\s*$/i);
           const title = sourceMatch ? draftLine.slice(0, sourceMatch.index).trim() : draftLine;
           return {
@@ -39,7 +44,8 @@ export function createDeterministicPerceptionModel(): PerceptionChatModel {
                   title,
                   contentMarkdown: `## 结论\n\n${title}\n\n(由小泽在对话中沉淀,待人工审阅发布。)`,
                   tags: ["小泽沉淀"],
-                  ...(sourceMatch ? { sourceLogId: sourceMatch[1] } : {})
+                  ...(sourceMatch ? { sourceLogId: sourceMatch[1] } : {}),
+                  ...(reloadSourceMatch ? { sourceReloadRunId: reloadSourceMatch[1] } : {})
                 }
               }
             ]

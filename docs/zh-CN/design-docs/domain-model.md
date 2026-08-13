@@ -414,7 +414,7 @@ stateDiagram-v2
 
 | 实体 | 说明 |
 | --- | --- |
-| `KnowledgeEntry` | 组织级工程知识单元。内容形式二选一（`markdown` 或 `file`），扁平多标签（可含项目标签），带头修订指针与 `head_revision_number`（乐观并发令牌）、Phase 1 检索用的冗余 `search_text`，以及 `human` \| `agent` 来源归属和会话元数据。 |
+| `KnowledgeEntry` | 组织级工程知识单元。内容形式二选一（`markdown` 或 `file`），扁平多标签（可含项目标签），带头修订指针与 `head_revision_number`（乐观并发令牌）、Phase 1 检索用的冗余 `search_text`，以及 `human` \| `agent` 来源归属和会话元数据。蒸馏现在有两个来源，以持久关联列记录：`source_log_id`（已完成的日志分析记录）与 `source_reload_run_id`（终态 DTS 重载运行——运行是审计与证据主体）。 |
 | `KnowledgeRevision` | 不可变内容快照（`title`、`tags`、markdown 或文件引用），`revision_number` 按条目唯一，记录作者与可选 `restored_from_revision_id` 恢复出处。行永不更新。 |
 | `KnowledgeFile` | 文件型条目的元数据：对象存储 key、完整性校验和、诚实的提取状态（`pending` \| `succeeded` \| `failed`，失败带可读原因，成功带提取正文）。二进制可替换（新行 + 新修订）、不可编辑。 |
 

@@ -88,7 +88,7 @@ MVP 之后的候选项（按序），均与本模型兼容：
 
 1. 日志分析结果页的相关知识推荐（用结论文本做相似检索）。——**已于 2026-08-13 交付**（计划 [`2026-08-13-knowledge-log-recommendations.md`](../exec-plans/completed/2026-08-13-knowledge-log-recommendations.md)）：`GET /api/v1/knowledge/related-to-log` + 日志结果页「相关知识」区块。
 2. 参数与知识的结构化引用及完整性规则（定义废弃、条目归档时的行为）。
-3. DTS 重载运行沉淀。
+3. DTS 重载运行沉淀。——**已于 2026-08-13 交付**（计划 [`2026-08-13-knowledge-reload-distillation.md`](../exec-plans/active/2026-08-13-knowledge-reload-distillation.md)）：终态重载运行（已验证 / 不可验证 / 矛盾 / 失败）经 `POST /api/v1/knowledge/distill-from-reload-run` 沉淀为预填草稿,`source_reload_run_id` 记录来源,结局诚实陈述。
 4. 单层合集（若标签导航被证明不够用）。
 5. 外部 Agent 接入面（HTTP API 之上的 MCP 包装）。
 6. Agent 自主维护：去重、过期标记、知识空洞发现。
