@@ -1,9 +1,9 @@
 # Related-knowledge recommendations on log-analysis results
 
-> Status: **Active**
+> Status: **Completed 2026-08-13** — merged via #400
 > Date: 2026-08-13
 > Branch: `feat/knowledge-log-recommendations`
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-13-knowledge-log-recommendations.md`](../../zh-CN/exec-plans/active/2026-08-13-knowledge-log-recommendations.md)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-13-knowledge-log-recommendations.md`](../../zh-CN/exec-plans/completed/2026-08-13-knowledge-log-recommendations.md)
 > Design: [`docs/design-docs/2026-08-12-knowledge-base-design.md`](../../design-docs/2026-08-12-knowledge-base-design.md) — deferred roadmap item 1 (grilled decision D8 named it the first post-MVP add-on)
 > Predecessor: [`docs/exec-plans/completed/2026-08-12-knowledge-base-mvp.md`](../completed/2026-08-12-knowledge-base-mvp.md)
 
