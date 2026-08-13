@@ -170,6 +170,10 @@ describe("reducer · SIMULATE_LOG_UPLOAD", () => {
   });
 });
 
+function toastWithText(text: string) {
+  return screen.getAllByTestId("app-toast").find((item) => (item.textContent ?? "").includes(text));
+}
+
 describe("LogsPage api upload wiring", () => {
   it("does not restrict file input accept in api mode", async () => {
     const repository = renderApiLogs();
@@ -298,7 +302,7 @@ describe("LogsPage api upload wiring", () => {
     await confirmSelectedFile();
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByTestId("app-toast")).toHaveTextContent(logRuntimeFailureNotification);
+    expect(toastWithText(logRuntimeFailureNotification)).toBeTruthy();
   });
 
   it("auto-dismisses the api-mode failure toast and supports manual close", async () => {
@@ -310,29 +314,33 @@ describe("LogsPage api upload wiring", () => {
     chooseFile(new File(["line"], "reject.log", { type: "text/plain" }));
     await confirmSelectedFile();
 
-    expect(screen.getByTestId("app-toast")).toHaveTextContent(logRuntimeFailureNotification);
+    expect(toastWithText(logRuntimeFailureNotification)).toBeTruthy();
 
     await act(async () => {
       vi.advanceTimersByTime(4000);
     });
-    const toastAfterAutoDismiss = screen.queryByTestId("app-toast");
-    expect(toastAfterAutoDismiss?.textContent ?? "").not.toContain(logRuntimeFailureNotification);
+    expect(
+      screen.queryAllByTestId("app-toast").some((item) => (item.textContent ?? "").includes(logRuntimeFailureNotification))
+    ).toBe(false);
 
-    // Drain the remaining startup notifications, then verify the layer empties.
-    for (let attempt = 0; attempt < 10 && screen.queryByTestId("app-toast"); attempt += 1) {
-      await act(async () => {
-        vi.advanceTimersByTime(4000);
-      });
+    // Drain the remaining startup notifications through manual close (their
+    // timers were armed on real time before useFakeTimers), then verify the
+    // viewport empties.
+    for (let attempt = 0; attempt < 10 && screen.queryAllByTestId("app-toast").length > 0; attempt += 1) {
+      fireEvent.click(screen.getAllByRole("button", { name: "关闭提示" })[0]);
     }
-    expect(screen.queryByTestId("app-toast")).not.toBeInTheDocument();
+    expect(screen.queryAllByTestId("app-toast")).toHaveLength(0);
 
     await act(async () => {
       fireEvent.click(document.querySelector(".upload-dialog__actions .button.primary") as HTMLButtonElement);
     });
-    expect(screen.getByTestId("app-toast")).toHaveTextContent(logRuntimeFailureNotification);
+    const failureToast = toastWithText(logRuntimeFailureNotification);
+    expect(failureToast).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "关闭提示" }));
-    expect(screen.queryByTestId("app-toast")).not.toBeInTheDocument();
+    fireEvent.click(within(failureToast as HTMLElement).getByRole("button", { name: "关闭提示" }));
+    expect(
+      screen.queryAllByTestId("app-toast").some((item) => (item.textContent ?? "").includes(logRuntimeFailureNotification))
+    ).toBe(false);
   });
 
   it("absorbs handled runtime failures when multiple selected files include a rejected upload", async () => {
@@ -348,7 +356,7 @@ describe("LogsPage api upload wiring", () => {
       await Promise.resolve();
     });
 
-    await waitFor(() => expect(screen.getByTestId("app-toast")).toHaveTextContent(logRuntimeFailureNotification));
+    await waitFor(() => expect(toastWithText(logRuntimeFailureNotification)).toBeTruthy());
     expect(repository.uploadLog).toHaveBeenCalledTimes(2);
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
@@ -373,7 +381,7 @@ describe("LogsPage api upload wiring", () => {
     chooseFile(new File(["line"], "reject.log", { type: "text/plain" }));
     await confirmSelectedFile();
 
-    expect(screen.getByTestId("app-toast")).toHaveTextContent(logRuntimeFailureNotification);
+    expect(toastWithText(logRuntimeFailureNotification)).toBeTruthy();
 
     await act(async () => {
       refresh.resolve([hydratedLog, ...initialState.logs]);
@@ -462,7 +470,9 @@ describe("LogsPage · 上传日志对话框", () => {
 
     const history = screen.getByRole("complementary", { name: "历史日志记录" });
     expect(within(history).getByRole("button", { name: /thermal\.bin/ })).toHaveTextContent("失败");
-    expect(screen.getByRole("alert")).toHaveTextContent(/格式不支持/);
+    const pageAlert = screen.getAllByRole("alert").find((element) => element.classList.contains("log-error-alert"));
+    expect(pageAlert).toBeTruthy();
+    expect(pageAlert).toHaveTextContent(/格式不支持/);
   });
 
   it("Failed 日志点击重新上传会打开 UploadLogDialog", () => {

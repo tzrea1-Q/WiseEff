@@ -1,10 +1,10 @@
 # HCI Wave 2 — language & efficiency
 
-> Status: **Active**
+> Status: **Completed — merged 2026-08-13 via PR #411 (W2-1..W2-4 all shipped; browser-verified on /audit)**
 > Date: 2026-08-13
 > Origin: TD-097 (deferred scope of `completed/2026-08-12-hci-interaction-trust-repair.md`)
 > Branch: `feat/hci-wave-2-language`
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-13-hci-wave2-language-efficiency.md`](../../zh-CN/exec-plans/active/2026-08-13-hci-wave2-language-efficiency.md)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-13-hci-wave2-language-efficiency.md`](../../zh-CN/exec-plans/completed/2026-08-13-hci-wave2-language-efficiency.md)
 
 ## Scope decision
 
@@ -36,6 +36,10 @@ Deferred within Wave 2 (stay in TD-097): review batching (needs product decision
 | Chinese companions | zh plan + frontend | Update |
 | Others (AGENTS/ARCHITECTURE/SECURITY/RELIABILITY/generated) | — | No change expected; re-check at completion |
 
-## Documentation Update Gate
+## Documentation Update Gate — resolved
 
-Blocking: resolve every Update/Review row with evidence before moving to `completed/`; run `npm run docs:check`.
+- PLANS.md updated in the feature PR (registered) and again in this closeout (completed entry).
+- API docs: `docs/design-docs/api-contract.md` documents the audit list `q`/`from`/`to` filters (feature PR); `docs/api/examples.md` reviewed — no endpoint example exists for audit events, no change.
+- Frontend docs (en+zh) document the error-message seam and audit-center capabilities (feature PR).
+- Coverage maps reviewed — no acceptance ids were added in this wave (audit export/search remain unit/browser-verified); nothing to register.
+- `npm run docs:check` green at closeout.
