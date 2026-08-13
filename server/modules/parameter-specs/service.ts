@@ -4,6 +4,7 @@ import { canAdminParameters, canViewParameters } from "../parameter-kernel/polic
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { writeGovernanceAudit } from "../parameter-topology/governanceAudit";
+import { asAuditTx, withAuditedWrite } from "../audit/auditedWrite";
 import { countBlockingIdentityMappingTasksForRevision } from "../parameter-topology/bindingService";
 import { stableSemanticId } from "../parameter-topology/migration";
 import { ensureAttributionSubjectForCompatible } from "../parameter-modules/resolveAttributionSubject";
@@ -412,7 +413,7 @@ export async function resolveSpecReviewTask(
       });
 
       await writeGovernanceAudit(
-        tx,
+        asAuditTx(tx),
         auth,
         {
           action: "spec-draft-created",
@@ -484,7 +485,7 @@ export async function resolveSpecReviewTask(
     }
 
     await writeGovernanceAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         action: input.decision === "resolved" ? "spec-review-resolved" : "spec-review-dismissed",
@@ -882,7 +883,7 @@ export async function createParameterSpec(
     );
 
     await writeGovernanceAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         action: "spec-draft-created",
@@ -1189,7 +1190,7 @@ export async function activateParameterSpec(
     );
 
     await writeGovernanceAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         action: "spec-activated",
@@ -1305,7 +1306,7 @@ export async function updateParameterSpec(
     );
 
     await writeGovernanceAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         action: "spec-updated",
@@ -1372,7 +1373,7 @@ export async function deprecateParameterSpec(
     );
 
     await writeGovernanceAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         action: "spec-deprecated",
@@ -1447,7 +1448,7 @@ export async function restoreParameterSpec(
     );
 
     await writeGovernanceAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         action: "spec-restored",
@@ -1628,7 +1629,7 @@ export async function reattributeParameterSpec(
     );
 
     await writeGovernanceAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         action: "spec-reattributed",
@@ -1740,7 +1741,7 @@ export async function renameParameterSpecPropertyKey(
     );
 
     await writeGovernanceAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         action: "spec-property-key-changed",
@@ -1910,7 +1911,7 @@ export async function prepareParameterSpecVersionCutover(
     );
 
     await writeGovernanceAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         action: "spec-version-cutover-prepared",
@@ -2095,7 +2096,7 @@ export async function finalizeParameterSpecVersionCutover(
     );
 
     await writeGovernanceAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         action: "spec-version-cutover-finalized",
