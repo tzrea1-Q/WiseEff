@@ -1,6 +1,7 @@
 import {
   ChevronDown,
   FileText,
+  Menu,
   MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
@@ -97,6 +98,7 @@ import {
 } from "@/infrastructure/http/authClient";
 import { clearSessionDraftsForLogout } from "@/application/project-configuration/sessionDraftStorage";
 import { createMockRuntimeState, type MockRuntimeState } from "@/infrastructure/mock/mockState";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { presentError } from "@/infrastructure/http/presentError";
 import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
@@ -309,6 +311,12 @@ function AppShell({
   const [apiAuthError, setApiAuthError] = useState("");
   const [apiAuthPermissions, setApiAuthPermissions] = useState<string[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsedPreference);
+  // Below 768px the sidebar becomes an overlay drawer (ui-design-system §Layout);
+  // between 769–900px it stays the auto-collapsed rail the media query used to force.
+  const isMobileNavViewport = useMediaQuery("(max-width: 768px)");
+  const isTabletRailViewport = useMediaQuery("(min-width: 769px) and (max-width: 900px)");
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const effectiveSidebarCollapsed = !isMobileNavViewport && (sidebarCollapsed || isTabletRailViewport);
   const page = getPageByPath(path);
   const pageKeyRef = useRef(page.key);
   const xiaozeContextSummary = useMemo(() => getXiaozeContextSummary(path), [path]);
@@ -853,6 +861,48 @@ function AppShell({
     setSidebarCollapsed((collapsed) => !collapsed);
   }, []);
 
+  const closeMobileNav = useCallback(() => {
+    setMobileNavOpen(false);
+  }, []);
+
+  const toggleMobileNav = useCallback(() => {
+    setMobileNavOpen((open) => !open);
+  }, []);
+
+  /** Drawer navigation closes the drawer before routing (nav click auto-close). */
+  const navigateFromSidebar = useCallback(
+    (nextPath: string) => {
+      setMobileNavOpen(false);
+      navigate(nextPath);
+    },
+    [navigate]
+  );
+
+  // Close the drawer when the viewport crosses back above the drawer breakpoint.
+  useEffect(() => {
+    if (!isMobileNavViewport) {
+      setMobileNavOpen(false);
+    }
+  }, [isMobileNavViewport]);
+
+  useEffect(() => {
+    if (!mobileNavOpen) {
+      return undefined;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+      // Escape closes the top-most layer only; open dialogs take precedence.
+      if (document.querySelector('.modal-backdrop, [data-slot="dialog-overlay"]')) {
+        return;
+      }
+      setMobileNavOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [mobileNavOpen]);
+
   const handleAuthSession = useCallback(
     async (session: AuthSessionDto) => {
       const primaryRoleId = pickPrimaryPlatformRoleId(session.auth.roles.map((role) => role.roleId));
@@ -895,9 +945,13 @@ function AppShell({
 
   const appShellClassName = isPlatformHome
     ? "app-shell home-shell"
-    : sidebarCollapsed
-      ? "app-shell sidebar-is-collapsed"
-      : "app-shell";
+    : [
+        "app-shell",
+        effectiveSidebarCollapsed ? "sidebar-is-collapsed" : "",
+        mobileNavOpen ? "mobile-nav-open" : ""
+      ]
+        .filter(Boolean)
+        .join(" ");
 
   if (runtimeMode === "api" && apiAuthStatus === "checking") {
     // Session probe in flight: show the app-shell skeleton instead of a blank
@@ -935,10 +989,18 @@ function AppShell({
           <Sidebar
             activePath={page.path}
             currentRoleId={currentRoleId}
-            isCollapsed={sidebarCollapsed}
-            onNavigate={navigate}
+            isCollapsed={effectiveSidebarCollapsed}
+            onNavigate={navigateFromSidebar}
             onToggleCollapsed={toggleSidebarCollapsed}
             productFeedbackRepository={productFeedbackRepositoryClient}
+          />
+        ) : null}
+        {!isPlatformHome && mobileNavOpen ? (
+          <button
+            type="button"
+            className="sidebar-drawer-backdrop"
+            aria-label="关闭导航菜单"
+            onClick={closeMobileNav}
           />
         ) : null}
       <div className={isPlatformHome ? "main-shell home-main-shell" : "main-shell"}>
@@ -955,6 +1017,8 @@ function AppShell({
             onLogout={handleLogout}
             onUpdateCurrentUserProfile={handleUpdateCurrentUserProfile}
             mockNotificationsClient={mockNotificationsClient}
+            mobileNavOpen={mobileNavOpen}
+            onToggleMobileNav={toggleMobileNav}
           />
         ) : null}
         <TopBarActionsContext.Provider value={topBarActionsContextValue}>
@@ -1082,7 +1146,11 @@ function Sidebar({
   const toggleLabel = isCollapsed ? "展开侧边栏" : "收起侧边栏";
 
   return (
-    <aside aria-label="主导航侧边栏" className={isCollapsed ? "sidebar sidebar-collapsed" : "sidebar sidebar-expanded"}>
+    <aside
+      id="app-sidebar"
+      aria-label="主导航侧边栏"
+      className={isCollapsed ? "sidebar sidebar-collapsed" : "sidebar sidebar-expanded"}
+    >
       <div className="brand-block">
         <div className="brand-mark">
           <WiseEffIcon decorative />
@@ -1201,7 +1269,9 @@ function TopBar({
   onNewProject,
   onLogout,
   onUpdateCurrentUserProfile,
-  mockNotificationsClient
+  mockNotificationsClient,
+  mobileNavOpen = false,
+  onToggleMobileNav
 }: {
   state: PrototypeState;
   dispatch: React.Dispatch<AppAction>;
@@ -1214,6 +1284,8 @@ function TopBar({
   onLogout?: () => Promise<void> | void;
   onUpdateCurrentUserProfile?: (input: UpdateCurrentUserProfileInput) => Promise<void>;
   mockNotificationsClient?: import("@/infrastructure/http/notificationsClient").NotificationsClient;
+  mobileNavOpen?: boolean;
+  onToggleMobileNav?: () => void;
 }) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -1241,6 +1313,18 @@ function TopBar({
     <header className="topbar">
       <div className="topbar-page">
         <div className="topbar-page-head">
+          {onToggleMobileNav ? (
+            <button
+              type="button"
+              className="button ghost topbar-nav-toggle"
+              aria-label={mobileNavOpen ? "关闭导航菜单" : "打开导航菜单"}
+              aria-expanded={mobileNavOpen}
+              aria-controls="app-sidebar"
+              onClick={onToggleMobileNav}
+            >
+              <Menu size={18} aria-hidden="true" />
+            </button>
+          ) : null}
           <div className="topbar-title">{page.title}</div>
           {pageLeadingActions ? <div className="topbar-page-leading">{pageLeadingActions}</div> : null}
         </div>

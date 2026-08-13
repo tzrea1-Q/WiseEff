@@ -3159,9 +3159,9 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     const navItem = declarationsFor(css, ".nav-item");
     const feedbackEntryDeclarations = declarationsFor(css, ".feedback-entry");
     expect(declarationFor(css, ".utility-nav", "flex")).toBe("0 0 auto");
-    expect(
-      declarationFor(css, ".utility-nav", "display", { within: "(max-width: 900px)" })
-    ).toBe("block");
+    // The collapsed-rail appearance has one owner: the `.sidebar-collapsed` rules
+    // (App.tsx forces the class between 769–900px instead of duplicated media rules).
+    expect(declarationFor(css, ".sidebar-collapsed .utility-nav", "display")).toBe("block");
     expect(navItem["justify-content"]).toBe("flex-start");
     expect(navItem.height).toBe("auto");
     expect(feedbackEntryDeclarations["align-items"]).toBe("flex-start");
@@ -3200,6 +3200,67 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     expect(screen.getByRole("complementary", { name: "主导航侧边栏" })).toHaveClass("sidebar-collapsed");
     expect(localStorage.getItem("wiseeff.sidebar.collapsed")).toBe("true");
+  });
+
+  it("opens and closes the mobile navigation drawer from the topbar hamburger", () => {
+    window.history.replaceState(null, "", "/parameters");
+
+    renderAppForCurrentPath();
+
+    const shell = document.querySelector(".app-shell");
+    const hamburger = screen.getByRole("button", { name: "打开导航菜单" });
+    expect(hamburger).toHaveAttribute("aria-controls", "app-sidebar");
+    expect(hamburger).toHaveAttribute("aria-expanded", "false");
+    expect(shell).not.toHaveClass("mobile-nav-open");
+    expect(document.querySelector(".sidebar-drawer-backdrop")).not.toBeInTheDocument();
+
+    // Open: shell gains the drawer state and the dimmed backdrop appears.
+    fireEvent.click(hamburger);
+    expect(shell).toHaveClass("mobile-nav-open");
+    expect(hamburger).toHaveAttribute("aria-expanded", "true");
+    const backdrop = document.querySelector(".sidebar-drawer-backdrop");
+    expect(backdrop).toBeInTheDocument();
+
+    // Backdrop click closes the drawer.
+    fireEvent.click(backdrop!);
+    expect(shell).not.toHaveClass("mobile-nav-open");
+    expect(document.querySelector(".sidebar-drawer-backdrop")).not.toBeInTheDocument();
+
+    // Escape closes the drawer.
+    fireEvent.click(hamburger);
+    expect(shell).toHaveClass("mobile-nav-open");
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(shell).not.toHaveClass("mobile-nav-open");
+
+    // Navigating from the drawer closes it automatically.
+    fireEvent.click(hamburger);
+    expect(shell).toHaveClass("mobile-nav-open");
+    const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
+    fireEvent.click(within(sidebar).getByRole("button", { name: "智能分析" }));
+    expect(shell).not.toHaveClass("mobile-nav-open");
+    expect(window.location.pathname).toBe("/logs");
+  });
+
+  it("keeps the drawer and rail styles on one owner in the stylesheet", () => {
+    const css = readStylesheet("src/styles.css");
+
+    // Drawer: hidden off-canvas by default below 768px, backdrop uses the ladder token.
+    expect(
+      declarationFor(css, ".sidebar", "transform", { within: "(max-width: 768px)" })
+    ).toBe("translateX(-100%)");
+    expect(
+      declarationFor(css, ".app-shell.mobile-nav-open .sidebar", "transform", {
+        within: "(max-width: 768px)"
+      })
+    ).toBe("translateX(0)");
+    expect(
+      declarationFor(css, ".sidebar-drawer-backdrop", "z-index", { within: "(max-width: 768px)" })
+    ).toBe("var(--z-drawer-backdrop)");
+
+    // The user menu trigger stays reachable below 900px (avatar-only, not display:none).
+    expect(
+      declarationFor(css, ".topbar-user-trigger", "width", { within: "(max-width: 900px)" })
+    ).toBe("38px");
   });
 
   it("keeps the feedback dialog wide enough for form and screenshot capture columns", () => {

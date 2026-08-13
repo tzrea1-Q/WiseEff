@@ -114,6 +114,7 @@
    */
   --z-sticky: 20;
   --z-topbar: 30;
+  --z-drawer-backdrop: 35;
   --z-sidebar: 40;
   --z-dropdown: 60;
   --z-xiaoze-fab: 1100;
@@ -3166,6 +3167,7 @@ td small {
   color: var(--outline-strong);
   font-size: 12px;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .parameters-table-filters,
@@ -12918,59 +12920,97 @@ td small {
   }
 }
 
-@media (max-width: 900px) {
+/*
+ * 769–900px: the sidebar stays an auto-collapsed rail. The rail appearance is
+ * owned by the `.sidebar-collapsed` rules (App.tsx forces the class in this
+ * range), so this block only keeps the declarations that differ from them.
+ */
+@media (min-width: 769px) and (max-width: 900px) {
   :root {
     --sidebar-width: 76px;
   }
 
-  body {
-    min-width: 0;
-    overflow: hidden;
-  }
-
-  .sidebar {
-    width: var(--active-sidebar-width);
-    padding: 14px 8px;
-  }
-
-  .brand-block {
-    justify-content: center;
-    padding: 0 0 14px;
-  }
-
-  .brand-copy,
-  .sidebar-toggle,
-  .primary-nav-action span,
-  .nav-group-label,
-  .nav-item span {
+  .sidebar-toggle {
     display: none;
   }
 
-  .utility-nav {
-    display: block;
-    padding-top: 10px;
-  }
-
-  .feedback-entry {
-    align-items: center;
-    margin-bottom: 6px;
-    min-height: 42px;
-    padding: 0;
-  }
-
   .primary-nav-action {
-    width: 52px;
     height: 40px;
     margin: 0 auto 16px;
-    padding: 0;
+  }
+}
+
+/* Hamburger + drawer backdrop only exist on the ≤768px drawer layout. */
+.topbar-nav-toggle,
+.sidebar-drawer-backdrop {
+  display: none;
+}
+
+/*
+ * ≤768px: the sidebar becomes an overlay drawer. A persistent rail eating
+ * ~18% of a phone screen is a defect (ui-design-system §Layout); the drawer
+ * slides in fully expanded above a dimmed backdrop and the shell takes the
+ * full viewport width.
+ */
+@media (max-width: 768px) {
+  .app-shell,
+  .app-shell.sidebar-is-collapsed {
+    --active-sidebar-width: 0px;
   }
 
-  .nav-item {
-    justify-content: center;
-    width: 52px;
-    height: 42px;
-    margin: 0 auto 6px;
+  .sidebar {
+    /* Drawer keeps the expanded sidebar look; width caps so the backdrop stays tappable. */
+    width: min(280px, calc(100vw - var(--space-16)));
+    z-index: var(--z-sidebar);
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition:
+      transform var(--duration-slow) var(--ease-in-out),
+      visibility 0s var(--ease-in-out) var(--duration-slow);
+  }
+
+  .app-shell.mobile-nav-open .sidebar {
+    transform: translateX(0);
+    visibility: visible;
+    box-shadow: var(--shadow-3);
+    transition: transform var(--duration-slow) var(--ease-in-out);
+  }
+
+  .sidebar-drawer-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-drawer-backdrop);
+    margin: 0;
     padding: 0;
+    border: 0;
+    /* Same dimming value as the shared `.modal-backdrop`. */
+    background: color-mix(in srgb, var(--text) 40%, transparent);
+    cursor: pointer;
+    animation: modal-backdrop-enter var(--duration-slow) var(--ease-out);
+  }
+
+  .topbar-nav-toggle {
+    display: inline-flex;
+    flex: 0 0 auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .app-shell.mobile-nav-open .sidebar {
+    transition: none;
+  }
+
+  .sidebar-drawer-backdrop {
+    animation: none;
+  }
+}
+
+@media (max-width: 900px) {
+  body {
+    min-width: 0;
+    overflow: hidden;
   }
 
   .main-shell {
@@ -13005,9 +13045,26 @@ td small {
 
   .topbar-subtitle,
   .searchbox,
-  .topbar-actions .icon-button,
-  .avatar,
+  .topbar-actions .icon-button {
+    display: none;
+  }
+
+  /* The user menu must stay reachable at all widths (ui-design-system §Layout):
+     compress the trigger to an avatar-only round button instead of hiding it. */
   .topbar-user-switcher {
+    margin-left: auto;
+  }
+
+  .topbar-user-trigger {
+    gap: 0;
+    width: 38px;
+    min-height: 38px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .topbar-user-summary,
+  .topbar-user-trigger > svg {
     display: none;
   }
 
@@ -23031,6 +23088,13 @@ button.dts-topology-navigator__disclosure:focus-visible {
   justify-content: space-between;
   gap: 12px;
   min-width: 0;
+}
+
+/* Right-aligned count ("本轮 N 项") must never wrap one character per line
+   when the tray gets narrow. */
+.dts-binding-draft-tray header > span {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .dts-binding-draft-tray header h3 {
