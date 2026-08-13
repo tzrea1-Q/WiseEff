@@ -1,9 +1,9 @@
 # Structural parameter-to-knowledge references
 
-> Status: **Active**
+> Status: **Completed 2026-08-13** — merged via #438
 > Date: 2026-08-13
 > Branch: `feat/knowledge-parameter-references`
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-13-knowledge-parameter-references.md`](../../zh-CN/exec-plans/active/2026-08-13-knowledge-parameter-references.md)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-13-knowledge-parameter-references.md`](../../zh-CN/exec-plans/completed/2026-08-13-knowledge-parameter-references.md)
 > Design: [`docs/design-docs/2026-08-12-knowledge-base-design.md`](../../design-docs/2026-08-12-knowledge-base-design.md) — deferred roadmap item 2
 > Predecessors: [`2026-08-12-knowledge-base-mvp.md`](../completed/2026-08-12-knowledge-base-mvp.md), [`2026-08-13-knowledge-log-recommendations.md`](../completed/2026-08-13-knowledge-log-recommendations.md)
 > Integrity ADRs: [ADR-0011](../../adr/0011-spec-deprecation-is-soft-retirement.md) (spec deprecation is soft retirement), [ADR-0013](../../adr/0013-attribution-subjects-are-stable-catalog-entities.md) (attribution subjects are stable catalog entities), [ADR-0017](../../adr/0017-definition-identity-is-correctable.md) (`parameter_specs.id` is a surrogate)
