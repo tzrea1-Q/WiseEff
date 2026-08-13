@@ -1092,6 +1092,25 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       expect(gateway.readNode).not.toHaveBeenCalled();
     });
 
+    it("reads a parameter through a read-only session protocol binding", async () => {
+      await seedDevice();
+      await seedTarget({ protocol: "adb", target_ref: "emulator-5554" });
+      const parameter = await seedParameter();
+      await seedBinding(parameter.id, { protocol: "adb", nodePath: "/sys/adb/current", accessMode: "RO" });
+      const session = await seedSession({ protocol: "adb" });
+      const adbGateway = makeGateway();
+      const service = createDebuggingService({
+        db,
+        gatewayRegistry: createDebugDeviceGatewayRegistry({ adb: adbGateway }),
+        createAuditEvent: createAuditSpy().createAuditEvent
+      });
+
+      const operation = await service.readNode(readAuth, { sessionId: session.id, parameterId: parameter.id });
+
+      expect(adbGateway.readNode).toHaveBeenCalledWith({ targetRef: "emulator-5554", nodePath: "/sys/adb/current", preserveExactRead: false });
+      expect(operation).toMatchObject({ operationType: "read", status: "succeeded" });
+    });
+
     it("rejects inactive sessions and WO parameters before gateway call", async () => {
       const { parameter, session } = await seedRuntime({ bindingAccessMode: "WO" });
       await db.query(`update debugging_sessions set status = 'closed' where id = $1`, [session.id]);
