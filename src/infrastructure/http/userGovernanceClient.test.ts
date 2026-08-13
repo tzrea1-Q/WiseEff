@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createApiClient } from "./apiClient";
+import { resolveWiseEffApiBaseUrl } from "./runtimeMode";
 import { createDefaultUserGovernanceApiClient, createUserGovernanceClient } from "./userGovernanceClient";
 
 function createFetchMock(response: unknown, status = 200) {
@@ -220,7 +221,10 @@ describe("createUserGovernanceClient", () => {
 
     await client.listUsers();
 
-    expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8787/api/v1/users", {
+    // The default client must target the configured API base; derive the
+    // expectation from the same runtime config so VITE_WISEEFF_API_BASE_URL
+    // overrides (e.g. dead-port isolation) keep the assertion meaningful.
+    expect(fetchMock).toHaveBeenCalledWith(`${resolveWiseEffApiBaseUrl()}/api/v1/users`, {
       headers: { Accept: "application/json", Authorization: "Bearer oidc-token" },
       method: "GET"
     });
