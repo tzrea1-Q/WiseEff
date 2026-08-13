@@ -113,7 +113,14 @@ function createDebuggingActions(overrides: Partial<DebuggingRuntimeActions> = {}
 }
 
 function mockFetchSequence(responses: unknown[]) {
-  vi.spyOn(globalThis, "fetch").mockImplementation(vi.fn(async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(vi.fn(async (input: RequestInfo | URL) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    // LocalDeviceBridgePanel fetches the install manifest on mount. Answer it with a
+    // well-formed empty manifest so it neither steals an hdc response from the queue
+    // nor receives a shape without `items`.
+    if (url.includes("/api/v1/device-bridges/releases")) {
+      return new Response(JSON.stringify({ items: [] }));
+    }
     const next = responses.shift();
     return new Response(JSON.stringify(next ?? { ok: true }));
   }) as typeof fetch);
