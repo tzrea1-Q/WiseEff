@@ -82,7 +82,7 @@ P3 / P3.1 新表面（均走 `DtsStructuredRepository`，勿在新面板里直�
 
 旧的 `ProjectParameterFilesPanel` / 冲突面板通过 `resolveParameterFileRepository(runtimeMode)` 注入 `ParameterFileRepository`（mock：`createMockParameterFileRepository`；API：`createParameterFileClient`），组件内禁止 `createParameterFileClient()`。mock 模式下可演示文件列表与冲突面板，不直连 `:8787`。
 
-`AuditQuery` 是审计事件的只读端口（Activity 时间线等投影），与只写的 `AuditSink` 分开。经 `resolveAuditQuery(runtimeMode)`（`src/application/parameters/auditQueryRuntime.ts`）解析：mock 返回空列表适配器（不打 HTTP）；API 包装 `createAuditClient`。项目配置工作台必须注入 `listAuditEvents`，页面模块内禁止 `createAuditClient()`。
+`AuditQuery` 是审计事件的只读端口（Activity 时间线等投影）；前端的审计写入走后端路由，不经前端端口。经 `resolveAuditQuery(runtimeMode)`（`src/application/parameters/auditQueryRuntime.ts`）解析：mock 返回空列表适配器（不打 HTTP）；API 包装 `createAuditClient`。项目配置工作台必须注入 `listAuditEvents`，页面模块内禁止 `createAuditClient()`。
 
 配置工作台的领域动作以 Workbench session 形式落在 `src/application/project-configuration/`（见 `CONTEXT.md`）：`StructuredEditSession`（结构化草稿）、`CandidateVersionFlow`（候选版本）、`ReleaseBaselineSession`（发布就绪/基线）、`ConflictLocateFacade`（冲突加载与定位投影）、`ConfigSetOpsSession`（配置集创建/增删成员/导出/手动同步）、`WorkbenchNavigationSession`（URL/选区与统一搜索）、`WorkbenchWorkspaceLoadSession`（配置集/文件/成员/活跃源码/结构加载与重试）、`WorkbenchCanvasHistorySession`（历史/对比源码与工作画布快照）、`WorkbenchActivitySession`（活动时间线加载；事件定位仍经壳层 + Navigation）。对应 `use*` hook 仅为 `useSyncExternalStore` 适配；优先测会话命令接口。壳层（`ProjectConfigurationWorkbench`）保留 ConfirmDialog 所有权、跨会话桥接与展示适配器接线（`WorkbenchCommandBar`、`WorkbenchInspectorPanel`、`WorkbenchSourceTree`、`WorkbenchSourceCanvas`、`WorkbenchTaskDock`）；导航/加载/画布/活动生命周期状态机在上述 session（wave-3 / #258）。
 

@@ -2,7 +2,7 @@ import type { AuditEventListResponse, ListAuditEventsParams } from "@/domain/aud
 
 /**
  * Read-side audit listing for Activity and similar projections.
- * Distinct from write-only {@link AuditSink}.
+ * Frontend audit writes go through backend routes, not a frontend port.
  */
 export interface AuditQuery {
   listAuditEvents(params?: ListAuditEventsParams): Promise<AuditEventListResponse>;

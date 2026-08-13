@@ -105,7 +105,7 @@ Key UI:
 
 ## AuditQuery (workbench Activity)
 
-`AuditQuery` is the read-side port for listing audit events (Activity timelines and similar projections). It is distinct from write-only `AuditSink`. Resolve it with `resolveAuditQuery(runtimeMode)` in `src/application/parameters/auditQueryRuntime.ts` — mock returns an empty listing adapter (no HTTP); API wraps `createAuditClient`. The project configuration workbench must receive `listAuditEvents` by injection from that resolver (or a test double) and must **not** call `createAuditClient()` inside the page module.
+`AuditQuery` is the read-side port for listing audit events (Activity timelines and similar projections); frontend audit writes go through backend routes rather than a frontend port. Resolve it with `resolveAuditQuery(runtimeMode)` in `src/application/parameters/auditQueryRuntime.ts` — mock returns an empty listing adapter (no HTTP); API wraps `createAuditClient`. The project configuration workbench must receive `listAuditEvents` by injection from that resolver (or a test double) and must **not** call `createAuditClient()` inside the page module.
 
 ## Workbench sessions (project configuration)
 
