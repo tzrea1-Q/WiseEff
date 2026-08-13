@@ -101,7 +101,9 @@ describe.skipIf(!databaseAvailable)("0109 module parent_id repair", () => {
       expect(seededParams.get("pm-d")?.parent_id).toBe("pm-x");
 
       const pending = await applyMigrations(db, migrationsDir);
-      expect(pending).toEqual([migration0109]);
+      // Later migrations may follow (e.g. 0110 knowledge references); the
+      // replay only pins that the repair is the next migration to apply.
+      expect(pending[0]).toBe(migration0109);
 
       const repairedParams = await listTreeRows(db, "parameter_modules");
       const repairedDebug = await listTreeRows(db, "debug_node_modules");
