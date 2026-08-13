@@ -1,4 +1,4 @@
-# Jobs Repository Behavior Tests (TD-079 slice)
+# Jobs Repository Behavior Tests (TD-096 slice)
 
 Status: **Completed** (PR #378)
 
@@ -31,12 +31,12 @@ The lease fencing that the fake could only grep for is now exercised for real: F
 | Area | File(s) | Impact |
 | --- | --- | --- |
 | Planning docs | `docs/PLANS.md`, this plan | Update |
-| Tech debt | `docs/exec-plans/tech-debt-tracker.md` | Update (TD-079 progress) |
+| Tech debt | `docs/exec-plans/tech-debt-tracker.md` | Update (TD-096 progress) |
 | All other areas | — | No change (test-only; no behaviour, contract, or schema impact) |
 
 ## Documentation Update Gate
 
 - [x] `docs/PLANS.md` lists this plan
-- [x] TD-079 row updated
+- [x] TD-096 row updated
 - [x] `npm run docs:check` green
 - [ ] Move to `completed/` after merge

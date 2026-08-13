@@ -1,4 +1,4 @@
-import type { XiaozePromptDebugSnapshot } from "./xiaozePromptDebugTypes";
+import { type XiaozePromptDebugSnapshot } from "@wiseeff/xiaoze-protocol";
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (value && typeof value === "object") {

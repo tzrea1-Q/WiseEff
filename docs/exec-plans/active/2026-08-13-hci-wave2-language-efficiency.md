@@ -2,7 +2,7 @@
 
 > Status: **Active**
 > Date: 2026-08-13
-> Origin: TD-095 (deferred scope of `completed/2026-08-12-hci-interaction-trust-repair.md`)
+> Origin: TD-097 (deferred scope of `completed/2026-08-12-hci-interaction-trust-repair.md`)
 > Branch: `feat/hci-wave-2-language`
 > Chinese: [`docs/zh-CN/exec-plans/active/2026-08-13-hci-wave2-language-efficiency.md`](../../zh-CN/exec-plans/active/2026-08-13-hci-wave2-language-efficiency.md)
 
@@ -17,7 +17,7 @@ The audit's Wave 2 list was re-triaged against what parallel workstreams already
 | W2-3 | **Audit search pushdown + time window**: `GET /api/v1/audit-events` gains `q` (ILIKE over action/actor/kind) and `from`/`to`; the workspace search stops being page-local, adds a time-window select (今天/7 天/30 天/全部), and the footer count reflects server filtering. Read-path only — no contact with the audited-write seam migration. | Search currently filters only the loaded page (50 rows), silently lying about coverage. |
 | W2-4 | **Audit CSV export**: export the current filter's full result (paged fetch, capped with a progress note) as UTF-8-BOM CSV with Chinese headers. | Auditors need evidence extracts; today they screenshot. |
 
-Deferred within Wave 2 (stay in TD-095): review batching (needs product decision on partial-failure semantics), macOS shortcut conventions, deep links, a11y systemics, responsive convergence.
+Deferred within Wave 2 (stay in TD-097): review batching (needs product decision on partial-failure semantics), macOS shortcut conventions, deep links, a11y systemics, responsive convergence.
 
 ## Verification
 

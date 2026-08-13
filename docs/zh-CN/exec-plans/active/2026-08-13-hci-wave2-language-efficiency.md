@@ -2,7 +2,7 @@
 
 > 状态：**进行中**
 > 日期：2026-08-13
-> 来源：TD-095（`completed/2026-08-12-hci-interaction-trust-repair.md` 的延期范围）
+> 来源：TD-097（`completed/2026-08-12-hci-interaction-trust-repair.md` 的延期范围）
 > 分支：`feat/hci-wave-2-language`
 > English: [`docs/exec-plans/active/2026-08-13-hci-wave2-language-efficiency.md`](../../../exec-plans/active/2026-08-13-hci-wave2-language-efficiency.md)
 
@@ -17,7 +17,7 @@
 | W2-3 | **审计搜索下推 + 时间窗**：列表 API 增加 `q` 与 `from`/`to`；工作台搜索不再只过滤已加载页，增加时间窗选择。只动读路径，不触碰 audited-write seam 迁移。 | 现在搜索只过滤已加载的 50 条，覆盖面在撒谎。 |
 | W2-4 | **审计 CSV 导出**：按当前筛选分页拉全量（带上限与进度提示）导出 UTF-8-BOM CSV（中文表头）。 | 审计人员需要证据摘录，现在只能截图。 |
 
-Wave 2 内继续延期（留在 TD-095）：评审批量（部分失败语义需产品决策）、macOS 快捷键、深链、a11y 系统化、响应式收敛。
+Wave 2 内继续延期（留在 TD-097）：评审批量（部分失败语义需产品决策）、macOS 快捷键、深链、a11y 系统化、响应式收敛。
 
 ## 验证
 

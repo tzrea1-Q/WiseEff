@@ -4,6 +4,7 @@ import type { KnowledgeEmbeddingClient } from "../../knowledge/indexing/embeddin
 import { getPublishedKnowledgeDocument, searchKnowledge } from "../../knowledge/service";
 import type { AgentCitation } from "../types";
 import type { AgentToolDefinition } from "../toolRegistry";
+import { requireAgentToolMetadata } from "../toolMetadata";
 
 type KnowledgeToolOptions = {
   db: Queryable;
@@ -26,12 +27,7 @@ export function knowledgeEntryHref(entryId: string) {
 export function createKnowledgeTools(options: KnowledgeToolOptions): AgentToolDefinition[] {
   return [
     {
-      name: "knowledge.search",
-      label: "Search the knowledge base",
-      kind: "read",
-      permission: "knowledge:view",
-      requiresApproval: false,
-      scope: "organization",
+      ...requireAgentToolMetadata("knowledge.search"),
       run: async (context, payload) => {
         const query = typeof payload.query === "string" ? payload.query.trim() : "";
         if (!query) {
@@ -75,12 +71,7 @@ export function createKnowledgeTools(options: KnowledgeToolOptions): AgentToolDe
       }
     },
     {
-      name: "knowledge.getDocument",
-      label: "Read a knowledge entry",
-      kind: "read",
-      permission: "knowledge:view",
-      requiresApproval: false,
-      scope: "organization",
+      ...requireAgentToolMetadata("knowledge.getDocument"),
       run: async (context, payload) => {
         const entryId = typeof payload.entryId === "string" ? payload.entryId.trim() : "";
         if (!entryId) {

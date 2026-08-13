@@ -1,4 +1,16 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+/**
+ * Behavior-level coverage for the local demo credential seeder: the fixed
+ * roster, the development-only gate, and the idempotent upsert against a real
+ * database.
+ */
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import {
+  createInMemoryTestDatabase,
+  isTestDatabaseAvailable,
+  type InMemoryTestDatabase
+} from "../../testing/testDatabase";
+import { seedCoreGraph } from "../../testing/fixtures";
 import {
   LOCAL_DEMO_CREDENTIALS,
   LOCAL_DEMO_SHARED_PASSWORD,
@@ -6,30 +18,10 @@ import {
   shouldSeedLocalDemoCredentials
 } from "./seedLocalDemoCredentials";
 import { validateLocalAccountPassword, validateLocalAccountUsername } from "./localAccountCredentials";
-import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 
-function createFakeDb() {
-  const calls: Array<{ text: string; values: unknown[] }> = [];
-  const queryable: Queryable = {
-    async query<Row>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> {
-      calls.push({ text, values });
-      return { rows: [], rowCount: 1 };
-    }
-  };
-  const db: Database = {
-    query: queryable.query,
-    async transaction<T>(fn: (tx: Queryable) => Promise<T>): Promise<T> {
-      return fn(queryable);
-    }
-  };
-  return { db, calls };
-}
+const databaseAvailable = await isTestDatabaseAvailable();
 
-describe("seedLocalDemoCredentials", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
+describe("seedLocalDemoCredentials roster", () => {
   it("exposes seven fixed usernames and a password that pass local policy", () => {
     expect(LOCAL_DEMO_CREDENTIALS).toHaveLength(7);
     expect(LOCAL_DEMO_SHARED_PASSWORD).toBe("WiseEff-Dev!");
@@ -53,33 +45,61 @@ describe("seedLocalDemoCredentials", () => {
     expect(shouldSeedLocalDemoCredentials({ NODE_ENV: "production" })).toBe(false);
     expect(shouldSeedLocalDemoCredentials({ NODE_ENV: "test" })).toBe(false);
   });
+});
 
-  it("upserts credentials in development", async () => {
-    const { db, calls } = createFakeDb();
+describe.skipIf(!databaseAvailable)("seedLocalDemoCredentials (database)", () => {
+  let db: InMemoryTestDatabase;
+
+  beforeEach(async () => {
+    db = await createInMemoryTestDatabase();
+    // The seeder targets the fixed demo user ids; user_password_credentials
+    // references users, so the demo roster must exist first (as it does in the
+    // local demo dataset the seeder complements).
+    await seedCoreGraph(db, {
+      organization: { id: "org-1", name: "ChargeLab" },
+      users: LOCAL_DEMO_CREDENTIALS.map((row) => ({
+        id: row.userId,
+        name: row.username,
+        email: `${row.username}@example.com`
+      }))
+    });
+  });
+
+  afterEach(async () => {
+    await db?.rollback();
+  });
+
+  async function credentialRows() {
+    const result = await db.query<{ user_id: string; username: string; password_hash: string }>(
+      `select user_id, username, password_hash from user_password_credentials order by username`
+    );
+    return result.rows;
+  }
+
+  it("upserts credentials in development and stays idempotent", async () => {
     const result = await seedLocalDemoCredentials(db, { NODE_ENV: "development" });
     expect(result).toEqual({ seeded: true, count: 7 });
-    const credentialCalls = calls.filter((call) => call.text.includes("user_password_credentials"));
-    expect(credentialCalls).toHaveLength(7);
-    expect(credentialCalls.map((call) => call.values[1])).toEqual([
-      "xu.yun",
-      "zhao.heng",
-      "liu.min",
-      "wang.jie",
-      "chen.na",
-      "li.peng",
-      "sun.mei"
-    ]);
-    for (const call of credentialCalls) {
-      expect(call.values[0]).toMatch(/^u-/);
-      expect(String(call.values[2])).toMatch(/^scrypt\$/);
-      expect(call.text.toLowerCase()).toContain("on conflict");
+
+    const rows = await credentialRows();
+    expect(rows.map((row) => row.username).sort()).toEqual(
+      LOCAL_DEMO_CREDENTIALS.map((row) => row.username).slice().sort()
+    );
+    for (const row of rows) {
+      expect(row.user_id).toMatch(/^u-/);
+      expect(row.password_hash).toMatch(/^scrypt\$/);
     }
+
+    // Re-seeding updates in place instead of duplicating.
+    await expect(seedLocalDemoCredentials(db, { NODE_ENV: "development" })).resolves.toEqual({
+      seeded: true,
+      count: 7
+    });
+    await expect(credentialRows()).resolves.toHaveLength(7);
   });
 
   it("skips writes outside development", async () => {
-    const { db, calls } = createFakeDb();
     const result = await seedLocalDemoCredentials(db, { NODE_ENV: "production" });
     expect(result).toEqual({ seeded: false, count: 0 });
-    expect(calls).toHaveLength(0);
+    await expect(credentialRows()).resolves.toEqual([]);
   });
 });

@@ -1,11 +1,11 @@
-import type { XiaozeRunStepSnapshot } from "./xiaozeRunTimingTypes";
+import { type XiaozeRunStep } from "@wiseeff/xiaoze-protocol";
 
 type XiaozeTurnTimelineProps = {
-  steps: XiaozeRunStepSnapshot[];
+  steps: XiaozeRunStep[];
   className?: string;
 };
 
-function stepStatusLabel(status: XiaozeRunStepSnapshot["status"]) {
+function stepStatusLabel(status: XiaozeRunStep["status"]) {
   switch (status) {
     case "running":
       return "进行中";
@@ -38,17 +38,17 @@ export function XiaozeTurnTimeline({ steps, className }: XiaozeTurnTimelineProps
   );
 }
 
-export function readRunStepsFromMetadata(metadata: Record<string, unknown> | undefined): XiaozeRunStepSnapshot[] {
+export function readRunStepsFromMetadata(metadata: Record<string, unknown> | undefined): XiaozeRunStep[] {
   const raw = metadata?.runSteps;
   if (!Array.isArray(raw)) {
     return [];
   }
-  return raw.filter((entry): entry is XiaozeRunStepSnapshot => {
+  return raw.filter((entry): entry is XiaozeRunStep => {
     return (
       !!entry &&
       typeof entry === "object" &&
-      typeof (entry as XiaozeRunStepSnapshot).id === "string" &&
-      typeof (entry as XiaozeRunStepSnapshot).label === "string"
+      typeof (entry as XiaozeRunStep).id === "string" &&
+      typeof (entry as XiaozeRunStep).label === "string"
     );
   });
 }

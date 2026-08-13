@@ -859,6 +859,13 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "KnowledgeSearchResponse",
     additionalResponses: { "403": "ErrorResponse" }
   },
+  "knowledge.relatedToLog": {
+    summary:
+      "Related published knowledge for a completed log-analysis record (knowledge:view plus logs:view and organization scope on the record) — the similarity query derives from the stored conclusion/impact text, runs through hybrid retrieval with a relevance cutoff so unrelated entries are dropped, and the response reports the retrieval mode that actually ran",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeSearchResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "knowledge.indexStatus": {
     summary: "Read per-entry retrieval index health and the honest retrieval mode (knowledge:manage only)",
     tags: ["knowledge"],

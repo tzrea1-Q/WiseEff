@@ -46,6 +46,33 @@ function searchableText(entry: KnowledgeEntry): string {
   return [entry.title, entry.tags.join(" "), entry.contentMarkdown ?? "", entry.file?.fileName ?? ""].join("\n");
 }
 
+/**
+ * Mock stand-in for the server's trigram relevance cutoff: character bigrams
+ * (CJK-friendly) with a containment score — how much of the derived
+ * conclusion/impact query the entry text covers. Same published-only and
+ * cutoff semantics as the API implementation.
+ */
+const MOCK_RELATED_MIN_SCORE = 0.25;
+const MOCK_RELATED_LIMIT = 5;
+
+function characterBigrams(text: string): Set<string> {
+  const normalized = text.replace(/\s+/g, "").toLocaleLowerCase();
+  const grams = new Set<string>();
+  for (let index = 0; index < normalized.length - 1; index += 1) {
+    grams.add(normalized.slice(index, index + 2));
+  }
+  return grams;
+}
+
+function bigramContainment(queryGrams: Set<string>, textGrams: Set<string>): number {
+  if (queryGrams.size === 0) return 0;
+  let shared = 0;
+  for (const gram of queryGrams) {
+    if (textGrams.has(gram)) shared += 1;
+  }
+  return shared / queryGrams.size;
+}
+
 export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revisions: KnowledgeRevision[] } {
   const publishedMarkdown: KnowledgeEntry = {
     id: "mock-kb-1",
@@ -201,6 +228,28 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
     file: null
   };
 
+  // Related to the completed mock log (log-auth, PD negotiation): the log
+  // result page's related-knowledge section has a real hit in mock mode.
+  const publishedPdHandbook: KnowledgeEntry = {
+    id: "mock-kb-8",
+    title: "PD 快充协议兼容性排查手册",
+    contentForm: "markdown",
+    status: "published",
+    tags: ["快充", "PD 协议"],
+    sourceType: "human",
+    sourceSessionId: null,
+    sourceLogId: null,
+    createdByUserId: "u-li-fang",
+    headRevisionNumber: 1,
+    createdAt: "2026-08-06T03:00:00.000Z",
+    updatedAt: "2026-08-06T03:00:00.000Z",
+    publishedAt: "2026-08-06T03:10:00.000Z",
+    archivedAt: null,
+    contentMarkdown:
+      "# PD 快充协议兼容性排查手册\n\n典型健康样本:PD 协商在 9V/3A 档位稳定完成,未出现握手重试,说明 SourceCap 与 Request 匹配良好。\n\n- 出现握手重试时优先复核适配器白名单\n- 记录 PD 协商日志中的 SourceCap 档位与 Accept 时序",
+    file: null
+  };
+
   const revisions: KnowledgeRevision[] = [
     {
       id: "mock-kb-1-r1",
@@ -297,11 +346,32 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
       authorUserId: "u-li-fang",
       restoredFromRevisionId: null,
       createdAt: agentDraftOther.createdAt
+    },
+    {
+      id: "mock-kb-8-r1",
+      entryId: "mock-kb-8",
+      revisionNumber: 1,
+      title: publishedPdHandbook.title,
+      tags: publishedPdHandbook.tags,
+      contentMarkdown: publishedPdHandbook.contentMarkdown ?? "",
+      fileId: null,
+      authorUserId: "u-li-fang",
+      restoredFromRevisionId: null,
+      createdAt: publishedPdHandbook.createdAt
     }
   ];
 
   return {
-    entries: [publishedMarkdown, draftMarkdown, publishedFile, failedExtractionFile, archivedMarkdown, agentDraftOwn, agentDraftOther],
+    entries: [
+      publishedMarkdown,
+      draftMarkdown,
+      publishedFile,
+      failedExtractionFile,
+      archivedMarkdown,
+      agentDraftOwn,
+      agentDraftOther,
+      publishedPdHandbook
+    ],
     revisions
   };
 }
@@ -653,6 +723,49 @@ export function createMockKnowledgeRepository(
             contentForm: entry.contentForm,
             tags: [...entry.tags],
             excerpt: text.slice(start, start + 120),
+            updatedAt: entry.updatedAt,
+            revisionId: headRevision?.id ?? null
+          };
+        });
+      return { items, retrieval };
+    },
+
+    async relatedToLog(logId) {
+      const retrieval = { mode: "fts_only" as const, vectorAvailable: false, embeddingConfigured: false };
+      const log = capability.getLogRecord?.(logId);
+      if (!log) {
+        throw new Error(`Log record not found: ${logId}`);
+      }
+      if (log.status !== "Complete") {
+        throw new Error("只有已完成的日志分析才有相关知识。");
+      }
+
+      const query = [log.conclusion, log.impact]
+        .map((part) => part?.trim() ?? "")
+        .filter(Boolean)
+        .join(" ");
+      const queryGrams = characterBigrams(query);
+      if (queryGrams.size === 0) {
+        return { items: [], retrieval };
+      }
+
+      const items = store.entries
+        .filter((entry) => entry.status === "published")
+        .map((entry) => ({ entry, score: bigramContainment(queryGrams, characterBigrams(searchableText(entry))) }))
+        .filter(({ score }) => score >= MOCK_RELATED_MIN_SCORE)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, MOCK_RELATED_LIMIT)
+        .map<KnowledgeSearchResult>(({ entry }) => {
+          const text = searchableText(entry).replace(/\s+/g, " ");
+          const headRevision = store.revisions
+            .filter((revision) => revision.entryId === entry.id)
+            .sort((a, b) => b.revisionNumber - a.revisionNumber)[0];
+          return {
+            entryId: entry.id,
+            title: entry.title,
+            contentForm: entry.contentForm,
+            tags: [...entry.tags],
+            excerpt: text.slice(0, 120),
             updatedAt: entry.updatedAt,
             revisionId: headRevision?.id ?? null
           };

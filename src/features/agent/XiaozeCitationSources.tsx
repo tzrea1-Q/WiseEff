@@ -1,4 +1,4 @@
-import type { XiaozeCitation } from "./xiaozeTurnReplyTypes";
+import { type XiaozeCitation } from "@wiseeff/xiaoze-protocol";
 
 type XiaozeCitationSourcesProps = {
   citations: XiaozeCitation[] | undefined;

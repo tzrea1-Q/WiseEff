@@ -1,5 +1,17 @@
-import { describe, expect, it } from "vitest";
-import type { QueryResult, Queryable } from "../../shared/database/client";
+/**
+ * Behavior-level integration coverage for the file↔UI sync conflict repository:
+ * insert/list/has-open/resolve round trip plus enrichment joins against a real
+ * database. Asserts returned DTOs and subsequent reads — never SQL text.
+ */
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import {
+  createInMemoryTestDatabase,
+  isTestDatabaseAvailable,
+  type InMemoryTestDatabase
+} from "../../testing/testDatabase";
+import { seedCoreGraph, seedSpecBindingGraph } from "../../testing/fixtures";
+import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import {
   hasOpenFileSyncConflict,
   insertFileSyncConflict,
@@ -7,194 +19,246 @@ import {
   resolveConflict
 } from "./fileSyncConflictRepository";
 
-type QueryCall = {
-  text: string;
-  values: unknown[];
-};
+const databaseAvailable = await isTestDatabaseAvailable();
 
-type QueuedResult = Record<string, unknown> | unknown[] | ((call: QueryCall) => unknown[]);
+describe.skipIf(!databaseAvailable)("file sync conflict repository", () => {
+  let db: InMemoryTestDatabase;
 
-function createFakeDb(rowsOrQueue: QueuedResult[] = []) {
-  const calls: QueryCall[] = [];
-  const queueMode = rowsOrQueue.some((item) => typeof item === "function" || Array.isArray(item));
-  const db: Queryable = {
-    query: async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
-      const call = { text, values };
-      // Cutover probes must not consume the test SQL queue.
-      if (text.includes("parameter_identity_cutovers")) {
-        return { rows: [{ c: "0" } as Row], rowCount: 1 };
-      }
-      if (text.includes("information_schema.tables") && text.includes("parameter_definitions")) {
-        return { rows: [{ c: "1" } as Row], rowCount: 1 };
-      }
-      calls.push(call);
-      if (queueMode) {
-        const next = rowsOrQueue.shift() ?? [];
-        const rows = typeof next === "function" ? next(call) : Array.isArray(next) ? next : [next];
-        return { rows: rows as Row[], rowCount: rows.length };
-      }
-
-      const rows = rowsOrQueue as unknown[];
-      return { rows: rows as Row[], rowCount: rows.length };
-    }
-  };
-
-  return { db, calls };
-}
-
-describe("file sync conflict repository", () => {
-  it("handles file sync conflict repository CRUD", async () => {
-    const { db, calls } = createFakeDb([
-      [
-        {
-          id: "conflict-1",
-          organization_id: "org-chargelab",
-          project_id: "project-1",
-          project_parameter_value_id: "param-1",
-          parameter_definition_id: "definition-1",
-          file_version_id: "version-1",
-          file_draft_id: "draft-file",
-          ui_draft_id: "draft-ui",
-          file_value: "85",
-          ui_draft_value: "82",
-          status: "open",
-          resolved_by_user_id: null,
-          resolved_at: null,
-          created_at: "2026-07-11T10:02:00.000Z"
-        }
+  beforeEach(async () => {
+    setParameterIdentityMode(null);
+    db = await createInMemoryTestDatabase();
+    await seedCoreGraph(db, {
+      organization: { id: "org-1", name: "ChargeLab" },
+      users: [
+        { id: "reviewer-1", name: "Reviewer", email: "reviewer@example.com" },
+        { id: "user-sync", name: "Sync Bot", email: "sync@example.com" },
+        { id: "user-ui", name: "UI Editor", email: "ui@example.com" }
       ],
-      [
-        {
-          id: "conflict-1",
-          organization_id: "org-chargelab",
-          project_id: "project-1",
-          project_parameter_value_id: "param-1",
-          parameter_definition_id: "definition-1",
-          file_version_id: "version-1",
-          file_draft_id: "draft-file",
-          ui_draft_id: "draft-ui",
-          file_value: "85",
-          ui_draft_value: "82",
-          status: "open",
-          resolved_by_user_id: null,
-          resolved_at: null,
-          created_at: "2026-07-11T10:02:00.000Z"
-        }
-      ],
-      [{ id: "conflict-1" }],
-      [
-        {
-          id: "conflict-1",
-          organization_id: "org-chargelab",
-          project_id: "project-1",
-          project_parameter_value_id: "param-1",
-          parameter_definition_id: "definition-1",
-          file_version_id: "version-1",
-          file_draft_id: "draft-file",
-          ui_draft_id: "draft-ui",
-          file_value: "85",
-          ui_draft_value: "82",
-          status: "resolved_file",
-          resolved_by_user_id: "reviewer-1",
-          resolved_at: "2026-07-11T10:03:00.000Z",
-          created_at: "2026-07-11T10:02:00.000Z"
-        }
-      ]
-    ]);
+      projects: [{ id: "project-1", name: "Aurora", code: "AUR" }]
+    });
 
-    const inserted = await insertFileSyncConflict(db, {
+    // Legacy flat identity rows the conflict hangs off.
+    await db.query(
+      `insert into parameter_definitions (
+         id, organization_id, name, description, explanation, config_format, module, default_range, unit, risk
+       ) values ('pd-1', 'org-1', 'temp_max', 'max temperature', 'battery max temperature', 'ENV', 'battery', '0-120', 'C', 'High')`
+    );
+    await db.query(
+      `insert into project_parameter_values (
+         id, organization_id, project_id, parameter_definition_id,
+         current_value, recommended_value, value_version, updated_by_user_id
+       ) values ('ppv-1', 'org-1', 'project-1', 'pd-1', '80', '80', 1, 'reviewer-1')`
+    );
+  });
+
+  afterEach(async () => {
+    await db?.rollback();
+  });
+
+  async function seedFileWithVersion(input: { configSetId?: string } = {}) {
+    await db.query(
+      `insert into project_parameter_files (id, organization_id, project_id, file_name, format, config_set_id)
+       values ('file-1', 'org-1', 'project-1', 'board.dts', 'dts', $1)`,
+      [input.configSetId ?? null]
+    );
+    await db.query(
+      `insert into project_parameter_file_versions (
+         id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id, created_at
+       ) values ('version-1', 'file-1', 3, 'org-1/files/board.dts', 'checksum-1', 100, '{}', 'upload', 'reviewer-1', '2026-07-11T09:00:00.000Z')`
+    );
+  }
+
+  /** File-sync + manual draft pair — precondition rows the repository does not create. */
+  async function seedDraftPair() {
+    await db.query(
+      `insert into parameter_drafts (
+         id, organization_id, project_id, project_parameter_value_id, user_id,
+         target_value, reason, origin, origin_file_version_id, updated_at
+       ) values
+         ('draft-file', 'org-1', 'project-1', 'ppv-1', 'user-sync', '85', 'file sync draft', 'file_sync', 'version-1', '2026-07-11T10:00:00.000Z'),
+         ('draft-ui', 'org-1', 'project-1', 'ppv-1', 'user-ui', '82', 'ui draft', 'manual', null, '2026-07-11T10:01:00.000Z')`
+    );
+  }
+
+  function conflictInput() {
+    return {
       id: "conflict-1",
-      organizationId: "org-chargelab",
+      organizationId: "org-1",
       projectId: "project-1",
-      projectParameterValueId: "param-1",
-      parameterDefinitionId: "definition-1",
+      projectParameterValueId: "ppv-1",
+      parameterDefinitionId: "pd-1",
       fileVersionId: "version-1",
       fileDraftId: "draft-file",
       uiDraftId: "draft-ui",
       fileValue: "85",
       uiDraftValue: "82"
+    };
+  }
+
+  it("inserts, lists, reports, and resolves a conflict end to end", async () => {
+    await seedFileWithVersion();
+    await seedDraftPair();
+
+    const inserted = await insertFileSyncConflict(db, conflictInput());
+    expect(inserted).toMatchObject({
+      id: "conflict-1",
+      organizationId: "org-1",
+      projectId: "project-1",
+      projectParameterValueId: "ppv-1",
+      parameterDefinitionId: "pd-1",
+      fileVersionId: "version-1",
+      fileDraftId: "draft-file",
+      uiDraftId: "draft-ui",
+      fileValue: "85",
+      uiDraftValue: "82",
+      status: "open"
     });
+    expect(inserted.resolvedByUserId).toBeUndefined();
+    expect(inserted.resolvedAt).toBeUndefined();
+
     const openConflicts = await listOpenConflicts(db, {
-      organizationId: "org-chargelab",
-      projectParameterValueId: "param-1"
+      organizationId: "org-1",
+      projectId: "project-1"
     });
-    const hasOpen = await hasOpenFileSyncConflict(db, {
-      projectParameterValueId: "param-1"
+    expect(openConflicts).toHaveLength(1);
+    expect(openConflicts[0]).toMatchObject({
+      id: "conflict-1",
+      status: "open",
+      fileValue: "85",
+      uiDraftValue: "82",
+      // Legacy rows still enrich from the flat identity graph.
+      baseValue: "80",
+      parameterName: "temp_max",
+      parameterModule: "battery",
+      fileVersionNumber: 3,
+      fileVersionLabel: "v3",
+      fileId: "file-1",
+      fileName: "board.dts"
     });
+
+    await expect(hasOpenFileSyncConflict(db, { projectParameterValueId: "ppv-1" })).resolves.toBe(true);
+
     const resolved = await resolveConflict(db, {
-      organizationId: "org-chargelab",
+      organizationId: "org-1",
       conflictId: "conflict-1",
       status: "resolved_file",
       resolvedByUserId: "reviewer-1"
     });
+    expect(resolved).toMatchObject({ id: "conflict-1", status: "resolved_file", resolvedByUserId: "reviewer-1" });
+    expect(resolved?.resolvedAt).toBeTruthy();
 
-    expect(calls[0].text).toContain("insert into parameter_file_sync_conflicts");
-    expect(calls[1].text).toContain("parameter_file_sync_conflicts");
-    expect(calls[1].text).toContain("status = 'open'");
-    expect(calls[1].text).toContain("project_parameter_bindings");
-    expect(calls[1].text).toContain("project_parameter_values");
-    expect(calls[1].text).toContain("parameter_definitions");
-    expect(calls[1].text).toContain("project_parameter_file_versions");
-    expect(calls[2].text).toContain("status = 'open'");
-    expect(calls[3].text).toContain("update parameter_file_sync_conflicts");
-    expect(inserted.status).toBe("open");
-    expect(openConflicts).toHaveLength(1);
-    expect(hasOpen).toBe(true);
-    expect(resolved?.status).toBe("resolved_file");
+    // Resolution removes the conflict from every open-conflict read.
+    await expect(listOpenConflicts(db, { organizationId: "org-1", projectId: "project-1" })).resolves.toEqual([]);
+    await expect(hasOpenFileSyncConflict(db, { projectParameterValueId: "ppv-1" })).resolves.toBe(false);
+    // A second resolve finds no open row and reports null instead of double-resolving.
+    await expect(
+      resolveConflict(db, {
+        organizationId: "org-1",
+        conflictId: "conflict-1",
+        status: "resolved_ui",
+        resolvedByUserId: "reviewer-1"
+      })
+    ).resolves.toBeNull();
   });
 
-  it("listOpenConflicts maps enrichment joins for arbitration DTO", async () => {
-    const { db, calls } = createFakeDb([
-      [
+  it("resolveConflict is organization-scoped", async () => {
+    await seedFileWithVersion();
+    await seedDraftPair();
+    await insertFileSyncConflict(db, conflictInput());
+
+    await expect(
+      resolveConflict(db, {
+        organizationId: "org-other",
+        conflictId: "conflict-1",
+        status: "resolved_file",
+        resolvedByUserId: "reviewer-1"
+      })
+    ).resolves.toBeNull();
+    // The conflict is untouched and still open for its own organization.
+    const open = await listOpenConflicts(db, { organizationId: "org-1", projectId: "project-1" });
+    expect(open.map((conflict) => conflict.id)).toEqual(["conflict-1"]);
+  });
+
+  it("listOpenConflicts enriches binding-identified conflicts for the arbitration DTO", async () => {
+    // Semantic identity graph: spec + property spec + binding + revision + occurrence.
+    await seedSpecBindingGraph(db, {
+      organizationId: "org-1",
+      specs: [
         {
-          id: "conflict-1",
-          organization_id: "org-chargelab",
-          project_id: "project-1",
-          project_parameter_value_id: "binding-1",
-          parameter_definition_id: "spec-1",
-          project_parameter_binding_id: "binding-1",
-          parameter_spec_id: "spec-1",
-          file_version_id: "version-1",
-          file_draft_id: "draft-file",
-          ui_draft_id: "draft-ui",
-          file_value: "85",
-          ui_draft_value: "82",
-          status: "open",
-          resolved_by_user_id: null,
-          resolved_at: null,
-          created_at: "2026-07-11T10:02:00.000Z",
-          base_value: "80",
-          parameter_name: "temp_max",
-          parameter_module: "battery",
-          file_version_number: 3,
-          file_version_created_at: "2026-07-11T09:00:00.000Z",
-          file_draft_updated_at: "2026-07-11T10:00:00.000Z",
-          ui_draft_updated_at: "2026-07-11T10:01:00.000Z",
-          file_id: "file-1",
-          file_name: "board.dts",
-          config_set_id: "set-1",
-          source_node_path: "battery/temp_max",
-          source_start_offset: 10,
-          source_end_offset: 20,
-          source_start_line: 4,
-          source_start_column: 2,
-          source_end_line: 4,
-          source_end_column: 12
+          id: "spec-1",
+          specificationKey: "battery/temp_max",
+          versions: [{ id: "psv-1", displayName: "temp_max", description: "battery max temperature" }],
+          propertySpec: { id: "dps-1", propertyKey: "temp_max" }
+        }
+      ],
+      modules: [{ id: "pm-battery", name: "battery" }],
+      configSets: [
+        {
+          id: "set-1",
+          projectId: "project-1",
+          revisions: [{ id: "rev-1" }],
+          logicalNodes: [
+            {
+              id: "ln-1",
+              revisions: [{ id: "lnr-1", configRevisionId: "rev-1", nodeLocator: "/battery", name: "battery" }]
+            }
+          ]
+        }
+      ],
+      bindings: [
+        {
+          id: "binding-1",
+          projectId: "project-1",
+          parameterSpecId: "spec-1",
+          moduleId: "pm-battery",
+          logicalNodeId: "ln-1",
+          revisions: [{ id: "bpr-1", configRevisionId: "rev-1", parameterSpecVersionId: "psv-1", rawValue: "80" }]
         }
       ]
-    ]);
+    });
+    await seedFileWithVersion({ configSetId: "set-1" });
+    await seedDraftPair();
+    await db.query(
+      `insert into dts_node_occurrences (
+         id, config_revision_id, file_version_id, name, node_path,
+         start_offset, end_offset, start_line, start_column, end_line, end_column, raw_text
+       ) values ('no-1', 'rev-1', 'version-1', 'battery', '/battery', 0, 40, 1, 1, 6, 1, 'battery { temp_max = <80>; };')`
+    );
+    await db.query(
+      `insert into dts_property_occurrences (
+         id, config_revision_id, node_occurrence_id, file_version_id, property_name,
+         start_offset, end_offset, start_line, start_column, end_line, end_column, raw_text
+       ) values ('po-1', 'rev-1', 'no-1', 'version-1', 'temp_max', 10, 20, 4, 2, 4, 12, 'temp_max = <80>;')`
+    );
+    await db.query(
+      `insert into dts_occurrence_effects (
+         id, config_revision_id, logical_node_revision_id, property_name, effect_kind,
+         node_occurrence_id, property_occurrence_id, source_order
+       ) values ('oe-1', 'rev-1', 'lnr-1', 'temp_max', 'set', 'no-1', 'po-1', 1)`
+    );
 
-    const [conflict] = await listOpenConflicts(db, {
-      organizationId: "org-chargelab",
-      projectId: "project-1"
+    await insertFileSyncConflict(db, {
+      ...conflictInput(),
+      parameterSpecId: "spec-1",
+      projectParameterBindingId: "binding-1"
     });
 
-    expect(calls[0].text).toContain("left join project_parameter_bindings");
-    expect(calls[0].text).toContain("dts_property_occurrences");
-    expect(calls[0].text).toContain("project_parameter_values");
-    expect(calls[0].text).toContain("parameter_definitions");
+    // Post-cutover callers filter by binding id under the legacy parameter name.
+    const byBinding = await listOpenConflicts(db, {
+      organizationId: "org-1",
+      projectParameterValueId: "binding-1"
+    });
+    expect(byBinding.map((conflict) => conflict.id)).toEqual(["conflict-1"]);
+
+    const [conflict] = await listOpenConflicts(db, {
+      organizationId: "org-1",
+      projectId: "project-1"
+    });
     expect(conflict).toMatchObject({
       id: "conflict-1",
+      // Binding/spec ids occupy the legacy DTO field names after cutover.
+      projectParameterValueId: "binding-1",
+      parameterDefinitionId: "spec-1",
       baseValue: "80",
       parameterName: "temp_max",
       parameterModule: "battery",

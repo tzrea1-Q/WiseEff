@@ -1,5 +1,7 @@
 import type { AgentToolResult } from "../types";
-import type { XiaozeRunStepRecord } from "./runEventSink";
+import type { XiaozePromptDebugSnapshot, XiaozeRunStep } from "@wiseeff/xiaoze-protocol";
+
+export type { XiaozePromptDebugSnapshot } from "@wiseeff/xiaoze-protocol";
 
 /**
  * Shared model/agent shape vocabulary for the Xiaoze planning pipeline.
@@ -27,26 +29,12 @@ export type PerceptionAgentRunInput = {
   includePromptDebug?: boolean;
 };
 
-export type XiaozePromptDebugSnapshot = {
-  threadId: string;
-  userMessage: string;
-  context: PerceptionAgentContext;
-  system: {
-    policy: string;
-    toolCatalog: string;
-  };
-  llmMessages: unknown[];
-  tools: PerceptionToolDescriptor[];
-  model?: string;
-  promptVersion?: string;
-};
-
 export type PerceptionAgentRunResult = {
   text: string;
   reasoning?: string;
   citations: AgentToolResult["citations"];
   promptDebug?: XiaozePromptDebugSnapshot;
-  runSteps?: XiaozeRunStepRecord[];
+  runSteps?: XiaozeRunStep[];
   interrupt?: {
     toolName: string;
     payload: Record<string, unknown>;

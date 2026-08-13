@@ -1,5 +1,5 @@
+import { type XiaozeRunTimingPayload } from "@wiseeff/xiaoze-protocol";
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
-import type { XiaozeRunTimingPayload } from "./xiaozeRunTimingTypes";
 
 type XiaozeRunTimingContextValue = {
   setRunTiming: (payload: XiaozeRunTimingPayload) => void;

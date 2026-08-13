@@ -1,14 +1,11 @@
+import { type XiaozeCitation, type XiaozeRunStep, type XiaozeTurnReplyPayload, type XiaozeTurnPhase, type XiaozeTurnStatePayload } from "@wiseeff/xiaoze-protocol";
 import type { AssistantMessage, Message } from "@ag-ui/core";
 import { readCitationsFromMetadata } from "./XiaozeCitationSources";
-import type { XiaozeCitation } from "./xiaozeTurnReplyTypes";
 import { readRunStepsFromMetadata } from "./XiaozeTurnTimeline";
 import { presentRunStep } from "./xiaozeStepPresentation";
 import { isXiaozeReasoningStreaming } from "./xiaozeThinkingState";
 import { dedupeRepeatedAnswerText, looksLikeInternalReasoning, stripEmbeddedThinking } from "./xiaozeMessageContent";
 import { readMessageText, type XiaozeConversationTurn } from "./xiaozeTurnGrouping";
-import type { XiaozeRunStepSnapshot } from "./xiaozeRunTimingTypes";
-import type { XiaozeTurnReplyPayload } from "./xiaozeTurnReplyTypes";
-import type { XiaozeTurnPhase, XiaozeTurnStatePayload } from "./xiaozeTurnStateTypes";
 
 export type XiaozeTurnViewInput = {
   turn: XiaozeConversationTurn;
@@ -18,14 +15,14 @@ export type XiaozeTurnViewInput = {
   isRunning: boolean;
   turnReply: XiaozeTurnReplyPayload | undefined;
   turnState: XiaozeTurnStatePayload | undefined;
-  liveRunSteps: XiaozeRunStepSnapshot[];
+  liveRunSteps: XiaozeRunStep[];
 };
 
 export type XiaozeTurnView = {
   isActiveTurn: boolean;
   userMessageText: string;
   promptDebugRunId: string | undefined;
-  steps: XiaozeRunStepSnapshot[];
+  steps: XiaozeRunStep[];
   citations: XiaozeCitation[];
   answerText: string;
   answerStreaming: boolean;
@@ -48,7 +45,7 @@ export function shouldDeferTurnAnswer(input: {
   isActiveTurn: boolean;
   isRunning: boolean;
   turnReply?: XiaozeTurnReplyPayload;
-  steps: XiaozeRunStepSnapshot[];
+  steps: XiaozeRunStep[];
 }) {
   if (!input.isActiveTurn || !input.isRunning) {
     return false;

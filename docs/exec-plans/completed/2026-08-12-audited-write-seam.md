@@ -174,6 +174,45 @@ now takes `AuditTx`; `linkAuditSubjects` has no production caller and was left a
 - Ratchet: `parameter-topology/governanceAudit.ts` reaches zero. Every remaining
   allowlist entry is now a documented deliberate resident or an owner-decision item.
 
+## Batch 7 (branch `refactor/refusal-audit-survives-rollback`) — refusal audits
+
+Resolves the refusal-audit design item (ADR-0027 amendment, 2026-08-13).
+
+- **Seam:** `writeRefusalAudit(db, auth, context, spec)` — pool handle, auto-committed,
+  deliberately outside any transaction; the inverse contract from `writeAuditEventInTx`.
+- **Bug fixed:** sensitive-node deny audits were being erased by the merge / structured-
+  edit transactions they ran inside. `assertSensitiveNodeWriteAllowed` now takes a
+  `refusalDb` pool handle; the merge writeback path threads it through
+  `WritebackServiceContext` and structured-edit submit passes its own pool handle. The
+  no-`refusalDb` fallback keeps old behavior for out-of-transaction callers and is the
+  one remaining direct `createAuditEvent` call in the file (transitional, documented).
+- `assertDtsReloadHumanActor` / `assertSensitiveReloadBatchAllowed` take `Database`
+  directly — those gates run before any transaction by design, and the signature now
+  states it. Both files reach ratchet zero.
+- Behavior test pins that the deny audit goes to the refusal handle, not the caller's tx.
+
+## Batch 8 (branch `refactor/stepwise-audit-boundaries`) — the two state machines
+
+Resolves the deferred reload-state-machine and orchestrator audit boundaries with one
+vocabulary (ADR-0027 amendment): stepwise flows distinguish **milestones** ("this step
+was reached", written immediately on the pool handle via `writeMilestoneAudit`, so they
+survive later failures) from **step results** (commit with that step's state write).
+
+- **Reload state machine** (`dts-reload/service.ts` reaches zero):
+  - Milestones: run started, deploy started, and the refused-deploy terminal in the
+    catch path — pool-handle writes, deliberately outside any transaction.
+  - Results: blocked/validated now commit with the run row inside `persistRunOutcome`
+    (which also injects the artifact hashes into the audit); the deploy terminal
+    (verified/contradicted/unverifiable/failed) moved into the terminal persist
+    callback — deploy state, residue bookkeeping (under the device lease), and the
+    terminal audit are one audited write.
+- **Agent orchestrator** (`agent/orchestrator.ts` reaches zero):
+  - approval-requested, tool succeeded/failed, and approval-rejected each auto-committed
+    their state writes before auditing outside them — now one audited write per step.
+    The approve-execution path already ran audit-in-transaction; it now carries the
+    brand. The "running" transition deliberately stays outside (visible during
+    execution). The unused `createAuditEvent` injection option was removed.
+
 ## PR2+ migration inventory (ratchet allowlist, 41 direct calls in 27 files)
 
 Migrate per module; each batch moves call sites to `withAuditedWrite`/`writeAuditEventInTx`
@@ -187,8 +226,17 @@ and lowers the ratchet. Suspected genuine gaps first:
 4. `agent/*` (4), `users/service.ts` (2), `auth/*` (2), `logs/service.ts` (1), `knowledge/service.ts` (1),
    `product-feedback/service.ts` (1), `audit/routes.ts` (1).
 
-Completion gate: ratchet allowlist empty → delete `createAuditEvent` + ratchet test →
-move this plan to `completed/`.
+Completion gate (revised at close): the original "allowlist empty → delete
+`createAuditEvent`" goal turned out to be wrong — the migration surfaced five call
+sites whose direct path is *correct by design* (2 auth writes that predate any
+AuthContext, the audit-write endpoint where the audit IS the domain write, one
+cross-org attribution outside the seam's auth axis, and the sensitiveNode
+transitional fallback). The achieved end state, 2026-08-13: **every allowlist entry
+is a documented permanent resident**; `createAuditEvent` stays as the shared
+low-level insert (it is what the seam itself calls), and the ratchet keeps guarding
+against new undocumented direct calls. 36 of 41 original call sites migrated across
+eight batches; three audit shapes (audited-write / refusal / milestone) are the
+vocabulary going forward.
 
 ## Verification
 
@@ -220,8 +268,10 @@ move this plan to `completed/`.
 
 ## Documentation Update Gate
 
-PR1 rows are done as noted. Before this plan moves to `completed/`: resolve the
-`Review (PR2)` security row and re-run `npm run docs:check`.
+PR1 rows are done as noted. The `Review (PR2)` security row is resolved at close:
+`docs/SECURITY.md` (+ zh) now states the three audit shapes and cites ADR-0027;
+the ADR carries the refusal/milestone amendments; `CONTEXT.md` has both glossary
+rows. `npm run docs:check` passes.
 
 ## UI Interaction Automation Review
 
