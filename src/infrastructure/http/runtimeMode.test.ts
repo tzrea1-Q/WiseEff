@@ -3,6 +3,7 @@ import {
   parseProjectConfigurationWorkbenchEnabled,
   parseRuntimeMode,
   parseStaticApiAuthorization,
+  parseXiaozeInspectorEnabled,
   resolveWiseEffApiBaseUrl
 } from "./runtimeMode";
 
@@ -79,5 +80,16 @@ describe("parseProjectConfigurationWorkbenchEnabled", () => {
     expect(parseProjectConfigurationWorkbenchEnabled("false", "development")).toBe(true);
     expect(parseProjectConfigurationWorkbenchEnabled("true", "production")).toBe(true);
     expect(parseProjectConfigurationWorkbenchEnabled(undefined, "production")).toBe(true);
+  });
+});
+
+describe("parseXiaozeInspectorEnabled", () => {
+  it("keeps the AG-UI inspector off unless explicitly opted in", () => {
+    expect(parseXiaozeInspectorEnabled(undefined)).toBe(false);
+    expect(parseXiaozeInspectorEnabled("")).toBe(false);
+    expect(parseXiaozeInspectorEnabled("false")).toBe(false);
+    expect(parseXiaozeInspectorEnabled("1")).toBe(false);
+    expect(parseXiaozeInspectorEnabled("true")).toBe(true);
+    expect(parseXiaozeInspectorEnabled(" TRUE ")).toBe(true);
   });
 });

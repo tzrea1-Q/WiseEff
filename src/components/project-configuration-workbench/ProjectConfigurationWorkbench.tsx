@@ -1304,6 +1304,7 @@ export function ProjectConfigurationWorkbench({
               selectedBaselineId={selectedBaselineId}
               baselinesLoading={baselinesLoading}
               baselinesError={baselinesError}
+              baselineActionError={baselineActionError}
               baselineCompare={baselineCompare}
               baselineCompareAgainst={baselineCompareAgainst}
               baselinePinnedMembers={baselinePinnedMembers}

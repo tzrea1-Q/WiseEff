@@ -50,6 +50,8 @@ export type SpecReviewQueueProps = {
   }) => void;
   pendingTaskId?: string | null;
   pendingAction?: "approve" | "dismiss" | "create" | null;
+  /** Latest review-action failure; rendered inside the adjudication dialog. */
+  actionError?: string | null;
   nextCursor?: string | null;
   /** Fetch the next server cursor page; used by 「下一页」 when local pages are exhausted. */
   onLoadMore?: () => void | Promise<void>;
@@ -116,6 +118,7 @@ export function SpecReviewQueue({
   onCreateSpec,
   pendingTaskId = null,
   pendingAction = null,
+  actionError = null,
   nextCursor = null,
   onLoadMore,
   loadingMore = false
@@ -378,6 +381,7 @@ export function SpecReviewQueue({
           onCreateSpec={onCreateSpec}
           pendingTaskId={pendingTaskId}
           pendingAction={pendingAction}
+          error={actionError}
         />
       ) : null}
     </>

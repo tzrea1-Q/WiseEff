@@ -16,6 +16,19 @@ import { writeXiaozePopupOpenSession } from "./xiaozePopupOpenState";
 const DEFAULT_POPUP_WIDTH = 420;
 const DEFAULT_POPUP_HEIGHT = 680;
 
+/**
+ * The Xiaoze approval card (Radix AlertDialog) portals to <body>, outside the
+ * popup container. Without this guard, a pointer-down or scrim click on the
+ * approval card counts as "outside" and closes the chat, which abandons the
+ * pending interrupt so it can never resolve. Treat anything inside the alert
+ * dialog overlay/content as inside the popup.
+ */
+function isWithinApprovalCard(target: Node) {
+  return target instanceof Element
+    ? Boolean(target.closest("[data-slot='alert-dialog-content'], [data-slot='alert-dialog-overlay']"))
+    : false;
+}
+
 export type XiaozePopupViewProps = {
   header?: ComponentProps<typeof CopilotModalHeader>;
   toggleButton?: ComponentProps<typeof XiaozeChatToggleButton>;
@@ -164,6 +177,9 @@ export function XiaozePopupView({
       if (containerRef.current?.contains(target)) {
         return;
       }
+      if (isWithinApprovalCard(target)) {
+        return;
+      }
       const toggle = document.querySelector("[data-slot='chat-toggle-button']");
       if (toggle?.contains(target)) {
         return;
@@ -206,8 +222,8 @@ export function XiaozePopupView({
             className="xiaoze-popup-scrim"
             aria-hidden="true"
             tabIndex={-1}
-            onClick={() => {
-              if (clickOutsideToClose) {
+            onClick={(event) => {
+              if (clickOutsideToClose && !isWithinApprovalCard(event.target as Node)) {
                 requestClose();
               }
             }}

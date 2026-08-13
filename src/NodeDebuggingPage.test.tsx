@@ -1,13 +1,16 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { debuggingRuntimeFailureNotification } from "./application/debugging/debuggingRuntime";
+import { appReducer } from "@/application/state/appState";
+import { createDebuggingRuntimeActions, debuggingRuntimeFailureNotification } from "./application/debugging/debuggingRuntime";
 import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
+import type { DebuggingGateway } from "./application/ports/DebuggingGateway";
 import { TopBarActionsContext } from "./components/layout";
 import { NodeDebuggingPage } from "./NodeDebuggingPage";
 import { initialState } from "./mockData";
+import type { PrototypeState } from "./mockData";
 import { resolveLocalBridgeHealthUrl } from "./infrastructure/http/localBridgeHttpUrl";
 
 const userState = { ...initialState, activeRoleId: "user" };
@@ -163,6 +166,36 @@ function renderNodeDebuggingPage(pageProps: NodeDebuggingPageProps) {
     rerender: (nextProps: NodeDebuggingPageProps) =>
       view.rerender(<NodeDebuggingPageHarness pageProps={nextProps} />)
   };
+}
+
+/**
+ * Wires the page to the real app reducer and debugging runtime so the
+ * write -> snapshot -> rollback chain is exercised through the same seams
+ * production uses, instead of a pre-baked lastDebugSnapshot prop.
+ */
+function StatefulNodeDebuggingHarness({
+  gateway,
+  initialAppState
+}: {
+  gateway: DebuggingGateway;
+  initialAppState: PrototypeState;
+}) {
+  const [state, dispatch] = useReducer(appReducer, initialAppState);
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+  const debuggingActions = useMemo(
+    () =>
+      createDebuggingRuntimeActions({
+        mode: "api",
+        gateway,
+        dispatch,
+        getState: () => stateRef.current
+      }),
+    [gateway]
+  );
+  return <NodeDebuggingPageHarness pageProps={{ state, debuggingActions }} />;
 }
 
 beforeEach(() => {
@@ -604,6 +637,93 @@ describe("/node-debugging", () => {
     })));
   });
 
+  it("activates the rollback snapshot safety net after a successful API write", async () => {
+    const writeOperation = {
+      id: "op-api-write-1",
+      sessionId: "session-api-1",
+      parameterId: "dbg-charge-input-current",
+      nodePath: "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma",
+      operationType: "write" as const,
+      status: "succeeded" as const,
+      requestedValue: "3702",
+      previousValue: "3600",
+      readbackValue: "3702",
+      verified: true,
+      durationMs: 17,
+      snapshotId: "snap-api-1",
+      createdAt: "2026-05-27T09:00:02.000Z"
+    };
+    // Mirrors createHttpDebuggingGateway after a real write: the response only
+    // carries the operation; the snapshot is referenced via operation.snapshotId.
+    const gateway: DebuggingGateway = {
+      listDevices: vi.fn().mockResolvedValue([
+        { id: "device-api-1", name: "Live Device", transport: "hdc", firmware: "5.1.0", status: "online", lastSeenAt: null }
+      ]),
+      detectTargets: vi.fn().mockResolvedValue([
+        { id: "target-api-1", deviceId: "device-api-1", protocol: "hdc", label: "Live API Target" }
+      ]),
+      createSession: vi.fn().mockResolvedValue({
+        id: "session-api-1",
+        deviceId: "device-api-1",
+        targetId: "target-api-1",
+        protocol: "hdc",
+        status: "active",
+        startedAt: "2026-05-27T09:00:00.000Z",
+        endedAt: null
+      }),
+      listSessionEvents: vi.fn().mockResolvedValue([]),
+      readNode: vi.fn().mockResolvedValue({ ok: true, value: "3600", stdout: "3600\n" }),
+      writeNode: vi.fn().mockResolvedValue({
+        ok: true,
+        value: "3702",
+        verified: true,
+        writeResult: { ok: true, durationMs: 8 },
+        readResult: { ok: true, value: "3702", durationMs: 9 },
+        operation: writeOperation
+      }),
+      rollbackSnapshot: vi.fn().mockResolvedValue({
+        snapshot: {
+          id: "snap-api-1",
+          sessionId: "session-api-1",
+          status: "consumed",
+          risk: "High",
+          createdAt: "2026-05-27T09:00:02.000Z"
+        },
+        operations: []
+      })
+    };
+
+    render(<StatefulNodeDebuggingHarness gateway={gateway} initialAppState={userState} />);
+    await screen.findByText(/已连接：Live API Target/);
+
+    const rollbackButton = screen.getByRole("button", { name: /回滚快照/ });
+    expect(rollbackButton).toBeDisabled();
+
+    const row = findRowByText("charger.input_current_limit_ma");
+    fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
+    const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+    fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "3702" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
+    await confirmHighRiskWriteIfPrompted();
+
+    await waitFor(() => expect(gateway.writeNode).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByRole("button", { name: /回滚快照/ })).toBeEnabled());
+
+    fireEvent.click(screen.getByRole("button", { name: /回滚快照/ }));
+    const rollbackDialog = await screen.findByRole("dialog", { name: "确认回滚到上次快照" });
+    expect(within(rollbackDialog).getByText("3600mA")).toBeInTheDocument();
+    expect(within(rollbackDialog).getByText("3702mA")).toBeInTheDocument();
+
+    fireEvent.click(within(rollbackDialog).getByRole("button", { name: /确认回滚 \(1 项\)/ }));
+
+    await waitFor(() =>
+      expect(gateway.rollbackSnapshot).toHaveBeenCalledWith({
+        snapshotId: "snap-api-1",
+        confirmationToken: "confirm-rollback"
+      })
+    );
+  });
+
   it("does not write a high-risk node when the confirmation dialog is cancelled", async () => {
     const debuggingActions = createDebuggingActions();
     renderNodeDebuggingPage({ state: userState, debuggingActions });
@@ -831,6 +951,59 @@ describe("/node-debugging", () => {
       value: "95",
       readBack: false
     }));
+  });
+
+  it("aggregates all high-risk rows into one bulk confirmation and writes only after confirm", async () => {
+    const debuggingActions = createDebuggingActions({
+      writeNode: vi.fn(async (input) => ({
+        ok: true,
+        value: input.value,
+        verified: true,
+        writeResult: { ok: true, durationMs: 5 },
+        readResult: { ok: true, value: input.value, durationMs: 5 }
+      }))
+    });
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
+    await screen.findByText(/已连接：API Gateway Target/);
+
+    const stashTarget = (rowText: string, value: string) => {
+      const row = findRowByText(rowText);
+      fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
+      const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+      fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value } });
+      fireEvent.click(within(dialog).getByRole("button", { name: "暂存" }));
+    };
+    stashTarget("charger.input_current_limit_ma", "3700");
+    stashTarget("battery.cell_temp_limit_c", "42");
+
+    fireEvent.click(screen.getByRole("button", { name: /下发选中 \(2\)/ }));
+
+    // A single aggregate dialog lists every high-risk node; nothing is written yet.
+    const aggregateDialog = await screen.findByRole("dialog", { name: /批量写入包含 2 个高风险节点/ });
+    const highRiskList = within(aggregateDialog).getByRole("list", { name: "高风险节点清单" });
+    expect(within(highRiskList).getByText("充电输入限流")).toBeInTheDocument();
+    expect(within(highRiskList).getByText("电芯温度上限")).toBeInTheDocument();
+    expect(within(highRiskList).getByText(/3700/)).toBeInTheDocument();
+    expect(within(highRiskList).getByText(/42/)).toBeInTheDocument();
+    expect(debuggingActions.writeNode).not.toHaveBeenCalled();
+
+    // Cancel keeps the batch untouched and the selection intact.
+    fireEvent.click(within(aggregateDialog).getByRole("button", { name: /^取消$/ }));
+    expect(debuggingActions.writeNode).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /下发选中 \(2\)/ })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: /下发选中 \(2\)/ }));
+    const reopened = await screen.findByRole("dialog", { name: /批量写入包含 2 个高风险节点/ });
+    fireEvent.click(within(reopened).getByRole("button", { name: /确认写入（含 2 个高风险）/ }));
+
+    await waitFor(() => expect(debuggingActions.writeNode).toHaveBeenCalledTimes(2));
+    expect(debuggingActions.writeNode).toHaveBeenCalledWith(
+      expect.objectContaining({ nodeId: "dbg-charge-input-current", confirmationToken: "confirm-high-risk-write" })
+    );
+    expect(debuggingActions.writeNode).toHaveBeenCalledWith(
+      expect.objectContaining({ nodeId: "dbg-cell-temp-limit", confirmationToken: "confirm-high-risk-write" })
+    );
+    expect(await screen.findByText("批量写入完成：成功 2 / 失败 0")).toBeInTheDocument();
   });
 
   it("shows a Windows install CTA when the local bridge is missing", async () => {

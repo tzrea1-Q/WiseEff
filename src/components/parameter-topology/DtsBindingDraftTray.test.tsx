@@ -89,7 +89,7 @@ describe("DtsBindingDraftTray", () => {
     expect(within(tray).queryByText("binding-sc8562-gpio-int")).not.toBeInTheDocument();
     expect(within(tray).queryByText("spec-sc8562-gpio-int")).not.toBeInTheDocument();
 
-    fireEvent.click(within(tray).getByRole("button", { name: "提交审核" }));
+    fireEvent.click(within(tray).getByRole("button", { name: /^提交审核/ }));
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith({
@@ -143,8 +143,11 @@ describe("DtsBindingDraftTray", () => {
     expect(screen.getByLabelText("gpio_int 值变更").querySelector(".submission-preview-diff--scalar")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "移出本轮修改" }));
     expect(onRemove).toHaveBeenCalledWith("draft-delete");
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "移出本轮修改" })).toBeEnabled();
+    });
 
-    fireEvent.click(screen.getByRole("button", { name: "提交审核" }));
+    fireEvent.click(screen.getByRole("button", { name: /^提交审核/ }));
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
         items: [expect.objectContaining({
@@ -169,7 +172,7 @@ describe("DtsBindingDraftTray", () => {
     );
 
     expect(screen.getByRole("status")).toHaveTextContent("正在加载项目角色候选人");
-    expect(screen.getByRole("button", { name: "提交审核" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^提交审核/ })).toBeDisabled();
 
     rerender(
       <DtsBindingDraftTray
@@ -183,7 +186,7 @@ describe("DtsBindingDraftTray", () => {
       />
     );
     expect(screen.getByRole("alert")).toHaveTextContent("无法加载角色");
-    expect(screen.getByRole("button", { name: "提交审核" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^提交审核/ })).toBeDisabled();
   });
 
   it.each([
@@ -229,7 +232,7 @@ describe("DtsBindingDraftTray", () => {
       />
     );
 
-    expect(screen.getByRole("button", { name: "提交审核" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^提交审核/ })).toBeDisabled();
   });
 
   it("explains that different candidate revisions cannot be silently batched", () => {
@@ -298,7 +301,7 @@ describe("DtsBindingDraftTray", () => {
     );
 
     expect(screen.getByRole("alert")).toHaveTextContent(message);
-    const submit = screen.getByRole("button", { name: "提交审核" });
+    const submit = screen.getByRole("button", { name: /^提交审核/ });
     expect(submit).toBeDisabled();
     fireEvent.click(submit);
     expect(onSubmit).not.toHaveBeenCalled();
@@ -327,7 +330,7 @@ describe("DtsBindingDraftTray", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "提交审核" }));
+    fireEvent.click(screen.getByRole("button", { name: /^提交审核/ }));
     expect(screen.getByRole("button", { name: "提交中…" })).toBeDisabled();
 
     rerender(
@@ -359,7 +362,7 @@ describe("DtsBindingDraftTray", () => {
       await oldRequest;
     });
     expect(screen.queryByText(/已提交正式审核/)).not.toBeInTheDocument();
-    const newSubmit = await screen.findByRole("button", { name: "提交审核" });
+    const newSubmit = await screen.findByRole("button", { name: /^提交审核/ });
     await waitFor(() => expect(newSubmit).toBeEnabled());
     fireEvent.click(newSubmit);
     expect(onSubmit).toHaveBeenCalledTimes(2);
@@ -397,7 +400,7 @@ describe("DtsBindingDraftTray", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "提交审核" }));
+    fireEvent.click(screen.getByRole("button", { name: /^提交审核/ }));
     rerender(
       <DtsBindingDraftTray
         projectId="aurora"
@@ -420,7 +423,7 @@ describe("DtsBindingDraftTray", () => {
       await oldRequest.catch(() => undefined);
     });
     expect(screen.queryByText("old request failed")).not.toBeInTheDocument();
-    const newSubmit = await screen.findByRole("button", { name: "提交审核" });
+    const newSubmit = await screen.findByRole("button", { name: /^提交审核/ });
     await waitFor(() => expect(newSubmit).toBeEnabled());
     expect(newSubmit).toBeEnabled();
 
@@ -446,7 +449,7 @@ describe("DtsBindingDraftTray", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "提交审核" }));
+    fireEvent.click(screen.getByRole("button", { name: /^提交审核/ }));
     expect(onSubmit.mock.calls[0][0].assignees).toEqual({
       hardwareCommitterId: "u-hw",
       softwareCommitterId: "u-sw",
@@ -498,7 +501,7 @@ describe("DtsBindingDraftTray", () => {
     );
 
     expect(screen.getByRole("alert")).toHaveTextContent(/正在创建 typed draft/);
-    const submit = screen.getByRole("button", { name: "提交审核" });
+    const submit = screen.getByRole("button", { name: /^提交审核/ });
     expect(submit).toBeDisabled();
     fireEvent.click(submit);
     expect(onSubmit).not.toHaveBeenCalled();
@@ -521,7 +524,7 @@ describe("DtsBindingDraftTray", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "提交审核" }));
+    fireEvent.click(screen.getByRole("button", { name: /^提交审核/ }));
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
         items: [
@@ -533,6 +536,86 @@ describe("DtsBindingDraftTray", () => {
       }));
     });
     expect(onSubmit.mock.calls[0][0].items).toHaveLength(1);
+  });
+
+  it("labels the submit button with the checked submit count", () => {
+    render(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[
+          draft({ draftId: "draft-a", projectParameterBindingId: "binding-a" }),
+          draft({ draftId: "draft-b", projectParameterBindingId: "binding-b", writeTarget: { role: "overlay", propertyKey: "watchdog", targetRef: "sc8562" } })
+        ]}
+        selectedBindingIds={new Set(["binding-a", "binding-b"])}
+        candidates={candidates}
+        onRemove={vi.fn()}
+        onSubmit={vi.fn()}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "提交审核（2 项）" })).toBeEnabled();
+  });
+
+  it("blocks submission when selection is provided but empty (WYSIWYG scope)", () => {
+    const onSubmit = vi.fn();
+    render(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[draft()]}
+        selectedBindingIds={new Set()}
+        candidates={candidates}
+        onRemove={vi.fn()}
+        onSubmit={onSubmit}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/尚未勾选任何草稿/);
+    const submit = screen.getByRole("button", { name: /^提交审核/ });
+    expect(submit).toBeDisabled();
+    fireEvent.click(submit);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("annotates ride-along enablement drafts included via the shared working tip", () => {
+    render(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[
+          draft({ draftId: "draft-a", projectParameterBindingId: "binding-a" }),
+          enablementDraft()
+        ]}
+        selectedBindingIds={new Set(["binding-a"])}
+        candidates={candidates}
+        onRemove={vi.fn()}
+        onSubmit={vi.fn()}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("note")).toHaveTextContent(/将随勾选的参数草稿一并提交/);
+  });
+
+  it("shows an inline error and re-enables removal when server-side draft delete fails", async () => {
+    const onRemove = vi.fn().mockRejectedValue(new Error("移除草稿失败：服务器不可达"));
+    render(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[draft()]}
+        candidates={candidates}
+        onRemove={onRemove}
+        onSubmit={vi.fn()}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "移出本轮修改" }));
+    expect(onRemove).toHaveBeenCalledWith("draft-typed-1");
+    expect(await screen.findByText("移除草稿失败：服务器不可达")).toBeVisible();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "移出本轮修改" })).toBeEnabled();
+    });
   });
 
   it("submits enablement drafts with editSubjectKind and rides along selected binding tips", async () => {
@@ -557,7 +640,7 @@ describe("DtsBindingDraftTray", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "提交审核" }));
+    fireEvent.click(screen.getByRole("button", { name: /^提交审核/ }));
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
         items: [

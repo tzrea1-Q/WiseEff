@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { canAccessPage } from "./app/permissions";
 import * as logAdminAnalytics from "./logAdminAnalytics";
-import { applyTableFilters, applyTimeWindow, deriveInsight, deriveMetrics } from "./logAdminAnalytics";
+import { applyTableFilters, applyTimeWindow, deriveInsight, deriveMetrics, isSparseSparkline } from "./logAdminAnalytics";
 import type { LogRecord } from "@/domain/prototype/types";
 
 describe("log admin role policy compatibility", () => {
@@ -347,6 +347,47 @@ describe("deriveMetrics", () => {
     expect(result.avgConfidence.value).toBe(0);
     expect(result.failedCount.value).toBe(0);
     expect(result.throughputPeak.sizeMB).toBe(0);
+  });
+
+  it("keeps the sparkline honest for sparse data instead of fabricating bars", () => {
+    const logs = [mkLog("only", 30, nowMs)];
+
+    const result = deriveMetrics(logs, "today", logs, now);
+
+    // One real record today → 7 daily buckets with a single count, never the
+    // old hardcoded [2, 3, 2, 4, 3, 5, 3] placeholder.
+    expect(result.todayCount.sparkline).toHaveLength(7);
+    expect(result.todayCount.sparkline).toEqual([0, 0, 0, 0, 0, 0, 1]);
+    expect(result.todayCount.sparkline).not.toEqual([2, 3, 2, 4, 3, 5, 3]);
+  });
+
+  it("returns an all-zero sparkline when there are no records", () => {
+    const result = deriveMetrics([], "today", [], now);
+
+    expect(result.todayCount.sparkline).toEqual([0, 0, 0, 0, 0, 0, 0]);
+  });
+
+  it("buckets the sparkline by day across the trailing week", () => {
+    const dayMs = 24 * 60 * 60 * 1000;
+    const logs = [
+      mkLog("today-1", 30, nowMs),
+      mkLog("today-2", 60, nowMs),
+      mkFullLog({ id: "yesterday", updatedAtIso: new Date(nowMs - dayMs).toISOString() }),
+      mkFullLog({ id: "six-days-ago", updatedAtIso: new Date(nowMs - 6 * dayMs).toISOString() }),
+      mkFullLog({ id: "too-old", updatedAtIso: new Date(nowMs - 9 * dayMs).toISOString() })
+    ];
+
+    const result = deriveMetrics(logs, "today", logs, now);
+
+    expect(result.todayCount.sparkline).toEqual([1, 0, 0, 0, 0, 1, 2]);
+  });
+});
+
+describe("isSparseSparkline", () => {
+  it("marks two or fewer non-zero buckets as sparse", () => {
+    expect(isSparseSparkline([0, 0, 0, 0, 0, 0, 1])).toBe(true);
+    expect(isSparseSparkline([1, 0, 0, 0, 0, 0, 2])).toBe(true);
+    expect(isSparseSparkline([1, 2, 0, 0, 0, 0, 3])).toBe(false);
   });
 });
 

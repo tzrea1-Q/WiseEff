@@ -7,6 +7,10 @@ import {
 } from "lucide-react";
 
 import { buildModuleTree } from "@/application/parameters/buildModuleTree";
+import {
+  clearUnsavedParameterWork,
+  reportUnsavedParameterWork
+} from "@/application/parameters/unsavedParameterWork";
 import type { DtsWorkbenchTreeNode } from "@/application/parameters/buildDtsTopologyTree";
 import type {
   BindingHistoryEntry,
@@ -184,6 +188,13 @@ export function DtsParameterWorkbench({
   const setSelectedBindingIds = onSelectedBindingIdsChange ?? setUncontrolledSelectedBindingIds;
   const [detailIntent, setDetailIntent] = useState<"view" | "edit">("view");
   const [localDraftBag, setLocalDraftBag] = useState<LocalBindingDraftBag>({});
+  // Unvalidated local edits are lost on project switch / reload — feed the guards.
+  useEffect(() => {
+    reportUnsavedParameterWork("workbench-local-draft-bag", Object.keys(localDraftBag).length);
+    return () => {
+      clearUnsavedParameterWork("workbench-local-draft-bag");
+    };
+  }, [localDraftBag]);
   const [draftDialogOpen, setDraftDialogOpen] = useState(false);
   const [focusedDraftBindingId, setFocusedDraftBindingId] = useState<string | null>(null);
   const detailOpenerRef = useRef<HTMLElement | null>(null);

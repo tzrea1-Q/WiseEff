@@ -45,6 +45,8 @@ export type UpsertDebugNodeOperationAction = {
 export type UpsertDebugSnapshotAction = {
   type: "UPSERT_DEBUG_SNAPSHOT";
   snapshot: DebugSnapshotSummary;
+  /** Write operation that produced the snapshot; carries the before/after values for rollback UI. */
+  operation?: NodeOperationSnapshot;
 };
 
 export type DebuggingRuntimeDispatchAction =
@@ -55,7 +57,10 @@ export type DebuggingRuntimeDispatchAction =
   | Extract<AppAction, { type: "CONNECT_DEVICE" } | { type: "PUSH_DEBUG_VALUES" } | { type: "ROLLBACK_LAST_SNAPSHOT" } | { type: "ADD_NOTIFICATION" }>;
 
 export type DebuggingRuntimeActions = {
-  refresh(query?: { protocol?: DebugConnectionProtocol }): Promise<void>;
+  refresh(
+    query?: { protocol?: DebugConnectionProtocol },
+    options?: { notifyOnFailure?: boolean }
+  ): Promise<void>;
   detectAndStartSession(
     options?: { protocol?: DebugConnectionProtocol; targetId?: string; bridgeId?: string; sessionKind?: "node" | "parameter_reload" }
   ): Promise<
@@ -205,10 +210,41 @@ function preserveNodeOperationMetadata(operation: NodeOperationSnapshot): NodeOp
   };
 }
 
-function dispatchSnapshot(dispatch: DebuggingRuntimeOptions["dispatch"], snapshot?: DebugSnapshotSummary) {
+function dispatchSnapshot(
+  dispatch: DebuggingRuntimeOptions["dispatch"],
+  snapshot?: DebugSnapshotSummary,
+  operation?: NodeOperationSnapshot
+) {
   if (snapshot) {
-    dispatch({ type: "UPSERT_DEBUG_SNAPSHOT", snapshot });
+    dispatch({ type: "UPSERT_DEBUG_SNAPSHOT", snapshot, ...(operation ? { operation } : {}) });
   }
+}
+
+/**
+ * The write endpoint responds with `{ operation }` only; the snapshot the
+ * server created for the write is referenced through `operation.snapshotId`.
+ * Derive the freshly-created (hence valid) snapshot summary so the rollback
+ * safety net works even when the gateway response omits the snapshot object.
+ */
+function writeSnapshotSummaryFromOperation(
+  operation: NodeOperationSnapshot | undefined,
+  getState: DebuggingRuntimeOptions["getState"]
+): DebugSnapshotSummary | undefined {
+  if (!operation?.snapshotId || operation.operationType !== "write") {
+    return undefined;
+  }
+  if (operation.status !== "succeeded" && operation.status !== "readback_mismatch") {
+    return undefined;
+  }
+  const parameterId = operation.parameterId ?? operation.nodeId;
+  const risk = getState().debugParameters.find((parameter) => parameter.id === parameterId)?.risk ?? "Low";
+  return {
+    id: operation.snapshotId,
+    sessionId: operation.sessionId,
+    status: "valid",
+    risk,
+    createdAt: operation.createdAt
+  };
 }
 
 async function runApi<T>(dispatch: DebuggingRuntimeOptions["dispatch"], action: () => Promise<T>): Promise<T> {
@@ -236,12 +272,15 @@ export function createDebuggingRuntimeActions({
   dispatch,
   getState
 }: DebuggingRuntimeOptions): DebuggingRuntimeActions {
-  const refresh = async (query?: { protocol?: DebugConnectionProtocol }) => {
+  const refresh = async (
+    query?: { protocol?: DebugConnectionProtocol },
+    options?: { notifyOnFailure?: boolean }
+  ) => {
     if (mode !== "api") {
       return;
     }
 
-    await runApi(dispatch, async () => {
+    const load = async () => {
       const api = requireGateway(gateway);
       const parameterQuery = { protocol: query?.protocol ?? "hdc" as const };
       const [devices, debugParameters] = await Promise.all([
@@ -256,7 +295,14 @@ export function createDebuggingRuntimeActions({
         devices: devices.map(deviceFromApi),
         debugParameters
       });
-    });
+    };
+
+    // Callers such as the page-level API banner own the failure projection.
+    if (options?.notifyOnFailure === false) {
+      await load();
+      return;
+    }
+    await runApi(dispatch, load);
   };
 
   return {
@@ -356,7 +402,11 @@ export function createDebuggingRuntimeActions({
         const { risk: _risk, ...writeInput } = input;
         const result = (await requireGateway(gateway).writeNode(writeInput)) as DebuggingGatewayWriteResult;
         dispatchOperation(dispatch, result.operation);
-        dispatchSnapshot(dispatch, result.snapshot);
+        dispatchSnapshot(
+          dispatch,
+          result.snapshot ?? writeSnapshotSummaryFromOperation(result.operation, getState),
+          result.operation
+        );
         return result;
       });
     },
@@ -386,7 +436,11 @@ export function createDebuggingRuntimeActions({
           };
           const result = (await requireGateway(gateway).writeNode(writeInput)) as DebuggingGatewayWriteResult;
           dispatchOperation(dispatch, result.operation);
-          dispatchSnapshot(dispatch, result.snapshot);
+          dispatchSnapshot(
+            dispatch,
+            result.snapshot ?? writeSnapshotSummaryFromOperation(result.operation, getState),
+            result.operation
+          );
         }
       });
     },

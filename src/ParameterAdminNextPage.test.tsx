@@ -1103,6 +1103,10 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
       expect(screen.getByRole("menuitem", { name: "删除模块 电源路径组" })).toBeInTheDocument();
     });
     fireEvent.click(screen.getByRole("menuitem", { name: "删除模块 电源路径组" }));
+    // Deletion is irreversible and now requires an impact confirmation first.
+    expect(moduleRegistry.deleteModule).not.toHaveBeenCalled();
+    const deleteConfirm = await screen.findByRole("dialog", { name: "删除模块「电源路径组」" });
+    fireEvent.click(within(deleteConfirm).getByRole("button", { name: "确认删除" }));
     await waitFor(() => expect(moduleRegistry.deleteModule).toHaveBeenCalledWith("mod-new-1"));
     await waitFor(() =>
       expect(within(panel).queryByRole("button", { name: "电源路径组 更多操作" })).not.toBeInTheDocument()
@@ -1300,6 +1304,10 @@ describe("ParameterAdminNextPage · organization bulk import", () => {
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("/include/");
 
     fireEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
+    // Parse progress exists, so closing now routes through the discard guard.
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "退出批量导入向导？" })).getByRole("button", { name: "丢弃并退出" })
+    );
     fireEvent.click(screen.getByRole("button", { name: "打开批量参数导入" }));
     dialog = screen.getByRole("dialog", { name: "批量参数导入" });
 
