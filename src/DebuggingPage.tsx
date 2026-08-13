@@ -231,7 +231,7 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
 
   const pushParameterIds = async (parameterIds: string[]) => {
     if (debuggingActions) {
-      await runRuntimeAction("push", () => debuggingActions.pushValues(parameterIds), "Debug push failed");
+      await runRuntimeAction("push", () => debuggingActions.pushValues(parameterIds), "参数推送失败，请稍后重试。");
       return;
     }
 
@@ -274,7 +274,7 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
                 async () => {
                   await debuggingActions.detectAndStartSession({ sessionKind: "parameter_reload" });
                 },
-                "Debug connection failed"
+                "设备连接失败，请稍后重试。"
               );
               return;
             }
@@ -531,7 +531,7 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
                   snapshotId: snapshot.id,
                   confirmationToken: "confirm-rollback"
                 }),
-                "Debug rollback failed"
+                "快照回滚失败，请稍后重试。"
               );
             } else {
               dispatch({ type: "ROLLBACK_LAST_SNAPSHOT" });

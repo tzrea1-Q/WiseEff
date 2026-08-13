@@ -421,7 +421,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     );
 
     expect(await screen.findByText("API Admin")).toBeInTheDocument();
-    expect(screen.getByText("Admin")).toBeInTheDocument();
+    expect(screen.getByText("管理员")).toBeInTheDocument();
   });
 
   it("shows local login when API auth context is unauthenticated and enters the app after login", async () => {
@@ -505,7 +505,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     fireEvent.click(screen.getByRole("button", { name: "注册" }));
 
     expect(await screen.findByText("New Admin")).toBeInTheDocument();
-    expect(await screen.findByText("Software User")).toBeInTheDocument();
+    expect(await screen.findByText("软件开发")).toBeInTheDocument();
     expect(authClient.register).toHaveBeenCalledWith({
       organization: "软件部",
       name: "New Admin",
@@ -2959,7 +2959,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     fireEvent.click(within(history).getByRole("button", { name: /thermal_snapshot\.bin/ }));
 
-    expect(screen.getByText("不支持的二进制热快照格式。")).toBeInTheDocument();
+    expect(screen.getByText("日志处理失败")).toBeInTheDocument();
+    expect(screen.getByText("二进制格式不支持。请导出 .log / .txt / .json 文本日志。")).toBeInTheDocument();
     expect(screen.getByText("关联处置：请重新上传 .log、.txt 或 .json 文本日志。")).toBeInTheDocument();
   });
 

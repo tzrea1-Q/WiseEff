@@ -341,7 +341,8 @@ describe("/debugging runtime wiring", () => {
 
     fireEvent.click(getPushButton());
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Gateway write failed");
+    // Raw English runtime errors map to the scenario fallback instead of leaking verbatim.
+    expect(await screen.findByRole("alert")).toHaveTextContent("参数推送失败，请稍后重试。");
     expect(dispatch).not.toHaveBeenCalledWith({ type: "PUSH_DEBUG_VALUES", parameterIds: pendingIds });
     for (const parameter of pendingParameters) {
       expect(getDebugRow(parameter.key)).toHaveTextContent(parameter.status);

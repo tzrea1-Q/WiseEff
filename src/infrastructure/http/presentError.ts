@@ -10,8 +10,12 @@ import { WiseEffApiError } from "./apiClient";
 const CJK_PATTERN = /[\u4e00-\u9fff]/;
 
 /** Known backend English messages that deserve specific product copy. */
-const MESSAGE_LABELS: Array<{ match: RegExp; label: string }> = [
+const MESSAGE_LABELS: Array<{ match: RegExp; label: string | ((match: RegExpMatchArray) => string) }> = [
   { match: /^Unsupported (log format|file extension)/i, label: "暂不支持该日志格式，请上传 .log / .txt / .json 文本日志。" },
+  {
+    match: /^DTS import source exceeds the (\d+) byte limit\.?$/i,
+    label: (match) => `DTS 源超出 ${match[1]} 字节大小上限，请精简后重试。`
+  },
   { match: /^Log analysis failed before a report was generated\.?$/i, label: "分析未完成，未生成报告，请重试或重新上传。" },
   { match: /^Username or password is incorrect\.?$/i, label: "用户名或密码不正确。" },
   { match: /^User is pending Admin approval\.?$/i, label: "账号等待管理员批准后才能登录。" },
@@ -64,8 +68,13 @@ export function presentErrorMessage(message: string | null | undefined, fallback
   if (CJK_PATTERN.test(trimmed)) {
     return trimmed;
   }
-  const known = MESSAGE_LABELS.find((entry) => entry.match.test(trimmed));
-  return known ? known.label : fallback;
+  for (const entry of MESSAGE_LABELS) {
+    const match = trimmed.match(entry.match);
+    if (match) {
+      return typeof entry.label === "function" ? entry.label(match) : entry.label;
+    }
+  }
+  return fallback;
 }
 
 /**

@@ -1305,7 +1305,7 @@ describe("ParameterAdminNextPage · organization bulk import", () => {
 
     fillPasteImportContent(dialog, `/dts-v1/;\n/ { oversized = <${"1 ".repeat(20)}>; };\n`);
     fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
-    expect(await within(dialog).findByRole("alert")).toHaveTextContent(/2097152 byte limit|exceeds/i);
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(/2097152 字节|超出/);
   });
 });
 
