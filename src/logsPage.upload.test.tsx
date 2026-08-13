@@ -84,8 +84,8 @@ function createDebuggingGateway(): DebuggingGateway {
   };
 }
 
-function renderApiLogs(repository = createLogRepository()) {
-  window.history.replaceState(null, "", "/logs");
+function renderApiLogs(repository = createLogRepository(), initialPath = "/logs") {
+  window.history.replaceState(null, "", initialPath);
   render(
     <App
       authClient={createAuthClient()}
@@ -257,7 +257,9 @@ describe("LogsPage api upload wiring", () => {
         file
       })
     );
-    expect(document.body).toHaveTextContent("Unsupported file extension");
+    // The raw English failureReason maps to product copy in the error alert.
+    expect(document.body).toHaveTextContent("暂不支持该日志格式");
+    expect(document.body).not.toHaveTextContent("Unsupported file extension");
   });
 
   it("disables the upload action while the runtime upload is pending", async () => {
@@ -390,6 +392,26 @@ describe("LogsPage api upload wiring", () => {
 
     expect(repository.listLogs).toHaveBeenCalled();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+});
+
+describe("LogsPage deep link", () => {
+  it("restores the selected log from ?logId= and keeps the address bar shareable", async () => {
+    const target = initialState.logs[1];
+    expect(target).toBeTruthy();
+    const repository = renderApiLogs(createLogRepository(), `/logs?logId=${target.id}`);
+    await waitForApiRuntime(repository);
+
+    // The deep-linked log becomes the active selection (history rail entry is
+    // marked current) and the address bar keeps carrying its id.
+    await waitFor(() => {
+      expect(new URLSearchParams(window.location.search).get("logId")).toBe(target.id);
+    });
+    const historyRail = screen.getByRole("complementary", { name: "历史日志记录" });
+    await waitFor(() => {
+      const activeEntry = historyRail.querySelector('[aria-current="true"], .active, [data-active="true"]');
+      expect(activeEntry?.textContent ?? "").toContain(target.fileName);
+    });
   });
 });
 

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { AuditEventDetailDialog } from "./AuditEventDetailDialog";
 import { AuditTimeline } from "./AuditTimeline";
-import { auditAppGroups } from "@/domain/audit/auditApps";
+import { auditAppGroups, getAuditAppLabel } from "@/domain/audit/auditApps";
+import { presentAuditAction, presentAuditKind } from "@/domain/audit/auditSlugLabels";
 import type { AuditQueryState } from "@/hooks/useAuditEvents";
 import { useAuditEvents, useAuditTraceEvents } from "@/hooks/useAuditEvents";
 import type { AuditEvent } from "@/domain/prototype/types";
@@ -53,17 +54,21 @@ export function AuditWorkspace({
     setExporting(true);
     try {
       const rows = await fetchAllForExport();
-      const header = ["时间", "模块", "类型", "操作", "操作人", "严重度", "对象类型", "对象", "Trace"];
+      // Chinese labels for humans; the raw kind slug stays alongside so the
+      // export remains machine-filterable and auditable.
+      const header = ["时间", "模块", "类型", "类型标识", "操作", "操作人", "严重度", "对象类型", "对象", "Trace"];
+      const severityLabels: Record<string, string> = { High: "高", Medium: "中", Low: "低" };
       const escapeCell = (value: string) => `"${value.replaceAll('"', '""')}"`;
       const lines = [header.join(",")].concat(
         rows.map((event) =>
           [
             event.createdAt ?? event.timeLabel,
-            event.app,
+            getAuditAppLabel(event.app),
+            presentAuditKind(event.kind).label,
             event.kind,
-            event.action,
+            presentAuditAction(event.action).label,
             event.actor,
-            event.severity,
+            severityLabels[event.severity] ?? event.severity,
             event.targetType ?? "",
             event.targetId ?? "",
             event.traceId ?? ""

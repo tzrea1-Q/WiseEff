@@ -120,7 +120,7 @@ describe("ParametersTable", () => {
   it("shows all rows by default with the visible count", () => {
     setup();
 
-    expect(screen.getByText(/Showing\s+3\s+of\s+3/)).toBeInTheDocument();
+    expect(screen.getByText(/显示\s+3\s+\/\s+3\s+个参数/)).toBeInTheDocument();
     expect(screen.getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
     expect(screen.getByText("battery_temp_target_c")).toBeInTheDocument();
     expect(screen.getByText("soc_estimation_smoothing")).toBeInTheDocument();

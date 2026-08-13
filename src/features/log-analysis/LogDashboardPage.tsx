@@ -1,5 +1,6 @@
 import { useTopBarActions } from "@/components/layout";
 import { applyTimeWindow, deriveMetrics, isSparseSparkline } from "@/logAdminAnalytics";
+import { formatPercent } from "@/domain/format/formatPercent";
 import { STAGE_LABELS, type LogRecord, type PrototypeState } from "@/domain/prototype/types";
 import { AlertTriangle, CheckCircle2, FileText, Info } from "lucide-react";
 import { useMemo, type CSSProperties } from "react";
@@ -208,7 +209,7 @@ export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState;
                 {reviewQueue.map((log) => (
                   <div key={log.id}>
                     <span>{compactLogLabel(log)}</span>
-                    <strong>{log.confidence}%</strong>
+                    <strong>{formatPercent(log.confidence)}</strong>
                     <p>{log.conclusion}</p>
                   </div>
                 ))}

@@ -12,6 +12,7 @@ import {
   archiveKnowledgeEntry,
   createKnowledgeEntry,
   distillKnowledgeFromLog,
+  distillKnowledgeFromReloadRun,
   findRelatedKnowledgeForLog,
   findRelatedKnowledgeForSpec,
   getKnowledgeEntry,
@@ -33,6 +34,7 @@ import {
 import {
   createKnowledgeEntryBodySchema,
   distillKnowledgeFromLogBodySchema,
+  distillKnowledgeFromReloadRunBodySchema,
   listKnowledgeEntriesQuerySchema,
   relatedKnowledgeForLogQuerySchema,
   relatedKnowledgeForSpecQuerySchema,
@@ -122,6 +124,15 @@ export function registerKnowledgeRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(distillKnowledgeFromLogBodySchema, request.body);
     const item = await distillKnowledgeFromLog(db, auth, body, { requestId: request.requestId });
+
+    return { status: 201, body: { item } };
+  });
+
+  router.post("/api/v1/knowledge/distill-from-reload-run", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const body = parseWithSchema(distillKnowledgeFromReloadRunBodySchema, request.body);
+    const item = await distillKnowledgeFromReloadRun(db, auth, body, { requestId: request.requestId });
 
     return { status: 201, body: { item } };
   });

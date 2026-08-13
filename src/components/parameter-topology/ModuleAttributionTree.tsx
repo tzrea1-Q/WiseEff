@@ -6,6 +6,7 @@ import { ModuleCreateDialog, type ModuleCreateSaveDraft } from "@/components/adm
 import { ModuleEditDialog, type ModuleEditSavePatch } from "@/components/admin/ModuleEditDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { MultiSelectDropdown } from "@/components/MultiSelectDropdown";
+import { presentError } from "@/infrastructure/http/presentError";
 import type {
   DriverNature,
   InstanceCardinality,
@@ -449,8 +450,7 @@ export function ModuleAttributionTree({
     setDialogMutationError(null);
   };
 
-  const describeMutationError = (error: unknown, fallback: string) =>
-    error instanceof Error && error.message.trim() ? error.message : fallback;
+  const describeMutationError = (error: unknown, fallback: string) => presentError(error, fallback);
 
   // Dialog mutations await the repository call: the dialog only closes on
   // success; failures keep it open with an in-place error and pending state.

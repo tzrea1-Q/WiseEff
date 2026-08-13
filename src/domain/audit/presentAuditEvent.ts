@@ -1,4 +1,5 @@
 import { getAuditAppLabel } from "./auditApps";
+import { presentAuditAction, presentAuditKind } from "./auditSlugLabels";
 import { formatAuditAbsoluteTime } from "./formatAuditTime";
 import type { AuditEventView } from "./types";
 import type { RiskLevel } from "@/domain/prototype/types";
@@ -52,50 +53,6 @@ const parameterStatusLabels: Record<string, string> = {
   stashed: "已暂存"
 };
 
-const kindLabels: Record<string, string> = {
-  "parameter-merge": "参数合入",
-  "parameter-review-advance": "审阅推进",
-  "parameter-review-reject": "审阅打回",
-  "parameter-submit": "参数提交",
-  "parameter-update": "参数更新",
-  "parameter-add": "新增参数",
-  "parameter-delete": "删除参数",
-  "batch-import": "批量导入",
-  "bulk-risk-change": "批量风险调整",
-  "bulk-module-change": "批量模块调整",
-  "bulk-delete": "批量删除",
-  "user-role-change": "角色变更",
-  "user-add": "新增用户",
-  "user-toggle": "用户状态",
-  "debug-node-write": "节点写入",
-  "debug-snapshot-rollback": "快照回滚",
-  "agent-action": "Agent 操作",
-  export: "导出",
-  "rollback-undo": "撤销操作",
-  "parameter-file-upload": "参数文件上传",
-  "parameter-file-candidate-create": "创建候选文件版本",
-  "parameter-file-candidate-abandon": "放弃候选文件版本",
-  "parameter-file-candidate-recompute": "重算候选影响",
-  baseline: "发布基线",
-  "file-conflict-resolved": "冲突裁决"
-};
-
-const actionLabels: Record<string, string> = {
-  merge: "合入参数",
-  advance: "推进审阅",
-  reject: "打回变更",
-  submit: "提交变更",
-  apply: "应用导入",
-  create: "创建",
-  abandon: "放弃",
-  recompute: "重算影响",
-  upload: "上传",
-  sync: "同步",
-  release: "发布",
-  restore: "恢复",
-  resolve: "裁决"
-};
-
 function asString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
@@ -137,7 +94,7 @@ function readParticipants(metadata: Record<string, unknown>, event: AuditEventVi
   participants.push({
     role: "操作人",
     name: event.actor,
-    action: actionLabels[event.action] ?? event.action
+    action: presentAuditAction(event.action).label
   });
   return participants;
 }
@@ -242,13 +199,13 @@ function buildSummary(event: AuditEventView, presentation: Pick<AuditPresentatio
 
 export function presentAuditEvent(event: AuditEventView): AuditPresentation {
   const metadata = event.metadata ?? {};
-  const kindLabel = kindLabels[event.kind] ?? event.kind;
+  const kindLabel = presentAuditKind(event.kind).label;
   const appLabel = getAuditAppLabel(event.app);
   const parameterChange = readParameterChange(metadata, event);
   const statusChange = readStatusChange(metadata);
   const headline = parameterChange
     ? `${kindLabel} · ${parameterChange.name}`
-    : `${kindLabel} · ${actionLabels[event.action] ?? event.action}`;
+    : `${kindLabel} · ${presentAuditAction(event.action).label}`;
 
   return {
     headline,

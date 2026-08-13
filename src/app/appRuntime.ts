@@ -78,6 +78,9 @@ export function createAppRuntime(
   overrides: Partial<AppRuntime> = {}
 ): AppRuntime {
   const api = mode === "api";
+  // Resolved before the knowledge repository: mock distillation reads reload
+  // runs from THIS instance so both ports describe the same device story.
+  const dtsReloadRepository = overrides.dtsReloadRepository ?? resolveDtsReloadRepository(mode);
   return {
     authClient: overrides.authClient ?? createAuthClient(),
     parameterRepository:
@@ -97,9 +100,11 @@ export function createAppRuntime(
         ? createHttpKnowledgeRepository()
         : createMockKnowledgeRepository({
             // Mock distillation reads the prototype log records (same port shape as API mode).
-            getLogRecord: (logId) => deps.getState().logs.find((log) => log.id === logId)
+            getLogRecord: (logId) => deps.getState().logs.find((log) => log.id === logId),
+            // Reload-run distillation reads the runtime's mock reload repository.
+            getReloadRun: (runId) => dtsReloadRepository.getRun(runId).catch(() => undefined)
           })),
-    dtsReloadRepository: overrides.dtsReloadRepository ?? resolveDtsReloadRepository(mode),
+    dtsReloadRepository,
     parameterInitializationRepository:
       overrides.parameterInitializationRepository ?? resolveParameterInitializationRepository(mode),
     debuggingGateway:

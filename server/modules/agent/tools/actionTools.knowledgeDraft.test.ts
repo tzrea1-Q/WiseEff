@@ -174,6 +174,32 @@ describe.skipIf(!databaseAvailable)("action.createKnowledgeDraft approval chain 
     expect(await countAgentDrafts()).toBe(0);
   });
 
+  it("validates sourceReloadRunId at execution with the reload read gate, creating no draft on refusal", async () => {
+    const orchestrator = makeOrchestrator();
+    // The editor lacks debugging:view / debugging:dts-reload, so linking a
+    // reload run must fail exactly like the API distillation path would.
+    const begun = await orchestrator.beginApproval({
+      auth: editorAuth,
+      requestId: "req-begin-reload-source",
+      sessionId: "xiaoze-kb-thread-reload",
+      toolName: "action.createKnowledgeDraft",
+      payload: draftPayload({ sourceReloadRunId: "run-not-readable" }),
+      citations: [],
+      pageKey: "dts-reload"
+    });
+
+    await expect(
+      orchestrator.resolveApproval({
+        auth: editorAuth,
+        requestId: "req-approve-reload-source",
+        approvalId: begun.approvalId,
+        decision: "approve"
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    expect(await countAgentDrafts()).toBe(0);
+  });
+
   it("denies approval execution when the requester lacks knowledge:edit", async () => {
     const orchestrator = makeOrchestrator();
     const begun = await orchestrator.beginApproval({

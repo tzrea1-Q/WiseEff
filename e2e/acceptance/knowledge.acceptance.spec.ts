@@ -21,7 +21,14 @@ const editorUserId = "acceptance-knowledge-editor";
 const editorEmail = "kb.acceptance@chargelab.cn";
 const editorName = "KB Acceptance Editor";
 const editorRoleBindingId = "acceptance-knowledge-editor-hardware-user";
+// Reload distillation needs the /dts-reload page (hardware-committer) plus the
+// debugging:dts-reload read gate, so KB-DISTILL-002 runs as a committer user.
+const committerUserId = "acceptance-kb-reload-editor";
+const committerEmail = "kb.reload.acceptance@chargelab.cn";
+const committerName = "KB Reload Acceptance Committer";
+const committerRoleBindingId = "acceptance-kb-reload-editor-hardware-committer";
 const titlePrefix = "KB-ACCEPT";
+const reloadRunIdPrefix = "kb-acceptance-reload-";
 const runStamp = Date.now();
 
 type KnowledgeEntryApiItem = {
@@ -73,29 +80,34 @@ function editorHeaders() {
 
 async function seedKnowledgeAcceptanceUser() {
   await withPgClient(async (client) => {
-    await client.query(
-      `
-      insert into users (id, organization_id, name, email, title, is_active)
-      values ($1, $2, $3, $4, 'Knowledge Beta Editor', true)
-      on conflict (id) do update set
-        organization_id = excluded.organization_id,
-        name = excluded.name,
-        email = excluded.email,
-        title = excluded.title,
-        is_active = excluded.is_active
-      `,
-      [editorUserId, organizationId, editorName, editorEmail]
-    );
-    await client.query(
-      `
-      insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
-      values ($1, $2, $3, null, 'hardware-user')
-      on conflict (id) do update set
-        project_id = excluded.project_id,
-        role_id = excluded.role_id
-      `,
-      [editorRoleBindingId, editorUserId, organizationId]
-    );
+    for (const [userId, name, email, bindingId, roleId] of [
+      [editorUserId, editorName, editorEmail, editorRoleBindingId, "hardware-user"],
+      [committerUserId, committerName, committerEmail, committerRoleBindingId, "hardware-committer"]
+    ] as const) {
+      await client.query(
+        `
+        insert into users (id, organization_id, name, email, title, is_active)
+        values ($1, $2, $3, $4, 'Knowledge Beta Editor', true)
+        on conflict (id) do update set
+          organization_id = excluded.organization_id,
+          name = excluded.name,
+          email = excluded.email,
+          title = excluded.title,
+          is_active = excluded.is_active
+        `,
+        [userId, organizationId, name, email]
+      );
+      await client.query(
+        `
+        insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+        values ($1, $2, $3, null, $4)
+        on conflict (id) do update set
+          project_id = excluded.project_id,
+          role_id = excluded.role_id
+        `,
+        [bindingId, userId, organizationId, roleId]
+      );
+    }
   });
 }
 
@@ -131,6 +143,20 @@ async function cleanupKnowledgeAcceptanceRows() {
       await client.query("delete from log_records where id = any($1::text[])", [logIds]);
       await client.query("delete from log_file_objects where file_name like 'kb-acceptance-distill-%'");
     }
+
+    // Reload-distillation fixtures (KB-DISTILL-002): entries distilled from
+    // seeded terminal reload runs plus the runs themselves.
+    const reloadEntries = await client.query<{ id: string }>(
+      `select id from knowledge_entries where source_reload_run_id like $1`,
+      [`${reloadRunIdPrefix}%`]
+    );
+    const reloadEntryIds = reloadEntries.rows.map((row) => row.id);
+    if (reloadEntryIds.length > 0) {
+      await client.query("delete from audit_events where app = 'knowledge' and target_id = any($1::text[])", [reloadEntryIds]);
+      await client.query("update knowledge_entries set head_revision_id = null where id = any($1::uuid[])", [reloadEntryIds]);
+      await client.query("delete from knowledge_entries where id = any($1::uuid[])", [reloadEntryIds]);
+    }
+    await client.query("delete from dts_reload_runs where id like $1", [`${reloadRunIdPrefix}%`]);
   });
 }
 
@@ -241,6 +267,89 @@ async function seedCompletedLogAnalysis(): Promise<SeededCompletedLog> {
   });
 
   return { logId, fileName, conclusion, keyword };
+}
+
+type SeededTerminalReloadRun = { runId: string; propertyKey: string; deviceId: string; targetRef: string };
+
+/**
+ * Seeds a TERMINAL (unverifiable) reload run with snapshot evidence directly,
+ * the same seeding approach as the dts-reload acceptance specs: the run row is
+ * the stored evidence subject, so distillation needs no bridge or deploy.
+ * Targets reference a real project binding (FK) from the M1 seed catalog.
+ */
+async function seedTerminalReloadRun(): Promise<SeededTerminalReloadRun> {
+  const runId = `${reloadRunIdPrefix}${runStamp}-${randomUUID().slice(0, 8)}`;
+  const propertyKey = `kb_reload_watchdog_${runStamp}`;
+  const deviceId = "bridge:kb-acceptance";
+  const targetRef = "KB-ACCEPT-01";
+
+  await withPgClient(async (client) => {
+    const binding = await client.query<{ id: string; project_id: string }>(
+      `select id, project_id from project_parameter_bindings where organization_id = $1 order by id limit 1`,
+      [organizationId]
+    );
+    const bindingRow = binding.rows[0];
+    if (!bindingRow) {
+      throw new Error("No project_parameter_bindings available; run db:seed:m1 before KB-DISTILL-002.");
+    }
+
+    const snapshot = {
+      libraryBaselines: [
+        { bindingId: bindingRow.id, propertyKey, nodePath: "/amba/i2c@FF120000/charger@6E", baselineValue: "<6000>" }
+      ],
+      artifactDigest: { sha256: "kb-acceptance-art-sha", onDeviceDigest: "kb-acceptance-art-sha", integrityCheck: "sha256" },
+      kernelSignal: {
+        command: "dmesg",
+        captureStatus: "obtained",
+        captureError: null,
+        rawText: `kernel: ${propertyKey} applied\nkernel: overlay reload ok\n`,
+        truncated: false,
+        matchedByParameter: [
+          { parameterName: propertyKey, bindingId: bindingRow.id, lines: [`kernel: ${propertyKey} applied`] }
+        ],
+        excerpt: null
+      },
+      behaviouralVerification: {
+        outcomes: [
+          {
+            bindingId: bindingRow.id,
+            propertyKey,
+            outcome: "unbound",
+            debugNodeId: null,
+            nodePath: null,
+            expectedValue: "<7000>",
+            readValue: null,
+            reason: "No readable debug-node binding for this parameter and protocol."
+          }
+        ]
+      }
+    };
+
+    await client.query(
+      `
+      insert into dts_reload_runs (
+        id, organization_id, project_id, status, purpose, failure_code, steps, diagnostics, tool_versions,
+        device_id, bridge_id, bridge_machine_label, target_ref, protocol, integrity_check, reload_snapshot,
+        overlay_artifact_sha256, created_by_user_id, completed_at
+      ) values (
+        $1, $2, $3, 'unverifiable', 'ordinary', null, '[]'::jsonb, '[]'::jsonb, '{}'::jsonb,
+        $4, 'kb-acceptance-bridge', 'KB Acceptance Bridge', $5, 'hdc', 'sha256', $6::jsonb,
+        'kb-acceptance-art-sha', $7, now()
+      )
+      `,
+      [runId, organizationId, bindingRow.project_id, deviceId, targetRef, JSON.stringify(snapshot), committerUserId]
+    );
+    await client.query(
+      `
+      insert into dts_reload_run_targets (
+        id, reload_run_id, binding_id, node_path, property_key, baseline_value, debug_value, sort_order
+      ) values ($1, $2, $3, '/amba/i2c@FF120000/charger@6E', $4, '<6000>', '<7000>', 0)
+      `,
+      [randomUUID(), runId, bindingRow.id, propertyKey]
+    );
+  });
+
+  return { runId, propertyKey, deviceId, targetRef };
 }
 
 async function createMarkdownEntryViaApi(page: Page, input: { title: string; tags: string[]; contentMarkdown: string }) {
@@ -897,6 +1006,125 @@ test.describe("Knowledge base browser acceptance", () => {
           method: "GET",
           path: "/api/v1/knowledge/entries/:entryId",
           responseSummary: `entry=${entryId}; sourceLogId=${seeded.logId}`
+        })
+      ],
+      db: [dbSummary],
+      audit
+    });
+  });
+
+  test("distils a terminal reload run into a pre-filled draft with honest outcome wording and publishes it", async ({ page }, testInfo) => {
+    // @acceptance KB-DISTILL-002
+    // @operation KB-DISTILL-002
+    const seeded = await seedTerminalReloadRun();
+    const committerHeaders = authHeadersForUser(committerUserId, committerEmail, committerName);
+
+    // The /dts-reload?runId= deep link opens the seeded terminal run's detail.
+    await signInBrowserAsUser(
+      page,
+      committerUserId,
+      committerEmail,
+      committerName,
+      `/dts-reload?runId=${encodeURIComponent(seeded.runId)}`
+    );
+    const runResult = page.getByLabel("运行摘要");
+    await expect(runResult).toBeVisible();
+    // The status pill also appears in the collapsed history list, so scope to the first (run result header).
+    await expect(page.getByText("不可验证的重载").first()).toBeVisible();
+
+    // Distil the terminal run into a knowledge draft and hand off to /knowledge.
+    const distilButton = page.getByRole("button", { name: "沉淀为知识" });
+    await expect(distilButton).toBeVisible();
+    await distilButton.click();
+    await page.waitForURL(/\/knowledge\?entryId=/);
+    const entryId = new URL(page.url()).searchParams.get("entryId")!;
+    expect(entryId).toBeTruthy();
+
+    // The deep link opens the pre-filled draft: title from purpose + device
+    // context, seeded tags, and the honest terminal-state wording.
+    const detail = page.getByRole("dialog", { name: /参数调试重载/ });
+    await expect(detail).toBeVisible();
+    await expect(detail.locator('[data-status="draft"]')).toBeVisible();
+    await expect(detail.getByText("参数调试", { exact: true })).toBeVisible();
+    await expect(detail.getByText("DTS重载", { exact: true })).toBeVisible();
+    await expect(detail.getByText("不可验证", { exact: true })).toBeVisible();
+    await expect(detail.getByText(/由 DTS 重载运行沉淀/)).toBeVisible();
+    await expect(detail.getByText(/平台无法确认驱动观察到了新值/)).toBeVisible();
+    await expect(detail.getByText(/这不等于成功/)).toBeVisible();
+    // The reload-run source link renders exactly like the log source link.
+    await expect(detail.getByRole("button", { name: "查看重载运行" })).toBeVisible();
+
+    // Drafts stay out of retrieval until published.
+    const beforePublish = await page.request.get(
+      apiRoute(`/api/v1/knowledge/search?q=${encodeURIComponent(seeded.propertyKey)}`),
+      { headers: committerHeaders }
+    );
+    expect(beforePublish.ok()).toBe(true);
+    expect(((await beforePublish.json()) as { items: KnowledgeSearchApiItem[] }).items).toHaveLength(0);
+
+    // Publish the reviewed draft from the detail dialog.
+    await detail.getByRole("button", { name: "发布", exact: true }).click();
+    await expect(detail.locator('[data-status="published"]')).toBeVisible();
+
+    const afterPublish = await page.request.get(
+      apiRoute(`/api/v1/knowledge/search?q=${encodeURIComponent(seeded.propertyKey)}`),
+      { headers: committerHeaders }
+    );
+    const afterBody = (await afterPublish.json()) as { items: KnowledgeSearchApiItem[] };
+    expect(afterBody.items.map((item) => item.entryId)).toContain(entryId);
+
+    // Reload-run source linkage is stored on the entry.
+    const entryResponse = await page.request.get(apiRoute(`/api/v1/knowledge/entries/${entryId}`), {
+      headers: committerHeaders
+    });
+    expect(entryResponse.ok()).toBe(true);
+    const entryBody = (await entryResponse.json()) as {
+      item: KnowledgeEntryApiItem & { sourceReloadRunId: string | null };
+    };
+    expect(entryBody.item).toMatchObject({
+      sourceType: "human",
+      sourceLogId: null,
+      sourceReloadRunId: seeded.runId,
+      status: "published"
+    });
+
+    const dbSummary = await withPgClient(async (client) => {
+      const result = await client.query<{ status: string; source_reload_run_id: string | null }>(
+        `select status, source_reload_run_id from knowledge_entries where id = $1`,
+        [entryId]
+      );
+      const row = result.rows[0];
+      return {
+        table: "knowledge_entries",
+        predicate: `entryId=${entryId}`,
+        observed: row ? `status=${row.status}; sourceReloadRunId=${row.source_reload_run_id}` : "missing",
+        rowCount: result.rowCount ?? result.rows.length
+      };
+    });
+    expect(dbSummary.observed).toContain("status=published");
+    expect(dbSummary.observed).toContain(`sourceReloadRunId=${seeded.runId}`);
+
+    const audit = await knowledgeAuditSummaries(entryId);
+    expect(audit).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "knowledge-entry-distill", action: "distill" }),
+        expect.objectContaining({ kind: "knowledge-entry-publish", action: "publish" })
+      ])
+    );
+
+    await recordOperationEvidence({
+      operationId: "KB-DISTILL-002",
+      title: "distil terminal reload run into pre-filled draft with honest outcome and publish",
+      status: "passed",
+      role: "Hardware Committer",
+      route: "/dts-reload",
+      page,
+      testInfo,
+      api: [
+        summarizeApiResponse(entryResponse, {
+          method: "GET",
+          path: "/api/v1/knowledge/entries/:entryId",
+          responseSummary: `entry=${entryId}; sourceReloadRunId=${seeded.runId}`
         })
       ],
       db: [dbSummary],

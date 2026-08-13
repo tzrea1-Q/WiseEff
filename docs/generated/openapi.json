@@ -6038,6 +6038,49 @@
         }
       }
     },
+    "/api/v1/knowledge/distill-from-reload-run": {
+      "post": {
+        "operationId": "knowledge.distillFromReloadRun",
+        "summary": "Distil a terminal DTS reload run (verified, unverifiable, contradicted, or failed) into a pre-filled knowledge draft (knowledge:edit plus the reload read gate on the source run); the outcome is stated honestly and the draft stays out of retrieval until published",
+        "tags": [
+          "knowledge"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DistillKnowledgeFromReloadRunRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeEntryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/knowledge/search": {
       "get": {
         "operationId": "knowledge.search",
@@ -11017,6 +11060,10 @@
       "DistillKnowledgeFromLogRequest": {
         "type": "object",
         "x-wiseeff-schema": "DistillKnowledgeFromLogRequest"
+      },
+      "DistillKnowledgeFromReloadRunRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "DistillKnowledgeFromReloadRunRequest"
       },
       "KnowledgeSearchResponse": {
         "type": "object",

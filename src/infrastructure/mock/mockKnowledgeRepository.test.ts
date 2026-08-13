@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { KnowledgeRevisionConflictError } from "@/application/ports/KnowledgeRepository";
+import type { DtsReloadRun } from "@/domain/dtsReload/types";
 import type { LogRecord } from "@/domain/prototype/types";
 import { createMockKnowledgeRepository } from "./mockKnowledgeRepository";
+import { createMockDtsReloadRepository, MOCK_DTS_RELOAD_DEVICE_ID } from "./mockDtsReloadRepository";
 
 function makeLogRecord(overrides: Partial<LogRecord> = {}): LogRecord {
   return {
@@ -105,6 +107,51 @@ describe("createMockKnowledgeRepository", () => {
       getLogRecord: () => makeLogRecord({ status: "Processing" })
     });
     await expect(repository.relatedToLog("log-auth")).rejects.toThrow(/已完成/);
+  });
+
+  it("distils a terminal reload run from the shared mock reload repository (port parity)", async () => {
+    const reloadRepository = createMockDtsReloadRepository();
+    const repository = createMockKnowledgeRepository({
+      getReloadRun: (runId) => reloadRepository.getRun(runId).catch(() => undefined)
+    });
+
+    // The seeded residue run is an unverifiable terminal with snapshot evidence.
+    const entry = await repository.distillFromReloadRun("mock-reload-seed-01");
+    expect(entry.status).toBe("draft");
+    expect(entry.sourceReloadRunId).toBe("mock-reload-seed-01");
+    expect(entry.sourceLogId).toBeNull();
+    expect(entry.tags).toEqual(["参数调试", "DTS重载", "不可验证"]);
+    expect(entry.title).toContain("参数调试重载:");
+    expect(entry.title).toContain(MOCK_DTS_RELOAD_DEVICE_ID);
+    expect(entry.contentMarkdown).toContain("不可验证:命令全部成功且产物完整落盘,但平台无法确认驱动观察到了新值——这不等于成功。");
+    expect(entry.contentMarkdown).toContain("## 参数集(基线 → 调试值)");
+  });
+
+  it("refuses to distil non-terminal reload runs and unknown run ids", async () => {
+    const validated: DtsReloadRun = {
+      id: "run-validated",
+      projectId: "project-teaching",
+      configRevisionId: null,
+      status: "validated",
+      purpose: "ordinary",
+      restoresSourceRunId: null,
+      failureCode: null,
+      targets: [],
+      steps: [],
+      diagnostics: [],
+      toolVersions: { dtc: null, fdtoverlay: null },
+      overlaySource: null,
+      overlaySourceSha256: null,
+      artifact: null,
+      createdAt: "2026-08-12T10:00:00.000Z",
+      completedAt: null
+    };
+    const repository = createMockKnowledgeRepository({
+      getReloadRun: (runId) => (runId === "run-validated" ? validated : undefined)
+    });
+
+    await expect(repository.distillFromReloadRun("run-validated")).rejects.toThrow(/终态重载运行/);
+    await expect(repository.distillFromReloadRun("run-missing")).rejects.toThrow(/未找到重载运行/);
   });
 
   it("simulates index health with a failed row, retry, and rebuild (port-shape parity)", async () => {

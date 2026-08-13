@@ -18,6 +18,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `KB-ASK-001` | P1 | knowledge | automated | `/knowledge` | Hardware User | ui, api | `e2e/acceptance/knowledge.acceptance.spec.ts` |
 | `KB-INDEX-001` | P1 | knowledge | automated | `/knowledge-admin` | Admin | ui, api, db | `e2e/acceptance/knowledge.acceptance.spec.ts` |
 | `KB-DISTILL-001` | P1 | knowledge | automated | `/logs` | Hardware User | ui, api, db, audit | `e2e/acceptance/knowledge.acceptance.spec.ts` |
+| `KB-DISTILL-002` | P1 | knowledge | automated | `/dts-reload` | Hardware Committer | ui, api, db, audit | `e2e/acceptance/knowledge.acceptance.spec.ts` |
 | `KB-ADMIN-001` | P1 | knowledge | automated | `/knowledge-admin` | Admin | ui, api, db, audit | `e2e/acceptance/knowledge.acceptance.spec.ts` |
 | `KB-REC-001` | P1 | knowledge | automated | `/logs` | Hardware User | ui, api, db | `e2e/acceptance/knowledge.acceptance.spec.ts` |
 | `KB-XREF-001` | P1 | knowledge | automated | `/knowledge` | Hardware User | ui, api, db, audit | `e2e/acceptance/knowledge.acceptance.spec.ts` |

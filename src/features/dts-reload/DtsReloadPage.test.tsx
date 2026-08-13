@@ -4,6 +4,9 @@ import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
+import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
+import type { KnowledgeCapability } from "@/domain/knowledge/rules";
+import type { KnowledgeEntry } from "@/domain/knowledge/types";
 import type { DtsReloadCandidate, DtsReloadRun } from "@/domain/dtsReload/types";
 import { DTS_RELOAD_CONFIRMATION_TOKEN } from "@/domain/dtsReload/types";
 import { DtsReloadPage } from "./DtsReloadPage";
@@ -422,14 +425,14 @@ describe("DtsReloadPage", () => {
 
     expect(screen.queryByRole("checkbox", { name: "选择 Watchdog" })).not.toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "选择 Compatible" })).toBeInTheDocument();
-    expect(screen.getByText("Showing 1 of 2")).toBeInTheDocument();
+    expect(screen.getByText("显示 1 / 2 项")).toBeInTheDocument();
     expect(trigger).toHaveClass("active");
     expect(trigger).toHaveTextContent("1");
 
     await user.click(within(menu).getByRole("button", { name: "清除" }));
     expect(screen.getByRole("checkbox", { name: "选择 Watchdog" })).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "选择 Compatible" })).toBeInTheDocument();
-    expect(screen.getByText("Showing 2 of 2")).toBeInTheDocument();
+    expect(screen.getByText("显示 2 / 2 项")).toBeInTheDocument();
   });
 
   it("lists candidates, starts a batch run, shows overlay source, and downloads the artifact", async () => {
@@ -1042,6 +1045,102 @@ describe("DtsReloadPage", () => {
       "aria-pressed",
       "true"
     );
+  });
+
+  it("offers 沉淀为知识 on a terminal history run for knowledge editors and hands off to /knowledge", async () => {
+    const user = userEvent.setup();
+    const terminalRun = run({
+      id: "run-terminal",
+      status: "unverifiable",
+      deviceId: "bridge:bridge-1",
+      targetRef: "device-serial-1"
+    });
+    const repository = createRepository({
+      getRun: vi.fn(async () => terminalRun)
+    });
+    const draftEntry = { id: "kb-entry-1" } as KnowledgeEntry;
+    const knowledgeRepository = {
+      distillFromReloadRun: vi.fn(async () => draftEntry)
+    } as unknown as KnowledgeRepository;
+    const capability: KnowledgeCapability = { userId: "u-1", canView: true, canEdit: true, canManage: false };
+    const onNavigate = vi.fn();
+
+    renderPage(repository, {
+      knowledgeRepository,
+      knowledgeCapability: capability,
+      onNavigate,
+      initialRunId: "run-terminal"
+    });
+
+    // The deep link opens the run detail, where the terminal run offers the affordance.
+    await waitFor(() => expect(repository.getRun).toHaveBeenCalledWith("run-terminal"));
+    const distilButton = await screen.findByRole("button", { name: "沉淀为知识" });
+    await user.click(distilButton);
+
+    await waitFor(() => expect(knowledgeRepository.distillFromReloadRun).toHaveBeenCalledWith("run-terminal"));
+    expect(onNavigate).toHaveBeenCalledWith("/knowledge?entryId=kb-entry-1");
+  });
+
+  it("hides 沉淀为知识 for non-terminal runs and for users without knowledge:edit", async () => {
+    const user = userEvent.setup();
+    const knowledgeRepository = {
+      distillFromReloadRun: vi.fn()
+    } as unknown as KnowledgeRepository;
+    const editorCapability: KnowledgeCapability = { userId: "u-1", canView: true, canEdit: true, canManage: false };
+    const viewerCapability: KnowledgeCapability = { userId: "u-2", canView: true, canEdit: false, canManage: false };
+
+    // Non-terminal (validated) run: no affordance even for editors.
+    const { unmount } = renderPage(createRepository(), {
+      knowledgeRepository,
+      knowledgeCapability: editorCapability,
+      onNavigate: vi.fn()
+    });
+    await screen.findAllByText("Watchdog");
+    await setWatchdogDebugValue(user);
+    await user.click(screen.getByRole("button", { name: /下发参数/ }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "取消" }));
+    await screen.findByLabelText("产物与操作");
+    expect(screen.queryByRole("button", { name: "沉淀为知识" })).not.toBeInTheDocument();
+    unmount();
+
+    // Terminal run but without knowledge:edit: no affordance.
+    const terminalRepo = createRepository({
+      getRun: vi.fn(async () => run({ id: "run-terminal", status: "failed", failureCode: "transfer-failed" }))
+    });
+    renderPage(terminalRepo, {
+      knowledgeRepository,
+      knowledgeCapability: viewerCapability,
+      onNavigate: vi.fn(),
+      initialRunId: "run-terminal"
+    });
+    await waitFor(() => expect(terminalRepo.getRun).toHaveBeenCalledWith("run-terminal"));
+    await screen.findByLabelText("运行摘要");
+    expect(screen.queryByRole("button", { name: "沉淀为知识" })).not.toBeInTheDocument();
+  });
+
+  it("surfaces a distillation failure without navigating away", async () => {
+    const user = userEvent.setup();
+    const repository = createRepository({
+      getRun: vi.fn(async () => run({ id: "run-terminal", status: "contradicted" }))
+    });
+    const knowledgeRepository = {
+      distillFromReloadRun: vi.fn(async () => {
+        throw new Error("重载运行不可读");
+      })
+    } as unknown as KnowledgeRepository;
+    const onNavigate = vi.fn();
+
+    renderPage(repository, {
+      knowledgeRepository,
+      knowledgeCapability: { userId: "u-1", canView: true, canEdit: true, canManage: false },
+      onNavigate,
+      initialRunId: "run-terminal"
+    });
+
+    await user.click(await screen.findByRole("button", { name: "沉淀为知识" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/沉淀为知识失败:重载运行不可读/);
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 
   it("renders a navigable upgrade control when deploy fails with bridge-upgrade-required", async () => {

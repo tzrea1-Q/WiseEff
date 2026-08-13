@@ -5,6 +5,8 @@ import type {
 } from "@/application/ports/KnowledgeRepository";
 import { KnowledgeRevisionConflictError } from "@/application/ports/KnowledgeRepository";
 import { buildLogDistillationDraft } from "@/domain/knowledge/distill";
+import { buildReloadDistillationDraft, isReloadRunDistillable } from "@/domain/knowledge/distillReload";
+import type { DtsReloadRun } from "@/domain/dtsReload/types";
 import type {
   KnowledgeEntry,
   KnowledgeIndexState,
@@ -79,6 +81,12 @@ export type MockKnowledgeCapability = {
   canManage?: boolean;
   /** Mock distillation source: resolves a frontend log record by id (App wires state.logs). */
   getLogRecord?: (logId: string) => LogRecord | undefined;
+  /**
+   * Mock distillation source #2: resolves a reload run by id. The app wires
+   * this to the runtime's mock DtsReloadRepository instance so both ports
+   * describe the same device story (ADR-0002 port parity).
+   */
+  getReloadRun?: (runId: string) => Promise<DtsReloadRun | undefined> | DtsReloadRun | undefined;
 };
 
 function clone<T>(value: T): T {
@@ -126,6 +134,7 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
     sourceType: "human",
     sourceSessionId: null,
     sourceLogId: null,
+    sourceReloadRunId: null,
     createdByUserId: MOCK_USER_ID,
     headRevisionNumber: 2,
     createdAt: "2026-08-01T02:00:00.000Z",
@@ -151,6 +160,7 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
     sourceType: "human",
     sourceSessionId: null,
     sourceLogId: null,
+    sourceReloadRunId: null,
     createdByUserId: MOCK_USER_ID,
     headRevisionNumber: 1,
     createdAt: "2026-08-11T03:00:00.000Z",
@@ -171,6 +181,7 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
     sourceType: "human",
     sourceSessionId: null,
     sourceLogId: null,
+    sourceReloadRunId: null,
     createdByUserId: "u-li-fang",
     headRevisionNumber: 1,
     createdAt: "2026-08-05T08:00:00.000Z",
@@ -199,6 +210,7 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
     sourceType: "human",
     sourceSessionId: null,
     sourceLogId: null,
+    sourceReloadRunId: null,
     createdByUserId: MOCK_USER_ID,
     headRevisionNumber: 1,
     createdAt: "2026-08-09T01:00:00.000Z",
@@ -227,6 +239,7 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
     sourceType: "human",
     sourceSessionId: null,
     sourceLogId: null,
+    sourceReloadRunId: null,
     createdByUserId: "u-li-fang",
     headRevisionNumber: 3,
     createdAt: "2026-07-01T02:00:00.000Z",
@@ -250,6 +263,7 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
     sourceType: "agent",
     sourceSessionId: "mock-xiaoze-session-1",
     sourceLogId: "log-auth",
+    sourceReloadRunId: null,
     createdByUserId: MOCK_USER_ID,
     headRevisionNumber: 1,
     createdAt: "2026-08-11T09:20:00.000Z",
@@ -271,6 +285,7 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
     sourceType: "agent",
     sourceSessionId: "mock-xiaoze-session-2",
     sourceLogId: null,
+    sourceReloadRunId: null,
     createdByUserId: "u-li-fang",
     headRevisionNumber: 1,
     createdAt: "2026-08-11T11:05:00.000Z",
@@ -293,6 +308,7 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
     sourceType: "human",
     sourceSessionId: null,
     sourceLogId: null,
+    sourceReloadRunId: null,
     createdByUserId: "u-li-fang",
     headRevisionNumber: 1,
     createdAt: "2026-08-06T03:00:00.000Z",
@@ -547,6 +563,7 @@ export function createMockKnowledgeRepository(
         sourceType: "human",
         sourceSessionId: null,
         sourceLogId: null,
+        sourceReloadRunId: null,
         createdByUserId: userId,
         headRevisionNumber: 0,
         createdAt: MOCK_KNOWLEDGE_NOW,
@@ -576,6 +593,7 @@ export function createMockKnowledgeRepository(
         sourceType: "human",
         sourceSessionId: null,
         sourceLogId: null,
+        sourceReloadRunId: null,
         createdByUserId: userId,
         headRevisionNumber: 0,
         createdAt: MOCK_KNOWLEDGE_NOW,
@@ -622,6 +640,42 @@ export function createMockKnowledgeRepository(
         sourceType: "human",
         sourceSessionId: null,
         sourceLogId: log.id,
+        sourceReloadRunId: null,
+        createdByUserId: userId,
+        headRevisionNumber: 0,
+        createdAt: MOCK_KNOWLEDGE_NOW,
+        updatedAt: MOCK_KNOWLEDGE_NOW,
+        publishedAt: null,
+        archivedAt: null,
+        contentMarkdown: draft.contentMarkdown,
+        file: null
+      };
+      appendRevision(entry);
+      entry.headRevisionNumber = 1;
+      store.entries = [entry, ...store.entries];
+      return clone(entry);
+    },
+
+    async distillFromReloadRun(runId) {
+      const run = await capability.getReloadRun?.(runId);
+      if (!run) {
+        throw new Error(`未找到重载运行：${runId}`);
+      }
+      if (!isReloadRunDistillable(run.status)) {
+        throw new Error("只有终态重载运行(已验证/不可验证/矛盾/失败)才能沉淀为知识。");
+      }
+      const draft = buildReloadDistillationDraft(run);
+      store.counter += 1;
+      const entry: KnowledgeEntry = {
+        id: `mock-kb-${store.counter}`,
+        title: draft.title,
+        contentForm: "markdown",
+        status: "draft",
+        tags: [...draft.tags],
+        sourceType: "human",
+        sourceSessionId: null,
+        sourceLogId: null,
+        sourceReloadRunId: run.id,
         createdByUserId: userId,
         headRevisionNumber: 0,
         createdAt: MOCK_KNOWLEDGE_NOW,

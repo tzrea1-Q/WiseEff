@@ -191,7 +191,16 @@ export function startHealthServer(input: {
 
       if (req.method === "GET" && requestUrl.pathname === "/health") {
         await input.onHealthRead?.();
-        const payload = { ok: true, ...input.getState() };
+        const state = input.getState();
+        // Open CORS keeps zero-friction presence detection working for any WiseEff
+        // origin, but only the paired origin (allowlist match) or same-machine tooling
+        // (no Origin header) may read identifying fields. Untrusted browser origins see
+        // liveness only, so a webpage the operator happens to visit cannot fingerprint
+        // the bridge id, the paired server, or the launcher path (TD-108, decision B2).
+        const trusted = !origin || resolveCorsOrigin(origin, input.allowedOrigin) !== undefined;
+        const payload = trusted
+          ? { ok: true, ...state }
+          : { ok: true, paired: state.paired, connected: state.connected, updatedAt: state.updatedAt };
         res.statusCode = 200;
         applyOpenCorsHeaders(res, origin);
         res.setHeader("content-type", "application/json; charset=utf-8");

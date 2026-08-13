@@ -14,6 +14,7 @@ const baseEntryDto: KnowledgeEntryDto = {
   sourceType: "human",
   sourceSessionId: null,
   sourceLogId: null,
+  sourceReloadRunId: null,
   createdByUserId: "user-1",
   headRevisionId: "rev-1",
   headRevisionNumber: 1,
@@ -93,6 +94,22 @@ describe("createHttpKnowledgeRepository", () => {
     expect(entry.sourceLogId).toBe("log-9");
     expect(String(fetchMock.mock.calls[0][0])).toBe("http://127.0.0.1:8787/api/v1/knowledge/distill-from-log");
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ logId: "log-9" });
+  });
+
+  it("distils a reload run into a pre-filled draft and maps the reload source linkage", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse(
+        { item: { ...baseEntryDto, sourceReloadRunId: "run-7", tags: ["参数调试", "DTS重载", "不可验证"] } },
+        201
+      )
+    );
+    const repository = createRepository(fetchMock);
+
+    const entry = await repository.distillFromReloadRun("run-7");
+    expect(entry.sourceReloadRunId).toBe("run-7");
+    expect(entry.sourceLogId).toBeNull();
+    expect(String(fetchMock.mock.calls[0][0])).toBe("http://127.0.0.1:8787/api/v1/knowledge/distill-from-reload-run");
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ runId: "run-7" });
   });
 
   it("archive-rejects an agent draft through the reject endpoint", async () => {

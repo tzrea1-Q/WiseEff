@@ -24,6 +24,7 @@ import type {
 import type { DtsWorkbenchTreeNode } from "@/application/parameters/buildDtsTopologyTree";
 import type { DeviceBridgeRecord, LocalBridgeHealthState } from "@/infrastructure/http/deviceBridgeClient";
 import type { LocalBridgeProbeResult } from "@/infrastructure/http/bridgeConnectLauncher";
+import { BookPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const BRIDGE_UPGRADE_ENTRY_PATH = "/node-debugging";
@@ -411,7 +412,9 @@ export function RunResultSection({
   deployReady,
   deploying,
   onDownload,
-  onDeploy
+  onDeploy,
+  onDistil,
+  distilPending = false
 }: {
   run: DtsReloadRun;
   deviceId: string;
@@ -422,6 +425,9 @@ export function RunResultSection({
   deploying: boolean;
   onDownload: () => void;
   onDeploy: () => void;
+  /** Distil-to-knowledge handoff; the page gates it to terminal runs + knowledge:edit. */
+  onDistil?: () => void;
+  distilPending?: boolean;
 }) {
   return (
     <section className="debug-table dts-reload-run-result" aria-live="polite">
@@ -518,7 +524,7 @@ export function RunResultSection({
           </section>
         ) : null}
 
-        {run.artifact || (canRetryDeploy && canStartRun) ? (
+        {run.artifact || (canRetryDeploy && canStartRun) || onDistil ? (
           <section className="dts-reload-run-slice dts-reload-run-slice--actions" aria-label="产物与操作">
             <h3 className="dts-reload-run-slice__title">产物与操作</h3>
             {run.artifact ? (
@@ -535,6 +541,18 @@ export function RunResultSection({
                 </button>
                 <p className="font-mono">sha256 {run.artifact.sha256}</p>
               </div>
+            ) : null}
+            {onDistil ? (
+              <button
+                type="button"
+                className="button subtle"
+                disabled={distilPending}
+                aria-busy={distilPending || undefined}
+                onClick={onDistil}
+              >
+                <BookPlus size={16} strokeWidth={1.9} aria-hidden="true" />
+                沉淀为知识
+              </button>
             ) : null}
             {canRetryDeploy && canStartRun ? (
               <button

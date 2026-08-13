@@ -6,6 +6,7 @@ import App from "./App";
 import { appReducer } from "@/application/state/appState";
 import { createDebuggingRuntimeActions, debuggingRuntimeFailureNotification } from "./application/debugging/debuggingRuntime";
 import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
+import { ToastProvider } from "./components/common/toast/ToastProvider";
 import type { DebuggingGateway } from "./application/ports/DebuggingGateway";
 import { TopBarActionsContext } from "./components/layout";
 import { NodeDebuggingPage } from "./NodeDebuggingPage";
@@ -115,6 +116,24 @@ function createDebuggingActions(overrides: Partial<DebuggingRuntimeActions> = {}
   };
 }
 
+function mockFetchSequence(responses: unknown[]) {
+  vi.spyOn(globalThis, "fetch").mockImplementation(vi.fn(async (input: RequestInfo | URL) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    // LocalDeviceBridgePanel probes local bridge health, lists registered bridges and
+    // fetches the install manifest on mount. Answer these fixed endpoints directly so
+    // they neither steal an hdc response from the queue nor receive a shape without
+    // `items`.
+    if (url.includes("/health")) {
+      throw new TypeError("Failed to fetch");
+    }
+    if (url.includes("/api/v1/device-bridges/releases") || url.includes("/api/v1/device-bridges/mine")) {
+      return new Response(JSON.stringify({ items: [] }));
+    }
+    const next = responses.shift();
+    return new Response(JSON.stringify(next ?? { ok: true }));
+  }) as typeof fetch);
+}
+
 function findRowByText(text: string) {
   const row = Array.from(screen.getByRole("table").querySelectorAll("tbody tr")).find((item) =>
     item.textContent?.includes(text)
@@ -149,10 +168,12 @@ function NodeDebuggingPageHarness({ pageProps }: { pageProps: NodeDebuggingPageP
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
   const context = useMemo(() => ({ setActions: setTopBarActions }), []);
   return (
-    <TopBarActionsContext.Provider value={context}>
-      <div className="topbar-page-actions">{topBarActions}</div>
-      <NodeDebuggingPage {...pageProps} />
-    </TopBarActionsContext.Provider>
+    <ToastProvider>
+      <TopBarActionsContext.Provider value={context}>
+        <div className="topbar-page-actions">{topBarActions}</div>
+        <NodeDebuggingPage {...pageProps} />
+      </TopBarActionsContext.Provider>
+    </ToastProvider>
   );
 }
 
@@ -1655,6 +1676,58 @@ describe("/node-debugging", () => {
     expect(events).toHaveTextContent(preview);
     expect(events).toHaveTextContent("abc123deadbe");
     expect(events).toHaveTextContent("JSON");
+  });
+
+  it("shows a loading skeleton instead of demo rows while the runtime hydrates", () => {
+    renderNodeDebuggingPage({
+      state: userState,
+      debuggingActions: createDebuggingActions(),
+      runtimeStatus: "loading"
+    });
+
+    expect(screen.getByRole("status", { name: "正在加载调试节点" })).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.queryByText("charger.input_current_limit_ma")).not.toBeInTheDocument();
+  });
+
+  it("shows a page-level error with retry when the runtime fails to load", () => {
+    const onRuntimeRetry = vi.fn();
+    renderNodeDebuggingPage({
+      state: userState,
+      debuggingActions: createDebuggingActions(),
+      runtimeStatus: "error",
+      runtimeError: "无法加载调试节点数据，请稍后重试。",
+      onRuntimeRetry
+    });
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("无法加载调试节点数据");
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+
+    fireEvent.click(within(alert).getByRole("button", { name: "重试" }));
+    expect(onRuntimeRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a dedicated empty state when no debug nodes are configured", async () => {
+    mockFetchSequence([{ ok: false, targets: [], stderr: "hdc target detection failed" }]);
+    renderNodeDebuggingPage({ state: { ...userState, debugParameters: [] } });
+
+    expect(await screen.findByText("暂无调试节点")).toBeInTheDocument();
+    expect(screen.getByText("调试节点由管理员在调试管理后台维护，配置后即可在此读写设备节点。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "清除筛选条件" })).not.toBeInTheDocument();
+  });
+
+  it("shows a filter empty state with a clear-filters action when a search matches nothing", async () => {
+    mockFetchSequence([{ ok: false, targets: [], stderr: "hdc target detection failed" }]);
+    renderNodeDebuggingPage({ state: userState });
+    await screen.findByText("未连接 HDC 设备");
+
+    fireEvent.change(screen.getByLabelText("按名称 / Key 搜索"), { target: { value: "不存在的节点xyz" } });
+    expect(screen.getByText("没有符合筛选条件的节点")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "清除筛选条件" }));
+    expect(screen.queryByText("没有符合筛选条件的节点")).not.toBeInTheDocument();
+    expect(findRowByText("charger.input_current_limit_ma")).toBeInTheDocument();
   });
 
   it("marks RW readback mismatch", async () => {

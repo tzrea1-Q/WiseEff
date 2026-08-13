@@ -42,6 +42,8 @@ export type KnowledgePageProps = {
   searchParameterSpecs?: (q: string) => Promise<KnowledgeSpecPickerOption[]>;
   /** Deep link into the definition surface (/parameter-admin?spec=…). */
   onOpenParameterSpec?: (specId: string) => void;
+  /** Router navigation for distillation source links (log / reload run). */
+  onNavigate?: (path: string) => void;
 };
 
 function formatDateTime(value: string) {
@@ -59,7 +61,8 @@ export function KnowledgePage({
   askXiaozeEnabled = false,
   initialEntryId = null,
   searchParameterSpecs,
-  onOpenParameterSpec
+  onOpenParameterSpec,
+  onNavigate
 }: KnowledgePageProps) {
   const [rows, setRows] = useState<KnowledgeEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -479,6 +482,7 @@ export function KnowledgePage({
         }}
         onDownloadFile={handleDownload}
         onOpenParameterSpec={onOpenParameterSpec}
+        onNavigate={onNavigate}
         onClose={() => setSelectedId(null)}
       />
 

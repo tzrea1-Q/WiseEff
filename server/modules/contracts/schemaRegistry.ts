@@ -872,6 +872,15 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     successStatus: 201,
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "knowledge.distillFromReloadRun": {
+    summary:
+      "Distil a terminal DTS reload run (verified, unverifiable, contradicted, or failed) into a pre-filled knowledge draft (knowledge:edit plus the reload read gate on the source run); the outcome is stated honestly and the draft stays out of retrieval until published",
+    tags: ["knowledge"],
+    requestBody: "DistillKnowledgeFromReloadRunRequest",
+    responseBody: "KnowledgeEntryResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "knowledge.search": {
     summary:
       "Search published knowledge entries — hybrid vector+FTS when embeddings and pgvector are available, FTS+trigram otherwise; the response reports the retrieval mode that actually ran",

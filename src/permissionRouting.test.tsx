@@ -101,8 +101,8 @@ describe("permission-aware routing", () => {
     render(<App initialAppState={guestState} />);
 
     expect(screen.getByRole("heading", { name: "无权访问该页面" })).toBeInTheDocument();
-    expect(screen.getByText(/当前角色：Guest/)).toBeInTheDocument();
-    expect(screen.getByText(/所需角色：Admin/)).toBeInTheDocument();
+    expect(screen.getByText(/当前角色：访客/)).toBeInTheDocument();
+    expect(screen.getByText(/所需角色：管理员/)).toBeInTheDocument();
   });
 
   it("does not render WiseAgent or Xiaoze on permission denied pages", () => {

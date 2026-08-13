@@ -427,7 +427,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     );
 
     expect(await screen.findByText("API Admin")).toBeInTheDocument();
-    expect(screen.getByText("Admin")).toBeInTheDocument();
+    expect(screen.getByText("管理员")).toBeInTheDocument();
   });
 
   it("shows local login when API auth context is unauthenticated and enters the app after login", async () => {
@@ -506,7 +506,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       />
     );
 
-    expect(await screen.findByRole("heading", { name: "无法连接服务器" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "无法连接服务" })).toBeInTheDocument();
     expect(screen.queryByLabelText("用户名")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "登录" })).not.toBeInTheDocument();
     expect(window.localStorage.getItem("wiseeff.localAuthToken")).toBe("live-token");
@@ -532,6 +532,58 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.getByRole("status", { name: "正在进入工作台" })).toBeInTheDocument();
     expect(document.querySelector(".app-shell-skeleton")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "登录雷泽" })).not.toBeInTheDocument();
+  });
+
+  it("shows a retryable connection error instead of the login form when the session probe fails at the network level", async () => {
+    window.history.replaceState(null, "", "/parameter-home");
+    const getCurrentAuthContext = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce({
+        user: {
+          id: "u-api-admin",
+          organizationId: "org-chargelab",
+          name: "API Admin",
+          email: "api-admin@chargelab.cn",
+          title: "API Platform Owner",
+          isActive: true
+        },
+        organization: { id: "org-chargelab", name: "ChargeLab" },
+        roles: [{ projectId: null, roleId: "admin" }],
+        permissions: ["admin:access"]
+      });
+
+    render(
+      <App
+        authClient={{ getCurrentAuthContext }}
+        initialAppState={initialState}
+        parameterRepository={createAppParameterRepository()}
+        runtimeMode="api"
+      />
+    );
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("无法连接服务");
+    expect(screen.queryByRole("heading", { name: "登录雷泽" })).not.toBeInTheDocument();
+
+    fireEvent.click(within(alert).getByRole("button", { name: "重试" }));
+
+    expect(await screen.findByText("API Admin")).toBeInTheDocument();
+    expect(getCurrentAuthContext).toHaveBeenCalledTimes(2);
+  });
+
+  it("routes structured auth rejections to the login form, not the connection-error state", async () => {
+    window.history.replaceState(null, "", "/parameter-home");
+    const authClient = {
+      getCurrentAuthContext: vi
+        .fn()
+        .mockRejectedValue(new WiseEffApiError("UNAUTHENTICATED", "Session is not active.", {}, "req-auth-1"))
+    };
+
+    render(<App authClient={authClient} initialAppState={initialState} parameterRepository={createAppParameterRepository()} runtimeMode="api" />);
+
+    expect(await screen.findByRole("heading", { name: "登录雷泽" })).toBeInTheDocument();
+    expect(screen.queryByText("无法连接服务")).not.toBeInTheDocument();
   });
 
   it("registers a local user account from the auth screen", async () => {
@@ -568,7 +620,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     fireEvent.click(screen.getByRole("button", { name: "注册" }));
 
     expect(await screen.findByText("New Admin")).toBeInTheDocument();
-    expect(await screen.findByText("Software User")).toBeInTheDocument();
+    expect(await screen.findByText("软件开发")).toBeInTheDocument();
     expect(authClient.register).toHaveBeenCalledWith({
       organization: "软件部",
       name: "New Admin",
@@ -1849,7 +1901,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     fireEvent.click(within(topbar).getByRole("button", { name: "打开用户菜单" }));
 
     expect(within(topbar).queryByRole("combobox", { name: "Prototype role" })).not.toBeInTheDocument();
-    expect(within(topbar).getByLabelText("当前用户角色")).toHaveTextContent("Guest");
+    expect(within(topbar).getByLabelText("当前用户角色")).toHaveTextContent("访客");
     expect(screen.getByRole("heading", { name: "无权访问该页面" })).toBeInTheDocument();
   });
 
@@ -3194,7 +3246,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     fireEvent.click(within(history).getByRole("button", { name: /thermal_snapshot\.bin/ }));
 
-    expect(screen.getByText("不支持的二进制热快照格式。")).toBeInTheDocument();
+    expect(screen.getByText("日志处理失败")).toBeInTheDocument();
+    expect(screen.getByText("二进制格式不支持。请导出 .log / .txt / .json 文本日志。")).toBeInTheDocument();
     expect(screen.getByText("关联处置：请重新上传 .log、.txt 或 .json 文本日志。")).toBeInTheDocument();
   });
 
@@ -3393,9 +3446,9 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     const navItem = declarationsFor(css, ".nav-item");
     const feedbackEntryDeclarations = declarationsFor(css, ".feedback-entry");
     expect(declarationFor(css, ".utility-nav", "flex")).toBe("0 0 auto");
-    expect(
-      declarationFor(css, ".utility-nav", "display", { within: "(max-width: 900px)" })
-    ).toBe("block");
+    // The collapsed-rail appearance has one owner: the `.sidebar-collapsed` rules
+    // (App.tsx forces the class between 769–900px instead of duplicated media rules).
+    expect(declarationFor(css, ".sidebar-collapsed .utility-nav", "display")).toBe("block");
     expect(navItem["justify-content"]).toBe("flex-start");
     expect(navItem.height).toBe("auto");
     expect(feedbackEntryDeclarations["align-items"]).toBe("flex-start");
@@ -3434,6 +3487,82 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     expect(screen.getByRole("complementary", { name: "主导航侧边栏" })).toHaveClass("sidebar-collapsed");
     expect(localStorage.getItem("wiseeff.sidebar.collapsed")).toBe("true");
+  });
+
+  it("opens and closes the mobile navigation drawer from the topbar hamburger", () => {
+    window.history.replaceState(null, "", "/parameters");
+
+    renderAppForCurrentPath();
+
+    const shell = document.querySelector(".app-shell");
+    const hamburger = screen.getByRole("button", { name: "打开导航菜单" });
+    expect(hamburger).toHaveAttribute("aria-controls", "app-sidebar");
+    expect(hamburger).toHaveAttribute("aria-expanded", "false");
+    expect(shell).not.toHaveClass("mobile-nav-open");
+    expect(document.querySelector(".sidebar-drawer-backdrop")).not.toBeInTheDocument();
+
+    // Open: shell gains the drawer state and the dimmed backdrop appears.
+    fireEvent.click(hamburger);
+    expect(shell).toHaveClass("mobile-nav-open");
+    expect(hamburger).toHaveAttribute("aria-expanded", "true");
+    const backdrop = document.querySelector(".sidebar-drawer-backdrop");
+    expect(backdrop).toBeInTheDocument();
+
+    // Backdrop click closes the drawer.
+    fireEvent.click(backdrop!);
+    expect(shell).not.toHaveClass("mobile-nav-open");
+    expect(document.querySelector(".sidebar-drawer-backdrop")).not.toBeInTheDocument();
+
+    // Escape closes the drawer.
+    fireEvent.click(hamburger);
+    expect(shell).toHaveClass("mobile-nav-open");
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(shell).not.toHaveClass("mobile-nav-open");
+
+    // Navigating from the drawer closes it automatically.
+    fireEvent.click(hamburger);
+    expect(shell).toHaveClass("mobile-nav-open");
+    const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
+    fireEvent.click(within(sidebar).getByRole("button", { name: "智能分析" }));
+    expect(shell).not.toHaveClass("mobile-nav-open");
+    expect(window.location.pathname).toBe("/logs");
+  });
+
+  it("resets the main content scroll position when the route changes", () => {
+    window.history.replaceState(null, "", "/parameter-home");
+
+    renderAppForCurrentPath();
+
+    const mainContent = document.querySelector<HTMLElement>(".main-content");
+    expect(mainContent).not.toBeNull();
+    mainContent!.scrollTop = 480;
+
+    fireEvent.click(screen.getByRole("button", { name: "智能分析" }));
+
+    expect(window.location.pathname).toBe("/logs");
+    expect(mainContent!.scrollTop).toBe(0);
+  });
+
+  it("keeps the drawer and rail styles on one owner in the stylesheet", () => {
+    const css = readStylesheet("src/styles.css");
+
+    // Drawer: hidden off-canvas by default below 768px, backdrop uses the ladder token.
+    expect(
+      declarationFor(css, ".sidebar", "transform", { within: "(max-width: 768px)" })
+    ).toBe("translateX(-100%)");
+    expect(
+      declarationFor(css, ".app-shell.mobile-nav-open .sidebar", "transform", {
+        within: "(max-width: 768px)"
+      })
+    ).toBe("translateX(0)");
+    expect(
+      declarationFor(css, ".sidebar-drawer-backdrop", "z-index", { within: "(max-width: 768px)" })
+    ).toBe("var(--z-drawer-backdrop)");
+
+    // The user menu trigger stays reachable below 900px (avatar-only, not display:none).
+    expect(
+      declarationFor(css, ".topbar-user-trigger", "width", { within: "(max-width: 900px)" })
+    ).toBe("38px");
   });
 
   it("keeps the feedback dialog wide enough for form and screenshot capture columns", () => {
