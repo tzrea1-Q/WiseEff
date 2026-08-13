@@ -5,11 +5,11 @@ import { cn } from "@/lib/utils";
 export type PageInsightAction = {
   label: string;
   onClick: () => void;
-  tone?: "primary" | "subtle";
+  variant?: "primary" | "subtle";
 };
 
 export type PageInsightBarProps = {
-  severity: "info" | "warn" | "error";
+  variant: "info" | "warn" | "error";
   icon?: ReactNode;
   headline: string;
   description?: string;
@@ -18,7 +18,7 @@ export type PageInsightBarProps = {
   className?: string;
 };
 
-const SEVERITY_STYLES = {
+const VARIANT_STYLES = {
   info: {
     bg: "border-primary/20 bg-primary/5",
     text: "text-foreground",
@@ -40,7 +40,7 @@ const SEVERITY_STYLES = {
 } as const;
 
 export function PageInsightBar({
-  severity,
+  variant,
   icon,
   headline,
   description,
@@ -48,9 +48,9 @@ export function PageInsightBar({
   onDismiss,
   className
 }: PageInsightBarProps) {
-  const styles = SEVERITY_STYLES[severity];
+  const styles = VARIANT_STYLES[variant];
   const DefaultIcon = styles.icon;
-  const role = severity === "error" ? "alert" : "status";
+  const role = variant === "error" ? "alert" : "status";
 
   return (
     <div role={role} className={cn("flex items-start gap-3 rounded-lg border p-3.5", styles.bg, styles.text, className)}>
@@ -67,7 +67,7 @@ export function PageInsightBar({
                 onClick={action.onClick}
                 className={cn(
                   "inline-flex h-7 items-center rounded-md px-2.5 text-xs font-medium transition-colors",
-                  action.tone === "primary"
+                  action.variant === "primary"
                     ? "bg-primary text-primary-foreground hover:bg-primary/90"
                     : "text-foreground/80 hover:bg-background hover:text-foreground"
                 )}

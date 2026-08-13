@@ -8,7 +8,9 @@ import {
   PanelLeftOpen,
   UserRound
 } from "lucide-react";
-import { createPortal } from "react-dom";
+import { AppShellSkeleton } from "@/components/common/AppShellSkeleton";
+import { ModalDialog } from "@/components/common/ModalDialog";
+import { ToastProvider } from "@/components/common/toast/ToastProvider";
 import { TopBarNotifications } from "./components/notifications/TopBarNotifications";
 import { createStateBackedNotificationsClient } from "@/infrastructure/mock/mockNotificationsGateway";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
@@ -256,23 +258,25 @@ function App({
   );
   return (
     <TooltipProvider delayDuration={0}>
-      <AppShell
-        authClient={authClient}
-        debuggingAdminClient={debuggingAdminClient}
-        debuggingGateway={debuggingGateway}
-        initialAppState={resolvedInitialAppState}
-        key={mockDataFingerprint}
-        logAnalysisRepository={logAnalysisRepository}
-        listParameterConfigSets={listParameterConfigSets}
-        parameterRepository={parameterRepository}
-        parameterTopologyRepository={parameterTopologyRepository}
-        parameterInitializationRepository={parameterInitializationRepository}
-        productFeedbackRepository={productFeedbackRepository}
-        knowledgeRepository={knowledgeRepository}
-        dtsReloadRepository={dtsReloadRepository}
-        runtimeMode={runtimeMode}
-        userGovernanceActions={userGovernanceActions}
-      />
+      <ToastProvider>
+        <AppShell
+          authClient={authClient}
+          debuggingAdminClient={debuggingAdminClient}
+          debuggingGateway={debuggingGateway}
+          initialAppState={resolvedInitialAppState}
+          key={mockDataFingerprint}
+          logAnalysisRepository={logAnalysisRepository}
+          listParameterConfigSets={listParameterConfigSets}
+          parameterRepository={parameterRepository}
+          parameterTopologyRepository={parameterTopologyRepository}
+          parameterInitializationRepository={parameterInitializationRepository}
+          productFeedbackRepository={productFeedbackRepository}
+          knowledgeRepository={knowledgeRepository}
+          dtsReloadRepository={dtsReloadRepository}
+          runtimeMode={runtimeMode}
+          userGovernanceActions={userGovernanceActions}
+        />
+      </ToastProvider>
     </TooltipProvider>
   );
 }
@@ -951,10 +955,13 @@ function AppShell({
       ? "app-shell sidebar-is-collapsed"
       : "app-shell";
 
+  if (runtimeMode === "api" && apiAuthStatus === "checking") {
+    // Session probe in flight: show the app-shell skeleton instead of a blank
+    // screen (or a flash of the login form) while `/api/v1/me` resolves.
+    return <AppShellSkeleton />;
+  }
+
   if (runtimeMode === "api" && apiAuthStatus !== "authenticated") {
-    if (apiAuthStatus === "checking") {
-      return <ApiAuthCheckingScreen />;
-    }
     if (apiAuthStatus === "unreachable") {
       return <ApiUnreachableScreen onRetry={retryAuthProbe} />;
     }
@@ -1430,23 +1437,6 @@ function TopBar({
   );
 }
 
-function ApiAuthCheckingScreen() {
-  return (
-    <main className="auth-screen" aria-busy="true" aria-labelledby="auth-checking-title">
-      <section className="auth-panel auth-status-panel">
-        <div className="auth-brand">
-          <WiseEffIcon className="auth-brand-icon" title="雷泽" />
-          <div>
-            <span className="eyebrow">WiseEff</span>
-            <h1 id="auth-checking-title">正在恢复会话…</h1>
-          </div>
-        </div>
-        <p className="auth-status-note">正在验证登录状态，请稍候。</p>
-      </section>
-    </main>
-  );
-}
-
 function ApiUnreachableScreen({ onRetry }: { onRetry: () => void }) {
   return (
     <main className="auth-screen" aria-labelledby="auth-unreachable-title">
@@ -1670,36 +1660,36 @@ function ProfileDialog({
     }
   }
 
-  return createPortal(
-    <div className="modal-backdrop profile-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="profile-dialog-title">
-      <form className="profile-dialog" onSubmit={submit}>
-        <header>
-          <span className="eyebrow">Account</span>
-          <h2 id="profile-dialog-title">个人资料</h2>
-          <p>{userAccountIdentifier(user)}</p>
-        </header>
-        <label>
-          <span>姓名</span>
-          <input value={name} onChange={(event) => setName(event.target.value)} required />
-        </label>
-        <label>
-          <span>职务</span>
-          <input value={title} onChange={(event) => setTitle(event.target.value)} required />
-        </label>
-        {error ? <p role="alert" className="auth-error">{error}</p> : null}
-        <footer>
-          <button type="button" className="button profile-dialog__button profile-dialog__button--secondary" onClick={onCancel}>
-            取消
-          </button>
-          <button type="submit" className="button primary profile-dialog__button profile-dialog__button--primary" disabled={submitting}>
-            保存
-          </button>
-        </footer>
-      </form>
-    </div>,
-    document.body
+  return (
+    <ModalDialog open onDismiss={submitting ? undefined : onCancel} className="profile-dialog">
+      {({ titleId }) => (
+        <form className="modal-form-contents" onSubmit={submit}>
+          <header>
+            <span className="eyebrow">Account</span>
+            <h2 id={titleId}>个人资料</h2>
+            <p>{userAccountIdentifier(user)}</p>
+          </header>
+          <label>
+            <span>姓名</span>
+            <input value={name} onChange={(event) => setName(event.target.value)} required />
+          </label>
+          <label>
+            <span>职务</span>
+            <input value={title} onChange={(event) => setTitle(event.target.value)} required />
+          </label>
+          {error ? <p role="alert" className="auth-error">{error}</p> : null}
+          <footer>
+            <button type="button" className="button profile-dialog__button profile-dialog__button--secondary" onClick={onCancel}>
+              取消
+            </button>
+            <button type="submit" className="button primary profile-dialog__button profile-dialog__button--primary" disabled={submitting}>
+              保存
+            </button>
+          </footer>
+        </form>
+      )}
+    </ModalDialog>
   );
 }
-
 
 export default App;

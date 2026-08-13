@@ -1,7 +1,8 @@
 import { Eye, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import type { Dispatch } from "react";
 import type { AppAction } from "@/application/state/appState";
+import { ModalDialog } from "@/components/common/ModalDialog";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { ConfirmDialog } from "./components/common/ConfirmDialog";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "./components/tableFilterUtils";
@@ -53,11 +54,6 @@ const wizardSteps = [
 ] as const;
 
 export function ProjectParameterInitializationWizard({ state, dispatch, onClose }: Props) {
-  const dialogRef = useRef<HTMLDivElement | null>(null);
-  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
-  const previouslyFocusedElementRef = useRef<HTMLElement | null>(
-    typeof document === "undefined" ? null : document.activeElement instanceof HTMLElement ? document.activeElement : null
-  );
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [projectName, setProjectName] = useState("");
   const [projectCode, setProjectCode] = useState("");
@@ -152,71 +148,6 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
   const detailSourceValue = detailCandidate && detailParameter
     ? detailParameter.values[detailCandidate.sourceProjectId]
     : undefined;
-
-  useEffect(() => {
-    closeButtonRef.current?.focus();
-    return () => {
-      previouslyFocusedElementRef.current?.focus();
-    };
-  }, []);
-
-  function getFocusableElements() {
-    return Array.from(
-      dialogRef.current?.querySelectorAll<HTMLElement>(
-        'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])'
-      ) ?? []
-    ).filter((element) => !element.hasAttribute("disabled") && element.tabIndex !== -1);
-  }
-
-  // Any field or selection the user has made counts as protected work.
-  const wizardDirty =
-    currentStepIndex > 0 ||
-    Boolean(projectName.trim()) ||
-    Boolean(projectCode.trim()) ||
-    Boolean(notes.trim()) ||
-    ownerUserId !== state.currentUserId ||
-    sourceProjectIds.length > 0 ||
-    Boolean(primarySourceProjectId) ||
-    selectedModules.length > 0 ||
-    selectedRisks.length > 0 ||
-    selectedParameterIds.length > 0 ||
-    startFromEmpty;
-
-  function requestClose() {
-    if (wizardDirty) {
-      setCloseConfirmOpen(true);
-      return;
-    }
-    onClose();
-  }
-
-  function handleDialogKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-    if (event.key === "Escape") {
-      event.stopPropagation();
-      requestClose();
-      return;
-    }
-
-    if (event.key !== "Tab") {
-      return;
-    }
-
-    const focusableElements = getFocusableElements();
-    if (focusableElements.length === 0) {
-      event.preventDefault();
-      return;
-    }
-
-    const firstElement = focusableElements[0];
-    const lastElement = focusableElements[focusableElements.length - 1];
-    if (event.shiftKey && document.activeElement === firstElement) {
-      event.preventDefault();
-      lastElement.focus();
-    } else if (!event.shiftKey && document.activeElement === lastElement) {
-      event.preventDefault();
-      firstElement.focus();
-    }
-  }
 
   function toggleStartFromEmpty() {
     setError("");
@@ -321,6 +252,28 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
     }
 
     return true;
+  }
+
+  // Any field or selection the user has made counts as protected work.
+  const wizardDirty =
+    currentStepIndex > 0 ||
+    Boolean(projectName.trim()) ||
+    Boolean(projectCode.trim()) ||
+    Boolean(notes.trim()) ||
+    ownerUserId !== state.currentUserId ||
+    sourceProjectIds.length > 0 ||
+    Boolean(primarySourceProjectId) ||
+    selectedModules.length > 0 ||
+    selectedRisks.length > 0 ||
+    selectedParameterIds.length > 0 ||
+    startFromEmpty;
+
+  function requestClose() {
+    if (wizardDirty) {
+      setCloseConfirmOpen(true);
+      return;
+    }
+    onClose();
   }
 
   function goToNextStep() {
@@ -869,25 +822,14 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
   }
 
   return (
-    <div
-      className="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="project-init-title"
-      ref={dialogRef}
-      tabIndex={-1}
-      onKeyDown={handleDialogKeyDown}
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          requestClose();
-        }
-      }}
-    >
-      <section className="project-init-wizard">
+    <>
+      <ModalDialog open onDismiss={requestClose} className="project-init-wizard">
+      {({ titleId }) => (
+        <>
         <header className="project-init-header">
           <div>
             <span className="eyebrow">项目初始化</span>
-            <h2 id="project-init-title">新项目参数初始化</h2>
+            <h2 id={titleId}>新项目参数初始化</h2>
             <p>从参数库选择纳入本项目的参数，生成初始化快照并提交审阅。</p>
           </div>
           <button
@@ -895,7 +837,6 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
             type="button"
             aria-label="关闭项目初始化向导"
             onClick={requestClose}
-            ref={closeButtonRef}
           >
             <X size={16} />
           </button>
@@ -945,7 +886,9 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
             </button>
           </div>
         </footer>
-      </section>
+        </>
+      )}
+      </ModalDialog>
       <ConfirmDialog
         open={closeConfirmOpen}
         title="放弃项目初始化？"
@@ -959,6 +902,6 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
           onClose();
         }}
       />
-    </div>
+    </>
   );
 }

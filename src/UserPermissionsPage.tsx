@@ -2,9 +2,15 @@ import { useEffect, useMemo, useState, type CSSProperties, type Dispatch, type F
 import { UserPlus } from "lucide-react";
 
 import type { AppAction } from "@/application/state/appState";
-import { ColumnFilter } from "@/components/ColumnFilter";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
-import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "@/components/tableFilterUtils";
+import { DataTable, type Column } from "@/components/admin";
+import { ModalDialog } from "@/components/common/ModalDialog";
+import {
+  toggleFilterValue,
+  uniqueFilterValues,
+  type HeaderFilterConfig,
+  type HeaderFilterState
+} from "@/components/tableFilterUtils";
 import { migrateLegacyRoleId, platformRoles, type PermissionKey, type PlatformRoleId } from "@/domain/users/types";
 import type { PrototypeState, User } from "@/domain/prototype/types";
 
@@ -230,26 +236,16 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
     setColumnFilters((current) => ({ ...current, [key]: [] }));
   }
 
-  function renderColumnFilter(key: UserColumnFilterKey, label: string) {
-    return (
-      <ColumnFilter
-        label={label}
-        groupLabel={`${label}筛选`}
-        values={uniqueFilterValues(state.users, (user) => userColumnFilterValue(user, key))}
-        selectedValues={columnFilters[key] ?? []}
-        onToggle={(value) => toggleColumnFilter(key, value)}
-        onClear={() => clearColumnFilter(key)}
-      />
-    );
-  }
-
-  function renderHeader(key: UserColumnFilterKey, label: string) {
-    return (
-      <div className="user-permissions-table-head">
-        <span>{label}</span>
-        {renderColumnFilter(key, label)}
-      </div>
-    );
+  function headerFilterConfig(key: UserColumnFilterKey, label: string): HeaderFilterConfig<User> {
+    return {
+      label,
+      groupLabel: `${label}筛选`,
+      values: uniqueFilterValues(state.users, (user) => userColumnFilterValue(user, key)),
+      selectedValues: columnFilters[key] ?? [],
+      getValue: (user) => userColumnFilterValue(user, key),
+      onToggle: (value) => toggleColumnFilter(key, value),
+      onClear: () => clearColumnFilter(key)
+    };
   }
 
   function showRoleHint(userId: string, target: HTMLElement) {
@@ -411,6 +407,115 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
     setInitialRoleId("hardware-user");
   }
 
+  const accountColumns: Array<Column<User>> = [
+    {
+      key: "user",
+      header: "用户",
+      sortAccessor: (user) => user.name,
+      headerFilter: headerFilterConfig("user", "用户"),
+      render: (user) => (
+        <>
+          <strong>{user.name}</strong>
+          <div>{userAccountIdentifier(user)}</div>
+        </>
+      )
+    },
+    {
+      key: "title",
+      header: "职务",
+      sortAccessor: (user) => user.title,
+      headerFilter: headerFilterConfig("title", "职务"),
+      render: (user) => user.title
+    },
+    {
+      key: "role",
+      header: "角色",
+      widthClass: "user-permissions-role-header",
+      className: "user-permissions-role-cell",
+      sortAccessor: (user) => roleLabelOf(user.roleId),
+      headerFilter: headerFilterConfig("role", "角色"),
+      render: (user) => {
+        const isCurrentUser = user.id === state.currentUserId;
+        const normalizedRoleId = migrateLegacyRoleId(user.roleId);
+        const platformAdminLocked =
+          normalizedRoleId === "platform-admin" && !canGrantPlatformAdmin(state);
+
+        return (
+          <div
+            className="user-permissions-role-control"
+            onMouseEnter={(event) => showRoleHint(user.id, event.currentTarget)}
+            onMouseLeave={() => hideRoleHint(user.id)}
+          >
+            <select
+              className="user-permissions-role-select"
+              aria-label={`调整 ${user.name} 的角色`}
+              value={normalizedRoleId}
+              disabled={isCurrentUser || platformAdminLocked}
+              title={
+                platformAdminLocked
+                  ? "只有平台超级管理员可以调整平台超级管理员的角色。"
+                  : undefined
+              }
+              onFocus={(event) => showRoleHint(user.id, event.currentTarget)}
+              onBlur={() => hideRoleHint(user.id)}
+              onChange={(event) => {
+                const roleId = event.target.value as PlatformRoleId;
+                if (roleId === normalizedRoleId) return;
+                setGovernanceError(null);
+                setPendingGovernance({ kind: "role", user, nextRoleId: roleId });
+              }}
+            >
+              {assignableRolesForUser(state, normalizedRoleId).map((role) => (
+                <option key={role.id} value={role.id}>
+                  {roleLabelOf(role.id)}
+                </option>
+              ))}
+            </select>
+            {activeRoleHint?.userId === user.id ? (
+              <RoleCapabilityTooltip roleId={normalizedRoleId} position={activeRoleHint} />
+            ) : null}
+          </div>
+        );
+      }
+    },
+    {
+      key: "status",
+      header: "状态",
+      sortAccessor: (user) => statusLabelOf(user.isActive),
+      headerFilter: headerFilterConfig("status", "状态"),
+      render: (user) => {
+        const isCurrentUser = user.id === state.currentUserId;
+        const statusPlatformAdminLocked =
+          migrateLegacyRoleId(user.roleId) === "platform-admin" && !canGrantPlatformAdmin(state);
+
+        return (
+          <button
+            className="button"
+            type="button"
+            disabled={isCurrentUser || statusPlatformAdminLocked}
+            title={
+              statusPlatformAdminLocked
+                ? "只有平台超级管理员可以停用平台超级管理员。"
+                : undefined
+            }
+            onClick={() => {
+              setGovernanceError(null);
+              setPendingGovernance({ kind: "active", user, nextActive: !user.isActive });
+            }}
+          >
+            {user.isActive ? "停用" : "启用"}
+          </button>
+        );
+      }
+    },
+    {
+      key: "lastActive",
+      header: "最近活跃",
+      headerFilter: headerFilterConfig("lastActive", "最近活跃"),
+      render: (user) => user.lastActive
+    }
+  ];
+
   return (
     <section className="user-permissions-page" aria-label="用户权限">
       <div className="user-permissions-toolbar">
@@ -499,93 +604,13 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
             id="user-permissions-workspace-accounts-panel"
             aria-labelledby={approvalWorkflowEnabled ? "user-permissions-workspace-accounts" : undefined}
           >
-            <div className="user-permissions-table-card">
-              <table aria-label="平台用户">
-                <caption className="sr-only">平台用户</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">{renderHeader("user", "用户")}</th>
-                    <th scope="col">{renderHeader("title", "职务")}</th>
-                    <th scope="col" className="user-permissions-role-header">{renderHeader("role", "角色")}</th>
-                    <th scope="col">{renderHeader("status", "状态")}</th>
-                    <th scope="col">{renderHeader("lastActive", "最近活跃")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredUsers.map((user) => {
-                    const isCurrentUser = user.id === state.currentUserId;
-                    const normalizedRoleId = migrateLegacyRoleId(user.roleId);
-                    const platformAdminLocked =
-                      normalizedRoleId === "platform-admin" && !canGrantPlatformAdmin(state);
-
-                    return (
-                      <tr key={user.id}>
-                        <td>
-                          <strong>{user.name}</strong>
-                          <div>{userAccountIdentifier(user)}</div>
-                        </td>
-                        <td>{user.title}</td>
-                        <td
-                          className="user-permissions-role-cell"
-                          onMouseEnter={(event) => showRoleHint(user.id, event.currentTarget)}
-                          onMouseLeave={() => hideRoleHint(user.id)}
-                        >
-                          <div className="user-permissions-role-control">
-                            <select
-                              className="user-permissions-role-select"
-                              aria-label={`调整 ${user.name} 的角色`}
-                              value={normalizedRoleId}
-                              disabled={isCurrentUser || platformAdminLocked}
-                              title={
-                                platformAdminLocked
-                                  ? "只有平台超级管理员可以调整平台超级管理员的角色。"
-                                  : undefined
-                              }
-                              onFocus={(event) => showRoleHint(user.id, event.currentTarget)}
-                              onBlur={() => hideRoleHint(user.id)}
-                              onChange={(event) => {
-                                const roleId = event.target.value as PlatformRoleId;
-                                if (roleId === normalizedRoleId) return;
-                                setGovernanceError(null);
-                                setPendingGovernance({ kind: "role", user, nextRoleId: roleId });
-                              }}
-                            >
-                              {assignableRolesForUser(state, normalizedRoleId).map((role) => (
-                                <option key={role.id} value={role.id}>
-                                  {roleLabelOf(role.id)}
-                                </option>
-                              ))}
-                            </select>
-                            {activeRoleHint?.userId === user.id ? (
-                              <RoleCapabilityTooltip roleId={normalizedRoleId} position={activeRoleHint} />
-                            ) : null}
-                          </div>
-                        </td>
-                        <td>
-                          <button
-                            className="button"
-                            type="button"
-                            disabled={isCurrentUser || platformAdminLocked}
-                            title={
-                              platformAdminLocked
-                                ? "只有平台超级管理员可以停用平台超级管理员。"
-                                : undefined
-                            }
-                            onClick={() => {
-                              setGovernanceError(null);
-                              setPendingGovernance({ kind: "active", user, nextActive: !user.isActive });
-                            }}
-                          >
-                            {user.isActive ? "停用" : "启用"}
-                          </button>
-                        </td>
-                        <td>{user.lastActive}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              ariaLabel="平台用户"
+              rows={filteredUsers}
+              rowKey={(user) => user.id}
+              emptyMessage="没有符合筛选条件的用户，请调整搜索或筛选条件。"
+              columns={accountColumns}
+            />
           </div>
         </>
       ) : (
@@ -693,9 +718,15 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
       />
 
       {addUserOpen && (
-        <div role="dialog" aria-modal="true" aria-labelledby="add-user-title" className="user-permissions-modal">
-          <form className="user-permissions-modal-card" onSubmit={handleAddUserSubmit}>
-            <h3 id="add-user-title">添加用户</h3>
+        <ModalDialog
+          open
+          onDismiss={() => setAddUserOpen(false)}
+          className="user-permissions-modal-card modal-card--sm"
+          backdropClassName="user-permissions-modal"
+        >
+          {({ titleId }) => (
+          <form className="modal-form-contents" onSubmit={handleAddUserSubmit}>
+            <h3 id={titleId}>添加用户</h3>
             <div className="user-permissions-modal-fields">
               <label className="user-permissions-modal-field">
                 <span>姓名</span>
@@ -785,7 +816,8 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
               </button>
             </div>
           </form>
-        </div>
+          )}
+        </ModalDialog>
       )}
     </section>
   );

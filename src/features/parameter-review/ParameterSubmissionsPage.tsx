@@ -10,7 +10,7 @@ import { buildSubmissionWorkflowTrail } from "@/domain/parameters/submissionWork
 import { type User } from "@/domain/prototype/types";
 import { MetricCard, StatusBadge, formatWorkflowDisplayText, getUserName } from "@/features/parameter-review/reviewUi";
 import { SubmissionHistoryDiffCard } from "@/features/parameter-review/submissionHistoryDiff";
-import { EmptyStateCard, PanelHeader } from "@/workbenchUi";
+import { EmptyState, PanelHeader } from "@/workbenchUi";
 import { ArrowRight, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -128,7 +128,7 @@ export function ParameterSubmissionsPage({ state, dispatch, onNavigate, paramete
               </span>
             </Button>
           ))}
-          {myRounds.length === 0 ? <EmptyStateCard text="当前还没有你的历史提交。" /> : null}
+          {myRounds.length === 0 ? <EmptyState text="当前还没有你的历史提交。" /> : null}
         </aside>
         <section className="submission-round-detail" aria-label="提交轮次详情">
           {selectedRound ? (
@@ -164,7 +164,7 @@ export function ParameterSubmissionsPage({ state, dispatch, onNavigate, paramete
               </div>
             </>
           ) : (
-            <EmptyStateCard text="请选择一个提交轮次查看详情。" />
+            <EmptyState text="请选择一个提交轮次查看详情。" />
           )}
         </section>
       </section>

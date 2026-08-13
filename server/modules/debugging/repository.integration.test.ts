@@ -4,7 +4,7 @@ import {
   isTestDatabaseAvailable,
   type InMemoryTestDatabase
 } from "../../testing/testDatabase";
-import { setParameterIdentityMode } from "../parameters/parameterIdentityMode";
+import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import {
   acquireDebugDeviceLease,
   archiveDebugParameter,

@@ -1,5 +1,6 @@
 import { CircleX } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { ModalDialog } from "@/components/common/ModalDialog";
 import { ParameterDefinitionForm } from "@/components/ParameterDefinitionForm";
 import { RiskPicker } from "@/components/RiskPicker";
 import type { ParsedImportRow, ReviewedImportRow } from "@/application/parameters/import/types";
@@ -412,16 +413,6 @@ function NewParameterPrefillDialog({
     [draftParameter.module, moduleNames]
   );
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onCancel();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onCancel]);
-
   const firstProjectId = projects[0]?.id;
   const recommendedValue = firstProjectId ? draftParameter.values[firstProjectId]?.recommendedValue ?? "" : "";
   const canSubmit = Boolean(draftParameter.name.trim()) && Boolean(draftParameter.module.trim());
@@ -460,39 +451,41 @@ function NewParameterPrefillDialog({
   };
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label={`预填并创建参数 ${row.name}`}>
-      <div className="submission-dialog param-admin-editor-dialog">
-        <div className="submission-dialog-head param-admin-editor-dialog-head">
-          <div className="param-admin-editor-dialog-head-text">
-            <span className="eyebrow">批量导入 · 新增参数</span>
-            <h2>预填并创建</h2>
-            <p>基于导入行内容预填参数定义，确认后标记为已创建，将在应用阶段写入参数库。</p>
+    <ModalDialog open onDismiss={onCancel} className="submission-dialog param-admin-editor-dialog">
+      {({ titleId }) => (
+        <>
+          <div className="submission-dialog-head param-admin-editor-dialog-head">
+            <div className="param-admin-editor-dialog-head-text">
+              <span className="eyebrow">批量导入 · 新增参数</span>
+              <h2 id={titleId}>预填并创建</h2>
+              <p>基于导入行内容预填参数定义，确认后标记为已创建，将在应用阶段写入参数库。</p>
+            </div>
+            <button type="button" className="audit-dialog-close-icon" onClick={onCancel} aria-label="关闭">
+              <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
+            </button>
           </div>
-          <button type="button" className="audit-dialog-close-icon" onClick={onCancel} aria-label="关闭">
-            <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
-          </button>
-        </div>
 
-        <div className="param-admin-editor-dialog-body">
-          <ParameterDefinitionForm
-            parameter={draftParameter}
-            projects={projects}
-            moduleNodes={moduleNodes}
-            allParameters={libraryParameters}
-            onMetadataChange={handleMetadataChange}
-            onRecommendedValueChange={handleRecommendedValueChange}
-          />
-        </div>
+          <div className="param-admin-editor-dialog-body">
+            <ParameterDefinitionForm
+              parameter={draftParameter}
+              projects={projects}
+              moduleNodes={moduleNodes}
+              allParameters={libraryParameters}
+              onMetadataChange={handleMetadataChange}
+              onRecommendedValueChange={handleRecommendedValueChange}
+            />
+          </div>
 
-        <div className="dialog-actions">
-          <button type="button" className="button subtle" onClick={onCancel}>
-            取消
-          </button>
-          <button type="button" className="button primary" disabled={!canSubmit} onClick={handleSubmit}>
-            确认创建
-          </button>
-        </div>
-      </div>
-    </div>
+          <div className="dialog-actions">
+            <button type="button" className="button subtle" onClick={onCancel}>
+              取消
+            </button>
+            <button type="button" className="button primary" disabled={!canSubmit} onClick={handleSubmit}>
+              确认创建
+            </button>
+          </div>
+        </>
+      )}
+    </ModalDialog>
   );
 }

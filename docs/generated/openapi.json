@@ -5498,6 +5498,100 @@
         }
       }
     },
+    "/api/v1/log-domains/{domainId}/knowledge-links": {
+      "get": {
+        "operationId": "logs.listDomainKnowledgeLinks",
+        "summary": "List a log domain's linked knowledge entries",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "domainId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogDomainKnowledgeLinkListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "put": {
+        "operationId": "logs.setDomainKnowledgeLinks",
+        "summary": "Replace a log domain's knowledge-entry links (published entries only)",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "domainId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetLogDomainKnowledgeLinksRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogDomainKnowledgeLinkListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/product-feedback": {
       "post": {
         "operationId": "productFeedback.create",
@@ -10516,6 +10610,14 @@
       "UpdateLogDomainRequest": {
         "type": "object",
         "x-wiseeff-schema": "UpdateLogDomainRequest"
+      },
+      "LogDomainKnowledgeLinkListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "LogDomainKnowledgeLinkListResponse"
+      },
+      "SetLogDomainKnowledgeLinksRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "SetLogDomainKnowledgeLinksRequest"
       },
       "CreateProductFeedbackRequest": {
         "type": "object",

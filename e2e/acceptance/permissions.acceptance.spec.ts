@@ -59,6 +59,14 @@ async function setPrototypeRole(page: Page, roleName: string) {
   await signInBrowserAsRoleLabel(page, roleName, page.url() || "/user-permissions");
 }
 
+/**
+ * The accounts table is a paginated DataTable (10 rows per page), so a specific
+ * user's row may sit on a later page. Narrow with the page's search filter first.
+ */
+async function filterUsersTo(page: Page, query: string) {
+  await page.getByRole("search", { name: "用户筛选" }).getByLabel("搜索").fill(query);
+}
+
 async function apiExposesPermissionAudit(page: Page, userName: string, roleId: string) {
   if (!databaseUrl) {
     return false;
@@ -169,17 +177,23 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     await expect(page.getByRole("region", { name: "用户权限" })).toBeVisible();
     const table = page.getByRole("table", { name: "平台用户" });
     await expect(table).toBeVisible();
+    await filterUsersTo(page, "Xu Yun");
     await expect(table.getByRole("row").filter({ hasText: "Xu Yun" })).toBeVisible();
+    await filterUsersTo(page, "Tao Lin");
     await expect(table.getByRole("row").filter({ hasText: "Tao Lin" })).toBeVisible();
 
+    await filterUsersTo(page, "Liu Min");
     const liuRow = table.getByRole("row").filter({ hasText: "Liu Min" });
     await expect(liuRow.getByRole("combobox", { name: "调整 Liu Min 的角色" })).toHaveValue("software-user");
+    await filterUsersTo(page, "Tao Lin");
     await expect(table.getByRole("row").filter({ hasText: "Tao Lin" }).getByRole("button", { name: "启用" })).toBeVisible();
 
+    await filterUsersTo(page, "Xu Yun");
     const currentAdminRow = table.getByRole("row").filter({ hasText: "Xu Yun" });
     await expect(currentAdminRow.getByRole("combobox", { name: "调整 Xu Yun 的角色" })).toBeDisabled();
     await expect(currentAdminRow.getByRole("button", { name: "停用" })).toBeDisabled();
 
+    await filterUsersTo(page, "Wang Jie");
     const wangRole = table.getByRole("row").filter({ hasText: "Wang Jie" }).getByRole("combobox", { name: "调整 Wang Jie 的角色" });
     await wangRole.selectOption("software-committer");
     // Role changes now require an explicit governance confirmation (HCI trust repair wave 1).
@@ -226,6 +240,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
 
     await expect(page.getByRole("region", { name: "用户权限" })).toBeVisible();
     const table = page.getByRole("table", { name: "平台用户" });
+    await filterUsersTo(page, "Wang Jie");
     const wangRole = table.getByRole("row").filter({ hasText: "Wang Jie" }).getByRole("combobox", { name: "调整 Wang Jie 的角色" });
 
     await wangRole.selectOption("software-committer");
@@ -248,6 +263,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     await addUserDialog.getByRole("button", { name: "创建用户" }).click();
     await expect(addUserDialog).not.toBeVisible();
 
+    await filterUsersTo(page, createdAcceptanceUsername);
     const chenRow = table.getByRole("row").filter({ hasText: createdAcceptanceUsername });
     await expect(chenRow).toBeVisible();
     await expect(chenRow).toContainText(createdAcceptanceUsername);

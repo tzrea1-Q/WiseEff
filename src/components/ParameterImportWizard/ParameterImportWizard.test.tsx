@@ -33,13 +33,13 @@ describe("ParameterImportWizard", () => {
   it("does not render anything when closed", () => {
     renderWizard({ open: false });
 
-    expect(screen.queryByRole("dialog", { name: "批量参数导入向导" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "批量参数导入" })).not.toBeInTheDocument();
   });
 
   it("shows step 1 controls with the target project defaulted to the active project", () => {
     renderWizard();
 
-    const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入" });
     const projectSelect = within(dialog).getByLabelText("目标项目") as HTMLSelectElement;
     expect(projectSelect).toHaveValue(initialState.activeProjectId);
 
@@ -58,7 +58,7 @@ describe("ParameterImportWizard", () => {
   it("enables next once paste content is provided and a project is selected", () => {
     renderWizard();
 
-    const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入" });
     fillPasteImportContent(dialog, '[{"name":"x"}]');
 
     expect(within(dialog).getByRole("button", { name: "下一步" })).toBeEnabled();
@@ -67,7 +67,7 @@ describe("ParameterImportWizard", () => {
   it("closes when the close icon is clicked", () => {
     const { onClose } = renderWizard();
 
-    const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入" });
     fireEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
 
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -85,7 +85,7 @@ describe("ParameterImportWizard", () => {
   it("guards Escape/close with a discard confirmation once parse progress exists", async () => {
     const { onClose } = renderWizard();
 
-    const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入" });
     fillPasteImportContent(
       dialog,
       JSON.stringify([
@@ -101,7 +101,9 @@ describe("ParameterImportWizard", () => {
       ])
     );
     fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
-    await screen.findByText(/解析校验/);
+    // The stepper label 解析校验 is always visible on step 1, so wait for the
+    // step-2 parse summary region — proof the async parse actually landed.
+    await within(dialog).findByRole("region", { name: "解析与校验" });
 
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).not.toHaveBeenCalled();
@@ -123,7 +125,7 @@ describe("ParameterImportWizard", () => {
   it("opens the project creation dialog and dispatches a local project in mock mode", () => {
     const { dispatch } = renderWizard();
 
-    const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入" });
     fireEvent.click(within(dialog).getByRole("button", { name: "+ 新建项目" }));
 
     const createDialog = screen.getByRole("dialog", { name: "新建项目" });
@@ -141,7 +143,7 @@ describe("ParameterImportWizard", () => {
   it("parses a pasted JSON fixture and shows the Step 2 parse summary counts", async () => {
     renderWizard();
 
-    const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入" });
     fillPasteImportContent(
       dialog,
       JSON.stringify([
@@ -170,7 +172,7 @@ describe("ParameterImportWizard", () => {
   it("enables Step 3 next once every row has been approved", async () => {
     renderWizard();
 
-    const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入" });
     fillPasteImportContent(
       dialog,
       JSON.stringify([
@@ -201,7 +203,7 @@ describe("ParameterImportWizard", () => {
   it("blocks advancing past Step 2 when parsing produces zero rows", async () => {
     renderWizard();
 
-    const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入" });
     fillPasteImportContent(dialog, "not,valid,parameter,rows");
     fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
 
@@ -212,7 +214,7 @@ describe("ParameterImportWizard", () => {
   it("shows the target project as read-only from step 3 onward", async () => {
     renderWizard();
 
-    const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入" });
     fillPasteImportContent(
       dialog,
       JSON.stringify([
@@ -260,7 +262,7 @@ describe("ParameterImportWizard", () => {
       }
     });
 
-    const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入" });
     fillPasteImportContent(dialog, '/dts-v1/;\n/include/ "pin.dtsi"\n/ { board_id = <0>; };\n');
     expect(within(dialog).getByRole("status")).toHaveTextContent("将使用服务端解析");
 
@@ -309,7 +311,7 @@ describe("ParameterImportWizard", () => {
       }
     });
 
-    const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入" });
     fillPasteImportContent(
       dialog,
       JSON.stringify([
@@ -405,7 +407,7 @@ describe("ParameterImportWizard", () => {
       { strict: true }
     );
 
-    const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入" });
     fillPasteImportContent(
       dialog,
       JSON.stringify([

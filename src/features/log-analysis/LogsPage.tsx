@@ -2,9 +2,10 @@ import { ColumnFilter } from "@/components/ColumnFilter";
 import { useTopBarActions } from "@/components/layout";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "@/components/tableFilterUtils";
 import { type PageProps } from "@/app/routes";
+import { ModalDialog } from "@/components/common/ModalDialog";
 import type { LogDomain } from "@/domain/logs/types";
 import { SEVERITY_LABELS, STAGE_LABELS, type LogEvidence, type LogRecord, type LogStageId } from "@/domain/prototype/types";
-import { EmptyStateCard, PanelHeader, SectionLabel } from "@/workbenchUi";
+import { EmptyState, PanelHeader, SectionLabel } from "@/workbenchUi";
 import {
   AlertTriangle,
   BookPlus,
@@ -135,6 +136,10 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
     }
     prevLogCount.current = state.logs.length;
   }, [state.logs]);
+
+  // Reducer notifications render through the global AppToastLayer in both
+  // runtime modes (the API-mode inbox never receives ADD_NOTIFICATION), so no
+  // per-page bridge is needed here.
 
   useEffect(() => {
     setSearchQuery("");
@@ -494,22 +499,6 @@ function UploadLogDialog({
   const resolvedDomainId = selectedDomainId === UNCATEGORIZED_LOG_DOMAIN_VALUE ? undefined : selectedDomainId;
 
   useEffect(() => {
-    fileInputRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onClose();
-      }
-    };
-
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [onClose]);
-
-  useEffect(() => {
     return () => {
       if (timerRef.current !== null) {
         window.clearTimeout(timerRef.current);
@@ -589,11 +578,12 @@ function UploadLogDialog({
   };
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="upload-dialog-title">
-      <div className="confirm-dialog upload-dialog">
+    <ModalDialog open onDismiss={uploading ? undefined : onClose} className="confirm-dialog upload-dialog">
+      {({ titleId }) => (
+        <>
         <div className="upload-dialog__header">
           <div>
-            <h2 id="upload-dialog-title"><strong>上传日志</strong></h2>
+            <h2 id={titleId}><strong>上传日志</strong></h2>
             <p>选择 .log、.txt 或 .json 文本日志，雷泽会模拟创建分析任务。</p>
           </div>
           <button className="icon-button" type="button" aria-label="关闭上传日志" onClick={onClose}>
@@ -666,8 +656,9 @@ function UploadLogDialog({
             </button>
           ) : null}
         </div>
-      </div>
-    </div>
+        </>
+      )}
+    </ModalDialog>
   );
 }
 
@@ -718,7 +709,11 @@ const degradedReasonLabels: Record<NonNullable<LogRecord["degradedReason"]>, str
 };
 
 function AnalysisProvenanceBadges({ log }: { log: LogRecord }) {
-  const degraded = log.analysisSource === "rules-fallback";
+  const isFallback = log.analysisSource === "rules-fallback";
+  // P2 loop kernel: an exhausted budget converges early into a marked low-confidence
+  // agent conclusion — still degraded analysis, never presented as a full analysis.
+  const isEarlyConverged = log.analysisSource === "agent" && log.degradedReason !== undefined;
+  const degraded = isFallback || isEarlyConverged;
   if (!degraded && log.analysisSource !== "agent" && !log.logDomainName) {
     return null;
   }
@@ -729,7 +724,7 @@ function AnalysisProvenanceBadges({ log }: { log: LogRecord }) {
         {degraded ? (
           <span className="analysis-provenance__badge analysis-provenance__badge--degraded" role="status">
             <AlertTriangle size={13} />
-            降级分析 · 规则回退
+            {isFallback ? "降级分析 · 规则回退" : "降级分析 · 提前收敛"}
           </span>
         ) : log.analysisSource === "agent" ? (
           <span className="analysis-provenance__badge analysis-provenance__badge--agent">
@@ -743,7 +738,11 @@ function AnalysisProvenanceBadges({ log }: { log: LogRecord }) {
       </div>
       {degraded ? (
         <p className="analysis-provenance__reason">
-          {log.degradedReason ? degradedReasonLabels[log.degradedReason] : "本结论由规则引擎回退生成"}
+          {isFallback
+            ? log.degradedReason
+              ? degradedReasonLabels[log.degradedReason]
+              : "本结论由规则引擎回退生成"
+            : "分析步数或 token 预算耗尽，Agent 基于已读证据提前收敛为低置信结论"}
         </p>
       ) : null}
     </div>
@@ -858,11 +857,12 @@ function LogAnalysisFeedbackDialog({
   };
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="log-feedback-title">
-      <form className="confirm-dialog log-feedback-dialog" onSubmit={submitFeedback}>
+    <ModalDialog open onDismiss={onClose} className="confirm-dialog log-feedback-dialog">
+      {({ titleId }) => (
+      <form className="modal-form-contents" onSubmit={submitFeedback}>
         <div className="upload-dialog__header">
           <div>
-            <h2 id="log-feedback-title">
+            <h2 id={titleId}>
               <strong>反馈分析质量</strong>
             </h2>
             <p>{log.fileName}</p>
@@ -904,7 +904,8 @@ function LogAnalysisFeedbackDialog({
           </button>
         </div>
       </form>
-    </div>
+      )}
+    </ModalDialog>
   );
 }
 
@@ -1303,7 +1304,7 @@ function LogsAuxPanel({
             </div>
           </dl>
         ) : null}
-        {auxTab === "related" ? <EmptyStateCard text="没有找到关联日志。" /> : null}
+        {auxTab === "related" ? <EmptyState text="没有找到关联日志。" /> : null}
       </div>
     </aside>
   );

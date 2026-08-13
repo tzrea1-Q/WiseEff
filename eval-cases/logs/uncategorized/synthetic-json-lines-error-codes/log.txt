@@ -1,0 +1,6 @@
+{"ts":"2026-08-12T09:30:00Z","level":"INFO","svc":"sync-worker","msg":"batch start","batch":"b-771"}
+{"ts":"2026-08-12T09:30:02Z","level":"INFO","svc":"sync-worker","msg":"fetched 240 rows","batch":"b-771"}
+{"ts":"2026-08-12T09:30:03Z","level":"ERROR","svc":"sync-worker","msg":"write rejected","code":"E_SCHEMA_MISMATCH","batch":"b-771","detail":"column device_class missing on target"}
+{"ts":"2026-08-12T09:30:04Z","level":"ERROR","svc":"sync-worker","msg":"write rejected","code":"E_SCHEMA_MISMATCH","batch":"b-771","detail":"column device_class missing on target"}
+{"ts":"2026-08-12T09:30:05Z","level":"WARN","svc":"sync-worker","msg":"batch aborted after repeated failures","batch":"b-771"}
+{"ts":"2026-08-12T09:30:06Z","level":"INFO","svc":"sync-worker","msg":"scheduling retry","backoff_s":300}

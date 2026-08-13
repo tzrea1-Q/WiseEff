@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 
 import { LocalDeviceBridgeWizard } from "./LocalDeviceBridgeWizard";
 import {
@@ -83,6 +84,7 @@ export function LocalDeviceBridgePanel({
   const [renameDraftById, setRenameDraftById] = useState<Record<string, string>>({});
   const [renamingBridgeId, setRenamingBridgeId] = useState<string | null>(null);
   const [revokingBridgeId, setRevokingBridgeId] = useState<string | null>(null);
+  const [revokeCandidate, setRevokeCandidate] = useState<DeviceBridgeRecord | null>(null);
   const [releasesLoading, setReleasesLoading] = useState(false);
   const installReleasesLoadedRef = useRef(false);
   const lastEmittedBridgeStateRef = useRef<LocalDeviceBridgePanelState | null>(null);
@@ -310,13 +312,15 @@ export function LocalDeviceBridgePanel({
     }
   };
 
-  const handleRevokeBridge = async (bridge: DeviceBridgeRecord) => {
+  const handleRevokeBridge = (bridge: DeviceBridgeRecord) => {
     if (bridge.revokedAt) {
       return;
     }
-    if (!window.confirm(`确认撤销设备代理「${bridge.machineLabel}」吗？`)) {
-      return;
-    }
+    setRevokeCandidate(bridge);
+  };
+
+  const confirmRevokeBridge = async (bridge: DeviceBridgeRecord) => {
+    setRevokeCandidate(null);
     setRevokingBridgeId(bridge.id);
     setPanelError("");
     try {
@@ -417,6 +421,19 @@ export function LocalDeviceBridgePanel({
         </details>
       ) : null}
       {panelError ? <p className="node-row-error">{panelError}</p> : null}
+      <ConfirmDialog
+        open={revokeCandidate !== null}
+        title="撤销设备代理"
+        description={revokeCandidate ? `确认撤销设备代理「${revokeCandidate.machineLabel}」吗？` : ""}
+        confirmLabel="撤销"
+        tone="danger"
+        onConfirm={() => {
+          if (revokeCandidate) {
+            void confirmRevokeBridge(revokeCandidate);
+          }
+        }}
+        onCancel={() => setRevokeCandidate(null)}
+      />
     </section>
   );
 }

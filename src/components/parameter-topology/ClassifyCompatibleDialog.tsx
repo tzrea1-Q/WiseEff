@@ -3,6 +3,7 @@ import { useEffect, useId, useMemo, useState } from "react";
 
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import type { MappingApplyPreview } from "@/application/ports/ParameterModuleRegistryRepository";
+import { ModalDialog } from "@/components/common/ModalDialog";
 import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
 import type { UnmappedCompatibleHint } from "@/domain/parameter-topology/moduleDiscovery";
 import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
@@ -54,14 +55,6 @@ export function ClassifyCompatibleDialog({
     );
   }, [businessNodes, hints]);
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCancel();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onCancel]);
-
   const blocked = (preview?.conflicts.length ?? 0) > 0;
   const groups = hints.map((hint) => ({
     compatible: hint.compatible,
@@ -78,17 +71,18 @@ export function ClassifyCompatibleDialog({
     : PARAMETER_ADMIN_UI.classifyDialogTitle;
 
   return (
-    <div
-      className="modal-backdrop param-admin-module-edit-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
+    <ModalDialog
+      open
+      onDismiss={onCancel}
+      className="submission-dialog param-admin-module-edit-dialog classify-compatible-dialog"
+      backdropClassName="param-admin-modal-backdrop"
     >
-      <div className="submission-dialog param-admin-module-edit-dialog classify-compatible-dialog">
+      {({ titleId }) => (
+        <>
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
             <span className="eyebrow">{PARAMETER_ADMIN_UI.classifyDialogEyebrow}</span>
-            <h2>{title}</h2>
+            <h2 id={titleId}>{title}</h2>
             <p>
               {isBulk ? (
                 <>将 {hints.length} 个 compatible 归入同一业务分类；每个 compatible 使用自己的驱动组名。</>
@@ -239,7 +233,8 @@ export function ClassifyCompatibleDialog({
             {PARAMETER_ADMIN_UI.classifyApply}
           </button>
         </div>
-      </div>
-    </div>
+        </>
+      )}
+    </ModalDialog>
   );
 }

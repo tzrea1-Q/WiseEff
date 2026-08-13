@@ -140,9 +140,15 @@ Separate `LOG_ANALYSIS_*` family so log analysis and Xiaoze can point at differe
 | `LOG_ANALYSIS_API_BASE_URL` | blank | live log-analysis LLM | OpenAI-compatible endpoint. Never commit secrets or private endpoints. |
 | `LOG_ANALYSIS_MODEL` | blank | live log-analysis LLM | Model id recorded on every report (`model` column) and metrics label. |
 | `LOG_ANALYSIS_API_KEY` | blank | live log-analysis LLM | Secret. |
-| `LOG_ANALYSIS_API_TIMEOUT_MS` | `30000` | live log-analysis LLM | Request timeout for the single-shot `ChatOpenAI` call. |
-| `LOG_ANALYSIS_TOKEN_BUDGET` | `8000` | analysis cost bound | Per-analysis token budget; bounds the prompt excerpt (≈4 chars/token) and the response `maxTokens`. |
+| `LOG_ANALYSIS_API_TIMEOUT_MS` | `30000` | live log-analysis LLM | Request timeout per `ChatOpenAI` call (each loop step is one call). |
+| `LOG_ANALYSIS_TOKEN_BUDGET` | `8000` | analysis cost bound | Per-analysis token budget. Single-shot: bounds the prompt excerpt (≈4 chars/token) and response `maxTokens`. Loop: cumulative input+output tokens across steps; exhaustion triggers the marked early convergence. |
 | `LOG_ANALYSIS_DETERMINISTIC` | `true` in `.env.example`, `false` in code | offline dev/test/eval | Runs the deterministic stub model (`model` recorded as `deterministic`); no provider required and readiness reports ready. Production must configure a real provider and keep this `false`. |
+| `LOG_ANALYSIS_KERNEL` | `loop` | analysis kernel selection | `loop` = P2 bounded multi-step agent with the five read-only tools (default); `single-shot` = the P1 kernel kept as a config fallback. |
+| `LOG_ANALYSIS_MAX_STEPS` | `6` | loop bound | Max model steps per analysis before the marked early convergence (`token-budget-exhausted`). |
+| `LOG_ANALYSIS_JUDGE_API_BASE_URL` | blank | quality eval judge | OpenAI-compatible endpoint for the LLM-as-judge in `npm run logs:eval:quality` (real-model mode). Unset → deterministic rubric stub. |
+| `LOG_ANALYSIS_JUDGE_MODEL` | blank | quality eval judge | Judge model id, recorded in the quality report. |
+| `LOG_ANALYSIS_JUDGE_API_KEY` | blank | quality eval judge | Secret. |
+| `LOG_ANALYSIS_JUDGE_API_TIMEOUT_MS` | `30000` | quality eval judge | Judge request timeout. |
 
 ## Knowledge Base Embeddings And Indexing
 

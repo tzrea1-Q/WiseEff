@@ -1,6 +1,7 @@
 import type {
   LogAnalysisRepository,
   LogDomainCreateInput,
+  LogDomainKnowledgeLinksInput,
   LogDomainListQuery,
   LogDomainUpdateInput,
   LogFeedbackInput,
@@ -10,7 +11,7 @@ import type {
   LogUploadInput
 } from "@/application/ports/LogAnalysisRepository";
 import type { AppAction } from "@/application/state/appState";
-import type { LogDomain, LogRecord } from "@/domain/logs/types";
+import type { LogDomain, LogDomainKnowledgeLink, LogRecord } from "@/domain/logs/types";
 import type { PrototypeState } from "@/domain/prototype/types";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 
@@ -33,6 +34,8 @@ export type LogRuntimeActions = {
   createLogDomain(input: LogDomainCreateInput): Promise<LogDomain | null>;
   updateLogDomain(input: LogDomainUpdateInput): Promise<LogDomain | null>;
   archiveLogDomain(domainId: string): Promise<LogDomain | null>;
+  listLogDomainKnowledgeLinks(domainId: string): Promise<LogDomainKnowledgeLink[]>;
+  setLogDomainKnowledgeLinks(input: LogDomainKnowledgeLinksInput): Promise<LogDomainKnowledgeLink[] | null>;
 };
 
 export type LogRuntimeDispatchAction =
@@ -364,6 +367,31 @@ export function createLogRuntimeActions({
         archived = (await api.archiveLogDomain?.(domainId)) ?? null;
       });
       return archived;
+    },
+    async listLogDomainKnowledgeLinks(domainId) {
+      if (mode !== "api") {
+        return [];
+      }
+
+      try {
+        const api = requireRepository(repository);
+        return (await api.listLogDomainKnowledgeLinks?.(domainId)) ?? [];
+      } catch {
+        // Link listing is a governance read; failures degrade to an empty list.
+        return [];
+      }
+    },
+    async setLogDomainKnowledgeLinks(input) {
+      if (mode !== "api") {
+        dispatch({ type: "ADD_NOTIFICATION", message: logDomainMockModeNotification });
+        return null;
+      }
+
+      let saved: LogDomainKnowledgeLink[] | null = null;
+      await runApiMutation(async (api) => {
+        saved = (await api.setLogDomainKnowledgeLinks?.(input)) ?? null;
+      });
+      return saved;
     }
   };
 }

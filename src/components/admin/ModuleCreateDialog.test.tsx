@@ -62,7 +62,7 @@ describe("ModuleCreateDialog", () => {
       />
     );
 
-    expect(screen.getByRole("dialog", { name: "在 Battery Estimation 下创建子模块" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "在「Battery Estimation」下创建子模块" })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("模块名称"), { target: { value: "SOC Model" } });
     fireEvent.click(screen.getByRole("button", { name: "创建" }));
 

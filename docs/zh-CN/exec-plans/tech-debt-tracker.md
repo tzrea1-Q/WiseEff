@@ -51,6 +51,9 @@
 - **TD-085（日志分析置信度显示口径）：** LLM 分析器返回模型自估置信度，规则回退沿用确定性查表置信度，二者共用同一 UI 数字，除来源徽标外没有校准语义区分。需按 `analysisSource` 决定显示口径（标注、分档或在效果层评测校准前隐藏 LLM 置信度）。**负责人：Log analysis / Product。**
 - **TD-086（域治理错误透出）：** `/log-admin` 域治理的创建/更新失败只弹通用通知；服务端 `INVALID_LOG_FORMAT_PROFILE` 的 Zod 字段级细节没有映射回表单，行内仅有客户端 JSON 预检。需把 API 错误码与校验细节映射为表单行内错误。**负责人：Frontend / Log analysis。**
 - **TD-087（selfhost required-keys 纳管 `LOG_ANALYSIS_*`）：** `check-self-hosted-config.ts` 的必填键覆盖 `LOG_ANALYSIS_QUEUE_*` 但不含 P1 LLM 家族（`LOG_ANALYSIS_API_BASE_URL` / `LOG_ANALYSIS_MODEL` / `LOG_ANALYSIS_API_KEY` / `LOG_ANALYSIS_API_TIMEOUT_MS` / `LOG_ANALYSIS_TOKEN_BUDGET` / `LOG_ANALYSIS_DETERMINISTIC`），部署可能通过 `selfhost:check` 却未配置 LLM。需纳入必填键检查（并决定 deterministic 模式是否豁免 API key）与对应测试。**负责人：Ops / Log analysis。**
+- **TD-088（focused 验收运行缺一等证据校验）：** `check-operation-evidence.ts`（`acceptance:evidence`）只校验最近一次**全量**验收运行；单 spec 的 focused 运行没有一等校验入口，P2 只能程序化调用 `evaluateOperationEvidence` 验证 `LOG-DOMAIN-KNOWLEDGE-001`。证据回归可能拖到下一次全量 CI 才暴露（P1 的 `LOG-DEGRADED-001` 缺口正是这样进的 CI）。需给脚本加 `--run <dir>`（或 `--focused`）模式并写入验证矩阵。**负责人：Quality / Acceptance tooling。**
+- **TD-089（确定性 rubric judge 桩过于保守）：** 效果层评测的确定性 judge 桩对 `expectedActions` 的 token 重叠匹配几乎恒 0，把确定性演示分数拉低，可能误导在真模型+真实案例基线建立前对比运行的读者。需校准桩的匹配规则（同义/词干容差或结构化动作匹配）；真模型 judge 路径不受影响。**负责人：Log analysis / Eval。**
+- **TD-090（`read_domain_knowledge` 严格限定模式）：** 工具当前把检索严格限定在业务域已关联的知识条目内（无关联时才退化为组织级通用检索）；计划措辞允许"限定或加权"。关联稀疏的域可能漏掉组织级相关知识。若专家反馈严格模式导致检索饥饿，加"关联条目加权 + 组织级补充召回"的融合模式。**负责人：Log analysis / Knowledge platform。**
 
 ## 近期关闭项
 

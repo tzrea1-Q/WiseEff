@@ -18,6 +18,9 @@ const FOCUSABLE_SELECTOR = [
  * dialog stacked on another dialog does not dismiss the one underneath it.
  */
 const dialogStack: string[] = [];
+// Escape keydown already consumed by an outer dialog's dismiss during this
+// same dispatch — inner dialogs mounted by that dismiss must ignore it.
+let lastDismissKeydownEvent: KeyboardEvent | null = null;
 
 let backgroundInertCount = 0;
 
@@ -144,22 +147,24 @@ export function ModalDialog({
     if (!open || !onDismiss) {
       return undefined;
     }
-    const mountedAt = performance.now();
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") {
         return;
       }
-      // When an inner layer (e.g. a Radix dialog routing Escape into a dirty-state
-      // confirmation) consumes the keydown and opens this dialog, React can attach
-      // this listener while that same event is still propagating towards `window`.
-      // Without these checks the event would instantly dismiss the dialog it opened.
-      if (event.defaultPrevented || event.timeStamp < mountedAt) {
+      // When an outer dialog consumes an Escape and synchronously opens this
+      // dialog (e.g. a dirty-state confirmation), environments that do not
+      // snapshot listener lists (jsdom) deliver the SAME keydown to the
+      // freshly-mounted listener and instantly dismiss the dialog it opened.
+      // Track the consumed event by identity — timestamps are unreliable here
+      // because jsdom stamps epoch time while performance.now() is page-relative.
+      if (event.defaultPrevented || event === lastDismissKeydownEvent) {
         return;
       }
       if (dialogStack[dialogStack.length - 1] !== generatedId) {
         return;
       }
       event.stopPropagation();
+      lastDismissKeydownEvent = event;
       onDismiss();
     };
     window.addEventListener("keydown", handleKeyDown);

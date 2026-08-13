@@ -133,7 +133,7 @@ describe("SpecCreateDialog", () => {
     await user.click(screen.getByRole("button", { name: "保存草稿" }));
 
     expect(onConfirm).not.toHaveBeenCalled();
-    expect(screen.getByRole("dialog", { name: "确认新建参数定义" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "确认新建" })).toBeInTheDocument();
     await user.type(screen.getByLabelText("变更原因"), "library create");
     await user.click(screen.getByRole("button", { name: "确认创建" }));
 
@@ -185,7 +185,7 @@ describe("SpecCreateDialog", () => {
     await user.type(screen.getByLabelText("属性键"), "gpio_int");
     await user.click(screen.getByRole("button", { name: "保存草稿" }));
 
-    const confirmLayer = screen.getByRole("dialog", { name: "确认新建参数定义" });
+    const confirmLayer = screen.getByRole("dialog", { name: "确认新建" });
     expect(within(confirmLayer).getByRole("alert")).toHaveTextContent("创建冲突：同名定义已存在");
   });
 });

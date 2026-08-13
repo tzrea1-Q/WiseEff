@@ -1,5 +1,5 @@
 import { CircleX } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type Dispatch } from "react";
+import { useEffect, useMemo, useState, type Dispatch } from "react";
 import type { AppAction } from "@/application/state/appState";
 import type { ParameterPageActions } from "@/app/routes";
 import { buildImportTemplateWorkbook } from "@/application/parameters/import/buildImportTemplate";
@@ -9,6 +9,7 @@ import type { ParsedImportRow, ReviewedImportRow } from "@/application/parameter
 import type { ParameterImportBatchDto } from "@/application/ports/ParameterRepository";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { ModalDialog } from "@/components/common/ModalDialog";
 import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { ParameterRecord, Project } from "@/domain/prototype/types";
@@ -127,6 +128,7 @@ export function ParameterImportWizard({
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [applyPending, setApplyPending] = useState(false);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [pendingProjectChangeId, setPendingProjectChangeId] = useState<string | null>(null);
 
   const libraryParameters = useMemo(() => buildParameterLibraryFromRecords(parameters, projects), [parameters, projects]);
   const moduleNames = useMemo(
@@ -176,22 +178,6 @@ export function ParameterImportWizard({
     }
     onClose();
   };
-  const requestCloseRef = useRef(requestClose);
-  requestCloseRef.current = requestClose;
-
-  useEffect(() => {
-    if (!open) {
-      return undefined;
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        requestCloseRef.current();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open]);
-
   if (!open) {
     return null;
   }
@@ -231,20 +217,21 @@ export function ParameterImportWizard({
     setStep(2);
   };
 
+  const applyProjectChange = (nextProjectId: string) => {
+    setTargetProjectId(nextProjectId);
+    void parseAndMatch(nextProjectId).then(() => {
+      setPreviewBatch(null);
+      setSelectedItemIds(new Set());
+      setStep(2);
+    });
+  };
+
   const handleTargetProjectChange = (nextProjectId: string) => {
     if (nextProjectId === targetProjectId) {
       return;
     }
     if (step >= 3) {
-      if (!window.confirm(PROJECT_CHANGE_RESET_MESSAGE)) {
-        return;
-      }
-      setTargetProjectId(nextProjectId);
-      void parseAndMatch(nextProjectId).then(() => {
-        setPreviewBatch(null);
-        setSelectedItemIds(new Set());
-        setStep(2);
-      });
+      setPendingProjectChangeId(nextProjectId);
       return;
     }
     setTargetProjectId(nextProjectId);
@@ -296,11 +283,17 @@ export function ParameterImportWizard({
 
   return (
     <>
-      <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="批量参数导入向导">
-        <div className="submission-dialog submission-dialog--wide parameter-import-wizard">
+      <ModalDialog
+        open
+        onDismiss={requestClose}
+        className="submission-dialog submission-dialog--wide parameter-import-wizard"
+      >
+        {({ titleId }) => (
+          <>
           <div className="submission-dialog-head param-admin-editor-dialog-head">
             <div className="param-admin-editor-dialog-head-text">
-              <span className="eyebrow">批量参数导入</span>
+              {/* The eyebrow names the wizard so its accessible name stays stable across steps. */}
+              <span className="eyebrow" id={titleId}>批量参数导入</span>
               <h2>步骤 {step} / 5</h2>
               <p>选择目标项目与导入来源，逐步核对后再应用变更。</p>
             </div>
@@ -409,8 +402,23 @@ export function ParameterImportWizard({
               onPendingChange={setApplyPending}
             />
           )}
-        </div>
-      </div>
+          </>
+        )}
+      </ModalDialog>
+
+      <ConfirmDialog
+        open={pendingProjectChangeId !== null}
+        title="更换目标项目"
+        description={PROJECT_CHANGE_RESET_MESSAGE}
+        confirmLabel="确认更换"
+        onConfirm={() => {
+          if (pendingProjectChangeId) {
+            applyProjectChange(pendingProjectChangeId);
+          }
+          setPendingProjectChangeId(null);
+        }}
+        onCancel={() => setPendingProjectChangeId(null)}
+      />
 
       <ConfirmDialog
         open={closeConfirmOpen}

@@ -238,4 +238,29 @@ describe("LogsPage · 分析来源与降级标注", () => {
 
     expect(screen.queryByTestId("analysis-provenance")).not.toBeInTheDocument();
   });
+
+  it("提前收敛的 Agent 结论显著标注降级而不冒充完整分析", () => {
+    window.history.replaceState(null, "", "/logs");
+    const earlyConvergedState = {
+      ...userState,
+      logs: [
+        {
+          ...completedTemplate,
+          id: "log-early-converged",
+          reportId: "RPT-EARLY",
+          fileName: "early_converged.log",
+          analysisSource: "agent" as const,
+          degradedReason: "token-budget-exhausted" as const
+        },
+        ...userState.logs
+      ]
+    };
+
+    render(<App initialAppState={earlyConvergedState} />);
+
+    const provenance = screen.getByTestId("analysis-provenance");
+    expect(within(provenance).getByRole("status")).toHaveTextContent("降级分析 · 提前收敛");
+    expect(provenance).toHaveTextContent(/提前收敛为低置信结论/);
+    expect(provenance).not.toHaveTextContent("降级分析 · 规则回退");
+  });
 });

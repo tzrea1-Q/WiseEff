@@ -3,7 +3,7 @@
  * repos must route here only before identity cutover completes.
  */
 import type { Database } from "../../../shared/database/client";
-import { LEGACY_IDENTITY_SQL } from "../legacyParameterIdentityNames";
+import { LEGACY_IDENTITY_SQL } from "../../parameter-kernel/legacyParameterIdentityNames";
 import {
   actionableReviewStatusesForRole,
   ADMIN_GOVERNANCE_AUDIT_APPS,

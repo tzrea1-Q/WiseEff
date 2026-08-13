@@ -8,6 +8,7 @@ import type {
   TopologyView
 } from "@/domain/parameter-topology/types";
 import { buildProvenanceLabels } from "@/domain/parameter-topology/buildProvenanceLabels";
+import { ModalDialog } from "@/components/common/ModalDialog";
 import {
   BindingDetailPanel,
   type BindingEditValidation
@@ -343,24 +344,31 @@ export function ProjectTopologyWorkspace({
       </div>
 
       {showDetailDrawer && selectedBinding ? (
-        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="项目参数详情">
-          <div className="binding-detail-drawer">
-            <BindingDetailPanel
-              binding={selectedBinding}
-              view={view}
-              sourceNode={selectedSourceNode}
-              effects={selectedEffectiveNode?.effects}
-              provenanceLabels={provenanceLabels}
-              mappingTasks={mappingTasks}
-              canEdit={canEdit}
-              onValidateEdit={handleValidateEdit}
-              asDialog
-            />
-            <button type="button" className="button subtle" onClick={() => setSelectedBindingId(null)}>
-              关闭
-            </button>
-          </div>
-        </div>
+        <ModalDialog
+          open
+          onDismiss={() => setSelectedBindingId(null)}
+          className="binding-detail-drawer"
+        >
+          {({ titleId }) => (
+            <>
+              <BindingDetailPanel
+                binding={selectedBinding}
+                view={view}
+                sourceNode={selectedSourceNode}
+                effects={selectedEffectiveNode?.effects}
+                provenanceLabels={provenanceLabels}
+                mappingTasks={mappingTasks}
+                canEdit={canEdit}
+                onValidateEdit={handleValidateEdit}
+                asDialog
+                titleId={titleId}
+              />
+              <button type="button" className="button subtle" onClick={() => setSelectedBindingId(null)}>
+                关闭
+              </button>
+            </>
+          )}
+        </ModalDialog>
       ) : null}
     </section>
   );

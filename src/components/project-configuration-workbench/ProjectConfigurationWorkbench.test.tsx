@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DtsStructuredRepository } from "@/application/ports/DtsStructuredRepository";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
+import { ToastProvider } from "@/components/common/toast/ToastProvider";
 import {
   ProjectConfigurationWorkbench,
   type ProjectConfigurationWorkbenchProps
@@ -293,15 +294,21 @@ function renderWorkbench(options: {
         />
       );
     }
-    render(<Harness />);
+    render(
+      <ToastProvider>
+        <Harness />
+      </ToastProvider>
+    );
     return { onNavigate };
   }
   render(
-    <ProjectConfigurationWorkbench
-      {...sharedProps}
-      search={options.search ?? ""}
-      onNavigate={onNavigate}
-    />
+    <ToastProvider>
+      <ProjectConfigurationWorkbench
+        {...sharedProps}
+        search={options.search ?? ""}
+        onNavigate={onNavigate}
+      />
+    </ToastProvider>
   );
   return { onNavigate };
 }

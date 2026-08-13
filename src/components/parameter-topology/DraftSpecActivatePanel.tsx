@@ -1,6 +1,7 @@
 import { CircleX } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { ModalDialog } from "@/components/common/ModalDialog";
 import type { ParameterSpecDetailView } from "./ParameterSpecDetail";
 
 export type ActivateDraftSpecInput = {
@@ -237,20 +238,25 @@ export function DraftSpecActivatePanel({ detail, onActivate, pending = false }: 
         </form>
       </section>
       {confirmOpen ? (
-        <div
-          className="modal-backdrop"
-          role="dialog"
-          aria-modal="true"
-          aria-label="确认激活草稿定义"
+        <ModalDialog
+          open
+          onDismiss={
+            pending
+              ? undefined
+              : () => {
+                  setConfirmOpen(false);
+                  setReason("");
+                  setConfirmError(null);
+                }
+          }
+          className="submission-dialog param-admin-confirm-dialog"
         >
-          <div
-            className="submission-dialog param-admin-confirm-dialog"
-            onClick={(event) => event.stopPropagation()}
-          >
+          {({ titleId }) => (
+            <>
             <div className="submission-dialog-head param-admin-editor-dialog-head">
               <div className="param-admin-editor-dialog-head-text">
                 <span className="eyebrow">参数定义库</span>
-                <h2>确认激活</h2>
+                <h2 id={titleId}>确认激活</h2>
                 <p>将激活「{detail.propertyKey}」；请填写激活原因以便审计留痕。</p>
               </div>
               <button
@@ -310,8 +316,9 @@ export function DraftSpecActivatePanel({ detail, onActivate, pending = false }: 
                 {pending ? "激活中…" : "确认激活"}
               </button>
             </div>
-          </div>
-        </div>
+            </>
+          )}
+        </ModalDialog>
       ) : null}
     </>
   );

@@ -9,7 +9,7 @@ import {
   type InMemoryTestDatabase
 } from "../../testing/testDatabase";
 import { seedCoreGraph } from "../../testing/fixtures";
-import { setParameterIdentityMode } from "../parameters/parameterIdentityMode";
+import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { resolveConflict } from "../parameters/fileSyncConflictRepository";
 import { insertFileVersion, insertProjectParameterFile } from "./repository";
 import {

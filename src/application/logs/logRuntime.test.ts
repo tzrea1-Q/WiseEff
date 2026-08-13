@@ -501,4 +501,38 @@ describe("createLogRuntimeActions", () => {
     await expect(actions.createLogDomain({ name: "dup" })).rejects.toThrow(logRuntimeFailureNotification);
     expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: logRuntimeFailureNotification });
   });
+
+  it("lists and replaces domain knowledge links through the repository in api mode", async () => {
+    const dispatch = vi.fn();
+    const link = {
+      id: "link-1",
+      logDomainId: "domain-1",
+      knowledgeEntryId: "entry-1",
+      entryTitle: "E_THERMAL_FOLDBACK handbook",
+      entryStatus: "published" as const,
+      entryTags: ["charging"],
+      linkedAt: "2026-08-13T00:00:00.000Z"
+    };
+    const repository = createRepository({
+      listLogDomainKnowledgeLinks: vi.fn().mockResolvedValue([link]),
+      setLogDomainKnowledgeLinks: vi.fn().mockResolvedValue([link])
+    });
+    const actions = createLogRuntimeActions({ mode: "api", repository, dispatch, getState: () => initialState });
+
+    await expect(actions.listLogDomainKnowledgeLinks("domain-1")).resolves.toEqual([link]);
+    expect(repository.listLogDomainKnowledgeLinks).toHaveBeenCalledWith("domain-1");
+    await expect(
+      actions.setLogDomainKnowledgeLinks({ domainId: "domain-1", knowledgeEntryIds: ["entry-1"] })
+    ).resolves.toEqual([link]);
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("keeps knowledge-link governance API-only in mock mode", async () => {
+    const dispatch = vi.fn();
+    const actions = createLogRuntimeActions({ mode: "mock", dispatch, getState: () => initialState });
+
+    await expect(actions.listLogDomainKnowledgeLinks("domain-1")).resolves.toEqual([]);
+    await expect(actions.setLogDomainKnowledgeLinks({ domainId: "domain-1", knowledgeEntryIds: [] })).resolves.toBeNull();
+    expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: logDomainMockModeNotification });
+  });
 });

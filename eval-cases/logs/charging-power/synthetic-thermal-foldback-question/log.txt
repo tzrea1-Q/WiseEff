@@ -1,0 +1,8 @@
+Aug 10 08:12:01 charger-station-07 chargerd[412]: INFO session start vehicle=veh-anon-3 requested_ma=8000
+Aug 10 08:12:03 charger-station-07 bms[233]: INFO pack_temp=39C soc=41
+Aug 10 08:12:20 charger-station-07 bms[233]: INFO pack_temp=47C soc=43
+Aug 10 08:12:31 charger-station-07 bms[233]: WARNING pack_temp=53C above soft limit 50C
+Aug 10 08:12:32 charger-station-07 chargerd[412]: WARNING thermal foldback engaged pack_temp=53C
+Aug 10 08:12:33 charger-station-07 chargerd[412]: ERROR charge current reduced code=E_THERMAL_FOLDBACK requested_ma=8000 charge_current_ma=3000
+Aug 10 08:13:05 charger-station-07 bms[233]: INFO pack_temp=49C cooling
+Aug 10 08:14:00 charger-station-07 chargerd[412]: INFO heartbeat charge_current_ma=3000

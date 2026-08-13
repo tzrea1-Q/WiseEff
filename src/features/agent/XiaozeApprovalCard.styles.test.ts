@@ -23,7 +23,7 @@ describe("Xiaoze approval card stacking", () => {
     const value = (name: string) => Number(root.match(new RegExp(`${name}:\\s*(\\d+)`))?.[1] ?? "NaN");
 
     const popup = value("--z-xiaoze-popup");
-    const approval = value("--z-approval");
+    const approval = value("--z-xiaoze-approval");
     const toast = value("--z-toast");
 
     expect(Number.isNaN(approval)).toBe(false);
@@ -34,7 +34,7 @@ describe("Xiaoze approval card stacking", () => {
   it("routes the approval overlay and content through the approval layer", () => {
     const css = stylesheet();
 
-    expect(ruleBlock(css, ".xiaoze-approval-overlay")).toMatch(/z-index:\s*var\(--z-approval\)/);
-    expect(ruleBlock(css, ".xiaoze-approval-dialog")).toMatch(/z-index:\s*var\(--z-approval\)/);
+    expect(ruleBlock(css, ".xiaoze-approval-overlay")).toMatch(/z-index:\s*var\(--z-xiaoze-approval\)/);
+    expect(ruleBlock(css, ".xiaoze-approval-dialog")).toMatch(/z-index:\s*var\(--z-xiaoze-approval\)/);
   });
 });

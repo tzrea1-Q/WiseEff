@@ -173,8 +173,8 @@ mock mode 有意保留 12 个兼容参数，以保证组件测试与演示轻量
 
 日志分析：
 
-- `/logs`：上传日志、轮询任务、展示报告和证据。上传弹窗含可选「业务域」下拉（API mode 经 `logActions.listLogDomains()` 拉取活跃域；默认「未分类（通用分析）」，域选择绝不阻塞上传；mock mode 仅显示默认项）。结论卡按 additive 的 `analysisSource` / `degradedReason` 渲染来源徽标：`rules-fallback` 显示醒目的琥珀色「降级分析 · 规则回退」徽标与原因说明，`agent` 显示轻量「Agent 分析」徽标，绑定业务域时显示业务域标签；无来源的历史规则报告不渲染徽标。任务轮询改为自适应退避（1s×30 → 2s×45 → 5s，计划轮询总时长上限约 5 分钟，对齐 p95 ≤ 3min SLO 加余量），并保留按日志的 generation 守卫。「反馈分析质量」对话框在 API 模式下经 `submitFeedback`（`POST /api/v1/logs/:id/feedback`）真实落库：评级映射高→`helpful`、其余→`not_helpful`，问题描述作为 `note`；对话框带提交中/内联错误态，服务端接受后才关闭（mock 模式保留本地通知）。
-- `/log-admin`：反馈、归档、重跑、治理操作；新增「业务域治理」区（列表 + 新建/编辑表单 + 画像 JSON 校验 + 归档），前端按 `logs.admin-domains`（Admin）门控，后端路由强制真实 `logs:admin-domains` 权限；`LogRecordDrawer` 同样展示来源/降级徽标。新增「已归档」视图（经 `refresh({ includeArchived: true })` 加载）并提供行内「恢复」，归档随时可逆；归档后的撤销窗口延长为 10 秒。
+- `/logs`：上传日志、轮询任务、展示报告和证据。上传弹窗含可选「业务域」下拉（API mode 经 `logActions.listLogDomains()` 拉取活跃域；默认「未分类（通用分析）」，域选择绝不阻塞上传；mock mode 仅显示默认项）。结论卡按 additive 的 `analysisSource` / `degradedReason` 渲染来源徽标：`rules-fallback` 显示醒目的琥珀色「降级分析 · 规则回退」徽标与原因说明；P2 提前收敛的 agent 结论（`analysisSource: "agent"` 且带 `degradedReason`）显示「降级分析 · 提前收敛」徽标与说明，绝不冒充完整分析；完整 `agent` 结果显示轻量「Agent 分析」徽标，绑定业务域时显示业务域标签；无来源的历史规则报告不渲染徽标。任务轮询改为自适应退避（1s×30 → 2s×45 → 5s，计划轮询总时长上限约 5 分钟，对齐 p95 ≤ 3min SLO 加余量），并保留按日志的 generation 守卫。「反馈分析质量」对话框在 API 模式下经 `submitFeedback`（`POST /api/v1/logs/:id/feedback`）真实落库：评级映射高→`helpful`、其余→`not_helpful`，问题描述作为 `note`；对话框带提交中/内联错误态，服务端接受后才关闭（mock 模式保留本地通知）。
+- `/log-admin`：反馈、归档、重跑、治理操作；新增「业务域治理」区（列表 + 新建/编辑表单 + 画像 JSON 校验 + 归档），前端按 `logs.admin-domains`（Admin）门控，后端路由强制真实 `logs:admin-domains` 权限；`LogRecordDrawer` 同样展示来源/降级徽标。P2 起每个活跃域行提供「知识条目」编辑器（`DomainKnowledgeLinksEditor`）：从知识仓储列出**已发布**条目（带标题筛选）供勾选关联；条目不再是已发布的失效关联被标注并在整组替换保存时移除。关联集合限定分析 agent 的 `read_domain_knowledge` 检索（为空时退化为组织内通用检索）。与其余域治理一样仅 API mode 可用。新增「已归档」视图（经 `refresh({ includeArchived: true })` 加载）并提供行内「恢复」，归档随时可逆；归档后的撤销窗口延长为 10 秒。
 
 产品反馈：
 
@@ -241,7 +241,7 @@ Xiaoze（小泽，唯一 Agent）：
 
 ## UI 设计系统与质量门禁
 
-所有产品界面遵循 [UI 设计系统](design-docs/ui-design-system.md) 的可执行视觉标准:设计令牌是视觉取值的唯一来源、单一 accent、强制交互状态、共享原语(Button / ModalDialog / DataTable / ColumnFilter / SectionState)、令牌化动效与中文优先的产品语言。所有前端可见变更在宣称完成前必须通过 [UI 质量检查清单](developer/ui-quality-checklist.md) 的完成门禁。存量界面向该标准迁移由 `docs/zh-CN/exec-plans/active/2026-08-12-frontend-aesthetics-uplift.md` 跟踪。
+所有产品界面遵循 [UI 设计系统](design-docs/ui-design-system.md) 的可执行视觉标准:设计令牌是视觉取值的唯一来源、单一 accent、强制交互状态、共享原语(`.button` 基础层 + `ui/button`、所有弹窗走 `ModalDialog`/`ConfirmDialog`、唯一 toast 管线 `src/components/common/toast` 的 `useToast()`、标准列表外壳 `admin/DataTable`、`ColumnFilter`、加载/空/错误与认证启动走 `SectionState` + `AppShellSkeleton`)、令牌化动效与中文优先的产品语言。所有前端可见变更在宣称完成前必须通过 [UI 质量检查清单](developer/ui-quality-checklist.md) 的完成门禁。存量界面向该标准迁移由 `docs/zh-CN/exec-plans/active/2026-08-12-frontend-aesthetics-uplift.md` 跟踪。
 
 ## 按钮和操作样式
 

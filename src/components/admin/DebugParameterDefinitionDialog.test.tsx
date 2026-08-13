@@ -45,7 +45,7 @@ describe("DebugParameterDefinitionDialog", () => {
       />
     );
 
-    expect(screen.getByRole("dialog", { name: "调试参数定义编辑" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "编辑参数" })).toBeInTheDocument();
     expect(screen.getByLabelText("调试目标值")).toBeInTheDocument();
     expect(screen.getByText("标识信息")).toBeInTheDocument();
     expect(screen.getByLabelText("值类型")).toBeInTheDocument();

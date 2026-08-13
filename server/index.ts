@@ -28,7 +28,7 @@ import {
   ensureLocalPostCutoverIdentity,
   shouldEnsureLocalPostCutoverOnApiBoot
 } from "./modules/parameter-topology/localPostCutover";
-import { resolveParameterIdentityMode } from "./modules/parameters/parameterIdentityMode";
+import { resolveParameterIdentityMode } from "./modules/parameter-kernel/parameterIdentityMode";
 
 const env = loadServerEnv(process.env);
 const db = env.DATABASE_URL ? createPostgresDatabase(env.DATABASE_URL, { tracing: defaultTracingBoundary }) : undefined;
@@ -61,11 +61,14 @@ const logAnalysisQueueEnv = {
   LOG_ANALYSIS_QUEUE_BACKOFF_MS: env.LOG_ANALYSIS_QUEUE_BACKOFF_MS,
   LOG_ANALYSIS_QUEUE_CONCURRENCY: env.LOG_ANALYSIS_QUEUE_CONCURRENCY
 };
+const knowledgeEmbeddingClient = resolveKnowledgeEmbeddingClient(env);
 const logAnalyzer = createLogAnalyzerFromEnv(env, {
   telemetry: {
     recordLlmCall: (input) => metrics.recordLogAnalysisLlmCall(input),
     recordDegraded: (input) => metrics.recordLogAnalysisDegraded(input)
-  }
+  },
+  db,
+  embeddingClient: knowledgeEmbeddingClient
 });
 const logAnalysisQueueRuntime =
   env.LOG_ANALYSIS_QUEUE_MODE === "durable" && db && objectStore
@@ -84,7 +87,6 @@ const stopLogWorker =
   env.LOG_WORKER_ENABLED && env.LOG_ANALYSIS_QUEUE_MODE === "polling" && db && objectStore
     ? startLogWorkerLoop({ db, objectStore, analyzer: logAnalyzer, metrics, tracing: defaultTracingBoundary })
     : undefined;
-const knowledgeEmbeddingClient = resolveKnowledgeEmbeddingClient(env);
 const stopKnowledgeIndexWorker =
   env.KNOWLEDGE_INDEX_WORKER_ENABLED && db
     ? startKnowledgeIndexWorkerLoop({ db, embeddingClient: knowledgeEmbeddingClient })

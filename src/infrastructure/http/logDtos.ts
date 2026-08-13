@@ -1,5 +1,5 @@
 import type { LogJobSnapshot } from "@/application/ports/LogAnalysisRepository";
-import type { LogDomain, LogEvidence, LogRecord } from "@/domain/logs/types";
+import type { LogDomain, LogDomainKnowledgeLink, LogEvidence, LogRecord } from "@/domain/logs/types";
 
 export type LogEvidenceDto = {
   id: string;
@@ -118,6 +118,20 @@ export function logDomainFromDto(dto: LogDomainDto): LogDomain {
 
 export function logDomainListFromDto(response: { items: LogDomainDto[] }): LogDomain[] {
   return response.items.map(logDomainFromDto);
+}
+
+export type LogDomainKnowledgeLinkDto = {
+  id: string;
+  logDomainId: string;
+  knowledgeEntryId: string;
+  entryTitle: string;
+  entryStatus: "draft" | "published" | "archived";
+  entryTags: string[];
+  linkedAt: string;
+};
+
+export function logDomainKnowledgeLinkFromDto(dto: LogDomainKnowledgeLinkDto): LogDomainKnowledgeLink {
+  return { ...dto };
 }
 
 export function jobSnapshotFromDto(dto: LogJobDto): LogJobSnapshot {

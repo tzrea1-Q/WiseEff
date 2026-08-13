@@ -29,6 +29,7 @@ For code changes:
 - Run `npm run test:server` for backend-impacting changes.
 - Run `npm run test:e2e` for M1/M2 acceptance when `DATABASE_URL` and seed data are available.
 - Run `npm run test:m2` before landing M2 log-analysis MVP changes in a local or staging environment with PostgreSQL.
+- Run `npm run logs:eval` (CI-gated) after changing log-analysis prompts, kernels (`llmAnalyzer` / `agentLoop`), tools, prefilter, degradation, or eval scenarios; run `npm run logs:eval:quality` on prompt/model changes and pre-release (deterministic demo works offline). The quality baseline gate stays honestly inactive until expert-annotated `realLog` golden cases land (external dependency).
 - Run `npm run test:m3-5` before landing M3 debugging MVP changes in a local or staging environment with PostgreSQL.
 - Run `npm run test:m3-5` before treating the M1-M3 API-mode baseline as commercial-readiness complete in a local or staging environment with PostgreSQL.
 - Run `npm run acceptance:e2e -- e2e/acceptance/xiaoze-perception.acceptance.spec.ts`, `xiaoze-action.acceptance.spec.ts`, and `xiaoze-planning.acceptance.spec.ts` before landing Xiaoze Agent changes in a local or staging environment with PostgreSQL.

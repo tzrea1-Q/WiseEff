@@ -24,7 +24,7 @@ describe("AgentInsightBar", () => {
         items={[
           {
             id: "high-risk-orphans",
-            tone: "warning",
+            variant: "warning",
             headline: "有 2 个高风险闲置参数",
             actions: [{ id: "view", label: "查看闲置参数", onClick: onAction }]
           }
@@ -48,7 +48,7 @@ describe("AgentInsightBar", () => {
         items={[
           {
             id: "high-risk-orphans",
-            tone: "warning",
+            variant: "warning",
             headline: "可关闭洞察",
             actions: []
           }

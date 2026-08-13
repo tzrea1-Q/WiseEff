@@ -3,6 +3,7 @@ import { bindingForProtocol } from "@/debugAdminDraft";
 import type { DebugConnectionProtocol, DebugParameterNodeBinding } from "@/domain/debugging/types";
 import { getBindingNodePathValidationError } from "@/domain/debugging/bindingNodePath";
 import { shouldShowFieldError } from "@/components/common/fieldValidation";
+import { ModalDialog } from "@/components/common/ModalDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DebugAdminSelectControl } from "@/components/admin/DebugAdminSelectControl";
@@ -42,27 +43,21 @@ export function DebugParameterBindingsDialog({
     setTouchedPaths({});
   }, [parameterId, parameterName]);
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
-
   const fieldsDisabled = isApiMode ? !canEdit || loading : false;
   const canRunProtocolActions = Boolean(parameterId) && isApiMode;
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label={`${parameterName} 路径绑定`}>
-      <div className="submission-dialog submission-dialog--wide param-admin-editor-dialog debug-admin-bindings-dialog">
+    <ModalDialog
+      open
+      onDismiss={onClose}
+      className="submission-dialog submission-dialog--wide param-admin-editor-dialog debug-admin-bindings-dialog"
+    >
+      {({ titleId }) => (
+        <>
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
             <span className="eyebrow">协议节点绑定</span>
-            <h2>{parameterName}</h2>
+            <h2 id={titleId}>{parameterName}</h2>
             <p>配置 HDC / ADB 节点路径、访问模式与启用状态。</p>
           </div>
         </div>
@@ -157,7 +152,8 @@ export function DebugParameterBindingsDialog({
             取消
           </Button>
         </div>
-      </div>
-    </div>
+        </>
+      )}
+    </ModalDialog>
   );
 }

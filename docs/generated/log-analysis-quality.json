@@ -1,0 +1,294 @@
+{
+  "generatedAt": "2026-08-12T22:05:59.875Z",
+  "kernel": "loop",
+  "deterministic": true,
+  "modelLabel": "deterministic",
+  "judgeLabel": "deterministic-rubric-stub",
+  "caseResults": [
+    {
+      "id": "charging-power/synthetic-comm-timeout-kernel-format",
+      "domain": "charging-power",
+      "realLog": false,
+      "expectRefusal": false,
+      "analysisSource": "agent",
+      "model": "deterministic",
+      "promptVersion": "2026-08-13.loop.1",
+      "latencyMs": 1,
+      "confidence": 0.82,
+      "evidence": {
+        "expectedLines": [
+          5,
+          6
+        ],
+        "citedLines": [
+          3,
+          4,
+          5
+        ],
+        "hitLines": [
+          5
+        ],
+        "missedLines": [
+          6
+        ],
+        "extraLines": [
+          3,
+          4
+        ],
+        "recall": 0.5,
+        "precision": 0.3333333333333333
+      },
+      "hallucination": {
+        "citedNonexistentLines": [],
+        "rate": 0
+      },
+      "refusal": {
+        "expected": false,
+        "refused": false,
+        "appropriate": null
+      },
+      "judge": {
+        "rootCauseScore": 0,
+        "actionsScore": 0,
+        "categoryMatch": true,
+        "reasoning": "deterministic rubric: root-cause coverage 0.00, actions coverage 0.00, category matched"
+      }
+    },
+    {
+      "id": "charging-power/synthetic-device-offline-critical",
+      "domain": "charging-power",
+      "realLog": false,
+      "expectRefusal": false,
+      "analysisSource": "agent",
+      "model": "deterministic",
+      "promptVersion": "2026-08-13.loop.1",
+      "latencyMs": 0,
+      "confidence": 0.82,
+      "evidence": {
+        "expectedLines": [
+          5,
+          6
+        ],
+        "citedLines": [
+          5,
+          6
+        ],
+        "hitLines": [
+          5,
+          6
+        ],
+        "missedLines": [],
+        "extraLines": [],
+        "recall": 1,
+        "precision": 1
+      },
+      "hallucination": {
+        "citedNonexistentLines": [],
+        "rate": 0
+      },
+      "refusal": {
+        "expected": false,
+        "refused": false,
+        "appropriate": null
+      },
+      "judge": {
+        "rootCauseScore": 0,
+        "actionsScore": 0,
+        "categoryMatch": true,
+        "reasoning": "deterministic rubric: root-cause coverage 0.00, actions coverage 0.00, category matched"
+      }
+    },
+    {
+      "id": "charging-power/synthetic-thermal-foldback-basic",
+      "domain": "charging-power",
+      "realLog": false,
+      "expectRefusal": false,
+      "analysisSource": "agent",
+      "model": "deterministic",
+      "promptVersion": "2026-08-13.loop.1",
+      "latencyMs": 1,
+      "confidence": 0.82,
+      "evidence": {
+        "expectedLines": [
+          6,
+          7
+        ],
+        "citedLines": [
+          2,
+          4
+        ],
+        "hitLines": [],
+        "missedLines": [
+          6,
+          7
+        ],
+        "extraLines": [
+          2,
+          4
+        ],
+        "recall": 0,
+        "precision": 0
+      },
+      "hallucination": {
+        "citedNonexistentLines": [],
+        "rate": 0
+      },
+      "refusal": {
+        "expected": false,
+        "refused": false,
+        "appropriate": null
+      },
+      "judge": {
+        "rootCauseScore": 1,
+        "actionsScore": 0,
+        "categoryMatch": true,
+        "reasoning": "deterministic rubric: root-cause coverage 1.00, actions coverage 0.00, category matched"
+      }
+    },
+    {
+      "id": "charging-power/synthetic-thermal-foldback-question",
+      "domain": "charging-power",
+      "realLog": false,
+      "expectRefusal": false,
+      "analysisSource": "agent",
+      "model": "deterministic",
+      "promptVersion": "2026-08-13.loop.1",
+      "latencyMs": 0,
+      "confidence": 0.82,
+      "evidence": {
+        "expectedLines": [
+          5,
+          6
+        ],
+        "citedLines": [
+          5,
+          6
+        ],
+        "hitLines": [
+          5,
+          6
+        ],
+        "missedLines": [],
+        "extraLines": [],
+        "recall": 1,
+        "precision": 1
+      },
+      "hallucination": {
+        "citedNonexistentLines": [],
+        "rate": 0
+      },
+      "refusal": {
+        "expected": false,
+        "refused": false,
+        "appropriate": null
+      },
+      "judge": {
+        "rootCauseScore": 0.5,
+        "actionsScore": 0,
+        "categoryMatch": true,
+        "reasoning": "deterministic rubric: root-cause coverage 0.50, actions coverage 0.00, category matched"
+      }
+    },
+    {
+      "id": "uncategorized/synthetic-json-lines-error-codes",
+      "domain": "uncategorized",
+      "realLog": false,
+      "expectRefusal": false,
+      "analysisSource": "agent",
+      "model": "deterministic",
+      "promptVersion": "2026-08-13.loop.1",
+      "latencyMs": 0,
+      "confidence": 0.82,
+      "evidence": {
+        "expectedLines": [
+          3,
+          4
+        ],
+        "citedLines": [
+          6
+        ],
+        "hitLines": [],
+        "missedLines": [
+          3,
+          4
+        ],
+        "extraLines": [
+          6
+        ],
+        "recall": 0,
+        "precision": 0
+      },
+      "hallucination": {
+        "citedNonexistentLines": [],
+        "rate": 0
+      },
+      "refusal": {
+        "expected": false,
+        "refused": false,
+        "appropriate": null
+      },
+      "judge": {
+        "rootCauseScore": 0,
+        "actionsScore": 0,
+        "categoryMatch": false,
+        "reasoning": "deterministic rubric: root-cause coverage 0.00, actions coverage 0.00, category missed"
+      }
+    },
+    {
+      "id": "uncategorized/synthetic-nominal-heartbeat-refusal",
+      "domain": "uncategorized",
+      "realLog": false,
+      "expectRefusal": true,
+      "analysisSource": "agent",
+      "model": "deterministic",
+      "promptVersion": "2026-08-13.loop.1",
+      "latencyMs": 0,
+      "confidence": 0.45,
+      "evidence": null,
+      "hallucination": {
+        "citedNonexistentLines": [],
+        "rate": 0
+      },
+      "refusal": {
+        "expected": true,
+        "refused": true,
+        "appropriate": true
+      },
+      "judge": null
+    }
+  ],
+  "aggregates": {
+    "all": {
+      "caseCount": 6,
+      "evidenceRecallMean": 0.5,
+      "evidencePrecisionMean": 0.4666666666666666,
+      "hallucinationRate": 0,
+      "rootCauseScoreMean": 0.3,
+      "categoryMatchRate": 0.8,
+      "actionsScoreMean": 0,
+      "refusalAppropriateRate": 1,
+      "degradedCount": 0
+    },
+    "realCases": null,
+    "syntheticCases": {
+      "caseCount": 6,
+      "evidenceRecallMean": 0.5,
+      "evidencePrecisionMean": 0.4666666666666666,
+      "hallucinationRate": 0,
+      "rootCauseScoreMean": 0.3,
+      "categoryMatchRate": 0.8,
+      "actionsScoreMean": 0,
+      "refusalAppropriateRate": 1,
+      "degradedCount": 0
+    }
+  },
+  "baseline": {
+    "status": "inactive-pending-real-cases",
+    "note": "quality baseline pending real cases",
+    "tolerances": {
+      "rootCauseScoreMean": 0.02,
+      "evidenceRecallMean": 0.05
+    }
+  },
+  "problems": []
+}

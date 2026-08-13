@@ -45,6 +45,8 @@ Log domains are org-scoped registrations of a business's log intake (name, descr
 | `POST` | `/api/v1/log-domains` | Create a domain (`{ name, description?, formatProfile? }`). Duplicate name in the organization → `409`; invalid format profile → `400` with issues. Returns `201 { item }`. |
 | `PATCH` | `/api/v1/log-domains/:domainId` | Update name/description/format profile/status (`formatProfile: null` clears the stored profile). |
 | `POST` | `/api/v1/log-domains/:domainId/archive` | Archive the domain; existing log records keep their binding. |
+| `GET` | `/api/v1/log-domains/:domainId/knowledge-links` | P2: list the domain's knowledge-entry links with each entry's current status (`logs:admin-domains`). |
+| `PUT` | `/api/v1/log-domains/:domainId/knowledge-links` | P2: replace the link set (`{ knowledgeEntryIds: uuid[] }`). Only **published** knowledge entries in the caller's organization are accepted (`400` for drafts/archived, `404` for unknown entries); audited as `log-domain-knowledge-links-update`. |
 
 `POST /api/v1/log-files`, `POST /api/v1/logs`, and `POST /api/v1/logs/:logId/rerun` accept an optional `logDomainId`. The domain must belong to the organization and be `active`, otherwise `400`; omitting it keeps the built-in uncategorized log domain semantics (generic analysis, upload never blocked).
 

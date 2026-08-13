@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { ModalDialog } from "@/components/common/ModalDialog";
 import { resolveDriverSchemaPromotionRepository } from "@/application/parameters/driverSchemaPromotionResolve";
 import type {
   PromotionCandidate,
@@ -215,9 +216,14 @@ export function PlatformConsolePage() {
       </ul>
 
       {confirmAction ? (
-        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="确认操作">
-          <div className="submission-dialog platform-console-confirm-dialog">
-            <h2>
+        <ModalDialog
+          open
+          onDismiss={busy ? undefined : () => setConfirmAction(null)}
+          className="submission-dialog platform-console-confirm-dialog"
+        >
+          {({ titleId }) => (
+            <>
+            <h2 id={titleId}>
               {confirmAction.kind === "promote" ? "确认晋升为平台级解析" : "确认撤销平台级解析"}
             </h2>
             {confirmAction.kind === "promote" ? (
@@ -258,8 +264,9 @@ export function PlatformConsolePage() {
                 确认
               </button>
             </div>
-          </div>
-        </div>
+            </>
+          )}
+        </ModalDialog>
       ) : null}
     </section>
   );

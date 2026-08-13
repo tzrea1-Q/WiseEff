@@ -6,7 +6,7 @@ import type { DtsToolchainRunner } from "../../parameter-files/dtsToolchain";
 import { parseDtsValue } from "../../dts/valueAst";
 import { deleteDraft } from "../../parameter-drafts/repository";
 import { getProjectParameterForUpdate } from "../../parameters/repository";
-import { resolveParameterIdentityMode } from "../../parameters/parameterIdentityMode";
+import { resolveParameterIdentityMode } from "../../parameter-kernel/parameterIdentityMode";
 import { assertSensitiveNodeWriteAllowed } from "../../parameters/sensitiveNode";
 import { submitParameterChanges } from "../../parameters/service";
 import { loadBindingContext, resolveBindingHeadRevisionId } from "../../parameter-topology/writeLock";

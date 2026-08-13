@@ -14,8 +14,8 @@ import {
   type ParameterSubmissionRoundStatus
 } from "./status";
 import { buildChangeRequestImpact } from "./impact";
-import { parameterIdentityMode } from "./parameterIdentityMode";
-import { LEGACY_IDENTITY_SQL } from "./legacyParameterIdentityNames";
+import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
+import { LEGACY_IDENTITY_SQL } from "../parameter-kernel/legacyParameterIdentityNames";
 import type { BindingWriteLockFields, EnablementWriteLockFields, ParameterChangeAction } from "../parameter-drafts/types";
 import { addCondition, dateTimeToIso } from "../../shared/database/sqlUtil";
 import { resolveParameterValueKind } from "./repositoryShared";

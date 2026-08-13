@@ -1,4 +1,5 @@
 import { loadServerEnv } from "../../config/env";
+import { resolveKnowledgeEmbeddingClient } from "../knowledge/indexing/embeddingClient";
 import type { MetricsRegistry } from "../../observability/metrics";
 import { defaultTracingBoundary } from "../../observability/tracing";
 import type { Database } from "../../shared/database/client";
@@ -8,7 +9,7 @@ import type { LogAnalysisAdapter } from "./analyzer";
 import { createLogAnalyzerFromEnv } from "./analyzer/analyzerFromEnv";
 import type { ObjectStore } from "./objectStore";
 import { createLogAnalysisQueueRuntime, type LogAnalysisQueueRuntimeEnv } from "./logAnalysisQueueRuntime";
-import { resolveParameterIdentityMode } from "../parameters/parameterIdentityMode";
+import { resolveParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { startLogWorkerLoop, type ProcessLogWorkerOptions } from "./worker";
 
 type RawWorkerEnv = {
@@ -110,7 +111,7 @@ export async function createLogWorkerRuntimeFromEnv(raw: NodeJS.ProcessEnv = pro
   return createLogWorkerRuntime({
     db,
     objectStore: createObjectStoreFromEnv(env, { tracing: defaultTracingBoundary }),
-    analyzer: createLogAnalyzerFromEnv(env),
+    analyzer: createLogAnalyzerFromEnv(env, { db, embeddingClient: resolveKnowledgeEmbeddingClient(env) }),
     queueMode: env.LOG_ANALYSIS_QUEUE_MODE,
     env: {
       REDIS_URL: env.REDIS_URL ?? "",

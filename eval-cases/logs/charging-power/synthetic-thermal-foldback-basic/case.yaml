@@ -1,0 +1,14 @@
+# Synthetic format-coverage case (ISO-8601 timestamps + key=value tokens).
+# Derived from test-fixtures/logs/charging-foldback.log; counts toward format
+# coverage only, never toward quality scores (realLog: false).
+domain: charging-power
+summary: Fast charge folds back after pack temperature crosses the thermal threshold.
+realLog: false
+rootCauseCategory: thermal-protection
+rootCausePoints:
+  - Pack temperature crossed the 50C thermal threshold during a fast-charge session.
+  - Thermal foldback protection reduced the charge current from 6000mA to 2000mA.
+keyEvidenceLines: [6, 7]
+expectedActions:
+  - Inspect pack temperature, cooling path, and BMS thermal thresholds before resuming fast charge.
+  - Correlate the temperature rise with the requested charge profile.

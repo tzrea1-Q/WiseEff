@@ -14,7 +14,7 @@ import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
-import { resolveParameterIdentityMode, setParameterIdentityMode } from "./parameterIdentityMode";
+import { resolveParameterIdentityMode, setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { insertFileSyncConflict } from "./fileSyncConflictRepository";
 import { listReviewDecisions, updateChangeRequestStatus } from "./reviewWorkflowRepository";
 import {
