@@ -649,7 +649,7 @@ function nodeBindingAuditMetadata(binding: DebugNodeBindingRecord, extra: Record
 }
 
 function snapshotEntryFromWrite(
-  parameter: DebugParameterRecord,
+  identity: { parameterId: string | null; nodeId: string | null },
   protocol: DebugConnectionProtocol,
   nodePath: string,
   previousValue: string,
@@ -659,7 +659,13 @@ function snapshotEntryFromWrite(
   const previousEnvelope = buildValueEnvelope(previousValue, metadata);
   const targetEnvelope = buildValueEnvelope(targetValue, metadata);
   return {
-    parameterId: parameter.id,
+    // Identity is recorded as it really is (#420): parameterId only for a
+    // genuine debugging_parameters row, nodeId for the debug_nodes id the
+    // write path resolved. The pre-#420 writer smuggled node ids through
+    // parameterId; rollback still owns disambiguating those persisted legacy
+    // entries (resolveRollbackEntryIdentity).
+    ...(identity.parameterId ? { parameterId: identity.parameterId } : {}),
+    ...(identity.nodeId ? { nodeId: identity.nodeId } : {}),
     protocol,
     nodePath,
     previousValue,
@@ -670,6 +676,53 @@ function snapshotEntryFromWrite(
     previousDigest: previousEnvelope.digest,
     targetDigest: targetEnvelope.digest
   };
+}
+
+/**
+ * Resolves a snapshot entry's identity into FK-safe node_operations column
+ * values. Runs before any rollback gateway I/O — the #416/PR #419 invariant
+ * extended to rollback (#420): every FK the post-device-write operation
+ * insert references is verified up front, so that insert can no longer fault
+ * and roll back the operation, event, audit, and snapshot-claim evidence of a
+ * completed physical write-back.
+ *
+ * Self-describing entries (written since #420) carry their identity under the
+ * honest key; each id is still existence-checked because entries are jsonb
+ * and the referenced row may have been removed since the write. Legacy
+ * entries carry only parameterId, which may hold either a catalog parameter
+ * id or a debug_nodes id, so they are disambiguated with a deterministic
+ * existence probe: debugging_parameters first (same-id mirror rows resolve to
+ * the catalog row, consistent with the historical same-id convention), then
+ * debug_nodes, else both columns stay null — the row's node_path still
+ * identifies the target, and rollback capability outranks linkage.
+ */
+async function resolveRollbackEntryIdentity(
+  tx: Queryable,
+  input: { organizationId: string; protocol: DebugConnectionProtocol; entry: DebugSnapshotEntry }
+): Promise<{ parameterId: string | null; nodeId: string | null }> {
+  const { organizationId, protocol, entry } = input;
+
+  if (entry.nodeId) {
+    const node = await getDebugNode(tx, { organizationId, nodeId: entry.nodeId, includeArchived: true });
+    const parameter = entry.parameterId
+      ? await getDebugParameter(tx, { organizationId, parameterId: entry.parameterId })
+      : null;
+    return { parameterId: parameter?.id ?? null, nodeId: node?.id ?? null };
+  }
+
+  if (!entry.parameterId) {
+    return { parameterId: null, nodeId: null };
+  }
+
+  const parameter = await getDebugParameter(tx, { organizationId, parameterId: entry.parameterId });
+  if (parameter) {
+    return {
+      parameterId: parameter.id,
+      nodeId: await resolveDebugNodeIdByBinding(tx, { organizationId, protocol, nodePath: entry.nodePath })
+    };
+  }
+  const node = await getDebugNode(tx, { organizationId, nodeId: entry.parameterId, includeArchived: true });
+  return { parameterId: null, nodeId: node?.id ?? null };
 }
 
 function resolveSnapshotEntryMetadata(entry: DebugSnapshotEntry): DebugValueMetadata {
@@ -2102,7 +2155,9 @@ export function createDebuggingService(options: ServiceOptions) {
           organizationId,
           sessionId: session.id,
           risk: parameter.risk,
-          entries: [snapshotEntryFromWrite(parameter, protocol, nodePath, previousValue, input.value, metadata)],
+          entries: [
+            snapshotEntryFromWrite({ parameterId, nodeId: catalogNodeId }, protocol, nodePath, previousValue, input.value, metadata)
+          ],
           createdByUserId: auth.user.id
         });
         const result = await withGatewaySpan("write", { requiresApproval: Boolean(input.approvalId), protocol }, async (spanAttributes) => {
@@ -2251,12 +2306,29 @@ export function createDebuggingService(options: ServiceOptions) {
         const gateway = executionMode === "server" ? gatewayRegistry.requireGateway(protocol) : null;
         await requireDeviceLease(tx, auth, session);
 
-        const operations: NodeOperationRecord[] = [];
+        // Entry identity is resolved into FK-safe column values for every
+        // entry before any gateway I/O (#420, extending the #419 invariant):
+        // once a physical write-back has happened, nothing knowable up front
+        // may fault the inserts that record it. The protocol gate moves up
+        // with it so a mismatched entry in a multi-entry snapshot cannot
+        // throw after an earlier entry's device write either.
+        const preparedEntries: Array<{
+          entry: DebugSnapshotEntry;
+          identity: { parameterId: string | null; nodeId: string | null };
+        }> = [];
         for (const entry of snapshot.entries) {
           const entryProtocol = entry.protocol ?? protocol;
           if (entryProtocol !== protocol) {
             throw new ApiError("VALIDATION_FAILED", "Snapshot protocol does not match the rollback session.", 400);
           }
+          preparedEntries.push({
+            entry,
+            identity: await resolveRollbackEntryIdentity(tx, { organizationId, protocol: entryProtocol, entry })
+          });
+        }
+
+        const operations: NodeOperationRecord[] = [];
+        for (const { entry, identity } of preparedEntries) {
           const entryMetadata = resolveSnapshotEntryMetadata(entry);
           const preserveExactRead = requiresExactRead(entryMetadata);
           const compareReadback = (written: string, read: string) => compareDebugValues(written, read, entryMetadata);
@@ -2299,7 +2371,10 @@ export function createDebuggingService(options: ServiceOptions) {
             await insertNodeOperation(tx, {
               organizationId,
               sessionId: session.id,
-              parameterId: entry.parameterId,
+              // Pre-resolved, FK-safe identity: parameter_id only for genuine
+              // catalog parameters, node_id for node entries (#420).
+              parameterId: identity.parameterId,
+              nodeId: identity.nodeId,
               protocol,
               nodePath: entry.nodePath,
               operationType: "rollback",
