@@ -998,6 +998,18 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["api", "audit"]
   },
   {
+    id: "XIAOZE-APPROVAL-CARD-001",
+    priority: "P0",
+    area: "agent",
+    route: "/parameters",
+    roles: ["Admin"],
+    action: "Open the Xiaoze chat in the browser, trigger a parameter-change approval, and approve from the card while the chat stays open.",
+    coverage: "automated",
+    acceptanceIds: ["XIAOZE-APPROVAL-CARD-001"],
+    specFiles: ["e2e/acceptance/xiaoze-action.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
     id: "XIAOZE-ACTION-EDITEDARGS-001",
     priority: "P1",
     area: "agent",
@@ -1357,6 +1369,18 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     acceptanceIds: ["PARAM-TOPOLOGY-EDIT-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
     assertions: ["ui", "api", "db", "audit"]
+  },
+  {
+    id: "PARAM-DRAFT-REMOVE-001",
+    priority: "P0",
+    area: "parameters",
+    route: "/parameters",
+    roles: ["Software User"],
+    action: "Remove a tray draft: the server draft is deleted and the tray stays empty after a full page reload.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-DRAFT-REMOVE-001"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
   },
   {
     id: "PARAM-IDENTITY-MAP-001",

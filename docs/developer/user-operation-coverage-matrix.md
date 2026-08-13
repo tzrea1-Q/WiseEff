@@ -81,6 +81,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `XIAOZE-PERCEPTION-001` | P0 | agent | automated | `/parameters` | Admin | ui, api | `e2e/acceptance/xiaoze-perception.acceptance.spec.ts` |
 | `XIAOZE-PERCEPTION-AUTHZ-001` | P0 | agent | automated | `/parameters` | Guest | ui, api | `e2e/acceptance/xiaoze-perception.acceptance.spec.ts` |
 | `XIAOZE-ACTION-APPROVE-001` | P1 | agent | automated | `/parameters` | Admin | api, audit | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
+| `XIAOZE-APPROVAL-CARD-001` | P0 | agent | automated | `/parameters` | Admin | ui, api | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
 | `XIAOZE-ACTION-EDITEDARGS-001` | P1 | agent | automated | `/parameters` | Admin | api, audit | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
 | `XIAOZE-ACTION-REJECT-001` | P1 | agent | automated | `/parameters` | Admin | api | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
 | `XIAOZE-ACTION-RESUME-001` | P1 | agent | automated | `/parameters` | Admin | api | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
@@ -111,6 +112,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `PARAM-ADMIN-IA-001` | P1 | parameters | future | `/parameter-admin/specs` | Admin | ui |  |
 | `PARAM-TOPOLOGY-BROWSE-001` | P0 | parameters | automated | `/parameters` | Admin, Hardware User | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-TOPOLOGY-EDIT-001` | P0 | parameters | automated | `/parameters` | Software User, Hardware Committer, Software Committer, Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-DRAFT-REMOVE-001` | P0 | parameters | automated | `/parameters` | Software User | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-IDENTITY-MAP-001` | P1 | parameters | automated | `/parameters` | Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-IDENTITY-MAP-ADMIN-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-CONFIG-PUBLISH-GATE-001` | P0 | parameters | automated | `/parameters` | Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
