@@ -214,6 +214,92 @@
 }
 
 /*
+ * ── Dark theme ────────────────────────────────────────────────────────────
+ * Complete dark derivation of the semantic token layer, activated by the
+ * `dark` class on <html> (src/application/theme/themeController.ts — wiring
+ * only, no user-facing switch yet; shipping is a separate decision).
+ *
+ * Only the semantic roles and the few raw-literal keys from :root are
+ * re-declared; every alias defined as var()/color-mix() over these roles
+ * (shadcn keys, legacy bridges, --risk-*, soft tints) re-resolves
+ * automatically. Raw color literals are allowed only here and in :root.
+ *
+ * Derivation rules (docs/design-docs/ui-design-system.md § Color):
+ * - Neutrals stay in the same slate hue family as light, inverted in value.
+ * - Accent, status colors, and the chart ramp brighten one step so text-on-
+ *   dark keeps ≥4.5:1 (accent #4c8dff ≈ 5.5:1 on --bg; muted text ≥4.5:1 on
+ *   --surface).
+ * - Accent/danger fills keep --primary-foreground readable by flipping it to
+ *   a near-black ink (bright fill + dark label, ≈5:1).
+ * - Shadows deepen (higher alpha black + faint light hairline) because
+ *   ambient shadows vanish on dark surfaces.
+ */
+.dark {
+  color-scheme: dark;
+
+  /* Semantic roles */
+  --accent: #4c8dff;
+  --accent-hover: color-mix(in srgb, var(--accent) 88%, #fff);
+  --accent-pressed: #3a72d9;
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, var(--bg));
+  --bg: #0b1220;
+  --surface: #0f172a;
+  --surface-raised: #172136;
+  --surface-sunken: #0d1526;
+  --border: #27334a;
+  --border-strong: #3b4a68;
+  --text: #e8ecf4;
+  --text-secondary: #b7c1d4;
+  --text-muted: #8b99b3;
+  --success: #10b981;
+  --success-soft: color-mix(in srgb, var(--success) 18%, var(--surface));
+  --warning: #f59e0b;
+  --warning-soft: color-mix(in srgb, var(--warning) 18%, var(--surface));
+  --danger: #f87171;
+  --danger-soft: color-mix(in srgb, var(--danger) 18%, var(--surface));
+  --info: #38bdf8;
+  --info-soft: color-mix(in srgb, var(--info) 18%, var(--surface));
+  --ring: color-mix(in srgb, var(--accent) 55%, transparent);
+
+  /* Elevation */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-3: 0 24px 56px rgba(0, 0, 0, 0.62), 0 8px 20px rgba(0, 0, 0, 0.45);
+
+  /* Legacy palette (same roles as the :root block, dark values) */
+  --surface-low: color-mix(in srgb, var(--accent) 10%, var(--bg));
+  --surface-mid: color-mix(in srgb, var(--accent) 16%, var(--bg));
+  --surface-high: color-mix(in srgb, var(--accent) 24%, var(--bg));
+  --surface-bright: var(--surface-raised);
+  --app-muted: #a9b3c6;
+  --outline-strong: #55648a;
+  --app-secondary: #35c0d9;
+  --secondary-container: #0a4a5e;
+  --secondary-soft: color-mix(in srgb, var(--app-secondary) 18%, var(--surface));
+  --tertiary: #9fb3e8;
+  --tertiary-soft: color-mix(in srgb, var(--tertiary) 16%, var(--surface));
+  --amber: #eba53f;
+  --amber-soft: rgba(235, 165, 63, 0.16);
+
+  /* Xiaoze assistant */
+  --xiaoze-surface-muted: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  --xiaoze-border: rgba(140, 172, 255, 0.16);
+  --xiaoze-border-strong: rgba(140, 172, 255, 0.3);
+  --xiaoze-shadow: 0 28px 56px rgba(0, 0, 0, 0.6);
+  --xiaoze-shadow-soft: 0 10px 24px rgba(0, 0, 0, 0.45);
+
+  /* Raw-literal shadcn keys (everything else re-derives via :root aliases) */
+  --primary-foreground: #081226;
+  --sidebar-primary-foreground: #081226;
+
+  /* Categorical chart ramp, brightened one step (chart-1 follows --accent) */
+  --chart-2: #22b8cf;
+  --chart-3: #a78bfa;
+  --chart-4: #38bdf8;
+  --chart-5: #94a3b8;
+}
+
+/*
  * Global focus-visible baseline. Lives in @layer base so that (a) legacy
  * unlayered rules that manage their own focus styles keep winning, and
  * (b) Tailwind/shadcn utility-driven focus rings (utilities layer) are not
@@ -13812,40 +13898,6 @@ td small {
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
-}
-
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
 }
 
 @layer base {
