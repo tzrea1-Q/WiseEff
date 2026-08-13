@@ -1,10 +1,10 @@
 # HCI Wave 2 —— 语言与效率
 
-> 状态：**进行中**
+> 状态：**已完成 —— 2026-08-13 经 PR #411 合入（W2-1..W2-4 全部交付；/audit 已浏览器验证）**
 > 日期：2026-08-13
 > 来源：TD-097（`completed/2026-08-12-hci-interaction-trust-repair.md` 的延期范围）
 > 分支：`feat/hci-wave-2-language`
-> English: [`docs/exec-plans/active/2026-08-13-hci-wave2-language-efficiency.md`](../../../exec-plans/active/2026-08-13-hci-wave2-language-efficiency.md)
+> English: [`docs/exec-plans/completed/2026-08-13-hci-wave2-language-efficiency.md`](../../../exec-plans/completed/2026-08-13-hci-wave2-language-efficiency.md)
 
 ## 范围决策
 
@@ -36,6 +36,6 @@ Wave 2 内继续延期（留在 TD-097）：评审批量（部分失败语义需
 | 中文伴随 | 本计划 + frontend | 更新 |
 | 其余 | — | 预期无变化，完成时复查 |
 
-## 文档更新门
+## 文档更新门——已结清
 
-阻塞：所有 Update/Review 行结清（附证据）后方可移入 `completed/`；运行 `npm run docs:check`。
+PLANS.md 已更新（功能 PR 注册 + 本收尾改为 completed 条目）；API 契约文档已记录审计列表 `q`/`from`/`to`；前端文档（中英）已记录错误话术接缝与审计中心能力；覆盖图审阅后无需登记（本波未新增验收 id）；收尾时 `npm run docs:check` 绿。
