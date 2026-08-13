@@ -31,7 +31,7 @@
 ## 任务
 
 1. **验收先登记**：在实现 UI 之前，把 `KB-DISTILL-002`（终态重载运行 → 带诚实结局措辞的预填草稿 → 发布）登记进 `docs/developer/browser-acceptance-coverage-map.md`、`docs/developer/user-operation-coverage-matrix.md`（EN + zh）、`e2e/acceptance/requirements.ts` 与 `e2e/acceptance/operationMatrix.ts`。
-2. **迁移**（对照 `origin/main` 检查编号；计划时下一空闲编号为 `0109`）：一个增量迁移，在 Phase 3 的 `source_log_id` 旁新增 `knowledge_entries.source_reload_run_id`（可空，`references dts_reload_runs(id) on delete set null`）加部分索引。
+2. **迁移**（对照 `origin/main` 检查编号；计划时为 `0109`,最终提交前因 main 已用 `0109` 做模块父级修复而重编号为 `0110`）：一个增量迁移，在 Phase 3 的 `source_log_id` 旁新增 `knowledge_entries.source_reload_run_id`（可空，`references dts_reload_runs(id) on delete set null`）加部分索引。
 3. **后端**（`server/modules/knowledge/` + `server/modules/dts-reload/` 一个读取缝）：
    - `server/modules/dts-reload/service.ts` 新增 `getReloadRunRecord(db, auth, runId)`——与 `getReloadRun` 相同的 `requireDtsReloadView` + 组织隔离门，但不做对象存储 overlay 源码读取（预填不需要 overlay 源码）。
    - `server/modules/knowledge/reloadDistillation.ts`：终态集合 + `buildReloadDistillationDraft(run: ReloadRunDto)`——标题取运行目的 + 板卡/设备上下文；markdown 正文组装参数集（基线 → 调试值）、每参数行为验证结局、诚实陈述的运行终态（不可验证 ≠ 成功；矛盾与失败照实陈述）、产物摘要，以及内核日志摘录引用（绝不内联整段日志；运行是证据主体）；标签 `参数调试`、`DTS重载`，外加终态标签。
