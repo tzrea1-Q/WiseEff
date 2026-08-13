@@ -1,8 +1,8 @@
-export const XIAOZE_POPUP_OPEN_MS = 440;
+/* Kept in sync with the CSS fallbacks in styles.css (.xiaoze-popup-*).
+   Open is capped at 400ms per the design-system motion rule (no UI
+   transition above 400ms); easings come from --ease-out / --ease-in-out. */
+export const XIAOZE_POPUP_OPEN_MS = 400;
 export const XIAOZE_POPUP_CLOSE_MS = 360;
-
-export const XIAOZE_POPUP_EASE_OPEN = "cubic-bezier(0.16, 1, 0.3, 1)";
-export const XIAOZE_POPUP_EASE_CLOSE = "cubic-bezier(0.4, 0, 0.72, 0.98)";
 
 export type XiaozePopupMotionPhase = "entering" | "visible" | "leaving";
 
