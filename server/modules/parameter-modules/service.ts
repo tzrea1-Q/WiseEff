@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { AuthContext } from "../auth/types";
 import { createAuditEvent, writePlatformAuditEvent } from "../audit/repository";
+import { asAuditTx, withAuditedWrite, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import { canAdminParameters, canViewParameters } from "../parameter-kernel/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -76,7 +77,7 @@ function actorRoleIds(auth: AuthContext): string[] {
 }
 
 async function writeModuleAttributionAudit(
-  db: Queryable,
+  tx: AuditTx,
   auth: AuthContext,
   input: {
     kind: string;
@@ -84,21 +85,19 @@ async function writeModuleAttributionAudit(
     targetId: string;
     metadata?: Record<string, unknown>;
   },
+  context: { requestId?: string } = {},
 ) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: null,
-    actorUserId: auth.user.id,
-    actorType: "user",
+  // requestId fallback survives only until attribution contexts become mandatory
+  // (ADR-0027); previously the traceId was always a fresh random UUID.
+  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
     app: "parameter-management",
     kind: input.kind,
     action: input.action,
     severity: "Low",
+    projectId: null,
     targetType: "parameter-module-mapping",
     targetId: input.targetId,
     metadata: input.metadata ?? {},
-    traceId: randomUUID(),
   });
 }
 
@@ -283,7 +282,7 @@ export async function disbandDriverGroupModule(
       });
     }
 
-    await writeModuleAttributionAudit(tx, auth, {
+    await writeModuleAttributionAudit(asAuditTx(tx), auth, {
       kind: "parameter-module-driver-group-disbanded",
       action: "disband",
       targetId: input.moduleId,
@@ -455,6 +454,7 @@ export async function dismissCompatible(
   db: Database,
   auth: AuthContext,
   input: { compatible: string; reason?: string },
+  context: { requestId?: string } = {},
 ): Promise<{ item: ModuleDiscoveryHintsDto }> {
   requireCanAdmin(auth);
   const compatible =
@@ -462,18 +462,23 @@ export async function dismissCompatible(
   if (!compatible) {
     throw new ApiError("VALIDATION_FAILED", "compatible is required.", 400);
   }
-  await insertDismissedCompatible(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    compatible,
-    reason: input.reason?.trim() ?? "",
-    dismissedByUserId: auth.user.id,
-  });
-  await writeModuleAttributionAudit(db, auth, {
-    kind: "parameter-module-compatible-dismissed",
-    action: "dismiss",
-    targetId: compatible,
-    metadata: { compatible, reason: input.reason?.trim() ?? "" },
+  // Insert and audit commit together (ADR-0027); previously the insert
+  // auto-committed and the audit could be lost after it.
+  await withAuditedWrite(db, auth, { requestId: context.requestId ?? randomUUID() }, async (tx) => {
+    await insertDismissedCompatible(tx, {
+      id: randomUUID(),
+      organizationId: auth.organization.id,
+      compatible,
+      reason: input.reason?.trim() ?? "",
+      dismissedByUserId: auth.user.id,
+    });
+    await writeModuleAttributionAudit(asAuditTx(tx), auth, {
+      kind: "parameter-module-compatible-dismissed",
+      action: "dismiss",
+      targetId: compatible,
+      metadata: { compatible, reason: input.reason?.trim() ?? "" },
+    }, context);
+    return { result: undefined, audit: null };
   });
   return getModuleDiscoveryHints(db, auth);
 }
@@ -482,22 +487,27 @@ export async function restoreDismissedCompatible(
   db: Database,
   auth: AuthContext,
   input: { compatible: string },
+  context: { requestId?: string } = {},
 ): Promise<{ item: ModuleDiscoveryHintsDto }> {
   requireCanAdmin(auth);
   const compatible =
     normalizeMatchToken(input.compatible) ?? input.compatible.trim().toLowerCase();
-  const removed = await deleteDismissedCompatible(db, {
-    organizationId: auth.organization.id,
-    compatible,
-  });
-  if (removed === 0) {
-    throw new ApiError("NOT_FOUND", "Dismissed compatible not found.", 404);
-  }
-  await writeModuleAttributionAudit(db, auth, {
-    kind: "parameter-module-compatible-restored",
-    action: "restore",
-    targetId: input.compatible,
-    metadata: { compatible: input.compatible },
+  // Delete and audit commit together (ADR-0027).
+  await withAuditedWrite(db, auth, { requestId: context.requestId ?? randomUUID() }, async (tx) => {
+    const removed = await deleteDismissedCompatible(tx, {
+      organizationId: auth.organization.id,
+      compatible,
+    });
+    if (removed === 0) {
+      throw new ApiError("NOT_FOUND", "Dismissed compatible not found.", 404);
+    }
+    await writeModuleAttributionAudit(asAuditTx(tx), auth, {
+      kind: "parameter-module-compatible-restored",
+      action: "restore",
+      targetId: input.compatible,
+      metadata: { compatible: input.compatible },
+    }, context);
+    return { result: undefined, audit: null };
   });
   return getModuleDiscoveryHints(db, auth);
 }
@@ -589,7 +599,7 @@ export async function createModuleMapping(
     const emptiedModules = await collectEmptyUnclassifiedBuckets(tx, auth.organization.id);
     const apply = await summarizeMoves(tx, auth.organization.id, moves, [], emptiedModules);
     const item = await readRegistry(tx, auth.organization.id);
-    await writeModuleAttributionAudit(tx, auth, {
+    await writeModuleAttributionAudit(asAuditTx(tx), auth, {
       kind: "parameter-module-mapping-created",
       action: "create",
       targetId: `${input.matchKind}:${input.matchValue}`,
@@ -678,7 +688,7 @@ export async function recomputeBindingModules(
     await applyPlannedMoves(tx, auth.organization.id, moves);
     const emptiedModules = await collectEmptyUnclassifiedBuckets(tx, auth.organization.id);
     const preview = await summarizeMoves(tx, auth.organization.id, moves, [], emptiedModules);
-    await writeModuleAttributionAudit(tx, auth, {
+    await writeModuleAttributionAudit(asAuditTx(tx), auth, {
       kind: "parameter-module-bindings-recomputed",
       action: "recompute",
       targetId: input.projectId ?? auth.organization.id,
@@ -730,7 +740,7 @@ export async function deleteModuleMapping(
     const emptiedModules = await collectEmptyUnclassifiedBuckets(tx, auth.organization.id);
     const apply = await summarizeMoves(tx, auth.organization.id, moves, [], emptiedModules);
     const item = await readRegistry(tx, auth.organization.id);
-    await writeModuleAttributionAudit(tx, auth, {
+    await writeModuleAttributionAudit(asAuditTx(tx), auth, {
       kind: "parameter-module-mapping-deleted",
       action: "delete",
       targetId: input.mappingId,
@@ -911,7 +921,7 @@ export async function registerOrClaimDriver(
       });
     }
 
-    await writeModuleAttributionAudit(tx, auth, {
+    await writeModuleAttributionAudit(asAuditTx(tx), auth, {
       kind: "parameter-module-driver-registered",
       action: mode === "claimed" ? "claim" : "register",
       targetId: module.id,
@@ -991,7 +1001,7 @@ export async function updateDriverRegistrationDefaultBusinessCategory(
       moduleId: module.id,
     });
 
-    await writeModuleAttributionAudit(tx, auth, {
+    await writeModuleAttributionAudit(asAuditTx(tx), auth, {
       kind: "parameter-module-driver-default-business-category-updated",
       action: "update-default-business-category",
       targetId: module.id,
@@ -1042,7 +1052,7 @@ export async function replayDriverPlacementFromRegistration(
       moduleId: module.id,
     });
 
-    await writeModuleAttributionAudit(tx, auth, {
+    await writeModuleAttributionAudit(asAuditTx(tx), auth, {
       kind: "parameter-module-driver-placement-replayed",
       action: "replay-placement",
       targetId: module.id,
@@ -1302,6 +1312,9 @@ export async function updateDriverRegistration(
         affectedOrganizationIds: [auth.organization.id],
       });
     } else {
+      // Stays on the direct path (ratchet allowlist): this audit is attributed to the
+      // SUBJECT's organization, not the actor's — outside the seam's auth-derived axis.
+      // It is already inside the surrounding transaction.
       await createAuditEvent(tx, {
         id: randomUUID(),
         organizationId: subjectOrganizationId,

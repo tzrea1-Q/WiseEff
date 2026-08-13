@@ -26,14 +26,20 @@ const ALLOWED_DIRECT_CALLS: Record<string, number> = {
   // exists and the seam derives actor/org from auth; all sites are in-transaction.
   "modules/auth/bootstrapLocalAdmin.ts": 1,
   "modules/auth/localAuth.ts": 1,
-  "modules/dts-reload/configurationService.ts": 1,
   // dts-reload/policy.ts + sensitiveGate.ts are REFUSAL audits (deny + throw) that must
   // survive the caller's rollback, i.e. deliberately outside the audited write seam.
   "modules/dts-reload/policy.ts": 1,
   "modules/dts-reload/sensitiveGate.ts": 1,
+  // dts-reload/service.ts stays for now: the reload run state machine audits each
+  // step as it commits (start/blocked/validated/deploy/verify), so its audit
+  // boundaries belong to the reload-state-machine review (C9), not a mechanical batch.
   "modules/dts-reload/service.ts": 1,
-  "modules/parameter-modules/service.ts": 2,
-  "modules/parameter-specs/driverSchemaOverlayService.ts": 1,
+  // parameter-modules/service.ts keeps ONE direct call: the driver-registration audit
+  // attributed to the SUBJECT's organization (not the actor's) — outside the seam's
+  // auth-derived axis; it is already in-transaction.
+  "modules/parameter-modules/service.ts": 1,
+  // parameter-topology/governanceAudit.ts is the shared governance audit helper with
+  // ~19 call sites across topology/specs services; migrating it is its own batch.
   "modules/parameter-topology/governanceAudit.ts": 1,
   // parameter-kernel/sensitiveNode.ts stays: refusal audit, same as dts-reload/policy.ts.
   // (moved from modules/parameters/ in the kernel extraction — ADR-0029; count unchanged)
