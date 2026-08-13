@@ -72,6 +72,23 @@ Before a real log enters git, ALL of the following must hold — cases that cann
 
 `eval-cases/logs/baseline.json` stores the last accepted quality scores. When present, `npm run logs:eval:quality` compares the current run against it: **`realLog: true` cases must not score below the baseline minus the stated tolerance** (tolerances are declared in the report). While the set contains no real cases, the report states `quality baseline pending real cases` and the gate stays inactive — the mechanism itself is exercised by tests.
 
+## Human review records (`reviews/`, P3b judge calibration)
+
+Each quality run deterministically samples judged cases into the checklist `docs/generated/log-analysis-judge-sample.md` (rate `LOG_ANALYSIS_JUDGE_SAMPLE_RATE`, default 0.2, minimum 1). A human reviewer scores the sampled cases on the same 0..1 rubric and commits the checklist's template as `eval-cases/logs/reviews/<run-id>.yaml`:
+
+```yaml
+runId: qe-20260813-020107
+reviewer: expert-name
+reviewedAt: 2026-08-13
+cases:
+  - id: charging-power/case-dir
+    humanRootCauseScore: 0.75 # 0..1, same scale as the judge
+    humanCategoryMatch: true # optional
+    notes: "matches the annotation except the secondary cause" # optional
+```
+
+The next `logs:eval:quality` run loads every file under `reviews/`, validates the schema (broken files fail the run), matches reviews to the current run's judged cases **by case id**, and reports judge-human agreement (exact agreement rate + mean absolute difference + category agreement) in the fixed "Judge calibration" report section. No reviews committed yet → the report honestly says "no human reviews yet". Do not fabricate reviews for synthetic cases to make the metric look alive.
+
 ## Current status
 
-All committed cases are `realLog: false` format-coverage seeds. Real expert-annotated cases (20–50 per domain, second pilot domain named by the product owner) are an open external dependency tracked in the P2 plan — never fabricate "real" cases.
+All committed cases are `realLog: false` format-coverage seeds. Real expert-annotated cases (20–50 per domain, second pilot domain named by the product owner) are an open external dependency tracked in the P2 plan — never fabricate "real" cases. No human review records exist yet for the same reason: judge calibration against synthetic-only cases would calibrate on noise.

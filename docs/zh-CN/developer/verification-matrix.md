@@ -47,7 +47,8 @@
 | `npm run acceptance:e2e -- e2e/acceptance/xiaoze-planning.acceptance.spec.ts` 及 `npm run test:server -- planningGraph checkpointer suggest agUiEndpoint` | 小泽 P2 规划循环、checkpoint resume（确定性验收用 memory；生产用 Postgres）、只读主动 suggest、`useXiaozeSuggestions` / `AgentInsightBar`（`XIAOZE-PLAN-MULTISTEP-001`、`XIAOZE-PROACTIVE-001`） | 与 P0/P1 相同依赖，主动建议验收另需 `XIAOZE_PROACTIVE_ENABLED=true` 与 `VITE_XIAOZE_PROACTIVE_ENABLED=true`。 |
 | `npm run test:server -- durableCheckpointer checkpointer env`；可选 `npm run test:server -- durableCheckpointer.integration`（需 `DATABASE_URL` 或 `XIAOZE_CHECKPOINTER_TEST_DATABASE_URL`） | Postgres LangGraph checkpoint 工厂、生产 env 门禁、migrate 建表、跨实例 resume 证明（TD-029） | 集成证明需 PostgreSQL；单元测试默认 memory，CI 无需 live DB。 |
 | `npm run logs:eval` | 日志分析行为层评测（确定性假模型，CI 门禁）：证据接地、诚实降级标注、analysisQuestion 注入、prompt version 记录、循环工具调用合法性、步数/预算收敛、诚实拒答与 meta 自检 | 修改日志分析提示词、`llmAnalyzer`、`agentLoop`、工具、prefilter、降级链或评测场景后使用；输出 `docs/generated/log-analysis-eval.{json,md}`。 |
-| `npm run logs:eval:quality` | 日志分析效果层评测（金标准案例集）：证据行重叠、幻觉率、拒答恰当率、rubric judge 根因打分与基线门禁 | 提示词/模型变更与发布前使用。确定性演示：`LOG_ANALYSIS_DETERMINISTIC=true npm run logs:eval:quality`；输出 `docs/generated/log-analysis-quality.{json,md}`；门禁将 realLog 案例与 `eval-cases/logs/baseline.json` 比较（案例集无真实案例时不激活）。 |
+| `npm run logs:eval:quality` | 日志分析效果层评测（金标准案例集）：证据行重叠、幻觉率、拒答恰当率、rubric judge 根因打分、基线门禁、judge 校准抽样 + judge-human 一致性（P3b） | 提示词/模型变更与发布前使用。确定性演示：`LOG_ANALYSIS_DETERMINISTIC=true npm run logs:eval:quality`；输出 `docs/generated/log-analysis-quality.{json,md}` 与复核清单 `docs/generated/log-analysis-judge-sample.md`；门禁将 realLog 案例与 `eval-cases/logs/baseline.json` 比较（案例集无真实案例时不激活）；一致性读取 `eval-cases/logs/reviews/*.yaml`。 |
+| GitHub Actions `log-analysis-quality-gate.yml` | 定时/手动的质量门禁自动化：以确定性模式跑带门禁的 `logs:eval:quality` 并把报告上传为工件 | 发布检查单：提示词/模型/内核/金标准集变更后手动触发（workflow_dispatch）；每周定时跑一次作漂移监控。基线门禁激活且违反、或存在加载/复核文件问题时失败；工件读法见 `docs/zh-CN/runbooks/log-analysis-llm.md`。 |
 
 ## 同类中文文档
 

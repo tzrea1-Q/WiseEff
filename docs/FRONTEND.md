@@ -264,6 +264,11 @@ Log-analysis quality & annotation intake (P3):
 - `LogRecordDrawer` offers an export-eval-case-draft action on completed records: `buildEvalCaseDraft` (`src/domain/logs/evalCaseDraft.ts`) assembles a golden-set `case.yaml` draft (realLog: true, **deIdentified: false**, rootCauseCategory TODO, evidence lines / root-cause points / actions prefilled) plus `log.txt`, downloaded client-side as two files. The dialog shows the README de-identification checklist and states that a human must de-identify and flip `deIdentified` to true before the case may enter `eval-cases/logs` — deliberately no auto-commit or repository write.
 - The upload dialog states archive support in API mode (`.gz` single file, single-entry `.zip`; server-side unpack) and its pre-check accepts those names; the server stays the authority on format failures.
 
+Result webhooks & per-domain model override (P3b):
+
+- Each active domain row offers a result-webhook editor (`DomainWebhookEditor` in `LogAdminPage.tsx`): https-only URL, write-only signing secret (the UI shows only configured-state + last four; empty input keeps the stored secret), enable toggle, an audited test-delivery button, and a recent-deliveries list rendering one honest row per attempt (time, result/test kind, attempt number, delivered/retrying/failed, HTTP status or error). Saves go through `PUT /api/v1/log-domains/:domainId/webhook`; SSRF-rejected URLs surface a readable inline error.
+- The domain form gains a model-override field (placeholder states that blank means the global model) persisted via the domain PATCH (`modelOverride`; blank clears back to the global model — endpoint/key/budget stay global). The domain table shows model and webhook state columns. API-mode only, like the rest of domain governance.
+
 The M2 API smoke lives in `e2e/log-analysis.api.spec.ts` and requires `DATABASE_URL` plus `db:migrate`, `db:seed:m0`, `db:seed:m1`, and `db:seed:m2`.
 
 ## Product Feedback Repository

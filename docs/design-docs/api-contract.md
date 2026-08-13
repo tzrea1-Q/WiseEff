@@ -43,12 +43,17 @@ Log domains are org-scoped registrations of a business's log intake (name, descr
 | --- | --- | --- |
 | `GET` | `/api/v1/log-domains` | List domains (`logs:view`; `includeArchived=true` adds archived rows). |
 | `POST` | `/api/v1/log-domains` | Create a domain (`{ name, description?, formatProfile? }`). Duplicate name in the organization → `409`; invalid format profile → `400` with issues. Returns `201 { item }`. |
-| `PATCH` | `/api/v1/log-domains/:domainId` | Update name/description/format profile/status (`formatProfile: null` clears the stored profile). |
+| `PATCH` | `/api/v1/log-domains/:domainId` | Update name/description/format profile/status/model override (`formatProfile: null` clears the stored profile; `modelOverride: null` clears back to the global `LOG_ANALYSIS_MODEL`). |
 | `POST` | `/api/v1/log-domains/:domainId/archive` | Archive the domain; existing log records keep their binding. |
 | `GET` | `/api/v1/log-domains/:domainId/knowledge-links` | P2: list the domain's knowledge-entry links with each entry's current status (`logs:admin-domains`). |
 | `PUT` | `/api/v1/log-domains/:domainId/knowledge-links` | P2: replace the link set (`{ knowledgeEntryIds: uuid[] }`). Only **published** knowledge entries in the caller's organization are accepted (`400` for drafts/archived, `404` for unknown entries); audited as `log-domain-knowledge-links-update`. |
+| `PUT` | `/api/v1/log-domains/:domainId/webhook` | P3b: replace the domain's result-webhook config (`{ url: string\|null, enabled: boolean, secret?: string\|null }`; `secret` omitted keeps the stored one). URL must pass the SSRF policy (https-only, no credentials, no private/loopback/metadata addresses — `400` with `reason` codes `webhook-url-scheme` / `webhook-url-private-address` / `webhook-url-required` / `webhook-secret-required`). Audited as `log-domain-webhook-config`; the secret is never echoed. |
+| `GET` | `/api/v1/log-domains/:domainId/webhook-deliveries` | P3b: recent delivery attempts (`limit` 1..50, default 10) — one row per attempt with `kind` (`result`/`test`), `attempt`, `status` (`delivered`/`retrying`/`failed`), `httpStatus?`, `error?`. |
+| `POST` | `/api/v1/log-domains/:domainId/webhook-test` | P3b: send a single-attempt test delivery through the same SSRF-guarded signed sender; returns `{ outcome: { status, attempts, httpStatus?, error? } }` and is audited as `log-domain-webhook-test`. |
 
 `POST /api/v1/log-files`, `POST /api/v1/logs`, and `POST /api/v1/logs/:logId/rerun` accept an optional `logDomainId`. The domain must belong to the organization and be `active`, otherwise `400`; omitting it keeps the built-in uncategorized log domain semantics (generic analysis, upload never blocked).
+
+Log domain DTOs carry `modelOverride?` and a webhook summary `{ enabled, url?, secretConfigured, secretLastFour? }` — the signing secret itself is write-only. The outbound result-webhook payload and signature scheme (`X-WiseEff-Signature` = HMAC-SHA256 over `timestamp.rawBody`, `X-WiseEff-Timestamp` replay window) are specified in [`docs/api/log-analysis-integration.md`](../api/log-analysis-integration.md); delivery is best-effort and never blocks the analysis.
 
 Log record DTOs gained additive provenance fields: `logDomainId?`, `logDomainName?`, `analysisSource?: "agent" | "rules-fallback"`, and `degradedReason?: "provider-unavailable" | "token-budget-exhausted"`. A `rules-fallback` source marks a degraded analysis and must stay visible to clients; the rest of the log output contract is unchanged.
 

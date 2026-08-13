@@ -794,6 +794,26 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "LogDomainKnowledgeLinkListResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "logs.setDomainWebhook": {
+    summary: "Replace a log domain's result-webhook config (SSRF-validated URL; write-only secret)",
+    tags: ["logs"],
+    requestBody: "SetLogDomainWebhookRequest",
+    responseBody: "LogDomainResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "logs.listDomainWebhookDeliveries": {
+    summary: "List a log domain's recent webhook delivery attempts",
+    tags: ["logs"],
+    responseBody: "LogWebhookDeliveryListResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "logs.sendDomainWebhookTest": {
+    summary: "Send an audited single-attempt test delivery through the SSRF-guarded webhook sender",
+    tags: ["logs"],
+    requestBody: "SendLogDomainWebhookTestRequest",
+    responseBody: "LogWebhookTestOutcomeResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
 
   "productFeedback.create": {
     summary: "Create product feedback",

@@ -48,6 +48,24 @@ Verify the degraded path visibly: kill or misconfigure the provider, upload a lo
 - Real-model run: configure `LOG_ANALYSIS_API_*` (and optionally `LOG_ANALYSIS_JUDGE_*` for the LLM-as-judge) and run `npm run logs:eval:quality`.
 - Reports land in `docs/generated/log-analysis-quality.{json,md}` with kernel, model, prompt version, and judge label. The baseline gate (`eval-cases/logs/baseline.json`) compares realLog-case scores against the committed baseline minus stated tolerances; while the set has no real cases the report states `quality baseline pending real cases` and the gate stays inactive.
 
+## Judge Calibration (P3b)
+
+- Every quality run deterministically samples judged cases (id-hash, rate `LOG_ANALYSIS_JUDGE_SAMPLE_RATE`, default 0.2, minimum 1) into the human review checklist `docs/generated/log-analysis-judge-sample.md`. The checklist shows the agent conclusion, the judge's scores and reasoning, and a ready-to-fill YAML template.
+- Human reviewers commit the completed template as `eval-cases/logs/reviews/<run-id>.yaml` (`runId`, `reviewer`, `reviewedAt`, per-case `humanRootCauseScore` 0..1 + optional `humanCategoryMatch`/`notes`). Broken review files fail the quality run — they must be fixed, never silently dropped.
+- With reviews present, the report's fixed "Judge calibration" section computes judge-human agreement: exact agreement rate (identical scores), mean absolute difference, and category agreement. Without reviews it honestly says "no human reviews yet". A drifting judge (rising mean difference) means judge prompts/rubric need retuning before its scores gate anything.
+
+## Quality Gate Workflow (release checklist)
+
+- Before a release that touched prompts, models, kernels, or golden cases: manually trigger the **Log analysis quality gate** GitHub Actions workflow (`workflow_dispatch` on `log-analysis-quality-gate.yml`); it also runs weekly as a drift watch. CI runs deterministic mode (no provider key); the workflow comments document the secrets switch to the real model.
+- Reading the artifact (`log-analysis-quality-report`): check `Baseline gate` first — `inactive-pending-real-cases` is expected until the expert-annotated real cases land, `failed` blocks the release (real-case quality fell below baseline minus tolerance). Then check `Judge calibration` for the sample and agreement status, and `Problems` for loader/review-file errors. A green run with `pending` markers is honest, not a pass on quality — synthetic cases only cover format coverage.
+
+## Result Webhooks (P3b)
+
+- Per-domain config lives in `/log-admin` domain governance → result-webhook editor (URL, write-only secret, enabled); sender tuning is `LOG_WEBHOOK_TIMEOUT_MS` / `LOG_WEBHOOK_MAX_ATTEMPTS` / `LOG_WEBHOOK_RETRY_BASE_DELAY_MS`. The channel is best-effort: it never blocks, fails, or delays an analysis and deliberately stays out of `/health/ready`.
+- Triage a "consumer got nothing": open the domain's recent-deliveries list (or `GET /api/v1/log-domains/:domainId/webhook-deliveries`) — per-attempt rows show delivered/retrying/failed with HTTP status or error. `webhook-url-private-address` errors mean the URL is SSRF-blocked (see `docs/SECURITY.md`); uncategorized logs never fire webhooks; disabled/missing config is silently skipped by design.
+- Use the audited test-delivery button to probe the receiver through the exact production path. Metrics: `wiseeff_log_webhook_deliveries_total{domain,outcome}` and `wiseeff_log_webhook_delivery_duration_ms_*` — a climbing `failed`/`blocked` outcome for one domain is a receiver or config problem, not an analysis problem.
+- Receiver-side verification (signature, replay window) is specified in `docs/api/log-analysis-integration.md`.
+
 ## Online Feedback Monitoring (P3)
 
 - The `/log-admin` analysis-quality section reads `GET /api/v1/logs/feedback-insights` (`logs:view`): helpful rate per log domain × analysis source × prompt version over today/7d/30d. It watches live feedback drift between quality-eval runs; the golden case set stays the quality anchor.

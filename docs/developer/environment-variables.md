@@ -137,7 +137,7 @@ Separate `LOG_ANALYSIS_*` family so log analysis and Xiaoze can point at differe
 | Variable | Local default | Required for | Notes |
 | --- | --- | --- | --- |
 | `LOG_ANALYSIS_API_BASE_URL` | blank | live log-analysis LLM | OpenAI-compatible endpoint. Never commit secrets or private endpoints. |
-| `LOG_ANALYSIS_MODEL` | blank | live log-analysis LLM | Model id recorded on every report (`model` column) and metrics label. |
+| `LOG_ANALYSIS_MODEL` | blank | live log-analysis LLM | GLOBAL model id recorded on every report (`model` column) and metrics label. A log domain's `modelOverride` (P3b, `/log-admin` governance) replaces only this model name for analyses bound to that domain — endpoint, key, timeout, and token budget stay global. |
 | `LOG_ANALYSIS_API_KEY` | blank | live log-analysis LLM | Secret. |
 | `LOG_ANALYSIS_API_TIMEOUT_MS` | `30000` | live log-analysis LLM | Request timeout per `ChatOpenAI` call (each loop step is one call). |
 | `LOG_ANALYSIS_TOKEN_BUDGET` | `8000` | analysis cost bound | Per-analysis token budget. Single-shot: bounds the prompt excerpt (≈4 chars/token) and response `maxTokens`. Loop: cumulative input+output tokens across steps; exhaustion triggers the marked early convergence. |
@@ -148,6 +148,18 @@ Separate `LOG_ANALYSIS_*` family so log analysis and Xiaoze can point at differe
 | `LOG_ANALYSIS_JUDGE_MODEL` | blank | quality eval judge | Judge model id, recorded in the quality report. |
 | `LOG_ANALYSIS_JUDGE_API_KEY` | blank | quality eval judge | Secret. |
 | `LOG_ANALYSIS_JUDGE_API_TIMEOUT_MS` | `30000` | quality eval judge | Judge request timeout. |
+| `LOG_ANALYSIS_JUDGE_SAMPLE_RATE` | `0.2` | judge calibration | Deterministic human-review sampling rate (0..1) for `docs/generated/log-analysis-judge-sample.md`; at least one judged case is always sampled. |
+
+## Log Analysis Result Webhooks
+
+Per-domain result webhooks (P3b) are configured in `/log-admin` (URL, write-only signing secret, enabled flag); the env family only tunes the shared sender. Delivery is best-effort and never blocks the analysis; SSRF constraints are documented in `docs/SECURITY.md`.
+
+| Variable | Local default | Required for | Notes |
+| --- | --- | --- | --- |
+| `LOG_WEBHOOK_TIMEOUT_MS` | `5000` | webhook sender | Per-attempt request timeout; response bodies are discarded. |
+| `LOG_WEBHOOK_MAX_ATTEMPTS` | `3` | webhook sender | Attempts per delivery before it is marked failed (exponential backoff between attempts). |
+| `LOG_WEBHOOK_RETRY_BASE_DELAY_MS` | `1000` | webhook sender | Backoff base: attempt n waits `base * 2^(n-1)` ms. |
+| `LOG_WEBHOOK_ALLOW_INSECURE_LOCAL` | `true` in `.env.example`, `false` in code | local webhook development | Permits plain-http loopback receivers (`http://127.0.0.1`) for local integration testing and acceptance runs. Refused in production by env validation. |
 
 ## Knowledge Base Embeddings And Indexing
 

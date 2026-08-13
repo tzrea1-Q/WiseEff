@@ -5619,6 +5619,155 @@
         }
       }
     },
+    "/api/v1/log-domains/{domainId}/webhook": {
+      "put": {
+        "operationId": "logs.setDomainWebhook",
+        "summary": "Replace a log domain's result-webhook config (SSRF-validated URL; write-only secret)",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "domainId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetLogDomainWebhookRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogDomainResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/log-domains/{domainId}/webhook-deliveries": {
+      "get": {
+        "operationId": "logs.listDomainWebhookDeliveries",
+        "summary": "List a log domain's recent webhook delivery attempts",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "domainId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogWebhookDeliveryListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/log-domains/{domainId}/webhook-test": {
+      "post": {
+        "operationId": "logs.sendDomainWebhookTest",
+        "summary": "Send an audited single-attempt test delivery through the SSRF-guarded webhook sender",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "domainId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendLogDomainWebhookTestRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogWebhookTestOutcomeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/product-feedback": {
       "post": {
         "operationId": "productFeedback.create",
@@ -10649,6 +10798,22 @@
       "SetLogDomainKnowledgeLinksRequest": {
         "type": "object",
         "x-wiseeff-schema": "SetLogDomainKnowledgeLinksRequest"
+      },
+      "SetLogDomainWebhookRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "SetLogDomainWebhookRequest"
+      },
+      "LogWebhookDeliveryListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "LogWebhookDeliveryListResponse"
+      },
+      "SendLogDomainWebhookTestRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "SendLogDomainWebhookTestRequest"
+      },
+      "LogWebhookTestOutcomeResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "LogWebhookTestOutcomeResponse"
       },
       "CreateProductFeedbackRequest": {
         "type": "object",
