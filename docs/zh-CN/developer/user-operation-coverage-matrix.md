@@ -64,6 +64,8 @@
 - `LOG-FEEDBACK-INSIGHTS-001`：Admin 提交日志反馈后在 `/log-admin`「分析质量」区看到按业务域 × 分析来源 × Prompt 版本聚合的有帮助率，断言覆盖 UI、API 和 DB（`e2e/acceptance/log-analysis.acceptance.spec.ts`；`coverage: automated`）。
 - `LOG-EVAL-DRAFT-001`：Admin 在 `/log-admin` 已完成记录抽屉中导出评测案例草稿（脱敏清单弹层 + case.yaml/log.txt 下载内容校验），断言覆盖 UI（`e2e/acceptance/log-analysis.acceptance.spec.ts`；`coverage: automated`）。
 - `LOG-ARCHIVE-UPLOAD-001`：在 `/logs` 上传 `.gz` 压缩日志，服务端解压后分析端到端完成，断言覆盖 UI、API 和 DB（`e2e/acceptance/log-analysis.acceptance.spec.ts`；`coverage: automated`）。
+- `LOG-DOMAIN-WEBHOOK-001`：Admin 在 `/log-admin` 业务域治理区配置结果 Webhook 并触发域绑定分析，接收端收到签名载荷、最近投递列表展示尝试，断言覆盖 UI、API、DB 和 audit（`e2e/acceptance/log-analysis.acceptance.spec.ts`；`coverage: automated`）。
+- `LOG-DOMAIN-MODEL-001`：Admin 在 `/log-admin` 域表单设置模型覆盖，覆盖持久化并成为域绑定分析报告的 `model` 溯源，断言覆盖 UI、API、DB 和 audit（`e2e/acceptance/log-analysis.acceptance.spec.ts`；`coverage: automated`）。
 - `KB-READ-001`：Hardware User 在 `/knowledge` 浏览条目列表并搜索，检索只返回 `published` 条目，断言覆盖 UI、API、DB（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-EDIT-001`：Hardware User 在 `/knowledge` 创建 markdown 条目、发布、就地修订并恢复历史修订，断言覆盖 UI、API、DB、audit（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-FILE-001`：Hardware User 在 `/knowledge` 经对象存储上传文件条目并查看提取状态，断言覆盖 UI、API、DB、audit（`e2e/acceptance/knowledge.acceptance.spec.ts`）。

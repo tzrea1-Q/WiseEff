@@ -100,7 +100,7 @@ describe("permission-aware routing", () => {
 
     render(<App initialAppState={guestState} />);
 
-    expect(screen.getByRole("heading", { name: "无权访问" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "无权访问该页面" })).toBeInTheDocument();
     expect(screen.getByText(/当前角色：访客/)).toBeInTheDocument();
     expect(screen.getByText(/所需角色：管理员/)).toBeInTheDocument();
   });
@@ -110,7 +110,7 @@ describe("permission-aware routing", () => {
 
     render(<App initialAppState={{ ...initialState, activeRoleId: "user" }} runtimeMode="mock" />);
 
-    expect(screen.getByRole("heading", { name: "无权访问" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "无权访问该页面" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "打开 WiseAgent" })).not.toBeInTheDocument();
     expect(document.querySelector(".xiaoze-chat-toggle-anchor")).not.toBeInTheDocument();
   });
@@ -121,7 +121,7 @@ describe("permission-aware routing", () => {
     render(<App initialAppState={guestState} />);
 
     expect(document.querySelector(".permission-denied-page")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "返回可用工作台" })).toHaveClass("permission-denied-action");
+    expect(screen.getByRole("button", { name: "返回可访问的工作台" })).toHaveClass("permission-denied-action");
   });
 
   it("keeps the permission denied action from rendering as text-only", () => {

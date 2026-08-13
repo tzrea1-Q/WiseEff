@@ -31,20 +31,57 @@ export function AuditWorkspace({
 
   const effectiveQuery = useMemo(
     () => ({ ...query, search: localSearch }),
-    [localSearch, query.appGroup, query.projectId, query.severity, query.traceId, query.search]
+    [localSearch, query.appGroup, query.projectId, query.severity, query.timeWindow, query.traceId, query.search]
   );
 
-  const { events, loading, loadingMore, error, hasMore, loadMore } = useAuditEvents({
+  const { events, loading, loadingMore, error, hasMore, loadMore, fetchAllForExport } = useAuditEvents({
     isApiMode,
     mockEvents,
     query: effectiveQuery
   });
   const detailEvent = events.find((event) => event.id === detailEventId) ?? null;
   const { relatedEvents, loading: relatedLoading } = useAuditTraceEvents(detailEvent?.traceId, isApiMode, mockEvents);
+  const [exporting, setExporting] = useState(false);
 
   const commitSearch = () => {
     if (localSearch !== query.search) {
       onQueryChange?.({ search: localSearch });
+    }
+  };
+
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      const rows = await fetchAllForExport();
+      const header = ["时间", "模块", "类型", "操作", "操作人", "严重度", "对象类型", "对象", "Trace"];
+      const escapeCell = (value: string) => `"${value.replaceAll('"', '""')}"`;
+      const lines = [header.join(",")].concat(
+        rows.map((event) =>
+          [
+            event.createdAt ?? event.timeLabel,
+            event.app,
+            event.kind,
+            event.action,
+            event.actor,
+            event.severity,
+            event.targetType ?? "",
+            event.targetId ?? "",
+            event.traceId ?? ""
+          ]
+            .map((cell) => escapeCell(String(cell)))
+            .join(",")
+        )
+      );
+      // UTF-8 BOM keeps Chinese headers intact when opened in Excel.
+      const blob = new Blob([`\uFEFF${lines.join("\n")}`], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `audit-events-${new Date().toISOString().slice(0, 10)}.csv`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -101,6 +138,19 @@ export function AuditWorkspace({
               </select>
             </label>
           ) : null}
+          <label className="audit-workspace-select-wrap">
+            <span>时间</span>
+            <select
+              value={query.timeWindow}
+              onChange={(event) => onQueryChange?.({ timeWindow: event.target.value as AuditQueryState["timeWindow"] })}
+              aria-label="时间范围筛选"
+            >
+              <option value="all">全部时间</option>
+              <option value="today">今天</option>
+              <option value="7d">近 7 天</option>
+              <option value="30d">近 30 天</option>
+            </select>
+          </label>
           <div className="param-admin-audit-filters" role="group" aria-label="严重度筛选">
             {(
               [
@@ -121,6 +171,14 @@ export function AuditWorkspace({
               </button>
             ))}
           </div>
+          <button
+            type="button"
+            className="button subtle audit-workspace-export"
+            disabled={exporting || events.length === 0}
+            onClick={() => void exportCsv()}
+          >
+            {exporting ? "导出中…" : "导出 CSV"}
+          </button>
         </div>
         {query.traceId ? (
           <div className="audit-workspace-trace-banner">

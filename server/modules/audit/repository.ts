@@ -173,6 +173,14 @@ export async function listAuditEvents(db: Queryable, query: ListAuditEventsQuery
     conditions.push(`ae.trace_id = $${values.length}`);
   }
 
+  if (query.q && query.q.trim()) {
+    values.push(`%${query.q.trim().replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")}%`);
+    const param = `$${values.length}`;
+    conditions.push(
+      `(ae.action ilike ${param} or ae.kind ilike ${param} or coalesce(ae.target_id, '') ilike ${param} or coalesce(u.name, '') ilike ${param})`
+    );
+  }
+
   if (query.from) {
     values.push(query.from);
     conditions.push(`ae.created_at >= $${values.length}::timestamptz`);

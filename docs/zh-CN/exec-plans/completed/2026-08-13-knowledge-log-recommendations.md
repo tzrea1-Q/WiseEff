@@ -1,9 +1,9 @@
 # 日志分析结果的相关知识推荐
 
-> Status: **Active**
+> Status: **Completed 2026-08-13**——经 #400 合并
 > Date: 2026-08-13
 > Branch: `feat/knowledge-log-recommendations`
-> English: [`docs/exec-plans/active/2026-08-13-knowledge-log-recommendations.md`](../../../exec-plans/active/2026-08-13-knowledge-log-recommendations.md)
+> English: [`docs/exec-plans/completed/2026-08-13-knowledge-log-recommendations.md`](../../../exec-plans/completed/2026-08-13-knowledge-log-recommendations.md)
 > 设计: [`docs/zh-CN/design-docs/2026-08-12-knowledge-base-design.md`](../../design-docs/2026-08-12-knowledge-base-design.md) — 延后路线图第 1 项(评审决策 D8 将其列为 MVP 后第一个增量)
 
 ## 目标

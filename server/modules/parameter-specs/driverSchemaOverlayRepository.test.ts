@@ -1,250 +1,57 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import type { Queryable } from "../../shared/database/client";
+import {
+  createInMemoryTestDatabase,
+  isTestDatabaseAvailable,
+  type InMemoryTestDatabase
+} from "../../testing/testDatabase";
+import { seedCoreGraph, seedSpecBindingGraph } from "../../testing/fixtures";
+import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import {
   findActiveOrganizationDriverSchemaByCompatible,
   getOrganizationDriverSchema,
   insertOrganizationDriverSchema,
   listOrganizationDriverSchemas,
-  setOrganizationDriverSchemaLifecycle,
-  type OrganizationDriverSchemaRow,
-  type OrganizationDriverSchemaPropertyRow,
+  setOrganizationDriverSchemaLifecycle
 } from "./driverSchemaOverlayRepository";
 
-type SchemaState = OrganizationDriverSchemaRow & {
-  superseded_by_schema_id: string | null;
-  properties: OrganizationDriverSchemaPropertyRow[];
-};
+const databaseAvailable = await isTestDatabaseAvailable();
 
-function createFakeDb() {
-  const schemas = new Map<string, SchemaState>();
-  const specs = new Map<
-    string,
-    {
-      value_shape: unknown;
-      units: string | null;
-      constraints: unknown;
-      example_value: unknown;
-      documentation: string | null;
-      lifecycle: "draft" | "active" | "deprecated";
-      version_id: string;
-    }
-  >();
+describe.skipIf(!databaseAvailable)("organizationDriverSchemaRepository", () => {
+  let db: InMemoryTestDatabase;
 
-  const query = vi.fn(async (text: string, values: unknown[] = []) => {
-    const sql = text.replace(/\s+/g, " ").trim().toLowerCase();
-
-    if (sql.includes("insert into driver_schema_overlays")) {
-      const [
-        id,
-        organizationId,
-        compatible,
-        displayName,
-        notes,
-        lifecycle,
-        version,
-        createdByUserId,
-        activatedAt,
-      ] = values as [
-        string,
-        string,
-        string,
-        string,
-        string,
-        "draft" | "active" | "deprecated",
-        number,
-        string | null,
-        string | null,
-      ];
-      if (
-        lifecycle === "active" &&
-        [...schemas.values()].some(
-          (row) =>
-            row.organization_id === organizationId &&
-            row.lifecycle === "active" &&
-            row.compatible.toLowerCase() === compatible.toLowerCase(),
-        )
-      ) {
-        const error = new Error(
-          'duplicate key value violates unique constraint "driver_schema_overlays_org_compatible_active_uidx"',
-        ) as Error & { code?: string };
-        error.code = "23505";
-        throw error;
-      }
-      const now = new Date().toISOString();
-      schemas.set(id, {
-        id,
-        organization_id: organizationId,
-        compatible,
-        display_name: displayName,
-        notes,
-        lifecycle,
-        version,
-        created_by_user_id: createdByUserId,
-        updated_by_user_id: createdByUserId,
-        created_at: now,
-        updated_at: now,
-        activated_at: activatedAt,
-        superseded_by_schema_id: null,
-        properties: [],
-      });
-      return { rows: [], rowCount: 1 };
-    }
-
-    if (sql.includes("insert into driver_schema_overlay_properties")) {
-      const [id, schemaId, parameterSpecId, propertyKey, sortOrder] = values as [
-        string,
-        string,
-        string,
-        string,
-        number,
-      ];
-      const schema = schemas.get(schemaId);
-      if (!schema) throw new Error(`missing schema ${schemaId}`);
-      const spec = specs.get(parameterSpecId) ?? {
-        value_shape: { kind: "unknown" },
-        units: null,
-        constraints: {},
-        example_value: null,
-        documentation: "",
-        lifecycle: "active" as const,
-        version_id: `${parameterSpecId}:v1`,
-      };
-      specs.set(parameterSpecId, spec);
-      schema.properties.push({
-        id,
-        driver_schema_overlay_id: schemaId,
-        parameter_spec_id: parameterSpecId,
-        parameter_spec_version_id: spec.version_id,
-        property_key: propertyKey,
-        value_shape: spec.value_shape as OrganizationDriverSchemaPropertyRow["value_shape"],
-        units: spec.units,
-        constraints: spec.constraints as Record<string, unknown>,
-        example_value: spec.example_value,
-        documentation: spec.documentation,
-        spec_lifecycle: spec.lifecycle,
-        sort_order: sortOrder,
-        created_at: new Date().toISOString(),
-      });
-      return { rows: [], rowCount: 1 };
-    }
-
-    if (
-      sql.includes("from driver_schema_overlays") &&
-      sql.includes("organization_id = $1 and id = $2")
-    ) {
-      const [organizationId, schemaId] = values as [string, string];
-      const hit = schemas.get(schemaId);
-      if (!hit || hit.organization_id !== organizationId) return { rows: [], rowCount: 0 };
-      const { properties: _properties, ...row } = hit;
-      return { rows: [row], rowCount: 1 };
-    }
-
-    if (
-      sql.includes("from driver_schema_overlays") &&
-      sql.includes("lower(compatible) = lower($2)") &&
-      sql.includes("lifecycle = 'active'")
-    ) {
-      const [organizationId, compatible] = values as [string, string];
-      const hit = [...schemas.values()].find(
-        (row) =>
-          row.organization_id === organizationId &&
-          row.lifecycle === "active" &&
-          row.compatible.toLowerCase() === compatible.toLowerCase(),
-      );
-      if (!hit) return { rows: [], rowCount: 0 };
-      const { properties: _properties, ...row } = hit;
-      return { rows: [row], rowCount: 1 };
-    }
-
-    if (
-      sql.includes("from driver_schema_overlays") &&
-      sql.includes("organization_id = $1") &&
-      sql.includes("($2::text[] is null or lifecycle = any($2::text[]))")
-    ) {
-      const [organizationId, lifecycles] = values as [string, string[] | null];
-      const rows = [...schemas.values()]
-        .filter((row) => row.organization_id === organizationId)
-        .filter((row) => !lifecycles || lifecycles.includes(row.lifecycle))
-        .map(({ properties: _properties, ...row }) => row);
-      return { rows, rowCount: rows.length };
-    }
-
-    if (sql.includes("from driver_schema_overlay_properties") && sql.includes("= any($1::text[])")) {
-      const [schemaIds] = values as [string[]];
-      const rows = schemaIds.flatMap((id) => schemas.get(id)?.properties ?? []);
-      return { rows, rowCount: rows.length };
-    }
-
-    if (sql.includes("update driver_schema_overlays") && sql.includes("set lifecycle = $3")) {
-      const [organizationId, schemaId, lifecycle, updatedByUserId] = values as [
-        string,
-        string,
-        "draft" | "active" | "deprecated",
-        string | null,
-      ];
-      const hit = schemas.get(schemaId);
-      if (!hit || hit.organization_id !== organizationId) return { rows: [], rowCount: 0 };
-      if (
-        lifecycle === "active" &&
-        [...schemas.values()].some(
-          (row) =>
-            row.id !== schemaId &&
-            row.organization_id === organizationId &&
-            row.lifecycle === "active" &&
-            row.compatible.toLowerCase() === hit.compatible.toLowerCase(),
-        )
-      ) {
-        const error = new Error(
-          'duplicate key value violates unique constraint "driver_schema_overlays_org_compatible_active_uidx"',
-        ) as Error & { code?: string };
-        error.code = "23505";
-        throw error;
-      }
-      if (lifecycle === "active" && hit.lifecycle !== "active") {
-        hit.version += 1;
-        hit.activated_at = hit.activated_at ?? new Date().toISOString();
-      }
-      hit.lifecycle = lifecycle;
-      hit.updated_by_user_id = updatedByUserId;
-      hit.updated_at = new Date().toISOString();
-      return { rows: [], rowCount: 1 };
-    }
-
-    throw new Error(`Unhandled SQL in fake db: ${text}`);
+  beforeEach(async () => {
+    setParameterIdentityMode(null);
+    db = await createInMemoryTestDatabase();
+    await seedCoreGraph(db, {
+      organization: { id: "org-1", name: "ChargeLab" },
+      users: [{ id: "user-1", name: "Riley Chen" }]
+    });
+    await seedCoreGraph(db, { organization: { id: "org-2", name: "OtherOrg" } });
   });
 
-  return {
-    db: { query } as Queryable,
-    schemas,
-    seedSpec(
-      parameterSpecId: string,
-      definition: {
-        value_shape: unknown;
-        units?: string | null;
-        documentation?: string;
-      },
-    ) {
-      specs.set(parameterSpecId, {
-        value_shape: definition.value_shape,
-        units: definition.units ?? null,
-        constraints: {},
-        example_value: null,
-        documentation: definition.documentation ?? "",
-        lifecycle: "active",
-        version_id: `${parameterSpecId}:v1`,
-      });
-    },
-  };
-}
+  afterEach(async () => {
+    await db?.rollback();
+  });
 
-describe("organizationDriverSchemaRepository", () => {
   it("inserts a draft schema linking ParameterSpec rows", async () => {
-    const { db, seedSpec } = createFakeDb();
-    seedSpec("pspec-reg", {
-      value_shape: { kind: "u32-array" },
-      documentation: "bus address",
+    await seedSpecBindingGraph(db, {
+      organizationId: "org-1",
+      specs: [
+        {
+          id: "pspec-reg",
+          specificationKey: "overlay-chip/reg",
+          versions: [{ id: "psv-reg", displayName: "reg", valueShape: { kind: "u32-array" } }]
+        }
+      ]
     });
+    // Units/documentation enrich through dts_property_specs; the structural-key
+    // check bars 'reg' there, so the spec-side key differs from the overlay key.
+    await db.query(
+      `insert into dts_property_specs (id, parameter_spec_id, property_key, schema_namespace, units, documentation)
+       values ('dps-reg', 'pspec-reg', 'reg-window', 'wiseeff', null, 'bus address')`
+    );
+
     const created = await insertOrganizationDriverSchema(db, {
       id: "ods-1",
       organizationId: "org-1",
@@ -256,66 +63,88 @@ describe("organizationDriverSchemaRepository", () => {
         {
           id: "odsp-1",
           parameterSpecId: "pspec-reg",
-          propertyKey: "reg",
-        },
-      ],
+          propertyKey: "reg"
+        }
+      ]
     });
 
     expect(created.lifecycle).toBe("draft");
     expect(created.organizationId).toBe("org-1");
     expect(created.compatible).toBe("vendor,overlay-chip");
+    expect(created.activatedAt).toBeNull();
     expect(created.properties).toEqual([
       expect.objectContaining({
         parameterSpecId: "pspec-reg",
+        parameterSpecVersionId: "psv-reg",
         propertyKey: "reg",
         valueShape: { kind: "u32-array" },
         documentation: "bus address",
-      }),
+        specLifecycle: "active"
+      })
     ]);
 
     const listed = await listOrganizationDriverSchemas(db, { organizationId: "org-1" });
     expect(listed).toHaveLength(1);
+    expect(listed[0].properties).toHaveLength(1);
+    // Tenancy: the same schema id is invisible from another organization.
     expect(await getOrganizationDriverSchema(db, { organizationId: "org-2", schemaId: "ods-1" })).toBeNull();
+    expect(await listOrganizationDriverSchemas(db, { organizationId: "org-2" })).toEqual([]);
+
+    const stored = await db.query<{ lifecycle: string; version: number }>(
+      `select lifecycle, version from driver_schema_overlays where id = 'ods-1'`
+    );
+    expect(stored.rows[0]).toMatchObject({ lifecycle: "draft", version: 1 });
   });
 
   it("allows two drafts for the same compatible but rejects a second active", async () => {
-    const { db } = createFakeDb();
     await insertOrganizationDriverSchema(db, {
       id: "ods-draft-a",
       organizationId: "org-1",
       compatible: "vendor,same",
       displayName: "A",
-      properties: [],
+      properties: []
     });
     await insertOrganizationDriverSchema(db, {
       id: "ods-draft-b",
       organizationId: "org-1",
-      compatible: "vendor,same",
+      // Case only differs: the active-uniqueness index keys on lower(compatible).
+      compatible: "Vendor,SAME",
       displayName: "B",
-      properties: [],
+      properties: []
     });
 
-    await setOrganizationDriverSchemaLifecycle(db, {
-      organizationId: "org-1",
-      schemaId: "ods-draft-a",
-      lifecycle: "active",
-      updatedByUserId: "user-1",
-    });
-
-    await expect(
-      setOrganizationDriverSchemaLifecycle(db, {
+    await db.transaction((tx) =>
+      setOrganizationDriverSchemaLifecycle(tx, {
         organizationId: "org-1",
-        schemaId: "ods-draft-b",
+        schemaId: "ods-draft-a",
         lifecycle: "active",
-        updatedByUserId: "user-1",
-      }),
+        updatedByUserId: "user-1"
+      })
+    );
+
+    // The second activation violates the partial unique index; running it in a
+    // transaction keeps the rejected statement from poisoning the fixture.
+    await expect(
+      db.transaction((tx) =>
+        setOrganizationDriverSchemaLifecycle(tx, {
+          organizationId: "org-1",
+          schemaId: "ods-draft-b",
+          lifecycle: "active",
+          updatedByUserId: "user-1"
+        })
+      )
     ).rejects.toMatchObject({ code: "23505" });
 
     const active = await findActiveOrganizationDriverSchemaByCompatible(db, {
       organizationId: "org-1",
-      compatible: "vendor,same",
+      compatible: "vendor,same"
     });
     expect(active?.id).toBe("ods-draft-a");
+    // First draft→active transition bumps the version and stamps activation.
     expect(active?.version).toBe(2);
+    expect(active?.activatedAt).not.toBeNull();
+
+    const loser = await getOrganizationDriverSchema(db, { organizationId: "org-1", schemaId: "ods-draft-b" });
+    expect(loser).toMatchObject({ lifecycle: "draft", version: 1 });
   });
 });

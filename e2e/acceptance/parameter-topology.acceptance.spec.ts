@@ -2017,6 +2017,97 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     }
   });
 
+  test("removing a tray draft deletes it on the server and it stays gone after reload", async ({ page, request }, testInfo) => {
+    // @acceptance PARAM-DRAFT-REMOVE-001
+    // @operation PARAM-DRAFT-REMOVE-001
+    test.setTimeout(180_000);
+    const topology = await ensureAuroraSemanticTopology(request);
+
+    await signInBrowserAsRole(page, "software-user", `${disposableRuntime.frontendUrl}/parameters?project=${projectId}`);
+    await dismissXiaozeHint(page);
+
+    const workspace = page.getByRole("region", { name: "DTS 参数工作台" });
+    await expect(workspace).toBeVisible({ timeout: 30_000 });
+    await expect(workspace).toHaveAttribute("data-config-set-id", topology.configSetId, { timeout: 30_000 });
+    await workspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
+    await expect.poll(async () => workspace.getByRole("cell", { name: "gpio_int" }).count()).toBeGreaterThanOrEqual(1);
+
+    // Anchor the sc8562 binding (its schema accepts the 3-cell target value).
+    const bindingsApi = await request.get(
+      apiRoute(`/api/v2/projects/${projectId}/parameter-bindings?revisionId=${encodeURIComponent(topology.revisionId)}`),
+      { headers: authHeadersForRole("software-user") }
+    );
+    expect(bindingsApi.ok()).toBe(true);
+    const bindingsBody = (await bindingsApi.json()) as { items: Array<{ id: string; propertyKey: string; locator: string | null }> };
+    const scBinding = bindingsBody.items.find((item) => item.propertyKey === "gpio_int" && item.locator === SC8562_LOCATOR);
+    expect(scBinding, "sc8562 gpio_int binding must exist in the ensured topology").toBeTruthy();
+
+    // Create a typed draft through the product UI (no API shortcut, so the tray
+    // exercises the same seams a user does).
+    await bindingRowById(workspace, scBinding!.id).getByRole("button", { name: /^(编辑|继续编辑) gpio_int/ }).click();
+    const editDetail = page.getByRole("dialog", { name: "修改草稿" });
+    await expect(editDetail).toBeVisible();
+    await editDetail.getByLabel("目标值", { exact: true }).fill("<&gpio13 31 0>");
+    await editDetail.getByLabel("修改原因", { exact: true }).fill("PARAM-DRAFT-REMOVE acceptance draft");
+    const createdDraft = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response.url().includes(`/api/v2/projects/${projectId}/parameter-bindings/`) &&
+        response.url().includes("/drafts")
+    );
+    await editDetail.getByRole("button", { name: "校验并加入本轮" }).click();
+    const draftResponse = await createdDraft;
+    expect(draftResponse.status(), await draftResponse.text()).toBe(201);
+    const draftBody = (await draftResponse.json()) as { item: { draftId: string } };
+    const draftId = draftBody.item.draftId;
+    expect(draftId).toBeTruthy();
+
+    const tray = page.getByRole("heading", { name: "本轮已修改" });
+    await expect(tray).toBeVisible();
+
+    // Tray removal must delete the server draft, not just filter local state.
+    const deleted = page.waitForResponse(
+      (response) => response.request().method() === "DELETE" && response.url().includes("/api/v1/parameter-drafts/")
+    );
+    await page.getByRole("button", { name: "移出本轮修改" }).first().click();
+    const deleteResponse = await deleted;
+    expect(deleteResponse.ok(), await deleteResponse.text()).toBe(true);
+    await expect(tray).toHaveCount(0);
+
+    // The draft must stay gone across a full reload (the historical bug: the
+    // server copy resurrected into the tray and the next submit).
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("region", { name: "DTS 参数工作台" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: "本轮已修改" })).toHaveCount(0);
+
+    const mine = await page.request.get(apiRoute(`/api/v1/parameter-drafts/mine?projectId=${projectId}`), {
+      headers: authHeadersForRole("software-user")
+    });
+    expect(mine.ok()).toBe(true);
+    const mineBody = (await mine.json()) as { items: Array<{ id?: string; draftId?: string }> };
+    expect(
+      mineBody.items.some((item) => item.id === draftId || item.draftId === draftId),
+      `draft ${draftId} should be deleted server-side`
+    ).toBe(false);
+
+    await recordOperationEvidence({
+      operationId: "PARAM-DRAFT-REMOVE-001",
+      title: "tray draft removal deletes server-side and survives reload",
+      status: "passed",
+      role: "Software User",
+      route: `/parameters?project=${projectId}`,
+      page,
+      testInfo,
+      api: [
+        summarizeApiResponse(deleteResponse, {
+          method: "DELETE",
+          path: "/api/v2/.../drafts/:draftId",
+          responseSummary: `draft=${draftId} deleted; absent after reload`
+        })
+      ]
+    });
+  });
+
   test("resolves identity mapping tasks from the parameter admin surface", async ({ page, request }, testInfo) => {
     // @acceptance PARAM-IDENTITY-MAP-ADMIN-001
     // @operation PARAM-IDENTITY-MAP-ADMIN-001

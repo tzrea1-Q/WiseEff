@@ -1,6 +1,13 @@
 import { parseLogText } from "../parser";
 import { createAgentLoopLogAnalyzer, LOG_ANALYSIS_LOOP_PROMPT_VERSION } from "../analyzer/agentLoop";
-import { createLlmLogAnalyzer, LOG_ANALYSIS_PROMPT_VERSION, type LogAnalysisChatMessage, type LogAnalysisChatModel } from "../analyzer/llmAnalyzer";
+import { createLogAnalyzerFromEnv } from "../analyzer/analyzerFromEnv";
+import {
+  createLlmLogAnalyzer,
+  LOG_ANALYSIS_DETERMINISTIC_MODEL,
+  LOG_ANALYSIS_PROMPT_VERSION,
+  type LogAnalysisChatMessage,
+  type LogAnalysisChatModel
+} from "../analyzer/llmAnalyzer";
 import { createScriptedLogAnalysisModel } from "../analyzer/scriptedModel";
 import { analyzeWithDegradation } from "../worker";
 import { evaluateAllLogEvalExpectations, evaluateLogEvalExpectation, type LogEvalExpectation, type LogEvalRunResult } from "./expectations";
@@ -158,6 +165,60 @@ export async function runLogLoopEvalScenario(scenario: LogLoopEvalScenario): Pro
   }, scenario.expectations);
 }
 
+/**
+ * Per-domain model-override scenarios (P3b): run the REAL env factory in
+ * deterministic mode and assert the domain's `modelOverride` (and only it)
+ * replaces the model label recorded on the output — which is exactly what
+ * flows into report provenance and `model`-labelled metrics.
+ */
+export async function runModelOverrideEvalScenarios(): Promise<LogScenarioEvalResult[]> {
+  const logContent = [
+    "2026-05-25T02:00:00Z INFO charge requested_ma=200 delivered_ma=200",
+    "2026-05-25T02:00:01Z WARN thermal foldback battery_temp=74"
+  ].join("\n");
+  const parsed = parseLogText({ fileName: "override.log", content: logContent });
+  if (!parsed.ok) {
+    throw new Error(`Model-override eval fixture failed to parse: ${parsed.reason}`);
+  }
+
+  const analyzer = createLogAnalyzerFromEnv({
+    LOG_ANALYSIS_API_TIMEOUT_MS: 1000,
+    LOG_ANALYSIS_TOKEN_BUDGET: EVAL_TOKEN_BUDGET,
+    LOG_ANALYSIS_DETERMINISTIC: true,
+    LOG_ANALYSIS_KERNEL: "loop",
+    LOG_ANALYSIS_MAX_STEPS: EVAL_LOOP_MAX_STEPS
+  });
+
+  const cases: Array<{ name: string; modelOverride?: string; expectedModel: string }> = [
+    {
+      name: "loop-domain-model-override-applied",
+      modelOverride: "domain-override-model-x",
+      expectedModel: "domain-override-model-x"
+    },
+    {
+      name: "loop-no-override-uses-global-model",
+      expectedModel: LOG_ANALYSIS_DETERMINISTIC_MODEL
+    }
+  ];
+
+  const results: LogScenarioEvalResult[] = [];
+  for (const scenario of cases) {
+    const output = await analyzer.analyze({
+      parsed,
+      logDomain: { name: "charging-power", modelOverride: scenario.modelOverride }
+    });
+    results.push(
+      toScenarioResult(
+        { name: scenario.name, category: "model-override" },
+        "loop",
+        { output, parsedLineNumbers: parsed.entries.map((entry) => entry.lineNumber), promptMessages: [] },
+        [{ type: "expectsModelLabel", model: scenario.expectedModel }]
+      )
+    );
+  }
+  return results;
+}
+
 /** Known-bad results must fail the harness, or the harness itself is broken. */
 export function runLogEvalMetaChecks(): LogEvalReport["metaChecks"] {
   const hallucinationCheck = evaluateLogEvalExpectation({ type: "expectsGroundedEvidence" }, META_HALLUCINATED_AGENT_RESULT);
@@ -217,6 +278,7 @@ export async function runAllLogEvals(
   for (const scenario of loopScenarios) {
     scenarioResults.push(await runLogLoopEvalScenario(scenario));
   }
+  scenarioResults.push(...(await runModelOverrideEvalScenarios()));
   const metaChecks = runLogEvalMetaChecks();
   const passed = scenarioResults.filter((result) => result.pass).length;
   const metaPassed = metaChecks.filter((check) => check.pass).length;

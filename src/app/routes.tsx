@@ -171,7 +171,7 @@ export function PageRouter({
     return (
       <section className="permission-denied-page" aria-label="无权访问">
         <span className="eyebrow">访问控制</span>
-        <h2>无权访问</h2>
+        <h2>无权访问该页面</h2>
         <p>当前角色：{getRequiredRoleLabel(currentRoleId)}</p>
         <p>所需角色：{getRequiredRoleLabel(requiredRole)}</p>
         <button
@@ -179,7 +179,7 @@ export function PageRouter({
           type="button"
           onClick={() => onNavigate(getAccessibleFallbackPath(currentRoleId))}
         >
-          返回可用工作台
+          返回可访问的工作台
         </button>
       </section>
     );

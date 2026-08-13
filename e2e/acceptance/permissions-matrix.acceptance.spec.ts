@@ -94,19 +94,19 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
 
       await navigateWithinApp(page, "/debugging");
       if (expectation.canOpenDebugging) {
-        await expect(page.getByRole("heading", { name: "无权访问" })).toHaveCount(0);
+        await expect(page.getByRole("heading", { name: /无权访问该页面/i })).toHaveCount(0);
         await expect(page.locator("main, .main-content").first()).toBeVisible();
       } else {
-        await expect(page.getByRole("heading", { name: "无权访问" })).toBeVisible();
+        await expect(page.getByRole("heading", { name: "无权访问该页面" })).toBeVisible();
         await expect(page.getByText(`当前角色：${expectation.uiRoleLabel}`)).toBeVisible();
       }
 
       await navigateWithinApp(page, "/parameter-review");
       if (expectation.canOpenReview) {
-        await expect(page.getByRole("heading", { name: "无权访问" })).toHaveCount(0);
+        await expect(page.getByRole("heading", { name: /无权访问该页面/i })).toHaveCount(0);
         await expect(page.locator("main, .main-content").first()).toBeVisible();
       } else {
-        await expect(page.getByRole("heading", { name: "无权访问" })).toBeVisible();
+        await expect(page.getByRole("heading", { name: "无权访问该页面" })).toBeVisible();
         await expect(page.getByText(`当前角色：${expectation.uiRoleLabel}`)).toBeVisible();
       }
 
@@ -114,13 +114,13 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
       // @acceptance PLAT-ROLE-001
       // @operation PLAT-ROLE-001
       if (expectation.canOpenPlatformConsole) {
-        await expect(page.getByRole("heading", { name: "无权访问" })).toHaveCount(0);
+        await expect(page.getByRole("heading", { name: /无权访问该页面/i })).toHaveCount(0);
         // The shell TopBar owns the page title; the console body is the labelled region.
         await expect(page.getByRole("region", { name: "平台控制台" })).toBeVisible();
       } else {
         // Org Admin must not inherit Platform Super Admin via dual role bindings on u-xu-yun.
         await expect(page.getByRole("region", { name: "平台控制台" })).toHaveCount(0);
-        await expect(page.getByRole("heading", { name: "无权访问" })).toBeVisible();
+        await expect(page.getByRole("heading", { name: "无权访问该页面" })).toBeVisible();
         await expect(page.getByText(`当前角色：${expectation.uiRoleLabel}`)).toBeVisible();
       }
 
@@ -153,7 +153,7 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
     // @operation PLAT-ROLE-002
     await setPrototypeRole(page, "Admin");
     await navigateWithinApp(page, "/user-permissions");
-    await expect(page.getByRole("heading", { name: "无权访问" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: /无权访问该页面/i })).toHaveCount(0);
 
     // Existing platform-admin users may still be *labeled* 平台超级管理员 in the table/filter.
     // The grant surface is create-user + role assignment for non-platform-admin users.

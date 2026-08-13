@@ -210,17 +210,8 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       valueFormat: overrides.valueFormat as DebugParameterRecord["valueFormat"] | undefined,
       normalizationMode: overrides.normalizationMode as DebugParameterRecord["normalizationMode"] | undefined
     });
-    // insertNodeOperation falls node_id back to the parameter id, and that column's
-    // FK points at debug_nodes — so a catalog parameter can only record read/write
-    // operations when a same-id debug_nodes row exists. Nothing in the migrations
-    // maintains that mirror; this seed papers over what looks like a live defect on
-    // the API-reachable parameterId read/write path (flagged in the slice-4 plan
-    // doc; the fake db never saw it).
-    await db.query(
-      `insert into debug_nodes (id, organization_id, name, module)
-       values ($1, $2, $3, 'Battery')`,
-      [parameter.id, organizationId, `mirror:${key}`]
-    );
+    // Deliberately no same-id debug_nodes mirror row: production admin creation
+    // never writes one, and operation inserts must not depend on it (#416).
     return parameter;
   }
 
@@ -272,6 +263,33 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
     const binding = await seedBinding(parameter.id, { accessMode: overrides.bindingAccessMode ?? "RW" });
     const session = await seedSession();
     return { parameter, binding, session };
+  }
+
+  /**
+   * Regression seed for #416: create the catalog parameter through the admin
+   * service path exactly like production does — debugging_parameters plus
+   * debugging_parameter_node_bindings only, never a same-id debug_nodes row.
+   */
+  async function seedAdminParameter(
+    service: ReturnType<typeof createDebuggingService>,
+    overrides: { nodePath?: string } = {}
+  ) {
+    return service.createAdminParameter(adminAuth, {
+      name: "Admin-created current limit",
+      key: "admin_current_limit",
+      description: "Created through the live admin surface.",
+      module: "Battery",
+      risk: "Medium",
+      unit: "mA",
+      range: "0-5000",
+      minValue: 0,
+      maxValue: 5000,
+      currentValue: "3000",
+      targetValue: "3200",
+      sortOrder: 10,
+      enabled: true,
+      bindings: [{ protocol: "hdc", nodePath: overrides.nodePath ?? "/sys/current", accessMode: "RW", enabled: true }]
+    });
   }
 
   async function nodeOperationRows(sessionId?: string) {
@@ -1260,6 +1278,54 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       );
       expect(gateway.readNode).not.toHaveBeenCalled();
     });
+
+    // #416 regression: parameterId reads used to insert node_id = parameterId,
+    // whose FK targets debug_nodes — a 500 for any parameter created through
+    // the live admin surface (which never writes a same-id mirror row).
+    it("reads a parameterId-addressed admin-created parameter without a debug_nodes mirror row", async () => {
+      await seedDevice();
+      await seedTarget();
+      const session = await seedSession();
+      const audit = createAuditSpy();
+      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
+      const created = await seedAdminParameter(service);
+
+      const operation = await service.readNode(readAuth, { sessionId: session.id, parameterId: created.id });
+
+      expect(operation).toMatchObject({
+        operationType: "read",
+        status: "succeeded",
+        parameterId: created.id,
+        readValue: "3000"
+      });
+      const stored = await nodeOperationRows(session.id);
+      expect(stored).toEqual([
+        expect.objectContaining({ parameter_id: created.id, node_id: null, operation_type: "read", status: "succeeded" })
+      ]);
+      expect(audit.events.filter((event) => event.kind === "debug-node-read")).toHaveLength(1);
+    });
+
+    it("links a parameterId operation to the debug node bound to the same protocol path when one exists", async () => {
+      await seedDevice();
+      await seedTarget();
+      const session = await seedSession();
+      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+      const created = await seedAdminParameter(service, { nodePath: "/sys/linked/current" });
+      const node = await createDebugNode(db, { organizationId: "org-1", name: "Linked node", module: "Battery" });
+      await upsertDebugNodeBinding(db, {
+        organizationId: "org-1",
+        nodeId: node.id,
+        protocol: "hdc",
+        nodePath: "/sys/linked/current",
+        accessMode: "RW",
+        enabled: true
+      });
+
+      await service.readNode(readAuth, { sessionId: session.id, parameterId: created.id });
+
+      const stored = await nodeOperationRows(session.id);
+      expect(stored).toEqual([expect.objectContaining({ parameter_id: created.id, node_id: node.id })]);
+    });
   });
 
   describe("writeNode", () => {
@@ -1846,6 +1912,43 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       expect(operation).toMatchObject({ operationType: "write", status: "succeeded", nodePath: "/sys/node/hdc/write" });
       const stored = await nodeOperationRows(session.id);
       expect(stored).toEqual([expect.objectContaining({ parameter_id: null, node_id: node.id })]);
+    });
+
+    // #416 regression, severe half: the operation insert runs after the
+    // physical device write, so an FK fault there rolled back the snapshot,
+    // operation, and audit rows of a write that already mutated the device.
+    it("keeps operation, snapshot, and audit evidence for a parameterId write without a debug_nodes mirror row", async () => {
+      await seedDevice();
+      await seedTarget();
+      const session = await seedSession();
+      const audit = createAuditSpy();
+      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
+      const created = await seedAdminParameter(service);
+
+      const operation = await service.writeNode(
+        writeAuth,
+        { sessionId: session.id, parameterId: created.id, value: "3200" },
+        { requestId: "request-debug-write-416" }
+      );
+
+      expect(operation).toMatchObject({
+        operationType: "write",
+        status: "succeeded",
+        parameterId: created.id,
+        snapshotId: expect.any(String)
+      });
+      const stored = await nodeOperationRows(session.id);
+      expect(stored).toEqual([
+        expect.objectContaining({ parameter_id: created.id, node_id: null, operation_type: "write", status: "succeeded" })
+      ]);
+      const snapshots = await snapshotRows();
+      expect(snapshots).toEqual([expect.objectContaining({ id: operation.snapshotId, status: "valid" })]);
+      expect(audit.events.filter((event) => event.kind === "debug-node-write")).toEqual([
+        expect.objectContaining({
+          targetId: created.id,
+          metadata: expect.objectContaining({ operationId: operation.id, snapshotId: operation.snapshotId })
+        })
+      ]);
     });
   });
 

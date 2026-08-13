@@ -1,9 +1,9 @@
 # Log Analysis Behavior Eval Report
 
-- Generated: 2026-08-13T00:59:57.722Z
+- Generated: 2026-08-13T03:19:22.613Z
 - Single-shot prompt version: `2026-08-12.1`
 - Loop prompt version: `2026-08-13.loop.1`
-- Scenarios: 14 (14 passed)
+- Scenarios: 16 (16 passed)
 - Meta checks: 4/4 passed
 
 ## Scenario Results
@@ -24,6 +24,8 @@
 | loop-token-budget-early-convergence | loop-convergence | loop | agent | token-budget-exhausted | PASS |
 | loop-honest-refusal-on-insufficient-evidence | loop-honesty | loop | agent | - | PASS |
 | loop-multi-step-grounding-enforced | loop-grounding | loop | agent | - | PASS |
+| loop-domain-model-override-applied | model-override | loop | agent | - | PASS |
+| loop-no-override-uses-global-model | model-override | loop | agent | - | PASS |
 
 ## Meta Checks
 

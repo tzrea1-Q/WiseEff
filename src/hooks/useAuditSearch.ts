@@ -1,12 +1,13 @@
 import { useCallback, useMemo } from "react";
 import type { AuditAppGroupId } from "@/domain/audit/auditApps";
-import type { AuditQueryState } from "@/hooks/useAuditEvents";
+import type { AuditQueryState, AuditTimeWindow } from "@/hooks/useAuditEvents";
 import type { RiskLevel } from "@/domain/prototype/types";
 
 const defaultState: AuditQueryState = {
   appGroup: "all",
   severity: "all",
-  search: ""
+  search: "",
+  timeWindow: "all"
 };
 
 export function parseAuditSearch(search: string, defaults: Partial<AuditQueryState> = {}): AuditQueryState {
@@ -16,11 +17,16 @@ export function parseAuditSearch(search: string, defaults: Partial<AuditQuerySta
   const projectId = params.get("projectId") ?? defaults.projectId;
   const traceId = params.get("traceId") ?? defaults.traceId;
   const querySearch = params.get("q") ?? defaults.search ?? "";
+  const timeWindowParam = params.get("tw") ?? defaults.timeWindow ?? defaultState.timeWindow;
+  const timeWindow = (["all", "today", "7d", "30d"] as const).includes(timeWindowParam as AuditTimeWindow)
+    ? (timeWindowParam as AuditTimeWindow)
+    : defaultState.timeWindow;
 
   return {
     appGroup,
     severity,
     search: querySearch,
+    timeWindow,
     ...(projectId ? { projectId } : {}),
     ...(traceId ? { traceId } : {})
   };
@@ -36,6 +42,9 @@ export function buildAuditSearch(state: AuditQueryState) {
   }
   if (state.search.trim()) {
     params.set("q", state.search.trim());
+  }
+  if (state.timeWindow && state.timeWindow !== "all") {
+    params.set("tw", state.timeWindow);
   }
   if (state.projectId) {
     params.set("projectId", state.projectId);

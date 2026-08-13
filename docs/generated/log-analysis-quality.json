@@ -1,5 +1,6 @@
 {
-  "generatedAt": "2026-08-12T22:05:59.875Z",
+  "generatedAt": "2026-08-13T02:09:59.238Z",
+  "runId": "qe-20260813-020959",
   "kernel": "loop",
   "deterministic": true,
   "modelLabel": "deterministic",
@@ -13,8 +14,9 @@
       "analysisSource": "agent",
       "model": "deterministic",
       "promptVersion": "2026-08-13.loop.1",
-      "latencyMs": 1,
+      "latencyMs": 2,
       "confidence": 0.82,
+      "conclusionSummary": "Controller communication showed timeout and retry behavior.",
       "evidence": {
         "expectedLines": [
           5,
@@ -64,6 +66,7 @@
       "promptVersion": "2026-08-13.loop.1",
       "latencyMs": 0,
       "confidence": 0.82,
+      "conclusionSummary": "The device went offline or became unavailable during the captured window.",
       "evidence": {
         "expectedLines": [
           5,
@@ -108,6 +111,7 @@
       "promptVersion": "2026-08-13.loop.1",
       "latencyMs": 1,
       "confidence": 0.82,
+      "conclusionSummary": "Charging behavior is consistent with thermal foldback protection reducing charge output.",
       "evidence": {
         "expectedLines": [
           6,
@@ -155,6 +159,7 @@
       "promptVersion": "2026-08-13.loop.1",
       "latencyMs": 0,
       "confidence": 0.82,
+      "conclusionSummary": "Charging behavior is consistent with thermal foldback protection reducing charge output. Regarding the question \"Why did charging slow down halfway through the session?\": the cited lines are the directly relevant evidence.",
       "evidence": {
         "expectedLines": [
           5,
@@ -199,6 +204,7 @@
       "promptVersion": "2026-08-13.loop.1",
       "latencyMs": 0,
       "confidence": 0.82,
+      "conclusionSummary": "Controller communication showed timeout and retry behavior.",
       "evidence": {
         "expectedLines": [
           3,
@@ -242,8 +248,9 @@
       "analysisSource": "agent",
       "model": "deterministic",
       "promptVersion": "2026-08-13.loop.1",
-      "latencyMs": 0,
+      "latencyMs": 1,
       "confidence": 0.45,
+      "conclusionSummary": "No known anomaly pattern was detected; the log looks nominal. Regarding the question \"Is anything failing on this node?\": the cited lines are the directly relevant evidence.",
       "evidence": null,
       "hallucination": {
         "citedNonexistentLines": [],
@@ -289,6 +296,15 @@
       "rootCauseScoreMean": 0.02,
       "evidenceRecallMean": 0.05
     }
+  },
+  "judgeSampling": {
+    "rate": 0.2,
+    "sampledCaseIds": [
+      "charging-power/synthetic-thermal-foldback-basic"
+    ]
+  },
+  "humanAgreement": {
+    "status": "no-human-reviews-yet"
   },
   "problems": []
 }

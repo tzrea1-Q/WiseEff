@@ -22,6 +22,7 @@ export type LogAnalysisJobMetricStage = "parse" | "pattern" | "rootcause" | "rep
 export type LogAnalysisJobFailureReason = "parse_error" | "object_store_error" | "stale_run" | "unknown";
 export type LogAnalysisLlmCallOutcome = "ok" | "provider_error" | "invalid_output";
 export type LogAnalysisDegradedMetricReason = "provider-unavailable" | "token-budget-exhausted";
+export type LogWebhookDeliveryMetricOutcome = "delivered" | "retrying" | "failed" | "blocked" | "skipped";
 export type AgentToolMetricKind = "read" | "preparation" | "mutating";
 export type AgentApprovalMetricAction = "requested" | "approved" | "rejected";
 export type AgentToolMetricStatus = "succeeded" | "failed" | "rejected";
@@ -211,6 +212,16 @@ export function createMetricsRegistry(options: { serviceName: string }) {
         reason: input.reason,
         model: input.model
       });
+    },
+    recordLogAnalysisWebhookDelivery(input: { domain: string; outcome: LogWebhookDeliveryMetricOutcome; durationMs?: number }) {
+      incrementCounter("wiseeff_log_webhook_deliveries_total", "WiseEff log-analysis webhook delivery attempts by domain and outcome.", {
+        domain: input.domain,
+        outcome: input.outcome
+      });
+      if (input.durationMs !== undefined) {
+        incrementCounter("wiseeff_log_webhook_delivery_duration_ms_sum", "Total WiseEff log-analysis webhook delivery duration in milliseconds.", { domain: input.domain }, input.durationMs);
+        incrementCounter("wiseeff_log_webhook_delivery_duration_ms_count", "Count of WiseEff log-analysis webhook delivery duration samples.", { domain: input.domain });
+      }
     },
     recordNotificationDeliveryResult(input: { status: NotificationDeliveryMetricStatus; durationMs: number }) {
       const labels = { status: input.status };

@@ -1,153 +1,139 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthContext } from "../auth/types";
-import type { Database, QueryResult, Queryable } from "../../shared/database/client";
-import { ApiError } from "../../shared/http/errors";
+import { makeTestAuthContext } from "../../testing/authContext";
+import {
+  createInMemoryTestDatabase,
+  isTestDatabaseAvailable,
+  type InMemoryTestDatabase
+} from "../../testing/testDatabase";
+import { seedCoreGraph, seedSpecBindingGraph } from "../../testing/fixtures";
+import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
+import {
+  insertReleaseBaseline,
+  insertReleaseBaselineMember,
+  updateBaselineStatus
+} from "./baselineRepository";
+import { insertFileVersion, insertProjectParameterFile, setCurrentVersion } from "./repository";
+import type { ValidationGateResult } from "./validationGate";
 import { assertReleaseGateAllows, evaluateReleaseReadiness } from "./releaseReadinessService";
 
-vi.mock("./configSetRepository", () => ({
-  getConfigSetById: vi.fn()
-}));
-
-vi.mock("./baselineRepository", () => ({
-  listConfigSetMemberFiles: vi.fn(),
-  listReleaseBaselinesByConfigSet: vi.fn(),
-  listReleaseBaselineMembers: vi.fn()
-}));
-
-vi.mock("./repository", () => ({
-  getFileVersionById: vi.fn()
-}));
-
-vi.mock("../parameters/fileSyncConflictRepository", () => ({
-  listOpenConflicts: vi.fn()
-}));
-
-vi.mock("../parameter-topology/repository", () => ({
-  getLatestConfigRevision: vi.fn()
-}));
-
-vi.mock("../parameter-topology/bindingService", () => ({
-  syncSingletonCardinalityBlockingTasks: vi.fn(),
-  countBlockingIdentityMappingTasksForRevision: vi.fn()
-}));
-
-vi.mock("./validationGate", () => ({
-  runValidationGate: vi.fn()
-}));
-
-import { getConfigSetById } from "./configSetRepository";
-import {
-  listConfigSetMemberFiles,
-  listReleaseBaselineMembers,
-  listReleaseBaselinesByConfigSet
-} from "./baselineRepository";
-import { getFileVersionById } from "./repository";
-import { listOpenConflicts } from "../parameters/fileSyncConflictRepository";
-import { getLatestConfigRevision } from "../parameter-topology/repository";
-import {
-  countBlockingIdentityMappingTasksForRevision,
-  syncSingletonCardinalityBlockingTasks
-} from "../parameter-topology/bindingService";
-
-const getConfigSetByIdMock = vi.mocked(getConfigSetById);
-const listMembersMock = vi.mocked(listConfigSetMemberFiles);
-const listBaselinesMock = vi.mocked(listReleaseBaselinesByConfigSet);
-const listBaselineMembersMock = vi.mocked(listReleaseBaselineMembers);
-const getFileVersionByIdMock = vi.mocked(getFileVersionById);
-const listConflictsMock = vi.mocked(listOpenConflicts);
-const getRevisionMock = vi.mocked(getLatestConfigRevision);
-const syncTasksMock = vi.mocked(syncSingletonCardinalityBlockingTasks);
-const countTasksMock = vi.mocked(countBlockingIdentityMappingTasksForRevision);
+const databaseAvailable = await isTestDatabaseAvailable();
 
 function adminAuth(): AuthContext {
-  return {
-    user: {
-      id: "user-1",
-      organizationId: "org-1",
-      name: "Riley Chen",
-      email: "riley@example.com",
-      title: "Admin",
-      isActive: true
-    },
-    organization: { id: "org-1", name: "ChargeLab" },
-    roles: [{ projectId: null, roleId: "admin" }],
-    permissions: ["admin:access"]
-  };
+  return makeTestAuthContext({ userId: "user-1", organizationId: "org-1", name: "Riley Chen" });
 }
 
 function viewerAuth(): AuthContext {
-  return {
-    ...adminAuth(),
-    permissions: ["parameter:view"],
-    roles: [{ projectId: null, roleId: "hardware-user" }]
-  };
-}
-
-function createFakeDb(pendingCount = 0): Database {
-  const query = vi.fn(async (text: string): Promise<QueryResult<{ count: number }>> => {
-    if (text.includes("parameter_change_requests")) {
-      return { rows: [{ count: pendingCount }], rowCount: 1 };
-    }
-    return { rows: [], rowCount: 0 };
+  return makeTestAuthContext({
+    userId: "user-1",
+    organizationId: "org-1",
+    roles: [{ projectId: null, roleId: "hardware-user" }],
+    permissions: ["parameter:view"]
   });
+}
+
+/** The validation gate wraps the external DTC toolchain — it stays an injected port. */
+function gateOk(): ValidationGateResult {
+  return { ok: true, mode: "block", requiresConfirmation: false, diagnostics: [], compiler: "dtc" };
+}
+
+function gateWarn(): ValidationGateResult {
   return {
-    query,
-    transaction: async <T,>(fn: (q: Queryable) => Promise<T>) => fn({ query })
+    ok: true,
+    mode: "warn",
+    requiresConfirmation: true,
+    diagnostics: [{ file: "board.dts", severity: "warning", message: "dtc unavailable" }],
+    compiler: "unavailable"
   };
 }
 
-describe("evaluateReleaseReadiness", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    getConfigSetByIdMock.mockResolvedValue({
-      id: "cs-1",
+describe.skipIf(!databaseAvailable)("evaluateReleaseReadiness", () => {
+  let db: InMemoryTestDatabase;
+
+  beforeEach(async () => {
+    setParameterIdentityMode(null);
+    db = await createInMemoryTestDatabase();
+    await seedCoreGraph(db, {
+      organization: { id: "org-1", name: "ChargeLab" },
+      users: [
+        { id: "user-1", name: "Riley Chen" },
+        { id: "user-sync", name: "Sync Bot" },
+        { id: "user-ui", name: "UI Editor" }
+      ],
+      projects: [{ id: "project-1", name: "Aurora", code: "AUR" }]
+    });
+    await seedSpecBindingGraph(db, {
+      organizationId: "org-1",
+      configSets: [{ id: "cs-1", projectId: "project-1", name: "board-a" }]
+    });
+
+    await insertProjectParameterFile(db, {
+      id: "file-base",
       organizationId: "org-1",
       projectId: "project-1",
-      name: "board-a",
-      createdAt: "2026-08-07T00:00:00.000Z",
-      updatedAt: "2026-08-07T00:00:00.000Z"
+      fileName: "board.dts",
+      format: "dts"
     });
-    listBaselinesMock.mockResolvedValue([]);
-    listBaselineMembersMock.mockResolvedValue([]);
-    getFileVersionByIdMock.mockResolvedValue(null);
-    listConflictsMock.mockResolvedValue([]);
-    getRevisionMock.mockResolvedValue(null);
-    syncTasksMock.mockResolvedValue(undefined as never);
-    countTasksMock.mockResolvedValue(0);
-    listMembersMock.mockResolvedValue([
-      {
-        configSetId: "cs-1",
-        fileId: "file-base",
-        fileName: "board.dts",
-        format: "dts",
-        role: "base",
-        sortOrder: 0,
-        currentVersionId: "ver-1",
-        currentVersionNumber: 1
-      }
-    ]);
+    await insertFileVersion(db, {
+      id: "ver-1",
+      fileId: "file-base",
+      versionNumber: 1,
+      storageKey: "org-1/files/board-v1.dts",
+      checksum: "checksum-1",
+      sizeBytes: 100,
+      parsedIndex: {},
+      origin: "upload",
+      createdByUserId: "user-1"
+    });
+    await setCurrentVersion(db, { fileId: "file-base", versionId: "ver-1" });
+    await attachToConfigSet("file-base", "base", 0);
   });
 
+  afterEach(async () => {
+    await db?.rollback();
+  });
+
+  async function attachToConfigSet(fileId: string, role: string, sortOrder: number) {
+    await db.query(
+      `update project_parameter_files
+       set config_set_id = 'cs-1', config_set_role = $2, config_set_sort_order = $3
+       where id = $1`,
+      [fileId, role, sortOrder]
+    );
+  }
+
+  async function seedReleasedBaseline(memberVersionId: string) {
+    await insertReleaseBaseline(db, {
+      id: "bl-released",
+      organizationId: "org-1",
+      configSetId: "cs-1",
+      name: "v1",
+      createdByUserId: "user-1"
+    });
+    await updateBaselineStatus(db, { baselineId: "bl-released", status: "released" });
+    await insertReleaseBaselineMember(db, {
+      id: "blm-1",
+      baselineId: "bl-released",
+      fileId: "file-base",
+      fileVersionId: memberVersionId,
+      versionNumber: 1
+    });
+  }
+
   it("rejects non-admin auth", async () => {
-    await expect(evaluateReleaseReadiness(createFakeDb(), viewerAuth(), { configSetId: "cs-1" })).rejects.toMatchObject({
+    await expect(evaluateReleaseReadiness(db, viewerAuth(), { configSetId: "cs-1" })).rejects.toMatchObject({
       code: "FORBIDDEN",
       status: 403
     });
   });
 
   it("returns ready with gate token when no blockers or warnings", async () => {
-    const result = await evaluateReleaseReadiness(createFakeDb(), adminAuth(), { configSetId: "cs-1" }, {
-      openConflicts: [],
-      pendingChangeCount: 0,
-      validationGate: {
-        ok: true,
-        mode: "block",
-        requiresConfirmation: false,
-        diagnostics: [],
-        compiler: "dtc"
-      }
+    // Conflicts and pending change requests come from the real (empty) tables.
+    const result = await evaluateReleaseReadiness(db, adminAuth(), { configSetId: "cs-1" }, {
+      validationGate: gateOk()
     });
+
     expect(result.available).toBe(true);
     expect(result.level).toBe("ready");
     expect(result.blockers).toEqual([]);
@@ -158,111 +144,47 @@ describe("evaluateReleaseReadiness", () => {
   });
 
   it("returns in-sync when working members match the released tip", async () => {
-    listBaselinesMock.mockResolvedValue([
-      {
-        id: "bl-released",
-        organizationId: "org-1",
-        configSetId: "cs-1",
-        name: "v1",
-        status: "released",
-        createdAt: "2026-08-07T00:00:00.000Z"
-      }
-    ]);
-    listBaselineMembersMock.mockResolvedValue([
-      {
-        baselineId: "bl-released",
-        fileId: "file-base",
-        fileVersionId: "ver-1",
-        versionNumber: 1
-      }
-    ]);
-    const result = await evaluateReleaseReadiness(createFakeDb(), adminAuth(), { configSetId: "cs-1" }, {
-      openConflicts: [],
-      pendingChangeCount: 0,
-      validationGate: {
-        ok: true,
-        mode: "block",
-        requiresConfirmation: false,
-        diagnostics: [],
-        compiler: "dtc"
-      }
+    await seedReleasedBaseline("ver-1");
+
+    const result = await evaluateReleaseReadiness(db, adminAuth(), { configSetId: "cs-1" }, {
+      validationGate: gateOk()
     });
+
     expect(result.level).toBe("in-sync");
     expect(result.releasedBaselineId).toBe("bl-released");
   });
 
   it("stays ready (not in-sync) when a released tip exists but working has drifted", async () => {
-    listBaselinesMock.mockResolvedValue([
-      {
-        id: "bl-released",
-        organizationId: "org-1",
-        configSetId: "cs-1",
-        name: "v1",
-        status: "released",
-        createdAt: "2026-08-07T00:00:00.000Z"
-      }
-    ]);
-    listBaselineMembersMock.mockResolvedValue([
-      {
-        baselineId: "bl-released",
-        fileId: "file-base",
-        fileVersionId: "ver-old",
-        versionNumber: 1
-      }
-    ]);
-    getFileVersionByIdMock.mockImplementation(async (_db, input) => {
-      if (input.versionId === "ver-old") {
-        return {
-          id: "ver-old",
-          fileId: "file-base",
-          versionNumber: 1,
-          storageKey: "sk-old",
-          checksum: "a",
-          sizeBytes: 1,
-          parsedIndex: {},
-          origin: "upload",
-          createdAt: "2026-08-07T00:00:00.000Z"
-        };
-      }
-      return {
-        id: "ver-1",
-        fileId: "file-base",
-        versionNumber: 2,
-        storageKey: "sk-new",
-        checksum: "b",
-        sizeBytes: 2,
-        parsedIndex: {},
-        origin: "upload",
-        createdAt: "2026-08-07T01:00:00.000Z"
-      };
+    await seedReleasedBaseline("ver-1");
+    // New working version with a different storage key: content drifted.
+    await insertFileVersion(db, {
+      id: "ver-2",
+      fileId: "file-base",
+      versionNumber: 2,
+      storageKey: "org-1/files/board-v2.dts",
+      checksum: "checksum-2",
+      sizeBytes: 120,
+      parsedIndex: {},
+      origin: "upload",
+      createdByUserId: "user-1"
     });
-    const result = await evaluateReleaseReadiness(createFakeDb(), adminAuth(), { configSetId: "cs-1" }, {
-      openConflicts: [],
-      pendingChangeCount: 0,
-      validationGate: {
-        ok: true,
-        mode: "block",
-        requiresConfirmation: false,
-        diagnostics: [],
-        compiler: "dtc"
-      }
+    await setCurrentVersion(db, { fileId: "file-base", versionId: "ver-2" });
+
+    const result = await evaluateReleaseReadiness(db, adminAuth(), { configSetId: "cs-1" }, {
+      validationGate: gateOk()
     });
+
     expect(result.level).toBe("ready");
     expect(result.releasedBaselineId).toBe("bl-released");
   });
 
   it("treats conflict-lookup infrastructure failure as readiness unavailable, not open-conflict", async () => {
-    listConflictsMock.mockRejectedValue(new Error('relation "project_parameter_values" does not exist'));
+    // A genuinely missing relation, not a mock: the conflict enrichment join
+    // fails exactly like the incident that motivated CW-B2.
+    await db.query(`drop table project_parameter_values cascade`);
 
-    const result = await evaluateReleaseReadiness(createFakeDb(), adminAuth(), { configSetId: "cs-1" }, {
-      pendingChangeCount: 0,
-      validationGate: {
-        ok: true,
-        mode: "block",
-        requiresConfirmation: false,
-        diagnostics: [],
-        compiler: "dtc"
-      }
+    const result = await evaluateReleaseReadiness(db, adminAuth(), { configSetId: "cs-1" }, {
+      validationGate: gateOk()
     });
 
     expect(result.available).toBe(false);
@@ -281,77 +203,66 @@ describe("evaluateReleaseReadiness", () => {
   });
 
   it("orders blockers for missing member version, conflicts, pending changes, and governance", async () => {
-    listMembersMock.mockResolvedValue([
-      {
-        configSetId: "cs-1",
-        fileId: "file-base",
-        fileName: "board.dts",
-        format: "dts",
-        role: "base",
-        sortOrder: 0,
-        currentVersionId: undefined,
-        currentVersionNumber: undefined
-      },
-      {
-        configSetId: "cs-1",
-        fileId: "file-overlay",
-        fileName: "overlay.dts",
-        format: "dts",
-        role: "overlay",
-        sortOrder: 1,
-        currentVersionId: undefined,
-        currentVersionNumber: undefined
-      }
-    ]);
-    getRevisionMock.mockResolvedValue({
-      id: "rev-1",
+    // Both members lose their current version (missing-primary + missing-member).
+    await db.query(`update project_parameter_files set current_version_id = null where id = 'file-base'`);
+    await insertProjectParameterFile(db, {
+      id: "file-overlay",
       organizationId: "org-1",
       projectId: "project-1",
-      configSetId: "cs-1",
-      revisionNumber: 1,
-      status: "resolved",
-      createdAt: "2026-08-07T00:00:00.000Z"
+      fileName: "overlay.dts",
+      format: "dts"
     });
-    countTasksMock.mockResolvedValue(2);
+    await attachToConfigSet("file-overlay", "overlay", 1);
 
-    const result = await evaluateReleaseReadiness(createFakeDb(), adminAuth(), { configSetId: "cs-1" }, {
-      openConflicts: [
-        {
-          id: "conflict-1",
-          organizationId: "org-1",
-          projectId: "project-1",
-          projectParameterValueId: "ppv-1",
-          parameterDefinitionId: "def-1",
-          fileVersionId: "fv-1",
-          fileDraftId: "fd-1",
-          uiDraftId: "ud-1",
-          fileValue: "1",
-          uiDraftValue: "2",
-          status: "open",
-          createdAt: "2026-08-07T00:00:00.000Z",
-          parameterName: "demo",
-          fileId: "file-base",
-          fileName: "board.dts",
-          nodePath: "/board",
-          propertyName: "model",
-          source: {
-            startOffset: 0,
-            endOffset: 4,
-            startLine: 3,
-            startColumn: 1,
-            endLine: 3,
-            endColumn: 5
-          }
-        }
-      ],
-      pendingChangeCount: 1,
-      validationGate: {
-        ok: true,
-        mode: "block",
-        requiresConfirmation: false,
-        diagnostics: [],
-        compiler: "dtc"
-      }
+    // Real open conflict hanging off the legacy identity graph and ver-1.
+    await db.query(
+      `insert into parameter_definitions (
+         id, organization_id, name, description, explanation, config_format, module, default_range, unit, risk
+       ) values ('pd-1', 'org-1', 'demo', 'demo parameter', 'demo', 'ENV', 'battery', '0-100', 'C', 'High')`
+    );
+    await db.query(
+      `insert into project_parameter_values (
+         id, organization_id, project_id, parameter_definition_id,
+         current_value, recommended_value, value_version, updated_by_user_id
+       ) values ('ppv-1', 'org-1', 'project-1', 'pd-1', '1', '1', 1, 'user-1')`
+    );
+    await db.query(
+      `insert into parameter_drafts (
+         id, organization_id, project_id, project_parameter_value_id, user_id,
+         target_value, reason, origin, origin_file_version_id
+       ) values
+         ('draft-file', 'org-1', 'project-1', 'ppv-1', 'user-sync', '1', 'file sync', 'file_sync', 'ver-1'),
+         ('draft-ui', 'org-1', 'project-1', 'ppv-1', 'user-ui', '2', 'ui edit', 'manual', null)`
+    );
+    await db.query(
+      `insert into parameter_file_sync_conflicts (
+         id, organization_id, project_id, project_parameter_value_id, parameter_definition_id,
+         file_version_id, file_draft_id, ui_draft_id, file_value, ui_draft_value, status
+       ) values ('conflict-1', 'org-1', 'project-1', 'ppv-1', 'pd-1', 'ver-1', 'draft-file', 'draft-ui', '1', '2', 'open')`
+    );
+
+    // Real pending change request (status inside the pending set).
+    await db.query(
+      `insert into parameter_change_requests (
+         id, organization_id, project_id, parameter_definition_id, base_version,
+         current_value, target_value, status, submitter_user_id
+       ) values ('cr-1', 'org-1', 'project-1', 'pd-1', 1, '1', '2', 'submitted', 'user-1')`
+    );
+
+    // Real config revision with two open blocking governance tasks.
+    await db.query(
+      `insert into dts_config_revisions (id, organization_id, project_id, config_set_id, revision_number, status)
+       values ('rev-1', 'org-1', 'project-1', 'cs-1', 1, 'resolved')`
+    );
+    await db.query(
+      `insert into identity_mapping_tasks (id, organization_id, project_id, config_revision_id, status, task_kind)
+       values
+         ('task-1', 'org-1', 'project-1', 'rev-1', 'open', 'identity-ambiguity'),
+         ('task-2', 'org-1', 'project-1', 'rev-1', 'open', 'identity-ambiguity')`
+    );
+
+    const result = await evaluateReleaseReadiness(db, adminAuth(), { configSetId: "cs-1" }, {
+      validationGate: gateOk()
     });
 
     expect(result.level).toBe("blocked");
@@ -367,26 +278,22 @@ describe("evaluateReleaseReadiness", () => {
       ])
     );
     const conflict = result.blockers.find((item) => item.code === "open-conflict");
+    expect(conflict?.message).toContain("demo");
     expect(conflict?.target).toMatchObject({
+      conflictId: "conflict-1",
       fileId: "file-base",
-      nodePath: "/board",
-      propertyName: "model",
-      source: expect.objectContaining({ startLine: 3 })
+      fileName: "board.dts"
     });
     expect(conflict?.remediation.kind).toBe("resolve-conflict");
+    const governance = result.blockers.find((item) => item.code === "publish-blocking-governance");
+    expect(governance?.message).toContain("2 publish-blocking");
+    const pending = result.blockers.find((item) => item.code === "pending-change");
+    expect(pending?.message).toContain("1 server-visible");
   });
 
   it("surfaces policy warnings with acknowledgement state and blocks release until acknowledged", async () => {
-    const result = await evaluateReleaseReadiness(createFakeDb(), adminAuth(), { configSetId: "cs-1" }, {
-      openConflicts: [],
-      pendingChangeCount: 0,
-      validationGate: {
-        ok: true,
-        mode: "warn",
-        requiresConfirmation: true,
-        diagnostics: [{ file: "board.dts", severity: "warning", message: "dtc unavailable" }],
-        compiler: "unavailable"
-      }
+    const result = await evaluateReleaseReadiness(db, adminAuth(), { configSetId: "cs-1" }, {
+      validationGate: gateWarn()
     });
     expect(result.level).toBe("warning");
     expect(result.canCreateBaseline).toBe(true);
@@ -400,20 +307,10 @@ describe("evaluateReleaseReadiness", () => {
 
     const warningId = result.warnings[0].id;
     const acknowledged = await evaluateReleaseReadiness(
-      createFakeDb(),
+      db,
       adminAuth(),
       { configSetId: "cs-1", acknowledgedWarningIds: [warningId] },
-      {
-        openConflicts: [],
-        pendingChangeCount: 0,
-        validationGate: {
-          ok: true,
-          mode: "warn",
-          requiresConfirmation: true,
-          diagnostics: [{ file: "board.dts", severity: "warning", message: "dtc unavailable" }],
-          compiler: "unavailable"
-        }
-      }
+      { validationGate: gateWarn() }
     );
     expect(acknowledged.level).toBe("ready");
     expect(acknowledged.canRelease).toBe(true);
@@ -421,107 +318,45 @@ describe("evaluateReleaseReadiness", () => {
   });
 
   it("assertReleaseGateAllows rejects missing, stale, and blocked tokens", async () => {
-    const ready = await evaluateReleaseReadiness(createFakeDb(), adminAuth(), { configSetId: "cs-1" }, {
-      openConflicts: [],
-      pendingChangeCount: 0,
-      validationGate: {
-        ok: true,
-        mode: "block",
-        requiresConfirmation: false,
-        diagnostics: [],
-        compiler: "dtc"
-      }
+    const ready = await evaluateReleaseReadiness(db, adminAuth(), { configSetId: "cs-1" }, {
+      validationGate: gateOk()
     });
 
     await expect(
-      assertReleaseGateAllows(createFakeDb(), adminAuth(), { configSetId: "cs-1", action: "create" }, {
-        openConflicts: [],
-        pendingChangeCount: 0,
-        validationGate: {
-          ok: true,
-          mode: "block",
-          requiresConfirmation: false,
-          diagnostics: [],
-          compiler: "dtc"
-        }
-      })
+      assertReleaseGateAllows(db, adminAuth(), { configSetId: "cs-1", action: "create" }, { validationGate: gateOk() })
     ).rejects.toMatchObject({ details: expect.objectContaining({ code: "readiness-gate-required" }) });
 
     await expect(
       assertReleaseGateAllows(
-        createFakeDb(),
+        db,
         adminAuth(),
         { configSetId: "cs-1", gateToken: "stale-token", action: "create" },
-        {
-          openConflicts: [],
-          pendingChangeCount: 0,
-          validationGate: {
-            ok: true,
-            mode: "block",
-            requiresConfirmation: false,
-            diagnostics: [],
-            compiler: "dtc"
-          }
-        }
+        { validationGate: gateOk() }
       )
     ).rejects.toMatchObject({ details: expect.objectContaining({ code: "readiness-gate-stale" }) });
 
     await expect(
       assertReleaseGateAllows(
-        createFakeDb(),
+        db,
         adminAuth(),
         { configSetId: "cs-1", gateToken: ready.gateToken, action: "create" },
-        {
-          openConflicts: [],
-          pendingChangeCount: 0,
-          validationGate: {
-            ok: true,
-            mode: "block",
-            requiresConfirmation: false,
-            diagnostics: [],
-            compiler: "dtc"
-          }
-        }
+        { validationGate: gateOk() }
       )
     ).resolves.toMatchObject({ level: "ready" });
 
-    listMembersMock.mockResolvedValue([
-      {
-        configSetId: "cs-1",
-        fileId: "file-base",
-        fileName: "board.dts",
-        format: "dts",
-        role: "base",
-        sortOrder: 0
-      }
-    ]);
-    const blocked = await evaluateReleaseReadiness(createFakeDb(), adminAuth(), { configSetId: "cs-1" }, {
-      openConflicts: [],
-      pendingChangeCount: 0,
-      validationGate: {
-        ok: true,
-        mode: "block",
-        requiresConfirmation: false,
-        diagnostics: [],
-        compiler: "dtc"
-      }
+    // The base member loses its current version: readiness flips to blocked and
+    // even a fresh token cannot authorize a release.
+    await db.query(`update project_parameter_files set current_version_id = null where id = 'file-base'`);
+    const blocked = await evaluateReleaseReadiness(db, adminAuth(), { configSetId: "cs-1" }, {
+      validationGate: gateOk()
     });
+    expect(blocked.level).toBe("blocked");
     await expect(
       assertReleaseGateAllows(
-        createFakeDb(),
+        db,
         adminAuth(),
         { configSetId: "cs-1", gateToken: blocked.gateToken, action: "release" },
-        {
-          openConflicts: [],
-          pendingChangeCount: 0,
-          validationGate: {
-            ok: true,
-            mode: "block",
-            requiresConfirmation: false,
-            diagnostics: [],
-            compiler: "dtc"
-          }
-        }
+        { validationGate: gateOk() }
       )
     ).rejects.toMatchObject({ details: expect.objectContaining({ code: "readiness-blocked" }) });
   });

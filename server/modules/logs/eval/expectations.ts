@@ -21,7 +21,8 @@ export type LogEvalExpectation =
   | { type: "expectsPromptContains"; substrings: string[] }
   | { type: "requiresSubstringsInConclusion"; substrings: string[] }
   | { type: "expectsConfidenceAtMost"; value: number }
-  | { type: "expectsModelCallCount"; count: number };
+  | { type: "expectsModelCallCount"; count: number }
+  | { type: "expectsModelLabel"; model: string };
 
 export type LogEvalExpectationResult = {
   pass: boolean;
@@ -115,6 +116,15 @@ export function evaluateLogEvalExpectation(
         : {
             pass: false,
             message: `Expected ${expectation.count} model call(s), got ${result.modelCallCount ?? "unknown"}`
+          };
+    }
+    case "expectsModelLabel": {
+      const pass = result.output.model === expectation.model;
+      return pass
+        ? { pass: true }
+        : {
+            pass: false,
+            message: `Expected model label ${expectation.model}, got ${result.output.model ?? "none"}`
           };
     }
   }

@@ -1,6 +1,9 @@
 import "dotenv/config";
 import { spawnSync } from "node:child_process";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
 import { expect, test, type Locator, type Page } from "playwright/test";
@@ -22,6 +25,10 @@ const unsupportedFileName = "unsupported.bin";
 const providerOutageFileName = "provider-outage.log";
 const archiveFileName = "charging-foldback.log.gz";
 const acceptanceLogDomainName = "acceptance-charging-power";
+const acceptanceWebhookDomainName = "acceptance-webhook-domain";
+const acceptanceModelDomainName = "acceptance-model-override-domain";
+const acceptanceModelOverride = "acceptance-domain-model-x";
+const acceptanceWebhookSecret = "acceptance-webhook-secret-0123456789";
 const acceptanceKnowledgeTitlePrefix = "acceptance-log-domain-knowledge";
 
 function runNpmScript(script: string) {
@@ -114,14 +121,15 @@ async function cleanupAcceptanceLogs() {
 async function cleanupAcceptanceLogDomains() {
   await withPgClient(async (client) => {
     const domains = await client.query<{ id: string }>(
-      "select id from log_domains where organization_id = $1 and name = $2",
-      [organizationId, acceptanceLogDomainName]
+      "select id from log_domains where organization_id = $1 and name = any($2::text[])",
+      [organizationId, [acceptanceLogDomainName, acceptanceWebhookDomainName, acceptanceModelDomainName]]
     );
     const domainIds = domains.rows.map((row) => row.id);
     if (domainIds.length === 0) {
       return;
     }
     await client.query("update log_records set log_domain_id = null where log_domain_id = any($1::text[])", [domainIds]);
+    // log_webhook_deliveries cascade with the domain rows.
     await client.query("delete from audit_events where target_type = 'log-domain' and target_id = any($1::text[])", [domainIds]);
     await client.query("delete from log_domains where id = any($1::text[])", [domainIds]);
   });
@@ -339,6 +347,122 @@ async function logDomainDbSummary(domainName: string) {
   });
 }
 
+async function webhookDeliveryDbSummary(domainId: string) {
+  return withPgClient(async (client) => {
+    const result = await client.query<{ kind: string; attempt: number; status: string; http_status: number | null }>(
+      `
+      select kind, attempt, status, http_status
+      from log_webhook_deliveries
+      where organization_id = $1
+        and log_domain_id = $2
+      order by created_at desc, id desc
+      `,
+      [organizationId, domainId]
+    );
+
+    return {
+      table: "log_webhook_deliveries",
+      predicate: `organization_id=${organizationId}; log_domain_id=${domainId}`,
+      observed:
+        result.rows.length > 0
+          ? result.rows.map((row) => `${row.kind}#${row.attempt}=${row.status}(${row.http_status ?? "-"})`).join("; ")
+          : "no deliveries",
+      rowCount: result.rowCount ?? result.rows.length
+    };
+  });
+}
+
+async function domainWebhookConfigDbSummary(domainId: string) {
+  return withPgClient(async (client) => {
+    const result = await client.query<{ webhook_url: string | null; webhook_enabled: boolean; secret_len: number | null; model_override: string | null }>(
+      `
+      select webhook_url, webhook_enabled, length(webhook_secret) as secret_len, model_override
+      from log_domains
+      where organization_id = $1
+        and id = $2
+      `,
+      [organizationId, domainId]
+    );
+    const row = result.rows[0];
+
+    return {
+      table: "log_domains",
+      predicate: `organization_id=${organizationId}; id=${domainId}`,
+      observed: row
+        ? `webhookUrl=${row.webhook_url ?? "none"}; enabled=${row.webhook_enabled}; secretLength=${row.secret_len ?? 0}; modelOverride=${row.model_override ?? "none"}`
+        : "missing",
+      rowCount: result.rowCount ?? result.rows.length
+    };
+  });
+}
+
+async function reportModelDbSummary(logId: string) {
+  return withPgClient(async (client) => {
+    const result = await client.query<{ model: string | null; analysis_source: string | null }>(
+      `
+      select report.model, report.analysis_source
+      from log_records lr
+      inner join log_analysis_reports report on report.run_id = lr.current_run_id
+      where lr.id = $1
+      `,
+      [logId]
+    );
+    const row = result.rows[0];
+
+    return {
+      table: "log_analysis_reports",
+      predicate: `log_record_id=${logId} (current run)`,
+      observed: row ? `model=${row.model ?? "none"}; analysisSource=${row.analysis_source ?? "none"}` : "missing",
+      rowCount: result.rowCount ?? result.rows.length
+    };
+  });
+}
+
+type ReceivedWebhookDelivery = {
+  body: string;
+  signature?: string;
+  timestamp?: string;
+};
+
+/** Loopback receiver for LOG-DOMAIN-WEBHOOK-001 (server runs with LOG_WEBHOOK_ALLOW_INSECURE_LOCAL=true). */
+async function startWebhookReceiver(): Promise<{ url: string; received: ReceivedWebhookDelivery[]; close: () => Promise<void> }> {
+  const received: ReceivedWebhookDelivery[] = [];
+  const server: Server = createServer((request, response) => {
+    let body = "";
+    request.on("data", (chunk: Buffer) => {
+      body += chunk.toString("utf8");
+    });
+    request.on("end", () => {
+      received.push({
+        body,
+        signature: request.headers["x-wiseeff-signature"]?.toString(),
+        timestamp: request.headers["x-wiseeff-timestamp"]?.toString()
+      });
+      response.statusCode = 200;
+      response.end();
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as AddressInfo).port;
+  return {
+    url: `http://127.0.0.1:${port}/wiseeff-hook`,
+    received,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve()))
+  };
+}
+
+/** Receiver-side verification mirrored from docs/api/log-analysis-integration.md. */
+function verifyWebhookSignature(delivery: ReceivedWebhookDelivery, secret: string): boolean {
+  const timestamp = Number(delivery.timestamp);
+  if (!Number.isFinite(timestamp) || !delivery.signature) {
+    return false;
+  }
+  const expected = `sha256=${createHmac("sha256", secret).update(`${timestamp}.${delivery.body}`).digest("hex")}`;
+  const a = Buffer.from(expected);
+  const b = Buffer.from(delivery.signature);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 function auditSummaryFor(
   items: Array<{ id?: string; kind: string; action?: string; targetId: string | null; traceId?: string; metadata?: Record<string, unknown> }>,
   match: { kind: string; targetId: string }
@@ -388,6 +512,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
 
   test("uploads, completes, links evidence, audits feedback, archives, and records unsupported upload failure", async ({ page }, testInfo) => {
     // @acceptance LOG-HAPPY-001
+    // @acceptance LOG-CONFIDENCE-PERCENT-001
     // @operation LOG-HAPPY-001
     await page.goto("/logs");
     await prepareInteractionSurface(page);
@@ -400,6 +525,15 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       .toBe("complete");
     await historyItem(page, supportedFileName).click();
     await expect(page.locator("#log-conclusion-title")).toContainText(/thermal|foldback/i);
+
+    // LOG-CONFIDENCE-PERCENT-001: the server stores confidence as 0-1; the UI
+    // confidence bar must render the normalized percentage (e.g. 85%), never "0.85%".
+    expect(completedLog.confidence).toBeGreaterThan(0);
+    const confidencePercent =
+      completedLog.confidence <= 1 ? Math.round(completedLog.confidence * 100) : Math.round(completedLog.confidence);
+    const confidenceBar = page.locator(".confidence-bar").first();
+    await expect(confidenceBar.locator("strong")).toHaveText(`${confidencePercent}%`);
+    await expect(confidenceBar.locator('[role="progressbar"]')).toHaveAttribute("aria-valuenow", String(confidencePercent));
 
     const evidenceCard = page.locator(".evidence-card").filter({ hasText: /thermal|foldback/i }).first();
     await expect(evidenceCard).toContainText(/thermal|foldback/i);
@@ -1019,6 +1153,222 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       db: [await logRecordDbSummary(archiveLog.id)],
       audit: [],
       notes: `A gzip-compressed charging log uploaded as ${archiveFileName} was unpacked at intake, analyzed end to end, and produced the same thermal-foldback conclusion as the plain-text fixture; the upload dialog states archive support.`
+    });
+  });
+
+  test("configures a domain result webhook and delivers a signed payload after a domain-bound analysis", async ({ page }, testInfo) => {
+    // @acceptance LOG-DOMAIN-WEBHOOK-001
+    // @operation LOG-DOMAIN-WEBHOOK-001
+    await cleanupAcceptanceLogs();
+    await cleanupAcceptanceLogDomains();
+
+    const receiver = await startWebhookReceiver();
+    try {
+      const domainResponse = await page.request.post(apiRoute("/api/v1/log-domains"), {
+        headers: smokeHeaders(),
+        data: { name: acceptanceWebhookDomainName, description: "Acceptance domain for result webhooks" }
+      });
+      expect(domainResponse.status()).toBe(201);
+      const domain = ((await domainResponse.json()) as { item: { id: string } }).item;
+
+      await page.goto("/log-admin");
+      await prepareInteractionSurface(page);
+      const governance = page.getByTestId("log-domain-governance");
+      await governance
+        .getByRole("table", { name: "业务域列表" })
+        .getByRole("row")
+        .filter({ hasText: acceptanceWebhookDomainName })
+        .getByRole("button", { name: "结果回调" })
+        .click();
+
+      const editor = page.getByTestId("domain-webhook-editor");
+      await expect(editor).toBeVisible();
+      await editor.getByLabel(/Webhook URL/).fill(receiver.url);
+      await editor.getByLabel(/签名密钥/).fill(acceptanceWebhookSecret);
+      await editor.getByRole("checkbox", { name: "启用结果回调" }).check();
+      const saveResponsePromise = page.waitForResponse(
+        (response) =>
+          response.request().method() === "PUT" &&
+          response.url().includes(`/api/v1/log-domains/${domain.id}/webhook`)
+      );
+      await editor.getByRole("button", { name: "保存配置" }).click();
+      const saveResponse = await saveResponsePromise;
+      expect(saveResponse.ok()).toBe(true);
+      const savedDomain = ((await saveResponse.json()) as {
+        item: { webhook: { enabled: boolean; secretConfigured: boolean; secretLastFour?: string } };
+      }).item;
+      // Write-only secret: the API reports configured-state + last four, never the value.
+      expect(savedDomain.webhook).toMatchObject({ enabled: true, secretConfigured: true });
+      expect(JSON.stringify(savedDomain)).not.toContain(acceptanceWebhookSecret);
+      await expect(editor).toContainText(`已配置 · 末四位 ${acceptanceWebhookSecret.slice(-4)}`);
+
+      await page.goto("/logs");
+      await uploadLogThroughUi(page, supportedFixture, analysisQuestion, acceptanceWebhookDomainName);
+      const boundLog = await latestLogByFile(page, supportedFileName);
+      await expect
+        .poll(async () => (await latestLogByFile(page, supportedFileName)).status, { timeout: 70_000 })
+        .toBe("complete");
+
+      // Delivery is best-effort and asynchronous; poll the loopback receiver.
+      await expect.poll(() => receiver.received.length, { timeout: 30_000 }).toBeGreaterThan(0);
+      const delivery = receiver.received[0];
+      expect(verifyWebhookSignature(delivery, acceptanceWebhookSecret)).toBe(true);
+      const payload = JSON.parse(delivery.body) as Record<string, unknown>;
+      expect(payload).toMatchObject({
+        event: "log-analysis.completed",
+        recordId: boundLog.id,
+        logDomainId: domain.id,
+        status: "complete",
+        fileName: supportedFileName
+      });
+      // Compact summary only — raw log content and evidence text never leave the system.
+      expect(payload).not.toHaveProperty("rawLines");
+      expect(payload).not.toHaveProperty("evidence");
+      expect(delivery.body).not.toContain("charger session started device=PACK-A01");
+
+      const deliveriesResponse = await page.request.get(
+        apiRoute(`/api/v1/log-domains/${domain.id}/webhook-deliveries`),
+        { headers: smokeHeaders() }
+      );
+      expect(deliveriesResponse.ok()).toBe(true);
+      const deliveriesBody = (await deliveriesResponse.json()) as {
+        items: Array<{ kind: string; attempt: number; status: string; httpStatus?: number }>;
+      };
+      expect(deliveriesBody.items).toEqual(
+        expect.arrayContaining([expect.objectContaining({ kind: "result", status: "delivered", httpStatus: 200 })])
+      );
+
+      await page.goto("/log-admin");
+      await prepareInteractionSurface(page);
+      await page
+        .getByTestId("log-domain-governance")
+        .getByRole("table", { name: "业务域列表" })
+        .getByRole("row")
+        .filter({ hasText: acceptanceWebhookDomainName })
+        .getByRole("button", { name: "结果回调" })
+        .click();
+      const deliveriesList = page.getByTestId("domain-webhook-deliveries");
+      await expect(deliveriesList).toBeVisible();
+      await expect(deliveriesList).toContainText("已送达");
+      await expect(deliveriesList).toContainText("HTTP 200");
+
+      const auditResponse = await page.request.get(apiRoute("/api/v1/audit-events"), { headers: smokeHeaders() });
+      expect(auditResponse.ok()).toBe(true);
+      const auditBody = (await auditResponse.json()) as {
+        items: Array<{ id?: string; kind: string; action?: string; targetId: string | null; traceId?: string; metadata?: Record<string, unknown> }>;
+      };
+
+      await recordOperationEvidence({
+        operationId: "LOG-DOMAIN-WEBHOOK-001",
+        title: "domain result webhook configured and signed delivery received",
+        status: "passed",
+        page,
+        testInfo,
+        api: [
+          summarizeApiResponse(saveResponse, {
+            method: "PUT",
+            path: `/api/v1/log-domains/${domain.id}/webhook`,
+            responseSummary: `enabled=true; secretConfigured=true; secret never echoed`
+          }),
+          summarizeApiResponse(deliveriesResponse, {
+            method: "GET",
+            path: `/api/v1/log-domains/${domain.id}/webhook-deliveries`,
+            responseSummary: `deliveries=${deliveriesBody.items.length}; first=${deliveriesBody.items[0]?.status} (HTTP ${deliveriesBody.items[0]?.httpStatus ?? "-"})`
+          })
+        ],
+        db: [await domainWebhookConfigDbSummary(domain.id), await webhookDeliveryDbSummary(domain.id)],
+        audit: [auditSummaryFor(auditBody.items, { kind: "log-domain-webhook-config", targetId: domain.id })],
+        notes: `Domain ${domain.id} was configured with a result webhook through /log-admin governance; completing analysis ${boundLog.id} delivered an HMAC-signed compact payload (signature verified against the configured secret, no raw log content) to the loopback receiver, and the delivered attempt appeared in the recent-deliveries list, API, and delivery table.`
+      });
+    } finally {
+      await receiver.close();
+    }
+  });
+
+  test("sets a per-domain model override that persists and lands in the report's model provenance", async ({ page }, testInfo) => {
+    // @acceptance LOG-DOMAIN-MODEL-001
+    // @operation LOG-DOMAIN-MODEL-001
+    await cleanupAcceptanceLogs();
+    await cleanupAcceptanceLogDomains();
+
+    await page.goto("/log-admin");
+    await prepareInteractionSurface(page);
+    const governance = page.getByTestId("log-domain-governance");
+    await governance.getByRole("button", { name: "新建业务域" }).click();
+    await page.getByLabel(/名称/).fill(acceptanceModelDomainName);
+    await page.getByLabel(/描述/).fill("Acceptance domain for the per-domain model override");
+    const overrideInput = page.getByLabel(/模型覆盖/);
+    await expect(overrideInput).toHaveAttribute("placeholder", "留空使用全局模型");
+    await overrideInput.fill(acceptanceModelOverride);
+    const createResponsePromise = page.waitForResponse(
+      (response) => response.request().method() === "POST" && response.url().includes("/api/v1/log-domains")
+    );
+    const overridePatchPromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "PATCH" && response.url().includes("/api/v1/log-domains/")
+    );
+    await page.getByRole("button", { name: "创建业务域" }).click();
+    expect((await createResponsePromise).ok()).toBe(true);
+    const overridePatchResponse = await overridePatchPromise;
+    expect(overridePatchResponse.ok()).toBe(true);
+
+    const domainsResponse = await page.request.get(apiRoute("/api/v1/log-domains"), { headers: smokeHeaders() });
+    expect(domainsResponse.ok()).toBe(true);
+    const domainsBody = (await domainsResponse.json()) as {
+      items: Array<{ id: string; name: string; modelOverride?: string }>;
+    };
+    const createdDomain = domainsBody.items.find((item) => item.name === acceptanceModelDomainName);
+    expect(createdDomain).toBeTruthy();
+    expect(createdDomain!.modelOverride).toBe(acceptanceModelOverride);
+    await expect(page.getByTestId(`domain-model-${createdDomain!.id}`)).toHaveText(acceptanceModelOverride);
+
+    await page.goto("/logs");
+    await uploadLogThroughUi(page, supportedFixture, analysisQuestion, acceptanceModelDomainName);
+    const boundLog = await latestLogByFile(page, supportedFileName);
+    expect(boundLog.logDomainId).toBe(createdDomain!.id);
+    await expect
+      .poll(async () => (await latestLogByFile(page, supportedFileName)).status, { timeout: 70_000 })
+      .toBe("complete");
+
+    // The override replaces only the model NAME; the report's provenance records it.
+    await expect
+      .poll(async () => (await reportModelDbSummary(boundLog.id)).observed, { timeout: 30_000 })
+      .toContain(`model=${acceptanceModelOverride}`);
+
+    const auditResponse = await page.request.get(apiRoute("/api/v1/audit-events"), { headers: smokeHeaders() });
+    expect(auditResponse.ok()).toBe(true);
+    const auditBody = (await auditResponse.json()) as {
+      items: Array<{ id?: string; kind: string; action?: string; targetId: string | null; traceId?: string; metadata?: Record<string, unknown> }>;
+    };
+    const overrideAudit = auditBody.items.find(
+      (item) =>
+        item.kind === "log-domain-update" &&
+        item.targetId === createdDomain!.id &&
+        item.metadata?.modelOverride === acceptanceModelOverride
+    );
+    expect(overrideAudit).toBeTruthy();
+
+    await recordOperationEvidence({
+      operationId: "LOG-DOMAIN-MODEL-001",
+      title: "per-domain model override persists and reaches report provenance",
+      status: "passed",
+      page,
+      testInfo,
+      api: [
+        summarizeApiResponse(overridePatchResponse, {
+          method: "PATCH",
+          path: `/api/v1/log-domains/${createdDomain!.id}`,
+          responseSummary: `modelOverride=${acceptanceModelOverride}`
+        }),
+        summarizeApiResponse(domainsResponse, {
+          method: "GET",
+          path: "/api/v1/log-domains",
+          responseSummary: `domain ${createdDomain!.id} carries modelOverride=${createdDomain!.modelOverride}`
+        })
+      ],
+      db: [await domainWebhookConfigDbSummary(createdDomain!.id), await reportModelDbSummary(boundLog.id)],
+      audit: [auditSummaryFor(auditBody.items, { kind: "log-domain-update", targetId: createdDomain!.id })],
+      notes: `Domain ${createdDomain!.id} saved 模型覆盖=${acceptanceModelOverride} through the /log-admin form (placeholder states blank = global model); the bound analysis ${boundLog.id} recorded the override as the report's model provenance while endpoint/key/budget stayed global.`
     });
   });
 });

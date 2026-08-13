@@ -22,9 +22,13 @@ import {
   createLogDomainRecord,
   listLogDomainKnowledgeLinkRecords,
   listLogDomainRecords,
+  listLogDomainWebhookDeliveryRecords,
+  sendLogDomainWebhookTestDelivery,
   setLogDomainKnowledgeLinkRecords,
+  setLogDomainWebhookRecord,
   updateLogDomainRecord
 } from "./domainsService";
+import type { LogWebhookDeliverer } from "./webhookDelivery";
 import {
   createLogBodySchema,
   createLogDomainBodySchema,
@@ -35,7 +39,9 @@ import {
   logFeedbackBodySchema,
   rerunLogBodySchema,
   setLogDomainKnowledgeLinksBodySchema,
-  updateLogDomainBodySchema
+  setLogDomainWebhookBodySchema,
+  updateLogDomainBodySchema,
+  webhookDeliveriesQuerySchema
 } from "./schemas";
 
 const paramsWithLogIdSchema = z.object({
@@ -81,12 +87,28 @@ async function getAuth(getCurrentAuthContext: (request: RouteRequest) => Promise
   return getCurrentAuthContext(request);
 }
 
+/** Route wiring for the P3b result-webhook governance endpoints. */
+export type LogWebhookRouteContext = {
+  deliverer?: Pick<LogWebhookDeliverer, "sendTestDelivery">;
+  /** Mirrors LOG_WEBHOOK_ALLOW_INSECURE_LOCAL for save-time URL validation. */
+  allowInsecureLocal?: boolean;
+};
+
+function requireWebhookDeliverer(webhooks: LogWebhookRouteContext | undefined) {
+  if (!webhooks?.deliverer) {
+    throw new ApiError("INTERNAL_ERROR", "Webhook deliverer is required for test deliveries.", 500);
+  }
+
+  return webhooks.deliverer;
+}
+
 export function registerLogRoutes(
   router: WiseEffRouter,
   options: {
     db?: Database;
     objectStore?: ObjectStore;
     logAnalysisQueue?: LogAnalysisQueue;
+    webhooks?: LogWebhookRouteContext;
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
   }
 ) {
@@ -235,10 +257,49 @@ export function registerLogRoutes(
       name: body.name,
       description: body.description,
       formatProfile: body.formatProfile,
-      status: body.status
+      status: body.status,
+      modelOverride: body.modelOverride
     }, { requestId: request.requestId });
 
     return { status: 200, body: { item } };
+  });
+
+  router.put("/api/v1/log-domains/:domainId/webhook", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const params = parseWithSchema(paramsWithDomainIdSchema, request.params);
+    const body = parseWithSchema(setLogDomainWebhookBodySchema, request.body);
+    const item = await setLogDomainWebhookRecord(
+      db,
+      auth,
+      { domainId: params.domainId, url: body.url, enabled: body.enabled, secret: body.secret },
+      { requestId: request.requestId },
+      { allowInsecureLocal: options.webhooks?.allowInsecureLocal }
+    );
+
+    return { status: 200, body: { item } };
+  });
+
+  router.get("/api/v1/log-domains/:domainId/webhook-deliveries", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const params = parseWithSchema(paramsWithDomainIdSchema, request.params);
+    const query = parseWithSchema(webhookDeliveriesQuerySchema, request.query);
+    const result = await listLogDomainWebhookDeliveryRecords(db, auth, { domainId: params.domainId, limit: query.limit });
+
+    return { status: 200, body: result };
+  });
+
+  router.post("/api/v1/log-domains/:domainId/webhook-test", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const params = parseWithSchema(paramsWithDomainIdSchema, request.params);
+    const deliverer = requireWebhookDeliverer(options.webhooks);
+    const outcome = await sendLogDomainWebhookTestDelivery(db, auth, params.domainId, deliverer, {
+      requestId: request.requestId
+    });
+
+    return { status: 200, body: { outcome } };
   });
 
   router.post("/api/v1/log-domains/:domainId/archive", async (request) => {

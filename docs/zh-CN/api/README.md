@@ -23,3 +23,4 @@
 - [docs/zh-CN/api/authentication.md](authentication.md)
 - [docs/zh-CN/api/errors.md](errors.md)
 - [docs/zh-CN/api/examples.md](examples.md)
+- [docs/zh-CN/api/log-analysis-integration.md](log-analysis-integration.md)

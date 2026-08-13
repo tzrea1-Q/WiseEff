@@ -30,7 +30,6 @@ import type { ParameterRepository } from "@/application/ports/ParameterRepositor
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
-import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
 import {
   TOPOLOGY_TEACHING_BINDINGS,
@@ -1893,14 +1892,14 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     render(<App initialAppState={{ ...initialState, activeRoleId: "guest" }} />);
 
-    expect(screen.getByRole("heading", { name: "无权访问" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "无权访问该页面" })).toBeInTheDocument();
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
     fireEvent.click(within(topbar).getByRole("button", { name: "打开用户菜单" }));
 
     expect(within(topbar).queryByRole("combobox", { name: "Prototype role" })).not.toBeInTheDocument();
     expect(within(topbar).getByLabelText("当前用户角色")).toHaveTextContent("访客");
-    expect(screen.getByRole("heading", { name: "无权访问" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "无权访问该页面" })).toBeInTheDocument();
   });
 
   it("exposes the three sub-app entries on the homepage main region", () => {

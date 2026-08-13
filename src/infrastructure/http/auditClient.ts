@@ -16,6 +16,7 @@ function buildQuery(params: ListAuditEventsParams = {}) {
   if (params.targetType) search.set("targetType", params.targetType);
   if (params.targetId) search.set("targetId", params.targetId);
   if (params.traceId) search.set("traceId", params.traceId);
+  if (params.q) search.set("q", params.q);
   if (params.from) search.set("from", params.from);
   if (params.to) search.set("to", params.to);
   if (params.cursor) search.set("cursor", params.cursor);

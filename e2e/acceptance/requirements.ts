@@ -328,6 +328,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "LOG-CONFIDENCE-PERCENT-001",
+    workflow: "D",
+    title: "AI confidence renders as a percentage (e.g. 85%), never as a raw 0-1 fraction with a percent sign.",
+    required: true
+  },
+  {
     id: "LOG-REANALYZE-001",
     workflow: "D",
     title: "Log reanalysis creates a new run with progress and audit evidence.",
@@ -367,6 +373,20 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "LOG-ARCHIVE-UPLOAD-001",
     workflow: "D",
     title: "A .gz log upload is unpacked server-side and completes analysis end to end like a plain text upload.",
+    required: true
+  },
+  {
+    id: "LOG-DOMAIN-WEBHOOK-001",
+    workflow: "D",
+    title:
+      "Admin configures a domain result webhook in /log-admin (write-only secret, audited); a domain-bound analysis delivers a signed payload to the receiver and the recent-deliveries list shows the attempt.",
+    required: true
+  },
+  {
+    id: "LOG-DOMAIN-MODEL-001",
+    workflow: "D",
+    title:
+      "Admin sets a per-domain model override in /log-admin; the override persists on the domain and is recorded as the report's model provenance for analyses bound to that domain.",
     required: true
   },
   {
@@ -457,6 +477,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "XIAOZE-ACTION-APPROVE-001",
     workflow: "G",
     title: "Xiaoze parameter change approval executes through the agent audit chain.",
+    required: true
+  },
+  {
+    id: "XIAOZE-APPROVAL-CARD-001",
+    workflow: "G",
+    title: "The browser approval card is clickable above the open chat: approving resolves the interrupt without closing the chat.",
     required: true
   },
   {
@@ -619,6 +645,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "PARAM-TOPOLOGY-EDIT-001",
     workflow: "B",
     title: "Typed binding edits surface schema diagnostics and reject stale base-revision edits.",
+    required: true
+  },
+  {
+    id: "PARAM-DRAFT-REMOVE-001",
+    workflow: "B",
+    title: "Removing a draft from the tray deletes it on the server: it stays gone after a page reload.",
     required: true
   },
   {

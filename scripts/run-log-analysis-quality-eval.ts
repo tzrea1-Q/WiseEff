@@ -6,6 +6,12 @@ import { fileURLToPath } from "node:url";
 import { loadServerEnv } from "../server/config/env";
 import { createLogAnalyzerFromEnv, resolveLogAnalysisModelLabel } from "../server/modules/logs/analyzer/analyzerFromEnv";
 import { defaultGoldenCasesRoot, loadGoldenLogCases } from "../server/modules/logs/eval/goldenCases";
+import {
+  defaultHumanReviewsRoot,
+  formatJudgeSampleMarkdown,
+  loadHumanReviews,
+  selectJudgeReviewSample
+} from "../server/modules/logs/eval/judgeCalibration";
 import { resolveQualityJudge } from "../server/modules/logs/eval/judgeFromEnv";
 import {
   formatQualityReportMarkdown,
@@ -17,12 +23,13 @@ import {
 /**
  * Quality-layer eval runner (`npm run logs:eval:quality`): runs the CURRENT
  * analysis kernel over the golden case set and writes gated reports to
- * `docs/generated/log-analysis-quality.{json,md}`.
+ * `docs/generated/log-analysis-quality.{json,md}` plus the deterministic
+ * human-review checklist `docs/generated/log-analysis-judge-sample.md`.
  *
  * Modes:
  * - Deterministic demo: LOG_ANALYSIS_DETERMINISTIC=true (fake model + deterministic judge, zero API cost).
  * - Real model: LOG_ANALYSIS_API_* configured; judge uses LOG_ANALYSIS_JUDGE_* when set.
- * The exit code fails on loader problems or a failed baseline gate.
+ * The exit code fails on loader problems (golden cases or review files) or a failed baseline gate.
  */
 async function main() {
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -30,6 +37,8 @@ async function main() {
 
   const casesRoot = defaultGoldenCasesRoot(root);
   const { cases, problems } = loadGoldenLogCases(casesRoot);
+  const { reviews, problems: reviewProblems } = loadHumanReviews(defaultHumanReviewsRoot(casesRoot));
+  problems.push(...reviewProblems);
 
   const baselinePath = join(casesRoot, "baseline.json");
   let baseline: QualityBaselineFile | null = null;
@@ -56,17 +65,28 @@ async function main() {
     kernel: env.LOG_ANALYSIS_KERNEL,
     deterministic: env.LOG_ANALYSIS_DETERMINISTIC,
     modelLabel: resolveLogAnalysisModelLabel(env),
-    baseline
+    baseline,
+    judgeSampleRate: env.LOG_ANALYSIS_JUDGE_SAMPLE_RATE,
+    humanReviews: reviews
+  });
+
+  const sampleMarkdown = formatJudgeSampleMarkdown({
+    runId: report.runId,
+    judgeLabel: report.judgeLabel,
+    sampleRate: report.judgeSampling.rate,
+    sampled: selectJudgeReviewSample(report.caseResults, report.judgeSampling.rate),
+    totalJudgedCases: report.caseResults.filter((result) => result.judge !== null).length
   });
 
   const generatedDir = join(root, "docs/generated");
   mkdirSync(generatedDir, { recursive: true });
   writeFileSync(join(generatedDir, "log-analysis-quality.json"), `${JSON.stringify(report, null, 2)}\n`, "utf8");
   writeFileSync(join(generatedDir, "log-analysis-quality.md"), `${formatQualityReportMarkdown(report)}\n`, "utf8");
+  writeFileSync(join(generatedDir, "log-analysis-judge-sample.md"), `${sampleMarkdown}\n`, "utf8");
 
   console.log(formatQualityReportMarkdown(report));
   console.log("");
-  console.log("Wrote docs/generated/log-analysis-quality.{json,md}");
+  console.log("Wrote docs/generated/log-analysis-quality.{json,md} and docs/generated/log-analysis-judge-sample.md");
 
   if (report.problems.length > 0) {
     console.error(`Quality eval found ${report.problems.length} problem(s); failing the run.`);

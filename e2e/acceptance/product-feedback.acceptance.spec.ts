@@ -372,7 +372,7 @@ test.describe("Product feedback browser acceptance", () => {
     expect(patchDenied.status()).toBe(403);
 
     await loadPageAsHardwareUser(page, "/feedback-admin");
-    await expect(page.getByRole("heading", { name: "无权访问" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "无权访问该页面" })).toBeVisible();
     await expect(page.getByText("当前角色：硬件开发")).toBeVisible();
     await expect(page.getByText("所需角色：管理员")).toBeVisible();
 

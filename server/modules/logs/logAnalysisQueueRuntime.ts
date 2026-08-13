@@ -7,7 +7,7 @@ import type { Database } from "../../shared/database/client";
 import type { LogAnalysisAdapter } from "./analyzer";
 import type { ObjectStore } from "./objectStore";
 import type { LogAnalysisQueuePayload } from "./logAnalysisQueue";
-import { processLogAnalysisJobById, type ProcessLogWorkerByIdOptions, type ProcessLogWorkerResult } from "./worker";
+import { processLogAnalysisJobById, type LogWorkerWebhooks, type ProcessLogWorkerByIdOptions, type ProcessLogWorkerResult } from "./worker";
 
 export type LogAnalysisQueueRuntimeEnv = {
   REDIS_URL: string;
@@ -52,6 +52,7 @@ type CreateLogAnalysisQueueRuntimeOptions = {
   workerId?: string;
   metrics?: Pick<MetricsRegistry, "recordLogAnalysisJobResult">;
   tracing?: Pick<TracingBoundary, "withSpan">;
+  webhooks?: LogWorkerWebhooks;
 };
 
 export function createLogAnalysisQueueRuntime({
@@ -64,7 +65,8 @@ export function createLogAnalysisQueueRuntime({
   processByJobId = processLogAnalysisJobById,
   workerId = "wiseeff-log-worker",
   metrics,
-  tracing
+  tracing,
+  webhooks
 }: CreateLogAnalysisQueueRuntimeOptions) {
   const queueName = "log-analysis";
   const connection = { url: env.REDIS_URL };
@@ -97,7 +99,8 @@ export function createLogAnalysisQueueRuntime({
           retryBaseDelayMs: env.LOG_ANALYSIS_QUEUE_BACKOFF_MS,
           metrics,
           ...(analyzer ? { analyzer } : {}),
-          ...(tracing ? { tracing } : {})
+          ...(tracing ? { tracing } : {}),
+          ...(webhooks ? { webhooks } : {})
         });
         if (result.status === "retry") {
           throw new Error(result.reason);

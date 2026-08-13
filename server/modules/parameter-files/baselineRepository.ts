@@ -35,6 +35,7 @@ type ConfigSetMemberFileRow = {
   config_set_sort_order: number | string;
   current_version_id: string | null;
   version_number: number | string | null;
+  storage_key: string | null;
 };
 
 function dateTimeToIso(value: string | Date) {
@@ -77,7 +78,8 @@ function toConfigSetMemberFileDto(row: ConfigSetMemberFileRow): ConfigSetMemberF
     currentVersionId: row.current_version_id ?? undefined,
     currentVersionNumber: row.version_number === null || row.version_number === undefined
       ? undefined
-      : Number(row.version_number)
+      : Number(row.version_number),
+    currentVersionStorageKey: row.storage_key ?? undefined
   };
 }
 
@@ -203,7 +205,8 @@ export async function listConfigSetMemberFiles(
       ppf.config_set_role as config_set_role,
       ppf.config_set_sort_order as config_set_sort_order,
       ppf.current_version_id as current_version_id,
-      v.version_number as version_number
+      v.version_number as version_number,
+      v.storage_key as storage_key
     from project_parameter_files ppf
     left join project_parameter_file_versions v on v.id = ppf.current_version_id
     where ppf.config_set_id = $1

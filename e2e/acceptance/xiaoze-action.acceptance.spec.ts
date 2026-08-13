@@ -2,6 +2,7 @@ import "dotenv/config";
 import { createHmac } from "node:crypto";
 import { expect, test } from "playwright/test";
 
+import { signInBrowserAsRole } from "./helpers/bearerAuth";
 import { runNpmScript, withPgClient } from "./helpers/database";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import {
@@ -745,6 +746,53 @@ test.describe("Xiaoze P1 action", () => {
         })
       ],
       notes: "A read-only user could not approve Xiaoze mutating actions beyond their permissions."
+    });
+  });
+
+  test("approval card is clickable in the browser while the chat stays open", async ({ page }, testInfo) => {
+    // @acceptance XIAOZE-APPROVAL-CARD-001
+    // @operation XIAOZE-APPROVAL-CARD-001
+    test.setTimeout(180_000);
+    const openBefore = await countOpenChangeRequests();
+
+    await signInBrowserAsRole(page, "admin", `/parameters?project=${projectId}`);
+    const hintDismiss = page.getByRole("button", { name: "不再提示" });
+    if (await hintDismiss.isVisible().catch(() => false)) {
+      await hintDismiss.click();
+    }
+
+    await page.getByRole("button", { name: "打开小泽" }).click();
+    const popup = page.getByTestId("xiaoze-popup-layer");
+    await expect(popup).toBeVisible();
+
+    // Deterministic kernel: "set <id> to <value>" produces a submitParameterChange
+    // interrupt, so the approval card must mount above the chat popup.
+    const composer = popup.locator("textarea").first();
+    await expect(composer).toBeVisible();
+    await composer.fill(`set ${parameterId} to ${cellValue(7)}`);
+    await composer.press("Enter");
+
+    const card = page.getByTestId("xiaoze-approval-card");
+    await expect(card).toBeVisible({ timeout: 60_000 });
+    await expect(card.getByRole("button", { name: "批准" })).toBeVisible();
+
+    // GOV-01: the click must land on the card (not the chat scrim), and
+    // approving must not close the chat and strand the interrupt.
+    await card.getByRole("button", { name: "批准" }).click();
+    await expect(card).toHaveCount(0, { timeout: 60_000 });
+    await expect(popup).toBeVisible();
+
+    await expect.poll(countOpenChangeRequests, { timeout: 60_000 }).toBeGreaterThan(openBefore);
+
+    await recordOperationEvidence({
+      operationId: "XIAOZE-APPROVAL-CARD-001",
+      title: "browser approval card clickable with chat open",
+      status: "passed",
+      role: "Admin",
+      route: `/parameters?project=${projectId}`,
+      page,
+      testInfo,
+      notes: "Approval card mounted above the chat popup, the approve click resolved the interrupt without closing the chat, and an open change request was created."
     });
   });
 });

@@ -50,9 +50,9 @@ function contentToText(content: unknown): string {
   return String(content ?? "");
 }
 
-function createChatOpenAiModel(env: LogAnalyzerEnv): LogAnalysisChatModel {
+function createChatOpenAiModel(env: LogAnalyzerEnv, modelLabel: string): LogAnalysisChatModel {
   const chat = new ChatOpenAI({
-    model: resolveLogAnalysisModelLabel(env),
+    model: modelLabel,
     apiKey: env.LOG_ANALYSIS_API_KEY,
     temperature: 0,
     timeout: env.LOG_ANALYSIS_API_TIMEOUT_MS,
@@ -105,46 +105,74 @@ export type CreateLogAnalyzerFromEnvOptions = {
  * Both share the rule engine as their degradation fallback, and an unconfigured
  * provider behaves like an unavailable one — retries, then an honestly marked
  * rules-fallback report.
+ *
+ * Per-domain model override (P3b): when the analyzed record's log domain carries
+ * `modelOverride`, ONLY the model name is swapped — endpoint, API key, timeout,
+ * and token budget stay global. The effective label flows into the report's
+ * `model` provenance and the `model`-labelled metrics unchanged. In
+ * deterministic mode the stub model still answers, but the label reflects the
+ * override so behavior eval can assert the override is actually applied.
  */
 export function createLogAnalyzerFromEnv(
   env: LogAnalyzerEnv,
   options: CreateLogAnalyzerFromEnvOptions = {}
 ): LogAnalysisAdapter {
-  const modelLabel = resolveLogAnalysisModelLabel(env);
+  const globalModelLabel = resolveLogAnalysisModelLabel(env);
   const useLoopKernel = env.LOG_ANALYSIS_KERNEL === "loop";
-  const model = env.LOG_ANALYSIS_DETERMINISTIC
-    ? useLoopKernel
-      ? createDeterministicLogAnalysisLoopModel()
-      : createDeterministicLogAnalysisModel()
-    : readNonBlank(env.LOG_ANALYSIS_API_BASE_URL) && readNonBlank(env.LOG_ANALYSIS_API_KEY)
-      ? createChatOpenAiModel(env)
-      : createUnconfiguredModel();
+  const providerConfigured = Boolean(readNonBlank(env.LOG_ANALYSIS_API_BASE_URL) && readNonBlank(env.LOG_ANALYSIS_API_KEY));
+  const modelsByLabel = new Map<string, LogAnalysisChatModel>();
 
-  if (!useLoopKernel) {
-    return createLlmLogAnalyzer({
+  function resolveModel(modelLabel: string): LogAnalysisChatModel {
+    const cached = modelsByLabel.get(modelLabel);
+    if (cached) {
+      return cached;
+    }
+    const model = env.LOG_ANALYSIS_DETERMINISTIC
+      ? useLoopKernel
+        ? createDeterministicLogAnalysisLoopModel()
+        : createDeterministicLogAnalysisModel()
+      : providerConfigured
+        ? createChatOpenAiModel(env, modelLabel)
+        : createUnconfiguredModel();
+    modelsByLabel.set(modelLabel, model);
+    return model;
+  }
+
+  function createKernel(modelLabel: string): LogAnalysisAdapter {
+    const model = resolveModel(modelLabel);
+    if (!useLoopKernel) {
+      return createLlmLogAnalyzer({
+        model,
+        modelLabel,
+        tokenBudget: env.LOG_ANALYSIS_TOKEN_BUDGET,
+        telemetry: options.telemetry
+      });
+    }
+
+    const db = options.db;
+    return createAgentLoopLogAnalyzer({
       model,
       modelLabel,
       tokenBudget: env.LOG_ANALYSIS_TOKEN_BUDGET,
-      telemetry: options.telemetry
+      maxSteps: env.LOG_ANALYSIS_MAX_STEPS,
+      telemetry: options.telemetry,
+      bindToolBackends: (input) =>
+        db && input.organizationId
+          ? createDbLogAnalysisToolBackends({
+              db,
+              organizationId: input.organizationId,
+              logDomainId: input.logDomainId,
+              relatedParameterId: input.relatedParameterId,
+              embeddingClient: options.embeddingClient
+            })
+          : {}
     });
   }
 
-  const db = options.db;
-  return createAgentLoopLogAnalyzer({
-    model,
-    modelLabel,
-    tokenBudget: env.LOG_ANALYSIS_TOKEN_BUDGET,
-    maxSteps: env.LOG_ANALYSIS_MAX_STEPS,
-    telemetry: options.telemetry,
-    bindToolBackends: (input) =>
-      db && input.organizationId
-        ? createDbLogAnalysisToolBackends({
-            db,
-            organizationId: input.organizationId,
-            logDomainId: input.logDomainId,
-            relatedParameterId: input.relatedParameterId,
-            embeddingClient: options.embeddingClient
-          })
-        : {}
-  });
+  return {
+    async analyze(input) {
+      const modelLabel = readNonBlank(input.logDomain?.modelOverride) ?? globalModelLabel;
+      return createKernel(modelLabel).analyze(input);
+    }
+  };
 }

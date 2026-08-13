@@ -101,7 +101,18 @@ Agent tool 分为：
 - **published-only 检索：** `read_domain_knowledge` 在 SQL 层继承知识库的 published-only 不变量——草稿与已归档条目绝不进入分析提示词，域关联也只能指向已发布条目（发布是唯一信任门，设计 D13）。
 - **诚实降级：** provider 故障走既有 job 重试/退避；最后一次尝试回退到规则引擎并记 `analysis_source = 'rules-fallback'` 与 `degraded_reason`。循环内核预算耗尽的提前收敛同样保持标注（`degraded_reason = 'token-budget-exhausted'`，置信度封顶）。降级结果绝不冒充完整分析，UI 必须保持来源徽标可见。
 - **证据纪律：** 日志、审计与指标记录 model 标签、latency、token 数、降级原因与 trace/request id；绝不记录 API key、原始 prompt、原始 provider payload 或原始日志内容。`/health/ready` 暴露 `logAnalysisLlm` 配置状态（与 `xiaozeLlm` 同语义），不暴露凭据。
-- **租户隔离：** worker 通过组织级仓储查询读取日志字节、业务域行、知识关联与参数上下文；业务域治理（含知识关联）需要 `logs:admin-domains` 并写 `log-domain-*` 审计。
+- **租户隔离：** worker 通过组织级仓储查询读取日志字节、业务域行、知识关联与参数上下文；业务域治理（含知识关联、Webhook 配置与按域模型覆盖）需要 `logs:admin-domains` 并写 `log-domain-*` 审计。
+
+### 日志分析结果 Webhook（P3b）
+
+域级结果 Webhook 会让服务端向管理员提供的 URL 发起出站 HTTP 请求，因此 URL 按不可信输入对待并施加硬性反 SSRF 约束：
+
+- **协议与地址策略：** 仅允许 `https:`；拒绝内嵌凭据的 URL；IP 字面量主机若落在私网、环回、链路本地、CGNAT、基准测试、组播、保留或云元数据段（`0.0.0.0/8`、`10/8`、`100.64/10`、`127/8`、`169.254/16`、`172.16/12`、`192.0.0.0/24`、`192.168/16`、`198.18/15`、`224/4` 及以上、`::1`、`::`、`fc00::/7`、`fe80::/10`、`ff00::/8`、IPv4-mapped IPv6）一律拒绝。同一校验在配置保存时（返回明确的 `VALIDATION_FAILED` 原因码）与投递时都会执行。
+- **DNS 重绑定闭环：** 投递连接通过套接字自带的校验型 DNS lookup 解析主机名——所有解析地址都会对照封禁段检查，任何一个被封禁即拒绝连接,主机名无法在“校验”与“连接”之间重新解析到私网地址。不跟随重定向；丢弃响应体（只记状态码）；短超时（`LOG_WEBHOOK_TIMEOUT_MS`，默认 5s）。`LOG_WEBHOOK_ALLOW_INSECURE_LOCAL=true` 是本地联调开关，额外放行环回（`http://127.0.0.1`）接收端；服务端环境校验在生产环境拒绝该开关。
+- **载荷最小化：** 投递只携带精简结果摘要（记录/运行 id、文件名、状态、来源、严重级别、置信度、截断结论、产品链接路径）。绝不外发原始日志内容、证据全文或提示词；消费方经认证 API 获取细节。
+- **真实性与防重放：** 每次投递用该域密钥签名——`X-WiseEff-Signature: sha256=<HMAC-SHA256(secret, "timestamp.rawBody")>`,并携带 `X-WiseEff-Timestamp`。时间戳参与签名输入（未签名的时间戳可被改写,防重放即失效）;接收端在有界重放窗口内用常量时间比较校验（docs/zh-CN/api/log-analysis-integration.md）。
+- **密钥处理：** 签名密钥为 HMAC 用途在服务端存储,API 层只写不读（响应与审计元数据仅含已配置状态与末四位）,绝不出现在投递记录、日志或指标中。配置变更与管理员测试投递均有审计（`log-domain-webhook-config`、`log-domain-webhook-test`）。
+- **影响面诚实：** 投递尽力而为并与分析结果完全解耦——失败按有界退避重试、按次记入 `log_webhook_deliveries`、在 `/log-admin` 与指标（`wiseeff_log_webhook_deliveries_total`）中可见,绝不使分析 job 失败、重试或延迟。该通道有意不进 `/health/ready`。
 
 ## 设备安全
 
