@@ -28,7 +28,7 @@ Rules:
 - Jobs: status and progress events.
 - Debugging: devices, target detection, sessions, node reads/writes, snapshots, rollback.
 - Agent: Xiaoze AG-UI run, proactive suggest, and thread persistence under `/api/v1/agent/xiaoze`.
-- Audit: audit event listing and detail.
+- Audit: audit event listing and detail. Listing supports server-side filters (`projectId`, `app`/`apps`, `kind`, `severity`, `actorUserId`, `targetType`, `targetId`, `traceId`, cursor paging) plus `q` (case-insensitive search over action, kind, target id, and actor name) and `from`/`to` timestamps.
 - Operations: liveness, readiness, metrics, pilot/release readiness.
 
 ## Log and Debugging Scope

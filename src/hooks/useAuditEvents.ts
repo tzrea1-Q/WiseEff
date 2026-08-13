@@ -5,13 +5,34 @@ import type { AuditEventView, ListAuditEventsParams } from "@/domain/audit/types
 import { createAuditClient } from "@/infrastructure/http/auditClient";
 import type { AuditEvent, RiskLevel } from "@/domain/prototype/types";
 
+const EXPORT_MAX_ROWS = 2000;
+
+export type AuditTimeWindow = "all" | "today" | "7d" | "30d";
+
 export type AuditQueryState = {
   appGroup: AuditAppGroupId;
   severity: RiskLevel | "all";
   search: string;
+  timeWindow: AuditTimeWindow;
   projectId?: string;
   traceId?: string;
 };
+
+/** Start-of-window ISO timestamp for a time window, or undefined for "all". */
+export function auditTimeWindowFrom(window: AuditTimeWindow, now = new Date()): string | undefined {
+  if (window === "today") {
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    return start.toISOString();
+  }
+  if (window === "7d") {
+    return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  }
+  if (window === "30d") {
+    return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  }
+  return undefined;
+}
 
 export type UseAuditEventsOptions = {
   isApiMode: boolean;
@@ -23,6 +44,7 @@ export type UseAuditEventsOptions = {
 
 function filterViews(events: AuditEventView[], query: AuditQueryState, mode: "api" | "mock") {
   const normalizedSearch = query.search.trim().toLowerCase();
+  const fromIso = mode === "mock" ? auditTimeWindowFrom(query.timeWindow) : undefined;
 
   return events.filter((event) => matchesAuditAppGroup(event.app, query.appGroup, mode)).filter((event) => {
     if (query.severity !== "all" && event.severity !== query.severity) {
@@ -31,7 +53,11 @@ function filterViews(events: AuditEventView[], query: AuditQueryState, mode: "ap
     if (query.traceId && event.traceId !== query.traceId) {
       return false;
     }
-    if (!normalizedSearch) {
+    if (fromIso && event.createdAt && event.createdAt < fromIso) {
+      return false;
+    }
+    // API mode: text search and the time window are pushed down to the server.
+    if (mode === "api" || !normalizedSearch) {
       return true;
     }
     const haystack = [event.action, event.actor, event.kind, event.app, event.targetId ?? "", event.traceId ?? ""]
@@ -52,6 +78,13 @@ function buildApiParams(query: AuditQueryState, limit: number, cursor?: string):
   }
   if (query.severity !== "all") {
     params.severity = query.severity;
+  }
+  if (query.search.trim()) {
+    params.q = query.search.trim();
+  }
+  const from = auditTimeWindowFrom(query.timeWindow);
+  if (from) {
+    params.from = from;
   }
   if (group.apiApps.length === 1) {
     params.app = group.apiApps[0];
@@ -123,6 +156,27 @@ export function useAuditEvents({ isApiMode, mockEvents, query, limit = 50, enabl
     return filterViews(mockEvents.map(mapMockAuditEventToView), query, "mock");
   }, [apiEvents, isApiMode, mockEvents, query]);
 
+  /**
+   * Full result of the current filter for export: pages through the server in
+   * API mode (capped at EXPORT_MAX_ROWS), returns the filtered set in mock mode.
+   */
+  const fetchAllForExport = useCallback(async (): Promise<AuditEventView[]> => {
+    if (!isApiMode) {
+      return events;
+    }
+    const collected: AuditEventView[] = [];
+    let cursor: string | undefined;
+    while (collected.length < EXPORT_MAX_ROWS) {
+      const response = await createAuditClient().listAuditEvents(buildApiParams(query, 100, cursor));
+      collected.push(...response.items.map(mapApiAuditEventToView));
+      if (!response.nextCursor) {
+        break;
+      }
+      cursor = response.nextCursor;
+    }
+    return filterViews(collected.slice(0, EXPORT_MAX_ROWS), query, "api");
+  }, [events, isApiMode, query]);
+
   return {
     events,
     loading,
@@ -130,7 +184,8 @@ export function useAuditEvents({ isApiMode, mockEvents, query, limit = 50, enabl
     error,
     hasMore: Boolean(nextCursor),
     loadMore,
-    reload
+    reload,
+    fetchAllForExport
   };
 }
 
