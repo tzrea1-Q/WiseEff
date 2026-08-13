@@ -54,6 +54,8 @@
 - **TD-088（focused 验收运行缺一等证据校验）：** `check-operation-evidence.ts`（`acceptance:evidence`）只校验最近一次**全量**验收运行；单 spec 的 focused 运行没有一等校验入口，P2 只能程序化调用 `evaluateOperationEvidence` 验证 `LOG-DOMAIN-KNOWLEDGE-001`。证据回归可能拖到下一次全量 CI 才暴露（P1 的 `LOG-DEGRADED-001` 缺口正是这样进的 CI）。需给脚本加 `--run <dir>`（或 `--focused`）模式并写入验证矩阵。**负责人：Quality / Acceptance tooling。**
 - **TD-089（确定性 rubric judge 桩过于保守）：** 效果层评测的确定性 judge 桩对 `expectedActions` 的 token 重叠匹配几乎恒 0，把确定性演示分数拉低，可能误导在真模型+真实案例基线建立前对比运行的读者。需校准桩的匹配规则（同义/词干容差或结构化动作匹配）；真模型 judge 路径不受影响。**负责人：Log analysis / Eval。**
 - **TD-090（`read_domain_knowledge` 严格限定模式）：** 工具当前把检索严格限定在业务域已关联的知识条目内（无关联时才退化为组织级通用检索）；计划措辞允许"限定或加权"。关联稀疏的域可能漏掉组织级相关知识。若专家反馈严格模式导致检索饥饿，加"关联条目加权 + 组织级补充召回"的融合模式。**负责人：Log analysis / Knowledge platform。**
+- **TD-091（质量运行时清理缺口）：** `reset-quality-runtime.ts` 覆盖验收账号清理，但不清 P2 美学审计发现的运行时残留：历史探针上传的参数文件版本（`probe-edit-*.dts`）与运行时注册的驱动组模块（如 schema 晋升 runbook 演示的 `FoldRegistryTestDG`）。共享开发/演示库重置后仍会在模块树与工作台源树看到测试观感实体。应扩展 reset 脚本清理非种子文件版本与运行时 `parameter_modules` 行（或在 runbook 记录手工清理）。**负责人：Quality / Platform。**
+- **TD-092（节点调试移动端搜索框拉伸）：** `/node-debugging` 在 390px 下 `.parameters-table-search` 被垂直拉高（P2c 验证时观察到的既有移动端布局问题，非抽屉改造引入）。应在共享表格工具栏的窄屏布局中约束搜索框高度。**负责人：Frontend。**
 
 ## 近期关闭项
 
