@@ -204,7 +204,8 @@ export function registerParameterTopologyRoutes(
         bindingId: params.bindingId,
         ...body
       },
-      { objectStore: options.objectStore }
+      { objectStore: options.objectStore },
+      { requestId: request.requestId }
     );
     return { status: 201, body: { item } };
   });
@@ -222,7 +223,8 @@ export function registerParameterTopologyRoutes(
         projectId: params.projectId,
         ...body
       },
-      { objectStore: options.objectStore }
+      { objectStore: options.objectStore },
+      { requestId: request.requestId }
     );
     return { status: 201, body: { item } };
   });

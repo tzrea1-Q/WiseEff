@@ -190,7 +190,8 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
             action: "set",
             reason
           },
-          { objectStore: options.objectStore, toolchain: options.toolchain }
+          { objectStore: options.objectStore, toolchain: options.toolchain },
+          { requestId: context.requestId }
         );
 
         try {

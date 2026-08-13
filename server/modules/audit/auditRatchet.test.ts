@@ -38,9 +38,6 @@ const ALLOWED_DIRECT_CALLS: Record<string, number> = {
   // attributed to the SUBJECT's organization (not the actor's) — outside the seam's
   // auth-derived axis; it is already in-transaction.
   "modules/parameter-modules/service.ts": 1,
-  // parameter-topology/governanceAudit.ts is the shared governance audit helper with
-  // ~19 call sites across topology/specs services; migrating it is its own batch.
-  "modules/parameter-topology/governanceAudit.ts": 1,
   // parameter-kernel/sensitiveNode.ts stays: refusal audit, same as dts-reload/policy.ts.
   // (moved from modules/parameters/ in the kernel extraction — ADR-0029; count unchanged)
   "modules/parameter-kernel/sensitiveNode.ts": 1
