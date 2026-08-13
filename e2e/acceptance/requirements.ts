@@ -363,6 +363,20 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "LOG-DOMAIN-WEBHOOK-001",
+    workflow: "D",
+    title:
+      "Admin configures a domain result webhook in /log-admin (write-only secret, audited); a domain-bound analysis delivers a signed payload to the receiver and the recent-deliveries list shows the attempt.",
+    required: true
+  },
+  {
+    id: "LOG-DOMAIN-MODEL-001",
+    workflow: "D",
+    title:
+      "Admin sets a per-domain model override in /log-admin; the override persists on the domain and is recorded as the report's model provenance for analyses bound to that domain.",
+    required: true
+  },
+  {
     id: "DEBUG-SIM-001",
     workflow: "E",
     title: "Simulator read, write, mismatch, rollback, and audit path work, including complex JSON value metadata.",
