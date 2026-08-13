@@ -236,7 +236,7 @@ Xiaoze（小泽，唯一 Agent）：
 
 ## UI 设计系统与质量门禁
 
-所有产品界面遵循 [UI 设计系统](design-docs/ui-design-system.md) 的可执行视觉标准:设计令牌是视觉取值的唯一来源、单一 accent、强制交互状态、共享原语(Button / ModalDialog / DataTable / ColumnFilter / SectionState)、令牌化动效与中文优先的产品语言。所有前端可见变更在宣称完成前必须通过 [UI 质量检查清单](developer/ui-quality-checklist.md) 的完成门禁。存量界面向该标准迁移由 `docs/zh-CN/exec-plans/active/2026-08-12-frontend-aesthetics-uplift.md` 跟踪。
+所有产品界面遵循 [UI 设计系统](design-docs/ui-design-system.md) 的可执行视觉标准:设计令牌是视觉取值的唯一来源、单一 accent、强制交互状态、共享原语(`.button` 基础层 + `ui/button`、所有弹窗走 `ModalDialog`/`ConfirmDialog`、唯一 toast 管线 `src/components/common/toast` 的 `useToast()`、标准列表外壳 `admin/DataTable`、`ColumnFilter`、加载/空/错误与认证启动走 `SectionState` + `AppShellSkeleton`)、令牌化动效与中文优先的产品语言。所有前端可见变更在宣称完成前必须通过 [UI 质量检查清单](developer/ui-quality-checklist.md) 的完成门禁。存量界面向该标准迁移由 `docs/zh-CN/exec-plans/active/2026-08-12-frontend-aesthetics-uplift.md` 跟踪。
 
 ## 按钮和操作样式
 

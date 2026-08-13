@@ -95,12 +95,12 @@ Severity: P0 = foundation defect that blocks convergence; P1 = product-visible q
 
 ### P1 — Primitive consolidation (branch `feat/ui-primitives-consolidation`)
 
-- [ ] One Button: base geometry + variants/sizes per spec; collapse the 42 scope overrides; migrate black/navy one-offs to `primary`/`secondary` (FA-10, FA-19 partial).
-- [ ] One Dialog: migrate ~30 hand-rolled backdrops to `ModalDialog`/`ConfirmDialog`; delete `window.confirm` uses; add backdrop + enter/exit motion (FA-12).
-- [ ] One Toast pipeline (portal, queue, tones); retire `.logs-feedback-toast` copies and dead `.undo-toast` (FA-14).
-- [ ] Shared `SectionSkeleton`/`SectionEmpty`/`SectionError` promoted from `parameter-home`; app-bootstrap shell skeleton replaces the white screen (FA-14, FA-21 partial).
-- [ ] Table convergence step 1: promote `admin/DataTable` as the standard shell, rename the `workbenchUi` duplicate, adopt on 2–3 additional list pages (FA-13).
-- [ ] Delete dead components and `App.tsx` byte-duplicates; extract shared ones to `src/components` (FA-15). Variant vocabulary: standardize on `variant` + `size` (FA-16).
+- [x] One Button: base geometry + variants/sizes per spec; collapse the 42 scope overrides (145 rule blocks → base layer + ~50 layout/functional-only blocks); migrate black/navy/teal one-offs to tokens (FA-10, FA-19 named spots; `#111827` zeroed).
+- [x] One Dialog: 35 hand-rolled backdrops across 24 files migrated to `ModalDialog`/`ConfirmDialog` (zero kept); `window.confirm` zeroed; unified backdrop dim + tokenized enter motion with reduced-motion fallback (FA-12).
+- [x] One Toast pipeline (`src/components/common/toast/`, portal + queue + success/info/danger + hover pause, `--z-toast: 1180`); `.logs-feedback-toast` copies and `useGovernanceToast` retired (FA-14).
+- [x] Shared `SectionSkeleton`/`SectionEmpty`/`SectionError` promoted to `src/components/common/SectionState.tsx` (parameter-home re-exports); `AppShellSkeleton` replaces the white screen during API auth bootstrap (FA-14, FA-21 partial).
+- [x] Table convergence step 1: `admin/DataTable` is the standard list shell; adopted on `/user-permissions` (sorting, pagination, keyboard rows, filter empty state); duplicate `workbenchUi.DataTable` had zero remaining consumers and was deleted outright (FA-13).
+- [x] Delete dead components and `App.tsx` byte-duplicates (`SectionLabel`/`EmptyState`/`WorkbenchLayout` deduped; `MetricCard` kept — `MetricBentoCard` is a chart card, replacement would be a redesign). Variant vocabulary standardized to `variant` on shared components (`KpiStrip`, `PageInsightBar`, `AgentInsightBar`, `workbenchUi.Badge`); deferred: `MetricBentoCard.severity` (its `variant` axis is taken by the visualization kind), `ConfirmDialog.tone` retained by design (FA-15, FA-16).
 
 ### P2 — Page defect wave 1 (branch `fix/ui-page-defects-wave-1`)
 

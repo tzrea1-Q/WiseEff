@@ -4,6 +4,7 @@ import type { DebugAdminParameterDraft, DebugParameterNodeBinding } from "@/doma
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DebugAdminSelectControl } from "@/components/admin/DebugAdminSelectControl";
+import { ModalDialog } from "@/components/common/ModalDialog";
 
 export type CreateDebugParameterDialogProps = {
   open: boolean;
@@ -42,21 +43,6 @@ export function CreateDebugParameterDialog({
   const [draft, setDraft] = useState<DebugAdminParameterDraft>(() => createDraft(1));
 
   useEffect(() => {
-    if (!open) {
-      return undefined;
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, open]);
-
-  useEffect(() => {
     if (open) {
       setDraft(createDraft(existingParameters.length + 1));
     }
@@ -68,17 +54,18 @@ export function CreateDebugParameterDialog({
   );
   const fieldsDisabled = isApiMode ? !canEdit || loading : loading;
 
-  if (!open) {
-    return null;
-  }
-
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="创建调试参数">
-      <div className="submission-dialog param-admin-editor-dialog">
+    <ModalDialog
+      open={open}
+      onDismiss={onClose}
+      className="submission-dialog param-admin-editor-dialog modal-card--lg"
+    >
+      {({ titleId }) => (
+        <>
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
             <span className="eyebrow">调试参数定义</span>
-            <h2>新增参数</h2>
+            <h2 id={titleId}>新增参数</h2>
             <p>输入新参数定义并创建默认 HDC / ADB 空绑定。</p>
           </div>
         </div>
@@ -170,7 +157,8 @@ export function CreateDebugParameterDialog({
             创建
           </Button>
         </div>
-      </div>
-    </div>
+        </>
+      )}
+    </ModalDialog>
   );
 }

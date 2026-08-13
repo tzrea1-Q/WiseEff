@@ -76,6 +76,19 @@ async function dismissXiaozeHint(page: Page) {
 
 async function seedDtsAcceptanceFixture() {
   await withPgClient(async (client) => {
+    // Project-scoped edit authorization (main hardening): the RBAC test needs the
+    // hardware-user actor bound to this project so the 403 comes from the
+    // sensitive-node capability check, not the earlier project-scope check.
+    await client.query(
+      `
+      insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+      values ($1, $2, $3, $4, 'hardware-user')
+      on conflict (id) do update set
+        project_id = excluded.project_id,
+        role_id = excluded.role_id
+      `,
+      [`acceptance-u-zhao-heng-hardware-user-${projectId}`, "u-zhao-heng", organizationId, projectId]
+    );
     await client.query(
       `
       insert into parameter_definitions (

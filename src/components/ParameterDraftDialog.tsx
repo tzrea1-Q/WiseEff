@@ -1,8 +1,7 @@
 import { ArrowRight, X } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { ModalDialog } from "@/components/common/ModalDialog";
 import { ParameterValueDiff } from "@/components/ParameterValueDiff";
 import type { ParameterRecord } from "@/domain/parameters/types";
-import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 import {
   getComplexParameterLineCount,
   getComplexParameterKindLabel,
@@ -31,21 +30,6 @@ export type ParameterDraftDialogProps = {
   onSubmit: () => void;
   onViewSubmissions: () => void;
 };
-
-function getFocusableElements(container: HTMLElement) {
-  return Array.from(
-    container.querySelectorAll<HTMLElement>(
-      [
-        'button:not([disabled])',
-        '[href]',
-        'input:not([disabled])',
-        'select:not([disabled])',
-        'textarea:not([disabled])',
-        '[tabindex]:not([tabindex="-1"])'
-      ].join(",")
-    )
-  ).filter((element) => !element.hasAttribute("disabled") && !element.hasAttribute("hidden") && element.tabIndex >= 0);
-}
 
 function parseRange(range: string) {
   const [min, max] = range.split("-").map((part) => Number.parseFloat(part.trim()));
@@ -85,82 +69,6 @@ export function ParameterDraftDialog({
   onSubmit,
   onViewSubmissions
 }: ParameterDraftDialogProps) {
-  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
-  const dialogRef = useRef<HTMLDivElement | null>(null);
-  const openerRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    closeButtonRef.current?.focus();
-
-    return () => {
-      const opener = openerRef.current;
-      if (opener && opener.isConnected) {
-        opener.focus();
-      }
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, open]);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    const dialog = dialogRef.current;
-    if (!dialog) {
-      return;
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Tab") {
-        return;
-      }
-
-      const focusableElements = getFocusableElements(dialog);
-      if (focusableElements.length === 0) {
-        return;
-      }
-
-      const activeElement = document.activeElement as HTMLElement | null;
-      const currentIndex = activeElement ? focusableElements.indexOf(activeElement) : -1;
-      const current = currentIndex >= 0 ? currentIndex : 0;
-      const nextIndex = event.shiftKey
-        ? (current - 1 + focusableElements.length) % focusableElements.length
-        : (current + 1) % focusableElements.length;
-
-      event.preventDefault();
-      focusableElements[nextIndex]?.focus();
-    };
-
-    dialog.addEventListener("keydown", handleKeyDown);
-    return () => dialog.removeEventListener("keydown", handleKeyDown);
-  }, [open]);
-
-  useBodyScrollLock(open);
-
-  if (!open) {
-    return null;
-  }
-
   const draftCount = drafts.length;
   const allDraftsAreSubmittable = drafts.length > 0 && drafts.every((item) => item.targetValue.trim() && item.reason.trim());
   const hasComplexDraft = drafts.some((item) =>
@@ -168,19 +76,21 @@ export function ParameterDraftDialog({
   );
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label={title}>
-      <div
-        ref={dialogRef}
-        className={["parameter-detail-dialog", "parameter-draft-dialog", hasComplexDraft ? "parameter-draft-dialog--wide" : ""]
-          .filter(Boolean)
-          .join(" ")}
-      >
+    <ModalDialog
+      open={open}
+      onDismiss={onClose}
+      className={["parameter-detail-dialog", "parameter-draft-dialog", hasComplexDraft ? "parameter-draft-dialog--wide" : ""]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      {({ titleId }) => (
+        <>
         <header className="parameter-detail-dialog__header">
           <div>
-            <span className="eyebrow">修改草稿</span>
+            <span className="eyebrow" id={titleId}>{title}</span>
             {description ? <p className="parameter-draft-dialog__description">{description}</p> : null}
           </div>
-          <button ref={closeButtonRef} className="icon-button" type="button" aria-label="关闭草稿" onClick={onClose}>
+          <button className="icon-button" type="button" aria-label="关闭草稿" onClick={onClose}>
             <X size={18} aria-hidden="true" />
           </button>
         </header>
@@ -335,7 +245,8 @@ export function ParameterDraftDialog({
             </button>
           </div>
         </footer>
-      </div>
-    </div>
+        </>
+      )}
+    </ModalDialog>
   );
 }

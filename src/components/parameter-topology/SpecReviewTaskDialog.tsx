@@ -2,6 +2,7 @@ import { CircleX } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
+import { ModalDialog } from "@/components/common/ModalDialog";
 
 import {
   matchStatusLabel,
@@ -43,8 +44,8 @@ const EMPTY_DRAFT: DraftState = {
 };
 
 /**
- * Spec-review adjudication dialog — legacy parameter-admin shell
- * (`modal-backdrop` + `submission-dialog param-admin-editor-dialog`).
+ * Spec-review adjudication dialog on the shared ModalDialog contract
+ * (card: `submission-dialog param-admin-editor-dialog`).
  */
 export function SpecReviewTaskDialog({
   task,
@@ -64,16 +65,6 @@ export function SpecReviewTaskDialog({
   useEffect(() => {
     setDraft(EMPTY_DRAFT);
   }, [task.id]);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !isPending) {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isPending, onClose]);
 
   const options = useMemo(() => {
     const query = draft.libraryQuery.trim().toLowerCase();
@@ -97,21 +88,18 @@ export function SpecReviewTaskDialog({
     Boolean(draft.schemaId.trim() && draft.reason.trim()) && (!propertyMismatch || draft.confirmMismatch);
 
   return (
-    <div
-      className="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`${PARAMETER_ADMIN_UI.specReview} ${task.propertyKey}`}
-      onClick={isPending ? undefined : onClose}
+    <ModalDialog
+      open
+      onDismiss={isPending ? undefined : onClose}
+      className="submission-dialog param-admin-editor-dialog submission-dialog--wide"
+      backdropClassName="param-admin-modal-backdrop"
     >
-      <div
-        className="submission-dialog param-admin-editor-dialog submission-dialog--wide"
-        onClick={(event) => event.stopPropagation()}
-      >
+      {({ titleId }) => (
+        <>
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
             <span className="eyebrow">{PARAMETER_ADMIN_UI.specReviewDialogEyebrow}</span>
-            <h2 id="spec-review-task-dialog-title">{task.propertyKey}</h2>
+            <h2 id={titleId}>{task.propertyKey}</h2>
             <p>
               {nodeName ? `节点 ${nodeName}` : "节点未标注"}
               {" · "}
@@ -331,7 +319,8 @@ export function SpecReviewTaskDialog({
             {isPending && pendingAction === "approve" ? "批准中…" : "批准"}
           </button>
         </div>
-      </div>
-    </div>
+        </>
+      )}
+    </ModalDialog>
   );
 }

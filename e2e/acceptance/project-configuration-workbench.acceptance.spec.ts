@@ -50,6 +50,21 @@ async function dismissXiaozeHint(page: Page) {
 test.describe("project configuration workbench read-only browser acceptance", () => {
   test.beforeAll(async () => {
     await seedAcceptanceRoleMatrix();
+    // Project-scoped edit authorization (main hardening): the conflict test opens
+    // UI drafts as the hardware-user actor, which now requires an aurora-scoped
+    // edit-capable role. Admin-only surfaces (resolve, readiness) still deny him.
+    await withPgClient(async (client) => {
+      await client.query(
+        `
+        insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+        values ($1, 'u-zhao-heng', $2, $3, 'hardware-user')
+        on conflict (id) do update set
+          project_id = excluded.project_id,
+          role_id = excluded.role_id
+        `,
+        [`acceptance-u-zhao-heng-hardware-user-${projectId}`, organizationId, projectId]
+      );
+    });
   });
 
   test("enters from the project list and reads a scoped active DTS member in API mode", async ({ page, request }, testInfo) => {

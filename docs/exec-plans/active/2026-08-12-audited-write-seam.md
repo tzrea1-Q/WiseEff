@@ -119,6 +119,22 @@ independent of the seam migration.
   parameter-kernel refactor (#376/#377) and active agent/logs work; migrating them now
   would manufacture conflicts.
 
+## Batch 4 (branch `refactor/audited-write-migrate-agent-logs`) — xiaoze threads + logs
+
+- **Genuine gaps ×3 (xiaoze threads):** thread rename (PATCH) and archive (DELETE)
+  auto-committed their write before auditing outside it; turn persistence committed
+  messages before the session-started/message-appended audits. All three are now single
+  audited writes (`withAuditedWrite`), the turn persister batching its audits via the
+  seam's `AuditSpec[]` support.
+- Shape migration: `logs/service.ts` (1 helper, 8 in-transaction sites) — ratchet zero.
+- **`agent/orchestrator.ts` deliberately stays** (documented in the ratchet): the M4
+  agent session state machine commits in deliberate steps (a pending approval must be
+  visible while a human decides), so its audit boundaries need an owner decision. Known
+  wrinkle for that decision: its `audit()` helper defaults to the pool connection even
+  when called inside the execution transaction.
+- Deferred (still #377 territory): `dts-reload/*`, `parameter-modules`,
+  `parameter-specs`, `parameter-topology`.
+
 ## PR2+ migration inventory (ratchet allowlist, 41 direct calls in 27 files)
 
 Migrate per module; each batch moves call sites to `withAuditedWrite`/`writeAuditEventInTx`

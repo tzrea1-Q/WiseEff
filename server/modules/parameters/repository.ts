@@ -23,8 +23,8 @@ export {
 import { type ParameterRiskLevel } from "./status";
 import { LEGACY_SQL } from "../parameter-topology/migration";
 import { listSemanticParameters } from "./semanticParameterReads";
-import { parameterIdentityMode } from "./parameterIdentityMode";
-import { LEGACY_IDENTITY_SQL } from "./legacyParameterIdentityNames";
+import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
+import { LEGACY_IDENTITY_SQL } from "../parameter-kernel/legacyParameterIdentityNames";
 import { addCondition, dateTimeToIso } from "../../shared/database/sqlUtil";
 import { resolveParameterValueKind } from "./repositoryShared";
 

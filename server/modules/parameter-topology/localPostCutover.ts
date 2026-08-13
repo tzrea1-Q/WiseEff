@@ -6,7 +6,7 @@ import type { Database, Queryable } from "../../shared/database/client";
 import {
   probeCutoverComplete,
   resolveParameterIdentityMode
-} from "../parameters/parameterIdentityMode";
+} from "../parameter-kernel/parameterIdentityMode";
 import {
   applyParameterIdentityCutover,
   migrateParameterIdentities

@@ -28,7 +28,7 @@ describe("DebugParameterBindingsDialog", () => {
       />
     );
 
-    expect(screen.getByRole("dialog", { name: "快充电流限制 路径绑定" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "快充电流限制" })).toBeInTheDocument();
     expect(screen.getByLabelText("HDC 节点路径")).toBeInTheDocument();
     expect(screen.getByLabelText("ADB 节点路径")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();

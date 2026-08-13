@@ -9,10 +9,7 @@ import type {
   ParameterFileRepository,
   ProjectParameterFileVersion
 } from "@/application/ports/ParameterFileRepository";
-import {
-  GovernanceToast,
-  useGovernanceToast
-} from "@/components/parameter-admin-next/useGovernanceToast";
+import { useToast } from "@/components/common/toast/ToastProvider";
 import type { AuditEventListResponse, ListAuditEventsParams } from "@/domain/audit/types";
 import {
   presentWorkbenchActivity,
@@ -113,7 +110,8 @@ export function ProjectConfigurationWorkbench({
   organizationId,
   draftStorage
 }: ProjectConfigurationWorkbenchProps) {
-  const { message: toastMessage, showToast } = useGovernanceToast();
+  const { toast } = useToast();
+  const showToast = useCallback((message: string) => toast({ tone: "success", message }), [toast]);
   const {
     session: workspaceLoadSession,
     configSets,
@@ -1489,8 +1487,6 @@ export function ProjectConfigurationWorkbench({
           });
         }}
       />
-
-      <GovernanceToast message={toastMessage} />
     </section>
   );
 }

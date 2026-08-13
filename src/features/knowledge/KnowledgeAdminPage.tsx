@@ -351,7 +351,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
   return (
     <div className="knowledge-admin-page flex flex-col gap-5 p-6">
       <PageInsightBar
-        severity={agentDrafts.length > 0 ? "warn" : "info"}
+        variant={agentDrafts.length > 0 ? "warn" : "info"}
         headline={`待审阅 Agent 草稿 ${agentDrafts.length} 条 · 已归档 ${archivedCount} 条`}
         description="知识治理:审阅 Agent 沉淀的知识草稿(发布或拒绝归档),管理已归档条目与检索索引健康。草稿在发布前不进入检索。"
         actions={[]}

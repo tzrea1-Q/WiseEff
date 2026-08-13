@@ -10,7 +10,7 @@ export type InsightAction = {
 
 export type Insight = {
   id: string;
-  tone: "neutral" | "warning" | "danger";
+  variant: "neutral" | "warning" | "danger";
   headline: string;
   meta?: string;
   actions: InsightAction[];
@@ -26,11 +26,11 @@ function resolveActionVariant(action: InsightAction, index: number, total: numbe
   return index === total - 1 ? "primary" : "secondary";
 }
 
-function InsightToneIcon({ tone }: { tone: Insight["tone"] }) {
-  if (tone === "danger") {
+function InsightToneIcon({ variant }: { variant: Insight["variant"] }) {
+  if (variant === "danger") {
     return <AlertTriangle aria-hidden="true" size={18} />;
   }
-  if (tone === "warning") {
+  if (variant === "warning") {
     return <Lightbulb aria-hidden="true" size={18} />;
   }
   return <Info aria-hidden="true" size={18} />;
@@ -78,9 +78,9 @@ export function AgentInsightBar({
   return (
     <section className="insight-bar" role="status" aria-live="polite">
       {effectiveItems.map((insight) => (
-        <div className="insight-item" data-tone={insight.tone} key={insight.id}>
+        <div className="insight-item" data-tone={insight.variant} key={insight.id}>
           <div className="insight-item__icon" aria-hidden="true">
-            <InsightToneIcon tone={insight.tone} />
+            <InsightToneIcon variant={insight.variant} />
           </div>
           <div className="insight-content">
             <span className="insight-eyebrow">{eyebrow}</span>

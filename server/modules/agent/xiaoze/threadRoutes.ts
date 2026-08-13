@@ -2,8 +2,8 @@ import { ApiError } from "../../../shared/http/errors";
 import type { RouteRequest, RouteResponse, WiseEffRouter } from "../../../shared/http/router";
 import type { Database } from "../../../shared/database/client";
 import type { AuthContext } from "../../auth/types";
-import { createAuditEvent } from "../../audit/repository";
 import { randomUUID } from "node:crypto";
+import { withAuditedWrite } from "../../audit/auditedWrite";
 import {
   archiveXiaozeThread,
   getXiaozeThread,
@@ -99,25 +99,26 @@ export function registerXiaozeThreadRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseParams(xiaozeThreadIdParamsSchema, request.params);
     const body = parseParams(patchXiaozeThreadBodySchema, request.body);
-    const updated = await updateXiaozeThreadTitle(db, auth.organization.id, auth.user.id, params.threadId, body.title);
-    if (!updated) {
-      throw threadNotFound(params.threadId);
-    }
-
-    await createAuditEvent(db, {
-      id: randomUUID(),
-      organizationId: auth.organization.id,
-      projectId: null,
-      actorUserId: auth.user.id,
-      actorType: "user",
-      app: "wiseeff",
-      kind: "agent-session",
-      action: "updated",
-      severity: "Low",
-      targetType: "agent_session",
-      targetId: params.threadId,
-      metadata: { sessionId: params.threadId, title: body.title },
-      traceId: request.requestId
+    // Rename and its audit commit together (ADR-0027); previously the update
+    // auto-committed and the audit could be lost after it.
+    await withAuditedWrite(db, auth, { requestId: request.requestId }, async (tx) => {
+      const updated = await updateXiaozeThreadTitle(tx, auth.organization.id, auth.user.id, params.threadId, body.title);
+      if (!updated) {
+        throw threadNotFound(params.threadId);
+      }
+      return {
+        result: undefined,
+        audit: {
+          app: "wiseeff",
+          kind: "agent-session",
+          action: "updated",
+          severity: "Low",
+          projectId: null,
+          targetType: "agent_session",
+          targetId: params.threadId,
+          metadata: { sessionId: params.threadId, title: body.title }
+        }
+      };
     });
 
     const thread = await getXiaozeThread(db, auth.organization.id, auth.user.id, params.threadId);
@@ -131,25 +132,25 @@ export function registerXiaozeThreadRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseParams(xiaozeThreadIdParamsSchema, request.params);
-    const archived = await archiveXiaozeThread(db, auth.organization.id, auth.user.id, params.threadId);
-    if (!archived) {
-      throw threadNotFound(params.threadId);
-    }
-
-    await createAuditEvent(db, {
-      id: randomUUID(),
-      organizationId: auth.organization.id,
-      projectId: null,
-      actorUserId: auth.user.id,
-      actorType: "user",
-      app: "wiseeff",
-      kind: "agent-session",
-      action: "archived",
-      severity: "Low",
-      targetType: "agent_session",
-      targetId: params.threadId,
-      metadata: { sessionId: params.threadId },
-      traceId: request.requestId
+    // Archive and its audit commit together (ADR-0027).
+    await withAuditedWrite(db, auth, { requestId: request.requestId }, async (tx) => {
+      const archived = await archiveXiaozeThread(tx, auth.organization.id, auth.user.id, params.threadId);
+      if (!archived) {
+        throw threadNotFound(params.threadId);
+      }
+      return {
+        result: undefined,
+        audit: {
+          app: "wiseeff",
+          kind: "agent-session",
+          action: "archived",
+          severity: "Low",
+          projectId: null,
+          targetType: "agent_session",
+          targetId: params.threadId,
+          metadata: { sessionId: params.threadId }
+        }
+      };
     });
 
     return { status: 200, body: { ok: true } };

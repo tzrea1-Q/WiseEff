@@ -2272,7 +2272,7 @@ describe.skipIf(!databaseAvailable)("createNodeEnablementDraft", () => {
       writeLockMatchesBinding: true,
     });
 
-    const { resolveParameterIdentityMode } = await import("../parameters/parameterIdentityMode");
+    const { resolveParameterIdentityMode } = await import("../parameter-kernel/parameterIdentityMode");
     if ((await resolveParameterIdentityMode(db!)) !== "semantic") {
       // Enablement submission is post-cutover-only; tip sharing + write-lock proofs above still apply.
       return;

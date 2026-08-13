@@ -18,7 +18,7 @@ import { isTestDatabaseAvailable } from "../../testing/testDatabase";
 import type { AuthContext } from "../auth/types";
 import { insertNodeOperation } from "../debugging/repository";
 import { writebackMergedParameterValue } from "../parameter-files/writebackService";
-import { resolveParameterIdentityMode } from "../parameters/parameterIdentityMode";
+import { resolveParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import {
   listParameterHistory,
   listParameters

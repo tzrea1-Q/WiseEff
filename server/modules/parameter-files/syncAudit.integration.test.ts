@@ -13,7 +13,7 @@ import { createDatabase, type Database } from "../../shared/database/client";
 import { applyMigrations } from "../../shared/database/migrations";
 import { isTestDatabaseAvailable } from "../../testing/testDatabase";
 import type { AuthContext } from "../auth/types";
-import { setParameterIdentityMode } from "../parameters/parameterIdentityMode";
+import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { syncFileVersion } from "./syncService";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");

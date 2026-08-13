@@ -95,12 +95,12 @@
 
 ### P1 — 原语收敛(分支 `feat/ui-primitives-consolidation`)
 
-- [ ] 一个 Button:按规范落基础几何 + 变体/尺寸;收编 42 个作用域覆写;黑/藏青一次性按钮迁到 `primary`/`secondary`(FA-10、FA-19 部分)。
-- [ ] 一个 Dialog:约 30 个手写遮罩迁到 `ModalDialog`/`ConfirmDialog`;删除 `window.confirm`;补遮罩与进出场动效(FA-12)。
-- [ ] 一条 Toast 管线(portal、队列、语气);退役 `.logs-feedback-toast` 复制与死代码 `.undo-toast`(FA-14)。
-- [ ] 把 `parameter-home` 的 `SectionSkeleton`/`SectionEmpty`/`SectionError` 提升为共享组件;应用启动壳骨架替代白屏(FA-14、FA-21 部分)。
-- [ ] 表格收敛第一步:确立 `admin/DataTable` 为标准外壳,重命名 `workbenchUi` 同名冲突,再接入 2–3 个列表页(FA-13)。
-- [ ] 删除死组件与 `App.tsx` 逐字节重复;共享实现抽到 `src/components`(FA-15)。变体词汇统一为 `variant` + `size`(FA-16)。
+- [x] 一个 Button:基础几何 + 变体/尺寸落地;收编 42 个作用域覆写(145 个规则块 → 基础层 + 约 50 个纯布局/功能块);黑/藏青/青绿一次性用色迁入令牌(FA-10、FA-19 点名点位;`#111827` 归零)。
+- [x] 一个 Dialog:24 个文件 35 个手写遮罩弹窗全部迁入 `ModalDialog`/`ConfirmDialog`(零保留);`window.confirm` 归零;遮罩统一变暗 + 令牌化入场动效(含 reduced-motion 回退)(FA-12)。
+- [x] 一条 Toast 管线(`src/components/common/toast/`,portal + 队列 + success/info/danger + 悬停暂停,`--z-toast: 1180`);退役 `.logs-feedback-toast` 复制与 `useGovernanceToast`(FA-14)。
+- [x] `SectionSkeleton`/`SectionEmpty`/`SectionError` 提升为共享组件 `src/components/common/SectionState.tsx`(parameter-home 转 re-export);`AppShellSkeleton` 取代 API 认证启动期白屏(FA-14、FA-21 部分)。
+- [x] 表格收敛第一步:`admin/DataTable` 确立为标准列表外壳,`/user-permissions` 接入(排序/分页/键盘行/筛选空态);撞名的 `workbenchUi.DataTable` 已零消费者,直接删除(FA-13)。
+- [x] 死组件与 `App.tsx` 逐字节重复清理(`SectionLabel`/`EmptyState`/`WorkbenchLayout` 去重;`MetricCard` 保留——`MetricBentoCard` 是图表卡,替换等于重设计)。共享组件变体词汇统一为 `variant`(`KpiStrip`、`PageInsightBar`、`AgentInsightBar`、`workbenchUi.Badge`);递延:`MetricBentoCard.severity`(其 `variant` 轴被可视化类型占用)、`ConfirmDialog.tone` 按设计保留(FA-15、FA-16)。
 
 ### P2 — 页面缺陷第一波(分支 `fix/ui-page-defects-wave-1`)
 

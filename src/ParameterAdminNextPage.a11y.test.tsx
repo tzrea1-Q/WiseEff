@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import { ToastProvider } from "@/components/common/toast/ToastProvider";
 import { ParameterAdminNextPage } from "./ParameterAdminNextPage";
 
 afterEach(() => {
@@ -66,13 +67,15 @@ function createRepository(
 describe("ParameterAdminNextPage · a11y", () => {
   it("Tab 从范围导航到搜索与生命周期筛选控件顺序可达", async () => {
     render(
-      <ParameterAdminNextPage
-        area="organization"
-        onNavigate={() => {}}
-        search=""
-        pathname="/parameter-admin/specs"
-        parameterTopologyRepository={createRepository()}
-      />
+      <ToastProvider>
+        <ParameterAdminNextPage
+          area="organization"
+          onNavigate={() => {}}
+          search=""
+          pathname="/parameter-admin/specs"
+          parameterTopologyRepository={createRepository()}
+        />
+      </ToastProvider>
     );
 
     await screen.findByRole("region", { name: "参数定义库" });
@@ -94,13 +97,15 @@ describe("ParameterAdminNextPage · a11y", () => {
 
   it("审核状态筛选可通过列筛选菜单选择并反映到 URL", async () => {
     render(
-      <ParameterAdminNextPage
-        area="organization"
-        onNavigate={() => {}}
-        search="lifecycle=draft"
-        pathname="/parameter-admin/specs"
-        parameterTopologyRepository={createRepository()}
-      />
+      <ToastProvider>
+        <ParameterAdminNextPage
+          area="organization"
+          onNavigate={() => {}}
+          search="lifecycle=draft"
+          pathname="/parameter-admin/specs"
+          parameterTopologyRepository={createRepository()}
+        />
+      </ToastProvider>
     );
 
     await screen.findByRole("region", { name: "参数定义库" });
@@ -119,23 +124,25 @@ describe("ParameterAdminNextPage · a11y", () => {
 
   it("项目运营目的地有可访问的区域标题", () => {
     render(
-      <ParameterAdminNextPage
-        area="projects"
-        onNavigate={() => {}}
-        search=""
-        pathname="/parameter-admin/projects"
-        parameterTopologyRepository={createRepository()}
-        dispatch={() => undefined}
-        state={
-          {
-            configDraft: { projects: [{ id: "aurora", name: "Aurora", code: "AUR" }] },
-            parameters: [],
-            activeProjectId: "aurora",
-            activeRoleId: "admin",
-            projectInitializationStatuses: { aurora: "initialized" }
-          } as never
-        }
-      />
+      <ToastProvider>
+        <ParameterAdminNextPage
+          area="projects"
+          onNavigate={() => {}}
+          search=""
+          pathname="/parameter-admin/projects"
+          parameterTopologyRepository={createRepository()}
+          dispatch={() => undefined}
+          state={
+            {
+              configDraft: { projects: [{ id: "aurora", name: "Aurora", code: "AUR" }] },
+              parameters: [],
+              activeProjectId: "aurora",
+              activeRoleId: "admin",
+              projectInitializationStatuses: { aurora: "initialized" }
+            } as never
+          }
+        />
+      </ToastProvider>
     );
 
     expect(screen.getByRole("navigation", { name: "参数管理后台配置范围" })).toBeInTheDocument();

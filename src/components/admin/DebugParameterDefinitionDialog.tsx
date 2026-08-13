@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { ModalDialog } from "@/components/common/ModalDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DebugAdminSelectControl } from "@/components/admin/DebugAdminSelectControl";
@@ -90,17 +91,6 @@ export function DebugParameterDefinitionDialog({
 }: DebugParameterDefinitionDialogProps) {
   const [validationError, setValidationError] = useState("");
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
-
   const fieldsDisabled = isApiMode ? !canEdit || loading : false;
   const isComplex = isComplexDebugParameter(draft);
   const currentRows = debugValueEditorRows(draft.currentValue, isComplex ? 8 : 6);
@@ -118,21 +108,24 @@ export function DebugParameterDefinitionDialog({
   };
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="调试参数定义编辑">
-      <div
-        className={[
-          "submission-dialog",
-          "param-admin-editor-dialog",
-          "debug-admin-definition-dialog",
-          isComplex ? "debug-admin-definition-dialog--complex" : ""
-        ]
-          .filter(Boolean)
-          .join(" ")}
-      >
+    <ModalDialog
+      open
+      onDismiss={onClose}
+      className={[
+        "submission-dialog",
+        "param-admin-editor-dialog",
+        "debug-admin-definition-dialog",
+        isComplex ? "debug-admin-definition-dialog--complex" : ""
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      {({ titleId }) => (
+        <>
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
             <span className="eyebrow">调试参数定义</span>
-            <h2>编辑参数</h2>
+            <h2 id={titleId}>编辑参数</h2>
             <p>维护参数定义、取值范围、值格式、风险与启用状态。</p>
           </div>
         </div>
@@ -324,7 +317,8 @@ export function DebugParameterDefinitionDialog({
             取消
           </Button>
         </div>
-      </div>
-    </div>
+        </>
+      )}
+    </ModalDialog>
   );
 }
