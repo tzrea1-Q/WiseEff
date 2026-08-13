@@ -26,7 +26,7 @@ jobs:
     name: Acceptance local non-HDC
     services:
       postgres:
-        image: postgres:16
+        image: pgvector/pgvector:pg16
     steps:
       - run: npx playwright install --with-deps chromium
       - run: npm run acceptance:ci
@@ -75,7 +75,7 @@ describe("M5.12 acceptance CI configuration", () => {
         "target-synthetic-acceptance",
         "workflow_dispatch",
         "acceptance_mode",
-        "postgres:16",
+        "pgvector/pgvector:pg16",
         "npx playwright install --with-deps chromium",
         "npm run acceptance:browser -- --mode local-non-hdc",
         "npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime",

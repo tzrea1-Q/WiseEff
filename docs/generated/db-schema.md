@@ -1630,6 +1630,7 @@ Indexes:
 | `chunk_index` | `integer` | no | — |
 | `text` | `text` | no | — |
 | `created_at` | `timestamp with time zone` | no | `now()` |
+| `embedding` | `vector` | yes | — |
 
 Constraints:
 
