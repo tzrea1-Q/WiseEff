@@ -215,9 +215,9 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     }
 
     await setPrototypeRole(page, "Hardware User");
-    await expect(page.getByRole("heading", { name: "Permission denied" })).toBeVisible();
-    await expect(page.getByText("Current role: Hardware User")).toBeVisible();
-    await expect(page.getByText("Required role: Admin")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "无权访问该页面" })).toBeVisible();
+    await expect(page.getByText("当前角色：Hardware User")).toBeVisible();
+    await expect(page.getByText("所需角色：Admin")).toBeVisible();
     await expect(page.getByRole("region", { name: "用户权限" })).toHaveCount(0);
 
     await setPrototypeRole(page, "Admin");
@@ -297,9 +297,9 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     );
 
     await setPrototypeRole(page, "Software User");
-    await expect(page.getByRole("heading", { name: "Permission denied" })).toBeVisible();
-    await expect(page.getByText("Current role: Software User")).toBeVisible();
-    await expect(page.getByText("Required role: Admin")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "无权访问该页面" })).toBeVisible();
+    await expect(page.getByText("当前角色：Software User")).toBeVisible();
+    await expect(page.getByText("所需角色：Admin")).toBeVisible();
     await expect(page.getByRole("table", { name: "平台用户" })).toHaveCount(0);
 
     await recordOperationEvidence({
