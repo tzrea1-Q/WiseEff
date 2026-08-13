@@ -1,70 +1,14 @@
-import type { AgentToolResult } from "../types";
-import { looksLikeInternalReasoning } from "./splitAssistantContent";
 import {
   createReasoningClassifier,
   readReasoningFromLangChainResponse,
   type ReasoningClassifierOptions
 } from "./reasoningClassifier";
-
-export { looksLikeInternalReasoning } from "./splitAssistantContent";
-import { createXiaozeCheckpointer, type XiaozeCheckpointer } from "./checkpointer";
-import { createPlanningAgent, type PlanningApprovalResolver } from "./planningGraph";
-import type { XiaozePromptDebugSnapshot } from "./promptDebug";
-
-export type PerceptionToolDescriptor = {
-  name: string;
-  description: string;
-  schema: Record<string, unknown>;
-  requiresApproval?: boolean;
-};
-
-export type PerceptionAgentContext = {
-  projectId?: string;
-  pageKey?: string;
-};
-
-export type PerceptionAgentRunInput = {
-  message: string;
-  context: PerceptionAgentContext;
-  threadId?: string;
-  includePromptDebug?: boolean;
-};
-
-export type PerceptionAgentRunResult = {
-  text: string;
-  reasoning?: string;
-  citations: AgentToolResult["citations"];
-  promptDebug?: XiaozePromptDebugSnapshot;
-  runSteps?: import("./runEventSink").XiaozeRunStepRecord[];
-  interrupt?: {
-    toolName: string;
-    payload: Record<string, unknown>;
-    citations: AgentToolResult["citations"];
-  };
-};
-
-export type PerceptionModelToolCall = {
-  id: string;
-  name: string;
-  args: Record<string, unknown>;
-};
-
-export type PerceptionModelResponse = {
-  content?: string;
-  reasoning?: string;
-  toolCalls?: PerceptionModelToolCall[];
-};
-
-export type PerceptionModelStreamChunk = {
-  reasoningDelta?: string;
-  answerDelta?: string;
-  toolCalls?: PerceptionModelToolCall[];
-};
-
-export type PerceptionChatModel = {
-  invoke(messages: unknown[]): Promise<PerceptionModelResponse>;
-  stream?(messages: unknown[]): AsyncIterable<PerceptionModelStreamChunk>;
-};
+import type {
+  PerceptionChatModel,
+  PerceptionModelResponse,
+  PerceptionModelStreamChunk,
+  PerceptionModelToolCall
+} from "./modelTypes";
 
 export async function invokeModelTurnWithStreaming(
   model: PerceptionChatModel,
@@ -120,34 +64,6 @@ export async function invokeModelWithStreaming(
   return {
     answer: response.content ?? "",
     reasoning: response.reasoning
-  };
-}
-
-export function createPerceptionAgent(options: {
-  model: PerceptionChatModel;
-  runTool: (name: string, payload: Record<string, unknown>) => Promise<AgentToolResult>;
-  listTools: () => PerceptionToolDescriptor[];
-  checkpointer?: XiaozeCheckpointer;
-  approvalResolver?: PlanningApprovalResolver;
-}) {
-  const planningAgent = createPlanningAgent(options);
-
-  return {
-    async run(input: PerceptionAgentRunInput): Promise<PerceptionAgentRunResult> {
-      const result = await planningAgent.run({
-        ...input,
-        threadId: input.threadId ?? "default"
-      });
-      return {
-        text: result.text,
-        reasoning: result.reasoning,
-        citations: result.citations,
-        promptDebug: result.promptDebug,
-        interrupt: result.interrupt,
-        runSteps: result.runSteps
-      };
-    },
-    listTools: planningAgent.listTools
   };
 }
 

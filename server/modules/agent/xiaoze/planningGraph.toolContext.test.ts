@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createXiaozeCheckpointer } from "./checkpointer";
-import { createPlanningAgent, fakeModelSequence } from "./planningGraph";
+import { createPlanningAgent } from "./planningGraph";
+import { fakeModelSequence } from "./testing/fakeModel";
 import { formatToolCatalogForSystemPrompt } from "./toolCatalog";
 
 describe("planningGraph tool context", () => {
