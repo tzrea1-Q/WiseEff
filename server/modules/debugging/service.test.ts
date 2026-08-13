@@ -1950,6 +1950,56 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         })
       ]);
     });
+
+    // #420: snapshot entries record identity honestly. A nodeId-mode write
+    // must not smuggle the debug_nodes id through the parameterId key —
+    // rollback used to bind that value into node_operations.parameter_id and
+    // FK-fault after the physical write-back.
+    it("records self-describing snapshot-entry identity for nodeId-mode and parameterId-mode writes", async () => {
+      await seedDevice();
+      await seedTarget();
+      const session = await seedSession();
+      const node = await createDebugNode(db, { organizationId: "org-1", name: "Charge current" });
+      await upsertDebugNodeBinding(db, {
+        organizationId: "org-1",
+        nodeId: node.id,
+        protocol: "hdc",
+        nodePath: "/sys/node/hdc/write",
+        accessMode: "RW",
+        enabled: true
+      });
+      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+      const parameter = await seedAdminParameter(service);
+      // A node-catalog binding covering the parameter's protocol + path, so
+      // the parameterId-mode write resolves its node identity (#419).
+      const coveringNode = await createDebugNode(db, { organizationId: "org-1", name: "Covering node" });
+      await upsertDebugNodeBinding(db, {
+        organizationId: "org-1",
+        nodeId: coveringNode.id,
+        protocol: "hdc",
+        nodePath: "/sys/current",
+        accessMode: "RW",
+        enabled: true
+      });
+
+      const nodeWrite = await service.writeNode(writeAuth, { sessionId: session.id, nodeId: node.id, value: "3200" });
+      const parameterWrite = await service.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: "3200" });
+
+      const entriesOf = async (snapshotId: string) => {
+        const rows = await db.query<{ entries: Array<Record<string, unknown>> }>(
+          `select entries from debugging_snapshots where id = $1`,
+          [snapshotId]
+        );
+        return rows.rows[0].entries;
+      };
+      const nodeEntries = await entriesOf(nodeWrite.snapshotId as string);
+      expect(nodeEntries).toEqual([expect.objectContaining({ nodeId: node.id, nodePath: "/sys/node/hdc/write" })]);
+      expect(nodeEntries[0]).not.toHaveProperty("parameterId");
+      const parameterEntries = await entriesOf(parameterWrite.snapshotId as string);
+      expect(parameterEntries).toEqual([
+        expect.objectContaining({ parameterId: parameter.id, nodeId: coveringNode.id, nodePath: "/sys/current" })
+      ]);
+    });
   });
 
   describe("rollbackSnapshot", () => {
@@ -2243,6 +2293,180 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
           metadata: expect.objectContaining({ snapshotId: snapshot.id, operationCount: 1, protocol: "hdc" })
         }
       ]);
+    });
+
+    // #420 regression, severe half: the rollback operation insert runs after
+    // the physical write-back. The pre-fix entry smuggled the debug_nodes id
+    // through parameterId, the insert bound it into
+    // node_operations.parameter_id, and the FK fault rolled back the
+    // operation, event, audit, and snapshot claim of a rollback that had
+    // already mutated the device — permanently, on every retry.
+    it("keeps operation, event, audit, and snapshot evidence when rolling back a nodeId-mode write on a non-mirrored node", async () => {
+      await seedDevice();
+      await seedTarget();
+      const session = await seedSession();
+      // Admin node-catalog surface only: a debug_nodes row plus its protocol
+      // binding, never a same-id debugging_parameters mirror row.
+      const node = await createDebugNode(db, { organizationId: "org-1", name: "Charge current" });
+      await upsertDebugNodeBinding(db, {
+        organizationId: "org-1",
+        nodeId: node.id,
+        protocol: "hdc",
+        nodePath: "/sys/node/hdc/write",
+        accessMode: "RW",
+        enabled: true
+      });
+      const audit = createAuditSpy();
+      const gateway = makeGateway();
+      const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent });
+      const write = await service.writeNode(writeAuth, { sessionId: session.id, nodeId: node.id, value: "3200" });
+      expect(write).toMatchObject({ status: "succeeded", snapshotId: expect.any(String) });
+
+      const result = await service.rollbackSnapshot(
+        rollbackAuth,
+        { snapshotId: write.snapshotId as string, confirmationToken: "confirm-rollback" },
+        { requestId: "request-rollback-420" }
+      );
+
+      // The physical write-back reached the device with the snapshot value…
+      expect(gateway.writeNode).toHaveBeenLastCalledWith(
+        expect.objectContaining({ nodePath: "/sys/node/hdc/write", value: "3000" })
+      );
+      // …and every evidence row survived, with honest node identity.
+      expect(result.operations).toEqual([
+        expect.objectContaining({ operationType: "rollback", status: "succeeded", requestedValue: "3000" })
+      ]);
+      expect(result.snapshot).toMatchObject({ id: write.snapshotId, status: "consumed" });
+      const stored = await nodeOperationRows(session.id);
+      expect(stored).toHaveLength(2);
+      expect(stored).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ operation_type: "write", status: "succeeded", parameter_id: null, node_id: node.id }),
+          expect.objectContaining({ operation_type: "rollback", status: "succeeded", parameter_id: null, node_id: node.id })
+        ])
+      );
+      const storedSnapshot = await db.query<{ status: string }>(`select status from debugging_snapshots where id = $1`, [
+        write.snapshotId
+      ]);
+      expect(storedSnapshot.rows).toEqual([{ status: "consumed" }]);
+      const events = await db.query<{ kind: string }>(
+        `select kind from debugging_events where session_id = $1 and kind like 'rollback%'`,
+        [session.id]
+      );
+      expect(events.rows).toEqual([{ kind: "rollback-succeeded" }]);
+      expect(audit.events.filter((event) => event.kind === "debug-snapshot-rollback")).toEqual([
+        expect.objectContaining({ targetId: write.snapshotId, traceId: "request-rollback-420" })
+      ]);
+    });
+
+    // Legacy probe case 1: an already-persisted parameter-identity entry
+    // keeps its catalog linkage, and node_id is binding-resolved per entry
+    // exactly like #419 forward writes — before any device I/O.
+    it("resolves legacy parameter-identity entries with binding-resolved node identity", async () => {
+      const { parameter, session } = await seedRuntime();
+      const voltage = await seedParameter({ key: "voltage", name: "Voltage", nodePath: "/sys/voltage" });
+      const coveringNode = await createDebugNode(db, { organizationId: "org-1", name: "Covering node" });
+      await upsertDebugNodeBinding(db, {
+        organizationId: "org-1",
+        nodeId: coveringNode.id,
+        protocol: "hdc",
+        nodePath: "/sys/current",
+        accessMode: "RW",
+        enabled: true
+      });
+      const snapshot = await createDebugSnapshot(db, {
+        organizationId: "org-1",
+        sessionId: session.id,
+        risk: "Medium",
+        // Verbatim pre-#420 persisted shape: parameterId only, no nodeId key.
+        entries: [
+          { parameterId: parameter.id, nodePath: "/sys/current", previousValue: "3000", targetValue: "3200" },
+          { parameterId: voltage.id, nodePath: "/sys/voltage", previousValue: "12", targetValue: "14" }
+        ] as never,
+        createdByUserId: "user-1"
+      });
+      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+
+      const result = await service.rollbackSnapshot(rollbackAuth, { snapshotId: snapshot.id, confirmationToken: "confirm-rollback" });
+
+      expect(result.operations).toHaveLength(2);
+      const stored = await nodeOperationRows(session.id);
+      expect(stored).toHaveLength(2);
+      expect(stored).toEqual(
+        expect.arrayContaining([
+          // Covered path: catalog linkage plus the binding-resolved node id.
+          expect.objectContaining({ node_path: "/sys/current", parameter_id: parameter.id, node_id: coveringNode.id }),
+          // Uncovered path: catalog linkage only; node_id stays honestly null.
+          expect.objectContaining({ node_path: "/sys/voltage", parameter_id: voltage.id, node_id: null })
+        ])
+      );
+      const storedSnapshot = await db.query<{ status: string }>(`select status from debugging_snapshots where id = $1`, [snapshot.id]);
+      expect(storedSnapshot.rows).toEqual([{ status: "consumed" }]);
+    });
+
+    // Legacy probe case 2: a node-identity entry written by the pre-#420
+    // writer stored the debug_nodes id under parameterId. The probe finds no
+    // catalog parameter with that id, finds the debug node, and binds
+    // node_id — parameter_id stays null instead of FK-faulting.
+    it("rolls back a legacy entry whose parameterId holds a debug_nodes id", async () => {
+      await seedDevice();
+      await seedTarget();
+      const session = await seedSession();
+      const node = await createDebugNode(db, { organizationId: "org-1", name: "Legacy node" });
+      await upsertDebugNodeBinding(db, {
+        organizationId: "org-1",
+        nodeId: node.id,
+        protocol: "hdc",
+        nodePath: "/sys/node/hdc/write",
+        accessMode: "RW",
+        enabled: true
+      });
+      const snapshot = await createDebugSnapshot(db, {
+        organizationId: "org-1",
+        sessionId: session.id,
+        risk: "Medium",
+        // Verbatim pre-#420 persisted shape: node id smuggled through parameterId.
+        entries: [
+          { parameterId: node.id, protocol: "hdc", nodePath: "/sys/node/hdc/write", previousValue: "3000", targetValue: "3200" }
+        ] as never,
+        createdByUserId: "user-1"
+      });
+      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+
+      const result = await service.rollbackSnapshot(rollbackAuth, { snapshotId: snapshot.id, confirmationToken: "confirm-rollback" });
+
+      expect(result.operations).toEqual([expect.objectContaining({ operationType: "rollback", status: "succeeded" })]);
+      const stored = await nodeOperationRows(session.id);
+      expect(stored).toEqual([expect.objectContaining({ operation_type: "rollback", parameter_id: null, node_id: node.id })]);
+      const storedSnapshot = await db.query<{ status: string }>(`select status from debugging_snapshots where id = $1`, [snapshot.id]);
+      expect(storedSnapshot.rows).toEqual([{ status: "consumed" }]);
+    });
+
+    // Legacy probe case 3: an orphan entry whose id exists in neither table
+    // must not block the rollback — the physical write-back proceeds by
+    // nodePath and the evidence rows persist with both identity columns null.
+    it("rolls back an orphan legacy entry with evidence intact and both identities null", async () => {
+      const { session } = await seedRuntime();
+      const audit = createAuditSpy();
+      const snapshot = await createDebugSnapshot(db, {
+        organizationId: "org-1",
+        sessionId: session.id,
+        risk: "Medium",
+        entries: [{ parameterId: "ghost-parameter", nodePath: "/sys/ghost", previousValue: "3000", targetValue: "3200" }] as never,
+        createdByUserId: "user-1"
+      });
+      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
+
+      const result = await service.rollbackSnapshot(rollbackAuth, { snapshotId: snapshot.id, confirmationToken: "confirm-rollback" });
+
+      expect(result.operations).toEqual([expect.objectContaining({ operationType: "rollback", status: "succeeded" })]);
+      const stored = await nodeOperationRows(session.id);
+      expect(stored).toEqual([
+        expect.objectContaining({ operation_type: "rollback", parameter_id: null, node_id: null, node_path: "/sys/ghost" })
+      ]);
+      const storedSnapshot = await db.query<{ status: string }>(`select status from debugging_snapshots where id = $1`, [snapshot.id]);
+      expect(storedSnapshot.rows).toEqual([{ status: "consumed" }]);
+      expect(audit.events.filter((event) => event.kind === "debug-snapshot-rollback")).toHaveLength(1);
     });
   });
 });
