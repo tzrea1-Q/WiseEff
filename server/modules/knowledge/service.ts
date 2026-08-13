@@ -19,6 +19,13 @@ import {
   type KnowledgeIndexStatusDto
 } from "./indexing/repository";
 import {
+  countParameterReferencesForEntry,
+  deleteParameterReference,
+  insertParameterReference,
+  listPublishedEntriesReferencingSpec,
+  resolveReferenceableSpec
+} from "./parameterReferences";
+import {
   canReadEntry,
   hasKnowledgeManage,
   requireKnowledgeEdit,
@@ -55,6 +62,7 @@ import type {
   KnowledgeFileDto,
   KnowledgeRetrievalInfo,
   KnowledgeSearchResponseDto,
+  KnowledgeSearchResultDto,
   KnowledgeSourceType,
   KnowledgeStatus,
   ListKnowledgeEntriesQuery
@@ -785,6 +793,8 @@ export async function hardDeleteKnowledgeEntry(
       throw knowledgeEntryNotFound(entryId);
     }
 
+    // The delete cascades reference rows; the audit records how many went with it.
+    const parameterReferenceCount = await countParameterReferencesForEntry(tx, auth, entryId);
     await deleteEntry(tx, auth, entryId);
     await writeKnowledgeAudit(
       asAuditTx(tx),
@@ -798,12 +808,151 @@ export async function hardDeleteKnowledgeEntry(
           title: entry.title,
           contentForm: entry.contentForm,
           status: entry.status,
-          headRevisionNumber: entry.headRevisionNumber
+          headRevisionNumber: entry.headRevisionNumber,
+          parameterReferenceCount
         }
       },
       context
     );
   });
+}
+
+/**
+ * Guard shared by the reference edit endpoints: same governance rule as entry
+ * editing (`knowledge:edit` own / `knowledge:manage` any), and archived
+ * entries refuse reference edits exactly like content edits.
+ */
+async function requireReferenceEditableEntry(tx: Queryable, auth: AuthContext, entryId: string) {
+  const entry = await getEntryForUpdate(tx, auth, entryId);
+  if (!entry || !canReadEntry(auth, entry)) {
+    throw knowledgeEntryNotFound(entryId);
+  }
+  requireKnowledgeGovern(auth, entry);
+  if (entry.status === "archived") {
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      "Archived knowledge entries cannot change parameter references. Restore the entry first.",
+      400,
+      { entryId, status: entry.status }
+    );
+  }
+  return entry;
+}
+
+/**
+ * Adds a structural reference from a knowledge entry to a parameter
+ * definition (deferred roadmap item 2). Binds to `parameter_specs.id`, the
+ * stable surrogate (ADR-0017); referencing a deprecated definition is allowed
+ * — the lifecycle is displayed honestly rather than gated (ADR-0011).
+ * Idempotent: re-adding an existing pair changes nothing and writes no audit.
+ */
+export async function addKnowledgeParameterReference(
+  db: Database,
+  auth: AuthContext,
+  input: { entryId: string; specId: string },
+  context: KnowledgeServiceContext = {}
+): Promise<KnowledgeEntryDto> {
+  await db.transaction(async (tx) => {
+    const entry = await requireReferenceEditableEntry(tx, auth, input.entryId);
+
+    const spec = await resolveReferenceableSpec(tx, auth.organization.id, input.specId);
+    if (!spec) {
+      throw new ApiError("NOT_FOUND", "Parameter definition was not found.", 404, { specId: input.specId });
+    }
+
+    const inserted = await insertParameterReference(tx, auth, {
+      id: randomUUID(),
+      entryId: input.entryId,
+      specId: spec.specId
+    });
+    if (!inserted) {
+      return; // Already referenced — nothing changed, nothing to audit.
+    }
+
+    await writeKnowledgeAudit(
+      asAuditTx(tx),
+      auth,
+      {
+        kind: "knowledge-parameter-reference-add",
+        action: "parameter-reference-add",
+        entryId: input.entryId,
+        metadata: {
+          title: entry.title,
+          specId: spec.specId,
+          propertyKey: spec.propertyKey,
+          driverModule: spec.driverModule,
+          lifecycle: spec.lifecycle
+        }
+      },
+      context
+    );
+  });
+
+  const entry = await getEntryById(db, auth, input.entryId);
+  if (!entry) throw knowledgeEntryNotFound(input.entryId);
+  return entry;
+}
+
+export async function removeKnowledgeParameterReference(
+  db: Database,
+  auth: AuthContext,
+  input: { entryId: string; specId: string },
+  context: KnowledgeServiceContext = {}
+): Promise<KnowledgeEntryDto> {
+  await db.transaction(async (tx) => {
+    const entry = await requireReferenceEditableEntry(tx, auth, input.entryId);
+
+    const removed = await deleteParameterReference(tx, auth, {
+      entryId: input.entryId,
+      specId: input.specId
+    });
+    if (!removed) {
+      throw new ApiError("NOT_FOUND", "Parameter reference was not found on this entry.", 404, {
+        entryId: input.entryId,
+        specId: input.specId
+      });
+    }
+
+    await writeKnowledgeAudit(
+      asAuditTx(tx),
+      auth,
+      {
+        kind: "knowledge-parameter-reference-remove",
+        action: "parameter-reference-remove",
+        entryId: input.entryId,
+        metadata: { title: entry.title, specId: input.specId }
+      },
+      context
+    );
+  });
+
+  const entry = await getEntryById(db, auth, input.entryId);
+  if (!entry) throw knowledgeEntryNotFound(input.entryId);
+  return entry;
+}
+
+/**
+ * Parameter-side read (定义详情 相关知识): published entries referencing one
+ * definition. Published-only invariant — drafts/archived never appear here
+ * regardless of who looks. Pure read: `knowledge:view` plus organization
+ * scope, no audit, matching `searchKnowledge`. Specs outside the caller's
+ * scope (unknown or another tenant's) are 404, same as the spec detail API.
+ */
+export async function findRelatedKnowledgeForSpec(
+  db: Queryable,
+  auth: AuthContext,
+  input: { specId: string; limit?: number }
+): Promise<{ items: KnowledgeSearchResultDto[] }> {
+  requireKnowledgeView(auth);
+
+  const spec = await resolveReferenceableSpec(db, auth.organization.id, input.specId);
+  if (!spec) {
+    throw new ApiError("NOT_FOUND", "Parameter definition was not found.", 404, { specId: input.specId });
+  }
+
+  return {
+    items: await listPublishedEntriesReferencingSpec(db, auth, { specId: spec.specId, limit: input.limit })
+  };
 }
 
 export async function listKnowledgeEntries(db: Queryable, auth: AuthContext, query: ListKnowledgeEntriesQuery = {}) {

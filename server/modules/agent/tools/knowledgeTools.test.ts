@@ -190,11 +190,43 @@ describe.skipIf(!databaseAvailable)("knowledge tools against the knowledge servi
     );
     expect(document.data).toMatchObject({ entryId: publishedEntryId, contentForm: "markdown", truncated: false });
     expect(String(document.data.content)).toContain("45 度");
+    expect(document.data.referencedParameters).toEqual([]);
     expect(document.citations[0]).toMatchObject({ type: "knowledge", id: publishedEntryId });
 
     await expect(
       registry.run("knowledge.getDocument", { auth: editor, requestId: "req-6", sessionId: "session-1" }, { entryId: draftEntryId })
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("knowledge.getDocument names the entry's referenced definitions with honest lifecycles", async () => {
+    const specId = "pspec:kb-tools-ratio";
+    await db.query(
+      `insert into attribution_subjects (id, organization_id, subject_kind, display_name, source_key)
+       values ($1, $2, 'driver-registration', 'SC8562', $1)`,
+      [`asub:${specId}`, ORG_ID]
+    );
+    await db.query(
+      `insert into parameter_specs (id, organization_id, source_kind, specification_key, property_key, attribution_subject_id, definition_lifecycle)
+       values ($1, $2, 'manual', $3, 'charge_pump_ratio', $4, 'deprecated')`,
+      [specId, ORG_ID, `manual/${specId}/charge_pump_ratio`, `asub:${specId}`]
+    );
+    await db.query(
+      `insert into parameter_spec_versions (id, parameter_spec_id, version, display_name, description, value_shape, lifecycle, version_status)
+       values ($1, $2, 1, '充电泵比率', '', '{"kind":"int32"}'::jsonb, 'deprecated', 'active')`,
+      [`${specId}:v1`, specId]
+    );
+    const { addKnowledgeParameterReference } = await import("../../knowledge/service");
+    await addKnowledgeParameterReference(db, editor, { entryId: publishedEntryId, specId });
+
+    const registry = registryFor();
+    const document = await registry.run(
+      "knowledge.getDocument",
+      { auth: makeAuth(MEMBER, ["knowledge:view"]), requestId: "req-9", sessionId: "session-1" },
+      { entryId: publishedEntryId }
+    );
+    expect(document.data.referencedParameters).toEqual([
+      { specId, name: "充电泵比率", lifecycle: "deprecated" }
+    ]);
   });
 
   it("validates tool payloads", async () => {

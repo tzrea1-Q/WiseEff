@@ -12,10 +12,12 @@ import * as service from "./service";
 import type { KnowledgeEntryDto } from "./types";
 
 vi.mock("./service", () => ({
+  addKnowledgeParameterReference: vi.fn(),
   archiveKnowledgeEntry: vi.fn(),
   createKnowledgeEntry: vi.fn(),
   distillKnowledgeFromLog: vi.fn(),
   findRelatedKnowledgeForLog: vi.fn(),
+  findRelatedKnowledgeForSpec: vi.fn(),
   getKnowledgeEntry: vi.fn(),
   getKnowledgeFileContent: vi.fn(),
   hardDeleteKnowledgeEntry: vi.fn(),
@@ -23,6 +25,7 @@ vi.mock("./service", () => ({
   listKnowledgeRevisions: vi.fn(),
   publishKnowledgeEntry: vi.fn(),
   rejectAgentKnowledgeDraft: vi.fn(),
+  removeKnowledgeParameterReference: vi.fn(),
   restoreKnowledgeEntry: vi.fn(),
   restoreKnowledgeRevision: vi.fn(),
   searchKnowledge: vi.fn(),
@@ -81,6 +84,7 @@ function entryRecord(overrides: Partial<KnowledgeEntryDto> = {}): KnowledgeEntry
     archivedAt: null,
     contentMarkdown: "body",
     file: null,
+    parameterReferences: [],
     ...overrides
   };
 }
@@ -200,6 +204,75 @@ describe("knowledge routes", () => {
       makeAuth(),
       { logId: "log-1", limit: 3 },
       { embeddingClient: undefined }
+    );
+  });
+
+  it("GET /api/v1/knowledge/related-to-spec requires specId and delegates", async () => {
+    const db = makeDb();
+    vi.mocked(service.findRelatedKnowledgeForSpec).mockResolvedValue({ items: [] });
+
+    const missing = await requestJson<{ error: { code: string } }>(
+      makeServer({ db, objectStore: makeObjectStore() }),
+      "/api/v1/knowledge/related-to-spec"
+    );
+    expect(missing.status).toBe(400);
+    expect(service.findRelatedKnowledgeForSpec).not.toHaveBeenCalled();
+
+    const response = await requestJson<{ items: unknown[] }>(
+      makeServer({ db, objectStore: makeObjectStore() }),
+      "/api/v1/knowledge/related-to-spec?specId=pspec%3Aabc&limit=5"
+    );
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ items: [] });
+    expect(service.findRelatedKnowledgeForSpec).toHaveBeenCalledWith(db, makeAuth(), {
+      specId: "pspec:abc",
+      limit: 5
+    });
+  });
+
+  it("PUT and DELETE /api/v1/knowledge/entries/:entryId/parameter-references/:specId delegate with the raw spec id", async () => {
+    const db = makeDb();
+    const item = entryRecord({
+      parameterReferences: [
+        {
+          specId: "pspec:abc",
+          propertyKey: "charge_pump_ratio",
+          displayName: "充电泵比率",
+          driverModule: "SC8562",
+          lifecycle: "active",
+          createdByUserId: "user-1",
+          createdAt: "2026-08-13T00:00:00.000Z"
+        }
+      ]
+    });
+    vi.mocked(service.addKnowledgeParameterReference).mockResolvedValue(item);
+    vi.mocked(service.removeKnowledgeParameterReference).mockResolvedValue(entryRecord());
+
+    const added = await requestJson<{ item: typeof item }>(
+      makeServer({ db, objectStore: makeObjectStore() }),
+      `/api/v1/knowledge/entries/${ENTRY_ID}/parameter-references/pspec%3Aabc`,
+      { method: "PUT", body: JSON.stringify({}) }
+    );
+    expect(added.status).toBe(200);
+    expect(added.body.item.parameterReferences).toHaveLength(1);
+    expect(service.addKnowledgeParameterReference).toHaveBeenCalledWith(
+      db,
+      makeAuth(),
+      { entryId: ENTRY_ID, specId: "pspec:abc" },
+      expect.objectContaining({ requestId: expect.any(String) })
+    );
+
+    const removed = await requestJson<{ item: typeof item }>(
+      makeServer({ db, objectStore: makeObjectStore() }),
+      `/api/v1/knowledge/entries/${ENTRY_ID}/parameter-references/pspec%3Aabc`,
+      { method: "DELETE" }
+    );
+    expect(removed.status).toBe(200);
+    expect(service.removeKnowledgeParameterReference).toHaveBeenCalledWith(
+      db,
+      makeAuth(),
+      { entryId: ENTRY_ID, specId: "pspec:abc" },
+      expect.objectContaining({ requestId: expect.any(String) })
     );
   });
 

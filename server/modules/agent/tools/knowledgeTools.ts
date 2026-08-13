@@ -93,7 +93,14 @@ export function createKnowledgeTools(options: KnowledgeToolOptions): AgentToolDe
             contentForm: entry.contentForm,
             tags: entry.tags,
             content,
-            truncated
+            truncated,
+            // Structural definition references so grounding answers can name
+            // the parameters; lifecycle is honest (deprecated stays visible).
+            referencedParameters: entry.parameterReferences.map((reference) => ({
+              specId: reference.specId,
+              name: reference.displayName?.trim() || reference.propertyKey,
+              lifecycle: reference.lifecycle
+            }))
           },
           citations: [
             {

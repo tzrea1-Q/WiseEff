@@ -886,6 +886,27 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "KnowledgeSearchResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "knowledge.relatedToSpec": {
+    summary:
+      "Published knowledge entries structurally referencing one parameter definition (knowledge:view, organization-scoped; published-only — drafts and archived entries never appear; specs outside the caller's scope are 404)",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeRelatedToSpecResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "knowledge.addParameterReference": {
+    summary:
+      "Add a structural parameter-definition reference to a knowledge entry (idempotent; entry owner with knowledge:edit, or knowledge:manage; the reference binds to the parameter_specs.id surrogate and survives identity corrections and deprecation)",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeEntryResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "knowledge.removeParameterReference": {
+    summary:
+      "Remove a structural parameter-definition reference from a knowledge entry (entry owner with knowledge:edit, or knowledge:manage)",
+    tags: ["knowledge"],
+    responseBody: "KnowledgeEntryResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "knowledge.indexStatus": {
     summary: "Read per-entry retrieval index health and the honest retrieval mode (knowledge:manage only)",
     tags: ["knowledge"],
