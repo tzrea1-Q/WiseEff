@@ -49,7 +49,7 @@
 ## 任务
 
 1. **验收先注册**：在实现 UI 之前把 `KB-XREF-001`（在条目上编辑引用；在定义详情看到已发布条目；草稿永不出现；废弃后 chip 存续并带如实徽章）登记到覆盖图、操作矩阵（EN + zh）、`e2e/acceptance/requirements.ts`、`e2e/acceptance/operationMatrix.ts`。
-2. **迁移** `0109_knowledge_parameter_references.sql`：引用表（uuid 主键、`organization_id` 外键、`entry_id` 外键 `on delete cascade`、`parameter_spec_id` text 外键指向 `parameter_specs(id)` 且删除保持默认限制行为、`created_by_user_id` 外键、`created_at`、唯一 `(entry_id, parameter_spec_id)`），加 `(organization_id, parameter_spec_id)` 索引服务参数侧读取。
+2. **迁移** `0110_knowledge_parameter_references.sql`：引用表（uuid 主键、`organization_id` 外键、`entry_id` 外键 `on delete cascade`、`parameter_spec_id` text 外键指向 `parameter_specs(id)` 且删除保持默认限制行为、`created_by_user_id` 外键、`created_at`、唯一 `(entry_id, parameter_spec_id)`），加 `(organization_id, parameter_spec_id)` 索引服务参数侧读取。
 3. **后端**（`server/modules/knowledge/`）：`parameterReferences.ts` 仓库/服务切片——`PUT /api/v1/knowledge/entries/:entryId/parameter-references/:specId`（幂等添加）与 `DELETE …/:specId`，权限与条目编辑同一 `requireKnowledgeGovern` 规则，归档条目与内容编辑一样拒绝，校验定义在调用者可读范围（本组织或平台全局），通过 ADR-0027 缝审计（`knowledge-parameter-reference-add`/`-remove`）；条目 DTO 增加 `parameterReferences`（定义 id、属性键、显示名、驱动模块、生命周期），list + detail 均加载；`GET /api/v1/knowledge/related-to-spec?specId=…` 返回 published-only 引用条目（`knowledge:view`、组织隔离、范围外定义 404）；硬删除审计 metadata 记录 `parameterReferenceCount`；`getPublishedKnowledgeDocument` 与 `knowledge.getDocument` 工具 payload 增加 `referencedParameters`（id + 名称 + 生命周期）；routeManifest + schemaRegistry 登记；重新生成 `docs/generated/openapi.json`。
 4. **前端**：领域类型 `KnowledgeParameterReference` + `KnowledgeEntry.parameterReferences`；`KnowledgeRepository` 端口方法 `addParameterReference` / `removeParameterReference` / `relatedToSpec`；HTTP 客户端 + mock 实现（mock 保持同样的 published-only 与生命周期徽章语义，种子一条被引用定义）；知识条目详情渲染引用 chips（名称、模块、生命周期徽章、深链 `/parameter-admin?spec=…`）；条目编辑器对既有条目提供选择器区（搜索走 `ParameterTopologyRepository.listSpecs`，添加/移除即时生效，无 `parameter:view` 或无拓扑仓库时隐藏）；定义详情对话框（`ParameterSpecDetail`）新增「相关知识」区（已发布条目，深链 `/knowledge?entryId=…`），仅当调用者持有 `knowledge:view` 时由参数后台页注入。
 5. **验收 spec**：扩展 `e2e/acceptance/knowledge.acceptance.spec.ts` 的 KB-XREF-001 场景（种子一个定义；从一条已发布条目和一条草稿条目引用它；断言参数侧只出现已发布条目；废弃定义后断言 chip 存续并带「已废弃」徽章；断言审计行与数据库状态）。
@@ -80,7 +80,7 @@
 | API | 更新 | `docs/design-docs/api-contract.md` + zh；`docs/generated/openapi.json` |
 | 前端 | 更新 | `docs/FRONTEND.md` + `docs/zh-CN/frontend.md`（chips、选择器、「相关知识」区、端口方法） |
 | 质量 / 验收 | 更新 | 覆盖图 + zh；操作矩阵 + zh；`e2e/acceptance/knowledge.acceptance.spec.ts` |
-| 生成物 | 更新 | `docs/generated/openapi.json`；`docs/generated/db-schema.md`（迁移 0109） |
+| 生成物 | 更新 | `docs/generated/openapi.json`；`docs/generated/db-schema.md`（迁移 0110） |
 | 安全 | 不变 | `docs/SECURITY.md` — 现有权限组合；无新权限或信任边界 |
 | 产品规格 | 复查 | `docs/product-specs/product-spec.md` + zh — 仅在措辞需要时更新 |
 | 仓库地图 | 不变 | `ARCHITECTURE.md` — 无新模块或运行时缝 |
@@ -96,7 +96,7 @@
 - [x] FRONTEND EN + zh 记录引用 chips、编辑器选择器、「相关知识」区与端口方法
 - [x] domain-model EN + zh 记录引用实体及其完整性规则
 - [x] 设计文档 EN + zh 标记延期路线图第 2 项已交付
-- [x] `docs/generated/db-schema.md` 已随迁移 0109 重新生成
+- [x] `docs/generated/db-schema.md` 已随迁移 0110 重新生成
 - [x] PLANS EN + zh 列出本活跃计划
 - [x] 技术债跟踪器已复查——本计划无遗留延期项,无需记录
 - [x] `npm run docs:check` 通过

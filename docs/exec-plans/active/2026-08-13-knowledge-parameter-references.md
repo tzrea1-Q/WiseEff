@@ -49,7 +49,7 @@ Branch: `feat/knowledge-parameter-references`, checked out from the latest `main
 ## Tasks
 
 1. **Acceptance registration first**: add `KB-XREF-001` (edit references on an entry; see the published entry on the definition detail; drafts never appear; deprecation keeps the chip with an honest badge) to `docs/developer/browser-acceptance-coverage-map.md`, `docs/developer/user-operation-coverage-matrix.md` (EN + zh), `e2e/acceptance/requirements.ts`, and `e2e/acceptance/operationMatrix.ts` before implementing the UI.
-2. **Migration** `0109_knowledge_parameter_references.sql`: the reference table (uuid pk, `organization_id` FK, `entry_id` FK `on delete cascade`, `parameter_spec_id` text FK to `parameter_specs(id)` with default restrictive delete behavior, `created_by_user_id` FK, `created_at`, unique `(entry_id, parameter_spec_id)`), plus a `(organization_id, parameter_spec_id)` index for the parameter-side read.
+2. **Migration** `0110_knowledge_parameter_references.sql`: the reference table (uuid pk, `organization_id` FK, `entry_id` FK `on delete cascade`, `parameter_spec_id` text FK to `parameter_specs(id)` with default restrictive delete behavior, `created_by_user_id` FK, `created_at`, unique `(entry_id, parameter_spec_id)`), plus a `(organization_id, parameter_spec_id)` index for the parameter-side read.
 3. **Backend** (`server/modules/knowledge/`): `parameterReferences.ts` repository/service slice — `PUT /api/v1/knowledge/entries/:entryId/parameter-references/:specId` (idempotent add) and `DELETE …/:specId`, gated by the same `requireKnowledgeGovern` rule as entry editing, refusing archived entries like content edits, validating the spec exists in caller scope (org-owned or platform-global), audited via the ADR-0027 seam (`knowledge-parameter-reference-add`/`-remove`); entry DTOs gain `parameterReferences` (spec id, property key, display name, driver module, lifecycle) loaded for list + detail; `GET /api/v1/knowledge/related-to-spec?specId=…` returns published-only referencing entries (`knowledge:view`, org-scoped, 404 for specs outside caller scope); hard delete records `parameterReferenceCount` in its audit metadata; `getPublishedKnowledgeDocument` + `knowledge.getDocument` tool payload gain `referencedParameters` (id + name + lifecycle); routeManifest + schemaRegistry entries; regenerate `docs/generated/openapi.json`.
 4. **Frontend**: domain type `KnowledgeParameterReference` + `KnowledgeEntry.parameterReferences`; `KnowledgeRepository` port methods `addParameterReference` / `removeParameterReference` / `relatedToSpec`; HTTP client + mock implementations (mock keeps the same published-only and lifecycle-badge semantics and seeds one referenced definition); knowledge entry detail dialog renders reference chips (name, module, lifecycle badge, deep link `/parameter-admin?spec=…`); entry editor gains the picker section for existing entries (search via `ParameterTopologyRepository.listSpecs`, add/remove immediate, hidden without `parameter:view` or a topology repository); definition detail dialog (`ParameterSpecDetail`) gains a 相关知识 section (published entries, deep link `/knowledge?entryId=…`), injected from the parameter-admin page only when the caller holds `knowledge:view`.
 5. **Acceptance spec**: extend `e2e/acceptance/knowledge.acceptance.spec.ts` with the KB-XREF-001 scenario (seed a spec; reference it from a published entry and a draft entry; assert the parameter-side list shows only the published entry; deprecate the spec and assert the chip survives with the 已废弃 badge; assert audit rows and DB state).
@@ -80,7 +80,7 @@ Branch: `feat/knowledge-parameter-references`, checked out from the latest `main
 | API | Update | `docs/design-docs/api-contract.md` + zh; `docs/generated/openapi.json` |
 | Frontend | Update | `docs/FRONTEND.md` + `docs/zh-CN/frontend.md` (chips, picker, 相关知识 section, port methods) |
 | Quality / acceptance | Update | `docs/developer/browser-acceptance-coverage-map.md` + zh; `docs/developer/user-operation-coverage-matrix.md` + zh; `e2e/acceptance/knowledge.acceptance.spec.ts` |
-| Generated artifacts | Update | `docs/generated/openapi.json`; `docs/generated/db-schema.md` (migration 0109) |
+| Generated artifacts | Update | `docs/generated/openapi.json`; `docs/generated/db-schema.md` (migration 0110) |
 | Security | No change | `docs/SECURITY.md` — existing permissions compose; no new permission or trust boundary |
 | Product specs | Review | `docs/product-specs/product-spec.md` + zh — knowledge workflow wording already covers cross-references generically; update only if wording needs it |
 | Repository maps | No change | `ARCHITECTURE.md` — no new module or runtime seam |
@@ -96,7 +96,7 @@ Branch: `feat/knowledge-parameter-references`, checked out from the latest `main
 - [x] FRONTEND EN + zh document the reference chips, the editor picker, the 相关知识 section, and the port methods
 - [x] domain-model EN + zh record the reference entity and its integrity rules
 - [x] Design doc EN + zh mark deferred roadmap item 2 as shipped
-- [x] `docs/generated/db-schema.md` regenerated with migration 0109
+- [x] `docs/generated/db-schema.md` regenerated with migration 0110
 - [x] PLANS EN + zh list this active plan
 - [x] Tech-debt tracker reviewed — no deferral leaves this plan, nothing to record
 - [x] `npm run docs:check` green
