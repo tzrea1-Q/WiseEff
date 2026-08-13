@@ -674,10 +674,11 @@ export function registerParameterFileRoutes(
 
   router.post("/api/v1/projects/:projectId/baselines/:baselineId/rollback", async (request) => {
     const db = requireDb(options.db);
+    const objectStore = requireObjectStore(options.objectStore);
     const auth = await options.getCurrentAuthContext(request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithBaselineIdSchema, request.params);
-    const item = await rollbackToBaseline(db, auth, params.baselineId, { requestId: request.requestId });
+    const item = await rollbackToBaseline(db, objectStore, auth, params.baselineId, { requestId: request.requestId });
 
     return { status: 200, body: { item } };
   });

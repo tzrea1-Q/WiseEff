@@ -558,14 +558,14 @@ describe.skipIf(!databaseAvailable)("baseline service", () => {
 
   describe("rollbackToBaseline", () => {
     it("rejects non-admin auth with 403", async () => {
-      await expect(rollbackToBaseline(db, viewerAuth(), "baseline-1")).rejects.toMatchObject({
+      await expect(rollbackToBaseline(db, fakeObjectStore({}), viewerAuth(), "baseline-1")).rejects.toMatchObject({
         code: "FORBIDDEN",
         status: 403
       });
     });
 
     it("returns 404 when the baseline does not exist", async () => {
-      await expect(rollbackToBaseline(db, adminAuth(), "missing")).rejects.toMatchObject({
+      await expect(rollbackToBaseline(db, fakeObjectStore({}), adminAuth(), "missing")).rejects.toMatchObject({
         code: "NOT_FOUND",
         status: 404
       });
@@ -601,7 +601,14 @@ describe.skipIf(!databaseAvailable)("baseline service", () => {
       });
       await setCurrentVersion(db, { fileId: "file-2", versionId: "fv-2-new" });
 
-      const result = await rollbackToBaseline(db, adminAuth(), baseline.id);
+      const result = await rollbackToBaseline(
+        db,
+        // The restored pointer version re-ingests its structural model from the
+        // pinned blob, so the store must serve parseable DTS for sk-2.
+        fakeObjectStore({ "sk-2": "/dts-v1/;\n/ {\n\tdemo { value = <1>; };\n};\n" }),
+        adminAuth(),
+        baseline.id
+      );
 
       expect(result).toEqual({ baselineId: baseline.id, restored: 1 });
 
@@ -679,7 +686,7 @@ describe.skipIf(!databaseAvailable)("baseline service", () => {
         transaction: async <T,>(fn: (queryable: Queryable) => Promise<T>) => fn(tx)
       };
 
-      await expect(rollbackToBaseline(fakeDb, adminAuth(), "baseline-1")).rejects.toMatchObject({
+      await expect(rollbackToBaseline(fakeDb, fakeObjectStore({}), adminAuth(), "baseline-1")).rejects.toMatchObject({
         code: "NOT_FOUND",
         status: 404
       });
