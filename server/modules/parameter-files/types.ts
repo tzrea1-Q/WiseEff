@@ -283,4 +283,5 @@ export type ConfigSetMemberFileDto = {
   sortOrder: number;
   currentVersionId?: string;
   currentVersionNumber?: number;
+  currentVersionStorageKey?: string;
 };
