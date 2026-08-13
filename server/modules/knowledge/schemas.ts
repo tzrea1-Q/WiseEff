@@ -75,6 +75,10 @@ export const distillKnowledgeFromLogBodySchema = z.object({
   logId: nonEmptyString.max(100)
 });
 
+export const distillKnowledgeFromReloadRunBodySchema = z.object({
+  runId: nonEmptyString.max(100)
+});
+
 export const searchKnowledgeQuerySchema = z.object({
   q: nonEmptyString.max(200),
   limit: z.coerce.number().int().min(1).max(50).optional()
@@ -87,6 +91,7 @@ export const relatedKnowledgeForLogQuerySchema = z.object({
 
 export type CreateKnowledgeEntryBody = z.infer<typeof createKnowledgeEntryBodySchema>;
 export type DistillKnowledgeFromLogBody = z.infer<typeof distillKnowledgeFromLogBodySchema>;
+export type DistillKnowledgeFromReloadRunBody = z.infer<typeof distillKnowledgeFromReloadRunBodySchema>;
 export type UpdateKnowledgeEntryBody = z.infer<typeof updateKnowledgeEntryBodySchema>;
 export type RestoreKnowledgeRevisionBody = z.infer<typeof restoreKnowledgeRevisionBodySchema>;
 export type ListKnowledgeEntriesQueryBody = z.infer<typeof listKnowledgeEntriesQuerySchema>;

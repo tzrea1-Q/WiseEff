@@ -22,6 +22,7 @@ type KnowledgeEntryRow = {
   source_type: KnowledgeEntryDto["sourceType"];
   source_session_id: string | null;
   source_log_id: string | null;
+  source_reload_run_id: string | null;
   created_by_user_id: string;
   head_revision_id: string | null;
   head_revision_number: number | string;
@@ -136,6 +137,7 @@ function toEntryDto(
     sourceType: row.source_type,
     sourceSessionId: row.source_session_id,
     sourceLogId: row.source_log_id,
+    sourceReloadRunId: row.source_reload_run_id,
     createdByUserId: row.created_by_user_id,
     headRevisionId: row.head_revision_id,
     headRevisionNumber: Number(row.head_revision_number),
@@ -186,9 +188,9 @@ export async function insertEntry(db: Queryable, auth: AuthContext, input: Inser
   await db.query(
     `
     insert into knowledge_entries (
-      id, organization_id, title, content_form, tags, source_type, source_session_id, source_log_id, created_by_user_id, search_text
+      id, organization_id, title, content_form, tags, source_type, source_session_id, source_log_id, source_reload_run_id, created_by_user_id, search_text
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
     `,
     [
       input.id,
@@ -199,6 +201,7 @@ export async function insertEntry(db: Queryable, auth: AuthContext, input: Inser
       input.sourceType,
       input.sourceSessionId,
       input.sourceLogId,
+      input.sourceReloadRunId,
       auth.user.id,
       input.searchText
     ]

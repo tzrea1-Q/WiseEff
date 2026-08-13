@@ -570,6 +570,13 @@ export const routeManifest = [
     module: "knowledge",
     stability: "mvp"
   },
+  {
+    id: "knowledge.distillFromReloadRun",
+    method: "POST",
+    path: "/api/v1/knowledge/distill-from-reload-run",
+    module: "knowledge",
+    stability: "mvp"
+  },
   { id: "knowledge.search", method: "GET", path: "/api/v1/knowledge/search", module: "knowledge", stability: "mvp" },
   {
     id: "knowledge.relatedToLog",

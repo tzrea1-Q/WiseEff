@@ -5,9 +5,11 @@ import type { AuditCorrelationContext, AuditSeverity } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import { getLogRecord } from "../logs/service";
+import { getReloadRunRecord } from "../dts-reload/service";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { buildLogDistillationDraft } from "./distillation";
+import { buildReloadDistillationDraft, isReloadRunDistillable } from "./reloadDistillation";
 import type { KnowledgeTextExtractor } from "./extraction";
 import { fuseKnowledgeSearchResults } from "./hybridSearch";
 import type { KnowledgeEmbeddingClient } from "./indexing/embeddingClient";
@@ -205,6 +207,7 @@ export async function createKnowledgeEntry(
         sourceType: "human",
         sourceSessionId: null,
         sourceLogId: null,
+        sourceReloadRunId: null,
         searchText: buildSearchText({ title: input.title, tags: input.tags, content: input.contentMarkdown })
       });
       await insertRevision(tx, auth, {
@@ -261,6 +264,7 @@ export async function createKnowledgeEntry(
       sourceType: "human",
       sourceSessionId: null,
       sourceLogId: null,
+      sourceReloadRunId: null,
       searchText: buildSearchText({ title: input.title, tags: input.tags, content: null })
     });
     const file = await insertFile(tx, auth, {
@@ -334,6 +338,7 @@ async function createMarkdownDraftWithSource(
     sourceType: KnowledgeSourceType;
     sourceSessionId: string | null;
     sourceLogId: string | null;
+    sourceReloadRunId: string | null;
     audit: Pick<AuditSpec, "kind" | "action" | "metadata" | "actorType">;
   },
   context: KnowledgeServiceContext = {}
@@ -351,6 +356,7 @@ async function createMarkdownDraftWithSource(
       sourceType: input.sourceType,
       sourceSessionId: input.sourceSessionId,
       sourceLogId: input.sourceLogId,
+      sourceReloadRunId: input.sourceReloadRunId,
       searchText
     });
     await insertRevision(tx, auth, {
@@ -422,10 +428,67 @@ export async function distillKnowledgeFromLog(
       sourceType: "human",
       sourceSessionId: null,
       sourceLogId: log.id,
+      sourceReloadRunId: null,
       audit: {
         kind: "knowledge-entry-distill",
         action: "distill",
         metadata: { logId: log.id, fileName: log.fileName, severity: log.severity, title: draft.title }
+      }
+    },
+    context
+  );
+}
+
+/**
+ * Distils a terminal DTS reload run into a pre-filled knowledge DRAFT
+ * (design deferred roadmap item 3). The caller needs `knowledge:edit` to
+ * create the draft and must be able to read the source run — the same gate
+ * the reload history routes enforce (`debugging:view` or
+ * `debugging:dts-reload`, organization-scoped, via `getReloadRunRecord`).
+ * Only post-device-write terminals distil (verified / unverifiable /
+ * contradicted / failed): the honest outcome is part of the knowledge value,
+ * while pre-deploy states have no outcome to distil yet. The draft follows
+ * every Phase 1 rule: revision 1, audited write, invisible to retrieval
+ * until a human publishes it.
+ */
+export async function distillKnowledgeFromReloadRun(
+  db: Database,
+  auth: AuthContext,
+  input: { runId: string },
+  context: KnowledgeServiceContext = {}
+): Promise<KnowledgeEntryDto> {
+  requireKnowledgeEdit(auth);
+
+  const run = await getReloadRunRecord(db, auth, input.runId);
+  if (!isReloadRunDistillable(run.status)) {
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      "Only terminal reload runs (verified, unverifiable, contradicted, or failed) can be distilled into knowledge.",
+      400,
+      { runId: input.runId, status: run.status }
+    );
+  }
+
+  const draft = buildReloadDistillationDraft(run);
+  return createMarkdownDraftWithSource(
+    db,
+    auth,
+    {
+      ...draft,
+      sourceType: "human",
+      sourceSessionId: null,
+      sourceLogId: null,
+      sourceReloadRunId: run.id,
+      audit: {
+        kind: "knowledge-entry-distill",
+        action: "distill",
+        metadata: {
+          reloadRunId: run.id,
+          projectId: run.projectId,
+          status: run.status,
+          purpose: run.purpose,
+          title: draft.title
+        }
       }
     },
     context
@@ -447,6 +510,7 @@ export async function createAgentKnowledgeDraft(
     contentMarkdown: string;
     sessionId: string;
     sourceLogId?: string;
+    sourceReloadRunId?: string;
   },
   context: KnowledgeServiceContext = {}
 ): Promise<KnowledgeEntryDto> {
@@ -459,6 +523,13 @@ export async function createAgentKnowledgeDraft(
     sourceLogId = log.id;
   }
 
+  let sourceReloadRunId: string | null = null;
+  if (input.sourceReloadRunId) {
+    // Linking is a read of the run: same reload read gate + org scope as the API path.
+    const run = await getReloadRunRecord(db, auth, input.sourceReloadRunId);
+    sourceReloadRunId = run.id;
+  }
+
   return createMarkdownDraftWithSource(
     db,
     auth,
@@ -469,11 +540,18 @@ export async function createAgentKnowledgeDraft(
       sourceType: "agent",
       sourceSessionId: input.sessionId,
       sourceLogId,
+      sourceReloadRunId,
       audit: {
         kind: "knowledge-entry-agent-draft",
         action: "agent-draft-create",
         actorType: "agent",
-        metadata: { sessionId: input.sessionId, title: input.title, sourceLogId, tagCount: input.tags.length }
+        metadata: {
+          sessionId: input.sessionId,
+          title: input.title,
+          sourceLogId,
+          sourceReloadRunId,
+          tagCount: input.tags.length
+        }
       }
     },
     context
@@ -518,7 +596,12 @@ export async function rejectAgentKnowledgeDraft(
       projectId: null,
       targetType: "knowledge-entry",
       targetId: entryId,
-      metadata: { title: entry.title, sourceSessionId: entry.sourceSessionId, sourceLogId: entry.sourceLogId }
+      metadata: {
+        title: entry.title,
+        sourceSessionId: entry.sourceSessionId,
+        sourceLogId: entry.sourceLogId,
+        sourceReloadRunId: entry.sourceReloadRunId
+      }
     });
   });
 
