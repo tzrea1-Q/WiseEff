@@ -129,10 +129,17 @@ describe.skipIf(!databaseAvailable)("parameterModuleRepository", () => {
     ).rejects.toThrow("Parent parameter module not found");
   });
 
-  it("moveParameterModule recomputes descendant paths and depths", async () => {
+  it("moveParameterModule reparents only the moved node while re-prefixing descendant paths", async () => {
     await seedModule({ id: "pm-a", name: "Power", path: "pm-a" });
     await seedModule({ id: "pm-b", parentId: "pm-a", name: "Battery", path: "pm-a/pm-b", depth: 2 });
     await seedModule({ id: "pm-c", parentId: "pm-b", name: "Cells", path: "pm-a/pm-b/pm-c", depth: 3 });
+    await seedModule({
+      id: "pm-d",
+      parentId: "pm-c",
+      name: "Balancing",
+      path: "pm-a/pm-b/pm-c/pm-d",
+      depth: 4
+    });
     await seedModule({ id: "pm-x", name: "Charging", path: "pm-x", sortOrder: 1 });
 
     const moved = await moveParameterModule(db, {
@@ -142,17 +149,28 @@ describe.skipIf(!databaseAvailable)("parameterModuleRepository", () => {
     });
 
     expect(moved).toMatchObject({ id: "pm-b", parentId: "pm-x", path: "pm-x/pm-b", depth: 2 });
-    // The grandchild's path and depth follow the subtree move. (The current UPDATE
-    // also cascades the new parent_id onto every descendant — pm-c reports pm-x as
-    // its parent while its path still says pm-x/pm-b/pm-c. That looks like a latent
-    // repository bug; this test pins only the path/depth contract.)
+    // Descendants keep their immediate parent (#415): only the moved node's
+    // parent_id changes, while every descendant path is re-prefixed.
     await expect(
       getParameterModuleById(db, { organizationId: "org-1", moduleId: "pm-c" })
-    ).resolves.toMatchObject({ path: "pm-x/pm-b/pm-c", depth: 3 });
+    ).resolves.toMatchObject({ parentId: "pm-b", path: "pm-x/pm-b/pm-c", depth: 3 });
+    await expect(
+      getParameterModuleById(db, { organizationId: "org-1", moduleId: "pm-d" })
+    ).resolves.toMatchObject({ parentId: "pm-c", path: "pm-x/pm-b/pm-c/pm-d", depth: 4 });
     // The old parent keeps its own path.
     await expect(
       getParameterModuleById(db, { organizationId: "org-1", moduleId: "pm-a" })
     ).resolves.toMatchObject({ path: "pm-a", depth: 1 });
+    // UI-facing invariant: the parent_id chain agrees with the materialized path
+    // for every row — the frontend rebuilds the tree from parentId alone.
+    const rows = await listParameterModules(db, { organizationId: "org-1" });
+    const pathById = new Map(rows.map((row) => [row.id, row.path]));
+    for (const row of rows) {
+      const parentPath = row.parentId ? pathById.get(row.parentId) : null;
+      expect(`${row.id} -> ${row.path}`).toBe(
+        `${row.id} -> ${parentPath ? `${parentPath}/${row.id}` : row.id}`
+      );
+    }
     // Moving a node under its own descendant is refused.
     await expect(
       moveParameterModule(db, { organizationId: "org-1", moduleId: "pm-x", parentId: "pm-c" })

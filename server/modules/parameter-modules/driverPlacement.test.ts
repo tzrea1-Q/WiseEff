@@ -79,7 +79,7 @@ function createPlacementDb(seed: {
           rowCount: modules.size,
         };
       }
-      if (text.includes("update parameter_modules") && text.includes("parent_id = $3")) {
+      if (text.includes("update parameter_modules") && text.includes("parent_id = case when id = $2 then $3")) {
         const [organizationId, moduleId, parentId, newPath, oldPath, depthDelta, promote] = values as [
           string,
           string,

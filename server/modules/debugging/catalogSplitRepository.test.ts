@@ -20,11 +20,13 @@ import {
   createDebugNodeModule,
   deleteDebugNodeModule,
   getDebugNodeBinding,
+  getDebugNodeModuleById,
   getDebugNodeModuleByName,
   listDebugNodeBindings,
   listDebugNodeModules,
   listDebugNodes,
   listRuntimeDebugNodes,
+  moveDebugNodeModule,
   renameDebugNodeModuleReferences,
   updateDebugNodeModule,
   upsertDebugNodeBinding
@@ -325,5 +327,64 @@ describe.skipIf(!databaseAvailable)("catalogSplitRepository", () => {
     const remaining = await listDebugNodeModules(db, { organizationId: "org-1" });
     expect(remaining.map((row) => row.id)).toEqual([module.id]);
     expect(remaining.map((row) => row.id)).not.toContain(empty.id);
+  });
+
+  it("moveDebugNodeModule reparents only the moved node while re-prefixing descendant paths", async () => {
+    const root = await createDebugNodeModule(db, { organizationId: "org-1", name: "Power" });
+    const moved = await createDebugNodeModule(db, {
+      organizationId: "org-1",
+      name: "Battery",
+      parentId: root.id
+    });
+    const child = await createDebugNodeModule(db, {
+      organizationId: "org-1",
+      name: "Cells",
+      parentId: moved.id
+    });
+    const grandchild = await createDebugNodeModule(db, {
+      organizationId: "org-1",
+      name: "Balancing",
+      parentId: child.id
+    });
+    const target = await createDebugNodeModule(db, { organizationId: "org-1", name: "Charging" });
+
+    const result = await moveDebugNodeModule(db, {
+      organizationId: "org-1",
+      moduleId: moved.id,
+      parentId: target.id
+    });
+
+    expect(result).toMatchObject({
+      id: moved.id,
+      parentId: target.id,
+      path: `${target.id}/${moved.id}`,
+      depth: 2
+    });
+    // Descendants keep their immediate parent (#415): only the moved node's
+    // parent_id changes, while every descendant path is re-prefixed.
+    await expect(
+      getDebugNodeModuleById(db, { organizationId: "org-1", moduleId: child.id })
+    ).resolves.toMatchObject({
+      parentId: moved.id,
+      path: `${target.id}/${moved.id}/${child.id}`,
+      depth: 3
+    });
+    await expect(
+      getDebugNodeModuleById(db, { organizationId: "org-1", moduleId: grandchild.id })
+    ).resolves.toMatchObject({
+      parentId: child.id,
+      path: `${target.id}/${moved.id}/${child.id}/${grandchild.id}`,
+      depth: 4
+    });
+    // UI-facing invariant: the parent_id chain agrees with the materialized path
+    // for every row after the move.
+    const rows = await listDebugNodeModules(db, { organizationId: "org-1" });
+    const pathById = new Map(rows.map((row) => [row.id, row.path]));
+    for (const row of rows) {
+      const parentPath = row.parentId ? pathById.get(row.parentId) : null;
+      expect(`${row.id} -> ${row.path}`).toBe(
+        `${row.id} -> ${parentPath ? `${parentPath}/${row.id}` : row.id}`
+      );
+    }
   });
 });
