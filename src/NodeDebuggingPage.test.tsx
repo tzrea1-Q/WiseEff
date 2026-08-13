@@ -14,6 +14,15 @@ import { initialState } from "./mockData";
 import type { PrototypeState } from "./mockData";
 import { createMockDebuggingGateway } from "./infrastructure/mock/mockDebuggingGateway";
 import { resolveLocalBridgeHealthUrl } from "./infrastructure/http/localBridgeHttpUrl";
+import { resolveWiseEffApiBaseUrl } from "./infrastructure/http/runtimeMode";
+
+/**
+ * Bridge download links resolve against the configured API base (see
+ * resolveDeviceBridgeDownloadUrl), so expectations must derive from the same
+ * runtime config instead of hardcoding the default 127.0.0.1:8787 — otherwise
+ * any VITE_WISEEFF_API_BASE_URL override (e.g. dead-port isolation) misfires.
+ */
+const expectedBridgeDownloadBase = resolveWiseEffApiBaseUrl().replace(/\/$/, "");
 
 const userState = { ...initialState, activeRoleId: "user" };
 const apiSession = {
@@ -1071,7 +1080,7 @@ describe("/node-debugging", () => {
     const downloadLink = await screen.findByRole("link", { name: "安装 Bridge（Windows）" });
     expect(downloadLink).toHaveAttribute(
       "href",
-      "http://127.0.0.1:8787/downloads/device-bridge/0.1.0/windows/amd64/WiseEffBridgeSetup_0.1.0.exe"
+      `${expectedBridgeDownloadBase}/downloads/device-bridge/0.1.0/windows/amd64/WiseEffBridgeSetup_0.1.0.exe`
     );
     expect(screen.getByText("图形安装包（推荐）")).toBeInTheDocument();
     expect(screen.getByText("本机推荐")).toBeInTheDocument();
@@ -1080,7 +1089,7 @@ describe("/node-debugging", () => {
     fireEvent.click(screen.getByText("便携压缩包（zip / tar.gz）"));
     expect(screen.getByRole("link", { name: "下载 Windows Bridge（x64）" })).toHaveAttribute(
       "href",
-      "http://127.0.0.1:8787/downloads/device-bridge/0.1.0/windows/amd64/wiseeff-bridge_0.1.0_windows_amd64.zip"
+      `${expectedBridgeDownloadBase}/downloads/device-bridge/0.1.0/windows/amd64/wiseeff-bridge_0.1.0_windows_amd64.zip`
     );
   });
 

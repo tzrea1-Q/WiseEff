@@ -191,7 +191,9 @@ export function WorkbenchStructureTree({
   }
 
   return (
-    <ul role="tree" aria-label={ariaLabel} className="dts-topology-navigator configuration-workbench__structure-navigator">
+    // role="group", not "tree": this subtree always renders nested inside the
+    // member tree (WorkbenchSourceTree), and a tree may not own another tree.
+    <ul role="group" aria-label={ariaLabel} className="dts-topology-navigator configuration-workbench__structure-navigator">
       {renderBranch(roots, 1)}
     </ul>
   );

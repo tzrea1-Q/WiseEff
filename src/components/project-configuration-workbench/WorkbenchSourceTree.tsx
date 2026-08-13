@@ -228,7 +228,9 @@ export function WorkbenchSourceTree({
           const versionLabel = item.currentVersionNumber ? `v${item.currentVersionNumber}` : "无活跃版本";
           const selected = item.fileId === selectedMember?.fileId;
           return (
-            <div key={item.fileId} className="configuration-workbench__member-block">
+            // role="group": a tree may only own treeitem/group children, and this
+            // block wraps the member treeitem together with its expanded subtree.
+            <div key={item.fileId} role="group" className="configuration-workbench__member-block">
               <button
                 type="button"
                 role="treeitem"
