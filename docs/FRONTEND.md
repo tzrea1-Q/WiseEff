@@ -302,13 +302,14 @@ In API mode, submit maps to `POST /api/v1/product-feedback`, list/detail/update 
 
 ## Debugging Gateway
 
-`DebuggingGateway` is the frontend port for M3 device debugging. Page components call runtime actions from `src/application/debugging/debuggingRuntime.ts`; those actions keep mock/HDC demos available outside API mode and call the HTTP gateway in API mode for HDC or ADB sessions.
+`DebuggingGateway` is the frontend port for M3 device debugging. Page components call runtime actions from `src/application/debugging/debuggingRuntime.ts`; those actions route every node operation (detect/session start, node reads, node writes, snapshot rollback) through the gateway resolved by `resolveDebuggingGateway(runtimeMode)` in `src/application/debugging/debuggingGatewayRuntime.ts`. Runtime-mode knowledge lives in that seam — pages must not construct clients or issue raw fetches themselves.
 
 Runtime split:
 
+- `api` mode uses `createHttpDebuggingGateway` (`src/infrastructure/http/debuggingClient.ts`, built on the shared `apiClient` with auth header and error envelope) for HDC/ADB devices, targets, parameters, sessions, node reads, node writes, snapshot rollback, and session events. Runtime and admin calls are organization-scoped and do not send `projectId`.
+- `mock` mode serves the same port through `src/infrastructure/mock/mockDebuggingGateway.ts` (ADR-0002 restored 2026-08-13): one seeded multi-protocol Aurora device behind a paired Mock Bridge, device-side values that drift plausibly from the catalog, honest read/write/readback semantics, write snapshots feeding the rollback safety net, and the same confirmation gates the server enforces (`confirm-high-risk-write`, `confirm-rollback`) — so detect, read, write, and rollback are walkable without hardware for both protocols. The `/node-debugging` route also passes `createMockDebuggingBridgeSeams()` into `LocalDeviceBridgePanel`, so mock mode makes no local bridge HTTP probes.
+- The former raw `/api/hdc/*` page fallback (`src/hdcClient.ts`) is deleted; `/node-debugging` no longer bypasses the port or the shared HTTP client (and the hardcoded "ADB requires API mode" branch is gone). The Vite dev middleware (`viteHdcApi.ts`) remains a curl-level local experiment tool without a frontend consumer — it is not a product seam.
 - `mock` mode keeps `DebuggingPage` reducer behavior for demos and component tests; the `/debugging` route is not linked in navigation.
-- Local HDC helpers remain available for non-API `/node-debugging` experiments.
-- `api` mode uses `src/infrastructure/http/debuggingClient.ts` for HDC/ADB devices, targets, parameters, sessions, node reads, node writes, snapshot rollback, and session events. Runtime and admin calls are organization-scoped and do not send `projectId`.
 
 **Parameter debugging route:** `/debugging` remains product-offline (TD-032). Migration `0037` removed `parameter_reload_bindings` and the live reload-target/reload-write surface (HTTP routes still return `410 Gone`). `/node-debugging` is the M3 node catalog workspace. **Parameter debugging** (UI title for `/dts-reload`, `src/features/dts-reload/DtsReloadPage.tsx`) is the live DTS overlay reload surface and is unrelated to the retired parameter-reload concept.
 
