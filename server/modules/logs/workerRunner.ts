@@ -10,7 +10,8 @@ import { createLogAnalyzerFromEnv } from "./analyzer/analyzerFromEnv";
 import type { ObjectStore } from "./objectStore";
 import { createLogAnalysisQueueRuntime, type LogAnalysisQueueRuntimeEnv } from "./logAnalysisQueueRuntime";
 import { resolveParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
-import { startLogWorkerLoop, type ProcessLogWorkerOptions } from "./worker";
+import { createLogWebhookDeliverer } from "./webhookDelivery";
+import { startLogWorkerLoop, type LogWorkerWebhooks, type ProcessLogWorkerOptions } from "./worker";
 
 type RawWorkerEnv = {
   DATABASE_URL?: string;
@@ -37,6 +38,7 @@ type LogWorkerRuntimeOptions = {
   leaseTtlMs?: number;
   intervalMs?: number;
   metrics?: Pick<MetricsRegistry, "recordLogAnalysisJobResult">;
+  webhooks?: LogWorkerWebhooks;
 };
 
 export function validateLogWorkerConfig(raw: RawWorkerEnv) {
@@ -75,7 +77,8 @@ export function createLogWorkerRuntime({
   workerId = "wiseeff-log-worker",
   leaseTtlMs = 60_000,
   intervalMs = 1000,
-  metrics
+  metrics,
+  webhooks
 }: LogWorkerRuntimeOptions) {
   return {
     start() {
@@ -90,12 +93,16 @@ export function createLogWorkerRuntime({
           workerId,
           metrics,
           tracing: defaultTracingBoundary,
-          ...(analyzer ? { analyzer } : {})
+          ...(analyzer ? { analyzer } : {}),
+          ...(webhooks ? { webhooks } : {})
         });
         return () => runtime.close();
       }
 
-      return startLoop({ db, objectStore, workerId, leaseTtlMs, metrics, ...(analyzer ? { analyzer } : {}) }, intervalMs);
+      return startLoop(
+        { db, objectStore, workerId, leaseTtlMs, metrics, ...(analyzer ? { analyzer } : {}), ...(webhooks ? { webhooks } : {}) },
+        intervalMs
+      );
     }
   };
 }
@@ -119,7 +126,16 @@ export async function createLogWorkerRuntimeFromEnv(raw: NodeJS.ProcessEnv = pro
       LOG_ANALYSIS_QUEUE_ATTEMPTS: env.LOG_ANALYSIS_QUEUE_ATTEMPTS,
       LOG_ANALYSIS_QUEUE_BACKOFF_MS: env.LOG_ANALYSIS_QUEUE_BACKOFF_MS,
       LOG_ANALYSIS_QUEUE_CONCURRENCY: env.LOG_ANALYSIS_QUEUE_CONCURRENCY
-    }
+    },
+    webhooks: createLogWebhookDeliverer({
+      db,
+      env: {
+        timeoutMs: env.LOG_WEBHOOK_TIMEOUT_MS,
+        maxAttempts: env.LOG_WEBHOOK_MAX_ATTEMPTS,
+        retryBaseDelayMs: env.LOG_WEBHOOK_RETRY_BASE_DELAY_MS,
+        allowInsecureLocal: env.LOG_WEBHOOK_ALLOW_INSECURE_LOCAL
+      }
+    })
   });
 }
 

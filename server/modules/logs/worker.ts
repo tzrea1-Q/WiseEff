@@ -16,10 +16,14 @@ import {
   updateRunStageProgress
 } from "./repository";
 import { notifyLogAnalysisCompleted, notifyLogAnalysisFailed } from "../notifications/producers";
+import type { LogWebhookDeliverer } from "./webhookDelivery";
 import type { LogStage } from "./status";
 
 type LogWorkerMetrics = Pick<MetricsRegistry, "recordLogAnalysisJobResult"> &
   Partial<Pick<MetricsRegistry, "recordLogAnalysisDegraded">>;
+
+/** Best-effort result-webhook hook; the worker never awaits or fails on it (P3b). */
+export type LogWorkerWebhooks = Pick<LogWebhookDeliverer, "notifyAnalysisTerminal">;
 
 export type ProcessLogWorkerOptions = {
   db: Database;
@@ -32,6 +36,7 @@ export type ProcessLogWorkerOptions = {
   now?: () => Date;
   metrics?: LogWorkerMetrics;
   tracing?: Pick<TracingBoundary, "withSpan">;
+  webhooks?: LogWorkerWebhooks;
 };
 
 export type ProcessLogWorkerByIdOptions = ProcessLogWorkerOptions & {
@@ -172,9 +177,10 @@ async function processClaimedLogAnalysisJob(
     maxAttempts,
     retryBaseDelayMs,
     now,
-    metrics
+    metrics,
+    webhooks
   }: Required<Pick<ProcessLogWorkerOptions, "analyzer" | "workerId" | "maxAttempts" | "retryBaseDelayMs" | "now">> &
-    Pick<ProcessLogWorkerOptions, "db" | "objectStore" | "metrics">,
+    Pick<ProcessLogWorkerOptions, "db" | "objectStore" | "metrics" | "webhooks">,
   job: ClaimedLogAnalysisJobDto
 ): Promise<ProcessLogWorkerResult> {
   const leaseOwner = job.leaseOwner ?? workerId;
@@ -320,7 +326,8 @@ async function processClaimedLogAnalysisJob(
         logDomain: snapshot.logDomain
           ? {
               name: snapshot.logDomain.name,
-              description: snapshot.logDomain.description ?? undefined
+              description: snapshot.logDomain.description ?? undefined,
+              modelOverride: snapshot.logDomain.modelOverride ?? undefined
             }
           : undefined,
         organizationId: snapshot.organizationId,
@@ -410,6 +417,25 @@ async function processClaimedLogAnalysisJob(
       });
     }
 
+    // Terminal state is persisted; fire the best-effort domain result webhook
+    // without blocking the worker (degraded completions included, honestly marked).
+    if (snapshot.logDomain && webhooks) {
+      webhooks.notifyAnalysisTerminal({
+        organizationId: snapshot.organizationId,
+        logDomainId: snapshot.logDomain.id,
+        logId: snapshot.logId,
+        runId: snapshot.runId,
+        fileName: snapshot.fileName,
+        status: "complete",
+        analysisSource: analysis.analysisSource,
+        degradedReason: analysis.degradedReason,
+        severity: analysis.severity,
+        confidence: analysis.confidence,
+        conclusion: analysis.conclusion,
+        occurredAt: now().toISOString()
+      });
+    }
+
     recordMetric({ status: "complete", stage: "report" });
     return { status: "processed" };
   } catch (error) {
@@ -470,6 +496,18 @@ async function processClaimedLogAnalysisJob(
         failureReason: decision.reason
       });
     }
+    if (snapshot.logDomain && webhooks) {
+      webhooks.notifyAnalysisTerminal({
+        organizationId: snapshot.organizationId,
+        logDomainId: snapshot.logDomain.id,
+        logId: snapshot.logId,
+        runId: snapshot.runId,
+        fileName: snapshot.fileName,
+        status: "failed",
+        conclusion: decision.reason,
+        occurredAt: endedAt.toISOString()
+      });
+    }
     recordMetric({ status: "dead_lettered", stage: currentStage, failureReason: currentFailureReason, endedAt });
     return { status: "dead-lettered", reason: decision.reason };
   }
@@ -485,11 +523,12 @@ export async function processNextLogAnalysisJob({
   retryBaseDelayMs = 1000,
   now = () => new Date(),
   metrics,
-  tracing
+  tracing,
+  webhooks
 }: ProcessLogWorkerOptions): Promise<"processed" | "idle"> {
   const job = await claimNextJob(db, { kind: "log-analysis", leaseOwner: workerId, leaseTtlMs });
   if (!job) return "idle";
-  const process = async () => processClaimedLogAnalysisJob({ db, objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, now, metrics }, job);
+  const process = async () => processClaimedLogAnalysisJob({ db, objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, now, metrics, webhooks }, job);
   const result = await traceLogAnalysisJob(tracing, "polling", process);
   return result.status === "idle" ? "idle" : "processed";
 }
@@ -505,11 +544,12 @@ export async function processLogAnalysisJobById({
   retryBaseDelayMs = 1000,
   now = () => new Date(),
   metrics,
-  tracing
+  tracing,
+  webhooks
 }: ProcessLogWorkerByIdOptions): Promise<ProcessLogWorkerResult> {
   const job = await claimJobById(db, { kind: "log-analysis", jobId, leaseOwner: workerId, leaseTtlMs });
   if (!job) return { status: "idle" };
-  const process = async () => processClaimedLogAnalysisJob({ db, objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, now, metrics }, job);
+  const process = async () => processClaimedLogAnalysisJob({ db, objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, now, metrics, webhooks }, job);
   return traceLogAnalysisJob(tracing, "queue", process);
 }
 

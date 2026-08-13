@@ -57,6 +57,14 @@ const rawEnvSchema = z.object({
   LOG_ANALYSIS_JUDGE_MODEL: z.string().optional(),
   LOG_ANALYSIS_JUDGE_API_KEY: z.string().optional(),
   LOG_ANALYSIS_JUDGE_API_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+  LOG_ANALYSIS_JUDGE_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0.2),
+  LOG_WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
+  LOG_WEBHOOK_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
+  LOG_WEBHOOK_RETRY_BASE_DELAY_MS: z.coerce.number().int().positive().default(1000),
+  LOG_WEBHOOK_ALLOW_INSECURE_LOCAL: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
   LOG_ANALYSIS_QUEUE_MODE: z.enum(["polling", "durable"]).default("polling"),
   REDIS_URL: z.string().optional(),
   LOG_ANALYSIS_QUEUE_PREFIX: z.string().default("wiseeff"),
@@ -144,6 +152,9 @@ export function loadServerEnv(raw: NodeJS.ProcessEnv): ServerEnv {
   }
   if (env.NODE_ENV === "production" && (env.XIAOZE_CHECKPOINTER !== "postgres" || !env.DATABASE_URL?.trim())) {
     throw new Error("XIAOZE_CHECKPOINTER=postgres and DATABASE_URL are required in production");
+  }
+  if (env.NODE_ENV === "production" && env.LOG_WEBHOOK_ALLOW_INSECURE_LOCAL) {
+    throw new Error("LOG_WEBHOOK_ALLOW_INSECURE_LOCAL is a local-development flag and must stay false in production");
   }
 
   return env;

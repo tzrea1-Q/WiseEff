@@ -20,6 +20,8 @@ export type AnalyzeLogInput = {
   logDomain?: {
     name: string;
     description?: string;
+    /** Per-domain model-name override (P3b); endpoint/key/budget stay global. */
+    modelOverride?: string;
   };
   /**
    * P2 loop-kernel run context (internal input, not part of the output contract):

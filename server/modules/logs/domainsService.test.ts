@@ -7,7 +7,10 @@ import {
   createLogDomainRecord,
   listLogDomainKnowledgeLinkRecords,
   listLogDomainRecords,
+  listLogDomainWebhookDeliveryRecords,
+  sendLogDomainWebhookTestDelivery,
   setLogDomainKnowledgeLinkRecords,
+  setLogDomainWebhookRecord,
   updateLogDomainRecord
 } from "./domainsService";
 
@@ -58,6 +61,10 @@ const domainRow = {
   description: "Charging subsystem",
   status: "active",
   format_profile: null,
+  model_override: null,
+  webhook_url: null,
+  webhook_secret: null,
+  webhook_enabled: false,
   created_at: "2026-08-12T00:00:00.000Z",
   updated_at: "2026-08-12T00:00:00.000Z"
 };
@@ -330,5 +337,268 @@ describe("archiveLogDomainRecord", () => {
     await expect(archiveLogDomainRecord(db, makeAuth(["logs:view"]), "domain-1", { requestId: "req-test" })).rejects.toMatchObject({
       code: "FORBIDDEN"
     });
+  });
+});
+
+describe("updateLogDomainRecord model override", () => {
+  it("saves the per-domain model override and audits the change", async () => {
+    const { db, txCalls } = createFakeDb([
+      [domainRow],
+      [{ ...domainRow, model_override: "gpt-4o" }],
+      []
+    ]);
+
+    const updated = await updateLogDomainRecord(db, adminAuth, {
+      domainId: "domain-1",
+      modelOverride: "gpt-4o"
+    }, { requestId: "req-test" });
+
+    expect(updated.modelOverride).toBe("gpt-4o");
+    const updateCall = txCalls.find((call) => call.text.includes("update log_domains"));
+    expect(updateCall?.values).toContain("gpt-4o");
+    const auditCall = txCalls.find((call) => call.text.includes("insert into audit_events"));
+    expect(JSON.stringify(auditCall?.values)).toContain("modelOverrideChanged");
+  });
+
+  it("clears the override back to the global model with null or blank", async () => {
+    const { db, txCalls } = createFakeDb([
+      [{ ...domainRow, model_override: "gpt-4o" }],
+      [domainRow],
+      []
+    ]);
+
+    const updated = await updateLogDomainRecord(db, adminAuth, {
+      domainId: "domain-1",
+      modelOverride: "   "
+    }, { requestId: "req-test" });
+
+    expect(updated.modelOverride).toBeUndefined();
+    const updateCall = txCalls.find((call) => call.text.includes("update log_domains"));
+    // Blank input is normalized to SQL NULL (clear), never stored as whitespace.
+    expect(updateCall?.values).not.toContain("   ");
+  });
+});
+
+const secretValue = "webhook-secret-with-enough-entropy";
+const configuredWebhookRow = {
+  ...domainRow,
+  webhook_url: "https://hooks.example.com/wiseeff",
+  webhook_secret: secretValue,
+  webhook_enabled: true
+};
+
+describe("setLogDomainWebhookRecord", () => {
+  it("requires logs:admin-domains", async () => {
+    const { db } = createFakeDb();
+    await expect(
+      setLogDomainWebhookRecord(
+        db,
+        makeAuth(["logs:view"]),
+        { domainId: "domain-1", url: "https://hooks.example.com/x", enabled: false },
+        { requestId: "req-test" }
+      )
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("rejects plain-http URLs with an explicit error code before any write", async () => {
+    const { db, calls, txCalls } = createFakeDb();
+
+    await expect(
+      setLogDomainWebhookRecord(
+        db,
+        adminAuth,
+        { domainId: "domain-1", url: "http://hooks.example.com/x", enabled: false },
+        { requestId: "req-test" }
+      )
+    ).rejects.toMatchObject({ code: "VALIDATION_FAILED", details: { reason: "webhook-url-scheme" } });
+    expect(calls).toHaveLength(0);
+    expect(txCalls).toHaveLength(0);
+  });
+
+  it("rejects private/loopback/metadata address literals at save time", async () => {
+    const { db } = createFakeDb();
+
+    for (const url of ["https://169.254.169.254/latest", "https://10.0.0.8/hook", "https://[::1]/hook"]) {
+      await expect(
+        setLogDomainWebhookRecord(db, adminAuth, { domainId: "domain-1", url, enabled: false }, { requestId: "req-test" })
+      ).rejects.toMatchObject({ code: "VALIDATION_FAILED", details: { reason: "webhook-url-private-address" } });
+    }
+  });
+
+  it("rejects enabling without a URL or without a signing secret", async () => {
+    const { db } = createFakeDb([[domainRow]]);
+
+    await expect(
+      setLogDomainWebhookRecord(db, adminAuth, { domainId: "domain-1", url: null, enabled: true }, { requestId: "req-test" })
+    ).rejects.toMatchObject({ code: "VALIDATION_FAILED", details: { reason: "webhook-url-required" } });
+
+    await expect(
+      setLogDomainWebhookRecord(
+        db,
+        adminAuth,
+        { domainId: "domain-1", url: "https://hooks.example.com/x", enabled: true },
+        { requestId: "req-test" }
+      )
+    ).rejects.toMatchObject({ code: "VALIDATION_FAILED", details: { reason: "webhook-secret-required" } });
+  });
+
+  it("saves the configuration, audits it, and never echoes the secret", async () => {
+    const { db, txCalls } = createFakeDb([
+      [domainRow],
+      [configuredWebhookRow],
+      []
+    ]);
+
+    const saved = await setLogDomainWebhookRecord(
+      db,
+      adminAuth,
+      { domainId: "domain-1", url: "https://hooks.example.com/wiseeff", enabled: true, secret: secretValue },
+      { requestId: "req-test" }
+    );
+
+    expect(saved.webhook).toEqual({
+      enabled: true,
+      url: "https://hooks.example.com/wiseeff",
+      secretConfigured: true,
+      secretLastFour: secretValue.slice(-4)
+    });
+    expect(JSON.stringify(saved)).not.toContain(secretValue);
+
+    const auditCall = txCalls.find((call) => call.text.includes("insert into audit_events"));
+    expect(auditCall?.values).toContain("log-domain-webhook-config");
+    // The audit metadata records THAT the secret changed, never its value.
+    expect(JSON.stringify(auditCall?.values)).toContain("secretChanged");
+    expect(JSON.stringify(auditCall?.values)).not.toContain(secretValue);
+  });
+
+  it("keeps the stored secret when the update omits it", async () => {
+    const { db, txCalls } = createFakeDb([
+      [configuredWebhookRow],
+      [configuredWebhookRow],
+      []
+    ]);
+
+    const saved = await setLogDomainWebhookRecord(
+      db,
+      adminAuth,
+      { domainId: "domain-1", url: "https://hooks.example.com/wiseeff", enabled: true },
+      { requestId: "req-test" }
+    );
+
+    expect(saved.webhook.secretConfigured).toBe(true);
+    const updateCall = txCalls.find((call) => call.text.includes("update log_domains"));
+    // secret !== undefined flag must be false so the stored secret is preserved.
+    expect(updateCall?.values).toContain(false);
+  });
+
+  it("allows http://127.0.0.1 only when the insecure-local flag is on", async () => {
+    const blocked = createFakeDb();
+    await expect(
+      setLogDomainWebhookRecord(
+        blocked.db,
+        adminAuth,
+        { domainId: "domain-1", url: "http://127.0.0.1:9999/hook", enabled: false },
+        { requestId: "req-test" }
+      )
+    ).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+
+    const allowed = createFakeDb([[domainRow], [{ ...domainRow, webhook_url: "http://127.0.0.1:9999/hook" }], []]);
+    const saved = await setLogDomainWebhookRecord(
+      allowed.db,
+      adminAuth,
+      { domainId: "domain-1", url: "http://127.0.0.1:9999/hook", enabled: false },
+      { requestId: "req-test" },
+      { allowInsecureLocal: true }
+    );
+    expect(saved.webhook.url).toBe("http://127.0.0.1:9999/hook");
+  });
+
+  it("returns 404 for unknown domains", async () => {
+    const { db } = createFakeDb([[]]);
+    await expect(
+      setLogDomainWebhookRecord(
+        db,
+        adminAuth,
+        { domainId: "missing", url: "https://hooks.example.com/x", enabled: false },
+        { requestId: "req-test" }
+      )
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
+describe("listLogDomainWebhookDeliveryRecords", () => {
+  it("requires logs:admin-domains", async () => {
+    const { db } = createFakeDb();
+    await expect(
+      listLogDomainWebhookDeliveryRecords(db, makeAuth(["logs:view"]), { domainId: "domain-1" })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("returns recent delivery attempts for the domain", async () => {
+    const { db } = createFakeDb([
+      [domainRow],
+      [
+        {
+          id: "delivery-1",
+          log_domain_id: "domain-1",
+          log_record_id: "log-1",
+          run_id: "run-1",
+          kind: "result",
+          attempt: 1,
+          status: "delivered",
+          http_status: 200,
+          error: null,
+          created_at: "2026-08-13T02:00:00.000Z"
+        }
+      ]
+    ]);
+
+    const result = await listLogDomainWebhookDeliveryRecords(db, adminAuth, { domainId: "domain-1", limit: 5 });
+
+    expect(result.items).toEqual([
+      expect.objectContaining({ id: "delivery-1", kind: "result", status: "delivered", httpStatus: 200 })
+    ]);
+  });
+
+  it("returns 404 for unknown domains", async () => {
+    const { db } = createFakeDb([[]]);
+    await expect(listLogDomainWebhookDeliveryRecords(db, adminAuth, { domainId: "missing" })).rejects.toMatchObject({
+      code: "NOT_FOUND"
+    });
+  });
+});
+
+describe("sendLogDomainWebhookTestDelivery", () => {
+  const deliverer = {
+    sendTestDelivery: async () => ({ status: "delivered" as const, attempts: 1, httpStatus: 200 })
+  };
+
+  it("requires logs:admin-domains", async () => {
+    const { db } = createFakeDb();
+    await expect(
+      sendLogDomainWebhookTestDelivery(db, makeAuth(["logs:view"]), "domain-1", deliverer, { requestId: "req-test" })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("sends through the deliverer and audits the outcome", async () => {
+    const { db, txCalls } = createFakeDb([
+      [domainRow],
+      []
+    ]);
+
+    const outcome = await sendLogDomainWebhookTestDelivery(db, adminAuth, "domain-1", deliverer, { requestId: "req-test" });
+
+    expect(outcome).toEqual({ status: "delivered", attempts: 1, httpStatus: 200 });
+    const auditCall = txCalls.find((call) => call.text.includes("insert into audit_events"));
+    expect(auditCall?.values).toContain("log-domain-webhook-test");
+    const metadataValue = auditCall?.values.find((value) => typeof value === "string" && value.includes("attempts"));
+    expect(JSON.parse(metadataValue as string)).toMatchObject({ status: "delivered", attempts: 1, httpStatus: 200 });
+  });
+
+  it("returns 404 for unknown domains", async () => {
+    const { db } = createFakeDb([[]]);
+    await expect(
+      sendLogDomainWebhookTestDelivery(db, adminAuth, "missing", deliverer, { requestId: "req-test" })
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });

@@ -66,7 +66,23 @@ export const updateLogDomainBodySchema = z.object({
   name: nonEmptyString.max(120).optional(),
   description: z.string().max(2000).nullable().optional(),
   formatProfile: z.unknown().optional(),
-  status: z.enum(["active", "archived"]).optional()
+  status: z.enum(["active", "archived"]).optional(),
+  /** Per-domain model-name override; null clears it back to the global model (P3b). */
+  modelOverride: nonEmptyString.max(200).nullable().optional()
+});
+
+/**
+ * Replace-style webhook configuration (P3b). `secret` undefined keeps the stored
+ * secret so admins can toggle enabled/url without re-entering it; null clears it.
+ */
+export const setLogDomainWebhookBodySchema = z.object({
+  url: z.string().max(2000).nullable(),
+  enabled: z.boolean(),
+  secret: z.string().min(16).max(200).nullable().optional()
+});
+
+export const webhookDeliveriesQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(50).optional()
 });
 
 /** Replace-set semantics; entries must be published knowledge entries in the caller's org. */
@@ -84,3 +100,5 @@ export type ListLogDomainsQuery = z.infer<typeof listLogDomainsQuerySchema>;
 export type CreateLogDomainBody = z.infer<typeof createLogDomainBodySchema>;
 export type UpdateLogDomainBody = z.infer<typeof updateLogDomainBodySchema>;
 export type SetLogDomainKnowledgeLinksBody = z.infer<typeof setLogDomainKnowledgeLinksBodySchema>;
+export type SetLogDomainWebhookBody = z.infer<typeof setLogDomainWebhookBodySchema>;
+export type WebhookDeliveriesQuery = z.infer<typeof webhookDeliveriesQuerySchema>;

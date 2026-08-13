@@ -14,12 +14,16 @@ import {
   listLogDomains,
   replaceLogDomainKnowledgeLinks,
   updateLogDomainRow,
+  updateLogDomainWebhookRow,
   type LogDomainDto,
   type LogDomainKnowledgeLinkDto,
   type LogDomainStatus
 } from "./domainsRepository";
 import { validateLogFormatProfile, type LogFormatProfile } from "./formatProfile";
 import { requireLogAdminDomains, requireLogView } from "./policy";
+import { listRecentLogWebhookDeliveries, type LogWebhookDeliveryDto } from "./webhookRepository";
+import type { LogWebhookDeliverer, LogWebhookDeliveryOutcome } from "./webhookDelivery";
+import { validateWebhookUrl } from "./webhookSecurity";
 
 export type CreateLogDomainInput = {
   name: string;
@@ -34,10 +38,18 @@ export type UpdateLogDomainInput = {
   /** undefined = keep; null = clear the stored profile. */
   formatProfile?: unknown;
   status?: LogDomainStatus;
+  /** undefined = keep; null = clear back to the global model (P3b). */
+  modelOverride?: string | null;
 };
 
 function logDomainAudit(input: {
-  kind: "log-domain-create" | "log-domain-update" | "log-domain-archive" | "log-domain-knowledge-links-update";
+  kind:
+    | "log-domain-create"
+    | "log-domain-update"
+    | "log-domain-archive"
+    | "log-domain-knowledge-links-update"
+    | "log-domain-webhook-config"
+    | "log-domain-webhook-test";
   action: string;
   domainId: string;
   metadata?: Record<string, unknown>;
@@ -151,7 +163,8 @@ export async function updateLogDomainRecord(
       name,
       description: input.description,
       formatProfile,
-      status: input.status
+      status: input.status,
+      modelOverride: input.modelOverride === undefined ? undefined : input.modelOverride?.trim() || null
     });
     if (!domain) {
       throw new ApiError("NOT_FOUND", "Log domain was not found.", 404, { domainId: input.domainId });
@@ -166,7 +179,9 @@ export async function updateLogDomainRecord(
         metadata: {
           name: domain.name,
           status: domain.status,
-          formatProfileChanged: input.formatProfile !== undefined
+          formatProfileChanged: input.formatProfile !== undefined,
+          modelOverrideChanged: input.modelOverride !== undefined,
+          modelOverride: domain.modelOverride ?? null
         }
       })
     };
@@ -281,4 +296,141 @@ export async function setLogDomainKnowledgeLinkRecords(
   });
 
   return { items };
+}
+
+export type SetLogDomainWebhookInput = {
+  domainId: string;
+  /** null clears the endpoint (and forces enabled=false semantics downstream). */
+  url: string | null;
+  enabled: boolean;
+  /** undefined = keep the stored secret; null = clear it. */
+  secret?: string | null;
+};
+
+export type LogDomainWebhookSecurityOptions = {
+  allowInsecureLocal?: boolean;
+};
+
+/**
+ * Saves a domain's result-webhook configuration (P3b). The URL passes the same
+ * SSRF shape validation the sender applies (https-only, no credentials, no
+ * private/loopback/link-local/metadata IP literals — see `webhookSecurity.ts`);
+ * hostname DNS answers are enforced at delivery time by the validating lookup,
+ * which is the authoritative gate against DNS rebinding. The secret is
+ * write-only: responses only carry `secretConfigured` + last four characters.
+ */
+export async function setLogDomainWebhookRecord(
+  db: Database,
+  auth: AuthContext,
+  input: SetLogDomainWebhookInput,
+  context: AuditedWriteContext,
+  security: LogDomainWebhookSecurityOptions = {}
+): Promise<LogDomainDto> {
+  requireLogAdminDomains(auth);
+
+  const url = input.url?.trim() || null;
+  if (url) {
+    const validation = validateWebhookUrl(url, { allowInsecureLocal: security.allowInsecureLocal });
+    if (!validation.ok) {
+      throw new ApiError("VALIDATION_FAILED", validation.message, 400, { reason: validation.reason });
+    }
+  }
+  if (input.enabled && !url) {
+    throw new ApiError("VALIDATION_FAILED", "An enabled webhook needs a URL.", 400, { reason: "webhook-url-required" });
+  }
+
+  return withAuditedWrite(db, auth, context, async (tx) => {
+    const existing = await getLogDomainById(tx, { organizationId: auth.organization.id, domainId: input.domainId });
+    if (!existing) {
+      throw new ApiError("NOT_FOUND", "Log domain was not found.", 404, { domainId: input.domainId });
+    }
+
+    const secretAfterUpdate = input.secret === undefined ? existing.webhook.secretConfigured : Boolean(input.secret);
+    if (input.enabled && !secretAfterUpdate) {
+      throw new ApiError("VALIDATION_FAILED", "An enabled webhook needs a signing secret.", 400, {
+        reason: "webhook-secret-required"
+      });
+    }
+
+    const domain = await updateLogDomainWebhookRow(tx, {
+      organizationId: auth.organization.id,
+      domainId: input.domainId,
+      url,
+      enabled: input.enabled,
+      secret: input.secret
+    });
+    if (!domain) {
+      throw new ApiError("NOT_FOUND", "Log domain was not found.", 404, { domainId: input.domainId });
+    }
+
+    return {
+      result: domain,
+      audit: logDomainAudit({
+        kind: "log-domain-webhook-config",
+        action: "update-webhook",
+        domainId: domain.id,
+        metadata: {
+          name: domain.name,
+          enabled: input.enabled,
+          url,
+          secretChanged: input.secret !== undefined
+        }
+      })
+    };
+  });
+}
+
+export async function listLogDomainWebhookDeliveryRecords(
+  db: Queryable,
+  auth: AuthContext,
+  input: { domainId: string; limit?: number }
+): Promise<{ items: LogWebhookDeliveryDto[] }> {
+  requireLogAdminDomains(auth);
+  const domain = await getLogDomainById(db, { organizationId: auth.organization.id, domainId: input.domainId });
+  if (!domain) {
+    throw new ApiError("NOT_FOUND", "Log domain was not found.", 404, { domainId: input.domainId });
+  }
+  return {
+    items: await listRecentLogWebhookDeliveries(db, {
+      organizationId: auth.organization.id,
+      domainId: input.domainId,
+      limit: input.limit
+    })
+  };
+}
+
+/**
+ * Admin-triggered test delivery: one attempt through the exact same SSRF-guarded
+ * sender path, recorded as a kind='test' delivery row and audited with the outcome.
+ */
+export async function sendLogDomainWebhookTestDelivery(
+  db: Database,
+  auth: AuthContext,
+  domainId: string,
+  deliverer: Pick<LogWebhookDeliverer, "sendTestDelivery">,
+  context: AuditedWriteContext
+): Promise<LogWebhookDeliveryOutcome> {
+  requireLogAdminDomains(auth);
+  const domain = await getLogDomainById(db, { organizationId: auth.organization.id, domainId });
+  if (!domain) {
+    throw new ApiError("NOT_FOUND", "Log domain was not found.", 404, { domainId });
+  }
+
+  const outcome = await deliverer.sendTestDelivery({ organizationId: auth.organization.id, domainId });
+
+  return withAuditedWrite(db, auth, context, async () => ({
+    result: outcome,
+    audit: logDomainAudit({
+      kind: "log-domain-webhook-test",
+      action: "send-webhook-test",
+      domainId,
+      metadata: {
+        name: domain.name,
+        status: outcome.status,
+        attempts: outcome.attempts,
+        httpStatus: outcome.httpStatus ?? null,
+        error: outcome.error ?? null
+      }
+    })
+  }));
 }
