@@ -1,5 +1,5 @@
 import type { AuthContext, BackendPermission, BackendRoleId } from "../auth/types";
-import type { ParameterChangeRequestStatus } from "./status";
+import type { ParameterChangeRequestStatus } from "./workflowStatus";
 
 function hasPermission(auth: AuthContext, permission: BackendPermission) {
   return auth.permissions.includes(permission);

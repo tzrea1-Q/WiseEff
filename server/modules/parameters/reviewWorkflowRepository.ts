@@ -8,11 +8,11 @@ import type {
 import type { BackendRoleId } from "../auth/types";
 import {
   getMostAdvancedActiveParameterStatus,
-  type ParameterChangeRequestStatus,
   type ParameterReviewDecision,
   type ParameterRiskLevel,
   type ParameterSubmissionRoundStatus
 } from "./status";
+import type { ParameterChangeRequestStatus } from "../parameter-kernel/workflowStatus";
 import { buildChangeRequestImpact } from "./impact";
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { LEGACY_IDENTITY_SQL } from "../parameter-kernel/legacyParameterIdentityNames";

@@ -5,7 +5,7 @@ vi.mock("../../parameters/service", () => ({
   submitParameterChanges: vi.fn()
 }));
 
-vi.mock("../../parameters/sensitiveNode", () => ({
+vi.mock("../../parameter-kernel/sensitiveNode", () => ({
   assertSensitiveNodeWriteAllowed: vi.fn()
 }));
 
@@ -33,7 +33,7 @@ vi.mock("../../audit/repository", () => ({
 
 import { createActionTools } from "./actionTools";
 import { submitParameterChanges } from "../../parameters/service";
-import { assertSensitiveNodeWriteAllowed } from "../../parameters/sensitiveNode";
+import { assertSensitiveNodeWriteAllowed } from "../../parameter-kernel/sensitiveNode";
 import { loadBindingContext } from "../../parameter-topology/writeLock";
 import { createBindingDraft } from "../../parameter-topology/service";
 

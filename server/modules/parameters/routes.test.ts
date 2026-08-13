@@ -7,7 +7,7 @@ import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
 import * as repository from "./repository";
-import * as projectRepository from "./projectRepository";
+import * as projectRepository from "../projects/repository";
 import * as projectService from "./projectService";
 import { registerParameterRoutes } from "./routes";
 import * as service from "./service";
@@ -24,7 +24,7 @@ vi.mock("./repository", () => ({
   listParameters: vi.fn()
 }));
 
-vi.mock("./projectRepository", () => ({
+vi.mock("../projects/repository", () => ({
   createProject: vi.fn(),
   deleteProject: vi.fn(),
   getProjectAdminDetail: vi.fn(),

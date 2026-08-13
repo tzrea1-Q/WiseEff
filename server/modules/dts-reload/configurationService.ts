@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 
-import { createAuditEvent } from "../audit/repository";
+import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import { requireDebugAdmin } from "../debugging/policy";
-import type { SensitiveWriteActorType } from "../parameters/sensitiveNode";
+import type { SensitiveWriteActorType } from "../parameter-kernel/sensitiveNode";
 import type { Database, Queryable } from "../../shared/database/client";
 import {
   SEEDED_RELOAD_CONFIGURATION,
@@ -56,7 +56,7 @@ function organisationDto(row: OrganisationDefaultRow | null): OrganisationReload
 }
 
 async function writeConfigurationAudit(
-  db: Queryable,
+  tx: AuditTx,
   auth: AuthContext,
   input: {
     action: "update";
@@ -68,16 +68,13 @@ async function writeConfigurationAudit(
   },
   context: ReloadConfigurationServiceContext = {}
 ) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: null,
-    actorUserId: auth.user.id,
-    actorType: input.actorType,
+  // requestId fallback survives only until reload-config contexts become mandatory (ADR-0027).
+  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
     app: "dts-reload",
     kind: input.kind,
     action: input.action,
     severity: "Medium",
+    projectId: null,
     targetType: "dts-reload-configuration",
     targetId: input.targetId,
     metadata: {
@@ -85,7 +82,7 @@ async function writeConfigurationAudit(
       previous: input.previous,
       next: input.next
     },
-    traceId: context.requestId ?? randomUUID()
+    actorType: input.actorType
   });
 }
 
@@ -132,7 +129,7 @@ export async function updateOrganisationReloadConfiguration(
       updatedByUserId: auth.user.id
     });
     await writeConfigurationAudit(
-      tx,
+      asAuditTx(tx),
       auth,
       {
         action: "update",

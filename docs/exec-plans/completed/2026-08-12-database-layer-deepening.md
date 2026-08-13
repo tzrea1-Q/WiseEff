@@ -1,6 +1,6 @@
 # Database Layer Deepening Program (C1–C5)
 
-Status: **Active** (C1/C5/C3 merged; C2 conversion and C4 continue under shared/other ownership — see table) · Started 2026-08-12 · Owner: architecture session 2026-08-12
+Status: **Completed** (C1 #317, C5 #320/#329, C3 #328, docs #335; C2 fixture ceded to the parallel test-foundation program, C4 ceded to the parameters-repository-split program)
 
 ## Goal
 

@@ -1,6 +1,6 @@
 # Debugging Repository Behavior Tests (TD-079 slice 2)
 
-Status: **Active** · Branch `test/debugging-repository-behavior-tests` · Follows the precedent set by `2026-08-12-parameters-service-behavior-tests.md` (#336, slice 1)
+Status: **Completed** (PR #345)
 
 ## Goal
 

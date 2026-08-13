@@ -1,6 +1,6 @@
 # Jobs Repository Behavior Tests (TD-079 slice)
 
-Status: **Active** · Branch `test/jobs-repository-behavior` · Follows `2026-08-12-parameters-service-behavior-tests.md` (#336) and `2026-08-12-debugging-repository-behavior-tests.md` (#345)
+Status: **Completed** (PR #378)
 
 ## Goal
 

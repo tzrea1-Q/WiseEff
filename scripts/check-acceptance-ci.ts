@@ -19,7 +19,7 @@ export const requiredAcceptanceCiWorkflowTokens = [
   "local-non-hdc",
   "target-non-hdc",
   "full-pilot",
-  "postgres:16",
+  "pgvector/pgvector:pg16",
   "npx playwright install --with-deps chromium",
   "npm run acceptance:ci",
   "npm run acceptance:models",

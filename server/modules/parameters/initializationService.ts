@@ -34,7 +34,7 @@ import type {
   UpsertInitializationDraftInput
 } from "./initializationTypes";
 import { mergeInitializationBindingCandidates } from "./mergeInitializationBindings";
-import { canAdminParameters, canEditParameters, canViewParameters } from "./policy";
+import { canAdminParameters, canEditParameters, canViewParameters } from "../parameter-kernel/policy";
 
 export type InitializationServiceContext = AuditCorrelationContext;
 
