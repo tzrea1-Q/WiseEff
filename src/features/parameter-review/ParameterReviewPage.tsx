@@ -4,6 +4,7 @@ import { canPerform } from "@/app/permissions";
 import { type PageProps } from "@/app/routes";
 import { toLegacyInitializationReview } from "@/application/parameters/initializationUiMappers";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -68,6 +69,9 @@ export function ParameterReviewPage({
   const [rejectOpen, setRejectOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [mergeLink, setMergeLink] = useState("");
+  const [batchSelectedIds, setBatchSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [batchConfirmOpen, setBatchConfirmOpen] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   const [reviewMode, setReviewMode] = useState<ParameterReviewMode>("pending");
   const [filterModules, setFilterModules] = useState<string[]>([]);
   const [filterSubmitters, setFilterSubmitters] = useState<string[]>([]);
@@ -384,6 +388,84 @@ export function ParameterReviewPage({
     setSelectedId("");
   };
   const reviewMeta = reviewMode === "history" ? `${reviewRows.length} 项历史审阅` : `${reviewRows.length} 项待处理`;
+  // Batch advance targets review stages only: the merge stage (软件User合入)
+  // requires a per-request merge link and stays single-item.
+  const batchableRequests = useMemo(
+    () =>
+      reviewMode === "pending"
+        ? reviewRows.flatMap((row) =>
+            row.kind === "change" &&
+            row.request.status !== "软件User合入" &&
+            canActOnReviewRequest(reviewerRoleId, row.request)
+              ? [row.request]
+              : []
+          )
+        : [],
+    [reviewMode, reviewRows, reviewerRoleId]
+  );
+  const batchableIds = useMemo(() => new Set(batchableRequests.map((request) => request.id)), [batchableRequests]);
+  const selectedBatchRequests = batchableRequests.filter((request) => batchSelectedIds.has(request.id));
+  const toggleBatchId = (requestId: string) => {
+    setBatchSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(requestId)) {
+        next.delete(requestId);
+      } else {
+        next.add(requestId);
+      }
+      return next;
+    });
+  };
+  const toggleBatchAll = () => {
+    setBatchSelectedIds((current) =>
+      batchableRequests.every((request) => current.has(request.id))
+        ? new Set()
+        : new Set(batchableRequests.map((request) => request.id))
+    );
+  };
+  const runBatchAdvance = async () => {
+    const targets = selectedBatchRequests;
+    if (targets.length === 0 || batchProgress) {
+      return;
+    }
+    setBatchProgress({ done: 0, total: targets.length });
+    const failures: Array<{ requestId: string; title: string; notification: string }> = [];
+    try {
+      for (const [index, request] of targets.entries()) {
+        const result = parameterActions
+          ? await parameterActions.reviewChange(
+              {
+                requestId: request.id,
+                decision: "advance",
+                ...(request.baseVersion !== undefined ? { expectedVersion: request.baseVersion } : {})
+              },
+              // Failures are summarized once below instead of one toast per item.
+              { notifyOnFailure: false }
+            )
+          : await Promise.resolve(dispatch({ type: "ADVANCE_REVIEW", requestId: request.id }));
+        if (result && "notification" in result) {
+          failures.push({ requestId: request.id, title: request.title, notification: result.notification });
+        }
+        setBatchProgress({ done: index + 1, total: targets.length });
+      }
+    } finally {
+      setBatchProgress(null);
+      setBatchConfirmOpen(false);
+    }
+    const succeeded = targets.length - failures.length;
+    if (succeeded > 0) {
+      dispatch({ type: "ADD_NOTIFICATION", message: `已批量通过 ${succeeded} 项变更` });
+    }
+    if (failures.length > 0) {
+      dispatch({
+        type: "ADD_NOTIFICATION",
+        message: `批量通过失败 ${failures.length} 项（${failures[0].title}：${failures[0].notification}）`
+      });
+    }
+    // Failed rows stay selected so the reviewer can retry them after a look.
+    const failedIds = new Set(failures.map((failure) => failure.requestId));
+    setBatchSelectedIds(new Set(targets.filter((request) => failedIds.has(request.id)).map((request) => request.id)));
+  };
   const canActOnSelectedReview = selected ? canActOnReviewRequest(reviewerRoleId, selected) : false;
   const canRejectSelectedReview = canPerform(reviewerRoleId, "parameter.review");
   const reviewPageTitle = canPerform(reviewerRoleId, "parameter.review") ? "参数管理员工作台" : "参数合入工作台";
@@ -478,10 +560,36 @@ export function ParameterReviewPage({
             meta={reviewMeta}
           />
         </div>
+        {reviewMode === "pending" && batchableRequests.length > 0 ? (
+          <div className="review-batch-toolbar" role="toolbar" aria-label="批量审阅操作">
+            <span className="review-batch-toolbar__hint">
+              {selectedBatchRequests.length > 0
+                ? `已选 ${selectedBatchRequests.length} 项待检视变更`
+                : "勾选待检视变更后可批量通过（合入阶段需逐条填写合入链接）"}
+            </span>
+            <Button
+              type="button"
+              disabled={selectedBatchRequests.length === 0 || batchProgress !== null}
+              onClick={() => setBatchConfirmOpen(true)}
+            >
+              {batchProgress ? `通过中 ${batchProgress.done}/${batchProgress.total}…` : `批量通过（${selectedBatchRequests.length} 项）`}
+            </Button>
+          </div>
+        ) : null}
         <div className="table-wrap review-table-wrap">
           <Table>
             <TableHeader>
               <TableRow>
+                {reviewMode === "pending" && batchableRequests.length > 0 ? (
+                  <TableHead className="review-batch-header">
+                    <input
+                      type="checkbox"
+                      aria-label="全选可批量通过的变更"
+                      checked={batchableRequests.length > 0 && batchableRequests.every((request) => batchSelectedIds.has(request.id))}
+                      onChange={toggleBatchAll}
+                    />
+                  </TableHead>
+                ) : null}
                 <TableHead className="review-filter-header">
                   <div className="review-column-filter-head">
                     <span>项目</span>
@@ -543,6 +651,7 @@ export function ParameterReviewPage({
             </TableHeader>
             <TableBody>
               {reviewRows.map((row) => {
+                const showBatchColumn = reviewMode === "pending" && batchableRequests.length > 0;
                 if (row.kind === "initialization") {
                   return (
                     <TableRow
@@ -550,6 +659,7 @@ export function ParameterReviewPage({
                       key={row.review.id}
                       onClick={() => setSelectedId(row.review.id)}
                     >
+                      {showBatchColumn ? <TableCell className="review-batch-cell" /> : null}
                       <TableCell>{row.draft.projectName}</TableCell>
                       <TableCell>参数初始化</TableCell>
                       <TableCell>{state.users.find((user) => user.id === row.review.submittedBy)?.name ?? row.review.submittedBy}</TableCell>
@@ -586,6 +696,19 @@ export function ParameterReviewPage({
                     key={request.id}
                     onClick={() => setSelectedId(request.id)}
                   >
+                    {showBatchColumn ? (
+                      <TableCell className="review-batch-cell">
+                        {batchableIds.has(request.id) ? (
+                          <input
+                            type="checkbox"
+                            aria-label={`选择 ${request.title} 加入批量通过`}
+                            checked={batchSelectedIds.has(request.id)}
+                            onClick={(event) => event.stopPropagation()}
+                            onChange={() => toggleBatchId(request.id)}
+                          />
+                        ) : null}
+                      </TableCell>
+                    ) : null}
                     <TableCell>{project?.name ?? request.projectId ?? parameter?.projectId ?? "未关联项目"}</TableCell>
                     <TableCell>{request.module}</TableCell>
                     <TableCell>{request.submitter}</TableCell>
@@ -624,6 +747,24 @@ export function ParameterReviewPage({
             </TableBody>
           </Table>
           {reviewRows.length === 0 ? <EmptyState text="当前筛选条件下没有数据。" /> : null}
+          <ConfirmDialog
+            open={batchConfirmOpen}
+            title="确认批量通过"
+            description={
+              <p>
+                将按顺序推进选中的 {selectedBatchRequests.length} 项待检视变更（逐项校验版本），失败项会保留在列表并汇总原因；
+                合入阶段的请求不在批量范围内。
+              </p>
+            }
+            confirmLabel={`通过 ${selectedBatchRequests.length} 项`}
+            pending={batchProgress !== null}
+            pendingLabel={batchProgress ? `通过中 ${batchProgress.done}/${batchProgress.total}…` : "通过中…"}
+            onCancel={() => {
+              if (batchProgress) return;
+              setBatchConfirmOpen(false);
+            }}
+            onConfirm={() => void runBatchAdvance()}
+          />
         </div>
       </section>
       <aside className="review-detail" aria-label="审阅详情">

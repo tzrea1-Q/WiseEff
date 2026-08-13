@@ -59,7 +59,7 @@ export type ParameterPageActions = {
   stashChanges(items: ParameterDraftItem[]): Promise<ParameterRuntimeVoidResult>;
   discardDrafts(input: DiscardParameterDraftsInput): Promise<ParameterRuntimeVoidResult>;
   withdrawSubmissionRound(roundId: string): Promise<ParameterRuntimeVoidResult>;
-  reviewChange(input: ReviewParameterChangeInput): Promise<ParameterRuntimeVoidResult>;
+  reviewChange(input: ReviewParameterChangeInput, options?: ParameterRuntimeRefreshOptions): Promise<ParameterRuntimeVoidResult>;
   listWorkflowAssignees?: ParameterRuntimeActions["listWorkflowAssignees"];
   createImportPreview(input: ParameterImportPreviewInput): Promise<ParameterImportBatchDto | ParameterRuntimeActionFailure>;
   applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterRuntimeVoidResult>;

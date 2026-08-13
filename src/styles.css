@@ -4031,6 +4031,35 @@ td small {
   flex-direction: column;
 }
 
+.review-batch-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.review-batch-toolbar__hint {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.review-batch-header,
+.review-batch-cell {
+  width: 36px;
+  text-align: center;
+}
+
+.review-batch-header input[type="checkbox"],
+.review-batch-cell input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
 .review-table-wrap {
   overflow: hidden;
 }
