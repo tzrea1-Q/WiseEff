@@ -63,6 +63,34 @@ export async function closeXiaozePopupIfOpen(page: Page) {
   await expect(popup).toBeHidden({ timeout: 10_000 });
 }
 
+/**
+ * Wait until the Xiaoze popup layer settles hidden. CopilotKit mounts the
+ * popup DOM briefly visible before XiaozePopupOpenPolicy closes it on first
+ * commit; an axe scan launched right after `main` becomes visible can race
+ * that transient and report the (visually closed) chat panel. Require the
+ * layer to stay hidden for a short dwell so scans always see the steady state.
+ */
+export async function settleXiaozePopupClosed(page: Page, dwellMs = 600, timeoutMs = 15_000) {
+  const layer = page.getByTestId("xiaoze-popup-layer");
+  const deadline = Date.now() + timeoutMs;
+  let hiddenSince: number | null = null;
+
+  while (Date.now() < deadline) {
+    const visible = await layer.isVisible().catch(() => false);
+    if (!visible) {
+      hiddenSince ??= Date.now();
+      if (Date.now() - hiddenSince >= dwellMs) {
+        return;
+      }
+    } else {
+      hiddenSince = null;
+    }
+    await page.waitForTimeout(100);
+  }
+
+  await expect(layer).toBeHidden();
+}
+
 export async function prepareInteractionSurface(page: Page) {
   await dismissCopilotDevOverlays(page);
   await closeXiaozePopupIfOpen(page);
@@ -105,7 +133,68 @@ export function stableMasks(page: Page, routePath = ""): Locator[] {
     masks.push(page.locator(".dts-parameter-workbench-table, .dts-workbench-list"));
   }
 
+  if (routePath === "/parameter-home") {
+    // Governance trend chart: the x-axis date labels (and the fallback table
+    // inside the same <figure>) are bucketed from "today", so they shift with
+    // the calendar day the suite runs on. KPI numbers and hotspot cards come
+    // from the freshly seeded window and stay stable, so only the chart moves.
+    masks.push(page.locator(".parameter-home__chart-shell"));
+  }
+
+  if (routePath === "/dts-reload" || routePath === "/node-debugging") {
+    // Bridge install guide: the API mints a fresh random 6-digit pairing code
+    // on every page load; the surrounding copy is static, so only the <strong>
+    // digits need masking.
+    masks.push(page.locator(".local-device-bridge-panel__already-installed strong"));
+  }
+
   return masks;
+}
+
+/**
+ * Route-specific readiness waits for the quality routes added by FA-25. These
+ * pages stream API data after first paint (dashboard sections, the bridge
+ * install guide with its async pairing code, seeded tables), so screenshots
+ * and axe scans must wait for the settled state instead of racing skeletons.
+ * Routes without an entry settle through the generic page checks alone.
+ */
+export async function settleQualityRoute(page: Page, routePath: string) {
+  const timeout = 20_000;
+
+  if (routePath === "/parameter-home") {
+    // The trend panel swaps its loading skeleton for the chart once the
+    // dashboard summary API answers.
+    await expect(page.locator(".parameter-home__chart-shell")).toBeVisible({ timeout });
+    return;
+  }
+
+  if (routePath === "/parameter-admin/projects/aurora/configuration") {
+    // The deep link resolves the seeded config set + file, then renders the
+    // source canvas with the seeded aurora DTS baseline.
+    await expect(page.getByText("aurora-board.dts").first()).toBeVisible({ timeout });
+    return;
+  }
+
+  if (routePath === "/dts-reload" || routePath === "/node-debugging") {
+    // No local bridge listens on 127.0.0.1:18787 in CI, so the wizard settles
+    // on the install guide; wait for the async release manifest and pairing
+    // code so the "not connected" state is fully rendered before asserting.
+    await expect(page.getByText("已识别当前环境").first()).toBeVisible({ timeout });
+    await expect(page.getByText("当前配对码").first()).toBeVisible({ timeout });
+    if (routePath === "/dts-reload") {
+      // The seeded reload workbench (tree + table + history) loads below the wizard.
+      await expect(page.getByText("运行历史").first()).toBeVisible({ timeout });
+    } else {
+      // A seeded catalog row proves the debug parameter table finished loading.
+      await expect(page.getByText("Fast charge current").first()).toBeVisible({ timeout });
+    }
+    return;
+  }
+
+  if (routePath === "/feedback-admin") {
+    // The seed ships no product feedback, so the list settles on its empty state.
+    await expect(page.getByText("暂无产品反馈")).toBeVisible({ timeout });
+  }
 }
 
 export async function expectNoHorizontalOverflow(page: Page, tolerancePx = 2) {
