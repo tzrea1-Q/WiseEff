@@ -188,6 +188,32 @@ describe("createHttpKnowledgeRepository", () => {
     expect(String(fetchMock.mock.calls[0][0])).toBe("http://127.0.0.1:8787/api/v1/knowledge/search?q=%E6%B8%A9%E6%8E%A7");
   });
 
+  it("loads related knowledge for a log with the retrieval report", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        items: [
+          {
+            entryId: "entry-1",
+            title: "快充温控降流案例",
+            contentForm: "markdown",
+            tags: ["快充"],
+            excerpt: "e",
+            updatedAt: "2026-08-12T08:00:00.000Z",
+            revisionId: "rev-1"
+          }
+        ],
+        retrieval: { mode: "fts_only", vectorAvailable: false, embeddingConfigured: false }
+      })
+    );
+    const repository = createRepository(fetchMock);
+
+    const response = await repository.relatedToLog("log-1");
+    expect(response.items).toHaveLength(1);
+    expect(response.items[0].entryId).toBe("entry-1");
+    expect(response.retrieval).toEqual({ mode: "fts_only", vectorAvailable: false, embeddingConfigured: false });
+    expect(String(fetchMock.mock.calls[0][0])).toBe("http://127.0.0.1:8787/api/v1/knowledge/related-to-log?logId=log-1");
+  });
+
   it("reads index health and posts retry/rebuild actions", async () => {
     const fetchMock = vi.fn<typeof fetch>(async (input) => {
       const url = String(input);

@@ -80,9 +80,15 @@ export const searchKnowledgeQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).optional()
 });
 
+export const relatedKnowledgeForLogQuerySchema = z.object({
+  logId: nonEmptyString.max(100),
+  limit: z.coerce.number().int().min(1).max(20).optional()
+});
+
 export type CreateKnowledgeEntryBody = z.infer<typeof createKnowledgeEntryBodySchema>;
 export type DistillKnowledgeFromLogBody = z.infer<typeof distillKnowledgeFromLogBodySchema>;
 export type UpdateKnowledgeEntryBody = z.infer<typeof updateKnowledgeEntryBodySchema>;
 export type RestoreKnowledgeRevisionBody = z.infer<typeof restoreKnowledgeRevisionBodySchema>;
 export type ListKnowledgeEntriesQueryBody = z.infer<typeof listKnowledgeEntriesQuerySchema>;
 export type SearchKnowledgeQueryBody = z.infer<typeof searchKnowledgeQuerySchema>;
+export type RelatedKnowledgeForLogQuery = z.infer<typeof relatedKnowledgeForLogQuerySchema>;
