@@ -1,5 +1,9 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
-import { createInMemoryTestDatabase, type InMemoryTestDatabase } from "../../../testing/testDatabase";
+import {
+  createInMemoryTestDatabase,
+  isTestDatabaseAvailable,
+  type InMemoryTestDatabase
+} from "../../../testing/testDatabase";
 import {
   PARAMETER_DASHBOARD_FIXTURE,
   seedParameterDashboardFixture
@@ -14,7 +18,9 @@ import {
   aggregatePersonalTrend
 } from "./repository";
 
-describe("dashboard repository", () => {
+const databaseAvailable = await isTestDatabaseAvailable();
+
+describe.skipIf(!databaseAvailable)("dashboard repository", () => {
   let db: InMemoryTestDatabase;
 
   beforeEach(async () => {

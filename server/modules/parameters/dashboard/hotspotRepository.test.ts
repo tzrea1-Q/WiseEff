@@ -1,12 +1,18 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { createInMemoryTestDatabase, type InMemoryTestDatabase } from "../../../testing/testDatabase";
+import {
+  createInMemoryTestDatabase,
+  isTestDatabaseAvailable,
+  type InMemoryTestDatabase
+} from "../../../testing/testDatabase";
 import {
   PARAMETER_DASHBOARD_FIXTURE,
   seedParameterDashboardFixture
 } from "../../../testing/parameterDashboardFixture";
 import { aggregateHotspotGroups } from "./hotspotRepository";
 
-describe("hotspot repository", () => {
+const databaseAvailable = await isTestDatabaseAvailable();
+
+describe.skipIf(!databaseAvailable)("hotspot repository", () => {
   let db: InMemoryTestDatabase;
 
   beforeEach(async () => {

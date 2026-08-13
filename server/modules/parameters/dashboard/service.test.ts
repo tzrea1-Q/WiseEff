@@ -1,6 +1,10 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import type { AuthContext } from "../../auth/types";
-import { createInMemoryTestDatabase, type InMemoryTestDatabase } from "../../../testing/testDatabase";
+import {
+  createInMemoryTestDatabase,
+  isTestDatabaseAvailable,
+  type InMemoryTestDatabase
+} from "../../../testing/testDatabase";
 import {
   PARAMETER_DASHBOARD_FIXTURE,
   seedParameterDashboardFixture
@@ -24,7 +28,9 @@ const auth: AuthContext = {
   permissions: ["parameter:view", "parameter:edit", "admin:access"]
 };
 
-describe("dashboard service", () => {
+const databaseAvailable = await isTestDatabaseAvailable();
+
+describe.skipIf(!databaseAvailable)("dashboard service", () => {
   let db: InMemoryTestDatabase;
 
   beforeEach(async () => {
