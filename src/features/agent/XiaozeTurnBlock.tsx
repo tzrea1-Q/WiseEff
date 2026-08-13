@@ -1,27 +1,17 @@
 import type { Message } from "@ag-ui/core";
 import { xiaozePromptDebugEnabled } from "@/infrastructure/http/runtimeMode";
 import { XiaozeUserMessage } from "./XiaozeUserMessage";
-import { XiaozeCitationSources, readCitationsFromMetadata } from "./XiaozeCitationSources";
+import { XiaozeCitationSources } from "./XiaozeCitationSources";
 import { XiaozeThinkingIndicator } from "./XiaozeThinkingIndicator";
 import { XiaozeTurnReasoningPanel } from "./XiaozeTurnReasoningPanel";
-import { readRunStepsFromMetadata } from "./XiaozeTurnTimeline";
 import { XiaozeAssistantMarkdown } from "./XiaozeAssistantMarkdown";
 import { XiaozePromptDebugPanel } from "./XiaozePromptDebugPanel";
 import { useXiaozePromptDebugSnapshotForTurn } from "./XiaozePromptDebugContext";
 import { useXiaozeLiveRunSteps } from "./XiaozeRunStepsContext";
 import { useXiaozeTurnReply } from "./XiaozeTurnReplyContext";
 import { useXiaozeTurnState } from "./XiaozeTurnStateContext";
-import { presentRunStep } from "./xiaozeStepPresentation";
-import { isXiaozeReasoningStreaming } from "./xiaozeThinkingState";
-import {
-  groupMessagesIntoTurns,
-  pickAssistantForTurn,
-  readMessageText,
-  resolveTurnAnswerText,
-  shouldDeferTurnAnswer,
-  shouldShowTurnThinking,
-  type XiaozeConversationTurn
-} from "./xiaozeTurnGrouping";
+import { groupMessagesIntoTurns, pickAssistantForTurn, type XiaozeConversationTurn } from "./xiaozeTurnGrouping";
+import { resolveXiaozeTurnView } from "./xiaozeTurnView";
 import { XiaozeTurnPhaseStrip } from "./XiaozeTurnPhaseStrip";
 
 type XiaozeTurnBlockProps = {
@@ -31,52 +21,27 @@ type XiaozeTurnBlockProps = {
   isRunning: boolean;
 };
 
-function readUserMessageText(message: XiaozeConversationTurn["user"]) {
-  return readMessageText(message.content);
-}
-
 export function XiaozeTurnBlock({ turn, messages, isLatest, isRunning }: XiaozeTurnBlockProps) {
   const assistant = pickAssistantForTurn(turn);
   const turnReply = useXiaozeTurnReply(assistant?.id);
   const turnState = useXiaozeTurnState(assistant?.id);
-  const userMessageText = readUserMessageText(turn.user);
-  const promptDebugSnapshot = useXiaozePromptDebugSnapshotForTurn(userMessageText, turnState?.runId ?? turnReply?.runId);
-  const isActiveTurn = isLatest && isRunning;
   const liveRunSteps = useXiaozeLiveRunSteps();
-  const metadata = (assistant as { metadata?: Record<string, unknown> } | undefined)?.metadata;
-  const persistedSteps = turnReply?.runSteps?.length
-    ? turnReply.runSteps
-    : turnState?.steps?.length
-      ? turnState.steps
-      : readRunStepsFromMetadata(metadata);
-  const rawSteps = isActiveTurn && liveRunSteps.length > 0 ? liveRunSteps : persistedSteps;
-  const citations = turnReply?.citations?.length ? turnReply.citations : readCitationsFromMetadata(metadata);
-  const steps = rawSteps.map(presentRunStep);
-  const deferPartial = shouldDeferTurnAnswer({
-    isActiveTurn,
+
+  const view = resolveXiaozeTurnView({
+    turn,
+    assistant,
+    messages,
+    isLatest,
     isRunning,
     turnReply,
-    steps
+    turnState,
+    liveRunSteps
   });
-  const answerText =
-    turnState?.phase === "done" && turnState.text?.trim()
-      ? turnState.text.trim()
-      : resolveTurnAnswerText(assistant, turnReply, isActiveTurn, deferPartial);
-  const reasoningText =
-    readMessageText(turn.reasoning?.content) || turnReply?.reasoning?.trim() || turnState?.reasoning?.trim() || "";
-  const reasoningMessageId = turn.reasoning?.id ?? turnReply?.reasoningMessageId ?? turnState?.reasoningMessageId;
-  const isReasoningStreaming =
-    turn.reasoning && isXiaozeReasoningStreaming(turn.reasoning, messages, isRunning)
-      ? true
-      : isActiveTurn && isRunning && !answerText && (turnState?.phase === "thinking" || (!turnState && steps.length === 0));
-  const showReasoningPanel = isReasoningStreaming || reasoningText.length > 0;
-  const showThinkingFallback = shouldShowTurnThinking(turn, isActiveTurn, answerText) && !showReasoningPanel;
-  const showAnswer = answerText.length > 0;
-  const showPhaseStrip = steps.length > 0 || (turnState && turnState.phase !== "done");
-  const phase = turnState?.phase ?? (isActiveTurn && steps.some((step) => step.status === "running") ? "tool" : undefined);
+
+  const promptDebugSnapshot = useXiaozePromptDebugSnapshotForTurn(view.userMessageText, view.promptDebugRunId);
 
   return (
-    <article className="xiaoze-turn-block" data-turn-id={turn.id} data-active={isActiveTurn ? "true" : "false"}>
+    <article className="xiaoze-turn-block" data-turn-id={turn.id} data-active={view.isActiveTurn ? "true" : "false"}>
       <XiaozeUserMessage message={turn.user} />
 
       {xiaozePromptDebugEnabled && promptDebugSnapshot ? (
@@ -85,31 +50,28 @@ export function XiaozeTurnBlock({ turn, messages, isLatest, isRunning }: XiaozeT
         </div>
       ) : null}
 
-      {showReasoningPanel ? (
+      {view.showReasoningPanel ? (
         <XiaozeTurnReasoningPanel
-          content={reasoningText}
-          isStreaming={isReasoningStreaming}
-          reasoningMessageId={reasoningMessageId}
+          content={view.reasoningText}
+          isStreaming={view.isReasoningStreaming}
+          reasoningMessageId={view.reasoningMessageId}
         />
       ) : null}
 
-      {showThinkingFallback ? <XiaozeThinkingIndicator /> : null}
+      {view.showThinkingFallback ? <XiaozeThinkingIndicator /> : null}
 
-      {showPhaseStrip ? (
-        <XiaozeTurnPhaseStrip steps={steps} phase={phase} isActive={isActiveTurn} />
+      {view.showPhaseStrip ? (
+        <XiaozeTurnPhaseStrip steps={view.steps} phase={view.phase} isActive={view.isActiveTurn} />
       ) : null}
 
-      {showAnswer ? (
+      {view.showAnswer ? (
         <div className="xiaoze-turn-block__answer">
           <div className="xiaoze-assistant-message__meta">
             <span className="xiaoze-assistant-message__name">小泽</span>
           </div>
           <div className="xiaoze-assistant-message copilotKitAssistantMessage">
-            <XiaozeAssistantMarkdown
-              content={answerText}
-              isStreaming={isActiveTurn && isRunning && turnState?.phase === "composing"}
-            />
-            <XiaozeCitationSources citations={citations} />
+            <XiaozeAssistantMarkdown content={view.answerText} isStreaming={view.answerStreaming} />
+            <XiaozeCitationSources citations={view.citations} />
           </div>
         </div>
       ) : null}
