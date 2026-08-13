@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import type { AuthContext } from "../auth/types";
-import { canAdminParameters, canViewParameters } from "../parameters/policy";
+import { canAdminParameters, canViewParameters } from "../parameter-kernel/policy";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";

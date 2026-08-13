@@ -4,7 +4,7 @@ import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWr
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
-import { canAdminParameters } from "../parameters/policy";
+import { canAdminParameters } from "../parameter-kernel/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { diffResolvedDts, type StructuralChange } from "./baselineDiff";

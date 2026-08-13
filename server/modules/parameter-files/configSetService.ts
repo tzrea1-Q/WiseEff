@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
-import { canAdminParameters, canViewParameters } from "../parameters/policy";
+import { canAdminParameters, canViewParameters } from "../parameter-kernel/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import {

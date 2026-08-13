@@ -4,14 +4,14 @@ import { createAuditEvent } from "../audit/repository";
 import type { AuthContext } from "../auth/types";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { canEditCriticalParameters } from "../parameters/policy";
+import { canEditCriticalParameters } from "../parameter-kernel/policy";
 import {
   listSensitiveNodeRules,
   matchSensitiveRules,
   type SensitiveNodeRule,
   type SensitiveRiskTier,
   type SensitiveWriteActorType
-} from "../parameters/sensitiveNode";
+} from "../parameter-kernel/sensitiveNode";
 
 /** Explicit confirmation required when a reload batch includes a critical-tier sensitive match. */
 export const SENSITIVE_RELOAD_CONFIRMATION_TOKEN = "confirm-sensitive-reload";

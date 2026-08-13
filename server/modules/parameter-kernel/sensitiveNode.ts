@@ -4,7 +4,7 @@ import type { AuthContext, BackendPermission } from "../auth/types";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { canEditCriticalParameters } from "./policy";
-import { nodePathFromSourceNodePath } from "./impact";
+import { nodePathFromSourceNodePath } from "./nodePath";
 
 export type SensitiveRiskTier = "high" | "critical";
 export type SensitiveMatchType = "path" | "compatible";

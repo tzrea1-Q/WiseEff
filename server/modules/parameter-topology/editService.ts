@@ -22,10 +22,10 @@ import {
 } from "../parameter-files/dtsToolchain";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { canEditParameters } from "../parameters/policy";
+import { canEditParameters } from "../parameter-kernel/policy";
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { ensurePreCutoverLinkedParameterValue } from "../parameter-kernel/legacyParameterIdentityAdapter";
-import { assertSensitiveNodeWriteAllowed } from "../parameters/sensitiveNode";
+import { assertSensitiveNodeWriteAllowed } from "../parameter-kernel/sensitiveNode";
 import {
   upsertDraft,
   upsertEnablementDraft,

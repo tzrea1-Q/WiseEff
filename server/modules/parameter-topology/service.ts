@@ -13,7 +13,7 @@ import {
   countDismissedSpecBlockersForRevision,
   countOpenSpecReviewTasksForRevision
 } from "../parameter-specs/repository";
-import { canAdminParameters, canEditParameters, canViewParameters } from "../parameters/policy";
+import { canAdminParameters, canEditParameters, canViewParameters } from "../parameter-kernel/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import {
@@ -45,7 +45,7 @@ import {
 } from "./editService";
 import { type CreateBindingDraftDeps } from "./overlayWriteback";
 import { writeGovernanceAudit } from "./governanceAudit";
-import { getProjectById } from "../parameters/projectRepository";
+import { getProjectById } from "../projects/repository";
 import { listStructuralPropertyKeys } from "./parameterSurface";
 import {
   assertManifestStateReady,
