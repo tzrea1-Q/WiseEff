@@ -56,7 +56,7 @@
 
 ## 近期关闭项
 
-- **TD-083（知识检索 pgvector 后装与 CI 向量覆盖）：** 已于 2026-08-13 在 `fix/knowledge-pgvector-td083` 关闭。启动 ensure（`server/modules/knowledge/indexing/vectorEnsure.ts`，在 `server/index.ts` 中先于索引 worker 运行）在 pgvector 后装后自动创建扩展、补 `knowledge_chunks.embedding` 列并全量重建入队（专用 advisory lock，双会话集成测试证明多副本 exactly-once；无扩展服务器静默 no-op，权限拒绝诚实记日志并保持 FTS-only）。CI postgres 服务镜像切换为 `pgvector/pgvector:pg16`（build-and-test 与 acceptance 两个 job），`vectorSearch.integration.test.ts` 与新增 `vectorEnsure` 套件在 CI 真实运行；真正无扩展的环境仍保留带原因跳过。自托管 runbook 英中两版改为「重启自动补装」，手动 SQL 降为参考。详见英文版 Completed 表。
+- **TD-090（知识检索 pgvector 后装与 CI 向量覆盖）：** 已于 2026-08-13 在 `fix/knowledge-pgvector-td083` 关闭。启动 ensure（`server/modules/knowledge/indexing/vectorEnsure.ts`，在 `server/index.ts` 中先于索引 worker 运行）在 pgvector 后装后自动创建扩展、补 `knowledge_chunks.embedding` 列并全量重建入队（专用 advisory lock，双会话集成测试证明多副本 exactly-once；无扩展服务器静默 no-op，权限拒绝诚实记日志并保持 FTS-only）。CI postgres 服务镜像切换为 `pgvector/pgvector:pg16`（build-and-test 与 acceptance 两个 job），`vectorSearch.integration.test.ts` 与新增 `vectorEnsure` 套件在 CI 真实运行；真正无扩展的环境仍保留带原因跳过。自托管 runbook 英中两版改为「重启自动补装」，手动 SQL 降为参考。详见英文版 Completed 表。
 - **TD-058（冲突裁决批量处理与可读版本标签）：** 已于 2026-08-07 经 #235（`feat/project-configuration-workbench-conflict-arbitration`）关闭。冲突列表 DTO 含 `baseValue` 与可读 `fileVersionLabel`；裁决可写 `reason` 进审计；`bulk-preview` / `bulk-resolve` 落地 API/端口/工作台冲突坞并带影响预览；验收 `PROJ-CONFIG-CONFLICT-001`。详见英文版 Completed 表。
 - **TD-015（节点调试快照回滚 UI）：** 已于 2026-08-05 在 `feat/node-debugging-ui-closure`（C2）关闭。会话事件 hydrate、回滚 UI 与高风险写确认已落地。详见英文版 Completed 表。
 - **TD-060（项目参数初始化）：** 已于 2026-08-05 在 `feat/project-parameter-initialization`（C1）关闭。迁移 `0091` + draft/review API；语义 binding 合并/物化；Port/HTTP/mock；API hydrate + 锁；设计修订告别扁平 `recommendedValue` SSOT。详见英文版 Completed 表。

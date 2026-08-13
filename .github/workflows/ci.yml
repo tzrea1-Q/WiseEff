@@ -36,7 +36,7 @@ jobs:
       postgres:
         # pgvector-enabled postgres 16: migration 0104 installs the extension,
         # so vectorSearch.integration.test.ts and the late-install ensure
-        # suites run in CI instead of skipping (TD-083).
+        # suites run in CI instead of skipping (TD-090).
         image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: wiseeff
@@ -106,7 +106,7 @@ jobs:
     services:
       postgres:
         # Same pgvector-enabled image as build-and-test so the acceptance
-        # database carries the embedding column (TD-083).
+        # database carries the embedding column (TD-090).
         image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: wiseeff
