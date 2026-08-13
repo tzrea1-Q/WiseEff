@@ -60,6 +60,10 @@
 - **TD-099（审批层级规则冗余 + jsdom 守卫测试 skip）：** 审批卡抬升到聊天弹窗之上由两套并行 CSS 规则指向同一 token（wave-0 的 `.xiaoze-approval-overlay` 类与 main 的 `:has(+ [data-testid])` 选择器）；另外初始化向导的 Escape 脏守卫测试被 skip：jsdom 下确认层的 open 状态被第二次渲染回滚，而导入向导的同构流程与真实浏览器均正常（skip 说明见测试文件内）。需保留一套层级规则；根因排查 jsdom 双渲染（疑点：window 监听器内 setState 的 flush 交错）后恢复用例。**负责人：Frontend。**
 - **TD-100（合并后端到端验证欠账）：** (1) main 修复 SSE 缺陷（#333）后，小泽审批流未在真实浏览器对真实 agent 走查（批准 / 拒绝 / 带理由拒绝三路径）；(2) 批量高风险设备写入仍缺 HDC 真机手工验证（聚合确认、写入/跳过记账）。两个最高风险的人工闸门在大幅变更后缺新鲜实证。需按手工验收 runbook 走查审批流；随试点清单安排设备实验室验证。**负责人：QA / 父会话。**
 - **TD-101（验收覆盖 id 补登）：** 信任修复计划承诺的新验收 requirement id（聊天打开时审批卡可用、草稿移除跨刷新持久、置信度按百分比渲染）只做了既有 spec 适配，覆盖图未扩展。三个信任关键行为没有命名验收 id 守护。需按 UI 交互自动化规则补登到 `e2e/acceptance/` 与覆盖图。**负责人：QA / Frontend。**
+- **TD-102（Webhook 至多一次投递语义）：** 结果回调的重试链在进程内（fire-and-forget + in-flight 集合），进程崩溃会丢失当次剩余重试；集成指南已写明 Webhook 是通知通道、REST API 才是事实来源。若真实消费方需要更强保证，把投递落库为 outbox（复用通知 outbox 范式）由 worker 循环排空。**负责人：Log analysis。**
+- **TD-103（Webhook 签名密钥明文存储）：** `log_domains.webhook_secret` 明文存库（HMAC 需原文），API 只写不读、响应/审计仅含已配置态与末四位；数据库泄露将允许伪造投递签名。平台具备 KMS/信封加密基础设施后升级静态加密并轮换。**负责人：Security / Log analysis。**
+- **TD-104（验收 webServer 冷启动级联超时）：** playwright 验收的 webServer 首次 tsx/vite 编译可把首条用例逼近 90s 超时并级联误报（P3b 验证首轮 9 条假失败,预热重跑全绿）。加 ready 后预热请求（先编译入口路由）或放宽首条用例超时。**负责人：Quality / Acceptance tooling。**
+- **TD-105（投递记录无保留策略）：** `log_webhook_deliveries` 每次尝试一行、无清理机制,投递量大的域将无限增长。真实投递量出现后加保留策略（按域保留最近 N 条或按天龄清理,可挂 worker 循环或定时任务）。**负责人：Log analysis / Ops。**
 
 ## 近期关闭项
 

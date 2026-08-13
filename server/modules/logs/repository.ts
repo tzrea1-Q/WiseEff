@@ -89,6 +89,7 @@ type WorkerLogRunSnapshotRow = {
   log_domain_name: string | null;
   log_domain_description: string | null;
   log_domain_format_profile: LogFormatProfile | null;
+  log_domain_model_override: string | null;
 };
 
 export type LogFileObjectDto = {
@@ -148,6 +149,8 @@ export type LogWorkerRunSnapshot = {
     name: string;
     description: string | null;
     formatProfile: LogFormatProfile | null;
+    /** Per-domain model-name override (P3b); null = global model. */
+    modelOverride: string | null;
   } | null;
 };
 
@@ -290,7 +293,8 @@ function toWorkerLogRunSnapshot(row: WorkerLogRunSnapshotRow): LogWorkerRunSnaps
           id: row.log_domain_id,
           name: row.log_domain_name ?? row.log_domain_id,
           description: row.log_domain_description,
-          formatProfile: row.log_domain_format_profile
+          formatProfile: row.log_domain_format_profile,
+          modelOverride: row.log_domain_model_override
         }
       : null
   };
@@ -707,7 +711,8 @@ export async function getLogWorkerRunSnapshot(db: Queryable, jobId: string) {
       lr.log_domain_id,
       ld.name as log_domain_name,
       ld.description as log_domain_description,
-      ld.format_profile as log_domain_format_profile
+      ld.format_profile as log_domain_format_profile,
+      ld.model_override as log_domain_model_override
     from jobs job
     inner join log_analysis_runs run
       on run.id = job.target_id

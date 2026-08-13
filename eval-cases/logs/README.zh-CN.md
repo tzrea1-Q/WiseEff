@@ -72,6 +72,23 @@ eval-cases/logs/
 
 `eval-cases/logs/baseline.json` 存放最近一次被接受的质量分。存在时,`npm run logs:eval:quality` 将当前运行与之比较:**`realLog: true` 案例的分数不得低于基线减去声明容差**(容差在报告中声明)。案例集尚无真实案例时,报告如实输出 `quality baseline pending real cases`,门禁不激活——但机制本身有测试覆盖。
 
+## 人工复核记录(`reviews/`,P3b judge 校准)
+
+每次效果评测按确定性规则抽样已评分案例,产出复核清单 `docs/generated/log-analysis-judge-sample.md`(抽样率 `LOG_ANALYSIS_JUDGE_SAMPLE_RATE`,默认 0.2,至少 1 条)。复核人按与 judge 相同的 0..1 rubric 打分,并把清单中的模板提交为 `eval-cases/logs/reviews/<run-id>.yaml`:
+
+```yaml
+runId: qe-20260813-020107
+reviewer: expert-name
+reviewedAt: 2026-08-13
+cases:
+  - id: charging-power/case-dir
+    humanRootCauseScore: 0.75 # 0..1,与 judge 同尺度
+    humanCategoryMatch: true # 可选
+    notes: "除次要原因外与标注一致" # 可选
+```
+
+下一次 `logs:eval:quality` 会加载 `reviews/` 下的全部文件、校验 schema(损坏文件直接使运行失败)、**按案例 id** 与当前运行的已评分案例匹配,并在报告固定的「Judge calibration」段落输出 judge-human 一致性(精确一致率 + 均差 + 类别一致率)。尚无复核记录时如实输出 "no human reviews yet"。不要为了让指标"活起来"给合成案例伪造复核。
+
 ## 当前状态
 
-当前提交的所有案例均为 `realLog: false` 的格式覆盖种子。真实专家标注案例(每域 20–50 条,第二个试点域由产品负责人点名)是 P2 计划中如实跟踪的外部依赖——绝不伪造「真实」案例。
+当前提交的所有案例均为 `realLog: false` 的格式覆盖种子。真实专家标注案例(每域 20–50 条,第二个试点域由产品负责人点名)是 P2 计划中如实跟踪的外部依赖——绝不伪造「真实」案例。出于同样原因目前也没有人工复核记录:对纯合成案例做 judge 校准等于在噪声上校准。

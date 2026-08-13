@@ -5,15 +5,17 @@ import type {
   LogDomainKnowledgeLinksInput,
   LogDomainListQuery,
   LogDomainUpdateInput,
+  LogDomainWebhookInput,
   LogFeedbackInput,
   LogFeedbackInsightsQuery,
   LogJobSnapshot,
   LogListQuery,
   LogRerunInput,
-  LogUploadInput
+  LogUploadInput,
+  LogWebhookTestOutcome
 } from "@/application/ports/LogAnalysisRepository";
 import type { AppAction } from "@/application/state/appState";
-import type { LogDomain, LogDomainKnowledgeLink, LogFeedbackInsight, LogRecord } from "@/domain/logs/types";
+import type { LogDomain, LogDomainKnowledgeLink, LogFeedbackInsight, LogRecord, LogWebhookDelivery } from "@/domain/logs/types";
 import type { PrototypeState } from "@/domain/prototype/types";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 
@@ -39,6 +41,9 @@ export type LogRuntimeActions = {
   listLogDomainKnowledgeLinks(domainId: string): Promise<LogDomainKnowledgeLink[]>;
   setLogDomainKnowledgeLinks(input: LogDomainKnowledgeLinksInput): Promise<LogDomainKnowledgeLink[] | null>;
   listFeedbackInsights(query?: LogFeedbackInsightsQuery): Promise<LogFeedbackInsight[]>;
+  setLogDomainWebhook(input: LogDomainWebhookInput): Promise<LogDomain | null>;
+  listLogDomainWebhookDeliveries(domainId: string, limit?: number): Promise<LogWebhookDelivery[]>;
+  sendLogDomainWebhookTest(domainId: string): Promise<LogWebhookTestOutcome | null>;
 };
 
 export type LogRuntimeDispatchAction =
@@ -409,6 +414,43 @@ export function createLogRuntimeActions({
         // Monitoring reads never block the admin page; failures degrade to the empty state.
         return [];
       }
+    },
+    async setLogDomainWebhook(input) {
+      if (mode !== "api") {
+        dispatch({ type: "ADD_NOTIFICATION", message: logDomainMockModeNotification });
+        return null;
+      }
+
+      let saved: LogDomain | null = null;
+      await runApiMutation(async (api) => {
+        saved = (await api.setLogDomainWebhook?.(input)) ?? null;
+      });
+      return saved;
+    },
+    async listLogDomainWebhookDeliveries(domainId, limit) {
+      if (mode !== "api") {
+        return [];
+      }
+
+      try {
+        const api = requireRepository(repository);
+        return (await api.listLogDomainWebhookDeliveries?.(domainId, limit)) ?? [];
+      } catch {
+        // Delivery history is a governance read; failures degrade to an empty list.
+        return [];
+      }
+    },
+    async sendLogDomainWebhookTest(domainId) {
+      if (mode !== "api") {
+        dispatch({ type: "ADD_NOTIFICATION", message: logDomainMockModeNotification });
+        return null;
+      }
+
+      let outcome: LogWebhookTestOutcome | null = null;
+      await runApiMutation(async (api) => {
+        outcome = (await api.sendLogDomainWebhookTest?.(domainId)) ?? null;
+      });
+      return outcome;
     }
   };
 }

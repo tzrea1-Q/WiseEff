@@ -14,6 +14,7 @@ import { ensureKnowledgeVectorColumn } from "./modules/knowledge/indexing/vector
 import { startKnowledgeIndexWorkerLoop } from "./modules/knowledge/indexing/worker";
 import { createLogAnalyzerFromEnv } from "./modules/logs/analyzer/analyzerFromEnv";
 import { createLogAnalysisQueueRuntime, createLogAnalysisQueueTransport } from "./modules/logs/logAnalysisQueueRuntime";
+import { createLogWebhookDeliverer } from "./modules/logs/webhookDelivery";
 import { startLogWorkerLoop } from "./modules/logs/worker";
 import { configureNotificationDelivery } from "./modules/notifications/delivery";
 import {
@@ -71,6 +72,18 @@ const logAnalyzer = createLogAnalyzerFromEnv(env, {
   db,
   embeddingClient: knowledgeEmbeddingClient
 });
+const logWebhookDeliverer = db
+  ? createLogWebhookDeliverer({
+      db,
+      env: {
+        timeoutMs: env.LOG_WEBHOOK_TIMEOUT_MS,
+        maxAttempts: env.LOG_WEBHOOK_MAX_ATTEMPTS,
+        retryBaseDelayMs: env.LOG_WEBHOOK_RETRY_BASE_DELAY_MS,
+        allowInsecureLocal: env.LOG_WEBHOOK_ALLOW_INSECURE_LOCAL
+      },
+      metrics
+    })
+  : undefined;
 const logAnalysisQueueRuntime =
   env.LOG_ANALYSIS_QUEUE_MODE === "durable" && db && objectStore
     ? env.LOG_WORKER_ENABLED
@@ -80,13 +93,14 @@ const logAnalysisQueueRuntime =
           objectStore,
           analyzer: logAnalyzer,
           metrics,
-          tracing: defaultTracingBoundary
+          tracing: defaultTracingBoundary,
+          webhooks: logWebhookDeliverer
         })
       : createLogAnalysisQueueTransport({ env: logAnalysisQueueEnv })
     : undefined;
 const stopLogWorker =
   env.LOG_WORKER_ENABLED && env.LOG_ANALYSIS_QUEUE_MODE === "polling" && db && objectStore
-    ? startLogWorkerLoop({ db, objectStore, analyzer: logAnalyzer, metrics, tracing: defaultTracingBoundary })
+    ? startLogWorkerLoop({ db, objectStore, analyzer: logAnalyzer, metrics, tracing: defaultTracingBoundary, webhooks: logWebhookDeliverer })
     : undefined;
 // Started in start() after ensureKnowledgeVectorColumn so the worker never
 // caches a pre-install "no vector support" detection.
@@ -149,6 +163,10 @@ const server = createWiseEffServerFromEnv({
   deviceBridge: {
     connectionPool: bridgeConnectionPool,
     rpcClient: bridgeRpcClient
+  },
+  logWebhooks: {
+    deliverer: logWebhookDeliverer,
+    allowInsecureLocal: env.LOG_WEBHOOK_ALLOW_INSECURE_LOCAL
   }
 });
 

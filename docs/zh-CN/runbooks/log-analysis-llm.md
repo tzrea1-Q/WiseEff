@@ -48,6 +48,24 @@
 - 真模型运行：配置 `LOG_ANALYSIS_API_*`（可选 `LOG_ANALYSIS_JUDGE_*` 启用 LLM-as-judge）后运行 `npm run logs:eval:quality`。
 - 报告输出到 `docs/generated/log-analysis-quality.{json,md}`，含内核、模型、prompt version 与 judge 标签。基线门禁（`eval-cases/logs/baseline.json`）将 realLog 案例分数与已提交基线减容差比较；案例集尚无真实案例时报告如实输出 `quality baseline pending real cases`，门禁不激活。
 
+## judge 校准（P3b）
+
+- 每次效果评测按确定性规则抽样已评分案例（case id 哈希，抽样率 `LOG_ANALYSIS_JUDGE_SAMPLE_RATE`，默认 0.2，至少 1 条），产出人工复核清单 `docs/generated/log-analysis-judge-sample.md`：含 agent 结论、judge 打分与理由，以及可直接填写的 YAML 模板。
+- 复核人把填好的模板提交为 `eval-cases/logs/reviews/<run-id>.yaml`（`runId`、`reviewer`、`reviewedAt`，每案例 `humanRootCauseScore` 0..1 + 可选 `humanCategoryMatch`/`notes`）。损坏的复核文件会让效果评测直接失败——必须修复，绝不静默丢弃。
+- 存在复核文件时，报告固定的「Judge calibration」段落计算 judge-human 一致性：精确一致率（分数完全相同）、均差（平均绝对差）与类别一致率；没有复核时如实输出 "no human reviews yet"。judge 漂移（均差上升）意味着在让它的分数参与门禁之前需要先调 judge 提示词/rubric。
+
+## 质量门禁工作流（发布检查单）
+
+- 发布前若改动过提示词、模型、内核或金标准案例：手动触发 GitHub Actions 的 **Log analysis quality gate** 工作流（`log-analysis-quality-gate.yml` 的 `workflow_dispatch`）；它同时每周定时跑一次作为漂移监控。CI 无真实 key，以确定性模式运行；工作流注释说明配置 secrets 后切换真模型的方法。
+- 读工件（`log-analysis-quality-report`）：先看 `Baseline gate`——真实专家标注案例落地前 `inactive-pending-real-cases` 是预期；`failed` 阻断发布（真实案例质量跌破基线减容差）。再看 `Judge calibration` 的抽样与一致性状态，以及 `Problems` 的加载/复核文件错误。带 `pending` 标注的绿色运行是诚实,不是质量通过——合成案例只覆盖格式面。
+
+## 结果 Webhook（P3b）
+
+- 按域配置在 `/log-admin` → 业务域治理 → 结果回调（URL、只写密钥、启用开关）；发送端调参用 `LOG_WEBHOOK_TIMEOUT_MS` / `LOG_WEBHOOK_MAX_ATTEMPTS` / `LOG_WEBHOOK_RETRY_BASE_DELAY_MS`。该通道尽力而为：绝不阻塞、失败或拖慢分析,有意不进 `/health/ready`。
+- 排障「消费方什么都没收到」：打开该域的最近投递列表（或 `GET /api/v1/log-domains/:domainId/webhook-deliveries`）——按次行显示已送达/重试中/投递失败与 HTTP 码或错误。`webhook-url-private-address` 错误表示 URL 被 SSRF 拦截（见 `docs/zh-CN/SECURITY.md`）；未分类日志永远不触发 Webhook；未配置/未启用按设计静默跳过。
+- 用带审计的「发送测试投递」按钮沿生产同路径探测接收端。指标：`wiseeff_log_webhook_deliveries_total{domain,outcome}` 与 `wiseeff_log_webhook_delivery_duration_ms_*`——某个域的 `failed`/`blocked` 上升是接收端或配置问题,不是分析问题。
+- 接收端校验（签名、重放窗口）见 `docs/zh-CN/api/log-analysis-integration.md`。
+
 ## 线上反馈监控（P3）
 
 - `/log-admin` →「分析质量」区读取 `GET /api/v1/logs/feedback-insights`（`logs:view`）：按业务域 × 分析来源 × Prompt 版本聚合 today/7d/30d 的有帮助率，监控两次效果评测之间的线上反馈漂移；金标准案例集仍是质量锚点。

@@ -31,6 +31,8 @@
 - `LOG-FEEDBACK-INSIGHTS-001`：提交日志反馈后，`/log-admin`「分析质量」区按业务域 × 分析来源 × Prompt 版本聚合展示所选时间窗口内的有帮助率，数据来自 `GET /api/v1/logs/feedback-insights`（`e2e/acceptance/log-analysis.acceptance.spec.ts`）。
 - `LOG-EVAL-DRAFT-001`：Admin 在已完成记录的抽屉中导出评测案例草稿：弹层展示脱敏清单，下载物为 schema 对齐的 `case.yaml`（realLog: true、deIdentified: false、rootCauseCategory TODO、预填证据行号/建议动作）与 `log.txt`（`e2e/acceptance/log-analysis.acceptance.spec.ts`）。
 - `LOG-ARCHIVE-UPLOAD-001`：经上传对话框上传的 `.gz` 压缩日志由服务端解压并端到端完成分析，证据行号锚定解压后的文本行（`e2e/acceptance/log-analysis.acceptance.spec.ts`）。
+- `LOG-DOMAIN-WEBHOOK-001`：Admin 在 `/log-admin` 业务域治理区配置结果 Webhook（https 或本地联调 URL、只写密钥仅显示末四位、启用开关，写 `log-domain-webhook-config` 审计）；域绑定分析完成后向接收端投递 HMAC 签名载荷（签名可验、不含原始日志内容），最近投递列表显示已送达尝试（`e2e/acceptance/log-analysis.acceptance.spec.ts`）。
+- `LOG-DOMAIN-MODEL-001`：Admin 通过 `/log-admin` 域表单设置按域模型覆盖（placeholder 注明留空使用全局模型）；覆盖在域 API/DB 持久化、域列表可见，域绑定分析的报告 `model` 溯源记录该覆盖名（`e2e/acceptance/log-analysis.acceptance.spec.ts`）。
 - `KB-READ-001`：组织成员在 `/knowledge` 浏览知识条目列表，搜索只命中 `published` 条目（draft 和 archived 不进检索结果），并打开已发布条目详情（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-EDIT-001`：编辑者创建 markdown 知识条目、发布、就地修订产生新的不可变修订，并把历史修订恢复为新修订（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-FILE-001`：编辑者经对象存储上传文件型知识条目，并在条目上看到文本提取状态（`e2e/acceptance/knowledge.acceptance.spec.ts`）。

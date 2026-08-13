@@ -775,6 +775,32 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "db"]
   },
   {
+    id: "LOG-DOMAIN-WEBHOOK-001",
+    priority: "P1",
+    area: "logs",
+    route: "/log-admin",
+    roles: ["Admin"],
+    action:
+      "Configure a domain result webhook in /log-admin governance (URL + write-only secret + enabled, audited), run a domain-bound analysis to completion, verify the receiver got a signed payload, and see the delivered attempt in the recent-deliveries list.",
+    coverage: "automated",
+    acceptanceIds: ["LOG-DOMAIN-WEBHOOK-001"],
+    specFiles: ["e2e/acceptance/log-analysis.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit"]
+  },
+  {
+    id: "LOG-DOMAIN-MODEL-001",
+    priority: "P1",
+    area: "logs",
+    route: "/log-admin",
+    roles: ["Admin"],
+    action:
+      "Set a per-domain model override through the /log-admin domain form, verify it persists on the domain API/DB, and verify a domain-bound analysis records the override as the report's model provenance.",
+    coverage: "automated",
+    acceptanceIds: ["LOG-DOMAIN-MODEL-001"],
+    specFiles: ["e2e/acceptance/log-analysis.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit"]
+  },
+  {
     id: "DEBUG-SIM-001",
     priority: "P0",
     area: "debugging",

@@ -274,6 +274,11 @@ Log-analysis quality & annotation intake (P3):
 
 The `/logs` analysis-quality feedback dialog persists through this port in API mode: it calls `submitFeedback` (`POST /api/v1/logs/:id/feedback`) with the rating mapped high to `helpful` / other to `not_helpful` and the issue text as `note`, shows pending/inline-error states, and closes only after the server accepts (mock mode keeps the local notification). `/log-admin` gains an archived-logs view backed by `refresh({ includeArchived: true })` with a per-row restore (unarchive) action, making archiving reversible at any time; the post-archive undo toast window is 10s.
 
+Result webhooks & per-domain model override (P3b):
+
+- Each active domain row offers a result-webhook editor (`DomainWebhookEditor` in `LogAdminPage.tsx`): https-only URL, write-only signing secret (the UI shows only configured-state + last four; empty input keeps the stored secret), enable toggle, an audited test-delivery button, and a recent-deliveries list rendering one honest row per attempt (time, result/test kind, attempt number, delivered/retrying/failed, HTTP status or error). Saves go through `PUT /api/v1/log-domains/:domainId/webhook`; SSRF-rejected URLs surface a readable inline error.
+- The domain form gains a model-override field (placeholder states that blank means the global model) persisted via the domain PATCH (`modelOverride`; blank clears back to the global model — endpoint/key/budget stay global). The domain table shows model and webhook state columns. API-mode only, like the rest of domain governance.
+
 The M2 API smoke lives in `e2e/log-analysis.api.spec.ts` and requires `DATABASE_URL` plus `db:migrate`, `db:seed:m0`, `db:seed:m1`, and `db:seed:m2`.
 
 ## Product Feedback Repository
