@@ -978,7 +978,8 @@ test.describe("Knowledge base browser acceptance", () => {
     );
     const runResult = page.getByLabel("运行摘要");
     await expect(runResult).toBeVisible();
-    await expect(page.getByText("不可验证的重载")).toBeVisible();
+    // The status pill also appears in the collapsed history list, so scope to the first (run result header).
+    await expect(page.getByText("不可验证的重载").first()).toBeVisible();
 
     // Distil the terminal run into a knowledge draft and hand off to /knowledge.
     const distilButton = page.getByRole("button", { name: "沉淀为知识" });
