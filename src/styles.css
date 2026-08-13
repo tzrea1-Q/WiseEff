@@ -7695,46 +7695,6 @@ td small {
   pointer-events: none;
 }
 
-/* Global notification toast: reuses the logs toast visuals but must sit above
-   every overlay (dialogs, Xiaoze popup) so runtime feedback stays visible. */
-.app-toast {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  max-width: min(420px, calc(100vw - 56px));
-  z-index: var(--z-toast);
-}
-
-.app-toast__message {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.app-toast__close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--app-muted);
-  cursor: pointer;
-}
-
-.app-toast__close:hover {
-  background: var(--surface-low);
-  color: var(--text);
-}
-
-.app-toast__close:focus-visible {
-  outline: 2px solid var(--app-primary);
-  outline-offset: 1px;
-}
-
 .toast {
   pointer-events: auto;
   display: flex;
@@ -7798,6 +7758,32 @@ td small {
 
 .toast__action:active {
   color: var(--accent-pressed);
+}
+
+.toast__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  margin-left: var(--space-1);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.toast__close:hover {
+  background: var(--surface-sunken, var(--surface-low));
+  color: var(--text);
+}
+
+.toast__close:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
 }
 
 @keyframes toast-enter {
