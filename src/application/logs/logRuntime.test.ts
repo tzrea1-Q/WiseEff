@@ -226,11 +226,10 @@ describe("createLogRuntimeActions", () => {
     });
     const actions = createLogRuntimeActions({ mode: "api", repository, dispatch, getState: () => initialState });
 
-    // The runtime now surfaces the failure's own message instead of the generic fallback.
-    await expect(actions.upload({ file: createFile() })).rejects.toThrow("upload unavailable");
+    await expect(actions.upload({ file: createFile() })).rejects.toThrow(logRuntimeFailureNotification);
 
     expect(dispatch).toHaveBeenCalledTimes(1);
-    expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: "upload unavailable" });
+    expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: logRuntimeFailureNotification });
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "UPSERT_LOG_RECORD" }));
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_LOG_RUNTIME" }));
   });
@@ -242,11 +241,11 @@ describe("createLogRuntimeActions", () => {
     });
     const actions = createLogRuntimeActions({ mode: "api", repository, dispatch, getState: () => initialState });
 
-    await expect(actions.archive(apiLog.id)).rejects.toThrow("refresh unavailable");
+    await expect(actions.archive(apiLog.id)).rejects.toThrow(logRuntimeFailureNotification);
 
     expect(repository.archiveLog).toHaveBeenCalledWith(apiLog.id);
     expect(dispatch).toHaveBeenCalledTimes(1);
-    expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: "refresh unavailable" });
+    expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: logRuntimeFailureNotification });
   });
 
   it("does not treat alreadyNotified false as a handled runtime failure", async () => {
@@ -256,9 +255,9 @@ describe("createLogRuntimeActions", () => {
     });
     const actions = createLogRuntimeActions({ mode: "api", repository, dispatch, getState: () => initialState });
 
-    await expect(actions.upload({ file: createFile() })).rejects.toThrow("upload unavailable");
+    await expect(actions.upload({ file: createFile() })).rejects.toThrow(logRuntimeFailureNotification);
 
-    expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: "upload unavailable" });
+    expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: logRuntimeFailureNotification });
   });
 
   it("uses default active-log refresh after unarchive instead of including archived logs", async () => {
@@ -499,8 +498,8 @@ describe("createLogRuntimeActions", () => {
     });
     const actions = createLogRuntimeActions({ mode: "api", repository, dispatch, getState: () => initialState });
 
-    await expect(actions.createLogDomain({ name: "dup" })).rejects.toThrow("conflict");
-    expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: "conflict" });
+    await expect(actions.createLogDomain({ name: "dup" })).rejects.toThrow(logRuntimeFailureNotification);
+    expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: logRuntimeFailureNotification });
   });
 
   it("lists and replaces domain knowledge links through the repository in api mode", async () => {

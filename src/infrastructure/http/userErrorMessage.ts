@@ -55,7 +55,9 @@ export function toUserErrorMessage(error: unknown, fallback = "操作失败，�
   if (error instanceof TypeError && /fetch|network/i.test(error.message)) {
     return "无法连接服务器，请检查网络或稍后重试。";
   }
-  if (error instanceof Error && error.message) {
+  // Plain errors: only Chinese messages are user-facing copy (runtimes wrap
+  // localized blocker text in Error); ASCII technical prose stays internal.
+  if (error instanceof Error && /[\u4e00-\u9fff]/.test(error.message)) {
     return error.message;
   }
   return fallback;

@@ -47,8 +47,9 @@ describe("toUserErrorMessage", () => {
     expect(toUserErrorMessage(new TypeError("Failed to fetch"))).toBe("无法连接服务器，请检查网络或稍后重试。");
   });
 
-  it("falls back to the error message, then the provided fallback", () => {
+  it("passes through Chinese error messages but shields ASCII technical prose", () => {
     expect(toUserErrorMessage(new Error("本地错误"))).toBe("本地错误");
+    expect(toUserErrorMessage(new Error("boom"))).toBe("操作失败，请稍后重试。");
     expect(toUserErrorMessage(null, "自定义兜底")).toBe("自定义兜底");
   });
 });
