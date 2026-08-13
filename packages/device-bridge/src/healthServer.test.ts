@@ -288,6 +288,71 @@ describe("healthServer", () => {
     await health.close();
   });
 
+  it("redacts identifying fields from health reads for untrusted browser origins (TD-108)", async () => {
+    const health = await startHealthServer({
+      port: 0,
+      allowedOrigin: ["https://paired.wiseeff.example.com"],
+      getState: () => ({
+        paired: true,
+        connected: true,
+        bridgeId: "bridge-123",
+        serverUrl: "https://paired.wiseeff.example.com",
+        tokenExpiresAt: "2026-12-31T00:00:00.000Z",
+        launcherPath: "/Users/operator/.wiseeff/wiseeff-bridge",
+        updatedAt: "2026-06-25T00:00:00.000Z",
+        tools: { adb: { available: true }, hdc: { available: true } }
+      })
+    });
+
+    const response = await requestHealth(health.url, {
+      headers: { Origin: "https://attacker.example.com" }
+    });
+    expect(response.ok).toBe(true);
+    // Presence detection still works cross-origin: liveness is reflected...
+    expect(response.headers["access-control-allow-origin"]).toBe("https://attacker.example.com");
+    const body = JSON.parse(response.body);
+    expect(body).toEqual({
+      ok: true,
+      paired: true,
+      connected: true,
+      updatedAt: "2026-06-25T00:00:00.000Z"
+    });
+    // ...but the fingerprintable fields are withheld from a page the operator merely visited.
+    expect(body.bridgeId).toBeUndefined();
+    expect(body.serverUrl).toBeUndefined();
+    expect(body.launcherPath).toBeUndefined();
+    expect(body.tokenExpiresAt).toBeUndefined();
+    expect(body.tools).toBeUndefined();
+
+    await health.close();
+  });
+
+  it("returns the full health payload to the paired allowlisted origin (TD-108)", async () => {
+    const health = await startHealthServer({
+      port: 0,
+      allowedOrigin: ["https://paired.wiseeff.example.com"],
+      getState: () => ({
+        paired: true,
+        connected: true,
+        bridgeId: "bridge-123",
+        serverUrl: "https://paired.wiseeff.example.com",
+        launcherPath: "/Users/operator/.wiseeff/wiseeff-bridge",
+        updatedAt: "2026-06-25T00:00:00.000Z"
+      })
+    });
+
+    const response = await requestHealth(health.url, {
+      headers: { Origin: "https://paired.wiseeff.example.com" }
+    });
+    expect(response.ok).toBe(true);
+    const body = JSON.parse(response.body);
+    expect(body.bridgeId).toBe("bridge-123");
+    expect(body.serverUrl).toBe("https://paired.wiseeff.example.com");
+    expect(body.launcherPath).toBe("/Users/operator/.wiseeff/wiseeff-bridge");
+
+    await health.close();
+  });
+
   it("accepts POST /connect and returns CORS headers for remote origins", async () => {
     const onConnect = vi.fn(async () => ({ ok: true, accepted: true }));
     const health = await startHealthServer({
