@@ -7695,17 +7695,6 @@ td small {
   pointer-events: none;
 }
 
-/* Xiaoze approval card portals to <body>, so it must outrank the chat popup
-   (--z-xiaoze-popup) or the scrim buries it. Restack both the overlay and the
-   content; !important overrides the Tailwind z-50 utility on these slots. */
-.xiaoze-approval-overlay {
-  z-index: var(--z-xiaoze-approval) !important;
-}
-
-.xiaoze-approval-dialog {
-  z-index: var(--z-xiaoze-approval) !important;
-}
-
 /* Global notification toast: reuses the logs toast visuals but must sit above
    every overlay (dialogs, Xiaoze popup) so runtime feedback stays visible. */
 .app-toast {

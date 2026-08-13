@@ -133,8 +133,7 @@ export function XiaozeApprovalCardContent({
   return (
     <AlertDialog open onOpenChange={() => undefined}>
       <AlertDialogContent
-        className="confirm-dialog xiaoze-approval-dialog"
-        overlayClassName="xiaoze-approval-overlay"
+        className="confirm-dialog"
         data-testid="xiaoze-approval-card"
       >
         <AlertDialogHeader>
