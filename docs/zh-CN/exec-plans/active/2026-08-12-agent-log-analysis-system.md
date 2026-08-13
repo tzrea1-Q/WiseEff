@@ -1,6 +1,6 @@
 # Agent 日志分析系统
 
-> Status: **Active（P1 已合并；P2 已在 `feat/log-analysis-p2-agent-loop-and-golden-set` 分支实现，评审中；P3 未开始）**
+> Status: **Active（P1 已合并；P2 已合并；P3a——P3 中不依赖外部输入的子集：线上反馈监控、标注草稿导出、压缩包解包、TD-088——已在 `feat/log-analysis-p3a-monitoring-annotation-intake` 分支实现，评审中；其余 P3 项因外部依赖挂起，见 P3 状态注记）**
 > Date: 2026-08-12
 > 规划分支：`plan/agent-log-analysis`（本文档、词汇表、ADR-0022）
 > 实施分支：`feat/log-analysis-p1-domains-and-llm`、`feat/log-analysis-p2-agent-loop-and-golden-set`、`feat/log-analysis-p3-eval-maturation`（每阶段一支，均从最新 `main` 拉出）
@@ -54,14 +54,24 @@
 - **未决外部依赖（不阻塞、如实跟踪）**：(1) 与领域专家盘点存量标注数据——无法在仓库内完成，归属产品负责人 + 领域专家；(2) 第二个真实试点域由产品负责人点名；(3) 每域 20–50 条脱敏真实标注案例——落地前质量分只覆盖合成格式案例，基线门禁保持不激活。
 - **P3（评测进阶 + 接入扩展）**：judge 校准与门禁自动化；`log_feedback` 线上看板进 `/log-admin`；线上案例一键转标注草稿；SDK/回调、压缩包解包、按域模型覆盖（仅当真实需求出现）。
 
+**P3a 状态注记（2026-08-13，`feat/log-analysis-p3a-monitoring-annotation-intake`）**——P3 中不依赖外部输入的子集已交付：
+
+- [x] **线上监控（评测建设顺序第三步起步）**：组织隔离的 `GET /api/v1/logs/feedback-insights`（`logs:view`）按业务域 × `analysisSource` × `promptVersion` 聚合 `log_feedback` 有帮助率（支持 today/7d/30d 时间窗口，归因到日志当前 run 的报告）；`/log-admin` 新增只读「分析质量」DataTable 区，空数据诚实显示「暂无反馈」。验收 `LOG-FEEDBACK-INSIGHTS-001`。
+- [x] **标注草稿工具（金标准集冷启动入口）**：`LogRecordDrawer`「导出评测案例草稿」把已完成记录组装为 `eval-cases/logs` 的 `case.yaml` 草稿（realLog: true、**deIdentified: false**、rootCauseCategory TODO、证据行号/根因要点/建议动作预填）+ `log.txt`，纯前端双文件下载，弹层展示 README 脱敏清单；刻意不做自动入库/自动提交——必须人工脱敏并把 deIdentified 改为 true。验收 `LOG-EVAL-DRAFT-001`。
+- [x] **压缩包解包（第 4 项的解包部分）**：上传入库前解压单文件 gzip 与单条目 zip（多条目/加密/损坏/超限 → 既有"不支持格式"失败路径 + 明确原因）；解压后 ≤ 100MB 绝对上限且 ≤ 压缩体 200 倍（1MB 下限）；对象存储保持纯文本，证据行号不受影响。验收 `LOG-ARCHIVE-UPLOAD-001`。同阶段关闭 TD-088（`check-operation-evidence.ts --run <dir>` focused 运行一等校验）。
+- **挂起——仍属 P3、如实跟踪、不在 P3a 内**：
+  - judge 校准与门禁自动化：等真实专家标注案例（P2 外部依赖）落地；只用合成案例校准 judge 等于对噪声设门禁。
+  - SDK/结果回调：等产品负责人确认消费方形态。
+  - 按域模型覆盖：仍无真实需求。
+
 ## 安全与隐私
 
 内核只读、按组织隔离、无审批链（ADR-0022），TD-068 不适用（无写路径）。日志内容与知识文档按不可信模型输入对待：工具只读、输出建议性且证据接地。Provider 证据纪律沿用 `docs/runbooks/agent-provider.md` 模式。金标准案例入 git 前必须通过脱敏清单。P1 交付的同一变更内更新 `docs/SECURITY.md`。
 
 ## 验证
 
-每阶段：定向 vitest、`npm run build`、`npm run docs:check`；`npm run logs:eval`（P1 起进 CI）、`npm run logs:eval:quality`（P2 起）；前端可见阶段用 playwright-cli 检查 `/logs` 与 `/log-admin`（1440x900 / 768x1024 / 390x844，snapshot + screenshot + console error）。验收 ID:现有 `LOG-HAPPY-001`、`LOG-REANALYZE-001`;P1 新增 `LOG-DOMAIN-001`、`LOG-DEGRADED-001`;P2 新增 `LOG-DOMAIN-KNOWLEDGE-001`,均在 `e2e/acceptance/log-analysis.acceptance.spec.ts`。
+每阶段：定向 vitest、`npm run build`、`npm run docs:check`；`npm run logs:eval`（P1 起进 CI）、`npm run logs:eval:quality`（P2 起）；前端可见阶段用 playwright-cli 检查 `/logs` 与 `/log-admin`（1440x900 / 768x1024 / 390x844，snapshot + screenshot + console error）。验收 ID:现有 `LOG-HAPPY-001`、`LOG-REANALYZE-001`;P1 新增 `LOG-DOMAIN-001`、`LOG-DEGRADED-001`;P2 新增 `LOG-DOMAIN-KNOWLEDGE-001`;P3a 新增 `LOG-FEEDBACK-INSIGHTS-001`、`LOG-EVAL-DRAFT-001`、`LOG-ARCHIVE-UPLOAD-001`,均在 `e2e/acceptance/log-analysis.acceptance.spec.ts`;focused 运行可用 `npm run acceptance:evidence -- --run <dir>` 做一等证据校验（TD-088）。
 
 ## 文档影响矩阵与更新门禁
 
-见英文版同名计划；中英文配套同步更新。P1 行已勾选完成：domain-model、api-contract + OpenAPI、FRONTEND、SECURITY、environment-variables、runbook（`docs/runbooks/log-analysis-llm.md`）、ARCHITECTURE、product-spec、验收覆盖图与操作矩阵（LOG-DOMAIN-001 / LOG-DEGRADED-001）均已中英同步更新，db-schema 经 `npm run db:schema-doc` 再生成（迁移 `0105_log_domains.sql`）。P2 行已勾选完成：testing-strategy（两层评测）、verification-matrix（`logs:eval` / `logs:eval:quality`）、QUALITY_SCORE 验证门、domain-model（循环内核、知识关联）、api-contract + OpenAPI（knowledge-links 路由）、FRONTEND（关联编辑器）、SECURITY（知识文本按不可信提示词输入、published-only）、environment-variables + `.env.example`（`LOG_ANALYSIS_KERNEL`/`MAX_STEPS`/`JUDGE_*`）、runbook（循环参数、quality eval）、ARCHITECTURE、`CONTEXT.md` 词条迁移、覆盖图与操作矩阵（LOG-DOMAIN-KNOWLEDGE-001）均中英同步，db-schema 经 `npm run db:schema-doc` 再生成（迁移 `0107_log_domain_knowledge_links.sql`；`0105_log_domains.sql` 重编号为 `0106` 以修复继承自 main 的前缀撞号），评测报告与 `eval-cases/logs/baseline.json` 已提交。如实例外：真实标注案例落地前，质量分与门禁只覆盖合成案例。
+见英文版同名计划；中英文配套同步更新。P1 行已勾选完成：domain-model、api-contract + OpenAPI、FRONTEND、SECURITY、environment-variables、runbook（`docs/runbooks/log-analysis-llm.md`）、ARCHITECTURE、product-spec、验收覆盖图与操作矩阵（LOG-DOMAIN-001 / LOG-DEGRADED-001）均已中英同步更新，db-schema 经 `npm run db:schema-doc` 再生成（迁移 `0105_log_domains.sql`）。P2 行已勾选完成：testing-strategy（两层评测）、verification-matrix（`logs:eval` / `logs:eval:quality`）、QUALITY_SCORE 验证门、domain-model（循环内核、知识关联）、api-contract + OpenAPI（knowledge-links 路由）、FRONTEND（关联编辑器）、SECURITY（知识文本按不可信提示词输入、published-only）、environment-variables + `.env.example`（`LOG_ANALYSIS_KERNEL`/`MAX_STEPS`/`JUDGE_*`）、runbook（循环参数、quality eval）、ARCHITECTURE、`CONTEXT.md` 词条迁移、覆盖图与操作矩阵（LOG-DOMAIN-KNOWLEDGE-001）均中英同步，db-schema 经 `npm run db:schema-doc` 再生成（迁移 `0107_log_domain_knowledge_links.sql`；`0105_log_domains.sql` 重编号为 `0106` 以修复继承自 main 的前缀撞号），评测报告与 `eval-cases/logs/baseline.json` 已提交。如实例外：真实标注案例落地前，质量分与门禁只覆盖合成案例。P3a 行已勾选完成：api-contract 中英 + OpenAPI（`logs.feedbackInsights`、压缩包上传）、FRONTEND 中英（分析质量区、草稿导出、上传文案）、runbook 中英（线上反馈监控 + 压缩包接入）、verification-matrix 中英（`acceptance:evidence -- --run`）、eval-cases README 中英（标注草稿导出指南）、覆盖图与操作矩阵中英（`LOG-FEEDBACK-INSIGHTS-001` / `LOG-EVAL-DRAFT-001` / `LOG-ARCHIVE-UPLOAD-001`）、tech-debt tracker 中英（TD-088 关闭）、本计划 Status 与 P3 注记中英；本子集无迁移（看板是聚合查询），故不需 db-schema 再生成。其余 P3 项（judge 校准、SDK/回调、按域模型覆盖）的文档行随其交付更新。
