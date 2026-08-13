@@ -4,6 +4,7 @@ import type {
   KnowledgeIndexHealth,
   KnowledgeRevision,
   KnowledgeSearchResponse,
+  KnowledgeSearchResult,
   KnowledgeSourceType,
   KnowledgeStatus
 } from "@/domain/knowledge/types";
@@ -74,6 +75,15 @@ export interface KnowledgeRepository {
    * from its stored conclusion/impact text (log result page recommendations).
    */
   relatedToLog(logId: string): Promise<KnowledgeSearchResponse>;
+  /**
+   * Published entries structurally referencing one parameter definition
+   * (definition detail 相关知识; published-only, org-scoped server-side).
+   */
+  relatedToSpec(specId: string): Promise<{ items: KnowledgeSearchResult[] }>;
+  /** Add a structural definition reference (idempotent; entry-edit gated). */
+  addParameterReference(entryId: string, specId: string): Promise<KnowledgeEntry>;
+  /** Remove a structural definition reference (entry-edit gated). */
+  removeParameterReference(entryId: string, specId: string): Promise<KnowledgeEntry>;
   getFileObjectUrl(entryId: string): Promise<string>;
   /** Index health governance surface (knowledge:manage). */
   getIndexHealth(): Promise<KnowledgeIndexHealth>;

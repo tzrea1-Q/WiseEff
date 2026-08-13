@@ -17,6 +17,24 @@ export type KnowledgeFileMeta = {
   createdAt: string;
 };
 
+export type ParameterSpecReferenceLifecycle = "draft" | "active" | "deprecated";
+
+/**
+ * Structural reference to a parameter definition. Bound to the stable
+ * `parameter_specs.id` surrogate — identity corrections never break it, and a
+ * deprecated definition keeps the reference with an honest 已废弃 badge.
+ */
+export type KnowledgeParameterReference = {
+  specId: string;
+  propertyKey: string;
+  displayName: string | null;
+  /** Attribution-subject display name (the module humans know the definition by). */
+  driverModule: string | null;
+  lifecycle: ParameterSpecReferenceLifecycle;
+  createdByUserId: string;
+  createdAt: string;
+};
+
 export type KnowledgeEntry = {
   id: string;
   title: string;
@@ -36,6 +54,8 @@ export type KnowledgeEntry = {
   archivedAt: string | null;
   contentMarkdown: string | null;
   file: KnowledgeFileMeta | null;
+  /** Structural parameter-definition references. */
+  parameterReferences: KnowledgeParameterReference[];
 };
 
 export type KnowledgeRevision = {
@@ -129,4 +149,11 @@ export const knowledgeIndexStateLabels: Record<KnowledgeIndexState, string> = {
 export const knowledgeRetrievalModeLabels: Record<KnowledgeRetrievalMode, string> = {
   semantic_fts: "语义 + 全文混合检索",
   fts_only: "仅全文检索(FTS-only)"
+};
+
+/** Mirrors the parameter admin's lifecycle vocabulary (已废弃 stays honest). */
+export const parameterSpecReferenceLifecycleLabels: Record<ParameterSpecReferenceLifecycle, string> = {
+  draft: "草稿",
+  active: "已启用",
+  deprecated: "已废弃"
 };

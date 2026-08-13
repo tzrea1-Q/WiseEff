@@ -22,7 +22,8 @@ const baseEntryDto: KnowledgeEntryDto = {
   publishedAt: null,
   archivedAt: null,
   contentMarkdown: "正文",
-  file: null
+  file: null,
+  parameterReferences: []
 };
 
 function jsonResponse(body: unknown, status = 200) {
@@ -212,6 +213,67 @@ describe("createHttpKnowledgeRepository", () => {
     expect(response.items[0].entryId).toBe("entry-1");
     expect(response.retrieval).toEqual({ mode: "fts_only", vectorAvailable: false, embeddingConfigured: false });
     expect(String(fetchMock.mock.calls[0][0])).toBe("http://127.0.0.1:8787/api/v1/knowledge/related-to-log?logId=log-1");
+  });
+
+  it("loads published entries referencing a definition via related-to-spec", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        items: [
+          {
+            entryId: "entry-1",
+            title: "快充温控经验",
+            contentForm: "markdown",
+            tags: ["快充"],
+            excerpt: "e",
+            updatedAt: "2026-08-12T08:00:00.000Z",
+            revisionId: "rev-1"
+          }
+        ]
+      })
+    );
+    const repository = createRepository(fetchMock);
+
+    const response = await repository.relatedToSpec("pspec:abc");
+    expect(response.items.map((item) => item.entryId)).toEqual(["entry-1"]);
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      "http://127.0.0.1:8787/api/v1/knowledge/related-to-spec?specId=pspec%3Aabc"
+    );
+  });
+
+  it("adds and removes parameter references with the encoded spec id and maps the reference list", async () => {
+    const referencedDto: KnowledgeEntryDto = {
+      ...baseEntryDto,
+      parameterReferences: [
+        {
+          specId: "pspec:abc",
+          propertyKey: "charge_pump_ratio",
+          displayName: "充电泵比率",
+          driverModule: "SC8562",
+          lifecycle: "deprecated",
+          createdByUserId: "user-1",
+          createdAt: "2026-08-13T00:00:00.000Z"
+        }
+      ]
+    };
+    const fetchMock = vi.fn<typeof fetch>(async (_input, init) =>
+      jsonResponse({ item: init?.method === "DELETE" ? baseEntryDto : referencedDto })
+    );
+    const repository = createRepository(fetchMock);
+
+    const added = await repository.addParameterReference("entry-1", "pspec:abc");
+    expect(added.parameterReferences[0]).toMatchObject({
+      specId: "pspec:abc",
+      lifecycle: "deprecated",
+      driverModule: "SC8562"
+    });
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      "http://127.0.0.1:8787/api/v1/knowledge/entries/entry-1/parameter-references/pspec%3Aabc"
+    );
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("PUT");
+
+    const removed = await repository.removeParameterReference("entry-1", "pspec:abc");
+    expect(removed.parameterReferences).toHaveLength(0);
+    expect(fetchMock.mock.calls[1][1]?.method).toBe("DELETE");
   });
 
   it("reads index health and posts retry/rebuild actions", async () => {

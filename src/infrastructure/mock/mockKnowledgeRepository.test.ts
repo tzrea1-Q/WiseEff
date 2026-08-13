@@ -206,4 +206,62 @@ describe("createMockKnowledgeRepository", () => {
     await repository.hardDelete(entry.id);
     expect(await repository.get(entry.id)).toBeNull();
   });
+
+  describe("parameter references", () => {
+    it("seeds fixture references including a deprecated definition with an honest lifecycle", async () => {
+      const repository = createMockKnowledgeRepository();
+      const entry = await repository.get("mock-kb-1");
+      expect(entry?.parameterReferences.map((reference) => reference.specId)).toEqual([
+        "spec-sc8562-gpio-int",
+        "spec-deprecated-legacy"
+      ]);
+      expect(entry?.parameterReferences[1]).toMatchObject({ lifecycle: "deprecated", propertyKey: "legacy_status" });
+    });
+
+    it("lists published referencing entries only for relatedToSpec (drafts never appear)", async () => {
+      const repository = createMockKnowledgeRepository();
+
+      // mock-kb-1 (published) and mock-kb-2 (draft) both reference the SC8562 spec.
+      const related = await repository.relatedToSpec("spec-sc8562-gpio-int");
+      expect(related.items.map((item) => item.entryId)).toEqual(["mock-kb-1"]);
+
+      // Publishing the draft makes it appear; archiving removes it again.
+      await repository.publish("mock-kb-2");
+      expect((await repository.relatedToSpec("spec-sc8562-gpio-int")).items.map((item) => item.entryId)).toContain(
+        "mock-kb-2"
+      );
+      await repository.archive("mock-kb-2");
+      expect((await repository.relatedToSpec("spec-sc8562-gpio-int")).items.map((item) => item.entryId)).not.toContain(
+        "mock-kb-2"
+      );
+    });
+
+    it("adds references idempotently and removes them", async () => {
+      const repository = createMockKnowledgeRepository();
+      const entry = await repository.createMarkdown({ title: "引用条目", tags: [], contentMarkdown: "x" });
+
+      const withReference = await repository.addParameterReference(entry.id, "spec-mt5788-gpio-int");
+      expect(withReference.parameterReferences.map((reference) => reference.specId)).toEqual(["spec-mt5788-gpio-int"]);
+
+      const again = await repository.addParameterReference(entry.id, "spec-mt5788-gpio-int");
+      expect(again.parameterReferences).toHaveLength(1);
+
+      const removed = await repository.removeParameterReference(entry.id, "spec-mt5788-gpio-int");
+      expect(removed.parameterReferences).toHaveLength(0);
+      await expect(repository.removeParameterReference(entry.id, "spec-mt5788-gpio-int")).rejects.toThrow(/not found/);
+    });
+
+    it("refuses reference edits on archived entries and on other users' entries without manage", async () => {
+      const owner = createMockKnowledgeRepository();
+      const entry = await owner.createMarkdown({ title: "归档引用", tags: [], contentMarkdown: "x" });
+      await owner.publish(entry.id);
+      await owner.archive(entry.id);
+      await expect(owner.addParameterReference(entry.id, "spec-mt5788-gpio-int")).rejects.toThrow(/Archived/);
+
+      const stranger = createMockKnowledgeRepository({ userId: "someone-else", canManage: false });
+      await expect(stranger.addParameterReference("mock-kb-1", "spec-mt5788-gpio-int")).rejects.toThrow(
+        /knowledge:manage/
+      );
+    });
+  });
 });

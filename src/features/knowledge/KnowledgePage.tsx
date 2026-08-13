@@ -20,7 +20,11 @@ import { DataTable, PageInsightBar, type Column } from "@/components/admin";
 import { Button } from "@/components/ui/button";
 import { KnowledgeExtractionBadge, KnowledgeStatusBadge, KnowledgeTagList } from "./badges";
 import { KnowledgeEntryDetailDialog } from "./KnowledgeEntryDetailDialog";
-import { KnowledgeEntryEditorDialog, type KnowledgeEditorSubmit } from "./KnowledgeEntryEditorDialog";
+import {
+  KnowledgeEntryEditorDialog,
+  type KnowledgeEditorSubmit,
+  type KnowledgeSpecPickerOption
+} from "./KnowledgeEntryEditorDialog";
 import { KnowledgeFileUploadDialog, type KnowledgeFileUploadSubmit } from "./KnowledgeFileUploadDialog";
 import { KnowledgeRevisionsDialog } from "./KnowledgeRevisionsDialog";
 
@@ -31,6 +35,13 @@ export type KnowledgePageProps = {
   askXiaozeEnabled?: boolean;
   /** Deep-linked entry id (e.g. from a Xiaoze citation /knowledge?entryId=…). */
   initialEntryId?: string | null;
+  /**
+   * Definition search for the reference picker (parameter-specs read API);
+   * absent (no `parameter:view` / no topology adapter) hides the picker.
+   */
+  searchParameterSpecs?: (q: string) => Promise<KnowledgeSpecPickerOption[]>;
+  /** Deep link into the definition surface (/parameter-admin?spec=…). */
+  onOpenParameterSpec?: (specId: string) => void;
 };
 
 function formatDateTime(value: string) {
@@ -42,7 +53,14 @@ function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
-export function KnowledgePage({ repository, capability, askXiaozeEnabled = false, initialEntryId = null }: KnowledgePageProps) {
+export function KnowledgePage({
+  repository,
+  capability,
+  askXiaozeEnabled = false,
+  initialEntryId = null,
+  searchParameterSpecs,
+  onOpenParameterSpec
+}: KnowledgePageProps) {
   const [rows, setRows] = useState<KnowledgeEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
@@ -270,6 +288,22 @@ export function KnowledgePage({ repository, capability, askXiaozeEnabled = false
     anchor.remove();
   };
 
+  // Reference edits are immediate audited calls; keep the background rows in
+  // sync but never swap the editor's `entry` prop (that would reset the form).
+  const applyReferenceUpdate = (updated: KnowledgeEntry) => {
+    setRows((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    return updated.parameterReferences;
+  };
+  const parameterReferencePicker = searchParameterSpecs
+    ? {
+        search: searchParameterSpecs,
+        onAdd: async (entryId: string, specId: string) =>
+          applyReferenceUpdate(await repository.addParameterReference(entryId, specId)),
+        onRemove: async (entryId: string, specId: string) =>
+          applyReferenceUpdate(await repository.removeParameterReference(entryId, specId))
+      }
+    : undefined;
+
   return (
     <div className="knowledge-page flex flex-col gap-5 p-6">
       <PageInsightBar
@@ -444,6 +478,7 @@ export function KnowledgePage({ repository, capability, askXiaozeEnabled = false
           setRows((current) => current.map((item) => (item.id === updated.id ? updated : item)));
         }}
         onDownloadFile={handleDownload}
+        onOpenParameterSpec={onOpenParameterSpec}
         onClose={() => setSelectedId(null)}
       />
 
@@ -451,6 +486,7 @@ export function KnowledgePage({ repository, capability, askXiaozeEnabled = false
         open={editorOpen}
         entry={editorEntry}
         onSubmit={handleEditorSubmit}
+        parameterReferencePicker={parameterReferencePicker}
         onClose={() => {
           setEditorOpen(false);
           setEditorEntry(null);

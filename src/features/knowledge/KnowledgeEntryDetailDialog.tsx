@@ -9,6 +9,7 @@ import { knowledgeSourceTypeLabels } from "@/domain/knowledge/types";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { Button } from "@/components/ui/button";
 import { KnowledgeExtractionBadge, KnowledgeStatusBadge, KnowledgeTagList } from "./badges";
+import { KnowledgeParameterReferenceChips } from "./KnowledgeParameterReferenceChips";
 
 export type KnowledgeEntryDetailDialogProps = {
   open: boolean;
@@ -21,6 +22,8 @@ export type KnowledgeEntryDetailDialogProps = {
   onArchive: (entry: KnowledgeEntry) => Promise<void>;
   onRestore: (entry: KnowledgeEntry) => Promise<void>;
   onDownloadFile: (entry: KnowledgeEntry) => Promise<void>;
+  /** Deep link into the definition surface (/parameter-admin?spec=…). */
+  onOpenParameterSpec?: (specId: string) => void;
   onClose: () => void;
 };
 
@@ -52,6 +55,7 @@ export function KnowledgeEntryDetailDialog({
   onArchive,
   onRestore,
   onDownloadFile,
+  onOpenParameterSpec,
   onClose
 }: KnowledgeEntryDetailDialogProps) {
   const [pendingAction, setPendingAction] = useState<"publish" | "archive" | "restore" | "download" | null>(null);
@@ -102,6 +106,14 @@ export function KnowledgeEntryDetailDialog({
               <div className="mt-2">
                 <KnowledgeTagList tags={entry.tags} />
               </div>
+              {entry.parameterReferences.length > 0 ? (
+                <div className="mt-2" aria-label="关联参数定义" data-testid="knowledge-parameter-references">
+                  <KnowledgeParameterReferenceChips
+                    references={entry.parameterReferences}
+                    onOpenSpec={onOpenParameterSpec}
+                  />
+                </div>
+              ) : null}
             </div>
           </div>
 

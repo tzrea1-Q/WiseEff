@@ -11,6 +11,7 @@ import type {
   KnowledgeEntry,
   KnowledgeExtractionStatus,
   KnowledgeIndexHealth,
+  KnowledgeParameterReference,
   KnowledgeRetrievalInfo,
   KnowledgeRevision,
   KnowledgeSearchResult,
@@ -43,6 +44,16 @@ export type KnowledgeFileDto = {
   updatedAt: string;
 };
 
+export type KnowledgeParameterReferenceDto = {
+  specId: string;
+  propertyKey: string;
+  displayName: string | null;
+  driverModule: string | null;
+  lifecycle: KnowledgeParameterReference["lifecycle"];
+  createdByUserId: string;
+  createdAt: string;
+};
+
 export type KnowledgeEntryDto = {
   id: string;
   organizationId: string;
@@ -62,6 +73,7 @@ export type KnowledgeEntryDto = {
   archivedAt: string | null;
   contentMarkdown: string | null;
   file: KnowledgeFileDto | null;
+  parameterReferences: KnowledgeParameterReferenceDto[];
 };
 
 export type KnowledgeRevisionDto = {
@@ -117,7 +129,16 @@ function entryFromDto(dto: KnowledgeEntryDto): KnowledgeEntry {
           extractionError: dto.file.extractionError,
           createdAt: dto.file.createdAt
         }
-      : null
+      : null,
+    parameterReferences: (dto.parameterReferences ?? []).map((reference) => ({
+      specId: reference.specId,
+      propertyKey: reference.propertyKey,
+      displayName: reference.displayName,
+      driverModule: reference.driverModule,
+      lifecycle: reference.lifecycle,
+      createdByUserId: reference.createdByUserId,
+      createdAt: reference.createdAt
+    }))
   };
 }
 
@@ -312,6 +333,29 @@ export function createHttpKnowledgeRepository(options: HttpKnowledgeRepositoryOp
         `/api/v1/knowledge/related-to-log?${params.toString()}`
       );
       return { items: response.items, retrieval: response.retrieval };
+    },
+
+    async relatedToSpec(specId) {
+      const params = new URLSearchParams({ specId });
+      const response = await apiClient.get<ListEnvelope<KnowledgeSearchResult>>(
+        `/api/v1/knowledge/related-to-spec?${params.toString()}`
+      );
+      return { items: response.items };
+    },
+
+    async addParameterReference(entryId, specId) {
+      const response = await apiClient.put<ItemEnvelope<KnowledgeEntryDto>>(
+        `${entryPath(entryId)}/parameter-references/${encodeURIComponent(specId)}`,
+        {}
+      );
+      return entryFromDto(response.item);
+    },
+
+    async removeParameterReference(entryId, specId) {
+      const response = await apiClient.delete<ItemEnvelope<KnowledgeEntryDto>>(
+        `${entryPath(entryId)}/parameter-references/${encodeURIComponent(specId)}`
+      );
+      return entryFromDto(response.item);
     },
 
     async getFileObjectUrl(entryId) {
