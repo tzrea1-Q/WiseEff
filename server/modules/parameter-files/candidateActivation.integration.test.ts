@@ -16,6 +16,7 @@ import {
 } from "./candidateService";
 import { addConfigSetFile, createConfigSet } from "./configSetService";
 import { getFileConfigSetMembership } from "./configSetRepository";
+import { getParameterFileCandidateById } from "./candidateRepository";
 import { getProjectParameterFileById, insertFileVersion, setCurrentVersion } from "./repository";
 import { uploadProjectParameterFile } from "./service";
 
@@ -242,6 +243,22 @@ describe.skipIf(!databaseAvailable)("parameter file candidate activation", () =>
     expect(caught?.status).toBe(409);
     expect(caught?.details).toMatchObject({ reason: "stale-base" });
     expect((caught?.details as { candidate?: { status?: string } })?.candidate?.status).toBe("stale");
+
+    // The stale transition must survive the aborted activation transaction:
+    // the DB row itself is stale (not just the response payload)...
+    const staleRow = await getParameterFileCandidateById(db!, {
+      organizationId: auth.organization.id,
+      projectId: "project-act-int",
+      candidateId: candidate.id
+    });
+    expect(staleRow?.status).toBe("stale");
+
+    // ...and the promised parameter-file-candidate-stale audit is committed.
+    const staleAudits = await db!.query<{ kind: string }>(
+      `select kind from audit_events where organization_id = $1 and kind = 'parameter-file-candidate-stale'`,
+      [auth.organization.id]
+    );
+    expect(staleAudits.rows).toHaveLength(1);
 
     const file = await getProjectParameterFileById(db!, {
       organizationId: auth.organization.id,
