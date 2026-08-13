@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { createAuditEvent } from "../audit/repository";
+import { asAuditTx, withAuditedWrite, writeAuditEventInTx, writeMilestoneAudit, type AuditSpec } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { DtsValue } from "../dts";
@@ -196,35 +196,44 @@ function rowToCandidate(row: ReloadCandidateRow): {
   };
 }
 
-async function writeReloadAudit(
-  db: Queryable,
-  auth: AuthContext,
-  input: {
-    kind: ReloadAuditKind;
-    action: ReloadAuditAction;
-    projectId: string;
-    runId: string;
-    severity?: "High" | "Medium" | "Low";
-    actorType?: SensitiveWriteActorType;
-    metadata: Record<string, unknown>;
-  },
-  context: DtsReloadServiceContext = {}
-) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    actorUserId: auth.user.id,
-    actorType: input.actorType ?? context.actorType ?? "user",
+type ReloadAuditInput = {
+  kind: ReloadAuditKind;
+  action: ReloadAuditAction;
+  projectId: string;
+  runId: string;
+  severity?: "High" | "Medium" | "Low";
+  actorType?: SensitiveWriteActorType;
+  metadata: Record<string, unknown>;
+};
+
+function reloadAuditSpec(input: ReloadAuditInput, context: DtsReloadServiceContext): AuditSpec {
+  return {
     app: "dts-reload",
     kind: input.kind,
     action: input.action,
     severity: input.severity ?? "Medium",
+    projectId: input.projectId,
     targetType: "dts-reload-run",
     targetId: input.runId,
-    metadata: input.metadata,
-    traceId: context.requestId ?? randomUUID()
-  });
+    actorType: input.actorType ?? context.actorType ?? "user",
+    metadata: input.metadata
+  };
+}
+
+/**
+ * Milestone evidence for the reload state machine (started / deploy-started / a
+ * refused deploy's terminal): recorded immediately on the pool handle so it exists
+ * even if a later step fails or throws. Step RESULTS (blocked / validated / the
+ * deploy terminal) instead commit with their state write inside that step's
+ * transaction — see persistRunOutcome and the deploy terminal persist.
+ */
+async function writeReloadMilestoneAudit(
+  db: Database,
+  auth: AuthContext,
+  input: ReloadAuditInput,
+  context: DtsReloadServiceContext = {}
+) {
+  await writeMilestoneAudit(db, auth, { requestId: context.requestId ?? randomUUID() }, reloadAuditSpec(input, context));
 }
 
 function auditKindsForPurpose(purpose: ReloadRunPurpose): {
@@ -705,7 +714,7 @@ export async function startReloadRun(
     projectId: input.projectId
   });
 
-  await writeReloadAudit(
+  await writeReloadMilestoneAudit(
     db,
     auth,
     {
@@ -761,12 +770,8 @@ export async function startReloadRun(
       diagnostics: [{ stage: "compile-base", code: "base-compile-failed", message }],
       toolVersions: { dtc: null, fdtoverlay: null },
       overlaySource,
-      overlayBlob: null
-    });
-    await writeReloadAudit(
-      db,
-      auth,
-      {
+      overlayBlob: null,
+      audit: {
         kind: audits.blocked,
         action: "blocked",
         projectId: input.projectId,
@@ -780,9 +785,8 @@ export async function startReloadRun(
           configRevisionId,
           ...(sensitiveSummary.length > 0 ? { sensitiveMatches: sensitiveSummary } : {})
         }
-      },
-      context
-    );
+      }
+    }, context);
     return persisted;
   }
 
@@ -813,13 +817,8 @@ export async function startReloadRun(
     diagnostics: preflight.diagnostics,
     toolVersions: preflight.toolVersions,
     overlaySource,
-    overlayBlob: preflight.overlayBlob ?? null
-  });
-
-  await writeReloadAudit(
-    db,
-    auth,
-    {
+    overlayBlob: preflight.overlayBlob ?? null,
+    audit: {
       kind: status === "validated" ? audits.validated : audits.blocked,
       action: status === "validated" ? "validated" : "blocked",
       projectId: input.projectId,
@@ -832,13 +831,10 @@ export async function startReloadRun(
         fragmentCount: overlayTargets.length,
         failureCode,
         configRevisionId,
-        overlaySourceSha256: persisted.overlaySourceSha256,
-        artifactSha256: persisted.artifact?.sha256 ?? null,
         ...(sensitiveSummary.length > 0 ? { sensitiveMatches: sensitiveSummary } : {})
       }
-    },
-    context
-  );
+    }
+  }, context);
 
   return persisted;
 }
@@ -981,7 +977,10 @@ async function persistRunOutcome(
     toolVersions: ReloadRunDto["toolVersions"];
     overlaySource: string;
     overlayBlob: Buffer | null;
-  }
+    /** Outcome audit (blocked/validated): commits with the run row (ADR-0027). */
+    audit: ReloadAuditInput;
+  },
+  context: DtsReloadServiceContext = {}
 ): Promise<ReloadRunDto> {
   const sourceBytes = Buffer.from(input.overlaySource, "utf8");
   const storedSource = await objectStore.put({
@@ -1007,6 +1006,8 @@ async function persistRunOutcome(
   }
 
   const completedAt = new Date().toISOString();
+  // Run row, targets, and the outcome audit commit together (ADR-0027); the object
+  // store uploads above deliberately stay outside (orphaned blobs are swept).
   const row = await db.transaction(async (tx) => {
     const run = await insertReloadRun(tx, {
       id: input.runId,
@@ -1042,6 +1043,21 @@ async function persistRunOutcome(
         sortOrder: index
       });
     }
+
+    const auditSpec = reloadAuditSpec(input.audit, context);
+    await writeAuditEventInTx(
+      asAuditTx(tx),
+      auth,
+      { requestId: context.requestId ?? randomUUID() },
+      {
+        ...auditSpec,
+        metadata: {
+          ...auditSpec.metadata,
+          overlaySourceSha256: storedSource.checksumSha256 || sha256Hex(sourceBytes),
+          artifactSha256: artifactSha
+        }
+      }
+    );
 
     return run;
   });
@@ -1324,7 +1340,7 @@ export async function deployReloadRun(
 
   // Emitted only after every cheap refusal above has passed, so a rejected deploy never leaves a
   // dangling "deploy-started" with no terminal counterpart.
-  await writeReloadAudit(
+  await writeReloadMilestoneAudit(
     db,
     auth,
     {
@@ -1389,29 +1405,69 @@ export async function deployReloadRun(
           }
           return toReloadRunDto(claimed, run.targets, run.overlaySource);
         }
-        const updated = await updateReloadRunDeployState(db, payload);
-        const dto = toReloadRunDto(updated, run.targets, run.overlaySource);
-        // Terminal persist (has completedAt) → mutate residue while the lease is still held.
-        if (update.completedAt !== null && update.deviceId) {
-          residueAction = await applyResidueForDeployTerminal(db, {
-            organizationId: auth.organization.id,
-            deviceId: update.deviceId,
-            projectId: run.projectId,
-            runId: run.id,
-            purpose: run.purpose,
-            status: update.status,
-            failureCode: update.failureCode,
-            targets: run.targets,
-            restoresSourceRunId: run.restoresSourceRunId
-          });
+        if (update.completedAt === null) {
+          const updated = await updateReloadRunDeployState(db, payload);
+          return toReloadRunDto(updated, run.targets, run.overlaySource);
         }
-        return dto;
+
+        // Terminal persist (has completedAt): deploy state, residue bookkeeping (while
+        // the device lease is still held), and the terminal audit commit together
+        // (ADR-0027). The deploy-started milestone above deliberately stays outside.
+        const terminalAudit =
+          update.status === "verified"
+            ? { kind: audits.verified, action: "verified" as const }
+            : update.status === "contradicted"
+              ? { kind: audits.contradicted, action: "contradicted" as const }
+              : update.status === "unverifiable"
+                ? { kind: audits.unverifiable, action: "unverifiable" as const }
+                : { kind: audits.failed, action: "failed" as const };
+        return withAuditedWrite(db, auth, { requestId: context.requestId ?? randomUUID() }, async (tx) => {
+          const updated = await updateReloadRunDeployState(tx, payload);
+          if (update.deviceId) {
+            residueAction = await applyResidueForDeployTerminal(tx, {
+              organizationId: auth.organization.id,
+              deviceId: update.deviceId,
+              projectId: run.projectId,
+              runId: run.id,
+              purpose: run.purpose,
+              status: update.status,
+              failureCode: update.failureCode,
+              targets: run.targets,
+              restoresSourceRunId: run.restoresSourceRunId
+            });
+          }
+          const dto = toReloadRunDto(updated, run.targets, run.overlaySource);
+          return {
+            result: dto,
+            audit: reloadAuditSpec(
+              {
+                kind: terminalAudit.kind,
+                action: terminalAudit.action,
+                projectId: run.projectId,
+                runId: run.id,
+                severity: "High",
+                metadata: {
+                  phase: "deploy",
+                  purpose: run.purpose,
+                  status: update.status,
+                  failureCode: update.failureCode,
+                  deviceId: update.deviceId,
+                  bridgeId: update.bridgeId,
+                  integrityCheck: update.integrityCheck,
+                  reloadSnapshot: reloadSnapshotAuditSummary(update.reloadSnapshot),
+                  residueAction
+                }
+              },
+              context
+            )
+          };
+        });
       }
     });
   } catch (error) {
     // A throw after the deploy-started audit (bridge offline / not-found / upgrade required /
     // claim conflict) still gets a terminal audit so the started event is never left dangling.
-    await writeReloadAudit(
+    await writeReloadMilestoneAudit(
       db,
       auth,
       {
@@ -1435,39 +1491,6 @@ export async function deployReloadRun(
     );
     throw error;
   }
-
-  const terminalAudit =
-    result.status === "verified"
-      ? { kind: audits.verified, action: "verified" as const }
-      : result.status === "contradicted"
-        ? { kind: audits.contradicted, action: "contradicted" as const }
-        : result.status === "unverifiable"
-          ? { kind: audits.unverifiable, action: "unverifiable" as const }
-          : { kind: audits.failed, action: "failed" as const };
-
-  await writeReloadAudit(
-    db,
-    auth,
-    {
-      kind: terminalAudit.kind,
-      action: terminalAudit.action,
-      projectId: run.projectId,
-      runId: run.id,
-      severity: "High",
-      metadata: {
-        phase: "deploy",
-        purpose: result.purpose,
-        status: result.status,
-        failureCode: result.failureCode,
-        deviceId: result.deviceId,
-        bridgeId: result.bridgeId,
-        integrityCheck: result.integrityCheck,
-        reloadSnapshot: reloadSnapshotAuditSummary(result.reloadSnapshot),
-        residueAction
-      }
-    },
-    context
-  );
 
   return result;
 }

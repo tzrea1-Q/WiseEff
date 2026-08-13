@@ -21,7 +21,7 @@
 
 ## Agent skills
 
-Agent 编排使用 **Matt Pocock skills**（如 `implement`、`tdd`、`to-spec`、`triage`）与 `docs/agents/*`。不要新建/更新 `docs/superpowers/**`，也不要调用 `superpowers:*`。进行中实现跟踪仍以 `docs/exec-plans/active/` 为准。完整说明见英文 [`AGENTS.md`](../../../AGENTS.md) § Agent skills 与 [`docs/agents/`](../../../docs/agents/)。
+Agent 编排使用 **Matt Pocock skills**（如 `implement`、`tdd`、`to-spec`、`triage`）与 `docs/agents/*`。不要新建/更新 `docs/superpowers/**`，也不要调用 `superpowers:*`。进行中实现跟踪仍以 `docs/exec-plans/active/` 为准。完整说明见英文 [`AGENTS.md`](../../../AGENTS.md) § Agent skills 与 [`docs/agents/`](../../../docs/agents/)。并行多会话（多个 worktree 持续合入 `main`）遵循 `docs/agents/fleet-coordination.md`：main 红灯先认领再修、ADR/迁移/TD 编号在合入时重查、每次 rebase 后跑类型检查与受影响测试。
 
 ## 同类中文文档
 

@@ -199,6 +199,44 @@ describe("assertSensitiveNodeWriteAllowed", () => {
     );
   });
 
+  it("writes the deny audit on the refusalDb pool handle, not the caller's transaction", async () => {
+    mockedCreateAuditEvent.mockClear();
+    const tx = fakeDb([rule()]);
+    const refusalQueries: string[] = [];
+    const refusalDb = {
+      query: vi.fn(async (text: string) => {
+        refusalQueries.push(text);
+        return { rows: [], rowCount: 1 };
+      }),
+      transaction: vi.fn()
+    } as never;
+
+    await expect(
+      assertSensitiveNodeWriteAllowed(
+        tx,
+        auth({ permissions: ["parameter:view", "parameter:edit", "parameter:edit-critical"] }),
+        {
+          organizationId: "org-1",
+          projectId: "project-1",
+          nodePath: "safety/cutover/status",
+          actorType: "agent",
+          requestId: "req-refusal"
+        },
+        { refusalDb }
+      )
+    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+
+    // The audit went through writeRefusalAudit with the pool handle: the repository
+    // mock received refusalDb (first arg), never the caller's tx.
+    expect(mockedCreateAuditEvent).toHaveBeenCalledTimes(1);
+    expect(mockedCreateAuditEvent.mock.calls[0][0]).toBe(refusalDb);
+    expect(mockedCreateAuditEvent.mock.calls[0][1]).toMatchObject({
+      kind: "parameter-sensitive-node-denied",
+      action: "deny",
+      traceId: "req-refusal"
+    });
+  });
+
   it("resolves compatible from dts_nodes and blocks writes matching compatible rules", async () => {
     const db: Queryable = {
       query: vi.fn(async (text: string) => {
