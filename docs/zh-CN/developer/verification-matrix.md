@@ -31,6 +31,8 @@
 | `npm run test:server -- server/modules/dts/goldenPowerFixture.test.ts server/modules/parameters/seedM1DtsFiles.test.ts server/modules/parameter-specs/matcher.test.ts --run` | 锁定黄金拓扑计数：**176** 属性 occurrence、**528** 行 `dts_properties` seed | 修改 DTS seed fixture、ingest 或 matcher 覆盖后。 |
 | `npm run test:scripts -- scripts/vendorDtSchemaGenerator.test.ts --run` | 黄金 DTB 真实 `dt-validate`；负例 DTB 按预期失败 | 修改厂商 dt-schema 生成或 linux-binding schema 后。（`test:server` 不包含 `scripts/**`，直接传该路径会静默零执行。） |
 | `npm run test:scripts` | ops/治理脚本套件（`scripts/**`、`ops/**`，Node 环境） | 修改脚本或 ops 自动化后。 |
+| `npm run ui:check` | UI 设计系统棘轮门禁:逐规则统计令牌块之外的裸颜色/裸 `z-index`/裸 `font-size`/手写 `box-shadow`/`ease` 关键字,以及 `window.confirm`、手写 modal-backdrop、固定英文残留清单,计数不得超过 `scripts/ui-standards-baseline.json` | 涉及样式、令牌、弹窗、动效或可见 UI 文案的前端变更后使用;计数下降时在同一变更里运行 `npm run ui:check -- --update-baseline` 下调棘轮。 |
+| `npm run lint` | eslint 9 flat config（`jsx-a11y` + `react-hooks`）作用于 `src/**/*.{ts,tsx}`:零违规规则为 error,存量规则为 warn 且计数记录在 `eslint.config.js` | 任何 `src/` TypeScript/React 变更后使用;error 阻断,warn 是已记录的待清偿存量。 |
 | `npm run bridge:test` | 设备桥工作区套件（`packages/**`，Node 环境） | 修改 device-bridge 或 device-command-core 后。 |
 | `npm run test:server -- server/modules/parameter-topology/migration.test.ts --run` | 可运维 `stage-review` → `finalize` 跨 PostgreSQL 事务（重连 + 注入失败） | 修改迁移 CLI 或 staged-run 持久化后。 |
 | `npm run test:server -- server/modules/parameter-specs/matcherScope.integration.test.ts --run` | Matcher override locator 指纹隔离；审核 `blocker_scope` 门禁 | 修改 matcher override 或审核阻断作用域后。 |

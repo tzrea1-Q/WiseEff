@@ -119,8 +119,8 @@
 
 ### P4 — 让标准长牙的门禁(分支 `feat/ui-quality-gates`)
 
-- [ ] `npm run ui:check` 脚本:对令牌块之外的裸颜色、裸 `z-index`、裸 `font-size`、`window.confirm`、新增 `modal-backdrop` div 直接失败;接入 CI(FA-24)。
-- [ ] ESLint + `jsx-a11y` + `react-hooks`(作用域化,防新增欠账;存量逐步清偿)。
+- [x] `npm run ui:check` 脚本:对令牌块之外的裸颜色、裸 `z-index`、裸 `font-size`、`window.confirm`、新增 `modal-backdrop` div 直接失败;接入 CI(FA-24)。P4 第一波交付:`scripts/check-ui-standards.ts` + `scripts/ui-standards-baseline.json` + `scripts/check-ui-standards.test.ts`(经 `npm run test:scripts` 运行)。八条规则独立计数;因 P3 正在并行分支持续减少样式字面量,门禁采用棘轮模型锁住诚实存量而非假设为零:raw-color 1852、raw-font-size 977、raw-shadow 147、ease-keyword 105、raw-z-index 76(CSS 74 + `ColumnFilter.tsx` 2),window-confirm / hand-rolled-backdrop / english-chrome 基线为 0、从第一天起硬禁止。计数超基线即失败并打印 文件:行号 与设计系统章节指引;低于基线提示 `--update-baseline` 下调;全量扫描约 0.5s(逐行状态机,`:root`/`.dark`/`@theme` 令牌块豁免)。已接入 `build-and-test`,与 docs:check 相邻。
+- [x] ESLint + `jsx-a11y` + `react-hooks`(作用域化,防新增欠账;存量逐步清偿)。P4 第一波交付:eslint 9 flat config(`eslint.config.js`)作用于 `src/**/*.{ts,tsx}`(含测试),两套 recommended 全量启用;零违规规则设 error,有存量的 19 条规则设 warn 并在配置内记录 2026-08-13 当日计数(共 297 条 warning;最大项:`react-hooks/set-state-in-effect` 135、`react-hooks/refs` 32、`jsx-a11y/label-has-associated-control` 27)。`npm run lint`(全量约 10s,启用 `--cache`)已接入 CI;error 阻断、warn 不阻断。
 - [ ] 视觉/a11y/响应式质量 spec 扩展到 `/parameter-home`、配置工作台、`/dts-reload`、`/feedback-admin`、`/node-debugging`;为 Button/Dialog/Table 增加 hover/focus 状态快照(FA-25)。
 - [ ] 更新 `docs/QUALITY_SCORE.md` 与 `docs/developer/verification-matrix.md`(含中文镜像)纳入新门禁。
 
@@ -140,7 +140,7 @@
 - 令牌块:`src/styles.css` 的 `:root`(P0 后单块)+ `@theme inline` 别名。
 - 原语:`src/components/ui/button.tsx`、`src/components/common/ModalDialog.tsx`、`src/components/admin/DataTable.tsx`、新增 `src/components/common/toast/*`、提升后的 `SectionState`。
 - 格式化:新增 `src/domain/format/`(时间、百分比)+ `src/infrastructure/http/` 客户端错误映射。
-- 门禁脚本:`scripts/check-ui-tokens.ts`(名称待定)+ `.github/workflows/ci.yml`。
+- 门禁脚本:`scripts/check-ui-standards.ts` + `scripts/ui-standards-baseline.json` + `.github/workflows/ci.yml`。
 
 ## UI interaction coverage
 

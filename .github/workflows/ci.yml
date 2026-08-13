@@ -83,6 +83,12 @@ jobs:
       - name: Documentation governance
         run: npm run docs:check
 
+      - name: UI standards ratchet
+        run: npm run ui:check
+
+      - name: Lint
+        run: npm run lint
+
       - name: Frontend tests
         run: npm test
 

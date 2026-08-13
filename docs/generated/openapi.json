@@ -6144,6 +6144,139 @@
         }
       }
     },
+    "/api/v1/knowledge/related-to-spec": {
+      "get": {
+        "operationId": "knowledge.relatedToSpec",
+        "summary": "Published knowledge entries structurally referencing one parameter definition (knowledge:view, organization-scoped; published-only — drafts and archived entries never appear; specs outside the caller's scope are 404)",
+        "tags": [
+          "knowledge"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeRelatedToSpecResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/entries/{entryId}/parameter-references/{specId}": {
+      "put": {
+        "operationId": "knowledge.addParameterReference",
+        "summary": "Add a structural parameter-definition reference to a knowledge entry (idempotent; entry owner with knowledge:edit, or knowledge:manage; the reference binds to the parameter_specs.id surrogate and survives identity corrections and deprecation)",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "entryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "specId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeEntryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "knowledge.removeParameterReference",
+        "summary": "Remove a structural parameter-definition reference from a knowledge entry (entry owner with knowledge:edit, or knowledge:manage)",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "entryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "specId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeEntryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/knowledge/index/status": {
       "get": {
         "operationId": "knowledge.indexStatus",
@@ -10935,6 +11068,10 @@
       "KnowledgeSearchResponse": {
         "type": "object",
         "x-wiseeff-schema": "KnowledgeSearchResponse"
+      },
+      "KnowledgeRelatedToSpecResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "KnowledgeRelatedToSpecResponse"
       },
       "KnowledgeIndexHealthResponse": {
         "type": "object",

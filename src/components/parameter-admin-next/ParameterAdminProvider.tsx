@@ -14,11 +14,14 @@ import type { DtsStructuredRepository } from "@/application/ports/DtsStructuredR
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import type { SpecRelatedKnowledgeSource } from "@/components/parameter-topology/ParameterSpecDetail";
 
 type ParameterAdminContextValue = {
   state: ParameterAdminState;
   dispatch: Dispatch<ParameterAdminAction>;
   application: ParameterAdminApplication;
+  /** Published knowledge referencing a definition; absent without knowledge:view. */
+  relatedKnowledge?: SpecRelatedKnowledgeSource;
 };
 
 const ParameterAdminContext = createContext<ParameterAdminContextValue | null>(null);
@@ -29,6 +32,7 @@ export type ParameterAdminProviderProps = {
   importActions?: ParameterAdminImportActions;
   dtsStructured?: DtsStructuredRepository;
   parameterFiles?: ParameterFileRepository;
+  relatedKnowledge?: SpecRelatedKnowledgeSource;
   children: ReactNode;
   initialState?: ParameterAdminState;
 };
@@ -39,6 +43,7 @@ export function ParameterAdminProvider({
   importActions,
   dtsStructured,
   parameterFiles,
+  relatedKnowledge,
   children,
   initialState = initialParameterAdminState
 }: ParameterAdminProviderProps) {
@@ -54,7 +59,10 @@ export function ParameterAdminProvider({
       }),
     [topology, moduleRegistry, importActions, dtsStructured, parameterFiles]
   );
-  const value = useMemo(() => ({ state, dispatch, application }), [state, application]);
+  const value = useMemo(
+    () => ({ state, dispatch, application, relatedKnowledge }),
+    [state, application, relatedKnowledge]
+  );
 
   return <ParameterAdminContext.Provider value={value}>{children}</ParameterAdminContext.Provider>;
 }

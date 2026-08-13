@@ -318,6 +318,8 @@ export type ParameterSpecLibraryProps = {
   onCreateSpec?: () => void;
   /** Platform super admin may deprecate/restore platform-global definitions. */
   canDeprecateGlobal?: boolean;
+  /** Published knowledge referencing the open definition (hidden without knowledge:view). */
+  relatedKnowledge?: import("./ParameterSpecDetail").SpecRelatedKnowledgeSource;
   /** @deprecated Prefer onSaveSpec; kept for activate-only callers. */
   onActivateDraftSpec?: (input: ActivateDraftSpecInput) => void;
   activatePending?: boolean;
@@ -348,6 +350,7 @@ export function ParameterSpecLibrary({
   saveError = null,
   onCreateSpec,
   canDeprecateGlobal = false,
+  relatedKnowledge,
   onActivateDraftSpec,
   activatePending = false
 }: ParameterSpecLibraryProps) {
@@ -668,6 +671,7 @@ export function ParameterSpecLibrary({
           pending={savePending || activatePending}
           error={saveError}
           canDeprecateGlobal={canDeprecateGlobal}
+          relatedKnowledge={relatedKnowledge}
           onDeprecate={
             onDeprecateSpec
               ? async ({ reason }) => {

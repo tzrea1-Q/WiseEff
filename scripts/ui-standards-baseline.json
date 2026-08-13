@@ -1,0 +1,63 @@
+{
+  "description": "Ratchet baseline for `npm run ui:check`. Counts may only go down: when a rule's live count drops below its baseline, run `npm run ui:check -- --update-baseline` in the same change. Rules at 0 are hard-forbidden and must never ratchet up. Structure: rule id -> { count, note?, files? }.",
+  "rules": {
+    "raw-color": {
+      "count": 1852,
+      "note": "Stock from the pre-P3 monolith; P3 (motion/chart/dark wiring) reduces it in parallel. Ratchet down after each merge.",
+      "files": {
+        "src/features/parameter-home/parameter-home.css": 3,
+        "src/linear-template/linear-template.css": 65,
+        "src/styles.css": 1784
+      }
+    },
+    "raw-z-index": {
+      "count": 76,
+      "note": "73 CSS declarations plus ColumnFilter.tsx zIndex literals (FA-06); migrate to the var(--z-*) ladder.",
+      "files": {
+        "src/components/ColumnFilter.tsx": 2,
+        "src/linear-template/linear-template.css": 1,
+        "src/styles.css": 73
+      }
+    },
+    "raw-font-size": {
+      "count": 977,
+      "note": "Stock outside the type scale; migrate to var(--text-xs..2xl).",
+      "files": {
+        "src/features/agent/xiaozeAssistantMarkdown.css": 1,
+        "src/features/parameter-home/parameter-home.css": 31,
+        "src/linear-template/linear-template.css": 24,
+        "src/styles.css": 921
+      }
+    },
+    "raw-shadow": {
+      "count": 147,
+      "note": "Stock outside var(--shadow-1..3)/var(--ring); migrate to elevation tokens.",
+      "files": {
+        "src/features/parameter-home/parameter-home.css": 10,
+        "src/linear-template/linear-template.css": 8,
+        "src/styles.css": 129
+      }
+    },
+    "ease-keyword": {
+      "count": 105,
+      "note": "Bare ease keywords pending P3 motion tokenization (FA-09). Ratchet down after the P3 merge.",
+      "files": {
+        "src/features/parameter-home/parameter-home.css": 6,
+        "src/linear-template/linear-template.css": 17,
+        "src/styles.css": 82
+      }
+    },
+    "window-confirm": {
+      "count": 0,
+      "note": "Hard-forbidden since 2026-08-13 (zeroed in P1); never ratchet up."
+    },
+    "hand-rolled-backdrop": {
+      "count": 0,
+      "note": "Hard-forbidden since 2026-08-13 (zeroed in P1); never ratchet up."
+    },
+    "english-chrome": {
+      "count": 0,
+      "note": "Hard-forbidden since 2026-08-13 (zeroed in P2); never ratchet up."
+    }
+  }
+}

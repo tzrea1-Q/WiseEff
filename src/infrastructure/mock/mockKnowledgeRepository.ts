@@ -10,6 +10,7 @@ import type { DtsReloadRun } from "@/domain/dtsReload/types";
 import type {
   KnowledgeEntry,
   KnowledgeIndexState,
+  KnowledgeParameterReference,
   KnowledgeRevision,
   KnowledgeSearchResult
 } from "@/domain/knowledge/types";
@@ -17,6 +18,48 @@ import type { LogRecord } from "@/domain/prototype/types";
 
 const MOCK_KNOWLEDGE_NOW = "2026-08-12T00:00:00.000Z";
 const MOCK_USER_ID = "u-xu-yun";
+
+/**
+ * Definition chip data aligned with the `mockParameterTopologyRepository`
+ * spec fixtures, so mock-mode reference chips and the picker stay consistent
+ * (same ADR-0002 fixture-alignment pattern as `sourceLogId: "log-auth"`).
+ */
+const MOCK_SPEC_CATALOG: Record<string, Pick<KnowledgeParameterReference, "propertyKey" | "displayName" | "driverModule" | "lifecycle">> = {
+  "spec-sc8562-gpio-int": {
+    propertyKey: "gpio_int",
+    displayName: "SC8562 GPIO interrupt",
+    driverModule: "sc8562",
+    lifecycle: "active"
+  },
+  "spec-mt5788-gpio-int": {
+    propertyKey: "gpio_int",
+    displayName: "MT5788 GPIO interrupt",
+    driverModule: "mt5788",
+    lifecycle: "active"
+  },
+  "spec-draft-mystery": {
+    propertyKey: "mystery_prop",
+    displayName: "Mystery property (draft)",
+    driverModule: null,
+    lifecycle: "draft"
+  },
+  "spec-deprecated-legacy": {
+    propertyKey: "legacy_status",
+    displayName: "Legacy status (deprecated)",
+    driverModule: null,
+    lifecycle: "deprecated"
+  }
+};
+
+function mockReference(specId: string, createdByUserId: string): KnowledgeParameterReference {
+  const chip = MOCK_SPEC_CATALOG[specId] ?? {
+    propertyKey: specId,
+    displayName: null,
+    driverModule: null,
+    lifecycle: "active" as const
+  };
+  return { specId, ...chip, createdByUserId, createdAt: MOCK_KNOWLEDGE_NOW };
+}
 
 type MockIndexRecord = {
   status: KnowledgeIndexState;
@@ -100,7 +143,12 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
     archivedAt: null,
     contentMarkdown:
       "# 快充温控调参经验\n\n当电池温度超过 45 度时,按 0.5A 步长下调快充电流。\n\n- 观察 NTC 采样间隔\n- 记录降流后的温升斜率",
-    file: null
+    file: null,
+    parameterReferences: [
+      mockReference("spec-sc8562-gpio-int", MOCK_USER_ID),
+      // Deprecated definition: the chip stays with an honest 已废弃 badge.
+      mockReference("spec-deprecated-legacy", MOCK_USER_ID)
+    ]
   };
 
   const draftMarkdown: KnowledgeEntry = {
@@ -120,7 +168,8 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
     publishedAt: null,
     archivedAt: null,
     contentMarkdown: "## 待验证\n\n2:1 与 4:1 模式切换阈值仍需实验数据。",
-    file: null
+    file: null,
+    parameterReferences: [mockReference("spec-sc8562-gpio-int", MOCK_USER_ID)]
   };
 
   const publishedFile: KnowledgeEntry = {
@@ -148,7 +197,8 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
       extractionStatus: "succeeded",
       extractionError: null,
       createdAt: "2026-08-05T08:00:00.000Z"
-    }
+    },
+    parameterReferences: []
   };
 
   const failedExtractionFile: KnowledgeEntry = {
@@ -176,7 +226,8 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
       extractionStatus: "failed",
       extractionError: "Legacy .doc binaries are not supported for text extraction; convert the document to .docx and replace the file.",
       createdAt: "2026-08-09T01:00:00.000Z"
-    }
+    },
+    parameterReferences: []
   };
 
   const archivedMarkdown: KnowledgeEntry = {
@@ -196,7 +247,8 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
     publishedAt: "2026-07-02T02:00:00.000Z",
     archivedAt: "2026-08-08T02:00:00.000Z",
     contentMarkdown: "旧平台日志格式已下线,保留历史供追溯。",
-    file: null
+    file: null,
+    parameterReferences: []
   };
 
   // Agent-draft publish-queue states: one draft distilled in the current
@@ -220,7 +272,8 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
     archivedAt: null,
     contentMarkdown:
       "## 结论\n\n充电异常断电与鉴权重试风暴相关,建议限制重试频率。\n\n(由小泽在会话中沉淀,待人工审阅发布。)",
-    file: null
+    file: null,
+    parameterReferences: []
   };
 
   const agentDraftOther: KnowledgeEntry = {
@@ -240,7 +293,8 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
     publishedAt: null,
     archivedAt: null,
     contentMarkdown: "## 结论\n\nFOD 阈值偏严导致金属边框误报,建议按整机型号分档配置。",
-    file: null
+    file: null,
+    parameterReferences: []
   };
 
   // Related to the completed mock log (log-auth, PD negotiation): the log
@@ -263,7 +317,8 @@ export function createMockKnowledgeFixtures(): { entries: KnowledgeEntry[]; revi
     archivedAt: null,
     contentMarkdown:
       "# PD 快充协议兼容性排查手册\n\n典型健康样本:PD 协商在 9V/3A 档位稳定完成,未出现握手重试,说明 SourceCap 与 Request 匹配良好。\n\n- 出现握手重试时优先复核适配器白名单\n- 记录 PD 协商日志中的 SourceCap 档位与 Accept 时序",
-    file: null
+    file: null,
+    parameterReferences: []
   };
 
   const revisions: KnowledgeRevision[] = [
@@ -516,7 +571,8 @@ export function createMockKnowledgeRepository(
         publishedAt: null,
         archivedAt: null,
         contentMarkdown: input.contentMarkdown,
-        file: null
+        file: null,
+        parameterReferences: []
       };
       appendRevision(entry);
       entry.headRevisionNumber = 1;
@@ -555,7 +611,8 @@ export function createMockKnowledgeRepository(
             ? "Legacy .doc binaries are not supported for text extraction; convert the document to .docx and replace the file."
             : null,
           createdAt: MOCK_KNOWLEDGE_NOW
-        }
+        },
+        parameterReferences: []
       };
       store.files.set(`${id}-file`, input.file);
       appendRevision(entry);
@@ -591,7 +648,8 @@ export function createMockKnowledgeRepository(
         publishedAt: null,
         archivedAt: null,
         contentMarkdown: draft.contentMarkdown,
-        file: null
+        file: null,
+        parameterReferences: []
       };
       appendRevision(entry);
       entry.headRevisionNumber = 1;
@@ -626,7 +684,8 @@ export function createMockKnowledgeRepository(
         publishedAt: null,
         archivedAt: null,
         contentMarkdown: draft.contentMarkdown,
-        file: null
+        file: null,
+        parameterReferences: []
       };
       appendRevision(entry);
       entry.headRevisionNumber = 1;
@@ -825,6 +884,59 @@ export function createMockKnowledgeRepository(
           };
         });
       return { items, retrieval };
+    },
+
+    async relatedToSpec(specId) {
+      // Published-only invariant, same as the API: drafts/archived never appear.
+      const items = store.entries
+        .filter((entry) => entry.status === "published")
+        .filter((entry) => entry.parameterReferences.some((reference) => reference.specId === specId))
+        .map<KnowledgeSearchResult>((entry) => {
+          const text = searchableText(entry).replace(/\s+/g, " ");
+          const headRevision = store.revisions
+            .filter((revision) => revision.entryId === entry.id)
+            .sort((a, b) => b.revisionNumber - a.revisionNumber)[0];
+          return {
+            entryId: entry.id,
+            title: entry.title,
+            contentForm: entry.contentForm,
+            tags: [...entry.tags],
+            excerpt: text.slice(0, 160),
+            updatedAt: entry.updatedAt,
+            revisionId: headRevision?.id ?? null
+          };
+        });
+      return { items };
+    },
+
+    async addParameterReference(entryId, specId) {
+      const entry = requireEntry(entryId);
+      if (!canManage && entry.createdByUserId !== userId) {
+        throw new Error("Editing someone else's entry references requires knowledge:manage.");
+      }
+      if (entry.status === "archived") {
+        throw new Error("Archived knowledge entries cannot change parameter references.");
+      }
+      if (!entry.parameterReferences.some((reference) => reference.specId === specId)) {
+        entry.parameterReferences = [...entry.parameterReferences, mockReference(specId, userId)];
+      }
+      return clone(entry);
+    },
+
+    async removeParameterReference(entryId, specId) {
+      const entry = requireEntry(entryId);
+      if (!canManage && entry.createdByUserId !== userId) {
+        throw new Error("Editing someone else's entry references requires knowledge:manage.");
+      }
+      if (entry.status === "archived") {
+        throw new Error("Archived knowledge entries cannot change parameter references.");
+      }
+      const next = entry.parameterReferences.filter((reference) => reference.specId !== specId);
+      if (next.length === entry.parameterReferences.length) {
+        throw new Error(`Parameter reference not found on entry: ${specId}`);
+      }
+      entry.parameterReferences = next;
+      return clone(entry);
     },
 
     async getFileObjectUrl(entryId) {

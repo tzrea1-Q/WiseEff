@@ -417,6 +417,7 @@ stateDiagram-v2
 | `KnowledgeEntry` | 组织级工程知识单元。内容形式二选一（`markdown` 或 `file`），扁平多标签（可含项目标签），带头修订指针与 `head_revision_number`（乐观并发令牌）、Phase 1 检索用的冗余 `search_text`，以及 `human` \| `agent` 来源归属和会话元数据。蒸馏现在有两个来源，以持久关联列记录：`source_log_id`（已完成的日志分析记录）与 `source_reload_run_id`（终态 DTS 重载运行——运行是审计与证据主体）。 |
 | `KnowledgeRevision` | 不可变内容快照（`title`、`tags`、markdown 或文件引用），`revision_number` 按条目唯一，记录作者与可选 `restored_from_revision_id` 恢复出处。行永不更新。 |
 | `KnowledgeFile` | 文件型条目的元数据：对象存储 key、完整性校验和、诚实的提取状态（`pending` \| `succeeded` \| `failed`，失败带可读原因，成功带提取正文）。二进制可替换（新行 + 新修订）、不可编辑。 |
+| `KnowledgeParameterReference` | 条目到参数定义的结构化引用（`knowledge_parameter_references`，按条目+定义唯一，记录创建者）。绑定 `parameter_specs.id` **代理键**（ADR-0017）——绝不绑定项目绑定或逻辑节点——身份纠错不影响引用。废弃（ADR-0011 软退役）永不移除引用;两侧展示如实呈现生命周期。条目硬删除级联删除引用行且删除审计记录数量;定义侧外键保持限制行为,因为目录没有定义硬删除路径。 |
 
 状态机：
 
@@ -434,7 +435,8 @@ stateDiagram-v2
 - 只有 `published` 条目进入检索（拉丁文本 FTS + 中文 `pg_trgm` 三元组匹配）;草稿与已归档条目绝不出现在结果里,发布是唯一的信任门。
 - 草稿仅对拥有者和 `knowledge:manage` 可见。`knowledge:edit` 治理自己的条目（编辑/发布/归档）;`knowledge:manage` 治理任意条目。彻底删除要求 `knowledge:manage` 并写 `High` 级审计。
 - 已归档条目保留历史并退出检索;恢复回到 `published`。未恢复前拒绝编辑。
-- 每次变更写审计事件（`knowledge-entry-create/update/publish/archive/restore/delete`、`knowledge-revision-restore`）并携带请求 trace。
+- 每次变更写审计事件（`knowledge-entry-create/update/publish/archive/restore/delete`、`knowledge-revision-restore`、`knowledge-parameter-reference-add/remove`）并携带请求 trace。
+- 参数引用遵循条目编辑治理规则（拥有者持 `knowledge:edit`,或 `knowledge:manage`;归档条目与内容编辑一样拒绝引用编辑）。参数侧「相关知识」读取 published-only:已归档条目保留引用行但退出该列表,恢复后回来。
 - 彻底删除是 manage 级操作,任意状态可执行,连同修订与文件元数据一并删除（审计证据保留）。
 
 ### 2.8 Agent

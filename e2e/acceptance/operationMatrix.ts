@@ -205,6 +205,19 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "db"]
   },
   {
+    id: "KB-XREF-001",
+    priority: "P1",
+    area: "knowledge",
+    route: "/knowledge",
+    roles: ["Hardware User"],
+    action:
+      "Manage structural parameter-definition references on a knowledge entry (audited add/remove bound to the parameter_specs.id surrogate), see the published referencing entry on the definition detail's related-knowledge list while draft entries never appear there, and keep the knowledge-side chip with an honest deprecated badge after the definition is deprecated.",
+    coverage: "automated",
+    acceptanceIds: ["KB-XREF-001"],
+    specFiles: ["e2e/acceptance/knowledge.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit"]
+  },
+  {
     id: "SHELL-DIAG-001",
     priority: "P0",
     area: "shell",
@@ -1020,7 +1033,9 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     coverage: "automated",
     acceptanceIds: ["XIAOZE-APPROVAL-CARD-001"],
     specFiles: ["e2e/acceptance/xiaoze-action.acceptance.spec.ts"],
-    assertions: ["ui", "api"]
+    // The outcome is asserted against the database (open change-request count),
+    // not through a captured API exchange.
+    assertions: ["ui", "db"]
   },
   {
     id: "XIAOZE-ACTION-EDITEDARGS-001",

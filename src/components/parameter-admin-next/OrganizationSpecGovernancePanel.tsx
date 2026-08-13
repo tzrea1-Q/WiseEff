@@ -127,7 +127,7 @@ export function OrganizationSpecGovernancePanel({
   identityMappingOpenCount,
   identityMappingCountError = null
 }: OrganizationSpecGovernancePanelProps) {
-  const { application, dispatch, state } = useParameterAdmin();
+  const { application, dispatch, state, relatedKnowledge } = useParameterAdmin();
   const refreshRecentAudits = useRefreshParameterAdminRecentAudits();
   const { urlState, updateUrl } = useParameterAdminUrl(search, pathname);
   const filters = useMemo(() => toParameterAdminFilters(urlState), [urlState]);
@@ -672,6 +672,7 @@ export function OrganizationSpecGovernancePanel({
         onPrepareCutover={handlePrepareCutover}
         onFinalizeCutover={handleFinalizeCutover}
         canDeprecateGlobal={isPlatformSuperAdmin}
+        relatedKnowledge={relatedKnowledge}
         savePending={activatePendingSpecId === urlState.specId}
         saveError={reviewActionError}
         onCreateSpec={() => {

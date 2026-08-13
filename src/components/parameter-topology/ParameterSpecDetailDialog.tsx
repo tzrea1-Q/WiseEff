@@ -13,7 +13,8 @@ import {
   isSpecEditorDraftDirty,
   type ParameterSpecDetailView,
   type SpecEditorDraft,
-  type SpecEditorSavePayload
+  type SpecEditorSavePayload,
+  type SpecRelatedKnowledgeSource
 } from "./ParameterSpecDetail";
 import { formatSpecPrimaryLabel } from "./ParameterSpecLibrary";
 import { subjectPickerFlatNodes, subjectsFromModules } from "./SpecCreateDialog";
@@ -34,6 +35,8 @@ export type ParameterSpecDetailDialogProps = {
   error?: string | null;
   /** Platform super admin may deprecate/restore platform-global definitions. */
   canDeprecateGlobal?: boolean;
+  /** Published knowledge referencing this definition (hidden without knowledge:view). */
+  relatedKnowledge?: SpecRelatedKnowledgeSource;
 };
 
 /**
@@ -56,7 +59,8 @@ export function ParameterSpecDetailDialog({
   onFinalizeCutover,
   pending = false,
   error = null,
-  canDeprecateGlobal = false
+  canDeprecateGlobal = false,
+  relatedKnowledge
 }: ParameterSpecDetailDialogProps) {
   const editable = typeof onSave === "function";
   const isDraft = detail.reviewState === "draft" && detail.organizationId != null;
@@ -345,6 +349,7 @@ export function ParameterSpecDetailDialog({
                 : undefined
             }
             identityCorrectionDisabledReason={renameBlockedReason}
+            relatedKnowledge={relatedKnowledge}
           />
           {saveConfirmOpen ||
           cutoverConfirmOpen ||

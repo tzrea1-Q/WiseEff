@@ -10,7 +10,7 @@ import { expect, test, type Locator, type Page } from "playwright/test";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import { withPgClient } from "./helpers/database";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
-import { prepareInteractionSurface } from "./helpers/interactionSurface";
+import { dismissXiaozeToggleHint, prepareInteractionSurface } from "./helpers/interactionSurface";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 
 useBrowserDiagnostics(test);
@@ -215,6 +215,7 @@ async function latestLogByFile(page: Page, fileName: string) {
       id: string;
       fileName: string;
       status: string;
+      confidence: number;
       archiveState?: string;
       failureReason?: string | null;
       logDomainId?: string;
@@ -519,10 +520,12 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
 
     await uploadLogThroughUi(page, supportedFixture, analysisQuestion);
 
-    const completedLog = await latestLogByFile(page, supportedFileName);
     await expect
       .poll(async () => (await latestLogByFile(page, supportedFileName)).status, { timeout: 70_000 })
       .toBe("complete");
+    // Capture the record only after the run completed: the upload dialog closes on
+    // the POST response, long before the analysis report writes confidence.
+    const completedLog = await latestLogByFile(page, supportedFileName);
     await historyItem(page, supportedFileName).click();
     await expect(page.locator("#log-conclusion-title")).toContainText(/thermal|foldback/i);
 
@@ -550,6 +553,8 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
 
     await page.goto("/log-dashboard");
     await page.goto("/log-admin");
+    // The Xiaoze toggle hint floats over the detail panel's corner actions.
+    await dismissXiaozeToggleHint(page);
     await page.locator('input[type="search"]').fill(supportedFileName);
     await page.getByRole("row").filter({ hasText: supportedFileName }).first().click();
     await page.locator('button:has(svg[class*="lucide-thumbs-up"])').click();
@@ -596,6 +601,16 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       .toMatch(/^failed:.*unsupported/i);
     const unsupportedHistoryItem = historyItem(page, unsupportedFileName);
     await expect(unsupportedHistoryItem).toBeVisible();
+
+    // P2 localization contract: the failure card renders the fixed Chinese title
+    // plus the presentError mapping of the English backend failureReason exactly
+    // once — no raw English backend prose reaches the workbench.
+    await unsupportedHistoryItem.click();
+    const failureAlert = page.getByRole("alert").filter({ hasText: "日志处理失败" });
+    await expect(failureAlert).toBeVisible();
+    await expect(failureAlert).toContainText("暂不支持该日志格式");
+    await expect(failureAlert).not.toContainText("Unsupported log format");
+    await expect(failureAlert.getByRole("button", { name: "重新上传" })).toBeVisible();
 
     await recordOperationEvidence({
       operationId: "LOG-HAPPY-001",
@@ -644,6 +659,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     expect(initialRuns.length).toBeGreaterThanOrEqual(1);
 
     await page.goto("/log-admin");
+    await dismissXiaozeToggleHint(page);
     await page.locator('input[type="search"]').fill(supportedFileName);
     await page.getByRole("row").filter({ hasText: supportedFileName }).first().click();
     const rerunResponsePromise = page.waitForResponse(

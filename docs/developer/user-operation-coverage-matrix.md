@@ -21,6 +21,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `KB-DISTILL-002` | P1 | knowledge | automated | `/dts-reload` | Hardware Committer | ui, api, db, audit | `e2e/acceptance/knowledge.acceptance.spec.ts` |
 | `KB-ADMIN-001` | P1 | knowledge | automated | `/knowledge-admin` | Admin | ui, api, db, audit | `e2e/acceptance/knowledge.acceptance.spec.ts` |
 | `KB-REC-001` | P1 | knowledge | automated | `/logs` | Hardware User | ui, api, db | `e2e/acceptance/knowledge.acceptance.spec.ts` |
+| `KB-XREF-001` | P1 | knowledge | automated | `/knowledge` | Hardware User | ui, api, db, audit | `e2e/acceptance/knowledge.acceptance.spec.ts` |
 | `SHELL-DIAG-001` | P0 | shell | automated | `core routes` | Admin | ui | `e2e/acceptance/shell-navigation.acceptance.spec.ts` |
 | `PARAM-REASON-001` | P0 | parameters | automated | `/parameters` | Hardware User | ui | `e2e/acceptance/parameters-negative.acceptance.spec.ts` |
 | `PARAM-ASSIGNEE-001` | P0 | parameters | automated | `/parameters` | Software User | ui | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
@@ -82,7 +83,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `XIAOZE-PERCEPTION-001` | P0 | agent | automated | `/parameters` | Admin | ui, api | `e2e/acceptance/xiaoze-perception.acceptance.spec.ts` |
 | `XIAOZE-PERCEPTION-AUTHZ-001` | P0 | agent | automated | `/parameters` | Guest | ui, api | `e2e/acceptance/xiaoze-perception.acceptance.spec.ts` |
 | `XIAOZE-ACTION-APPROVE-001` | P1 | agent | automated | `/parameters` | Admin | api, audit | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
-| `XIAOZE-APPROVAL-CARD-001` | P0 | agent | automated | `/parameters` | Admin | ui, api | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
+| `XIAOZE-APPROVAL-CARD-001` | P0 | agent | automated | `/parameters` | Admin | ui, db | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
 | `XIAOZE-ACTION-EDITEDARGS-001` | P1 | agent | automated | `/parameters` | Admin | api, audit | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
 | `XIAOZE-ACTION-REJECT-001` | P1 | agent | automated | `/parameters` | Admin | api | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
 | `XIAOZE-ACTION-RESUME-001` | P1 | agent | automated | `/parameters` | Admin | api | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |

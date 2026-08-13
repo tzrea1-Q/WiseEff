@@ -34,6 +34,7 @@
 
 ```bash
 npm test -- <目标测试文件>
+npm run ui:check
 npm run build
 ```
 
