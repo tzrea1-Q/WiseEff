@@ -1,5 +1,5 @@
 /**
- * Replay coverage for 0108_repair_module_parent_id_from_path.sql (#415): rows
+ * Replay coverage for 0109_repair_module_parent_id_from_path.sql (#415): rows
  * whose parent_id was desynced from their materialized path by the unguarded
  * move UPDATE are recomputed from the path (authoritative), in both
  * parameter_modules and debug_node_modules. Rows whose parent-prefix row is
@@ -15,9 +15,9 @@ import { applyMigrations } from "../../shared/database/migrations";
 import { isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { migrationsDir, withTempDatabase } from "../../testing/tempDatabase";
 
-const migration0108 = "0108_repair_module_parent_id_from_path.sql";
+const migration0109 = "0109_repair_module_parent_id_from_path.sql";
 
-const ORG = "org-mig-0108";
+const ORG = "org-mig-0109";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
@@ -84,13 +84,13 @@ function assertRepairedTree(rows: Map<string, ModuleRow>, seeded: Map<string, Mo
   expect(rows.get(`${prefix}-dup`)).toEqual(seeded.get(`${prefix}-dup`));
 }
 
-describe.skipIf(!databaseAvailable)("0108 module parent_id repair", () => {
+describe.skipIf(!databaseAvailable)("0109 module parent_id repair", () => {
   it("recomputes parent_id from the path for both trees, skipping unrepairable rows", async () => {
-    await withTempDatabase({ prefix: "mig0108", migrate: false }, async ({ db }) => {
-      const beforeRepair = await applyMigrations(db, migrationsDir, { before: migration0108 });
+    await withTempDatabase({ prefix: "mig0109", migrate: false }, async ({ db }) => {
+      const beforeRepair = await applyMigrations(db, migrationsDir, { before: migration0109 });
       expect(beforeRepair.at(-1)).toBe("0107_log_domain_knowledge_links.sql");
 
-      await db.query(`insert into organizations (id, name) values ($1, 'Mig 0108 Org')`, [ORG]);
+      await db.query(`insert into organizations (id, name) values ($1, 'Mig 0109 Org')`, [ORG]);
       await seedCorruptedTree(db, "parameter_modules", "pm");
       await seedCorruptedTree(db, "debug_node_modules", "dm");
 
@@ -101,7 +101,7 @@ describe.skipIf(!databaseAvailable)("0108 module parent_id repair", () => {
       expect(seededParams.get("pm-d")?.parent_id).toBe("pm-x");
 
       const pending = await applyMigrations(db, migrationsDir);
-      expect(pending).toEqual([migration0108]);
+      expect(pending).toEqual([migration0109]);
 
       const repairedParams = await listTreeRows(db, "parameter_modules");
       const repairedDebug = await listTreeRows(db, "debug_node_modules");
@@ -110,7 +110,7 @@ describe.skipIf(!databaseAvailable)("0108 module parent_id repair", () => {
 
       // Idempotent: replaying the repair statements changes nothing, not even
       // updated_at on already-repaired rows.
-      const sql = await fs.readFile(path.join(migrationsDir, migration0108), "utf8");
+      const sql = await fs.readFile(path.join(migrationsDir, migration0109), "utf8");
       await db.query(sql);
       await expect(listTreeRows(db, "parameter_modules")).resolves.toEqual(repairedParams);
       await expect(listTreeRows(db, "debug_node_modules")).resolves.toEqual(repairedDebug);
