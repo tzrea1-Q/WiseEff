@@ -73,6 +73,8 @@ Bridge-backed 调试会话还要求 bridge 属于当前用户、未撤销且在�
 
 审计记录应包含 actor、target、action、severity、metadata、trace/request id、timestamp，以及项目或组织 scope。
 
+审计完整性由缝（seam）而非约定承载（ADR-0027）：每条审计事件必须是三种形态之一——**审计写证据**（与领域写在同一数据库事务中提交，经 `withAuditedWrite` / `writeAuditEventInTx` 与 `AuditTx` 品牌类型）、**拒绝证据**（先拒绝后抛错；经 `writeRefusalAudit` 走连接池句柄写入，从而逃过它自己触发的回滚）、或**里程碑证据**（分步流程；经 `writeMilestoneAudit` 立即写入，从而在后续步骤失败时仍然存在）。`auditRatchet.test.ts` 钉住剩余的 `createAuditEvent` 直调——全部为有文档说明的永久常驻项。
+
 必须覆盖的事件包括登录/安全事件、参数写入、审阅决策、日志上传/重跑/归档、产品反馈创建与处理、知识条目变更、设备读写、Agent tool、管理员变更和导出。知识库写入记录 `knowledge-entry-create/update/publish/archive/restore/delete`（delete 为 `High` 级）与 `knowledge-revision-restore`,Phase 3 另有 `knowledge-entry-distill`（从日志分析沉淀草稿,metadata 含来源 `logId`）、`knowledge-entry-agent-draft`（`actorType=agent`,metadata 含创建 `sessionId` 与可选 `sourceLogId`）与 `knowledge-entry-reject`（发布队列的 Agent 草稿拒绝归档）,metadata 含内容形式、标题、修订号与生命周期流转及请求 trace;提取正文不写入审计 metadata。节点启用状态写入（共享拓扑草稿管线）产生 `parameter-topology-governance` / `enablement-changed` 审计，metadata 含原值、新值、理由与逻辑节点身份；鉴权复用 `canEditParameters` 与现有 `dts_sensitive_node_rules`（规则要求时须 `parameter:edit-critical`）。产品反馈写入会记录 `product-feedback-create` 和 `product-feedback-update`，metadata 包含反馈类型、状态、页面路径、附件数量，以及 Admin 处理时的前后状态；附件图片 bytes 不写入审计 metadata。调试 catalog metadata 与 binding 变更必须写审计；binding audit metadata 不应暴露 raw node path，除非部署策略明确允许。复杂调试写入还会在审计与操作记录中附加格式感知元数据：`valueKind`、`valueFormat`、`normalizationMode`、字节长度、digest，以及有大小上限的 `valuePreview`；大 payload 不得重复写入审计或验收 evidence，digest 与 preview 才是可比较的持久证据。`maxValueBytes` 与服务端默认值会在服务端限制写入 payload 大小；设备写入审批、lease、snapshot 与确认边界不变。本地账号路径会写 registration、login、logout 和当前用户 profile update 审计事件；用户治理后台还会记录本地 Committer 注册申请的 approve/reject 审计事件。退出登录必须服务端撤销当前 session token；当前用户资料更新不能修改 email、角色、激活状态或组织。
 
 ## Agent 安全
