@@ -88,7 +88,7 @@ describe.skipIf(!databaseAvailable)("0109 module parent_id repair", () => {
   it("recomputes parent_id from the path for both trees, skipping unrepairable rows", async () => {
     await withTempDatabase({ prefix: "mig0109", migrate: false }, async ({ db }) => {
       const beforeRepair = await applyMigrations(db, migrationsDir, { before: migration0109 });
-      expect(beforeRepair.at(-1)).toBe("0107_log_domain_knowledge_links.sql");
+      expect(beforeRepair.at(-1)).toBe("0108_log_domain_webhooks_and_model_override.sql");
 
       await db.query(`insert into organizations (id, name) values ($1, 'Mig 0109 Org')`, [ORG]);
       await seedCorruptedTree(db, "parameter_modules", "pm");
