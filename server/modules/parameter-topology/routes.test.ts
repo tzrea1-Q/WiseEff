@@ -482,7 +482,8 @@ describe("parameter semantic v2 routes", () => {
         baseRevisionId: "rev-1",
         reason: "Raise limit"
       }),
-      expect.objectContaining({ objectStore: undefined })
+      expect.objectContaining({ objectStore: undefined }),
+      { requestId: expect.any(String) }
     );
   });
 
@@ -533,7 +534,8 @@ describe("parameter semantic v2 routes", () => {
         target: "force-disabled",
         reason: "Board power rail offline"
       }),
-      expect.objectContaining({ objectStore: undefined })
+      expect.objectContaining({ objectStore: undefined }),
+      { requestId: expect.any(String) }
     );
   });
 });

@@ -1,6 +1,6 @@
-# Debugging Repository Behavior Tests (TD-079 slice 2)
+# Debugging Repository Behavior Tests (TD-096 slice 2)
 
-Status: **Active** · Branch `test/debugging-repository-behavior-tests` · Follows the precedent set by `2026-08-12-parameters-service-behavior-tests.md` (#336, slice 1)
+Status: **Completed** (PR #345)
 
 ## Goal
 
@@ -71,13 +71,13 @@ The catalog block (`debugging_parameters`, protocol bindings) is the archive-onl
 | Area | File(s) | Impact |
 | --- | --- | --- |
 | Planning docs | `docs/PLANS.md`, this plan | Update (entry + status) |
-| Quality/testing docs | `docs/design-docs/testing-strategy.md` | No change (pattern documentation is owned by TD-079's closing slice, together with the parameters slices) |
-| Tech debt | `docs/exec-plans/tech-debt-tracker.md` | Update (TD-079 progress note: debugging repository slice done) |
+| Quality/testing docs | `docs/design-docs/testing-strategy.md` | No change (pattern documentation is owned by TD-096's closing slice, together with the parameters slices) |
+| Tech debt | `docs/exec-plans/tech-debt-tracker.md` | Update (TD-096 progress note: debugging repository slice done) |
 | Repository maps / product / security / runbooks / generated / references / zh-CN | — | No change (test-only change; no behaviour, contract, or schema impact) |
 
 ## Documentation Update Gate
 
 - [x] `docs/PLANS.md` lists this plan
-- [x] TD-079 row updated with the debugging slice
+- [x] TD-096 row updated with the debugging slice
 - [x] `npm run docs:check` green
 - [ ] Move to `completed/` after merge

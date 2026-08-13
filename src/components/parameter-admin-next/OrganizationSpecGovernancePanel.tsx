@@ -133,9 +133,12 @@ export function OrganizationSpecGovernancePanel({
 
   const [specRows, setSpecRows] = useState<ParameterSpecLibraryRow[]>([]);
   const [specLoading, setSpecLoading] = useState(false);
+  const [specLoadError, setSpecLoadError] = useState<string | null>(null);
   const [specDetail, setSpecDetail] = useState<ParameterSpecDetailView | null>(null);
   const [reviewTasks, setReviewTasks] = useState<SpecReviewTaskView[]>([]);
   const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewLoadError, setReviewLoadError] = useState<string | null>(null);
+  const [reviewCountKnown, setReviewCountKnown] = useState(false);
   const [reviewNextCursor, setReviewNextCursor] = useState<string | null>(null);
   const [reviewLoadingMore, setReviewLoadingMore] = useState(false);
   const [reviewActionError, setReviewActionError] = useState<string | null>(null);
@@ -154,6 +157,7 @@ export function OrganizationSpecGovernancePanel({
 
   const reloadSpecs = useCallback(async () => {
     setSpecLoading(true);
+    setSpecLoadError(null);
     try {
       const [items] = await Promise.all([
         application.listSpecs({}),
@@ -176,8 +180,14 @@ export function OrganizationSpecGovernancePanel({
           })
         )
       );
-    } catch {
-      setSpecRows([]);
+    } catch (error) {
+      // A failed library load is an error state — keep the last known rows
+      // instead of masquerading as an empty library.
+      setSpecLoadError(
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : "参数定义库加载失败，请重试。"
+      );
     } finally {
       setSpecLoading(false);
     }
@@ -185,16 +195,22 @@ export function OrganizationSpecGovernancePanel({
 
   const reloadReviewTasks = useCallback(async () => {
     setReviewLoading(true);
+    setReviewLoadError(null);
     try {
       const result = await application.listSpecReviewTasks({ status: "open", limit: 50 });
       const views = result.items.map(toReviewTaskView);
       setReviewTasks(views);
       setReviewNextCursor(result.nextCursor);
+      setReviewCountKnown(true);
       dispatch({ type: "SET_QUEUE_COUNTS", counts: { specReview: views.length } });
-    } catch {
-      setReviewTasks([]);
-      setReviewNextCursor(null);
-      dispatch({ type: "SET_QUEUE_COUNTS", counts: { specReview: 0 } });
+    } catch (error) {
+      // IA-R2: do not treat a failed count load as an empty queue — keep the
+      // last known tasks/count and surface an explicit error with retry.
+      setReviewLoadError(
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : "审核队列加载失败，请重试。"
+      );
     } finally {
       setReviewLoading(false);
     }
@@ -424,7 +440,9 @@ export function OrganizationSpecGovernancePanel({
         await reloadSpecs();
         updateUrl({ specId: null });
       } catch (error) {
+        // Rethrow so the dialog keeps its audit-reason confirm layer open.
         setReviewActionError(formatReviewActionError(error));
+        throw error;
       } finally {
         setActivatePendingSpecId(null);
       }
@@ -444,6 +462,7 @@ export function OrganizationSpecGovernancePanel({
         updateUrl({ specId: null });
       } catch (error) {
         setReviewActionError(formatReviewActionError(error));
+        throw error;
       } finally {
         setActivatePendingSpecId(null);
       }
@@ -463,6 +482,7 @@ export function OrganizationSpecGovernancePanel({
         updateUrl({ specId: null });
       } catch (error) {
         setReviewActionError(formatReviewActionError(error));
+        throw error;
       } finally {
         setActivatePendingSpecId(null);
       }
@@ -486,6 +506,7 @@ export function OrganizationSpecGovernancePanel({
         await reloadSpecs();
       } catch (error) {
         setReviewActionError(formatReviewActionError(error));
+        throw error;
       } finally {
         setActivatePendingSpecId(null);
       }
@@ -509,6 +530,7 @@ export function OrganizationSpecGovernancePanel({
         await reloadSpecs();
       } catch (error) {
         setReviewActionError(formatReviewActionError(error));
+        throw error;
       } finally {
         setActivatePendingSpecId(null);
       }
@@ -547,6 +569,7 @@ export function OrganizationSpecGovernancePanel({
         updateUrl({ specId: null });
       } catch (error) {
         setReviewActionError(formatReviewActionError(error));
+        throw error;
       } finally {
         setActivatePendingSpecId(null);
       }
@@ -569,16 +592,29 @@ export function OrganizationSpecGovernancePanel({
 
   const reviewCount = state.queueCounts.specReview;
   const reviewQueue = (
-    <details className="param-admin-review-queue" open={reviewCount > 0 && reviewCount <= 5}>
+    <details className="param-admin-review-queue" open={(reviewCount > 0 && reviewCount <= 5) || Boolean(reviewLoadError)}>
       <summary className="param-admin-review-queue__summary">
         {PARAMETER_ADMIN_UI.specReviewQueueToggle}
         <span className="param-admin-review-queue__count" aria-live="polite">
-          待审核 {reviewCount}
+          {reviewLoadError && !reviewCountKnown ? "待审核 计数不可用" : `待审核 ${reviewCount}`}
         </span>
       </summary>
       <div className="param-admin-review-queue__body">
         {reviewLoading && reviewTasks.length === 0 ? (
           <p className="form-hint">正在加载审核队列…</p>
+        ) : null}
+        {reviewLoadError ? (
+          <p className="form-error" role="alert">
+            {reviewLoadError}
+            <button
+              type="button"
+              className="button subtle"
+              disabled={reviewLoading}
+              onClick={() => void reloadReviewTasks()}
+            >
+              重试
+            </button>
+          </p>
         ) : null}
         <SpecReviewQueue
           tasks={reviewTasks}
@@ -588,6 +624,7 @@ export function OrganizationSpecGovernancePanel({
           onCreateSpec={handleCreateSpecReview}
           pendingTaskId={reviewPendingTaskId}
           pendingAction={reviewPendingAction}
+          actionError={reviewActionError}
           nextCursor={reviewNextCursor}
           onLoadMore={() => void loadMoreReviewTasks()}
           loadingMore={reviewLoadingMore}
@@ -627,6 +664,8 @@ export function OrganizationSpecGovernancePanel({
         selectedSpecId={urlState.specId}
         detail={specDetail}
         loading={specLoading}
+        loadError={specLoadError}
+        onRetryLoad={() => void reloadSpecs()}
         filters={filters}
         onFiltersChange={handleFiltersChange}
         onSelectSpec={handleSelectSpec}

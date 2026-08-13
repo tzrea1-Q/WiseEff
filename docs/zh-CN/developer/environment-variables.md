@@ -111,6 +111,7 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 | `XIAOZE_PROACTIVE_ENABLED` | `false` | 主动 suggest API | 设为 `true` 注册只读 `POST /api/v1/agent/xiaoze/suggest`。默认关闭。 |
 | `VITE_XIAOZE_PROACTIVE_ENABLED` | `false` | 主动建议 UI | 在 `AgentInsightBar` 挂载 `useXiaozeSuggestions`。须 API `XIAOZE_PROACTIVE_ENABLED=true`。 |
 | `VITE_XIAOZE_PROMPT_DEBUG` | `false` | 前端开发工具 | opt-in 提示词/调试展示。 |
+| `VITE_XIAOZE_INSPECTOR` | `false` | 前端开发工具 | opt-in 管理员 CopilotKit AG-UI inspector（仅限非生产构建）。默认关闭：inspector 自带 CDN 推广横幅且上游无独立开关。 |
 
 ## 日志分析 LLM
 

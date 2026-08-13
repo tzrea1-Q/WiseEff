@@ -134,13 +134,16 @@ export function WorkbenchBaselineDialogs({
         open={restoreOpen}
         title="恢复基线确认"
         description={
-          restorePreview && selectedBaselineId
-            ? formatRestorePreviewDescription(
-                baselines.find((item) => item.id === selectedBaselineId)?.name ?? selectedBaselineId,
-                restorePreview.members,
-                restorePreview.releasedBaselineUnchanged
-              )
-            : "正在准备恢复预览…"
+          <div>
+            {restorePreview && selectedBaselineId
+              ? formatRestorePreviewDescription(
+                  baselines.find((item) => item.id === selectedBaselineId)?.name ?? selectedBaselineId,
+                  restorePreview.members,
+                  restorePreview.releasedBaselineUnchanged
+                )
+              : "正在准备恢复预览…"}
+            {baselineActionError ? <p role="alert">{baselineActionError}</p> : null}
+          </div>
         }
         confirmLabel="确认恢复"
         cancelLabel="取消"

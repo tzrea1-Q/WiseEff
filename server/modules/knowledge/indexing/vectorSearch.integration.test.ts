@@ -16,10 +16,10 @@ const databaseAvailable = await isTestDatabaseAvailable();
 /**
  * Real pgvector integration: runs only when the test PostgreSQL actually
  * offers the vector extension (migration 0104 then created the embedding
- * column). On FTS-only servers — including the local shared dev PostgreSQL
- * and the postgres:16 CI image, both without pgvector — this suite skips
- * with this reason and the vector-path logic stays covered by the scripted
- * tests in vectorPath.test.ts.
+ * column). CI runs the pgvector/pgvector:pg16 service image, so this suite
+ * executes there; on FTS-only servers — e.g. a local shared dev PostgreSQL
+ * without pgvector — it skips with this reason and the vector-path logic
+ * stays covered by the scripted tests in vectorPath.test.ts.
  */
 const vectorSupportAvailable = databaseAvailable
   ? await (async () => {

@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { createAuditEvent } from "../audit/repository";
+import { asAuditTx, withAuditedWrite, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
-import { canAdminParameters, canViewParameters } from "../parameters/policy";
+import { canAdminParameters, canViewParameters } from "../parameter-kernel/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { lookupParseCoverage } from "./parseCoverage";
@@ -42,24 +42,22 @@ function requireCanAdmin(auth: AuthContext) {
 }
 
 async function writeAudit(
-  db: Queryable,
+  tx: AuditTx,
   auth: AuthContext,
   input: { action: string; subjectId: string; metadata: Record<string, unknown> },
+  context: { requestId?: string } = {},
 ) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: null,
-    actorUserId: auth.user.id,
-    actorType: "user",
+  // requestId fallback survives only until overlay contexts become mandatory (ADR-0027);
+  // previously the traceId was always a fresh random UUID.
+  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
     app: "parameter-management",
     kind: "organization_driver_schema",
     action: input.action,
     severity: "Low",
+    projectId: null,
     targetType: "organization_driver_schema",
     targetId: input.subjectId,
     metadata: input.metadata,
-    traceId: randomUUID(),
   });
 }
 
@@ -531,6 +529,7 @@ export async function createOrganizationDriverSchemaForAuth(
     notes?: string;
     properties: OverlayPropertyInput[];
   },
+  context: { requestId?: string } = {},
 ): Promise<OrganizationDriverSchemaRecord> {
   requireCanAdmin(auth);
   const compatible = assertExactCompatible(input.compatible);
@@ -548,20 +547,25 @@ export async function createOrganizationDriverSchemaForAuth(
     compatible,
     properties: input.properties,
   });
-  const created = await insertOrganizationDriverSchema(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    compatible,
-    displayName: input.displayName,
-    notes: input.notes,
-    lifecycle: "draft",
-    createdByUserId: auth.user.id,
-    properties: propertyLinks,
-  });
-  await writeAudit(db, auth, {
-    action: "created",
-    subjectId: created.id,
-    metadata: { compatible, propertyCount: created.properties.length },
+  // Insert and audit commit together (ADR-0027); previously the insert
+  // auto-committed and the audit could be lost after it.
+  const created = await withAuditedWrite(db, auth, { requestId: context.requestId ?? randomUUID() }, async (tx) => {
+    const row = await insertOrganizationDriverSchema(tx, {
+      id: randomUUID(),
+      organizationId: auth.organization.id,
+      compatible,
+      displayName: input.displayName,
+      notes: input.notes,
+      lifecycle: "draft",
+      createdByUserId: auth.user.id,
+      properties: propertyLinks,
+    });
+    await writeAudit(asAuditTx(tx), auth, {
+      action: "created",
+      subjectId: row.id,
+      metadata: { compatible, propertyCount: row.properties.length },
+    }, context);
+    return { result: row, audit: null };
   });
   invalidateOrganizationSchemaRegistryCache(auth.organization.id);
   return created;
@@ -576,6 +580,7 @@ export async function updateOrganizationDriverSchemaForAuth(
     notes?: string;
     properties?: OverlayPropertyInput[];
   },
+  context: { requestId?: string } = {},
 ): Promise<OrganizationDriverSchemaRecord> {
   requireCanAdmin(auth);
   const existing = await getOrganizationDriverSchema(db, {
@@ -593,39 +598,43 @@ export async function updateOrganizationDriverSchemaForAuth(
     );
   }
 
-  let updated =
-    (await updateOrganizationDriverSchemaMeta(db, {
-      organizationId: auth.organization.id,
-      schemaId,
-      displayName: input.displayName,
-      notes: input.notes,
-      updatedByUserId: auth.user.id,
-    })) ?? existing;
-
-  if (input.properties) {
-    if (!input.properties.length) {
-      throw new ApiError("VALIDATION_FAILED", "At least one property definition is required.", 400);
-    }
-    updated =
-      (await replaceOrganizationDriverSchemaProperties(db, {
+  // Meta/property writes and their audit commit together (ADR-0027).
+  const updated = await withAuditedWrite(db, auth, { requestId: context.requestId ?? randomUUID() }, async (tx) => {
+    let row =
+      (await updateOrganizationDriverSchemaMeta(tx, {
         organizationId: auth.organization.id,
         schemaId,
+        displayName: input.displayName,
+        notes: input.notes,
         updatedByUserId: auth.user.id,
-        properties: await resolveOverlayPropertyLinks(db, {
-          organizationId: auth.organization.id,
-          compatible: existing.compatible,
-          properties: input.properties,
-        }),
-      })) ?? updated;
-  }
+      })) ?? existing;
 
-  await writeAudit(db, auth, {
-    action: "updated",
-    subjectId: schemaId,
-    metadata: {
-      displayName: input.displayName,
-      propertyCount: input.properties?.length,
-    },
+    if (input.properties) {
+      if (!input.properties.length) {
+        throw new ApiError("VALIDATION_FAILED", "At least one property definition is required.", 400);
+      }
+      row =
+        (await replaceOrganizationDriverSchemaProperties(tx, {
+          organizationId: auth.organization.id,
+          schemaId,
+          updatedByUserId: auth.user.id,
+          properties: await resolveOverlayPropertyLinks(tx, {
+            organizationId: auth.organization.id,
+            compatible: existing.compatible,
+            properties: input.properties,
+          }),
+        })) ?? row;
+    }
+
+    await writeAudit(asAuditTx(tx), auth, {
+      action: "updated",
+      subjectId: schemaId,
+      metadata: {
+        displayName: input.displayName,
+        propertyCount: input.properties?.length,
+      },
+    }, context);
+    return { result: row, audit: null };
   });
   invalidateOrganizationSchemaRegistryCache(auth.organization.id);
   return updated;
@@ -691,7 +700,7 @@ export async function activateOrganizationDriverSchemaForAuth(
       reviewerUserId: auth.user.id,
     });
 
-    await writeAudit(tx, auth, {
+    await writeAudit(asAuditTx(tx), auth, {
       action: "activated",
       subjectId: schemaId,
       metadata: {
@@ -800,6 +809,7 @@ export async function deprecateOrganizationDriverSchemaForAuth(
   auth: AuthContext,
   schemaId: string,
   input: { confirmCoverageLoss?: boolean } = {},
+  context: { requestId?: string } = {},
 ): Promise<OrganizationDriverSchemaRecord> {
   requireCanAdmin(auth);
   const impact = await previewOrganizationDriverSchemaDeprecationForAuth(db, auth, schemaId);
@@ -826,19 +836,23 @@ export async function deprecateOrganizationDriverSchemaForAuth(
       { successorSchemaId: existing.supersededBySchemaId },
     );
   }
-  const updated = await setOrganizationDriverSchemaLifecycle(db, {
-    organizationId: auth.organization.id,
-    schemaId,
-    lifecycle: "deprecated",
-    updatedByUserId: auth.user.id,
-  });
-  if (!updated) {
-    throw new ApiError("NOT_FOUND", "Organization driver schema not found.", 404);
-  }
-  await writeAudit(db, auth, {
-    action: "deprecated",
-    subjectId: schemaId,
-    metadata: { compatible: updated.compatible, impact, confirmCoverageLoss: Boolean(input.confirmCoverageLoss) },
+  // Lifecycle write and audit commit together (ADR-0027).
+  const updated = await withAuditedWrite(db, auth, { requestId: context.requestId ?? randomUUID() }, async (tx) => {
+    const row = await setOrganizationDriverSchemaLifecycle(tx, {
+      organizationId: auth.organization.id,
+      schemaId,
+      lifecycle: "deprecated",
+      updatedByUserId: auth.user.id,
+    });
+    if (!row) {
+      throw new ApiError("NOT_FOUND", "Organization driver schema not found.", 404);
+    }
+    await writeAudit(asAuditTx(tx), auth, {
+      action: "deprecated",
+      subjectId: schemaId,
+      metadata: { compatible: row.compatible, impact, confirmCoverageLoss: Boolean(input.confirmCoverageLoss) },
+    }, context);
+    return { result: row, audit: null };
   });
   invalidateOrganizationSchemaRegistryCache(auth.organization.id);
   return updated;

@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import type { AuthContext } from "../auth/types";
-import { canAdminParameters, canViewParameters } from "../parameters/policy";
+import { canAdminParameters, canViewParameters } from "../parameter-kernel/policy";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
@@ -313,7 +313,7 @@ export function registerParameterSpecRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(createOrganizationDriverSchemaBodySchema, request.body ?? {});
-    const item = await createOrganizationDriverSchemaForAuth(db, auth, body);
+    const item = await createOrganizationDriverSchemaForAuth(db, auth, body, { requestId: request.requestId });
     return { status: 201, body: { item } };
   });
 
@@ -322,7 +322,7 @@ export function registerParameterSpecRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(organizationDriverSchemaParamsSchema, request.params);
     const body = parseWithSchema(updateOrganizationDriverSchemaBodySchema, request.body ?? {});
-    const item = await updateOrganizationDriverSchemaForAuth(db, auth, params.schemaId, body);
+    const item = await updateOrganizationDriverSchemaForAuth(db, auth, params.schemaId, body, { requestId: request.requestId });
     return { status: 200, body: { item } };
   });
 
@@ -339,7 +339,7 @@ export function registerParameterSpecRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(organizationDriverSchemaParamsSchema, request.params);
     const body = parseWithSchema(deprecateOrganizationDriverSchemaBodySchema, request.body ?? {});
-    const item = await deprecateOrganizationDriverSchemaForAuth(db, auth, params.schemaId, body);
+    const item = await deprecateOrganizationDriverSchemaForAuth(db, auth, params.schemaId, body, { requestId: request.requestId });
     return { status: 200, body: { item } };
   });
 

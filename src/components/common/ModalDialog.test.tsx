@@ -115,6 +115,22 @@ describe("ModalDialog", () => {
     expect(screen.getByRole("dialog", { name: "测试弹窗" })).toBeInTheDocument();
   });
 
+  it("ignores an Escape already consumed by another layer", () => {
+    const onDismiss = vi.fn();
+    render(<Harness onDismiss={onDismiss} />);
+    fireEvent.click(screen.getByRole("button", { name: "打开" }));
+
+    // A Radix dialog that routes Escape into a confirmation calls preventDefault
+    // while the event is still travelling towards window; the freshly mounted
+    // confirmation must not treat that same event as its own dismissal.
+    const consumed = new KeyboardEvent("keydown", { key: "Escape", cancelable: true, bubbles: true });
+    consumed.preventDefault();
+    fireEvent(window, consumed);
+
+    expect(onDismiss).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "测试弹窗" })).toBeInTheDocument();
+  });
+
   it("lets Escape reach only the top-most dialog", () => {
     const outer = vi.fn();
     const inner = vi.fn();

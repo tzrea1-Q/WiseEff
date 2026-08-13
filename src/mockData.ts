@@ -754,3 +754,43 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
 export const initialState = createPrototypeState();
 export const auditEvents = initialState.auditEvents;
 export const mockDataFingerprint = createMockDataFingerprint(initialState);
+
+/**
+ * API-mode initial state: structural fields (roles, users, config schema) stay,
+ * but every business-data slice starts empty so demo records can never be read
+ * as production data. The API runtime hydrates the slices after authentication.
+ */
+export function createApiInitialState(): PrototypeState {
+  const state = createPrototypeState();
+  return {
+    ...state,
+    parameters: [],
+    changeRequests: [],
+    parameterDrafts: [],
+    parameterSubmissionRounds: [],
+    parameterReviewDecisions: [],
+    parameterInitializationDrafts: [],
+    parameterInitializationReviews: [],
+    projectInitializationStatuses: {},
+    logs: [],
+    archivedLogIds: [],
+    devices: [],
+    debugParameters: [],
+    notifications: [],
+    notificationInbox: [],
+    configDraft: {
+      ...state.configDraft,
+      projects: [],
+      parameterLibrary: [],
+      parameterModules: [],
+      debugParameters: []
+    },
+    persistedConfigSnapshot: {
+      ...state.persistedConfigSnapshot,
+      projects: [],
+      parameterLibrary: [],
+      parameterModules: [],
+      debugParameters: []
+    }
+  };
+}

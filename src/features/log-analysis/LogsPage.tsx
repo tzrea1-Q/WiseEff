@@ -3,10 +3,8 @@ import { useTopBarActions } from "@/components/layout";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "@/components/tableFilterUtils";
 import { type PageProps } from "@/app/routes";
 import { ModalDialog } from "@/components/common/ModalDialog";
-import { useToast } from "@/components/common/toast/ToastProvider";
 import type { LogDomain } from "@/domain/logs/types";
 import { SEVERITY_LABELS, STAGE_LABELS, type LogEvidence, type LogRecord, type LogStageId } from "@/domain/prototype/types";
-import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { EmptyState, PanelHeader, SectionLabel } from "@/workbenchUi";
 import {
   AlertTriangle,
@@ -85,7 +83,6 @@ function createEmptyLogRecord(): LogRecord {
 }
 
 export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, knowledgeCapability }: PageProps) {
-  const { toast } = useToast();
   const knowledgeRepository = runtime?.knowledgeRepository;
   const [selectedLogId, setSelectedLogId] = useState(state.logs[0]?.id ?? "");
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
@@ -93,6 +90,8 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   const [distilPending, setDistilPending] = useState(false);
   const [pendingUpload, setPendingUpload] = useState<{ fileName: string; previousLogIds: Set<string> } | null>(null);
   const [feedbackLogId, setFeedbackLogId] = useState<string | null>(null);
+  const [feedbackPending, setFeedbackPending] = useState(false);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
   const [auxTab, setAuxTab] = useState<LogsAuxTab>("history");
   const [hoveredEvidenceId, setHoveredEvidenceId] = useState<string | null>(null);
   const [focusedEvidenceId, setFocusedEvidenceId] = useState<string | null>(null);
@@ -138,16 +137,9 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
     prevLogCount.current = state.logs.length;
   }, [state.logs]);
 
-  // Mock-mode workflow feedback: surface the latest prototype notification
-  // through the shared toast pipeline (API mode has real notification delivery).
-  const lastToastedNotificationRef = useRef<string | null>(null);
-  useEffect(() => {
-    const latest = state.notifications[0];
-    if (wiseEffRuntimeMode !== "api" && latest && latest !== lastToastedNotificationRef.current) {
-      lastToastedNotificationRef.current = latest;
-      toast({ tone: "info", message: latest });
-    }
-  }, [state.notifications, toast]);
+  // Reducer notifications render through the global AppToastLayer in both
+  // runtime modes (the API-mode inbox never receives ADD_NOTIFICATION), so no
+  // per-page bridge is needed here.
 
   useEffect(() => {
     setSearchQuery("");
@@ -431,17 +423,49 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
       {selectedFeedbackLog ? (
         <LogAnalysisFeedbackDialog
           log={selectedFeedbackLog}
-          onClose={() => setFeedbackLogId(null)}
-          onSubmit={(confidence, issue) => {
-            dispatch({
-              type: "ADD_NOTIFICATION",
-              message: `已记录 ${selectedFeedbackLog.reportId} 的分析反馈：${confidence}${issue ? `，${issue}` : ""}`
-            });
-            toast({ tone: "success", message: "反馈已记录，感谢补充分析质量线索。" });
+          pending={feedbackPending}
+          error={feedbackError}
+          onClose={() => {
+            if (feedbackPending) return;
             setFeedbackLogId(null);
+            setFeedbackError(null);
+          }}
+          onSubmit={(confidence, issue) => {
+            const feedbackLog = selectedFeedbackLog;
+            if (!logActions) {
+              // Mock mode keeps the local acknowledgement through the global toast layer.
+              dispatch({
+                type: "ADD_NOTIFICATION",
+                message: `已记录 ${feedbackLog.reportId} 的分析反馈：${confidence}${issue ? `，${issue}` : ""}`
+              });
+              setFeedbackLogId(null);
+              return;
+            }
+            setFeedbackPending(true);
+            setFeedbackError(null);
+            void logActions
+              .submitFeedback({
+                logId: feedbackLog.id,
+                rating: confidence === "high" ? "helpful" : "not_helpful",
+                ...(issue ? { note: issue } : {})
+              })
+              .then(() => {
+                setFeedbackLogId(null);
+                dispatch({
+                  type: "ADD_NOTIFICATION",
+                  message: `已提交 ${feedbackLog.reportId} 的分析反馈`
+                });
+              })
+              .catch((error: unknown) => {
+                setFeedbackError(error instanceof Error ? error.message : "反馈提交失败，请重试。");
+              })
+              .finally(() => {
+                setFeedbackPending(false);
+              });
           }}
         />
       ) : null}
+      {/* Reducer notifications render through the global AppToastLayer in both runtime modes. */}
     </div>
   );
 }
@@ -826,10 +850,14 @@ function LogConclusionCard({
 
 function LogAnalysisFeedbackDialog({
   log,
+  pending = false,
+  error = null,
   onClose,
   onSubmit
 }: {
   log: LogRecord;
+  pending?: boolean;
+  error?: string | null;
   onClose: () => void;
   onSubmit: (confidence: string, issue: string) => void;
 }) {
@@ -838,6 +866,7 @@ function LogAnalysisFeedbackDialog({
 
   const submitFeedback = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (pending) return;
     onSubmit(confidence, issue.trim());
   };
 
@@ -852,13 +881,13 @@ function LogAnalysisFeedbackDialog({
             </h2>
             <p>{log.fileName}</p>
           </div>
-          <button className="icon-button" type="button" aria-label="关闭反馈分析质量" onClick={onClose}>
+          <button className="icon-button" type="button" aria-label="关闭反馈分析质量" disabled={pending} onClick={onClose}>
             <X size={18} />
           </button>
         </div>
         <label className="upload-question-field" htmlFor="log-feedback-confidence">
           <span>置信度反馈</span>
-          <select id="log-feedback-confidence" value={confidence} onChange={(event) => setConfidence(event.target.value)}>
+          <select id="log-feedback-confidence" value={confidence} disabled={pending} onChange={(event) => setConfidence(event.target.value)}>
             <option value="high">高：判断可信</option>
             <option value="medium">中：需要复核</option>
             <option value="low">低：可能误判</option>
@@ -871,15 +900,21 @@ function LogAnalysisFeedbackDialog({
             value={issue}
             placeholder="例如：证据链不足、根因误判、缺少关键日志片段"
             rows={4}
+            disabled={pending}
             onChange={(event) => setIssue(event.target.value)}
           />
         </label>
+        {error ? (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        ) : null}
         <div className="upload-dialog__actions">
-          <button className="button subtle" type="button" onClick={onClose}>
+          <button className="button subtle" type="button" disabled={pending} onClick={onClose}>
             取消
           </button>
-          <button className="button primary" type="submit">
-            提交反馈
+          <button className="button primary" type="submit" disabled={pending}>
+            {pending ? "提交中…" : "提交反馈"}
           </button>
         </div>
       </form>

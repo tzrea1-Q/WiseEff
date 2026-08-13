@@ -1,6 +1,6 @@
-# Jobs Repository Behavior Tests (TD-079 slice)
+# Jobs Repository Behavior Tests (TD-096 slice)
 
-Status: **Active** · Branch `test/jobs-repository-behavior` · Follows `2026-08-12-parameters-service-behavior-tests.md` (#336) and `2026-08-12-debugging-repository-behavior-tests.md` (#345)
+Status: **Completed** (PR #378)
 
 ## Goal
 
@@ -31,12 +31,12 @@ The lease fencing that the fake could only grep for is now exercised for real: F
 | Area | File(s) | Impact |
 | --- | --- | --- |
 | Planning docs | `docs/PLANS.md`, this plan | Update |
-| Tech debt | `docs/exec-plans/tech-debt-tracker.md` | Update (TD-079 progress) |
+| Tech debt | `docs/exec-plans/tech-debt-tracker.md` | Update (TD-096 progress) |
 | All other areas | — | No change (test-only; no behaviour, contract, or schema impact) |
 
 ## Documentation Update Gate
 
 - [x] `docs/PLANS.md` lists this plan
-- [x] TD-079 row updated
+- [x] TD-096 row updated
 - [x] `npm run docs:check` green
 - [ ] Move to `completed/` after merge

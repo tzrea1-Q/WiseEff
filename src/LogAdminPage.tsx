@@ -945,6 +945,8 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
   const [insightDismissed, setInsightDismissed] = useState<boolean>(() => readInsightDismissed());
   const [pendingActions, setPendingActions] = useState<Set<string>>(() => new Set());
   const [syncPending, setSyncPending] = useState(false);
+  const [logView, setLogView] = useState<"active" | "archived">("active");
+  const [archivedLoaded, setArchivedLoaded] = useState(false);
   const [feedbackInsightsRefreshKey, setFeedbackInsightsRefreshKey] = useState(0);
 
   const runPendingAction = async (kind: PendingLogAction, logId: string, action: () => Promise<void>) => {
@@ -970,24 +972,57 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
       return undefined;
     }
 
-    const timer = window.setTimeout(() => setUndoArchive(null), 6000);
+    // The archived view makes archiving reversible any time; the undo window
+    // still gives a fast path for accidental clicks.
+    const timer = window.setTimeout(() => setUndoArchive(null), 10000);
     return () => window.clearTimeout(timer);
   }, [undoArchive]);
+
+  // Load archived records lazily when entering the archived view in API mode.
+  useEffect(() => {
+    if (logView !== "archived" || archivedLoaded || !logActions) {
+      return;
+    }
+    setArchivedLoaded(true);
+    void logActions.refresh({ includeArchived: true }).catch(() => {
+      setArchivedLoaded(false);
+    });
+  }, [archivedLoaded, logActions, logView]);
 
   const visibleLogs = useMemo(
     () => state.logs.filter((log) => !state.archivedLogIds.includes(log.id)),
     [state.archivedLogIds, state.logs]
   );
+  const archivedLogs = useMemo(
+    () => state.logs.filter((log) => state.archivedLogIds.includes(log.id)),
+    [state.archivedLogIds, state.logs]
+  );
   const windowLogs = useMemo(() => applyTimeWindow(visibleLogs, timeWindow), [timeWindow, visibleLogs]);
   const metrics = useMemo(() => deriveMetrics(windowLogs, timeWindow, visibleLogs), [timeWindow, visibleLogs, windowLogs]);
+  const tableSourceLogs = logView === "archived" ? archivedLogs : windowLogs;
   const filteredRows = useMemo(
-    () => applyTableFilters(windowLogs, { tableQuery, statusFilter, moduleFilter, sortBy }),
-    [moduleFilter, sortBy, statusFilter, tableQuery, windowLogs]
+    () => applyTableFilters(tableSourceLogs, { tableQuery, statusFilter, moduleFilter, sortBy }),
+    [moduleFilter, sortBy, statusFilter, tableQuery, tableSourceLogs]
   );
-  const availableModules = useMemo(() => Array.from(new Set(windowLogs.map((log) => log.source))).sort(), [windowLogs]);
+  const availableModules = useMemo(
+    () => Array.from(new Set(tableSourceLogs.map((log) => log.source))).sort(),
+    [tableSourceLogs]
+  );
   const insight = useMemo(() => deriveInsight(windowLogs, visibleLogs), [visibleLogs, windowLogs]);
   const canAct = canPerform(state.activeRoleId, "admin.access");
   const selectedRecord = selectedRecordId ? state.logs.find((log) => log.id === selectedRecordId) ?? null : null;
+
+  const unarchiveLog = (logId: string) => {
+    if (!logActions) {
+      dispatch({ type: "LOG_ADMIN_UNARCHIVE_LOG", logId });
+      setUndoArchive((current) => (current?.logId === logId ? null : current));
+      return;
+    }
+    void runPendingAction("unarchive", logId, async () => {
+      await logActions.unarchive(logId);
+      setUndoArchive((current) => (current?.logId === logId ? null : current));
+    });
+  };
 
   const toggleStatusFilter = (status: string) => {
     if (!Object.keys(statusLabels).includes(status)) return;
@@ -1064,7 +1099,23 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
     {
       key: "action",
       header: "",
-      render: () => <span className="text-xs text-primary">查看</span>,
+      render: (record) =>
+        logView === "archived" && canAct ? (
+          <button
+            type="button"
+            className="text-xs font-medium text-primary hover:underline disabled:pointer-events-none disabled:opacity-50"
+            disabled={pendingActions.has(pendingKey("unarchive", record.id))}
+            aria-busy={pendingActions.has(pendingKey("unarchive", record.id)) || undefined}
+            onClick={(event) => {
+              event.stopPropagation();
+              unarchiveLog(record.id);
+            }}
+          >
+            恢复
+          </button>
+        ) : (
+          <span className="text-xs text-primary">查看</span>
+        ),
       align: "right",
       widthClass: "w-20"
     }
@@ -1212,8 +1263,32 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
           refreshKey={feedbackInsightsRefreshKey}
         />
         <section className="flex flex-col gap-2">
-          <div>
+          <div className="flex items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-foreground">日志分析记录</h2>
+            <div className="flex items-center gap-1" role="group" aria-label="日志视图切换">
+              <button
+                type="button"
+                aria-pressed={logView === "active"}
+                onClick={() => setLogView("active")}
+                className={cn(
+                  "h-7 rounded-md px-2.5 text-xs transition-colors",
+                  logView === "active" ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted"
+                )}
+              >
+                活跃日志
+              </button>
+              <button
+                type="button"
+                aria-pressed={logView === "archived"}
+                onClick={() => setLogView("archived")}
+                className={cn(
+                  "h-7 rounded-md px-2.5 text-xs transition-colors",
+                  logView === "archived" ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted"
+                )}
+              >
+                已归档{archivedLogs.length > 0 ? `（${archivedLogs.length}）` : ""}
+              </button>
+            </div>
           </div>
           <DataTable
             aria-label="日志分析记录"
@@ -1242,7 +1317,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
                   </button>
                 ) : null}
                 <span className="ml-auto text-xs text-muted-foreground">
-                  显示 {filteredRows.length} / {windowLogs.length} 条
+                  显示 {filteredRows.length} / {tableSourceLogs.length} 条
                 </span>
               </div>
             }
@@ -1255,7 +1330,9 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
                   </button>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">当前时间窗口内暂无日志</p>
+                <p className="text-sm text-muted-foreground">
+                  {logView === "archived" ? "暂无已归档日志" : "当前时间窗口内暂无日志"}
+                </p>
               )
             }
           />
@@ -1296,6 +1373,10 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
 
           void runPendingAction("archive", id, async () => {
             await logActions.archive(id);
+            // The post-archive refresh only returns active logs, so the archived
+            // record drops out of local state; force the archived view to reload
+            // from the server next time it opens instead of showing a stale blank.
+            setArchivedLoaded(false);
             if (log) {
               setUndoArchive({ logId: id, fileName: log.fileName });
             }
@@ -1328,24 +1409,13 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
         >
           <span className="text-sm text-foreground">
             已归档 <span className="font-mono text-xs">{undoArchive.fileName}</span>
+            <span className="ml-1 text-xs text-muted-foreground">（可随时在「已归档」视图恢复）</span>
           </span>
           <button
             type="button"
             disabled={undoArchivePending}
             aria-busy={undoArchivePending || undefined}
-            onClick={() => {
-              const { logId } = undoArchive;
-              if (!logActions) {
-                dispatch({ type: "LOG_ADMIN_UNARCHIVE_LOG", logId });
-                setUndoArchive(null);
-                return;
-              }
-
-              void runPendingAction("unarchive", logId, async () => {
-                await logActions.unarchive(logId);
-                setUndoArchive(null);
-              });
-            }}
+            onClick={() => unarchiveLog(undoArchive.logId)}
             className="text-sm font-medium text-primary hover:underline disabled:pointer-events-none disabled:opacity-50"
           >
             撤销

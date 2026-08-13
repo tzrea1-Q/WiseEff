@@ -4,6 +4,7 @@ import { CircleX, Trash2, Upload } from "lucide-react";
 import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
 import type { ProductFeedbackType } from "@/domain/productFeedback/types";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import {
   Dialog,
   DialogContent,
@@ -61,11 +62,34 @@ export function FeedbackDialog({
   const [submitStatus, setSubmitStatus] = useState<"idle" | "submitting">("idle");
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const imageIdCounterRef = useRef(0);
   const imagesRef = useRef<PastedFeedbackImage[]>([]);
   const trimmedDescription = description.trim();
   const isSubmitting = submitStatus === "submitting";
   const submitDisabled = !trimmedDescription || isSubmitting;
+  // Unsubmitted description or screenshots are user work; never drop them silently.
+  const isDirty = Boolean(trimmedDescription) || images.length > 0;
+
+  const requestClose = () => {
+    if (isSubmitting) {
+      return;
+    }
+    if (isDirty) {
+      setDiscardConfirmOpen(true);
+      return;
+    }
+    onOpenChange(false);
+  };
+
+  const confirmDiscard = () => {
+    setDiscardConfirmOpen(false);
+    setDescription("");
+    clearImages();
+    setSuccessMessage("");
+    setErrorMessage("");
+    onOpenChange(false);
+  };
 
   useEffect(() => {
     imagesRef.current = images;
@@ -174,7 +198,17 @@ export function FeedbackDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen) {
+          onOpenChange(true);
+          return;
+        }
+        // Escape / backdrop close requests go through the dirty-state guard.
+        requestClose();
+      }}
+    >
       <DialogContent className="feedback-dialog" showCloseButton={false}>
         <form onSubmit={handleSubmit}>
           <DialogHeader className="feedback-dialog-header">
@@ -183,7 +217,7 @@ export function FeedbackDialog({
               <DialogTitle>问题反馈</DialogTitle>
               <DialogDescription>反馈会携带页面路径、类型、描述和可选截图，方便内测团队定位问题。</DialogDescription>
             </div>
-            <button type="button" className="audit-dialog-close-icon" aria-label="关闭" onClick={() => onOpenChange(false)}>
+            <button type="button" className="audit-dialog-close-icon" aria-label="关闭" onClick={requestClose}>
               <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
             </button>
           </DialogHeader>
@@ -270,7 +304,7 @@ export function FeedbackDialog({
           ) : null}
           {errorMessage ? <p className="feedback-error">{errorMessage}</p> : null}
           <DialogFooter className="dialog-actions">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" onClick={requestClose}>
               关闭
             </Button>
             <Button type="submit" disabled={submitDisabled}>
@@ -279,6 +313,21 @@ export function FeedbackDialog({
           </DialogFooter>
         </form>
       </DialogContent>
+      <ConfirmDialog
+        open={discardConfirmOpen}
+        title="放弃当前反馈？"
+        description={
+          <p>
+            尚未提交的反馈将丢失
+            {images.length > 0 ? `（含 ${images.length} 张已粘贴截图）` : ""}。确认放弃，还是留在此处继续填写？
+          </p>
+        }
+        confirmLabel="放弃反馈"
+        cancelLabel="继续填写"
+        tone="danger"
+        onCancel={() => setDiscardConfirmOpen(false)}
+        onConfirm={confirmDiscard}
+      />
     </Dialog>
   );
 }

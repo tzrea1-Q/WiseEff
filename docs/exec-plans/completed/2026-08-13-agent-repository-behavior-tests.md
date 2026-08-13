@@ -1,6 +1,6 @@
-# Agent Repository Behavior Tests (TD-079 slice)
+# Agent Repository Behavior Tests (TD-096 slice)
 
-Status: **Active** · Branch `test/agent-repository-behavior` · Follows #336 / #345 / #378
+Status: **Completed** (PR #392)
 
 ## Goal
 
@@ -37,12 +37,12 @@ Retire the SQL-substring assertions in `server/modules/agent/repository.test.ts`
 | Area | File(s) | Impact |
 | --- | --- | --- |
 | Planning docs | `docs/PLANS.md`, this plan | Update |
-| Tech debt | `docs/exec-plans/tech-debt-tracker.md` | Update (TD-079 progress) |
+| Tech debt | `docs/exec-plans/tech-debt-tracker.md` | Update (TD-096 progress) |
 | All other areas | — | No change (test-only) |
 
 ## Documentation Update Gate
 
 - [x] `docs/PLANS.md` lists this plan
-- [x] TD-079 row updated
+- [x] TD-096 row updated
 - [x] `npm run docs:check` green
 - [ ] Move to `completed/` after merge

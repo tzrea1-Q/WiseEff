@@ -1,5 +1,18 @@
-import { describe, expect, it } from "vitest";
-import type { QueryResult, Queryable } from "../../shared/database/client";
+/**
+ * Behavior-level integration coverage for the parameter draft repository:
+ * upsert/list/delete scoping, binding-draft enrichment, origin metadata, and
+ * candidate rebase against a real database. Asserts returned DTOs and
+ * subsequent reads — never SQL text.
+ */
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import {
+  createInMemoryTestDatabase,
+  isTestDatabaseAvailable,
+  type InMemoryTestDatabase
+} from "../../testing/testDatabase";
+import { seedCoreGraph } from "../../testing/fixtures";
+import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import {
   deleteDraft,
   listDraftsForParameterValue,
@@ -9,130 +22,220 @@ import {
   upsertDraft
 } from "./repository";
 
-type QueryCall = {
-  text: string;
-  values: unknown[];
-};
+const databaseAvailable = await isTestDatabaseAvailable();
 
-type QueuedResult = Record<string, unknown> | unknown[] | ((call: QueryCall) => unknown[]);
+describe.skipIf(!databaseAvailable)("draft repository", () => {
+  let db: InMemoryTestDatabase;
 
-function createFakeDb(rowsOrQueue: QueuedResult[] = []) {
-  const calls: QueryCall[] = [];
-  const queueMode = rowsOrQueue.some((item) => typeof item === "function" || Array.isArray(item));
-  const db: Queryable = {
-    query: async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
-      const call = { text, values };
-      // Cutover probes must not consume the test SQL queue.
-      if (text.includes("parameter_identity_cutovers")) {
-        return { rows: [{ c: "0" } as Row], rowCount: 1 };
-      }
-      if (text.includes("information_schema.tables") && text.includes("parameter_definitions")) {
-        return { rows: [{ c: "1" } as Row], rowCount: 1 };
-      }
-      calls.push(call);
-      if (queueMode) {
-        const next = rowsOrQueue.shift() ?? [];
-        const rows = typeof next === "function" ? next(call) : Array.isArray(next) ? next : [next];
-        return { rows: rows as Row[], rowCount: rows.length };
-      }
-
-      const rows = rowsOrQueue as unknown[];
-      return { rows: rows as Row[], rowCount: rows.length };
-    }
-  };
-
-  return { db, calls };
-}
-
-describe("draft repository", () => {
-  it("upsertDraft inserts or updates a user draft within an organization", async () => {
-    const { db, calls } = createFakeDb([
-      [
-        {
-          id: "draft-1",
-          project_id: "project-1",
-          project_parameter_value_id: "param-1",
-          target_value: "3100",
-          reason: "Reduce thermal risk.",
-          updated_at: "2026-05-25T04:00:00.000Z"
-        }
+  beforeEach(async () => {
+    setParameterIdentityMode(null);
+    db = await createInMemoryTestDatabase();
+    await seedCoreGraph(db, {
+      organization: { id: "org-1", name: "ChargeLab" },
+      users: [
+        { id: "user-1", name: "Riley Chen", email: "riley@example.com" },
+        { id: "user-2", name: "Other Editor", email: "other@example.com" },
+        { id: "user-sync", name: "Sync Bot", email: "sync@example.com" },
+        { id: "user-ui", name: "UI Editor", email: "ui@example.com" }
+      ],
+      projects: [
+        { id: "project-1", name: "Aurora", code: "AUR" },
+        { id: "project-2", name: "Borealis", code: "BOR" }
       ]
-    ]);
+    });
 
-    const draft = await upsertDraft(db, {
+    // Legacy flat identity rows drafts hang off.
+    await db.query(
+      `insert into parameter_definitions (
+         id, organization_id, name, description, explanation, config_format, module, default_range, unit, risk
+       ) values
+         ('pd-1', 'org-1', 'fast_charge_current_limit_ma', 'Limit fast charge current.', 'Controls fast charging current.', 'ENV', 'Charging Policy', '1000 - 5000', 'mA', 'High'),
+         ('pd-2', 'org-1', 'thermal_guard_threshold_c', 'Thermal guard.', 'Thermal guard threshold.', 'ENV', 'Thermal', '40 - 90', 'C', 'Medium')`
+    );
+    await db.query(
+      `insert into project_parameter_values (
+         id, organization_id, project_id, parameter_definition_id,
+         current_value, recommended_value, value_version, updated_by_user_id
+       ) values
+         ('param-1', 'org-1', 'project-1', 'pd-1', '3200', '3000', 7, 'user-1'),
+         ('param-2', 'org-1', 'project-2', 'pd-2', '70', '68', 2, 'user-1')`
+    );
+  });
+
+  afterEach(async () => {
+    await db?.rollback();
+  });
+
+  /** Candidate revisions carry an FK to dts_config_revisions; seed real rows. */
+  async function seedConfigRevisions(revisionIds: string[]) {
+    await db.query(
+      `insert into dts_config_set (id, organization_id, project_id, name)
+       values ('set-1', 'org-1', 'project-1', 'main')
+       on conflict (id) do nothing`
+    );
+    for (const [index, revisionId] of revisionIds.entries()) {
+      await db.query(
+        `insert into dts_config_revisions (id, organization_id, project_id, config_set_id, revision_number, status)
+         values ($1, 'org-1', 'project-1', 'set-1', $2, 'resolved')`,
+        [revisionId, index + 1]
+      );
+    }
+  }
+
+  /** Spec + binding graph for binding-identified drafts (FKs require real rows). */
+  async function seedBindingGraph() {
+    await db.query(
+      `insert into parameter_specs (id, organization_id, source_kind, specification_key)
+       values
+         ('spec-thermal', 'org-1', 'dts', 'Power/thermal-limit'),
+         ('spec-current', 'org-1', 'dts', 'Power/current-limit')`
+    );
+    await db.query(
+      `insert into parameter_spec_versions (id, parameter_spec_id, version, display_name, description, value_shape, lifecycle)
+       values ('psv-thermal', 'spec-thermal', 1, 'thermal-limit', 'thermal limit', '{}', 'active')`
+    );
+    await db.query(
+      `insert into dts_property_specs (id, parameter_spec_id, property_key, schema_namespace)
+       values ('dps-thermal', 'spec-thermal', 'thermal-limit', 'wiseeff')`
+    );
+    await db.query(
+      `insert into parameter_modules (id, organization_id, name, path, depth)
+       values ('pm-power', 'org-1', 'Power', 'pm-power', 1)`
+    );
+    await db.query(
+      `insert into project_parameter_bindings (id, organization_id, project_id, parameter_spec_id, module_id)
+       values
+         ('binding-1', 'org-1', 'project-1', 'spec-thermal', 'pm-power'),
+         ('binding-b', 'org-1', 'project-1', 'spec-current', 'pm-power')`
+    );
+  }
+
+  async function draftRows(where: string, values: unknown[] = []) {
+    const result = await db.query<{
+      id: string;
+      user_id: string;
+      target_value: string;
+      reason: string;
+      candidate_config_revision_id: string | null;
+    }>(
+      `select id, user_id, target_value, reason, candidate_config_revision_id
+       from parameter_drafts where ${where} order by id asc`,
+      values
+    );
+    return result.rows;
+  }
+
+  it("upsertDraft inserts a draft and updates it in place on the same (project, parameter, user) key", async () => {
+    const inserted = await upsertDraft(db, {
       id: "draft-1",
-      organizationId: "org-chargelab",
+      organizationId: "org-1",
       projectId: "project-1",
       parameterId: "param-1",
       userId: "user-1",
       targetValue: "3100",
       reason: "Reduce thermal risk."
     });
+    expect(inserted).toMatchObject({
+      id: "draft-1",
+      projectId: "project-1",
+      parameterId: "param-1",
+      targetValue: "3100",
+      action: "set",
+      reason: "Reduce thermal risk."
+    });
 
-    expect(calls[0].text).toContain("insert into parameter_drafts");
-    expect(calls[0].text).toContain("on conflict (project_id, project_parameter_value_id, user_id)");
-    expect(calls[0].values).toEqual([
-      "draft-1",
-      "org-chargelab",
-      "project-1",
-      "param-1",
-      "user-1",
-      "3100",
-      "Reduce thermal risk.",
-      "manual",
-      null,
-      "set",
-      null,
-      null,
-      null,
-      null,
-      null,
-      null,
-      null,
-      null
-    ]);
-    expect(draft).toMatchObject({ id: "draft-1", parameterId: "param-1", targetValue: "3100" });
+    // A second save for the same key keeps the original draft row and updates it.
+    const updated = await upsertDraft(db, {
+      id: "draft-2",
+      organizationId: "org-1",
+      projectId: "project-1",
+      parameterId: "param-1",
+      userId: "user-1",
+      targetValue: "3050",
+      reason: "Lower further after review."
+    });
+    expect(updated).toMatchObject({ id: "draft-1", targetValue: "3050", reason: "Lower further after review." });
+
+    const stored = await draftRows(`organization_id = 'org-1' and user_id = 'user-1'`);
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({ id: "draft-1", target_value: "3050" });
   });
 
   it("listDraftsForUser and deleteDraft scope drafts by organization and user", async () => {
-    const { db, calls } = createFakeDb([[]]);
+    await upsertDraft(db, {
+      id: "draft-mine",
+      organizationId: "org-1",
+      projectId: "project-1",
+      parameterId: "param-1",
+      userId: "user-1",
+      targetValue: "3100",
+      reason: "Mine."
+    });
+    await upsertDraft(db, {
+      id: "draft-other-user",
+      organizationId: "org-1",
+      projectId: "project-1",
+      parameterId: "param-1",
+      userId: "user-2",
+      targetValue: "3111",
+      reason: "Someone else's."
+    });
+    await upsertDraft(db, {
+      id: "draft-other-project",
+      organizationId: "org-1",
+      projectId: "project-2",
+      parameterId: "param-2",
+      userId: "user-1",
+      targetValue: "69",
+      reason: "Other project."
+    });
 
-    await listDraftsForUser(db, { organizationId: "org-chargelab", userId: "user-1", projectId: "project-1" });
-    await deleteDraft(db, { organizationId: "org-chargelab", userId: "user-1", draftId: "draft-1" });
+    const drafts = await listDraftsForUser(db, {
+      organizationId: "org-1",
+      userId: "user-1",
+      projectId: "project-1"
+    });
+    expect(drafts).toHaveLength(1);
+    // Legacy drafts enrich name/module/currentValue from the flat identity graph.
+    expect(drafts[0]).toMatchObject({
+      id: "draft-mine",
+      projectId: "project-1",
+      parameterId: "param-1",
+      targetValue: "3100",
+      reason: "Mine.",
+      name: "fast_charge_current_limit_ma",
+      module: "Charging Policy",
+      currentValue: "3200"
+    });
 
-    expect(calls[0].text).toContain("from parameter_drafts d");
-    expect(calls[0].text).toContain("d.organization_id = $1");
-    expect(calls[0].text).toContain("d.user_id = $2");
-    expect(calls[0].text).toContain("as base_raw_value");
-    expect(calls[0].text).toContain("d.candidate_config_revision_id");
-    expect(calls[0].text).toContain("b.parameter_spec_id");
-    expect(calls[0].text).toContain("parameter_modules pm");
-    expect(calls[0].text).toContain("project_parameter_binding_revisions locked_bpr");
-    expect(calls[0].values).toEqual(["org-chargelab", "user-1", "project-1"]);
-    expect(calls[1].text).toContain("delete from parameter_drafts");
-    expect(calls[1].values).toEqual(["org-chargelab", "user-1", "draft-1"]);
+    // Deleting under the wrong user leaves the row alone; the owner delete removes it.
+    await deleteDraft(db, { organizationId: "org-1", userId: "user-1", draftId: "draft-other-user" });
+    expect(await draftRows(`id = 'draft-other-user'`)).toHaveLength(1);
+    await deleteDraft(db, { organizationId: "org-1", userId: "user-1", draftId: "draft-mine" });
+    expect(await draftRows(`id = 'draft-mine'`)).toHaveLength(0);
+    await expect(
+      listDraftsForUser(db, { organizationId: "org-1", userId: "user-1", projectId: "project-1" })
+    ).resolves.toEqual([]);
   });
 
-  it("listDraftsForUser returns candidateConfigRevisionId when the column is set", async () => {
-    const { db, calls } = createFakeDb([
-      [
-        {
-          id: "draft-1",
-          project_id: "project-1",
-          project_parameter_value_id: "binding-1",
-          target_value: "3200",
-          action: "set",
-          reason: "Align thermal limit.",
-          updated_at: "2026-07-23T02:00:00.000Z",
-          project_parameter_binding_id: "binding-1",
-          candidate_config_revision_id: "rev-shared-tip",
-          parameter_spec_id: "spec-thermal",
-          base_raw_value: "3000",
-          property_name: "thermal-limit",
-          driver_module: "Power"
-        }
-      ]
-    ]);
+  it("listDraftsForUser maps binding identity, candidate revision, and locked base value", async () => {
+    await seedBindingGraph();
+    await seedConfigRevisions(["base-rev-1", "rev-shared-tip"]);
+    await db.query(
+      `insert into project_parameter_binding_revisions (id, binding_id, config_revision_id, parameter_spec_version_id, typed_value, raw_value)
+       values ('bpr-1', 'binding-1', 'base-rev-1', 'psv-thermal', '"3000"', '3000')`
+    );
+    await db.query(
+      `insert into parameter_drafts (
+         id, organization_id, project_id, project_parameter_value_id, user_id,
+         target_value, reason, project_parameter_binding_id, candidate_config_revision_id,
+         binding_revision_id, updated_at
+       ) values (
+         'draft-1', 'org-1', 'project-1', 'param-1', 'user-1',
+         '3200', 'Align thermal limit.', 'binding-1', 'rev-shared-tip',
+         'bpr-1', '2026-07-23T02:00:00.000Z'
+       )`
+    );
 
     const drafts = await listDraftsForUser(db, {
       organizationId: "org-1",
@@ -140,7 +243,6 @@ describe("draft repository", () => {
       projectId: "project-1"
     });
 
-    expect(calls[0]?.text).toContain("candidate_config_revision_id");
     expect(drafts).toEqual([
       {
         id: "draft-1",
@@ -160,49 +262,28 @@ describe("draft repository", () => {
     ]);
   });
 
-  it("lists drafts by parameter value with origin metadata", async () => {
-    const { db, calls } = createFakeDb([
-      [
-        {
-          id: "draft-file",
-          user_id: "user-sync",
-          project_id: "project-1",
-          project_parameter_value_id: "param-1",
-          target_value: "85",
-          origin: "file_sync",
-          origin_file_version_id: "version-1",
-          updated_at: "2026-07-11T10:00:00.000Z"
-        },
-        {
-          id: "draft-ui",
-          user_id: "user-ui",
-          project_id: "project-1",
-          project_parameter_value_id: "param-1",
-          target_value: "82",
-          origin: "manual",
-          origin_file_version_id: null,
-          updated_at: "2026-07-11T10:01:00.000Z"
-        }
-      ]
-    ]);
+  it("lists drafts by parameter value with origin metadata ordered by recency", async () => {
+    await db.query(
+      `insert into project_parameter_files (id, organization_id, project_id, file_name, format)
+       values ('file-1', 'org-1', 'project-1', 'board.dts', 'dts')`
+    );
+    await db.query(
+      `insert into project_parameter_file_versions (id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id)
+       values ('version-1', 'file-1', 1, 'org-1/files/board.dts', 'checksum-1', 100, '{}', 'upload', 'user-1')`
+    );
+    await db.query(
+      `insert into parameter_drafts (
+         id, organization_id, project_id, project_parameter_value_id, user_id,
+         target_value, reason, origin, origin_file_version_id, updated_at
+       ) values
+         ('draft-file', 'org-1', 'project-1', 'param-1', 'user-sync', '85', 'file sync draft', 'file_sync', 'version-1', '2026-07-11T10:00:00.000Z'),
+         ('draft-ui', 'org-1', 'project-1', 'param-1', 'user-ui', '82', 'ui draft', 'manual', null, '2026-07-11T10:01:00.000Z'),
+         ('draft-elsewhere', 'org-1', 'project-2', 'param-2', 'user-ui', '69', 'other parameter', 'manual', null, '2026-07-11T10:02:00.000Z')`
+    );
 
     const drafts = await listDraftsForParameterValue(db, { projectParameterValueId: "param-1" });
 
-    expect(calls[0].text).toContain("from parameter_drafts");
-    expect(calls[0].text).toContain("project_parameter_value_id = $1");
-    expect(calls[0].values).toEqual(["param-1"]);
     expect(drafts).toEqual([
-      {
-        id: "draft-file",
-        userId: "user-sync",
-        projectId: "project-1",
-        projectParameterValueId: "param-1",
-        targetValue: "85",
-        action: "set",
-        origin: "file_sync",
-        originFileVersionId: "version-1",
-        updatedAt: "2026-07-11T10:00:00.000Z"
-      },
       {
         id: "draft-ui",
         userId: "user-ui",
@@ -213,46 +294,46 @@ describe("draft repository", () => {
         origin: "manual",
         originFileVersionId: undefined,
         updatedAt: "2026-07-11T10:01:00.000Z"
+      },
+      {
+        id: "draft-file",
+        userId: "user-sync",
+        projectId: "project-1",
+        projectParameterValueId: "param-1",
+        targetValue: "85",
+        action: "set",
+        origin: "file_sync",
+        originFileVersionId: "version-1",
+        updatedAt: "2026-07-11T10:00:00.000Z"
       }
     ]);
   });
 
-  it("listOpenBindingDraftsForUser returns open drafts ordered by updated_at desc then id asc", async () => {
-    const newer = new Date("2026-07-23T02:00:00.000Z");
-    const older = new Date("2026-07-23T01:00:00.000Z");
-    const { db, calls } = createFakeDb([
-      [
-        {
-          id: "draft-b",
-          candidate_config_revision_id: "rev-new",
-          project_parameter_binding_id: "binding-b",
-          edit_subject_kind: "binding",
-          logical_node_id: null,
-          updated_at: newer,
-        },
-        {
-          id: "draft-a",
-          candidate_config_revision_id: "rev-old",
-          project_parameter_binding_id: null,
-          edit_subject_kind: "node-enablement",
-          logical_node_id: "node-a",
-          updated_at: older,
-        },
-      ],
-    ]);
+  it("listOpenBindingDraftsForUser returns binding and enablement drafts ordered by updated_at desc then id asc", async () => {
+    await seedBindingGraph();
+    await seedConfigRevisions(["rev-new", "rev-old", "rev-x"]);
+    await db.query(
+      `insert into dts_logical_nodes (id, organization_id, project_id, config_set_id)
+       values ('node-a', 'org-1', 'project-1', 'set-1')`
+    );
+    await db.query(
+      `insert into parameter_drafts (
+         id, organization_id, project_id, project_parameter_value_id, user_id,
+         target_value, reason, edit_subject_kind, logical_node_id,
+         project_parameter_binding_id, candidate_config_revision_id, updated_at
+       ) values
+         ('draft-b', 'org-1', 'project-1', null, 'user-1', '<3000>', 'binding edit', 'binding', null, 'binding-b', 'rev-new', '2026-07-23T02:00:00.000Z'),
+         ('draft-a', 'org-1', 'project-1', null, 'user-1', '"disabled"', 'disable node', 'node-enablement', 'node-a', null, 'rev-old', '2026-07-23T01:00:00.000Z'),
+         ('draft-z-same-time', 'org-1', 'project-1', null, 'user-2', '<9>', 'other user', 'binding', null, 'binding-1', 'rev-x', '2026-07-23T03:00:00.000Z')`
+    );
 
     const drafts = await listOpenBindingDraftsForUser(db, {
       organizationId: "org-1",
       projectId: "project-1",
-      userId: "user-1",
+      userId: "user-1"
     });
 
-    expect(calls[0]?.text).toContain("from parameter_drafts");
-    expect(calls[0]?.text).toContain("edit_subject_kind");
-    expect(calls[0]?.text).toContain("logical_node_id");
-    expect(calls[0]?.text).not.toContain("project_parameter_binding_id is not null");
-    expect(calls[0]?.text).toContain("order by updated_at desc, id asc");
-    expect(calls[0]?.values).toEqual(["org-1", "project-1", "user-1"]);
+    // Enablement drafts ride the same pipeline as binding drafts; another user's draft stays out.
     expect(drafts).toEqual([
       {
         id: "draft-b",
@@ -260,7 +341,7 @@ describe("draft repository", () => {
         projectParameterBindingId: "binding-b",
         editSubjectKind: "binding",
         logicalNodeId: null,
-        updatedAt: "2026-07-23T02:00:00.000Z",
+        updatedAt: "2026-07-23T02:00:00.000Z"
       },
       {
         id: "draft-a",
@@ -268,33 +349,49 @@ describe("draft repository", () => {
         projectParameterBindingId: null,
         editSubjectKind: "node-enablement",
         logicalNodeId: "node-a",
-        updatedAt: "2026-07-23T01:00:00.000Z",
-      },
+        updatedAt: "2026-07-23T01:00:00.000Z"
+      }
     ]);
   });
 
-  it("rebaseOpenBindingDraftCandidates updates sibling drafts and returns rebased ids", async () => {
-    const { db, calls } = createFakeDb([[{ id: "draft-a" }, { id: "draft-b" }]]);
+  it("rebaseOpenBindingDraftCandidates moves stale sibling drafts (including enablement) to the shared tip", async () => {
+    await seedBindingGraph();
+    await seedConfigRevisions(["rev-fresh", "rev-old", "rev-shared"]);
+    await db.query(
+      `insert into dts_logical_nodes (id, organization_id, project_id, config_set_id)
+       values ('node-a', 'org-1', 'project-1', 'set-1')`
+    );
+    await db.query(
+      `insert into parameter_drafts (
+         id, organization_id, project_id, project_parameter_value_id, user_id,
+         target_value, reason, edit_subject_kind, logical_node_id,
+         project_parameter_binding_id, candidate_config_revision_id
+       ) values
+         ('draft-current', 'org-1', 'project-1', null, 'user-1', '<1>', 'current edit', 'binding', null, 'binding-1', 'rev-fresh'),
+         ('draft-stale-binding', 'org-1', 'project-1', null, 'user-1', '<2>', 'stale binding', 'binding', null, 'binding-b', 'rev-old'),
+         ('draft-stale-enablement', 'org-1', 'project-1', null, 'user-1', '"okay"', 'stale enablement', 'node-enablement', 'node-a', null, 'rev-old'),
+         ('draft-already-shared', 'org-1', 'project-1', 'param-1', 'user-1', '<4>', 'already on tip', 'binding', null, null, 'rev-shared'),
+         ('draft-other-user', 'org-1', 'project-1', null, 'user-2', '<5>', 'not mine', 'binding', null, 'binding-1', 'rev-old')`
+    );
 
     const rebasedIds = await rebaseOpenBindingDraftCandidates(db, {
       organizationId: "org-1",
       projectId: "project-1",
       userId: "user-1",
       candidateConfigRevisionId: "rev-shared",
-      excludeDraftId: "draft-current",
+      excludeDraftId: "draft-current"
     });
 
-    expect(calls[0]?.text).toContain("update parameter_drafts");
-    expect(calls[0]?.text).toContain("candidate_config_revision_id is distinct from $4");
-    expect(calls[0]?.text).not.toContain("project_parameter_binding_id is not null");
-    expect(calls[0]?.text).toContain("($5::text is null or id <> $5)");
-    expect(calls[0]?.values).toEqual([
-      "org-1",
-      "project-1",
-      "user-1",
-      "rev-shared",
-      "draft-current",
-    ]);
-    expect(rebasedIds).toEqual(["draft-a", "draft-b"]);
+    expect([...rebasedIds].sort()).toEqual(["draft-stale-binding", "draft-stale-enablement"]);
+    const after = await draftRows(`organization_id = 'org-1' and project_id = 'project-1'`);
+    expect(
+      Object.fromEntries(after.map((row) => [row.id, row.candidate_config_revision_id]))
+    ).toEqual({
+      "draft-current": "rev-fresh",
+      "draft-stale-binding": "rev-shared",
+      "draft-stale-enablement": "rev-shared",
+      "draft-already-shared": "rev-shared",
+      "draft-other-user": "rev-old"
+    });
   });
 });

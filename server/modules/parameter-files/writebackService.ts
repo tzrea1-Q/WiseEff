@@ -4,7 +4,7 @@ import { writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
-import type { Queryable } from "../../shared/database/client";
+import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { parseDts, resolveDts, serializeDts, classifyDtsValue } from "../dts";
 import { indentDtsRawValueForWriteback } from "../dts/rawValueWriteback";
@@ -12,7 +12,7 @@ import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
 import { getFileVersionById, getProjectParameterFileByName, insertFileVersion, setCurrentVersion } from "./repository";
 import { isDtsStructuralIngestEnabled } from "./structuralFlag";
 import { ingestDtsFileVersion } from "./structuralIngest";
-import { assertSensitiveNodeWriteAllowed } from "../parameters/sensitiveNode";
+import { assertSensitiveNodeWriteAllowed } from "../parameter-kernel/sensitiveNode";
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { loadPreCutoverWritebackSource } from "../parameter-kernel/legacyParameterIdentityAdapter";
 import { getChangeRequestEnablementWriteLock, getChangeRequestWriteLock } from "../parameter-drafts/repository";
@@ -64,6 +64,12 @@ export type WritebackMergedEnablementValueInput = {
 
 export type WritebackServiceContext = AuditCorrelationContext & {
   objectStore?: ObjectStore;
+  /**
+   * Pool handle for sensitive-node refusal audits. Writeback runs inside the
+   * caller's merge transaction; a deny thrown here rolls that transaction back,
+   * so the refusal evidence must be written outside it (ADR-0027 refusal audits).
+   */
+  refusalDb?: Database;
   /**
    * Explicit toolchain runner injection for tests.
    * Production must omit this and use the pinned host runner.
@@ -468,7 +474,7 @@ export async function writebackMergedEnablementValue(
     sourceFileName: lock.overlayFileName,
     actorType: "user",
     requestId: context.requestId,
-  });
+  }, { refusalDb: context.refusalDb });
 
   const applied = await applyLockedEnablementWriteback(
     db,
@@ -545,7 +551,7 @@ export async function writebackMergedParameterValue(
       sourceFileName: lock.overlayFileName,
       actorType: "user",
       requestId: context.requestId,
-    });
+    }, { refusalDb: context.refusalDb });
 
     const applied = await applyLockedOverlayWriteback(
       db,
@@ -611,7 +617,7 @@ export async function writebackMergedParameterValue(
     sourceFileName: source.sourceFileName,
     actorType: "user",
     requestId: context.requestId
-  });
+  }, { refusalDb: context.refusalDb });
 
   const file = await getProjectParameterFileByName(db, {
     organizationId: auth.organization.id,

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createXiaozeCheckpointer } from "./checkpointer";
-import { createPlanningAgent, fakeModelSequence, toolCall } from "./planningGraph";
+import { createPlanningAgent } from "./planningGraph";
+import { fakeModelSequence, toolCall } from "./testing/fakeModel";
 
 const anyAuth = {
   organization: { id: "org1" },
@@ -48,6 +49,24 @@ describe("createPlanningAgent", () => {
     // A user-supplied threadId must never address another org/user's state.
     expect(putSpy).toHaveBeenCalledWith("org1:u1:t-shared", expect.anything());
     expect(putSpy).not.toHaveBeenCalledWith("t-shared", expect.anything());
+  });
+
+  it("surfaces a safe answer when a tool is forbidden", async () => {
+    const { ApiError } = await import("../../../shared/http/errors");
+    const runTool = vi.fn().mockRejectedValue(new ApiError("FORBIDDEN", "Agent project access is required.", 403));
+    const model = fakeModelSequence([
+      { toolCalls: [toolCall("perception.getProjectOverview", { projectId: "secret" })] },
+      { content: "You are not permitted to access that project." }
+    ]);
+    const agent = createPlanningAgent({
+      model,
+      runTool,
+      listTools: () => [{ name: "perception.getProjectOverview", description: "x", schema: {} }],
+      checkpointer: createXiaozeCheckpointer()
+    });
+    const result = await agent.run({ message: "summarize secret project", context: {}, threadId: "t-forbidden" });
+    expect(result.text.toLowerCase()).toContain("not permitted");
+    expect(runTool).toHaveBeenCalledTimes(1);
   });
 
   it("returns an interrupt for a mutating tool without executing (P1 parity)", async () => {

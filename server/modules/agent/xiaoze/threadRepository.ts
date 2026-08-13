@@ -93,16 +93,6 @@ function jsonObject(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-function toAgentContext(value: unknown): AgentContext {
-  const context = jsonObject(value);
-  return {
-    path: typeof context.path === "string" ? context.path : "",
-    pageKey: typeof context.pageKey === "string" ? context.pageKey : "",
-    projectId: typeof context.projectId === "string" ? context.projectId : undefined,
-    roleId: typeof context.roleId === "string" ? context.roleId : undefined
-  };
-}
-
 function readXiaozePreview(context: unknown) {
   const xiaoze = jsonObject(jsonObject(context).xiaoze);
   return typeof xiaoze.preview === "string" ? xiaoze.preview : "暂无消息";
@@ -393,8 +383,4 @@ export async function persistXiaozeTurnMessages(db: Queryable, input: PersistXia
   );
 
   return true;
-}
-
-export function isOwnedXiaozeSession(row: AgentSessionRow | null, actorUserId: string) {
-  return !!row && row.page_key === XIAOZE_PAGE_KEY && row.actor_user_id === actorUserId && row.status === "active";
 }

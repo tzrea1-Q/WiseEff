@@ -354,18 +354,28 @@ describe("UserPermissionsPage", () => {
     expect(screen.getByRole("button", { name: "创建用户" })).toHaveClass("user-permissions-modal-action--primary");
   });
 
-  it("dispatches role and status changes from the user table", async () => {
+  it("dispatches role and status changes only after the confirm dialog is accepted", async () => {
     const { dispatch } = renderPage();
     const row = screen.getByText("Liu Min").closest("tr")!;
 
     await userEvent.selectOptions(within(row).getByRole("combobox", { name: "调整 Liu Min 的角色" }), "software-committer");
-    await userEvent.click(within(row).getByRole("button", { name: "停用" }));
-
+    // Nothing happens before confirmation.
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ASSIGN_USER_ROLE" }));
+    const roleDialog = screen.getByRole("dialog", { name: "确认调整用户角色" });
+    expect(roleDialog).toHaveTextContent(/Liu Min/);
+    expect(roleDialog).toHaveTextContent(/软件开发/);
+    expect(roleDialog).toHaveTextContent(/软件MDE/);
+    await userEvent.click(within(roleDialog).getByRole("button", { name: "确认调整" }));
     expect(dispatch).toHaveBeenCalledWith({
       type: "ASSIGN_USER_ROLE",
       userId: "u-liu-min",
       roleId: "software-committer"
     });
+
+    await userEvent.click(within(row).getByRole("button", { name: "停用" }));
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "TOGGLE_USER_ACTIVE" }));
+    const disableDialog = screen.getByRole("dialog", { name: "确认停用用户" });
+    await userEvent.click(within(disableDialog).getByRole("button", { name: "确认停用" }));
     expect(dispatch).toHaveBeenCalledWith({
       type: "TOGGLE_USER_ACTIVE",
       userId: "u-liu-min",
@@ -384,7 +394,13 @@ describe("UserPermissionsPage", () => {
     const row = screen.getByText("Liu Min").closest("tr")!;
 
     await userEvent.selectOptions(within(row).getByRole("combobox", { name: "调整 Liu Min 的角色" }), "software-committer");
+    await userEvent.click(
+      within(screen.getByRole("dialog", { name: "确认调整用户角色" })).getByRole("button", { name: "确认调整" })
+    );
     await userEvent.click(within(row).getByRole("button", { name: "停用" }));
+    await userEvent.click(
+      within(screen.getByRole("dialog", { name: "确认停用用户" })).getByRole("button", { name: "确认停用" })
+    );
 
     expect(userGovernanceActions.assignUserRole).toHaveBeenCalledWith("u-liu-min", "software-committer");
     expect(userGovernanceActions.setUserActive).toHaveBeenCalledWith("u-liu-min", false);
@@ -398,6 +414,27 @@ describe("UserPermissionsPage", () => {
       userId: "u-liu-min",
       isActive: false
     });
+  });
+
+  it("keeps the confirm dialog open with the server refusal when the role change fails", async () => {
+    const userGovernanceActions: UserGovernanceActions = {
+      listUsers: vi.fn(async () => []),
+      createUser: vi.fn(async () => undefined),
+      assignUserRole: vi.fn(async () => {
+        throw new Error("不能移除最后一名管理员。");
+      }),
+      setUserActive: vi.fn(async () => undefined)
+    };
+    const { dispatch } = renderPageWithActions(userGovernanceActions);
+    const row = screen.getByText("Liu Min").closest("tr")!;
+
+    await userEvent.selectOptions(within(row).getByRole("combobox", { name: "调整 Liu Min 的角色" }), "software-committer");
+    const dialog = screen.getByRole("dialog", { name: "确认调整用户角色" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "确认调整" }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("不能移除最后一名管理员。");
+    expect(screen.getByRole("dialog", { name: "确认调整用户角色" })).toBeInTheDocument();
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ASSIGN_USER_ROLE" }));
   });
 
   it("renders pending registration role requests and dispatches approval decisions", async () => {

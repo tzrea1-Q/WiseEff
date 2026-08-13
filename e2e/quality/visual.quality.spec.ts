@@ -1,5 +1,5 @@
 import { expect, test } from "playwright/test";
-import { expectUsablePage, openXiaozePopup, seedQualityRuntime, stableMasks } from "./helpers";
+import { expectUsablePage, openXiaozePopup, seedQualityRuntime, settleAppToasts, stableMasks } from "./helpers";
 
 const stableRoutes = [
   { path: "/", name: "home-shell" },
@@ -20,6 +20,7 @@ test.describe("M5.11 visual quality gate", () => {
     test(`keeps stable visual baseline for ${route.path}`, async ({ page }) => {
       await page.goto(route.path);
       await expectUsablePage(page);
+      await settleAppToasts(page);
 
       await expect(page.locator("main, .main-content").first()).toHaveScreenshot(`${route.name}.png`, {
         mask: stableMasks(page, route.path)
@@ -29,6 +30,7 @@ test.describe("M5.11 visual quality gate", () => {
 
   test("keeps stable visual baseline for the Xiaoze popup", async ({ page }) => {
     const popup = await openXiaozePopup(page);
+    await settleAppToasts(page);
 
     await expect(popup).toHaveScreenshot("xiaoze-popup-open.png", {
       mask: stableMasks(page)

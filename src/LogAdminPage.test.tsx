@@ -67,9 +67,10 @@ function deferred<T = void>() {
 
 function renderPage({
   logActions,
+  stateOverrides,
   knowledgeRepository
-}: { logActions?: LogRuntimeActions; knowledgeRepository?: KnowledgeRepository } = {}) {
-  const state = { ...createPrototypeState(), activeRoleId: "admin" };
+}: { logActions?: LogRuntimeActions; stateOverrides?: Partial<ReturnType<typeof createPrototypeState>>; knowledgeRepository?: KnowledgeRepository } = {}) {
+  const state = { ...createPrototypeState(), activeRoleId: "admin", ...stateOverrides };
   const dispatch = vi.fn();
   const onNavigate = vi.fn();
   const utils = render(
@@ -245,7 +246,7 @@ describe("LogAdminPage · row click + drawer actions", () => {
 
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "LOG_ADMIN_ARCHIVE_LOG" }));
     await waitFor(() => {
-      expect(screen.getByText(/已归档/)).toBeInTheDocument();
+      expect(screen.getByText(/可随时在「已归档」视图恢复/)).toBeInTheDocument();
     });
     await userEvent.click(screen.getByRole("button", { name: "撤销" }));
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "LOG_ADMIN_UNARCHIVE_LOG" }));
@@ -268,7 +269,7 @@ describe("LogAdminPage · row click + drawer actions", () => {
 
     archive.resolve();
     await waitFor(() => {
-      expect(screen.getByText(/已归档/)).toBeInTheDocument();
+      expect(screen.getByText(/可随时在「已归档」视图恢复/)).toBeInTheDocument();
     });
   });
 
@@ -397,6 +398,39 @@ describe("LogAdminPage · row click + drawer actions", () => {
     expect(screen.getByRole("button", { name: /重新分析/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /归档/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /有帮助/ })).toBeDisabled();
+  });
+});
+
+describe("LogAdminPage · archived view", () => {
+  it("shows archived logs in a dedicated view with an inline restore action", async () => {
+    const base = createPrototypeState();
+    const archivedId = base.logs[1]!.id;
+    const { dispatch } = renderPage({
+      stateOverrides: { archivedLogIds: [archivedId] }
+    });
+
+    // Active view hides archived records.
+    const table = screen.getByRole("table", { name: "日志分析记录" });
+    expect(within(table).queryByText(base.logs[1]!.fileName)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /已归档（1）/ }));
+    expect(within(screen.getByRole("table", { name: "日志分析记录" })).getByText(base.logs[1]!.fileName)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "恢复" }));
+    expect(dispatch).toHaveBeenCalledWith({ type: "LOG_ADMIN_UNARCHIVE_LOG", logId: archivedId });
+  });
+
+  it("loads archived records through the runtime and restores via unarchive", async () => {
+    const base = createPrototypeState();
+    const archivedId = base.logs[1]!.id;
+    const logActions = createLogActions();
+    renderPage({ logActions, stateOverrides: { archivedLogIds: [archivedId] } });
+
+    await userEvent.click(screen.getByRole("button", { name: /已归档（1）/ }));
+    expect(logActions.refresh).toHaveBeenCalledWith({ includeArchived: true });
+
+    await userEvent.click(screen.getByRole("button", { name: "恢复" }));
+    await waitFor(() => expect(logActions.unarchive).toHaveBeenCalledWith(archivedId));
   });
 });
 
