@@ -1350,6 +1350,25 @@ describe("parameter service", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("accepts an organization-wide (null-project) editor binding for any project", async () => {
+    const { db, calls } = createFakeDb();
+
+    // Self-service registration approval and the M0 seed grant business roles
+    // with projectId null: an organization-wide binding, not a no-project one.
+    // The project-scope guard must not reject it; the call then proceeds past
+    // authorization into the domain lookup (which fails on the empty fake).
+    await expect(
+      saveDraft(db, makeAuth({ roles: [{ projectId: null, roleId: "hardware-user" }] }), {
+        projectId: "project-2",
+        parameterId: "param-1",
+        targetValue: "3100",
+        reason: "org-wide binding"
+      })
+    ).rejects.not.toMatchObject({ message: "Parameter edit role is required for this project." });
+
+    expect(calls.length).toBeGreaterThan(0);
+  });
+
   it("rejects submitting a change round for a project the editor is not bound to", async () => {
     const { db, txCalls } = createFakeDb();
 
