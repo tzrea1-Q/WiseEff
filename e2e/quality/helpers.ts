@@ -118,6 +118,23 @@ export async function openXiaozePopup(page: Page, route = "/parameters?project=a
   return popup;
 }
 
+/**
+ * Move keyboard focus onto the target by pressing Tab until it becomes the
+ * active element. Script `locator.focus()` does not reliably match
+ * `:focus-visible` (Chromium keys the pseudo-class on keyboard modality), so
+ * focus-state snapshots must arrive at the element the way a keyboard user
+ * does.
+ */
+export async function focusViaKeyboard(page: Page, target: Locator, maxTabs = 80) {
+  for (let i = 0; i < maxTabs; i += 1) {
+    await page.keyboard.press("Tab");
+    if (await target.evaluate((element) => element === document.activeElement)) {
+      return;
+    }
+  }
+  throw new Error(`Keyboard focus did not reach the target within ${maxTabs} tabs.`);
+}
+
 export function stableMasks(page: Page, routePath = ""): Locator[] {
   const masks = [
     page.locator(".topbar-user-menu"),

@@ -13,7 +13,7 @@ The single `:root` token block in `src/styles.css` is the **only** place raw vis
 
 ## Consequences
 
-- New CSS carrying raw visual literals outside the token block is a defect; phase P4 of `docs/exec-plans/active/2026-08-12-frontend-aesthetics-uplift.md` adds a `ui:check` CI gate that fails on them.
+- New CSS carrying raw visual literals outside the token block is a defect; phase P4 of `docs/exec-plans/completed/2026-08-12-frontend-aesthetics-uplift.md` added the `ui:check` CI gate that fails on them.
 - Legacy literals migrate to tokens phase by phase (not big-bang); legacy token names bridge to semantic tokens via same-value aliases so history stays reviewable.
 - Style contracts in tests assert token structure through `src/test/cssAssertions.ts` instead of regexing CSS source text, so tokenization refactors no longer break tests by formatting.
 - The shadcn `.dark` block predates this decision and still overrides `--accent` with grayscale values; it must be re-derived from the semantic tokens before any dark-mode work ships (tracked in the uplift plan, phase P3).

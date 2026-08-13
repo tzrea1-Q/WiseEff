@@ -1,9 +1,9 @@
 # 前端美学提升计划
 
-> Status: **Active**
-> 日期: 2026-08-12
-> 分支: 纲领计划——每阶段一个分支: `fix/ui-foundation-tokens`(P0)、`feat/ui-primitives-consolidation`(P1)、`fix/ui-page-defects-wave-1`(P2)、`feat/ui-motion-and-theme`(P3)、`feat/ui-quality-gates`(P4)
-> English: [`docs/exec-plans/active/2026-08-12-frontend-aesthetics-uplift.md`](../../../exec-plans/active/2026-08-12-frontend-aesthetics-uplift.md)
+> Status: **已完成 2026-08-13**(P0 #332、P1 原语、P2 页面清扫、P3 #447、P4 #444/#446 + FA-25 交互态收尾;递延残留登记为 TD-111–TD-115)
+> 日期: 2026-08-12 → 2026-08-13
+> 分支: 纲领计划——每阶段一个分支: `fix/ui-foundation-tokens`(P0)、`feat/ui-primitives-consolidation`(P1)、`fix/ui-page-defects-wave-1`(P2)、`feat/ui-motion-and-theme`(P3)、`feat/ui-quality-gates`(P4)、`feat/ui-aesthetics-closeout`(收尾)
+> English: [`docs/exec-plans/completed/2026-08-12-frontend-aesthetics-uplift.md`](../../../exec-plans/completed/2026-08-12-frontend-aesthetics-uplift.md)
 > 标准: [`docs/zh-CN/design-docs/ui-design-system.md`](../../design-docs/ui-design-system.md) · 门禁: [`docs/zh-CN/developer/ui-quality-checklist.md`](../../developer/ui-quality-checklist.md)
 
 ## 背景
@@ -121,8 +121,8 @@
 
 - [x] `npm run ui:check` 脚本:对令牌块之外的裸颜色、裸 `z-index`、裸 `font-size`、`window.confirm`、新增 `modal-backdrop` div 直接失败;接入 CI(FA-24)。P4 第一波交付:`scripts/check-ui-standards.ts` + `scripts/ui-standards-baseline.json` + `scripts/check-ui-standards.test.ts`(经 `npm run test:scripts` 运行)。八条规则独立计数;因 P3 正在并行分支持续减少样式字面量,门禁采用棘轮模型锁住诚实存量而非假设为零:raw-color 1852、raw-font-size 977、raw-shadow 147、ease-keyword 105、raw-z-index 76(CSS 74 + `ColumnFilter.tsx` 2),window-confirm / hand-rolled-backdrop / english-chrome 基线为 0、从第一天起硬禁止。计数超基线即失败并打印 文件:行号 与设计系统章节指引;低于基线提示 `--update-baseline` 下调;全量扫描约 0.5s(逐行状态机,`:root`/`.dark`/`@theme` 令牌块豁免)。已接入 `build-and-test`,与 docs:check 相邻。
 - [x] ESLint + `jsx-a11y` + `react-hooks`(作用域化,防新增欠账;存量逐步清偿)。P4 第一波交付:eslint 9 flat config(`eslint.config.js`)作用于 `src/**/*.{ts,tsx}`(含测试),两套 recommended 全量启用;零违规规则设 error,有存量的 19 条规则设 warn 并在配置内记录 2026-08-13 当日计数(共 297 条 warning;最大项:`react-hooks/set-state-in-effect` 135、`react-hooks/refs` 32、`jsx-a11y/label-has-associated-control` 27)。`npm run lint`(全量约 10s,启用 `--cache`)已接入 CI;error 阻断、warn 不阻断。
-- [ ] 视觉/a11y/响应式质量 spec 扩展到 `/parameter-home`、配置工作台、`/dts-reload`、`/feedback-admin`、`/node-debugging`;为 Button/Dialog/Table 增加 hover/focus 状态快照(FA-25)。
-- [ ] 更新 `docs/QUALITY_SCORE.md` 与 `docs/developer/verification-matrix.md`(含中文镜像)纳入新门禁。
+- [x] 视觉/a11y/响应式质量 spec 扩展到 `/parameter-home`、配置工作台、`/dts-reload`、`/feedback-admin`、`/node-debugging`;为 Button/Dialog/Table 增加 hover/focus 状态快照(FA-25)。分两波交付:#446 把三个门禁扩展到五条路由(12 路由视觉矩阵含路由级 settle 等待与 mask、axe 扫描含点名的对比度豁免、响应式/布局预算);收尾分支为视觉门禁新增五张交互态快照——主 Button hover 与键盘 focus-visible(拍工具栏条,避免 2px/2px 外扩的 `--ring` 焦点环被元素框裁切)、添加用户 `ModalDialog` 打开态(含遮罩整页)、`DataTable` 行 hover 与排序表头键盘聚焦——统一落在 `/user-permissions`(种子数据上集齐全部原语),经新增 `focusViaKeyboard` 助手实现(脚本 `focus()` 不触发 `:focus-visible`)。linux 基线是唯一权威基线,由 CI 工件采纳。
+- [x] 更新 `docs/QUALITY_SCORE.md` 与 `docs/developer/verification-matrix.md`(含中文镜像)纳入新门禁。收尾核实:两份 QUALITY_SCORE 均已记录 `ui:check`(棘轮语义 + `--update-baseline`)与 `lint`(error 阻断、warn 存量记录在 `eslint.config.js`);英文验证矩阵含 `ui:check`、`lint` 与 `acceptance:{a11y,visual,responsive,quality}` 行(visual 行已点名交互态快照),精简版中文矩阵含 `ui:check`/`lint` 行。
 
 ## 成功标准
 
@@ -134,6 +134,8 @@
 - 25 条路由复查零原始英文/slug/ISO/调试文案(以重跑走查为证据)。
 - 1440 下主表格无横向滚动;390 下抽屉侧边栏 + 用户菜单可达。
 - CI 跑通 `ui:check` + 扩展后的质量 spec。
+
+收尾注记(2026-08-13):结构性标准全部成立(单一按钮基础层、手写遮罩/`window.confirm` 归零、全局焦点环、布局预算、CI 门禁绿)。两条标准诚实未达零、改为登记追踪而非宣称达成:字面量存量标准以「只降不升」棘轮强制执行,剩余存量记录在 TD-113;25 路由零原始文案复查未重跑——已知残留由 TD-111(raw `error.message` 渲染点)与 TD-115(`formatLastActive` 透传 pg 文本时间戳,FA-25 验证中发现)钉住。
 
 ## 关键接缝
 
@@ -182,6 +184,6 @@ npm run acceptance:responsive
 - [x] `docs/developer/ui-quality-checklist.md` + 中文伴侣创建,并登记进 `scripts/bilingual-docs.ts`
 - [x] `docs/PLANS.md` + `docs/zh-CN/PLANS.md` 列入本计划
 - [x] P0:ADR-0026 记录;`CONTEXT.md` + `docs/adr/README.md` 更新;`design-system-reference-llms.txt` 对齐;TD-080/TD-081 登记
-- [ ] P4:`docs/QUALITY_SCORE.md` + zh 与 `docs/developer/verification-matrix.md` + zh 描述 `ui:check` 与扩展质量 spec
-- [ ] 递延发现登记 `docs/exec-plans/tech-debt-tracker.md` + zh
-- [ ] 移入 `completed/` 前 `npm run docs:check` 通过
+- [x] P4:`docs/QUALITY_SCORE.md` + zh 与 `docs/developer/verification-matrix.md` + zh 描述 `ui:check` 与扩展质量 spec(收尾核实;英文 visual 行并已点名 FA-25 交互态)
+- [x] 递延发现登记 `docs/exec-plans/tech-debt-tracker.md` + zh:TD-111(高频页之外 raw `error.message` 残留,P2a 递延)、TD-112(FA-13 表格收敛第一步之后的迁移)、TD-113(`ui:check`/eslint 诚实存量对照零字面量成功标准)、TD-114(死 `WorkspaceHeader`/`PageToolbar` 层、`MetricBentoCard.severity`、`ParameterReviewPage` 两处 Button 覆盖)、TD-115(`formatLastActive` 原样渲染 pg 文本时间戳——FA-25 验证中发现);前序阶段已登记 TD-080/081、TD-084、TD-091、TD-095、TD-106、TD-107、TD-110
+- [x] 移入 `completed/` 前 `npm run docs:check` 通过(收尾于 `feat/ui-aesthetics-closeout` 分支运行)

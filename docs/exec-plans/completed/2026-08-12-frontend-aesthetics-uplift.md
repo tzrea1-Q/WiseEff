@@ -1,9 +1,9 @@
 # Frontend aesthetics uplift program
 
-> Status: **Active**
-> Date: 2026-08-12
-> Branch: program plan — one branch per phase: `fix/ui-foundation-tokens` (P0), `feat/ui-primitives-consolidation` (P1), `fix/ui-page-defects-wave-1` (P2), `feat/ui-motion-and-theme` (P3), `feat/ui-quality-gates` (P4)
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-12-frontend-aesthetics-uplift.md`](../../zh-CN/exec-plans/active/2026-08-12-frontend-aesthetics-uplift.md)
+> Status: **Completed 2026-08-13** (P0 #332, P1 primitives, P2 page sweep, P3 #447, P4 #444/#446 + FA-25 interaction-state closeout; deferred residue tracked as TD-111–TD-115)
+> Date: 2026-08-12 → 2026-08-13
+> Branch: program plan — one branch per phase: `fix/ui-foundation-tokens` (P0), `feat/ui-primitives-consolidation` (P1), `fix/ui-page-defects-wave-1` (P2), `feat/ui-motion-and-theme` (P3), `feat/ui-quality-gates` (P4), `feat/ui-aesthetics-closeout` (closeout)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-12-frontend-aesthetics-uplift.md`](../../zh-CN/exec-plans/completed/2026-08-12-frontend-aesthetics-uplift.md)
 > Standard: [`docs/design-docs/ui-design-system.md`](../../design-docs/ui-design-system.md) · Gate: [`docs/developer/ui-quality-checklist.md`](../../developer/ui-quality-checklist.md)
 
 ## Context
@@ -121,8 +121,8 @@ Severity: P0 = foundation defect that blocks convergence; P1 = product-visible q
 
 - [x] `npm run ui:check` script: fails on raw color literals, raw `z-index`, raw `font-size`, `window.confirm`, and new `modal-backdrop` divs outside allowed files; wire into CI (FA-24). Delivered as P4 wave 1: `scripts/check-ui-standards.ts` + `scripts/ui-standards-baseline.json` + `scripts/check-ui-standards.test.ts` (run via `npm run test:scripts`). Eight independent ratchet rules; because P3 keeps reducing the literal stock on a parallel branch, the gate locks honest counts instead of assuming zero: raw-color 1852, raw-font-size 977, raw-shadow 147, ease-keyword 105, raw-z-index 76 (74 CSS + 2 `ColumnFilter.tsx`), while window-confirm / hand-rolled-backdrop / english-chrome are hard-forbidden at 0. Count > baseline fails with file:line plus design-system guidance; count < baseline hints `--update-baseline`; full scan ~0.5s (line-by-line state machines, token blocks `:root`/`.dark`/`@theme` exempt). Wired into `build-and-test` next to docs:check.
 - [x] ESLint with `jsx-a11y` + `react-hooks` (scoped to prevent new debt; existing violations burn down incrementally). Delivered as P4 wave 1: eslint 9 flat config (`eslint.config.js`) over `src/**/*.{ts,tsx}` including tests, both recommended sets; zero-violation rules run at error, the 19 rules with stock run at warn with the 2026-08-13 census counts recorded inline (297 warnings; largest: `react-hooks/set-state-in-effect` 135, `react-hooks/refs` 32, `jsx-a11y/label-has-associated-control` 27). `npm run lint` (~10s full run, `--cache` enabled) added to CI; errors block, warnings do not.
-- [ ] Extend visual/a11y/responsive quality specs to `/parameter-home`, configuration workbench, `/dts-reload`, `/feedback-admin`, `/node-debugging`; add hover/focus state snapshots for Button/Dialog/Table (FA-25).
-- [ ] Update `docs/QUALITY_SCORE.md` and `docs/developer/verification-matrix.md` (+ zh mirrors) with the new gates.
+- [x] Extend visual/a11y/responsive quality specs to `/parameter-home`, configuration workbench, `/dts-reload`, `/feedback-admin`, `/node-debugging`; add hover/focus state snapshots for Button/Dialog/Table (FA-25). Delivered in two waves: #446 extended all three gates to the five routes (12-route visual matrix with route-specific settle waits and masks, axe scans with named color-contrast excludes, responsive/layout budgets); the closeout branch added five interaction-state snapshots to the visual gate — primary Button hover and keyboard focus-visible (toolbar strip so the 2px/2px-offset `--ring` outline is not clipped), add-user `ModalDialog` open with backdrop (full page), `DataTable` row hover and sort-header keyboard focus — staged on `/user-permissions` (every primitive on seeded data) via the new `focusViaKeyboard` helper, because script `focus()` does not trigger `:focus-visible`. Linux baselines are the only authoritative ones and are adopted from CI artifacts.
+- [x] Update `docs/QUALITY_SCORE.md` and `docs/developer/verification-matrix.md` (+ zh mirrors) with the new gates. Verified at closeout: both QUALITY_SCORE pages document `ui:check` (ratchet semantics + `--update-baseline`) and `lint` (error blocks, warn stock recorded in `eslint.config.js`); the EN verification matrix carries rows for `ui:check`, `lint`, and `acceptance:{a11y,visual,responsive,quality}` (the visual row now names the interaction-state snapshots), and the condensed zh matrix carries the `ui:check`/`lint` rows.
 
 ## Success criteria
 
@@ -134,6 +134,8 @@ Severity: P0 = foundation defect that blocks convergence; P1 = product-visible q
 - 0 raw-English/slug/ISO/debug strings on any walked route (re-run the 25-route walkthrough as evidence).
 - No horizontal scroll on primary tables at 1440; drawer sidebar and reachable user menu at 390.
 - CI runs `ui:check` + expanded quality specs green.
+
+Closeout note (2026-08-13): the structural criteria hold (one button base, zero hand-rolled backdrops/`window.confirm`, global focus ring, layout budgets, CI gates green). Two criteria are honestly not at zero and are tracked instead of claimed: the literal-stock criterion is enforced as a no-growth ratchet with the remaining stock recorded in TD-113, and the 25-route zero-raw-string re-walkthrough was not re-run — known residue is pinned by TD-111 (raw `error.message` sites) and TD-115 (`formatLastActive` pg-text passthrough, found during FA-25 verification).
 
 ## Key seams
 
@@ -182,6 +184,6 @@ Audit baseline evidence: `work/ui-checks/01-*.png` … `21-*.png` (2026-08-12 wa
 - [x] `docs/developer/ui-quality-checklist.md` + zh companion created and registered in `scripts/bilingual-docs.ts`
 - [x] `docs/PLANS.md` + `docs/zh-CN/PLANS.md` list this plan
 - [x] P0: ADR-0026 recorded; `CONTEXT.md` + `docs/adr/README.md` updated; `design-system-reference-llms.txt` aligned; TD-080/TD-081 filed
-- [ ] P4: `docs/QUALITY_SCORE.md` + zh and `docs/developer/verification-matrix.md` + zh describe `ui:check` and expanded quality specs
-- [ ] Deferred findings recorded in `docs/exec-plans/tech-debt-tracker.md` + zh
-- [ ] `npm run docs:check` green before moving this plan to `completed/`
+- [x] P4: `docs/QUALITY_SCORE.md` + zh and `docs/developer/verification-matrix.md` + zh describe `ui:check` and expanded quality specs (verified at closeout; the EN visual-gate row also names the FA-25 interaction states)
+- [x] Deferred findings recorded in `docs/exec-plans/tech-debt-tracker.md` + zh: TD-111 (raw `error.message` residue outside high-frequency pages, P2a deferral), TD-112 (table convergence beyond step 1, FA-13), TD-113 (`ui:check`/eslint honest stocks vs the zero-literal success criterion), TD-114 (dead `WorkspaceHeader`/`PageToolbar` layer, `MetricBentoCard.severity`, two `ParameterReviewPage` Button overrides), TD-115 (`formatLastActive` renders pg-text timestamps raw — found during FA-25 verification); earlier phases already filed TD-080/081, TD-084, TD-091, TD-095, TD-106, TD-107, TD-110
+- [x] `npm run docs:check` green before moving this plan to `completed/` (run at closeout on `feat/ui-aesthetics-closeout`)
