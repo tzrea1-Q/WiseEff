@@ -6701,7 +6701,9 @@ td small {
 
 .logs-v2-main {
   display: grid;
-  grid-template-rows: auto auto auto minmax(420px, 1fr);
+  /* Conclusion card, stage timeline, then the analysis card stretches; any
+     trailing section (e.g. related knowledge) takes its natural height. */
+  grid-template-rows: auto auto minmax(420px, 1fr);
   gap: 16px;
   min-width: 0;
 }
