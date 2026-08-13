@@ -73,7 +73,6 @@ export type PageProps = {
   onNavigate: (path: string) => void;
   search: string;
   debuggingActions?: DebuggingRuntimeActions;
-  debuggingRuntimeReady?: boolean;
   logActions?: LogRuntimeActions;
   parameterActions?: ParameterPageActions;
   /** Mode-selected adapters assembled once by the shell (createAppRuntime). */
@@ -120,7 +119,6 @@ export function PageRouter({
   onNavigate,
   search,
   debuggingActions,
-  debuggingRuntimeReady = true,
   logActions,
   parameterActions,
   runtime,
@@ -310,7 +308,7 @@ export function PageRouter({
         <NodeDebuggingPage
           state={state}
           debuggingActions={debuggingActions!}
-          runtimeReady={debuggingRuntimeReady}
+          runtimeMode={runtimeMode}
           bridges={mockSeams?.bridges}
           probeBridgeHealth={mockSeams?.probeBridgeHealth}
           createBridgePairingCode={mockSeams?.createPairingCode}

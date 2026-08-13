@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties, type Dispatch, type FormEvent } from "react";
 import { UserPlus } from "lucide-react";
 
+import { canPerform } from "@/app/permissions";
 import type { AppAction } from "@/application/state/appState";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { DataTable, type Column } from "@/components/admin";
@@ -180,6 +181,32 @@ function RoleCapabilityTooltip({ roleId, position }: { roleId: PlatformRoleId; p
 }
 
 export function UserPermissionsPage({ state, dispatch, search: _search, userGovernanceActions }: UserPermissionsPageProps) {
+  // Governed rows hydrate when the page mounts. The governance client only
+  // exists in api mode (createAppRuntime), so its presence doubles as the mode guard.
+  useEffect(() => {
+    if (!userGovernanceActions || !canPerform(migrateLegacyRoleId(state.activeRoleId), "users.manage")) {
+      return;
+    }
+
+    let cancelled = false;
+    userGovernanceActions
+      .listUsers()
+      .then((users) => {
+        if (!cancelled) {
+          dispatch({ type: "HYDRATE_USERS", users });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          dispatch({ type: "ADD_NOTIFICATION", message: "无法加载雷泽用户 API，已保留本地演示用户" });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dispatch, state.activeRoleId, userGovernanceActions]);
+
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<PlatformRoleId | "all">("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");

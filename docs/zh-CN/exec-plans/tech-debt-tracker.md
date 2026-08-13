@@ -64,6 +64,8 @@
 - **TD-103（Webhook 签名密钥明文存储）：** `log_domains.webhook_secret` 明文存库（HMAC 需原文），API 只写不读、响应/审计仅含已配置态与末四位；数据库泄露将允许伪造投递签名。平台具备 KMS/信封加密基础设施后升级静态加密并轮换。**负责人：Security / Log analysis。**
 - **TD-104（验收 webServer 冷启动级联超时）：** playwright 验收的 webServer 首次 tsx/vite 编译可把首条用例逼近 90s 超时并级联误报（P3b 验证首轮 9 条假失败,预热重跑全绿）。加 ready 后预热请求（先编译入口路由）或放宽首条用例超时。**负责人：Quality / Acceptance tooling。**
 - **TD-105（投递记录无保留策略）：** `log_webhook_deliveries` 每次尝试一行、无清理机制,投递量大的域将无限增长。真实投递量出现后加保留策略（按域保留最近 N 条或按天龄清理,可挂 worker 循环或定时任务）。**负责人：Log analysis / Ops。**
+- **TD-106（API 模式仍以 mock 数据播种全局状态）：** `App.tsx` 默认以 mock `initialState` 播种 `PrototypeState`，`HYDRATE_*` 只覆盖 28 个切片中的一部分（`developers`、`auditEvents`、`logAdminUsers`、`persistedConfigSnapshot` 保持 mock 值），拉取失败时显式保留演示数据。2026-08-12 架构审查候选 C2；wave 1 已把类型迁至 `src/domain/prototype/types.ts`。修复方向：API 模式以空态启动、各域用显式 `idle/loading/ready/empty/error` 分区（`dashboardState` 是样板），mock 播种下沉进 mock 适配器。**负责人：Frontend。**
+- **TD-107（mock 适配器手抄服务端规则）：** mock 仓库逐字重复 `server/modules/` 的业务状态机（定义生命周期、候选激活门禁、身份映射开闭，五组错误文案逐字对应），且抛裸 `Error` 而非 `WiseEffApiError`，导致前端所有 `error.code` 分支在 mock 模式失效。架构审查候选 C6，是 TD-001 漂移风险的具体形态。修复方向：共享状态机沉入 `src/domain/`（`submitParameterRound`/`canPerform` 的复用模式已证明接缝可行），mock 薄化为「领域规则 + 内存存储」并统一错误信封。**负责人：Frontend。**
 
 ## 近期关闭项
 

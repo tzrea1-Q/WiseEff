@@ -319,7 +319,6 @@ function AppShell({
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
   const [topBarLeadingActions, setTopBarLeadingActions] = useState<ReactNode | null>(null);
   const [projectInitOpen, setProjectInitOpen] = useState(false);
-  const [debuggingRuntimeReady, setDebuggingRuntimeReady] = useState(runtimeMode !== "api");
   const [apiAuthStatus, setApiAuthStatus] = useState<ApiAuthStatus>(runtimeMode === "api" ? "checking" : "authenticated");
   const [apiAuthError, setApiAuthError] = useState("");
   const [authProbeAttempt, setAuthProbeAttempt] = useState(0);
@@ -400,7 +399,6 @@ function AppShell({
     productFeedbackRepository: productFeedbackRepositoryClient,
     dtsReloadRepository: dtsReloadRepositoryClient,
     parameterInitializationRepository: parameterInitializationRepositoryClient,
-    userGovernanceActions: userGovernanceActionsClient,
     debuggingGateway: debuggingGatewayClient,
     debuggingAdminClient: debuggingAdminCatalogClient
   } = appRuntime;
@@ -681,15 +679,11 @@ function AppShell({
         logRuntimeConnectedRef.current = true;
         dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽日志 API" });
       }
-      if (!canUseDebugging) {
-        setDebuggingRuntimeReady(true);
-      } else if (debuggingRefreshResult.status === "rejected") {
-        setDebuggingRuntimeReady(false);
-        failures.add("debugging");
-        dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "debugging" });
-      } else {
-        setDebuggingRuntimeReady(true);
-        if (!debuggingRuntimeConnectedRef.current) {
+      if (canUseDebugging) {
+        if (debuggingRefreshResult.status === "rejected") {
+          failures.add("debugging");
+          dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "debugging" });
+        } else if (!debuggingRuntimeConnectedRef.current) {
           debuggingRuntimeConnectedRef.current = true;
           dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽调试 API" });
         }
@@ -733,20 +727,6 @@ function AppShell({
     }
     void refreshParameterInitializationFromApi();
   }, [apiAuthStatus, refreshParameterInitializationFromApi, runtimeMode]);
-
-  useEffect(() => {
-    if (page.key !== "parameter-home") {
-      return;
-    }
-    const projectId = dashboardState.projectScope ?? undefined;
-    const perspectiveRoleId = migrateLegacyRoleId(state.activeRoleId);
-    void dashboardRuntime.loadSummary({ projectId, window: dashboardState.window, perspectiveRoleId });
-    void dashboardRuntime.loadHotspots({
-      projectId,
-      window: dashboardState.window,
-      dimension: dashboardState.dimension
-    });
-  }, [page.key, dashboardState.projectScope, dashboardState.window, dashboardState.dimension, dashboardRuntime, state.activeRoleId]);
 
   useEffect(() => {
     pageKeyRef.current = page.key;
@@ -793,57 +773,6 @@ function AppShell({
     };
   }, [appRuntime.authClient, authProbeAttempt, hydrateAuthContext, refreshApiRuntimeData, runtimeMode]);
 
-  useEffect(() => {
-    if (runtimeMode !== "api" || page.key !== "user-permissions" || !userGovernanceActionsClient || !canPerform(currentRoleId, "users.manage")) {
-      return;
-    }
-
-    let cancelled = false;
-    userGovernanceActionsClient
-      .listUsers()
-      .then((users) => {
-        if (!cancelled) {
-          dispatch({ type: "HYDRATE_USERS", users });
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          dispatch({ type: "ADD_NOTIFICATION", message: "无法加载雷泽用户 API，已保留本地演示用户" });
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [currentRoleId, page.key, runtimeMode, userGovernanceActionsClient]);
-
-  useEffect(() => {
-    if (runtimeMode !== "api" || page.key !== "node-debugging") {
-      return;
-    }
-    if (!canPerform(currentRoleId, "debugging.use")) {
-      return;
-    }
-
-    let cancelled = false;
-    const protocol = readInitialNodeDebuggingProtocol();
-    void debuggingActions
-      .refresh({ protocol })
-      .then(() => {
-        if (!cancelled) {
-          setDebuggingRuntimeReady(true);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setDebuggingRuntimeReady(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [currentRoleId, debuggingActions, page.key, runtimeMode]);
 
   useEffect(() => {
     const syncPathFromHistory = () => {
@@ -1063,7 +992,6 @@ function AppShell({
                 onNavigate={navigate}
                 onNewProject={() => setProjectInitOpen(true)}
                 debuggingActions={debuggingActions}
-                debuggingRuntimeReady={debuggingRuntimeReady}
                 logActions={logActions}
                 parameterActions={parameterActions}
                 runtime={appRuntime}
@@ -1097,7 +1025,6 @@ function AppShell({
                 onNavigate={navigate}
                 onNewProject={() => setProjectInitOpen(true)}
                 debuggingActions={debuggingActions}
-                debuggingRuntimeReady={debuggingRuntimeReady}
                 logActions={logActions}
                 parameterActions={parameterActions}
                 runtime={appRuntime}

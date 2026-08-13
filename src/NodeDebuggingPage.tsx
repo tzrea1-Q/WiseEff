@@ -1,6 +1,9 @@
 import { Eye, Pencil, RotateCcw, RotateCw, Search, Send } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isHdcPlaceholderTarget } from "@wiseeff/device-command-core/hdcTargets";
+import { canPerform } from "@/app/permissions";
+import { migrateLegacyRoleId } from "@/domain/users/types";
+import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { ConfirmDialog } from "./components/common/ConfirmDialog";
 import { LocalDeviceBridgePanel } from "./components/LocalDeviceBridgePanel";
@@ -460,7 +463,8 @@ function NodeWriteFormatPanel({ row, protocol }: { row: RuntimeRow; protocol: De
 export function NodeDebuggingPage({
   state,
   debuggingActions,
-  runtimeReady = true,
+  runtimeReady: runtimeReadyOverride,
+  runtimeMode,
   bridges,
   probeBridgeHealth = defaultProbeBridgeHealth,
   createBridgePairingCode
@@ -468,7 +472,9 @@ export function NodeDebuggingPage({
   state: PrototypeState;
   /** All node operations go through the DebuggingGateway port behind these actions. */
   debuggingActions: DebuggingRuntimeActions;
+  /** Test override; when absent the page manages readiness through its own mount refresh. */
   runtimeReady?: boolean;
+  runtimeMode?: WiseEffRuntimeMode;
   /** Bridge panel seam for non-API runtimes; defaults to the HTTP bridge listing. */
   bridges?: DeviceBridgeRecord[];
   /** Local bridge health seam; defaults to the local HTTP health probe. */
@@ -476,6 +482,33 @@ export function NodeDebuggingPage({
   /** Pairing-code seam for non-API runtimes; defaults to the HTTP client. */
   createBridgePairingCode?: () => Promise<DeviceBridgePairingCode>;
 }) {
+  // The runtime catalog hydrates when the page mounts; the shell no longer
+  // watches page.key on the page's behalf. Non-api runtimes are ready at once.
+  const [selfReady, setSelfReady] = useState(runtimeMode !== "api");
+  useEffect(() => {
+    if (runtimeMode !== "api" || !canPerform(migrateLegacyRoleId(state.activeRoleId), "debugging.use")) {
+      return;
+    }
+
+    let cancelled = false;
+    void debuggingActions
+      .refresh({ protocol: readInitialNodeDebuggingProtocol() })
+      .then(() => {
+        if (!cancelled) {
+          setSelfReady(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSelfReady(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [debuggingActions, runtimeMode, state.activeRoleId]);
+  const runtimeReady = runtimeReadyOverride ?? selfReady;
   const [protocol, setProtocol] = useState<DebugConnectionProtocol>(readInitialNodeDebuggingProtocol);
   const [rows, setRows] = useState<RuntimeRow[]>(() =>
     state.debugParameters.map((parameter) => runtimeRowFromParameter(parameter, protocol))
