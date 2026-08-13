@@ -21,6 +21,8 @@ import {
 } from "./baselineRepository";
 import { getConfigSetById } from "./configSetRepository";
 import { getFileVersionById, getProjectParameterFileById, insertFileVersion, setCurrentVersion } from "./repository";
+import { isDtsStructuralIngestEnabled } from "./structuralFlag";
+import { ingestDtsFileVersion } from "./structuralIngest";
 import type { ReleaseBaselineDto, ReleaseBaselineMemberDto } from "./types";
 import { runValidationGate, type ValidationGateDeps, type ValidationGateResult } from "./validationGate";
 import { assertReleaseGateAllows, type EvaluateReleaseReadinessDeps } from "./releaseReadinessService";
@@ -505,6 +507,7 @@ async function writeBaselineRolledBackAudit(
  */
 export async function rollbackToBaseline(
   db: Database,
+  objectStore: ObjectStore,
   auth: AuthContext,
   baselineId: string,
   context: BaselineServiceContext = {}
@@ -563,6 +566,13 @@ export async function rollbackToBaseline(
       });
 
       await setCurrentVersion(tx, { fileId: file.id, versionId: rollbackVersion.id });
+      // Every other version-creating path (upload, candidate activation) ingests
+      // the structural model for the new current version; without this, structural
+      // reads, DTS search, and sensitive-node resolution go blind after a rollback.
+      if (file.format === "dts" && isDtsStructuralIngestEnabled()) {
+        const pinnedBytes = await objectStore.get(targetVersion.storageKey);
+        await ingestDtsFileVersion(tx, rollbackVersion.id, pinnedBytes.toString("utf8"));
+      }
       restored += 1;
     }
 

@@ -22,6 +22,7 @@ import { addConfigSetFile, createConfigSet } from "./configSetService";
 import { createStubDtcValidator } from "./dtcValidator";
 import { exportConfigSet } from "./exportService";
 import { uploadProjectParameterFile } from "./service";
+import { getProjectParameterFileById } from "./repository";
 
 const fixturePath = join(dirname(fileURLToPath(import.meta.url)), "__fixtures__", "dts-teaching-sample.dts");
 const teachingSample = readFileSync(fixturePath, "utf8");
@@ -198,9 +199,23 @@ describe.skipIf(!databaseAvailable)("DTS config set / baseline / gate integratio
       currentVersionId: overlayUpload.version.id
     });
 
-    const rollback = await rollbackToBaseline(db!, auth, baseline.id);
+    const rollback = await rollbackToBaseline(db!, objectStore, auth, baseline.id);
     // Only board drifted after the baseline was taken; overlay never moved.
     expect(rollback).toEqual({ baselineId: baseline.id, restored: 1 });
+
+    // The rollback pointer version must carry a structural model like any other
+    // new version: structural reads, DTS search, and sensitive-node compatible
+    // resolution all join dts_nodes on the *current* version id.
+    const rolledBackBoard = await getProjectParameterFileById(db!, {
+      organizationId: auth.organization.id,
+      fileId: boardUpload1.file.id
+    });
+    expect(rolledBackBoard?.currentVersionId).not.toBe(boardUpload3.version.id);
+    const structuralRows = await db!.query<{ count: number }>(
+      `select count(*)::int as count from dts_nodes where file_version_id = $1`,
+      [rolledBackBoard!.currentVersionId]
+    );
+    expect(structuralRows.rows[0]!.count).toBeGreaterThan(0);
 
     const comparedAfterRollback = await compareBaseline(db!, auth, baseline.id, { objectStore });
     // Decision C creates origin='rollback' pointer versions that reuse the pinned blob
