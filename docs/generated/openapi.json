@@ -5892,6 +5892,39 @@
         }
       }
     },
+    "/api/v1/knowledge/related-to-log": {
+      "get": {
+        "operationId": "knowledge.relatedToLog",
+        "summary": "Related published knowledge for a completed log-analysis record (knowledge:view plus logs:view and organization scope on the record) — the similarity query derives from the stored conclusion/impact text, runs through hybrid retrieval with a relevance cutoff so unrelated entries are dropped, and the response reports the retrieval mode that actually ran",
+        "tags": [
+          "knowledge"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeSearchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/knowledge/index/status": {
       "get": {
         "operationId": "knowledge.indexStatus",

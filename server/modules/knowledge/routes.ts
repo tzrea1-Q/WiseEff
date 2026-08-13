@@ -11,6 +11,7 @@ import {
   archiveKnowledgeEntry,
   createKnowledgeEntry,
   distillKnowledgeFromLog,
+  findRelatedKnowledgeForLog,
   getKnowledgeEntry,
   getKnowledgeFileContent,
   getKnowledgeIndexHealth,
@@ -30,6 +31,7 @@ import {
   createKnowledgeEntryBodySchema,
   distillKnowledgeFromLogBodySchema,
   listKnowledgeEntriesQuerySchema,
+  relatedKnowledgeForLogQuerySchema,
   restoreKnowledgeRevisionBodySchema,
   searchKnowledgeQuerySchema,
   updateKnowledgeEntryBodySchema
@@ -120,6 +122,15 @@ export function registerKnowledgeRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const query = parseWithSchema(searchKnowledgeQuerySchema, flattenQuery(request.query));
     const result = await searchKnowledge(db, auth, query, { embeddingClient });
+
+    return { status: 200, body: { items: result.items, retrieval: result.retrieval } };
+  });
+
+  router.get("/api/v1/knowledge/related-to-log", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const query = parseWithSchema(relatedKnowledgeForLogQuerySchema, flattenQuery(request.query));
+    const result = await findRelatedKnowledgeForLog(db, auth, query, { embeddingClient });
 
     return { status: 200, body: { items: result.items, retrieval: result.retrieval } };
   });
