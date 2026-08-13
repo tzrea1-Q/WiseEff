@@ -217,7 +217,7 @@ export function KnowledgeEntryEditorDialog({
             />
           </div>
 
-          <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto md:grid-cols-2">
             <textarea
               aria-label="Markdown 内容"
               value={content}
@@ -235,11 +235,11 @@ export function KnowledgeEntryEditorDialog({
 
           {showReferenceSection ? (
             <section
-              className="flex flex-col gap-2 rounded-md border border-border bg-muted/10 p-3"
+              className="flex shrink-0 flex-col gap-2 rounded-md border border-border bg-muted/10 p-3"
               aria-label="关联参数定义"
               data-testid="knowledge-reference-picker"
             >
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
                 <span className="text-sm font-medium text-foreground">关联参数定义</span>
                 <span className="text-xs text-muted-foreground">
                   {entry ? "添加/移除立即生效并写入审计;引用绑定定义本体,废弃后仍保留。" : "先创建草稿,再关联参数定义。"}
