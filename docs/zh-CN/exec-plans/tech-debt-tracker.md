@@ -57,6 +57,7 @@
 - **TD-095（CI 波动：checkpointer 恢复测试与 /logs 视觉基线）：** 2026-08-12/13 并行代理车队期间观察到两类同代码不同结果：(a) `durableCheckpointer.integration.test.ts › resumes an interrupted plan from a fresh agent instance on the same thread` 在同一 commit `f71744bc` 的两次 CI 运行中一红一绿（PR 运行 31621021416 失败、push 运行 31621018056 通过，相隔 3 秒），重跑通过；(b) `/logs` 视觉基线（`e2e/quality/visual.quality.spec.ts`）在 #336 的 merge-ref 运行（31607966985 attempt 1）失败——该 PR 不改任何前端文件、相同前端内容在 `main` 上是绿的——attempt 2 原样通过。同代码运行结果分叉迫使「重跑碰运气」，在繁忙车队里每次合入都排在非确定性门禁后面。下一步：稳定 checkpointer 恢复测试的同步时序；审计 /logs 基线页面的非确定性内容（时间戳/相对时间）并冻结或遮罩。**负责人：Agent platform / QA。**
 - **TD-097（质量运行时清理缺口）：** `reset-quality-runtime.ts` 覆盖验收账号清理，但不清 P2 美学审计发现的运行时残留：历史探针上传的参数文件版本（`probe-edit-*.dts`）与运行时注册的驱动组模块（如 schema 晋升 runbook 演示的 `FoldRegistryTestDG`）。共享开发/演示库重置后仍会在模块树与工作台源树看到测试观感实体。应扩展 reset 脚本清理非种子文件版本与运行时 `parameter_modules` 行（或在 runbook 记录手工清理）。**负责人：Quality / Platform。**
 - **TD-098（节点调试移动端搜索框拉伸）：** `/node-debugging` 在 390px 下 `.parameters-table-search` 被垂直拉高（P2c 验证时观察到的既有移动端布局问题，非抽屉改造引入）。应在共享表格工具栏的窄屏布局中约束搜索框高度。**负责人：Frontend。**
+- **TD-099（双 toast 宿主并存）：** hci-trust 合入后共存两个 toast 宿主：共享 `useToast` 管线在右下，main 的 `AppToastLayer` 通知桥在右上，违反 UI 设计系统 §反馈 的"全产品单一位置"规则。应在 P3/P4 收敛时把 `AppToastLayer` 折叠到共享 `ToastProvider`（单 portal、单位置）。**负责人：Frontend。**
 
 ## 近期关闭项
 
