@@ -25,7 +25,7 @@ Quality benchmark: a focused, dense, fast workbench in the spirit of Linear — 
 
 | Piece | Canonical location | Notes |
 | --- | --- | --- |
-| Token layer | `src/styles.css` `:root` block (single block) | Single source; shadcn `@theme inline` keys must map to the same semantic tokens, never a second palette |
+| Token layer | `src/styles.css` `:root` block + `.dark` overrides | Single source; raw literals live only in these two blocks; shadcn `@theme inline` keys must map to the same semantic tokens, never a second palette |
 | Button | `.button` base layer in `src/styles.css` + `src/components/ui/button.tsx` (cva) on the same tokens | One geometry: sizes sm 28 / md 32 / lg 36; variants `primary`/`subtle`/`ghost`/`danger`; scopes may only add layout, never geometry or color |
 | Dialog | `src/components/common/ModalDialog.tsx` + `ConfirmDialog` | Portal, focus trap, `inert` background, top-most Escape, paired backdrop dismissal, declared z-index scale, tokenized backdrop dim + enter motion |
 | Toast | `src/components/common/toast/ToastProvider.tsx` (`useToast()`) | Single portal queue, tones success/info/danger, bottom-right, 4s auto-dismiss with hover pause, `--z-toast` |
@@ -197,6 +197,8 @@ Hover and focus-visible must remain visually distinguishable (do not merge them 
 ### Charts
 
 Recharts surfaces consume tokens: categorical ramp `--chart-1..5`, gridlines `--border`, axis text `--text-muted` at `--text-sm`, tooltips styled like popovers (`--surface-raised`, `--shadow-2`). Library default palettes are not acceptable.
+
+Ratified ramp (P3): `--chart-1` aliases `--accent`; `--chart-2` teal `#0e7490`, `--chart-3` violet `#7c3aed`, `--chart-4` sky `#0284c7` (the `--info` hue), `--chart-5` slate `#64748b` — all ≥3:1 against `--surface` in light, four of five ≥4.5:1. The dark theme brightens `--chart-2..5` one step (`#22b8cf` / `#a78bfa` / `#38bdf8` / `#94a3b8`) while `--chart-1` follows the dark accent. Consume the ramp through `src/domain/format/chartTheme.ts` (series/status colors, grid stroke, axis ticks, tooltip styles exported as `var()` references) instead of hardcoding values, so charts follow the active theme.
 
 ## Layout and Page Structure
 

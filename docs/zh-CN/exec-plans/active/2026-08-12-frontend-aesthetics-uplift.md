@@ -113,9 +113,9 @@
 
 ### P3 — 动效与主题就绪(分支 `feat/ui-motion-and-theme`)
 
-- [ ] 动效令牌铺开到弹窗/菜单/hover/按压;补齐 `prefers-reduced-motion` 覆盖(FA-09)。
-- [ ] 图表主题化:recharts 消费 `--chart-*`/`--border`/`--text-muted` 令牌。
-- [ ] 基于语义令牌层的深色主题布线(class 策略 + 持久化),是否上线另行决策。
+- [x] 动效令牌铺开到弹窗/菜单/hover/按压;补齐 `prefers-reduced-motion` 覆盖(FA-09)。已按 P3a 交付:`styles.css`、`linear-template.css`、`parameter-home.css` 内全部 transition/animation 字面量改用 `--duration-fast/base/slow` + `--ease-out`/`--ease-in-out`(hover/按压反馈 fast+ease-out,展开/收起微状态 base+ease-in-out,面板/布局位移 slow);裸 `ease` 关键字归零;小泽弹窗打开 440→400ms(动效规则:UI 过渡不超过 400ms),其自带贝塞尔曲线映射到共享令牌;所有无限循环动画补齐 reduced-motion 守卫(api-runtime-sync 加载圈、日志分析脉冲、两处小泽流式光标、工作台子树之外的 `.dts-status-icon--spin`),死键帧 `xiaoze-reasoning-glow`/`xiaoze-icon-pulse` 删除。
+- [x] 图表主题化:recharts 消费 `--chart-*`/`--border`/`--text-muted` 令牌。已按 P3a 交付:分类色带在令牌层批准落地(`--chart-1` 锚定 `--accent`;`--chart-2..5` 为 teal/violet/sky/slate,白底全部 ≥3:1,五个中四个 ≥4.5:1);新增 `src/domain/format/chartTheme.ts` 以 `var()` 引用导出系列色/状态色/网格线/坐标刻度/浮层规格 tooltip 样式,图表随激活主题切换;`UpdateTrendChart` 与 `ProjectRiskChart` 弃用旧调色板变量改走 helper(风险图保留 danger/warning 语义轴),`MetricBentoCard` 的 SVG 迷你图清除硬编码灰,`--risk-*` 别名改由状态/图表令牌派生;色带批准值记录进设计系统《图表》一节。
+- [x] 基于语义令牌层的深色主题布线(class 策略 + 持久化),是否上线另行决策。已按 P3b 交付:`.dark` 块从 shadcn 遗留灰阶覆写重写为语义角色的完整暗色派生(slate 系中性色反转;accent 提亮一档至 `#4c8dff`,accent/danger 填充上的 `--primary-foreground` 翻转为近黑墨色;状态色与 soft 底色改在 `--surface` 上重混;阴影加深;legacy 调色板、小泽与图表令牌全覆盖;颜色字面量仅存在于 `:root`/`.dark`);新增 `src/application/theme/themeController.ts` 切换 `dark` class 与元素级 `color-scheme`,以 `localStorage["wiseeff.theme"]` 持久化 light|dark|system 三态,`system` 态跟随 `prefers-color-scheme`,上线决策前默认 light,暴露 `window.__wiseeffSetTheme` dev 探针(无用户可见开关;9 个单测锁定切换/持久化/系统跟随/销毁)。五个界面的暗色走查(/parameter-home、/parameters、/log-dashboard、/user-permissions、添加用户 ModalDialog;light/dark 证据在 `work/ui-checks/aesthetics-uplift-p3/`)顺带令牌化走查页面的浅色字面量残留——壳层 chrome 收进作用域令牌 `--shell-*`/`--feedback-entry-*`、工作台表格与 module-tone 徽章、共享弹窗遮罩改用新 `--backdrop-dim`(旧的 `var(--text)` 派生遮罩在暗色下翻白)——light 模式视觉保持不变。
 
 ### P4 — 让标准长牙的门禁(分支 `feat/ui-quality-gates`)
 

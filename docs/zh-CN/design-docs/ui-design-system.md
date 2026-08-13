@@ -25,7 +25,7 @@
 
 | 部件 | 规范位置 | 说明 |
 | --- | --- | --- |
-| 令牌层 | `src/styles.css` 的单一 `:root` 块 | 唯一来源;shadcn `@theme inline` 键必须映射到同一套语义令牌,不许第二套色板 |
+| 令牌层 | `src/styles.css` 的 `:root` 块 + `.dark` 覆写块 | 唯一来源;颜色字面量只允许存在于这两个块内;shadcn `@theme inline` 键必须映射到同一套语义令牌,不许第二套色板 |
 | Button | `src/styles.css` 的 `.button` 基础层 + `src/components/ui/button.tsx`(cva),同一套令牌 | 单一几何:尺寸 sm 28 / md 32 / lg 36;变体 `primary`/`subtle`/`ghost`/`danger`;作用域只允许加布局,不允许改几何或配色 |
 | Dialog | `src/components/common/ModalDialog.tsx` + `ConfirmDialog` | portal、焦点陷阱、背景 `inert`、仅最顶层 Escape、遮罩关闭成对判定、统一 z-index 刻度、令牌化遮罩变暗与入场动效 |
 | Toast | `src/components/common/toast/ToastProvider.tsx`(`useToast()`) | 单一 portal 队列、success/info/danger 三语气、右下角、4 秒自动消失 + 悬停暂停、`--z-toast` |
@@ -197,6 +197,8 @@ hover 与 focus-visible 必须保持视觉可区分（不得合并成同一条�
 ### 图表
 
 Recharts 图表消费令牌:分类色带 `--chart-1..5`、网格线 `--border`、坐标文字 `--text-muted`（`--text-sm`）、tooltip 按浮层规格（`--surface-raised`、`--shadow-2`）。不接受图表库默认样式。
+
+色带批准值（P3）:`--chart-1` 别名 `--accent`;`--chart-2` teal `#0e7490`、`--chart-3` violet `#7c3aed`、`--chart-4` sky `#0284c7`（即 `--info` 色相）、`--chart-5` slate `#64748b`——浅色下对 `--surface` 全部 ≥3:1,五个中四个 ≥4.5:1。深色主题将 `--chart-2..5` 提亮一档（`#22b8cf` / `#a78bfa` / `#38bdf8` / `#94a3b8`）,`--chart-1` 跟随深色 accent。请经由 `src/domain/format/chartTheme.ts` 消费色带（系列色/状态色/网格线/坐标刻度/tooltip 样式以 `var()` 引用导出）,不要硬编码取值,使图表随激活主题切换。
 
 ## 布局与页面结构
 
