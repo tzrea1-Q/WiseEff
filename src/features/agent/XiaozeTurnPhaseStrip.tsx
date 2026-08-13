@@ -1,9 +1,8 @@
-import type { XiaozeTurnPhase } from "./xiaozeTurnStateTypes";
-import type { XiaozeRunStepSnapshot } from "./xiaozeRunTimingTypes";
+import { type XiaozeTurnPhase, type XiaozeRunStep } from "@wiseeff/xiaoze-protocol";
 import { XiaozeTurnTimeline } from "./XiaozeTurnTimeline";
 
 type XiaozeTurnPhaseStripProps = {
-  steps: XiaozeRunStepSnapshot[];
+  steps: XiaozeRunStep[];
   phase?: XiaozeTurnPhase;
   isActive: boolean;
 };

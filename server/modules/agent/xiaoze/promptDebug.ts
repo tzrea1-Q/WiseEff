@@ -1,7 +1,7 @@
 import { formatToolCatalogForSystemPrompt } from "./toolCatalog";
 import type { PerceptionAgentContext, PerceptionToolDescriptor, XiaozePromptDebugSnapshot } from "./modelTypes";
 
-export const XIAOZE_PROMPT_DEBUG_EVENT = "xiaoze_prompt_debug";
+export { XIAOZE_PROMPT_DEBUG_EVENT } from "@wiseeff/xiaoze-protocol";
 
 export function buildXiaozePromptDebugSnapshot(options: {
   threadId: string;

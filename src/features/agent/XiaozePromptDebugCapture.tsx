@@ -1,7 +1,7 @@
+import { XIAOZE_PROMPT_DEBUG_EVENT, type XiaozePromptDebugPayload } from "@wiseeff/xiaoze-protocol";
 import { useEffect } from "react";
 import { useAgent } from "@copilotkit/react-core/v2";
 import { setXiaozePromptDebugSnapshot } from "./XiaozePromptDebugContext";
-import { XIAOZE_PROMPT_DEBUG_EVENT, type XiaozePromptDebugPayload } from "./xiaozePromptDebugTypes";
 
 export function XiaozePromptDebugCapture({ enabled }: { enabled: boolean }) {
   const { agent } = useAgent({ agentId: "default" });

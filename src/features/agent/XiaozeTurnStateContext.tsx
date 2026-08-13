@@ -1,5 +1,5 @@
+import { type XiaozeTurnStatePayload } from "@wiseeff/xiaoze-protocol";
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
-import type { XiaozeTurnStatePayload } from "./xiaozeTurnStateTypes";
 
 type XiaozeTurnStateContextValue = {
   getTurnState: (messageId: string) => XiaozeTurnStatePayload | undefined;

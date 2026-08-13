@@ -1,6 +1,6 @@
+import { type XiaozePromptDebugSnapshot } from "@wiseeff/xiaoze-protocol";
 import { useState, type MouseEvent } from "react";
 import { Check, ChevronDown, Code2, Copy } from "lucide-react";
-import type { XiaozePromptDebugSnapshot } from "./xiaozePromptDebugTypes";
 import { formatLlmMessageBody, formatLlmMessageRole, formatPromptDebugCopyText } from "./xiaozePromptDebugFormat";
 
 type XiaozePromptDebugPanelProps = {

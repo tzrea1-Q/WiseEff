@@ -14,14 +14,8 @@ export type AgentContext = {
   roleId?: string;
 };
 
-export type AgentCitation = {
-  type: "parameter" | "log" | "audit" | "debugging" | "knowledge";
-  id: string;
-  label: string;
-  href?: string;
-  snippet?: string;
-  confidence?: number;
-};
+export type { XiaozeCitation as AgentCitation } from "@wiseeff/xiaoze-protocol";
+import type { XiaozeCitation as AgentCitation } from "@wiseeff/xiaoze-protocol";
 
 export type AgentToolStatus = "requested" | "pending_approval" | "running" | "succeeded" | "failed" | "rejected";
 export type AgentApprovalStatus = "pending" | "approved" | "rejected";

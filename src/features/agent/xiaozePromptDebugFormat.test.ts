@@ -1,6 +1,6 @@
+import { type XiaozePromptDebugSnapshot } from "@wiseeff/xiaoze-protocol";
 import { describe, expect, it } from "vitest";
 import { formatLlmMessagesTrace, formatPromptDebugCopyText } from "./xiaozePromptDebugFormat";
-import type { XiaozePromptDebugSnapshot } from "./xiaozePromptDebugTypes";
 
 const baseSnapshot: XiaozePromptDebugSnapshot = {
   threadId: "thread-1",
