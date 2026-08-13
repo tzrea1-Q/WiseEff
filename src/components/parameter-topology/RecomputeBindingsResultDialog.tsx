@@ -1,6 +1,6 @@
 import { CircleX } from "lucide-react";
-import { useEffect } from "react";
 
+import { ModalDialog } from "@/components/common/ModalDialog";
 import type { RecomputeBindingModulesResult } from "@/application/ports/ParameterModuleRegistryRepository";
 
 export type RecomputeBindingsResultDialogProps = {
@@ -15,31 +15,24 @@ export function RecomputeBindingsResultDialog({
   result,
   onClose
 }: RecomputeBindingsResultDialogProps) {
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
-
   const conflictCount = result.conflicts.length;
   const hasConflicts = conflictCount > 0;
   const preview = result.preview;
   const title = result.dryRun ? "全量重算预览" : "全量重算结果";
 
   return (
-    <div
-      className="modal-backdrop param-admin-module-edit-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
+    <ModalDialog
+      open
+      onDismiss={onClose}
+      className="submission-dialog param-admin-module-edit-dialog recompute-bindings-result-dialog"
+      backdropClassName="param-admin-modal-backdrop"
     >
-      <div className="submission-dialog param-admin-module-edit-dialog recompute-bindings-result-dialog">
+      {({ titleId }) => (
+        <>
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
             <span className="eyebrow">运维工具</span>
-            <h2>{title}</h2>
+            <h2 id={titleId}>{title}</h2>
             <p>
               {result.dryRun
                 ? "本次为预览，未写入数据库。确认影响范围后再执行正式全量重算。"
@@ -108,7 +101,8 @@ export function RecomputeBindingsResultDialog({
             知道了
           </button>
         </div>
-      </div>
-    </div>
+        </>
+      )}
+    </ModalDialog>
   );
 }

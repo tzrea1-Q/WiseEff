@@ -1,5 +1,5 @@
 import type { LogJobSnapshot } from "@/application/ports/LogAnalysisRepository";
-import type { LogDomain, LogDomainKnowledgeLink, LogEvidence, LogRecord } from "@/domain/logs/types";
+import type { LogDomain, LogDomainKnowledgeLink, LogEvidence, LogFeedbackInsight, LogRecord } from "@/domain/logs/types";
 
 export type LogEvidenceDto = {
   id: string;
@@ -125,5 +125,20 @@ export function logDomainKnowledgeLinkFromDto(dto: LogDomainKnowledgeLinkDto): L
 }
 
 export function jobSnapshotFromDto(dto: LogJobDto): LogJobSnapshot {
+  return { ...dto };
+}
+
+export type LogFeedbackInsightDto = {
+  logDomainId: string | null;
+  logDomainName: string | null;
+  analysisSource: "agent" | "rules-fallback" | null;
+  promptVersion: string | null;
+  totalCount: number;
+  helpfulCount: number;
+  helpfulRate: number;
+  lastFeedbackAt: string;
+};
+
+export function logFeedbackInsightFromDto(dto: LogFeedbackInsightDto): LogFeedbackInsight {
   return { ...dto };
 }

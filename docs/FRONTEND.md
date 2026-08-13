@@ -258,6 +258,12 @@ Log-domain UI (P1):
 - `/log-admin` gains a log-domain governance section (list, create/edit form with format-profile JSON validation, archive) gated by the frontend `logs.admin-domains` action (Admin); backend routes enforce the real `logs:admin-domains` permission.
 - P2: each active domain row offers a knowledge-entries editor that links **published** knowledge-base entries to the domain (`DomainKnowledgeLinksEditor` in `LogAdminPage.tsx`). The selector lists published entries from the knowledge repository with a title filter; stale links whose entry is no longer published are flagged and dropped from the replace-set save. The link set bounds the analysis agent's `read_domain_knowledge` retrieval (organization-generic fallback when empty). API-mode only, like the rest of domain governance.
 
+Log-analysis quality & annotation intake (P3):
+
+- `/log-admin` has a read-only analysis-quality section (`FeedbackQualityInsightsSection` in `LogAdminPage.tsx`): a DataTable of `GET /api/v1/logs/feedback-insights` rows (helpful rate per log domain × analysis source × prompt version) that follows the page's shared TimeWindow and refreshes after drawer feedback. The empty state honestly says no feedback exists yet; mock mode shows an API-mode hint like domain governance.
+- `LogRecordDrawer` offers an export-eval-case-draft action on completed records: `buildEvalCaseDraft` (`src/domain/logs/evalCaseDraft.ts`) assembles a golden-set `case.yaml` draft (realLog: true, **deIdentified: false**, rootCauseCategory TODO, evidence lines / root-cause points / actions prefilled) plus `log.txt`, downloaded client-side as two files. The dialog shows the README de-identification checklist and states that a human must de-identify and flip `deIdentified` to true before the case may enter `eval-cases/logs` — deliberately no auto-commit or repository write.
+- The upload dialog states archive support in API mode (`.gz` single file, single-entry `.zip`; server-side unpack) and its pre-check accepts those names; the server stays the authority on format failures.
+
 The M2 API smoke lives in `e2e/log-analysis.api.spec.ts` and requires `DATABASE_URL` plus `db:migrate`, `db:seed:m0`, `db:seed:m1`, and `db:seed:m2`.
 
 ## Product Feedback Repository
@@ -387,7 +393,7 @@ M5 extends that baseline with the release smoke and pilot acceptance artifact. D
 
 ## UI Design System And Quality Gate
 
-Every product surface follows the operational visual standard in [UI Design System](design-docs/ui-design-system.md): design tokens as the only source of visual values, one accent, mandatory interaction states (rest/hover/active/focus-visible/disabled/loading), shared primitives (Button, `ModalDialog`, `DataTable`, `ColumnFilter`, `SectionState`), tokenized motion, and Chinese-first product language with shared formatters. Every frontend-visible change must pass the completion gate in [UI Quality Checklist](developer/ui-quality-checklist.md) before it is called done. Migration of legacy surfaces to this standard is tracked in `docs/exec-plans/active/2026-08-12-frontend-aesthetics-uplift.md`.
+Every product surface follows the operational visual standard in [UI Design System](design-docs/ui-design-system.md): design tokens as the only source of visual values, one accent, mandatory interaction states (rest/hover/active/focus-visible/disabled/loading), shared primitives (the `.button` base layer + `ui/button`, `ModalDialog`/`ConfirmDialog` for every dialog, `useToast()` from `src/components/common/toast` as the single toast pipeline, `admin/DataTable` as the standard list shell, `ColumnFilter`, `SectionState` + `AppShellSkeleton` for loading/empty/error and auth bootstrap), tokenized motion, and Chinese-first product language with shared formatters. Every frontend-visible change must pass the completion gate in [UI Quality Checklist](developer/ui-quality-checklist.md) before it is called done. Migration of legacy surfaces to this standard is tracked in `docs/exec-plans/active/2026-08-12-frontend-aesthetics-uplift.md`.
 
 ## Button And Action Styling
 

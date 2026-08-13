@@ -25,6 +25,8 @@ export type BindingDetailPanelProps = {
     input: { bindingId: string; rawValue: string; reason: string }
   ) => BindingEditValidation | Promise<BindingEditValidation>;
   asDialog?: boolean;
+  /** Names the hosting ModalDialog via its heading when rendered as a dialog. */
+  titleId?: string;
 };
 
 export function BindingDetailPanel({
@@ -36,7 +38,8 @@ export function BindingDetailPanel({
   mappingTasks = [],
   canEdit = true,
   onValidateEdit,
-  asDialog = false
+  asDialog = false,
+  titleId
 }: BindingDetailPanelProps) {
   const [draftRaw, setDraftRaw] = useState(binding.rawValue);
   const [draftReason, setDraftReason] = useState("");
@@ -62,7 +65,7 @@ export function BindingDetailPanel({
   return (
     <Wrapper className="binding-detail-panel" {...wrapperProps} data-binding-id={binding.id}>
       <header className="binding-detail-panel__header">
-        <h3>
+        <h3 id={titleId}>
           {binding.propertyKey}
           {binding.driverModule ? <small> · {binding.driverModule}</small> : null}
         </h3>

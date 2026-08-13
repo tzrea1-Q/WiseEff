@@ -347,7 +347,7 @@ describe("ParameterSpecLibrary", () => {
       />
     );
 
-    const detail = screen.getByRole("dialog", { name: /参数定义详情.*gpio_int/ });
+    const detail = screen.getByRole("dialog", { name: /gpio_int/ });
     expect(within(detail).getByLabelText("归属主体")).toHaveValue("sc8562");
     expect(within(detail).queryByLabelText("compatible")).not.toBeInTheDocument();
     expect(within(detail).getByLabelText("所属模块")).toHaveValue(
@@ -446,7 +446,7 @@ describe("SpecReviewQueue", () => {
     expect(within(queue).getByText("sc8562@6E")).toBeInTheDocument();
     fireEvent.click(within(queue).getByRole("button", { name: "编辑 gpio_int" }));
 
-    const dialog = screen.getByRole("dialog", { name: "定义匹配审核 gpio_int" });
+    const dialog = screen.getByRole("dialog", { name: "gpio_int" });
     expect(within(dialog).getByLabelText("匹配依据")).toHaveValue(
       "compatible unmatched\nnodename=sc8562@6E"
     );
@@ -507,7 +507,7 @@ describe("SpecReviewQueue", () => {
     const queue = screen.getByRole("region", { name: "定义匹配审核队列" });
     fireEvent.click(within(queue).getByRole("button", { name: "编辑 gpio_int" }));
 
-    const dialog = screen.getByRole("dialog", { name: "定义匹配审核 gpio_int" });
+    const dialog = screen.getByRole("dialog", { name: "gpio_int" });
     fireEvent.change(within(dialog).getByRole("combobox", { name: "选择参数定义" }), {
       target: { value: "schema-other" }
     });
@@ -558,7 +558,7 @@ describe("SpecReviewQueue", () => {
     const queue = screen.getByRole("region", { name: "定义匹配审核队列" });
     expect(within(queue).getByText("未找到定义")).toBeInTheDocument();
     fireEvent.click(within(queue).getByRole("button", { name: "编辑 mystery_prop" }));
-    const dialog = screen.getByRole("dialog", { name: "定义匹配审核 mystery_prop" });
+    const dialog = screen.getByRole("dialog", { name: "mystery_prop" });
     const createButton = within(dialog).getByRole("button", { name: "创建中…" });
     expect(createButton).toBeDisabled();
   });

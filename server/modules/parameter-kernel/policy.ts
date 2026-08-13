@@ -12,6 +12,11 @@ function hasRole(auth: AuthContext, roles: BackendRoleId[], projectId?: string) 
       (binding.roleId === "admin" ||
         binding.roleId === "platform-admin" ||
         projectId === undefined ||
+        // A null-project binding is an organization-wide grant of the role:
+        // self-service registration approval and the M0 seed both produce
+        // business roles with projectId null. Project-bound bindings stay
+        // scoped to their project (the QA P1-E cross-project fix).
+        binding.projectId === null ||
         binding.projectId === projectId)
   );
 }

@@ -5,6 +5,7 @@ import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import { buildModuleTree } from "@/domain/modules/moduleTree";
 import { countDebugNodesByModuleId, debugNodesInModuleId } from "@/debugAdminModules";
 import type { ParameterModuleDraft } from "@/powerManagementConfig";
+import { ModalDialog } from "@/components/common/ModalDialog";
 import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
 import { ModuleCreateDialog } from "./ModuleCreateDialog";
 import { ModuleEditDialog } from "./ModuleEditDialog";
@@ -53,21 +54,6 @@ export function DebugModuleManagementDialog({
   const editingModule = moduleNodes.find((module) => module.id === editingModuleId) ?? null;
   const moveTarget = moduleNodes.find((module) => module.id === moveModuleId) ?? null;
   const createParentName = addParentId ? moduleNodes.find((node) => node.id === addParentId)?.name ?? addParentId : null;
-
-  useEffect(() => {
-    if (!open) {
-      return undefined;
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !editingModuleId && !moveModuleId && !showCreateDialog) {
-        onClose();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [editingModuleId, moveModuleId, onClose, open, showCreateDialog]);
 
   useEffect(() => {
     if (!open) {
@@ -131,13 +117,23 @@ export function DebugModuleManagementDialog({
     setAddParentId(null);
   };
 
+  // Nested create/edit dialogs stack via the shared dialog contract; the inline move
+  // panel is not a dialog, so dismissal stays blocked while it is open.
+  const dismissBlocked = Boolean(moveModuleId);
+
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="模块管理">
-      <div className="submission-dialog param-admin-module-dialog">
+    <>
+    <ModalDialog
+      open={open}
+      onDismiss={dismissBlocked ? undefined : onClose}
+      className="submission-dialog param-admin-module-dialog"
+    >
+      {({ titleId }) => (
+        <>
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
             <span className="eyebrow">节点目录治理</span>
-            <h2 id="debug-module-management-title">模块管理</h2>
+            <h2 id={titleId}>模块管理</h2>
             <p>维护多层级调试节点模块分类。可添加子模块、移动、重命名；删除仅适用于无子节点且无节点引用的模块。</p>
           </div>
           <button type="button" className="audit-dialog-close-icon" onClick={onClose} aria-label="关闭">
@@ -255,32 +251,34 @@ export function DebugModuleManagementDialog({
             完成
           </button>
         </div>
-      </div>
+        </>
+      )}
+    </ModalDialog>
 
-      {showCreateDialog ? (
-        <ModuleCreateDialog
-          eyebrow="节点模块创建"
-          existingNames={siblingNames(moduleNodes, addParentId)}
-          parentName={createParentName}
-          onCancel={closeCreateDialog}
-          onCreate={(draft) => {
-            onAddModule(draft, addParentId);
-            closeCreateDialog();
-          }}
-        />
-      ) : null}
+    {showCreateDialog ? (
+      <ModuleCreateDialog
+        eyebrow="节点模块创建"
+        existingNames={siblingNames(moduleNodes, addParentId)}
+        parentName={createParentName}
+        onCancel={closeCreateDialog}
+        onCreate={(draft) => {
+          onAddModule(draft, addParentId);
+          closeCreateDialog();
+        }}
+      />
+    ) : null}
 
-      {editingModule ? (
-        <ModuleEditDialog
-          existingNames={siblingNames(moduleNodes, editingModule.parentId ?? null, editingModule.id)}
-          module={editingModule}
-          onCancel={() => setEditingModuleId(null)}
-          onSave={(patch) => {
-            onUpdateModule(editingModule.id, patch);
-            setEditingModuleId(null);
-          }}
-        />
-      ) : null}
-    </div>
+    {editingModule ? (
+      <ModuleEditDialog
+        existingNames={siblingNames(moduleNodes, editingModule.parentId ?? null, editingModule.id)}
+        module={editingModule}
+        onCancel={() => setEditingModuleId(null)}
+        onSave={(patch) => {
+          onUpdateModule(editingModule.id, patch);
+          setEditingModuleId(null);
+        }}
+      />
+    ) : null}
+    </>
   );
 }

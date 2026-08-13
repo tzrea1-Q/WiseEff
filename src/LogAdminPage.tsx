@@ -12,7 +12,7 @@ import { canPerform } from "@/app/permissions";
 import { cn } from "@/lib/utils";
 import { applyTableFilters, applyTimeWindow, deriveInsight, deriveMetrics } from "@/logAdminAnalytics";
 import { STAGE_LABELS, type LogRecord, type LogStatus, type PrototypeState, type TimeWindow } from "@/domain/prototype/types";
-import type { LogDomain } from "@/domain/logs/types";
+import type { LogDomain, LogFeedbackInsight } from "@/domain/logs/types";
 import { useTopBarActions } from "@/components/layout";
 import { logRuntimeFailureNotification, type LogRuntimeActions } from "@/application/logs/logRuntime";
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
@@ -544,6 +544,142 @@ function LogDomainGovernanceSection({
   );
 }
 
+const feedbackAnalysisSourceLabels: Record<"agent" | "rules-fallback" | "none", string> = {
+  agent: "Agent 分析",
+  "rules-fallback": "降级 · 规则回退",
+  none: "未标注来源"
+};
+
+function feedbackInsightRowKey(row: LogFeedbackInsight): string {
+  return `${row.logDomainId ?? "uncategorized"}:${row.analysisSource ?? "none"}:${row.promptVersion ?? "none"}`;
+}
+
+/**
+ * Analysis-quality insights (P3 online monitoring, evaluation build order step 3):
+ * helpful rate per log domain × analysis source × prompt version over the page's
+ * shared time window. Read-only aggregation of `log_feedback` — the shared golden
+ * case set stays the quality anchor; this section watches live feedback drift.
+ */
+function FeedbackQualityInsightsSection({
+  timeWindow,
+  logActions,
+  refreshKey
+}: {
+  timeWindow: TimeWindow;
+  logActions?: LogRuntimeActions;
+  refreshKey: number;
+}) {
+  const [rows, setRows] = useState<LogFeedbackInsight[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!logActions) {
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    void logActions
+      .listFeedbackInsights({ timeWindow })
+      .then((items) => {
+        if (!cancelled) {
+          setRows(items);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [logActions, refreshKey, timeWindow]);
+
+  const columns: Column<LogFeedbackInsight>[] = [
+    {
+      key: "logDomainName",
+      header: "业务域",
+      render: (row) => (
+        <span className={cn("text-sm", row.logDomainName ? "font-medium text-foreground" : "text-muted-foreground")}>
+          {row.logDomainName ?? "未分类"}
+        </span>
+      ),
+      sortAccessor: (row) => row.logDomainName ?? ""
+    },
+    {
+      key: "analysisSource",
+      header: "分析来源",
+      render: (row) => (
+        <span className="text-xs text-muted-foreground">{feedbackAnalysisSourceLabels[row.analysisSource ?? "none"]}</span>
+      ),
+      sortAccessor: (row) => row.analysisSource ?? "",
+      widthClass: "w-36"
+    },
+    {
+      key: "promptVersion",
+      header: "Prompt 版本",
+      render: (row) => <span className="font-mono text-xs text-muted-foreground">{row.promptVersion ?? "-"}</span>,
+      sortAccessor: (row) => row.promptVersion ?? "",
+      widthClass: "w-44"
+    },
+    {
+      key: "totalCount",
+      header: "反馈条数",
+      render: (row) => <span className="font-mono text-xs">{row.totalCount}</span>,
+      sortAccessor: (row) => row.totalCount,
+      align: "right",
+      widthClass: "w-24"
+    },
+    {
+      key: "helpfulRate",
+      header: "有帮助率",
+      render: (row) => {
+        const percent = Math.round(row.helpfulRate * 100);
+        return (
+          <span
+            className={cn(
+              "font-mono text-xs",
+              percent >= 80 ? "text-emerald-700" : percent >= 50 ? "text-amber-700" : "text-destructive"
+            )}
+          >
+            {percent}%（{row.helpfulCount}/{row.totalCount}）
+          </span>
+        );
+      },
+      sortAccessor: (row) => row.helpfulRate,
+      align: "right",
+      widthClass: "w-32"
+    }
+  ];
+
+  return (
+    <section className="flex flex-col gap-2" aria-label="分析质量" data-testid="feedback-quality-insights">
+      <div>
+        <h2 className="text-sm font-semibold text-foreground">分析质量</h2>
+        <p className="text-xs text-muted-foreground">
+          按业务域 × 分析来源 × Prompt 版本聚合用户反馈的有帮助率（跟随右上角时间窗口），用于监控线上分析质量漂移。
+        </p>
+      </div>
+      {!logActions ? (
+        <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          分析质量监控需在 API 模式下使用；mock 模式仅展示静态日志种子。
+        </p>
+      ) : (
+        <DataTable
+          aria-label="分析质量反馈聚合"
+          rows={rows}
+          rowKey={feedbackInsightRowKey}
+          columns={columns}
+          pageSize={6}
+          emptyState={
+            <p className="text-sm text-muted-foreground">{loading ? "正在加载反馈数据…" : "暂无反馈"}</p>
+          }
+        />
+      )}
+    </section>
+  );
+}
+
 export function LogAdminPage({ state, dispatch, onNavigate, search: _search, logActions, knowledgeRepository }: LogAdminPageProps) {
   const [timeWindow, setTimeWindow] = useState<TimeWindow>("today");
   const [tableQuery, setTableQuery] = useState("");
@@ -555,6 +691,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
   const [insightDismissed, setInsightDismissed] = useState<boolean>(() => readInsightDismissed());
   const [pendingActions, setPendingActions] = useState<Set<string>>(() => new Set());
   const [syncPending, setSyncPending] = useState(false);
+  const [feedbackInsightsRefreshKey, setFeedbackInsightsRefreshKey] = useState(0);
 
   const runPendingAction = async (kind: PendingLogAction, logId: string, action: () => Promise<void>) => {
     const key = pendingKey(kind, logId);
@@ -794,7 +931,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
     <div className="log-admin-page flex flex-col gap-5 p-6">
       {insight && !insightDismissed ? (
         <PageInsightBar
-          severity={insight.severity}
+          variant={insight.severity}
           headline={insight.headline}
           description={insight.description}
           onDismiss={() => {
@@ -804,7 +941,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
           actions={insight.actions.map((action) => ({
             label: action.label,
             onClick: () => handleInsightAction(action.kind),
-            tone: action.kind === "locate-failures" ? ("primary" as const) : ("subtle" as const)
+            variant: action.kind === "locate-failures" ? ("primary" as const) : ("subtle" as const)
           }))}
         />
       ) : null}
@@ -814,6 +951,11 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
           canGovern={canPerform(state.activeRoleId, "logs.admin-domains")}
           logActions={logActions}
           knowledgeRepository={knowledgeRepository}
+        />
+        <FeedbackQualityInsightsSection
+          timeWindow={timeWindow}
+          logActions={logActions}
+          refreshKey={feedbackInsightsRefreshKey}
         />
         <section className="flex flex-col gap-2">
           <div>
@@ -915,6 +1057,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
 
           void runPendingAction("feedback", id, async () => {
             await logActions.submitFeedback({ logId: id, rating: "helpful" });
+            setFeedbackInsightsRefreshKey((key) => key + 1);
           });
         }}
         canAct={canAct}

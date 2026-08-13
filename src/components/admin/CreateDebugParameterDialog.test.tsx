@@ -16,7 +16,7 @@ describe("CreateDebugParameterDialog", () => {
       />
     );
 
-    expect(screen.getByRole("dialog", { name: "创建调试参数" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "新增参数" })).toBeInTheDocument();
     expect(screen.getByText("标识信息")).toBeInTheDocument();
     expect(screen.getByLabelText("调试目标值")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "创建" })).toBeInTheDocument();

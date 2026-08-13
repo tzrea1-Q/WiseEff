@@ -7,7 +7,7 @@ export type KpiItem = {
   hint?: string;
   interactive?: boolean;
   onClick?: () => void;
-  tone?: "neutral" | "warning" | "danger";
+  variant?: "neutral" | "warning" | "danger";
 };
 
 export function KpiStrip({ items }: { items: KpiItem[] }) {
@@ -28,9 +28,9 @@ export function KpiStrip({ items }: { items: KpiItem[] }) {
 
         if (item.interactive) {
           return (
-            <button
-              className="kpi-item interactive"
-              data-tone={item.tone ?? "neutral"}
+          <button
+            className="kpi-item interactive"
+            data-tone={item.variant ?? "neutral"}
               key={item.id}
               type="button"
               onClick={item.onClick}
@@ -43,7 +43,7 @@ export function KpiStrip({ items }: { items: KpiItem[] }) {
         }
 
         return (
-          <div className="kpi-item" data-tone={item.tone ?? "neutral"} key={item.id} title={item.hint}>
+          <div className="kpi-item" data-tone={item.variant ?? "neutral"} key={item.id} title={item.hint}>
             {content}
           </div>
         );

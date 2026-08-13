@@ -4,7 +4,7 @@ import { createXiaozeTurnPersister } from "./threadPersistence";
 describe("xiaoze thread persistence", () => {
   it("writes session started and message appended audit events on first turn", async () => {
     const calls: Array<{ text: string; values: unknown[] }> = [];
-    const db = {
+    const queryable = {
       query: vi.fn(async (text: string, values: unknown[] = []) => {
         calls.push({ text, values });
         if (text.includes("from agent_sessions") && text.includes("limit 1")) {
@@ -12,6 +12,10 @@ describe("xiaoze thread persistence", () => {
         }
         return { rows: [], rowCount: 1 };
       })
+    };
+    const db = {
+      ...queryable,
+      transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(queryable)
     } as never;
 
     const persist = createXiaozeTurnPersister({ db });
@@ -36,7 +40,7 @@ describe("xiaoze thread persistence", () => {
 
   it("does not persist projectId for org-scoped log pages", async () => {
     const calls: Array<{ text: string; values: unknown[] }> = [];
-    const db = {
+    const queryable = {
       query: vi.fn(async (text: string, values: unknown[] = []) => {
         calls.push({ text, values });
         if (text.includes("from agent_sessions") && text.includes("limit 1")) {
@@ -44,6 +48,10 @@ describe("xiaoze thread persistence", () => {
         }
         return { rows: [], rowCount: 1 };
       })
+    };
+    const db = {
+      ...queryable,
+      transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(queryable)
     } as never;
 
     const persist = createXiaozeTurnPersister({ db });

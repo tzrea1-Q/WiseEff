@@ -173,14 +173,14 @@ export function FeedbackAdminPage({ productFeedbackRepository }: FeedbackAdminPa
   return (
     <div className="feedback-admin-page flex flex-col gap-5 p-6">
       <PageInsightBar
-        severity={openCount > 0 ? "warn" : "info"}
+        variant={openCount > 0 ? "warn" : "info"}
         headline={`待处理 ${openCount} 条`}
         description="集中查看内测问题反馈，按状态、类型和页面关键词推进分诊。"
         actions={[
           {
             label: "只看待处理",
             onClick: () => setStatusFilter("open"),
-            tone: "primary"
+            variant: "primary"
           }
         ]}
       />

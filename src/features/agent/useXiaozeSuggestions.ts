@@ -8,7 +8,7 @@ import { resolveWiseEffApiBaseUrl } from "@/infrastructure/http/runtimeMode";
 type SuggestResponse = {
   suggestions: Array<{
     id: string;
-    tone: Insight["tone"];
+    tone: Insight["variant"];
     headline: string;
     meta?: string;
   }>;
@@ -53,7 +53,7 @@ export function useXiaozeSuggestions(options: { enabled: boolean }) {
     setInsights(
       payload.suggestions.map((item) => ({
         id: item.id,
-        tone: item.tone,
+        variant: item.tone,
         headline: item.headline,
         meta: item.meta,
         actions: [

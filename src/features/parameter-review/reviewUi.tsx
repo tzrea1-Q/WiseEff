@@ -35,22 +35,9 @@ export function formatWorkflowDisplayText(text: string) {
     .replaceAll("User", "开发人员");
 }
 
-export function WorkbenchLayout({
-  children
-}: {
-  title: string;
-  subtitle?: string;
-  actions?: ReactNode;
-  hideHeader?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <div className="workbench-page">
-      <div className="workbench-grid">{children}</div>
-    </div>
-  );
-}
-
+// MetricCard stays local: admin/MetricBentoCard is a large dashboard
+// visualization card (spark/radial/pulse/peak, 160px chart area) and is not a
+// drop-in replacement for this compact stat card.
 export function MetricCard({ title, value, trend, tone }: { title: string; value: string; trend: string; tone: "blue" | "teal" | "purple" }) {
   return (
     <Card className={`metric-card ${tone}`} size="sm">

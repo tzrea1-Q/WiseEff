@@ -1,6 +1,7 @@
 import { CircleX } from "lucide-react";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 
+import { ModalDialog } from "@/components/common/ModalDialog";
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import type { OrganizationDriverSchemaValueShapeKind } from "@/application/ports/ParameterModuleRegistryRepository";
 
@@ -44,35 +45,24 @@ export function OverlaySpecCreateDialog({
   const [units, setUnits] = useState("");
   const [documentation, setDocumentation] = useState("");
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        onCancel();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [onCancel]);
-
   const canConfirm = useMemo(
     () => !busy && propertyKey.trim().length > 0,
     [busy, propertyKey]
   );
 
   return (
-    <div
-      className="modal-backdrop param-admin-module-edit-backdrop organization-driver-schema-stack-backdrop organization-driver-schema-create-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-label={PARAMETER_ADMIN_UI.organizationDriverSchemaCreateTitle}
+    <ModalDialog
+      open
+      onDismiss={busy ? undefined : onCancel}
+      className="submission-dialog param-admin-module-edit-dialog organization-driver-schema-create-dialog"
+      backdropClassName="param-admin-modal-backdrop organization-driver-schema-stack-backdrop organization-driver-schema-create-backdrop"
     >
-      <div className="submission-dialog param-admin-module-edit-dialog organization-driver-schema-create-dialog">
+      {({ titleId }) => (
+        <>
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
             <span className="eyebrow">{PARAMETER_ADMIN_UI.organizationDriverSchemaCreateTitle}</span>
-            <h2>{PARAMETER_ADMIN_UI.organizationDriverSchemaCreateTitle}</h2>
+            <h2 id={titleId}>{PARAMETER_ADMIN_UI.organizationDriverSchemaCreateTitle}</h2>
             <p>填写属性键与值类型。确认后带回叠加层；激活 schema 时写入参数定义库。</p>
           </div>
           <button
@@ -158,7 +148,8 @@ export function OverlaySpecCreateDialog({
             {PARAMETER_ADMIN_UI.organizationDriverSchemaCreateConfirm}
           </button>
         </div>
-      </div>
-    </div>
+        </>
+      )}
+    </ModalDialog>
   );
 }

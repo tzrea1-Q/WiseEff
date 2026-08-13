@@ -231,7 +231,10 @@ describe("ProjectParameterInitializationWizard", () => {
 
     onClose.mockClear();
     rerender(<ProjectParameterInitializationWizard state={initialState} dispatch={vi.fn()} onClose={onClose} />);
-    fireEvent.mouseDown(screen.getByRole("dialog"));
+    // The shared modal contract dismisses only when press and release both land on the backdrop.
+    const backdrop = screen.getByRole("dialog").parentElement!;
+    fireEvent.pointerDown(backdrop);
+    fireEvent.pointerUp(backdrop);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -400,13 +403,16 @@ describe("ProjectParameterInitializationWizard", () => {
   });
 
   it("keeps footer actions in a stable bottom action bar", () => {
+    // Footer buttons consume the shared `.button` base contract (FA-10); the
+    // scope only keeps the stable CTA min-width.
     const styles = readStylesheet("src/styles.css");
     const wizardRule = declarationsFor(styles, ".project-init-wizard");
     const mainRule = declarationsFor(styles, ".project-init-main");
     const footerRule = declarationsFor(styles, ".project-init-footer");
     const footerButtonRule = declarationsFor(styles, ".project-init-footer .button");
-    const footerSubtleButtonRule = declarationsFor(styles, ".project-init-footer .button.subtle");
-    const footerPrimaryButtonRule = declarationsFor(styles, ".project-init-footer .button.primary");
+    const baseButtonRule = declarationsFor(styles, ".button");
+    const baseSubtleRule = declarationsFor(styles, ".button.subtle");
+    const basePrimaryRule = declarationsFor(styles, ".button.primary");
 
     expect(wizardRule.display).toBe("flex");
     expect(wizardRule["flex-direction"]).toBe("column");
@@ -415,15 +421,14 @@ describe("ProjectParameterInitializationWizard", () => {
     expect(mainRule.overflow).toBe("auto");
     expect(footerRule.background).toBe("#fbfcff");
     expect(footerRule["box-shadow"]).toBeTruthy();
-    expect(footerButtonRule.display).toBe("inline-flex");
-    expect(footerButtonRule["justify-content"]).toBe("center");
     expect(footerButtonRule["min-width"]).toBe("96px");
-    expect(footerButtonRule.padding).toBe("0 18px");
-    expect(footerButtonRule.border).toContain("1px solid");
-    expect(footerButtonRule["border-radius"]).toBe("8px");
-    expect(footerSubtleButtonRule.background).toBe("#fff");
-    expect(footerPrimaryButtonRule.color).toBe("#fff");
-    expect(footerPrimaryButtonRule.background).toBe("var(--app-primary)");
+    expect(baseButtonRule.display).toBe("inline-flex");
+    expect(baseButtonRule["justify-content"]).toBe("center");
+    expect(baseButtonRule.border).toContain("1px solid");
+    expect(baseButtonRule["border-radius"]).toBe("var(--radius-md)");
+    expect(baseSubtleRule.background).toBe("var(--surface)");
+    expect(basePrimaryRule.color).toBe("var(--primary-foreground)");
+    expect(basePrimaryRule.background).toBe("var(--accent)");
   });
 
   it("allows selecting parameters from the library when starting from empty", () => {

@@ -2,6 +2,7 @@ import { CircleX } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import type { ModuleImportance, ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
 import type { ParameterModuleDraft } from "@/powerManagementConfig";
+import { ModalDialog } from "@/components/common/ModalDialog";
 import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
 import {
   allowedCreateKindsForParent,
@@ -102,11 +103,6 @@ export function ModuleCreateDialog({
       : (modules.find((module) => module.id === parentId)?.name ?? null)
     : (parentName ?? null);
   const isChildModule = Boolean(selectedParentName);
-  const dialogLabel = allowKindSelect
-    ? "新建模块"
-    : isChildModule
-      ? `在 ${selectedParentName} 下创建子模块`
-      : "新增根模块";
   const title = allowKindSelect
     ? "新建模块"
     : isChildModule
@@ -156,17 +152,6 @@ export function ModuleCreateDialog({
     setParentId(fallback?.id ?? null);
   }, [allowKindSelect, modules, kind, parentId, parentNodes]);
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onCancel();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onCancel]);
-
   const compatibles = compatiblesText
     .split("\n")
     .map((value) => value.trim())
@@ -190,12 +175,18 @@ export function ModuleCreateDialog({
     setParentId(nextId);
   };
   return (
-    <div className="modal-backdrop param-admin-module-edit-backdrop" role="dialog" aria-modal="true" aria-label={dialogLabel}>
-      <div className="submission-dialog param-admin-module-edit-dialog module-create-dialog">
+    <ModalDialog
+      open
+      onDismiss={onCancel}
+      className="submission-dialog param-admin-module-edit-dialog module-create-dialog"
+      backdropClassName="param-admin-modal-backdrop"
+    >
+      {({ titleId }) => (
+        <>
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
             <span className="eyebrow">{eyebrow}</span>
-            <h2>{title}</h2>
+            <h2 id={titleId}>{title}</h2>
             <p>{description}</p>
           </div>
           <button type="button" className="audit-dialog-close-icon" onClick={onCancel} aria-label="关闭">
@@ -308,7 +299,8 @@ export function ModuleCreateDialog({
             创建
           </button>
         </div>
-      </div>
-    </div>
+        </>
+      )}
+    </ModalDialog>
   );
 }

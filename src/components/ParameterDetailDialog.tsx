@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { X } from "lucide-react";
+import { ModalDialog } from "@/components/common/ModalDialog";
 import {
   buildSingleParameterProjectComparison,
   type ComparisonProject,
@@ -127,11 +128,14 @@ function ParameterHistoryDiffDialog({
   const diffPairs = buildHistoryDiffPairs(history);
 
   return (
-    <div className="modal-backdrop parameter-history-backdrop" role="dialog" aria-modal="true" aria-label={`历史差异 ${parameterName}`}>
-      <div className="parameter-history-diff-dialog">
+    <ModalDialog open onDismiss={onClose} className="parameter-history-diff-dialog">
+      {({ titleId }) => (
+        <>
         <header className="parameter-history-diff-dialog__head">
           <div>
-            <span className="eyebrow">近期历史</span>
+            {/* The eyebrow names this dialog: the h3 repeats the parameter name that
+                already names the parent detail dialog underneath. */}
+            <span className="eyebrow" id={titleId}>近期历史</span>
             <h3>{parameterName}</h3>
             <p>按版本顺序查看历史提交带来的参数值变化。</p>
           </div>
@@ -162,8 +166,9 @@ function ParameterHistoryDiffDialog({
             关闭
           </button>
         </footer>
-      </div>
-    </div>
+        </>
+      )}
+    </ModalDialog>
   );
 }
 
@@ -262,21 +267,6 @@ function ProjectOverview({ rows }: { rows: SingleParameterComparisonRow[] }) {
   );
 }
 
-function getFocusableElements(container: HTMLElement) {
-  return Array.from(
-    container.querySelectorAll<HTMLElement>(
-      [
-        'button:not([disabled])',
-        '[href]',
-        'input:not([disabled])',
-        'select:not([disabled])',
-        'textarea:not([disabled])',
-        '[tabindex]:not([tabindex="-1"])'
-      ].join(",")
-    )
-  ).filter((element) => !element.hasAttribute("disabled") && !element.hasAttribute("hidden") && element.tabIndex >= 0);
-}
-
 export function ParameterDetailDialog({
   parameter,
   parameters,
@@ -290,9 +280,6 @@ export function ParameterDetailDialog({
   onAddToDraft,
   onClose
 }: ParameterDetailDialogProps) {
-  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
-  const dialogRef = useRef<HTMLDivElement | null>(null);
-  const openerRef = useRef<HTMLElement | null>(null);
   const [historyDiffOpen, setHistoryDiffOpen] = useState(false);
   const comparison = buildSingleParameterProjectComparison({
     parameters,
@@ -334,70 +321,22 @@ export function ParameterDetailDialog({
     });
   }
 
-  useEffect(() => {
-    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    closeButtonRef.current?.focus();
-    return () => {
-      const opener = openerRef.current;
-      if (opener && opener.isConnected) {
-        opener.focus();
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) {
-      return undefined;
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Tab") {
-        return;
-      }
-
-      const focusableElements = getFocusableElements(dialog);
-      if (focusableElements.length === 0) {
-        return;
-      }
-
-      const activeElement = document.activeElement as HTMLElement | null;
-      const currentIndex = activeElement ? focusableElements.indexOf(activeElement) : -1;
-      const current = currentIndex >= 0 ? currentIndex : 0;
-      const nextIndex = event.shiftKey
-        ? (current - 1 + focusableElements.length) % focusableElements.length
-        : (current + 1) % focusableElements.length;
-
-      event.preventDefault();
-      focusableElements[nextIndex]?.focus();
-    };
-
-    dialog.addEventListener("keydown", handleKeyDown);
-    return () => dialog.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="parameter-detail-title">
-      <div ref={dialogRef} className={hasComplexValue ? "parameter-detail-dialog parameter-detail-dialog--wide" : "parameter-detail-dialog"}>
+    <ModalDialog
+      open
+      onDismiss={onClose}
+      className={hasComplexValue ? "parameter-detail-dialog parameter-detail-dialog--wide" : "parameter-detail-dialog"}
+    >
+      {({ titleId }) => (
+        <>
         <header className="parameter-detail-dialog__header">
           <div>
             <span className="eyebrow">
               模块：{formatModuleLabel(parameter.module)} · 重要性：{formatRiskLabel(parameter.risk)}
             </span>
-            <h2 id="parameter-detail-title">{parameter.name}</h2>
+            <h2 id={titleId}>{parameter.name}</h2>
           </div>
-          <button ref={closeButtonRef} className="icon-button" type="button" aria-label="关闭参数详情" onClick={onClose}>
+          <button className="icon-button" type="button" aria-label="关闭参数详情" onClick={onClose}>
             <X size={18} aria-hidden="true" />
           </button>
         </header>
@@ -557,7 +496,8 @@ export function ParameterDetailDialog({
             onClose={() => setHistoryDiffOpen(false)}
           />
         ) : null}
-      </div>
-    </div>
+        </>
+      )}
+    </ModalDialog>
   );
 }
