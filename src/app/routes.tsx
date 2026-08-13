@@ -23,6 +23,7 @@ import type { DebuggingRuntimeActions } from "@/application/debugging/debuggingR
 import type { LogRuntimeActions } from "@/application/logs/logRuntime";
 import type { KnowledgeCapability } from "@/domain/knowledge/rules";
 import { resolveDtsReloadRepository } from "@/application/dts-reload/dtsReloadRuntime";
+import { createMockDebuggingBridgeSeams } from "@/infrastructure/mock/mockDebuggingGateway";
 import { createMockDtsReloadBridgeSeams } from "@/infrastructure/mock/mockDtsReloadRepository";
 import type { AppAction } from "@/application/state/appState";
 import type { AppRuntime } from "@/app/appRuntime";
@@ -51,10 +52,6 @@ import { NoEntryPage } from "@/components/NoEntryPage";
 import type { PageConfig } from "@/appConfig";
 import type { PrototypeState } from "@/domain/prototype/types";
 import type { ParameterDraftItem, ParameterRecord } from "@/domain/parameters/types";
-
-const NodeDebuggingPageWithRuntimeProps = NodeDebuggingPage as (
-  props: Pick<PageProps, "state" | "debuggingActions"> & { runtimeReady?: boolean }
-) => ReactNode;
 
 export type ParameterPageActions = {
   getParameter(parameterId: string): Promise<ParameterRecord>;
@@ -100,6 +97,13 @@ let cachedMockDtsReloadBridgeSeams: ReturnType<typeof createMockDtsReloadBridgeS
 function mockDtsReloadBridgeSeams() {
   cachedMockDtsReloadBridgeSeams ??= createMockDtsReloadBridgeSeams();
   return cachedMockDtsReloadBridgeSeams;
+}
+
+/** Stable mock bridge seams for `/node-debugging` in mock mode (same caching rationale). */
+let cachedMockDebuggingBridgeSeams: ReturnType<typeof createMockDebuggingBridgeSeams> | null = null;
+function mockDebuggingBridgeSeams() {
+  cachedMockDebuggingBridgeSeams ??= createMockDebuggingBridgeSeams();
+  return cachedMockDebuggingBridgeSeams;
 }
 
 export type PageRouterProps = PageProps & {
@@ -296,14 +300,22 @@ export function PageRouter({
           onNavigate={onNavigate}
         />
       );
-    case "node-debugging":
+    case "node-debugging": {
+      // Runtime-mode knowledge lives in the shell seams: the gateway behind
+      // debuggingActions comes from resolveDebuggingGateway, and mock mode gets
+      // walkable bridge-panel seams instead of live local HTTP probes.
+      const mockSeams = runtimeMode === "api" ? null : mockDebuggingBridgeSeams();
       return (
-        <NodeDebuggingPageWithRuntimeProps
+        <NodeDebuggingPage
           state={state}
-          debuggingActions={runtimeMode === "api" ? debuggingActions : undefined}
-          runtimeReady={runtimeMode === "api" ? debuggingRuntimeReady : true}
+          debuggingActions={debuggingActions!}
+          runtimeReady={debuggingRuntimeReady}
+          bridges={mockSeams?.bridges}
+          probeBridgeHealth={mockSeams?.probeBridgeHealth}
+          createBridgePairingCode={mockSeams?.createPairingCode}
         />
       );
+    }
     case "dts-reload": {
       const mockSeams = runtimeMode === "api" ? null : mockDtsReloadBridgeSeams();
       return (
