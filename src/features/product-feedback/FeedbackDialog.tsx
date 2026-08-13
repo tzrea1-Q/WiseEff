@@ -213,7 +213,7 @@ export function FeedbackDialog({
         <form onSubmit={handleSubmit}>
           <DialogHeader className="feedback-dialog-header">
             <div>
-              <span className="eyebrow">Internal Beta Feedback</span>
+              <span className="eyebrow">内测反馈</span>
               <DialogTitle>问题反馈</DialogTitle>
               <DialogDescription>反馈会携带页面路径、类型、描述和可选截图，方便内测团队定位问题。</DialogDescription>
             </div>

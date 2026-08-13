@@ -103,12 +103,13 @@ describe("createReleaseBaselineSession", () => {
       readiness({
         canCreateBaseline: false,
         available: false,
-        unavailableReason: "open conflict"
+        unavailableReason: "Release readiness could not load open conflicts."
       })
     );
     const createBaseline = vi.fn();
     const session = createReleaseBaselineSession();
 
+    // The raw English backend reason maps to product copy before it reaches the UI.
     await expect(
       session.create(
         "proj-1",
@@ -116,7 +117,7 @@ describe("createReleaseBaselineSession", () => {
         { name: "x", localSessionDirty: false },
         { getReleaseReadiness, createBaseline }
       )
-    ).rejects.toThrow(/open conflict/);
+    ).rejects.toThrow(/冲突清单加载失败/);
     expect(createBaseline).not.toHaveBeenCalled();
   });
 
@@ -263,7 +264,9 @@ describe("createReleaseBaselineSession", () => {
         { getReleaseReadiness, createBaseline }
       )
     ).rejects.toThrow("network unreachable");
-    expect(session.actionError).toBe("network unreachable");
+    // Raw backend text never renders: unknown English messages fall back to
+    // the scenario copy via the presentError layer.
+    expect(session.actionError).toBe("创建基线失败，请重试。");
   });
 
   it("maps stale gate-token conflicts to a readiness-changed actionError", async () => {
@@ -295,14 +298,14 @@ describe("createReleaseBaselineSession", () => {
         compareBaseline: vi.fn().mockRejectedValue(new Error("compare 500"))
       })
     ).rejects.toThrow("compare 500");
-    expect(session.actionError).toBe("compare 500");
+    expect(session.actionError).toBe("对比基线失败，请重试。");
 
     await expect(
       session.previewRestore("proj-1", {
         previewRestoreBaseline: vi.fn().mockRejectedValue(new Error("preview 500"))
       })
     ).rejects.toThrow("preview 500");
-    expect(session.actionError).toBe("preview 500");
+    expect(session.actionError).toBe("加载恢复预览失败，请重试。");
 
     await expect(
       session.restore("proj-1", "cs-1", {
@@ -310,7 +313,7 @@ describe("createReleaseBaselineSession", () => {
         listBaselines: vi.fn(async () => [])
       })
     ).rejects.toThrow("rollback 409");
-    expect(session.actionError).toBe("rollback 409");
+    expect(session.actionError).toBe("恢复基线失败，请重试。");
   });
 
   it("loadPinnedMembers maps getBaseline members for selected baseline", async () => {

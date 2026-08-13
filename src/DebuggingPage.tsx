@@ -1,6 +1,7 @@
 import { Pencil, Search, Send } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AppAction } from "@/application/state/appState";
+import { presentError } from "@/infrastructure/http/presentError";
 import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { OperationHistoryPanel } from "./components/OperationHistoryPanel";
@@ -216,7 +217,7 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
       await run();
     } catch (error) {
       if (runtimeRequestSeqRef.current[action] === requestSeq) {
-        setRuntimeNotice(error instanceof Error ? error.message : fallbackMessage);
+        setRuntimeNotice(presentError(error, fallbackMessage));
       }
     } finally {
       if (runtimeRequestSeqRef.current[action] === requestSeq) {
@@ -230,7 +231,7 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
 
   const pushParameterIds = async (parameterIds: string[]) => {
     if (debuggingActions) {
-      await runRuntimeAction("push", () => debuggingActions.pushValues(parameterIds), "Debug push failed");
+      await runRuntimeAction("push", () => debuggingActions.pushValues(parameterIds), "参数推送失败，请稍后重试。");
       return;
     }
 
@@ -273,7 +274,7 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
                 async () => {
                   await debuggingActions.detectAndStartSession({ sessionKind: "parameter_reload" });
                 },
-                "Debug connection failed"
+                "设备连接失败，请稍后重试。"
               );
               return;
             }
@@ -331,7 +332,7 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </label>
-              <span className="parameters-table-count">Showing {visibleRows.length} of {debugParameters.length}</span>
+              <span className="parameters-table-count">显示 {visibleRows.length} / {debugParameters.length} 个参数</span>
             </div>
 
             <div className="parameters-table-scroll">
@@ -530,7 +531,7 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
                   snapshotId: snapshot.id,
                   confirmationToken: "confirm-rollback"
                 }),
-                "Debug rollback failed"
+                "快照回滚失败，请稍后重试。"
               );
             } else {
               dispatch({ type: "ROLLBACK_LAST_SNAPSHOT" });

@@ -64,6 +64,8 @@
 - **TD-103（Webhook 签名密钥明文存储）：** `log_domains.webhook_secret` 明文存库（HMAC 需原文），API 只写不读、响应/审计仅含已配置态与末四位；数据库泄露将允许伪造投递签名。平台具备 KMS/信封加密基础设施后升级静态加密并轮换。**负责人：Security / Log analysis。**
 - **TD-104（验收 webServer 冷启动级联超时）：** playwright 验收的 webServer 首次 tsx/vite 编译可把首条用例逼近 90s 超时并级联误报（P3b 验证首轮 9 条假失败,预热重跑全绿）。加 ready 后预热请求（先编译入口路由）或放宽首条用例超时。**负责人：Quality / Acceptance tooling。**
 - **TD-105（投递记录无保留策略）：** `log_webhook_deliveries` 每次尝试一行、无清理机制,投递量大的域将无限增长。真实投递量出现后加保留策略（按域保留最近 N 条或按天龄清理,可挂 worker 循环或定时任务）。**负责人：Log analysis / Ops。**
+- **TD-106（质量运行时清理缺口）：** `reset-quality-runtime.ts` 覆盖验收账号清理，但不清 P2 美学审计发现的运行时残留：历史探针上传的参数文件版本（`probe-edit-*.dts`）与运行时注册的驱动组模块（如 schema 晋升 runbook 演示的 `FoldRegistryTestDG`）。共享开发/演示库重置后仍会在模块树与工作台源树看到测试观感实体。应扩展 reset 脚本清理非种子文件版本与运行时 `parameter_modules` 行（或在 runbook 记录手工清理）。**负责人：Quality / Platform。**
+- **TD-107（节点调试移动端搜索框拉伸）：** `/node-debugging` 在 390px 下 `.parameters-table-search` 被垂直拉高（P2c 验证时观察到的既有移动端布局问题，非抽屉改造引入）。应在共享表格工具栏的窄屏布局中约束搜索框高度。**负责人：Frontend。**
 
 ## 近期关闭项
 

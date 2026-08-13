@@ -331,7 +331,7 @@ export function DtsParameterWorkbenchTable({
                 </span>
               ) : null}
               <span role="cell" data-label="参数名" className="dts-parameter-workbench-table__property">
-                <code>{row.propertyKey}</code>
+                <code title={row.propertyKey}>{row.propertyKey}</code>
                 {isDraft ? (
                   <span
                     className="dts-parameter-workbench-table__draft-badge"

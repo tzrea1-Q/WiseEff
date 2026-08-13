@@ -1,4 +1,6 @@
 import { cn } from "@/lib/utils";
+import { getAuditAppLabel } from "@/domain/audit/auditApps";
+import { presentAuditAction, presentAuditKind, type AuditSlugPresentation } from "@/domain/audit/auditSlugLabels";
 import { formatAuditAbsoluteTime } from "@/domain/audit/formatAuditTime";
 import type { AuditEventView } from "@/domain/audit/types";
 import type { RiskLevel } from "@/domain/prototype/types";
@@ -28,6 +30,11 @@ function MetadataRow({ label, value }: { label: string; value: string }) {
       <dd>{value}</dd>
     </div>
   );
+}
+
+/** Mapped slugs render as copy; unknown raw slugs render in code style. */
+function SlugLabel({ presentation }: { presentation: AuditSlugPresentation }) {
+  return presentation.isRaw ? <code>{presentation.label}</code> : <>{presentation.label}</>;
 }
 
 function DiffCard({ previousValue, newValue }: { previousValue: string; newValue: string }) {
@@ -142,10 +149,14 @@ export function AuditEventDetail({ event, className }: AuditEventDetailProps) {
       <header className="audit-event-detail-head">
         <div className="audit-event-detail-badges">
           <span className={cn("audit-severity-badge", severityBadge[event.severity])}>{severityLabel[event.severity]}</span>
-          <span className="audit-kind-badge">{event.kind}</span>
-          <span className="audit-app-badge">{event.app}</span>
+          <span className="audit-kind-badge">
+            <SlugLabel presentation={presentAuditKind(event.kind)} />
+          </span>
+          <span className="audit-app-badge">{getAuditAppLabel(event.app)}</span>
         </div>
-        <h3>{event.action}</h3>
+        <h3>
+          <SlugLabel presentation={presentAuditAction(event.action)} />
+        </h3>
         <p className="audit-event-detail-meta">
           <span>{event.actor}</span>
           <span>·</span>

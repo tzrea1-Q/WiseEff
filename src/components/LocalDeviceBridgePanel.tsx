@@ -93,10 +93,14 @@ export function LocalDeviceBridgePanel({
     setReleasesLoading(true);
     try {
       const manifest = await listReleases().catch(() => null);
+      // `.catch` only covers rejections; a resolving client can still hand back a
+      // body without `items` (misrouted proxy/error JSON). Treat that as "no manifest"
+      // instead of letting `pickBridgeReleaseForHost` explode on `undefined.filter`.
+      const items = Array.isArray(manifest?.items) ? manifest.items : null;
       const hostTarget = detectBrowserBridgeTarget();
-      const primary = manifest ? pickBridgeReleaseForHost(manifest.items, hostTarget) : null;
-      const nextAlternates = manifest ? listInstallerBridgeReleases(manifest.items, primary) : [];
-      const nextPortables = manifest ? listPortableBridgeReleases(manifest.items, null) : [];
+      const primary = items ? pickBridgeReleaseForHost(items, hostTarget) : null;
+      const nextAlternates = items ? listInstallerBridgeReleases(items, primary) : [];
+      const nextPortables = items ? listPortableBridgeReleases(items, null) : [];
       setHostRelease((current) =>
         current?.downloadUrl === primary?.downloadUrl && current?.version === primary?.version ? current : primary
       );

@@ -117,7 +117,7 @@ describe("LogAdminPage M3 skeleton", () => {
     renderPage();
     const table = screen.getByRole("table", { name: "日志分析记录" });
 
-    expect(within(table).getByText("Report ID")).toBeInTheDocument();
+    expect(within(table).getByText("报告 ID")).toBeInTheDocument();
     expect(within(table).getByText(/charging_thermal_trace/)).toBeInTheDocument();
   });
 
@@ -175,7 +175,7 @@ describe("LogAdminPage M3 skeleton", () => {
       await userEvent.click(within(header).getByRole("button", { name: buttonName }));
     }
 
-    expect(screen.queryByRole("button", { name: "筛选Report ID" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "筛选报告 ID" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "筛选文件名" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "筛选分析阶段" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "筛选置信度" })).not.toBeInTheDocument();

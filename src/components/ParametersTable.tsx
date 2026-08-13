@@ -352,7 +352,7 @@ export function ParametersTable({
             {title ? <h2>{title}</h2> : null}
             {description ? <p>{description}</p> : null}
           </div>
-          {!showToolbar ? <span className="parameters-table-count">Showing {visibleRows.length} of {rowCountTotal}</span> : null}
+          {!showToolbar ? <span className="parameters-table-count">显示 {visibleRows.length} / {rowCountTotal} 个参数</span> : null}
         </div>
       ) : null}
 
@@ -369,7 +369,7 @@ export function ParametersTable({
             />
           </label>
           {filters ? <div className="parameters-table-filters">{filters}</div> : null}
-          <span className="parameters-table-count">Showing {visibleRows.length} of {rowCountTotal}</span>
+          <span className="parameters-table-count">显示 {visibleRows.length} / {rowCountTotal} 个参数</span>
         </div>
       ) : null}
 

@@ -6,6 +6,7 @@ import {
   type ComparisonProject,
   type SingleParameterComparisonRow
 } from "@/domain/parameters/singleParameterComparison";
+import { formatAbsolute, formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
 import type { ParameterRecord } from "@/domain/parameters/types";
 import type { ParameterHistoryEntry } from "@/domain/parameters/types";
 import { isComplexParameter } from "@/parameterValueKind";
@@ -258,7 +259,7 @@ function ProjectOverview({ rows }: { rows: SingleParameterComparisonRow[] }) {
               {row.isBase ? <em>基准</em> : null}
               {row.isTarget ? <em>目标</em> : null}
               <span>{formatRiskLabel(row.risk)}</span>
-              <small>{row.updatedAt}</small>
+              <small title={formatAbsolute(row.updatedAt)}>{formatRelativeOrAbsolute(row.updatedAt)}</small>
             </div>
           </div>
         ))}
@@ -351,7 +352,7 @@ export function ParameterDetailDialog({
               <>
                 <dl className="parameter-detail-grid parameter-detail-grid--compact">
                   <Field label="范围" value={formatValue(parameter.range, parameter.unit)} />
-                  <Field label="更新时间" value={parameter.updatedAt} />
+                  <Field label="更新时间" value={formatRelativeOrAbsolute(parameter.updatedAt)} />
                 </dl>
                 <div className="parameter-detail-code-grid">
                   <CodeValue label="当前配置" value={parameter.currentValue} />
@@ -377,7 +378,7 @@ export function ParameterDetailDialog({
                   </dd>
                 </div>
                 <Field label="范围" value={formatValue(parameter.range, parameter.unit)} />
-                <Field label="更新时间" value={parameter.updatedAt} />
+                <Field label="更新时间" value={formatRelativeOrAbsolute(parameter.updatedAt)} />
               </dl>
             )}
             <div className="parameter-detail-copy">

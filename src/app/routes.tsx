@@ -53,6 +53,7 @@ import type { PageConfig } from "@/appConfig";
 import type { PrototypeState } from "@/domain/prototype/types";
 import type { ParameterDraftItem, ParameterRecord } from "@/domain/parameters/types";
 
+
 export type ParameterPageActions = {
   getParameter(parameterId: string): Promise<ParameterRecord>;
   submitChanges(input: SubmitParameterChangesInput): Promise<ParameterRuntimeVoidResult>;
@@ -67,13 +68,21 @@ export type ParameterPageActions = {
   refresh(options?: ParameterRuntimeRefreshOptions): Promise<ParameterRuntimeRefreshResult>;
 };
 
+/** Loading lifecycle for a page-scoped API data section (FA-21 state coverage). */
+export type RuntimeSectionStatus = "loading" | "ready" | "error";
+
 export type PageProps = {
   state: PrototypeState;
   dispatch: Dispatch<AppAction>;
   onNavigate: (path: string) => void;
   search: string;
   debuggingActions?: DebuggingRuntimeActions;
-  debuggingRuntimeReady?: boolean;
+  debuggingRuntimeStatus?: RuntimeSectionStatus;
+  debuggingRuntimeError?: string;
+  onDebuggingRuntimeRetry?: () => void;
+  userDirectoryStatus?: RuntimeSectionStatus;
+  userDirectoryError?: string;
+  onUserDirectoryRetry?: () => void;
   logActions?: LogRuntimeActions;
   parameterActions?: ParameterPageActions;
   /** Mode-selected adapters assembled once by the shell (createAppRuntime). */
@@ -120,7 +129,12 @@ export function PageRouter({
   onNavigate,
   search,
   debuggingActions,
-  debuggingRuntimeReady = true,
+  debuggingRuntimeStatus = "ready",
+  debuggingRuntimeError,
+  onDebuggingRuntimeRetry,
+  userDirectoryStatus = "ready",
+  userDirectoryError,
+  onUserDirectoryRetry,
   logActions,
   parameterActions,
   runtime,
@@ -310,7 +324,9 @@ export function PageRouter({
         <NodeDebuggingPage
           state={state}
           debuggingActions={debuggingActions!}
-          runtimeReady={debuggingRuntimeReady}
+          runtimeStatus={runtimeMode === "api" ? debuggingRuntimeStatus : "ready"}
+          runtimeError={runtimeMode === "api" ? debuggingRuntimeError : undefined}
+          onRuntimeRetry={runtimeMode === "api" ? onDebuggingRuntimeRetry : undefined}
           bridges={mockSeams?.bridges}
           probeBridgeHealth={mockSeams?.probeBridgeHealth}
           createBridgePairingCode={mockSeams?.createPairingCode}
@@ -372,12 +388,23 @@ export function PageRouter({
       );
     }
     case "user-permissions":
-      return <UserPermissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} userGovernanceActions={userGovernanceActions} />;
+      return (
+        <UserPermissionsPage
+          state={state}
+          dispatch={dispatch}
+          onNavigate={onNavigate}
+          search={search}
+          userGovernanceActions={userGovernanceActions}
+          userDirectoryStatus={runtimeMode === "api" ? userDirectoryStatus : "ready"}
+          userDirectoryError={runtimeMode === "api" ? userDirectoryError : undefined}
+          onUserDirectoryRetry={runtimeMode === "api" ? onUserDirectoryRetry : undefined}
+        />
+      );
     case "audit":
       return <AuditCenterPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} runtimeMode={runtimeMode} />;
     case "platform-console":
       return <PlatformConsolePage />;
     default:
-      return <LinearTemplateHome />;
+      return <LinearTemplateHome onNavigate={onNavigate} />;
   }
 }

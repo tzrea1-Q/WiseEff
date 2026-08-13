@@ -4,7 +4,10 @@ import { WiseEffIcon } from "../components/WiseEffIcon";
 import { initialState } from "../mockData";
 import { PlatformFlowSection } from "./PlatformFlowSection";
 import { SubAppEntryRow } from "./SubAppEntryRow";
+import { handleSpaLinkClick } from "./spaLinkNavigation";
 import "./linear-template.css";
+
+type OnNavigate = (path: string) => void;
 
 const navItems = [
   { label: "参数管理", href: "/parameter-home" },
@@ -41,19 +44,19 @@ const footerColumns = [
   }
 ] as const;
 
-export function LinearTemplateHome() {
+export function LinearTemplateHome({ onNavigate }: { onNavigate?: OnNavigate }) {
   return (
     <div className="linear-template-home light-homepage" data-theme="light">
-      <TemplateHeader />
+      <TemplateHeader onNavigate={onNavigate} />
       <main className="linear-page-gradient" aria-label="雷泽首页">
         <section className="linear-hero-wrap">
           <Container>
-            <Hero />
+            <Hero onNavigate={onNavigate} />
           </Container>
         </section>
         <PlatformFlowSection />
       </main>
-      <TemplateFooter />
+      <TemplateFooter onNavigate={onNavigate} />
     </div>
   );
 }
@@ -62,7 +65,7 @@ function Container({ children, className = "" }: { children: ReactNode; classNam
   return <div className={`linear-container ${className}`.trim()}>{children}</div>;
 }
 
-function TemplateHeader() {
+function TemplateHeader({ onNavigate }: { onNavigate?: OnNavigate }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -96,7 +99,9 @@ function TemplateHeader() {
           <ul>
             {navItems.map((item) => (
               <li key={item.href}>
-                <a href={item.href}>{item.label}</a>
+                <a href={item.href} onClick={(event) => handleSpaLinkClick(event, item.href, onNavigate)}>
+                  {item.label}
+                </a>
               </li>
             ))}
           </ul>
@@ -105,7 +110,12 @@ function TemplateHeader() {
           <a className="linear-login" href="#platform-flow">
             查看演示
           </a>
-          <a className="linear-button linear-button-small" href="/parameter-home" aria-label="打开雷泽工作台">
+          <a
+            className="linear-button linear-button-small"
+            href="/parameter-home"
+            aria-label="打开雷泽工作台"
+            onClick={(event) => handleSpaLinkClick(event, "/parameter-home", onNavigate)}
+          >
             打开我的工作台
           </a>
         </div>
@@ -124,7 +134,7 @@ function TemplateHeader() {
   );
 }
 
-function Hero() {
+function Hero({ onNavigate }: { onNavigate?: OnNavigate }) {
   return (
     <div className="linear-hero">
       <h1 className="linear-fade-item delay-1">让业务流程更智能、更高效、更可控</h1>
@@ -133,12 +143,12 @@ function Hero() {
         <br />
         让 Agent 辅助检索、分析和流转，关键变更始终保留人工确认、权限和审计。
       </p>
-      <SubAppEntryRow state={initialState} />
+      <SubAppEntryRow state={initialState} onNavigate={onNavigate} />
     </div>
   );
 }
 
-function TemplateFooter() {
+function TemplateFooter({ onNavigate }: { onNavigate?: OnNavigate }) {
   return (
     <footer className="linear-footer">
       <Container className="linear-footer-inner">
@@ -155,7 +165,11 @@ function TemplateFooter() {
               <ul>
                 {column.links.map((link) => (
                   <li key={link.label}>
-                    <a href={link.href} aria-label={link.label === "进入工作台" ? "进入雷泽工作台" : undefined}>
+                    <a
+                      href={link.href}
+                      aria-label={link.label === "进入工作台" ? "进入雷泽工作台" : undefined}
+                      onClick={(event) => handleSpaLinkClick(event, link.href, onNavigate)}
+                    >
                       {link.label}
                     </a>
                   </li>

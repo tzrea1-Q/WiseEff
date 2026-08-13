@@ -1,3 +1,4 @@
+import { formatPercent } from "@/domain/format/formatPercent";
 import { SEVERITY_LABELS, type LogRecord } from "@/domain/prototype/types";
 
 /**
@@ -40,7 +41,7 @@ export function buildLogDistillationDraft(log: LogRecord): LogDistillationDraft 
 
   lines.push("## 结论", "", conclusion || "(分析结论为空)", "");
   lines.push("## 影响", "", log.impact.trim() || "(未记录影响)", "");
-  lines.push("## 严重度", "", `${severityLabel}(${log.severity})· 置信度 ${log.confidence}%`, "");
+  lines.push("## 严重度", "", `${severityLabel}(${log.severity})· 置信度 ${formatPercent(log.confidence)}`, "");
 
   if (log.evidence.length > 0) {
     lines.push("## 证据(行引用)", "");

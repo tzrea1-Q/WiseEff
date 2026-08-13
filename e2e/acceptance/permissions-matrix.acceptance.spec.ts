@@ -12,13 +12,13 @@ useBrowserDiagnostics(test);
 const permissionsEligibilityReason = "M5.5 permissions matrix eligibility guard";
 
 const visibleRoleExpectations = [
-  { role: "Guest", canOpenDebugging: false, canOpenReview: false, canOpenPlatformConsole: false },
-  { role: "Hardware User", canOpenDebugging: true, canOpenReview: false, canOpenPlatformConsole: false },
-  { role: "Software User", canOpenDebugging: true, canOpenReview: true, canOpenPlatformConsole: false },
-  { role: "Hardware Committer", canOpenDebugging: true, canOpenReview: true, canOpenPlatformConsole: false },
-  { role: "Software Committer", canOpenDebugging: true, canOpenReview: true, canOpenPlatformConsole: false },
-  { role: "Admin", canOpenDebugging: true, canOpenReview: true, canOpenPlatformConsole: false },
-  { role: "Platform Super Admin", canOpenDebugging: true, canOpenReview: true, canOpenPlatformConsole: true }
+  { role: "Guest", uiRoleLabel: "访客", canOpenDebugging: false, canOpenReview: false, canOpenPlatformConsole: false },
+  { role: "Hardware User", uiRoleLabel: "硬件开发", canOpenDebugging: true, canOpenReview: false, canOpenPlatformConsole: false },
+  { role: "Software User", uiRoleLabel: "软件开发", canOpenDebugging: true, canOpenReview: true, canOpenPlatformConsole: false },
+  { role: "Hardware Committer", uiRoleLabel: "硬件MDE", canOpenDebugging: true, canOpenReview: true, canOpenPlatformConsole: false },
+  { role: "Software Committer", uiRoleLabel: "软件MDE", canOpenDebugging: true, canOpenReview: true, canOpenPlatformConsole: false },
+  { role: "Admin", uiRoleLabel: "管理员", canOpenDebugging: true, canOpenReview: true, canOpenPlatformConsole: false },
+  { role: "Platform Super Admin", uiRoleLabel: "平台超级管理员", canOpenDebugging: true, canOpenReview: true, canOpenPlatformConsole: true }
 ] as const;
 
 async function setPrototypeRole(page: import("playwright/test").Page, roleName: string) {
@@ -98,7 +98,7 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
         await expect(page.locator("main, .main-content").first()).toBeVisible();
       } else {
         await expect(page.getByRole("heading", { name: "无权访问该页面" })).toBeVisible();
-        await expect(page.getByText(`当前角色：${expectation.role}`)).toBeVisible();
+        await expect(page.getByText(`当前角色：${expectation.uiRoleLabel}`)).toBeVisible();
       }
 
       await navigateWithinApp(page, "/parameter-review");
@@ -107,7 +107,7 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
         await expect(page.locator("main, .main-content").first()).toBeVisible();
       } else {
         await expect(page.getByRole("heading", { name: "无权访问该页面" })).toBeVisible();
-        await expect(page.getByText(`当前角色：${expectation.role}`)).toBeVisible();
+        await expect(page.getByText(`当前角色：${expectation.uiRoleLabel}`)).toBeVisible();
       }
 
       await navigateWithinApp(page, "/platform-console");
@@ -115,12 +115,13 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
       // @operation PLAT-ROLE-001
       if (expectation.canOpenPlatformConsole) {
         await expect(page.getByRole("heading", { name: /无权访问该页面/i })).toHaveCount(0);
-        await expect(page.getByRole("heading", { name: "平台控制台" })).toBeVisible();
+        // The shell TopBar owns the page title; the console body is the labelled region.
+        await expect(page.getByRole("region", { name: "平台控制台" })).toBeVisible();
       } else {
         // Org Admin must not inherit Platform Super Admin via dual role bindings on u-xu-yun.
-        await expect(page.getByRole("heading", { name: "平台控制台" })).toHaveCount(0);
+        await expect(page.getByRole("region", { name: "平台控制台" })).toHaveCount(0);
         await expect(page.getByRole("heading", { name: "无权访问该页面" })).toBeVisible();
-        await expect(page.getByText(`当前角色：${expectation.role}`)).toBeVisible();
+        await expect(page.getByText(`当前角色：${expectation.uiRoleLabel}`)).toBeVisible();
       }
 
       await recordOperationEvidence({

@@ -241,13 +241,13 @@ export function WorkbenchSourceTree({
                 <FileCode2 size={15} aria-hidden="true" />
                 <span>
                   <strong title={item.fileName}>{item.fileName}</strong>
-                  <small className="mono" title={item.currentVersionId ?? undefined}>
-                    {item.currentVersionId ?? "版本身份缺失"}
+                  {/* Human-readable version label; the raw version id stays discoverable via tooltip (FA-23). */}
+                  <small title={item.currentVersionId ?? undefined}>
+                    {item.currentVersionNumber ? `版本 v${item.currentVersionNumber}` : "无活跃版本"}
                   </small>
                 </span>
                 <span className="configuration-workbench__member-meta" aria-hidden="true">
                   <span>{roleLabel}</span>
-                  <span>{versionLabel}</span>
                 </span>
               </button>
               {selected ? (

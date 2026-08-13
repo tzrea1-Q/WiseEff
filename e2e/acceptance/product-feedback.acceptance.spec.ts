@@ -373,8 +373,8 @@ test.describe("Product feedback browser acceptance", () => {
 
     await loadPageAsHardwareUser(page, "/feedback-admin");
     await expect(page.getByRole("heading", { name: "无权访问该页面" })).toBeVisible();
-    await expect(page.getByText("当前角色：Hardware User")).toBeVisible();
-    await expect(page.getByText("所需角色：Admin")).toBeVisible();
+    await expect(page.getByText("当前角色：硬件开发")).toBeVisible();
+    await expect(page.getByText("所需角色：管理员")).toBeVisible();
 
     await recordOperationEvidence({
       operationId: "PFB-AUTHZ-001",

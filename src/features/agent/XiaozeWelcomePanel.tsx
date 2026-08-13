@@ -22,7 +22,7 @@ export function XiaozeWelcomePanel() {
   return (
     <section className="xiaoze-welcome" aria-label="小泽欢迎引导" data-testid="xiaoze-welcome-panel">
       <div className="xiaoze-welcome__hero">
-        <p className="xiaoze-welcome__eyebrow">WiseEff Agent</p>
+        <p className="xiaoze-welcome__eyebrow">WiseEff 智能助手</p>
         <h2 className="xiaoze-welcome__title">有什么可以帮您的？</h2>
         <p className="xiaoze-welcome__subtitle">
           我是小泽，可以基于当前页面和您有权限的平台数据答疑；涉及变更、提交或设备写入等操作，会在您批准后再协助执行。

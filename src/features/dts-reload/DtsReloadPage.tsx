@@ -549,7 +549,6 @@ export function DtsReloadPage({
             >
               <header>
                 <div>
-                  <p className="eyebrow">Reload batch</p>
                   <h3>本轮重载</h3>
                   <p>
                     {deployReady
@@ -728,7 +727,7 @@ export function DtsReloadPage({
                     />
                   </label>
                   <span className="parameters-table-count">
-                    Showing {filtered.length} of {candidates.length}
+                    显示 {filtered.length} / {candidates.length} 项
                   </span>
                 </div>
 

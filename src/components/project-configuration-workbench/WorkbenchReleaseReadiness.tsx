@@ -3,6 +3,7 @@ import {
   releaseReadinessAllowsCreate,
   releaseReadinessAllowsRelease
 } from "@/application/project-configuration/releaseReadinessGates";
+import { presentErrorMessage } from "@/infrastructure/http/presentError";
 
 const LEVEL_LABEL: Record<DtsReleaseReadiness["level"], string> = {
   blocked: "已阻断",
@@ -47,7 +48,9 @@ export function WorkbenchReleaseReadinessSummary({
       <div className="configuration-workbench__readiness is-unavailable" role="status" aria-label="发布就绪">
         <button className="button subtle configuration-workbench__readiness-summary" type="button" onClick={onOpenIssues}>
           <strong>不可用</strong>
-          <span>{error || readiness?.unavailableReason || "门禁结果不可用，不能假定可发布。"}</span>
+          <span>
+            {presentErrorMessage(error || readiness?.unavailableReason, "门禁结果不可用，不能假定可发布。")}
+          </span>
         </button>
         <button className="button subtle" type="button" onClick={onRetry}>
           重试就绪评估
@@ -108,7 +111,7 @@ export function WorkbenchReleaseReadinessIssues({
   if (!readiness.available) {
     return (
       <div className="configuration-workbench__readiness-issues" role="region" aria-label="发布就绪问题">
-        <p role="alert">{readiness.unavailableReason ?? "发布就绪不可用。"}</p>
+        <p role="alert">{presentErrorMessage(readiness.unavailableReason, "发布就绪不可用。")}</p>
         <button className="button subtle" type="button" onClick={onRetry}>
           重试就绪评估
         </button>

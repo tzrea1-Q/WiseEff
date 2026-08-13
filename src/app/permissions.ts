@@ -54,13 +54,13 @@ const actionRequiredRoles: Record<ActionKey, PlatformRoleId> = {
 };
 
 const roleLabels: Record<PlatformRoleId, string> = {
-  guest: "Guest",
-  "hardware-user": "Hardware User",
-  "software-user": "Software User",
-  "hardware-committer": "Hardware Committer",
-  "software-committer": "Software Committer",
-  admin: "Admin",
-  "platform-admin": "Platform Super Admin"
+  guest: "访客",
+  "hardware-user": "硬件开发",
+  "software-user": "软件开发",
+  "hardware-committer": "硬件MDE",
+  "software-committer": "软件MDE",
+  admin: "管理员",
+  "platform-admin": "平台超级管理员"
 };
 
 export function getRequiredRoleForPage(pageKey: PageKey): PlatformRoleId {
@@ -96,7 +96,7 @@ export function getDisabledReason(roleId: string, actionKey: ActionKey): string 
   if (canPerform(roleId, actionKey)) {
     return undefined;
   }
-  return `Requires ${roleLabels[getRequiredRoleForAction(actionKey)]} role`;
+  return `需要${roleLabels[getRequiredRoleForAction(actionKey)]}角色`;
 }
 
 export function getRequiredRoleLabel(roleId: PlatformRoleId): string {

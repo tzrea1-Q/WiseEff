@@ -4,9 +4,10 @@ import { SubAppCard, type SubAppCardProps } from "./SubAppCard";
 
 type SubAppEntryRowProps = {
   state: PrototypeState;
+  onNavigate?: (path: string) => void;
 };
 
-export function SubAppEntryRow({ state: _state }: SubAppEntryRowProps) {
+export function SubAppEntryRow({ state: _state, onNavigate }: SubAppEntryRowProps) {
   const cards: SubAppCardProps[] = [
     {
       accent: "#2857FF",
@@ -44,7 +45,7 @@ export function SubAppEntryRow({ state: _state }: SubAppEntryRowProps) {
     <div className="sub-app-entry-row" role="list" aria-label="子应用入口">
       {cards.map((card, index) => (
         <div role="listitem" key={card.title} className={`linear-fade-item delay-${index + 3}`}>
-          <SubAppCard {...card} />
+          <SubAppCard {...card} onNavigate={onNavigate} />
         </div>
       ))}
     </div>

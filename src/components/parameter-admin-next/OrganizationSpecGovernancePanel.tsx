@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ParameterSpecDetail } from "@/domain/parameter-topology/types";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
+import { presentError } from "@/infrastructure/http/presentError";
 import {
   sortParameterSpecRows,
   toParameterAdminFilters
@@ -183,11 +184,7 @@ export function OrganizationSpecGovernancePanel({
     } catch (error) {
       // A failed library load is an error state — keep the last known rows
       // instead of masquerading as an empty library.
-      setSpecLoadError(
-        error instanceof Error && error.message.trim()
-          ? error.message
-          : "参数定义库加载失败，请重试。"
-      );
+      setSpecLoadError(presentError(error, "参数定义库加载失败，请重试。"));
     } finally {
       setSpecLoading(false);
     }
@@ -206,11 +203,7 @@ export function OrganizationSpecGovernancePanel({
     } catch (error) {
       // IA-R2: do not treat a failed count load as an empty queue — keep the
       // last known tasks/count and surface an explicit error with retry.
-      setReviewLoadError(
-        error instanceof Error && error.message.trim()
-          ? error.message
-          : "审核队列加载失败，请重试。"
-      );
+      setReviewLoadError(presentError(error, "审核队列加载失败，请重试。"));
     } finally {
       setReviewLoading(false);
     }

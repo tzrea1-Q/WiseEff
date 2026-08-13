@@ -7,6 +7,7 @@ import type {
 } from "@/application/ports/ParameterRepository";
 import { ParameterValueDiff } from "@/components/ParameterValueDiff";
 import { formatDtsRawValueForUi } from "@/domain/parameter-topology/formatDtsRawValueForUi";
+import { presentError } from "@/infrastructure/http/presentError";
 
 import {
   isBindingDraft,
@@ -287,7 +288,7 @@ export function DtsBindingDraftTray({
     void Promise.resolve(onRemove(draftId))
       .catch((error: unknown) => {
         if (!mountedRef.current) return;
-        setRemoveError(error instanceof Error ? error.message : "移除草稿失败，请重试。");
+        setRemoveError(presentError(error, "移除草稿失败，请重试。"));
       })
       .finally(() => {
         if (!mountedRef.current) return;
@@ -301,7 +302,6 @@ export function DtsBindingDraftTray({
     <section className="dts-binding-draft-tray dts-draft-tray binding-draft-submission" role="region" aria-label="参数修改提交">
       <header>
         <div>
-          <p className="eyebrow">Current edits</p>
           <h3>本轮已修改</h3>
           <p>
             {selectedBindingIds && hasBindingDrafts

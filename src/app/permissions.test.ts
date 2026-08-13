@@ -75,6 +75,6 @@ describe("app permission policy", () => {
     expect(getRequiredRoleForAction("parameter.review")).toBe("hardware-committer");
     expect(getAccessibleFallbackPath("guest")).toBe("/parameter-home");
     expect(getAccessibleFallbackPath("admin")).toBe("/parameter-home");
-    expect(getDisabledReason("guest", "parameter.edit")).toBe("Requires Hardware User role");
+    expect(getDisabledReason("guest", "parameter.edit")).toBe("需要硬件开发角色");
   });
 });
