@@ -130,7 +130,7 @@ export type ParameterRuntimeActions = {
   stashChanges(items: ParameterDraftItem[]): Promise<ParameterRuntimeVoidResult>;
   discardDrafts(input: DiscardParameterDraftsInput): Promise<ParameterRuntimeVoidResult>;
   withdrawSubmissionRound(roundId: string): Promise<ParameterRuntimeVoidResult>;
-  reviewChange(input: ReviewParameterChangeInput): Promise<ParameterRuntimeVoidResult>;
+  reviewChange(input: ReviewParameterChangeInput, options?: ParameterRuntimeRefreshOptions): Promise<ParameterRuntimeVoidResult>;
   listWorkflowAssignees(projectId: string): ReturnType<ParameterRepository["listWorkflowAssignees"]>;
   createImportPreview(input: ParameterImportPreviewInput): Promise<ParameterImportBatchDto | ParameterRuntimeActionFailure>;
   applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterRuntimeVoidResult>;
@@ -198,14 +198,17 @@ export function createParameterRuntimeActions({
     }
   };
 
-  const runApiMutation = async (mutation: (api: ParameterRepository) => Promise<unknown>): Promise<ParameterRuntimeVoidResult> => {
+  const runApiMutation = async (
+    mutation: (api: ParameterRepository) => Promise<unknown>,
+    options: ParameterRuntimeRefreshOptions = {}
+  ): Promise<ParameterRuntimeVoidResult> => {
     try {
       const api = requireRepository(repository);
       await mutation(api);
-      const result = await refresh();
+      const result = await refresh(options);
       return result && "notification" in result ? result : undefined;
     } catch (error) {
-      return notifyFailure(dispatch, {}, formatParameterRuntimeError(error));
+      return notifyFailure(dispatch, options, formatParameterRuntimeError(error));
     }
   };
 
@@ -292,7 +295,7 @@ export function createParameterRuntimeActions({
 
       return runApiMutation((api) => api.withdrawSubmissionRound(roundId));
     },
-    async reviewChange(input) {
+    async reviewChange(input, options) {
       if (runtimeMode !== "api") {
         if (input.decision === "reject") {
           dispatch({ type: "REJECT_REVIEW", requestId: input.requestId, reason: input.note ?? "Rejected" });
@@ -302,7 +305,7 @@ export function createParameterRuntimeActions({
         return undefined;
       }
 
-      return runApiMutation((api) => api.reviewChange(input));
+      return runApiMutation((api) => api.reviewChange(input), options);
     },
     async createImportPreview(input) {
       if (runtimeMode !== "api") {
