@@ -1047,6 +1047,86 @@ export async function appendFeedback(
   );
 }
 
+type FeedbackInsightRow = {
+  log_domain_id: string | null;
+  log_domain_name: string | null;
+  analysis_source: LogAnalysisSource | null;
+  prompt_version: string | null;
+  total_count: number | string;
+  helpful_count: number | string;
+  last_feedback_at: string | Date;
+};
+
+export type LogFeedbackInsightDto = {
+  /** null = uncategorized log domain. */
+  logDomainId: string | null;
+  logDomainName: string | null;
+  /** null = report predates analyzer provenance (legacy rule reports). */
+  analysisSource: LogAnalysisSource | null;
+  promptVersion: string | null;
+  totalCount: number;
+  helpfulCount: number;
+  /** helpfulCount / totalCount, in [0, 1]. */
+  helpfulRate: number;
+  lastFeedbackAt: string;
+};
+
+/**
+ * Online-monitoring aggregation (P3): helpful rate per log domain ×
+ * analysis source × prompt version. Feedback is attributed to the log's
+ * CURRENT run's report — the same convention the log list/detail read path
+ * uses — so feedback left on an earlier run follows the latest conclusion.
+ */
+export async function aggregateFeedbackInsights(
+  db: Queryable,
+  auth: AuthContext,
+  query: { timeWindow?: "today" | "7d" | "30d" } = {}
+): Promise<LogFeedbackInsightDto[]> {
+  const where = ["lf.organization_id = $1"];
+  if (query.timeWindow) {
+    const interval = query.timeWindow === "today" ? "1 day" : query.timeWindow === "7d" ? "7 days" : "30 days";
+    where.push(`lf.created_at >= now() - interval '${interval}'`);
+  }
+
+  const result = await db.query<FeedbackInsightRow>(
+    `
+    select
+      lr.log_domain_id,
+      ld.name as log_domain_name,
+      report.analysis_source,
+      report.prompt_version,
+      count(*) as total_count,
+      count(*) filter (where lf.rating = 'helpful') as helpful_count,
+      max(lf.created_at) as last_feedback_at
+    from log_feedback lf
+    inner join log_records lr
+      on lr.id = lf.log_record_id
+      and lr.organization_id = lf.organization_id
+    left join log_analysis_reports report on report.run_id = lr.current_run_id
+    left join log_domains ld on ld.id = lr.log_domain_id
+    where ${where.join("\n      and ")}
+    group by lr.log_domain_id, ld.name, report.analysis_source, report.prompt_version
+    order by total_count desc, log_domain_name asc nulls first, prompt_version desc nulls last
+    `,
+    [auth.organization.id]
+  );
+
+  return result.rows.map((row) => {
+    const totalCount = Number(row.total_count);
+    const helpfulCount = Number(row.helpful_count);
+    return {
+      logDomainId: row.log_domain_id,
+      logDomainName: row.log_domain_name,
+      analysisSource: row.analysis_source,
+      promptVersion: row.prompt_version,
+      totalCount,
+      helpfulCount,
+      helpfulRate: totalCount > 0 ? helpfulCount / totalCount : 0,
+      lastFeedbackAt: dateTimeToIso(row.last_feedback_at)
+    };
+  });
+}
+
 export async function createRerunWithJob(
   db: Queryable,
   input: {

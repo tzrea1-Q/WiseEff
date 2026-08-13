@@ -8,7 +8,9 @@ import {
 } from "../../testing/testDatabase";
 import { seedCoreGraph } from "../../testing/fixtures";
 import { claimJobById } from "../jobs/repository";
+import { insertLogDomain } from "./domainsRepository";
 import {
+  aggregateFeedbackInsights,
   appendFeedback,
   archiveLog,
   completeLogAnalysisJobWithReport,
@@ -243,6 +245,143 @@ describe.skipIf(!databaseAvailable)("log repository", () => {
     );
     expect(stored.rows).toEqual([
       { user_id: "user-1", rating: "helpful", note: "This matched the incident." }
+    ]);
+  });
+
+  it("aggregateFeedbackInsights groups by domain, analysis source, and prompt version with org isolation and time window", async () => {
+    await insertLogDomain(db, { id: "domain-charging", organizationId: "org-1", name: "charging-power" });
+
+    async function seedAnalyzedLog(
+      suffix: string,
+      options: { logDomainId?: string; analysisSource?: "agent" | "rules-fallback"; promptVersion?: string } = {}
+    ) {
+      const ids = { fileId: `file-${suffix}`, logId: `log-${suffix}`, runId: `run-${suffix}`, jobId: `job-${suffix}` };
+      await createFileObject(db, {
+        id: ids.fileId,
+        organizationId: "org-1",
+        storageKey: `org-1/checksum-${suffix}.log`,
+        fileName: `pack-${suffix}.log`,
+        contentType: "text/plain",
+        fileSizeBytes: 1024,
+        checksumSha256: `checksum-${suffix}`,
+        uploadedByUserId: "user-1"
+      });
+      await createLogRecordWithRunAndJob(db, {
+        logId: ids.logId,
+        runId: ids.runId,
+        jobId: ids.jobId,
+        organizationId: "org-1",
+        fileObjectId: ids.fileId,
+        fileName: `pack-${suffix}.log`,
+        source: "upload",
+        submittedByUserId: "user-1",
+        logDomainId: options.logDomainId
+      });
+      await persistLogAnalysisReport(db, {
+        organizationId: "org-1",
+        logId: ids.logId,
+        runId: ids.runId,
+        report: {
+          ...sampleReport,
+          analysisSource: options.analysisSource,
+          promptVersion: options.promptVersion
+        },
+        evidence: sampleEvidence
+      });
+      return ids;
+    }
+
+    const agentLog = await seedAnalyzedLog("insight-agent", {
+      logDomainId: "domain-charging",
+      analysisSource: "agent",
+      promptVersion: "log-analysis/v2"
+    });
+    const fallbackLog = await seedAnalyzedLog("insight-fallback", {
+      analysisSource: "rules-fallback",
+      promptVersion: "log-analysis/v2"
+    });
+
+    await appendFeedback(db, auth(), { id: "fb-1", logId: agentLog.logId, rating: "helpful" });
+    await appendFeedback(db, auth(), { id: "fb-2", logId: agentLog.logId, rating: "helpful" });
+    await appendFeedback(db, auth(), { id: "fb-3", logId: agentLog.logId, rating: "not_helpful" });
+    await appendFeedback(db, auth(), { id: "fb-4", logId: fallbackLog.logId, rating: "not_helpful" });
+    // Aged feedback drops out of the 7d window but stays in the unbounded aggregation.
+    await appendFeedback(db, auth(), { id: "fb-old", logId: agentLog.logId, rating: "not_helpful" });
+    await db.query("update log_feedback set created_at = now() - interval '20 days' where id = 'fb-old'");
+
+    // Another organization's feedback must never leak into org-1 insights.
+    await seedCoreGraph(db, {
+      organization: { id: "org-2", name: "OtherOrg" },
+      users: [{ id: "user-2", name: "Mo Fan", email: "mo@example.com" }]
+    });
+    const foreignAuth = auth({
+      ...makeTestAuthContext({
+        userId: "user-2",
+        organizationId: "org-2",
+        name: "Mo Fan",
+        email: "mo@example.com",
+        title: "Software User",
+        organizationName: "OtherOrg",
+        roles: [],
+        permissions: ["logs:view", "logs:feedback"]
+      })
+    });
+    await createFileObject(db, {
+      id: "file-foreign",
+      organizationId: "org-2",
+      storageKey: "org-2/checksum-foreign.log",
+      fileName: "foreign.log",
+      contentType: "text/plain",
+      fileSizeBytes: 128,
+      checksumSha256: "checksum-foreign",
+      uploadedByUserId: "user-2"
+    });
+    await createLogRecordWithRunAndJob(db, {
+      logId: "log-foreign",
+      runId: "run-foreign",
+      jobId: "job-foreign",
+      organizationId: "org-2",
+      fileObjectId: "file-foreign",
+      fileName: "foreign.log",
+      source: "upload",
+      submittedByUserId: "user-2"
+    });
+    await appendFeedback(db, foreignAuth, { id: "fb-foreign", logId: "log-foreign", rating: "helpful" });
+
+    const allTime = await aggregateFeedbackInsights(db, auth());
+    expect(allTime).toEqual([
+      {
+        logDomainId: "domain-charging",
+        logDomainName: "charging-power",
+        analysisSource: "agent",
+        promptVersion: "log-analysis/v2",
+        totalCount: 4,
+        helpfulCount: 2,
+        helpfulRate: 0.5,
+        lastFeedbackAt: expect.any(String)
+      },
+      {
+        logDomainId: null,
+        logDomainName: null,
+        analysisSource: "rules-fallback",
+        promptVersion: "log-analysis/v2",
+        totalCount: 1,
+        helpfulCount: 0,
+        helpfulRate: 0,
+        lastFeedbackAt: expect.any(String)
+      }
+    ]);
+
+    const window7d = await aggregateFeedbackInsights(db, auth(), { timeWindow: "7d" });
+    expect(window7d.find((row) => row.analysisSource === "agent")).toMatchObject({
+      totalCount: 3,
+      helpfulCount: 2,
+      helpfulRate: 2 / 3
+    });
+
+    const foreign = await aggregateFeedbackInsights(db, foreignAuth);
+    expect(foreign).toEqual([
+      expect.objectContaining({ logDomainId: null, analysisSource: null, promptVersion: null, totalCount: 1, helpfulCount: 1 })
     ]);
   });
 

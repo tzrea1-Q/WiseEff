@@ -1,6 +1,6 @@
 # Agent log analysis system
 
-> Status: **Active (P1 merged; P2 implemented on `feat/log-analysis-p2-agent-loop-and-golden-set`, in review; P3 not started)**
+> Status: **Active (P1 merged; P2 merged; P3a — the externally-unblocked P3 subset: online feedback monitoring, annotation-draft export, archive unpacking, TD-088 — implemented on `feat/log-analysis-p3a-monitoring-annotation-intake`, in review; remaining P3 items deferred on external dependencies, see P3 status notes)**
 > Date: 2026-08-12
 > Planning branch: `plan/agent-log-analysis` (this document, glossary, ADR-0022)
 > Implementation branches: `feat/log-analysis-p1-domains-and-llm`, `feat/log-analysis-p2-agent-loop-and-golden-set`, `feat/log-analysis-p3-eval-maturation` (one branch per phase; each checked out from the latest `main`)
@@ -96,6 +96,16 @@ One phase → one branch → one PR. The planning branch `plan/agent-log-analysi
 3. `/log-admin` "promote a live case + human correction into an annotation draft" tooling.
 4. Intake expansion: SDK/result-callback design, archive (`.gz`/`.zip`) unpacking, per-domain model override only if a real need has appeared.
 
+**P3a status notes (2026-08-13, `feat/log-analysis-p3a-monitoring-annotation-intake`)** — the subset of P3 with no external input dependency is delivered:
+
+- [x] **Item 2 — online monitoring**: org-scoped `GET /api/v1/logs/feedback-insights` (`logs:view`) aggregates `log_feedback` helpful rate per log domain × `analysisSource` × `promptVersion` over the shared TimeWindow, attributed to the current run's report; `/log-admin` gained the read-only 分析质量 DataTable section with an honest 暂无反馈 empty state. Acceptance `LOG-FEEDBACK-INSIGHTS-001`. This is step 3 (online monitoring) of the evaluation build order, sharing the golden-set quality anchor.
+- [x] **Item 3 — annotation-draft tooling**: `LogRecordDrawer` 导出评测案例草稿 assembles a completed record into an `eval-cases/logs` `case.yaml` draft (realLog: true, **deIdentified: false**, rootCauseCategory TODO, evidence lines/points/actions prefilled) + `log.txt`, downloaded client-side with the README de-identification checklist shown; deliberately no auto-ingest or git write — a human must de-identify and flip `deIdentified` to true. Acceptance `LOG-EVAL-DRAFT-001`.
+- [x] **Item 4 (archive part) — `.gz`/`.zip` unpacking**: intake unpacks single-file gzip and single-entry zip before anything persists (multi-entry/encrypted/corrupt/oversized → existing unsupported-format failure path with explicit reasons); unpacked size capped at 100MB absolute and 200× compressed (1MB floor); the object store keeps plain text so evidence line numbers are untouched. Acceptance `LOG-ARCHIVE-UPLOAD-001`. TD-088 (`check-operation-evidence.ts --run <dir>` focused-run validation) closed in the same phase.
+- **Deferred — remaining P3, honestly tracked, NOT part of P3a**:
+  - Item 1 judge calibration + gate automation: waits on the real expert-annotated cases (P2 external dependency); calibrating the judge against synthetic-only cases would gate on noise.
+  - Item 4 SDK / result callbacks: waits on the product owner confirming the consumer shape.
+  - Per-domain model override: still no real need observed.
+
 ## Security & privacy
 
 - The kernel is read-only; org scoping enforced in repository queries; no ToolRegistry/approval chain (ADR-0022); TD-068 does not apply (no write path).
@@ -114,6 +124,7 @@ One phase → one branch → one PR. The planning branch `plan/agent-log-analysi
 
 - Existing coverage: `LOG-HAPPY-001` (P0) and `LOG-REANALYZE-001` (P1) in `e2e/acceptance/log-analysis.acceptance.spec.ts` (requirement `LOG-HAPPY-001` in `docs/developer/browser-acceptance-coverage-map.md`).
 - P1 changes visible interaction (domain selector, degraded badge), so before implementation the phase adds requirement/operation IDs `LOG-DOMAIN-001` (register domain in `/log-admin`, upload bound to a domain) and `LOG-DEGRADED-001` (degraded analysis visibly marked) to `docs/developer/browser-acceptance-coverage-map.md` and `docs/developer/user-operation-coverage-matrix.md`, and extends `e2e/acceptance/log-analysis.acceptance.spec.ts`; operation evidence stays generated through `npm run acceptance:browser` / `npm run acceptance:evidence`.
+- P3a adds `LOG-FEEDBACK-INSIGHTS-001` (feedback aggregates into the `/log-admin` analysis-quality section), `LOG-EVAL-DRAFT-001` (annotation-draft export with the de-identification checklist), and `LOG-ARCHIVE-UPLOAD-001` (`.gz` upload unpacked server-side completes analysis) with the same four-place registration; focused runs can now be validated first-class with `npm run acceptance:evidence -- --run <dir>` (TD-088).
 
 ## Documentation Impact Matrix
 
@@ -137,7 +148,8 @@ One phase → one branch → one PR. The planning branch `plan/agent-log-analysi
 
 - [x] P1 PR updates: domain-model EN+zh, api-contract + OpenAPI, FRONTEND EN+zh, SECURITY EN+zh, environment-variables EN+zh + `.env.example`, runbook (`docs/runbooks/log-analysis-llm.md` EN+zh), ARCHITECTURE, product-spec EN+zh, acceptance coverage map + operation matrix (LOG-DOMAIN-001 / LOG-DEGRADED-001, EN+zh), db-schema regenerated via `npm run db:schema-doc` (migration `0105_log_domains.sql`) — all done on `feat/log-analysis-p1-domains-and-llm`
 - [x] P2 PR updates: testing-strategy EN+zh (two eval layers), verification-matrix EN+zh (`logs:eval` / `logs:eval:quality`), QUALITY_SCORE gate row, domain-model EN+zh (loop kernel, knowledge links), api-contract EN+zh + OpenAPI (`knowledge-links` routes), FRONTEND EN+zh (link editor), SECURITY EN+zh (knowledge text as untrusted prompt input, published-only), environment-variables EN+zh + `.env.example` (`LOG_ANALYSIS_KERNEL`/`MAX_STEPS`/`JUDGE_*`), runbook EN+zh (loop params, quality eval), ARCHITECTURE EN+zh, `CONTEXT.md` (Domain knowledge document term migrated), coverage map + operation matrix EN+zh (LOG-DOMAIN-KNOWLEDGE-001), db-schema regenerated (migration `0107_log_domain_knowledge_links.sql`; `0105_log_domains.sql` renumbered to `0106` to fix the duplicate-prefix collision inherited from main), eval reports + `eval-cases/logs/baseline.json` committed — done on `feat/log-analysis-p2-agent-loop-and-golden-set`. Honest exception: quality scores/gate cover synthetic cases only until the expert-annotated real cases (external dependency) land.
-- [ ] P3 PR updates: runbook monitoring section, RELIABILITY review, tech-debt entries for anything deferred
+- [x] P3a PR updates: api-contract EN+zh + OpenAPI (`logs.feedbackInsights`, compressed uploads), FRONTEND EN+zh (analysis-quality section, draft export, upload copy), runbook EN+zh (online feedback monitoring + archive intake sections), verification-matrix EN+zh (`acceptance:evidence -- --run`), eval-cases README EN+zh (annotation-draft export guide), coverage map + operation matrix EN+zh (`LOG-FEEDBACK-INSIGHTS-001` / `LOG-EVAL-DRAFT-001` / `LOG-ARCHIVE-UPLOAD-001`), tech-debt tracker EN+zh (TD-088 closed), this plan's Status + P3 notes EN+zh. No migration in this subset (the dashboard is an aggregate query), so no db-schema regeneration.
+- [ ] Remaining P3 PR updates (deferred items): runbook judge-calibration section, RELIABILITY review, tech-debt entries for anything further deferred
 - [ ] Every phase: `npm run docs:check` green before its PR merges; plan moves to `completed/` only after all rows above are Update-done or Review-recorded with evidence
 
 ## Risks

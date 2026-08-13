@@ -43,6 +43,10 @@ export const logFeedbackBodySchema = z.object({
   note: z.string().max(2000).optional()
 });
 
+export const feedbackInsightsQuerySchema = z.object({
+  timeWindow: z.enum(["today", "7d", "30d"]).optional()
+});
+
 export const rerunLogBodySchema = z.object({
   analysisQuestion: z.string().optional(),
   logDomainId: nonEmptyString.optional()
@@ -74,6 +78,7 @@ export type CreateLogFileBody = z.infer<typeof createLogFileBodySchema>;
 export type CreateLogBody = z.infer<typeof createLogBodySchema>;
 export type ListLogsQuery = z.infer<typeof listLogsQuerySchema>;
 export type LogFeedbackBody = z.infer<typeof logFeedbackBodySchema>;
+export type FeedbackInsightsQuery = z.infer<typeof feedbackInsightsQuerySchema>;
 export type RerunLogBody = z.infer<typeof rerunLogBodySchema>;
 export type ListLogDomainsQuery = z.infer<typeof listLogDomainsQuerySchema>;
 export type CreateLogDomainBody = z.infer<typeof createLogDomainBodySchema>;

@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import { extname } from "node:path";
 
 import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
@@ -11,6 +10,7 @@ import { enqueueLogAnalysisJob, type LogAnalysisQueue } from "./logAnalysisQueue
 import { getActiveLogDomainForBinding } from "./domainsRepository";
 import type { ObjectStore, StoredObject } from "./objectStore";
 import {
+  aggregateFeedbackInsights,
   appendFeedback,
   archiveLog,
   createFileObject,
@@ -22,6 +22,7 @@ import {
   listRuns,
   markUnsupportedLog,
   unarchiveLog,
+  type LogFeedbackInsightDto,
   type LogFileObjectDto,
   type LogRunDto
 } from "./repository";
@@ -33,6 +34,12 @@ import {
   requireLogView
 } from "./policy";
 import { supportedLogExtensions } from "./status";
+import {
+  isSupportedStoredLogFileName,
+  isSupportedTextLogFileName,
+  supportedLogArchiveExtensions,
+  unpackLogArchive
+} from "./unpack";
 import type { LogFeedbackRating, LogRecordDto } from "./types";
 
 export type UploadLogFileInput = {
@@ -74,10 +81,37 @@ type ServiceContext = AuditCorrelationContext & {
   logAnalysisQueue?: LogAnalysisQueue;
 };
 
-const supportedExtensions = new Set<string>(supportedLogExtensions);
-
 function unsupportedReason() {
-  return `Unsupported log format. Supported extensions: ${supportedLogExtensions.join(", ")}.`;
+  return `Unsupported log format. Supported extensions: ${supportedLogExtensions.join(", ")} (archives: ${supportedLogArchiveExtensions.join(", ")}).`;
+}
+
+type LogUploadIntake =
+  | { supported: true; bytes: Buffer }
+  | { supported: false; failureReason: string };
+
+/**
+ * Archive-aware intake (P3): `.gz` / single-entry `.zip` uploads are unpacked
+ * BEFORE anything persists, so the object store always holds plain UTF-8 text
+ * and unpack failures ride the existing unsupported-format failure path
+ * (failed record with a readable reason, no analysis job, no worker retries).
+ */
+function resolveLogUploadIntake(input: { fileName: string; bytes: Buffer }): LogUploadIntake {
+  const unpacked = unpackLogArchive(input);
+  if (!unpacked.ok) {
+    return { supported: false, failureReason: unpacked.reason };
+  }
+  if (!unpacked.unpacked && !isSupportedTextLogFileName(input.fileName)) {
+    return { supported: false, failureReason: unsupportedReason() };
+  }
+  return { supported: true, bytes: unpacked.bytes };
+}
+
+/**
+ * Rejected uploads are recorded through an `inline/` pseudo storage key without
+ * ever writing the object store; such file objects can never be analyzed.
+ */
+function isAnalyzableStoredLogObject(fileObject: { storageKey: string; fileName: string }): boolean {
+  return !fileObject.storageKey.startsWith("inline/") && isSupportedStoredLogFileName(fileObject.fileName);
 }
 
 /**
@@ -101,10 +135,6 @@ async function requireBindableLogDomainId(db: Queryable, auth: AuthContext, logD
   }
 
   return domain.id;
-}
-
-function isSupportedLogFile(fileName: string) {
-  return supportedExtensions.has(extname(fileName).toLowerCase());
 }
 
 function storedObjectFromBytes(input: UploadLogFileInput): StoredObject {
@@ -169,17 +199,20 @@ export async function uploadLogFile(
 ): Promise<{ fileObject: LogFileObjectDto; log: LogRecordDto; job: LogAnalysisJobDto | null }> {
   requireLogUpload(auth);
   const logDomainId = await requireBindableLogDomainId(db, auth, input.logDomainId);
-  const supported = isSupportedLogFile(input.fileName);
-  const stored = supported
+  const intake = resolveLogUploadIntake({
+    fileName: input.fileName,
+    bytes: input.bytes instanceof Buffer ? input.bytes : Buffer.from(input.bytes)
+  });
+  const stored = intake.supported
     ? await objectStore.put({
         organizationId: auth.organization.id,
         fileName: input.fileName,
         contentType: input.contentType,
-        bytes: input.bytes instanceof Buffer ? input.bytes : Buffer.from(input.bytes)
+        bytes: intake.bytes
       })
     : storedObjectFromBytes(input);
 
-  if (!supported) {
+  if (!intake.supported) {
     return db.transaction(async (tx) => {
       const fileObject = await persistFileObject(tx, auth, { stored });
       const log = await markUnsupportedLog(tx, {
@@ -189,7 +222,7 @@ export async function uploadLogFile(
         fileName: input.fileName,
         source: "upload",
         submittedByUserId: auth.user.id,
-        failureReason: unsupportedReason(),
+        failureReason: intake.failureReason,
         analysisQuestion: input.analysisQuestion,
         relatedParameterId: input.relatedParameterId,
         logDomainId
@@ -280,7 +313,7 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
     });
   }
 
-  if (!isSupportedLogFile(fileObject.fileName)) {
+  if (!isAnalyzableStoredLogObject(fileObject)) {
     return db.transaction(async (tx) => {
       const log = await markUnsupportedLog(tx, {
         id: randomUUID(),
@@ -475,6 +508,20 @@ export async function unarchiveLogRecord(db: Database, auth: AuthContext, logId:
     );
     return log;
   });
+}
+
+export type ListLogFeedbackInsightsQuery = {
+  timeWindow?: "today" | "7d" | "30d";
+};
+
+/** Feedback quality insights for the `/log-admin` dashboard (org-scoped, read-only). */
+export async function listLogFeedbackInsights(
+  db: Queryable,
+  auth: AuthContext,
+  query: ListLogFeedbackInsightsQuery = {}
+): Promise<{ items: LogFeedbackInsightDto[] }> {
+  requireLogView(auth);
+  return { items: await aggregateFeedbackInsights(db, auth, query) };
 }
 
 export async function submitLogFeedback(db: Database, auth: AuthContext, input: SubmitLogFeedbackInput, context: ServiceContext = {}) {

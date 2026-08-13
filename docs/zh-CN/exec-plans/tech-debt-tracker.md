@@ -51,12 +51,15 @@
 - **TD-085（日志分析置信度显示口径）：** LLM 分析器返回模型自估置信度，规则回退沿用确定性查表置信度，二者共用同一 UI 数字，除来源徽标外没有校准语义区分。需按 `analysisSource` 决定显示口径（标注、分档或在效果层评测校准前隐藏 LLM 置信度）。**负责人：Log analysis / Product。**
 - **TD-086（域治理错误透出）：** `/log-admin` 域治理的创建/更新失败只弹通用通知；服务端 `INVALID_LOG_FORMAT_PROFILE` 的 Zod 字段级细节没有映射回表单，行内仅有客户端 JSON 预检。需把 API 错误码与校验细节映射为表单行内错误。**负责人：Frontend / Log analysis。**
 - **TD-087（selfhost required-keys 纳管 `LOG_ANALYSIS_*`）：** `check-self-hosted-config.ts` 的必填键覆盖 `LOG_ANALYSIS_QUEUE_*` 但不含 P1 LLM 家族（`LOG_ANALYSIS_API_BASE_URL` / `LOG_ANALYSIS_MODEL` / `LOG_ANALYSIS_API_KEY` / `LOG_ANALYSIS_API_TIMEOUT_MS` / `LOG_ANALYSIS_TOKEN_BUDGET` / `LOG_ANALYSIS_DETERMINISTIC`），部署可能通过 `selfhost:check` 却未配置 LLM。需纳入必填键检查（并决定 deterministic 模式是否豁免 API key）与对应测试。**负责人：Ops / Log analysis。**
-- **TD-088（focused 验收运行缺一等证据校验）：** `check-operation-evidence.ts`（`acceptance:evidence`）只校验最近一次**全量**验收运行；单 spec 的 focused 运行没有一等校验入口，P2 只能程序化调用 `evaluateOperationEvidence` 验证 `LOG-DOMAIN-KNOWLEDGE-001`。证据回归可能拖到下一次全量 CI 才暴露（P1 的 `LOG-DEGRADED-001` 缺口正是这样进的 CI）。需给脚本加 `--run <dir>`（或 `--focused`）模式并写入验证矩阵。**负责人：Quality / Acceptance tooling。**
 - **TD-089（确定性 rubric judge 桩过于保守）：** 效果层评测的确定性 judge 桩对 `expectedActions` 的 token 重叠匹配几乎恒 0，把确定性演示分数拉低，可能误导在真模型+真实案例基线建立前对比运行的读者。需校准桩的匹配规则（同义/词干容差或结构化动作匹配）；真模型 judge 路径不受影响。**负责人：Log analysis / Eval。**
 - **TD-090（`read_domain_knowledge` 严格限定模式）：** 工具当前把检索严格限定在业务域已关联的知识条目内（无关联时才退化为组织级通用检索）；计划措辞允许"限定或加权"。关联稀疏的域可能漏掉组织级相关知识。若专家反馈严格模式导致检索饥饿，加"关联条目加权 + 组织级补充召回"的融合模式。**负责人：Log analysis / Knowledge platform。**
+- **TD-091（小泽悬浮提示遮挡抽屉操作）：** `xiaoze-toggle-hint` 浮层（role=status）在抽屉打开时可拦截底部靠右按钮的点击（如 `/log-admin` 记录抽屉的反馈/导出草稿），P3a 浏览器验证发现，部分视口下真实用户同样受影响。需调整浮层 z-index/位置策略或在抽屉/对话框打开时避让，并加布局断言。**负责人：Frontend / Agent surface。**
+- **TD-092（反馈归因粒度）：** `feedback-insights` 把反馈归因到日志**当前 run** 的报告；频繁重析后旧反馈会跟随新结论的来源/提示词版本，按版本的质量读数可能被扭曲。需给 `log_feedback` 加 `run_id`（additive 迁移）与回填策略，存在时按 run 归因。**负责人：Log analysis。**
+- **TD-093（上传预检与服务端支持集不一致）：** 前端 API 模式预检接受 `.log/.txt/.csv/.json/.gz/.zip`，但服务端拒绝 `.json`（mock 模式反而支持）；P3a 只追加了归档扩展未动存量口径。用户可能选中通过预检却被服务端拒绝的文件,且 mock/API 行为分叉。需一次性对齐三方口径（决定 `.json` 转正还是移出预检）。**负责人：Log analysis / Frontend。**
 
 ## 近期关闭项
 
+- **TD-088（focused 验收运行缺一等证据校验）：** 已于 2026-08-13 在 `feat/log-analysis-p3a-monitoring-annotation-intake`（P3a）关闭。`check-operation-evidence.ts` 新增一等 focused 模式：`npm run acceptance:evidence -- --run <运行目录> [--require <操作ID列表>]` 校验指定运行目录内的证据记录（司法元数据 + 声明断言必须有对应载荷；`--require` 可强制要求覆盖指定操作），并把 `evidence-check.{md,json}` 写进该运行目录；缺省全量行为与 docs/generated 索引不变。已写入验证矩阵；`scripts/check-operation-evidence.test.ts` 覆盖 focused 用例。详见英文版 Completed 表。
 - **TD-058（冲突裁决批量处理与可读版本标签）：** 已于 2026-08-07 经 #235（`feat/project-configuration-workbench-conflict-arbitration`）关闭。冲突列表 DTO 含 `baseValue` 与可读 `fileVersionLabel`；裁决可写 `reason` 进审计；`bulk-preview` / `bulk-resolve` 落地 API/端口/工作台冲突坞并带影响预览；验收 `PROJ-CONFIG-CONFLICT-001`。详见英文版 Completed 表。
 - **TD-015（节点调试快照回滚 UI）：** 已于 2026-08-05 在 `feat/node-debugging-ui-closure`（C2）关闭。会话事件 hydrate、回滚 UI 与高风险写确认已落地。详见英文版 Completed 表。
 - **TD-060（项目参数初始化）：** 已于 2026-08-05 在 `feat/project-parameter-initialization`（C1）关闭。迁移 `0091` + draft/review API；语义 binding 合并/物化；Port/HTTP/mock；API hydrate + 锁；设计修订告别扁平 `recommendedValue` SSOT。详见英文版 Completed 表。

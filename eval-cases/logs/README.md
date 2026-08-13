@@ -40,6 +40,12 @@ Validated by `server/modules/logs/eval/goldenCases.ts` (zod). A broken case fail
 
 The enum exists purely for scoring (root-cause bucket match); extend it deliberately when a new domain onboards, and never leak it into the product contract.
 
+## Annotation-draft export from `/log-admin` (P3)
+
+To promote a live analyzed case into an annotation without hand-copying fields, open the record's drawer in `/log-admin` and use **导出评测案例草稿**. It downloads two files ready for this layout: a `case.yaml` draft (domain slug suggested from the record's log domain or `uncategorized`, `realLog: true`, **`deIdentified: false`**, `rootCauseCategory: TODO`, `keyEvidenceLines` prefilled from the report's evidence anchors, `rootCausePoints` split from the conclusion, `expectedActions` from the suggested actions, `analysisQuestion` carried over) plus `log.txt` (the raw lines exactly as analyzed, line numbers stable).
+
+The export is deliberately a DRAFT with no repository write or auto-commit. Before the case may enter git you must still: (1) de-identify `log.txt` and the yaml against the checklist below, (2) replace the `rootCauseCategory` TODO with a real enum value, (3) have the owning domain expert confirm the prefilled points/lines/actions, and (4) flip `deIdentified` to `true`. The loader rejects drafts that skip any of this — an unfinished export can never silently count as a golden case.
+
 ## Annotation guide
 
 1. **Source**: prefer real production logs confirmed by the owning domain expert. Target 20–50 annotated real cases per domain before the domain's quality gate activates.

@@ -298,6 +298,7 @@ POST /api/v1/logs/:logId/rerun
 POST /api/v1/logs/:logId/archive
 POST /api/v1/logs/:logId/unarchive
 POST /api/v1/logs/:logId/feedback
+GET  /api/v1/logs/feedback-insights
 GET  /api/v1/log-domains
 POST /api/v1/log-domains
 PATCH /api/v1/log-domains/:domainId
@@ -319,6 +320,7 @@ GET  /api/v1/jobs/:jobId/events
 | `POST` | `/api/v1/logs/:logId/archive` | 归档 |
 | `POST` | `/api/v1/logs/:logId/unarchive` | 取消归档 |
 | `POST` | `/api/v1/logs/:logId/feedback` | 用户反馈 |
+| `GET` | `/api/v1/logs/feedback-insights` | P3：反馈质量聚合（`logs:view`；可选 `timeWindow=today\|7d\|30d`） |
 | `GET` | `/api/v1/log-domains` | 业务域列表（`logs:view`；`includeArchived=true` 含已归档） |
 | `POST` | `/api/v1/log-domains` | 创建业务域（`logs:admin-domains`；组织内重名 `409`；画像 JSON 非法 `400`） |
 | `PATCH` | `/api/v1/log-domains/:domainId` | 更新名称/描述/格式画像/状态（`formatProfile: null` 清空画像） |
@@ -329,6 +331,10 @@ GET  /api/v1/jobs/:jobId/events
 `POST /api/v1/log-files` 在 M2 接受 JSON base64 内容，后续可替换为签名上传凭证而不改变 `POST /api/v1/logs` 的分析合同。
 
 上传、创建与 rerun 接受可选 `logDomainId`：必须属于本组织且为 `active`，否则 `400`；缺省即内建未分类域语义（通用分析，上传绝不因域选择被阻塞）。日志 DTO 新增 additive 来源字段：`logDomainId?`、`logDomainName?`、`analysisSource?: "agent" | "rules-fallback"`、`degradedReason?: "provider-unavailable" | "token-budget-exhausted"`；`rules-fallback` 表示降级分析，客户端必须保持其可见，其余输出契约不变。
+
+**压缩包上传（P3）**：上传文件名可为 `.gz`（单文件 gzip，内层名须保留受支持文本扩展，如 `app.log.gz`）或 `.zip`（恰好一个非目录条目、条目名为受支持文本扩展；支持 stored/deflate，不支持加密）。服务端在入库前解压，对象存储与后续所有证据行号均指向解压后的 UTF-8 文本。解压失败（流损坏、多条目 zip、条目名不支持、超限）走既有"不支持格式"路径：`failed` 记录 + 可读 `failureReason`，不创建分析任务。防炸弹尺寸纪律（常量见 `server/modules/logs/unpack.ts`）：解压后内容绝对上限 **100 MB**（既有文本日志上界），且不超过压缩体的 **200 倍**（1 MB 下限保护小压缩包不被误伤）。
+
+**反馈质量洞察（P3）**：`GET /api/v1/logs/feedback-insights`（`logs:view`，组织隔离）把 `log_feedback` 聚合给 `/log-admin`「分析质量」看板：按业务域 × `analysisSource` × `promptVersion` 每组一行，含 `totalCount`、`helpfulCount`、`helpfulRate`（0..1）与 `lastFeedbackAt`。可选 `timeWindow=today|7d|30d` 按反馈创建时间过滤（与 `GET /api/v1/logs` 相同的区间语义）。反馈归因到日志**当前 run** 的报告（与列表/详情读取口径一致）；未分类域的 `logDomainId`/`logDomainName` 为 `null`，无来源信息的历史报告 `analysisSource`/`promptVersion` 为 `null`。
 
 创建日志文件：
 

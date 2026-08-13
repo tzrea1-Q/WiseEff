@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LogRecord } from "@/domain/prototype/types";
@@ -223,5 +223,74 @@ describe("LogRecordDrawer", () => {
     expect(provenance).toHaveTextContent("降级分析 · 提前收敛");
     expect(provenance).toHaveTextContent(/提前收敛为低置信结论/);
     expect(provenance).not.toHaveTextContent("降级分析 · 规则回退");
+  });
+
+  describe("导出评测案例草稿", () => {
+    const completedRecord: LogRecord = {
+      ...record,
+      status: "Complete",
+      logDomainName: "charging-power",
+      rawLines: ["10:24:01 WARN battery temperature over soft limit", "10:24:03 INFO policy foldback engaged"],
+      analysisQuestion: "为什么快充降速？"
+    };
+
+    it("disables the export action for records without a completed analysis", () => {
+      render(<LogRecordDrawer record={record} open {...handlers} canAct />);
+
+      expect(screen.getByRole("button", { name: /导出评测案例草稿/ })).toBeDisabled();
+    });
+
+    it("opens the de-identification reminder dialog with the checklist and gate wording", async () => {
+      render(<LogRecordDrawer record={completedRecord} open {...handlers} canAct />);
+
+      await userEvent.click(screen.getByRole("button", { name: /导出评测案例草稿/ }));
+
+      const dialog = await screen.findByTestId("export-eval-case-draft-dialog");
+      expect(dialog).toHaveTextContent("eval-cases/logs/charging-power/");
+      expect(dialog).toHaveTextContent(/无个人姓名、电话、邮箱或账号标识/);
+      expect(dialog).toHaveTextContent(/替换保持行号与技术语义稳定/);
+      expect(dialog).toHaveTextContent(/把 deIdentified 改为 true.*后才可入库/);
+      expect(dialog).toHaveTextContent(/无法完全脱敏的案例不得进入仓库/);
+    });
+
+    function blobToText(blob: Blob): Promise<string> {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsText(blob);
+      });
+    }
+
+    it("downloads a schema-aligned case.yaml draft and log.txt", async () => {
+      const objectUrls: Blob[] = [];
+      const createObjectURL = vi.fn((blob: Blob) => {
+        objectUrls.push(blob);
+        return `blob:mock-${objectUrls.length}`;
+      });
+      const revokeObjectURL = vi.fn();
+      vi.stubGlobal("URL", Object.assign(Object.create(URL), { createObjectURL, revokeObjectURL }));
+
+      render(<LogRecordDrawer record={completedRecord} open {...handlers} canAct />);
+      await userEvent.click(screen.getByRole("button", { name: /导出评测案例草稿/ }));
+      const dialog = await screen.findByTestId("export-eval-case-draft-dialog");
+
+      await userEvent.click(within(dialog).getByRole("button", { name: /下载 case\.yaml 草稿/ }));
+      await userEvent.click(within(dialog).getByRole("button", { name: /下载 log\.txt/ }));
+
+      expect(objectUrls).toHaveLength(2);
+      const caseYaml = await blobToText(objectUrls[0]);
+      expect(caseYaml).toContain("domain: charging-power");
+      expect(caseYaml).toContain("realLog: true");
+      expect(caseYaml).toContain("deIdentified: false");
+      expect(caseYaml).toContain("rootCauseCategory: TODO");
+      expect(caseYaml).toContain("keyEvidenceLines: [20, 30]");
+      expect(caseYaml).toContain('analysisQuestion: "为什么快充降速？"');
+      const logText = await blobToText(objectUrls[1]);
+      expect(logText).toBe(
+        "10:24:01 WARN battery temperature over soft limit\n10:24:03 INFO policy foldback engaged\n"
+      );
+      vi.unstubAllGlobals();
+    });
   });
 });
