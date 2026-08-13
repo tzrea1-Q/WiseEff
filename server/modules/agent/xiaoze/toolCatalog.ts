@@ -1,136 +1,18 @@
-import type { AgentToolDefinition } from "../toolRegistry";
+import type { AgentToolMetadata } from "../toolMetadata";
 import type { PerceptionToolDescriptor } from "./modelTypes";
 
-const TOOL_LABELS_ZH: Record<string, string> = {
-  "perception.getProjectOverview": "查询项目概览",
-  "perception.searchParameters": "搜索参数定义",
-  "perception.getNodeSnapshot": "读取节点快照",
-  "perception.getRecentLogConclusions": "查看日志结论",
-  "knowledge.search": "检索知识库",
-  "knowledge.getDocument": "读取知识条目",
-  "action.submitParameterChange": "提交参数变更",
-  "action.createKnowledgeDraft": "创建知识草稿"
-};
+export { getXiaozeToolLabel } from "../toolMetadata";
 
-const TOOL_DESCRIPTIONS: Record<string, string> = {
-  "perception.getProjectOverview":
-    "Read a project overview: parameter count and open change requests. Use when summarizing project status.",
-  "perception.searchParameters":
-    "Search parameter definitions by keyword within a project. Returns name, description, explanation, module, range, unit, current/recommended values, and risk. Use when the user asks what a parameter does or how it is configured.",
-  "perception.getNodeSnapshot":
-    "Read debugging node bindings and current/target values. Use on debugging pages or node-related questions.",
-  "perception.getRecentLogConclusions":
-    "Read recent log analysis conclusions and severity. Use on logs pages or log-related questions.",
-  "knowledge.search":
-    "Search the organization's published knowledge base (tuning experience, fault cases, hardware manuals, process norms). Returns entries with citation-ready excerpts. Use when the user asks about documented experience or best practices; cite the returned sources in the answer.",
-  "knowledge.getDocument":
-    "Read the full content of one published knowledge entry by entryId (use ids returned by knowledge.search). Returns markdown or extracted file text plus citation metadata. Drafts and archived entries are never readable.",
-  "action.submitParameterChange":
-    "Submit a parameter change request for human review. Never executes immediately; requires explicit user approval. Pass the binding id from perception.searchParameters as parameterId, and write targetValue as DTS source text in the same format as the parameter's current value (for example <3600> for cells or \"fast\" for strings).",
-  "action.createKnowledgeDraft":
-    "Distil the current conversation's conclusions into a NEW knowledge base draft for human review. Never executes immediately; requires explicit user approval. Creates a draft only — it never modifies existing entries and stays out of retrieval until a human publishes it. Use when the user wants to save tuning experience, a fault case, or process knowledge; write contentMarkdown as well-structured markdown and pass the log-analysis record id as sourceLogId when the knowledge comes from a log analysis."
-};
-
-const TOOL_SCHEMAS: Record<string, Record<string, unknown>> = {
-  "perception.getProjectOverview": {
-    type: "object",
-    properties: {
-      projectId: { type: "string", description: "Target project id; defaults to the current page project when omitted." }
-    },
-    additionalProperties: false
-  },
-  "perception.searchParameters": {
-    type: "object",
-    properties: {
-      projectId: { type: "string", description: "Scope search to a project; defaults to the current page project when omitted." },
-      query: { type: "string", description: "Keyword to match against parameter names." }
-    },
-    additionalProperties: false
-  },
-  "perception.getNodeSnapshot": {
-    type: "object",
-    properties: {
-      projectId: { type: "string", description: "Filter debugging nodes by project; defaults to the current page project when omitted." }
-    },
-    additionalProperties: false
-  },
-  "perception.getRecentLogConclusions": {
-    type: "object",
-    properties: {
-      projectId: { type: "string", description: "Filter logs by project; defaults to the current page project when omitted." }
-    },
-    additionalProperties: false
-  },
-  "knowledge.search": {
-    type: "object",
-    properties: {
-      query: { type: "string", description: "Search keywords for the published knowledge base (Chinese or English)." },
-      limit: { type: "number", description: "Maximum entries to return (1-10, default 5)." }
-    },
-    required: ["query"],
-    additionalProperties: false
-  },
-  "knowledge.getDocument": {
-    type: "object",
-    properties: {
-      entryId: {
-        type: "string",
-        description: "Knowledge entry id to read — use an entryId returned by knowledge.search."
-      }
-    },
-    required: ["entryId"],
-    additionalProperties: false
-  },
-  "action.submitParameterChange": {
-    type: "object",
-    properties: {
-      projectId: { type: "string", description: "Project that owns the parameter." },
-      parameterId: {
-        type: "string",
-        description: "Parameter binding id to change — use the id returned by perception.searchParameters."
-      },
-      targetValue: {
-        type: "string",
-        description:
-          'Requested new value as DTS source text, matching the format of the current value: cells like <3600>, strings like "fast", bytes like [01 02].'
-      },
-      reason: { type: "string", description: "Human-readable reason for the change." }
-    },
-    required: ["projectId", "parameterId", "targetValue", "reason"],
-    additionalProperties: false
-  },
-  "action.createKnowledgeDraft": {
-    type: "object",
-    properties: {
-      title: { type: "string", description: "Draft title (at most 200 characters), e.g. the distilled conclusion." },
-      contentMarkdown: {
-        type: "string",
-        description: "Draft body as markdown: conclusion, evidence, and suggested actions distilled from the conversation."
-      },
-      tags: {
-        type: "array",
-        items: { type: "string" },
-        description: "Knowledge tags (at most 20), e.g. project or topic labels."
-      },
-      sourceLogId: {
-        type: "string",
-        description: "Optional log-analysis record id this draft was distilled from (use ids from perception.getRecentLogConclusions)."
-      }
-    },
-    required: ["title", "contentMarkdown"],
-    additionalProperties: false
-  }
-};
-
-export function getXiaozeToolLabel(toolName: string) {
-  return TOOL_LABELS_ZH[toolName] ?? toolName;
-}
-
-export function buildXiaozePlanningToolDescriptors(tools: AgentToolDefinition[]): PerceptionToolDescriptor[] {
+/**
+ * Planning descriptors are a mechanical projection of the single tool
+ * declaration (`toolMetadata.ts`) carried by each registered tool — there is
+ * no name-keyed side table left to fall out of sync.
+ */
+export function buildXiaozePlanningToolDescriptors(tools: readonly AgentToolMetadata[]): PerceptionToolDescriptor[] {
   return tools.map((tool) => ({
     name: tool.name,
-    description: TOOL_DESCRIPTIONS[tool.name] ?? tool.label,
-    schema: TOOL_SCHEMAS[tool.name] ?? { type: "object", properties: {}, additionalProperties: false },
+    description: tool.description,
+    schema: tool.schema,
     requiresApproval: tool.requiresApproval
   }));
 }

@@ -4,6 +4,7 @@ import type { KnowledgeEmbeddingClient } from "../knowledge/indexing/embeddingCl
 import type { ObjectStore } from "../logs/objectStore";
 import type { AuthContext } from "../auth/types";
 import type { AgentToolName, AgentToolResult } from "./types";
+import type { AgentToolMetadata } from "./toolMetadata";
 import { requireAgentPermission, requireAgentProjectAccess } from "./policy";
 import { createPerceptionTools } from "./tools/perceptionTools";
 import { createActionTools } from "./tools/actionTools";
@@ -16,18 +17,9 @@ export type AgentToolExecutionContext = {
   projectId?: string;
 };
 
-export type AgentToolDefinition = {
+/** A registered tool is its metadata (single declaration in `toolMetadata.ts`) plus the runtime implementation. */
+export type AgentToolDefinition = AgentToolMetadata & {
   name: AgentToolName;
-  label: string;
-  kind: "read" | "preparation" | "mutating";
-  permission: Parameters<typeof requireAgentPermission>[1];
-  requiresApproval: boolean;
-  /**
-   * Project-scoped tools (default) require an effective project or a global
-   * admin; organization-scoped tools (e.g. knowledge) rely on their
-   * permission plus the org isolation their services already enforce.
-   */
-  scope?: "project" | "organization";
   run(context: AgentToolExecutionContext, payload: Record<string, unknown>): Promise<AgentToolResult>;
 };
 
