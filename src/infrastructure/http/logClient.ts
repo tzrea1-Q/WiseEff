@@ -4,11 +4,13 @@ import type {
   LogDomainKnowledgeLinksInput,
   LogDomainListQuery,
   LogDomainUpdateInput,
+  LogDomainWebhookInput,
   LogFeedbackInput,
   LogFeedbackInsightsQuery,
   LogListQuery,
   LogRerunInput,
-  LogUploadInput
+  LogUploadInput,
+  LogWebhookTestOutcome
 } from "@/application/ports/LogAnalysisRepository";
 import type { LogRecord } from "@/domain/logs/types";
 import { createApiClient, WiseEffApiError } from "./apiClient";
@@ -20,11 +22,13 @@ import {
   logFeedbackInsightFromDto,
   logListFromDto,
   logRecordFromDto,
+  logWebhookDeliveryFromDto,
   type LogDomainDto,
   type LogDomainKnowledgeLinkDto,
   type LogFeedbackInsightDto,
   type LogJobDto,
-  type LogRecordDto
+  type LogRecordDto,
+  type LogWebhookDeliveryDto
 } from "./logDtos";
 import { createDefaultApiClient } from "./defaultApiClient";
 import { resolveWiseEffApiBaseUrl } from "./runtimeMode";
@@ -114,7 +118,8 @@ function logDomainUpdateBody(input: LogDomainUpdateInput) {
     ...(input.name !== undefined ? { name: input.name } : {}),
     ...(input.description !== undefined ? { description: input.description } : {}),
     ...(input.formatProfile !== undefined ? { formatProfile: input.formatProfile } : {}),
-    ...(input.status !== undefined ? { status: input.status } : {})
+    ...(input.status !== undefined ? { status: input.status } : {}),
+    ...(input.modelOverride !== undefined ? { modelOverride: input.modelOverride } : {})
   };
 }
 
@@ -289,6 +294,32 @@ export function createHttpLogAnalysisRepository(
         appendQuery("/api/v1/logs/feedback-insights", params)
       );
       return response.items.map(logFeedbackInsightFromDto);
+    },
+    async setLogDomainWebhook(input: LogDomainWebhookInput) {
+      const response = await apiClient.put<ItemEnvelope<LogDomainDto>>(
+        `/api/v1/log-domains/${encodeURIComponent(input.domainId)}/webhook`,
+        {
+          url: input.url,
+          enabled: input.enabled,
+          ...(input.secret !== undefined ? { secret: input.secret } : {})
+        }
+      );
+      return logDomainFromDto(response.item);
+    },
+    async listLogDomainWebhookDeliveries(domainId: string, limit?: number) {
+      const params = new URLSearchParams();
+      if (limit !== undefined) params.set("limit", String(limit));
+      const response = await apiClient.get<{ items: LogWebhookDeliveryDto[] }>(
+        appendQuery(`/api/v1/log-domains/${encodeURIComponent(domainId)}/webhook-deliveries`, params)
+      );
+      return response.items.map(logWebhookDeliveryFromDto);
+    },
+    async sendLogDomainWebhookTest(domainId: string) {
+      const response = await apiClient.post<{ outcome: LogWebhookTestOutcome }>(
+        `/api/v1/log-domains/${encodeURIComponent(domainId)}/webhook-test`,
+        {}
+      );
+      return response.outcome;
     }
   };
 

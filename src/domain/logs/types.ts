@@ -18,6 +18,31 @@ export type LogDegradedReason = "provider-unavailable" | "token-budget-exhausted
 
 export type LogDomainStatus = "active" | "archived";
 
+/**
+ * Result-webhook summary for governance (P3b): the signing secret is write-only —
+ * the API only reports whether one is configured and its last four characters.
+ */
+export type LogDomainWebhookSummary = {
+  enabled: boolean;
+  url?: string;
+  secretConfigured: boolean;
+  secretLastFour?: string;
+};
+
+/** One webhook delivery ATTEMPT; a send with retries produces several rows (P3b). */
+export type LogWebhookDelivery = {
+  id: string;
+  logDomainId: string;
+  logRecordId?: string;
+  runId?: string;
+  kind: "result" | "test";
+  attempt: number;
+  status: "delivered" | "retrying" | "failed";
+  httpStatus?: number;
+  error?: string;
+  createdAt: string;
+};
+
 /** Org-scoped log domain registration (业务域); absence on a record = 未分类域. */
 export type LogDomain = {
   id: string;
@@ -25,6 +50,9 @@ export type LogDomain = {
   description?: string;
   status: LogDomainStatus;
   formatProfile?: unknown;
+  /** Per-domain model-name override; empty = the global LOG_ANALYSIS_MODEL (P3b). */
+  modelOverride?: string;
+  webhook?: LogDomainWebhookSummary;
   createdAt: string;
   updatedAt: string;
 };

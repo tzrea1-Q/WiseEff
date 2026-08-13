@@ -48,6 +48,9 @@ function createLogActions(overrides: Partial<LogRuntimeActions> = {}): LogRuntim
     listLogDomainKnowledgeLinks: vi.fn().mockResolvedValue([]),
     setLogDomainKnowledgeLinks: vi.fn().mockResolvedValue(null),
     listFeedbackInsights: vi.fn().mockResolvedValue([]),
+    setLogDomainWebhook: vi.fn().mockResolvedValue(null),
+    listLogDomainWebhookDeliveries: vi.fn().mockResolvedValue([]),
+    sendLogDomainWebhookTest: vi.fn().mockResolvedValue(null),
     ...overrides
   };
 }
@@ -713,6 +716,131 @@ describe("LogAdminPage 业务域知识条目关联", () => {
         knowledgeEntryIds: ["entry-1"]
       })
     );
+  });
+});
+
+describe("LogAdminPage 业务域结果回调与模型覆盖", () => {
+  const webhookDomain = {
+    id: "domain-charging",
+    name: "charging-power",
+    description: "充电/电源子系统内核日志",
+    status: "active" as const,
+    formatProfile: undefined,
+    modelOverride: "gpt-4o",
+    webhook: {
+      enabled: true,
+      url: "https://hooks.example.com/wiseeff",
+      secretConfigured: true,
+      secretLastFour: "cdef"
+    },
+    createdAt: "2026-08-12T00:00:00.000Z",
+    updatedAt: "2026-08-12T00:00:00.000Z"
+  };
+
+  it("shows the model override and webhook state columns", async () => {
+    const logActions = createLogActions({ listLogDomains: vi.fn().mockResolvedValue([webhookDomain]) });
+    renderPage({ logActions });
+
+    const table = await screen.findByRole("table", { name: "业务域列表" });
+    expect(within(table).getByTestId("domain-model-domain-charging")).toHaveTextContent("gpt-4o");
+    expect(within(table).getByTestId("domain-webhook-state-domain-charging")).toHaveTextContent("已启用");
+  });
+
+  it("saves the model override through the edit form (blank clears back to the global model)", async () => {
+    const logActions = createLogActions({
+      listLogDomains: vi.fn().mockResolvedValue([webhookDomain]),
+      updateLogDomain: vi.fn().mockResolvedValue(webhookDomain)
+    });
+    renderPage({ logActions });
+
+    const table = await screen.findByRole("table", { name: "业务域列表" });
+    await userEvent.click(within(table).getByRole("button", { name: "编辑" }));
+    const overrideInput = screen.getByLabelText(/模型覆盖/);
+    expect(overrideInput).toHaveValue("gpt-4o");
+    expect(overrideInput).toHaveAttribute("placeholder", "留空使用全局模型");
+    await userEvent.clear(overrideInput);
+    await userEvent.click(screen.getByRole("button", { name: "保存修改" }));
+
+    await waitFor(() =>
+      expect(logActions.updateLogDomain).toHaveBeenCalledWith(
+        expect.objectContaining({ domainId: "domain-charging", modelOverride: null })
+      )
+    );
+  });
+
+  it("opens the webhook editor, saves config without echoing the secret, and lists recent deliveries", async () => {
+    const logActions = createLogActions({
+      listLogDomains: vi.fn().mockResolvedValue([webhookDomain]),
+      setLogDomainWebhook: vi.fn().mockResolvedValue(webhookDomain),
+      listLogDomainWebhookDeliveries: vi.fn().mockResolvedValue([
+        {
+          id: "delivery-1",
+          logDomainId: "domain-charging",
+          logRecordId: "log-1",
+          runId: "run-1",
+          kind: "result" as const,
+          attempt: 1,
+          status: "delivered" as const,
+          httpStatus: 200,
+          createdAt: "2026-08-13T02:00:00.000Z"
+        },
+        {
+          id: "delivery-2",
+          logDomainId: "domain-charging",
+          kind: "test" as const,
+          attempt: 1,
+          status: "failed" as const,
+          error: "Receiver responded with HTTP 500.",
+          createdAt: "2026-08-13T01:00:00.000Z"
+        }
+      ])
+    });
+    renderPage({ logActions });
+
+    const table = await screen.findByRole("table", { name: "业务域列表" });
+    await userEvent.click(within(table).getByRole("button", { name: "结果回调" }));
+
+    const editor = await screen.findByTestId("domain-webhook-editor");
+    await waitFor(() => expect(logActions.listLogDomainWebhookDeliveries).toHaveBeenCalledWith("domain-charging", 10));
+    // The secret never renders; only configured-state + last four characters do.
+    expect(editor).toHaveTextContent("已配置 · 末四位 cdef");
+    const deliveries = within(editor).getByTestId("domain-webhook-deliveries");
+    expect(deliveries).toHaveTextContent("已送达");
+    expect(deliveries).toHaveTextContent("HTTP 200");
+    expect(deliveries).toHaveTextContent("投递失败");
+
+    const urlInput = within(editor).getByLabelText(/Webhook URL/);
+    await userEvent.clear(urlInput);
+    await userEvent.click(urlInput);
+    await userEvent.paste("https://hooks.example.com/updated");
+    await userEvent.click(within(editor).getByRole("button", { name: "保存配置" }));
+
+    await waitFor(() =>
+      expect(logActions.setLogDomainWebhook).toHaveBeenCalledWith({
+        domainId: "domain-charging",
+        url: "https://hooks.example.com/updated",
+        enabled: true
+      })
+    );
+    expect(await within(editor).findByRole("status")).toHaveTextContent("配置已保存");
+  });
+
+  it("sends a test delivery and reports the outcome inline", async () => {
+    const logActions = createLogActions({
+      listLogDomains: vi.fn().mockResolvedValue([webhookDomain]),
+      sendLogDomainWebhookTest: vi.fn().mockResolvedValue({ status: "delivered", attempts: 1, httpStatus: 200 })
+    });
+    renderPage({ logActions });
+
+    const table = await screen.findByRole("table", { name: "业务域列表" });
+    await userEvent.click(within(table).getByRole("button", { name: "结果回调" }));
+    const editor = await screen.findByTestId("domain-webhook-editor");
+    await userEvent.click(within(editor).getByRole("button", { name: "发送测试投递" }));
+
+    await waitFor(() => expect(logActions.sendLogDomainWebhookTest).toHaveBeenCalledWith("domain-charging"));
+    expect(await within(editor).findByRole("status")).toHaveTextContent("测试投递成功（HTTP 200）");
+    // The list refreshes after a test delivery (initial load + refresh).
+    expect(logActions.listLogDomainWebhookDeliveries).toHaveBeenCalledTimes(2);
   });
 });
 

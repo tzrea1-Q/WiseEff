@@ -1,5 +1,13 @@
 import type { LogJobSnapshot } from "@/application/ports/LogAnalysisRepository";
-import type { LogDomain, LogDomainKnowledgeLink, LogEvidence, LogFeedbackInsight, LogRecord } from "@/domain/logs/types";
+import type {
+  LogDomain,
+  LogDomainKnowledgeLink,
+  LogDomainWebhookSummary,
+  LogEvidence,
+  LogFeedbackInsight,
+  LogRecord,
+  LogWebhookDelivery
+} from "@/domain/logs/types";
 
 export type LogEvidenceDto = {
   id: string;
@@ -45,9 +53,17 @@ export type LogDomainDto = {
   description?: string;
   status: "active" | "archived";
   formatProfile?: unknown;
+  modelOverride?: string;
+  webhook?: LogDomainWebhookSummary;
   createdAt: string;
   updatedAt: string;
 };
+
+export type LogWebhookDeliveryDto = LogWebhookDelivery;
+
+export function logWebhookDeliveryFromDto(dto: LogWebhookDeliveryDto): LogWebhookDelivery {
+  return { ...dto };
+}
 
 export type LogJobDto = LogJobSnapshot;
 
@@ -101,6 +117,8 @@ export function logDomainFromDto(dto: LogDomainDto): LogDomain {
     description: dto.description,
     status: dto.status,
     formatProfile: dto.formatProfile,
+    modelOverride: dto.modelOverride,
+    webhook: dto.webhook,
     createdAt: dto.createdAt,
     updatedAt: dto.updatedAt
   };
