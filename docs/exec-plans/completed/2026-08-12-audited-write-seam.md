@@ -226,8 +226,17 @@ and lowers the ratchet. Suspected genuine gaps first:
 4. `agent/*` (4), `users/service.ts` (2), `auth/*` (2), `logs/service.ts` (1), `knowledge/service.ts` (1),
    `product-feedback/service.ts` (1), `audit/routes.ts` (1).
 
-Completion gate: ratchet allowlist empty → delete `createAuditEvent` + ratchet test →
-move this plan to `completed/`.
+Completion gate (revised at close): the original "allowlist empty → delete
+`createAuditEvent`" goal turned out to be wrong — the migration surfaced five call
+sites whose direct path is *correct by design* (2 auth writes that predate any
+AuthContext, the audit-write endpoint where the audit IS the domain write, one
+cross-org attribution outside the seam's auth axis, and the sensitiveNode
+transitional fallback). The achieved end state, 2026-08-13: **every allowlist entry
+is a documented permanent resident**; `createAuditEvent` stays as the shared
+low-level insert (it is what the seam itself calls), and the ratchet keeps guarding
+against new undocumented direct calls. 36 of 41 original call sites migrated across
+eight batches; three audit shapes (audited-write / refusal / milestone) are the
+vocabulary going forward.
 
 ## Verification
 
@@ -259,8 +268,10 @@ move this plan to `completed/`.
 
 ## Documentation Update Gate
 
-PR1 rows are done as noted. Before this plan moves to `completed/`: resolve the
-`Review (PR2)` security row and re-run `npm run docs:check`.
+PR1 rows are done as noted. The `Review (PR2)` security row is resolved at close:
+`docs/SECURITY.md` (+ zh) now states the three audit shapes and cites ADR-0027;
+the ADR carries the refusal/milestone amendments; `CONTEXT.md` has both glossary
+rows. `npm run docs:check` passes.
 
 ## UI Interaction Automation Review
 
