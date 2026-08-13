@@ -388,7 +388,9 @@ body {
   padding: 20px 14px 18px;
   background: #f6f8ff;
   border-right: 1px solid #dfe5f3;
-  transition: width 180ms ease, padding 180ms ease;
+  transition:
+    width var(--duration-slow) var(--ease-in-out),
+    padding var(--duration-slow) var(--ease-in-out);
 }
 
 .brand-block {
@@ -546,7 +548,10 @@ body {
   font-weight: 700;
   text-align: left;
   white-space: normal;
-  transition: background 150ms ease, color 150ms ease, box-shadow 150ms ease;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
 
 .nav-item > svg {
@@ -632,9 +637,9 @@ body {
   min-height: 0;
   overflow-x: clip;
   transition:
-    width 180ms ease,
-    max-width 180ms ease,
-    margin-left 180ms ease;
+    width var(--duration-slow) var(--ease-in-out),
+    max-width var(--duration-slow) var(--ease-in-out),
+    margin-left var(--duration-slow) var(--ease-in-out);
 }
 
 .home-main-shell {
@@ -1720,7 +1725,10 @@ body {
   align-items: flex-start;
   padding: 24px;
   text-align: left;
-  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  transition:
+    transform var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
 }
 
 .entry-card:hover {
@@ -1908,7 +1916,8 @@ body {
   display: flex;
   width: 300%;
   height: 100%;
-  animation: aiScenarioCarousel 18s infinite;
+  /* Decorative landing carousel: long cycle kept by design; reduced-motion guarded below. */
+  animation: aiScenarioCarousel 18s var(--ease-in-out) infinite;
 }
 
 .ai-scenario-slide {
@@ -2054,6 +2063,8 @@ body {
   .ai-carousel-track,
   .log-timeline__step--current span,
   .confidence-bar--indeterminate i,
+  .api-runtime-sync-banner__spinner,
+  .logs-analyzing-anim,
   .spin {
     animation: none;
   }
@@ -2290,7 +2301,10 @@ body {
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 
 .debugging-deploy-button:hover:not(:disabled) {
@@ -2327,7 +2341,10 @@ body {
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 
 .debugging-stash-button:hover:not(:disabled) {
@@ -2705,7 +2722,7 @@ body {
 
 .operation-history-head .chevron {
   color: var(--outline-strong);
-  transition: transform 150ms ease;
+  transition: transform var(--duration-base) var(--ease-in-out);
 }
 
 .operation-history-head .chevron.open {
@@ -2957,7 +2974,7 @@ td {
 }
 
 tbody tr {
-  transition: background 130ms ease;
+  transition: background var(--duration-fast) var(--ease-out);
 }
 
 tbody tr:hover,
@@ -4940,9 +4957,9 @@ td small {
   line-height: 1;
   cursor: pointer;
   transition:
-    background-color 0.15s ease,
-    color 0.15s ease,
-    box-shadow 0.15s ease;
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
 
 .user-permissions-workspace-tab:hover {
@@ -5717,7 +5734,7 @@ td small {
   font-size: 12px;
   color: #047857;
   opacity: 0;
-  transition: opacity 300ms;
+  transition: opacity var(--duration-slow) var(--ease-out);
 }
 
 .debug-admin-save-indicator.visible {
@@ -7165,7 +7182,7 @@ td small {
 }
 
 .confidence-bar--indeterminate i {
-  animation: confidenceShimmer 1.8s ease-in-out infinite;
+  animation: confidenceShimmer 1.8s var(--ease-in-out) infinite;
 }
 
 .log-error-alert {
@@ -7251,7 +7268,7 @@ td small {
 }
 
 .log-timeline__step--current span {
-  animation: logPulse 1.5s ease-in-out infinite;
+  animation: logPulse 1.5s var(--ease-in-out) infinite;
 }
 
 .log-timeline__step--failed span {
@@ -8584,7 +8601,7 @@ td small {
 }
 
 .logs-analyzing-anim {
-  animation: analyzingPulse 2s ease-in-out infinite;
+  animation: analyzingPulse 2s var(--ease-in-out) infinite;
 }
 
 @keyframes analyzingPulse {
@@ -9949,7 +9966,7 @@ td small {
   font-size: 12px;
   white-space: nowrap;
   cursor: pointer;
-  transition: background 120ms ease;
+  transition: background var(--duration-fast) var(--ease-out);
 }
 
 .local-device-bridge-panel__command-copy:hover {
@@ -11047,11 +11064,11 @@ td small {
   white-space: nowrap;
   cursor: pointer;
   transition:
-    background-color 0.16s ease,
-    border-color 0.16s ease,
-    color 0.16s ease,
-    box-shadow 0.16s ease,
-    transform 0.16s ease;
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 
 .parameter-draft-dialog__submit-link:hover:not(:disabled) {
@@ -13948,7 +13965,7 @@ td small {
 
 .dirty-dot {
   color: #d97706;
-  animation: dirty-pulse 1.6s ease-in-out infinite;
+  animation: dirty-pulse 1.6s var(--ease-in-out) infinite;
 }
 
 @keyframes dirty-pulse {
@@ -13987,8 +14004,8 @@ td small {
 .kpi-item.interactive {
   cursor: pointer;
   transition:
-    border-color 0.16s ease,
-    box-shadow 0.16s ease;
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
 
 .kpi-item.interactive:hover {
@@ -14074,7 +14091,7 @@ td small {
   padding: 0;
   border: 0;
   background: rgba(15, 23, 42, 0);
-  transition: background var(--xiaoze-popup-open-ms, 440ms) cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background var(--xiaoze-popup-open-ms, 400ms) var(--ease-out);
   cursor: default;
 }
 
@@ -14085,7 +14102,7 @@ td small {
 .xiaoze-popup-layer[data-motion="leaving"] .xiaoze-popup-scrim {
   background: rgba(15, 23, 42, 0);
   transition-duration: var(--xiaoze-popup-close-ms, 360ms);
-  transition-timing-function: cubic-bezier(0.4, 0, 0.72, 0.98);
+  transition-timing-function: var(--ease-in-out);
 }
 
 .xiaoze-popup-window {
@@ -14099,10 +14116,10 @@ td small {
   opacity: 0;
   filter: blur(10px);
   transition:
-    transform var(--xiaoze-popup-open-ms, 440ms) cubic-bezier(0.16, 1, 0.3, 1),
-    opacity calc(var(--xiaoze-popup-open-ms, 440ms) * 0.82) cubic-bezier(0.16, 1, 0.3, 1),
-    filter var(--xiaoze-popup-open-ms, 440ms) cubic-bezier(0.16, 1, 0.3, 1),
-    box-shadow var(--xiaoze-popup-open-ms, 440ms) cubic-bezier(0.16, 1, 0.3, 1);
+    transform var(--xiaoze-popup-open-ms, 400ms) var(--ease-out),
+    opacity calc(var(--xiaoze-popup-open-ms, 400ms) * 0.82) var(--ease-out),
+    filter var(--xiaoze-popup-open-ms, 400ms) var(--ease-out),
+    box-shadow var(--xiaoze-popup-open-ms, 400ms) var(--ease-out);
   will-change: transform, opacity, filter;
 }
 
@@ -14117,7 +14134,7 @@ td small {
   opacity: 0;
   filter: blur(6px);
   transition-duration: var(--xiaoze-popup-close-ms, 360ms);
-  transition-timing-function: cubic-bezier(0.4, 0, 0.72, 0.98);
+  transition-timing-function: var(--ease-in-out);
 }
 
 .xiaoze-popup-window__body {
@@ -14208,7 +14225,7 @@ td small {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
-  transition: transform var(--xiaoze-popup-close-ms, 360ms) cubic-bezier(0.4, 0, 0.72, 0.98);
+  transition: transform var(--xiaoze-popup-close-ms, 360ms) var(--ease-in-out);
 }
 
 .xiaoze-chat-toggle:focus-visible {
@@ -14232,13 +14249,13 @@ td small {
   transform: scale(0.88);
   pointer-events: none;
   transition:
-    opacity var(--xiaoze-popup-open-ms, 440ms) cubic-bezier(0.16, 1, 0.3, 1),
-    transform var(--xiaoze-popup-open-ms, 440ms) cubic-bezier(0.16, 1, 0.3, 1);
+    opacity var(--xiaoze-popup-open-ms, 400ms) var(--ease-out),
+    transform var(--xiaoze-popup-open-ms, 400ms) var(--ease-out);
 }
 
 .xiaoze-chat-toggle[data-state="closed"] .xiaoze-chat-toggle__halo {
   opacity: 1;
-  animation: xiaoze-toggle-halo 2.8s ease-in-out infinite;
+  animation: xiaoze-toggle-halo 2.8s var(--ease-in-out) infinite;
 }
 
 .xiaoze-chat-toggle__surface {
@@ -14254,8 +14271,8 @@ td small {
     inset 0 1px 0 rgba(255, 255, 255, 0.34),
     inset 0 -1px 0 rgba(0, 40, 100, 0.18);
   transition:
-    box-shadow var(--xiaoze-popup-close-ms, 360ms) cubic-bezier(0.4, 0, 0.72, 0.98),
-    transform var(--xiaoze-popup-close-ms, 360ms) cubic-bezier(0.4, 0, 0.72, 0.98);
+    box-shadow var(--xiaoze-popup-close-ms, 360ms) var(--ease-in-out),
+    transform var(--xiaoze-popup-close-ms, 360ms) var(--ease-in-out);
 }
 
 .xiaoze-chat-toggle__icon {
@@ -14266,8 +14283,8 @@ td small {
   justify-content: center;
   color: #ffffff;
   transition:
-    opacity calc(var(--xiaoze-popup-open-ms, 440ms) * 0.62) cubic-bezier(0.16, 1, 0.3, 1),
-    transform var(--xiaoze-popup-open-ms, 440ms) cubic-bezier(0.16, 1, 0.3, 1);
+    opacity calc(var(--xiaoze-popup-open-ms, 400ms) * 0.62) var(--ease-out),
+    transform var(--xiaoze-popup-open-ms, 400ms) var(--ease-out);
 }
 
 .xiaoze-chat-toggle__icon--open {
@@ -14348,7 +14365,7 @@ td small {
   background: #ffffff;
   border: 1px solid var(--xiaoze-border-strong);
   box-shadow: var(--xiaoze-shadow-soft);
-  animation: xiaoze-toggle-hint-in 420ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: xiaoze-toggle-hint-in var(--duration-slow) var(--ease-out);
   pointer-events: auto;
 }
 
@@ -14425,7 +14442,7 @@ td small {
   .xiaoze-chat-toggle__surface,
   .xiaoze-chat-toggle__icon,
   .xiaoze-chat-toggle__halo {
-    transition-duration: 120ms !important;
+    transition-duration: var(--duration-fast) !important;
     animation: none !important;
   }
 
@@ -14441,8 +14458,14 @@ td small {
 @media (prefers-reduced-motion: reduce) {
   .xiaoze-popup-scrim,
   .xiaoze-popup-window {
-    transition-duration: 120ms !important;
+    transition-duration: var(--duration-fast) !important;
     filter: none !important;
+  }
+
+  /* Streaming caret blinks forever; hold it steady when motion is reduced. */
+  .xiaoze-streaming-markdown__cursor,
+  .xiaoze-reasoning-message__cursor {
+    animation: none;
   }
 
   .xiaoze-popup-layer[data-motion="leaving"] .xiaoze-popup-window {
@@ -14798,7 +14821,11 @@ body.xiaoze-popup-resize-active {
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
-  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
 
 .xiaoze-chat-header__button:hover,
@@ -14821,7 +14848,7 @@ body.xiaoze-popup-resize-active {
 
 .xiaoze-chat-header-shell [data-testid="copilot-close-button"] {
   border-radius: 999px;
-  transition: background 0.16s ease;
+  transition: background var(--duration-fast) var(--ease-out);
 }
 
 .xiaoze-chat-header-shell [data-testid="copilot-close-button"]:hover {
@@ -14853,12 +14880,12 @@ body.xiaoze-popup-resize-active {
   opacity: 0;
   transform: translateY(-8px);
   transition:
-    max-height 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    padding 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    border-color 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    max-height var(--duration-slow) var(--ease-out),
+    opacity var(--duration-slow) var(--ease-out),
+    transform var(--duration-slow) var(--ease-out),
+    padding var(--duration-slow) var(--ease-out),
+    box-shadow var(--duration-slow) var(--ease-out),
+    border-color var(--duration-slow) var(--ease-out);
 }
 
 .xiaoze-thread-history-shell.is-open > .xiaoze-thread-history {
@@ -14941,7 +14968,11 @@ body.xiaoze-popup-resize-active {
   color: #64748b;
   cursor: pointer;
   touch-action: manipulation;
-  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
 
 .xiaoze-thread-history__delete:hover {
@@ -14970,7 +15001,11 @@ body.xiaoze-popup-resize-active {
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 
 .xiaoze-thread-history__item::before {
@@ -15211,7 +15246,7 @@ body.xiaoze-popup-resize-active {
 }
 
 .xiaoze-reasoning-message__chevron {
-  transition: transform 0.18s ease;
+  transition: transform var(--duration-base) var(--ease-in-out);
   color: var(--xiaoze-accent);
 }
 
@@ -15223,7 +15258,7 @@ body.xiaoze-popup-resize-active {
 .xiaoze-reasoning-message__body-shell {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: grid-template-rows var(--duration-slow) var(--ease-out);
 }
 
 .xiaoze-reasoning-message__body-shell.is-open {
@@ -15239,11 +15274,11 @@ body.xiaoze-popup-resize-active {
   opacity: 0;
   transform: translateY(-4px);
   transition:
-    opacity 200ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
-    margin-top 260ms cubic-bezier(0.22, 1, 0.36, 1),
-    padding-top 260ms cubic-bezier(0.22, 1, 0.36, 1),
-    border-top-color 260ms cubic-bezier(0.22, 1, 0.36, 1);
+    opacity var(--duration-slow) var(--ease-out),
+    transform var(--duration-slow) var(--ease-out),
+    margin-top var(--duration-slow) var(--ease-out),
+    padding-top var(--duration-slow) var(--ease-out),
+    border-top-color var(--duration-slow) var(--ease-out);
   color: #334155;
   font-size: 12px;
   line-height: 1.6;
@@ -15326,7 +15361,7 @@ body.xiaoze-popup-resize-active {
 }
 
 .xiaoze-turn-block__steps-toggle svg {
-  transition: transform 180ms ease;
+  transition: transform var(--duration-base) var(--ease-in-out);
 }
 
 .xiaoze-turn-block__steps-toggle svg.is-open {
@@ -15336,7 +15371,7 @@ body.xiaoze-popup-resize-active {
 .xiaoze-turn-block__steps-body {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 220ms ease;
+  transition: grid-template-rows var(--duration-slow) var(--ease-out);
 }
 
 .xiaoze-turn-block__steps-panel.is-open .xiaoze-turn-block__steps-body {
@@ -15397,7 +15432,7 @@ body.xiaoze-popup-resize-active {
 }
 
 .xiaoze-dev-tools__chevron {
-  transition: transform 160ms ease;
+  transition: transform var(--duration-base) var(--ease-in-out);
 }
 
 .xiaoze-dev-tools__chevron.is-open {
@@ -15551,7 +15586,7 @@ body.xiaoze-popup-resize-active {
 }
 
 .xiaoze-prompt-debug__chevron {
-  transition: transform 0.18s ease;
+  transition: transform var(--duration-base) var(--ease-in-out);
   color: #1d4ed8;
 }
 
@@ -15630,28 +15665,6 @@ body.xiaoze-popup-resize-active {
   font-size: 12px;
   font-weight: 700;
   text-transform: lowercase;
-}
-
-@keyframes xiaoze-reasoning-glow {
-  0%,
-  100% {
-    box-shadow: 0 0 0 1px rgba(0, 104, 123, 0.08);
-  }
-
-  50% {
-    box-shadow: 0 0 0 1px rgba(0, 104, 123, 0.18), 0 0 24px rgba(0, 104, 123, 0.08);
-  }
-}
-
-@keyframes xiaoze-icon-pulse {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-
-  50% {
-    transform: scale(1.06);
-  }
 }
 
 @media (max-width: 640px) {
@@ -15800,11 +15813,11 @@ body.xiaoze-popup-resize-active {
   white-space: nowrap;
   cursor: pointer;
   transition:
-    background-color 120ms ease,
-    border-color 120ms ease,
-    color 120ms ease,
-    box-shadow 120ms ease,
-    transform 120ms ease;
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 
 .insight-action:focus-visible {
@@ -15902,7 +15915,10 @@ body.xiaoze-popup-resize-active {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
 }
 
 .parameter-admin-subnav__tab:hover {
@@ -19378,8 +19394,8 @@ body.xiaoze-popup-resize-active {
   color: var(--muted-foreground);
   cursor: pointer;
   transition:
-    color 0.15s ease,
-    background-color 0.15s ease;
+    color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
 }
 
 .audit-dialog-close-icon:hover {
@@ -19454,7 +19470,7 @@ body.xiaoze-popup-resize-active {
   border-radius: 0;
   background: transparent;
   text-align: left;
-  transition: background-color 0.15s ease;
+  transition: background-color var(--duration-fast) var(--ease-out);
 }
 
 .audit-timeline-row:hover {
@@ -19708,7 +19724,7 @@ body.xiaoze-popup-resize-active {
 }
 
 .audit-technical-chevron {
-  transition: transform 0.15s ease;
+  transition: transform var(--duration-base) var(--ease-in-out);
 }
 
 .audit-technical-chevron-open {
@@ -21623,7 +21639,10 @@ body.xiaoze-popup-resize-active {
   border: 2px dashed #cbd5e1;
   border-radius: 12px;
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
 
 .parameter-import-wizard .parameter-import-wizard-file-drop:hover,
@@ -21707,7 +21726,10 @@ body.xiaoze-popup-resize-active {
   border: 2px dashed #cbd5e1;
   border-radius: 12px;
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
 
 .parameter-import-wizard .parameter-import-wizard-paste-entry__title {
@@ -22587,6 +22609,14 @@ body.xiaoze-popup-resize-active {
   to { transform: rotate(360deg); }
 }
 
+/* The workbench-wide reduce rule only covers descendants of
+   .dts-parameter-workbench; this icon also renders in portalled dialogs. */
+@media (prefers-reduced-motion: reduce) {
+  .dts-status-icon--spin {
+    animation: none;
+  }
+}
+
 .dts-parameter-workbench--status .project-topology-workspace__error {
   color: var(--dts-workbench-red);
   background: var(--dts-workbench-red-soft);
@@ -22624,7 +22654,10 @@ body.xiaoze-popup-resize-active {
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
-  transition: color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
 
 .dts-parameter-workbench__view-switch button:hover:not(:disabled) {
@@ -22702,7 +22735,10 @@ body.xiaoze-popup-resize-active {
   outline: none;
   font: inherit;
   font-size: 13px;
-  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
 }
 
 .dts-parameter-workbench__search input::placeholder {
@@ -22918,7 +22954,10 @@ body.xiaoze-popup-resize-active {
   border-radius: 8px;
   font: inherit;
   cursor: pointer;
-  transition: color 140ms ease, background 140ms ease, border-color 140ms ease;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
 }
 
 .dts-topology-navigator__item:hover {
@@ -23085,7 +23124,9 @@ button.dts-topology-navigator__disclosure:focus-visible {
   color: var(--dts-workbench-ink);
   border-bottom: 1px solid #edf1f6;
   background: var(--dts-workbench-surface);
-  transition: background 140ms ease, box-shadow 140ms ease;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
 
 .dts-parameter-workbench-table__row:last-child {
@@ -24049,7 +24090,10 @@ button.dts-topology-navigator__disclosure:focus-visible {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
 }
 
 .dts-node-enablement-dialog__choice input {
@@ -27394,7 +27438,10 @@ button.dts-topology-navigator__disclosure:focus-visible {
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
-  transition: color 140ms ease, background 140ms ease, border-color 140ms ease;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
 }
 
 .configuration-workbench__member-tree .configuration-workbench__member:hover {
