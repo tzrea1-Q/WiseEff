@@ -39,7 +39,7 @@ Branch: `feat/knowledge-log-recommendations`, checked out from the latest `main`
 
 - Targeted vitest: `server/modules/knowledge/relatedKnowledge.test.ts`, `server/modules/knowledge/relatedKnowledgeService.test.ts` (published-only, relevance cutoff, org-isolation and permission negatives, retrieval-mode honesty, vector-path fusion), `server/modules/knowledge/routes.test.ts`, `src/logsPage.relatedKnowledge.test.tsx`, `src/infrastructure/mock/mockKnowledgeRepository.test.ts`, `src/infrastructure/http/knowledgeClient.test.ts`.
 - `npm run test:server`; `npm test`; `npm run build`; `npm run docs:check`; `npm run contract:openapi` + `npm run contract:check`; `npm run acceptance:coverage` + `npm run acceptance:operations`.
-- `npm run acceptance:browser -- --require KB-REC-001` on an isolated stack (dedicated database, free ports within the CORS whitelist).
+- `npm run acceptance:e2e -- knowledge.acceptance.spec.ts` on an isolated stack (dedicated pre-migrated database, e.g. `wiseeff_kb_rec`, frontend port within the 5173-5199 CORS whitelist).
 - playwright-cli checks of `/logs` with the new section at 1440x900 / 768x1024 / 390x844 (snapshot + screenshot under `work/ui-checks/`, `console error` clean), exercising the deep link into `/knowledge`.
 
 ## Success criteria
@@ -69,11 +69,11 @@ Branch: `feat/knowledge-log-recommendations`, checked out from the latest `main`
 
 ## Documentation Update Gate
 
-- [ ] KB-REC-001 registered in coverage map + operation matrix (EN + zh) before UI implementation
-- [ ] api-contract EN + zh and `docs/generated/openapi.json` include `GET /api/v1/knowledge/related-to-log`
-- [ ] FRONTEND EN + zh document the related-knowledge section, `relatedToLog` port method, and `canView` capability
-- [ ] Design doc EN + zh mark deferred roadmap item 1 as shipped
-- [ ] Product-spec reviewed — updated or recorded unchanged with evidence
-- [ ] PLANS EN + zh list this active plan
-- [ ] Tech-debt tracker reviewed for deferrals leaving this plan
-- [ ] `npm run docs:check` green before moving this plan to `completed/`
+- [x] KB-REC-001 registered in coverage map + operation matrix (EN + zh) before UI implementation (commit `docs(acceptance): register KB-REC-001…` precedes the backend/frontend commits)
+- [x] api-contract EN + zh and `docs/generated/openapi.json` include `GET /api/v1/knowledge/related-to-log`
+- [x] FRONTEND EN + zh document the related-knowledge section, `relatedToLog` port method, and `canView` capability
+- [x] Design doc EN + zh mark deferred roadmap item 1 as shipped
+- [x] Product-spec reviewed — updated: EN + zh knowledge sections gained one knowledge-flows-back-out sentence naming the related-knowledge recommendations on the log result page
+- [x] PLANS EN + zh list this active plan
+- [x] Tech-debt tracker reviewed — no deferral leaves this plan, nothing to record
+- [x] `npm run docs:check` green (verified on the merged tree)
