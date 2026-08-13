@@ -191,6 +191,28 @@ Resolves the refusal-audit design item (ADR-0027 amendment, 2026-08-13).
   states it. Both files reach ratchet zero.
 - Behavior test pins that the deny audit goes to the refusal handle, not the caller's tx.
 
+## Batch 8 (branch `refactor/stepwise-audit-boundaries`) — the two state machines
+
+Resolves the deferred reload-state-machine and orchestrator audit boundaries with one
+vocabulary (ADR-0027 amendment): stepwise flows distinguish **milestones** ("this step
+was reached", written immediately on the pool handle via `writeMilestoneAudit`, so they
+survive later failures) from **step results** (commit with that step's state write).
+
+- **Reload state machine** (`dts-reload/service.ts` reaches zero):
+  - Milestones: run started, deploy started, and the refused-deploy terminal in the
+    catch path — pool-handle writes, deliberately outside any transaction.
+  - Results: blocked/validated now commit with the run row inside `persistRunOutcome`
+    (which also injects the artifact hashes into the audit); the deploy terminal
+    (verified/contradicted/unverifiable/failed) moved into the terminal persist
+    callback — deploy state, residue bookkeeping (under the device lease), and the
+    terminal audit are one audited write.
+- **Agent orchestrator** (`agent/orchestrator.ts` reaches zero):
+  - approval-requested, tool succeeded/failed, and approval-rejected each auto-committed
+    their state writes before auditing outside them — now one audited write per step.
+    The approve-execution path already ran audit-in-transaction; it now carries the
+    brand. The "running" transition deliberately stays outside (visible during
+    execution). The unused `createAuditEvent` injection option was removed.
+
 ## PR2+ migration inventory (ratchet allowlist, 41 direct calls in 27 files)
 
 Migrate per module; each batch moves call sites to `withAuditedWrite`/`writeAuditEventInTx`

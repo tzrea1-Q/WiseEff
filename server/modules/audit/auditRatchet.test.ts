@@ -16,20 +16,12 @@ import { describe, expect, it } from "vitest";
  * to the new, lower value in the same change.
  */
 const ALLOWED_DIRECT_CALLS: Record<string, number> = {
-  // orchestrator.ts stays for now: the M4 agent session state machine commits in
-  // deliberate steps (pending approval must be visible while a human decides), so
-  // its audit boundaries need an owner decision, not a mechanical migration.
-  "modules/agent/orchestrator.ts": 1,
   // audit/routes.ts stays: for POST /audit-events the audit event IS the domain write.
   "modules/audit/routes.ts": 1,
   // auth/* stay: bootstrap/register/login/logout audits fire before an AuthContext
   // exists and the seam derives actor/org from auth; all sites are in-transaction.
   "modules/auth/bootstrapLocalAdmin.ts": 1,
   "modules/auth/localAuth.ts": 1,
-  // dts-reload/service.ts stays for now: the reload run state machine audits each
-  // step as it commits (start/blocked/validated/deploy/verify), so its audit
-  // boundaries belong to the reload-state-machine review (C9), not a mechanical batch.
-  "modules/dts-reload/service.ts": 1,
   // parameter-modules/service.ts keeps ONE direct call: the driver-registration audit
   // attributed to the SUBJECT's organization (not the actor's) — outside the seam's
   // auth-derived axis; it is already in-transaction.
