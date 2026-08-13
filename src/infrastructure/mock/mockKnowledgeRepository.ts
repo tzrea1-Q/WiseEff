@@ -648,7 +648,8 @@ export function createMockKnowledgeRepository(
         publishedAt: null,
         archivedAt: null,
         contentMarkdown: draft.contentMarkdown,
-        file: null
+        file: null,
+        parameterReferences: []
       };
       appendRevision(entry);
       entry.headRevisionNumber = 1;
