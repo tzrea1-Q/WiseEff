@@ -783,6 +783,7 @@ test.describe("Xiaoze P1 action", () => {
     await expect(popup).toBeVisible();
 
     await expect.poll(countOpenChangeRequests, { timeout: 60_000 }).toBeGreaterThan(openBefore);
+    const openAfter = await countOpenChangeRequests();
 
     await recordOperationEvidence({
       operationId: "XIAOZE-APPROVAL-CARD-001",
@@ -792,6 +793,14 @@ test.describe("Xiaoze P1 action", () => {
       route: `/parameters?project=${projectId}`,
       page,
       testInfo,
+      db: [
+        {
+          table: "parameter_change_requests",
+          predicate: `organization_id = 'org-chargelab' and project_id = '${projectId}' and the approved parameter`,
+          observed: `open change requests ${openBefore} -> ${openAfter} after the browser approval`,
+          rowCount: openAfter
+        }
+      ],
       notes: "Approval card mounted above the chat popup, the approve click resolved the interrupt without closing the chat, and an open change request was created."
     });
   });

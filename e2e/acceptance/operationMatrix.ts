@@ -1033,7 +1033,9 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     coverage: "automated",
     acceptanceIds: ["XIAOZE-APPROVAL-CARD-001"],
     specFiles: ["e2e/acceptance/xiaoze-action.acceptance.spec.ts"],
-    assertions: ["ui", "api"]
+    // The outcome is asserted against the database (open change-request count),
+    // not through a captured API exchange.
+    assertions: ["ui", "db"]
   },
   {
     id: "XIAOZE-ACTION-EDITEDARGS-001",
