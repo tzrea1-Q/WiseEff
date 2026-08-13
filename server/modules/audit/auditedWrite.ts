@@ -81,6 +81,37 @@ export async function writeAuditEventInTx(
   });
 }
 
+/**
+ * Write refusal evidence that must SURVIVE the caller's rollback. A refusal audit
+ * describes a deny-then-throw: there is no domain write to be atomic with, and if
+ * the surrounding transaction rolls back, the evidence must remain. The spec is
+ * therefore written through the POOL handle as its own auto-committed statement,
+ * deliberately outside any transaction — the opposite contract from
+ * `writeAuditEventInTx`. Pass the pool `Database`, never the enclosing tx.
+ */
+export async function writeRefusalAudit(
+  db: Database,
+  auth: AuthContext,
+  context: AuditedWriteContext,
+  spec: AuditSpec
+): Promise<void> {
+  await createAuditEvent(db, {
+    id: spec.id ?? randomUUID(),
+    organizationId: auth.organization.id,
+    projectId: spec.projectId,
+    actorUserId: auth.user.id,
+    actorType: spec.actorType ?? "user",
+    app: spec.app,
+    kind: spec.kind,
+    action: spec.action,
+    severity: spec.severity,
+    targetType: spec.targetType,
+    targetId: spec.targetId,
+    metadata: spec.metadata,
+    traceId: context.requestId
+  });
+}
+
 export type AuditedWriteOutcome<T> = {
   result: T;
   /**

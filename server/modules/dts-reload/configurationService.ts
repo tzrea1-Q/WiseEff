@@ -87,7 +87,7 @@ async function writeConfigurationAudit(
 }
 
 async function assertConfigurationHumanActor(
-  db: Queryable,
+  db: Database,
   auth: AuthContext,
   context: ReloadConfigurationServiceContext
 ) {

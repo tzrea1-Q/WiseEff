@@ -174,6 +174,23 @@ now takes `AuditTx`; `linkAuditSubjects` has no production caller and was left a
 - Ratchet: `parameter-topology/governanceAudit.ts` reaches zero. Every remaining
   allowlist entry is now a documented deliberate resident or an owner-decision item.
 
+## Batch 7 (branch `refactor/refusal-audit-survives-rollback`) — refusal audits
+
+Resolves the refusal-audit design item (ADR-0027 amendment, 2026-08-13).
+
+- **Seam:** `writeRefusalAudit(db, auth, context, spec)` — pool handle, auto-committed,
+  deliberately outside any transaction; the inverse contract from `writeAuditEventInTx`.
+- **Bug fixed:** sensitive-node deny audits were being erased by the merge / structured-
+  edit transactions they ran inside. `assertSensitiveNodeWriteAllowed` now takes a
+  `refusalDb` pool handle; the merge writeback path threads it through
+  `WritebackServiceContext` and structured-edit submit passes its own pool handle. The
+  no-`refusalDb` fallback keeps old behavior for out-of-transaction callers and is the
+  one remaining direct `createAuditEvent` call in the file (transitional, documented).
+- `assertDtsReloadHumanActor` / `assertSensitiveReloadBatchAllowed` take `Database`
+  directly — those gates run before any transaction by design, and the signature now
+  states it. Both files reach ratchet zero.
+- Behavior test pins that the deny audit goes to the refusal handle, not the caller's tx.
+
 ## PR2+ migration inventory (ratchet allowlist, 41 direct calls in 27 files)
 
 Migrate per module; each batch moves call sites to `withAuditedWrite`/`writeAuditEventInTx`
