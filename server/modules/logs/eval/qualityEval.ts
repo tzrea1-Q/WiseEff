@@ -4,6 +4,12 @@ import type { AnalyzeLogOutput, LogAnalysisAdapter } from "../analyzer";
 import { parseLogText } from "../parser";
 import { analyzeWithDegradation } from "../worker";
 import type { GoldenLogCase, LogEvalRootCauseCategory } from "./goldenCases";
+import {
+  computeJudgeHumanAgreement,
+  selectJudgeReviewSample,
+  type HumanReviewFile,
+  type JudgeHumanAgreement
+} from "./judgeCalibration";
 
 /**
  * Quality-layer eval (glossary: Quality-layer eval): scores golden-case runs of
@@ -128,6 +134,8 @@ export type QualityCaseResult = {
   promptVersion?: string;
   latencyMs: number;
   confidence: number;
+  /** Truncated agent conclusion for the human review checklist (never raw log content). */
+  conclusionSummary: string;
   /** Present for non-refusal cases only. */
   evidence: QualityEvidenceMetrics | null;
   hallucination: { citedNonexistentLines: number[]; rate: number };
@@ -183,6 +191,8 @@ export type QualityBaselineComparison = {
 
 export type QualityEvalReport = {
   generatedAt: string;
+  /** Stable id (`qe-YYYYMMDD-HHMMSS`) linking the report, sample checklist, and review files. */
+  runId: string;
   kernel: "loop" | "single-shot";
   deterministic: boolean;
   modelLabel: string;
@@ -194,6 +204,9 @@ export type QualityEvalReport = {
     syntheticCases: QualityAggregates | null;
   };
   baseline: QualityBaselineComparison;
+  /** Judge calibration (P3b): deterministic human-review sample + judge-human agreement. */
+  judgeSampling: { rate: number; sampledCaseIds: string[] };
+  humanAgreement: JudgeHumanAgreement;
   problems: string[];
 };
 
@@ -299,6 +312,7 @@ export function evaluateQualityCaseOutput(
   }
 
   const refused = output.confidence <= QUALITY_REFUSAL_CONFIDENCE_THRESHOLD;
+  const conclusion = output.conclusion.trim().replace(/\s+/g, " ");
   return {
     id: goldenCase.id,
     domain: goldenCase.domain,
@@ -310,6 +324,7 @@ export function evaluateQualityCaseOutput(
     promptVersion: output.promptVersion,
     latencyMs: extras.latencyMs,
     confidence: output.confidence,
+    conclusionSummary: conclusion.length > 300 ? `${conclusion.slice(0, 299)}…` : conclusion,
     evidence,
     hallucination: {
       citedNonexistentLines,
@@ -333,8 +348,16 @@ export type RunQualityEvalOptions = {
   deterministic: boolean;
   modelLabel: string;
   baseline: QualityBaselineFile | null;
+  /** Deterministic human-review sampling rate (LOG_ANALYSIS_JUDGE_SAMPLE_RATE, default 0.2). */
+  judgeSampleRate?: number;
+  /** Committed review files from eval-cases/logs/reviews; empty = "no human reviews yet". */
+  humanReviews?: HumanReviewFile[];
   now?: () => number;
 };
+
+function qualityRunId(generatedAt: string): string {
+  return `qe-${generatedAt.replace(/[-:]/g, "").replace(/\..*$/, "").replace("T", "-")}`;
+}
 
 export async function runQualityEval(options: RunQualityEvalOptions): Promise<QualityEvalReport> {
   const now = options.now ?? (() => Date.now());
@@ -387,9 +410,12 @@ export async function runQualityEval(options: RunQualityEvalOptions): Promise<Qu
   const realResults = caseResults.filter((result) => result.realLog);
   const syntheticResults = caseResults.filter((result) => !result.realLog);
   const realAggregates = realResults.length > 0 ? aggregateQualityResults(realResults) : null;
+  const generatedAt = new Date().toISOString();
+  const judgeSampleRate = options.judgeSampleRate ?? 0.2;
 
   return {
-    generatedAt: new Date().toISOString(),
+    generatedAt,
+    runId: qualityRunId(generatedAt),
     kernel: options.kernel,
     deterministic: options.deterministic,
     modelLabel: options.modelLabel,
@@ -401,6 +427,11 @@ export async function runQualityEval(options: RunQualityEvalOptions): Promise<Qu
       syntheticCases: syntheticResults.length > 0 ? aggregateQualityResults(syntheticResults) : null
     },
     baseline: compareToQualityBaseline(options.baseline, realAggregates),
+    judgeSampling: {
+      rate: judgeSampleRate,
+      sampledCaseIds: selectJudgeReviewSample(caseResults, judgeSampleRate).map((result) => result.id)
+    },
+    humanAgreement: computeJudgeHumanAgreement(caseResults, options.humanReviews ?? []),
     problems
   };
 }
@@ -414,6 +445,7 @@ export function formatQualityReportMarkdown(report: QualityEvalReport): string {
     "# Log Analysis Quality Eval Report",
     "",
     `- Generated: ${report.generatedAt}`,
+    `- Run id: \`${report.runId}\``,
     `- Kernel: \`${report.kernel}\`${report.deterministic ? " (deterministic mode)" : ""}`,
     `- Model: \`${report.modelLabel}\``,
     `- Judge: \`${report.judgeLabel}\``,
@@ -457,6 +489,31 @@ export function formatQualityReportMarkdown(report: QualityEvalReport): string {
       lines.push(
         `| ${metric.metric} | ${formatRatio(metric.baseline)} | ${formatRatio(metric.current)} | ${metric.tolerance} | ${metric.pass ? "PASS" : "FAIL"} |`
       );
+    }
+  }
+
+  // Fixed judge-calibration section: sampling always reported; agreement is
+  // computed when review files exist, otherwise honestly "no human reviews yet".
+  lines.push(
+    "",
+    "## Judge calibration",
+    "",
+    `- Human-review sample (deterministic, rate ${report.judgeSampling.rate}): ${report.judgeSampling.sampledCaseIds.length > 0 ? report.judgeSampling.sampledCaseIds.map((id) => `\`${id}\``).join(", ") : "none (no judged cases)"} — checklist in \`docs/generated/log-analysis-judge-sample.md\``
+  );
+  if (report.humanAgreement.status === "no-human-reviews-yet") {
+    lines.push(
+      `- Judge-human agreement: **no human reviews yet** — commit \`eval-cases/logs/reviews/${report.runId}.yaml\` from the checklist template to activate this metric.`
+    );
+  } else {
+    const agreement = report.humanAgreement;
+    lines.push(
+      `- Judge-human agreement (${agreement.matchedCaseCount} reviewed case(s), reviewers: ${agreement.reviewers.join(", ")}):`,
+      `  - Exact agreement rate (identical scores): ${formatRatio(agreement.exactAgreementRate)}`,
+      `  - Mean absolute difference: ${formatRatio(agreement.meanAbsoluteDifference)}`,
+      `  - Category agreement rate: ${formatRatio(agreement.categoryAgreementRate)}`
+    );
+    if (agreement.unmatchedCaseIds.length > 0) {
+      lines.push(`  - Reviews referencing unknown/unjudged cases (ignored): ${agreement.unmatchedCaseIds.join(", ")}`);
     }
   }
 
