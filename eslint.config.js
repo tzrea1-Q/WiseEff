@@ -49,7 +49,7 @@ export default [
       "jsx-a11y/anchor-is-valid": "warn", // 1
       "react-hooks/set-state-in-effect": "warn", // 135
       "react-hooks/refs": "warn", // 32 (31 prod + 1 test)
-      "react-hooks/preserve-manual-memoization": "warn", // 25
+      "react-hooks/preserve-manual-memoization": "warn", // 23
       "react-hooks/exhaustive-deps": "warn", // 23
       "react-hooks/rules-of-hooks": "warn", // 3 — correctness rule; clear these first
       "react-hooks/immutability": "warn", // 1
