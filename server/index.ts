@@ -10,6 +10,7 @@ import { createSimulatorDebugDeviceGateway } from "./modules/debugging/simulator
 import { createBridgeConnectionPool } from "./modules/deviceBridge/connectionPool";
 import { createBridgeRpcClient } from "./modules/deviceBridge/rpc";
 import { resolveKnowledgeEmbeddingClient } from "./modules/knowledge/indexing/embeddingClient";
+import { ensureKnowledgeVectorColumn } from "./modules/knowledge/indexing/vectorEnsure";
 import { startKnowledgeIndexWorkerLoop } from "./modules/knowledge/indexing/worker";
 import { createLogAnalyzerFromEnv } from "./modules/logs/analyzer/analyzerFromEnv";
 import { createLogAnalysisQueueRuntime, createLogAnalysisQueueTransport } from "./modules/logs/logAnalysisQueueRuntime";
@@ -87,10 +88,9 @@ const stopLogWorker =
   env.LOG_WORKER_ENABLED && env.LOG_ANALYSIS_QUEUE_MODE === "polling" && db && objectStore
     ? startLogWorkerLoop({ db, objectStore, analyzer: logAnalyzer, metrics, tracing: defaultTracingBoundary })
     : undefined;
-const stopKnowledgeIndexWorker =
-  env.KNOWLEDGE_INDEX_WORKER_ENABLED && db
-    ? startKnowledgeIndexWorkerLoop({ db, embeddingClient: knowledgeEmbeddingClient })
-    : undefined;
+// Started in start() after ensureKnowledgeVectorColumn so the worker never
+// caches a pre-install "no vector support" detection.
+let stopKnowledgeIndexWorker: (() => void) | undefined;
 const notificationQueueEnv = {
   REDIS_URL: env.REDIS_URL ?? "",
   NOTIFICATION_QUEUE_PREFIX: env.NOTIFICATION_QUEUE_PREFIX,
@@ -197,6 +197,29 @@ async function start() {
   if (db) {
     const identityMode = await resolveParameterIdentityMode(db);
     console.log(`[parameter-identity] mode: ${identityMode}`);
+  }
+
+  if (db) {
+    try {
+      const vectorEnsure = await ensureKnowledgeVectorColumn(db);
+      if (vectorEnsure.outcome === "installed") {
+        console.log(
+          `[knowledge-vector] embedding column installed (pgvector late install); re-enqueued ${vectorEnsure.enqueued} published entries for re-indexing`
+        );
+      } else if (vectorEnsure.outcome === "extension-install-failed") {
+        console.warn(
+          `[knowledge-vector] pgvector is available but could not be installed (${vectorEnsure.reason}); knowledge retrieval stays FTS-only`
+        );
+      }
+      // "extension-unavailable" and "already-present" are the steady states and stay quiet;
+      // /knowledge-admin reports the live retrieval mode either way.
+    } catch (error) {
+      console.error("[knowledge-vector] ensure failed; knowledge retrieval keeps its current mode:", error);
+    }
+  }
+
+  if (env.KNOWLEDGE_INDEX_WORKER_ENABLED && db) {
+    stopKnowledgeIndexWorker = startKnowledgeIndexWorkerLoop({ db, embeddingClient: knowledgeEmbeddingClient });
   }
 
   server.listen(env.PORT, env.HOST, () => {
