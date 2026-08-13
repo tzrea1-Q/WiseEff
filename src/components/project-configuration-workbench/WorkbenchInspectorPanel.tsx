@@ -557,7 +557,14 @@ export function WorkbenchInspectorPanel({
               </div>
               <div>
                 <dt>活跃文件版本</dt>
-                <dd className="mono">{selectedMember.currentVersionId ?? "缺失"}</dd>
+                <dd>
+                  {selectedMember.currentVersionNumber
+                    ? `版本 v${selectedMember.currentVersionNumber}`
+                    : "无活跃版本"}
+                  {selectedMember.currentVersionId ? (
+                    <code className="configuration-workbench__version-id">{selectedMember.currentVersionId}</code>
+                  ) : null}
+                </dd>
               </div>
               {canAdmin ? (
                 <div className="configuration-workbench__inspector-actions">
@@ -611,7 +618,9 @@ export function WorkbenchInspectorPanel({
               </div>
               <div>
                 <dt>来源</dt>
-                <dd>工作配置 · 文件版本 {selectedMember?.currentVersionId ?? "未知"}</dd>
+                <dd title={selectedMember?.currentVersionId ?? undefined}>
+                  工作配置 · 文件版本 {selectedMember?.currentVersionNumber ? `v${selectedMember.currentVersionNumber}` : "未知"}
+                </dd>
               </div>
               <div>
                 <dt>读权限</dt>
@@ -673,7 +682,9 @@ export function WorkbenchInspectorPanel({
               </div>
               <div>
                 <dt>来源</dt>
-                <dd>工作配置 · 文件版本 {selectedMember?.currentVersionId ?? "未知"}</dd>
+                <dd title={selectedMember?.currentVersionId ?? undefined}>
+                  工作配置 · 文件版本 {selectedMember?.currentVersionNumber ? `v${selectedMember.currentVersionNumber}` : "未知"}
+                </dd>
               </div>
               <div>
                 <dt>写权限</dt>

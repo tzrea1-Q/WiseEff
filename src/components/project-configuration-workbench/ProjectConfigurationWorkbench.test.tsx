@@ -404,7 +404,10 @@ describe("ProjectConfigurationWorkbench", () => {
     await openWorkbenchVersionDetails();
     expect(screen.getByText(/发布基线：seed-v1/)).toBeInTheDocument();
     expect(screen.getByRole("treeitem", { name: /aurora-board\.dts.*基础.*v12/ })).toBeInTheDocument();
-    expect(screen.getAllByText("version-board-12").length).toBeGreaterThanOrEqual(2);
+    // Raw version ids stay discoverable via tooltip but never render as text (FA-23).
+    expect(screen.getAllByTitle("version-board-12").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("version-board-12")).not.toBeInTheDocument();
+    expect(screen.getAllByText("版本 v12").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("group", { name: "未编组项目文件" })).toHaveTextContent("notes.json");
     expect(await screen.findByText(/model = "Aurora"/)).toBeInTheDocument();
     await waitFor(() =>
