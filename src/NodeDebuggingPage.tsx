@@ -1,6 +1,10 @@
 import { Eye, Pencil, RotateCcw, RotateCw, Search, Send } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isHdcPlaceholderTarget } from "@wiseeff/device-command-core/hdcTargets";
+import { canPerform } from "@/app/permissions";
+import { migrateLegacyRoleId } from "@/domain/users/types";
+import { presentError } from "@/infrastructure/http/presentError";
+import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { ConfirmDialog } from "./components/common/ConfirmDialog";
 import { SectionError, SectionSkeleton } from "./components/common/SectionState";
@@ -463,9 +467,10 @@ type NodeDebuggingRuntimeStatus = "loading" | "ready" | "error";
 export function NodeDebuggingPage({
   state,
   debuggingActions,
-  runtimeStatus = "ready",
-  runtimeError,
+  runtimeStatus: runtimeStatusOverride,
+  runtimeError: runtimeErrorOverride,
   onRuntimeRetry,
+  runtimeMode,
   bridges,
   probeBridgeHealth = defaultProbeBridgeHealth,
   createBridgePairingCode
@@ -473,9 +478,11 @@ export function NodeDebuggingPage({
   state: PrototypeState;
   /** All node operations go through the DebuggingGateway port behind these actions. */
   debuggingActions: DebuggingRuntimeActions;
+  /** Test overrides; when absent the page manages the runtime lifecycle through its own mount refresh. */
   runtimeStatus?: NodeDebuggingRuntimeStatus;
   runtimeError?: string;
   onRuntimeRetry?: () => void;
+  runtimeMode?: WiseEffRuntimeMode;
   /** Bridge panel seam for non-API runtimes; defaults to the HTTP bridge listing. */
   bridges?: DeviceBridgeRecord[];
   /** Local bridge health seam; defaults to the local HTTP health probe. */
@@ -483,6 +490,45 @@ export function NodeDebuggingPage({
   /** Pairing-code seam for non-API runtimes; defaults to the HTTP client. */
   createBridgePairingCode?: () => Promise<DeviceBridgePairingCode>;
 }) {
+  // The runtime catalog hydrates when the page mounts; the shell no longer
+  // watches page.key on the page's behalf. Non-api runtimes are ready at once.
+  const isApiRuntime = runtimeMode === "api";
+  const [selfRuntimeStatus, setSelfRuntimeStatus] = useState<NodeDebuggingRuntimeStatus>(
+    isApiRuntime ? "loading" : "ready"
+  );
+  const [selfRuntimeError, setSelfRuntimeError] = useState("");
+  const [runtimeReloadToken, setRuntimeReloadToken] = useState(0);
+  useEffect(() => {
+    if (!isApiRuntime || !canPerform(migrateLegacyRoleId(state.activeRoleId), "debugging.use")) {
+      return;
+    }
+
+    let cancelled = false;
+    // First load / retry-after-error shows the skeleton; once hydrated,
+    // re-entering the page refreshes in the background without one.
+    setSelfRuntimeStatus((current) => (current === "ready" ? current : "loading"));
+    void debuggingActions
+      .refresh({ protocol: readInitialNodeDebuggingProtocol() })
+      .then(() => {
+        if (!cancelled) {
+          setSelfRuntimeStatus("ready");
+          setSelfRuntimeError("");
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setSelfRuntimeStatus("error");
+          setSelfRuntimeError(presentError(error, "无法加载调试节点数据，请稍后重试。"));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [debuggingActions, isApiRuntime, runtimeReloadToken, state.activeRoleId]);
+  const runtimeStatus = runtimeStatusOverride ?? selfRuntimeStatus;
+  const runtimeError = runtimeErrorOverride ?? selfRuntimeError;
+  const handleRuntimeRetry = onRuntimeRetry ?? (() => setRuntimeReloadToken((token) => token + 1));
   const runtimeReady = runtimeStatus === "ready";
   const [protocol, setProtocol] = useState<DebugConnectionProtocol>(readInitialNodeDebuggingProtocol);
   const [rows, setRows] = useState<RuntimeRow[]>(() =>
@@ -1127,7 +1173,7 @@ export function NodeDebuggingPage({
           ) : runtimeStatus === "error" ? (
             <SectionError
               message={runtimeError || "无法加载调试节点数据，请稍后重试。"}
-              onRetry={onRuntimeRetry ?? (() => undefined)}
+              onRetry={handleRuntimeRetry}
             />
           ) : (
             <>

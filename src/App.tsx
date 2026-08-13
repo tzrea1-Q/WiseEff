@@ -119,8 +119,6 @@ import type { UserGovernanceActions } from "@/UserPermissionsPage";
  */
 type ApiAuthStatus = "checking" | "authenticated" | "unauthenticated" | "unreachable";
 
-type RuntimeSectionStatus = "loading" | "ready" | "error";
-
 function isPendingRegistrationResponse(response: RegisterLocalAccountResponseDto): response is PendingRegistrationDto {
   return "status" in response && response.status === "pending_approval";
 }
@@ -336,16 +334,6 @@ function AppShell({
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
   const [topBarLeadingActions, setTopBarLeadingActions] = useState<ReactNode | null>(null);
   const [projectInitOpen, setProjectInitOpen] = useState(false);
-  const [debuggingRuntimeStatus, setDebuggingRuntimeStatus] = useState<RuntimeSectionStatus>(
-    runtimeMode === "api" ? "loading" : "ready"
-  );
-  const [debuggingRuntimeError, setDebuggingRuntimeError] = useState("");
-  const [debuggingReloadToken, setDebuggingReloadToken] = useState(0);
-  const [userDirectoryStatus, setUserDirectoryStatus] = useState<RuntimeSectionStatus>(
-    runtimeMode === "api" ? "loading" : "ready"
-  );
-  const [userDirectoryError, setUserDirectoryError] = useState("");
-  const [userDirectoryReloadToken, setUserDirectoryReloadToken] = useState(0);
   const [apiAuthStatus, setApiAuthStatus] = useState<ApiAuthStatus>(runtimeMode === "api" ? "checking" : "authenticated");
   const [apiAuthError, setApiAuthError] = useState("");
   const [authProbeAttempt, setAuthProbeAttempt] = useState(0);
@@ -432,7 +420,6 @@ function AppShell({
     productFeedbackRepository: productFeedbackRepositoryClient,
     dtsReloadRepository: dtsReloadRepositoryClient,
     parameterInitializationRepository: parameterInitializationRepositoryClient,
-    userGovernanceActions: userGovernanceActionsClient,
     debuggingGateway: debuggingGatewayClient,
     debuggingAdminClient: debuggingAdminCatalogClient
   } = appRuntime;
@@ -712,17 +699,11 @@ function AppShell({
         logRuntimeConnectedRef.current = true;
         dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽日志 API" });
       }
-      if (!canUseDebugging) {
-        setDebuggingRuntimeStatus("ready");
-      } else if (debuggingRefreshResult.status === "rejected") {
-        setDebuggingRuntimeStatus("error");
-        setDebuggingRuntimeError(presentError(debuggingRefreshResult.reason, "无法加载调试节点数据，请稍后重试。"));
-        failures.add("debugging");
-        dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "debugging" });
-      } else {
-        setDebuggingRuntimeStatus("ready");
-        setDebuggingRuntimeError("");
-        if (!debuggingRuntimeConnectedRef.current) {
+      if (canUseDebugging) {
+        if (debuggingRefreshResult.status === "rejected") {
+          failures.add("debugging");
+          dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "debugging" });
+        } else if (!debuggingRuntimeConnectedRef.current) {
           debuggingRuntimeConnectedRef.current = true;
           dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽调试 API" });
         }
@@ -766,20 +747,6 @@ function AppShell({
     }
     void refreshParameterInitializationFromApi();
   }, [apiAuthStatus, refreshParameterInitializationFromApi, runtimeMode]);
-
-  useEffect(() => {
-    if (page.key !== "parameter-home") {
-      return;
-    }
-    const projectId = dashboardState.projectScope ?? undefined;
-    const perspectiveRoleId = migrateLegacyRoleId(state.activeRoleId);
-    void dashboardRuntime.loadSummary({ projectId, window: dashboardState.window, perspectiveRoleId });
-    void dashboardRuntime.loadHotspots({
-      projectId,
-      window: dashboardState.window,
-      dimension: dashboardState.dimension
-    });
-  }, [page.key, dashboardState.projectScope, dashboardState.window, dashboardState.dimension, dashboardRuntime, state.activeRoleId]);
 
   useEffect(() => {
     pageKeyRef.current = page.key;
@@ -826,69 +793,6 @@ function AppShell({
       cancelledRef.current = true;
     };
   }, [appRuntime.authClient, authProbeAttempt, hydrateAuthContext, refreshApiRuntimeData, runtimeMode]);
-
-  useEffect(() => {
-    if (runtimeMode !== "api" || page.key !== "user-permissions" || !userGovernanceActionsClient || !canPerform(currentRoleId, "users.manage")) {
-      return;
-    }
-
-    let cancelled = false;
-    // First load / retry-after-error shows the skeleton; once hydrated,
-    // re-entering the page refreshes in the background without one.
-    setUserDirectoryStatus((current) => (current === "ready" ? current : "loading"));
-    userGovernanceActionsClient
-      .listUsers()
-      .then((users) => {
-        if (!cancelled) {
-          dispatch({ type: "HYDRATE_USERS", users });
-          setUserDirectoryStatus("ready");
-          setUserDirectoryError("");
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setUserDirectoryStatus("error");
-          setUserDirectoryError(presentError(error, "无法加载用户名录，请稍后重试。"));
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [currentRoleId, page.key, runtimeMode, userDirectoryReloadToken, userGovernanceActionsClient]);
-
-  useEffect(() => {
-    if (runtimeMode !== "api" || page.key !== "node-debugging") {
-      return;
-    }
-    if (!canPerform(currentRoleId, "debugging.use")) {
-      return;
-    }
-
-    let cancelled = false;
-    const protocol = readInitialNodeDebuggingProtocol();
-    // First load / retry-after-error shows the skeleton; once hydrated,
-    // re-entering the page refreshes in the background without one.
-    setDebuggingRuntimeStatus((current) => (current === "ready" ? current : "loading"));
-    void debuggingActions
-      .refresh({ protocol })
-      .then(() => {
-        if (!cancelled) {
-          setDebuggingRuntimeStatus("ready");
-          setDebuggingRuntimeError("");
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setDebuggingRuntimeStatus("error");
-          setDebuggingRuntimeError(presentError(error, "无法加载调试节点数据，请稍后重试。"));
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [currentRoleId, debuggingActions, debuggingReloadToken, page.key, runtimeMode]);
 
   useEffect(() => {
     const syncPathFromHistory = () => {
@@ -947,14 +851,6 @@ function AppShell({
   const retryAuthProbe = useCallback(() => {
     setApiAuthStatus("checking");
     setAuthProbeAttempt((attempt) => attempt + 1);
-  }, []);
-
-  const retryDebuggingRuntime = useCallback(() => {
-    setDebuggingReloadToken((token) => token + 1);
-  }, []);
-
-  const retryUserDirectory = useCallback(() => {
-    setUserDirectoryReloadToken((token) => token + 1);
   }, []);
 
   const toggleSidebarCollapsed = useCallback(() => {
@@ -1184,12 +1080,6 @@ function AppShell({
                 onNavigate={navigate}
                 onNewProject={() => setProjectInitOpen(true)}
                 debuggingActions={debuggingActions}
-                debuggingRuntimeStatus={debuggingRuntimeStatus}
-                debuggingRuntimeError={debuggingRuntimeError}
-                onDebuggingRuntimeRetry={retryDebuggingRuntime}
-                userDirectoryStatus={userDirectoryStatus}
-                userDirectoryError={userDirectoryError}
-                onUserDirectoryRetry={retryUserDirectory}
                 logActions={logActions}
                 parameterActions={parameterActions}
                 runtime={appRuntime}
@@ -1223,12 +1113,6 @@ function AppShell({
                 onNavigate={navigate}
                 onNewProject={() => setProjectInitOpen(true)}
                 debuggingActions={debuggingActions}
-                debuggingRuntimeStatus={debuggingRuntimeStatus}
-                debuggingRuntimeError={debuggingRuntimeError}
-                onDebuggingRuntimeRetry={retryDebuggingRuntime}
-                userDirectoryStatus={userDirectoryStatus}
-                userDirectoryError={userDirectoryError}
-                onUserDirectoryRetry={retryUserDirectory}
                 logActions={logActions}
                 parameterActions={parameterActions}
                 runtime={appRuntime}

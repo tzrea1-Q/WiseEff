@@ -79,12 +79,6 @@ export type PageProps = {
   onNavigate: (path: string) => void;
   search: string;
   debuggingActions?: DebuggingRuntimeActions;
-  debuggingRuntimeStatus?: RuntimeSectionStatus;
-  debuggingRuntimeError?: string;
-  onDebuggingRuntimeRetry?: () => void;
-  userDirectoryStatus?: RuntimeSectionStatus;
-  userDirectoryError?: string;
-  onUserDirectoryRetry?: () => void;
   logActions?: LogRuntimeActions;
   parameterActions?: ParameterPageActions;
   /** Mode-selected adapters assembled once by the shell (createAppRuntime). */
@@ -131,12 +125,6 @@ export function PageRouter({
   onNavigate,
   search,
   debuggingActions,
-  debuggingRuntimeStatus = "ready",
-  debuggingRuntimeError,
-  onDebuggingRuntimeRetry,
-  userDirectoryStatus = "ready",
-  userDirectoryError,
-  onUserDirectoryRetry,
   logActions,
   parameterActions,
   runtime,
@@ -371,9 +359,7 @@ export function PageRouter({
         <NodeDebuggingPage
           state={state}
           debuggingActions={debuggingActions!}
-          runtimeStatus={runtimeMode === "api" ? debuggingRuntimeStatus : "ready"}
-          runtimeError={runtimeMode === "api" ? debuggingRuntimeError : undefined}
-          onRuntimeRetry={runtimeMode === "api" ? onDebuggingRuntimeRetry : undefined}
+          runtimeMode={runtimeMode}
           bridges={mockSeams?.bridges}
           probeBridgeHealth={mockSeams?.probeBridgeHealth}
           createBridgePairingCode={mockSeams?.createPairingCode}
@@ -442,9 +428,6 @@ export function PageRouter({
           onNavigate={onNavigate}
           search={search}
           userGovernanceActions={userGovernanceActions}
-          userDirectoryStatus={runtimeMode === "api" ? userDirectoryStatus : "ready"}
-          userDirectoryError={runtimeMode === "api" ? userDirectoryError : undefined}
-          onUserDirectoryRetry={runtimeMode === "api" ? onUserDirectoryRetry : undefined}
         />
       );
     case "audit":

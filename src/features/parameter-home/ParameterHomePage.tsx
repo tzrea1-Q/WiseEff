@@ -48,6 +48,25 @@ export function ParameterHomePage({
 }: ParameterHomePageProps) {
   const [workbenchPage, setWorkbenchPage] = useState<WorkbenchPage>(DEFAULT_WORKBENCH_PAGE);
 
+  // The dashboard loads when this page mounts or its analysis context changes;
+  // the shell no longer watches page.key on the page's behalf.
+  useEffect(() => {
+    const projectId = dashboardState.projectScope ?? undefined;
+    const perspectiveRoleId = migrateLegacyRoleId(state.activeRoleId);
+    void dashboardRuntime.loadSummary({ projectId, window: dashboardState.window, perspectiveRoleId });
+    void dashboardRuntime.loadHotspots({
+      projectId,
+      window: dashboardState.window,
+      dimension: dashboardState.dimension
+    });
+  }, [
+    dashboardState.projectScope,
+    dashboardState.window,
+    dashboardState.dimension,
+    dashboardRuntime,
+    state.activeRoleId
+  ]);
+
   const hotspotCount = dashboardState.hotspots.data?.length ?? 0;
   useTopBarLeadingActions(
     <WorkbenchPageToggle

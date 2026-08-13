@@ -1,6 +1,6 @@
 # App Shell Decomposition (Architecture Review Candidates 1 + 2)
 
-- **Status:** Active — Wave 1 landed (`34305cc9`); Wave 2 landed via PR #324; Wave 4 landed via PR #342 (executed before Wave 3: pure verbatim move, and shrinking the shell first made the Wave 3 refactor smaller); Wave 3 landed on `refactor/app-runtime-composition`. Remaining: docs gate closeout + the deferred `page.key` data-loading descent (tracked below)
+- **Status:** Completed 2026-08-13 — Wave 1 landed (`34305cc9`); Wave 2 via PR #324; Wave 4 via PR #342 (executed before Wave 3: pure verbatim move, and shrinking the shell first made the Wave 3 refactor smaller); Wave 3 via PR #375; page-owned data loading landed on `refactor/page-owned-loading`. Documentation gate closed: ADR-0023 indexed in `CONTEXT.md` / `docs/adr/README.md` (landed with the parallel ADR renumbering), bilingual FRONTEND pages updated per wave, C2/C6 follow-ups recorded as TD-108/TD-109.
 - **Branch:** Wave 1 on `refactor/extract-app-state` (from `main` @ `8ab19113`); Wave 2 onward on `refactor/app-state-module` (from Wave 1 tip) after the original branch name was contested by parallel sessions sharing one worktree
 - **Owner:** Frontend
 - **Scope source:** 2026-08-12 architecture review. Candidate 1 (decompose the `App.tsx` prototype shell) plus Candidate 2 (move domain types out of `mockData.ts`). Backend candidates 3–4 are owned by `2026-08-12-database-layer-deepening.md`; candidate 5 remains tracked by TD-069; candidate 6 is not scheduled.
@@ -46,9 +46,9 @@ Each wave is one commit on the plan branch, gated by `npm run build` plus the ta
 - `App.tsx` lands at **1,566 lines** (from 4,524 after Wave 2; original 6,092), beating the ~1,800 goal before Wave 3 has run; `App.test.tsx` wall time dropped from ~182s to ~21s.
 - Gate (run): app-project `tsc --noEmit` clean; logsPage suites (63), reducer + page suites (236), `App.test.tsx` (118), `vite build`, mock-mode browser spot-check.
 
-### Deferred — page-owned data loading (not yet scheduled)
+### Wave 5 — page-owned data loading — **landed**
 
-`AppShell` still runs four `page.key === "…"`-guarded data-loading effects (parameter-home dashboard, user-permissions hydrate, node-debugging refresh, initialization refresh). Moving them into their pages removes the last per-feature knowledge from the shell; it touches page components, so it ships as its own wave with page-level tests. If this plan closes before that lands, record it in `tech-debt-tracker.md`.
+The three `page.key === "…"`-guarded data-loading effects moved into their pages (branch `refactor/page-owned-loading`): `ParameterHomePage` loads its dashboard on mount/context change; `UserPermissionsPage` hydrates governed users on mount (the governance client existing only in api mode doubles as the mode guard); `NodeDebuggingPage` owns runtime readiness via a mount refresh (`runtimeReady` prop kept as a test override; the shell's `debuggingRuntimeReady` state, the `PageProps.debuggingRuntimeReady` field, and the ready bookkeeping inside `refreshApiRuntimeData` are deleted). The initialization refresh stays in the shell deliberately — it is `apiAuthStatus`-driven cross-page data, not `page.key`-guarded.
 
 ## Verification
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties, type Dispatch, type FormEvent } from "react";
 import { UserPlus } from "lucide-react";
 
+import { canPerform } from "@/app/permissions";
 import type { AppAction } from "@/application/state/appState";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { DataTable, type Column } from "@/components/admin";
@@ -200,10 +201,54 @@ export function UserPermissionsPage({
   dispatch,
   search: _search,
   userGovernanceActions,
-  userDirectoryStatus = "ready",
-  userDirectoryError,
+  userDirectoryStatus: userDirectoryStatusOverride,
+  userDirectoryError: userDirectoryErrorOverride,
   onUserDirectoryRetry
 }: UserPermissionsPageProps) {
+  // Governed rows hydrate when the page mounts (the governance client only
+  // exists in api mode, so its presence doubles as the mode guard); the page
+  // owns the loading/error lifecycle, with the props kept as test overrides.
+  const canManageDirectory =
+    Boolean(userGovernanceActions) && canPerform(migrateLegacyRoleId(state.activeRoleId), "users.manage");
+  const [selfDirectoryStatus, setSelfDirectoryStatus] = useState<UserDirectoryStatus>(
+    canManageDirectory ? "loading" : "ready"
+  );
+  const [selfDirectoryError, setSelfDirectoryError] = useState("");
+  const [directoryReloadToken, setDirectoryReloadToken] = useState(0);
+  useEffect(() => {
+    if (!userGovernanceActions || !canPerform(migrateLegacyRoleId(state.activeRoleId), "users.manage")) {
+      return;
+    }
+
+    let cancelled = false;
+    // First load / retry-after-error shows the skeleton; once hydrated,
+    // re-entering the page refreshes in the background without one.
+    setSelfDirectoryStatus((current) => (current === "ready" ? current : "loading"));
+    userGovernanceActions
+      .listUsers()
+      .then((users) => {
+        if (!cancelled) {
+          dispatch({ type: "HYDRATE_USERS", users });
+          setSelfDirectoryStatus("ready");
+          setSelfDirectoryError("");
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setSelfDirectoryStatus("error");
+          setSelfDirectoryError(presentError(error, "无法加载用户名录，请稍后重试。"));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [directoryReloadToken, dispatch, state.activeRoleId, userGovernanceActions]);
+  const userDirectoryStatus = userDirectoryStatusOverride ?? selfDirectoryStatus;
+  const userDirectoryError = userDirectoryErrorOverride ?? selfDirectoryError;
+  const handleUserDirectoryRetry =
+    onUserDirectoryRetry ?? (() => setDirectoryReloadToken((token) => token + 1));
+
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<PlatformRoleId | "all">("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -629,7 +674,7 @@ export function UserPermissionsPage({
             ) : userDirectoryStatus === "error" ? (
               <SectionError
                 message={userDirectoryError || "无法加载用户名录，请稍后重试。"}
-                onRetry={onUserDirectoryRetry ?? (() => undefined)}
+                onRetry={handleUserDirectoryRetry}
               />
             ) : (
               <DataTable

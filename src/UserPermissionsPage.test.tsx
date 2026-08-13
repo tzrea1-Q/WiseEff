@@ -34,6 +34,9 @@ function renderPageWithActions(userGovernanceActions: UserGovernanceActions) {
       onNavigate={onNavigate}
       search=""
       userGovernanceActions={userGovernanceActions}
+      // The page owns the hydrate lifecycle now; these cases assert on the
+      // ready directory, so pin the override instead of awaiting the stub.
+      userDirectoryStatus="ready"
     />
   );
 

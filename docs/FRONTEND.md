@@ -240,7 +240,7 @@ View-model types live in `src/domain/parameters/dashboardTypes.ts` (`DashboardSu
 - `components/InsightSection.tsx` loads trend/risk charts and the hotspot leaderboard from dashboard state.
 - `workbench/derivePersonalWorkbench.ts` composes role-specific next actions from `WorkbenchSignals`, drafts, change requests, and hotspot context.
 
-`dashboardState` keeps independent section status for `summary` and `hotspots` (`idle | loading | ready | empty | error`). `App.tsx` triggers `loadSummary` and `loadHotspots` when `/parameter-home` mounts or when `window`, `dimension`, or active project changes.
+`dashboardState` keeps independent section status for `summary` and `hotspots` (`idle | loading | ready | empty | error`). `ParameterHomePage` triggers `loadSummary` and `loadHotspots` itself when it mounts or when `window`, `dimension`, or the project scope changes; the shell no longer watches `page.key` on the page's behalf.
 
 Runtime split:
 
