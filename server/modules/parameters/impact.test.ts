@@ -1,24 +1,20 @@
-import { describe, expect, it } from "vitest";
-import type { QueryResult, Queryable } from "../../shared/database/client";
+/**
+ * Behavior-level coverage for change-request impact analysis: the legacy
+ * two-item template fallback and the structural DTS path (phandle references,
+ * compatible peers, config-set variants) against a real database. Asserts
+ * returned impact items — never SQL text.
+ */
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import {
+  createInMemoryTestDatabase,
+  isTestDatabaseAvailable,
+  type InMemoryTestDatabase
+} from "../../testing/testDatabase";
+import { seedCoreGraph } from "../../testing/fixtures";
 import { buildChangeRequestImpact, buildTemplateImpact } from "./impact";
 
-type QueryCall = {
-  text: string;
-  values: unknown[];
-};
-
-function createFakeDb(handler: (call: QueryCall) => unknown[]) {
-  const calls: QueryCall[] = [];
-  const db: Queryable = {
-    query: async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
-      const call = { text, values };
-      calls.push(call);
-      const rows = handler(call);
-      return { rows: rows as Row[], rowCount: rows.length };
-    }
-  };
-  return { db, calls };
-}
+const databaseAvailable = await isTestDatabaseAvailable();
 
 const templateInput = {
   title: "status",
@@ -47,147 +43,187 @@ describe("buildTemplateImpact", () => {
   });
 });
 
-describe("buildChangeRequestImpact", () => {
-  it("falls back to template when source binding is missing", async () => {
-    const { db, calls } = createFakeDb(() => {
-      throw new Error("should not query structural tables without source binding");
-    });
+describe.skipIf(!databaseAvailable)("buildChangeRequestImpact", () => {
+  let db: InMemoryTestDatabase;
 
-    const impact = await buildChangeRequestImpact(db, {
-      ...templateInput,
-      projectId: "project-1",
-      projectParameterValueId: "ppv-1",
-      sourceFileName: null,
-      sourceNodePath: null
+  beforeEach(async () => {
+    db = await createInMemoryTestDatabase();
+    await seedCoreGraph(db, {
+      organization: { id: "org-1", name: "ChargeLab" },
+      users: [{ id: "user-1", name: "Riley Chen", email: "riley@example.com" }],
+      projects: [
+        { id: "project-1", name: "Aurora", code: "AUR" },
+        { id: "project-2", name: "Borealis", code: "BOR" }
+      ]
     });
-
-    expect(impact).toEqual(buildTemplateImpact(templateInput));
-    expect(calls).toHaveLength(0);
   });
 
-  it("falls back to template when source file/node has no dts rows", async () => {
-    const { db } = createFakeDb((call) => {
-      if (call.text.includes("from dts_nodes") || call.text.includes("join dts_nodes")) {
-        return [];
-      }
-      if (call.text.includes("project_parameter_files")) {
-        return [];
-      }
-      return [];
-    });
+  afterEach(async () => {
+    await db?.rollback();
+  });
 
-    const impact = await buildChangeRequestImpact(db, {
+  async function seedFile(input: {
+    id: string;
+    projectId?: string;
+    fileName: string;
+    configSetId?: string | null;
+    sortOrder?: number;
+  }) {
+    await db.query(
+      `insert into project_parameter_files (
+         id, organization_id, project_id, file_name, format, config_set_id, config_set_sort_order
+       ) values ($1, 'org-1', $2, $3, 'dts', $4, $5)`,
+      [input.id, input.projectId ?? "project-1", input.fileName, input.configSetId ?? null, input.sortOrder ?? 0]
+    );
+  }
+
+  async function seedCurrentVersion(input: { id: string; fileId: string }) {
+    await db.query(
+      `insert into project_parameter_file_versions (
+         id, file_id, version_number, storage_key, checksum, size_bytes, origin, created_by_user_id
+       ) values ($1, $2, 1, $3, 'checksum', 100, 'upload', 'user-1')`,
+      [input.id, input.fileId, `org-1/${input.id}`]
+    );
+    await db.query(`update project_parameter_files set current_version_id = $1 where id = $2`, [
+      input.id,
+      input.fileId
+    ]);
+  }
+
+  async function seedNode(input: {
+    id: string;
+    fileVersionId: string;
+    nodePath: string;
+    compatible?: string | null;
+  }) {
+    await db.query(
+      `insert into dts_nodes (id, file_version_id, name, node_path, compatible)
+       values ($1, $2, $3, $4, $5)`,
+      [
+        input.id,
+        input.fileVersionId,
+        input.nodePath.split("/").filter(Boolean).at(-1) ?? "node",
+        input.nodePath,
+        input.compatible ?? null
+      ]
+    );
+  }
+
+  function impactInput(overrides: Partial<Parameters<typeof buildChangeRequestImpact>[1]> = {}) {
+    return {
       ...templateInput,
       projectId: "project-1",
       projectParameterValueId: "ppv-1",
       sourceFileName: "board.dts",
-      sourceNodePath: "amba/i2c@1/chip@6E/status"
-    });
+      sourceNodePath: "amba/i2c@1/chip@6E/status",
+      ...overrides
+    };
+  }
 
+  it("falls back to template when source binding is missing", async () => {
+    const impact = await buildChangeRequestImpact(db, impactInput({ sourceFileName: null, sourceNodePath: null }));
+    expect(impact).toEqual(buildTemplateImpact(templateInput));
+  });
+
+  it("falls back to template when the source file and node have no dts rows", async () => {
+    // The file exists with a current version, but no node matches the source path.
+    await seedFile({ id: "file-board", fileName: "board.dts" });
+    await seedCurrentVersion({ id: "ver-1", fileId: "file-board" });
+
+    const impact = await buildChangeRequestImpact(db, impactInput());
     expect(impact).toEqual(buildTemplateImpact(templateInput));
   });
 
   it("includes phandle, compatible, and config-set impact kinds for structural changes", async () => {
-    const { db } = createFakeDb((call) => {
-      if (call.text.includes("project_parameter_files") && call.text.includes("dts_nodes")) {
-        return [
-          {
-            node_id: "node-chip",
-            node_path: "amba/i2c@1/chip@6E",
-            compatible: "vendor,chip123",
-            file_id: "file-board",
-            file_name: "board.dts",
-            version_id: "ver-1",
-            config_set_id: "cs-default"
-          }
-        ];
-      }
-      if (call.text.includes("dts_phandle_refs")) {
-        return [
-          {
-            from_node_path: "amba/consumer",
-            from_property: "chip-handle",
-            target_label: "chip_label"
-          }
-        ];
-      }
-      if (call.text.includes("compatible") && call.text.includes("dts_nodes")) {
-        return [
-          {
-            node_path: "amba/i2c@2/chip@70",
-            compatible: "vendor,chip123"
-          }
-        ];
-      }
-      if (call.text.includes("config_set_id") && call.text.includes("project_parameter_files")) {
-        return [{ file_name: "board-overlay.dts" }, { file_name: "board-sku-b.dts" }];
-      }
-      return [];
+    await db.query(
+      `insert into dts_config_set (id, organization_id, project_id, name)
+       values ('cs-default', 'org-1', 'project-1', 'default')`
+    );
+    await seedFile({ id: "file-board", fileName: "board.dts", configSetId: "cs-default", sortOrder: 0 });
+    await seedCurrentVersion({ id: "ver-1", fileId: "file-board" });
+    // Config-set peers, inserted out of sort order to prove database ordering;
+    // a file in another config set stays out.
+    await seedFile({ id: "file-sku-b", fileName: "board-sku-b.dts", configSetId: "cs-default", sortOrder: 2 });
+    await seedFile({ id: "file-overlay", fileName: "board-overlay.dts", configSetId: "cs-default", sortOrder: 1 });
+    await seedFile({ id: "file-other-set", fileName: "other-set.dts", configSetId: null });
+    // A same-named file in another project must not shadow the bound node.
+    await seedFile({ id: "file-foreign", projectId: "project-2", fileName: "board.dts" });
+    await seedCurrentVersion({ id: "ver-foreign", fileId: "file-foreign" });
+    await seedNode({ id: "node-foreign", fileVersionId: "ver-foreign", nodePath: "amba/i2c@1/chip@6E" });
+
+    await seedNode({
+      id: "node-chip",
+      fileVersionId: "ver-1",
+      nodePath: "amba/i2c@1/chip@6E",
+      compatible: "vendor,chip123"
     });
-
-    const impact = await buildChangeRequestImpact(db, {
-      ...templateInput,
-      projectId: "project-1",
-      projectParameterValueId: "ppv-1",
-      sourceFileName: "board.dts",
-      sourceNodePath: "amba/i2c@1/chip@6E/status"
+    await seedNode({
+      id: "node-peer",
+      fileVersionId: "ver-1",
+      nodePath: "amba/i2c@2/chip@70",
+      compatible: "vendor,chip123"
     });
-
-    const kinds = impact.map((item) => item.kind);
-    expect(kinds).toContain("phandle");
-    expect(kinds).toContain("compatible");
-    expect(kinds).toContain("config-set");
-
-    expect(impact).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: "phandle",
-          name: "amba/consumer",
-          risk: "Medium"
-        }),
-        expect.objectContaining({
-          kind: "compatible",
-          name: "amba/i2c@2/chip@70",
-          risk: "Medium"
-        }),
-        expect.objectContaining({
-          kind: "config-set",
-          name: "board-overlay.dts",
-          risk: "Medium"
-        })
-      ])
+    // Different compatible: not a peer.
+    await seedNode({
+      id: "node-other-compat",
+      fileVersionId: "ver-1",
+      nodePath: "amba/i2c@3/chip@99",
+      compatible: "vendor,other"
+    });
+    await seedNode({ id: "node-consumer", fileVersionId: "ver-1", nodePath: "amba/consumer" });
+    await db.query(
+      `insert into dts_properties (id, node_id, name, value_type, raw_text, normalized_value)
+       values
+         ('prop-handle', 'node-consumer', 'chip-handle', 'phandle', '<&chip_label>', '<&chip_label>'),
+         ('prop-unrelated', 'node-consumer', 'other-handle', 'phandle', '<&other>', '<&other>')`
+    );
+    // Only references resolved to the bound node count; the unrelated ref targets a peer.
+    await db.query(
+      `insert into dts_phandle_refs (id, from_property_id, target_label, resolved_target_node_id)
+       values
+         ('ref-1', 'prop-handle', 'chip_label', 'node-chip'),
+         ('ref-2', 'prop-unrelated', 'other', 'node-peer')`
     );
 
-    // Structural results replace the legacy module-only template pair.
-    expect(impact.some((item) => item.kind === "module" && item.note.includes("module review"))).toBe(false);
+    const impact = await buildChangeRequestImpact(db, impactInput());
+
+    // Structural results replace the legacy module filler but keep the parameter item.
+    expect(impact).toEqual([
+      buildTemplateImpact(templateInput)[0],
+      {
+        kind: "phandle",
+        name: "amba/consumer",
+        note: "Phandle reference via chip-handle → chip_label targets amba/i2c@1/chip@6E.",
+        risk: "Medium"
+      },
+      {
+        kind: "compatible",
+        name: "amba/i2c@2/chip@70",
+        note: 'Shares compatible "vendor,chip123" with amba/i2c@1/chip@6E.',
+        risk: "Medium"
+      },
+      {
+        kind: "config-set",
+        name: "board-overlay.dts",
+        note: "Same configuration set variant as board.dts.",
+        risk: "Medium"
+      },
+      {
+        kind: "config-set",
+        name: "board-sku-b.dts",
+        note: "Same configuration set variant as board.dts.",
+        risk: "Medium"
+      }
+    ]);
   });
 
   it("falls back to template when structural queries all return empty", async () => {
-    const { db } = createFakeDb((call) => {
-      if (call.text.includes("project_parameter_files") && call.text.includes("dts_nodes")) {
-        return [
-          {
-            node_id: "node-lonely",
-            node_path: "lonely",
-            compatible: null,
-            file_id: "file-board",
-            file_name: "board.dts",
-            version_id: "ver-1",
-            config_set_id: null
-          }
-        ];
-      }
-      return [];
-    });
+    // The node is bound, but it has no compatible, no config set, and no inbound phandles.
+    await seedFile({ id: "file-board", fileName: "board.dts" });
+    await seedCurrentVersion({ id: "ver-1", fileId: "file-board" });
+    await seedNode({ id: "node-lonely", fileVersionId: "ver-1", nodePath: "lonely" });
 
-    const impact = await buildChangeRequestImpact(db, {
-      ...templateInput,
-      projectId: "project-1",
-      projectParameterValueId: "ppv-1",
-      sourceFileName: "board.dts",
-      sourceNodePath: "lonely/status"
-    });
-
+    const impact = await buildChangeRequestImpact(db, impactInput({ sourceNodePath: "lonely/status" }));
     expect(impact).toEqual(buildTemplateImpact(templateInput));
   });
 });
