@@ -20,6 +20,8 @@ export type VerticalTimelineItem = {
   marker?: string;
   time: string;
   title: string;
+  /** Optional precise timestamp (or other detail) surfaced as a hover tooltip on the title. */
+  titleHint?: string;
 };
 
 export function getUserName(users: PrototypeState["users"], userId?: string) {
@@ -67,14 +69,14 @@ export function StatusBadge({ status }: { status: string }) {
 export function VerticalTimeline({ items }: { items: VerticalTimelineItem[] }) {
   return (
     <div className="vertical-timeline">
-      {items.map(({ body, isCurrent, marker, time, title }) => (
+      {items.map(({ body, isCurrent, marker, time, title, titleHint }) => (
         <div className={`vertical-timeline-item${isCurrent ? " vertical-timeline-item--current" : ""}`} key={`${time}-${title}`}>
           <span className="timeline-dot" />
           <div className="vertical-timeline-meta">
             <small>{time}</small>
             {marker ? <span className="vertical-timeline-current-badge">{marker}</span> : null}
           </div>
-          <strong>{formatWorkflowDisplayText(title)}</strong>
+          <strong title={titleHint}>{formatWorkflowDisplayText(title)}</strong>
           <p>{typeof body === "string" ? formatWorkflowDisplayText(body) : body}</p>
         </div>
       ))}

@@ -17,6 +17,7 @@ import type {
   ProjectParameterFileVersion
 } from "@/application/ports/ParameterFileRepository";
 import type { SessionPropertyDraft } from "@/application/project-configuration/sessionDrafts";
+import { formatAbsolute, formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
 import { isCriticalDtsNodePath } from "@/components/parameters/dtsCriticalPath";
 import {
   StructuredValueEditor,
@@ -740,7 +741,7 @@ export function WorkbenchInspectorPanel({
                       </strong>
                       <small className="mono">{version.id}</small>
                       <span>来源：{ORIGIN_LABELS[version.origin]}</span>
-                      <span>创建时间：{version.createdAt}</span>
+                      <span title={formatAbsolute(version.createdAt)}>创建时间：{formatRelativeOrAbsolute(version.createdAt)}</span>
                       <span>操作人：{version.createdByUserId ?? "未记录"}</span>
                     </div>
                     <div className="configuration-workbench__version-actions">

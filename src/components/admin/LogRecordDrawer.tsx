@@ -2,6 +2,7 @@ import { Archive, ExternalLink, RefreshCw, Sparkles, ThumbsUp, TriangleAlert } f
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { formatPercent, normalizePercentValue } from "@/domain/format/formatPercent";
 import { STAGE_LABELS, type LogRecord } from "@/domain/prototype/types";
 
 const drawerDegradedReasonLabels: Record<NonNullable<LogRecord["degradedReason"]>, string> = {
@@ -86,6 +87,8 @@ export function LogRecordDrawer({
     return null;
   }
 
+  const confidencePercent = normalizePercentValue(record.confidence);
+
   return (
     <Sheet
       open={open}
@@ -117,18 +120,18 @@ export function LogRecordDrawer({
                 <div
                   className={cn(
                     "h-full transition-all",
-                    record.confidence >= 85
+                    confidencePercent >= 85
                       ? "bg-emerald-500"
-                      : record.confidence >= 60
+                      : confidencePercent >= 60
                         ? "bg-amber-500"
-                        : record.confidence > 0
+                        : confidencePercent > 0
                           ? "bg-destructive"
                           : "bg-muted"
                   )}
-                  style={{ width: `${record.confidence}%` }}
+                  style={{ width: `${Math.min(confidencePercent, 100)}%` }}
                 />
               </div>
-              <span className="font-mono text-foreground">{record.confidence}%</span>
+              <span className="font-mono text-foreground">{formatPercent(record.confidence)}</span>
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
               影响范围：<span className="text-foreground">{record.impact || "暂无"}</span>

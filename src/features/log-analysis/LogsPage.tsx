@@ -5,6 +5,7 @@ import { type PageProps } from "@/app/routes";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { useToast } from "@/components/common/toast/ToastProvider";
 import type { LogDomain } from "@/domain/logs/types";
+import { formatPercent, normalizePercentValue } from "@/domain/format/formatPercent";
 import { SEVERITY_LABELS, STAGE_LABELS, type LogEvidence, type LogRecord, type LogStageId } from "@/domain/prototype/types";
 import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { EmptyState, PanelHeader, SectionLabel } from "@/workbenchUi";
@@ -158,7 +159,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   }, [activeLog.id]);
 
   useEffect(() => {
-    setLiveMessage(`已切换到 ${activeLog.fileName}，${logStatusLabels[activeLog.status]}，置信度 ${activeLog.confidence}%`);
+    setLiveMessage(`已切换到 ${activeLog.fileName}，${logStatusLabels[activeLog.status]}，置信度 ${formatPercent(activeLog.confidence)}`);
   }, [activeLog.confidence, activeLog.fileName, activeLog.id, activeLog.status]);
 
   useEffect(() => {
@@ -241,7 +242,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
       "",
       `- 状态：${logStatusLabels[activeLog.status]}`,
       `- 严重度：${SEVERITY_LABELS[activeLog.severity]}`,
-      `- 置信度：${activeLog.confidence}%`,
+      `- 置信度：${formatPercent(activeLog.confidence)}`,
       `- 采集时间：${activeLog.capturedAt}`,
       "",
       "## 结论",
@@ -664,16 +665,17 @@ function SeverityBadge({ severity, processing }: { severity: LogRecord["severity
 }
 
 function ConfidenceBar({ value, status }: { value: number; status: LogRecord["status"] }) {
-  const tone = status === "Processing" ? "indeterminate" : value >= 90 ? "high" : value >= 70 ? "mid" : "low";
+  const percent = normalizePercentValue(value);
+  const tone = status === "Processing" ? "indeterminate" : percent >= 90 ? "high" : percent >= 70 ? "mid" : "low";
 
   return (
     <div className={classNames("confidence-bar", `confidence-bar--${tone}`)}>
       <div>
         <span>AI置信度</span>
-        <strong>{value}%</strong>
+        <strong>{formatPercent(value)}</strong>
       </div>
-      <div aria-label="分析置信度" aria-valuemax={100} aria-valuemin={0} aria-valuenow={value} role="progressbar">
-        <i style={{ width: `${Math.max(0, Math.min(value, 100))}%` }} />
+      <div aria-label="分析置信度" aria-valuemax={100} aria-valuemin={0} aria-valuenow={percent} role="progressbar">
+        <i style={{ width: `${Math.min(percent, 100)}%` }} />
       </div>
     </div>
   );
@@ -1248,7 +1250,7 @@ function LogsAuxPanel({
                 onClick={() => onSelectLog(log.id)}
               >
                 <strong>{log.fileName}</strong>
-                <span>{logStatusLabels[log.status]} · {log.confidence}%</span>
+                <span>{logStatusLabels[log.status]} · {formatPercent(log.confidence)}</span>
               </button>
             ))}
           </div>

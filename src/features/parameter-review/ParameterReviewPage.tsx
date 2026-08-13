@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { formatAbsolute, formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
 import { isValidMergeLink } from "@/domain/parameters/mergeLink";
 import { canActOnReviewRequest, isReviewHistoryForRole, splitChangeRequestsForReviewQueue } from "@/domain/parameters/reviewQueue";
 import { type ProjectParameterInitializationDraft, type ProjectParameterInitializationReview } from "@/domain/parameters/types";
@@ -665,7 +666,8 @@ export function ParameterReviewPage({
                   },
                   {
                     time: "已提交",
-                    title: selectedInitialization.review.submittedAt,
+                    title: formatRelativeOrAbsolute(selectedInitialization.review.submittedAt),
+                    titleHint: formatAbsolute(selectedInitialization.review.submittedAt),
                     body: selectedInitialization.draft.notes || "已从来源项目推荐值生成初始化快照。"
                   }
                 ]}
