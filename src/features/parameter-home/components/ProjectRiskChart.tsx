@@ -1,3 +1,12 @@
+import {
+  chartAxisTick,
+  chartGridStroke,
+  chartSeriesColor,
+  chartStatusColors,
+  chartTooltipContentStyle,
+  chartTooltipItemStyle,
+  chartTooltipLabelStyle
+} from "@/domain/format/chartTheme";
 import type { ProjectRiskBucket } from "@/domain/parameters/dashboardTypes";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
@@ -17,14 +26,20 @@ export function ProjectRiskChart({ buckets }: ProjectRiskChartProps) {
     <figure role="img" aria-label="各项目参数风险分布" className="parameter-home__chart-shell">
       <ResponsiveContainer width="100%" height={220}>
         <BarChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-          <YAxis allowDecimals={false} width={28} tick={{ fontSize: 11 }} />
-          <Tooltip />
+          <CartesianGrid stroke={chartGridStroke} strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="label" tick={chartAxisTick} />
+          <YAxis allowDecimals={false} width={28} tick={chartAxisTick} />
+          <Tooltip
+            contentStyle={chartTooltipContentStyle}
+            labelStyle={chartTooltipLabelStyle}
+            itemStyle={chartTooltipItemStyle}
+          />
           <Legend />
-          <Bar dataKey="high" name="高风险" stackId="risk" fill="var(--risk-high)" />
-          <Bar dataKey="medium" name="中风险" stackId="risk" fill="var(--risk-medium)" />
-          <Bar dataKey="low" name="低风险" stackId="risk" fill="var(--risk-low)" />
+          {/* Risk is a semantic axis: high/medium map to status tokens, low
+              stays on the categorical accent (chart-1) as the neutral series. */}
+          <Bar dataKey="high" name="高风险" stackId="risk" fill={chartStatusColors.danger} />
+          <Bar dataKey="medium" name="中风险" stackId="risk" fill={chartStatusColors.warning} />
+          <Bar dataKey="low" name="低风险" stackId="risk" fill={chartSeriesColor(0)} />
         </BarChart>
       </ResponsiveContainer>
       <table className="parameter-home__chart-fallback">

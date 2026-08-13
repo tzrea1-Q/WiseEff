@@ -1,3 +1,11 @@
+import {
+  chartAxisTick,
+  chartGridStroke,
+  chartSeriesColor,
+  chartTooltipContentStyle,
+  chartTooltipItemStyle,
+  chartTooltipLabelStyle
+} from "@/domain/format/chartTheme";
 import type { TrendPoint } from "@/domain/parameters/dashboardTypes";
 import {
   Area,
@@ -31,23 +39,27 @@ export function UpdateTrendChart({
     <figure role="img" aria-label="参数更新趋势" className="parameter-home__chart-shell">
       <ResponsiveContainer width="100%" height={220}>
         <AreaChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-          <CartesianGrid stroke="var(--surface-mid)" strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="label" tick={{ fontSize: 11, fill: "var(--app-muted)" }} interval="preserveStartEnd" />
-          <YAxis allowDecimals={false} width={28} tick={{ fontSize: 11, fill: "var(--app-muted)" }} />
-          <Tooltip />
+          <CartesianGrid stroke={chartGridStroke} strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="label" tick={chartAxisTick} interval="preserveStartEnd" />
+          <YAxis allowDecimals={false} width={28} tick={chartAxisTick} />
+          <Tooltip
+            contentStyle={chartTooltipContentStyle}
+            labelStyle={chartTooltipLabelStyle}
+            itemStyle={chartTooltipItemStyle}
+          />
           <Area
             type="monotone"
             dataKey="changeCount"
             name={changeSeriesName}
-            stroke="var(--ph-accent-light, #5b8fd9)"
-            fill="var(--primary-soft)"
-            fillOpacity={0.42}
+            stroke={chartSeriesColor(0)}
+            fill={chartSeriesColor(0)}
+            fillOpacity={0.16}
           />
           <Line
             type="monotone"
             dataKey="workflowEventCount"
             name={workflowSeriesName}
-            stroke="var(--app-secondary)"
+            stroke={chartSeriesColor(1)}
             strokeWidth={2}
             dot={false}
           />

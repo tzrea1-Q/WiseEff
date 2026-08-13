@@ -1,5 +1,6 @@
 import { Minus, TrendingDown, TrendingUp } from "lucide-react";
 import { useState, type KeyboardEvent, type ReactNode } from "react";
+import { chartAxisTick, chartGridStroke, chartSeriesColor } from "@/domain/format/chartTheme";
 import { cn } from "@/lib/utils";
 
 type MetricTrend = {
@@ -106,19 +107,19 @@ function SparkChart({ data }: { data?: number[] }) {
     <div className="relative w-full">
       <svg viewBox={`0 0 ${VW} ${VH}`} className="h-40 w-full">
         {gridYs.map((y, i) => (
-          <line key={i} x1={PL} x2={VW - PR} y1={y} y2={y} stroke="#d1d5db" strokeDasharray="3 4" strokeWidth={0.8} />
+          <line key={i} x1={PL} x2={VW - PR} y1={y} y2={y} stroke={chartGridStroke} strokeDasharray="3 4" strokeWidth={0.8} />
         ))}
         {[maxVal, midVal, 0].map((tick, i) => (
-          <text key={i} x={PL - 4} y={gridYs[i] + 3} fill="#6b7280" fontSize={8} textAnchor="end" style={{ fontFamily: "system-ui, sans-serif" }}>{tick}</text>
+          <text key={i} x={PL - 4} y={gridYs[i] + 3} fill={chartAxisTick.fill} fontSize={8} textAnchor="end" style={{ fontFamily: "var(--font-sans)" }}>{tick}</text>
         ))}
         {xLabels.map(({ idx, label }) => (
-          <text key={idx} x={points[idx]?.x ?? PL} y={VH - 5} fill="#6b7280" fontSize={8} textAnchor="middle" style={{ fontFamily: "system-ui, sans-serif" }}>{label}</text>
+          <text key={idx} x={points[idx]?.x ?? PL} y={VH - 5} fill={chartAxisTick.fill} fontSize={8} textAnchor="middle" style={{ fontFamily: "var(--font-sans)" }}>{label}</text>
         ))}
-        <polyline points={linePath} fill="none" stroke="var(--app-primary, #2563eb)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+        <polyline points={linePath} fill="none" stroke={chartSeriesColor(0)} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
         {hp && (
           <>
-            <line x1={hp.x} x2={hp.x} y1={PT} y2={PT + ch} stroke="var(--app-primary, #2563eb)" strokeDasharray="2 3" strokeWidth={1} />
-            <circle cx={hp.x} cy={hp.y} r={4} fill="var(--app-primary, #2563eb)" stroke="#fff" strokeWidth={2} />
+            <line x1={hp.x} x2={hp.x} y1={PT} y2={PT + ch} stroke={chartSeriesColor(0)} strokeDasharray="2 3" strokeWidth={1} />
+            <circle cx={hp.x} cy={hp.y} r={4} fill={chartSeriesColor(0)} stroke="var(--surface)" strokeWidth={2} />
           </>
         )}
         <rect x={PL} y={PT} width={cw} height={ch} fill="transparent" onMouseMove={handleMouseMove} onMouseLeave={() => setHoverIdx(null)} style={{ cursor: "crosshair" }} />

@@ -143,9 +143,11 @@
   --tertiary-soft: #d7e2ff;
   --amber: #a05b00;
   --amber-soft: rgba(160, 91, 0, 0.14);
-  --risk-high: #d23c3c;
-  --risk-medium: #e4953a;
-  --risk-low: #6a8ad6;
+  /* Risk hues align with status/chart tokens (kept as aliases for the two
+     CSS-drawn risk charts; drop with their consumers). */
+  --risk-high: var(--danger);
+  --risk-medium: var(--warning);
+  --risk-low: var(--chart-1);
 
   /* ── Legacy aliases (bridge onto semantic tokens; migrate consumers, then drop) ── */
   --app-primary: var(--accent-pressed);
@@ -190,11 +192,16 @@
   --accent-foreground: var(--text);
   --destructive: var(--danger);
   --input: var(--border);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  /*
+   * Categorical chart ramp: accent-anchored, neighbouring hues (teal / violet /
+   * sky) plus one neutral closer. All read ≥3:1 against --surface (chart-1/2/3/5
+   * ≥4.5:1). Consumed via src/domain/format/chartTheme.ts.
+   */
+  --chart-1: var(--accent);
+  --chart-2: #0e7490;
+  --chart-3: #7c3aed;
+  --chart-4: #0284c7;
+  --chart-5: #64748b;
   --radius: 0.625rem;
   --sidebar: var(--surface);
   --sidebar-foreground: var(--text);
