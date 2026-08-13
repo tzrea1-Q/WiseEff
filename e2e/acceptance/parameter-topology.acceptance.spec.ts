@@ -1034,8 +1034,12 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(changeRequestId).toBeTruthy();
     expect(submitBody.item.status).toBe("hardware_review");
     expect(submitBody.item.items[0]?.candidateConfigRevisionId).toBe(draftBody.item.candidateRevisionId);
-    await expect(submissionPanel.getByText(/已提交正式审核/)).toBeVisible();
-    await submissionPanel.getByRole("button", { name: "查看变更审阅" }).click();
+    // Since #331 the submitted round leaves the tray (its drafts are consumed), and
+    // the success notice renders as the standalone 参数提交结果 region instead of
+    // inside the submission panel.
+    const submitResultNotice = page.getByRole("region", { name: "参数提交结果" });
+    await expect(submitResultNotice.getByText(/已提交正式审核/)).toBeVisible();
+    await submitResultNotice.getByRole("button", { name: "查看变更审阅" }).click();
 
     const advanceReviewInUi = async (
       role: "hardware-committer" | "software-committer" | "software-user",
