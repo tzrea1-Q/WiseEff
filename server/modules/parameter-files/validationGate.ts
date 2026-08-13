@@ -6,8 +6,8 @@ import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { listConfigSetMemberFiles } from "./baselineRepository";
-import { getConfigSetById, getFileConfigSetMembership } from "./configSetRepository";
+import { loadConfigSetSnapshot } from "./configSetSnapshot";
+import { getConfigSetById } from "./configSetRepository";
 import {
   readDtsValidationMode,
   type DtcDiagnostic,
@@ -20,8 +20,6 @@ import {
   type DtsToolchainRunner,
   type DtsToolchainResult
 } from "./dtsToolchain";
-import { getFileVersionById, getProjectParameterFileById } from "./repository";
-import { OVERLAY_ROLES } from "./types";
 
 export type ValidationGateResult = {
   ok: boolean;
@@ -159,35 +157,12 @@ export async function runValidationGate(
     );
   }
 
-  const members = await listConfigSetMemberFiles(db, input.configSetId);
+  const snapshot = await loadConfigSetSnapshot(db, deps.objectStore, input.configSetId);
 
   // Prefer injected legacy validator for focused unit tests.
   if (deps.validator) {
     const validator = deps.validator;
-    const dtsFiles: Array<{ name: string; content: string }> = [];
-    for (const member of members) {
-      if (!member.currentVersionId) {
-        continue;
-      }
-
-      const file = await getProjectParameterFileById(db, {
-        organizationId: auth.organization.id,
-        fileId: member.fileId
-      });
-      if (!file || file.format !== "dts") {
-        continue;
-      }
-
-      const version = await getFileVersionById(db, { versionId: member.currentVersionId });
-      if (!version) {
-        continue;
-      }
-
-      const content = await deps.objectStore.get(version.storageKey);
-      dtsFiles.push({ name: member.fileName, content: content.toString("utf8") });
-    }
-
-    const validation = await validator.validate(dtsFiles, { mode });
+    const validation = await validator.validate(snapshot.dtsFiles, { mode });
     const requiresConfirmation = computeRequiresConfirmation(validation);
 
     await writeValidationGateAudit(
@@ -224,52 +199,8 @@ export async function runValidationGate(
   }
 
   const toolchain = deps.toolchain ?? createDtsToolchainRunner();
-  const files = new Map<string, { content: string }>();
-  const overlays: Array<{ name: string; sortOrder: number }> = [];
-  let entryFile: string | null = null;
-  let entrySort = Number.POSITIVE_INFINITY;
-
-  for (const member of members) {
-    if (!member.currentVersionId) {
-      continue;
-    }
-
-    const file = await getProjectParameterFileById(db, {
-      organizationId: auth.organization.id,
-      fileId: member.fileId
-    });
-    if (!file || file.format !== "dts") {
-      continue;
-    }
-
-    const version = await getFileVersionById(db, { versionId: member.currentVersionId });
-    if (!version) {
-      continue;
-    }
-
-    const membership = await getFileConfigSetMembership(db, {
-      organizationId: auth.organization.id,
-      fileId: member.fileId
-    });
-    const role = membership?.configSetRole ?? "misc";
-    const sortOrder = membership?.configSetSortOrder ?? 0;
-    const content = (await deps.objectStore.get(version.storageKey)).toString("utf8");
-    files.set(member.fileName, { content });
-
-    if (role === "base" && sortOrder <= entrySort) {
-      entryFile = member.fileName;
-      entrySort = sortOrder;
-    } else if (OVERLAY_ROLES.has(role)) {
-      // Mirror the config-revision assembly: overlay/charging/thermal/misc are
-      // all applied over the base, so all of them must be dtc-compiled here.
-      overlays.push({ name: member.fileName, sortOrder });
-    }
-  }
-
-  if (!entryFile) {
-    // Fall back to first file when roles are not annotated (legacy config sets).
-    entryFile = [...files.keys()][0] ?? null;
-  }
+  const files = snapshot.toolchainFiles;
+  const entryFile = snapshot.entryFile;
 
   if (!entryFile || files.size === 0) {
     // Release/baseline must never soft-pass an empty Config Set.
@@ -327,14 +258,12 @@ export async function runValidationGate(
     return empty;
   }
 
-  overlays.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
-
   const toolchainMode = input.forRelease ? "release" : toToolchainMode(mode);
   const toolchainResult = await toolchain.validate(
     {
       entryFile,
       includeSearchPaths: [],
-      overlayOrder: overlays.map((item) => item.name),
+      overlayOrder: snapshot.overlayOrder,
       files
     },
     { mode: toolchainMode }

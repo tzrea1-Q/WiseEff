@@ -8,8 +8,8 @@ import type { ObjectStore } from "../logs/objectStore";
 import { canAdminParameters } from "../parameter-kernel/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { listConfigSetMemberFiles } from "./baselineRepository";
-import { getConfigSetById, getFileConfigSetMembership } from "./configSetRepository";
+import { loadConfigSetSnapshot } from "./configSetSnapshot";
+import { getConfigSetById } from "./configSetRepository";
 import {
   createSubprocessDtcValidator,
   readDtsValidationMode,
@@ -209,54 +209,31 @@ export async function exportConfigSet(
     throw new ApiError("NOT_FOUND", "Config set not found.", 404, { configSetId });
   }
 
-  const members = await listConfigSetMemberFiles(db, configSetId);
+  const snapshot = await loadConfigSetSnapshot(db, deps.objectStore, configSetId);
   const manifestMembers: ExportConfigSetManifestMember[] = [];
   const files: ExportConfigSetFile[] = [];
   const dtsFilesForValidation: Array<{ name: string; content: string }> = [];
 
-  for (const member of members) {
-    if (!member.currentVersionId) {
-      continue;
-    }
-
-    const file = await getProjectParameterFileById(db, {
-      organizationId: auth.organization.id,
-      fileId: member.fileId
-    });
-    if (!file) {
-      continue;
-    }
-
-    const membership = await getFileConfigSetMembership(db, {
-      organizationId: auth.organization.id,
-      fileId: member.fileId
-    });
-
-    const version = await getFileVersionById(db, { versionId: member.currentVersionId });
-    if (!version) {
-      continue;
-    }
-
-    const source = await loadVersionSource(deps.objectStore, version.storageKey);
-    const content = formatExportedContent(file.format, source);
+  for (const member of snapshot.members) {
+    const content = formatExportedContent(member.format, member.content);
 
     manifestMembers.push({
       fileId: member.fileId,
       fileName: member.fileName,
-      role: membership?.configSetRole ?? "misc",
-      sortOrder: membership?.configSetSortOrder ?? 0,
-      versionNumber: version.versionNumber,
-      format: file.format
+      role: member.role,
+      sortOrder: member.sortOrder,
+      versionNumber: member.versionNumber,
+      format: member.format
     });
 
     files.push({
-      name: file.fileName,
-      format: file.format,
+      name: member.fileName,
+      format: member.format,
       content
     });
 
-    if (file.format === "dts") {
-      dtsFilesForValidation.push({ name: file.fileName, content });
+    if (member.format === "dts") {
+      dtsFilesForValidation.push({ name: member.fileName, content });
     }
   }
 

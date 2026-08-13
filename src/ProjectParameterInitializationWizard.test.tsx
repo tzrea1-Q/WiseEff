@@ -238,18 +238,11 @@ describe("ProjectParameterInitializationWizard", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  // TODO(jsdom): in this suite the dirty-state ConfirmDialog's open state is
-  // reverted by a second render pass that only reproduces under jsdom (the
-  // equivalent flow passes in ParameterImportWizard.test.tsx and works in the
-  // browser). Tracked for investigation in the HCI trust-repair follow-ups.
-  it.skip("guards Escape with a discard confirmation once any field is filled", async () => {
+  it("guards Escape with a discard confirmation once any field is filled", async () => {
     const onClose = vi.fn();
     render(<ProjectParameterInitializationWizard state={initialState} dispatch={vi.fn()} onClose={onClose} />);
 
     fireEvent.change(screen.getByLabelText(/项目名称/), { target: { value: "Halo 台架" } });
-    // ModalDialog listens on window; dispatch there directly — element-origin
-    // keydown in jsdom interleaves React's delegated flush with the window
-    // listener in a way real browsers do not.
     fireEvent.keyDown(window, { key: "Escape" });
 
     expect(onClose).not.toHaveBeenCalled();
@@ -260,7 +253,12 @@ describe("ProjectParameterInitializationWizard", () => {
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByLabelText(/项目名称/)).toHaveValue("Halo 台架");
 
-    fireEvent.mouseDown(screen.getByRole("dialog", { name: /新项目参数初始化/ }));
+    // Backdrop dismissal is a paired pointer-down/up on the ModalDialog backdrop
+    // (a mousedown on the card itself must not trigger the guard).
+    const backdrop = document.querySelector(".modal-backdrop");
+    expect(backdrop).not.toBeNull();
+    fireEvent.pointerDown(backdrop as Element);
+    fireEvent.pointerUp(backdrop as Element);
     fireEvent.click(
       within(screen.getByRole("dialog", { name: "放弃项目初始化？" })).getByRole("button", { name: "放弃并关闭" })
     );

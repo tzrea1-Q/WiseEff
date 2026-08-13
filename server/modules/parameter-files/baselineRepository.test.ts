@@ -260,8 +260,8 @@ describe.skipIf(!databaseAvailable)("baseline repository", () => {
     const members = await listConfigSetMemberFiles(db, "dcs-1");
 
     expect(members).toEqual([
-      { configSetId: "dcs-1", fileId: "file-1", fileName: "board-a.dts", format: "dts", role: "base", sortOrder: 0, currentVersionId: "fv-1", currentVersionNumber: 3 },
-      { configSetId: "dcs-1", fileId: "file-2", fileName: "board-a.overlay.dts", format: "dts", role: "overlay", sortOrder: 1, currentVersionId: "fv-9", currentVersionNumber: 1 }
+      { configSetId: "dcs-1", fileId: "file-1", fileName: "board-a.dts", format: "dts", role: "base", sortOrder: 0, currentVersionId: "fv-1", currentVersionNumber: 3, currentVersionStorageKey: "org-1/files/board-a.dts-v3" },
+      { configSetId: "dcs-1", fileId: "file-2", fileName: "board-a.overlay.dts", format: "dts", role: "overlay", sortOrder: 1, currentVersionId: "fv-9", currentVersionNumber: 1, currentVersionStorageKey: "org-1/files/board-a.overlay.dts-v1" }
     ]);
   });
 
@@ -278,7 +278,7 @@ describe.skipIf(!databaseAvailable)("baseline repository", () => {
     const members = await listConfigSetMemberFiles(db, "dcs-1");
 
     expect(members).toEqual([
-      { configSetId: "dcs-1", fileId: "file-1", fileName: "board-a.dts", format: "dts", role: "base", sortOrder: 0, currentVersionId: undefined, currentVersionNumber: undefined }
+      { configSetId: "dcs-1", fileId: "file-1", fileName: "board-a.dts", format: "dts", role: "base", sortOrder: 0, currentVersionId: undefined, currentVersionNumber: undefined, currentVersionStorageKey: undefined }
     ]);
   });
 

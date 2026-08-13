@@ -512,6 +512,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
 
   test("uploads, completes, links evidence, audits feedback, archives, and records unsupported upload failure", async ({ page }, testInfo) => {
     // @acceptance LOG-HAPPY-001
+    // @acceptance LOG-CONFIDENCE-PERCENT-001
     // @operation LOG-HAPPY-001
     await page.goto("/logs");
     await prepareInteractionSurface(page);
@@ -524,6 +525,15 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       .toBe("complete");
     await historyItem(page, supportedFileName).click();
     await expect(page.locator("#log-conclusion-title")).toContainText(/thermal|foldback/i);
+
+    // LOG-CONFIDENCE-PERCENT-001: the server stores confidence as 0-1; the UI
+    // confidence bar must render the normalized percentage (e.g. 85%), never "0.85%".
+    expect(completedLog.confidence).toBeGreaterThan(0);
+    const confidencePercent =
+      completedLog.confidence <= 1 ? Math.round(completedLog.confidence * 100) : Math.round(completedLog.confidence);
+    const confidenceBar = page.locator(".confidence-bar").first();
+    await expect(confidenceBar.locator("strong")).toHaveText(`${confidencePercent}%`);
+    await expect(confidenceBar.locator('[role="progressbar"]')).toHaveAttribute("aria-valuenow", String(confidencePercent));
 
     const evidenceCard = page.locator(".evidence-card").filter({ hasText: /thermal|foldback/i }).first();
     await expect(evidenceCard).toContainText(/thermal|foldback/i);

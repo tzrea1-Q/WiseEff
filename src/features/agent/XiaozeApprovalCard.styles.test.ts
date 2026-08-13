@@ -34,7 +34,13 @@ describe("Xiaoze approval card stacking", () => {
   it("routes the approval overlay and content through the approval layer", () => {
     const css = stylesheet();
 
-    expect(ruleBlock(css, ".xiaoze-approval-overlay")).toMatch(/z-index:\s*var\(--z-xiaoze-approval\)/);
-    expect(ruleBlock(css, ".xiaoze-approval-dialog")).toMatch(/z-index:\s*var\(--z-xiaoze-approval\)/);
+    // One rule set only: the data-attribute selectors own the stacking (the
+    // legacy .xiaoze-approval-* class pair was removed as duplicate wiring).
+    expect(ruleBlock(css, '[data-slot="alert-dialog-overlay"]:has(+ [data-testid="xiaoze-approval-card"])')).toMatch(
+      /z-index:\s*var\(--z-xiaoze-approval\)/
+    );
+    expect(ruleBlock(css, '[data-testid="xiaoze-approval-card"]')).toMatch(/z-index:\s*var\(--z-xiaoze-approval\)/);
+    expect(css).not.toContain(".xiaoze-approval-overlay");
+    expect(css).not.toContain(".xiaoze-approval-dialog");
   });
 });
