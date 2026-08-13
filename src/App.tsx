@@ -7,6 +7,7 @@ import {
   PanelLeftOpen,
   UserRound
 } from "lucide-react";
+import { AppShellConnectionError } from "@/components/common/AppShellConnectionError";
 import { AppShellSkeleton } from "@/components/common/AppShellSkeleton";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { ToastProvider } from "@/components/common/toast/ToastProvider";
@@ -99,11 +100,18 @@ import {
 import { clearSessionDraftsForLogout } from "@/application/project-configuration/sessionDraftStorage";
 import { createMockRuntimeState, type MockRuntimeState } from "@/infrastructure/mock/mockState";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
-import { presentError } from "@/infrastructure/http/presentError";
+import { isNetworkError, presentError } from "@/infrastructure/http/presentError";
 import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
 
-type ApiAuthStatus = "checking" | "authenticated" | "unauthenticated";
+/**
+ * `unreachable` means the `/api/v1/me` probe failed at the network level
+ * (service down / offline): the session may still be valid, so the shell shows
+ * a retry state instead of dropping the user to the login form (FA-21).
+ */
+type ApiAuthStatus = "checking" | "authenticated" | "unauthenticated" | "unreachable";
+
+type RuntimeSectionStatus = "loading" | "ready" | "error";
 
 function isPendingRegistrationResponse(response: RegisterLocalAccountResponseDto): response is PendingRegistrationDto {
   return "status" in response && response.status === "pending_approval";
@@ -306,9 +314,19 @@ function AppShell({
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
   const [topBarLeadingActions, setTopBarLeadingActions] = useState<ReactNode | null>(null);
   const [projectInitOpen, setProjectInitOpen] = useState(false);
-  const [debuggingRuntimeReady, setDebuggingRuntimeReady] = useState(runtimeMode !== "api");
+  const [debuggingRuntimeStatus, setDebuggingRuntimeStatus] = useState<RuntimeSectionStatus>(
+    runtimeMode === "api" ? "loading" : "ready"
+  );
+  const [debuggingRuntimeError, setDebuggingRuntimeError] = useState("");
+  const [debuggingReloadToken, setDebuggingReloadToken] = useState(0);
+  const [userDirectoryStatus, setUserDirectoryStatus] = useState<RuntimeSectionStatus>(
+    runtimeMode === "api" ? "loading" : "ready"
+  );
+  const [userDirectoryError, setUserDirectoryError] = useState("");
+  const [userDirectoryReloadToken, setUserDirectoryReloadToken] = useState(0);
   const [apiAuthStatus, setApiAuthStatus] = useState<ApiAuthStatus>(runtimeMode === "api" ? "checking" : "authenticated");
   const [apiAuthError, setApiAuthError] = useState("");
+  const [authProbeAttempt, setAuthProbeAttempt] = useState(0);
   const [apiAuthPermissions, setApiAuthPermissions] = useState<string[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsedPreference);
   // Below 768px the sidebar becomes an overlay drawer (ui-design-system §Layout);
@@ -666,19 +684,21 @@ function AppShell({
         dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽日志 API" });
       }
       if (!canPerform(runtimeRoleId, "debugging.use")) {
-        setDebuggingRuntimeReady(true);
+        setDebuggingRuntimeStatus("ready");
       } else if (debuggingRefreshResult.status === "rejected") {
-        setDebuggingRuntimeReady(false);
+        setDebuggingRuntimeStatus("error");
+        setDebuggingRuntimeError(presentError(debuggingRefreshResult.reason, "无法加载调试节点数据，请稍后重试。"));
         if (
           !(
             debuggingRefreshResult.reason instanceof Error &&
             (debuggingRefreshResult.reason as { alreadyNotified?: unknown }).alreadyNotified === true
           )
         ) {
-          dispatch({ type: "ADD_NOTIFICATION", message: "无法加载雷泽调试 API，已保留本地演示数据" });
+          dispatch({ type: "ADD_NOTIFICATION", message: "无法加载雷泽调试 API，请稍后重试" });
         }
       } else {
-        setDebuggingRuntimeReady(true);
+        setDebuggingRuntimeStatus("ready");
+        setDebuggingRuntimeError("");
         if (!debuggingRuntimeConnectedRef.current) {
           debuggingRuntimeConnectedRef.current = true;
           dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽调试 API" });
@@ -743,6 +763,7 @@ function AppShell({
     const cancelledRef = { current: false };
     const client = appRuntime.authClient;
 
+    setApiAuthStatus("checking");
     client
       .getCurrentAuthContext()
       .then(async (context) => {
@@ -755,6 +776,13 @@ function AppShell({
       })
       .catch((error) => {
         if (cancelledRef.current) return;
+        if (isNetworkError(error)) {
+          // Service unreachable: keep the local session token and offer a
+          // retry instead of logging the user out (FA-21).
+          setApiAuthStatus("unreachable");
+          setApiAuthError("");
+          return;
+        }
         clearLocalAuthToken();
         setApiAuthStatus("unauthenticated");
         setApiAuthError(authProbeErrorMessage(error));
@@ -763,7 +791,7 @@ function AppShell({
     return () => {
       cancelledRef.current = true;
     };
-  }, [appRuntime.authClient, hydrateAuthContext, refreshApiRuntimeData, runtimeMode]);
+  }, [appRuntime.authClient, authProbeAttempt, hydrateAuthContext, refreshApiRuntimeData, runtimeMode]);
 
   useEffect(() => {
     if (runtimeMode !== "api" || page.key !== "user-permissions" || !userGovernanceActionsClient || !canPerform(currentRoleId, "users.manage")) {
@@ -771,23 +799,29 @@ function AppShell({
     }
 
     let cancelled = false;
+    // First load / retry-after-error shows the skeleton; once hydrated,
+    // re-entering the page refreshes in the background without one.
+    setUserDirectoryStatus((current) => (current === "ready" ? current : "loading"));
     userGovernanceActionsClient
       .listUsers()
       .then((users) => {
         if (!cancelled) {
           dispatch({ type: "HYDRATE_USERS", users });
+          setUserDirectoryStatus("ready");
+          setUserDirectoryError("");
         }
       })
-      .catch(() => {
+      .catch((error) => {
         if (!cancelled) {
-          dispatch({ type: "ADD_NOTIFICATION", message: "无法加载雷泽用户 API，已保留本地演示用户" });
+          setUserDirectoryStatus("error");
+          setUserDirectoryError(presentError(error, "无法加载用户名录，请稍后重试。"));
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [currentRoleId, page.key, runtimeMode, userGovernanceActionsClient]);
+  }, [currentRoleId, page.key, runtimeMode, userDirectoryReloadToken, userGovernanceActionsClient]);
 
   useEffect(() => {
     if (runtimeMode !== "api" || page.key !== "node-debugging") {
@@ -799,23 +833,28 @@ function AppShell({
 
     let cancelled = false;
     const protocol = readInitialNodeDebuggingProtocol();
+    // First load / retry-after-error shows the skeleton; once hydrated,
+    // re-entering the page refreshes in the background without one.
+    setDebuggingRuntimeStatus((current) => (current === "ready" ? current : "loading"));
     void debuggingActions
       .refresh({ protocol })
       .then(() => {
         if (!cancelled) {
-          setDebuggingRuntimeReady(true);
+          setDebuggingRuntimeStatus("ready");
+          setDebuggingRuntimeError("");
         }
       })
-      .catch(() => {
+      .catch((error) => {
         if (!cancelled) {
-          setDebuggingRuntimeReady(false);
+          setDebuggingRuntimeStatus("error");
+          setDebuggingRuntimeError(presentError(error, "无法加载调试节点数据，请稍后重试。"));
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [currentRoleId, debuggingActions, page.key, runtimeMode]);
+  }, [currentRoleId, debuggingActions, debuggingReloadToken, page.key, runtimeMode]);
 
   useEffect(() => {
     const syncPathFromHistory = () => {
@@ -855,6 +894,18 @@ function AppShell({
     window.history.pushState(null, "", nextUrl);
     setPath(nextPage.path);
     setSearch(url.search);
+  }, []);
+
+  const retryAuthProbe = useCallback(() => {
+    setAuthProbeAttempt((attempt) => attempt + 1);
+  }, []);
+
+  const retryDebuggingRuntime = useCallback(() => {
+    setDebuggingReloadToken((token) => token + 1);
+  }, []);
+
+  const retryUserDirectory = useCallback(() => {
+    setUserDirectoryReloadToken((token) => token + 1);
   }, []);
 
   const toggleSidebarCollapsed = useCallback(() => {
@@ -968,6 +1019,12 @@ function AppShell({
     return <AppShellSkeleton />;
   }
 
+  if (runtimeMode === "api" && apiAuthStatus === "unreachable") {
+    // Network-level probe failure: only an auth rejection (401 family) may
+    // route to the login form.
+    return <AppShellConnectionError onRetry={retryAuthProbe} />;
+  }
+
   if (runtimeMode === "api" && apiAuthStatus !== "authenticated") {
     return (
       <ApiAuthPage
@@ -1041,7 +1098,12 @@ function AppShell({
                 onNavigate={navigate}
                 onNewProject={() => setProjectInitOpen(true)}
                 debuggingActions={debuggingActions}
-                debuggingRuntimeReady={debuggingRuntimeReady}
+                debuggingRuntimeStatus={debuggingRuntimeStatus}
+                debuggingRuntimeError={debuggingRuntimeError}
+                onDebuggingRuntimeRetry={retryDebuggingRuntime}
+                userDirectoryStatus={userDirectoryStatus}
+                userDirectoryError={userDirectoryError}
+                onUserDirectoryRetry={retryUserDirectory}
                 logActions={logActions}
                 parameterActions={parameterActions}
                 runtime={appRuntime}
@@ -1074,7 +1136,12 @@ function AppShell({
                 onNavigate={navigate}
                 onNewProject={() => setProjectInitOpen(true)}
                 debuggingActions={debuggingActions}
-                debuggingRuntimeReady={debuggingRuntimeReady}
+                debuggingRuntimeStatus={debuggingRuntimeStatus}
+                debuggingRuntimeError={debuggingRuntimeError}
+                onDebuggingRuntimeRetry={retryDebuggingRuntime}
+                userDirectoryStatus={userDirectoryStatus}
+                userDirectoryError={userDirectoryError}
+                onUserDirectoryRetry={retryUserDirectory}
                 logActions={logActions}
                 parameterActions={parameterActions}
                 runtime={appRuntime}

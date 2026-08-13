@@ -4,6 +4,8 @@ import { detectHdcTargets, readNodeValue, writeNodeValue } from "./hdcClient";
 import { isHdcPlaceholderTarget } from "@wiseeff/device-command-core/hdcTargets";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { ConfirmDialog } from "./components/common/ConfirmDialog";
+import { SectionError, SectionSkeleton } from "./components/common/SectionState";
+import { useToast } from "./components/common/toast/ToastProvider";
 import { LocalDeviceBridgePanel } from "./components/LocalDeviceBridgePanel";
 import { formatDetectFailureMessage } from "./components/bridgePanelStatus";
 import { NodeOperationHistoryPanel, type NodeOperationEvent } from "./components/NodeOperationHistoryPanel";
@@ -15,6 +17,7 @@ import {
   probeLocalBridgeHealthDetailed
 } from "./infrastructure/http/bridgeConnectLauncher";
 import { formatDebuggingRuntimeError, type DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
+import { presentErrorMessage } from "./infrastructure/http/presentError";
 import type { DeviceTarget, NodeOperationSnapshot, NodeReadResult, NodeWriteResult } from "./application/ports/DebuggingGateway";
 import type {
   DebugConnectionProtocol,
@@ -454,15 +457,23 @@ function NodeWriteFormatPanel({ row, protocol }: { row: RuntimeRow; protocol: De
   );
 }
 
+type NodeDebuggingRuntimeStatus = "loading" | "ready" | "error";
+
 export function NodeDebuggingPage({
   state,
   debuggingActions,
-  runtimeReady = true
+  runtimeStatus = "ready",
+  runtimeError,
+  onRuntimeRetry
 }: {
   state: PrototypeState;
   debuggingActions?: DebuggingRuntimeActions;
-  runtimeReady?: boolean;
+  runtimeStatus?: NodeDebuggingRuntimeStatus;
+  runtimeError?: string;
+  onRuntimeRetry?: () => void;
 }) {
+  const runtimeReady = runtimeStatus === "ready";
+  const { toast } = useToast();
   const [protocol, setProtocol] = useState<DebugConnectionProtocol>(readInitialNodeDebuggingProtocol);
   const [rows, setRows] = useState<RuntimeRow[]>(() =>
     state.debugParameters.map((parameter) => runtimeRowFromParameter(parameter, protocol))
@@ -861,6 +872,13 @@ export function NodeDebuggingPage({
           stdout: diagnosticError?.stdout,
           stderr: detectFailureStderr
         });
+      } else {
+        // Demo runtime has no gateway history to fall back on: surface the
+        // failure as a toast so 重新检测 is never silent (FA-21).
+        toast({
+          tone: "danger",
+          message: presentErrorMessage(detectFailureMessage, "设备检测未完成，请检查本地调试环境后重试。")
+        });
       }
     } finally {
       if (isCurrentDetectRequest()) {
@@ -1094,6 +1112,15 @@ export function NodeDebuggingPage({
             <span>{connected ? `${protocolLabel(protocol)} 设备在线` : "等待设备检测"}</span>
           </div>
 
+          {runtimeStatus === "loading" ? (
+            <SectionSkeleton label="正在加载调试节点" />
+          ) : runtimeStatus === "error" ? (
+            <SectionError
+              message={runtimeError || "无法加载调试节点数据，请稍后重试。"}
+              onRetry={onRuntimeRetry ?? (() => undefined)}
+            />
+          ) : (
+            <>
           <section className="parameters-table parameters-table--column-filters" aria-label="节点调试参数">
             <div className="parameters-table-toolbar">
               <label className="parameters-table-search">
@@ -1212,6 +1239,26 @@ export function NodeDebuggingPage({
                 </tbody>
               </table>
             </div>
+
+            {visibleRows.length === 0 ? (
+              <div className="parameters-table-empty">
+                <p>{rows.length === 0 ? "暂无调试节点" : "没有符合筛选条件的节点"}</p>
+                {rows.length === 0 ? (
+                  <span>调试节点由管理员在调试管理后台维护，配置后即可在此读写设备节点。</span>
+                ) : (
+                  <button
+                    type="button"
+                    className="button subtle"
+                    onClick={() => {
+                      setSearchQuery("");
+                      setStatusFilters([]);
+                    }}
+                  >
+                    清除筛选条件
+                  </button>
+                )}
+              </div>
+            ) : null}
           </section>
 
           <div className="parameters-submit-bar parameters-submit-bar-active" aria-label="节点批量下发操作栏">
@@ -1241,6 +1288,8 @@ export function NodeDebuggingPage({
               </button>
             </div>
           </div>
+            </>
+          )}
         </section>
 
         <NodeOperationHistoryPanel events={events} />

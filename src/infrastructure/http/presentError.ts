@@ -51,7 +51,11 @@ const NETWORK_MESSAGE_PATTERN = /failed to fetch|networkerror|network error|load
 
 export const NETWORK_ERROR_MESSAGE = "网络连接失败，请稍后重试。";
 
-function isNetworkError(err: unknown): boolean {
+/**
+ * Fetch-level network failure (service unreachable, DNS, offline). Structured
+ * API errors — including 401/403 — are `WiseEffApiError`, never a `TypeError`.
+ */
+export function isNetworkError(err: unknown): boolean {
   return err instanceof TypeError && NETWORK_MESSAGE_PATTERN.test(err.message);
 }
 

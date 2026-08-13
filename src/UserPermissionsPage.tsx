@@ -4,6 +4,7 @@ import { UserPlus } from "lucide-react";
 import type { AppAction } from "@/application/state/appState";
 import { DataTable, type Column } from "@/components/admin";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import {
   toggleFilterValue,
   uniqueFilterValues,
@@ -16,12 +17,18 @@ import { presentError } from "@/infrastructure/http/presentError";
 import { migrateLegacyRoleId, platformRoles, type PermissionKey, type PlatformRoleId } from "@/domain/users/types";
 import type { PrototypeState, User } from "@/domain/prototype/types";
 
+type UserDirectoryStatus = "loading" | "ready" | "error";
+
 type UserPermissionsPageProps = {
   state: PrototypeState;
   dispatch: Dispatch<AppAction>;
   onNavigate: (path: string) => void;
   search: string;
   userGovernanceActions?: UserGovernanceActions;
+  /** API-mode user-directory hydration lifecycle; mock mode stays "ready". */
+  userDirectoryStatus?: UserDirectoryStatus;
+  userDirectoryError?: string;
+  onUserDirectoryRetry?: () => void;
 };
 
 export type UserGovernanceActions = {
@@ -183,7 +190,15 @@ function RoleCapabilityTooltip({ roleId, position }: { roleId: PlatformRoleId; p
   );
 }
 
-export function UserPermissionsPage({ state, dispatch, search: _search, userGovernanceActions }: UserPermissionsPageProps) {
+export function UserPermissionsPage({
+  state,
+  dispatch,
+  search: _search,
+  userGovernanceActions,
+  userDirectoryStatus = "ready",
+  userDirectoryError,
+  onUserDirectoryRetry
+}: UserPermissionsPageProps) {
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<PlatformRoleId | "all">("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -564,13 +579,26 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
             id="user-permissions-workspace-accounts-panel"
             aria-labelledby={approvalWorkflowEnabled ? "user-permissions-workspace-accounts" : undefined}
           >
-            <DataTable
-              ariaLabel="平台用户"
-              rows={filteredUsers}
-              rowKey={(user) => user.id}
-              emptyMessage="没有符合筛选条件的用户，请调整搜索或筛选条件。"
-              columns={accountColumns}
-            />
+            {userDirectoryStatus === "loading" ? (
+              <SectionSkeleton label="正在加载用户名录" />
+            ) : userDirectoryStatus === "error" ? (
+              <SectionError
+                message={userDirectoryError || "无法加载用户名录，请稍后重试。"}
+                onRetry={onUserDirectoryRetry ?? (() => undefined)}
+              />
+            ) : (
+              <DataTable
+                ariaLabel="平台用户"
+                rows={filteredUsers}
+                rowKey={(user) => user.id}
+                emptyMessage={
+                  state.users.length === 0
+                    ? "还没有任何用户，点击右上角「添加用户」创建第一个账号。"
+                    : "没有符合筛选条件的用户，请调整搜索或筛选条件。"
+                }
+                columns={accountColumns}
+              />
+            )}
           </div>
         </>
       ) : (

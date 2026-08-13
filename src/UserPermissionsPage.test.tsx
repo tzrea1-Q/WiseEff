@@ -62,6 +62,46 @@ async function openApprovalsWorkspace() {
 }
 
 describe("UserPermissionsPage", () => {
+  it("shows a loading skeleton while the user directory hydrates", () => {
+    const state = { ...createPrototypeState(), activeRoleId: "admin" };
+    render(
+      <UserPermissionsPage state={state} dispatch={vi.fn()} onNavigate={vi.fn()} search="" userDirectoryStatus="loading" />
+    );
+
+    expect(screen.getByRole("status", { name: "正在加载用户名录" })).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+
+  it("shows a retryable error state when the user directory fails to load", async () => {
+    const onUserDirectoryRetry = vi.fn();
+    const state = { ...createPrototypeState(), activeRoleId: "admin" };
+    render(
+      <UserPermissionsPage
+        state={state}
+        dispatch={vi.fn()}
+        onNavigate={vi.fn()}
+        search=""
+        userDirectoryStatus="error"
+        userDirectoryError="无法加载用户名录，请稍后重试。"
+        onUserDirectoryRetry={onUserDirectoryRetry}
+      />
+    );
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("无法加载用户名录");
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+
+    await userEvent.click(within(alert).getByRole("button", { name: "重试" }));
+    expect(onUserDirectoryRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a dedicated empty state when no users exist at all", () => {
+    const state = { ...createPrototypeState(), activeRoleId: "admin", users: [] };
+    render(<UserPermissionsPage state={state} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />);
+
+    expect(screen.getByText("还没有任何用户，点击右上角「添加用户」创建第一个账号。")).toBeInTheDocument();
+  });
+
   it("renders user permissions, role names, and platform users", () => {
     renderPage();
 

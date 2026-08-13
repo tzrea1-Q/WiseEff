@@ -29,6 +29,7 @@ import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepos
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
 import {
   TOPOLOGY_TEACHING_BINDINGS,
@@ -469,6 +470,58 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.getByRole("status", { name: "正在进入工作台" })).toBeInTheDocument();
     expect(document.querySelector(".app-shell-skeleton")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "登录雷泽" })).not.toBeInTheDocument();
+  });
+
+  it("shows a retryable connection error instead of the login form when the session probe fails at the network level", async () => {
+    window.history.replaceState(null, "", "/parameter-home");
+    const getCurrentAuthContext = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce({
+        user: {
+          id: "u-api-admin",
+          organizationId: "org-chargelab",
+          name: "API Admin",
+          email: "api-admin@chargelab.cn",
+          title: "API Platform Owner",
+          isActive: true
+        },
+        organization: { id: "org-chargelab", name: "ChargeLab" },
+        roles: [{ projectId: null, roleId: "admin" }],
+        permissions: ["admin:access"]
+      });
+
+    render(
+      <App
+        authClient={{ getCurrentAuthContext }}
+        initialAppState={initialState}
+        parameterRepository={createAppParameterRepository()}
+        runtimeMode="api"
+      />
+    );
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("无法连接服务");
+    expect(screen.queryByRole("heading", { name: "登录雷泽" })).not.toBeInTheDocument();
+
+    fireEvent.click(within(alert).getByRole("button", { name: "重试" }));
+
+    expect(await screen.findByText("API Admin")).toBeInTheDocument();
+    expect(getCurrentAuthContext).toHaveBeenCalledTimes(2);
+  });
+
+  it("routes structured auth rejections to the login form, not the connection-error state", async () => {
+    window.history.replaceState(null, "", "/parameter-home");
+    const authClient = {
+      getCurrentAuthContext: vi
+        .fn()
+        .mockRejectedValue(new WiseEffApiError("UNAUTHENTICATED", "Session is not active.", {}, "req-auth-1"))
+    };
+
+    render(<App authClient={authClient} initialAppState={initialState} parameterRepository={createAppParameterRepository()} runtimeMode="api" />);
+
+    expect(await screen.findByRole("heading", { name: "登录雷泽" })).toBeInTheDocument();
+    expect(screen.queryByText("无法连接服务")).not.toBeInTheDocument();
   });
 
   it("registers a local user account from the auth screen", async () => {
