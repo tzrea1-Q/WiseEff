@@ -6,8 +6,8 @@ import type { KnowledgeCapability } from "@/domain/knowledge/rules";
 import { createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowledgeRepository";
 import { KnowledgeAdminPage } from "./KnowledgeAdminPage";
 
-const manageCapability: KnowledgeCapability = { userId: "u-xu-yun", canEdit: true, canManage: true };
-const editorCapability: KnowledgeCapability = { userId: "u-xu-yun", canEdit: true, canManage: false };
+const manageCapability: KnowledgeCapability = { userId: "u-xu-yun", canView: true, canEdit: true, canManage: true };
+const editorCapability: KnowledgeCapability = { userId: "u-xu-yun", canView: true, canEdit: true, canManage: false };
 
 describe("KnowledgeAdminPage", () => {
   it("lists archived entries only", async () => {
@@ -172,7 +172,7 @@ describe("KnowledgeAdminPage", () => {
     await screen.findByRole("table", { name: "知识索引状态" });
     await user.click(screen.getByRole("button", { name: "全量重建索引" }));
 
-    expect(await screen.findByText(/已重新入队 2 条已发布条目/)).toBeInTheDocument();
+    expect(await screen.findByText(/已重新入队 3 条已发布条目/)).toBeInTheDocument();
     const health = await repository.getIndexHealth();
     expect(health.items.every((item) => item.entryStatus !== "published" || item.status === "pending")).toBe(true);
   });

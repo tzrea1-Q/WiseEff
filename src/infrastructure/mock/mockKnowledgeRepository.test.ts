@@ -1,7 +1,32 @@
 import { describe, expect, it } from "vitest";
 
 import { KnowledgeRevisionConflictError } from "@/application/ports/KnowledgeRepository";
+import type { LogRecord } from "@/domain/prototype/types";
 import { createMockKnowledgeRepository } from "./mockKnowledgeRepository";
+
+function makeLogRecord(overrides: Partial<LogRecord> = {}): LogRecord {
+  return {
+    id: "log-auth",
+    reportId: "RPT-9091",
+    fileName: "usb_pd_negotiation.log",
+    source: "PD Negotiation",
+    fileSizeMB: 12.6,
+    status: "Complete",
+    stage: "report",
+    confidence: 88,
+    conclusion: "PD 协商在 9V/3A 档位稳定完成,未出现握手重试。",
+    impact: "charger-adapter-b",
+    evidence: [],
+    suggestedActions: [],
+    severity: "Info",
+    rawLines: [],
+    capturedAt: "09:18:19",
+    updatedAt: "3 小时前",
+    updatedAtIso: "2026-08-12T06:00:00.000Z",
+    submittedBy: "L. Chen",
+    ...overrides
+  };
+}
 
 describe("createMockKnowledgeRepository", () => {
   it("serves fixture entries covering draft, published, archived, and failed extraction", async () => {
@@ -39,6 +64,47 @@ describe("createMockKnowledgeRepository", () => {
     const response = await repository.search("唯一关键词甲乙丙");
     expect(response.items.map((item) => item.entryId)).toContain(entry.id);
     expect(response.retrieval).toEqual({ mode: "fts_only", vectorAvailable: false, embeddingConfigured: false });
+  });
+
+  it("recommends related published entries for a completed log and reports FTS-only retrieval", async () => {
+    const log = makeLogRecord();
+    const repository = createMockKnowledgeRepository({ getLogRecord: () => log });
+
+    const response = await repository.relatedToLog(log.id);
+    expect(response.retrieval).toEqual({ mode: "fts_only", vectorAvailable: false, embeddingConfigured: false });
+    expect(response.items.map((item) => item.entryId)).toContain("mock-kb-8");
+    const citation = response.items.find((item) => item.entryId === "mock-kb-8");
+    expect(citation).toMatchObject({ title: "PD 快充协议兼容性排查手册", revisionId: "mock-kb-8-r1" });
+    // Unrelated published fixtures stay out instead of padding the list.
+    expect(response.items.map((item) => item.entryId)).not.toContain("mock-kb-1");
+  });
+
+  it("never recommends drafts or archived entries; publishing makes a related entry appear", async () => {
+    const log = makeLogRecord();
+    const repository = createMockKnowledgeRepository({ getLogRecord: () => log });
+
+    const draft = await repository.createMarkdown({
+      title: "PD 协商稳定完成案例",
+      tags: [],
+      contentMarkdown: "PD 协商在 9V/3A 档位稳定完成,未出现握手重试。补充:留意 SourceCap 档位。"
+    });
+    const before = await repository.relatedToLog(log.id);
+    expect(before.items.map((item) => item.entryId)).not.toContain(draft.id);
+
+    await repository.publish(draft.id);
+    const afterPublish = await repository.relatedToLog(log.id);
+    expect(afterPublish.items.map((item) => item.entryId)).toContain(draft.id);
+
+    await repository.archive(draft.id);
+    const afterArchive = await repository.relatedToLog(log.id);
+    expect(afterArchive.items.map((item) => item.entryId)).not.toContain(draft.id);
+  });
+
+  it("rejects related-knowledge lookups for logs that are not complete", async () => {
+    const repository = createMockKnowledgeRepository({
+      getLogRecord: () => makeLogRecord({ status: "Processing" })
+    });
+    await expect(repository.relatedToLog("log-auth")).rejects.toThrow(/已完成/);
   });
 
   it("simulates index health with a failed row, retry, and rebuild (port-shape parity)", async () => {

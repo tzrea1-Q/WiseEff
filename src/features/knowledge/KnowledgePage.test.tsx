@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 import { createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowledgeRepository";
 import { KnowledgePage } from "./KnowledgePage";
 
-const editorCapability = { userId: "u-xu-yun", canEdit: true, canManage: false };
-const viewerCapability = { userId: "u-viewer", canEdit: false, canManage: false };
+const editorCapability = { userId: "u-xu-yun", canView: true, canEdit: true, canManage: false };
+const viewerCapability = { userId: "u-viewer", canView: true, canEdit: false, canManage: false };
 
 function renderPage(
   overrides: Partial<{ capability: typeof editorCapability; askXiaozeEnabled: boolean; initialEntryId: string | null }> = {}

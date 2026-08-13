@@ -13,10 +13,10 @@ import {
   isSearchable
 } from "./rules";
 
-const owner = { userId: "user-1", canEdit: true, canManage: false };
-const otherEditor = { userId: "user-2", canEdit: true, canManage: false };
-const viewer = { userId: "user-3", canEdit: false, canManage: false };
-const manager = { userId: "user-4", canEdit: true, canManage: true };
+const owner = { userId: "user-1", canView: true, canEdit: true, canManage: false };
+const otherEditor = { userId: "user-2", canView: true, canEdit: true, canManage: false };
+const viewer = { userId: "user-3", canView: true, canEdit: false, canManage: false };
+const manager = { userId: "user-4", canView: true, canEdit: true, canManage: true };
 
 function entry(overrides: Partial<{ status: "draft" | "published" | "archived"; createdByUserId: string }> = {}) {
   return { status: "draft" as const, createdByUserId: "user-1", ...overrides };
