@@ -1,12 +1,27 @@
 import { useEffect } from "react";
-import { X } from "lucide-react";
-
-export const APP_TOAST_AUTO_DISMISS_MS = 4000;
+import { useToast, type ToastTone } from "@/components/common/toast/ToastProvider";
 
 /**
- * Global toast layer for the reducer notification queue. Mounted once in the
- * AppShell for both runtime modes so ADD_NOTIFICATION feedback is visible on
- * every route, including API mode where these messages used to be dropped.
+ * Word-level tone inference for reducer notifications: the queue carries plain
+ * strings (dozens of ADD_NOTIFICATION call sites), so the bridge classifies
+ * failure vocabulary as danger and completion vocabulary as success.
+ */
+export function inferNotificationTone(message: string): ToastTone {
+  if (/失败|无法|错误|拒绝|超时|不可用|异常/.test(message)) {
+    return "danger";
+  }
+  if (/^已|成功|完成/.test(message)) {
+    return "success";
+  }
+  return "info";
+}
+
+/**
+ * Bridge from the reducer notification queue (`state.notifications`, pushed by
+ * ADD_NOTIFICATION in both runtime modes) into the design-system ToastProvider,
+ * so there is exactly one toast renderer. Each queue entry is drained into a
+ * toast (with inferred tone) and immediately consumed via DISMISS_NOTIFICATION;
+ * display timing, hover-pause, and manual close are owned by ToastCard.
  */
 export function AppToastLayer({
   notifications,
@@ -15,33 +30,18 @@ export function AppToastLayer({
   notifications: readonly string[];
   onDismiss: () => void;
 }) {
+  const { toast } = useToast();
   const message = notifications.length > 0 ? notifications[0] : null;
 
   useEffect(() => {
     if (message === null) {
       return;
     }
-    const timer = window.setTimeout(onDismiss, APP_TOAST_AUTO_DISMISS_MS);
-    return () => window.clearTimeout(timer);
-    // Re-arm the timer whenever the queue changes so a newly dispatched
-    // notification always gets its full display window.
-  }, [message, notifications, onDismiss]);
+    toast({ tone: inferNotificationTone(message), message });
+    // Consume the queue entry right away; the effect re-runs on the new array
+    // reference, so back-to-back identical messages each get their own toast.
+    onDismiss();
+  }, [message, notifications, onDismiss, toast]);
 
-  return (
-    <div role="status" aria-live="polite" data-testid="app-toast-layer">
-      {message !== null ? (
-        <div className="logs-feedback-toast app-toast" data-testid="app-toast">
-          <span className="app-toast__message">{message}</span>
-          <button
-            className="app-toast__close"
-            type="button"
-            aria-label="关闭提示"
-            onClick={onDismiss}
-          >
-            <X size={14} aria-hidden="true" />
-          </button>
-        </div>
-      ) : null}
-    </div>
-  );
+  return null;
 }

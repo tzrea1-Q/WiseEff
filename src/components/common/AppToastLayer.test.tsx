@@ -1,63 +1,85 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { APP_TOAST_AUTO_DISMISS_MS, AppToastLayer } from "./AppToastLayer";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useReducer } from "react";
+import { afterEach, describe, expect, it } from "vitest";
+import { AppToastLayer, inferNotificationTone } from "./AppToastLayer";
+import { ToastProvider } from "@/components/common/toast/ToastProvider";
 
 afterEach(() => {
   cleanup();
-  vi.useRealTimers();
 });
 
-describe("AppToastLayer", () => {
-  it("renders the newest notification inside a polite live region", () => {
-    render(<AppToastLayer notifications={["最新通知", "旧通知"]} onDismiss={() => {}} />);
+/**
+ * Drives the bridge exactly the way AppShell does: a queue reducer feeding
+ * `notifications` + a DISMISS handler, with the design-system ToastProvider
+ * owning the rendering.
+ */
+function Harness({ initial }: { initial: string[] }) {
+  const [queue, dispatch] = useReducer(
+    (current: string[], action: { type: "push"; message: string } | { type: "dismiss" }) =>
+      action.type === "push" ? [action.message, ...current] : current.slice(1),
+    initial
+  );
+  return (
+    <ToastProvider>
+      <AppToastLayer notifications={queue} onDismiss={() => dispatch({ type: "dismiss" })} />
+      <button type="button" onClick={() => dispatch({ type: "push", message: "第二条通知" })}>
+        push
+      </button>
+    </ToastProvider>
+  );
+}
 
-    const layer = screen.getByTestId("app-toast-layer");
-    expect(layer).toHaveAttribute("role", "status");
-    expect(layer).toHaveAttribute("aria-live", "polite");
-    expect(screen.getByTestId("app-toast")).toHaveTextContent("最新通知");
-    expect(screen.getByTestId("app-toast")).not.toHaveTextContent("旧通知");
+describe("AppToastLayer bridge", () => {
+  it("drains queue entries into design-system toasts and consumes the queue", () => {
+    render(<Harness initial={["已连接雷泽参数 API"]} />);
+
+    const toast = screen.getByTestId("app-toast");
+    expect(toast).toHaveTextContent("已连接雷泽参数 API");
+    // Success vocabulary maps to the success tone.
+    expect(toast.className).toContain("toast--success");
   });
 
-  it("renders no toast card when the queue is empty", () => {
-    render(<AppToastLayer notifications={[]} onDismiss={() => {}} />);
+  it("gives back-to-back notifications their own toast cards", () => {
+    render(<Harness initial={["第一条通知"]} />);
+    expect(screen.getByTestId("app-toast")).toHaveTextContent("第一条通知");
+
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "push" }));
+    });
+
+    const toasts = screen.getAllByTestId("app-toast");
+    expect(toasts).toHaveLength(2);
+    expect(toasts.map((item) => item.textContent ?? "").join("|")).toContain("第二条通知");
+  });
+
+  it("classifies failure vocabulary as an assertive danger toast", () => {
+    render(<Harness initial={["无法连接雷泽日志 API"]} />);
+
+    const toast = screen.getByTestId("app-toast");
+    expect(toast.className).toContain("toast--danger");
+    expect(toast).toHaveAttribute("role", "alert");
+  });
+
+  it("supports manual close through the ToastCard close button", () => {
+    render(<Harness initial={["需要手动关闭"]} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭提示" }));
 
     expect(screen.queryByTestId("app-toast")).not.toBeInTheDocument();
   });
 
-  it("requests dismissal after the auto-dismiss window", () => {
-    vi.useFakeTimers();
-    const onDismiss = vi.fn();
-    render(<AppToastLayer notifications={["操作成功"]} onDismiss={onDismiss} />);
+  it("renders nothing itself when the queue is empty", () => {
+    render(<Harness initial={[]} />);
 
-    vi.advanceTimersByTime(APP_TOAST_AUTO_DISMISS_MS - 1);
-    expect(onDismiss).not.toHaveBeenCalled();
-
-    vi.advanceTimersByTime(1);
-    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("app-toast")).not.toBeInTheDocument();
   });
+});
 
-  it("re-arms the auto-dismiss window when a new notification arrives", () => {
-    vi.useFakeTimers();
-    const onDismiss = vi.fn();
-    const view = render(<AppToastLayer notifications={["第一条"]} onDismiss={onDismiss} />);
-
-    vi.advanceTimersByTime(APP_TOAST_AUTO_DISMISS_MS - 500);
-    view.rerender(<AppToastLayer notifications={["第二条", "第一条"]} onDismiss={onDismiss} />);
-
-    vi.advanceTimersByTime(500);
-    expect(onDismiss).not.toHaveBeenCalled();
-
-    vi.advanceTimersByTime(APP_TOAST_AUTO_DISMISS_MS - 500);
-    expect(onDismiss).toHaveBeenCalledTimes(1);
-  });
-
-  it("dismisses on the close button without waiting for the timer", () => {
-    vi.useFakeTimers();
-    const onDismiss = vi.fn();
-    render(<AppToastLayer notifications={["需要手动关闭"]} onDismiss={onDismiss} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "关闭提示" }));
-
-    expect(onDismiss).toHaveBeenCalledTimes(1);
+describe("inferNotificationTone", () => {
+  it("maps queue vocabulary onto toast tones", () => {
+    expect(inferNotificationTone("无法连接雷泽参数 API，当前无数据")).toBe("danger");
+    expect(inferNotificationTone("参数提交失败，请重试")).toBe("danger");
+    expect(inferNotificationTone("已提交 RPT-1 的分析反馈")).toBe("success");
+    expect(inferNotificationTone("正在同步数据")).toBe("info");
   });
 });
