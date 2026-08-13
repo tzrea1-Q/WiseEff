@@ -247,6 +247,10 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
           typeof payload.contentMarkdown === "string" ? payload.contentMarkdown.slice(0, MAX_DRAFT_CONTENT_CHARS) : "";
         const sourceLogId =
           typeof payload.sourceLogId === "string" && payload.sourceLogId.trim() ? payload.sourceLogId.trim() : undefined;
+        const sourceReloadRunId =
+          typeof payload.sourceReloadRunId === "string" && payload.sourceReloadRunId.trim()
+            ? payload.sourceReloadRunId.trim()
+            : undefined;
 
         if (!title || !contentMarkdown.trim()) {
           throw new ApiError(
@@ -268,7 +272,8 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
             tags: readDraftTags(payload),
             contentMarkdown,
             sessionId: context.sessionId,
-            sourceLogId
+            sourceLogId,
+            sourceReloadRunId
           },
           { requestId: context.requestId }
         );
@@ -281,6 +286,7 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
             status: entry.status,
             tags: entry.tags,
             sourceLogId: entry.sourceLogId,
+            sourceReloadRunId: entry.sourceReloadRunId,
             sessionId: context.sessionId
           },
           citations: [

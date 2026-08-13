@@ -24,7 +24,6 @@ describe("createAppRuntime", () => {
     const runtime = createAppRuntime("mock", deps());
 
     expect(runtime.logAnalysisRepository).toBeUndefined();
-    expect(runtime.debuggingGateway).toBeUndefined();
     expect(runtime.debuggingAdminClient).toBeUndefined();
     expect(runtime.userGovernanceActions).toBeUndefined();
     expect(runtime.parameterRepository).toBeDefined();
@@ -33,6 +32,16 @@ describe("createAppRuntime", () => {
     expect(runtime.parameterDashboardRepository).toBeDefined();
     // ADR-0002: mock mode substitutes the data source, so DTS reload stays available.
     expect(runtime.dtsReloadRepository).toBeDefined();
+    // ADR-0002: the debugging gateway resolves to the mock adapter, not to nothing.
+    expect(runtime.debuggingGateway).toBeDefined();
+  });
+
+  it("serves the live mock debug-parameter catalog through the mock debugging gateway", async () => {
+    const d = deps();
+    const runtime = createAppRuntime("mock", d);
+
+    const nodes = await runtime.debuggingGateway.listRuntimeNodes!({ protocol: "hdc" });
+    expect(nodes.map((node) => node.id)).toEqual(d.getState().debugParameters.map((parameter) => parameter.id));
   });
 
   it("prefers overrides over mode selection", () => {

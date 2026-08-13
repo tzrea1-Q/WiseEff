@@ -157,7 +157,16 @@ export type DebugDeviceLeaseRecord = {
 };
 
 export type DebugSnapshotEntry = {
-  parameterId: string;
+  /**
+   * Catalog linkage: a debugging_parameters id, present only when the write
+   * addressed a catalog parameter. Optional since #420. Legacy persisted
+   * entries predate nodeId and may hold either identity here (the pre-#420
+   * writer smuggled debug_nodes ids through this key); rollback disambiguates
+   * them with an existence probe before any device I/O.
+   */
+  parameterId?: string;
+  /** Node identity: the debug_nodes id a node-addressed write resolved (#420). */
+  nodeId?: string;
   protocol?: DebugConnectionProtocol;
   nodePath: string;
   previousValue: string;

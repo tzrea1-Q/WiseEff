@@ -1118,6 +1118,36 @@ export async function getReloadRun(
   return toReloadRunDto(row, targets, overlaySource, { artifactRetentionExpired });
 }
 
+/**
+ * Read a reload run as its stored DTO without touching the object store
+ * (overlaySource stays null). Same gate as `getReloadRun`: the reload read
+ * permission (`debugging:view` or `debugging:dts-reload`) plus organization
+ * scope. Serves cross-module readers of the run evidence — currently the
+ * knowledge distillation path, which must couple ONLY to this stored DTO.
+ */
+export async function getReloadRunRecord(
+  db: Queryable,
+  auth: AuthContext,
+  runId: string
+): Promise<ReloadRunDto> {
+  requireDtsReloadView(auth);
+  const row = await getReloadRunRow(db, { organizationId: auth.organization.id, runId });
+  if (!row) {
+    throw new ApiError("NOT_FOUND", "Reload run was not found.", 404, { runId });
+  }
+
+  const targets = await listReloadRunTargets(db, runId);
+  const createdAt = row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at);
+  const completedAt = row.completed_at
+    ? row.completed_at instanceof Date
+      ? row.completed_at.toISOString()
+      : String(row.completed_at)
+    : null;
+  return toReloadRunDto(row, targets, null, {
+    artifactRetentionExpired: isReloadArtifactRetentionExpired(createdAt, completedAt)
+  });
+}
+
 export async function getReloadRunArtifact(
   db: Queryable,
   objectStore: ObjectStore,

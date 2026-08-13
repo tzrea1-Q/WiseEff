@@ -82,6 +82,44 @@ describe("FeedbackAdminDrawer", () => {
     );
   });
 
+  it("keeps the drawer mounted while the close confirmation is stacked above it", async () => {
+    const onClose = vi.fn();
+    const onUpdate = vi.fn().mockResolvedValue(feedback({ status: "closed" }));
+
+    render(
+      <FeedbackAdminDrawer
+        feedback={feedback({ status: "in_progress" })}
+        open
+        onClose={onClose}
+        onUpdate={onUpdate}
+        getAttachmentObjectUrl={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭反馈" }));
+    const confirmDialog = screen.getByRole("dialog", { name: "确认关闭反馈" });
+
+    // The confirmation renders in its own portal, so both its pointer interactions
+    // and Escape reach the Radix sheet as dismissal requests. While the confirmation
+    // is stacked, those requests must not dismiss the drawer — that would unmount the
+    // confirm button before its click can land and the close would never reach the
+    // server (the PFB-ADMIN-001 acceptance regression). jsdom can only exercise the
+    // Escape vector; the pointer vector is covered by the product-feedback browser
+    // acceptance. Matching FeedbackDialog's dirty-state stack, the swallowed request
+    // leaves the confirmation itself up as well.
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "确认关闭反馈" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "日志智能分析" })).toBeInTheDocument();
+
+    // The surviving confirmation can then complete the close.
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "确认关闭" }));
+    await waitFor(() =>
+      expect(onUpdate).toHaveBeenCalledWith("feedback-1", { status: "closed", adminNote: null })
+    );
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("does not close feedback when the confirmation is cancelled", () => {
     const onUpdate = vi.fn();
 

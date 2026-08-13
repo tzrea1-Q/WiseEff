@@ -166,6 +166,19 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "db", "audit"]
   },
   {
+    id: "KB-DISTILL-002",
+    priority: "P1",
+    area: "knowledge",
+    route: "/dts-reload",
+    roles: ["Hardware Committer"],
+    action:
+      "Distil a terminal DTS reload run (verified / unverifiable / contradicted / failed) into a pre-filled knowledge draft from the reload run history/detail surface — parameter set with baseline → debug values, per-parameter verification outcomes, the terminal state stated honestly, artifact digest, and a kernel-log excerpt reference — hand off into the /knowledge draft editor via the entry deep link, and publish the reviewed draft with reload-run source linkage stored on the entry.",
+    coverage: "automated",
+    acceptanceIds: ["KB-DISTILL-002"],
+    specFiles: ["e2e/acceptance/knowledge.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit"]
+  },
+  {
     id: "KB-ADMIN-001",
     priority: "P1",
     area: "knowledge",

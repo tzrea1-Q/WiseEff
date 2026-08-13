@@ -15,6 +15,7 @@ vi.mock("./service", () => ({
   archiveKnowledgeEntry: vi.fn(),
   createKnowledgeEntry: vi.fn(),
   distillKnowledgeFromLog: vi.fn(),
+  distillKnowledgeFromReloadRun: vi.fn(),
   findRelatedKnowledgeForLog: vi.fn(),
   getKnowledgeEntry: vi.fn(),
   getKnowledgeFileContent: vi.fn(),
@@ -72,6 +73,7 @@ function entryRecord(overrides: Partial<KnowledgeEntryDto> = {}): KnowledgeEntry
     sourceType: "human",
     sourceSessionId: null,
     sourceLogId: null,
+    sourceReloadRunId: null,
     createdByUserId: "user-1",
     headRevisionId: REVISION_ID,
     headRevisionNumber: 1,
@@ -272,6 +274,33 @@ describe("knowledge routes", () => {
     expect(response.status).toBe(201);
     expect(response.body.item.sourceLogId).toBe("log-1");
     expect(service.distillKnowledgeFromLog).toHaveBeenCalledWith(db, makeAuth(), { logId: "log-1" }, { requestId: "test-request" });
+  });
+
+  it("POST /api/v1/knowledge/distill-from-reload-run validates the run id and delegates to distillation", async () => {
+    const db = makeDb();
+    const item = entryRecord({ sourceReloadRunId: "run-1", tags: ["参数调试", "DTS重载", "不可验证"] });
+    vi.mocked(service.distillKnowledgeFromReloadRun).mockResolvedValue(item);
+
+    const missing = await requestJson<{ error: { code: string } }>(
+      makeServer({ db, objectStore: makeObjectStore() }),
+      "/api/v1/knowledge/distill-from-reload-run",
+      { method: "POST", body: "{}" }
+    );
+    expect(missing.status).toBe(400);
+
+    const response = await requestJson<{ item: KnowledgeEntryDto }>(
+      makeServer({ db, objectStore: makeObjectStore() }),
+      "/api/v1/knowledge/distill-from-reload-run",
+      { method: "POST", body: JSON.stringify({ runId: "run-1" }) }
+    );
+    expect(response.status).toBe(201);
+    expect(response.body.item.sourceReloadRunId).toBe("run-1");
+    expect(service.distillKnowledgeFromReloadRun).toHaveBeenCalledWith(
+      db,
+      makeAuth(),
+      { runId: "run-1" },
+      { requestId: "test-request" }
+    );
   });
 
   it("POST /api/v1/knowledge/entries/:entryId/reject delegates to the agent-draft reject", async () => {

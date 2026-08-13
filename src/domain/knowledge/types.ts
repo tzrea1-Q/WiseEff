@@ -28,6 +28,8 @@ export type KnowledgeEntry = {
   sourceSessionId: string | null;
   /** Log-analysis record this entry was distilled from, if any. */
   sourceLogId: string | null;
+  /** DTS reload run this entry was distilled from, if any. */
+  sourceReloadRunId: string | null;
   createdByUserId: string;
   headRevisionNumber: number;
   createdAt: string;

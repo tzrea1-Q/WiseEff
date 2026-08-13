@@ -7,6 +7,7 @@ import type { ParameterInitializationRepository } from "@/application/ports/Para
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
+import { resolveDebuggingGateway } from "@/application/debugging/debuggingGatewayRuntime";
 import { resolveDtsReloadRepository } from "@/application/dts-reload/dtsReloadRuntime";
 import { resolveParameterInitializationRepository } from "@/application/parameters/parameterInitializationRuntime";
 import { resolveParameterTopologyRepository } from "@/application/parameters/parameterTopologyResolve";
@@ -21,7 +22,6 @@ import {
   type UpdateCurrentUserProfileInput
 } from "@/infrastructure/http/authClient";
 import { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
-import { createHttpDebuggingGateway } from "@/infrastructure/http/debuggingClient";
 import { createHttpKnowledgeRepository } from "@/infrastructure/http/knowledgeClient";
 import { createHttpLogAnalysisRepository } from "@/infrastructure/http/logClient";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
@@ -59,7 +59,7 @@ export type AppRuntime = {
   knowledgeRepository: KnowledgeRepository;
   dtsReloadRepository: DtsReloadRepository;
   parameterInitializationRepository: ParameterInitializationRepository;
-  debuggingGateway?: DebuggingGateway;
+  debuggingGateway: DebuggingGateway;
   debuggingAdminClient?: ReturnType<typeof createDebuggingAdminClient>;
   userGovernanceActions?: UserGovernanceActions;
   listParameterConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
@@ -78,6 +78,9 @@ export function createAppRuntime(
   overrides: Partial<AppRuntime> = {}
 ): AppRuntime {
   const api = mode === "api";
+  // Resolved before the knowledge repository: mock distillation reads reload
+  // runs from THIS instance so both ports describe the same device story.
+  const dtsReloadRepository = overrides.dtsReloadRepository ?? resolveDtsReloadRepository(mode);
   return {
     authClient: overrides.authClient ?? createAuthClient(),
     parameterRepository:
@@ -97,12 +100,16 @@ export function createAppRuntime(
         ? createHttpKnowledgeRepository()
         : createMockKnowledgeRepository({
             // Mock distillation reads the prototype log records (same port shape as API mode).
-            getLogRecord: (logId) => deps.getState().logs.find((log) => log.id === logId)
+            getLogRecord: (logId) => deps.getState().logs.find((log) => log.id === logId),
+            // Reload-run distillation reads the runtime's mock reload repository.
+            getReloadRun: (runId) => dtsReloadRepository.getRun(runId).catch(() => undefined)
           })),
-    dtsReloadRepository: overrides.dtsReloadRepository ?? resolveDtsReloadRepository(mode),
+    dtsReloadRepository,
     parameterInitializationRepository:
       overrides.parameterInitializationRepository ?? resolveParameterInitializationRepository(mode),
-    debuggingGateway: overrides.debuggingGateway ?? (api ? createHttpDebuggingGateway() : undefined),
+    debuggingGateway:
+      overrides.debuggingGateway ??
+      resolveDebuggingGateway({ mode, getDebugParameters: () => deps.getState().debugParameters }),
     debuggingAdminClient: overrides.debuggingAdminClient ?? (api ? createDebuggingAdminClient() : undefined),
     userGovernanceActions: overrides.userGovernanceActions ?? (api ? createUserGovernanceClient() : undefined),
     listParameterConfigSets: overrides.listParameterConfigSets

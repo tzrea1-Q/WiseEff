@@ -41,6 +41,17 @@ describe("deterministic model knowledge-draft routing", () => {
     });
   });
 
+  it("parses the optional 来源重载 reload-run source id out of the same line", async () => {
+    const model = createDeterministicPerceptionModel();
+    const response = await model.invoke(userMessages("创建知识草稿:重载调参经验 来源重载:run-kbr-42"));
+
+    expect(response.toolCalls?.[0]).toMatchObject({
+      name: "action.createKnowledgeDraft",
+      args: { title: "重载调参经验", sourceReloadRunId: "run-kbr-42" }
+    });
+    expect((response.toolCalls![0].args as { sourceLogId?: string }).sourceLogId).toBeUndefined();
+  });
+
   it("keeps knowledge search routing untouched", async () => {
     const model = createDeterministicPerceptionModel();
     const response = await model.invoke(userMessages("知识库检索:快充温控"));

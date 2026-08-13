@@ -169,7 +169,7 @@ export const AGENT_TOOL_METADATA = [
     requiresApproval: true,
     scope: "organization",
     description:
-      "Distil the current conversation's conclusions into a NEW knowledge base draft for human review. Never executes immediately; requires explicit user approval. Creates a draft only — it never modifies existing entries and stays out of retrieval until a human publishes it. Use when the user wants to save tuning experience, a fault case, or process knowledge; write contentMarkdown as well-structured markdown and pass the log-analysis record id as sourceLogId when the knowledge comes from a log analysis.",
+      "Distil the current conversation's conclusions into a NEW knowledge base draft for human review. Never executes immediately; requires explicit user approval. Creates a draft only — it never modifies existing entries and stays out of retrieval until a human publishes it. Use when the user wants to save tuning experience, a fault case, or process knowledge; write contentMarkdown as well-structured markdown, pass the log-analysis record id as sourceLogId when the knowledge comes from a log analysis, and pass the reload run id as sourceReloadRunId when it comes from a DTS reload debugging run.",
     schema: {
       type: "object",
       properties: {
@@ -186,6 +186,10 @@ export const AGENT_TOOL_METADATA = [
         sourceLogId: {
           type: "string",
           description: "Optional log-analysis record id this draft was distilled from (use ids from perception.getRecentLogConclusions)."
+        },
+        sourceReloadRunId: {
+          type: "string",
+          description: "Optional DTS reload run id this draft was distilled from (the run the user was debugging on /dts-reload)."
         }
       },
       required: ["title", "contentMarkdown"],

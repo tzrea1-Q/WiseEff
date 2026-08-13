@@ -1,11 +1,9 @@
 import { Eye, Pencil, RotateCcw, RotateCw, Search, Send } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { detectHdcTargets, readNodeValue, writeNodeValue } from "./hdcClient";
 import { isHdcPlaceholderTarget } from "@wiseeff/device-command-core/hdcTargets";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { ConfirmDialog } from "./components/common/ConfirmDialog";
 import { SectionError, SectionSkeleton } from "./components/common/SectionState";
-import { useToast } from "./components/common/toast/ToastProvider";
 import { LocalDeviceBridgePanel } from "./components/LocalDeviceBridgePanel";
 import { formatDetectFailureMessage } from "./components/bridgePanelStatus";
 import { NodeOperationHistoryPanel, type NodeOperationEvent } from "./components/NodeOperationHistoryPanel";
@@ -13,11 +11,11 @@ import { RollbackConfirmDialog } from "./components/RollbackConfirmDialog";
 import { WorkbenchSheet } from "./components/WorkbenchSheet";
 import { useTopBarActions } from "./components/layout";
 import {
-  probeLocalBridgeHealth,
-  probeLocalBridgeHealthDetailed
+  probeLocalBridgeHealthDetailed,
+  type LocalBridgeProbeResult
 } from "./infrastructure/http/bridgeConnectLauncher";
+import type { DeviceBridgePairingCode, DeviceBridgeRecord } from "./infrastructure/http/deviceBridgeClient";
 import { formatDebuggingRuntimeError, type DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
-import { presentErrorMessage } from "./infrastructure/http/presentError";
 import type { DeviceTarget, NodeOperationSnapshot, NodeReadResult, NodeWriteResult } from "./application/ports/DebuggingGateway";
 import type {
   DebugConnectionProtocol,
@@ -70,6 +68,9 @@ type PageNodeOperationEvent = NodeOperationEvent & {
 };
 
 const protocolStorageKey = "wiseeff.nodeDebugging.protocol";
+
+/** Stable default so the bridge panel's refresh effect is not re-triggered every render. */
+const defaultProbeBridgeHealth = () => probeLocalBridgeHealthDetailed();
 
 export function readInitialNodeDebuggingProtocol(): DebugConnectionProtocol {
   try {
@@ -464,16 +465,25 @@ export function NodeDebuggingPage({
   debuggingActions,
   runtimeStatus = "ready",
   runtimeError,
-  onRuntimeRetry
+  onRuntimeRetry,
+  bridges,
+  probeBridgeHealth = defaultProbeBridgeHealth,
+  createBridgePairingCode
 }: {
   state: PrototypeState;
-  debuggingActions?: DebuggingRuntimeActions;
+  /** All node operations go through the DebuggingGateway port behind these actions. */
+  debuggingActions: DebuggingRuntimeActions;
   runtimeStatus?: NodeDebuggingRuntimeStatus;
   runtimeError?: string;
   onRuntimeRetry?: () => void;
+  /** Bridge panel seam for non-API runtimes; defaults to the HTTP bridge listing. */
+  bridges?: DeviceBridgeRecord[];
+  /** Local bridge health seam; defaults to the local HTTP health probe. */
+  probeBridgeHealth?: () => Promise<LocalBridgeProbeResult>;
+  /** Pairing-code seam for non-API runtimes; defaults to the HTTP client. */
+  createBridgePairingCode?: () => Promise<DeviceBridgePairingCode>;
 }) {
   const runtimeReady = runtimeStatus === "ready";
-  const { toast } = useToast();
   const [protocol, setProtocol] = useState<DebugConnectionProtocol>(readInitialNodeDebuggingProtocol);
   const [rows, setRows] = useState<RuntimeRow[]>(() =>
     state.debugParameters.map((parameter) => runtimeRowFromParameter(parameter, protocol))
@@ -626,11 +636,9 @@ export function NodeDebuggingPage({
     autoReadSignatureRef.current = "";
     rowOperationSeqRef.current = {};
     setSelectedIds(new Set());
-    if (debuggingActions) {
-      void Promise.resolve()
-        .then(() => debuggingActions.refresh({ protocol: nextProtocol }))
-        .catch(() => undefined);
-    }
+    void Promise.resolve()
+      .then(() => debuggingActions.refresh({ protocol: nextProtocol }))
+      .catch(() => undefined);
   };
 
   const toggleSelectAll = () => {
@@ -663,14 +671,12 @@ export function NodeDebuggingPage({
     const operationSeq = nextRowOperationSeq(row.id);
     updateRow(row.id, { runtimeStatus: "执行中", activeOperation: "read", error: undefined });
     try {
-      const result: ReadResultWithOperation = debuggingActions
-        ? await debuggingActions.readNode({
-            sessionId,
-            target: activeTarget,
-            nodeId: row.id,
-            nodePath: row.nodePath
-          })
-        : await readNodeValue({ target: activeTarget ?? "", nodePath: row.nodePath });
+      const result: ReadResultWithOperation = await debuggingActions.readNode({
+        sessionId,
+        target: activeTarget,
+        nodeId: row.id,
+        nodePath: row.nodePath
+      });
       const outcome = resolveReadRowOutcome(result);
       const isLatest = isLatestRowOperation(row.id, operationSeq, generation, requestProtocol);
       if (isLatest) {
@@ -759,7 +765,7 @@ export function NodeDebuggingPage({
   };
 
   useEffect(() => {
-    if (!debuggingActions || !activeSessionId || !activeTargetId) {
+    if (!activeSessionId || !activeTargetId) {
       return;
     }
 
@@ -801,55 +807,31 @@ export function NodeDebuggingPage({
     setDetecting(true);
     setSelectingBridgeTargetId(null);
     try {
-      if (debuggingActions) {
-        const healthProbe = await probeLocalBridgeHealthDetailed();
-        const localBridgeId =
-          healthProbe.health?.connected && healthProbe.health.bridgeId
-            ? healthProbe.health.bridgeId
-            : undefined;
-        const result = await debuggingActions.detectAndStartSession({
-          protocol: requestProtocol,
-          ...(localBridgeId ? { bridgeId: localBridgeId } : {})
-        }) as DetectResultWithOperation;
-        if (!isCurrentDetectRequest()) return;
-        if ("candidates" in result) {
-          setTarget(undefined);
-          setActiveSessionId(undefined);
-          setActiveTargetId(undefined);
-          setBridgeTargetCandidates(result.candidates);
-          return;
-        }
-        const { session, target: detectedTarget } = result;
-        applyDetectedSession(session, detectedTarget);
-        if ("operations" in result && result.operations) {
-          replaceEventsFromOperations(result.operations);
-        } else if (result.operation) {
-          appendEvent(eventFromOperation(result.operation, rowsRef.current));
-        }
+      const healthProbe = await probeBridgeHealth().catch(
+        (): LocalBridgeProbeResult => ({ health: null, reachability: "offline" })
+      );
+      const localBridgeId =
+        healthProbe.health?.connected && healthProbe.health.bridgeId
+          ? healthProbe.health.bridgeId
+          : undefined;
+      const result = await debuggingActions.detectAndStartSession({
+        protocol: requestProtocol,
+        ...(localBridgeId ? { bridgeId: localBridgeId } : {})
+      }) as DetectResultWithOperation;
+      if (!isCurrentDetectRequest()) return;
+      if ("candidates" in result) {
+        setTarget(undefined);
+        setActiveSessionId(undefined);
+        setActiveTargetId(undefined);
+        setBridgeTargetCandidates(result.candidates);
         return;
       }
-
-      if (requestProtocol === "adb") {
-        throw new Error("ADB 调试需要 API 模式后端 gateway。");
-      }
-
-      const result = await detectHdcTargets();
-      if (!isCurrentDetectRequest()) return;
-      setTarget(result.activeTarget && !isHdcPlaceholderTarget(result.activeTarget) ? result.activeTarget : undefined);
-      setActiveTargetId(result.activeTarget);
-      setBridgeTargetCandidates([]);
-      appendEvent({
-        parameterName: `${protocolLabel(requestProtocol)} 设备`,
-        parameterKey: `${requestProtocol}.list.targets`,
-        accessMode: "RO",
-        action: "detect",
-        status: result.ok ? "已连接" : "检测失败",
-        returncode: result.ok ? 0 : 1,
-        stdout: result.targets.join("\n"),
-        stderr: result.stderr
-      });
-      if (result.ok && result.activeTarget) {
-        await readReadableRows(result.activeTarget, rowsRef.current);
+      const { session, target: detectedTarget } = result;
+      applyDetectedSession(session, detectedTarget);
+      if ("operations" in result && result.operations) {
+        replaceEventsFromOperations(result.operations);
+      } else if (result.operation) {
+        appendEvent(eventFromOperation(result.operation, rowsRef.current));
       }
     } catch (error) {
       if (!isCurrentDetectRequest()) return;
@@ -858,7 +840,7 @@ export function NodeDebuggingPage({
       setActiveTargetId(undefined);
       setBridgeTargetCandidates([]);
       const diagnosticError = error instanceof Error ? error as DiagnosticError : undefined;
-      const healthSnapshot = await probeLocalBridgeHealth().catch(() => null);
+      const healthSnapshot = (await probeBridgeHealth().catch(() => null))?.health ?? null;
       const detectFailureMessage = formatDetectFailureMessage({
         error,
         health: healthSnapshot,
@@ -866,25 +848,16 @@ export function NodeDebuggingPage({
         formatError: formatDebuggingRuntimeError
       });
       const detectFailureStderr = diagnosticError?.stderr || detectFailureMessage;
-      if (debuggingActions) {
-        appendEvent({
-          parameterName: `${protocolLabel(requestProtocol)} 设备`,
-          parameterKey: "debugging.detect",
-          accessMode: "RO",
-          action: "detect",
-          status: "检测失败",
-          returncode: diagnosticError?.returncode ?? 1,
-          stdout: diagnosticError?.stdout,
-          stderr: detectFailureStderr
-        });
-      } else {
-        // Demo runtime has no gateway history to fall back on: surface the
-        // failure as a toast so 重新检测 is never silent (FA-21).
-        toast({
-          tone: "danger",
-          message: presentErrorMessage(detectFailureMessage, "设备检测未完成，请检查本地调试环境后重试。")
-        });
-      }
+      appendEvent({
+        parameterName: `${protocolLabel(requestProtocol)} 设备`,
+        parameterKey: "debugging.detect",
+        accessMode: "RO",
+        action: "detect",
+        status: "检测失败",
+        returncode: diagnosticError?.returncode ?? 1,
+        stdout: diagnosticError?.stdout,
+        stderr: detectFailureStderr
+      });
     } finally {
       if (isCurrentDetectRequest()) {
         setDetecting(false);
@@ -893,7 +866,7 @@ export function NodeDebuggingPage({
   };
 
   const selectBridgeTarget = async (selectedTarget: DeviceTarget) => {
-    if (!debuggingActions || detecting) {
+    if (detecting) {
       return;
     }
     setSelectingBridgeTargetId(selectedTarget.id);
@@ -929,7 +902,7 @@ export function NodeDebuggingPage({
   /** Returns true when the write landed (and, for RW rows, read back consistent). */
   const writeRow = async (row: RuntimeRow, confirmationToken?: string): Promise<boolean> => {
     if ((!target && !activeSessionId) || !canWrite(row)) return false;
-    if (debuggingActions && row.risk === "High" && !confirmationToken) {
+    if (row.risk === "High" && !confirmationToken) {
       setPendingHighRiskWrite(row);
       return false;
     }
@@ -939,18 +912,16 @@ export function NodeDebuggingPage({
     const operationSeq = nextRowOperationSeq(row.id);
     updateRow(row.id, { runtimeStatus: "执行中", activeOperation: "write", error: undefined });
     try {
-      const result: WriteResultWithOperation = debuggingActions
-        ? await debuggingActions.writeNode({
-            sessionId: activeSessionId,
-            target: activeTargetId,
-            nodeId: row.id,
-            nodePath: row.nodePath,
-            value: row.draftValue,
-            readBack,
-            risk: row.risk,
-            ...(confirmationToken ? { confirmationToken } : {})
-          })
-        : await writeNodeValue({ target: target ?? "", nodePath: row.nodePath, value: row.draftValue, readBack });
+      const result: WriteResultWithOperation = await debuggingActions.writeNode({
+        sessionId: activeSessionId,
+        target: activeTargetId,
+        nodeId: row.id,
+        nodePath: row.nodePath,
+        value: row.draftValue,
+        readBack,
+        risk: row.risk,
+        ...(confirmationToken ? { confirmationToken } : {})
+      });
 
       if (!isLatestRowOperation(row.id, operationSeq, generation, requestProtocol)) return false;
 
@@ -1064,7 +1035,7 @@ export function NodeDebuggingPage({
 
     // High-risk rows require a single aggregate confirmation before dispatch —
     // never per-row dialogs that overwrite each other or silent skips.
-    const highRiskRows = debuggingActions ? rowsToWrite.filter((row) => row.risk === "High") : [];
+    const highRiskRows = rowsToWrite.filter((row) => row.risk === "High");
     if (highRiskRows.length > 0) {
       setPendingBulkWrite({ rows: rowsToWrite, highRiskRows });
       return;
@@ -1110,15 +1081,16 @@ export function NodeDebuggingPage({
             ))}
           </div>
         </div>
-        {debuggingActions ? (
-          <LocalDeviceBridgePanel
-            target={target}
-            detecting={detecting}
-            protocol={protocol}
-            onDetect={() => void detect()}
-          />
-        ) : null}
-        {debuggingActions && bridgeTargetCandidates.length > 1 ? (
+        <LocalDeviceBridgePanel
+          target={target}
+          detecting={detecting}
+          protocol={protocol}
+          onDetect={() => void detect()}
+          bridgesOverride={bridges}
+          probeHealth={probeBridgeHealth}
+          createPairingCode={createBridgePairingCode}
+        />
+        {bridgeTargetCandidates.length > 1 ? (
           <section className="bridge-target-picker" aria-label="设备代理目标选择">
             <div className="bridge-target-picker__head">
               <strong>检测到多个设备代理目标</strong>
@@ -1508,12 +1480,10 @@ export function NodeDebuggingPage({
           onConfirm={() => {
             const snapshot = state.lastDebugSnapshot;
             if (!snapshot) return;
-            if (debuggingActions) {
-              void debuggingActions.rollbackSnapshot({
-                snapshotId: snapshot.id,
-                confirmationToken: "confirm-rollback"
-              });
-            }
+            void debuggingActions.rollbackSnapshot({
+              snapshotId: snapshot.id,
+              confirmationToken: "confirm-rollback"
+            });
             setRollbackDialogOpen(false);
           }}
         />

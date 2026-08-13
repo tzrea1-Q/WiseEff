@@ -176,6 +176,16 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
             <ExternalLink data-icon="inline-start" />
             查看日志分析
           </Button>
+        ) : entry.sourceReloadRunId ? (
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto px-0 text-xs"
+            onClick={() => onNavigate?.(`/dts-reload?runId=${encodeURIComponent(entry.sourceReloadRunId!)}`)}
+          >
+            <ExternalLink data-icon="inline-start" />
+            查看重载运行
+          </Button>
         ) : (
           <span className="text-xs text-muted-foreground">—</span>
         ),

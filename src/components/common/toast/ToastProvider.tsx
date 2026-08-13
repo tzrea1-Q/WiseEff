@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Info } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info, X } from "lucide-react";
 import {
   createContext,
   useCallback,
@@ -61,6 +61,7 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: numbe
       className={`toast toast--${item.tone}`}
       role={isAlert ? "alert" : "status"}
       aria-live={isAlert ? "assertive" : "polite"}
+      data-testid="app-toast"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
@@ -78,6 +79,14 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: numbe
           {item.action.label}
         </button>
       ) : null}
+      <button
+        type="button"
+        className="toast__close"
+        aria-label="关闭提示"
+        onClick={() => onDismiss(item.id)}
+      >
+        <X size={14} aria-hidden="true" />
+      </button>
     </div>
   );
 }

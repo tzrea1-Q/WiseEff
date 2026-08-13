@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pencil, Search, X } from "lucide-react";
 
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
+import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
+import type { KnowledgeCapability } from "@/domain/knowledge/rules";
+import { isReloadRunDistillable } from "@/domain/knowledge/distillReload";
 import { dtsReloadBlockReasonLabels } from "@/domain/dtsReload/types";
 import type { DtsReloadCandidate } from "@/domain/dtsReload/types";
 import { describeReloadValueShapeAuthoring } from "@/domain/dtsReload/valueShape";
@@ -76,6 +79,14 @@ export type DtsReloadPageProps = {
   initialTargetRef?: string;
   /** Optional module registry for navigator nesting (defaults to runtime resolve). */
   moduleRegistryRepository?: ParameterModuleRegistryRepository | null;
+  /** Knowledge port for distil-to-knowledge; absent hides the affordance. */
+  knowledgeRepository?: KnowledgeRepository | null;
+  /** knowledge:edit gates the distil affordance (deferred roadmap item 3). */
+  knowledgeCapability?: KnowledgeCapability;
+  /** Router navigation for the /knowledge draft-editor handoff. */
+  onNavigate?: (path: string) => void;
+  /** Deep link (`/dts-reload?runId=…`): opens this history run on mount. */
+  initialRunId?: string | null;
 };
 
 export function DtsReloadPage({
@@ -89,7 +100,11 @@ export function DtsReloadPage({
   createBridgePairingCode,
   detectTargets,
   initialTargetRef,
-  moduleRegistryRepository
+  moduleRegistryRepository,
+  knowledgeRepository,
+  knowledgeCapability,
+  onNavigate,
+  initialRunId
 }: DtsReloadPageProps) {
   const {
     session,
@@ -157,6 +172,9 @@ export function DtsReloadPage({
   const [editingBindingId, setEditingBindingId] = useState<string | null>(null);
   const [reachableTargets, setReachableTargets] = useState<DtsReloadReachableTarget[]>([]);
   const [detectingTargets, setDetectingTargets] = useState(false);
+  const [distilPending, setDistilPending] = useState(false);
+  const [distilError, setDistilError] = useState("");
+  const openedInitialRunRef = useRef(false);
 
   const selectedBridge = useMemo(
     () => bridges.find((bridge) => bridge.id === bridgeId) ?? null,
@@ -359,6 +377,44 @@ export function DtsReloadPage({
   const onOpenHistoryRun = (runId: string) => {
     void session.openHistoryRun(repository, runId);
   };
+
+  // Deep link (`/dts-reload?runId=…`): open the referenced history run once,
+  // so knowledge-entry source links land on the run detail.
+  useEffect(() => {
+    if (!initialRunId || openedInitialRunRef.current) {
+      return;
+    }
+    openedInitialRunRef.current = true;
+    void session.openHistoryRun(repository, initialRunId);
+  }, [initialRunId, repository, session]);
+
+  // Distil-to-knowledge (design deferred roadmap item 3): pre-fills a draft
+  // from the terminal run and hands off into the /knowledge draft editor,
+  // exactly like the logs page pattern. Server-side gates stay authoritative.
+  const canDistilRun = Boolean(
+    knowledgeRepository && knowledgeCapability?.canEdit && onNavigate && run && isReloadRunDistillable(run.status)
+  );
+  const onDistil = useCallback(async () => {
+    if (!knowledgeRepository || !onNavigate || !run || distilPending) {
+      return;
+    }
+    setDistilPending(true);
+    setDistilError("");
+    try {
+      const draft = await knowledgeRepository.distillFromReloadRun(run.id);
+      onNavigate(`/knowledge?entryId=${encodeURIComponent(draft.id)}`);
+    } catch (error) {
+      setDistilError(
+        error instanceof Error && error.message ? `沉淀为知识失败:${error.message}` : "沉淀为知识失败,请稍后重试"
+      );
+    } finally {
+      setDistilPending(false);
+    }
+  }, [distilPending, knowledgeRepository, onNavigate, run]);
+
+  useEffect(() => {
+    setDistilError("");
+  }, [run?.id]);
 
   const confirmRun = pendingDeployRun ?? run;
 
@@ -803,17 +859,26 @@ export function DtsReloadPage({
         </section>
 
         {run ? (
-          <RunResultSection
-            run={run}
-            deviceId={deviceId}
-            targetRef={targetRef}
-            canStartRun={canStartRun}
-            canRetryDeploy={canRetryDeploy}
-            deployReady={deployReady}
-            deploying={deploying}
-            onDownload={() => void onDownload()}
-            onDeploy={() => session.openDeployConfirm(run)}
-          />
+          <>
+            {distilError ? (
+              <p role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-950">
+                {distilError}
+              </p>
+            ) : null}
+            <RunResultSection
+              run={run}
+              deviceId={deviceId}
+              targetRef={targetRef}
+              canStartRun={canStartRun}
+              canRetryDeploy={canRetryDeploy}
+              deployReady={deployReady}
+              deploying={deploying}
+              onDownload={() => void onDownload()}
+              onDeploy={() => session.openDeployConfirm(run)}
+              onDistil={canDistilRun ? () => void onDistil() : undefined}
+              distilPending={distilPending}
+            />
+          </>
         ) : null}
 
         <RunHistorySection

@@ -53,6 +53,7 @@ export type KnowledgeEntryDto = {
   sourceType: KnowledgeSourceType;
   sourceSessionId: string | null;
   sourceLogId: string | null;
+  sourceReloadRunId: string | null;
   createdByUserId: string;
   headRevisionId: string | null;
   headRevisionNumber: number;
@@ -100,6 +101,7 @@ function entryFromDto(dto: KnowledgeEntryDto): KnowledgeEntry {
     sourceType: dto.sourceType,
     sourceSessionId: dto.sourceSessionId,
     sourceLogId: dto.sourceLogId,
+    sourceReloadRunId: dto.sourceReloadRunId,
     createdByUserId: dto.createdByUserId,
     headRevisionNumber: dto.headRevisionNumber,
     createdAt: dto.createdAt,
@@ -239,6 +241,14 @@ export function createHttpKnowledgeRepository(options: HttpKnowledgeRepositoryOp
       const response = await apiClient.post<ItemEnvelope<KnowledgeEntryDto>>("/api/v1/knowledge/distill-from-log", {
         logId
       });
+      return entryFromDto(response.item);
+    },
+
+    async distillFromReloadRun(runId) {
+      const response = await apiClient.post<ItemEnvelope<KnowledgeEntryDto>>(
+        "/api/v1/knowledge/distill-from-reload-run",
+        { runId }
+      );
       return entryFromDto(response.item);
     },
 

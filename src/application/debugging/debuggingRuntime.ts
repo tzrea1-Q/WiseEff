@@ -308,7 +308,9 @@ export function createDebuggingRuntimeActions({
     refresh,
     async detectAndStartSession(options) {
       const protocol = options?.protocol ?? "hdc";
-      if (mode !== "api") {
+      // Without a gateway, keep the legacy prototype-reducer behavior (test doubles);
+      // both runtime modes normally inject a gateway via resolveDebuggingGateway.
+      if (!gateway) {
         const device = resolveDebugDevice(getState(), protocol);
         dispatch({ type: "CONNECT_DEVICE", deviceId: device.id });
         const target = { id: device.id, deviceId: device.id, protocol, label: device.name };
@@ -381,7 +383,7 @@ export function createDebuggingRuntimeActions({
       });
     },
     async readNode(input) {
-      if (mode !== "api") {
+      if (!gateway) {
         return { ok: true, value: getState().debugParameters.find((parameter) => parameter.nodePath === input.nodePath)?.currentValue };
       }
 
@@ -392,7 +394,7 @@ export function createDebuggingRuntimeActions({
       });
     },
     async writeNode(input) {
-      if (mode !== "api") {
+      if (!gateway) {
         dispatch({ type: "PUSH_DEBUG_VALUES", parameterIds: input.parameterId ? [input.parameterId] : [] });
         return { ok: true, value: input.value, verified: true };
       }
@@ -444,7 +446,7 @@ export function createDebuggingRuntimeActions({
       });
     },
     async rollbackSnapshot(input) {
-      if (mode !== "api") {
+      if (!gateway) {
         dispatch({ type: "ROLLBACK_LAST_SNAPSHOT" });
         return;
       }

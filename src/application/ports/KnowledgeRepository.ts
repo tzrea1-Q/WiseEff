@@ -58,6 +58,8 @@ export interface KnowledgeRepository {
   createFile(input: CreateFileKnowledgeInput): Promise<KnowledgeEntry>;
   /** Distil a completed log-analysis record into a pre-filled knowledge draft. */
   distillFromLog(logId: string): Promise<KnowledgeEntry>;
+  /** Distil a terminal DTS reload run into a pre-filled knowledge draft. */
+  distillFromReloadRun(runId: string): Promise<KnowledgeEntry>;
   update(entryId: string, input: UpdateKnowledgeInput): Promise<KnowledgeEntry>;
   publish(entryId: string): Promise<KnowledgeEntry>;
   archive(entryId: string): Promise<KnowledgeEntry>;

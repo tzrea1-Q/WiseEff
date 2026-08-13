@@ -34,6 +34,8 @@ export type KnowledgeEntryDto = {
   sourceSessionId: string | null;
   /** Log-analysis record this entry was distilled from (Phase 3 distillation). */
   sourceLogId: string | null;
+  /** DTS reload run this entry was distilled from (deferred roadmap item 3). */
+  sourceReloadRunId: string | null;
   createdByUserId: string;
   headRevisionId: string | null;
   headRevisionNumber: number;
@@ -105,6 +107,7 @@ export type InsertKnowledgeEntryInput = {
   sourceType: KnowledgeSourceType;
   sourceSessionId: string | null;
   sourceLogId: string | null;
+  sourceReloadRunId: string | null;
   searchText: string;
 };
 

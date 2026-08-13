@@ -31,12 +31,12 @@ export async function expectUsablePage(page: Page) {
  */
 export async function settleAppToasts(page: Page, timeoutMs = 10_000) {
   const deadline = Date.now() + timeoutMs;
-  const toast = page.locator(".app-toast");
+  const toast = page.locator(".toast");
   while (Date.now() < deadline) {
     if ((await toast.count()) === 0) {
       return;
     }
-    const close = page.locator(".app-toast__close").first();
+    const close = page.locator(".toast__close").first();
     if ((await close.count()) > 0) {
       await close.click({ timeout: 1_000 }).catch(() => undefined);
     }
