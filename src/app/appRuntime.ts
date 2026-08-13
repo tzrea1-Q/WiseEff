@@ -7,6 +7,7 @@ import type { ParameterInitializationRepository } from "@/application/ports/Para
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
+import { resolveDebuggingGateway } from "@/application/debugging/debuggingGatewayRuntime";
 import { resolveDtsReloadRepository } from "@/application/dts-reload/dtsReloadRuntime";
 import { resolveParameterInitializationRepository } from "@/application/parameters/parameterInitializationRuntime";
 import { resolveParameterTopologyRepository } from "@/application/parameters/parameterTopologyResolve";
@@ -21,7 +22,6 @@ import {
   type UpdateCurrentUserProfileInput
 } from "@/infrastructure/http/authClient";
 import { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
-import { createHttpDebuggingGateway } from "@/infrastructure/http/debuggingClient";
 import { createHttpKnowledgeRepository } from "@/infrastructure/http/knowledgeClient";
 import { createHttpLogAnalysisRepository } from "@/infrastructure/http/logClient";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
@@ -59,7 +59,7 @@ export type AppRuntime = {
   knowledgeRepository: KnowledgeRepository;
   dtsReloadRepository: DtsReloadRepository;
   parameterInitializationRepository: ParameterInitializationRepository;
-  debuggingGateway?: DebuggingGateway;
+  debuggingGateway: DebuggingGateway;
   debuggingAdminClient?: ReturnType<typeof createDebuggingAdminClient>;
   userGovernanceActions?: UserGovernanceActions;
   listParameterConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
@@ -102,7 +102,9 @@ export function createAppRuntime(
     dtsReloadRepository: overrides.dtsReloadRepository ?? resolveDtsReloadRepository(mode),
     parameterInitializationRepository:
       overrides.parameterInitializationRepository ?? resolveParameterInitializationRepository(mode),
-    debuggingGateway: overrides.debuggingGateway ?? (api ? createHttpDebuggingGateway() : undefined),
+    debuggingGateway:
+      overrides.debuggingGateway ??
+      resolveDebuggingGateway({ mode, getDebugParameters: () => deps.getState().debugParameters }),
     debuggingAdminClient: overrides.debuggingAdminClient ?? (api ? createDebuggingAdminClient() : undefined),
     userGovernanceActions: overrides.userGovernanceActions ?? (api ? createUserGovernanceClient() : undefined),
     listParameterConfigSets: overrides.listParameterConfigSets

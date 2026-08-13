@@ -1155,7 +1155,10 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     expect(debuggingCase).toContain("NoEntryPage");
     expect(debuggingCase).not.toContain("DebuggingPageWithRuntimeProps");
-    expect(nodeDebuggingCase).toContain('debuggingActions={runtimeMode === "api" ? debuggingActions : undefined}');
+    // Both runtime modes route through the same debugging actions (the gateway behind
+    // them is mode-selected by resolveDebuggingGateway); mock mode adds bridge seams.
+    expect(nodeDebuggingCase).toContain("debuggingActions={debuggingActions!}");
+    expect(nodeDebuggingCase).toContain("mockDebuggingBridgeSeams()");
     expect(nodeDebuggingCase).not.toContain("debuggingGateway={debuggingGateway}");
   });
 
