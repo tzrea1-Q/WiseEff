@@ -9,6 +9,7 @@ import {
   archiveLogRecord,
   createLogFromFile,
   getLogRecord,
+  listLogFeedbackInsights,
   listLogRecords,
   listLogRuns,
   rerunLogAnalysis,
@@ -28,6 +29,7 @@ import {
   createLogBodySchema,
   createLogDomainBodySchema,
   createLogFileBodySchema,
+  feedbackInsightsQuerySchema,
   listLogDomainsQuerySchema,
   listLogsQuerySchema,
   logFeedbackBodySchema,
@@ -123,6 +125,16 @@ export function registerLogRoutes(
       ...query,
       includeArchived: typeof query.includeArchived === "boolean" ? query.includeArchived : undefined
     });
+
+    return { status: 200, body: result };
+  });
+
+  // Static path resolved before /api/v1/logs/:logId by the router's static-count precedence.
+  router.get("/api/v1/logs/feedback-insights", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const query = parseWithSchema(feedbackInsightsQuerySchema, request.query);
+    const result = await listLogFeedbackInsights(db, auth, query);
 
     return { status: 200, body: result };
   });

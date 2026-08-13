@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { createAuditEvent } from "../audit/repository";
 import type { AuthContext } from "../auth/types";
-import { canAdminParameters, canViewParameters } from "../parameters/policy";
+import { canAdminParameters, canViewParameters } from "../parameter-kernel/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { lookupParseCoverage } from "./parseCoverage";

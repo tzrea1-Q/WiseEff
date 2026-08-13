@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { gzipSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
 import { ApiError } from "../../shared/http/errors";
@@ -16,6 +17,7 @@ import {
   archiveLogRecord,
   createLogFromFile,
   getLogRecord,
+  listLogFeedbackInsights,
   listLogRecords,
   rerunLogAnalysis,
   submitLogFeedback,
@@ -327,6 +329,83 @@ describe.skipIf(!databaseAvailable)("log service", () => {
     expect(events.map((row) => row.kind)).toContain("log-upload-failed");
   });
 
+  it("unpacks a .gz upload before storing so the object holds plain text and analysis is queued", async () => {
+    const objectStore = createMemoryObjectStore();
+    const logText = "12 WARN temp=74\n21 INFO derate=1\n";
+
+    const result = await uploadLogFile(db, objectStore, makeAuth(), {
+      fileName: "pack-controller.log.gz",
+      contentType: "application/gzip",
+      bytes: gzipSync(Buffer.from(logText))
+    });
+
+    expect(result.log).toMatchObject({ fileName: "pack-controller.log.gz", status: "processing" });
+    expect(result.job).toMatchObject({ status: "queued" });
+    const storedBytes = await objectStore.get(result.fileObject.storageKey);
+    expect(storedBytes.toString("utf8")).toBe(logText);
+    expect(result.fileObject.fileSizeBytes).toBe(Buffer.byteLength(logText));
+  });
+
+  it("marks a multi-entry .zip upload failed with a readable reason and no job", async () => {
+    const objectStore = createMemoryObjectStore();
+    const { queue, enqueued } = makeQueue();
+
+    const result = await uploadLogFile(
+      db,
+      objectStore,
+      makeAuth(),
+      {
+        fileName: "bundle.zip",
+        contentType: "application/zip",
+        // Not a valid single-entry archive: plain bytes fail unpacking.
+        bytes: Buffer.from("not a zip archive")
+      },
+      { logAnalysisQueue: queue }
+    );
+
+    expect(result.log.status).toBe("failed");
+    expect(result.log.failureReason).toMatch(/Failed to read \.zip archive/);
+    expect(result.job).toBeNull();
+    expect(enqueued).toHaveLength(0);
+    expect(objectStore.entries.size).toBe(0);
+
+    const events = await auditEvents();
+    expect(events.map((row) => row.kind)).toContain("log-upload-failed");
+  });
+
+  it("stops a gzip bomb at intake with the size-limit failure reason", async () => {
+    const objectStore = createMemoryObjectStore();
+    const bomb = gzipSync(Buffer.alloc(5 * 1024 * 1024, 0x61));
+
+    const result = await uploadLogFile(db, objectStore, makeAuth(), {
+      fileName: "bomb.log.gz",
+      contentType: "application/gzip",
+      bytes: bomb
+    });
+
+    expect(result.log.status).toBe("failed");
+    expect(result.log.failureReason).toMatch(/exceeds the allowed size/);
+    expect(result.job).toBeNull();
+    expect(objectStore.entries.size).toBe(0);
+  });
+
+  it("createLogFromFile refuses to reanalyze a rejected (never stored) upload", async () => {
+    const rejected = await uploadLogFile(db, createMemoryObjectStore(), makeAuth(), {
+      fileName: "bomb.log.gz",
+      contentType: "application/gzip",
+      bytes: gzipSync(Buffer.alloc(5 * 1024 * 1024, 0x61))
+    });
+    expect(rejected.log.status).toBe("failed");
+
+    const replay = await createLogFromFile(db, makeAuth(), {
+      fileObjectId: rejected.fileObject.id,
+      fileName: "bomb.log.gz"
+    });
+
+    expect(replay.log.status).toBe("failed");
+    expect(replay.job).toBeNull();
+  });
+
   it("does not dispatch unsupported uploads to the durable queue", async () => {
     const { queue, enqueued } = makeQueue();
 
@@ -474,6 +553,21 @@ describe.skipIf(!databaseAvailable)("log service", () => {
     expect(audit).toBeDefined();
     expect(audit?.project_id).toBeNull();
     expect(audit?.trace_id).toBe("request-log-feedback-1");
+  });
+
+  it("feedback insights require logs:view and aggregate helpful rate per group", async () => {
+    const uploaded = await uploadSampleLog();
+    await submitLogFeedback(db, makeAuth(), { logId: uploaded.log.id, rating: "helpful" });
+    await submitLogFeedback(db, makeAuth(), { logId: uploaded.log.id, rating: "not_helpful" });
+
+    await expect(
+      listLogFeedbackInsights(db, makeAuth({ permissions: ["logs:feedback"] }), {})
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Forbidden.", 403, { permission: "logs:view" }));
+
+    const insights = await listLogFeedbackInsights(db, makeAuth(), { timeWindow: "7d" });
+    expect(insights.items).toEqual([
+      expect.objectContaining({ totalCount: 2, helpfulCount: 1, helpfulRate: 0.5 })
+    ]);
   });
 
   it("rerun requires logs:analyze or admin, creates a new run and job, and keeps old run history", async () => {

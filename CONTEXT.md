@@ -145,3 +145,4 @@ Architectural decisions: [`docs/adr/`](docs/adr/) (created lazily). Feature-scop
 - [`0027`](docs/adr/0027-audit-events-commit-with-their-domain-write.md) — audit events commit in the same transaction as their domain write
 - [`0028`](docs/adr/0028-parameter-drafts-are-a-standalone-staging-module.md) — parameter drafts are a standalone staging module
 - [`0029`](docs/adr/0029-parameter-platform-primitives-live-in-a-standalone-kernel-module.md) — parameter platform primitives live in a standalone kernel module
+- [`0030`](docs/adr/0030-projects-are-a-standalone-module.md) — projects are a standalone module

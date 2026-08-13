@@ -5,7 +5,7 @@ import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import { parseDts, serializeDts } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
-import { canAdminParameters } from "../parameters/policy";
+import { canAdminParameters } from "../parameter-kernel/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { listConfigSetMemberFiles } from "./baselineRepository";

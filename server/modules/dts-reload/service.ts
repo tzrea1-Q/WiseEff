@@ -5,7 +5,7 @@ import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { DtsValue } from "../dts";
 import type { ObjectStore } from "../logs/objectStore";
-import type { SensitiveWriteActorType } from "../parameters/sensitiveNode";
+import type { SensitiveWriteActorType } from "../parameter-kernel/sensitiveNode";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { buildReloadBaseSource } from "./baseSource";

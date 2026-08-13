@@ -60,6 +60,9 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `LOG-DOMAIN-001` | P1 | logs | automated | `/log-admin` | Admin | ui, api, db, audit | `e2e/acceptance/log-analysis.acceptance.spec.ts` |
 | `LOG-DOMAIN-KNOWLEDGE-001` | P1 | logs | automated | `/log-admin` | Admin | ui, api, db, audit | `e2e/acceptance/log-analysis.acceptance.spec.ts` |
 | `LOG-DEGRADED-001` | P1 | logs | automated | `/logs` | Software User, Software Committer, Admin | ui, api, db | `e2e/acceptance/log-analysis.acceptance.spec.ts` |
+| `LOG-FEEDBACK-INSIGHTS-001` | P1 | logs | automated | `/log-admin` | Admin | ui, api, db | `e2e/acceptance/log-analysis.acceptance.spec.ts` |
+| `LOG-EVAL-DRAFT-001` | P1 | logs | automated | `/log-admin` | Admin | ui | `e2e/acceptance/log-analysis.acceptance.spec.ts` |
+| `LOG-ARCHIVE-UPLOAD-001` | P1 | logs | automated | `/logs` | Software User, Software Committer, Admin | ui, api, db | `e2e/acceptance/log-analysis.acceptance.spec.ts` |
 | `DEBUG-SIM-001` | P0 | debugging | automated | `/node-debugging` | Hardware Committer, Admin | ui, api, db, audit | `e2e/acceptance/debugging-simulator.acceptance.spec.ts` |
 | `DEBUG-PERM-001` | P1 | debugging | automated | `/node-debugging` | Guest, Hardware User, Software User | ui, api | `e2e/acceptance/debugging-simulator.acceptance.spec.ts` |
 | `DEBUG-ADMIN-001` | P1 | debugging | automated | `/debugging-admin/nodes` | Admin | ui, api, db, audit | `e2e/acceptance/debugging-admin.acceptance.spec.ts` |

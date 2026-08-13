@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { AuthContext } from "../auth/types";
 import { createAuditEvent, writePlatformAuditEvent } from "../audit/repository";
-import { canAdminParameters, canViewParameters } from "../parameters/policy";
+import { canAdminParameters, canViewParameters } from "../parameter-kernel/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { syncSingletonCardinalityBlockingTasks } from "../parameter-topology/bindingService";

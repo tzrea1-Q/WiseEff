@@ -1,6 +1,6 @@
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
-import { canAdminParameters, canViewParameters } from "../parameters/policy";
+import { canAdminParameters, canViewParameters } from "../parameter-kernel/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { writeGovernanceAudit } from "../parameter-topology/governanceAudit";

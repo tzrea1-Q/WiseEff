@@ -422,6 +422,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
       {uploadDialogOpen ? (
         <UploadLogDialog
           accept={logActions ? null : ".log,.txt,.json"}
+          archivesSupported={!!logActions}
           domains={uploadLogDomains}
           onClose={() => setUploadDialogOpen(false)}
           onUpload={handleUploadLog}
@@ -445,19 +446,23 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   );
 }
 
-function isSupportedLogFile(fileName: string) {
-  return /\.(log|txt|json)$/i.test(fileName);
+function isSupportedLogFile(fileName: string, archivesSupported = false) {
+  // API mode also accepts .csv text plus .gz / single-entry .zip archives
+  // (unpacked server-side); mock mode keeps its original .log/.txt/.json set.
+  return archivesSupported ? /\.(log|txt|csv|json|gz|zip)$/i.test(fileName) : /\.(log|txt|json)$/i.test(fileName);
 }
 
 const UNCATEGORIZED_LOG_DOMAIN_VALUE = "";
 
 function UploadLogDialog({
   accept = ".log,.txt,.json",
+  archivesSupported = false,
   domains = [],
   onClose,
   onUpload
 }: {
   accept?: string | null;
+  archivesSupported?: boolean;
   domains?: LogDomain[];
   onClose: () => void;
   onUpload: (file: File, supported: boolean, question?: string, logDomainId?: string) => Promise<void> | void;
@@ -483,7 +488,7 @@ function UploadLogDialog({
   }, []);
 
   const validateFile = (file: File) => {
-    const nextSupported = isSupportedLogFile(file.name);
+    const nextSupported = isSupportedLogFile(file.name, archivesSupported);
 
     setSelectedFile(file);
     setSelectedFileName(file.name);
@@ -510,7 +515,7 @@ function UploadLogDialog({
     }
     if (files.length > 1) {
       for (let i = 0; i < files.length; i++) {
-        void Promise.resolve(onUpload(files[i], isSupportedLogFile(files[i].name), question, resolvedDomainId)).catch(() => undefined);
+        void Promise.resolve(onUpload(files[i], isSupportedLogFile(files[i].name, archivesSupported), question, resolvedDomainId)).catch(() => undefined);
       }
       return;
     }
@@ -524,7 +529,7 @@ function UploadLogDialog({
     if (!files || files.length === 0) return;
     if (files.length > 1) {
       for (let i = 0; i < files.length; i++) {
-        void Promise.resolve(onUpload(files[i], isSupportedLogFile(files[i].name), question, resolvedDomainId)).catch(() => undefined);
+        void Promise.resolve(onUpload(files[i], isSupportedLogFile(files[i].name, archivesSupported), question, resolvedDomainId)).catch(() => undefined);
       }
       return;
     }
@@ -560,7 +565,11 @@ function UploadLogDialog({
         <div className="upload-dialog__header">
           <div>
             <h2 id={titleId}><strong>上传日志</strong></h2>
-            <p>选择 .log、.txt 或 .json 文本日志，雷泽会模拟创建分析任务。</p>
+            <p>
+              {archivesSupported
+                ? "选择 .log / .txt / .csv 文本日志，或单文件 .gz、单条目 .zip 压缩包（服务端解压后分析）。"
+                : "选择 .log、.txt 或 .json 文本日志，雷泽会模拟创建分析任务。"}
+            </p>
           </div>
           <button className="icon-button" type="button" aria-label="关闭上传日志" onClick={onClose}>
             <X size={18} />
@@ -608,7 +617,12 @@ function UploadLogDialog({
           ) : phase === "confirm" ? (
             <p><strong>{selectedFileName}</strong> 已通过格式检查，可以进入分析队列。</p>
           ) : (
-            <p><strong>{selectedFileName}</strong> 格式不支持。请优先上传 .log / .txt / .json 文本日志。</p>
+            <p>
+              <strong>{selectedFileName}</strong> 格式不支持。
+              {archivesSupported
+                ? "请优先上传 .log / .txt / .csv 文本日志，或单文件 .gz、单条目 .zip 压缩包。"
+                : "请优先上传 .log / .txt / .json 文本日志。"}
+            </p>
           )}
         </div>
         <div className="upload-dialog__actions">

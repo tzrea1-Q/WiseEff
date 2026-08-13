@@ -35,8 +35,9 @@ const ALLOWED_DIRECT_CALLS: Record<string, number> = {
   "modules/parameter-modules/service.ts": 2,
   "modules/parameter-specs/driverSchemaOverlayService.ts": 1,
   "modules/parameter-topology/governanceAudit.ts": 1,
-  // parameters/sensitiveNode.ts stays: refusal audit, same as dts-reload/policy.ts.
-  "modules/parameters/sensitiveNode.ts": 1
+  // parameter-kernel/sensitiveNode.ts stays: refusal audit, same as dts-reload/policy.ts.
+  // (moved from modules/parameters/ in the kernel extraction — ADR-0029; count unchanged)
+  "modules/parameter-kernel/sensitiveNode.ts": 1
 };
 
 /** Files where direct calls are the implementation of the seam itself. */
