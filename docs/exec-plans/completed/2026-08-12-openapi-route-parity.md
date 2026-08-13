@@ -1,5 +1,7 @@
 # OpenAPI route parity — the manifest can no longer drift from the router
 
+> **Completed 2026-08-12** via PRs #334 and #346 (hotfix #361 for a PLANS.md marker). Two-way manifest↔registration parity test live; 31 routes and their schemas backfilled.
+
 Architecture-review candidate C8 (2026-08-12 backend review); five-decision grilling
 session settled the scope on 2026-08-12.
 

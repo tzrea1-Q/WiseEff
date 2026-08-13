@@ -1,5 +1,7 @@
 # Test Foundation Deepening (Architecture Review Candidates 1 + 7)
 
+> **Completed 2026-08-13** via PR #323 (suite partition repair, `server/testing` module, per-worker template-cloned databases, queue-fake retirement, acceptance-governance phase 1) with follow-ups #364 (worker-database URL for acceptance helpers) and the TD-096 behavior-test slices.
+
 Date: 2026-08-12
 Status: in progress
 Branch: `refactor/test-foundation-deepening`
