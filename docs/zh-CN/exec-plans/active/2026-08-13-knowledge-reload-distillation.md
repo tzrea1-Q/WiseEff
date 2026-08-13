@@ -79,13 +79,13 @@
 
 ## 文档更新门
 
-- [ ] KB-DISTILL-002 在 UI 实现之前登记进覆盖图 + 操作矩阵（EN + zh）
-- [ ] api-contract EN + zh 与 `docs/generated/openapi.json` 包含 `POST /api/v1/knowledge/distill-from-reload-run`
-- [ ] FRONTEND EN + zh 记录重载沉淀 affordance、`distillFromReloadRun` 端口方法与重载运行来源链接
-- [ ] domain-model EN + zh + `CONTEXT.md` 术语表陈述蒸馏的两个来源
-- [ ] 设计文档 EN + zh 将延后路线图第 3 项标记为已交付
-- [ ] `docs/generated/db-schema.md` 重新生成并包含 `source_reload_run_id`
-- [ ] 产品规格已复核
-- [ ] PLANS EN + zh 列出本活跃计划
-- [ ] 技术债跟踪器已复核
-- [ ] `npm run docs:check` 通过
+- [x] KB-DISTILL-002 在 UI 实现之前登记进覆盖图 + 操作矩阵（EN + zh）（提交 `docs(acceptance): register KB-DISTILL-002…` 先于后端/前端提交）
+- [x] api-contract EN + zh 与 `docs/generated/openapi.json` 包含 `POST /api/v1/knowledge/distill-from-reload-run`
+- [x] FRONTEND EN + zh 记录重载沉淀 affordance、`distillFromReloadRun` 端口方法与重载运行来源链接
+- [x] domain-model EN + zh + `CONTEXT.md` 术语表陈述蒸馏的两个来源
+- [x] 设计文档 EN + zh 将延后路线图第 3 项标记为已交付
+- [x] `docs/generated/db-schema.md` 重新生成并包含 `source_reload_run_id`（pgvector/pgvector:pg16 容器）
+- [x] 产品规格已复核——已更新:EN + zh 蒸馏闭环语句补充终态重载运行来源
+- [x] PLANS EN + zh 列出本活跃计划
+- [x] 技术债跟踪器已复核——无延后项离开本计划,无需登记
+- [x] `npm run docs:check` 通过

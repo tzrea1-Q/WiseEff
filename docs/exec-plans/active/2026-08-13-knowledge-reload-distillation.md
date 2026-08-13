@@ -79,13 +79,13 @@ Branch: `feat/knowledge-reload-distillation`, checked out from the latest `origi
 
 ## Documentation Update Gate
 
-- [ ] KB-DISTILL-002 registered in coverage map + operation matrix (EN + zh) before UI implementation
-- [ ] api-contract EN + zh and `docs/generated/openapi.json` include `POST /api/v1/knowledge/distill-from-reload-run`
-- [ ] FRONTEND EN + zh document the reload distil affordance, `distillFromReloadRun` port method, and reload-run source links
-- [ ] domain-model EN + zh + `CONTEXT.md` glossary state distillation's two sources
-- [ ] Design doc EN + zh mark deferred roadmap item 3 as shipped
-- [ ] `docs/generated/db-schema.md` regenerated with `source_reload_run_id`
-- [ ] Product-spec reviewed
-- [ ] PLANS EN + zh list this active plan
-- [ ] Tech-debt tracker reviewed
-- [ ] `npm run docs:check` green
+- [x] KB-DISTILL-002 registered in coverage map + operation matrix (EN + zh) before UI implementation (commit `docs(acceptance): register KB-DISTILL-002…` precedes the backend/frontend commits)
+- [x] api-contract EN + zh and `docs/generated/openapi.json` include `POST /api/v1/knowledge/distill-from-reload-run`
+- [x] FRONTEND EN + zh document the reload distil affordance, `distillFromReloadRun` port method, and reload-run source links
+- [x] domain-model EN + zh + `CONTEXT.md` glossary state distillation's two sources
+- [x] Design doc EN + zh mark deferred roadmap item 3 as shipped
+- [x] `docs/generated/db-schema.md` regenerated with `source_reload_run_id` (pgvector/pgvector:pg16 container)
+- [x] Product-spec reviewed — updated: EN + zh distillation-loop sentences gained the terminal-reload-run source
+- [x] PLANS EN + zh list this active plan
+- [x] Tech-debt tracker reviewed — no deferral leaves this plan, nothing to record
+- [x] `npm run docs:check` green
