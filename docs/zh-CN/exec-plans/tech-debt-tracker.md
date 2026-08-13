@@ -53,6 +53,9 @@
 - **TD-087（selfhost required-keys 纳管 `LOG_ANALYSIS_*`）：** `check-self-hosted-config.ts` 的必填键覆盖 `LOG_ANALYSIS_QUEUE_*` 但不含 P1 LLM 家族（`LOG_ANALYSIS_API_BASE_URL` / `LOG_ANALYSIS_MODEL` / `LOG_ANALYSIS_API_KEY` / `LOG_ANALYSIS_API_TIMEOUT_MS` / `LOG_ANALYSIS_TOKEN_BUDGET` / `LOG_ANALYSIS_DETERMINISTIC`），部署可能通过 `selfhost:check` 却未配置 LLM。需纳入必填键检查（并决定 deterministic 模式是否豁免 API key）与对应测试。**负责人：Ops / Log analysis。**
 - **TD-089（确定性 rubric judge 桩过于保守）：** 效果层评测的确定性 judge 桩对 `expectedActions` 的 token 重叠匹配几乎恒 0，把确定性演示分数拉低，可能误导在真模型+真实案例基线建立前对比运行的读者。需校准桩的匹配规则（同义/词干容差或结构化动作匹配）；真模型 judge 路径不受影响。**负责人：Log analysis / Eval。**
 - **TD-090（`read_domain_knowledge` 严格限定模式）：** 工具当前把检索严格限定在业务域已关联的知识条目内（无关联时才退化为组织级通用检索）；计划措辞允许"限定或加权"。关联稀疏的域可能漏掉组织级相关知识。若专家反馈严格模式导致检索饥饿，加"关联条目加权 + 组织级补充召回"的融合模式。**负责人：Log analysis / Knowledge platform。**
+- **TD-091（小泽悬浮提示遮挡抽屉操作）：** `xiaoze-toggle-hint` 浮层（role=status）在抽屉打开时可拦截底部靠右按钮的点击（如 `/log-admin` 记录抽屉的反馈/导出草稿），P3a 浏览器验证发现，部分视口下真实用户同样受影响。需调整浮层 z-index/位置策略或在抽屉/对话框打开时避让，并加布局断言。**负责人：Frontend / Agent surface。**
+- **TD-092（反馈归因粒度）：** `feedback-insights` 把反馈归因到日志**当前 run** 的报告；频繁重析后旧反馈会跟随新结论的来源/提示词版本，按版本的质量读数可能被扭曲。需给 `log_feedback` 加 `run_id`（additive 迁移）与回填策略，存在时按 run 归因。**负责人：Log analysis。**
+- **TD-093（上传预检与服务端支持集不一致）：** 前端 API 模式预检接受 `.log/.txt/.csv/.json/.gz/.zip`，但服务端拒绝 `.json`（mock 模式反而支持）；P3a 只追加了归档扩展未动存量口径。用户可能选中通过预检却被服务端拒绝的文件,且 mock/API 行为分叉。需一次性对齐三方口径（决定 `.json` 转正还是移出预检）。**负责人：Log analysis / Frontend。**
 
 ## 近期关闭项
 
