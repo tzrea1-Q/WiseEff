@@ -1,58 +1,46 @@
-import { describe, expect, it } from "vitest";
-import type { QueryResult, Queryable } from "../../shared/database/client";
+/**
+ * Behavior-level integration coverage for the project repository: listing,
+ * by-id reads, and the manual parameter-data cascade delete against a real
+ * database. Asserts returned DTOs and subsequent reads — never SQL text.
+ */
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
 import {
-  deleteProject,
-  getProjectById,
-  listProjects
-} from "./repository";
+  createInMemoryTestDatabase,
+  isTestDatabaseAvailable,
+  type InMemoryTestDatabase
+} from "../../testing/testDatabase";
+import { seedCoreGraph } from "../../testing/fixtures";
+import { deleteProject, getProjectById, listProjects } from "./repository";
 
-type QueryCall = {
-  text: string;
-  values: unknown[];
-};
+const databaseAvailable = await isTestDatabaseAvailable();
 
-type QueuedResult = Record<string, unknown> | unknown[] | ((call: QueryCall) => unknown[]);
+describe.skipIf(!databaseAvailable)("project repository", () => {
+  let db: InMemoryTestDatabase;
 
-function createFakeDb(rowsOrQueue: QueuedResult[] = []) {
-  const calls: QueryCall[] = [];
-  const queueMode = rowsOrQueue.some((item) => typeof item === "function" || Array.isArray(item));
-  const db: Queryable = {
-    query: async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
-      const call = { text, values };
-      // Cutover probes must not consume the test SQL queue.
-      if (text.includes("parameter_identity_cutovers")) {
-        return { rows: [{ c: "0" } as Row], rowCount: 1 };
-      }
-      if (text.includes("information_schema.tables") && text.includes("parameter_definitions")) {
-        return { rows: [{ c: "1" } as Row], rowCount: 1 };
-      }
-      calls.push(call);
-      if (queueMode) {
-        const next = rowsOrQueue.shift() ?? [];
-        const rows = typeof next === "function" ? next(call) : Array.isArray(next) ? next : [next];
-        return { rows: rows as Row[], rowCount: rows.length };
-      }
+  beforeEach(async () => {
+    db = await createInMemoryTestDatabase();
+    await seedCoreGraph(db, {
+      organization: { id: "org-chargelab", name: "ChargeLab" },
+      users: [{ id: "user-1", name: "Xu Yun", email: "xu@example.com" }],
+      projects: [
+        { id: "aurora", name: "Aurora", code: "AUR" },
+        { id: "zephyr", name: "Zephyr", code: "ZEP" }
+      ]
+    });
+    await seedCoreGraph(db, {
+      organization: { id: "org-foreign", name: "Foreign Org" },
+      projects: [{ id: "foreign-project", name: "Foreign", code: "FRN" }]
+    });
+  });
 
-      const rows = rowsOrQueue as unknown[];
-      return { rows: rows as Row[], rowCount: rows.length };
-    }
-  };
+  afterEach(async () => {
+    await db?.rollback();
+  });
 
-  return { db, calls };
-}
-
-describe("project repository", () => {
   it("listProjects filters by organization", async () => {
-    const { db, calls } = createFakeDb([
-      { id: "aurora", name: "Aurora", code: "AUR" },
-      { id: "zephyr", name: "Zephyr", code: "ZEP" }
-    ]);
-
     const rows = await listProjects(db, { organizationId: "org-chargelab" });
 
-    expect(calls[0].text).toContain("from projects");
-    expect(calls[0].text).toContain("organization_id = $1");
-    expect(calls[0].values).toEqual(["org-chargelab"]);
     expect(rows).toEqual([
       { id: "aurora", name: "Aurora", code: "AUR" },
       { id: "zephyr", name: "Zephyr", code: "ZEP" }
@@ -60,43 +48,88 @@ describe("project repository", () => {
   });
 
   it("getProjectById scopes project ownership to organization", async () => {
-    const { db, calls } = createFakeDb([[{ id: "aurora", name: "Aurora", code: "AUR" }]]);
-
-    const row = await getProjectById(db, { organizationId: "org-chargelab", projectId: "aurora" });
-
-    expect(calls[0].text).toContain("from projects");
-    expect(calls[0].text).toContain("organization_id = $1");
-    expect(calls[0].text).toContain("id = $2");
-    expect(calls[0].values).toEqual(["org-chargelab", "aurora"]);
-    expect(row).toEqual({ id: "aurora", name: "Aurora", code: "AUR" });
+    await expect(getProjectById(db, { organizationId: "org-chargelab", projectId: "aurora" })).resolves.toEqual({
+      id: "aurora",
+      name: "Aurora",
+      code: "AUR"
+    });
+    // Another organization's project id resolves to nothing.
+    await expect(
+      getProjectById(db, { organizationId: "org-chargelab", projectId: "foreign-project" })
+    ).resolves.toBeNull();
   });
 
-  it("deleteProject cascades parameter data and removes the project", async () => {
-    const { db, calls } = createFakeDb([
-      [{ id: "aurora" }],
-      [],
-      [],
-      [],
-      [],
-      [],
-      [],
-      [],
-      [],
-      [],
-      [{ id: "aurora" }]
-    ]);
+  it("deleteProject cascades parameter data and removes the project, keeping shared definitions", async () => {
+    // Parameter data hanging off the doomed project, plus the same shapes on a
+    // surviving project to prove the cascade stays scoped.
+    await db.query(
+      `insert into parameter_definitions (
+         id, organization_id, name, description, explanation, config_format, module, default_range, unit, risk
+       ) values ('pd-1', 'org-chargelab', 'fast_charge', 'd', 'e', 'ENV', 'Battery', '', 'mA', 'Low')`
+    );
+    for (const [valueId, projectId] of [
+      ["value-aurora", "aurora"],
+      ["value-zephyr", "zephyr"]
+    ] as const) {
+      await db.query(
+        `insert into project_parameter_values (
+           id, organization_id, project_id, parameter_definition_id,
+           current_value, recommended_value, value_version, updated_by_user_id
+         ) values ($1, 'org-chargelab', $2, 'pd-1', '1', '1', 1, 'user-1')`,
+        [valueId, projectId]
+      );
+      await db.query(
+        `insert into parameter_drafts (
+           id, organization_id, project_id, project_parameter_value_id, user_id, target_value, reason
+         ) values ($1, 'org-chargelab', $2, $3, 'user-1', '2', 'draft')`,
+        [`draft-${projectId}`, projectId, valueId]
+      );
+      await db.query(
+        `insert into parameter_submission_rounds (id, organization_id, project_id, submitter_user_id, status, summary)
+         values ($1, 'org-chargelab', $2, 'user-1', 'submitted', 'round')`,
+        [`round-${projectId}`, projectId]
+      );
+      await db.query(
+        `insert into parameter_change_requests (
+           id, organization_id, submission_round_id, project_id, project_parameter_value_id,
+           parameter_definition_id, base_version, current_value, target_value, status, submitter_user_id
+         ) values ($1, 'org-chargelab', $2, $3, $4, 'pd-1', 1, '1', '2', 'submitted', 'user-1')`,
+        [`request-${projectId}`, `round-${projectId}`, projectId, valueId]
+      );
+      await db.query(
+        `insert into parameter_review_decisions (
+           id, organization_id, request_id, reviewer_user_id, decision, from_status, to_status
+         ) values ($1, 'org-chargelab', $2, 'user-1', 'advance', 'submitted', 'hardware_review')`,
+        [`decision-${projectId}`, `request-${projectId}`]
+      );
+    }
 
     const deleted = await deleteProject(db, { organizationId: "org-chargelab", projectId: "aurora" });
-
     expect(deleted).toEqual({ deleted: true });
-    expect(calls.some((call) => call.text.includes("delete from parameter_review_decisions"))).toBe(true);
-    expect(calls.some((call) => call.text.includes("delete from project_parameter_values"))).toBe(true);
-    expect(calls.some((call) => call.text.includes("delete from project_modules"))).toBe(true);
-    expect(calls.some((call) => call.text.includes("delete from projects"))).toBe(true);
-    expect(calls.some((call) => call.text.includes("delete from parameter_definitions"))).toBe(false);
 
-    const { db: missingDb } = createFakeDb([[]]);
-    const missing = await deleteProject(missingDb, { organizationId: "org-chargelab", projectId: "missing" });
-    expect(missing).toEqual({ deleted: false, reason: "not_found" });
+    // The project and everything hanging off it are gone…
+    await expect(getProjectById(db, { organizationId: "org-chargelab", projectId: "aurora" })).resolves.toBeNull();
+    for (const [table, where] of [
+      ["project_parameter_values", `project_id = 'aurora'`],
+      ["parameter_drafts", `project_id = 'aurora'`],
+      ["parameter_submission_rounds", `project_id = 'aurora'`],
+      ["parameter_change_requests", `project_id = 'aurora'`],
+      ["parameter_review_decisions", `request_id = 'request-aurora'`]
+    ] as const) {
+      const rows = await db.query<{ count: string }>(`select count(*)::text as count from ${table} where ${where}`);
+      expect({ table, count: Number(rows.rows[0].count) }).toEqual({ table, count: 0 });
+    }
+    // …while the sibling project's rows and the organization-wide definition survive.
+    const surviving = await db.query<{ count: string }>(
+      `select count(*)::text as count from project_parameter_values where project_id = 'zephyr'`
+    );
+    expect(Number(surviving.rows[0].count)).toBe(1);
+    const definition = await db.query<{ id: string }>(`select id from parameter_definitions where id = 'pd-1'`);
+    expect(definition.rows).toEqual([{ id: "pd-1" }]);
+
+    await expect(deleteProject(db, { organizationId: "org-chargelab", projectId: "missing" })).resolves.toEqual({
+      deleted: false,
+      reason: "not_found"
+    });
   });
 });
