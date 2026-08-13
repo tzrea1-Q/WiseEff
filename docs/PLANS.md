@@ -12,6 +12,7 @@ Execution plans are first-class repository artifacts. Use them for work that has
 
 ## Current Active Plan
 
+- `exec-plans/active/2026-08-13-agent-repository-behavior-tests.md`: TD-079 slice — retire agent repository SQL-text assertions for 7 behavior tests plus a JSON driver-boundary resilience file (branch `test/agent-repository-behavior`).
 - `exec-plans/active/2026-08-13-jobs-repository-behavior-tests.md`: TD-079 slice — retire jobs repository SQL-text assertions for 9 behavior tests of the real lease state machine (branch `test/jobs-repository-behavior`).
 - `exec-plans/active/2026-08-12-openapi-route-parity.md`: OpenAPI route parity — `router.listRoutes()` + `buildWiseEffRouter` extraction, a two-way manifest↔registration parity test with an explicit exemption list, and a 31-route manifest/schema backfill so the contract can no longer drift silently (branch `refactor/openapi-route-parity`).
 - `exec-plans/active/2026-08-12-audited-write-seam.md`: audit events commit in the same transaction as their domain write (ADR-0027) — `withAuditedWrite` seam + `AuditTx` brand, correctness-gap fixes (project create/update/delete, structured-edit submit, atomic bulk conflict resolve), and a ratchet-driven migration of the remaining direct `createAuditEvent` call sites (branch `refactor/audited-write-seam`, then `refactor/audited-write-migrate-<module>` batches).
