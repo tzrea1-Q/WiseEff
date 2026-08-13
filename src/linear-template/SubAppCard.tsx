@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import type { LucideIcon } from "lucide-react";
+import { handleSpaLinkClick } from "./spaLinkNavigation";
 
 export type SubAppCardCta = {
   label: string;
@@ -15,9 +16,10 @@ export type SubAppCardProps = {
   chips: string[];
   primary: SubAppCardCta;
   secondary: SubAppCardCta;
+  onNavigate?: (path: string) => void;
 };
 
-export function SubAppCard({ accent, icon: Icon, kicker, title, description, chips, primary, secondary }: SubAppCardProps) {
+export function SubAppCard({ accent, icon: Icon, kicker, title, description, chips, primary, secondary, onNavigate }: SubAppCardProps) {
   const style = { "--sub-app-accent": accent } as CSSProperties;
   const titleId = `sub-app-card-title-${title}`;
   const descriptionId = `sub-app-card-desc-${title}`;
@@ -46,11 +48,20 @@ export function SubAppCard({ accent, icon: Icon, kicker, title, description, chi
         </ul>
       </div>
       <div className="sub-app-card-ctas" aria-label={`${title} 操作`}>
-        <a className="sub-app-card-primary" href={primary.href} aria-describedby={descriptionId}>
+        <a
+          className="sub-app-card-primary"
+          href={primary.href}
+          aria-describedby={descriptionId}
+          onClick={(event) => handleSpaLinkClick(event, primary.href, onNavigate)}
+        >
           {primary.label}
           <span aria-hidden="true"> →</span>
         </a>
-        <a className="sub-app-card-secondary" href={secondary.href}>
+        <a
+          className="sub-app-card-secondary"
+          href={secondary.href}
+          onClick={(event) => handleSpaLinkClick(event, secondary.href, onNavigate)}
+        >
           {secondary.label}
           <span aria-hidden="true"> ›</span>
         </a>

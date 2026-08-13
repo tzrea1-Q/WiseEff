@@ -3,12 +3,15 @@ import {
   ChevronDown,
   FileText,
   LoaderCircle,
+  Menu,
   MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
   UserRound
 } from "lucide-react";
+import { AppShellConnectionError } from "@/components/common/AppShellConnectionError";
 import { AppShellSkeleton } from "@/components/common/AppShellSkeleton";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { ToastProvider } from "@/components/common/toast/ToastProvider";
 import { TopBarNotifications } from "./components/notifications/TopBarNotifications";
@@ -51,7 +54,7 @@ import {
   toLegacyInitializationReview
 } from "@/application/parameters/initializationUiMappers";
 import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
-import { canAccessPage, canPerform } from "@/app/permissions";
+import { canAccessPage, canPerform, getRequiredRoleLabel } from "@/app/permissions";
 import type {
   ProjectInitializationStatus,
   ProjectParameterInitializationDraft
@@ -79,8 +82,7 @@ import { readInitialNodeDebuggingProtocol } from "./NodeDebuggingPage";
 import {
   createApiInitialState,
   initialState,
-  mockDataFingerprint,
-  roles
+  mockDataFingerprint
 } from "./mockData";
 import {
   type DebugParameter,
@@ -104,9 +106,17 @@ import { AppToastLayer } from "@/components/common/AppToastLayer";
 import { unsavedParameterWorkCount } from "@/application/parameters/unsavedParameterWork";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createMockRuntimeState, type MockRuntimeState } from "@/infrastructure/mock/mockState";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { presentError } from "@/infrastructure/http/presentError";
 import { wiseEffRuntimeMode, xiaozeInspectorEnabled, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
 
+/**
+ * `unreachable` means the `/api/v1/me` probe failed before an auth rejection
+ * (service down / offline / restart): the session may still be valid, so the
+ * shell shows a retry state instead of dropping the user to the login form
+ * (FA-21).
+ */
 type ApiAuthStatus = "checking" | "authenticated" | "unauthenticated" | "unreachable";
 
 function isPendingRegistrationResponse(response: RegisterLocalAccountResponseDto): response is PendingRegistrationDto {
@@ -115,7 +125,12 @@ function isPendingRegistrationResponse(response: RegisterLocalAccountResponseDto
 
 function authProbeErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "";
-  return ["Authorization bearer token is required.", "Session is not active.", "User is not authenticated."].includes(message) ? "" : message;
+  // Expected "not signed in yet" probe outcomes stay silent; anything else
+  // (network failure, server error) surfaces as product copy on the login form.
+  if (["Authorization bearer token is required.", "Session is not active.", "User is not authenticated.", ""].includes(message)) {
+    return "";
+  }
+  return presentError(error, "无法验证登录状态，请稍后重试。");
 }
 
 /**
@@ -324,6 +339,12 @@ function AppShell({
   const [authProbeAttempt, setAuthProbeAttempt] = useState(0);
   const [apiAuthPermissions, setApiAuthPermissions] = useState<string[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsedPreference);
+  // Below 768px the sidebar becomes an overlay drawer (ui-design-system §Layout);
+  // between 769–900px it stays the auto-collapsed rail the media query used to force.
+  const isMobileNavViewport = useMediaQuery("(max-width: 768px)");
+  const isTabletRailViewport = useMediaQuery("(min-width: 769px) and (max-width: 900px)");
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const effectiveSidebarCollapsed = !isMobileNavViewport && (sidebarCollapsed || isTabletRailViewport);
   const page = getPageByPath(path);
   const pageKeyRef = useRef(page.key);
   const xiaozeContextSummary = useMemo(() => getXiaozeContextSummary(path), [path]);
@@ -598,8 +619,7 @@ function AppShell({
         dispatch({ type: "ADD_NOTIFICATION", message: `${draft.projectName} 参数初始化已提交审阅。` });
         setProjectInitOpen(false);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "参数初始化提交失败";
-        dispatch({ type: "ADD_NOTIFICATION", message });
+        dispatch({ type: "ADD_NOTIFICATION", message: presentError(error, "参数初始化提交失败，请稍后重试。") });
       }
     },
     [parameterInitializationRepositoryClient]
@@ -744,6 +764,7 @@ function AppShell({
     const cancelledRef = { current: false };
     const client = appRuntime.authClient;
 
+    setApiAuthStatus("checking");
     client
       .getCurrentAuthContext()
       .then(async (context) => {
@@ -762,8 +783,8 @@ function AppShell({
           setApiAuthError(authProbeErrorMessage(error));
           return;
         }
-        // Backend restart or network blip: keep the token so the session
-        // resumes as soon as the server is reachable again.
+        // Backend restart or network blip: keep the token and show the retry
+        // state instead of dropping the user to the login form (FA-21).
         setApiAuthStatus("unreachable");
         setApiAuthError("");
       });
@@ -772,7 +793,6 @@ function AppShell({
       cancelledRef.current = true;
     };
   }, [appRuntime.authClient, authProbeAttempt, hydrateAuthContext, refreshApiRuntimeData, runtimeMode]);
-
 
   useEffect(() => {
     const syncPathFromHistory = () => {
@@ -828,6 +848,11 @@ function AppShell({
     setSearch(url.search);
   }, []);
 
+  const retryAuthProbe = useCallback(() => {
+    setApiAuthStatus("checking");
+    setAuthProbeAttempt((attempt) => attempt + 1);
+  }, []);
+
   const toggleSidebarCollapsed = useCallback(() => {
     setSidebarCollapsed((collapsed) => !collapsed);
   }, []);
@@ -836,10 +861,56 @@ function AppShell({
     dispatch({ type: "DISMISS_NOTIFICATION" });
   }, []);
 
-  const retryAuthProbe = useCallback(() => {
-    setApiAuthStatus("checking");
-    setAuthProbeAttempt((attempt) => attempt + 1);
+  const closeMobileNav = useCallback(() => {
+    setMobileNavOpen(false);
   }, []);
+
+  const toggleMobileNav = useCallback(() => {
+    setMobileNavOpen((open) => !open);
+  }, []);
+
+  /** Drawer navigation closes the drawer before routing (nav click auto-close). */
+  const navigateFromSidebar = useCallback(
+    (nextPath: string) => {
+      setMobileNavOpen(false);
+      navigate(nextPath);
+    },
+    [navigate]
+  );
+
+  // Close the drawer when the viewport crosses back above the drawer breakpoint.
+  useEffect(() => {
+    if (!isMobileNavViewport) {
+      setMobileNavOpen(false);
+    }
+  }, [isMobileNavViewport]);
+
+  // Route changes reset the main scroll position (ui-design-system §Layout);
+  // search-only updates (filters, project switches) keep the current position.
+  useEffect(() => {
+    const mainContent = document.querySelector(".main-content");
+    if (mainContent) {
+      mainContent.scrollTop = 0;
+    }
+  }, [path]);
+
+  useEffect(() => {
+    if (!mobileNavOpen) {
+      return undefined;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+      // Escape closes the top-most layer only; open dialogs take precedence.
+      if (document.querySelector('.modal-backdrop, [data-slot="dialog-overlay"]')) {
+        return;
+      }
+      setMobileNavOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [mobileNavOpen]);
 
   const handleAuthSession = useCallback(
     async (session: AuthSessionDto) => {
@@ -883,9 +954,13 @@ function AppShell({
 
   const appShellClassName = isPlatformHome
     ? "app-shell home-shell"
-    : sidebarCollapsed
-      ? "app-shell sidebar-is-collapsed"
-      : "app-shell";
+    : [
+        "app-shell",
+        effectiveSidebarCollapsed ? "sidebar-is-collapsed" : "",
+        mobileNavOpen ? "mobile-nav-open" : ""
+      ]
+        .filter(Boolean)
+        .join(" ");
 
   if (runtimeMode === "api" && apiAuthStatus === "checking") {
     // Session probe in flight: show the app-shell skeleton instead of a blank
@@ -893,10 +968,13 @@ function AppShell({
     return <AppShellSkeleton />;
   }
 
+  if (runtimeMode === "api" && apiAuthStatus === "unreachable") {
+    // Network-level probe failure: only an auth rejection (401 family) may
+    // route to the login form.
+    return <AppShellConnectionError onRetry={retryAuthProbe} />;
+  }
+
   if (runtimeMode === "api" && apiAuthStatus !== "authenticated") {
-    if (apiAuthStatus === "unreachable") {
-      return <ApiUnreachableScreen onRetry={retryAuthProbe} />;
-    }
     return (
       <ApiAuthPage
         authClient={appRuntime.authClient}
@@ -959,10 +1037,18 @@ function AppShell({
           <Sidebar
             activePath={page.path}
             currentRoleId={currentRoleId}
-            isCollapsed={sidebarCollapsed}
-            onNavigate={navigate}
+            isCollapsed={effectiveSidebarCollapsed}
+            onNavigate={navigateFromSidebar}
             onToggleCollapsed={toggleSidebarCollapsed}
             productFeedbackRepository={productFeedbackRepositoryClient}
+          />
+        ) : null}
+        {!isPlatformHome && mobileNavOpen ? (
+          <button
+            type="button"
+            className="sidebar-drawer-backdrop"
+            aria-label="关闭导航菜单"
+            onClick={closeMobileNav}
           />
         ) : null}
       <div className={isPlatformHome ? "main-shell home-main-shell" : "main-shell"}>
@@ -979,6 +1065,8 @@ function AppShell({
             onLogout={handleLogout}
             onUpdateCurrentUserProfile={handleUpdateCurrentUserProfile}
             mockNotificationsClient={mockNotificationsClient}
+            mobileNavOpen={mobileNavOpen}
+            onToggleMobileNav={toggleMobileNav}
           />
         ) : null}
         <TopBarActionsContext.Provider value={topBarActionsContextValue}>
@@ -1106,7 +1194,11 @@ function Sidebar({
   const toggleLabel = isCollapsed ? "展开侧边栏" : "收起侧边栏";
 
   return (
-    <aside aria-label="主导航侧边栏" className={isCollapsed ? "sidebar sidebar-collapsed" : "sidebar sidebar-expanded"}>
+    <aside
+      id="app-sidebar"
+      aria-label="主导航侧边栏"
+      className={isCollapsed ? "sidebar sidebar-collapsed" : "sidebar sidebar-expanded"}
+    >
       <div className="brand-block">
         <div className="brand-mark">
           <WiseEffIcon decorative />
@@ -1225,7 +1317,9 @@ function TopBar({
   onNewProject,
   onLogout,
   onUpdateCurrentUserProfile,
-  mockNotificationsClient
+  mockNotificationsClient,
+  mobileNavOpen = false,
+  onToggleMobileNav
 }: {
   state: PrototypeState;
   dispatch: React.Dispatch<AppAction>;
@@ -1238,9 +1332,15 @@ function TopBar({
   onLogout?: () => Promise<void> | void;
   onUpdateCurrentUserProfile?: (input: UpdateCurrentUserProfileInput) => Promise<void>;
   mockNotificationsClient?: import("@/infrastructure/http/notificationsClient").NotificationsClient;
+  mobileNavOpen?: boolean;
+  onToggleMobileNav?: () => void;
 }) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [pendingProjectSwitch, setPendingProjectSwitch] = useState<{
+    projectId: string;
+    unsavedCount: number;
+  } | null>(null);
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
   const canCreateProject = canPerform(currentRoleId, "parameter.edit");
   const showProjectInitAction =
@@ -1250,22 +1350,10 @@ function TopBar({
     page.key !== "parameter-home";
   const showProjectSelector = pageUsesProjectScope(page.key) && page.key !== "parameter-home";
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
-  const currentRole = roles.find((role) => role.id === currentRoleId);
   const projectOptions = state.configDraft.projects.map((project) => ({ value: project.id, label: project.name }));
   const selectedProjectId =
     page.key === "parameters" ? new URLSearchParams(search).get("project") || state.activeProjectId : state.activeProjectId;
-  const handleProjectChange = (projectId: string) => {
-    // Switching projects tears down the parameter workbench; unsaved drafts
-    // must be acknowledged before they are dropped.
-    if (page.key === "parameters") {
-      const unsavedCount = unsavedParameterWorkCount();
-      if (
-        unsavedCount > 0 &&
-        !window.confirm(`有 ${unsavedCount} 项未保存的修改，切换项目将丢弃这些修改。确定切换吗？`)
-      ) {
-        return;
-      }
-    }
+  const commitProjectChange = (projectId: string) => {
     dispatch({ type: "SET_PROJECT", projectId });
 
     if (page.key === "parameters") {
@@ -1273,10 +1361,36 @@ function TopBar({
     }
   };
 
+  const handleProjectChange = (projectId: string) => {
+    // Switching projects tears down the parameter workbench; unsaved drafts
+    // must be acknowledged before they are dropped (confirm matrix, presented
+    // through the shared ConfirmDialog primitive).
+    if (page.key === "parameters") {
+      const unsavedCount = unsavedParameterWorkCount();
+      if (unsavedCount > 0) {
+        setPendingProjectSwitch({ projectId, unsavedCount });
+        return;
+      }
+    }
+    commitProjectChange(projectId);
+  };
+
   return (
     <header className="topbar">
       <div className="topbar-page">
         <div className="topbar-page-head">
+          {onToggleMobileNav ? (
+            <button
+              type="button"
+              className="button ghost topbar-nav-toggle"
+              aria-label={mobileNavOpen ? "关闭导航菜单" : "打开导航菜单"}
+              aria-expanded={mobileNavOpen}
+              aria-controls="app-sidebar"
+              onClick={onToggleMobileNav}
+            >
+              <Menu size={18} aria-hidden="true" />
+            </button>
+          ) : null}
           <div className="topbar-title">{page.title}</div>
           {pageLeadingActions ? <div className="topbar-page-leading">{pageLeadingActions}</div> : null}
         </div>
@@ -1317,20 +1431,20 @@ function TopBar({
               <UserRound size={17} />
             </span>
             <span className="topbar-user-summary">
-              <strong>{currentUser?.name ?? "Prototype user"}</strong>
-              <small>{currentRole?.name ?? "Guest"}</small>
+              <strong>{currentUser?.name ?? "演示用户"}</strong>
+              <small>{getRequiredRoleLabel(currentRoleId)}</small>
             </span>
             <ChevronDown size={14} />
           </button>
           {userMenuOpen ? (
             <div className="topbar-user-menu" aria-label="用户菜单">
               <div className="topbar-user-menu__identity">
-                <strong>{currentUser?.name ?? "Prototype user"}</strong>
-                <span>{currentUser ? userAccountIdentifier(currentUser) : "No user selected"}</span>
+                <strong>{currentUser?.name ?? "演示用户"}</strong>
+                <span>{currentUser ? userAccountIdentifier(currentUser) : "未选择用户"}</span>
               </div>
               <div className="topbar-user-menu__field topbar-user-menu__role" aria-label="当前用户角色">
-                <span>Role</span>
-                <strong>{currentRole?.name ?? "Guest"}</strong>
+                <span>角色</span>
+                <strong>{getRequiredRoleLabel(currentRoleId)}</strong>
               </div>
               <div className="topbar-user-menu__actions">
                 <button
@@ -1363,31 +1477,21 @@ function TopBar({
           }}
         />
       ) : null}
+      <ConfirmDialog
+        open={pendingProjectSwitch !== null}
+        title="切换项目"
+        description={`有 ${pendingProjectSwitch?.unsavedCount ?? 0} 项未保存的修改，切换项目将丢弃这些修改。`}
+        confirmLabel="丢弃并切换"
+        tone="danger"
+        onConfirm={() => {
+          if (pendingProjectSwitch) {
+            commitProjectChange(pendingProjectSwitch.projectId);
+          }
+          setPendingProjectSwitch(null);
+        }}
+        onCancel={() => setPendingProjectSwitch(null)}
+      />
     </header>
-  );
-}
-
-function ApiUnreachableScreen({ onRetry }: { onRetry: () => void }) {
-  return (
-    <main className="auth-screen" aria-labelledby="auth-unreachable-title">
-      <section className="auth-panel auth-status-panel">
-        <div className="auth-brand">
-          <WiseEffIcon className="auth-brand-icon" title="雷泽" />
-          <div>
-            <span className="eyebrow">WiseEff</span>
-            <h1 id="auth-unreachable-title">无法连接服务器</h1>
-          </div>
-        </div>
-        <p className="auth-status-note">
-          雷泽后端暂时不可达，可能是网络波动或服务正在重启。您的登录状态已保留，服务恢复后点击重试即可继续使用，无需重新登录。
-        </p>
-        <div className="auth-status-actions">
-          <button className="button primary" type="button" onClick={onRetry}>
-            重试
-          </button>
-        </div>
-      </section>
-    </main>
   );
 }
 
@@ -1463,7 +1567,7 @@ function ApiAuthPage({
         await onAuthenticated(response);
       }
     } catch (submitError) {
-      setFormError(submitError instanceof Error ? submitError.message : "认证请求失败。");
+      setFormError(presentError(submitError, mode === "login" ? "登录失败，请稍后重试。" : "注册失败，请稍后重试。"));
     } finally {
       setSubmitting(false);
     }
@@ -1491,7 +1595,7 @@ function ApiAuthPage({
 
         {pendingRegistration ? (
           <section className="auth-pending-notice" aria-labelledby="auth-pending-title">
-            <p className="eyebrow">Pending Approval</p>
+            <p className="eyebrow">注册审批</p>
             <h2 id="auth-pending-title">注册申请已提交</h2>
             <p>
               {pendingRegistration.user.username} 已提交 {pendingRequestedRoleName} 申请。管理员批准前账号不会登录到工作台，
@@ -1595,7 +1699,7 @@ function ProfileDialog({
       {({ titleId }) => (
         <form className="modal-form-contents" onSubmit={submit}>
           <header>
-            <span className="eyebrow">Account</span>
+            <span className="eyebrow">账号</span>
             <h2 id={titleId}>个人资料</h2>
             <p>{userAccountIdentifier(user)}</p>
           </header>

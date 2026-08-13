@@ -95,6 +95,9 @@ jobs:
       - name: Backend tests
         run: npm run test:server
 
+      - name: Contract check
+        run: npm run contract:check
+
       - name: Log analysis behavior eval
         run: npm run logs:eval
 

@@ -1,9 +1,9 @@
 # DTS 重载运行沉淀为知识草稿
 
-> 状态：**进行中**
+> 状态：**已完成 2026-08-13**——经 #429 合并
 > 日期：2026-08-13
 > 分支：`feat/knowledge-reload-distillation`
-> English: [`docs/exec-plans/active/2026-08-13-knowledge-reload-distillation.md`](../../../exec-plans/active/2026-08-13-knowledge-reload-distillation.md)
+> English: [`docs/exec-plans/completed/2026-08-13-knowledge-reload-distillation.md`](../../../exec-plans/completed/2026-08-13-knowledge-reload-distillation.md)
 > 设计：[`docs/design-docs/2026-08-12-knowledge-base-design.md`](../../../design-docs/2026-08-12-knowledge-base-design.md) —— 延后路线图第 3 项
 > 前置：[`2026-08-12-knowledge-base-mvp.md`](../../../exec-plans/completed/2026-08-12-knowledge-base-mvp.md)（Phase 3 日志蒸馏是模板）、[`2026-08-13-knowledge-log-recommendations.md`](../../../exec-plans/completed/2026-08-13-knowledge-log-recommendations.md)
 

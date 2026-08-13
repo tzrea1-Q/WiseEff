@@ -1,5 +1,6 @@
 import type { AuthContext } from "../auth/types";
 import type { Queryable } from "../../shared/database/client";
+import { loadParameterReferencesByEntryIds } from "./parameterReferences";
 import type {
   InsertKnowledgeEntryInput,
   InsertKnowledgeFileInput,
@@ -7,6 +8,7 @@ import type {
   KnowledgeEntryDto,
   KnowledgeExtractionStatus,
   KnowledgeFileDto,
+  KnowledgeParameterReferenceDto,
   KnowledgeRevisionDto,
   KnowledgeSearchResultDto,
   ListKnowledgeEntriesQuery
@@ -125,7 +127,11 @@ function toRevisionDto(row: KnowledgeRevisionRow): KnowledgeRevisionDto {
 
 function toEntryDto(
   row: KnowledgeEntryRow,
-  extras: { contentMarkdown: string | null; file: KnowledgeFileDto | null }
+  extras: {
+    contentMarkdown: string | null;
+    file: KnowledgeFileDto | null;
+    parameterReferences: KnowledgeParameterReferenceDto[];
+  }
 ): KnowledgeEntryDto {
   return {
     id: row.id,
@@ -146,7 +152,8 @@ function toEntryDto(
     publishedAt: nullableDateTimeToIso(row.published_at),
     archivedAt: nullableDateTimeToIso(row.archived_at),
     contentMarkdown: extras.contentMarkdown,
-    file: extras.file
+    file: extras.file,
+    parameterReferences: extras.parameterReferences
   };
 }
 
@@ -176,10 +183,17 @@ async function loadEntryExtras(db: Queryable, auth: AuthContext, rows: Knowledge
     }
   }
 
+  const referencesByEntryId = await loadParameterReferencesByEntryIds(
+    db,
+    auth,
+    rows.map((row) => row.id)
+  );
+
   return rows.map((row) =>
     toEntryDto(row, {
       contentMarkdown: row.head_revision_id ? markdownByRevisionId.get(row.head_revision_id) ?? null : null,
-      file: row.head_revision_id ? fileByRevisionId.get(row.head_revision_id) ?? null : null
+      file: row.head_revision_id ? fileByRevisionId.get(row.head_revision_id) ?? null : null,
+      parameterReferences: referencesByEntryId.get(row.id) ?? []
     })
   );
 }

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { canPerform } from "@/app/permissions";
 import { cn } from "@/lib/utils";
 import { applyTableFilters, applyTimeWindow, deriveInsight, deriveMetrics } from "@/logAdminAnalytics";
+import { formatPercent } from "@/domain/format/formatPercent";
 import { STAGE_LABELS, type LogRecord, type LogStatus, type PrototypeState, type TimeWindow } from "@/domain/prototype/types";
 import type { LogDomain, LogFeedbackInsight, LogWebhookDelivery } from "@/domain/logs/types";
 import { useTopBarActions } from "@/components/layout";
@@ -1037,7 +1038,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
   const columns: Column<LogRecord>[] = [
     {
       key: "reportId",
-      header: "Report ID",
+      header: "报告 ID",
       render: (record) => <span className="font-mono text-xs text-primary">{record.reportId}</span>,
       sortAccessor: (record) => record.reportId,
       widthClass: "w-28"
@@ -1091,7 +1092,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
       key: "confidence",
       header: "置信度",
       render: (record) =>
-        record.status === "Failed" ? <span className="text-muted-foreground">-</span> : <span className="font-mono text-xs">{record.confidence}%</span>,
+        record.status === "Failed" ? <span className="text-muted-foreground">-</span> : <span className="font-mono text-xs">{formatPercent(record.confidence)}</span>,
       sortAccessor: (record) => record.confidence,
       align: "right",
       widthClass: "w-24"

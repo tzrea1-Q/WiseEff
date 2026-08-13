@@ -12,10 +12,12 @@ import {
   releaseReadinessAllowsRelease
 } from "@/application/project-configuration/releaseReadinessGates";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
+import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
 
 /**
  * Every command failure must land in `actionError` — repo throws (network,
  * stale gateToken, 409) included, not only the local pre-flight gates.
+ * Copy goes through the presentError layer so raw backend text never renders.
  */
 function describeBaselineActionError(error: unknown, fallback: string): string {
   if (error instanceof WiseEffApiError) {
@@ -23,14 +25,8 @@ function describeBaselineActionError(error: unknown, fallback: string): string {
     if (detailCode.startsWith("readiness-")) {
       return "就绪状态已变化，请重新查看就绪问题后再操作。";
     }
-    if (error.message.trim()) {
-      return error.message;
-    }
   }
-  if (error instanceof Error && error.message.trim()) {
-    return error.message;
-  }
-  return fallback;
+  return presentError(error, fallback);
 }
 
 export type ReleaseBaselineRepository = Pick<
@@ -262,7 +258,7 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
       } catch (err: unknown) {
         if (generation !== baselinesGeneration) return;
         baselines = [];
-        baselinesError = err instanceof Error ? err.message : "发布基线加载失败。";
+        baselinesError = presentError(err, "发布基线加载失败。");
       } finally {
         if (generation === baselinesGeneration) {
           baselinesLoading = false;
@@ -292,7 +288,7 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
       } catch (err: unknown) {
         if (generation !== readinessGeneration) return;
         readiness = null;
-        readinessError = err instanceof Error ? err.message : "发布就绪评估失败。";
+        readinessError = presentError(err, "发布就绪评估失败。");
       } finally {
         if (generation === readinessGeneration) {
           readinessLoading = false;
@@ -356,7 +352,7 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
         if (!releaseReadinessAllowsCreate(nextReadiness, input.localSessionDirty)) {
           actionError = input.localSessionDirty
             ? "还有未保存的本机会话变更，不能创建基线。"
-            : nextReadiness.unavailableReason ?? "发布就绪门禁阻止创建基线。";
+            : presentErrorMessage(nextReadiness.unavailableReason, "发布就绪门禁阻止创建基线。");
           emit();
           throw new Error(actionError);
         }
@@ -427,7 +423,7 @@ export function createReleaseBaselineSession(): ReleaseBaselineSession {
         if (!releaseReadinessAllowsRelease(nextReadiness, input.localSessionDirty)) {
           actionError = input.localSessionDirty
             ? "还有未保存的本机会话变更，不能发布基线。"
-            : nextReadiness.unavailableReason ?? "发布就绪门禁阻止发布基线。";
+            : presentErrorMessage(nextReadiness.unavailableReason, "发布就绪门禁阻止发布基线。");
           emit();
           throw new Error(actionError);
         }

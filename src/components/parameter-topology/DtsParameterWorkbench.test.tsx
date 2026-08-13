@@ -277,12 +277,12 @@ describe("DtsParameterWorkbench", () => {
     expect(styles).toMatch(/\.dts-parameter-workbench[\s\S]*:focus-visible/);
     expect(styles).toMatch(/\.dts-workbench-list[^{]*\{[^}]*height:\s*min\(670px/);
     expect(styles).toMatch(/\.dts-workbench-list__scroll-x[^{]*\{[^}]*overflow-x:\s*auto/);
-    expect(styles).toMatch(/\.dts-workbench-list__scroll-y[^{]*\{[^}]*min-width:\s*1100px/);
+    expect(styles).toMatch(/\.dts-workbench-list__scroll-y[^{]*\{[^}]*min-width:\s*680px/);
     expect(styles).toMatch(/\.dts-workbench-list__h-rail[^{]*\{[^}]*overflow-x:\s*scroll/);
-    expect(styles).toMatch(/\.dts-workbench-list__h-rail-spacer[^{]*\{[^}]*min-width:\s*1100px/);
-    expect(styles).toMatch(/\.dts-parameter-workbench-table[^{]*\{[^}]*min-width:\s*1100px/);
+    expect(styles).toMatch(/\.dts-workbench-list__h-rail-spacer[^{]*\{[^}]*min-width:\s*680px/);
+    expect(styles).toMatch(/\.dts-parameter-workbench-table[^{]*\{[^}]*min-width:\s*680px/);
     expect(styles).toMatch(/\.dts-parameter-workbench-table__head[^{]*\{[^}]*position:\s*sticky/);
-    expect(styles).toMatch(/@media\s*\(max-width:\s*1200px\)[\s\S]*\.dts-parameter-workbench-table[\s\S]*min-width:\s*920px/);
+    expect(styles).toMatch(/@media\s*\(max-width:\s*1200px\)[\s\S]*\.dts-parameter-workbench-table[\s\S]*min-width:\s*640px/);
     expect(styles).toMatch(/@media\s*\(max-width:\s*820px\)[\s\S]*\.dts-parameter-workbench-table--surface-mvp[\s\S]*min-width:\s*0/);
     expect(styles).toMatch(/@media\s*\(max-width:\s*820px\)[\s\S]*\.dts-parameter-workbench-table--surface-mvp\s+\.dts-parameter-workbench-table__row[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(0,\s*1\.5fr\)/);
 

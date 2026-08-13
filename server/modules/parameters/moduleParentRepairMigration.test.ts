@@ -103,6 +103,8 @@ describe.skipIf(!databaseAvailable)("0109 module parent_id repair", () => {
       // Later migrations (0110+) may follow in the sequence; the repair under
       // test must be the first pending migration after the 0108 stop point.
       const pending = await applyMigrations(db, migrationsDir);
+      // Later migrations may follow (e.g. 0111 knowledge references); the
+      // replay only pins that the repair is the next migration to apply.
       expect(pending[0]).toBe(migration0109);
 
       const repairedParams = await listTreeRows(db, "parameter_modules");

@@ -5,7 +5,9 @@ import { type PageProps } from "@/app/routes";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { RelatedKnowledgeSection } from "@/features/log-analysis/RelatedKnowledgeSection";
 import type { LogDomain } from "@/domain/logs/types";
+import { formatPercent, normalizePercentValue } from "@/domain/format/formatPercent";
 import { SEVERITY_LABELS, STAGE_LABELS, type LogEvidence, type LogRecord, type LogStageId } from "@/domain/prototype/types";
+import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
 import { EmptyState, PanelHeader, SectionLabel } from "@/workbenchUi";
 import {
   AlertTriangle,
@@ -85,7 +87,14 @@ function createEmptyLogRecord(): LogRecord {
 
 export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, knowledgeCapability }: PageProps) {
   const knowledgeRepository = runtime?.knowledgeRepository;
-  const [selectedLogId, setSelectedLogId] = useState(state.logs[0]?.id ?? "");
+  const [selectedLogId, setSelectedLogId] = useState(() => {
+    // Deep link: /logs?logId=<id> (the target of 复制链接) restores the selection.
+    const requested = new URLSearchParams(window.location.search).get("logId");
+    if (requested && state.logs.some((log) => log.id === requested)) {
+      return requested;
+    }
+    return state.logs[0]?.id ?? "";
+  });
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [uploadLogDomains, setUploadLogDomains] = useState<LogDomain[]>([]);
   const [distilPending, setDistilPending] = useState(false);
@@ -104,6 +113,38 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   const prevLogCount = useRef(state.logs.length);
   const emptyLogRecord = useMemo(() => createEmptyLogRecord(), []);
   const selectedLog = state.logs.find((log) => log.id === selectedLogId) ?? state.logs[0];
+
+  // API mode hydrates logs after mount, so a deep-linked id may not exist yet
+  // at first render; consume it once the record arrives.
+  const pendingDeepLinkLogIdRef = useRef<string | null>(
+    new URLSearchParams(window.location.search).get("logId")
+  );
+  useEffect(() => {
+    const wanted = pendingDeepLinkLogIdRef.current;
+    if (!wanted) {
+      return;
+    }
+    if (state.logs.some((log) => log.id === wanted)) {
+      setSelectedLogId(wanted);
+      pendingDeepLinkLogIdRef.current = null;
+      // The hydration that delivered this record must not trigger the
+      // newest-upload auto-selection below and override the deep link.
+      prevLogCount.current = state.logs.length;
+    }
+  }, [state.logs]);
+
+  // Keep the address bar shareable (the 复制链接 target) without history spam.
+  useEffect(() => {
+    if (!selectedLogId || !window.location.pathname.startsWith("/logs") || pendingDeepLinkLogIdRef.current) {
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("logId") === selectedLogId) {
+      return;
+    }
+    params.set("logId", selectedLogId);
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+  }, [selectedLogId]);
   const hasActiveLog = Boolean(selectedLog);
   const activeLog = selectedLog ?? emptyLogRecord;
   const evidenceByLine = useMemo(() => {
@@ -151,7 +192,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   }, [activeLog.id]);
 
   useEffect(() => {
-    setLiveMessage(`已切换到 ${activeLog.fileName}，${logStatusLabels[activeLog.status]}，置信度 ${activeLog.confidence}%`);
+    setLiveMessage(`已切换到 ${activeLog.fileName}，${logStatusLabels[activeLog.status]}，置信度 ${formatPercent(activeLog.confidence)}`);
   }, [activeLog.confidence, activeLog.fileName, activeLog.id, activeLog.status]);
 
   useEffect(() => {
@@ -234,7 +275,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
       "",
       `- 状态：${logStatusLabels[activeLog.status]}`,
       `- 严重度：${SEVERITY_LABELS[activeLog.severity]}`,
-      `- 置信度：${activeLog.confidence}%`,
+      `- 置信度：${formatPercent(activeLog.confidence)}`,
       `- 采集时间：${activeLog.capturedAt}`,
       "",
       "## 结论",
@@ -302,7 +343,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
     } catch (error) {
       dispatch({
         type: "ADD_NOTIFICATION",
-        message: error instanceof Error && error.message ? `沉淀为知识失败:${error.message}` : "沉淀为知识失败,请稍后重试"
+        message: presentError(error, "沉淀为知识失败,请稍后重试")
       });
     } finally {
       setDistilPending(false);
@@ -463,7 +504,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
                 });
               })
               .catch((error: unknown) => {
-                setFeedbackError(error instanceof Error ? error.message : "反馈提交失败，请重试。");
+                setFeedbackError(presentError(error, "反馈提交失败，请重试。"));
               })
               .finally(() => {
                 setFeedbackPending(false);
@@ -708,16 +749,17 @@ function SeverityBadge({ severity, processing }: { severity: LogRecord["severity
 }
 
 function ConfidenceBar({ value, status }: { value: number; status: LogRecord["status"] }) {
-  const tone = status === "Processing" ? "indeterminate" : value >= 90 ? "high" : value >= 70 ? "mid" : "low";
+  const percent = normalizePercentValue(value);
+  const tone = status === "Processing" ? "indeterminate" : percent >= 90 ? "high" : percent >= 70 ? "mid" : "low";
 
   return (
     <div className={classNames("confidence-bar", `confidence-bar--${tone}`)}>
       <div>
         <span>AI置信度</span>
-        <strong>{value}%</strong>
+        <strong>{formatPercent(value)}</strong>
       </div>
-      <div aria-label="分析置信度" aria-valuemax={100} aria-valuemin={0} aria-valuenow={value} role="progressbar">
-        <i style={{ width: `${Math.max(0, Math.min(value, 100))}%` }} />
+      <div aria-label="分析置信度" aria-valuemax={100} aria-valuemin={0} aria-valuenow={percent} role="progressbar">
+        <i style={{ width: `${Math.min(percent, 100)}%` }} />
       </div>
     </div>
   );
@@ -930,12 +972,18 @@ function LogAnalysisFeedbackDialog({
 }
 
 function LogErrorAlert({ log, onRetry }: { log: LogRecord; onRetry: () => void }) {
+  // Fixed short title + one mapped reason line: the backend failureReason is
+  // English and used to render twice (conclusion falls back to failureReason).
+  const reason = presentErrorMessage(
+    log.failureReason ?? log.conclusion,
+    "日志处理失败，请重试或重新上传。"
+  );
   return (
     <section className="log-error-alert" role="alert">
       <AlertTriangle size={22} />
       <div>
-        <strong>{log.conclusion}</strong>
-        <p>{log.failureReason ?? "格式不支持，请上传 .log / .txt / .json 文本日志。"}</p>
+        <strong>日志处理失败</strong>
+        <p>{reason}</p>
         <button className="button danger" type="button" onClick={onRetry}>
           重新上传
         </button>
@@ -1303,7 +1351,7 @@ function LogsAuxPanel({
                 onClick={() => onSelectLog(log.id)}
               >
                 <strong>{log.fileName}</strong>
-                <span>{logStatusLabels[log.status]} · {log.confidence}%</span>
+                <span>{logStatusLabels[log.status]} · {formatPercent(log.confidence)}</span>
               </button>
             ))}
           </div>

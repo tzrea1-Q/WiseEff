@@ -103,9 +103,15 @@ export function WorkbenchSourceCanvas({
                   ? "候选文件版本"
                   : "对照文件版本"}
             </span>
-            <strong className="mono">
+            {/* Working config shows the human version label; the raw id stays in the tooltip (FA-23). */}
+            <strong
+              className="mono"
+              title={canvasMode === "working" ? selectedMember.currentVersionId ?? undefined : undefined}
+            >
               {canvasMode === "working"
-                ? selectedMember.currentVersionId ?? "缺失"
+                ? selectedMember.currentVersionNumber
+                  ? `v${selectedMember.currentVersionNumber}`
+                  : "无活跃版本"
                 : canvasMode === "candidate"
                   ? activeCandidate?.id ?? candidateId ?? "缺失"
                   : historyVersionId ?? "缺失"}

@@ -6,7 +6,9 @@ type SectionSkeletonProps = {
 
 export function SectionSkeleton({ label }: SectionSkeletonProps) {
   return (
-    <div className="section-skeleton" role="status" aria-live="polite">
+    // aria-label names the region (role=status has no name-from-content);
+    // the sr-only text is what the live region announces.
+    <div className="section-skeleton" role="status" aria-live="polite" aria-label={label}>
       <span className="sr-only">{label}</span>
       <div className="section-skeleton__line wide" />
       <div className="section-skeleton__line medium" />

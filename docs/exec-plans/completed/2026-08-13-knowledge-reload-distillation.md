@@ -1,9 +1,9 @@
 # DTS-reload run distillation into knowledge drafts
 
-> Status: **Active**
+> Status: **Completed 2026-08-13** — merged via #429
 > Date: 2026-08-13
 > Branch: `feat/knowledge-reload-distillation`
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-13-knowledge-reload-distillation.md`](../../zh-CN/exec-plans/active/2026-08-13-knowledge-reload-distillation.md)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-13-knowledge-reload-distillation.md`](../../zh-CN/exec-plans/completed/2026-08-13-knowledge-reload-distillation.md)
 > Design: [`docs/design-docs/2026-08-12-knowledge-base-design.md`](../../design-docs/2026-08-12-knowledge-base-design.md) — deferred roadmap item 3
 > Predecessors: [`2026-08-12-knowledge-base-mvp.md`](../completed/2026-08-12-knowledge-base-mvp.md) (Phase 3 log distillation is the template), [`2026-08-13-knowledge-log-recommendations.md`](../completed/2026-08-13-knowledge-log-recommendations.md)
 

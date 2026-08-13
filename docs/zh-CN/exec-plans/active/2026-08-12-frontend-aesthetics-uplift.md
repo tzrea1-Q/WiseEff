@@ -104,12 +104,12 @@
 
 ### P2 — 页面缺陷第一波(分支 `fix/ui-page-defects-wave-1`)
 
-- [ ] 文案本地化清扫:共享时间格式化(相对/绝对)、百分比格式化(修 `0.91%`)、错误映射层杜绝原始 `error.message`/slug/ISO/代号;替换 `Showing X of Y`、`never`、`Report ID`、英文权限卡与 eyebrow(FA-17、FA-18、FA-21 百分比)。
-- [ ] 布局预算:修复 1440 下 `/parameters` 与项目清单横向溢出(缩减外框留白、次要列进检查器);嵌套 ≤ 2 层(FA-20 桌面、FA-22 双标题)。
-- [ ] 移动端:<768px 侧边栏改抽屉浮层;恢复用户菜单可达;修一字一行竖排;路由切换重置滚动;着陆页改 SPA 链接(FA-20 移动、FA-22)。
-- [ ] 状态覆盖:`/node-debugging` 与 `/user-permissions` 补加载/空/错误;认证失败路径改为产品语言重试态,不再踢回登录页(FA-21)。
-- [ ] 种子卫生:演示种子清除/改名测试残留实体;工作台树的原始版本 id 收进标签(FA-23)。
-- [ ] 看板统一:`/log-dashboard` 卡片改用令牌色与字阶;移除黑条/黑顶边(FA-19 余量)。
+- [x] 文案本地化清扫:共享时间格式化(相对/绝对)、百分比格式化(修 `0.91%`)、错误映射层杜绝原始 `error.message`/slug/ISO/代号;替换 `Showing X of Y`、`never`、`Report ID`、英文权限卡与 eyebrow(FA-17、FA-18、FA-21 百分比)。已按 P2a 交付:`src/domain/format/`(`formatRelativeOrAbsolute`/`formatAbsolute`、`formatPercent`/`normalizePercentValue`、`formatLastActive`)、`src/infrastructure/http/presentError.ts`,以及 `src/domain/audit/auditSlugLabels.ts` 的审计 slug 标签(未知 slug 以代码样式渲染);高频页面之外的原始 `error.message` 渲染点(知识库、反馈后台、parameter-admin-next 治理面板、parameter-topology 弹窗)随各自波次处理。
+- [x] 布局预算:修复 1440 下 `/parameters` 与项目清单横向溢出(缩减外框留白、次要列进检查器);嵌套 ≤ 2 层(FA-20 桌面、FA-22 双标题)。已按 P2b 交付:移除工作台 h2 块与 `/platform-console` h1(标题归壳层);工作台外层卡片收敛到一层可见卡片(嵌套 ≤ 2);表格预算 1100→680(≤1200:920→640)对齐 surface-mvp 列最小宽;`.param-admin-shell` 双层内边距移除后 1080px 项目清单放得下;1440 实测 `.dts-workbench-list__scroll-x` scrollWidth 866 == clientWidth(原 1100/782),项目清单 1100 == 1100。
+- [x] 移动端:<768px 侧边栏改抽屉浮层;恢复用户菜单可达;修一字一行竖排;路由切换重置滚动;着陆页改 SPA 链接(FA-20 移动、FA-22)。已按 P2b 交付:抽屉(translateX + `--z-drawer-backdrop` 遮罩,Escape/遮罩/导航点击关闭,动效令牌 + reduced-motion 回退);769–900px 窄轨完全由 `.sidebar-collapsed` 承担(删除逐字重复的媒体查询);≤900px 用户菜单触发器改纯头像;托盘/表格计数 nowrap;`.main-content` 路由切换重置滚动;着陆页锚点保留 href 但普通左键走 SPA。
+- [x] 状态覆盖:`/node-debugging` 与 `/user-permissions` 补加载/空/错误;认证失败路径改为产品语言重试态,不再踢回登录页(FA-21)。已按 P2c 交付:两页在 API 数据装载期渲染共享 `SectionSkeleton`、失败时渲染带重试的 `SectionError`(壳层新增 `debuggingRuntimeStatus`/`userDirectoryStatus`);节点表区分「暂无调试节点」与「筛选无结果」两种空态,演示模式检测失败以 toast 反馈不再静默;`/me` 探测的网络级失败进入全屏 `AppShellConnectionError` 重试态(保留会话令牌),仅鉴权被拒(401 类)才进登录页。
+- [x] 种子卫生:演示种子清除/改名测试残留实体;工作台树的原始版本 id 收进标签(FA-23)。已按 P2c 交付:侦察(`FoldRegistryTestDG|fold_registry_test|probe-edit`)确认仓库种子/fixture 无残留——审计所见实体均为共享开发库的运行时写入(schema 晋升 runbook 演示、历史探针会话、e2e 验收 cast),无需改种子或重跑生成器;`reset-quality-runtime.ts` 已覆盖验收账号清理,但未覆盖运行时创建的驱动组模块与上传文件版本(仅报告,不改行为)。工作台源树、画布头与检查器改渲染「版本 v{n}」标签,原始版本 id 降级为 tooltip 或代码样式次要行。
+- [x] 看板统一:`/log-dashboard` 卡片改用令牌色与字阶;移除黑条/黑顶边(FA-19 余量)。已按 P2c 交付:看板样式块内全部 hex/rgba 字面量迁入语义令牌(teal 质量色 → `--info` 家族;状态条 `--success`/`--accent`/`--danger`;卡片顶边统一语义状态色或 `--border-strong`);巨号数字与眉标改用 `--text-2xl`/`--text-xs..sm`;进度条/迷你图填充由 `--accent` 派生;`#0f766e/#11a3a3/#0d9488/#14b8a6` 全表归零(`module-tone-5` → `--app-secondary`)。recharts 完整图表主题化(`--chart-*`)留在 P3。
 
 ### P3 — 动效与主题就绪(分支 `feat/ui-motion-and-theme`)
 

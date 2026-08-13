@@ -585,6 +585,27 @@ export const routeManifest = [
     module: "knowledge",
     stability: "mvp"
   },
+  {
+    id: "knowledge.relatedToSpec",
+    method: "GET",
+    path: "/api/v1/knowledge/related-to-spec",
+    module: "knowledge",
+    stability: "mvp"
+  },
+  {
+    id: "knowledge.addParameterReference",
+    method: "PUT",
+    path: "/api/v1/knowledge/entries/:entryId/parameter-references/:specId",
+    module: "knowledge",
+    stability: "mvp"
+  },
+  {
+    id: "knowledge.removeParameterReference",
+    method: "DELETE",
+    path: "/api/v1/knowledge/entries/:entryId/parameter-references/:specId",
+    module: "knowledge",
+    stability: "mvp"
+  },
   { id: "knowledge.indexStatus", method: "GET", path: "/api/v1/knowledge/index/status", module: "knowledge", stability: "mvp" },
   { id: "knowledge.indexRebuild", method: "POST", path: "/api/v1/knowledge/index/rebuild", module: "knowledge", stability: "mvp" },
   {

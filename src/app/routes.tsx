@@ -1,4 +1,4 @@
-import type { Dispatch, ReactNode } from "react";
+import { useMemo, type Dispatch, type ReactNode } from "react";
 
 import type {
   ApplyParameterImportBatchInput,
@@ -52,6 +52,9 @@ import { NoEntryPage } from "@/components/NoEntryPage";
 import type { PageConfig } from "@/appConfig";
 import type { PrototypeState } from "@/domain/prototype/types";
 import type { ParameterDraftItem, ParameterRecord } from "@/domain/parameters/types";
+import type { SpecRelatedKnowledgeSource } from "@/components/parameter-topology/ParameterSpecDetail";
+import type { KnowledgeSpecPickerOption } from "@/features/knowledge/KnowledgeEntryEditorDialog";
+
 
 export type ParameterPageActions = {
   getParameter(parameterId: string): Promise<ParameterRecord>;
@@ -59,13 +62,16 @@ export type ParameterPageActions = {
   stashChanges(items: ParameterDraftItem[]): Promise<ParameterRuntimeVoidResult>;
   discardDrafts(input: DiscardParameterDraftsInput): Promise<ParameterRuntimeVoidResult>;
   withdrawSubmissionRound(roundId: string): Promise<ParameterRuntimeVoidResult>;
-  reviewChange(input: ReviewParameterChangeInput): Promise<ParameterRuntimeVoidResult>;
+  reviewChange(input: ReviewParameterChangeInput, options?: ParameterRuntimeRefreshOptions): Promise<ParameterRuntimeVoidResult>;
   listWorkflowAssignees?: ParameterRuntimeActions["listWorkflowAssignees"];
   createImportPreview(input: ParameterImportPreviewInput): Promise<ParameterImportBatchDto | ParameterRuntimeActionFailure>;
   applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterRuntimeVoidResult>;
   parseDtsImport(input: ParseDtsImportInput): Promise<DtsImportParseResult>;
   refresh(options?: ParameterRuntimeRefreshOptions): Promise<ParameterRuntimeRefreshResult>;
 };
+
+/** Loading lifecycle for a page-scoped API data section (FA-21 state coverage). */
+export type RuntimeSectionStatus = "loading" | "ready" | "error";
 
 export type PageProps = {
   state: PrototypeState;
@@ -150,6 +156,48 @@ export function PageRouter({
   const canEditParameters =
     canPerform(currentRoleId, "parameter.edit") &&
     (activeProjectInitializationStatus === "initialized" || activeProjectInitializationStatus === "maintenance");
+
+  // Definition detail 相关知识: published entries referencing the open spec.
+  // Absent without knowledge:view — the section stays hidden entirely.
+  const canViewKnowledge = knowledgeCapability?.canView ?? false;
+  const specRelatedKnowledge = useMemo<SpecRelatedKnowledgeSource | undefined>(() => {
+    if (!knowledgeRepository || !canViewKnowledge) {
+      return undefined;
+    }
+    return {
+      load: async (specId: string) => {
+        const { items } = await knowledgeRepository.relatedToSpec(specId);
+        return items.map((item) => ({
+          entryId: item.entryId,
+          title: item.title,
+          excerpt: item.excerpt,
+          updatedAt: item.updatedAt
+        }));
+      },
+      onOpenEntry: (entryId: string) => onNavigate(`/knowledge?entryId=${encodeURIComponent(entryId)}`)
+    };
+  }, [knowledgeRepository, canViewKnowledge, onNavigate]);
+
+  // Entry-editor definition picker: searching needs parameter:view (the same
+  // read API the caller uses elsewhere); absent hides the picker section.
+  const canViewParameterSpecs = canPerform(currentRoleId, "parameter.view");
+  const searchParameterSpecs = useMemo<((q: string) => Promise<KnowledgeSpecPickerOption[]>) | undefined>(() => {
+    if (!parameterTopologyRepository || !canViewParameterSpecs) {
+      return undefined;
+    }
+    return async (q: string) => {
+      const items = await parameterTopologyRepository.listSpecs(q.trim() ? { q: q.trim() } : {});
+      return items.map((item) => ({
+        specId: item.id,
+        propertyKey: item.propertyKey ?? item.specificationKey,
+        // The list projection carries no display name; the chip falls back to
+        // the property key, which is how the library scan columns read too.
+        displayName: null,
+        driverModule: item.driverModule ?? null,
+        lifecycle: item.lifecycle
+      }));
+    };
+  }, [parameterTopologyRepository, canViewParameterSpecs]);
 
   if (!canAccessPage(currentRoleId, page.key)) {
     const requiredRole = getRequiredRoleForPage(page.key);
@@ -244,6 +292,7 @@ export function PageRouter({
           parameterActions={parameterActions}
           state={state}
           onNewProject={onNewProject}
+          relatedKnowledge={specRelatedKnowledge}
         />
       );
     }
@@ -282,6 +331,8 @@ export function PageRouter({
           capability={knowledgeCapability}
           askXiaozeEnabled={runtimeMode === "api"}
           initialEntryId={new URLSearchParams(search).get("entryId")}
+          searchParameterSpecs={searchParameterSpecs}
+          onOpenParameterSpec={(specId) => onNavigate(`/parameter-admin?spec=${encodeURIComponent(specId)}`)}
           onNavigate={onNavigate}
         />
       ) : null;
@@ -370,12 +421,20 @@ export function PageRouter({
       );
     }
     case "user-permissions":
-      return <UserPermissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} userGovernanceActions={userGovernanceActions} />;
+      return (
+        <UserPermissionsPage
+          state={state}
+          dispatch={dispatch}
+          onNavigate={onNavigate}
+          search={search}
+          userGovernanceActions={userGovernanceActions}
+        />
+      );
     case "audit":
       return <AuditCenterPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} runtimeMode={runtimeMode} />;
     case "platform-console":
       return <PlatformConsolePage />;
     default:
-      return <LinearTemplateHome />;
+      return <LinearTemplateHome onNavigate={onNavigate} />;
   }
 }

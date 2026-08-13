@@ -3,9 +3,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { isHdcPlaceholderTarget } from "@wiseeff/device-command-core/hdcTargets";
 import { canPerform } from "@/app/permissions";
 import { migrateLegacyRoleId } from "@/domain/users/types";
+import { presentError } from "@/infrastructure/http/presentError";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { ConfirmDialog } from "./components/common/ConfirmDialog";
+import { SectionError, SectionSkeleton } from "./components/common/SectionState";
 import { LocalDeviceBridgePanel } from "./components/LocalDeviceBridgePanel";
 import { formatDetectFailureMessage } from "./components/bridgePanelStatus";
 import { NodeOperationHistoryPanel, type NodeOperationEvent } from "./components/NodeOperationHistoryPanel";
@@ -460,10 +462,14 @@ function NodeWriteFormatPanel({ row, protocol }: { row: RuntimeRow; protocol: De
   );
 }
 
+type NodeDebuggingRuntimeStatus = "loading" | "ready" | "error";
+
 export function NodeDebuggingPage({
   state,
   debuggingActions,
-  runtimeReady: runtimeReadyOverride,
+  runtimeStatus: runtimeStatusOverride,
+  runtimeError: runtimeErrorOverride,
+  onRuntimeRetry,
   runtimeMode,
   bridges,
   probeBridgeHealth = defaultProbeBridgeHealth,
@@ -472,8 +478,10 @@ export function NodeDebuggingPage({
   state: PrototypeState;
   /** All node operations go through the DebuggingGateway port behind these actions. */
   debuggingActions: DebuggingRuntimeActions;
-  /** Test override; when absent the page manages readiness through its own mount refresh. */
-  runtimeReady?: boolean;
+  /** Test overrides; when absent the page manages the runtime lifecycle through its own mount refresh. */
+  runtimeStatus?: NodeDebuggingRuntimeStatus;
+  runtimeError?: string;
+  onRuntimeRetry?: () => void;
   runtimeMode?: WiseEffRuntimeMode;
   /** Bridge panel seam for non-API runtimes; defaults to the HTTP bridge listing. */
   bridges?: DeviceBridgeRecord[];
@@ -484,31 +492,44 @@ export function NodeDebuggingPage({
 }) {
   // The runtime catalog hydrates when the page mounts; the shell no longer
   // watches page.key on the page's behalf. Non-api runtimes are ready at once.
-  const [selfReady, setSelfReady] = useState(runtimeMode !== "api");
+  const isApiRuntime = runtimeMode === "api";
+  const [selfRuntimeStatus, setSelfRuntimeStatus] = useState<NodeDebuggingRuntimeStatus>(
+    isApiRuntime ? "loading" : "ready"
+  );
+  const [selfRuntimeError, setSelfRuntimeError] = useState("");
+  const [runtimeReloadToken, setRuntimeReloadToken] = useState(0);
   useEffect(() => {
-    if (runtimeMode !== "api" || !canPerform(migrateLegacyRoleId(state.activeRoleId), "debugging.use")) {
+    if (!isApiRuntime || !canPerform(migrateLegacyRoleId(state.activeRoleId), "debugging.use")) {
       return;
     }
 
     let cancelled = false;
+    // First load / retry-after-error shows the skeleton; once hydrated,
+    // re-entering the page refreshes in the background without one.
+    setSelfRuntimeStatus((current) => (current === "ready" ? current : "loading"));
     void debuggingActions
       .refresh({ protocol: readInitialNodeDebuggingProtocol() })
       .then(() => {
         if (!cancelled) {
-          setSelfReady(true);
+          setSelfRuntimeStatus("ready");
+          setSelfRuntimeError("");
         }
       })
-      .catch(() => {
+      .catch((error) => {
         if (!cancelled) {
-          setSelfReady(false);
+          setSelfRuntimeStatus("error");
+          setSelfRuntimeError(presentError(error, "无法加载调试节点数据，请稍后重试。"));
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [debuggingActions, runtimeMode, state.activeRoleId]);
-  const runtimeReady = runtimeReadyOverride ?? selfReady;
+  }, [debuggingActions, isApiRuntime, runtimeReloadToken, state.activeRoleId]);
+  const runtimeStatus = runtimeStatusOverride ?? selfRuntimeStatus;
+  const runtimeError = runtimeErrorOverride ?? selfRuntimeError;
+  const handleRuntimeRetry = onRuntimeRetry ?? (() => setRuntimeReloadToken((token) => token + 1));
+  const runtimeReady = runtimeStatus === "ready";
   const [protocol, setProtocol] = useState<DebugConnectionProtocol>(readInitialNodeDebuggingProtocol);
   const [rows, setRows] = useState<RuntimeRow[]>(() =>
     state.debugParameters.map((parameter) => runtimeRowFromParameter(parameter, protocol))
@@ -1147,6 +1168,15 @@ export function NodeDebuggingPage({
             <span>{connected ? `${protocolLabel(protocol)} 设备在线` : "等待设备检测"}</span>
           </div>
 
+          {runtimeStatus === "loading" ? (
+            <SectionSkeleton label="正在加载调试节点" />
+          ) : runtimeStatus === "error" ? (
+            <SectionError
+              message={runtimeError || "无法加载调试节点数据，请稍后重试。"}
+              onRetry={handleRuntimeRetry}
+            />
+          ) : (
+            <>
           <section className="parameters-table parameters-table--column-filters" aria-label="节点调试参数">
             <div className="parameters-table-toolbar">
               <label className="parameters-table-search">
@@ -1159,7 +1189,7 @@ export function NodeDebuggingPage({
                   onChange={(event) => setSearchQuery(event.target.value)}
                 />
               </label>
-              <span className="parameters-table-count">Showing {visibleRows.length} of {rows.length}</span>
+              <span className="parameters-table-count">显示 {visibleRows.length} / {rows.length} 个参数</span>
             </div>
 
             <div className="parameters-table-scroll">
@@ -1265,6 +1295,26 @@ export function NodeDebuggingPage({
                 </tbody>
               </table>
             </div>
+
+            {visibleRows.length === 0 ? (
+              <div className="parameters-table-empty">
+                <p>{rows.length === 0 ? "暂无调试节点" : "没有符合筛选条件的节点"}</p>
+                {rows.length === 0 ? (
+                  <span>调试节点由管理员在调试管理后台维护，配置后即可在此读写设备节点。</span>
+                ) : (
+                  <button
+                    type="button"
+                    className="button subtle"
+                    onClick={() => {
+                      setSearchQuery("");
+                      setStatusFilters([]);
+                    }}
+                  >
+                    清除筛选条件
+                  </button>
+                )}
+              </div>
+            ) : null}
           </section>
 
           <div className="parameters-submit-bar parameters-submit-bar-active" aria-label="节点批量下发操作栏">
@@ -1294,6 +1344,8 @@ export function NodeDebuggingPage({
               </button>
             </div>
           </div>
+            </>
+          )}
         </section>
 
         <NodeOperationHistoryPanel events={events} />

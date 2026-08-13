@@ -1,5 +1,5 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SlidersHorizontal } from "lucide-react";
 import { SubAppCard } from "./SubAppCard";
 
@@ -64,5 +64,27 @@ describe("SubAppCard", () => {
 
     const article = screen.getByRole("article", { name: "参数管理" });
     expect(article.style.getPropertyValue("--sub-app-accent")).toBe("#2857FF");
+  });
+
+  it("routes plain left-clicks through the SPA navigator instead of a full reload", () => {
+    const onNavigate = vi.fn();
+    render(<SubAppCard {...baseProps} onNavigate={onNavigate} />);
+
+    const primaryClick = fireEvent.click(screen.getByRole("link", { name: /进入参数首页/ }));
+    // preventDefault was called, so no full-page navigation happens.
+    expect(primaryClick).toBe(false);
+    expect(onNavigate).toHaveBeenCalledWith("/parameter-home");
+
+    fireEvent.click(screen.getByRole("link", { name: /打开参数管理后台/ }));
+    expect(onNavigate).toHaveBeenCalledWith("/parameter-admin");
+  });
+
+  it("keeps modified clicks on the native anchor for new-tab behavior", () => {
+    const onNavigate = vi.fn();
+    render(<SubAppCard {...baseProps} onNavigate={onNavigate} />);
+
+    const metaClick = fireEvent.click(screen.getByRole("link", { name: /进入参数首页/ }), { metaKey: true });
+    expect(metaClick).toBe(true);
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 });

@@ -6,14 +6,20 @@ import type { AppAction } from "@/application/state/appState";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { DataTable, type Column } from "@/components/admin";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { SectionError, SectionSkeleton } from "@/components/common/SectionState";
 import {
   toggleFilterValue,
   uniqueFilterValues,
   type HeaderFilterConfig,
   type HeaderFilterState
 } from "@/components/tableFilterUtils";
+import { formatAbsolute } from "@/domain/format/formatDateTime";
+import { formatLastActive } from "@/domain/format/formatLastActive";
+import { presentError } from "@/infrastructure/http/presentError";
 import { migrateLegacyRoleId, platformRoles, type PermissionKey, type PlatformRoleId } from "@/domain/users/types";
 import type { PrototypeState, User } from "@/domain/prototype/types";
+
+type UserDirectoryStatus = "loading" | "ready" | "error";
 
 type UserPermissionsPageProps = {
   state: PrototypeState;
@@ -21,6 +27,10 @@ type UserPermissionsPageProps = {
   onNavigate: (path: string) => void;
   search: string;
   userGovernanceActions?: UserGovernanceActions;
+  /** API-mode user-directory hydration lifecycle; mock mode stays "ready". */
+  userDirectoryStatus?: UserDirectoryStatus;
+  userDirectoryError?: string;
+  onUserDirectoryRetry?: () => void;
 };
 
 export type UserGovernanceActions = {
@@ -132,6 +142,12 @@ function statusLabelOf(isActive: boolean) {
   return isActive ? statusLabels.active : statusLabels.disabled;
 }
 
+/** Precise-timestamp tooltip only when the underlying value is a real timestamp. */
+function lastActiveTooltip(value: string) {
+  const absolute = formatAbsolute(value);
+  return absolute === value ? undefined : absolute;
+}
+
 function userColumnFilterValue(user: User, key: UserColumnFilterKey) {
   if (key === "user") {
     return user.name;
@@ -145,7 +161,7 @@ function userColumnFilterValue(user: User, key: UserColumnFilterKey) {
   if (key === "status") {
     return statusLabelOf(user.isActive);
   }
-  return user.lastActive;
+  return formatLastActive(user.lastActive);
 }
 
 function userAccountIdentifier(user: User) {
@@ -180,32 +196,58 @@ function RoleCapabilityTooltip({ roleId, position }: { roleId: PlatformRoleId; p
   );
 }
 
-export function UserPermissionsPage({ state, dispatch, search: _search, userGovernanceActions }: UserPermissionsPageProps) {
-  // Governed rows hydrate when the page mounts. The governance client only
-  // exists in api mode (createAppRuntime), so its presence doubles as the mode guard.
+export function UserPermissionsPage({
+  state,
+  dispatch,
+  search: _search,
+  userGovernanceActions,
+  userDirectoryStatus: userDirectoryStatusOverride,
+  userDirectoryError: userDirectoryErrorOverride,
+  onUserDirectoryRetry
+}: UserPermissionsPageProps) {
+  // Governed rows hydrate when the page mounts (the governance client only
+  // exists in api mode, so its presence doubles as the mode guard); the page
+  // owns the loading/error lifecycle, with the props kept as test overrides.
+  const canManageDirectory =
+    Boolean(userGovernanceActions) && canPerform(migrateLegacyRoleId(state.activeRoleId), "users.manage");
+  const [selfDirectoryStatus, setSelfDirectoryStatus] = useState<UserDirectoryStatus>(
+    canManageDirectory ? "loading" : "ready"
+  );
+  const [selfDirectoryError, setSelfDirectoryError] = useState("");
+  const [directoryReloadToken, setDirectoryReloadToken] = useState(0);
   useEffect(() => {
     if (!userGovernanceActions || !canPerform(migrateLegacyRoleId(state.activeRoleId), "users.manage")) {
       return;
     }
 
     let cancelled = false;
+    // First load / retry-after-error shows the skeleton; once hydrated,
+    // re-entering the page refreshes in the background without one.
+    setSelfDirectoryStatus((current) => (current === "ready" ? current : "loading"));
     userGovernanceActions
       .listUsers()
       .then((users) => {
         if (!cancelled) {
           dispatch({ type: "HYDRATE_USERS", users });
+          setSelfDirectoryStatus("ready");
+          setSelfDirectoryError("");
         }
       })
-      .catch(() => {
+      .catch((error) => {
         if (!cancelled) {
-          dispatch({ type: "ADD_NOTIFICATION", message: "无法加载雷泽用户 API，已保留本地演示用户" });
+          setSelfDirectoryStatus("error");
+          setSelfDirectoryError(presentError(error, "无法加载用户名录，请稍后重试。"));
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [dispatch, state.activeRoleId, userGovernanceActions]);
+  }, [directoryReloadToken, dispatch, state.activeRoleId, userGovernanceActions]);
+  const userDirectoryStatus = userDirectoryStatusOverride ?? selfDirectoryStatus;
+  const userDirectoryError = userDirectoryErrorOverride ?? selfDirectoryError;
+  const handleUserDirectoryRetry =
+    onUserDirectoryRetry ?? (() => setDirectoryReloadToken((token) => token + 1));
 
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<PlatformRoleId | "all">("all");
@@ -318,7 +360,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
       })
       .catch((error) => {
         if (!cancelled) {
-          setRegistrationRoleRequestError(error instanceof Error ? error.message : "加载注册角色申请失败。");
+          setRegistrationRoleRequestError(presentError(error, "加载注册角色申请失败，请稍后重试。"));
         }
       });
 
@@ -346,7 +388,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
       }
       setRegistrationRoleRequests((items) => items.filter((item) => item.id !== request.id));
     } catch (error) {
-      setRegistrationRoleRequestError(error instanceof Error ? error.message : "注册角色申请处理失败。");
+      setRegistrationRoleRequestError(presentError(error, "注册角色申请处理失败，请稍后重试。"));
     } finally {
       setDecidingRequestId("");
     }
@@ -377,11 +419,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
       setPendingGovernance(null);
     } catch (error) {
       // Server refusals (e.g. self-lock protection) must be visible, not swallowed.
-      setGovernanceError(
-        error instanceof Error && error.message.trim()
-          ? error.message
-          : "用户治理操作失败，请稍后重试。"
-      );
+      setGovernanceError(presentError(error, "用户治理操作失败，请稍后重试。"));
     } finally {
       setGovernancePending(false);
     }
@@ -420,7 +458,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
         roleId: createdUser?.roleId ?? initialRoleId
       });
     } catch (error) {
-      setAddUserError(error instanceof Error ? error.message : "创建用户失败。");
+      setAddUserError(presentError(error, "创建用户失败，请稍后重试。"));
       return;
     }
 
@@ -539,7 +577,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
       key: "lastActive",
       header: "最近活跃",
       headerFilter: headerFilterConfig("lastActive", "最近活跃"),
-      render: (user) => user.lastActive
+      render: (user) => <span title={lastActiveTooltip(user.lastActive)}>{formatLastActive(user.lastActive)}</span>
     }
   ];
 
@@ -631,13 +669,26 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
             id="user-permissions-workspace-accounts-panel"
             aria-labelledby={approvalWorkflowEnabled ? "user-permissions-workspace-accounts" : undefined}
           >
-            <DataTable
-              ariaLabel="平台用户"
-              rows={filteredUsers}
-              rowKey={(user) => user.id}
-              emptyMessage="没有符合筛选条件的用户，请调整搜索或筛选条件。"
-              columns={accountColumns}
-            />
+            {userDirectoryStatus === "loading" ? (
+              <SectionSkeleton label="正在加载用户名录" />
+            ) : userDirectoryStatus === "error" ? (
+              <SectionError
+                message={userDirectoryError || "无法加载用户名录，请稍后重试。"}
+                onRetry={handleUserDirectoryRetry}
+              />
+            ) : (
+              <DataTable
+                ariaLabel="平台用户"
+                rows={filteredUsers}
+                rowKey={(user) => user.id}
+                emptyMessage={
+                  state.users.length === 0
+                    ? "还没有任何用户，点击右上角「添加用户」创建第一个账号。"
+                    : "没有符合筛选条件的用户，请调整搜索或筛选条件。"
+                }
+                columns={accountColumns}
+              />
+            )}
           </div>
         </>
       ) : (
