@@ -21,7 +21,7 @@ describe("WiseEff mature homepage theme", () => {
     expect(card.background).toContain("#ffffff");
     expect(card["box-shadow"]).toBeTruthy();
     expect(card["min-height"]).toBe("328px");
-    expect(card.transition).toContain("transform 180ms ease");
+    expect(card.transition).toContain("transform var(--duration-base) var(--ease-out)");
     expect(hoverCard.transform).toContain("translateY(-4px)");
     expect(hoverCard["border-color"]).toContain("var(--sub-app-accent)");
     expect(declarationFor(cssText, ".sub-app-card-icon", "box-shadow")).toBeTruthy();
