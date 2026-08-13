@@ -12994,6 +12994,11 @@ td small {
     display: inline-flex;
     flex: 0 0 auto;
   }
+
+  /* The drawer has no collapse concept; the hamburger owns open/close. */
+  .sidebar-toggle {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
