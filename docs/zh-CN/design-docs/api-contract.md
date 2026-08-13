@@ -420,6 +420,9 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 | `POST` | `/api/v1/knowledge/distill-from-log` | 把一条**已完成**的日志分析记录沉淀为预填 markdown **草稿**（`{ logId }` → `201 { item }`）：标题取分析结论,正文由结论/影响/严重度/证据行引用/建议处置组装,标签预置（`日志分析` + 严重度）,来源关联存入 `sourceLogId`。要求 `knowledge:edit`,且对来源记录要求 `logs:view` 加组织隔离;未完成的分析返回 `400`。审计 kind `knowledge-entry-distill`。 |
 | `GET` | `/api/v1/knowledge/search` | 仅检索 **published** 条目（`q`、可选 `limit`）。混合检索：配置了 `EMBEDDING_API_*` 且 pgvector 可用时,chunk 向量相似度与 FTS/trigram 排名做 RRF 融合;否则 FTS-only 路径保持不变。结果携带可引用字段（`entryId`、`title`、`revisionId`、`excerpt`）,响应携带诚实的 `retrieval` 报告：`{ mode: "semantic_fts" \| "fts_only", vectorAvailable, embeddingConfigured, degradedReason? }`。 |
 | `GET` | `/api/v1/knowledge/related-to-log` | 一条**已完成**日志分析记录的相关**已发布**知识（`logId`、可选 `limit`,默认 5）：相似度查询只从存储的结论/影响文本推导（绝不读分析器内部或规则 ID）,走同一套混合检索并施加相关度截断（trigram `word_similarity` ≥ 0.2;向量余弦距离 ≤ 0.75）,不相关条目被丢弃而非凑数。要求 `knowledge:view`,且对来源记录要求 `logs:view` 加组织隔离;未完成的分析返回 `400`,跨组织记录 `404`。响应形状与 search 相同（`items` + 诚实 `retrieval`）。纯读端点,与 search 一样不写审计。 |
+| `GET` | `/api/v1/knowledge/related-to-spec` | 结构化引用某参数定义的**已发布**条目（`specId`、可选 `limit`）,服务定义详情的「相关知识」列表。不是相似检索——是对 `knowledge_parameter_references` 的结构化读取。要求 `knowledge:view`;组织隔离;published-only 不变量（草稿/已归档对任何人都不出现）;调用者范围外的定义（未知或他租户）与定义详情 API 一样返回 `404`。条目携带与 search 相同的引用字段。纯读端点,不写审计。 |
+| `PUT` | `/api/v1/knowledge/entries/:entryId/parameter-references/:specId` | 为条目添加对参数定义的结构化引用。绑定 `parameter_specs.id` **代理键**（ADR-0017）,身份纠错不会破坏引用;允许引用已废弃定义（生命周期如实呈现,ADR-0011）。幂等——重复添加已存在的引用不产生变化也不写审计。条目拥有者（`knowledge:edit`）或 `knowledge:manage`;归档条目与内容编辑一样返回 `400`;调用者范围外（本组织所有或平台全局之外）的定义返回 `404`。返回带更新后 `parameterReferences` 的 `{ item }`。审计 kind `knowledge-parameter-reference-add`。 |
+| `DELETE` | `/api/v1/knowledge/entries/:entryId/parameter-references/:specId` | 移除结构化定义引用。治理规则与添加相同;不存在的引用返回 `404`。返回 `{ item }`。审计 kind `knowledge-parameter-reference-remove`。 |
 | `GET` | `/api/v1/knowledge/index/status` | 逐条目检索索引健康（仅 `knowledge:manage`）：`{ retrieval, items }`,每项含 `status`（`pending` \| `processing` \| `succeeded` \| `failed`）、`error`、已索引修订与 chunk 计数。 |
 | `POST` | `/api/v1/knowledge/index/rebuild` | 把全部已发布条目重新入队重建索引（仅 `knowledge:manage`;如更换 `EMBEDDING_MODEL` 后）。返回 `{ enqueued }`。写审计。 |
 | `POST` | `/api/v1/knowledge/entries/:entryId/index/retry` | 单条目重新入队索引刷新（仅 `knowledge:manage`）。返回 `{ enqueued: true }`。写审计。 |
@@ -429,7 +432,7 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 | `POST` | `/api/v1/knowledge/entries/:entryId/archive` | 归档已发布条目并退出检索（`published → archived`）。 |
 | `POST` | `/api/v1/knowledge/entries/:entryId/restore` | 恢复已归档条目（`archived → published`）。 |
 | `POST` | `/api/v1/knowledge/entries/:entryId/reject` | 从发布队列拒绝归档一条 **Agent 来源草稿**（`draft → archived`,永不发布）。条目拥有者（`knowledge:edit`）或 `knowledge:manage`;人工草稿与非草稿返回 `400`。审计 kind `knowledge-entry-reject`。 |
-| `DELETE` | `/api/v1/knowledge/entries/:entryId` | 彻底删除条目及修订与文件元数据。仅 `knowledge:manage`;写 `High` 级审计。 |
+| `DELETE` | `/api/v1/knowledge/entries/:entryId` | 彻底删除条目及修订与文件元数据;结构化参数引用级联删除,审计 metadata 记录 `parameterReferenceCount`。仅 `knowledge:manage`;写 `High` 级审计。 |
 | `GET` | `/api/v1/knowledge/entries/:entryId/revisions` | 列出不可变修订,新在前。 |
 | `POST` | `/api/v1/knowledge/entries/:entryId/revisions/:revisionId/restore` | 把历史修订恢复为新的头修订（携带 `expectedHeadRevisionNumber`）。 |
 | `GET` | `/api/v1/knowledge/entries/:entryId/file/content` | 下载文件型条目当前二进制。 |
@@ -437,6 +440,8 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 文件上传接受 `application/pdf`、`.docx`（`application/vnd.openxmlformats-officedocument.wordprocessingml.document`）、`application/msword`、`text/plain`、`text/markdown`,上限 20 MB。提取失败诚实落在文件行上（`extractionStatus: "failed"` + 可读 `extractionError`）,不阻断上传。
 
 发布、编辑已发布、归档与恢复会把该条目的索引刷新异步入队（分块 + 可选嵌入）;索引 worker 只物化 **published** 修订,草稿与已归档条目永远不可检索。小泽通过注册的只读工具 `knowledge.search` / `knowledge.getDocument` 落地知识问题,工具在调用用户的 AuthContext 下执行（`knowledge:view` + 组织隔离）,返回可深链到 `/knowledge?entryId=…` 的引用负载。审批门控写工具 `action.createKnowledgeDraft`（入参:`title`、`contentMarkdown`、`tags`、可选 `sourceLogId`）经 DB 落库审批链创建**新的** Agent 来源草稿——先中断等待人工明确批准,再在调用用户的 AuthContext 下执行（`knowledge:edit`）,创建会话记录在 `sourceSessionId` 上;草稿在 `/knowledge-admin` 队列或由沉淀工程师本人发布前不进入检索。
+
+条目负载（列表 + 详情）携带 `parameterReferences`:条目的结构化定义引用,每项含 `specId`（`parameter_specs.id` 代理键）、`propertyKey`、`displayName`、`driverModule`（归属主体显示名）与如实呈现的定义 `lifecycle`（`draft` / `active` / `deprecated`——废弃永不移除引用,ADR-0011）。`knowledge.getDocument` 以 `referencedParameters`（`specId` + `name` + `lifecycle`）镜像它们,让 grounding 回答能点名参数。
 
 ## 项目参数初始化
 

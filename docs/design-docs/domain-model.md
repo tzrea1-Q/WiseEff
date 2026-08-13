@@ -236,6 +236,7 @@ Design source: [Knowledge Base Design](2026-08-12-knowledge-base-design.md) (dec
 | `KnowledgeEntry` | Organization-scoped unit of engineering knowledge. Content form is exactly one of `markdown` or `file`. Flat with multi-tags (project tags included), head-revision pointer plus `head_revision_number` for optimistic concurrency, denormalized `search_text` for Phase 1 retrieval, and source attribution `human` \| `agent` with session metadata. |
 | `KnowledgeRevision` | Immutable content snapshot (`title`, `tags`, markdown or file reference) with `revision_number` unique per entry, author, and optional `restored_from_revision_id` provenance. Rows are never updated. |
 | `KnowledgeFile` | File metadata for file-form entries: object-store key, integrity checksum, and honest extraction state (`pending` \| `succeeded` \| `failed` with a readable failure reason plus extracted text on success). Binaries are replaceable (new row + new revision), never edited. |
+| `KnowledgeParameterReference` | Structural reference from an entry to a parameter definition (`knowledge_parameter_references`, unique per entry+spec, creator-attributed). Binds to the `parameter_specs.id` **surrogate** (ADR-0017) — never a project binding or logical node — so identity corrections leave references untouched. Deprecation (ADR-0011 soft retirement) never removes a reference; both display sides state the lifecycle honestly. Entry hard-delete cascades reference rows and the delete audit records the count; the spec-side FK stays restrictive because the catalog has no spec hard-delete path. |
 
 Rules:
 
@@ -243,7 +244,8 @@ Rules:
 - Published entries are the only search surface (FTS for latin text + `pg_trgm` trigram matching for CJK). Drafts and archived entries never appear in results; publishing is the single trust gate.
 - Drafts are visible to their owner and `knowledge:manage` holders only. `knowledge:edit` governs own entries (edit/publish/archive); `knowledge:manage` governs any entry. Hard delete requires `knowledge:manage` and writes a `High`-severity audit event.
 - Archived entries keep their history and leave retrieval; restore returns them to `published`. Editing an archived entry is rejected until it is restored.
-- Every mutation writes an audit event (`knowledge-entry-create/update/publish/archive/restore/delete`, `knowledge-revision-restore`) with the request trace.
+- Every mutation writes an audit event (`knowledge-entry-create/update/publish/archive/restore/delete`, `knowledge-revision-restore`, `knowledge-parameter-reference-add/remove`) with the request trace.
+- Parameter references follow the entry-edit governance rule (owner with `knowledge:edit`, or `knowledge:manage`; archived entries refuse reference edits like content edits). The parameter-side related-knowledge read is published-only: an archived entry keeps its reference rows but leaves that list until restored.
 
 Status machine:
 

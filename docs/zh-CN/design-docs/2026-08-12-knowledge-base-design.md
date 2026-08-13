@@ -87,7 +87,7 @@ MVP 中的 "agentic" 指两层含义，第三层显式保留演进空间：
 MVP 之后的候选项（按序），均与本模型兼容：
 
 1. 日志分析结果页的相关知识推荐（用结论文本做相似检索）。——**已于 2026-08-13 交付**（计划 [`2026-08-13-knowledge-log-recommendations.md`](../exec-plans/completed/2026-08-13-knowledge-log-recommendations.md)）：`GET /api/v1/knowledge/related-to-log` + 日志结果页「相关知识」区块。
-2. 参数与知识的结构化引用及完整性规则（定义废弃、条目归档时的行为）。
+2. 参数与知识的结构化引用及完整性规则（定义废弃、条目归档时的行为）。——**已于 2026-08-13 交付**,见 [`2026-08-13-knowledge-parameter-references.md`](../exec-plans/active/2026-08-13-knowledge-parameter-references.md):`knowledge_parameter_references` 绑定 `parameter_specs.id` 代理键（ADR-0017 身份纠错后存续;ADR-0011 废弃后引用保留并带如实「已废弃」徽章）,条目编辑器内编辑权限门控的引用编辑,定义详情新增仅已发布的「相关知识」列表,`knowledge.getDocument` 报告被引用定义。
 3. DTS 重载运行沉淀。
 4. 单层合集（若标签导航被证明不够用）。
 5. 外部 Agent 接入面（HTTP API 之上的 MCP 包装）。

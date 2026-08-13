@@ -91,12 +91,12 @@
 
 ## 文档更新门
 
-- [ ] KB-XREF-001 在 UI 实现之前登记到覆盖图 + 操作矩阵（EN + zh）
-- [ ] api-contract EN + zh 与 `docs/generated/openapi.json` 包含两个引用编辑端点、条目 DTO 变化与 `GET /api/v1/knowledge/related-to-spec`
-- [ ] FRONTEND EN + zh 记录引用 chips、编辑器选择器、「相关知识」区与端口方法
-- [ ] domain-model EN + zh 记录引用实体及其完整性规则
-- [ ] 设计文档 EN + zh 标记延期路线图第 2 项已交付
-- [ ] `docs/generated/db-schema.md` 已随迁移 0109 重新生成
-- [ ] PLANS EN + zh 列出本活跃计划
-- [ ] 技术债跟踪器已复查
-- [ ] `npm run docs:check` 通过
+- [x] KB-XREF-001 在 UI 实现之前登记到覆盖图 + 操作矩阵（EN + zh）
+- [x] api-contract EN + zh 与 `docs/generated/openapi.json` 包含两个引用编辑端点、条目 DTO 变化与 `GET /api/v1/knowledge/related-to-spec`
+- [x] FRONTEND EN + zh 记录引用 chips、编辑器选择器、「相关知识」区与端口方法
+- [x] domain-model EN + zh 记录引用实体及其完整性规则
+- [x] 设计文档 EN + zh 标记延期路线图第 2 项已交付
+- [x] `docs/generated/db-schema.md` 已随迁移 0109 重新生成
+- [x] PLANS EN + zh 列出本活跃计划
+- [x] 技术债跟踪器已复查——本计划无遗留延期项,无需记录
+- [x] `npm run docs:check` 通过

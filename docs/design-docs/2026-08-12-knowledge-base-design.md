@@ -87,7 +87,7 @@ Scenario checks the model must satisfy:
 Ordered next candidates after the MVP, all compatible with this model:
 
 1. Related-knowledge recommendations on log-analysis results (similarity search from conclusion text). — **Shipped 2026-08-13** via [`2026-08-13-knowledge-log-recommendations.md`](../exec-plans/completed/2026-08-13-knowledge-log-recommendations.md): `GET /api/v1/knowledge/related-to-log` plus the log result page's related-knowledge section.
-2. Structural parameter-to-knowledge references with integrity rules (behavior on spec deprecation and entry archive).
+2. Structural parameter-to-knowledge references with integrity rules (behavior on spec deprecation and entry archive). — **Shipped 2026-08-13** via [`2026-08-13-knowledge-parameter-references.md`](../exec-plans/active/2026-08-13-knowledge-parameter-references.md): `knowledge_parameter_references` bound to the `parameter_specs.id` surrogate (survives ADR-0017 identity corrections; ADR-0011 deprecation keeps the reference with an honest deprecated badge), edit-gated authoring from the entry editor, a published-only related-knowledge list on the definition detail, and `knowledge.getDocument` reporting referenced definitions.
 3. DTS-reload run distillation.
 4. Single-level collections, if tag navigation proves insufficient.
 5. External agent surface (an MCP wrapper over the HTTP API).

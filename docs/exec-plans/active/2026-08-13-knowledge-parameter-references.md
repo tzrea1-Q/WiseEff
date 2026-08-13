@@ -91,12 +91,12 @@ Branch: `feat/knowledge-parameter-references`, checked out from the latest `main
 
 ## Documentation Update Gate
 
-- [ ] KB-XREF-001 registered in coverage map + operation matrix (EN + zh) before UI implementation
-- [ ] api-contract EN + zh and `docs/generated/openapi.json` include the two reference-edit endpoints, the entry DTO change, and `GET /api/v1/knowledge/related-to-spec`
-- [ ] FRONTEND EN + zh document the reference chips, the editor picker, the 相关知识 section, and the port methods
-- [ ] domain-model EN + zh record the reference entity and its integrity rules
-- [ ] Design doc EN + zh mark deferred roadmap item 2 as shipped
-- [ ] `docs/generated/db-schema.md` regenerated with migration 0109
-- [ ] PLANS EN + zh list this active plan
-- [ ] Tech-debt tracker reviewed
-- [ ] `npm run docs:check` green
+- [x] KB-XREF-001 registered in coverage map + operation matrix (EN + zh) before UI implementation
+- [x] api-contract EN + zh and `docs/generated/openapi.json` include the two reference-edit endpoints, the entry DTO change, and `GET /api/v1/knowledge/related-to-spec`
+- [x] FRONTEND EN + zh document the reference chips, the editor picker, the 相关知识 section, and the port methods
+- [x] domain-model EN + zh record the reference entity and its integrity rules
+- [x] Design doc EN + zh mark deferred roadmap item 2 as shipped
+- [x] `docs/generated/db-schema.md` regenerated with migration 0109
+- [x] PLANS EN + zh list this active plan
+- [x] Tech-debt tracker reviewed — no deferral leaves this plan, nothing to record
+- [x] `npm run docs:check` green
