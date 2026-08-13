@@ -134,7 +134,12 @@ export function FeedbackAdminDrawer({
       <Sheet
         open={open}
         onOpenChange={(isOpen) => {
-          if (!isOpen) onClose();
+          // The stacked close-confirmation renders in its own portal, so its pointer
+          // interactions register as "outside" this sheet and Radix requests a close.
+          // Honoring that request would unmount the drawer (and the confirm button)
+          // before the confirm click lands — swallow it while the confirmation is up,
+          // like FeedbackDialog's dirty-state guard does.
+          if (!isOpen && !closeConfirmOpen) onClose();
         }}
       >
         <SheetContent side="right" className="flex w-full gap-0 p-0 sm:max-w-[560px]" showCloseButton={false}>

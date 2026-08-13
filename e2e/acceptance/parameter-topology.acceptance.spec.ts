@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
-import { expect, test, type APIRequestContext, type Locator, type Page } from "playwright/test";
+import { expect, test, type APIRequestContext, type Dialog, type Locator, type Page } from "playwright/test";
 
 import {
   pickReviewCandidate,
@@ -878,14 +878,35 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(draftBody.item.projectParameterBindingId).toBeTruthy();
     expect(draftBody.item.rawText ?? editedRaw).toMatch(/30/);
 
+    // Switching projects with a pending draft round now stops at the unsaved-work
+    // guard (HCI trust repair wave 0, merged via #331): the drafts are only dropped
+    // after the user explicitly acknowledges the discard. Acknowledge whichever
+    // presentation the guard uses — window.confirm today, the shared ConfirmDialog
+    // once the page-defect wave (#417) migrates it — so the switch proceeds and the
+    // intentional discard below stays covered.
+    const switchProjectAcknowledgingDiscard = async (optionName: RegExp) => {
+      const acceptDiscardConfirm = (dialog: Dialog) => void dialog.accept();
+      page.once("dialog", acceptDiscardConfirm);
+      try {
+        await page.getByRole("combobox", { name: "项目" }).click();
+        await page.getByRole("option", { name: optionName }).click();
+        await page
+          .getByRole("dialog", { name: "切换项目" })
+          .getByRole("button", { name: "丢弃并切换" })
+          .click({ timeout: 2_000 })
+          .catch(() => undefined);
+      } finally {
+        page.off("dialog", acceptDiscardConfirm);
+      }
+    };
+
     // A candidate from Aurora must never be requested under Nebula after the visible project switch.
     const nebulaCurrentResponse = page.waitForResponse((response) =>
       response.request().method() === "GET" &&
       response.url().includes(`/api/v2/projects/nebula/config-sets/${encodeURIComponent(nebulaTopology.configSetId)}/revisions/current/topology`) &&
       response.url().includes("view=effective")
     );
-    await page.getByRole("combobox", { name: "项目" }).click();
-    await page.getByRole("option", { name: /Nebula 高频调试项目/ }).click();
+    await switchProjectAcknowledgingDiscard(/Nebula 高频调试项目/);
     expect((await nebulaCurrentResponse).status()).toBe(200);
     await expect(editWorkspace).toHaveAttribute("data-project-id", "nebula");
     await expect(editWorkspace).toHaveAttribute("data-revision-id", nebulaTopology.revisionId);
@@ -897,8 +918,9 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       response.url().includes(`/api/v2/projects/${projectId}/config-sets/${encodeURIComponent(configSetId)}/revisions/current/topology`) &&
       response.url().includes("view=effective")
     );
-    await page.getByRole("combobox", { name: "项目" }).click();
-    await page.getByRole("option", { name: /Aurora/ }).click();
+    // No drafts remain after the acknowledged discard, so no guard is expected here;
+    // the helper tolerates its absence.
+    await switchProjectAcknowledgingDiscard(/Aurora/);
     expect((await auroraCurrentResponse).status()).toBe(200);
     await expect(editWorkspace).toHaveAttribute("data-project-id", projectId);
     await expect(editWorkspace).not.toHaveAttribute("data-revision-id", "");
@@ -1012,8 +1034,12 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(changeRequestId).toBeTruthy();
     expect(submitBody.item.status).toBe("hardware_review");
     expect(submitBody.item.items[0]?.candidateConfigRevisionId).toBe(draftBody.item.candidateRevisionId);
-    await expect(submissionPanel.getByText(/已提交正式审核/)).toBeVisible();
-    await submissionPanel.getByRole("button", { name: "查看变更审阅" }).click();
+    // Since #331 the submitted round leaves the tray (its drafts are consumed), and
+    // the success notice renders as the standalone 参数提交结果 region instead of
+    // inside the submission panel.
+    const submitResultNotice = page.getByRole("region", { name: "参数提交结果" });
+    await expect(submitResultNotice.getByText(/已提交正式审核/)).toBeVisible();
+    await submitResultNotice.getByRole("button", { name: "查看变更审阅" }).click();
 
     const advanceReviewInUi = async (
       role: "hardware-committer" | "software-committer" | "software-user",
