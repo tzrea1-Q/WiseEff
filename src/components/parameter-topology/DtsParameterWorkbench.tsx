@@ -571,54 +571,7 @@ export function DtsParameterWorkbench({
       data-config-set-id={configSetId}
       data-revision-id={revisionId}
     >
-      <header className="dts-parameter-workbench__header">
-        <div>
-          <h2>项目参数工作台</h2>
-          <p>按业务模块定位参数；器件/驱动与源出处保留在行内与详情中。</p>
-        </div>
-        <div className="dts-parameter-workbench__header-actions" role="group" aria-label="结果模式">
-          <button
-            type="button"
-            className={`button subtle${resultsMode === "parameters" ? " is-active" : ""}`}
-            aria-pressed={resultsMode === "parameters"}
-            onClick={() => setResultsMode("parameters")}
-          >
-            <Boxes size={15} strokeWidth={1.9} aria-hidden="true" />
-            模块导航
-          </button>
-          <button
-            type="button"
-            className={`button subtle${resultsMode === "dtsSource" ? " is-active" : ""}`}
-            aria-pressed={resultsMode === "dtsSource"}
-            onClick={enterDtsSourceMode}
-          >
-            <Network size={15} strokeWidth={1.9} aria-hidden="true" />
-            技术视图
-          </button>
-          {resultsMode === "dtsSource" ? (
-            <button
-              type="button"
-              className="button subtle"
-              disabled={dtsSourceStatus !== "ready" || !dtsSource}
-              onClick={downloadDtsSource}
-            >
-              <Download size={15} strokeWidth={1.9} aria-hidden="true" />
-              下载 DTS
-            </button>
-          ) : onExportRows ? (
-            <button
-              type="button"
-              className="button subtle"
-              disabled={visibleRows.length === 0}
-              onClick={() => onExportRows(visibleRows)}
-            >
-              <Download size={15} strokeWidth={1.9} aria-hidden="true" />
-              导出当前结果
-            </button>
-          ) : null}
-        </div>
-      </header>
-
+      {/* The shell TopBar owns the page title; the workbench starts at the toolbar. */}
       <div className="dts-parameter-workbench__toolbar">
         <label className="dts-parameter-workbench__search">
           <span>
@@ -652,11 +605,50 @@ export function DtsParameterWorkbench({
             </>
           )}
         </p>
-        {toolbarActions ? (
-          <div className="dts-parameter-workbench__toolbar-actions">
-            {toolbarActions}
+        <div className="dts-parameter-workbench__toolbar-actions">
+          <div className="dts-parameter-workbench__header-actions" role="group" aria-label="结果模式">
+            <button
+              type="button"
+              className={`button subtle${resultsMode === "parameters" ? " is-active" : ""}`}
+              aria-pressed={resultsMode === "parameters"}
+              onClick={() => setResultsMode("parameters")}
+            >
+              <Boxes size={15} strokeWidth={1.9} aria-hidden="true" />
+              模块导航
+            </button>
+            <button
+              type="button"
+              className={`button subtle${resultsMode === "dtsSource" ? " is-active" : ""}`}
+              aria-pressed={resultsMode === "dtsSource"}
+              onClick={enterDtsSourceMode}
+            >
+              <Network size={15} strokeWidth={1.9} aria-hidden="true" />
+              技术视图
+            </button>
+            {resultsMode === "dtsSource" ? (
+              <button
+                type="button"
+                className="button subtle"
+                disabled={dtsSourceStatus !== "ready" || !dtsSource}
+                onClick={downloadDtsSource}
+              >
+                <Download size={15} strokeWidth={1.9} aria-hidden="true" />
+                下载 DTS
+              </button>
+            ) : onExportRows ? (
+              <button
+                type="button"
+                className="button subtle"
+                disabled={visibleRows.length === 0}
+                onClick={() => onExportRows(visibleRows)}
+              >
+                <Download size={15} strokeWidth={1.9} aria-hidden="true" />
+                导出当前结果
+              </button>
+            ) : null}
           </div>
-        ) : null}
+          {toolbarActions}
+        </div>
       </div>
 
       {currentEdits ? (
