@@ -1,201 +1,188 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import type { Queryable } from "../../shared/database/client";
+import {
+  createInMemoryTestDatabase,
+  isTestDatabaseAvailable,
+  type InMemoryTestDatabase
+} from "../../testing/testDatabase";
+import { seedCoreGraph } from "../../testing/fixtures";
+import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
+import { createParameterModule } from "../parameters/parameterModuleRepository";
 import { resolveModuleIdForBinding, unclassifiedModuleId } from "./resolveModuleForBinding";
 
-type MappingRow = { organizationId: string; matchKind: string; matchValue: string; moduleId: string; priority: number };
+const databaseAvailable = await isTestDatabaseAvailable();
 
-function createFakeDb(input: { mappings: MappingRow[]; existingModuleIds?: Set<string> }): {
-  db: Queryable;
-  insertedModules: Array<{ id: string; organizationId: string; name: string }>;
-} {
-  const modules = new Set(input.existingModuleIds ?? []);
-  const insertedModules: Array<{ id: string; organizationId: string; name: string }> = [];
+describe.skipIf(!databaseAvailable)("resolveModuleIdForBinding", () => {
+  let db: InMemoryTestDatabase;
 
-  const db: Queryable = {
-    query: vi.fn(async (text, values = []) => {
-      if (text.includes("from parameter_module_mappings")) {
-        const [organizationId, matchKind, matchValue] = values as [string, string, string];
-        const matches = input.mappings
-          .filter(
-            (row) =>
-              row.organizationId === organizationId &&
-              row.matchKind === matchKind &&
-              row.matchValue === matchValue,
-          )
-          .sort((a, b) => b.priority - a.priority);
-        return {
-          rows: matches[0] ? [{ parameter_module_id: matches[0].moduleId }] : [],
-          rowCount: matches.length,
-        };
-      }
-      if (text.includes("insert into parameter_modules")) {
-        const [id, organizationId, name] = values as [string, string, string];
-        if (!modules.has(id)) {
-          modules.add(id);
-          insertedModules.push({ id, organizationId, name });
-        }
-        return { rows: [], rowCount: 1 };
-      }
-      return { rows: [], rowCount: 0 };
-    }),
-  };
+  beforeEach(async () => {
+    setParameterIdentityMode(null);
+    db = await createInMemoryTestDatabase();
+    await seedCoreGraph(db, { organization: { id: "org-1", name: "ChargeLab" } });
+    await seedCoreGraph(db, { organization: { id: "org-2", name: "OtherOrg" } });
+  });
 
-  return { db, insertedModules };
-}
+  afterEach(async () => {
+    await db?.rollback();
+  });
 
-describe("resolveModuleIdForBinding", () => {
+  async function seedMappedModule(input: {
+    name: string;
+    matchKind: "compatible" | "node-type";
+    matchValue: string;
+    priority?: number;
+  }): Promise<string> {
+    const module = await createParameterModule(db, { organizationId: "org-1", name: input.name });
+    await db.query(
+      `insert into parameter_module_mappings (id, organization_id, parameter_module_id, match_kind, match_value, priority)
+       values ($1, 'org-1', $2, $3, $4, $5)`,
+      [`map-${input.name}`, module.id, input.matchKind, input.matchValue, input.priority ?? 0]
+    );
+    return module.id;
+  }
+
+  async function moduleRow(moduleId: string) {
+    const result = await db.query<{
+      organization_id: string;
+      name: string;
+      kind: string;
+      origin: string;
+    }>(`select organization_id, name, kind, origin from parameter_modules where id = $1`, [moduleId]);
+    return result.rows[0];
+  }
+
   it("prefers a compatible mapping over a node-type mapping", async () => {
-    const { db } = createFakeDb({
-      mappings: [
-        {
-          organizationId: "org-1",
-          matchKind: "compatible",
-          matchValue: "richtek,sc8562",
-          moduleId: "mod-compatible",
-          priority: 0,
-        },
-        {
-          organizationId: "org-1",
-          matchKind: "node-type",
-          matchValue: "sc8562",
-          moduleId: "mod-nodetype",
-          priority: 0,
-        },
-      ],
+    const compatibleModuleId = await seedMappedModule({
+      name: "SC8562 Group",
+      matchKind: "compatible",
+      matchValue: "richtek,sc8562"
     });
+    await seedMappedModule({ name: "SC8562 Type", matchKind: "node-type", matchValue: "sc8562" });
 
     const moduleId = await resolveModuleIdForBinding(db, {
       organizationId: "org-1",
       driverModule: "sc8562",
       compatible: "richtek,sc8562",
-      nodeType: "sc8562",
+      nodeType: "sc8562"
     });
 
-    expect(moduleId).toBe("mod-compatible");
+    expect(moduleId).toBe(compatibleModuleId);
   });
 
   it("falls back to a node-type mapping when no compatible mapping matches", async () => {
-    const { db } = createFakeDb({
-      mappings: [
-        {
-          organizationId: "org-1",
-          matchKind: "node-type",
-          matchValue: "middle_cpu",
-          moduleId: "mod-middle-cpu",
-          priority: 0,
-        },
-      ],
+    const nodeTypeModuleId = await seedMappedModule({
+      name: "Middle CPU",
+      matchKind: "node-type",
+      matchValue: "middle_cpu"
     });
 
     const moduleId = await resolveModuleIdForBinding(db, {
       organizationId: "org-1",
       driverModule: "middle_cpu",
       compatible: null,
-      nodeType: "middle_cpu",
+      nodeType: "middle_cpu"
     });
 
-    expect(moduleId).toBe("mod-middle-cpu");
+    expect(moduleId).toBe(nodeTypeModuleId);
   });
 
   it("treats DTS-quoted compatible as equal to an unquoted mapping value", async () => {
-    const { db } = createFakeDb({
-      mappings: [
-        {
-          organizationId: "org-1",
-          matchKind: "compatible",
-          matchValue: "mt,mt5788",
-          moduleId: "mod-mt5788",
-          priority: 300,
-        },
-      ],
+    const mappedModuleId = await seedMappedModule({
+      name: "MT5788",
+      matchKind: "compatible",
+      matchValue: "mt,mt5788",
+      priority: 300
     });
 
     const moduleId = await resolveModuleIdForBinding(db, {
       organizationId: "org-1",
       driverModule: "mt5788",
       compatible: '"mt,mt5788"',
-      nodeType: null,
+      nodeType: null
     });
 
-    expect(moduleId).toBe("mod-mt5788");
+    expect(moduleId).toBe(mappedModuleId);
   });
 
-  it("does not match retired instance mappings", async () => {
-    const { db, insertedModules } = createFakeDb({
-      mappings: [
-        {
-          organizationId: "org-1",
-          matchKind: "instance",
-          matchValue: "sc8562@6e",
-          moduleId: "mod-instance",
-          priority: 0,
-        },
-      ],
-    });
+  it("retired instance mappings cannot exist and never capture bindings", async () => {
+    const module = await createParameterModule(db, { organizationId: "org-1", name: "Instance Bucket" });
+
+    // The schema itself retired the legacy kind: the check constraint refuses it.
+    await expect(
+      db.transaction((tx) =>
+        tx.query(
+          `insert into parameter_module_mappings (id, organization_id, parameter_module_id, match_kind, match_value, priority)
+           values ('map-instance', 'org-1', $1, 'instance', 'sc8562@6e', 0)`,
+          [module.id]
+        )
+      )
+    ).rejects.toMatchObject({ code: "23514" });
 
     const moduleId = await resolveModuleIdForBinding(db, {
       organizationId: "org-1",
       driverModule: "sc8562",
       compatible: "richtek,sc8562",
-      nodeType: "sc8562",
+      nodeType: "sc8562"
     });
 
     expect(moduleId).toBe(unclassifiedModuleId("org-1"));
-    expect(insertedModules).toHaveLength(1);
   });
 
   it("ensures and returns the deterministic unclassified module when no mapping matches", async () => {
-    const { db, insertedModules } = createFakeDb({ mappings: [] });
-
     const moduleId = await resolveModuleIdForBinding(db, {
       organizationId: "org-1",
       driverModule: "sc8562",
       compatible: "richtek,sc8562",
-      nodeType: "sc8562",
+      nodeType: "sc8562"
     });
 
     expect(moduleId).toBe(unclassifiedModuleId("org-1"));
-    expect(insertedModules).toHaveLength(1);
-    expect(insertedModules[0]).toMatchObject({ organizationId: "org-1", name: "未分类" });
+    expect(await moduleRow(moduleId)).toMatchObject({
+      organization_id: "org-1",
+      name: "未分类",
+      kind: "unclassified",
+      origin: "auto"
+    });
   });
 
   it("never returns null/undefined even when driver/compatible/nodeType are all null", async () => {
-    const { db } = createFakeDb({ mappings: [] });
-
     const moduleId = await resolveModuleIdForBinding(db, {
       organizationId: "org-1",
       driverModule: null,
       compatible: null,
-      nodeType: null,
+      nodeType: null
     });
 
     expect(moduleId).toBe(unclassifiedModuleId("org-1"));
   });
 
   it("is stable across organizations (id is org-scoped) and idempotent across calls", async () => {
-    const { db } = createFakeDb({ mappings: [] });
-
     const first = await resolveModuleIdForBinding(db, {
       organizationId: "org-1",
       driverModule: null,
       compatible: null,
-      nodeType: null,
+      nodeType: null
     });
     const second = await resolveModuleIdForBinding(db, {
       organizationId: "org-1",
       driverModule: null,
       compatible: null,
-      nodeType: null,
+      nodeType: null
     });
     const otherOrg = await resolveModuleIdForBinding(db, {
       organizationId: "org-2",
       driverModule: null,
       compatible: null,
-      nodeType: null,
+      nodeType: null
     });
 
     expect(first).toBe(second);
     expect(first).not.toBe(otherOrg);
+    // Idempotent ensure: still exactly one unclassified row per organization.
+    const rows = await db.query<{ organization_id: string }>(
+      `select organization_id from parameter_modules where kind = 'unclassified' order by organization_id`
+    );
+    expect(rows.rows.map((row) => row.organization_id)).toEqual(["org-1", "org-2"]);
+    expect((await moduleRow(otherOrg))?.organization_id).toBe("org-2");
   });
 });
