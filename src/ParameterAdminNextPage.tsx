@@ -27,6 +27,7 @@ import { ParameterAdminNextScopeNav } from "@/components/parameter-admin-next/Pa
 import { ParameterAdminOrganizationSubNav } from "@/components/parameter-admin-next/ParameterAdminOrganizationSubNav";
 import { ParameterAdminProvider } from "@/components/parameter-admin-next/ParameterAdminProvider";
 import { ProjectsOperationsPanel } from "@/components/parameter-admin-next/ProjectsOperationsPanel";
+import type { SpecRelatedKnowledgeSource } from "@/components/parameter-topology/ParameterSpecDetail";
 
 function buildParameterAuditCenterPath(projectId: string) {
   const params = new URLSearchParams({ app: "parameter" });
@@ -60,6 +61,8 @@ export type ParameterAdminNextPageProps = {
   parameterActions?: ParameterPageActions;
   state?: PrototypeState;
   onNewProject?: () => void;
+  /** Published knowledge referencing a definition (相关知识); absent without knowledge:view. */
+  relatedKnowledge?: SpecRelatedKnowledgeSource;
 };
 
 /**
@@ -84,7 +87,8 @@ export function ParameterAdminNextPage({
   dispatch,
   parameterActions,
   state,
-  onNewProject
+  onNewProject,
+  relatedKnowledge
 }: ParameterAdminNextPageProps) {
   const topology = useMemo(
     () => parameterTopologyRepository ?? resolveParameterTopologyRepository(runtimeMode),
@@ -155,6 +159,7 @@ export function ParameterAdminNextPage({
       importActions={importActions}
       dtsStructured={dtsRepository}
       parameterFiles={fileRepository}
+      relatedKnowledge={relatedKnowledge}
     >
       <div
         className={

@@ -23,6 +23,24 @@ export type KnowledgeFileDto = {
   updatedAt: string;
 };
 
+/**
+ * Structural reference from a knowledge entry to a parameter definition.
+ * Binds to `parameter_specs.id` — the stable surrogate (ADR-0017) — so identity
+ * corrections never break it; the lifecycle is reported honestly so deprecated
+ * definitions (ADR-0011 soft retirement) render an explicit badge while the
+ * reference survives.
+ */
+export type KnowledgeParameterReferenceDto = {
+  specId: string;
+  propertyKey: string;
+  displayName: string | null;
+  /** Attribution-subject display name (the module humans know the definition by). */
+  driverModule: string | null;
+  lifecycle: "draft" | "active" | "deprecated";
+  createdByUserId: string;
+  createdAt: string;
+};
+
 export type KnowledgeEntryDto = {
   id: string;
   organizationId: string;
@@ -47,6 +65,8 @@ export type KnowledgeEntryDto = {
   contentMarkdown: string | null;
   /** Current file metadata for file-form entries. */
   file: KnowledgeFileDto | null;
+  /** Structural parameter-definition references (deferred roadmap item 2). */
+  parameterReferences: KnowledgeParameterReferenceDto[];
 };
 
 export type KnowledgeRevisionDto = {

@@ -125,6 +125,13 @@ async function cleanupKnowledgeAcceptanceRows() {
       await client.query("delete from knowledge_entries where id = any($1::uuid[])", [entryIds]);
     }
 
+    // KB-XREF fixtures: seeded parameter definitions (reference rows cascade
+    // with their entries above, so only the catalog rows remain).
+    await client.query(`delete from knowledge_parameter_references where parameter_spec_id like 'pspec:kb-xref-%'`);
+    await client.query(`delete from parameter_spec_versions where parameter_spec_id like 'pspec:kb-xref-%'`);
+    await client.query(`delete from parameter_specs where id like 'pspec:kb-xref-%'`);
+    await client.query(`delete from attribution_subjects where id like 'asub:kb-xref-%'`);
+
     // Distillation-source fixtures: seeded completed log analyses (KB-DISTILL/KB-ADMIN).
     const logs = await client.query<{ id: string }>(`select id from log_records where file_name like 'kb-acceptance-distill-%'`);
     const logIds = logs.rows.map((row) => row.id);
@@ -154,6 +161,50 @@ async function cleanupKnowledgeAcceptanceRows() {
 }
 
 type SeededCompletedLog = { logId: string; fileName: string; conclusion: string; keyword: string };
+
+type SeededParameterSpec = { specId: string; propertyKey: string; displayName: string; subjectName: string };
+
+/**
+ * Seeds a parameter definition the way the catalog stores it (spec row +
+ * attribution subject + active version) so knowledge entries can reference
+ * the `parameter_specs.id` surrogate.
+ */
+async function seedParameterSpec(input: {
+  slug: string;
+  propertyKey: string;
+  displayName: string;
+  subjectName: string;
+}): Promise<SeededParameterSpec> {
+  const specId = `pspec:kb-xref-${input.slug}-${runStamp}`;
+  const subjectId = `asub:kb-xref-${input.slug}-${runStamp}`;
+  await withPgClient(async (client) => {
+    await client.query(
+      `
+      insert into attribution_subjects (id, organization_id, subject_kind, display_name, source_key)
+      values ($1, $2, 'driver-registration', $3, $1)
+      on conflict (id) do nothing
+      `,
+      [subjectId, organizationId, input.subjectName]
+    );
+    await client.query(
+      `
+      insert into parameter_specs (id, organization_id, source_kind, specification_key, property_key, attribution_subject_id, definition_lifecycle)
+      values ($1, $2, 'manual', $3, $4, $5, 'active')
+      on conflict (id) do nothing
+      `,
+      [specId, organizationId, `manual/${specId}/${input.propertyKey}`, input.propertyKey, subjectId]
+    );
+    await client.query(
+      `
+      insert into parameter_spec_versions (id, parameter_spec_id, version, display_name, description, value_shape, lifecycle, version_status)
+      values ($1, $2, 1, $3, '', '{"kind":"int32"}'::jsonb, 'active', 'active')
+      on conflict (id) do nothing
+      `,
+      [`${specId}:v1`, specId, input.displayName]
+    );
+  });
+  return { specId, propertyKey: input.propertyKey, displayName: input.displayName, subjectName: input.subjectName };
+}
 
 /**
  * Seeds a COMPLETED log-analysis record directly (record + succeeded run +
@@ -1161,6 +1212,175 @@ test.describe("Knowledge base browser acceptance", () => {
         })
       ],
       db: [dbSummary]
+    });
+  });
+
+  test("manages structural definition references on an entry; the definition detail lists the published entry only and deprecation keeps the chip", async ({ page }, testInfo) => {
+    // @acceptance KB-XREF-001
+    // @operation KB-XREF-001
+    const spec = await seedParameterSpec({
+      slug: "ratio",
+      propertyKey: `charge_pump_ratio_${runStamp}`,
+      displayName: "充电泵比率",
+      subjectName: "SC8562"
+    });
+    const pickerSpec = await seedParameterSpec({
+      slug: "limit",
+      propertyKey: `fast_charge_limit_${runStamp}`,
+      displayName: "快充限流",
+      subjectName: "SC8562"
+    });
+
+    const publishedTitle = `${titlePrefix} 引用已发布条目 ${runStamp}`;
+    const draftTitle = `${titlePrefix} 引用草稿条目 ${runStamp}`;
+    const published = await createMarkdownEntryViaApi(page, {
+      title: publishedTitle,
+      tags: ["快充"],
+      contentMarkdown: "当充电泵比率切换异常时,先复核 NTC 采样间隔。"
+    });
+    await publishEntryViaApi(page, published.id);
+    const draft = await createMarkdownEntryViaApi(page, {
+      title: draftTitle,
+      tags: [],
+      contentMarkdown: "草稿:比率切换阈值仍需实验数据。"
+    });
+
+    // API: audited reference edits bind to the parameter_specs.id surrogate.
+    const addResponse = await page.request.put(
+      apiRoute(`/api/v1/knowledge/entries/${published.id}/parameter-references/${encodeURIComponent(spec.specId)}`),
+      { headers: editorHeaders(), data: {} }
+    );
+    expect(addResponse.status()).toBe(200);
+    const addBody = (await addResponse.json()) as {
+      item: KnowledgeEntryApiItem & {
+        parameterReferences: Array<{ specId: string; propertyKey: string; driverModule: string | null; lifecycle: string }>;
+      };
+    };
+    expect(addBody.item.parameterReferences).toHaveLength(1);
+    expect(addBody.item.parameterReferences[0]).toMatchObject({
+      specId: spec.specId,
+      propertyKey: spec.propertyKey,
+      driverModule: spec.subjectName,
+      lifecycle: "active"
+    });
+
+    const draftAddResponse = await page.request.put(
+      apiRoute(`/api/v1/knowledge/entries/${draft.id}/parameter-references/${encodeURIComponent(spec.specId)}`),
+      { headers: editorHeaders(), data: {} }
+    );
+    expect(draftAddResponse.status()).toBe(200);
+
+    // Parameter side (API): published-only — the draft never appears.
+    const relatedResponse = await page.request.get(
+      apiRoute(`/api/v1/knowledge/related-to-spec?specId=${encodeURIComponent(spec.specId)}`),
+      { headers: editorHeaders() }
+    );
+    expect(relatedResponse.status()).toBe(200);
+    const relatedBody = (await relatedResponse.json()) as { items: KnowledgeSearchApiItem[] };
+    expect(relatedBody.items.map((item) => item.entryId)).toEqual([published.id]);
+
+    // Browser (knowledge side): chips on the detail, picker in the editor.
+    await openKnowledgePage(page);
+    const table = page.getByRole("table", { name: "知识条目列表" });
+    await table.getByText(publishedTitle).click();
+    const detail = page.getByRole("dialog", { name: new RegExp(publishedTitle) });
+    await expect(detail).toBeVisible();
+    const chips = detail.getByTestId("knowledge-parameter-references");
+    await expect(chips.getByText(`充电泵比率 · ${spec.subjectName}`)).toBeVisible();
+    await expect(chips.getByText("已启用")).toBeVisible();
+
+    // Editor picker: search the catalog and add a second reference from the UI.
+    await detail.getByRole("button", { name: "编辑", exact: true }).click();
+    const editor = page.getByRole("dialog", { name: "编辑知识条目" });
+    const picker = editor.getByTestId("knowledge-reference-picker");
+    await expect(picker).toBeVisible();
+    await picker.getByRole("textbox", { name: "检索参数定义" }).fill(pickerSpec.propertyKey);
+    await picker.getByRole("button", { name: "检索定义" }).click();
+    const results = picker.getByRole("list", { name: "参数定义检索结果" });
+    await results
+      .locator("li", { hasText: pickerSpec.propertyKey })
+      .getByRole("button", { name: "关联", exact: true })
+      .click();
+    // The chip renders the definition's display name (server reference DTO).
+    const pickerChipLabel = `${pickerSpec.displayName} · ${pickerSpec.subjectName}`;
+    await expect(picker.getByText(pickerChipLabel)).toBeVisible();
+
+    // Remove the picker-added reference again from the editor (audited).
+    await picker.getByRole("button", { name: `移除引用 ${pickerSpec.displayName}` }).click();
+    await expect(picker.getByText(pickerChipLabel)).toHaveCount(0);
+    await editor.getByRole("button", { name: "取消" }).click();
+
+    // Deprecation is soft retirement (ADR-0011): the reference SURVIVES and
+    // the chip states 已废弃 honestly.
+    await withPgClient(async (client) => {
+      await client.query(`update parameter_specs set definition_lifecycle = 'deprecated' where id = $1`, [spec.specId]);
+      await client.query(`update parameter_spec_versions set lifecycle = 'deprecated' where parameter_spec_id = $1`, [
+        spec.specId
+      ]);
+    });
+    await page.reload();
+    await expect(page.getByRole("table", { name: "知识条目列表" })).toBeVisible();
+    await table.getByText(publishedTitle).click();
+    const detailAfter = page.getByRole("dialog", { name: new RegExp(publishedTitle) });
+    const chipsAfter = detailAfter.getByTestId("knowledge-parameter-references");
+    await expect(chipsAfter.getByText(`充电泵比率 · ${spec.subjectName}`)).toBeVisible();
+    await expect(chipsAfter.getByText("已废弃")).toBeVisible();
+
+    // Browser (parameter side): the definition detail lists the published
+    // entry under 相关知识 and never the draft; the entry deep-links back.
+    await signInBrowserAsRole(page, "admin", `/parameter-admin?spec=${encodeURIComponent(spec.specId)}`);
+    const relatedSection = page.getByTestId("spec-related-knowledge");
+    await expect(relatedSection).toBeVisible();
+    const publishedRelatedItem = relatedSection.getByRole("button", { name: new RegExp(publishedTitle) });
+    await expect(publishedRelatedItem).toBeVisible();
+    await expect(relatedSection.getByText(draftTitle)).toHaveCount(0);
+    await publishedRelatedItem.click();
+    await page.waitForURL((url) => url.pathname === "/knowledge" && url.searchParams.get("entryId") === published.id);
+    await expect(page.getByRole("dialog", { name: new RegExp(publishedTitle) })).toBeVisible();
+
+    // DB + audit evidence.
+    const referenceRows = await withPgClient(async (client) => {
+      const result = await client.query<{ entry_id: string; parameter_spec_id: string }>(
+        `select entry_id, parameter_spec_id from knowledge_parameter_references where parameter_spec_id = $1 order by created_at asc`,
+        [spec.specId]
+      );
+      return result.rows;
+    });
+    expect(referenceRows.map((row) => row.entry_id).sort()).toEqual([published.id, draft.id].sort());
+
+    const audits = await knowledgeAuditSummaries(published.id);
+    expect(audits.some((audit) => audit.kind === "knowledge-parameter-reference-add")).toBe(true);
+    expect(audits.some((audit) => audit.kind === "knowledge-parameter-reference-remove")).toBe(true);
+
+    await recordOperationEvidence({
+      operationId: "KB-XREF-001",
+      title: "structural definition references with published-only parameter side and deprecation survival",
+      status: "passed",
+      role: "Hardware User",
+      route: "/knowledge",
+      page,
+      testInfo,
+      api: [
+        summarizeApiResponse(addResponse, {
+          method: "PUT",
+          path: "/api/v1/knowledge/entries/:entryId/parameter-references/:specId",
+          responseSummary: `entry=${published.id}; spec=${spec.specId}; lifecycle=active`
+        }),
+        summarizeApiResponse(relatedResponse, {
+          method: "GET",
+          path: "/api/v1/knowledge/related-to-spec",
+          responseSummary: `spec=${spec.specId}; published=${published.id} only; draftExcluded=${!relatedBody.items.some((item) => item.entryId === draft.id)}`
+        })
+      ],
+      db: [
+        {
+          table: "knowledge_parameter_references",
+          predicate: `parameterSpecId=${spec.specId}`,
+          observed: `rows=${referenceRows.length} (published+draft); survives deprecation`,
+          rowCount: referenceRows.length
+        }
+      ],
+      audit: audits.filter((audit) => audit.kind.startsWith("knowledge-parameter-reference"))
     });
   });
 

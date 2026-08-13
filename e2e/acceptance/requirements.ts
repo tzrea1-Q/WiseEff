@@ -105,6 +105,13 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "KB-XREF-001",
+    workflow: "J",
+    title:
+      "An editor manages structural parameter-definition references on a knowledge entry (audited add/remove bound to the parameter_specs.id surrogate); the definition detail's related-knowledge list shows the published referencing entry while draft entries never appear there, and deprecating the definition keeps the knowledge-side chip with an honest deprecated badge.",
+    required: true
+  },
+  {
     id: "SHELL-DIAG-001",
     workflow: "A",
     title: "Core routes fail acceptance on unexpected console, page, request, or critical API errors.",

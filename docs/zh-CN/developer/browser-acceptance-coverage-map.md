@@ -42,6 +42,7 @@
 - `KB-DISTILL-002`：编辑者在 `/dts-reload` 运行历史/详情面把终态 DTS 重载运行（行为已验证 / 不可验证 / 行为矛盾 / 部署失败）一键沉淀为预填知识草稿（标题取运行目的 + 设备上下文；正文组装参数集基线 → 调试值、每参数验证结局、诚实陈述的运行终态、产物摘要与以运行为证据主体的内核日志摘录引用；条目上保存 `source_reload_run_id` 来源关联），经条目深链交接到 `/knowledge` 草稿编辑器审阅后发布（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-ADMIN-001`：经审批门控工具 `action.createKnowledgeDraft` 创建的 Agent 知识草稿（确定性小泽先中断、后批准——同 `XIAOZE-ACTION-APPROVE-001` 在 SSE API 层断言，另有 `knowledge-agent-draft` eval 场景兜底）进入 `/knowledge-admin` 的 Agent 草稿发布队列（含创建人、会话来源、来源分析链接）；审阅者发布其一、归档拒绝其一，Agent 草稿在发布前不进入检索（`e2e/acceptance/knowledge.acceptance.spec.ts`；`server/modules/agent/xiaoze/eval/scenarios.ts`）。
 - `KB-REC-001`：已完成的日志分析记录展示由存储的结论/影响文本推导的「相关知识」区块：相关已发布条目带 `/knowledge?entryId=…` 引用深链出现，草稿与归档条目永不出现，区块诚实标注实际运行的检索模式，无相关条目时展示诚实空态（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
+- `KB-XREF-001`：编辑者在知识条目上管理参数定义的结构化引用（添加/移除有审计，绑定 `parameter_specs.id` 代理键）；定义详情的「相关知识」列表显示已发布的引用条目而草稿条目对任何调用者都不出现，废弃该定义后知识侧 chip 存续并带如实「已废弃」徽章（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `DEBUG-SIM-001`：模拟器读、写、回读不一致、回滚与审计路径，包含复杂 JSON 值元数据。
 - `DEBUG-ADMIN-001`：API mode 下调试管理后台可新增、编辑、归档、恢复，并维护 HDC/ADB binding 与复杂值元数据。
 - `DTS-RELOAD-DEPLOY-001`：经假本地设备桥部署已校验的重载 overlay（mount / pushFile / trigger）至 `unverifiable`；浏览器证据 `work/ui-checks/285-*`。
