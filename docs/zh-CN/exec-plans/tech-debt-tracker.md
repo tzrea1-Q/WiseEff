@@ -66,6 +66,7 @@
 - **TD-105（投递记录无保留策略）：** `log_webhook_deliveries` 每次尝试一行、无清理机制,投递量大的域将无限增长。真实投递量出现后加保留策略（按域保留最近 N 条或按天龄清理,可挂 worker 循环或定时任务）。**负责人：Log analysis / Ops。**
 - **TD-106（质量运行时清理缺口）：** `reset-quality-runtime.ts` 覆盖验收账号清理，但不清 P2 美学审计发现的运行时残留：历史探针上传的参数文件版本（`probe-edit-*.dts`）与运行时注册的驱动组模块（如 schema 晋升 runbook 演示的 `FoldRegistryTestDG`）。共享开发/演示库重置后仍会在模块树与工作台源树看到测试观感实体。应扩展 reset 脚本清理非种子文件版本与运行时 `parameter_modules` 行（或在 runbook 记录手工清理）。**负责人：Quality / Platform。**
 - **TD-107（节点调试移动端搜索框拉伸）：** `/node-debugging` 在 390px 下 `.parameters-table-search` 被垂直拉高（P2c 验证时观察到的既有移动端布局问题，非抽屉改造引入）。应在共享表格工具栏的窄屏布局中约束搜索框高度。**负责人：Frontend。**
+- **TD-108（本地桥开放 CORS 的产品决策）：** 本地桥 `/connect` 与 `/health` 有意以 `Access-Control-Allow-Origin: *` 加 Private Network Access 放行应答（零摩擦配对）。2026-08-12 审计标记为 P0 候选；调查确认为有意权衡（配对仍需短时效配对码与桥侧确认），遗留问题是产品策略而非缺陷修复：保持开放换零摩擦配对，或收窄为环境配置的来源白名单（+ 回环地址）。决策记入 `docs/SECURITY.md`；仅在收窄时实现。上下文见 `docs/zh-CN/exec-plans/completed/2026-08-13-wiseeff-audit-remediation-program.md`。**负责人：Security / Product。**
 
 ## 近期关闭项
 
