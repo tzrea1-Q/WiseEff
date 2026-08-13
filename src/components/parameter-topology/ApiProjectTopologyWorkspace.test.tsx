@@ -397,7 +397,7 @@ describe("ApiProjectTopologyWorkspace", () => {
 
     const tray = await screen.findByRole("region", { name: "参数修改提交" });
     expect(within(tray).getByRole("alert")).toHaveTextContent(/不在同一工作版本上.*无法一起提交/);
-    expect(within(tray).getByText("2 项")).toBeVisible();
+    expect(within(tray).getByText("提交 2 / 2 项")).toBeVisible();
     expect(within(tray).queryByText(/^本轮 2 项$/)).not.toBeInTheDocument();
   });
 
@@ -936,7 +936,7 @@ describe("ApiProjectTopologyWorkspace", () => {
       "data-revision-id",
       "working-tip-2"
     );
-    const submitButton = within(tray).getByRole("button", { name: "提交审核" });
+    const submitButton = within(tray).getByRole("button", { name: /^提交审核/ });
     await waitFor(() => expect(submitButton).toBeEnabled());
   });
 
@@ -987,7 +987,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(await within(submission).findByLabelText("硬件 MDE")).toHaveValue("u-hw");
     expect(within(submission).getByLabelText("软件 MDE")).toHaveValue("u-sw");
     expect(within(submission).getByLabelText("软件开发")).toHaveValue("u-user");
-    const submitButton = within(submission).getByRole("button", { name: "提交审核" });
+    const submitButton = within(submission).getByRole("button", { name: /^提交审核/ });
     await waitFor(() => expect(submitButton).toBeEnabled());
     fireEvent.click(submitButton);
 
@@ -1012,7 +1012,10 @@ describe("ApiProjectTopologyWorkspace", () => {
         }
       });
     });
-    fireEvent.click(within(submission).getByRole("button", { name: "查看变更审阅" }));
+    // Consumed drafts leave the tray; the success notice keeps the review entry.
+    const successNotice = await screen.findByRole("region", { name: "参数提交结果" });
+    expect(within(successNotice).getByRole("status")).toHaveTextContent(/已提交正式审核（1 项）/);
+    fireEvent.click(within(successNotice).getByRole("button", { name: "查看变更审阅" }));
     expect(onNavigate).toHaveBeenCalledWith("/parameter-review");
   });
 
@@ -1136,7 +1139,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     await createGpioDraftFromWorkbench(workspace, fireEvent, { reason: "Lock Aurora while submitting", rawValue: "<&gpio13 30 0>" });
 
     const tray = await screen.findByRole("region", { name: "参数修改提交" });
-    const submit = within(tray).getByRole("button", { name: "提交审核" });
+    const submit = within(tray).getByRole("button", { name: /^提交审核/ });
     await waitFor(() => expect(submit).toBeEnabled());
     fireEvent.click(submit);
     expect(submitBindingChanges).toHaveBeenCalledTimes(1);
@@ -1263,7 +1266,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     await waitFor(() => expect(createBindingDraft).toHaveBeenCalledTimes(2));
 
     let tray = screen.getByRole("region", { name: "参数修改提交", hidden: true });
-    const blockedSubmit = within(tray).getByText("提交审核").closest("button") as HTMLButtonElement;
+    const blockedSubmit = within(tray).getByText(/^提交审核/).closest("button") as HTMLButtonElement;
     expect(blockedSubmit).toBeDisabled();
     expect(within(tray).getByRole("alert", { hidden: true })).toHaveTextContent(/正在创建 typed draft/);
     fireEvent.click(blockedSubmit);
@@ -1394,14 +1397,14 @@ describe("ApiProjectTopologyWorkspace", () => {
     });
     await waitFor(() => expect(createBindingDraft).toHaveBeenCalledTimes(2));
     let tray = screen.getByRole("region", { name: "参数修改提交", hidden: true });
-    expect(within(tray).getByRole("button", { name: "提交审核", hidden: true })).toBeDisabled();
+    expect(within(tray).getByRole("button", { name: /^提交审核/, hidden: true })).toBeDisabled();
 
     await act(async () => {
       rejectReplacement(new Error("replacement rejected"));
       await replacementRequest.catch(() => undefined);
     });
     tray = screen.getByRole("region", { name: "参数修改提交", hidden: true });
-    const submit = within(tray).getByText("提交审核").closest("button") as HTMLButtonElement;
+    const submit = within(tray).getByText(/^提交审核/).closest("button") as HTMLButtonElement;
     await waitFor(() => expect(submit).toBeEnabled());
     fireEvent.click(submit);
     await waitFor(() => expect(submitBindingChanges).toHaveBeenCalledTimes(1));
@@ -1425,6 +1428,143 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(within(workspace).queryByRole("button", { name: "校验" })).not.toBeInTheDocument();
     expect(within(workspace).queryByRole("button", { name: "发布" })).not.toBeInTheDocument();
     expect(repository.validateRevision).not.toHaveBeenCalled();
+  });
+
+  it("deletes the server draft on tray removal and refreshes the draft list", async () => {
+    const serverDraft = {
+      id: "draft-server-1",
+      projectId: "aurora",
+      parameterId: "binding-sc8562-gpio-int",
+      projectParameterBindingId: "binding-sc8562-gpio-int",
+      candidateConfigRevisionId: "rev-real-1",
+      targetValue: "<&gpio13 30 0>",
+      action: "set" as const,
+      reason: "Server draft to delete",
+      updatedAt: "2026-08-01T02:00:00.000Z"
+    };
+    const listDrafts = vi.fn()
+      .mockResolvedValueOnce([serverDraft])
+      .mockResolvedValue([]);
+    const deleteDraft = vi.fn().mockResolvedValue(undefined);
+    const repository = createRepository();
+
+    render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }]}
+        listDrafts={listDrafts}
+        deleteDraft={deleteDraft}
+        listWorkflowAssignees={vi.fn().mockResolvedValue({
+          hardwareCommitters: [{ id: "u-hw", name: "Hardware Reviewer" }],
+          softwareCommitters: [{ id: "u-sw", name: "Software Reviewer" }],
+          softwareUsers: [{ id: "u-user", name: "Software Merger" }]
+        })}
+      />
+    );
+
+    const tray = await screen.findByRole("region", { name: "参数修改提交" });
+    expect(within(tray).getByText("Server draft to delete")).toBeVisible();
+
+    fireEvent.click(within(tray).getByRole("button", { name: "移出本轮修改" }));
+
+    await waitFor(() => expect(deleteDraft).toHaveBeenCalledWith("draft-server-1"));
+    await waitFor(() => {
+      expect(screen.queryByRole("region", { name: "参数修改提交" })).not.toBeInTheDocument();
+    });
+    // Draft list is re-read from the server so a reload cannot revive the deleted draft.
+    await waitFor(() => expect(listDrafts.mock.calls.length).toBeGreaterThanOrEqual(2));
+  });
+
+  it("keeps the draft and shows an inline error when server draft delete fails", async () => {
+    const serverDraft = {
+      id: "draft-server-1",
+      projectId: "aurora",
+      parameterId: "binding-sc8562-gpio-int",
+      projectParameterBindingId: "binding-sc8562-gpio-int",
+      candidateConfigRevisionId: "rev-real-1",
+      targetValue: "<&gpio13 30 0>",
+      action: "set" as const,
+      reason: "Draft delete must fail visibly",
+      updatedAt: "2026-08-01T02:00:00.000Z"
+    };
+    const listDrafts = vi.fn().mockResolvedValue([serverDraft]);
+    const deleteDraft = vi.fn().mockRejectedValue(new Error("server offline"));
+    const repository = createRepository();
+
+    render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }]}
+        listDrafts={listDrafts}
+        deleteDraft={deleteDraft}
+        listWorkflowAssignees={vi.fn().mockResolvedValue({
+          hardwareCommitters: [{ id: "u-hw", name: "Hardware Reviewer" }],
+          softwareCommitters: [{ id: "u-sw", name: "Software Reviewer" }],
+          softwareUsers: [{ id: "u-user", name: "Software Merger" }]
+        })}
+      />
+    );
+
+    const tray = await screen.findByRole("region", { name: "参数修改提交" });
+    fireEvent.click(within(tray).getByRole("button", { name: "移出本轮修改" }));
+
+    await waitFor(() => expect(deleteDraft).toHaveBeenCalledWith("draft-server-1"));
+    expect(await within(tray).findByText(/移除草稿失败/)).toBeVisible();
+    expect(within(tray).getByText("Draft delete must fail visibly")).toBeVisible();
+  });
+
+  it("clears the tray after a successful submit so consumed draft ids cannot be resubmitted", async () => {
+    const listDrafts = vi.fn().mockResolvedValue([]);
+    const submitBindingChanges = vi.fn().mockResolvedValue(undefined);
+    const repository = createRepository();
+    const { fireEvent } = await import("@testing-library/react");
+
+    render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }]}
+        listDrafts={listDrafts}
+        deleteDraft={vi.fn()}
+        listWorkflowAssignees={vi.fn().mockResolvedValue({
+          hardwareCommitters: [{ id: "u-hw", name: "Hardware Reviewer" }],
+          softwareCommitters: [{ id: "u-sw", name: "Software Reviewer" }],
+          softwareUsers: [{ id: "u-user", name: "Software Merger" }]
+        })}
+        submitBindingChanges={submitBindingChanges}
+      />
+    );
+
+    await screen.findByRole("treeitem", { name: /未分类 · sc8562/ });
+    const workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
+    fireEvent.click(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ }));
+    await createGpioDraftFromWorkbench(workspace, fireEvent, {
+      reason: "Submit then clear",
+      rawValue: "<&gpio13 30 0>"
+    });
+
+    const tray = await screen.findByRole("region", { name: "参数修改提交" });
+    const submit = within(tray).getByRole("button", { name: /^提交审核/ });
+    await waitFor(() => expect(submit).toBeEnabled());
+    expect(submit).toHaveTextContent("提交审核（1 项）");
+    fireEvent.click(submit);
+
+    await waitFor(() => expect(submitBindingChanges).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      expect(screen.queryByRole("region", { name: "参数修改提交" })).not.toBeInTheDocument();
+    });
+    // The workspace returns to the current revision once the round is consumed.
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+        "data-revision-id",
+        "rev-real-1"
+      );
+    });
   });
 
   it("loads project-primary DTS in tech view via parameter file repository", async () => {

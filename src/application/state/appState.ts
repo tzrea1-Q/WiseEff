@@ -93,6 +93,9 @@ type ParameterDraftItem = {
   reason: string;
 };
 
+/** API-mode data domains refreshed by refreshApiRuntimeData. */
+export type ApiRuntimeDataDomain = "parameters" | "logs" | "debugging";
+
 export type AppAction =
   | { type: "SET_PROJECT"; projectId: string }
   | { type: "UPDATE_PROJECT"; projectId: string; patch: { name?: string; code?: string; status?: ProjectInitializationStatus } }
@@ -165,7 +168,9 @@ export type AppAction =
   | UpsertDebugNodeOperationAction
   | UpsertDebugSnapshotAction
   | { type: "CLEAR_PUSHED_DEBUG_IDS"; parameterIds: string[] }
+  | { type: "CLEAR_API_RUNTIME_DOMAIN"; domain: ApiRuntimeDataDomain }
   | { type: "ADD_NOTIFICATION"; message: string }
+  | { type: "DISMISS_NOTIFICATION" }
   | { type: "SET_NOTIFICATION_INBOX"; items: import("@/domain/notifications/types").NotificationItem[] }
   | { type: "UPDATE_DEBUG_PARAMETER"; parameterId: string; patch: Partial<DebugParameterEditorDraft> }
   | { type: "COMMIT_DEBUG_PARAMETER_DRAFT"; parameterId: string; draft: DebugParameterEditorDraft }
@@ -448,8 +453,14 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       const projects = action.projects.map((project) => ({ ...project }));
       const parameterLibrary = buildParameterLibraryFromRecords(action.parameters, projects);
       const parameterModules = buildParameterModulesFromRecords(action.parameters, state.configDraft.parameterModules);
+      // Keep the active project pointed at real server data, never at a stale demo id.
+      const activeProjectId =
+        projects.length > 0 && !projects.some((project) => project.id === state.activeProjectId)
+          ? projects[0].id
+          : state.activeProjectId;
       return {
         ...state,
+        activeProjectId,
         parameters: action.parameters,
         changeRequests: action.changeRequests,
         parameterDrafts: action.parameterDrafts ?? [],
@@ -460,6 +471,42 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
           projects,
           parameterLibrary,
           parameterModules
+        }
+      };
+    }
+    case "CLEAR_API_RUNTIME_DOMAIN": {
+      // API refresh failed: purge the domain's business data instead of showing
+      // demo records as if they were live (mock data must never look real).
+      if (action.domain === "parameters") {
+        return {
+          ...state,
+          parameters: [],
+          changeRequests: [],
+          parameterDrafts: [],
+          parameterSubmissionRounds: [],
+          parameterReviewDecisions: [],
+          configDraft: {
+            ...state.configDraft,
+            projects: [],
+            parameterLibrary: [],
+            parameterModules: []
+          }
+        };
+      }
+      if (action.domain === "logs") {
+        return {
+          ...state,
+          logs: [],
+          archivedLogIds: []
+        };
+      }
+      return {
+        ...state,
+        devices: [],
+        debugParameters: [],
+        configDraft: {
+          ...state.configDraft,
+          debugParameters: []
         }
       };
     }
@@ -1015,11 +1062,35 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         debugEvents: [...state.debugEvents, event]
       };
     }
-    case "UPSERT_DEBUG_SNAPSHOT":
+    case "UPSERT_DEBUG_SNAPSHOT": {
       if (action.snapshot.status !== "valid") {
         return state;
       }
-      return state;
+      // Convert the API snapshot summary into the page-facing DebugSnapshot so
+      // the rollback safety net activates after API writes. The before/after
+      // values live on the write operation, not the summary.
+      const operation = action.operation;
+      const operationParameterId = operation?.parameterId ?? operation?.nodeId;
+      const entries =
+        operation && operation.operationType === "write" && operationParameterId
+          ? [
+              {
+                parameterId: operationParameterId,
+                previousValue: operation.previousValue ?? "",
+                nextValue: operation.readbackValue ?? operation.requestedValue ?? ""
+              }
+            ]
+          : [];
+      return {
+        ...state,
+        lastDebugSnapshot: {
+          id: action.snapshot.id,
+          createdAt: action.snapshot.createdAt,
+          entries,
+          risk: action.snapshot.risk
+        }
+      };
+    }
     case "UPSERT_LOG_RECORD": {
       const existingIndex = state.logs.findIndex((log) => log.id === action.log.id);
       const archivedLogIds = updateArchivedLogIdsForLog(state.archivedLogIds, action.log);
@@ -1404,6 +1475,11 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         notifications: [action.message, ...state.notifications],
         notificationInbox: prependMockNotificationMessage(state.notificationInbox, action.message)
       };
+    case "DISMISS_NOTIFICATION":
+      if (state.notifications.length === 0) {
+        return state;
+      }
+      return { ...state, notifications: state.notifications.slice(1) };
     case "SET_NOTIFICATION_INBOX":
       return { ...state, notificationInbox: action.items };
     case "LOG_ADMIN_REANALYZE_LOG": {

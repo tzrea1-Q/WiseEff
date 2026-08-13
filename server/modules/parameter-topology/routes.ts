@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
-import { canAdminParameters, canEditParameters, canViewParameters } from "../parameters/policy";
+import { canAdminParameters, canEditParameters, canViewParameters } from "../parameter-kernel/policy";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
@@ -204,7 +204,8 @@ export function registerParameterTopologyRoutes(
         bindingId: params.bindingId,
         ...body
       },
-      { objectStore: options.objectStore }
+      { objectStore: options.objectStore },
+      { requestId: request.requestId }
     );
     return { status: 201, body: { item } };
   });
@@ -222,7 +223,8 @@ export function registerParameterTopologyRoutes(
         projectId: params.projectId,
         ...body
       },
-      { objectStore: options.objectStore }
+      { objectStore: options.objectStore },
+      { requestId: request.requestId }
     );
     return { status: 201, body: { item } };
   });

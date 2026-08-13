@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { applyTableFilters, applyTimeWindow, deriveInsight, deriveMetrics } from "@/logAdminAnalytics";
 import { formatPercent } from "@/domain/format/formatPercent";
 import { STAGE_LABELS, type LogRecord, type LogStatus, type PrototypeState, type TimeWindow } from "@/domain/prototype/types";
-import type { LogDomain } from "@/domain/logs/types";
+import type { LogDomain, LogFeedbackInsight } from "@/domain/logs/types";
 import { useTopBarActions } from "@/components/layout";
 import { logRuntimeFailureNotification, type LogRuntimeActions } from "@/application/logs/logRuntime";
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
@@ -545,6 +545,142 @@ function LogDomainGovernanceSection({
   );
 }
 
+const feedbackAnalysisSourceLabels: Record<"agent" | "rules-fallback" | "none", string> = {
+  agent: "Agent 分析",
+  "rules-fallback": "降级 · 规则回退",
+  none: "未标注来源"
+};
+
+function feedbackInsightRowKey(row: LogFeedbackInsight): string {
+  return `${row.logDomainId ?? "uncategorized"}:${row.analysisSource ?? "none"}:${row.promptVersion ?? "none"}`;
+}
+
+/**
+ * Analysis-quality insights (P3 online monitoring, evaluation build order step 3):
+ * helpful rate per log domain × analysis source × prompt version over the page's
+ * shared time window. Read-only aggregation of `log_feedback` — the shared golden
+ * case set stays the quality anchor; this section watches live feedback drift.
+ */
+function FeedbackQualityInsightsSection({
+  timeWindow,
+  logActions,
+  refreshKey
+}: {
+  timeWindow: TimeWindow;
+  logActions?: LogRuntimeActions;
+  refreshKey: number;
+}) {
+  const [rows, setRows] = useState<LogFeedbackInsight[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!logActions) {
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    void logActions
+      .listFeedbackInsights({ timeWindow })
+      .then((items) => {
+        if (!cancelled) {
+          setRows(items);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [logActions, refreshKey, timeWindow]);
+
+  const columns: Column<LogFeedbackInsight>[] = [
+    {
+      key: "logDomainName",
+      header: "业务域",
+      render: (row) => (
+        <span className={cn("text-sm", row.logDomainName ? "font-medium text-foreground" : "text-muted-foreground")}>
+          {row.logDomainName ?? "未分类"}
+        </span>
+      ),
+      sortAccessor: (row) => row.logDomainName ?? ""
+    },
+    {
+      key: "analysisSource",
+      header: "分析来源",
+      render: (row) => (
+        <span className="text-xs text-muted-foreground">{feedbackAnalysisSourceLabels[row.analysisSource ?? "none"]}</span>
+      ),
+      sortAccessor: (row) => row.analysisSource ?? "",
+      widthClass: "w-36"
+    },
+    {
+      key: "promptVersion",
+      header: "Prompt 版本",
+      render: (row) => <span className="font-mono text-xs text-muted-foreground">{row.promptVersion ?? "-"}</span>,
+      sortAccessor: (row) => row.promptVersion ?? "",
+      widthClass: "w-44"
+    },
+    {
+      key: "totalCount",
+      header: "反馈条数",
+      render: (row) => <span className="font-mono text-xs">{row.totalCount}</span>,
+      sortAccessor: (row) => row.totalCount,
+      align: "right",
+      widthClass: "w-24"
+    },
+    {
+      key: "helpfulRate",
+      header: "有帮助率",
+      render: (row) => {
+        const percent = Math.round(row.helpfulRate * 100);
+        return (
+          <span
+            className={cn(
+              "font-mono text-xs",
+              percent >= 80 ? "text-emerald-700" : percent >= 50 ? "text-amber-700" : "text-destructive"
+            )}
+          >
+            {percent}%（{row.helpfulCount}/{row.totalCount}）
+          </span>
+        );
+      },
+      sortAccessor: (row) => row.helpfulRate,
+      align: "right",
+      widthClass: "w-32"
+    }
+  ];
+
+  return (
+    <section className="flex flex-col gap-2" aria-label="分析质量" data-testid="feedback-quality-insights">
+      <div>
+        <h2 className="text-sm font-semibold text-foreground">分析质量</h2>
+        <p className="text-xs text-muted-foreground">
+          按业务域 × 分析来源 × Prompt 版本聚合用户反馈的有帮助率（跟随右上角时间窗口），用于监控线上分析质量漂移。
+        </p>
+      </div>
+      {!logActions ? (
+        <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          分析质量监控需在 API 模式下使用；mock 模式仅展示静态日志种子。
+        </p>
+      ) : (
+        <DataTable
+          aria-label="分析质量反馈聚合"
+          rows={rows}
+          rowKey={feedbackInsightRowKey}
+          columns={columns}
+          pageSize={6}
+          emptyState={
+            <p className="text-sm text-muted-foreground">{loading ? "正在加载反馈数据…" : "暂无反馈"}</p>
+          }
+        />
+      )}
+    </section>
+  );
+}
+
 export function LogAdminPage({ state, dispatch, onNavigate, search: _search, logActions, knowledgeRepository }: LogAdminPageProps) {
   const [timeWindow, setTimeWindow] = useState<TimeWindow>("today");
   const [tableQuery, setTableQuery] = useState("");
@@ -556,6 +692,9 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
   const [insightDismissed, setInsightDismissed] = useState<boolean>(() => readInsightDismissed());
   const [pendingActions, setPendingActions] = useState<Set<string>>(() => new Set());
   const [syncPending, setSyncPending] = useState(false);
+  const [logView, setLogView] = useState<"active" | "archived">("active");
+  const [archivedLoaded, setArchivedLoaded] = useState(false);
+  const [feedbackInsightsRefreshKey, setFeedbackInsightsRefreshKey] = useState(0);
 
   const runPendingAction = async (kind: PendingLogAction, logId: string, action: () => Promise<void>) => {
     const key = pendingKey(kind, logId);
@@ -580,24 +719,57 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
       return undefined;
     }
 
-    const timer = window.setTimeout(() => setUndoArchive(null), 6000);
+    // The archived view makes archiving reversible any time; the undo window
+    // still gives a fast path for accidental clicks.
+    const timer = window.setTimeout(() => setUndoArchive(null), 10000);
     return () => window.clearTimeout(timer);
   }, [undoArchive]);
+
+  // Load archived records lazily when entering the archived view in API mode.
+  useEffect(() => {
+    if (logView !== "archived" || archivedLoaded || !logActions) {
+      return;
+    }
+    setArchivedLoaded(true);
+    void logActions.refresh({ includeArchived: true }).catch(() => {
+      setArchivedLoaded(false);
+    });
+  }, [archivedLoaded, logActions, logView]);
 
   const visibleLogs = useMemo(
     () => state.logs.filter((log) => !state.archivedLogIds.includes(log.id)),
     [state.archivedLogIds, state.logs]
   );
+  const archivedLogs = useMemo(
+    () => state.logs.filter((log) => state.archivedLogIds.includes(log.id)),
+    [state.archivedLogIds, state.logs]
+  );
   const windowLogs = useMemo(() => applyTimeWindow(visibleLogs, timeWindow), [timeWindow, visibleLogs]);
   const metrics = useMemo(() => deriveMetrics(windowLogs, timeWindow, visibleLogs), [timeWindow, visibleLogs, windowLogs]);
+  const tableSourceLogs = logView === "archived" ? archivedLogs : windowLogs;
   const filteredRows = useMemo(
-    () => applyTableFilters(windowLogs, { tableQuery, statusFilter, moduleFilter, sortBy }),
-    [moduleFilter, sortBy, statusFilter, tableQuery, windowLogs]
+    () => applyTableFilters(tableSourceLogs, { tableQuery, statusFilter, moduleFilter, sortBy }),
+    [moduleFilter, sortBy, statusFilter, tableQuery, tableSourceLogs]
   );
-  const availableModules = useMemo(() => Array.from(new Set(windowLogs.map((log) => log.source))).sort(), [windowLogs]);
+  const availableModules = useMemo(
+    () => Array.from(new Set(tableSourceLogs.map((log) => log.source))).sort(),
+    [tableSourceLogs]
+  );
   const insight = useMemo(() => deriveInsight(windowLogs, visibleLogs), [visibleLogs, windowLogs]);
   const canAct = canPerform(state.activeRoleId, "admin.access");
   const selectedRecord = selectedRecordId ? state.logs.find((log) => log.id === selectedRecordId) ?? null : null;
+
+  const unarchiveLog = (logId: string) => {
+    if (!logActions) {
+      dispatch({ type: "LOG_ADMIN_UNARCHIVE_LOG", logId });
+      setUndoArchive((current) => (current?.logId === logId ? null : current));
+      return;
+    }
+    void runPendingAction("unarchive", logId, async () => {
+      await logActions.unarchive(logId);
+      setUndoArchive((current) => (current?.logId === logId ? null : current));
+    });
+  };
 
   const toggleStatusFilter = (status: string) => {
     if (!Object.keys(statusLabels).includes(status)) return;
@@ -674,7 +846,23 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
     {
       key: "action",
       header: "",
-      render: () => <span className="text-xs text-primary">查看</span>,
+      render: (record) =>
+        logView === "archived" && canAct ? (
+          <button
+            type="button"
+            className="text-xs font-medium text-primary hover:underline disabled:pointer-events-none disabled:opacity-50"
+            disabled={pendingActions.has(pendingKey("unarchive", record.id))}
+            aria-busy={pendingActions.has(pendingKey("unarchive", record.id)) || undefined}
+            onClick={(event) => {
+              event.stopPropagation();
+              unarchiveLog(record.id);
+            }}
+          >
+            恢复
+          </button>
+        ) : (
+          <span className="text-xs text-primary">查看</span>
+        ),
       align: "right",
       widthClass: "w-20"
     }
@@ -816,9 +1004,38 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
           logActions={logActions}
           knowledgeRepository={knowledgeRepository}
         />
+        <FeedbackQualityInsightsSection
+          timeWindow={timeWindow}
+          logActions={logActions}
+          refreshKey={feedbackInsightsRefreshKey}
+        />
         <section className="flex flex-col gap-2">
-          <div>
+          <div className="flex items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-foreground">日志分析记录</h2>
+            <div className="flex items-center gap-1" role="group" aria-label="日志视图切换">
+              <button
+                type="button"
+                aria-pressed={logView === "active"}
+                onClick={() => setLogView("active")}
+                className={cn(
+                  "h-7 rounded-md px-2.5 text-xs transition-colors",
+                  logView === "active" ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted"
+                )}
+              >
+                活跃日志
+              </button>
+              <button
+                type="button"
+                aria-pressed={logView === "archived"}
+                onClick={() => setLogView("archived")}
+                className={cn(
+                  "h-7 rounded-md px-2.5 text-xs transition-colors",
+                  logView === "archived" ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted"
+                )}
+              >
+                已归档{archivedLogs.length > 0 ? `（${archivedLogs.length}）` : ""}
+              </button>
+            </div>
           </div>
           <DataTable
             aria-label="日志分析记录"
@@ -847,7 +1064,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
                   </button>
                 ) : null}
                 <span className="ml-auto text-xs text-muted-foreground">
-                  显示 {filteredRows.length} / {windowLogs.length} 条
+                  显示 {filteredRows.length} / {tableSourceLogs.length} 条
                 </span>
               </div>
             }
@@ -860,7 +1077,9 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
                   </button>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">当前时间窗口内暂无日志</p>
+                <p className="text-sm text-muted-foreground">
+                  {logView === "archived" ? "暂无已归档日志" : "当前时间窗口内暂无日志"}
+                </p>
               )
             }
           />
@@ -901,6 +1120,10 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
 
           void runPendingAction("archive", id, async () => {
             await logActions.archive(id);
+            // The post-archive refresh only returns active logs, so the archived
+            // record drops out of local state; force the archived view to reload
+            // from the server next time it opens instead of showing a stale blank.
+            setArchivedLoaded(false);
             if (log) {
               setUndoArchive({ logId: id, fileName: log.fileName });
             }
@@ -916,6 +1139,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
 
           void runPendingAction("feedback", id, async () => {
             await logActions.submitFeedback({ logId: id, rating: "helpful" });
+            setFeedbackInsightsRefreshKey((key) => key + 1);
           });
         }}
         canAct={canAct}
@@ -932,24 +1156,13 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
         >
           <span className="text-sm text-foreground">
             已归档 <span className="font-mono text-xs">{undoArchive.fileName}</span>
+            <span className="ml-1 text-xs text-muted-foreground">（可随时在「已归档」视图恢复）</span>
           </span>
           <button
             type="button"
             disabled={undoArchivePending}
             aria-busy={undoArchivePending || undefined}
-            onClick={() => {
-              const { logId } = undoArchive;
-              if (!logActions) {
-                dispatch({ type: "LOG_ADMIN_UNARCHIVE_LOG", logId });
-                setUndoArchive(null);
-                return;
-              }
-
-              void runPendingAction("unarchive", logId, async () => {
-                await logActions.unarchive(logId);
-                setUndoArchive(null);
-              });
-            }}
+            onClick={() => unarchiveLog(undoArchive.logId)}
             className="text-sm font-medium text-primary hover:underline disabled:pointer-events-none disabled:opacity-50"
           >
             撤销

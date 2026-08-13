@@ -36,6 +36,7 @@ interface ImportMetaEnv {
   readonly VITE_XIAOZE_PROACTIVE_ENABLED?: string;
   readonly VITE_XIAOZE_REASONING_DEV_EXPANDED?: string;
   readonly VITE_XIAOZE_PROMPT_DEBUG?: string;
+  readonly VITE_XIAOZE_INSPECTOR?: string;
 }
 
 interface ImportMeta {

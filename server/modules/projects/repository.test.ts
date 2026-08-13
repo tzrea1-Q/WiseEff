@@ -4,7 +4,7 @@ import {
   deleteProject,
   getProjectById,
   listProjects
-} from "./projectRepository";
+} from "./repository";
 
 type QueryCall = {
   text: string;

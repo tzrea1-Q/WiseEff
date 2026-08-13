@@ -23,6 +23,28 @@ export async function expectUsablePage(page: Page) {
   await expect(page.locator("body")).not.toContainText(runtimeCrashPattern);
 }
 
+/**
+ * Deterministically clear the global toast layer before a screenshot.
+ * Runtime-connect notifications are timing-dependent (they auto-dismiss after
+ * ~4s), so a visual baseline must never race them: dismiss whatever is showing
+ * and wait for the queue to drain.
+ */
+export async function settleAppToasts(page: Page, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  const toast = page.locator(".app-toast");
+  while (Date.now() < deadline) {
+    if ((await toast.count()) === 0) {
+      return;
+    }
+    const close = page.locator(".app-toast__close").first();
+    if ((await close.count()) > 0) {
+      await close.click({ timeout: 1_000 }).catch(() => undefined);
+    }
+    await page.waitForTimeout(150);
+  }
+  await expect(toast).toHaveCount(0);
+}
+
 export async function dismissCopilotDevOverlays(page: Page) {
   await page.evaluate(() => {
     for (const element of document.querySelectorAll("cpk-web-inspector")) {

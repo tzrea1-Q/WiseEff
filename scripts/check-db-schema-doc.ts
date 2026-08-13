@@ -1,9 +1,16 @@
 import { readFile } from "node:fs/promises";
-import { DB_SCHEMA_DOC_PATH, isDatabaseReachable, renderDbSchemaDoc } from "./dbSchemaDoc";
+import { DB_SCHEMA_DOC_PATH, isDatabaseReachable, isVectorExtensionAvailable, renderDbSchemaDoc } from "./dbSchemaDoc";
 
 if (!(await isDatabaseReachable())) {
   console.warn(
     "db-schema doc check skipped: no reachable PostgreSQL. The generated artifact was not verified against migrations."
+  );
+  process.exit(0);
+}
+
+if (!(await isVectorExtensionAvailable())) {
+  console.warn(
+    "db-schema doc check skipped: the pgvector extension is unavailable on this server, so the pgvector-canonical artifact cannot be verified here (CI verifies it on pgvector/pgvector:pg16)."
   );
   process.exit(0);
 }

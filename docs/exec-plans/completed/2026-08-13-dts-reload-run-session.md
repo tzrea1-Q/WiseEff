@@ -1,6 +1,6 @@
 # DTS Reload Run Session — page decomposition + mock-mode parity (TD-069, ADR-0002)
 
-- **Status:** Implemented on `refactor/dts-reload-run-session`; awaiting parent review / PR.
+- **Status:** **Completed 2026-08-13** — PR [#372](https://github.com/tzrea1-Q/WiseEff/pull/372) merged; TD-069 closed in the tracker.
 - **Branch:** `refactor/dts-reload-run-session` (from `main` @ `ccefe11b`)
 - **Owner:** Frontend / Debugging platform
 - **Scope source:** 2026-08-12 architecture review **candidate 5**, aligned with **TD-069** (tracked split of `src/features/dts-reload/DtsReloadPage.tsx`) and **ADR-0002** (mock runtime serves the same semantic model through the same ports — previously violated because `DtsReloadRepository` had no mock adapter and mock mode rendered a static "unavailable" page).
@@ -41,7 +41,7 @@ API-mode interaction behavior is unchanged, so existing browser acceptance autom
 - `npm test -- run src/features/dts-reload src/application/dts-reload src/domain/dtsReload src/App.test src/infrastructure/mock/mockDtsReloadRepository.test.ts src/permissionRouting.test.tsx` → green (machine-load note: one long page test needs `--testTimeout` above the 5s default under parallel agent load; it also times out on unmodified `main`).
 - Browser verification (mock mode, `playwright-cli`, `VITE_WISEEFF_RUNTIME_MODE=mock`): `/dts-reload` at 1440×900 / 768×1024 / 390×844, snapshot + screenshot each (`work/ui-checks/dts-reload-session-*.png`); exercised candidate selection, invalid (`<99999>` → max-constraint alert) and valid (`<7000>`) debug values, run start, the deploy confirm dialog (payload token via explicit confirm), restore-baseline chain, edit sheet, history open + load-more. `console error` clean at every checkpoint.
 - Findings fixed during verification (`5821cc0e`): bridge-panel pairing-code prefetch hitting the absent API in mock mode; mock history offset-cursor duplicating rows across pages.
-- Pre-existing defects found, out of scope here: `ConfirmDialog`/`ModalDialog` content taller than the viewport leaves the footer unreachable by mouse at 1440×900 (restore-purpose deploy confirmation with residue + overlay source) — recorded as **TD-083**; minor mobile card overflow on the candidates table (aesthetics program owns page-defect waves).
+- Pre-existing defects found, out of scope here: `ConfirmDialog`/`ModalDialog` content taller than the viewport leaves the footer unreachable by mouse at 1440×900 (restore-purpose deploy confirmation with residue + overlay source) — recorded as **TD-084** (drafted here as TD-083 before the knowledge-base program claimed that number on `main`); minor mobile card overflow on the candidates table (aesthetics program owns page-defect waves).
 
 ## Documentation Impact Matrix
 

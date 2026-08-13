@@ -5,13 +5,14 @@ import type {
   LogDomainListQuery,
   LogDomainUpdateInput,
   LogFeedbackInput,
+  LogFeedbackInsightsQuery,
   LogJobSnapshot,
   LogListQuery,
   LogRerunInput,
   LogUploadInput
 } from "@/application/ports/LogAnalysisRepository";
 import type { AppAction } from "@/application/state/appState";
-import type { LogDomain, LogDomainKnowledgeLink, LogRecord } from "@/domain/logs/types";
+import type { LogDomain, LogDomainKnowledgeLink, LogFeedbackInsight, LogRecord } from "@/domain/logs/types";
 import type { PrototypeState } from "@/domain/prototype/types";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 
@@ -24,7 +25,7 @@ export type HydrateLogRuntimeAction = {
 };
 
 export type LogRuntimeActions = {
-  refresh(query?: LogListQuery): Promise<void>;
+  refresh(query?: LogListQuery, options?: { notifyOnFailure?: boolean }): Promise<void>;
   upload(input: LogUploadInput): Promise<void>;
   rerun(input: LogRerunInput): Promise<void>;
   archive(logId: string): Promise<void>;
@@ -36,6 +37,7 @@ export type LogRuntimeActions = {
   archiveLogDomain(domainId: string): Promise<LogDomain | null>;
   listLogDomainKnowledgeLinks(domainId: string): Promise<LogDomainKnowledgeLink[]>;
   setLogDomainKnowledgeLinks(input: LogDomainKnowledgeLinksInput): Promise<LogDomainKnowledgeLink[] | null>;
+  listFeedbackInsights(query?: LogFeedbackInsightsQuery): Promise<LogFeedbackInsight[]>;
 };
 
 export type LogRuntimeDispatchAction =
@@ -215,7 +217,7 @@ export function createLogRuntimeActions({
     generation: generations.begin(logId)
   });
 
-  const refresh = async (query?: LogListQuery) => {
+  const refresh = async (query?: LogListQuery, options?: { notifyOnFailure?: boolean }) => {
     if (mode !== "api") {
       return;
     }
@@ -223,7 +225,11 @@ export function createLogRuntimeActions({
     try {
       const logs = await requireRepository(repository).listLogs(query);
       dispatch({ type: "HYDRATE_LOG_RUNTIME", logs });
-    } catch {
+    } catch (error) {
+      // Callers such as the page-level API banner own the failure projection.
+      if (options?.notifyOnFailure === false) {
+        throw error instanceof Error ? error : new Error(logRuntimeFailureNotification);
+      }
       throw notifyFailure(dispatch);
     }
   };
@@ -388,6 +394,19 @@ export function createLogRuntimeActions({
         saved = (await api.setLogDomainKnowledgeLinks?.(input)) ?? null;
       });
       return saved;
+    },
+    async listFeedbackInsights(query) {
+      if (mode !== "api") {
+        return [];
+      }
+
+      try {
+        const api = requireRepository(repository);
+        return (await api.listFeedbackInsights?.(query)) ?? [];
+      } catch {
+        // Monitoring reads never block the admin page; failures degrade to the empty state.
+        return [];
+      }
     }
   };
 }

@@ -40,6 +40,12 @@ eval-cases/logs/
 
 该枚举只为打分(根因桶匹配)存在;新域接入时审慎扩展,绝不泄漏进产品契约。
 
+## 从 `/log-admin` 导出标注草稿（P3）
+
+要把线上已分析的案例升格为标注而不必手抄字段：在 `/log-admin` 打开记录抽屉，使用**「导出评测案例草稿」**。它下载两份可直接放入本目录结构的文件：`case.yaml` 草稿（domain slug 取记录的业务域或 `uncategorized`，`realLog: true`、**`deIdentified: false`**、`rootCauseCategory: TODO`，`keyEvidenceLines` 从报告证据锚点预填，`rootCausePoints` 从结论拆分，`expectedActions` 取自建议动作，`analysisQuestion` 一并带上）与 `log.txt`（分析时的原始行，行号稳定）。
+
+导出物刻意只是**草稿**，没有任何仓库写入或自动提交。入库前你仍必须：(1) 按下方清单对 `log.txt` 与 yaml 人工脱敏；(2) 把 `rootCauseCategory` 的 TODO 换成真实枚举值；(3) 请业务域专家确认预填的要点/行号/动作；(4) 把 `deIdentified` 改为 `true`。loader 会拒绝跳过任一步的草稿——未完成的导出绝不会悄悄算作金标准案例。
+
 ## 标注指南
 
 1. **来源**:优先使用由业务域专家确认过的真实生产日志。每个域在质量门禁激活前目标 20–50 条真实标注案例。

@@ -119,6 +119,100 @@ independent of the seam migration.
   parameter-kernel refactor (#376/#377) and active agent/logs work; migrating them now
   would manufacture conflicts.
 
+## Batch 4 (branch `refactor/audited-write-migrate-agent-logs`) — xiaoze threads + logs
+
+- **Genuine gaps ×3 (xiaoze threads):** thread rename (PATCH) and archive (DELETE)
+  auto-committed their write before auditing outside it; turn persistence committed
+  messages before the session-started/message-appended audits. All three are now single
+  audited writes (`withAuditedWrite`), the turn persister batching its audits via the
+  seam's `AuditSpec[]` support.
+- Shape migration: `logs/service.ts` (1 helper, 8 in-transaction sites) — ratchet zero.
+- **`agent/orchestrator.ts` deliberately stays** (documented in the ratchet): the M4
+  agent session state machine commits in deliberate steps (a pending approval must be
+  visible while a human decides), so its audit boundaries need an owner decision. Known
+  wrinkle for that decision: its `audit()` helper defaults to the pool connection even
+  when called inside the execution transaction.
+- Deferred (still #377 territory): `dts-reload/*`, `parameter-modules`,
+  `parameter-specs`, `parameter-topology`.
+
+## Batch 5 (branch `refactor/audited-write-migrate-remaining`) — post-kernel sweep
+
+Unblocked by the parameter-kernel refactor (#376/#377) landing.
+
+- **Genuine gaps ×5:** module-discovery dismiss/restore (insert/delete auto-committed,
+  audit lossable, traceId always random) and organization driver-schema overlay
+  create/update/deprecate (same pattern). All five are single audited writes now, with
+  routes passing `request.requestId`.
+- Shape migrations: `dts-reload/configurationService.ts` (in-tx), module-attribution
+  helper (7 in-tx sites), overlay activate site.
+- **New allowlist category — cross-org attribution:** the driver-registration audit in
+  `parameter-modules/service.ts` is attributed to the *subject's* organization, not the
+  actor's; the seam derives the organization from auth, so this stays direct (in-tx,
+  documented in the ratchet).
+- **Own-batch deferrals documented in the ratchet:** `parameter-topology/
+  governanceAudit.ts` (shared helper, ~19 call sites across topology/specs services)
+  and `dts-reload/service.ts` (reload run state machine audits each step as it commits —
+  belongs to the C9 reload-state-machine review, same reasoning as orchestrator).
+
+## Batch 6 (branch `refactor/audited-write-migrate-governance`) — governance audit helper
+
+`writeGovernanceAudit` (the shared topology/specs governance outlet, 19 call sites)
+now takes `AuditTx`; `linkAuditSubjects` has no production caller and was left as is.
+
+- **Genuine gaps ×4:**
+  - `persistFailedValidation` and `validateConfigRevision`'s success path: validation-run
+    record, diagnostics, revision status, and audit each auto-committed. Both persistence
+    segments are single audited writes now (the toolchain execution deliberately stays
+    outside the transaction).
+  - `createBindingDraft` / `createNodeEnablementDraft` (editService): draft upsert,
+    rebase, and audit each auto-committed, and neither function took a context, so the
+    audit traceId was always random. The success-path persistence segment (upsert →
+    rebase → audit) is one audited write; routes and the agent action tool pass
+    `requestId` through the service wrappers. The earlier candidate-gate keepStatus
+    writes stay outside on purpose — they are failure-path state preservation.
+- Shape migrations: 15 already-in-transaction call sites across specs/topology services.
+- Ratchet: `parameter-topology/governanceAudit.ts` reaches zero. Every remaining
+  allowlist entry is now a documented deliberate resident or an owner-decision item.
+
+## Batch 7 (branch `refactor/refusal-audit-survives-rollback`) — refusal audits
+
+Resolves the refusal-audit design item (ADR-0027 amendment, 2026-08-13).
+
+- **Seam:** `writeRefusalAudit(db, auth, context, spec)` — pool handle, auto-committed,
+  deliberately outside any transaction; the inverse contract from `writeAuditEventInTx`.
+- **Bug fixed:** sensitive-node deny audits were being erased by the merge / structured-
+  edit transactions they ran inside. `assertSensitiveNodeWriteAllowed` now takes a
+  `refusalDb` pool handle; the merge writeback path threads it through
+  `WritebackServiceContext` and structured-edit submit passes its own pool handle. The
+  no-`refusalDb` fallback keeps old behavior for out-of-transaction callers and is the
+  one remaining direct `createAuditEvent` call in the file (transitional, documented).
+- `assertDtsReloadHumanActor` / `assertSensitiveReloadBatchAllowed` take `Database`
+  directly — those gates run before any transaction by design, and the signature now
+  states it. Both files reach ratchet zero.
+- Behavior test pins that the deny audit goes to the refusal handle, not the caller's tx.
+
+## Batch 8 (branch `refactor/stepwise-audit-boundaries`) — the two state machines
+
+Resolves the deferred reload-state-machine and orchestrator audit boundaries with one
+vocabulary (ADR-0027 amendment): stepwise flows distinguish **milestones** ("this step
+was reached", written immediately on the pool handle via `writeMilestoneAudit`, so they
+survive later failures) from **step results** (commit with that step's state write).
+
+- **Reload state machine** (`dts-reload/service.ts` reaches zero):
+  - Milestones: run started, deploy started, and the refused-deploy terminal in the
+    catch path — pool-handle writes, deliberately outside any transaction.
+  - Results: blocked/validated now commit with the run row inside `persistRunOutcome`
+    (which also injects the artifact hashes into the audit); the deploy terminal
+    (verified/contradicted/unverifiable/failed) moved into the terminal persist
+    callback — deploy state, residue bookkeeping (under the device lease), and the
+    terminal audit are one audited write.
+- **Agent orchestrator** (`agent/orchestrator.ts` reaches zero):
+  - approval-requested, tool succeeded/failed, and approval-rejected each auto-committed
+    their state writes before auditing outside them — now one audited write per step.
+    The approve-execution path already ran audit-in-transaction; it now carries the
+    brand. The "running" transition deliberately stays outside (visible during
+    execution). The unused `createAuditEvent` injection option was removed.
+
 ## PR2+ migration inventory (ratchet allowlist, 41 direct calls in 27 files)
 
 Migrate per module; each batch moves call sites to `withAuditedWrite`/`writeAuditEventInTx`

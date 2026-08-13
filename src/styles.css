@@ -110,7 +110,8 @@
    * App layers below, overlay scale above. Declared in one place so a new
    * dialog does not need to invent another number and accidentally land under
    * the Xiaoze launcher. Order: sticky < topbar < sidebar < dropdown, then
-   * Xiaoze FAB < dialog < nested dialog < Xiaoze chat popup.
+   * Xiaoze FAB < dialog < nested dialog < Xiaoze chat popup < Xiaoze approval
+   * < global toast.
    */
   --z-sticky: 20;
   --z-topbar: 30;
@@ -120,9 +121,9 @@
   --z-xiaoze-fab: 1100;
   --z-modal-backdrop: 1150;
   --z-modal-backdrop-nested: 1160;
-  --z-toast: 1180;
   --z-xiaoze-popup: 1200;
   --z-xiaoze-approval: 1250;
+  --z-toast: 1350;
 
   /* ── Layout ── */
   --sidebar-width: 256px;
@@ -1190,6 +1191,25 @@ body {
   border: 1px solid #dfe5f3;
   border-radius: 8px;
   box-shadow: 0 24px 64px rgba(15, 23, 42, 0.16);
+}
+
+/* Session-restore and backend-unreachable screens share the auth panel look
+   but stay lightweight: brand, one explanatory note, and an optional action. */
+.auth-status-panel {
+  align-self: center;
+  gap: 14px;
+}
+
+.auth-status-note {
+  margin: 0;
+  color: #475569;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.auth-status-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .auth-brand {
@@ -4779,6 +4799,62 @@ td small {
   min-width: 0;
 }
 
+.api-runtime-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  color: #7f1d1d;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+}
+
+.api-runtime-error-banner > svg {
+  flex-shrink: 0;
+  color: #dc2626;
+}
+
+.api-runtime-error-banner__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.api-runtime-error-banner__body strong {
+  display: block;
+  font-size: 14px;
+}
+
+.api-runtime-error-banner__body p {
+  margin: 2px 0 0;
+  color: #991b1b;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.api-runtime-error-banner .button {
+  flex-shrink: 0;
+}
+
+.api-runtime-sync-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 8px 14px;
+  color: #334155;
+  font-size: 13px;
+  background: #f8fafc;
+  border: 1px solid #dfe5f3;
+  border-radius: 10px;
+}
+
+.api-runtime-sync-banner__spinner {
+  animation: spin 1s linear infinite;
+  color: var(--app-muted);
+}
+
 .permission-inline-note span {
   color: var(--app-muted);
   font-size: 13px;
@@ -7567,6 +7643,57 @@ td small {
   pointer-events: none;
 }
 
+/* Xiaoze approval card portals to <body>, so it must outrank the chat popup
+   (--z-xiaoze-popup) or the scrim buries it. Restack both the overlay and the
+   content; !important overrides the Tailwind z-50 utility on these slots. */
+.xiaoze-approval-overlay {
+  z-index: var(--z-xiaoze-approval) !important;
+}
+
+.xiaoze-approval-dialog {
+  z-index: var(--z-xiaoze-approval) !important;
+}
+
+/* Global notification toast: reuses the logs toast visuals but must sit above
+   every overlay (dialogs, Xiaoze popup) so runtime feedback stays visible. */
+.app-toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(420px, calc(100vw - 56px));
+  z-index: var(--z-toast);
+}
+
+.app-toast__message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.app-toast__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--app-muted);
+  cursor: pointer;
+}
+
+.app-toast__close:hover {
+  background: var(--surface-low);
+  color: var(--text);
+}
+
+.app-toast__close:focus-visible {
+  outline: 2px solid var(--app-primary);
+  outline-offset: 1px;
+}
+
 .toast {
   pointer-events: auto;
   display: flex;
@@ -7922,6 +8049,56 @@ td small {
   color: var(--text-secondary);
   font-size: var(--text-sm);
   line-height: 1.55;
+}
+
+.node-bulk-high-risk-list {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.node-bulk-high-risk-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+
+.node-bulk-high-risk-list li span {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: #7f1d1d;
+  word-break: break-all;
+}
+
+.node-bulk-write-summary {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  padding: 10px 16px;
+  color: var(--text, #0f172a);
+  font-size: 13px;
+  background: #fff;
+  border: 1px solid #dfe5f3;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+.topic-trend-note {
+  margin: 6px 0 0;
+  color: #8a94a6;
+  font-size: 11.5px;
+  line-height: 1.4;
 }
 
 .topic-evidence-grid {
@@ -10707,6 +10884,9 @@ td small {
   padding: 24px;
   /* The one dialog dimming value (ui-design-system §Dialogs). */
   background: color-mix(in srgb, var(--text) 40%, transparent);
+  /* Radix modal dialogs set body { pointer-events: none }; a confirm dialog
+     stacked above them must stay interactive. */
+  pointer-events: auto;
   animation: modal-backdrop-enter var(--duration-slow) var(--ease-out);
 }
 

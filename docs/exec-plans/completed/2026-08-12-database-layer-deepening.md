@@ -1,6 +1,6 @@
 # Database Layer Deepening Program (C1–C5)
 
-Status: **Active** (C1/C5/C3 merged; C2 conversion and C4 continue under shared/other ownership — see table) · Started 2026-08-12 · Owner: architecture session 2026-08-12
+Status: **Completed** (C1 #317, C5 #320/#329, C3 #328, docs #335; C2 fixture ceded to the parallel test-foundation program, C4 ceded to the parameters-repository-split program)
 
 ## Goal
 
@@ -11,7 +11,7 @@ Execute the five deepening candidates from the 2026-08-12 database-layer archite
 | C1 Transaction seam | `Database.transaction` hands the callback a full `Database` (savepoint-backed nesting); delete inline fakes, casts, duck-typing | **Merged** — #317 |
 | C5 Migration paper cuts | Directory-computed pending expectations; consolidated runner with `{ before \| through }`; advisory lock + checksum in `applyMigrations`; generated `db-schema.md` with check gate (closes TD-004) | **Merged** — #329 (replaced auto-closed #320) |
 | C3 Identity single seam | `parameterIdentityMode.ts` resolved once at wiring; all 33 fork sites dispatch synchronously; `cutoverAwareIdentity.ts` deleted; per-call DB probes gone | **Merged** — #328. Legacy SQL text intentionally stays inline until the repository split re-homes each function once (see C4) |
-| C2 Test surface | Per-worker template databases (fixture) + behavioural repository tests | **Split ownership**: the per-worker fingerprinted-template fixture was implemented by a parallel session (in flight); the behavioural test conversion is tracked as **TD-079** and rides on that fixture once it lands |
+| C2 Test surface | Per-worker template databases (fixture) + behavioural repository tests | **Split ownership**: the per-worker fingerprinted-template fixture was implemented by a parallel session (in flight); the behavioural test conversion is tracked as **TD-096** and rides on that fixture once it lands |
 | C4 Parameters repository split | Split the function bag by domain subject; shared change-request projection; concentrate legacy SQL into `legacyParameterIdentityAdapter` | **Ceded to** `docs/exec-plans/active/2026-08-12-parameters-repository-split.md` (slice 1 merged as #321: `projectRepository`, `reviewWorkflowRepository`). Carry-over asks for that plan: consolidate the six change-request projections (they differ subtly — `source_node_path` source and `getChangeRequestById` extra columns are intentional, design before merging), move legacy SQL branches into the adapter, and require `Database` in signatures of lock-taking functions |
 
 TD-042 still gates deleting the legacy identity adapter; `legacyDependencyGuard.test.ts` keeps fencing legacy tokens.
@@ -111,6 +111,6 @@ Blocking before this plan moves to `completed/`:
 - [x] `docs/generated/db-schema.md` regenerated and gated via `docs:check` (C5)
 - [x] `docs/design-docs/full-stack-architecture.md` reviewed for C1/C3 — unchanged: it states transaction/authz rules at a level that is unaffected (no callback-type or probe wording)
 - [x] `docs/runbooks/parameter-identity-cutover.md` reviewed for C3 — unchanged: it documents the maintenance-window procedure, not the runtime probe; `localPostCutover` still resolves the mode after applying cutover
-- [x] Deferred work recorded: behavioural test conversion → TD-079; legacy adapter deletion → TD-042 (unchanged blocker); repository split carry-overs → `2026-08-12-parameters-repository-split.md`
-- [ ] Remaining before `completed/`: TD-079 conversion done or explicitly re-scoped, and the C4 carry-overs above absorbed by the split plan
-- Testing-strategy doc note: the behavioural-test pattern write-up moves with TD-079 (the fixture that enables it landed outside this plan), so `docs/design-docs/testing-strategy.md` is intentionally not updated in this revision
+- [x] Deferred work recorded: behavioural test conversion → TD-096; legacy adapter deletion → TD-042 (unchanged blocker); repository split carry-overs → `2026-08-12-parameters-repository-split.md`
+- [ ] Remaining before `completed/`: TD-096 conversion done or explicitly re-scoped, and the C4 carry-overs above absorbed by the split plan
+- Testing-strategy doc note: the behavioural-test pattern write-up moves with TD-096 (the fixture that enables it landed outside this plan), so `docs/design-docs/testing-strategy.md` is intentionally not updated in this revision

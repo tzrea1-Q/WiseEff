@@ -1,6 +1,8 @@
 import {
+  AlertTriangle,
   ChevronDown,
   FileText,
+  LoaderCircle,
   Menu,
   MessageSquareText,
   PanelLeftClose,
@@ -9,6 +11,7 @@ import {
 } from "lucide-react";
 import { AppShellConnectionError } from "@/components/common/AppShellConnectionError";
 import { AppShellSkeleton } from "@/components/common/AppShellSkeleton";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { ToastProvider } from "@/components/common/toast/ToastProvider";
 import { TopBarNotifications } from "./components/notifications/TopBarNotifications";
@@ -68,7 +71,7 @@ import { supportsXiaozeProactiveInsights } from "@/features/agent/xiaozeProactiv
 import { FeedbackDialog } from "@/features/product-feedback/FeedbackDialog";
 import { xiaozeProactiveEnabled } from "@/infrastructure/http/runtimeMode";
 import { getPageByPath, getXiaozeContextSummary, navigationItems, pageUsesProjectScope, PageConfig, utilityItems } from "./appConfig";
-import { reducer, type AppAction } from "@/application/state/appState";
+import { reducer, type AppAction, type ApiRuntimeDataDomain } from "@/application/state/appState";
 import { createAppRuntime, type WiseEffAuthClient } from "@/app/appRuntime";
 
 function isStaticDownloadPath(pathname: string) {
@@ -77,6 +80,7 @@ function isStaticDownloadPath(pathname: string) {
 import { TopBarActionsContext } from "./components/layout";
 import { readInitialNodeDebuggingProtocol } from "./NodeDebuggingPage";
 import {
+  createApiInitialState,
   initialState,
   mockDataFingerprint
 } from "./mockData";
@@ -98,16 +102,20 @@ import {
   type UpdateCurrentUserProfileInput
 } from "@/infrastructure/http/authClient";
 import { clearSessionDraftsForLogout } from "@/application/project-configuration/sessionDraftStorage";
+import { AppToastLayer } from "@/components/common/AppToastLayer";
+import { unsavedParameterWorkCount } from "@/application/parameters/unsavedParameterWork";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createMockRuntimeState, type MockRuntimeState } from "@/infrastructure/mock/mockState";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
-import { isNetworkError, presentError } from "@/infrastructure/http/presentError";
-import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
+import { presentError } from "@/infrastructure/http/presentError";
+import { wiseEffRuntimeMode, xiaozeInspectorEnabled, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
 
 /**
- * `unreachable` means the `/api/v1/me` probe failed at the network level
- * (service down / offline): the session may still be valid, so the shell shows
- * a retry state instead of dropping the user to the login form (FA-21).
+ * `unreachable` means the `/api/v1/me` probe failed before an auth rejection
+ * (service down / offline / restart): the session may still be valid, so the
+ * shell shows a retry state instead of dropping the user to the login form
+ * (FA-21).
  */
 type ApiAuthStatus = "checking" | "authenticated" | "unauthenticated" | "unreachable";
 
@@ -125,6 +133,15 @@ function authProbeErrorMessage(error: unknown) {
     return "";
   }
   return presentError(error, "无法验证登录状态，请稍后重试。");
+}
+
+/**
+ * Only an explicit backend rejection (401/403 -> UNAUTHENTICATED/FORBIDDEN)
+ * should end the local session. Network failures, timeouts, and 5xx responses
+ * mean the backend is unreachable, so the token must survive the outage.
+ */
+function isAuthRejectionError(error: unknown) {
+  return error instanceof WiseEffApiError && (error.code === "UNAUTHENTICATED" || error.code === "FORBIDDEN");
 }
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "wiseeff.sidebar.collapsed";
@@ -239,7 +256,7 @@ function App({
   authClient,
   debuggingAdminClient,
   debuggingGateway,
-  initialAppState = initialState,
+  initialAppState,
   logAnalysisRepository,
   listParameterConfigSets,
   parameterRepository,
@@ -251,6 +268,11 @@ function App({
   runtimeMode = wiseEffRuntimeMode,
   userGovernanceActions
 }: AppProps = {}) {
+  // API mode boots from empty business slices (no demo data flash); mock mode
+  // keeps the full prototype state for demos and component tests.
+  const [resolvedInitialAppState] = useState(
+    () => initialAppState ?? (runtimeMode === "api" ? createApiInitialState() : initialState)
+  );
   return (
     <TooltipProvider delayDuration={0}>
       <ToastProvider>
@@ -258,7 +280,7 @@ function App({
           authClient={authClient}
           debuggingAdminClient={debuggingAdminClient}
           debuggingGateway={debuggingGateway}
-          initialAppState={initialAppState}
+          initialAppState={resolvedInitialAppState}
           key={mockDataFingerprint}
           logAnalysisRepository={logAnalysisRepository}
           listParameterConfigSets={listParameterConfigSets}
@@ -647,55 +669,53 @@ function AppShell({
   const parameterRuntimeConnectedRef = useRef(false);
   const logRuntimeConnectedRef = useRef(false);
   const debuggingRuntimeConnectedRef = useRef(false);
+  const [apiRuntimeFailures, setApiRuntimeFailures] = useState<ReadonlySet<ApiRuntimeDataDomain>>(
+    () => new Set()
+  );
+  const [apiRuntimeSynced, setApiRuntimeSynced] = useState(runtimeMode !== "api");
+  const [apiRuntimeRetrying, setApiRuntimeRetrying] = useState(false);
 
   const refreshApiRuntimeData = useCallback(
     async (cancelledRef?: { current: boolean }, roleId = stateRef.current.activeRoleId) => {
       const runtimeRoleId = migrateLegacyRoleId(roleId);
       const debuggingProtocol = pageKeyRef.current === "node-debugging" ? readInitialNodeDebuggingProtocol() : "hdc";
-      const debuggingRefresh = canPerform(runtimeRoleId, "debugging.use")
-        ? debuggingActions.refresh({ protocol: debuggingProtocol })
+      const canUseDebugging = canPerform(runtimeRoleId, "debugging.use");
+      const debuggingRefresh = canUseDebugging
+        ? debuggingActions.refresh({ protocol: debuggingProtocol }, { notifyOnFailure: false })
         : Promise.resolve("skipped" as const);
       const [parameterRefreshResult, logRefreshResult, debuggingRefreshResult] = await Promise.allSettled([
         parameterActions.refresh({ notifyOnFailure: false }),
-        logActions.refresh(),
+        logActions.refresh(undefined, { notifyOnFailure: false }),
         debuggingRefresh
       ]);
       if (cancelledRef?.current) return;
+      // Failed domains drop to empty slices + a persistent page banner. Demo data
+      // must never stand in for live data in API mode.
+      const failures = new Set<ApiRuntimeDataDomain>();
       if (
         parameterRefreshResult.status === "rejected" ||
         (parameterRefreshResult.value && "notification" in parameterRefreshResult.value)
       ) {
-        dispatch({ type: "ADD_NOTIFICATION", message: "无法连接雷泽参数 API，已保留本地演示数据" });
+        failures.add("parameters");
+        dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "parameters" });
       } else if (!parameterRuntimeConnectedRef.current) {
         parameterRuntimeConnectedRef.current = true;
         dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽参数 API" });
       }
       if (logRefreshResult.status === "rejected") {
-        if (
-          !(
-            logRefreshResult.reason instanceof Error &&
-            (logRefreshResult.reason as { alreadyNotified?: unknown }).alreadyNotified === true
-          )
-        ) {
-          dispatch({ type: "ADD_NOTIFICATION", message: "无法加载雷泽日志 API，已保留本地演示数据" });
-        }
+        failures.add("logs");
+        dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "logs" });
       } else if (!logRuntimeConnectedRef.current) {
         logRuntimeConnectedRef.current = true;
         dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽日志 API" });
       }
-      if (!canPerform(runtimeRoleId, "debugging.use")) {
+      if (!canUseDebugging) {
         setDebuggingRuntimeStatus("ready");
       } else if (debuggingRefreshResult.status === "rejected") {
         setDebuggingRuntimeStatus("error");
         setDebuggingRuntimeError(presentError(debuggingRefreshResult.reason, "无法加载调试节点数据，请稍后重试。"));
-        if (
-          !(
-            debuggingRefreshResult.reason instanceof Error &&
-            (debuggingRefreshResult.reason as { alreadyNotified?: unknown }).alreadyNotified === true
-          )
-        ) {
-          dispatch({ type: "ADD_NOTIFICATION", message: "无法加载雷泽调试 API，请稍后重试" });
-        }
+        failures.add("debugging");
+        dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "debugging" });
       } else {
         setDebuggingRuntimeStatus("ready");
         setDebuggingRuntimeError("");
@@ -704,9 +724,20 @@ function AppShell({
           dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽调试 API" });
         }
       }
+      setApiRuntimeFailures(failures);
+      setApiRuntimeSynced(true);
     },
     [debuggingActions, logActions, parameterActions]
   );
+
+  const retryApiRuntimeData = useCallback(async () => {
+    setApiRuntimeRetrying(true);
+    try {
+      await refreshApiRuntimeData();
+    } finally {
+      setApiRuntimeRetrying(false);
+    }
+  }, [refreshApiRuntimeData]);
   const mockNotificationsClient = useMemo(
     () =>
       runtimeMode === "mock"
@@ -776,16 +807,16 @@ function AppShell({
       })
       .catch((error) => {
         if (cancelledRef.current) return;
-        if (isNetworkError(error)) {
-          // Service unreachable: keep the local session token and offer a
-          // retry instead of logging the user out (FA-21).
-          setApiAuthStatus("unreachable");
-          setApiAuthError("");
+        if (isAuthRejectionError(error)) {
+          clearLocalAuthToken();
+          setApiAuthStatus("unauthenticated");
+          setApiAuthError(authProbeErrorMessage(error));
           return;
         }
-        clearLocalAuthToken();
-        setApiAuthStatus("unauthenticated");
-        setApiAuthError(authProbeErrorMessage(error));
+        // Backend restart or network blip: keep the token and show the retry
+        // state instead of dropping the user to the login form (FA-21).
+        setApiAuthStatus("unreachable");
+        setApiAuthError("");
       });
 
     return () => {
@@ -876,6 +907,20 @@ function AppShell({
     };
   }, []);
 
+  // Unsubmitted parameter drafts must survive accidental reloads/navigation.
+  useEffect(() => {
+    const guardUnload = (event: BeforeUnloadEvent) => {
+      if (unsavedParameterWorkCount() > 0) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", guardUnload);
+    return () => {
+      window.removeEventListener("beforeunload", guardUnload);
+    };
+  }, []);
+
   const navigate = useCallback((nextPath: string) => {
     const url = new URL(nextPath, window.location.origin);
     if (isStaticDownloadPath(url.pathname)) {
@@ -897,6 +942,7 @@ function AppShell({
   }, []);
 
   const retryAuthProbe = useCallback(() => {
+    setApiAuthStatus("checking");
     setAuthProbeAttempt((attempt) => attempt + 1);
   }, []);
 
@@ -910,6 +956,10 @@ function AppShell({
 
   const toggleSidebarCollapsed = useCallback(() => {
     setSidebarCollapsed((collapsed) => !collapsed);
+  }, []);
+
+  const dismissNotification = useCallback(() => {
+    dispatch({ type: "DISMISS_NOTIFICATION" });
   }, []);
 
   const closeMobileNav = useCallback(() => {
@@ -1036,7 +1086,9 @@ function AppShell({
     );
   }
 
-  const enableXiaozeInspector = canPerform(currentRoleId, "admin.access");
+  // Explicit opt-in only: mounting the inspector drags in the CopilotKit
+  // announcement banner, which has no standalone off switch upstream.
+  const enableXiaozeInspector = xiaozeInspectorEnabled && canPerform(currentRoleId, "admin.access");
   const showXiaozeProactiveInsights =
     runtimeMode === "api" &&
     xiaozeProactiveEnabled &&
@@ -1048,6 +1100,37 @@ function AppShell({
       <XiaozeProactiveInsights enabled />
     </div>
   ) : null;
+
+  const apiRuntimeDomainLabels: Record<ApiRuntimeDataDomain, string> = {
+    parameters: "参数",
+    logs: "日志",
+    debugging: "调试"
+  };
+  const apiRuntimeStatusBanner =
+    runtimeMode !== "api" || isPlatformHome ? null : apiRuntimeFailures.size > 0 ? (
+      <div className="api-runtime-error-banner" role="alert" aria-live="assertive">
+        <AlertTriangle size={18} aria-hidden="true" />
+        <div className="api-runtime-error-banner__body">
+          <strong>
+            无法连接雷泽{[...apiRuntimeFailures].map((domain) => apiRuntimeDomainLabels[domain]).join("、")} API，当前无数据
+          </strong>
+          <p>为避免误读，连接失败时不展示演示数据；请确认后端服务可用后重试。</p>
+        </div>
+        <button
+          type="button"
+          className="button"
+          disabled={apiRuntimeRetrying}
+          onClick={() => void retryApiRuntimeData()}
+        >
+          {apiRuntimeRetrying ? "重试中…" : "重试"}
+        </button>
+      </div>
+    ) : !apiRuntimeSynced ? (
+      <div className="api-runtime-sync-banner" role="status">
+        <LoaderCircle size={16} className="api-runtime-sync-banner__spinner" aria-hidden="true" />
+        正在连接雷泽服务，加载真实数据…
+      </div>
+    ) : null;
 
   const appShell = (
     <div className={appShellClassName}>
@@ -1128,6 +1211,7 @@ function AppShell({
             </div>
           ) : (
             <main className="main-content" aria-label={isParameterHome ? "参数管理首页" : undefined}>
+              {apiRuntimeStatusBanner}
               {proactiveInsightsBanner}
               <PageRouter
                 page={page}
@@ -1183,6 +1267,7 @@ function AppShell({
             onClose={() => setProjectInitOpen(false)}
           />
         ) : null}
+      <AppToastLayer notifications={state.notifications} onDismiss={dismissNotification} />
       </div>
   );
 
@@ -1365,6 +1450,10 @@ function TopBar({
 }) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [pendingProjectSwitch, setPendingProjectSwitch] = useState<{
+    projectId: string;
+    unsavedCount: number;
+  } | null>(null);
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
   const canCreateProject = canPerform(currentRoleId, "parameter.edit");
   const showProjectInitAction =
@@ -1377,12 +1466,26 @@ function TopBar({
   const projectOptions = state.configDraft.projects.map((project) => ({ value: project.id, label: project.name }));
   const selectedProjectId =
     page.key === "parameters" ? new URLSearchParams(search).get("project") || state.activeProjectId : state.activeProjectId;
-  const handleProjectChange = (projectId: string) => {
+  const commitProjectChange = (projectId: string) => {
     dispatch({ type: "SET_PROJECT", projectId });
 
     if (page.key === "parameters") {
       onNavigate(`/parameters?project=${encodeURIComponent(projectId)}`);
     }
+  };
+
+  const handleProjectChange = (projectId: string) => {
+    // Switching projects tears down the parameter workbench; unsaved drafts
+    // must be acknowledged before they are dropped (confirm matrix, presented
+    // through the shared ConfirmDialog primitive).
+    if (page.key === "parameters") {
+      const unsavedCount = unsavedParameterWorkCount();
+      if (unsavedCount > 0) {
+        setPendingProjectSwitch({ projectId, unsavedCount });
+        return;
+      }
+    }
+    commitProjectChange(projectId);
   };
 
   return (
@@ -1487,6 +1590,20 @@ function TopBar({
           }}
         />
       ) : null}
+      <ConfirmDialog
+        open={pendingProjectSwitch !== null}
+        title="切换项目"
+        description={`有 ${pendingProjectSwitch?.unsavedCount ?? 0} 项未保存的修改，切换项目将丢弃这些修改。`}
+        confirmLabel="丢弃并切换"
+        tone="danger"
+        onConfirm={() => {
+          if (pendingProjectSwitch) {
+            commitProjectChange(pendingProjectSwitch.projectId);
+          }
+          setPendingProjectSwitch(null);
+        }}
+        onCancel={() => setPendingProjectSwitch(null)}
+      />
     </header>
   );
 }

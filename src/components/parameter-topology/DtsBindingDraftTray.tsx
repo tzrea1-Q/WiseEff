@@ -7,6 +7,7 @@ import type {
 } from "@/application/ports/ParameterRepository";
 import { ParameterValueDiff } from "@/components/ParameterValueDiff";
 import { formatDtsRawValueForUi } from "@/domain/parameter-topology/formatDtsRawValueForUi";
+import { presentError } from "@/infrastructure/http/presentError";
 
 import {
   isBindingDraft,
@@ -19,12 +20,17 @@ export type { PendingBindingDraft, PendingEnablementDraft, PendingTopologyDraft 
 export type DtsBindingDraftTrayProps = {
   projectId: string;
   drafts: PendingTopologyDraft[];
-  /** When non-empty, only selected binding drafts are included; enablement drafts on the same tip always ride along. */
+  /**
+   * Submit scope = the checked binding drafts (WYSIWYG). Enablement drafts on the
+   * same working tip as a checked binding ride along and are annotated in the tray.
+   * `undefined` keeps whole-tray submission for callers without row selection.
+   */
   selectedBindingIds?: ReadonlySet<string>;
   candidates: WorkflowAssigneeCandidates | null;
   candidatesError?: string | null;
   externalBlocker?: string | null;
-  onRemove: (draftId: string) => void;
+  /** May reject (e.g. server-side draft delete failed); the tray shows the error inline. */
+  onRemove: (draftId: string) => void | Promise<void>;
   onSubmit?: (
     input: SubmitParameterChangesInput
   ) => Promise<void | { notification: string; alreadyNotified?: boolean }>;
@@ -117,10 +123,12 @@ function resolveSubmitDrafts(
   drafts: PendingTopologyDraft[],
   selectedBindingIds?: ReadonlySet<string>
 ): PendingTopologyDraft[] {
-  if (!selectedBindingIds || selectedBindingIds.size === 0) return drafts;
-  const selectedBindings = drafts.filter(
-    (draft) =>
-      isBindingDraft(draft) && selectedBindingIds.has(draft.projectParameterBindingId)
+  if (!selectedBindingIds) return drafts;
+  const bindingDrafts = drafts.filter(isBindingDraft);
+  // Enablement-only rounds have no selectable rows: what you see is what you submit.
+  if (bindingDrafts.length === 0) return drafts;
+  const selectedBindings = bindingDrafts.filter((draft) =>
+    selectedBindingIds.has(draft.projectParameterBindingId)
   );
   if (selectedBindings.length === 0) return [];
   const tips = new Set(selectedBindings.map((draft) => draft.candidateRevisionId));
@@ -180,6 +188,8 @@ export function DtsBindingDraftTray({
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [removingDraftId, setRemovingDraftId] = useState<string | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const requestGenerationRef = useRef(0);
   const mountedRef = useRef(true);
   const activeRequestRef = useRef<{
@@ -242,9 +252,12 @@ export function DtsBindingDraftTray({
   );
   const candidateError = useMemo(() => candidateBlocker(submitDrafts), [submitDrafts]);
   const actionValueError = useMemo(() => actionValueBlocker(submitDrafts), [submitDrafts]);
+  const hasBindingDrafts = drafts.some((draft) => isBindingDraft(draft));
   const selectionError =
-    selectedBindingIds && selectedBindingIds.size > 0 && submitDrafts.length === 0
-      ? "当前勾选的草稿不在本轮修改中，请重新选择后再提交。"
+    selectedBindingIds && hasBindingDrafts && submitDrafts.length === 0
+      ? selectedBindingIds.size === 0
+        ? "尚未勾选任何草稿；请先勾选要提交的草稿。"
+        : "当前勾选的草稿不在本轮修改中，请重新选择后再提交。"
       : null;
   const roleError = displayedCandidates && !(hardwareCommitterId && softwareCommitterId && softwareUserId)
     ? "项目缺少完整的硬件 MDE、软件 MDE 或软件开发候选人，已阻止提交。"
@@ -265,8 +278,23 @@ export function DtsBindingDraftTray({
     displayedCandidates &&
     !blocker &&
     !submitting &&
-    !submitted
+    !submitted &&
+    !removingDraftId
   );
+  const submitDraftIds = new Set(submitDrafts.map((draft) => draft.draftId));
+  const handleRemove = (draftId: string) => {
+    setRemovingDraftId(draftId);
+    setRemoveError(null);
+    void Promise.resolve(onRemove(draftId))
+      .catch((error: unknown) => {
+        if (!mountedRef.current) return;
+        setRemoveError(presentError(error, "移除草稿失败，请重试。"));
+      })
+      .finally(() => {
+        if (!mountedRef.current) return;
+        setRemovingDraftId(null);
+      });
+  };
 
   if (drafts.length === 0) return null;
 
@@ -276,14 +304,14 @@ export function DtsBindingDraftTray({
         <div>
           <h3>本轮已修改</h3>
           <p>
-            {selectedBindingIds && selectedBindingIds.size > 0
-              ? `将提交已选 ${submitDrafts.length} / ${drafts.length} 项草稿。`
-              : "未勾选时提交全部草稿；勾选后仅提交选中 binding，同版本节点启用草稿一并提交。"}
+            {selectedBindingIds && hasBindingDrafts
+              ? `所见即所提：将提交勾选的 ${submitDrafts.length} / ${drafts.length} 项草稿；同一工作版本的节点启用草稿将随勾选项一并提交（已在条目上标注）。`
+              : "本轮全部草稿将一并提交审核。"}
           </p>
         </div>
         <span>
           {candidateError
-            ? selectedBindingIds && selectedBindingIds.size > 0
+            ? selectedBindingIds
               ? `提交 ${submitDrafts.length} / ${drafts.length} 项`
               : `${drafts.length} 项`
             : `本轮 ${drafts.length} 项`}
@@ -301,6 +329,11 @@ export function DtsBindingDraftTray({
           const targetValue = draft.action === "delete"
             ? (isBindingDraft(draft) ? "删除属性（tombstone）" : "未声明")
             : formatEnablementValue(draft.rawText);
+          const ridesAlong =
+            Boolean(selectedBindingIds) &&
+            hasBindingDrafts &&
+            isEnablementDraft(draft) &&
+            submitDraftIds.has(draft.draftId);
 
           return (
             <article className="dts-binding-draft-tray__item" key={draft.draftId}>
@@ -317,16 +350,21 @@ export function DtsBindingDraftTray({
                   type="button"
                   className="button subtle"
                   aria-label="移出本轮修改"
-                  disabled={submitting}
-                  onClick={() => onRemove(draft.draftId)}
+                  disabled={submitting || removingDraftId !== null}
+                  onClick={() => handleRemove(draft.draftId)}
                 >
                   <X size={15} strokeWidth={1.9} aria-hidden="true" />
-                  移除
+                  {removingDraftId === draft.draftId ? "移除中…" : "移除"}
                 </button>
               </div>
               <div className="dts-binding-draft-tray__diff" aria-label={diffLabel}>
                 <ParameterValueDiff baseValue={currentValue} targetValue={targetValue} />
               </div>
+              {ridesAlong ? (
+                <p className="dts-binding-draft-tray__ride-along" role="note">
+                  同一工作版本：将随勾选的参数草稿一并提交。
+                </p>
+              ) : null}
               <p><strong>原因：</strong>{draft.reason}</p>
             </article>
           );
@@ -361,6 +399,7 @@ export function DtsBindingDraftTray({
       ) : null}
 
       {blocker ? <p className="form-error" role="alert">{blocker}</p> : null}
+      {removeError ? <p className="form-error" role="alert">{removeError}</p> : null}
       {submitError ? <p className="form-error" role="alert">{submitError}</p> : null}
       {submitted ? <p role="status"><CircleCheck size={15} strokeWidth={2} aria-hidden="true" />已提交正式审核，后续阶段将在审核队列中按角色推进。</p> : null}
 
@@ -419,7 +458,7 @@ export function DtsBindingDraftTray({
           }}
         >
           <Send size={15} strokeWidth={1.9} aria-hidden="true" />
-          {submitting ? "提交中…" : "提交审核"}
+          {submitting ? "提交中…" : `提交审核（${submitDrafts.length} 项）`}
         </button>
         {submitted ? (
           <button type="button" className="button subtle" onClick={() => onNavigate("/parameter-review")}>查看变更审阅</button>

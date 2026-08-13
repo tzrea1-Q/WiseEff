@@ -851,9 +851,14 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       await expect(editDetail).toBeVisible();
       await editDetail.getByLabel("目标值", { exact: true }).fill(editedRaw);
       await editDetail.getByLabel("修改原因", { exact: true }).fill(typedEditReason);
+      // The draft dialog resolves its binding from hydrated server drafts, so after
+      // earlier rounds advanced the working tip the POST may target the binding's
+      // current id rather than the one captured at page load — match any binding
+      // draft POST for this project instead of pinning the stale id.
       const responsePromise = page.waitForResponse((response) =>
         response.request().method() === "POST" &&
-        response.url().includes(`/api/v2/projects/${projectId}/parameter-bindings/${encodeURIComponent(scBinding!.id)}/drafts`)
+        response.url().includes(`/api/v2/projects/${projectId}/parameter-bindings/`) &&
+        response.url().includes("/drafts")
       );
       await editDetail.getByRole("button", { name: "校验并加入本轮" }).click();
       return responsePromise;
@@ -870,7 +875,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       };
     };
     expect(draftBody.item.candidateRevisionId).toBeTruthy();
-    expect(draftBody.item.projectParameterBindingId).toBe(scBinding!.id);
+    expect(draftBody.item.projectParameterBindingId).toBeTruthy();
     expect(draftBody.item.rawText ?? editedRaw).toMatch(/30/);
 
     // A candidate from Aurora must never be requested under Nebula after the visible project switch.
@@ -990,7 +995,9 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     };
     expect(submitWire.items?.[0]).toMatchObject({
       draftId: draftBody.item.draftId,
-      projectParameterBindingId: scBinding!.id,
+      // The binding id may have been re-issued when earlier rounds advanced the
+      // working tip; assert against the id the draft round actually returned.
+      projectParameterBindingId: draftBody.item.projectParameterBindingId,
       parameterSpecId: scBinding!.parameterSpecId,
       action: "set"
     });

@@ -4,7 +4,7 @@ import type { AuthContext } from "../auth/types";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { makeTestAuthContext } from "../../testing/authContext";
-import { getProjectById } from "../parameters/projectRepository";
+import { getProjectById } from "../projects/repository";
 import {
   getBindingForProject,
   listBindingCompareRows,
@@ -19,7 +19,7 @@ import {
   listProjectBindings
 } from "./service";
 
-vi.mock("../parameters/projectRepository", () => ({
+vi.mock("../projects/repository", () => ({
   getProjectById: vi.fn()
 }));
 

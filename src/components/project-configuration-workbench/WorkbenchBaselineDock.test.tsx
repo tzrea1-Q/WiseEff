@@ -85,4 +85,24 @@ describe("WorkbenchBaselineDock", () => {
     await user.click(screen.getByRole("button", { name: /hist-one/ }));
     expect(onSelectBaseline).toHaveBeenCalledWith("bl-hist");
   });
+
+  it("projects the latest baseline command failure as an alert", () => {
+    render(
+      <WorkbenchBaselineDock
+        baselines={[draft]}
+        selectedBaselineId="bl-draft"
+        canAdmin
+        canRelease={false}
+        canRestore={false}
+        actionError="对比基线失败，请重试。"
+        onSelectBaseline={vi.fn()}
+        onCompare={vi.fn()}
+        onOpenRelease={vi.fn()}
+        onOpenRestore={vi.fn()}
+        onExitCompare={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("对比基线失败，请重试。");
+  });
 });

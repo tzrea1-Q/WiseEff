@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import { createAuditEvent } from "../audit/repository";
+import { writeRefusalAudit } from "../audit/auditedWrite";
 import type { AuthContext, BackendPermission } from "../auth/types";
-import type { SensitiveWriteActorType } from "../parameters/sensitiveNode";
-import type { Queryable } from "../../shared/database/client";
+import type { SensitiveWriteActorType } from "../parameter-kernel/sensitiveNode";
+import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 
 export const DTS_RELOAD_AGENT_REFUSED_CODE = "dts-reload-agent-refused";
@@ -49,7 +49,9 @@ export function requireDtsReloadView(auth: AuthContext) {
  * from a human. See TD-068 / docs/SECURITY.md.
  */
 export async function assertDtsReloadHumanActor(
-  db: Queryable,
+  // Pool handle on purpose: the deny audit below must survive the caller's
+  // rollback, so this guard must run outside any transaction (ADR-0027 refusal audits).
+  db: Database,
   auth: AuthContext,
   input: {
     actorType?: SensitiveWriteActorType;
@@ -64,25 +66,21 @@ export async function assertDtsReloadHumanActor(
     return;
   }
 
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: input.projectId ?? null,
-    actorUserId: auth.user.id,
-    actorType: "agent",
+  await writeRefusalAudit(db, auth, { requestId: input.requestId ?? randomUUID() }, {
     app: "dts-reload",
     kind: "dts-reload-agent-refused",
     action: "deny",
     severity: "High",
+    projectId: input.projectId ?? null,
     targetType: input.runId ? "dts-reload-run" : input.action === "configure" ? "dts-reload-configuration" : "dts-reload",
     targetId: input.runId ?? input.projectId ?? "dts-reload",
+    actorType: "agent",
     metadata: {
       code: DTS_RELOAD_AGENT_REFUSED_CODE,
       reason: "agent-refused",
       requireHuman: true,
       action: input.action
-    },
-    traceId: input.requestId ?? randomUUID()
+    }
   });
 
   throw new ApiError(

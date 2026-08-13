@@ -1,8 +1,18 @@
-import { Archive, ExternalLink, RefreshCw, Sparkles, ThumbsUp, TriangleAlert } from "lucide-react";
+import { Archive, ExternalLink, FileDown, RefreshCw, Sparkles, ThumbsUp, TriangleAlert } from "lucide-react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { formatPercent, normalizePercentValue } from "@/domain/format/formatPercent";
+import { buildEvalCaseDraft } from "@/domain/logs/evalCaseDraft";
 import { STAGE_LABELS, type LogRecord } from "@/domain/prototype/types";
 
 const drawerDegradedReasonLabels: Record<NonNullable<LogRecord["degradedReason"]>, string> = {
@@ -56,6 +66,111 @@ function DrawerProvenanceBadges({ record }: { record: LogRecord }) {
   );
 }
 
+function downloadTextFile(fileName: string, content: string) {
+  try {
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    if (!navigator.userAgent.toLowerCase().includes("jsdom")) {
+      anchor.click();
+    }
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  } catch {
+    // jsdom and locked-down browser contexts may not support synthetic downloads.
+  }
+}
+
+/** Key points of the de-identification checklist in eval-cases/logs/README.md. */
+const deIdentificationChecklist = [
+  "无个人姓名、电话、邮箱或账号标识",
+  "无客户/公司名称、项目代号或合同标识",
+  "无设备序列号、MAC、IMEI 或精确地理位置",
+  "无可识别客户网络的 IP/主机名（替换为 host-anon-N）",
+  "无凭据、令牌或内部 URL",
+  "替换保持行号与技术语义稳定（行数不变、错误码不变）",
+  "领域专家在脱敏后确认标注内容"
+];
+
+/**
+ * Annotation-draft intake for the golden case set: assembles the current record
+ * into a case.yaml draft (deIdentified: false, rootCauseCategory: TODO) plus
+ * log.txt for manual de-identification. Deliberately NO auto-commit and no
+ * repository write — a human must de-identify, fill the category, and flip
+ * deIdentified to true before the case may enter eval-cases/logs.
+ */
+function ExportEvalCaseDraftDialog({
+  record,
+  open,
+  onClose
+}: {
+  record: LogRecord;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const draft = useMemo(() => (open ? buildEvalCaseDraft(record) : null), [open, record]);
+  if (!draft) {
+    return null;
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(isOpen) => {
+        if (!isOpen) {
+          onClose();
+        }
+      }}
+    >
+      <DialogContent className="sm:max-w-lg" data-testid="export-eval-case-draft-dialog">
+        <DialogHeader>
+          <DialogTitle>导出评测案例草稿</DialogTitle>
+          <DialogDescription>
+            将本记录组装为金标准集草稿（case.yaml + log.txt），建议放入
+            <code className="mx-1 rounded bg-muted px-1 py-0.5 font-mono text-[11px]">
+              eval-cases/logs/{draft.domainSlug}/{draft.caseId}/
+            </code>
+            。根因要点、证据行号与建议动作已从当前分析结论预填，仅是草稿。
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3" role="note" aria-label="脱敏清单提醒">
+          <p className="text-xs font-semibold text-amber-900">入库前必须逐项通过脱敏清单（README 要点）：</p>
+          <ul className="list-disc space-y-0.5 pl-4 text-[11px] leading-relaxed text-amber-900">
+            {deIdentificationChecklist.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+          <p className="text-xs font-semibold text-amber-900">
+            草稿固定 deIdentified: false、rootCauseCategory: TODO——只有人工完成脱敏并把 deIdentified 改为 true、填入根因枚举后才可入库；无法完全脱敏的案例不得进入仓库。
+          </p>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose}>
+            关闭
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => downloadTextFile(`${draft.caseId}-log.txt`, draft.logText)}
+          >
+            <FileDown data-icon="inline-start" />
+            下载 log.txt
+          </Button>
+          <Button size="sm" onClick={() => downloadTextFile(`${draft.caseId}-case.yaml`, draft.caseYaml)}>
+            <FileDown data-icon="inline-start" />
+            下载 case.yaml 草稿
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export type LogRecordDrawerProps = {
   record: LogRecord | null;
   open: boolean;
@@ -83,11 +198,13 @@ export function LogRecordDrawer({
   archivePending = false,
   feedbackPending = false
 }: LogRecordDrawerProps) {
+  const [exportDraftOpen, setExportDraftOpen] = useState(false);
   if (!record) {
     return null;
   }
 
   const confidencePercent = normalizePercentValue(record.confidence);
+  const draftExportable = record.status === "Complete" && record.rawLines.length > 0;
 
   return (
     <Sheet
@@ -195,6 +312,16 @@ export function LogRecordDrawer({
             有帮助
           </Button>
           <Button
+            variant="outline"
+            size="sm"
+            disabled={!draftExportable}
+            title={draftExportable ? undefined : "仅已完成分析且包含原始日志的记录可导出"}
+            onClick={() => setExportDraftOpen(true)}
+          >
+            <FileDown data-icon="inline-start" />
+            导出评测案例草稿
+          </Button>
+          <Button
             variant="destructive"
             size="sm"
             disabled={!canAct || archivePending}
@@ -206,6 +333,8 @@ export function LogRecordDrawer({
             归档
           </Button>
         </div>
+
+        <ExportEvalCaseDraftDialog record={record} open={exportDraftOpen} onClose={() => setExportDraftOpen(false)} />
       </SheetContent>
     </Sheet>
   );

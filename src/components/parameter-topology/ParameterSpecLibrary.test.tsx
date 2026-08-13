@@ -104,6 +104,39 @@ describe("ParameterSpecLibrary", () => {
     expect(onCreateSpec).toHaveBeenCalledTimes(1);
   });
 
+  it("renders a load error with retry instead of masquerading as an empty library", () => {
+    const onRetryLoad = vi.fn();
+    render(
+      <ParameterSpecLibrary
+        specs={[]}
+        loadError="参数定义库加载失败，请重试。"
+        onRetryLoad={onRetryLoad}
+        onSelectSpec={vi.fn()}
+      />
+    );
+
+    const library = screen.getByRole("region", { name: "参数定义库" });
+    expect(within(library).getByRole("alert")).toHaveTextContent("参数定义库加载失败");
+    expect(within(library).queryByText("没有匹配的参数定义。")).not.toBeInTheDocument();
+    fireEvent.click(within(library).getByRole("button", { name: "重试" }));
+    expect(onRetryLoad).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps stale rows visible with an inline load error banner", () => {
+    render(
+      <ParameterSpecLibrary
+        specs={[gpioIntSc8562]}
+        loadError="连接超时"
+        onRetryLoad={vi.fn()}
+        onSelectSpec={vi.fn()}
+      />
+    );
+
+    const library = screen.getByRole("region", { name: "参数定义库" });
+    expect(within(library).getAllByText("gpio_int").length).toBeGreaterThan(0);
+    expect(within(library).getByRole("alert")).toHaveTextContent(/连接超时.*上一次成功加载/);
+  });
+
   it("hides deprecated definitions from the default library view", () => {
     render(
       <ParameterSpecLibrary
@@ -436,6 +469,23 @@ describe("SpecReviewQueue", () => {
     ambiguous: true,
     projectCount: 2
   };
+
+  it("projects review-action failures inside the adjudication dialog", () => {
+    render(
+      <SpecReviewQueue
+        tasks={[ambiguousTask]}
+        onApprove={vi.fn()}
+        onDismiss={vi.fn()}
+        actionError="审核冲突，请刷新队列后重试。"
+      />
+    );
+
+    const queue = screen.getByRole("region", { name: "定义匹配审核队列" });
+    fireEvent.click(within(queue).getByRole("button", { name: "编辑 gpio_int" }));
+
+    const dialog = screen.getByRole("dialog", { name: "gpio_int" });
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("审核冲突，请刷新队列后重试。");
+  });
 
   it("requires explicit schema choice and reason; no accept-first action", () => {
     const onApprove = vi.fn();

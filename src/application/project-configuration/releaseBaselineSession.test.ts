@@ -251,6 +251,71 @@ describe("createReleaseBaselineSession", () => {
     });
   });
 
+  it("writes actionError when the create repository call itself rejects", async () => {
+    const getReleaseReadiness = vi.fn(async () => readiness());
+    const createBaseline = vi.fn().mockRejectedValue(new Error("network unreachable"));
+    const session = createReleaseBaselineSession();
+
+    await expect(
+      session.create(
+        "proj-1",
+        "cs-1",
+        { name: "x", localSessionDirty: false },
+        { getReleaseReadiness, createBaseline }
+      )
+    ).rejects.toThrow("network unreachable");
+    // Raw backend text never renders: unknown English messages fall back to
+    // the scenario copy via the presentError layer.
+    expect(session.actionError).toBe("创建基线失败，请重试。");
+  });
+
+  it("maps stale gate-token conflicts to a readiness-changed actionError", async () => {
+    const { WiseEffApiError } = await import("@/infrastructure/http/apiClient");
+    const getReleaseReadiness = vi.fn(async () => readiness());
+    const releaseBaseline = vi.fn().mockRejectedValue(
+      new WiseEffApiError("CONFLICT", "Release readiness gate token is stale.", {
+        code: "readiness-gate-stale"
+      }, "req-1")
+    );
+    const session = createReleaseBaselineSession();
+    await session.loadBaselines("proj-1", "cs-1", {
+      listBaselines: vi.fn(async () => [baseline({ id: "bl-1", status: "draft" })])
+    });
+    session.selectBaseline("bl-1");
+
+    await expect(
+      session.release("proj-1", "cs-1", { localSessionDirty: false }, { getReleaseReadiness, releaseBaseline })
+    ).rejects.toThrow();
+    expect(session.actionError).toBe("就绪状态已变化，请重新查看就绪问题后再操作。");
+  });
+
+  it("writes actionError when compare, restore preview, or restore reject", async () => {
+    const session = createReleaseBaselineSession();
+    session.selectBaseline("bl-1");
+
+    await expect(
+      session.compare("proj-1", "working", {
+        compareBaseline: vi.fn().mockRejectedValue(new Error("compare 500"))
+      })
+    ).rejects.toThrow("compare 500");
+    expect(session.actionError).toBe("对比基线失败，请重试。");
+
+    await expect(
+      session.previewRestore("proj-1", {
+        previewRestoreBaseline: vi.fn().mockRejectedValue(new Error("preview 500"))
+      })
+    ).rejects.toThrow("preview 500");
+    expect(session.actionError).toBe("加载恢复预览失败，请重试。");
+
+    await expect(
+      session.restore("proj-1", "cs-1", {
+        rollbackBaseline: vi.fn().mockRejectedValue(new Error("rollback 409")),
+        listBaselines: vi.fn(async () => [])
+      })
+    ).rejects.toThrow("rollback 409");
+    expect(session.actionError).toBe("恢复基线失败，请重试。");
+  });
+
   it("loadPinnedMembers maps getBaseline members for selected baseline", async () => {
     const session = createReleaseBaselineSession();
     session.selectBaseline("bl-1");

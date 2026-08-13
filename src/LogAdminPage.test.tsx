@@ -47,6 +47,7 @@ function createLogActions(overrides: Partial<LogRuntimeActions> = {}): LogRuntim
     archiveLogDomain: vi.fn().mockResolvedValue(null),
     listLogDomainKnowledgeLinks: vi.fn().mockResolvedValue([]),
     setLogDomainKnowledgeLinks: vi.fn().mockResolvedValue(null),
+    listFeedbackInsights: vi.fn().mockResolvedValue([]),
     ...overrides
   };
 }
@@ -63,9 +64,10 @@ function deferred<T = void>() {
 
 function renderPage({
   logActions,
+  stateOverrides,
   knowledgeRepository
-}: { logActions?: LogRuntimeActions; knowledgeRepository?: KnowledgeRepository } = {}) {
-  const state = { ...createPrototypeState(), activeRoleId: "admin" };
+}: { logActions?: LogRuntimeActions; stateOverrides?: Partial<ReturnType<typeof createPrototypeState>>; knowledgeRepository?: KnowledgeRepository } = {}) {
+  const state = { ...createPrototypeState(), activeRoleId: "admin", ...stateOverrides };
   const dispatch = vi.fn();
   const onNavigate = vi.fn();
   const utils = render(
@@ -241,7 +243,7 @@ describe("LogAdminPage · row click + drawer actions", () => {
 
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "LOG_ADMIN_ARCHIVE_LOG" }));
     await waitFor(() => {
-      expect(screen.getByText(/已归档/)).toBeInTheDocument();
+      expect(screen.getByText(/可随时在「已归档」视图恢复/)).toBeInTheDocument();
     });
     await userEvent.click(screen.getByRole("button", { name: "撤销" }));
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "LOG_ADMIN_UNARCHIVE_LOG" }));
@@ -264,7 +266,7 @@ describe("LogAdminPage · row click + drawer actions", () => {
 
     archive.resolve();
     await waitFor(() => {
-      expect(screen.getByText(/已归档/)).toBeInTheDocument();
+      expect(screen.getByText(/可随时在「已归档」视图恢复/)).toBeInTheDocument();
     });
   });
 
@@ -393,6 +395,39 @@ describe("LogAdminPage · row click + drawer actions", () => {
     expect(screen.getByRole("button", { name: /重新分析/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /归档/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /有帮助/ })).toBeDisabled();
+  });
+});
+
+describe("LogAdminPage · archived view", () => {
+  it("shows archived logs in a dedicated view with an inline restore action", async () => {
+    const base = createPrototypeState();
+    const archivedId = base.logs[1]!.id;
+    const { dispatch } = renderPage({
+      stateOverrides: { archivedLogIds: [archivedId] }
+    });
+
+    // Active view hides archived records.
+    const table = screen.getByRole("table", { name: "日志分析记录" });
+    expect(within(table).queryByText(base.logs[1]!.fileName)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /已归档（1）/ }));
+    expect(within(screen.getByRole("table", { name: "日志分析记录" })).getByText(base.logs[1]!.fileName)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "恢复" }));
+    expect(dispatch).toHaveBeenCalledWith({ type: "LOG_ADMIN_UNARCHIVE_LOG", logId: archivedId });
+  });
+
+  it("loads archived records through the runtime and restores via unarchive", async () => {
+    const base = createPrototypeState();
+    const archivedId = base.logs[1]!.id;
+    const logActions = createLogActions();
+    renderPage({ logActions, stateOverrides: { archivedLogIds: [archivedId] } });
+
+    await userEvent.click(screen.getByRole("button", { name: /已归档（1）/ }));
+    expect(logActions.refresh).toHaveBeenCalledWith({ includeArchived: true });
+
+    await userEvent.click(screen.getByRole("button", { name: "恢复" }));
+    await waitFor(() => expect(logActions.unarchive).toHaveBeenCalledWith(archivedId));
   });
 });
 
@@ -712,5 +747,66 @@ describe("LogAdminPage 业务域知识条目关联", () => {
         knowledgeEntryIds: ["entry-1"]
       })
     );
+  });
+});
+
+describe("LogAdminPage 分析质量洞察", () => {
+  const agentInsight = {
+    logDomainId: "domain-charging",
+    logDomainName: "charging-power",
+    analysisSource: "agent" as const,
+    promptVersion: "log-analysis/v2",
+    totalCount: 4,
+    helpfulCount: 3,
+    helpfulRate: 0.75,
+    lastFeedbackAt: "2026-08-13T02:00:00.000Z"
+  };
+  const uncategorizedInsight = {
+    logDomainId: null,
+    logDomainName: null,
+    analysisSource: "rules-fallback" as const,
+    promptVersion: null,
+    totalCount: 2,
+    helpfulCount: 0,
+    helpfulRate: 0,
+    lastFeedbackAt: "2026-08-12T02:00:00.000Z"
+  };
+
+  it("renders aggregated helpful rates per domain, source, and prompt version", async () => {
+    const logActions = createLogActions({
+      listFeedbackInsights: vi.fn().mockResolvedValue([agentInsight, uncategorizedInsight])
+    });
+    renderPage({ logActions });
+
+    const table = await screen.findByRole("table", { name: "分析质量反馈聚合" });
+    await waitFor(() => expect(logActions.listFeedbackInsights).toHaveBeenCalledWith({ timeWindow: "today" }));
+    expect(within(table).getByText("charging-power")).toBeInTheDocument();
+    expect(within(table).getByText("log-analysis/v2")).toBeInTheDocument();
+    expect(within(table).getByText("75%（3/4）")).toBeInTheDocument();
+    expect(within(table).getByText("未分类")).toBeInTheDocument();
+    expect(within(table).getByText("降级 · 规则回退")).toBeInTheDocument();
+    expect(within(table).getByText("0%（0/2）")).toBeInTheDocument();
+  });
+
+  it("refetches insights when the time window changes", async () => {
+    const listFeedbackInsights = vi.fn().mockResolvedValue([agentInsight]);
+    renderPage({ logActions: createLogActions({ listFeedbackInsights }) });
+
+    await waitFor(() => expect(listFeedbackInsights).toHaveBeenCalledWith({ timeWindow: "today" }));
+    await userEvent.click(screen.getByRole("button", { name: "7 日" }));
+    await waitFor(() => expect(listFeedbackInsights).toHaveBeenCalledWith({ timeWindow: "7d" }));
+  });
+
+  it("shows the honest empty state when no feedback exists", async () => {
+    renderPage({ logActions: createLogActions() });
+
+    const section = screen.getByTestId("feedback-quality-insights");
+    expect(await within(section).findByText("暂无反馈")).toBeInTheDocument();
+  });
+
+  it("shows the mock-mode hint without runtime actions", () => {
+    renderPage();
+
+    expect(screen.getByTestId("feedback-quality-insights")).toHaveTextContent(/分析质量监控需在 API 模式下使用/);
   });
 });

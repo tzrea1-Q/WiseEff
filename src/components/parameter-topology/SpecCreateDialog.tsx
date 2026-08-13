@@ -222,7 +222,9 @@ export function SpecCreateDialog({
     onConfirm(input);
   };
 
+  // While the confirm layer is open it owns error display (incl. server errors).
   const displayError = confirmOpen ? null : (localError ?? error);
+  const confirmError = localError ?? error;
 
   return (
     <>
@@ -483,9 +485,9 @@ export function SpecCreateDialog({
                   }}
                 />
               </label>
-              {localError ? (
+              {confirmError ? (
                 <p className="form-error" role="alert">
-                  {localError}
+                  {confirmError}
                 </p>
               ) : null}
             </div>

@@ -44,6 +44,24 @@ export type LogDomainKnowledgeLink = {
   linkedAt: string;
 };
 
+/**
+ * One `/log-admin` analysis-quality insight row: log_feedback aggregated per
+ * log domain × analysis source × prompt version (P3 online monitoring).
+ */
+export type LogFeedbackInsight = {
+  /** null = uncategorized log domain. */
+  logDomainId: string | null;
+  logDomainName: string | null;
+  /** null = legacy report without analyzer provenance. */
+  analysisSource: LogAnalysisSource | null;
+  promptVersion: string | null;
+  totalCount: number;
+  helpfulCount: number;
+  /** helpfulCount / totalCount, in [0, 1]. */
+  helpfulRate: number;
+  lastFeedbackAt: string;
+};
+
 export type LogEvidence = {
   id: string;
   stageId: LogStageId;

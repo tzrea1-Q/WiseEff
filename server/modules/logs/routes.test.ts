@@ -16,6 +16,7 @@ vi.mock("./service", () => ({
   archiveLogRecord: vi.fn(),
   createLogFromFile: vi.fn(),
   getLogRecord: vi.fn(),
+  listLogFeedbackInsights: vi.fn(),
   listLogRecords: vi.fn(),
   listLogRuns: vi.fn(),
   rerunLogAnalysis: vi.fn(),
@@ -491,6 +492,44 @@ describe("log routes", () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ item: log });
     expect(service.unarchiveLogRecord).toHaveBeenCalledWith(db, makeAuth(), "log-route", { requestId: "test-request" });
+  });
+
+  it("GET /api/v1/logs/feedback-insights passes the time window and is not swallowed by :logId", async () => {
+    const db = makeDb();
+    const insight = {
+      logDomainId: "domain-1",
+      logDomainName: "charging-power",
+      analysisSource: "agent",
+      promptVersion: "log-analysis/v2",
+      totalCount: 4,
+      helpfulCount: 3,
+      helpfulRate: 0.75,
+      lastFeedbackAt: "2026-08-13T02:00:00.000Z"
+    };
+    vi.mocked(service.listLogFeedbackInsights).mockResolvedValue({ items: [insight] });
+
+    const response = await requestJson<{ items: Array<typeof insight> }>(
+      makeServer({ db, objectStore: makeObjectStore() }),
+      "/api/v1/logs/feedback-insights?timeWindow=7d"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ items: [insight] });
+    expect(service.listLogFeedbackInsights).toHaveBeenCalledWith(db, makeAuth(), { timeWindow: "7d" });
+    expect(service.getLogRecord).not.toHaveBeenCalled();
+  });
+
+  it("GET /api/v1/logs/feedback-insights rejects an unknown time window", async () => {
+    const db = makeDb();
+
+    const response = await requestJson<{ error: { code: string } }>(
+      makeServer({ db, objectStore: makeObjectStore() }),
+      "/api/v1/logs/feedback-insights?timeWindow=90d"
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_FAILED");
+    expect(service.listLogFeedbackInsights).not.toHaveBeenCalled();
   });
 
   it("feedback route writes through service", async () => {

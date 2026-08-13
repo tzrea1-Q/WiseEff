@@ -300,7 +300,13 @@ test.describe("Product feedback browser acceptance", () => {
     await expect(page.getByRole("button", { name: "关闭反馈", exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "关闭反馈", exact: true }).click();
-    await expect(page.getByText("已关闭的反馈仅可查看。")).toBeVisible();
+    // Closing feedback is irreversible and now requires an explicit confirmation (HCI trust repair wave 1).
+    const closeConfirmDialog = page.getByRole("dialog", { name: "确认关闭反馈" });
+    await expect(closeConfirmDialog).toBeVisible();
+    await closeConfirmDialog.getByRole("button", { name: "确认关闭" }).click();
+    // The dialog closes only after the server accepts the status change.
+    await expect(closeConfirmDialog).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.getByText("已关闭的反馈仅可查看。")).toBeVisible({ timeout: 15_000 });
 
     const detailResponse = await page.request.get(apiRoute(`/api/v1/product-feedback/${created.item.id}`), {
       headers: authHeaders()

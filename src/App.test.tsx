@@ -28,6 +28,7 @@ import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
@@ -270,8 +271,13 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
   localStorage.removeItem("wiseeff.sidebar.collapsed");
+  localStorage.removeItem("wiseeff.localAuthToken");
   window.history.replaceState(null, "", "/");
 });
+
+function unauthenticatedProbeError(message: string) {
+  return new WiseEffApiError("UNAUTHENTICATED", message, {}, "req-auth-probe");
+}
 
 function expectSelectValue(trigger: HTMLElement, value: string) {
   if (trigger instanceof HTMLSelectElement) {
@@ -428,7 +434,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   it("shows local login when API auth context is unauthenticated and enters the app after login", async () => {
     window.history.replaceState(null, "", "/parameter-home");
     const authClient = {
-      getCurrentAuthContext: vi.fn().mockRejectedValue(new Error("Session is not active.")),
+      getCurrentAuthContext: vi.fn().mockRejectedValue(unauthenticatedProbeError("Session is not active.")),
       login: vi.fn(async () => ({
         token: "we_local_test",
         expiresAt: "2026-06-19T00:00:00.000Z",
@@ -459,14 +465,71 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(authClient.login).toHaveBeenCalledWith({ username: "local.admin", password: "strong-password" });
   });
 
-  it("renders the app-shell skeleton instead of a blank screen while the session probe is pending", () => {
+  it("clears the stored token and shows login when the auth probe is rejected as unauthenticated", async () => {
     window.history.replaceState(null, "", "/parameter-home");
+    window.localStorage.setItem("wiseeff.localAuthToken", "stale-token");
     const authClient = {
-      getCurrentAuthContext: vi.fn(() => new Promise<never>(() => {}))
+      getCurrentAuthContext: vi.fn().mockRejectedValue(unauthenticatedProbeError("Session is not active."))
     };
 
     render(<App authClient={authClient} initialAppState={initialState} parameterRepository={createAppParameterRepository()} runtimeMode="api" />);
 
+    expect(await screen.findByRole("heading", { name: "登录雷泽" })).toBeInTheDocument();
+    expect(window.localStorage.getItem("wiseeff.localAuthToken")).toBeNull();
+  });
+
+  it("keeps the token and recovers through retry when the auth probe hits a network error", async () => {
+    window.history.replaceState(null, "", "/parameter-home");
+    window.localStorage.setItem("wiseeff.localAuthToken", "live-token");
+    const getCurrentAuthContext = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce({
+        user: {
+          id: "u-api-admin",
+          organizationId: "org-chargelab",
+          name: "API Admin",
+          email: "api-admin@chargelab.cn",
+          title: "API Platform Owner",
+          isActive: true
+        },
+        organization: { id: "org-chargelab", name: "ChargeLab" },
+        roles: [{ projectId: null, roleId: "admin" }],
+        permissions: ["admin:access"]
+      });
+
+    render(
+      <App
+        authClient={{ getCurrentAuthContext }}
+        initialAppState={initialState}
+        parameterRepository={createAppParameterRepository()}
+        runtimeMode="api"
+      />
+    );
+
+    expect(await screen.findByRole("heading", { name: "无法连接服务" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("用户名")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "登录" })).not.toBeInTheDocument();
+    expect(window.localStorage.getItem("wiseeff.localAuthToken")).toBe("live-token");
+
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+
+    expect(await screen.findByText("API Admin")).toBeInTheDocument();
+    expect(window.localStorage.getItem("wiseeff.localAuthToken")).toBe("live-token");
+    expect(getCurrentAuthContext).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows the session-restore screen instead of an interactive login form while the probe is pending", () => {
+    window.history.replaceState(null, "", "/parameter-home");
+    const authClient = {
+      getCurrentAuthContext: vi.fn().mockReturnValue(new Promise<never>(() => undefined))
+    };
+
+    render(<App authClient={authClient} initialAppState={initialState} parameterRepository={createAppParameterRepository()} runtimeMode="api" />);
+
+    expect(screen.queryByLabelText("用户名")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("密码")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "登录" })).not.toBeInTheDocument();
     expect(screen.getByRole("status", { name: "正在进入工作台" })).toBeInTheDocument();
     expect(document.querySelector(".app-shell-skeleton")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "登录雷泽" })).not.toBeInTheDocument();
@@ -527,7 +590,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   it("registers a local user account from the auth screen", async () => {
     window.history.replaceState(null, "", "/parameter-home");
     const authClient = {
-      getCurrentAuthContext: vi.fn().mockRejectedValue(new Error("Authorization bearer token is required.")),
+      getCurrentAuthContext: vi.fn().mockRejectedValue(unauthenticatedProbeError("Authorization bearer token is required.")),
       register: vi.fn(async () => ({
         token: "we_local_registered",
         expiresAt: "2026-06-19T00:00:00.000Z",
@@ -572,7 +635,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     window.history.replaceState(null, "", "/parameter-home");
     const parameterRepository = createAppParameterRepository();
     const authClient = {
-      getCurrentAuthContext: vi.fn().mockRejectedValue(new Error("Authorization bearer token is required.")),
+      getCurrentAuthContext: vi.fn().mockRejectedValue(unauthenticatedProbeError("Authorization bearer token is required.")),
       register: vi.fn(async () => ({
         status: "pending_approval" as const,
         user: {
@@ -625,7 +688,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   it("does not offer Admin as a self-service registration role", async () => {
     window.history.replaceState(null, "", "/parameter-home");
     const authClient = {
-      getCurrentAuthContext: vi.fn().mockRejectedValue(new Error("Authorization bearer token is required.")),
+      getCurrentAuthContext: vi.fn().mockRejectedValue(unauthenticatedProbeError("Authorization bearer token is required.")),
       register: vi.fn()
     };
 
@@ -743,6 +806,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     const row = await screen.findByText("Liu Min").then((cell) => cell.closest("tr")!);
     changeSelectValue(within(row).getByRole("combobox", { name: "调整 Liu Min 的角色" }), "software-committer");
+    const confirmDialog = await screen.findByRole("dialog", { name: "确认调整用户角色" });
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "确认调整" }));
     await waitFor(() => expect(userGovernanceActions.assignUserRole).toHaveBeenCalledWith("u-liu-min", "software-committer"));
   });
 
@@ -1410,6 +1475,99 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(next.users).toBe(state.users);
   });
 
+  it("repoints activeProjectId at server data when the demo project id is unknown", () => {
+    const state = { ...initialState, activeProjectId: "demo-only-project" };
+    const next = appReducer(state, {
+      type: "HYDRATE_PARAMETER_RUNTIME",
+      projects: [apiProject],
+      parameters: [apiParameter],
+      changeRequests: [],
+      parameterSubmissionRounds: [],
+      parameterDrafts: []
+    });
+
+    expect(next.activeProjectId).toBe(apiProject.id);
+  });
+
+  it("clears each API runtime domain to empty business slices instead of demo records", () => {
+    const parametersCleared = appReducer(initialState, {
+      type: "CLEAR_API_RUNTIME_DOMAIN",
+      domain: "parameters"
+    });
+    expect(parametersCleared.parameters).toEqual([]);
+    expect(parametersCleared.changeRequests).toEqual([]);
+    expect(parametersCleared.parameterSubmissionRounds).toEqual([]);
+    expect(parametersCleared.parameterDrafts).toEqual([]);
+    expect(parametersCleared.configDraft.projects).toEqual([]);
+    expect(parametersCleared.logs).toBe(initialState.logs);
+
+    const logsCleared = appReducer(initialState, {
+      type: "CLEAR_API_RUNTIME_DOMAIN",
+      domain: "logs"
+    });
+    expect(logsCleared.logs).toEqual([]);
+    expect(logsCleared.archivedLogIds).toEqual([]);
+    expect(logsCleared.parameters).toBe(initialState.parameters);
+
+    const debuggingCleared = appReducer(initialState, {
+      type: "CLEAR_API_RUNTIME_DOMAIN",
+      domain: "debugging"
+    });
+    expect(debuggingCleared.devices).toEqual([]);
+    expect(debuggingCleared.debugParameters).toEqual([]);
+    expect(debuggingCleared.configDraft.debugParameters).toEqual([]);
+  });
+
+  it("shows a persistent no-data banner when API refresh fails and recovers via retry", async () => {
+    window.history.replaceState(null, "", "/parameter-home");
+    const listProjects = vi.fn()
+      .mockRejectedValueOnce(new Error("api down"))
+      .mockResolvedValue([apiProject]);
+    const parameterRepository = createAppParameterRepository({ listProjects });
+
+    render(
+      <App
+        authClient={createResolvedAuthClient()}
+        initialAppState={initialState}
+        parameterRepository={parameterRepository}
+        logAnalysisRepository={createAppLogAnalysisRepository()}
+        debuggingGateway={createAppDebuggingGateway()}
+        runtimeMode="api"
+      />
+    );
+
+    await waitFor(() => {
+      expect(document.querySelector(".api-runtime-error-banner")).toBeInTheDocument();
+    });
+    const banner = document.querySelector(".api-runtime-error-banner") as HTMLElement;
+    expect(banner).toHaveAttribute("role", "alert");
+    expect(banner).toHaveTextContent("无法连接雷泽参数 API，当前无数据");
+    expect(banner).toHaveTextContent("不展示演示数据");
+
+    fireEvent.click(within(banner).getByRole("button", { name: "重试" }));
+
+    await waitFor(() => {
+      expect(document.querySelector(".api-runtime-error-banner")).not.toBeInTheDocument();
+    });
+    expect(listProjects.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("dismisses the newest notification and leaves the rest of the queue", () => {
+    const state = { ...initialState, notifications: ["latest", "older"] };
+
+    const next = appReducer(state, { type: "DISMISS_NOTIFICATION" });
+
+    expect(next.notifications).toEqual(["older"]);
+  });
+
+  it("ignores notification dismissal when the queue is already empty", () => {
+    const state = { ...initialState, notifications: [] };
+
+    const next = appReducer(state, { type: "DISMISS_NOTIFICATION" });
+
+    expect(next).toBe(state);
+  });
+
   it("clears cached API parameter drafts when hydrating a different authenticated user", () => {
     const apiDraft = {
       id: "api-draft-1",
@@ -1490,8 +1648,23 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(next.configDraft.debugParameters).toEqual([apiDebugParameter]);
   });
 
-  it("stores API debug sessions and operation events while ignoring snapshot summaries", () => {
+  it("stores API debug sessions, operation events, and valid snapshot summaries", () => {
     const startedAt = "2026-05-25T08:01:00.000Z";
+    const writeOperation = {
+      id: "op-write-1",
+      sessionId: "session-1",
+      parameterId: initialState.debugParameters[0].id,
+      nodePath: initialState.debugParameters[0].nodePath ?? "/sys/node",
+      operationType: "write" as const,
+      status: "succeeded" as const,
+      requestedValue: "4200",
+      previousValue: "3600",
+      readbackValue: "4200",
+      verified: true,
+      durationMs: 12,
+      snapshotId: "snapshot-valid",
+      createdAt: "2026-05-25T08:02:00.000Z"
+    };
     const sessionState = appReducer(adminState, {
       type: "SET_DEBUG_ACTIVE_SESSION",
       session: {
@@ -1507,19 +1680,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     });
     const operationState = appReducer(sessionState, {
       type: "UPSERT_DEBUG_NODE_OPERATION",
-      operation: {
-        id: "op-write-1",
-        sessionId: "session-1",
-        parameterId: initialState.debugParameters[0].id,
-        nodePath: initialState.debugParameters[0].nodePath,
-        operationType: "write",
-        status: "succeeded",
-        requestedValue: "4200",
-        verified: true,
-        durationMs: 12,
-        snapshotId: "snapshot-valid",
-        createdAt: "2026-05-25T08:02:00.000Z"
-      }
+      operation: writeOperation
     });
     const invalidSnapshotState = appReducer(operationState, {
       type: "UPSERT_DEBUG_SNAPSHOT",
@@ -1539,7 +1700,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
         status: "valid",
         risk: "High",
         createdAt: "2026-05-25T08:03:00.000Z"
-      }
+      },
+      operation: writeOperation
     });
 
     expect(sessionState.debuggingSessionStartedAt).toBe(startedAt);
@@ -1550,10 +1712,21 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       parameterIds: [initialState.debugParameters[0].id]
     });
     expect(invalidSnapshotState.lastDebugSnapshot).toBeNull();
-    expect(validSnapshotState.lastDebugSnapshot).toBeNull();
+    expect(validSnapshotState.lastDebugSnapshot).toEqual({
+      id: "snapshot-valid",
+      createdAt: "2026-05-25T08:03:00.000Z",
+      risk: "High",
+      entries: [
+        {
+          parameterId: initialState.debugParameters[0].id,
+          previousValue: "3600",
+          nextValue: "4200"
+        }
+      ]
+    });
   });
 
-  it("does not convert valid API snapshot summaries into empty rollback snapshots", () => {
+  it("converts valid summary-only snapshots so the rollback button still activates", () => {
     const next = appReducer(initialState, {
       type: "UPSERT_DEBUG_SNAPSHOT",
       snapshot: {
@@ -1565,7 +1738,12 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       }
     });
 
-    expect(next.lastDebugSnapshot).toBeNull();
+    expect(next.lastDebugSnapshot).toEqual({
+      id: "snapshot-summary-only",
+      createdAt: "2026-05-25T08:03:00.000Z",
+      risk: "High",
+      entries: []
+    });
   });
 
   it("defaults mock parameter workflow assignees to concrete eligible users instead of global admin", () => {
@@ -1992,7 +2170,10 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     expect(screen.getByText("我的提交轮次")).toBeInTheDocument();
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
-    expect(screen.queryByText(/PRS-/)).not.toBeInTheDocument();
+    // Scope to the page content: the transient global toast legitimately
+    // announces the submitted round id, but the history list must not leak it.
+    const historyContent = document.querySelector("main.main-content") as HTMLElement;
+    expect(within(historyContent).queryByText(/PRS-/)).not.toBeInTheDocument();
     expect(screen.getAllByText(/本轮提交包含\s*2\s*个参数/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
     expect(screen.getByText("charge_voltage_limit_mv")).toBeInTheDocument();
@@ -2044,6 +2225,57 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.getByRole("region", { name: "提交轮次详情" })).toHaveTextContent("Zhao Heng");
     expect(screen.queryByText("当前还没有你的历史提交。")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "撤回本轮提交" })).toBeEnabled();
+  });
+
+  it("withdraws a submission round only after the confirm dialog is accepted", async () => {
+    window.history.replaceState(null, "", "/parameter-submissions");
+    const simpleParameter = initialState.parameters.find((parameter) => parameter.name === "fast_charge_current_limit_ma");
+    expect(simpleParameter).toBeDefined();
+    const zhaoRound = {
+      ...initialState.parameterSubmissionRounds[0],
+      id: "api-zhao-withdraw-round",
+      projectId: simpleParameter!.projectId,
+      projectName: "Aurora 量产平台",
+      submitter: "Zhao Heng",
+      createdAt: "刚刚",
+      status: "硬件Committer检视" as const,
+      summary: "待撤回轮次。",
+      items: [
+        {
+          requestId: "api-zhao-withdraw-request",
+          parameterId: simpleParameter!.id,
+          name: simpleParameter!.name,
+          module: simpleParameter!.module,
+          currentValue: "3850",
+          targetValue: "3200",
+          unit: simpleParameter!.unit,
+          risk: simpleParameter!.risk,
+          reason: "验证撤回确认"
+        }
+      ]
+    };
+
+    render(
+      <App
+        initialAppState={{
+          ...initialState,
+          currentUserId: "u-zhao-heng",
+          activeRoleId: "hardware-user",
+          parameterSubmissionRounds: [zhaoRound]
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "撤回本轮提交" }));
+    // Nothing is withdrawn before confirmation.
+    expect(screen.getByRole("region", { name: "提交轮次详情" })).not.toHaveTextContent("已撤回");
+    const confirmDialog = await screen.findByRole("dialog", { name: "确认撤回本轮提交" });
+    expect(confirmDialog).toHaveTextContent(/本轮 1 项变更将退出评审流程/);
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "确认撤回" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "提交轮次详情" })).toHaveTextContent("已撤回");
+    });
   });
 
   it("formats ISO submission timestamps on the personal history page", () => {

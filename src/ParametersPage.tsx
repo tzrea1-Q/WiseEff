@@ -105,6 +105,13 @@ export function ParametersPage({
         : undefined,
     [parameterRepository]
   );
+  const deleteDraft = useMemo(
+    () =>
+      parameterRepository
+        ? (draftId: string) => parameterRepository.deleteDraft(draftId)
+        : undefined,
+    [parameterRepository]
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [riskFilters, setRiskFilters] = useState<Set<ParameterRiskFilter>>(new Set());
   const [moduleFilters, setModuleFilters] = useState<Set<string>>(new Set());
@@ -826,6 +833,7 @@ export function ParametersPage({
             topologyRepository={topologyRepository}
             listConfigSets={listConfigSets}
             listDrafts={listDrafts}
+            deleteDraft={deleteDraft}
             listWorkflowAssignees={parameterActions?.listWorkflowAssignees}
             submitBindingChanges={parameterActions?.submitChanges}
             onNavigate={onNavigate}

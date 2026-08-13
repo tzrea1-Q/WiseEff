@@ -3,12 +3,10 @@ import { useTopBarActions } from "@/components/layout";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "@/components/tableFilterUtils";
 import { type PageProps } from "@/app/routes";
 import { ModalDialog } from "@/components/common/ModalDialog";
-import { useToast } from "@/components/common/toast/ToastProvider";
 import type { LogDomain } from "@/domain/logs/types";
 import { formatPercent, normalizePercentValue } from "@/domain/format/formatPercent";
 import { SEVERITY_LABELS, STAGE_LABELS, type LogEvidence, type LogRecord, type LogStageId } from "@/domain/prototype/types";
 import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
-import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { EmptyState, PanelHeader, SectionLabel } from "@/workbenchUi";
 import {
   AlertTriangle,
@@ -87,7 +85,6 @@ function createEmptyLogRecord(): LogRecord {
 }
 
 export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, knowledgeCapability }: PageProps) {
-  const { toast } = useToast();
   const knowledgeRepository = runtime?.knowledgeRepository;
   const [selectedLogId, setSelectedLogId] = useState(state.logs[0]?.id ?? "");
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
@@ -95,6 +92,8 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   const [distilPending, setDistilPending] = useState(false);
   const [pendingUpload, setPendingUpload] = useState<{ fileName: string; previousLogIds: Set<string> } | null>(null);
   const [feedbackLogId, setFeedbackLogId] = useState<string | null>(null);
+  const [feedbackPending, setFeedbackPending] = useState(false);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
   const [auxTab, setAuxTab] = useState<LogsAuxTab>("history");
   const [hoveredEvidenceId, setHoveredEvidenceId] = useState<string | null>(null);
   const [focusedEvidenceId, setFocusedEvidenceId] = useState<string | null>(null);
@@ -140,16 +139,9 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
     prevLogCount.current = state.logs.length;
   }, [state.logs]);
 
-  // Mock-mode workflow feedback: surface the latest prototype notification
-  // through the shared toast pipeline (API mode has real notification delivery).
-  const lastToastedNotificationRef = useRef<string | null>(null);
-  useEffect(() => {
-    const latest = state.notifications[0];
-    if (wiseEffRuntimeMode !== "api" && latest && latest !== lastToastedNotificationRef.current) {
-      lastToastedNotificationRef.current = latest;
-      toast({ tone: "info", message: latest });
-    }
-  }, [state.notifications, toast]);
+  // Reducer notifications render through the global AppToastLayer in both
+  // runtime modes (the API-mode inbox never receives ADD_NOTIFICATION), so no
+  // per-page bridge is needed here.
 
   useEffect(() => {
     setSearchQuery("");
@@ -424,6 +416,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
       {uploadDialogOpen ? (
         <UploadLogDialog
           accept={logActions ? null : ".log,.txt,.json"}
+          archivesSupported={!!logActions}
           domains={uploadLogDomains}
           onClose={() => setUploadDialogOpen(false)}
           onUpload={handleUploadLog}
@@ -432,34 +425,70 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
       {selectedFeedbackLog ? (
         <LogAnalysisFeedbackDialog
           log={selectedFeedbackLog}
-          onClose={() => setFeedbackLogId(null)}
-          onSubmit={(confidence, issue) => {
-            dispatch({
-              type: "ADD_NOTIFICATION",
-              message: `已记录 ${selectedFeedbackLog.reportId} 的分析反馈：${confidence}${issue ? `，${issue}` : ""}`
-            });
-            toast({ tone: "success", message: "反馈已记录，感谢补充分析质量线索。" });
+          pending={feedbackPending}
+          error={feedbackError}
+          onClose={() => {
+            if (feedbackPending) return;
             setFeedbackLogId(null);
+            setFeedbackError(null);
+          }}
+          onSubmit={(confidence, issue) => {
+            const feedbackLog = selectedFeedbackLog;
+            if (!logActions) {
+              // Mock mode keeps the local acknowledgement through the global toast layer.
+              dispatch({
+                type: "ADD_NOTIFICATION",
+                message: `已记录 ${feedbackLog.reportId} 的分析反馈：${confidence}${issue ? `，${issue}` : ""}`
+              });
+              setFeedbackLogId(null);
+              return;
+            }
+            setFeedbackPending(true);
+            setFeedbackError(null);
+            void logActions
+              .submitFeedback({
+                logId: feedbackLog.id,
+                rating: confidence === "high" ? "helpful" : "not_helpful",
+                ...(issue ? { note: issue } : {})
+              })
+              .then(() => {
+                setFeedbackLogId(null);
+                dispatch({
+                  type: "ADD_NOTIFICATION",
+                  message: `已提交 ${feedbackLog.reportId} 的分析反馈`
+                });
+              })
+              .catch((error: unknown) => {
+                setFeedbackError(presentError(error, "反馈提交失败，请重试。"));
+              })
+              .finally(() => {
+                setFeedbackPending(false);
+              });
           }}
         />
       ) : null}
+      {/* Reducer notifications render through the global AppToastLayer in both runtime modes. */}
     </div>
   );
 }
 
-function isSupportedLogFile(fileName: string) {
-  return /\.(log|txt|json)$/i.test(fileName);
+function isSupportedLogFile(fileName: string, archivesSupported = false) {
+  // API mode also accepts .csv text plus .gz / single-entry .zip archives
+  // (unpacked server-side); mock mode keeps its original .log/.txt/.json set.
+  return archivesSupported ? /\.(log|txt|csv|json|gz|zip)$/i.test(fileName) : /\.(log|txt|json)$/i.test(fileName);
 }
 
 const UNCATEGORIZED_LOG_DOMAIN_VALUE = "";
 
 function UploadLogDialog({
   accept = ".log,.txt,.json",
+  archivesSupported = false,
   domains = [],
   onClose,
   onUpload
 }: {
   accept?: string | null;
+  archivesSupported?: boolean;
   domains?: LogDomain[];
   onClose: () => void;
   onUpload: (file: File, supported: boolean, question?: string, logDomainId?: string) => Promise<void> | void;
@@ -485,7 +514,7 @@ function UploadLogDialog({
   }, []);
 
   const validateFile = (file: File) => {
-    const nextSupported = isSupportedLogFile(file.name);
+    const nextSupported = isSupportedLogFile(file.name, archivesSupported);
 
     setSelectedFile(file);
     setSelectedFileName(file.name);
@@ -512,7 +541,7 @@ function UploadLogDialog({
     }
     if (files.length > 1) {
       for (let i = 0; i < files.length; i++) {
-        void Promise.resolve(onUpload(files[i], isSupportedLogFile(files[i].name), question, resolvedDomainId)).catch(() => undefined);
+        void Promise.resolve(onUpload(files[i], isSupportedLogFile(files[i].name, archivesSupported), question, resolvedDomainId)).catch(() => undefined);
       }
       return;
     }
@@ -526,7 +555,7 @@ function UploadLogDialog({
     if (!files || files.length === 0) return;
     if (files.length > 1) {
       for (let i = 0; i < files.length; i++) {
-        void Promise.resolve(onUpload(files[i], isSupportedLogFile(files[i].name), question, resolvedDomainId)).catch(() => undefined);
+        void Promise.resolve(onUpload(files[i], isSupportedLogFile(files[i].name, archivesSupported), question, resolvedDomainId)).catch(() => undefined);
       }
       return;
     }
@@ -562,7 +591,11 @@ function UploadLogDialog({
         <div className="upload-dialog__header">
           <div>
             <h2 id={titleId}><strong>上传日志</strong></h2>
-            <p>选择 .log、.txt 或 .json 文本日志，雷泽会模拟创建分析任务。</p>
+            <p>
+              {archivesSupported
+                ? "选择 .log / .txt / .csv 文本日志，或单文件 .gz、单条目 .zip 压缩包（服务端解压后分析）。"
+                : "选择 .log、.txt 或 .json 文本日志，雷泽会模拟创建分析任务。"}
+            </p>
           </div>
           <button className="icon-button" type="button" aria-label="关闭上传日志" onClick={onClose}>
             <X size={18} />
@@ -610,7 +643,12 @@ function UploadLogDialog({
           ) : phase === "confirm" ? (
             <p><strong>{selectedFileName}</strong> 已通过格式检查，可以进入分析队列。</p>
           ) : (
-            <p><strong>{selectedFileName}</strong> 格式不支持。请优先上传 .log / .txt / .json 文本日志。</p>
+            <p>
+              <strong>{selectedFileName}</strong> 格式不支持。
+              {archivesSupported
+                ? "请优先上传 .log / .txt / .csv 文本日志，或单文件 .gz、单条目 .zip 压缩包。"
+                : "请优先上传 .log / .txt / .json 文本日志。"}
+            </p>
           )}
         </div>
         <div className="upload-dialog__actions">
@@ -815,10 +853,14 @@ function LogConclusionCard({
 
 function LogAnalysisFeedbackDialog({
   log,
+  pending = false,
+  error = null,
   onClose,
   onSubmit
 }: {
   log: LogRecord;
+  pending?: boolean;
+  error?: string | null;
   onClose: () => void;
   onSubmit: (confidence: string, issue: string) => void;
 }) {
@@ -827,6 +869,7 @@ function LogAnalysisFeedbackDialog({
 
   const submitFeedback = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (pending) return;
     onSubmit(confidence, issue.trim());
   };
 
@@ -841,13 +884,13 @@ function LogAnalysisFeedbackDialog({
             </h2>
             <p>{log.fileName}</p>
           </div>
-          <button className="icon-button" type="button" aria-label="关闭反馈分析质量" onClick={onClose}>
+          <button className="icon-button" type="button" aria-label="关闭反馈分析质量" disabled={pending} onClick={onClose}>
             <X size={18} />
           </button>
         </div>
         <label className="upload-question-field" htmlFor="log-feedback-confidence">
           <span>置信度反馈</span>
-          <select id="log-feedback-confidence" value={confidence} onChange={(event) => setConfidence(event.target.value)}>
+          <select id="log-feedback-confidence" value={confidence} disabled={pending} onChange={(event) => setConfidence(event.target.value)}>
             <option value="high">高：判断可信</option>
             <option value="medium">中：需要复核</option>
             <option value="low">低：可能误判</option>
@@ -860,15 +903,21 @@ function LogAnalysisFeedbackDialog({
             value={issue}
             placeholder="例如：证据链不足、根因误判、缺少关键日志片段"
             rows={4}
+            disabled={pending}
             onChange={(event) => setIssue(event.target.value)}
           />
         </label>
+        {error ? (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        ) : null}
         <div className="upload-dialog__actions">
-          <button className="button subtle" type="button" onClick={onClose}>
+          <button className="button subtle" type="button" disabled={pending} onClick={onClose}>
             取消
           </button>
-          <button className="button primary" type="submit">
-            提交反馈
+          <button className="button primary" type="submit" disabled={pending}>
+            {pending ? "提交中…" : "提交反馈"}
           </button>
         </div>
       </form>

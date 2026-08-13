@@ -1,7 +1,5 @@
 import type { AssistantMessage, Message, ReasoningMessage, UserMessage } from "@ag-ui/core";
-import type { XiaozeTurnReplyPayload } from "./xiaozeTurnReplyTypes";
-import type { XiaozeRunStepSnapshot } from "./xiaozeRunTimingTypes";
-import { stripEmbeddedThinking, dedupeRepeatedAnswerText, looksLikeInternalReasoning } from "./xiaozeMessageContent";
+import { stripEmbeddedThinking, looksLikeInternalReasoning } from "./xiaozeMessageContent";
 
 export type XiaozeConversationTurn = {
   id: string;
@@ -83,61 +81,3 @@ export function pickAssistantForTurn(turn: XiaozeConversationTurn): AssistantMes
   })[0];
 }
 
-export function shouldDeferTurnAnswer(input: {
-  isActiveTurn: boolean;
-  isRunning: boolean;
-  turnReply?: XiaozeTurnReplyPayload;
-  steps: XiaozeRunStepSnapshot[];
-}) {
-  if (!input.isActiveTurn || !input.isRunning) {
-    return false;
-  }
-  if (input.turnReply?.text?.trim()) {
-    return false;
-  }
-  const hasToolSteps = input.steps.some((step) => step.kind === "tool");
-  if (!hasToolSteps) {
-    return false;
-  }
-  return true;
-}
-
-export function resolveTurnAnswerText(
-  assistant: AssistantMessage | undefined,
-  turnReply: XiaozeTurnReplyPayload | undefined,
-  isStreaming = false,
-  deferPartial = false
-) {
-  if (deferPartial) {
-    return "";
-  }
-  const fromReply = turnReply?.text?.trim() ?? "";
-  const fromMessage = assistant ? stripEmbeddedThinking(readMessageText(assistant.content)) : "";
-
-  if (!isStreaming && fromReply) {
-    const replyFacing =
-      (fromReply.match(/[\u4e00-\u9fff]/g) ?? []).length > 0 || !looksLikeInternalReasoning(fromReply);
-    if (replyFacing) {
-      return dedupeRepeatedAnswerText(fromReply);
-    }
-  }
-
-  const candidates = [fromMessage, fromReply].filter(Boolean);
-  const userFacing = candidates.filter((text) => {
-    const chineseCount = (text.match(/[\u4e00-\u9fff]/g) ?? []).length;
-    return chineseCount > 0 || !looksLikeInternalReasoning(text);
-  });
-
-  if (userFacing.length === 0) {
-    return "";
-  }
-
-  return dedupeRepeatedAnswerText(userFacing.sort((left, right) => right.length - left.length)[0] ?? "");
-}
-
-export function shouldShowTurnThinking(_turn: XiaozeConversationTurn, isActiveTurn: boolean, answerText: string) {
-  if (!isActiveTurn) {
-    return false;
-  }
-  return !answerText;
-}

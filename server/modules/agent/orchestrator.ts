@@ -4,7 +4,7 @@ import type { TracingBoundary } from "../../observability/tracing";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
-import { createAuditEvent as defaultCreateAuditEvent } from "../audit/repository";
+import { asAuditTx, withAuditedWrite, writeAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import { createAgentToolRegistry } from "./toolRegistry";
 import type { AgentToolExecutionContext } from "./toolRegistry";
 import {
@@ -101,12 +101,10 @@ function requireApprovalRequester(approval: { id: string; requestedByUserId: str
 export function createAgentOrchestrator(options: {
   db: Database;
   toolRegistry?: ToolRegistry;
-  createAuditEvent?: typeof defaultCreateAuditEvent;
   metrics?: Pick<MetricsRegistry, "recordAgentApproval" | "recordAgentToolResult" | "recordAuditWriteFailure">;
   tracing?: Pick<TracingBoundary, "withSpan">;
 }) {
   const db = options.db;
-  const createAuditEvent = options.createAuditEvent ?? defaultCreateAuditEvent;
   const metrics = options.metrics;
   const tracing = options.tracing;
   const registryFor = (database: Database) => options.toolRegistry ?? createAgentToolRegistry({ db: database });
@@ -157,6 +155,7 @@ export function createAgentOrchestrator(options: {
     return tracing ? tracing.withSpan("agent.tool.execute", attributes, execute) : execute();
   }
 
+  /** Step-result audit: commits with the step's state write (ADR-0027). */
   async function audit(input: {
     context: AgentRequestContext;
     projectId?: string;
@@ -166,22 +165,19 @@ export function createAgentOrchestrator(options: {
     targetId: string;
     metadata?: Record<string, unknown>;
     severity?: "High" | "Medium" | "Low";
-  }, auditDb: Queryable = db) {
+  }, auditTx: AuditTx) {
     try {
-      await createAuditEvent(auditDb, {
+      await writeAuditEventInTx(auditTx, input.context.auth, { requestId: input.context.requestId }, {
         id: newId("audit"),
-        organizationId: input.context.auth.organization.id,
-        projectId: input.projectId ?? null,
-        actorUserId: input.context.auth.user.id,
-        actorType: "agent",
         app: "wiseeff",
         kind: input.kind,
         action: input.action,
         severity: input.severity ?? "Low",
+        projectId: input.projectId ?? null,
         targetType: input.targetType,
         targetId: input.targetId,
-        metadata: { initiatedByUserId: input.context.auth.user.id, ...(input.metadata ?? {}) },
-        traceId: input.context.requestId
+        actorType: "agent",
+        metadata: { initiatedByUserId: input.context.auth.user.id, ...(input.metadata ?? {}) }
       });
     } catch (error) {
       metrics?.recordAuditWriteFailure({
@@ -217,29 +213,34 @@ export function createAgentOrchestrator(options: {
 
   async function createApprovalForToolCall(input: AgentRequestContext, toolCall: AgentToolCallDto, sessionId: string) {
     const approvalId = newId("agent-approval");
-    await createAgentApproval(db, {
-      id: approvalId,
-      sessionId,
-      toolCallId: toolCall.id,
-      organizationId: input.auth.organization.id,
-      projectId: typeof toolCall.payload.projectId === "string" ? toolCall.payload.projectId : undefined,
-      status: "pending",
-      title: toolCall.label,
-      message: `Approval is required before running ${toolCall.label}.`,
-      requestedByUserId: input.auth.user.id
-    });
-    const updated = await updateAgentToolCall(db, input.auth.organization.id, toolCall.id, { status: "pending_approval" });
-    if (!updated) {
-      throw staleTransition("Agent tool call could not be moved to pending approval.", { toolCallId: toolCall.id });
-    }
-    await audit({
-      context: input,
-      projectId: typeof toolCall.payload.projectId === "string" ? toolCall.payload.projectId : undefined,
-      kind: "agent-tool",
-      action: "approval-requested",
-      targetType: "agent_tool_call",
-      targetId: toolCall.id,
-      metadata: { sessionId, toolCallId: toolCall.id, approvalId, toolName: toolCall.name }
+    // Approval row, tool-call transition, and audit commit together (ADR-0027);
+    // previously each auto-committed and the audit could be lost after them.
+    await withAuditedWrite(db, input.auth, { requestId: input.requestId }, async (tx) => {
+      await createAgentApproval(tx, {
+        id: approvalId,
+        sessionId,
+        toolCallId: toolCall.id,
+        organizationId: input.auth.organization.id,
+        projectId: typeof toolCall.payload.projectId === "string" ? toolCall.payload.projectId : undefined,
+        status: "pending",
+        title: toolCall.label,
+        message: `Approval is required before running ${toolCall.label}.`,
+        requestedByUserId: input.auth.user.id
+      });
+      const updated = await updateAgentToolCall(tx, input.auth.organization.id, toolCall.id, { status: "pending_approval" });
+      if (!updated) {
+        throw staleTransition("Agent tool call could not be moved to pending approval.", { toolCallId: toolCall.id });
+      }
+      await audit({
+        context: input,
+        projectId: typeof toolCall.payload.projectId === "string" ? toolCall.payload.projectId : undefined,
+        kind: "agent-tool",
+        action: "approval-requested",
+        targetType: "agent_tool_call",
+        targetId: toolCall.id,
+        metadata: { sessionId, toolCallId: toolCall.id, approvalId, toolName: toolCall.name }
+      }, asAuditTx(tx));
+      return { result: undefined, audit: null };
     });
     recordAgentApprovalMetric("requested", toolCall);
   }
@@ -258,21 +259,26 @@ export function createAgentOrchestrator(options: {
     }
     try {
       const result = await withToolExecutionSpan(toolCall, () => toolRegistry.run(toolCall.name, executionContext, toolCall.payload));
-      const succeeded = await updateAgentToolCall(db, input.auth.organization.id, toolCall.id, {
-        status: "succeeded",
-        result
-      });
-      if (!succeeded) {
-        throw staleTransition("Agent tool call could not be marked succeeded.", { toolCallId: toolCall.id });
-      }
-      await audit({
-        context: input,
-        projectId: executionContext.projectId,
-        kind: "agent-tool",
-        action: "succeeded",
-        targetType: "agent_tool_call",
-        targetId: toolCall.id,
-        metadata: { sessionId, toolCallId: toolCall.id, toolName: toolCall.name, summary: result.summary }
+      // Result transition and audit commit together (ADR-0027); the "running"
+      // transition above deliberately stays outside so it is visible during execution.
+      await withAuditedWrite(db, input.auth, { requestId: input.requestId }, async (tx) => {
+        const succeeded = await updateAgentToolCall(tx, input.auth.organization.id, toolCall.id, {
+          status: "succeeded",
+          result
+        });
+        if (!succeeded) {
+          throw staleTransition("Agent tool call could not be marked succeeded.", { toolCallId: toolCall.id });
+        }
+        await audit({
+          context: input,
+          projectId: executionContext.projectId,
+          kind: "agent-tool",
+          action: "succeeded",
+          targetType: "agent_tool_call",
+          targetId: toolCall.id,
+          metadata: { sessionId, toolCallId: toolCall.id, toolName: toolCall.name, summary: result.summary }
+        }, asAuditTx(tx));
+        return { result: undefined, audit: null };
       });
       recordAgentToolResultMetric("succeeded", toolCall);
       return result;
@@ -280,22 +286,26 @@ export function createAgentOrchestrator(options: {
       if (error instanceof ApiError && error.code === "CONFLICT") {
         throw error;
       }
-      const failed = await updateAgentToolCall(db, input.auth.organization.id, toolCall.id, {
-        status: "failed",
-        errorMessage: errorMessage(error)
-      });
-      if (!failed) {
-        throw staleTransition("Agent tool call could not be marked failed.", { toolCallId: toolCall.id });
-      }
-      await audit({
-        context: input,
-        projectId: executionContext.projectId,
-        kind: "agent-tool",
-        action: "failed",
-        targetType: "agent_tool_call",
-        targetId: toolCall.id,
-        metadata: { sessionId, toolCallId: toolCall.id, toolName: toolCall.name, error: errorMessage(error) },
-        severity: "Medium"
+      // Failure transition and audit commit together, then the error propagates.
+      await withAuditedWrite(db, input.auth, { requestId: input.requestId }, async (tx) => {
+        const failed = await updateAgentToolCall(tx, input.auth.organization.id, toolCall.id, {
+          status: "failed",
+          errorMessage: errorMessage(error)
+        });
+        if (!failed) {
+          throw staleTransition("Agent tool call could not be marked failed.", { toolCallId: toolCall.id });
+        }
+        await audit({
+          context: input,
+          projectId: executionContext.projectId,
+          kind: "agent-tool",
+          action: "failed",
+          targetType: "agent_tool_call",
+          targetId: toolCall.id,
+          metadata: { sessionId, toolCallId: toolCall.id, toolName: toolCall.name, error: errorMessage(error) },
+          severity: "Medium"
+        }, asAuditTx(tx));
+        return { result: undefined, audit: null };
       });
       recordAgentToolResultMetric("failed", toolCall);
       throw error;
@@ -410,7 +420,7 @@ export function createAgentOrchestrator(options: {
             error: errorMessage(error)
           },
           severity: "Medium"
-        }, tx);
+        }, asAuditTx(tx));
         return error;
       }
 
@@ -440,7 +450,7 @@ export function createAgentOrchestrator(options: {
           toolName: toolCall.name,
           summary: result.summary
         }
-      }, tx);
+      }, asAuditTx(tx));
       return null;
     });
     recordAgentApprovalMetric("approved", toolCall);
@@ -463,44 +473,48 @@ export function createAgentOrchestrator(options: {
       throw new ApiError("NOT_FOUND", "Agent tool call was not found.", 404, { toolCallId: approval.toolCallId });
     }
 
-    const rejected = await markAgentApprovalRejected(
-      db,
-      input.auth.organization.id,
-      approval.id,
-      input.auth.user.id,
-      input.reason
-    );
-    if (!rejected) {
-      throw staleTransition("Agent approval was already decided.", { approvalId: approval.id });
-    }
-    const toolRejected = await updateAgentToolCall(db, input.auth.organization.id, approval.toolCallId, {
-      status: "rejected",
-      errorMessage: input.reason
-    });
-    if (!toolRejected) {
-      throw staleTransition("Agent tool call could not be marked rejected.", { toolCallId: approval.toolCallId });
-    }
-    await appendAgentMessage(db, {
-      id: newId("agent-msg"),
-      sessionId: approval.sessionId,
-      organizationId: input.auth.organization.id,
-      role: "assistant",
-      content: `Tool request rejected: ${input.reason}`,
-      citations: []
-    });
-    await audit({
-      context: input,
-      projectId: approval.projectId,
-      kind: "agent-tool",
-      action: "approval-rejected",
-      targetType: "agent_tool_call",
-      targetId: approval.toolCallId,
-      metadata: {
-        sessionId: approval.sessionId,
-        toolCallId: approval.toolCallId,
-        approvalId: approval.id,
-        reason: input.reason
+    // Rejection decision, tool-call transition, message, and audit commit together (ADR-0027).
+    await withAuditedWrite(db, input.auth, { requestId: input.requestId }, async (tx) => {
+      const rejected = await markAgentApprovalRejected(
+        tx,
+        input.auth.organization.id,
+        approval.id,
+        input.auth.user.id,
+        input.reason
+      );
+      if (!rejected) {
+        throw staleTransition("Agent approval was already decided.", { approvalId: approval.id });
       }
+      const toolRejected = await updateAgentToolCall(tx, input.auth.organization.id, approval.toolCallId, {
+        status: "rejected",
+        errorMessage: input.reason
+      });
+      if (!toolRejected) {
+        throw staleTransition("Agent tool call could not be marked rejected.", { toolCallId: approval.toolCallId });
+      }
+      await appendAgentMessage(tx, {
+        id: newId("agent-msg"),
+        sessionId: approval.sessionId,
+        organizationId: input.auth.organization.id,
+        role: "assistant",
+        content: `Tool request rejected: ${input.reason}`,
+        citations: []
+      });
+      await audit({
+        context: input,
+        projectId: approval.projectId,
+        kind: "agent-tool",
+        action: "approval-rejected",
+        targetType: "agent_tool_call",
+        targetId: approval.toolCallId,
+        metadata: {
+          sessionId: approval.sessionId,
+          toolCallId: approval.toolCallId,
+          approvalId: approval.id,
+          reason: input.reason
+        }
+      }, asAuditTx(tx));
+      return { result: undefined, audit: null };
     });
     recordAgentApprovalMetric("rejected", toolCall);
     recordAgentToolResultMetric("rejected", toolCall);

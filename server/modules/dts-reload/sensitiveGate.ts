@@ -1,17 +1,17 @@
 import { randomUUID } from "node:crypto";
 
-import { createAuditEvent } from "../audit/repository";
+import { writeRefusalAudit } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
-import type { Queryable } from "../../shared/database/client";
+import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { canEditCriticalParameters } from "../parameters/policy";
+import { canEditCriticalParameters } from "../parameter-kernel/policy";
 import {
   listSensitiveNodeRules,
   matchSensitiveRules,
   type SensitiveNodeRule,
   type SensitiveRiskTier,
   type SensitiveWriteActorType
-} from "../parameters/sensitiveNode";
+} from "../parameter-kernel/sensitiveNode";
 
 /** Explicit confirmation required when a reload batch includes a critical-tier sensitive match. */
 export const SENSITIVE_RELOAD_CONFIRMATION_TOKEN = "confirm-sensitive-reload";
@@ -86,7 +86,9 @@ function callerHasRequiredCapability(auth: AuthContext, rule: SensitiveNodeRule)
 }
 
 async function auditSensitiveReloadDenied(
-  db: Queryable,
+  // Pool handle on purpose: refusal evidence must survive the caller's rollback
+  // (ADR-0027 refusal audits), so this gate must run outside any transaction.
+  db: Database,
   auth: AuthContext,
   input: {
     projectId: string;
@@ -96,18 +98,15 @@ async function auditSensitiveReloadDenied(
     requestId?: string;
   }
 ) {
-  await createAuditEvent(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    actorUserId: auth.user.id,
-    actorType: input.actorType,
+  await writeRefusalAudit(db, auth, { requestId: input.requestId ?? randomUUID() }, {
     app: "dts-reload",
     kind: "dts-reload-sensitive-node-denied",
     action: "deny",
     severity: "High",
+    projectId: input.projectId,
     targetType: "sensitive-node",
     targetId: input.hit.rule.id,
+    actorType: input.actorType,
     metadata: {
       code: SENSITIVE_RELOAD_DENIED_CODE,
       reason: input.reason,
@@ -120,8 +119,7 @@ async function auditSensitiveReloadDenied(
       pattern: input.hit.rule.pattern,
       requiredCapability: input.hit.rule.requiredCapability,
       ruleId: input.hit.rule.id
-    },
-    traceId: input.requestId ?? randomUUID()
+    }
   });
 }
 
@@ -153,7 +151,8 @@ function hitLabel(hit: ReloadTargetSensitiveHit) {
  * Call after targets are resolved and before overlay generation / persist.
  */
 export async function assertSensitiveReloadBatchAllowed(
-  db: Queryable,
+  // Pool handle on purpose: deny audits must survive rollback (refusal audits).
+  db: Database,
   auth: AuthContext,
   input: {
     projectId: string;

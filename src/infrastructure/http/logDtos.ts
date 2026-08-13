@@ -1,5 +1,5 @@
 import type { LogJobSnapshot } from "@/application/ports/LogAnalysisRepository";
-import type { LogDomain, LogDomainKnowledgeLink, LogEvidence, LogRecord } from "@/domain/logs/types";
+import type { LogDomain, LogDomainKnowledgeLink, LogEvidence, LogFeedbackInsight, LogRecord } from "@/domain/logs/types";
 
 export type LogEvidenceDto = {
   id: string;
@@ -58,6 +58,16 @@ const statusLabels: Record<LogRecordDto["status"], LogRecord["status"]> = {
   failed: "Failed"
 };
 
+/**
+ * The analyzer reports confidence as a 0-1 ratio while the UI (and mock data)
+ * renders 0-100 percent values with a literal `%` suffix. Normalize at the DTO
+ * seam: ratios (<= 1) are scaled to percent, values above 1 are already
+ * percentages and pass through untouched.
+ */
+export function confidencePercentFromDto(confidence: number): number {
+  return confidence <= 1 ? Math.round(confidence * 100) : confidence;
+}
+
 export function logRecordFromDto(dto: LogRecordDto): LogRecord {
   return {
     id: dto.id,
@@ -67,7 +77,7 @@ export function logRecordFromDto(dto: LogRecordDto): LogRecord {
     fileSizeMB: Math.round((dto.fileSizeBytes / 1024 / 1024) * 10) / 10,
     status: statusLabels[dto.status],
     stage: dto.stage,
-    confidence: dto.confidence,
+    confidence: confidencePercentFromDto(dto.confidence),
     conclusion: dto.conclusion,
     impact: dto.impact,
     evidence: dto.evidence.map((item) => ({ ...item, lineNumbers: [...item.lineNumbers] })),
@@ -125,5 +135,20 @@ export function logDomainKnowledgeLinkFromDto(dto: LogDomainKnowledgeLinkDto): L
 }
 
 export function jobSnapshotFromDto(dto: LogJobDto): LogJobSnapshot {
+  return { ...dto };
+}
+
+export type LogFeedbackInsightDto = {
+  logDomainId: string | null;
+  logDomainName: string | null;
+  analysisSource: "agent" | "rules-fallback" | null;
+  promptVersion: string | null;
+  totalCount: number;
+  helpfulCount: number;
+  helpfulRate: number;
+  lastFeedbackAt: string;
+};
+
+export function logFeedbackInsightFromDto(dto: LogFeedbackInsightDto): LogFeedbackInsight {
   return { ...dto };
 }

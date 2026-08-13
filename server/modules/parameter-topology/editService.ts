@@ -22,10 +22,10 @@ import {
 } from "../parameter-files/dtsToolchain";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { canEditParameters } from "../parameters/policy";
+import { canEditParameters } from "../parameter-kernel/policy";
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { ensurePreCutoverLinkedParameterValue } from "../parameter-kernel/legacyParameterIdentityAdapter";
-import { assertSensitiveNodeWriteAllowed } from "../parameters/sensitiveNode";
+import { assertSensitiveNodeWriteAllowed } from "../parameter-kernel/sensitiveNode";
 import {
   upsertDraft,
   upsertEnablementDraft,
@@ -44,6 +44,8 @@ import {
 } from "./repository";
 import type { ConfigRevisionManifest, ConfigRevisionManifestMember, PersistedValidationDiagnostic } from "./types";
 import { writeGovernanceAudit } from "./governanceAudit";
+import { asAuditTx, withAuditedWrite } from "../audit/auditedWrite";
+import type { AuditCorrelationContext } from "../audit/types";
 import {
   candidateGateError,
   checksumOf,
@@ -304,10 +306,11 @@ async function carryForwardBindingRevisions(
  * toolchain-validates fail-closed, and writes semantic FKs on the draft row.
  */
 export async function createBindingDraft(
-  db: Database | Queryable,
+  db: Database,
   auth: AuthContext,
   input: CreateBindingDraftInput,
   deps: CreateBindingDraftDeps = {},
+  context: AuditCorrelationContext = {},
 ): Promise<BindingDraftResult> {
   requireCanEdit(auth);
 
@@ -654,52 +657,61 @@ export async function createBindingDraft(
     draftParameterId = linked.id;
   }
 
-  const persistedDraft = await upsertDraft(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: binding.project_id,
-    parameterId: draftParameterId,
-    userId: auth.user.id,
-    targetValue: rawText,
-    reason: input.reason,
-    origin: "manual",
-    action,
-    projectParameterBindingId: binding.binding_id,
-    parameterSpecId: binding.parameter_spec_id,
-    candidateConfigRevisionId: candidateRevisionId,
-    writeLock: {
-      baseConfigRevisionId: revision.id,
-      bindingRevisionId: bindingRevision.rows[0]!.id,
-      propertyOccurrenceId: writeTarget.occurrenceId ?? null,
-      sourceFileVersionId: writeTarget.fileVersionId!,
-      expectedChecksum: writeTarget.checksum!,
-      occurrenceSpan: writeTarget.occurrenceSpan ?? null,
-    },
-  });
-  const draftId = persistedDraft.id;
+  // Draft upsert, rebase, and audit commit together (ADR-0027); previously each
+  // auto-committed and the audit (with a random traceId) could be lost after them.
+  const { draftId, rebasedDraftIds } = await withAuditedWrite(
+    db,
+    auth,
+    { requestId: context.requestId ?? randomUUID() },
+    async (tx) => {
+      const persistedDraft = await upsertDraft(tx, {
+        id: randomUUID(),
+        organizationId: auth.organization.id,
+        projectId: binding.project_id,
+        parameterId: draftParameterId,
+        userId: auth.user.id,
+        targetValue: rawText,
+        reason: input.reason,
+        origin: "manual",
+        action,
+        projectParameterBindingId: binding.binding_id,
+        parameterSpecId: binding.parameter_spec_id,
+        candidateConfigRevisionId: candidateRevisionId,
+        writeLock: {
+          baseConfigRevisionId: revision.id,
+          bindingRevisionId: bindingRevision.rows[0]!.id,
+          propertyOccurrenceId: writeTarget.occurrenceId ?? null,
+          sourceFileVersionId: writeTarget.fileVersionId!,
+          expectedChecksum: writeTarget.checksum!,
+          occurrenceSpan: writeTarget.occurrenceSpan ?? null,
+        },
+      });
 
-  const rebasedDraftIds = await rebaseOpenBindingDraftCandidates(db, {
-    organizationId: auth.organization.id,
-    projectId: binding.project_id,
-    userId: auth.user.id,
-    candidateConfigRevisionId: candidateRevisionId,
-    excludeDraftId: draftId,
-  });
+      const rebased = await rebaseOpenBindingDraftCandidates(tx, {
+        organizationId: auth.organization.id,
+        projectId: binding.project_id,
+        userId: auth.user.id,
+        candidateConfigRevisionId: candidateRevisionId,
+        excludeDraftId: persistedDraft.id,
+      });
 
-  await writeGovernanceAudit(db, auth, {
-    action: "binding-edited",
-    projectId: binding.project_id,
-    targetType: "project-parameter-binding",
-    targetId: binding.binding_id,
-    metadata: {
-      draftId,
-      candidateRevisionId,
-      propertyKey: binding.property_key,
-      writeTargetRole: writeTarget.role,
-      targetRef,
-      action,
-    },
-  });
+      await writeGovernanceAudit(asAuditTx(tx), auth, {
+        action: "binding-edited",
+        projectId: binding.project_id,
+        targetType: "project-parameter-binding",
+        targetId: binding.binding_id,
+        metadata: {
+          draftId: persistedDraft.id,
+          candidateRevisionId,
+          propertyKey: binding.property_key,
+          writeTargetRole: writeTarget.role,
+          targetRef,
+          action,
+        },
+      }, context);
+      return { result: { draftId: persistedDraft.id, rebasedDraftIds: rebased }, audit: null };
+    }
+  );
 
   const baseChecksumAfter = checksumOf(baseContent);
 
@@ -746,10 +758,11 @@ async function listRevisionStatusRawValues(
  * Shares working tip / candidate revision coordination with binding drafts (ADR-0003).
  */
 export async function createNodeEnablementDraft(
-  db: Database | Queryable,
+  db: Database,
   auth: AuthContext,
   input: CreateNodeEnablementDraftInput,
   deps: CreateBindingDraftDeps = {},
+  context: AuditCorrelationContext = {},
 ): Promise<NodeEnablementDraftResult> {
   requireCanEdit(auth);
 
@@ -1052,52 +1065,60 @@ export async function createNodeEnablementDraft(
     status: "draft",
   });
 
-  const persistedDraft = await upsertEnablementDraft(db, {
-    id: randomUUID(),
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    logicalNodeId: input.logicalNodeId,
-    userId: auth.user.id,
-    targetValue: rawText,
-    reason: input.reason,
-    origin: "manual",
-    action: writePlan.action,
-    candidateConfigRevisionId: candidateRevisionId,
-    writeLock: {
-      baseConfigRevisionId: revision.id,
-      propertyOccurrenceId: writeTarget.occurrenceId ?? null,
-      sourceFileVersionId: writeTarget.fileVersionId!,
-      expectedChecksum: writeTarget.checksum!,
-      occurrenceSpan: writeTarget.occurrenceSpan ?? null,
-    },
-  });
-  const draftId = persistedDraft.id;
+  // Draft upsert, rebase, and audit commit together (ADR-0027).
+  const { draftId, rebasedDraftIds } = await withAuditedWrite(
+    db,
+    auth,
+    { requestId: context.requestId ?? randomUUID() },
+    async (tx) => {
+      const persistedDraft = await upsertEnablementDraft(tx, {
+        id: randomUUID(),
+        organizationId: auth.organization.id,
+        projectId: input.projectId,
+        logicalNodeId: input.logicalNodeId,
+        userId: auth.user.id,
+        targetValue: rawText,
+        reason: input.reason,
+        origin: "manual",
+        action: writePlan.action,
+        candidateConfigRevisionId: candidateRevisionId,
+        writeLock: {
+          baseConfigRevisionId: revision.id,
+          propertyOccurrenceId: writeTarget.occurrenceId ?? null,
+          sourceFileVersionId: writeTarget.fileVersionId!,
+          expectedChecksum: writeTarget.checksum!,
+          occurrenceSpan: writeTarget.occurrenceSpan ?? null,
+        },
+      });
 
-  const rebasedDraftIds = await rebaseOpenBindingDraftCandidates(db, {
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    userId: auth.user.id,
-    candidateConfigRevisionId: candidateRevisionId,
-    excludeDraftId: draftId,
-  });
+      const rebased = await rebaseOpenBindingDraftCandidates(tx, {
+        organizationId: auth.organization.id,
+        projectId: input.projectId,
+        userId: auth.user.id,
+        candidateConfigRevisionId: candidateRevisionId,
+        excludeDraftId: persistedDraft.id,
+      });
 
-  await writeGovernanceAudit(db, auth, {
-    action: "enablement-changed",
-    projectId: input.projectId,
-    targetType: "dts-logical-node",
-    targetId: input.logicalNodeId,
-    metadata: {
-      draftId,
-      candidateRevisionId,
-      previousRaw: nodeContext.currentRaw,
-      nextRaw: writePlan.rawText,
-      target: input.target,
-      reason: input.reason,
-      writeTargetRole: writeTarget.role,
-      targetRef,
-      action: writePlan.action,
-    },
-  });
+      await writeGovernanceAudit(asAuditTx(tx), auth, {
+        action: "enablement-changed",
+        projectId: input.projectId,
+        targetType: "dts-logical-node",
+        targetId: input.logicalNodeId,
+        metadata: {
+          draftId: persistedDraft.id,
+          candidateRevisionId,
+          previousRaw: nodeContext.currentRaw,
+          nextRaw: writePlan.rawText,
+          target: input.target,
+          reason: input.reason,
+          writeTargetRole: writeTarget.role,
+          targetRef,
+          action: writePlan.action,
+        },
+      }, context);
+      return { result: { draftId: persistedDraft.id, rebasedDraftIds: rebased }, audit: null };
+    }
+  );
 
   return {
     draftId,
