@@ -1,5 +1,5 @@
 import type { Database } from "../../../shared/database/client";
-import { parameterIdentityMode } from "../parameterIdentityMode";
+import { parameterIdentityMode } from "../../parameter-kernel/parameterIdentityMode";
 import { SEMANTIC_IDENTITY_SQL, SEMANTIC_RISK_EXPR } from "../semanticParameterIdentityNames";
 import {
   actionableReviewStatusesForRole,

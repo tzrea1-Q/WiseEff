@@ -11,7 +11,7 @@ import type {
 } from "./types";
 import { type ParameterRiskLevel } from "./status";
 import { LEGACY_SQL } from "../parameter-topology/migration";
-import { LEGACY_IDENTITY_SQL } from "./legacyParameterIdentityNames";
+import { LEGACY_IDENTITY_SQL } from "../parameter-kernel/legacyParameterIdentityNames";
 import { dateTimeToIso } from "../../shared/database/sqlUtil";
 
 export type ImportPreviewClassification = "added" | "updated" | "unchanged" | "conflict";

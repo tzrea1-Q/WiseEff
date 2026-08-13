@@ -5,7 +5,7 @@ import type { AuthContext } from "../../auth/types";
 import type { DtsToolchainRunner } from "../../parameter-files/dtsToolchain";
 import type { InMemoryTestDatabase } from "../../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../../testing/testDatabase";
-import { probeCutoverComplete } from "../../parameters/parameterIdentityMode";
+import { probeCutoverComplete } from "../../parameter-kernel/parameterIdentityMode";
 import { resolveModuleIdForBinding } from "../../parameter-modules/resolveModuleForBinding";
 import { createOrReuseBinding, upsertBindingRevisionValues } from "../../parameter-topology/bindingService";
 import { ingestConfigRevision } from "../../parameter-topology/ingestService";

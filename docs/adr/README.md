@@ -37,3 +37,4 @@ See also: [`CONTEXT.md`](../../CONTEXT.md), [`docs/design-docs/domain-model.md`]
 | [0025](0025-knowledge-retrieval-lives-in-postgres.md) | Knowledge retrieval lives in PostgreSQL |
 | [0026](0026-design-tokens-are-the-single-visual-source.md) | Design tokens are the single visual source |
 | [0028](0028-parameter-drafts-are-a-standalone-staging-module.md) | Parameter drafts are a standalone staging module |
+| [0029](0029-parameter-platform-primitives-live-in-a-standalone-kernel-module.md) | Parameter platform primitives live in a standalone kernel module |

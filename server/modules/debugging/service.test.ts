@@ -4,7 +4,7 @@ import type { Database, QueryResult, Queryable } from "../../shared/database/cli
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
 import type { CreateAuditEventInput } from "../audit/types";
-import { setParameterIdentityMode } from "../parameters/parameterIdentityMode";
+import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import type { DebugDeviceGateway, GatewayWriteResult } from "./gateway";
 import { createDebugDeviceGatewayRegistry } from "./gatewayRegistry";
 import { createDebuggingService } from "./service";
