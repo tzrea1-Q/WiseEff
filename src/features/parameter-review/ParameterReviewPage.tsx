@@ -65,9 +65,14 @@ export function ParameterReviewPage({
   runtimeMode
 }: PageProps) {
   const parameterInitializationRepository = runtime?.parameterInitializationRepository;
-  const [selectedId, setSelectedId] = useState(
-    state.parameterInitializationReviews[0]?.id ?? state.changeRequests[0]?.id ?? ""
-  );
+  const [selectedId, setSelectedId] = useState(() => {
+    // Deep link: /parameter-review?request=<id> restores the shared selection.
+    const requested = new URLSearchParams(search).get("request");
+    if (requested && (state.changeRequests.some((item) => item.id === requested) || state.parameterInitializationReviews.some((item) => item.id === requested))) {
+      return requested;
+    }
+    return state.parameterInitializationReviews[0]?.id ?? state.changeRequests[0]?.id ?? "";
+  });
   const [rejectOpen, setRejectOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [mergeLink, setMergeLink] = useState("");
@@ -259,6 +264,19 @@ export function ParameterReviewPage({
 
   useEffect(() => {
     setMergeLink("");
+  }, [selectedId]);
+
+  // Keep the selection shareable without polluting browser history.
+  useEffect(() => {
+    if (!selectedId || !window.location.pathname.startsWith("/parameter-review")) {
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("request") === selectedId) {
+      return;
+    }
+    params.set("request", selectedId);
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
   }, [selectedId]);
 
   useEffect(() => {

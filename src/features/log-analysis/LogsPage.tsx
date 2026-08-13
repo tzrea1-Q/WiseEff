@@ -87,7 +87,14 @@ function createEmptyLogRecord(): LogRecord {
 
 export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, knowledgeCapability }: PageProps) {
   const knowledgeRepository = runtime?.knowledgeRepository;
-  const [selectedLogId, setSelectedLogId] = useState(state.logs[0]?.id ?? "");
+  const [selectedLogId, setSelectedLogId] = useState(() => {
+    // Deep link: /logs?logId=<id> (the target of 复制链接) restores the selection.
+    const requested = new URLSearchParams(window.location.search).get("logId");
+    if (requested && state.logs.some((log) => log.id === requested)) {
+      return requested;
+    }
+    return state.logs[0]?.id ?? "";
+  });
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [uploadLogDomains, setUploadLogDomains] = useState<LogDomain[]>([]);
   const [distilPending, setDistilPending] = useState(false);
@@ -106,6 +113,38 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
   const prevLogCount = useRef(state.logs.length);
   const emptyLogRecord = useMemo(() => createEmptyLogRecord(), []);
   const selectedLog = state.logs.find((log) => log.id === selectedLogId) ?? state.logs[0];
+
+  // API mode hydrates logs after mount, so a deep-linked id may not exist yet
+  // at first render; consume it once the record arrives.
+  const pendingDeepLinkLogIdRef = useRef<string | null>(
+    new URLSearchParams(window.location.search).get("logId")
+  );
+  useEffect(() => {
+    const wanted = pendingDeepLinkLogIdRef.current;
+    if (!wanted) {
+      return;
+    }
+    if (state.logs.some((log) => log.id === wanted)) {
+      setSelectedLogId(wanted);
+      pendingDeepLinkLogIdRef.current = null;
+      // The hydration that delivered this record must not trigger the
+      // newest-upload auto-selection below and override the deep link.
+      prevLogCount.current = state.logs.length;
+    }
+  }, [state.logs]);
+
+  // Keep the address bar shareable (the 复制链接 target) without history spam.
+  useEffect(() => {
+    if (!selectedLogId || !window.location.pathname.startsWith("/logs") || pendingDeepLinkLogIdRef.current) {
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("logId") === selectedLogId) {
+      return;
+    }
+    params.set("logId", selectedLogId);
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+  }, [selectedLogId]);
   const hasActiveLog = Boolean(selectedLog);
   const activeLog = selectedLog ?? emptyLogRecord;
   const evidenceByLine = useMemo(() => {

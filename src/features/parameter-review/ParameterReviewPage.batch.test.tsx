@@ -37,6 +37,33 @@ function pendingHardwareReviewIds(state: PrototypeState) {
     .map((request) => request.id);
 }
 
+describe("ParameterReviewPage deep link", () => {
+  it("restores the selected request from ?request= and keeps the URL shareable", async () => {
+    const state = hardwareCommitterState();
+    const target = state.changeRequests.find((request) => request.status === "硬件Committer检视");
+    expect(target).toBeTruthy();
+    window.history.replaceState(null, "", `/parameter-review?request=${target!.id}`);
+
+    const dispatch = vi.fn();
+    render(
+      <TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+        <ParameterReviewPage
+          state={state}
+          dispatch={dispatch}
+          onNavigate={() => {}}
+          search={`?request=${target!.id}`}
+        />
+      </TopBarActionsContext.Provider>
+    );
+
+    const selectedRow = document.querySelector("tr.selected-row");
+    expect(selectedRow?.textContent ?? "").toContain(target!.title);
+    await waitFor(() => {
+      expect(new URLSearchParams(window.location.search).get("request")).toBe(target!.id);
+    });
+  });
+});
+
 describe("ParameterReviewPage batch advance", () => {
   it("offers checkboxes only for actionable review-stage rows and arms the batch button", () => {
     const state = hardwareCommitterState();
