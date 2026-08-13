@@ -45,8 +45,10 @@ For code changes:
 - Run `npm run restore:drill`, the real restore commands, `npm run backup:drill`, and `npm run backup:check` against isolated target restore infrastructure before claiming M6.3 target backup/restore readiness.
 - Run `npm run queue:check -- --base-url <target-url>` before claiming a self-hosted Redis/BullMQ queue target is ready.
 - Run `npm run acceptance:a11y`, `npm run acceptance:visual`, or `npm run acceptance:responsive` for UI-facing changes that affect semantics, layout, screenshots, or viewport usability.
+- Run `npm run ui:check` (CI-gated) for frontend changes that touch styling, tokens, z-index, shadows, motion, dialogs, or visible UI copy; per-rule counts must not exceed `scripts/ui-standards-baseline.json`, and when a count drops below its baseline, ratchet it down with `npm run ui:check -- --update-baseline` in the same change.
+- Run `npm run lint` (CI-gated) for changes under `src/`; error-level `jsx-a11y`/`react-hooks` rules block, warn-level rules carry the recorded burn-down stock in `eslint.config.js`.
 - Run `npm run docs:check` before completing non-trivial active plans.
-- Run `npm run test:scripts -- scripts/check-doc-governance.test.ts` when changing documentation governance automation.
+- Run `npm run test:scripts -- scripts/check-doc-governance.test.ts` when changing documentation governance automation, and `npm run test:scripts -- scripts/check-ui-standards.test.ts` when changing the UI standards gate.
 - Run `npm run test:scripts` for `scripts/**` or `ops/**` automation changes, and `npm run bridge:test` for `packages/**` device-bridge changes.
 
 ## M2 Coverage

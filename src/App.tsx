@@ -85,7 +85,6 @@ import {
   mockDataFingerprint
 } from "./mockData";
 import {
-  type DebugParameter,
   type PrototypeState,
   type User
 } from "@/domain/prototype/types";
@@ -208,26 +207,6 @@ function SelectControl<Value extends string>({
     </Select>
   );
 }
-
-export type ParameterValueDraft = {
-  currentValue: string;
-  recommendedValue: string;
-  updatedAt: string;
-};
-
-export type ParameterEditorDraft = {
-  name: string;
-  description: string;
-  explanation: string;
-  configFormat: string;
-  module: string;
-  moduleId?: string;
-  modulePath?: string[];
-  range: string;
-  unit: string;
-  risk: DebugParameter["risk"];
-  valueKind: import("@/powerManagementConfig").ParameterValueKind;
-};
 
 function userAccountIdentifier(user: User) {
   return user.username ?? user.email ?? "No account identifier";

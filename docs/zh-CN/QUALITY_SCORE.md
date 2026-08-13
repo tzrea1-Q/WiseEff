@@ -27,6 +27,12 @@ Agent 发起的变更调用（start / deploy / restore）在服务端直接拒�
 
 剩余缺口：硬件条件证据（`DTS-RELOAD-DEPLOY-HW-001`）；多副本桥路由（TD-067）；延期产品债 TD-063–066。
 
+## 前端 UI 质量门禁
+
+- `npm run ui:check`(CI 门禁):逐规则统计令牌块之外的裸颜色/裸 `z-index`/裸 `font-size`/手写 `box-shadow`/`ease` 关键字,以及 `window.confirm`、手写 modal-backdrop、固定英文残留清单;任一规则计数超过 `scripts/ui-standards-baseline.json` 即失败。计数下降时在同一变更里运行 `npm run ui:check -- --update-baseline` 下调棘轮;基线为 0 的规则从第一天起硬禁止。
+- `npm run lint`(CI 门禁):eslint 9 flat config,`jsx-a11y` + `react-hooks` 作用于 `src/**/*.{ts,tsx}`;零违规规则设 error 阻断,存量规则设 warn 并在 `eslint.config.js` 中记录当日计数,后续逐步清偿后升级为 error。
+- 修改门禁脚本本身时,运行 `npm run test:scripts -- scripts/check-ui-standards.test.ts`。
+
 ## 关键阅读点
 
 - 先确认该文档属于哪个决策面：core。

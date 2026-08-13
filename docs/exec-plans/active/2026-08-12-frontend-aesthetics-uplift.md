@@ -119,8 +119,8 @@ Severity: P0 = foundation defect that blocks convergence; P1 = product-visible q
 
 ### P4 — Gates that make it stick (branch `feat/ui-quality-gates`)
 
-- [ ] `npm run ui:check` script: fails on raw color literals, raw `z-index`, raw `font-size`, `window.confirm`, and new `modal-backdrop` divs outside allowed files; wire into CI (FA-24).
-- [ ] ESLint with `jsx-a11y` + `react-hooks` (scoped to prevent new debt; existing violations burn down incrementally).
+- [x] `npm run ui:check` script: fails on raw color literals, raw `z-index`, raw `font-size`, `window.confirm`, and new `modal-backdrop` divs outside allowed files; wire into CI (FA-24). Delivered as P4 wave 1: `scripts/check-ui-standards.ts` + `scripts/ui-standards-baseline.json` + `scripts/check-ui-standards.test.ts` (run via `npm run test:scripts`). Eight independent ratchet rules; because P3 keeps reducing the literal stock on a parallel branch, the gate locks honest counts instead of assuming zero: raw-color 1852, raw-font-size 977, raw-shadow 147, ease-keyword 105, raw-z-index 76 (74 CSS + 2 `ColumnFilter.tsx`), while window-confirm / hand-rolled-backdrop / english-chrome are hard-forbidden at 0. Count > baseline fails with file:line plus design-system guidance; count < baseline hints `--update-baseline`; full scan ~0.5s (line-by-line state machines, token blocks `:root`/`.dark`/`@theme` exempt). Wired into `build-and-test` next to docs:check.
+- [x] ESLint with `jsx-a11y` + `react-hooks` (scoped to prevent new debt; existing violations burn down incrementally). Delivered as P4 wave 1: eslint 9 flat config (`eslint.config.js`) over `src/**/*.{ts,tsx}` including tests, both recommended sets; zero-violation rules run at error, the 19 rules with stock run at warn with the 2026-08-13 census counts recorded inline (297 warnings; largest: `react-hooks/set-state-in-effect` 135, `react-hooks/refs` 32, `jsx-a11y/label-has-associated-control` 27). `npm run lint` (~10s full run, `--cache` enabled) added to CI; errors block, warnings do not.
 - [ ] Extend visual/a11y/responsive quality specs to `/parameter-home`, configuration workbench, `/dts-reload`, `/feedback-admin`, `/node-debugging`; add hover/focus state snapshots for Button/Dialog/Table (FA-25).
 - [ ] Update `docs/QUALITY_SCORE.md` and `docs/developer/verification-matrix.md` (+ zh mirrors) with the new gates.
 
@@ -140,7 +140,7 @@ Severity: P0 = foundation defect that blocks convergence; P1 = product-visible q
 - Token block: `src/styles.css` `:root` (single block after P0) + `@theme inline` aliases.
 - Primitives: `src/components/ui/button.tsx`, `src/components/common/ModalDialog.tsx`, `src/components/admin/DataTable.tsx`, new `src/components/common/toast/*`, promoted `SectionState`.
 - Formatters: new `src/domain/format/` (datetime, percent) + error mapping in `src/infrastructure/http/` clients.
-- Gate script: `scripts/check-ui-tokens.ts` (name TBD) + `.github/workflows/ci.yml`.
+- Gate script: `scripts/check-ui-standards.ts` + `scripts/ui-standards-baseline.json` + `.github/workflows/ci.yml`.
 
 ## UI interaction coverage
 
