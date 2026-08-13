@@ -69,6 +69,11 @@ export interface KnowledgeRepository {
   restoreRevision(entryId: string, revisionId: string, expectedHeadRevisionNumber: number): Promise<KnowledgeEntry>;
   /** Hybrid search response: items plus the retrieval mode that actually ran. */
   search(q: string): Promise<KnowledgeSearchResponse>;
+  /**
+   * Related published knowledge for a completed log-analysis record, derived
+   * from its stored conclusion/impact text (log result page recommendations).
+   */
+  relatedToLog(logId: string): Promise<KnowledgeSearchResponse>;
   getFileObjectUrl(entryId: string): Promise<string>;
   /** Index health governance surface (knowledge:manage). */
   getIndexHealth(): Promise<KnowledgeIndexHealth>;

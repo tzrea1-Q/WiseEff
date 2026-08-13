@@ -6780,7 +6780,9 @@ td small {
 
 .logs-v2-main {
   display: grid;
-  grid-template-rows: auto auto auto minmax(420px, 1fr);
+  /* Conclusion card, stage timeline, then the analysis card stretches; any
+     trailing section (e.g. related knowledge) takes its natural height. */
+  grid-template-rows: auto auto minmax(420px, 1fr);
   gap: 16px;
   min-width: 0;
 }
@@ -7235,6 +7237,59 @@ td small {
 
 .logs-v2-analysis {
   overflow: hidden;
+}
+
+.logs-related-knowledge__list {
+  list-style: none;
+  margin: 0;
+  padding: 8px 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.logs-related-knowledge__entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--app-primary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.logs-related-knowledge__entry:hover,
+.logs-related-knowledge__entry:focus-visible {
+  text-decoration: underline;
+}
+
+.logs-related-knowledge__excerpt {
+  margin: 4px 0 0;
+  color: var(--app-muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.logs-related-knowledge__state {
+  margin: 0;
+  padding: 14px 18px 16px;
+  color: var(--app-muted);
+  font-size: 13px;
+}
+
+.logs-related-knowledge__state--error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--danger);
 }
 
 .rawlog-viewer,

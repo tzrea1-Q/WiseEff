@@ -853,6 +853,89 @@ test.describe("Knowledge base browser acceptance", () => {
     });
   });
 
+  test("shows related published knowledge on a completed analysis with a deep link; drafts and archived never appear", async ({ page }, testInfo) => {
+    // @acceptance KB-REC-001
+    // @operation KB-REC-001
+    const seeded = await seedCompletedLogAnalysis();
+
+    // Three entries carry the same conclusion-derived content; only the
+    // published one may be recommended (published-only invariant).
+    const relatedTitle = `${titlePrefix} 相关知识已发布 ${runStamp}`;
+    const draftTitle = `${titlePrefix} 相关知识草稿 ${runStamp}`;
+    const archivedTitle = `${titlePrefix} 相关知识已归档 ${runStamp}`;
+    const relatedBody = `处置经验:${seeded.conclusion}。夜间快充整体时长增加约 25 分钟,按 0.5A 步长下调快充电流并复核 NTC 采样间隔。`;
+
+    const published = await createMarkdownEntryViaApi(page, { title: relatedTitle, tags: ["快充"], contentMarkdown: relatedBody });
+    await publishEntryViaApi(page, published.id);
+    const draft = await createMarkdownEntryViaApi(page, { title: draftTitle, tags: [], contentMarkdown: relatedBody });
+    const archived = await createMarkdownEntryViaApi(page, { title: archivedTitle, tags: [], contentMarkdown: relatedBody });
+    await publishEntryViaApi(page, archived.id);
+    const archiveResponse = await page.request.post(apiRoute(`/api/v1/knowledge/entries/${archived.id}/archive`), {
+      headers: editorHeaders(),
+      data: {}
+    });
+    expect(archiveResponse.status()).toBe(200);
+
+    // API level: the recommendation returns related published entries only and
+    // reports the retrieval mode that actually ran.
+    const apiResponse = await page.request.get(
+      apiRoute(`/api/v1/knowledge/related-to-log?logId=${encodeURIComponent(seeded.logId)}`),
+      { headers: editorHeaders() }
+    );
+    expect(apiResponse.status()).toBe(200);
+    const apiBody = (await apiResponse.json()) as {
+      items: KnowledgeSearchApiItem[];
+      retrieval: { mode: string; vectorAvailable: boolean; embeddingConfigured: boolean };
+    };
+    const apiIds = apiBody.items.map((item) => item.entryId);
+    expect(apiIds).toContain(published.id);
+    expect(apiIds).not.toContain(draft.id);
+    expect(apiIds).not.toContain(archived.id);
+    expect(["fts_only", "semantic_fts"]).toContain(apiBody.retrieval.mode);
+
+    // Browser: the completed analysis shows the related-knowledge section with
+    // the honest retrieval caption; draft and archived titles never render.
+    await signInBrowserAsUser(page, editorUserId, editorEmail, editorName, "/logs");
+    const history = page.getByRole("complementary", { name: "历史日志记录" });
+    await history.getByRole("button", { name: new RegExp(seeded.fileName.slice(0, 40)) }).click();
+
+    const section = page.getByRole("region", { name: "相关知识" });
+    await expect(section).toBeVisible();
+    await expect(section.getByText(/检索模式:/)).toBeVisible();
+    const entryLink = section.getByRole("button", { name: relatedTitle });
+    await expect(entryLink).toBeVisible();
+    await expect(section.getByText(draftTitle)).toHaveCount(0);
+    await expect(section.getByText(archivedTitle)).toHaveCount(0);
+
+    // The citation deep link lands on /knowledge with the published entry open.
+    await entryLink.click();
+    await page.waitForURL((url) => url.pathname === "/knowledge" && url.searchParams.get("entryId") === published.id);
+    const detail = page.getByRole("dialog", { name: relatedTitle });
+    await expect(detail).toBeVisible();
+    await expect(detail.locator('[data-status="published"]')).toBeVisible();
+
+    const dbSummary = await knowledgeEntryDbSummary(published.id);
+    expect(dbSummary.observed).toContain("status=published");
+
+    await recordOperationEvidence({
+      operationId: "KB-REC-001",
+      title: "related published knowledge on completed analysis with deep link",
+      status: "passed",
+      role: "Hardware User",
+      route: "/logs",
+      page,
+      testInfo,
+      api: [
+        summarizeApiResponse(apiResponse, {
+          method: "GET",
+          path: "/api/v1/knowledge/related-to-log",
+          responseSummary: `logId=${seeded.logId}; recommended=${published.id}; mode=${apiBody.retrieval.mode}; draftExcluded=${!apiIds.includes(draft.id)}; archivedExcluded=${!apiIds.includes(archived.id)}`
+        })
+      ],
+      db: [dbSummary]
+    });
+  });
+
   test("agent knowledge draft flows through approval into the admin publish queue for publish and reject", async ({ page }, testInfo) => {
     // @acceptance KB-ADMIN-001
     // @operation KB-ADMIN-001

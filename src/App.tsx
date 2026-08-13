@@ -444,6 +444,9 @@ function AppShell({
   const knowledgeCapability = useMemo<KnowledgeCapability>(
     () => ({
       userId: state.currentUserId,
+      // knowledge:view is the member default; mock mode has no narrower gate
+      // (the /knowledge page is open to every prototype role).
+      canView: runtimeMode === "api" ? apiAuthPermissions.includes("knowledge:view") : true,
       canEdit:
         runtimeMode === "api"
           ? apiAuthPermissions.includes("knowledge:edit")

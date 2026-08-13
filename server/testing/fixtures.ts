@@ -91,3 +91,191 @@ export async function seedCoreGraph(db: Queryable, fixture: CoreGraphFixture): P
     await seedProject(db, { ...project, organizationId: fixture.organization.id });
   }
 }
+
+export type ParameterSpecFixture = {
+  id: string;
+  specificationKey: string;
+  sourceKind?: "dts" | "json" | "manual";
+  versions?: {
+    id: string;
+    version?: number;
+    displayName: string;
+    description?: string;
+    valueShape?: unknown;
+    lifecycle?: string;
+  }[];
+  /** dts_property_specs is unique per spec, so at most one property spec per spec. */
+  propertySpec?: {
+    id: string;
+    propertyKey: string;
+    schemaNamespace?: string;
+  };
+};
+
+export type ParameterModuleFixture = {
+  id: string;
+  name: string;
+  path?: string;
+  depth?: number;
+};
+
+export type ConfigSetFixture = {
+  id: string;
+  projectId: string;
+  name?: string;
+  revisions?: {
+    id: string;
+    revisionNumber?: number;
+    status?: string;
+  }[];
+  logicalNodes?: {
+    id: string;
+    revisions?: {
+      id: string;
+      configRevisionId: string;
+      nodeLocator: string;
+      name: string;
+      compatible?: string;
+    }[];
+  }[];
+};
+
+export type ProjectParameterBindingFixture = {
+  id: string;
+  projectId: string;
+  parameterSpecId: string;
+  moduleId: string;
+  logicalNodeId?: string;
+  revisions?: {
+    id: string;
+    configRevisionId: string;
+    parameterSpecVersionId: string;
+    /** Defaults to `rawValue` serialized as a JSON string. */
+    typedValue?: unknown;
+    rawValue?: string;
+  }[];
+};
+
+export type SpecBindingGraphFixture = {
+  organizationId: string;
+  specs?: ParameterSpecFixture[];
+  modules?: ParameterModuleFixture[];
+  configSets?: ConfigSetFixture[];
+  bindings?: ProjectParameterBindingFixture[];
+};
+
+/**
+ * Seed the semantic parameter-identity graph — parameter_specs → parameter_spec_versions →
+ * dts_property_specs, parameter_modules, dts_config_set → dts_config_revisions →
+ * dts_logical_nodes (+revisions), and project_parameter_bindings (+binding revisions) —
+ * that binding-identified suites hang their rows off. The organization, users, and
+ * projects must already exist (seedCoreGraph). Occurrence rows (dts_node_occurrences,
+ * dts_property_occurrences, dts_occurrence_effects) stay in the suite: they encode
+ * test-specific source positions, not shared identity.
+ */
+export async function seedSpecBindingGraph(db: Queryable, fixture: SpecBindingGraphFixture): Promise<void> {
+  const organizationId = fixture.organizationId;
+
+  for (const spec of fixture.specs ?? []) {
+    await db.query(
+      `insert into parameter_specs (id, organization_id, source_kind, specification_key)
+       values ($1, $2, $3, $4)`,
+      [spec.id, organizationId, spec.sourceKind ?? "dts", spec.specificationKey]
+    );
+    for (const version of spec.versions ?? []) {
+      await db.query(
+        `insert into parameter_spec_versions (id, parameter_spec_id, version, display_name, description, value_shape, lifecycle)
+         values ($1, $2, $3, $4, $5, $6::jsonb, $7)`,
+        [
+          version.id,
+          spec.id,
+          version.version ?? 1,
+          version.displayName,
+          version.description ?? "",
+          JSON.stringify(version.valueShape ?? {}),
+          version.lifecycle ?? "active"
+        ]
+      );
+    }
+    if (spec.propertySpec) {
+      await db.query(
+        `insert into dts_property_specs (id, parameter_spec_id, property_key, schema_namespace)
+         values ($1, $2, $3, $4)`,
+        [spec.propertySpec.id, spec.id, spec.propertySpec.propertyKey, spec.propertySpec.schemaNamespace ?? "wiseeff"]
+      );
+    }
+  }
+
+  for (const module of fixture.modules ?? []) {
+    await db.query(
+      `insert into parameter_modules (id, organization_id, name, path, depth)
+       values ($1, $2, $3, $4, $5)`,
+      [module.id, organizationId, module.name, module.path ?? module.id, module.depth ?? 1]
+    );
+  }
+
+  for (const configSet of fixture.configSets ?? []) {
+    await db.query(
+      `insert into dts_config_set (id, organization_id, project_id, name)
+       values ($1, $2, $3, $4)`,
+      [configSet.id, organizationId, configSet.projectId, configSet.name ?? "main"]
+    );
+    for (const [index, revision] of (configSet.revisions ?? []).entries()) {
+      await db.query(
+        `insert into dts_config_revisions (id, organization_id, project_id, config_set_id, revision_number, status)
+         values ($1, $2, $3, $4, $5, $6)`,
+        [
+          revision.id,
+          organizationId,
+          configSet.projectId,
+          configSet.id,
+          revision.revisionNumber ?? index + 1,
+          revision.status ?? "resolved"
+        ]
+      );
+    }
+    for (const logicalNode of configSet.logicalNodes ?? []) {
+      await db.query(
+        `insert into dts_logical_nodes (id, organization_id, project_id, config_set_id)
+         values ($1, $2, $3, $4)`,
+        [logicalNode.id, organizationId, configSet.projectId, configSet.id]
+      );
+      for (const nodeRevision of logicalNode.revisions ?? []) {
+        await db.query(
+          `insert into dts_logical_node_revisions (id, logical_node_id, config_revision_id, node_locator, name, compatible)
+           values ($1, $2, $3, $4, $5, $6)`,
+          [
+            nodeRevision.id,
+            logicalNode.id,
+            nodeRevision.configRevisionId,
+            nodeRevision.nodeLocator,
+            nodeRevision.name,
+            nodeRevision.compatible ?? null
+          ]
+        );
+      }
+    }
+  }
+
+  for (const binding of fixture.bindings ?? []) {
+    await db.query(
+      `insert into project_parameter_bindings (id, organization_id, project_id, logical_node_id, parameter_spec_id, module_id)
+       values ($1, $2, $3, $4, $5, $6)`,
+      [binding.id, organizationId, binding.projectId, binding.logicalNodeId ?? null, binding.parameterSpecId, binding.moduleId]
+    );
+    for (const revision of binding.revisions ?? []) {
+      await db.query(
+        `insert into project_parameter_binding_revisions (id, binding_id, config_revision_id, parameter_spec_version_id, typed_value, raw_value)
+         values ($1, $2, $3, $4, $5::jsonb, $6)`,
+        [
+          revision.id,
+          binding.id,
+          revision.configRevisionId,
+          revision.parameterSpecVersionId,
+          JSON.stringify(revision.typedValue ?? revision.rawValue ?? null),
+          revision.rawValue ?? null
+        ]
+      );
+    }
+  }
+}

@@ -1,47 +1,21 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+/**
+ * Behavior-level coverage for the project parameter initialization lifecycle:
+ * draft upsert, submit, admin approve/reject, the submit lock, and audit
+ * trail rows against a real database. Asserts returned DTOs and subsequent
+ * reads — never SQL text or mocked repository calls.
+ */
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthContext } from "../auth/types";
-import type { Database, Queryable, QueryResult } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-
-vi.mock("../audit/repository", () => ({
-  createAuditEvent: vi.fn().mockResolvedValue(undefined)
-}));
-
-vi.mock("./initializationRepository", () => ({
-  getProjectInitializationStatus: vi.fn(),
-  setProjectInitializationStatus: vi.fn(),
-  getDraftByProject: vi.fn(),
-  upsertDraft: vi.fn(),
-  insertReview: vi.fn(),
-  listPendingReviews: vi.fn(),
-  getReviewById: vi.fn(),
-  markReviewApproved: vi.fn(),
-  markReviewRejected: vi.fn(),
-  getBindingLogicalNodeId: vi.fn(),
-  listSourceBindingCandidates: vi.fn()
-}));
-
-vi.mock("../parameter-topology/bindingService", () => ({
-  createOrReuseBinding: vi.fn(),
-  upsertBindingRevisionValues: vi.fn()
-}));
-
-vi.mock("../parameter-files/configSetRepository", () => ({
-  getConfigSetByProjectAndName: vi.fn()
-}));
-
-vi.mock("../parameter-topology/repository", () => ({
-  getLatestConfigRevision: vi.fn(),
-  insertConfigRevision: vi.fn(),
-  nextConfigRevisionNumber: vi.fn()
-}));
-
-import { createAuditEvent } from "../audit/repository";
-import { createOrReuseBinding, upsertBindingRevisionValues } from "../parameter-topology/bindingService";
-import { getConfigSetByProjectAndName } from "../parameter-files/configSetRepository";
-import { getLatestConfigRevision, insertConfigRevision, nextConfigRevisionNumber } from "../parameter-topology/repository";
-import * as repo from "./initializationRepository";
+import {
+  createInMemoryTestDatabase,
+  isTestDatabaseAvailable,
+  type InMemoryTestDatabase
+} from "../../testing/testDatabase";
+import { seedCoreGraph } from "../../testing/fixtures";
+import { makeTestAuthContext } from "../../testing/authContext";
+import { getProjectInitializationStatus } from "./initializationRepository";
 import {
   approveReview,
   assertProjectAllowsParameterSubmit,
@@ -49,63 +23,33 @@ import {
   submitDraft,
   upsertDraft
 } from "./initializationService";
-import type { InitializationDraftDto, InitializationReviewDto } from "./initializationTypes";
+import type { UpsertInitializationDraftInput } from "./initializationTypes";
 
-const mockedAudit = vi.mocked(createAuditEvent);
-const mockedCreateBinding = vi.mocked(createOrReuseBinding);
-const mockedUpsertRevision = vi.mocked(upsertBindingRevisionValues);
-const mockedGetConfigSet = vi.mocked(getConfigSetByProjectAndName);
-const mockedGetLatestRevision = vi.mocked(getLatestConfigRevision);
-const mockedInsertRevision = vi.mocked(insertConfigRevision);
-const mockedNextRevisionNumber = vi.mocked(nextConfigRevisionNumber);
+const databaseAvailable = await isTestDatabaseAvailable();
 
-function createFakeDb(): Database {
-  const tx: Queryable = {
-    query: async <Row,>(): Promise<QueryResult<Row>> => ({ rows: [], rowCount: 0 })
-  };
-  return {
-    query: tx.query,
-    transaction: async <T,>(fn: (queryable: Queryable) => Promise<T>) => fn(tx)
-  };
-}
-
-function adminAuth(overrides: Partial<AuthContext> = {}): AuthContext {
-  return {
-    user: {
-      id: "admin-1",
-      organizationId: "org-1",
-      name: "Admin",
-      email: "admin@example.com",
-      title: "Admin",
-      isActive: true
-    },
-    organization: { id: "org-1", name: "ChargeLab" },
-    roles: [{ projectId: null, roleId: "admin" }],
-    permissions: ["admin:access", "parameter:edit", "parameter:view"],
-    ...overrides
-  };
+function adminAuth(): AuthContext {
+  return makeTestAuthContext({
+    userId: "admin-1",
+    organizationId: "org-1",
+    name: "Admin",
+    organizationName: "ChargeLab",
+    roles: [{ projectId: null, roleId: "admin" }]
+  });
 }
 
 function creatorAuth(): AuthContext {
-  return {
-    user: {
-      id: "user-1",
-      organizationId: "org-1",
-      name: "Creator",
-      email: "creator@example.com",
-      title: "Engineer",
-      isActive: true
-    },
-    organization: { id: "org-1", name: "ChargeLab" },
-    roles: [{ projectId: "project-new", roleId: "hardware-user" }],
-    permissions: ["parameter:view", "parameter:edit"]
-  };
+  return makeTestAuthContext({
+    userId: "user-1",
+    organizationId: "org-1",
+    name: "Creator",
+    title: "Engineer",
+    organizationName: "ChargeLab",
+    roles: [{ projectId: "project-new", roleId: "hardware-user" }]
+  });
 }
 
-function emptyDraft(overrides: Partial<InitializationDraftDto> = {}): InitializationDraftDto {
+function emptyDraftInput(overrides: Partial<UpsertInitializationDraftInput> = {}): UpsertInitializationDraftInput {
   return {
-    id: "draft-1",
-    organizationId: "org-1",
     projectId: "project-new",
     projectName: "Nova",
     projectCode: "NOVA",
@@ -119,194 +63,136 @@ function emptyDraft(overrides: Partial<InitializationDraftDto> = {}): Initializa
     bindingSnapshots: [],
     emptyLibrary: true,
     notes: "",
-    createdByUserId: "user-1",
-    createdAt: "2026-08-05T00:00:00.000Z",
-    updatedAt: "2026-08-05T00:00:00.000Z",
     ...overrides
   };
 }
 
-function pendingReview(overrides: Partial<InitializationReviewDto> = {}): InitializationReviewDto {
-  return {
-    id: "review-1",
-    draftId: "draft-1",
-    organizationId: "org-1",
-    projectId: "project-new",
-    status: "pending",
-    submittedByUserId: "user-1",
-    submittedAt: "2026-08-05T01:00:00.000Z",
-    ...overrides
-  };
-}
+describe.skipIf(!databaseAvailable)("initializationService", () => {
+  let db: InMemoryTestDatabase;
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  vi.mocked(repo.getProjectInitializationStatus).mockResolvedValue("not_initialized");
-  vi.mocked(repo.setProjectInitializationStatus).mockResolvedValue(undefined);
-  vi.mocked(repo.getDraftByProject).mockResolvedValue(null);
-  vi.mocked(repo.upsertDraft).mockImplementation(async (_db, input) =>
-    emptyDraft({
-      id: input.id,
-      projectId: input.draft.projectId,
-      emptyLibrary: input.draft.emptyLibrary,
-      bindingSnapshots: input.draft.bindingSnapshots,
-      sourceProjectIds: input.draft.sourceProjectIds,
-      primarySourceProjectId: input.draft.primarySourceProjectId
-    })
-  );
-  vi.mocked(repo.insertReview).mockResolvedValue(pendingReview());
-  vi.mocked(repo.getReviewById).mockResolvedValue(pendingReview());
-  vi.mocked(repo.markReviewApproved).mockResolvedValue({
-    ...pendingReview(),
-    status: "approved",
-    reviewedByUserId: "admin-1",
-    reviewedAt: "2026-08-05T02:00:00.000Z"
+  beforeEach(async () => {
+    db = await createInMemoryTestDatabase();
+    await seedCoreGraph(db, {
+      organization: { id: "org-1", name: "ChargeLab" },
+      users: [
+        { id: "admin-1", name: "Admin", email: "admin@example.com" },
+        { id: "user-1", name: "Creator", email: "creator@example.com", title: "Engineer" }
+      ],
+      projects: [{ id: "project-new", name: "Nova", code: "NOVA" }]
+    });
+    // New projects start uninitialized; the seed helper defaults to the steady state.
+    await db.query(`update projects set initialization_status = 'not_initialized' where id = 'project-new'`);
   });
-  vi.mocked(repo.markReviewRejected).mockResolvedValue({
-    ...pendingReview(),
-    status: "rejected",
-    reviewedByUserId: "admin-1",
-    reviewedAt: "2026-08-05T02:00:00.000Z",
-    rejectionReason: "Incomplete sources"
-  });
-  vi.mocked(repo.getBindingLogicalNodeId).mockResolvedValue(null);
-  mockedGetConfigSet.mockResolvedValue({
-    id: "cs-default",
-    organizationId: "org-1",
-    projectId: "project-new",
-    name: "default",
-    description: null,
-    derivedFromId: null,
-    createdAt: "2026-08-05T00:00:00.000Z",
-    updatedAt: "2026-08-05T00:00:00.000Z"
-  });
-  mockedGetLatestRevision.mockResolvedValue(null);
-  mockedNextRevisionNumber.mockResolvedValue(1);
-  mockedInsertRevision.mockResolvedValue({
-    id: "rev-1",
-    organizationId: "org-1",
-    projectId: "project-new",
-    configSetId: "cs-default",
-    revisionNumber: 1,
-    status: "draft",
-    createdByUserId: "admin-1",
-    createdAt: "2026-08-05T00:00:00.000Z",
-    entryFile: null,
-    includeSearchPaths: [],
-    overlayOrder: [],
-    manifestState: "complete"
-  } as never);
-});
 
-describe("initializationService", () => {
+  afterEach(async () => {
+    await db?.rollback();
+  });
+
+  async function projectStatus() {
+    return getProjectInitializationStatus(db, { organizationId: "org-1", projectId: "project-new" });
+  }
+
+  async function auditKinds(): Promise<string[]> {
+    const result = await db.query<{ kind: string }>(
+      `select kind from audit_events where organization_id = 'org-1' order by id`
+    );
+    return result.rows.map((row) => row.kind);
+  }
+
+  async function materializedBindingCount(): Promise<number> {
+    const result = await db.query<{ count: string }>(
+      `select count(*)::text as count from project_parameter_bindings where organization_id = 'org-1'`
+    );
+    return Number(result.rows[0].count);
+  }
+
   it("empty submit then approve reaches initialized without materializing bindings", async () => {
-    const db = createFakeDb();
-    const draft = emptyDraft({ emptyLibrary: true, bindingSnapshots: [] });
-    vi.mocked(repo.getDraftByProject).mockResolvedValue(draft);
+    await upsertDraft(db, creatorAuth(), emptyDraftInput());
 
     const submitted = await submitDraft(db, creatorAuth(), { projectId: "project-new" });
     expect(submitted.status).toBe("pending");
-    expect(repo.setProjectInitializationStatus).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ projectId: "project-new", status: "initialization_pending_review" })
-    );
-    expect(mockedAudit).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ kind: "project-initialization-submitted" })
-    );
+    expect(submitted.submittedByUserId).toBe("user-1");
+    await expect(projectStatus()).resolves.toBe("initialization_pending_review");
+    expect(await auditKinds()).toContain("project-initialization-submitted");
 
-    const approved = await approveReview(db, adminAuth(), { reviewId: "review-1" });
+    const approved = await approveReview(db, adminAuth(), { reviewId: submitted.id });
     expect(approved.status).toBe("approved");
-    expect(repo.setProjectInitializationStatus).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ projectId: "project-new", status: "initialized" })
+    expect(approved.reviewedByUserId).toBe("admin-1");
+    await expect(projectStatus()).resolves.toBe("initialized");
+    // Empty-library approval must not materialize any binding or config revision.
+    await expect(materializedBindingCount()).resolves.toBe(0);
+    const revisions = await db.query<{ count: string }>(
+      `select count(*)::text as count from dts_config_revisions where organization_id = 'org-1'`
     );
-    expect(mockedCreateBinding).not.toHaveBeenCalled();
-    expect(mockedUpsertRevision).not.toHaveBeenCalled();
-    expect(mockedAudit).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ kind: "project-initialization-approved" })
-    );
+    expect(Number(revisions.rows[0].count)).toBe(0);
+    expect(await auditKinds()).toContain("project-initialization-approved");
   });
 
-  it("reject keeps draft and sets initialization_rejected", async () => {
-    const db = createFakeDb();
-    vi.mocked(repo.getDraftByProject).mockResolvedValue(emptyDraft());
+  it("reject keeps the draft and sets initialization_rejected", async () => {
+    const draft = await upsertDraft(db, creatorAuth(), emptyDraftInput());
+    const submitted = await submitDraft(db, creatorAuth(), { projectId: "project-new" });
 
     const rejected = await rejectReview(db, adminAuth(), {
-      reviewId: "review-1",
+      reviewId: submitted.id,
       reason: "Incomplete sources"
     });
 
     expect(rejected.status).toBe("rejected");
     expect(rejected.rejectionReason).toBe("Incomplete sources");
-    expect(repo.setProjectInitializationStatus).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ status: "initialization_rejected" })
+    await expect(projectStatus()).resolves.toBe("initialization_rejected");
+    // The draft row stays editable after reject.
+    const draftRows = await db.query<{ id: string }>(
+      `select id from project_parameter_initialization_drafts where organization_id = 'org-1' and project_id = 'project-new'`
     );
-    expect(repo.getDraftByProject).toHaveBeenCalled();
-    expect(mockedAudit).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ kind: "project-initialization-rejected" })
-    );
+    expect(draftRows.rows).toEqual([{ id: draft.id }]);
+    expect(await auditKinds()).toContain("project-initialization-rejected");
   });
 
   it("forbids double-approve of a non-pending review", async () => {
-    const db = createFakeDb();
-    vi.mocked(repo.getReviewById).mockResolvedValue({
-      ...pendingReview(),
-      status: "approved"
-    });
+    await upsertDraft(db, creatorAuth(), emptyDraftInput());
+    const submitted = await submitDraft(db, creatorAuth(), { projectId: "project-new" });
+    await approveReview(db, adminAuth(), { reviewId: submitted.id });
 
-    await expect(approveReview(db, adminAuth(), { reviewId: "review-1" })).rejects.toMatchObject({
+    await expect(approveReview(db, adminAuth(), { reviewId: submitted.id })).rejects.toMatchObject({
       code: "CONFLICT",
       status: 409
     } satisfies Partial<ApiError>);
-    expect(mockedCreateBinding).not.toHaveBeenCalled();
+    await expect(materializedBindingCount()).resolves.toBe(0);
   });
 
   it("forbids non-admin approve", async () => {
-    const db = createFakeDb();
     await expect(approveReview(db, creatorAuth(), { reviewId: "review-1" })).rejects.toMatchObject({
       code: "FORBIDDEN",
       status: 403
     } satisfies Partial<ApiError>);
   });
 
-  it("assertProjectAllowsParameterSubmit blocks when pending review", async () => {
-    const db = createFakeDb();
-    vi.mocked(repo.getProjectInitializationStatus).mockResolvedValue("initialization_pending_review");
+  it("assertProjectAllowsParameterSubmit blocks while initialization review is pending", async () => {
+    await upsertDraft(db, creatorAuth(), emptyDraftInput());
+    await submitDraft(db, creatorAuth(), { projectId: "project-new" });
 
-    await expect(
-      assertProjectAllowsParameterSubmit(db, "org-1", "project-new")
-    ).rejects.toMatchObject({
+    await expect(assertProjectAllowsParameterSubmit(db, "org-1", "project-new")).rejects.toMatchObject({
       code: "CONFLICT",
       status: 409
     } satisfies Partial<ApiError>);
   });
 
-  it("upsertDraft sets initialization_draft for empty library", async () => {
-    const db = createFakeDb();
-    const draft = await upsertDraft(db, creatorAuth(), {
+  it("upsertDraft sets initialization_draft for an empty library and persists the draft", async () => {
+    const draft = await upsertDraft(db, creatorAuth(), emptyDraftInput());
+
+    expect(draft.emptyLibrary).toBe(true);
+    expect(draft).toMatchObject({
       projectId: "project-new",
       projectName: "Nova",
       projectCode: "NOVA",
       ownerUserId: "user-1",
-      sourceProjectIds: [],
-      primarySourceProjectId: null,
-      supplementSourceProjectIds: [],
-      selectedModuleIds: [],
-      selectedRisks: [],
-      selectedSourceBindingIds: [],
-      bindingSnapshots: [],
-      emptyLibrary: true,
-      notes: ""
+      createdByUserId: "user-1"
     });
+    await expect(projectStatus()).resolves.toBe("initialization_draft");
 
-    expect(draft.emptyLibrary).toBe(true);
-    expect(repo.setProjectInitializationStatus).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ status: "initialization_draft" })
-    );
+    // A second save updates the same draft row in place.
+    const updated = await upsertDraft(db, creatorAuth(), emptyDraftInput({ notes: "second pass" }));
+    expect(updated.id).toBe(draft.id);
+    expect(updated.notes).toBe("second pass");
   });
 });

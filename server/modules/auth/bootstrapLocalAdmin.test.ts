@@ -1,36 +1,32 @@
-import { describe, expect, it } from "vitest";
+/**
+ * Behavior-level integration coverage for local admin bootstrap: first-admin
+ * creation with its organization/credential/role-binding/audit rows, and the
+ * one-admin guard, against a real database.
+ */
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import {
+  createInMemoryTestDatabase,
+  isTestDatabaseAvailable,
+  type InMemoryTestDatabase
+} from "../../testing/testDatabase";
 import { bootstrapLocalAdmin, countLocalAdminBindings } from "./bootstrapLocalAdmin";
-import type { Database, QueryResult } from "../../shared/database/client";
 
-type QueryCall = { text: string; values?: unknown[] };
+const databaseAvailable = await isTestDatabaseAvailable();
 
-function createFakeDb(options: { adminCount?: number; existingUsername?: boolean } = {}) {
-  const calls: QueryCall[] = [];
-  const db = {
-    query<T = unknown>(text: string, values?: unknown[]): Promise<QueryResult<T>> {
-      calls.push({ text, values });
-      if (text.includes("count(*)::text as count") && text.includes("role_id = 'admin'")) {
-        return Promise.resolve({ rows: [{ count: String(options.adminCount ?? 0) } as T], rowCount: 1 });
-      }
-      if (text.includes("from user_password_credentials") && text.includes("lower(username)")) {
-        return Promise.resolve({
-          rows: (options.existingUsername ? [{ id: "u-existing" }] : []) as T[],
-          rowCount: options.existingUsername ? 1 : 0
-        });
-      }
-      return Promise.resolve({ rows: [] as T[], rowCount: 0 });
-    },
-    async transaction<T>(fn: (tx: Database) => Promise<T>) {
-      return fn(db as Database);
-    }
-  } as Database;
+describe.skipIf(!databaseAvailable)("bootstrapLocalAdmin", () => {
+  let db: InMemoryTestDatabase;
 
-  return { db, calls };
-}
+  beforeEach(async () => {
+    db = await createInMemoryTestDatabase();
+  });
 
-describe("bootstrapLocalAdmin", () => {
+  afterEach(async () => {
+    await db?.rollback();
+  });
+
   it("creates the first local admin when none exist", async () => {
-    const { db, calls } = createFakeDb({ adminCount: 0 });
+    await expect(countLocalAdminBindings(db)).resolves.toBe(0);
 
     const result = await bootstrapLocalAdmin(db, {
       name: "Platform Admin",
@@ -41,25 +37,55 @@ describe("bootstrapLocalAdmin", () => {
 
     expect(result.username).toBe("admin.ops");
     expect(result.organizationId).toBe("org-hardware-department");
-    expect(calls.some((call) => call.text.includes("insert into user_role_bindings") && call.text.includes("'admin'"))).toBe(true);
+    // The user, credential, org-wide admin binding, and audit trail are all durable.
+    const user = await db.query<{ organization_id: string; name: string; is_active: boolean }>(
+      `select organization_id, name, is_active from users where id = $1`,
+      [result.userId]
+    );
+    expect(user.rows).toEqual([{ organization_id: "org-hardware-department", name: "Platform Admin", is_active: true }]);
+    const credential = await db.query<{ username: string; password_hash: string }>(
+      `select username, password_hash from user_password_credentials where user_id = $1`,
+      [result.userId]
+    );
+    expect(credential.rows[0].username).toBe("admin.ops");
+    expect(credential.rows[0].password_hash).toMatch(/^scrypt\$/);
+    const binding = await db.query<{ role_id: string; project_id: string | null }>(
+      `select role_id, project_id from user_role_bindings where user_id = $1`,
+      [result.userId]
+    );
+    expect(binding.rows).toEqual([{ role_id: "admin", project_id: null }]);
+    const audit = await db.query<{ kind: string; action: string }>(
+      `select kind, action from audit_events where organization_id = 'org-hardware-department'`
+    );
+    expect(audit.rows).toEqual([{ kind: "auth-event", action: "bootstrap-admin" }]);
   });
 
   it("rejects bootstrap when an admin already exists", async () => {
-    const { db } = createFakeDb({ adminCount: 1 });
+    await bootstrapLocalAdmin(db, {
+      name: "Platform Admin",
+      username: "admin.ops",
+      password: "WiseEff@2026"
+    });
 
     await expect(
       bootstrapLocalAdmin(db, {
-        name: "Platform Admin",
-        username: "admin.ops",
+        name: "Second Admin",
+        username: "admin.second",
         password: "WiseEff@2026"
       })
-    ).rejects.toMatchObject({
-      code: "CONFLICT"
-    });
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    // The refused bootstrap wrote no second user.
+    const credentials = await db.query<{ username: string }>(`select username from user_password_credentials`);
+    expect(credentials.rows).toEqual([{ username: "admin.ops" }]);
   });
 
   it("counts existing admin bindings", async () => {
-    const { db } = createFakeDb({ adminCount: 2 });
-    await expect(countLocalAdminBindings(db)).resolves.toBe(2);
+    await expect(countLocalAdminBindings(db)).resolves.toBe(0);
+    await bootstrapLocalAdmin(db, {
+      name: "Platform Admin",
+      username: "admin.ops",
+      password: "WiseEff@2026"
+    });
+    await expect(countLocalAdminBindings(db)).resolves.toBe(1);
   });
 });

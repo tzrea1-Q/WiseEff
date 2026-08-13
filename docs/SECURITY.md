@@ -22,7 +22,7 @@ WiseEff security centers on identity, authorization, audit, Agent tool governanc
 - The M5 HMAC verifier remains available for local smoke/test profiles only; it is not target-environment identity evidence.
 - Browser acceptance for workflow role boundaries runs the API in production auth mode with test-only HMAC tokens and switches the actual browser credential for every actor. Development `x-wiseeff-user` injection or one Admin token is not valid Hardware/Software Committer or Software User UI evidence.
 - Backend user governance lives under `/api/v1/users` and requires `users:manage`, durable role updates, self-lockout prevention, and audit evidence.
-- M0 audit boundary lives in `server/modules/audit/`.
+- M0 audit boundary lives in `server/modules/audit/`. Audit integrity is a seam, not a convention (ADR-0027): an audit event is exactly one of **audited-write evidence** (commits in the same transaction as the domain write, via `withAuditedWrite` / `writeAuditEventInTx` with the `AuditTx` brand), **refusal evidence** (deny-then-throw; written on the pool handle via `writeRefusalAudit` so it survives the rollback its own throw causes), or **milestone evidence** (stepwise flows; written immediately via `writeMilestoneAudit` so it survives later step failures). `auditRatchet.test.ts` pins the remaining direct `createAuditEvent` calls — all documented permanent residents.
 - M1 parameter write routes live in `server/modules/parameters/`; they validate payloads, enforce server-side permissions, and write audit evidence for submits, review decisions, merges, imports, and **project initialization** submit/approve/reject (`project-initialization-*` audit kinds).
 - Security governance design lives in `design-docs/security-governance.md`.
 

@@ -1,7 +1,7 @@
+import { XIAOZE_RUN_TIMING_EVENT, type XiaozeRunTimingPayload } from "@wiseeff/xiaoze-protocol";
 import { useEffect } from "react";
 import { useAgent } from "@copilotkit/react-core/v2";
 import { useXiaozeRunTimingActions } from "./XiaozeRunTimingContext";
-import { XIAOZE_RUN_TIMING_EVENT, type XiaozeRunTimingPayload } from "./xiaozeRunTimingTypes";
 
 export function XiaozeRunTimingCapture() {
   const { agent } = useAgent({ agentId: "default" });

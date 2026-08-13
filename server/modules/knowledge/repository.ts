@@ -571,15 +571,63 @@ function buildChunkExcerpt(text: string) {
 }
 
 /**
+ * Published-only trigram-similarity ranking for the related-knowledge
+ * recommendation: `word_similarity` scores how well the derived
+ * conclusion/impact query matches the best contiguous extent of each entry's
+ * search text (CJK works through trigrams, latin text too), and rows below the
+ * cutoff are dropped so unrelated entries are never padded in.
+ */
+export async function searchPublishedEntriesByTextSimilarity(
+  db: Queryable,
+  auth: AuthContext,
+  query: { q: string; minSimilarity: number; limit: number }
+): Promise<KnowledgeSearchResultDto[]> {
+  const result = await db.query<KnowledgeSearchRow>(
+    `
+    select id, title, content_form, tags, search_text, head_revision_id, updated_at
+    from knowledge_entries
+    where organization_id = $1
+      and status = 'published'
+      and word_similarity($2, search_text) >= $3
+    order by
+      word_similarity($2, search_text) desc,
+      updated_at desc
+    limit $4
+    `,
+    [auth.organization.id, query.q, query.minSimilarity, query.limit]
+  );
+
+  return result.rows.map((row) => ({
+    entryId: row.id,
+    title: row.title,
+    contentForm: row.content_form,
+    tags: row.tags ?? [],
+    excerpt: buildExcerpt(row.search_text, query.q),
+    updatedAt: dateTimeToIso(row.updated_at),
+    revisionId: row.head_revision_id
+  }));
+}
+
+/**
  * Semantic branch of hybrid retrieval: exact cosine scan over published chunk
  * embeddings, deduplicated to the best chunk per entry. Callers must confirm
  * pgvector support first — the `::vector` cast does not parse without it.
+ * `maxDistance` is the relevance cutoff used by the related-knowledge
+ * recommendation; absent means no cutoff (the plain search endpoint).
  */
 export async function searchPublishedChunksByEmbedding(
   db: Queryable,
   auth: AuthContext,
-  query: { embedding: number[]; limit?: number }
+  query: { embedding: number[]; limit?: number; maxDistance?: number }
 ): Promise<KnowledgeSearchResultDto[]> {
+  const values: unknown[] = [auth.organization.id, `[${query.embedding.join(",")}]`];
+  let distanceCutoff = "";
+  if (query.maxDistance !== undefined) {
+    values.push(query.maxDistance);
+    distanceCutoff = `and c.embedding <=> $2::vector <= $${values.length}`;
+  }
+  values.push(query.limit ?? 20);
+
   const result = await db.query<KnowledgeChunkSearchRow>(
     `
     select best.*
@@ -594,12 +642,13 @@ export async function searchPublishedChunksByEmbedding(
       where c.organization_id = $1
         and e.status = 'published'
         and c.embedding is not null
+        ${distanceCutoff}
       order by c.entry_id, c.embedding <=> $2::vector asc
     ) best
     order by best.distance asc
-    limit $3
+    limit $${values.length}
     `,
-    [auth.organization.id, `[${query.embedding.join(",")}]`, query.limit ?? 20]
+    values
   );
 
   return result.rows.map((row) => ({

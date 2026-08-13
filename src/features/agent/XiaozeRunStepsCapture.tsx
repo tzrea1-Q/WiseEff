@@ -1,9 +1,9 @@
+import { type XiaozeRunStep } from "@wiseeff/xiaoze-protocol";
 import { useEffect } from "react";
 import { EventType } from "@ag-ui/core";
 import { useAgent } from "@copilotkit/react-core/v2";
 import { getXiaozeToolLabel } from "@/features/agent/xiaozeToolLabels";
 import { useXiaozeRunStepsActions } from "./XiaozeRunStepsContext";
-import type { XiaozeRunStepSnapshot } from "./xiaozeRunTimingTypes";
 
 function readStepMetadata(metadata: unknown) {
   if (!metadata || typeof metadata !== "object") {
@@ -26,7 +26,7 @@ function readStepLabel(metadata: Record<string, unknown>, toolName?: string) {
   return "执行步骤";
 }
 
-function readStepKind(metadata: Record<string, unknown>): XiaozeRunStepSnapshot["kind"] {
+function readStepKind(metadata: Record<string, unknown>): XiaozeRunStep["kind"] {
   if (metadata.kind === "tool" || metadata.kind === "model" || metadata.kind === "graph") {
     return metadata.kind;
   }

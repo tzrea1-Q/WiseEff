@@ -1,6 +1,8 @@
 import type { KnowledgeEntry, KnowledgeStatus } from "./types";
 
 export type KnowledgeCapability = {
+  /** knowledge:view — read published entries and see knowledge surfaces (member default). */
+  canView: boolean;
   canEdit: boolean;
   canManage: boolean;
   userId: string;
