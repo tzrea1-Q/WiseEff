@@ -1,9 +1,9 @@
 # 参数定义与知识条目的结构化引用
 
-> 状态：**进行中**
+> 状态：**已完成 2026-08-13**——经 #438 合并
 > 日期：2026-08-13
 > 分支：`feat/knowledge-parameter-references`
-> English: [`docs/exec-plans/active/2026-08-13-knowledge-parameter-references.md`](../../../exec-plans/active/2026-08-13-knowledge-parameter-references.md)
+> English: [`docs/exec-plans/completed/2026-08-13-knowledge-parameter-references.md`](../../../exec-plans/completed/2026-08-13-knowledge-parameter-references.md)
 > 设计：[`docs/zh-CN/design-docs/2026-08-12-knowledge-base-design.md`](../../design-docs/2026-08-12-knowledge-base-design.md) — 延期路线图第 2 项
 > 前置：知识库 MVP、日志相关知识推荐（均已合并）
 > 完整性 ADR：ADR-0011（定义废弃是软退役）、ADR-0013（归属主体是稳定目录实体）、ADR-0017（`parameter_specs.id` 是代理键）
