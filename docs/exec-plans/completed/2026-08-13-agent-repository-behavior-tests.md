@@ -1,6 +1,6 @@
 # Agent Repository Behavior Tests (TD-079 slice)
 
-Status: **Active** · Branch `test/agent-repository-behavior` · Follows #336 / #345 / #378
+Status: **Completed** (PR #392)
 
 ## Goal
 
