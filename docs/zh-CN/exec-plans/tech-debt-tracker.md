@@ -54,6 +54,7 @@
 - **TD-091（小泽悬浮提示遮挡抽屉操作）：** `xiaoze-toggle-hint` 浮层（role=status）在抽屉打开时可拦截底部靠右按钮的点击（如 `/log-admin` 记录抽屉的反馈/导出草稿），P3a 浏览器验证发现，部分视口下真实用户同样受影响。需调整浮层 z-index/位置策略或在抽屉/对话框打开时避让，并加布局断言。**负责人：Frontend / Agent surface。**
 - **TD-092（反馈归因粒度）：** `feedback-insights` 把反馈归因到日志**当前 run** 的报告；频繁重析后旧反馈会跟随新结论的来源/提示词版本，按版本的质量读数可能被扭曲。需给 `log_feedback` 加 `run_id`（additive 迁移）与回填策略，存在时按 run 归因。**负责人：Log analysis。**
 - **TD-093（上传预检与服务端支持集不一致）：** 前端 API 模式预检接受 `.log/.txt/.csv/.json/.gz/.zip`，但服务端拒绝 `.json`（mock 模式反而支持）；P3a 只追加了归档扩展未动存量口径。用户可能选中通过预检却被服务端拒绝的文件,且 mock/API 行为分叉。需一次性对齐三方口径（决定 `.json` 转正还是移出预检）。**负责人：Log analysis / Frontend。**
+- **TD-095（CI 波动：checkpointer 恢复测试与 /logs 视觉基线）：** 2026-08-12/13 并行代理车队期间观察到两类同代码不同结果：(a) `durableCheckpointer.integration.test.ts › resumes an interrupted plan from a fresh agent instance on the same thread` 在同一 commit `f71744bc` 的两次 CI 运行中一红一绿（PR 运行 31621021416 失败、push 运行 31621018056 通过，相隔 3 秒），重跑通过；(b) `/logs` 视觉基线（`e2e/quality/visual.quality.spec.ts`）在 #336 的 merge-ref 运行（31607966985 attempt 1）失败——该 PR 不改任何前端文件、相同前端内容在 `main` 上是绿的——attempt 2 原样通过。同代码运行结果分叉迫使「重跑碰运气」，在繁忙车队里每次合入都排在非确定性门禁后面。下一步：稳定 checkpointer 恢复测试的同步时序；审计 /logs 基线页面的非确定性内容（时间戳/相对时间）并冻结或遮罩。**负责人：Agent platform / QA。**
 
 ## 近期关闭项
 
