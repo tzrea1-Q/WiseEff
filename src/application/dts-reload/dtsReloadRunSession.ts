@@ -755,6 +755,15 @@ export function createDtsReloadRunSession(
         run = existing;
         writeRunId(existing.id);
         adoptRunTarget(existing);
+        // Cross-project deep links (e.g. knowledge-entry source links land on
+        // /dts-reload?runId=… for a run of another project) follow the run's
+        // project. This also invalidates any in-flight candidate load for the
+        // old project, which would otherwise clear the freshly opened run when
+        // its project check ran against the stale project id.
+        if (existing.projectId && existing.projectId !== projectId) {
+          projectId = existing.projectId;
+          candidatesGeneration += 1;
+        }
         emit();
       } catch (error) {
         errorMessage = error instanceof Error ? error.message : "加载运行详情失败。";

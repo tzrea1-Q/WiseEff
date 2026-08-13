@@ -631,6 +631,39 @@ describe("dtsReloadRunSession", () => {
       expect(snapshot.canRetryDeploy).toBe(true);
     });
 
+    it("follows a cross-project deep-linked run and survives the concurrent candidate load", async () => {
+      // Knowledge-entry source links land on /dts-reload?runId=… for a run of
+      // ANOTHER project. The in-flight candidate load for the initial project
+      // must not clear the freshly opened run through its project check.
+      let runIdInUrl: string | null = null;
+      const session = createSession({
+        writeRunId: (value) => {
+          runIdInUrl = value;
+        },
+        readRunId: () => runIdInUrl
+      });
+      const crossProjectRun = run({ id: "run-other-project", projectId: "project-2", status: "unverifiable" });
+
+      let resolveCandidates: (value: { items: DtsReloadCandidate[] }) => void = () => undefined;
+      const listCandidates = vi.fn(
+        () => new Promise<{ items: DtsReloadCandidate[] }>((resolve) => (resolveCandidates = resolve))
+      );
+      const getRun = vi.fn(async () => crossProjectRun);
+
+      // Candidate load for project-1 starts first and stays in flight while the
+      // deep-linked run (project-2) opens — the exact acceptance race.
+      const candidatesPromise = session.loadCandidates({ listCandidates, getRun });
+      await session.openHistoryRun({ getRun }, "run-other-project");
+      expect(session.getSnapshot().run?.id).toBe("run-other-project");
+      expect(session.getSnapshot().projectId).toBe("project-2");
+
+      resolveCandidates({ items: [candidate()] });
+      await candidatesPromise;
+
+      // The stale project-1 load is invalidated; the opened run survives.
+      expect(session.getSnapshot().run?.id).toBe("run-other-project");
+    });
+
     it("blocks downloads for retention-expired artifacts without calling the repository", async () => {
       const session = await createReadySession();
       await session.openHistoryRun(
