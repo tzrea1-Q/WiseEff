@@ -1,11 +1,7 @@
-export const parameterChangeRequestStatuses = [
-  "submitted",
-  "hardware_review",
-  "software_review",
-  "software_merge",
-  "merged",
-  "rejected"
-] as const;
+import {
+  parameterChangeRequestStatuses,
+  type ParameterChangeRequestStatus
+} from "../parameter-kernel/workflowStatus";
 
 export const parameterSubmissionRoundStatuses = [
   ...parameterChangeRequestStatuses,
@@ -20,7 +16,6 @@ export const parameterRiskLevels = ["High", "Medium", "Low"] as const;
 export const parameterImportBatchStatuses = ["previewed", "applied"] as const;
 export const parameterImportPreviewClassifications = ["added", "updated", "unchanged", "conflict"] as const;
 
-export type ParameterChangeRequestStatus = (typeof parameterChangeRequestStatuses)[number];
 export type ParameterChangeStatus = ParameterChangeRequestStatus;
 export type ParameterSubmissionRoundStatus = (typeof parameterSubmissionRoundStatuses)[number];
 export type ParameterReviewDecision = (typeof parameterReviewDecisions)[number];

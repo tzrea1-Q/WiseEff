@@ -724,6 +724,44 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "db"]
   },
   {
+    id: "LOG-FEEDBACK-INSIGHTS-001",
+    priority: "P1",
+    area: "logs",
+    route: "/log-admin",
+    roles: ["Admin"],
+    action:
+      "Submit log feedback and verify the /log-admin analysis-quality section aggregates helpful rate per domain x analysis source x prompt version for the selected time window.",
+    coverage: "automated",
+    acceptanceIds: ["LOG-FEEDBACK-INSIGHTS-001"],
+    specFiles: ["e2e/acceptance/log-analysis.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db"]
+  },
+  {
+    id: "LOG-EVAL-DRAFT-001",
+    priority: "P1",
+    area: "logs",
+    route: "/log-admin",
+    roles: ["Admin"],
+    action:
+      "Open a completed log record's drawer, export the eval-case annotation draft, verify the de-identification checklist dialog, and download case.yaml (deIdentified: false, rootCauseCategory TODO) plus log.txt.",
+    coverage: "automated",
+    acceptanceIds: ["LOG-EVAL-DRAFT-001"],
+    specFiles: ["e2e/acceptance/log-analysis.acceptance.spec.ts"],
+    assertions: ["ui"]
+  },
+  {
+    id: "LOG-ARCHIVE-UPLOAD-001",
+    priority: "P1",
+    area: "logs",
+    route: "/logs",
+    roles: ["Software User", "Software Committer", "Admin"],
+    action: "Upload a .gz compressed log through the upload dialog; the server unpacks it and analysis completes end to end.",
+    coverage: "automated",
+    acceptanceIds: ["LOG-ARCHIVE-UPLOAD-001"],
+    specFiles: ["e2e/acceptance/log-analysis.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db"]
+  },
+  {
     id: "DEBUG-SIM-001",
     priority: "P0",
     area: "debugging",

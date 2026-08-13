@@ -516,6 +516,7 @@ export const routeManifest = [
   { id: "logs.uploadFile", method: "POST", path: "/api/v1/log-files", module: "logs", stability: "mvp" },
   { id: "logs.upload", method: "POST", path: "/api/v1/logs", module: "logs", stability: "mvp" },
   { id: "logs.list", method: "GET", path: "/api/v1/logs", module: "logs", stability: "mvp" },
+  { id: "logs.feedbackInsights", method: "GET", path: "/api/v1/logs/feedback-insights", module: "logs", stability: "mvp" },
   { id: "logs.get", method: "GET", path: "/api/v1/logs/:logId", module: "logs", stability: "mvp" },
   { id: "logs.listRuns", method: "GET", path: "/api/v1/logs/:logId/runs", module: "logs", stability: "mvp" },
   { id: "logs.rerun", method: "POST", path: "/api/v1/logs/:logId/rerun", module: "logs", stability: "mvp" },

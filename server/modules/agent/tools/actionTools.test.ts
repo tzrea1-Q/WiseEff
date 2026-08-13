@@ -5,7 +5,7 @@ vi.mock("../../parameters/service", () => ({
   submitParameterChanges: vi.fn()
 }));
 
-vi.mock("../../parameters/sensitiveNode", () => ({
+vi.mock("../../parameter-kernel/sensitiveNode", () => ({
   assertSensitiveNodeWriteAllowed: vi.fn()
 }));
 

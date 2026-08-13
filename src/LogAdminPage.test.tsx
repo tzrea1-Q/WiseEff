@@ -47,6 +47,7 @@ function createLogActions(overrides: Partial<LogRuntimeActions> = {}): LogRuntim
     archiveLogDomain: vi.fn().mockResolvedValue(null),
     listLogDomainKnowledgeLinks: vi.fn().mockResolvedValue([]),
     setLogDomainKnowledgeLinks: vi.fn().mockResolvedValue(null),
+    listFeedbackInsights: vi.fn().mockResolvedValue([]),
     ...overrides
   };
 }
@@ -746,5 +747,66 @@ describe("LogAdminPage 业务域知识条目关联", () => {
         knowledgeEntryIds: ["entry-1"]
       })
     );
+  });
+});
+
+describe("LogAdminPage 分析质量洞察", () => {
+  const agentInsight = {
+    logDomainId: "domain-charging",
+    logDomainName: "charging-power",
+    analysisSource: "agent" as const,
+    promptVersion: "log-analysis/v2",
+    totalCount: 4,
+    helpfulCount: 3,
+    helpfulRate: 0.75,
+    lastFeedbackAt: "2026-08-13T02:00:00.000Z"
+  };
+  const uncategorizedInsight = {
+    logDomainId: null,
+    logDomainName: null,
+    analysisSource: "rules-fallback" as const,
+    promptVersion: null,
+    totalCount: 2,
+    helpfulCount: 0,
+    helpfulRate: 0,
+    lastFeedbackAt: "2026-08-12T02:00:00.000Z"
+  };
+
+  it("renders aggregated helpful rates per domain, source, and prompt version", async () => {
+    const logActions = createLogActions({
+      listFeedbackInsights: vi.fn().mockResolvedValue([agentInsight, uncategorizedInsight])
+    });
+    renderPage({ logActions });
+
+    const table = await screen.findByRole("table", { name: "分析质量反馈聚合" });
+    await waitFor(() => expect(logActions.listFeedbackInsights).toHaveBeenCalledWith({ timeWindow: "today" }));
+    expect(within(table).getByText("charging-power")).toBeInTheDocument();
+    expect(within(table).getByText("log-analysis/v2")).toBeInTheDocument();
+    expect(within(table).getByText("75%（3/4）")).toBeInTheDocument();
+    expect(within(table).getByText("未分类")).toBeInTheDocument();
+    expect(within(table).getByText("降级 · 规则回退")).toBeInTheDocument();
+    expect(within(table).getByText("0%（0/2）")).toBeInTheDocument();
+  });
+
+  it("refetches insights when the time window changes", async () => {
+    const listFeedbackInsights = vi.fn().mockResolvedValue([agentInsight]);
+    renderPage({ logActions: createLogActions({ listFeedbackInsights }) });
+
+    await waitFor(() => expect(listFeedbackInsights).toHaveBeenCalledWith({ timeWindow: "today" }));
+    await userEvent.click(screen.getByRole("button", { name: "7 日" }));
+    await waitFor(() => expect(listFeedbackInsights).toHaveBeenCalledWith({ timeWindow: "7d" }));
+  });
+
+  it("shows the honest empty state when no feedback exists", async () => {
+    renderPage({ logActions: createLogActions() });
+
+    const section = screen.getByTestId("feedback-quality-insights");
+    expect(await within(section).findByText("暂无反馈")).toBeInTheDocument();
+  });
+
+  it("shows the mock-mode hint without runtime actions", () => {
+    renderPage();
+
+    expect(screen.getByTestId("feedback-quality-insights")).toHaveTextContent(/分析质量监控需在 API 模式下使用/);
   });
 });

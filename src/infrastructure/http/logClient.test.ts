@@ -266,6 +266,31 @@ describe("createHttpLogAnalysisRepository", () => {
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ analysisQuestion: "Check again" });
   });
 
+  it("lists feedback insights with the time window and maps rows through the DTO", async () => {
+    const fetchMock = createFetchMock({
+      items: [
+        {
+          logDomainId: "domain-charging",
+          logDomainName: "charging-power",
+          analysisSource: "agent",
+          promptVersion: "log-analysis/v2",
+          totalCount: 4,
+          helpfulCount: 3,
+          helpfulRate: 0.75,
+          lastFeedbackAt: "2026-08-13T02:00:00.000Z"
+        }
+      ]
+    });
+    const repository = createRepository(fetchMock);
+
+    const items = await repository.listFeedbackInsights!({ timeWindow: "7d" });
+
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:8787/api/v1/logs/feedback-insights?timeWindow=7d");
+    expect(items).toEqual([
+      expect.objectContaining({ logDomainName: "charging-power", helpfulRate: 0.75, totalCount: 4 })
+    ]);
+  });
+
   it("archives, unarchives, and submits feedback to expected endpoints", async () => {
     const fetchMock = createFetchMock({ ok: true });
     const repository = createRepository(fetchMock);

@@ -4,7 +4,7 @@ import type { AuthContext } from "../auth/types";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 
-vi.mock("./projectRepository", () => ({
+vi.mock("../projects/repository", () => ({
   updateProject: vi.fn(),
   deleteProject: vi.fn()
 }));
@@ -14,7 +14,7 @@ vi.mock("../audit/repository", () => ({
 }));
 
 import { createAuditEvent } from "../audit/repository";
-import * as repository from "./projectRepository";
+import * as repository from "../projects/repository";
 import { deleteProjectForAuth, updateProjectForAuth } from "./projectService";
 
 const mockedCreateAuditEvent = vi.mocked(createAuditEvent);

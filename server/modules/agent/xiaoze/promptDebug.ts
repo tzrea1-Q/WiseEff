@@ -1,21 +1,7 @@
-import type { PerceptionAgentContext, PerceptionToolDescriptor } from "./perceptionAgent";
 import { formatToolCatalogForSystemPrompt } from "./toolCatalog";
+import type { PerceptionAgentContext, PerceptionToolDescriptor, XiaozePromptDebugSnapshot } from "./modelTypes";
 
 export const XIAOZE_PROMPT_DEBUG_EVENT = "xiaoze_prompt_debug";
-
-export type XiaozePromptDebugSnapshot = {
-  threadId: string;
-  userMessage: string;
-  context: PerceptionAgentContext;
-  system: {
-    policy: string;
-    toolCatalog: string;
-  };
-  llmMessages: unknown[];
-  tools: PerceptionToolDescriptor[];
-  model?: string;
-  promptVersion?: string;
-};
 
 export function buildXiaozePromptDebugSnapshot(options: {
   threadId: string;

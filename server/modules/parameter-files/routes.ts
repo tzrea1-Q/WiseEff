@@ -3,7 +3,7 @@ import { z } from "zod";
 import { asAuditTx, withAuditedWrite } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
-import { canAdminParameters, canEditParameters, canViewParameters } from "../parameters/policy";
+import { canAdminParameters, canEditParameters, canViewParameters } from "../parameter-kernel/policy";
 import { listOpenConflicts } from "../parameters/fileSyncConflictRepository";
 import { submitStructuredEdits } from "../parameters/service";
 import type { Database } from "../../shared/database/client";
@@ -674,10 +674,11 @@ export function registerParameterFileRoutes(
 
   router.post("/api/v1/projects/:projectId/baselines/:baselineId/rollback", async (request) => {
     const db = requireDb(options.db);
+    const objectStore = requireObjectStore(options.objectStore);
     const auth = await options.getCurrentAuthContext(request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithBaselineIdSchema, request.params);
-    const item = await rollbackToBaseline(db, auth, params.baselineId, { requestId: request.requestId });
+    const item = await rollbackToBaseline(db, objectStore, auth, params.baselineId, { requestId: request.requestId });
 
     return { status: 200, body: { item } };
   });

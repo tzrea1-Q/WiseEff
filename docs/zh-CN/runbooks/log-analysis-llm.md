@@ -48,6 +48,18 @@
 - 真模型运行：配置 `LOG_ANALYSIS_API_*`（可选 `LOG_ANALYSIS_JUDGE_*` 启用 LLM-as-judge）后运行 `npm run logs:eval:quality`。
 - 报告输出到 `docs/generated/log-analysis-quality.{json,md}`，含内核、模型、prompt version 与 judge 标签。基线门禁（`eval-cases/logs/baseline.json`）将 realLog 案例分数与已提交基线减容差比较；案例集尚无真实案例时报告如实输出 `quality baseline pending real cases`，门禁不激活。
 
+## 线上反馈监控（P3）
+
+- `/log-admin` →「分析质量」区读取 `GET /api/v1/logs/feedback-insights`（`logs:view`）：按业务域 × 分析来源 × Prompt 版本聚合 today/7d/30d 的有帮助率，监控两次效果评测之间的线上反馈漂移；金标准案例集仍是质量锚点。
+- 运维读法：有帮助率下跌集中在某个 `promptVersion` → 指向 prompt/模型回归（对比上一版本行并重跑 `logs:eval:quality`）；下跌集中在某个业务域而 prompt 版本稳定 → 指向领域知识/格式画像缺口；`analysisSource = rules-fallback` 行占比上升 → 降级链在触发，先查 provider 健康（`/health/ready`、降级计数器）。
+- 反馈稀疏时比率噪声大；`totalCount` 个位数的格子当轶事看，不当信号用。
+
+## 压缩包接入（P3）
+
+- 上传可为 `.gz`（单文件，内层名保留受支持文本扩展）或 `.zip`（恰好一个非目录条目，stored/deflate，不支持加密）。解压发生在入库时；对象存储始终保存纯 UTF-8 文本，重跑不会重复解压。
+- 防炸弹上限（常量见 `server/modules/logs/unpack.ts`，API 契约中有文档）：解压后 ≤ 100 MB 绝对上限且 ≤ 压缩体的 200 倍（1 MB 下限）。超限或损坏的压缩包成为带可读 `failureReason` 的 `failed` 记录且不建分析任务——绝不进 worker 或重试循环。
+- 排障：用户报告压缩上传"失败"时先读记录的失败原因；多条目 zip 最常见（macOS 访达压缩会附带 `__MACOSX` 元数据条目——只压单个日志文件，或改用 gzip）。
+
 ## 证据
 
 记录：
@@ -69,4 +81,4 @@ npm run logs:eval:quality
 npm run acceptance:e2e -- e2e/acceptance/log-analysis.acceptance.spec.ts
 ```
 
-行为层评测报告输出到 `docs/generated/log-analysis-eval.{json,md}`，效果层报告输出到 `docs/generated/log-analysis-quality.{json,md}`；验收 ID `LOG-DOMAIN-001`、`LOG-DEGRADED-001` 与 `LOG-DOMAIN-KNOWLEDGE-001` 覆盖业务域治理、降级可见性与知识条目关联。
+行为层评测报告输出到 `docs/generated/log-analysis-eval.{json,md}`，效果层报告输出到 `docs/generated/log-analysis-quality.{json,md}`；验收 ID `LOG-DOMAIN-001`、`LOG-DEGRADED-001` 与 `LOG-DOMAIN-KNOWLEDGE-001` 覆盖业务域治理、降级可见性与知识条目关联，P3a 的 `LOG-FEEDBACK-INSIGHTS-001`、`LOG-EVAL-DRAFT-001` 与 `LOG-ARCHIVE-UPLOAD-001` 覆盖反馈质量看板、标注草稿导出与压缩包上传。

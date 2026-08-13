@@ -29,9 +29,9 @@ import {
   verifyEnablementWriteLock
 } from "../parameter-topology/writeLock";
 import { assertProjectAllowsParameterSubmit } from "./initializationService";
-import { canAdminParameters, canEditParameters, canMergeParameters, canReviewParameterStage, canViewParameters } from "./policy";
+import { canAdminParameters, canEditParameters, canMergeParameters, canReviewParameterStage, canViewParameters } from "../parameter-kernel/policy";
 import { isValidMergeLink } from "./mergeLink";
-import { assertSensitiveNodeWriteAllowed } from "./sensitiveNode";
+import { assertSensitiveNodeWriteAllowed } from "../parameter-kernel/sensitiveNode";
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import type { InitializationSuggestionDto } from "./types";
 import {
@@ -72,7 +72,7 @@ import {
   type ParameterDefinitionImportCandidate,
   type PersistedImportBatchItem
 } from "./importBatchRepository";
-import { getProjectById } from "./projectRepository";
+import { getProjectById } from "../projects/repository";
 import {
   createChangeRequest,
   createEnablementChangeRequest,
@@ -110,7 +110,8 @@ import {
   type UpdateParameterModuleBody
 } from "./schemas";
 import { parseDtsImportSource } from "./importDtsParse";
-import { getNextParameterStatus, parameterStatusLabels, type ParameterChangeRequestStatus, type ParameterSubmissionRoundStatus } from "./status";
+import { getNextParameterStatus, parameterStatusLabels, type ParameterSubmissionRoundStatus } from "./status";
+import type { ParameterChangeRequestStatus } from "../parameter-kernel/workflowStatus";
 import type { ParameterChangeAction } from "../parameter-drafts/types";
 import type { ChangeRequestDto, ParameterImportSourceItemDto, ParameterImportSummaryDto, ParameterModuleDto } from "./types";
 import { buildSubmissionWorkflowTrail } from "../../../src/domain/parameters/submissionWorkflowTrail";

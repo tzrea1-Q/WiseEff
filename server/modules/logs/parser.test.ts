@@ -63,14 +63,24 @@ describe("parseLogText", () => {
     expect(csv.ok).toBe(true);
   });
 
-  it("rejects .bin, .zip, and missing extensions with an unsupported format error", () => {
-    for (const fileName of ["events.bin", "events.zip", "events"]) {
+  it("rejects .bin, unsupported .gz inner names, and missing extensions with an unsupported format error", () => {
+    for (const fileName of ["events.bin", "events.bin.gz", "events"]) {
       const result = parseLogText({ fileName, content: Buffer.from("INFO ok", "utf8") });
 
       expect(result.ok).toBe(false);
       if (result.ok) return;
       expect(result.reason).toMatch(/unsupported/i);
     }
+  });
+
+  it("accepts archive-named stored objects whose content was unpacked at intake", () => {
+    // Unpacking happens in the upload service; by the time the worker parses,
+    // .log.gz / .zip named objects already hold plain UTF-8 text.
+    const gz = parseLogText({ fileName: "events.log.gz", content: Buffer.from("INFO ok", "utf8") });
+    const zip = parseLogText({ fileName: "events.zip", content: Buffer.from("INFO ok", "utf8") });
+
+    expect(gz.ok).toBe(true);
+    expect(zip.ok).toBe(true);
   });
 
   it("rejects invalid UTF-8 or null-byte-heavy content with a readable reason", () => {

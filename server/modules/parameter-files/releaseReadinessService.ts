@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
-import { canAdminParameters } from "../parameters/policy";
+import { canAdminParameters } from "../parameter-kernel/policy";
 import { listOpenConflicts } from "../parameters/fileSyncConflictRepository";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";

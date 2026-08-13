@@ -5,13 +5,14 @@ import type {
   LogDomainListQuery,
   LogDomainUpdateInput,
   LogFeedbackInput,
+  LogFeedbackInsightsQuery,
   LogJobSnapshot,
   LogListQuery,
   LogRerunInput,
   LogUploadInput
 } from "@/application/ports/LogAnalysisRepository";
 import type { AppAction } from "@/application/state/appState";
-import type { LogDomain, LogDomainKnowledgeLink, LogRecord } from "@/domain/logs/types";
+import type { LogDomain, LogDomainKnowledgeLink, LogFeedbackInsight, LogRecord } from "@/domain/logs/types";
 import type { PrototypeState } from "@/domain/prototype/types";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 
@@ -36,6 +37,7 @@ export type LogRuntimeActions = {
   archiveLogDomain(domainId: string): Promise<LogDomain | null>;
   listLogDomainKnowledgeLinks(domainId: string): Promise<LogDomainKnowledgeLink[]>;
   setLogDomainKnowledgeLinks(input: LogDomainKnowledgeLinksInput): Promise<LogDomainKnowledgeLink[] | null>;
+  listFeedbackInsights(query?: LogFeedbackInsightsQuery): Promise<LogFeedbackInsight[]>;
 };
 
 export type LogRuntimeDispatchAction =
@@ -392,6 +394,19 @@ export function createLogRuntimeActions({
         saved = (await api.setLogDomainKnowledgeLinks?.(input)) ?? null;
       });
       return saved;
+    },
+    async listFeedbackInsights(query) {
+      if (mode !== "api") {
+        return [];
+      }
+
+      try {
+        const api = requireRepository(repository);
+        return (await api.listFeedbackInsights?.(query)) ?? [];
+      } catch {
+        // Monitoring reads never block the admin page; failures degrade to the empty state.
+        return [];
+      }
     }
   };
 }

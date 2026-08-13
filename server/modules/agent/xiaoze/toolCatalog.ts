@@ -1,5 +1,5 @@
 import type { AgentToolDefinition } from "../toolRegistry";
-import type { PerceptionToolDescriptor } from "./perceptionAgent";
+import type { PerceptionToolDescriptor } from "./modelTypes";
 
 const TOOL_LABELS_ZH: Record<string, string> = {
   "perception.getProjectOverview": "查询项目概览",

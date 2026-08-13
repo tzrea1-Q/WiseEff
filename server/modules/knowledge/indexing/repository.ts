@@ -84,6 +84,15 @@ export function hasKnowledgeVectorSupport(db: Queryable): Promise<boolean> {
   return detection;
 }
 
+/**
+ * Detection is stable for a database's lifetime with one exception: the
+ * late-install ensure (vectorEnsure.ts) adds the embedding column at runtime
+ * and must drop this process's cached detection afterwards.
+ */
+export function invalidateKnowledgeVectorSupportCache(db: Queryable): void {
+  vectorSupportCache.delete(db);
+}
+
 /** Formats a JS vector as a pgvector literal (`[1,2,3]`) for `::vector` casts. */
 export function toVectorLiteral(embedding: number[]) {
   return `[${embedding.join(",")}]`;
@@ -120,6 +129,25 @@ export async function enqueueAllPublishedEntries(db: Queryable, organizationId: 
       set status = 'pending', error = null, enqueued_at = now(), updated_at = now()
     `,
     [organizationId]
+  );
+  return result.rowCount ?? 0;
+}
+
+/**
+ * System-actor variant of the rebuild enqueue for the late-install ensure:
+ * newly gained vector support applies to every organization's published
+ * entries, not just one admin's org.
+ */
+export async function enqueueAllPublishedEntriesAcrossOrganizations(db: Queryable): Promise<number> {
+  const result = await db.query(
+    `
+    insert into knowledge_index_status (entry_id, organization_id, status, error, enqueued_at, updated_at)
+    select id, organization_id, 'pending', null, now(), now()
+    from knowledge_entries
+    where status = 'published'
+    on conflict (entry_id) do update
+      set status = 'pending', error = null, enqueued_at = now(), updated_at = now()
+    `
   );
   return result.rowCount ?? 0;
 }

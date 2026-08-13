@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { MemorySaver } from "@langchain/langgraph";
 import { createXiaozeCheckpointer } from "./checkpointer";
-import { createPlanningAgent, fakeModelSequence, toolCall } from "./planningGraph";
+import { createPlanningAgent } from "./planningGraph";
+import { fakeModelSequence, toolCall } from "./testing/fakeModel";
 import {
   createPostgresCheckpointerSaver,
   resetSharedPostgresCheckpointerSaverForTests

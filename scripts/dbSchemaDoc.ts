@@ -35,6 +35,25 @@ export async function isDatabaseReachable(): Promise<boolean> {
   }
 }
 
+/**
+ * The committed db-schema artifact is pgvector-canonical: migration 0104 creates
+ * `knowledge_chunks.embedding` only when the vector extension is installable, so
+ * rendering on an extension-less server would produce a different (non-canonical)
+ * document. Generation requires pgvector; the check skips honestly without it.
+ */
+export async function isVectorExtensionAvailable(): Promise<boolean> {
+  const client = new pg.Client({ connectionString: baseConnectionString(), connectionTimeoutMillis: 2_000 });
+  try {
+    await client.connect();
+    const result = await client.query("select 1 from pg_available_extensions where name = 'vector' limit 1");
+    return (result.rowCount ?? 0) > 0;
+  } catch {
+    return false;
+  } finally {
+    await client.end().catch(() => undefined);
+  }
+}
+
 type ColumnRow = {
   column_name: string;
   data_type: string;

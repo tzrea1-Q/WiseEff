@@ -210,6 +210,7 @@ Rules:
 
 - Tenant isolation stays on `organization_id`; the log domain never carries tenant meaning, and `log_records.source` keeps meaning the intake channel (`upload`).
 - Upload and rerun accept an optional `logDomainId` validated as organization-owned and `active` (otherwise 400). Absence keeps uncategorized-domain semantics; domain selection never blocks an upload.
+- P3: intake also accepts `.gz` (single file) and single-entry `.zip` archives, unpacked at upload time with zip-bomb bounds (100MB absolute / 200× compressed) — the stored file object always holds plain UTF-8 text, so run/evidence semantics are unchanged; unpack failures become failed records on the unsupported-format path with explicit reasons.
 - Domain governance (`create`/`update`/`archive`, knowledge-link replace) requires `logs:admin-domains`, validates the format profile JSON on save, and writes `log-domain-*` audit events. Archiving a domain stops new bindings but keeps existing log records readable.
 - Knowledge links accept **published** entries only (design D13: publishing is the single trust gate for anything an agent reads); the link set is replaced as a whole and audited (`log-domain-knowledge-links-update`).
 - Parsing applies the bound domain's format profile while preserving stable raw line numbers; evidence always cites original lines.

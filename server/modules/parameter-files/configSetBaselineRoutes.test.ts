@@ -414,11 +414,12 @@ describe("config set and baseline routes", () => {
 
   it("POST /api/v1/projects/:projectId/baselines/:baselineId/rollback returns 200 with rollback summary", async () => {
     const db = makeDb();
+    const objectStore = makeObjectStore();
     const rollbackResult = { baselineId: "bl-1", restored: 2 };
     vi.mocked(baselineService.rollbackToBaseline).mockResolvedValue(rollbackResult);
 
     const response = await requestJson<{ item: typeof rollbackResult }>(
-      makeServer({ db }),
+      makeServer({ db, objectStore }),
       "/api/v1/projects/project-1/baselines/bl-1/rollback",
       { method: "POST", body: JSON.stringify({}) }
     );
@@ -427,6 +428,7 @@ describe("config set and baseline routes", () => {
     expect(response.body.item).toEqual(rollbackResult);
     expect(baselineService.rollbackToBaseline).toHaveBeenCalledWith(
       db,
+      objectStore,
       expect.objectContaining({ organization: expect.objectContaining({ id: "org-1" }) }),
       "bl-1",
       { requestId: "test-request" }
