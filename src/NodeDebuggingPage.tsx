@@ -1106,7 +1106,7 @@ export function NodeDebuggingPage({
                   onChange={(event) => setSearchQuery(event.target.value)}
                 />
               </label>
-              <span className="parameters-table-count">Showing {visibleRows.length} of {rows.length}</span>
+              <span className="parameters-table-count">显示 {visibleRows.length} / {rows.length} 个参数</span>
             </div>
 
             <div className="parameters-table-scroll">

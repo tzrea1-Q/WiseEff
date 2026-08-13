@@ -422,14 +422,14 @@ describe("DtsReloadPage", () => {
 
     expect(screen.queryByRole("checkbox", { name: "选择 Watchdog" })).not.toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "选择 Compatible" })).toBeInTheDocument();
-    expect(screen.getByText("Showing 1 of 2")).toBeInTheDocument();
+    expect(screen.getByText("显示 1 / 2 项")).toBeInTheDocument();
     expect(trigger).toHaveClass("active");
     expect(trigger).toHaveTextContent("1");
 
     await user.click(within(menu).getByRole("button", { name: "清除" }));
     expect(screen.getByRole("checkbox", { name: "选择 Watchdog" })).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "选择 Compatible" })).toBeInTheDocument();
-    expect(screen.getByText("Showing 2 of 2")).toBeInTheDocument();
+    expect(screen.getByText("显示 2 / 2 项")).toBeInTheDocument();
   });
 
   it("lists candidates, starts a batch run, shows overlay source, and downloads the artifact", async () => {

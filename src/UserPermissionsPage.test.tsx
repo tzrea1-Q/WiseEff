@@ -516,7 +516,7 @@ describe("UserPermissionsPage", () => {
       ["职务", "筛选职务", "Platform Owner"],
       ["角色", "筛选角色", "管理员"],
       ["状态", "筛选状态", "启用"],
-      ["最近活跃", "筛选最近活跃", "just now"]
+      ["最近活跃", "筛选最近活跃", "刚刚"]
     ];
 
     for (const [headerName, buttonName, optionName] of checks) {

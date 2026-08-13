@@ -10,6 +10,8 @@ import {
   type HeaderFilterConfig,
   type HeaderFilterState
 } from "@/components/tableFilterUtils";
+import { formatAbsolute } from "@/domain/format/formatDateTime";
+import { formatLastActive } from "@/domain/format/formatLastActive";
 import { migrateLegacyRoleId, platformRoles, type PermissionKey, type PlatformRoleId } from "@/domain/users/types";
 import type { PrototypeState, User } from "@/domain/prototype/types";
 
@@ -126,6 +128,12 @@ function statusLabelOf(isActive: boolean) {
   return isActive ? statusLabels.active : statusLabels.disabled;
 }
 
+/** Precise-timestamp tooltip only when the underlying value is a real timestamp. */
+function lastActiveTooltip(value: string) {
+  const absolute = formatAbsolute(value);
+  return absolute === value ? undefined : absolute;
+}
+
 function userColumnFilterValue(user: User, key: UserColumnFilterKey) {
   if (key === "user") {
     return user.name;
@@ -139,7 +147,7 @@ function userColumnFilterValue(user: User, key: UserColumnFilterKey) {
   if (key === "status") {
     return statusLabelOf(user.isActive);
   }
-  return user.lastActive;
+  return formatLastActive(user.lastActive);
 }
 
 function userAccountIdentifier(user: User) {
@@ -463,7 +471,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
       key: "lastActive",
       header: "最近活跃",
       headerFilter: headerFilterConfig("lastActive", "最近活跃"),
-      render: (user) => user.lastActive
+      render: (user) => <span title={lastActiveTooltip(user.lastActive)}>{formatLastActive(user.lastActive)}</span>
     }
   ];
 

@@ -573,7 +573,6 @@ export function DtsParameterWorkbench({
     >
       <header className="dts-parameter-workbench__header">
         <div>
-          <p className="eyebrow">Parameter workbench</p>
           <h2>项目参数工作台</h2>
           <p>按业务模块定位参数；器件/驱动与源出处保留在行内与详情中。</p>
         </div>

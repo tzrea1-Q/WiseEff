@@ -1016,7 +1016,7 @@ function ParameterSubmissionDialog({
             <span className="eyebrow" id={titleId}>参数提交预览</span>
             <p>本轮提交包含 {items.length} 个参数修改，确认后进入硬件与软件协同审阅流程。</p>
           </div>
-          <Badge variant="secondary">Diff 预览</Badge>
+          <Badge variant="secondary">差异预览</Badge>
         </div>
         <div className="submission-assignee-grid" aria-label="后续流程处理人">
           <label>

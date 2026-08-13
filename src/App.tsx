@@ -49,7 +49,7 @@ import {
   toLegacyInitializationReview
 } from "@/application/parameters/initializationUiMappers";
 import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
-import { canAccessPage, canPerform } from "@/app/permissions";
+import { canAccessPage, canPerform, getRequiredRoleLabel } from "@/app/permissions";
 import type {
   ProjectInitializationStatus,
   ProjectParameterInitializationDraft
@@ -76,8 +76,7 @@ import { TopBarActionsContext } from "./components/layout";
 import { readInitialNodeDebuggingProtocol } from "./NodeDebuggingPage";
 import {
   initialState,
-  mockDataFingerprint,
-  roles
+  mockDataFingerprint
 } from "./mockData";
 import {
   type DebugParameter,
@@ -1222,7 +1221,6 @@ function TopBar({
     page.key !== "parameter-home";
   const showProjectSelector = pageUsesProjectScope(page.key) && page.key !== "parameter-home";
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
-  const currentRole = roles.find((role) => role.id === currentRoleId);
   const projectOptions = state.configDraft.projects.map((project) => ({ value: project.id, label: project.name }));
   const selectedProjectId =
     page.key === "parameters" ? new URLSearchParams(search).get("project") || state.activeProjectId : state.activeProjectId;
@@ -1278,20 +1276,20 @@ function TopBar({
               <UserRound size={17} />
             </span>
             <span className="topbar-user-summary">
-              <strong>{currentUser?.name ?? "Prototype user"}</strong>
-              <small>{currentRole?.name ?? "Guest"}</small>
+              <strong>{currentUser?.name ?? "演示用户"}</strong>
+              <small>{getRequiredRoleLabel(currentRoleId)}</small>
             </span>
             <ChevronDown size={14} />
           </button>
           {userMenuOpen ? (
             <div className="topbar-user-menu" aria-label="用户菜单">
               <div className="topbar-user-menu__identity">
-                <strong>{currentUser?.name ?? "Prototype user"}</strong>
-                <span>{currentUser ? userAccountIdentifier(currentUser) : "No user selected"}</span>
+                <strong>{currentUser?.name ?? "演示用户"}</strong>
+                <span>{currentUser ? userAccountIdentifier(currentUser) : "未选择用户"}</span>
               </div>
               <div className="topbar-user-menu__field topbar-user-menu__role" aria-label="当前用户角色">
-                <span>Role</span>
-                <strong>{currentRole?.name ?? "Guest"}</strong>
+                <span>角色</span>
+                <strong>{getRequiredRoleLabel(currentRoleId)}</strong>
               </div>
               <div className="topbar-user-menu__actions">
                 <button
@@ -1428,7 +1426,7 @@ function ApiAuthPage({
 
         {pendingRegistration ? (
           <section className="auth-pending-notice" aria-labelledby="auth-pending-title">
-            <p className="eyebrow">Pending Approval</p>
+            <p className="eyebrow">注册审批</p>
             <h2 id="auth-pending-title">注册申请已提交</h2>
             <p>
               {pendingRegistration.user.username} 已提交 {pendingRequestedRoleName} 申请。管理员批准前账号不会登录到工作台，
@@ -1532,7 +1530,7 @@ function ProfileDialog({
       {({ titleId }) => (
         <form className="modal-form-contents" onSubmit={submit}>
           <header>
-            <span className="eyebrow">Account</span>
+            <span className="eyebrow">账号</span>
             <h2 id={titleId}>个人资料</h2>
             <p>{userAccountIdentifier(user)}</p>
           </header>

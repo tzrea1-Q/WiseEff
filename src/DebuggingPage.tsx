@@ -331,7 +331,7 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </label>
-              <span className="parameters-table-count">Showing {visibleRows.length} of {debugParameters.length}</span>
+              <span className="parameters-table-count">显示 {visibleRows.length} / {debugParameters.length} 个参数</span>
             </div>
 
             <div className="parameters-table-scroll">

@@ -366,9 +366,9 @@ test.describe("Product feedback browser acceptance", () => {
     expect(patchDenied.status()).toBe(403);
 
     await loadPageAsHardwareUser(page, "/feedback-admin");
-    await expect(page.getByRole("heading", { name: "Permission denied" })).toBeVisible();
-    await expect(page.getByText("Current role: Hardware User")).toBeVisible();
-    await expect(page.getByText("Required role: Admin")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "无权访问" })).toBeVisible();
+    await expect(page.getByText("当前角色：硬件开发")).toBeVisible();
+    await expect(page.getByText("所需角色：管理员")).toBeVisible();
 
     await recordOperationEvidence({
       operationId: "PFB-AUTHZ-001",

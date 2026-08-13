@@ -274,7 +274,6 @@ export function DtsBindingDraftTray({
     <section className="dts-binding-draft-tray dts-draft-tray binding-draft-submission" role="region" aria-label="参数修改提交">
       <header>
         <div>
-          <p className="eyebrow">Current edits</p>
           <h3>本轮已修改</h3>
           <p>
             {selectedBindingIds && selectedBindingIds.size > 0
