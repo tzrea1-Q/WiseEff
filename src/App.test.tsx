@@ -2851,7 +2851,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     const reviewHeader = declarationsFor(styles, ".review-column-filter-head");
 
     expect(reviewHeader.display).toBe("inline-flex");
-    expect(reviewHeader.gap).toBe("4px");
+    expect(reviewHeader.gap).toBe("var(--space-1)");
   });
 
   it("switches the review table between pending requests and role-specific review history", () => {
@@ -3716,12 +3716,12 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     const selectedBlock = declarationsFor(css, '[data-slot="button"].project-parameter-list-row.selected');
     const nameBlock = declarationsFor(css, ".project-parameter-list-row strong");
 
-    expect(listBlock.gap).toBe("8px");
+    expect(listBlock.gap).toBe("var(--space-2)");
     expect(listBlock["max-height"]).toBe("520px");
     expect(listBlock.overflow).toBe("auto");
     expect(rowBlock["grid-template-columns"]).toBe("minmax(0, 1fr) auto");
     expect(rowBlock["min-height"]).toBe("68px");
-    expect(rowBlock["border-radius"]).toBe("8px");
+    expect(rowBlock["border-radius"]).toBe("var(--radius-md)");
     expect(rowBlock.transition).toBe("none");
     expect(selectedBlock["background-color"]).toBe("#eef4ff");
     expect(selectedBlock["box-shadow"]).toBe("inset 3px 0 0 var(--app-primary)");

@@ -131,7 +131,7 @@ describe("permission-aware routing", () => {
 
     expect(actionStyles.display).toBe("inline-flex");
     expect(actionStyles.border).toContain("1px solid");
-    expect(actionStyles["border-radius"]).toBe("8px");
+    expect(actionStyles["border-radius"]).toBe("var(--radius-md)");
     expect(primaryStyles.background).toBe("var(--app-primary)");
     expect(primaryStyles.color).toBe("var(--primary-foreground)");
     expect(primaryStyles["box-shadow"]).toBeTruthy();

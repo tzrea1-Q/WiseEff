@@ -8,7 +8,7 @@ describe("topbar control styles", () => {
     const searchbox = declarationsFor(css, ".searchbox");
 
     expect(searchbox.height).toBe("32px");
-    expect(searchbox.padding).toBe("0 12px");
+    expect(searchbox.padding).toBe("0 var(--space-3)");
     expect(declarationFor(css, ".searchbox input", "height")).toBe("100%");
   });
 
