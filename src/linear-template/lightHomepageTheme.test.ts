@@ -37,7 +37,7 @@ describe("WiseEff mature homepage theme", () => {
   it("keeps the workflow band and footer on light surfaces", () => {
     expect(declarationFor(cssText, ".platform-flow-section", "background")).toBe("#f4f7ff");
     expect(declarationFor(cssText, ".platform-flow-tablist", "background")).toBe(
-      "rgba(255, 255, 255, 0.66)"
+      "color-mix(in srgb, var(--surface) 66%, transparent)"
     );
     expect(declarationFor(cssText, ".platform-flow-preview", "background")).toBe("var(--surface)");
     expect(declarationFor(cssText, ".linear-footer", "background")).toBe("var(--surface)");
