@@ -237,7 +237,7 @@ async function loadWorkspace(
   try {
     effectiveTree = await topology.getTopology(projectId, configSet.id, revisionKey, "effective");
   } catch (error) {
-    const mapped = mapParameterTopologyError(error);
+    const mapped = mapParameterTopologyError(error, "加载拓扑失败，请稍后重试。");
     if (mapped.kind === "api" && mapped.code === "NOT_FOUND") {
       return {
         kind: "empty",
@@ -530,7 +530,7 @@ export function ApiProjectTopologyWorkspace({
       })
       .catch((error: unknown) => {
         if (cancelled) return;
-        const mapped = mapParameterTopologyError(error);
+        const mapped = mapParameterTopologyError(error, "加载拓扑失败，请稍后重试。");
         setLoadState({
           kind: "error",
           message: mapped.message,
@@ -717,7 +717,10 @@ export function ApiProjectTopologyWorkspace({
           diagnostics: [{ message: "项目已切换，已忽略上一项目的草稿错误。", code: "PROJECT_CHANGED" }]
         };
       }
-      const mapped: ParameterTopologyMappedError = mapParameterTopologyError(error);
+      const mapped: ParameterTopologyMappedError = mapParameterTopologyError(
+        error,
+        "保存参数绑定草稿失败，请检查后重试。"
+      );
       if (mapped.kind === "diagnostics") {
         const diagnostics =
           mapped.diagnostics.length > 0
@@ -862,7 +865,10 @@ export function ApiProjectTopologyWorkspace({
       setEnablementDialogTarget(null);
     } catch (error) {
       if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
-      const mapped: ParameterTopologyMappedError = mapParameterTopologyError(error);
+      const mapped: ParameterTopologyMappedError = mapParameterTopologyError(
+        error,
+        "保存节点使能草稿失败，请检查后重试。"
+      );
       setEnablementDialogError(mapped.message);
     } finally {
       releaseProjectMutation(requestProjectId, "draft", mutationToken);
@@ -912,7 +918,7 @@ export function ApiProjectTopologyWorkspace({
       setReloadToken((token) => token + 1);
     } catch (error) {
       if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
-      const mapped = mapParameterTopologyError(error);
+      const mapped = mapParameterTopologyError(error, "移除草稿失败，请稍后重试。");
       throw new Error(`移除草稿失败：${mapped.message}`);
     } finally {
       releaseProjectMutation(requestProjectId, "draft", mutationToken);

@@ -23,6 +23,9 @@ import type {
 } from "@/domain/parameter-topology/types";
 import { createApiClient, WiseEffApiError } from "./apiClient";
 import { createDefaultApiClient } from "./defaultApiClient";
+import { presentError } from "./presentError";
+
+const DEFAULT_TOPOLOGY_ERROR_FALLBACK = "拓扑操作失败，请稍后重试。";
 
 type ItemsEnvelope<T> = { items: T[] };
 type ItemEnvelope<T> = { item: T };
@@ -306,11 +309,14 @@ export function isParameterTopologyValidationError(error: unknown): error is Wis
  * Preserve structured diagnostics and 409 stale-revision details.
  * Do not collapse them into a generic string.
  */
-export function mapParameterTopologyError(error: unknown): ParameterTopologyMappedError {
+export function mapParameterTopologyError(
+  error: unknown,
+  fallback: string = DEFAULT_TOPOLOGY_ERROR_FALLBACK
+): ParameterTopologyMappedError {
   if (isAbortError(error)) {
     return {
       kind: "cancelled",
-      message: error instanceof Error ? error.message : "Request cancelled.",
+      message: presentError(error, "请求已取消。"),
       cause: error
     };
   }
@@ -318,7 +324,7 @@ export function mapParameterTopologyError(error: unknown): ParameterTopologyMapp
   if (isParameterTopologyStaleRevisionError(error)) {
     return {
       kind: "stale-revision",
-      message: error.message,
+      message: presentError(error, "配置修订已过期，请刷新拓扑后基于最新修订重试。"),
       reason: "stale-revision",
       bindingId: typeof error.details.bindingId === "string" ? error.details.bindingId : undefined,
       baseRevisionId:
@@ -331,17 +337,31 @@ export function mapParameterTopologyError(error: unknown): ParameterTopologyMapp
   if (error instanceof WiseEffApiError) {
     const diagnostics = readDiagnostics(error.details);
     if (diagnostics || error.code === "VALIDATION_FAILED") {
+      const detailCode =
+        typeof error.details?.code === "string" && error.details.code.trim()
+          ? error.details.code
+          : error.code;
+      const preserved =
+        diagnostics ??
+        (error.message.trim()
+          ? [{ message: error.message, code: detailCode }]
+          : []);
       return {
         kind: "diagnostics",
-        message: error.message,
-        diagnostics: diagnostics ?? [],
+        message: presentError(
+          error,
+          error.code === "VALIDATION_FAILED"
+            ? "校验未通过，请根据下方诊断信息修正后重试。"
+            : fallback
+        ),
+        diagnostics: preserved,
         details: error.details,
         cause: error
       };
     }
     return {
       kind: "api",
-      message: error.message,
+      message: presentError(error, fallback),
       code: error.code,
       details: error.details,
       cause: error
@@ -350,7 +370,7 @@ export function mapParameterTopologyError(error: unknown): ParameterTopologyMapp
 
   return {
     kind: "unknown",
-    message: error instanceof Error ? error.message : "Parameter topology request failed.",
+    message: presentError(error, fallback),
     cause: error
   };
 }

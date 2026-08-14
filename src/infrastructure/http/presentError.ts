@@ -28,7 +28,12 @@ const MESSAGE_LABELS: Array<{ match: RegExp; label: string | ((match: RegExpMatc
   { match: /^Release readiness could not load pending change requests\.?$/i, label: "发布就绪检查暂时不可用：待处理变更加载失败。" },
   { match: /^Release readiness gate token is required\.?$/i, label: "发布门禁令牌缺失，请重新评估发布就绪。" },
   { match: /^Release readiness gate token is stale\.?$/i, label: "发布门禁令牌已过期，请重新评估发布就绪。" },
-  { match: /^Release readiness is unavailable\.?$/i, label: "发布就绪检查暂时不可用。" }
+  { match: /^Release readiness is unavailable\.?$/i, label: "发布就绪检查暂时不可用。" },
+  {
+    match: /^Base config revision is stale for this binding\.?$/i,
+    label: "配置修订已过期，请刷新拓扑后基于最新修订重试。"
+  },
+  { match: /^Schema validation failed\.?$/i, label: "提交内容未通过校验，请检查后重试。" }
 ];
 
 /** Generic product copy per structured API error code (used when the message has no specific mapping). */

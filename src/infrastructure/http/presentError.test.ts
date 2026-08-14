@@ -54,6 +54,12 @@ describe("presentErrorMessage", () => {
     );
   });
 
+  it("maps topology stale-revision backend messages", () => {
+    expect(
+      presentErrorMessage("Base config revision is stale for this binding.", FALLBACK)
+    ).toBe("配置修订已过期，请刷新拓扑后基于最新修订重试。");
+  });
+
   it("keeps Chinese copy and falls back on unknown English", () => {
     expect(presentErrorMessage("还有未保存的本机会话变更，不能创建基线。", FALLBACK)).toBe(
       "还有未保存的本机会话变更，不能创建基线。"

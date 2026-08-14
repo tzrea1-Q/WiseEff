@@ -471,10 +471,26 @@ describe("createHttpParameterTopologyRepository", () => {
         kind: "stale-revision",
         reason: "stale-revision",
         bindingId: "binding-1",
-        baseRevisionId: "rev-old"
+        baseRevisionId: "rev-old",
+        message: "配置修订已过期，请刷新拓扑后基于最新修订重试。"
       });
       expect(typeof mapped).not.toBe("string");
       return true;
+    });
+  });
+
+  it("keeps a top-level schema message as a diagnostic when details.diagnostics is absent", () => {
+    const error = new WiseEffApiError(
+      "VALIDATION_FAILED",
+      "cell count must be 3",
+      { reason: "schema-failure", code: "SCHEMA_CELL_COUNT" },
+      "req-cell"
+    );
+    const mapped = mapParameterTopologyError(error, "保存参数绑定草稿失败，请检查后重试。");
+    expect(mapped).toMatchObject({
+      kind: "diagnostics",
+      message: "提交内容未通过校验，请检查后重试。",
+      diagnostics: [{ message: "cell count must be 3", code: "SCHEMA_CELL_COUNT" }]
     });
   });
 
@@ -484,18 +500,39 @@ describe("createHttpParameterTopologyRepository", () => {
     ];
     const error = new WiseEffApiError("VALIDATION_FAILED", "Schema validation failed.", { diagnostics }, "req-2");
     expect(isParameterTopologyValidationError(error)).toBe(true);
-    const mapped = mapParameterTopologyError(error);
+    const mapped = mapParameterTopologyError(error, "保存参数绑定草稿失败，请检查后重试。");
     expect(mapped).toMatchObject({
       kind: "diagnostics",
-      diagnostics
+      diagnostics,
+      message: "提交内容未通过校验，请检查后重试。"
     });
     expect(typeof mapped).not.toBe("string");
+  });
+
+  it("maps topology API failures to Chinese product copy instead of raw English", () => {
+    const error = new WiseEffApiError("INTERNAL_ERROR", "Unexpected topology ingest failure.", {}, "req-x");
+    const mapped = mapParameterTopologyError(error, "加载拓扑失败，请稍后重试。");
+    expect(mapped).toMatchObject({
+      kind: "api",
+      code: "INTERNAL_ERROR",
+      message: "加载拓扑失败，请稍后重试。"
+    });
+    expect(mapped.message).not.toMatch(/topology ingest/i);
+  });
+
+  it("uses scenario-specific fallbacks for unmapped topology errors", () => {
+    const error = new Error("Database connection pool exhausted.");
+    const mapped = mapParameterTopologyError(error, "保存节点使能草稿失败，请检查后重试。");
+    expect(mapped).toMatchObject({
+      kind: "unknown",
+      message: "保存节点使能草稿失败，请检查后重试。"
+    });
   });
 
   it("surfaces abort/cancellation without converting it to a generic failure string", async () => {
     const abortError = new DOMException("The operation was aborted.", "AbortError");
     const mapped = mapParameterTopologyError(abortError);
-    expect(mapped).toMatchObject({ kind: "cancelled" });
+    expect(mapped).toMatchObject({ kind: "cancelled", message: "请求已取消。" });
     expect(typeof mapped).not.toBe("string");
   });
 });
