@@ -26,6 +26,8 @@ export type UiRuleId =
   | "raw-z-index"
   | "raw-font-size"
   | "raw-shadow"
+  | "raw-spacing"
+  | "raw-radius"
   | "ease-keyword"
   | "window-confirm"
   | "hand-rolled-backdrop"
@@ -36,6 +38,8 @@ export const uiRuleIds: UiRuleId[] = [
   "raw-z-index",
   "raw-font-size",
   "raw-shadow",
+  "raw-spacing",
+  "raw-radius",
   "ease-keyword",
   "window-confirm",
   "hand-rolled-backdrop",
@@ -51,6 +55,10 @@ export const ruleGuidance: Record<UiRuleId, string> = {
     "Use the type scale: font-size: var(--text-xs..2xl). No other font sizes exist. See docs/design-docs/ui-design-system.md §Typography.",
   "raw-shadow":
     "Use the elevation tokens: box-shadow: var(--shadow-1..3) and var(--ring). Shadows are never invented inline. See docs/design-docs/ui-design-system.md §Elevation.",
+  "raw-spacing":
+    "Use the spacing scale: padding/margin/gap via var(--space-1..16). No off-grid px/rem/em lengths. See docs/design-docs/ui-design-system.md §Spacing.",
+  "raw-radius":
+    "Use radius tokens: border-radius via var(--radius-sm|md|lg|full). No invented corner radii. See docs/design-docs/ui-design-system.md §Radius.",
   "ease-keyword":
     "Use motion tokens: var(--ease-out) / var(--ease-in-out) with var(--duration-*). The bare ease/ease-in/ease-out/ease-in-out keywords are forbidden. See docs/design-docs/ui-design-system.md §Motion.",
   "window-confirm":
@@ -102,6 +110,18 @@ const easeKeywordPattern = /(?<![\w-])ease(?:-in-out|-in|-out)?(?![\w-])/g;
  * ModalDialog's backdropClassName prop do not match. */
 const handRolledBackdropPattern =
   /(?<!\w)className\s*=\s*(?:"[^"]*(?<![\w-])modal-backdrop(?![\w-])|'[^']*(?<![\w-])modal-backdrop(?![\w-])|`[^`]*(?<![\w-])modal-backdrop(?![\w-])|\{.*?(?<![\w-])modal-backdrop(?![\w-]))/;
+const rawLengthPattern = /(?:\d|\.\d)[\d.]*(?:px|rem|em)\b/;
+const spacingPropertyPattern =
+  /^(?:padding(?:-(?:top|right|bottom|left|block|inline|block-start|block-end|inline-start|inline-end))?|margin(?:-(?:top|right|bottom|left|block|inline|block-start|block-end|inline-start|inline-end))?|gap|row-gap|column-gap)$/;
+const radiusPropertyPattern = /^border(?:-(?:top|bottom)(?:-(?:left|right))?|-(?:left|right))?-radius$/;
+
+function hasRawLengthResidue(value: string, tokenPrefix: "--space-" | "--radius"): boolean {
+  let residue = value.replace(new RegExp(`var\\(${tokenPrefix}[\\w-]*\\)`, "g"), " ");
+  residue = residue.replace(/\d*\.?\d+%/g, " ");
+  residue = residue.replace(/\b0(?:px)?\b/g, " ");
+  residue = residue.replace(/\bauto\b/g, " ");
+  return rawLengthPattern.test(residue);
+}
 
 function isTokenBlockSelector(selector: string): boolean {
   const trimmed = selector.trim();
@@ -165,6 +185,14 @@ export function scanCssContent(filePath: string, content: string): UiViolation[]
         if (residue.length > 0) {
           violations.push({ rule: "raw-shadow", file: filePath, line, detail: `box-shadow: ${value}` });
         }
+      }
+
+      if (spacingPropertyPattern.test(property) && hasRawLengthResidue(value, "--space-")) {
+        violations.push({ rule: "raw-spacing", file: filePath, line, detail: `${property}: ${value}` });
+      }
+
+      if (radiusPropertyPattern.test(property) && hasRawLengthResidue(value, "--radius")) {
+        violations.push({ rule: "raw-radius", file: filePath, line, detail: `${property}: ${value}` });
       }
     }
 

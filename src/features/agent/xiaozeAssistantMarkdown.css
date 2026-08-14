@@ -35,7 +35,7 @@
   overflow-wrap: anywhere;
   word-break: break-word;
   vertical-align: top;
-  padding: 6px 8px;
+  padding: 6px var(--space-2);
   font-size: var(--text-base);
   box-sizing: border-box;
   text-transform: none;

@@ -329,7 +329,7 @@ describe("DataTable planned API", () => {
     const styles = readStylesheet("src/styles.css");
     const dataFilterRule = declarationsFor(styles, ".data-table-column-filter");
 
-    expect(dataFilterRule["margin-left"]).toBe("4px");
+    expect(dataFilterRule["margin-left"]).toBe("var(--space-1)");
     expect(dataFilterRule.float).toBeUndefined();
   });
 

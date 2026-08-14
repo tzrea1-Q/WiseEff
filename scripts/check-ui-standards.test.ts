@@ -162,6 +162,55 @@ describe("scanCssContent raw-shadow", () => {
   });
 });
 
+describe("scanCssContent raw-spacing", () => {
+  it("flags px/rem/em literals on spacing properties outside token blocks and allows var(--space-*)", () => {
+    const css = [
+      ":root { --space-2: 8px; }",
+      ".a { padding: 8px; }",
+      ".b { margin: 0.5rem; }",
+      ".c { gap: var(--space-3); }",
+      ".d { padding: 0; }",
+      ".e { margin: auto; }",
+      ".f { padding: 50%; }",
+      ".g { padding: calc(8px + var(--space-2)); }"
+    ].join("\n");
+
+    const violations = scanCssContent("src/styles.css", css);
+    expect(violations.map((violation) => violation.line)).toEqual([2, 3, 8]);
+    expect(rules(violations)).toEqual(["raw-spacing", "raw-spacing", "raw-spacing"]);
+  });
+
+  it("does not flag width, height, inset, or border-width lengths", () => {
+    const css = [
+      ".a { width: 8px; }",
+      ".b { height: 16px; }",
+      ".c { top: 4px; }",
+      ".d { inset: 8px 16px; }",
+      ".e { border-width: 2px; }"
+    ].join("\n");
+
+    expect(scanCssContent("src/styles.css", css)).toEqual([]);
+  });
+});
+
+describe("scanCssContent raw-radius", () => {
+  it("flags raw border-radius lengths outside token blocks and allows var(--radius-*)", () => {
+    const css = [
+      ":root { --radius-md: 8px; }",
+      ".a { border-radius: 8px; }",
+      ".b { border-top-left-radius: 12px; }",
+      ".c { border-radius: var(--radius-lg); }",
+      ".d { border-radius: 0; }",
+      ".e { border-radius: 0px; }",
+      ".f { border-radius: 10px; }"
+    ].join("\n");
+
+    const violations = scanCssContent("src/styles.css", css);
+    expect(violations.map((violation) => violation.line)).toEqual([2, 3, 7]);
+    expect(rules(violations)).toEqual(["raw-radius", "raw-radius", "raw-radius"]);
+  });
+});
+
 describe("scanCssContent ease-keyword", () => {
   it("flags bare ease/ease-in/ease-out/ease-in-out in transition and animation", () => {
     const css = [

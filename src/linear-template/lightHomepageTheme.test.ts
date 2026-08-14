@@ -17,7 +17,7 @@ describe("WiseEff mature homepage theme", () => {
     expect(declarationFor(cssText, ".linear-page-gradient", "background")).toContain(
       "linear-gradient(180deg, #fbfcff 0%, #f4f7ff 56%, #fbfcff 100%)"
     );
-    expect(card["border-radius"]).toBe("8px");
+    expect(card["border-radius"]).toBe("var(--radius-md)");
     expect(card.background).toContain("#ffffff");
     expect(card["box-shadow"]).toBeTruthy();
     expect(card["min-height"]).toBe("328px");

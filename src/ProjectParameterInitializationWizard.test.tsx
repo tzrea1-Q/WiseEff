@@ -353,13 +353,13 @@ describe("ProjectParameterInitializationWizard", () => {
     const optionLabelHoverRule = declarationsFor(styles, ".parameters-column-filter__options label:hover");
 
     expect(menuRule.background).toContain("var(--surface)");
-    expect(menuRule["border-radius"]).toBe("8px");
+    expect(menuRule["border-radius"]).toBe("var(--radius-md)");
     expect(menuRule["box-shadow"]).toBeTruthy();
-    expect(menuHeadRule["padding-bottom"]).toBe("8px");
+    expect(menuHeadRule["padding-bottom"]).toBe("var(--space-2)");
     expect(menuHeadRule["border-bottom"]).toBeTruthy();
     expect(optionLabelRule.display).toBe("flex");
-    expect(optionLabelRule["border-radius"]).toBe("6px");
-    expect(optionLabelRule.padding).toBe("6px 8px");
+    expect(optionLabelRule["border-radius"]).toBe("var(--radius-sm)");
+    expect(optionLabelRule.padding).toBe("6px var(--space-2)");
     expect(optionLabelHoverRule.background).toBe("#f4f7ff");
   });
 

@@ -91,7 +91,7 @@
   min-width: 1.15rem;
   height: 1.15rem;
   padding-inline: 0.25rem;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--app-primary) 12%, var(--surface) 88%);
   color: var(--app-primary);
   font-size: 0.68rem;
@@ -120,7 +120,7 @@
   min-width: 1.1rem;
   height: 1.1rem;
   padding-inline: 0.25rem;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--ph-accent-soft) 55%, var(--ph-surface) 45%);
   color: var(--ph-accent-strong);
   font-size: 0.68rem;
@@ -928,7 +928,7 @@
 .parameter-home__hotspot-rank-dot {
   width: 0.45rem;
   height: 0.45rem;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--outline) 70%, transparent);
 }
 
@@ -963,7 +963,7 @@
   align-items: center;
   min-height: 1.5rem;
   padding: 0.1rem 0.55rem;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   font-size: 0.72rem;
   font-weight: 700;
   white-space: nowrap;
@@ -992,7 +992,7 @@
   max-width: none;
   height: 0.5rem;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--outline) 28%, var(--ph-surface) 72%);
 }
 
@@ -1120,7 +1120,7 @@
   display: block;
   height: 0.45rem;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--outline) 28%, var(--ph-surface) 72%);
 }
 
