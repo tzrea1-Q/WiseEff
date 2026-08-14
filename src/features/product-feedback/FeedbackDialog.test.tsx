@@ -158,6 +158,20 @@ describe("FeedbackDialog", () => {
     expect(within(dialog).getByLabelText("问题描述")).toHaveValue("参数首页加载很慢");
   });
 
+  it("maps API failures to product-language copy when submit fails", async () => {
+    const { WiseEffApiError } = await import("@/infrastructure/http/apiClient");
+    const submit = vi
+      .fn()
+      .mockRejectedValue(new WiseEffApiError("FORBIDDEN", "Forbidden", {}, "req-feedback-submit"));
+    renderDialog(createFeedbackRepository({ submit }));
+
+    const dialog = screen.getByRole("dialog", { name: "问题反馈" });
+    fireEvent.change(within(dialog).getByLabelText("问题描述"), { target: { value: "按钮点不动" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "提交反馈" }));
+
+    expect(await screen.findByText("没有权限执行该操作。")).toBeInTheDocument();
+  });
+
   it("closes directly when the form is clean", () => {
     const { onOpenChange } = renderDialog();
 

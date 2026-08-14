@@ -2,6 +2,7 @@ import { CheckCircle2, CircleX, ImageIcon, PlayCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ProductFeedback, ProductFeedbackStatus } from "@/domain/productFeedback/types";
 import { productFeedbackStatusLabels, productFeedbackTypeLabels } from "@/domain/productFeedback/types";
+import { presentError } from "@/infrastructure/http/presentError";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -113,7 +114,7 @@ export function FeedbackAdminDrawer({
       });
       setCloseConfirmOpen(false);
     } catch (error) {
-      setErrorMessage(error instanceof Error && error.message ? error.message : "反馈状态更新失败，请稍后重试。");
+      setErrorMessage(presentError(error, "反馈状态更新失败，请稍后重试。"));
     } finally {
       setPending(false);
     }

@@ -3,6 +3,7 @@ import type { ClipboardEvent as ReactClipboardEvent, ReactNode } from "react";
 import { CircleX, Trash2, Upload } from "lucide-react";
 import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
 import type { ProductFeedbackType } from "@/domain/productFeedback/types";
+import { presentError } from "@/infrastructure/http/presentError";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import {
@@ -394,8 +395,5 @@ function revokeImages(images: PastedFeedbackImage[]) {
 }
 
 function readableSubmitError(error: unknown) {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-  return "反馈提交失败，请稍后重试。";
+  return presentError(error, "反馈提交失败，请稍后重试。");
 }
