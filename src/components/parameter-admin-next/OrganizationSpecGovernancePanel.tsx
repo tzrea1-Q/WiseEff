@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ParameterSpecDetail } from "@/domain/parameter-topology/types";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
-import { presentError } from "@/infrastructure/http/presentError";
+import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
 import {
   sortParameterSpecRows,
   toParameterAdminFilters
@@ -74,13 +74,13 @@ function formatReviewActionError(error: unknown): string {
       return "所选规格属性键与任务不一致，请勾选确认后再批准。";
     }
     if (error.code === "VALIDATION_FAILED") {
-      return error.message || "审核请求校验失败。";
+      return presentErrorMessage(error.message, "审核请求校验失败。");
     }
     if (error.code === "CONFLICT") {
-      return error.message || "审核冲突，请刷新队列后重试。";
+      return presentErrorMessage(error.message, "审核冲突，请刷新队列后重试。");
     }
   }
-  return "审核操作失败，请重试。";
+  return presentError(error, "审核操作失败，请重试。");
 }
 
 function toReviewTaskView(task: {
@@ -740,11 +740,7 @@ export function OrganizationSpecGovernancePanel({
               await reloadSpecs();
               updateUrl({ specId: created.id });
             } catch (error) {
-              setCreateError(
-                error instanceof WiseEffApiError
-                  ? error.message || "创建失败"
-                  : "创建失败，请重试。",
-              );
+              setCreateError(presentError(error, "创建失败，请重试。"));
             } finally {
               setCreateBusy(false);
             }

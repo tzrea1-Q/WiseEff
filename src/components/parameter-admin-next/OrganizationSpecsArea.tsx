@@ -5,6 +5,7 @@ import {
   type ParameterAdminSpecsSubView
 } from "@/application/parameters/parameterAdminOrganizationPath";
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
+import { presentError } from "@/infrastructure/http/presentError";
 import { OrganizationIdentityMappingPanel } from "./OrganizationIdentityMappingPanel";
 import { OrganizationSpecGovernancePanel } from "./OrganizationSpecGovernancePanel";
 import { useParameterAdmin } from "./ParameterAdminProvider";
@@ -58,8 +59,7 @@ export function OrganizationSpecsArea({
         // IA-R2: do not treat a failed count load as an empty queue.
         setMappingCounts({
           status: "error",
-          message:
-            error instanceof Error ? error.message : PARAMETER_ADMIN_UI.identityMappingCountError
+          message: presentError(error, PARAMETER_ADMIN_UI.identityMappingCountError)
         });
       });
     return () => {
