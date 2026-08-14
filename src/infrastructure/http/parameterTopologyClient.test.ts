@@ -479,6 +479,21 @@ describe("createHttpParameterTopologyRepository", () => {
     });
   });
 
+  it("keeps a top-level schema message as a diagnostic when details.diagnostics is absent", () => {
+    const error = new WiseEffApiError(
+      "VALIDATION_FAILED",
+      "cell count must be 3",
+      { reason: "schema-failure", code: "SCHEMA_CELL_COUNT" },
+      "req-cell"
+    );
+    const mapped = mapParameterTopologyError(error, "保存参数绑定草稿失败，请检查后重试。");
+    expect(mapped).toMatchObject({
+      kind: "diagnostics",
+      message: "提交内容未通过校验，请检查后重试。",
+      diagnostics: [{ message: "cell count must be 3", code: "SCHEMA_CELL_COUNT" }]
+    });
+  });
+
   it("preserves structured validation diagnostics instead of collapsing to a string", async () => {
     const diagnostics = [
       { severity: "error", code: "schema-constraint", message: "gpio_int must be a phandle", path: "gpio_int" }

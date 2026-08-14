@@ -337,6 +337,15 @@ export function mapParameterTopologyError(
   if (error instanceof WiseEffApiError) {
     const diagnostics = readDiagnostics(error.details);
     if (diagnostics || error.code === "VALIDATION_FAILED") {
+      const detailCode =
+        typeof error.details?.code === "string" && error.details.code.trim()
+          ? error.details.code
+          : error.code;
+      const preserved =
+        diagnostics ??
+        (error.message.trim()
+          ? [{ message: error.message, code: detailCode }]
+          : []);
       return {
         kind: "diagnostics",
         message: presentError(
@@ -345,7 +354,7 @@ export function mapParameterTopologyError(
             ? "校验未通过，请根据下方诊断信息修正后重试。"
             : fallback
         ),
-        diagnostics: diagnostics ?? [],
+        diagnostics: preserved,
         details: error.details,
         cause: error
       };
