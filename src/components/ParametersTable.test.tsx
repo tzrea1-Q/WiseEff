@@ -487,4 +487,22 @@ describe("ParametersTable", () => {
     expect(mobileCell["overflow-wrap"]).toBe("anywhere");
     expect(mobileCell["word-break"]).toBe("normal");
   });
+
+  it("keeps debugging toolbar search from stretching vertically on narrow viewports (TD-107)", () => {
+    const styles = readStylesheet("src/styles.css");
+    const searchSelector = ".debugging-page .parameters-table-search";
+    const narrow = { within: "(max-width: 960px)" };
+
+    const desktop = declarationsFor(styles, searchSelector);
+    expect(desktop.flex).toBe("0 0 auto");
+    expect(desktop.width).toBe("min(260px, 100%)");
+    expect(desktop["flex-basis"]).toBeUndefined();
+
+    const mobile = declarationsFor(styles, searchSelector, narrow);
+    expect(mobile.width).toBe("100%");
+    expect(mobile["max-width"]).toBe("none");
+    expect(mobile["min-width"]).toBe("0");
+    expect(mobile.height).toBe("auto");
+    expect(mobile["flex-basis"]).toBeUndefined();
+  });
 });

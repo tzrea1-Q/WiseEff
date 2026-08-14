@@ -2392,7 +2392,8 @@ body {
 
 .debugging-page .parameters-table-search,
 .node-debugging-page .parameters-table-search {
-  flex: 0 1 260px;
+  flex: 0 0 auto;
+  width: min(260px, 100%);
   min-width: 180px;
   max-width: min(260px, calc(100% - 120px));
 }
@@ -13235,6 +13236,14 @@ td small {
 
   .parameters-table-search {
     width: 100%;
+  }
+
+  .debugging-page .parameters-table-search,
+  .node-debugging-page .parameters-table-search {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    height: auto;
   }
 
   .parameters-table-scroll {
