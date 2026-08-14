@@ -443,7 +443,7 @@ export function DtsBindingDraftTray({
               })
               .catch((error: unknown) => {
                 if (!requestIsCurrent()) return;
-                setSubmitError(error instanceof Error ? error.message : "提交审核失败。");
+                setSubmitError(presentError(error, "提交审核失败，请稍后重试。"));
               })
               .finally(() => {
                 if (!requestIsActive()) return;

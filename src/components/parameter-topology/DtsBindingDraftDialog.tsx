@@ -10,6 +10,7 @@ import {
   getComplexParameterLineCount,
   shouldSummarizeComplexParameter
 } from "@/parameterValueKind";
+import { presentError } from "@/infrastructure/http/presentError";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -63,9 +64,7 @@ function importanceLabel(importance: DtsParameterWorkbenchRow["importance"]): st
 }
 
 function readableError(error: unknown): string {
-  return error instanceof Error && error.message.trim()
-    ? error.message
-    : "服务端暂时无法创建草稿，请稍后重试。";
+  return presentError(error, "服务端暂时无法创建草稿，请稍后重试。");
 }
 
 function dtsContext(row: DtsParameterWorkbenchRow): string {

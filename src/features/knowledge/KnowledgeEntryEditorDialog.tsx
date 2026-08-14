@@ -5,6 +5,7 @@ import { KnowledgeRevisionConflictError } from "@/application/ports/KnowledgeRep
 import { renderMarkdownPreview } from "@/domain/knowledge/markdown";
 import type { KnowledgeEntry, KnowledgeParameterReference, ParameterSpecReferenceLifecycle } from "@/domain/knowledge/types";
 import { parameterSpecReferenceLifecycleLabels } from "@/domain/knowledge/types";
+import { presentError } from "@/infrastructure/http/presentError";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { Button } from "@/components/ui/button";
 import { KnowledgeParameterReferenceChips, referenceDisplayName } from "./KnowledgeParameterReferenceChips";
@@ -116,9 +117,7 @@ export function KnowledgeEntryEditorDialog({
       setSpecOptions(options.slice(0, 8));
       setSpecSearchRan(true);
     } catch (searchError) {
-      setReferenceError(
-        searchError instanceof Error && searchError.message ? searchError.message : "参数定义检索失败,请稍后重试。"
-      );
+      setReferenceError(presentError(searchError, "参数定义检索失败，请稍后重试。"));
     } finally {
       setSpecSearching(false);
     }
@@ -131,7 +130,7 @@ export function KnowledgeEntryEditorDialog({
     try {
       setReferences(await parameterReferencePicker.onAdd(entry.id, specId));
     } catch (addError) {
-      setReferenceError(addError instanceof Error && addError.message ? addError.message : "添加引用失败,请稍后重试。");
+      setReferenceError(presentError(addError, "添加引用失败，请稍后重试。"));
     } finally {
       setReferencePendingSpecId(null);
     }
@@ -144,9 +143,7 @@ export function KnowledgeEntryEditorDialog({
     try {
       setReferences(await parameterReferencePicker.onRemove(entry.id, specId));
     } catch (removeError) {
-      setReferenceError(
-        removeError instanceof Error && removeError.message ? removeError.message : "移除引用失败,请稍后重试。"
-      );
+      setReferenceError(presentError(removeError, "移除引用失败，请稍后重试。"));
     } finally {
       setReferencePendingSpecId(null);
     }
@@ -172,7 +169,7 @@ export function KnowledgeEntryEditorDialog({
       if (submitError instanceof KnowledgeRevisionConflictError) {
         setConflict(submitError);
       } else {
-        setError(submitError instanceof Error && submitError.message ? submitError.message : "保存失败,请稍后重试。");
+        setError(presentError(submitError, "保存失败，请稍后重试。"));
       }
     } finally {
       setPending(false);

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, LoaderCircle, RefreshCw } from "lucide-react";
 
+import { presentError } from "@/infrastructure/http/presentError";
 import {
   buildParameterAdminModulesPath,
   parseParameterAdminModulesSubView,
@@ -160,7 +161,7 @@ export function ParameterModuleMappingPanel({
       })
       .catch((loadError) => {
         if (cancelled) return;
-        setError(loadError instanceof Error ? loadError.message : "无法加载模块注册表。");
+        setError(presentError(loadError, "无法加载模块注册表，请稍后重试。"));
         setRegistry(EMPTY_PARAMETER_MODULE_REGISTRY);
         setDriverRegistry([]);
         setOrganizationDriverSchemas([]);
@@ -306,7 +307,7 @@ export function ParameterModuleMappingPanel({
         )
       );
     } catch (dismissError) {
-      setError(dismissError instanceof Error ? dismissError.message : "忽略 compatible 失败。");
+      setError(presentError(dismissError, "忽略 compatible 失败，请稍后重试。"));
     } finally {
       setBusy(false);
     }
@@ -339,7 +340,7 @@ export function ParameterModuleMappingPanel({
         )
       );
     } catch (restoreError) {
-      setError(restoreError instanceof Error ? restoreError.message : "恢复 compatible 失败。");
+      setError(presentError(restoreError, "恢复 compatible 失败，请稍后重试。"));
     } finally {
       setBusy(false);
     }
@@ -413,7 +414,7 @@ export function ParameterModuleMappingPanel({
       setRecomputeNotice(`已归类 ${input.groups.length} 个 compatible，移动 ${moved} 个项目参数。`);
       goToSubView("tree");
     } catch (classifyError) {
-      setError(classifyError instanceof Error ? classifyError.message : "归类 compatible 失败。");
+      setError(presentError(classifyError, "归类 compatible 失败，请稍后重试。"));
     } finally {
       setBusy(false);
     }
@@ -430,9 +431,7 @@ export function ParameterModuleMappingPanel({
       await refreshDiscoveryHints();
       setRecomputeResult(result);
     } catch (recomputeError) {
-      setError(
-        recomputeError instanceof Error ? recomputeError.message : "重算模块归属失败。"
-      );
+      setError(presentError(recomputeError, "重算模块归属失败，请稍后重试。"));
     } finally {
       setRecomputing(false);
     }
@@ -463,7 +462,7 @@ export function ParameterModuleMappingPanel({
       );
       goToSubView("tree");
     } catch (registerError) {
-      setError(registerError instanceof Error ? registerError.message : "登记驱动失败。");
+      setError(presentError(registerError, "登记驱动失败，请稍后重试。"));
     } finally {
       setBusy(false);
     }
@@ -487,11 +486,9 @@ export function ParameterModuleMappingPanel({
       );
     } catch (overlayError) {
       setError(
-        overlayError instanceof Error
-          ? overlayError.message.includes("platform overlay")
-            ? PARAMETER_ADMIN_UI.organizationDriverSchemaPlatformBlocked
-            : overlayError.message
-          : "保存组织解析 schema 失败。",
+        overlayError instanceof Error && overlayError.message.includes("platform overlay")
+          ? PARAMETER_ADMIN_UI.organizationDriverSchemaPlatformBlocked
+          : presentError(overlayError, "保存组织解析 schema 失败，请稍后重试。")
       );
     } finally {
       setBusy(false);
@@ -686,9 +683,7 @@ export function ParameterModuleMappingPanel({
                 ]);
                 setRecomputeNotice("已停用解析");
               } catch (deprecateError) {
-                setError(
-                  deprecateError instanceof Error ? deprecateError.message : "停用解析失败。"
-                );
+                setError(presentError(deprecateError, "停用解析失败，请稍后重试。"));
               } finally {
                 setBusy(false);
               }
@@ -699,7 +694,7 @@ export function ParameterModuleMappingPanel({
               try {
                 setRegistry(await client.updateModule(moduleId, patch));
               } catch (updateError) {
-                setError(updateError instanceof Error ? updateError.message : "更新模块失败。");
+                setError(presentError(updateError, "更新模块失败，请稍后重试。"));
               } finally {
                 setBusy(false);
               }
@@ -712,9 +707,7 @@ export function ParameterModuleMappingPanel({
                 await refreshDriverRegistry();
                 setRegistry(await client.getRegistry());
               } catch (updateError) {
-                setError(
-                  updateError instanceof Error ? updateError.message : "更新驱动登记失败。"
-                );
+                setError(presentError(updateError, "更新驱动登记失败，请稍后重试。"));
               } finally {
                 setBusy(false);
               }
@@ -733,11 +726,7 @@ export function ParameterModuleMappingPanel({
                 setRegistry(nextRegistry);
                 setDriverRegistry(nextDrivers.items);
               } catch (updateError) {
-                setError(
-                  updateError instanceof Error
-                    ? updateError.message
-                    : "更新默认业务分类失败。"
-                );
+                setError(presentError(updateError, "更新默认业务分类失败，请稍后重试。"));
               } finally {
                 setBusy(false);
               }
@@ -755,9 +744,7 @@ export function ParameterModuleMappingPanel({
                 setDriverRegistry(nextDrivers.items);
                 return counts;
               } catch (replayError) {
-                setError(
-                  replayError instanceof Error ? replayError.message : "回放放置失败。"
-                );
+                setError(presentError(replayError, "回放放置失败，请稍后重试。"));
                 return { moved: 0, skippedCurated: 0, skippedMissingDefault: 0 };
               } finally {
                 setBusy(false);
@@ -769,7 +756,7 @@ export function ParameterModuleMappingPanel({
               try {
                 setRegistry(await client.updateModule(moduleId, { parentId }));
               } catch (moveError) {
-                setError(moveError instanceof Error ? moveError.message : "移动模块失败。");
+                setError(presentError(moveError, "移动模块失败，请稍后重试。"));
               } finally {
                 setBusy(false);
               }
@@ -782,7 +769,7 @@ export function ParameterModuleMappingPanel({
                 await refreshDiscoveryHints();
                 await refreshDriverRegistry();
               } catch (deleteError) {
-                setError(deleteError instanceof Error ? deleteError.message : "删除模块失败。");
+                setError(presentError(deleteError, "删除模块失败，请稍后重试。"));
               } finally {
                 setBusy(false);
               }
@@ -796,7 +783,7 @@ export function ParameterModuleMappingPanel({
                 await refreshDiscoveryHints();
                 await refreshDriverRegistry();
               } catch (mappingError) {
-                setError(mappingError instanceof Error ? mappingError.message : "删除归属失败。");
+                setError(presentError(mappingError, "删除归属失败，请稍后重试。"));
               } finally {
                 setBusy(false);
               }
@@ -814,9 +801,7 @@ export function ParameterModuleMappingPanel({
                 await refreshDiscoveryHints();
                 await refreshDriverRegistry();
               } catch (mappingError) {
-                setError(
-                  mappingError instanceof Error ? mappingError.message : "添加 compatible 规则失败。"
-                );
+                setError(presentError(mappingError, "添加 compatible 规则失败，请稍后重试。"));
               } finally {
                 setBusy(false);
               }
@@ -853,7 +838,7 @@ export function ParameterModuleMappingPanel({
                   );
                 }
               } catch (createError) {
-                setError(createError instanceof Error ? createError.message : "创建模块失败。");
+                setError(presentError(createError, "创建模块失败，请稍后重试。"));
               } finally {
                 setBusy(false);
               }

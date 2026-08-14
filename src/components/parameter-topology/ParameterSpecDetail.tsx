@@ -1,3 +1,4 @@
+import { presentError } from "@/infrastructure/http/presentError";
 import { Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ParameterSpecCutoverSummary } from "@/domain/parameter-topology/types";
@@ -320,7 +321,7 @@ function SpecRelatedKnowledgeSection({
       })
       .catch((loadError: unknown) => {
         if (!cancelled) {
-          setError(loadError instanceof Error && loadError.message ? loadError.message : "相关知识加载失败。");
+          setError(presentError(loadError, "相关知识加载失败，请稍后重试。"));
         }
       })
       .finally(() => {

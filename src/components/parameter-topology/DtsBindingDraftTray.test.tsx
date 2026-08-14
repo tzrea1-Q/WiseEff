@@ -661,4 +661,25 @@ describe("DtsBindingDraftTray", () => {
     });
     expect(onSubmit.mock.calls[0][0].items).toHaveLength(2);
   });
+
+  it("maps API failures to product-language copy when submit fails", async () => {
+    const { WiseEffApiError } = await import("@/infrastructure/http/apiClient");
+    const onSubmit = vi
+      .fn()
+      .mockRejectedValue(new WiseEffApiError("FORBIDDEN", "Forbidden", {}, "req-draft-submit"));
+    render(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[draft()]}
+        candidates={candidates}
+        onRemove={vi.fn()}
+        onSubmit={onSubmit}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^提交审核/ }));
+
+    expect(await screen.findByText("没有权限执行该操作。")).toBeInTheDocument();
+  });
 });

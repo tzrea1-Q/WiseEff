@@ -11,6 +11,7 @@ import {
 import { DataTable, PageInsightBar, type Column } from "@/components/admin";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { presentError } from "@/infrastructure/http/presentError";
 import { FeedbackAdminDrawer } from "./FeedbackAdminDrawer";
 
 export type FeedbackAdminPageProps = {
@@ -78,7 +79,7 @@ export function FeedbackAdminPage({ productFeedbackRepository }: FeedbackAdminPa
       const result = await productFeedbackRepository.list();
       setRows(result.items);
     } catch (error) {
-      setErrorMessage(error instanceof Error && error.message ? error.message : "反馈列表加载失败，请稍后重试。");
+      setErrorMessage(presentError(error, "反馈列表加载失败，请稍后重试。"));
     } finally {
       setLoading(false);
     }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { presentError } from "@/infrastructure/http/presentError";
 import type {
   SubmitParameterChangesInput,
   WorkflowAssigneeCandidates
@@ -122,7 +123,7 @@ export function BindingDraftSubmissionPanel({
                 setSubmitted(true);
               })
               .catch((submitError: unknown) => {
-                setError(submitError instanceof Error ? submitError.message : "提交审核失败。");
+                setError(presentError(submitError, "提交审核失败，请稍后重试。"));
               })
               .finally(() => setSubmitting(false));
           }}

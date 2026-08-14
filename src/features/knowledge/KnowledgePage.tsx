@@ -18,6 +18,7 @@ import {
 import { dispatchXiaozeOpenHandoff } from "@/features/agent/xiaozeOpenHandoff";
 import { DataTable, PageInsightBar, type Column } from "@/components/admin";
 import { Button } from "@/components/ui/button";
+import { presentError } from "@/infrastructure/http/presentError";
 import { KnowledgeExtractionBadge, KnowledgeStatusBadge, KnowledgeTagList } from "./badges";
 import { KnowledgeEntryDetailDialog } from "./KnowledgeEntryDetailDialog";
 import {
@@ -88,7 +89,7 @@ export function KnowledgePage({
       const result = await repository.list();
       setRows(result.items);
     } catch (error) {
-      setErrorMessage(error instanceof Error && error.message ? error.message : "知识条目加载失败,请稍后重试。");
+      setErrorMessage(presentError(error, "知识条目加载失败，请稍后重试。"));
     } finally {
       setLoading(false);
     }
@@ -129,7 +130,7 @@ export function KnowledgePage({
       setSearchResults(response.items);
       setSearchRetrieval(response.retrieval);
     } catch (error) {
-      setErrorMessage(error instanceof Error && error.message ? error.message : "检索失败,请稍后重试。");
+      setErrorMessage(presentError(error, "检索失败，请稍后重试。"));
     } finally {
       setSearching(false);
     }

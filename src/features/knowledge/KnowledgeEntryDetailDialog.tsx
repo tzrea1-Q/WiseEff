@@ -6,6 +6,7 @@ import type { KnowledgeCapability } from "@/domain/knowledge/rules";
 import { canArchive, canEditContent, canPublish, canRestore } from "@/domain/knowledge/rules";
 import type { KnowledgeEntry } from "@/domain/knowledge/types";
 import { knowledgeSourceTypeLabels } from "@/domain/knowledge/types";
+import { presentError } from "@/infrastructure/http/presentError";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { Button } from "@/components/ui/button";
 import { KnowledgeExtractionBadge, KnowledgeStatusBadge, KnowledgeTagList } from "./badges";
@@ -78,7 +79,7 @@ export function KnowledgeEntryDetailDialog({
     try {
       await action();
     } catch (actionError) {
-      setError(actionError instanceof Error && actionError.message ? actionError.message : "操作失败,请稍后重试。");
+      setError(presentError(actionError, "操作失败，请稍后重试。"));
     } finally {
       setPendingAction(null);
     }

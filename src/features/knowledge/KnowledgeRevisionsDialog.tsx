@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { KnowledgeRevisionConflictError } from "@/application/ports/KnowledgeRepository";
 import type { KnowledgeEntry, KnowledgeRevision } from "@/domain/knowledge/types";
+import { presentError } from "@/infrastructure/http/presentError";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { Button } from "@/components/ui/button";
@@ -59,7 +60,7 @@ export function KnowledgeRevisionsDialog({
       })
       .catch((loadError: unknown) => {
         if (!cancelled) {
-          setError(loadError instanceof Error && loadError.message ? loadError.message : "修订历史加载失败。");
+          setError(presentError(loadError, "修订历史加载失败，请稍后重试。"));
         }
       })
       .finally(() => {
@@ -82,9 +83,7 @@ export function KnowledgeRevisionsDialog({
       if (restoreFailure instanceof KnowledgeRevisionConflictError) {
         setRestoreError(`条目已被更新到修订 #${restoreFailure.currentHeadRevisionNumber},请刷新后重试。`);
       } else {
-        setRestoreError(
-          restoreFailure instanceof Error && restoreFailure.message ? restoreFailure.message : "恢复失败,请稍后重试。"
-        );
+        setRestoreError(presentError(restoreFailure, "恢复失败，请稍后重试。"));
       }
     } finally {
       setRestorePending(false);
