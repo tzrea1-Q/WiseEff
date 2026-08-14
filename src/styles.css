@@ -14460,6 +14460,11 @@ td small {
   }
 }
 
+body:has([role="dialog"]) .xiaoze-toggle-hint {
+  pointer-events: none;
+  visibility: hidden;
+}
+
 .xiaoze-toggle-hint {
   position: absolute;
   right: calc(100% + 12px);
