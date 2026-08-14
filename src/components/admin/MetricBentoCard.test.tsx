@@ -46,7 +46,7 @@ describe("MetricBentoCard", () => {
   });
 
   it("renders pulse badge for pulse variant", () => {
-    render(<MetricBentoCard label="失败" value="1" variant="pulse" severity="error" />);
+    render(<MetricBentoCard label="失败" value="1" variant="pulse" tone="error" />);
 
     expect(screen.getByText("1")).toBeInTheDocument();
   });
