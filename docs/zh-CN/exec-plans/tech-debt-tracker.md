@@ -44,8 +44,6 @@
 - **TD-067（多副本桥接路由）：** 桥接 WebSocket 单进程亲和；进程内 DTS 重载部署（ADR-0020）依赖持有 socket 的副本。**负责人：Platform / Reliability。**
 - **TD-068（DTS 重载 Agent actorType 信任边界）：** 闸门依赖调用方传入的进程内 `actorType`，非 `AuthContext` 已认证身份；持用户 HTTP token 的 Agent 与人类不可区分（与参数 `SensitiveWriteActorType` 相同）。**负责人：Security / Backend。** 见 `docs/SECURITY.md`（#304）。
 - **TD-080（拓扑工作区测试隔离）：** `ApiProjectTopologyWorkspace.test.tsx` 在 jsdom 中发出真实 HTTP 请求；本机 `127.0.0.1:8787` 有开发 API 时套件不稳定（20 例中 8–9 例被真实数据打挂）。P0 美学提升验证期间发现。应注入可替换的 repository/fetch 接缝,测试不得拨真实端口。**负责人：Frontend。**
-- **TD-081（拓扑树元信息文字色）：** `.topology-tree__item small` 把近白的表面令牌 `var(--muted)` 当文字色,树上元信息几乎不可见（既有缺陷,P0 令牌审计浮出）。P1 原语收敛时改为 `var(--text-muted)` 并加结构化样式断言。**负责人：Frontend。**
-- **TD-084（确认对话框超高不可达）：** `ConfirmDialog`/`ModalDialog` 内容超过视口高度时页脚按钮鼠标不可达（`.governance-confirm-dialog` 无 max-height/overflow）。TD-069 浏览器验证在 1440×900 发现：`/dts-reload` 补偿性恢复部署确认（残留横幅 + 基线值 + Overlay 源码）把确认/取消挤出视口且无滚动；键盘焦点仍可达。属既有缺陷，`main` API 模式同内容可复现。应在共享模态层加 `max-height` + 内部滚动（页脚固定），随美学提升的原语收敛落地，不做逐对话框补丁。**负责人：Frontend / UI primitives。**
 - **TD-085（日志分析置信度显示口径）：** LLM 分析器返回模型自估置信度，规则回退沿用确定性查表置信度，二者共用同一 UI 数字，除来源徽标外没有校准语义区分。需按 `analysisSource` 决定显示口径（标注、分档或在效果层评测校准前隐藏 LLM 置信度）。**负责人：Log analysis / Product。**
 - **TD-086（域治理错误透出）：** `/log-admin` 域治理的创建/更新失败只弹通用通知；服务端 `INVALID_LOG_FORMAT_PROFILE` 的 Zod 字段级细节没有映射回表单，行内仅有客户端 JSON 预检。需把 API 错误码与校验细节映射为表单行内错误。**负责人：Frontend / Log analysis。**
 - **TD-087（selfhost required-keys 纳管 `LOG_ANALYSIS_*`）：** `check-self-hosted-config.ts` 的必填键覆盖 `LOG_ANALYSIS_QUEUE_*` 但不含 P1 LLM 家族（`LOG_ANALYSIS_API_BASE_URL` / `LOG_ANALYSIS_MODEL` / `LOG_ANALYSIS_API_KEY` / `LOG_ANALYSIS_API_TIMEOUT_MS` / `LOG_ANALYSIS_TOKEN_BUDGET` / `LOG_ANALYSIS_DETERMINISTIC`），部署可能通过 `selfhost:check` 却未配置 LLM。需纳入必填键检查（并决定 deterministic 模式是否豁免 API key）与对应测试。**负责人：Ops / Log analysis。**
@@ -74,6 +72,8 @@
 
 ## 近期关闭项
 
+- **TD-084（确认对话框超高不可达）：** **2026-08-14 关闭**（`fix/td081-td084-visible-defects`）。共享 `.confirm-dialog:has(.confirm-dialog__scroll)` 以 `calc(100dvh - 48px)` 限高并 `overflow: hidden`，三行网格钉住 `.dialog-actions`；`ConfirmDialog` 将页脚前内容包进 `.confirm-dialog__scroll`（`overflow-y: auto`）。`ConfirmDialog.test.tsx` 与 `ModalDialog.styles.test.ts` 覆盖；无滚动包装器的矮弹窗外观不变。
+- **TD-081（拓扑树元信息文字色）：** **2026-08-14 关闭**（`fix/td081-td084-visible-defects`）。`.topology-tree__item small` 改用可读 `var(--text-muted)`，不再使用近白 shadcn `--muted` 表面别名；`ProjectTopologyWorkspace.test.tsx` 结构化断言锁定（CSS 早前已在 #387 落地）。
 - **TD-111（高频页之外 raw error.message 残留）：** **2026-08-14 关闭**（`fix/td111-error-presentation`）。FA-17 残余界面已改走 `presentError`/`presentErrorMessage`：知识库 admin/page 与弹窗（含索引表 `item.error` 列）、产品反馈后台与提交弹窗、parameter-admin-next 治理面板（项目运维、身份映射、规格治理创建/审核）、parameter-topology 托盘/弹窗/工作台/规格详情（不含 `mapParameterTopologyError` 已映射消息与结构化诊断行）。拓扑 API 英文 `error.message` 透传残留已在 `fix/td111-topology-error-copy` 完成 topology copy pass（`mapParameterTopologyError` 内部走 `presentError`，各场景中文兜底）。`ErrorBoundary` 开发态详情与应用层/runtime catch 块不在本票 UI 清单内。
 - **TD-115（formatLastActive 漏格式化 pg 文本时间戳）：** **2026-08-14 关闭**（`fix/td115-and-td114-residue`）。`formatLastActive`/`normalizeTimestampInput` 现接受 Postgres 文本时间戳（空格分隔、可选毫秒、短 `+00`/`+08` 偏移）并经 `formatRelativeOrAbsolute` 格式化；legacy 英文与已格式化中文保持原样；无法解析的输入渲染 **未知**，`lastActiveTooltip` 保留原值。`formatLastActive.test.ts` 覆盖。
 

@@ -12669,6 +12669,19 @@ td small {
   box-shadow: 0 24px 70px rgba(16, 28, 45, 0.28);
 }
 
+.confirm-dialog:has(.confirm-dialog__scroll) {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  max-height: calc(100dvh - 48px);
+  overflow: hidden;
+}
+
+.confirm-dialog__scroll {
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .rejection-dialog {
   display: grid;
   gap: 12px;
@@ -17216,6 +17229,11 @@ body.xiaoze-popup-resize-active {
   display: grid;
   gap: 8px;
   color: var(--app-muted);
+}
+
+.governance-confirm-dialog .confirm-dialog__scroll {
+  display: grid;
+  gap: 14px;
 }
 
 .governance-confirm-dialog__body strong,

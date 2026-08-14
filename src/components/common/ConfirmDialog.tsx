@@ -63,26 +63,28 @@ export function ConfirmDialog({
       {({ titleId, descriptionId }) => (
         <>
           <h2 id={titleId}>{title}</h2>
-          <div id={descriptionId} className="governance-confirm-dialog__body">
-            {description}
+          <div className="confirm-dialog__scroll">
+            <div id={descriptionId} className="governance-confirm-dialog__body">
+              {description}
+            </div>
+            {extra}
+            {acknowledgement ? (
+              <label className="governance-confirm-dialog__acknowledge">
+                <input
+                  type="checkbox"
+                  checked={acknowledged}
+                  disabled={pending}
+                  onChange={(event) => setAcknowledged(event.target.checked)}
+                />
+                <span>{acknowledgement}</span>
+              </label>
+            ) : null}
+            {error ? (
+              <p className="governance-confirm-dialog__error" role="alert">
+                {error}
+              </p>
+            ) : null}
           </div>
-          {extra}
-          {acknowledgement ? (
-            <label className="governance-confirm-dialog__acknowledge">
-              <input
-                type="checkbox"
-                checked={acknowledged}
-                disabled={pending}
-                onChange={(event) => setAcknowledged(event.target.checked)}
-              />
-              <span>{acknowledgement}</span>
-            </label>
-          ) : null}
-          {error ? (
-            <p className="governance-confirm-dialog__error" role="alert">
-              {error}
-            </p>
-          ) : null}
           <div className="dialog-actions">
             <button className="button subtle" type="button" disabled={pending} onClick={onCancel}>
               {cancelLabel}
