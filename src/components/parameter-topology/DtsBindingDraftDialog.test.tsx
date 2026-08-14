@@ -268,7 +268,7 @@ describe("DtsBindingDraftDialog", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "校验并加入本轮" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("candidate revision is stale");
+    expect(await screen.findByRole("alert")).toHaveTextContent("服务端暂时无法创建草稿，请稍后重试。");
     await waitFor(() => expect(screen.getByRole("button", { name: "校验并加入本轮" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "校验并加入本轮" }));
     await waitFor(() => expect(onCreateDraft).toHaveBeenCalledTimes(2));

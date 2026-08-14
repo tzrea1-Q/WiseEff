@@ -6,6 +6,7 @@ import {
   Boxes
 } from "lucide-react";
 
+import { presentError } from "@/infrastructure/http/presentError";
 import { buildModuleTree } from "@/application/parameters/buildModuleTree";
 import {
   clearUnsavedParameterWork,
@@ -257,9 +258,7 @@ export function DtsParameterWorkbench({
         if (!cancelled) {
           setDtsSource(null);
           setDtsSourceStatus("error");
-          setDtsSourceErrorMessage(
-            error instanceof Error ? error.message : "无法加载 DTS 源码。"
-          );
+          setDtsSourceErrorMessage(presentError(error, "无法加载 DTS 源码，请稍后重试。"));
         }
       });
     return () => {
