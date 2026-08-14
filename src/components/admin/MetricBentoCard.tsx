@@ -9,7 +9,7 @@ type MetricTrend = {
 };
 
 export type MetricBentoCardVariant = "spark" | "radial" | "pulse" | "peak";
-export type MetricBentoCardSeverity = "neutral" | "success" | "warning" | "error";
+export type MetricBentoCardTone = "neutral" | "success" | "warning" | "error";
 
 export type MetricBentoCardProps = {
   label: string;
@@ -19,14 +19,14 @@ export type MetricBentoCardProps = {
   trend?: MetricTrend;
   data?: number[];
   percent?: number;
-  severity?: MetricBentoCardSeverity;
+  tone?: MetricBentoCardTone;
   active?: boolean;
   icon?: ReactNode;
   onClick?: () => void;
   className?: string;
 };
 
-const severityClass: Record<MetricBentoCardSeverity, string> = {
+const toneClass: Record<MetricBentoCardTone, string> = {
   neutral: "border-border bg-card text-card-foreground",
   success: "border-emerald-200 bg-emerald-50 text-emerald-950",
   warning: "border-amber-200 bg-amber-50 text-amber-950",
@@ -164,13 +164,13 @@ function renderRadial(percent = 0) {
   );
 }
 
-function renderPulse(severity: MetricBentoCardSeverity) {
+function renderPulse(tone: MetricBentoCardTone) {
   return (
     <span
       aria-hidden="true"
       className={cn(
         "relative flex size-20 items-center justify-center rounded-full",
-        severity === "error" ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"
+        tone === "error" ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"
       )}
     >
       <span className="absolute size-12 rounded-full bg-current opacity-10" />
@@ -205,7 +205,7 @@ export function MetricBentoCard({
   trend,
   data,
   percent,
-  severity = "neutral",
+  tone = "neutral",
   active = false,
   icon,
   onClick,
@@ -219,7 +219,7 @@ export function MetricBentoCard({
       : variant === "radial"
         ? renderRadial(percent)
         : variant === "pulse"
-          ? renderPulse(severity)
+          ? renderPulse(tone)
           : renderPeak(data));
   const content = (
     <>
@@ -243,7 +243,7 @@ export function MetricBentoCard({
   );
   const cardClassName = cn(
     "rounded-lg border p-4 shadow-sm transition-colors",
-    severityClass[severity],
+    toneClass[tone],
     active && "ring-2 ring-primary/35",
     onClick && "text-left hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
     className

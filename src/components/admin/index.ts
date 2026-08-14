@@ -5,7 +5,7 @@ export type { PageInsightAction, PageInsightBarProps } from "./PageInsightBar";
 export { MetricBentoCard } from "./MetricBentoCard";
 export type {
   MetricBentoCardProps,
-  MetricBentoCardSeverity,
+  MetricBentoCardTone,
   MetricBentoCardVariant
 } from "./MetricBentoCard";
 export { DataTable } from "./DataTable";
