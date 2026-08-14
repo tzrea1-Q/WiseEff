@@ -69,7 +69,7 @@
 .linear-footer-brand > div:first-child {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   color: var(--linear-primary-text);
   font-size: var(--text-md);
   font-weight: 700;
@@ -88,7 +88,7 @@
 .linear-nav ul {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: var(--space-6);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -110,7 +110,7 @@
 .linear-header-actions {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: var(--space-6);
   margin-left: auto;
 }
 
@@ -120,7 +120,7 @@
   justify-content: center;
   gap: 10px;
   border: 1px solid rgba(0, 61, 155, 0.18);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--linear-primary-blue);
   box-shadow: 0 12px 28px color-mix(in srgb, var(--accent-pressed) 18%, transparent);
   color: var(--primary-foreground);
@@ -153,13 +153,13 @@
 
 .linear-button-small {
   min-height: 34px;
-  padding: 0 16px;
+  padding: 0 var(--space-4);
   font-size: var(--text-md);
 }
 
 .linear-button-large {
   min-height: 48px;
-  padding: 0 24px;
+  padding: 0 var(--space-6);
   font-size: var(--text-lg);
 }
 
@@ -173,9 +173,9 @@
   display: none;
   width: 38px;
   height: 38px;
-  margin-left: 16px;
+  margin-left: var(--space-4);
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: transparent;
   color: var(--linear-primary-text);
 }
@@ -199,7 +199,7 @@
 
 .linear-hero-wrap {
   overflow: hidden;
-  padding: 64px 0 40px;
+  padding: var(--space-16) 0 var(--space-10);
 }
 
 .linear-hero {
@@ -207,7 +207,7 @@
 }
 
 .linear-hero h1 {
-  margin: 24px 0 14px;
+  margin: var(--space-6) 0 14px;
   background: none;
   background-clip: border-box;
   color: var(--linear-primary-text);
@@ -235,7 +235,7 @@
 .sub-app-entry-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 20px;
+  gap: var(--space-5);
   margin-top: 44px;
   text-align: left;
 }
@@ -251,9 +251,9 @@
   min-height: 328px;
   height: 100%;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--space-5);
   border: 1px solid rgba(90, 115, 160, 0.16);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background:
     radial-gradient(circle at 18% 0%, color-mix(in srgb, var(--sub-app-accent) 10%, transparent), transparent 38%),
     linear-gradient(180deg, color-mix(in srgb, var(--sub-app-accent) 5%, #ffffff) 0%, #ffffff 46%),
@@ -261,7 +261,7 @@
   box-shadow:
     0 1px 0 color-mix(in srgb, var(--primary-foreground) 92%, transparent) inset,
     0 18px 46px rgba(16, 28, 45, 0.08);
-  padding: 24px 24px 22px;
+  padding: var(--space-6) var(--space-6) 22px;
   color: var(--linear-primary-text);
   transition:
     border-color var(--duration-base) var(--ease-out),
@@ -298,7 +298,7 @@
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .sub-app-card-identity {
@@ -314,7 +314,7 @@
   height: 42px;
   place-items: center;
   border: 1px solid color-mix(in srgb, var(--sub-app-accent) 24%, transparent);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--sub-app-accent) 10%, transparent);
   box-shadow: 0 8px 18px color-mix(in srgb, var(--sub-app-accent) 12%, transparent);
   color: var(--sub-app-accent);
@@ -325,7 +325,7 @@
   min-height: 24px;
   align-items: center;
   border: 1px solid color-mix(in srgb, var(--sub-app-accent) 14%, rgba(90, 115, 160, 0.14));
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--surface);
   color: rgba(16, 28, 45, 0.66);
   font-size: var(--text-sm);
@@ -359,7 +359,7 @@
 .sub-app-card-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   list-style: none;
   margin: 0;
   padding: 0;
@@ -368,7 +368,7 @@
 .sub-app-card-chips li {
   padding: 5px 10px;
   border: 1px solid rgba(90, 115, 160, 0.12);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--surface) 74%, transparent);
   color: rgba(16, 28, 45, 0.72);
   font-size: var(--text-sm);
@@ -382,7 +382,7 @@
   align-items: stretch;
   gap: 10px;
   margin-top: auto;
-  padding-top: 16px;
+  padding-top: var(--space-4);
   border-top: 1px solid rgba(90, 115, 160, 0.1);
 }
 
@@ -393,7 +393,7 @@
   width: 100%;
   min-height: 42px;
   padding: 0 18px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: linear-gradient(180deg, #075cd8 0%, var(--linear-primary-blue) 100%);
   box-shadow: 0 10px 22px color-mix(in srgb, var(--accent-pressed) 18%, transparent);
   color: var(--primary-foreground) !important;
@@ -440,12 +440,12 @@
 
 .platform-flow-head {
   max-width: 720px;
-  margin: 0 auto 32px;
+  margin: 0 auto var(--space-8);
   text-align: center;
 }
 
 .platform-flow-head h2 {
-  margin: 0 0 12px;
+  margin: 0 0 var(--space-3);
   color: var(--linear-primary-text);
   font-size: 32px;
   font-weight: 700;
@@ -465,24 +465,24 @@
   width: max-content;
   max-width: 100%;
   justify-content: center;
-  gap: 4px;
-  margin: 0 auto 32px;
-  border-radius: 8px;
+  gap: var(--space-1);
+  margin: 0 auto var(--space-8);
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--surface) 66%, transparent);
-  padding: 4px;
+  padding: var(--space-1);
 }
 
 .platform-flow-tab {
   min-height: 40px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: rgba(16, 28, 45, 0.66);
   cursor: pointer;
   font: inherit;
   font-size: var(--text-md);
   font-weight: 500;
-  padding: 0 20px;
+  padding: 0 var(--space-5);
   transition:
     background var(--duration-base) var(--ease-out),
     color var(--duration-base) var(--ease-out);
@@ -534,23 +534,23 @@
   animation: platformPanelIn calc(var(--duration-slow) * 2.5) var(--ease-out) both;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 32px;
+  gap: var(--space-8);
   align-items: start;
 }
 
 .platform-flow-preview {
   border: 1px solid rgba(90, 115, 160, 0.14);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--surface);
-  padding: 24px;
+  padding: var(--space-6);
   box-shadow: var(--linear-shadow-soft);
 }
 
 .platform-flow-preview-head {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 12px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
   color: rgba(16, 28, 45, 0.6);
   font-size: var(--text-base);
 }
@@ -563,7 +563,7 @@
 .platform-flow-preview-row {
   display: grid;
   grid-template-columns: 100px minmax(0, 1fr) 120px;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 10px 0;
   border-top: 1px solid rgba(90, 115, 160, 0.08);
   font-size: var(--text-md);
@@ -582,7 +582,7 @@
 .platform-flow-features {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: var(--space-4);
   list-style: none;
   margin: 0;
   padding: 0;
@@ -590,17 +590,17 @@
 
 .platform-flow-features li {
   border: 1px solid rgba(90, 115, 160, 0.08);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--surface) 72%, transparent);
   color: rgba(16, 28, 45, 0.68);
   font-size: var(--text-md);
   line-height: 1.55;
-  padding: 16px;
+  padding: var(--space-4);
 }
 
 .platform-flow-feature-title {
   display: block;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
   color: var(--linear-primary-text);
   font-weight: 600;
 }
@@ -669,7 +669,7 @@
 }
 
 .linear-footer h3 {
-  margin: 0 0 12px;
+  margin: 0 0 var(--space-3);
   color: var(--linear-primary-text);
   font-size: var(--text-md);
   font-weight: 700;
@@ -682,7 +682,7 @@
 }
 
 .linear-footer li + li {
-  margin-top: 12px;
+  margin-top: var(--space-3);
 }
 
 .linear-footer a {
@@ -711,7 +711,7 @@
 
   .sub-app-entry-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
+    gap: var(--space-4);
   }
 
   .platform-flow-panel {
@@ -787,7 +787,7 @@
 
   .linear-nav li {
     display: block !important;
-    margin-left: 24px;
+    margin-left: var(--space-6);
     border-bottom: 1px solid var(--linear-grey-dark);
   }
 
@@ -821,7 +821,7 @@
   }
 
   .platform-flow-section {
-    padding: 48px 0 64px;
+    padding: var(--space-12) 0 var(--space-16);
   }
 
   .platform-flow-head h2 {

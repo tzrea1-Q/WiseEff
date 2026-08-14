@@ -36,6 +36,25 @@
         "src/styles.css": 124
       }
     },
+    "raw-spacing": {
+      "count": 1250,
+      "note": "Off-grid spacing stock after wave 3 exact --space-* burn; ratchet down as rem/em/off-grid px are migrated.",
+      "files": {
+        "src/features/agent/xiaozeAssistantMarkdown.css": 1,
+        "src/features/parameter-home/parameter-home.css": 68,
+        "src/linear-template/linear-template.css": 25,
+        "src/styles.css": 1156
+      }
+    },
+    "raw-radius": {
+      "count": 148,
+      "note": "Off-grid radius stock after wave 3 exact --radius-* burn; ratchet down as non-token radii are migrated.",
+      "files": {
+        "src/features/parameter-home/parameter-home.css": 9,
+        "src/linear-template/linear-template.css": 1,
+        "src/styles.css": 138
+      }
+    },
     "ease-keyword": {
       "count": 0,
       "note": "Bare ease keywords eliminated by P3 motion tokenization (FA-09). Keep at zero."
