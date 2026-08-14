@@ -532,6 +532,9 @@ export function createPlanningAgent(options: {
             __interrupt__?: Array<{ value?: unknown }>;
           };
           const interruptResult = extractInterruptFromState(finalState);
+          if (interruptResult ?? finalState.interrupt) {
+            await checkpointer.ensureInterruptCheckpointDurable(checkpointThreadId);
+          }
           return {
             threadId: input.threadId,
             text: finalState.text ?? "",
@@ -546,6 +549,9 @@ export function createPlanningAgent(options: {
           __interrupt__?: Array<{ value?: unknown }>;
         };
         const interruptResult = extractInterruptFromState(finalState);
+        if (interruptResult ?? finalState.interrupt) {
+          await checkpointer.ensureInterruptCheckpointDurable(checkpointThreadId);
+        }
         const llmMessages =
           finalState.messages?.length > 0 ? finalState.messages : buildPlanningLlmMessages(input, tools);
         return {
@@ -563,6 +569,7 @@ export function createPlanningAgent(options: {
             | { toolName?: string; payload?: Record<string, unknown>; citations?: AgentToolResult["citations"] }
             | undefined;
           if (value?.toolName && value.payload) {
+            await checkpointer.ensureInterruptCheckpointDurable(checkpointThreadId);
             const checkpoint = await graph.getState(config);
             const llmMessages =
               checkpoint.values.messages?.length > 0

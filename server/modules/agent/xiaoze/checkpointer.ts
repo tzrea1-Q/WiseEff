@@ -1,6 +1,6 @@
 import type { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 import { MemorySaver } from "@langchain/langgraph";
-import { getSharedPostgresCheckpointerSaver } from "./durableCheckpointer";
+import { getSharedPostgresCheckpointerSaver, waitForInterruptCheckpointDurable } from "./durableCheckpointer";
 import { isXiaozeDeterministicMode } from "./runtimeMode";
 
 export type XiaozeCheckpointSnapshot = Record<string, unknown>;
@@ -17,14 +17,20 @@ export type XiaozeCheckpointer = {
   put(threadId: string, state: XiaozeCheckpointSnapshot): Promise<void>;
   get(threadId: string): Promise<XiaozeCheckpointSnapshot | undefined>;
   saver: BaseCheckpointSaver;
+  ensureInterruptCheckpointDurable(threadId: string): Promise<void>;
 };
 
 export function createXiaozeCheckpointer(options?: XiaozeCheckpointerOptions): XiaozeCheckpointer {
   let saver: BaseCheckpointSaver;
+  const connectionString =
+    options?.mode === "postgres" && options.connectionString?.trim()
+      ? options.connectionString.trim()
+      : undefined;
+
   if (options?.saver) {
     saver = options.saver;
-  } else if (options?.mode === "postgres" && options.connectionString?.trim()) {
-    saver = getSharedPostgresCheckpointerSaver(options.connectionString.trim()).saver;
+  } else if (connectionString) {
+    saver = getSharedPostgresCheckpointerSaver(connectionString).saver;
   } else {
     saver = new MemorySaver();
   }
@@ -38,7 +44,14 @@ export function createXiaozeCheckpointer(options?: XiaozeCheckpointerOptions): X
     async get(threadId) {
       return auxiliary.get(threadId);
     },
-    saver
+    saver,
+    async ensureInterruptCheckpointDurable(threadId) {
+      await waitForInterruptCheckpointDurable({
+        threadId,
+        saver,
+        connectionString
+      });
+    }
   };
 }
 

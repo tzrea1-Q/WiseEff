@@ -56,7 +56,11 @@ describe.skipIf(!testDatabaseUrl)("postgres checkpointer durability", () => {
     await handle.ensureSetup();
 
     const threadId = `durability-${randomUUID()}`;
-    const sharedCheckpointer = createXiaozeCheckpointer({ mode: "postgres", saver: handle.saver });
+    const sharedCheckpointer = createXiaozeCheckpointer({
+      mode: "postgres",
+      connectionString: testDatabaseUrl,
+      saver: handle.saver
+    });
 
     const first = buildPlanningAgent(sharedCheckpointer);
     // Both runs must carry the same requestContext: the checkpoint namespace is
@@ -71,8 +75,14 @@ describe.skipIf(!testDatabaseUrl)("postgres checkpointer durability", () => {
     });
     expect(interrupted.interrupt?.toolName).toBe("action.submitParameterChange");
 
+    const secondHandle = createPostgresCheckpointerSaver({ connectionString: testDatabaseUrl });
+    await secondHandle.ensureSetup();
     const second = buildPlanningAgent(
-      createXiaozeCheckpointer({ mode: "postgres", saver: handle.saver })
+      createXiaozeCheckpointer({
+        mode: "postgres",
+        connectionString: testDatabaseUrl,
+        saver: secondHandle.saver
+      })
     );
     const resumed = await second.agent.run({
       message: "",
