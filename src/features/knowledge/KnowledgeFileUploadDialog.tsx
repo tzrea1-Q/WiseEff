@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { KnowledgeRevisionConflictError } from "@/application/ports/KnowledgeRepository";
 import type { KnowledgeEntry } from "@/domain/knowledge/types";
+import { presentError } from "@/infrastructure/http/presentError";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { Button } from "@/components/ui/button";
 import { parseTagsInput } from "./KnowledgeEntryEditorDialog";
@@ -66,7 +67,7 @@ export function KnowledgeFileUploadDialog({ open, entry, onSubmit, onClose }: Kn
           `保存冲突:条目已被更新到修订 #${submitError.currentHeadRevisionNumber},请刷新后重试。`
         );
       } else {
-        setError(submitError instanceof Error && submitError.message ? submitError.message : "上传失败,请稍后重试。");
+        setError(presentError(submitError, "上传失败，请稍后重试。"));
       }
     } finally {
       setPending(false);

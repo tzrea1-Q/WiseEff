@@ -145,7 +145,7 @@ describe("KnowledgeAdminPage", () => {
     const table = await screen.findByRole("table", { name: "知识索引状态" });
     expect(within(table).getByText("快充温控调参经验")).toBeInTheDocument();
     expect(within(table).getByText("失败")).toBeInTheDocument();
-    expect(within(table).getByText(/Embedding failed/)).toBeInTheDocument();
+    expect(within(table).getByText("索引失败，请稍后重试或联系管理员。")).toBeInTheDocument();
   });
 
   it("retries a failed entry back into the queue", async () => {
@@ -184,5 +184,17 @@ describe("KnowledgeAdminPage", () => {
     await screen.findByRole("table", { name: "已归档知识条目" });
     expect(screen.getByText(/索引健康与重建操作需要知识管理员权限/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "全量重建索引" })).not.toBeInTheDocument();
+  });
+
+  it("maps API failures to product-language copy when list load fails", async () => {
+    const { WiseEffApiError } = await import("@/infrastructure/http/apiClient");
+    const repository = createMockKnowledgeRepository();
+    vi.spyOn(repository, "list").mockRejectedValue(
+      new WiseEffApiError("FORBIDDEN", "Forbidden", {}, "req-kb-admin-list")
+    );
+
+    render(<KnowledgeAdminPage repository={repository} capability={manageCapability} />);
+
+    expect((await screen.findAllByText("没有权限执行该操作。")).length).toBeGreaterThan(0);
   });
 });
