@@ -14,7 +14,7 @@ import {
   type HeaderFilterState
 } from "@/components/tableFilterUtils";
 import { formatAbsolute } from "@/domain/format/formatDateTime";
-import { formatLastActive } from "@/domain/format/formatLastActive";
+import { formatLastActive, normalizeTimestampInput } from "@/domain/format/formatLastActive";
 import { presentError } from "@/infrastructure/http/presentError";
 import { migrateLegacyRoleId, platformRoles, type PermissionKey, type PlatformRoleId } from "@/domain/users/types";
 import type { PrototypeState, User } from "@/domain/prototype/types";
@@ -142,10 +142,16 @@ function statusLabelOf(isActive: boolean) {
   return isActive ? statusLabels.active : statusLabels.disabled;
 }
 
-/** Precise-timestamp tooltip only when the underlying value is a real timestamp. */
+/** Precise-timestamp tooltip for real timestamps; original value when display is 未知. */
 function lastActiveTooltip(value: string) {
-  const absolute = formatAbsolute(value);
-  return absolute === value ? undefined : absolute;
+  const normalized = normalizeTimestampInput(value);
+  if (normalized) {
+    return formatAbsolute(normalized);
+  }
+  if (formatLastActive(value) === "未知") {
+    return value;
+  }
+  return undefined;
 }
 
 function userColumnFilterValue(user: User, key: UserColumnFilterKey) {
