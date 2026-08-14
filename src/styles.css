@@ -2392,7 +2392,8 @@ body {
 
 .debugging-page .parameters-table-search,
 .node-debugging-page .parameters-table-search {
-  flex: 0 1 260px;
+  flex: 0 0 auto;
+  width: min(260px, 100%);
   min-width: 180px;
   max-width: min(260px, calc(100% - 120px));
 }
@@ -13237,6 +13238,14 @@ td small {
     width: 100%;
   }
 
+  .debugging-page .parameters-table-search,
+  .node-debugging-page .parameters-table-search {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    height: auto;
+  }
+
   .parameters-table-scroll {
     overflow: visible;
     border: 0;
@@ -14458,6 +14467,11 @@ td small {
     opacity: 1;
     transform: scale(1);
   }
+}
+
+body:has([role="dialog"]) .xiaoze-toggle-hint {
+  pointer-events: none;
+  visibility: hidden;
 }
 
 .xiaoze-toggle-hint {
