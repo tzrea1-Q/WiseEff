@@ -3725,7 +3725,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(rowBlock.transition).toBe("none");
     expect(selectedBlock["background-color"]).toBe("#eef4ff");
     expect(selectedBlock["box-shadow"]).toBe("inset 3px 0 0 var(--app-primary)");
-    expect(nameBlock["font-size"]).toBe("14px");
+    expect(nameBlock["font-size"]).toBe("var(--text-md)");
     expect(nameBlock["overflow-wrap"]).toBe("anywhere");
     expect(nameBlock["white-space"]).toBe("normal");
   });

@@ -25,7 +25,7 @@ describe("WiseEff mature homepage theme", () => {
     expect(hoverCard.transform).toContain("translateY(-4px)");
     expect(hoverCard["border-color"]).toContain("var(--sub-app-accent)");
     expect(declarationFor(cssText, ".sub-app-card-icon", "box-shadow")).toBeTruthy();
-    expect(declarationFor(cssText, ".sub-app-card-kicker", "background")).toBe("#ffffff");
+    expect(declarationFor(cssText, ".sub-app-card-kicker", "background")).toBe("var(--surface)");
     expect(declarationFor(cssText, ".sub-app-card-ctas", "border-top")).toContain("1px solid");
     expect(declarationFor(cssText, ".sub-app-card-ctas", "flex-direction")).toBe("column");
     expect(declarationFor(cssText, ".sub-app-card-primary", "background")).toBe(
@@ -39,8 +39,8 @@ describe("WiseEff mature homepage theme", () => {
     expect(declarationFor(cssText, ".platform-flow-tablist", "background")).toBe(
       "rgba(255, 255, 255, 0.66)"
     );
-    expect(declarationFor(cssText, ".platform-flow-preview", "background")).toBe("#ffffff");
-    expect(declarationFor(cssText, ".linear-footer", "background")).toBe("#ffffff");
+    expect(declarationFor(cssText, ".platform-flow-preview", "background")).toBe("var(--surface)");
+    expect(declarationFor(cssText, ".linear-footer", "background")).toBe("var(--surface)");
   });
 
   it("renders three sub-app entry cards before the merged platform flow section", () => {

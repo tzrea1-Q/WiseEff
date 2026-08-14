@@ -31,7 +31,7 @@ function getMenuPosition(trigger: HTMLButtonElement, align: "left" | "right"): C
       top: rect.bottom + MENU_GAP,
       right: Math.max(VIEWPORT_MARGIN, window.innerWidth - rect.right),
       left: "auto",
-      zIndex: 60
+      zIndex: "var(--z-dropdown)"
     };
   }
 
@@ -41,7 +41,7 @@ function getMenuPosition(trigger: HTMLButtonElement, align: "left" | "right"): C
     top: rect.bottom + MENU_GAP,
     left: Math.max(VIEWPORT_MARGIN, Math.min(rect.left, maxLeft)),
     right: "auto",
-    zIndex: 60
+    zIndex: "var(--z-dropdown)"
   };
 }
 

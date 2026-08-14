@@ -54,7 +54,7 @@
   border: none !important;
   border-radius: 0.55rem !important;
   background: transparent !important;
-  color: #64748b;
+  color: var(--text-muted);
   font-size: 0.84rem;
   font-weight: 600;
   line-height: 1;
@@ -62,7 +62,7 @@
 }
 
 .parameter-home__view-switcher-item:hover:not([data-state="on"]) {
-  color: #334155;
+  color: var(--text-secondary);
   background: color-mix(in srgb, var(--surface) 55%, transparent) !important;
 }
 
