@@ -2,31 +2,29 @@
   "description": "Ratchet baseline for `npm run ui:check`. Counts may only go down: when a rule's live count drops below its baseline, run `npm run ui:check -- --update-baseline` in the same change. Rules at 0 are hard-forbidden and must never ratchet up. Structure: rule id -> { count, note?, files? }.",
   "rules": {
     "raw-color": {
-      "count": 1704,
+      "count": 1274,
       "note": "Stock from the pre-P3 monolith; P3 (motion/chart/dark wiring) reduces it in parallel. Ratchet down after each merge.",
       "files": {
-        "src/features/parameter-home/parameter-home.css": 3,
-        "src/linear-template/linear-template.css": 65,
-        "src/styles.css": 1636
+        "src/features/parameter-home/parameter-home.css": 1,
+        "src/linear-template/linear-template.css": 56,
+        "src/styles.css": 1217
       }
     },
     "raw-z-index": {
-      "count": 76,
+      "count": 50,
       "note": "73 CSS declarations plus ColumnFilter.tsx zIndex literals (FA-06); migrate to the var(--z-*) ladder.",
       "files": {
-        "src/components/ColumnFilter.tsx": 2,
         "src/linear-template/linear-template.css": 1,
-        "src/styles.css": 73
+        "src/styles.css": 49
       }
     },
     "raw-font-size": {
-      "count": 977,
+      "count": 214,
       "note": "Stock outside the type scale; migrate to var(--text-xs..2xl).",
       "files": {
-        "src/features/agent/xiaozeAssistantMarkdown.css": 1,
         "src/features/parameter-home/parameter-home.css": 31,
-        "src/linear-template/linear-template.css": 24,
-        "src/styles.css": 921
+        "src/linear-template/linear-template.css": 9,
+        "src/styles.css": 174
       }
     },
     "raw-shadow": {
