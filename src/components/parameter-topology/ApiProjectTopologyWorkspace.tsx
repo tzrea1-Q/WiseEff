@@ -31,6 +31,7 @@ import { nodeEnablementLabel } from "@/domain/parameter-topology/nodeEnablement"
 import type { TopologyNodeEnablement } from "@/domain/parameter-topology/types";
 import { resolveParameterTopologyRepository } from "@/application/parameters/parameterTopologyResolve";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
+import { presentError } from "@/infrastructure/http/presentError";
 import {
   mapParameterTopologyError,
   type ParameterTopologyMappedError
@@ -499,7 +500,7 @@ export function ApiProjectTopologyWorkspace({
       })
       .catch((error: unknown) => {
         if (!cancelled) {
-          setWorkflowCandidatesError(error instanceof Error ? error.message : "无法加载项目角色候选人。");
+          setWorkflowCandidatesError(presentError(error, "无法加载项目角色候选人，请稍后重试。"));
         }
       });
     return () => {

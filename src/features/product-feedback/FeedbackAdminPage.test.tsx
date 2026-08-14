@@ -119,4 +119,14 @@ describe("FeedbackAdminPage", () => {
   it("requires admin access for feedback-admin", () => {
     expect(getRequiredRoleForPage("feedback-admin")).toBe("admin");
   });
+
+  it("maps API failures to product-language copy when list load fails", async () => {
+    const { WiseEffApiError } = await import("@/infrastructure/http/apiClient");
+    const repository = createRepository([], {
+      list: vi.fn().mockRejectedValue(new WiseEffApiError("FORBIDDEN", "Forbidden", {}, "req-feedback-list"))
+    });
+    render(<FeedbackAdminPage productFeedbackRepository={repository} />);
+
+    expect(await screen.findByText("没有权限执行该操作。")).toBeInTheDocument();
+  });
 });

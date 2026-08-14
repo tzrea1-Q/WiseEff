@@ -4,6 +4,7 @@ import type {
   ReopenMappingInput,
   ResolveMappingInput
 } from "@/domain/parameter-topology/types";
+import { presentError } from "@/infrastructure/http/presentError";
 import { IdentityMappingReview } from "@/components/parameter-topology/IdentityMappingReview";
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import { ParamAdminEmptyState } from "./ParamAdminEmptyState";
@@ -41,9 +42,7 @@ export function OrganizationIdentityMappingPanel({
     } catch (loadError) {
       setTasks([]);
       // IA-R2: do not overwrite a known open count with zero on transient failure.
-      setError(
-        loadError instanceof Error ? loadError.message : PARAMETER_ADMIN_UI.identityMappingLoadError
-      );
+      setError(presentError(loadError, PARAMETER_ADMIN_UI.identityMappingLoadError));
     } finally {
       setLoading(false);
     }
@@ -61,11 +60,7 @@ export function OrganizationIdentityMappingPanel({
         await refreshRecentAudits();
         await reload();
       } catch (resolveError) {
-        setError(
-          resolveError instanceof Error
-            ? resolveError.message
-            : PARAMETER_ADMIN_UI.identityMappingResolveError
-        );
+        setError(presentError(resolveError, PARAMETER_ADMIN_UI.identityMappingResolveError));
       }
     },
     [application, refreshRecentAudits, reload]
@@ -79,7 +74,7 @@ export function OrganizationIdentityMappingPanel({
         await refreshRecentAudits();
         await reload();
       } catch (reopenError) {
-        setError(reopenError instanceof Error ? reopenError.message : "重新打开节点对应任务失败。");
+        setError(presentError(reopenError, "重新打开节点对应任务失败，请稍后重试。"));
       }
     },
     [application, refreshRecentAudits, reload]

@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowledgeRepository";
 import { KnowledgePage } from "./KnowledgePage";
@@ -180,5 +180,23 @@ describe("KnowledgePage", () => {
     await user.click(within(editor).getByRole("button", { name: "保存为新修订" }));
 
     expect(await within(editor).findByRole("alert")).toHaveTextContent("保存冲突");
+  });
+
+  it("maps API failures to product-language copy when entry list load fails", async () => {
+    const { WiseEffApiError } = await import("@/infrastructure/http/apiClient");
+    const repository = createMockKnowledgeRepository();
+    vi.spyOn(repository, "list").mockRejectedValue(
+      new WiseEffApiError("FORBIDDEN", "Forbidden", {}, "req-kb-page-list")
+    );
+    render(
+      <KnowledgePage
+        repository={repository}
+        capability={editorCapability}
+        askXiaozeEnabled={false}
+        initialEntryId={null}
+      />
+    );
+
+    expect(await screen.findByText("没有权限执行该操作。")).toBeInTheDocument();
   });
 });

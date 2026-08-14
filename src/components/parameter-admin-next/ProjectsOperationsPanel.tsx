@@ -7,6 +7,7 @@ import type { DtsStructuredRepository } from "@/application/ports/DtsStructuredR
 import { resolveAuditQuery } from "@/application/parameters/auditQueryRuntime";
 import { resolveDtsStructuredRepository } from "@/application/parameters/dtsStructuredRuntime";
 import { resolveParameterFileRepository } from "@/application/parameters/parameterFileRuntime";
+import { presentError } from "@/infrastructure/http/presentError";
 import { DeleteProjectDialog } from "@/components/admin/DeleteProjectDialog";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { ProjectAdminTable } from "@/components/admin/ProjectAdminTable";
@@ -154,7 +155,7 @@ export function ProjectsOperationsPanel({
       const items = await adminClient.listProjects();
       setApiRows(items.map(mapProjectAdminSummaryDto));
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "项目列表加载失败。");
+      setError(presentError(loadError, "项目列表加载失败，请稍后重试。"));
     } finally {
       setLoading(false);
       setProjectsLoaded(true);
@@ -198,7 +199,7 @@ export function ProjectsOperationsPanel({
         await refreshRecentAudits();
         setEditingProjectId(null);
       } catch (submitError) {
-        setFormError(submitError instanceof Error ? submitError.message : "更新项目失败。");
+        setFormError(presentError(submitError, "更新项目失败，请稍后重试。"));
       } finally {
         setFormPending(false);
       }
@@ -245,7 +246,7 @@ export function ProjectsOperationsPanel({
           onNavigate("/parameter-admin/projects");
         }
       } catch (submitError) {
-        setDeleteError(submitError instanceof Error ? submitError.message : "删除项目失败。");
+        setDeleteError(presentError(submitError, "删除项目失败，请稍后重试。"));
       } finally {
         setDeletePending(false);
       }

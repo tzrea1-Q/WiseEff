@@ -14,6 +14,7 @@ import {
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { DataTable, PageInsightBar, type Column } from "@/components/admin";
 import { Button } from "@/components/ui/button";
+import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
 import { KnowledgeTagList } from "./badges";
 
 export type KnowledgeAdminPageProps = {
@@ -68,7 +69,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
       const result = await repository.list({ status: "archived" });
       setRows(result.items);
     } catch (error) {
-      setErrorMessage(error instanceof Error && error.message ? error.message : "已归档条目加载失败,请稍后重试。");
+      setErrorMessage(presentError(error, "已归档条目加载失败，请稍后重试。"));
     } finally {
       setLoading(false);
     }
@@ -83,7 +84,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
     try {
       setIndexHealth(await repository.getIndexHealth());
     } catch (error) {
-      setIndexError(error instanceof Error && error.message ? error.message : "索引健康加载失败,请稍后重试。");
+      setIndexError(presentError(error, "索引健康加载失败，请稍后重试。"));
     } finally {
       setIndexLoading(false);
     }
@@ -96,7 +97,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
       const result = await repository.list({ status: "draft", sourceType: "agent" });
       setAgentDrafts(result.items);
     } catch (error) {
-      setAgentDraftError(error instanceof Error && error.message ? error.message : "Agent 草稿加载失败,请稍后重试。");
+      setAgentDraftError(presentError(error, "Agent 草稿加载失败，请稍后重试。"));
     } finally {
       setAgentDraftsLoading(false);
     }
@@ -117,7 +118,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
       await repository.publish(entry.id);
       setAgentDrafts((current) => current.filter((item) => item.id !== entry.id));
     } catch (error) {
-      setAgentDraftError(error instanceof Error && error.message ? error.message : "发布失败,请稍后重试。");
+      setAgentDraftError(presentError(error, "发布失败，请稍后重试。"));
     } finally {
       setAgentActionPendingId(null);
     }
@@ -134,7 +135,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
       // The rejected draft lands in the archived table below.
       await loadArchived();
     } catch (error) {
-      setRejectError(error instanceof Error && error.message ? error.message : "拒绝失败,请稍后重试。");
+      setRejectError(presentError(error, "拒绝失败，请稍后重试。"));
     } finally {
       setRejectPending(false);
     }
@@ -207,7 +208,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
       await repository.restore(entry.id);
       setRows((current) => current.filter((item) => item.id !== entry.id));
     } catch (error) {
-      setErrorMessage(error instanceof Error && error.message ? error.message : "恢复失败,请稍后重试。");
+      setErrorMessage(presentError(error, "恢复失败，请稍后重试。"));
     } finally {
       setRestorePendingId(null);
     }
@@ -222,7 +223,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
       setRows((current) => current.filter((item) => item.id !== deleteTarget.id));
       setDeleteTarget(null);
     } catch (error) {
-      setDeleteError(error instanceof Error && error.message ? error.message : "删除失败,请稍后重试。");
+      setDeleteError(presentError(error, "删除失败，请稍后重试。"));
     } finally {
       setDeletePending(false);
     }
@@ -235,7 +236,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
       await repository.retryEntryIndex(item.entryId);
       await loadIndexHealth();
     } catch (error) {
-      setIndexError(error instanceof Error && error.message ? error.message : "重试入队失败,请稍后重试。");
+      setIndexError(presentError(error, "重试入队失败，请稍后重试。"));
     } finally {
       setIndexActionPendingId(null);
     }
@@ -250,7 +251,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
       setRebuildNotice(`已重新入队 ${result.enqueued} 条已发布条目,索引由后台 worker 逐条重建。`);
       await loadIndexHealth();
     } catch (error) {
-      setIndexError(error instanceof Error && error.message ? error.message : "全量重建入队失败,请稍后重试。");
+      setIndexError(presentError(error, "全量重建入队失败，请稍后重试。"));
     } finally {
       setRebuildPending(false);
     }
@@ -309,7 +310,7 @@ export function KnowledgeAdminPage({ repository, capability, onNavigate }: Knowl
       render: (item) =>
         item.error ? (
           <span className="block max-w-72 truncate text-xs text-destructive" title={item.error}>
-            {item.error}
+            {presentErrorMessage(item.error, "索引失败，请稍后重试或联系管理员。")}
           </span>
         ) : (
           <span className="text-xs text-muted-foreground">—</span>
