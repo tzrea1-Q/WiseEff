@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import {
@@ -9,7 +9,65 @@ import {
 } from "./topologyTeachingFixtures";
 import { ApiProjectTopologyWorkspace } from "./ApiProjectTopologyWorkspace";
 
+const httpTestSeams = vi.hoisted(() => {
+  const moduleRegistryRepository = {
+    getRegistry: vi.fn().mockResolvedValue({ modules: [], mappings: [] })
+  };
+  const parameterFileRepository = {
+    listFiles: vi.fn().mockResolvedValue([]),
+    downloadVersion: vi.fn().mockResolvedValue({
+      contentType: "text/plain",
+      fileName: "unused.dts",
+      bytes: new Uint8Array()
+    })
+  };
+  const parameterRepository = {
+    listDrafts: vi.fn().mockResolvedValue([]),
+    deleteDraft: vi.fn().mockResolvedValue(undefined)
+  };
+  const createHttpParameterModuleRegistryRepository = vi.fn(() => moduleRegistryRepository);
+  const createHttpParameterRepository = vi.fn(() => parameterRepository);
+  const resolveParameterFileRepository = vi.fn(() => parameterFileRepository);
+  const fetchCalls: string[] = [];
+  const fetchSentinel = vi.fn((input: RequestInfo | URL) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+    fetchCalls.push(url);
+    return Promise.reject(
+      new Error(`Unexpected fetch in ApiProjectTopologyWorkspace.test.tsx: ${url}`)
+    );
+  });
+
+  return {
+    moduleRegistryRepository,
+    parameterFileRepository,
+    parameterRepository,
+    createHttpParameterModuleRegistryRepository,
+    createHttpParameterRepository,
+    resolveParameterFileRepository,
+    fetchCalls,
+    fetchSentinel
+  };
+});
+
+vi.mock("@/infrastructure/http/parameterModuleRegistryClient", () => ({
+  createHttpParameterModuleRegistryRepository: httpTestSeams.createHttpParameterModuleRegistryRepository
+}));
+
+vi.mock("@/infrastructure/http/parameterClient", () => ({
+  createHttpParameterRepository: httpTestSeams.createHttpParameterRepository
+}));
+
+vi.mock("@/application/parameters/parameterFileRuntime", () => ({
+  resolveParameterFileRepository: httpTestSeams.resolveParameterFileRepository
+}));
+
 afterEach(() => {
+  vi.unstubAllGlobals();
   cleanup();
 });
 
@@ -130,6 +188,39 @@ async function createGpioDraftFromWorkbench(
 }
 
 describe("ApiProjectTopologyWorkspace", () => {
+  beforeEach(() => {
+    httpTestSeams.fetchCalls.length = 0;
+    httpTestSeams.fetchSentinel.mockClear();
+    httpTestSeams.createHttpParameterModuleRegistryRepository.mockClear();
+    httpTestSeams.createHttpParameterRepository.mockClear();
+    httpTestSeams.resolveParameterFileRepository.mockClear();
+    vi.stubGlobal("fetch", httpTestSeams.fetchSentinel);
+  });
+
+  it("does not call fetch when rendering the default workspace seam", async () => {
+    const repository = createRepository();
+    const listConfigSets = vi.fn().mockResolvedValue([{ id: "dcs-default-aurora", name: "default" }]);
+
+    render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toBeInTheDocument();
+    });
+
+    expect(httpTestSeams.fetchSentinel).not.toHaveBeenCalled();
+    expect(httpTestSeams.fetchCalls).toEqual([]);
+    expect(httpTestSeams.createHttpParameterModuleRegistryRepository).toHaveBeenCalled();
+    expect(httpTestSeams.createHttpParameterRepository).toHaveBeenCalled();
+    expect(httpTestSeams.resolveParameterFileRepository).toHaveBeenCalledWith("api");
+  });
+
   it("loads real config set and current revision — never teaching ids", async () => {
     const repository = createRepository();
     const listConfigSets = vi.fn().mockResolvedValue([{ id: "dcs-default-aurora", name: "default" }]);
