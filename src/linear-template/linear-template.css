@@ -55,7 +55,7 @@
   inset: 0 0 auto;
   z-index: 50;
   border-bottom: 1px solid rgba(90, 115, 160, 0.16);
-  background: rgba(255, 255, 255, 0.78);
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
   backdrop-filter: blur(16px);
 }
 
@@ -122,7 +122,7 @@
   border: 1px solid rgba(0, 61, 155, 0.18);
   border-radius: 999px;
   background: var(--linear-primary-blue);
-  box-shadow: 0 12px 28px rgba(0, 61, 155, 0.18);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--accent-pressed) 18%, transparent);
   color: var(--primary-foreground);
   font-weight: 700;
   white-space: nowrap;
@@ -141,11 +141,11 @@
   transform: translateY(-1px);
   border-color: rgba(0, 61, 155, 0.28);
   background: var(--accent);
-  box-shadow: 0 16px 32px rgba(0, 61, 155, 0.2);
+  box-shadow: 0 16px 32px color-mix(in srgb, var(--accent-pressed) 20%, transparent);
 }
 
 .linear-button.secondary {
-  background: rgba(255, 255, 255, 0.72);
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
   color: var(--linear-primary-blue);
   border-color: rgba(0, 61, 155, 0.16);
   box-shadow: 0 10px 24px rgba(16, 28, 45, 0.06);
@@ -193,7 +193,7 @@
   padding-top: var(--linear-nav-height);
   background:
     radial-gradient(ellipse 72% 42% at 50% -12%, rgba(49, 87, 255, 0.14), transparent),
-    radial-gradient(circle at 72% 8%, rgba(80, 220, 255, 0.12), transparent 30%),
+    radial-gradient(circle at 72% 8%, color-mix(in srgb, var(--secondary-container) 12%, transparent), transparent 30%),
     linear-gradient(180deg, #fbfcff 0%, #f4f7ff 56%, #fbfcff 100%);
 }
 
@@ -259,7 +259,7 @@
     linear-gradient(180deg, color-mix(in srgb, var(--sub-app-accent) 5%, #ffffff) 0%, #ffffff 46%),
     #ffffff;
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.92) inset,
+    0 1px 0 color-mix(in srgb, var(--primary-foreground) 92%, transparent) inset,
     0 18px 46px rgba(16, 28, 45, 0.08);
   padding: 24px 24px 22px;
   color: var(--linear-primary-text);
@@ -288,7 +288,7 @@
 .sub-app-card:hover {
   border-color: color-mix(in srgb, var(--sub-app-accent) 34%, rgba(90, 115, 160, 0.16));
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.96) inset,
+    0 1px 0 color-mix(in srgb, var(--primary-foreground) 96%, transparent) inset,
     0 28px 68px rgba(16, 28, 45, 0.14),
     0 0 0 1px color-mix(in srgb, var(--sub-app-accent) 12%, transparent);
   transform: translateY(-4px);
@@ -369,7 +369,7 @@
   padding: 5px 10px;
   border: 1px solid rgba(90, 115, 160, 0.12);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.74);
+  background: color-mix(in srgb, var(--surface) 74%, transparent);
   color: rgba(16, 28, 45, 0.72);
   font-size: var(--text-sm);
   font-weight: 600;
@@ -395,7 +395,7 @@
   padding: 0 18px;
   border-radius: 8px;
   background: linear-gradient(180deg, #075cd8 0%, var(--linear-primary-blue) 100%);
-  box-shadow: 0 10px 22px rgba(0, 61, 155, 0.18);
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--accent-pressed) 18%, transparent);
   color: var(--primary-foreground) !important;
   font-size: var(--text-md);
   font-weight: 700;
@@ -468,7 +468,7 @@
   gap: 4px;
   margin: 0 auto 32px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.66);
+  background: color-mix(in srgb, var(--surface) 66%, transparent);
   padding: 4px;
 }
 
@@ -509,7 +509,7 @@
   left: 0;
   width: 100%;
   height: 2px;
-  background: rgba(80, 220, 255, 0.7);
+  background: color-mix(in srgb, var(--secondary-container) 70%, transparent);
   transform-origin: left;
   /* Auto-advance progress tracker: linear so the bar follows the timer honestly. */
   transition: transform var(--duration-fast) linear;
@@ -591,7 +591,7 @@
 .platform-flow-features li {
   border: 1px solid rgba(90, 115, 160, 0.08);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.72);
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
   color: rgba(16, 28, 45, 0.68);
   font-size: var(--text-md);
   line-height: 1.55;
