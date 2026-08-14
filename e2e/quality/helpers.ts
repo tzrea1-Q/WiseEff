@@ -165,6 +165,15 @@ export function stableMasks(page: Page, routePath = ""): Locator[] {
     masks.push(page.locator(".local-device-bridge-panel__already-installed strong"));
   }
 
+  if (routePath === "/logs") {
+    // Raw-log timestamps come from the seed fixture today, but the column is
+    // the same surface that would show relative "N 分钟前" / clock-skewed ISO
+    // if a later hydrate reformats capturedAt. Metadata's captured-at cell is
+    // the other clock-bound label (hidden on the default History tab).
+    masks.push(page.locator(".rawlog-table__time"));
+    masks.push(page.locator(".logs-metadata-list dd"));
+  }
+
   return masks;
 }
 
@@ -211,6 +220,18 @@ export async function settleQualityRoute(page: Page, routePath: string) {
   if (routePath === "/feedback-admin") {
     // The seed ships no product feedback, so the list settles on its empty state.
     await expect(page.getByText("暂无产品反馈")).toBeVisible({ timeout });
+    return;
+  }
+
+  if (routePath === "/logs") {
+    // API mode boots with an empty logs slice; the screenshot used to race
+    // HYDRATE_LOG_RUNTIME (empty state vs the seeded workbench). Wait for both
+    // M2 seed rows. captured_at desc selects unsupported.bin first, so the
+    // primary pane settles on the failure alert rather than the completed
+    // foldback analysis.
+    await expect(page.getByText("charging-foldback.log").first()).toBeVisible({ timeout });
+    await expect(page.getByText("unsupported.bin").first()).toBeVisible({ timeout });
+    await expect(page.getByText("日志处理失败").first()).toBeVisible({ timeout });
   }
 }
 
