@@ -98,6 +98,246 @@ export async function resolveFlatOrLegacyPpvTable(tx: Queryable): Promise<string
   return null;
 }
 
+/** Historical probe sessions upload standalone DTS files with this name prefix. */
+const PROBE_EDIT_FILE_NAME_PATTERN = "probe-edit-%.dts";
+
+const PROBE_EDIT_FILE_IDS_SUBQUERY = `
+  select f.id
+  from project_parameter_files f
+  where f.file_name like '${PROBE_EDIT_FILE_NAME_PATTERN}'
+`;
+
+const PROBE_EDIT_VERSION_IDS_SUBQUERY = `
+  select v.id
+  from project_parameter_file_versions v
+  inner join project_parameter_files f on f.id = v.file_id
+  where f.file_name like '${PROBE_EDIT_FILE_NAME_PATTERN}'
+`;
+
+/**
+ * Runtime schema-promotion runbook demo modules (not ChargeLab seed fixtures).
+ * Skips curated rows and modules still referenced by bindings or definitions.
+ */
+const RUNTIME_DEMO_DRIVER_GROUP_MATCH_SQL = `
+  pm.origin <> 'curated'
+  and (
+    pm.name = 'FoldRegistryTestDG'
+    or pm.source_key = 'compatible:vendor,fold_registry_test'
+    or (
+      pm.kind = 'driver-group'
+      and pm.name = '测试'
+      and exists (
+        select 1
+        from parameter_module_mappings m
+        where m.parameter_module_id = pm.id
+          and m.match_value like '%fold_registry_test%'
+      )
+    )
+  )
+  and not exists (
+    select 1 from project_parameter_bindings b where b.module_id = pm.id
+  )
+  and not exists (
+    select 1 from parameter_definitions pd where pd.parameter_module_id = pm.id
+  )
+`;
+
+const RUNTIME_DEMO_DRIVER_GROUP_IDS_SUBQUERY = `
+  select pm.id
+  from parameter_modules pm
+  where ${RUNTIME_DEMO_DRIVER_GROUP_MATCH_SQL}
+`;
+
+/** Drop probe-edit uploads and dependent DTS rows so shared dev resets stay seed-clean. */
+export async function pruneProbeEditParameterFileVersions(tx: Queryable): Promise<void> {
+  await tx.query(
+    `
+    update parameter_drafts
+    set origin_file_version_id = null
+    where origin_file_version_id in (${PROBE_EDIT_VERSION_IDS_SUBQUERY})
+    `
+  );
+  await tx.query(
+    `
+    update parameter_change_requests
+    set source_file_version_id = null
+    where source_file_version_id in (${PROBE_EDIT_VERSION_IDS_SUBQUERY})
+    `
+  );
+  await tx.query(
+    `
+    delete from parameter_spec_matcher_overrides
+    where source_review_task_id in (
+      select t.id
+      from parameter_spec_review_tasks t
+      where t.property_occurrence_id in (
+        select id from dts_property_occurrences where file_version_id in (${PROBE_EDIT_VERSION_IDS_SUBQUERY})
+      )
+         or t.config_revision_id in (
+           select distinct m.config_revision_id
+           from dts_config_revision_members m
+           where m.file_version_id in (${PROBE_EDIT_VERSION_IDS_SUBQUERY})
+         )
+    )
+    `
+  );
+  await tx.query(
+    `
+    delete from dts_property_occurrence_spec_decisions
+    where review_task_id in (
+      select t.id
+      from parameter_spec_review_tasks t
+      where t.property_occurrence_id in (
+        select id from dts_property_occurrences where file_version_id in (${PROBE_EDIT_VERSION_IDS_SUBQUERY})
+      )
+         or t.config_revision_id in (
+           select distinct m.config_revision_id
+           from dts_config_revision_members m
+           where m.file_version_id in (${PROBE_EDIT_VERSION_IDS_SUBQUERY})
+         )
+    )
+       or property_occurrence_id in (
+         select id from dts_property_occurrences where file_version_id in (${PROBE_EDIT_VERSION_IDS_SUBQUERY})
+       )
+       or config_revision_id in (
+         select distinct m.config_revision_id
+         from dts_config_revision_members m
+         where m.file_version_id in (${PROBE_EDIT_VERSION_IDS_SUBQUERY})
+       )
+    `
+  );
+  await tx.query(
+    `
+    delete from parameter_spec_review_tasks
+    where property_occurrence_id in (
+      select id from dts_property_occurrences where file_version_id in (${PROBE_EDIT_VERSION_IDS_SUBQUERY})
+    )
+       or config_revision_id in (
+         select distinct m.config_revision_id
+         from dts_config_revision_members m
+         where m.file_version_id in (${PROBE_EDIT_VERSION_IDS_SUBQUERY})
+       )
+    `
+  );
+  await tx.query(
+    `
+    delete from dts_config_revision_members
+    where file_version_id in (${PROBE_EDIT_VERSION_IDS_SUBQUERY})
+    `
+  );
+  await tx.query(
+    `
+    delete from dts_property_occurrences
+    where file_version_id in (${PROBE_EDIT_VERSION_IDS_SUBQUERY})
+    `
+  );
+  await tx.query(
+    `
+    delete from dts_node_occurrences
+    where file_version_id in (${PROBE_EDIT_VERSION_IDS_SUBQUERY})
+    `
+  );
+  await tx.query(
+    `
+    delete from dts_release_baseline_members
+    where file_id in (${PROBE_EDIT_FILE_IDS_SUBQUERY})
+       or file_version_id in (${PROBE_EDIT_VERSION_IDS_SUBQUERY})
+    `
+  );
+  await tx.query(
+    `
+    delete from project_parameter_file_candidates
+    where file_name like '${PROBE_EDIT_FILE_NAME_PATTERN}'
+       or file_id in (${PROBE_EDIT_FILE_IDS_SUBQUERY})
+    `
+  );
+  await tx.query(
+    `
+    update project_parameter_files
+    set current_version_id = null,
+        config_set_id = null,
+        config_set_role = null,
+        config_set_sort_order = 0
+    where id in (${PROBE_EDIT_FILE_IDS_SUBQUERY})
+    `
+  );
+  await tx.query(
+    `
+    delete from project_parameter_file_versions
+    where id in (${PROBE_EDIT_VERSION_IDS_SUBQUERY})
+    `
+  );
+  await tx.query(
+    `
+    delete from project_parameter_files
+    where id in (${PROBE_EDIT_FILE_IDS_SUBQUERY})
+    `
+  );
+}
+
+/** Remove runtime-only driver-group demos left by schema-promotion walkthroughs. */
+export async function pruneRuntimeDemoDriverGroupModules(tx: Queryable): Promise<void> {
+  for (let depth = 0; depth < 8; depth += 1) {
+    const result = await tx.query(
+      `
+      delete from parameter_modules child
+      where child.origin = 'auto'
+        and exists (
+          select 1
+          from parameter_modules root
+          where ${RUNTIME_DEMO_DRIVER_GROUP_MATCH_SQL.replaceAll("pm.", "root.")}
+            and child.path like root.path || '/%'
+        )
+        and not exists (
+          select 1 from parameter_modules grandchild where grandchild.parent_id = child.id
+        )
+        and not exists (
+          select 1 from project_parameter_bindings b where b.module_id = child.id
+        )
+        and not exists (
+          select 1 from parameter_definitions pd where pd.parameter_module_id = child.id
+        )
+      returning child.id
+      `
+    );
+    if ((result.rowCount ?? 0) === 0) break;
+  }
+
+  await tx.query(
+    `
+    delete from parameter_module_mappings
+    where parameter_module_id in (${RUNTIME_DEMO_DRIVER_GROUP_IDS_SUBQUERY})
+    `
+  );
+  await tx.query(
+    `
+    delete from project_modules
+    where parameter_module_id in (${RUNTIME_DEMO_DRIVER_GROUP_IDS_SUBQUERY})
+       or parent_id in (${RUNTIME_DEMO_DRIVER_GROUP_IDS_SUBQUERY})
+    `
+  );
+  await tx.query(
+    `
+    update driver_registrations
+    set default_business_category_module_id = null
+    where default_business_category_module_id in (${RUNTIME_DEMO_DRIVER_GROUP_IDS_SUBQUERY})
+    `
+  );
+  await tx.query(
+    `
+    update project_parameter_files
+    set module_hint = null
+    where module_hint in (${RUNTIME_DEMO_DRIVER_GROUP_IDS_SUBQUERY})
+    `
+  );
+  await tx.query(
+    `
+    delete from parameter_modules pm
+    where ${RUNTIME_DEMO_DRIVER_GROUP_MATCH_SQL}
+    `
+  );
+}
+
 export async function resetQualityRuntime(db: Database) {
   await db.transaction(async (tx) => {
     await tx.query("update users set organization_id = 'org-chargelab' where id = any($1::text[])", [seededUserIds]);
@@ -133,6 +373,9 @@ export async function resetQualityRuntime(db: Database) {
         [seededUserIds, keepUserId]
       );
     }
+
+    await pruneProbeEditParameterFileVersions(tx);
+    await pruneRuntimeDemoDriverGroupModules(tx);
 
     await tx.query("delete from users where id <> all($1::text[])", [seededUserIds]);
   });
