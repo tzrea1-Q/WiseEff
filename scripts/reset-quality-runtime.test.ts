@@ -51,6 +51,25 @@ describe("quality runtime reset wiring", () => {
     ]);
     expect(queries.at(-1)?.text).toBe("delete from users where id <> all($1::text[])");
     expect(queries.some((query) => query.text.includes("delete from parameter_drafts where user_id"))).toBe(true);
+    expect(queries.some((query) => query.text.includes("probe-edit-%.dts"))).toBe(true);
+    expect(queries.some((query) => query.text.includes("FoldRegistryTestDG"))).toBe(true);
+    expect(queries.some((query) => query.text.includes("compatible:vendor,fold_registry_test"))).toBe(true);
+    expect(
+      queries.some(
+        (query) =>
+          query.text.includes("delete from project_modules") &&
+          query.text.includes("child.path like root.path")
+      )
+    ).toBe(true);
+    const deleteUsersIndex = queries.findIndex(
+      (query) => query.text === "delete from users where id <> all($1::text[])"
+    );
+    const probeEditIndex = queries.findIndex((query) => query.text.includes("probe-edit-%.dts"));
+    const demoModuleIndex = queries.findIndex((query) => query.text.includes("FoldRegistryTestDG"));
+    expect(probeEditIndex).toBeGreaterThan(-1);
+    expect(demoModuleIndex).toBeGreaterThan(-1);
+    expect(probeEditIndex).toBeLessThan(deleteUsersIndex);
+    expect(demoModuleIndex).toBeLessThan(deleteUsersIndex);
     expect(queries[0].values[0]).toEqual([
       "u-xu-yun",
       "u-zhao-heng",
