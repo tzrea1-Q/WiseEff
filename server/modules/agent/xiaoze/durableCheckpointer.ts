@@ -16,6 +16,13 @@ export function isInterruptCheckpointReadable(tuple: CheckpointTuple | undefined
   return Boolean(values.pendingMutatingCall);
 }
 
+function getInterruptDurabilityProbeSaver(connectionString: string): PostgresCheckpointerHandle {
+  if (!interruptDurabilityProbe) {
+    interruptDurabilityProbe = createPostgresCheckpointerSaver({ connectionString });
+  }
+  return interruptDurabilityProbe;
+}
+
 export async function waitForInterruptCheckpointDurable(options: {
   threadId: string;
   saver: BaseCheckpointSaver;
@@ -36,9 +43,13 @@ export async function waitForInterruptCheckpointDurable(options: {
   let durableReader: BaseCheckpointSaver = saver;
 
   if (connectionString?.trim()) {
-    const freshSaver = PostgresSaver.fromConnString(connectionString.trim());
-    await freshSaver.setup();
-    durableReader = freshSaver;
+    // A second pool (not the writer) so getTuple cannot be satisfied by an
+    // in-process cache. Reuse one probe for the process — fromConnString on
+    // every HITL would leak pg.Pool instances (PostgresSaver.end() is never
+    // called on those one-shots) and re-run setup/migrations on the hot path.
+    const probe = getInterruptDurabilityProbeSaver(connectionString.trim());
+    await probe.ensureSetup();
+    durableReader = probe.saver;
   }
 
   while (Date.now() < deadline) {
@@ -60,6 +71,7 @@ export type PostgresCheckpointerHandle = {
 };
 
 let sharedPostgresCheckpointer: PostgresCheckpointerHandle | undefined;
+let interruptDurabilityProbe: PostgresCheckpointerHandle | undefined;
 
 export function createPostgresCheckpointerSaver(options: {
   connectionString: string;
@@ -93,6 +105,7 @@ export function getSharedPostgresCheckpointerSaver(connectionString: string): Po
 
 export function resetSharedPostgresCheckpointerSaverForTests(): void {
   sharedPostgresCheckpointer = undefined;
+  interruptDurabilityProbe = undefined;
 }
 
 export async function setupXiaozeCheckpointerTables(options: {

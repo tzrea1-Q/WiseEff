@@ -100,7 +100,10 @@ describe("interrupt checkpoint durability helpers", () => {
   });
 
   it("verifies postgres durability through a fresh saver connection", async () => {
-    const { waitForInterruptCheckpointDurable } = await import("./durableCheckpointer");
+    const { waitForInterruptCheckpointDurable, resetSharedPostgresCheckpointerSaverForTests } = await import(
+      "./durableCheckpointer"
+    );
+    resetSharedPostgresCheckpointerSaverForTests();
     const freshGetTuple = vi.fn().mockResolvedValue({
       config: { configurable: { thread_id: "t1" } },
       checkpoint: {
@@ -129,5 +132,61 @@ describe("interrupt checkpoint durability helpers", () => {
     expect(mockSetup).toHaveBeenCalledTimes(1);
     expect(freshGetTuple).toHaveBeenCalledWith({ configurable: { thread_id: "t1" } });
     expect(saver.getTuple).not.toHaveBeenCalled();
+  });
+
+  it("reuses one durability probe pool across waits", async () => {
+    const { waitForInterruptCheckpointDurable, resetSharedPostgresCheckpointerSaverForTests } = await import(
+      "./durableCheckpointer"
+    );
+    resetSharedPostgresCheckpointerSaverForTests();
+    const readable = {
+      config: { configurable: { thread_id: "t1" } },
+      checkpoint: {
+        v: 4,
+        id: "cp-1",
+        ts: "2026-01-01T00:00:00.000Z",
+        channel_values: {
+          pendingMutatingCall: { id: "tc-1", name: "action.submitParameterChange", args: {} }
+        },
+        channel_versions: {},
+        versions_seen: {}
+      }
+    };
+    const probeGetTuple = vi.fn().mockResolvedValue(readable);
+    mockFromConnString.mockReturnValue({ setup: mockSetup, getTuple: probeGetTuple });
+    const saver = { getTuple: vi.fn() } as unknown as BaseCheckpointSaver;
+
+    await waitForInterruptCheckpointDurable({
+      threadId: "t1",
+      saver,
+      connectionString: "postgres://localhost/test",
+      pollIntervalMs: 1,
+      timeoutMs: 50
+    });
+    await waitForInterruptCheckpointDurable({
+      threadId: "t1",
+      saver,
+      connectionString: "postgres://localhost/test",
+      pollIntervalMs: 1,
+      timeoutMs: 50
+    });
+
+    expect(mockFromConnString).toHaveBeenCalledTimes(1);
+    expect(mockSetup).toHaveBeenCalledTimes(1);
+    expect(probeGetTuple).toHaveBeenCalledTimes(2);
+  });
+
+  it("throws when the interrupt checkpoint does not become readable", async () => {
+    const { waitForInterruptCheckpointDurable } = await import("./durableCheckpointer");
+    const saver = { getTuple: vi.fn().mockResolvedValue(undefined) } as unknown as BaseCheckpointSaver;
+
+    await expect(
+      waitForInterruptCheckpointDurable({
+        threadId: "t1",
+        saver,
+        pollIntervalMs: 5,
+        timeoutMs: 20
+      })
+    ).rejects.toThrow(/did not become durable within 20ms/);
   });
 });
