@@ -12,6 +12,17 @@ describe("quality visual masks", () => {
     expect(visualSpec).toContain("stableMasks(page, route.path)");
   });
 
+  it("masks /logs timestamps and waits for seeded hydrate before the screenshot", () => {
+    const helpers = readFileSync("e2e/quality/helpers.ts", "utf8");
+
+    expect(helpers).toMatch(/routePath\s*===\s*"\/logs"/);
+    expect(helpers).toContain(".rawlog-table__time");
+    expect(helpers).toContain("charging-foldback.log");
+    expect(helpers).toContain("unsupported.bin");
+    expect(helpers).toContain("日志处理失败");
+    expect(helpers.indexOf('routePath === "/logs"')).toBeLessThan(helpers.indexOf("charging-foldback.log"));
+  });
+
   it("keeps platform parameter baselines aligned with the masked dynamic table", () => {
     for (const platform of ["linux", "win32"]) {
       const maskPixels = countMagentaPixels(
