@@ -74,7 +74,7 @@
 
 ## 近期关闭项
 
-- **TD-111（高频页之外 raw error.message 残留）：** **2026-08-14 关闭**（`fix/td111-error-presentation`）。FA-17 残余界面已改走 `presentError`/`presentErrorMessage`：知识库 admin/page 与弹窗（含索引表 `item.error` 列）、产品反馈后台与提交弹窗、parameter-admin-next 治理面板（项目运维、身份映射、规格治理创建/审核）、parameter-topology 托盘/弹窗/工作台/规格详情（不含 `mapParameterTopologyError` 已映射消息与结构化诊断行）。残留（范围缩减，非本票）：`mapParameterTopologyError` 对拓扑 API 错误仍透传英文 `error.message`，待专门拓扑文案 pass；`ErrorBoundary` 开发态详情与应用层/runtime catch 块不在本票 UI 清单内。
+- **TD-111（高频页之外 raw error.message 残留）：** **2026-08-14 关闭**（`fix/td111-error-presentation`）。FA-17 残余界面已改走 `presentError`/`presentErrorMessage`：知识库 admin/page 与弹窗（含索引表 `item.error` 列）、产品反馈后台与提交弹窗、parameter-admin-next 治理面板（项目运维、身份映射、规格治理创建/审核）、parameter-topology 托盘/弹窗/工作台/规格详情（不含 `mapParameterTopologyError` 已映射消息与结构化诊断行）。拓扑 API 英文 `error.message` 透传残留已在 `fix/td111-topology-error-copy` 完成 topology copy pass（`mapParameterTopologyError` 内部走 `presentError`，各场景中文兜底）。`ErrorBoundary` 开发态详情与应用层/runtime catch 块不在本票 UI 清单内。
 - **TD-115（formatLastActive 漏格式化 pg 文本时间戳）：** **2026-08-14 关闭**（`fix/td115-and-td114-residue`）。`formatLastActive`/`normalizeTimestampInput` 现接受 Postgres 文本时间戳（空格分隔、可选毫秒、短 `+00`/`+08` 偏移）并经 `formatRelativeOrAbsolute` 格式化；legacy 英文与已格式化中文保持原样；无法解析的输入渲染 **未知**，`lastActiveTooltip` 保留原值。`formatLastActive.test.ts` 覆盖。
 
 - **TD-101（验收覆盖 id 补登）：** **2026-08-13 关闭**（`feat/hci-trust-followups`，PR #422；本登记行曾在并行的追踪器合并中被意外回退，此处恢复）。三个承诺的验收 id 均已真实落地：`XIAOZE-APPROVAL-CARD-001`（聊天打开时浏览器审批卡可用）、`PARAM-DRAFT-REMOVE-001`（托盘移除服务端删除且跨刷新持久，一次性环境跑绿）、`LOG-CONFIDENCE-PERCENT-001`（置信度条渲染归一化百分比），并已登记 requirements、操作矩阵与覆盖图。
