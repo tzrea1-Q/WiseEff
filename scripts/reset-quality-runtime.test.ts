@@ -54,6 +54,13 @@ describe("quality runtime reset wiring", () => {
     expect(queries.some((query) => query.text.includes("probe-edit-%.dts"))).toBe(true);
     expect(queries.some((query) => query.text.includes("FoldRegistryTestDG"))).toBe(true);
     expect(queries.some((query) => query.text.includes("compatible:vendor,fold_registry_test"))).toBe(true);
+    expect(
+      queries.some(
+        (query) =>
+          query.text.includes("delete from project_modules") &&
+          query.text.includes("child.path like root.path")
+      )
+    ).toBe(true);
     const deleteUsersIndex = queries.findIndex(
       (query) => query.text === "delete from users where id <> all($1::text[])"
     );

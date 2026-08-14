@@ -275,8 +275,37 @@ export async function pruneProbeEditParameterFileVersions(tx: Queryable): Promis
   );
 }
 
+const RUNTIME_DEMO_DRIVER_GROUP_SUBTREE_IDS_SQL = `
+  select child.id
+  from parameter_modules child
+  join parameter_modules root on child.path = root.path or child.path like root.path || '/%'
+  where ${RUNTIME_DEMO_DRIVER_GROUP_MATCH_SQL.replaceAll("pm.", "root.")}
+`;
+
 /** Remove runtime-only driver-group demos left by schema-promotion walkthroughs. */
 export async function pruneRuntimeDemoDriverGroupModules(tx: Queryable): Promise<void> {
+  await tx.query(
+    `
+    delete from project_modules
+    where parameter_module_id in (${RUNTIME_DEMO_DRIVER_GROUP_SUBTREE_IDS_SQL})
+       or parent_id in (${RUNTIME_DEMO_DRIVER_GROUP_SUBTREE_IDS_SQL})
+    `
+  );
+  await tx.query(
+    `
+    update driver_registrations
+    set default_business_category_module_id = null
+    where default_business_category_module_id in (${RUNTIME_DEMO_DRIVER_GROUP_SUBTREE_IDS_SQL})
+    `
+  );
+  await tx.query(
+    `
+    update project_parameter_files
+    set module_hint = null
+    where module_hint in (${RUNTIME_DEMO_DRIVER_GROUP_SUBTREE_IDS_SQL})
+    `
+  );
+
   for (let depth = 0; depth < 8; depth += 1) {
     const result = await tx.query(
       `
