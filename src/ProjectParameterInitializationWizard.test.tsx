@@ -352,7 +352,7 @@ describe("ProjectParameterInitializationWizard", () => {
     const optionLabelRule = declarationsFor(styles, ".parameters-column-filter__options label");
     const optionLabelHoverRule = declarationsFor(styles, ".parameters-column-filter__options label:hover");
 
-    expect(menuRule.background).toContain("#fff");
+    expect(menuRule.background).toContain("var(--surface)");
     expect(menuRule["border-radius"]).toBe("8px");
     expect(menuRule["box-shadow"]).toBeTruthy();
     expect(menuHeadRule["padding-bottom"]).toBe("8px");

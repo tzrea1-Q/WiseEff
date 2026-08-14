@@ -1423,8 +1423,8 @@ describe("ParametersPage · 提交契约", () => {
       rule.selectors.includes(".submission-diff-card--complex strong")
     );
     expect(codeRule.overflow).toBe("auto");
-    expect(codeRule.background).toBe("#ffffff");
-    expect(codeRule.color).toBe("#0f172a");
+    expect(codeRule.background).toBe("var(--surface)");
+    expect(codeRule.color).toBe("var(--text)");
     expect(removeRowRule.background).toBe("#fff1f2");
     expect(addRowRule.background).toBe("#ecfdf5");
     expect(lineMetaRule.background).toBe("#f8fafc");
