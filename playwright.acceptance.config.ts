@@ -31,7 +31,17 @@ export default defineConfig({
   },
   projects: [
     {
+      name: "runtime-warmup",
+      testMatch: /runtime-warmup\.spec\.ts/,
+      timeout: 120_000,
+      use: {
+        ...devices["Desktop Chrome"]
+      }
+    },
+    {
       name: "Desktop Chrome",
+      testIgnore: /runtime-warmup\.spec\.ts/,
+      dependencies: ["runtime-warmup"],
       use: {
         ...devices["Desktop Chrome"]
       }
