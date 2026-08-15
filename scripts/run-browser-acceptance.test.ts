@@ -576,11 +576,12 @@ describe("playwright acceptance config", () => {
     const config = await importAcceptanceConfig(undefined);
     const projects = config.projects as Array<{
       name: string;
+      timeout?: number;
       dependencies?: string[];
       testIgnore?: RegExp;
     }>;
 
-    expect(projects.find((project) => project.name === "runtime-warmup")).toBeDefined();
+    expect(projects.find((project) => project.name === "runtime-warmup")?.timeout).toBe(120_000);
     expect(projects.find((project) => project.name === "Desktop Chrome")?.dependencies).toContain(
       "runtime-warmup"
     );
@@ -599,9 +600,9 @@ describe("playwright quality config", () => {
 
   it("defines runtime-warmup as a dependency project", async () => {
     const config = await importQualityConfig();
-    const projects = config.projects as Array<{ name: string; dependencies?: string[] }>;
+    const projects = config.projects as Array<{ name: string; timeout?: number; dependencies?: string[] }>;
 
-    expect(projects.find((project) => project.name === "runtime-warmup")).toBeDefined();
+    expect(projects.find((project) => project.name === "runtime-warmup")?.timeout).toBe(120_000);
     for (const projectName of ["a11y", "visual", "responsive"]) {
       expect(projects.find((project) => project.name === projectName)?.dependencies).toContain(
         "runtime-warmup"
