@@ -39,6 +39,8 @@ Simulator debugging is covered by `DEBUG-SIM-001` in `e2e/acceptance/debugging-s
 
 Targeted unit coverage includes `server/modules/debugging/valueCodec.test.ts`, gateway preservation tests, admin/runtime UI tests, and DTO mapper tests for legacy scalar defaults.
 
+Quality and acceptance Playwright configs (`playwright.quality.config.ts`, `playwright.acceptance.config.ts`) run a `runtime-warmup` dependency project before product specs. After the webServer reports ready, warmup loads the SPA entry via `page.goto` so Vite's first transform is not billed to the first a11y/visual/responsive or acceptance case; product spec timeouts are unchanged.
+
 ## Key Commands
 
 ```bash

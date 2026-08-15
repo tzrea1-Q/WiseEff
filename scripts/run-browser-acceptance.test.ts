@@ -571,6 +571,24 @@ describe("playwright acceptance config", () => {
       VITE_WISEEFF_API_BASE_URL: "http://127.0.0.1:8899"
     });
   });
+
+  it("defines runtime-warmup as a dependency project", async () => {
+    const config = await importAcceptanceConfig(undefined);
+    const projects = config.projects as Array<{
+      name: string;
+      timeout?: number;
+      dependencies?: string[];
+      testIgnore?: RegExp;
+    }>;
+
+    expect(projects.find((project) => project.name === "runtime-warmup")?.timeout).toBe(120_000);
+    expect(projects.find((project) => project.name === "Desktop Chrome")?.dependencies).toContain(
+      "runtime-warmup"
+    );
+    expect(projects.find((project) => project.name === "Desktop Chrome")?.testIgnore).toEqual(
+      /runtime-warmup\.spec\.ts/
+    );
+  });
 });
 
 describe("playwright quality config", () => {
@@ -578,6 +596,18 @@ describe("playwright quality config", () => {
     const config = await importQualityConfig("https://frontend.example.test");
 
     expect(config.use).toMatchObject({ baseURL: "https://frontend.example.test" });
+  });
+
+  it("defines runtime-warmup as a dependency project", async () => {
+    const config = await importQualityConfig();
+    const projects = config.projects as Array<{ name: string; timeout?: number; dependencies?: string[] }>;
+
+    expect(projects.find((project) => project.name === "runtime-warmup")?.timeout).toBe(120_000);
+    for (const projectName of ["a11y", "visual", "responsive"]) {
+      expect(projects.find((project) => project.name === projectName)?.dependencies).toContain(
+        "runtime-warmup"
+      );
+    }
   });
 });
 
@@ -706,7 +736,7 @@ async function importAcceptanceConfig(noStartRuntime: string | undefined, fronte
   try {
     vi.resetModules();
     const module = await import("../playwright.acceptance.config");
-    return module.default as { webServer?: unknown; use?: unknown };
+    return module.default as { webServer?: unknown; use?: unknown; projects?: unknown };
   } finally {
     if (previous === undefined) {
       delete process.env.WISEEFF_ACCEPTANCE_NO_START_RUNTIME;
@@ -737,7 +767,7 @@ async function importQualityConfig(frontendUrl?: string) {
   try {
     vi.resetModules();
     const module = await import("../playwright.quality.config");
-    return module.default as { use?: unknown };
+    return module.default as { use?: unknown; projects?: unknown };
   } finally {
     if (previousFrontendUrl === undefined) {
       delete process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL;

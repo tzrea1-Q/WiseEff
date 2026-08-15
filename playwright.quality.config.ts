@@ -36,18 +36,27 @@ export default defineConfig({
   },
   projects: [
     {
+      name: "runtime-warmup",
+      testMatch: /warmup\.quality\.spec\.ts/,
+      timeout: 120_000,
+      use: { ...devices["Desktop Chrome"] }
+    },
+    {
       name: "a11y",
       testMatch: /a11y\.quality\.spec\.ts/,
+      dependencies: ["runtime-warmup"],
       use: { ...devices["Desktop Chrome"] }
     },
     {
       name: "visual",
       testMatch: /visual\.quality\.spec\.ts/,
+      dependencies: ["runtime-warmup"],
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } }
     },
     {
       name: "responsive",
       testMatch: /responsive\.quality\.spec\.ts/,
+      dependencies: ["runtime-warmup"],
       use: { ...devices["Desktop Chrome"] }
     }
   ],
