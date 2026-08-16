@@ -3,27 +3,27 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 
-@custom-variant dark (&:is(.dark *));
-
-/*
+@custom-variant dark (&:is(.dark *));/*
  * ── Design tokens ─────────────────────────────────────────────────────────
  * Single authoritative token block. Raw color/size literals are allowed only
  * here; everything else consumes var()/color-mix() over these tokens.
  * Spec: docs/design-docs/ui-design-system.md
  */
+
+
 :root {
   color-scheme: light;
   font-family: var(--font-sans);
   background: var(--bg);
-  color: var(--text);
+  color: var(--text);/* ── Typography ── */
 
-  /* ── Typography ── */
+  
   --font-sans: "Geist Variable", -apple-system, BlinkMacSystemFont, "PingFang SC",
     "HarmonyOS Sans SC", "Microsoft YaHei", "Noto Sans SC", "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas,
-    "Liberation Mono", monospace;
+    "Liberation Mono", monospace;/* Type scale (size / line-height pairs) */
 
-  /* Type scale (size / line-height pairs) */
+  
   --text-xs: 11px;
   --text-sm: 12px;
   --text-base: 13px;
@@ -37,18 +37,18 @@
   --leading-md: 22px;
   --leading-lg: 24px;
   --leading-xl: 28px;
-  --leading-2xl: 32px;
-  /* Keep Tailwind text-* utilities on the same scale (paired line-height ratios). */
-  /* Pixel leading, not calc(length / number): that division yields a length
+  --leading-2xl: 32px;/* Keep Tailwind text-* utilities on the same scale (paired line-height ratios). *//* Pixel leading, not calc(length / number): that division yields a length
      (e.g. 18px / 12 = 1.5px) and collapses every Tailwind text-* line box. */
+  
+  
   --text-xs--line-height: var(--leading-xs);
   --text-sm--line-height: var(--leading-sm);
   --text-base--line-height: var(--leading-base);
   --text-lg--line-height: var(--leading-lg);
   --text-xl--line-height: var(--leading-xl);
-  --text-2xl--line-height: var(--leading-2xl);
+  --text-2xl--line-height: var(--leading-2xl);/* ── Semantic color ── */
 
-  /* ── Semantic color ── */
+  
   --accent: #0052cc;
   --accent-hover: color-mix(in srgb, var(--accent) 88%, #000);
   --accent-pressed: #003d9b;
@@ -70,12 +70,12 @@
   --danger-soft: #ffdad6;
   --info: #0284c7;
   --info-soft: color-mix(in srgb, var(--info) 12%, white);
-  --ring: color-mix(in srgb, var(--accent) 45%, transparent);
-  /* The one dialog dimming value (ui-design-system §Dialogs); ink-based in
+  --ring: color-mix(in srgb, var(--accent) 45%, transparent);/* The one dialog dimming value (ui-design-system §Dialogs); ink-based in
      light, black-based in dark (text flips light so it cannot derive dim). */
-  --backdrop-dim: color-mix(in srgb, var(--text) 40%, transparent);
+  
+  --backdrop-dim: color-mix(in srgb, var(--text) 40%, transparent);/* ── Spacing (4px grid) ── */
 
-  /* ── Spacing (4px grid) ── */
+  
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -85,30 +85,28 @@
   --space-8: 32px;
   --space-10: 40px;
   --space-12: 48px;
-  --space-16: 64px;
+  --space-16: 64px;/* ── Radius ── */
 
-  /* ── Radius ── */
+  
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
-  --radius-full: 999px;
+  --radius-full: 999px;/* ── Elevation ── */
 
-  /* ── Elevation ── */
+  
   --shadow-1: 0 1px 2px rgba(15, 23, 42, 0.06), 0 0 0 1px rgba(15, 23, 42, 0.04);
   --shadow-2: 0 8px 24px rgba(15, 23, 42, 0.08);
-  --shadow-3: 0 24px 56px rgba(15, 23, 42, 0.18), 0 8px 20px rgba(15, 23, 42, 0.08);
-  /* Legacy shadow aliases (near-equivalent strength to the retired one-offs). */
+  --shadow-3: 0 24px 56px rgba(15, 23, 42, 0.18), 0 8px 20px rgba(15, 23, 42, 0.08);/* Legacy shadow aliases (near-equivalent strength to the retired one-offs). */
+  
   --shadow: var(--shadow-2);
-  --shadow-soft: var(--shadow-2);
+  --shadow-soft: var(--shadow-2);/* ── Motion ── */
 
-  /* ── Motion ── */
+  
   --duration-fast: 120ms;
   --duration-base: 160ms;
   --duration-slow: 240ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-in-out: cubic-bezier(0.45, 0, 0.25, 1);
-
-  /*
+  --ease-in-out: cubic-bezier(0.45, 0, 0.25, 1);/*
    * ── Z-index ladder ──
    * App layers below, overlay scale above. Declared in one place so a new
    * dialog does not need to invent another number and accidentally land under
@@ -116,6 +114,8 @@
    * Xiaoze FAB < dialog < nested dialog < Xiaoze chat popup < Xiaoze approval
    * < global toast.
    */
+
+  
   --z-sticky: 20;
   --z-topbar: 30;
   --z-drawer-backdrop: 35;
@@ -126,13 +126,13 @@
   --z-modal-backdrop-nested: 1160;
   --z-xiaoze-popup: 1200;
   --z-xiaoze-approval: 1250;
-  --z-toast: 1350;
+  --z-toast: 1350;/* ── Layout ── */
 
-  /* ── Layout ── */
+  
   --sidebar-width: 256px;
-  --topbar-height: 64px;
+  --topbar-height: 64px;/* ── Legacy palette (kept as-is until surfaces migrate; do not extend) ── */
 
-  /* ── Legacy palette (kept as-is until surfaces migrate; do not extend) ── */
+  
   --surface-low: #f0f3ff;
   --surface-mid: #e7eeff;
   --surface-high: #d7e3fb;
@@ -145,14 +145,14 @@
   --tertiary: #314367;
   --tertiary-soft: #d7e2ff;
   --amber: #a05b00;
-  --amber-soft: rgba(160, 91, 0, 0.14);
-  /* Risk hues align with status/chart tokens (kept as aliases for the two
+  --amber-soft: rgba(160, 91, 0, 0.14);/* Risk hues align with status/chart tokens (kept as aliases for the two
      CSS-drawn risk charts; drop with their consumers). */
+  
   --risk-high: var(--danger);
   --risk-medium: var(--warning);
-  --risk-low: var(--chart-1);
+  --risk-low: var(--chart-1);/* ── Legacy aliases (bridge onto semantic tokens; migrate consumers, then drop) ── */
 
-  /* ── Legacy aliases (bridge onto semantic tokens; migrate consumers, then drop) ── */
+  
   --app-primary: var(--accent-pressed);
   --primary-container: var(--accent);
   --primary-soft: var(--accent-soft);
@@ -166,11 +166,11 @@
   --surface-muted: var(--surface-sunken);
   --status-success: var(--success);
   --status-danger: var(--danger);
-  --focus: var(--ring);
-
-  /* ── App shell chrome (sidebar / topbar / canvas; dark values in .dark) ──
+  --focus: var(--ring);/* ── App shell chrome (sidebar / topbar / canvas; dark values in .dark) ──
      Scoped tokens for the shell's bespoke light values so the dark theme can
      re-skin the chrome without touching component rules. */
+
+  
   --shell-canvas: radial-gradient(circle at 65% 8%, rgba(80, 220, 255, 0.16), transparent 30%),
     linear-gradient(180deg, #f9f9ff 0%, #f4f7ff 100%);
   --shell-sidebar-bg: #f6f8ff;
@@ -181,9 +181,9 @@
   --feedback-entry-bg-hover: #dff3f8;
   --feedback-entry-text: #003d74;
   --feedback-entry-text-hover: #002d59;
-  --feedback-entry-meta: #456474;
+  --feedback-entry-meta: #456474;/* ── Xiaoze assistant tokens ── */
 
-  /* ── Xiaoze assistant tokens ── */
+  
   --xiaoze-brand: var(--app-primary);
   --xiaoze-accent: var(--app-secondary);
   --xiaoze-surface-muted: #eef3ff;
@@ -192,9 +192,9 @@
   --xiaoze-shadow: 0 28px 56px rgba(0, 32, 96, 0.18);
   --xiaoze-shadow-soft: 0 10px 24px rgba(0, 61, 155, 0.08);
   --xiaoze-radius-md: 12px;
-  --xiaoze-radius-sm: 6px;
+  --xiaoze-radius-sm: 6px;/* ── shadcn keys (alias the semantic tokens; never a second palette) ── */
 
-  /* ── shadcn keys (alias the semantic tokens; never a second palette) ── */
+  
   --background: var(--bg);
   --foreground: var(--text);
   --card: var(--surface);
@@ -209,12 +209,12 @@
   --muted-foreground: var(--text-muted);
   --accent-foreground: var(--text);
   --destructive: var(--danger);
-  --input: var(--border);
-  /*
+  --input: var(--border);/*
    * Categorical chart ramp: accent-anchored, neighbouring hues (teal / violet /
    * sky) plus one neutral closer. All read ≥3:1 against --surface (chart-1/2/3/5
    * ≥4.5:1). Consumed via src/domain/format/chartTheme.ts.
    */
+  
   --chart-1: var(--accent);
   --chart-2: #0e7490;
   --chart-3: #7c3aed;
@@ -229,9 +229,7 @@
   --sidebar-accent-foreground: var(--text);
   --sidebar-border: var(--border);
   --sidebar-ring: var(--ring);
-}
-
-/*
+}/*
  * ── Dark theme ────────────────────────────────────────────────────────────
  * Complete dark derivation of the semantic token layer, activated by the
  * `dark` class on <html> (src/application/theme/themeController.ts — wiring
@@ -252,10 +250,12 @@
  * - Shadows deepen (higher alpha black + faint light hairline) because
  *   ambient shadows vanish on dark surfaces.
  */
-.dark {
-  color-scheme: dark;
 
-  /* Semantic roles */
+
+.dark {
+  color-scheme: dark;/* Semantic roles */
+
+  
   --accent: #4c8dff;
   --accent-hover: color-mix(in srgb, var(--accent) 88%, #fff);
   --accent-pressed: #3a72d9;
@@ -278,14 +278,14 @@
   --info: #38bdf8;
   --info-soft: color-mix(in srgb, var(--info) 18%, var(--surface));
   --ring: color-mix(in srgb, var(--accent) 55%, transparent);
-  --backdrop-dim: rgba(0, 0, 0, 0.6);
+  --backdrop-dim: rgba(0, 0, 0, 0.6);/* Elevation */
 
-  /* Elevation */
+  
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.05);
   --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.5);
-  --shadow-3: 0 24px 56px rgba(0, 0, 0, 0.62), 0 8px 20px rgba(0, 0, 0, 0.45);
+  --shadow-3: 0 24px 56px rgba(0, 0, 0, 0.62), 0 8px 20px rgba(0, 0, 0, 0.45);/* Legacy palette (same roles as the :root block, dark values) */
 
-  /* Legacy palette (same roles as the :root block, dark values) */
+  
   --surface-low: color-mix(in srgb, var(--accent) 10%, var(--bg));
   --surface-mid: color-mix(in srgb, var(--accent) 16%, var(--bg));
   --surface-high: color-mix(in srgb, var(--accent) 24%, var(--bg));
@@ -298,12 +298,12 @@
   --tertiary: #9fb3e8;
   --tertiary-soft: color-mix(in srgb, var(--tertiary) 16%, var(--surface));
   --amber: #eba53f;
-  --amber-soft: rgba(235, 165, 63, 0.16);
-  /* Brand fills/active-text read as the brightened accent on dark (the
+  --amber-soft: rgba(235, 165, 63, 0.16);/* Brand fills/active-text read as the brightened accent on dark (the
      light value derives from --accent-pressed, which is too dim here). */
-  --app-primary: var(--accent);
+  
+  --app-primary: var(--accent);/* App shell chrome */
 
-  /* App shell chrome */
+  
   --shell-canvas: radial-gradient(circle at 65% 8%, color-mix(in srgb, var(--app-secondary) 7%, transparent), transparent 30%),
     linear-gradient(180deg, var(--bg) 0%, var(--bg) 100%);
   --shell-sidebar-bg: var(--surface-sunken);
@@ -314,40 +314,38 @@
   --feedback-entry-bg-hover: color-mix(in srgb, var(--app-secondary) 18%, var(--surface));
   --feedback-entry-text: var(--text);
   --feedback-entry-text-hover: var(--text);
-  --feedback-entry-meta: var(--text-muted);
+  --feedback-entry-meta: var(--text-muted);/* Xiaoze assistant */
 
-  /* Xiaoze assistant */
+  
   --xiaoze-surface-muted: color-mix(in srgb, var(--accent) 12%, var(--bg));
   --xiaoze-border: rgba(140, 172, 255, 0.16);
   --xiaoze-border-strong: rgba(140, 172, 255, 0.3);
   --xiaoze-shadow: 0 28px 56px rgba(0, 0, 0, 0.6);
-  --xiaoze-shadow-soft: 0 10px 24px rgba(0, 0, 0, 0.45);
+  --xiaoze-shadow-soft: 0 10px 24px rgba(0, 0, 0, 0.45);/* Raw-literal shadcn keys (everything else re-derives via :root aliases) */
 
-  /* Raw-literal shadcn keys (everything else re-derives via :root aliases) */
+  
   --primary-foreground: #081226;
-  --sidebar-primary-foreground: #081226;
+  --sidebar-primary-foreground: #081226;/* Categorical chart ramp, brightened one step (chart-1 follows --accent) */
 
-  /* Categorical chart ramp, brightened one step (chart-1 follows --accent) */
+  
   --chart-2: #22b8cf;
   --chart-3: #a78bfa;
   --chart-4: #38bdf8;
   --chart-5: #94a3b8;
-}
-
-/*
+}/*
  * Global focus-visible baseline. Lives in @layer base so that (a) legacy
  * unlayered rules that manage their own focus styles keep winning, and
  * (b) Tailwind/shadcn utility-driven focus rings (utilities layer) are not
  * doubled up. Interactive elements without bespoke focus styles get a ring.
  */
+
+
 @layer base {
   :where(a[href], button, [role="button"], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])):focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
-}
-
-/*
+}/*
  * ── Button base contract ──────────────────────────────────────────────────
  * The single source of `.button` geometry, surface, and interaction states
  * (docs/design-docs/ui-design-system.md § Buttons, docs/FRONTEND.md § Button
@@ -356,6 +354,8 @@
  * square, compact table-inline height); redefining geometry per scope is a
  * defect (FA-10). Focus-visible comes from the global @layer base ring.
  */
+
+
 .button {
   display: inline-flex;
   align-items: center;
@@ -405,10 +405,10 @@
 .button.primary:active:not(:disabled) {
   background: var(--accent-pressed);
   border-color: var(--accent-pressed);
-}
-
-/* `subtle` is the secondary treatment: same surface-and-border rest as the
+}/* `subtle` is the secondary treatment: same surface-and-border rest as the
    base, declared explicitly so the variant contract is complete. */
+
+
 .button.subtle {
   color: var(--text);
   background: var(--surface);
@@ -455,10 +455,10 @@
 .button.danger:active:not(:disabled) {
   background: color-mix(in srgb, var(--danger) 76%, black);
   border-color: color-mix(in srgb, var(--danger) 76%, black);
-}
-
-/* Size modifiers (sm 28 / md 32 default / lg 36). Defined for adoption;
+}/* Size modifiers (sm 28 / md 32 default / lg 36). Defined for adoption;
    callers are migrated opportunistically, not force-renamed. */
+
+
 .button.sm {
   min-height: 28px;
   padding: 0 var(--space-2);
@@ -753,9 +753,9 @@ body {
   flex-direction: column;
   box-sizing: border-box;
   flex: 1 1 auto;
-  min-width: 0;
-  /* Sidebar is position:fixed (out of flow). Size against the shell, not 100vw —
+  min-width: 0;/* Sidebar is position:fixed (out of flow). Size against the shell, not 100vw —
      100vw includes scrollbar width and fights expand/collapse + overflow-x:clip. */
+  
   width: calc(100% - var(--active-sidebar-width));
   max-width: calc(100% - var(--active-sidebar-width));
   margin-left: var(--active-sidebar-width);
@@ -840,10 +840,10 @@ body {
   gap: var(--space-2);
   row-gap: 6px;
   min-width: 0;
-}
-
-/* Non-.button topbar controls keep their own chrome; .button geometry and
+}/* Non-.button topbar controls keep their own chrome; .button geometry and
    colors come from the base contract. */
+
+
 .topbar .topbar-page-actions .project-chip__trigger,
 .topbar .topbar-page-actions .device-pill,
 .topbar .topbar-page-actions .dirty-indicator {
@@ -871,10 +871,10 @@ body {
 
 .topbar .topbar-page-actions .button {
   max-width: 100%;
-}
-
-/* Mixed primitives share one toolbar row; pin shadcn buttons to the same
+}/* Mixed primitives share one toolbar row; pin shadcn buttons to the same
    32px control height as the legacy .button neighbors. */
+
+
 .topbar .topbar-page-actions [data-slot="button"] {
   height: 32px;
   min-height: 32px;
@@ -1283,9 +1283,9 @@ body {
 .topbar-user-menu__actions {
   display: grid;
   gap: var(--space-2);
-}
+}/* Logout keeps a danger-tinted ghost treatment (functional color override). */
 
-/* Logout keeps a danger-tinted ghost treatment (functional color override). */
+
 .topbar-user-menu__actions .button.ghost {
   color: var(--danger);
   background: color-mix(in srgb, var(--danger) 4%, var(--surface));
@@ -1322,10 +1322,10 @@ body {
   border: 1px solid var(--shell-sidebar-border);
   border-radius: var(--radius-md);
   box-shadow: 0 24px 64px color-mix(in srgb, var(--text) 16%, transparent);
-}
-
-/* Session-restore and backend-unreachable screens share the auth panel look
+}/* Session-restore and backend-unreachable screens share the auth panel look
    but stay lightweight: brand, one explanatory note, and an optional action. */
+
+
 .auth-status-panel {
   align-self: center;
   gap: 14px;
@@ -1615,8 +1615,8 @@ body {
 
 .main-content {
   min-height: 0;
-  flex: 1 1 auto;
-  /* 24px page gutter per the spacing scale (was 28px horizontal). */
+  flex: 1 1 auto;/* 24px page gutter per the spacing scale (was 28px horizontal). */
+  
   padding: var(--space-6) var(--space-6) 112px;
   overflow: auto;
   scrollbar-gutter: stable;
@@ -1651,8 +1651,8 @@ body {
   opacity: 0.42;
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--primary-foreground) 76%, transparent), color-mix(in srgb, var(--primary-foreground) 15%, transparent)),
-    repeating-linear-gradient(90deg, transparent 0 58px, rgba(0, 61, 155, 0.08) 58px 59px),
-    repeating-linear-gradient(0deg, transparent 0 46px, rgba(0, 104, 123, 0.07) 46px 47px);
+    repeating-linear-gradient(90deg, transparent 0 58px, color-mix(in srgb, var(--accent-pressed) 8%, transparent) 58px 59px),
+    repeating-linear-gradient(0deg, transparent 0 46px, color-mix(in srgb, var(--app-secondary) 7%, transparent) 46px 47px);
 }
 
 .hero-copy {
@@ -2041,8 +2041,8 @@ body {
 .ai-carousel-track {
   display: flex;
   width: 300%;
-  height: 100%;
-  /* Decorative landing carousel: long cycle kept by design; reduced-motion guarded below. */
+  height: 100%;/* Decorative landing carousel: long cycle kept by design; reduced-motion guarded below. */
+  
   animation: aiScenarioCarousel 18s var(--ease-in-out) infinite;
 }
 
@@ -2337,9 +2337,9 @@ body {
   min-width: 0;
   max-width: 100%;
   flex: 0 0 auto;
-}
+}/* Keep edit sheets as a right-hand drawer — never stretch with the column children. */
 
-/* Keep edit sheets as a right-hand drawer — never stretch with the column children. */
+
 .node-debugging-page .workbench-sheet,
 .debugging-page .workbench-sheet,
 .dts-reload-page .workbench-sheet {
@@ -2498,7 +2498,7 @@ body {
   gap: 14px;
   padding: var(--space-3) 14px;
   background: #f2fbff;
-  border: 1px solid rgba(0, 104, 123, 0.25);
+  border: 1px solid color-mix(in srgb, var(--app-secondary) 25%, transparent);
   border-radius: var(--radius-md);
   margin-top: var(--space-3);
 }
@@ -3713,10 +3713,10 @@ td small {
   font-size: var(--text-xs);
   font-weight: 700;
   line-height: 1.25;
-}
-
-/* Categorical module tones derive from status/chart tokens (theme-aware):
+}/* Categorical module tones derive from status/chart tokens (theme-aware):
    deep readable text via color-mix toward --text, soft translucent fills. */
+
+
 .module-tone-0 { color: color-mix(in srgb, var(--info) 62%, var(--text)); background: color-mix(in srgb, var(--info) 12%, transparent); }
 .module-tone-1 { color: color-mix(in srgb, var(--success) 75%, var(--text)); background: color-mix(in srgb, var(--success) 12%, transparent); }
 .module-tone-2 { color: color-mix(in srgb, var(--warning) 62%, var(--text)); background: color-mix(in srgb, var(--warning) 14%, transparent); }
@@ -4722,13 +4722,13 @@ td small {
   width: 12px;
   height: 12px;
   background: var(--app-secondary);
-  border: 3px solid #fff;
+  border: 3px solid var(--surface);
   border-radius: 50%;
   box-shadow: 0 0 0 3px var(--secondary-soft);
 }
 
-.vertical-timeline-item--current .timeline-dot {
-  /* Current card uses margin-left:-10px + 1px border; keep the dot on the rail. */
+.vertical-timeline-item--current .timeline-dot {/* Current card uses margin-left:-10px + 1px border; keep the dot on the rail. */
+  
   left: -11px;
   top: 14px;
   background: var(--app-primary);
@@ -4760,7 +4760,7 @@ td small {
 }
 
 .vertical-timeline-item--current strong {
-  color: #003d9b;
+  color: var(--accent-pressed);
 }
 
 .vertical-timeline p {
@@ -4826,7 +4826,7 @@ td small {
   padding: 13px;
   color: #4f150f;
   background: #fff4f2;
-  border: 1px solid rgba(186, 26, 26, 0.22);
+  border: 1px solid color-mix(in srgb, var(--danger) 22%, transparent);
   border-radius: 10px;
 }
 
@@ -4839,7 +4839,7 @@ td small {
 
 .merge-link-card {
   padding: 13px;
-  color: #003d9b;
+  color: var(--accent-pressed);
   background: #eef6ff;
   border: 1px solid #b9d8ff;
   border-radius: 10px;
@@ -5500,10 +5500,10 @@ td small {
 
 .user-permissions-approval-actions .button {
   white-space: normal;
-}
-
-/* `.user-permissions-modal` is now only a backdrop scope for the add-user dialog
+}/* `.user-permissions-modal` is now only a backdrop scope for the add-user dialog
  * (positioning, dimming, and stacking come from the shared `.modal-backdrop`). */
+
+
 
 .user-permissions-dialog,
 .user-permissions-modal-card {
@@ -5721,9 +5721,9 @@ td small {
     flex-direction: column;
     align-items: stretch;
   }
-}
+}/* Debug Admin Page Redesign */
 
-/* Debug Admin Page Redesign */
+
 .debug-admin-shell {
   display: flex;
   flex-direction: column;
@@ -6559,8 +6559,8 @@ td small {
   overflow: auto;
   color: #ebf1ff;
   background: #253143;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid color-mix(in srgb, var(--surface) 8%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--surface) 8%, transparent);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   line-height: 1.55;
@@ -6719,7 +6719,7 @@ td small {
   padding: 14px;
   color: #93000a;
   background: var(--danger-soft);
-  border: 1px solid rgba(186, 26, 26, 0.24);
+  border: 1px solid color-mix(in srgb, var(--danger) 24%, transparent);
   border-radius: var(--radius-lg);
 }
 
@@ -6930,9 +6930,9 @@ td small {
   margin-top: var(--space-1);
   color: var(--app-muted);
   font-size: var(--text-sm);
-}
+}/* ========== Log Analysis v2 ========== */
 
-/* ========== Log Analysis v2 ========== */
+
 .logs-v2 {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
@@ -6954,9 +6954,9 @@ td small {
 }
 
 .logs-v2-main {
-  display: grid;
-  /* Conclusion card, stage timeline, then the analysis card stretches; any
+  display: grid;/* Conclusion card, stage timeline, then the analysis card stretches; any
      trailing section (e.g. related knowledge) takes its natural height. */
+  
   grid-template-rows: auto auto minmax(420px, 1fr);
   gap: var(--space-4);
   min-width: 0;
@@ -7321,7 +7321,7 @@ td small {
   padding: 18px;
   color: #93000a;
   background: #fff5f4;
-  border: 1px solid rgba(186, 26, 26, 0.28);
+  border: 1px solid color-mix(in srgb, var(--danger) 28%, transparent);
   border-radius: 14px;
   box-shadow: var(--shadow-soft);
 }
@@ -7670,7 +7670,7 @@ td small {
 }
 
 .evidence-card--pattern header strong {
-  color: #003d9b;
+  color: var(--accent-pressed);
   background: var(--primary-soft);
 }
 
@@ -7825,7 +7825,7 @@ td small {
 
 .upload-file-field--dragging {
   border: 2px dashed var(--app-primary);
-  background: rgba(0, 61, 155, 0.04);
+  background: color-mix(in srgb, var(--accent-pressed) 4%, transparent);
   border-radius: 10px;
   padding: var(--space-2);
 }
@@ -7980,8 +7980,8 @@ td small {
   .toast {
     animation: none;
   }
-}
-/* Shared loading / empty / error trio (promoted from parameter-home). */
+}/* Shared loading / empty / error trio (promoted from parameter-home). */
+
 .section-skeleton {
   display: grid;
   gap: var(--space-2);
@@ -8031,9 +8031,9 @@ td small {
     animation: none;
     background: color-mix(in srgb, var(--accent-soft) 55%, transparent);
   }
-}
+}/* App-bootstrap shell skeleton (API session probe in flight). */
 
-/* App-bootstrap shell skeleton (API session probe in flight). */
+
 .app-shell-skeleton {
   display: flex;
   min-height: 100vh;
@@ -8089,9 +8089,9 @@ td small {
   .app-shell-skeleton__sidebar {
     display: none;
   }
-}
+}/* App-bootstrap connection error (API session probe unreachable). */
 
-/* App-bootstrap connection error (API session probe unreachable). */
+
 .app-shell-connection-error {
   display: grid;
   place-items: center;
@@ -8715,7 +8715,7 @@ td small {
     box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 24%, transparent);
   }
   50% {
-    box-shadow: 0 0 0 8px rgba(0, 82, 204, 0);
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 0%, transparent);
   }
 }
 
@@ -8991,10 +8991,10 @@ td small {
   color: var(--app-text);
   background: var(--surface);
   box-shadow: 0 1px 3px rgb(15 23 42 / 12%);
-}
+}/* DTS reload workbench — align with node-debugging shell rhythm */
 
 
-/* DTS reload workbench — align with node-debugging shell rhythm */
+
 .dts-reload-page .dts-reload-controls {
   display: flex;
   flex-wrap: wrap;
@@ -9069,7 +9069,7 @@ td small {
   --dts-workbench-muted: #52657d;
   --dts-workbench-border: #dbe3ef;
   --dts-workbench-border-strong: #bac8dc;
-  --dts-workbench-surface: #ffffff;
+  --dts-workbench-surface: var(--surface);
   --dts-workbench-surface-soft: #f7f9fd;
   --dts-workbench-blue: #075bc4;
   --dts-reload-candidates-pane-height: min(70vh, calc(100vh - 220px));
@@ -9167,10 +9167,10 @@ td small {
 
 .dts-reload-candidates-grid tr.is-selected {
   background: rgba(14, 165, 233, 0.08);
-}
-
-/* Column budget for reload candidates (not ParametersTable / action-column semantics).
+}/* Column budget for reload candidates (not ParametersTable / action-column semantics).
    选择 compact · 参数 identity · 模块 short · 库基线 mono · 操作 takes remainder. */
+
+
 .parameters-table-grid.dts-reload-candidates-grid {
   table-layout: fixed;
   width: 100%;
@@ -9259,8 +9259,8 @@ td small {
   letter-spacing: 0.02em;
 }
 
-.parameters-table-grid.dts-reload-candidates-grid td:first-child {
-  /* Align checkbox with the first line of multi-line parameter cells. */
+.parameters-table-grid.dts-reload-candidates-grid td:first-child {/* Align checkbox with the first line of multi-line parameter cells. */
+  
   vertical-align: top;
   padding-top: 14px;
 }
@@ -9307,9 +9307,9 @@ td small {
   word-break: break-word;
   font-size: var(--text-sm);
   line-height: 1.4;
-}
+}/* Ops column: prose reasons for blocked rows; icon action for debuggable rows. */
 
-/* Ops column: prose reasons for blocked rows; icon action for debuggable rows. */
+
 .parameters-table-grid.dts-reload-candidates-grid th:nth-child(5),
 .parameters-table-grid.dts-reload-candidates-grid td:nth-child(5),
 .parameters-table-grid.dts-reload-candidates-grid th:last-child,
@@ -9491,7 +9491,7 @@ td small {
   --dts-workbench-muted: #52657d;
   --dts-workbench-border: #dbe3ef;
   --dts-workbench-border-strong: #bac8dc;
-  --dts-workbench-surface: #ffffff;
+  --dts-workbench-surface: var(--surface);
   --dts-workbench-surface-soft: #f7f9fd;
   --dts-workbench-blue: #075bc4;
   --dts-workbench-blue-soft: #eff5ff;
@@ -9764,7 +9764,7 @@ td small {
   min-height: 22px;
   padding: 0 var(--space-2);
   border-radius: var(--radius-full);
-  background: #e2e8f0;
+  background: var(--border);
   color: #475569;
   font-size: var(--text-xs);
   font-weight: 700;
@@ -9812,8 +9812,8 @@ td small {
   padding: var(--space-3);
   border: 1px solid #dbe4f0;
   border-radius: 10px;
-  background: #0f172a;
-  color: #e2e8f0;
+  background: var(--text);
+  color: var(--border);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   line-height: 1.55;
@@ -10134,8 +10134,8 @@ td small {
   border-radius: 10px;
 }
 
-.local-device-bridge-panel__install-notice strong {
-  /* Keep above WCAG AA 4.5:1 on the warm notice background (#f7eee6). */
+.local-device-bridge-panel__install-notice strong {/* Keep above WCAG AA 4.5:1 on the warm notice background (#f7eee6). */
+  
   color: #92400e;
   font-weight: 700;
 }
@@ -10318,9 +10318,9 @@ td small {
   display: grid;
   gap: 6px;
   padding: var(--space-3);
-  border: 1px solid var(--border-subtle, rgba(15, 23, 42, 0.12));
+  border: 1px solid var(--border-subtle, color-mix(in srgb, var(--text) 12%, transparent));
   border-radius: 10px;
-  background: rgba(15, 23, 42, 0.02);
+  background: color-mix(in srgb, var(--text) 2%, transparent);
 }
 
 .local-device-bridge-tools-panel__ok {
@@ -10697,13 +10697,13 @@ td small {
   max-height: 280px;
   overflow: auto;
   padding: 10px var(--space-3);
-  background: #0f172a;
+  background: var(--text);
   border-radius: var(--radius-sm);
 }
 
 .debug-value-code-block code {
   display: block;
-  color: #e2e8f0;
+  color: var(--border);
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   line-height: 1.55;
@@ -11086,16 +11086,16 @@ td small {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-6);
-  /* The one dialog dimming value (ui-design-system §Dialogs). */
-  background: var(--backdrop-dim);
-  /* Radix modal dialogs set body { pointer-events: none }; a confirm dialog
+  padding: var(--space-6);/* The one dialog dimming value (ui-design-system §Dialogs). */
+  
+  background: var(--backdrop-dim);/* Radix modal dialogs set body { pointer-events: none }; a confirm dialog
      stacked above them must stay interactive. */
+  
   pointer-events: auto;
   animation: modal-backdrop-enter var(--duration-slow) var(--ease-out);
-}
+}/* Dialog cards enter with a fade + subtle scale (§Motion: opacity/transform only). */
 
-/* Dialog cards enter with a fade + subtle scale (§Motion: opacity/transform only). */
+
 .modal-backdrop > [role="dialog"] {
   animation: modal-card-enter var(--duration-slow) var(--ease-out);
 }
@@ -11118,18 +11118,18 @@ td small {
   .modal-backdrop > [role="dialog"] {
     animation: none;
   }
-}
-
-/*
+}/*
  * Parameter admin dialogs keep the blurred backdrop the surface was designed with.
  * This used to be `.param-admin-shell > .modal-backdrop`, which never matched because
  * the dialogs render inside a panel, and now cannot match at all because ModalDialog
  * portals to `document.body`.
  */
+
+
 .modal-backdrop.param-admin-modal-backdrop {
   display: grid;
-  place-items: center;
-  /* 80% of the shared dim (40% ink -> 32%) plus the designed blur. */
+  place-items: center;/* 80% of the shared dim (40% ink -> 32%) plus the designed blur. */
+  
   background: color-mix(in srgb, var(--backdrop-dim) 80%, transparent);
   backdrop-filter: blur(6px);
 }
@@ -11340,10 +11340,10 @@ td small {
   justify-content: flex-end;
   gap: var(--space-2);
   min-width: 0;
-}
-
-/* Dialog CTAs keep a stable minimum width so short labels do not shrink the
+}/* Dialog CTAs keep a stable minimum width so short labels do not shrink the
    primary action (layout affordance, not geometry). */
+
+
 .parameter-detail-dialog__actions .button {
   min-width: 112px;
 }
@@ -12054,7 +12054,7 @@ td small {
 .parameter-detail-project-overview__meta small {
   width: fit-content;
   border-radius: var(--radius-full);
-  background: rgba(15, 23, 42, 0.08);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
   padding: 2px 7px;
   color: var(--text-secondary);
   font-size: var(--text-xs);
@@ -12890,7 +12890,7 @@ td small {
   color: var(--app-muted);
   text-align: center;
   background: linear-gradient(180deg, var(--shell-sidebar-bg) 0%, #edf4ff 100%);
-  border: 1px dashed rgba(0, 82, 204, 0.32);
+  border: 1px dashed color-mix(in srgb, var(--accent) 32%, transparent);
   border-radius: var(--radius-md);
 }
 
@@ -12983,8 +12983,8 @@ td small {
   width: calc(100% - 48px);
   padding: 10px var(--space-3);
   color: var(--success);
-  background: rgba(15, 124, 85, 0.1);
-  border: 1px solid rgba(15, 124, 85, 0.2);
+  background: color-mix(in srgb, var(--success) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--success) 20%, transparent);
   border-radius: var(--radius-md);
   font-size: var(--text-base);
   font-weight: 700;
@@ -12996,8 +12996,8 @@ td small {
   width: calc(100% - 48px);
   padding: 10px var(--space-3);
   color: var(--danger);
-  background: rgba(186, 26, 26, 0.1);
-  border: 1px solid rgba(186, 26, 26, 0.2);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 20%, transparent);
   border-radius: var(--radius-md);
   font-size: var(--text-base);
   font-weight: 700;
@@ -13152,9 +13152,9 @@ td small {
   }
 }
 
-@media (max-width: 1180px) {
-  /* ParametersTable density only — project list has a different column map
+@media (max-width: 1180px) {/* ParametersTable density only — project list has a different column map
      (代号 / 基线 live in these slots) and must keep every column. */
+  
   .parameters-table-grid:not(.project-admin-library-grid) th:nth-child(3),
   .parameters-table-grid:not(.project-admin-library-grid) td:nth-child(3),
   .parameters-table-grid:not(.project-admin-library-grid) th:nth-child(6),
@@ -13178,9 +13178,9 @@ td small {
   .parameters-table-grid.debug-admin-library-grid th:nth-child(5),
   .parameters-table-grid.debug-admin-library-grid td:nth-child(5) {
     display: table-cell;
-  }
+  }/* DTS reload candidates: keep 模块 (3) / 操作 (5) visible — not ParametersTable density. */
 
-  /* DTS reload candidates: keep 模块 (3) / 操作 (5) visible — not ParametersTable density. */
+  
   .parameters-table-grid.dts-reload-candidates-grid th:nth-child(3),
   .parameters-table-grid.dts-reload-candidates-grid td:nth-child(3),
   .parameters-table-grid.dts-reload-candidates-grid th:nth-child(5),
@@ -13194,11 +13194,11 @@ td small {
   .parameters-table-grid.debug-admin-library-grid td:nth-child(4) {
     width: auto;
     min-width: 0;
-  }
-
-  /* Spec library always shows 所属模块 / 审核状态 / 操作. After dropping the
+  }/* Spec library always shows 所属模块 / 审核状态 / 操作. After dropping the
      business-module column, 操作 is nth-child(6) and must not inherit the
      shared parameters-grid hide rule (otherwise the actions column vanishes). */
+
+  
   .parameters-table-grid.parameter-spec-library-grid th:nth-child(3),
   .parameters-table-grid.parameter-spec-library-grid td:nth-child(3),
   .parameters-table-grid.parameter-spec-library-grid th:nth-child(5),
@@ -13344,13 +13344,13 @@ td small {
   .parameter-value-diff {
     white-space: normal;
   }
-}
-
-/*
+}/*
  * 769–900px: the sidebar stays an auto-collapsed rail. The rail appearance is
  * owned by the `.sidebar-collapsed` rules (App.tsx forces the class in this
  * range), so this block only keeps the declarations that differ from them.
  */
+
+
 @media (min-width: 769px) and (max-width: 900px) {
   :root {
     --sidebar-width: 76px;
@@ -13364,28 +13364,28 @@ td small {
     height: 40px;
     margin: 0 auto var(--space-4);
   }
-}
+}/* Hamburger + drawer backdrop only exist on the ≤768px drawer layout. */
 
-/* Hamburger + drawer backdrop only exist on the ≤768px drawer layout. */
+
 .topbar-nav-toggle,
 .sidebar-drawer-backdrop {
   display: none;
-}
-
-/*
+}/*
  * ≤768px: the sidebar becomes an overlay drawer. A persistent rail eating
  * ~18% of a phone screen is a defect (ui-design-system §Layout); the drawer
  * slides in fully expanded above a dimmed backdrop and the shell takes the
  * full viewport width.
  */
+
+
 @media (max-width: 768px) {
   .app-shell,
   .app-shell.sidebar-is-collapsed {
     --active-sidebar-width: 0px;
   }
 
-  .sidebar {
-    /* Drawer keeps the expanded sidebar look; width caps so the backdrop stays tappable. */
+  .sidebar {/* Drawer keeps the expanded sidebar look; width caps so the backdrop stays tappable. */
+    
     width: min(280px, calc(100vw - var(--space-16)));
     z-index: var(--z-sidebar);
     transform: translateX(-100%);
@@ -13409,8 +13409,8 @@ td small {
     z-index: var(--z-drawer-backdrop);
     margin: 0;
     padding: 0;
-    border: 0;
-    /* Same dimming value as the shared `.modal-backdrop`. */
+    border: 0;/* Same dimming value as the shared `.modal-backdrop`. */
+    
     background: var(--backdrop-dim);
     cursor: pointer;
     animation: modal-backdrop-enter var(--duration-slow) var(--ease-out);
@@ -13419,9 +13419,9 @@ td small {
   .topbar-nav-toggle {
     display: inline-flex;
     flex: 0 0 auto;
-  }
+  }/* The drawer has no collapse concept; the hamburger owns open/close. */
 
-  /* The drawer has no collapse concept; the hamburger owns open/close. */
+  
   .sidebar-toggle {
     display: none;
   }
@@ -13478,10 +13478,10 @@ td small {
   .searchbox,
   .topbar-actions .icon-button {
     display: none;
-  }
-
-  /* The user menu must stay reachable at all widths (ui-design-system §Layout):
+  }/* The user menu must stay reachable at all widths (ui-design-system §Layout):
      compress the trigger to an avatar-only round button instead of hiding it. */
+
+  
   .topbar-user-switcher {
     margin-left: auto;
   }
@@ -13715,10 +13715,10 @@ td small {
   .feedback-remove-shot {
     max-width: none;
   }
-}
+}/* Legacy chart components (src/components/UpdateTrendChart, ProjectRiskBarChart) */
 
 
-/* Legacy chart components (src/components/UpdateTrendChart, ProjectRiskBarChart) */
+
 .project-risk-legend {
   display: flex;
   flex-wrap: wrap;
@@ -13861,7 +13861,7 @@ td small {
   justify-content: center;
   width: 100%;
   color: var(--primary-foreground);
-  border-bottom: 1px solid #fff;
+  border-bottom: 1px solid var(--surface);
   font-size: var(--text-xs);
   font-weight: 700;
 }
@@ -13913,8 +13913,8 @@ td small {
 }
 
 
-@theme inline {
-  /* One sans stack product-wide: heading and body both resolve to --font-sans. */
+@theme inline {/* One sans stack product-wide: heading and body both resolve to --font-sans. */
+  
   --font-heading: var(--font-sans);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
@@ -13968,21 +13968,21 @@ td small {
   html {
     @apply font-sans;
   }
-}
-
-/* === Parameter Admin (Redesign M1) =======================================
+}/* === Parameter Admin (Redesign M1) =======================================
  * Scoped under .param-admin-shell so the main-branch log/review/comparison
  * pages keep their existing generic dropdown and library styles.
  * ========================================================================= */
+
+
 
 .param-admin-shell {
   display: flex;
   flex-direction: column;
   align-content: start;
   gap: var(--space-4);
-  min-height: 100%;
-  /* The shell renders inside `.main-content`, which already provides the page
+  min-height: 100%;/* The shell renders inside `.main-content`, which already provides the page
      gutter; double padding was eating table width budget at 1440. */
+  
   padding: 0;
   color: var(--text);
 }
@@ -13997,12 +13997,12 @@ td small {
   background: var(--surface);
   border: 1px solid var(--outline);
   border-radius: var(--radius-lg);
-}
-
-/*
+}/*
  * Param-admin dialogs render through a portal on document.body, so every rule the
  * dialogs need has to accept the backdrop as an ancestor as well as the shell.
  */
+
+
 .param-admin-shell :focus-visible,
 .param-admin-shell button:focus-visible,
 .param-admin-shell input:focus-visible,
@@ -14170,23 +14170,23 @@ td small {
 
 .xiaoze-proactive-insights .insight-bar {
   margin: 0;
-}
-
-/* Xiaoze design tokens live in the single :root token block at the top of this file. */
-
-/* The approval interrupt card portals to <body> with the library default z-50,
+}/* Xiaoze design tokens live in the single :root token block at the top of this file. *//* The approval interrupt card portals to <body> with the library default z-50,
    which sits UNDER the Xiaoze popup (--z-xiaoze-popup) that spawned it — the
    scrim swallowed every Approve/Reject click. Lift the card and its overlay
    onto the declared scale above the popup. */
+
+
+
+
 [data-slot="alert-dialog-overlay"]:has(+ [data-testid="xiaoze-approval-card"]) {
   z-index: var(--z-xiaoze-approval);
 }
 
 [data-testid="xiaoze-approval-card"] {
   z-index: var(--z-xiaoze-approval);
-}
+}/* ── CopilotKit shell overrides ── */
 
-/* ── CopilotKit shell overrides ── */
+
 .xiaoze-popup-layer {
   position: fixed;
   inset: 0;
@@ -14207,17 +14207,17 @@ td small {
   margin: 0;
   padding: 0;
   border: 0;
-  background: rgba(15, 23, 42, 0);
+  background: color-mix(in srgb, var(--text) 0%, transparent);
   transition: background var(--xiaoze-popup-open-ms, 400ms) var(--ease-out);
   cursor: default;
 }
 
 .xiaoze-popup-layer[data-motion="visible"] .xiaoze-popup-scrim {
-  background: rgba(15, 23, 42, 0.34);
+  background: color-mix(in srgb, var(--text) 34%, transparent);
 }
 
 .xiaoze-popup-layer[data-motion="leaving"] .xiaoze-popup-scrim {
-  background: rgba(15, 23, 42, 0);
+  background: color-mix(in srgb, var(--text) 0%, transparent);
   transition-duration: var(--xiaoze-popup-close-ms, 360ms);
   transition-timing-function: var(--ease-in-out);
 }
@@ -14270,7 +14270,7 @@ td small {
   background:
     radial-gradient(circle at top right, color-mix(in srgb, var(--secondary-container) 12%, transparent), transparent 34%),
     radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 42%),
-    linear-gradient(180deg, #f8faff 0%, #ffffff 36%, #fcfdff 100%);
+    linear-gradient(180deg, #f8faff 0%, var(--surface) 36%, #fcfdff 100%);
   border: 1px solid var(--xiaoze-border);
   box-shadow: var(--xiaoze-shadow);
 }
@@ -14297,7 +14297,7 @@ td small {
   }
 
   .xiaoze-popup-layer[data-motion="visible"] .xiaoze-popup-scrim {
-    background: rgba(15, 23, 42, 0.12);
+    background: color-mix(in srgb, var(--text) 12%, transparent);
   }
 
   .xiaoze-popup-window {
@@ -14319,9 +14319,9 @@ td small {
     transform: translate3d(10px, 16px, 0) scale(0.94);
     filter: blur(4px);
   }
-}
+}/* ── Xiaoze floating toggle ── */
 
-/* ── Xiaoze floating toggle ── */
+
 .xiaoze-chat-toggle-anchor {
   position: fixed;
   right: 1.5rem;
@@ -14351,7 +14351,7 @@ td small {
 
 .xiaoze-chat-toggle:focus-visible .xiaoze-chat-toggle__surface {
   box-shadow:
-    0 14px 28px rgba(0, 61, 155, 0.28),
+    0 14px 28px color-mix(in srgb, var(--accent-pressed) 28%, transparent),
     inset 0 1px 0 color-mix(in srgb, var(--primary-foreground) 35%, transparent),
     inset 0 -1px 0 rgba(0, 40, 100, 0.2),
     0 0 0 3px var(--ring);
@@ -14361,7 +14361,7 @@ td small {
   position: absolute;
   inset: -5px;
   border-radius: inherit;
-  background: radial-gradient(circle, rgba(0, 104, 123, 0.22) 0%, rgba(0, 104, 123, 0) 68%);
+  background: radial-gradient(circle, color-mix(in srgb, var(--app-secondary) 22%, transparent) 0%, color-mix(in srgb, var(--app-secondary) 0%, transparent) 68%);
   opacity: 0;
   transform: scale(0.88);
   pointer-events: none;
@@ -14382,9 +14382,9 @@ td small {
   background:
     radial-gradient(circle at 28% 22%, color-mix(in srgb, var(--primary-foreground) 34%, transparent), transparent 42%),
     linear-gradient(145deg, var(--xiaoze-brand) 0%, #0047b8 46%, var(--xiaoze-accent) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.24);
+  border: 1px solid color-mix(in srgb, var(--surface) 24%, transparent);
   box-shadow:
-    0 14px 28px rgba(0, 61, 155, 0.28),
+    0 14px 28px color-mix(in srgb, var(--accent-pressed) 28%, transparent),
     inset 0 1px 0 color-mix(in srgb, var(--primary-foreground) 34%, transparent),
     inset 0 -1px 0 rgba(0, 40, 100, 0.18);
   transition:
@@ -14443,7 +14443,7 @@ td small {
 
 .xiaoze-chat-toggle:hover .xiaoze-chat-toggle__surface {
   box-shadow:
-    0 18px 34px rgba(0, 61, 155, 0.34),
+    0 18px 34px color-mix(in srgb, var(--accent-pressed) 34%, transparent),
     inset 0 1px 0 color-mix(in srgb, var(--primary-foreground) 38%, transparent),
     inset 0 -1px 0 rgba(0, 40, 100, 0.18);
 }
@@ -14537,7 +14537,7 @@ body:has([role="dialog"]) .xiaoze-toggle-hint {
 }
 
 .xiaoze-toggle-hint__dismiss:hover {
-  background: rgba(0, 61, 155, 0.06);
+  background: color-mix(in srgb, var(--accent-pressed) 6%, transparent);
   color: var(--text-secondary);
 }
 
@@ -14582,9 +14582,9 @@ body:has([role="dialog"]) .xiaoze-toggle-hint {
   .xiaoze-popup-window {
     transition-duration: var(--duration-fast) !important;
     filter: none !important;
-  }
+  }/* Streaming caret blinks forever; hold it steady when motion is reduced. */
 
-  /* Streaming caret blinks forever; hold it steady when motion is reduced. */
+  
   .xiaoze-streaming-markdown__cursor,
   .xiaoze-reasoning-message__cursor {
     animation: none;
@@ -14620,7 +14620,7 @@ body.xiaoze-popup-resize-active {
   padding: 0;
   border: 0;
   border-radius: 0 0 10px 0;
-  background: linear-gradient(135deg, rgba(0, 61, 155, 0.18) 0%, rgba(0, 61, 155, 0.04) 55%, transparent 56%);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-pressed) 18%, transparent) 0%, color-mix(in srgb, var(--accent-pressed) 4%, transparent) 55%, transparent 56%);
   cursor: nwse-resize;
   touch-action: none;
 }
@@ -14632,18 +14632,18 @@ body.xiaoze-popup-resize-active {
   left: 4px;
   width: 8px;
   height: 8px;
-  border-top: 2px solid rgba(0, 61, 155, 0.42);
-  border-left: 2px solid rgba(0, 61, 155, 0.42);
+  border-top: 2px solid color-mix(in srgb, var(--accent-pressed) 42%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--accent-pressed) 42%, transparent);
   border-radius: 2px 0 0 0;
   opacity: 0.85;
 }
 
 .xiaoze-popup-resize-handle:hover {
-  background: linear-gradient(135deg, rgba(0, 61, 155, 0.28) 0%, rgba(0, 61, 155, 0.08) 55%, transparent 56%);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-pressed) 28%, transparent) 0%, color-mix(in srgb, var(--accent-pressed) 8%, transparent) 55%, transparent 56%);
 }
 
 .xiaoze-popup-resize-handle:focus-visible {
-  background: linear-gradient(135deg, rgba(0, 61, 155, 0.28) 0%, rgba(0, 61, 155, 0.08) 55%, transparent 56%);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-pressed) 28%, transparent) 0%, color-mix(in srgb, var(--accent-pressed) 8%, transparent) 55%, transparent 56%);
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
@@ -14660,8 +14660,8 @@ body.xiaoze-popup-resize-active {
   inset: 0;
   pointer-events: none;
   background-image:
-    linear-gradient(rgba(0, 61, 155, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 61, 155, 0.035) 1px, transparent 1px);
+    linear-gradient(color-mix(in srgb, var(--accent-pressed) 4%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--accent-pressed) 4%, transparent) 1px, transparent 1px);
   background-size: 24px 24px;
   mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.5), transparent 72%);
 }
@@ -14755,7 +14755,7 @@ body.xiaoze-popup-resize-active {
   margin-left: 1px;
   vertical-align: text-bottom;
   border-radius: 1px;
-  background: rgba(0, 104, 123, 0.85);
+  background: color-mix(in srgb, var(--app-secondary) 85%, transparent);
   animation: xiaoze-streaming-cursor 1s steps(1) infinite;
 }
 
@@ -14772,16 +14772,16 @@ body.xiaoze-popup-resize-active {
 
 .copilotKitPopup [data-testid="copilot-input-overlay"] {
   padding: 0 14px 14px !important;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0), color-mix(in srgb, var(--surface) 92%, transparent) 28%, var(--surface) 100%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 0%, transparent), color-mix(in srgb, var(--surface) 92%, transparent) 28%, var(--surface) 100%);
 }
 
 .copilotKitPopup [data-testid="copilot-chat-disclaimer"],
 .copilotKitPopup .copilotKitInput + div {
   color: var(--text-muted) !important;
   font-size: var(--text-xs) !important;
-}
+}/* ── Message list + welcome guide ── */
 
-/* ── Message list + welcome guide ── */
+
 .xiaoze-message-view {
   display: grid;
   gap: var(--space-3);
@@ -14792,9 +14792,9 @@ body.xiaoze-popup-resize-active {
 .xiaoze-message-view[data-empty="true"] {
   min-height: 100%;
   align-content: start;
-}
+}/* ── Welcome panel ── */
 
-/* ── Welcome panel ── */
+
 .xiaoze-welcome {
   display: flex;
   flex-direction: column;
@@ -14859,7 +14859,7 @@ body.xiaoze-popup-resize-active {
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  background: linear-gradient(135deg, rgba(0, 61, 155, 0.1), rgba(0, 104, 123, 0.12));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-pressed) 10%, transparent), color-mix(in srgb, var(--app-secondary) 12%, transparent));
   color: var(--xiaoze-brand);
 }
 
@@ -14878,9 +14878,9 @@ body.xiaoze-popup-resize-active {
   color: var(--text-muted);
   font-size: var(--text-sm);
   line-height: 1.5;
-}
+}/* ── Header ── */
 
-/* ── Header ── */
+
 .xiaoze-chat-header-shell {
   position: relative;
   z-index: var(--z-topbar);
@@ -14959,13 +14959,13 @@ body.xiaoze-popup-resize-active {
 }
 
 .xiaoze-chat-header__button--primary {
-  background: linear-gradient(135deg, rgba(0, 61, 155, 0.08), rgba(0, 104, 123, 0.1));
-  border-color: rgba(0, 61, 155, 0.18);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-pressed) 8%, transparent), color-mix(in srgb, var(--app-secondary) 10%, transparent));
+  border-color: color-mix(in srgb, var(--accent-pressed) 18%, transparent);
   color: var(--xiaoze-brand);
 }
 
 .xiaoze-chat-header__button--primary:hover {
-  background: linear-gradient(135deg, rgba(0, 61, 155, 0.14), rgba(0, 104, 123, 0.16));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-pressed) 14%, transparent), color-mix(in srgb, var(--app-secondary) 16%, transparent));
 }
 
 .xiaoze-chat-header-shell [data-testid="copilot-close-button"] {
@@ -14974,10 +14974,10 @@ body.xiaoze-popup-resize-active {
 }
 
 .xiaoze-chat-header-shell [data-testid="copilot-close-button"]:hover {
-  background: rgba(0, 61, 155, 0.08);
-}
+  background: color-mix(in srgb, var(--accent-pressed) 8%, transparent);
+}/* ── History panel ── */
 
-/* ── History panel ── */
+
 .xiaoze-thread-history-shell {
   position: absolute;
   top: 100%;
@@ -14998,7 +14998,7 @@ body.xiaoze-popup-resize-active {
   border-bottom: 1px solid transparent;
   background: color-mix(in srgb, var(--surface) 96%, transparent);
   backdrop-filter: blur(16px);
-  box-shadow: 0 18px 36px rgba(15, 23, 42, 0);
+  box-shadow: 0 18px 36px color-mix(in srgb, var(--text) 0%, transparent);
   opacity: 0;
   transform: translateY(-8px);
   transition:
@@ -15046,7 +15046,7 @@ body.xiaoze-popup-resize-active {
   height: 22px;
   padding: 0 7px;
   border-radius: var(--radius-full);
-  background: rgba(0, 61, 155, 0.08);
+  background: color-mix(in srgb, var(--accent-pressed) 8%, transparent);
   color: var(--xiaoze-brand);
   font-size: var(--text-xs);
   font-weight: 700;
@@ -15157,7 +15157,7 @@ body.xiaoze-popup-resize-active {
 }
 
 .xiaoze-thread-history__item.is-active {
-  border-color: rgba(0, 61, 155, 0.28);
+  border-color: color-mix(in srgb, var(--accent-pressed) 28%, transparent);
   background: linear-gradient(135deg, rgba(244, 247, 255, 0.98), color-mix(in srgb, var(--surface) 96%, transparent));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-pressed) 8%, transparent), var(--xiaoze-shadow-soft);
 }
@@ -15196,9 +15196,9 @@ body.xiaoze-popup-resize-active {
   color: #94a3b8;
   font-size: var(--text-xs);
   white-space: nowrap;
-}
+}/* ── Messages ── */
 
-/* ── Messages ── */
+
 .xiaoze-user-message-block {
   display: grid;
   gap: var(--space-2);
@@ -15211,7 +15211,7 @@ body.xiaoze-popup-resize-active {
 .xiaoze-user-message__bubble {
   max-width: min(88%, 320px) !important;
   padding: 11px 14px !important;
-  border: 1px solid rgba(0, 61, 155, 0.12) !important;
+  border: 1px solid color-mix(in srgb, var(--accent-pressed) 12%, transparent) !important;
   border-radius: 18px 18px 4px 18px !important;
   background: linear-gradient(135deg, var(--xiaoze-brand), #0050bf) !important;
   color: var(--primary-foreground) !important;
@@ -15261,9 +15261,9 @@ body.xiaoze-popup-resize-active {
   line-height: 1.65;
   max-width: 100%;
   min-width: 0;
-}
+}/* ── Answer source citations ── */
 
-/* ── Answer source citations ── */
+
 .xiaoze-citation-sources {
   display: flex;
   flex-wrap: wrap;
@@ -15271,7 +15271,7 @@ body.xiaoze-popup-resize-active {
   gap: 6px;
   margin-top: 10px;
   padding-top: var(--space-2);
-  border-top: 1px dashed rgba(100, 116, 139, 0.35);
+  border-top: 1px dashed color-mix(in srgb, var(--text-muted) 35%, transparent);
 }
 
 .xiaoze-citation-sources__label {
@@ -15295,10 +15295,10 @@ body.xiaoze-popup-resize-active {
   max-width: 260px;
   overflow: hidden;
   padding: 2px var(--space-2);
-  border: 1px solid rgba(0, 104, 123, 0.28);
+  border: 1px solid color-mix(in srgb, var(--app-secondary) 28%, transparent);
   border-radius: var(--radius-full);
   background: rgba(236, 252, 255, 0.8);
-  color: #00687b;
+  color: var(--app-secondary);
   font-size: var(--text-sm);
   line-height: 1.5;
   text-decoration: none;
@@ -15307,7 +15307,7 @@ body.xiaoze-popup-resize-active {
 }
 
 .xiaoze-citation-sources__link:hover {
-  border-color: rgba(0, 104, 123, 0.55);
+  border-color: color-mix(in srgb, var(--app-secondary) 55%, transparent);
   background: rgba(220, 248, 255, 0.95);
   text-decoration: underline;
 }
@@ -15316,20 +15316,20 @@ body.xiaoze-popup-resize-active {
   color: #475569;
   border-color: color-mix(in srgb, var(--text-muted) 30%, transparent);
   background: rgba(241, 245, 249, 0.9);
-}
+}/* ── Reasoning ── */
 
-/* ── Reasoning ── */
+
 .xiaoze-reasoning-message {
   margin: var(--space-2) 0 10px;
   padding: 11px var(--space-3);
-  border: 1px solid rgba(0, 104, 123, 0.18);
+  border: 1px solid color-mix(in srgb, var(--app-secondary) 18%, transparent);
   border-radius: var(--xiaoze-radius-md);
   background: linear-gradient(135deg, rgba(244, 247, 255, 0.96), rgba(236, 252, 255, 0.92));
 }
 
 .xiaoze-reasoning-message.is-streaming {
-  border-color: rgba(0, 104, 123, 0.32);
-  box-shadow: 0 0 0 1px rgba(0, 104, 123, 0.08);
+  border-color: color-mix(in srgb, var(--app-secondary) 32%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--app-secondary) 8%, transparent);
 }
 
 .xiaoze-reasoning-message__toggle {
@@ -15355,7 +15355,7 @@ body.xiaoze-popup-resize-active {
   width: 24px;
   height: 24px;
   border-radius: var(--radius-md);
-  background: rgba(0, 104, 123, 0.12);
+  background: color-mix(in srgb, var(--app-secondary) 12%, transparent);
   color: var(--xiaoze-accent);
 }
 
@@ -15413,7 +15413,7 @@ body.xiaoze-popup-resize-active {
 .xiaoze-reasoning-message__body-shell.is-open .xiaoze-reasoning-message__body {
   margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px solid rgba(0, 104, 123, 0.14);
+  border-top: 1px solid color-mix(in srgb, var(--app-secondary) 14%, transparent);
   opacity: 1;
   transform: translateY(0);
 }
@@ -15425,7 +15425,7 @@ body.xiaoze-popup-resize-active {
   margin-left: 2px;
   vertical-align: text-bottom;
   border-radius: 1px;
-  background: rgba(0, 104, 123, 0.72);
+  background: color-mix(in srgb, var(--app-secondary) 72%, transparent);
   animation: xiaoze-reasoning-cursor 1s steps(1) infinite;
 }
 
@@ -15473,7 +15473,7 @@ body.xiaoze-popup-resize-active {
   justify-content: space-between;
   width: 100%;
   padding: var(--space-2) 10px;
-  border: 1px solid rgba(0, 104, 123, 0.12);
+  border: 1px solid color-mix(in srgb, var(--app-secondary) 12%, transparent);
   border-radius: var(--xiaoze-radius-sm);
   background: color-mix(in srgb, var(--surface) 72%, transparent);
   color: #475569;
@@ -15611,7 +15611,7 @@ body.xiaoze-popup-resize-active {
   gap: var(--space-1) var(--space-2);
   padding: var(--space-2) 10px;
   border-radius: var(--xiaoze-radius-sm);
-  background: rgba(0, 104, 123, 0.06);
+  background: color-mix(in srgb, var(--app-secondary) 6%, transparent);
   font-size: var(--text-sm);
 }
 
@@ -15636,9 +15636,9 @@ body.xiaoze-popup-resize-active {
 .xiaoze-turn-timeline__item.is-failed,
 .xiaoze-turn-timeline__item.is-forbidden {
   background: rgba(239, 68, 68, 0.08);
-}
+}/* ── Prompt debug (dev) ── */
 
-/* ── Prompt debug (dev) ── */
+
 .xiaoze-prompt-debug-anchor {
   margin: var(--space-2) 0 10px;
 }
@@ -15943,7 +15943,7 @@ body.xiaoze-popup-resize-active {
 }
 
 .insight-action:focus-visible {
-  outline: 2px solid rgba(0, 82, 204, 0.35);
+  outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
   outline-offset: 2px;
 }
 
@@ -16161,7 +16161,7 @@ body.xiaoze-popup-resize-active {
   gap: var(--space-2) var(--space-3);
   margin-bottom: var(--space-3);
   padding: var(--space-3) 14px;
-  border: 1px solid rgba(0, 82, 204, 0.18);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
   border-radius: var(--radius-lg);
   background: #f5f9ff;
 }
@@ -16285,11 +16285,11 @@ body.xiaoze-popup-resize-active {
   align-items: center;
   justify-content: flex-start;
   gap: 6px;
-}
-
-/* True mobile card stack only. Mid widths (641–960) keep a dense scrollable
+}/* True mobile card stack only. Mid widths (641–960) keep a dense scrollable
    table via `.param-admin-library-table` rules; do not force min-width:0 there
    or columns crush with no horizontal scroll. */
+
+
 @media (max-width: 640px) {
   .param-admin-shell .project-admin-library-table .parameters-table-scroll {
     overflow: visible;
@@ -16311,13 +16311,13 @@ body.xiaoze-popup-resize-active {
   .project-admin-library-table .project-admin-h-rail {
     display: none;
   }
-}
-
-/* Table column sizing for any non-card shell (≥641). Must stay outside the
+}/* Table column sizing for any non-card shell (≥641). Must stay outside the
    ≤640px card layout or white-space:nowrap leaks into cards and clips cells.
    Table min-width keeps nowrap columns from being crushed. Native overlay
    scrollbars stay hidden; `.project-admin-h-rail` is the always-visible drag
    handle (same pattern as `.dts-workbench-list__h-rail`). */
+
+
 @media (min-width: 641px) {
   .param-admin-shell .project-admin-library-table .parameters-table-scroll {
     max-height: none;
@@ -16367,7 +16367,7 @@ body.xiaoze-popup-resize-active {
     min-width: 40px;
     border-radius: var(--radius-full);
     background: #5b6f8a;
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--surface) 25%, transparent);
     cursor: grab;
     touch-action: none;
   }
@@ -16414,10 +16414,10 @@ body.xiaoze-popup-resize-active {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  /* 状态: keep the badge + filter compact and centered (global ParametersTable
+  }/* 状态: keep the badge + filter compact and centered (global ParametersTable
      nth-child(4) is 16%/120px and left-aligned for a different column map). */
+
+  
   .project-admin-library-grid th:nth-child(4),
   .project-admin-library-grid td:nth-child(4) {
     width: 1%;
@@ -16430,9 +16430,9 @@ body.xiaoze-popup-resize-active {
   .project-admin-library-grid th:nth-child(4) .param-admin-library-head-cell {
     justify-content: center;
     width: 100%;
-  }
+  }/* 冲突: short numeric attention column — override global 16%/112px slot. */
 
-  /* 冲突: short numeric attention column — override global 16%/112px slot. */
+  
   .project-admin-library-grid th:nth-child(5),
   .project-admin-library-grid td:nth-child(5) {
     width: 1%;
@@ -16583,9 +16583,9 @@ body.xiaoze-popup-resize-active {
 .dts-search-panel {
   display: grid;
   gap: var(--space-3);
-}
+}/* Only separate the search panel when something follows it. */
 
-/* Only separate the search panel when something follows it. */
+
 .dts-search-panel:not(:last-child) {
   margin-bottom: var(--space-4);
   padding-bottom: var(--space-4);
@@ -16661,8 +16661,8 @@ body.xiaoze-popup-resize-active {
   gap: var(--space-3);
 }
 
-.dts-structure-browser-panel.param-admin-panel {
-  /* Outer chrome from .param-admin-panel; keep inner spacing. */
+.dts-structure-browser-panel.param-admin-panel {/* Outer chrome from .param-admin-panel; keep inner spacing. */
+  
   gap: var(--space-3);
 }
 
@@ -16691,12 +16691,12 @@ body.xiaoze-popup-resize-active {
 
 .dts-structure-browser-panel__source code {
   color: var(--app-text);
-}
-
-/*
+}/*
  * regulator/thermal writes can damage hardware, so this reads as a warning rather
  * than as grey supporting text next to the value being changed.
  */
+
+
 .dts-structure-browser-panel__risk-note {
   display: flex;
   align-items: flex-start;
@@ -16766,13 +16766,13 @@ body.xiaoze-popup-resize-active {
   padding: 6px var(--space-2);
   border: 1px solid var(--outline);
   border-radius: var(--radius-sm);
-}
-
-/*
+}/*
  * The list grows with the page instead of scrolling inside a fixed 360px window.
  * On a route there is no outer scroll container to nest inside, so a viewport-relative
  * ceiling only engages for genuinely long trees.
  */
+
+
 .dts-node-tree-view__list {
   list-style: none;
   margin: 0;
@@ -16862,15 +16862,15 @@ body.xiaoze-popup-resize-active {
   gap: var(--space-2);
   padding-top: var(--space-2);
   border-top: 1px solid var(--outline);
-}
-
-/*
+}/*
  * Structured value editor.
  *
  * Every class below is emitted by StructuredValueEditor and had no rule anywhere in
  * the repository, so the highest-risk write path in the parameter admin rendered as
  * unstyled HTML: borderless inputs and bare-text buttons.
  */
+
+
 .structured-value-editor {
   display: grid;
   gap: 10px;
@@ -17027,14 +17027,14 @@ body.xiaoze-popup-resize-active {
 .structured-value-editor .field-error {
   color: #b42318;
   font-size: 0.75rem;
-}
+}/* Change-set action bar: the submit is the primary action, not trailing prose. */
 
-/* Change-set action bar: the submit is the primary action, not trailing prose. */
+
 .dts-structure-browser-panel__changeset {
   display: grid;
   gap: 10px;
   padding: var(--space-3);
-  border: 1px solid rgba(0, 82, 204, 0.18);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
   border-radius: 10px;
   background: #f8fbff;
 }
@@ -17065,8 +17065,8 @@ body.xiaoze-popup-resize-active {
   color: var(--app-muted);
 }
 
-.config-set-baseline-panel {
-  /* Panel chrome comes from .param-admin-panel when composed together. */
+.config-set-baseline-panel {/* Panel chrome comes from .param-admin-panel when composed together. */
+  
   gap: var(--space-4);
 }
 
@@ -17972,7 +17972,7 @@ body.xiaoze-popup-resize-active {
 }
 
 .param-admin-module-row.is-child .param-admin-module-name-cell {
-  border-left: 2px solid rgba(0, 82, 204, 0.16);
+  border-left: 2px solid color-mix(in srgb, var(--accent) 16%, transparent);
   padding-left: 10px;
 }
 
@@ -18013,8 +18013,8 @@ body.xiaoze-popup-resize-active {
 }
 
 .param-admin-module-edit-dialog {
-  max-width: 560px;
-  /* Leave room for the Xiaoze FAB and short viewports so actions stay on-screen. */
+  max-width: 560px;/* Leave room for the Xiaoze FAB and short viewports so actions stay on-screen. */
+  
   max-height: min(720px, calc(100dvh - 96px));
   overflow: hidden;
 }
@@ -18039,8 +18039,8 @@ body.xiaoze-popup-resize-active {
 }
 
 .spec-create-dialog.param-admin-module-edit-dialog {
-  max-width: 640px;
-  /* Extra clearance for the Xiaoze FAB on short viewports. */
+  max-width: 640px;/* Extra clearance for the Xiaoze FAB on short viewports. */
+  
   max-height: min(760px, calc(100dvh - 120px));
 }
 
@@ -18691,11 +18691,11 @@ body.xiaoze-popup-resize-active {
 .parameter-spec-library-grid th,
 .parameter-spec-library-grid td {
   max-width: none;
-}
-
-/* Spec library is dense and fully visible — do not inherit sticky freeze
+}/* Spec library is dense and fully visible — do not inherit sticky freeze
    columns from the shared parameters grid (sticky-right creates a blank gap).
    Match the mid-width media-query specificity so sticky is not re-enabled. */
+
+
 .param-admin-shell .param-admin-library-table .parameter-spec-library-grid th,
 .param-admin-shell .param-admin-library-table .parameter-spec-library-grid td,
 .param-admin-shell .param-admin-library-table .parameter-spec-library-grid th:first-child,
@@ -18717,10 +18717,10 @@ body.xiaoze-popup-resize-active {
 
 .param-admin-shell .param-admin-library-table .parameter-spec-library-grid tbody td {
   background: var(--surface);
-}
-
-/* Explicit non-zero widths under table-layout:fixed. Do not mix width:100% /
+}/* Explicit non-zero widths under table-layout:fixed. Do not mix width:100% /
    width:auto here — that collapses middle columns to 0 and leaves a right gap. */
+
+
 .param-admin-shell .parameter-spec-library-grid .parameter-spec-library-grid__col-index {
   width: 48px;
 }
@@ -18922,8 +18922,8 @@ body.xiaoze-popup-resize-active {
   width: min(480px, calc(100vw - 48px));
   max-height: min(88vh, 640px);
   gap: 14px;
-  padding: 18px var(--space-5) var(--space-4);
-  /* Keep ModuleTreeSelect menu visible above the dialog chrome. */
+  padding: 18px var(--space-5) var(--space-4);/* Keep ModuleTreeSelect menu visible above the dialog chrome. */
+  
   overflow: visible;
 }
 
@@ -19059,9 +19059,9 @@ body.xiaoze-popup-resize-active {
 
 .param-admin-confirm-dialog .dialog-actions {
   margin-top: 2px;
-}
+}/* Secondary confirm / cutover reason stacks nested in editor dialogs. */
 
-/* Secondary confirm / cutover reason stacks nested in editor dialogs. */
+
 .submission-dialog .form-stack {
   display: flex;
   flex-direction: column;
@@ -20432,7 +20432,7 @@ body.xiaoze-popup-resize-active {
 
 .param-admin-shell .config-form-grid input[aria-invalid="true"] {
   border-color: var(--danger);
-  box-shadow: 0 0 0 3px rgba(186, 26, 26, 0.1);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 10%, transparent);
 }
 
 .range-pair {
@@ -20762,7 +20762,7 @@ body.xiaoze-popup-resize-active {
   justify-content: center;
   gap: 6px;
   border-radius: var(--radius-full);
-  background: #e2e8f0;
+  background: var(--border);
   color: var(--text-secondary);
   font-size: 0.78rem;
   font-weight: 700;
@@ -21329,7 +21329,7 @@ body.xiaoze-popup-resize-active {
   gap: var(--space-1);
   min-height: 28px;
   padding: 0 9px;
-  border: 1px solid rgba(0, 82, 204, 0.18);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
   border-radius: 7px;
   background: #f8fbff;
   color: var(--app-primary);
@@ -21354,7 +21354,7 @@ body.xiaoze-popup-resize-active {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-4);
-  border: 1px solid rgba(0, 82, 204, 0.18);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
   border-radius: 10px;
   background: #f8fbff;
   box-shadow: 0 14px 28px color-mix(in srgb, var(--text) 8%, transparent);
@@ -21372,9 +21372,9 @@ body.xiaoze-popup-resize-active {
   margin-top: var(--space-1);
   color: var(--text);
   font-size: 1rem;
-}
+}/* Icon-only square close button. */
 
-/* Icon-only square close button. */
+
 .project-init-parameter-detail__head .button {
   min-width: 32px;
   padding: 0;
@@ -21447,9 +21447,9 @@ body.xiaoze-popup-resize-active {
   color: var(--text-muted);
   font-size: 0.82rem;
   font-weight: 700;
-}
+}/* Wizard footer CTAs keep a stable minimum width (layout affordance). */
 
-/* Wizard footer CTAs keep a stable minimum width (layout affordance). */
+
 .project-init-footer .button {
   min-width: 96px;
 }
@@ -21460,7 +21460,7 @@ body.xiaoze-popup-resize-active {
 
 .project-init-step-summary {
   padding: 10px var(--space-3);
-  border: 1px solid rgba(0, 82, 204, 0.16);
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, transparent);
   border-radius: var(--radius-md);
   background: #f8fbff;
 }
@@ -21583,9 +21583,9 @@ body.xiaoze-popup-resize-active {
   .project-init-footer .button {
     width: 100%;
   }
-}
+}/* Parameter import wizard — scoped under .parameter-import-wizard */
 
-/* Parameter import wizard — scoped under .parameter-import-wizard */
+
 .parameter-import-wizard.submission-dialog--wide {
   width: min(960px, calc(100vw - 48px));
   max-height: min(90vh, 920px);
@@ -21608,7 +21608,7 @@ body.xiaoze-popup-resize-active {
   justify-content: center;
   gap: 6px;
   border-radius: var(--radius-full);
-  background: #e2e8f0;
+  background: var(--border);
   color: var(--text-secondary);
   font-size: 0.78rem;
   font-weight: 700;
@@ -21924,8 +21924,8 @@ body.xiaoze-popup-resize-active {
   justify-content: center;
 }
 
-.parameter-import-paste-backdrop {
-  /* Opened from inside the import wizard dialog. */
+.parameter-import-paste-backdrop {/* Opened from inside the import wizard dialog. */
+  
   z-index: var(--z-modal-backdrop-nested);
 }
 
@@ -22016,7 +22016,7 @@ body.xiaoze-popup-resize-active {
 
 .parameter-import-wizard .parameter-import-wizard-errors {
   padding: var(--space-3) 14px;
-  border: 1px solid rgba(186, 26, 26, 0.24);
+  border: 1px solid color-mix(in srgb, var(--danger) 24%, transparent);
   border-radius: 10px;
   background: #fff5f5;
   color: #991b1b;
@@ -22107,7 +22107,7 @@ body.xiaoze-popup-resize-active {
 
 .parameter-import-wizard .import-review-status-badge {
   color: var(--text-secondary);
-  background: #e2e8f0;
+  background: var(--border);
 }
 
 .parameter-import-wizard .import-review-badge-new {
@@ -22247,7 +22247,7 @@ body.xiaoze-popup-resize-active {
   padding: var(--space-2) var(--space-8) var(--space-2) 10px;
   border: 1px solid var(--outline);
   border-radius: var(--radius-md);
-  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center;
+  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center;
   color: var(--text);
   font-size: var(--text-base);
   appearance: none;
@@ -22279,9 +22279,9 @@ body.xiaoze-popup-resize-active {
     min-width: 0;
     width: 100%;
   }
-}
+}/* Project topology workspace (Task 13) */
 
-/* Project topology workspace (Task 13) */
+
 .project-topology-workspace {
   display: grid;
   gap: var(--space-3);
@@ -22665,21 +22665,21 @@ body.xiaoze-popup-resize-active {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-}
-
-/*
+}/*
  * Integrated DTS workbench
  *
  * This surface intentionally stays scoped to the semantic workbench. The
  * existing mock-mode parameter table keeps its mature styling, while API mode
  * gains a topology-aware browse surface without changing the binding contract.
  */
+
+
 .dts-parameter-workbench {
   --dts-workbench-ink: #152238;
   --dts-workbench-muted: #52657d;
   --dts-workbench-border: #dbe3ef;
   --dts-workbench-border-strong: #bac8dc;
-  --dts-workbench-surface: #ffffff;
+  --dts-workbench-surface: var(--surface);
   --dts-workbench-surface-soft: #f7f9fd;
   --dts-workbench-blue: #075bc4;
   --dts-workbench-blue-soft: #e8f1ff;
@@ -22688,9 +22688,9 @@ body.xiaoze-popup-resize-active {
   --dts-workbench-amber: #9c5b08;
   --dts-workbench-amber-soft: #fff5df;
   --dts-workbench-red: #b52a32;
-  --dts-workbench-red-soft: #fff0f1;
-  /* Plain layout container: the toolbar / tray / navigator / list are the single
+  --dts-workbench-red-soft: #fff0f1;/* Plain layout container: the toolbar / tray / navigator / list are the single
      visible card level, so the page stays within the two-level nesting budget. */
+  
   display: grid;
   gap: var(--space-4);
   min-width: 0;
@@ -22734,10 +22734,10 @@ body.xiaoze-popup-resize-active {
 
 @keyframes dts-status-spin {
   to { transform: rotate(360deg); }
-}
-
-/* The workbench-wide reduce rule only covers descendants of
+}/* The workbench-wide reduce rule only covers descendants of
    .dts-parameter-workbench; this icon also renders in portalled dialogs. */
+
+
 @media (prefers-reduced-motion: reduce) {
   .dts-status-icon--spin {
     animation: none;
@@ -22883,10 +22883,10 @@ body.xiaoze-popup-resize-active {
   border-color: var(--dts-workbench-blue);
   outline: 3px solid color-mix(in srgb, var(--dts-workbench-blue) 22%, transparent);
   outline-offset: 1px;
-}
-
-/* Workbench and tray CTAs use the lg control height (36px): prominent
+}/* Workbench and tray CTAs use the lg control height (36px): prominent
    actions in dense canvases and sticky trays; visuals come from the base. */
+
+
 .dts-parameter-workbench .button,
 .dts-binding-draft-tray .button,
 .dts-reload-run-tray .button {
@@ -22939,9 +22939,9 @@ body.xiaoze-popup-resize-active {
   overflow: hidden;
 }
 
-.dts-workbench-list {
-  /* Outer shell frames the dual-axis scrollports so the horizontal bar stays
+.dts-workbench-list {/* Outer shell frames the dual-axis scrollports so the horizontal bar stays
    * on the visible panel edge instead of under thousands of rows. */
+  
   display: grid;
   grid-template-rows: minmax(0, 1fr) 14px;
   height: min(670px, calc(100vh - 230px));
@@ -22950,8 +22950,8 @@ body.xiaoze-popup-resize-active {
   overflow: hidden;
 }
 
-.dts-workbench-list__scroll-x {
-  /* Content pane; horizontal position syncs with the always-visible rail. */
+.dts-workbench-list__scroll-x {/* Content pane; horizontal position syncs with the always-visible rail. */
+  
   box-sizing: border-box;
   min-height: 0;
   overflow-x: auto;
@@ -22990,9 +22990,9 @@ body.xiaoze-popup-resize-active {
   border-radius: var(--radius-full);
 }
 
-.dts-workbench-list__h-rail {
-  /* Dedicated 14px track so horizontal scrolling stays discoverable even when
+.dts-workbench-list__h-rail {/* Dedicated 14px track so horizontal scrolling stays discoverable even when
    * the OS uses overlay scrollbars on the content pane. */
+  
   box-sizing: border-box;
   height: 14px;
   overflow-x: scroll;
@@ -23195,8 +23195,8 @@ button.dts-topology-navigator__disclosure:focus-visible {
 }
 
 .dts-parameter-workbench-table--surface-mvp .dts-parameter-workbench-table__head,
-.dts-parameter-workbench-table--surface-mvp .dts-parameter-workbench-table__row {
-  /* select + 参数名 + 模块 + 当前值 + 重要性 + 操作 (driver demoted to detail) */
+.dts-parameter-workbench-table--surface-mvp .dts-parameter-workbench-table__row {/* select + 参数名 + 模块 + 当前值 + 重要性 + 操作 (driver demoted to detail) */
+  
   grid-template-columns: 36px minmax(120px, 1fr) minmax(120px, 1fr) minmax(160px, 1.25fr) 68px 76px;
   min-width: 680px;
 }
@@ -23205,16 +23205,16 @@ button.dts-topology-navigator__disclosure:focus-visible {
   display: none;
 }
 
-.dts-parameter-workbench-table {
-  /* Sum of column mins + gaps + row padding so narrow rails scroll instead of crushing cells. */
+.dts-parameter-workbench-table {/* Sum of column mins + gaps + row padding so narrow rails scroll instead of crushing cells. */
+  
   min-width: 680px;
   width: max(100%, 680px);
 }
 
 .dts-parameter-workbench-table__head,
 .dts-parameter-workbench-table__row {
-  display: grid;
-  /* select + 参数名 + 模块 + 器件/驱动 + 当前值 + 重要性 + 操作 */
+  display: grid;/* select + 参数名 + 模块 + 器件/驱动 + 当前值 + 重要性 + 操作 */
+  
   grid-template-columns: 36px minmax(120px, .9fr) minmax(120px, .95fr) minmax(145px, 1.05fr) minmax(160px, 1.2fr) 68px 76px;
   gap: 10px;
   align-items: center;
@@ -23465,9 +23465,9 @@ button.dts-topology-navigator__disclosure:focus-visible {
   align-items: center;
   justify-content: flex-start;
   gap: var(--space-1);
-}
+}/* Icon-only square row actions (md control size). */
 
-/* Icon-only square row actions (md control size). */
+
 .dts-parameter-workbench-table__actions .button,
 .dts-parameter-workbench-table__icon-action {
   display: inline-flex;
@@ -23519,10 +23519,10 @@ button.dts-topology-navigator__disclosure:focus-visible {
   justify-content: space-between;
   gap: var(--space-3);
   min-width: 0;
-}
-
-/* Right-aligned count ("本轮 N 项") must never wrap one character per line
+}/* Right-aligned count ("本轮 N 项") must never wrap one character per line
    when the tray gets narrow. */
+
+
 .dts-binding-draft-tray header > span {
   flex: 0 0 auto;
   white-space: nowrap;
@@ -23563,9 +23563,9 @@ button.dts-topology-navigator__disclosure:focus-visible {
   justify-content: space-between;
   gap: 10px;
   min-width: 0;
-}
+}/* Inline heading action uses the md height, not the tray's lg override. */
 
-/* Inline heading action uses the md height, not the tray's lg override. */
+
 .dts-binding-draft-tray__item-heading > .button {
   flex: 0 0 auto;
   min-height: 32px;
@@ -23715,8 +23715,8 @@ button.dts-topology-navigator__disclosure:focus-visible {
   --dts-dialog-border: #dbe3ef;
   --dts-workbench-ink: #152238;
   --dts-workbench-muted: #52657d;
-  --dts-workbench-blue: #075bc4;
-  /* Override DialogContent default sm:max-w-sm (~384px). */
+  --dts-workbench-blue: #075bc4;/* Override DialogContent default sm:max-w-sm (~384px). */
+  
   width: min(64rem, calc(100vw - 2rem));
   max-width: min(64rem, calc(100vw - 2rem));
   color: var(--dts-workbench-ink);
@@ -24892,7 +24892,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
 }
 
 .parameter-module-mapping-panel__tree-item.is-child {
-  border-left: 2px solid rgba(0, 82, 204, 0.12);
+  border-left: 2px solid color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .parameter-module-mapping-panel__tree-row {
@@ -25353,9 +25353,9 @@ button.dts-topology-navigator__disclosure:focus-visible {
 
 .module-attribution-tree__more {
   position: relative;
-}
+}/* Portaled to document.body — must not rely on .param-admin-shell ancestors. */
 
-/* Portaled to document.body — must not rely on .param-admin-shell ancestors. */
+
 .module-attribution-tree__more-menu {
   position: fixed;
   z-index: 80;
@@ -25400,10 +25400,10 @@ button.dts-topology-navigator__disclosure:focus-visible {
 
 .module-attribution-tree__more-menu .dropdown-item--danger:hover {
   background: rgba(180, 35, 24, 0.06);
-}
-
-/* Compact ghost row actions inside the attribution tree (sm-height,
+}/* Compact ghost row actions inside the attribution tree (sm-height,
    transparent) — functional density override for table-inline buttons. */
+
+
 .module-attribution-tree__actions .button {
   min-height: 28px;
   padding: 2px var(--space-2);
@@ -25484,7 +25484,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
 
 .register-driver-dialog__input:focus-visible,
 .register-driver-dialog .module-tree-trigger:focus-visible {
-  outline: 2px solid rgba(0, 82, 204, 0.35);
+  outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
   outline-offset: 1px;
 }
 
@@ -25614,8 +25614,8 @@ button.dts-topology-navigator__disclosure:focus-visible {
   gap: var(--space-1);
 }
 
-.organization-driver-schema-dialog.submission-dialog {
-  /* Leave room for the Xiaoze FAB and short viewports so actions stay on-screen. */
+.organization-driver-schema-dialog.submission-dialog {/* Leave room for the Xiaoze FAB and short viewports so actions stay on-screen. */
+  
   max-height: min(720px, calc(100dvh - 96px));
   overflow: hidden;
 }
@@ -25857,8 +25857,8 @@ button.dts-topology-navigator__disclosure:focus-visible {
   color: #5a6b82;
 }
 
-.organization-driver-schema-stack-backdrop {
-  /* Above the Xiaoze FAB so dialog actions remain clickable; see the scale in :root. */
+.organization-driver-schema-stack-backdrop {/* Above the Xiaoze FAB so dialog actions remain clickable; see the scale in :root. */
+  
   z-index: var(--z-modal-backdrop);
 }
 
@@ -25943,23 +25943,23 @@ button.dts-topology-navigator__disclosure:focus-visible {
   white-space: nowrap;
   max-width: 260px;
   font-size: var(--text-xs);
-}
+}/* Inline text-level actions inside rule rows (compact density override). */
 
-/* Inline text-level actions inside rule rows (compact density override). */
+
 .module-attribution-tree__rules .button {
   padding: 0 var(--space-1);
   min-height: 0;
   font-size: var(--text-xs);
 }
 
-.module-move-dialog.submission-dialog {
-  /* Short form; keep overflow visible so ModuleTreeSelect menu is not clipped. */
+.module-move-dialog.submission-dialog {/* Short form; keep overflow visible so ModuleTreeSelect menu is not clipped. */
+  
   overflow: visible;
 }
 
-.module-create-dialog.submission-dialog {
-  /* Must contain the long create form (kind + parent + definition + compatibles)
+.module-create-dialog.submission-dialog {/* Must contain the long create form (kind + parent + definition + compatibles)
      inside max-height; overflow:visible made Exact compatible spill over the footer. */
+  
   overflow: hidden;
 }
 
@@ -26569,13 +26569,13 @@ button.dts-topology-navigator__disclosure:focus-visible {
   margin: 0;
   font-size: var(--text-base);
   color: var(--muted);
-}
-
-/*
+}/*
  * Spec-review is a 7-col grid. Override the shared library 6-col nth-child widths
  * so table-layout:fixed percentages fill the row (otherwise a large right gap appears).
  * Columns: # | 参数名 | 节点 | 所属模块 | 匹配状态 | 受影响项目 | 操作
  */
+
+
 .param-admin-shell .param-admin-library-table .parameter-spec-library-grid.spec-review-library-grid th:nth-child(1),
 .param-admin-shell .param-admin-library-table .parameter-spec-library-grid.spec-review-library-grid td:nth-child(1) {
   width: 48px;
@@ -26626,13 +26626,13 @@ button.dts-topology-navigator__disclosure:focus-visible {
   min-width: 88px;
   max-width: 88px;
   text-align: left;
-}
-
-/*
+}/*
  * Narrow: hide 所属模块 + 受影响项目 and stretch remaining columns.
  * Spec-review omits <colgroup> so display:none cells do not leave a right gap
  * under table-layout:fixed.
  */
+
+
 @media (max-width: 1180px) {
   .parameters-table-grid.spec-review-library-grid th:nth-child(4),
   .parameters-table-grid.spec-review-library-grid td:nth-child(4),
@@ -26683,13 +26683,13 @@ button.dts-topology-navigator__disclosure:focus-visible {
 .param-admin-shell .param-admin-library-table .param-admin-row-action {
   min-height: 26px;
   padding: 2px var(--space-2);
-}
-
-/* Keep the org admin library as a dense scrollable table in mid widths;
+}/* Keep the org admin library as a dense scrollable table in mid widths;
    the global ≤960px card stack is too sparse for 200+ specs. */
-@media (max-width: 960px) and (min-width: 641px) {
-  /* Project list keeps its own visible horizontal scrollbar chrome
+
+
+@media (max-width: 960px) and (min-width: 641px) {/* Project list keeps its own visible horizontal scrollbar chrome
      (see `.project-admin-library-table` rules); do not reset overflow here. */
+  
   .param-admin-shell .param-admin-library-table:not(.project-admin-library-table) .parameters-table-scroll {
     overflow: auto;
     border: 1px solid var(--outline);
@@ -26749,10 +26749,10 @@ button.dts-topology-navigator__disclosure:focus-visible {
     border-bottom: 1px solid #e7ecf7;
     border-right: 1px solid #edf1f8;
     grid-template-columns: none;
-  }
-
-  /* Keep explicit column widths for the spec library (width:auto above would
+  }/* Keep explicit column widths for the spec library (width:auto above would
      collapse middle columns under table-layout:fixed). */
+
+  
   .param-admin-shell .param-admin-library-table .parameter-spec-library-grid td:nth-child(2) {
     width: 22%;
   }
@@ -26772,11 +26772,11 @@ button.dts-topology-navigator__disclosure:focus-visible {
 
   .param-admin-shell .param-admin-library-table .parameters-table-grid td::before {
     content: none;
-  }
-
-  /* Freeze columns only for horizontally scrollable library grids.
+  }/* Freeze columns only for horizontally scrollable library grids.
      Spec library fills the viewport — sticky-right opens a blank gap.
      Project list uses its own static column sizing. */
+
+  
   .param-admin-shell .param-admin-library-table:not(.project-admin-library-table) .parameters-table-grid:not(.parameter-spec-library-grid) th:first-child,
   .param-admin-shell .param-admin-library-table:not(.project-admin-library-table) .parameters-table-grid:not(.parameter-spec-library-grid) td:first-child,
   .param-admin-shell .param-admin-library-table:not(.project-admin-library-table) .parameters-table-grid:not(.parameter-spec-library-grid) th:nth-child(2),
@@ -26884,7 +26884,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
 
 .project-primary-dts-viewer__find-match.is-active {
   background: rgba(245, 158, 11, 0.65);
-  outline: 1px solid rgba(217, 119, 6, 0.55);
+  outline: 1px solid color-mix(in srgb, var(--warning) 55%, transparent);
 }
 
 .platform-console-page {
@@ -27012,9 +27012,9 @@ button.dts-topology-navigator__disclosure:focus-visible {
   .platform-console-candidate__actions .button {
     flex: 1 1 auto;
   }
-}
+}/* === Project configuration workbench (read-only tracer) ================== */
 
-/* === Project configuration workbench (read-only tracer) ================== */
+
 
 .main-content:has(.param-admin-shell--configuration-workbench) {
   padding-bottom: var(--space-6);
@@ -27310,10 +27310,10 @@ button.dts-topology-navigator__disclosure:focus-visible {
   padding: 3px var(--space-2);
   background: var(--surface-bright);
   border-bottom: 1px solid var(--outline);
-}
-
-/* Compact ghost tool toggles in the dense workbench toolbar (sm height,
+}/* Compact ghost tool toggles in the dense workbench toolbar (sm height,
    transparent) — functional density override. */
+
+
 .configuration-workbench__mobile-tools .button {
   min-height: 28px;
   padding: 0 var(--space-2);
@@ -27355,7 +27355,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
   --dts-workbench-muted: #52657d;
   --dts-workbench-border: #dbe3ef;
   --dts-workbench-border-strong: #bac8dc;
-  --dts-workbench-surface: #ffffff;
+  --dts-workbench-surface: var(--surface);
   --dts-workbench-surface-soft: #f7f9fd;
   --dts-workbench-blue: #075bc4;
   --dts-workbench-blue-soft: #e8f1ff;
@@ -27418,9 +27418,9 @@ button.dts-topology-navigator__disclosure:focus-visible {
   font-size: var(--text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
-}
+}/* Icon-only square expand/collapse control (compact 28px). */
 
-/* Icon-only square expand/collapse control (compact 28px). */
+
 .configuration-workbench__region-head .button {
   flex: 0 0 28px;
   min-height: 28px;
@@ -27474,8 +27474,8 @@ button.dts-topology-navigator__disclosure:focus-visible {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.3rem;
-}
-/* Compact search-bar actions (sm-height density override). */
+}/* Compact search-bar actions (sm-height density override). */
+
 .configuration-workbench__search-actions .button {
   flex: 0 0 auto;
   min-height: 28px;
@@ -27651,9 +27651,9 @@ button.dts-topology-navigator__disclosure:focus-visible {
 
 .configuration-workbench__ungrouped-file small {
   font-size: 9px;
-}
+}/* Table-inline compact action (24px density override). */
 
-/* Table-inline compact action (24px density override). */
+
 .configuration-workbench__ungrouped-file .button {
   justify-self: start;
   min-height: 24px;
@@ -27798,10 +27798,10 @@ button.dts-topology-navigator__disclosure:focus-visible {
   color: var(--configuration-source-text);
   font: 12px/21px "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   tab-size: 2;
-}
-
-/* ProjectPrimaryDtsViewer defaults to a light modal-like card (max-height + radius).
+}/* ProjectPrimaryDtsViewer defaults to a light modal-like card (max-height + radius).
    Inside the configuration workbench it must be a full-bleed source canvas. */
+
+
 .configuration-workbench__source .project-primary-dts-viewer {
   display: flex;
   flex: 1 1 auto;
@@ -28083,9 +28083,9 @@ button.dts-topology-navigator__disclosure:focus-visible {
   overflow-wrap: anywhere;
   font-size: var(--text-xs);
   font-weight: 700;
-}
+}/* Raw version id demoted to a code-style secondary line inside the inspector. */
 
-/* Raw version id demoted to a code-style secondary line inside the inspector. */
+
 .configuration-workbench__version-id {
   display: block;
   margin-top: var(--space-1);
@@ -28233,8 +28233,8 @@ button.dts-topology-navigator__disclosure:focus-visible {
 
 .configuration-workbench__tasks.is-open {
   position: absolute;
-  inset: auto 0 0;
-  /* Above body/inspector stacking (tree z=1, inspector z=3) so dock actions stay clickable. */
+  inset: auto 0 0;/* Above body/inspector stacking (tree z=1, inspector z=3) so dock actions stay clickable. */
+  
   z-index: 10;
   grid-template-rows: 44px minmax(0, 1fr);
   width: 100%;
@@ -28265,10 +28265,10 @@ button.dts-topology-navigator__disclosure:focus-visible {
 
 .configuration-workbench__tasks > .configuration-workbench__task-toggle strong {
   color: var(--text);
-}
+}/* workbench conflict arbitration dock */
 
 
-/* workbench conflict arbitration dock */
+
 .workbench-conflict-dock {
   margin-top: var(--space-3);
   padding-top: var(--space-2);
@@ -28514,9 +28514,9 @@ button.dts-topology-navigator__disclosure:focus-visible {
 .configuration-workbench__baseline-compare ul {
   margin: 0.35rem 0 0;
   padding-left: 1rem;
-}
+}/* Knowledge base (Phase 1) */
 
-/* Knowledge base (Phase 1) */
+
 
 .knowledge-markdown-preview h1,
 .knowledge-markdown-preview h2,
@@ -28569,7 +28569,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
 .knowledge-markdown-preview code {
   padding: 0.1em 0.35em;
   border-radius: 4px;
-  background: rgba(100, 116, 139, 0.14);
+  background: color-mix(in srgb, var(--text-muted) 14%, transparent);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.85em;
 }
@@ -28578,16 +28578,16 @@ button.dts-topology-navigator__disclosure:focus-visible {
   margin: 0.5em 0;
   padding: 0.7em 0.9em;
   border-radius: var(--radius-md);
-  background: rgba(15, 23, 42, 0.06);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
   overflow: auto;
 }
 
 .knowledge-markdown-preview pre code {
   padding: 0;
   background: none;
-}
+}/* Knowledge ↔ parameter definition references (deferred roadmap item 2) */
 
-/* Knowledge ↔ parameter definition references (deferred roadmap item 2) */
+
 
 .knowledge-parameter-reference-chips {
   display: flex;
@@ -28699,14 +28699,14 @@ button.knowledge-parameter-reference-chip__link:hover {
   -webkit-box-orient: vertical;
   font-size: var(--text-xs);
   color: var(--muted-foreground);
-}
-
-/* ---------------------------------------------------------------------------
+}/* ---------------------------------------------------------------------------
  * Dialog width tiers (ui-design-system §Dialogs): sm 400 / md 560 / lg 720.
  * Migrated dialogs snap to the nearest tier via these classes; cards with a
  * justified special width (data-heavy detail/compare surfaces ≥ 900px) keep
  * their own width class instead.
  * ------------------------------------------------------------------------- */
+
+
 
 .modal-card--sm {
   width: min(400px, calc(100vw - 48px));
@@ -28718,11 +28718,11 @@ button.knowledge-parameter-reference-chip__link:hover {
 
 .modal-card--lg {
   width: min(720px, calc(100vw - 48px));
-}
-
-/* Form-card dialogs migrated to ModalDialog keep their grid card class on the
+}/* Form-card dialogs migrated to ModalDialog keep their grid card class on the
  * dialog card; the inner <form> becomes a pass-through so its children remain
  * direct grid items of the card. */
+
+
 .modal-form-contents {
   display: contents;
 }

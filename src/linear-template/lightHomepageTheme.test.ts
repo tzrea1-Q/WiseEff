@@ -18,7 +18,7 @@ describe("WiseEff mature homepage theme", () => {
       "linear-gradient(180deg, #fbfcff 0%, #f4f7ff 56%, #fbfcff 100%)"
     );
     expect(card["border-radius"]).toBe("var(--radius-md)");
-    expect(card.background).toContain("#ffffff");
+    expect(card.background).toContain("var(--surface)");
     expect(card["box-shadow"]).toBeTruthy();
     expect(card["min-height"]).toBe("328px");
     expect(card.transition).toContain("transform var(--duration-base) var(--ease-out)");
