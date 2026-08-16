@@ -154,4 +154,45 @@ describe("ModalDialog", () => {
     expect(inner).toHaveBeenCalledTimes(1);
     expect(outer).not.toHaveBeenCalled();
   });
+
+  it("invokes the latest onDismiss even before the keydown effect re-subscribes", async () => {
+    const closeImmediately = vi.fn();
+    const openConfirm = vi.fn();
+    let markDirty: () => void = () => {};
+
+    function StaleDismissHarness() {
+      const [dirty, setDirty] = useState(false);
+      markDirty = () => setDirty(true);
+      return (
+        <ModalDialog open onDismiss={dirty ? openConfirm : closeImmediately} className="confirm-dialog">
+          {({ titleId }) => (
+            <>
+              <h2 id={titleId}>测试弹窗</h2>
+              {dirty ? <span>已变脏</span> : null}
+            </>
+          )}
+        </ModalDialog>
+      );
+    }
+
+    render(<StaleDismissHarness />);
+
+    // Dispatch Escape from the MutationObserver that sees the dirty commit —
+    // the same window as findByRole resolving — before useEffect rebinds.
+    await new Promise<void>((resolve) => {
+      const observer = new MutationObserver(() => {
+        if (!document.body.textContent?.includes("已变脏")) {
+          return;
+        }
+        observer.disconnect();
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        resolve();
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+      markDirty();
+    });
+
+    expect(closeImmediately).not.toHaveBeenCalled();
+    expect(openConfirm).toHaveBeenCalledTimes(1);
+  });
 });
