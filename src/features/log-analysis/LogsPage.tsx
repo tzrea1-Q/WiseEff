@@ -5,6 +5,7 @@ import { type PageProps } from "@/app/routes";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { RelatedKnowledgeSection } from "@/features/log-analysis/RelatedKnowledgeSection";
 import type { LogDomain } from "@/domain/logs/types";
+import { isSupportedLogUploadFileName, mockLogUploadAccept } from "@/domain/logs/uploadExtensions";
 import { formatPercent, normalizePercentValue } from "@/domain/format/formatPercent";
 import { SEVERITY_LABELS, STAGE_LABELS, type LogEvidence, type LogRecord, type LogStageId } from "@/domain/prototype/types";
 import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
@@ -460,7 +461,7 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
       />
       {uploadDialogOpen ? (
         <UploadLogDialog
-          accept={logActions ? null : ".log,.txt,.json"}
+          accept={logActions ? null : mockLogUploadAccept}
           archivesSupported={!!logActions}
           domains={uploadLogDomains}
           onClose={() => setUploadDialogOpen(false)}
@@ -518,15 +519,13 @@ export function LogsPage({ state, dispatch, onNavigate, logActions, runtime, kno
 }
 
 function isSupportedLogFile(fileName: string, archivesSupported = false) {
-  // API mode also accepts .csv text plus .gz / single-entry .zip archives
-  // (unpacked server-side); mock mode keeps its original .log/.txt/.json set.
-  return archivesSupported ? /\.(log|txt|csv|json|gz|zip)$/i.test(fileName) : /\.(log|txt|json)$/i.test(fileName);
+  return isSupportedLogUploadFileName(fileName, archivesSupported);
 }
 
 const UNCATEGORIZED_LOG_DOMAIN_VALUE = "";
 
 function UploadLogDialog({
-  accept = ".log,.txt,.json",
+  accept = mockLogUploadAccept,
   archivesSupported = false,
   domains = [],
   onClose,
@@ -638,8 +637,8 @@ function UploadLogDialog({
             <h2 id={titleId}><strong>上传日志</strong></h2>
             <p>
               {archivesSupported
-                ? "选择 .log / .txt / .csv 文本日志，或单文件 .gz、单条目 .zip 压缩包（服务端解压后分析）。"
-                : "选择 .log、.txt 或 .json 文本日志，雷泽会模拟创建分析任务。"}
+                ? "选择 .log / .txt / .csv / .json 文本日志，或单文件 .gz、单条目 .zip 压缩包（服务端解压后分析）。"
+                : "选择 .log、.txt、.csv 或 .json 文本日志，雷泽会模拟创建分析任务。"}
             </p>
           </div>
           <button className="icon-button" type="button" aria-label="关闭上传日志" onClick={onClose}>
@@ -691,8 +690,8 @@ function UploadLogDialog({
             <p>
               <strong>{selectedFileName}</strong> 格式不支持。
               {archivesSupported
-                ? "请优先上传 .log / .txt / .csv 文本日志，或单文件 .gz、单条目 .zip 压缩包。"
-                : "请优先上传 .log / .txt / .json 文本日志。"}
+                ? "请优先上传 .log / .txt / .csv / .json 文本日志，或单文件 .gz、单条目 .zip 压缩包。"
+                : "请优先上传 .log / .txt / .csv / .json 文本日志。"}
             </p>
           )}
         </div>

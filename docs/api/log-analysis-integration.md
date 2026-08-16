@@ -24,7 +24,7 @@ curl -sS -X POST "$WISEEFF_API/api/v1/log-files" \
 
 The `201` response carries `log.id` (the record) and `job.id` (the analysis job).
 
-Supported formats: UTF-8 text logs with extensions `.log`, `.txt`, `.csv`, plus compressed uploads — single-file `.gz` or single-entry `.zip` containing one such text log. Unpacked size is capped at 100MB absolute and 200× the compressed size (1MB floor); binary content, multi-entry or encrypted archives fail with a readable `failureReason` on the record.
+Supported formats: UTF-8 text logs with extensions `.log`, `.txt`, `.csv`, `.json`, plus compressed uploads — single-file `.gz` or single-entry `.zip` containing one such text log. Unpacked size is capped at 100MB absolute and 200× the compressed size (1MB floor); binary content, multi-entry or encrypted archives fail with a readable `failureReason` on the record.
 
 ## 2. Poll the job
 

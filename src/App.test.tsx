@@ -3247,8 +3247,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     fireEvent.click(within(history).getByRole("button", { name: /thermal_snapshot\.bin/ }));
 
     expect(screen.getByText("日志处理失败")).toBeInTheDocument();
-    expect(screen.getByText("二进制格式不支持。请导出 .log / .txt / .json 文本日志。")).toBeInTheDocument();
-    expect(screen.getByText("关联处置：请重新上传 .log、.txt 或 .json 文本日志。")).toBeInTheDocument();
+    expect(screen.getByText("二进制格式不支持。请导出 .log / .txt / .csv / .json 文本日志。")).toBeInTheDocument();
+    expect(screen.getByText("关联处置：请重新上传 .log、.txt、.csv 或 .json 文本日志。")).toBeInTheDocument();
   });
 
   it("shows a log analysis evidence chain instead of suggested actions", () => {

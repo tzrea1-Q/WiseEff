@@ -990,7 +990,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         conclusion: supportedLog ? "新日志已进入解析队列，等待模式匹配。" : "格式不支持，无法解析为文本日志。",
         impact: supportedLog ? "待识别" : "N/A",
         evidence: [],
-        suggestedActions: supportedLog ? ["等待解析完成", "保留原始日志"] : ["请上传 .log / .txt / .json 文本日志。"],
+        suggestedActions: supportedLog ? ["等待解析完成", "保留原始日志"] : ["请上传 .log / .txt / .csv / .json 文本日志。"],
         severity: supportedLog ? "Info" : "Critical",
         rawLines: supportedLog ? [`刚刚 INFO [UPLOAD] ${action.fileName} accepted for analysis`] : [],
         capturedAt: "刚刚",
@@ -1000,7 +1000,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         updatedAt: "刚刚",
         updatedAtIso: new Date().toISOString(),
         submittedBy: activeRoleLabel(state.activeRoleId),
-        failureReason: supportedLog ? undefined : "格式不支持。请上传 .log / .txt / .json 文本日志。",
+        failureReason: supportedLog ? undefined : "格式不支持。请上传 .log / .txt / .csv / .json 文本日志。",
         analysisQuestion: analysisQuestion || undefined
       };
 

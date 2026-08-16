@@ -182,6 +182,7 @@ describe("LogsPage api upload wiring", () => {
     openUploadDialog();
 
     expect(document.querySelector("input[type='file']")).not.toHaveAttribute("accept");
+    expect(screen.getByRole("dialog", { name: "上传日志" })).toHaveTextContent(".json");
   });
 
   it("passes the selected File and question to the log repository", async () => {
@@ -426,6 +427,31 @@ describe("LogsPage · 上传日志对话框", () => {
     expect(dialog).toHaveAttribute("aria-modal", "true");
     // The shared modal contract moves initial focus onto the dialog card.
     expect(dialog).toHaveFocus();
+  });
+
+  it("restricts mock file input to the shared text-log accept list", () => {
+    window.history.replaceState(null, "", "/logs");
+    render(<App initialAppState={userState} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /上传新日志/ }));
+
+    expect(screen.getByLabelText("选择日志文件")).toHaveAttribute("accept", ".log,.txt,.csv,.json");
+  });
+
+  it.each(["fresh.json", "fresh.csv"])("treats %s as a supported mock upload", (fileName) => {
+    vi.useFakeTimers();
+    window.history.replaceState(null, "", "/logs");
+    render(<App initialAppState={userState} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /上传新日志/ }));
+    fireEvent.change(screen.getByLabelText("选择日志文件"), { target: { files: [new File(["x"], fileName)] } });
+
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+
+    expect(screen.getByRole("button", { name: "确认上传" })).toBeInTheDocument();
+    expect(screen.queryByText(/格式不支持/)).not.toBeInTheDocument();
   });
 
   it("选择支持格式后先显示 validating，再确认上传并新增 Processing 日志", () => {

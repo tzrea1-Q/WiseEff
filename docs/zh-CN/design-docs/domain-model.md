@@ -276,7 +276,7 @@ stateDiagram-v2
 - 分析结果必须能追溯到具体 run 和 stage。
 - 证据行号必须基于原始文本日志或解析后的稳定索引。
 - `LogRecord.log_domain_id` 可空：NULL 表示内建未分类域（通用分析，上传绝不因域选择被阻塞）；上传/rerun 传入的 `logDomainId` 必须属于本组织且为 `active`，否则 400。租户隔离仍由 `organization_id` 承担，`source` 字段仍表示接入渠道。
-- P3：接入额外接受 `.gz`（单文件）与单条目 `.zip` 压缩包，上传时解包并带防炸弹上限（绝对 100MB / 压缩体 200 倍）——文件对象始终保存纯 UTF-8 文本，run/证据语义不变；解包失败走"不支持格式"路径成为带明确原因的失败记录。
+- 文本日志扩展名为 `.log`、`.txt`、`.csv`、`.json`（UTF-8 按行解析；`.json` 按文本处理，典型为 JSON Lines）。P3：接入额外接受 `.gz`（单文件）与单条目 `.zip` 压缩包，上传时解包并带防炸弹上限（绝对 100MB / 压缩体 200 倍）——文件对象始终保存纯 UTF-8 文本，run/证据语义不变；解包失败走"不支持格式"路径成为带明确原因的失败记录。
 - 业务域治理（创建/更新/归档、知识条目关联替换、Webhook 配置、模型覆盖）需要 `logs:admin-domains` 权限，保存时校验画像 JSON，并写 `log-domain-*` 审计事件。
 - 知识条目关联只接受**已发布**条目（设计 D13：发布是 agent 可读内容的唯一信任门）；关联集合整组替换并写 `log-domain-knowledge-links-update` 审计。
 - P3b 结果 Webhook：绑定业务域的分析到达终态（完成——含降级——或死信失败）后，worker 发出尽力而为、签名且带 SSRF 防护的精简摘要投递（绝不含原始日志内容），并把每次尝试记入 `log_webhook_deliveries`。投递绝不阻塞、失败或重试分析本身；未分类域没有 Webhook。配置保存经 SSRF 校验并返回明确错误码、写 `log-domain-webhook-config` 审计；管理员测试投递写 `log-domain-webhook-test` 审计。详见 `docs/zh-CN/SECURITY.md` 与 `docs/zh-CN/api/log-analysis-integration.md`。
