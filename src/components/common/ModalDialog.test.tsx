@@ -158,20 +158,23 @@ describe("ModalDialog", () => {
   it("invokes the latest onDismiss even before the keydown effect re-subscribes", async () => {
     const closeImmediately = vi.fn();
     const openConfirm = vi.fn();
-    let markDirty: () => void = () => {};
 
     function StaleDismissHarness() {
       const [dirty, setDirty] = useState(false);
-      markDirty = () => setDirty(true);
       return (
-        <ModalDialog open onDismiss={dirty ? openConfirm : closeImmediately} className="confirm-dialog">
-          {({ titleId }) => (
-            <>
-              <h2 id={titleId}>测试弹窗</h2>
-              {dirty ? <span>已变脏</span> : null}
-            </>
-          )}
-        </ModalDialog>
+        <>
+          <button type="button" onClick={() => setDirty(true)}>
+            变脏
+          </button>
+          <ModalDialog open onDismiss={dirty ? openConfirm : closeImmediately} className="confirm-dialog">
+            {({ titleId }) => (
+              <>
+                <h2 id={titleId}>测试弹窗</h2>
+                {dirty ? <span>已变脏</span> : null}
+              </>
+            )}
+          </ModalDialog>
+        </>
       );
     }
 
@@ -189,7 +192,7 @@ describe("ModalDialog", () => {
         resolve();
       });
       observer.observe(document.body, { childList: true, subtree: true });
-      markDirty();
+      fireEvent.click(screen.getByRole("button", { name: "变脏" }));
     });
 
     expect(closeImmediately).not.toHaveBeenCalled();
