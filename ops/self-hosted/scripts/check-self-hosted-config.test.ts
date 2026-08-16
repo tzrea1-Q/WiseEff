@@ -124,6 +124,12 @@ AGENT_MODEL=
 AGENT_API_KEY=
 AGENT_API_TIMEOUT_MS=30000
 XIAOZE_CHECKPOINTER=postgres
+LOG_ANALYSIS_API_BASE_URL=
+LOG_ANALYSIS_MODEL=
+LOG_ANALYSIS_API_KEY=
+LOG_ANALYSIS_API_TIMEOUT_MS=30000
+LOG_ANALYSIS_TOKEN_BUDGET=8000
+LOG_ANALYSIS_DETERMINISTIC=false
 LOG_WORKER_ENABLED=false
 LOG_ANALYSIS_QUEUE_MODE=durable
 REDIS_URL=redis://redis:6379
@@ -133,6 +139,45 @@ LOG_ANALYSIS_QUEUE_BACKOFF_MS=1000
 LOG_ANALYSIS_QUEUE_CONCURRENCY=1
 M5_BACKUP_RESTORE_DRILL_AT=
 `;
+
+const logAnalysisLlmEnvKeys = [
+  "LOG_ANALYSIS_API_BASE_URL",
+  "LOG_ANALYSIS_MODEL",
+  "LOG_ANALYSIS_API_KEY",
+  "LOG_ANALYSIS_API_TIMEOUT_MS",
+  "LOG_ANALYSIS_TOKEN_BUDGET",
+  "LOG_ANALYSIS_DETERMINISTIC"
+] as const;
+
+const existingSelfHostedFiles = new Set([
+  "ops/self-hosted/storage/README.md",
+  "ops/self-hosted/storage/provider-decision.md",
+  "ops/self-hosted/storage/object-store.env.example",
+  "ops/self-hosted/scripts/compose"
+]);
+
+function evaluateWithEnvExample(envExampleText: string) {
+  return evaluateSelfHostedConfig({
+    packageJson: validPackageJson,
+    composeText: validCompose,
+    dockerfileText: validDockerfile,
+    dockerignoreText: validDockerignore,
+    envExampleText,
+    caddyfileText: validCaddyfile,
+    existingFiles: existingSelfHostedFiles
+  });
+}
+
+function omitEnvKeys(text: string, keys: readonly string[]) {
+  const drop = new Set(keys);
+  return text
+    .split("\n")
+    .filter((line) => {
+      const key = line.trim().split("=")[0];
+      return !drop.has(key);
+    })
+    .join("\n");
+}
 
 const validCaddyfile = `
 {
@@ -160,14 +205,8 @@ describe("self-hosted config metadata", () => {
       dockerfileText: validDockerfile,
       dockerignoreText: validDockerignore,
       envExampleText: validEnvExample,
-      caddyfileText: validCaddyfile
-      ,
-      existingFiles: new Set([
-        "ops/self-hosted/storage/README.md",
-        "ops/self-hosted/storage/provider-decision.md",
-        "ops/self-hosted/storage/object-store.env.example",
-        "ops/self-hosted/scripts/compose"
-      ])
+      caddyfileText: validCaddyfile,
+      existingFiles: existingSelfHostedFiles
     });
 
     expect(result).toEqual({
@@ -251,7 +290,13 @@ describe("self-hosted config metadata", () => {
         "LOG_ANALYSIS_QUEUE_PREFIX",
         "LOG_ANALYSIS_QUEUE_ATTEMPTS",
         "LOG_ANALYSIS_QUEUE_BACKOFF_MS",
-        "LOG_ANALYSIS_QUEUE_CONCURRENCY"
+        "LOG_ANALYSIS_QUEUE_CONCURRENCY",
+        "LOG_ANALYSIS_API_BASE_URL",
+        "LOG_ANALYSIS_MODEL",
+        "LOG_ANALYSIS_API_KEY",
+        "LOG_ANALYSIS_API_TIMEOUT_MS",
+        "LOG_ANALYSIS_TOKEN_BUDGET",
+        "LOG_ANALYSIS_DETERMINISTIC"
       ])
     );
     expect(result.missingProxyTokens).toEqual(expect.arrayContaining(["reverse_proxy api:8787", "tls"]));
@@ -271,15 +316,17 @@ describe("self-hosted config metadata", () => {
       dockerignoreText: validDockerignore,
       envExampleText: validEnvExample,
       caddyfileText: validCaddyfile,
-      existingFiles: new Set([
-        "ops/self-hosted/storage/README.md",
-        "ops/self-hosted/storage/provider-decision.md",
-        "ops/self-hosted/storage/object-store.env.example",
-        "ops/self-hosted/scripts/compose"
-      ])
+      existingFiles: existingSelfHostedFiles
     });
 
     expect(result.status).toBe("failed");
     expect(result.missingDockerfileTokens).toContain("FROM node:>=22.19.0");
+  });
+
+  it("requires the log-analysis LLM env family to be declared even when values are blank", () => {
+    const result = evaluateWithEnvExample(omitEnvKeys(validEnvExample, logAnalysisLlmEnvKeys));
+
+    expect(result.status).toBe("failed");
+    expect(result.missingEnvKeys).toEqual([...logAnalysisLlmEnvKeys]);
   });
 });
