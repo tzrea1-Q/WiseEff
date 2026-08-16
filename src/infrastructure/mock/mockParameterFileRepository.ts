@@ -17,6 +17,7 @@ import type {
   ResolveParameterFileConflictInput,
   UploadParameterFileInput
 } from "@/application/ports/ParameterFileRepository";
+import { mockApiError } from "./mockApiError";
 
 const MOCK_NOW = "2026-07-14T10:00:00.000Z";
 const DEFAULT_PROJECT_ID = "project-teaching";
@@ -250,7 +251,7 @@ function resolveOpenConflict(
   const conflicts = ensureProjectConflicts(store, projectId);
   const conflict = conflicts.find((item) => item.id === conflictId);
   if (!conflict || conflict.status !== "open") {
-    throw new Error(`Open conflict not found: ${conflictId}`);
+    throw mockApiError("NOT_FOUND", `Open conflict not found: ${conflictId}`, { conflictId });
   }
   conflict.status = resolution === "file" ? "resolved_file" : "resolved_ui";
   conflict.resolvedAt = MOCK_NOW;
@@ -309,7 +310,7 @@ export function createMockParameterFileRepository(): ParameterFileRepository {
       const files = ensureProjectFiles(store, projectId);
       const file = files.find((item) => item.id === fileId);
       if (!file) {
-        throw new Error(`Parameter file not found: ${fileId}`);
+        throw mockApiError("NOT_FOUND", `Parameter file not found: ${fileId}`, { fileId });
       }
       const existing = store.versionsByFile.get(fileId) ?? [];
       const versionNumber = (existing[existing.length - 1]?.versionNumber ?? 0) + 1;
@@ -343,7 +344,7 @@ export function createMockParameterFileRepository(): ParameterFileRepository {
       const versions = store.versionsByFile.get(fileId) ?? [];
       const version = versions.find((item) => item.id === versionId);
       if (!version) {
-        throw new Error(`Parameter file version not found: ${versionId}`);
+        throw mockApiError("NOT_FOUND", `Parameter file version not found: ${versionId}`, { versionId });
       }
       const file = (store.filesByProject.get(projectId) ?? []).find((item) => item.id === fileId);
       const bytes = store.contentByVersion.get(versionId) ?? new Uint8Array();
@@ -358,7 +359,7 @@ export function createMockParameterFileRepository(): ParameterFileRepository {
       ensureProjectFiles(store, projectId);
       const versions = store.versionsByFile.get(fileId);
       if (!versions?.length) {
-        throw new Error(`Parameter file not found: ${fileId}`);
+        throw mockApiError("NOT_FOUND", `Parameter file not found: ${fileId}`, { fileId });
       }
       return {
         draftsCreated: 1,
@@ -466,20 +467,20 @@ export function createMockParameterFileRepository(): ParameterFileRepository {
 
     async getCandidate(projectId, candidateId) {
       const candidate = (store.candidatesByProject.get(projectId) ?? []).find((item) => item.id === candidateId);
-      if (!candidate) throw new Error(`Candidate not found: ${candidateId}`);
+      if (!candidate) throw mockApiError("NOT_FOUND", `Candidate not found: ${candidateId}`, { candidateId });
       return { ...candidate, diagnostics: [...candidate.diagnostics], impact: { ...candidate.impact } };
     },
 
     async getCandidateImpact(projectId, candidateId) {
       const candidate = (store.candidatesByProject.get(projectId) ?? []).find((item) => item.id === candidateId);
-      if (!candidate) throw new Error(`Candidate not found: ${candidateId}`);
+      if (!candidate) throw mockApiError("NOT_FOUND", `Candidate not found: ${candidateId}`, { candidateId });
       const item = { ...candidate, diagnostics: [...candidate.diagnostics], impact: { ...candidate.impact } };
       return { item, impact: { ...item.impact } };
     },
 
     async downloadCandidate(projectId, candidateId): Promise<DownloadParameterFileCandidateResult> {
       const candidate = (store.candidatesByProject.get(projectId) ?? []).find((item) => item.id === candidateId);
-      if (!candidate) throw new Error(`Candidate not found: ${candidateId}`);
+      if (!candidate) throw mockApiError("NOT_FOUND", `Candidate not found: ${candidateId}`, { candidateId });
       const bytes = store.contentByCandidate.get(candidateId) ?? new Uint8Array();
       return {
         contentType: "application/octet-stream",
@@ -491,9 +492,9 @@ export function createMockParameterFileRepository(): ParameterFileRepository {
     async abandonCandidate(projectId, candidateId) {
       const list = store.candidatesByProject.get(projectId) ?? [];
       const candidate = list.find((item) => item.id === candidateId);
-      if (!candidate) throw new Error(`Candidate not found: ${candidateId}`);
+      if (!candidate) throw mockApiError("NOT_FOUND", `Candidate not found: ${candidateId}`, { candidateId });
       if (!["ready", "blocked", "failed", "stale"].includes(candidate.status)) {
-        throw new Error(`Cannot abandon candidate in status ${candidate.status}`);
+        throw mockApiError("CONFLICT", `Cannot abandon candidate in status ${candidate.status}`, { status: candidate.status });
       }
       candidate.status = "abandoned";
       candidate.abandonedAt = MOCK_NOW;
@@ -504,9 +505,9 @@ export function createMockParameterFileRepository(): ParameterFileRepository {
     async recomputeCandidate(projectId, candidateId) {
       const list = store.candidatesByProject.get(projectId) ?? [];
       const candidate = list.find((item) => item.id === candidateId);
-      if (!candidate) throw new Error(`Candidate not found: ${candidateId}`);
+      if (!candidate) throw mockApiError("NOT_FOUND", `Candidate not found: ${candidateId}`, { candidateId });
       if (!["ready", "blocked", "failed", "stale"].includes(candidate.status)) {
-        throw new Error(`Cannot recompute candidate in status ${candidate.status}`);
+        throw mockApiError("CONFLICT", `Cannot recompute candidate in status ${candidate.status}`, { status: candidate.status });
       }
       const files = ensureProjectFiles(store, projectId);
       const file = candidate.fileId ? files.find((item) => item.id === candidate.fileId) : undefined;
@@ -528,9 +529,9 @@ export function createMockParameterFileRepository(): ParameterFileRepository {
     ): Promise<ActivateParameterFileCandidateResult> {
       const list = store.candidatesByProject.get(projectId) ?? [];
       const candidate = list.find((item) => item.id === candidateId);
-      if (!candidate) throw new Error(`Candidate not found: ${candidateId}`);
+      if (!candidate) throw mockApiError("NOT_FOUND", `Candidate not found: ${candidateId}`, { candidateId });
       if (candidate.status !== "ready") {
-        throw new Error(`Cannot activate candidate in status ${candidate.status}`);
+        throw mockApiError("CONFLICT", `Cannot activate candidate in status ${candidate.status}`, { status: candidate.status });
       }
       const files = ensureProjectFiles(store, projectId);
       let file = candidate.fileId ? files.find((item) => item.id === candidate.fileId) : undefined;
@@ -539,11 +540,11 @@ export function createMockParameterFileRepository(): ParameterFileRepository {
       if (actual !== expected || (candidate.baseVersionId ?? null) !== expected) {
         candidate.status = "stale";
         candidate.updatedAt = MOCK_NOW;
-        throw new Error("Candidate base is stale");
+        throw mockApiError("CONFLICT", "Candidate base is stale");
       }
       if (!file) {
         if (!input.configSetId || !input.role) {
-          throw new Error("New file activation requires configSetId and role");
+          throw mockApiError("VALIDATION_FAILED", "New file activation requires configSetId and role");
         }
         uploadCounter += 1;
         file = {

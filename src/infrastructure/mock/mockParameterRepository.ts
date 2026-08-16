@@ -25,6 +25,7 @@ import { buildAISuggestion, buildImpactItems, REVIEW_MOCK_NOW } from "@/reviewMo
 import { type MockRuntimeState, readMockState, writeMockState } from "./mockState";
 import { buildPowerManagementModuleTree } from "@/powerManagementConfig";
 import { collectSubtreeModuleIds, parameterModuleId, type FlatModuleNode } from "@/domain/modules/moduleTree";
+import { mockApiError } from "./mockApiError";
 
 function matchesQuery(parameter: ParameterRecord, query: ParameterListQuery | undefined, moduleNodes: readonly FlatModuleNode[]) {
   if (!query) return true;
@@ -307,7 +308,7 @@ function canAdvanceReviewRequest(activeRoleId: string, request: ChangeRequest) {
 function applyReviewChange(state: PrototypeState, input: ReviewParameterChangeInput): PrototypeState {
   const target = state.changeRequests.find((request) => request.id === input.requestId);
   if (!target) {
-    throw new Error(`Change request not found: ${input.requestId}`);
+    throw mockApiError("NOT_FOUND", `Change request not found: ${input.requestId}`, { requestId: input.requestId });
   }
 
   if (input.decision === "reject") {
@@ -439,12 +440,12 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
     },
     async getParameter(parameterId: string): Promise<ParameterRecord> {
       const parameter = readMockState(runtime).parameters.find((row) => row.id === parameterId);
-      if (!parameter) throw new Error(`Parameter not found: ${parameterId}`);
+      if (!parameter) throw mockApiError("NOT_FOUND", `Parameter not found: ${parameterId}`, { parameterId });
       return cloneParameterRecord(parameter);
     },
     async listParameterHistory(parameterId: string): Promise<ParameterHistoryEntry[]> {
       const parameter = readMockState(runtime).parameters.find((row) => row.id === parameterId);
-      if (!parameter) throw new Error(`Parameter not found: ${parameterId}`);
+      if (!parameter) throw mockApiError("NOT_FOUND", `Parameter not found: ${parameterId}`, { parameterId });
       return parameter.history.map((entry) => ({ ...entry }));
     },
     async listDrafts(projectId?: string): Promise<ParameterDraftDto[]> {
@@ -481,10 +482,10 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
     },
     async submitParameterChanges(input: SubmitParameterChangesInput): Promise<ParameterSubmissionRound> {
       if (input.items.some((item) => "draftId" in item)) {
-        throw new Error("Binding draft submission is only available in API runtime mode.");
+        throw mockApiError("FORBIDDEN", "Binding draft submission is only available in API runtime mode.");
       }
       const items = input.items.map((item) => {
-        if ("draftId" in item) throw new Error("Binding draft submission is only available in API runtime mode.");
+        if ("draftId" in item) throw mockApiError("FORBIDDEN", "Binding draft submission is only available in API runtime mode.");
         return item;
       });
       const before = readMockState(runtime);
@@ -496,7 +497,7 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
       const state = readMockState(runtime);
       const round = state.parameterSubmissionRounds.find((item) => item.id === roundId);
       if (!round) {
-        throw new Error(`Submission round not found: ${roundId}`);
+        throw mockApiError("NOT_FOUND", `Submission round not found: ${roundId}`, { roundId });
       }
 
       const next = {
@@ -515,7 +516,7 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
       writeMockState(runtime, next);
       const updated = next.parameterSubmissionRounds.find((item) => item.id === roundId);
       if (!updated) {
-        throw new Error(`Submission round not found after withdraw: ${roundId}`);
+        throw mockApiError("NOT_FOUND", `Submission round not found after withdraw: ${roundId}`, { roundId });
       }
       return cloneSubmissionRound(updated);
     },
@@ -523,7 +524,7 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
       const next = applyReviewChange(readMockState(runtime), input);
       writeMockState(runtime, next);
       const request = readMockState(runtime).changeRequests.find((row) => row.id === input.requestId);
-      if (!request) throw new Error(`Change request not found: ${input.requestId}`);
+      if (!request) throw mockApiError("NOT_FOUND", `Change request not found: ${input.requestId}`, { requestId: input.requestId });
       return cloneChangeRequest(request);
     },
     async createImportPreview(input: ParameterImportPreviewInput): Promise<ParameterImportBatchDto> {
@@ -533,22 +534,22 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
     },
     async applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterImportBatchDto> {
       const batch = importBatches.get(input.batchId);
-      if (!batch) throw new Error(`Import batch not found: ${input.batchId}`);
-      if (batch.status === "applied") throw new Error(`Import batch already applied: ${input.batchId}`);
+      if (!batch) throw mockApiError("NOT_FOUND", `Import batch not found: ${input.batchId}`, { batchId: input.batchId });
+      if (batch.status === "applied") throw mockApiError("CONFLICT", `Import batch already applied: ${input.batchId}`, { batchId: input.batchId });
       if (input.selectedItemIds && input.selectedItemIds.length === 0) {
-        throw new Error("At least one import item must be selected.");
+        throw mockApiError("VALIDATION_FAILED", "At least one import item must be selected.");
       }
       const selectedItemIds = input.selectedItemIds;
       const selectedIdsForValidation = selectedItemIds ?? batch.items.map((item) => item.id);
       const unknownSelectedIds = selectedIdsForValidation.filter((itemId) => !batch.items.some((item) => item.id === itemId));
       if (unknownSelectedIds.length > 0) {
-        throw new Error(`Unknown selected import item ids: ${unknownSelectedIds.join(", ")}`);
+        throw mockApiError("VALIDATION_FAILED", `Unknown selected import item ids: ${unknownSelectedIds.join(", ")}`, { selectedItemIds: unknownSelectedIds });
       }
       const conflictItem = selectedItemIds
         ? batch.items.find((item) => selectedItemIds.includes(item.id) && item.classification === "conflict")
         : undefined;
       if (conflictItem) {
-        throw new Error("Cannot apply import items with open change requests.");
+        throw mockApiError("CONFLICT", "Cannot apply import items with open change requests.");
       }
       const eligibleSelectedItems = batch.items.filter((item) =>
         selectedItemIds
@@ -556,7 +557,7 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
           : item.classification === "added" || item.classification === "updated"
       );
       if (eligibleSelectedItems.length === 0) {
-        throw new Error("At least one eligible import item must be selected.");
+        throw mockApiError("VALIDATION_FAILED", "At least one eligible import item must be selected.");
       }
       const applied = {
         ...batch,

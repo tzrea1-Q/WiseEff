@@ -26,6 +26,7 @@ import {
   withEffectiveEnablement,
   withSourceEnablement
 } from "@/domain/parameter-topology/nodeEnablement";
+import { mockApiError } from "./mockApiError";
 
 const MOCK_NOW = "2026-07-14T10:00:00.000Z";
 const DEFAULT_PROJECT_ID = "project-teaching";
@@ -554,7 +555,7 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
     async getSpec(specId) {
       const detail = store.specs.get(specId);
       if (!detail) {
-        throw new Error(`ParameterSpec not found: ${specId}`);
+        throw mockApiError("NOT_FOUND", `ParameterSpec not found: ${specId}`, { specId });
       }
       return cloneDetail(detail);
     },
@@ -562,7 +563,7 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
     async createParameterSpec(input) {
       const id = `pspec:mock:${input.attributionSubjectId}:${input.propertyKey}`;
       if (store.specs.has(id)) {
-        throw new Error(`ParameterSpec already exists: ${id}`);
+        throw mockApiError("CONFLICT", `ParameterSpec already exists: ${id}`, { id });
       }
       const created: SpecFixture = {
         id,
@@ -595,10 +596,10 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
     async activateParameterSpec(specId, input: ActivateParameterSpecInput) {
       const existing = store.specs.get(specId);
       if (!existing) {
-        throw new Error(`ParameterSpec not found: ${specId}`);
+        throw mockApiError("NOT_FOUND", `ParameterSpec not found: ${specId}`, { specId });
       }
       if (existing.lifecycle !== "draft") {
-        throw new Error(`Only draft parameter specs can be activated: ${specId}`);
+        throw mockApiError("CONFLICT", `Only draft parameter specs can be activated: ${specId}`, { specId });
       }
       const updated: SpecFixture = {
         ...existing,
@@ -617,10 +618,10 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
     async updateParameterSpec(specId, input) {
       const existing = store.specs.get(specId);
       if (!existing) {
-        throw new Error(`ParameterSpec not found: ${specId}`);
+        throw mockApiError("NOT_FOUND", `ParameterSpec not found: ${specId}`, { specId });
       }
       if (existing.lifecycle === "draft") {
-        throw new Error(`Draft specs must be activated, not updated: ${specId}`);
+        throw mockApiError("CONFLICT", `Draft specs must be activated, not updated: ${specId}`, { specId });
       }
       const updated: SpecFixture = {
         ...existing,
@@ -639,10 +640,10 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
     async deprecateParameterSpec(specId, _input: DeprecateParameterSpecInput) {
       const existing = store.specs.get(specId);
       if (!existing) {
-        throw new Error(`ParameterSpec not found: ${specId}`);
+        throw mockApiError("NOT_FOUND", `ParameterSpec not found: ${specId}`, { specId });
       }
       if (existing.lifecycle !== "draft" && existing.lifecycle !== "active") {
-        throw new Error(`Only draft or active parameter specs can be deprecated: ${specId}`);
+        throw mockApiError("CONFLICT", `Only draft or active parameter specs can be deprecated: ${specId}`, { specId });
       }
       const updated: SpecFixture = { ...existing, lifecycle: "deprecated" };
       store.specs.set(specId, updated);
@@ -652,10 +653,10 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
     async restoreParameterSpec(specId, _input: RestoreParameterSpecInput) {
       const existing = store.specs.get(specId);
       if (!existing) {
-        throw new Error(`ParameterSpec not found: ${specId}`);
+        throw mockApiError("NOT_FOUND", `ParameterSpec not found: ${specId}`, { specId });
       }
       if (existing.lifecycle !== "deprecated") {
-        throw new Error(`Only deprecated parameter specs can be restored: ${specId}`);
+        throw mockApiError("CONFLICT", `Only deprecated parameter specs can be restored: ${specId}`, { specId });
       }
       const updated: SpecFixture = {
         ...existing,
@@ -668,7 +669,7 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
     async reattributeParameterSpec(specId, input: ReattributeParameterSpecInput) {
       const existing = store.specs.get(specId);
       if (!existing) {
-        throw new Error(`ParameterSpec not found: ${specId}`);
+        throw mockApiError("NOT_FOUND", `ParameterSpec not found: ${specId}`, { specId });
       }
       const nextSubjectId = input.attributionSubjectId.trim();
       const propertyKey = existing.propertyKey;
@@ -697,7 +698,7 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
     async renameParameterSpecPropertyKey(specId, input: RenameParameterSpecPropertyKeyInput) {
       const existing = store.specs.get(specId);
       if (!existing) {
-        throw new Error(`ParameterSpec not found: ${specId}`);
+        throw mockApiError("NOT_FOUND", `ParameterSpec not found: ${specId}`, { specId });
       }
       const referenceCount = existing.referenceCount ?? 0;
       if (referenceCount > 0) {
@@ -738,17 +739,17 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
     async getSpecVersionCutoverImpact(specId) {
       const existing = store.specs.get(specId);
       if (!existing?.cutover) {
-        throw new Error(`No open cutover for spec: ${specId}`);
+        throw mockApiError("CONFLICT", `No open cutover for spec: ${specId}`, { specId });
       }
       return existing.cutover;
     },
 
     async prepareSpecVersionCutover(specId) {
-      throw new Error(`Cutover prepare is unavailable in mock mode (${specId}).`);
+      throw mockApiError("FORBIDDEN", `Cutover prepare is unavailable in mock mode (${specId}).`, { specId });
     },
 
     async finalizeSpecVersionCutover(specId) {
-      throw new Error(`Cutover finalize is unavailable in mock mode (${specId}).`);
+      throw mockApiError("FORBIDDEN", `Cutover finalize is unavailable in mock mode (${specId}).`, { specId });
     },
 
     async listSpecReviewTasks(query = {}) {
@@ -767,7 +768,7 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
     async resolveSpecReviewTask(taskId, input) {
       const task = store.reviewTasks.find((item) => item.id === taskId);
       if (!task) {
-        throw new Error(`Spec review task not found: ${taskId}`);
+        throw mockApiError("NOT_FOUND", `Spec review task not found: ${taskId}`, { taskId });
       }
       task.status = input.decision;
       task.reason = input.reason;
@@ -862,10 +863,10 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
     async resolveMapping(taskId, input) {
       const task = store.mappingTasks.find((item) => item.id === taskId);
       if (!task) {
-        throw new Error(`Identity mapping task not found: ${taskId}`);
+        throw mockApiError("NOT_FOUND", `Identity mapping task not found: ${taskId}`, { taskId });
       }
       if (task.status !== "open") {
-        throw new Error(`Identity mapping task is not open: ${taskId}`);
+        throw mockApiError("CONFLICT", `Identity mapping task is not open: ${taskId}`, { taskId });
       }
       task.status = input.decision === "new-identity" ? "new_identity" : input.decision;
       task.reason = input.reason;
@@ -875,13 +876,13 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
     async reopenMapping(taskId, input) {
       const task = store.mappingTasks.find((item) => item.id === taskId);
       if (!task) {
-        throw new Error(`Identity mapping task not found: ${taskId}`);
+        throw mockApiError("NOT_FOUND", `Identity mapping task not found: ${taskId}`, { taskId });
       }
       if (task.status === "resolved") {
-        throw new Error(`Resolved identity mapping tasks cannot be reopened: ${taskId}`);
+        throw mockApiError("CONFLICT", `Resolved identity mapping tasks cannot be reopened: ${taskId}`, { taskId });
       }
       if (task.status === "open") {
-        throw new Error(`Identity mapping task is already open: ${taskId}`);
+        throw mockApiError("CONFLICT", `Identity mapping task is already open: ${taskId}`, { taskId });
       }
       task.status = "open";
       task.reason = input.reason;
@@ -913,7 +914,7 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
       const bindings = await this.listBindings(projectId, input.baseRevisionId);
       const binding = bindings.find((item) => item.id === bindingId);
       if (!binding) {
-        throw new Error(`Binding not found: ${bindingId}`);
+        throw mockApiError("NOT_FOUND", `Binding not found: ${bindingId}`, { bindingId });
       }
       draftCounter += 1;
       const action = input.action ?? "set";

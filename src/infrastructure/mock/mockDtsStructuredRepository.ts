@@ -16,6 +16,7 @@ import type {
   DtsSubmitStructuredEditsInput,
   ReleaseBaselineInput
 } from "@/application/ports/DtsStructuredRepository";
+import { mockApiError } from "./mockApiError";
 
 const MOCK_NOW = "2026-07-14T10:00:00.000Z";
 const DEFAULT_PROJECT_ID = "project-teaching";
@@ -361,7 +362,7 @@ export function createMockDtsStructuredRepository(
   function requireConfigSet(configSetId: string) {
     const configSet = state.configSets.find((item) => item.id === configSetId);
     if (!configSet) {
-      throw new Error(`Config set not found: ${configSetId}`);
+      throw mockApiError("NOT_FOUND", `Config set not found: ${configSetId}`, { configSetId });
     }
     return configSet;
   }
@@ -369,7 +370,7 @@ export function createMockDtsStructuredRepository(
   function requireBaseline(baselineId: string) {
     const baseline = state.baselines.find((item) => item.id === baselineId);
     if (!baseline) {
-      throw new Error(`Baseline not found: ${baselineId}`);
+      throw mockApiError("NOT_FOUND", `Baseline not found: ${baselineId}`, { baselineId });
     }
     return baseline;
   }
@@ -402,7 +403,7 @@ export function createMockDtsStructuredRepository(
     async listConfigSetFiles(requestedProjectId, configSetId) {
       const configSet = requireConfigSet(configSetId);
       if (configSet.projectId !== requestedProjectId) {
-        throw new Error(`Config set not found: ${configSetId}`);
+        throw mockApiError("NOT_FOUND", `Config set not found: ${configSetId}`, { configSetId });
       }
       const identity = fileIdentityForProject(requestedProjectId);
       return state.memberships
@@ -522,16 +523,16 @@ export function createMockDtsStructuredRepository(
     async createBaseline(_requestedProjectId, configSetId, input: CreateBaselineInput) {
       requireConfigSet(configSetId);
       if (!input.gateToken) {
-        throw new Error("Release readiness gate token is required.");
+        throw mockApiError("VALIDATION_FAILED", "Release readiness gate token is required.");
       }
       const readiness = await this.getReleaseReadiness(_requestedProjectId, configSetId, {
         acknowledgedWarningIds: input.acknowledgedWarningIds
       });
       if (readiness.gateToken !== input.gateToken) {
-        throw new Error("Release readiness gate token is stale.");
+        throw mockApiError("CONFLICT", "Release readiness gate token is stale.");
       }
       if (!readiness.canCreateBaseline) {
-        throw new Error("Baseline creation is blocked by release readiness.");
+        throw mockApiError("CONFLICT", "Baseline creation is blocked by release readiness.");
       }
       const baseline: DtsReleaseBaseline = {
         id: nextId("mock-bl"),
@@ -631,16 +632,16 @@ export function createMockDtsStructuredRepository(
     async releaseBaseline(_requestedProjectId, baselineId, input: ReleaseBaselineInput) {
       const baseline = requireBaseline(baselineId);
       if (!input.gateToken) {
-        throw new Error("Release readiness gate token is required.");
+        throw mockApiError("VALIDATION_FAILED", "Release readiness gate token is required.");
       }
       const readiness = await this.getReleaseReadiness(_requestedProjectId, baseline.configSetId, {
         acknowledgedWarningIds: input.acknowledgedWarningIds
       });
       if (readiness.gateToken !== input.gateToken) {
-        throw new Error("Release readiness gate token is stale.");
+        throw mockApiError("CONFLICT", "Release readiness gate token is stale.");
       }
       if (!readiness.canRelease) {
-        throw new Error("Baseline release is blocked by release readiness.");
+        throw mockApiError("CONFLICT", "Baseline release is blocked by release readiness.");
       }
       const released: DtsReleaseBaseline = { ...baseline, status: "released" };
       state.baselines = state.baselines.map((item) => {
@@ -697,7 +698,7 @@ export function createMockDtsStructuredRepository(
 
     async submitStructuredEdits(requestedProjectId, input: DtsSubmitStructuredEditsInput) {
       if (input.edits.length === 0) {
-        throw new Error("At least one structured edit is required.");
+        throw mockApiError("VALIDATION_FAILED", "At least one structured edit is required.");
       }
       const roundId = nextId("mock-round");
       return {

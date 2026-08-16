@@ -6,6 +6,7 @@ import type {
   SemanticInitializationSnapshotItem,
   UpsertInitializationDraftInput
 } from "@/domain/parameters/initializationTypes";
+import { mockApiError } from "./mockApiError";
 
 const MOCK_NOW = "2026-08-05T12:00:00.000Z";
 
@@ -100,7 +101,7 @@ export function createMockParameterInitializationRepository(
     async upsertDraft(input) {
       const status = requireStatus(input.projectId);
       if (status === "initialization_pending_review" || status === "initialized") {
-        throw new Error(`Initialization draft cannot be edited while status is ${status}.`);
+        throw mockApiError("CONFLICT", `Initialization draft cannot be edited while status is ${status}.`, { status });
       }
       if (input.emptyLibrary) {
         if (
@@ -109,7 +110,7 @@ export function createMockParameterInitializationRepository(
           input.bindingSnapshots.length > 0 ||
           input.selectedSourceBindingIds.length > 0
         ) {
-          throw new Error("Empty-library initialization cannot include source projects or bindings.");
+          throw mockApiError("VALIDATION_FAILED", "Empty-library initialization cannot include source projects or bindings.");
         }
       }
       const next = draftFromInput(input, drafts.get(input.projectId), organizationId, actorUserId);
@@ -164,17 +165,17 @@ export function createMockParameterInitializationRepository(
     async submit(projectId) {
       const status = requireStatus(projectId);
       if (status === "initialization_pending_review" || status === "initialized") {
-        throw new Error(`Initialization cannot be submitted while status is ${status}.`);
+        throw mockApiError("CONFLICT", `Initialization cannot be submitted while status is ${status}.`, { status });
       }
       const draft = drafts.get(projectId);
       if (!draft) {
-        throw new Error(`Initialization draft not found for project ${projectId}.`);
+        throw mockApiError("NOT_FOUND", `Initialization draft not found for project ${projectId}.`, { projectId });
       }
       if (!draft.emptyLibrary && draft.bindingSnapshots.length === 0) {
-        throw new Error("Select at least one binding before submitting initialization for review.");
+        throw mockApiError("VALIDATION_FAILED", "Select at least one binding before submitting initialization for review.");
       }
       if (reviews.some((review) => review.projectId === projectId && review.status === "pending")) {
-        throw new Error(`Project ${projectId} already has a pending initialization review.`);
+        throw mockApiError("CONFLICT", `Project ${projectId} already has a pending initialization review.`, { projectId });
       }
       reviewCounter += 1;
       const review: InitializationReviewDto = {
@@ -198,11 +199,11 @@ export function createMockParameterInitializationRepository(
     async approve(reviewId) {
       const review = reviews.find((item) => item.id === reviewId);
       if (!review || review.status !== "pending") {
-        throw new Error(`Pending initialization review not found: ${reviewId}`);
+        throw mockApiError("NOT_FOUND", `Pending initialization review not found: ${reviewId}`, { reviewId });
       }
       const draft = drafts.get(review.projectId);
       if (!draft || draft.id !== review.draftId) {
-        throw new Error(`Initialization draft not found for review ${reviewId}`);
+        throw mockApiError("NOT_FOUND", `Initialization draft not found for review ${reviewId}`, { reviewId });
       }
       // Empty library: no bindings to materialize — status alone unlocks the project.
       const approved: InitializationReviewDto = {
@@ -219,11 +220,11 @@ export function createMockParameterInitializationRepository(
     async reject(reviewId, reason) {
       const trimmed = reason.trim();
       if (!trimmed) {
-        throw new Error("Rejection reason is required.");
+        throw mockApiError("VALIDATION_FAILED", "Rejection reason is required.");
       }
       const review = reviews.find((item) => item.id === reviewId);
       if (!review || review.status !== "pending") {
-        throw new Error(`Pending initialization review not found: ${reviewId}`);
+        throw mockApiError("NOT_FOUND", `Pending initialization review not found: ${reviewId}`, { reviewId });
       }
       const rejected: InitializationReviewDto = {
         ...review,

@@ -33,6 +33,7 @@ import type { DeviceBridgePairingCode, DeviceBridgeRecord } from "@/infrastructu
 import { buildValuePreview } from "@/debugValueKind";
 import type { DebugConnectionProtocol, DebugParameter } from "@/domain/debugging/types";
 import { bundledPowerManagementConfig, flattenDebugParameters } from "@/powerManagementConfig";
+import { mockApiError } from "./mockApiError";
 
 export const MOCK_DEBUG_BRIDGE_ID = "mock-bridge";
 export const MOCK_DEBUG_BRIDGE_MACHINE_LABEL = "Mock Bridge";
@@ -271,10 +272,10 @@ export function createMockDebuggingGateway(deps: MockDebuggingGatewayDeps = {}):
     async readNode(input: ReadNodeInput): Promise<NodeReadResult & { operation?: NodeOperationSnapshot }> {
       const parameter = findParameter(input);
       if (!parameter) {
-        throw new Error(`未找到调试节点：${input.nodeId ?? input.parameterId ?? input.nodePath ?? "unknown"}`);
+        throw mockApiError("NOT_FOUND", `未找到调试节点：${input.nodeId ?? input.parameterId ?? input.nodePath ?? "unknown"}`, { nodeId: input.nodeId, parameterId: input.parameterId, nodePath: input.nodePath });
       }
       if (parameter.accessMode === "WO") {
-        throw new Error("该节点仅支持写入，不可读取。");
+        throw mockApiError("INTERNAL_ERROR", "该节点仅支持写入，不可读取。");
       }
       const value = deviceValueFor(parameter);
       operationCounter += 1;
@@ -306,14 +307,14 @@ export function createMockDebuggingGateway(deps: MockDebuggingGatewayDeps = {}):
     ): Promise<NodeWriteResult & { operation?: NodeOperationSnapshot; snapshot?: DebugSnapshotSummary }> {
       const parameter = findParameter(input);
       if (!parameter) {
-        throw new Error(`未找到调试节点：${input.nodeId ?? input.parameterId ?? input.nodePath ?? "unknown"}`);
+        throw mockApiError("NOT_FOUND", `未找到调试节点：${input.nodeId ?? input.parameterId ?? input.nodePath ?? "unknown"}`, { nodeId: input.nodeId, parameterId: input.parameterId, nodePath: input.nodePath });
       }
       if (parameter.accessMode === "RO") {
-        throw new Error("该节点为只读，不支持写入。");
+        throw mockApiError("INTERNAL_ERROR", "该节点为只读，不支持写入。");
       }
       // Same gate as the server: High-risk writes need the explicit confirmation token.
       if (parameter.risk === "High" && input.confirmationToken !== "confirm-high-risk-write" && !input.approvalId?.trim()) {
-        throw new Error("高风险节点写入需要确认令牌 confirm-high-risk-write。");
+        throw mockApiError("VALIDATION_FAILED", "高风险节点写入需要确认令牌 confirm-high-risk-write。");
       }
 
       const readBack = input.readBack && parameter.accessMode === "RW";
@@ -383,14 +384,14 @@ export function createMockDebuggingGateway(deps: MockDebuggingGatewayDeps = {}):
     async rollbackSnapshot(input: RollbackSnapshotInput) {
       // Same gate as the server: rollback requires the explicit confirmation token.
       if (input.confirmationToken !== "confirm-rollback") {
-        throw new Error("回滚需要确认令牌 confirm-rollback。");
+        throw mockApiError("VALIDATION_FAILED", "回滚需要确认令牌 confirm-rollback。");
       }
       const stored = snapshots.get(input.snapshotId);
       if (!stored) {
-        throw new Error(`未找到调试快照：${input.snapshotId}`);
+        throw mockApiError("NOT_FOUND", `未找到调试快照：${input.snapshotId}`, { snapshotId: input.snapshotId });
       }
       if (stored.summary.status !== "valid") {
-        throw new Error("该快照已被使用，无法再次回滚。");
+        throw mockApiError("CONFLICT", "该快照已被使用，无法再次回滚。");
       }
 
       const operations = stored.entries.map((entry) => {

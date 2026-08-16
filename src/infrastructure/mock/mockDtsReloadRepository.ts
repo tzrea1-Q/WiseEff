@@ -31,6 +31,7 @@ import type {
   OrganisationReloadConfiguration,
   ReloadConfigurationContract
 } from "@/domain/dtsReload/types";
+import { mockApiError } from "./mockApiError";
 
 export const MOCK_DTS_RELOAD_BRIDGE_ID = "mock-bridge";
 export const MOCK_DTS_RELOAD_DEVICE_ID = `bridge:${MOCK_DTS_RELOAD_BRIDGE_ID}`;
@@ -548,7 +549,7 @@ export function createMockDtsReloadRepository(): DtsReloadRepository {
   function requireRun(runId: string): DtsReloadRun {
     const run = runs.get(runId);
     if (!run) {
-      throw new Error(`未找到重载运行：${runId}`);
+      throw mockApiError("NOT_FOUND", `未找到重载运行：${runId}`, { runId });
     }
     return run;
   }
@@ -561,9 +562,7 @@ export function createMockDtsReloadRepository(): DtsReloadRepository {
       (candidate) => candidate.sensitiveMatch?.riskTier === "critical"
     );
     if (critical && confirmationToken !== SENSITIVE_RELOAD_CONFIRMATION_TOKEN) {
-      throw new Error(
-        `critical 敏感参数需要确认令牌 ${SENSITIVE_RELOAD_CONFIRMATION_TOKEN}。`
-      );
+      throw mockApiError("VALIDATION_FAILED", `critical 敏感参数需要确认令牌 ${SENSITIVE_RELOAD_CONFIRMATION_TOKEN}。`);
     }
   }
 
@@ -614,12 +613,12 @@ export function createMockDtsReloadRepository(): DtsReloadRepository {
 
     async startRun(input: StartDtsReloadRunInput) {
       if (input.targets.length === 0) {
-        throw new Error("至少需要一个参数目标。");
+        throw mockApiError("VALIDATION_FAILED", "至少需要一个参数目标。");
       }
       const matched = input.targets.map((target) => {
         const candidate = candidateByBindingId(target.bindingId);
         if (!candidate || !candidate.debuggable || !candidate.nodePath) {
-          throw new Error(`参数不可调试：${target.bindingId}`);
+          throw mockApiError("INTERNAL_ERROR", `参数不可调试：${target.bindingId}`, { bindingId: target.bindingId });
         }
         return candidate;
       });
@@ -664,7 +663,7 @@ export function createMockDtsReloadRepository(): DtsReloadRepository {
     async restoreBaseline(input: RestoreDtsReloadBaselineInput) {
       const residue = residueByDevice.get(input.deviceId);
       if (!residue) {
-        throw new Error("该设备没有可恢复的调试残留记录。");
+        throw mockApiError("INTERNAL_ERROR", "该设备没有可恢复的调试残留记录。");
       }
       const matched = residue.parameters
         .map((parameter) => candidateByBindingId(parameter.bindingId))
@@ -714,11 +713,11 @@ export function createMockDtsReloadRepository(): DtsReloadRepository {
 
     async deployRun(input: DeployDtsReloadRunInput) {
       if (!input.confirmationTokens.includes(DTS_RELOAD_CONFIRMATION_TOKEN)) {
-        throw new Error(`设备部署需要确认令牌 ${DTS_RELOAD_CONFIRMATION_TOKEN}。`);
+        throw mockApiError("VALIDATION_FAILED", `设备部署需要确认令牌 ${DTS_RELOAD_CONFIRMATION_TOKEN}。`);
       }
       const run = requireRun(input.runId);
       if (run.status !== "validated" && run.status !== "failed") {
-        throw new Error("该运行不可部署：仅预检通过或部署失败的运行可以（重试）部署。");
+        throw mockApiError("INTERNAL_ERROR", "该运行不可部署：仅预检通过或部署失败的运行可以（重试）部署。");
       }
       const deployed: DtsReloadRun = {
         ...run,
@@ -761,10 +760,10 @@ export function createMockDtsReloadRepository(): DtsReloadRepository {
     async downloadArtifact(runId: string) {
       const run = requireRun(runId);
       if (!run.artifact) {
-        throw new Error("该运行没有可下载的编译产物。");
+        throw mockApiError("INTERNAL_ERROR", "该运行没有可下载的编译产物。");
       }
       if (run.artifactRetentionExpired) {
-        throw new Error("编译产物已超过保留期。");
+        throw mockApiError("INTERNAL_ERROR", "编译产物已超过保留期。");
       }
       return new Blob([run.overlaySource ?? run.artifact.fileName], {
         type: "application/octet-stream"
