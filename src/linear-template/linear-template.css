@@ -510,8 +510,8 @@
   width: 100%;
   height: 2px;
   background: color-mix(in srgb, var(--secondary-container) 70%, transparent);
-  transform-origin: left;/* Auto-advance progress tracker: linear so the bar follows the timer honestly. */
-  
+  transform-origin: left;
+  /* Auto-advance progress tracker: linear so the bar follows the timer honestly. */
   transition: transform var(--duration-fast) linear;
   border-radius: 1px;
 }
@@ -527,10 +527,10 @@
   }
 }
 
-.platform-flow-panel {/* Decorative landing reveal (>400ms allowed for marketing surfaces only);
+.platform-flow-panel {
+  /* Decorative landing reveal (>400ms allowed for marketing surfaces only);
      duration derives from the motion tokens and the page-wide reduce block
      below collapses it. */
-  
   animation: platformPanelIn calc(var(--duration-slow) * 2.5) var(--ease-out) both;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -607,8 +607,8 @@
 
 .linear-fade-item {
   opacity: 0;
-  transform: translateY(-10px);/* Decorative landing stagger; token-derived, reduce-guarded page-wide. */
-  
+  transform: translateY(-10px);
+  /* Decorative landing stagger; token-derived, reduce-guarded page-wide. */
   animation: linearFadeIn calc(var(--duration-slow) * 4) var(--ease-out) forwards;
 }
 
