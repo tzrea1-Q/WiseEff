@@ -12,6 +12,7 @@ import {
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { formatPercent, normalizePercentValue } from "@/domain/format/formatPercent";
+import { confidenceCaption } from "@/domain/logs/confidenceProvenance";
 import { buildEvalCaseDraft } from "@/domain/logs/evalCaseDraft";
 import { STAGE_LABELS, type LogRecord } from "@/domain/prototype/types";
 
@@ -232,7 +233,9 @@ export function LogRecordDrawer({
             <p className="mt-2 text-sm text-foreground">{record.conclusion}</p>
             <DrawerProvenanceBadges record={record} />
             <div className="mt-3 flex items-center gap-3 text-xs">
-              <span className="text-muted-foreground">置信度</span>
+              <span className="shrink-0 whitespace-nowrap text-muted-foreground">
+                {confidenceCaption(record.analysisSource, "置信度")}
+              </span>
               <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
                 <div
                   className={cn(

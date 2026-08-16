@@ -7,6 +7,7 @@ import { RelatedKnowledgeSection } from "@/features/log-analysis/RelatedKnowledg
 import type { LogDomain } from "@/domain/logs/types";
 import { isSupportedLogUploadFileName, mockLogUploadAccept } from "@/domain/logs/uploadExtensions";
 import { formatPercent, normalizePercentValue } from "@/domain/format/formatPercent";
+import { confidenceCaption } from "@/domain/logs/confidenceProvenance";
 import { SEVERITY_LABELS, STAGE_LABELS, type LogEvidence, type LogRecord, type LogStageId } from "@/domain/prototype/types";
 import { presentError, presentErrorMessage } from "@/infrastructure/http/presentError";
 import { EmptyState, PanelHeader, SectionLabel } from "@/workbenchUi";
@@ -747,14 +748,22 @@ function SeverityBadge({ severity, processing }: { severity: LogRecord["severity
   );
 }
 
-function ConfidenceBar({ value, status }: { value: number; status: LogRecord["status"] }) {
+function ConfidenceBar({
+  value,
+  status,
+  analysisSource
+}: {
+  value: number;
+  status: LogRecord["status"];
+  analysisSource: LogRecord["analysisSource"];
+}) {
   const percent = normalizePercentValue(value);
   const tone = status === "Processing" ? "indeterminate" : percent >= 90 ? "high" : percent >= 70 ? "mid" : "low";
 
   return (
     <div className={classNames("confidence-bar", `confidence-bar--${tone}`)}>
       <div>
-        <span>AI置信度</span>
+        <span>{confidenceCaption(analysisSource, "AI置信度")}</span>
         <strong>{formatPercent(value)}</strong>
       </div>
       <div aria-label="分析置信度" aria-valuemax={100} aria-valuemin={0} aria-valuenow={percent} role="progressbar">
@@ -852,7 +861,7 @@ function LogConclusionCard({
           <span>{log.analysisQuestion}</span>
         </div>
       ) : null}
-      <ConfidenceBar value={log.confidence} status={log.status} />
+      <ConfidenceBar value={log.confidence} status={log.status} analysisSource={log.analysisSource} />
       <div className="logs-conclusion-actions">
         <button className="button primary" disabled={log.status !== "Complete"} type="button" onClick={onPrimary}>
           <Sparkles size={16} />

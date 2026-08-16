@@ -193,6 +193,8 @@ describe("LogRecordDrawer", () => {
     expect(provenance).toHaveTextContent("降级分析 · 规则回退");
     expect(provenance).toHaveTextContent(/AI 分析服务不可用/);
     expect(provenance).toHaveTextContent("业务域 · charging-power");
+    expect(screen.getByText("规则评分")).toBeInTheDocument();
+    expect(screen.queryByText("模型自估")).not.toBeInTheDocument();
   });
 
   it("shows the agent provenance badge without a degraded warning", () => {
@@ -201,12 +203,17 @@ describe("LogRecordDrawer", () => {
     const provenance = screen.getByTestId("drawer-analysis-provenance");
     expect(provenance).toHaveTextContent("Agent 分析");
     expect(provenance).not.toHaveTextContent("降级分析");
+    expect(screen.getByText("模型自估")).toBeInTheDocument();
+    expect(screen.queryByText("置信度")).not.toBeInTheDocument();
   });
 
   it("renders no provenance block for legacy records without a source", () => {
     render(<LogRecordDrawer record={record} open {...handlers} canAct />);
 
     expect(screen.queryByTestId("drawer-analysis-provenance")).not.toBeInTheDocument();
+    expect(screen.getByText("置信度")).toBeInTheDocument();
+    expect(screen.queryByText("模型自估")).not.toBeInTheDocument();
+    expect(screen.queryByText("规则评分")).not.toBeInTheDocument();
   });
 
   it("marks an early-converged agent conclusion as degraded instead of a full analysis", () => {
@@ -223,6 +230,7 @@ describe("LogRecordDrawer", () => {
     expect(provenance).toHaveTextContent("降级分析 · 提前收敛");
     expect(provenance).toHaveTextContent(/提前收敛为低置信结论/);
     expect(provenance).not.toHaveTextContent("降级分析 · 规则回退");
+    expect(screen.getByText("模型自估")).toBeInTheDocument();
   });
 
   describe("导出评测案例草稿", () => {
