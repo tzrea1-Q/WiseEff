@@ -172,9 +172,28 @@ export function stableMasks(page: Page, routePath = ""): Locator[] {
     // the other clock-bound label (hidden on the default History tab).
     masks.push(page.locator(".rawlog-table__time"));
     masks.push(page.locator(".logs-metadata-list dd"));
+    // Inline width on the fill can still interpolate a frame even with
+    // screenshot animations disabled; mask the bar, not the workbench.
+    masks.push(page.locator(".confidence-bar i"));
   }
 
   return masks;
+}
+
+/**
+ * Wait until webfonts are loaded and two animation frames have committed.
+ * Playwright already tries to wait for fonts at screenshot time; an explicit
+ * ready + double-rAF still absorbs CJK fallback swaps and late layout.
+ */
+async function waitForFontsAndNextPaint(page: Page) {
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => resolve());
+      });
+    });
+  });
 }
 
 /**
@@ -229,9 +248,19 @@ export async function settleQualityRoute(page: Page, routePath: string) {
     // M2 seed rows. captured_at desc selects unsupported.bin first, so the
     // primary pane settles on the failure alert rather than the completed
     // foldback analysis.
+    //
+    // The empty placeholder also renders "日志处理失败", so filename text
+    // plus the title is not enough: pin the selected history row, drain the
+    // in-main sync banner (not aria-live, so it is not globally masked), then
+    // fonts + a paint, then confirm the alert stayed up.
     await expect(page.getByText("charging-foldback.log").first()).toBeVisible({ timeout });
     await expect(page.getByText("unsupported.bin").first()).toBeVisible({ timeout });
-    await expect(page.getByText("日志处理失败").first()).toBeVisible({ timeout });
+    const failureAlert = page.locator(".log-error-alert").filter({ hasText: "日志处理失败" });
+    await expect(failureAlert).toBeVisible({ timeout });
+    await expect(page.locator(".history-item.active")).toContainText("unsupported.bin", { timeout });
+    await expect(page.locator(".api-runtime-sync-banner")).toHaveCount(0, { timeout });
+    await waitForFontsAndNextPaint(page);
+    await expect.poll(async () => failureAlert.isVisible(), { timeout: 5_000 }).toBe(true);
   }
 }
 
