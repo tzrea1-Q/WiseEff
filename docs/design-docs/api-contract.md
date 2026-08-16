@@ -63,7 +63,7 @@ Upload file names may carry `.gz` (single gzip file whose inner name keeps a sup
 
 ### Feedback quality insights (P3)
 
-`GET /api/v1/logs/feedback-insights` (`logs:view`, org-scoped) aggregates `log_feedback` into the `/log-admin` analysis-quality dashboard: one row per log domain × `analysisSource` × `promptVersion` with `totalCount`, `helpfulCount`, `helpfulRate` (0..1), and `lastFeedbackAt`. Optional `timeWindow=today|7d|30d` filters by feedback creation time (same interval semantics as `GET /api/v1/logs`). Feedback is attributed to the log's **current run's** report, matching the list/detail read path; `logDomainId`/`logDomainName` are `null` for the uncategorized domain and `analysisSource`/`promptVersion` are `null` for legacy reports without provenance.
+`GET /api/v1/logs/feedback-insights` (`logs:view`, org-scoped) aggregates `log_feedback` into the `/log-admin` analysis-quality dashboard: one row per log domain × `analysisSource` × `promptVersion` with `totalCount`, `helpfulCount`, `helpfulRate` (0..1), and `lastFeedbackAt`. Optional `timeWindow=today|7d|30d` filters by feedback creation time (same interval semantics as `GET /api/v1/logs`). Feedback is attributed to the analysis run stamped on the row (`log_feedback.run_id`, captured from the log's current run at insert time); rows that still have a null `run_id` fall back to the log's current run. List/detail continue to read the current run's report. `logDomainId`/`logDomainName` are `null` for the uncategorized domain and `analysisSource`/`promptVersion` are `null` for legacy reports without provenance.
 
 ## Debugging Parameter Semantics
 
