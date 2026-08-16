@@ -107,6 +107,9 @@ export function ModalDialog({
   const descriptionId = `${generatedId}-description`;
   const cardRef = useRef<HTMLDivElement | null>(null);
   const pressedBackdrop = useRef(false);
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
+  const dismissible = typeof onDismiss === "function";
 
   useBodyScrollLock(open);
 
@@ -144,7 +147,7 @@ export function ModalDialog({
   }, [open]);
 
   useEffect(() => {
-    if (!open || !onDismiss) {
+    if (!open || !dismissible) {
       return undefined;
     }
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -163,13 +166,22 @@ export function ModalDialog({
       if (dialogStack[dialogStack.length - 1] !== generatedId) {
         return;
       }
+      const dismiss = onDismissRef.current;
+      if (!dismiss) {
+        return;
+      }
       event.stopPropagation();
       lastDismissKeydownEvent = event;
-      onDismiss();
+      dismiss();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [generatedId, onDismiss, open]);
+    // Read onDismiss through a ref so Escape uses the latest callback even if it
+    // arrives after this commit but before this effect re-subscribes. Callers such
+    // as a dirty-state wizard pass a new onDismiss every render; findByRole can
+    // resolve on the MutationObserver from that commit while the window listener
+    // still closes over the previous unguarded dismiss.
+  }, [generatedId, dismissible, open]);
 
   const trapTab = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Tab") {

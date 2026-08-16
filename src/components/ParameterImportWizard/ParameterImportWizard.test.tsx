@@ -83,7 +83,7 @@ describe("ParameterImportWizard", () => {
   });
 
   it("guards Escape/close with a discard confirmation once parse progress exists", async () => {
-    const { onClose } = renderWizard();
+    const { onClose } = renderWizard({}, { strict: true });
 
     const dialog = screen.getByRole("dialog", { name: "批量参数导入" });
     fillPasteImportContent(
@@ -107,7 +107,7 @@ describe("ParameterImportWizard", () => {
 
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).not.toHaveBeenCalled();
-    const confirmDialog = screen.getByRole("dialog", { name: "退出批量导入向导？" });
+    const confirmDialog = await screen.findByRole("dialog", { name: "退出批量导入向导？" });
     expect(confirmDialog).toHaveTextContent(/丢弃当前导入进度/);
 
     // 继续导入 keeps everything.
