@@ -71,6 +71,7 @@ import { supportsXiaozeProactiveInsights } from "@/features/agent/xiaozeProactiv
 import { FeedbackDialog } from "@/features/product-feedback/FeedbackDialog";
 import { xiaozeProactiveEnabled } from "@/infrastructure/http/runtimeMode";
 import { getPageByPath, getXiaozeContextSummary, navigationItems, pageUsesProjectScope, PageConfig, utilityItems } from "./appConfig";
+import { createApiInitialState } from "@/application/state/apiInitialState";
 import { reducer, type AppAction, type ApiRuntimeDataDomain } from "@/application/state/appState";
 import { createAppRuntime, type WiseEffAuthClient } from "@/app/appRuntime";
 
@@ -79,11 +80,7 @@ function isStaticDownloadPath(pathname: string) {
 }
 import { TopBarActionsContext } from "./components/layout";
 import { readInitialNodeDebuggingProtocol } from "./NodeDebuggingPage";
-import {
-  createApiInitialState,
-  initialState,
-  mockDataFingerprint
-} from "./mockData";
+import { initialState, mockDataFingerprint } from "@/infrastructure/mock/prototypeState";
 import {
   type PrototypeState,
   type User

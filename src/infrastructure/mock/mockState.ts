@@ -1,4 +1,4 @@
-import { createPrototypeState } from "@/mockData";
+import { createPrototypeState } from "./prototypeState";
 import type { PrototypeState } from "@/domain/prototype/types";
 export type MockRuntimeState = { current: PrototypeState };
 export function createMockRuntimeState(initialState: PrototypeState = createPrototypeState()): MockRuntimeState { return { current: initialState }; }
