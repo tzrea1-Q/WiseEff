@@ -203,7 +203,9 @@ describe("archive file-name helpers", () => {
 
   it("treats stored archive-named objects as parseable text carriers", () => {
     expect(isSupportedStoredLogFileName("a.log")).toBe(true);
+    expect(isSupportedStoredLogFileName("a.json")).toBe(true);
     expect(isSupportedStoredLogFileName("a.log.gz")).toBe(true);
+    expect(isSupportedStoredLogFileName("a.json.gz")).toBe(true);
     expect(isSupportedStoredLogFileName("a.zip")).toBe(true);
     expect(isSupportedStoredLogFileName("a.bin.gz")).toBe(false);
     expect(isSupportedStoredLogFileName("a.bin")).toBe(false);

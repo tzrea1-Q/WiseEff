@@ -43,8 +43,8 @@ describe("presentError", () => {
 
 describe("presentErrorMessage", () => {
   it("maps the logs unsupported-format backend message", () => {
-    expect(presentErrorMessage("Unsupported log format. Supported extensions: .log, .txt, .json.", FALLBACK)).toBe(
-      "暂不支持该日志格式，请上传 .log / .txt / .json 文本日志。"
+    expect(presentErrorMessage("Unsupported log format. Supported extensions: .log, .txt, .csv, .json.", FALLBACK)).toBe(
+      "暂不支持该日志格式，请上传 .log / .txt / .csv / .json 文本日志。"
     );
   });
 

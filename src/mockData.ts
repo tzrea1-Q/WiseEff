@@ -212,7 +212,7 @@ const authLogRawLines = [
 const failedLogRawLines = [
   "00:00:00 ERROR [PARSER] binary thermal snapshot cannot be decoded",
   "00:00:00 INFO [PARSER] detected magic=0x5448524d size=12.4MB",
-  "00:00:00 INFO [PARSER] accepted suffix: .log, .txt, .json",
+  "00:00:00 INFO [PARSER] accepted suffix: .log, .txt, .csv, .json",
   "00:00:00 WARN [PARSER] text stream unavailable; raw snapshot retained",
   "00:00:00 INFO [PARSER] action=export_text_log_required"
 ];
@@ -678,7 +678,7 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
             stageId: "parse",
             lineNumbers: [1],
             inference: "解析器识别到当前文件不满足文本日志要求，需要保留原件并重新导出。",
-            suggestedAction: "请重新上传 .log、.txt 或 .json 文本日志。",
+            suggestedAction: "请重新上传 .log、.txt、.csv 或 .json 文本日志。",
             ruleHit: "unsupported_binary_snapshot"
           },
           {
@@ -689,14 +689,14 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
             suggestedAction: "从温控工具导出文本链路日志"
           }
         ],
-        suggestedActions: ["请重新上传 .log、.txt 或 .json 文本日志。", "从温控工具导出文本链路日志", "保留原始热快照用于离线分析"],
+        suggestedActions: ["请重新上传 .log、.txt、.csv 或 .json 文本日志。", "从温控工具导出文本链路日志", "保留原始热快照用于离线分析"],
         severity: "Critical",
         rawLines: failedLogRawLines,
         capturedAt: "刚刚",
         updatedAt: "刚刚",
         updatedAtIso: recentIso(5),
         submittedBy: "Xiao Wang",
-        failureReason: "二进制格式不支持。请导出 .log / .txt / .json 文本日志。"
+        failureReason: "二进制格式不支持。请导出 .log / .txt / .csv / .json 文本日志。"
       }
     ],
     logAdminUsers,

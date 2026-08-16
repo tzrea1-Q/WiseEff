@@ -91,6 +91,28 @@ describe("createLogRuntimeActions", () => {
     });
   });
 
+  it.each(["events.json", "events.csv"])("treats %s as a supported mock upload", async (fileName) => {
+    const dispatch = vi.fn();
+    const actions = createLogRuntimeActions({ mode: "mock", dispatch, getState: () => initialState });
+
+    await actions.upload({ file: createFile(fileName) });
+
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "SIMULATE_LOG_UPLOAD", fileName, supported: true })
+    );
+  });
+
+  it("does not treat archive names as supported in mock mode", async () => {
+    const dispatch = vi.fn();
+    const actions = createLogRuntimeActions({ mode: "mock", dispatch, getState: () => initialState });
+
+    await actions.upload({ file: createFile("events.log.gz") });
+
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "SIMULATE_LOG_UPLOAD", fileName: "events.log.gz", supported: false })
+    );
+  });
+
   it("refreshes api logs through the repository and hydrates runtime state", async () => {
     const dispatch = vi.fn();
     const repository = createRepository();

@@ -11,7 +11,7 @@ const CJK_PATTERN = /[\u4e00-\u9fff]/;
 
 /** Known backend English messages that deserve specific product copy. */
 const MESSAGE_LABELS: Array<{ match: RegExp; label: string | ((match: RegExpMatchArray) => string) }> = [
-  { match: /^Unsupported (log format|file extension)/i, label: "暂不支持该日志格式，请上传 .log / .txt / .json 文本日志。" },
+  { match: /^Unsupported (log format|file extension)/i, label: "暂不支持该日志格式，请上传 .log / .txt / .csv / .json 文本日志。" },
   {
     match: /^DTS import source exceeds the (\d+) byte limit\.?$/i,
     label: (match) => `DTS 源超出 ${match[1]} 字节大小上限，请精简后重试。`

@@ -55,12 +55,17 @@ describe("parseLogText", () => {
     });
   });
 
-  it("accepts .csv and .txt files", () => {
+  it("accepts .csv, .txt, and .json files as UTF-8 text logs", () => {
     const txt = parseLogText({ fileName: "events.txt", content: Buffer.from("INFO ok", "utf8") });
     const csv = parseLogText({ fileName: "events.csv", content: Buffer.from("level,message\nERROR,bad", "utf8") });
+    const json = parseLogText({
+      fileName: "events.json",
+      content: Buffer.from('{"level":"INFO","message":"ok"}\n', "utf8")
+    });
 
     expect(txt.ok).toBe(true);
     expect(csv.ok).toBe(true);
+    expect(json.ok).toBe(true);
   });
 
   it("rejects .bin, unsupported .gz inner names, and missing extensions with an unsupported format error", () => {

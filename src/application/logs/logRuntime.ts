@@ -16,6 +16,7 @@ import type {
   LogWebhookTestOutcome
 } from "@/application/ports/LogAnalysisRepository";
 import type { AppAction } from "@/application/state/appState";
+import { isSupportedTextLogFileName } from "@/domain/logs/uploadExtensions";
 import type { LogDomain, LogDomainKnowledgeLink, LogFeedbackInsight, LogRecord, LogWebhookDelivery } from "@/domain/logs/types";
 import type { PrototypeState } from "@/domain/prototype/types";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
@@ -74,7 +75,6 @@ type LogRuntimeOptions = {
 };
 
 const terminalJobStatuses = new Set<LogJobSnapshot["status"]>(["complete", "failed"]);
-const supportedMockUploadExtensions = new Set(["log", "txt", "json"]);
 export type LogRuntimeNotifiedFailure = Error & { alreadyNotified: true };
 type PollGenerationTracker = {
   begin(logId: string): number;
@@ -110,8 +110,7 @@ function delay(ms: number) {
 }
 
 function isSupportedMockUpload(fileName: string) {
-  const extension = fileName.split(".").pop()?.toLowerCase();
-  return extension ? supportedMockUploadExtensions.has(extension) : false;
+  return isSupportedTextLogFileName(fileName);
 }
 
 /** Adaptive backoff schedule: 1s for 30 attempts, then 2s for 45, then 5s. */
