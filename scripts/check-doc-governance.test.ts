@@ -104,7 +104,39 @@ describe("validateEnvExample", () => {
     expect(errors).toContain("Missing required .env.example key: LOG_ANALYSIS_QUEUE_MODE.");
     expect(errors).toContain("Missing required .env.example key: REDIS_URL.");
     expect(errors).toContain("Missing required .env.example key: LOG_ANALYSIS_QUEUE_CONCURRENCY.");
+    expect(errors).toContain("Missing required .env.example key: LOG_ANALYSIS_API_BASE_URL.");
+    expect(errors).toContain("Missing required .env.example key: LOG_ANALYSIS_MODEL.");
+    expect(errors).toContain("Missing required .env.example key: LOG_ANALYSIS_API_KEY.");
+    expect(errors).toContain("Missing required .env.example key: LOG_ANALYSIS_API_TIMEOUT_MS.");
+    expect(errors).toContain("Missing required .env.example key: LOG_ANALYSIS_TOKEN_BUDGET.");
+    expect(errors).toContain("Missing required .env.example key: LOG_ANALYSIS_DETERMINISTIC.");
     expect(errors.length).toBeGreaterThan(2);
+  });
+
+  it("requires the log-analysis LLM env family to be declared even when other keys are present", async () => {
+    const root = await createTempRoot();
+    const logAnalysisLlmEnvKeys = [
+      "LOG_ANALYSIS_API_BASE_URL",
+      "LOG_ANALYSIS_MODEL",
+      "LOG_ANALYSIS_API_KEY",
+      "LOG_ANALYSIS_API_TIMEOUT_MS",
+      "LOG_ANALYSIS_TOKEN_BUDGET",
+      "LOG_ANALYSIS_DETERMINISTIC"
+    ] as const;
+    await write(
+      root,
+      ".env.example",
+      requiredEnvExampleKeys
+        .filter((key) => !(logAnalysisLlmEnvKeys as readonly string[]).includes(key))
+        .map((key) => `${key}=value`)
+        .join("\n")
+    );
+
+    const errors = await validateEnvExample(root);
+
+    expect(errors).toEqual(
+      logAnalysisLlmEnvKeys.map((key) => `Missing required .env.example key: ${key}.`)
+    );
   });
 
   it("accepts an .env.example containing all required keys", async () => {

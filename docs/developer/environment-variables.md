@@ -133,7 +133,7 @@ API mode always includes Xiaoze; mock mode has no Agent UI. The backend always r
 
 ## Log Analysis LLM
 
-Separate `LOG_ANALYSIS_*` family so log analysis and Xiaoze can point at different providers (ADR-0022). Unconfigured + non-deterministic counts as provider-unavailable: `/health/ready` reports `logAnalysisLlm` as missing and analyses degrade to the rule engine with an explicit degraded marker. See `docs/runbooks/log-analysis-llm.md`. Self-hosted `ops/self-hosted/.env.example` must declare this family — `npm run selfhost:check` verifies key presence, not filled values. Empty `LOG_ANALYSIS_API_KEY` remains valid in the template; `/health/ready` `logAnalysisLlm` is the live fail-closed gate and already relaxes the API key when `LOG_ANALYSIS_DETERMINISTIC=true`.
+Separate `LOG_ANALYSIS_*` family so log analysis and Xiaoze can point at different providers (ADR-0022). Unconfigured + non-deterministic counts as provider-unavailable: `/health/ready` reports `logAnalysisLlm` as missing and analyses degrade to the rule engine with an explicit degraded marker. See `docs/runbooks/log-analysis-llm.md`. Self-hosted `ops/self-hosted/.env.example` and local `.env.example` must declare this family — `npm run selfhost:check` and `npm run docs:check` verify key presence, not filled values. Empty `LOG_ANALYSIS_API_KEY` remains valid in the template; `/health/ready` `logAnalysisLlm` is the live fail-closed gate and already relaxes the API key when `LOG_ANALYSIS_DETERMINISTIC=true`.
 
 | Variable | Local default | Required for | Notes |
 | --- | --- | --- | --- |

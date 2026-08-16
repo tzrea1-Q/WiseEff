@@ -115,7 +115,7 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 
 ## 日志分析 LLM
 
-独立的 `LOG_ANALYSIS_*` 家族，使日志分析与小泽可指向不同 provider（ADR-0022）。未配置且未开确定性模式时按 provider 不可用处理：`/health/ready` 的 `logAnalysisLlm` 报告 missing，分析降级到规则引擎并显式标注。详见 `docs/runbooks/log-analysis-llm.md`。自托管模板 `ops/self-hosted/.env.example` 必须声明这一家族——`npm run selfhost:check` 检查键是否出现，不要求填值。模板里 `LOG_ANALYSIS_API_KEY` 留空仍然合法；运行时失败关闭闸门仍是 `/health/ready` 的 `logAnalysisLlm`，并在 `LOG_ANALYSIS_DETERMINISTIC=true` 时已经放宽 API key。
+独立的 `LOG_ANALYSIS_*` 家族，使日志分析与小泽可指向不同 provider（ADR-0022）。未配置且未开确定性模式时按 provider 不可用处理：`/health/ready` 的 `logAnalysisLlm` 报告 missing，分析降级到规则引擎并显式标注。详见 `docs/runbooks/log-analysis-llm.md`。自托管模板 `ops/self-hosted/.env.example` 与本地 `.env.example` 必须声明这一家族——`npm run selfhost:check` 与 `npm run docs:check` 检查键是否出现，不要求填值。模板里 `LOG_ANALYSIS_API_KEY` 留空仍然合法；运行时失败关闭闸门仍是 `/health/ready` 的 `logAnalysisLlm`，并在 `LOG_ANALYSIS_DETERMINISTIC=true` 时已经放宽 API key。
 
 | 变量 | 本地默认值 | 用途 | 说明 |
 | --- | --- | --- | --- |
