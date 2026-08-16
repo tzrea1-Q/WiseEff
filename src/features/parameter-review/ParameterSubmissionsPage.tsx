@@ -13,6 +13,7 @@ import { SubmissionHistoryDiffCard } from "@/features/parameter-review/submissio
 import { EmptyState, PanelHeader } from "@/workbenchUi";
 import { ArrowRight, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import "./parameter-review.css";
 
 function getUserDisplayAliases(user: User | undefined) {
   if (!user) {

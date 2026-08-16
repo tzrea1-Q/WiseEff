@@ -2445,7 +2445,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(diff!.querySelector(".submission-preview-diff-row[data-kind='remove'] code")).toHaveTextContent('"burst"');
     expect(diff!.querySelector(".submission-preview-diff-row[data-kind='add'] code")).toHaveTextContent('"boost"');
 
-    const css = readStylesheet("src/styles.css");
+    const css = readStylesheet("src/styles.css") + readStylesheet("src/features/parameter-review/parameter-review.css");
     const historyLayout = declarationsFor(css, ".submission-history-layout");
     expect(historyLayout.display).toBe("grid");
     expect(historyLayout["grid-template-columns"]).toBe("320px minmax(0, 1fr)");
@@ -2518,7 +2518,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(diff!.querySelector(".submission-preview-diff-row[data-kind='remove'] code")).toHaveTextContent("3850 mA");
     expect(diff!.querySelector(".submission-preview-diff-row[data-kind='add'] code")).toHaveTextContent("3200 mA");
 
-    const css = readStylesheet("src/styles.css");
+    const css = readStylesheet("src/styles.css") + readStylesheet("src/features/parameter-review/parameter-review.css");
     const summary = declarationsFor(css, ".submission-history-summary");
     expect(summary.display).toBe("grid");
     expect(summary["grid-template-columns"]).toBe("repeat(3, minmax(0, 1fr))");
@@ -2795,7 +2795,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(within(table).getByText("快充输入电流调整")).toBeInTheDocument();
     expect(within(table).queryByText("电池目标温度下调")).not.toBeInTheDocument();
 
-    const styles = readStylesheet("src/styles.css");
+    const styles = readStylesheet("src/styles.css") + readStylesheet("src/features/parameter-review/parameter-review.css");
     expect(
       declarationFor(styles, '.review-table-wrap [data-slot="table-container"]', "overflow-x")
     ).toBe("auto");
@@ -2847,7 +2847,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   });
 
   it("keeps Excel-style header filters next to their header labels", () => {
-    const styles = readStylesheet("src/styles.css");
+    const styles = readStylesheet("src/styles.css") + readStylesheet("src/features/parameter-review/parameter-review.css");
     const reviewHeader = declarationsFor(styles, ".review-column-filter-head");
 
     expect(reviewHeader.display).toBe("inline-flex");
@@ -3174,7 +3174,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(dialog).toHaveTextContent("0.82 ratio");
     expect(dialog).toHaveTextContent("0.88 ratio");
 
-    const css = readStylesheet("src/styles.css");
+    const css = readStylesheet("src/styles.css") + readStylesheet("src/features/parameter-review/parameter-review.css");
     expect(
       declarationFor(css, ".submission-detail-dialog .history-submission-diff", "max-height")
     ).toBe("340px");

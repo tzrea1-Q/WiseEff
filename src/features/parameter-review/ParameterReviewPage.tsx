@@ -45,6 +45,7 @@ import { shouldSummarizeReviewChange } from "@/parameterValueKind";
 import { EmptyState, PanelHeader, SectionLabel, WorkbenchLayout, getContextQuery } from "@/workbenchUi";
 import { ArrowRight, CheckCircle2, CircleOff, FileText, History, Link2, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import "./parameter-review.css";
 
 type ParameterReviewMode = "pending" | "history";
 type ParameterInitializationReviewRow = {
