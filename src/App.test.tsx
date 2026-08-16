@@ -3610,7 +3610,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   });
 
   it("includes responsive and reduced-motion styles for the log analysis workbench", () => {
-    const css = readStylesheet("src/styles.css");
+    const css = readStylesheet("src/styles.css") + readStylesheet("src/features/log-analysis/log-analysis.css");
 
     expect(hasRule(css, ".logs-v2")).toBe(true);
     expect(hasAtRule(css, "@media (max-width: 1100px)")).toBe(true);
