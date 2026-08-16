@@ -10,11 +10,11 @@ WiseEff frontend is a Vite, React, TypeScript SPA. It supports a rich mock-backe
 - `src/domain/`: role, parameter, log, debugging, audit, and Agent domain types and pure logic.
 - `src/application/state/`: the global prototype state machine — `AppAction`, `reducer`/`appReducer`, and reducer-only transition helpers. Import state types from here, never from `@/App` (ADR-0023).
 - `src/application/ports/`: frontend-facing business interfaces.
-- `src/infrastructure/mock/`: mock state and mock implementations for demos/tests.
+- `src/infrastructure/mock/`: mock state and mock implementations for demos/tests. Failures throw `WiseEffApiError` via `mockApiError` so application `error.code` branches work in mock mode as well as API mode (TD-109 wave 1 / #475).
 - `src/infrastructure/http/`: API client, DTOs, auth client, runtime mode.
 - `src/components/`: reusable UI, layout, tables, dialogs, filters, charts.
 - `src/features/agent/`: Xiaoze CopilotKit surface (`XiaozeProvider`, `useXiaozePageContext`, `XiaozeApprovalCard`, frontend tools).
-- `src/features/log-analysis/`: `LogsPage` (upload, conclusion, evidence chain, raw viewer) and `LogDashboardPage`.
+- `src/features/log-analysis/`: `LogsPage` (upload, conclusion, evidence chain, raw viewer) and `LogDashboardPage`. Feature styles live in colocated `log-analysis.css` (imported from the pages; #476). Parameter-review CSS remains in `src/styles.css` until C7 wave 2.
 - `src/features/parameter-review/`: `ParameterReviewPage`, `ParameterSubmissionsPage`, submission-history diff, and review-specific UI atoms.
 - `src/features/product-feedback/`: sidebar `FeedbackDialog` and Admin triage UI for `/feedback-admin`.
 - `src/features/knowledge/`: knowledge base pages for `/knowledge` and `/knowledge-admin` (list, split editor, upload, revisions).
@@ -39,7 +39,7 @@ VITE_WISEEFF_RUNTIME_MODE=mock
 
 Production builds must not use mock runtime as a business data source.
 
-API mode never falls back to mock data. The shell boots from `createApiInitialState()` (structural fields kept, every business-data slice empty), shows a slim connecting strip until the first runtime sync completes, and when a domain refresh (parameters / logs / debugging) fails it clears that domain's slices via `CLEAR_API_RUNTIME_DOMAIN` and raises a persistent page-level cannot-connect / no-data error banner with a retry button instead of quietly keeping demo records on screen. Successful hydration also repoints `activeProjectId` at real server projects when the demo id is unknown. Mock mode behavior is unchanged.
+API mode never falls back to mock data. The shell boots from `createApiInitialState()` (structural fields kept, every business-data slice empty — including `auditEvents`; unused `developers` / `logAdminUsers` slices were retired in #474), shows a slim connecting strip until the first runtime sync completes, and when a domain refresh (parameters / logs / debugging) fails it clears that domain's slices via `CLEAR_API_RUNTIME_DOMAIN` and raises a persistent page-level cannot-connect / no-data error banner with a retry button instead of quietly keeping demo records on screen. Successful hydration also repoints `activeProjectId` at real server projects when the demo id is unknown. `persistedConfigSnapshot` still carries non-array mock schema (TD-110 remainder). Mock mode behavior is unchanged.
 
 M6.2 OIDC runtime support uses an async authorization provider so API clients can request the current access token and handle refresh/logout failures without static bearer injection. `VITE_WISEEFF_API_AUTHORIZATION` remains a local static-token convenience and is rejected by production builds.
 
@@ -75,7 +75,7 @@ The project-list entry opens `/parameter-admin/projects/:projectId/configuration
 
 `ParameterRepository` is the frontend port for parameter-management workflows. Page components call runtime actions from `src/application/parameters/parameterRuntime.ts`; those actions dispatch local reducer updates in `mock` mode and call a repository in `api` mode.
 
-In `mock` mode, `src/infrastructure/mock/mockParameterRepository.ts` preserves prototype behavior for demos and component tests. It can list projects and parameters, stash drafts, submit rounds, advance reviews, and apply import previews against the in-memory mock state.
+In `mock` mode, `src/infrastructure/mock/mockParameterRepository.ts` preserves prototype behavior for demos and component tests. It can list projects and parameters, stash drafts, submit rounds, advance reviews, and apply import previews against the in-memory mock state. Failures use `mockApiError` (`WiseEffApiError`) rather than a bare `Error`.
 
 In `api` mode, `src/infrastructure/http/parameterClient.ts` maps `ParameterRepository` calls to `/api/v1` endpoints and DTO adapters. Parameter pages hydrate projects, parameters, drafts, change requests, and submission rounds from the backend, then refresh after write actions.
 
