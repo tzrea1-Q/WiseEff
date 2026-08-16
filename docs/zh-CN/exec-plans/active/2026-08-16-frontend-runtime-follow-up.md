@@ -2,9 +2,9 @@
 
 > English: [English](../../../exec-plans/active/2026-08-16-frontend-runtime-follow-up.md)
 
-- **状态：** 进行中 — 收口。第一批 A/B/C（#474–#476）与第二波（#478 领域守卫、#479 评审 CSS、#481 DTS `/include/` 信封）已在 `main`。开放：#480 API 目录诚实（Acceptance 抖动重跑）。收口轨道见英文计划 Closeout tracks。
+- **状态：** 进行中 — 收口。第一批 A/B/C（#474–#476）、第二波（#478 领域守卫、#479 评审 CSS、#481 DTS `/include/` 信封）与 #480 API 目录诚实已在 `main`。收口轨道 D–H 见英文计划 Closeout tracks。
 - **负责人：** Frontend
-- **核对日期：** 2026-08-17（GitHub `main` @ `4fc6a127`，#481 合入后）
+- **核对日期：** 2026-08-17（GitHub `main` @ `d99823df`，#480 合入后）
 - **前序：** `docs/exec-plans/completed/2026-08-12-app-shell-decomposition.md`
 
 ## 目标
@@ -36,7 +36,7 @@ C5 不再无限推迟：本收口先把 `NodeDebuggingPage` session 化（Track 
 | TD-109 第二波领域守卫 | [#478](https://github.com/tzrea1-Q/WiseEff/pull/478) | `76b573de` |
 | C7 第二波评审 CSS | [#479](https://github.com/tzrea1-Q/WiseEff/pull/479) | `00f18d0a` |
 | TD-109 DTS `/include/` 信封 | [#481](https://github.com/tzrea1-Q/WiseEff/pull/481) | `4fc6a127` |
-| TD-110 API 目录诚实 | [#480](https://github.com/tzrea1-Q/WiseEff/pull/480) | 开放（Acceptance 抖动重跑） |
+| TD-110 API 目录诚实 | [#480](https://github.com/tzrea1-Q/WiseEff/pull/480) | `d99823df` |
 
 下列「做法」是已执行清单，不要再实现一遍。
 
@@ -73,13 +73,12 @@ C5 共享桥接 session 改为收口轨道：先 F（节点调试 session），�
 ## 后续顺序
 
 ```
-已合入: A #474 │ B #475 │ C #476 │ 守卫 #478 │ 评审 CSS #479 │ dts-parse #481 │ 文档 #477
-开放:   #480 目录诚实（抖动重跑）
+已合入: A #474 │ B #475 │ C #476 │ 守卫 #478 │ 评审 CSS #479 │ dts-parse #481 │ 目录 #480 │ 文档 #477
 下一步: D  TD-109 Object.assign 余量
 下一步: E  C7 配置工作台 CSS
 下一步: F  NodeDebuggingPage session
 然后:   G  C5 BridgeGateway（等 F）
-然后:   H  TD-110 mock 播种（等 #480，文件与 mockData.ts 重叠）
+然后:   H  TD-110 mock 播种（#480 已解除阻塞）
 ```
 
 做法、验证命令与文件地图见英文计划 Closeout tracks。

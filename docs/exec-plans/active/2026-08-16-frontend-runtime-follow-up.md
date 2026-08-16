@@ -2,9 +2,9 @@
 
 > Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-08-16-frontend-runtime-follow-up.md)
 
-- **Status:** Active — Closeout. First batch A/B/C (#474–#476) and wave 2 (#478 domain guards, #479 parameter-review CSS, #481 DTS `/include/` envelope) are on `main`. Open: #480 API catalog honesty (Acceptance flake rerun). Remaining closeout tracks below.
+- **Status:** Active — Closeout. First batch A/B/C (#474–#476), wave 2 (#478 domain guards, #479 parameter-review CSS, #481 DTS `/include/` envelope), and #480 API catalog honesty are on `main`. Remaining closeout tracks D–H below.
 - **Owner:** Frontend
-- **Verified against:** GitHub `main` on 2026-08-17 (`4fc6a127`, merge of #481).
+- **Verified against:** GitHub `main` on 2026-08-17 (`d99823df`, merge of #480).
 - **Predecessor:** `docs/exec-plans/completed/2026-08-12-app-shell-decomposition.md` (PRs #324, #342, #375, page-owned loading). C2/C6 leftovers were recorded as TD-110 / TD-109.
 
 ## Goal
@@ -194,18 +194,17 @@ Frontend-visible: `/logs` and `/log-dashboard` at 1440×900, 768×1024, 390×844
 | TD-109 wave 2 domain guards | [#478](https://github.com/tzrea1-Q/WiseEff/pull/478) | `76b573de` |
 | C7 wave 2 parameter-review CSS | [#479](https://github.com/tzrea1-Q/WiseEff/pull/479) | `00f18d0a` |
 | TD-109 DTS `/include/` envelope leftover | [#481](https://github.com/tzrea1-Q/WiseEff/pull/481) | `4fc6a127` |
-| TD-110 API catalog honesty | [#480](https://github.com/tzrea1-Q/WiseEff/pull/480) | Open — Build green; Acceptance `test:all` flake on `ParameterAdminNextPage` (`gpio_int` still "正在加载"). Same SHA's `push` workflow passed. Rerun in flight. |
+| TD-110 API catalog honesty | [#480](https://github.com/tzrea1-Q/WiseEff/pull/480) | `d99823df` |
 
 ## Closeout tracks (file-disjoint, from `origin/main` @ `4fc6a127`)
 
 ```
-landed: A #474 │ B #475 │ C #476 │ guards #478 │ review CSS #479 │ dts-parse #481 │ docs #477
-open:   #480 catalog honesty (flake rerun)
+landed: A #474 │ B #475 │ C #476 │ guards #478 │ review CSS #479 │ dts-parse #481 │ catalog #480 │ docs #477
 next:   D  TD-109 Object.assign leftover     branch fix/td109-topology-mock-api-error
 next:   E  C7 configuration-workbench CSS    branch refactor/configuration-workbench-css
 next:   F  NodeDebuggingPage session         branch refactor/node-debugging-session
 then:   G  C5 BridgeGateway / BridgeTargetSession (starts only after F merges)
-then:   H  TD-110 mock seeding into adapters (starts only after #480 merges — shares mockData.ts)
+then:   H  TD-110 mock seeding into adapters (unblocked by #480)
 ```
 
 ### Track D — TD-109 `Object.assign(new Error)` leftover
@@ -226,7 +225,7 @@ After F: extract the shared bridge/target/protocol/session cluster used by node-
 
 ### Track H — TD-110 mock seeding
 
-After #480: move `createPrototypeState` construction into `src/infrastructure/mock/` so production pages/reducer never import the mock catalog. Do not start while #480 is open (`mockData.ts` overlap).
+Move `createPrototypeState` construction into `src/infrastructure/mock/` so production pages/reducer never import the mock catalog. `createApiInitialState` must not go through seeded `createPrototypeState`. Unblocked by #480.
 
 ## Git & PR Workflow
 
@@ -265,7 +264,7 @@ The shared checkout `/Users/tzrea1/Develop/WiseEff` is dirty and on an unrelated
 | Repository map | `AGENTS.md` | No change |
 | Architecture | `ARCHITECTURE.md` | Reviewed 2026-08-16 — Frontend Boundaries still accurate (`Production behavior must not depend on mock runtime data`); no edit |
 | Architecture (zh) | `docs/zh-CN/architecture.md` | Reviewed — same; no edit |
-| Frontend guide | `docs/FRONTEND.md` | Updated this docs PR — API initial state has no demo audit/people slices; mock adapters throw `WiseEffApiError`; log-analysis CSS colocation |
+| Frontend guide | `docs/FRONTEND.md` | Updated this docs PR — API boot has no demo audit/people slices; catalog honesty #480; mock adapters throw `WiseEffApiError`; log-analysis and parameter-review CSS colocation |
 | Frontend guide (zh) | `docs/zh-CN/frontend.md` | Updated — mirror |
 | Plans index | `docs/PLANS.md` | Updated — this plan in Current Active Plan with landed PR numbers; remainder listed |
 | Plans index (zh) | `docs/zh-CN/PLANS.md` | Updated — mirror the active-plan bullet |
@@ -290,7 +289,7 @@ This plan cannot move to `completed/` until:
 - [x] Track B merged (#475); TD-109 row rewritten to "envelopes done; wave 2 machines remain"
 - [x] Track C merged (#476); FRONTEND notes log-analysis CSS colocation
 - [x] TD-109 wave 2 merged (#478); C7 wave 2 merged (#479); DTS `/include/` envelope merged (#481)
-- [ ] #480 merged (or closed as superseded)
+- [x] #480 merged (`d99823df`); ParametersPage / reducer no longer fall back to `mockData.projects`
 - [ ] Track D (`Object.assign` leftover) merged; `rg "new Error" src/infrastructure/mock --glob '!*.test.ts'` empty
 - [ ] Track E configuration-workbench CSS merged; FRONTEND notes the colocation
 - [ ] Track F NodeDebugging session merged
@@ -303,8 +302,8 @@ Keep this plan **active** until the closeout tracks land or are re-homed on the 
 
 ## Expected outcomes
 
-- First-batch PRs #474–#476 plus wave-2 #478/#479/#481 on `main`.
-- API mode cannot be confused with demo directory/audit fixtures or the mock project catalog (#480).
+- First-batch PRs #474–#476 plus wave-2 #478/#479/#481 and catalog honesty #480 on `main`.
+- API mode cannot be confused with demo directory/audit fixtures or the mock project catalog.
 - Mock failures participate in `WiseEffApiError` code branches, including spec reattribute/rename and DTS `/include/`.
 - Feature CSS for log-analysis, parameter-review, and configuration-workbench is colocated; shared workbench chrome stays global.
 - `/node-debugging` is sessionized; C5 either shares bridge/target/session with dts-reload or is a dated tracker row.
