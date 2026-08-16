@@ -243,4 +243,63 @@ describe("createMockParameterTopologyRepository (ParameterTopologyRepository con
       details: { taskId: task.id }
     });
   });
+
+  it("reattributeParameterSpec throws CONFLICT when another spec already uses the subject and property key", async () => {
+    const repo = createRepo();
+    await repo.reattributeParameterSpec("spec-sc8562-gpio-int", {
+      attributionSubjectId: "sc8562",
+      reason: "align subject"
+    });
+
+    const error = await repo
+      .reattributeParameterSpec("spec-mt5788-gpio-int", {
+        attributionSubjectId: "sc8562",
+        reason: "duplicate subject"
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(WiseEffApiError);
+    expect(error).toMatchObject({
+      code: "CONFLICT",
+      message: "A parameter definition already exists for this subject and property key.",
+      requestId: "mock",
+      details: { parameterSpecId: "spec-sc8562-gpio-int", lifecycle: "active" }
+    });
+  });
+
+  it("renameParameterSpecPropertyKey throws CONFLICT when project bindings still reference the definition", async () => {
+    const repo = createRepo();
+    const error = await repo
+      .renameParameterSpecPropertyKey("spec-sc8562-gpio-int", {
+        propertyKey: "gpio_int_renamed",
+        reason: "rename bound spec"
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(WiseEffApiError);
+    expect(error).toMatchObject({
+      code: "CONFLICT",
+      message: "Cannot rename property_key while 1 project binding(s) reference this definition.",
+      requestId: "mock",
+      details: { parameterSpecId: "spec-sc8562-gpio-int", referenceCount: 1 }
+    });
+  });
+
+  it("renameParameterSpecPropertyKey throws CONFLICT when another spec already uses the subject and property key", async () => {
+    const repo = createRepo();
+    const error = await repo
+      .renameParameterSpecPropertyKey("spec-mt5788-gpio-int", {
+        propertyKey: "mystery_prop",
+        reason: "duplicate property key"
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(WiseEffApiError);
+    expect(error).toMatchObject({
+      code: "CONFLICT",
+      message: "A parameter definition already exists for this subject and property key.",
+      requestId: "mock",
+      details: { parameterSpecId: "spec-draft-mystery", lifecycle: "draft" }
+    });
+  });
 });

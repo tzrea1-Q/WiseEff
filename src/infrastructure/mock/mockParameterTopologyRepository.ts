@@ -683,11 +683,11 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
           other.attributionSubjectId === nextSubjectId &&
           other.propertyKey === propertyKey
         ) {
-          throw Object.assign(new Error("A parameter definition already exists for this subject and property key."), {
-            code: "CONFLICT",
-            status: 409,
-            details: { parameterSpecId: otherId, lifecycle: other.lifecycle },
-          });
+          throw mockApiError(
+            "CONFLICT",
+            "A parameter definition already exists for this subject and property key.",
+            { parameterSpecId: otherId, lifecycle: other.lifecycle }
+          );
         }
       }
       const updated: SpecFixture = {
@@ -706,15 +706,10 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
       }
       const referenceCount = existing.referenceCount ?? 0;
       if (referenceCount > 0) {
-        throw Object.assign(
-          new Error(
-            `Cannot rename property_key while ${referenceCount} project binding(s) reference this definition.`,
-          ),
-          {
-            code: "CONFLICT",
-            status: 409,
-            details: { parameterSpecId: specId, referenceCount },
-          },
+        throw mockApiError(
+          "CONFLICT",
+          `Cannot rename property_key while ${referenceCount} project binding(s) reference this definition.`,
+          { parameterSpecId: specId, referenceCount }
         );
       }
       const nextPropertyKey = input.propertyKey.trim();
@@ -724,11 +719,11 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
           other.attributionSubjectId === existing.attributionSubjectId &&
           other.propertyKey === nextPropertyKey
         ) {
-          throw Object.assign(new Error("A parameter definition already exists for this subject and property key."), {
-            code: "CONFLICT",
-            status: 409,
-            details: { parameterSpecId: otherId, lifecycle: other.lifecycle },
-          });
+          throw mockApiError(
+            "CONFLICT",
+            "A parameter definition already exists for this subject and property key.",
+            { parameterSpecId: otherId, lifecycle: other.lifecycle }
+          );
         }
       }
       const updated: SpecFixture = {
