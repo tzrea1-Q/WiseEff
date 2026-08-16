@@ -2,9 +2,9 @@
 
 > Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-08-16-frontend-runtime-follow-up.md)
 
-- **Status:** Active — three parallel implementation tracks from `origin/main` @ `fcef9758`
+- **Status:** Active — Tracks A/B/C landed on `main` 2026-08-16 (#474, #475, #476). Remainder: TD-110 snapshot/section-state/seeding, TD-109 wave 2, C7 wave 2, C5 deferred.
 - **Owner:** Frontend
-- **Verified against:** GitHub `main` on 2026-08-16 (`fcef9758`, merge of #473). Open PRs at verification time: none.
+- **Verified against:** GitHub `main` on 2026-08-16 (`c3b6a7a1`, merge of #476).
 - **Predecessor:** `docs/exec-plans/completed/2026-08-12-app-shell-decomposition.md` (PRs #324, #342, #375, page-owned loading). C2/C6 leftovers were recorded as TD-110 / TD-109.
 
 ## Goal
@@ -13,9 +13,9 @@ Close the remaining architecture-review follow-ups that are still open on `main`
 
 After this program:
 
-- API mode no longer boots with demo people, demo log-admin users, or demo audit events in `PrototypeState`.
-- Mock adapters throw `WiseEffApiError`, so `error.code` branches in application runtimes work in mock mode.
-- Log-analysis feature CSS lives next to `src/features/log-analysis/`, following the `parameter-home.css` precedent.
+- API mode no longer boots with demo people, demo log-admin users, or demo audit events in `PrototypeState`. **Done** (#474).
+- Mock adapters throw `WiseEffApiError`, so `error.code` branches in application runtimes work in mock mode. **Done** (#475).
+- Log-analysis feature CSS lives next to `src/features/log-analysis/`, following the `parameter-home.css` precedent. **Done** (#476).
 
 ## Non-goals (this program)
 
@@ -28,11 +28,13 @@ After this program:
 
 ## Evidence from the 2026-08-16 re-audit
 
-| Item | Still true on `main` | Correction vs tracker wording |
+Pre-merge snapshot (then-`main` @ `fcef9758`). After #474/#475/#476 the leftover-slice and envelope rows are historical; remaining truth is in **Track sequencing after this batch**.
+
+| Item | Still true on `main` (pre-merge) | Correction vs tracker wording |
 | --- | --- | --- |
-| TD-110 | `createApiInitialState()` empties parameters/logs/devices/notifications but still spreads mock `auditEvents`, `developers` (12 demo names, **zero production readers**), and `logAdminUsers` (Jane Smith / Mike Kruger / Ana Lin; **no page reads**; `LOG_ADMIN_*_USER` only in reducer tests). `AuditCenterPage` already isolates mock events via `isApiMode`. | Prefer **retirement** for `developers` / `logAdminUsers`, not a new `HYDRATE_*` channel. |
-| TD-109 | `src/infrastructure/mock/` has **zero** `WiseEffApiError` imports; adapters still `throw new Error(...)`. Candidate activation and identity-mapping open/closed checks remain duplicated against `server/modules/`. | "Five error strings match character-for-character" is **stale**. Messages have drifted (mock appends `taskId`; candidate stale text is the short form). Duplication of **rules** remains; string coincidence does not. |
-| C7 | `src/styles.css` ≈ 28,732 lines. Feature CSS exists only for `parameter-home` and Xiaoze markdown. `src/features/log-analysis/` and `src/features/parameter-review/` have no colocated CSS. Log Analysis v2 block starts at `styles.css:6935`. | First cut is log-analysis only. |
+| TD-110 | `createApiInitialState()` emptied parameters/logs/devices/notifications but still spread mock `auditEvents`, `developers` (12 demo names, **zero production readers**), and `logAdminUsers` (Jane Smith / Mike Kruger / Ana Lin; **no page reads**; `LOG_ADMIN_*_USER` only in reducer tests). `AuditCenterPage` already isolates mock events via `isApiMode`. | Prefer **retirement** for `developers` / `logAdminUsers`, not a new `HYDRATE_*` channel. **Done in #474.** |
+| TD-109 | `src/infrastructure/mock/` had **zero** `WiseEffApiError` imports; adapters still `throw new Error(...)`. Candidate activation and identity-mapping open/closed checks remain duplicated against `server/modules/`. | "Five error strings match character-for-character" is **stale**. Messages have drifted (mock appends `taskId`; candidate stale text is the short form). Envelope alignment **done in #475**; duplication of **rules** remains for wave 2. |
+| C7 | `src/styles.css` ≈ 28,732 lines. Feature CSS existed only for `parameter-home` and Xiaoze markdown. Log Analysis v2 block started at `styles.css:6935`. | First cut is log-analysis only. **Done in #476.** Parameter-review CSS is wave 2. |
 | C5 | No `BridgeGateway` type. `LocalDeviceBridgePanel` is shared UI only. | Keep deferred. |
 
 ## Parallel file map (do not cross)
@@ -45,7 +47,19 @@ After this program:
 
 Parent session owns `docs/PLANS.md`, both trackers, FRONTEND bilingual pages, and this plan. Implementation agents do not edit those files.
 
+## Landed 2026-08-16
+
+| Track | PR | Merge commit on `main` |
+| --- | --- | --- |
+| A — TD-110 leftover slices | [#474](https://github.com/tzrea1-Q/WiseEff/pull/474) | `171ec4f8` |
+| B — TD-109 wave 1 envelopes | [#475](https://github.com/tzrea1-Q/WiseEff/pull/475) | `1df5bbc5` |
+| C — C7 wave 1 log CSS | [#476](https://github.com/tzrea1-Q/WiseEff/pull/476) | `c3b6a7a1` |
+
+Track specs below are the executed checklist, kept for audit. Do not re-implement them.
+
 ## Track A — TD-110 leftover slices
+
+**Landed in #474.**
 
 **Intent:** API mode must not hold demo records in slices that have no hydrate channel.
 
@@ -74,6 +88,8 @@ Adjust the new test path to match where mockData tests already live. `npm run bu
 - `LOG_ADMIN_ADD_USER` does not exist.
 
 ## Track B — TD-109 wave 1: mock error envelopes
+
+**Landed in #475.**
 
 **Intent:** one error type across mock and HTTP adapters. Do not extract state machines in this track.
 
@@ -137,6 +153,8 @@ Wave 2 also aligns the drifted English messages with the server **or** stops ass
 
 ## Track C — C7 wave 1: log-analysis CSS colocation
 
+**Landed in #476.**
+
 **Intent:** pixel-identical move. Precedent: `src/features/parameter-home/parameter-home.css` imported from `ParameterHomePage.tsx`.
 
 ### Do
@@ -169,11 +187,11 @@ Frontend-visible: `/logs` and `/log-dashboard` at 1440×900, 768×1024, 390×844
 ## Track sequencing after this batch
 
 ```
-now (parallel):  A TD-110 │ B TD-109 envelopes │ C log-analysis CSS
-after A+B merge: TD-109 wave 2 (domain guards) — new branch from main
-after C merge:   C7 wave 2 parameter-review CSS — new branch from main
-later:           NodeDebuggingPage session → then reconsider C5
-later:           TD-110 remainder (persistedConfigSnapshot / mock seeding / section-state)
+landed: A #474 │ B #475 │ C #476
+next:   TD-109 wave 2 (domain guards) — new branch from main
+next:   C7 wave 2 parameter-review CSS — new branch from main
+later:  NodeDebuggingPage session → then reconsider C5
+later:  TD-110 remainder (persistedConfigSnapshot / mock seeding / section-state)
 ```
 
 ## Git & PR Workflow
@@ -205,14 +223,14 @@ The shared checkout `/Users/tzrea1/Develop/WiseEff` is dirty and on an unrelated
 | Doc | Path | Impact |
 | --- | --- | --- |
 | Repository map | `AGENTS.md` | No change |
-| Architecture | `ARCHITECTURE.md` | Review after Track A — confirm API-mode boot sentence still accurate |
-| Architecture (zh) | `docs/zh-CN/architecture.md` | Review — mirror if EN changes |
-| Frontend guide | `docs/FRONTEND.md` | Update (parent, after merges) — API initial state has no demo audit/people slices; mock adapters throw `WiseEffApiError`; log-analysis CSS colocation |
-| Frontend guide (zh) | `docs/zh-CN/frontend.md` | Update — mirror |
-| Plans index | `docs/PLANS.md` | Update — this plan in Current Active Plan; app-shell completed bullet points here |
-| Plans index (zh) | `docs/zh-CN/PLANS.md` | Update — mirror the active-plan bullet |
-| Tech debt | `docs/exec-plans/tech-debt-tracker.md` | Update — point TD-110/TD-109 at this plan; correct TD-109 "character-for-character" wording; shrink TD-110 remaining list after Track A |
-| Tech debt (zh) | `docs/zh-CN/exec-plans/tech-debt-tracker.md` | Update alongside |
+| Architecture | `ARCHITECTURE.md` | Reviewed 2026-08-16 — Frontend Boundaries still accurate (`Production behavior must not depend on mock runtime data`); no edit |
+| Architecture (zh) | `docs/zh-CN/architecture.md` | Reviewed — same; no edit |
+| Frontend guide | `docs/FRONTEND.md` | Updated this docs PR — API initial state has no demo audit/people slices; mock adapters throw `WiseEffApiError`; log-analysis CSS colocation |
+| Frontend guide (zh) | `docs/zh-CN/frontend.md` | Updated — mirror |
+| Plans index | `docs/PLANS.md` | Updated — this plan in Current Active Plan with landed PR numbers; remainder listed |
+| Plans index (zh) | `docs/zh-CN/PLANS.md` | Updated — mirror the active-plan bullet |
+| Tech debt | `docs/exec-plans/tech-debt-tracker.md` | Updated — TD-110/TD-109 rows shrunk to true remainder; TD-109 "character-for-character" wording already corrected |
+| Tech debt (zh) | `docs/zh-CN/exec-plans/tech-debt-tracker.md` | Updated alongside |
 | ADR | `docs/adr/` | No change this batch (wave 2 may add one if a domain module interface needs a decision record) |
 | Domain glossary | `CONTEXT.md` | No change |
 | Product specs | `docs/product-specs/*` | No change |
@@ -228,17 +246,17 @@ The shared checkout `/Users/tzrea1/Develop/WiseEff` is dirty and on an unrelated
 
 This plan cannot move to `completed/` until:
 
-- [ ] Track A merged; TD-110 row rewritten to the true remainder (`persistedConfigSnapshot`, section-state, mock seeding)
-- [ ] Track B merged; TD-109 row rewritten to "envelopes done; wave 2 machines remain"
-- [ ] Track C merged; FRONTEND notes log-analysis CSS colocation; C7 wave 2 (parameter-review) recorded as remainder
-- [ ] Bilingual FRONTEND + tracker + PLANS updates applied
-- [ ] `npm run docs:check` passes
+- [x] Track A merged (#474); TD-110 row rewritten to the true remainder (`persistedConfigSnapshot`, section-state, mock seeding)
+- [x] Track B merged (#475); TD-109 row rewritten to "envelopes done; wave 2 machines remain"
+- [x] Track C merged (#476); FRONTEND notes log-analysis CSS colocation; C7 wave 2 (parameter-review) recorded as remainder
+- [x] Bilingual FRONTEND + tracker + PLANS updates applied (this docs PR)
+- [x] `npm run docs:check` passes
 
-Deferred C5 and TD-109 wave 2 stay in this plan until they get their own branches or a follow-up plan.
+The first parallel batch is on `main`. Keep this plan **active** until TD-109 wave 2 and C7 wave 2 land or are re-homed. C5 stays deferred (no branch until `NodeDebuggingPage` is sessionized). TD-110 remainder stays on the tracker ID.
 
 ## Expected outcomes
 
-- Three independent PRs, mergeable in any order.
+- Three independent PRs merged 2026-08-16 (#474, #475, #476).
 - API mode cannot be confused with demo directory/audit fixtures.
 - Mock failures participate in `WiseEffApiError` code branches.
-- Log-analysis CSS is colocated; `styles.css` loses the Log Analysis v2 block without visual change.
+- Log-analysis CSS is colocated; `styles.css` lost the Log Analysis v2 block without visual change.
