@@ -1,4 +1,5 @@
 import type { DtsImportParseResult, ParseDtsImportInput } from "@/application/ports/ParameterRepository";
+import { mockApiError } from "./mockApiError";
 
 function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
@@ -11,13 +12,9 @@ function stripComments(source: string): string {
 export function mockParseDtsImportContent(input: ParseDtsImportInput): DtsImportParseResult {
   const cleaned = stripComments(input.content);
   if (/\/include\//.test(cleaned)) {
-    const error = new Error("DTS /include/ 暂不支持，请提供展开后的文件。") as Error & {
-      code: string;
-      details: { code: string };
-    };
-    error.code = "VALIDATION_FAILED";
-    error.details = { code: "dts-include-unsupported" };
-    throw error;
+    throw mockApiError("VALIDATION_FAILED", "DTS /include/ 暂不支持，请提供展开后的文件。", {
+      code: "dts-include-unsupported"
+    });
   }
 
   const rows: DtsImportParseResult["rows"] = [];
