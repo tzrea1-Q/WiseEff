@@ -40,6 +40,7 @@ import type {
 } from "@/domain/prototype/types";
 import {
   migrateLegacyRoleId,
+  platformRoles,
   roleCanBeAssignedToWorkflowSlot,
   roleSupportsWorkflowSlot,
   type PlatformRoleId
@@ -47,9 +48,7 @@ import {
 import { prependMockNotificationMessage } from "@/infrastructure/mock/mockNotificationsGateway";
 import {
   derivePowerManagementRuntimeState,
-  projects,
-  REVIEW_MOCK_NOW,
-  roles
+  REVIEW_MOCK_NOW
 } from "@/mockData";
 import { buildAuditEvent } from "@/parameterAdminAnalytics";
 import { buildParameterLibraryFromRecords, buildParameterModulesFromRecords } from "@/parameterAdminLibrary";
@@ -235,7 +234,7 @@ function buildRuntimeReviewFields(summary: string, module: string) {
 }
 
 export function activeRoleLabel(activeRoleId: string) {
-  return roles.find((role) => role.id === activeRoleId)?.name ?? "平台用户";
+  return platformRoles.find((role) => role.id === activeRoleId)?.name ?? "平台用户";
 }
 
 function addAuditEvent(
@@ -646,7 +645,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       if (!canSubmitParameterChangesForProject(state, parameter.projectId)) {
         return state;
       }
-      const project = projects.find((item) => item.id === parameter.projectId);
+      const project = state.configDraft.projects.find((item) => item.id === parameter.projectId);
       const submitter = state.users.find((user) => user.id === state.currentUserId)?.name ?? activeRoleLabel(state.activeRoleId);
       const roundId = `PRS-${2406 + state.parameterSubmissionRounds.length}`;
       const summary = action.reason || "小泽已生成影响摘要，建议参数管理员审阅后推进。";
@@ -720,13 +719,13 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         items: action.items,
         reason: action.reason,
         assignees: action.assignees,
-        projects,
+        projects: state.configDraft.projects,
         roles: [
           {
             id: state.activeRoleId,
             name: state.users.find((user) => user.id === state.currentUserId)?.name ?? activeRoleLabel(state.activeRoleId)
           },
-          ...roles.filter((role) => role.id !== state.activeRoleId)
+          ...platformRoles.filter((role) => role.id !== state.activeRoleId)
         ],
         buildRuntimeReviewFields
       });
@@ -748,7 +747,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         return state;
       }
 
-      const project = projects.find((item) => item.id === draftItems[0].parameter.projectId);
+      const project = state.configDraft.projects.find((item) => item.id === draftItems[0].parameter.projectId);
       const submitter = state.users.find((user) => user.id === state.currentUserId)?.name ?? activeRoleLabel(state.activeRoleId);
       const roundId = `PRS-${2406 + state.parameterSubmissionRounds.length}`;
       const submissionItems = draftItems.map(({ parameter, item }): ParameterSubmissionItem => ({
@@ -1352,7 +1351,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       }
 
       const user = state.users.find((item) => item.id === action.userId);
-      if (!user || migrateLegacyRoleId(user.roleId) === nextRoleId || !roles.some((role) => role.id === nextRoleId)) {
+      if (!user || migrateLegacyRoleId(user.roleId) === nextRoleId || !platformRoles.some((role) => role.id === nextRoleId)) {
         return state;
       }
 
@@ -1421,7 +1420,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       }
 
       const roleId = migrateLegacyRoleId(action.roleId);
-      const role = roles.find((item) => item.id === roleId);
+      const role = platformRoles.find((item) => item.id === roleId);
       if (!role) {
         return state;
       }

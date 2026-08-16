@@ -8,10 +8,6 @@ export type LogArchiveState = "active" | "archived";
 
 export type TimeWindow = "today" | "7d" | "30d";
 
-export type LogAdminRole = "Admin" | "Editor" | "Viewer";
-
-export type LogAdminUserAvatarTone = "blue" | "teal" | "violet" | "slate";
-
 export type LogAnalysisSource = "agent" | "rules-fallback";
 
 export type LogDegradedReason = "provider-unavailable" | "token-budget-exhausted";
@@ -128,15 +124,4 @@ export type LogRecord = {
   /** Analyzer provenance; "rules-fallback" marks a degraded analysis and must stay visible. */
   analysisSource?: LogAnalysisSource;
   degradedReason?: LogDegradedReason;
-};
-
-export type LogAdminUser = {
-  id: string;
-  name: string;
-  title: string;
-  role: LogAdminRole;
-  avatarInitials: string;
-  avatarTone: LogAdminUserAvatarTone;
-  lastActive: string;
-  lastActiveIso: string;
 };

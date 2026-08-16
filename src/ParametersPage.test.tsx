@@ -176,6 +176,33 @@ describe("ParametersPage read-only access", () => {
   });
 });
 
+describe("ParametersPage API-mode project catalog", () => {
+  it("does not fall back to mockData projects when configDraft.projects is empty", () => {
+    const emptyCatalogState = {
+      ...initialState,
+      configDraft: {
+        ...initialState.configDraft,
+        projects: []
+      }
+    };
+
+    render(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={emptyCatalogState}
+          dispatch={vi.fn()}
+          onNavigate={vi.fn()}
+          search=""
+          canEdit={false}
+        />
+      </TopBarActionsHarness>
+    );
+
+    expect(screen.queryByText("Nebula 高频调试项目")).not.toBeInTheDocument();
+    expect(screen.queryByText("Atlas 海外交付项目")).not.toBeInTheDocument();
+  });
+});
+
 function TopBarActionsHarness({ children }: { children: ReactNode }) {
   const [actions, setActions] = useState<ReactNode | null>(null);
   const setStableActions = useCallback((nextActions: ReactNode | null | ((current: ReactNode | null) => ReactNode | null)) => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createApiInitialState, createPrototypeState, initialState } from "./mockData";
 import type { PrototypeState } from "@/domain/prototype/types";
+import { createEmptyPowerManagementConfig } from "./powerManagementConfig";
 
 type RetiredSlice = "developers" | "logAdminUsers";
 type UnexpectedRetiredSlice = Extract<keyof PrototypeState, RetiredSlice>;
@@ -25,5 +26,20 @@ describe("createApiInitialState leftover slices", () => {
   it("keeps non-empty auditEvents on mock-mode initialState and createPrototypeState", () => {
     expect(initialState.auditEvents.length).toBeGreaterThan(0);
     expect(createPrototypeState().auditEvents.length).toBeGreaterThan(0);
+  });
+
+  it("boots API mode with an explicit empty power-management config, not a spread mock snapshot", () => {
+    const empty = createEmptyPowerManagementConfig();
+    const apiState = createApiInitialState();
+
+    expect(apiState.configDraft).toEqual(empty);
+    expect(apiState.persistedConfigSnapshot).toEqual(empty);
+    expect(Object.keys(apiState.persistedConfigSnapshot).sort()).toEqual([
+      "debugParameters",
+      "parameterLibrary",
+      "parameterModules",
+      "projects"
+    ]);
+    expect(apiState.persistedConfigSnapshot).not.toBe(apiState.configDraft);
   });
 });

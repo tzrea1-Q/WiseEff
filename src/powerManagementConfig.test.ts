@@ -4,6 +4,7 @@ import {
   bundledPowerManagementConfig,
   buildPowerManagementModuleTree,
   clonePowerManagementConfig,
+  createEmptyPowerManagementConfig,
   flattenDebugParameters,
   flattenProjectParameters,
   serializePowerManagementConfig,
@@ -28,6 +29,15 @@ describe("powerManagementConfig", () => {
     expect(bundledPowerManagementConfig.parameterModules.length).toBeGreaterThan(0);
     expect(bundledPowerManagementConfig.projects.some((project) => "parameters" in project)).toBe(false);
     expect(bundledPowerManagementConfig.debugParameters.length).toBeGreaterThanOrEqual(8);
+  });
+
+  it("createEmptyPowerManagementConfig returns only empty catalog arrays", () => {
+    expect(createEmptyPowerManagementConfig()).toEqual({
+      projects: [],
+      parameterModules: [],
+      parameterLibrary: [],
+      debugParameters: []
+    });
   });
 
   it("round-trips config edits through helper functions", () => {

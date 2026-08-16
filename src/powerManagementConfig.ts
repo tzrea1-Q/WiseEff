@@ -103,6 +103,15 @@ type RawPowerManagementConfig = Omit<PowerManagementConfig, "parameterModules"> 
   parameterModules?: unknown;
 };
 
+export function createEmptyPowerManagementConfig(): PowerManagementConfig {
+  return {
+    projects: [],
+    parameterModules: [],
+    parameterLibrary: [],
+    debugParameters: []
+  };
+}
+
 export const bundledPowerManagementConfig: PowerManagementConfig = normalizePowerManagementConfig(
   powerManagementConfigJson as RawPowerManagementConfig
 );

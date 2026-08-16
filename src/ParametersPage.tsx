@@ -6,7 +6,6 @@ import {
   riskLabels,
   WorkbenchLayout
 } from "./workbenchUi";
-import { projects } from "./mockData";
 import type { ParameterRecord, PrototypeState } from "@/domain/prototype/types";
 import { roleCanBeAssignedToWorkflowSlot } from "@/domain/users/types";
 import { ParametersTable } from "./components/ParametersTable";
@@ -211,7 +210,7 @@ export function ParametersPage({
   const activeInitializationDraft = state.parameterInitializationDrafts.find(
     (draft) => draft.projectId === resolvedProjectId
   );
-  const runtimeProjects = state.configDraft.projects.length > 0 ? state.configDraft.projects : projects;
+  const runtimeProjects = state.configDraft.projects;
   const activeProject = runtimeProjects.find((project) => project.id === topBarResolvedProjectId) ??
     (activeInitializationDraft
       ? {
@@ -797,7 +796,7 @@ export function ParametersPage({
                 effectiveValue: { kind: "strings" as const, values: [parameter.currentValue] },
                 schemaVersion: null
               })),
-              activeProject.code
+              activeProject?.code ?? resolvedProjectId
             )
           }
         >
@@ -810,7 +809,7 @@ export function ParametersPage({
         </button>
       ) : null}
     </>,
-    [activeProject.code, effectiveCanEdit, filteredParameters, isApiMode, onNavigate]
+    [activeProject?.code, effectiveCanEdit, filteredParameters, isApiMode, onNavigate, resolvedProjectId]
   );
 
   return (
