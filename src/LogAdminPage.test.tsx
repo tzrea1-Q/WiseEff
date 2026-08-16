@@ -122,6 +122,43 @@ describe("LogAdminPage M3 skeleton", () => {
     expect(within(table).getByText(/charging_thermal_trace/)).toBeInTheDocument();
   });
 
+  it("labels table confidence by analysis provenance and keeps failed rows as a dash", () => {
+    const [, complete, failed] = createPrototypeState().logs;
+    renderPage({
+      stateOverrides: {
+        logs: [
+          { ...complete, id: "log-agent", fileName: "agent_analysis.log", analysisSource: "agent", confidence: 88 },
+          {
+            ...complete,
+            id: "log-rules",
+            fileName: "rules_fallback.log",
+            analysisSource: "rules-fallback",
+            confidence: 72
+          },
+          { ...complete, id: "log-legacy", fileName: "legacy_report.log", confidence: 81 },
+          failed
+        ]
+      }
+    });
+
+    const agentRow = getLogRow(/agent_analysis/);
+    expect(within(agentRow).getByText("模型自估")).toBeInTheDocument();
+    expect(within(agentRow).getByText("88%")).toBeInTheDocument();
+
+    const rulesRow = getLogRow(/rules_fallback/);
+    expect(within(rulesRow).getByText("规则评分")).toBeInTheDocument();
+    expect(within(rulesRow).getByText("72%")).toBeInTheDocument();
+
+    const legacyRow = getLogRow(/legacy_report/);
+    expect(within(legacyRow).getByText("置信度")).toBeInTheDocument();
+    expect(within(legacyRow).getByText("81%")).toBeInTheDocument();
+
+    const failedRow = getLogRow(/thermal_snapshot/);
+    expect(within(failedRow).getByText("-")).toBeInTheDocument();
+    expect(within(failedRow).queryByText("模型自估")).not.toBeInTheDocument();
+    expect(within(failedRow).queryByText("规则评分")).not.toBeInTheDocument();
+  });
+
   it("renders TimeWindowSelect with three options", () => {
     renderPage();
     const group = screen.getByRole("group", { name: /时间窗口/ });

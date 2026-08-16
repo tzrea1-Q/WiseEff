@@ -7284,6 +7284,10 @@ td small {
   font-weight: 700;
 }
 
+.confidence-bar > div:first-child span {
+  white-space: nowrap;
+}
+
 .confidence-bar > div[role="progressbar"] {
   height: 9px;
   overflow: hidden;

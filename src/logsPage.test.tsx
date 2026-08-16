@@ -199,6 +199,8 @@ describe("LogsPage · 分析来源与降级标注", () => {
     expect(within(provenance).getByRole("status")).toHaveTextContent("降级分析 · 规则回退");
     expect(provenance).toHaveTextContent(/AI 分析服务不可用/);
     expect(provenance).toHaveTextContent("业务域 · charging-power");
+    expect(screen.getByText("规则评分")).toBeInTheDocument();
+    expect(screen.queryByText("AI置信度")).not.toBeInTheDocument();
   });
 
   it("Agent 结果显示来源徽标且不显示降级提示", () => {
@@ -222,6 +224,8 @@ describe("LogsPage · 分析来源与降级标注", () => {
     const provenance = screen.getByTestId("analysis-provenance");
     expect(provenance).toHaveTextContent("Agent 分析");
     expect(provenance).not.toHaveTextContent("降级分析");
+    expect(screen.getByText("模型自估")).toBeInTheDocument();
+    expect(screen.queryByText("AI置信度")).not.toBeInTheDocument();
   });
 
   it("没有来源标注的历史结果不渲染来源徽标", () => {
@@ -237,6 +241,9 @@ describe("LogsPage · 分析来源与降级标注", () => {
     render(<App initialAppState={legacyState} />);
 
     expect(screen.queryByTestId("analysis-provenance")).not.toBeInTheDocument();
+    expect(screen.getByText("AI置信度")).toBeInTheDocument();
+    expect(screen.queryByText("模型自估")).not.toBeInTheDocument();
+    expect(screen.queryByText("规则评分")).not.toBeInTheDocument();
   });
 
   it("提前收敛的 Agent 结论显著标注降级而不冒充完整分析", () => {
@@ -262,5 +269,6 @@ describe("LogsPage · 分析来源与降级标注", () => {
     expect(within(provenance).getByRole("status")).toHaveTextContent("降级分析 · 提前收敛");
     expect(provenance).toHaveTextContent(/提前收敛为低置信结论/);
     expect(provenance).not.toHaveTextContent("降级分析 · 规则回退");
+    expect(screen.getByText("模型自估")).toBeInTheDocument();
   });
 });
