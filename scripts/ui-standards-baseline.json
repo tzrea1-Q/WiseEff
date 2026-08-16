@@ -2,12 +2,12 @@
   "description": "Ratchet baseline for `npm run ui:check`. Counts may only go down: when a rule's live count drops below its baseline, run `npm run ui:check -- --update-baseline` in the same change. Rules at 0 are hard-forbidden and must never ratchet up. Structure: rule id -> { count, note?, files? }.",
   "rules": {
     "raw-color": {
-      "count": 1130,
+      "count": 1022,
       "note": "Stock from the pre-P3 monolith; P3 (motion/chart/dark wiring) reduces it in parallel. Ratchet down after each merge.",
       "files": {
         "src/features/parameter-home/parameter-home.css": 1,
-        "src/linear-template/linear-template.css": 44,
-        "src/styles.css": 1085
+        "src/linear-template/linear-template.css": 35,
+        "src/styles.css": 986
       }
     },
     "raw-z-index": {
