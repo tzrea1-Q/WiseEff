@@ -28,8 +28,6 @@ import type {
   ChangeRequest,
   DebugParameter,
   DebugSnapshot,
-  LogAdminRole,
-  LogAdminUserAvatarTone,
   LogRecord,
   LogStageId,
   ParameterRecord,
@@ -188,9 +186,6 @@ export type AppAction =
   | { type: "LOG_ADMIN_REANALYZE_LOG"; logId: string }
   | { type: "LOG_ADMIN_ARCHIVE_LOG"; logId: string }
   | { type: "LOG_ADMIN_UNARCHIVE_LOG"; logId: string }
-  | { type: "LOG_ADMIN_ADD_USER"; input: { name: string; title: string; role: LogAdminRole } }
-  | { type: "LOG_ADMIN_UPDATE_USER_ROLE"; userId: string; role: LogAdminRole }
-  | { type: "LOG_ADMIN_REMOVE_USER"; userId: string }
   | { type: "LOG_ADMIN_SYNC_LOGS" }
   | { type: "LOG_ADMIN_EXPORT_REPORT"; timeWindow: TimeWindow }
   | { type: "PUSH_NOTIFICATION"; message: string };
@@ -257,20 +252,6 @@ function addAuditEvent(
       ...event
     }
   ];
-}
-
-function initialsOf(name: string) {
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
-}
-
-function pickAvatarTone(index: number): LogAdminUserAvatarTone {
-  const tones: LogAdminUserAvatarTone[] = ["blue", "teal", "violet", "slate"];
-  return tones[index % tones.length];
 }
 
 function canManageUsers(state: PrototypeState) {
@@ -1548,69 +1529,6 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
           severity: "Low"
         }),
         notifications: [`${target.fileName} 已恢复`, ...state.notifications]
-      };
-    }
-    case "LOG_ADMIN_ADD_USER": {
-      if (!canPerform(activeRoleId, "admin.access")) return state;
-      const userIndex = state.logAdminUsers.length;
-      const newUser = {
-        id: `log-admin-user-${userIndex + 1}`,
-        name: action.input.name,
-        title: action.input.title || "Log Admin User",
-        role: action.input.role,
-        avatarInitials: initialsOf(action.input.name),
-        avatarTone: pickAvatarTone(userIndex),
-        lastActive: "刚刚",
-        lastActiveIso: new Date().toISOString()
-      };
-
-      return {
-        ...state,
-        logAdminUsers: [...state.logAdminUsers, newUser],
-        auditEvents: addAuditEvent(state, {
-          app: "log-admin",
-          action: `新增用户 ${newUser.name}`,
-          severity: "Medium"
-        }),
-        notifications: [`已新增 ${newUser.name} 为 ${newUser.role}`, ...state.notifications]
-      };
-    }
-    case "LOG_ADMIN_UPDATE_USER_ROLE": {
-      if (!canPerform(activeRoleId, "admin.access")) return state;
-      const target = state.logAdminUsers.find((user) => user.id === action.userId);
-      if (!target || target.role === action.role) {
-        return state;
-      }
-
-      return {
-        ...state,
-        logAdminUsers: state.logAdminUsers.map((user) =>
-          user.id === action.userId ? { ...user, role: action.role, lastActive: "刚刚", lastActiveIso: new Date().toISOString() } : user
-        ),
-        auditEvents: addAuditEvent(state, {
-          app: "log-admin",
-          action: `更新 ${target.name} 权限为 ${action.role}`,
-          severity: action.role === "Admin" ? "High" : "Medium"
-        }),
-        notifications: [`${target.name} 权限已更新为 ${action.role}`, ...state.notifications]
-      };
-    }
-    case "LOG_ADMIN_REMOVE_USER": {
-      if (!canPerform(activeRoleId, "admin.access")) return state;
-      const target = state.logAdminUsers.find((user) => user.id === action.userId);
-      if (!target) {
-        return state;
-      }
-
-      return {
-        ...state,
-        logAdminUsers: state.logAdminUsers.filter((user) => user.id !== action.userId),
-        auditEvents: addAuditEvent(state, {
-          app: "log-admin",
-          action: `移除用户 ${target.name}`,
-          severity: "Medium"
-        }),
-        notifications: [`${target.name} 已移出日志后台`, ...state.notifications]
       };
     }
     case "LOG_ADMIN_SYNC_LOGS": {

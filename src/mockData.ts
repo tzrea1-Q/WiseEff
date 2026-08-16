@@ -9,7 +9,6 @@ import {
 import { buildParameterHistory, buildReviewMockRequests, REVIEW_MOCK_NOW } from "./reviewMockData";
 import type {
   AuditEvent,
-  LogAdminUser,
   Project,
   PrototypeState,
   Role,
@@ -215,59 +214,6 @@ const failedLogRawLines = [
   "00:00:00 INFO [PARSER] accepted suffix: .log, .txt, .csv, .json",
   "00:00:00 WARN [PARSER] text stream unavailable; raw snapshot retained",
   "00:00:00 INFO [PARSER] action=export_text_log_required"
-];
-
-const logAdminUsers: LogAdminUser[] = [
-  {
-    id: "js",
-    name: "Jane Smith",
-    title: "Lead Architect",
-    role: "Admin",
-    avatarInitials: "JS",
-    avatarTone: "blue",
-    lastActive: "刚刚",
-    lastActiveIso: "2026-05-11T10:28:00+08:00"
-  },
-  {
-    id: "mk",
-    name: "Mike Kruger",
-    title: "Ops Engineer",
-    role: "Editor",
-    avatarInitials: "MK",
-    avatarTone: "teal",
-    lastActive: "2 小时前",
-    lastActiveIso: "2026-05-11T08:42:00+08:00"
-  },
-  {
-    id: "al",
-    name: "Ana Lin",
-    title: "Analyst",
-    role: "Viewer",
-    avatarInitials: "AL",
-    avatarTone: "violet",
-    lastActive: "昨天",
-    lastActiveIso: "2026-05-10T17:12:00+08:00"
-  },
-  {
-    id: "rp",
-    name: "Rui Peng",
-    title: "Platform PM",
-    role: "Editor",
-    avatarInitials: "RP",
-    avatarTone: "slate",
-    lastActive: "3 天前",
-    lastActiveIso: "2026-05-08T13:30:00+08:00"
-  },
-  {
-    id: "xw",
-    name: "Xiao Wang",
-    title: "QA Owner",
-    role: "Viewer",
-    avatarInitials: "XW",
-    avatarTone: "blue",
-    lastActive: "5 天前",
-    lastActiveIso: "2026-05-06T09:16:00+08:00"
-  }
 ];
 
 function buildAuditEvents(): AuditEvent[] {
@@ -699,7 +645,6 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
         failureReason: "二进制格式不支持。请导出 .log / .txt / .csv / .json 文本日志。"
       }
     ],
-    logAdminUsers,
     archivedLogIds: [],
     devices: [
       {
@@ -719,20 +664,6 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
     ],
     debugParameters: runtime.debugParameters,
     auditEvents: buildAuditEvents(),
-    developers: [
-      { id: "dev-1", name: "赵磊", projectId: "aurora", role: "参数工程师" },
-      { id: "dev-2", name: "陈琳", projectId: "aurora", role: "电池架构师" },
-      { id: "dev-3", name: "周元", projectId: "aurora", role: "充电方案工程师" },
-      { id: "dev-4", name: "吴敏", projectId: "aurora", role: "固件工程师" },
-      { id: "dev-5", name: "韩启", projectId: "aurora", role: "参数工程师" },
-      { id: "dev-6", name: "柳清", projectId: "nebula", role: "电池架构师" },
-      { id: "dev-7", name: "叶铭", projectId: "nebula", role: "固件工程师" },
-      { id: "dev-8", name: "钟旸", projectId: "nebula", role: "充电方案工程师" },
-      { id: "dev-9", name: "许洋", projectId: "nebula", role: "参数工程师" },
-      { id: "dev-10", name: "林溪", projectId: "atlas", role: "参数工程师" },
-      { id: "dev-11", name: "尚雯", projectId: "atlas", role: "充电方案工程师" },
-      { id: "dev-12", name: "何志", projectId: "atlas", role: "固件工程师" }
-    ],
     notifications: ["手机电源管理演示模式已启动"],
     notificationInbox: [
       createMockNotificationItem({
@@ -775,6 +706,7 @@ export function createApiInitialState(): PrototypeState {
     logs: [],
     archivedLogIds: [],
     devices: [],
+    auditEvents: [],
     debugParameters: [],
     notifications: [],
     notificationInbox: [],

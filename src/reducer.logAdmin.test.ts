@@ -114,95 +114,6 @@ describe("reducer · LOG_ADMIN_UNARCHIVE_LOG", () => {
   });
 });
 
-describe("reducer · LOG_ADMIN_ADD_USER", () => {
-  it("appends new user to logAdminUsers with generated id/avatar", () => {
-    const state = createLogAdminState();
-    const before = state.logAdminUsers.length;
-    const next = reducer(state, {
-      type: "LOG_ADMIN_ADD_USER",
-      input: { name: "Test User", title: "QA Lead", role: "Editor" }
-    });
-
-    expect(next.logAdminUsers.length).toBe(before + 1);
-    const added = next.logAdminUsers[next.logAdminUsers.length - 1];
-    expect(added.name).toBe("Test User");
-    expect(added.title).toBe("QA Lead");
-    expect(added.role).toBe("Editor");
-    expect(added.id).toBeTruthy();
-    expect(added.avatarInitials).toBe("TU");
-  });
-
-  it("writes AuditEvent severity=Medium", () => {
-    const state = createLogAdminState();
-    const before = state.auditEvents.length;
-    const next = reducer(state, {
-      type: "LOG_ADMIN_ADD_USER",
-      input: { name: "Test User", title: "", role: "Viewer" }
-    });
-
-    expect(next.auditEvents.length).toBe(before + 1);
-    const event = next.auditEvents[next.auditEvents.length - 1];
-    expect(event.app).toBe("log-admin");
-    expect(event.severity).toBe("Medium");
-    expect(event.action).toContain("新增用户");
-    expect(event.action).toContain("Test User");
-  });
-});
-
-describe("reducer · LOG_ADMIN_UPDATE_USER_ROLE", () => {
-  it("updates role of target user", () => {
-    const state = createLogAdminState();
-    const targetId = state.logAdminUsers[1].id;
-    const next = reducer(state, {
-      type: "LOG_ADMIN_UPDATE_USER_ROLE",
-      userId: targetId,
-      role: "Admin"
-    });
-    const target = next.logAdminUsers.find((user) => user.id === targetId)!;
-
-    expect(target.role).toBe("Admin");
-  });
-
-  it("writes AuditEvent severity=High", () => {
-    const state = createLogAdminState();
-    const targetId = state.logAdminUsers[1].id;
-    const next = reducer(state, {
-      type: "LOG_ADMIN_UPDATE_USER_ROLE",
-      userId: targetId,
-      role: "Admin"
-    });
-    const event = next.auditEvents[next.auditEvents.length - 1];
-
-    expect(event.severity).toBe("High");
-    expect(event.action).toContain("Admin");
-  });
-
-  it("is a no-op when userId does not exist", () => {
-    const state = createLogAdminState();
-    const next = reducer(state, {
-      type: "LOG_ADMIN_UPDATE_USER_ROLE",
-      userId: "nonexistent",
-      role: "Admin"
-    });
-
-    expect(next.logAdminUsers).toEqual(state.logAdminUsers);
-    expect(next.auditEvents.length).toBe(state.auditEvents.length);
-  });
-});
-
-describe("reducer · LOG_ADMIN_REMOVE_USER", () => {
-  it("removes user and writes AuditEvent severity=Medium", () => {
-    const state = createLogAdminState();
-    const targetId = state.logAdminUsers[2].id;
-    const next = reducer(state, { type: "LOG_ADMIN_REMOVE_USER", userId: targetId });
-
-    expect(next.logAdminUsers.find((user) => user.id === targetId)).toBeUndefined();
-    const event = next.auditEvents[next.auditEvents.length - 1];
-    expect(event.severity).toBe("Medium");
-    expect(event.action).toContain("移除用户");
-  });
-});
-
 describe("reducer · LOG_ADMIN_SYNC_LOGS", () => {
   it("bumps updatedAtIso of all logs toward now", () => {
     const state = createLogAdminState();
@@ -283,9 +194,6 @@ describe("log mutation permission boundaries", () => {
     ["LOG_ADMIN_REANALYZE_LOG", (state: ReturnType<typeof createPrototypeState>) => ({ type: "LOG_ADMIN_REANALYZE_LOG" as const, logId: state.logs[0].id })],
     ["LOG_ADMIN_ARCHIVE_LOG", (state: ReturnType<typeof createPrototypeState>) => ({ type: "LOG_ADMIN_ARCHIVE_LOG" as const, logId: state.logs[0].id })],
     ["LOG_ADMIN_UNARCHIVE_LOG", (state: ReturnType<typeof createPrototypeState>) => ({ type: "LOG_ADMIN_UNARCHIVE_LOG" as const, logId: state.logs[0].id })],
-    ["LOG_ADMIN_ADD_USER", () => ({ type: "LOG_ADMIN_ADD_USER" as const, input: { name: "Blocked User", title: "Viewer", role: "Viewer" as const } })],
-    ["LOG_ADMIN_UPDATE_USER_ROLE", (state: ReturnType<typeof createPrototypeState>) => ({ type: "LOG_ADMIN_UPDATE_USER_ROLE" as const, userId: state.logAdminUsers[1].id, role: "Admin" as const })],
-    ["LOG_ADMIN_REMOVE_USER", (state: ReturnType<typeof createPrototypeState>) => ({ type: "LOG_ADMIN_REMOVE_USER" as const, userId: state.logAdminUsers[2].id })],
     ["LOG_ADMIN_SYNC_LOGS", () => ({ type: "LOG_ADMIN_SYNC_LOGS" as const })],
     ["LOG_ADMIN_EXPORT_REPORT", () => ({ type: "LOG_ADMIN_EXPORT_REPORT" as const, timeWindow: "7d" as const })]
   ])("requires admin.access for %s", (_name, buildAction) => {
