@@ -279,6 +279,7 @@ stateDiagram-v2
 - 文本日志扩展名为 `.log`、`.txt`、`.csv`、`.json`（UTF-8 按行解析；`.json` 按文本处理，典型为 JSON Lines）。P3：接入额外接受 `.gz`（单文件）与单条目 `.zip` 压缩包，上传时解包并带防炸弹上限（绝对 100MB / 压缩体 200 倍）——文件对象始终保存纯 UTF-8 文本，run/证据语义不变；解包失败走"不支持格式"路径成为带明确原因的失败记录。
 - 业务域治理（创建/更新/归档、知识条目关联替换、Webhook 配置、模型覆盖）需要 `logs:admin-domains` 权限，保存时校验画像 JSON，并写 `log-domain-*` 审计事件。
 - 知识条目关联只接受**已发布**条目（设计 D13：发布是 agent 可读内容的唯一信任门）；关联集合整组替换并写 `log-domain-knowledge-links-update` 审计。
+- `log_feedback` 只追加不修改：关联日志记录与审计事件；在已知分析 run 时同时记录 `run_id`（写入时戳记当时的 `log_records.current_run_id`）。质量洞察按该 run 的报告归因；`run_id` 为空时回退到日志当前 run。
 - P3b 结果 Webhook：绑定业务域的分析到达终态（完成——含降级——或死信失败）后，worker 发出尽力而为、签名且带 SSRF 防护的精简摘要投递（绝不含原始日志内容），并把每次尝试记入 `log_webhook_deliveries`。投递绝不阻塞、失败或重试分析本身；未分类域没有 Webhook。配置保存经 SSRF 校验并返回明确错误码、写 `log-domain-webhook-config` 审计；管理员测试投递写 `log-domain-webhook-test` 审计。详见 `docs/zh-CN/SECURITY.md` 与 `docs/zh-CN/api/log-analysis-integration.md`。
 
 分析内核（P2 默认 `LOG_ANALYSIS_KERNEL=loop`；P1 `single-shot` 保留为配置回退）是一个普通有界循环（ADR-0022）：至多 `LOG_ANALYSIS_MAX_STEPS` 步模型调用，驱动五个只读、组织隔离的工具（`search_log_lines`、`read_line_range`、`get_prefilter_findings`、`read_domain_knowledge`、`get_related_parameter_context`），在 `rootcause` 阶段内运行并把步进映射到 65→80 进度区间；四阶段词表与输出契约不变。
@@ -297,7 +298,7 @@ M2 implementation notes:
 - A supported upload creates `LogFileObject`, `LogRecord`, one `LogAnalysisRun`, and one `jobs` row in a transaction. The worker later writes stages, report, evidence, and terminal job/run state.
 - An unsupported upload creates `LogFileObject` and a terminal failed `LogRecord` without a run or job. The failure reason is preserved on the record.
 - Archive/unarchive updates only `LogRecord.archive_state`; default list queries include only `active` records, and admin queries can request archived records with `includeArchived=true`.
-- Feedback is append-only in `log_feedback` and linked to the log record plus audit event.
+- `log_feedback` 只追加不修改，关联日志记录与审计事件；在已知分析 run 时同时记录 `run_id`（写入时戳记当时的 `current_run_id`）。
 - M5 adds retry/backoff/dead-letter handling and a dedicated worker runner around log-analysis jobs. Object storage can run locally or through the S3/OSS-compatible seam; cloud lifecycle/KMS/provider SDK wiring remains deployment work.
 - M6.4 adds Redis/BullMQ durable dispatch for log-analysis jobs. Queue payloads carry the PostgreSQL `jobId`; duplicate or delayed delivery cannot update a completed job because workers must claim the PostgreSQL job before writing progress or terminal state.
 

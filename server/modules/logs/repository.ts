@@ -1044,9 +1044,12 @@ export async function appendFeedback(
   await db.query(
     `
     insert into log_feedback (
-      id, organization_id, log_record_id, user_id, rating, note
+      id, organization_id, log_record_id, user_id, rating, note, run_id
     )
-    values ($1, $2, $3, $4, $5, $6)
+    values (
+      $1, $2, $3, $4, $5, $6,
+      (select current_run_id from log_records where organization_id = $2 and id = $3)
+    )
     `,
     [input.id, auth.organization.id, input.logId, auth.user.id, input.rating, input.note ?? null]
   );
@@ -1078,9 +1081,9 @@ export type LogFeedbackInsightDto = {
 
 /**
  * Online-monitoring aggregation (P3): helpful rate per log domain ×
- * analysis source × prompt version. Feedback is attributed to the log's
- * CURRENT run's report — the same convention the log list/detail read path
- * uses — so feedback left on an earlier run follows the latest conclusion.
+ * analysis source × prompt version. Feedback is attributed to the analysis
+ * run stamped on the row (`log_feedback.run_id`); rows that predate the
+ * column fall back to the log's current run so leftovers still group.
  */
 export async function aggregateFeedbackInsights(
   db: Queryable,
@@ -1107,7 +1110,8 @@ export async function aggregateFeedbackInsights(
     inner join log_records lr
       on lr.id = lf.log_record_id
       and lr.organization_id = lf.organization_id
-    left join log_analysis_reports report on report.run_id = lr.current_run_id
+    left join log_analysis_reports report
+      on report.run_id = coalesce(lf.run_id, lr.current_run_id)
     left join log_domains ld on ld.id = lr.log_domain_id
     where ${where.join("\n      and ")}
     group by lr.log_domain_id, ld.name, report.analysis_source, report.prompt_version

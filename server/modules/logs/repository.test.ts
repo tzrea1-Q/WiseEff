@@ -230,7 +230,7 @@ describe.skipIf(!databaseAvailable)("log repository", () => {
   });
 
   it("appendFeedback persists rating and note for the acting user", async () => {
-    const { logId } = await seedUploadedLog("feedback");
+    const { logId, runId } = await seedUploadedLog("feedback");
 
     await appendFeedback(db, auth(), {
       id: "feedback-1",
@@ -239,12 +239,17 @@ describe.skipIf(!databaseAvailable)("log repository", () => {
       note: "This matched the incident."
     });
 
-    const stored = await db.query<{ user_id: string; rating: string; note: string | null }>(
-      "select user_id, rating, note from log_feedback where organization_id = $1 and log_record_id = $2",
-      ["org-1", logId]
-    );
+    const stored = await db.query<{
+      user_id: string;
+      rating: string;
+      note: string | null;
+      run_id: string | null;
+    }>("select user_id, rating, note, run_id from log_feedback where organization_id = $1 and log_record_id = $2", [
+      "org-1",
+      logId
+    ]);
     expect(stored.rows).toEqual([
-      { user_id: "user-1", rating: "helpful", note: "This matched the incident." }
+      { user_id: "user-1", rating: "helpful", note: "This matched the incident.", run_id: runId }
     ]);
   });
 
@@ -382,6 +387,53 @@ describe.skipIf(!databaseAvailable)("log repository", () => {
     const foreign = await aggregateFeedbackInsights(db, foreignAuth);
     expect(foreign).toEqual([
       expect.objectContaining({ logDomainId: null, analysisSource: null, promptVersion: null, totalCount: 1, helpfulCount: 1 })
+    ]);
+  });
+
+  it("aggregateFeedbackInsights attributes feedback to the stamped run after a later rerun", async () => {
+    const { logId, runId: runAId } = await seedUploadedLog("insight-stamped-run");
+    await persistLogAnalysisReport(db, {
+      organizationId: "org-1",
+      logId,
+      runId: runAId,
+      report: { ...sampleReport, analysisSource: "agent", promptVersion: "log-analysis/v1" },
+      evidence: sampleEvidence
+    });
+    await completeRun(db, { organizationId: "org-1", logId, runId: runAId });
+
+    await appendFeedback(db, auth(), { id: "fb-run-a", logId, rating: "helpful" });
+
+    await createRerunWithJob(db, {
+      runId: "run-insight-stamped-run-b",
+      jobId: "job-insight-stamped-run-b",
+      organizationId: "org-1",
+      logId
+    });
+    await persistLogAnalysisReport(db, {
+      organizationId: "org-1",
+      logId,
+      runId: "run-insight-stamped-run-b",
+      report: {
+        ...sampleReport,
+        analysisSource: "rules-fallback",
+        promptVersion: "log-analysis/v2"
+      },
+      evidence: sampleEvidence
+    });
+    await completeRun(db, { organizationId: "org-1", logId, runId: "run-insight-stamped-run-b" });
+
+    const insights = await aggregateFeedbackInsights(db, auth());
+    expect(insights).toEqual([
+      {
+        logDomainId: null,
+        logDomainName: null,
+        analysisSource: "agent",
+        promptVersion: "log-analysis/v1",
+        totalCount: 1,
+        helpfulCount: 1,
+        helpfulRate: 1,
+        lastFeedbackAt: expect.any(String)
+      }
     ]);
   });
 
