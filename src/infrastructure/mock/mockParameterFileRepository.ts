@@ -17,6 +17,13 @@ import type {
   ResolveParameterFileConflictInput,
   UploadParameterFileInput
 } from "@/application/ports/ParameterFileRepository";
+import {
+  guardAbandonCandidate,
+  guardActivateCandidate,
+  guardCandidateBaseFresh,
+  guardNewFileActivation,
+  guardRecomputeCandidate
+} from "@/domain/parameter-files/candidateGuard";
 import { mockApiError } from "./mockApiError";
 
 const MOCK_NOW = "2026-07-14T10:00:00.000Z";
@@ -493,9 +500,8 @@ export function createMockParameterFileRepository(): ParameterFileRepository {
       const list = store.candidatesByProject.get(projectId) ?? [];
       const candidate = list.find((item) => item.id === candidateId);
       if (!candidate) throw mockApiError("NOT_FOUND", `Candidate not found: ${candidateId}`, { candidateId });
-      if (!["ready", "blocked", "failed", "stale"].includes(candidate.status)) {
-        throw mockApiError("CONFLICT", `Cannot abandon candidate in status ${candidate.status}`, { status: candidate.status });
-      }
+      const result = guardAbandonCandidate(candidate.status);
+      if (!result.ok) throw mockApiError(result.code, result.message, result.details);
       candidate.status = "abandoned";
       candidate.abandonedAt = MOCK_NOW;
       candidate.updatedAt = MOCK_NOW;
@@ -506,9 +512,8 @@ export function createMockParameterFileRepository(): ParameterFileRepository {
       const list = store.candidatesByProject.get(projectId) ?? [];
       const candidate = list.find((item) => item.id === candidateId);
       if (!candidate) throw mockApiError("NOT_FOUND", `Candidate not found: ${candidateId}`, { candidateId });
-      if (!["ready", "blocked", "failed", "stale"].includes(candidate.status)) {
-        throw mockApiError("CONFLICT", `Cannot recompute candidate in status ${candidate.status}`, { status: candidate.status });
-      }
+      const result = guardRecomputeCandidate(candidate.status);
+      if (!result.ok) throw mockApiError(result.code, result.message, result.details);
       const files = ensureProjectFiles(store, projectId);
       const file = candidate.fileId ? files.find((item) => item.id === candidate.fileId) : undefined;
       if (file?.currentVersionId) {
@@ -530,22 +535,25 @@ export function createMockParameterFileRepository(): ParameterFileRepository {
       const list = store.candidatesByProject.get(projectId) ?? [];
       const candidate = list.find((item) => item.id === candidateId);
       if (!candidate) throw mockApiError("NOT_FOUND", `Candidate not found: ${candidateId}`, { candidateId });
-      if (candidate.status !== "ready") {
-        throw mockApiError("CONFLICT", `Cannot activate candidate in status ${candidate.status}`, { status: candidate.status });
-      }
+      const statusGate = guardActivateCandidate(candidate.status);
+      if (!statusGate.ok) throw mockApiError(statusGate.code, statusGate.message, statusGate.details);
       const files = ensureProjectFiles(store, projectId);
       let file = candidate.fileId ? files.find((item) => item.id === candidate.fileId) : undefined;
       const expected = input.expectedCurrentVersionId ?? null;
       const actual = file?.currentVersionId ?? null;
-      if (actual !== expected || (candidate.baseVersionId ?? null) !== expected) {
+      const baseGate = guardCandidateBaseFresh({
+        actualCurrentVersionId: actual,
+        expectedCurrentVersionId: expected,
+        candidateBaseVersionId: candidate.baseVersionId ?? null
+      });
+      if (!baseGate.ok) {
         candidate.status = "stale";
         candidate.updatedAt = MOCK_NOW;
-        throw mockApiError("CONFLICT", "Candidate base is stale");
+        throw mockApiError(baseGate.code, baseGate.message, baseGate.details);
       }
       if (!file) {
-        if (!input.configSetId || !input.role) {
-          throw mockApiError("VALIDATION_FAILED", "New file activation requires configSetId and role");
-        }
+        const newFileGate = guardNewFileActivation({ configSetId: input.configSetId, role: input.role });
+        if (!newFileGate.ok) throw mockApiError(newFileGate.code, newFileGate.message, newFileGate.details);
         uploadCounter += 1;
         file = {
           id: `file-mock-cand-${uploadCounter}`,

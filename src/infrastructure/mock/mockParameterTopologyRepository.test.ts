@@ -174,6 +174,26 @@ describe("createMockParameterTopologyRepository (ParameterTopologyRepository con
     expect(restored.lifecycle).toBe("active");
   });
 
+  it("activateParameterSpec throws CONFLICT when the spec is not a draft", async () => {
+    const repo = createRepo();
+    const error = await repo
+      .activateParameterSpec("spec-sc8562-gpio-int", {
+        valueShape: {},
+        constraints: {},
+        documentation: "",
+        reason: "retry activate"
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(WiseEffApiError);
+    expect(error).toMatchObject({
+      code: "CONFLICT",
+      message: "Only draft parameter specs can be activated.",
+      requestId: "mock",
+      details: { specId: "spec-sc8562-gpio-int" }
+    });
+  });
+
   it("resolveMapping throws CONFLICT when the identity mapping task is not open", async () => {
     const repo = createRepo();
     const tasks = await repo.listMappingTasks(PROJECT_ID);
@@ -195,8 +215,32 @@ describe("createMockParameterTopologyRepository (ParameterTopologyRepository con
     expect(error).toBeInstanceOf(WiseEffApiError);
     expect(error).toMatchObject({
       code: "CONFLICT",
-      message: `Identity mapping task is not open: ${task.id}`,
-      requestId: "mock"
+      message: "Identity mapping task is not open.",
+      requestId: "mock",
+      details: { taskId: task.id }
+    });
+  });
+
+  it("reopenMapping throws CONFLICT when the identity mapping task is already resolved", async () => {
+    const repo = createRepo();
+    const tasks = await repo.listMappingTasks(PROJECT_ID);
+    const task = tasks[0];
+    await repo.resolveMapping(task.id, {
+      decision: "resolved",
+      selectedLogicalNodeId: task.candidateLogicalNodeIds[0],
+      reason: "Keep current sc8562 node"
+    });
+
+    const error = await repo
+      .reopenMapping(task.id, { reason: "need another look" })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(WiseEffApiError);
+    expect(error).toMatchObject({
+      code: "CONFLICT",
+      message: "Resolved identity mapping tasks cannot be reopened.",
+      requestId: "mock",
+      details: { taskId: task.id }
     });
   });
 });

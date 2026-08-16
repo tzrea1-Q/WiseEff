@@ -192,7 +192,7 @@ describe("createMockParameterFileRepository (ParameterFileRepository contract)",
     expect(error).toBeInstanceOf(WiseEffApiError);
     expect(error).toMatchObject({
       code: "CONFLICT",
-      message: "Candidate base is stale",
+      message: "Candidate base is stale; Working configuration was preserved. Recompute impact before activating.",
       requestId: "mock"
     });
   });
