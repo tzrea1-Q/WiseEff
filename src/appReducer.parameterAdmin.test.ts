@@ -327,3 +327,26 @@ describe("project parameter initialization reducer actions", () => {
     );
   });
 });
+
+describe("parameter submit project lookup", () => {
+  it("names a change-request round from configDraft projects, not the mock catalog", () => {
+    const parameter = initialState.parameters[0];
+    const next = appReducer(
+      {
+        ...adminState,
+        configDraft: {
+          ...adminState.configDraft,
+          projects: [{ id: parameter.projectId, name: "Hydrated API Project", code: "API" }]
+        }
+      },
+      {
+        type: "ADD_CHANGE_REQUEST",
+        parameterId: parameter.id,
+        targetValue: "3200",
+        reason: "Validate configDraft project lookup"
+      }
+    );
+
+    expect(next.parameterSubmissionRounds[0].projectName).toBe("Hydrated API Project");
+  });
+});

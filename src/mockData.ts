@@ -1,6 +1,7 @@
 import {
   bundledPowerManagementConfig,
   clonePowerManagementConfig,
+  createEmptyPowerManagementConfig,
   flattenDebugParameters,
   flattenProjectParameters,
   syncConfigDraftDebugParameterModuleMetadata,
@@ -710,19 +711,7 @@ export function createApiInitialState(): PrototypeState {
     debugParameters: [],
     notifications: [],
     notificationInbox: [],
-    configDraft: {
-      ...state.configDraft,
-      projects: [],
-      parameterLibrary: [],
-      parameterModules: [],
-      debugParameters: []
-    },
-    persistedConfigSnapshot: {
-      ...state.persistedConfigSnapshot,
-      projects: [],
-      parameterLibrary: [],
-      parameterModules: [],
-      debugParameters: []
-    }
+    configDraft: clonePowerManagementConfig(createEmptyPowerManagementConfig()),
+    persistedConfigSnapshot: clonePowerManagementConfig(createEmptyPowerManagementConfig())
   };
 }

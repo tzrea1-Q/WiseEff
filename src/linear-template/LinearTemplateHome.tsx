@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { WiseEffIcon } from "../components/WiseEffIcon";
-import { initialState } from "../mockData";
 import { PlatformFlowSection } from "./PlatformFlowSection";
 import { SubAppEntryRow } from "./SubAppEntryRow";
 import { handleSpaLinkClick } from "./spaLinkNavigation";
@@ -143,7 +142,7 @@ function Hero({ onNavigate }: { onNavigate?: OnNavigate }) {
         <br />
         让 Agent 辅助检索、分析和流转，关键变更始终保留人工确认、权限和审计。
       </p>
-      <SubAppEntryRow state={initialState} onNavigate={onNavigate} />
+      <SubAppEntryRow onNavigate={onNavigate} />
     </div>
   );
 }

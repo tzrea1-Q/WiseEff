@@ -1,13 +1,11 @@
 import { FileText, SlidersHorizontal, TerminalSquare } from "lucide-react";
-import type { PrototypeState } from "@/domain/prototype/types";
 import { SubAppCard, type SubAppCardProps } from "./SubAppCard";
 
 type SubAppEntryRowProps = {
-  state: PrototypeState;
   onNavigate?: (path: string) => void;
 };
 
-export function SubAppEntryRow({ state: _state, onNavigate }: SubAppEntryRowProps) {
+export function SubAppEntryRow({ onNavigate }: SubAppEntryRowProps) {
   const cards: SubAppCardProps[] = [
     {
       accent: "#2857FF",
