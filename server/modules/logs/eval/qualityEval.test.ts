@@ -147,6 +147,48 @@ describe("deterministic rubric judge", () => {
     expect(bad.rootCauseScore).toBe(0);
     expect(bad.categoryMatch).toBe(false);
   });
+
+  it("scores synonym restatements of expected actions as covered", async () => {
+    const judge = createDeterministicQualityJudge();
+    const goldenCase = makeGoldenCase({ expectedActions: ["Inspect the cooling path."] });
+    const scored = await judge.score({
+      goldenCase,
+      output: makeOutput({
+        suggestedActions: ["Check the thermal cooling loop."],
+        evidence: [
+          {
+            stageId: "rootcause",
+            lineNumbers: [2, 3],
+            inference: "Foldback engaged and current dropped.",
+            suggestedAction: "Check the thermal cooling loop."
+          }
+        ]
+      })
+    });
+
+    expect(scored.actionsScore).toBe(1);
+  });
+
+  it("does not credit unrelated actions against a cooling-path expected action", async () => {
+    const judge = createDeterministicQualityJudge();
+    const goldenCase = makeGoldenCase({ expectedActions: ["Inspect the cooling path."] });
+    const scored = await judge.score({
+      goldenCase,
+      output: makeOutput({
+        suggestedActions: ["Replace the switch."],
+        evidence: [
+          {
+            stageId: "rootcause",
+            lineNumbers: [2],
+            inference: "packet loss",
+            suggestedAction: "Replace the switch."
+          }
+        ]
+      })
+    });
+
+    expect(scored.actionsScore).toBe(0);
+  });
 });
 
 describe("compareToQualityBaseline", () => {

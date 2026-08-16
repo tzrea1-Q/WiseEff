@@ -57,14 +57,58 @@ function significantTokens(text: string): string[] {
   );
 }
 
-function coverageScore(targets: string[], candidateText: string): number {
+/**
+ * Action-scoring canonical forms: verbs plus thermal/charge nouns. Applied only
+ * on the stub's `actionsScore` path so root-cause overlap stays strict.
+ */
+const ACTION_TOKEN_CANONICAL: Record<string, string> = {
+  inspect: "inspect",
+  inspecting: "inspect",
+  check: "inspect",
+  checking: "inspect",
+  examine: "inspect",
+  examining: "inspect",
+  path: "path",
+  paths: "path",
+  loop: "path",
+  loops: "path",
+  cooling: "cool",
+  cool: "cool",
+  thermal: "cool",
+  charge: "charge",
+  charging: "charge",
+  charged: "charge"
+};
+
+function lightStem(token: string): string {
+  if (token.endsWith("ing") && token.length > 6) {
+    return token.slice(0, -3);
+  }
+  if (token.endsWith("ed") && token.length > 5) {
+    return token.slice(0, -2);
+  }
+  if (token.endsWith("s") && !token.endsWith("ss") && token.length > 4) {
+    return token.slice(0, -1);
+  }
+  return token;
+}
+
+function canonicalizeActionToken(token: string): string {
+  return ACTION_TOKEN_CANONICAL[token] ?? lightStem(token);
+}
+
+function coverageScore(
+  targets: string[],
+  candidateText: string,
+  canonicalize: (token: string) => string = (token) => token
+): number {
   if (targets.length === 0) {
     return 0;
   }
-  const candidateTokens = new Set(significantTokens(candidateText));
+  const candidateTokens = new Set(significantTokens(candidateText).map(canonicalize));
   let covered = 0;
   for (const target of targets) {
-    const tokens = significantTokens(target);
+    const tokens = significantTokens(target).map(canonicalize);
     if (tokens.length === 0) {
       continue;
     }
@@ -90,9 +134,12 @@ const categoryKeywords: Record<LogEvalRootCauseCategory, RegExp> = {
 
 /**
  * Deterministic rubric stub for offline runs: token-coverage scoring against the
- * annotation plus a keyword bucket check. Crude by design — its job is to make
- * the quality pipeline runnable and testable at zero API cost, not to replace
- * the real judge. Tests may inject any `LogAnalysisQualityJudge` instead.
+ * annotation plus a keyword bucket check. Action coverage keeps the 0.4 hit-ratio
+ * threshold but canonicalizes a small verb/thermal/charge synonym table (plus a
+ * light stem) so reasonable restatements are not scored as misses. Root-cause
+ * overlap stays literal. Crude by design — its job is to make the quality
+ * pipeline runnable and testable at zero API cost, not to replace the real
+ * judge. Tests may inject any `LogAnalysisQualityJudge` instead.
  */
 export function createDeterministicQualityJudge(): LogAnalysisQualityJudge {
   return {
@@ -101,7 +148,7 @@ export function createDeterministicQualityJudge(): LogAnalysisQualityJudge {
       const conclusionText = [output.conclusion, output.impact, ...output.evidence.map((item) => item.inference)].join("\n");
       const actionsText = [...output.suggestedActions, ...output.evidence.map((item) => item.suggestedAction)].join("\n");
       const rootCauseScore = coverageScore(goldenCase.rootCausePoints, conclusionText);
-      const actionsScore = coverageScore(goldenCase.expectedActions, actionsText);
+      const actionsScore = coverageScore(goldenCase.expectedActions, actionsText, canonicalizeActionToken);
       const categoryMatch = categoryKeywords[goldenCase.rootCauseCategory].test(conclusionText);
       return {
         rootCauseScore,
