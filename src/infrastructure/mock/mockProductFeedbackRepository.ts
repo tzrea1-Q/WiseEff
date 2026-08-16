@@ -1,5 +1,6 @@
 import type { ProductFeedbackListQuery, ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
 import type { ProductFeedback, ProductFeedbackAttachment, ProductFeedbackStatus } from "@/domain/productFeedback/types";
+import { mockApiError } from "./mockApiError";
 
 const MOCK_PRODUCT_FEEDBACK_NOW = "2026-07-08T00:00:00.000Z";
 
@@ -28,7 +29,7 @@ function matchesQuery(feedback: ProductFeedback, query?: ProductFeedbackListQuer
 }
 
 function assertFeedbackExists(feedback: ProductFeedback | undefined, id: string): ProductFeedback {
-  if (!feedback) throw new Error(`Product feedback not found: ${id}`);
+  if (!feedback) throw mockApiError("NOT_FOUND", `Product feedback not found: ${id}`, { id });
   return feedback;
 }
 
@@ -95,7 +96,7 @@ export function createMockProductFeedbackRepository(initialItems: ProductFeedbac
     async update(id, patch) {
       const existing = assertFeedbackExists(items.find((item) => item.id === id), id);
       if (patch.status && !isValidStatusTransition(existing.status, patch.status)) {
-        throw new Error(`Illegal product feedback status transition: ${existing.status} -> ${patch.status}`);
+        throw mockApiError("CONFLICT", `Illegal product feedback status transition: ${existing.status} -> ${patch.status}`, { status: existing.status, patchStatus: patch.status });
       }
       const updated: ProductFeedback = {
         ...existing,
@@ -109,7 +110,7 @@ export function createMockProductFeedbackRepository(initialItems: ProductFeedbac
     async getAttachmentObjectUrl(feedbackId, attachmentId) {
       assertFeedbackExists(items.find((item) => item.id === feedbackId), feedbackId);
       const file = attachmentFiles.get(`${feedbackId}:${attachmentId}`);
-      if (!file) throw new Error(`Product feedback attachment not found: ${attachmentId}`);
+      if (!file) throw mockApiError("NOT_FOUND", `Product feedback attachment not found: ${attachmentId}`, { attachmentId });
       return createFallbackObjectUrl(file);
     }
   };

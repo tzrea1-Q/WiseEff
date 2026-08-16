@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createMockParameterTopologyRepository } from "./mockParameterTopologyRepository";
 
 const PROJECT_ID = "project-teaching";
@@ -171,5 +172,31 @@ describe("createMockParameterTopologyRepository (ParameterTopologyRepository con
       reason: "still needed"
     });
     expect(restored.lifecycle).toBe("active");
+  });
+
+  it("resolveMapping throws CONFLICT when the identity mapping task is not open", async () => {
+    const repo = createRepo();
+    const tasks = await repo.listMappingTasks(PROJECT_ID);
+    const task = tasks[0];
+    await repo.resolveMapping(task.id, {
+      decision: "resolved",
+      selectedLogicalNodeId: task.candidateLogicalNodeIds[0],
+      reason: "Keep current sc8562 node"
+    });
+
+    const error = await repo
+      .resolveMapping(task.id, {
+        decision: "resolved",
+        selectedLogicalNodeId: task.candidateLogicalNodeIds[0],
+        reason: "retry"
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(WiseEffApiError);
+    expect(error).toMatchObject({
+      code: "CONFLICT",
+      message: `Identity mapping task is not open: ${task.id}`,
+      requestId: "mock"
+    });
   });
 });

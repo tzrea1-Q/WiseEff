@@ -2,6 +2,7 @@ import type { NotificationsGateway } from "@/application/ports/NotificationsGate
 import type { NotificationItem, NotificationSeverity } from "@/domain/notifications/types";
 import type { NotificationsClient } from "@/infrastructure/http/notificationsClient";
 import type { MockRuntimeState } from "./mockState";
+import { mockApiError } from "./mockApiError";
 
 function unreadCount(items: NotificationItem[]) {
   return items.filter((item) => !item.readAt).length;
@@ -62,7 +63,7 @@ export function createStateBackedNotificationsClient(input: {
       );
       const updated = items.find((item) => item.id === notificationId);
       if (!updated) {
-        throw new Error("Notification was not found.");
+        throw mockApiError("NOT_FOUND", "Notification was not found.");
       }
       input.setInbox(items);
       return updated;
@@ -97,7 +98,7 @@ export function createMockNotificationsGateway(runtime: MockRuntimeState): Notif
       );
       const updated = items.find((item) => item.id === notificationId);
       if (!updated) {
-        throw new Error("Notification was not found.");
+        throw mockApiError("NOT_FOUND", "Notification was not found.");
       }
       runtime.current = { ...runtime.current, notificationInbox: items };
       return updated;

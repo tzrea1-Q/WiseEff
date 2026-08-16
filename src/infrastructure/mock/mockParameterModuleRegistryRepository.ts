@@ -21,6 +21,7 @@ import type {
   ParameterModuleRegistry
 } from "@/domain/parameter-topology/moduleRegistry";
 import { aggregateSubtreeParameterCounts } from "@/components/parameter-topology/moduleAttributionTreeUtils";
+import { mockApiError } from "./mockApiError";
 
 type Store = {
   modules: ParameterModule[];
@@ -271,7 +272,7 @@ export function createMockParameterModuleRegistryRepository(
     async updateModule(moduleId: string, input: UpdateParameterModuleInput) {
       const target = store.modules.find((module) => module.id === moduleId);
       if (!target) {
-        throw new Error(`Module not found: ${moduleId}`);
+        throw mockApiError("NOT_FOUND", `Module not found: ${moduleId}`, { moduleId });
       }
       if (input.name !== undefined) {
         target.name = input.name;
@@ -450,7 +451,7 @@ export function createMockParameterModuleRegistryRepository(
     async updateDriverRegistration(moduleId: string, input: UpdateDriverRegistrationInput) {
       const index = store.driverRegistry.findIndex((entry) => entry.moduleId === moduleId);
       if (index < 0) {
-        throw new Error(`Driver registry entry not found: ${moduleId}`);
+        throw mockApiError("NOT_FOUND", `Driver registry entry not found: ${moduleId}`, { moduleId });
       }
       const existing = store.driverRegistry[index];
       const next = {
@@ -473,7 +474,7 @@ export function createMockParameterModuleRegistryRepository(
     ) {
       const entry = store.driverRegistry.find((row) => row.moduleId === moduleId);
       if (!entry) {
-        throw new Error("Driver registry entry not found");
+        throw mockApiError("NOT_FOUND", "Driver registry entry not found");
       }
       const business = store.modules.find((module) => module.id === input.defaultBusinessCategoryId);
       const moved =
@@ -506,7 +507,7 @@ export function createMockParameterModuleRegistryRepository(
     async replayDriverPlacement(moduleId: string) {
       const entry = store.driverRegistry.find((row) => row.moduleId === moduleId);
       if (!entry) {
-        throw new Error("Driver registry entry not found");
+        throw mockApiError("NOT_FOUND", "Driver registry entry not found");
       }
       if (!entry.defaultBusinessCategoryId) {
         return {
@@ -586,7 +587,7 @@ export function createMockParameterModuleRegistryRepository(
     ) {
       const schema = store.organizationDriverSchemas.find((item) => item.id === schemaId);
       if (!schema) {
-        throw new Error(`Organization driver schema not found: ${schemaId}`);
+        throw mockApiError("NOT_FOUND", `Organization driver schema not found: ${schemaId}`, { schemaId });
       }
       if (input.displayName !== undefined) schema.displayName = input.displayName;
       if (input.notes !== undefined) schema.notes = input.notes;
@@ -596,7 +597,7 @@ export function createMockParameterModuleRegistryRepository(
     async activateOrganizationDriverSchema(schemaId: string): Promise<ActivateOrganizationDriverSchemaResult> {
       const schema = store.organizationDriverSchemas.find((item) => item.id === schemaId);
       if (!schema) {
-        throw new Error(`Organization driver schema not found: ${schemaId}`);
+        throw mockApiError("NOT_FOUND", `Organization driver schema not found: ${schemaId}`, { schemaId });
       }
       schema.lifecycle = "active";
       for (const entry of store.driverRegistry) {
@@ -623,7 +624,7 @@ export function createMockParameterModuleRegistryRepository(
 
     async previewOrganizationDriverSchemaDeprecation(schemaId: string) {
       const schema = store.organizationDriverSchemas.find((item) => item.id === schemaId);
-      if (!schema) throw new Error(`Organization driver schema not found: ${schemaId}`);
+      if (!schema) throw mockApiError("NOT_FOUND", `Organization driver schema not found: ${schemaId}`, { schemaId });
       const successorSource = schema.supersededBySchemaId
         ? {
             scope: "platform" as const,
@@ -646,13 +647,13 @@ export function createMockParameterModuleRegistryRepository(
       input: { confirmCoverageLoss?: boolean } = {}
     ) {
       const schema = store.organizationDriverSchemas.find((item) => item.id === schemaId);
-      if (!schema) throw new Error(`Organization driver schema not found: ${schemaId}`);
+      if (!schema) throw mockApiError("NOT_FOUND", `Organization driver schema not found: ${schemaId}`, { schemaId });
       if (
         schema.lifecycle === "active" &&
         !schema.supersededBySchemaId &&
         !input.confirmCoverageLoss
       ) {
-        throw new Error("High-risk coverage loss confirmation is required.");
+        throw mockApiError("VALIDATION_FAILED", "High-risk coverage loss confirmation is required.");
       }
       schema.lifecycle = "deprecated";
       return { ...schema, properties: schema.properties.map((property) => ({ ...property })) };

@@ -2,6 +2,7 @@ import type {
   DriverSchemaPromotionRepository,
   PromotionCandidate,
 } from "@/application/ports/DriverSchemaPromotionRepository";
+import { mockApiError } from "./mockApiError";
 
 type PromotionStore = {
   candidates: PromotionCandidate[];
@@ -32,7 +33,7 @@ export function createMockDriverSchemaPromotionRepository(): DriverSchemaPromoti
         (entry) => entry.compatible.toLowerCase() === input.compatible.toLowerCase(),
       );
       if (!candidate || !candidate.equivalent) {
-        throw new Error("Contributors are not equivalent for promotion.");
+        throw mockApiError("INTERNAL_ERROR", "Contributors are not equivalent for promotion.");
       }
       const platformSchemaId = `platform-overlay-mock-${input.compatible}`;
       const promotionIds = candidate.contributorOrganizationIds.map(
@@ -59,7 +60,7 @@ export function createMockDriverSchemaPromotionRepository(): DriverSchemaPromoti
     async revertDriverSchemaPromotion(promotionId) {
       const promotion = store.promotions.get(promotionId);
       if (!promotion || promotion.restored) {
-        throw new Error("Promotion record not found.");
+        throw mockApiError("NOT_FOUND", "Promotion record not found.");
       }
       promotion.restored = true;
       const candidate = store.candidates.find(

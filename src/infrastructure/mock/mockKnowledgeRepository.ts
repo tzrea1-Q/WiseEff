@@ -15,6 +15,7 @@ import type {
   KnowledgeSearchResult
 } from "@/domain/knowledge/types";
 import type { LogRecord } from "@/domain/prototype/types";
+import { mockApiError } from "./mockApiError";
 
 const MOCK_KNOWLEDGE_NOW = "2026-08-12T00:00:00.000Z";
 const MOCK_USER_ID = "u-xu-yun";
@@ -511,7 +512,7 @@ export function createMockKnowledgeRepository(
 
   function requireEntry(entryId: string): KnowledgeEntry {
     const entry = findEntry(entryId);
-    if (!entry) throw new Error(`Knowledge entry not found: ${entryId}`);
+    if (!entry) throw mockApiError("NOT_FOUND", `Knowledge entry not found: ${entryId}`, { entryId });
     return entry;
   }
 
@@ -624,10 +625,10 @@ export function createMockKnowledgeRepository(
     async distillFromLog(logId) {
       const log = capability.getLogRecord?.(logId);
       if (!log) {
-        throw new Error(`Log record not found: ${logId}`);
+        throw mockApiError("NOT_FOUND", `Log record not found: ${logId}`, { logId });
       }
       if (log.status !== "Complete") {
-        throw new Error("只有已完成的日志分析才能沉淀为知识。");
+        throw mockApiError("INTERNAL_ERROR", "只有已完成的日志分析才能沉淀为知识。");
       }
       const draft = buildLogDistillationDraft(log);
       store.counter += 1;
@@ -660,10 +661,10 @@ export function createMockKnowledgeRepository(
     async distillFromReloadRun(runId) {
       const run = await capability.getReloadRun?.(runId);
       if (!run) {
-        throw new Error(`未找到重载运行：${runId}`);
+        throw mockApiError("NOT_FOUND", `未找到重载运行：${runId}`, { runId });
       }
       if (!isReloadRunDistillable(run.status)) {
-        throw new Error("只有终态重载运行(已验证/不可验证/矛盾/失败)才能沉淀为知识。");
+        throw mockApiError("INTERNAL_ERROR", "只有终态重载运行(已验证/不可验证/矛盾/失败)才能沉淀为知识。");
       }
       const draft = buildReloadDistillationDraft(run);
       store.counter += 1;
@@ -696,10 +697,10 @@ export function createMockKnowledgeRepository(
     async rejectAgentDraft(entryId) {
       const entry = requireEntry(entryId);
       if (!canManage && entry.createdByUserId !== userId) {
-        throw new Error("Rejecting someone else's agent draft requires knowledge:manage.");
+        throw mockApiError("FORBIDDEN", "Rejecting someone else's agent draft requires knowledge:manage.");
       }
       if (entry.status !== "draft" || entry.sourceType !== "agent") {
-        throw new Error("Only agent-sourced drafts can be archive-rejected.");
+        throw mockApiError("INTERNAL_ERROR", "Only agent-sourced drafts can be archive-rejected.");
       }
       entry.status = "archived";
       entry.archivedAt = MOCK_KNOWLEDGE_NOW;
@@ -710,7 +711,7 @@ export function createMockKnowledgeRepository(
     async update(entryId, input: UpdateKnowledgeInput) {
       const entry = requireEntry(entryId);
       if (entry.status === "archived") {
-        throw new Error("Archived knowledge entries cannot be edited.");
+        throw mockApiError("INTERNAL_ERROR", "Archived knowledge entries cannot be edited.");
       }
       if (entry.headRevisionNumber !== input.expectedHeadRevisionNumber) {
         throw new KnowledgeRevisionConflictError(
@@ -746,7 +747,7 @@ export function createMockKnowledgeRepository(
 
     async publish(entryId) {
       const entry = requireEntry(entryId);
-      if (entry.status !== "draft") throw new Error(`Illegal transition: ${entry.status} -> published`);
+      if (entry.status !== "draft") throw mockApiError("CONFLICT", `Illegal transition: ${entry.status} -> published`, { status: entry.status });
       entry.status = "published";
       entry.publishedAt = MOCK_KNOWLEDGE_NOW;
       entry.updatedAt = MOCK_KNOWLEDGE_NOW;
@@ -756,7 +757,7 @@ export function createMockKnowledgeRepository(
 
     async archive(entryId) {
       const entry = requireEntry(entryId);
-      if (entry.status !== "published") throw new Error(`Illegal transition: ${entry.status} -> archived`);
+      if (entry.status !== "published") throw mockApiError("CONFLICT", `Illegal transition: ${entry.status} -> archived`, { status: entry.status });
       entry.status = "archived";
       entry.archivedAt = MOCK_KNOWLEDGE_NOW;
       entry.updatedAt = MOCK_KNOWLEDGE_NOW;
@@ -766,7 +767,7 @@ export function createMockKnowledgeRepository(
 
     async restore(entryId) {
       const entry = requireEntry(entryId);
-      if (entry.status !== "archived") throw new Error(`Illegal transition: ${entry.status} -> published`);
+      if (entry.status !== "archived") throw mockApiError("CONFLICT", `Illegal transition: ${entry.status} -> published`, { status: entry.status });
       entry.status = "published";
       entry.archivedAt = null;
       entry.updatedAt = MOCK_KNOWLEDGE_NOW;
@@ -775,7 +776,7 @@ export function createMockKnowledgeRepository(
     },
 
     async hardDelete(entryId) {
-      if (!canManage) throw new Error("Hard delete requires knowledge:manage.");
+      if (!canManage) throw mockApiError("FORBIDDEN", "Hard delete requires knowledge:manage.");
       requireEntry(entryId);
       store.entries = store.entries.filter((entry) => entry.id !== entryId);
       store.revisions = store.revisions.filter((revision) => revision.entryId !== entryId);
@@ -793,7 +794,7 @@ export function createMockKnowledgeRepository(
     async restoreRevision(entryId, revisionId, expectedHeadRevisionNumber) {
       const entry = requireEntry(entryId);
       if (entry.status === "archived") {
-        throw new Error("Archived knowledge entries cannot be edited.");
+        throw mockApiError("INTERNAL_ERROR", "Archived knowledge entries cannot be edited.");
       }
       if (entry.headRevisionNumber !== expectedHeadRevisionNumber) {
         throw new KnowledgeRevisionConflictError(
@@ -803,7 +804,7 @@ export function createMockKnowledgeRepository(
         );
       }
       const revision = store.revisions.find((item) => item.entryId === entryId && item.id === revisionId);
-      if (!revision) throw new Error(`Knowledge revision not found: ${revisionId}`);
+      if (!revision) throw mockApiError("NOT_FOUND", `Knowledge revision not found: ${revisionId}`, { revisionId });
 
       entry.title = revision.title;
       entry.tags = [...revision.tags];
@@ -847,10 +848,10 @@ export function createMockKnowledgeRepository(
       const retrieval = { mode: "fts_only" as const, vectorAvailable: false, embeddingConfigured: false };
       const log = capability.getLogRecord?.(logId);
       if (!log) {
-        throw new Error(`Log record not found: ${logId}`);
+        throw mockApiError("NOT_FOUND", `Log record not found: ${logId}`, { logId });
       }
       if (log.status !== "Complete") {
-        throw new Error("只有已完成的日志分析才有相关知识。");
+        throw mockApiError("INTERNAL_ERROR", "只有已完成的日志分析才有相关知识。");
       }
 
       const query = [log.conclusion, log.impact]
@@ -912,10 +913,10 @@ export function createMockKnowledgeRepository(
     async addParameterReference(entryId, specId) {
       const entry = requireEntry(entryId);
       if (!canManage && entry.createdByUserId !== userId) {
-        throw new Error("Editing someone else's entry references requires knowledge:manage.");
+        throw mockApiError("FORBIDDEN", "Editing someone else's entry references requires knowledge:manage.");
       }
       if (entry.status === "archived") {
-        throw new Error("Archived knowledge entries cannot change parameter references.");
+        throw mockApiError("INTERNAL_ERROR", "Archived knowledge entries cannot change parameter references.");
       }
       if (!entry.parameterReferences.some((reference) => reference.specId === specId)) {
         entry.parameterReferences = [...entry.parameterReferences, mockReference(specId, userId)];
@@ -926,14 +927,14 @@ export function createMockKnowledgeRepository(
     async removeParameterReference(entryId, specId) {
       const entry = requireEntry(entryId);
       if (!canManage && entry.createdByUserId !== userId) {
-        throw new Error("Editing someone else's entry references requires knowledge:manage.");
+        throw mockApiError("FORBIDDEN", "Editing someone else's entry references requires knowledge:manage.");
       }
       if (entry.status === "archived") {
-        throw new Error("Archived knowledge entries cannot change parameter references.");
+        throw mockApiError("INTERNAL_ERROR", "Archived knowledge entries cannot change parameter references.");
       }
       const next = entry.parameterReferences.filter((reference) => reference.specId !== specId);
       if (next.length === entry.parameterReferences.length) {
-        throw new Error(`Parameter reference not found on entry: ${specId}`);
+        throw mockApiError("NOT_FOUND", `Parameter reference not found on entry: ${specId}`, { specId });
       }
       entry.parameterReferences = next;
       return clone(entry);
@@ -949,7 +950,7 @@ export function createMockKnowledgeRepository(
     },
 
     async getIndexHealth() {
-      if (!canManage) throw new Error("Index health requires knowledge:manage.");
+      if (!canManage) throw mockApiError("FORBIDDEN", "Index health requires knowledge:manage.");
       return {
         retrieval: { mode: "fts_only" as const, vectorAvailable: false, embeddingConfigured: false },
         items: Array.from(store.index.entries())
@@ -973,7 +974,7 @@ export function createMockKnowledgeRepository(
     },
 
     async retryEntryIndex(entryId) {
-      if (!canManage) throw new Error("Index retry requires knowledge:manage.");
+      if (!canManage) throw mockApiError("FORBIDDEN", "Index retry requires knowledge:manage.");
       const entry = requireEntry(entryId);
       store.index.set(entryId, {
         status: "pending",
@@ -984,7 +985,7 @@ export function createMockKnowledgeRepository(
     },
 
     async rebuildIndex() {
-      if (!canManage) throw new Error("Index rebuild requires knowledge:manage.");
+      if (!canManage) throw mockApiError("FORBIDDEN", "Index rebuild requires knowledge:manage.");
       const published = store.entries.filter((entry) => entry.status === "published");
       for (const entry of published) {
         store.index.set(entry.id, {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createMockParameterFileRepository } from "./mockParameterFileRepository";
 
 const PROJECT_ID = "project-teaching";
@@ -171,5 +172,40 @@ describe("createMockParameterFileRepository (ParameterFileRepository contract)",
         expectedCurrentVersionId: activated.version.id
       })
     ).rejects.toThrow(/Cannot activate/);
+  });
+
+  it("activateCandidate throws CONFLICT when the candidate base is stale", async () => {
+    const repo = createRepo();
+    const before = (await repo.listFiles(PROJECT_ID))[0];
+    const candidate = await repo.createCandidate(PROJECT_ID, {
+      fileName: before.fileName,
+      fileId: before.id,
+      contentBase64: btoa('/dts-v1/;\n/ { model = "Stale"; };\n')
+    });
+
+    const error = await repo
+      .activateCandidate(PROJECT_ID, candidate.id, {
+        expectedCurrentVersionId: "stale-version-id"
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(WiseEffApiError);
+    expect(error).toMatchObject({
+      code: "CONFLICT",
+      message: "Candidate base is stale",
+      requestId: "mock"
+    });
+  });
+
+  it("getCandidate throws NOT_FOUND for an unknown candidate id", async () => {
+    const repo = createRepo();
+    const error = await repo.getCandidate(PROJECT_ID, "missing-candidate").catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(WiseEffApiError);
+    expect(error).toMatchObject({
+      code: "NOT_FOUND",
+      message: "Candidate not found: missing-candidate",
+      requestId: "mock"
+    });
   });
 });
