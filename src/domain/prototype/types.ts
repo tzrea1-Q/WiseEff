@@ -62,20 +62,7 @@ export type LogSeverity = "Critical" | "Warning" | "Info";
 export type LogArchiveState = "active" | "archived";
 export type DeviceStatus = "未连接" | "连接中" | "已连接" | "连接失败";
 export type DebugDeviceTransport = "simulator" | "hdc" | "adb" | "multi";
-export type LogAdminRole = "Admin" | "Editor" | "Viewer";
-export type LogAdminUserAvatarTone = "blue" | "teal" | "violet" | "slate";
 export type TimeWindow = "today" | "7d" | "30d";
-
-export type LogAdminUser = {
-  id: string;
-  name: string;
-  title: string;
-  role: LogAdminRole;
-  avatarInitials: string;
-  avatarTone: LogAdminUserAvatarTone;
-  lastActive: string;
-  lastActiveIso: string;
-};
 
 export type LogEvidence = {
   id: string;
@@ -332,19 +319,6 @@ export type DebugEvent =
   | { kind: "rollback"; snapshotId: string; parameterIds: string[]; at: string }
   | { kind: "rollback-undo"; snapshotId: string; at: string };
 
-export type DeveloperRole =
-  | "参数工程师"
-  | "电池架构师"
-  | "充电方案工程师"
-  | "固件工程师";
-
-export type Developer = {
-  id: string;
-  name: string;
-  projectId: string;
-  role: DeveloperRole;
-};
-
 export type PrototypeState = {
   activeProjectId: string;
   activeRoleId: string;
@@ -358,12 +332,10 @@ export type PrototypeState = {
   parameterInitializationReviews: ProjectParameterInitializationReview[];
   projectInitializationStatuses: Record<string, ProjectInitializationStatus>;
   logs: LogRecord[];
-  logAdminUsers: LogAdminUser[];
   archivedLogIds: string[];
   devices: Device[];
   debugParameters: DebugParameter[];
   auditEvents: AuditEvent[];
-  developers: Developer[];
   notifications: string[];
   notificationInbox: NotificationItem[];
   lastDebugSnapshot: DebugSnapshot | null;
