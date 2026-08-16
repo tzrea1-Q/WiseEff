@@ -21,6 +21,13 @@ describe("quality visual masks", () => {
     expect(helpers).toContain("unsupported.bin");
     expect(helpers).toContain("日志处理失败");
     expect(helpers.indexOf('routePath === "/logs"')).toBeLessThan(helpers.indexOf("charging-foldback.log"));
+    // Empty-state alert reuses the same title, so settle must pin the selected
+    // seed row and wait for fonts + a paint before the screenshot.
+    expect(helpers).toContain(".history-item.active");
+    expect(helpers).toContain(".log-error-alert");
+    expect(helpers).toContain("document.fonts.ready");
+    expect(helpers).toContain("requestAnimationFrame");
+    expect(helpers).toContain(".confidence-bar i");
   });
 
   it("keeps platform parameter baselines aligned with the masked dynamic table", () => {
