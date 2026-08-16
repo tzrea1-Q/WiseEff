@@ -37,6 +37,7 @@ import {
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
+import "./log-analysis.css";
 
 const logStatusLabels: Record<LogRecord["status"], string> = {
   Processing: "处理中",

@@ -4,6 +4,7 @@ import { formatPercent } from "@/domain/format/formatPercent";
 import { STAGE_LABELS, type LogRecord, type PrototypeState } from "@/domain/prototype/types";
 import { AlertTriangle, CheckCircle2, FileText, Info } from "lucide-react";
 import { useMemo, type CSSProperties } from "react";
+import "./log-analysis.css";
 
 export function LogDashboardPage({ state, onNavigate }: { state: PrototypeState; onNavigate: (path: string) => void }) {
   const visibleLogs = useMemo(

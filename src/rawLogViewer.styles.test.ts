@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { declarationFor as cssDeclarationFor, readStylesheet } from "./test/cssAssertions";
 
-const cssText = readStylesheet("src/styles.css");
+const cssText =
+  readStylesheet("src/styles.css") + readStylesheet("src/features/log-analysis/log-analysis.css");
 
 function declarationFor(selector: string, property: string) {
   const value = cssDeclarationFor(cssText, selector, property);
