@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { LogAnalysisRepository, LogJobSnapshot } from "@/application/ports/LogAnalysisRepository";
 import type { LogDomain, LogRecord } from "@/domain/logs/types";
 import { initialState } from "@/mockData";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import {
   adaptivePollDelayMs,
   createLogRuntimeActions,
@@ -500,6 +501,33 @@ describe("createLogRuntimeActions", () => {
 
     await expect(actions.createLogDomain({ name: "dup" })).rejects.toThrow(logRuntimeFailureNotification);
     expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: logRuntimeFailureNotification });
+  });
+
+  it("does not toast domain create/update failures the form can show inline", async () => {
+    const dispatch = vi.fn();
+    const profileError = new WiseEffApiError(
+      "VALIDATION_FAILED",
+      "Log domain format profile is invalid.",
+      { issues: ["timestampPattern is not a valid regular expression: Invalid regular expression"] },
+      "req-profile"
+    );
+    const nameError = new WiseEffApiError(
+      "CONFLICT",
+      "A log domain with this name already exists in the organization.",
+      { name: "charging-power" },
+      "req-name"
+    );
+    const repository = createRepository({
+      createLogDomain: vi.fn().mockRejectedValue(profileError),
+      updateLogDomain: vi.fn().mockRejectedValue(nameError)
+    });
+    const actions = createLogRuntimeActions({ mode: "api", repository, dispatch, getState: () => initialState });
+
+    await expect(actions.createLogDomain({ name: "charging-power", formatProfile: { timestampPattern: "([" } })).rejects.toBe(
+      profileError
+    );
+    await expect(actions.updateLogDomain({ domainId: "domain-1", name: "charging-power" })).rejects.toBe(nameError);
+    expect(dispatch).not.toHaveBeenCalled();
   });
 
   it("lists and replaces domain knowledge links through the repository in api mode", async () => {
