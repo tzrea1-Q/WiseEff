@@ -16,6 +16,7 @@ import { STAGE_LABELS, type LogRecord, type LogStatus, type PrototypeState, type
 import type { LogDomain, LogFeedbackInsight, LogWebhookDelivery } from "@/domain/logs/types";
 import { useTopBarActions } from "@/components/layout";
 import { logRuntimeFailureNotification, type LogRuntimeActions } from "@/application/logs/logRuntime";
+import { mapLogDomainGovernanceError } from "@/application/logs/logDomainGovernanceError";
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
 import type { KnowledgeEntry } from "@/domain/knowledge/types";
 import type { LogDomainKnowledgeLink } from "@/domain/logs/types";
@@ -508,6 +509,7 @@ function LogDomainGovernanceSection({
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<LogDomainFormState>(emptyLogDomainForm);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [linksDomain, setLinksDomain] = useState<LogDomain | null>(null);
   const [webhookDomain, setWebhookDomain] = useState<LogDomain | null>(null);
@@ -526,6 +528,7 @@ function LogDomainGovernanceSection({
   const openCreateForm = () => {
     setForm(emptyLogDomainForm);
     setProfileError(null);
+    setNameError(null);
     setFormOpen(true);
   };
 
@@ -538,6 +541,7 @@ function LogDomainGovernanceSection({
       modelOverride: domain.modelOverride ?? ""
     });
     setProfileError(null);
+    setNameError(null);
     setFormOpen(true);
   };
 
@@ -552,6 +556,7 @@ function LogDomainGovernanceSection({
       return;
     }
     setProfileError(null);
+    setNameError(null);
     setPending(true);
     try {
       let saved = form.domainId
@@ -576,8 +581,17 @@ function LogDomainGovernanceSection({
         setForm(emptyLogDomainForm);
         await refreshDomains();
       }
-    } catch {
-      // The runtime has already surfaced a notification; keep the form open for correction.
+    } catch (error) {
+      const mapped = mapLogDomainGovernanceError(error);
+      if (mapped?.field === "profile") {
+        setProfileError(mapped.message);
+        return;
+      }
+      if (mapped?.field === "name") {
+        setNameError(mapped.message);
+        return;
+      }
+      // Unexpected failures are already toasted by the runtime; keep the form open.
     } finally {
       setPending(false);
     }
@@ -723,10 +737,20 @@ function LogDomainGovernanceSection({
                     id="log-domain-name"
                     required
                     value={form.name}
-                    onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                    aria-invalid={nameError ? true : undefined}
+                    aria-describedby={nameError ? "log-domain-name-error" : undefined}
+                    onChange={(event) => {
+                      setNameError(null);
+                      setForm((current) => ({ ...current, name: event.target.value }));
+                    }}
                     className="h-8 rounded-md border border-border bg-background px-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     placeholder="例如：charging-power"
                   />
+                  {nameError ? (
+                    <p id="log-domain-name-error" role="alert" className="text-xs text-destructive">
+                      {nameError}
+                    </p>
+                  ) : null}
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-muted-foreground" htmlFor="log-domain-description">
                   描述（可选）
@@ -755,13 +779,22 @@ function LogDomainGovernanceSection({
                   id="log-domain-profile"
                   value={form.profileText}
                   rows={6}
-                  onChange={(event) => setForm((current) => ({ ...current, profileText: event.target.value }))}
+                  aria-invalid={profileError ? true : undefined}
+                  aria-describedby={profileError ? "log-domain-profile-error" : undefined}
+                  onChange={(event) => {
+                    setProfileError(null);
+                    setForm((current) => ({ ...current, profileText: event.target.value }));
+                  }}
                   className="rounded-md border border-border bg-background px-2.5 py-2 font-mono text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   placeholder={'{\n  "timestampPattern": "^\\\\[(\\\\d+\\\\.\\\\d+)\\\\]",\n  "severityMap": { "error": ["<3>"] }\n}'}
                 />
               </label>
               {profileError ? (
-                <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive">
+                <p
+                  id="log-domain-profile-error"
+                  role="alert"
+                  className="rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive"
+                >
                   {profileError}
                 </p>
               ) : null}

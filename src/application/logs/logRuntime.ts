@@ -1,4 +1,5 @@
 import { toUserErrorMessage } from "@/infrastructure/http/userErrorMessage";
+import { mapLogDomainGovernanceError } from "./logDomainGovernanceError";
 import type {
   LogAnalysisRepository,
   LogDomainCreateInput,
@@ -252,6 +253,17 @@ export function createLogRuntimeActions({
     }
   };
 
+  const runDomainFormMutation = async (mutation: (api: LogAnalysisRepository) => Promise<void>) => {
+    try {
+      await mutation(requireRepository(repository));
+    } catch (error) {
+      if (isAlreadyNotified(error) || mapLogDomainGovernanceError(error)) {
+        throw error;
+      }
+      throw notifyFailure(dispatch, error);
+    }
+  };
+
   return {
     refresh,
     async upload(input) {
@@ -348,7 +360,7 @@ export function createLogRuntimeActions({
       }
 
       let created: LogDomain | null = null;
-      await runApiMutation(async (api) => {
+      await runDomainFormMutation(async (api) => {
         created = (await api.createLogDomain?.(input)) ?? null;
       });
       return created;
@@ -360,7 +372,7 @@ export function createLogRuntimeActions({
       }
 
       let updated: LogDomain | null = null;
-      await runApiMutation(async (api) => {
+      await runDomainFormMutation(async (api) => {
         updated = (await api.updateLogDomain?.(input)) ?? null;
       });
       return updated;

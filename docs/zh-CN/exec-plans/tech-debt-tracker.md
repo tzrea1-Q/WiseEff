@@ -44,7 +44,6 @@
 - **TD-067（多副本桥接路由）：** 桥接 WebSocket 单进程亲和；进程内 DTS 重载部署（ADR-0020）依赖持有 socket 的副本。**负责人：Platform / Reliability。**
 - **TD-068（DTS 重载 Agent actorType 信任边界）：** 闸门依赖调用方传入的进程内 `actorType`，非 `AuthContext` 已认证身份；持用户 HTTP token 的 Agent 与人类不可区分（与参数 `SensitiveWriteActorType` 相同）。**负责人：Security / Backend。** 见 `docs/SECURITY.md`（#304）。
 - **TD-085（日志分析置信度显示口径）：** LLM 分析器返回模型自估置信度，规则回退沿用确定性查表置信度，二者共用同一 UI 数字，除来源徽标外没有校准语义区分。需按 `analysisSource` 决定显示口径（标注、分档或在效果层评测校准前隐藏 LLM 置信度）。**负责人：Log analysis / Product。**
-- **TD-086（域治理错误透出）：** `/log-admin` 域治理的创建/更新失败只弹通用通知；服务端 `INVALID_LOG_FORMAT_PROFILE` 的 Zod 字段级细节没有映射回表单，行内仅有客户端 JSON 预检。需把 API 错误码与校验细节映射为表单行内错误。**负责人：Frontend / Log analysis。**
 - **TD-089（确定性 rubric judge 桩过于保守）：** 效果层评测的确定性 judge 桩对 `expectedActions` 的 token 重叠匹配几乎恒 0，把确定性演示分数拉低，可能误导在真模型+真实案例基线建立前对比运行的读者。需校准桩的匹配规则（同义/词干容差或结构化动作匹配）；真模型 judge 路径不受影响。**负责人：Log analysis / Eval。**
 - **TD-090（`read_domain_knowledge` 严格限定模式）：** 工具当前把检索严格限定在业务域已关联的知识条目内（无关联时才退化为组织级通用检索）；计划措辞允许"限定或加权"。关联稀疏的域可能漏掉组织级相关知识。若专家反馈严格模式导致检索饥饿，加"关联条目加权 + 组织级补充召回"的融合模式。**负责人：Log analysis / Knowledge platform。**
 - **TD-092（反馈归因粒度）：** `feedback-insights` 把反馈归因到日志**当前 run** 的报告；频繁重析后旧反馈会跟随新结论的来源/提示词版本，按版本的质量读数可能被扭曲。需给 `log_feedback` 加 `run_id`（additive 迁移）与回填策略，存在时按 run 归因。**负责人：Log analysis。**
@@ -66,6 +65,7 @@
 
 ## 近期关闭项
 
+- **TD-086（域治理错误透出）：** **2026-08-16 关闭**（`fix/td086-log-domain-form-errors`）。`LogDomainGovernanceSection` 把域创建/更新的 API 失败映到行内字段提示：`VALIDATION_FAILED` + `details.issues`（实际格式画像契约；没有 `INVALID_LOG_FORMAT_PROFILE` 错误码）映到画像 JSON 字段，带 `details.name` 的 `CONFLICT` 或空名称校验映到名称字段。`createLogRuntimeActions` 对这些可映射错误不再弹通用 toast，意外失败仍通知。`logDomainGovernanceError.test.ts`、`logRuntime.test.ts`、`LogAdminPage.test.tsx` 覆盖。
 - **TD-087（selfhost required-keys 纳管 `LOG_ANALYSIS_*`）：** **2026-08-16 关闭**（`fix/td087-selfhost-log-analysis-keys`）。`requiredEnvKeys` 现包含 P1 日志分析 LLM 家族（`LOG_ANALYSIS_API_BASE_URL` / `LOG_ANALYSIS_MODEL` / `LOG_ANALYSIS_API_KEY` / `LOG_ANALYSIS_API_TIMEOUT_MS` / `LOG_ANALYSIS_TOKEN_BUDGET` / `LOG_ANALYSIS_DETERMINISTIC`）。元数据检查只要求 `ops/self-hosted/.env.example` 中出现这些键，不要求填值；deterministic 模式也不会从模板里拿掉 `LOG_ANALYSIS_API_KEY`（留空合法）。运行时失败关闭仍是 `/health/ready` 的 `logAnalysisLlm`，并在 `LOG_ANALYSIS_DETERMINISTIC=true` 时已经放宽 API key。`check-self-hosted-config.test.ts` 覆盖。后续 `fix/docs-check-log-analysis-llm-keys` 把同一家族纳入 `scripts/check-doc-governance.ts` 的 `requiredEnvExampleKeys`，本地 `.env.example` 漏删也会被 `docs:check` 拦住。
 - **TD-104（验收 webServer 冷启动级联超时）：** **2026-08-15 关闭**（`fix/td104-acceptance-webserver-warmup`）。质量与验收 Playwright 配置新增 `runtime-warmup` 依赖项目，在 webServer ready 后通过 `page.goto` 加载 SPA 入口，把 Vite 首次编译成本计入预热而非首条产品用例；产品用例超时未放宽。
 - **TD-095（CI 波动）：** **2026-08-15 关闭**（`fix/td095-checkpointer-resume-flake`）。`/logs` 视觉抖动已于 `fix/td095-logs-visual-flake` 收口（`settleQualityRoute("/logs")` 等待种子文件名与失败提示；`stableMasks` 覆盖 `.rawlog-table__time` 与元数据采集时间）。剩余 `durableCheckpointer.integration.test.ts` 为真实 interrupt checkpoint 耐久竞态：`planningGraph.run` 在返回 HITL 前用进程级探测连接池（不是每次 HITL 新建 Pool）轮询直至 interrupt checkpoint 可读；集成证明通过第二个 saver 实例恢复。证据：`npm run test:server -- durableCheckpointer planningGraph`。

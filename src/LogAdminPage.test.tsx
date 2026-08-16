@@ -8,6 +8,7 @@ import type { LogRuntimeActions } from "./application/logs/logRuntime";
 import type { KnowledgeRepository } from "./application/ports/KnowledgeRepository";
 import type { KnowledgeEntry } from "./domain/knowledge/types";
 import { createPrototypeState } from "./mockData";
+import { WiseEffApiError } from "./infrastructure/http/apiClient";
 
 afterEach(() => {
   cleanup();
@@ -598,6 +599,54 @@ describe("LogAdminPage 业务域治理", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/画像 JSON 无法解析/);
     expect(logActions.createLogDomain).not.toHaveBeenCalled();
+  });
+
+  it("shows an inline profile error when the server rejects a parseable format profile", async () => {
+    const logActions = createLogActions({
+      listLogDomains: vi.fn().mockResolvedValue([]),
+      createLogDomain: vi.fn().mockRejectedValue(
+        new WiseEffApiError(
+          "VALIDATION_FAILED",
+          "Log domain format profile is invalid.",
+          { issues: ["timestampPattern is not a valid regular expression: Invalid regular expression: /([/: Unterminated group"] },
+          "req-profile"
+        )
+      )
+    });
+    renderPage({ logActions });
+
+    await userEvent.click(await screen.findByRole("button", { name: "新建业务域" }));
+    await userEvent.type(screen.getByLabelText(/名称/), "charging-power");
+    const profileInput = screen.getByLabelText(/格式画像 JSON/);
+    await userEvent.click(profileInput);
+    await userEvent.paste('{"timestampPattern":"(["}');
+    await userEvent.click(screen.getByRole("button", { name: "创建业务域" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("timestampPattern 不是合法正则表达式。");
+    expect(screen.getByLabelText(/格式画像 JSON/)).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("form", { name: "新建业务域" })).toBeInTheDocument();
+  });
+
+  it("shows an inline name error when creating a duplicate domain", async () => {
+    const logActions = createLogActions({
+      listLogDomains: vi.fn().mockResolvedValue([]),
+      createLogDomain: vi.fn().mockRejectedValue(
+        new WiseEffApiError(
+          "CONFLICT",
+          "A log domain with this name already exists in the organization.",
+          { name: "charging-power" },
+          "req-name"
+        )
+      )
+    });
+    renderPage({ logActions });
+
+    await userEvent.click(await screen.findByRole("button", { name: "新建业务域" }));
+    await userEvent.type(screen.getByLabelText(/名称/), "charging-power");
+    await userEvent.click(screen.getByRole("button", { name: "创建业务域" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("该业务域名称已存在，请换一个名称。");
+    expect(screen.getByLabelText(/名称/)).toHaveAttribute("aria-invalid", "true");
   });
 
   it("archives a domain from the list", async () => {
