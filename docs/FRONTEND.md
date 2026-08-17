@@ -8,14 +8,16 @@ WiseEff frontend is a Vite, React, TypeScript SPA. It supports a rich mock-backe
 
 - `src/app/`: page routing, navigation, permission checks, and `appRuntime.ts` — the composition root that selects every mode-dependent adapter once (`createAppRuntime`); pages receive the record via `PageProps.runtime`.
 - `src/domain/`: role, parameter, log, debugging, audit, and Agent domain types and pure logic.
-- `src/application/state/`: the global prototype state machine — `AppAction`, `reducer`/`appReducer`, and reducer-only transition helpers. Import state types from here, never from `@/App` (ADR-0023).
+- `src/application/state/`: the global prototype state machine — `AppAction`, `reducer`/`appReducer`, and reducer-only transition helpers. API boot lives in `createApiInitialState()` here (#486); import state types from here, never from `@/App` (ADR-0023).
+- `src/application/debugging/`: `/node-debugging` session (`nodeDebuggingSession`, #485) on the same snapshot/subscribe/command shape as dts-reload. Shared C5 bridge/target/protocol types are Track G.
 - `src/application/ports/`: frontend-facing business interfaces.
-- `src/infrastructure/mock/`: mock state and mock implementations for demos/tests. Failures throw `WiseEffApiError` via `mockApiError` so application `error.code` branches work in mock mode as well as API mode (TD-109 wave 1 / #475).
+- `src/infrastructure/mock/`: mock state and mock implementations for demos/tests. Failures throw `WiseEffApiError` via `mockApiError` so application `error.code` branches work in mock mode as well as API mode (TD-109; leftover `Object.assign` paths closed in #483). `createPrototypeState` lives in `prototypeState.ts` (#486); `src/mockData.ts` is a test-facing re-export.
 - `src/infrastructure/http/`: API client, DTOs, auth client, runtime mode.
 - `src/components/`: reusable UI, layout, tables, dialogs, filters, charts.
 - `src/features/agent/`: Xiaoze CopilotKit surface (`XiaozeProvider`, `useXiaozePageContext`, `XiaozeApprovalCard`, frontend tools).
 - `src/features/log-analysis/`: `LogsPage` (upload, conclusion, evidence chain, raw viewer) and `LogDashboardPage`. Feature styles live in colocated `log-analysis.css` (imported from the pages; #476).
 - `src/features/parameter-review/`: `ParameterReviewPage`, `ParameterSubmissionsPage`, submission-history diff, and review-specific UI atoms. Feature styles live in colocated `parameter-review.css` (#479).
+- `src/components/project-configuration-workbench/`: configuration workbench. Feature styles live in colocated `configuration-workbench.css` (#484); shared `.workbench-page` / `.workbench-sheet` chrome stays in `src/styles.css`.
 - `src/features/product-feedback/`: sidebar `FeedbackDialog` and Admin triage UI for `/feedback-admin`.
 - `src/features/knowledge/`: knowledge base pages for `/knowledge` and `/knowledge-admin` (list, split editor, upload, revisions).
 - `src/test/setup.ts`: Vitest DOM setup.
@@ -39,7 +41,7 @@ VITE_WISEEFF_RUNTIME_MODE=mock
 
 Production builds must not use mock runtime as a business data source.
 
-API mode never falls back to mock data. The shell boots from `createApiInitialState()` (structural fields kept, every business-data slice empty — including `auditEvents`; unused `developers` / `logAdminUsers` slices were retired in #474), shows a slim connecting strip until the first runtime sync completes, and when a domain refresh (parameters / logs / debugging) fails it clears that domain's slices via `CLEAR_API_RUNTIME_DOMAIN` and raises a persistent page-level cannot-connect / no-data error banner with a retry button instead of quietly keeping demo records on screen. Successful hydration also repoints `activeProjectId` at real server projects when the demo id is unknown. #480 stops `ParametersPage` and the reducer from falling back to `mockData.projects` when `configDraft.projects` is empty; API boot uses `createEmptyPowerManagementConfig()`. Mock seeding of `createPrototypeState` still lives at `mockData.ts` top level (TD-110 remainder, Track H). Mock mode behavior is unchanged.
+API mode never falls back to mock data. The shell boots from `createApiInitialState()` (structural fields kept, every business-data slice empty — including `auditEvents`; unused `developers` / `logAdminUsers` slices were retired in #474), shows a slim connecting strip until the first runtime sync completes, and when a domain refresh (parameters / logs / debugging) fails it clears that domain's slices via `CLEAR_API_RUNTIME_DOMAIN` and raises a persistent page-level cannot-connect / no-data error banner with a retry button instead of quietly keeping demo records on screen. Successful hydration also repoints `activeProjectId` at real server projects when the demo id is unknown. #480 stops `ParametersPage` and the reducer from falling back to `mockData.projects` when `configDraft.projects` is empty; API boot uses `createEmptyPowerManagementConfig()`. #486 reconstructs `createApiInitialState()` as an empty shell (it does not call `createPrototypeState()`); mock seeding lives in `src/infrastructure/mock/prototypeState.ts`. Mock mode behavior is unchanged.
 
 M6.2 OIDC runtime support uses an async authorization provider so API clients can request the current access token and handle refresh/logout failures without static bearer injection. `VITE_WISEEFF_API_AUTHORIZATION` remains a local static-token convenience and is rejected by production builds.
 

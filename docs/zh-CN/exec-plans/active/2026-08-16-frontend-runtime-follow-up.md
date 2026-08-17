@@ -2,9 +2,9 @@
 
 > English: [English](../../../exec-plans/active/2026-08-16-frontend-runtime-follow-up.md)
 
-- **状态：** 进行中 — 收口。第一批 A/B/C（#474–#476）、第二波（#478 领域守卫、#479 评审 CSS、#481 DTS `/include/` 信封）与 #480 API 目录诚实已在 `main`。收口轨道 D–H 见英文计划 Closeout tracks。
+- **状态：** 进行中 — 收口。D/E/F/H 已在 `main`（#483–#486）。剩余：Track G C5 共享 bridge/target/protocol 类型（`refactor/bridge-target-session`）。
 - **负责人：** Frontend
-- **核对日期：** 2026-08-17（GitHub `main` @ `d99823df`，#480 合入后）
+- **核对日期：** 2026-08-17（GitHub `main` @ `bf6b99ca`，#482 合入后）
 - **前序：** `docs/exec-plans/completed/2026-08-12-app-shell-decomposition.md`
 
 ## 目标
@@ -68,17 +68,14 @@ C5 不再无限推迟：本收口先把 `NodeDebuggingPage` session 化（Track 
 
 ## 推迟项（已改）
 
-C5 共享桥接 session 改为收口轨道：先 F（节点调试 session），再 G（`BridgeGateway`）。不要在 F 未合入时改 `dtsReloadRunSession`。
+C5 共享桥接类型改为收口轨道：F（#485 节点调试 session）已合入，G（共享 protocol/bridge/target 类型）进行中。不要重写 reload 部署确认或节点调试 I/O。
 
 ## 后续顺序
 
 ```
-已合入: A #474 │ B #475 │ C #476 │ 守卫 #478 │ 评审 CSS #479 │ dts-parse #481 │ 目录 #480 │ 文档 #477
-下一步: D  TD-109 Object.assign 余量
-下一步: E  C7 配置工作台 CSS
-下一步: F  NodeDebuggingPage session
-然后:   G  C5 BridgeGateway（等 F）
-然后:   H  TD-110 mock 播种（#480 已解除阻塞）
+已合入: A–C #474–#476 │ 守卫 #478 │ 评审 CSS #479 │ dts-parse #481 │ 目录 #480
+        文档 #482 │ Object.assign #483 │ 工作台 CSS #484 │ node session #485 │ 播种 #486
+开放:   G  C5 共享 bridge/target/protocol 类型
 ```
 
 做法、验证命令与文件地图见英文计划 Closeout tracks。
