@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
-import type { AuditEventListResponse } from "@/domain/audit/types";
+import { render, screen } from "@testing-library/react";
 import { initialParameterAdminState } from "@/application/parameters/parameterAdminState";
 import { ParameterAdminProvider, useParameterAdmin } from "./ParameterAdminProvider";
 import { useRefreshParameterAdminRecentAudits } from "./useRefreshParameterAdminRecentAudits";
@@ -76,31 +75,7 @@ describe("parameter-admin recent audit projection", () => {
     listAuditEvents.mockReset();
   });
 
-  it("loads recent audit-center events into admin state after refresh", async () => {
-    const response: AuditEventListResponse = {
-      items: [
-        {
-          id: "ae-200",
-          organizationId: "org-1",
-          projectId: "aurora",
-          actorUserId: "u-1",
-          actorType: "user",
-          actorName: "Riley",
-          app: "parameter-admin",
-          kind: "project-updated",
-          action: "已更新项目「Aurora」",
-          severity: "Low",
-          targetType: "project",
-          targetId: "aurora",
-          metadata: {},
-          traceId: "t-1",
-          createdAt: "2026-08-05T12:00:00.000Z"
-        }
-      ],
-      nextCursor: null
-    };
-    listAuditEvents.mockResolvedValue(response);
-
+  it("does not fetch the audit API in mock runtime", async () => {
     render(
       <ParameterAdminProvider
         topology={stubTopology as never}
@@ -112,13 +87,9 @@ describe("parameter-admin recent audit projection", () => {
     );
 
     screen.getByRole("button", { name: "refresh" }).click();
+    await Promise.resolve();
 
-    await waitFor(() => {
-      expect(screen.getByText("已更新项目「Aurora」")).toBeInTheDocument();
-    });
-    expect(listAuditEvents).toHaveBeenCalledWith({
-      apps: ["parameter-management", "parameter-admin", "parameters"],
-      limit: 8
-    });
+    expect(listAuditEvents).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("recent-audits").childElementCount).toBe(0);
   });
 });

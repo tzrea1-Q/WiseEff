@@ -116,6 +116,8 @@
 - `PARAM-SPEC-GOVERN-001`：Admin 在 `/parameter-admin` 检索 ingest 后的规格（sc8562/mt5788 两个不同 `gpio_int`），打开详情并决议审核任务（含治理审计）（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-SPEC-EDIT-001`：Admin 在启用态定义上改单位、约束、示例值与说明，保存后再打开，各值往返；删除约束键即删除，清空单位即清空（组件往返测试 `ParameterSpecDetailDialog.test.tsx`、载荷单测 `ParameterSpecDetail.test.ts`；服务端 `specLifecycle.integration.test.ts`）。
 - `PARAM-SPEC-EDIT-002`：定义编辑器在 1440×900 / 768×1024 / 390×844 下动作可达（含小泽 FAB 时不被挡住）；打开时焦点进入弹窗，关闭后回到触发器（`ModalDialog.test.tsx`；playwright-cli 证据 `work/ui-checks/param-spec-editor-batch4/`）。mock 无 FAB，层叠由刻度 1100 < 1150 < 1200 闭合。
+- `PARAM-SPEC-IDENTITY-001`：管理员在库中纠正一条定义的归属主体，重新打开后声明主体已更新，生命周期与引用数保留，同一属性不会出现第二条定义（组件 `ParameterSpecDetailDialog.test.tsx`；mock/HTTP 接缝；playwright-cli 证据 `work/ui-checks/param-spec-identity/`）。
+- `PARAM-SPEC-IDENTITY-002`：零引用定义上提供改属性键，有引用时带明确原因拒绝；与既有定义（含废弃）冲突时展示阻挡方（`ParameterSpecDetailDialog.test.tsx`、`presentError.test.ts`、`mockParameterTopologyRepository.test.ts`；playwright-cli 证据 `work/ui-checks/param-spec-identity/`）。
 - `PARAM-TOPOLOGY-BROWSE-001`：在融合 DTS 工作台中切换真实源树/生效树，选择嵌套上下文（`amba` → `i2c@FDF5E000` → `sc8562@6E`），搜索两个 `gpio_int` 语义行，并在成熟详情弹窗查看完整路径、raw 值、shape 和 provenance；topology API 必须 200 且含预期节点（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-TOPOLOGY-EDIT-001`：类型化 drafts 返回 Schema cell-count 诊断、过期 revision 返回 409，并对临时 Config Set 走 fail-closed 编译/工具链校验（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-IDENTITY-MAP-001`：未解决身份映射阻断 validate（`open-mapping`）；决议后清除阻断并写治理审计（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。

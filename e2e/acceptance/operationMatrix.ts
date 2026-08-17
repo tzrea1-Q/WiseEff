@@ -1413,6 +1413,40 @@ export const acceptanceOperations: AcceptanceOperation[] = [
       "Reachability and keyboard contract are covered by ModalDialog unit tests plus playwright-cli evidence under work/ui-checks/param-spec-editor-batch4/. Mock has no Xiaoze FAB; stacking is the token ladder 1100 < 1150 < 1200. A keyboard-focused e2e spec follows the PARAM-ADMIN-DIALOG-001 pattern."
   },
   {
+    id: "PARAM-SPEC-IDENTITY-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/specs",
+    roles: ["Admin"],
+    action: "Correct a definition's attribution subject from the library, reopen, and confirm the declared subject updated while lifecycle, reference count, and uniqueness of the property identity are kept.",
+    coverage: "future",
+    acceptanceIds: ["PARAM-SPEC-IDENTITY-001"],
+    specFiles: [
+      "src/components/parameter-topology/ParameterSpecDetailDialog.test.tsx"
+    ],
+    assertions: ["ui"],
+    deferralReason:
+      "Re-attribution is covered by ParameterSpecDetailDialog RTL plus mock/HTTP collision seams and playwright-cli evidence under work/ui-checks/param-spec-identity/; a blocking Playwright marker is deferred so this does not enlarge the shared pre-cutover CI acceptance suite (TD-079)."
+  },
+  {
+    id: "PARAM-SPEC-IDENTITY-002",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/specs",
+    roles: ["Admin"],
+    action: "Offer property-key rename on a zero-reference definition, refuse it with a stated reason when references exist, and surface the occupying definition (including deprecated) on a triple collision.",
+    coverage: "future",
+    acceptanceIds: ["PARAM-SPEC-IDENTITY-002"],
+    specFiles: [
+      "src/components/parameter-topology/ParameterSpecDetailDialog.test.tsx",
+      "src/infrastructure/http/presentError.test.ts",
+      "src/infrastructure/mock/mockParameterTopologyRepository.test.ts"
+    ],
+    assertions: ["ui"],
+    deferralReason:
+      "Rename gate, collision copy, and deprecated blockers are covered by RTL, presentError, and mock repository tests plus playwright-cli evidence under work/ui-checks/param-spec-identity/; a blocking Playwright marker is deferred so this does not enlarge the shared pre-cutover CI acceptance suite (TD-079)."
+  },
+  {
     id: "PARAM-ADMIN-IA-001",
     priority: "P1",
     area: "parameters",

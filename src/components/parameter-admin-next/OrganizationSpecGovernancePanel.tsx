@@ -68,6 +68,13 @@ function formatReviewActionError(error: unknown): string {
     if (error.code === "CONFLICT" && error.details.confirmRequired === true) {
       return "所选规格属性键与任务不一致，请勾选确认后再批准。";
     }
+    if (
+      error.code === "CONFLICT" &&
+      typeof error.details.parameterSpecId === "string" &&
+      "lifecycle" in error.details
+    ) {
+      return presentError(error, "目标身份已被占用，无法覆盖。");
+    }
     if (error.code === "VALIDATION_FAILED") {
       return presentErrorMessage(error.message, "审核请求校验失败。");
     }

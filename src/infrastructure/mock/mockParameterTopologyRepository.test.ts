@@ -350,4 +350,31 @@ describe("createMockParameterTopologyRepository (ParameterTopologyRepository con
       details: { parameterSpecId: "spec-draft-mystery", lifecycle: "draft" }
     });
   });
+
+  it("reattributeParameterSpec throws CONFLICT when a deprecated definition already owns the triple", async () => {
+    const repo = createRepo();
+    await repo.reattributeParameterSpec("spec-deprecated-legacy", {
+      attributionSubjectId: "asub:nodetype:charger",
+      reason: "park legacy"
+    });
+    await repo.renameParameterSpecPropertyKey("spec-deprecated-legacy", {
+      propertyKey: "gpio_int",
+      reason: "same key as sc8562"
+    });
+
+    const error = await repo
+      .reattributeParameterSpec("spec-sc8562-gpio-int", {
+        attributionSubjectId: "asub:nodetype:charger",
+        reason: "collide with deprecated"
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(WiseEffApiError);
+    expect(error).toMatchObject({
+      code: "CONFLICT",
+      message: "A parameter definition already exists for this subject and property key.",
+      requestId: "mock",
+      details: { parameterSpecId: "spec-deprecated-legacy", lifecycle: "deprecated" }
+    });
+  });
 });

@@ -123,6 +123,63 @@ describe("createHttpParameterTopologyRepository", () => {
     );
   });
 
+  it("posts identity correction routes and preserves 409 collision details", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (String(url).includes("/reattribute")) {
+        return response(
+          {
+            error: {
+              code: "CONFLICT",
+              message: "A parameter definition already exists for this subject and property key.",
+              details: { parameterSpecId: "spec-deprecated-legacy", lifecycle: "deprecated" },
+              requestId: "req-identity"
+            }
+          },
+          409
+        );
+      }
+      return response({ item: specDetailDto });
+    });
+    const repository = createHttpParameterTopologyRepository(
+      createApiClient({ baseUrl: "http://api.test", fetchImpl: fetchMock })
+    );
+
+    await expect(
+      repository.reattributeParameterSpec("spec-1", {
+        attributionSubjectId: "asub:driver:mt5788",
+        reason: "fix subject"
+      })
+    ).rejects.toSatisfy((error: unknown) => {
+      expect(error).toBeInstanceOf(WiseEffApiError);
+      expect(error).toMatchObject({
+        code: "CONFLICT",
+        details: { parameterSpecId: "spec-deprecated-legacy", lifecycle: "deprecated" }
+      });
+      return true;
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://api.test/api/v2/parameter-specs/spec-1/reattribute",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ attributionSubjectId: "asub:driver:mt5788", reason: "fix subject" })
+      })
+    );
+
+    await repository.renameParameterSpecPropertyKey("spec-1", {
+      propertyKey: "gpio_int_renamed",
+      reason: "typo"
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://api.test/api/v2/parameter-specs/spec-1/rename-property-key",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ propertyKey: "gpio_int_renamed", reason: "typo" })
+      })
+    );
+  });
+
   it("lists bindings via v2 project bindings and maps DTOs", async () => {
     const fetchMock = fetchQueue({ items: [bindingDto] });
     const repository = createHttpParameterTopologyRepository(

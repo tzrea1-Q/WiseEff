@@ -104,6 +104,51 @@ function createSeedStore(): Store {
         sourceKey: null,
         effectiveImportance: "high",
         parameterCount: 4
+      },
+      {
+        id: "mod-sc8562",
+        name: "SC8562",
+        parentId: "mod-charging",
+        sortOrder: 2,
+        description: "SC8562 驱动组（身份纠错夹具）",
+        scope: "组织",
+        importance: "medium",
+        kind: "driver-group",
+        origin: "curated",
+        sourceKey: "compatible:vendor,sc8562",
+        effectiveImportance: "high",
+        parameterCount: 0,
+        attributionSubjectId: "asub:driver:sc8562"
+      },
+      {
+        id: "mod-mt5788",
+        name: "MT5788",
+        parentId: "mod-charging",
+        sortOrder: 3,
+        description: "MT5788 驱动组（身份纠错夹具）",
+        scope: "组织",
+        importance: "medium",
+        kind: "driver-group",
+        origin: "curated",
+        sourceKey: "compatible:vendor,mt5788",
+        effectiveImportance: "high",
+        parameterCount: 0,
+        attributionSubjectId: "asub:driver:mt5788"
+      },
+      {
+        id: "mod-charger-nt",
+        name: "charger",
+        parentId: "mod-sc8562",
+        sortOrder: 4,
+        description: "charger 节点类型（无 gpio_int，供成功再归属）",
+        scope: "组织",
+        importance: "medium",
+        kind: "node-type",
+        origin: "curated",
+        sourceKey: "nodetype:charger",
+        effectiveImportance: "high",
+        parameterCount: 0,
+        attributionSubjectId: "asub:nodetype:charger"
       }
     ],
     mappings: [

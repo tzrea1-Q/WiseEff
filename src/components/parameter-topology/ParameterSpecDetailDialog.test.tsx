@@ -1,12 +1,61 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 
 import type { ParameterSpecDetailView } from "./ParameterSpecDetail";
 import { ParameterSpecDetailDialog } from "./ParameterSpecDetailDialog";
 
 const EMPTY_IDENTITY_MODULES: ParameterModule[] = [];
+
+const IDENTITY_MODULES: ParameterModule[] = [
+  {
+    id: "m-business",
+    name: "业务",
+    parentId: null,
+    sortOrder: 0,
+    description: "",
+    scope: "",
+    importance: "medium",
+    kind: "business",
+    origin: "curated",
+    sourceKey: null,
+    effectiveImportance: "medium",
+    parameterCount: 0,
+    attributionSubjectId: null,
+  },
+  {
+    id: "m-driver",
+    name: "SC8562",
+    parentId: "m-business",
+    sortOrder: 1,
+    description: "",
+    scope: "",
+    importance: "medium",
+    kind: "driver-group",
+    origin: "curated",
+    sourceKey: "compatible:vendor,sc8562",
+    effectiveImportance: "medium",
+    parameterCount: 2,
+    attributionSubjectId: "asub:driver:sc8562",
+  },
+  {
+    id: "m-node",
+    name: "charger",
+    parentId: "m-driver",
+    sortOrder: 2,
+    description: "",
+    scope: "",
+    importance: "medium",
+    kind: "node-type",
+    origin: "curated",
+    sourceKey: "nodetype:charger",
+    effectiveImportance: "medium",
+    parameterCount: 1,
+    attributionSubjectId: "asub:nodetype:charger",
+  },
+];
 
 afterEach(() => {
   cleanup();
@@ -301,5 +350,101 @@ describe("ParameterSpecDetailDialog round-trip (PARAM-SPEC-EDIT-001)", () => {
     );
     expect(screen.getByLabelText("示例值")).toHaveValue("<&gpio13 29 0>");
     expect(screen.getByLabelText("参数说明")).toHaveValue("updated docs");
+  });
+});
+
+function renderIdentityEditor(
+  overrides: Partial<ParameterSpecDetailView> = {},
+  handlers: {
+    onReattribute?: ReturnType<typeof vi.fn>;
+    onRenamePropertyKey?: ReturnType<typeof vi.fn>;
+  } = {},
+) {
+  const onReattribute = handlers.onReattribute ?? vi.fn();
+  const onRenamePropertyKey = handlers.onRenamePropertyKey ?? vi.fn();
+  const onSave = vi.fn();
+  render(
+    <ParameterSpecDetailDialog
+      detail={baseDetail({
+        propertyKey: "gpio_int",
+        attributionSubjectId: "asub:driver:sc8562",
+        driverModule: "SC8562",
+        usageCount: 0,
+        ...overrides,
+      })}
+      identityModules={IDENTITY_MODULES}
+      onClose={vi.fn()}
+      onSave={onSave}
+      onReattribute={onReattribute}
+      onRenamePropertyKey={onRenamePropertyKey}
+    />,
+  );
+  return { onReattribute, onRenamePropertyKey, onSave };
+}
+
+describe("ParameterSpecDetailDialog identity correction (PARAM-SPEC-IDENTITY)", () => {
+  it("confirms 修正归属 with a different subject and reason", () => {
+    const { onReattribute } = renderIdentityEditor();
+
+    fireEvent.click(screen.getByRole("button", { name: "修正归属" }));
+    const confirm = screen.getByRole("dialog", { name: "修正归属主体" });
+    expect(document.querySelector(".param-admin-modal-backdrop--nested")).toBeTruthy();
+
+    fireEvent.click(within(confirm).getByRole("button", { name: "新归属主体" }));
+    fireEvent.click(within(screen.getByRole("tree")).getByRole("button", { name: "charger（节点类型）" }));
+    fireEvent.change(within(confirm).getByLabelText("修正原因"), {
+      target: { value: "选错了驱动组" },
+    });
+    fireEvent.click(within(confirm).getByRole("button", { name: "确认修正归属" }));
+
+    expect(onReattribute).toHaveBeenCalledTimes(1);
+    expect(onReattribute.mock.calls[0][0]).toEqual({
+      attributionSubjectId: "asub:nodetype:charger",
+      reason: "选错了驱动组",
+    });
+  });
+
+  it("disables 修正属性键 with the reference-count reason when usageCount > 0 (D-ID-2)", () => {
+    renderIdentityEditor({ usageCount: 1 });
+
+    const rename = screen.getByRole("button", { name: "修正属性键" });
+    expect(rename).toBeDisabled();
+    expect(rename).toHaveAttribute("title", "已有 1 处引用，不能改属性键");
+    expect(screen.getByRole("button", { name: "修正归属" })).toBeEnabled();
+  });
+
+  it("offers 修正属性键 when usageCount is 0", () => {
+    renderIdentityEditor({ usageCount: 0 });
+
+    const rename = screen.getByRole("button", { name: "修正属性键" });
+    expect(rename).toBeEnabled();
+    expect(rename).toHaveAttribute("title", "仅零引用定义可改；会同步重写派生键。");
+  });
+
+  it("surfaces a deprecated identity collision without English chrome", async () => {
+    const onReattribute = vi.fn().mockRejectedValue(
+      new WiseEffApiError(
+        "CONFLICT",
+        "A parameter definition already exists for this subject and property key.",
+        { parameterSpecId: "spec-deprecated-legacy", lifecycle: "deprecated" },
+        "req-identity",
+      ),
+    );
+    renderIdentityEditor({}, { onReattribute });
+
+    fireEvent.click(screen.getByRole("button", { name: "修正归属" }));
+    const confirm = screen.getByRole("dialog", { name: "修正归属主体" });
+    fireEvent.click(within(confirm).getByRole("button", { name: "新归属主体" }));
+    fireEvent.click(within(screen.getByRole("tree")).getByRole("button", { name: "charger（节点类型）" }));
+    fireEvent.change(within(confirm).getByLabelText("修正原因"), {
+      target: { value: "纠正归属" },
+    });
+    fireEvent.click(within(confirm).getByRole("button", { name: "确认修正归属" }));
+
+    const alert = await waitFor(() => within(confirm).getByRole("alert"));
+    expect(alert).toHaveTextContent("spec-deprecated-legacy");
+    expect(alert).toHaveTextContent("已废弃");
+    expect(alert).not.toHaveTextContent("already exists");
+    expect(screen.getByRole("dialog", { name: "修正归属主体" })).toBeInTheDocument();
   });
 });
