@@ -108,6 +108,8 @@ describe("createMockParameterFileRepository (ParameterFileRepository contract)",
     const repo = createRepo();
     const files = await repo.listFiles(PROJECT_ID);
     const summary = await repo.syncFile(PROJECT_ID, files[0].id);
+    expect(summary.skipped).toBe(false);
+    expect(summary.draftsCreated).toBeGreaterThan(0);
     expect(summary).toMatchObject({
       draftsCreated: expect.any(Number),
       unchanged: expect.any(Number),

@@ -507,7 +507,7 @@ Admin 项目摘要（`GET/POST /api/v1/parameters/admin/projects`）同时返回
 }
 ```
 
-省略 `versionId` 时使用文件 `currentVersionId`。`origin=writeback` 的版本在同步时不生成新草稿。
+省略 `versionId` 时使用文件 `currentVersionId`。`origin=writeback` 的版本在同步时不生成新草稿（`skipped: true`）。语义身份 cutover 之后，sync 按解析索引路径匹配项目参数绑定（逻辑节点 locator + 属性 key，限定在该文件版本的 occurrence 图），并在绑定上 upsert `file_sync` 草稿；不再查询已退役的 `project_parameter_values` / `parameter_definitions`。冲突行写入 `project_parameter_binding_id` 与 `parameter_spec_id`；列表/裁决 DTO 仍通过 `projectParameterValueId` / `parameterDefinitionId` 暴露它们。
 
 审计动作：`parameter-file-upload`、`parameter-file-rollback`、`parameter-file-sync`、`parameter-file-conflict-open`、`parameter-file-conflict-resolve`、`parameter-writeback-to-file`。
 

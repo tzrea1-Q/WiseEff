@@ -324,7 +324,7 @@ Sync body (optional):
 }
 ```
 
-When `versionId` is omitted, sync uses the file's `currentVersionId`. Versions with `origin=writeback` skip automatic draft generation during sync.
+When `versionId` is omitted, sync uses the file's `currentVersionId`. Versions with `origin=writeback` skip automatic draft generation during sync (`skipped: true`). After semantic identity cutover, sync diffs each parsed-index path against project parameter bindings (logical node locator + property key, scoped to that file version's occurrence graph) and upserts `file_sync` drafts on the binding. It does not query retired `project_parameter_values` / `parameter_definitions`. Open conflicts persist `project_parameter_binding_id` and `parameter_spec_id`; list/resolve DTOs still expose them as `projectParameterValueId` / `parameterDefinitionId`.
 
 Audit actions: `parameter-file-upload`, `parameter-file-rollback`, `parameter-file-sync`, `parameter-file-conflict-open`, `parameter-file-conflict-resolve`, `parameter-writeback-to-file`.
 

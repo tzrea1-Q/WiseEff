@@ -11,6 +11,7 @@ import {
 } from "../parameters/repository";
 import { upsertFileSyncDraft } from "../parameter-drafts/repository";
 import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
+import { findBindingBySource } from "./syncIdentity";
 
 vi.mock("./repository", () => ({
   getProjectParameterFileById: vi.fn(),
@@ -30,6 +31,10 @@ vi.mock("../parameter-drafts/repository", () => ({
   upsertFileSyncDraft: vi.fn()
 }));
 
+vi.mock("./syncIdentity", () => ({
+  findBindingBySource: vi.fn()
+}));
+
 vi.mock("../audit/repository", () => ({
   createAuditEvent: vi.fn()
 }));
@@ -37,6 +42,7 @@ vi.mock("../audit/repository", () => ({
 const mockedGetProjectParameterFileById = vi.mocked(getProjectParameterFileById);
 const mockedGetFileVersionById = vi.mocked(getFileVersionById);
 const mockedFindProjectValueBySource = vi.mocked(findProjectValueBySource);
+const mockedFindBindingBySource = vi.mocked(findBindingBySource);
 const mockedBindParameterSource = vi.mocked(bindParameterSource);
 const mockedUpsertFileSyncDraft = vi.mocked(upsertFileSyncDraft);
 const mockedDetectFileUiDraftConflict = vi.mocked(detectFileUiDraftConflict);
@@ -203,9 +209,64 @@ describe("syncFileVersion", () => {
     expect(mockedUpsertFileSyncDraft).not.toHaveBeenCalled();
   });
 
-  it("post-cutover upload skips the retired flat-identity source-sync adapter", async () => {
+  it("post-cutover upload matches bindings and creates file_sync drafts", async () => {
     mockUploadVersion();
     setParameterIdentityMode("semantic");
+    mockedFindBindingBySource.mockResolvedValue({
+      id: "binding-1",
+      parameterSpecId: "spec-1",
+      currentValue: "80"
+    });
+
+    const result = await syncFileVersion(fakeDb, adminAuth(), {
+      fileId: "file-1",
+      versionId: "version-1"
+    });
+
+    expect(result).toEqual({
+      draftsCreated: 1,
+      unchanged: 0,
+      unmatched: 0,
+      skipped: false,
+      identityFallbackUses: 0
+    });
+    expect(mockedFindProjectValueBySource).not.toHaveBeenCalled();
+    expect(mockedBindParameterSource).not.toHaveBeenCalled();
+    expect(mockedFindBindingBySource).toHaveBeenCalledWith(fakeDb, {
+      organizationId: "org-1",
+      projectId: "project-1",
+      sourceFileName: "config.json",
+      sourceNodePath: "battery/temp_max",
+      fileVersionId: "version-1"
+    });
+    expect(mockedUpsertFileSyncDraft).toHaveBeenCalledWith(fakeDb, {
+      organizationId: "org-1",
+      projectId: "project-1",
+      projectParameterValueId: "binding-1",
+      userId: "user-1",
+      targetValue: "85",
+      reason: "Synced from config.json:battery/temp_max",
+      originFileVersionId: "version-1"
+    });
+    expect(mockedDetectFileUiDraftConflict).toHaveBeenCalledWith(fakeDb, {
+      organizationId: "org-1",
+      projectId: "project-1",
+      projectParameterValueId: "binding-1",
+      parameterDefinitionId: "spec-1",
+      fileVersionId: "version-1",
+      fileDraftId: "ppv-1-user-1-file-sync",
+      fileValue: "85"
+    });
+  });
+
+  it("post-cutover same value counts unchanged and does not write retired source bindings", async () => {
+    mockUploadVersion();
+    setParameterIdentityMode("semantic");
+    mockedFindBindingBySource.mockResolvedValue({
+      id: "binding-1",
+      parameterSpecId: "spec-1",
+      currentValue: "85"
+    });
 
     const result = await syncFileVersion(fakeDb, adminAuth(), {
       fileId: "file-1",
@@ -214,14 +275,14 @@ describe("syncFileVersion", () => {
 
     expect(result).toEqual({
       draftsCreated: 0,
-      unchanged: 0,
+      unchanged: 1,
       unmatched: 0,
-      skipped: true,
+      skipped: false,
       identityFallbackUses: 0
     });
-    expect(mockedFindProjectValueBySource).not.toHaveBeenCalled();
-    expect(mockedBindParameterSource).not.toHaveBeenCalled();
     expect(mockedUpsertFileSyncDraft).not.toHaveBeenCalled();
+    expect(mockedBindParameterSource).not.toHaveBeenCalled();
+    expect(mockedFindProjectValueBySource).not.toHaveBeenCalled();
   });
 
   it("fail-closed when source binding is missing (no name/module fallback)", async () => {

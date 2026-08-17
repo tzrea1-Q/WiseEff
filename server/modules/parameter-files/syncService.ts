@@ -10,10 +10,10 @@ import {
 import type { FileSyncConflictRecord } from "../parameters/fileSyncConflictRepository";
 import { upsertFileSyncDraft } from "../parameter-drafts/repository";
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
-import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { detectFileUiDraftConflict } from "./conflictService";
 import { getFileVersionById, getProjectParameterFileById } from "./repository";
+import { findBindingBySource } from "./syncIdentity";
 
 export type SyncFileVersionInput = {
   fileId: string;
@@ -54,12 +54,7 @@ export async function syncFileVersion(
     return { draftsCreated: 0, unchanged: 0, unmatched: 0, skipped: true, identityFallbackUses: 0 };
   }
 
-  // Semantic config ingest owns source identity after cutover. The adapter below
-  // is intentionally limited to the retired flat parameter tables.
-  if (parameterIdentityMode() === "semantic") {
-    return { draftsCreated: 0, unchanged: 0, unmatched: 0, skipped: true, identityFallbackUses: 0 };
-  }
-
+  const semantic = parameterIdentityMode() === "semantic";
   let draftsCreated = 0;
   let unchanged = 0;
   let unmatched = 0;
@@ -67,12 +62,37 @@ export async function syncFileVersion(
   const entries = Object.entries(version.parsedIndex);
 
   for (const [nodePath, entry] of entries) {
-    const resolved = await findProjectValueBySource(db, {
-      organizationId: auth.organization.id,
-      projectId: file.projectId,
-      sourceFileName: file.fileName,
-      sourceNodePath: nodePath
-    });
+    let resolved: { id: string; currentValue: string; definitionOrSpecId: string } | null = null;
+    if (semantic) {
+      const binding = await findBindingBySource(db, {
+        organizationId: auth.organization.id,
+        projectId: file.projectId,
+        sourceFileName: file.fileName,
+        sourceNodePath: nodePath,
+        fileVersionId: version.id
+      });
+      if (binding) {
+        resolved = {
+          id: binding.id,
+          currentValue: binding.currentValue,
+          definitionOrSpecId: binding.parameterSpecId
+        };
+      }
+    } else {
+      const ppv = await findProjectValueBySource(db, {
+        organizationId: auth.organization.id,
+        projectId: file.projectId,
+        sourceFileName: file.fileName,
+        sourceNodePath: nodePath
+      });
+      if (ppv) {
+        resolved = {
+          id: ppv.id,
+          currentValue: ppv.currentValue,
+          definitionOrSpecId: ppv.parameterDefinitionId
+        };
+      }
+    }
 
     if (!resolved) {
       unmatched += 1;
@@ -82,11 +102,13 @@ export async function syncFileVersion(
     const targetValue = entry.value;
     if (resolved.currentValue === targetValue) {
       unchanged += 1;
-      await bindParameterSource(db, {
-        projectParameterValueId: resolved.id,
-        sourceFileName: file.fileName,
-        sourceNodePath: nodePath
-      });
+      if (!semantic) {
+        await bindParameterSource(db, {
+          projectParameterValueId: resolved.id,
+          sourceFileName: file.fileName,
+          sourceNodePath: nodePath
+        });
+      }
       continue;
     }
 
@@ -101,16 +123,18 @@ export async function syncFileVersion(
     });
     draftsCreated += 1;
 
-    await bindParameterSource(db, {
-      projectParameterValueId: resolved.id,
-      sourceFileName: file.fileName,
-      sourceNodePath: nodePath
-    });
+    if (!semantic) {
+      await bindParameterSource(db, {
+        projectParameterValueId: resolved.id,
+        sourceFileName: file.fileName,
+        sourceNodePath: nodePath
+      });
+    }
     const opened = await detectFileUiDraftConflict(db, {
       organizationId: auth.organization.id,
       projectId: file.projectId,
       projectParameterValueId: resolved.id,
-      parameterDefinitionId: resolved.parameterDefinitionId,
+      parameterDefinitionId: resolved.definitionOrSpecId,
       fileVersionId: version.id,
       fileDraftId: fileDraft.id,
       fileValue: targetValue

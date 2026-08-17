@@ -10,6 +10,7 @@ import {
   resolveConflict,
   type FileSyncConflictRecord
 } from "../parameters/fileSyncConflictRepository";
+import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { canReviewParameters } from "../parameter-kernel/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -62,8 +63,12 @@ export async function detectFileUiDraftConflict(
       uiDraftId: manualDraft.id,
       fileValue: input.fileValue,
       uiDraftValue: manualDraft.targetValue,
-      projectParameterBindingId: input.projectParameterBindingId,
-      parameterSpecId: input.parameterSpecId
+      projectParameterBindingId:
+        input.projectParameterBindingId ??
+        (parameterIdentityMode() === "semantic" ? input.projectParameterValueId : undefined),
+      parameterSpecId:
+        input.parameterSpecId ??
+        (parameterIdentityMode() === "semantic" ? input.parameterDefinitionId : undefined)
     });
     existingPairs.add(pair);
     createdConflicts.push(conflict);
