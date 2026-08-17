@@ -144,7 +144,7 @@ export async function loadBindingContext(
   );
   const row = result.rows[0];
   if (!row) {
-    throw new ApiError("NOT_FOUND", "Project parameter binding was not found.", 404, { bindingId });
+    throw new ApiError("NOT_FOUND", "Project parameter binding was not found.", { bindingId });
   }
   return row;
 }
@@ -204,7 +204,7 @@ function resolveTargetRef(input: {
   const fromLocator = locatorLeafLabel(input.nodeLocator ?? input.effect?.node_path);
   if (fromLocator) return fromLocator;
 
-  throw new ApiError("CONFLICT", "Unable to resolve overlay target ref for binding edit.", 409, {
+  throw new ApiError("CONFLICT", "Unable to resolve overlay target ref for binding edit.", {
     reason: "missing-overlay-target-ref",
     nodeLocator: input.nodeLocator,
     nodePath: input.effect?.node_path ?? null,
@@ -240,7 +240,7 @@ export async function resolveWriteTarget(
   const members = await loadRevisionMembers(db, input.configRevisionId);
   const baseMember = members.find((m) => m.role === "base");
   if (!baseMember) {
-    throw new ApiError("CONFLICT", "Config revision missing base member for edit.", 409, {
+    throw new ApiError("CONFLICT", "Config revision missing base member for edit.", {
       configRevisionId: input.configRevisionId,
     });
   }
@@ -303,7 +303,7 @@ export async function resolveWriteTarget(
     overlayMember = baseMember;
   }
   if (!overlayMember) {
-    throw new ApiError("CONFLICT", "Config revision missing writable DTS member for edit.", 409, {
+    throw new ApiError("CONFLICT", "Config revision missing writable DTS member for edit.", {
       configRevisionId: input.configRevisionId,
     });
   }
@@ -410,7 +410,7 @@ export async function loadLogicalNodeEnablementContext(
   );
   const row = node.rows[0];
   if (!row) {
-    throw new ApiError("NOT_FOUND", "Logical node was not found in this config revision.", 404, {
+    throw new ApiError("NOT_FOUND", "Logical node was not found in this config revision.", {
       logicalNodeId: input.logicalNodeId,
       configRevisionId: input.configRevisionId,
     });
@@ -490,7 +490,7 @@ export async function resolveBindingWriteLock(
       bindingId: input.bindingId,
     }));
   if (!baseRevisionId) {
-    throw new ApiError("CONFLICT", "No config revision is available for binding write lock.", 409, {
+    throw new ApiError("CONFLICT", "No config revision is available for binding write lock.", {
       reason: "stale-revision",
       bindingId: input.bindingId,
     });
@@ -502,7 +502,7 @@ export async function resolveBindingWriteLock(
     revisionId: baseRevisionId,
   });
   if (!revision) {
-    throw new ApiError("CONFLICT", "Base config revision is stale or missing.", 409, {
+    throw new ApiError("CONFLICT", "Base config revision is stale or missing.", {
       reason: "stale-revision",
       bindingId: input.bindingId,
       baseRevisionId,
@@ -518,7 +518,7 @@ export async function resolveBindingWriteLock(
     [input.bindingId, baseRevisionId],
   );
   if (!bindingRevision.rows[0]) {
-    throw new ApiError("CONFLICT", "Base config revision is stale for this binding.", 409, {
+    throw new ApiError("CONFLICT", "Base config revision is stale for this binding.", {
       reason: "stale-revision",
       bindingId: input.bindingId,
       baseRevisionId,
@@ -540,7 +540,7 @@ export async function resolveBindingWriteLock(
   });
 
   if (!writeTarget.fileVersionId || !writeTarget.checksum) {
-    throw new ApiError("CONFLICT", "Write target file version is incomplete for binding lock.", 409, {
+    throw new ApiError("CONFLICT", "Write target file version is incomplete for binding lock.", {
       reason: "missing-write-target",
       bindingId: input.bindingId,
     });
@@ -579,7 +579,7 @@ export async function verifyBindingWriteLock(
   );
   const revisionRow = bindingRevision.rows[0];
   if (!revisionRow || revisionRow.config_revision_id !== lock.baseConfigRevisionId) {
-    throw new ApiError("CONFLICT", "Binding revision lock is stale.", 409, {
+    throw new ApiError("CONFLICT", "Binding revision lock is stale.", {
       reason: "stale-binding-revision",
       bindingRevisionId: lock.bindingRevisionId,
     });
@@ -596,7 +596,7 @@ export async function verifyBindingWriteLock(
   );
   const fileRow = fileVersion.rows[0];
   if (!fileRow || fileRow.checksum !== lock.expectedChecksum) {
-    throw new ApiError("CONFLICT", "Source file checksum lock is stale.", 409, {
+    throw new ApiError("CONFLICT", "Source file checksum lock is stale.", {
       reason: "stale-checksum",
       sourceFileVersionId: lock.sourceFileVersionId,
       expectedChecksum: lock.expectedChecksum,
@@ -621,7 +621,7 @@ export async function verifyBindingWriteLock(
     );
     const occ = occurrence.rows[0];
     if (!occ || occ.file_version_id !== lock.sourceFileVersionId) {
-      throw new ApiError("CONFLICT", "Property occurrence lock is stale.", 409, {
+      throw new ApiError("CONFLICT", "Property occurrence lock is stale.", {
         reason: "stale-occurrence",
         propertyOccurrenceId: lock.propertyOccurrenceId,
       });
@@ -631,7 +631,7 @@ export async function verifyBindingWriteLock(
         Number(occ.start_offset) !== lock.occurrenceSpan.start ||
         Number(occ.end_offset) !== lock.occurrenceSpan.end
       ) {
-        throw new ApiError("CONFLICT", "Occurrence CST span lock is stale.", 409, {
+        throw new ApiError("CONFLICT", "Occurrence CST span lock is stale.", {
           reason: "stale-span",
           propertyOccurrenceId: lock.propertyOccurrenceId,
           occurrenceSpan: lock.occurrenceSpan,
@@ -663,7 +663,7 @@ export async function verifyEnablementWriteLock(
   );
   const fileRow = fileVersion.rows[0];
   if (!fileRow || fileRow.checksum !== lock.expectedChecksum) {
-    throw new ApiError("CONFLICT", "Source file checksum lock is stale.", 409, {
+    throw new ApiError("CONFLICT", "Source file checksum lock is stale.", {
       reason: "stale-checksum",
       sourceFileVersionId: lock.sourceFileVersionId,
       expectedChecksum: lock.expectedChecksum,
@@ -688,7 +688,7 @@ export async function verifyEnablementWriteLock(
     );
     const occ = occurrence.rows[0];
     if (!occ || occ.file_version_id !== lock.sourceFileVersionId) {
-      throw new ApiError("CONFLICT", "Property occurrence lock is stale.", 409, {
+      throw new ApiError("CONFLICT", "Property occurrence lock is stale.", {
         reason: "stale-occurrence",
         propertyOccurrenceId: lock.propertyOccurrenceId,
       });
@@ -698,7 +698,7 @@ export async function verifyEnablementWriteLock(
         Number(occ.start_offset) !== lock.occurrenceSpan.start ||
         Number(occ.end_offset) !== lock.occurrenceSpan.end
       ) {
-        throw new ApiError("CONFLICT", "Occurrence CST span lock is stale.", 409, {
+        throw new ApiError("CONFLICT", "Occurrence CST span lock is stale.", {
           reason: "stale-span",
           propertyOccurrenceId: lock.propertyOccurrenceId,
           occurrenceSpan: lock.occurrenceSpan,
@@ -725,7 +725,7 @@ export async function resolveEnablementWriteLock(
   );
   const projectId = node.rows[0]?.project_id;
   if (!projectId) {
-    throw new ApiError("NOT_FOUND", "Logical node was not found for enablement write lock.", 404, {
+    throw new ApiError("NOT_FOUND", "Logical node was not found for enablement write lock.", {
       logicalNodeId: input.logicalNodeId,
     });
   }
@@ -749,7 +749,7 @@ export async function resolveEnablementWriteLock(
     baseRevisionId = head.rows[0]?.config_revision_id;
   }
   if (!baseRevisionId) {
-    throw new ApiError("CONFLICT", "No config revision is available for enablement write lock.", 409, {
+    throw new ApiError("CONFLICT", "No config revision is available for enablement write lock.", {
       reason: "stale-revision",
       logicalNodeId: input.logicalNodeId,
     });
@@ -761,7 +761,7 @@ export async function resolveEnablementWriteLock(
     revisionId: baseRevisionId,
   });
   if (!revision) {
-    throw new ApiError("CONFLICT", "Base config revision is stale or missing.", 409, {
+    throw new ApiError("CONFLICT", "Base config revision is stale or missing.", {
       reason: "stale-revision",
       logicalNodeId: input.logicalNodeId,
       baseRevisionId,
@@ -790,7 +790,7 @@ export async function resolveEnablementWriteLock(
   });
 
   if (!writeTarget.fileVersionId || !writeTarget.checksum) {
-    throw new ApiError("CONFLICT", "Write target file version is incomplete for enablement lock.", 409, {
+    throw new ApiError("CONFLICT", "Write target file version is incomplete for enablement lock.", {
       reason: "missing-write-target",
       logicalNodeId: input.logicalNodeId,
     });

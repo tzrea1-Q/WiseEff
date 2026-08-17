@@ -69,7 +69,7 @@ describe("action.submitParameterChange sensitive node guard", () => {
     } as never);
 
     mockedAssert.mockRejectedValue(
-      new ApiError("FORBIDDEN", "Agent writes to critical sensitive nodes require a human.", 403, {
+      new ApiError("FORBIDDEN", "Agent writes to critical sensitive nodes require a human.", {
         riskTier: "critical",
         requireHuman: true
       })

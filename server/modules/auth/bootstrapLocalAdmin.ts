@@ -48,8 +48,7 @@ export async function bootstrapLocalAdmin(
   if (existingAdmins > 0) {
     throw new ApiError(
       "CONFLICT",
-      "A local admin account already exists. Use the user governance UI or create additional admins through an existing admin.",
-      409
+      "A local admin account already exists. Use the user governance UI or create additional admins through an existing admin."
     );
   }
 
@@ -62,7 +61,7 @@ export async function bootstrapLocalAdmin(
   const title = input.title?.trim() || "Platform Admin";
 
   if (!name) {
-    throw new ApiError("VALIDATION_FAILED", "Admin name is required.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Admin name is required.");
   }
 
   const organization = defaultLocalRegistrationOrganizationResolver(organizationName);
@@ -79,7 +78,7 @@ export async function bootstrapLocalAdmin(
       [username]
     );
     if (existing.rows.length > 0) {
-      throw new ApiError("CONFLICT", "Username is already registered.", 409, { username });
+      throw new ApiError("CONFLICT", "Username is already registered.", { username });
     }
 
     await tx.query(

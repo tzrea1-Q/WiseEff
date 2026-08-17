@@ -35,18 +35,12 @@ export const API_ERROR_STATUS: Record<ApiErrorCode, number> = {
 };
 
 export class ApiError extends Error {
-  /** HTTP status derived from `code` via `API_ERROR_STATUS`, never from the constructor argument. */
+  /** HTTP status derived from `code` via `API_ERROR_STATUS`. */
   public readonly status: number;
 
   constructor(
     public readonly code: ApiErrorCode,
     message: string,
-    /**
-     * @deprecated The HTTP status is derived from `code`; this argument is ignored.
-     * It is kept only so the ~840 pre-table call sites keep compiling until the
-     * codemod removes the argument everywhere (TD-082). New call sites must omit it.
-     */
-    _ignoredStatus?: number,
     public readonly details: Record<string, unknown> = {}
   ) {
     super(message);

@@ -31,13 +31,13 @@ const schemasRoot = join(dirname(fileURLToPath(import.meta.url)), "../../../sche
 
 function requireCanView(auth: AuthContext) {
   if (!canViewParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter view permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter view permission is required.");
   }
 }
 
 function requireCanAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter admin permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter admin permission is required.");
   }
 }
 
@@ -99,7 +99,7 @@ async function ensureCanonicalOverlayParameterSpec(
 ): Promise<{ parameterSpecId: string; propertyKey: string }> {
   const propertyKey = input.propertyKey.trim();
   if (!propertyKey) {
-    throw new ApiError("VALIDATION_FAILED", "propertyKey is required.", 400);
+    throw new ApiError("VALIDATION_FAILED", "propertyKey is required.");
   }
   assertNonStructuralPropertyKey(propertyKey);
   const attributionSubjectId = await ensureAttributionSubjectForCompatible(db, {
@@ -273,14 +273,13 @@ async function resolveOverlayPropertyLinks(
       );
       const hit = row.rows[0];
       if (!hit) {
-        throw new ApiError("NOT_FOUND", `Parameter spec ${specId} was not found.`, 404);
+        throw new ApiError("NOT_FOUND", `Parameter spec ${specId} was not found.`);
       }
       const propertyKey = (property.propertyKey ?? hit.property_key ?? "").trim();
       if (!propertyKey) {
         throw new ApiError(
           "VALIDATION_FAILED",
-          `Parameter spec ${specId} has no property key to link.`,
-          400,
+          `Parameter spec ${specId} has no property key to link.`
         );
       }
       const ensured = await ensureCanonicalOverlayParameterSpec(db, {
@@ -308,8 +307,7 @@ async function resolveOverlayPropertyLinks(
     if (!("propertyKey" in property) || !("valueShape" in property)) {
       throw new ApiError(
         "VALIDATION_FAILED",
-        "Each property must include parameterSpecId or propertyKey+valueShape.",
-        400,
+        "Each property must include parameterSpecId or propertyKey+valueShape."
       );
     }
 
@@ -380,13 +378,12 @@ async function resolveOverlayPropertyLinks(
 function assertExactCompatible(compatible: string) {
   const trimmed = compatible.trim();
   if (!trimmed) {
-    throw new ApiError("VALIDATION_FAILED", "compatible is required.", 400);
+    throw new ApiError("VALIDATION_FAILED", "compatible is required.");
   }
   if (trimmed.includes("*")) {
     throw new ApiError(
       "VALIDATION_FAILED",
-      "Overlay schemas support exact compatible values only.",
-      400,
+      "Overlay schemas support exact compatible values only."
     );
   }
   return trimmed;
@@ -399,7 +396,6 @@ function assertPinnedDoesNotCover(compatible: string) {
     throw new ApiError(
       "CONFLICT",
       `Compatible is already covered by a pinned ${coverage.source} schema (${coverage.pattern}); an organization overlay is not needed.`,
-      409,
       { pattern: coverage.pattern, driverId: coverage.driverId, source: coverage.source },
     );
   }
@@ -411,7 +407,6 @@ async function assertNoActivePlatformOverlayCovers(db: Queryable, compatible: st
     throw new ApiError(
       "CONFLICT",
       "An active platform overlay already covers this compatible; organization authoring is not allowed.",
-      409,
       {
         platformSchemaId: platformOverlay.id,
         compatible: platformOverlay.compatible,
@@ -515,7 +510,7 @@ export async function getOrganizationDriverSchemaForAuth(
     schemaId,
   });
   if (!item) {
-    throw new ApiError("NOT_FOUND", "Organization driver schema not found.", 404);
+    throw new ApiError("NOT_FOUND", "Organization driver schema not found.");
   }
   return item;
 }
@@ -536,10 +531,10 @@ export async function createOrganizationDriverSchemaForAuth(
   assertPinnedDoesNotCover(compatible);
   await assertNoActivePlatformOverlayCovers(db, compatible);
   if (!input.displayName.trim()) {
-    throw new ApiError("VALIDATION_FAILED", "displayName is required.", 400);
+    throw new ApiError("VALIDATION_FAILED", "displayName is required.");
   }
   if (!input.properties.length) {
-    throw new ApiError("VALIDATION_FAILED", "At least one property definition is required.", 400);
+    throw new ApiError("VALIDATION_FAILED", "At least one property definition is required.");
   }
 
   const propertyLinks = await resolveOverlayPropertyLinks(db, {
@@ -588,13 +583,12 @@ export async function updateOrganizationDriverSchemaForAuth(
     schemaId,
   });
   if (!existing) {
-    throw new ApiError("NOT_FOUND", "Organization driver schema not found.", 404);
+    throw new ApiError("NOT_FOUND", "Organization driver schema not found.");
   }
   if (existing.lifecycle === "active" && input.properties) {
     throw new ApiError(
       "VALIDATION_FAILED",
-      "Active overlay property sets are immutable; create a new draft to revise definitions.",
-      400,
+      "Active overlay property sets are immutable; create a new draft to revise definitions."
     );
   }
 
@@ -611,7 +605,7 @@ export async function updateOrganizationDriverSchemaForAuth(
 
     if (input.properties) {
       if (!input.properties.length) {
-        throw new ApiError("VALIDATION_FAILED", "At least one property definition is required.", 400);
+        throw new ApiError("VALIDATION_FAILED", "At least one property definition is required.");
       }
       row =
         (await replaceOrganizationDriverSchemaProperties(tx, {
@@ -656,16 +650,16 @@ export async function activateOrganizationDriverSchemaForAuth(
       schemaId,
     });
     if (!existing) {
-      throw new ApiError("NOT_FOUND", "Organization driver schema not found.", 404);
+      throw new ApiError("NOT_FOUND", "Organization driver schema not found.");
     }
     if (existing.lifecycle === "active") {
       return { schema: existing, upgradedSpecIds: [], resolvedReviewTaskIds: [] };
     }
     if (existing.lifecycle === "deprecated") {
-      throw new ApiError("VALIDATION_FAILED", "Deprecated overlay schemas cannot be activated.", 400);
+      throw new ApiError("VALIDATION_FAILED", "Deprecated overlay schemas cannot be activated.");
     }
     if (existing.properties.length === 0) {
-      throw new ApiError("VALIDATION_FAILED", "Cannot activate an overlay with no properties.", 400);
+      throw new ApiError("VALIDATION_FAILED", "Cannot activate an overlay with no properties.");
     }
 
     assertPinnedDoesNotCover(existing.compatible);
@@ -679,7 +673,6 @@ export async function activateOrganizationDriverSchemaForAuth(
       throw new ApiError(
         "CONFLICT",
         "Another active overlay already claims this compatible.",
-        409,
         { activeSchemaId: otherActive.id },
       );
     }
@@ -691,7 +684,7 @@ export async function activateOrganizationDriverSchemaForAuth(
       updatedByUserId: auth.user.id,
     });
     if (!schema) {
-      throw new ApiError("NOT_FOUND", "Organization driver schema not found.", 404);
+      throw new ApiError("NOT_FOUND", "Organization driver schema not found.");
     }
 
     const retro = await upgradeProvisionalSpecsForOverlay(tx, {
@@ -751,7 +744,7 @@ export async function previewOrganizationDriverSchemaDeprecationForAuth(
     schemaId,
   });
   if (!existing) {
-    throw new ApiError("NOT_FOUND", "Organization driver schema not found.", 404);
+    throw new ApiError("NOT_FOUND", "Organization driver schema not found.");
   }
 
   const pinnedCoverage = lookupParseCoverage(
@@ -817,7 +810,6 @@ export async function deprecateOrganizationDriverSchemaForAuth(
     throw new ApiError(
       "CONFLICT",
       "Deprecating this overlay removes parse coverage and requires explicit confirmation.",
-      409,
       { confirmRequired: true, impact },
     );
   }
@@ -826,13 +818,12 @@ export async function deprecateOrganizationDriverSchemaForAuth(
     schemaId,
   });
   if (!existing) {
-    throw new ApiError("NOT_FOUND", "Organization driver schema not found.", 404);
+    throw new ApiError("NOT_FOUND", "Organization driver schema not found.");
   }
   if (existing.lifecycle === "superseded") {
     throw new ApiError(
       "CONFLICT",
       "Superseded organization overlays are read-only.",
-      409,
       { successorSchemaId: existing.supersededBySchemaId },
     );
   }
@@ -845,7 +836,7 @@ export async function deprecateOrganizationDriverSchemaForAuth(
       updatedByUserId: auth.user.id,
     });
     if (!row) {
-      throw new ApiError("NOT_FOUND", "Organization driver schema not found.", 404);
+      throw new ApiError("NOT_FOUND", "Organization driver schema not found.");
     }
     await writeAudit(asAuditTx(tx), auth, {
       action: "deprecated",

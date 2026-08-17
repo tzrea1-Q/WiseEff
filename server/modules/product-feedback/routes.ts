@@ -33,7 +33,7 @@ const cursorSchema = z.object({
 
 function requireDb(db: Database | undefined) {
   if (!db) {
-    throw new ApiError("INTERNAL_ERROR", "Database adapter is required for product feedback routes.", 500);
+    throw new ApiError("INTERNAL_ERROR", "Database adapter is required for product feedback routes.");
   }
 
   return db;
@@ -41,7 +41,7 @@ function requireDb(db: Database | undefined) {
 
 function requireObjectStore(objectStore: ObjectStore | undefined) {
   if (!objectStore) {
-    throw new ApiError("INTERNAL_ERROR", "Object store is required for product feedback routes.", 500);
+    throw new ApiError("INTERNAL_ERROR", "Object store is required for product feedback routes.");
   }
 
   return objectStore;
@@ -54,7 +54,7 @@ function flattenQuery(query: Record<string, string | string[]>) {
 function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Invalid product feedback route input.") {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
-    throw new ApiError("VALIDATION_FAILED", message, 400, { issues: parsed.error.issues });
+    throw new ApiError("VALIDATION_FAILED", message, { issues: parsed.error.issues });
   }
 
   return parsed.data;
@@ -72,7 +72,7 @@ function parseCursor(cursor: string | undefined) {
     if (error instanceof ApiError) {
       throw error;
     }
-    throw new ApiError("VALIDATION_FAILED", "Invalid product feedback cursor.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Invalid product feedback cursor.");
   }
 }
 

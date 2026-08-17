@@ -103,12 +103,12 @@ export async function loadBridgeReleaseManifest(manifestPath: string): Promise<B
   try {
     raw = await readFile(manifestPath, "utf8");
   } catch {
-    throw new ApiError("NOT_FOUND", "Bridge release manifest was not found.", 404);
+    throw new ApiError("NOT_FOUND", "Bridge release manifest was not found.");
   }
 
   const parsed = manifestFileSchema.safeParse(JSON.parse(raw));
   if (!parsed.success) {
-    throw new ApiError("INTERNAL_ERROR", "Bridge release manifest is invalid.", 500, {
+    throw new ApiError("INTERNAL_ERROR", "Bridge release manifest is invalid.", {
       issues: parsed.error.issues
     });
   }
@@ -135,7 +135,7 @@ export async function loadBridgeReleaseManifest(manifestPath: string): Promise<B
   );
 
   if (items.length === 0) {
-    throw new ApiError("NOT_FOUND", "No published bridge release artifacts are available.", 404);
+    throw new ApiError("NOT_FOUND", "No published bridge release artifacts are available.");
   }
 
   return {
@@ -151,7 +151,7 @@ export async function loadLatestBridgeReleaseManifest(artifactRoot: string): Pro
   try {
     entries = await readdir(resolvedRoot);
   } catch {
-    throw new ApiError("NOT_FOUND", "Bridge release artifacts were not found.", 404);
+    throw new ApiError("NOT_FOUND", "Bridge release artifacts were not found.");
   }
 
   const versionDirs = (
@@ -169,7 +169,7 @@ export async function loadLatestBridgeReleaseManifest(artifactRoot: string): Pro
   ).filter((entry): entry is string => entry !== null);
 
   if (versionDirs.length === 0) {
-    throw new ApiError("NOT_FOUND", "Bridge release manifest was not found.", 404);
+    throw new ApiError("NOT_FOUND", "Bridge release manifest was not found.");
   }
 
   versionDirs.sort(compareSemver);

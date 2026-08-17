@@ -13,7 +13,7 @@ export const localRegistrationOrganizationIds = {
 export function defaultLocalRegistrationOrganizationResolver(organizationName: string) {
   const organizationId = localRegistrationOrganizationIds[organizationName as keyof typeof localRegistrationOrganizationIds];
   if (!organizationId) {
-    throw new ApiError("VALIDATION_FAILED", "Organization must be one of: 硬件部, 软件部.", 400, { organization: organizationName });
+    throw new ApiError("VALIDATION_FAILED", "Organization must be one of: 硬件部, 软件部.", { organization: organizationName });
   }
 
   return {
@@ -24,19 +24,19 @@ export function defaultLocalRegistrationOrganizationResolver(organizationName: s
 
 export function validateLocalAccountUsername(username: string) {
   if (!username) {
-    throw new ApiError("VALIDATION_FAILED", "Username is required.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Username is required.");
   }
   if (username.length < 3 || username.length > 64) {
-    throw new ApiError("VALIDATION_FAILED", "Username must be 3 to 64 characters.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Username must be 3 to 64 characters.");
   }
   if (!/^[a-z0-9._-]+$/.test(username)) {
-    throw new ApiError("VALIDATION_FAILED", "Username can only contain letters, numbers, dots, underscores, or hyphens.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Username can only contain letters, numbers, dots, underscores, or hyphens.");
   }
 }
 
 export function validateLocalAccountPassword(password: string) {
   if (password.length < 8) {
-    throw new ApiError("VALIDATION_FAILED", "Password must be at least 8 characters.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Password must be at least 8 characters.");
   }
 }
 

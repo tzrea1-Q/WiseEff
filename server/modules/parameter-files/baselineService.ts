@@ -87,7 +87,7 @@ export type RestorePreviewResult = {
 
 function requireParameterFileAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Forbidden.", 403, { permission: "admin:access" });
+    throw new ApiError("FORBIDDEN", "Forbidden.", { permission: "admin:access" });
   }
 }
 
@@ -142,7 +142,7 @@ export async function createBaseline(
       configSetId: input.configSetId
     });
     if (!configSet) {
-      throw new ApiError("NOT_FOUND", "Config set not found.", 404, { configSetId: input.configSetId });
+      throw new ApiError("NOT_FOUND", "Config set not found.", { configSetId: input.configSetId });
     }
 
     const existing = await getReleaseBaselineByConfigSetAndName(tx, {
@@ -150,7 +150,7 @@ export async function createBaseline(
       name: input.name
     });
     if (existing) {
-      throw new ApiError("CONFLICT", "A baseline with this name already exists for this config set.", 409, {
+      throw new ApiError("CONFLICT", "A baseline with this name already exists for this config set.", {
         configSetId: input.configSetId,
         name: input.name
       });
@@ -162,7 +162,6 @@ export async function createBaseline(
       throw new ApiError(
         "CONFLICT",
         "Config set is incomplete: one or more member files have no current version and cannot be baselined.",
-        409,
         { configSetId: input.configSetId, fileId: incompleteMember.fileId }
       );
     }
@@ -215,7 +214,7 @@ export async function getBaseline(
 
   const baseline = await getReleaseBaselineById(db, { organizationId: auth.organization.id, baselineId });
   if (!baseline) {
-    throw new ApiError("NOT_FOUND", "Baseline not found.", 404, { baselineId });
+    throw new ApiError("NOT_FOUND", "Baseline not found.", { baselineId });
   }
 
   const members = await listReleaseBaselineMembers(db, { baselineId });
@@ -275,7 +274,7 @@ export async function compareBaseline(
   const against = options.against ?? "working";
   const baseline = await getReleaseBaselineById(db, { organizationId: auth.organization.id, baselineId });
   if (!baseline) {
-    throw new ApiError("NOT_FOUND", "Baseline not found.", 404, { baselineId });
+    throw new ApiError("NOT_FOUND", "Baseline not found.", { baselineId });
   }
 
   const baselineMembers = await listReleaseBaselineMembers(db, { baselineId });
@@ -299,7 +298,7 @@ export async function compareBaseline(
     const baselines = await listReleaseBaselinesByConfigSet(db, { configSetId: baseline.configSetId });
     const tip = baselines.find((item) => item.status === "released");
     if (!tip) {
-      throw new ApiError("CONFLICT", "No released baseline exists to compare against.", 409, {
+      throw new ApiError("CONFLICT", "No released baseline exists to compare against.", {
         code: "released-baseline-missing",
         configSetId: baseline.configSetId
       });
@@ -416,7 +415,7 @@ export async function previewRestoreBaseline(
 
   const baseline = await getReleaseBaselineById(db, { organizationId: auth.organization.id, baselineId });
   if (!baseline) {
-    throw new ApiError("NOT_FOUND", "Baseline not found.", 404, { baselineId });
+    throw new ApiError("NOT_FOUND", "Baseline not found.", { baselineId });
   }
 
   const members = await listReleaseBaselineMembers(db, { baselineId });
@@ -430,7 +429,7 @@ export async function previewRestoreBaseline(
       fileId: member.fileId
     });
     if (!file) {
-      throw new ApiError("NOT_FOUND", "A baseline member file no longer exists; restore preview aborted.", 404, {
+      throw new ApiError("NOT_FOUND", "A baseline member file no longer exists; restore preview aborted.", {
         baselineId,
         fileId: member.fileId
       });
@@ -438,7 +437,7 @@ export async function previewRestoreBaseline(
 
     const targetVersion = await getFileVersionById(db, { versionId: member.fileVersionId });
     if (!targetVersion) {
-      throw new ApiError("NOT_FOUND", "The baseline-pinned file version no longer exists; restore preview aborted.", 404, {
+      throw new ApiError("NOT_FOUND", "The baseline-pinned file version no longer exists; restore preview aborted.", {
         baselineId,
         fileId: member.fileId,
         versionId: member.fileVersionId
@@ -517,7 +516,7 @@ export async function rollbackToBaseline(
   return db.transaction(async (tx) => {
     const baseline = await getReleaseBaselineById(tx, { organizationId: auth.organization.id, baselineId });
     if (!baseline) {
-      throw new ApiError("NOT_FOUND", "Baseline not found.", 404, { baselineId });
+      throw new ApiError("NOT_FOUND", "Baseline not found.", { baselineId });
     }
 
     const configSet = await getConfigSetById(tx, {
@@ -534,7 +533,7 @@ export async function rollbackToBaseline(
         fileId: member.fileId
       });
       if (!file) {
-        throw new ApiError("NOT_FOUND", "A baseline member file no longer exists; rollback aborted.", 404, {
+        throw new ApiError("NOT_FOUND", "A baseline member file no longer exists; rollback aborted.", {
           baselineId,
           fileId: member.fileId
         });
@@ -546,7 +545,7 @@ export async function rollbackToBaseline(
 
       const targetVersion = await getFileVersionById(tx, { versionId: member.fileVersionId });
       if (!targetVersion) {
-        throw new ApiError("NOT_FOUND", "The baseline-pinned file version no longer exists; rollback aborted.", 404, {
+        throw new ApiError("NOT_FOUND", "The baseline-pinned file version no longer exists; rollback aborted.", {
           baselineId,
           fileId: member.fileId,
           versionId: member.fileVersionId
@@ -644,7 +643,7 @@ export async function releaseBaseline(
 
   const baseline = await getReleaseBaselineById(db, { organizationId: auth.organization.id, baselineId });
   if (!baseline) {
-    throw new ApiError("NOT_FOUND", "Baseline not found.", 404, { baselineId });
+    throw new ApiError("NOT_FOUND", "Baseline not found.", { baselineId });
   }
 
   const configSet = await getConfigSetById(db, {
@@ -652,7 +651,7 @@ export async function releaseBaseline(
     configSetId: baseline.configSetId
   });
   if (!configSet) {
-    throw new ApiError("NOT_FOUND", "Config set not found.", 404, {
+    throw new ApiError("NOT_FOUND", "Config set not found.", {
       configSetId: baseline.configSetId
     });
   }

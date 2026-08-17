@@ -281,7 +281,7 @@ describe("knowledge routes", () => {
   it("PATCH /api/v1/knowledge/entries/:entryId surfaces structured 409 conflicts", async () => {
     const db = makeDb();
     vi.mocked(service.updateKnowledgeEntry).mockRejectedValue(
-      new ApiError("CONFLICT", "Knowledge entry was changed by another save.", 409, {
+      new ApiError("CONFLICT", "Knowledge entry was changed by another save.", {
         code: "knowledge-revision-conflict",
         expectedHeadRevisionNumber: 1,
         currentHeadRevisionNumber: 2
@@ -479,7 +479,7 @@ describe("knowledge routes", () => {
   it("maps service NOT_FOUND to a 404 envelope", async () => {
     const db = makeDb();
     vi.mocked(service.getKnowledgeEntry).mockRejectedValue(
-      new ApiError("NOT_FOUND", "Knowledge entry was not found.", 404, { entryId: ENTRY_ID })
+      new ApiError("NOT_FOUND", "Knowledge entry was not found.", { entryId: ENTRY_ID })
     );
 
     const response = await requestJson<{ error: { code: string } }>(

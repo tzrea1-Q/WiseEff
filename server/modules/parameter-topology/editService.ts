@@ -127,7 +127,7 @@ export type NodeEnablementDraftResult = {
 
 function requireCanEdit(auth: AuthContext) {
   if (!canEditParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter edit permission required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter edit permission required.");
   }
 }
 
@@ -167,7 +167,7 @@ function assertSchemaAllows(value: DtsValue, constraints: unknown): void {
   if (expectedCells !== undefined) {
     const sizes = cellGroupSizes(value);
     if (sizes.length === 0 || sizes.some((size) => size !== expectedCells)) {
-      throw new ApiError("VALIDATION_FAILED", `cell count must be ${expectedCells}`, 400, {
+      throw new ApiError("VALIDATION_FAILED", `cell count must be ${expectedCells}`, {
         reason: "schema-failure",
         code: "SCHEMA_CELL_COUNT",
         expectedCells,
@@ -182,14 +182,14 @@ function assertSchemaAllows(value: DtsValue, constraints: unknown): void {
 
   for (const numeric of cellIntegerValues(value)) {
     if (min !== undefined && numeric < min) {
-      throw new ApiError("VALIDATION_FAILED", "Value is below schema minimum.", 400, {
+      throw new ApiError("VALIDATION_FAILED", "Value is below schema minimum.", {
         reason: "schema-failure",
         min,
         value: numeric,
       });
     }
     if (max !== undefined && numeric > max) {
-      throw new ApiError("VALIDATION_FAILED", "Value exceeds schema maximum.", 400, {
+      throw new ApiError("VALIDATION_FAILED", "Value exceeds schema maximum.", {
         reason: "schema-failure",
         max,
         value: numeric,
@@ -316,7 +316,7 @@ export async function createBindingDraft(
 
   const action: BindingEditAction = input.action ?? "set";
   if (action === "set" && !input.targetValue) {
-    throw new ApiError("VALIDATION_FAILED", "targetValue is required for set action.", 400);
+    throw new ApiError("VALIDATION_FAILED", "targetValue is required for set action.");
   }
 
   const binding = await loadBindingContext(db, auth, input.bindingId);
@@ -337,7 +337,6 @@ export async function createBindingDraft(
     throw new ApiError(
       "CONFLICT",
       "本轮草稿不在同一工作版本上，无法一起提交。请移除冲突项或清空后重新编辑。",
-      409,
       { reason: "mixed-working-tips" },
     );
   }
@@ -356,7 +355,6 @@ export async function createBindingDraft(
       throw new ApiError(
         "CONFLICT",
         "请刷新后基于本轮最新工作版本继续编辑。",
-        409,
         {
           reason: "stale-working-tip",
           bindingId: input.bindingId,
@@ -373,7 +371,7 @@ export async function createBindingDraft(
     revisionId: effectiveBaseRevisionId,
   });
   if (!revision) {
-    throw new ApiError("CONFLICT", "Base config revision is stale or missing.", 409, {
+    throw new ApiError("CONFLICT", "Base config revision is stale or missing.", {
       reason: "stale-revision",
       bindingId: input.bindingId,
       baseRevisionId: input.baseRevisionId,
@@ -391,7 +389,7 @@ export async function createBindingDraft(
     [input.bindingId, effectiveBaseRevisionId],
   );
   if (!bindingRevision.rows[0]) {
-    throw new ApiError("CONFLICT", "Base config revision is stale for this binding.", 409, {
+    throw new ApiError("CONFLICT", "Base config revision is stale for this binding.", {
       reason: "stale-revision",
       bindingId: input.bindingId,
       baseRevisionId: input.baseRevisionId,
@@ -399,13 +397,13 @@ export async function createBindingDraft(
   }
 
   if (revision.status === "needs_mapping") {
-    throw new ApiError("CONFLICT", "Config revision has unresolved identity mapping.", 409, {
+    throw new ApiError("CONFLICT", "Config revision has unresolved identity mapping.", {
       reason: "unresolved-mapping",
       configRevisionId: revision.id,
     });
   }
   if (revision.status === "invalid") {
-    throw new ApiError("CONFLICT", "Config revision is invalid and cannot accept edits.", 409, {
+    throw new ApiError("CONFLICT", "Config revision is invalid and cannot accept edits.", {
       reason: "invalid-revision",
       configRevisionId: revision.id,
     });
@@ -438,7 +436,7 @@ export async function createBindingDraft(
       const content = await loadFileContentFromVersion(db, member.file_version_id, deps.objectStore);
       memberContents.set(member.file_version_id, content);
     } catch (error) {
-      throw new ApiError("CONFLICT", "Config set source text unavailable for typed edit.", 409, {
+      throw new ApiError("CONFLICT", "Config set source text unavailable for typed edit.", {
         reason: "missing-source-text",
         fileVersionId: member.file_version_id,
         fileName: member.file_name,
@@ -529,7 +527,7 @@ export async function createBindingDraft(
     members: candidateMembers,
   });
   if (!normalizedManifest.ok) {
-    throw new ApiError("VALIDATION_FAILED", normalizedManifest.failure.message, 400, {
+    throw new ApiError("VALIDATION_FAILED", normalizedManifest.failure.message, {
       reason: normalizedManifest.failure.code,
     });
   }
@@ -567,7 +565,7 @@ export async function createBindingDraft(
     );
     const parameterSpecVersionId = baseBindingRevision.rows[0]?.parameter_spec_version_id;
     if (!parameterSpecVersionId) {
-      throw new ApiError("CONFLICT", "Base binding revision is missing a parameter spec version.", 409, {
+      throw new ApiError("CONFLICT", "Base binding revision is missing a parameter spec version.", {
         reason: "missing-spec-version",
         bindingId: binding.binding_id,
         bindingRevisionId: bindingRevision.rows[0]!.id,
@@ -598,7 +596,6 @@ export async function createBindingDraft(
       ingested.status === "needs_mapping"
         ? "Candidate config revision has unresolved identity mapping."
         : "Candidate config revision failed resolve.",
-      ingested.status === "needs_mapping" ? 409 : 400,
       {
         reason,
         candidateRevisionId,
@@ -782,7 +779,6 @@ export async function createNodeEnablementDraft(
     throw new ApiError(
       "CONFLICT",
       "本轮草稿不在同一工作版本上，无法一起提交。请移除冲突项或清空后重新编辑。",
-      409,
       { reason: "mixed-working-tips" },
     );
   }
@@ -801,7 +797,6 @@ export async function createNodeEnablementDraft(
       throw new ApiError(
         "CONFLICT",
         "请刷新后基于本轮最新工作版本继续编辑。",
-        409,
         {
           reason: "stale-working-tip",
           logicalNodeId: input.logicalNodeId,
@@ -818,7 +813,7 @@ export async function createNodeEnablementDraft(
     revisionId: effectiveBaseRevisionId,
   });
   if (!revision) {
-    throw new ApiError("CONFLICT", "Base config revision is stale or missing.", 409, {
+    throw new ApiError("CONFLICT", "Base config revision is stale or missing.", {
       reason: "stale-revision",
       logicalNodeId: input.logicalNodeId,
       baseRevisionId: input.baseRevisionId,
@@ -828,13 +823,13 @@ export async function createNodeEnablementDraft(
   throwIfManifestNeedsReview(revision);
 
   if (revision.status === "needs_mapping") {
-    throw new ApiError("CONFLICT", "Config revision has unresolved identity mapping.", 409, {
+    throw new ApiError("CONFLICT", "Config revision has unresolved identity mapping.", {
       reason: "unresolved-mapping",
       configRevisionId: revision.id,
     });
   }
   if (revision.status === "invalid") {
-    throw new ApiError("CONFLICT", "Config revision is invalid and cannot accept edits.", 409, {
+    throw new ApiError("CONFLICT", "Config revision is invalid and cannot accept edits.", {
       reason: "invalid-revision",
       configRevisionId: revision.id,
     });
@@ -871,7 +866,6 @@ export async function createNodeEnablementDraft(
     throw new ApiError(
       "VALIDATION_FAILED",
       error instanceof Error ? error.message : "Enablement write plan failed.",
-      400,
       {
         reason: "nonstandard-status",
         currentRaw: nodeContext.currentRaw,
@@ -902,7 +896,7 @@ export async function createNodeEnablementDraft(
       const content = await loadFileContentFromVersion(db, member.file_version_id, deps.objectStore);
       memberContents.set(member.file_version_id, content);
     } catch (error) {
-      throw new ApiError("CONFLICT", "Config set source text unavailable for enablement edit.", 409, {
+      throw new ApiError("CONFLICT", "Config set source text unavailable for enablement edit.", {
         reason: "missing-source-text",
         fileVersionId: member.file_version_id,
         fileName: member.file_name,
@@ -990,7 +984,7 @@ export async function createNodeEnablementDraft(
     members: candidateMembers,
   });
   if (!normalizedManifest.ok) {
-    throw new ApiError("VALIDATION_FAILED", normalizedManifest.failure.message, 400, {
+    throw new ApiError("VALIDATION_FAILED", normalizedManifest.failure.message, {
       reason: normalizedManifest.failure.code,
     });
   }
@@ -1022,7 +1016,6 @@ export async function createNodeEnablementDraft(
       ingested.status === "needs_mapping"
         ? "Candidate config revision has unresolved identity mapping."
         : "Candidate config revision failed resolve.",
-      ingested.status === "needs_mapping" ? 409 : 400,
       {
         reason,
         candidateRevisionId,
@@ -1228,7 +1221,7 @@ export async function assertCandidateToolchainRelease(
     resolvedAt: new Date().toISOString(),
   });
 
-  throw new ApiError("VALIDATION_FAILED", "Candidate config revision failed toolchain validation.", 400, {
+  throw new ApiError("VALIDATION_FAILED", "Candidate config revision failed toolchain validation.", {
     reason: "toolchain-failure",
     candidateRevisionId: input.candidateRevisionId,
     failureCode: toolchainResult.failureCode,

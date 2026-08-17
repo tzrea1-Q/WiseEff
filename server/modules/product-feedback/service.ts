@@ -54,12 +54,12 @@ function hasPatchKey<Key extends keyof UpdateProductFeedbackPatch>(patch: Update
 }
 
 function productFeedbackNotFound(feedbackId: string) {
-  return new ApiError("NOT_FOUND", "Product feedback was not found.", 404, { feedbackId });
+  return new ApiError("NOT_FOUND", "Product feedback was not found.", { feedbackId });
 }
 
 function decodeAttachment(input: ProductFeedbackAttachmentInput) {
   if (!SUPPORTED_CONTENT_TYPES.has(input.contentType)) {
-    throw new ApiError("VALIDATION_FAILED", "Unsupported product feedback attachment content type.", 400, {
+    throw new ApiError("VALIDATION_FAILED", "Unsupported product feedback attachment content type.", {
       contentType: input.contentType
     });
   }
@@ -72,7 +72,7 @@ function decodeAttachment(input: ProductFeedbackAttachmentInput) {
 
 function decodeAndValidateAttachments(attachments: ProductFeedbackAttachmentInput[] = []) {
   if (attachments.length > MAX_ATTACHMENT_COUNT) {
-    throw new ApiError("VALIDATION_FAILED", "Product feedback supports up to 5 attachments.", 400, {
+    throw new ApiError("VALIDATION_FAILED", "Product feedback supports up to 5 attachments.", {
       maxAttachments: MAX_ATTACHMENT_COUNT
     });
   }
@@ -82,7 +82,7 @@ function decodeAndValidateAttachments(attachments: ProductFeedbackAttachmentInpu
   for (const attachment of decoded) {
     const sizeBytes = attachment.bytes.byteLength;
     if (sizeBytes > MAX_ATTACHMENT_BYTES) {
-      throw new ApiError("VALIDATION_FAILED", "Attachment exceeds the 5MB per-image limit.", 400, {
+      throw new ApiError("VALIDATION_FAILED", "Attachment exceeds the 5MB per-image limit.", {
         fileName: attachment.fileName,
         maxBytes: MAX_ATTACHMENT_BYTES,
         sizeBytes
@@ -91,7 +91,7 @@ function decodeAndValidateAttachments(attachments: ProductFeedbackAttachmentInpu
     totalBytes += sizeBytes;
   }
   if (totalBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
-    throw new ApiError("VALIDATION_FAILED", "Attachments exceed the 15MB total limit.", 400, {
+    throw new ApiError("VALIDATION_FAILED", "Attachments exceed the 15MB total limit.", {
       maxBytes: MAX_TOTAL_ATTACHMENT_BYTES,
       sizeBytes: totalBytes
     });
@@ -132,11 +132,11 @@ async function createProductFeedbackAudit(
 
 function assertTransition(current: ProductFeedbackStatus, next: ProductFeedbackStatus) {
   if (current === "closed") {
-    throw new ApiError("VALIDATION_FAILED", "Closed product feedback cannot be updated.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Closed product feedback cannot be updated.");
   }
   if (current === next) return;
   if (!ALLOWED[current].includes(next)) {
-    throw new ApiError("VALIDATION_FAILED", `Illegal product feedback status transition: ${current} -> ${next}.`, 400, {
+    throw new ApiError("VALIDATION_FAILED", `Illegal product feedback status transition: ${current} -> ${next}.`, {
       currentStatus: current,
       nextStatus: next
     });
@@ -231,7 +231,7 @@ export async function updateProductFeedback(
       throw productFeedbackNotFound(feedbackId);
     }
     if (existing.status === "closed") {
-      throw new ApiError("VALIDATION_FAILED", "Closed product feedback cannot be updated.", 400);
+      throw new ApiError("VALIDATION_FAILED", "Closed product feedback cannot be updated.");
     }
 
     const normalizedPatch: UpdateProductFeedbackPatch = {};

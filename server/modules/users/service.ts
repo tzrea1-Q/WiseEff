@@ -39,14 +39,14 @@ const passwordHashPrefix = "scrypt";
 
 function requireUserManager(auth: AuthContext) {
   if (!auth.user.isActive || !auth.permissions.includes("users:manage")) {
-    throw new ApiError("FORBIDDEN", "User management permission is required.", 403, { permission: "users:manage" });
+    throw new ApiError("FORBIDDEN", "User management permission is required.", { permission: "users:manage" });
   }
 }
 
 function normalizeRoles(roles: ReplaceUserRolesInput["roles"]): RoleBinding[] {
   return roles.map((role) => {
     if (!roleIds.has(role.roleId)) {
-      throw new ApiError("VALIDATION_FAILED", "Role id is not supported.", 400, { roleId: role.roleId });
+      throw new ApiError("VALIDATION_FAILED", "Role id is not supported.", { roleId: role.roleId });
     }
 
     return { projectId: role.projectId ?? null, roleId: role.roleId };
@@ -59,19 +59,19 @@ function normalizeUsername(username: string) {
 
 function requireUsername(username: string) {
   if (!username) {
-    throw new ApiError("VALIDATION_FAILED", "Username is required.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Username is required.");
   }
   if (username.length < 3 || username.length > 64) {
-    throw new ApiError("VALIDATION_FAILED", "Username must be 3 to 64 characters.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Username must be 3 to 64 characters.");
   }
   if (!/^[a-z0-9._-]+$/.test(username)) {
-    throw new ApiError("VALIDATION_FAILED", "Username can only contain letters, numbers, dots, underscores, or hyphens.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Username can only contain letters, numbers, dots, underscores, or hyphens.");
   }
 }
 
 function requirePasswordPolicy(password: string) {
   if (password.length < 8) {
-    throw new ApiError("VALIDATION_FAILED", "Password must be at least 8 characters.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Password must be at least 8 characters.");
   }
 }
 
@@ -104,7 +104,6 @@ function assertPlatformAdminGrantAllowed(auth: AuthContext, currentRoles: RoleBi
     throw new ApiError(
       "FORBIDDEN",
       "Only a platform super admin may grant or revoke the platform-admin role.",
-      403,
       { roleId: "platform-admin" }
     );
   }
@@ -119,17 +118,17 @@ async function assertNoSelfLockout(
   if (userId !== auth.user.id) return;
 
   if (next.isActive === false) {
-    throw new ApiError("CONFLICT", "Active Admin cannot disable itself.", 409, { userId });
+    throw new ApiError("CONFLICT", "Active Admin cannot disable itself.", { userId });
   }
 
   if (next.roles && !hasAdminRole(next.roles)) {
-    throw new ApiError("CONFLICT", "Active Admin cannot remove its last Admin capability.", 409, { userId });
+    throw new ApiError("CONFLICT", "Active Admin cannot remove its last Admin capability.", { userId });
   }
 
   if (next.roles && hasAdminRole(auth.roles) && !hasAdminRole(next.roles)) {
     const activeAdmins = await countActiveAdmins(tx, auth.organization.id);
     if (activeAdmins <= 1) {
-      throw new ApiError("CONFLICT", "Active Admin cannot remove its last Admin capability.", 409, { userId });
+      throw new ApiError("CONFLICT", "Active Admin cannot remove its last Admin capability.", { userId });
     }
   }
 }
@@ -197,13 +196,13 @@ export async function createUser(db: Database, auth: AuthContext, input: CreateU
   requireUsername(username);
   requirePasswordPolicy(input.password);
   if (!name) {
-    throw new ApiError("VALIDATION_FAILED", "User name is required.", 400);
+    throw new ApiError("VALIDATION_FAILED", "User name is required.");
   }
 
   return db.transaction(async (tx) => {
     const existingCredential = await findPasswordCredentialByUsername(tx, username);
     if (existingCredential) {
-      throw new ApiError("CONFLICT", "Username is already registered.", 409, { username });
+      throw new ApiError("CONFLICT", "Username is already registered.", { username });
     }
 
     const user = await insertUser(tx, {
@@ -247,7 +246,7 @@ export async function updateUserProfile(
       title: input.title?.trim()
     });
     if (!user) {
-      throw new ApiError("NOT_FOUND", "User was not found.", 404, { userId });
+      throw new ApiError("NOT_FOUND", "User was not found.", { userId });
     }
     await auditUserMutation(asAuditTx(tx), auth, {
       kind: "user-update",
@@ -273,7 +272,7 @@ export async function deactivateUser(
     await assertNoSelfLockout(tx, auth, userId, { isActive: input.isActive });
     const user = await updateUserActive(tx, { organizationId: auth.organization.id, userId, isActive: input.isActive });
     if (!user) {
-      throw new ApiError("NOT_FOUND", "User was not found.", 404, { userId });
+      throw new ApiError("NOT_FOUND", "User was not found.", { userId });
     }
     await auditUserMutation(asAuditTx(tx), auth, {
       kind: "user-activation",
@@ -310,7 +309,7 @@ export async function replaceUserRoles(
     await assertNoSelfLockout(tx, auth, userId, { roles });
     const user = await getUserById(tx, { organizationId: auth.organization.id, userId });
     if (!user) {
-      throw new ApiError("NOT_FOUND", "User was not found.", 404, { userId });
+      throw new ApiError("NOT_FOUND", "User was not found.", { userId });
     }
     assertPlatformAdminGrantAllowed(auth, user.roles, roles);
     await replaceRoleBindings(tx, { organizationId: auth.organization.id, userId, roles });
@@ -356,11 +355,11 @@ export async function approveRegistrationRoleRequest(
       ? await getPendingRegistrationRoleRequestByIdForAdmin(tx, requestId)
       : await getPendingRegistrationRoleRequestById(tx, { organizationId: auth.organization.id, requestId });
     if (!request) {
-      throw new ApiError("NOT_FOUND", "Pending registration role request was not found.", 404, { requestId });
+      throw new ApiError("NOT_FOUND", "Pending registration role request was not found.", { requestId });
     }
 
     if (!(await getUserById(tx, { organizationId: request.organizationId, userId: request.userId }))) {
-      throw new ApiError("NOT_FOUND", "User was not found.", 404, { userId: request.userId });
+      throw new ApiError("NOT_FOUND", "User was not found.", { userId: request.userId });
     }
 
     await replaceRoleBindings(tx, {
@@ -370,7 +369,7 @@ export async function approveRegistrationRoleRequest(
     });
     const activated = await updateUserActive(tx, { organizationId: request.organizationId, userId: request.userId, isActive: true });
     if (!activated) {
-      throw new ApiError("NOT_FOUND", "User was not found.", 404, { userId: request.userId });
+      throw new ApiError("NOT_FOUND", "User was not found.", { userId: request.userId });
     }
     const decided = await decideRegistrationRoleRequest(tx, {
       organizationId: request.organizationId,
@@ -380,7 +379,7 @@ export async function approveRegistrationRoleRequest(
       decidedAt: new Date().toISOString()
     });
     if (!decided) {
-      throw new ApiError("CONFLICT", "Registration role request was already decided.", 409, { requestId });
+      throw new ApiError("CONFLICT", "Registration role request was already decided.", { requestId });
     }
     await auditRegistrationRoleRequestDecision(asAuditTx(tx), auth, {
       action: "approve",
@@ -419,7 +418,7 @@ export async function rejectRegistrationRoleRequest(
       ? await getPendingRegistrationRoleRequestByIdForAdmin(tx, requestId)
       : await getPendingRegistrationRoleRequestById(tx, { organizationId: auth.organization.id, requestId });
     if (!request) {
-      throw new ApiError("NOT_FOUND", "Pending registration role request was not found.", 404, { requestId });
+      throw new ApiError("NOT_FOUND", "Pending registration role request was not found.", { requestId });
     }
 
     const decided = await decideRegistrationRoleRequest(tx, {
@@ -430,7 +429,7 @@ export async function rejectRegistrationRoleRequest(
       decidedAt: new Date().toISOString()
     });
     if (!decided) {
-      throw new ApiError("CONFLICT", "Registration role request was already decided.", 409, { requestId });
+      throw new ApiError("CONFLICT", "Registration role request was already decided.", { requestId });
     }
     await auditRegistrationRoleRequestDecision(asAuditTx(tx), auth, {
       action: "reject",

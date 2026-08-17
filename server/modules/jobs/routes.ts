@@ -15,7 +15,7 @@ const terminalStatuses = new Set(["complete", "failed"]);
 
 function requireDb(db: Database | undefined) {
   if (!db) {
-    throw new ApiError("INTERNAL_ERROR", "Database adapter is required for job routes.", 500);
+    throw new ApiError("INTERNAL_ERROR", "Database adapter is required for job routes.");
   }
 
   return db;
@@ -24,7 +24,7 @@ function requireDb(db: Database | undefined) {
 function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Invalid job route input.") {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
-    throw new ApiError("VALIDATION_FAILED", message, 400, { issues: parsed.error.issues });
+    throw new ApiError("VALIDATION_FAILED", message, { issues: parsed.error.issues });
   }
 
   return parsed.data;
@@ -38,7 +38,7 @@ async function loadVisibleJob(db: Database, auth: AuthContext, jobId: string) {
   requireLogView(auth);
   const item = await getJobSnapshot(db, jobId);
   if (!item || item.organizationId !== auth.organization.id) {
-    throw new ApiError("NOT_FOUND", "Job was not found.", 404, { jobId });
+    throw new ApiError("NOT_FOUND", "Job was not found.", { jobId });
   }
 
   return item;

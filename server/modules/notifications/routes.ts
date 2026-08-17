@@ -32,7 +32,7 @@ export function registerNotificationRoutes(
 ) {
   router.get("/api/v1/notifications", async (request) => {
     if (!options.db) {
-      throw new ApiError("INTERNAL_ERROR", "Database adapter is required for notification reads.", 500);
+      throw new ApiError("INTERNAL_ERROR", "Database adapter is required for notification reads.");
     }
 
     const auth = await options.getCurrentAuthContext(request);
@@ -50,7 +50,7 @@ export function registerNotificationRoutes(
 
   router.get("/api/v1/notifications/unread-count", async (request) => {
     if (!options.db) {
-      throw new ApiError("INTERNAL_ERROR", "Database adapter is required for notification reads.", 500);
+      throw new ApiError("INTERNAL_ERROR", "Database adapter is required for notification reads.");
     }
 
     const auth = await options.getCurrentAuthContext(request);
@@ -64,7 +64,7 @@ export function registerNotificationRoutes(
 
   router.post("/api/v1/notifications/:notificationId/read", async (request) => {
     if (!options.db) {
-      throw new ApiError("INTERNAL_ERROR", "Database adapter is required for notification writes.", 500);
+      throw new ApiError("INTERNAL_ERROR", "Database adapter is required for notification writes.");
     }
 
     const auth = await options.getCurrentAuthContext(request);
@@ -76,7 +76,7 @@ export function registerNotificationRoutes(
     });
 
     if (!updated) {
-      throw new ApiError("NOT_FOUND", "Notification was not found.", 404, { notificationId });
+      throw new ApiError("NOT_FOUND", "Notification was not found.", { notificationId });
     }
 
     return { status: 200, body: updated };
@@ -84,7 +84,7 @@ export function registerNotificationRoutes(
 
   router.post("/api/v1/notifications/mark-all-read", async (request) => {
     if (!options.db) {
-      throw new ApiError("INTERNAL_ERROR", "Database adapter is required for notification writes.", 500);
+      throw new ApiError("INTERNAL_ERROR", "Database adapter is required for notification writes.");
     }
 
     const auth = await options.getCurrentAuthContext(request);

@@ -58,13 +58,13 @@ const schemasRoot = join(dirname(fileURLToPath(import.meta.url)), "../../../sche
 
 function requireCanView(auth: AuthContext) {
   if (!canViewParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter view permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter view permission is required.");
   }
 }
 
 function requireCanAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter admin permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter admin permission is required.");
   }
 }
 
@@ -199,7 +199,7 @@ export async function disbandDriverGroupModule(
     moduleId: input.moduleId,
   });
   if (!current) {
-    throw new ApiError("NOT_FOUND", "Parameter module was not found.", 404, {
+    throw new ApiError("NOT_FOUND", "Parameter module was not found.", {
       moduleId: input.moduleId,
     });
   }
@@ -207,7 +207,6 @@ export async function disbandDriverGroupModule(
     throw new ApiError(
       "VALIDATION_FAILED",
       "Only driver-group modules can be disbanded.",
-      400,
       { moduleId: input.moduleId, kind: current.kind },
     );
   }
@@ -230,7 +229,6 @@ export async function disbandDriverGroupModule(
       throw new ApiError(
         "CONFLICT",
         "Disbanding this driver group would collide with existing bindings under the module unique key.",
-        409,
         { conflicts },
       );
     }
@@ -256,7 +254,6 @@ export async function disbandDriverGroupModule(
       throw new ApiError(
         "CONFLICT",
         "Cannot disband a driver group that still has non-empty child modules (for example curated instances).",
-        409,
         { moduleId: input.moduleId },
       );
     }
@@ -272,12 +269,12 @@ export async function disbandDriverGroupModule(
         error instanceof Error &&
         /child modules|referenced by parameters|device-instance|unclassified root/i.test(error.message)
       ) {
-        throw new ApiError("CONFLICT", error.message, 409, { moduleId: input.moduleId });
+        throw new ApiError("CONFLICT", error.message, { moduleId: input.moduleId });
       }
       throw error;
     }
     if (!deleted) {
-      throw new ApiError("NOT_FOUND", "Parameter module was not found.", 404, {
+      throw new ApiError("NOT_FOUND", "Parameter module was not found.", {
         moduleId: input.moduleId,
       });
     }
@@ -460,7 +457,7 @@ export async function dismissCompatible(
   const compatible =
     normalizeMatchToken(input.compatible) ?? input.compatible.trim().toLowerCase();
   if (!compatible) {
-    throw new ApiError("VALIDATION_FAILED", "compatible is required.", 400);
+    throw new ApiError("VALIDATION_FAILED", "compatible is required.");
   }
   // Insert and audit commit together (ADR-0027); previously the insert
   // auto-committed and the audit could be lost after it.
@@ -499,7 +496,7 @@ export async function restoreDismissedCompatible(
       compatible,
     });
     if (removed === 0) {
-      throw new ApiError("NOT_FOUND", "Dismissed compatible not found.", 404);
+      throw new ApiError("NOT_FOUND", "Dismissed compatible not found.");
     }
     await writeModuleAttributionAudit(asAuditTx(tx), auth, {
       kind: "parameter-module-compatible-restored",
@@ -532,7 +529,7 @@ export async function previewModuleMapping(
         moduleId: input.moduleId,
       });
       if (!moduleOk) {
-        throw new ApiError("VALIDATION_FAILED", "Target module does not exist.", 400);
+        throw new ApiError("VALIDATION_FAILED", "Target module does not exist.");
       }
       await insertMapping(tx, {
         id: randomUUID(),
@@ -550,7 +547,7 @@ export async function previewModuleMapping(
       const preview = await summarizeMoves(tx, auth.organization.id, moves, conflicts);
       throw new PreviewRollbackError(preview);
     });
-    throw new ApiError("INTERNAL_ERROR", "Preview transaction completed unexpectedly.", 500);
+    throw new ApiError("INTERNAL_ERROR", "Preview transaction completed unexpectedly.");
   } catch (error) {
     if (error instanceof PreviewRollbackError) {
       return { item: error.preview };
@@ -571,7 +568,7 @@ export async function createModuleMapping(
       moduleId: input.moduleId
     });
     if (!moduleOk) {
-      throw new ApiError("VALIDATION_FAILED", "Target module does not exist.", 400);
+      throw new ApiError("VALIDATION_FAILED", "Target module does not exist.");
     }
     await insertMapping(tx, {
       id: randomUUID(),
@@ -591,7 +588,6 @@ export async function createModuleMapping(
       throw new ApiError(
         "CONFLICT",
         "Applying this mapping would collide with existing bindings under the module unique key.",
-        409,
         { conflicts },
       );
     }
@@ -661,7 +657,7 @@ export async function recomputeBindingModules(
           preview,
         });
       });
-      throw new ApiError("INTERNAL_ERROR", "Recompute dry-run transaction completed unexpectedly.", 500);
+      throw new ApiError("INTERNAL_ERROR", "Recompute dry-run transaction completed unexpectedly.");
     } catch (error) {
       if (error instanceof RecomputeDryRunRollback) {
         return error.result;
@@ -680,7 +676,6 @@ export async function recomputeBindingModules(
       throw new ApiError(
         "CONFLICT",
         "Recompute would collide with existing bindings under the module unique key.",
-        409,
         { conflicts }
       );
     }
@@ -720,7 +715,7 @@ export async function deleteModuleMapping(
       mappingId: input.mappingId
     });
     if (removed === 0) {
-      throw new ApiError("NOT_FOUND", "Mapping not found.", 404);
+      throw new ApiError("NOT_FOUND", "Mapping not found.");
     }
 
     const { moves, conflicts } = await planScopedMoves(tx, {
@@ -732,7 +727,6 @@ export async function deleteModuleMapping(
       throw new ApiError(
         "CONFLICT",
         "Removing this mapping would collide with existing bindings under the module unique key.",
-        409,
         { conflicts },
       );
     }
@@ -777,7 +771,7 @@ export async function registerOrClaimDriver(
 
   const displayName = input.displayName.trim();
   if (!displayName) {
-    throw new ApiError("VALIDATION_FAILED", "displayName is required.", 400);
+    throw new ApiError("VALIDATION_FAILED", "displayName is required.");
   }
   const notes = input.notes?.trim() ?? "";
   const compatibles = [
@@ -788,7 +782,7 @@ export async function registerOrClaimDriver(
     ),
   ];
   if (compatibles.length === 0) {
-    throw new ApiError("VALIDATION_FAILED", "At least one exact compatible is required.", 400);
+    throw new ApiError("VALIDATION_FAILED", "At least one exact compatible is required.");
   }
 
   return db.transaction(async (tx) => {
@@ -799,8 +793,7 @@ export async function registerOrClaimDriver(
     if (!business || business.kind !== "business") {
       throw new ApiError(
         "VALIDATION_FAILED",
-        "Target must be an existing business-category module.",
-        400,
+        "Target must be an existing business-category module."
       );
     }
 
@@ -820,7 +813,6 @@ export async function registerOrClaimDriver(
       throw new ApiError(
         "CONFLICT",
         "Compatibles already map to different driver groups; resolve the conflict before registering.",
-        409,
         { moduleIds: distinctModuleIds },
       );
     }
@@ -838,8 +830,7 @@ export async function registerOrClaimDriver(
       if (!existing || existing.kind !== "driver-group") {
         throw new ApiError(
           "CONFLICT",
-          "Existing compatible mapping does not target a driver-group module.",
-          409,
+          "Existing compatible mapping does not target a driver-group module."
         );
       }
 
@@ -850,7 +841,7 @@ export async function registerOrClaimDriver(
           parentId: input.businessCategoryId,
         });
         if (!moved) {
-          throw new ApiError("NOT_FOUND", "Driver group module not found.", 404);
+          throw new ApiError("NOT_FOUND", "Driver group module not found.");
         }
       }
 
@@ -861,7 +852,7 @@ export async function registerOrClaimDriver(
         description: notes,
       });
       if (!updated) {
-        throw new ApiError("NOT_FOUND", "Driver group module not found.", 404);
+        throw new ApiError("NOT_FOUND", "Driver group module not found.");
       }
       module = updated;
     } else {
@@ -898,7 +889,6 @@ export async function registerOrClaimDriver(
         throw new ApiError(
           "CONFLICT",
           "Applying this driver registration would collide with existing bindings under the module unique key.",
-          409,
           { conflicts },
         );
       }
@@ -969,13 +959,12 @@ export async function updateDriverRegistrationDefaultBusinessCategory(
       moduleId: input.moduleId,
     });
     if (!module || module.kind !== "driver-group") {
-      throw new ApiError("NOT_FOUND", "Driver-group module not found.", 404);
+      throw new ApiError("NOT_FOUND", "Driver-group module not found.");
     }
     if (!module.attributionSubjectId) {
       throw new ApiError(
         "VALIDATION_FAILED",
-        "Driver-group module has no attribution subject / registration.",
-        400,
+        "Driver-group module has no attribution subject / registration."
       );
     }
 
@@ -986,8 +975,7 @@ export async function updateDriverRegistrationDefaultBusinessCategory(
     if (!business || business.kind !== "business") {
       throw new ApiError(
         "VALIDATION_FAILED",
-        "Target must be an existing business-category module.",
-        400,
+        "Target must be an existing business-category module."
       );
     }
 
@@ -1044,7 +1032,7 @@ export async function replayDriverPlacementFromRegistration(
       moduleId: input.moduleId,
     });
     if (!module || module.kind !== "driver-group") {
-      throw new ApiError("NOT_FOUND", "Driver-group module not found.", 404);
+      throw new ApiError("NOT_FOUND", "Driver-group module not found.");
     }
 
     const counts = await replayAutoDriverGroupToRegistrationDefault(tx, {
@@ -1211,8 +1199,7 @@ export async function updateDriverRegistration(
   if (input.driverNature === undefined && input.instanceCardinality === undefined) {
     throw new ApiError(
       "VALIDATION_FAILED",
-      "At least one of driverNature or instanceCardinality is required.",
-      400,
+      "At least one of driverNature or instanceCardinality is required."
     );
   }
 
@@ -1246,7 +1233,7 @@ export async function updateDriverRegistration(
 
   const row = loaded.rows[0];
   if (!row) {
-    throw new ApiError("NOT_FOUND", "Driver registration module not found.", 404, {
+    throw new ApiError("NOT_FOUND", "Driver registration module not found.", {
       moduleId: input.moduleId,
     });
   }
@@ -1256,12 +1243,11 @@ export async function updateDriverRegistration(
     if (!isPlatformSuperAdmin(auth)) {
       throw new ApiError(
         "FORBIDDEN",
-        "Only platform-admin may edit platform-tier driver registrations.",
-        403,
+        "Only platform-admin may edit platform-tier driver registrations."
       );
     }
   } else if (subjectOrganizationId !== auth.organization.id) {
-    throw new ApiError("NOT_FOUND", "Driver registration module not found.", 404, {
+    throw new ApiError("NOT_FOUND", "Driver registration module not found.", {
       moduleId: input.moduleId,
     });
   }

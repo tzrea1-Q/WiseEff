@@ -28,7 +28,7 @@ export function createAuthContextResolver(options: AuthContextResolverOptions): 
           if (error instanceof ApiError) {
             throw error;
           }
-          throw new ApiError("UNAUTHENTICATED", error instanceof Error ? error.message : "Authentication failed.", 401);
+          throw new ApiError("UNAUTHENTICATED", error instanceof Error ? error.message : "Authentication failed.");
         }
       };
     }
@@ -41,7 +41,7 @@ export function createAuthContextResolver(options: AuthContextResolverOptions): 
       try {
         const verifiedContext = await options.verifier!.verify(request.headers.authorization);
         if (!options.db) {
-          throw new ApiError("INTERNAL_ERROR", "Database-backed auth context is required when AUTH_MODE=production.", 500);
+          throw new ApiError("INTERNAL_ERROR", "Database-backed auth context is required when AUTH_MODE=production.");
         }
         return await getAuthContextForExternalIdentity(options.db, {
           organizationId: verifiedContext.user.organizationId,
@@ -52,7 +52,7 @@ export function createAuthContextResolver(options: AuthContextResolverOptions): 
         if (error instanceof ApiError) {
           throw error;
         }
-        throw new ApiError("UNAUTHENTICATED", error instanceof Error ? error.message : "Authentication failed.", 401);
+        throw new ApiError("UNAUTHENTICATED", error instanceof Error ? error.message : "Authentication failed.");
       }
     };
   }

@@ -29,14 +29,14 @@ function resolveArtifactPath(input: {
 }) {
   for (const segment of [input.version, input.platform, input.arch, input.artifact]) {
     if (!segment || segment.includes("..") || segment.includes("/") || segment.includes("\\")) {
-      throw new ApiError("NOT_FOUND", "Artifact was not found.", 404);
+      throw new ApiError("NOT_FOUND", "Artifact was not found.");
     }
   }
 
   const resolvedRoot = path.resolve(input.artifactRoot);
   const filePath = path.resolve(resolvedRoot, input.version, input.platform, input.arch, input.artifact);
   if (!filePath.startsWith(`${resolvedRoot}${path.sep}`)) {
-    throw new ApiError("NOT_FOUND", "Artifact was not found.", 404);
+    throw new ApiError("NOT_FOUND", "Artifact was not found.");
   }
 
   return filePath;
@@ -55,7 +55,7 @@ function createDownloadHandler(artifactRoot: string): RouteHandler {
     try {
       await access(filePath);
     } catch {
-      throw new ApiError("NOT_FOUND", "Artifact was not found.", 404);
+      throw new ApiError("NOT_FOUND", "Artifact was not found.");
     }
 
     const fileName = path.basename(filePath);

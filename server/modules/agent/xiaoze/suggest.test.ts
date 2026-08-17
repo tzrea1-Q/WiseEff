@@ -74,7 +74,7 @@ describe("runXiaozeSuggest", () => {
   });
 
   it("returns nothing for forbidden project access", async () => {
-    const runTool = vi.fn().mockRejectedValue(new ApiError("FORBIDDEN", "denied", 403));
+    const runTool = vi.fn().mockRejectedValue(new ApiError("FORBIDDEN", "denied"));
     const result = await runXiaozeSuggest({
       context: { projectId: "secret", pageKey: "parameters" },
       runTool,

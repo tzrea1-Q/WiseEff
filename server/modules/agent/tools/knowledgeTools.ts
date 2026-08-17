@@ -31,7 +31,7 @@ export function createKnowledgeTools(options: KnowledgeToolOptions): AgentToolDe
       run: async (context, payload) => {
         const query = typeof payload.query === "string" ? payload.query.trim() : "";
         if (!query) {
-          throw new ApiError("VALIDATION_FAILED", "knowledge.search requires a non-empty query.", 400, {
+          throw new ApiError("VALIDATION_FAILED", "knowledge.search requires a non-empty query.", {
             toolName: "knowledge.search"
           });
         }
@@ -75,7 +75,7 @@ export function createKnowledgeTools(options: KnowledgeToolOptions): AgentToolDe
       run: async (context, payload) => {
         const entryId = typeof payload.entryId === "string" ? payload.entryId.trim() : "";
         if (!entryId) {
-          throw new ApiError("VALIDATION_FAILED", "knowledge.getDocument requires an entryId.", 400, {
+          throw new ApiError("VALIDATION_FAILED", "knowledge.getDocument requires an entryId.", {
             toolName: "knowledge.getDocument"
           });
         }

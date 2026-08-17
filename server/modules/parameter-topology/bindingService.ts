@@ -359,7 +359,6 @@ export async function upsertBindingRevisionValues(
       throw new ApiError(
         "NOT_FOUND",
         "Project parameter binding revision could not be verified for this organization.",
-        404,
         { bindingId: input.bindingId, configRevisionId: input.configRevisionId },
       );
     }

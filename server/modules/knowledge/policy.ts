@@ -3,7 +3,7 @@ import { ApiError } from "../../shared/http/errors";
 import type { KnowledgeEntryDto } from "./types";
 
 function forbidden(permission: string) {
-  return new ApiError("FORBIDDEN", "Forbidden.", 403, { permission });
+  return new ApiError("FORBIDDEN", "Forbidden.", { permission });
 }
 
 export function requireKnowledgeView(auth: AuthContext) {
@@ -38,7 +38,7 @@ export function requireKnowledgeGovern(auth: AuthContext, entry: Pick<KnowledgeE
   }
   requireKnowledgeEdit(auth);
   if (entry.createdByUserId !== auth.user.id) {
-    throw new ApiError("FORBIDDEN", "Only the entry owner or a knowledge manager can govern this entry.", 403, {
+    throw new ApiError("FORBIDDEN", "Only the entry owner or a knowledge manager can govern this entry.", {
       permission: "knowledge:manage"
     });
   }

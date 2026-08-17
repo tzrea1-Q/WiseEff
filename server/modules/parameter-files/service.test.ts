@@ -217,7 +217,7 @@ describe.skipIf(!databaseAvailable)("project parameter file upload service", () 
         fileName: "config.json",
         bytes: Buffer.alloc(MAX_FILE_BYTES + 1, 1)
       })
-    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Project parameter file exceeds the 2MB limit.", 400));
+    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Project parameter file exceeds the 2MB limit."));
     expect(putCalls).toHaveLength(0);
     expect(await fileRowCount()).toBe(0);
   });
@@ -231,7 +231,7 @@ describe.skipIf(!databaseAvailable)("project parameter file upload service", () 
         fileName: "config.txt",
         bytes: Buffer.from("x", "utf8")
       })
-    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Unsupported parameter file extension.", 400));
+    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Unsupported parameter file extension."));
     expect(putCalls).toHaveLength(0);
     expect(await fileRowCount()).toBe(0);
   });

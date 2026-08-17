@@ -42,7 +42,7 @@ export async function runScenario(scenario: EvalScenario): Promise<ScenarioEvalR
       throw new Error(`No tool behavior configured for ${name}`);
     }
     if (behavior.type === "forbidden") {
-      throw new ApiError("FORBIDDEN", "Forbidden", 403);
+      throw new ApiError("FORBIDDEN", "Forbidden");
     }
     return {
       summary: behavior.summary,

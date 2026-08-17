@@ -40,12 +40,12 @@ export async function syncFileVersion(
     fileId: input.fileId
   });
   if (!file) {
-    throw new ApiError("NOT_FOUND", "Project parameter file was not found.", 404, { fileId: input.fileId });
+    throw new ApiError("NOT_FOUND", "Project parameter file was not found.", { fileId: input.fileId });
   }
 
   const version = await getFileVersionById(db, { versionId: input.versionId });
   if (!version || version.fileId !== file.id) {
-    throw new ApiError("NOT_FOUND", "Project parameter file version was not found.", 404, {
+    throw new ApiError("NOT_FOUND", "Project parameter file version was not found.", {
       versionId: input.versionId
     });
   }

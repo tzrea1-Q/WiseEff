@@ -101,8 +101,7 @@ export function createPairingService(options: PairingServiceOptions) {
       if (!pairing) {
         throw new ApiError(
           "VALIDATION_FAILED",
-          "Pairing code is invalid, expired, or already consumed.",
-          400
+          "Pairing code is invalid, expired, or already consumed."
         );
       }
 

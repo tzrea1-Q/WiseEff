@@ -81,7 +81,7 @@ function errorMessage(error: unknown) {
 }
 
 function staleTransition(message: string, details: Record<string, unknown>) {
-  return new ApiError("CONFLICT", message, 409, details);
+  return new ApiError("CONFLICT", message, details);
 }
 
 /**
@@ -92,7 +92,7 @@ function staleTransition(message: string, details: Record<string, unknown>) {
  */
 function requireApprovalRequester(approval: { id: string; requestedByUserId: string }, auth: AuthContext) {
   if (approval.requestedByUserId !== auth.user.id) {
-    throw new ApiError("FORBIDDEN", "Only the user who requested this approval may decide it.", 403, {
+    throw new ApiError("FORBIDDEN", "Only the user who requested this approval may decide it.", {
       approvalId: approval.id
     });
   }
@@ -192,7 +192,7 @@ export function createAgentOrchestrator(options: {
   async function loadSessionOrThrow(context: AgentRequestContext, sessionId: string) {
     const session = await getAgentSession(db, context.auth.organization.id, sessionId);
     if (!session) {
-      throw new ApiError("NOT_FOUND", "Agent session was not found.", 404, { sessionId });
+      throw new ApiError("NOT_FOUND", "Agent session was not found.", { sessionId });
     }
     return session;
   }
@@ -335,7 +335,7 @@ export function createAgentOrchestrator(options: {
 
     const toolCall = await getAgentToolCall(db, input.auth.organization.id, toolCallId);
     if (!toolCall) {
-      throw new ApiError("INTERNAL_ERROR", "Agent tool call was not recorded.", 500, { toolCallId });
+      throw new ApiError("INTERNAL_ERROR", "Agent tool call was not recorded.", { toolCallId });
     }
 
     if (definition.requiresApproval) {
@@ -346,7 +346,7 @@ export function createAgentOrchestrator(options: {
 
     const recorded = await getAgentToolCall(db, input.auth.organization.id, toolCallId);
     if (!recorded) {
-      throw new ApiError("INTERNAL_ERROR", "Agent tool call was not found after recording.", 500, { toolCallId });
+      throw new ApiError("INTERNAL_ERROR", "Agent tool call was not found after recording.", { toolCallId });
     }
     return recorded;
   }
@@ -354,10 +354,10 @@ export function createAgentOrchestrator(options: {
   async function runToolCall(input: ToolCallInput): Promise<AgentTurnDto> {
     const toolCall = await getAgentToolCall(db, input.auth.organization.id, input.toolCallId);
     if (!toolCall) {
-      throw new ApiError("NOT_FOUND", "Agent tool call was not found.", 404, { toolCallId: input.toolCallId });
+      throw new ApiError("NOT_FOUND", "Agent tool call was not found.", { toolCallId: input.toolCallId });
     }
     if (toolCall.status === "pending_approval") {
-      throw new ApiError("APPROVAL_REQUIRED", "Tool call requires approval.", 409, { toolCallId: input.toolCallId });
+      throw new ApiError("APPROVAL_REQUIRED", "Tool call requires approval.", { toolCallId: input.toolCallId });
     }
     if (!["succeeded", "failed", "rejected"].includes(toolCall.status)) {
       await executeToolCall(input, toolCall, toolCall.sessionId);
@@ -368,15 +368,15 @@ export function createAgentOrchestrator(options: {
   async function approveToolCall(input: ApprovalInput): Promise<AgentTurnDto> {
     const approval = await getAgentApproval(db, input.auth.organization.id, input.approvalId);
     if (!approval) {
-      throw new ApiError("NOT_FOUND", "Agent approval was not found.", 404, { approvalId: input.approvalId });
+      throw new ApiError("NOT_FOUND", "Agent approval was not found.", { approvalId: input.approvalId });
     }
     if (approval.status !== "pending") {
-      throw new ApiError("INVALID_APPROVAL_STATE", "Approval is not pending.", 409, { approvalId: input.approvalId });
+      throw new ApiError("INVALID_APPROVAL_STATE", "Approval is not pending.", { approvalId: input.approvalId });
     }
     requireApprovalRequester(approval, input.auth);
     const toolCall = await getAgentToolCall(db, input.auth.organization.id, approval.toolCallId);
     if (!toolCall) {
-      throw new ApiError("NOT_FOUND", "Agent tool call was not found.", 404, { toolCallId: approval.toolCallId });
+      throw new ApiError("NOT_FOUND", "Agent tool call was not found.", { toolCallId: approval.toolCallId });
     }
 
     const executionContext: AgentToolExecutionContext = {
@@ -457,12 +457,12 @@ export function createAgentOrchestrator(options: {
   async function rejectToolCall(input: ApprovalInput): Promise<AgentTurnDto> {
     const approval = await getAgentApproval(db, input.auth.organization.id, input.approvalId);
     if (!approval || approval.status !== "pending") {
-      throw new ApiError("NOT_FOUND", "Pending Agent approval was not found.", 404, { approvalId: input.approvalId });
+      throw new ApiError("NOT_FOUND", "Pending Agent approval was not found.", { approvalId: input.approvalId });
     }
     requireApprovalRequester(approval, input.auth);
     const toolCall = await getAgentToolCall(db, input.auth.organization.id, approval.toolCallId);
     if (!toolCall) {
-      throw new ApiError("NOT_FOUND", "Agent tool call was not found.", 404, { toolCallId: approval.toolCallId });
+      throw new ApiError("NOT_FOUND", "Agent tool call was not found.", { toolCallId: approval.toolCallId });
     }
 
     // Rejection decision, tool-call transition, message, and audit commit together (ADR-0027).
@@ -544,7 +544,7 @@ export function createAgentOrchestrator(options: {
   async function beginApproval(input: ApprovalBeginInput): Promise<ApprovalBeginResult> {
     const definition = toolRegistry.require(input.toolName);
     if (!definition.requiresApproval) {
-      throw new ApiError("VALIDATION_FAILED", "Tool does not require approval.", 400, { toolName: input.toolName });
+      throw new ApiError("VALIDATION_FAILED", "Tool does not require approval.", { toolName: input.toolName });
     }
     await ensureAgentSession(input);
     const toolCall = await recordToolRequest(
@@ -553,7 +553,7 @@ export function createAgentOrchestrator(options: {
       { name: input.toolName, label: definition.label, payload: input.payload }
     );
     if (!toolCall.approvalId) {
-      throw new ApiError("INTERNAL_ERROR", "Agent approval was not created for the tool call.", 500, {
+      throw new ApiError("INTERNAL_ERROR", "Agent approval was not created for the tool call.", {
         toolCallId: toolCall.id
       });
     }
@@ -580,10 +580,10 @@ export function createAgentOrchestrator(options: {
     if (input.editedArgs) {
       const approval = await getAgentApproval(db, input.auth.organization.id, input.approvalId);
       if (!approval) {
-        throw new ApiError("NOT_FOUND", "Agent approval was not found.", 404, { approvalId: input.approvalId });
+        throw new ApiError("NOT_FOUND", "Agent approval was not found.", { approvalId: input.approvalId });
       }
       if (approval.status !== "pending") {
-        throw new ApiError("INVALID_APPROVAL_STATE", "Approval is not pending.", 409, { approvalId: input.approvalId });
+        throw new ApiError("INVALID_APPROVAL_STATE", "Approval is not pending.", { approvalId: input.approvalId });
       }
       // Checked before the payload rewrite so a non-requester cannot leave an
       // edited payload behind even though approveToolCall would also refuse.

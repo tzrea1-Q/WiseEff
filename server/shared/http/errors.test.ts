@@ -10,10 +10,8 @@ describe("ApiError status derivation", () => {
     }
   });
 
-  it("ignores an explicit legacy status argument that disagrees with the table", () => {
-    // Pre-table call sites still pass a positional status; the table wins so a
-    // code/status mismatch cannot exist at any construction site.
-    const error = new ApiError("VALIDATION_FAILED", "message", 409, { reason: "x" });
+  it("accepts details as the optional third argument and still uses the table status", () => {
+    const error = new ApiError("VALIDATION_FAILED", "message", { reason: "x" });
     expect(error.status).toBe(400);
     expect(error.details).toEqual({ reason: "x" });
   });
@@ -28,7 +26,7 @@ describe("ApiError status derivation", () => {
 
 describe("serializeApiError", () => {
   it("serializes ApiError without leaking status internals", () => {
-    const body = serializeApiError(new ApiError("FORBIDDEN", "no", undefined, { permission: "x" }), "req-1");
+    const body = serializeApiError(new ApiError("FORBIDDEN", "no", { permission: "x" }), "req-1");
     expect(body).toEqual({
       error: { code: "FORBIDDEN", message: "no", details: { permission: "x" }, requestId: "req-1" }
     });

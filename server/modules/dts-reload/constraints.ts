@@ -10,7 +10,7 @@ export function assertDebugValueConstraints(value: DtsValue, constraints: unknow
   if (expectedCells !== undefined) {
     const sizes = cellGroupSizes(value);
     if (sizes.length === 0 || sizes.some((size) => size !== expectedCells)) {
-      throw new ApiError("VALIDATION_FAILED", `cell count must be ${expectedCells}`, 400, {
+      throw new ApiError("VALIDATION_FAILED", `cell count must be ${expectedCells}`, {
         reason: "schema-failure",
         code: "SCHEMA_CELL_COUNT",
         expectedCells,
@@ -25,14 +25,14 @@ export function assertDebugValueConstraints(value: DtsValue, constraints: unknow
 
   for (const numeric of cellIntegerValues(value)) {
     if (min !== undefined && numeric < min) {
-      throw new ApiError("VALIDATION_FAILED", "Value is below schema minimum.", 400, {
+      throw new ApiError("VALIDATION_FAILED", "Value is below schema minimum.", {
         reason: "schema-failure",
         min,
         value: numeric
       });
     }
     if (max !== undefined && numeric > max) {
-      throw new ApiError("VALIDATION_FAILED", "Value exceeds schema maximum.", 400, {
+      throw new ApiError("VALIDATION_FAILED", "Value exceeds schema maximum.", {
         reason: "schema-failure",
         max,
         value: numeric

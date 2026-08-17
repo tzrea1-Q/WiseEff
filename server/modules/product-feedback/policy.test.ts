@@ -34,14 +34,14 @@ describe("product feedback policy", () => {
           }
         })
       )
-    ).toThrow(new ApiError("FORBIDDEN", "Forbidden.", 403, { reason: "inactive" }));
+    ).toThrow(new ApiError("FORBIDDEN", "Forbidden.", { reason: "inactive" }));
   });
 
   it("requires active admin access for admin operations", () => {
     expect(() => requireProductFeedbackAdmin(auth({ permissions: ["admin:access"] }))).not.toThrow();
 
     expect(() => requireProductFeedbackAdmin(auth())).toThrow(
-      new ApiError("FORBIDDEN", "Forbidden.", 403, { permission: "admin:access" })
+      new ApiError("FORBIDDEN", "Forbidden.", { permission: "admin:access" })
     );
     expect(() =>
       requireProductFeedbackAdmin(
@@ -53,6 +53,6 @@ describe("product feedback policy", () => {
           }
         })
       )
-    ).toThrow(new ApiError("FORBIDDEN", "Forbidden.", 403, { permission: "admin:access" }));
+    ).toThrow(new ApiError("FORBIDDEN", "Forbidden.", { permission: "admin:access" }));
   });
 });

@@ -54,7 +54,7 @@ const paramsWithDomainIdSchema = z.object({
 
 function requireDb(db: Database | undefined) {
   if (!db) {
-    throw new ApiError("INTERNAL_ERROR", "Database adapter is required for log routes.", 500);
+    throw new ApiError("INTERNAL_ERROR", "Database adapter is required for log routes.");
   }
 
   return db;
@@ -62,7 +62,7 @@ function requireDb(db: Database | undefined) {
 
 function requireObjectStore(objectStore: ObjectStore | undefined) {
   if (!objectStore) {
-    throw new ApiError("INTERNAL_ERROR", "Object store is required for log file uploads.", 500);
+    throw new ApiError("INTERNAL_ERROR", "Object store is required for log file uploads.");
   }
 
   return objectStore;
@@ -70,14 +70,14 @@ function requireObjectStore(objectStore: ObjectStore | undefined) {
 
 function requireLocalOrganization(auth: AuthContext) {
   if (auth.user.organizationId !== auth.organization.id) {
-    throw new ApiError("FORBIDDEN", "Log organization access is required.", 403, { organizationId: auth.organization.id });
+    throw new ApiError("FORBIDDEN", "Log organization access is required.", { organizationId: auth.organization.id });
   }
 }
 
 function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Invalid log route input.") {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
-    throw new ApiError("VALIDATION_FAILED", message, 400, { issues: parsed.error.issues });
+    throw new ApiError("VALIDATION_FAILED", message, { issues: parsed.error.issues });
   }
 
   return parsed.data;
@@ -96,7 +96,7 @@ export type LogWebhookRouteContext = {
 
 function requireWebhookDeliverer(webhooks: LogWebhookRouteContext | undefined) {
   if (!webhooks?.deliverer) {
-    throw new ApiError("INTERNAL_ERROR", "Webhook deliverer is required for test deliveries.", 500);
+    throw new ApiError("INTERNAL_ERROR", "Webhook deliverer is required for test deliveries.");
   }
 
   return webhooks.deliverer;

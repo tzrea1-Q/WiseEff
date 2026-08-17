@@ -47,7 +47,7 @@ const paramsWithSnapshotIdSchema = z.object({
 
 function requireDb(db: Database | undefined) {
   if (!db) {
-    throw new ApiError("INTERNAL_ERROR", "Database adapter is required for debugging routes.", 500);
+    throw new ApiError("INTERNAL_ERROR", "Database adapter is required for debugging routes.");
   }
 
   return db;
@@ -55,14 +55,14 @@ function requireDb(db: Database | undefined) {
 
 function requireDebugGatewayAccess(debugGateway: DebugDeviceGateway | undefined, debugGatewayRegistry: DebugDeviceGatewayRegistry | undefined) {
   if (!debugGateway && !debugGatewayRegistry) {
-    throw new ApiError("INTERNAL_ERROR", "Debug device gateway is required for debugging routes.", 500);
+    throw new ApiError("INTERNAL_ERROR", "Debug device gateway is required for debugging routes.");
   }
 }
 
 function parseWithSchema<T extends z.ZodTypeAny>(schema: T, value: unknown, message = "Invalid debugging route input."): z.output<T> {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
-    throw new ApiError("VALIDATION_FAILED", message, 400, { issues: parsed.error.issues });
+    throw new ApiError("VALIDATION_FAILED", message, { issues: parsed.error.issues });
   }
 
   return parsed.data;
@@ -109,7 +109,7 @@ function writeResponse(result: unknown) {
 
 function requireDebugWritePermission(auth: AuthContext) {
   if (!auth.user.isActive || !auth.permissions.includes("debugging:write")) {
-    throw new ApiError("FORBIDDEN", "Missing permission: debugging:write.", 403, { permission: "debugging:write" });
+    throw new ApiError("FORBIDDEN", "Missing permission: debugging:write.", { permission: "debugging:write" });
   }
 }
 

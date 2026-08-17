@@ -54,7 +54,6 @@ export function assertSpecActivatable(input: {
     throw new ApiError(
       "VALIDATION_FAILED",
       "Unsupported draft value shapes cannot be activated.",
-      400,
       { parameterSpecId: input.parameterSpecId, valueShapeKind: shapeKind(input.valueShape) },
     );
   }
@@ -63,7 +62,6 @@ export function assertSpecActivatable(input: {
     throw new ApiError(
       "VALIDATION_FAILED",
       "Activation requires a complete valueShape object.",
-      400,
       { parameterSpecId: input.parameterSpecId },
     );
   }
@@ -80,7 +78,6 @@ export function assertSpecActivatable(input: {
       throw new ApiError(
         "VALIDATION_FAILED",
         "Cell-array valueShape must include cellsPerGroup or cells as a positive whole number.",
-        400,
         { parameterSpecId: input.parameterSpecId, valueShapeKind: kind },
       );
     }
@@ -94,7 +91,6 @@ export function assertSpecActivatable(input: {
       throw new ApiError(
         "VALIDATION_FAILED",
         "Cell-array valueShape must include valid bits and groups.",
-        400,
         { parameterSpecId: input.parameterSpecId, valueShapeKind: kind },
       );
     }
@@ -106,7 +102,6 @@ export function assertSpecActivatable(input: {
       throw new ApiError(
         "VALIDATION_FAILED",
         "Cell constraint must be a positive whole number.",
-        400,
         { parameterSpecId: input.parameterSpecId, constraintCells },
       );
     }
@@ -114,7 +109,6 @@ export function assertSpecActivatable(input: {
       throw new ApiError(
         "VALIDATION_FAILED",
         "Cell constraint conflicts with inferred cellsPerGroup.",
-        400,
         {
           parameterSpecId: input.parameterSpecId,
           inferredCellsPerGroup: cellsPerGroup,
@@ -129,7 +123,6 @@ export function assertSpecActivatable(input: {
       throw new ApiError(
         "VALIDATION_FAILED",
         "Byte-array valueShape must include an exact length.",
-        400,
         { parameterSpecId: input.parameterSpecId, valueShapeKind: kind },
       );
     }
@@ -142,7 +135,6 @@ export function assertSpecActivatable(input: {
         throw new ApiError(
           "VALIDATION_FAILED",
           "Activation valueShape conflicts with inferred draft shape.",
-          400,
           { parameterSpecId: input.parameterSpecId, field: key, stored: stored[key], incoming: incoming[key] },
         );
       }
@@ -152,7 +144,6 @@ export function assertSpecActivatable(input: {
     throw new ApiError(
       "VALIDATION_FAILED",
       "Parameter spec constraints are incomplete for activation.",
-      400,
       { parameterSpecId: input.parameterSpecId, valueShapeKind: shapeKind(input.valueShape) },
     );
   }
@@ -160,7 +151,6 @@ export function assertSpecActivatable(input: {
     throw new ApiError(
       "VALIDATION_FAILED",
       "Parameter spec documentation is required before activation.",
-      400,
       { parameterSpecId: input.parameterSpecId },
     );
   }
@@ -173,7 +163,7 @@ export function assertSpecResolvable(
   >,
 ): void {
   if (!spec.currentVersionId) {
-    throw new ApiError("VALIDATION_FAILED", "Parameter spec has no current version to bind.", 400, {
+    throw new ApiError("VALIDATION_FAILED", "Parameter spec has no current version to bind.", {
       parameterSpecId: spec.id,
     });
   }
@@ -181,7 +171,6 @@ export function assertSpecResolvable(
     throw new ApiError(
       "VALIDATION_FAILED",
       "Only active parameter specs can resolve review tasks.",
-      400,
       { parameterSpecId: spec.id, lifecycle: spec.lifecycle },
     );
   }
@@ -189,7 +178,6 @@ export function assertSpecResolvable(
     throw new ApiError(
       "VALIDATION_FAILED",
       "Only the active parameter spec version can resolve review tasks.",
-      400,
       { parameterSpecId: spec.id, versionStatus: spec.versionStatus },
     );
   }
@@ -197,7 +185,6 @@ export function assertSpecResolvable(
     throw new ApiError(
       "VALIDATION_FAILED",
       "Unsupported parameter spec value shapes cannot be used for resolve.",
-      400,
       { parameterSpecId: spec.id, valueShapeKind: shapeKind(spec.valueShape) },
     );
   }
@@ -205,7 +192,6 @@ export function assertSpecResolvable(
     throw new ApiError(
       "VALIDATION_FAILED",
       "Parameter spec constraints are incomplete; resolve is fail-closed.",
-      400,
       { parameterSpecId: spec.id, valueShapeKind: shapeKind(spec.valueShape) },
     );
   }

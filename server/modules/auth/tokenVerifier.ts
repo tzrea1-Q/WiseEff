@@ -46,7 +46,7 @@ function readBearerToken(authorization: string | string[] | undefined) {
   const header = Array.isArray(authorization) ? authorization[0] : authorization;
   const match = /^Bearer\s+(.+)$/i.exec(header ?? "");
   if (!match) {
-    throw new ApiError("UNAUTHENTICATED", "Authorization bearer token is required.", 401);
+    throw new ApiError("UNAUTHENTICATED", "Authorization bearer token is required.");
   }
   return match[1];
 }
@@ -56,7 +56,7 @@ function verifySignature(payload: string, signature: string, secret: string) {
   const actualBytes = Buffer.from(signature, "base64url");
   const expectedBytes = Buffer.from(expected, "base64url");
   if (actualBytes.length !== expectedBytes.length || !timingSafeEqual(actualBytes, expectedBytes)) {
-    throw new ApiError("UNAUTHENTICATED", "Token signature is invalid.", 401);
+    throw new ApiError("UNAUTHENTICATED", "Token signature is invalid.");
   }
 }
 
@@ -74,15 +74,15 @@ function validateLifetime(claims: Record<string, unknown>, now: Date) {
   const nowSeconds = Math.floor(now.getTime() / 1000);
   const exp = parseNumericDateClaim(claims, "exp");
   if (exp === undefined) {
-    throw new ApiError("UNAUTHENTICATED", "Token expiration claim is required.", 401);
+    throw new ApiError("UNAUTHENTICATED", "Token expiration claim is required.");
   }
   if (exp <= nowSeconds) {
-    throw new ApiError("UNAUTHENTICATED", "Token has expired.", 401);
+    throw new ApiError("UNAUTHENTICATED", "Token has expired.");
   }
 
   const nbf = parseNumericDateClaim(claims, "nbf");
   if (nbf !== undefined && nbf > nowSeconds) {
-    throw new ApiError("UNAUTHENTICATED", "Token is not valid yet.", 401);
+    throw new ApiError("UNAUTHENTICATED", "Token is not valid yet.");
   }
 }
 
@@ -93,15 +93,15 @@ function parseRoles(value: unknown): RoleBinding[] {
 
   return value.map((role) => {
     if (!role || typeof role !== "object") {
-      throw new ApiError("UNAUTHENTICATED", "Token role claims are invalid.", 401);
+      throw new ApiError("UNAUTHENTICATED", "Token role claims are invalid.");
     }
     const roleId = (role as { roleId?: unknown }).roleId;
     const projectId = (role as { projectId?: unknown }).projectId;
     if (typeof roleId !== "string" || !roleIds.has(roleId as BackendRoleId)) {
-      throw new ApiError("UNAUTHENTICATED", "Token role claims are invalid.", 401);
+      throw new ApiError("UNAUTHENTICATED", "Token role claims are invalid.");
     }
     if (projectId !== null && projectId !== undefined && typeof projectId !== "string") {
-      throw new ApiError("UNAUTHENTICATED", "Token role claims are invalid.", 401);
+      throw new ApiError("UNAUTHENTICATED", "Token role claims are invalid.");
     }
     return { roleId: roleId as BackendRoleId, projectId: projectId ?? null };
   });
@@ -114,7 +114,7 @@ function parsePermissions(value: unknown): BackendPermission[] {
 
   return value.map((permission) => {
     if (typeof permission !== "string" || !permissionIds.has(permission as BackendPermission)) {
-      throw new ApiError("UNAUTHENTICATED", "Token permission claims are invalid.", 401);
+      throw new ApiError("UNAUTHENTICATED", "Token permission claims are invalid.");
     }
     return permission as BackendPermission;
   });
@@ -128,7 +128,7 @@ function parseClaims(payload: string) {
     }
     return parsed as Record<string, unknown>;
   } catch {
-    throw new ApiError("UNAUTHENTICATED", "Token payload is invalid.", 401);
+    throw new ApiError("UNAUTHENTICATED", "Token payload is invalid.");
   }
 }
 
@@ -138,7 +138,7 @@ export function createTokenVerifier(options: TokenVerifierOptions): TokenVerifie
       const token = readBearerToken(authorization);
       const [payload, signature, extra] = token.split(".");
       if (!payload || !signature || extra !== undefined) {
-        throw new ApiError("UNAUTHENTICATED", "Bearer token format is invalid.", 401);
+        throw new ApiError("UNAUTHENTICATED", "Bearer token format is invalid.");
       }
 
       verifySignature(payload, signature, options.secret);
@@ -147,10 +147,10 @@ export function createTokenVerifier(options: TokenVerifierOptions): TokenVerifie
       const subject = parseStringClaim(claims, "sub");
       const organizationId = parseStringClaim(claims, "org");
       if (!issuer || !subject || !organizationId) {
-        throw new ApiError("UNAUTHENTICATED", "Token issuer, subject, and organization claims are required.", 401);
+        throw new ApiError("UNAUTHENTICATED", "Token issuer, subject, and organization claims are required.");
       }
       if (issuer !== options.issuer) {
-        throw new ApiError("UNAUTHENTICATED", "Token issuer is not trusted.", 401);
+        throw new ApiError("UNAUTHENTICATED", "Token issuer is not trusted.");
       }
       validateLifetime(claims, options.now?.() ?? new Date());
 

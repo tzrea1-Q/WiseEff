@@ -129,7 +129,7 @@ async function requireBindableLogDomainId(db: Queryable, auth: AuthContext, logD
     domainId: logDomainId
   });
   if (!domain) {
-    throw new ApiError("VALIDATION_FAILED", "Log domain is unknown or not active in this organization.", 400, {
+    throw new ApiError("VALIDATION_FAILED", "Log domain is unknown or not active in this organization.", {
       logDomainId
     });
   }
@@ -228,7 +228,7 @@ export async function uploadLogFile(
         logDomainId
       });
       if (!log) {
-        throw new ApiError("NOT_FOUND", "Log record was not created.", 404);
+        throw new ApiError("NOT_FOUND", "Log record was not created.");
       }
       await createLogAudit(
         asAuditTx(tx),
@@ -299,15 +299,15 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
     fileObjectId: input.fileObjectId
   });
   if (!fileObject) {
-    throw new ApiError("NOT_FOUND", "File object was not found.", 404, { fileObjectId: input.fileObjectId });
+    throw new ApiError("NOT_FOUND", "File object was not found.", { fileObjectId: input.fileObjectId });
   }
   if (fileObject.uploadedByUserId !== auth.user.id) {
-    throw new ApiError("FORBIDDEN", "File object ownership is required.", 403, {
+    throw new ApiError("FORBIDDEN", "File object ownership is required.", {
       fileObjectId: input.fileObjectId
     });
   }
   if (input.fileName !== fileObject.fileName) {
-    throw new ApiError("VALIDATION_FAILED", "File name does not match the stored file object.", 400, {
+    throw new ApiError("VALIDATION_FAILED", "File name does not match the stored file object.", {
       fileObjectId: input.fileObjectId,
       fileName: input.fileName
     });
@@ -327,7 +327,7 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
         relatedParameterId: input.relatedParameterId,
         logDomainId
       });
-      if (!log) throw new ApiError("NOT_FOUND", "Log record was not created.", 404);
+      if (!log) throw new ApiError("NOT_FOUND", "Log record was not created.");
       await createLogAudit(
         asAuditTx(tx),
         auth,
@@ -394,7 +394,7 @@ export async function getLogRecord(db: Queryable, auth: AuthContext, logId: stri
   requireLogView(auth);
   const log = await getLogDetail(db, auth, logId);
   if (!log) {
-    throw new ApiError("NOT_FOUND", "Log record was not found.", 404, { logId });
+    throw new ApiError("NOT_FOUND", "Log record was not found.", { logId });
   }
   return log;
 }
@@ -411,7 +411,7 @@ export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: R
   const result = await db.transaction(async (tx) => {
     const existing = await getLogDetail(tx, auth, input.logId);
     if (!existing) {
-      throw new ApiError("NOT_FOUND", "Log record was not found.", 404, { logId: input.logId });
+      throw new ApiError("NOT_FOUND", "Log record was not found.", { logId: input.logId });
     }
     const logDomainId = await requireBindableLogDomainId(tx, auth, input.logDomainId);
 
@@ -425,7 +425,7 @@ export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: R
     });
     const log = await getLogDetail(tx, auth, input.logId);
     if (!log) {
-      throw new ApiError("NOT_FOUND", "Log record was not found.", 404, { logId: input.logId });
+      throw new ApiError("NOT_FOUND", "Log record was not found.", { logId: input.logId });
     }
     await createLogAudit(
       asAuditTx(tx),
@@ -463,11 +463,11 @@ export async function archiveLogRecord(db: Database, auth: AuthContext, logId: s
   return db.transaction(async (tx) => {
     const existing = await getLogDetail(tx, auth, logId);
     if (!existing) {
-      throw new ApiError("NOT_FOUND", "Log record was not found.", 404, { logId });
+      throw new ApiError("NOT_FOUND", "Log record was not found.", { logId });
     }
     const log = await archiveLog(tx, auth, logId);
     if (!log) {
-      throw new ApiError("NOT_FOUND", "Log record was not found.", 404, { logId });
+      throw new ApiError("NOT_FOUND", "Log record was not found.", { logId });
     }
     await createLogAudit(
       asAuditTx(tx),
@@ -489,11 +489,11 @@ export async function unarchiveLogRecord(db: Database, auth: AuthContext, logId:
   return db.transaction(async (tx) => {
     const existing = await getLogDetail(tx, auth, logId);
     if (!existing) {
-      throw new ApiError("NOT_FOUND", "Log record was not found.", 404, { logId });
+      throw new ApiError("NOT_FOUND", "Log record was not found.", { logId });
     }
     const log = await unarchiveLog(tx, auth, logId);
     if (!log) {
-      throw new ApiError("NOT_FOUND", "Log record was not found.", 404, { logId });
+      throw new ApiError("NOT_FOUND", "Log record was not found.", { logId });
     }
     await createLogAudit(
       asAuditTx(tx),
@@ -529,7 +529,7 @@ export async function submitLogFeedback(db: Database, auth: AuthContext, input: 
   return db.transaction(async (tx) => {
     const log = await getLogDetail(tx, auth, input.logId);
     if (!log) {
-      throw new ApiError("NOT_FOUND", "Log record was not found.", 404, { logId: input.logId });
+      throw new ApiError("NOT_FOUND", "Log record was not found.", { logId: input.logId });
     }
     await appendFeedback(tx, auth, {
       id: randomUUID(),

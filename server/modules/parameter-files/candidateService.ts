@@ -57,13 +57,13 @@ export type CreateCandidateInput = {
 
 function requireCandidateAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Forbidden.", 403, { permission: "admin:access" });
+    throw new ApiError("FORBIDDEN", "Forbidden.", { permission: "admin:access" });
   }
 }
 
 function requireCandidateViewer(auth: AuthContext) {
   if (!canViewParameters(auth) && !canAdminParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Forbidden.", 403, { permission: "parameter:view" });
+    throw new ApiError("FORBIDDEN", "Forbidden.", { permission: "parameter:view" });
   }
 }
 
@@ -257,12 +257,12 @@ export async function createCandidate(
 
   const fileName = input.fileName.trim();
   if (!fileName) {
-    throw new ApiError("VALIDATION_FAILED", "Candidate fileName is required.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Candidate fileName is required.");
   }
   const format = detectFormat(fileName);
   const sizeBytes = input.bytes.byteLength;
   if (sizeBytes > MAX_FILE_BYTES) {
-    throw new ApiError("VALIDATION_FAILED", "Project parameter file exceeds the 2MB limit.", 400, {
+    throw new ApiError("VALIDATION_FAILED", "Project parameter file exceeds the 2MB limit.", {
       maxBytes: MAX_FILE_BYTES,
       sizeBytes
     });
@@ -279,11 +279,11 @@ export async function createCandidate(
       fileId
     });
     if (!file || file.projectId !== input.projectId) {
-      throw new ApiError("NOT_FOUND", "Project parameter file was not found.", 404, { fileId });
+      throw new ApiError("NOT_FOUND", "Project parameter file was not found.", { fileId });
     }
     existingFileName = file.fileName;
     if (fileName !== file.fileName) {
-      throw new ApiError("VALIDATION_FAILED", "fileName must match the existing file when fileId is provided.", 400, {
+      throw new ApiError("VALIDATION_FAILED", "fileName must match the existing file when fileId is provided.", {
         fileId,
         fileName,
         existingFileName: file.fileName
@@ -361,7 +361,7 @@ export async function createCandidate(
         blockers: []
       });
       if (!failed) {
-        throw new ApiError("INTERNAL_ERROR", "Failed to persist candidate parse failure.", 500);
+        throw new ApiError("INTERNAL_ERROR", "Failed to persist candidate parse failure.");
       }
       await writeCandidateAudit(
         asAuditTx(tx),
@@ -408,7 +408,7 @@ export async function createCandidate(
       blockers: computed.blockers
     });
     if (!updated) {
-      throw new ApiError("INTERNAL_ERROR", "Failed to persist candidate impact.", 500);
+      throw new ApiError("INTERNAL_ERROR", "Failed to persist candidate impact.");
     }
 
     await writeCandidateAudit(
@@ -433,7 +433,7 @@ export async function getCandidate(
     candidateId: input.candidateId
   });
   if (!candidate) {
-    throw new ApiError("NOT_FOUND", "Candidate file version was not found.", 404, {
+    throw new ApiError("NOT_FOUND", "Candidate file version was not found.", {
       candidateId: input.candidateId
     });
   }
@@ -471,7 +471,7 @@ export async function getCandidateContent(
 ): Promise<{ candidate: ProjectParameterFileCandidateDto; bytes: Buffer; contentType: string }> {
   const candidate = await getCandidate(db, auth, input);
   if (!candidate.storageKey) {
-    throw new ApiError("VALIDATION_FAILED", "Candidate has no stored content.", 400, {
+    throw new ApiError("VALIDATION_FAILED", "Candidate has no stored content.", {
       candidateId: candidate.id,
       status: candidate.status
     });
@@ -497,12 +497,12 @@ export async function abandonCandidate(
     candidateId: input.candidateId
   });
   if (!existing) {
-    throw new ApiError("NOT_FOUND", "Candidate file version was not found.", 404, {
+    throw new ApiError("NOT_FOUND", "Candidate file version was not found.", {
       candidateId: input.candidateId
     });
   }
   if (!["ready", "blocked", "failed", "stale"].includes(existing.status)) {
-    throw new ApiError("VALIDATION_FAILED", "Only ready, blocked, failed, or stale candidates can be abandoned.", 400, {
+    throw new ApiError("VALIDATION_FAILED", "Only ready, blocked, failed, or stale candidates can be abandoned.", {
       candidateId: existing.id,
       status: existing.status
     });
@@ -514,7 +514,7 @@ export async function abandonCandidate(
       abandonedByUserId: auth.user.id
     });
     if (!abandoned) {
-      throw new ApiError("VALIDATION_FAILED", "Candidate could not be abandoned from its current status.", 400, {
+      throw new ApiError("VALIDATION_FAILED", "Candidate could not be abandoned from its current status.", {
         candidateId: existing.id,
         status: existing.status
       });
@@ -548,17 +548,17 @@ export async function recomputeCandidateImpact(
     candidateId: input.candidateId
   });
   if (!existing) {
-    throw new ApiError("NOT_FOUND", "Candidate file version was not found.", 404, {
+    throw new ApiError("NOT_FOUND", "Candidate file version was not found.", {
       candidateId: input.candidateId
     });
   }
   if (!["ready", "blocked", "failed", "stale"].includes(existing.status)) {
-    throw new ApiError("VALIDATION_FAILED", "Only ready, blocked, failed, or stale candidates can be recomputed.", 400, {
+    throw new ApiError("VALIDATION_FAILED", "Only ready, blocked, failed, or stale candidates can be recomputed.", {
       status: existing.status
     });
   }
   if (!existing.storageKey) {
-    throw new ApiError("VALIDATION_FAILED", "Candidate has no stored content to recompute.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Candidate has no stored content to recompute.");
   }
 
   let baseVersionId = existing.baseVersionId;
@@ -621,7 +621,7 @@ export async function recomputeCandidateImpact(
       baseVersionId: baseVersionId ?? null
     });
     if (!updated) {
-      throw new ApiError("INTERNAL_ERROR", "Failed to persist recomputed candidate impact.", 500);
+      throw new ApiError("INTERNAL_ERROR", "Failed to persist recomputed candidate impact.");
     }
     await writeCandidateAudit(
       asAuditTx(tx),
@@ -668,24 +668,24 @@ export async function activateCandidate(
     candidateId: input.candidateId
   });
   if (!existing) {
-    throw new ApiError("NOT_FOUND", "Candidate file version was not found.", 404, {
+    throw new ApiError("NOT_FOUND", "Candidate file version was not found.", {
       candidateId: input.candidateId
     });
   }
   if (existing.status !== "ready") {
-    throw new ApiError("VALIDATION_FAILED", "Only ready candidates can be activated.", 400, {
+    throw new ApiError("VALIDATION_FAILED", "Only ready candidates can be activated.", {
       candidateId: existing.id,
       status: existing.status
     });
   }
   if ((existing.blockers?.length ?? 0) > 0) {
-    throw new ApiError("VALIDATION_FAILED", "Candidate has unresolved blockers and cannot be activated.", 400, {
+    throw new ApiError("VALIDATION_FAILED", "Candidate has unresolved blockers and cannot be activated.", {
       candidateId: existing.id,
       blockers: existing.blockers
     });
   }
   if (!existing.storageKey || !existing.checksum || existing.sizeBytes == null) {
-    throw new ApiError("VALIDATION_FAILED", "Candidate has no stored content to activate.", 400, {
+    throw new ApiError("VALIDATION_FAILED", "Candidate has no stored content to activate.", {
       candidateId: existing.id
     });
   }
@@ -696,7 +696,6 @@ export async function activateCandidate(
       throw new ApiError(
         "VALIDATION_FAILED",
         "Activating a new file requires an explicit configSetId and member role.",
-        400,
         { candidateId: existing.id }
       );
     }
@@ -718,7 +717,7 @@ export async function activateCandidate(
     const stale = await db.transaction(async (tx) => {
       const marked = await markParameterFileCandidateStale(tx, { candidateId: input.candidateId });
       if (!marked) {
-        throw new ApiError("CONFLICT", "Candidate base changed and could not be marked stale.", 409, {
+        throw new ApiError("CONFLICT", "Candidate base changed and could not be marked stale.", {
           reason: "stale-base",
           candidateId: input.candidateId,
           expectedCurrentVersionId,
@@ -746,7 +745,6 @@ export async function activateCandidate(
     throw new ApiError(
       "CONFLICT",
       "Candidate base is stale; Working configuration was preserved. Recompute impact before activating.",
-      409,
       {
         reason: "stale-base",
         candidate: stale,
@@ -764,7 +762,7 @@ export async function activateCandidate(
       candidateId: input.candidateId
     });
     if (!locked || locked.status !== "ready") {
-      throw new ApiError("VALIDATION_FAILED", "Only ready candidates can be activated.", 400, {
+      throw new ApiError("VALIDATION_FAILED", "Only ready candidates can be activated.", {
         candidateId: input.candidateId,
         status: locked?.status
       });
@@ -777,7 +775,7 @@ export async function activateCandidate(
         fileId: locked.fileId
       });
       if (!file || file.projectId !== input.projectId) {
-        throw new ApiError("NOT_FOUND", "Project parameter file was not found.", 404, {
+        throw new ApiError("NOT_FOUND", "Project parameter file was not found.", {
           fileId: locked.fileId
         });
       }
@@ -810,7 +808,7 @@ export async function activateCandidate(
         configSetId: input.configSetId!
       });
       if (!configSet || configSet.projectId !== input.projectId) {
-        throw new ApiError("NOT_FOUND", "Config set not found.", 404, { configSetId: input.configSetId });
+        throw new ApiError("NOT_FOUND", "Config set not found.", { configSetId: input.configSetId });
       }
     }
 
@@ -869,7 +867,7 @@ export async function activateCandidate(
       baseVersionId: expectedCurrentVersionId
     });
     if (!activated) {
-      throw new ApiError("CONFLICT", "Candidate could not be activated from its current status.", 409, {
+      throw new ApiError("CONFLICT", "Candidate could not be activated from its current status.", {
         candidateId: locked.id
       });
     }

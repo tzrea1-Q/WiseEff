@@ -38,7 +38,7 @@ export type PilotReadinessEnv = {
 
 function requireAdminAccess(auth: AuthContext) {
   if (!auth.permissions.includes("admin:access")) {
-    throw new ApiError("FORBIDDEN", "Admin access required.", 403, { permission: "admin:access" });
+    throw new ApiError("FORBIDDEN", "Admin access required.", { permission: "admin:access" });
   }
 }
 
@@ -279,7 +279,7 @@ export function registerOperationsRoutes(
 
   router.get("/api/v1/operations/pilot-readiness", async (request) => {
     if (!options.getCurrentAuthContext) {
-      throw new ApiError("INTERNAL_ERROR", "Auth context resolver is required for pilot readiness checks.", 500);
+      throw new ApiError("INTERNAL_ERROR", "Auth context resolver is required for pilot readiness checks.");
     }
 
     const auth = await options.getCurrentAuthContext(request);

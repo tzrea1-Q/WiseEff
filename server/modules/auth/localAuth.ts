@@ -108,7 +108,7 @@ function bearerToken(authorization: string | string[] | undefined) {
   const header = Array.isArray(authorization) ? authorization[0] : authorization;
   const match = /^Bearer\s+(.+)$/i.exec(header ?? "");
   if (!match) {
-    throw new ApiError("UNAUTHENTICATED", "Authorization bearer token is required.", 401);
+    throw new ApiError("UNAUTHENTICATED", "Authorization bearer token is required.");
   }
   return match[1];
 }
@@ -121,7 +121,7 @@ function optionalBearerToken(authorization: string | string[] | undefined) {
 
 function assignedRoleForRegistration(roleId: BackendRoleId): BackendRoleId {
   if (roleId === "admin" || roleId === "platform-admin") {
-    throw new ApiError("VALIDATION_FAILED", "Admin registration is not allowed.", 400, { roleId });
+    throw new ApiError("VALIDATION_FAILED", "Admin registration is not allowed.", { roleId });
   }
 
   if (roleId === "hardware-committer") {
@@ -162,7 +162,7 @@ function requirePasswordPolicy(password: string) {
 async function verifyPassword(password: string, passwordHash: string) {
   const [scheme, salt, expectedHash] = passwordHash.split("$");
   if (scheme !== passwordHashPrefix || !salt || !expectedHash) {
-    throw new ApiError("UNAUTHENTICATED", "Username or password is incorrect.", 401);
+    throw new ApiError("UNAUTHENTICATED", "Username or password is incorrect.");
   }
 
   const expected = Buffer.from(expectedHash, "base64url");
@@ -271,13 +271,13 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
       const approvalRequired = approvalRequiredRoleIds.has(requestedRoleId);
       requirePasswordPolicy(input.password);
       if (!organizationName || !name) {
-        throw new ApiError("VALIDATION_FAILED", "Organization and user name are required.", 400);
+        throw new ApiError("VALIDATION_FAILED", "Organization and user name are required.");
       }
       if (!allowedLocalOrganizations.has(organizationName)) {
-        throw new ApiError("VALIDATION_FAILED", "Organization must be one of: 硬件部, 软件部.", 400, { organization: organizationName });
+        throw new ApiError("VALIDATION_FAILED", "Organization must be one of: 硬件部, 软件部.", { organization: organizationName });
       }
       if (!roleIds.has(requestedRoleId)) {
-        throw new ApiError("VALIDATION_FAILED", "Role is not supported.", 400, { roleId: requestedRoleId });
+        throw new ApiError("VALIDATION_FAILED", "Role is not supported.", { roleId: requestedRoleId });
       }
 
       return db.transaction(async (tx) => {
@@ -291,7 +291,7 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
           [username]
         );
         if (existing.rows.length > 0) {
-          throw new ApiError("CONFLICT", "Username is already registered.", 409, { username });
+          throw new ApiError("CONFLICT", "Username is already registered.", { username });
         }
 
         const registrationOrganization = resolveRegistrationOrganization(organizationName);
@@ -380,13 +380,13 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
       requireUsername(username);
       const user = await findUserForLogin(db, username);
       if (!user || !user.password_hash || !(await verifyPassword(input.password, user.password_hash))) {
-        throw new ApiError("UNAUTHENTICATED", "Username or password is incorrect.", 401);
+        throw new ApiError("UNAUTHENTICATED", "Username or password is incorrect.");
       }
       if (!user.is_active) {
         if (await hasPendingRegistrationRoleRequest(db, user.id)) {
-          throw new ApiError("FORBIDDEN", "User is pending Admin approval.", 403);
+          throw new ApiError("FORBIDDEN", "User is pending Admin approval.");
         }
-        throw new ApiError("FORBIDDEN", "User is inactive.", 403);
+        throw new ApiError("FORBIDDEN", "User is inactive.");
       }
 
       return db.transaction(async (tx) => {
@@ -420,7 +420,7 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
       );
       const session = result.rows[0];
       if (!session || session.revoked_at || new Date(session.expires_at).getTime() <= now().getTime()) {
-        throw new ApiError("UNAUTHENTICATED", "Session is not active.", 401);
+        throw new ApiError("UNAUTHENTICATED", "Session is not active.");
       }
       await db.query("update auth_sessions set last_used_at = $2 where id = $1", [session.id, now().toISOString()]);
       return getAuthContext(db, session.user_id);
@@ -452,7 +452,7 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
       const name = input.name?.trim();
       const title = input.title?.trim();
       if (name === "" || title === "") {
-        throw new ApiError("VALIDATION_FAILED", "Profile fields cannot be blank.", 400);
+        throw new ApiError("VALIDATION_FAILED", "Profile fields cannot be blank.");
       }
 
       return db.transaction(async (tx) => {

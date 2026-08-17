@@ -53,7 +53,7 @@ describe("createPlanningAgent", () => {
 
   it("surfaces a safe answer when a tool is forbidden", async () => {
     const { ApiError } = await import("../../../shared/http/errors");
-    const runTool = vi.fn().mockRejectedValue(new ApiError("FORBIDDEN", "Agent project access is required.", 403));
+    const runTool = vi.fn().mockRejectedValue(new ApiError("FORBIDDEN", "Agent project access is required."));
     const model = fakeModelSequence([
       { toolCalls: [toolCall("perception.getProjectOverview", { projectId: "secret" })] },
       { content: "You are not permitted to access that project." }
@@ -277,7 +277,7 @@ describe("createPlanningAgent", () => {
     const checkpointer = createXiaozeCheckpointer();
     const approvalResolver = {
       resolveApproval: vi.fn().mockRejectedValue(
-        new ApiError("CONFLICT", "请刷新后基于本轮最新工作版本继续编辑。", 409, {
+        new ApiError("CONFLICT", "请刷新后基于本轮最新工作版本继续编辑。", {
           reason: "stale-working-tip"
         })
       )

@@ -99,7 +99,7 @@ function parseMergedValue(newValue: string): unknown {
 
 function setNestedJsonLeaf(target: Record<string, unknown>, pathSegments: string[], value: unknown) {
   if (pathSegments.length === 0) {
-    throw new ApiError("VALIDATION_FAILED", "Parameter source node path is empty.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Parameter source node path is empty.");
   }
 
   let cursor: Record<string, unknown> = target;
@@ -107,7 +107,7 @@ function setNestedJsonLeaf(target: Record<string, unknown>, pathSegments: string
     const segment = pathSegments[index];
     const next = cursor[segment];
     if (next === null || typeof next !== "object" || Array.isArray(next)) {
-      throw new ApiError("CONFLICT", "Cannot write back to non-object JSON path segment.", 409, {
+      throw new ApiError("CONFLICT", "Cannot write back to non-object JSON path segment.", {
         segment,
         nodePath: pathSegments.join("/")
       });
@@ -125,7 +125,7 @@ function patchByFormat(content: string, format: ParameterFileFormat, nodePath: s
   if (format === "dts") {
     return patchDtsProperty(content, nodePath, newValue);
   }
-  throw new ApiError("VALIDATION_FAILED", "Unsupported parameter file format for writeback.", 400, { format });
+  throw new ApiError("VALIDATION_FAILED", "Unsupported parameter file format for writeback.", { format });
 }
 
 function contentTypeForFormat(format: ParameterFileFormat) {
@@ -227,7 +227,7 @@ async function resolveLockedWritebackContext(
       : null);
 
   if (!persistedLock) {
-    throw new ApiError("CONFLICT", "Exact writeback requires locked merge identity.", 409, {
+    throw new ApiError("CONFLICT", "Exact writeback requires locked merge identity.", {
       reason: "missing-write-lock",
       changeRequestId: input.changeRequestId,
       projectParameterBindingId: input.projectParameterBindingId,
@@ -235,7 +235,7 @@ async function resolveLockedWritebackContext(
   }
 
   if (!input.projectParameterBindingId) {
-    throw new ApiError("CONFLICT", "Semantic writeback requires project parameter binding.", 409, {
+    throw new ApiError("CONFLICT", "Semantic writeback requires project parameter binding.", {
       reason: "missing-binding",
     });
   }
@@ -250,7 +250,7 @@ async function resolveLockedWritebackContext(
     resolved.sourceFileVersionId !== persistedLock.sourceFileVersionId ||
     resolved.expectedChecksum !== persistedLock.expectedChecksum
   ) {
-    throw new ApiError("CONFLICT", "Persisted write lock no longer matches binding topology.", 409, {
+    throw new ApiError("CONFLICT", "Persisted write lock no longer matches binding topology.", {
       reason: "stale-write-lock",
     });
   }
@@ -267,7 +267,7 @@ async function resolveLockedWritebackContext(
   );
   const parameterSpecVersionId = specVersion.rows[0]?.id;
   if (!parameterSpecVersionId) {
-    throw new ApiError("CONFLICT", "Parameter spec version missing for locked writeback.", 409, {
+    throw new ApiError("CONFLICT", "Parameter spec version missing for locked writeback.", {
       reason: "missing-spec-version",
       parameterSpecId: input.parameterSpecId,
     });
@@ -303,7 +303,7 @@ async function resolveLockedEnablementWritebackContext(
       : null);
 
   if (!persistedLock) {
-    throw new ApiError("CONFLICT", "Exact enablement writeback requires locked merge identity.", 409, {
+    throw new ApiError("CONFLICT", "Exact enablement writeback requires locked merge identity.", {
       reason: "missing-write-lock",
       changeRequestId: input.changeRequestId,
       logicalNodeId: input.logicalNodeId,
@@ -319,7 +319,7 @@ async function resolveLockedEnablementWritebackContext(
     resolved.sourceFileVersionId !== persistedLock.sourceFileVersionId ||
     resolved.expectedChecksum !== persistedLock.expectedChecksum
   ) {
-    throw new ApiError("CONFLICT", "Persisted enablement write lock no longer matches topology.", 409, {
+    throw new ApiError("CONFLICT", "Persisted enablement write lock no longer matches topology.", {
       reason: "stale-write-lock",
     });
   }
@@ -380,7 +380,7 @@ async function createWritebackAudit(
 export function patchJsonValue(content: string, nodePath: string, newValue: string): Buffer {
   const parsed = JSON.parse(content) as unknown;
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new ApiError("VALIDATION_FAILED", "JSON parameter file root must be an object.", 400);
+    throw new ApiError("VALIDATION_FAILED", "JSON parameter file root must be an object.");
   }
 
   const pathSegments = splitNodePath(nodePath);
@@ -392,7 +392,7 @@ export function patchJsonValue(content: string, nodePath: string, newValue: stri
 export function patchDtsProperty(content: string, nodePath: string, newValue: string): Buffer {
   const pathSegments = splitNodePath(nodePath);
   if (pathSegments.length < 2) {
-    throw new ApiError("VALIDATION_FAILED", "DTS writeback requires module/property node path.", 400, { nodePath });
+    throw new ApiError("VALIDATION_FAILED", "DTS writeback requires module/property node path.", { nodePath });
   }
 
   const propertyName = pathSegments[pathSegments.length - 1];
@@ -402,7 +402,7 @@ export function patchDtsProperty(content: string, nodePath: string, newValue: st
   try {
     doc = parseDts(content);
   } catch (error) {
-    throw new ApiError("VALIDATION_FAILED", "Failed to parse DTS content for writeback.", 400, {
+    throw new ApiError("VALIDATION_FAILED", "Failed to parse DTS content for writeback.", {
       nodePath,
       cause: error instanceof Error ? error.message : String(error)
     });
@@ -411,7 +411,7 @@ export function patchDtsProperty(content: string, nodePath: string, newValue: st
   const resolved = resolveDts(doc);
   const node = resolved.nodes.find((entry) => entry.nodePath === targetNodePath);
   if (!node) {
-    throw new ApiError("CONFLICT", "Unable to locate DTS module path for writeback.", 409, {
+    throw new ApiError("CONFLICT", "Unable to locate DTS module path for writeback.", {
       nodePath,
       missingSegment: targetNodePath
     });
@@ -419,14 +419,14 @@ export function patchDtsProperty(content: string, nodePath: string, newValue: st
 
   const property = node.properties.find((entry) => entry.name === propertyName);
   if (!property) {
-    throw new ApiError("CONFLICT", "Unable to locate DTS property for writeback.", 409, {
+    throw new ApiError("CONFLICT", "Unable to locate DTS property for writeback.", {
       nodePath,
       propertyName
     });
   }
 
   if (property.valueType === "bool" || property.valueType === "empty") {
-    throw new ApiError("CONFLICT", "Cannot write a value onto a boolean/empty DTS property.", 409, {
+    throw new ApiError("CONFLICT", "Cannot write a value onto a boolean/empty DTS property.", {
       nodePath,
       propertyName,
       valueType: property.valueType
@@ -535,7 +535,7 @@ export async function writebackMergedParameterValue(
 > {
   if (parameterIdentityMode() === "semantic") {
     if (!input.projectParameterBindingId) {
-      throw new ApiError("CONFLICT", "Semantic writeback requires bound source file and occurrence.", 409, {
+      throw new ApiError("CONFLICT", "Semantic writeback requires bound source file and occurrence.", {
         projectId: input.projectId,
         projectParameterBindingId: input.projectParameterBindingId,
       });
@@ -601,7 +601,7 @@ export async function writebackMergedParameterValue(
 
   const source = await loadWritebackSource(db, auth, input);
   if (!source) {
-    throw new ApiError("NOT_FOUND", "Project parameter value for writeback was not found.", 404, {
+    throw new ApiError("NOT_FOUND", "Project parameter value for writeback was not found.", {
       projectId: input.projectId,
       parameterDefinitionId: input.parameterDefinitionId
     });
@@ -625,19 +625,19 @@ export async function writebackMergedParameterValue(
     fileName: source.sourceFileName
   });
   if (!file) {
-    throw new ApiError("NOT_FOUND", "Source project parameter file was not found for writeback.", 404, {
+    throw new ApiError("NOT_FOUND", "Source project parameter file was not found for writeback.", {
       sourceFileName: source.sourceFileName
     });
   }
   if (!file.currentVersionId) {
-    throw new ApiError("CONFLICT", "Project parameter file has no current version for writeback.", 409, {
+    throw new ApiError("CONFLICT", "Project parameter file has no current version for writeback.", {
       fileId: file.id
     });
   }
 
   const currentVersion = await getFileVersionById(db, { versionId: file.currentVersionId });
   if (!currentVersion || currentVersion.fileId !== file.id) {
-    throw new ApiError("NOT_FOUND", "Current project parameter file version was not found for writeback.", 404, {
+    throw new ApiError("NOT_FOUND", "Current project parameter file version was not found for writeback.", {
       versionId: file.currentVersionId
     });
   }

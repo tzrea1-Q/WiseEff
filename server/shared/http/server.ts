@@ -125,7 +125,7 @@ async function readBody(request: IncomingMessage): Promise<unknown> {
   if (contentType === "multipart/form-data") {
     const boundary = getMultipartBoundary(getContentTypeHeader(request));
     if (!boundary) {
-      throw new ApiError("VALIDATION_FAILED", "Multipart boundary is required.", 400);
+      throw new ApiError("VALIDATION_FAILED", "Multipart boundary is required.");
     }
     return parseMultipartBody(bytes, boundary);
   }

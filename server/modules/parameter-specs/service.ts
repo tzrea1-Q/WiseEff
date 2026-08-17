@@ -67,13 +67,13 @@ function isPlatformSuperAdmin(auth: AuthContext) {
 }
 function requireCanView(auth: AuthContext) {
   if (!canViewParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter view permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter view permission is required.");
   }
 }
 
 function requireCanAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter admin permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter admin permission is required.");
   }
 }
 
@@ -165,7 +165,7 @@ function decodeReviewCursor(cursor: string | undefined): SpecReviewTaskListCurso
     }
     return { createdAt: parsed.createdAt, id: parsed.id };
   } catch {
-    throw new ApiError("VALIDATION_FAILED", "Invalid review task cursor.", 400, { cursor });
+    throw new ApiError("VALIDATION_FAILED", "Invalid review task cursor.", { cursor });
   }
 }
 
@@ -215,7 +215,7 @@ export async function getParameterSpec(
     specId,
   });
   if (!row) {
-    throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, { specId });
+    throw new ApiError("NOT_FOUND", "Parameter spec was not found.", { specId });
   }
   const cutover = await loadOpenCutoverSummaryForSpec(db, auth.organization.id, specId);
   return { item: toParameterSpecDetailDto(row, cutover) };
@@ -273,7 +273,7 @@ async function loadOccurrenceForDraft(
   );
   const row = result.rows[0];
   if (!row) {
-    throw new ApiError("NOT_FOUND", "Property occurrence was not found for draft spec creation.", 404, input);
+    throw new ApiError("NOT_FOUND", "Property occurrence was not found for draft spec creation.", input);
   }
   return { astJson: row.ast_json, rawText: row.raw_text ?? null };
 }
@@ -312,7 +312,7 @@ export async function resolveSpecReviewTask(
         taskId: input.taskId,
       });
       if (!known) {
-        throw new ApiError("NOT_FOUND", "Parameter spec review task was not found.", 404, {
+        throw new ApiError("NOT_FOUND", "Parameter spec review task was not found.", {
           taskId: input.taskId,
         });
       }
@@ -333,7 +333,7 @@ export async function resolveSpecReviewTask(
           reason: known.reason,
         };
       }
-      throw new ApiError("CONFLICT", "Parameter spec review task already resolved with a different choice.", 409, {
+      throw new ApiError("CONFLICT", "Parameter spec review task already resolved with a different choice.", {
         taskId: input.taskId,
         status: known.status,
         parameterSpecId: known.parameterSpecId ?? null,
@@ -362,7 +362,6 @@ export async function resolveSpecReviewTask(
         throw new ApiError(
           "VALIDATION_FAILED",
           "Cannot create a new spec when review task candidates exist; select from the library.",
-          400,
           { taskId: input.taskId },
         );
       }
@@ -371,7 +370,6 @@ export async function resolveSpecReviewTask(
         throw new ApiError(
           "VALIDATION_FAILED",
           "Review task evidence is missing propertyKey required to create a spec.",
-          400,
           { taskId: input.taskId },
         );
       }
@@ -392,7 +390,6 @@ export async function resolveSpecReviewTask(
         throw new ApiError(
           "CONFLICT",
           "Cannot create a manual spec without resolvable attribution subject evidence (compatible).",
-          409,
           { taskId: input.taskId },
         );
       }
@@ -447,7 +444,7 @@ export async function resolveSpecReviewTask(
 
     if (input.decision === "resolved") {
       if (!parameterSpecId) {
-        throw new ApiError("VALIDATION_FAILED", "parameterSpecId is required when resolving a review task.", 400);
+        throw new ApiError("VALIDATION_FAILED", "parameterSpecId is required when resolving a review task.");
       }
       const allowedSpec = await requireOrgOrGlobalSpec(tx, {
         organizationId: auth.organization.id,
@@ -524,7 +521,7 @@ export async function resolveSpecReviewTask(
       reason: input.reason,
     });
     if (!resolved) {
-      throw new ApiError("CONFLICT", "Parameter spec review task is not open.", 409, { taskId: input.taskId });
+      throw new ApiError("CONFLICT", "Parameter spec review task is not open.", { taskId: input.taskId });
     }
 
     const openReviewsRemaining = await countOpenSpecReviewTasksForRevision(tx, {
@@ -732,12 +729,12 @@ export async function createParameterSpec(
 
   const propertyKey = input.propertyKey.trim();
   if (!propertyKey) {
-    throw new ApiError("VALIDATION_FAILED", "propertyKey is required.", 400);
+    throw new ApiError("VALIDATION_FAILED", "propertyKey is required.");
   }
   assertNonStructuralPropertyKey(propertyKey);
 
   if (typeof input.attributionSubjectId !== "string" || !input.attributionSubjectId.trim()) {
-    throw new ApiError("VALIDATION_FAILED", "attributionSubjectId is required.", 400);
+    throw new ApiError("VALIDATION_FAILED", "attributionSubjectId is required.");
   }
   const attributionSubjectId = input.attributionSubjectId.trim();
 
@@ -758,7 +755,7 @@ export async function createParameterSpec(
     );
     const subjectRow = subject.rows[0];
     if (!subjectRow) {
-      throw new ApiError("NOT_FOUND", "Attribution subject was not found.", 404, {
+      throw new ApiError("NOT_FOUND", "Attribution subject was not found.", {
         attributionSubjectId,
       });
     }
@@ -769,7 +766,6 @@ export async function createParameterSpec(
       throw new ApiError(
         "VALIDATION_FAILED",
         "Parameter definitions must bind to a driver registration or node-type definition.",
-        400,
         { subjectKind: subjectRow.subject_kind },
       );
     }
@@ -790,7 +786,6 @@ export async function createParameterSpec(
       throw new ApiError(
         "CONFLICT",
         "A parameter definition already exists for this subject and property key.",
-        409,
         {
           parameterSpecId: duplicate.rows[0].id,
           attributionSubjectId,
@@ -815,7 +810,6 @@ export async function createParameterSpec(
       throw new ApiError(
         "CONFLICT",
         "An organization definition would override a platform definition; set overridePlatform to confirm.",
-        409,
         {
           platformParameterSpecId: platformTwin.rows[0].id,
           attributionSubjectId,
@@ -911,7 +905,7 @@ export async function createParameterSpec(
       specId: ids.parameterSpecId,
     });
     if (!refreshed) {
-      throw new ApiError("NOT_FOUND", "Parameter spec was not found after create.", 404, {
+      throw new ApiError("NOT_FOUND", "Parameter spec was not found after create.", {
         specId: ids.parameterSpecId,
       });
     }
@@ -933,19 +927,19 @@ export async function activateParameterSpec(
       parameterSpecId: input.specId,
     });
     if (spec.lifecycle === "deprecated") {
-      throw new ApiError("CONFLICT", "Deprecated parameter specs cannot be activated.", 409, {
+      throw new ApiError("CONFLICT", "Deprecated parameter specs cannot be activated.", {
         parameterSpecId: input.specId,
         lifecycle: spec.lifecycle,
       });
     }
     if (spec.lifecycle !== "draft" && spec.lifecycle !== "active") {
-      throw new ApiError("CONFLICT", "Only draft or active parameter specs can be activated.", 409, {
+      throw new ApiError("CONFLICT", "Only draft or active parameter specs can be activated.", {
         parameterSpecId: input.specId,
         lifecycle: spec.lifecycle,
       });
     }
     if (!spec.currentVersionId) {
-      throw new ApiError("VALIDATION_FAILED", "Parameter spec has no version to activate.", 400, {
+      throw new ApiError("VALIDATION_FAILED", "Parameter spec has no version to activate.", {
         parameterSpecId: input.specId,
       });
     }
@@ -966,7 +960,6 @@ export async function activateParameterSpec(
         throw new ApiError(
           "VALIDATION_FAILED",
           "Subject-bound definitions require a property key before activation.",
-          400,
           { parameterSpecId: input.specId },
         );
       }
@@ -979,7 +972,6 @@ export async function activateParameterSpec(
         throw new ApiError(
           "VALIDATION_FAILED",
           "Activation requires an explicit coverage claim linking this definition to schema/overlay coverage.",
-          400,
           { parameterSpecId: input.specId, attributionSubjectId: spec.attributionSubjectId },
         );
       }
@@ -1219,7 +1211,7 @@ export async function activateParameterSpec(
       specId: input.specId,
     });
     if (!refreshed) {
-      throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, { specId: input.specId });
+      throw new ApiError("NOT_FOUND", "Parameter spec was not found.", { specId: input.specId });
     }
     return { item: toParameterSpecDetailDto(refreshed) };
   });
@@ -1245,7 +1237,7 @@ export async function updateParameterSpec(
           parameterSpecId: input.specId,
         });
     if (spec.lifecycle === "draft") {
-      throw new ApiError("CONFLICT", "Draft specs must be activated, not updated.", 409, {
+      throw new ApiError("CONFLICT", "Draft specs must be activated, not updated.", {
         parameterSpecId: input.specId,
         lifecycle: spec.lifecycle,
       });
@@ -1254,7 +1246,7 @@ export async function updateParameterSpec(
     const nextValueShape = input.valueShape ?? spec.valueShape ?? {};
     const nextConstraints = input.constraints;
     if (!input.documentation.trim()) {
-      throw new ApiError("VALIDATION_FAILED", "documentation is required.", 400);
+      throw new ApiError("VALIDATION_FAILED", "documentation is required.");
     }
     if (
       input.valueShape !== undefined &&
@@ -1341,7 +1333,7 @@ export async function updateParameterSpec(
       specId: input.specId,
     });
     if (!refreshed) {
-      throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, { specId: input.specId });
+      throw new ApiError("NOT_FOUND", "Parameter spec was not found.", { specId: input.specId });
     }
     return { item: toParameterSpecDetailDto(refreshed) };
   });
@@ -1367,7 +1359,7 @@ export async function deprecateParameterSpec(
           parameterSpecId: input.specId,
         });
     if (spec.lifecycle !== "draft" && spec.lifecycle !== "active") {
-      throw new ApiError("CONFLICT", "Only draft or active parameter specs can be deprecated.", 409, {
+      throw new ApiError("CONFLICT", "Only draft or active parameter specs can be deprecated.", {
         parameterSpecId: input.specId,
         lifecycle: spec.lifecycle,
       });
@@ -1404,7 +1396,7 @@ export async function deprecateParameterSpec(
       specId: input.specId,
     });
     if (!refreshed) {
-      throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, { specId: input.specId });
+      throw new ApiError("NOT_FOUND", "Parameter spec was not found.", { specId: input.specId });
     }
     return { item: toParameterSpecDetailDto(refreshed) };
   });
@@ -1429,7 +1421,7 @@ export async function restoreParameterSpec(
           parameterSpecId: input.specId,
         });
     if (spec.lifecycle !== "deprecated") {
-      throw new ApiError("CONFLICT", "Only deprecated parameter specs can be restored.", 409, {
+      throw new ApiError("CONFLICT", "Only deprecated parameter specs can be restored.", {
         parameterSpecId: input.specId,
         lifecycle: spec.lifecycle,
       });
@@ -1480,7 +1472,7 @@ export async function restoreParameterSpec(
       specId: input.specId,
     });
     if (!refreshed) {
-      throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, { specId: input.specId });
+      throw new ApiError("NOT_FOUND", "Parameter spec was not found.", { specId: input.specId });
     }
     return { item: toParameterSpecDetailDto(refreshed) };
   });
@@ -1522,7 +1514,7 @@ async function assertAttributionSubjectUsable(
   );
   const subjectRow = subject.rows[0];
   if (!subjectRow) {
-    throw new ApiError("NOT_FOUND", "Attribution subject was not found.", 404, {
+    throw new ApiError("NOT_FOUND", "Attribution subject was not found.", {
       attributionSubjectId: input.attributionSubjectId,
     });
   }
@@ -1533,7 +1525,6 @@ async function assertAttributionSubjectUsable(
     throw new ApiError(
       "VALIDATION_FAILED",
       "Parameter definitions must bind to a driver registration or node-type definition.",
-      400,
       { subjectKind: subjectRow.subject_kind },
     );
   }
@@ -1561,7 +1552,6 @@ async function assertIdentityTripleAvailable(
     throw new ApiError(
       "CONFLICT",
       "A parameter definition already exists for this subject and property key.",
-      409,
       {
         parameterSpecId: conflict.parameterSpecId,
         lifecycle: blocker?.lifecycle ?? null,
@@ -1593,7 +1583,6 @@ export async function reattributeParameterSpec(
       throw new ApiError(
         "VALIDATION_FAILED",
         "Parameter definition is missing property_key; cannot reattribute.",
-        400,
         { parameterSpecId: input.specId },
       );
     }
@@ -1664,7 +1653,7 @@ export async function reattributeParameterSpec(
       specId: input.specId,
     });
     if (!refreshed) {
-      throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, { specId: input.specId });
+      throw new ApiError("NOT_FOUND", "Parameter spec was not found.", { specId: input.specId });
     }
     return { item: toParameterSpecDetailDto(refreshed) };
   });
@@ -1692,7 +1681,6 @@ export async function renameParameterSpecPropertyKey(
       throw new ApiError(
         "VALIDATION_FAILED",
         "Parameter definition is missing attribution_subject_id; cannot rename.",
-        400,
         { parameterSpecId: input.specId },
       );
     }
@@ -1709,7 +1697,6 @@ export async function renameParameterSpecPropertyKey(
       throw new ApiError(
         "CONFLICT",
         `Cannot rename property_key while ${referenceCount} project binding(s) reference this definition.`,
-        409,
         {
           parameterSpecId: input.specId,
           referenceCount,
@@ -1776,7 +1763,7 @@ export async function renameParameterSpecPropertyKey(
       specId: input.specId,
     });
     if (!refreshed) {
-      throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, { specId: input.specId });
+      throw new ApiError("NOT_FOUND", "Parameter spec was not found.", { specId: input.specId });
     }
     return { item: toParameterSpecDetailDto(refreshed) };
   });
@@ -1794,7 +1781,7 @@ export async function getParameterSpecVersionCutoverImpact(
   });
   const cutover = await loadOpenCutoverSummaryForSpec(db, auth.organization.id, specId);
   if (!cutover) {
-    throw new ApiError("NOT_FOUND", "No open version cutover run for this spec.", 404, { specId });
+    throw new ApiError("NOT_FOUND", "No open version cutover run for this spec.", { specId });
   }
   return { item: cutover };
 }
@@ -1815,7 +1802,7 @@ export async function prepareParameterSpecVersionCutover(
 
     const runId = await resolveOpenCutoverRunId(tx, auth.organization.id, input.specId);
     if (!runId) {
-      throw new ApiError("NOT_FOUND", "No open version cutover run for this spec.", 404, {
+      throw new ApiError("NOT_FOUND", "No open version cutover run for this spec.", {
         specId: input.specId,
       });
     }
@@ -1833,7 +1820,7 @@ export async function prepareParameterSpecVersionCutover(
     );
     const hit = run.rows[0];
     if (!hit) {
-      throw new ApiError("NOT_FOUND", "Version cutover run was not found.", 404, { runId });
+      throw new ApiError("NOT_FOUND", "Version cutover run was not found.", { runId });
     }
 
     if (hit.status === "ready") {
@@ -1842,14 +1829,14 @@ export async function prepareParameterSpecVersionCutover(
         specId: input.specId,
       });
       if (!refreshed) {
-        throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, { specId: input.specId });
+        throw new ApiError("NOT_FOUND", "Parameter spec was not found.", { specId: input.specId });
       }
       const cutover = await loadOpenCutoverSummaryForSpec(tx, auth.organization.id, input.specId);
       return { item: toParameterSpecDetailDto(refreshed, cutover) };
     }
 
     if (hit.status !== "preparing") {
-      throw new ApiError("CONFLICT", "Cutover run cannot be prepared from its current status.", 409, {
+      throw new ApiError("CONFLICT", "Cutover run cannot be prepared from its current status.", {
         runId,
         status: hit.status,
       });
@@ -1943,7 +1930,7 @@ export async function prepareParameterSpecVersionCutover(
       specId: input.specId,
     });
     if (!refreshed) {
-      throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, { specId: input.specId });
+      throw new ApiError("NOT_FOUND", "Parameter spec was not found.", { specId: input.specId });
     }
     const cutover = await loadOpenCutoverSummaryForSpec(tx, auth.organization.id, input.specId);
     return { item: toParameterSpecDetailDto(refreshed, cutover) };
@@ -1971,7 +1958,7 @@ export async function finalizeParameterSpecVersionCutoverForSpec(
   );
   const hit = runId.rows[0];
   if (!hit) {
-    throw new ApiError("NOT_FOUND", "No open version cutover run for this spec.", 404, {
+    throw new ApiError("NOT_FOUND", "No open version cutover run for this spec.", {
       specId: input.specId,
     });
   }
@@ -2007,7 +1994,7 @@ export async function finalizeParameterSpecVersionCutover(
     );
     const hit = run.rows[0];
     if (!hit) {
-      throw new ApiError("NOT_FOUND", "Version cutover run was not found.", 404, { runId: input.runId });
+      throw new ApiError("NOT_FOUND", "Version cutover run was not found.", { runId: input.runId });
     }
 
     if (hit.status === "finalized") {
@@ -2016,7 +2003,7 @@ export async function finalizeParameterSpecVersionCutover(
         specId: hit.parameter_spec_id,
       });
       if (!refreshed) {
-        throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, {
+        throw new ApiError("NOT_FOUND", "Parameter spec was not found.", {
           specId: hit.parameter_spec_id,
         });
       }
@@ -2024,7 +2011,7 @@ export async function finalizeParameterSpecVersionCutover(
     }
 
     if (hit.status !== "preparing" && hit.status !== "ready") {
-      throw new ApiError("CONFLICT", "Cutover run cannot be finalized from its current status.", 409, {
+      throw new ApiError("CONFLICT", "Cutover run cannot be finalized from its current status.", {
         runId: input.runId,
         status: hit.status,
       });
@@ -2043,7 +2030,6 @@ export async function finalizeParameterSpecVersionCutover(
       throw new ApiError(
         "CONFLICT",
         "Cutover cannot finalize while binding items remain pending or incompatible.",
-        409,
         { runId: input.runId, blockingItems: Number(blockers.rows[0]?.count ?? 0) },
       );
     }
@@ -2128,7 +2114,7 @@ export async function finalizeParameterSpecVersionCutover(
       specId: hit.parameter_spec_id,
     });
     if (!refreshed) {
-      throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, {
+      throw new ApiError("NOT_FOUND", "Parameter spec was not found.", {
         specId: hit.parameter_spec_id,
       });
     }

@@ -234,7 +234,7 @@ describe("parameter routes", () => {
   it("forbidden submission returns FORBIDDEN", async () => {
     const db = makeDb();
     vi.mocked(service.submitParameterChanges).mockRejectedValue(
-      new ApiError("FORBIDDEN", "Parameter edit permission is required.", 403)
+      new ApiError("FORBIDDEN", "Parameter edit permission is required.")
     );
 
     const response = await requestJson<{ error: { code: string } }>(makeServer({ db }), "/api/v1/parameter-submission-rounds", {
@@ -824,7 +824,7 @@ describe("parameter routes", () => {
   it("POST /api/v1/parameter-modules requires admin permission", async () => {
     const db = makeDb();
     vi.mocked(service.createParameterModuleForAuth).mockRejectedValue(
-      new ApiError("FORBIDDEN", "Parameter admin permission is required.", 403)
+      new ApiError("FORBIDDEN", "Parameter admin permission is required.")
     );
 
     const response = await requestJson<{ error: { code: string } }>(

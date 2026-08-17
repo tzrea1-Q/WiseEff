@@ -1094,7 +1094,7 @@ describe("debugging routes", () => {
   it("forbidden writes return FORBIDDEN", async () => {
     const db = makeDb();
     const gateway = makeGateway();
-    serviceMocks.writeNode.mockRejectedValue(new ApiError("FORBIDDEN", "Missing permission: debugging:write.", 403));
+    serviceMocks.writeNode.mockRejectedValue(new ApiError("FORBIDDEN", "Missing permission: debugging:write."));
 
     const response = await requestJson<{ error: { code: string } }>(
       makeServer({ db, gateway }),

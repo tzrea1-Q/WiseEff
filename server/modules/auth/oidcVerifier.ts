@@ -41,7 +41,7 @@ function bearerToken(authorization: string | string[] | undefined) {
   const header = Array.isArray(authorization) ? authorization[0] : authorization;
   const match = /^Bearer\s+(.+)$/i.exec(header ?? "");
   if (!match) {
-    throw new ApiError("UNAUTHENTICATED", "Authorization bearer token is required.", 401);
+    throw new ApiError("UNAUTHENTICATED", "Authorization bearer token is required.");
   }
   return match[1];
 }
@@ -49,7 +49,7 @@ function bearerToken(authorization: string | string[] | undefined) {
 function parseToken(token: string) {
   const [headerPart, payloadPart, signaturePart, extra] = token.split(".");
   if (!headerPart || !payloadPart || !signaturePart || extra !== undefined) {
-    throw new ApiError("UNAUTHENTICATED", "OIDC token format is invalid.", 401);
+    throw new ApiError("UNAUTHENTICATED", "OIDC token format is invalid.");
   }
 
   return {
@@ -69,7 +69,7 @@ function parseJwtPart(part: string, errorMessage: string) {
     }
     return parsed as Record<string, unknown>;
   } catch {
-    throw new ApiError("UNAUTHENTICATED", errorMessage, 401);
+    throw new ApiError("UNAUTHENTICATED", errorMessage);
   }
 }
 
@@ -95,24 +95,24 @@ function hasAudience(claims: Record<string, unknown>, audience: string) {
 
 function validateClaims(claims: Record<string, unknown>, options: Pick<OidcVerifierOptions, "issuer" | "audience" | "now">) {
   if (stringClaim(claims, "iss") !== options.issuer) {
-    throw new ApiError("UNAUTHENTICATED", "OIDC token issuer is not trusted.", 401);
+    throw new ApiError("UNAUTHENTICATED", "OIDC token issuer is not trusted.");
   }
   if (!hasAudience(claims, options.audience)) {
-    throw new ApiError("UNAUTHENTICATED", "OIDC token audience is not accepted.", 401);
+    throw new ApiError("UNAUTHENTICATED", "OIDC token audience is not accepted.");
   }
 
   const exp = numberClaim(claims, "exp");
   if (exp === undefined) {
-    throw new ApiError("UNAUTHENTICATED", "OIDC token expiration claim is required.", 401);
+    throw new ApiError("UNAUTHENTICATED", "OIDC token expiration claim is required.");
   }
   const nowSeconds = Math.floor((options.now?.() ?? new Date()).getTime() / 1000);
   if (exp <= nowSeconds) {
-    throw new ApiError("UNAUTHENTICATED", "OIDC token has expired.", 401);
+    throw new ApiError("UNAUTHENTICATED", "OIDC token has expired.");
   }
 
   const nbf = numberClaim(claims, "nbf");
   if (nbf !== undefined && nbf > nowSeconds) {
-    throw new ApiError("UNAUTHENTICATED", "OIDC token is not valid yet.", 401);
+    throw new ApiError("UNAUTHENTICATED", "OIDC token is not valid yet.");
   }
 }
 
@@ -121,20 +121,20 @@ function parseRoles(value: unknown): RoleBinding[] {
     return [];
   }
   if (!Array.isArray(value)) {
-    throw new ApiError("UNAUTHENTICATED", "OIDC token role claims are invalid.", 401);
+    throw new ApiError("UNAUTHENTICATED", "OIDC token role claims are invalid.");
   }
 
   return value.map((role) => {
     if (!role || typeof role !== "object" || Array.isArray(role)) {
-      throw new ApiError("UNAUTHENTICATED", "OIDC token role claims are invalid.", 401);
+      throw new ApiError("UNAUTHENTICATED", "OIDC token role claims are invalid.");
     }
     const roleId = (role as { roleId?: unknown }).roleId;
     const projectId = (role as { projectId?: unknown }).projectId;
     if (typeof roleId !== "string" || !roleIds.has(roleId as BackendRoleId)) {
-      throw new ApiError("UNAUTHENTICATED", "OIDC token role claims are invalid.", 401);
+      throw new ApiError("UNAUTHENTICATED", "OIDC token role claims are invalid.");
     }
     if (projectId !== undefined && projectId !== null && typeof projectId !== "string") {
-      throw new ApiError("UNAUTHENTICATED", "OIDC token role claims are invalid.", 401);
+      throw new ApiError("UNAUTHENTICATED", "OIDC token role claims are invalid.");
     }
 
     return { roleId: roleId as BackendRoleId, projectId: projectId ?? null };
@@ -159,7 +159,7 @@ function verifyJwtSignature(input: { headerPart: string; payloadPart: string; si
     Buffer.from(input.signaturePart, "base64url")
   );
   if (!valid) {
-    throw new ApiError("UNAUTHENTICATED", "OIDC token signature is invalid.", 401);
+    throw new ApiError("UNAUTHENTICATED", "OIDC token signature is invalid.");
   }
 }
 
@@ -172,7 +172,7 @@ export function createOidcVerifier(options: OidcVerifierOptions): TokenVerifier 
       return jwksCache;
     }
     if (!options.fetchJwks) {
-      throw new ApiError("UNAUTHENTICATED", "OIDC JWKS is not configured.", 401);
+      throw new ApiError("UNAUTHENTICATED", "OIDC JWKS is not configured.");
     }
     if (!jwksUri && options.discovery) {
       jwksUri = (await options.discovery()).jwksUri;
@@ -185,7 +185,7 @@ export function createOidcVerifier(options: OidcVerifierOptions): TokenVerifier 
     async verify(authorization) {
       const parsed = parseToken(bearerToken(authorization));
       if (parsed.header.alg !== "RS256") {
-        throw new ApiError("UNAUTHENTICATED", "OIDC token algorithm is not accepted.", 401);
+        throw new ApiError("UNAUTHENTICATED", "OIDC token algorithm is not accepted.");
       }
 
       let jwks = await loadJwks();
@@ -195,7 +195,7 @@ export function createOidcVerifier(options: OidcVerifierOptions): TokenVerifier 
         jwk = keyForKid(jwks, stringClaim(parsed.header, "kid"));
       }
       if (!jwk) {
-        throw new ApiError("UNAUTHENTICATED", "OIDC signing key was not found.", 401);
+        throw new ApiError("UNAUTHENTICATED", "OIDC signing key was not found.");
       }
 
       verifyJwtSignature({ ...parsed, jwk });
@@ -204,7 +204,7 @@ export function createOidcVerifier(options: OidcVerifierOptions): TokenVerifier 
       const organizationId = stringClaim(parsed.claims, "organization_id");
       const subject = stringClaim(parsed.claims, "sub");
       if (!subject || !organizationId) {
-        throw new ApiError("UNAUTHENTICATED", "OIDC subject and organization claims are required.", 401);
+        throw new ApiError("UNAUTHENTICATED", "OIDC subject and organization claims are required.");
       }
 
       return {

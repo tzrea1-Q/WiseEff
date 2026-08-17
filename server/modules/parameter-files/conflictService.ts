@@ -129,7 +129,7 @@ export async function resolveParameterFileConflict(
   context: { requestId?: string } = {}
 ) {
   if (!canReviewParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter review permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter review permission is required.");
   }
 
   const reason = normalizeConflictReason(input.reason);
@@ -140,7 +140,7 @@ export async function resolveParameterFileConflict(
       conflictId: input.conflictId
     });
     if (!conflict) {
-      throw new ApiError("NOT_FOUND", "Open parameter file sync conflict was not found.", 404, {
+      throw new ApiError("NOT_FOUND", "Open parameter file sync conflict was not found.", {
         conflictId: input.conflictId
       });
     }
@@ -153,7 +153,7 @@ export async function resolveParameterFileConflict(
       resolvedByUserId: auth.user.id
     });
     if (!resolved) {
-      throw new ApiError("CONFLICT", "Parameter file sync conflict is already resolved.", 409, {
+      throw new ApiError("CONFLICT", "Parameter file sync conflict is already resolved.", {
         conflictId: input.conflictId
       });
     }
@@ -200,7 +200,7 @@ export async function previewBulkConflictResolution(
   }
 ): Promise<BulkConflictPreviewResult> {
   if (!canReviewParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter review permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter review permission is required.");
   }
 
   const openConflicts = await listOpenConflicts(db, {
@@ -283,7 +283,7 @@ export async function resolveConflictsBulk(
   context: { requestId?: string } = {}
 ) {
   if (!canReviewParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter review permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter review permission is required.");
   }
 
   const preview = await previewBulkConflictResolution(db, auth, {

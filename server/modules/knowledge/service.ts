@@ -93,11 +93,11 @@ export type UpdateKnowledgeEntryInput = {
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
 function knowledgeEntryNotFound(entryId: string) {
-  return new ApiError("NOT_FOUND", "Knowledge entry was not found.", 404, { entryId });
+  return new ApiError("NOT_FOUND", "Knowledge entry was not found.", { entryId });
 }
 
 function revisionConflict(entryId: string, expected: number, current: number) {
-  return new ApiError("CONFLICT", "Knowledge entry was changed by another save. Reload the latest revision and retry.", 409, {
+  return new ApiError("CONFLICT", "Knowledge entry was changed by another save. Reload the latest revision and retry.", {
     code: "knowledge-revision-conflict",
     entryId,
     expectedHeadRevisionNumber: expected,
@@ -108,10 +108,10 @@ function revisionConflict(entryId: string, expected: number, current: number) {
 function decodeFileUpload(input: KnowledgeFileUploadInput) {
   const bytes = Buffer.from(input.contentBase64, "base64");
   if (bytes.byteLength === 0) {
-    throw new ApiError("VALIDATION_FAILED", "Knowledge file content is empty.", 400, { fileName: input.fileName });
+    throw new ApiError("VALIDATION_FAILED", "Knowledge file content is empty.", { fileName: input.fileName });
   }
   if (bytes.byteLength > MAX_FILE_BYTES) {
-    throw new ApiError("VALIDATION_FAILED", "Knowledge file exceeds the 20MB limit.", 400, {
+    throw new ApiError("VALIDATION_FAILED", "Knowledge file exceeds the 20MB limit.", {
       fileName: input.fileName,
       maxBytes: MAX_FILE_BYTES,
       sizeBytes: bytes.byteLength
@@ -421,7 +421,7 @@ export async function distillKnowledgeFromLog(
 
   const log = await getLogRecord(db, auth, input.logId);
   if (log.status !== "complete") {
-    throw new ApiError("VALIDATION_FAILED", "Only completed log analyses can be distilled into knowledge.", 400, {
+    throw new ApiError("VALIDATION_FAILED", "Only completed log analyses can be distilled into knowledge.", {
       logId: input.logId,
       status: log.status
     });
@@ -472,7 +472,6 @@ export async function distillKnowledgeFromReloadRun(
     throw new ApiError(
       "VALIDATION_FAILED",
       "Only terminal reload runs (verified, unverifiable, contradicted, or failed) can be distilled into knowledge.",
-      400,
       { runId: input.runId, status: run.status }
     );
   }
@@ -586,7 +585,7 @@ export async function rejectAgentKnowledgeDraft(
     requireKnowledgeGovern(auth, entry);
 
     if (entry.status !== "draft" || entry.sourceType !== "agent") {
-      throw new ApiError("VALIDATION_FAILED", "Only agent-sourced drafts can be archive-rejected.", 400, {
+      throw new ApiError("VALIDATION_FAILED", "Only agent-sourced drafts can be archive-rejected.", {
         entryId,
         status: entry.status,
         sourceType: entry.sourceType
@@ -640,7 +639,7 @@ export async function updateKnowledgeEntry(
     requireKnowledgeGovern(auth, entry);
 
     if (entry.status === "archived") {
-      throw new ApiError("VALIDATION_FAILED", "Archived knowledge entries cannot be edited. Restore the entry first.", 400, {
+      throw new ApiError("VALIDATION_FAILED", "Archived knowledge entries cannot be edited. Restore the entry first.", {
         entryId,
         status: entry.status
       });
@@ -649,10 +648,10 @@ export async function updateKnowledgeEntry(
       throw revisionConflict(entryId, input.expectedHeadRevisionNumber, entry.headRevisionNumber);
     }
     if (entry.contentForm === "markdown" && input.file !== undefined) {
-      throw new ApiError("VALIDATION_FAILED", "Markdown entries do not accept file replacements.", 400, { entryId });
+      throw new ApiError("VALIDATION_FAILED", "Markdown entries do not accept file replacements.", { entryId });
     }
     if (entry.contentForm === "file" && input.contentMarkdown !== undefined) {
-      throw new ApiError("VALIDATION_FAILED", "File entries do not accept markdown content. Replace the file instead.", 400, {
+      throw new ApiError("VALIDATION_FAILED", "File entries do not accept markdown content. Replace the file instead.", {
         entryId
       });
     }
@@ -789,7 +788,6 @@ async function transitionKnowledgeEntry(
       throw new ApiError(
         "VALIDATION_FAILED",
         `Illegal knowledge status transition: ${entry.status} -> ${input.toStatus}.`,
-        400,
         { entryId, currentStatus: entry.status, nextStatus: input.toStatus }
       );
     }
@@ -915,7 +913,6 @@ async function requireReferenceEditableEntry(tx: Queryable, auth: AuthContext, e
     throw new ApiError(
       "VALIDATION_FAILED",
       "Archived knowledge entries cannot change parameter references. Restore the entry first.",
-      400,
       { entryId, status: entry.status }
     );
   }
@@ -940,7 +937,7 @@ export async function addKnowledgeParameterReference(
 
     const spec = await resolveReferenceableSpec(tx, auth.organization.id, input.specId);
     if (!spec) {
-      throw new ApiError("NOT_FOUND", "Parameter definition was not found.", 404, { specId: input.specId });
+      throw new ApiError("NOT_FOUND", "Parameter definition was not found.", { specId: input.specId });
     }
 
     const inserted = await insertParameterReference(tx, auth, {
@@ -990,7 +987,7 @@ export async function removeKnowledgeParameterReference(
       specId: input.specId
     });
     if (!removed) {
-      throw new ApiError("NOT_FOUND", "Parameter reference was not found on this entry.", 404, {
+      throw new ApiError("NOT_FOUND", "Parameter reference was not found on this entry.", {
         entryId: input.entryId,
         specId: input.specId
       });
@@ -1030,7 +1027,7 @@ export async function findRelatedKnowledgeForSpec(
 
   const spec = await resolveReferenceableSpec(db, auth.organization.id, input.specId);
   if (!spec) {
-    throw new ApiError("NOT_FOUND", "Parameter definition was not found.", 404, { specId: input.specId });
+    throw new ApiError("NOT_FOUND", "Parameter definition was not found.", { specId: input.specId });
   }
 
   return {
@@ -1078,7 +1075,7 @@ export async function restoreKnowledgeRevision(
     requireKnowledgeGovern(auth, entry);
 
     if (entry.status === "archived") {
-      throw new ApiError("VALIDATION_FAILED", "Archived knowledge entries cannot be edited. Restore the entry first.", 400, {
+      throw new ApiError("VALIDATION_FAILED", "Archived knowledge entries cannot be edited. Restore the entry first.", {
         entryId,
         status: entry.status
       });
@@ -1089,7 +1086,7 @@ export async function restoreKnowledgeRevision(
 
     const revision = await getRevisionById(tx, auth, entryId, revisionId);
     if (!revision) {
-      throw new ApiError("NOT_FOUND", "Knowledge revision was not found.", 404, { entryId, revisionId });
+      throw new ApiError("NOT_FOUND", "Knowledge revision was not found.", { entryId, revisionId });
     }
 
     const nextRevisionNumber = entry.headRevisionNumber + 1;
@@ -1165,7 +1162,7 @@ export async function getKnowledgeFileContent(
 ): Promise<{ file: KnowledgeFileDto; bytes: Buffer }> {
   const entry = await getKnowledgeEntry(db, auth, entryId);
   if (entry.contentForm !== "file" || !entry.file) {
-    throw new ApiError("VALIDATION_FAILED", "Knowledge entry has no file content.", 400, { entryId });
+    throw new ApiError("VALIDATION_FAILED", "Knowledge entry has no file content.", { entryId });
   }
 
   return {
@@ -1246,7 +1243,7 @@ export async function findRelatedKnowledgeForLog(
 
   const log = await getLogRecord(db, auth, input.logId);
   if (log.status !== "complete") {
-    throw new ApiError("VALIDATION_FAILED", "Only completed log analyses have related knowledge.", 400, {
+    throw new ApiError("VALIDATION_FAILED", "Only completed log analyses have related knowledge.", {
       logId: input.logId,
       status: log.status
     });

@@ -32,14 +32,13 @@ export async function ensureExplicitOverlayCoverageClaim(
     throw new ApiError(
       "VALIDATION_FAILED",
       "Only overlay-property coverage claims are supported in this release.",
-      400,
       { kind: input.claim.kind },
     );
   }
 
   const propertyKey = input.propertyKey.trim();
   if (!propertyKey) {
-    throw new ApiError("VALIDATION_FAILED", "propertyKey is required for coverage claim.", 400);
+    throw new ApiError("VALIDATION_FAILED", "propertyKey is required for coverage claim.");
   }
 
   if (input.claim.overlayPropertyId) {
@@ -62,7 +61,7 @@ export async function ensureExplicitOverlayCoverageClaim(
     );
     const hit = existing.rows[0];
     if (!hit) {
-      throw new ApiError("NOT_FOUND", "Coverage claim overlay property was not found.", 404, {
+      throw new ApiError("NOT_FOUND", "Coverage claim overlay property was not found.", {
         overlayPropertyId: input.claim.overlayPropertyId,
       });
     }
@@ -70,7 +69,6 @@ export async function ensureExplicitOverlayCoverageClaim(
       throw new ApiError(
         "VALIDATION_FAILED",
         "Coverage claim does not match this parameter definition.",
-        400,
         {
           overlayPropertyId: hit.id,
           expectedParameterSpecId: input.parameterSpecId,
@@ -94,7 +92,7 @@ export async function ensureExplicitOverlayCoverageClaim(
   if (input.claim.upsertOverlay?.createPropertyLink) {
     const compatible = input.claim.upsertOverlay.compatible.trim();
     if (!compatible) {
-      throw new ApiError("VALIDATION_FAILED", "upsertOverlay.compatible is required.", 400);
+      throw new ApiError("VALIDATION_FAILED", "upsertOverlay.compatible is required.");
     }
     const displayName =
       input.claim.upsertOverlay.displayName?.trim() || `${compatible} coverage overlay`;
@@ -139,7 +137,6 @@ export async function ensureExplicitOverlayCoverageClaim(
   throw new ApiError(
     "VALIDATION_FAILED",
     "Activation requires an explicit coverage claim (existing overlay property or upsertOverlay).",
-    400,
     { parameterSpecId: input.parameterSpecId },
   );
 }
@@ -193,7 +190,7 @@ async function linkPropertyOntoOverlay(
     [input.overlayId, input.organizationId],
   );
   if (!overlay.rows[0]) {
-    throw new ApiError("NOT_FOUND", "Organization driver schema overlay was not found.", 404, {
+    throw new ApiError("NOT_FOUND", "Organization driver schema overlay was not found.", {
       overlayId: input.overlayId,
     });
   }
@@ -216,7 +213,6 @@ async function linkPropertyOntoOverlay(
     throw new ApiError(
       "VALIDATION_FAILED",
       "Active overlay property sets are immutable; create a draft overlay to add coverage.",
-      400,
       { overlayId: input.overlayId },
     );
   }
