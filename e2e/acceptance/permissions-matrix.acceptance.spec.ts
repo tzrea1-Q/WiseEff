@@ -2,10 +2,15 @@ import "dotenv/config";
 import { expect, test } from "playwright/test";
 import { signInBrowserAsRoleLabel, signInBrowserAsUser, authHeadersForRole, authHeadersForUser } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
-import { withPgClient } from "./helpers/database";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { acceptanceAdminOnlyUser, seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
-import { apiRoute, smokeHeaders } from "./helpers/runtime";
+import { apiRoute } from "./helpers/runtime";
+import {
+  createBindingDraftViaApi,
+  integerCellTarget,
+  seedIsolatedNumericCellBinding,
+  startSwappedDisposablePostCutoverRuntime
+} from "./helpers/semanticBindingFixture";
 
 useBrowserDiagnostics(test);
 
@@ -34,44 +39,6 @@ async function setPrototypeRole(page: import("playwright/test").Page, roleName: 
     return;
   }
   await signInBrowserAsRoleLabel(page, roleName, "/parameter-home");
-}
-
-async function cleanupPermissionsEligibilityRequests() {
-  await withPgClient(async (client) => {
-    const requests = await client.query<{ id: string; submission_round_id: string | null }>(
-      `
-      select cr.id, cr.submission_round_id
-      from parameter_change_requests cr
-      join parameter_submission_items psi on psi.change_request_id = cr.id
-      where psi.reason = $1
-      `,
-      [permissionsEligibilityReason]
-    );
-    const requestIds = requests.rows.map((row) => row.id);
-    const roundIds = Array.from(
-      new Set(requests.rows.map((row) => row.submission_round_id).filter((id): id is string => Boolean(id)))
-    );
-
-    if (requestIds.length > 0) {
-      await client.query("delete from parameter_review_decisions where request_id = any($1::text[])", [requestIds]);
-      await client.query("delete from parameter_submission_items where change_request_id = any($1::text[])", [requestIds]);
-      await client.query("delete from parameter_change_requests where id = any($1::text[])", [requestIds]);
-    }
-
-    if (roundIds.length > 0) {
-      await client.query(
-        `
-        delete from parameter_submission_rounds
-        where id = any($1::text[])
-          and not exists (
-            select 1 from parameter_change_requests
-            where parameter_change_requests.submission_round_id = parameter_submission_rounds.id
-          )
-        `,
-        [roundIds]
-      );
-    }
-  });
 }
 
 async function navigateWithinApp(page: import("playwright/test").Page, path: string) {
@@ -232,21 +199,62 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
       notes: "Platform Super Admin /api/v1/users listing remains bounded to the home organization."
     });
   });
+});
 
-  test("keeps API-backed workflow eligibility stricter than visible role inclusion", async ({ page }, testInfo) => {
+test.describe("permissions matrix post-cutover API eligibility", () => {
+  let restoreDisposable: (() => Promise<void>) | undefined;
+  const databaseUrl = process.env.DATABASE_URL;
+
+  test.beforeAll(async () => {
+    test.setTimeout(180_000);
+    const baseDatabaseUrl = databaseUrl?.trim();
+    if (!baseDatabaseUrl) {
+      throw new Error("DATABASE_URL is required to create the disposable permissions-matrix acceptance database.");
+    }
+    const started = await startSwappedDisposablePostCutoverRuntime(baseDatabaseUrl, {
+      label: "perm_matrix",
+      markerPurpose: "perm-matrix"
+    });
+    restoreDisposable = started.restore;
+  });
+
+  test.afterAll(async () => {
+    test.setTimeout(60_000);
+    await restoreDisposable?.();
+  });
+
+  test("keeps API-backed workflow eligibility stricter than visible role inclusion", async ({
+    page,
+    request
+  }, testInfo) => {
     // @acceptance PERM-MATRIX-002
     // @operation PERM-MATRIX-002
-    await cleanupPermissionsEligibilityRequests();
+    test.setTimeout(180_000);
+    const binding = await seedIsolatedNumericCellBinding(request, {
+      propertyKey: "iin_max",
+      cellValue: 2400,
+      reason: `${permissionsEligibilityReason} binding`
+    });
+    const created = await createBindingDraftViaApi(request, {
+      binding,
+      targetValue: integerCellTarget("3103"),
+      reason: permissionsEligibilityReason
+    });
+    expect(created.status, created.bodyText).toBe(201);
+    expect(created.draft).toBeTruthy();
 
     const response = await page.request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
-      headers: smokeHeaders(),
+      headers: authHeadersForRole("admin"),
       data: {
         projectId: "aurora",
         items: [
           {
-            parameterId: "aurora-battery-health-reserve",
-            targetValue: "3103",
-            reason: permissionsEligibilityReason
+            draftId: created.draft!.draftId,
+            projectParameterBindingId: created.draft!.projectParameterBindingId,
+            parameterSpecId: created.draft!.parameterSpecId,
+            action: created.draft!.action,
+            targetValue: created.draft!.rawText,
+            reason: created.draft!.reason
           }
         ],
         reason: permissionsEligibilityReason,
@@ -279,7 +287,8 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
           responseSummary: "VALIDATION_FAILED for role-ineligible workflow assignees"
         })
       ],
-      notes: "API-backed parameter submission rejected project-scoped workflow assignees that visible role inclusion alone would not permit."
+      notes:
+        "Typed binding-draft submit on disposable post-cutover identity rejected project-scoped workflow assignees that visible role inclusion alone would not permit (TD-079)."
     });
   });
 });

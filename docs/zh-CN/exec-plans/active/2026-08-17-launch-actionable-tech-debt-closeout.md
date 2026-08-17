@@ -37,7 +37,7 @@
 
 | 分支 | 负责 | 本计划的义务 |
 | --- | --- | --- |
-| `fix/td-079-acceptance-semantic-fixtures` | **TD-079** 剩余 `project_parameter_value_id` 夹具，之后才能翻转共享 CI 验收 job | 只记录归属 |
+| `fix/td-079-acceptance-remaining` | **TD-079** 剩余 `project_parameter_value_id` 夹具，之后才能翻转共享 CI 验收 job（`#509` 已合入第一刀） | 只记录归属 |
 | `chore/td-082-apierror-status-codemod` | **TD-082** 机械删除 `ApiError` 第三参数 | 只记录归属 |
 
 合入前对照 `origin/main` 再核一次 `docs/PLANS.md` 与中英技术债追踪表。这两类文件经常撞车。
@@ -106,7 +106,7 @@ TDD。API + port + UI + 测试 + 中英文档。不要重写配置工作台。
 | TD-056 | 批次 2 Done（本分支） | 本分支，批次 1 之后 |
 | TD-057 | Open（后续） | 批次 3 |
 | TD-064 / TD-065 | Open（后续） | 批次 3；默认不进本会话 |
-| TD-079 | 进行中（兄弟分支） | `fix/td-079-acceptance-semantic-fixtures` |
+| TD-079 | 进行中（兄弟分支） | `fix/td-079-acceptance-remaining` |
 | TD-082 | 已由 #507 合入 `main` | `chore/td-082-apierror-status-codemod` |
 | TD-001 | Deferred | mock/API 长期对等约束，不是工单 |
 | TD-033 | Deferred | 仅归档的遗留调试 catalog 表 |
