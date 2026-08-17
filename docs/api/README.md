@@ -28,3 +28,11 @@ npm run contract:openapi
 ```
 
 and review frontend DTO/client impact.
+
+## Schema-level DTO validation
+
+OpenAPI component schemas for the M1–M4 HTTP clients (parameters, logs, debugging, Xiaoze threads / AG-UI run request) are realized from Zod in `server/modules/contracts/dtoSchemas/`. `npm run contract:check` still compares the generated artifact; the same schemas parse successful JSON in `src/infrastructure/http` before DTO mapping.
+
+This is schema-level validation, not a generated OpenAPI client. Handwritten mappers stay because they translate wire enums and units into domain types. Failures reuse the existing `WiseEffApiError` envelope (`INTERNAL_ERROR` with `details.reason = contract-drift`). Do not add a second error shape.
+
+Uncovered surfaces (parameter-files, topology/specs, debugging admin, DTS reload, knowledge, and AG-UI streaming events) remain OpenAPI placeholders until a follow-up.

@@ -13,7 +13,8 @@
     "noUnusedParameters": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@wiseeff/dto-schemas": ["./server/modules/contracts/dtoSchemas/index.ts"]
     },
     "module": "ESNext",
     "moduleResolution": "Bundler",
@@ -22,6 +23,6 @@
     "noEmit": true,
     "jsx": "react-jsx"
   },
-  "include": ["src"],
+  "include": ["src", "server/modules/contracts/dtoSchemas/**/*.ts"],
   "exclude": ["**/*.test.ts", "**/*.test.tsx", "**/testHelpers.ts"]
 }

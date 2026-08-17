@@ -106,6 +106,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(projectRoot, "./src"),
+      "@wiseeff/dto-schemas": path.resolve(projectRoot, "./server/modules/contracts/dtoSchemas/index.ts"),
       "@copilotkit/react-core/v2/styles.css": path.resolve(projectRoot, "./src/test/empty.css"),
       "@copilotkit/react-core/dist/v2/index.css": path.resolve(projectRoot, "./src/test/empty.css")
     }

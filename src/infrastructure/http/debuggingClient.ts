@@ -11,6 +11,17 @@ import type {
   WriteNodeInput
 } from "@/application/ports/DebuggingGateway";
 import { createApiClient, WiseEffApiError } from "./apiClient";
+import { parseContractDto } from "./parseContractDto";
+import {
+  debugDeviceListResponseSchema,
+  debugNodeListResponseSchema,
+  debugNodeOperationResponseSchema,
+  debugParameterListResponseSchema,
+  debugRollbackResponseSchema,
+  debugSessionEventListResponseSchema,
+  debugSessionResponseSchema,
+  debugTargetListResponseSchema
+} from "@wiseeff/dto-schemas";
 import {
   debugParameterFromDto,
   debugRuntimeNodeToDebugParameter,
@@ -87,28 +98,55 @@ function writeNodeRequestBody(input: WriteNodeInput): WriteNodeInput {
 export function createHttpDebuggingGateway(apiClient: ApiClient = createDefaultApiClient()): DebuggingGateway {
   return {
     async listDevices() {
-      const response = await apiClient.get<ItemsEnvelope<DebugDeviceDto>>("/api/v1/debugging/devices");
+      const response = parseContractDto(
+        debugDeviceListResponseSchema,
+        await apiClient.get<ItemsEnvelope<DebugDeviceDto>>("/api/v1/debugging/devices"),
+        "DebugDeviceListResponse"
+      );
       return response.items;
     },
     async listRuntimeNodes(query?: { protocol?: DebugConnectionProtocol }) {
-      const response = await apiClient.get<ItemsEnvelope<DebugRuntimeNodeDto>>(buildRuntimeNodesPath(query));
+      const response = parseContractDto(
+        debugNodeListResponseSchema,
+        await apiClient.get<ItemsEnvelope<DebugRuntimeNodeDto>>(buildRuntimeNodesPath(query)),
+        "DebugNodeListResponse"
+      );
       return response.items.map(debugRuntimeNodeToDebugParameter);
     },
     async listParameters(query) {
-      const response = await apiClient.get<ItemsEnvelope<DebugParameterDto>>(buildParametersPath(query));
+      const response = parseContractDto(
+        debugParameterListResponseSchema,
+        await apiClient.get<ItemsEnvelope<DebugParameterDto>>(buildParametersPath(query)),
+        "DebugParameterListResponse"
+      );
       return response.items.map(debugParameterFromDto);
     },
     async detectTargets(input?: DetectTargetsInput) {
-      const response = await apiClient.post<ItemsEnvelope<DebugTargetDto>>("/api/v1/debugging/targets/detect", input ?? {});
+      const response = parseContractDto(
+        debugTargetListResponseSchema,
+        await apiClient.post<ItemsEnvelope<DebugTargetDto>>("/api/v1/debugging/targets/detect", input ?? {}),
+        "DebugTargetListResponse"
+      );
       return response.items.map(debugTargetFromDto);
     },
     async createSession(input) {
-      const response = await apiClient.post<ItemEnvelope<DebugSessionSnapshot>>("/api/v1/debugging/sessions", input);
+      const response = parseContractDto(
+        debugSessionResponseSchema,
+        await apiClient.post<ItemEnvelope<DebugSessionSnapshot>>("/api/v1/debugging/sessions", input),
+        "DebugSessionResponse"
+      );
+      if (response.item === null) {
+        throw new WiseEffApiError("INTERNAL_ERROR", "Debug session create returned no session.", { reason: "contract-drift" }, "");
+      }
       return response.item;
     },
     async getSession(sessionId) {
       try {
-        const response = await apiClient.get<GetSessionResponseEnvelope>(sessionPath(sessionId));
+        const response = parseContractDto(
+          debugSessionResponseSchema,
+          await apiClient.get<GetSessionResponseEnvelope>(sessionPath(sessionId)),
+          "DebugSessionResponse"
+        );
         return response.item;
       } catch (error) {
         if (error instanceof WiseEffApiError && error.code === "NOT_FOUND") {
@@ -118,15 +156,27 @@ export function createHttpDebuggingGateway(apiClient: ApiClient = createDefaultA
       }
     },
     async listSessionEvents(sessionId) {
-      const response = await apiClient.get<ItemsEnvelope<NodeOperationDto>>(`${sessionPath(sessionId)}/events`);
+      const response = parseContractDto(
+        debugSessionEventListResponseSchema,
+        await apiClient.get<ItemsEnvelope<NodeOperationDto>>(`${sessionPath(sessionId)}/events`),
+        "DebugSessionEventListResponse"
+      );
       return response.items.map(nodeOperationFromDto);
     },
     async readNode(input: ReadNodeInput) {
-      const response = await apiClient.post<{ operation: NodeOperationDto }>("/api/v1/debugging/nodes/read", readNodeRequestBody(input));
+      const response = parseContractDto(
+        debugNodeOperationResponseSchema,
+        await apiClient.post<{ operation: NodeOperationDto }>("/api/v1/debugging/nodes/read", readNodeRequestBody(input)),
+        "DebugNodeOperationResponse"
+      );
       return nodeReadResultFromDto(response.operation);
     },
     async writeNode(input: WriteNodeInput) {
-      const response = await apiClient.post<WriteNodeResponse>("/api/v1/debugging/nodes/write", writeNodeRequestBody(input));
+      const response = parseContractDto(
+        debugNodeOperationResponseSchema,
+        await apiClient.post<WriteNodeResponse>("/api/v1/debugging/nodes/write", writeNodeRequestBody(input)),
+        "DebugNodeOperationResponse"
+      );
       // Expose the operation (and snapshot when the backend sends one) so the
       // debugging runtime can record history and hydrate the rollback snapshot.
       const result: NodeWriteResult & { operation: NodeOperationSnapshot; snapshot?: DebugSnapshotSummary } = {
@@ -137,9 +187,13 @@ export function createHttpDebuggingGateway(apiClient: ApiClient = createDefaultA
       return result;
     },
     async rollbackSnapshot(input: RollbackSnapshotInput) {
-      const response = await apiClient.post<RollbackSnapshotResponse>(snapshotRollbackPath(input.snapshotId), {
-        confirmationToken: input.confirmationToken
-      });
+      const response = parseContractDto(
+        debugRollbackResponseSchema,
+        await apiClient.post<RollbackSnapshotResponse>(snapshotRollbackPath(input.snapshotId), {
+          confirmationToken: input.confirmationToken
+        }),
+        "DebugRollbackResponse"
+      );
       return {
         snapshot: debugSnapshotFromDto(response.snapshot),
         operations: response.operations.map(nodeOperationFromDto)

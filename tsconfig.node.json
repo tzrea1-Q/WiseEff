@@ -9,7 +9,8 @@
     "allowSyntheticDefaultImports": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@wiseeff/dto-schemas": ["./server/modules/contracts/dtoSchemas/index.ts"]
     },
     "strict": true,
     "noEmit": true
