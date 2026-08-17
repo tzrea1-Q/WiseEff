@@ -58,6 +58,7 @@ function createRepository(
     getTopology: vi.fn(),
     listMappingTasks: vi.fn().mockResolvedValue([]),
     resolveMapping: vi.fn(),
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
     validateRevision: vi.fn(),
     createBindingDraft: vi.fn(),
     ...overrides

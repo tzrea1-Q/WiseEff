@@ -35,6 +35,7 @@ import type { ParameterModuleRegistry } from "@/domain/parameter-topology/module
 import type { DtsStructuredRepository } from "@/application/ports/DtsStructuredRepository";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import type {
+  ConfigRevisionSummary,
   IdentityMappingTask,
   ParameterSpecDetail,
   ParameterSpecSummary,
@@ -100,6 +101,7 @@ export type ParameterAdminApplication = {
   listMappingTasks(projectId?: string): Promise<IdentityMappingTask[]>;
   resolveMapping(taskId: string, input: ResolveMappingInput): Promise<void>;
   reopenMapping(taskId: string, input: ReopenMappingInput): Promise<void>;
+  listConfigRevisions(projectId: string, configSetId: string): Promise<ConfigRevisionSummary[]>;
   validateRevision(projectId: string, revisionId: string): Promise<ValidationRun>;
 
   asDtsStructuredRepository(): DtsStructuredRepository | null;
@@ -259,6 +261,9 @@ export function createParameterAdminApplication({
         throw new Error("Identity mapping reopen is unavailable in this runtime.");
       }
       return topology.reopenMapping(taskId, input);
+    },
+    listConfigRevisions(projectId, configSetId) {
+      return topology.listConfigRevisions(projectId, configSetId);
     },
     validateRevision(projectId, revisionId) {
       return topology.validateRevision(projectId, revisionId);

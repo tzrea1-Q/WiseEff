@@ -494,6 +494,26 @@ export async function getLatestConfigRevision(
   return row ? toRevisionDto(row) : null;
 }
 
+/** Non-resolving config revisions for a config set, newest first. */
+export async function listConfigRevisions(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; configSetId: string },
+): Promise<DtsConfigRevisionDto[]> {
+  const result = await db.query<RevisionRow>(
+    `
+    select *
+    from dts_config_revisions
+    where organization_id = $1
+      and project_id = $2
+      and config_set_id = $3
+      and status <> 'resolving'
+    order by revision_number desc
+    `,
+    [input.organizationId, input.projectId, input.configSetId],
+  );
+  return result.rows.map(toRevisionDto);
+}
+
 export async function listRevisionDiagnostics(
   db: Queryable,
   configRevisionId: string,

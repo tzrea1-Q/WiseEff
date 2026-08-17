@@ -64,6 +64,11 @@ export const topologyQuerySchema = z.object({
   view: topologyViewSchema.default("effective")
 });
 
+export const listConfigRevisionsParamsSchema = z.object({
+  projectId: nonEmptyString,
+  configSetId: nonEmptyString
+});
+
 export const projectBindingsParamsSchema = z.object({
   projectId: nonEmptyString
 });

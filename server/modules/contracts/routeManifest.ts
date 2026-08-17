@@ -443,6 +443,13 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "parameterTopology.listConfigRevisions",
+    method: "GET",
+    path: "/api/v2/projects/:projectId/config-sets/:configSetId/revisions",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
     id: "parameterTopology.getTopology",
     method: "GET",
     path: "/api/v2/projects/:projectId/config-sets/:configSetId/revisions/:revisionId/topology",

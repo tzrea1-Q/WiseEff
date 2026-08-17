@@ -293,6 +293,13 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: false
   },
   {
+    id: "PROJ-CONFIG-REVISION-GATE-001",
+    workflow: "C",
+    title:
+      "Admin lists real project config revisions for the selected config set through the topology seam, selects a listed id (never an invented teaching fallback), runs revision validation, and when the run reports requiresConfirmation must acknowledge that risk in the baseline-release ConfirmDialog.",
+    required: false
+  },
+  {
     id: "PROJ-CONFIG-CUTOVER-001",
     workflow: "C",
     title: "Legacy project-operation routes redirect to canonical configuration-workbench contexts with preserved focus; new links use only /configuration; three viewports prove integrated cutover.",

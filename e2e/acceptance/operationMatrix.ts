@@ -622,6 +622,29 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "screenshot"]
   },
   {
+    id: "PROJ-CONFIG-REVISION-GATE-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/projects/:projectId/configuration",
+    roles: ["Admin"],
+    action:
+      "List real config-set revisions through the topology seam, select a listed id, run validateRevision, and acknowledge requiresConfirmation on the baseline-release ConfirmDialog. Do not invent a teaching revision id.",
+    coverage: "future",
+    acceptanceIds: ["PROJ-CONFIG-REVISION-GATE-001"],
+    specFiles: [
+      "e2e/acceptance/config-set-revision-gate.acceptance.spec.ts",
+      "src/components/project-configuration-workbench/ProjectConfigurationWorkbench.test.tsx",
+      "src/application/project-configuration/configRevisionGateSession.test.ts",
+      "src/infrastructure/mock/mockParameterTopologyRepository.test.ts",
+      "src/infrastructure/http/parameterTopologyClient.test.ts",
+      "server/modules/parameter-topology/service.test.ts",
+      "server/modules/parameter-topology/routes.test.ts"
+    ],
+    deferralReason:
+      "Unit/server/mock coverage plus playwright-cli evidence under work/ui-checks/td-057-config-set-revision-gate/. A blocking Playwright marker is deferred so this does not enlarge the shared pre-cutover CI acceptance suite (TD-079).",
+    assertions: ["ui", "api"]
+  },
+  {
     id: "PROJ-CONFIG-CUTOVER-001",
     priority: "P1",
     area: "parameters",

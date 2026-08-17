@@ -5,6 +5,7 @@ import type {
   DtsSearchHit,
   DtsStructuredRepository
 } from "@/application/ports/DtsStructuredRepository";
+import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type {
   ParameterFileRepository,
   ProjectParameterFileVersion
@@ -32,6 +33,7 @@ import {
   type WorkbenchCanvasMode
 } from "./workbenchInspectorModel";
 import { WorkbenchInspectorPanel } from "./WorkbenchInspectorPanel";
+import { WorkbenchRevisionGate } from "./WorkbenchRevisionGate";
 import { WorkbenchSourceCanvas } from "./WorkbenchSourceCanvas";
 import { WorkbenchSourceTree } from "./WorkbenchSourceTree";
 import { WorkbenchSetupGate } from "./WorkbenchSetupGate";
@@ -52,6 +54,7 @@ import {
 import { useStructuredEditSession } from "@/application/project-configuration/useStructuredEditSession";
 import { useCandidateVersionFlow } from "@/application/project-configuration/useCandidateVersionFlow";
 import { useReleaseBaselineSession } from "@/application/project-configuration/useReleaseBaselineSession";
+import { useConfigRevisionGateSession } from "@/application/project-configuration/useConfigRevisionGateSession";
 import { useConflictLocateFacade } from "@/application/project-configuration/useConflictLocateFacade";
 import { useConfigSetOpsSession } from "@/application/project-configuration/useConfigSetOpsSession";
 import { useWorkbenchNavigationSession } from "@/application/project-configuration/useWorkbenchNavigationSession";
@@ -96,6 +99,11 @@ export type ProjectConfigurationWorkbenchProps = {
   organizationId?: string;
   /** Injectable storage for recoverable session drafts (tests / non-DOM). */
   draftStorage?: Pick<Storage, "getItem" | "setItem" | "removeItem">;
+  /**
+   * Optional topology seam for config-set revision list/select/validate.
+   * Omit in unit tests that do not exercise the gate; the operations surface must pass it.
+   */
+  topologyRepository?: Pick<ParameterTopologyRepository, "listConfigRevisions" | "validateRevision">;
 };
 
 export function ProjectConfigurationWorkbench({
@@ -110,7 +118,8 @@ export function ProjectConfigurationWorkbench({
   listAuditEvents,
   currentUserId = "local-user",
   organizationId,
-  draftStorage
+  draftStorage,
+  topologyRepository
 }: ProjectConfigurationWorkbenchProps) {
   const { toast } = useToast();
   const showToast = useCallback((message: string) => toast({ tone: "success", message }), [toast]);
@@ -155,6 +164,7 @@ export function ProjectConfigurationWorkbench({
     actionError: baselineActionError,
     releasedTip: releasedBaseline
   } = useReleaseBaselineSession();
+  const revisionGate = useConfigRevisionGateSession();
   const [treeOpen, setTreeOpen] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorPersistent, setInspectorPersistent] = useState(false);
@@ -288,6 +298,11 @@ export function ProjectConfigurationWorkbench({
   useEffect(() => {
     void workspaceLoadSession.loadMembers(project.id, selectedConfigSet?.id ?? null, dtsRepository);
   }, [dtsRepository, membersRetry, project.id, selectedConfigSet, workspaceLoadSession]);
+
+  useEffect(() => {
+    if (!topologyRepository) return;
+    void revisionGate.session.load(project.id, selectedConfigSet?.id ?? null, topologyRepository);
+  }, [project.id, revisionGate.session, selectedConfigSet?.id, topologyRepository]);
 
   const selectedMembers = useMemo(() => {
     if (!selectedConfigSet) return [];
@@ -1404,6 +1419,25 @@ export function ProjectConfigurationWorkbench({
               staleDraftLocked={staleDraftLocked}
               onStructuredValueChange={handleStructuredValueChange}
               canEdit={canEdit}
+              revisionGate={
+                topologyRepository ? (
+                  <WorkbenchRevisionGate
+                    snapshot={revisionGate}
+                    canAdmin={canAdmin}
+                    onSelect={(revisionId) => revisionGate.session.select(revisionId)}
+                    onValidate={() => {
+                      void revisionGate.session.validate(project.id, topologyRepository);
+                    }}
+                    onRetry={() => {
+                      void revisionGate.session.load(
+                        project.id,
+                        selectedConfigSet.id,
+                        topologyRepository
+                      );
+                    }}
+                  />
+                ) : undefined
+              }
             />
           ) : null}
         </div>
@@ -1521,6 +1555,7 @@ export function ProjectConfigurationWorkbench({
             setConfirmation(null);
           });
         }}
+        releaseRequiresConfirmation={Boolean(topologyRepository) && revisionGate.requiresConfirmation}
       />
     </section>
   );

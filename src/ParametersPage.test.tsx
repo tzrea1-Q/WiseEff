@@ -413,6 +413,9 @@ function createApiBoundaryRepository(
     resolveMapping: vi
       .fn<ParameterTopologyRepository["resolveMapping"]>()
       .mockResolvedValue(undefined),
+    listConfigRevisions: vi
+      .fn<ParameterTopologyRepository["listConfigRevisions"]>()
+      .mockResolvedValue([]),
     validateRevision: vi
       .fn<ParameterTopologyRepository["validateRevision"]>()
       .mockResolvedValue({

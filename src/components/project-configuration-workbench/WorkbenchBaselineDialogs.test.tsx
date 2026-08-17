@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WorkbenchBaselineDialogs } from "./WorkbenchBaselineDialogs";
@@ -57,5 +57,21 @@ describe("WorkbenchBaselineDialogs", () => {
 
     const dialog = screen.getByRole("dialog", { name: "发布基线确认" });
     expect(within(dialog).getByRole("alert")).toHaveTextContent("就绪状态已变化");
+  });
+
+  it("blocks release confirm until the revision-gate acknowledgement is ticked", () => {
+    renderDialogs({
+      releaseOpen: true,
+      releaseRequiresConfirmation: true
+    });
+
+    const dialog = screen.getByRole("dialog", { name: "发布基线确认" });
+    const confirm = within(dialog).getByRole("button", { name: "确认发布" });
+    const acknowledgement = within(dialog).getByRole("checkbox", {
+      name: "我已了解修订校验未硬性通过的风险，确认继续发布。"
+    });
+    expect(confirm).toBeDisabled();
+    fireEvent.click(acknowledgement);
+    expect(confirm).toBeEnabled();
   });
 });

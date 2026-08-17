@@ -12,6 +12,7 @@ import type {
   SpecQuery,
   SpecReviewTaskListResult,
   SpecReviewTaskQuery,
+  ConfigRevisionSummary,
   TopologyTree,
   TopologyView,
   ValidationRun,
@@ -32,6 +33,7 @@ export type {
   SpecQuery,
   SpecReviewTaskListResult,
   SpecReviewTaskQuery,
+  ConfigRevisionSummary,
   TopologyTree,
   TopologyView,
   ValidationRun
@@ -181,6 +183,7 @@ export interface ParameterTopologyRepository {
   listBindingHistory?(projectId: string, bindingId: string): Promise<BindingHistoryEntry[]>;
   /** Optional: cross-project compare peers (Task 7). Absent implementations degrade to no compare. */
   listBindingCompare?(projectId: string, bindingId: string): Promise<BindingCompareEntry[]>;
+  listConfigRevisions(projectId: string, configSetId: string): Promise<ConfigRevisionSummary[]>;
   getTopology(
     projectId: string,
     configSetId: string,
