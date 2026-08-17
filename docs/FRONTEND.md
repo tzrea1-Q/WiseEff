@@ -14,8 +14,8 @@ WiseEff frontend is a Vite, React, TypeScript SPA. It supports a rich mock-backe
 - `src/infrastructure/http/`: API client, DTOs, auth client, runtime mode.
 - `src/components/`: reusable UI, layout, tables, dialogs, filters, charts.
 - `src/features/agent/`: Xiaoze CopilotKit surface (`XiaozeProvider`, `useXiaozePageContext`, `XiaozeApprovalCard`, frontend tools).
-- `src/features/log-analysis/`: `LogsPage` (upload, conclusion, evidence chain, raw viewer) and `LogDashboardPage`. Feature styles live in colocated `log-analysis.css` (imported from the pages; #476). Parameter-review CSS remains in `src/styles.css` until C7 wave 2.
-- `src/features/parameter-review/`: `ParameterReviewPage`, `ParameterSubmissionsPage`, submission-history diff, and review-specific UI atoms.
+- `src/features/log-analysis/`: `LogsPage` (upload, conclusion, evidence chain, raw viewer) and `LogDashboardPage`. Feature styles live in colocated `log-analysis.css` (imported from the pages; #476).
+- `src/features/parameter-review/`: `ParameterReviewPage`, `ParameterSubmissionsPage`, submission-history diff, and review-specific UI atoms. Feature styles live in colocated `parameter-review.css` (#479).
 - `src/features/product-feedback/`: sidebar `FeedbackDialog` and Admin triage UI for `/feedback-admin`.
 - `src/features/knowledge/`: knowledge base pages for `/knowledge` and `/knowledge-admin` (list, split editor, upload, revisions).
 - `src/test/setup.ts`: Vitest DOM setup.
@@ -39,7 +39,7 @@ VITE_WISEEFF_RUNTIME_MODE=mock
 
 Production builds must not use mock runtime as a business data source.
 
-API mode never falls back to mock data. The shell boots from `createApiInitialState()` (structural fields kept, every business-data slice empty — including `auditEvents`; unused `developers` / `logAdminUsers` slices were retired in #474), shows a slim connecting strip until the first runtime sync completes, and when a domain refresh (parameters / logs / debugging) fails it clears that domain's slices via `CLEAR_API_RUNTIME_DOMAIN` and raises a persistent page-level cannot-connect / no-data error banner with a retry button instead of quietly keeping demo records on screen. Successful hydration also repoints `activeProjectId` at real server projects when the demo id is unknown. `persistedConfigSnapshot` still carries non-array mock schema (TD-110 remainder). Mock mode behavior is unchanged.
+API mode never falls back to mock data. The shell boots from `createApiInitialState()` (structural fields kept, every business-data slice empty — including `auditEvents`; unused `developers` / `logAdminUsers` slices were retired in #474), shows a slim connecting strip until the first runtime sync completes, and when a domain refresh (parameters / logs / debugging) fails it clears that domain's slices via `CLEAR_API_RUNTIME_DOMAIN` and raises a persistent page-level cannot-connect / no-data error banner with a retry button instead of quietly keeping demo records on screen. Successful hydration also repoints `activeProjectId` at real server projects when the demo id is unknown. #480 stops `ParametersPage` and the reducer from falling back to `mockData.projects` when `configDraft.projects` is empty; API boot uses `createEmptyPowerManagementConfig()`. Mock seeding of `createPrototypeState` still lives at `mockData.ts` top level (TD-110 remainder, Track H). Mock mode behavior is unchanged.
 
 M6.2 OIDC runtime support uses an async authorization provider so API clients can request the current access token and handle refresh/logout failures without static bearer injection. `VITE_WISEEFF_API_AUTHORIZATION` remains a local static-token convenience and is rejected by production builds.
 

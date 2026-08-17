@@ -15,7 +15,7 @@
 
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
-- `exec-plans/active/2026-08-16-frontend-runtime-follow-up.md`：app-shell 收口后的架构审查余项——A/B/C 三轨已于 2026-08-16 合入（#474 退役 API 模式演示切片、#475 mock `WiseEffApiError` 信封、#476 日志分析 CSS 同目录）。余量：TD-110 快照/分区/播种、TD-109 第二波领域守卫、C7 第二波参数评审 CSS；C5 桥接网关仍推迟（中文全文 `docs/zh-CN/exec-plans/active/2026-08-16-frontend-runtime-follow-up.md`）。
+- `exec-plans/active/2026-08-16-frontend-runtime-follow-up.md`：app-shell 收口后的架构审查余项——第一批 #474–#476、第二波 #478/#479/#481 与目录诚实 #480 已在 `main`。收口：TD-109 `Object.assign` 余量、配置工作台 CSS、节点调试 session 后接 C5 `BridgeGateway`、mock 播种（中文全文 `docs/zh-CN/exec-plans/active/2026-08-16-frontend-runtime-follow-up.md`）。
 - `exec-plans/completed/2026-08-13-knowledge-parameter-references.md`：参数定义与知识条目的结构化引用，已于 2026-08-13 经 #438 合并完成（知识库延后路线图第 2 项）——`knowledge_parameter_references` 把条目绑定到 `parameter_specs.id` 代理键（ADR-0017 身份纠错与 ADR-0011 废弃后均存续），条目编辑器内编辑权限门控的引用编辑并审计添加/移除，知识侧定义 chips 带如实「已废弃」徽章，定义详情新增仅已发布的「相关知识」列表，`knowledge.getDocument` 报告被引用定义（分支 `feat/knowledge-parameter-references`；KB-XREF-001）。
 - `exec-plans/completed/2026-08-13-knowledge-log-recommendations.md`：日志分析结果的相关知识推荐已于 2026-08-13 经 #400 合并完成（知识库延后路线图第 1 项）——`GET /api/v1/knowledge/related-to-log` 从存储的结论/影响文本推导相似度查询，经现有混合检索并施加相关度截断（仅已发布条目，`knowledge:view` + `logs:view` + 组织隔离），日志结果页新增带引用深链与诚实检索模式说明的「相关知识」区块（KB-REC-001）。
 - `exec-plans/completed/2026-08-13-knowledge-reload-distillation.md`：DTS 重载运行沉淀为知识草稿（知识库延后路线图第 3 项），已于 2026-08-13 经 #429 合并完成——终态重载运行（已验证 / 不可验证 / 矛盾 / 失败，诚实陈述结局）经 `POST /api/v1/knowledge/distill-from-reload-run` 从 `/dts-reload` 运行历史/详情面沉淀为预填知识草稿，`source_reload_run_id` 与 Phase 3 的 `source_log_id` 并列，`action.createKnowledgeDraft` 扩展 `sourceReloadRunId`，草稿规则与日志蒸馏一致（分支 `feat/knowledge-reload-distillation`；KB-DISTILL-002）。

@@ -16,8 +16,8 @@ WiseEff 前端是 Vite、React、TypeScript 单页应用。它同时支持 mock 
 - `src/infrastructure/http/`：HTTP API client、DTO、auth client、runtime mode。
 - `src/components/`：复用 UI、表格、弹窗、过滤器、图表。
 - `src/features/agent/`：Xiaoze（小泽）CopilotKit 表面（`XiaozeProvider`、`useXiaozePageContext`、`XiaozeApprovalCard`、前端工具）。
-- `src/features/log-analysis/`：`LogsPage`（上传、结论卡、证据链、原始日志查看器）与 `LogDashboardPage`。样式在同目录 `log-analysis.css`（由页面 import；#476）。参数评审 CSS 仍在 `src/styles.css`，待 C7 第二波。
-- `src/features/parameter-review/`：`ParameterReviewPage`、`ParameterSubmissionsPage`、提交历史 diff 与评审专用 UI 原子。
+- `src/features/log-analysis/`：`LogsPage`（上传、结论卡、证据链、原始日志查看器）与 `LogDashboardPage`。样式在同目录 `log-analysis.css`（由页面 import；#476）。
+- `src/features/parameter-review/`：`ParameterReviewPage`、`ParameterSubmissionsPage`、提交历史 diff 与评审专用 UI 原子。样式在同目录 `parameter-review.css`（#479）。
 - `src/features/product-feedback/`：侧边栏 `FeedbackDialog` 与 `/feedback-admin` 反馈处理 UI。
 - `src/features/knowledge/`：知识库页面（`/knowledge` 与 `/knowledge-admin`:列表、分栏编辑器、文件上传、修订历史）。
 - `src/test/setup.ts`：Vitest DOM 初始化。
@@ -41,7 +41,7 @@ VITE_WISEEFF_RUNTIME_MODE=mock
 
 生产构建不能把 mock data 当业务数据源。组件测试默认仍通过 `npm test` 覆盖为 mock，避免本地 `.env` 的 API 设置污染单测。
 
-API 模式不再回退到 mock 数据：应用从 `createApiInitialState()`（保留结构性字段、业务数据切片全部为空，含 `auditEvents`；无用的 `developers` / `logAdminUsers` 已在 #474 退役）启动，首次同步完成前内容区顶部显示「正在连接雷泽服务…」提示条；任一域（参数/日志/调试）刷新失败时，经 `CLEAR_API_RUNTIME_DOMAIN` 清空该域业务切片，并在内容区顶部显示持久的「无法连接雷泽… API，当前无数据」错误横幅与重试按钮，绝不把演示数据当真实数据展示。参数域成功水合后，若演示项目 ID 不在服务端项目列表中，`activeProjectId` 会指向真实项目。`persistedConfigSnapshot` 非数组字段仍是演示 schema（TD-110 余量）。mock 模式行为不变。
+API 模式不再回退到 mock 数据：应用从 `createApiInitialState()`（保留结构性字段、业务数据切片全部为空，含 `auditEvents`；无用的 `developers` / `logAdminUsers` 已在 #474 退役）启动，首次同步完成前内容区顶部显示「正在连接雷泽服务…」提示条；任一域（参数/日志/调试）刷新失败时，经 `CLEAR_API_RUNTIME_DOMAIN` 清空该域业务切片，并在内容区顶部显示持久的「无法连接雷泽… API，当前无数据」错误横幅与重试按钮，绝不把演示数据当真实数据展示。参数域成功水合后，若演示项目 ID 不在服务端项目列表中，`activeProjectId` 会指向真实项目。#480 禁止参数页和 reducer 在 `configDraft.projects` 为空时回落到 `mockData.projects`；API boot 使用 `createEmptyPowerManagementConfig()`。`createPrototypeState` 播种仍在 `mockData.ts` 顶层（TD-110 余量，Track H）。mock 模式行为不变。
 
 API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒绝，前端显示 WiseEff 认证页，支持本地账号登录和注册。本地登录使用用户名和密码；注册会选择组织（`硬件部` / `软件部`）、姓名、允许自助选择的平台角色、用户名和密码。注册角色下拉不包含 Admin；申请 Hardware/Software Committer 时，后端会创建 inactive 账号、对应基础 User 角色和待审批申请，`/api/v1/auth/register` 返回 `202 pending_approval` 且不返回 session token，前端继续停留在认证页，展示待审批结果态且不再保留可编辑注册表单。只有登录或非 Committer 注册成功后，前端才把不透明的 `we_local_*` session token 存到 `localStorage` 的 `wiseeff.localAuthToken`；默认 API client 会优先使用 OIDC runtime token，若没有 OIDC token 再回退到本地 token。
 
