@@ -31,6 +31,7 @@ const DEFAULT_PROJECT_ID = "project-teaching";
 const DEFAULT_FILE_ID = "file-teaching-dts";
 const DEFAULT_FILE_NAME = "atlas-board.dts";
 const DEFAULT_VERSION_ID = "version-teaching-1";
+const HISTORICAL_VERSION_ID = "version-teaching-0";
 const DEFAULT_ORG_ID = "org-teaching";
 const DEFAULT_CONFLICT_ID = "conflict-teaching-1";
 
@@ -61,21 +62,36 @@ function seedStore(): Store {
     moduleHint: "teaching",
     enabled: true,
     currentVersionId: DEFAULT_VERSION_ID,
-    currentVersionNumber: 1,
+    currentVersionNumber: 2,
     updatedAt: MOCK_NOW
+  };
+  const historicalVersion: ProjectParameterFileVersion = {
+    id: HISTORICAL_VERSION_ID,
+    fileId: DEFAULT_FILE_ID,
+    versionNumber: 1,
+    checksum: "mock-checksum-teaching-v1",
+    sizeBytes: 48,
+    parsedIndex: {
+      "demo_bool.weak_source_sleep_enabled": { value: "false", line: 10 }
+    },
+    origin: "upload",
+    createdAt: "2026-07-13T10:00:00.000Z",
+    createdByUserId: "user-teaching",
+    createdByDisplayName: "教学用户"
   };
   const version: ProjectParameterFileVersion = {
     id: DEFAULT_VERSION_ID,
     fileId: DEFAULT_FILE_ID,
-    versionNumber: 1,
+    versionNumber: 2,
     checksum: "mock-checksum-teaching",
     sizeBytes: 64,
     parsedIndex: {
       "demo_bool.weak_source_sleep_enabled": { value: "true", line: 10 }
     },
-    origin: "upload",
+    origin: "writeback",
     createdAt: MOCK_NOW,
-    createdByUserId: "user-teaching"
+    createdByUserId: "user-teaching",
+    createdByDisplayName: "教学用户"
   };
   const conflict: ParameterFileSyncConflict = {
     id: DEFAULT_CONFLICT_ID,
@@ -116,8 +132,11 @@ function seedStore(): Store {
 
   return {
     filesByProject: new Map([[DEFAULT_PROJECT_ID, [file]]]),
-    versionsByFile: new Map([[DEFAULT_FILE_ID, [version]]]),
-    contentByVersion: new Map([[DEFAULT_VERSION_ID, new TextEncoder().encode("/ { };\n")]]),
+    versionsByFile: new Map([[DEFAULT_FILE_ID, [historicalVersion, version]]]),
+    contentByVersion: new Map([
+      [HISTORICAL_VERSION_ID, new TextEncoder().encode("/ { model = \"Legacy\"; };\n")],
+      [DEFAULT_VERSION_ID, new TextEncoder().encode("/ { };\n")]
+    ]),
     conflictsByProject: new Map([[DEFAULT_PROJECT_ID, [conflict]]]),
     candidatesByProject: new Map(),
     contentByCandidate: new Map()
@@ -135,7 +154,8 @@ function ensureProjectFiles(store: Store, projectId: string): ProjectParameterFi
   const seeded = (store.filesByProject.get(DEFAULT_PROJECT_ID) ?? []).map((file) => ({
     ...file,
     id: `${file.id}-${projectId}`,
-    projectId
+    projectId,
+    currentVersionId: file.currentVersionId ? `${file.currentVersionId}-${projectId}` : file.currentVersionId
   }));
   store.filesByProject.set(projectId, seeded);
   for (const file of seeded) {
@@ -146,7 +166,11 @@ function ensureProjectFiles(store: Store, projectId: string): ProjectParameterFi
     }));
     store.versionsByFile.set(file.id, versions);
     for (const version of versions) {
-      store.contentByVersion.set(version.id, new TextEncoder().encode("/ { };\n"));
+      const originalId = version.id.endsWith(`-${projectId}`)
+        ? version.id.slice(0, -(projectId.length + 1))
+        : version.id;
+      const bytes = store.contentByVersion.get(originalId) ?? new TextEncoder().encode("/ { };\n");
+      store.contentByVersion.set(version.id, new Uint8Array(bytes));
     }
   }
   return seeded;
@@ -292,7 +316,9 @@ export function createMockParameterFileRepository(): ParameterFileRepository {
         sizeBytes: bytes.byteLength,
         parsedIndex: {},
         origin: "upload",
-        createdAt: MOCK_NOW
+        createdAt: MOCK_NOW,
+        createdByUserId: "user-teaching",
+        createdByDisplayName: "教学用户"
       };
       const format = input.fileName.toLowerCase().endsWith(".json") ? "json" : "dts";
       const file: ProjectParameterFile = {
@@ -330,7 +356,9 @@ export function createMockParameterFileRepository(): ParameterFileRepository {
         sizeBytes: bytes.byteLength,
         parsedIndex: {},
         origin: "upload",
-        createdAt: MOCK_NOW
+        createdAt: MOCK_NOW,
+        createdByUserId: "user-teaching",
+        createdByDisplayName: "教学用户"
       };
       existing.push(version);
       store.versionsByFile.set(fileId, existing);
@@ -344,6 +372,43 @@ export function createMockParameterFileRepository(): ParameterFileRepository {
     async listVersions(projectId, fileId) {
       ensureProjectFiles(store, projectId);
       return (store.versionsByFile.get(fileId) ?? []).map((version) => ({ ...version }));
+    },
+
+    async rollbackVersion(projectId, fileId, versionId) {
+      const files = ensureProjectFiles(store, projectId);
+      const file = files.find((item) => item.id === fileId);
+      if (!file) {
+        throw mockApiError("NOT_FOUND", `Parameter file not found: ${fileId}`, { fileId });
+      }
+      const existing = store.versionsByFile.get(fileId) ?? [];
+      const source = existing.find((item) => item.id === versionId);
+      if (!source) {
+        throw mockApiError("NOT_FOUND", `Parameter file version not found: ${versionId}`, { versionId });
+      }
+      if (file.currentVersionId === versionId) {
+        throw mockApiError("CONFLICT", "当前版本已经是所选历史版本。", { versionId });
+      }
+      const versionNumber = (existing[existing.length - 1]?.versionNumber ?? 0) + 1;
+      const version: ProjectParameterFileVersion = {
+        id: `version-${fileId}-${versionNumber}`,
+        fileId,
+        versionNumber,
+        checksum: source.checksum,
+        sizeBytes: source.sizeBytes,
+        parsedIndex: { ...source.parsedIndex },
+        origin: "rollback",
+        createdAt: MOCK_NOW,
+        createdByUserId: "user-teaching",
+        createdByDisplayName: "教学用户"
+      };
+      existing.push(version);
+      store.versionsByFile.set(fileId, existing);
+      const sourceBytes = store.contentByVersion.get(versionId) ?? new Uint8Array();
+      store.contentByVersion.set(version.id, new Uint8Array(sourceBytes));
+      file.currentVersionId = version.id;
+      file.currentVersionNumber = version.versionNumber;
+      file.updatedAt = MOCK_NOW;
+      return { item: { ...version }, file: { ...file } };
     },
 
     async downloadVersion(projectId, fileId, versionId): Promise<DownloadParameterFileVersionResult> {

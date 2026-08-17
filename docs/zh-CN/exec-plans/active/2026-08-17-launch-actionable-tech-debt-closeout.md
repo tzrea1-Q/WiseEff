@@ -1,0 +1,193 @@
+# 上线可关闭技术债收口
+
+> 状态：**进行中** — 只按可执行批次推进；不要假装一次关完整个追踪表  
+> 日期：2026-08-17  
+> 分支：`feat/launch-actionable-td-closeout`  
+> English: [`docs/exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`](../../../exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md)  
+> 追踪表：[`docs/zh-CN/exec-plans/tech-debt-tracker.md`](../tech-debt-tracker.md)
+
+## 目标
+
+在**不需要** HDC 真机、专家标注日志、或目标环境（自托管 Linux / 真实 OIDC / 生产近似快照）的前提下，把对上线有感的产品与文档缺口关完。其余追踪行必须诚实标成 **Done**、**Deferred** 或 **Blocked**。
+
+本计划是上线窗口的可执行切片，**不是**一次合入关掉约 61 条。后续批次写在这里，避免下一任把 Blocked 项重新当施工单。
+
+## 非目标
+
+- HDC 真机 smoke 或硬件写入证据。
+- 专家标注金标准日志或真实模型质量宣称。
+- 目标环境证据（自托管 Linux、真实 OIDC、容量、回滚演练、对象存储恢复、生产近似身份 cutover 快照）。
+- 需要 KMS 信封加密或真实投递量才能做的 Webhook outbox。
+- 不是工单的长期约束（mock 模式存在、仅归档的调试 catalog 表）。
+- 上线窗口高风险/低收益项（环境变量改名、token burn 大波次、PCW stretch 行数、可选 Admin L2 工具链面板）。
+- 在本分支实现 **TD-079** 或 **TD-082**。它们属于点名的并行兄弟分支；不要改那些文件。
+
+## Git 与 PR 工作流
+
+| 角色 | 允许 |
+| --- | --- |
+| 实现代理 | 在从最新 `origin/main` 切出的 `feat/launch-actionable-td-closeout` 上提交；可以 `git push -u origin HEAD`；不开、不合 GitHub PR |
+| 父代理 | 评审、开/合 PR，然后同步本地 `main` |
+
+分支：`feat/launch-actionable-td-closeout`，在隔离 worktree 从最新 `origin/main` 检出。不要 push `main`，不要 `--no-verify`，不要改写已发布历史。
+
+一计划一支。本分支上的连续提交是切片（方案 → 归属收口 → TD-056）。时间不够就停在已提交的完整切片。
+
+### 并行兄弟分支（不要改他们的文件）
+
+| 分支 | 负责 | 本计划的义务 |
+| --- | --- | --- |
+| `fix/td-079-acceptance-semantic-fixtures` | **TD-079** 剩余 `project_parameter_value_id` 夹具，之后才能翻转共享 CI 验收 job | 只记录归属 |
+| `chore/td-082-apierror-status-codemod` | **TD-082** 机械删除 `ApiError` 第三参数 | 只记录归属 |
+
+合入前对照 `origin/main` 再核一次 `docs/PLANS.md` 与中英技术债追踪表。这两类文件经常撞车。
+
+## 成功标准
+
+- 本计划中英都在，并已从 `docs/PLANS.md` / `docs/zh-CN/PLANS.md` 挂出；本上线切片关心的追踪行都有 Done / Deferred / Blocked。
+- 归属 deferred 计划已在验收登记 + playwright-cli 证据通过后移到 `completed/`（批次 1）。
+- **TD-056** 只在归属收口已经提交且绿灯后，才作为本分支后续提交。**TD-057 / TD-064 / TD-065** 默认不进本会话；除非 TD-056 已完整提交且测试绿，否则不要做（即便如此也属于批次 3，不是本会话默认范围）。
+- 文档切片完成前 `npm run docs:check` 绿灯。UI 切片还要跑相关测试、`npm run build` 和 playwright-cli。
+
+## 批次
+
+### 批次 0 — 方案本身（本会话）
+
+1. 新增本计划中英文本，含目标、批次、Git 与 PR、文档影响矩阵、文档更新门禁、验收命令、逐条 TD 状态。
+2. 从 `docs/PLANS.md` 与 `docs/zh-CN/PLANS.md` 挂出。
+3. TD-079 / TD-082 追踪行写明由并行分支负责，不改写他们的 Next Action 细节。
+
+### 批次 1 — 归属 deferred 收口（本会话）
+
+所属计划（已归档）：`docs/exec-plans/completed/2026-08-01-attribution-deferred-implementation.md`（中文孪生在 `docs/zh-CN/exec-plans/completed/`）。
+
+PR1–PR3 代码已在 `main`（D-AG-01–04，TD-046 / TD-047 已关）。剩余：
+
+1. 登记 PR3 缺失的验收/操作 ID（`DRV-REG-005` 从注册回放放置）；`DRV-REG-004` 保持诚实的 `required: false` / `@acceptance-planned` 桩，避免撑大共享 pre-cutover CI 套件（TD-079）。
+2. 在 `/parameter-admin/modules` 收集 playwright-cli 证据（`1440x900` / `768x1024` / `390x844`，0 console error），覆盖性质/基数与回放控件。
+3. 在覆盖图与操作矩阵（中英）记录补充证据。**不要**把这些 ID 翻成共享 CI job 的阻断 Playwright。
+4. 若证据和文档更新门禁都过，把归属计划移到 `completed/`（中英都要，且不得在 `active/` 留同名文件），并更新 `PLANS.md`。
+
+若 `playwright-cli` 不能运行，停止并报告 blocker，不要谎称前端验收完成。
+
+### 批次 2 — TD-056 参数文件回滚 / 操作者显示名（批次 1 已提交后，本会话若有余力）
+
+TDD。API + port + UI + 测试 + 中英文档。不要重写配置工作台。
+
+- 在参数文件 API 与 `ParameterFileRepository` 增加 promote-to-current / 回滚到指定版本。
+- 复用基线恢复已有的 `origin='rollback'` 指针版本：插入新的当前版本，把所选字节带到最新指针；不要倒带历史。
+- 把 `createdByUserId` 解析成显示名，写进版本列表。
+- 扩展已有版本历史表面（POD-C6）。影响范围用 ConfirmDialog。产品文案用中文。
+- 若这是新的用户可见交互，先登记验收/操作 ID；否则写明既有覆盖加 playwright-cli 为何足够。
+- 验证绿灯后在中英追踪表关闭 TD-056。**已于 2026-08-17 在本分支完成。**
+
+### 批次 3 — 下一轮上线可见产品切片（默认不在本会话）
+
+不要和批次 2 挤在同一次提交里，除非批次 2 已完整提交且测试绿。默认留给后续分支。
+
+| ID | 为何排在后面 | 说明 |
+| --- | --- | --- |
+| **TD-057** | 真正发布基线的表面缺少修订门禁 | 给配置集视图接真实修订来源，再恢复门禁。不要发明 `revision-teaching-1`。 |
+| **TD-064** | 工作台交接至 `/dts-reload` | 等独立重载表面稳定后再做。 |
+| **TD-065** | 拓宽 DTS 重载值形态 | 一张一张票，带 overlay + preflight 夹具；禁止静默猜编码。 |
+
+### 更后的产品/平台批次（本切片不阻断上线）
+
+卫生与架构余量是真债，但不该抢走上线窗口：TD-003 / TD-008 / TD-012 / TD-018（生成客户端）、TD-005（已完成计划卫生）、TD-013 / TD-014（审批/目录）、TD-048–TD-053 / TD-055 / TD-117（治理延期问题）、TD-059（剩余弹窗）、TD-063 / TD-066 / TD-067 / TD-068（重载/桥/安全后续）、TD-071–TD-077（测试架构）、TD-097 / TD-109 / TD-110 / TD-112 / TD-114（前端余量）。触及那些表面时再捡；不要捆进本分支。
+
+## 本上线切片的逐条 TD 状态
+
+图例：**Done** = 已关或由上面批次关闭；**进行中（兄弟分支）** = 由点名并行分支负责；**Deferred** = 上线窗口主动不做；**Blocked** = 没有真机、专家或目标环境就关不了；**Open（后续）** = 真工作，但不在本分支。
+
+| ID | 状态 | 批次 / 负责人 |
+| --- | --- | --- |
+| 归属计划收口（DRV-REG-004 / `DRV-REG-005`） | 批次 1 Done（本分支） | 批次 1 |
+| TD-046 / TD-047 | Done（已在 `main` 关闭） | 批次 1 补证据并归档 |
+| TD-056 | 批次 2 Done（本分支） | 本分支，批次 1 之后 |
+| TD-057 | Open（后续） | 批次 3 |
+| TD-064 / TD-065 | Open（后续） | 批次 3；默认不进本会话 |
+| TD-079 | 进行中（兄弟分支） | `fix/td-079-acceptance-semantic-fixtures` |
+| TD-082 | 已由 #507 合入 `main` | `chore/td-082-apierror-status-codemod` |
+| TD-001 | Deferred | mock/API 长期对等约束，不是工单 |
+| TD-033 | Deferred | 仅归档的遗留调试 catalog 表 |
+| TD-031 | Deferred | 环境变量改名；上线窗口混淆成本高 |
+| TD-113 | Deferred | token burn 大波次；只在触及表面时继续 |
+| TD-062 | Deferred | PCW stretch 800–1000 行；勿重开 #258 |
+| TD-043 | Deferred | 可选 Admin L2 工具链面板 |
+| TD-100 | Blocked | 剩余是 HDC 真机 |
+| TD-009 / TD-090 | Blocked | 专家日志 / 真实模型质量 |
+| TD-007 | Blocked | 目标 Redis/队列证据 |
+| TD-019–TD-025 | Blocked | 目标 OIDC、自托管 smoke、备份恢复、容量、回滚演练 |
+| TD-022 | Blocked | 第一台已部署 Linux 目标 |
+| TD-038 / TD-042 | Blocked | 目标证明 / 干净快照 cutover 演练 |
+| TD-039 / TD-040 | Blocked | 跟拓扑 cutover 走；不要另开程序 |
+| TD-103 / TD-105 / TD-116 | Blocked | 需要 KMS 或真实投递量 |
+| 其余开放行（TD-003、TD-005、TD-008、TD-012–014、TD-018、TD-048–055、TD-059、TD-063、TD-066–068、TD-071–077、TD-097、TD-109–112、TD-114、TD-117 等） | Open（后续） | 不在本分支 |
+
+## UI 交互自动化审查
+
+批次 1 受影响 spec：`e2e/acceptance/parameter-topology.acceptance.spec.ts`。
+
+| ID | 行为 | 自动化 |
+| --- | --- | --- |
+| `DRV-REG-004` | Admin 编辑 `driverNature` / `instanceCardinality`；组织 Admin 不能改平台主体；platform-admin 组织侧编辑进入组织审计；改为 singleton 只刷新发布阻断。 | 保持 `@acceptance-planned` / `required: false`。单元与服务端已在 `main`。补充 playwright-cli 在 `work/ui-checks/attribution-deferred/`。不要撑大共享 pre-cutover CI 套件（TD-079）。 |
+| `DRV-REG-005` | Admin 设置注册默认业务分类并执行「从注册回放放置」；auto 驱动组移动；curated 冻结。 | 新 planned ID + `@acceptance-planned` 桩。单元覆盖：`ModuleEditDialog.test.tsx` + 服务端放置测试。同一证据目录的补充 playwright-cli。阻断 Playwright 等 TD-079。 |
+
+批次 2（TD-056）已在实现前登记 `PARAM-FILE-ROLLBACK-001`（`required: false`，`@acceptance-planned`），落在 `e2e/acceptance/parameter-files.acceptance.spec.ts`。共享 Playwright 仍等 TD-079；本切片证据是单元/服务端测试加 `work/ui-checks/param-file-rollback/` 的 playwright-cli。
+
+操作证据在桩被自动化后仍走 `npm run acceptance:browser` / `npm run acceptance:evidence`。本切片的操作证据是 playwright-cli 加单元/服务端测试。
+
+## 验证
+
+```bash
+npm run docs:check
+npm run acceptance:coverage
+npm run acceptance:operations
+# 批次 1 UI 证据（Admin 弹窗走查用 mock 前端即可）：
+# VITE_WISEEFF_RUNTIME_MODE=mock npm run dev
+# playwright-cli 三视口 + snapshot + screenshot + console error
+# 批次 2（实现时）：
+# npx vitest run server/modules/parameter-files/service.test.ts \\
+#   server/modules/parameter-files/repository.test.ts \\
+#   server/modules/parameter-files/routes.test.ts \\
+#   src/infrastructure/mock/mockParameterFileRepository.test.ts \\
+#   src/infrastructure/http/parameterFileClient.test.ts \\
+#   src/components/project-configuration-workbench/ProjectConfigurationWorkbench.test.tsx
+# npm run build
+# playwright-cli 三视口打开 /parameter-admin/projects/:id/configuration
+#   + 检查器版本历史 + 恢复确认 + console error
+# 证据：work/ui-checks/param-file-rollback/
+```
+
+除非成本很低，否则不跑完整浏览器验收。不要用本地 skip 宣称目标环境就绪。
+
+## 文档影响矩阵
+
+| 领域 | 动作 | 路径 |
+| --- | --- | --- |
+| 仓库地图 | Review | `AGENTS.md`、`ARCHITECTURE.md` — 预期不改运行模式或地图 |
+| 规划 | Update | 本计划 + 英文孪生；`docs/PLANS.md`；`docs/zh-CN/PLANS.md`；批次 1 移动归属计划 |
+| 产品规格 | Review | 不变：产品规格里的「回滚」是审阅/调试快照语义，不是文件历史恢复。操作文案在工作台检查器。 |
+| 领域 / 词汇 | Update | `docs/design-docs/domain-model.md`（+ 中文）：文件版本 `origin` 含 `rollback`；单文件历史恢复使用同一套指针版本规则。 |
+| 设计文档 | Review | 归属延期问题保持 Locked；不重开 grilling |
+| API | Update | `docs/design-docs/api-contract.md`（+ 中文）：`POST .../rollback`、版本列表 `createdByDisplayName`、审计 `parameter-file-rollback` |
+| 前端 | Update | `docs/FRONTEND.md`（+ 中文）— 工作台检查器「恢复为当前」+ 显示名；去掉旧文件面板 TD-056 待办句 |
+| 安全 | Review | 带审计写入 `parameter-file-rollback`；复用既有参数文件审计接缝；不新增密钥 |
+| 可靠性 / runbook | 无变更 | 不做目标环境宣称 |
+| 开发者环境 | 无变更 | 不新增环境变量 |
+| 质量 / 验收 | Update | 覆盖图 + 操作矩阵中英；`PARAM-FILE-ROLLBACK-001` 在 `requirements.ts` / `operationMatrix.ts` / `parameter-files.acceptance.spec.ts` |
+| 生成物 | 无变更 | 无迁移；批次 2 复用 schema 已有的 `origin='rollback'` |
+| 参考 | Review | 不变：产品化 API 草稿不是现行合同；现行合同已在上方更新 |
+| 技术债 | Update | 中英追踪表：TD-056 关闭；TD-079 / TD-082 仍由兄弟分支负责，不改写 Next Action 细节 |
+
+## 文档更新门禁
+
+一批次在下列完成前不得称为完成：
+
+1. 该批次影响矩阵里每个 `Update` / `Review` 行都已更新，或有证据记录为不变。
+2. 该批次关闭或推进的中英追踪行已更新。TD-079 / TD-082 保持由兄弟分支负责。
+3. `npm run docs:check` 绿灯。
+4. 该批次的 UI 交互覆盖已登记（planned 桩 + 补充 playwright-cli 是诚实做法；伪造 `@acceptance` 标记不是）。
+5. 把计划移到 `completed/` 后，同名文件不得留在 `active/`（中英皆然）。
+
+Deferred 或 Blocked 工作留在 `tech-debt-tracker.md`；不要删那些行。

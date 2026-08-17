@@ -1,6 +1,6 @@
 # 治理 + 平台收口（归档、证据、验收面）
 
-> Status: **已完成（实现已合入）**。#216（`feat/governance-platform-closeout`）。归属 deferred D-AG-01–04 已锁定，实现见 [`2026-08-01-attribution-deferred-implementation.md`](../active/2026-08-01-attribution-deferred-implementation.md)。  
+> Status: **已完成（实现已合入）**。#216（`feat/governance-platform-closeout`）。归属 deferred D-AG-01–04 已锁定并交付，见 [`2026-08-01-attribution-deferred-implementation.md`](./2026-08-01-attribution-deferred-implementation.md)。  
 > Date: 2026-08-01  
 > English: [`docs/exec-plans/completed/2026-08-01-governance-platform-closeout.md`](../../../exec-plans/completed/2026-08-01-governance-platform-closeout.md)  
 > 承接以下已合入计划的残留收口：

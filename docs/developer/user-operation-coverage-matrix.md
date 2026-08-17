@@ -103,6 +103,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `PARAM-FILE-UPLOAD-001` | P1 | parameters | automated | `/parameter-admin/projects` | Admin | ui, api, db | `e2e/acceptance/parameter-files.acceptance.spec.ts` |
 | `PARAM-FILE-SYNC-001` | P1 | parameters | automated | `/api/v1/projects/:projectId/parameter-files/:fileId/sync` | Admin | api, db | `e2e/acceptance/parameter-files.acceptance.spec.ts` |
 | `PARAM-FILE-RESOLVE-001` | P1 | parameters | automated | `/api/v1/projects/:projectId/parameter-file-conflicts/:conflictId/resolve` | Admin | api, db | `e2e/acceptance/parameter-files.acceptance.spec.ts` |
+| `PARAM-FILE-ROLLBACK-001` | P1 | parameters | future | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, api | `e2e/acceptance/parameter-files.acceptance.spec.ts`<br>`src/components/project-configuration-workbench/ProjectConfigurationWorkbench.test.tsx`<br>`src/infrastructure/mock/mockParameterFileRepository.test.ts`<br>`server/modules/parameter-files/service.test.ts` |
 | `PARAM-DTS-STRUCTURE-001` | P1 | parameters | automated | `/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/structure` | Admin | api | `e2e/acceptance/dts-structured.acceptance.spec.ts` |
 | `PARAM-DTS-EDIT-001` | P1 | parameters | automated | `/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/structure` | Admin | api | `e2e/acceptance/dts-structured.acceptance.spec.ts` |
 | `PARAM-DTS-EDIT-002` | P1 | parameters | automated | `/api/v1/projects/:projectId/dts-structured-edits/submit` | Admin | api, ui, db | `e2e/acceptance/dts-structured.acceptance.spec.ts` |
@@ -137,6 +138,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `DRV-REG-002` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `DRV-REG-003` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `DRV-REG-004` | P1 | parameters | future | `/parameter-admin` | Admin, Platform Admin | ui, api, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `DRV-REG-005` | P1 | parameters | future | `/parameter-admin/modules` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts`<br>`src/components/admin/ModuleEditDialog.test.tsx`<br>`src/infrastructure/mock/mockParameterModuleRegistryRepository.test.ts` |
 | `DRV-SCHEMA-001` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `DRV-SCHEMA-002` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `DRV-SCHEMA-003` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
@@ -171,6 +173,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 - `HDC-LAB-001`: Requires DEBUG_DEVICE_GATEWAY_MODE=hdc and HDC_DEVICE_LAB_AVAILABLE=true with hardware attached.
 - `ADB-LAB-001`: Requires DEBUG_DEVICE_GATEWAY_MODE=adb, ADB_DEVICE_LAB_AVAILABLE=true, exactly one ready ADB device, one ADB inventory row, and one shared default ADB smoke binding.
 - `XIAOZE-APPROVAL-EXEC-FAIL-001`: A true browser path needs a stale-working-tip / unresolvable-overlay fixture that is too brittle for this slice. Graph, orchestrator, and AG-UI assembly tests are the blocking gate; this ID is an honest planned stub.
+- `PARAM-FILE-ROLLBACK-001`: Unit/server/mock coverage plus playwright-cli evidence under work/ui-checks/param-file-rollback/. A blocking Playwright marker is deferred so this does not enlarge the shared pre-cutover CI acceptance suite (TD-079).
 - `PARAM-SPEC-EDIT-001`: Round-trip is covered by ParameterSpecDetailDialog RTL plus buildSpecEditorSavePayload unit tests and specLifecycle integration; a blocking Playwright marker is deferred so this does not enlarge the shared pre-cutover CI acceptance suite (TD-079).
 - `PARAM-SPEC-EDIT-002`: Reachability and keyboard contract are covered by ModalDialog unit tests plus playwright-cli evidence under work/ui-checks/param-spec-editor-batch4/. Mock has no Xiaoze FAB; stacking is the token ladder 1100 < 1150 < 1200. A keyboard-focused e2e spec follows the PARAM-ADMIN-DIALOG-001 pattern.
 - `PARAM-SPEC-IDENTITY-001`: Re-attribution is covered by ParameterSpecDetailDialog RTL plus mock/HTTP collision seams and playwright-cli evidence under work/ui-checks/param-spec-identity/; a blocking Playwright marker is deferred so this does not enlarge the shared pre-cutover CI acceptance suite (TD-079).
@@ -185,7 +188,8 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 - `DRV-REG-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
 - `DRV-REG-002`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
 - `DRV-REG-003`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
-- `DRV-REG-004`: Unit/server coverage lands with PR1; browser e2e pending disposable-DB / Playwright evidence before gating CI.
+- `DRV-REG-004`: Unit/server coverage landed with PR1; playwright-cli evidence under work/ui-checks/attribution-deferred/. A blocking Playwright marker is deferred so this does not enlarge the shared pre-cutover CI acceptance suite (TD-079).
+- `DRV-REG-005`: Unit/mock coverage plus playwright-cli evidence under work/ui-checks/attribution-deferred/. A blocking Playwright marker is deferred so this does not enlarge the shared pre-cutover CI acceptance suite (TD-079).
 - `DRV-SCHEMA-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
 - `DRV-SCHEMA-002`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
 - `DRV-SCHEMA-003`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.

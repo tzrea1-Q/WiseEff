@@ -466,14 +466,15 @@ Admin 项目摘要（`GET/POST /api/v1/parameters/admin/projects`）同时返回
 
 每项目可托管多个 DTS/JSON 文件，字节存对象存储，元数据与 `parsed_index` 存 PostgreSQL。上传请求体为 JSON `contentBase64`（非 multipart）。P1 单文件上限 2 MB。参数列表/详情 DTO 对已绑定项目值暴露可选 `sourceFileName`、`sourceNodePath`。
 
-查看要求 `canViewParameters`；上传、新版本、同步与冲突裁决要求 `canAdminParameters`。裁决服务层另校验 `canReviewParameters`。
+查看要求 `canViewParameters`；上传、新版本、文件历史回滚、同步与冲突裁决要求 `canAdminParameters`。裁决服务层另校验 `canReviewParameters`。版本列表项可带 `createdByDisplayName`（来自 `users.name`；未知则省略）。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `GET` | `/api/v1/projects/:projectId/parameter-files` | 列出项目托管文件及当前版本元数据。 |
 | `POST` | `/api/v1/projects/:projectId/parameter-files` | 上传新文件或首版。返回 `201 { item, version }`。 |
 | `POST` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions` | 上传下一版本。返回 `201 { item }`（版本 DTO）。 |
-| `GET` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions` | 单文件版本历史。 |
+| `GET` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions` | 单文件版本历史。条目可含 `createdByDisplayName`。 |
+| `POST` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/rollback` | 插入新的当前版本（`origin=rollback`），复用所选历史 blob，不倒带历史。已经是当前版本 → `409 CONFLICT`。返回 `201 { item, file }`。需要 `canAdminParameters`。审计 `parameter-file-rollback`。 |
 | `GET` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/content` | 下载指定版本原始字节。 |
 | `GET` | `/api/v1/projects/:projectId/parameter-file-candidates` | 列出暂存候选（`?fileId=&includeAbandoned=`）。返回不含 storage key 的 `{ items }`。 |
 | `POST` | `/api/v1/projects/:projectId/parameter-file-candidates` | 创建暂存候选（`fileName`、`contentBase64`、可选 `fileId`）。不改变活跃版本或配置集成员。返回 `201 { item }`。 |
@@ -508,7 +509,7 @@ Admin 项目摘要（`GET/POST /api/v1/parameters/admin/projects`）同时返回
 
 省略 `versionId` 时使用文件 `currentVersionId`。`origin=writeback` 的版本在同步时不生成新草稿。
 
-审计动作：`parameter-file-upload`、`parameter-file-sync`、`parameter-file-conflict-open`、`parameter-file-conflict-resolve`、`parameter-writeback-to-file`。
+审计动作：`parameter-file-upload`、`parameter-file-rollback`、`parameter-file-sync`、`parameter-file-conflict-open`、`parameter-file-conflict-resolve`、`parameter-writeback-to-file`。
 
 ### 结构化读取与 DTS 检索（P3）
 

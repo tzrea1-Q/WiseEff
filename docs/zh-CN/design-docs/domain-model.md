@@ -69,7 +69,7 @@
 | `ReviewDecision` | 审阅意见和推进记录 |
 | `ImportBatch` | 批量导入批次 |
 | `ProjectParameterFile` | 项目托管的 DTS/JSON 参数文件（项目内 `file_name` 唯一） |
-| `ProjectParameterFileVersion` | 不可变文件版本；对象存储字节 + `parsed_index` + `origin`（`upload` / `writeback`） |
+| `ProjectParameterFileVersion` | 不可变文件版本；对象存储字节 + `parsed_index` + `origin`（`upload` / `writeback` / `rollback`）。版本列表 DTO 可带从创建用户解析的 `createdByDisplayName`。 |
 | `DtsNode` | 文件版本上的结构化节点：`node_path`（含 `@unitAddress`）、labels、可选 `compatible`/`status`（原始 DTS 文本仅用于派生启用状态——不是参数）、父节点 |
 | `DtsProperty` | 节点上的类型化属性：`value_type`、`raw_text`、`normalized_value` |
 | `DtsPhandleRef` | 属性到目标 label 的 phandle 边（可选解析后的节点 id） |
@@ -94,6 +94,8 @@
 **DTS 结构化核心（P1）：** `server/modules/dts/` 提供 lexer → CST → 值类型/规范化 → overlay/label resolver → 无损 CST 序列化。上传（开关开启时）落 `dts_nodes` / `dts_properties` / `dts_phandle_refs`，并由合并模型派生 `parsed_index`。`/include/` 仍硬拒绝。回写通过 CST 属性 `rawText` 替换并序列化（多行 / 多组 / `@address` 已支持）。
 
 审阅合入（`software_merge → merged`）后，若参数有来源字段，`WritebackService` 回写当前文件并生成 `origin=writeback` 新版本；写回版本**不触发**新一轮自动草稿。
+
+Admin 在文件历史中「恢复为当前」（`POST /api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/rollback`）与基线恢复使用同一套只追加指针规则：插入新的当前版本（`origin=rollback`），复用所选版本的 blob（`storageKey` / checksum / size / `parsed_index`），不倒带、不删除历史。对已经是当前的版本返回 `CONFLICT`。新行记录操作者（`createdByUserId` / `createdByDisplayName`）。
 
 禁用文件后不再参与自动同步；已绑定来源保留。
 

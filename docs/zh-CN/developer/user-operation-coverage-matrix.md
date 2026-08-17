@@ -102,7 +102,8 @@
 - `DRV-REG-001`：Admin 上传前登记驱动并在树上看见未实测与解析覆盖徽标（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `DRV-REG-002`：Admin 从队列或模块树认领未登记驱动并使 origin 变为 curated（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `DRV-REG-003`：Admin 上传 DTS 后确认摘要报告已登记与新未登记 compatible（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
-- `DRV-REG-004`：编辑驱动性质/基数；组织 Admin 不能改平台主体；platform-admin 编辑进入组织审计；singleton 仅刷新发布阻断（`e2e/acceptance/parameter-topology.acceptance.spec.ts`；服务端单测已覆盖，浏览器仍为 future）。
+- `DRV-REG-004`：编辑驱动性质/基数；组织 Admin 不能改平台主体；platform-admin 编辑进入组织审计；singleton 仅刷新发布阻断（`e2e/acceptance/parameter-topology.acceptance.spec.ts`；服务端单测已覆盖；playwright-cli 证据 `work/ui-checks/attribution-deferred/`；阻断 Playwright 等 TD-079）。
+- `DRV-REG-005`：设置注册默认业务分类并「从注册回放放置」；auto 重挂、curated 冻结（单元/mock + playwright-cli 证据 `work/ui-checks/attribution-deferred/`；阻断 Playwright 等 TD-079）。
 - `DRV-SCHEMA-001`：Admin 配置并激活组织级解析，覆盖徽标变为「组织级解析覆盖」（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `DRV-SCHEMA-002`：仅叠加层声明的 compatible 上传后类型化绑定（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `DRV-SCHEMA-003`：钉扎已覆盖时拒绝激活叠加层（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
@@ -110,6 +111,7 @@
 - `PARAM-FILE-UPLOAD-001`：Admin 在 `/parameter-admin/projects` 上传 JSON 参数文件并列出文件与版本（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
 - `PARAM-FILE-SYNC-001`：Admin 手动同步参数文件，当解析值与 DB 当前值不一致时创建 `file_sync` 草稿（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
 - `PARAM-FILE-RESOLVE-001`：Admin 通过 API 裁决 file/UI 草稿冲突（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
+- `PARAM-FILE-ROLLBACK-001`：Admin 在配置工作台版本历史经确认框把某版本恢复为当前；插入新回滚指针版本且不倒带历史；操作者显示名而非原始用户 ID（单元/服务端 + playwright-cli `work/ui-checks/param-file-rollback/`；阻断 Playwright 等 TD-079）。
 - `PARAM-SPEC-GOVERN-001`：Admin 检索 ingest 后的规格并决议审核任务（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-SPEC-EDIT-001`：Admin 编辑启用态定义的单位/约束/示例/说明并往返；组件与服务端覆盖先行，共享 CI 验收库 Playwright 标记暂缓（TD-079）。
 - `PARAM-SPEC-EDIT-002`：三视口下编辑器动作可达、焦点进入与归还；`ModalDialog` 单测加 playwright-cli 证据先行。

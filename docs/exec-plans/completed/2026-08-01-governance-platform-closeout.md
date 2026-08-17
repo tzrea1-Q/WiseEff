@@ -1,6 +1,6 @@
 # Governance + Platform closeout (archive, evidence, acceptance surface)
 
-> Status: **Completed (implementation merged).** #216 (`feat/governance-platform-closeout`). Attribution deferred D-AG-01–04 locked and owned by [`2026-08-01-attribution-deferred-implementation.md`](../active/2026-08-01-attribution-deferred-implementation.md).  
+> Status: **Completed (implementation merged).** #216 (`feat/governance-platform-closeout`). Attribution deferred D-AG-01–04 locked and shipped in [`2026-08-01-attribution-deferred-implementation.md`](./2026-08-01-attribution-deferred-implementation.md).  
 > Date: 2026-08-01  
 > Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-01-governance-platform-closeout.md`](../../zh-CN/exec-plans/completed/2026-08-01-governance-platform-closeout.md)  
 > Supersedes residual closeout work from:

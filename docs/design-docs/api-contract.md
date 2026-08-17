@@ -283,14 +283,15 @@ Admin project summaries (`GET/POST /api/v1/parameters/admin/projects`) return bo
 
 Per-project DTS/JSON files are hosted internally with immutable version history. Upload bodies use JSON `contentBase64` (not multipart). P1 file size cap is 2 MB. Parameter list/detail DTOs expose optional `sourceFileName` and `sourceNodePath` on bound project values.
 
-View routes require `canViewParameters`; upload, version upload, sync, and conflict resolve require `canAdminParameters`. Conflict resolve also enforces `canReviewParameters` in the service layer.
+View routes require `canViewParameters`; upload, version upload, file-history rollback, sync, and conflict resolve require `canAdminParameters`. Conflict resolve also enforces `canReviewParameters` in the service layer. Version list items may include `createdByDisplayName` (from `users.name`; omitted when unknown).
 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/v1/projects/:projectId/parameter-files` | List hosted files with current version metadata. |
 | `POST` | `/api/v1/projects/:projectId/parameter-files` | Upload a new file or first version. Returns `201 { item, version, unsupportedConstructs?, driverSummary? }`. For DTS uploads, `driverSummary` compares file compatibles to registered mappings (`matchedRegistered` / `newUnregistered`). |
 | `POST` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions` | Upload the next file version. Returns `201 { item }` (version DTO) plus optional `unsupportedConstructs` / `driverSummary` as above. |
-| `GET` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions` | List version history for one file. |
+| `GET` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions` | List version history for one file. Items include optional `createdByDisplayName`. |
+| `POST` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/rollback` | Insert a new current version (`origin=rollback`) that reuses the chosen historical blob. Does not rewind history. Already-current → `409 CONFLICT`. Returns `201 { item, file }`. Requires `canAdminParameters`. Audits `parameter-file-rollback`. |
 | `GET` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/content` | Download raw file bytes for one version. |
 | `GET` | `/api/v1/projects/:projectId/parameter-file-candidates` | List staged candidates (`?fileId=&includeAbandoned=`). Returns `{ items }` without storage keys. |
 | `POST` | `/api/v1/projects/:projectId/parameter-file-candidates` | Create a staged candidate (`fileName`, `contentBase64`, optional `fileId`). Never changes active version or config-set membership. Returns `201 { item }`. |
@@ -325,7 +326,7 @@ Sync body (optional):
 
 When `versionId` is omitted, sync uses the file's `currentVersionId`. Versions with `origin=writeback` skip automatic draft generation during sync.
 
-Audit actions: `parameter-file-upload`, `parameter-file-sync`, `parameter-file-conflict-open`, `parameter-file-conflict-resolve`, `parameter-writeback-to-file`.
+Audit actions: `parameter-file-upload`, `parameter-file-rollback`, `parameter-file-sync`, `parameter-file-conflict-open`, `parameter-file-conflict-resolve`, `parameter-writeback-to-file`.
 
 ### Structured read and DTS search (P3)
 

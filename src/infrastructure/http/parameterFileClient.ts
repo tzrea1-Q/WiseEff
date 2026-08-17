@@ -10,6 +10,7 @@ import type {
   ParameterFileCandidateImpact,
   ParameterFileConflictBulkPreview,
   ParameterFileConflictBulkResolveResult,
+  RollbackParameterFileVersionResult,
   ParameterFileRepository,
   ParameterFileSyncConflict,
   PreviewBulkConflictResolutionInput,
@@ -111,6 +112,13 @@ export function createParameterFileClient(client: ApiClient = createDefaultApiCl
     async listVersions(projectId: string, fileId: string) {
       const response = await client.get<ItemsEnvelope<ProjectParameterFileVersion>>(routeFileVersions(projectId, fileId));
       return response.items;
+    },
+    async rollbackVersion(projectId: string, fileId: string, versionId: string): Promise<RollbackParameterFileVersionResult> {
+      const response = await client.post<RollbackParameterFileVersionResult>(
+        `${routeFileVersions(projectId, fileId)}/${encodeURIComponent(versionId)}/rollback`,
+        {}
+      );
+      return { item: response.item, file: response.file };
     },
     async downloadVersion(projectId: string, fileId: string, versionId: string): Promise<DownloadParameterFileVersionResult> {
       const response = await client.raw(routeVersionContent(projectId, fileId, versionId), {

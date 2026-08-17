@@ -41,6 +41,56 @@ describe("createMockParameterFileRepository (ParameterFileRepository contract)",
     const versions = await repo.listVersions(PROJECT_ID, uploaded.item.id);
     expect(versions).toHaveLength(1);
     expect(versions[0].id).toBe(uploaded.version.id);
+    expect(versions[0].createdByDisplayName).toBe("教学用户");
+  });
+
+  it("seeded teaching file lists operator display names and can restore a historical version", async () => {
+    const repo = createRepo();
+    const files = await repo.listFiles(PROJECT_ID);
+    const file = files[0]!;
+    const versions = await repo.listVersions(PROJECT_ID, file.id);
+    expect(versions).toHaveLength(2);
+    expect(versions.every((item) => item.createdByDisplayName === "教学用户")).toBe(true);
+    const historical = versions.find((item) => item.id !== file.currentVersionId);
+    expect(historical).toBeDefined();
+
+    const restored = await repo.rollbackVersion(PROJECT_ID, file.id, historical!.id);
+    expect(restored.item.origin).toBe("rollback");
+    expect(restored.item.createdByDisplayName).toBe("教学用户");
+    expect(restored.file.currentVersionId).toBe(restored.item.id);
+    const after = await repo.listVersions(PROJECT_ID, file.id);
+    expect(after).toHaveLength(3);
+    expect(after.at(-1)?.origin).toBe("rollback");
+  });
+
+  it("rollbackVersion inserts a new origin=rollback current version and keeps history", async () => {
+    const repo = createRepo();
+    const uploaded = await repo.uploadFile(PROJECT_ID, {
+      fileName: "history.dts",
+      contentBase64: Buffer.from('/dts-v1/;\n/ { model = "V1"; };\n').toString("base64")
+    });
+    const next = await repo.uploadVersion(PROJECT_ID, uploaded.item.id, {
+      fileName: "history.dts",
+      contentBase64: Buffer.from('/dts-v1/;\n/ { model = "V2"; };\n').toString("base64")
+    });
+    expect(next.item.origin).toBe("upload");
+
+    const restored = await repo.rollbackVersion(PROJECT_ID, uploaded.item.id, uploaded.version.id);
+    expect(restored.item.origin).toBe("rollback");
+    expect(restored.item.versionNumber).toBe(3);
+    expect(restored.item.createdByDisplayName).toBe("教学用户");
+    expect(restored.file.currentVersionId).toBe(restored.item.id);
+
+    const versions = await repo.listVersions(PROJECT_ID, uploaded.item.id);
+    expect(versions).toHaveLength(3);
+    expect(versions.map((item) => item.origin)).toEqual(["upload", "upload", "rollback"]);
+
+    const downloaded = await repo.downloadVersion(PROJECT_ID, uploaded.item.id, restored.item.id);
+    expect(new TextDecoder().decode(downloaded.bytes)).toContain('model = "V1"');
+
+    await expect(repo.rollbackVersion(PROJECT_ID, uploaded.item.id, restored.item.id)).rejects.toMatchObject({
+      code: "CONFLICT"
+    });
   });
 
   it("downloadVersion returns the uploaded bytes for a historical version", async () => {

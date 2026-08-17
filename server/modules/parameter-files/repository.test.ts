@@ -218,5 +218,9 @@ describe.skipIf(!databaseAvailable)("parameter-files repository", () => {
     });
     expect(next.versionNumber).toBe(2);
     expect((await listFileVersions(db, { fileId: "file-1" })).map((row) => row.versionNumber)).toEqual([2, 1]);
+    expect((await listFileVersions(db, { fileId: "file-1" }))[0]).toMatchObject({
+      createdByUserId: "user-1",
+      createdByDisplayName: "Riley Chen"
+    });
   });
 });

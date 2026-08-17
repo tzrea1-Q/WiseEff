@@ -11,7 +11,7 @@ import {
   type InMemoryTestDatabase
 } from "../../testing/testDatabase";
 import { seedCoreGraph } from "../../testing/fixtures";
-import { MAX_FILE_BYTES, uploadProjectParameterFile } from "./service";
+import { MAX_FILE_BYTES, rollbackProjectParameterFileVersion, uploadProjectParameterFile } from "./service";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
@@ -340,5 +340,76 @@ describe.skipIf(!databaseAvailable)("project parameter file upload service", () 
       if (prev === undefined) delete process.env.DTS_STRUCTURAL_INGEST;
       else process.env.DTS_STRUCTURAL_INGEST = prev;
     }
+  });
+
+  it("rollback inserts a new origin=rollback pointer version without rewinding history", async () => {
+    const { objectStore, putCalls } = makeObjectStore();
+    const first = await uploadProjectParameterFile(db, objectStore, adminAuth(), {
+      projectId: "project-1",
+      fileName: "config.json",
+      bytes: Buffer.from('{"battery":{"temp_max":80}}', "utf8")
+    });
+    const second = await uploadProjectParameterFile(db, objectStore, adminAuth(), {
+      projectId: "project-1",
+      fileName: "config.json",
+      bytes: Buffer.from('{"battery":{"temp_max":90}}', "utf8")
+    });
+    const putsBeforeRollback = putCalls.length;
+
+    const restored = await rollbackProjectParameterFileVersion(
+      db,
+      objectStore,
+      adminAuth(),
+      {
+        projectId: "project-1",
+        fileId: first.file.id,
+        versionId: first.version.id
+      },
+      { requestId: "req-rollback-1" }
+    );
+
+    expect(putCalls.length).toBe(putsBeforeRollback);
+    expect(restored.version.origin).toBe("rollback");
+    expect(restored.version.versionNumber).toBe(3);
+    expect(restored.version.id).not.toBe(first.version.id);
+    expect(restored.version.storageKey).toBe(first.version.storageKey);
+    expect(restored.version.checksum).toBe(first.version.checksum);
+    expect(restored.version.createdByUserId).toBe("user-1");
+    expect(restored.version.createdByDisplayName).toBe("Riley Chen");
+    expect(restored.file.currentVersionId).toBe(restored.version.id);
+    expect(restored.file.currentVersionNumber).toBe(3);
+
+    const listed = await db.query<{ id: string; origin: string; version_number: number }>(
+      `select id, origin, version_number from project_parameter_file_versions where file_id = $1 order by version_number`,
+      [first.file.id]
+    );
+    expect(listed.rows).toHaveLength(3);
+    expect(listed.rows.map((row) => row.origin)).toEqual(["upload", "upload", "rollback"]);
+    expect(listed.rows.some((row) => row.id === second.version.id)).toBe(true);
+
+    const audit = await db.query<{ action: string; target_id: string }>(
+      "select action, target_id from audit_events where organization_id = 'org-1' and kind = 'parameter-file-rollback'"
+    );
+    expect(audit.rows[0]).toEqual({ action: "rollback", target_id: first.file.id });
+  });
+
+  it("rollback refuses when the chosen version is already current", async () => {
+    const { objectStore } = makeObjectStore();
+    const uploaded = await uploadProjectParameterFile(db, objectStore, adminAuth(), {
+      projectId: "project-1",
+      fileName: "config.json",
+      bytes: Buffer.from('{"battery":{"temp_max":80}}', "utf8")
+    });
+
+    await expect(
+      rollbackProjectParameterFileVersion(db, objectStore, adminAuth(), {
+        projectId: "project-1",
+        fileId: uploaded.file.id,
+        versionId: uploaded.version.id
+      })
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409
+    });
   });
 });

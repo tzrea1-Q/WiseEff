@@ -46,7 +46,8 @@ const ROLE_LABELS: Record<ConfigSetRole, string> = {
 
 const ORIGIN_LABELS: Record<ProjectParameterFileVersion["origin"], string> = {
   upload: "手动上传",
-  writeback: "参数回写"
+  writeback: "参数回写",
+  rollback: "版本回滚"
 };
 
 export type WorkbenchInspectorPanelProps = {
@@ -108,6 +109,7 @@ export type WorkbenchInspectorPanelProps = {
   versionsError: string;
   onEnterCanvasMode: (mode: WorkbenchCanvasMode, versionId: string) => void;
   onDownloadVersion: (version: ProjectParameterFileVersion) => void;
+  onRequestRollbackVersion: (version: ProjectParameterFileVersion) => void;
   downloadMessage: string;
   selectedStructureNode: DtsStructuralNode | null;
   selectedStructureProperty: DtsStructuralProperty | null;
@@ -179,6 +181,7 @@ export function WorkbenchInspectorPanel({
   versionsError,
   onEnterCanvasMode,
   onDownloadVersion,
+  onRequestRollbackVersion,
   downloadMessage,
   selectedStructureNode,
   selectedStructureProperty,
@@ -756,7 +759,7 @@ export function WorkbenchInspectorPanel({
                       <small className="mono">{version.id}</small>
                       <span>来源：{ORIGIN_LABELS[version.origin]}</span>
                       <span title={formatAbsolute(version.createdAt)}>创建时间：{formatRelativeOrAbsolute(version.createdAt)}</span>
-                      <span>操作人：{version.createdByUserId ?? "未记录"}</span>
+                      <span>操作人：{version.createdByDisplayName ?? "未记录"}</span>
                     </div>
                     <div className="configuration-workbench__version-actions">
                       <button
@@ -783,6 +786,16 @@ export function WorkbenchInspectorPanel({
                       >
                         下载
                       </button>
+                      {canAdmin && !active ? (
+                        <button
+                          className="button subtle"
+                          type="button"
+                          aria-label={`将版本 ${version.versionNumber} 恢复为当前`}
+                          onClick={() => onRequestRollbackVersion(version)}
+                        >
+                          恢复为当前
+                        </button>
+                      ) : null}
                     </div>
                   </li>
                 );

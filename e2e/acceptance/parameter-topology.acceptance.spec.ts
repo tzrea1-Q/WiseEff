@@ -3381,7 +3381,19 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       // @operation-planned DRV-REG-004
       test.skip(
         true,
-        "Pending: playwright coverage for editing driverNature/instanceCardinality, platform-subject 403 for Org Admin, org-audit for platform-admin, and singleton publish blockers."
+        "Supplemental playwright-cli evidence is under work/ui-checks/attribution-deferred/. Blocking Playwright waits for leftover PPV fixtures (TD-079)."
+      );
+      void page;
+    });
+
+    test("DRV-REG-005: replay-from-registration moves auto groups and skips curated", async ({
+      page
+    }) => {
+      // @acceptance-planned DRV-REG-005
+      // @operation-planned DRV-REG-005
+      test.skip(
+        true,
+        "Supplemental playwright-cli evidence is under work/ui-checks/attribution-deferred/. Blocking Playwright waits for leftover PPV fixtures (TD-079)."
       );
       void page;
     });

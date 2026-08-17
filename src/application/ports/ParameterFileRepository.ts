@@ -1,5 +1,5 @@
 export type ParameterFileFormat = "dts" | "json";
-export type ParameterFileVersionOrigin = "upload" | "writeback";
+export type ParameterFileVersionOrigin = "upload" | "writeback" | "rollback";
 
 export type ParameterFileParsedIndexEntry = {
   value: string;
@@ -30,6 +30,7 @@ export type ProjectParameterFileVersion = {
   origin: ParameterFileVersionOrigin;
   createdAt: string;
   createdByUserId?: string;
+  createdByDisplayName?: string;
 };
 
 export type UploadParameterFileInput = {
@@ -90,6 +91,11 @@ export type ParameterFileSyncConflict = {
   propertyName?: string;
   sourceNodePath?: string;
   source?: ParameterFileConflictSourceLocator;
+};
+
+export type RollbackParameterFileVersionResult = {
+  item: ProjectParameterFileVersion;
+  file: ProjectParameterFile;
 };
 
 export type DownloadParameterFileVersionResult = {
@@ -270,6 +276,11 @@ export interface ParameterFileRepository {
     input: UploadParameterFileInput
   ): Promise<UploadParameterFileVersionResult>;
   listVersions(projectId: string, fileId: string): Promise<ProjectParameterFileVersion[]>;
+  rollbackVersion(
+    projectId: string,
+    fileId: string,
+    versionId: string
+  ): Promise<RollbackParameterFileVersionResult>;
   downloadVersion(projectId: string, fileId: string, versionId: string): Promise<DownloadParameterFileVersionResult>;
   syncFile(projectId: string, fileId: string): Promise<FileSyncSummary>;
   listConflicts(projectId: string): Promise<ParameterFileSyncConflict[]>;

@@ -102,13 +102,15 @@
 - `DRV-REG-001`：上传前登记驱动；树上出现带解析覆盖徽标的未实测 curated 驱动组（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `DRV-REG-002`：从队列或模块树认领已观测未登记驱动，origin 变为 curated（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `DRV-REG-003`：DTS 上传后一次性摘要报告已登记匹配与新观测未登记 compatible（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
-- `DRV-REG-004`：编辑 driverNature / instanceCardinality；组织 Admin 不能改平台主体；platform-admin 组织侧编辑进入组织审计；改为 singleton 仅刷新发布阻断任务（`e2e/acceptance/parameter-topology.acceptance.spec.ts`；单元/服务端已覆盖，浏览器 e2e 仍为 future）。
+- `DRV-REG-004`：编辑 driverNature / instanceCardinality；组织 Admin 不能改平台主体；platform-admin 组织侧编辑进入组织审计；改为 singleton 仅刷新发布阻断任务（`e2e/acceptance/parameter-topology.acceptance.spec.ts`；单元/服务端已覆盖；playwright-cli 证据 `work/ui-checks/attribution-deferred/`；阻断 Playwright 等 TD-079）。
+- `DRV-REG-005`：Admin 设置注册默认业务分类并执行「从注册回放放置」；auto 驱动组重挂，curated 冻结（`e2e/acceptance/parameter-topology.acceptance.spec.ts`；`ModuleEditDialog.test.tsx`；mock 仓储；playwright-cli 证据 `work/ui-checks/attribution-deferred/`）。
 - `DRV-SCHEMA-001`：Admin 对解析未覆盖的驱动组配置并激活组织级解析，覆盖徽标变为「组织级解析覆盖」（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `DRV-SCHEMA-002`：仅组织叠加层声明的 compatible 上传后绑定类型化属性，且不进入未匹配审核（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `DRV-SCHEMA-003`：钉扎 schema 已覆盖时激活叠加层被拒绝并说明原因（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `DRV-SCHEMA-004`：激活叠加层时就地升级已有 provisional spec，无需重传（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-FILE-ADMIN-001`：Admin 上传项目参数文件、列出版本、手动同步生成 `file_sync` 草稿，并在 `/parameter-admin/projects` 打开参数文件面板（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
 - `PARAM-FILE-CONFLICT-001`：Admin 裁决 file/UI 草稿冲突，可选择保留文件值或 UI 值（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
+- `PARAM-FILE-ROLLBACK-001`：Admin 把历史文件版本恢复为当前（插入 `origin=rollback` 指针版本，不倒带历史），版本列表展示操作者显示名（工作台/mock/服务端单测；playwright-cli 证据 `work/ui-checks/param-file-rollback/`；阻断 Playwright 等 TD-079）。
 - `PARAM-IMPORT-DTS-FULL-001`：完整 `.dts` 经 `parse-dts` 产出带 `@address` 的 module 路径；`/include/` 被拒绝；向导显示服务端解析提示（`e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts`）。
 - `PARAM-IMPORT-REVIEW-META-001`：带 `reviewMetadata.skippedRows` 的导入预览写入 `batch-import` 审计 metadata（`e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts`）。
 - `PARAM-ADMIN-IA-001`：组织子导航仅「参数定义管理」「模块管理」；定义管理内嵌匹配审核；节点对应嵌套于 specs 且在有任务时出现；旧 `/spec-review`、`/identity-mapping` 重定向并保留 query（单测 `parameterAdminOrganizationPath.test.ts`、`ParameterAdminNextPage.test.tsx`）。

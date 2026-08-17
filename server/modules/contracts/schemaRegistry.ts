@@ -1337,6 +1337,13 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseMedia: "binary",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "parameterFiles.rollbackFileVersion": {
+    summary: "Insert a new current version that reuses a historical blob (origin=rollback)",
+    tags: ["parameter-files"],
+    responseBody: "ParameterFileVersionUploadResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "parameterFiles.syncFileVersion": {
     summary: "Sync a parameter file version into project drafts and detect conflicts",
     tags: ["parameter-files"],

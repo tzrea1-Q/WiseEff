@@ -1271,6 +1271,26 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["api", "db"]
   },
   {
+    id: "PARAM-FILE-ROLLBACK-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/projects/:projectId/configuration",
+    roles: ["Admin"],
+    action:
+      "Restore a historical file version as current via ConfirmDialog; insert a new origin=rollback pointer version without rewinding history; show the operator display name instead of a raw user id.",
+    coverage: "future",
+    acceptanceIds: ["PARAM-FILE-ROLLBACK-001"],
+    specFiles: [
+      "e2e/acceptance/parameter-files.acceptance.spec.ts",
+      "src/components/project-configuration-workbench/ProjectConfigurationWorkbench.test.tsx",
+      "src/infrastructure/mock/mockParameterFileRepository.test.ts",
+      "server/modules/parameter-files/service.test.ts"
+    ],
+    deferralReason:
+      "Unit/server/mock coverage plus playwright-cli evidence under work/ui-checks/param-file-rollback/. A blocking Playwright marker is deferred so this does not enlarge the shared pre-cutover CI acceptance suite (TD-079).",
+    assertions: ["ui", "api"]
+  },
+  {
     id: "PARAM-DTS-STRUCTURE-001",
     priority: "P1",
     area: "parameters",
@@ -1717,8 +1737,27 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     acceptanceIds: ["DRV-REG-004"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
     deferralReason:
-      "Unit/server coverage lands with PR1; browser e2e pending disposable-DB / Playwright evidence before gating CI.",
+      "Unit/server coverage landed with PR1; playwright-cli evidence under work/ui-checks/attribution-deferred/. A blocking Playwright marker is deferred so this does not enlarge the shared pre-cutover CI acceptance suite (TD-079).",
     assertions: ["ui", "api", "audit"]
+  },
+  {
+    id: "DRV-REG-005",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/modules",
+    roles: ["Admin"],
+    action:
+      "Set the registration default business category and run replay-from-registration; confirm auto driver-groups move and curated placements stay frozen.",
+    coverage: "future",
+    acceptanceIds: ["DRV-REG-005"],
+    specFiles: [
+      "e2e/acceptance/parameter-topology.acceptance.spec.ts",
+      "src/components/admin/ModuleEditDialog.test.tsx",
+      "src/infrastructure/mock/mockParameterModuleRegistryRepository.test.ts"
+    ],
+    deferralReason:
+      "Unit/mock coverage plus playwright-cli evidence under work/ui-checks/attribution-deferred/. A blocking Playwright marker is deferred so this does not enlarge the shared pre-cutover CI acceptance suite (TD-079).",
+    assertions: ["ui", "api"]
   },
   {
     id: "DRV-SCHEMA-001",

@@ -891,6 +891,13 @@ export const routeManifest = [
     module: "parameter-files",
     stability: "mvp"
   },
+  {
+    id: "parameterFiles.rollbackFileVersion",
+    method: "POST",
+    path: "/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/rollback",
+    module: "parameter-files",
+    stability: "mvp"
+  },
   { id: "parameterFiles.syncFileVersion", method: "POST", path: "/api/v1/projects/:projectId/parameter-files/:fileId/sync", module: "parameter-files", stability: "mvp" },
   { id: "parameterFiles.listConflicts", method: "GET", path: "/api/v1/projects/:projectId/parameter-file-conflicts", module: "parameter-files", stability: "mvp" },
   {

@@ -602,6 +602,13 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "PARAM-FILE-ROLLBACK-001",
+    workflow: "C",
+    title:
+      "Admin restores a historical parameter-file version as current by inserting a new origin=rollback pointer version (history is not rewound) and sees the operator display name on the version list.",
+    required: false
+  },
+  {
     id: "PARAM-DTS-STRUCTURE-001",
     workflow: "C",
     title: "Admin can read the structured DTS model (nodes/properties/phandles) for a file version.",
@@ -809,6 +816,13 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     workflow: "C",
     title:
       "Admin edits driverNature / instanceCardinality on an org registration; platform-admin edits appear in org audit; Org Admin cannot edit platform-tier registrations; changing to singleton-per-project opens/refreshes singleton-cardinality publish blockers without rewriting topology.",
+    required: false
+  },
+  {
+    id: "DRV-REG-005",
+    workflow: "C",
+    title:
+      "Admin sets a driver registration default business category and runs replay-from-registration; auto driver-groups reparent to the default; curated placements stay frozen.",
     required: false
   },
   {

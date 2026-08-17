@@ -12,8 +12,8 @@ describe("createMockParameterModuleRegistryRepository", () => {
         kind: "business",
         origin: "curated",
         effectiveImportance: "high",
-        // Direct 12 + child 电池安全 4
-        parameterCount: 16
+        // Direct 12 + child 电池安全 4 + auto unmapped-ic 2
+        parameterCount: 18
       })
     );
     expect(registry.mappings).toEqual(
@@ -88,5 +88,39 @@ describe("createMockParameterModuleRegistryRepository", () => {
 
     const recompute = await repo.recomputeBindings();
     expect(recompute.updated).toBeGreaterThan(0);
+  });
+
+  it("keys driver-registry seed rows to driver-group modules, not the business parent", async () => {
+    const repo = createMockParameterModuleRegistryRepository();
+    const listed = await repo.listDriverRegistry();
+    const sc8562 = listed.items.find((entry) => entry.name === "SC8562");
+    expect(sc8562?.moduleId).toBe("mod-sc8562");
+    expect(sc8562?.origin).toBe("curated");
+    expect(sc8562?.driverNature).toBe("physical-device");
+    expect(sc8562?.instanceCardinality).toBe("multiple");
+    expect(listed.items.some((entry) => entry.moduleId === "mod-charging")).toBe(false);
+  });
+
+  it("replays auto driver-groups onto the registration default and skips curated", async () => {
+    const repo = createMockParameterModuleRegistryRepository();
+    const curated = await repo.replayDriverPlacement("mod-sc8562");
+    expect(curated).toEqual({
+      moduleId: "mod-sc8562",
+      moved: 0,
+      skippedCurated: 1,
+      skippedMissingDefault: 0
+    });
+
+    const auto = await repo.replayDriverPlacement("mod-unmapped-ic");
+    expect(auto).toEqual({
+      moduleId: "mod-unmapped-ic",
+      moved: 1,
+      skippedCurated: 0,
+      skippedMissingDefault: 0
+    });
+    const registry = await repo.getRegistry();
+    expect(registry.modules.find((module) => module.id === "mod-unmapped-ic")?.parentId).toBe(
+      "mod-charging"
+    );
   });
 });

@@ -34,6 +34,7 @@ type ProjectParameterFileVersionRow = {
   origin: ParameterFileVersionOrigin;
   created_by_user_id: string | null;
   created_at: string | Date;
+  created_by_display_name?: string | null;
 };
 
 function dateTimeToIso(value: string | Date) {
@@ -66,7 +67,8 @@ function toVersionDto(row: ProjectParameterFileVersionRow): ProjectParameterFile
     parsedIndex: row.parsed_index ?? {},
     origin: row.origin,
     createdAt: dateTimeToIso(row.created_at),
-    createdByUserId: row.created_by_user_id ?? undefined
+    createdByUserId: row.created_by_user_id ?? undefined,
+    createdByDisplayName: row.created_by_display_name ?? undefined
   };
 }
 
@@ -234,10 +236,11 @@ export async function listFileVersions(
 ): Promise<ProjectParameterFileVersionDto[]> {
   const result = await db.query<ProjectParameterFileVersionRow>(
     `
-    select *
-    from project_parameter_file_versions
-    where file_id = $1
-    order by version_number desc, id desc
+    select v.*, u.name as created_by_display_name
+    from project_parameter_file_versions v
+    left join users u on u.id = v.created_by_user_id
+    where v.file_id = $1
+    order by v.version_number desc, v.id desc
     `,
     [query.fileId]
   );

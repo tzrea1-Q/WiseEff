@@ -162,6 +162,7 @@ export function ProjectConfigurationWorkbench({
   const [fileVersions, setFileVersions] = useState<ProjectParameterFileVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [versionsError, setVersionsError] = useState("");
+  const [versionsReloadToken, setVersionsReloadToken] = useState(0);
   const {
     flow: candidateFlow,
     candidate: activeCandidate,
@@ -448,7 +449,7 @@ export function ProjectConfigurationWorkbench({
     return () => {
       cancelled = true;
     };
-  }, [fileRepository, inspectorOpen, project.id, selectedMember]);
+  }, [fileRepository, inspectorOpen, project.id, selectedMember, versionsReloadToken]);
 
   useEffect(() => {
     if (
@@ -693,6 +694,36 @@ export function ProjectConfigurationWorkbench({
       activitySession.bumpRefresh();
     },
     [activitySession, showToast]
+  );
+
+  const handleRequestRollbackVersion = useCallback(
+    (version: ProjectParameterFileVersion) => {
+      if (!canAdmin || !selectedMember) return;
+      const fileId = selectedMember.fileId;
+      setConfirmation({
+        key: "rollback-file-version",
+        title: "恢复为当前版本",
+        description: (
+          <>
+            <p>将插入新的当前版本，内容与版本 {version.versionNumber} 相同。</p>
+            <p>历史版本全部保留，不会倒带。当前工作副本会被替换为该内容。</p>
+          </>
+        ),
+        confirmLabel: "恢复为当前",
+        pendingLabel: "正在恢复…",
+        tone: "danger",
+        run: async () => {
+          await fileRepository.rollbackVersion(project.id, fileId, version.id);
+          workspaceLoadSession.retryFiles();
+          workspaceLoadSession.retryMembers();
+          workspaceLoadSession.retrySource();
+          workspaceLoadSession.retryStructure();
+          setVersionsReloadToken((value) => value + 1);
+          notifyMutation("已插入新的当前版本，历史记录仍保留。");
+        }
+      });
+    },
+    [canAdmin, fileRepository, notifyMutation, project.id, selectedMember, workspaceLoadSession]
   );
 
   const {
@@ -1362,6 +1393,7 @@ export function ProjectConfigurationWorkbench({
               versionsError={versionsError}
               onEnterCanvasMode={enterCanvasMode}
               onDownloadVersion={(version) => void handleDownloadVersion(version)}
+              onRequestRollbackVersion={handleRequestRollbackVersion}
               downloadMessage={downloadMessage}
               selectedStructureNode={selectedStructureNode}
               selectedStructureProperty={selectedStructureProperty}
