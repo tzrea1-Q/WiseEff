@@ -65,7 +65,7 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | `HDC-LAB-001` | F | No | Real HDC device lab read/write smoke runs when explicitly enabled. | `e2e/acceptance/hdc-device-lab.acceptance.spec.ts` |
 | `XIAOZE-PERCEPTION-001` | G | Yes | Xiaoze answers grounded read-only questions using page context and perception tools. | `e2e/acceptance/xiaoze-perception.acceptance.spec.ts` |
 | `XIAOZE-PERCEPTION-AUTHZ-001` | G | Yes | Out-of-scope Xiaoze questions return a safe non-data answer. | `e2e/acceptance/xiaoze-perception.acceptance.spec.ts` |
-| `XIAOZE-ACTION-APPROVE-001` | G | Yes | Xiaoze parameter change approval executes through the agent audit chain. | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
+| `XIAOZE-ACTION-APPROVE-001` | G | Yes | Xiaoze parameter change approval executes through the agent audit chain. | `e2e/acceptance/xiaoze-action.acceptance.spec.ts`; `e2e/acceptance/xiaoze-action-semantic.acceptance.spec.ts` |
 | `XIAOZE-APPROVAL-CARD-001` | G | Yes | The browser approval card is clickable above the open chat: approving resolves the interrupt without closing the chat. | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
 | `XIAOZE-ACTION-EDITEDARGS-001` | G | Yes | Approving a Xiaoze action with edited arguments executes the edited payload into the change request. | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
 | `XIAOZE-ACTION-REJECT-001` | G | Yes | Rejecting a Xiaoze action approval does not mutate parameter state. | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
@@ -169,6 +169,7 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 - This map is machine-checked against `e2e/acceptance/requirements.ts`: `npm run acceptance:coverage` fails when a requirement has no row here or a row references a retired requirement ID.
 - A workflow-level pass does not imply every row above is covered. The generated browser evidence must report requirement-level coverage before this map can be treated as satisfied.
 - Operation markers use comments in acceptance specs: `// @operation PARAM-REASON-001` (planned variant: `// @operation-planned <ID>`). Automated P0/P1 operation IDs must produce operation evidence under `docs/generated/acceptance-operation-evidence.md`, and matrix `specFiles` references must exist on disk.
+- `XIAOZE-ACTION-APPROVE-001` still runs on the shared pre-cutover CI database via `e2e/acceptance/xiaoze-action.acceptance.spec.ts` (the legacy `project_parameter_value_id` fallback stays honest there). The production post-cutover `action.submitParameterChange` path is proven suite-internally by `e2e/acceptance/xiaoze-action-semantic.acceptance.spec.ts` on a disposable cutover database, without flipping the shared CI job (TD-079 remainder).
 
 ## Supplemental Manual Evidence (Xiaoze P2)
 

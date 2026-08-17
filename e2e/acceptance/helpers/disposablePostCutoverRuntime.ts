@@ -15,7 +15,8 @@ import { applyMigrations } from "../../../server/shared/database/migrations";
 import { ACCEPTANCE_ORGANIZATION, acceptanceCast, chargeLabCast } from "./cast";
 
 const databasePrefix = "wiseeff_acceptance_disposable_";
-const markerPurpose = "parameter-topology";
+/** Topology suites omit `markerPurpose`; keep this default so their marker check stays unchanged. */
+export const DEFAULT_DISPOSABLE_MARKER_PURPOSE = "parameter-topology";
 const organizationId = ACCEPTANCE_ORGANIZATION.id;
 const projectId = "aurora";
 const maintenanceToken = "round6-disposable-acceptance-only";
@@ -35,11 +36,19 @@ export type DisposablePostCutoverRuntime = {
   databaseUrl: string;
   databaseName: string;
   migrationRunId: string;
+  markerPurpose: string;
   apiUrl: string;
   frontendUrl: string;
   authIssuer: string;
   authSecret: string;
   dispose(): Promise<void>;
+};
+
+export type StartDisposablePostCutoverRuntimeOptions = {
+  label?: string;
+  apiPort?: number;
+  frontendPort?: number;
+  markerPurpose?: string;
 };
 
 function safeSegment(value: string) {
@@ -51,12 +60,15 @@ export function buildDisposableDatabaseName(label: string) {
   return `${databasePrefix}${boundedLabel}_${Date.now().toString(36)}_${randomBytes(4).toString("hex")}`;
 }
 
-export function assertDisposableDatabaseIdentity(identity: DisposableDatabaseIdentity) {
+export function assertDisposableDatabaseIdentity(
+  identity: DisposableDatabaseIdentity,
+  expectedPurpose = DEFAULT_DISPOSABLE_MARKER_PURPOSE,
+) {
   if (!identity.databaseName.startsWith(databasePrefix)) {
     throw new Error(`Refusing destructive acceptance cleanup: invalid disposable database name ${identity.databaseName}.`);
   }
-  if (identity.markerPurpose !== markerPurpose) {
-    throw new Error("Refusing disposable database use: missing parameter-topology test-only marker.");
+  if (identity.markerPurpose !== expectedPurpose) {
+    throw new Error(`Refusing disposable database use: missing ${expectedPurpose} test-only marker.`);
   }
   if (
     !identity.expectedMigrationRunId ||
@@ -166,7 +178,7 @@ async function seedAcceptanceScope(db: Database) {
   }
 }
 
-async function preparePostCutoverDatabase(databaseUrl: string) {
+async function preparePostCutoverDatabase(databaseUrl: string, purpose: string) {
   return withDatabase(databaseUrl, async (db) => {
     await applyMigrations(db, migrationsDir);
     await seedAcceptanceScope(db);
@@ -191,13 +203,17 @@ async function preparePostCutoverDatabase(databaseUrl: string) {
     );
     await db.query(
       `insert into wiseeff_acceptance_test_markers (purpose, migration_run_id) values ($1, $2)`,
-      [markerPurpose, report.migrationRunId],
+      [purpose, report.migrationRunId],
     );
     return report.migrationRunId;
   });
 }
 
-async function verifyPostCutoverDatabase(databaseUrl: string, expectedMigrationRunId: string) {
+async function verifyPostCutoverDatabase(
+  databaseUrl: string,
+  expectedMigrationRunId: string,
+  purpose: string,
+) {
   await withClient(databaseUrl, async (client) => {
     const result = await client.query<{
       database_name: string;
@@ -213,17 +229,20 @@ async function verifyPostCutoverDatabase(databaseUrl: string, expectedMigrationR
        inner join parameter_identity_cutovers cutover
          on cutover.migration_run_id = marker.migration_run_id
        where marker.purpose = $1`,
-      [markerPurpose],
+      [purpose],
     );
     const row = result.rows[0];
     if (!row) throw new Error("Disposable acceptance marker or matching cutover is missing.");
-    assertDisposableDatabaseIdentity({
-      databaseName: row.database_name,
-      markerPurpose: row.purpose,
-      markerMigrationRunId: row.marker_migration_run_id,
-      cutoverMigrationRunId: row.cutover_migration_run_id,
-      expectedMigrationRunId,
-    });
+    assertDisposableDatabaseIdentity(
+      {
+        databaseName: row.database_name,
+        markerPurpose: row.purpose,
+        markerMigrationRunId: row.marker_migration_run_id,
+        cutoverMigrationRunId: row.cutover_migration_run_id,
+        expectedMigrationRunId,
+      },
+      purpose,
+    );
   });
 }
 
@@ -276,8 +295,9 @@ async function stopRuntime(child: ChildProcess) {
 
 export async function startDisposablePostCutoverRuntime(
   baseDatabaseUrl: string,
-  options: { label?: string; apiPort?: number; frontendPort?: number } = {},
+  options: StartDisposablePostCutoverRuntimeOptions = {},
 ): Promise<DisposablePostCutoverRuntime> {
+  const purpose = options.markerPurpose ?? DEFAULT_DISPOSABLE_MARKER_PURPOSE;
   const databaseName = buildDisposableDatabaseName(options.label ?? "topology");
   const databaseUrl = databaseUrlFor(baseDatabaseUrl, databaseName);
   const adminUrl = adminDatabaseUrl(baseDatabaseUrl);
@@ -296,8 +316,8 @@ export async function startDisposablePostCutoverRuntime(
 
   await withClient(adminUrl, (client) => client.query(`create database ${databaseName}`));
   try {
-    const migrationRunId = await preparePostCutoverDatabase(databaseUrl);
-    await verifyPostCutoverDatabase(databaseUrl, migrationRunId);
+    const migrationRunId = await preparePostCutoverDatabase(databaseUrl, purpose);
+    await verifyPostCutoverDatabase(databaseUrl, migrationRunId, purpose);
 
     const api = spawnRuntime("npm", ["run", "dev:api"], {
       DATABASE_URL: databaseUrl,
@@ -328,13 +348,14 @@ export async function startDisposablePostCutoverRuntime(
       databaseUrl,
       databaseName,
       migrationRunId,
+      markerPurpose: purpose,
       apiUrl,
       frontendUrl,
       authIssuer,
       authSecret,
       async dispose() {
         await Promise.all(children.reverse().map(stopRuntime));
-        await verifyPostCutoverDatabase(databaseUrl, migrationRunId);
+        await verifyPostCutoverDatabase(databaseUrl, migrationRunId, purpose);
         await withClient(adminUrl, (client) =>
           client.query(`drop database if exists ${databaseName} with (force)`),
         );
