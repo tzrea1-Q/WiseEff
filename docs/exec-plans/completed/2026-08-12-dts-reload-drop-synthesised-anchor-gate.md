@@ -1,9 +1,9 @@
 # Drop synthesised-anchor reload candidacy gate
 
-> Status: **Active**
+> Status: **Completed** (merged via PR #311 on 2026-08-12). Documentation gate closed 2026-08-17.
 > Date: 2026-08-12
 > Branch: `fix/dts-reload-drop-synthesised-anchor-gate`
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-12-dts-reload-drop-synthesised-anchor-gate.md`](../../zh-CN/exec-plans/active/2026-08-12-dts-reload-drop-synthesised-anchor-gate.md)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-12-dts-reload-drop-synthesised-anchor-gate.md`](../../zh-CN/exec-plans/completed/2026-08-12-dts-reload-drop-synthesised-anchor-gate.md)
 > Supersedes locked decision in [`docs/exec-plans/completed/2026-08-10-dts-reload-debugging.md`](../completed/2026-08-10-dts-reload-debugging.md) (degraded locator / synthesised `/label` refuse)
 
 ## Goal
@@ -60,5 +60,5 @@ Branch: `fix/dts-reload-drop-synthesised-anchor-gate`, checked out from the late
 - [x] Domain-model EN + zh state equal parent/child candidacy and preflight ownership of path applicability
 - [x] FRONTEND EN/zh reviewed — no blockReason enum / synthesised-anchor copy; unchanged
 - [x] api-contract EN + zh updated for candidacy wording; OpenAPI has no `synthesised-anchor` literal — unchanged
-- [x] PLANS EN + zh list this active plan
+- [x] PLANS EN + zh list this completed plan
 - [x] `npm run docs:check` green before moving this plan to `completed/`

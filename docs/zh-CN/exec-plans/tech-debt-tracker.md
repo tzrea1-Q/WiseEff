@@ -60,6 +60,7 @@
 
 ## 近期关闭项
 
+- **TD-074（`appReducer` 仍在 `App.tsx`）：** **2026-08-17 关闭**（app-shell 拆分，PR #324 / `src/application/state/appState.ts`，ADR-0023）。`appReducer` 与 `AppAction` 已不在 `src/App.tsx`；reducer 套件改从状态模块导入。页面测试前缀成本归 TD-073。
 - **TD-085（日志分析置信度显示口径）：** **2026-08-16 关闭**（`fix/td085-confidence-provenance`）。置信度**数字始终展示**。`confidenceCaption` 将 `agent` 标为未校准的模型自估、`rules-fallback` 标为确定性规则引擎分数，无来源的历史报告保留各表面原有文案。覆盖 `/logs` 结论卡、`/log-admin` 表格与 `LogRecordDrawer`。`confidenceProvenance.test.ts`、`logsPage.test.tsx`、`LogRecordDrawer.test.tsx`、`LogAdminPage.test.tsx` 覆盖。
 - **TD-089（确定性 rubric judge 桩过于保守）：** **2026-08-16 关闭**（`fix/td089-rubric-stub-actions`，#468）。确定性 stub 仍用 0.4 覆盖阈值，仅在 `actionsScore` 路径做动词/热管理名词同义归一；根因重叠保持字面匹配。真模型 judge、golden cases 与 baseline 未改。`qualityEval.test.ts` 覆盖。
 - **TD-092（反馈归因粒度）：** **2026-08-16 关闭**（`fix/td092-feedback-run-id`，#471）。迁移 `0112_log_feedback_run_id.sql` 在写入时戳记当时的分析 run；insights 经 `coalesce(lf.run_id, lr.current_run_id)` 连接报告。回填取迁移时的 `current_run_id`（诚实现状，不是历史重建）。列表/详情仍读当前 run。`repository.test.ts` 覆盖。

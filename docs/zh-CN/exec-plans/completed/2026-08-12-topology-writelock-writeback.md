@@ -1,9 +1,9 @@
 # Parameter-Topology editService 拆分：writeLock + overlayWriteback（架构评审候选项 6）
 
-> Status: **Active**
+> Status: **Completed**（经 PR #327 于 2026-08-12 合入）。文档门禁于 2026-08-17 关闭。binding/enablement 去重仍为未排期的非目标。
 > Date: 2026-08-12
 > Branch: `refactor/topology-writelock-writeback`（自 `main` @ `8ab19113` 创建）
-> English: [`docs/exec-plans/active/2026-08-12-topology-writelock-writeback.md`](../../../exec-plans/active/2026-08-12-topology-writelock-writeback.md)
+> English: [`docs/exec-plans/completed/2026-08-12-topology-writelock-writeback.md`](../../../exec-plans/completed/2026-08-12-topology-writelock-writeback.md)
 
 ## 背景
 
@@ -62,9 +62,9 @@
 | 架构（中文） | `docs/zh-CN/architecture.md` | No change（同上镜像） |
 | 全栈架构 | `docs/design-docs/full-stack-architecture.md` | No change（无缝隙或分层变化） |
 | 领域模型 | `docs/design-docs/domain-model.md` | No change（无实体或状态机变化） |
-| 计划索引 | `docs/PLANS.md` | No change（索引按主题列出而非逐计划成行；本计划位于 `active/`） |
-| 计划索引（中文） | `docs/zh-CN/PLANS.md` | No change（同上镜像） |
-| 技术债 | `docs/exec-plans/tech-debt-tracker.md` | No change（延期的 binding/enablement 去重与 `src/domain` 共享内核安置属 2026-08-12 架构评审的后续项，待该评审的跟踪行落地时登记） |
+| 计划索引 | `docs/PLANS.md` | 收口时已登记为 completed（#327） |
+| 计划索引（中文） | `docs/zh-CN/PLANS.md` | 收口时已同步中文索引行 |
+| 技术债 | `docs/exec-plans/tech-debt-tracker.md` | 收口时确认：binding/enablement 去重仍为未排期非目标；共享内核已由 `2026-08-12-parameters-repository-split.md` slice 4–4b 落地 |
 | 产品规格 | `docs/product-specs/*` | No change（无产品行为变化） |
 | API 文档 | `docs/api/*` | No change（无端点/DTO 变化） |
 | 质量/测试 | `docs/QUALITY_SCORE.md`、`docs/design-docs/testing-strategy.md` | No change（测试文件与覆盖不变；仅改导入行） |
@@ -76,7 +76,7 @@
 
 ## Documentation Update Gate
 
-在上表每一行被应用或以证据明确记录为无需变更、且 `npm run docs:check` 通过之前，本计划不得移入 `completed/`。所有行均为 `No change` 且证据已内联说明；本分支上 `npm run docs:check` 通过。延期工作（binding/enablement 去重；共享内核安置）由 2026-08-12 架构评审后续项跟踪，不由本计划承载。
+本计划已于 2026-08-17 移入 `completed/`。binding/enablement 去重仍为未排期的非目标；共享内核安置已由 `2026-08-12-parameters-repository-split.md` slice 4–4b 落地。
 
 ## 预期结果
 

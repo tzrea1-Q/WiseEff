@@ -3,7 +3,7 @@
 - **Status:** Completed 2026-08-13 — Wave 1 landed (`34305cc9`); Wave 2 via PR #324; Wave 4 via PR #342 (executed before Wave 3: pure verbatim move, and shrinking the shell first made the Wave 3 refactor smaller); Wave 3 via PR #375; page-owned data loading landed on `refactor/page-owned-loading`. Documentation gate closed: ADR-0023 indexed in `CONTEXT.md` / `docs/adr/README.md` (landed with the parallel ADR renumbering), bilingual FRONTEND pages updated per wave, C2/C6 follow-ups recorded as TD-110 (renumbered from TD-108) and TD-109 and closed out by `2026-08-16-frontend-runtime-follow-up.md` (#474–#488).
 - **Branch:** Wave 1 on `refactor/extract-app-state` (from `main` @ `8ab19113`); Wave 2 onward on `refactor/app-state-module` (from Wave 1 tip) after the original branch name was contested by parallel sessions sharing one worktree
 - **Owner:** Frontend
-- **Scope source:** 2026-08-12 architecture review. Candidate 1 (decompose the `App.tsx` prototype shell) plus Candidate 2 (move domain types out of `mockData.ts`). Backend candidates 3–4 are owned by `2026-08-12-database-layer-deepening.md`; candidate 5 remains tracked by TD-069; candidate 6 is not scheduled.
+- **Scope source:** 2026-08-12 architecture review. Candidate 1 (decompose the `App.tsx` prototype shell) plus Candidate 2 (move domain types out of `mockData.ts`). Backend candidates 3–4 are owned by `2026-08-12-database-layer-deepening.md` (C4 absorbed by `2026-08-12-parameters-repository-split.md`); candidate 5 closed as TD-069 (`2026-08-13-dts-reload-run-session.md`); candidate 6 landed as `2026-08-12-topology-writelock-writeback.md` (#327).
 
 ## Goal
 
