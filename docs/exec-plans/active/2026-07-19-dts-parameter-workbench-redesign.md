@@ -4,6 +4,8 @@
 
 > Chinese: [中文](../../zh-CN/exec-plans/active/2026-07-19-dts-parameter-workbench-redesign.md)
 
+> Status: Keep in `active/`. Implementation checkboxes remain open; later project-configuration-workbench plans under `completed/` superseded this redesign. Do not reopen as a greenfield workbench rewrite.
+
 **Goal:** Rebuild API-mode /parameters on the mature parameter workbench framework while deeply integrating nested DTS topology, semantic bindings, provenance, typed drafts, and real submission identity.
 
 **Architecture:** Keep ParametersPage and WorkbenchLayout as the page shell. Keep ApiProjectTopologyWorkspace as the API data coordinator, but replace its topology-only presentation with pure row/tree view models, an embedded topology navigator, a responsive semantic list, the established detail-dialog pattern, and a current-edits tray. Existing topology and binding/spec/candidate contracts remain authoritative.

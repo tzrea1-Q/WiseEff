@@ -16,7 +16,7 @@
 
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
-- 已完成实现见 `docs/exec-plans/completed/`（含 2026-08-17 归档的路径可达 C1–C4、产品反馈、拓扑 review 第 3–6 轮、通知中心、配置工作台缺陷修复、以及小泽审批失败恢复 TD-102 / TD-094）。不要把那些计划重新当成活跃工作。
+- 已完成实现见 `docs/exec-plans/completed/`（含 2026-08-17 归档的路径可达 C1–C4、产品反馈、拓扑 review 第 3–6 轮、通知中心、配置工作台缺陷修复、以及小泽审批失败恢复 TD-102 / TD-094；以及 2026-08-17 第二轮归档的已落地 DTS 工作台/种子、归属/驱动注册/overlay、参数后台 UX/IA、批导/Excel、日志组织解耦、个人总览、ADB/HDC、调试后台、Device Bridge 阶段 1/2、小泽回合 UX、CORS bootstrap）。不要把那些计划重新当成活跃工作。
 - 当前仍有剩余工作的计划：
 
 ### 等待外部输入或目标环境
@@ -28,19 +28,18 @@
 
 ### 仍待做的产品与 UX
 
-- `exec-plans/active/2026-08-03-parameter-admin-org-ia-consolidation.md`：组织后台信息架构（仅规划；ADR-0015）。
-- `exec-plans/active/2026-08-02-parameter-admin-ux-polish.md`：参数管理后台 UX 打磨。
-- `exec-plans/active/2026-08-04-parameter-definition-identity-correction.md`：定义身份纠错收尾。
-- `exec-plans/active/2026-08-01-attribution-deferred-implementation.md`：已锁定 D-AG-01–04 的后续实现。
-- `exec-plans/active/td-031-xiaoze-run-timeline-streaming.md`：对照已落地的 `xiaozeTurnStream` 确认残留（TD-070 已关）。
+- `exec-plans/active/2026-08-04-parameter-definition-identity-correction.md`：定义身份纠错收尾（Batch 4 进行中）。
+- `exec-plans/active/2026-08-01-attribution-deferred-implementation.md`：已锁定 D-AG-01–04 的后续实现（验收/playwright 证据仍开放）。
+- `exec-plans/active/td-031-xiaoze-run-timeline-streaming.md`：时间线/流式已落入 `xiaozeTurnStream`（TD-070 已关）；本文件残留是设计文档 metadata 门禁。
+- `exec-plans/active/2026-07-08-project-hotspot-scoring-redesign.md`：实现已在 `main`；残留是 API 合同 review 行。
+- `exec-plans/active/2026-07-01-wiseeff-node-only-debugging-platform.md`：不要重开隐藏 `/debugging`；后续 DTS reload 已恢复参数调试表面。
 
 ### 仍在 `active/`、待后续归档核对
 
 下面这些文件先留在 `active/`，等下一轮确认残余范围；不是施工顺序。完整路径以英文版 `docs/PLANS.md` 为准。
 
-- `development-roadmap.md`，以及 2026-07 的 DTS 工作台 / 种子 / 归属 / 驱动注册与 overlay 计划
-- 2026-07 的节点调试平台、批导、Excel 导出、日志调试组织解耦、个人总览、热榜
-- 2026-06 的 ADB/HDC 协议、调试后台、Device Bridge、小泽回合 UX
+- `development-roadmap.md`
+- `2026-07-19-dts-parameter-workbench-redesign.md`：原工作台重设计勾选未完成；后续项目配置工作台计划已在 `completed/` 取代这次重写。不要当全新工作台重开。
 
 - **分支与 PR：** 实现型子智能体只在从 `main` 切出的 feature branch 上开发并本地 commit；不得 push `main`、不得开/合 GitHub PR。由父智能体 review 后提 PR、合并，再 `git pull` 同步本地 `main`。细则见英文版 `docs/PLANS.md` § Git Branch & PR Workflow。
 - **Agent 技能：** 使用 Matt Pocock skills（如 `implement`、`tdd`、`to-spec`、`triage`）与 `docs/agents/*`；不要新建/更新 `docs/superpowers/**`，也不要指示调用 `superpowers:*`。进行中实现跟踪仍以 `docs/exec-plans/active/` 为准。

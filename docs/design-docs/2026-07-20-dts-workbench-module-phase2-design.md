@@ -4,4 +4,4 @@
 
 Phase 2 persists `module_id` on bindings, exposes admin remapping, and wires real binding history plus cross-project compare into the detail surface.
 
-See also phase-2 tasks in [`docs/exec-plans/active/2026-07-20-dts-workbench-module-refocus.md`](../exec-plans/active/2026-07-20-dts-workbench-module-refocus.md) §阶段二.
+See also phase-2 tasks in [`docs/exec-plans/completed/2026-07-20-dts-workbench-module-refocus.md`](../exec-plans/completed/2026-07-20-dts-workbench-module-refocus.md) §阶段二.

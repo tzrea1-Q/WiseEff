@@ -90,7 +90,7 @@ M5.10 之后，浏览器 E2E 还承担审计级证据生成职责。每个自动
 
 多层级模块树由 `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` 中的 `MOD-TREE-PARAM-001/002`、`MOD-TREE-DEBUG-001`、`MOD-TREE-AUTHZ-001` 覆盖（嵌套创建、子树筛选、移动/循环守卫、authz、非空删除 409）。
 
-模块归属（compatible 队列、归类预览/应用、按 kind 分级的树、重要性继承）由 `e2e/acceptance/parameter-topology.acceptance.spec.ts` 中的 `MOD-ATTR-QUEUE-001`、`MOD-ATTR-CLASSIFY-001`、`MOD-ATTR-BULK-001`、`MOD-ATTR-TREE-001`、`MOD-ATTR-IMPORTANCE-001` 覆盖（见 `docs/exec-plans/active/2026-07-27-module-attribution-redesign.md`）。
+模块归属（compatible 队列、归类预览/应用、按 kind 分级的树、重要性继承）由 `e2e/acceptance/parameter-topology.acceptance.spec.ts` 中的 `MOD-ATTR-QUEUE-001`、`MOD-ATTR-CLASSIFY-001`、`MOD-ATTR-BULK-001`、`MOD-ATTR-TREE-001`、`MOD-ATTR-IMPORTANCE-001` 覆盖（见 `docs/exec-plans/completed/2026-07-27-module-attribution-redesign.md`）。
 
 模拟器调试由 `e2e/acceptance/debugging-simulator.acceptance.spec.ts` 中的 `DEBUG-SIM-001` 覆盖，包含复杂 JSON 写入路径，并在 `node_operations` 中记录 `valueKind`、digest 和 preview 元数据，同时避免在 operation evidence 中泄露完整 payload。
 

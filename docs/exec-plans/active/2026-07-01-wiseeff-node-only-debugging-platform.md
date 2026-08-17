@@ -2,7 +2,7 @@
 
 > **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` where applicable. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
 
-**Status:** Active — supersedes TD-032 Phase D product direction (parameter reload + `/debugging` restore).
+**Status:** Keep in `active/`. Do not reopen the hide-`/debugging` product direction; later DTS reload work restored a parameter-debugging surface. Node-catalog work landed. Round 2 did not archive this file.
 
 **Goal:** Remove all user-facing **parameter debugging** surfaces; keep **node debugging** (`/node-debugging`) as the sole runtime workspace; repurpose **调试管理后台** to govern a **node catalog** (`debug_nodes`) instead of parameter-shaped legacy rows.
 

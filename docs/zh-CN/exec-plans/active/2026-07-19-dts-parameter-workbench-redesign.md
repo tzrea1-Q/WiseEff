@@ -4,6 +4,8 @@
 
 > English: [English](../../../exec-plans/active/2026-07-19-dts-parameter-workbench-redesign.md)
 
+> 状态：留在 `active/`。实现勾选仍未完成；后续项目配置工作台计划已在 `completed/` 取代这次重写。不要当全新工作台重开。
+
 **目标：** 以成熟参数工作台为 API 模式 /parameters 的主框架，深度融合嵌套 DTS 拓扑、语义 binding、来源链、类型化草稿和真实提交身份。
 
 **架构：** 保留 ParametersPage 与 WorkbenchLayout 页面外壳；ApiProjectTopologyWorkspace 继续负责 API 数据协调，但用纯行/树视图模型、内嵌拓扑导航、响应式语义列表、原详情对话框心智模型和本轮修改区替代纯三栏拓扑界面。现有 topology repository 与 binding/spec/candidate 合同继续作为事实来源。

@@ -5,7 +5,7 @@
 > Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-03-parameter-spec-editor-fidelity.md`](../../zh-CN/exec-plans/completed/2026-08-03-parameter-spec-editor-fidelity.md)
 > Governing IA: [ADR-0001](../../adr/0001-parameter-admin-organized-by-governance-scope.md), [ADR-0015](../../adr/0015-governance-queues-live-with-the-object-they-govern.md)
 > Related decisions: [ADR-0010](../../adr/0010-attribution-tree-is-taxonomy-not-topology.md) (attribution is taxonomy), TD-047 (`driverModule` is display-only)
-> Predecessor: [`2026-08-03-parameter-admin-org-ia-consolidation.md`](../active/2026-08-03-parameter-admin-org-ia-consolidation.md)
+> Predecessor: [`2026-08-03-parameter-admin-org-ia-consolidation.md`](./2026-08-03-parameter-admin-org-ia-consolidation.md)
 
 ## Landed vs remaining
 

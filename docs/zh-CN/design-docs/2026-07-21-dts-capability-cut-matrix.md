@@ -3,7 +3,7 @@
 > English: [English](../../design-docs/2026-07-21-dts-capability-cut-matrix.md)
 
 - 日期：2026-07-21
-- 状态：供 [`../../exec-plans/active/2026-07-21-dts-parameter-surface-mvp.md`](../../exec-plans/active/2026-07-21-dts-parameter-surface-mvp.md) 使用的规划输入
+- 状态：供 [`../../exec-plans/completed/2026-07-21-dts-parameter-surface-mvp.md`](../../exec-plans/completed/2026-07-21-dts-parameter-surface-mvp.md) 使用的规划输入
 - 约束来源：[`2026-07-21-dts-parameter-surface-boundary-rfc.md`](2026-07-21-dts-parameter-surface-boundary-rfc.md)
 
 图例：

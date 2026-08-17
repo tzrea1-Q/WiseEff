@@ -5,7 +5,7 @@
 > Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-05-project-operations-dialog-hardening.md`](../../zh-CN/exec-plans/completed/2026-08-05-project-operations-dialog-hardening.md)
 > Information architecture: [ADR-0001](../../adr/0001-parameter-admin-organized-by-governance-scope.md) — **reaffirmed, not amended; see POD-D1**
 > Shares modal faults with: [`2026-08-03-parameter-spec-editor-fidelity.md`](./2026-08-03-parameter-spec-editor-fidelity.md) (SE-17 – SE-21, SE-R5, SE-R6)
-> Preceded by: [`2026-08-02-parameter-admin-ux-polish.md`](../active/2026-08-02-parameter-admin-ux-polish.md) (Batches 1–3 merged as `59f8d23c`)
+> Preceded by: [`2026-08-02-parameter-admin-ux-polish.md`](./2026-08-02-parameter-admin-ux-polish.md) (Batches 1–3 merged as `59f8d23c`)
 
 ## Context
 

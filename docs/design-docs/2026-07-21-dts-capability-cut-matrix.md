@@ -3,7 +3,7 @@
 > Chinese: [Chinese](../zh-CN/design-docs/2026-07-21-dts-capability-cut-matrix.md)
 
 - Date: 2026-07-21
-- Status: Planning input for [`2026-07-21-dts-parameter-surface-mvp.md`](../exec-plans/active/2026-07-21-dts-parameter-surface-mvp.md)
+- Status: Planning input for [`2026-07-21-dts-parameter-surface-mvp.md`](../exec-plans/completed/2026-07-21-dts-parameter-surface-mvp.md)
 - Bound by: [`2026-07-21-dts-parameter-surface-boundary-rfc.md`](2026-07-21-dts-parameter-surface-boundary-rfc.md)
 
 Legend:
