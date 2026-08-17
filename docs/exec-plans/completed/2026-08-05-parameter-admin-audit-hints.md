@@ -1,10 +1,10 @@
 # Parameter admin audit hints → audit projection (C3)
 
-> Status: **Implementation complete on branch** — awaiting parent PR/merge; **TD-061** closed in tech-debt tracker
+> Status: **Completed 2026-08-17** — landed on `main`. Closes **TD-061**.
 > Date: 2026-08-05
 > Parent: [`2026-08-05-path-reachable-mock-gap-program.md`](./2026-08-05-path-reachable-mock-gap-program.md)
 > Tracks: **TD-061** (opened with this program)
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-05-parameter-admin-audit-hints.md`](../../zh-CN/exec-plans/active/2026-08-05-parameter-admin-audit-hints.md)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-05-parameter-admin-audit-hints.md`](../../zh-CN/exec-plans/completed/2026-08-05-parameter-admin-audit-hints.md)
 
 ## Goal
 

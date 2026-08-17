@@ -1,6 +1,7 @@
 # Parameter Topology Round 5 Review Blockers
 
-> Chinese: [中文](../../zh-CN/exec-plans/active/2026-07-16-parameter-topology-round5-review-blockers.md)
+> Status: **Completed 2026-08-17** — implementation landed on `main`. Residual production cutover evidence is **TD-042**.
+> Chinese: [中文](../../zh-CN/exec-plans/completed/2026-07-16-parameter-topology-round5-review-blockers.md)
 > Prior: [round4](./2026-07-16-parameter-topology-round4-review-blockers.md)
 
 **Goal:** Close parent-agent Round 4 Review blockers: immutable base binding revisions, fail-closed merge/writeback dependencies, immutable stage/finalize phase audit, tenant-owned review resolution, draft→activate createSpec, and honest acceptance fixtures.

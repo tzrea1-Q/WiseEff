@@ -1,6 +1,7 @@
 # Parameter Topology Semantic Cutover Round 3
 
-> Chinese: [中文](../../zh-CN/exec-plans/active/2026-07-16-parameter-topology-semantic-cutover-round3.md)
+> Status: **Completed 2026-08-17** — implementation landed on `main`. Residual production cutover evidence is **TD-042**.
+> Chinese: [中文](../../zh-CN/exec-plans/completed/2026-07-16-parameter-topology-semantic-cutover-round3.md)
 > Prior: [cutover workflow review](./2026-07-16-parameter-topology-cutover-workflow-review.md)
 
 **Goal:** Real vendor dt-schema (no permissive stubs), post-cutover semantic dashboard/hotspot, durable inferred stage→review→finalize, precise merge writeback identity, scoped matcher/review blockers, manifest backfill, UI unmatched review, and acceptance without DB bypass or fallback specs.

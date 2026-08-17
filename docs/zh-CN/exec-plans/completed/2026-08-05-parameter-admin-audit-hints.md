@@ -1,8 +1,8 @@
 # 参数管理后台审计提示 → 审计投影（C3）
 
-> Status: **实现完成（伞分支）** — TD-061 已关
+> Status: **已于 2026-08-17 完成** — 已合入 `main`。关闭 **TD-061**。
 > Date: 2026-08-05
-> English: [`docs/exec-plans/active/2026-08-05-parameter-admin-audit-hints.md`](../../../exec-plans/active/2026-08-05-parameter-admin-audit-hints.md)
+> English: [`docs/exec-plans/completed/2026-08-05-parameter-admin-audit-hints.md`](../../../exec-plans/completed/2026-08-05-parameter-admin-audit-hints.md)
 > 上位：[`2026-08-05-path-reachable-mock-gap-program.md`](./2026-08-05-path-reachable-mock-gap-program.md)
 > 跟踪：**TD-061**
 

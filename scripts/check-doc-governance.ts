@@ -4,6 +4,9 @@ import { pathToFileURL } from "node:url";
 import { developerFacingBilingualDocs } from "./bilingual-docs";
 
 export const activePlansDir = "docs/exec-plans/active";
+export const completedPlansDir = "docs/exec-plans/completed";
+export const zhActivePlansDir = "docs/zh-CN/exec-plans/active";
+export const zhCompletedPlansDir = "docs/zh-CN/exec-plans/completed";
 export const requiredSections = ["## Documentation Impact Matrix", "## Documentation Update Gate"];
 export const requiredRepositoryDocs = [
   "README.md",
@@ -107,6 +110,43 @@ function collectMarkdownHeadings(content: string): Set<string> {
   }
 
   return headings;
+}
+
+async function listMarkdownFilenames(directory: string): Promise<string[]> {
+  try {
+    const entries = await readdir(directory, { withFileTypes: true });
+    return entries.filter((entry) => entry.isFile() && entry.name.endsWith(".md")).map((entry) => entry.name);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return [];
+    }
+
+    throw error;
+  }
+}
+
+export async function validateNoDuplicatePlanFilenames(root = process.cwd()): Promise<string[]> {
+  const trees: Array<[string, string]> = [
+    [activePlansDir, completedPlansDir],
+    [zhActivePlansDir, zhCompletedPlansDir]
+  ];
+
+  const errors = await Promise.all(
+    trees.map(async ([activeDir, completedDir]) => {
+      const [activeNames, completedNames] = await Promise.all([
+        listMarkdownFilenames(path.join(root, activeDir)),
+        listMarkdownFilenames(path.join(root, completedDir))
+      ]);
+      const completedSet = new Set(completedNames);
+
+      return activeNames
+        .filter((name) => completedSet.has(name))
+        .sort()
+        .map((name) => `Plan filename ${name} exists in both ${activeDir} and ${completedDir}.`);
+    })
+  );
+
+  return errors.flat();
 }
 
 export async function validateActivePlans(root = process.cwd()): Promise<string[]> {
@@ -265,8 +305,9 @@ export async function validateM6RunbookCommands(root = process.cwd()): Promise<s
 }
 
 export async function validateDocumentationRepository(root = process.cwd()): Promise<string[]> {
-  const [activePlanErrors, requiredDocErrors, envErrors, linkErrors, bilingualErrors, m6RunbookErrors] = await Promise.all([
+  const [activePlanErrors, duplicatePlanErrors, requiredDocErrors, envErrors, linkErrors, bilingualErrors, m6RunbookErrors] = await Promise.all([
     validateActivePlans(root),
+    validateNoDuplicatePlanFilenames(root),
     validateRequiredRepositoryDocs(root),
     validateEnvExample(root),
     validateMarkdownLinks(root),
@@ -274,7 +315,15 @@ export async function validateDocumentationRepository(root = process.cwd()): Pro
     validateM6RunbookCommands(root)
   ]);
 
-  return [...activePlanErrors, ...requiredDocErrors, ...envErrors, ...linkErrors, ...bilingualErrors, ...m6RunbookErrors];
+  return [
+    ...activePlanErrors,
+    ...duplicatePlanErrors,
+    ...requiredDocErrors,
+    ...envErrors,
+    ...linkErrors,
+    ...bilingualErrors,
+    ...m6RunbookErrors
+  ];
 }
 
 async function collectMarkdownFiles(root: string): Promise<string[]> {

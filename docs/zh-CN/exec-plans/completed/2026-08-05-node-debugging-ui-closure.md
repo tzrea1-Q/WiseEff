@@ -1,8 +1,8 @@
 # 节点调试 UI 闭环（C2 / TD-015）
 
-> Status: **实现完成（伞分支）** — TD-015 已关
+> Status: **已于 2026-08-17 完成** — 已合入 `main`。关闭 **TD-015**。
 > Date: 2026-08-05
-> English: [`docs/exec-plans/active/2026-08-05-node-debugging-ui-closure.md`](../../../exec-plans/active/2026-08-05-node-debugging-ui-closure.md)
+> English: [`docs/exec-plans/completed/2026-08-05-node-debugging-ui-closure.md`](../../../exec-plans/completed/2026-08-05-node-debugging-ui-closure.md)
 > 上位：[`2026-08-05-path-reachable-mock-gap-program.md`](./2026-08-05-path-reachable-mock-gap-program.md)
 > 关闭：**TD-015**
 

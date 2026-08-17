@@ -241,6 +241,6 @@ Partial schema undo is forbidden. Restore is the only supported rollback.
 - [rollback.md](rollback.md)
 - [observability-operations.md](observability-operations.md)
 - Plan: `docs/exec-plans/active/2026-07-16-parameter-topology-schema-management.md`
-- Workflow review: `docs/exec-plans/active/2026-07-16-parameter-topology-cutover-workflow-review.md`
-- Round 4 blockers: `docs/exec-plans/active/2026-07-16-parameter-topology-round4-review-blockers.md`
+- Workflow review: `docs/exec-plans/completed/2026-07-16-parameter-topology-cutover-workflow-review.md`
+- Round 4 blockers: `docs/exec-plans/completed/2026-07-16-parameter-topology-round4-review-blockers.md`
 - Source hygiene: Vitest `legacyDependencyGuard.test.ts` (migrations/cutovers/adapters allowlist only; not a runtime middleware)

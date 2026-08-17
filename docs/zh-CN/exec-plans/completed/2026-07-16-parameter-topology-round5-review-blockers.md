@@ -1,6 +1,7 @@
 # 参数拓扑第五轮 Review 阻断修复
 
-> English: [English](../../../exec-plans/active/2026-07-16-parameter-topology-round5-review-blockers.md)
+> Status: **已于 2026-08-17 完成** — 实现已合入 `main`。生产 cutover 证据仍为 **TD-042**。
+> English: [English](../../../exec-plans/completed/2026-07-16-parameter-topology-round5-review-blockers.md)
 > 上一轮：[第四轮](./2026-07-16-parameter-topology-round4-review-blockers.md)
 
 **目标：** 关闭父智能体第四轮 Review 阻断：base binding revision 不可变、merge/writeback 真 fail-closed、stage/finalize 不可变 phase 审计、租户拥有校验、createSpec 草稿→激活→裁决、验收去掉 fallback。

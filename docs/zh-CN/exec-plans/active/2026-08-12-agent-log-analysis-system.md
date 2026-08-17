@@ -1,6 +1,6 @@
 # Agent 日志分析系统
 
-> Status: **Active（P1 已合并；P2 已合并；P3a 已合并；P3b——结果 Webhook、按域模型覆盖、judge 校准机制 + 质量门禁自动化——已在 `feat/log-analysis-p3b-callbacks-calibration` 分支实现，评审中；仅剩真正的外部输入待落地，见 P3 状态注记）**
+> Status: **Active — 实现已在 `main` 上完成；剩余工作仅外部输入**（P1–P3b 已合并，含 `feat/log-analysis-p3b-callbacks-calibration`。待落地：每域 20–50 条专家标注真实案例、第二个试点域、人工 judge 校准记录。见 P2/P3 状态注记。当前没有开放 PR。）
 > Date: 2026-08-12
 > 规划分支：`plan/agent-log-analysis`（本文档、词汇表、ADR-0022）
 > 实施分支：`feat/log-analysis-p1-domains-and-llm`、`feat/log-analysis-p2-agent-loop-and-golden-set`、`feat/log-analysis-p3-eval-maturation`（每阶段一支，均从最新 `main` 拉出）

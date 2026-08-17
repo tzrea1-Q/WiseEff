@@ -1,6 +1,7 @@
 # Parameter Topology Round 6 Review Blockers
 
-> Chinese: [中文](../../zh-CN/exec-plans/active/2026-07-16-parameter-topology-round6-review-blockers.md)
+> Status: **Completed 2026-08-17** — implementation landed on `main`. Residual production cutover evidence is **TD-042**.
+> Chinese: [中文](../../zh-CN/exec-plans/completed/2026-07-16-parameter-topology-round6-review-blockers.md)
 > Prior: [round5](./2026-07-16-parameter-topology-round5-review-blockers.md)
 
 **Goal:** Close parent-agent Round 5 Review blockers: historical cross-tenant review-task scope reconcile, lossless manual spec identity, global-spec activation authz, full valueShape activate UX, real submit→review→merge acceptance, tenant-scoped fixture cleanup, and stable `npm run test:all`.

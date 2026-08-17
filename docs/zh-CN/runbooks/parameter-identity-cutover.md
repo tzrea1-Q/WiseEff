@@ -223,6 +223,6 @@ npm run smoke:m5
 - [rollback.md](rollback.md)
 - [observability-operations.md](observability-operations.md)
 - 计划：`docs/exec-plans/active/2026-07-16-parameter-topology-schema-management.md`
-- 工作流 review：`docs/exec-plans/active/2026-07-16-parameter-topology-cutover-workflow-review.md`
-- 第四轮阻断：`docs/exec-plans/active/2026-07-16-parameter-topology-round4-review-blockers.md`
+- 工作流 review：`docs/exec-plans/completed/2026-07-16-parameter-topology-cutover-workflow-review.md`
+- 第四轮阻断：`docs/exec-plans/completed/2026-07-16-parameter-topology-round4-review-blockers.md`
 - 源码卫生：Vitest `legacyDependencyGuard.test.ts`（仅 migrations/cutovers/adapters 等允许名单；不是运行时中间件）

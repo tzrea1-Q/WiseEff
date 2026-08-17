@@ -1,8 +1,8 @@
 # Path-reachable mock / half-implemented gap program (A+1)
 
-> Status: **Umbrella PR ready** — C1–C4 landed on `feat/path-reachable-mock-gap-program`; awaiting merge to `main`
+> Status: **Completed 2026-08-17** — C1–C4 landed on `main`. TD-015 / TD-060 / TD-061 closed.
 > Date: 2026-08-05
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-05-path-reachable-mock-gap-program.md`](../../zh-CN/exec-plans/active/2026-08-05-path-reachable-mock-gap-program.md)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-05-path-reachable-mock-gap-program.md`](../../zh-CN/exec-plans/completed/2026-08-05-path-reachable-mock-gap-program.md)
 > Origin: Mock vs backend gap audit for parameter management and debugging (2026-08-05)
 
 ## Goal

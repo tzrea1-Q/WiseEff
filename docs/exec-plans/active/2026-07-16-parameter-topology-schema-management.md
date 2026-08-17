@@ -4,6 +4,7 @@
 
 >
 > Chinese: [中文](../../zh-CN/exec-plans/active/2026-07-16-parameter-topology-schema-management.md)
+> Status: **Implementation complete on `main`; remaining production evidence is TD-042.** Review rounds 3–6 are archived under `completed/` (2026-08-17). Do not reopen those rounds as active work.
 > Design: [Topology- and Schema-Aware Parameter Management](../../design-docs/2026-07-16-parameter-topology-schema-management-design.md)
 
 **Goal:** Replace the flat path-derived parameter identity with source occurrences, effective DTS topology, versioned driver/property specifications, stable project bindings, and an atomic migration that preserves every historical reference.
