@@ -1,17 +1,17 @@
 # 参数定义编辑器保真度
 
-> 状态：**进行中** — 剩余写入契约与批次 2–3 已关闭，批次 4–5 仍开放
+> 状态：**已完成 2026-08-17** — 写入契约与批次 2–5 已关闭（#496、#499、#500 及本批次）
 > 日期：2026-08-03
-> English: [`docs/exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md`](../../../exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md)
+> English: [`docs/exec-plans/completed/2026-08-03-parameter-spec-editor-fidelity.md`](../../../exec-plans/completed/2026-08-03-parameter-spec-editor-fidelity.md)
 > 约束性 IA：[ADR-0001](../../../adr/0001-parameter-admin-organized-by-governance-scope.md)、[ADR-0015](../../../adr/0015-governance-queues-live-with-the-object-they-govern.md)
 > 相关决策：[ADR-0010](../../../adr/0010-attribution-tree-is-taxonomy-not-topology.md)（归属树是分类而非拓扑）、TD-047（`driverModule` 仅用于展示）
-> 前序计划：[`2026-08-03-parameter-admin-org-ia-consolidation.md`](./2026-08-03-parameter-admin-org-ia-consolidation.md)
+> 前序计划：[`2026-08-03-parameter-admin-org-ia-consolidation.md`](../active/2026-08-03-parameter-admin-org-ia-consolidation.md)
 
 ## 已落地与剩余
 
-**已落地：** SE-D1（编辑器写入路径已去掉 `policyTarget`）；SE-D2 约束在 update 与 activate 上改为替换；SE-D3 服务端按键是否出现判定（`units` 不再用 `coalesce` 忽略 null）；SE-D4 激活会接受并持久化 `units` / `exampleValue`；SE-5 空展示名可往返；SE-D6 PATCH 仅在 `valueShape` 变化时运行 `assertSpecActivatable`；SE-D5 保存前 `valueShape`/`constraints` 对比，以及被引用定义的确认勾选；共用 `ValueShapeFields`；SE-17–SE-21 的 ModalDialog 外壳；批次 2 展示诚实（SE-6–SE-9）；批次 3 编辑形态（SE-10–SE-15）。
+**已落地：** SE-D1（编辑器写入路径已去掉 `policyTarget`）；SE-D2 约束在 update 与 activate 上改为替换；SE-D3 服务端按键是否出现判定（`units` 不再用 `coalesce` 忽略 null）；SE-D4 激活会接受并持久化 `units` / `exampleValue`；SE-5 空展示名可往返；SE-D6 PATCH 仅在 `valueShape` 变化时运行 `assertSpecActivatable`；SE-D5 保存前 `valueShape`/`constraints` 对比，以及被引用定义的确认勾选；共用 `ValueShapeFields`；SE-17–SE-21 的 ModalDialog 外壳；批次 2 展示诚实（SE-6–SE-9）；批次 3 编辑形态（SE-10–SE-15）；批次 4 弹窗外壳余量（SE-18 分隔、SE-22 cutover class、叠层 `--z-modal-backdrop-nested`）；批次 5 `PARAM-SPEC-EDIT-001` / `PARAM-SPEC-EDIT-002` 与文档矩阵。
 
-**剩余：** 批次 4–5（弹窗外壳余量、验收/文档门禁）。
+**剩余：** 本计划无剩余。产品作用域策略目标写入面仍为 TD-055。新 ID 的阻塞级 Playwright 暂缓（TD-079）；覆盖为单测 + playwright-cli。
 
 ## 背景
 
@@ -191,21 +191,21 @@ D2 的审计那一半已经落地：`spec-updated` 元数据携带 `previousValu
 
 ### 批次 4 — 弹窗外壳
 
-> **SE-17 – SE-21 是共享弹窗缺陷，不是本弹窗独有的。** 共享原语已经存在：`src/components/common/` 下的 `ModalDialog` 与 `ConfirmDialog` 随 [`2026-08-05-project-operations-dialog-hardening.md`](../completed/2026-08-05-project-operations-dialog-hardening.md)（POD-D4，2026-08-05 完成）交付，负责 z-index 刻度、焦点陷阱与归还、背景 `inert`、卡片级 `role="dialog"` + `aria-labelledby`、仅最顶层响应 Escape、遮罩关闭成对判定。因此下面第 19–23 项应作为**接入原语**一次性交付，而不是五处独立修复；迁移债见 TD-059。注意原语会 portal 到 `document.body`，任何写成页面级类后代的弹窗样式都需要补一份按遮罩类名的选择器。只有第 23 项里「取消在 pending 时禁用」和第 24 项仍是本弹窗特有。
+> **SE-17 – SE-21 是共享弹窗缺陷，不是本弹窗独有的。** 共享原语已经存在：`src/components/common/` 下的 `ModalDialog` 与 `ConfirmDialog` 随 [`2026-08-05-project-operations-dialog-hardening.md`](./2026-08-05-project-operations-dialog-hardening.md)（POD-D4，2026-08-05 完成）交付，负责 z-index 刻度、焦点陷阱与归还、背景 `inert`、卡片级 `role="dialog"` + `aria-labelledby`、仅最顶层响应 Escape、遮罩关闭成对判定。因此下面第 19–23 项应作为**接入原语**一次性交付，而不是五处独立修复；迁移债见 TD-059。注意原语会 portal 到 `document.body`，任何写成页面级类后代的弹窗样式都需要补一份按遮罩类名的选择器。只有第 23 项里「取消在 pending 时禁用」和第 24 项仍是本弹窗特有。
 
-19. [ ] 修复遮罩层叠，使弹窗动作永不被遮挡（SE-17、SE-R5）。
-20. [ ] 给滚动边界加分隔线或阴影，并避免拦腰截断字段（SE-18）。
-21. [ ] 加入焦点陷阱、初始焦点与焦点归还（SE-19、SE-R6）。
-22. [ ] 把 `role="dialog"` 移到弹窗卡片上并使用 `aria-labelledby`（SE-20）。
-23. [ ] 把 Escape 收敛到最顶层弹窗；确认框的取消在 pending 时禁用（SE-21）。
-24. [ ] 用类替换版本切换面板的内联样式（SE-22）。
+19. [x] 修复遮罩层叠，使弹窗动作永不被遮挡（SE-17、SE-R5）——共享 z-index 刻度（`--z-modal-backdrop` 1150 > FAB 1100；叠层确认 `--z-modal-backdrop-nested` 1160；聊天弹层仍为 1200）。
+20. [x] 给滚动边界加分隔线或阴影，并避免拦腰截断字段（SE-18）——外壳归原语；编辑区保持 `overflow: auto`，动作条以 `--border` 分隔，并设 `scroll-padding-bottom`。
+21. [x] 加入焦点陷阱、初始焦点与焦点归还（SE-19、SE-R6）——经原语。
+22. [x] 把 `role="dialog"` 移到弹窗卡片上并使用 `aria-labelledby`（SE-20）——经原语。
+23. [x] 把 Escape 收敛到最顶层弹窗；确认框的取消在 pending 时禁用（SE-21）（保存、版本切换、生命周期、身份）。
+24. [x] 用类替换版本切换面板的内联样式（SE-22）。
 
 ### 批次 5 — 测试、验收、文档
 
-25. [ ] 为 `buildSpecEditorSavePayload` 与 `createSpecEditorDraft` 的每条变更规则补单测。
-26. [ ] 登记并覆盖下列新验收 ID。
-27. [ ] 完成文档影响矩阵，含 TD-055。
-28. [ ] 在 1440×900 / 768×1024 / 390×844 下产出 playwright-cli 证据，0 控制台错误，覆盖启用态定义、组织自有草稿与废弃态定义。
+25. [x] 为 `buildSpecEditorSavePayload` 与 `createSpecEditorDraft` 的每条变更规则补单测。
+26. [x] 登记并覆盖下列新验收 ID。
+27. [x] 完成文档影响矩阵，含 TD-055。
+28. [x] 在 1440×900 / 768×1024 / 390×844 下产出 playwright-cli 证据，0 控制台错误，覆盖启用态定义、组织自有草稿与废弃态定义。2026-08-17 mock 走查 `http://127.0.0.1:5180/parameter-admin/specs`（会话 `spec-batch4`）：截图在 `work/ui-checks/param-spec-editor-batch4/`。编辑器遮罩 `z-index` 1150，叠层确认 1160；Escape 只关最顶层。mock 无小泽 FAB（`fab: false`）；EDIT-002 的 FAB 重叠由刻度闭合（`--z-xiaoze-fab` 1100 < `--z-modal-backdrop` 1150 < `--z-xiaoze-popup` 1200）。点击打开后 Escape，焦点回到「编辑 gpio_int」。
 
 ## 关键接缝（切入点）
 
@@ -246,6 +246,24 @@ D2 的审计那一半已经落地：`spec-updated` 元数据携带 `previousValu
 4. 七条 SE-R 风险都以证据关闭。
 5. 已为产品维度的策略目标编辑面登记 TD-055（SE-D1）。
 5. `npm run docs:check`、`npm run acceptance:coverage`、`npm run acceptance:operations` 全绿。
+
+## 文档矩阵收口（2026-08-17）
+
+| 领域 | 结果 |
+| --- | --- |
+| 仓库地图 | 无变化。`AGENTS.md` 与 `ARCHITECTURE.md` 未描述定义编辑器字段。 |
+| 规划 | 本计划完成；`docs/PLANS.md` / `docs/zh-CN/PLANS.md` 从剩余工作中移除；TD-055 已在债表。 |
+| 架构 / ADR | 无新 ADR。SE-D2 是替换而非合并的缺陷修复。ADR-0016 计划路径改为 `completed/`。 |
+| 领域词表 | `CONTEXT.md` 的 Policy target 行写明今天无生产写入（SE-D1 / TD-055）。领域模型中英同步。 |
+| 产品规格 | 无变化。`prototype-functional-spec.md` 仍分字段暴露 example / schema default / policy target / effective。 |
+| API 契约 | PATCH 已记载。activate 请求体补上可选 `units` / `exampleValue`。`docs/references/productization-api-contract-draft.md` 无编辑器字段清单。 |
+| 设计文档 | 延后问题 D2 段落与已上线的保存前 diff（SE-D5）一致，并注明 SE-2 是写入诚实而非 D2 裁决。 |
+| 前端 / 设计 | `docs/FRONTEND.md` / `docs/zh-CN/frontend.md` 记录 ModalDialog 外壳、叠层 z-index、滚动分隔与 cutover class。 |
+| 质量 / 测试 | 已登记 `PARAM-SPEC-EDIT-001` / `002`；Blocking No；操作为 `future` 并写明暂缓理由（TD-079）。 |
+| 安全 / 治理 | 无变化。`docs/SECURITY.md` 未引用 `spec-updated` 字段清单；审计 kind 在 API 契约。 |
+| 可靠性 / 运行手册 | 无变化。`docs/runbooks/parameter-identity-cutover.md` 未引用定义编辑器。 |
+| 生成物 | 无变化。无迁移。 |
+| 参考 | 除 API 契约孪生外无变化。 |
 
 ## UI 交互覆盖
 

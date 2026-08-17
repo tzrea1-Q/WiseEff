@@ -181,3 +181,125 @@ describe("ParameterSpecDetailDialog editing affordances (Batch 3)", () => {
     expect(screen.queryByText(/示例值 不是合法 JSON/)).not.toBeInTheDocument();
   });
 });
+
+describe("ParameterSpecDetailDialog chrome (Batch 4)", () => {
+  it("styles the cutover panel with classes instead of inline margins (SE-22)", () => {
+    render(
+      <ParameterSpecDetailDialog
+        detail={baseDetail({
+          cutover: {
+            runId: "cut-1",
+            status: "ready",
+            fromVersionId: "v1",
+            toVersionId: "v2",
+            fromVersion: 1,
+            toVersion: 2,
+            impact: { pending: 0, ready: 1, incompatible: 0, skipped: 0, total: 1 },
+          },
+        })}
+        identityModules={EMPTY_IDENTITY_MODULES}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+        onFinalizeCutover={vi.fn()}
+      />,
+    );
+
+    const panel = document.querySelector(".param-admin-cutover-panel");
+    expect(panel).toBeTruthy();
+    expect(panel).not.toHaveAttribute("style");
+    const finalize = screen.getByRole("button", { name: "完成切换…" });
+    expect(finalize).toHaveClass("param-admin-cutover-panel__finalize");
+    expect(finalize).not.toHaveAttribute("style");
+  });
+
+  it("disables confirmation 取消 while pending (SE-21)", () => {
+    const onSave = vi.fn();
+    const props = {
+      detail: baseDetail(),
+      identityModules: EMPTY_IDENTITY_MODULES,
+      onClose: vi.fn(),
+      onSave,
+    };
+    const { rerender } = render(<ParameterSpecDetailDialog {...props} />);
+
+    fireEvent.change(screen.getByLabelText("参数说明"), {
+      target: { value: "pending docs" },
+    });
+    const confirm = openSaveConfirm();
+    expect(within(confirm).getByRole("button", { name: "取消" })).toBeEnabled();
+    expect(document.querySelector(".param-admin-modal-backdrop--nested")).toBeTruthy();
+
+    rerender(<ParameterSpecDetailDialog {...props} pending />);
+    expect(within(screen.getByRole("dialog", { name: "确认保存" })).getByRole("button", { name: "取消" })).toBeDisabled();
+  });
+});
+
+describe("ParameterSpecDetailDialog round-trip (PARAM-SPEC-EDIT-001)", () => {
+  it("reopens units, constraints, example value, and documentation from the save payload", () => {
+    const onSave = vi.fn();
+    const initial = baseDetail({
+      units: "mV",
+      constraints: { min: 0, max: 100 },
+      exampleValue: "<&gpio 1 0>",
+      documentation: "docs",
+    });
+    const { unmount } = render(
+      <ParameterSpecDetailDialog
+        detail={initial}
+        identityModules={EMPTY_IDENTITY_MODULES}
+        onClose={vi.fn()}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("单位"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("约束 constraints"), {
+      target: { value: '{"min":0}' },
+    });
+    fireEvent.change(screen.getByLabelText("示例值"), {
+      target: { value: "<&gpio13 29 0>" },
+    });
+    fireEvent.change(screen.getByLabelText("参数说明"), {
+      target: { value: "updated docs" },
+    });
+
+    const confirm = openSaveConfirm();
+    fireEvent.change(within(confirm).getByLabelText("修改原因"), {
+      target: { value: "round trip" },
+    });
+    fireEvent.click(within(confirm).getByRole("button", { name: "确认保存" }));
+
+    const payload = onSave.mock.calls[0][0];
+    expect(payload).toMatchObject({
+      units: null,
+      constraints: { min: 0 },
+      exampleValue: "<&gpio13 29 0>",
+      documentation: "updated docs",
+      reason: "round trip",
+    });
+    expect(payload.constraints).not.toHaveProperty("max");
+
+    unmount();
+    render(
+      <ParameterSpecDetailDialog
+        detail={{
+          ...initial,
+          units: payload.units,
+          constraints: payload.constraints,
+          exampleValue: payload.exampleValue,
+          documentation: payload.documentation,
+        }}
+        identityModules={EMPTY_IDENTITY_MODULES}
+        onClose={vi.fn()}
+        onSave={onSave}
+      />,
+    );
+
+    expect(screen.getByLabelText("单位")).toHaveValue("");
+    expect(screen.getByLabelText("约束 constraints")).toHaveValue(
+      JSON.stringify({ min: 0 }, null, 2),
+    );
+    expect(screen.getByLabelText("示例值")).toHaveValue("<&gpio13 29 0>");
+    expect(screen.getByLabelText("参数说明")).toHaveValue("updated docs");
+  });
+});

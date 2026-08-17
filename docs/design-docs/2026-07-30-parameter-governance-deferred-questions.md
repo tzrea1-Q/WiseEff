@@ -38,7 +38,7 @@ Depends on D1.
 
 `PATCH /api/v2/parameter-specs/:specId` rewrites an active definition in place, including `value_shape`, `constraints`, `units`, and `documentation` (`server/modules/parameter-specs/service.ts:687-720`). No version changes, no review is re-run, and before this round no before/after record was kept. Changing the value shape of a live definition is the most consequential act available in parameter governance, and it is the one act with no state transition protecting it.
 
-The current round adds non-repudiation only: before/after `value_shape` and `constraints` go into the governance audit, and the spec-editor save-confirm step shows that JSON diff when either field changed, plus the reference count (`usageCount`) with an extra acknowledgement checkbox when the count is greater than zero.
+The current round adds non-repudiation only: before/after `value_shape` and `constraints` go into the governance audit, and the spec-editor save-confirm step shows that JSON diff when either field changed, plus the reference count (`usageCount`) with an extra acknowledgement checkbox when the count is greater than zero. Constraint-key removal on PATCH/activate is replace-not-merge (SE-2); that is write honesty, not a decision that semantic edits on active definitions should be forbidden.
 
 What a decision needs to settle: whether a semantic change should be forbidden on an active definition altogether — forcing "deprecate the old, create the new", which is now a complete path — or whether it should mint a new version under D1. The audit trail added this round makes either choice measurable first: once the audit shows how often semantic fields actually change on active definitions, the constraint can be argued from data instead of from principle.
 

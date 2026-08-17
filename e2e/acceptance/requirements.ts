@@ -656,6 +656,18 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "PARAM-SPEC-EDIT-001",
+    workflow: "C",
+    title: "Admin edits units, constraints, example value, and documentation on an active definition; save then reopen round-trips every value, including constraint-key removal and clearing units.",
+    required: false
+  },
+  {
+    id: "PARAM-SPEC-EDIT-002",
+    workflow: "C",
+    title: "The spec editor actions stay reachable and operable at 1440×900 / 768×1024 / 390×844 with the Xiaoze FAB present; focus enters the dialog on open and returns to the trigger on close.",
+    required: false
+  },
+  {
     id: "PARAM-TOPOLOGY-BROWSE-001",
     workflow: "B",
     title: "Users can toggle source/effective topology, search two gpio_int bindings, and open binding detail without path-as-identity.",

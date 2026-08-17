@@ -1,17 +1,17 @@
 # Parameter spec editor fidelity
 
-> Status: **Active** — remaining write-contract and Batches 2–3 closed; Batches 4–5 still open
+> Status: **Completed 2026-08-17** — write-contract and Batches 2–5 closed on `main` (#496, #499, #500, and this batch)
 > Date: 2026-08-03
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md`](../../zh-CN/exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-03-parameter-spec-editor-fidelity.md`](../../zh-CN/exec-plans/completed/2026-08-03-parameter-spec-editor-fidelity.md)
 > Governing IA: [ADR-0001](../../adr/0001-parameter-admin-organized-by-governance-scope.md), [ADR-0015](../../adr/0015-governance-queues-live-with-the-object-they-govern.md)
 > Related decisions: [ADR-0010](../../adr/0010-attribution-tree-is-taxonomy-not-topology.md) (attribution is taxonomy), TD-047 (`driverModule` is display-only)
-> Predecessor: [`2026-08-03-parameter-admin-org-ia-consolidation.md`](./2026-08-03-parameter-admin-org-ia-consolidation.md)
+> Predecessor: [`2026-08-03-parameter-admin-org-ia-consolidation.md`](../active/2026-08-03-parameter-admin-org-ia-consolidation.md)
 
 ## Landed vs remaining
 
-**Landed:** SE-D1 (`policyTarget` removed from the editor write path); SE-D2 constraints replace on update and activate; SE-D3 server key-presence (`units` no longer uses `coalesce` to ignore null); SE-D4 activate accepts and persists `units` / `exampleValue`; SE-5 empty `displayName` round-trips; SE-D6 PATCH runs `assertSpecActivatable` only when `valueShape` changed; SE-D5 pre-save `valueShape`/`constraints` diff plus referenced-definition acknowledgement; shared `ValueShapeFields`; ModalDialog chrome for SE-17–SE-21; Batch 2 display honesty (SE-6–SE-9); Batch 3 editing affordances (SE-10–SE-15).
+**Landed:** SE-D1 (`policyTarget` removed from the editor write path); SE-D2 constraints replace on update and activate; SE-D3 server key-presence (`units` no longer uses `coalesce` to ignore null); SE-D4 activate accepts and persists `units` / `exampleValue`; SE-5 empty `displayName` round-trips; SE-D6 PATCH runs `assertSpecActivatable` only when `valueShape` changed; SE-D5 pre-save `valueShape`/`constraints` diff plus referenced-definition acknowledgement; shared `ValueShapeFields`; ModalDialog chrome for SE-17–SE-21; Batch 2 display honesty (SE-6–SE-9); Batch 3 editing affordances (SE-10–SE-15); Batch 4 dialog chrome leftovers (SE-18 separator, SE-22 cutover classes, nested `--z-modal-backdrop-nested`); Batch 5 `PARAM-SPEC-EDIT-001` / `PARAM-SPEC-EDIT-002` plus documentation matrix.
 
-**Remaining:** Batches 4–5 (dialog chrome leftovers, acceptance/docs gate).
+**Remaining:** none in this plan. Product-scoped policy-target authoring stays TD-055. Blocking Playwright for the new IDs is deferred (TD-079); coverage is unit + playwright-cli.
 
 ## Context
 
@@ -191,21 +191,21 @@ Call `assertSpecActivatable` from `updateParameterSpec` only when the incoming `
 
 ### Batch 4 — dialog chrome
 
-> **SE-17 – SE-21 are shared modal faults, not local ones.** The primitive now exists: `ModalDialog` and `ConfirmDialog` in `src/components/common/` shipped with [`2026-08-05-project-operations-dialog-hardening.md`](../completed/2026-08-05-project-operations-dialog-hardening.md) (POD-D4, completed 2026-08-05) and own the z-index scale, focus trap and restore, background `inert`, card-level `role="dialog"` + `aria-labelledby`, top-most-only Escape, and paired backdrop dismissal. Items 19–23 below are therefore **adopt the primitive**, not five independent fixes; see also the migration debt entry TD-059. Note that the primitive portals to `document.body`, so any dialog styling written as a descendant of a page-level class needs a backdrop-scoped counterpart. Only item 23's 取消 `disabled={pending}` and item 24 remain specific to this dialog.
+> **SE-17 – SE-21 are shared modal faults, not local ones.** The primitive now exists: `ModalDialog` and `ConfirmDialog` in `src/components/common/` shipped with [`2026-08-05-project-operations-dialog-hardening.md`](./2026-08-05-project-operations-dialog-hardening.md) (POD-D4, completed 2026-08-05) and own the z-index scale, focus trap and restore, background `inert`, card-level `role="dialog"` + `aria-labelledby`, top-most-only Escape, and paired backdrop dismissal. Items 19–23 below are therefore **adopt the primitive**, not five independent fixes; see also the migration debt entry TD-059. Note that the primitive portals to `document.body`, so any dialog styling written as a descendant of a page-level class needs a backdrop-scoped counterpart. Only item 23's 取消 `disabled={pending}` and item 24 remain specific to this dialog.
 
-19. [ ] Fix the backdrop stacking so dialog actions are never covered (SE-17, SE-R5) — via the shared z-index scale.
-20. [ ] Give the scroll boundary a separator or shadow and stop cutting mid-field (SE-18) — via the primitive.
-21. [ ] Add focus trap, initial focus, and focus restore (SE-19, SE-R6) — via the primitive.
-22. [ ] Move `role="dialog"` onto the dialog card and use `aria-labelledby` (SE-20) — via the primitive.
-23. [ ] Scope Escape to the top-most dialog (SE-21) — via the primitive; disable the confirmation's 取消 while pending here.
-24. [ ] Replace the cutover panel's inline styles with classes (SE-22).
+19. [x] Fix the backdrop stacking so dialog actions are never covered (SE-17, SE-R5) — via the shared z-index scale (`--z-modal-backdrop` 1150 > FAB 1100; nested confirms `--z-modal-backdrop-nested` 1160; popup remains 1200).
+20. [x] Give the scroll boundary a separator or shadow and stop cutting mid-field (SE-18) — `ModalDialog` owns the shell; the editor body keeps `overflow: auto` and the action bar is separated by `--border`, with `scroll-padding-bottom`.
+21. [x] Add focus trap, initial focus, and focus restore (SE-19, SE-R6) — via the primitive.
+22. [x] Move `role="dialog"` onto the dialog card and use `aria-labelledby` (SE-20) — via the primitive.
+23. [x] Scope Escape to the top-most dialog (SE-21) — via the primitive; disable the confirmation's 取消 while pending here (save, cutover, lifecycle, identity).
+24. [x] Replace the cutover panel's inline styles with classes (SE-22).
 
 ### Batch 5 — tests, acceptance, docs
 
-25. [ ] Unit coverage for `buildSpecEditorSavePayload` and `createSpecEditorDraft` on every changed rule.
-26. [ ] Register and cover the new acceptance IDs below.
-27. [ ] Work the Documentation Impact Matrix, including TD-055.
-28. [ ] playwright-cli evidence at 1440×900 / 768×1024 / 390×844 with 0 console errors, covering an active spec, an org-owned draft, and a deprecated spec.
+25. [x] Unit coverage for `buildSpecEditorSavePayload` and `createSpecEditorDraft` on every changed rule.
+26. [x] Register and cover the new acceptance IDs below.
+27. [x] Work the Documentation Impact Matrix, including TD-055.
+28. [x] playwright-cli evidence at 1440×900 / 768×1024 / 390×844 with 0 console errors, covering an active spec, an org-owned draft, and a deprecated spec. 2026-08-17 mock walkthrough at `http://127.0.0.1:5180/parameter-admin/specs` (session `spec-batch4`): screenshots in `work/ui-checks/param-spec-editor-batch4/`. Editor backdrop `z-index` 1150, nested confirms 1160; Escape closed only the top-most confirm. Mock runtime has no Xiaoze FAB (`fab: false`); EDIT-002 FAB overlap is closed by the token ladder (`--z-xiaoze-fab` 1100 < `--z-modal-backdrop` 1150 < `--z-xiaoze-popup` 1200). Click-to-open then Escape restored focus to `编辑 gpio_int`.
 
 ## Key seams (starting points)
 
@@ -246,6 +246,24 @@ Before moving this plan to `completed/`:
 4. All seven SE-R risks are closed with evidence.
 5. TD-055 is filed for the product-scoped policy-target surface (SE-D1).
 5. `npm run docs:check`, `npm run acceptance:coverage`, and `npm run acceptance:operations` are green.
+
+## Documentation matrix closeout (2026-08-17)
+
+| Area | Outcome |
+| --- | --- |
+| Repository maps | Unchanged. `AGENTS.md` and `ARCHITECTURE.md` do not describe spec-editor fields. |
+| Planning | This plan completed; `docs/PLANS.md` / `docs/zh-CN/PLANS.md` drop it from remaining work; TD-055 already on the tracker. |
+| Architecture / ADR | No new ADR. SE-D2 is a replace-not-merge defect fix. ADR-0016 plan path updated to `completed/`. |
+| Domain glossary | `CONTEXT.md` Policy target row states there is no production writer (SE-D1 / TD-055). Domain-model EN/ZH note the same. |
+| Product specs | Unchanged. `prototype-functional-spec.md` still exposes example / schema default / policy target / effective as separate fields. |
+| API contract | PATCH already documented. Activate body now lists optional `units` / `exampleValue`. `docs/references/productization-api-contract-draft.md` has no spec-editor field list. |
+| Design docs | Deferred-questions D2 paragraph now matches the shipped save-confirm diff (SE-D5) and notes SE-2 is write honesty, not a D2 settlement. |
+| Frontend / design | `docs/FRONTEND.md` / `docs/zh-CN/frontend.md` record ModalDialog chrome, nested z-index, scroll separator, and cutover classes. |
+| Quality / testing | `PARAM-SPEC-EDIT-001` / `002` registered; Blocking No; operations `future` with deferral (TD-079). |
+| Security / governance | Unchanged. `docs/SECURITY.md` does not quote `spec-updated` field lists; API contract owns the audit kind. |
+| Reliability / runbooks | Unchanged. `docs/runbooks/parameter-identity-cutover.md` does not reference the spec editor. |
+| Generated artifacts | Unchanged. No migration. |
+| References | Unchanged besides the API contract twins. |
 
 ## UI interaction coverage
 

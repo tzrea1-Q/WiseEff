@@ -1376,6 +1376,40 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "db"]
   },
   {
+    id: "PARAM-SPEC-EDIT-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/specs",
+    roles: ["Admin"],
+    action: "Edit units, constraints, example value, and documentation on an active definition, save, reopen, and confirm every value round-trips including constraint-key removal and clearing units.",
+    coverage: "future",
+    acceptanceIds: ["PARAM-SPEC-EDIT-001"],
+    specFiles: [
+      "src/components/parameter-topology/ParameterSpecDetailDialog.test.tsx",
+      "src/components/parameter-topology/ParameterSpecDetail.test.ts"
+    ],
+    assertions: ["ui"],
+    deferralReason:
+      "Round-trip is covered by ParameterSpecDetailDialog RTL plus buildSpecEditorSavePayload unit tests and specLifecycle integration; a blocking Playwright marker is deferred so this does not enlarge the shared pre-cutover CI acceptance suite (TD-079)."
+  },
+  {
+    id: "PARAM-SPEC-EDIT-002",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/specs",
+    roles: ["Admin"],
+    action: "Open the spec editor at 1440×900 / 768×1024 / 390×844 with the Xiaoze FAB present and confirm actions stay reachable, focus enters on open, and focus returns to the trigger on close.",
+    coverage: "future",
+    acceptanceIds: ["PARAM-SPEC-EDIT-002"],
+    specFiles: [
+      "src/components/common/ModalDialog.test.tsx",
+      "src/components/parameter-topology/ParameterSpecDetailDialog.test.tsx"
+    ],
+    assertions: ["ui", "screenshot"],
+    deferralReason:
+      "Reachability and keyboard contract are covered by ModalDialog unit tests plus playwright-cli evidence under work/ui-checks/param-spec-editor-batch4/. Mock has no Xiaoze FAB; stacking is the token ladder 1100 < 1150 < 1200. A keyboard-focused e2e spec follows the PARAM-ADMIN-DIALOG-001 pattern."
+  },
+  {
     id: "PARAM-ADMIN-IA-001",
     priority: "P1",
     area: "parameters",

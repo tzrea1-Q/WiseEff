@@ -21,6 +21,7 @@ import { specEditorSaveDiff, stablePrettyJson } from "./specEditorSaveDiff";
 import { subjectPickerFlatNodes, subjectsFromModules } from "./SpecCreateDialog";
 
 const EMPTY_IDENTITY_MODULES: ParameterModule[] = [];
+const NESTED_CONFIRM_BACKDROP = "param-admin-modal-backdrop param-admin-modal-backdrop--nested";
 
 function SpecEditorSaveDiffBlock({
   label,
@@ -347,7 +348,7 @@ export function ParameterSpecDetailDialog({
 
         <div className="param-admin-editor-dialog-body">
           {cutover ? (
-            <div className="param-admin-cutover-panel" style={{ marginBottom: "1rem" }}>
+            <div className="param-admin-cutover-panel">
               <p className="eyebrow">版本切换</p>
               <p>
                 语义版本 v{cutover.fromVersion} → v{cutover.toVersion}（{cutover.status === "ready" ? "可完成" : "准备中"}）
@@ -369,9 +370,8 @@ export function ParameterSpecDetailDialog({
               {cutover.status === "ready" && onFinalizeCutover ? (
                 <button
                   type="button"
-                  className="button primary"
+                  className="button primary param-admin-cutover-panel__finalize"
                   disabled={pending}
-                  style={{ marginTop: "0.75rem" }}
                   onClick={() => {
                     setLocalError(null);
                     setCutoverFinalizeReason("");
@@ -486,6 +486,7 @@ export function ParameterSpecDetailDialog({
               ? "submission-dialog param-admin-confirm-dialog param-admin-confirm-dialog--diff"
               : "submission-dialog param-admin-confirm-dialog"
           }
+          backdropClassName={NESTED_CONFIRM_BACKDROP}
         >
           {({ titleId }) => (
             <>
@@ -606,6 +607,7 @@ export function ParameterSpecDetailDialog({
                 }
           }
           className="submission-dialog param-admin-confirm-dialog"
+          backdropClassName={NESTED_CONFIRM_BACKDROP}
         >
           {({ titleId }) => (
             <>
@@ -686,6 +688,7 @@ export function ParameterSpecDetailDialog({
                 }
           }
           className="submission-dialog param-admin-confirm-dialog"
+          backdropClassName={NESTED_CONFIRM_BACKDROP}
         >
           {({ titleId }) => (
             <>
@@ -765,6 +768,7 @@ export function ParameterSpecDetailDialog({
                 }
           }
           className="submission-dialog param-admin-confirm-dialog"
+          backdropClassName={NESTED_CONFIRM_BACKDROP}
         >
           {({ titleId }) => (
             <>
