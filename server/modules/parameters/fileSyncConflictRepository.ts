@@ -258,31 +258,61 @@ export async function insertFileSyncConflict(
  * Enrichment for file↔UI sync conflicts.
  * Prefer post-cutover binding/spec joins; fall back to legacy PPV/definition columns
  * so pre-cutover conflict rows still surface baseValue and parameterName.
+ * Semantic SQL must not reference retired `project_parameter_values` /
+ * `parameter_definitions` or the dropped `project_parameter_value_id` column.
  */
-const FILE_SYNC_CONFLICT_SELECT = `
-    select
-      c.*,
-      coalesce(c.project_parameter_binding_id, '') as project_parameter_value_id,
-      coalesce(c.parameter_spec_id, b.parameter_spec_id, '') as parameter_definition_id,
-      coalesce(bpr.raw_value, ppv.current_value, '') as base_value,
-      case
-        when lnr.node_locator is null then coalesce(dps.property_key, pd.name)
-        when lnr.node_locator like '/%'
-          then ltrim(lnr.node_locator, '/') || '/' || coalesce(dps.property_key, pd.name)
-        else lnr.node_locator || '/' || coalesce(dps.property_key, pd.name)
-      end as source_node_path,
-      coalesce(
+function fileSyncConflictSelectSql(): string {
+  const semantic = parameterIdentityMode() === "semantic";
+  const bindingJoin = semantic
+    ? "on b.id = c.project_parameter_binding_id"
+    : "on b.id = coalesce(c.project_parameter_binding_id, c.project_parameter_value_id)";
+  const legacyJoins = semantic
+    ? ""
+    : `
+    left join project_parameter_values ppv on ppv.id = c.project_parameter_value_id
+    left join parameter_definitions pd on pd.id = c.parameter_definition_id`;
+  const baseValue = semantic
+    ? "coalesce(bpr.raw_value, '') as base_value"
+    : "coalesce(bpr.raw_value, ppv.current_value, '') as base_value";
+  const sourceName = semantic ? "coalesce(dps.property_key, '')" : "coalesce(dps.property_key, pd.name)";
+  const parameterName = semantic
+    ? `coalesce(
+        dps.property_key,
+        nullif(split_part(ps.specification_key, '/', 2), ''),
+        ps.specification_key
+      ) as parameter_name`
+    : `coalesce(
         dps.property_key,
         nullif(split_part(ps.specification_key, '/', 2), ''),
         ps.specification_key,
         pd.name
-      ) as parameter_name,
-      coalesce(
+      ) as parameter_name`;
+  const parameterModule = semantic
+    ? `coalesce(
+        nullif(trim(binding_pm.name), ''),
+        nullif(split_part(ps.specification_key, '/', 1), ''),
+        ''
+      ) as parameter_module`
+    : `coalesce(
         nullif(trim(binding_pm.name), ''),
         nullif(split_part(ps.specification_key, '/', 1), ''),
         pd.module,
         ''
-      ) as parameter_module,
+      ) as parameter_module`;
+  return `
+    select
+      c.*,
+      coalesce(c.project_parameter_binding_id, '') as project_parameter_value_id,
+      coalesce(c.parameter_spec_id, b.parameter_spec_id, '') as parameter_definition_id,
+      ${baseValue},
+      case
+        when lnr.node_locator is null then ${sourceName}
+        when lnr.node_locator like '/%'
+          then ltrim(lnr.node_locator, '/') || '/' || ${sourceName}
+        else lnr.node_locator || '/' || ${sourceName}
+      end as source_node_path,
+      ${parameterName},
+      ${parameterModule},
       fv.version_number as file_version_number,
       fv.created_at as file_version_created_at,
       fd.updated_at as file_draft_updated_at,
@@ -298,9 +328,7 @@ const FILE_SYNC_CONFLICT_SELECT = `
       src.source_end_column
     from parameter_file_sync_conflicts c
     left join project_parameter_bindings b
-      on b.id = coalesce(c.project_parameter_binding_id, c.project_parameter_value_id)
-    left join project_parameter_values ppv on ppv.id = c.project_parameter_value_id
-    left join parameter_definitions pd on pd.id = c.parameter_definition_id
+      ${bindingJoin}${legacyJoins}
     left join parameter_specs ps on ps.id = coalesce(c.parameter_spec_id, b.parameter_spec_id)
     left join dts_property_specs dps on dps.parameter_spec_id = ps.id
     left join parameter_modules binding_pm on binding_pm.id = b.module_id
@@ -345,6 +373,7 @@ const FILE_SYNC_CONFLICT_SELECT = `
       limit 1
     ) src on true
 `;
+}
 
 export async function listOpenConflicts(
   db: Queryable,
@@ -370,7 +399,7 @@ export async function listOpenConflicts(
 
   const result = await db.query<FileSyncConflictRow>(
     `
-    ${FILE_SYNC_CONFLICT_SELECT}
+    ${fileSyncConflictSelectSql()}
     where ${where.join("\n      and ")}
     order by c.created_at desc, c.id desc
     `,
@@ -394,7 +423,7 @@ export async function listFileSyncConflictsByIds(
 
   const result = await db.query<FileSyncConflictRow>(
     `
-    ${FILE_SYNC_CONFLICT_SELECT}
+    ${fileSyncConflictSelectSql()}
     where c.organization_id = $1
       and c.id = any($2::text[])
     `,

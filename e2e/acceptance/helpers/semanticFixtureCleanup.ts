@@ -8,22 +8,52 @@ export type SemanticFixtureCleanupScope = {
   configSetNames?: string[];
   fileNames?: string[];
   parameterSpecIds?: string[];
+  projectParameterBindingIds?: string[];
+  /** Pre-cutover leftover; ignored when the retired column is absent. */
   projectParameterValueIds?: string[];
 };
 
+async function columnExists(client: Client, tableName: string, columnName: string): Promise<boolean> {
+  const result = await client.query<{ c: string }>(
+    `
+    select count(*)::text as c
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = $1
+      and column_name = $2
+    `,
+    [tableName, columnName]
+  );
+  return Number(result.rows[0]?.c ?? 0) > 0;
+}
+
 async function deleteChangeRequestChain(
   client: Client,
-  projectParameterValueIds: string[]
+  scope: { projectParameterBindingIds?: string[]; projectParameterValueIds?: string[] }
 ): Promise<void> {
-  if (projectParameterValueIds.length === 0) return;
+  const clauses: string[] = [];
+  const values: unknown[] = [];
+  if (scope.projectParameterBindingIds && scope.projectParameterBindingIds.length > 0) {
+    values.push(scope.projectParameterBindingIds);
+    clauses.push(`project_parameter_binding_id = any($${values.length}::text[])`);
+  }
+  if (
+    scope.projectParameterValueIds &&
+    scope.projectParameterValueIds.length > 0 &&
+    (await columnExists(client, "parameter_change_requests", "project_parameter_value_id"))
+  ) {
+    values.push(scope.projectParameterValueIds);
+    clauses.push(`project_parameter_value_id = any($${values.length}::text[])`);
+  }
+  if (clauses.length === 0) return;
 
   const requests = await client.query<{ id: string; submission_round_id: string | null }>(
     `
     select id, submission_round_id
     from parameter_change_requests
-    where project_parameter_value_id = any($1::text[])
+    where ${clauses.join(" or ")}
     `,
-    [projectParameterValueIds]
+    values
   );
   const requestIds = requests.rows.map((row) => row.id);
   const roundIds = Array.from(
@@ -138,13 +168,39 @@ export async function cleanupSemanticAcceptanceArtifacts(
     );
     const versionIds = await resolveVersionIds(client, fileIds);
 
-    await deleteChangeRequestChain(client, scope.projectParameterValueIds ?? []);
+    await deleteChangeRequestChain(client, {
+      projectParameterBindingIds: scope.projectParameterBindingIds,
+      projectParameterValueIds: scope.projectParameterValueIds
+    });
 
-    if (scope.projectParameterValueIds && scope.projectParameterValueIds.length > 0) {
+    if (scope.projectParameterBindingIds && scope.projectParameterBindingIds.length > 0) {
+      await client.query(
+        `delete from parameter_drafts where project_parameter_binding_id = any($1::text[])`,
+        [scope.projectParameterBindingIds]
+      );
+      if (await columnExists(client, "parameter_file_sync_conflicts", "project_parameter_binding_id")) {
+        await client.query(
+          `delete from parameter_file_sync_conflicts where project_parameter_binding_id = any($1::text[])`,
+          [scope.projectParameterBindingIds]
+        );
+      }
+    }
+
+    if (
+      scope.projectParameterValueIds &&
+      scope.projectParameterValueIds.length > 0 &&
+      (await columnExists(client, "parameter_drafts", "project_parameter_value_id"))
+    ) {
       await client.query(
         `delete from parameter_drafts where project_parameter_value_id = any($1::text[])`,
         [scope.projectParameterValueIds]
       );
+    }
+    if (
+      scope.projectParameterValueIds &&
+      scope.projectParameterValueIds.length > 0 &&
+      (await columnExists(client, "parameter_file_sync_conflicts", "project_parameter_value_id"))
+    ) {
       await client.query(
         `delete from parameter_file_sync_conflicts where project_parameter_value_id = any($1::text[])`,
         [scope.projectParameterValueIds]

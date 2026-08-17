@@ -10,6 +10,7 @@ import {
   type InMemoryTestDatabase
 } from "../../testing/testDatabase";
 import { listOpenConflicts } from "./fileSyncConflictRepository";
+import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
@@ -17,6 +18,7 @@ describe.skipIf(!databaseAvailable)("listOpenConflicts post-cutover SQL", () => 
   let db: InMemoryTestDatabase | null = null;
 
   afterEach(async () => {
+    setParameterIdentityMode(null);
     if (db) {
       await db.rollback();
       db = null;
@@ -48,6 +50,7 @@ describe.skipIf(!databaseAvailable)("listOpenConflicts post-cutover SQL", () => 
       `
     );
 
+    setParameterIdentityMode("semantic");
     const items = await listOpenConflicts(db, {
       organizationId: "org-chargelab",
       projectId: "atlas"
