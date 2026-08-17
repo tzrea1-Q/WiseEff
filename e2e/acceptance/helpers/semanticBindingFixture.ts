@@ -731,3 +731,98 @@ export async function assertPostCutoverIdentity(): Promise<void> {
     ).toBe(0);
   });
 }
+
+export async function lookupParameterFileVersion(input: {
+  projectId?: string;
+  fileName: string;
+}): Promise<{ fileId: string; versionId: string; versionNumber: number }> {
+  const projectId = input.projectId ?? defaultProjectId;
+  return withPgClient(async (client) => {
+    const result = await client.query<{ file_id: string; version_id: string; version_number: number }>(
+      `
+      select f.id as file_id, v.id as version_id, v.version_number
+      from project_parameter_files f
+      inner join project_parameter_file_versions v on v.file_id = f.id
+      where f.organization_id = $1
+        and f.project_id = $2
+        and f.file_name = $3
+      order by v.version_number desc
+      limit 1
+      `,
+      [organizationId, projectId, input.fileName]
+    );
+    const row = result.rows[0];
+    expect(row, `missing file version for ${input.fileName}`).toBeTruthy();
+    return {
+      fileId: row!.file_id,
+      versionId: row!.version_id,
+      versionNumber: Number(row!.version_number)
+    };
+  });
+}
+
+export async function seedSemanticFileUiConflict(input: {
+  binding: IsolatedBinding;
+  fileVersionId: string;
+  fileValue: string;
+  uiValue: string;
+  fileUserId?: string;
+  uiUserId?: string;
+}): Promise<{ conflictId: string; fileDraftId: string; uiDraftId: string }> {
+  const fileDraftId = randomUUID();
+  const uiDraftId = randomUUID();
+  const conflictId = randomUUID();
+  const fileUserId = input.fileUserId ?? acceptanceCast.xuYun.userId;
+  const uiUserId = input.uiUserId ?? acceptanceCast.zhaoHeng.userId;
+  await withPgClient(async (client) => {
+    await client.query(
+      `
+      insert into parameter_drafts (
+        id, organization_id, project_id, user_id,
+        target_value, reason, origin, origin_file_version_id,
+        action, edit_subject_kind, project_parameter_binding_id
+      )
+      values
+        ($1, $2, $3, $4, $5, $6, 'file_sync', $7, 'set', 'binding', $8),
+        ($9, $2, $3, $10, $11, $12, 'manual', null, 'set', 'binding', $8)
+      `,
+      [
+        fileDraftId,
+        organizationId,
+        input.binding.projectId,
+        fileUserId,
+        input.fileValue,
+        `TD-079 file sync ${input.binding.propertyKey}`,
+        input.fileVersionId,
+        input.binding.bindingId,
+        uiDraftId,
+        uiUserId,
+        input.uiValue,
+        `TD-079 ui draft ${input.binding.propertyKey}`
+      ]
+    );
+    await client.query(
+      `
+      insert into parameter_file_sync_conflicts (
+        id, organization_id, project_id,
+        file_version_id, file_draft_id, ui_draft_id, file_value, ui_draft_value, status,
+        parameter_spec_id, project_parameter_binding_id
+      )
+      values ($1, $2, $3, $4, $5, $6, $7, $8, 'open', $9, $10)
+      `,
+      [
+        conflictId,
+        organizationId,
+        input.binding.projectId,
+        input.fileVersionId,
+        fileDraftId,
+        uiDraftId,
+        input.fileValue,
+        input.uiValue,
+        input.binding.parameterSpecId,
+        input.binding.bindingId
+      ]
+    );
+  });
+  return { conflictId, fileDraftId, uiDraftId };
+}

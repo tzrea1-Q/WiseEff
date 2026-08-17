@@ -22,6 +22,9 @@ export type DetectFileUiDraftConflictInput = {
   fileVersionId: string;
   fileDraftId: string;
   fileValue: string;
+  /** Post-cutover identity; callers may still pass the binding id via projectParameterValueId. */
+  projectParameterBindingId?: string;
+  parameterSpecId?: string;
 };
 
 export async function detectFileUiDraftConflict(
@@ -58,7 +61,9 @@ export async function detectFileUiDraftConflict(
       fileDraftId: input.fileDraftId,
       uiDraftId: manualDraft.id,
       fileValue: input.fileValue,
-      uiDraftValue: manualDraft.targetValue
+      uiDraftValue: manualDraft.targetValue,
+      projectParameterBindingId: input.projectParameterBindingId,
+      parameterSpecId: input.parameterSpecId
     });
     existingPairs.add(pair);
     createdConflicts.push(conflict);
