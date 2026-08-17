@@ -1,11 +1,11 @@
 # Parameter definition identity correction
 
-> Status: **Active** — Batches 1–4 implemented 2026-08-17; awaiting parent archive
+> Status: **Completed 2026-08-17** — Batches 1–4 on `main` (#504); referenced `property_key` rename remains TD-117
 > Date: 2026-08-04
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-04-parameter-definition-identity-correction.md`](../../zh-CN/exec-plans/active/2026-08-04-parameter-definition-identity-correction.md)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-04-parameter-definition-identity-correction.md`](../../zh-CN/exec-plans/completed/2026-08-04-parameter-definition-identity-correction.md)
 > Governing decision: [ADR-0017](../../adr/0017-definition-identity-is-correctable.md)
 > Amends: [ADR-0013](../../adr/0013-attribution-subjects-are-stable-catalog-entities.md), [ADR-0014](../../adr/0014-parameter-definitions-are-versioned-subjects.md)
-> Predecessor: [`2026-08-03-parameter-spec-editor-fidelity.md`](../completed/2026-08-03-parameter-spec-editor-fidelity.md)
+> Predecessor: [`2026-08-03-parameter-spec-editor-fidelity.md`](./2026-08-03-parameter-spec-editor-fidelity.md)
 
 ## Context
 

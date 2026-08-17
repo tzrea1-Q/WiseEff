@@ -1,11 +1,11 @@
 # 参数定义身份纠错
 
-> 状态：**进行中** — 批次 1–4 已于 2026-08-17 实现；等待父代理归档
+> 状态：**已完成 2026-08-17** — 批次 1–4 已在 `main`（#504）；有引用的 `property_key` 改名仍为 TD-117
 > 日期：2026-08-04
-> English: [`docs/exec-plans/active/2026-08-04-parameter-definition-identity-correction.md`](../../../exec-plans/active/2026-08-04-parameter-definition-identity-correction.md)
+> English: [`docs/exec-plans/completed/2026-08-04-parameter-definition-identity-correction.md`](../../../exec-plans/completed/2026-08-04-parameter-definition-identity-correction.md)
 > 约束性决策：[ADR-0017](../../../adr/0017-definition-identity-is-correctable.md)
 > 修订：[ADR-0013](../../../adr/0013-attribution-subjects-are-stable-catalog-entities.md)、[ADR-0014](../../../adr/0014-parameter-definitions-are-versioned-subjects.md)
-> 前序计划：[`2026-08-03-parameter-spec-editor-fidelity.md`](../completed/2026-08-03-parameter-spec-editor-fidelity.md)
+> 前序计划：[`2026-08-03-parameter-spec-editor-fidelity.md`](./2026-08-03-parameter-spec-editor-fidelity.md)
 
 ## 背景
 
