@@ -98,6 +98,7 @@ export function ParameterSpecDetailDialog({
   const editable = typeof onSave === "function";
   const isDraft = detail.reviewState === "draft" && detail.organizationId != null;
   const isDeprecated = detail.reviewState === "deprecated";
+  const fieldsEditable = editable && !isDeprecated;
   const primaryLabel = formatSpecPrimaryLabel(detail);
   const cutover = detail.cutover;
   const canGovernLifecycle = detail.organizationId != null || canDeprecateGlobal;
@@ -310,16 +311,22 @@ export function ParameterSpecDetailDialog({
           <>
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
-            <span className="eyebrow">{editable ? PARAMETER_ADMIN_UI.specDetailEyebrowEditable : PARAMETER_ADMIN_UI.specDetailEyebrowReadonly}</span>
+            <span className="eyebrow">
+              {fieldsEditable
+                ? PARAMETER_ADMIN_UI.specDetailEyebrowEditable
+                : PARAMETER_ADMIN_UI.specDetailEyebrowReadonly}
+            </span>
             <h2 id={titleId}>{primaryLabel}</h2>
             <p>
-              {editable
-                ? isDraft
-                  ? "修改展示信息、取值形态与约束后保存并激活，供定义匹配审核批准项目参数。"
-                  : detail.organizationId == null
-                    ? "平台全局目录定义可修改展示信息、约束与说明；身份纠错走「修正归属 / 修正属性键」。"
-                    : "修改展示信息、约束与说明后保存；选错的归属主体或属性键用「修正」动作纠正。"
-                : "当前未接线保存能力，仅可查看。"}
+              {isDeprecated
+                ? "已废弃，仅可查看或恢复。"
+                : fieldsEditable
+                  ? isDraft
+                    ? "修改展示信息、取值形态与约束后保存并激活，供定义匹配审核批准项目参数。"
+                    : detail.organizationId == null
+                      ? "平台全局目录定义可修改展示信息、约束与说明；身份纠错走「修正归属 / 修正属性键」。"
+                      : "修改展示信息、约束与说明后保存；选错的归属主体或属性键用「修正」动作纠正。"
+                  : "当前未接线保存能力，仅可查看。"}
             </p>
             {typeof detail.usageCount === "number" ? (
               <p className="form-hint" aria-label={PARAMETER_ADMIN_UI.referenceCountLabel}>
@@ -530,12 +537,18 @@ export function ParameterSpecDetailDialog({
                 </div>
               ) : null}
               <label className="param-admin-confirm-field">
-                <span>{isDraft ? "激活原因" : "修改原因"}</span>
+                <span className="def-field-label-row">
+                  {isDraft ? "激活原因" : "修改原因"}
+                  <span className="label-hint" aria-hidden="true">
+                    必填
+                  </span>
+                </span>
                 <textarea
                   aria-label={isDraft ? "激活原因" : "修改原因"}
+                  aria-required="true"
                   value={saveReason}
                   rows={4}
-                  placeholder="必填，写入审计"
+                  placeholder="写入审计"
                   autoFocus
                   onChange={(event) => {
                     setSaveReason(event.target.value);
@@ -572,7 +585,7 @@ export function ParameterSpecDetailDialog({
                 type="button"
                 className="button primary"
                 onClick={() => void handleSaveConfirm()}
-                disabled={pending || (needsSaveAcknowledgement && !saveAcknowledged)}
+                disabled={pending || !saveReason.trim() || (needsSaveAcknowledgement && !saveAcknowledged)}
               >
                 {pending ? (isDraft ? "激活中…" : "保存中…") : isDraft ? "确认激活" : "确认保存"}
               </button>

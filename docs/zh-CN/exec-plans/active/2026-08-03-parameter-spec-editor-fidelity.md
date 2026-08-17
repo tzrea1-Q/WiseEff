@@ -1,6 +1,6 @@
 # 参数定义编辑器保真度
 
-> 状态：**进行中** — 剩余写入契约与批次 2 已关闭，批次 3–5 仍开放
+> 状态：**进行中** — 剩余写入契约与批次 2–3 已关闭，批次 4–5 仍开放
 > 日期：2026-08-03
 > English: [`docs/exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md`](../../../exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md)
 > 约束性 IA：[ADR-0001](../../../adr/0001-parameter-admin-organized-by-governance-scope.md)、[ADR-0015](../../../adr/0015-governance-queues-live-with-the-object-they-govern.md)
@@ -9,9 +9,9 @@
 
 ## 已落地与剩余
 
-**已落地：** SE-D1（编辑器写入路径已去掉 `policyTarget`）；SE-D2 约束在 update 与 activate 上改为替换；SE-D3 服务端按键是否出现判定（`units` 不再用 `coalesce` 忽略 null）；SE-D4 激活会接受并持久化 `units` / `exampleValue`；SE-5 空展示名可往返；SE-D6 PATCH 仅在 `valueShape` 变化时运行 `assertSpecActivatable`；SE-D5 保存前 `valueShape`/`constraints` 对比，以及被引用定义的确认勾选；共用 `ValueShapeFields`；SE-17–SE-21 的 ModalDialog 外壳；批次 2 展示诚实（SE-6–SE-9）。
+**已落地：** SE-D1（编辑器写入路径已去掉 `policyTarget`）；SE-D2 约束在 update 与 activate 上改为替换；SE-D3 服务端按键是否出现判定（`units` 不再用 `coalesce` 忽略 null）；SE-D4 激活会接受并持久化 `units` / `exampleValue`；SE-5 空展示名可往返；SE-D6 PATCH 仅在 `valueShape` 变化时运行 `assertSpecActivatable`；SE-D5 保存前 `valueShape`/`constraints` 对比，以及被引用定义的确认勾选；共用 `ValueShapeFields`；SE-17–SE-21 的 ModalDialog 外壳；批次 2 展示诚实（SE-6–SE-9）；批次 3 编辑形态（SE-10–SE-15）。
 
-**剩余：** 批次 3–5（编辑形态、弹窗外壳余量、验收/文档门禁）。
+**剩余：** 批次 4–5（弹窗外壳余量、验收/文档门禁）。
 
 ## 背景
 
@@ -182,11 +182,11 @@ D2 的审计那一半已经落地：`spec-updated` 元数据携带 `previousValu
 
 ### 批次 3 — 编辑形态
 
-13. [ ] 把 `SpecCreateDialog` 的值形状控件（`VALUE_SHAPE_OPTIONS`、`needsCellFields`、`buildValueShape`、`defaultConstraintsForShape`）抽成共享组件并在编辑器中使用（SE-10、SE-12、SE-D4）。它不得自动补齐存储形状所缺的键（SE-23）。
-14. [ ] 让值类型与形状控件保持同步，或直接去掉（SE-12）。
-15. [ ] 在视觉与语义上区分 JSON 编辑框与自由文本框（SE-11），复用 `parseOptionalJson` 的语义并加入即时校验反馈。
-16. [ ] 标记修改原因为必填（SE-13）；用底色以外的方式标记只读字段（SE-14）。
-17. [ ] 修正废弃态定义的可编辑/只读眉标（SE-15），以及草稿提示「激活前可修订」（见 SE-D4 的实现注意）。
+13. [x] 把 `SpecCreateDialog` 的值形状控件（`VALUE_SHAPE_OPTIONS`、`needsCellFields`、`buildValueShape`、`defaultConstraintsForShape`）抽成共享组件并在编辑器中使用（SE-10、SE-12、SE-D4）。它不得自动补齐存储形状所缺的键（SE-23）。已落地为 `ValueShapeFields` 的 `mode="edit"`。
+14. [x] 从编辑器去掉值类型（SE-12）。定义库表仍以 `valueType` 展示上次保存的 kind 快照；弹窗不再在形状控件旁复述。
+15. [x] 在视觉与语义上区分 JSON 编辑框与自由文本框（SE-11）：约束是带即时校验的 JSON 对象编辑器；示例值接受 DTS 或 JSON，不会把片段当成非法 JSON。
+16. [x] 在保存确认步标记修改原因为必填（SE-13：`aria-required`、必填提示、未填则禁用确认）。用只读/实测/声明提示标记只读字段，而不只靠底色（SE-14）。
+17. [x] 修正废弃态定义的可编辑/只读眉标（SE-15）。草稿提示「激活前可修订」已去掉；组织草稿仍说明保存即激活。
 18. [x] 按 SE-D5 关闭 SE-16：`valueShape` 与 `constraints` 的前后对比，`referenceCount > 0` 时加二次确认。
 
 ### 批次 4 — 弹窗外壳

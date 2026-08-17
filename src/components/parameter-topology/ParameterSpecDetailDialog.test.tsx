@@ -133,13 +133,51 @@ describe("ParameterSpecDetailDialog save confirm (SE-D5)", () => {
     expect(within(confirm).queryByRole("checkbox")).not.toBeInTheDocument();
 
     const submit = within(confirm).getByRole("button", { name: "确认保存" });
-    expect(submit).toBeEnabled();
+    const reason = within(confirm).getByLabelText("修改原因");
+    expect(reason).toHaveAttribute("aria-required", "true");
+    expect(within(confirm).getByText("必填")).toBeInTheDocument();
+    expect(submit).toBeDisabled();
 
-    fireEvent.change(within(confirm).getByLabelText("修改原因"), {
+    fireEvent.change(reason, {
       target: { value: "docs tweak" },
     });
+    expect(submit).toBeEnabled();
     fireEvent.click(submit);
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(onSave.mock.calls[0][0]).toMatchObject({ reason: "docs tweak" });
+  });
+});
+
+describe("ParameterSpecDetailDialog editing affordances (Batch 3)", () => {
+  it("uses the readonly eyebrow on deprecated definitions even when onSave is wired", () => {
+    renderEditor({ reviewState: "deprecated" });
+    expect(screen.getByText("参数定义库 · 只读")).toBeInTheDocument();
+    expect(screen.queryByText("参数定义库 · 可编辑")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
+    expect(screen.getByText("已废弃，仅可查看或恢复。")).toBeInTheDocument();
+  });
+
+  it("marks read-only fields with a 只读 hint beyond the background tint", () => {
+    renderEditor({ reviewState: "deprecated" });
+    expect(screen.getByLabelText("审核状态").closest("label")).toHaveTextContent("只读");
+    expect(screen.getByLabelText("展示名").closest("label")).toHaveTextContent("只读");
+  });
+
+  it("treats constraints as a JSON object editor with inline validation", () => {
+    renderEditor();
+    const constraints = screen.getByLabelText("约束 constraints");
+    expect(constraints.closest("label")).toHaveTextContent("JSON");
+    fireEvent.change(constraints, { target: { value: "not-json" } });
+    expect(constraints).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("alert")).toHaveTextContent("不是合法 JSON");
+  });
+
+  it("keeps 示例值 as free text so a DTS fragment is not a JSON error", () => {
+    renderEditor();
+    const example = screen.getByLabelText("示例值");
+    expect(example.closest("label")).toHaveTextContent("原文或 JSON");
+    fireEvent.change(example, { target: { value: "<&gpio13 29 0>" } });
+    expect(example).not.toHaveAttribute("aria-invalid", "true");
+    expect(screen.queryByText(/示例值 不是合法 JSON/)).not.toBeInTheDocument();
   });
 });

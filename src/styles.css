@@ -18074,6 +18074,15 @@ body.xiaoze-popup-resize-active {
   grid-column: 1 / -1;
 }
 
+.def-group-fields > .param-admin-json-field {
+  grid-column: 1 / -1;
+}
+
+.param-admin-json-editor {
+  font-variant-ligatures: none;
+  tab-size: 2;
+}
+
 .param-admin-value-shape-field {
   display: grid;
   gap: 6px;
