@@ -107,7 +107,7 @@ Legend: **Done** = closed or closeable in a batch above; **In progress (sibling)
 | TD-057 | Open (later) | Batch 3 |
 | TD-064 / TD-065 | Open (later) | Batch 3; not this session by default |
 | TD-079 | In progress (sibling) | `fix/td-079-acceptance-semantic-fixtures` |
-| TD-082 | In progress (sibling) | `chore/td-082-apierror-status-codemod` |
+| TD-082 | Done on `main` via #507 | `chore/td-082-apierror-status-codemod` |
 | TD-001 | Deferred | Long-running mock/API parity constraint, not a ticket |
 | TD-033 | Deferred | Archive-only leftover debugging catalog tables |
 | TD-031 | Deferred | Env-var rename; high confusion risk in the launch window |

@@ -107,7 +107,7 @@ TDD。API + port + UI + 测试 + 中英文档。不要重写配置工作台。
 | TD-057 | Open（后续） | 批次 3 |
 | TD-064 / TD-065 | Open（后续） | 批次 3；默认不进本会话 |
 | TD-079 | 进行中（兄弟分支） | `fix/td-079-acceptance-semantic-fixtures` |
-| TD-082 | 进行中（兄弟分支） | `chore/td-082-apierror-status-codemod` |
+| TD-082 | 已由 #507 合入 `main` | `chore/td-082-apierror-status-codemod` |
 | TD-001 | Deferred | mock/API 长期对等约束，不是工单 |
 | TD-033 | Deferred | 仅归档的遗留调试 catalog 表 |
 | TD-031 | Deferred | 环境变量改名；上线窗口混淆成本高 |
