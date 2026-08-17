@@ -1,6 +1,8 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { createApiInitialState, createPrototypeState, initialState } from "./mockData";
+import { createApiInitialState } from "@/application/state/apiInitialState";
 import type { PrototypeState } from "@/domain/prototype/types";
+import { createPrototypeState, initialState } from "./mockData";
 import { createEmptyPowerManagementConfig } from "./powerManagementConfig";
 
 type RetiredSlice = "developers" | "logAdminUsers";
@@ -41,5 +43,19 @@ describe("createApiInitialState leftover slices", () => {
       "projects"
     ]);
     expect(apiState.persistedConfigSnapshot).not.toBe(apiState.configDraft);
+  });
+
+  it("does not implement API boot by spreading a seeded createPrototypeState() catalog", () => {
+    const apiState = createApiInitialState();
+    const mockState = createPrototypeState();
+
+    expect(mockState.configDraft.projects.length).toBeGreaterThan(0);
+    expect(apiState.configDraft.projects).toEqual([]);
+    expect(apiState.configDraft.projects).not.toEqual(mockState.configDraft.projects);
+  });
+
+  it("keeps the reducer free of @/mockData imports", () => {
+    const source = readFileSync("src/application/state/appState.ts", "utf8");
+    expect(source).not.toMatch(/from ["']@\/mockData["']/);
   });
 });

@@ -7,6 +7,7 @@ import type {
 import type { HydrateLogRuntimeAction } from "@/application/logs/logRuntime";
 import type { HydrateParameterRuntimeAction } from "@/application/parameters/parameterRuntime";
 import type { LogJobSnapshot } from "@/application/ports/LogAnalysisRepository";
+import { derivePowerManagementRuntimeState } from "@/application/state/derivePowerManagementRuntimeState";
 import { canPerform } from "@/app/permissions";
 import { buildDraftSubmissionRounds } from "@/domain/parameters/buildDraftSubmissionRounds";
 import { submitParameterRound } from "@/domain/parameters/commands";
@@ -46,10 +47,6 @@ import {
   type PlatformRoleId
 } from "@/domain/users/types";
 import { prependMockNotificationMessage } from "@/infrastructure/mock/mockNotificationsGateway";
-import {
-  derivePowerManagementRuntimeState,
-  REVIEW_MOCK_NOW
-} from "@/mockData";
 import { buildAuditEvent } from "@/parameterAdminAnalytics";
 import { buildParameterLibraryFromRecords, buildParameterModulesFromRecords } from "@/parameterAdminLibrary";
 import {
@@ -64,7 +61,7 @@ import {
   updateDebugParameter,
   updateParameterModule
 } from "@/powerManagementConfig";
-import { buildAISuggestion, buildImpactItems } from "@/reviewMockData";
+import { buildAISuggestion, buildImpactItems, REVIEW_MOCK_NOW } from "@/reviewMockData";
 
 type DebugParameterEditorDraft = {
   name: string;
