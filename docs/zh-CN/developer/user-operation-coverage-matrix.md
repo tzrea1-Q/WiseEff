@@ -111,6 +111,7 @@
 - `PARAM-FILE-UPLOAD-001`：Admin 在 `/parameter-admin/projects` 上传 JSON 参数文件并列出文件与版本（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
 - `PARAM-FILE-SYNC-001`：Admin 手动同步参数文件，当解析值与 DB 当前值不一致时创建 `file_sync` 草稿（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
 - `PARAM-FILE-RESOLVE-001`：Admin 通过 API 裁决 file/UI 草稿冲突（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
+- `PARAM-FILE-ROLLBACK-001`：Admin 在配置工作台版本历史经确认框把某版本恢复为当前；插入新回滚指针版本且不倒带历史；操作者显示名而非原始用户 ID（单元/服务端 + playwright-cli `work/ui-checks/param-file-rollback/`；阻断 Playwright 等 TD-079）。
 - `PARAM-SPEC-GOVERN-001`：Admin 检索 ingest 后的规格并决议审核任务（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-SPEC-EDIT-001`：Admin 编辑启用态定义的单位/约束/示例/说明并往返；组件与服务端覆盖先行，共享 CI 验收库 Playwright 标记暂缓（TD-079）。
 - `PARAM-SPEC-EDIT-002`：三视口下编辑器动作可达、焦点进入与归还；`ModalDialog` 单测加 playwright-cli 证据先行。

@@ -31,6 +31,7 @@ export type ProjectParameterFileVersionDto = {
   origin: ParameterFileVersionOrigin;
   createdAt: string;
   createdByUserId?: string;
+  createdByDisplayName?: string;
 };
 
 export type InsertProjectParameterFileInput = {

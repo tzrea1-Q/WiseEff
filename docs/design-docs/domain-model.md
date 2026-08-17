@@ -29,7 +29,7 @@ Project parameter files are first-class project-scoped entities that host DTS/JS
 | Entity | Description |
 | --- | --- |
 | `ProjectParameterFile` | One hosted `.dts` or `.json` file per project (`file_name` unique per project), optional `module_hint`, `enabled` flag, and `current_version_id`. |
-| `ProjectParameterFileVersion` | Immutable file bytes in object storage with `version_number`, `checksum`, `parsed_index`, and `origin` (`upload` or `writeback`). |
+| `ProjectParameterFileVersion` | Immutable file bytes in object storage with `version_number`, `checksum`, `parsed_index`, and `origin` (`upload`, `writeback`, or `rollback`). Version list DTOs may include `createdByDisplayName` resolved from the creating user. |
 | `DtsNode` | Structural node for a file version: `node_path` (includes `@unitAddress`), labels, optional `compatible`/`status` (raw DTS text for enablement derivation only — not a parameter), parent link. |
 | `DtsProperty` | Typed property on a node: `value_type` (`u32-array` \| `bytes` \| `string-list` \| `phandle-list` \| `mixed` \| `bool` \| `empty`), `raw_text`, `normalized_value`. |
 | `DtsPhandleRef` | Phandle edge from a property to a target label (optional resolved node id). |
@@ -54,6 +54,8 @@ Upload or version upload with `origin=upload` parses the file, diffs each `parse
 **DTS structural core (P1):** `server/modules/dts/` provides lexer → CST parser → value typing/normalization → overlay/label resolver → lossless CST serializer. Upload (when `DTS_STRUCTURAL_INGEST` is on) persists `dts_nodes` / `dts_properties` / `dts_phandle_refs` and derives `parsed_index` from the merged model. `/include/` remains hard-rejected. Writeback mutates CST property `rawText` and serializes with byte-stable remainder (multiline / multi-group / `@address` supported).
 
 `origin=writeback` versions are created after `software_merge → merged` when the merged parameter has source fields. Writeback patches the current file bytes (JSON path set or DTS CST property splice) and must not trigger another sync pass.
+
+Admin file-history restore (`POST /api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/rollback`) uses the same append-only pointer rule as baseline restore: it inserts a new current version with `origin=rollback` that reuses the chosen blob (`storageKey` / checksum / size / `parsed_index`) and never rewinds or deletes history. Restoring the already-current version is `CONFLICT`. The new row is the operator of record (`createdByUserId` / `createdByDisplayName`).
 
 Disabled files stop participating in automatic sync; existing source bindings remain.
 

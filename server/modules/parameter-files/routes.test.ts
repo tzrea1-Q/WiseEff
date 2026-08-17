@@ -15,7 +15,8 @@ import * as conflictService from "./conflictService";
 vi.mock("./service", () => ({
   uploadProjectParameterFile: vi.fn(),
   getProjectParameterFileContent: vi.fn(),
-  listProjectParameterFilesForAuth: vi.fn()
+  listProjectParameterFilesForAuth: vi.fn(),
+  rollbackProjectParameterFileVersion: vi.fn()
 }));
 
 vi.mock("./repository", () => ({
@@ -231,6 +232,54 @@ describe("parameter file routes", () => {
       expect.any(Object),
       { projectId: "project-1", resolution: "ui", conflictIds: ["conflict-1"], reason: "batch" },
       { requestId: expect.any(String) }
+    );
+  });
+
+  it("POST version rollback returns 201 with the new pointer version", async () => {
+    const db = makeDb();
+    const objectStore = makeObjectStore();
+    const file = {
+      id: "file-1",
+      projectId: "project-1",
+      fileName: "config.json",
+      format: "json" as const,
+      enabled: true,
+      currentVersionId: "ver-3",
+      currentVersionNumber: 3,
+      updatedAt: "2026-08-17T09:00:00.000Z"
+    };
+    const version = {
+      id: "ver-3",
+      fileId: "file-1",
+      versionNumber: 3,
+      checksum: "checksum-rollback",
+      sizeBytes: 12,
+      parsedIndex: {},
+      origin: "rollback" as const,
+      createdAt: "2026-08-17T09:00:00.000Z",
+      createdByUserId: "user-1",
+      createdByDisplayName: "Riley Chen"
+    };
+    vi.mocked(service.rollbackProjectParameterFileVersion).mockResolvedValue({ file, version });
+
+    const { getProjectParameterFileById } = await import("./repository");
+    vi.mocked(getProjectParameterFileById).mockResolvedValue(file as never);
+
+    const response = await requestJson<{ item: typeof version; file: typeof file }>(
+      makeServer({ db, objectStore }),
+      "/api/v1/projects/project-1/parameter-files/file-1/versions/ver-1/rollback",
+      { method: "POST", body: JSON.stringify({}) }
+    );
+
+    expect(response.status).toBe(201);
+    expect(response.body.item.origin).toBe("rollback");
+    expect(response.body.file.currentVersionId).toBe("ver-3");
+    expect(service.rollbackProjectParameterFileVersion).toHaveBeenCalledWith(
+      db,
+      objectStore,
+      expect.objectContaining({ user: expect.objectContaining({ id: "user-1" }) }),
+      { projectId: "project-1", fileId: "file-1", versionId: "ver-1" },
+      { requestId: "test-request" }
     );
   });
 });

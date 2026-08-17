@@ -58,6 +58,21 @@ describe("createParameterFileClient", () => {
     );
   });
 
+  it("maps rollbackVersion to POST .../versions/:versionId/rollback", async () => {
+    const post = vi.fn().mockResolvedValueOnce({
+      item: { id: "version-3", origin: "rollback" },
+      file: { id: "file-1", currentVersionId: "version-3" }
+    });
+    const client = createParameterFileClient({ post } as never);
+
+    const result = await client.rollbackVersion("project/1", "file/1", "version/1");
+    expect(result.item.origin).toBe("rollback");
+    expect(post).toHaveBeenCalledWith(
+      "/api/v1/projects/project%2F1/parameter-files/file%2F1/versions/version%2F1/rollback",
+      {}
+    );
+  });
+
   it("posts optional reason and bulk conflict preview/resolve payloads", async () => {
     const post = vi
       .fn()

@@ -602,6 +602,13 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "PARAM-FILE-ROLLBACK-001",
+    workflow: "C",
+    title:
+      "Admin restores a historical parameter-file version as current by inserting a new origin=rollback pointer version (history is not rewound) and sees the operator display name on the version list.",
+    required: false
+  },
+  {
     id: "PARAM-DTS-STRUCTURE-001",
     workflow: "C",
     title: "Admin can read the structured DTS model (nodes/properties/phandles) for a file version.",

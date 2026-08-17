@@ -435,4 +435,16 @@ test.describe("project parameter files browser acceptance", () => {
       await cleanupParameterFileAcceptanceArtifacts(fileName);
     }
   });
+
+  test("PARAM-FILE-ROLLBACK-001: restore historical version as current pointer", async ({
+    page
+  }) => {
+    // @acceptance-planned PARAM-FILE-ROLLBACK-001
+    // @operation-planned PARAM-FILE-ROLLBACK-001
+    test.skip(
+      true,
+      "Supplemental playwright-cli evidence is under work/ui-checks/param-file-rollback/. Blocking Playwright waits for leftover PPV fixtures (TD-079)."
+    );
+    void page;
+  });
 });

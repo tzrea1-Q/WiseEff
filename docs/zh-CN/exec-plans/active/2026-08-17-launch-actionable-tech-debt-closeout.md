@@ -79,7 +79,7 @@ TDD。API + port + UI + 测试 + 中英文档。不要重写配置工作台。
 - 把 `createdByUserId` 解析成显示名，写进版本列表。
 - 扩展已有版本历史表面（POD-C6）。影响范围用 ConfirmDialog。产品文案用中文。
 - 若这是新的用户可见交互，先登记验收/操作 ID；否则写明既有覆盖加 playwright-cli 为何足够。
-- 验证绿灯后在中英追踪表关闭 TD-056。
+- 验证绿灯后在中英追踪表关闭 TD-056。**已于 2026-08-17 在本分支完成。**
 
 ### 批次 3 — 下一轮上线可见产品切片（默认不在本会话）
 
@@ -103,7 +103,7 @@ TDD。API + port + UI + 测试 + 中英文档。不要重写配置工作台。
 | --- | --- | --- |
 | 归属计划收口（DRV-REG-004 / `DRV-REG-005`） | 批次 1 Done（本分支） | 批次 1 |
 | TD-046 / TD-047 | Done（已在 `main` 关闭） | 批次 1 补证据并归档 |
-| TD-056 | 有时间则在批次 2 Done | 本分支，批次 1 之后 |
+| TD-056 | 批次 2 Done（本分支） | 本分支，批次 1 之后 |
 | TD-057 | Open（后续） | 批次 3 |
 | TD-064 / TD-065 | Open（后续） | 批次 3；默认不进本会话 |
 | TD-079 | 进行中（兄弟分支） | `fix/td-079-acceptance-semantic-fixtures` |
@@ -133,7 +133,7 @@ TDD。API + port + UI + 测试 + 中英文档。不要重写配置工作台。
 | `DRV-REG-004` | Admin 编辑 `driverNature` / `instanceCardinality`；组织 Admin 不能改平台主体；platform-admin 组织侧编辑进入组织审计；改为 singleton 只刷新发布阻断。 | 保持 `@acceptance-planned` / `required: false`。单元与服务端已在 `main`。补充 playwright-cli 在 `work/ui-checks/attribution-deferred/`。不要撑大共享 pre-cutover CI 套件（TD-079）。 |
 | `DRV-REG-005` | Admin 设置注册默认业务分类并执行「从注册回放放置」；auto 驱动组移动；curated 冻结。 | 新 planned ID + `@acceptance-planned` 桩。单元覆盖：`ModuleEditDialog.test.tsx` + 服务端放置测试。同一证据目录的补充 playwright-cli。阻断 Playwright 等 TD-079。 |
 
-批次 2（TD-056）若版本列表回滚是新的用户可见交互，实现前必须先加或点名一个 ID。预期 `PARAM-FILE-ROLLBACK-001`，落在项目配置 / 文件历史表面。先登记再写代码。
+批次 2（TD-056）已在实现前登记 `PARAM-FILE-ROLLBACK-001`（`required: false`，`@acceptance-planned`），落在 `e2e/acceptance/parameter-files.acceptance.spec.ts`。共享 Playwright 仍等 TD-079；本切片证据是单元/服务端测试加 `work/ui-checks/param-file-rollback/` 的 playwright-cli。
 
 操作证据在桩被自动化后仍走 `npm run acceptance:browser` / `npm run acceptance:evidence`。本切片的操作证据是 playwright-cli 加单元/服务端测试。
 
@@ -147,8 +147,16 @@ npm run acceptance:operations
 # VITE_WISEEFF_RUNTIME_MODE=mock npm run dev
 # playwright-cli 三视口 + snapshot + screenshot + console error
 # 批次 2（实现时）：
-# npx vitest run <parameter-files 服务端 + port + UI 测试>
+# npx vitest run server/modules/parameter-files/service.test.ts \\
+#   server/modules/parameter-files/repository.test.ts \\
+#   server/modules/parameter-files/routes.test.ts \\
+#   src/infrastructure/mock/mockParameterFileRepository.test.ts \\
+#   src/infrastructure/http/parameterFileClient.test.ts \\
+#   src/components/project-configuration-workbench/ProjectConfigurationWorkbench.test.tsx
 # npm run build
+# playwright-cli 三视口打开 /parameter-admin/projects/:id/configuration
+#   + 检查器版本历史 + 恢复确认 + console error
+# 证据：work/ui-checks/param-file-rollback/
 ```
 
 除非成本很低，否则不跑完整浏览器验收。不要用本地 skip 宣称目标环境就绪。
@@ -159,18 +167,18 @@ npm run acceptance:operations
 | --- | --- | --- |
 | 仓库地图 | Review | `AGENTS.md`、`ARCHITECTURE.md` — 预期不改运行模式或地图 |
 | 规划 | Update | 本计划 + 英文孪生；`docs/PLANS.md`；`docs/zh-CN/PLANS.md`；批次 1 移动归属计划 |
-| 产品规格 | Review | `docs/product-specs/*` — 归属/文件历史工作流已有；仅当操作者文案变化时更新 |
-| 领域 / 词汇 | Review | `docs/design-docs/domain-model.md`（+ 中文）中的文件版本 `origin=rollback` 与注册放置（批次 2 若文件版本句仍只写历史下载） |
+| 产品规格 | Review | 不变：产品规格里的「回滚」是审阅/调试快照语义，不是文件历史恢复。操作文案在工作台检查器。 |
+| 领域 / 词汇 | Update | `docs/design-docs/domain-model.md`（+ 中文）：文件版本 `origin` 含 `rollback`；单文件历史恢复使用同一套指针版本规则。 |
 | 设计文档 | Review | 归属延期问题保持 Locked；不重开 grilling |
-| API | Update | `docs/design-docs/api-contract.md`（+ 中文）在 TD-056 promote/rollback 落地时 |
-| 前端 | Update | `docs/FRONTEND.md`（+ 中文）— 批次 1 证据说明；批次 2 版本列表回滚 + 显示名 |
-| 安全 | Review | promote/rollback 是带审计的写入；复用既有参数文件审计接缝；不新增密钥 |
+| API | Update | `docs/design-docs/api-contract.md`（+ 中文）：`POST .../rollback`、版本列表 `createdByDisplayName`、审计 `parameter-file-rollback` |
+| 前端 | Update | `docs/FRONTEND.md`（+ 中文）— 工作台检查器「恢复为当前」+ 显示名；去掉旧文件面板 TD-056 待办句 |
+| 安全 | Review | 带审计写入 `parameter-file-rollback`；复用既有参数文件审计接缝；不新增密钥 |
 | 可靠性 / runbook | 无变更 | 不做目标环境宣称 |
 | 开发者环境 | 无变更 | 不新增环境变量 |
-| 质量 / 验收 | Update | 覆盖图 + 操作矩阵中英；`e2e/acceptance/requirements.ts`；`e2e/acceptance/operationMatrix.ts`；`parameter-topology.acceptance.spec.ts` 中的 planned 桩 |
-| 生成物 | 无变更 | 批次 1 无迁移；批次 2 应复用 schema 里已有的 `origin='rollback'` |
-| 参考 | Review | 产品化 API 草稿仅当仍漏写回放 / 文件回滚时 |
-| 技术债 | Update | 中英追踪表：TD-079 / TD-082 写并行分支负责；批次 2 落地后关 TD-056；不改写兄弟分支 Next Action 细节 |
+| 质量 / 验收 | Update | 覆盖图 + 操作矩阵中英；`PARAM-FILE-ROLLBACK-001` 在 `requirements.ts` / `operationMatrix.ts` / `parameter-files.acceptance.spec.ts` |
+| 生成物 | 无变更 | 无迁移；批次 2 复用 schema 已有的 `origin='rollback'` |
+| 参考 | Review | 不变：产品化 API 草稿不是现行合同；现行合同已在上方更新 |
+| 技术债 | Update | 中英追踪表：TD-056 关闭；TD-079 / TD-082 仍由兄弟分支负责，不改写 Next Action 细节 |
 
 ## 文档更新门禁
 

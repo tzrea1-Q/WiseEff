@@ -28,6 +28,7 @@ function createStubRepository(overrides: Partial<ParameterFileRepository> = {}):
     abandonCandidate: vi.fn(),
     recomputeCandidate: vi.fn(),
     activateCandidate: vi.fn(),
+    rollbackVersion: vi.fn(),
     ...overrides
   } as ParameterFileRepository;
 }

@@ -43,7 +43,7 @@ import {
   releaseBaselineBody,
   submitStructuredEditsBodySchema
 } from "./schemas";
-import { getProjectParameterFileContent, uploadProjectParameterFile } from "./service";
+import { getProjectParameterFileContent, rollbackProjectParameterFileVersion, uploadProjectParameterFile } from "./service";
 import {
   abandonCandidate,
   activateCandidate,
@@ -325,6 +325,34 @@ export function registerParameterFileRoutes(
     const items = await listFileVersions(db, { fileId: params.fileId });
 
     return { status: 200, body: { items } };
+  });
+
+  router.post("/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/rollback", async (request) => {
+    const db = requireDb(options.db);
+    const objectStore = requireObjectStore(options.objectStore);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithVersionIdSchema, request.params);
+    await requireProjectFile(db, auth, params.projectId, params.fileId);
+    const result = await rollbackProjectParameterFileVersion(
+      db,
+      objectStore,
+      auth,
+      {
+        projectId: params.projectId,
+        fileId: params.fileId,
+        versionId: params.versionId
+      },
+      { requestId: request.requestId }
+    );
+
+    return {
+      status: 201,
+      body: {
+        item: result.version,
+        file: result.file
+      }
+    };
   });
 
   router.get("/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/content", async (request) => {

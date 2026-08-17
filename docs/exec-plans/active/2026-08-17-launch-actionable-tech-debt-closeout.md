@@ -79,7 +79,7 @@ TDD. API + port + UI + tests + EN/ZH docs. Do not rewrite the configuration work
 - Resolve `createdByUserId` to a display name on the version list.
 - Extend the version list on the project-operations / files surface that already shows history (POD-C6). ConfirmDialog for blast radius. Chinese product copy.
 - Register or extend an acceptance/operation ID if the interaction is new; otherwise record why existing coverage plus playwright-cli is enough.
-- Close TD-056 in both tracker twins when verification is green.
+- Close TD-056 in both tracker twins when verification is green. **Done 2026-08-17** on this branch.
 
 ### Batch 3 — Next launch-visible product slices (not this session unless Batch 2 is complete and green)
 
@@ -103,7 +103,7 @@ Legend: **Done** = closed or closeable in a batch above; **In progress (sibling)
 | --- | --- | --- |
 | Attribution plan closeout (DRV-REG-004 / `DRV-REG-005`) | Done in Batch 1 (this branch) | Batch 1 |
 | TD-046 / TD-047 | Done (already closed on `main`) | Evidence + archive in Batch 1 |
-| TD-056 | Done in Batch 2 if time | This branch after Batch 1 |
+| TD-056 | Done in Batch 2 (this branch) | This branch after Batch 1 |
 | TD-057 | Open (later) | Batch 3 |
 | TD-064 / TD-065 | Open (later) | Batch 3; not this session by default |
 | TD-079 | In progress (sibling) | `fix/td-079-acceptance-semantic-fixtures` |
@@ -133,7 +133,7 @@ Batch 1 affected spec: `e2e/acceptance/parameter-topology.acceptance.spec.ts`.
 | `DRV-REG-004` | Admin edits `driverNature` / `instanceCardinality`; Org Admin cannot edit platform subjects; platform-admin org edits appear in org audit; singleton change only refreshes publish blockers. | Keep `@acceptance-planned` / `required: false`. Unit + server already on `main`. Supplemental playwright-cli under `work/ui-checks/attribution-deferred/`. Do not enlarge the shared pre-cutover CI suite (TD-079). |
 | `DRV-REG-005` | Admin sets registration default business category and runs **replay from registration**; auto driver-groups move; curated stay frozen. | New planned ID + `@acceptance-planned` stub. Unit coverage: `ModuleEditDialog.test.tsx` + server placement tests. Supplemental playwright-cli on the same evidence folder. Blocking Playwright waits for TD-079. |
 
-Batch 2 (TD-056) must add or name an ID before implementation if the version-list rollback is a new user-facing interaction. Likely `PARAM-FILE-ROLLBACK-001` on the project configuration / files history surface. Register it before coding.
+Batch 2 (TD-056) registered `PARAM-FILE-ROLLBACK-001` (`required: false`, `@acceptance-planned`) on `e2e/acceptance/parameter-files.acceptance.spec.ts` before implementation. Shared Playwright stays blocked on TD-079; this cut's evidence is unit/server tests plus playwright-cli under `work/ui-checks/param-file-rollback/`.
 
 Operation evidence stays on `npm run acceptance:browser` / `npm run acceptance:evidence` when a stub is later automated. This cut's operation evidence is playwright-cli plus unit/server tests.
 
@@ -147,8 +147,16 @@ npm run acceptance:operations
 # VITE_WISEEFF_RUNTIME_MODE=mock npm run dev
 # playwright-cli three viewports + snapshot + screenshot + console error
 # Batch 2 (when implemented):
-# npx vitest run <parameter-files server + port + UI tests>
+# npx vitest run server/modules/parameter-files/service.test.ts \\
+#   server/modules/parameter-files/repository.test.ts \\
+#   server/modules/parameter-files/routes.test.ts \\
+#   src/infrastructure/mock/mockParameterFileRepository.test.ts \\
+#   src/infrastructure/http/parameterFileClient.test.ts \\
+#   src/components/project-configuration-workbench/ProjectConfigurationWorkbench.test.tsx
 # npm run build
+# playwright-cli three viewports on /parameter-admin/projects/:id/configuration
+#   + inspector version history + restore confirm + console error
+# evidence: work/ui-checks/param-file-rollback/
 ```
 
 Do not run full browser acceptance unless cheap. Do not claim target-environment readiness from local skips.
@@ -159,18 +167,18 @@ Do not run full browser acceptance unless cheap. Do not claim target-environment
 | --- | --- | --- |
 | Repository maps | Review | `AGENTS.md`, `ARCHITECTURE.md` — no runtime-mode or map change expected |
 | Planning | Update | This plan + ZH twin; `docs/PLANS.md`; `docs/zh-CN/PLANS.md`; attribution plan move in Batch 1 |
-| Product specs | Review | `docs/product-specs/*` — attribution/file-history workflows already specified; update only if operator copy changes |
-| Domain / glossary | Review | `docs/design-docs/domain-model.md` (+ ZH) for file-version `origin=rollback` and registration placement (Batch 2 if the file-version sentence is still history-download-only) |
+| Product specs | Review | Unchanged: product-spec “rollback” is review/debug snapshot language, not file-history restore. Operator copy lives on the workbench inspector. |
+| Domain / glossary | Update | `docs/design-docs/domain-model.md` (+ ZH): file-version `origin` includes `rollback`; dedicated file-history restore uses the same pointer-version rule. |
 | Design docs | Review | Attribution deferred-questions stay Locked; no re-grill |
-| API | Update | `docs/design-docs/api-contract.md` (+ ZH) when TD-056 promote/rollback lands |
-| Frontend | Update | `docs/FRONTEND.md` (+ ZH) — Batch 1 evidence note; Batch 2 version-list rollback + display name |
-| Security | Review | Promote/rollback is an audited write; reuse existing parameter-file audit seam; no new secret |
+| API | Update | `docs/design-docs/api-contract.md` (+ ZH): `POST .../rollback`, `createdByDisplayName` on version list, `parameter-file-rollback` audit |
+| Frontend | Update | `docs/FRONTEND.md` (+ ZH) — workbench inspector restore-as-current + display name; legacy files-panel TD-056 sentence removed |
+| Security | Review | Audited write `parameter-file-rollback`; reuses existing parameter-file audit seam; no new secret |
 | Reliability / runbooks | No change | No target-environment claim |
 | Developer env | No change | No new env keys |
-| Quality / acceptance | Update | Coverage map + operation matrix EN+ZH; `e2e/acceptance/requirements.ts`; `e2e/acceptance/operationMatrix.ts`; planned stubs in `parameter-topology.acceptance.spec.ts` |
-| Generated artifacts | No change | No migration expected for Batch 1; Batch 2 should reuse `origin='rollback'` (already in schema) |
-| References | Review | Productization API draft only if it still omits replay / file rollback |
-| Tech debt | Update | EN+ZH tracker: sibling ownership on TD-079 / TD-082; close TD-056 when Batch 2 lands; do not rewrite sibling Next Action details |
+| Quality / acceptance | Update | Coverage map + operation matrix EN+ZH; `PARAM-FILE-ROLLBACK-001` in `requirements.ts` / `operationMatrix.ts` / `parameter-files.acceptance.spec.ts` |
+| Generated artifacts | No change | No migration; Batch 2 reuses schema `origin='rollback'` |
+| References | Review | Unchanged: productization API draft is not the live contract; live contract updated above |
+| Tech debt | Update | EN+ZH tracker: TD-056 closed; TD-079 / TD-082 remain sibling-owned without rewriting Next Action details |
 
 ## Documentation Update Gate
 

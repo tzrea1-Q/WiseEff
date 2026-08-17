@@ -212,6 +212,7 @@ function createFileRepository(
     uploadFile: vi.fn(),
     uploadVersion: vi.fn(),
     listVersions: vi.fn(async () => []),
+    rollbackVersion: vi.fn(),
     syncFile: vi.fn(),
     listConflicts: vi.fn(async () => []),
     resolveConflict: vi.fn(),
@@ -1370,6 +1371,113 @@ describe("ProjectConfigurationWorkbench", () => {
     const sourceHeading = screen.getByRole("heading", { name: "aurora-board.dts" });
     expect(sourceHeading).toBeInTheDocument();
     expect(onNavigate.mock.calls.at(-1)?.[0]).toContain("file=file-board");
+  });
+
+  it("shows operator display names and restores a historical version after confirmation", async () => {
+    const listVersions = vi.fn(async () => [
+      {
+        id: "version-board-12",
+        fileId: "file-board",
+        versionNumber: 12,
+        checksum: "abc",
+        sizeBytes: 32,
+        parsedIndex: {},
+        origin: "upload" as const,
+        createdAt: "2026-08-06T08:00:00.000Z",
+        createdByUserId: "user-admin",
+        createdByDisplayName: "Xu Yun"
+      },
+      {
+        id: "version-board-11",
+        fileId: "file-board",
+        versionNumber: 11,
+        checksum: "def",
+        sizeBytes: 30,
+        parsedIndex: {},
+        origin: "writeback" as const,
+        createdAt: "2026-08-05T08:00:00.000Z",
+        createdByUserId: "user-ops",
+        createdByDisplayName: "Riley Chen"
+      }
+    ]);
+    const rollbackVersion = vi.fn(async () => ({
+      item: {
+        id: "version-board-13",
+        fileId: "file-board",
+        versionNumber: 13,
+        checksum: "def",
+        sizeBytes: 30,
+        parsedIndex: {},
+        origin: "rollback" as const,
+        createdAt: "2026-08-17T10:00:00.000Z",
+        createdByUserId: "user-admin",
+        createdByDisplayName: "Xu Yun"
+      },
+      file: {
+        id: "file-board",
+        projectId: PROJECT.id,
+        fileName: "aurora-board.dts",
+        format: "dts" as const,
+        enabled: true,
+        currentVersionId: "version-board-13",
+        currentVersionNumber: 13,
+        updatedAt: "2026-08-17T10:00:00.000Z"
+      }
+    }));
+    renderWorkbench({
+      fileRepository: createFileRepository({ listVersions, rollbackVersion })
+    });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    ensureInspectorOpen();
+    expect(await screen.findByLabelText("不可变版本历史")).toBeInTheDocument();
+    expect(screen.getByText("操作人：Xu Yun")).toBeInTheDocument();
+    expect(screen.getByText("操作人：Riley Chen")).toBeInTheDocument();
+    expect(screen.queryByText("user-ops")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "将版本 12 恢复为当前" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "将版本 11 恢复为当前" }));
+    expect(await screen.findByRole("heading", { name: "恢复为当前版本" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toHaveTextContent("历史版本全部保留，不会倒带");
+    fireEvent.click(screen.getByRole("button", { name: "恢复为当前" }));
+    await waitFor(() =>
+      expect(rollbackVersion).toHaveBeenCalledWith(PROJECT.id, "file-board", "version-board-11")
+    );
+  });
+
+  it("hides restore-as-current when the viewer cannot administer the workbench", async () => {
+    const listVersions = vi.fn(async () => [
+      {
+        id: "version-board-12",
+        fileId: "file-board",
+        versionNumber: 12,
+        checksum: "abc",
+        sizeBytes: 32,
+        parsedIndex: {},
+        origin: "upload" as const,
+        createdAt: "2026-08-06T08:00:00.000Z",
+        createdByDisplayName: "Xu Yun"
+      },
+      {
+        id: "version-board-11",
+        fileId: "file-board",
+        versionNumber: 11,
+        checksum: "def",
+        sizeBytes: 30,
+        parsedIndex: {},
+        origin: "writeback" as const,
+        createdAt: "2026-08-05T08:00:00.000Z",
+        createdByDisplayName: "Riley Chen"
+      }
+    ]);
+    renderWorkbench({
+      canAdmin: false,
+      fileRepository: createFileRepository({ listVersions })
+    });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    ensureInspectorOpen();
+    expect(await screen.findByLabelText("不可变版本历史")).toBeInTheDocument();
+    expect(screen.getByText("操作人：Riley Chen")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "将版本 11 恢复为当前" })).not.toBeInTheDocument();
   });
 
   it("updates inspector level from tree selection while preserving source selection", async () => {

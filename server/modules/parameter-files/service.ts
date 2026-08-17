@@ -345,3 +345,119 @@ export async function listProjectParameterFilesForAuth(
     projectId
   });
 }
+
+async function writeParameterFileRollbackAudit(
+  tx: AuditTx,
+  auth: AuthContext,
+  input: {
+    projectId: string;
+    file: ProjectParameterFileDto;
+    version: ProjectParameterFileVersionDto;
+    restoredVersionId: string;
+  },
+  context: ParameterFileServiceContext = {}
+) {
+  await writeAuditEventInTx(tx, auth, { requestId: context.requestId ?? randomUUID() }, {
+    app: "parameters",
+    kind: "parameter-file-rollback",
+    action: "rollback",
+    severity: "Medium",
+    projectId: input.projectId,
+    targetType: "project-parameter-file",
+    targetId: input.file.id,
+    metadata: {
+      fileName: input.file.fileName,
+      restoredVersionId: input.restoredVersionId,
+      newVersionId: input.version.id,
+      newVersionNumber: input.version.versionNumber
+    }
+  });
+}
+
+/**
+ * Insert a new current version that reuses the chosen historical blob (origin=rollback).
+ * History is append-only; the source version row stays in place.
+ */
+export async function rollbackProjectParameterFileVersion(
+  db: Database,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: { projectId: string; fileId: string; versionId: string },
+  context: ParameterFileServiceContext = {}
+): Promise<{
+  file: ProjectParameterFileDto;
+  version: ProjectParameterFileVersionDto;
+}> {
+  requireParameterFileAdmin(auth);
+
+  return db.transaction(async (tx) => {
+    const file = await getProjectParameterFileById(tx, {
+      organizationId: auth.organization.id,
+      fileId: input.fileId
+    });
+    if (!file || file.projectId !== input.projectId) {
+      throw new ApiError("NOT_FOUND", "Project parameter file was not found.", {
+        fileId: input.fileId,
+        projectId: input.projectId
+      });
+    }
+
+    const targetVersion = await getFileVersionById(tx, { versionId: input.versionId });
+    if (!targetVersion || targetVersion.fileId !== file.id) {
+      throw new ApiError("NOT_FOUND", "Project parameter file version was not found.", {
+        fileId: input.fileId,
+        versionId: input.versionId
+      });
+    }
+
+    if (file.currentVersionId === targetVersion.id) {
+      throw new ApiError("CONFLICT", "The chosen version is already current.", {
+        fileId: file.id,
+        versionId: targetVersion.id
+      });
+    }
+
+    const rollbackVersion = await insertFileVersion(tx, {
+      id: randomUUID(),
+      fileId: file.id,
+      versionNumber: (file.currentVersionNumber ?? 0) + 1,
+      storageKey: targetVersion.storageKey,
+      checksum: targetVersion.checksum,
+      sizeBytes: targetVersion.sizeBytes,
+      parsedIndex: targetVersion.parsedIndex,
+      origin: "rollback",
+      createdByUserId: auth.user.id
+    });
+
+    await setCurrentVersion(tx, { fileId: file.id, versionId: rollbackVersion.id });
+
+    if (file.format === "dts" && isDtsStructuralIngestEnabled()) {
+      const pinnedBytes = await objectStore.get(targetVersion.storageKey);
+      await ingestDtsFileVersion(tx, rollbackVersion.id, pinnedBytes.toString("utf8"));
+    }
+
+    const updatedFile: ProjectParameterFileDto = {
+      ...file,
+      currentVersionId: rollbackVersion.id,
+      currentVersionNumber: rollbackVersion.versionNumber
+    };
+    const version: ProjectParameterFileVersionDto = {
+      ...rollbackVersion,
+      createdByDisplayName: auth.user.name
+    };
+
+    await writeParameterFileRollbackAudit(
+      asAuditTx(tx),
+      auth,
+      {
+        projectId: input.projectId,
+        file: updatedFile,
+        version,
+        restoredVersionId: targetVersion.id
+      },
+      context
+    );
+
+    return { file: updatedFile, version };
+  });
+}
