@@ -1,7 +1,9 @@
 /**
  * DTS import batch repository for `parameter_import_batches`: definition
- * matching for import previews, batch persistence, and apply/mark-applied
- * writes against the legacy flat-identity tables.
+ * matching for import previews, batch persistence, and apply/mark-applied.
+ * Legacy mode writes flat identity tables. Semantic mode matches bindings by
+ * property key and updates the head binding revision — it must not touch
+ * retired `parameter_definitions` / `project_parameter_values`.
  */
 
 import type { Queryable } from "../../shared/database/client";
@@ -12,7 +14,16 @@ import type {
 import { type ParameterRiskLevel } from "./status";
 import { LEGACY_SQL } from "../parameter-topology/migration";
 import { LEGACY_IDENTITY_SQL } from "../parameter-kernel/legacyParameterIdentityNames";
+import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
+import { ApiError } from "../../shared/http/errors";
 import { dateTimeToIso } from "../../shared/database/sqlUtil";
+
+const SEMANTIC_IMPORT_NAME_SQL = `coalesce(
+  dps.property_key,
+  nullif(split_part(ps.specification_key, '/', 2), ''),
+  psv.display_name,
+  ps.specification_key
+)`;
 
 export type ImportPreviewClassification = "added" | "updated" | "unchanged" | "conflict";
 
@@ -135,10 +146,70 @@ function toImportApplyResult(row: ImportApplyResultRow): ImportApplyResult {
   };
 }
 
+async function listSemanticParameterDefinitionsForImport(
+  db: Queryable,
+  query: { organizationId: string; projectId: string; names: string[]; definitionIds: string[] }
+) {
+  const result = await db.query<ParameterDefinitionImportRow>(
+    `
+    select
+      ps.id,
+      ${SEMANTIC_IMPORT_NAME_SQL} as name,
+      coalesce(psv.description, '') as description,
+      coalesce(psv.description, '') as explanation,
+      'DTS' as config_format,
+      coalesce(psv.value_shape->>'kind', 'legacy-text') as value_kind,
+      split_part(ps.specification_key, '/', 1) as module,
+      '' as default_range,
+      coalesce(psv.value_shape->>'unit', '') as unit,
+      coalesce(ps.risk, 'Low') as risk,
+      b.id as project_parameter_value_id,
+      coalesce(bpr.raw_value, '') as current_value,
+      null::text as "initSuggestionText",
+      coalesce(
+        (select count(*)::int from project_parameter_binding_revisions br where br.binding_id = b.id),
+        1
+      ) as value_version
+    from project_parameter_bindings b
+    inner join parameter_specs ps on ps.id = b.parameter_spec_id
+    left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+    left join lateral (
+      select psv.*
+      from parameter_spec_versions psv
+      where psv.parameter_spec_id = ps.id
+      order by case when psv.lifecycle = 'active' then 0 else 1 end, psv.version desc
+      limit 1
+    ) psv on true
+    left join lateral (
+      select bpr.raw_value
+      from project_parameter_binding_revisions bpr
+      where bpr.binding_id = b.id
+      order by bpr.created_at desc
+      limit 1
+    ) bpr on true
+    where b.organization_id = $1
+      and b.project_id = $2
+      and (
+        ${SEMANTIC_IMPORT_NAME_SQL} = any($3::text[])
+        or ps.id = any($4::text[])
+        or b.id = any($4::text[])
+      )
+    order by name asc, b.id asc
+    `,
+    [query.organizationId, query.projectId, query.names, query.definitionIds]
+  );
+
+  return result.rows.map(toParameterDefinitionImportCandidate);
+}
+
 export async function listParameterDefinitionsForImport(
   db: Queryable,
   query: { organizationId: string; projectId: string; names: string[]; definitionIds: string[] }
 ) {
+  if (parameterIdentityMode() === "semantic") {
+    return listSemanticParameterDefinitionsForImport(db, query);
+  }
+
   const result = await db.query<ParameterDefinitionImportRow>(
     `
     select
@@ -233,6 +304,14 @@ export async function applyAddedImportItem(
     item: PersistedImportBatchItem & { definitionId: string; projectParameterValueId: string };
   }
 ) {
+  if (parameterIdentityMode() === "semantic") {
+    throw new ApiError(
+      "GONE",
+      "Post-cutover import cannot create new parameter identity; ingest DTS instead.",
+      { diagnostic: "semantic-import-add-retired", itemId: input.item.id }
+    );
+  }
+
   const result = await db.query<ImportApplyResultRow>(
     `
     with inserted_definition as (
@@ -292,6 +371,89 @@ export async function applyAddedImportItem(
   return result.rows[0] ? toImportApplyResult(result.rows[0]) : null;
 }
 
+async function applyUpdatedSemanticImportItem(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    actorUserId: string;
+    historyId: string;
+    item: PersistedImportBatchItem & { definitionId: string; projectParameterValueId: string };
+  }
+) {
+  const nextValue = input.item.currentValue ?? input.item.recommendedValue ?? "";
+  const result = await db.query<ImportApplyResultRow>(
+    `
+    with binding as (
+      select
+        b.id as binding_id,
+        b.parameter_spec_id,
+        b.project_id,
+        head.id as revision_id,
+        head.raw_value,
+        coalesce((
+          select max(phe.version)
+          from parameter_history_entries phe
+          where phe.project_parameter_binding_id = b.id
+        ), 0) as history_version
+      from project_parameter_bindings b
+      left join lateral (
+        select bpr.id, bpr.raw_value
+        from project_parameter_binding_revisions bpr
+        where bpr.binding_id = b.id
+        order by bpr.created_at desc
+        limit 1
+      ) head on true
+      where b.organization_id = $1
+        and b.project_id = $2
+        and b.id = $3
+      for update of b
+    ),
+    updated_revision as (
+      update project_parameter_binding_revisions bpr
+      set raw_value = $4
+      from binding
+      where bpr.id = binding.revision_id
+        and binding.raw_value is distinct from $4
+      returning bpr.id
+    ),
+    inserted_history as (
+      insert into parameter_history_entries (
+        id, organization_id, project_id,
+        version, value, changed_by_user_id, request_id,
+        parameter_spec_id, project_parameter_binding_id
+      )
+      select
+        $5, $1, binding.project_id,
+        binding.history_version + 1, $4, $6, null,
+        binding.parameter_spec_id, binding.binding_id
+      from binding
+      inner join updated_revision on true
+      returning id
+    )
+    select
+      binding.binding_id as id,
+      binding.parameter_spec_id as definition_id,
+      binding.binding_id as project_parameter_value_id,
+      case
+        when exists (select 1 from updated_revision) then binding.history_version + 1
+        else binding.history_version
+      end as new_version
+    from binding
+    `,
+    [
+      input.organizationId,
+      input.projectId,
+      input.item.projectParameterValueId,
+      nextValue,
+      input.historyId,
+      input.actorUserId
+    ]
+  );
+
+  return result.rows[0] ? toImportApplyResult(result.rows[0]) : null;
+}
+
 export async function applyUpdatedImportItem(
   db: Queryable,
   input: {
@@ -302,6 +464,10 @@ export async function applyUpdatedImportItem(
     item: PersistedImportBatchItem & { definitionId: string; projectParameterValueId: string };
   }
 ) {
+  if (parameterIdentityMode() === "semantic") {
+    return applyUpdatedSemanticImportItem(db, input);
+  }
+
   const result = await db.query<ImportApplyResultRow>(
     `
     with upserted_definition as (

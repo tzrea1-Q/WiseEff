@@ -1064,6 +1064,13 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
     let updated = 0;
     for (const item of selectedItemsWithTargets) {
       if (item.classification === "added") {
+        if (parameterIdentityMode() === "semantic") {
+          throw new ApiError(
+            "GONE",
+            "Post-cutover import cannot create new parameter identity; ingest DTS instead.",
+            { batchId: parsed.batchId, itemId: item.id, diagnostic: "semantic-import-add-retired" }
+          );
+        }
         const appliedItem = await applyAddedImportItem(tx, {
           organizationId: auth.organization.id,
           projectId: batch.projectId,
