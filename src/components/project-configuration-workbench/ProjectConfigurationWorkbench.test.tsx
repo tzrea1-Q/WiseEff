@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +16,7 @@ import {
   SESSION_DRAFT_STORAGE_KEY,
   upsertSessionDraftBucket
 } from "@/application/project-configuration/sessionDraftStorage";
+import { declarationsFor, hasAtRule, hasRule, readStylesheet } from "../../test/cssAssertions";
 
 afterEach(() => {
   cleanup();
@@ -2522,4 +2525,56 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(screen.queryByText(/冲突裁决面板尚未接入/)).not.toBeInTheDocument();
   });
 
+});
+
+describe("configuration-workbench stylesheet", () => {
+  const featurePath = "src/components/project-configuration-workbench/configuration-workbench.css";
+
+  it("imports the colocated stylesheet from the workbench module", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/components/project-configuration-workbench/ProjectConfigurationWorkbench.tsx"),
+      "utf8"
+    );
+    expect(source).toContain('import "./configuration-workbench.css"');
+  });
+
+  it("owns the project configuration workbench rules next to the feature module", () => {
+    const css = readStylesheet(featurePath);
+
+    expect(hasRule(css, ".configuration-workbench")).toBe(true);
+    expect(hasRule(css, ".workbench-conflict-dock")).toBe(true);
+    expect(hasRule(css, ".main-content:has(.param-admin-shell--configuration-workbench)")).toBe(true);
+    expect(hasRule(css, ".param-admin-shell--configuration-workbench")).toBe(true);
+    expect(hasAtRule(css, "@media (max-width: 1024px)")).toBe(true);
+    expect(hasAtRule(css, "@media (max-width: 768px)")).toBe(true);
+    expect(hasAtRule(css, "@media (max-width: 460px)")).toBe(true);
+
+    const workbench = declarationsFor(css, ".configuration-workbench");
+    expect(workbench.display).toBe("grid");
+    expect(workbench["grid-template-rows"]).toBe("auto minmax(0, 1fr) 44px");
+    expect(workbench["min-height"]).toBe("560px");
+    expect(workbench["border-radius"]).toBe("var(--radius-md)");
+
+    const command = declarationsFor(css, ".configuration-workbench__command", {
+      within: "@media (max-width: 1024px)"
+    });
+    expect(command["flex-wrap"]).toBe("wrap");
+
+    expect(
+      declarationsFor(
+        css,
+        ".project-primary-dts-viewer__line.has-session-change .project-primary-dts-viewer__line-number"
+      )["box-shadow"]
+    ).toBe("inset 3px 0 0 var(--accent, #0b6e4f)");
+  });
+
+  it("leaves shared workbench chrome in styles.css", () => {
+    const css = readStylesheet("src/styles.css");
+
+    expect(hasRule(css, ".workbench-page")).toBe(true);
+    expect(hasRule(css, ".workbench-main")).toBe(true);
+    expect(hasRule(css, ".dts-parameter-workbench")).toBe(true);
+    expect(hasRule(css, ".configuration-workbench")).toBe(false);
+    expect(hasRule(css, ".workbench-conflict-dock")).toBe(false);
+  });
 });

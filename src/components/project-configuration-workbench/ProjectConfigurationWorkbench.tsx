@@ -67,6 +67,7 @@ import { useWorkbenchCanvasOps } from "@/application/project-configuration/useWo
 import { useWorkbenchCandidateOrchestration } from "@/application/project-configuration/useWorkbenchCandidateOrchestration";
 import { useWorkbenchConfigSetOrchestration } from "@/application/project-configuration/useWorkbenchConfigSetOrchestration";
 import { useWorkbenchKeyboardShortcuts } from "@/application/project-configuration/useWorkbenchKeyboardShortcuts";
+import "./configuration-workbench.css";
 
 export type ProjectConfigurationWorkbenchProject = {
   id: string;
