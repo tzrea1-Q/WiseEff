@@ -1,13 +1,16 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import App from "./App";
 import { reducer } from "@/application/state/appState";
 import { logRuntimeFailureNotification } from "@/application/logs/logRuntime";
-import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
-import type { ParameterRepository } from "@/application/ports/ParameterRepository";
-import type { AuthContextDto } from "@/infrastructure/http/authClient";
 import { initialState } from "./mockData";
+import {
+  createTestAuthClient,
+  createTestDebuggingGateway,
+  createTestLogAnalysisRepository,
+  createTestParameterRepository,
+  renderApp
+} from "./test/harness";
 
 const userState = { ...initialState, activeRoleId: "user" };
 const apiLog = {
@@ -20,7 +23,7 @@ const apiLog = {
 };
 
 function createAuthClient() {
-  const context: AuthContextDto = {
+  return createTestAuthClient({
     user: {
       id: "user-api",
       organizationId: "org-api",
@@ -32,70 +35,29 @@ function createAuthClient() {
     organization: { id: "org-api", name: "API Org" },
     roles: [{ projectId: userState.activeProjectId, roleId: "hardware-user" }],
     permissions: ["logs:upload"]
-  };
-
-  return {
-    getCurrentAuthContext: vi.fn().mockResolvedValue(context)
-  };
-}
-
-function createParameterRepository(overrides: Partial<ParameterRepository> = {}): ParameterRepository {
-  return {
-    listProjects: vi.fn().mockResolvedValue([]),
-    listParameters: vi.fn().mockResolvedValue([]),
-    getParameter: vi.fn().mockResolvedValue(initialState.parameters[0]),
-    listParameterHistory: vi.fn().mockResolvedValue([]),
-    listDrafts: vi.fn().mockResolvedValue([]),
-    saveDraft: vi.fn(),
-    deleteDraft: vi.fn().mockResolvedValue(undefined),
-    listChangeRequests: vi.fn().mockResolvedValue([]),
-    listSubmissionRounds: vi.fn().mockResolvedValue([]),
-    submitParameterChanges: vi.fn(),
-    withdrawSubmissionRound: vi.fn(),
-    reviewChange: vi.fn(),
-    createImportPreview: vi.fn(),
-    applyImportBatch: vi.fn(),
-    parseDtsImport: vi.fn().mockResolvedValue({ format: "dts-full", rows: [] }),
-    ...overrides
-  };
+  });
 }
 
 function createLogRepository(overrides: Partial<LogAnalysisRepository> = {}): LogAnalysisRepository {
-  return {
-    listLogs: vi.fn().mockResolvedValue(initialState.logs),
+  return createTestLogAnalysisRepository(initialState.logs, {
     getLog: vi.fn().mockResolvedValue(apiLog),
     uploadLog: vi.fn().mockResolvedValue({ log: apiLog, job: null }),
-    getJob: vi.fn(),
-    rerunLog: vi.fn(),
-    archiveLog: vi.fn().mockResolvedValue(undefined),
-    unarchiveLog: vi.fn().mockResolvedValue(undefined),
-    submitFeedback: vi.fn().mockResolvedValue(undefined),
     ...overrides
-  };
-}
-
-function createDebuggingGateway(): DebuggingGateway {
-  return {
-    listDevices: vi.fn().mockResolvedValue([]),
-    listParameters: vi.fn().mockResolvedValue([]),
-    detectTargets: vi.fn().mockResolvedValue([]),
-    readNode: vi.fn(),
-    writeNode: vi.fn()
-  };
+  });
 }
 
 function renderApiLogs(repository = createLogRepository(), initialPath = "/logs") {
-  window.history.replaceState(null, "", initialPath);
-  render(
-    <App
-      authClient={createAuthClient()}
-      debuggingGateway={createDebuggingGateway()}
-      initialAppState={userState}
-      logAnalysisRepository={repository}
-      parameterRepository={createParameterRepository()}
-      runtimeMode="api"
-    />
-  );
+  renderApp({
+    path: initialPath,
+    initialAppState: userState,
+    runtimeMode: "api",
+    ports: {
+      authClient: createAuthClient(),
+      debuggingGateway: createTestDebuggingGateway(),
+      logAnalysisRepository: repository,
+      parameterRepository: createTestParameterRepository()
+    }
+  });
   return repository;
 }
 
@@ -418,8 +380,7 @@ describe("LogsPage deep link", () => {
 
 describe("LogsPage · 上传日志对话框", () => {
   it("打开时焦点进入对话框并设置 aria-modal", () => {
-    window.history.replaceState(null, "", "/logs");
-    render(<App initialAppState={userState} />);
+    renderApp({ path: "/logs", initialAppState: userState });
 
     fireEvent.click(screen.getByRole("button", { name: /上传新日志/ }));
 
@@ -430,8 +391,7 @@ describe("LogsPage · 上传日志对话框", () => {
   });
 
   it("restricts mock file input to the shared text-log accept list", () => {
-    window.history.replaceState(null, "", "/logs");
-    render(<App initialAppState={userState} />);
+    renderApp({ path: "/logs", initialAppState: userState });
 
     fireEvent.click(screen.getByRole("button", { name: /上传新日志/ }));
 
@@ -440,8 +400,7 @@ describe("LogsPage · 上传日志对话框", () => {
 
   it.each(["fresh.json", "fresh.csv"])("treats %s as a supported mock upload", (fileName) => {
     vi.useFakeTimers();
-    window.history.replaceState(null, "", "/logs");
-    render(<App initialAppState={userState} />);
+    renderApp({ path: "/logs", initialAppState: userState });
 
     fireEvent.click(screen.getByRole("button", { name: /上传新日志/ }));
     fireEvent.change(screen.getByLabelText("选择日志文件"), { target: { files: [new File(["x"], fileName)] } });
@@ -456,8 +415,7 @@ describe("LogsPage · 上传日志对话框", () => {
 
   it("选择支持格式后先显示 validating，再确认上传并新增 Processing 日志", () => {
     vi.useFakeTimers();
-    window.history.replaceState(null, "", "/logs");
-    render(<App initialAppState={userState} />);
+    renderApp({ path: "/logs", initialAppState: userState });
 
     fireEvent.click(screen.getByRole("button", { name: /上传新日志/ }));
     fireEvent.change(screen.getByLabelText("选择日志文件"), { target: { files: [new File(["x"], "fresh.log")] } });
@@ -480,8 +438,7 @@ describe("LogsPage · 上传日志对话框", () => {
 
   it("上传时可输入可选问题，新建分析任务展示该问题", () => {
     vi.useFakeTimers();
-    window.history.replaceState(null, "", "/logs");
-    render(<App initialAppState={userState} />);
+    renderApp({ path: "/logs", initialAppState: userState });
 
     fireEvent.click(screen.getByRole("button", { name: /上传新日志/ }));
     fireEvent.change(screen.getByLabelText("选择日志文件"), { target: { files: [new File(["x"], "question.log")] } });
@@ -501,8 +458,7 @@ describe("LogsPage · 上传日志对话框", () => {
 
   it("选择不支持格式后显示警示，仍然上传会创建 Failed 日志", () => {
     vi.useFakeTimers();
-    window.history.replaceState(null, "", "/logs");
-    render(<App initialAppState={userState} />);
+    renderApp({ path: "/logs", initialAppState: userState });
 
     fireEvent.click(screen.getByRole("button", { name: /上传新日志/ }));
     fireEvent.change(screen.getByLabelText("选择日志文件"), { target: { files: [new File(["x"], "thermal.bin")] } });
@@ -524,8 +480,7 @@ describe("LogsPage · 上传日志对话框", () => {
   });
 
   it("Failed 日志点击重新上传会打开 UploadLogDialog", () => {
-    window.history.replaceState(null, "", "/logs");
-    render(<App initialAppState={userState} />);
+    renderApp({ path: "/logs", initialAppState: userState });
 
     const history = screen.getByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /thermal_snapshot/ }));

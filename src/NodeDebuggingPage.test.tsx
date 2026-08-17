@@ -2,7 +2,6 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import type { ComponentProps, ReactNode } from "react";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import App from "./App";
 import { appReducer } from "@/application/state/appState";
 import { createDebuggingRuntimeActions, debuggingRuntimeFailureNotification } from "./application/debugging/debuggingRuntime";
 import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
@@ -12,9 +11,9 @@ import { TopBarActionsContext } from "./components/layout";
 import { NodeDebuggingPage } from "./NodeDebuggingPage";
 import { initialState } from "./mockData";
 import type { PrototypeState } from "./mockData";
-import { createMockDebuggingGateway } from "./infrastructure/mock/mockDebuggingGateway";
 import { resolveLocalBridgeHealthUrl } from "./infrastructure/http/localBridgeHttpUrl";
 import { resolveWiseEffApiBaseUrl } from "./infrastructure/http/runtimeMode";
+import { createTestDebuggingGateway, renderApp } from "./test/harness";
 
 /**
  * Bridge download links resolve against the configured API base (see
@@ -48,26 +47,6 @@ async function confirmHighRiskWriteIfPrompted() {
 
 /** Connected-state label of the seeded mock gateway story (Mock Bridge · MOCK-AURORA-001). */
 const mockStoryConnectedLabel = /已连接：Mock Bridge · MOCK-AURORA-001/;
-
-/**
- * The seeded mock DebuggingGateway wrapped with spies (plus optional overrides) so
- * App-level mock-mode tests can assert port traffic instead of raw fetch calls.
- */
-function createSpyMockGateway(overrides: Partial<DebuggingGateway> = {}) {
-  const base = createMockDebuggingGateway();
-  return {
-    ...base,
-    listDevices: vi.fn(base.listDevices!),
-    listRuntimeNodes: vi.fn(base.listRuntimeNodes!),
-    detectTargets: vi.fn(base.detectTargets),
-    createSession: vi.fn(base.createSession!),
-    listSessionEvents: vi.fn(base.listSessionEvents!),
-    readNode: vi.fn(base.readNode),
-    writeNode: vi.fn(base.writeNode),
-    rollbackSnapshot: vi.fn(base.rollbackSnapshot!),
-    ...overrides
-  };
-}
 
 function createDebuggingActions(overrides: Partial<DebuggingRuntimeActions> = {}): DebuggingRuntimeActions {
   const readValueForNode = (nodeId?: string) => (nodeId === "dbg-charge-input-current" ? "3651" : "12");
@@ -1292,8 +1271,8 @@ describe("/node-debugging", () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockImplementation(vi.fn(async () => new Response(JSON.stringify({ ok: true }))) as typeof fetch);
-    const gateway = createSpyMockGateway();
-    render(<App initialAppState={userState} runtimeMode="mock" debuggingGateway={gateway} />);
+    const gateway = createTestDebuggingGateway();
+    renderApp({ initialAppState: userState, runtimeMode: "mock", ports: { debuggingGateway: gateway } });
     await screen.findByText(mockStoryConnectedLabel);
 
     const row = findRowByText("charger.input_current_limit_ma");
@@ -1317,15 +1296,15 @@ describe("/node-debugging", () => {
   });
 
   it("auto-detects hdc targets on entry", async () => {
-    render(<App initialAppState={userState} runtimeMode="mock" />);
+    renderApp({ initialAppState: userState, runtimeMode: "mock" });
 
     expect(await screen.findByText(mockStoryConnectedLabel)).toBeInTheDocument();
   });
 
   it("moves hdc connection controls into the topbar and removes the standalone page header", async () => {
     // No target attached in this variant of the story: detect resolves empty.
-    const gateway = createSpyMockGateway({ detectTargets: vi.fn().mockResolvedValue([]) });
-    render(<App initialAppState={userState} runtimeMode="mock" debuggingGateway={gateway} />);
+    const gateway = createTestDebuggingGateway({ detectTargets: vi.fn().mockResolvedValue([]) });
+    renderApp({ initialAppState: userState, runtimeMode: "mock", ports: { debuggingGateway: gateway } });
 
     await screen.findByText("未连接 HDC 设备");
 
@@ -1338,8 +1317,8 @@ describe("/node-debugging", () => {
 
   it("does not show seeded values as current values before readable nodes are read", async () => {
     // No target attached in this variant of the story: detect resolves empty.
-    const gateway = createSpyMockGateway({ detectTargets: vi.fn().mockResolvedValue([]) });
-    render(<App initialAppState={userState} runtimeMode="mock" debuggingGateway={gateway} />);
+    const gateway = createTestDebuggingGateway({ detectTargets: vi.fn().mockResolvedValue([]) });
+    renderApp({ initialAppState: userState, runtimeMode: "mock", ports: { debuggingGateway: gateway } });
 
     await screen.findByText("未连接 HDC 设备");
     expect(screen.queryByText("hdc target detection failed")).not.toBeInTheDocument();
@@ -1356,8 +1335,8 @@ describe("/node-debugging", () => {
   });
 
   it("auto-reads readable nodes after hdc detection", async () => {
-    const gateway = createSpyMockGateway();
-    render(<App initialAppState={userState} runtimeMode="mock" debuggingGateway={gateway} />);
+    const gateway = createTestDebuggingGateway();
+    renderApp({ initialAppState: userState, runtimeMode: "mock", ports: { debuggingGateway: gateway } });
 
     await screen.findByText(mockStoryConnectedLabel);
     // The seeded device story drifts from the catalog value (3600 -> 3651), so a
@@ -1370,7 +1349,7 @@ describe("/node-debugging", () => {
   });
 
   it("uses a compact status set with distinct status classes", async () => {
-    render(<App initialAppState={userState} runtimeMode="mock" />);
+    renderApp({ initialAppState: userState, runtimeMode: "mock" });
 
     await within(findRowByText("charger.input_current_limit_ma")).findByText("成功");
     const successBadge = within(findRowByText("charger.input_current_limit_ma")).getByText("成功");
@@ -1384,14 +1363,14 @@ describe("/node-debugging", () => {
   });
 
   it("does not expose node paths to normal users", async () => {
-    render(<App initialAppState={userState} runtimeMode="mock" />);
+    renderApp({ initialAppState: userState, runtimeMode: "mock" });
 
     await screen.findByText(mockStoryConnectedLabel);
     expect(document.body).not.toHaveTextContent("/data/local/tmp/wiseeff_nodes");
   });
 
   it("omits risk filtering, risk column, and access mode filtering", async () => {
-    render(<App initialAppState={userState} runtimeMode="mock" />);
+    renderApp({ initialAppState: userState, runtimeMode: "mock" });
 
     await screen.findByText(mockStoryConnectedLabel);
 
@@ -1401,7 +1380,7 @@ describe("/node-debugging", () => {
   });
 
   it("仅将状态筛选合并到表头，搜索框仍独立存在", async () => {
-    render(<App initialAppState={userState} runtimeMode="mock" />);
+    renderApp({ initialAppState: userState, runtimeMode: "mock" });
 
     await screen.findByText(mockStoryConnectedLabel);
 
@@ -1420,7 +1399,7 @@ describe("/node-debugging", () => {
   });
 
   it("仅支持从状态表头筛选节点参数", async () => {
-    render(<App initialAppState={userState} runtimeMode="mock" />);
+    renderApp({ initialAppState: userState, runtimeMode: "mock" });
 
     await screen.findByText(mockStoryConnectedLabel);
 
@@ -1452,7 +1431,7 @@ describe("/node-debugging", () => {
   });
 
   it("uses a detail sheet for node operations instead of row-level read and write controls", async () => {
-    render(<App initialAppState={userState} runtimeMode="mock" />);
+    renderApp({ initialAppState: userState, runtimeMode: "mock" });
     await screen.findByText(mockStoryConnectedLabel);
 
     const roRow = findRowByText("battery.impedance_mohm");
@@ -1468,7 +1447,7 @@ describe("/node-debugging", () => {
   });
 
   it("shows read-only node details without a write input", async () => {
-    render(<App initialAppState={userState} runtimeMode="mock" />);
+    renderApp({ initialAppState: userState, runtimeMode: "mock" });
     await screen.findByText(mockStoryConnectedLabel);
 
     const row = findRowByText("battery.impedance_mohm");
@@ -1483,7 +1462,7 @@ describe("/node-debugging", () => {
   });
 
   it("writes and verifies RW nodes from the detail sheet", async () => {
-    render(<App initialAppState={userState} runtimeMode="mock" />);
+    renderApp({ initialAppState: userState, runtimeMode: "mock" });
     await screen.findByText(mockStoryConnectedLabel);
 
     const row = findRowByText("charger.input_current_limit_ma");
@@ -1500,8 +1479,8 @@ describe("/node-debugging", () => {
   });
 
   it("stashes detail edits and writes selected pending nodes in bulk", async () => {
-    const gateway = createSpyMockGateway();
-    render(<App initialAppState={userState} runtimeMode="mock" debuggingGateway={gateway} />);
+    const gateway = createTestDebuggingGateway();
+    renderApp({ initialAppState: userState, runtimeMode: "mock", ports: { debuggingGateway: gateway } });
     await screen.findByText(mockStoryConnectedLabel);
 
     const row = findRowByText("charger.input_current_limit_ma");
@@ -1532,7 +1511,7 @@ describe("/node-debugging", () => {
   });
 
   it("shows write format as an independent detail section", async () => {
-    render(<App initialAppState={userState} runtimeMode="mock" />);
+    renderApp({ initialAppState: userState, runtimeMode: "mock" });
     await screen.findByText(mockStoryConnectedLabel);
 
     const row = findRowByText("charger.input_current_limit_ma");
@@ -1549,7 +1528,7 @@ describe("/node-debugging", () => {
   });
 
   it("places the target value input after the write format section", async () => {
-    render(<App initialAppState={userState} runtimeMode="mock" />);
+    renderApp({ initialAppState: userState, runtimeMode: "mock" });
     await screen.findByText(mockStoryConnectedLabel);
 
     const row = findRowByText("charger.input_current_limit_ma");
@@ -1563,7 +1542,7 @@ describe("/node-debugging", () => {
   });
 
   it("keeps write format examples stable while editing the target value", async () => {
-    render(<App initialAppState={userState} runtimeMode="mock" />);
+    renderApp({ initialAppState: userState, runtimeMode: "mock" });
     await screen.findByText(mockStoryConnectedLabel);
 
     const row = findRowByText("charger.input_current_limit_ma");
@@ -1580,7 +1559,7 @@ describe("/node-debugging", () => {
   });
 
   it("uses a multiline target value editor for complex writes", async () => {
-    render(<App initialAppState={userState} runtimeMode="mock" />);
+    renderApp({ initialAppState: userState, runtimeMode: "mock" });
     await screen.findByText(mockStoryConnectedLabel);
 
     const row = findRowByText("charger.policy_overlay_json");
@@ -1740,7 +1719,7 @@ describe("/node-debugging", () => {
   });
 
   it("marks RW readback mismatch", async () => {
-    const gateway = createSpyMockGateway({
+    const gateway = createTestDebuggingGateway({
       writeNode: vi.fn().mockResolvedValue({
         ok: true,
         verified: false,
@@ -1749,7 +1728,7 @@ describe("/node-debugging", () => {
         readResult: { ok: true, value: "3600", stdout: "3600\n" }
       })
     });
-    render(<App initialAppState={userState} runtimeMode="mock" debuggingGateway={gateway} />);
+    renderApp({ initialAppState: userState, runtimeMode: "mock", ports: { debuggingGateway: gateway } });
     await screen.findByText(mockStoryConnectedLabel);
 
     const row = findRowByText("charger.input_current_limit_ma");

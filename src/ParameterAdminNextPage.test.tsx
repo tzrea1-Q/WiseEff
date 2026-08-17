@@ -4,7 +4,6 @@ import type { ParameterPageActions } from "@/app/routes";
 import { ToastProvider } from "@/components/common/toast/ToastProvider";
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
-import type { ParameterModuleRegistry } from "@/domain/parameter-topology/moduleRegistry";
 import type {
   ParameterSpecDetail,
   ParameterSpecSummary,
@@ -15,6 +14,7 @@ import { createMockParameterModuleRegistryRepository } from "@/infrastructure/mo
 import { createMockParameterTopologyRepository } from "@/infrastructure/mock/mockParameterTopologyRepository";
 import { initialState } from "@/mockData";
 import { ParameterAdminNextPage } from "./ParameterAdminNextPage";
+import { createTestParameterTopologyRepository, withPortSpies } from "./test/harness";
 
 afterEach(() => {
   cleanup();
@@ -72,409 +72,30 @@ const OPEN_REVIEW_TASK: SpecReviewTask = {
   createdAt: "2026-07-14T10:00:00.000Z"
 };
 
-const SEED_REGISTRY: ParameterModuleRegistry = {
-  modules: [
-    {
-      id: "mod-charging",
-      name: "充电策略",
-      parentId: null,
-      sortOrder: 0,
-      description: "",
-      scope: "",
-      importance: "high",
-      kind: "business",
-      origin: "curated",
-      sourceKey: null,
-      effectiveImportance: "high",
-      parameterCount: 12
-    },
-    {
-      id: "mod-sc8562",
-      name: "SC8562",
-      parentId: "mod-charging",
-      sortOrder: 0,
-      description: "",
-      scope: "",
-      importance: "medium",
-      kind: "driver-group",
-      origin: "curated",
-      sourceKey: "compatible:vendor,sc8562",
-      effectiveImportance: "high",
-      parameterCount: 8
-    },
-    {
-      id: "mod-battery",
-      name: "电池安全",
-      parentId: "mod-charging",
-      sortOrder: 1,
-      description: "",
-      scope: "",
-      importance: "medium",
-      kind: "business",
-      origin: "curated",
-      sourceKey: null,
-      effectiveImportance: "high",
-      parameterCount: 4
-    }
-  ],
-  mappings: [
-    {
-      id: "map-sc8562",
-      moduleId: "mod-sc8562",
-      matchKind: "compatible",
-      matchValue: "vendor,sc8562",
-      priority: 100
-    }
-  ]
-};
-
-function createRepository(
-  overrides: Partial<ParameterTopologyRepository> = {}
-): ParameterTopologyRepository {
-  return {
+function createRepository(overrides: Partial<ParameterTopologyRepository> = {}) {
+  return createTestParameterTopologyRepository({
     listSpecs: vi.fn().mockResolvedValue([SPEC_SUMMARY]),
     getSpec: vi.fn().mockResolvedValue(SPEC_DETAIL),
     listSpecReviewTasks: vi.fn().mockResolvedValue({ items: [OPEN_REVIEW_TASK], nextCursor: null }),
-    resolveSpecReviewTask: vi.fn().mockResolvedValue(undefined),
-    activateParameterSpec: vi.fn().mockResolvedValue(SPEC_DETAIL),
-    updateParameterSpec: vi.fn().mockResolvedValue(SPEC_DETAIL),
-    deprecateParameterSpec: vi.fn().mockResolvedValue({ ...SPEC_DETAIL, lifecycle: "deprecated" }),
-    restoreParameterSpec: vi.fn().mockResolvedValue({ ...SPEC_DETAIL, lifecycle: "active" }),
-    listBindings: vi.fn().mockResolvedValue([]),
-    listBindingHistory: vi.fn().mockResolvedValue([]),
-    listBindingCompare: vi.fn().mockResolvedValue([]),
-    getTopology: vi.fn(),
-    listMappingTasks: vi.fn().mockResolvedValue([]),
-    resolveMapping: vi.fn(),
-    listConfigRevisions: vi.fn().mockResolvedValue([]),
-    validateRevision: vi.fn(),
-    createBindingDraft: vi.fn(),
     ...overrides
-  };
+  });
 }
 
-function createModuleRegistry(
-  overrides: Partial<ParameterModuleRegistryRepository> = {}
-): ParameterModuleRegistryRepository {
-  let registry: ParameterModuleRegistry = {
-    modules: SEED_REGISTRY.modules.map((module) => ({ ...module })),
-    mappings: SEED_REGISTRY.mappings.map((mapping) => ({ ...mapping }))
-  };
-  let moduleSeq = 0;
-  let mappingSeq = 0;
-
-  const base: ParameterModuleRegistryRepository = {
-    getRegistry: vi.fn(async () => ({
-      modules: registry.modules.map((module) => ({ ...module })),
-      mappings: registry.mappings.map((mapping) => ({ ...mapping }))
-    })),
-    getDiscoveryHints: vi.fn(async () => ({
-      compatibles: [
+function createModuleRegistry(overrides: Partial<ParameterModuleRegistryRepository> = {}) {
+  return withPortSpies(
+    createMockParameterModuleRegistryRepository({
+      mappings: [
         {
-          compatible: "vendor,unmapped-ic",
-          bindingCount: 2,
-          projectCount: 1,
-          suggestedGroupName: "unmapped-ic"
-        }
-      ],
-      dismissedCompatibles: [],
-      total: 1
-    })),
-    dismissCompatible: vi.fn(async () => ({
-      compatibles: [],
-      dismissedCompatibles: [],
-      total: 0
-    })),
-    restoreDismissedCompatible: vi.fn(async () => ({
-      compatibles: [
-        {
-          compatible: "vendor,unmapped-ic",
-          bindingCount: 2,
-          projectCount: 1,
-          suggestedGroupName: "unmapped-ic"
-        }
-      ],
-      dismissedCompatibles: [],
-      total: 1
-    })),
-    previewMapping: vi.fn(async (input) => ({
-      affectedBindings: 2,
-      byProject: [{ projectId: "proj-1", count: 2 }],
-      fromModules: [],
-      toModuleId: input.moduleId,
-      emptiedModules: [],
-      conflicts: []
-    })),
-    createModule: vi.fn(async (input) => {
-      moduleSeq += 1;
-      const importance = input.importance ?? "medium";
-      const kind = input.kind ?? "business";
-      registry = {
-        ...registry,
-        modules: [
-          ...registry.modules,
-          {
-            id: `mod-new-${moduleSeq}`,
-            name: input.name,
-            parentId: input.parentId ?? null,
-            sortOrder: input.sortOrder ?? registry.modules.length,
-            description: input.description ?? "",
-            scope: input.scope ?? "",
-            importance,
-            kind,
-            origin: input.origin ?? "curated",
-            sourceKey: input.sourceKey ?? null,
-            effectiveImportance: importance,
-            parameterCount: 0
-          }
-        ]
-      };
-      return {
-        modules: registry.modules.map((module) => ({ ...module })),
-        mappings: registry.mappings.map((mapping) => ({ ...mapping }))
-      };
-    }),
-    updateModule: vi.fn(async (moduleId, input) => {
-      registry = {
-        ...registry,
-        modules: registry.modules.map((module) =>
-          module.id === moduleId
-            ? {
-                ...module,
-                name: input.name ?? module.name,
-                description: input.description ?? module.description,
-                scope: input.scope ?? module.scope,
-                parentId: input.parentId === undefined ? module.parentId : input.parentId,
-                sortOrder: input.sortOrder ?? module.sortOrder,
-                importance: input.importance ?? module.importance,
-                effectiveImportance: input.importance ?? module.effectiveImportance
-              }
-            : module
-        )
-      };
-      return {
-        modules: registry.modules.map((module) => ({ ...module })),
-        mappings: registry.mappings.map((mapping) => ({ ...mapping }))
-      };
-    }),
-    deleteModule: vi.fn(async (moduleId) => {
-      registry = {
-        modules: registry.modules.filter((module) => module.id !== moduleId),
-        mappings: registry.mappings.filter((mapping) => mapping.moduleId !== moduleId)
-      };
-      return {
-        modules: registry.modules.map((module) => ({ ...module })),
-        mappings: registry.mappings.map((mapping) => ({ ...mapping }))
-      };
-    }),
-    createMapping: vi.fn(async (input) => {
-      mappingSeq += 1;
-      registry = {
-        ...registry,
-        mappings: [
-          ...registry.mappings,
-          {
-            id: `map-new-${mappingSeq}`,
-            moduleId: input.moduleId,
-            matchKind: input.matchKind,
-            matchValue: input.matchValue,
-            priority: input.priority ?? 0
-          }
-        ]
-      };
-      return {
-        registry: {
-          modules: registry.modules.map((module) => ({ ...module })),
-          mappings: registry.mappings.map((mapping) => ({ ...mapping }))
-        },
-        apply: {
-          affectedBindings: 2,
-          byProject: [],
-          fromModules: [],
-          toModuleId: input.moduleId,
-          emptiedModules: [],
-          conflicts: []
-        }
-      };
-    }),
-    deleteMapping: vi.fn(async (mappingId) => {
-      registry = {
-        ...registry,
-        mappings: registry.mappings.filter((mapping) => mapping.id !== mappingId)
-      };
-      return {
-        registry: {
-          modules: registry.modules.map((module) => ({ ...module })),
-          mappings: registry.mappings.map((mapping) => ({ ...mapping }))
-        },
-        apply: {
-          affectedBindings: 0,
-          byProject: [],
-          fromModules: [],
-          toModuleId: null,
-          emptiedModules: [],
-          conflicts: []
-        }
-      };
-    }),
-    recomputeBindings: vi.fn(async () => ({ updated: 3, conflicts: [] })),
-    listDriverRegistry: vi.fn(async () => ({
-      items: [
-        {
+          id: "map-sc8562",
           moduleId: "mod-sc8562",
-          name: "SC8562",
-          origin: "curated" as const,
-          businessCategoryId: "mod-charging",
-          businessCategoryName: "充电策略",
-          defaultBusinessCategoryId: "mod-charging",
-          compatibles: ["vendor,sc8562"],
-          parameterCount: 8,
-          observed: true,
-          notYetObserved: false,
-          driverNature: "physical-device" as const,
-          instanceCardinality: "multiple" as const,
-          parseCoverages: [
-            {
-              compatible: "vendor,sc8562",
-              coverage: {
-                covered: true as const,
-                pattern: "vendor,sc8562",
-                driverId: "drv-1",
-                source: "yaml",
-                scope: "platform" as const
-              }
-            }
-          ]
+          matchKind: "compatible",
+          matchValue: "vendor,sc8562",
+          priority: 100
         }
-      ],
-      total: 1
-    })),
-    registerOrClaimDriver: vi.fn(async (input) => {
-      moduleSeq += 1;
-      const id = `mod-new-${moduleSeq}`;
-      registry = {
-        ...registry,
-        modules: [
-          ...registry.modules,
-          {
-            id,
-            name: input.displayName,
-            parentId: input.businessCategoryId,
-            sortOrder: registry.modules.length,
-            description: input.notes ?? "",
-            scope: "",
-            importance: "medium" as const,
-            kind: "driver-group" as const,
-            origin: "curated" as const,
-            sourceKey: null,
-            effectiveImportance: "medium" as const,
-            parameterCount: 0
-          }
-        ],
-        mappings: [
-          ...registry.mappings,
-          ...input.compatibles.map((compatible, index) => ({
-            id: `map-driver-${moduleSeq}-${index}`,
-            moduleId: id,
-            matchKind: "compatible" as const,
-            matchValue: compatible,
-            priority: 0
-          }))
-        ]
-      };
-      return {
-        mode: "registered" as const,
-        item: {
-          id,
-          name: input.displayName,
-          parentId: input.businessCategoryId,
-          kind: "driver-group" as const,
-          origin: "curated" as const
-        },
-        apply: {
-          affectedBindings: 0,
-          byProject: [],
-          fromModules: [],
-          toModuleId: id,
-          emptiedModules: [],
-          conflicts: []
-        }
-      };
+      ]
     }),
-    updateDriverRegistration: vi.fn(async (moduleId, input) => ({
-      moduleId,
-      driverNature: input.driverNature ?? "physical-device",
-      instanceCardinality: input.instanceCardinality ?? "multiple",
-      attributionSubjectId: `asub:driver-registration:${moduleId}`
-    })),
-    updateDriverRegistrationDefault: vi.fn(async (moduleId, input) => ({
-      item: {
-        id: moduleId,
-        name: "SC8562",
-        parentId: input.defaultBusinessCategoryId,
-        kind: "driver-group" as const,
-        origin: "curated" as const
-      },
-      defaultBusinessCategoryId: input.defaultBusinessCategoryId,
-      replay: { moved: 0, skippedCurated: 1, skippedMissingDefault: 0 }
-    })),
-    replayDriverPlacement: vi.fn(async (moduleId) => ({
-      moduleId,
-      moved: 0,
-      skippedCurated: 1,
-      skippedMissingDefault: 0
-    })),
-    createOrganizationDriverSchema: vi.fn(async (input) => ({
-      id: "ods-test-1",
-      compatible: input.compatible,
-      displayName: input.displayName,
-      notes: input.notes ?? "",
-      lifecycle: "draft",
-      version: 1,
-      properties: input.properties.map((property, index) => ({
-        id: `ods-prop-${index}`,
-        parameterSpecId: `pspec-${index}`,
-        propertyKey: "parameterSpecId" in property ? (property.propertyKey ?? `linked-${index}`) : property.propertyKey,
-        valueShape: "valueShape" in property ? property.valueShape : { kind: "unknown" },
-        units: "units" in property ? (property.units ?? null) : null,
-        documentation: "documentation" in property ? (property.documentation ?? "") : ""
-      }))
-    })),
-    listOrganizationDriverSchemas: vi.fn(async () => []),
-    updateOrganizationDriverSchema: vi.fn(async (schemaId, input) => ({
-      id: schemaId,
-      compatible: "vendor,sc8562",
-      displayName: input.displayName ?? "SC8562",
-      notes: input.notes ?? "",
-      lifecycle: "draft",
-      version: 1,
-      properties: []
-    })),
-    activateOrganizationDriverSchema: vi.fn(async (schemaId) => ({
-      schema: {
-        id: schemaId,
-        compatible: "vendor,sc8562",
-        displayName: "SC8562",
-        notes: "",
-        lifecycle: "active",
-        version: 1,
-        properties: []
-      },
-      upgradedSpecIds: [],
-      resolvedReviewTaskIds: []
-    })),
-    deprecateOrganizationDriverSchema: vi.fn(async (schemaId) => ({
-      id: schemaId,
-      compatible: "vendor,sc8562",
-      displayName: "SC8562",
-      notes: "",
-      lifecycle: "deprecated",
-      version: 1,
-      properties: []
-    }))
-  };
-
-  return { ...base, ...overrides };
+    overrides
+  );
 }
 
 function createParameterActions(overrides: Partial<ParameterPageActions> = {}): ParameterPageActions {
@@ -748,7 +369,9 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
         reason: "由平台定义接管"
       })
     );
-    expect(await screen.findByRole("status")).toHaveTextContent("已废弃");
+    expect(
+      (await screen.findAllByRole("status")).some((el) => el.textContent?.includes("已废弃"))
+    ).toBe(true);
   });
 
   it("restores a deprecated spec and shows concise success feedback", async () => {
@@ -777,7 +400,9 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
         reason: "重新纳入治理"
       })
     );
-    expect(await screen.findByRole("status")).toHaveTextContent("已恢复");
+    expect(
+      (await screen.findAllByRole("status")).some((el) => el.textContent?.includes("已恢复"))
+    ).toBe(true);
   });
 
   it("resolves a spec review task and surfaces a governance audit record", async () => {
@@ -1075,7 +700,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
 
     await waitFor(() =>
       expect(moduleRegistry.updateModule).toHaveBeenCalledWith(
-        "mod-new-1",
+        "mod-mock-1",
         expect.objectContaining({ name: "电源路径组" })
       )
     );
@@ -1090,7 +715,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     fireEvent.click(within(moveDialog).getByRole("button", { name: "充电策略" }));
     fireEvent.click(within(moveDialog).getByRole("button", { name: "确认移动" }));
     await waitFor(() =>
-      expect(moduleRegistry.updateModule).toHaveBeenCalledWith("mod-new-1", {
+      expect(moduleRegistry.updateModule).toHaveBeenCalledWith("mod-mock-1", {
         parentId: "mod-charging"
       })
     );
@@ -1108,7 +733,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     expect(moduleRegistry.deleteModule).not.toHaveBeenCalled();
     const deleteConfirm = await screen.findByRole("dialog", { name: "删除模块「电源路径组」" });
     fireEvent.click(within(deleteConfirm).getByRole("button", { name: "确认删除" }));
-    await waitFor(() => expect(moduleRegistry.deleteModule).toHaveBeenCalledWith("mod-new-1"));
+    await waitFor(() => expect(moduleRegistry.deleteModule).toHaveBeenCalledWith("mod-mock-1"));
     await waitFor(() =>
       expect(within(panel).queryByRole("button", { name: "电源路径组 更多操作" })).not.toBeInTheDocument()
     );
@@ -1156,7 +781,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     await waitFor(() => expect(moduleRegistry.recomputeBindings).toHaveBeenCalled());
     const resultDialog = await screen.findByRole("dialog", { name: "全量重算结果" });
     expect(within(resultDialog).getByText("更新的项目参数")).toBeInTheDocument();
-    expect(within(resultDialog).getByText("3")).toBeInTheDocument();
+    expect(within(resultDialog).getByText("2")).toBeInTheDocument();
     fireEvent.click(within(resultDialog).getByRole("button", { name: "知道了" }));
     expect(screen.queryByRole("dialog", { name: "全量重算结果" })).not.toBeInTheDocument();
   });
