@@ -1,10 +1,10 @@
 # 前端运行时后续（TD-110 / TD-109 / C7）
 
-> English: [English](../../../exec-plans/active/2026-08-16-frontend-runtime-follow-up.md)
+> English: [English](../../../exec-plans/completed/2026-08-16-frontend-runtime-follow-up.md)
 
-- **状态：** 进行中 — 收口。D/E/F/H 已在 `main`（#483–#486）。剩余：Track G C5 共享 bridge/target/protocol 类型（`refactor/bridge-target-session`）。
+- **状态：** 已完成（2026-08-17）— A–H 均在 `main`（#474–#488）。Track G C5 共享类型合入 #488（`c6b9f84b`）。文档门禁随本次迁移关闭。
 - **负责人：** Frontend
-- **核对日期：** 2026-08-17（GitHub `main` @ `bf6b99ca`，#482 合入后）
+- **核对日期：** 2026-08-17（GitHub `main` @ `9f3a8611`，#487 合入后；Track G 合入 `c6b9f84b` / #488）
 - **前序：** `docs/exec-plans/completed/2026-08-12-app-shell-decomposition.md`
 
 ## 目标
@@ -23,7 +23,7 @@
 - 不把分区状态铺到未改动的页面；触及某页时再推广。
 - 参数管理后台 M1 CSS 与 `.dts-parameter-workbench*` 不和配置工作台 CSS 同 PR。
 
-C5 不再无限推迟：本收口先把 `NodeDebuggingPage` session 化（Track F），再抽共享 `BridgeGateway`（Track G）。
+C5 已收口：`NodeDebuggingPage` session 化（Track F，#485）；共享 protocol/bridge/target 类型在 `src/application/bridge/bridgeTargetSession.ts`（Track G，#488）。没有空的 `BridgeGateway` HTTP 端口。
 
 ## 已合入（2026-08-16）
 
@@ -68,14 +68,14 @@ C5 不再无限推迟：本收口先把 `NodeDebuggingPage` session 化（Track 
 
 ## 推迟项（已改）
 
-C5 共享桥接类型改为收口轨道：F（#485 节点调试 session）已合入，G（共享 protocol/bridge/target 类型）进行中。不要重写 reload 部署确认或节点调试 I/O。
+C5 共享桥接类型改为收口轨道：F（#485 节点调试 session）与 G（#488 共享 protocol/bridge/target 类型）均已合入。两套 session 仍分开；不要重写 reload 部署确认或节点调试 I/O。
 
 ## 后续顺序
 
 ```
 已合入: A–C #474–#476 │ 守卫 #478 │ 评审 CSS #479 │ dts-parse #481 │ 目录 #480
-        文档 #482 │ Object.assign #483 │ 工作台 CSS #484 │ node session #485 │ 播种 #486
-开放:   G  C5 共享 bridge/target/protocol 类型
+        文档 #482/#487 │ Object.assign #483 │ 工作台 CSS #484 │ node session #485 │ 播种 #486
+        C5 共享类型 #488
 ```
 
 做法、验证命令与文件地图见英文计划 Closeout tracks。
@@ -88,4 +88,4 @@ C5 共享桥接类型改为收口轨道：F（#485 节点调试 session）已合
 
 ## 文档影响矩阵与门禁
 
-见英文版同名两节。计划保持 **进行中**，直到收口轨道落地或改挂债表。
+见英文版同名两节。本计划已完成。TD-110 / TD-109 余量（分区状态推广、API boot 结构性 `users` 待 `HYDRATE_USERS`、mock 再长出新重复规则时再抽守卫）留在债表作卫生项，不再作为开放的架构审查程序。
