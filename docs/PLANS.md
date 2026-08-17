@@ -28,7 +28,7 @@ This list is only plans that still have remaining work. Finished implementation 
 
 ### Remaining product and UX work
 
-- `exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md`: remaining SE-D5 pre-save diff and Batches 2–5.
+- `exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md`: remaining Batches 2–5.
 - `exec-plans/active/2026-08-03-parameter-admin-org-ia-consolidation.md`: org admin IA (planning; ADR-0015).
 - `exec-plans/active/2026-08-02-parameter-admin-ux-polish.md`: parameter-admin UX polish.
 - `exec-plans/active/2026-08-04-parameter-definition-identity-correction.md`: definition identity correction follow-through.
