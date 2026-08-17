@@ -1,32 +1,38 @@
 import "dotenv/config";
-import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "playwright/test";
 
-import { withPgClient } from "./helpers/database";
-import { authHeadersForRole, authHeadersForUser } from "./helpers/bearerAuth";
+import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+import { withPgClient } from "./helpers/database";
+import { type DisposablePostCutoverRuntime } from "./helpers/disposablePostCutoverRuntime";
 import { recordOperationEvidence, writeOperationJsonArtifact } from "./helpers/operationEvidence";
 import { apiRoute } from "./helpers/runtime";
+import {
+  assertPostCutoverIdentity,
+  bindHardwareUserToProject,
+  createBindingDraftViaApi,
+  disposablePageUrl,
+  integerCellTarget,
+  seedIsolatedNumericCellBinding,
+  startSwappedDisposablePostCutoverRuntime,
+  type IsolatedBinding
+} from "./helpers/semanticBindingFixture";
 import { cleanupSemanticAcceptanceArtifacts } from "./helpers/semanticFixtureCleanup";
 
 useBrowserDiagnostics(test);
 
 const organizationId = "org-chargelab";
 const projectId = "aurora";
-const adminUserId = "u-xu-yun";
-const parameterDefinitionId = "acceptance-param-file-temp-max";
-const parameterValueId = "acceptance-aurora-param-file-temp-max";
-const hardwareUserId = "acceptance-param-file-hardware-user";
 const descriptionPrefix = "PARAM-FILE acceptance";
+const databaseUrl = process.env.DATABASE_URL;
+const fileCellValue = 80;
+const bindingHeadValue = "<70>";
+const uiDraftCell = "90";
 
-function authHeaders(userId = adminUserId) {
-  if (userId === adminUserId) {
-    return authHeadersForRole("admin");
-  }
-  if (userId === hardwareUserId) {
-    return authHeadersForUser(hardwareUserId, "param-file.hw@chargelab.cn", "PF File Hardware User");
-  }
-  return authHeadersForUser(userId, `${userId}@chargelab.cn`, "Acceptance User");
+test.skip(!databaseUrl, "DATABASE_URL is required for disposable post-cutover parameter-files acceptance.");
+
+function adminHeaders() {
+  return authHeadersForRole("admin");
 }
 
 async function dismissXiaozeHint(page: Page) {
@@ -36,225 +42,174 @@ async function dismissXiaozeHint(page: Page) {
   }
 }
 
-async function seedParameterFileAcceptanceFixture() {
+async function setBindingHeadRawValue(bindingId: string, rawValue: string): Promise<void> {
   await withPgClient(async (client) => {
-    await client.query(
+    const result = await client.query(
       `
-      insert into users (id, organization_id, name, email, title, is_active)
-      values ($1, $2, 'PF File Hardware User', 'param-file.hw@chargelab.cn', 'Hardware User', true)
-      on conflict (id) do update set
-        organization_id = excluded.organization_id,
-        name = excluded.name,
-        email = excluded.email,
-        title = excluded.title,
-        is_active = excluded.is_active
-      `,
-      [hardwareUserId, organizationId]
-    );
-    await client.query(
-      `
-      insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
-      values ($1, $2, $3, $4, 'hardware-user')
-      on conflict (id) do update set
-        project_id = excluded.project_id,
-        role_id = excluded.role_id
-      `,
-      [`acceptance-${hardwareUserId}-${projectId}`, hardwareUserId, organizationId, projectId]
-    );
-    await client.query(
-      `
-      insert into parameter_definitions (
-        id, organization_id, name, description, explanation, config_format,
-        module, default_range, unit, risk
+      update project_parameter_binding_revisions
+      set raw_value = $2
+      where id = (
+        select id
+        from project_parameter_binding_revisions
+        where binding_id = $1
+        order by created_at desc
+        limit 1
       )
-      values (
-        $1, $2, 'temp_max', 'acceptance param file temp max', 'battery max temp',
-        'ENV:TEMP_MAX=number', 'battery', '0-120', 'C', 'Low'
-      )
-      on conflict (id) do update set
-        organization_id = excluded.organization_id,
-        name = excluded.name,
-        module = excluded.module,
-        risk = excluded.risk
       `,
-      [parameterDefinitionId, organizationId]
+      [bindingId, rawValue]
     );
-    await client.query(
-      `
-      insert into project_parameter_values (
-        id, organization_id, project_id, parameter_definition_id,
-        current_value, recommended_value, value_version, updated_by_user_id
-      )
-      values ($1, $2, $3, $4, '80', '80', 1, $5)
-      on conflict (id) do update set
-        current_value = excluded.current_value,
-        recommended_value = excluded.recommended_value,
-        value_version = excluded.value_version,
-        source_file_name = null,
-        source_node_path = null
-      `,
-      [parameterValueId, organizationId, projectId, parameterDefinitionId, adminUserId]
-    );
-    await client.query(
-      `
-      delete from parameter_file_sync_conflicts
-      where project_parameter_value_id = $1
-      `,
-      [parameterValueId]
-    );
-    await client.query(
-      `
-      delete from parameter_drafts
-      where project_parameter_value_id = $1
-      `,
-      [parameterValueId]
-    );
+    expect(result.rowCount, `missing head revision for binding ${bindingId}`).toBe(1);
   });
 }
 
-async function cleanupParameterFileAcceptanceArtifacts(fileName: string) {
+async function lookupHostedFile(fileName: string) {
+  return withPgClient(async (client) => {
+    const result = await client.query<{ id: string; file_name: string; version_number: number; current_version_id: string }>(
+      `
+      select f.id, f.file_name, v.version_number, f.current_version_id
+      from project_parameter_files f
+      inner join project_parameter_file_versions v on v.id = f.current_version_id
+      where f.organization_id = $1
+        and f.project_id = $2
+        and f.file_name = $3
+      `,
+      [organizationId, projectId, fileName]
+    );
+    return result.rows[0] ?? null;
+  });
+}
+
+async function cleanupParameterFileAcceptanceArtifacts(input: {
+  fileName?: string;
+  binding?: IsolatedBinding;
+}): Promise<void> {
+  let configSetNames: string[] = [];
+  if (input.binding?.configSetId) {
+    configSetNames = await withPgClient(async (client) => {
+      const result = await client.query<{ name: string }>(
+        `select name from dts_config_set where id = $1`,
+        [input.binding!.configSetId]
+      );
+      return result.rows.map((row) => row.name);
+    });
+  }
   await cleanupSemanticAcceptanceArtifacts({
     organizationId,
     projectId,
-    fileNames: [fileName],
-    projectParameterValueIds: [parameterValueId]
-  });
-
-  await withPgClient(async (client) => {
-    await client.query(
-      `
-      update project_parameter_values
-      set source_file_name = null,
-          source_node_path = null
-      where id = $1
-      `,
-      [parameterValueId]
-    );
-  });
-}
-
-async function cleanupAllParameterFileAcceptanceArtifacts() {
-  await withPgClient(async (client) => {
-    const files = await client.query<{ file_name: string }>(
-      `
-      select file_name
-      from project_parameter_files
-      where organization_id = $1
-        and project_id = $2
-        and file_name like 'acceptance-%'
-      `,
-      [organizationId, projectId]
-    );
-
-    for (const row of files.rows) {
-      await cleanupParameterFileAcceptanceArtifacts(row.file_name);
-    }
+    fileNames: input.fileName ? [input.fileName] : [],
+    configSetNames,
+    projectParameterBindingIds: input.binding ? [input.binding.bindingId] : []
   });
 }
 
 test.describe("project parameter files browser acceptance", () => {
-  test.beforeEach(async () => {
-    await cleanupAllParameterFileAcceptanceArtifacts();
-    await seedParameterFileAcceptanceFixture();
+  let disposableRuntime: DisposablePostCutoverRuntime;
+  let restoreDisposable: (() => Promise<void>) | undefined;
+
+  test.beforeAll(async () => {
+    test.setTimeout(180_000);
+    const baseDatabaseUrl = databaseUrl?.trim();
+    if (!baseDatabaseUrl) {
+      throw new Error("DATABASE_URL is required to create the disposable parameter-files post-cutover database.");
+    }
+    const started = await startSwappedDisposablePostCutoverRuntime(baseDatabaseUrl, {
+      label: "param_files",
+      markerPurpose: "param-files"
+    });
+    disposableRuntime = started.runtime;
+    restoreDisposable = started.restore;
+    await assertPostCutoverIdentity();
+    expect(disposableRuntime.markerPurpose).toBe("param-files");
+  });
+
+  test.afterAll(async () => {
+    test.setTimeout(60_000);
+    await restoreDisposable?.();
   });
 
   test("uploads, lists, and syncs project parameter files", async ({ page, request }, testInfo) => {
     // @acceptance PARAM-FILE-ADMIN-001
     // @operation PARAM-FILE-UPLOAD-001
     // @operation PARAM-FILE-SYNC-001
-    const fileName = `acceptance-${randomUUID()}.json`;
-    const payload = Buffer.from(JSON.stringify({ battery: { temp_max: 85 } }), "utf8").toString("base64");
+    test.setTimeout(180_000);
+    let binding: IsolatedBinding | undefined;
 
     try {
-      const uploadResponse = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
-        headers: authHeaders(),
-        data: { fileName, contentBase64: payload }
+      binding = await seedIsolatedNumericCellBinding(request, {
+        propertyKey: "iin_max",
+        cellValue: fileCellValue,
+        reason: `${descriptionPrefix} sync binding`
       });
-      expect(uploadResponse.ok()).toBe(true);
-      const uploadBody = (await uploadResponse.json()) as {
-        item: { id: string; fileName: string };
-        version: { id: string; versionNumber: number };
-      };
-      expect(uploadBody.item.fileName).toBe(fileName);
-      expect(uploadBody.version.versionNumber).toBe(1);
-
-      await withPgClient(async (client) => {
-        await client.query(
-          `
-          update project_parameter_values
-          set source_file_name = $1,
-              source_node_path = 'battery/temp_max'
-          where id = $2
-          `,
-          [fileName, parameterValueId]
-        );
-      });
+      await setBindingHeadRawValue(binding.bindingId, bindingHeadValue);
 
       const listResponse = await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
-        headers: authHeaders()
+        headers: adminHeaders()
       });
-      expect(listResponse.ok()).toBe(true);
-      const listBody = (await listResponse.json()) as { items: Array<{ fileName: string }> };
-      expect(listBody.items.some((item) => item.fileName === fileName)).toBe(true);
-      const fileDbRow = await withPgClient(async (client) => {
-        const result = await client.query<{ id: string; file_name: string; version_number: number }>(
-          `
-          select f.id, f.file_name, v.version_number
-          from project_parameter_files f
-          inner join project_parameter_file_versions v on v.id = f.current_version_id
-          where f.organization_id = $1
-            and f.project_id = $2
-            and f.file_name = $3
-          `,
-          [organizationId, projectId, fileName]
-        );
-        return result.rows[0] ?? null;
-      });
+      expect(listResponse.ok(), await listResponse.text()).toBe(true);
+      const listBody = (await listResponse.json()) as {
+        items: Array<{ id: string; fileName: string; currentVersionId?: string }>;
+      };
+      const listed = listBody.items.find((item) => item.fileName === binding!.fileName);
+      expect(listed, `missing hosted file ${binding.fileName}`).toBeTruthy();
+      expect(listed!.currentVersionId).toBeTruthy();
+
+      const fileDbRow = await lookupHostedFile(binding.fileName);
       expect(fileDbRow).toMatchObject({
-        id: uploadBody.item.id,
-        file_name: fileName,
-        version_number: 1
+        id: listed!.id,
+        file_name: binding.fileName
       });
 
       const syncResponse = await request.post(
-        apiRoute(`/api/v1/projects/${projectId}/parameter-files/${uploadBody.item.id}/sync`),
+        apiRoute(`/api/v1/projects/${projectId}/parameter-files/${listed!.id}/sync`),
         {
-          headers: authHeaders(),
-          data: { versionId: uploadBody.version.id }
+          headers: adminHeaders(),
+          data: { versionId: listed!.currentVersionId }
         }
       );
-      expect(syncResponse.ok()).toBe(true);
-      const syncBody = (await syncResponse.json()) as { item: { draftsCreated: number } };
-      expect(syncBody.item.draftsCreated).toBe(1);
+      expect(syncResponse.ok(), await syncResponse.text()).toBe(true);
+      const syncBody = (await syncResponse.json()) as {
+        item: { draftsCreated: number; skipped: boolean };
+      };
+      expect(syncBody.item.skipped).toBe(false);
+      expect(syncBody.item.draftsCreated).toBeGreaterThanOrEqual(1);
 
       const draftRow = await withPgClient(async (client) => {
         const result = await client.query<{ target_value: string; origin: string }>(
           `
           select target_value, origin
           from parameter_drafts
-          where project_parameter_value_id = $1
+          where project_parameter_binding_id = $1
+            and origin = 'file_sync'
           order by updated_at desc
           limit 1
           `,
-          [parameterValueId]
+          [binding!.bindingId]
         );
         return result.rows[0];
       });
-      expect(draftRow).toEqual(expect.objectContaining({ target_value: "85", origin: "file_sync" }));
+      expect(draftRow).toEqual(expect.objectContaining({ target_value: `<${fileCellValue}>`, origin: "file_sync" }));
+
       const fileDbEvidence = {
         table: "project_parameter_files/project_parameter_file_versions",
-        predicate: `organizationId=${organizationId}; projectId=${projectId}; fileName=${fileName}`,
+        predicate: `organizationId=${organizationId}; projectId=${projectId}; fileName=${binding.fileName}`,
         observed: `fileId=${fileDbRow?.id}; fileName=${fileDbRow?.file_name}; version=${fileDbRow?.version_number}`,
         rowCount: fileDbRow ? 1 : 0
       };
       const syncDbEvidence = {
         table: "parameter_drafts",
-        predicate: `projectParameterValueId=${parameterValueId}; origin=file_sync`,
+        predicate: `projectParameterBindingId=${binding.bindingId}; origin=file_sync`,
         observed: `targetValue=${draftRow?.target_value}; origin=${draftRow?.origin}`,
         rowCount: draftRow ? 1 : 0
       };
 
-      await page.goto(`/parameter-admin/projects/${projectId}/configuration?inspector=file`);
+      await signInBrowserAsRole(
+        page,
+        "admin",
+        disposablePageUrl(
+          disposableRuntime,
+          `/parameter-admin/projects/${projectId}/configuration?inspector=file`
+        )
+      );
       await dismissXiaozeHint(page);
       await expect(page).toHaveURL(new RegExp(`/parameter-admin/projects/${projectId}/configuration`));
       await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({ timeout: 30_000 });
@@ -268,10 +223,10 @@ test.describe("project parameter files browser acceptance", () => {
         assertions: ["ui", "api", "db"],
         api: [
           {
-            method: "POST",
+            method: "GET",
             path: `/api/v1/projects/${projectId}/parameter-files`,
-            status: uploadResponse.status(),
-            responseSummary: `file=${fileName}`
+            status: listResponse.status(),
+            responseSummary: `file=${binding.fileName}`
           }
         ],
         db: [fileDbEvidence]
@@ -280,84 +235,55 @@ test.describe("project parameter files browser acceptance", () => {
         operationId: "PARAM-FILE-SYNC-001",
         title: "manual sync creates file_sync draft",
         status: "passed",
-        page,
         testInfo,
         assertions: ["api", "db"],
         api: [
           {
             method: "POST",
-            path: `/api/v1/projects/${projectId}/parameter-files/${uploadBody.item.id}/sync`,
+            path: `/api/v1/projects/${projectId}/parameter-files/${listed!.id}/sync`,
             status: syncResponse.status(),
-            responseSummary: `draftsCreated=${syncBody.item.draftsCreated}`
+            responseSummary: `draftsCreated=${syncBody.item.draftsCreated}; skipped=${syncBody.item.skipped}`
           }
         ],
         db: [syncDbEvidence]
       });
     } finally {
-      await cleanupParameterFileAcceptanceArtifacts(fileName);
+      await cleanupParameterFileAcceptanceArtifacts({ fileName: binding?.fileName, binding });
     }
   });
 
   test("resolves file/UI draft conflicts", async ({ request }, testInfo) => {
     // @acceptance PARAM-FILE-CONFLICT-001
     // @operation PARAM-FILE-RESOLVE-001
-    const fileName = `acceptance-conflict-${randomUUID()}.json`;
-    const payload = Buffer.from(JSON.stringify({ battery: { temp_max: 85 } }), "utf8").toString("base64");
+    test.setTimeout(180_000);
+    let binding: IsolatedBinding | undefined;
 
     try {
-      await withPgClient(async (client) => {
-        await client.query(
-          `
-          delete from parameter_file_sync_conflicts
-          where project_parameter_value_id = $1
-          `,
-          [parameterValueId]
-        );
-        await client.query(
-          `
-          delete from parameter_drafts
-          where project_parameter_value_id = $1
-          `,
-          [parameterValueId]
-        );
+      await bindHardwareUserToProject(projectId);
+      binding = await seedIsolatedNumericCellBinding(request, {
+        propertyKey: "iin_max",
+        cellValue: fileCellValue,
+        reason: `${descriptionPrefix} conflict binding`
       });
+      await setBindingHeadRawValue(binding.bindingId, bindingHeadValue);
 
-      await request.post(apiRoute("/api/v1/parameter-drafts"), {
-        headers: authHeaders(hardwareUserId),
-        data: {
-          projectId,
-          parameterId: parameterValueId,
-          targetValue: "90",
-          reason: `${descriptionPrefix} manual ui draft`
-        }
+      const uiDraft = await createBindingDraftViaApi(request, {
+        binding,
+        targetValue: integerCellTarget(uiDraftCell),
+        reason: `${descriptionPrefix} manual ui draft`,
+        role: "hardware-user"
       });
+      expect(uiDraft.status, uiDraft.bodyText).toBe(201);
+      expect(uiDraft.draft).toBeTruthy();
 
-      const uploadResponse = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
-        headers: authHeaders(),
-        data: { fileName, contentBase64: payload }
-      });
-      const uploadBody = (await uploadResponse.json()) as {
-        item: { id: string };
-        version: { id: string };
-      };
-
-      await withPgClient(async (client) => {
-        await client.query(
-          `
-          update project_parameter_values
-          set source_file_name = $1,
-              source_node_path = 'battery/temp_max'
-          where id = $2
-          `,
-          [fileName, parameterValueId]
-        );
-      });
+      const fileRow = await lookupHostedFile(binding.fileName);
+      expect(fileRow?.current_version_id).toBeTruthy();
 
       const syncResponse = await request.post(
-        apiRoute(`/api/v1/projects/${projectId}/parameter-files/${uploadBody.item.id}/sync`),
+        apiRoute(`/api/v1/projects/${projectId}/parameter-files/${fileRow!.id}/sync`),
         {
-          headers: authHeaders(),
-          data: { versionId: uploadBody.version.id }
+          headers: adminHeaders(),
+          data: { versionId: fileRow!.current_version_id }
         }
       );
       expect(syncResponse.ok(), await syncResponse.text()).toBe(true);
@@ -367,12 +293,12 @@ test.describe("project parameter files browser acceptance", () => {
           `
           select id
           from parameter_file_sync_conflicts
-          where project_parameter_value_id = $1
+          where project_parameter_binding_id = $1
             and status = 'open'
           order by created_at desc
           limit 1
           `,
-          [parameterValueId]
+          [binding!.bindingId]
         );
         return result.rows[0]?.id ?? null;
       });
@@ -381,7 +307,7 @@ test.describe("project parameter files browser acceptance", () => {
       const resolveResponse = await request.post(
         apiRoute(`/api/v1/projects/${projectId}/parameter-file-conflicts/${conflictId}/resolve`),
         {
-          headers: authHeaders(),
+          headers: adminHeaders(),
           data: { resolution: "file" }
         }
       );
@@ -392,10 +318,10 @@ test.describe("project parameter files browser acceptance", () => {
           `
           select count(*)::text as count
           from parameter_file_sync_conflicts
-          where project_parameter_value_id = $1
+          where project_parameter_binding_id = $1
             and status = 'open'
           `,
-          [parameterValueId]
+          [binding!.bindingId]
         );
         return Number(result.rows[0]?.count ?? 0);
       });
@@ -425,14 +351,14 @@ test.describe("project parameter files browser acceptance", () => {
         db: [
           {
             table: "parameter_file_sync_conflicts",
-            predicate: `projectParameterValueId=${parameterValueId}; status=open`,
+            predicate: `projectParameterBindingId=${binding.bindingId}; status=open`,
             observed: `openConflicts=${openConflicts}; resolvedConflictId=${conflictId}`,
             rowCount: openConflicts
           }
         ]
       });
     } finally {
-      await cleanupParameterFileAcceptanceArtifacts(fileName);
+      await cleanupParameterFileAcceptanceArtifacts({ fileName: binding?.fileName, binding });
     }
   });
 
@@ -443,7 +369,7 @@ test.describe("project parameter files browser acceptance", () => {
     // @operation-planned PARAM-FILE-ROLLBACK-001
     test.skip(
       true,
-      "Supplemental playwright-cli evidence is under work/ui-checks/param-file-rollback/. Blocking Playwright waits for leftover PPV fixtures (TD-079)."
+      "Rollback pointer restore is TD-056 (already on main); this session must not change rollback routes."
     );
     void page;
   });

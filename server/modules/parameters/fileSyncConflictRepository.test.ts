@@ -21,6 +21,73 @@ import {
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
+describe("insertFileSyncConflict semantic SQL", () => {
+  afterEach(() => {
+    setParameterIdentityMode(null);
+  });
+
+  it("omits retired PPV and definition columns after cutover", async () => {
+    setParameterIdentityMode("semantic");
+    const statements: string[] = [];
+    const db = {
+      query: async (sql: string, values: unknown[]) => {
+        statements.push(sql);
+        if (sql.includes("information_schema.columns")) {
+          return { rows: [{ exists: false }] };
+        }
+        return {
+          rows: [
+            {
+              id: String(values[0]),
+              organization_id: String(values[1]),
+              project_id: String(values[2]),
+              file_version_id: String(values[3]),
+              file_draft_id: String(values[4]),
+              ui_draft_id: String(values[5]),
+              file_value: String(values[6]),
+              ui_draft_value: String(values[7]),
+              status: "open" as const,
+              resolved_by_user_id: null,
+              resolved_at: null,
+              created_at: "2026-08-18T00:00:00.000Z",
+              parameter_spec_id: String(values[8]),
+              project_parameter_binding_id: String(values[9])
+            }
+          ]
+        };
+      }
+    };
+
+    const inserted = await insertFileSyncConflict(db, {
+      id: "conflict-semantic",
+      organizationId: "org-1",
+      projectId: "project-1",
+      projectParameterValueId: "binding-1",
+      parameterDefinitionId: "spec-1",
+      fileVersionId: "version-1",
+      fileDraftId: "draft-file",
+      uiDraftId: "draft-ui",
+      fileValue: "<80>",
+      uiDraftValue: "<90>",
+      parameterSpecId: "spec-1",
+      projectParameterBindingId: "binding-1"
+    });
+
+    expect(statements).toHaveLength(2);
+    expect(statements[0]!.toLowerCase()).toContain("information_schema.columns");
+    const sql = statements[1]!.toLowerCase();
+    expect(sql).toContain("parameter_spec_id");
+    expect(sql).toContain("project_parameter_binding_id");
+    expect(sql).not.toContain("project_parameter_value_id");
+    expect(sql).not.toContain("parameter_definition_id");
+    expect(inserted).toMatchObject({
+      id: "conflict-semantic",
+      projectParameterValueId: "binding-1",
+      parameterDefinitionId: "spec-1"
+    });
+  });
+});
+
 describe.skipIf(!databaseAvailable)("file sync conflict repository", () => {
   let db: InMemoryTestDatabase;
 
