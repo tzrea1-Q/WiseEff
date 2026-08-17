@@ -1,4 +1,5 @@
 import { LEGACY_IDENTITY_SQL } from "../parameter-kernel/legacyParameterIdentityNames";
+import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { randomUUID } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
 import { assertNoCycle, buildPath, depthOf } from "../shared/moduleTree";
@@ -209,15 +210,26 @@ export async function countParametersForModule(
   db: Queryable,
   query: { organizationId: string; moduleId: string }
 ) {
-  const result = await db.query<{ count: string }>(
-    `
-    select count(*)::text as count
-    from ${LEGACY_IDENTITY_SQL.definitionsTable}
-    where organization_id = $1
-      and parameter_module_id = $2
-    `,
-    [query.organizationId, query.moduleId]
-  );
+  const result =
+    parameterIdentityMode() === "semantic"
+      ? await db.query<{ count: string }>(
+          `
+          select count(*)::text as count
+          from project_parameter_bindings
+          where organization_id = $1
+            and module_id = $2
+          `,
+          [query.organizationId, query.moduleId]
+        )
+      : await db.query<{ count: string }>(
+          `
+          select count(*)::text as count
+          from ${LEGACY_IDENTITY_SQL.definitionsTable}
+          where organization_id = $1
+            and parameter_module_id = $2
+          `,
+          [query.organizationId, query.moduleId]
+        );
 
   return Number(result.rows[0]?.count ?? 0);
 }

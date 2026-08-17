@@ -16,6 +16,7 @@ import { seedCoreGraph } from "../../testing/fixtures";
 import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { listParameters } from "./repository";
 import {
+  countParametersForModule,
   createParameterModule,
   getParameterModuleById,
   listParameterModules,
@@ -278,5 +279,82 @@ describe.skipIf(!databaseAvailable)("listParameters module tree filter", () => {
       includeDescendants: false
     });
     expect(parentOnly.map((row) => row.id)).toEqual(["value-root"]);
+  });
+});
+
+describe.skipIf(!databaseAvailable)("listParameters semantic module tree filter", () => {
+  let db: InMemoryTestDatabase;
+
+  beforeEach(async () => {
+    db = await createInMemoryTestDatabase();
+    setParameterIdentityMode("semantic");
+    await seedCoreGraph(db, {
+      organization: { id: "org-1", name: "ChargeLab" },
+      users: [{ id: "user-1", name: "Riley Chen", email: "riley@example.com" }],
+      projects: [{ id: "project-1", name: "Aurora", code: "AUR" }]
+    });
+    await db.query(
+      `insert into parameter_modules (id, organization_id, parent_id, name, path, depth, kind, origin, sort_order)
+       values
+         ('pm-a', 'org-1', null, 'Power', 'pm-a', 1, 'business', 'curated', 0),
+         ('pm-b', 'org-1', 'pm-a', 'Battery', 'pm-a/pm-b', 2, 'business', 'curated', 1),
+         ('pm-x', 'org-1', null, 'Charging', 'pm-x', 1, 'business', 'curated', 2)`
+    );
+    await db.query(
+      `insert into parameter_specs (id, organization_id, source_kind, specification_key, risk)
+       values
+         ('spec-root', 'org-1', 'dts', 'chip/root_param', 'Low'),
+         ('spec-child', 'org-1', 'dts', 'chip/child_param', 'Low'),
+         ('spec-other', 'org-1', 'dts', 'chip/other_param', 'Low')`
+    );
+    await db.query(
+      `insert into project_parameter_bindings (id, organization_id, project_id, parameter_spec_id, module_id, logical_node_id)
+       values
+         ('binding-root', 'org-1', 'project-1', 'spec-root', 'pm-a', null),
+         ('binding-child', 'org-1', 'project-1', 'spec-child', 'pm-b', null),
+         ('binding-other', 'org-1', 'project-1', 'spec-other', 'pm-x', null)`
+    );
+  });
+
+  afterEach(async () => {
+    setParameterIdentityMode(null);
+    await db?.rollback();
+  });
+
+  it("returns the module and its descendants when includeDescendants is true", async () => {
+    const rows = await listParameters(db, {
+      organizationId: "org-1",
+      projectId: "project-1",
+      moduleId: "pm-a",
+      includeDescendants: true
+    });
+
+    expect(rows.map((row) => row.id).sort()).toEqual(["binding-child", "binding-root"]);
+    expect(rows.find((row) => row.id === "binding-child")?.moduleId).toBe("pm-b");
+  });
+
+  it("returns only the exact module when includeDescendants is false", async () => {
+    const rows = await listParameters(db, {
+      organizationId: "org-1",
+      moduleId: "pm-b",
+      includeDescendants: false
+    });
+
+    expect(rows.map((row) => row.id)).toEqual(["binding-child"]);
+    const parentOnly = await listParameters(db, {
+      organizationId: "org-1",
+      moduleId: "pm-a",
+      includeDescendants: false
+    });
+    expect(parentOnly.map((row) => row.id)).toEqual(["binding-root"]);
+  });
+
+  it("counts bindings on a module so non-empty deletes stay blocked", async () => {
+    await expect(
+      countParametersForModule(db, { organizationId: "org-1", moduleId: "pm-b" })
+    ).resolves.toBe(1);
+    await expect(
+      countParametersForModule(db, { organizationId: "org-1", moduleId: "pm-a" })
+    ).resolves.toBe(1);
   });
 });

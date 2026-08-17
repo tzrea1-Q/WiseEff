@@ -3,6 +3,7 @@
  * Must not query renamed flat-identity archive tables.
  */
 import type { Queryable } from "../../shared/database/client";
+import { buildParameterModuleSubtreeFilter } from "./parameterModuleRepository";
 
 export type SemanticParameterRow = {
   id: string;
@@ -31,6 +32,8 @@ export async function listSemanticParameters(
     organizationId: string;
     projectId?: string;
     module?: string;
+    moduleId?: string;
+    includeDescendants?: boolean;
     q?: string;
     limit: number;
   }
@@ -45,6 +48,11 @@ export async function listSemanticParameters(
   if (query.module) {
     values.push(query.module);
     where.push(`split_part(ps.specification_key, '/', 1) = $${values.length}`);
+  }
+  if (query.moduleId) {
+    where.push(
+      buildParameterModuleSubtreeFilter(values, query.moduleId, query.includeDescendants !== false, "b.module_id")
+    );
   }
   if (query.q) {
     values.push(`%${query.q}%`);
@@ -65,8 +73,13 @@ export async function listSemanticParameters(
       'DTS' as config_format,
       coalesce(psv.value_shape->>'kind', 'legacy-text') as value_kind,
       split_part(ps.specification_key, '/', 1) as module,
-      null::text as parameter_module_id,
-      null::text as module_path,
+      b.module_id as parameter_module_id,
+      (
+        select string_agg(pm_seg.name, '/' order by pm_seg.depth)
+        from parameter_modules pm_seg
+        where pm_seg.organization_id = b.organization_id
+          and pm_seg.id = any(string_to_array(coalesce(pm.path, ''), '/'))
+      ) as module_path,
       '' as default_range,
       coalesce(psv.value_shape->>'unit', '') as unit,
       coalesce(ps.risk, 'Low') as risk,
@@ -77,6 +90,7 @@ export async function listSemanticParameters(
       coalesce(bpr.created_at, now()) as updated_at
     from project_parameter_bindings b
     inner join parameter_specs ps on ps.id = b.parameter_spec_id
+    left join parameter_modules pm on pm.id = b.module_id and pm.organization_id = b.organization_id
     left join lateral (
       select psv.*
       from parameter_spec_versions psv
