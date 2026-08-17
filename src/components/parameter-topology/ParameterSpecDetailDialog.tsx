@@ -322,7 +322,7 @@ export function ParameterSpecDetailDialog({
                 : "当前未接线保存能力，仅可查看。"}
             </p>
             {typeof detail.usageCount === "number" ? (
-              <p className="form-hint">
+              <p className="form-hint" aria-label={PARAMETER_ADMIN_UI.referenceCountLabel}>
                 {PARAMETER_ADMIN_UI.referenceCountLabel}：{detail.usageCount}
               </p>
             ) : null}

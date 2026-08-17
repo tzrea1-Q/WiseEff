@@ -115,7 +115,6 @@ describe("definition detail 相关知识 section", () => {
       organizationId: "org-1",
       propertyKey: "gpio_int",
       driverModule: "sc8562",
-      businessCategory: null,
       reviewState: "active",
       valueType: "cells",
       valueShape: { kind: "cells" },

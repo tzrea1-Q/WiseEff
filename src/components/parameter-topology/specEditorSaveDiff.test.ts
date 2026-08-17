@@ -22,7 +22,6 @@ function baseDetail(overrides: Partial<ParameterSpecDetailView> = {}): Parameter
     schemaSource: "manual",
     schemaVersion: 1,
     exampleValue: null,
-    businessCategory: null,
     reviewState: "active",
     usageCount: 0,
     displayName: "Perf limit",

@@ -1,6 +1,6 @@
 # Parameter spec editor fidelity
 
-> Status: **Active** — remaining write-contract closed; Batches 2–5 still open
+> Status: **Active** — remaining write-contract and Batch 2 closed; Batches 3–5 still open
 > Date: 2026-08-03
 > Chinese: [`docs/zh-CN/exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md`](../../zh-CN/exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md)
 > Governing IA: [ADR-0001](../../adr/0001-parameter-admin-organized-by-governance-scope.md), [ADR-0015](../../adr/0015-governance-queues-live-with-the-object-they-govern.md)
@@ -9,9 +9,9 @@
 
 ## Landed vs remaining
 
-**Landed:** SE-D1 (`policyTarget` removed from the editor write path); SE-D2 constraints replace on update and activate; SE-D3 server key-presence (`units` no longer uses `coalesce` to ignore null); SE-D4 activate accepts and persists `units` / `exampleValue`; SE-5 empty `displayName` round-trips; SE-D6 PATCH runs `assertSpecActivatable` only when `valueShape` changed; SE-D5 pre-save `valueShape`/`constraints` diff plus referenced-definition acknowledgement; shared `ValueShapeFields`; ModalDialog chrome for SE-17–SE-21.
+**Landed:** SE-D1 (`policyTarget` removed from the editor write path); SE-D2 constraints replace on update and activate; SE-D3 server key-presence (`units` no longer uses `coalesce` to ignore null); SE-D4 activate accepts and persists `units` / `exampleValue`; SE-5 empty `displayName` round-trips; SE-D6 PATCH runs `assertSpecActivatable` only when `valueShape` changed; SE-D5 pre-save `valueShape`/`constraints` diff plus referenced-definition acknowledgement; shared `ValueShapeFields`; ModalDialog chrome for SE-17–SE-21; Batch 2 display honesty (SE-6–SE-9).
 
-**Remaining:** Batches 2–5 (display fields, editing affordances, dialog chrome, acceptance/docs gate).
+**Remaining:** Batches 3–5 (editing affordances, dialog chrome leftovers, acceptance/docs gate).
 
 ## Context
 
@@ -175,10 +175,10 @@ Call `assertSpecActivatable` from `updateParameterSpec` only when the incoming `
 
 ### Batch 2 — fields that cannot carry a real value
 
-9. [ ] Remove 业务分类 (SE-6) and the dead `businessCategories` filter key if nothing else reads it.
-10. [ ] Collapse 驱动模块 and 所属模块 into one attribution field (SE-7), respecting SE-R4, and add a discoverable path to 模块管理 for changing placement.
-11. [ ] Resolve 使用与历史 (SE-8) — backfill `usage` and real version history, or delete the group per SE-R7.
-12. [ ] Remove the duplicate reference-count statement (SE-9).
+9. [x] Remove 业务分类 (SE-6) and the dead `businessCategories` / `category` URL filter key. Spec-library rows no longer carry an unused `businessCategory`.
+10. [x] Collapse the library column *named* 驱动模块 into 所属模块 (SE-7), matching the dialog field and ColumnFilter label. API `driverModule` is unchanged (SE-R4). Declared-subject correction stays on 「修正归属」 (ADR-0017); do not send operators to 模块管理 for that write.
+11. [x] Delete the 使用与历史 group (SE-8 / SE-R7). `toSpecDetailView` always sent `usage: []` and a one-row synthetic `schemaHistory` from `currentVersion` (TD-048: every definition is version 1).
+12. [x] Keep a single 引用数 statement in the dialog header (SE-9).
 
 ### Batch 3 — editing affordances
 

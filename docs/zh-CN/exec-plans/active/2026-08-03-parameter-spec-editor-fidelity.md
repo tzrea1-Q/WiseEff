@@ -1,6 +1,6 @@
 # 参数定义编辑器保真度
 
-> 状态：**进行中** — 剩余写入契约已关闭，批次 2–5 仍开放
+> 状态：**进行中** — 剩余写入契约与批次 2 已关闭，批次 3–5 仍开放
 > 日期：2026-08-03
 > English: [`docs/exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md`](../../../exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md)
 > 约束性 IA：[ADR-0001](../../../adr/0001-parameter-admin-organized-by-governance-scope.md)、[ADR-0015](../../../adr/0015-governance-queues-live-with-the-object-they-govern.md)
@@ -9,9 +9,9 @@
 
 ## 已落地与剩余
 
-**已落地：** SE-D1（编辑器写入路径已去掉 `policyTarget`）；SE-D2 约束在 update 与 activate 上改为替换；SE-D3 服务端按键是否出现判定（`units` 不再用 `coalesce` 忽略 null）；SE-D4 激活会接受并持久化 `units` / `exampleValue`；SE-5 空展示名可往返；SE-D6 PATCH 仅在 `valueShape` 变化时运行 `assertSpecActivatable`；SE-D5 保存前 `valueShape`/`constraints` 对比，以及被引用定义的确认勾选；共用 `ValueShapeFields`；SE-17–SE-21 的 ModalDialog 外壳。
+**已落地：** SE-D1（编辑器写入路径已去掉 `policyTarget`）；SE-D2 约束在 update 与 activate 上改为替换；SE-D3 服务端按键是否出现判定（`units` 不再用 `coalesce` 忽略 null）；SE-D4 激活会接受并持久化 `units` / `exampleValue`；SE-5 空展示名可往返；SE-D6 PATCH 仅在 `valueShape` 变化时运行 `assertSpecActivatable`；SE-D5 保存前 `valueShape`/`constraints` 对比，以及被引用定义的确认勾选；共用 `ValueShapeFields`；SE-17–SE-21 的 ModalDialog 外壳；批次 2 展示诚实（SE-6–SE-9）。
 
-**剩余：** 批次 2–5（展示字段、编辑形态、弹窗外壳、验收/文档门禁）。
+**剩余：** 批次 3–5（编辑形态、弹窗外壳余量、验收/文档门禁）。
 
 ## 背景
 
@@ -175,10 +175,10 @@ D2 的审计那一半已经落地：`spec-updated` 元数据携带 `previousValu
 
 ### 批次 2 — 无法承载真实取值的字段
 
-9. [ ] 移除业务分类（SE-6），若无其他读取方，同时移除失效的 `businessCategories` 筛选键。
-10. [ ] 把驱动模块与所属模块收敛为一个归属字段（SE-7），遵守 SE-R4，并提供通往模块管理的可发现路径以修改位置。
-11. [ ] 处理使用与历史（SE-8）——补齐 `usage` 与真实版本历史，或按 SE-R7 删除该分组。
-12. [ ] 移除重复的引用数陈述（SE-9）。
+9. [x] 移除业务分类（SE-6）以及失效的 `businessCategories` / `category` URL 筛选键。定义库行不再携带未使用的 `businessCategory`。
+10. [x] 把定义库中*名为*驱动模块的列收敛为所属模块（SE-7），与弹窗字段和列筛选标签一致。API `driverModule` 不变（SE-R4）。声明主体的纠正仍走「修正归属」（ADR-0017）；不要为此把操作者打发到模块管理。
+11. [x] 删除「使用与历史」分组（SE-8 / SE-R7）。`toSpecDetailView` 始终发送空 `usage`，以及由 `currentVersion` 拼出的一行假 `schemaHistory`（TD-048：每个定义都是 version 1）。
+12. [x] 弹窗头部只保留一处「引用数」（SE-9）。
 
 ### 批次 3 — 编辑形态
 

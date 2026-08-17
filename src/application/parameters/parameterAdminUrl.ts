@@ -5,7 +5,6 @@ export type ParameterAdminUrlState = {
   lifecycles: string[];
   driverModules: string[];
   compatibles: string[];
-  businessCategories: string[];
   schemaSources: string[];
   moduleNames: string[];
   sort: string;
@@ -18,7 +17,6 @@ export const EMPTY_PARAMETER_ADMIN_FILTERS: ParameterSpecLibraryFilters = {
   q: "",
   driverModules: [],
   compatibles: [],
-  businessCategories: [],
   schemaSources: [],
   lifecycles: [],
   moduleNames: []
@@ -49,7 +47,6 @@ export function parseParameterAdminUrl(search: string): ParameterAdminUrlState {
     lifecycles: parseCsvQueryParam(params.get("lifecycle")),
     driverModules: parseCsvQueryParam(params.get("driver")),
     compatibles: parseCsvQueryParam(params.get("compatible")),
-    businessCategories: parseCsvQueryParam(params.get("category")),
     schemaSources: parseCsvQueryParam(params.get("schema")),
     moduleNames: parseCsvQueryParam(params.get("module")),
     sort: params.get("sort") ?? DEFAULT_SORT,
@@ -63,7 +60,6 @@ export function toParameterAdminFilters(url: ParameterAdminUrlState): ParameterS
     lifecycles: url.lifecycles,
     driverModules: url.driverModules,
     compatibles: url.compatibles,
-    businessCategories: url.businessCategories,
     schemaSources: url.schemaSources,
     moduleNames: url.moduleNames
   };
@@ -81,7 +77,6 @@ export function buildParameterAdminSearch(patch: Partial<ParameterAdminUrlState>
   setOrDelete("lifecycle", formatCsvQueryParam(next.lifecycles));
   setOrDelete("driver", formatCsvQueryParam(next.driverModules));
   setOrDelete("compatible", formatCsvQueryParam(next.compatibles));
-  setOrDelete("category", formatCsvQueryParam(next.businessCategories));
   setOrDelete("schema", formatCsvQueryParam(next.schemaSources));
   setOrDelete("module", formatCsvQueryParam(next.moduleNames));
   if (next.sort && next.sort !== DEFAULT_SORT) {

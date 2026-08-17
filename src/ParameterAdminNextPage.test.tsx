@@ -958,7 +958,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     });
   });
 
-  it("shows driver-module taxonomy under 驱动模块 column", async () => {
+  it("shows observed taxonomy under 所属模块 column", async () => {
     const repository = createRepository({
       listSpecs: vi.fn().mockResolvedValue([
         {
@@ -985,10 +985,10 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
 
     const library = await screen.findByRole("region", { name: "参数定义库" });
     const table = within(library).getByRole("table");
-    expect(within(library).getByRole("columnheader", { name: "驱动模块" })).toBeInTheDocument();
+    expect(within(library).getByRole("columnheader", { name: "所属模块" })).toBeInTheDocument();
     expect(within(table).getByText("充电策略")).toBeInTheDocument();
     expect(within(table).getByText("unknown-ic（未实测）")).toBeInTheDocument();
-    expect(within(table).queryByRole("columnheader", { name: "所属模块" })).not.toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: "驱动模块" })).not.toBeInTheDocument();
     expect(within(table).queryByText("（预测）")).not.toBeInTheDocument();
     expect(within(table).queryByRole("columnheader", { name: "compatible" })).not.toBeInTheDocument();
     expect(within(table).getByText("cells")).toBeInTheDocument();

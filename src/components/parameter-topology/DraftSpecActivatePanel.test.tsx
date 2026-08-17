@@ -19,7 +19,6 @@ function draftDetail(overrides: Partial<ParameterSpecDetailView> = {}): Paramete
     schemaSource: "manual",
     schemaVersion: 1,
     exampleValue: "<&gpio13 29 0>",
-    businessCategory: null,
     reviewState: "draft",
     usageCount: 0,
     ...overrides
