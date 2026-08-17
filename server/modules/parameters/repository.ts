@@ -205,6 +205,8 @@ export async function listParameters(db: Queryable, query: ListParametersQuery) 
       organizationId: query.organizationId,
       projectId: query.projectId,
       module: query.module,
+      moduleId: query.moduleId,
+      includeDescendants: query.includeDescendants,
       q: query.q,
       limit
     });

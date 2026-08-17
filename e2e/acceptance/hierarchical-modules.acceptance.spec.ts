@@ -1,21 +1,25 @@
 import "dotenv/config";
-import { spawnSync } from "node:child_process";
 import { expect, test, type APIRequestContext } from "playwright/test";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
-import { authHeadersForUser } from "./helpers/bearerAuth";
+import { authHeadersForRole } from "./helpers/bearerAuth";
+import { acceptanceCast } from "./helpers/cast";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
-import { apiRoute, smokeHeaders } from "./helpers/runtime";
+import { apiRoute } from "./helpers/runtime";
+import {
+  seedIsolatedNumericCellBinding,
+  startSwappedDisposablePostCutoverRuntime,
+  type IsolatedBinding
+} from "./helpers/semanticBindingFixture";
 
 useBrowserDiagnostics(test);
 
 const organizationId = "org-chargelab";
 const projectId = "aurora";
-const acceptanceParameterDefinitionId = "fast-charge-current";
-const acceptanceParameterListId = "aurora-fast-charge-current";
-const hardwareUserId = "acceptance-modtree-hardware-user";
-const hardwareRoleBindingId = "acceptance-modtree-hardware-user-binding";
 const moduleNamePrefix = "Acceptance ModTree ";
+const databaseUrl = process.env.DATABASE_URL;
+
+test.skip(!databaseUrl, "DATABASE_URL is required for disposable post-cutover hierarchical module acceptance.");
 
 type ParameterModuleDto = {
   id: string;
@@ -38,46 +42,12 @@ type DebugNodeDto = {
   moduleId?: string | null;
 };
 
-function runSeedScript(script: string) {
-  const invocation =
-    process.platform === "win32"
-      ? { command: "cmd.exe", args: ["/d", "/s", "/c", `npm run ${script}`] }
-      : { command: "npm", args: ["run", script] };
-  const result = spawnSync(invocation.command, invocation.args, {
-    cwd: process.cwd(),
-    encoding: "utf8",
-    env: process.env
-  });
-
-  if (result.status !== 0) {
-    const stdout = typeof result.stdout === "string" ? result.stdout.trim() : "";
-    const stderr = typeof result.stderr === "string" ? result.stderr.trim() : "";
-    throw new Error([`npm run ${script} failed with exit code ${result.status}.`, stdout, stderr].filter(Boolean).join("\n"));
-  }
+function adminHeaders() {
+  return authHeadersForRole("admin");
 }
 
-function authHeaders(userId?: string) {
-  if (userId === hardwareUserId) {
-    return authHeadersForUser(hardwareUserId, "modtree.acceptance@chargelab.cn", "ModTree Acceptance Hardware User");
-  }
-  return smokeHeaders();
-}
-
-async function seedHardwareUser() {
+async function seedOrgHardwareUser() {
   await withPgClient(async (client) => {
-    await client.query(
-      `
-      insert into users (id, organization_id, name, email, title, is_active)
-      values ($1, $2, 'ModTree Acceptance Hardware User', 'modtree.acceptance@chargelab.cn', 'Hardware User', true)
-      on conflict (id) do update set
-        organization_id = excluded.organization_id,
-        name = excluded.name,
-        email = excluded.email,
-        title = excluded.title,
-        is_active = excluded.is_active
-      `,
-      [hardwareUserId, organizationId]
-    );
     await client.query(
       `
       insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
@@ -86,27 +56,17 @@ async function seedHardwareUser() {
         project_id = excluded.project_id,
         role_id = excluded.role_id
       `,
-      [hardwareRoleBindingId, hardwareUserId, organizationId]
+      [
+        `acceptance-${acceptanceCast.zhaoHeng.userId}-hardware-user-org`,
+        acceptanceCast.zhaoHeng.userId,
+        organizationId
+      ]
     );
   });
 }
 
 async function cleanupAcceptanceModuleRows() {
   await withPgClient(async (client) => {
-    await client.query(
-      `
-      update parameter_definitions
-      set parameter_module_id = null
-      where organization_id = $1
-        and id = $2
-        and parameter_module_id in (
-          select id from parameter_modules
-          where organization_id = $1 and name like $3
-        )
-      `,
-      [organizationId, acceptanceParameterDefinitionId, `${moduleNamePrefix}%`]
-    );
-
     const parameterModuleIds = (
       await client.query<{ id: string }>(
         "select id from parameter_modules where organization_id = $1 and name like $2",
@@ -115,6 +75,27 @@ async function cleanupAcceptanceModuleRows() {
     ).rows.map((row) => row.id);
 
     if (parameterModuleIds.length > 0) {
+      const unclassified = await client.query<{ id: string }>(
+        `
+        select id from parameter_modules
+        where organization_id = $1 and parent_id is null and kind = 'unclassified'
+        order by path
+        limit 1
+        `,
+        [organizationId]
+      );
+      const fallbackModuleId = unclassified.rows[0]?.id;
+      if (fallbackModuleId) {
+        await client.query(
+          `
+          update project_parameter_bindings
+          set module_id = $1
+          where organization_id = $2
+            and module_id = any($3::text[])
+          `,
+          [fallbackModuleId, organizationId, parameterModuleIds]
+        );
+      }
       await client.query("delete from parameter_modules where id = any($1::text[])", [parameterModuleIds]);
     }
 
@@ -135,27 +116,18 @@ async function cleanupAcceptanceModuleRows() {
   });
 }
 
-async function prepareHierarchicalModulesAcceptanceState() {
-  runSeedScript("db:migrate");
-  runSeedScript("db:seed:m0");
-  runSeedScript("db:seed:m1");
-  runSeedScript("db:seed:m3");
-  await seedHardwareUser();
-  await cleanupAcceptanceModuleRows();
-}
-
 async function createParameterModule(
   request: APIRequestContext,
   input: { name: string; parentId?: string | null }
 ) {
   const response = await request.post(apiRoute("/api/v1/parameter-modules"), {
-    headers: smokeHeaders(),
+    headers: adminHeaders(),
     data: {
       name: input.name,
       ...(input.parentId !== undefined ? { parentId: input.parentId } : {})
     }
   });
-  expect(response.status()).toBe(201);
+  expect(response.status(), await response.text()).toBe(201);
   const body = (await response.json()) as { item: ParameterModuleDto };
   return { response, item: body.item };
 }
@@ -165,63 +137,94 @@ async function createDebugModule(
   input: { name: string; parentId?: string | null }
 ) {
   const response = await request.post(apiRoute("/api/v1/debugging/admin/modules"), {
-    headers: smokeHeaders(),
+    headers: adminHeaders(),
     data: {
       name: input.name,
       ...(input.parentId !== undefined ? { parentId: input.parentId } : {})
     }
   });
-  expect(response.status()).toBe(201);
+  expect(response.status(), await response.text()).toBe(201);
   const body = (await response.json()) as { item: DebugModuleDto };
   return { response, item: body.item };
 }
 
-async function assignParameterToModule(moduleId: string) {
+async function assignBindingToModule(bindingId: string, moduleId: string) {
   await withPgClient(async (client) => {
     const result = await client.query(
       `
-      update parameter_definitions
-      set parameter_module_id = $1, updated_at = now()
+      update project_parameter_bindings
+      set module_id = $1
       where organization_id = $2 and id = $3
       `,
-      [moduleId, organizationId, acceptanceParameterDefinitionId]
+      [moduleId, organizationId, bindingId]
     );
     expect(result.rowCount).toBe(1);
   });
 }
 
-test.describe("MOD-TREE hierarchical module acceptance", () => {
-  test.beforeAll(async () => {
-    await prepareHierarchicalModulesAcceptanceState();
+async function seedAssignableBinding(
+  request: APIRequestContext,
+  reason: string,
+  propertyKey = "iin_max"
+): Promise<IsolatedBinding> {
+  return seedIsolatedNumericCellBinding(request, {
+    projectId,
+    propertyKey,
+    cellValue: 2300,
+    reason
   });
+}
 
-  test.afterAll(async () => {
+test.describe("MOD-TREE hierarchical module acceptance", () => {
+  let restoreDisposable: (() => Promise<void>) | undefined;
+
+  test.beforeAll(async () => {
+    test.setTimeout(180_000);
+    const baseDatabaseUrl = databaseUrl?.trim();
+    if (!baseDatabaseUrl) {
+      throw new Error("DATABASE_URL is required to create the disposable hierarchical-modules database.");
+    }
+    const started = await startSwappedDisposablePostCutoverRuntime(baseDatabaseUrl, {
+      label: "mod_tree",
+      markerPurpose: "mod-tree"
+    });
+    restoreDisposable = started.restore;
+    await seedOrgHardwareUser();
     await cleanupAcceptanceModuleRows();
   });
 
-  test("nested parameter modules support subtree filtering for assigned parameters", async ({ page }, testInfo) => {
+  test.afterAll(async () => {
+    test.setTimeout(60_000);
+    await restoreDisposable?.();
+  });
+
+  test("nested parameter modules support subtree filtering for assigned parameters", async ({
+    page,
+    request
+  }, testInfo) => {
     // @acceptance MOD-TREE-PARAM-001
     // @operation MOD-TREE-PARAM-001
     const suffix = Date.now().toString(36);
     const parentName = `${moduleNamePrefix}Power ${suffix}`;
     const childName = `${moduleNamePrefix}Battery ${suffix}`;
 
-    const parent = await createParameterModule(page.request, { name: parentName });
-    const child = await createParameterModule(page.request, { name: childName, parentId: parent.item.id });
+    const parent = await createParameterModule(request, { name: parentName });
+    const child = await createParameterModule(request, { name: childName, parentId: parent.item.id });
     expect(child.item.parentId).toBe(parent.item.id);
     expect(child.item.path).toBe(`${parent.item.path}/${child.item.id}`);
 
-    await assignParameterToModule(child.item.id);
+    const binding = await seedAssignableBinding(request, "MOD-TREE-PARAM-001 semantic binding");
+    await assignBindingToModule(binding.bindingId, child.item.id);
 
     const listResponse = await page.request.get(
       apiRoute(
         `/api/v1/parameters?projectId=${encodeURIComponent(projectId)}&moduleId=${encodeURIComponent(parent.item.id)}&includeDescendants=true`
       ),
-      { headers: smokeHeaders() }
+      { headers: adminHeaders() }
     );
     expect(listResponse.ok()).toBe(true);
     const listBody = (await listResponse.json()) as { items: ParameterRecordDto[] };
-    const matched = listBody.items.find((item) => item.id === acceptanceParameterListId);
+    const matched = listBody.items.find((item) => item.id === binding.bindingId);
     expect(matched).toBeTruthy();
     expect(matched?.moduleId).toBe(child.item.id);
 
@@ -229,11 +232,11 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
       apiRoute(
         `/api/v1/parameters?projectId=${encodeURIComponent(projectId)}&moduleId=${encodeURIComponent(parent.item.id)}&includeDescendants=false`
       ),
-      { headers: smokeHeaders() }
+      { headers: adminHeaders() }
     );
     expect(directOnlyResponse.ok()).toBe(true);
     const directOnlyBody = (await directOnlyResponse.json()) as { items: ParameterRecordDto[] };
-    expect(directOnlyBody.items.some((item) => item.id === acceptanceParameterListId)).toBe(false);
+    expect(directOnlyBody.items.some((item) => item.id === binding.bindingId)).toBe(false);
 
     await recordOperationEvidence({
       operationId: "MOD-TREE-PARAM-001",
@@ -257,36 +260,38 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
         summarizeApiResponse(listResponse, {
           method: "GET",
           path: "/api/v1/parameters",
-          responseSummary: `subtree includes ${acceptanceParameterListId}`
+          responseSummary: `subtree includes binding ${binding.bindingId}`
         })
       ],
       db: [
         {
-          table: "parameter_definitions",
-          predicate: `id=${acceptanceParameterDefinitionId}`,
-          observed: `parameter_module_id=${child.item.id}`,
+          table: "project_parameter_bindings",
+          predicate: `id=${binding.bindingId}`,
+          observed: `module_id=${child.item.id}`,
           rowCount: 1
         }
       ],
-      notes: "Parent module filter with includeDescendants=true returned a parameter assigned to a child module."
+      notes:
+        "Parent module filter with includeDescendants=true returned a post-cutover binding assigned to a child module (TD-079)."
     });
   });
 
-  test("admin can move parameter modules and cycle moves are rejected", async ({ page }, testInfo) => {
+  test("admin can move parameter modules and cycle moves are rejected", async ({ page, request }, testInfo) => {
     // @acceptance MOD-TREE-PARAM-002
     // @operation MOD-TREE-PARAM-002
     const suffix = Date.now().toString(36);
-    const moduleA = await createParameterModule(page.request, { name: `${moduleNamePrefix}Move A ${suffix}` });
-    const moduleB = await createParameterModule(page.request, { name: `${moduleNamePrefix}Move B ${suffix}` });
-    const child = await createParameterModule(page.request, {
+    const moduleA = await createParameterModule(request, { name: `${moduleNamePrefix}Move A ${suffix}` });
+    const moduleB = await createParameterModule(request, { name: `${moduleNamePrefix}Move B ${suffix}` });
+    const child = await createParameterModule(request, {
       name: `${moduleNamePrefix}Move Child ${suffix}`,
       parentId: moduleA.item.id
     });
 
-    await assignParameterToModule(child.item.id);
+    const binding = await seedAssignableBinding(request, "MOD-TREE-PARAM-002 semantic binding", "iin_min");
+    await assignBindingToModule(binding.bindingId, child.item.id);
 
     const moveResponse = await page.request.post(apiRoute(`/api/v1/parameter-modules/${child.item.id}/move`), {
-      headers: smokeHeaders(),
+      headers: adminHeaders(),
       data: { parentId: moduleB.item.id }
     });
     expect(moveResponse.ok()).toBe(true);
@@ -298,14 +303,14 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
       apiRoute(
         `/api/v1/parameters?projectId=${encodeURIComponent(projectId)}&moduleId=${encodeURIComponent(moduleB.item.id)}&includeDescendants=true`
       ),
-      { headers: smokeHeaders() }
+      { headers: adminHeaders() }
     );
     expect(listAfterMove.ok()).toBe(true);
     const listAfterMoveBody = (await listAfterMove.json()) as { items: ParameterRecordDto[] };
-    expect(listAfterMoveBody.items.some((item) => item.id === acceptanceParameterListId)).toBe(true);
+    expect(listAfterMoveBody.items.some((item) => item.id === binding.bindingId)).toBe(true);
 
     const cycleResponse = await page.request.post(apiRoute(`/api/v1/parameter-modules/${moduleB.item.id}/move`), {
-      headers: smokeHeaders(),
+      headers: adminHeaders(),
       data: { parentId: child.item.id }
     });
     expect(cycleResponse.status()).toBe(409);
@@ -329,7 +334,7 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
         summarizeApiResponse(listAfterMove, {
           method: "GET",
           path: "/api/v1/parameters",
-          responseSummary: `parameter follows moved subtree under ${moduleB.item.id}`
+          responseSummary: `binding ${binding.bindingId} follows moved subtree under ${moduleB.item.id}`
         }),
         summarizeApiResponse(cycleResponse, {
           method: "POST",
@@ -341,19 +346,19 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
     });
   });
 
-  test("nested debug node modules support subtree filtering for assigned nodes", async ({ page }, testInfo) => {
+  test("nested debug node modules support subtree filtering for assigned nodes", async ({ page, request }, testInfo) => {
     // @acceptance MOD-TREE-DEBUG-001
     // @operation MOD-TREE-DEBUG-001
     const suffix = Date.now().toString(36);
-    const parent = await createDebugModule(page.request, { name: `${moduleNamePrefix}Debug Root ${suffix}` });
-    const child = await createDebugModule(page.request, {
+    const parent = await createDebugModule(request, { name: `${moduleNamePrefix}Debug Root ${suffix}` });
+    const child = await createDebugModule(request, {
       name: `${moduleNamePrefix}Debug Child ${suffix}`,
       parentId: parent.item.id
     });
     const nodeName = `${moduleNamePrefix}Node ${suffix}`;
 
     const createNodeResponse = await page.request.post(apiRoute("/api/v1/debugging/admin/nodes"), {
-      headers: smokeHeaders(),
+      headers: adminHeaders(),
       data: {
         name: nodeName,
         moduleId: child.item.id,
@@ -368,7 +373,7 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
       apiRoute(
         `/api/v1/debugging/admin/nodes?moduleId=${encodeURIComponent(parent.item.id)}&includeDescendants=true`
       ),
-      { headers: smokeHeaders() }
+      { headers: adminHeaders() }
     );
     expect(listResponse.ok()).toBe(true);
     const listBody = (await listResponse.json()) as { items: DebugNodeDto[] };
@@ -378,7 +383,7 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
       apiRoute(
         `/api/v1/debugging/admin/nodes?moduleId=${encodeURIComponent(parent.item.id)}&includeDescendants=false`
       ),
-      { headers: smokeHeaders() }
+      { headers: adminHeaders() }
     );
     expect(directOnlyResponse.ok()).toBe(true);
     const directOnlyBody = (await directOnlyResponse.json()) as { items: DebugNodeDto[] };
@@ -408,7 +413,10 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
     });
   });
 
-  test("module tree mutations require admin and non-empty modules cannot be deleted", async ({ page }, testInfo) => {
+  test("module tree mutations require admin and non-empty modules cannot be deleted", async ({
+    page,
+    request
+  }, testInfo) => {
     // @acceptance MOD-TREE-AUTHZ-001
     // @operation MOD-TREE-AUTHZ-001
     const suffix = Date.now().toString(36);
@@ -417,23 +425,24 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
     const leafName = `${moduleNamePrefix}Authz Leaf ${suffix}`;
 
     const deniedCreate = await page.request.post(apiRoute("/api/v1/parameter-modules"), {
-      headers: authHeaders(hardwareUserId),
+      headers: authHeadersForRole("hardware-user"),
       data: { name: `${moduleNamePrefix}Denied ${suffix}` }
     });
     expect(deniedCreate.status()).toBe(403);
 
-    const parent = await createParameterModule(page.request, { name: parentName });
-    await createParameterModule(page.request, { name: childName, parentId: parent.item.id });
-    const leaf = await createParameterModule(page.request, { name: leafName });
-    await assignParameterToModule(leaf.item.id);
+    const parent = await createParameterModule(request, { name: parentName });
+    await createParameterModule(request, { name: childName, parentId: parent.item.id });
+    const leaf = await createParameterModule(request, { name: leafName });
+    const binding = await seedAssignableBinding(request, "MOD-TREE-AUTHZ-001 semantic binding", "ichg_max");
+    await assignBindingToModule(binding.bindingId, leaf.item.id);
 
     const deleteParentResponse = await page.request.delete(apiRoute(`/api/v1/parameter-modules/${parent.item.id}`), {
-      headers: smokeHeaders()
+      headers: adminHeaders()
     });
     expect(deleteParentResponse.status()).toBe(409);
 
     const deleteLeafResponse = await page.request.delete(apiRoute(`/api/v1/parameter-modules/${leaf.item.id}`), {
-      headers: smokeHeaders()
+      headers: adminHeaders()
     });
     expect(deleteLeafResponse.status()).toBe(409);
 
@@ -459,10 +468,10 @@ test.describe("MOD-TREE hierarchical module acceptance", () => {
         summarizeApiResponse(deleteLeafResponse, {
           method: "DELETE",
           path: `/api/v1/parameter-modules/${leaf.item.id}`,
-          responseSummary: "CONFLICT parameters remain"
+          responseSummary: "CONFLICT bindings remain"
         })
       ],
-      notes: "Non-admin module create returned 403; deleting modules with child modules or assigned parameters returned 409."
+      notes: "Non-admin module create returned 403; deleting modules with child modules or assigned bindings returned 409."
     });
   });
 });

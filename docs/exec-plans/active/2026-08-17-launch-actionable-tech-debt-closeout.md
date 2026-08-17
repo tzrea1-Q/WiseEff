@@ -37,8 +37,12 @@ One plan → one branch. Sequential commits on this branch are slices (plan → 
 
 | Branch | Owns | This plan's duty |
 | --- | --- | --- |
-| `fix/td-079-acceptance-remaining` | **TD-079** leftover `project_parameter_value_id` fixtures before flipping the shared CI acceptance job (`#509` already merged the first fixture slice) | Record ownership only |
-| `chore/td-082-apierror-status-codemod` | **TD-082** mechanical `ApiError` third-argument deletion | Record ownership only |
+| `fix/td-079-acceptance-semantic-fixtures` / `#509` | First TD-079 leftover-PPV slice | Landed on `main` |
+| `fix/td-079-acceptance-remaining` / `#510` | IMPACT + PERM-MATRIX-002 | Landed on `main` |
+| `chore/td-082-apierror-status-codemod` / `#507` | **TD-082** mechanical `ApiError` third-argument deletion | Landed on `main` |
+| `fix/td-079-hierarchical-modules` | **TD-079** hierarchical-modules fixture (this Batch 3 track) | Record ownership only from other tracks |
+| `fix/td-079-import-wizard` | **TD-079** import-wizard fixture | Do not edit that spec from this track |
+| `feat/td-057-config-set-revision-gate` | **TD-057** config-set revision gate | Do not edit `ConfigSetBaselinePanel` / release-baseline product code from the TD-079 fixture tracks |
 
 Merge-time: re-check `docs/PLANS.md` and both tech-debt tracker twins against `origin/main` before requesting merge. Those files collide often.
 
@@ -46,7 +50,7 @@ Merge-time: re-check `docs/PLANS.md` and both tech-debt tracker twins against `o
 
 - This plan exists EN+ZH, is listed from `docs/PLANS.md` / `docs/zh-CN/PLANS.md`, and every open tracker row that this launch cut cares about has an explicit Done / Deferred / Blocked status below.
 - Attribution deferred plan (`2026-08-01-attribution-deferred-implementation.md`) moved to `completed/` after acceptance registration + playwright-cli evidence (Batch 1).
-- **TD-056** lands in a later commit on this branch only if attribution closeout is already committed and green. **TD-057 / TD-064 / TD-065** stay out of this session unless TD-056 is fully committed and tests are green (then they still belong to Batch 3, not this session's default).
+- **TD-056** lands in a later commit on this branch only if attribution closeout is already committed and green. **Batch 3** is parallel tracks on named branches (hierarchical-modules fixtures, import-wizard fixtures, TD-057 revision gate). **TD-064 / TD-065**, parameter-files file-sync, xiaoze-action pre-cutover fallback, and flipping the shared CI job stay out of Batch 3.
 - `npm run docs:check` green before claiming the docs slice done. UI slices also run targeted tests, `npm run build`, and playwright-cli.
 
 ## Batches
@@ -81,13 +85,27 @@ TDD. API + port + UI + tests + EN/ZH docs. Do not rewrite the configuration work
 - Register or extend an acceptance/operation ID if the interaction is new; otherwise record why existing coverage plus playwright-cli is enough.
 - Close TD-056 in both tracker twins when verification is green. **Done 2026-08-17** on this branch.
 
-### Batch 3 — Next launch-visible product slices (not this session unless Batch 2 is complete and green)
+### Batch 3 — Parallel tracks (after Batch 2 on `main`)
 
-Do **not** start these in the same sitting as Batch 2 unless Batch 2 is fully committed and tests are green. Default: leave for a follow-up branch.
+Do **not** open a second closeout plan. These tracks run in parallel from latest `origin/main`. Each track owns only its files.
+
+| Track | Branch | Owns | Do not touch |
+| --- | --- | --- | --- |
+| TD-079 hierarchical-modules | `fix/td-079-hierarchical-modules` | `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` plus the semantic list `moduleId` seam it needs (`listSemanticParameters` hydrates `b.module_id`; delete-guard counts bindings) | `parameter-import-wizard.acceptance.spec.ts`; `project-configuration-workbench.acceptance.spec.ts`; `parameter-files.acceptance.spec.ts`; CI env flip |
+| TD-079 import wizard | `fix/td-079-import-wizard` | `parameter-import-wizard.acceptance.spec.ts` | Do not edit that spec from the other Batch 3 tracks |
+| TD-057 revision gate | `feat/td-057-config-set-revision-gate` | Config-set revision source, then restore the gate. Do not invent `revision-teaching-1`. | Do not edit `ConfigSetBaselinePanel` / release-baseline product code from the TD-079 fixture tracks |
+
+**Out of this batch (explicit):**
+
+- `parameter-files.acceptance.spec.ts` file-sync (needs semantic sync or stays pre-cutover)
+- `xiaoze-action.acceptance.spec.ts` pre-cutover fallback (intentional until the shared job flips)
+- Flipping the shared CI acceptance job / `WISEEFF_SEED_LEGACY_FLAT_IDENTITY`
+- **TD-064** / **TD-065** — next batch, not Batch 3
+
+### Batch 4 — Later launch-visible product slices
 
 | ID | Why it is next | Notes |
 | --- | --- | --- |
-| **TD-057** | Revision gate is missing on the surface that publishes baselines | Give the config-set view a real revision source, then restore the gate. Do not invent `revision-teaching-1`. |
 | **TD-064** | Workbench → `/dts-reload` hand-off | Only after the standalone reload surface stays stable. |
 | **TD-065** | Wider DTS reload value shapes | Ticket-by-ticket with overlay + preflight fixtures; no silent encodings. |
 
@@ -104,9 +122,9 @@ Legend: **Done** = closed or closeable in a batch above; **In progress (sibling)
 | Attribution plan closeout (DRV-REG-004 / `DRV-REG-005`) | Done in Batch 1 (this branch) | Batch 1 |
 | TD-046 / TD-047 | Done (already closed on `main`) | Evidence + archive in Batch 1 |
 | TD-056 | Done in Batch 2 (this branch) | This branch after Batch 1 |
-| TD-057 | Open (later) | Batch 3 |
-| TD-064 / TD-065 | Open (later) | Batch 3; not this session by default |
-| TD-079 | In progress (sibling) | `fix/td-079-acceptance-remaining` |
+| TD-057 | In progress (sibling) | Batch 3: `feat/td-057-config-set-revision-gate` |
+| TD-064 / TD-065 | Open (later) | Batch 4; not Batch 3 |
+| TD-079 | In progress (parallel Batch 3) | `fix/td-079-hierarchical-modules` + `fix/td-079-import-wizard`; `#509` / `#510` already on `main`. Do not flip CI. |
 | TD-082 | Done on `main` via #507 | `chore/td-082-apierror-status-codemod` |
 | TD-001 | Deferred | Long-running mock/API parity constraint, not a ticket |
 | TD-033 | Deferred | Archive-only leftover debugging catalog tables |
@@ -157,6 +175,11 @@ npm run acceptance:operations
 # playwright-cli three viewports on /parameter-admin/projects/:id/configuration
 #   + inspector version history + restore confirm + console error
 # evidence: work/ui-checks/param-file-rollback/
+# Batch 3 hierarchical-modules (this track):
+# npm run test:server -- server/modules/parameters/parameterModuleRepository.test.ts
+# npm run acceptance:e2e -- e2e/acceptance/hierarchical-modules.acceptance.spec.ts
+# npm run docs:check
+# npm run build
 ```
 
 Do not run full browser acceptance unless cheap. Do not claim target-environment readiness from local skips.
@@ -178,7 +201,7 @@ Do not run full browser acceptance unless cheap. Do not claim target-environment
 | Quality / acceptance | Update | Coverage map + operation matrix EN+ZH; `PARAM-FILE-ROLLBACK-001` in `requirements.ts` / `operationMatrix.ts` / `parameter-files.acceptance.spec.ts` |
 | Generated artifacts | No change | No migration; Batch 2 reuses schema `origin='rollback'` |
 | References | Review | Unchanged: productization API draft is not the live contract; live contract updated above |
-| Tech debt | Update | EN+ZH tracker: TD-056 closed; TD-079 / TD-082 remain sibling-owned without rewriting Next Action details |
+| Tech debt | Update | EN+ZH tracker: TD-056 closed; TD-079 remaining list drops hierarchical-modules after this Batch 3 track (CI still not flipped); TD-082 closed via #507 |
 
 ## Documentation Update Gate
 
