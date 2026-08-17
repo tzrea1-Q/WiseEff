@@ -668,6 +668,18 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: false
   },
   {
+    id: "PARAM-SPEC-IDENTITY-001",
+    workflow: "C",
+    title: "Admin corrects a definition's attribution subject from the library; the declared subject updates on reopen; lifecycle and reference count are kept; no second definition appears for the same property.",
+    required: false
+  },
+  {
+    id: "PARAM-SPEC-IDENTITY-002",
+    workflow: "C",
+    title: "A property-key rename is offered on a zero-reference definition and refused with a stated reason on a referenced one; a correction that collides with an existing (including deprecated) definition surfaces the blocker.",
+    required: false
+  },
+  {
     id: "PARAM-TOPOLOGY-BROWSE-001",
     workflow: "B",
     title: "Users can toggle source/effective topology, search two gpio_int bindings, and open binding detail without path-as-identity.",

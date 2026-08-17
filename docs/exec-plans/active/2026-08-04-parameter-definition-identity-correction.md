@@ -1,6 +1,6 @@
 # Parameter definition identity correction
 
-> Status: **Active** — Batches 1–3 implemented 2026-08-04; Batch 4 (docs / acceptance / playwright) remaining
+> Status: **Active** — Batches 1–4 implemented 2026-08-17; awaiting parent archive
 > Date: 2026-08-04
 > Chinese: [`docs/zh-CN/exec-plans/active/2026-08-04-parameter-definition-identity-correction.md`](../../zh-CN/exec-plans/active/2026-08-04-parameter-definition-identity-correction.md)
 > Governing decision: [ADR-0017](../../adr/0017-definition-identity-is-correctable.md)
@@ -120,13 +120,28 @@ ID-8 means the operator cannot verify the thing they are being asked to correct.
 12. [x] 修正归属 action with the reused subject tree picker and a before/after confirmation (D-ID-4).
 13. [x] 修正属性键 action, disabled with an explanatory reason when references exist (D-ID-2, D-ID-4).
 14. [x] Replace the misleading 模块管理 hint with copy that separates placement from attribution (ID-3).
-15. [ ] Component coverage for both actions including the refusal and collision paths.
+15. [x] Component coverage for both actions including the refusal and collision paths.
 
 ### Batch 4 — documentation and acceptance
 
-16. [ ] Work the Documentation Impact Matrix below.
-17. [ ] Register and cover the new acceptance IDs.
-18. [ ] playwright-cli evidence at 1440×900 / 768×1024 / 390×844 with 0 console errors, covering a successful re-attribution, a refused rename, and a collision.
+16. [x] Work the Documentation Impact Matrix below.
+17. [x] Register and cover the new acceptance IDs.
+18. [x] playwright-cli evidence at 1440×900 / 768×1024 / 390×844 with 0 console errors, covering a successful re-attribution, a refused rename, and a collision.
+
+Session `identity-batch4` (plus `identity-batch4-clean` for the post-fix console check) against `VITE_WISEEFF_RUNTIME_MODE=mock` Vite on `http://localhost:5181/parameter-admin/specs` as Admin Xu Yun.
+
+Screenshots (gitignored) under `work/ui-checks/param-spec-identity/`:
+
+- `desktop-1440-library.png` — library with `gpio_int` ×2 and `mystery_prop`
+- `desktop-1440-rename-refused.png` — referenced `gpio_int` (充电策略 / spec-sc8562-gpio-int), 「修正属性键」 disabled, 引用数：1
+- `desktop-1440-collision-blocker.png` — reattribute onto MT5788; product copy `目标身份已被定义「spec-mt5788-gpio-int」（已启用）占用，无法覆盖。`
+- `desktop-1440-reattribute-success.png` — charger subject (`asub:nodetype:charger`), toast 「已修正归属主体」
+- `desktop-1440-reattribute-reopen.png` — reopen: declared subject still charger, lifecycle 已启用, 引用数 1, still two `gpio_int` rows
+- `desktop-1440-rename-offered.png` — `mystery_prop` usageCount 0, 「修正属性键」 enabled
+- `tablet-768-library.png` / `tablet-768-editor.png`
+- `mobile-390-library.png` / `mobile-390-editor.png`
+
+Clean-session `console error` after a successful re-attribution: 0 errors (React DevTools info only). Mock audit refresh no longer fetches `127.0.0.1:8787`.
 
 ## Key seams (starting points)
 
@@ -144,19 +159,19 @@ ID-8 means the operator cannot verify the thing they are being asked to correct.
 
 | Area | Action | Paths | Evidence |
 | --- | --- | --- | --- |
-| Repository maps | Review | `AGENTS.md`, `ARCHITECTURE.md` — confirm neither states identity is immutable | Pending |
-| Planning | Update | this plan; ZH companion; `docs/exec-plans/tech-debt-tracker.md` (+ ZH) for the deferred referenced-rename cutover | Pending |
-| Architecture / ADR | Done | [ADR-0017](../../adr/0017-definition-identity-is-correctable.md) added and indexed; supersession notes appended to ADR-0013 and ADR-0014 | Written 2026-08-04 |
-| Domain glossary | Update | `CONTEXT.md` — 「Attribution subject」 must stop implying identity can only be set at creation; add 「Identity correction」 | Pending |
-| API contract | Update | `docs/design-docs/api-contract.md` (+ ZH) for the two new routes, the 409 collision shape, and `specification_key` being derived (ID-R4) | Pending |
-| Design docs | Update | `docs/design-docs/domain-model.md` where it states spec identity; `2026-07-30-parameter-governance-deferred-questions.md` if it recorded re-attribution as deferred | Pending |
-| Frontend / design | Update | `docs/FRONTEND.md` and `docs/zh-CN/frontend.md` for the declared-versus-observed attribution split | Pending |
-| Security / governance | Update | `docs/SECURITY.md` — two new audit actions and their ownership split (ID-R5) | Pending |
-| Quality / testing | Update | `docs/developer/browser-acceptance-coverage-map.md` (+ ZH) and `docs/developer/user-operation-coverage-matrix.md` (+ ZH) | Pending |
-| Generated artifacts | Update | `docs/generated/db-schema.md` for migration `0090` | Pending |
-| Reliability / runbooks | Review | `docs/runbooks/parameter-identity-cutover.md` — it may need the correction path noted alongside cutover | Pending |
-| Product specs | Review | `docs/product-specs/prototype-functional-spec.md` for the definition-editing description | Pending |
-| References | Review | `docs/references/productization-api-contract-draft.md` for quoted spec bodies | Pending |
+| Repository maps | Review | `AGENTS.md`, `ARCHITECTURE.md` — confirm neither states identity is immutable | Unchanged 2026-08-17: neither file claims definition identity is immutable or creation-only. |
+| Planning | Update | this plan; ZH companion; `docs/exec-plans/tech-debt-tracker.md` (+ ZH) for the deferred referenced-rename cutover | This plan Batch 4 checked off; **TD-117** appended (highest Open id on origin/main was TD-116; TD-044 / TD-079 untouched). |
+| Architecture / ADR | Done | [ADR-0017](../../adr/0017-definition-identity-is-correctable.md) added and indexed; supersession notes appended to ADR-0013 and ADR-0014 | Written 2026-08-04; not reopened. |
+| Domain glossary | Update | `CONTEXT.md` — 「Attribution subject」 must stop implying identity can only be set at creation; add 「Identity correction」 | Already on origin/main: Attribution subject notes in-place correction (ADR-0017); Identity correction row present. Unchanged this batch. |
+| API contract | Update | `docs/design-docs/api-contract.md` (+ ZH) for the two new routes, the 409 collision shape, and `specification_key` being derived (ID-R4) | Added `POST .../reattribute` and `POST .../rename-property-key`; 409 `{ parameterSpecId, lifecycle }`; identity paragraph states derived `specification_key` and surrogate id. |
+| Design docs | Update | `docs/design-docs/domain-model.md` where it states spec identity; `2026-07-30-parameter-governance-deferred-questions.md` if it recorded re-attribution as deferred | ParameterSpec / global / manual-identity rows updated EN+ZH. Deferred-questions docs do not record re-attribution as deferred — unchanged. |
+| Frontend / design | Update | `docs/FRONTEND.md` and `docs/zh-CN/frontend.md` for the declared-versus-observed attribution split | Spec-library paragraph now states observed vs declared, 修正归属 / 修正属性键 gates, and collision copy. |
+| Security / governance | Update | `docs/SECURITY.md` — two new audit actions and their ownership split (ID-R5) | EN+ZH: `spec-reattributed` / `spec-property-key-changed`; org Admin vs `platform-admin` same as deprecate/restore. |
+| Quality / testing | Update | `docs/developer/browser-acceptance-coverage-map.md` (+ ZH) and `docs/developer/user-operation-coverage-matrix.md` (+ ZH) | `PARAM-SPEC-IDENTITY-001` / `002` registered (`required: false`, operations `future`, TD-079). |
+| Generated artifacts | Update | `docs/generated/db-schema.md` for migration `0090` | Index `parameter_specs_identity_triple_uidx` already in the artifact. `npm run db:schema-doc` skipped: server lacks pgvector (`docs:check` already skips). |
+| Reliability / runbooks | Review | `docs/runbooks/parameter-identity-cutover.md` — it may need the correction path noted alongside cutover | Unchanged: runbook is the maintenance-window path-identity cutover, not catalog identity correction. |
+| Product specs | Review | `docs/product-specs/prototype-functional-spec.md` for the definition-editing description | Unchanged: high-level spec-library governance; does not claim identity is immutable. |
+| References | Review | `docs/references/productization-api-contract-draft.md` for quoted spec bodies | Unchanged: draft does not quote parameter-spec write bodies. |
 
 ## Documentation Update Gate
 

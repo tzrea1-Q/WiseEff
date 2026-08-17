@@ -1,6 +1,6 @@
 # 参数定义身份纠错
 
-> 状态：**进行中** — 批次 1–3 已于 2026-08-04 实现；批次 4（文档 / 验收 / playwright）待完成
+> 状态：**进行中** — 批次 1–4 已于 2026-08-17 实现；等待父代理归档
 > 日期：2026-08-04
 > English: [`docs/exec-plans/active/2026-08-04-parameter-definition-identity-correction.md`](../../../exec-plans/active/2026-08-04-parameter-definition-identity-correction.md)
 > 约束性决策：[ADR-0017](../../../adr/0017-definition-identity-is-correctable.md)
@@ -120,13 +120,26 @@ ID-8 意味着操作者无法核对自己被要求纠正的那个事实。所属
 12. [x] "修正归属"动作，复用主体树选择器并带前后对比确认（D-ID-4）。
 13. [x] "修正属性键"动作，有引用时禁用并给出原因说明（D-ID-2、D-ID-4）。
 14. [x] 替换有误导性的模块管理提示，新文案区分"位置"与"归属"（ID-3）。
-15. [ ] 两个动作的组件测试，含拒绝路径与冲突路径。
+15. [x] 两个动作的组件测试，含拒绝路径与冲突路径。
 
 ### 批次 4 — 文档与验收
 
-16. [ ] 处理下方的文档影响矩阵。
-17. [ ] 注册并覆盖新的验收 ID。
-18. [ ] playwright-cli 证据，1440×900 / 768×1024 / 390×844，0 控制台错误，覆盖一次成功再归属、一次被拒改名、一次冲突。
+16. [x] 处理下方的文档影响矩阵。
+17. [x] 注册并覆盖新的验收 ID。
+18. [x] playwright-cli 证据，1440×900 / 768×1024 / 390×844，0 控制台错误，覆盖一次成功再归属、一次被拒改名、一次冲突。
+
+会话 `identity-batch4`（控制台复核用 `identity-batch4-clean`），mock Vite `http://localhost:5181/parameter-admin/specs`，角色 Admin Xu Yun。截图（gitignore）在 `work/ui-checks/param-spec-identity/`：
+
+- `desktop-1440-library.png` — 库中两条 `gpio_int` 与 `mystery_prop`
+- `desktop-1440-rename-refused.png` — 有引用的 `gpio_int`，「修正属性键」禁用，引用数：1
+- `desktop-1440-collision-blocker.png` — 再归属到 MT5788；文案「目标身份已被定义「spec-mt5788-gpio-int」（已启用）占用，无法覆盖。」
+- `desktop-1440-reattribute-success.png` — charger 主体，toast「已修正归属主体」
+- `desktop-1440-reattribute-reopen.png` — 再打开：声明主体仍为 charger，已启用，引用数 1，库中仍两条 `gpio_int`
+- `desktop-1440-rename-offered.png` — 零引用 `mystery_prop`，「修正属性键」可用
+- `tablet-768-library.png` / `tablet-768-editor.png`
+- `mobile-390-library.png` / `mobile-390-editor.png`
+
+成功再归属后的干净会话 `console error`：0 条错误。
 
 ## 关键接缝（起点）
 
@@ -144,19 +157,19 @@ ID-8 意味着操作者无法核对自己被要求纠正的那个事实。所属
 
 | 领域 | 动作 | 路径 | 证据 |
 | --- | --- | --- | --- |
-| 仓库地图 | 复查 | `AGENTS.md`、`ARCHITECTURE.md` — 确认二者未声明身份不可变 | 待办 |
-| 计划 | 更新 | 本计划；英文对应计划；`docs/exec-plans/tech-debt-tracker.md`（含中文）记录被推迟的"有引用改名走切换" | 待办 |
-| 架构 / ADR | 已完成 | [ADR-0017](../../../adr/0017-definition-identity-is-correctable.md) 新增并入索引；ADR-0013、ADR-0014 追加取代说明 | 2026-08-04 已写 |
-| 领域术语 | 更新 | `CONTEXT.md` — 「Attribution subject」不应再暗示身份只能在创建时确定；新增「Identity correction」 | 待办 |
-| API 契约 | 更新 | `docs/design-docs/api-contract.md`（含中文）补两个新路由、409 冲突结构、以及 `specification_key` 是派生值（ID-R4） | 待办 |
-| 设计文档 | 更新 | `docs/design-docs/domain-model.md` 中陈述定义身份的段落；`2026-07-30-parameter-governance-deferred-questions.md` 若记录过再归属为待议 | 待办 |
-| 前端 / 设计 | 更新 | `docs/FRONTEND.md` 与 `docs/zh-CN/frontend.md` 补"声明 vs 实测"归属的区分 | 待办 |
-| 安全 / 治理 | 更新 | `docs/SECURITY.md` — 两个新审计动作及其归属划分（ID-R5） | 待办 |
-| 质量 / 测试 | 更新 | `docs/developer/browser-acceptance-coverage-map.md`（含中文）与 `docs/developer/user-operation-coverage-matrix.md`（含中文） | 待办 |
-| 生成产物 | 更新 | `docs/generated/db-schema.md` 记录迁移 `0090` | 待办 |
-| 可靠性 / 运维手册 | 复查 | `docs/runbooks/parameter-identity-cutover.md` — 可能需要在切换之外标注纠错路径 | 待办 |
-| 产品规格 | 复查 | `docs/product-specs/prototype-functional-spec.md` 中关于定义编辑的描述 | 待办 |
-| 参考资料 | 复查 | `docs/references/productization-api-contract-draft.md` 中引用的 spec 请求体 | 待办 |
+| 仓库地图 | 复查 | `AGENTS.md`、`ARCHITECTURE.md` — 确认二者未声明身份不可变 | 2026-08-17 无变化：两文件均未声称定义身份不可变或仅能在创建时确定。 |
+| 计划 | 更新 | 本计划；英文对应计划；`docs/exec-plans/tech-debt-tracker.md`（含中文）记录被推迟的"有引用改名走切换" | 本计划批次 4 已勾选；**TD-117** 追加（origin/main 最高 Open 号为 TD-116；未改 TD-044 / TD-079）。 |
+| 架构 / ADR | 已完成 | [ADR-0017](../../../adr/0017-definition-identity-is-correctable.md) 新增并入索引；ADR-0013、ADR-0014 追加取代说明 | 2026-08-04 已写；本批次未重开。 |
+| 领域术语 | 更新 | `CONTEXT.md` — 「Attribution subject」不应再暗示身份只能在创建时确定；新增「Identity correction」 | 已在 origin/main：Attribution subject 写明可就地纠正（ADR-0017）；Identity correction 词条已在。本批次未改。 |
+| API 契约 | 更新 | `docs/design-docs/api-contract.md`（含中文）补两个新路由、409 冲突结构、以及 `specification_key` 是派生值（ID-R4） | 已补 `POST .../reattribute` 与 `POST .../rename-property-key`；409 `{ parameterSpecId, lifecycle }`；身份段写明派生 `specification_key` 与代理键。 |
+| 设计文档 | 更新 | `docs/design-docs/domain-model.md` 中陈述定义身份的段落；`2026-07-30-parameter-governance-deferred-questions.md` 若记录过再归属为待议 | ParameterSpec / 全局 / 手工身份行已中英更新。deferred-questions 未把再归属记为待议 — 无变化。 |
+| 前端 / 设计 | 更新 | `docs/FRONTEND.md` 与 `docs/zh-CN/frontend.md` 补"声明 vs 实测"归属的区分 | 定义库段落现写明实测 vs 声明、「修正归属 / 修正属性键」门禁与冲突文案。 |
+| 安全 / 治理 | 更新 | `docs/SECURITY.md` — 两个新审计动作及其归属划分（ID-R5） | 中英已记 `spec-reattributed` / `spec-property-key-changed`；组织 Admin vs `platform-admin` 与废弃/恢复相同。 |
+| 质量 / 测试 | 更新 | `docs/developer/browser-acceptance-coverage-map.md`（含中文）与 `docs/developer/user-operation-coverage-matrix.md`（含中文） | 已登记 `PARAM-SPEC-IDENTITY-001` / `002`（`required: false`，操作为 `future`，暂缓理由 TD-079）。 |
+| 生成产物 | 更新 | `docs/generated/db-schema.md` 记录迁移 `0090` | 产物已含 `parameter_specs_identity_triple_uidx`。`npm run db:schema-doc` 因本机 PostgreSQL 无 pgvector 而跳过（docs:check 亦跳过）。 |
+| 可靠性 / 运维手册 | 复查 | `docs/runbooks/parameter-identity-cutover.md` — 可能需要在切换之外标注纠错路径 | 无变化：该手册是路径身份维护窗口 cutover，不是目录身份纠错。 |
+| 产品规格 | 复查 | `docs/product-specs/prototype-functional-spec.md` 中关于定义编辑的描述 | 无变化：高层定义库治理，未声称身份不可变。 |
+| 参考资料 | 复查 | `docs/references/productization-api-contract-draft.md` 中引用的 spec 请求体 | 无变化：草稿未引用 parameter-spec 写请求体。 |
 
 ## 文档更新门禁
 
