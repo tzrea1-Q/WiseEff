@@ -1,11 +1,9 @@
 import { createHash } from "node:crypto";
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext } from "../auth/types";
-import type { ObjectStore, StoredObject } from "../logs/objectStore";
-import type { Database, QueryResult, Queryable } from "../../shared/database/client";
-import { ApiError } from "../../shared/http/errors";
+import type { ObjectStore } from "../logs/objectStore";
 import { DTS_RELOAD_BRIDGE_RPC_METHODS } from "@wiseeff/device-command-core/bridgeRpcMethods";
 
 vi.mock("../audit/repository", () => ({
@@ -21,10 +19,6 @@ vi.mock("../debugging/repository", () => ({
   releaseDebugDeviceLease: vi.fn(),
   ensureBridgeDebugDevice: vi.fn(async () => undefined),
   ensureDtsReloadLeaseSession: vi.fn(async () => undefined)
-}));
-
-vi.mock("./resolveConfiguration", () => ({
-  resolveReloadConfiguration: vi.fn()
 }));
 
 vi.mock("./behaviouralVerify", async (importOriginal) => {
@@ -43,11 +37,30 @@ import {
   ensureDtsReloadLeaseSession,
   releaseDebugDeviceLease
 } from "../debugging/repository";
-import { resolveReloadConfiguration } from "./resolveConfiguration";
+import {
+  createInMemoryTestDatabase,
+  isTestDatabaseAvailable,
+  type InMemoryTestDatabase
+} from "../../testing/testDatabase";
+import { seedCoreGraph } from "../../testing/fixtures";
 import { verifyReloadTargetsBehaviourally } from "./behaviouralVerify";
-import { deployReloadRun } from "./service";
+import { insertReloadRun, insertReloadRunTarget } from "./repository";
+import { deployReloadRun, getReloadResidue, getReloadRun } from "./service";
 import { bridgeCanonicalDeviceId, computeReloadLeaseTtlMs } from "./deploy";
-import { DTS_RELOAD_CONFIRMATION_TOKEN } from "./types";
+import {
+  DTS_RELOAD_CONFIRMATION_TOKEN,
+  RELOAD_ARTIFACT_RETENTION_DAYS,
+  TRIGGER_RELOAD_UNCONFIRMED_FAILURE_CODE,
+  type ReloadRunPurpose,
+  type ReloadRunStatus
+} from "./types";
+
+const databaseAvailable = await isTestDatabaseAvailable();
+
+const ARTIFACT = Buffer.from("dtbo");
+const ARTIFACT_SHA = createHash("sha256").update(ARTIFACT).digest("hex");
+const SOURCE_DTS = Buffer.from("/dts-v1/;\n/plugin/;\n");
+const CANONICAL_DEVICE_ID = "bridge:br-1";
 
 describe("reload deploy helpers", () => {
   it("derives the canonical device id from the bridge id", () => {
@@ -65,165 +78,15 @@ describe("reload deploy helpers", () => {
     expect(computeReloadLeaseTtlMs({ targetCount: 1, ...timeouts })).toBe(5 * 60 * 1000);
     // 50 targets → 15+30+10+10 + 50*10 + 60s buffer = 625s, above the 5-minute floor.
     const many = computeReloadLeaseTtlMs({ targetCount: 50, ...timeouts });
-    expect(many).toBe((15_000 + 30_000 + 10_000 + 10_000 + 50 * 10_000 + 60_000));
+    expect(many).toBe(15_000 + 30_000 + 10_000 + 10_000 + 50 * 10_000 + 60_000);
     expect(many).toBeGreaterThan(5 * 60 * 1000);
   });
 });
 
-type QueryCall = { text: string; values: unknown[] };
+describe.skipIf(!databaseAvailable)("deployReloadRun", () => {
+  let db: InMemoryTestDatabase;
 
-type DeployDbOptions = {
-  runRow: Record<string, unknown>;
-  targetRows?: unknown[];
-  /** Rows returned for debug-node binding resolution, keyed by binding id (values[1]). */
-  debugBindingsByBindingId?: Record<string, unknown[]>;
-};
-
-function createDeployDb(options: DeployDbOptions) {
-  const calls: QueryCall[] = [];
-  const updates: Array<Record<string, unknown>> = [];
-  const runQuery = async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
-    const call = { text, values };
-    calls.push(call);
-
-    if (text.includes("from dts_reload_run_targets")) {
-      return { rows: (options.targetRows ?? []) as Row[], rowCount: (options.targetRows ?? []).length };
-    }
-
-    if (text.includes("from debugging_parameters") || text.includes("join debugging_parameters")) {
-      const bindingId = String(values[1] ?? "");
-      const rows = options.debugBindingsByBindingId?.[bindingId] ?? [];
-      return { rows: rows as Row[], rowCount: rows.length };
-    }
-
-    if (text.includes("update dts_reload_runs")) {
-      const next = {
-        ...options.runRow,
-        status: values[2],
-        failure_code: values[3],
-        steps: JSON.parse(String(values[4])),
-        reload_snapshot: JSON.parse(String(values[11])),
-        integrity_check: values[10],
-        completed_at: values[12],
-        device_id: values[5],
-        bridge_id: values[6],
-        bridge_machine_label: values[7],
-        target_ref: values[8],
-        protocol: values[9]
-      };
-      updates.push(next);
-      return { rows: [next] as Row[], rowCount: 1 };
-    }
-
-    if (text.includes("dts_reload_device_residue")) {
-      if (text.toLowerCase().includes("insert into")) {
-        const row = {
-          organization_id: values[0],
-          device_id: values[1],
-          project_id: values[2],
-          source_run_id: values[3],
-          parameters: JSON.parse(String(values[4])),
-          recorded_at: values[5]
-        };
-        return { rows: [row] as Row[], rowCount: 1 };
-      }
-      return { rows: [] as Row[], rowCount: 0 };
-    }
-
-    // getReloadRun / artifact key lookup
-    if (text.includes("from dts_reload_runs") || text.includes("overlay_artifact_storage_key")) {
-      return { rows: [options.runRow] as Row[], rowCount: 1 };
-    }
-
-    return { rows: [] as Row[], rowCount: 0 };
-  };
-
-  const db: Database = {
-    query: (text, values = []) => runQuery(text, values),
-    transaction: async <T,>(fn: (queryable: Queryable) => Promise<T>) =>
-      fn({ query: (text, values = []) => runQuery(text, values) })
-  };
-  return { db, calls, updates };
-}
-
-/** Legacy queue-based helper for early-refusal tests that never reach behavioural verify. */
-function createFakeDb(handlers: Array<(call: QueryCall) => unknown[]> = []) {
-  const calls: QueryCall[] = [];
-  const runQuery = async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
-    const call = { text, values };
-    calls.push(call);
-    // Deploy-time sensitive re-check queries (candidate compatible lookup + org rules) are answered
-    // out-of-band so the positional handler queue stays aligned with the deploy state transitions.
-    if (text.includes("project_parameter_bindings") || text.includes("dts_sensitive_node_rules")) {
-      return { rows: [] as Row[], rowCount: 0 };
-    }
-    const handler = handlers.shift();
-    const rows = handler ? handler(call) : [];
-    return { rows: rows as Row[], rowCount: rows.length };
-  };
-  const db: Database = {
-    query: (text, values = []) => runQuery(text, values),
-    transaction: async <T,>(fn: (queryable: Queryable) => Promise<T>) =>
-      fn({ query: (text, values = []) => runQuery(text, values) })
-  };
-  return { db, calls };
-}
-
-function auth(): AuthContext {
-  return {
-    user: {
-      id: "user-1",
-      organizationId: "org-1",
-      name: "Riley",
-      email: "r@example.com",
-      title: "HW",
-      isActive: true
-    },
-    organization: { id: "org-1", name: "Org" },
-    roles: [{ projectId: "project-1", roleId: "hardware-committer" }],
-    permissions: ["debugging:dts-reload"]
-  };
-}
-
-function validatedRunRow(overrides: Record<string, unknown> = {}) {
-  return {
-    id: "run-1",
-    organization_id: "org-1",
-    project_id: "project-1",
-    config_revision_id: "rev-1",
-    status: "validated",
-    purpose: "ordinary",
-    restores_source_run_id: null,
-    failure_code: null,
-    steps: [
-      { step: "compile-base", outcome: "passed" },
-      { step: "compile-overlay", outcome: "passed" },
-      { step: "dry-run-merge", outcome: "passed" },
-      { step: "assert-effect", outcome: "passed" }
-    ],
-    diagnostics: [],
-    tool_versions: { dtc: "1.0", fdtoverlay: "1.0" },
-    overlay_source_storage_key: "src-key",
-    overlay_source_sha256: "src-sha",
-    overlay_artifact_storage_key: "art-key",
-    overlay_artifact_sha256: createHash("sha256").update("dtbo").digest("hex"),
-    overlay_artifact_bytes: 4,
-    created_by_user_id: "user-1",
-    created_at: new Date().toISOString(),
-    completed_at: new Date().toISOString(),
-    device_id: null,
-    bridge_id: null,
-    bridge_machine_label: null,
-    target_ref: null,
-    protocol: null,
-    integrity_check: null,
-    reload_snapshot: {},
-    ...overrides
-  };
-}
-
-describe("deployReloadRun", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     vi.mocked(listBridgesForUser).mockResolvedValue([
       {
@@ -242,7 +105,7 @@ describe("deployReloadRun", () => {
     ]);
     vi.mocked(acquireDebugDeviceLease).mockResolvedValue({
       organizationId: "org-1",
-      deviceId: "dev-1",
+      deviceId: CANONICAL_DEVICE_ID,
       sessionId: "dts-reload:run-1",
       leaseOwnerUserId: "user-1",
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
@@ -250,156 +113,43 @@ describe("deployReloadRun", () => {
       updatedAt: new Date().toISOString()
     });
     vi.mocked(releaseDebugDeviceLease).mockResolvedValue(null);
-    vi.mocked(resolveReloadConfiguration).mockResolvedValue({
-      organizationId: "org-1",
-      deviceId: "dev-1",
-      source: "seeded-default",
-      destinationDirectory: "/vendor/firmware/",
-      destinationFilename: "power_dts_overlay.dtbo",
-      triggerNodePath: "/sys/kernel/debug/power_debug/dts_overlay/trigger",
-      triggerPayload: "1",
-      kernelLogCommand: "dmesg"
+    db = await createInMemoryTestDatabase();
+    await seedCoreGraph(db, {
+      organization: { id: "org-1", name: "ChargeLab" },
+      users: [{ id: "user-1", name: "Riley", email: "r@example.com" }],
+      projects: [{ id: "project-1" }]
     });
   });
 
-  it("refuses an agent actor for deploy and audits the refusal", async () => {
-    const artifactSha = createHash("sha256").update("dtbo").digest("hex");
-    const { db } = createFakeDb([
-      () => [validatedRunRow({ overlay_artifact_sha256: artifactSha })]
-    ]);
-    const objectStore: ObjectStore = {
-      put: vi.fn(),
-      get: vi.fn(async () => Buffer.from("dtbo")),
-      delete: vi.fn()
+  afterEach(async () => {
+    await db?.rollback();
+  });
+
+  function auth(overrides: Partial<AuthContext> = {}): AuthContext {
+    return {
+      user: {
+        id: "user-1",
+        organizationId: "org-1",
+        name: "Riley",
+        email: "r@example.com",
+        title: "HW",
+        isActive: true
+      },
+      organization: { id: "org-1", name: "ChargeLab" },
+      roles: [{ projectId: "project-1", roleId: "hardware-committer" }],
+      permissions: ["debugging:dts-reload"],
+      ...overrides
     };
-    const bridgeRpcClient = { call: vi.fn() };
+  }
 
-    await expect(
-      deployReloadRun(
-        db,
-        objectStore,
-        auth(),
-        {
-          runId: "run-1",
-          deviceId: "dev-1",
-          bridgeId: "br-1",
-          targetRef: "AURORA-001",
-          protocol: "hdc",
-          confirmationTokens: [DTS_RELOAD_CONFIRMATION_TOKEN]
-        },
-        {
-          bridgeRpcClient,
-          bridgeConnectionPool: { isConnected: () => true }
-        },
-        { actorType: "agent" }
-      )
-    ).rejects.toMatchObject({
-      code: "FORBIDDEN",
-      details: {
-        code: "dts-reload-agent-refused",
-        reason: "agent-refused",
-        requireHuman: true,
-        action: "deploy"
-      }
-    });
-    expect(bridgeRpcClient.call).not.toHaveBeenCalled();
-    expect(createAuditEvent).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        actorType: "agent",
-        kind: "dts-reload-agent-refused",
-        action: "deny",
-        metadata: expect.objectContaining({
-          reason: "agent-refused",
-          requireHuman: true,
-          action: "deploy"
-        })
-      })
-    );
-  });
-
-  it("refuses deploy when confirm-dts-reload is missing and never invents the token", async () => {
-    const artifactSha = createHash("sha256").update("dtbo").digest("hex");
-    const { db } = createFakeDb([
-      () => [validatedRunRow({ overlay_artifact_sha256: artifactSha })],
-      () => [
-        {
-          binding_id: "b1",
-          node_path: "/n",
-          property_key: "p",
-          baseline_value: "<1>",
-          debug_value: "<2>",
-          sort_order: 0
-        }
-      ],
-      () => [validatedRunRow({ overlay_artifact_sha256: artifactSha })]
-    ]);
-    const objectStore: ObjectStore = {
-      put: vi.fn(),
-      get: vi.fn(async () => Buffer.from("/dts-v1/;")),
-      delete: vi.fn()
-    };
-    const bridgeRpcClient = { call: vi.fn() };
-
-    await expect(
-      deployReloadRun(
-        db,
-        objectStore,
-        auth(),
-        {
-          runId: "run-1",
-          deviceId: "dev-1",
-          bridgeId: "br-1",
-          targetRef: "AURORA-001",
-          protocol: "hdc",
-          confirmationTokens: ["confirm-sensitive-reload"]
-        },
-        {
-          bridgeRpcClient,
-          bridgeConnectionPool: { isConnected: () => true }
-        }
-      )
-    ).rejects.toMatchObject({
-      details: { code: "missing-dts-reload-confirmation" }
-    });
-    expect(bridgeRpcClient.call).not.toHaveBeenCalled();
-    expect(vi.mocked(createAuditEvent).mock.calls.some((call) => {
-      const metadata = call[1].metadata as Record<string, unknown>;
-      return metadata?.confirmationToken === DTS_RELOAD_CONFIRMATION_TOKEN && call[1].kind === "dts-reload-run-deploy-started";
-    })).toBe(false);
-  });
-
-  it("mounts, transfers, triggers, and finishes as unverifiable with a reload snapshot", async () => {
-    const artifactBytes = Buffer.from("dtbo");
-    const artifactSha = createHash("sha256").update(artifactBytes).digest("hex");
-    const runRow = validatedRunRow({ overlay_artifact_sha256: artifactSha, overlay_artifact_bytes: artifactBytes.length });
-    const targetRows = [
-      {
-        binding_id: "b1",
-        node_path: "/amba/i2c@1/node",
-        property_key: "watchdog_time",
-        baseline_value: "<6000>",
-        debug_value: "<7000>",
-        sort_order: 0
-      }
-    ];
-
-    const { db } = createDeployDb({ runRow, targetRows });
-
+  function makeObjectStore() {
     const files = new Map<string, Buffer>([
-      ["src-key", Buffer.from("/dts-v1/;\n/plugin/;\n")],
-      ["art-key", artifactBytes]
+      ["src-key", SOURCE_DTS],
+      ["art-key", ARTIFACT]
     ]);
     const objectStore: ObjectStore = {
-      put: vi.fn(async (input) => {
-        const stored: StoredObject = {
-          storageKey: `key-${input.fileName}`,
-          checksumSha256: createHash("sha256").update(input.bytes).digest("hex"),
-          fileSizeBytes: input.bytes.length,
-          contentType: input.contentType
-        };
-        files.set(stored.storageKey, input.bytes);
-        return stored;
+      put: vi.fn(async () => {
+        throw new Error("deploy must not write overlay blobs");
       }),
       get: vi.fn(async (key) => {
         const bytes = files.get(key);
@@ -408,1075 +158,806 @@ describe("deployReloadRun", () => {
       }),
       delete: vi.fn()
     };
+    return objectStore;
+  }
 
-    const bridgeRpcClient = {
-      call: vi.fn(async (_bridgeId: string, method: string) => {
-        if (method === "bridge.getCapabilities") {
-          return { methods: [...DTS_RELOAD_BRIDGE_RPC_METHODS, "bridge.getCapabilities", "debug.detectTargets", "debug.readNode"] };
-        }
-        if (method === "debug.mountTarget") {
-          return { ok: true, durationMs: 1 };
-        }
-        if (method === "debug.pushFile") {
-          return {
-            ok: true,
-            localDigest: artifactSha,
-            remoteDigest: artifactSha,
-            integrityCheck: "sha256",
-            durationMs: 2
-          };
-        }
-        if (method === "debug.writeNode") {
-          return { ok: true, verified: true, writeResult: { ok: true } };
-        }
-        if (method === "debug.readKernelLog") {
-          return {
-            ok: true,
-            text: "kernel: watchdog_time applied\nkernel: overlay reload ok\n",
-            truncated: false,
-            byteLength: 58,
-            maxBytes: 256 * 1024
-          };
-        }
-        throw new Error(`unexpected ${method}`);
-      })
-    };
+  /**
+   * Seed the parameter-library graph behind one reload candidate binding
+   * (module → spec → spec version → dts property spec → logical node → binding → revision).
+   */
+  async function seedCandidate(input: {
+    bindingId: string;
+    propertyKey?: string;
+    nodePath?: string | null;
+    compatible?: string | null;
+    baselineValue?: string | null;
+  }) {
+    const propertyKey = input.propertyKey ?? "watchdog_time";
+    const nodePath = input.nodePath === undefined ? "/amba/i2c@1/node" : input.nodePath;
 
-    const result = await deployReloadRun(
-      db,
-      objectStore,
-      auth(),
-      {
-        runId: "run-1",
-        deviceId: "dev-1",
-        bridgeId: "br-1",
-        targetRef: "AURORA-001",
-        protocol: "hdc",
-        confirmationTokens: [DTS_RELOAD_CONFIRMATION_TOKEN]
-      },
-      {
-        bridgeRpcClient,
-        bridgeConnectionPool: { isConnected: () => true }
-      }
+    await db.query(
+      `insert into parameter_modules (id, organization_id, name, path)
+       values ('mod-charger', 'org-1', 'charger', '/charger')
+       on conflict (id) do nothing`
     );
-
-    expect(result.status).toBe("unverifiable");
-    expect(result.failureCode).toBeNull();
-    expect(result.integrityCheck).toBe("sha256");
-    expect(result.reloadSnapshot?.libraryBaselines[0]?.baselineValue).toBe("<6000>");
-    expect(result.reloadSnapshot?.artifactDigest?.integrityCheck).toBe("sha256");
-    expect(result.reloadSnapshot?.kernelSignal).toMatchObject({
-      command: "dmesg",
-      captureStatus: "obtained",
-      rawText: "kernel: watchdog_time applied\nkernel: overlay reload ok\n",
-      matchedByParameter: [
-        {
-          parameterName: "watchdog_time",
-          bindingId: "b1",
-          lines: ["kernel: watchdog_time applied"]
-        }
+    await db.query(
+      `insert into dts_config_set (id, organization_id, project_id, name)
+       values ('cs-1', 'org-1', 'project-1', 'primary') on conflict (id) do nothing`
+    );
+    await db.query(
+      `insert into dts_config_revisions (id, organization_id, project_id, config_set_id, revision_number, status)
+       select 'rev-1', 'org-1', 'project-1', 'cs-1',
+              coalesce((select max(revision_number) from dts_config_revisions where config_set_id = 'cs-1'), 0) + 1,
+              'compiled'
+       where not exists (select 1 from dts_config_revisions where id = 'rev-1')`
+    );
+    await db.query(
+      `insert into parameter_specs (id, organization_id, source_kind, specification_key)
+       values ($1, 'org-1', 'dts', $2)`,
+      [`spec-${input.bindingId}`, `reload/${input.bindingId}/${propertyKey}`]
+    );
+    await db.query(
+      `insert into parameter_spec_versions (
+         id, parameter_spec_id, version, display_name, description, documentation, value_shape, units, lifecycle
+       ) values ($1, $2, 1, 'Watchdog', '', 'Watchdog timeout for charger safety.', $3::jsonb, 'ms', 'active')`,
+      [
+        `psv-${input.bindingId}`,
+        `spec-${input.bindingId}`,
+        JSON.stringify({ kind: "cells", bits: 32, cellsPerGroup: 1, groups: 1 })
       ]
-    });
-    expect(result.reloadSnapshot?.behaviouralVerification?.outcomes).toEqual([
-      expect.objectContaining({
-        bindingId: "b1",
-        propertyKey: "watchdog_time",
-        outcome: "unbound",
-        reason: expect.stringContaining("No readable debug-node binding")
-      })
-    ]);
-    expect(result.steps.map((step) => [step.step, step.outcome])).toEqual([
-      ["compile-base", "passed"],
-      ["compile-overlay", "passed"],
-      ["dry-run-merge", "passed"],
-      ["assert-effect", "passed"],
-      ["mount-target", "passed"],
-      ["transfer-artifact", "passed"],
-      ["trigger-reload", "passed"]
-    ]);
-
-    expect(bridgeRpcClient.call).toHaveBeenNthCalledWith(
-      2,
-      "br-1",
-      "debug.mountTarget",
-      { protocol: "hdc", targetRef: "AURORA-001" },
-      { timeoutMs: 15_000 }
     );
-    expect(bridgeRpcClient.call).toHaveBeenNthCalledWith(
-      3,
-      "br-1",
-      "debug.pushFile",
-      expect.objectContaining({
-        destinationDirectory: "/vendor/firmware/",
-        destinationFilename: "power_dts_overlay.dtbo",
-        contentSha256: artifactSha
-      }),
-      { timeoutMs: 30_000 }
+    await db.query(
+      `insert into dts_property_specs (id, parameter_spec_id, property_key, schema_namespace, constraints)
+       values ($1, $2, $3, 'reload-test', $4::jsonb)`,
+      [
+        `dps-${input.bindingId}`,
+        `spec-${input.bindingId}`,
+        propertyKey,
+        JSON.stringify({ min: 0, max: 20000, cells: 1 })
+      ]
     );
-    expect(bridgeRpcClient.call).toHaveBeenNthCalledWith(
-      4,
-      "br-1",
-      "debug.writeNode",
-      expect.objectContaining({
-        nodePath: "/sys/kernel/debug/power_debug/dts_overlay/trigger",
-        value: "1",
-        readBack: false
-      }),
-      { timeoutMs: 10_000 }
+    if (nodePath !== null) {
+      await db.query(
+        `insert into dts_logical_nodes (id, organization_id, project_id, config_set_id)
+         values ($1, 'org-1', 'project-1', 'cs-1')`,
+        [`node-${input.bindingId}`]
+      );
+      await db.query(
+        `insert into dts_logical_node_revisions (id, logical_node_id, config_revision_id, node_locator, name, compatible)
+         values ($1, $2, 'rev-1', $3, $4, $5)`,
+        [
+          `lnr-${input.bindingId}`,
+          `node-${input.bindingId}`,
+          nodePath,
+          nodePath.split("/").filter(Boolean).at(-1) ?? "node",
+          input.compatible === undefined ? "sc8562" : input.compatible
+        ]
+      );
+    }
+    await db.query(
+      `insert into project_parameter_bindings (id, organization_id, project_id, logical_node_id, parameter_spec_id, module_id)
+       values ($1, 'org-1', 'project-1', $2, $3, 'mod-charger')`,
+      [input.bindingId, nodePath === null ? null : `node-${input.bindingId}`, `spec-${input.bindingId}`]
     );
-    expect(bridgeRpcClient.call).toHaveBeenNthCalledWith(
-      5,
-      "br-1",
-      "debug.readKernelLog",
-      { protocol: "hdc", targetRef: "AURORA-001", command: "dmesg" },
-      { timeoutMs: 10_000 }
-    );
-    expect(bridgeRpcClient.call.mock.calls.some((call) => call[1] === "debug.readNode")).toBe(false);
-    expect(acquireDebugDeviceLease).toHaveBeenCalled();
-    expect(ensureBridgeDebugDevice).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        organizationId: "org-1",
-        deviceId: "bridge:br-1",
-        protocol: "hdc"
-      })
-    );
-    expect(ensureDtsReloadLeaseSession).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        organizationId: "org-1",
-        sessionId: "dts-reload:run-1",
-        deviceId: "bridge:br-1",
-        bridgeId: "br-1",
-        protocol: "hdc",
-        targetRef: "AURORA-001",
-        actorUserId: "user-1"
-      })
-    );
-    expect(releaseDebugDeviceLease).toHaveBeenCalled();
-    expect(resolveReloadConfiguration).toHaveBeenCalledWith(db, {
-      organizationId: "org-1",
-      deviceId: "bridge:br-1"
-    });
-  });
-
-  it("reports mount failure distinctly from transfer failure", async () => {
-    const artifactBytes = Buffer.from("dtbo");
-    const artifactSha = createHash("sha256").update(artifactBytes).digest("hex");
-    const runRow = validatedRunRow({ overlay_artifact_sha256: artifactSha });
-    const { db } = createFakeDb([
-      () => [runRow],
-      () => [
-        {
-          binding_id: "b1",
-          node_path: "/n",
-          property_key: "p",
-          baseline_value: "<1>",
-          debug_value: "<2>",
-          sort_order: 0
-        }
-      ],
-      () => [runRow],
-      (call) => [{ ...runRow, status: call.values[2], failure_code: call.values[3], steps: JSON.parse(String(call.values[4])), reload_snapshot: {}, integrity_check: null, completed_at: call.values[12], device_id: call.values[5], bridge_id: call.values[6], bridge_machine_label: call.values[7], target_ref: call.values[8], protocol: call.values[9] }],
-      (call) => [{ ...runRow, status: call.values[2], failure_code: call.values[3], steps: JSON.parse(String(call.values[4])), reload_snapshot: {}, integrity_check: null, completed_at: call.values[12], device_id: call.values[5], bridge_id: call.values[6], bridge_machine_label: call.values[7], target_ref: call.values[8], protocol: call.values[9] }],
-      (call) => [{ ...runRow, status: call.values[2], failure_code: call.values[3], steps: JSON.parse(String(call.values[4])), reload_snapshot: {}, integrity_check: null, completed_at: call.values[12], device_id: call.values[5], bridge_id: call.values[6], bridge_machine_label: call.values[7], target_ref: call.values[8], protocol: call.values[9] }]
-    ]);
-    const objectStore: ObjectStore = {
-      put: vi.fn(),
-      get: vi.fn(async (key) => (key === "art-key" ? artifactBytes : Buffer.from("src"))),
-      delete: vi.fn()
-    };
-    const bridgeRpcClient = {
-      call: vi.fn(async (_id: string, method: string) => {
-        if (method === "bridge.getCapabilities") {
-          return { methods: [...DTS_RELOAD_BRIDGE_RPC_METHODS, "bridge.getCapabilities"] };
-        }
-        if (method === "debug.mountTarget") {
-          return { ok: false, error: "mount denied" };
-        }
-        throw new Error(`unexpected ${method}`);
-      })
-    };
-
-    const result = await deployReloadRun(
-      db,
-      objectStore,
-      auth(),
-      {
-        runId: "run-1",
-        deviceId: "dev-1",
-        bridgeId: "br-1",
-        targetRef: "AURORA-001",
-        protocol: "hdc",
-        confirmationTokens: [DTS_RELOAD_CONFIRMATION_TOKEN]
-      },
-      {
-        bridgeRpcClient,
-        bridgeConnectionPool: { isConnected: () => true }
-      }
-    );
-
-    expect(result.status).toBe("failed");
-    expect(result.failureCode).toBe("mount-target-failed");
-    expect(result.steps.find((step) => step.step === "mount-target")?.outcome).toBe("failed");
-  });
-
-  it("refuses when the bridge lacks deploy RPC methods and points at releases", async () => {
-    const artifactBytes = Buffer.from("dtbo");
-    const artifactSha = createHash("sha256").update(artifactBytes).digest("hex");
-    const runRow = validatedRunRow({ overlay_artifact_sha256: artifactSha });
-    const { db } = createFakeDb([
-      () => [runRow],
-      () => [
-        {
-          binding_id: "b1",
-          node_path: "/n",
-          property_key: "p",
-          baseline_value: "<1>",
-          debug_value: "<2>",
-          sort_order: 0
-        }
-      ],
-      () => [runRow]
-    ]);
-    const objectStore: ObjectStore = {
-      put: vi.fn(),
-      get: vi.fn(async (key) => (key === "art-key" ? artifactBytes : Buffer.from("src"))),
-      delete: vi.fn()
-    };
-    const bridgeRpcClient = {
-      call: vi.fn(async () => ({ methods: ["bridge.getCapabilities", "debug.writeNode"] }))
-    };
-
-    await expect(
-      deployReloadRun(
-        db,
-        objectStore,
-        auth(),
-        {
-          runId: "run-1",
-          deviceId: "dev-1",
-          bridgeId: "br-1",
-          targetRef: "AURORA-001",
-          protocol: "hdc",
-          confirmationTokens: [DTS_RELOAD_CONFIRMATION_TOKEN]
-        },
-        {
-          bridgeRpcClient,
-          bridgeConnectionPool: { isConnected: () => true }
-        }
-      )
-    ).rejects.toMatchObject({
-      details: {
-        code: "bridge-upgrade-required",
-        releasesPath: "/api/v1/device-bridges/releases"
-      }
-    });
-  });
-
-  it("atomically refuses a second deploy claim on the same run and never acquires a lease", async () => {
-    const artifactBytes = Buffer.from("dtbo");
-    const artifactSha = createHash("sha256").update(artifactBytes).digest("hex");
-    const runRow = validatedRunRow({ overlay_artifact_sha256: artifactSha });
-    const { db, calls } = createFakeDb([
-      () => [runRow],
-      () => [
-        {
-          binding_id: "b1",
-          node_path: "/n",
-          property_key: "p",
-          baseline_value: "<1>",
-          debug_value: "<2>",
-          sort_order: 0
-        }
-      ],
-      () => [runRow],
-      // claimReloadRunForDeploy lost the race
-      () => []
-    ]);
-    const objectStore: ObjectStore = {
-      put: vi.fn(),
-      get: vi.fn(async (key) => (key === "art-key" ? artifactBytes : Buffer.from("src"))),
-      delete: vi.fn()
-    };
-    const bridgeRpcClient = {
-      call: vi.fn(async () => ({ methods: [...DTS_RELOAD_BRIDGE_RPC_METHODS, "bridge.getCapabilities"] }))
-    };
-
-    await expect(
-      deployReloadRun(
-        db,
-        objectStore,
-        auth(),
-        {
-          runId: "run-1",
-          deviceId: "dev-1",
-          bridgeId: "br-1",
-          targetRef: "AURORA-001",
-          protocol: "hdc",
-          confirmationTokens: [DTS_RELOAD_CONFIRMATION_TOKEN]
-        },
-        {
-          bridgeRpcClient,
-          bridgeConnectionPool: { isConnected: () => true }
-        }
-      )
-    ).rejects.toMatchObject({
-      details: { code: "reload-deploy-already-in-progress" }
-    });
-
-    expect(acquireDebugDeviceLease).not.toHaveBeenCalled();
-    expect(releaseDebugDeviceLease).not.toHaveBeenCalled();
-    expect(bridgeRpcClient.call).toHaveBeenCalledTimes(1);
-    expect(calls.some((call) => /status = any\(\$14::text\[\]\)/.test(call.text))).toBe(true);
-  });
-
-  it("marks the run failed when bridge RPC throws after claim so it is not stuck deploying", async () => {
-    const artifactBytes = Buffer.from("dtbo");
-    const artifactSha = createHash("sha256").update(artifactBytes).digest("hex");
-    const runRow = validatedRunRow({ overlay_artifact_sha256: artifactSha });
-    const statuses: unknown[] = [];
-    const persist = (call: QueryCall) => {
-      statuses.push(call.values[2]);
-      return [
-        {
-          ...runRow,
-          status: call.values[2],
-          failure_code: call.values[3],
-          steps: JSON.parse(String(call.values[4])),
-          reload_snapshot: JSON.parse(String(call.values[11] ?? "{}")),
-          integrity_check: call.values[10],
-          completed_at: call.values[12],
-          device_id: call.values[5],
-          bridge_id: call.values[6],
-          bridge_machine_label: call.values[7],
-          target_ref: call.values[8],
-          protocol: call.values[9]
-        }
-      ];
-    };
-    const { db } = createFakeDb([
-      () => [runRow],
-      () => [
-        {
-          binding_id: "b1",
-          node_path: "/n",
-          property_key: "p",
-          baseline_value: "<1>",
-          debug_value: "<2>",
-          sort_order: 0
-        }
-      ],
-      () => [runRow],
-      persist, // claim → deploying
-      persist, // mount running
-      persist // abort → failed
-    ]);
-    const objectStore: ObjectStore = {
-      put: vi.fn(),
-      get: vi.fn(async (key) => (key === "art-key" ? artifactBytes : Buffer.from("src"))),
-      delete: vi.fn()
-    };
-    const bridgeRpcClient = {
-      call: vi.fn(async (_id: string, method: string) => {
-        if (method === "bridge.getCapabilities") {
-          return { methods: [...DTS_RELOAD_BRIDGE_RPC_METHODS, "bridge.getCapabilities"] };
-        }
-        if (method === "debug.mountTarget") {
-          throw new Error("bridge RPC timed out");
-        }
-        throw new Error(`unexpected ${method}`);
-      })
-    };
-
-    const result = await deployReloadRun(
-      db,
-      objectStore,
-      auth(),
-      {
-        runId: "run-1",
-        deviceId: "dev-1",
-        bridgeId: "br-1",
-        targetRef: "AURORA-001",
-        protocol: "hdc",
-        confirmationTokens: [DTS_RELOAD_CONFIRMATION_TOKEN]
-      },
-      {
-        bridgeRpcClient,
-        bridgeConnectionPool: { isConnected: () => true }
-      }
-    );
-
-    expect(result.status).toBe("failed");
-    expect(result.failureCode).toBe("deploy-aborted");
-    expect(result.steps.find((step) => step.step === "mount-target")).toMatchObject({
-      outcome: "failed",
-      error: "bridge RPC timed out"
-    });
-    expect(statuses).toEqual(["deploying", "deploying", "failed"]);
-    expect(releaseDebugDeviceLease).toHaveBeenCalled();
-  });
-
-  async function runSuccessfulDeployThroughTrigger(
-    bridgeRpcClient: { call: ReturnType<typeof vi.fn> },
-    options: { debugBindingsByBindingId?: Record<string, unknown[]> } = {}
-  ) {
-    const artifactBytes = Buffer.from("dtbo");
-    const artifactSha = createHash("sha256").update(artifactBytes).digest("hex");
-    const runRow = validatedRunRow({ overlay_artifact_sha256: artifactSha, overlay_artifact_bytes: artifactBytes.length });
-    const targetRows = [
-      {
-        binding_id: "b1",
-        node_path: "/amba/i2c@1/node",
-        property_key: "watchdog_time",
-        baseline_value: "<6000>",
-        debug_value: "<7000>",
-        sort_order: 0
-      }
-    ];
-    const { db } = createDeployDb({
-      runRow,
-      targetRows,
-      debugBindingsByBindingId: options.debugBindingsByBindingId
-    });
-    const objectStore: ObjectStore = {
-      put: vi.fn(),
-      get: vi.fn(async (key) => (key === "art-key" ? artifactBytes : Buffer.from("src"))),
-      delete: vi.fn()
-    };
-    return deployReloadRun(
-      db,
-      objectStore,
-      auth(),
-      {
-        runId: "run-1",
-        deviceId: "dev-1",
-        bridgeId: "br-1",
-        targetRef: "AURORA-001",
-        protocol: "hdc",
-        confirmationTokens: [DTS_RELOAD_CONFIRMATION_TOKEN]
-      },
-      {
-        bridgeRpcClient,
-        bridgeConnectionPool: { isConnected: () => true }
-      }
+    await db.query(
+      `insert into project_parameter_binding_revisions (
+         id, binding_id, config_revision_id, parameter_spec_version_id, typed_value, raw_value
+       ) values ($1, $2, 'rev-1', $3, '{}'::jsonb, $4)`,
+      [
+        `bpr-${input.bindingId}`,
+        input.bindingId,
+        `psv-${input.bindingId}`,
+        input.baselineValue === undefined ? "<6000>" : input.baselineValue
+      ]
     );
   }
 
-  function debugBindingRow(overrides: Record<string, unknown> = {}) {
+  async function seedValidatedRun(input: {
+    id?: string;
+    bindingId?: string;
+    nodePath?: string;
+    purpose?: ReloadRunPurpose;
+    deviceId?: string | null;
+    restoresSourceRunId?: string | null;
+    status?: ReloadRunStatus;
+    completedAt?: string | null;
+  } = {}) {
+    const id = input.id ?? "run-1";
+    const bindingId = input.bindingId ?? "binding-1";
+    const nodePath = input.nodePath ?? "/amba/i2c@1/node";
+    await seedCandidate({ bindingId, nodePath });
+    await insertReloadRun(db, {
+      id,
+      organizationId: "org-1",
+      projectId: "project-1",
+      configRevisionId: "rev-1",
+      status: input.status ?? "validated",
+      purpose: input.purpose ?? "ordinary",
+      deviceId: input.deviceId ?? null,
+      restoresSourceRunId: input.restoresSourceRunId ?? null,
+      failureCode: null,
+      steps: [
+        { step: "compile-base", outcome: "passed" },
+        { step: "compile-overlay", outcome: "passed" },
+        { step: "dry-run-merge", outcome: "passed" },
+        { step: "assert-effect", outcome: "passed" }
+      ],
+      diagnostics: [],
+      toolVersions: { dtc: "1.0", fdtoverlay: "1.0" },
+      overlaySourceStorageKey: "src-key",
+      overlaySourceSha256: "src-sha",
+      overlayArtifactStorageKey: "art-key",
+      overlayArtifactSha256: ARTIFACT_SHA,
+      overlayArtifactBytes: ARTIFACT.length,
+      createdByUserId: "user-1",
+      completedAt: input.completedAt === undefined ? new Date().toISOString() : input.completedAt
+    });
+    await insertReloadRunTarget(db, {
+      id: `target-${id}`,
+      reloadRunId: id,
+      bindingId,
+      nodePath,
+      propertyKey: "watchdog_time",
+      baselineValue: "<6000>",
+      debugValue: "<7000>",
+      sortOrder: 0
+    });
+  }
+
+  function deployInput(
+    overrides: Partial<{
+      runId: string;
+      deviceId: string;
+      bridgeId: string;
+      targetRef: string;
+      protocol: "hdc" | "adb";
+      confirmationTokens: string[];
+    }> = {}
+  ) {
     return {
-      debug_node_id: "dbg-node-1",
-      node_path: "/sys/class/power_supply/battery/watchdog_time",
-      access_mode: "RW",
-      value_kind: "scalar",
-      value_format: "raw",
-      normalization_mode: "trim",
-      max_value_bytes: null,
-      value_shape: { kind: "cells", bits: 32, cellsPerGroup: 1, groups: 1 },
+      runId: "run-1",
+      deviceId: "client-supplied-device",
+      bridgeId: "br-1",
+      targetRef: "AURORA-001",
+      protocol: "hdc" as const,
+      confirmationTokens: [DTS_RELOAD_CONFIRMATION_TOKEN],
       ...overrides
     };
   }
 
-  function successfulDeployRpcHandlers(
-    readKernelLog: () => Record<string, unknown> | Promise<Record<string, unknown>>,
-    readNode?: () => Record<string, unknown> | Promise<Record<string, unknown>>
+  function rpcCall(
+    handlers: Record<string, () => unknown | Promise<unknown>> = {}
+  ): { call: ReturnType<typeof vi.fn> } {
+    return {
+      call: vi.fn(async (_bridgeId: string, method: string) => {
+        if (handlers[method]) return handlers[method]();
+        if (method === "bridge.getCapabilities") {
+          return {
+            methods: [...DTS_RELOAD_BRIDGE_RPC_METHODS, "bridge.getCapabilities", "debug.readNode"]
+          };
+        }
+        if (method === "debug.mountTarget") return { ok: true };
+        if (method === "debug.pushFile") {
+          return {
+            ok: true,
+            localDigest: ARTIFACT_SHA,
+            remoteDigest: ARTIFACT_SHA,
+            integrityCheck: "sha256"
+          };
+        }
+        if (method === "debug.writeNode") return { ok: true, verified: true };
+        if (method === "debug.readKernelLog") {
+          return {
+            ok: true,
+            text: "kernel: watchdog_time applied\nkernel: overlay reload ok\n",
+            truncated: false
+          };
+        }
+        throw new Error(`unexpected ${method}`);
+      })
+    };
+  }
+
+  async function deploy(
+    bridgeRpcClient: { call: ReturnType<typeof vi.fn> },
+    input = deployInput()
   ) {
-    const artifactSha = createHash("sha256").update("dtbo").digest("hex");
-    return vi.fn(async (_bridgeId: string, method: string) => {
-      if (method === "bridge.getCapabilities") {
-        return {
-          methods: [...DTS_RELOAD_BRIDGE_RPC_METHODS, "bridge.getCapabilities", "debug.readNode"]
-        };
-      }
-      if (method === "debug.mountTarget") return { ok: true };
-      if (method === "debug.pushFile") {
-        return { ok: true, localDigest: artifactSha, remoteDigest: artifactSha, integrityCheck: "sha256" };
-      }
-      if (method === "debug.writeNode") return { ok: true, verified: true };
-      if (method === "debug.readKernelLog") return readKernelLog();
-      if (method === "debug.readNode") {
-        if (!readNode) throw new Error("unexpected debug.readNode");
-        return readNode();
-      }
-      throw new Error(`unexpected ${method}`);
+    return deployReloadRun(db, makeObjectStore(), auth(), input, {
+      bridgeRpcClient,
+      bridgeConnectionPool: { isConnected: () => true }
     });
   }
 
-  it("never interpolates parameter names into the kernel log bridge RPC params", async () => {
-    const bridgeRpcClient = {
-      call: successfulDeployRpcHandlers(() => ({
-        ok: true,
-        text: "kernel: watchdog_time applied\n",
-        truncated: false
-      }))
-    };
+  describe("refusals before a device write", () => {
+    it("refuses an agent actor for deploy and audits the refusal", async () => {
+      await seedValidatedRun();
+      const bridgeRpcClient = rpcCall();
 
-    await runSuccessfulDeployThroughTrigger(bridgeRpcClient);
-
-    const kernelCall = bridgeRpcClient.call.mock.calls.find((call) => call[1] === "debug.readKernelLog");
-    expect(kernelCall).toBeDefined();
-    const params = kernelCall![2] as Record<string, unknown>;
-    expect(params).toEqual({
-      protocol: "hdc",
-      targetRef: "AURORA-001",
-      command: "dmesg"
-    });
-    expect(JSON.stringify(params)).not.toContain("watchdog_time");
-    expect(JSON.stringify(params)).not.toContain("b1");
-  });
-
-  it("does not derive run outcome from kernel log text that mentions errors", async () => {
-    const bridgeRpcClient = {
-      call: successfulDeployRpcHandlers(() => ({
-        ok: true,
-        text: "kernel: FATAL error failed overlay apply\n",
-        truncated: false
-      }))
-    };
-
-    const result = await runSuccessfulDeployThroughTrigger(bridgeRpcClient);
-
-    expect(result.status).toBe("unverifiable");
-    expect(result.failureCode).toBeNull();
-    expect(result.reloadSnapshot?.kernelSignal?.captureStatus).toBe("obtained");
-    expect(result.reloadSnapshot?.kernelSignal?.rawText).toContain("FATAL error");
-  });
-
-  it("keeps capture failure distinct from obtained-with-no-matching-lines and does not fail the run", async () => {
-    const failedClient = {
-      call: successfulDeployRpcHandlers(() => ({
-        ok: false,
-        error: "HDC exited with 1.",
-        text: "",
-        truncated: false
-      }))
-    };
-    const noMatchClient = {
-      call: successfulDeployRpcHandlers(() => ({
-        ok: true,
-        text: "kernel: boot complete without parameter names\n",
-        truncated: false
-      }))
-    };
-
-    const failed = await runSuccessfulDeployThroughTrigger(failedClient);
-    const noMatch = await runSuccessfulDeployThroughTrigger(noMatchClient);
-
-    expect(failed.status).toBe("unverifiable");
-    expect(failed.reloadSnapshot?.kernelSignal).toMatchObject({
-      captureStatus: "not-obtained",
-      rawText: null,
-      captureError: "HDC exited with 1."
-    });
-
-    expect(noMatch.status).toBe("unverifiable");
-    expect(noMatch.reloadSnapshot?.kernelSignal).toMatchObject({
-      captureStatus: "obtained",
-      rawText: "kernel: boot complete without parameter names\n",
-      captureError: null
-    });
-    expect(noMatch.reloadSnapshot?.kernelSignal?.matchedByParameter.every((group) => group.lines.length === 0)).toBe(
-      true
-    );
-  });
-
-  it("keeps verbatim kernel log text when the bridge reports ok:false with non-empty text", async () => {
-    const logText = "[Fail] overlay reported\n[E123456] probe failed\nwatchdog_time applied\n";
-    const bridgeRpcClient = {
-      call: successfulDeployRpcHandlers(() => ({
-        ok: false,
-        error: "looked like a diagnostic",
-        text: logText,
-        truncated: false
-      }))
-    };
-
-    const result = await runSuccessfulDeployThroughTrigger(bridgeRpcClient);
-
-    expect(result.status).toBe("unverifiable");
-    expect(result.reloadSnapshot?.kernelSignal).toMatchObject({
-      captureStatus: "obtained",
-      rawText: logText,
-      captureError: null
-    });
-  });
-
-  it("captures kernel log evidence even when the trigger write fails", async () => {
-    const artifactSha = createHash("sha256").update("dtbo").digest("hex");
-    const call = vi.fn(async (_bridgeId: string, method: string) => {
-      if (method === "bridge.getCapabilities") {
-        return { methods: [...DTS_RELOAD_BRIDGE_RPC_METHODS, "bridge.getCapabilities", "debug.readNode"] };
-      }
-      if (method === "debug.mountTarget") return { ok: true };
-      if (method === "debug.pushFile") {
-        return { ok: true, localDigest: artifactSha, remoteDigest: artifactSha, integrityCheck: "sha256" };
-      }
-      if (method === "debug.writeNode") return { ok: false, error: "sh: permission denied" };
-      if (method === "debug.readKernelLog") {
-        return { ok: true, text: "kernel: dts_overlay trigger write rejected\n", truncated: false };
-      }
-      throw new Error(`unexpected ${method}`);
-    });
-
-    const result = await runSuccessfulDeployThroughTrigger({ call });
-
-    expect(result.status).toBe("failed");
-    expect(result.failureCode).toBe("trigger-reload-failed");
-    expect(result.steps.find((step) => step.step === "trigger-reload")?.outcome).toBe("failed");
-    expect(result.reloadSnapshot?.kernelSignal).toMatchObject({
-      command: "dmesg",
-      captureStatus: "obtained",
-      rawText: "kernel: dts_overlay trigger write rejected\n"
-    });
-    expect(call.mock.calls.some((entry) => entry[1] === "debug.readKernelLog")).toBe(true);
-    expect(call.mock.calls.some((entry) => entry[1] === "debug.readNode")).toBe(false);
-  });
-
-  it("reads bound parameters through debug.readNode and reports behaviourally verified", async () => {
-    const bridgeRpcClient = {
-      call: successfulDeployRpcHandlers(
-        () => ({ ok: true, text: "kernel: unrelated\n", truncated: false }),
-        () => ({ ok: true, value: "7000\n" })
-      )
-    };
-
-    const result = await runSuccessfulDeployThroughTrigger(bridgeRpcClient, {
-      debugBindingsByBindingId: { b1: [debugBindingRow()] }
-    });
-
-    expect(result.status).toBe("verified");
-    expect(result.reloadSnapshot?.behaviouralVerification?.outcomes).toEqual([
-      expect.objectContaining({
-        bindingId: "b1",
-        outcome: "verified",
-        readValue: "7000\n",
-        nodePath: "/sys/class/power_supply/battery/watchdog_time"
-      })
-    ]);
-    expect(createAuditEvent).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        kind: "dts-reload-run-verified",
-        action: "verified",
-        metadata: expect.objectContaining({
-          reloadSnapshot: expect.objectContaining({
-            behaviouralVerification: expect.objectContaining({
-              outcomes: expect.arrayContaining([
-                expect.objectContaining({ bindingId: "b1", outcome: "verified" })
-              ])
-            })
-          })
-        })
-      })
-    );
-    const readCall = bridgeRpcClient.call.mock.calls.find((call) => call[1] === "debug.readNode");
-    expect(readCall).toEqual([
-      "br-1",
-      "debug.readNode",
-      {
-        protocol: "hdc",
-        targetRef: "AURORA-001",
-        nodePath: "/sys/class/power_supply/battery/watchdog_time",
-        preserveExactRead: false
-      },
-      { timeoutMs: 10_000 }
-    ]);
-    expect(bridgeRpcClient.call.mock.calls.map((call) => call[1])).not.toContain("debug.verifyReload");
-  });
-
-  it("reports contradicted when the driver surface disagrees with the debug value", async () => {
-    const bridgeRpcClient = {
-      call: successfulDeployRpcHandlers(
-        () => ({ ok: true, text: "", truncated: false }),
-        () => ({ ok: true, value: "6000" })
-      )
-    };
-
-    const result = await runSuccessfulDeployThroughTrigger(bridgeRpcClient, {
-      debugBindingsByBindingId: { b1: [debugBindingRow()] }
-    });
-
-    expect(result.status).toBe("contradicted");
-    expect(result.reloadSnapshot?.behaviouralVerification?.outcomes[0]).toMatchObject({
-      outcome: "contradicted",
-      readValue: "6000"
-    });
-  });
-
-  it("degrades a bound parameter to read-failed without failing the whole run", async () => {
-    const bridgeRpcClient = {
-      call: successfulDeployRpcHandlers(
-        () => ({ ok: true, text: "", truncated: false }),
-        () => ({ ok: false, error: "permission denied" })
-      )
-    };
-
-    const result = await runSuccessfulDeployThroughTrigger(bridgeRpcClient, {
-      debugBindingsByBindingId: { b1: [debugBindingRow()] }
-    });
-
-    expect(result.status).toBe("unverifiable");
-    expect(result.failureCode).toBeNull();
-    expect(result.reloadSnapshot?.behaviouralVerification?.outcomes[0]).toMatchObject({
-      outcome: "read-failed",
-      reason: "permission denied"
-    });
-  });
-
-  it("treats an uninterpretable read-back as read-failed, not contradicted", async () => {
-    const bridgeRpcClient = {
-      call: successfulDeployRpcHandlers(
-        () => ({ ok: true, text: "", truncated: false }),
-        () => ({ ok: true, value: "not-a-number" })
-      )
-    };
-
-    const result = await runSuccessfulDeployThroughTrigger(bridgeRpcClient, {
-      debugBindingsByBindingId: { b1: [debugBindingRow()] }
-    });
-
-    expect(result.status).toBe("unverifiable");
-    expect(result.failureCode).toBeNull();
-    expect(result.reloadSnapshot?.behaviouralVerification?.outcomes[0]).toMatchObject({
-      outcome: "read-failed",
-      readValue: "not-a-number",
-      reason: expect.stringMatching(/value shape/i)
-    });
-  });
-
-  it("keeps the run unverifiable when behavioural verification throws after a successful trigger", async () => {
-    vi.mocked(verifyReloadTargetsBehaviourally).mockRejectedValueOnce(new Error("resolver exploded"));
-    const bridgeRpcClient = {
-      call: successfulDeployRpcHandlers(() => ({ ok: true, text: "", truncated: false }))
-    };
-
-    const result = await runSuccessfulDeployThroughTrigger(bridgeRpcClient);
-
-    expect(result.status).toBe("unverifiable");
-    expect(result.failureCode).toBeNull();
-    expect(result.reloadSnapshot?.behaviouralVerification?.outcomes[0]).toMatchObject({
-      outcome: "read-failed",
-      reason: "resolver exploded"
-    });
-  });
-
-  it("refuses restore-baseline deploy when the request device differs from the pinned start device", async () => {
-    const artifactBytes = Buffer.from("dtbo");
-    const artifactSha = createHash("sha256").update(artifactBytes).digest("hex");
-    const runRow = validatedRunRow({
-      overlay_artifact_sha256: artifactSha,
-      overlay_artifact_bytes: artifactBytes.length,
-      purpose: "restore-baseline",
-      device_id: "bridge:lab-1",
-      restores_source_run_id: "run-residue"
-    });
-    const { db } = createDeployDb({
-      runRow,
-      targetRows: [
-        {
-          binding_id: "b1",
-          node_path: "/n",
-          property_key: "p",
-          baseline_value: "<1>",
-          debug_value: "<1>",
-          sort_order: 0
-        }
-      ]
-    });
-    const objectStore: ObjectStore = {
-      put: vi.fn(),
-      get: vi.fn(async (key) => (key === "art-key" ? artifactBytes : Buffer.from("src"))),
-      delete: vi.fn()
-    };
-    const bridgeRpcClient = { call: vi.fn() };
-
-    await expect(
-      deployReloadRun(
-        db,
-        objectStore,
-        auth(),
-        {
-          runId: "run-1",
-          deviceId: "bridge:other-device",
-          bridgeId: "br-1",
-          targetRef: "AURORA-001",
-          protocol: "hdc",
-          confirmationTokens: [DTS_RELOAD_CONFIRMATION_TOKEN]
-        },
-        {
+      await expect(
+        deployReloadRun(db, makeObjectStore(), auth(), deployInput(), {
           bridgeRpcClient,
           bridgeConnectionPool: { isConnected: () => true }
+        }, { actorType: "agent" })
+      ).rejects.toMatchObject({
+        code: "FORBIDDEN",
+        details: {
+          code: "dts-reload-agent-refused",
+          reason: "agent-refused",
+          requireHuman: true,
+          action: "deploy"
         }
-      )
-    ).rejects.toMatchObject({
-      details: { code: "restore-device-mismatch", pinnedDeviceId: "bridge:lab-1" }
+      });
+      expect(bridgeRpcClient.call).not.toHaveBeenCalled();
+      expect(createAuditEvent).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          actorType: "agent",
+          kind: "dts-reload-agent-refused",
+          action: "deny"
+        })
+      );
+      const stored = await getReloadRun(db, makeObjectStore(), auth(), "run-1");
+      expect(stored.status).toBe("validated");
     });
-    expect(bridgeRpcClient.call).not.toHaveBeenCalled();
+
+    it("refuses deploy when confirm-dts-reload is missing and never invents the token", async () => {
+      await seedValidatedRun();
+      const bridgeRpcClient = rpcCall();
+
+      await expect(
+        deploy(bridgeRpcClient, deployInput({ confirmationTokens: ["confirm-sensitive-reload"] }))
+      ).rejects.toMatchObject({
+        details: { code: "missing-dts-reload-confirmation" }
+      });
+      expect(bridgeRpcClient.call).not.toHaveBeenCalled();
+      expect(
+        vi.mocked(createAuditEvent).mock.calls.some((call) => {
+          const metadata = call[1].metadata as Record<string, unknown>;
+          return (
+            metadata?.confirmationToken === DTS_RELOAD_CONFIRMATION_TOKEN &&
+            call[1].kind === "dts-reload-run-deploy-started"
+          );
+        })
+      ).toBe(false);
+    });
+
+    it("refuses deploy of an overlay artifact past its retention window before touching the bridge", async () => {
+      const expiredAt = new Date(
+        Date.now() - (RELOAD_ARTIFACT_RETENTION_DAYS + 10) * 24 * 60 * 60 * 1000
+      ).toISOString();
+      await seedValidatedRun({ completedAt: expiredAt });
+      await db.query("update dts_reload_runs set created_at = $2 where id = $1", ["run-1", expiredAt]);
+      const bridgeRpcClient = rpcCall();
+
+      await expect(deploy(bridgeRpcClient)).rejects.toMatchObject({
+        details: { code: "reload-artifact-expired" }
+      });
+      expect(bridgeRpcClient.call).not.toHaveBeenCalled();
+    });
+
+    it("refuses restore-baseline deploy when the request device differs from the pinned start device", async () => {
+      await seedValidatedRun({
+        id: "run-residue",
+        status: "verified",
+        deviceId: "bridge:lab-1"
+      });
+      await insertReloadRun(db, {
+        id: "run-1",
+        organizationId: "org-1",
+        projectId: "project-1",
+        configRevisionId: "rev-1",
+        status: "validated",
+        purpose: "restore-baseline",
+        deviceId: "bridge:lab-1",
+        restoresSourceRunId: "run-residue",
+        failureCode: null,
+        steps: [
+          { step: "compile-base", outcome: "passed" },
+          { step: "compile-overlay", outcome: "passed" },
+          { step: "dry-run-merge", outcome: "passed" },
+          { step: "assert-effect", outcome: "passed" }
+        ],
+        diagnostics: [],
+        toolVersions: { dtc: "1.0", fdtoverlay: "1.0" },
+        overlaySourceStorageKey: "src-key",
+        overlaySourceSha256: "src-sha",
+        overlayArtifactStorageKey: "art-key",
+        overlayArtifactSha256: ARTIFACT_SHA,
+        overlayArtifactBytes: ARTIFACT.length,
+        createdByUserId: "user-1",
+        completedAt: new Date().toISOString()
+      });
+      await insertReloadRunTarget(db, {
+        id: "target-run-1",
+        reloadRunId: "run-1",
+        bindingId: "binding-1",
+        nodePath: "/amba/i2c@1/node",
+        propertyKey: "watchdog_time",
+        baselineValue: "<6000>",
+        debugValue: "<6000>",
+        sortOrder: 0
+      });
+      const bridgeRpcClient = rpcCall();
+
+      await expect(deploy(bridgeRpcClient)).rejects.toMatchObject({
+        details: { code: "restore-device-mismatch", pinnedDeviceId: "bridge:lab-1" }
+      });
+      expect(bridgeRpcClient.call).not.toHaveBeenCalled();
+    });
+
+    it("re-runs the sensitive-node gate at deploy so a deployer lacking capability is refused", async () => {
+      await seedValidatedRun({ nodePath: "/soc/fuel-gauge@0" });
+      await db.query(
+        `insert into dts_sensitive_node_rules (
+           id, organization_id, project_id, match_type, pattern, risk_tier, required_capability, enabled
+         ) values ('rule-1', 'org-1', null, 'path', '/soc/fuel-gauge@0', 'high', 'parameter:edit-critical', true)`
+      );
+      const bridgeRpcClient = rpcCall();
+
+      await expect(deploy(bridgeRpcClient)).rejects.toMatchObject({
+        details: { code: "sensitive-node-reload-denied", reason: "missing-capability" }
+      });
+      expect(bridgeRpcClient.call).not.toHaveBeenCalled();
+    });
+
+    it("refuses when the bridge lacks deploy RPC methods and points at releases", async () => {
+      await seedValidatedRun();
+      const bridgeRpcClient = {
+        call: vi.fn(async () => ({ methods: ["bridge.getCapabilities", "debug.writeNode"] }))
+      };
+
+      await expect(deploy(bridgeRpcClient)).rejects.toMatchObject({
+        details: {
+          code: "bridge-upgrade-required",
+          releasesPath: "/api/v1/device-bridges/releases"
+        }
+      });
+      const stored = await getReloadRun(db, makeObjectStore(), auth(), "run-1");
+      expect(stored.status).toBe("validated");
+    });
   });
 
-  it("drives the run to a terminal state (never wedged in deploying) when device/lease setup throws", async () => {
-    const artifactBytes = Buffer.from("dtbo");
-    const artifactSha = createHash("sha256").update(artifactBytes).digest("hex");
-    const runRow = validatedRunRow({ overlay_artifact_sha256: artifactSha, overlay_artifact_bytes: artifactBytes.length });
-    const { db, updates } = createDeployDb({
-      runRow,
-      targetRows: [
-        { binding_id: "b1", node_path: "/n", property_key: "p", baseline_value: "<1>", debug_value: "<2>", sort_order: 0 }
-      ]
-    });
-    const objectStore: ObjectStore = {
-      put: vi.fn(),
-      get: vi.fn(async (key) => (key === "art-key" ? artifactBytes : Buffer.from("src"))),
-      delete: vi.fn()
-    };
-    // Setup between claim and the deploy steps throws (e.g. a debugging_targets FK violation).
-    vi.mocked(ensureDtsReloadLeaseSession).mockRejectedValueOnce(new Error("debugging_targets FK violation"));
-    const bridgeRpcClient = {
-      call: vi.fn(async (_b: string, method: string) => {
-        if (method === "bridge.getCapabilities") {
-          return { methods: [...DTS_RELOAD_BRIDGE_RPC_METHODS, "bridge.getCapabilities", "debug.readNode"] };
-        }
-        throw new Error(`unexpected ${method}`);
-      })
-    };
-
-    const result = await deployReloadRun(
-      db,
-      objectStore,
-      auth(),
-      {
-        runId: "run-1",
-        deviceId: "dev-1",
-        bridgeId: "br-1",
-        targetRef: "AURORA-001",
-        protocol: "hdc",
-        confirmationTokens: [DTS_RELOAD_CONFIRMATION_TOKEN]
-      },
-      { bridgeRpcClient, bridgeConnectionPool: { isConnected: () => true } }
-    );
-
-    expect(result.status).toBe("failed");
-    expect(result.failureCode).toBe("deploy-aborted");
-    expect(updates.at(-1)?.status).toBe("failed");
-    // Lease was never acquired, so it must not be acquired or released.
-    expect(vi.mocked(acquireDebugDeviceLease)).not.toHaveBeenCalled();
-    expect(vi.mocked(releaseDebugDeviceLease)).not.toHaveBeenCalled();
-    expect(bridgeRpcClient.call.mock.calls.some((c) => c[1] === "debug.mountTarget")).toBe(false);
-  });
-
-  it("derives the device id from the bridge and ignores a client-supplied deviceId", async () => {
-    const artifactBytes = Buffer.from("dtbo");
-    const artifactSha = createHash("sha256").update(artifactBytes).digest("hex");
-    const runRow = validatedRunRow({ overlay_artifact_sha256: artifactSha, overlay_artifact_bytes: artifactBytes.length });
-    const { db } = createDeployDb({
-      runRow,
-      targetRows: [
-        { binding_id: "b1", node_path: "/n", property_key: "p", baseline_value: "<1>", debug_value: "<2>", sort_order: 0 }
-      ]
-    });
-    const objectStore: ObjectStore = {
-      put: vi.fn(),
-      get: vi.fn(async (key) => (key === "art-key" ? artifactBytes : Buffer.from("src"))),
-      delete: vi.fn()
-    };
-    const bridgeRpcClient = {
-      call: vi.fn(async (_b: string, method: string) => {
-        if (method === "bridge.getCapabilities") {
-          return { methods: [...DTS_RELOAD_BRIDGE_RPC_METHODS, "bridge.getCapabilities", "debug.readNode"] };
-        }
-        if (method === "debug.mountTarget") return { ok: true };
-        if (method === "debug.pushFile") {
-          return { ok: true, localDigest: artifactSha, remoteDigest: artifactSha, integrityCheck: "sha256" };
-        }
-        if (method === "debug.writeNode") return { ok: true };
-        if (method === "debug.readKernelLog") return { ok: true, text: "", truncated: false };
-        throw new Error(`unexpected ${method}`);
-      })
-    };
-
-    await deployReloadRun(
-      db,
-      objectStore,
-      auth(),
-      {
-        runId: "run-1",
-        deviceId: "totally-spoofed-device",
-        bridgeId: "br-1",
-        targetRef: "AURORA-001",
-        protocol: "hdc",
-        confirmationTokens: [DTS_RELOAD_CONFIRMATION_TOKEN]
-      },
-      { bridgeRpcClient, bridgeConnectionPool: { isConnected: () => true } }
-    );
-
-    expect(vi.mocked(ensureBridgeDebugDevice)).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ deviceId: "bridge:br-1" })
-    );
-    expect(vi.mocked(acquireDebugDeviceLease)).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ deviceId: "bridge:br-1" })
-    );
-  });
-
-  it("records residue and captures the kernel log when the trigger write does not confirm", async () => {
-    const artifactBytes = Buffer.from("dtbo");
-    const artifactSha = createHash("sha256").update(artifactBytes).digest("hex");
-    const runRow = validatedRunRow({ overlay_artifact_sha256: artifactSha, overlay_artifact_bytes: artifactBytes.length });
-    const { db, calls } = createDeployDb({
-      runRow,
-      targetRows: [
-        { binding_id: "b1", node_path: "/n", property_key: "watchdog_time", baseline_value: "<1>", debug_value: "<2>", sort_order: 0 }
-      ]
-    });
-    const objectStore: ObjectStore = {
-      put: vi.fn(),
-      get: vi.fn(async (key) => (key === "art-key" ? artifactBytes : Buffer.from("src"))),
-      delete: vi.fn()
-    };
-    const bridgeRpcClient = {
-      call: vi.fn(async (_b: string, method: string) => {
-        if (method === "bridge.getCapabilities") {
-          return { methods: [...DTS_RELOAD_BRIDGE_RPC_METHODS, "bridge.getCapabilities", "debug.readNode"] };
-        }
-        if (method === "debug.mountTarget") return { ok: true };
-        if (method === "debug.pushFile") {
-          return { ok: true, localDigest: artifactSha, remoteDigest: artifactSha, integrityCheck: "sha256" };
-        }
-        if (method === "debug.writeNode") throw new Error("bridge socket closed mid-write");
-        if (method === "debug.readKernelLog") return { ok: true, text: "kernel: overlay trigger unacked\n", truncated: false };
-        throw new Error(`unexpected ${method}`);
-      })
-    };
-
-    const result = await deployReloadRun(
-      db,
-      objectStore,
-      auth(),
-      {
-        runId: "run-1",
-        deviceId: "dev-1",
-        bridgeId: "br-1",
-        targetRef: "AURORA-001",
-        protocol: "hdc",
-        confirmationTokens: [DTS_RELOAD_CONFIRMATION_TOKEN]
-      },
-      { bridgeRpcClient, bridgeConnectionPool: { isConnected: () => true } }
-    );
-
-    expect(result.status).toBe("failed");
-    expect(result.failureCode).toBe("trigger-reload-unconfirmed");
-    expect(result.reloadSnapshot?.kernelSignal).toMatchObject({ captureStatus: "obtained" });
-    expect(result.reloadSnapshot?.kernelSignal?.rawText).toContain("overlay trigger unacked");
-    // behavioural verification never runs after an unconfirmed trigger
-    expect(bridgeRpcClient.call.mock.calls.some((c) => c[1] === "debug.readNode")).toBe(false);
-    // residue is recorded defensively under the canonical bridge device id
-    const residueInsert = calls.find(
-      (c) => c.text.includes("dts_reload_device_residue") && c.text.toLowerCase().includes("insert into")
-    );
-    expect(residueInsert).toBeDefined();
-    expect(residueInsert?.values[1]).toBe("bridge:br-1");
-  });
-
-  it("refuses deploy of an overlay artifact past its retention window before touching the bridge", async () => {
-    const artifactBytes = Buffer.from("dtbo");
-    const artifactSha = createHash("sha256").update(artifactBytes).digest("hex");
-    const expiredAt = new Date(Date.now() - 400 * 24 * 60 * 60 * 1000).toISOString();
-    const runRow = validatedRunRow({
-      overlay_artifact_sha256: artifactSha,
-      overlay_artifact_bytes: artifactBytes.length,
-      created_at: expiredAt,
-      completed_at: expiredAt
-    });
-    const { db } = createDeployDb({
-      runRow,
-      targetRows: [
-        { binding_id: "b1", node_path: "/n", property_key: "p", baseline_value: "<1>", debug_value: "<2>", sort_order: 0 }
-      ]
-    });
-    const objectStore: ObjectStore = { put: vi.fn(), get: vi.fn(async () => artifactBytes), delete: vi.fn() };
-    const bridgeRpcClient = { call: vi.fn() };
-
-    await expect(
-      deployReloadRun(
-        db,
-        objectStore,
-        auth(),
-        {
-          runId: "run-1",
-          deviceId: "dev-1",
-          bridgeId: "br-1",
-          targetRef: "AURORA-001",
-          protocol: "hdc",
-          confirmationTokens: [DTS_RELOAD_CONFIRMATION_TOKEN]
+  describe("claim, lease, and canonical device identity", () => {
+    it("atomically refuses a second deploy claim on the same run and never acquires a second lease", async () => {
+      await seedValidatedRun();
+      let waiting = 0;
+      let releaseBarrier: (() => void) | undefined;
+      const bothAtCapabilities = new Promise<void>((resolve) => {
+        releaseBarrier = resolve;
+      });
+      const bridgeRpcClient = rpcCall({
+        "bridge.getCapabilities": async () => {
+          waiting += 1;
+          if (waiting >= 2) releaseBarrier?.();
+          await bothAtCapabilities;
+          return {
+            methods: [...DTS_RELOAD_BRIDGE_RPC_METHODS, "bridge.getCapabilities"]
+          };
         },
-        { bridgeRpcClient, bridgeConnectionPool: { isConnected: () => true } }
-      )
-    ).rejects.toMatchObject({ details: { code: "reload-artifact-expired" } });
-    expect(bridgeRpcClient.call).not.toHaveBeenCalled();
+        "debug.mountTarget": () => ({ ok: false, error: "mount denied" })
+      });
+
+      const results = await Promise.allSettled([deploy(bridgeRpcClient), deploy(bridgeRpcClient)]);
+      const fulfilled = results.filter((entry) => entry.status === "fulfilled");
+      const rejected = results.filter((entry) => entry.status === "rejected");
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      if (fulfilled[0]?.status !== "fulfilled" || rejected[0]?.status !== "rejected") {
+        throw new Error("expected one winner and one claim conflict");
+      }
+      expect(fulfilled[0].value.failureCode).toBe("mount-target-failed");
+      expect(rejected[0].reason).toMatchObject({
+        details: { code: "reload-deploy-already-in-progress" }
+      });
+      expect(acquireDebugDeviceLease).toHaveBeenCalledTimes(1);
+      const stored = await getReloadRun(db, makeObjectStore(), auth(), "run-1");
+      expect(stored.status).toBe("failed");
+      expect(stored.failureCode).toBe("mount-target-failed");
+    });
+
+    it("drives the run to a terminal state when device/lease setup throws after claim", async () => {
+      await seedValidatedRun();
+      vi.mocked(ensureDtsReloadLeaseSession).mockRejectedValueOnce(
+        new Error("debugging_targets FK violation")
+      );
+      const bridgeRpcClient = rpcCall();
+
+      const result = await deploy(bridgeRpcClient);
+      expect(result.status).toBe("failed");
+      expect(result.failureCode).toBe("deploy-aborted");
+      expect(acquireDebugDeviceLease).not.toHaveBeenCalled();
+      expect(releaseDebugDeviceLease).not.toHaveBeenCalled();
+      expect(bridgeRpcClient.call.mock.calls.some((call) => call[1] === "debug.mountTarget")).toBe(
+        false
+      );
+      const stored = await getReloadRun(db, makeObjectStore(), auth(), "run-1");
+      expect(stored.status).toBe("failed");
+      expect(stored.failureCode).toBe("deploy-aborted");
+    });
   });
 
-  it("re-runs the sensitive-node gate at deploy so a deployer lacking capability is refused", async () => {
-    const artifactBytes = Buffer.from("dtbo");
-    const artifactSha = createHash("sha256").update(artifactBytes).digest("hex");
-    const runRow = validatedRunRow({ overlay_artifact_sha256: artifactSha, overlay_artifact_bytes: artifactBytes.length });
-    const runQuery = async <Row,>(text: string): Promise<QueryResult<Row>> => {
-      if (text.includes("from dts_reload_run_targets")) {
-        return {
-          rows: [
-            { binding_id: "b1", node_path: "/soc/fuel-gauge@0", property_key: "p", baseline_value: "<1>", debug_value: "<2>", sort_order: 0 }
-          ] as Row[],
-          rowCount: 1
-        };
-      }
-      if (text.includes("dts_sensitive_node_rules")) {
-        return {
-          rows: [
+  describe("device steps", () => {
+    it("mounts, transfers, triggers, and finishes as unverifiable with a persisted reload snapshot", async () => {
+      await seedValidatedRun();
+      const bridgeRpcClient = rpcCall();
+
+      const result = await deploy(bridgeRpcClient);
+
+      expect(result.status).toBe("unverifiable");
+      expect(result.failureCode).toBeNull();
+      expect(result.deviceId).toBe(CANONICAL_DEVICE_ID);
+      expect(result.integrityCheck).toBe("sha256");
+      expect(result.reloadSnapshot?.libraryBaselines[0]?.baselineValue).toBe("<6000>");
+      expect(result.reloadSnapshot?.artifactDigest?.integrityCheck).toBe("sha256");
+      expect(result.reloadSnapshot?.kernelSignal).toMatchObject({
+        command: "dmesg",
+        captureStatus: "obtained",
+        rawText: "kernel: watchdog_time applied\nkernel: overlay reload ok\n",
+        matchedByParameter: [
+          {
+            parameterName: "watchdog_time",
+            bindingId: "binding-1",
+            lines: ["kernel: watchdog_time applied"]
+          }
+        ]
+      });
+      expect(result.reloadSnapshot?.behaviouralVerification?.outcomes).toEqual([
+        expect.objectContaining({
+          bindingId: "binding-1",
+          propertyKey: "watchdog_time",
+          outcome: "unbound",
+          reason: expect.stringContaining("No readable debug-node binding")
+        })
+      ]);
+      expect(result.steps.map((step) => [step.step, step.outcome])).toEqual([
+        ["compile-base", "passed"],
+        ["compile-overlay", "passed"],
+        ["dry-run-merge", "passed"],
+        ["assert-effect", "passed"],
+        ["mount-target", "passed"],
+        ["transfer-artifact", "passed"],
+        ["trigger-reload", "passed"]
+      ]);
+
+      expect(bridgeRpcClient.call).toHaveBeenNthCalledWith(
+        2,
+        "br-1",
+        "debug.mountTarget",
+        { protocol: "hdc", targetRef: "AURORA-001" },
+        { timeoutMs: 15_000 }
+      );
+      expect(bridgeRpcClient.call).toHaveBeenNthCalledWith(
+        3,
+        "br-1",
+        "debug.pushFile",
+        expect.objectContaining({
+          destinationDirectory: "/vendor/firmware/",
+          destinationFilename: "power_dts_overlay.dtbo",
+          contentSha256: ARTIFACT_SHA
+        }),
+        { timeoutMs: 30_000 }
+      );
+      expect(bridgeRpcClient.call).toHaveBeenNthCalledWith(
+        4,
+        "br-1",
+        "debug.writeNode",
+        expect.objectContaining({
+          nodePath: "/sys/kernel/debug/power_debug/dts_overlay/trigger",
+          value: "1",
+          readBack: false
+        }),
+        { timeoutMs: 10_000 }
+      );
+      const kernelCall = bridgeRpcClient.call.mock.calls.find((call) => call[1] === "debug.readKernelLog");
+      expect(kernelCall?.[2]).toEqual({
+        protocol: "hdc",
+        targetRef: "AURORA-001",
+        command: "dmesg"
+      });
+      expect(JSON.stringify(kernelCall?.[2])).not.toContain("watchdog_time");
+      expect(JSON.stringify(kernelCall?.[2])).not.toContain("binding-1");
+      expect(bridgeRpcClient.call.mock.calls.some((call) => call[1] === "debug.readNode")).toBe(false);
+      expect(ensureBridgeDebugDevice).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ deviceId: CANONICAL_DEVICE_ID, protocol: "hdc" })
+      );
+      expect(acquireDebugDeviceLease).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ deviceId: CANONICAL_DEVICE_ID, sessionId: "dts-reload:run-1" })
+      );
+      expect(releaseDebugDeviceLease).toHaveBeenCalled();
+
+      const stored = await getReloadRun(db, makeObjectStore(), auth(), "run-1");
+      expect(stored.status).toBe("unverifiable");
+      expect(stored.deviceId).toBe(CANONICAL_DEVICE_ID);
+      expect(stored.reloadSnapshot?.kernelSignal?.captureStatus).toBe("obtained");
+    });
+
+    it("reports mount failure distinctly from transfer failure and persists it", async () => {
+      await seedValidatedRun();
+      const result = await deploy(
+        rpcCall({
+          "debug.mountTarget": () => ({ ok: false, error: "mount denied" })
+        })
+      );
+
+      expect(result.status).toBe("failed");
+      expect(result.failureCode).toBe("mount-target-failed");
+      expect(result.steps.find((step) => step.step === "mount-target")?.outcome).toBe("failed");
+      const stored = await getReloadRun(db, makeObjectStore(), auth(), "run-1");
+      expect(stored.status).toBe("failed");
+      expect(stored.failureCode).toBe("mount-target-failed");
+    });
+
+    it("marks the run failed when bridge RPC throws after claim so it is not stuck deploying", async () => {
+      await seedValidatedRun();
+      const result = await deploy(
+        rpcCall({
+          "debug.mountTarget": () => {
+            throw new Error("bridge RPC timed out");
+          }
+        })
+      );
+
+      expect(result.status).toBe("failed");
+      expect(result.failureCode).toBe("deploy-aborted");
+      expect(result.steps.find((step) => step.step === "mount-target")).toMatchObject({
+        outcome: "failed",
+        error: "bridge RPC timed out"
+      });
+      expect(releaseDebugDeviceLease).toHaveBeenCalled();
+      const stored = await getReloadRun(db, makeObjectStore(), auth(), "run-1");
+      expect(stored.status).toBe("failed");
+      expect(stored.failureCode).toBe("deploy-aborted");
+    });
+
+    it("does not derive run outcome from kernel log text that mentions errors", async () => {
+      await seedValidatedRun();
+      const result = await deploy(
+        rpcCall({
+          "debug.readKernelLog": () => ({
+            ok: true,
+            text: "kernel: FATAL error failed overlay apply\n",
+            truncated: false
+          })
+        })
+      );
+
+      expect(result.status).toBe("unverifiable");
+      expect(result.failureCode).toBeNull();
+      expect(result.reloadSnapshot?.kernelSignal?.captureStatus).toBe("obtained");
+      expect(result.reloadSnapshot?.kernelSignal?.rawText).toContain("FATAL error");
+    });
+
+    it("keeps kernel-log capture failure as not-obtained without failing the run", async () => {
+      await seedValidatedRun();
+      const failed = await deploy(
+        rpcCall({
+          "debug.readKernelLog": () => ({
+            ok: false,
+            error: "HDC exited with 1.",
+            text: "",
+            truncated: false
+          })
+        })
+      );
+      expect(failed.status).toBe("unverifiable");
+      expect(failed.reloadSnapshot?.kernelSignal).toMatchObject({
+        captureStatus: "not-obtained",
+        rawText: null,
+        captureError: "HDC exited with 1."
+      });
+    });
+
+    it("keeps obtained kernel log with no matching lines distinct from capture failure", async () => {
+      await seedValidatedRun();
+      const noMatch = await deploy(
+        rpcCall({
+          "debug.readKernelLog": () => ({
+            ok: true,
+            text: "kernel: boot complete without parameter names\n",
+            truncated: false
+          })
+        })
+      );
+      expect(noMatch.status).toBe("unverifiable");
+      expect(noMatch.reloadSnapshot?.kernelSignal).toMatchObject({
+        captureStatus: "obtained",
+        rawText: "kernel: boot complete without parameter names\n",
+        captureError: null
+      });
+      expect(
+        noMatch.reloadSnapshot?.kernelSignal?.matchedByParameter.every((group) => group.lines.length === 0)
+      ).toBe(true);
+    });
+
+    it("keeps verbatim kernel log text when the bridge reports ok:false with non-empty text", async () => {
+      await seedValidatedRun();
+      const logText = "[Fail] overlay reported\n[E123456] probe failed\nwatchdog_time applied\n";
+      const result = await deploy(
+        rpcCall({
+          "debug.readKernelLog": () => ({
+            ok: false,
+            error: "looked like a diagnostic",
+            text: logText,
+            truncated: false
+          })
+        })
+      );
+
+      expect(result.status).toBe("unverifiable");
+      expect(result.reloadSnapshot?.kernelSignal).toMatchObject({
+        captureStatus: "obtained",
+        rawText: logText,
+        captureError: null
+      });
+    });
+
+    it("captures kernel log evidence even when the trigger write fails", async () => {
+      await seedValidatedRun();
+      const bridgeRpcClient = rpcCall({
+        "debug.writeNode": () => ({ ok: false, error: "sh: permission denied" }),
+        "debug.readKernelLog": () => ({
+          ok: true,
+          text: "kernel: dts_overlay trigger write rejected\n",
+          truncated: false
+        })
+      });
+
+      const result = await deploy(bridgeRpcClient);
+      expect(result.status).toBe("failed");
+      expect(result.failureCode).toBe("trigger-reload-failed");
+      expect(result.reloadSnapshot?.kernelSignal).toMatchObject({
+        command: "dmesg",
+        captureStatus: "obtained",
+        rawText: "kernel: dts_overlay trigger write rejected\n"
+      });
+      expect(bridgeRpcClient.call.mock.calls.some((call) => call[1] === "debug.readKernelLog")).toBe(true);
+      expect(bridgeRpcClient.call.mock.calls.some((call) => call[1] === "debug.readNode")).toBe(false);
+    });
+
+    it("records residue and captures the kernel log when the trigger write does not confirm", async () => {
+      await seedValidatedRun();
+      const bridgeRpcClient = rpcCall({
+        "debug.writeNode": () => {
+          throw new Error("bridge socket closed mid-write");
+        },
+        "debug.readKernelLog": () => ({
+          ok: true,
+          text: "kernel: overlay trigger unacked\n",
+          truncated: false
+        })
+      });
+
+      const result = await deploy(bridgeRpcClient);
+      expect(result.status).toBe("failed");
+      expect(result.failureCode).toBe(TRIGGER_RELOAD_UNCONFIRMED_FAILURE_CODE);
+      expect(result.reloadSnapshot?.kernelSignal).toMatchObject({ captureStatus: "obtained" });
+      expect(result.reloadSnapshot?.kernelSignal?.rawText).toContain("overlay trigger unacked");
+      expect(bridgeRpcClient.call.mock.calls.some((call) => call[1] === "debug.readNode")).toBe(false);
+
+      const residue = await getReloadResidue(db, auth(), CANONICAL_DEVICE_ID);
+      expect(residue).toMatchObject({
+        deviceId: CANONICAL_DEVICE_ID,
+        projectId: "project-1",
+        sourceRunId: "run-1"
+      });
+      expect(residue?.parameters).toEqual([
+        expect.objectContaining({
+          bindingId: "binding-1",
+          propertyKey: "watchdog_time",
+          debugValue: "<7000>"
+        })
+      ]);
+    });
+  });
+
+  describe("behavioural verification mapping", () => {
+    it("maps a verified behavioural result onto the run and audit", async () => {
+      await seedValidatedRun();
+      vi.mocked(verifyReloadTargetsBehaviourally).mockResolvedValueOnce({
+        status: "verified",
+        behaviouralVerification: {
+          outcomes: [
             {
-              id: "rule-1",
-              organization_id: "org-1",
-              project_id: null,
-              match_type: "path",
-              pattern: "/soc/fuel-gauge@0",
-              risk_tier: "high",
-              required_capability: "debugging:dts-reload-critical",
-              enabled: true
+              bindingId: "binding-1",
+              propertyKey: "watchdog_time",
+              outcome: "verified",
+              debugNodeId: "dbg-node-1",
+              nodePath: "/sys/class/power_supply/battery/watchdog_time",
+              expectedValue: "<7000>",
+              readValue: "7000\n",
+              reason: null
             }
-          ] as Row[],
-          rowCount: 1
-        };
-      }
-      if (text.includes("project_parameter_bindings")) {
-        return { rows: [{ compatible: null }] as Row[], rowCount: 1 };
-      }
-      if (text.includes("from dts_reload_runs") || text.includes("overlay_artifact_storage_key")) {
-        return { rows: [runRow] as Row[], rowCount: 1 };
-      }
-      return { rows: [] as Row[], rowCount: 0 };
-    };
-    const db: Database = {
-      query: (text) => runQuery(text),
-      transaction: async <T,>(fn: (q: Queryable) => Promise<T>) => fn({ query: (text) => runQuery(text) })
-    };
-    const objectStore: ObjectStore = { put: vi.fn(), get: vi.fn(async () => Buffer.from("src")), delete: vi.fn() };
-    const bridgeRpcClient = { call: vi.fn() };
+          ]
+        }
+      });
 
-    await expect(
-      deployReloadRun(
-        db,
-        objectStore,
-        auth(),
-        {
-          runId: "run-1",
-          deviceId: "dev-1",
-          bridgeId: "br-1",
-          targetRef: "AURORA-001",
-          protocol: "hdc",
-          confirmationTokens: [DTS_RELOAD_CONFIRMATION_TOKEN]
-        },
-        { bridgeRpcClient, bridgeConnectionPool: { isConnected: () => true } }
-      )
-    ).rejects.toMatchObject({ details: { code: "sensitive-node-reload-denied", reason: "missing-capability" } });
-    expect(bridgeRpcClient.call).not.toHaveBeenCalled();
+      const result = await deploy(rpcCall());
+      expect(result.status).toBe("verified");
+      expect(result.reloadSnapshot?.behaviouralVerification?.outcomes[0]).toMatchObject({
+        outcome: "verified",
+        readValue: "7000\n"
+      });
+      expect(createAuditEvent).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          kind: "dts-reload-run-verified",
+          action: "verified"
+        })
+      );
+      const stored = await getReloadRun(db, makeObjectStore(), auth(), "run-1");
+      expect(stored.status).toBe("verified");
+    });
+
+    it("reports contradicted when behavioural verification disagrees with the debug value", async () => {
+      await seedValidatedRun();
+      vi.mocked(verifyReloadTargetsBehaviourally).mockResolvedValueOnce({
+        status: "contradicted",
+        behaviouralVerification: {
+          outcomes: [
+            {
+              bindingId: "binding-1",
+              propertyKey: "watchdog_time",
+              outcome: "contradicted",
+              debugNodeId: "dbg-node-1",
+              nodePath: "/sys/class/power_supply/battery/watchdog_time",
+              expectedValue: "<7000>",
+              readValue: "6000",
+              reason: null
+            }
+          ]
+        }
+      });
+
+      const result = await deploy(rpcCall());
+      expect(result.status).toBe("contradicted");
+      expect(result.reloadSnapshot?.behaviouralVerification?.outcomes[0]).toMatchObject({
+        outcome: "contradicted",
+        readValue: "6000"
+      });
+    });
+
+    it("degrades a bound parameter to read-failed without failing the whole run", async () => {
+      await seedValidatedRun();
+      vi.mocked(verifyReloadTargetsBehaviourally).mockResolvedValueOnce({
+        status: "unverifiable",
+        behaviouralVerification: {
+          outcomes: [
+            {
+              bindingId: "binding-1",
+              propertyKey: "watchdog_time",
+              outcome: "read-failed",
+              debugNodeId: "dbg-node-1",
+              nodePath: "/sys/class/power_supply/battery/watchdog_time",
+              expectedValue: "<7000>",
+              readValue: null,
+              reason: "permission denied"
+            }
+          ]
+        }
+      });
+
+      const result = await deploy(rpcCall());
+      expect(result.status).toBe("unverifiable");
+      expect(result.failureCode).toBeNull();
+      expect(result.reloadSnapshot?.behaviouralVerification?.outcomes[0]).toMatchObject({
+        outcome: "read-failed",
+        reason: "permission denied"
+      });
+    });
+
+    it("keeps the run unverifiable when behavioural verification throws after a successful trigger", async () => {
+      await seedValidatedRun();
+      vi.mocked(verifyReloadTargetsBehaviourally).mockRejectedValueOnce(new Error("resolver exploded"));
+
+      const result = await deploy(rpcCall());
+      expect(result.status).toBe("unverifiable");
+      expect(result.failureCode).toBeNull();
+      expect(result.reloadSnapshot?.behaviouralVerification?.outcomes[0]).toMatchObject({
+        outcome: "read-failed",
+        reason: "resolver exploded"
+      });
+    });
   });
 });
