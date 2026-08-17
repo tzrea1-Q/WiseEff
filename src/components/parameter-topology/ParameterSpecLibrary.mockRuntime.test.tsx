@@ -41,7 +41,7 @@ describe("mock runtime semantic parameter model (seam)", () => {
     expect(library).toBeInTheDocument();
     expect(screen.getAllByText(/gpio_int/).length).toBeGreaterThan(0);
     expect(screen.getByRole("columnheader", { name: "参数定义" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "驱动模块" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "所属模块" })).toBeInTheDocument();
     if (rows[0]) {
       expect(screen.getAllByText(formatSpecPrimaryLabel(rows[0])).length).toBeGreaterThan(0);
     }

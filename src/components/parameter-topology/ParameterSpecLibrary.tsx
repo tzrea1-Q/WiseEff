@@ -33,7 +33,6 @@ export type ParameterSpecLibraryRow = {
   schemaSource: string;
   schemaVersion: string | number | null;
   exampleValue: unknown;
-  businessCategory: string | null;
   reviewState: string;
   usageCount: number;
 };
@@ -52,7 +51,6 @@ export function mapParameterSpecToLibraryRow(input: {
   exampleValue?: unknown;
   schemaNamespace?: string | null;
   schemaSource?: string | null;
-  businessCategory?: string | null;
   usageCount?: number | null;
   reviewState?: string | null;
   attributionModules?: SpecAttributionModule[] | null;
@@ -93,7 +91,6 @@ export function mapParameterSpecToLibraryRow(input: {
     schemaSource,
     schemaVersion: input.currentVersion ?? null,
     exampleValue: input.exampleValue ?? null,
-    businessCategory: input.businessCategory ?? null,
     reviewState: input.reviewState ?? input.lifecycle ?? "draft",
     usageCount: input.usageCount ?? 0
   };
@@ -127,33 +124,12 @@ export function formatSpecAttributionLabel(spec: ParameterSpecLibraryRow): strin
 
 /**
  * Primary library/detail label for the 参数定义 column: the property key only.
- * Module taxonomy paths belong in {@link formatSpecDriverModuleLabel}.
+ * Module taxonomy paths belong in {@link formatSpecAttributionLabel}.
  */
 export function formatSpecPrimaryLabel(
   spec: Pick<ParameterSpecLibraryRow, "propertyKey" | "attributionModules" | "driverModule">
 ): string {
   return spec.propertyKey.trim() || "—";
-}
-
-/**
- * 驱动模块 column: taxonomy placement path from attribution modules when observed;
- * otherwise the subject display label (API `driverModule`, display-only) or 未归类.
- * Never treat the string as ParameterSpec write identity.
- */
-export function formatSpecDriverModuleLabel(
-  spec: Pick<ParameterSpecLibraryRow, "attributionModules" | "driverModule">
-): string {
-  if (spec.attributionModules && spec.attributionModules.length > 0) {
-    return spec.attributionModules
-      .map((module) =>
-        module.path && module.path.length > 0 ? module.path.join(" / ") : module.name
-      )
-      .join("、");
-  }
-  if (spec.driverModule?.trim()) {
-    return `${spec.driverModule.trim()}（未实测）`;
-  }
-  return "未归类";
 }
 
 /** Review binding may pick active specs or org-owned activatable drafts — never deprecated. */
@@ -177,7 +153,6 @@ export const SEMANTIC_MOCK_PARAMETER_SPECS: ParameterSpecLibraryRow[] = [
     schemaSource: "vendor",
     currentVersion: 3,
     exampleValue: "<&gpio13 29 0>",
-    businessCategory: "Charge Pump IC",
     attributionModules: [{ id: "mod-charge", name: "充电策略", kind: "driver-group" }],
     lifecycle: "active",
     usageCount: 2
@@ -192,7 +167,6 @@ export const SEMANTIC_MOCK_PARAMETER_SPECS: ParameterSpecLibraryRow[] = [
     schemaSource: "linux",
     currentVersion: 1,
     exampleValue: "<&gpio6 15 0>",
-    businessCategory: "Wireless Charging",
     attributionModules: [],
     reviewState: "draft",
     usageCount: 1
@@ -204,7 +178,6 @@ export type ParameterSpecLibraryFilters = {
   /** Empty = no filter (show all). */
   driverModules: string[];
   compatibles: string[];
-  businessCategories: string[];
   schemaSources: string[];
   lifecycles: string[];
   moduleNames: string[];
@@ -214,7 +187,6 @@ const EMPTY_FILTERS: ParameterSpecLibraryFilters = {
   q: "",
   driverModules: [],
   compatibles: [],
-  businessCategories: [],
   schemaSources: [],
   lifecycles: [],
   moduleNames: []
@@ -250,7 +222,6 @@ export function filterParameterSpecLibrary(
         ...specAttributionFilterValues(spec),
         spec.driverModule,
         spec.compatible,
-        spec.businessCategory,
         spec.schemaSource,
         spec.valueType
       ]
@@ -263,7 +234,6 @@ export function filterParameterSpecLibrary(
     }
     if (!matchesSelected(filters.driverModules, spec.driverModule)) return false;
     if (!matchesSelected(filters.compatibles, spec.compatible)) return false;
-    if (!matchesSelected(filters.businessCategories, spec.businessCategory)) return false;
     if (!matchesSelected(filters.schemaSources, spec.schemaSource)) return false;
     // Empty lifecycle filter means "default library view": hide soft-retired definitions.
     if (filters.lifecycles.length === 0) {
@@ -400,7 +370,6 @@ export function ParameterSpecLibrary({
     filters.q.trim().length > 0 ||
     filters.driverModules.length > 0 ||
     filters.compatibles.length > 0 ||
-    filters.businessCategories.length > 0 ||
     filters.schemaSources.length > 0 ||
     filters.lifecycles.length > 0 ||
     filters.moduleNames.length > 0;
@@ -410,7 +379,7 @@ export function ParameterSpecLibrary({
   const patchFilterList = (
     key: keyof Pick<
       ParameterSpecLibraryFilters,
-      "driverModules" | "compatibles" | "lifecycles" | "moduleNames" | "businessCategories" | "schemaSources"
+      "driverModules" | "compatibles" | "lifecycles" | "moduleNames" | "schemaSources"
     >,
     value: string
   ) => {
@@ -487,10 +456,10 @@ export function ParameterSpecLibrary({
                 <th scope="col">参数定义</th>
                 <th scope="col">
                   <span className="param-admin-library-head-cell">
-                    <span>{PARAMETER_ADMIN_UI.specDriverModule}</span>
+                    <span>{PARAMETER_ADMIN_UI.specAttributionModule}</span>
                     <ColumnFilter
                       label={PARAMETER_ADMIN_UI.specAttributionModule}
-                      groupLabel="归属模块筛选"
+                      groupLabel="所属模块筛选"
                       values={moduleValues}
                       selectedValues={filters.moduleNames}
                       onToggle={(value) => patchFilterList("moduleNames", value)}
@@ -543,8 +512,8 @@ export function ParameterSpecLibrary({
                   <td data-label="参数定义">
                     <strong>{formatSpecPrimaryLabel(spec)}</strong>
                   </td>
-                  <td data-label={PARAMETER_ADMIN_UI.specDriverModule}>
-                    {formatSpecDriverModuleLabel(spec)}
+                  <td data-label={PARAMETER_ADMIN_UI.specAttributionModule}>
+                    {formatSpecAttributionLabel(spec)}
                   </td>
                   <td data-label="值类型">{spec.valueType}</td>
                   <td data-label="审核状态">{formatParameterSpecLifecycle(spec.reviewState)}</td>

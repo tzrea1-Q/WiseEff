@@ -47,7 +47,6 @@ function toSpecDetailView(
       usageCount,
       attributionModules: libraryRow?.attributionModules ?? detail.attributionModules ?? [],
       attributionSubjectId: detail.attributionSubjectId ?? libraryRow?.attributionSubjectId ?? null,
-      businessCategory: libraryRow?.businessCategory
     }),
     displayName: detail.displayName,
     description: detail.description,
@@ -61,10 +60,6 @@ function toSpecDetailView(
     schemaDefault: detail.schemaDefault,
     policyTarget: detail.policyTarget,
     cutover: detail.cutover,
-    usage: [],
-    schemaHistory: detail.currentVersion
-      ? [{ version: detail.currentVersion, source: detail.schemaNamespace ?? detail.sourceKind }]
-      : []
   };
 }
 
@@ -290,7 +285,6 @@ export function OrganizationSpecGovernancePanel({
         lifecycles: next.lifecycles,
         driverModules: next.driverModules,
         compatibles: next.compatibles,
-        businessCategories: next.businessCategories,
         schemaSources: next.schemaSources,
         moduleNames: next.moduleNames
       });

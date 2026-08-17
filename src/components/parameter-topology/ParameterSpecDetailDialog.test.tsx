@@ -26,7 +26,6 @@ function baseDetail(overrides: Partial<ParameterSpecDetailView> = {}): Parameter
     schemaSource: "manual",
     schemaVersion: 1,
     exampleValue: null,
-    businessCategory: null,
     reviewState: "active",
     usageCount: 0,
     displayName: "Perf limit",
@@ -58,6 +57,15 @@ function openSaveConfirm() {
 }
 
 describe("ParameterSpecDetailDialog save confirm (SE-D5)", () => {
+  it("states reference count once and omits placeholder usage history", () => {
+    renderEditor({ usageCount: 4 });
+    const editor = screen.getByRole("dialog", { name: /active_perf_limit/ });
+    expect(within(editor).getByLabelText("引用数")).toHaveTextContent("引用数：4");
+    expect(within(editor).queryByLabelText("使用情况")).not.toBeInTheDocument();
+    expect(within(editor).queryByLabelText("Schema 历史")).not.toBeInTheDocument();
+    expect(within(editor).queryByText("使用与历史")).not.toBeInTheDocument();
+  });
+
   it("shows a before/after for constraints when a key is removed", () => {
     renderEditor();
 

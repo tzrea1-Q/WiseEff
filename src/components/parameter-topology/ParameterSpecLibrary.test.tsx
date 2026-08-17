@@ -27,9 +27,8 @@ const gpioIntSc8562: ParameterSpecLibraryRow = {
   valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 3 },
   schemaSource: "vendor",
   schemaVersion: "3",
-  exampleValue: "<&gpio13 29 0>",
-  businessCategory: "Charge Pump IC",
-  reviewState: "active",
+    exampleValue: "<&gpio13 29 0>",
+    reviewState: "active",
   usageCount: 2
 };
 
@@ -45,9 +44,8 @@ const gpioIntMt5788: ParameterSpecLibraryRow = {
   valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 3 },
   schemaSource: "linux",
   schemaVersion: "1",
-  exampleValue: "<&gpio6 15 0>",
-  businessCategory: "Wireless Charging",
-  reviewState: "draft",
+    exampleValue: "<&gpio6 15 0>",
+    reviewState: "draft",
   usageCount: 1
 };
 
@@ -71,7 +69,6 @@ const pathLikeLegacy: ParameterSpecLibraryRow = {
   schemaSource: "manual",
   schemaVersion: "1",
   exampleValue: '"okay"',
-  businessCategory: "Charge Pump IC",
   reviewState: "draft",
   usageCount: 0
 };
@@ -160,21 +157,24 @@ describe("ParameterSpecLibrary", () => {
     const library = screen.getByRole("region", { name: "参数定义库" });
     const table = within(library).getByRole("table");
 
-    for (const header of ["参数定义", "驱动模块", "值类型", "审核状态", "操作"]) {
+    for (const header of ["参数定义", "所属模块", "值类型", "审核状态", "操作"]) {
       expect(within(table).getByRole("columnheader", { name: new RegExp(header) })).toBeInTheDocument();
     }
     expect(within(table).queryByRole("columnheader", { name: /^参数名$/ })).not.toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: /^驱动模块$/ })).not.toBeInTheDocument();
     expect(within(table).queryByRole("columnheader", { name: /^归属模块$/ })).not.toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: /业务分类/ })).not.toBeInTheDocument();
     expect(within(table).queryByRole("columnheader", { name: /compatible/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "筛选compatible" })).not.toBeInTheDocument();
-    const driverHeader = within(table).getByRole("columnheader", { name: /驱动模块/ });
-    expect(within(driverHeader).getByRole("button", { name: "筛选归属模块" })).toBeInTheDocument();
+    const attributionHeader = within(table).getByRole("columnheader", { name: /所属模块/ });
+    expect(within(attributionHeader).getByRole("button", { name: "筛选所属模块" })).toBeInTheDocument();
     expect(
       within(within(table).getByRole("columnheader", { name: /^参数定义$/ })).queryByRole("button", {
-        name: "筛选归属模块"
+        name: "筛选所属模块"
       })
     ).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "筛选驱动模块" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "筛选归属模块" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "筛选审核状态" })).toBeInTheDocument();
     expect(within(library).getByRole("table", { name: "参数定义库列表" })).toBeInTheDocument();
 
@@ -195,7 +195,7 @@ describe("ParameterSpecLibrary", () => {
     expect(within(table).queryByText("vendor,sc8562")).not.toBeInTheDocument();
     expect(within(table).getAllByText("phandle-list").length).toBeGreaterThan(0);
 
-    // Hierarchy lives in 驱动模块, not concatenated into 参数定义.
+    // Hierarchy lives in 所属模块, not concatenated into 参数定义.
     const definitionCells = within(table).getAllByRole("cell", { name: /^gpio_int$/ });
     expect(definitionCells.length).toBe(2);
     for (const cell of definitionCells) {
@@ -260,7 +260,6 @@ describe("ParameterSpecLibrary", () => {
         q: "",
         driverModules: [],
         compatibles: [],
-        businessCategories: [],
         schemaSources: [],
         lifecycles: [],
         moduleNames: [],
@@ -277,7 +276,7 @@ describe("ParameterSpecLibrary", () => {
       />
     );
 
-    await user.click(screen.getByRole("button", { name: "筛选归属模块" }));
+    await user.click(screen.getByRole("button", { name: "筛选所属模块" }));
     await user.click(screen.getByRole("checkbox", { name: "充电策略" }));
     await user.click(screen.getByRole("button", { name: "筛选审核状态" }));
     await user.click(screen.getByRole("checkbox", { name: "active" }));
@@ -351,7 +350,7 @@ describe("ParameterSpecLibrary", () => {
     ).toHaveLength(55);
   });
 
-  it("opens detail with separated schema default, example, usage, and history", () => {
+  it("opens detail with schema default and example, without placeholder usage history", () => {
     const onSelectSpec = vi.fn();
     const onCloseSpec = vi.fn();
     const onSaveSpec = vi.fn();
@@ -371,8 +370,6 @@ describe("ParameterSpecLibrary", () => {
           ],
           schemaDefault: "<0>",
           policyTarget: "<&gpio_policy 1 0>",
-          usage: [{ projectCode: "P-AURORA", instanceName: "sc8562@6E" }],
-          schemaHistory: [{ version: 3, source: "vendor", note: "narrowed phandle" }]
         }}
         onSelectSpec={onSelectSpec}
         onCloseSpec={onCloseSpec}
@@ -392,8 +389,10 @@ describe("ParameterSpecLibrary", () => {
     expect(within(detail).getByLabelText("值形状 valueShape")).toBeInTheDocument();
     expect(within(detail).queryByLabelText("值类型")).not.toBeInTheDocument();
     expect(within(detail).queryByLabelText("策略目标")).not.toBeInTheDocument();
-    expect(within(detail).getByLabelText("使用情况")).toHaveValue("P-AURORA · sc8562@6E");
-    expect((within(detail).getByLabelText("Schema 历史") as HTMLTextAreaElement).value).toMatch(/narrowed phandle/);
+    expect(within(detail).queryByLabelText("使用情况")).not.toBeInTheDocument();
+    expect(within(detail).queryByLabelText("Schema 历史")).not.toBeInTheDocument();
+    expect(within(detail).queryByText("使用与历史")).not.toBeInTheDocument();
+    expect(within(detail).getByLabelText("引用数")).toHaveTextContent("引用数：2");
     expect(detail.textContent).not.toMatch(/推荐值/);
     expect(within(detail).getByText("参数定义库 · 可编辑")).toBeInTheDocument();
     expect(within(detail).getByRole("button", { name: "完成" })).toBeInTheDocument();
@@ -409,7 +408,7 @@ describe("ParameterSpecLibrary", () => {
     const { rerender } = render(
       <ParameterSpecLibrary
         specs={[gpioIntSc8562]}
-        detail={{ ...gpioIntSc8562, usage: [], schemaHistory: [] }}
+        detail={{ ...gpioIntSc8562 }}
         selectedSpecId={gpioIntSc8562.id}
         onSelectSpec={vi.fn()}
         onDeprecateSpec={onDeprecateSpec}
@@ -434,8 +433,6 @@ describe("ParameterSpecLibrary", () => {
         detail={{
           ...gpioIntSc8562,
           reviewState: "deprecated",
-          usage: [],
-          schemaHistory: []
         }}
         selectedSpecId={gpioIntSc8562.id}
         onSelectSpec={vi.fn()}

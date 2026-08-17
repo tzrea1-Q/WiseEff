@@ -14,17 +14,6 @@ import {
   valueFromShapeState,
 } from "./valueShapeEditor";
 
-export type SpecUsageEntry = {
-  projectCode: string;
-  instanceName: string | null;
-};
-
-export type SpecSchemaHistoryEntry = {
-  version: number;
-  source: string;
-  note?: string;
-};
-
 export type ParameterSpecDetailView = ParameterSpecLibraryRow & {
   displayName?: string | null;
   description?: string | null;
@@ -37,8 +26,6 @@ export type ParameterSpecDetailView = ParameterSpecLibraryRow & {
   compatiblePatterns?: string[] | null;
   schemaDefault?: unknown;
   policyTarget?: unknown;
-  usage?: SpecUsageEntry[];
-  schemaHistory?: SpecSchemaHistoryEntry[];
   cutover?: ParameterSpecCutoverSummary;
 };
 
@@ -452,22 +439,6 @@ export function ParameterSpecDetail({
     detail.attributionSubjectId?.trim() ||
     "—";
   const hasObservedModules = detail.attributionModules.length > 0;
-  const usageText =
-    detail.usage && detail.usage.length > 0
-      ? detail.usage
-          .map((entry) =>
-            entry.instanceName ? `${entry.projectCode} · ${entry.instanceName}` : entry.projectCode
-          )
-          .join("\n")
-      : detail.usageCount > 0
-        ? `项目参数约 ${detail.usageCount} 处（明细暂未加载）`
-        : "暂无项目参数";
-  const historyText =
-    detail.schemaHistory && detail.schemaHistory.length > 0
-      ? detail.schemaHistory
-          .map((entry) => `v${entry.version} · ${entry.source}${entry.note ? ` — ${entry.note}` : ""}`)
-          .join("\n")
-      : "暂无版本历史";
   const isDraft = detail.reviewState === "draft" && detail.organizationId != null;
   const canCorrectIdentity = editable && detail.reviewState !== "deprecated";
   const identityCorrectable =
@@ -691,26 +662,6 @@ export function ParameterSpecDetail({
                 mono
               />
             ) : null}
-          </div>
-        </fieldset>
-
-        <fieldset className="def-group">
-          <legend>使用与历史</legend>
-          <div className="def-group-fields def-group-fields--stack">
-            <ReadOnlyField
-              label="使用情况"
-              value={usageText}
-              description={SPEC_EDITOR_FIELD_HELP.usage}
-              multiline
-              rows={3}
-            />
-            <ReadOnlyField
-              label="Schema 历史"
-              value={historyText}
-              description={SPEC_EDITOR_FIELD_HELP.schemaHistory}
-              multiline
-              rows={3}
-            />
           </div>
         </fieldset>
 
