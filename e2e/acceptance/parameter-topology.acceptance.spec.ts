@@ -103,6 +103,32 @@ const mappingR2 = `/dts-v1/;
 };
 `;
 
+/** Dedicated enablement fixture. Do not reuse `mappingR1` — sibling identity-mapping tests own that text. */
+function enablementVisibleDts(modelSuffix: string, childProp: string, directProp: string) {
+  return `/dts-v1/;
+/ {
+	compatible = "wiseeff,board";
+	model = "Enablement Visible ${modelSuffix}";
+	enableparent@a0 {
+		compatible = "wiseeff,enable-visible";
+		status = "disabled";
+		enablechild@10 {
+			compatible = "wiseeff,enable-visible";
+			reg = <0x10>;
+			${childProp} = <1>;
+			status = "okay";
+		};
+	};
+	enabledirect@20 {
+		compatible = "wiseeff,enable-visible";
+		reg = <0x20>;
+		${directProp} = <2>;
+		status = "disabled";
+	};
+};
+`;
+}
+
 function adminHeaders() {
   return authHeadersForRole("admin");
 }
@@ -158,6 +184,60 @@ async function waitForRevision(
     await new Promise((resolve) => setTimeout(resolve, 400));
   }
   throw new Error(`Timed out waiting for revision on config set ${configSetId}`);
+}
+
+async function findBindingProperty(
+  request: APIRequestContext,
+  targetProjectId: string,
+  revisionId: string,
+  propertyKey: string
+): Promise<{ id: string; propertyKey: string; locator: string | null } | null> {
+  const response = await request.get(
+    apiRoute(
+      `/api/v2/projects/${targetProjectId}/parameter-bindings?revisionId=${encodeURIComponent(revisionId)}`
+    ),
+    { headers: adminHeaders() }
+  );
+  if (!response.ok()) return null;
+  const body = (await response.json()) as {
+    items: Array<{ id: string; propertyKey: string; locator: string | null }>;
+  };
+  return body.items.find((row) => row.propertyKey === propertyKey) ?? null;
+}
+
+async function waitForRevisionWithProperties(
+  request: APIRequestContext,
+  targetProjectId: string,
+  configSetId: string,
+  previousRevisionId: string,
+  propertyKeys: string[],
+  timeoutMs = 30_000
+): Promise<{ id: string; status: string }> {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const row = await withPgClient(async (client) => {
+      const result = await client.query<{ id: string; status: string }>(
+        `
+        select id, status from dts_config_revisions
+        where config_set_id = $1
+        order by revision_number desc
+        limit 1
+        `,
+        [configSetId]
+      );
+      return result.rows[0] ?? null;
+    });
+    if (row && row.id !== previousRevisionId) {
+      const found = await Promise.all(
+        propertyKeys.map((key) => findBindingProperty(request, targetProjectId, row.id, key))
+      );
+      if (found.every(Boolean)) return row;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
+  throw new Error(
+    `Timed out waiting for revision on config set ${configSetId} with properties ${propertyKeys.join(", ")}`
+  );
 }
 
 async function waitForReviewTask(
@@ -2302,6 +2382,148 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     }
   });
 
+  test("PARAM-ENABLE-VISIBLE-001: workbench no-effect notice and topology enablement model", async ({
+    page,
+    request
+  }, testInfo) => {
+    // @acceptance PARAM-ENABLE-VISIBLE-001
+    // @operation PARAM-ENABLE-VISIBLE-001
+    test.setTimeout(180_000);
+    const runSuffix = randomUUID().slice(0, 8);
+    const childProp = `enable_child_${runSuffix}`;
+    const directProp = `enable_direct_${runSuffix}`;
+    const fileName = `acceptance-enable-visible-${runSuffix}.dts`;
+    const createdFileNames = [fileName];
+    const dtsText = enablementVisibleDts(runSuffix, childProp, directProp);
+
+    try {
+      const topology = await ensureAuroraSemanticTopology(request);
+
+      // `/parameters` always loads the project's `default` Config Set (`pickConfigSet`).
+      // Attach a dedicated DTS overlay there so the live workbench can search unique
+      // keys without rewriting `mappingR1` or the identity-mapping fixtures.
+      const upload = await uploadDts(request, fileName, dtsText);
+      const addFile = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/config-sets/${topology.configSetId}/files`),
+        {
+          headers: adminHeaders(),
+          data: { fileId: upload.fileId, role: "overlay", sortOrder: 80 }
+        }
+      );
+      expect([201, 409]).toContain(addFile.status());
+      await uploadDts(request, fileName, dtsText);
+      const enableRevision = await waitForRevisionWithProperties(
+        request,
+        projectId,
+        topology.configSetId,
+        topology.revisionId,
+        [childProp, directProp]
+      );
+
+      const topologyApi = await request.get(
+        apiRoute(
+          `/api/v2/projects/${projectId}/config-sets/${encodeURIComponent(topology.configSetId)}/revisions/${enableRevision.id}/topology?view=effective`
+        ),
+        { headers: adminHeaders() }
+      );
+      expect(topologyApi.status()).toBe(200);
+      const topologyBody = (await topologyApi.json()) as {
+        item: {
+          nodes: Array<{
+            name?: string;
+            locator?: string;
+            enablement?: { selfEnabled: boolean; reachable: boolean; blockingAncestorLabel: string | null };
+          }>;
+        };
+      };
+      const parentNode = topologyBody.item.nodes.find(
+        (node) => node.name === "enableparent" || (node.locator ?? "").includes("enableparent@a0")
+      );
+      const childNode = topologyBody.item.nodes.find((node) => (node.locator ?? "").includes("enablechild@10"));
+      const directNode = topologyBody.item.nodes.find(
+        (node) => node.name === "enabledirect" || (node.locator ?? "").includes("enabledirect@20")
+      );
+      expect(parentNode?.enablement?.selfEnabled, "disabled parent must report selfEnabled false").toBe(false);
+      expect(childNode?.enablement?.reachable, "child under disabled parent must be unreachable").toBe(false);
+      expect(directNode?.enablement?.selfEnabled, "directly disabled node must report selfEnabled false").toBe(
+        false
+      );
+
+      await signInBrowserAsRole(
+        page,
+        "admin",
+        `${disposableRuntime.frontendUrl}/parameters?project=${projectId}`
+      );
+      await dismissXiaozeHint(page);
+
+      const workspace = page.getByRole("region", { name: "DTS 参数工作台" });
+      await expect(workspace).toBeVisible({ timeout: 30_000 });
+      await expect(workspace).toHaveAttribute("data-config-set-id", topology.configSetId, { timeout: 30_000 });
+      await expect(page.getByRole("tree", { name: "生效拓扑树" })).toHaveCount(0);
+
+      await workspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill(childProp);
+      const childRow = workspace.getByRole("row").filter({ hasText: childProp }).first();
+      await expect(childRow).toBeVisible({ timeout: 20_000 });
+      await expect(childRow).toContainText(/所属节点已禁用|所属节点不可达/);
+
+      await workspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill(directProp);
+      const directRow = workspace.getByRole("row").filter({ hasText: directProp }).first();
+      await expect(directRow).toBeVisible({ timeout: 20_000 });
+      await expect(directRow).toContainText("所属节点已禁用");
+
+      await workspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill(childProp);
+      await expect(childRow).toBeVisible({ timeout: 20_000 });
+
+      const expandTreeitemIfCollapsed = async (name: RegExp) => {
+        const item = workspace.getByRole("treeitem", { name }).first();
+        if (!(await item.isVisible().catch(() => false))) return;
+        if ((await item.getAttribute("aria-expanded")) === "false") {
+          await item.getByRole("button", { name: /展开/ }).click({ timeout: 10_000 });
+        }
+      };
+      await expandTreeitemIfCollapsed(/未分类/);
+      const childTreeItem = workspace.getByRole("treeitem", { name: /enablechild@10/ }).first();
+      if (await childTreeItem.isVisible().catch(() => false)) {
+        await childTreeItem.click({ timeout: 10_000 });
+      }
+
+      const enablementButton = workspace.getByRole("button", { name: /节点启用/ });
+      if (await enablementButton.isVisible().catch(() => false)) {
+        await enablementButton.click();
+        const enablementDialog = page.getByRole("dialog", { name: "节点启用状态" });
+        await expect(enablementDialog).toBeVisible();
+        await expect(enablementDialog).toContainText(/已禁用|不可达/);
+        await enablementDialog.getByRole("button", { name: "取消" }).click();
+      }
+
+      await recordOperationEvidence({
+        operationId: "PARAM-ENABLE-VISIBLE-001",
+        title: "workbench no-effect notice and topology enablement model",
+        status: "passed",
+        role: "Admin",
+        route: `/parameters?project=${projectId}`,
+        page,
+        testInfo,
+        assertions: ["ui", "api"],
+        api: [
+          summarizeApiResponse(topologyApi, {
+            method: "GET",
+            path: `/api/v2/projects/${projectId}/config-sets/.../topology?view=effective`,
+            responseSummary: `parent.selfEnabled=${String(parentNode?.enablement?.selfEnabled)}; child.reachable=${String(childNode?.enablement?.reachable)}; direct.selfEnabled=${String(directNode?.enablement?.selfEnabled)}`
+          })
+        ],
+        notes:
+          "Live /parameters workbench (DtsParameterWorkbench) shows no-effect notices. TopologyTree (aria-label=生效拓扑树) is not mounted on this page; tree-model evidence is GET topology?view=effective enablement fields."
+      });
+    } finally {
+      await cleanupSemanticAcceptanceArtifacts({
+        organizationId,
+        projectId,
+        fileNames: createdFileNames
+      });
+    }
+  });
+
   // Planned markers (`@acceptance-planned` / `@operation-planned`) declare intended
   // coverage without counting as automated coverage; the coverage gate only accepts
   // plain markers carried by runnable tests.
@@ -2310,13 +2532,6 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     // @acceptance-planned PARAM-ENABLE-GATE-001
     // @operation-planned PARAM-ENABLE-GATE-001
     test.skip(true, "Pending: full disposable-DB gate evidence for structural review dismissal.");
-  });
-
-  test("PARAM-ENABLE-VISIBLE-001: topology badges and workbench no-effect notice", async ({ page }) => {
-    // @acceptance-planned PARAM-ENABLE-VISIBLE-001
-    // @operation-planned PARAM-ENABLE-VISIBLE-001
-    test.skip(true, "Pending: playwright UI coverage for enablement badges and no-effect rows.");
-    void page;
   });
 
   test("PARAM-ENABLE-TOGGLE-001: disable with reason shares working tip with binding edit", async ({ page }) => {

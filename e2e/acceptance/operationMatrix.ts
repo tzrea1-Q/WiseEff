@@ -1481,10 +1481,9 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameters",
     roles: ["Admin", "Hardware User"],
     action: "Browse topology enablement badges and workbench no-effect notices for disabled nodes.",
-    coverage: "future",
+    coverage: "automated",
     acceptanceIds: ["PARAM-ENABLE-VISIBLE-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
-    deferralReason: "Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.",
     assertions: ["ui", "api"]
   },
   {
