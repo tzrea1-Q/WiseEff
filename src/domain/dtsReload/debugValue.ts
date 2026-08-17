@@ -11,9 +11,11 @@
  */
 
 import type { DtsReloadCandidate } from "./types";
+import type { ReloadValueShape } from "./valueShape";
 import {
   describeReloadValueShapeAuthoring,
   isPhandleCellFamilyKind,
+  isReloadDeletePropertyToken,
   isSupportedCellBits
 } from "./valueShape";
 
@@ -23,12 +25,19 @@ export type DtsReloadDebugValueTarget = Pick<
   "resolvedValueShape" | "constraints"
 >;
 
-/** True when the draft debug value is non-empty and differs from the library baseline. */
+/** True when the draft debug value differs from the library baseline under the resolved shape. */
 export function hasMeaningfulDebugChange(
   debugValue: string,
-  baselineValue: string | null | undefined
+  baselineValue: string | null | undefined,
+  valueShape?: ReloadValueShape
 ): boolean {
   const trimmed = debugValue.trim();
+  if (valueShape?.kind === "boolean" || valueShape?.kind === "empty") {
+    const debugPresent = trimmed !== "false" && !isReloadDeletePropertyToken(trimmed);
+    const baseline = (baselineValue ?? "").trim();
+    const baselinePresent = baseline !== "false" && !isReloadDeletePropertyToken(baseline);
+    return debugPresent !== baselinePresent;
+  }
   if (!trimmed) return false;
   return trimmed !== (baselineValue ?? "").trim();
 }
@@ -86,6 +95,25 @@ function parsePhandleCellGroups(
   return parsed;
 }
 
+function parseBarePhandleGroups(raw: string): string[] | null {
+  const trimmed = raw.trim();
+  const groups = trimmed.match(/<[^>]+>/g);
+  if (!groups || groups.length === 0) return null;
+  const labels: string[] = [];
+  for (const group of groups) {
+    const tokens = group.slice(1, -1).trim().split(/\s+/).filter(Boolean);
+    if (tokens.length !== 1) return null;
+    const labelMatch = /^&([A-Za-z_][\w]*)$/.exec(tokens[0]!);
+    if (!labelMatch) return null;
+    labels.push(labelMatch[1]!);
+  }
+  return labels;
+}
+
+function looksLikeMixed(raw: string): boolean {
+  return countQuotedStrings(raw) >= 1 && /<[^>]+>/.test(raw);
+}
+
 function countQuotedStrings(raw: string): number {
   const matches = raw.match(/"(?:\\.|[^"\\])*"/g);
   return matches?.length ?? 0;
@@ -108,10 +136,22 @@ export function validateDebugValue(
   candidate: DtsReloadDebugValueTarget
 ): string | null {
   const trimmed = raw.trim();
-  if (!trimmed) return "请输入调试值。";
-
   const shape = candidate.resolvedValueShape;
   const example = describeReloadValueShapeAuthoring(shape).placeholder;
+
+  if (isReloadDeletePropertyToken(trimmed)) return null;
+
+  if (shape?.kind === "boolean") {
+    if (!trimmed || trimmed === "true" || trimmed === "false") return null;
+    return `调试值必须是布尔，例如 ${example}、false 或 /delete-property/。`;
+  }
+
+  if (shape?.kind === "empty") {
+    if (!trimmed) return null;
+    return "调试值必须为空属性（留空或 /delete-property/）。";
+  }
+
+  if (!trimmed) return "请输入调试值。";
 
   if (shape?.kind === "string") {
     if (countQuotedStrings(trimmed) !== 1) {
@@ -127,7 +167,22 @@ export function validateDebugValue(
     return null;
   }
 
-  if (isPhandleCellFamilyKind(shape?.kind)) {
+  if (shape?.kind === "mixed") {
+    if (!looksLikeMixed(trimmed)) {
+      return `调试值必须是 mixed 字符串+cell，例如 ${example}。`;
+    }
+    return null;
+  }
+
+  if (shape?.kind === "phandle-list") {
+    const labels = parseBarePhandleGroups(trimmed);
+    if (!labels) {
+      return `调试值必须是裸 phandle 列表，例如 ${example}。`;
+    }
+    return null;
+  }
+
+  if (shape?.kind === "phandle-cells" || isPhandleCellFamilyKind(shape?.kind)) {
     const groups = parsePhandleCellGroups(trimmed);
     if (!groups) {
       return `调试值必须是 GPIO 风格 phandle 数组，例如 ${example}。`;

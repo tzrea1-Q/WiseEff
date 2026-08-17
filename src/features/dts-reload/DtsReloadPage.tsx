@@ -87,6 +87,8 @@ export type DtsReloadPageProps = {
   onNavigate?: (path: string) => void;
   /** Deep link (`/dts-reload?runId=…`): opens this history run on mount. */
   initialRunId?: string | null;
+  /** Workbench hand-off (`/dts-reload?bindingIds=`). */
+  initialBindingIds?: string[] | null;
 };
 
 export function DtsReloadPage({
@@ -104,7 +106,8 @@ export function DtsReloadPage({
   knowledgeRepository,
   knowledgeCapability,
   onNavigate,
-  initialRunId
+  initialRunId,
+  initialBindingIds
 }: DtsReloadPageProps) {
   const {
     session,
@@ -149,11 +152,13 @@ export function DtsReloadPage({
     residueSensitiveCandidates,
     restoreHasSensitive,
     restoreHasCriticalSensitive,
-    canRetryDeploy
+    canRetryDeploy,
+    handoffBindingIds
   } = useDtsReloadRunSession({
     initialProjectId: initialProjectId ?? projects[0]?.id ?? "",
     initialBridges: bridgesProp ?? [],
-    initialTargetRef: initialTargetRef ?? ""
+    initialTargetRef: initialTargetRef ?? "",
+    initialBindingIds: initialBindingIds?.length ? initialBindingIds : undefined
   });
 
   const moduleRegistryRepo = useMemo(
@@ -208,9 +213,15 @@ export function DtsReloadPage({
     };
   }, [moduleRegistryRepo]);
 
+  const handoffFilteredCandidates = useMemo(() => {
+    if (!handoffBindingIds || handoffBindingIds.length === 0) return candidates;
+    const handoffSet = new Set(handoffBindingIds);
+    return candidates.filter((candidate) => handoffSet.has(candidate.bindingId));
+  }, [candidates, handoffBindingIds]);
+
   const moduleTree = useMemo(
-    () => buildReloadModuleTree({ candidates, modules: moduleRegistry.modules }),
-    [candidates, moduleRegistry.modules]
+    () => buildReloadModuleTree({ candidates: handoffFilteredCandidates, modules: moduleRegistry.modules }),
+    [handoffFilteredCandidates, moduleRegistry.modules]
   );
 
   const selectedModuleNode = useMemo(
@@ -232,13 +243,13 @@ export function DtsReloadPage({
 
   const scopedCandidates = useMemo(() => {
     const normalizedQuery = nameQuery.trim().toLocaleLowerCase();
-    return candidates.filter((candidate) => {
+    return handoffFilteredCandidates.filter((candidate) => {
       if (selectedModuleBindingIds && !selectedModuleBindingIds.has(candidate.bindingId)) return false;
       if (!normalizedQuery) return true;
       const haystack = [candidate.displayName, candidate.propertyKey].join(" ").toLocaleLowerCase();
       return haystack.includes(normalizedQuery);
     });
-  }, [candidates, nameQuery, selectedModuleBindingIds]);
+  }, [handoffFilteredCandidates, nameQuery, selectedModuleBindingIds]);
 
   const moduleFilterOptions = useMemo(
     () =>
@@ -258,6 +269,28 @@ export function DtsReloadPage({
     const selected = new Set(activeModuleColumnFilter);
     return scopedCandidates.filter((candidate) => selected.has(candidateModuleLabel(candidate)));
   }, [activeModuleColumnFilter, scopedCandidates]);
+
+  const handoffSummary = useMemo(() => {
+    if (!handoffBindingIds || handoffBindingIds.length === 0) return null;
+    const foundIds = new Set(candidates.map((candidate) => candidate.bindingId));
+    const missingCount = handoffBindingIds.filter((id) => !foundIds.has(id)).length;
+    const blockedCount = candidates.filter(
+      (candidate) => handoffBindingIds.includes(candidate.bindingId) && !candidate.debuggable
+    ).length;
+    return {
+      requested: handoffBindingIds.length,
+      missingCount,
+      blockedCount
+    };
+  }, [candidates, handoffBindingIds]);
+
+  const clearHandoffFilter = () => {
+    session.clearHandoff();
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("bindingIds");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+  };
 
   const editingCandidate = useMemo(
     () =>
@@ -442,6 +475,28 @@ export function DtsReloadPage({
           <p role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-950">
             {errorMessage}
           </p>
+        ) : null}
+
+        {handoffSummary ? (
+          <div
+            className="dts-reload-residue-banner dts-reload-handoff-banner"
+            role="status"
+            aria-label="工作台带入的参数"
+          >
+            <span>
+              已从参数工作台带入 {handoffSummary.requested} 个参数
+              {handoffSummary.missingCount > 0
+                ? `，其中 ${handoffSummary.missingCount} 个未在本项目候选中找到`
+                : ""}
+              {handoffSummary.blockedCount > 0
+                ? `，其中 ${handoffSummary.blockedCount} 个当前不可调试`
+                : ""}
+              。本轮托盘未自动勾选，以免带入未改动的基线值。
+            </span>
+            <button type="button" className="button subtle" onClick={clearHandoffFilter}>
+              显示全部
+            </button>
+          </div>
         ) : null}
 
         <div className="node-debugging-controls dts-reload-controls">
@@ -727,7 +782,7 @@ export function DtsReloadPage({
                     />
                   </label>
                   <span className="parameters-table-count">
-                    显示 {filtered.length} / {candidates.length} 项
+                    显示 {filtered.length} / {handoffFilteredCandidates.length} 项
                   </span>
                 </div>
 

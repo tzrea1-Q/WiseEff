@@ -146,7 +146,7 @@ type ResolvedReloadTarget = {
 const BLOCK_REASON_MESSAGES: Record<NonNullable<ReloadCandidateDto["blockReason"]>, string> = {
   "no-node-path": "parameter has no absolute device-tree node path",
   "unsupported-value-shape":
-    "parameter value shape is outside the supported set (u32/u8/u16 cell arrays, single strings, string lists, and GPIO-style phandle arrays)",
+    "parameter value shape is outside the supported set (u32/u8/u16 cell arrays, single strings, string lists, GPIO-style phandle arrays, bare phandle lists, booleans, empty properties, mixed values, and /delete-property/)",
   "no-baseline-value": "parameter has no library baseline value"
 };
 
@@ -517,6 +517,30 @@ function throwAuthoringIssue(
         `Debug value must be a GPIO-style phandle cell array (for example ${placeholder}).`,
         { bindingId, debugValue }
       );
+    case "not-phandle-list":
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        `Debug value must be a bare phandle list (for example ${placeholder}).`,
+        { bindingId, debugValue }
+      );
+    case "not-mixed":
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        `Debug value must be a mixed string+cell value (for example ${placeholder}).`,
+        { bindingId, debugValue }
+      );
+    case "not-boolean":
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        `Debug value must be a boolean (for example ${placeholder}, false, or /delete-property/).`,
+        { bindingId, debugValue }
+      );
+    case "not-empty":
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        `Debug value must be an empty property (leave blank or /delete-property/).`,
+        { bindingId, debugValue }
+      );
     case "not-integer-cell-array":
       throw new ApiError(
         "VALIDATION_FAILED",
@@ -620,7 +644,9 @@ async function resolveStartTargets(
       throwAuthoringIssue(validated.issue, resolvedShape, candidate.bindingId, target.debugValue);
     }
     const parsedValue = validated.parsed;
-    assertDebugValueConstraints(parsedValue, candidate.constraints);
+    if (!validated.deleteProperty) {
+      assertDebugValueConstraints(parsedValue, candidate.constraints);
+    }
 
     resolved.push({
       candidate,
@@ -630,7 +656,8 @@ async function resolveStartTargets(
       binding: {
         nodePath: candidate.nodePath,
         propertyKey: candidate.propertyKey,
-        value: parsedValue
+        value: parsedValue,
+        ...(validated.deleteProperty ? { deleteProperty: true } : {})
       },
       compatible: row.compatible ?? null
     });

@@ -255,6 +255,8 @@ afterEach(() => {
   const url = new URL(window.location.href);
   url.searchParams.delete("run");
   url.searchParams.delete("uiPreview");
+  url.searchParams.delete("bindingIds");
+  url.searchParams.delete("project");
   window.history.replaceState({}, "", `${url.pathname}${url.search}`);
 });
 
@@ -391,6 +393,35 @@ describe("DtsReloadPage", () => {
     expect(within(screen.getByRole("table")).getByText(/GPIO 风格 phandle 数组/)).toBeInTheDocument();
     await user.click(screen.getByText("Blocked"));
     expect(screen.queryByRole("region", { name: "本轮重载" })).not.toBeInTheDocument();
+  });
+
+  it("filters the candidate table to workbench hand-off ids and does not auto-fill the tray", async () => {
+    const user = userEvent.setup();
+    const repository = createRepository({
+      listCandidates: vi.fn(async () => ({
+        items: [
+          candidate({ bindingId: "binding-1", displayName: "Watchdog" }),
+          candidate({
+            bindingId: "binding-2",
+            displayName: "Keep Power",
+            propertyKey: "keep-power",
+            baselineValue: "",
+            resolvedValueShape: { kind: "boolean" },
+            valueShapeKind: "boolean"
+          })
+        ]
+      }))
+    });
+    renderPage(repository, { initialBindingIds: ["binding-2"] });
+    expect(await screen.findByText("Keep Power")).toBeInTheDocument();
+    expect(screen.queryByText("Watchdog")).not.toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "工作台带入的参数" })).toHaveTextContent("已从参数工作台带入 1 个参数");
+    expect(screen.queryByRole("region", { name: "本轮重载" })).not.toBeInTheDocument();
+    expect(screen.getByText("显示 1 / 1 项")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "显示全部" }));
+    expect(await screen.findByText("Watchdog")).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "工作台带入的参数" })).not.toBeInTheDocument();
   });
 
   it("filters candidates with the 模块 ColumnFilter multi-select", async () => {

@@ -9,7 +9,7 @@ import {
   runDtsToolchainCommand
 } from "../parameter-files/dtsToolchain";
 import type { DebugOverlayTarget } from "./debugOverlay";
-import { canonicalizeReloadValue, decimalCellText } from "./valueShape";
+import { canonicalizeMixedAsDtbCells, canonicalizeReloadValue, decimalCellText } from "./valueShape";
 
 export type PreflightStepName = "compile-base" | "compile-overlay" | "dry-run-merge" | "assert-effect";
 
@@ -289,13 +289,37 @@ function assertOverlayEffect(
         continue;
       }
 
+      if (property.deleteProperty) {
+        const after = mergedNode.properties.find((candidate) => candidate.name === property.name);
+        if (after) {
+          diagnostics.push({
+            stage: "assert-effect",
+            code: "property-value-mismatch",
+            message: `Property ${property.name} on ${target.nodePath} is still present after /delete-property/. dtc compiles plugin /delete-property/ to an empty overlay fragment, so fdtoverlay cannot apply the deletion.`,
+            nodePath: target.nodePath,
+            propertyName: property.name
+          });
+          continue;
+        }
+        observedValues.push({
+          nodePath: target.nodePath,
+          propertyName: property.name,
+          before: canonicalizeReloadValue(before.cst.value, before.rawText, resolvePhandle),
+          after: ""
+        });
+        continue;
+      }
+
       const after = mergedNode.properties.find((candidate) => candidate.name === property.name);
-      const expected = canonicalizeReloadValue(property.value, property.name, resolvePhandle);
+      const expected =
+        property.value.kind === "mixed"
+          ? canonicalizeMixedAsDtbCells(property.value, resolvePhandle)
+          : canonicalizeReloadValue(property.value, property.name, resolvePhandle);
       const observed = after
         ? canonicalizeReloadValue(after.cst.value, after.rawText, resolvePhandle)
         : null;
 
-      if (observed === null || observed !== expected) {
+      if (observed === null || expected === null || observed !== expected) {
         diagnostics.push({
           stage: "assert-effect",
           code: "property-value-mismatch",

@@ -58,6 +58,14 @@ describe("isSupportedReloadValueShape", () => {
     expect(isSupportedReloadValueShape({ kind: "phandle-cells", bits: 32, cellsPerGroup: 3 })).toBe(true);
   });
 
+  it("accepts boolean, empty, mixed, delete, and bare phandle-list shapes", () => {
+    expect(isSupportedReloadValueShape({ kind: "boolean" })).toBe(true);
+    expect(isSupportedReloadValueShape({ kind: "empty" })).toBe(true);
+    expect(isSupportedReloadValueShape({ kind: "mixed" })).toBe(true);
+    expect(isSupportedReloadValueShape({ kind: "delete" })).toBe(true);
+    expect(isSupportedReloadValueShape({ kind: "phandle-list", bits: 32, cellsPerGroup: 1 })).toBe(true);
+  });
+
   it("accepts 8-bit and 16-bit integer cell arrays", () => {
     expect(isSupportedReloadValueShape({ kind: "cells", bits: 8, cellsPerGroup: 1, groups: 1 })).toBe(true);
     expect(isSupportedReloadValueShape({ kind: "cells", bits: 8, cellsPerGroup: 3 })).toBe(true);
@@ -67,7 +75,7 @@ describe("isSupportedReloadValueShape", () => {
   it("rejects unsupported bits, unresolved phandle families, and incomplete cell shapes", () => {
     expect(isSupportedReloadValueShape({ kind: "cells", bits: 64, cellsPerGroup: 1 })).toBe(false);
     expect(isSupportedReloadValueShape({ kind: "cells", bits: 32 })).toBe(false);
-    expect(isSupportedReloadValueShape({ kind: "phandle-list", bits: 32, cellsPerGroup: 1 })).toBe(false);
+    expect(isSupportedReloadValueShape({ kind: "phandle-list", bits: 32 })).toBe(false);
     expect(isSupportedReloadValueShape({ kind: "phandle-cells", bits: 32 })).toBe(false);
     expect(isSupportedReloadValueShape({ kind: "phandle-cells", bits: 32, cellsPerGroup: 1 })).toBe(false);
     expect(isSupportedReloadValueShape({ kind: "bytes" })).toBe(false);
@@ -82,10 +90,15 @@ describe("describeReloadValueShapeAuthoring", () => {
     expect(describeReloadValueShapeAuthoring({ kind: "string-list" })).toEqual({ placeholder: '"okay"' });
   });
 
-  it("states the GPIO phandle example token for every phandle-family kind", () => {
-    for (const kind of ["phandle-cells", "mixed", "phandle-list"]) {
-      expect(describeReloadValueShapeAuthoring({ kind })).toEqual({ placeholder: "<&gpio13 29 0>" });
-    }
+  it("states distinct example tokens for GPIO, bare phandle lists, mixed, boolean, empty, and delete", () => {
+    expect(describeReloadValueShapeAuthoring({ kind: "phandle-cells" })).toEqual({
+      placeholder: "<&gpio13 29 0>"
+    });
+    expect(describeReloadValueShapeAuthoring({ kind: "phandle-list" })).toEqual({ placeholder: "<&gic>" });
+    expect(describeReloadValueShapeAuthoring({ kind: "mixed" })).toEqual({ placeholder: '"name", <1 0>' });
+    expect(describeReloadValueShapeAuthoring({ kind: "boolean" })).toEqual({ placeholder: "true" });
+    expect(describeReloadValueShapeAuthoring({ kind: "empty" })).toEqual({ placeholder: "" });
+    expect(describeReloadValueShapeAuthoring({ kind: "delete" })).toEqual({ placeholder: "/delete-property/" });
   });
 
   it("states /bits/ example tokens for sub-32-bit widths and the u32 token otherwise", () => {

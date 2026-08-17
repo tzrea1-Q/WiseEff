@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { generateDebugOverlay } from "./debugOverlay";
 import { runDebugOverlayPreflight } from "./preflight";
+import { parseDtsValue } from "../dts";
 
 /**
  * These tests drive the real pinned `dtc` / `fdtoverlay` on purpose. The gate exists because of
@@ -395,5 +396,110 @@ describe("runDebugOverlayPreflight", () => {
         after: "34"
       }
     ]);
+  });
+
+  it("passes boolean, empty, bare phandle, mixed, and property-deletion overlays through the real toolchain", async () => {
+    const base = `/dts-v1/;
+
+/ {
+	gic: interrupt-controller@0 {
+		compatible = "arm,gic";
+		interrupt-controller;
+		#interrupt-cells = <3>;
+	};
+
+	amba: amba {
+		i2c@FDF5E000 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			sc8562@6E {
+				compatible = "sc8562";
+				keep-power;
+				ranges;
+				interrupt-parent = <&gic>;
+				aux-map = "aux", <0 0>;
+				watchdog_time = <5000>;
+			};
+		};
+	};
+};
+`;
+
+    const booleanTargets = [
+      {
+        nodePath: NODE_PATH,
+        properties: [{ name: "keep-power", value: { kind: "boolean" as const, present: true as const } }]
+      }
+    ];
+    const booleanResult = await runDebugOverlayPreflight({
+      baseSource: base,
+      overlaySource: generateDebugOverlay(booleanTargets),
+      targets: booleanTargets
+    });
+    expect(booleanResult.diagnostics).toEqual([]);
+    expect(booleanResult.ok).toBe(true);
+
+    const emptyTargets = [
+      {
+        nodePath: NODE_PATH,
+        properties: [{ name: "ranges", value: { kind: "empty" as const } }]
+      }
+    ];
+    const emptyResult = await runDebugOverlayPreflight({
+      baseSource: base,
+      overlaySource: generateDebugOverlay(emptyTargets),
+      targets: emptyTargets
+    });
+    expect(emptyResult.ok).toBe(true);
+
+    const phandleTargets = [
+      {
+        nodePath: NODE_PATH,
+        properties: [{ name: "interrupt-parent", value: parseDtsValue("interrupt-parent", "<&gic>").value }]
+      }
+    ];
+    const phandleResult = await runDebugOverlayPreflight({
+      baseSource: base,
+      overlaySource: generateDebugOverlay(phandleTargets),
+      targets: phandleTargets
+    });
+    expect(phandleResult.diagnostics).toEqual([]);
+    expect(phandleResult.ok).toBe(true);
+
+    const mixedTargets = [
+      {
+        nodePath: NODE_PATH,
+        properties: [{ name: "aux-map", value: parseDtsValue("aux-map", '"aux", <1 0>').value }]
+      }
+    ];
+    const mixedResult = await runDebugOverlayPreflight({
+      baseSource: base,
+      overlaySource: generateDebugOverlay(mixedTargets),
+      targets: mixedTargets
+    });
+    expect(mixedResult.diagnostics).toEqual([]);
+    expect(mixedResult.ok).toBe(true);
+  });
+
+  it("refuses /delete-property/ overlays that dtc compiles to a no-op instead of guessing another encoding", async () => {
+    const deleteTargets = [
+      {
+        nodePath: NODE_PATH,
+        properties: [{ name: "watchdog_time", value: { kind: "empty" as const }, deleteProperty: true }]
+      }
+    ];
+    const deleteResult = await runDebugOverlayPreflight({
+      baseSource: BASE_SOURCE,
+      overlaySource: generateDebugOverlay(deleteTargets),
+      targets: deleteTargets
+    });
+    expect(deleteResult.ok).toBe(false);
+    expect(deleteResult.diagnostics[0]).toMatchObject({
+      stage: "assert-effect",
+      code: "property-value-mismatch",
+      propertyName: "watchdog_time"
+    });
+    expect(deleteResult.diagnostics[0]?.message).toContain("empty overlay fragment");
   });
 });

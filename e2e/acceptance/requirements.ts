@@ -471,6 +471,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: false
   },
   {
+    id: "DTS-RELOAD-HANDOFF-001",
+    workflow: "E",
+    title: "Parameter workbench carries a selected binding set into /dts-reload via project and bindingIds query so the engineer does not re-search.",
+    required: false
+  },
+  {
     id: "HDC-LAB-001",
     workflow: "F",
     title: "Real HDC device lab read/write smoke runs when explicitly enabled.",

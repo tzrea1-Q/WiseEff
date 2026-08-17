@@ -4,7 +4,7 @@ import { renderDtsValue, type DtsValue } from "../dts";
 export type DebugOverlayTarget = {
   /** Absolute device-tree path with unit addresses and exact case preserved. */
   nodePath: string;
-  properties: Array<{ name: string; value: DtsValue }>;
+  properties: Array<{ name: string; value: DtsValue; deleteProperty?: boolean }>;
 };
 
 /** One property binding before node grouping — several may share a node path. */
@@ -12,6 +12,8 @@ export type DebugOverlayPropertyBinding = {
   nodePath: string;
   propertyKey: string;
   value: DtsValue;
+  /** Overlay `/delete-property/` instead of an assignment. Never inferred from an empty RHS. */
+  deleteProperty?: boolean;
 };
 
 /**
@@ -35,11 +37,21 @@ export function groupDebugOverlayTargets(
       indexByPath.set(binding.nodePath, targets.length);
       targets.push({
         nodePath: binding.nodePath,
-        properties: [{ name: binding.propertyKey, value: binding.value }]
+        properties: [
+          {
+            name: binding.propertyKey,
+            value: binding.value,
+            ...(binding.deleteProperty ? { deleteProperty: true } : {})
+          }
+        ]
       });
       continue;
     }
-    targets[existing]!.properties.push({ name: binding.propertyKey, value: binding.value });
+    targets[existing]!.properties.push({
+      name: binding.propertyKey,
+      value: binding.value,
+      ...(binding.deleteProperty ? { deleteProperty: true } : {})
+    });
   }
 
   return targets;
@@ -79,7 +91,7 @@ export function generateDebugOverlay(targets: readonly DebugOverlayTarget[]): st
     }
 
     const properties = target.properties
-      .map((property) => `\t\t\t${property.name} = ${renderDtsValue(property.value)};`)
+      .map((property) => `\t\t\t${renderOverlayProperty(property)}`)
       .join("\n");
 
     return [
@@ -94,6 +106,20 @@ export function generateDebugOverlay(targets: readonly DebugOverlayTarget[]): st
   });
 
   return `${HEADER}\n/ {\n${fragments.join("\n\n")}\n};\n`;
+}
+
+function renderOverlayProperty(property: {
+  name: string;
+  value: DtsValue;
+  deleteProperty?: boolean;
+}): string {
+  if (property.deleteProperty) {
+    return `/delete-property/ ${property.name};`;
+  }
+  if (property.value.kind === "boolean" || property.value.kind === "empty") {
+    return `${property.name};`;
+  }
+  return `${property.name} = ${renderDtsValue(property.value)};`;
 }
 
 /** A real device-tree path starts at the root and carries no empty segments. */

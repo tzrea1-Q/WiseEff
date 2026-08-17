@@ -45,6 +45,7 @@ import { ParameterHomePage } from "@/features/parameter-home/ParameterHomePage";
 import { FeedbackAdminPage } from "@/features/product-feedback/FeedbackAdminPage";
 import { KnowledgeAdminPage } from "@/features/knowledge/KnowledgeAdminPage";
 import { KnowledgePage } from "@/features/knowledge/KnowledgePage";
+import { parseDtsReloadHandoffQuery } from "@/domain/dtsReload/handoff";
 import { DtsReloadPage } from "@/features/dts-reload/DtsReloadPage";
 import { ParametersPage as UserParametersPage } from "@/ParametersPage";
 import { UserPermissionsPage } from "@/UserPermissionsPage";
@@ -368,16 +369,19 @@ export function PageRouter({
     }
     case "dts-reload": {
       const mockSeams = runtimeMode === "api" ? null : mockDtsReloadBridgeSeams();
+      const searchParams = new URLSearchParams(search);
+      const handoff = parseDtsReloadHandoffQuery(searchParams);
       return (
         <DtsReloadPage
           projects={state.configDraft.projects.map((project) => ({ id: project.id, name: project.name }))}
-          initialProjectId={state.activeProjectId}
+          initialProjectId={handoff.projectId ?? state.activeProjectId}
           repository={dtsReloadRepository ?? resolveDtsReloadRepository(runtimeMode)}
           canStartRun={canStartDtsReload}
           knowledgeRepository={knowledgeRepository}
           knowledgeCapability={knowledgeCapability}
           onNavigate={onNavigate}
-          initialRunId={new URLSearchParams(search).get("runId")}
+          initialRunId={searchParams.get("runId")}
+          initialBindingIds={handoff.bindingIds.length > 0 ? handoff.bindingIds : null}
           bridges={mockSeams?.bridges}
           probeBridgeHealth={mockSeams?.probeBridgeHealth}
           createBridgePairingCode={mockSeams?.createPairingCode}

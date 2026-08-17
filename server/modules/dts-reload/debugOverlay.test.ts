@@ -106,4 +106,60 @@ describe("generateDebugOverlay", () => {
     ]);
     expect(overlay).toBe(expected);
   });
+
+  it("renders a boolean as a present-only property, not an empty assignment", async () => {
+    const expected = await readFile(join(fixtureDir, "boolean.overlay.dts"), "utf8");
+    const overlay = generateDebugOverlay([
+      {
+        nodePath: "/amba/i2c@FDF5E000/sc8562@6E",
+        properties: [{ name: "keep-power", value: { kind: "boolean", present: true } }]
+      }
+    ]);
+    expect(overlay).toBe(expected);
+    expect(overlay).not.toContain("keep-power =");
+  });
+
+  it("renders an empty property as a present-only property", async () => {
+    const expected = await readFile(join(fixtureDir, "empty-property.overlay.dts"), "utf8");
+    const overlay = generateDebugOverlay([
+      {
+        nodePath: "/amba/i2c@FDF5E000/sc8562@6E",
+        properties: [{ name: "ranges", value: { kind: "empty" } }]
+      }
+    ]);
+    expect(overlay).toBe(expected);
+  });
+
+  it("renders a bare phandle list without inventing GPIO cells", async () => {
+    const expected = await readFile(join(fixtureDir, "bare-phandle.overlay.dts"), "utf8");
+    const overlay = generateDebugOverlay([
+      {
+        nodePath: "/amba/i2c@FDF5E000/sc8562@6E",
+        properties: [{ name: "interrupt-parent", value: cells("<&gic>") }]
+      }
+    ]);
+    expect(overlay).toBe(expected);
+  });
+
+  it("renders a mixed string+cell value without coercing to cells", async () => {
+    const expected = await readFile(join(fixtureDir, "mixed.overlay.dts"), "utf8");
+    const overlay = generateDebugOverlay([
+      {
+        nodePath: "/amba/i2c@FDF5E000/sc8562@6E",
+        properties: [{ name: "aux-map", value: parseDtsValue("aux-map", '"aux", <1 0>').value }]
+      }
+    ]);
+    expect(overlay).toBe(expected);
+  });
+
+  it("renders explicit property deletion as /delete-property/", async () => {
+    const expected = await readFile(join(fixtureDir, "delete-property.overlay.dts"), "utf8");
+    const overlay = generateDebugOverlay([
+      {
+        nodePath: "/amba/i2c@FDF5E000/sc8562@6E",
+        properties: [{ name: "watchdog_time", value: { kind: "empty" }, deleteProperty: true }]
+      }
+    ]);
+    expect(overlay).toBe(expected);
+  });
 });

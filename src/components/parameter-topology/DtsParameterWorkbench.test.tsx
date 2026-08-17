@@ -717,4 +717,35 @@ describe("DtsParameterWorkbench", () => {
     fireEvent.change(searchbox, { target: { value: "gamma" } });
     expect(screen.getByRole("status")).toHaveTextContent(/匹配/);
   });
+
+  it("disables 带到参数调试 until a row, draft, or narrowed result is chosen", () => {
+    renderWorkbench({ projectId: "project-1", onNavigate: vi.fn() });
+    const button = screen.getByRole("button", { name: /带到参数调试/ });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("aria-label", expect.stringContaining("请先勾选草稿"));
+  });
+
+  it("hands checked draft bindings to /dts-reload without dumping the full table", () => {
+    const onNavigate = vi.fn();
+    renderWorkbench({ projectId: "project-1", onNavigate });
+    fireEvent.click(screen.getByRole("checkbox", { name: /选择 gpio_int/ }));
+    const button = screen.getByRole("button", { name: /带到参数调试/ });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(onNavigate).toHaveBeenCalledWith(
+      "/dts-reload?project=project-1&bindingIds=binding-gpio-int"
+    );
+  });
+
+  it("hands the current search result to /dts-reload when no draft is checked", () => {
+    const onNavigate = vi.fn();
+    renderWorkbench({ projectId: "project-1", onNavigate });
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索 DTS 参数" }), {
+      target: { value: "gpio13" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /带到参数调试/ }));
+    expect(onNavigate).toHaveBeenCalledWith(
+      "/dts-reload?project=project-1&bindingIds=binding-gpio-int"
+    );
+  });
 });

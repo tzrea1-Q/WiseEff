@@ -138,6 +138,22 @@ describe("dtsReloadRunSession", () => {
       expect(getRun).not.toHaveBeenCalled();
     });
 
+    it("does not auto-select the first debuggable candidate when a workbench hand-off is present", async () => {
+      const session = createSession({ initialBindingIds: ["binding-2"] });
+      const listCandidates = vi.fn(async () => ({
+        items: [
+          candidate({ bindingId: "binding-1", baselineValue: "<1>" }),
+          candidate({ bindingId: "binding-2", baselineValue: "<2>" })
+        ]
+      }));
+      await session.loadCandidates({ listCandidates, getRun: vi.fn(async () => run()) });
+      const snapshot = session.getSnapshot();
+      expect(snapshot.handoffBindingIds).toEqual(["binding-2"]);
+      expect(snapshot.selectedBindingIds).toEqual([]);
+      session.clearHandoff();
+      expect(session.getSnapshot().handoffBindingIds).toBeNull();
+    });
+
     it("rehydrates a same-project run id from the URL and adopts its deploy target", async () => {
       const session = createSession({
         readRunId: () => "run-1"

@@ -65,7 +65,9 @@ function classifyBlockReason(
   if (!isSupportedReloadValueShape(resolvedShape)) {
     return "unsupported-value-shape";
   }
-  if (input.baselineValue === null || input.baselineValue.trim().length === 0) {
+  const presenceShape =
+    resolvedShape?.kind === "boolean" || resolvedShape?.kind === "empty" || resolvedShape?.kind === "delete";
+  if (!presenceShape && (input.baselineValue === null || input.baselineValue.trim().length === 0)) {
     return "no-baseline-value";
   }
   return undefined;

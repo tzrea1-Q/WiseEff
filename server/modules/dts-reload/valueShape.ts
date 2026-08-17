@@ -20,6 +20,7 @@ import { parseDtsValue, type DtsValue } from "../dts";
 import {
   isPhandleCellFamilyKind,
   isIntegerCellFamilyKind,
+  isReloadDeletePropertyToken,
   isSupportedCellBits,
   type CandidateValueShape,
   type ReloadAuthoringIssue,
@@ -43,6 +44,30 @@ export function isPhandleCellArrayValue(value: DtsValue): boolean {
     const [head, ...tail] = group;
     return head?.kind === "phandle" && tail.length > 0 && tail.every((cell) => cell.kind === "integer");
   });
+}
+
+/**
+ * Bare phandle list such as `<&gic>` or `<&a>, <&b>`: every cell is a phandle, no integers.
+ * Distinct from GPIO-style `<&label N …>` — never coerce one into the other.
+ */
+export function isBarePhandleListValue(value: DtsValue): boolean {
+  if (value.kind !== "cells" || value.bits !== 32 || value.groups.length === 0) return false;
+  const widths = value.groups.map((group) => group.length);
+  const width = widths[0]!;
+  if (width < 1) return false;
+  if (widths.some((entry) => entry !== width)) return false;
+  return value.groups.every(
+    (group) => group.length > 0 && group.every((cell) => cell.kind === "phandle")
+  );
+}
+
+function tryParseBaseline(baselineValue: string | null | undefined): DtsValue | null {
+  if (!baselineValue || baselineValue.trim().length === 0) return null;
+  try {
+    return parseDtsValue("reload-baseline", baselineValue.trim()).value;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -123,12 +148,62 @@ export function inferPhandleCellsPerGroupFromBaseline(
   }
 }
 
+function resolvePhandleCellsShape(
+  valueShape: NonNullable<CandidateValueShape>,
+  parsedBaseline: DtsValue | null
+): ReloadValueShape {
+  let cellsPerGroup =
+    typeof valueShape.cellsPerGroup === "number" &&
+    Number.isInteger(valueShape.cellsPerGroup) &&
+    valueShape.cellsPerGroup >= 1
+      ? valueShape.cellsPerGroup
+      : undefined;
+  if (cellsPerGroup === undefined && parsedBaseline && isPhandleCellArrayValue(parsedBaseline)) {
+    const inferred = parsedBaseline.kind === "cells" ? parsedBaseline.groups[0]?.length : undefined;
+    if (typeof inferred === "number") cellsPerGroup = inferred;
+  }
+
+  if (cellsPerGroup === 1) {
+    const resolvedList: NonNullable<ReloadValueShape> = {
+      kind: "phandle-list",
+      bits: 32,
+      cellsPerGroup: 1
+    };
+    if (
+      typeof valueShape.groups === "number" &&
+      Number.isInteger(valueShape.groups) &&
+      valueShape.groups >= 1
+    ) {
+      resolvedList.groups = valueShape.groups;
+    }
+    return resolvedList;
+  }
+
+  const resolved: NonNullable<ReloadValueShape> = {
+    kind: "phandle-cells",
+    bits: 32,
+    ...(cellsPerGroup !== undefined && cellsPerGroup >= 2 ? { cellsPerGroup } : {})
+  };
+  if (
+    typeof valueShape.groups === "number" &&
+    Number.isInteger(valueShape.groups) &&
+    valueShape.groups >= 1
+  ) {
+    resolved.groups = valueShape.groups;
+  }
+  return resolved;
+}
+
 /**
  * Normalize catalog shapes onto the reload surface vocabulary.
  * - `u32-array` / `cells` → `cells` (width may be inferred from a regular integer baseline)
  * - catalog `bytes` with `/bits/ 8 <…>` (or `[…]`) baselines → `cells` with bits=8
  * - `mixed` / `phandle-list` that match GPIO-style `<&label N …>` → `phandle-cells`
+ * - bare phandle lists such as `<&gic>` → `phandle-list` (never invent GPIO width)
+ * - true mixed string+cell baselines stay `mixed` (never coerced to cells or GPIO)
+ * - catalog `bool` / `empty` stay presence shapes; empty RHS is valid
  * - catalog `string` (single quoted string) stays `string`; `string-list` stays `string-list`
+ * Encodings that cannot be confirmed from the catalog kind plus baseline are left unsupported.
  */
 export function resolveReloadValueShape(
   valueShape: CandidateValueShape,
@@ -141,31 +216,51 @@ export function resolveReloadValueShape(
   if (valueShape.kind === "string") {
     return { kind: "string" };
   }
+  if (valueShape.kind === "bool" || valueShape.kind === "boolean") {
+    return { kind: "boolean" };
+  }
+  if (valueShape.kind === "empty") {
+    return { kind: "empty" };
+  }
+  if (valueShape.kind === "delete") {
+    return { kind: "delete" };
+  }
 
-  if (isPhandleCellFamilyKind(valueShape.kind)) {
-    let cellsPerGroup =
-      typeof valueShape.cellsPerGroup === "number" &&
-      Number.isInteger(valueShape.cellsPerGroup) &&
-      valueShape.cellsPerGroup >= 2
-        ? valueShape.cellsPerGroup
-        : undefined;
-    if (cellsPerGroup === undefined) {
-      const inferred = inferPhandleCellsPerGroupFromBaseline(baselineValue);
-      if (inferred !== null) cellsPerGroup = inferred;
+  const parsedBaseline = tryParseBaseline(baselineValue);
+
+  if (valueShape.kind === "mixed") {
+    if (parsedBaseline && isPhandleCellArrayValue(parsedBaseline)) {
+      return resolvePhandleCellsShape(valueShape, parsedBaseline);
     }
-    const resolved: NonNullable<ReloadValueShape> = {
-      kind: "phandle-cells",
-      bits: 32,
-      ...(cellsPerGroup !== undefined ? { cellsPerGroup } : {})
-    };
+    if (parsedBaseline?.kind === "mixed") {
+      return { kind: "mixed" };
+    }
+    return null;
+  }
+
+  if (valueShape.kind === "phandle-list" || valueShape.kind === "phandle-cells") {
+    if (parsedBaseline && isPhandleCellArrayValue(parsedBaseline)) {
+      return resolvePhandleCellsShape(valueShape, parsedBaseline);
+    }
+    if (parsedBaseline && isBarePhandleListValue(parsedBaseline)) {
+      return {
+        kind: "phandle-list",
+        bits: 32,
+        cellsPerGroup: parsedBaseline.kind === "cells" ? parsedBaseline.groups[0]!.length : 1
+      };
+    }
     if (
-      typeof valueShape.groups === "number" &&
-      Number.isInteger(valueShape.groups) &&
-      valueShape.groups >= 1
+      valueShape.kind === "phandle-list" &&
+      typeof valueShape.cellsPerGroup === "number" &&
+      valueShape.cellsPerGroup === 1 &&
+      !parsedBaseline
     ) {
-      resolved.groups = valueShape.groups;
+      return { kind: "phandle-list", bits: 32, cellsPerGroup: 1 };
     }
-    return resolved;
+    if (valueShape.kind === "phandle-cells") {
+      return resolvePhandleCellsShape(valueShape, parsedBaseline);
+    }
+    return null;
   }
 
   if (!isIntegerCellFamilyKind(valueShape.kind)) {
@@ -224,7 +319,7 @@ export function resolveReloadValueShape(
 }
 
 export type ValidatedAuthoredDebugValue =
-  | { ok: true; parsed: DtsValue }
+  | { ok: true; parsed: DtsValue; deleteProperty?: boolean }
   | { ok: false; issue: ReloadAuthoringIssue };
 
 /**
@@ -236,15 +331,52 @@ export type ValidatedAuthoredDebugValue =
  * square-bracket `[…]` spelling. Per-width overflow is enforced by the parser itself
  * (`Integer literal "…" overflows a N-bit cell`) and surfaces as an `unparsable` issue;
  * signed minima wrap like dtc, so `<-1>` stays a legal 32-bit authoring form.
+ *
+ * Empty RHS is never guessed as boolean/empty from the property name: catalog shape
+ * decides. `/delete-property/` is an overlay verb, never inferred from empty cells.
  */
 export function validateAuthoredDebugValue(
   propertyKey: string,
   rawDebugValue: string,
   valueShape: ReloadValueShape
 ): ValidatedAuthoredDebugValue {
+  const trimmed = rawDebugValue.trim();
+
+  if (isReloadDeletePropertyToken(trimmed) || (valueShape?.kind === "boolean" && trimmed === "false")) {
+    return { ok: true, parsed: { kind: "empty" }, deleteProperty: true };
+  }
+
+  if (!trimmed) {
+    if (valueShape?.kind === "boolean") {
+      return { ok: true, parsed: { kind: "boolean", present: true } };
+    }
+    if (valueShape?.kind === "empty") {
+      return { ok: true, parsed: { kind: "empty" } };
+    }
+    return {
+      ok: false,
+      issue: { reason: "unparsable", message: "empty debug value" }
+    };
+  }
+
+  if (valueShape?.kind === "boolean") {
+    if (trimmed === "true") {
+      return { ok: true, parsed: { kind: "boolean", present: true } };
+    }
+    return { ok: false, issue: { reason: "not-boolean" } };
+  }
+
+  if (valueShape?.kind === "empty") {
+    return { ok: false, issue: { reason: "not-empty" } };
+  }
+
+  if (valueShape?.kind === "delete") {
+    return { ok: false, issue: { reason: "unparsable", message: "expected /delete-property/" } };
+  }
+
   let parsed: DtsValue;
   try {
-    parsed = parseDtsValue(propertyKey, rawDebugValue.trim()).value;
+    parsed = parseDtsValue(propertyKey, trimmed).value;
   } catch (error) {
     return {
       ok: false,
@@ -274,6 +406,32 @@ function authoringIssueForParsedValue(
   if (valueShape?.kind === "string-list") {
     if (parsedValue.kind !== "strings" || parsedValue.values.length === 0) {
       return { reason: "not-string-list" };
+    }
+    return null;
+  }
+
+  if (valueShape?.kind === "mixed") {
+    if (parsedValue.kind !== "mixed") return { reason: "not-mixed" };
+    return null;
+  }
+
+  if (valueShape?.kind === "phandle-list") {
+    if (!isBarePhandleListValue(parsedValue)) return { reason: "not-phandle-list" };
+    const cellsPerGroup = valueShape.cellsPerGroup;
+    if (
+      typeof cellsPerGroup === "number" &&
+      Number.isInteger(cellsPerGroup) &&
+      cellsPerGroup >= 1 &&
+      parsedValue.kind === "cells"
+    ) {
+      const mismatched = parsedValue.groups.some((group) => group.length !== cellsPerGroup);
+      if (mismatched) {
+        return {
+          reason: "cells-per-group-mismatch",
+          expectedCellsPerGroup: cellsPerGroup,
+          actualCellsPerGroup: parsedValue.groups.map((group) => group.length)
+        };
+      }
     }
     return null;
   }
@@ -471,6 +629,10 @@ export function compareReloadDebugValue(input: {
   readValue: string;
   valueShape: CandidateValueShape;
 }): ReloadDebugValueCompareResult {
+  if (input.valueShape?.kind === "boolean" || input.valueShape?.kind === "empty") {
+    return comparePresenceValue(input);
+  }
+
   let expected: DtsValue;
   try {
     expected = parseDtsValue(input.propertyKey, input.debugValue).value;
@@ -485,6 +647,34 @@ export function compareReloadDebugValue(input: {
     if (!actual) return "incomparable";
     if (actual.length !== expected.values.length) return "contradicted";
     return actual.every((value, index) => value === expected.values[index]) ? "matched" : "contradicted";
+  }
+
+  if (input.valueShape?.kind === "mixed" && expected.kind === "mixed") {
+    let actual: DtsValue;
+    try {
+      actual = parseDtsValue(input.propertyKey, input.readValue).value;
+    } catch {
+      return "incomparable";
+    }
+    if (actual.kind !== "mixed") return "incomparable";
+    const left = canonicalizeReloadValue(expected, "");
+    const right = canonicalizeReloadValue(actual, "");
+    return left === right ? "matched" : "contradicted";
+  }
+
+  if (input.valueShape?.kind === "phandle-list" || isBarePhandleListValue(expected)) {
+    if (!isBarePhandleListValue(expected)) return "incomparable";
+    let actual: DtsValue;
+    try {
+      actual = parseDtsValue(input.propertyKey, input.readValue).value;
+    } catch {
+      return "incomparable";
+    }
+    if (!isBarePhandleListValue(actual)) return "incomparable";
+    const left = serializePhandleCellSequence(expected);
+    const right = serializePhandleCellSequence(actual);
+    if (left.length !== right.length) return "contradicted";
+    return left.every((value, index) => value === right[index]) ? "matched" : "contradicted";
   }
 
   const phandleFamily = isPhandleCellFamilyKind(input.valueShape?.kind);
@@ -508,6 +698,33 @@ export function compareReloadDebugValue(input: {
   return actualCells.every((value, index) => value === expectedCells[index]) ? "matched" : "contradicted";
 }
 
+function comparePresenceValue(input: {
+  propertyKey: string;
+  debugValue: string;
+  readValue: string;
+}): ReloadDebugValueCompareResult {
+  const debug = input.debugValue.trim();
+  const expectedPresent = debug !== "false" && !isReloadDeletePropertyToken(debug);
+  const actual = coerceReadAsPresence(input.propertyKey, input.readValue);
+  if (actual === "incomparable") return "incomparable";
+  return expectedPresent === (actual === "present") ? "matched" : "contradicted";
+}
+
+function coerceReadAsPresence(
+  propertyKey: string,
+  readValue: string
+): "present" | "absent" | "incomparable" {
+  const trimmed = readValue.trim();
+  if (!trimmed) return "present";
+  try {
+    const parsed = parseDtsValue(propertyKey, trimmed).value;
+    if (parsed.kind === "boolean" || parsed.kind === "empty") return "present";
+    return "incomparable";
+  } catch {
+    return "incomparable";
+  }
+}
+
 /**
  * Compare values by cell or string content, not by text spelling: `dtc` decompiles to
  * hexadecimal while a debug value may be entered in decimal, and string quotes may differ.
@@ -522,6 +739,25 @@ export function canonicalizeReloadValue(
   fallback: string,
   resolvePhandle: (label: string) => string | null = () => null
 ): string {
+  if (value?.kind === "boolean" || value?.kind === "empty") {
+    return "";
+  }
+  if (value?.kind === "mixed") {
+    return value.segments
+      .map((segment) => {
+        if (segment.kind === "string") return JSON.stringify(segment.value);
+        const cells = segment.cells
+          .map((cell) => {
+            if (cell.kind === "integer") return decimalCellText(cell);
+            const resolved = resolvePhandle(cell.label);
+            return resolved ?? `&${cell.label}`;
+          })
+          .join(" ");
+        const group = `<${cells}>`;
+        return segment.bits === 32 ? group : `/bits/ ${segment.bits} ${group}`;
+      })
+      .join(", ");
+  }
   if (value?.kind === "bytes") {
     return value.values.map((entry) => String(entry)).join(" ");
   }
@@ -558,4 +794,45 @@ export function canonicalizeReloadValue(
 export function decimalCellText(cell: { raw: string; value: string }): string {
   const parsed = BigInt(cell.value.length > 0 ? cell.value : cell.raw);
   return parsed.toString(10);
+}
+
+/**
+ * DTB property-value layout for mixed string+cell overlays. dtc concatenates
+ * NUL-terminated strings (4-byte aligned) with big-endian cells; decompile then
+ * shows a cell array. This is the Device Tree Spec encoding, not a catalog-shape guess.
+ */
+export function canonicalizeMixedAsDtbCells(
+  value: DtsValue,
+  resolvePhandle: (label: string) => string | null = () => null
+): string | null {
+  if (value.kind !== "mixed") return null;
+  const bytes: number[] = [];
+  for (const segment of value.segments) {
+    if (segment.kind === "string") {
+      for (const byte of Buffer.from(segment.value, "utf8")) bytes.push(byte);
+      bytes.push(0);
+      while (bytes.length % 4 !== 0) bytes.push(0);
+      continue;
+    }
+    if (segment.bits !== 32) return null;
+    for (const cell of segment.cells) {
+      if (cell.kind === "phandle") {
+        const resolved = resolvePhandle(cell.label);
+        if (resolved === null) return null;
+        const numeric = Number(BigInt(resolved));
+        bytes.push((numeric >>> 24) & 0xff, (numeric >>> 16) & 0xff, (numeric >>> 8) & 0xff, numeric & 0xff);
+        continue;
+      }
+      const numeric = Number(BigInt(cell.value.length > 0 ? cell.value : cell.raw));
+      bytes.push((numeric >>> 24) & 0xff, (numeric >>> 16) & 0xff, (numeric >>> 8) & 0xff, numeric & 0xff);
+    }
+  }
+  if (bytes.length === 0 || bytes.length % 4 !== 0) return null;
+  const cells: string[] = [];
+  for (let index = 0; index < bytes.length; index += 4) {
+    const numeric =
+      ((bytes[index]! << 24) | (bytes[index + 1]! << 16) | (bytes[index + 2]! << 8) | bytes[index + 3]!) >>> 0;
+    cells.push(String(numeric));
+  }
+  return `<${cells.join(" ")}>`;
 }
