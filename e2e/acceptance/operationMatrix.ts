@@ -1539,10 +1539,9 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameters",
     roles: ["Admin"],
     action: "Structural properties do not create spec review tasks or block candidate promotion or migration finalize.",
-    coverage: "future",
+    coverage: "automated",
     acceptanceIds: ["PARAM-ENABLE-GATE-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
-    deferralReason: "Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.",
     assertions: ["api", "db"]
   },
   {
@@ -1564,10 +1563,9 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameters",
     roles: ["Software User", "Admin"],
     action: "Disable a node with reason and confirmation; submit enablement draft in the same round as a binding edit.",
-    coverage: "future",
+    coverage: "automated",
     acceptanceIds: ["PARAM-ENABLE-TOGGLE-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
-    deferralReason: "Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.",
     assertions: ["ui", "api", "db", "audit"]
   },
   {
@@ -1577,10 +1575,9 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameters",
     roles: ["Admin"],
     action: "Non-standard status values stay read-only until an explicit acknowledgement override.",
-    coverage: "future",
+    coverage: "automated",
     acceptanceIds: ["PARAM-ENABLE-GUARD-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
-    deferralReason: "Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.",
     assertions: ["ui"]
   },
   {

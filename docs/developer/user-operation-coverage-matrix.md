@@ -123,10 +123,10 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `PARAM-IDENTITY-MAP-001` | P1 | parameters | automated | `/parameters` | Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-IDENTITY-MAP-ADMIN-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-CONFIG-PUBLISH-GATE-001` | P0 | parameters | automated | `/parameters` | Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `PARAM-ENABLE-GATE-001` | P1 | parameters | future | `/parameters` | Admin | api, db | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-ENABLE-GATE-001` | P1 | parameters | automated | `/parameters` | Admin | api, db | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-ENABLE-VISIBLE-001` | P0 | parameters | automated | `/parameters` | Admin, Hardware User | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `PARAM-ENABLE-TOGGLE-001` | P0 | parameters | future | `/parameters` | Software User, Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `PARAM-ENABLE-GUARD-001` | P1 | parameters | future | `/parameters` | Admin | ui | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-ENABLE-TOGGLE-001` | P0 | parameters | automated | `/parameters` | Software User, Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-ENABLE-GUARD-001` | P1 | parameters | automated | `/parameters` | Admin | ui | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `MOD-ATTR-QUEUE-001` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `MOD-ATTR-CLASSIFY-001` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `MOD-ATTR-BULK-001` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
@@ -176,9 +176,6 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 - `PARAM-SPEC-IDENTITY-001`: Re-attribution is covered by ParameterSpecDetailDialog RTL plus mock/HTTP collision seams and playwright-cli evidence under work/ui-checks/param-spec-identity/; a blocking Playwright marker is deferred so this does not enlarge the shared pre-cutover CI acceptance suite (TD-079).
 - `PARAM-SPEC-IDENTITY-002`: Rename gate, collision copy, and deprecated blockers are covered by RTL, presentError, and mock repository tests plus playwright-cli evidence under work/ui-checks/param-spec-identity/; a blocking Playwright marker is deferred so this does not enlarge the shared pre-cutover CI acceptance suite (TD-079).
 - `PARAM-ADMIN-IA-001`: Unit-covered in ParameterAdminNextPage and organization path tests; dedicated Playwright marker deferred.
-- `PARAM-ENABLE-GATE-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
-- `PARAM-ENABLE-TOGGLE-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
-- `PARAM-ENABLE-GUARD-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
 - `MOD-ATTR-QUEUE-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
 - `MOD-ATTR-CLASSIFY-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
 - `MOD-ATTR-BULK-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
