@@ -524,6 +524,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "XIAOZE-APPROVAL-EXEC-FAIL-001",
+    workflow: "G",
+    title: "When approved Xiaoze tool execution fails, the chat shows a Chinese assistant failure turn and the thread stays usable.",
+    required: false
+  },
+  {
     id: "XIAOZE-PLAN-MULTISTEP-001",
     workflow: "G",
     title: "Xiaoze resumes a multi-step plan after approval and reports the observed execution result.",

@@ -804,4 +804,15 @@ test.describe("Xiaoze P1 action", () => {
       notes: "Approval card mounted above the chat popup, the approve click resolved the interrupt without closing the chat, and an open change request was created."
     });
   });
+
+  test.describe("approval execution failure — pending browser automation", () => {
+    test("XIAOZE-APPROVAL-EXEC-FAIL-001: failed approved execution shows a Chinese halt and does not brick the thread", async () => {
+      // @acceptance-planned XIAOZE-APPROVAL-EXEC-FAIL-001
+      // @operation-planned XIAOZE-APPROVAL-EXEC-FAIL-001
+      test.skip(
+        true,
+        "Pending: a true browser path needs a stale-working-tip / overlay fixture. Graph and AG-UI assembly tests are the blocking gate for this slice."
+      );
+    });
+  });
 });

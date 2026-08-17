@@ -271,4 +271,60 @@ describe("createPlanningAgent", () => {
 
     expect(result.text.toLowerCase()).toContain("rejected");
   });
+
+  it("halts with Chinese assistant text when approved execution fails and leaves the thread resumable", async () => {
+    const { ApiError } = await import("../../../shared/http/errors");
+    const checkpointer = createXiaozeCheckpointer();
+    const approvalResolver = {
+      resolveApproval: vi.fn().mockRejectedValue(
+        new ApiError("CONFLICT", "请刷新后基于本轮最新工作版本继续编辑。", 409, {
+          reason: "stale-working-tip"
+        })
+      )
+    };
+    const model = fakeModelSequence([
+      {
+        toolCalls: [
+          toolCall("action.submitParameterChange", { projectId: "p1", parameterId: "pd1", targetValue: "42", reason: "x" })
+        ]
+      },
+      { content: "可以继续，请告诉我下一步。" }
+    ]);
+    const agent = createPlanningAgent({
+      model,
+      runTool: vi.fn(),
+      listTools: () => [{ name: "action.submitParameterChange", description: "x", schema: {}, requiresApproval: true }],
+      checkpointer,
+      approvalResolver
+    });
+
+    await agent.run({
+      message: "set pd1 to 42",
+      context: { projectId: "p1" },
+      threadId: "t-exec-fail",
+      requestContext: { auth: anyAuth, requestId: "req-1", sessionId: "t-exec-fail" }
+    });
+
+    const failed = await agent.run({
+      message: "",
+      context: { projectId: "p1" },
+      threadId: "t-exec-fail",
+      requestContext: { auth: anyAuth, requestId: "req-2", sessionId: "t-exec-fail" },
+      resume: { approvalId: "approval-fail", decision: "approve" }
+    });
+
+    expect(failed.text).toContain("操作未能完成");
+    expect(failed.text).toContain("请刷新后基于本轮最新工作版本继续编辑");
+    expect(failed.interrupt).toBeUndefined();
+
+    const followUp = await agent.run({
+      message: "然后呢",
+      context: { projectId: "p1" },
+      threadId: "t-exec-fail",
+      requestContext: { auth: anyAuth, requestId: "req-3", sessionId: "t-exec-fail" }
+    });
+
+    expect(followUp.text).toContain("可以继续");
+    expect(followUp.interrupt).toBeUndefined();
+  });
 });

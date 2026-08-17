@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HttpAgent } from "@ag-ui/client";
-import { createAuthenticatedFetch, createXiaozeHttpAgent, resolveXiaozeAuthorizationHeader } from "./xiaozeHttpAgent";
+import { createAuthenticatedFetch, clearXiaozeAgentPendingTurn, createXiaozeHttpAgent, resolveXiaozeAuthorizationHeader } from "./xiaozeHttpAgent";
 
 vi.mock("@/infrastructure/auth/oidcAuthProvider", () => ({
   createDefaultOidcAuthProvider: () => ({
@@ -75,5 +75,25 @@ describe("xiaozeHttpAgent", () => {
     );
 
     runAgent.mockRestore();
+  });
+
+  it("clears pending interrupts so the next runAgent is not blocked", async () => {
+    const fetchImpl = vi.fn(async () => {
+      const body =
+        `data: ${JSON.stringify({ type: "RUN_STARTED", threadId: "thread-clear", runId: "run-1" })}\n\n` +
+        `data: ${JSON.stringify({ type: "RUN_FINISHED", threadId: "thread-clear", runId: "run-1" })}\n\n`;
+      return new Response(body, { headers: { "Content-Type": "text/event-stream" } });
+    });
+    const agent = createXiaozeHttpAgent({ fetchImpl });
+    agent.pendingInterrupts.push({ id: "approval-stale" } as never);
+
+    await expect(agent.runAgent()).rejects.toThrow(/pending interrupt/i);
+    expect(fetchImpl).not.toHaveBeenCalled();
+
+    clearXiaozeAgentPendingTurn(agent);
+    expect(agent.pendingInterrupts).toEqual([]);
+
+    await agent.runAgent();
+    expect(fetchImpl).toHaveBeenCalled();
   });
 });

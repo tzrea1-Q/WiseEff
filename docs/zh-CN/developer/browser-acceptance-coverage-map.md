@@ -80,6 +80,7 @@
 - `PARAM-HAPPY-001`：在融合后的成熟 `/parameters` 工作台中检索语义 binding、查看本轮修改区、创建 typed draft、选择可见处理人并 submit，按真实角色 review 后执行 semantic merge/writeback、reload、持久化和审计闭环（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `XIAOZE-PERCEPTION-001`：小泽 P0 感知验收——基于页面上下文与只读感知工具回答有权限范围内的项目问题。
 - `XIAOZE-PERCEPTION-AUTHZ-001`：越权项目问题返回安全、不泄露数据的回答。
+- `XIAOZE-APPROVAL-EXEC-FAIL-001`：批准后工具执行失败时，聊天应出现中文 assistant 失败回合（`操作未能完成` + 原因），线程仍可用，「新对话」不被 pending interrupt 卡住。本切片以图与 AG-UI 装配测试为阻断门禁；浏览器路径需要陈旧工作版本 / overlay 夹具，登记为诚实的 `@acceptance-planned` 桩（`e2e/acceptance/xiaoze-action.acceptance.spec.ts`）。
 - `XIAOZE-PLAN-MULTISTEP-001`：多步计划在批准后 checkpoint resume，并报告观察到的执行结果（`e2e/acceptance/xiaoze-planning.acceptance.spec.ts`）。
 - `XIAOZE-PROACTIVE-001`：opt-in 主动建议为只读、受 authz 限制；关闭时不展示（`e2e/acceptance/xiaoze-planning.acceptance.spec.ts`）。
 - `MOD-TREE-PARAM-001`：Admin 创建嵌套参数模块、将参数挂到子模块，并按父模块筛选时包含子树（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。

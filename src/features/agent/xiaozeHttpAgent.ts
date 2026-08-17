@@ -55,6 +55,19 @@ class XiaozeHttpAgent extends HttpAgent {
   }
 }
 
+type XiaozePendingTurnAgent = {
+  pendingInterrupts?: unknown[];
+  abortRun?: () => void;
+};
+
+/** Drop CopilotKit/HttpAgent interrupt state so a new thread is not blocked. */
+export function clearXiaozeAgentPendingTurn(agent: XiaozePendingTurnAgent): void {
+  agent.abortRun?.();
+  if (Array.isArray(agent.pendingInterrupts)) {
+    agent.pendingInterrupts.length = 0;
+  }
+}
+
 export function createXiaozeHttpAgent(options: { agentUrl?: string; fetchImpl?: typeof fetch } = {}) {
   return new XiaozeHttpAgent({
     agentId: "default",

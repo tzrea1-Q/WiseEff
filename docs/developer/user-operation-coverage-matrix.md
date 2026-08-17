@@ -89,6 +89,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `XIAOZE-ACTION-RESUME-001` | P1 | agent | automated | `/parameters` | Admin | api | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
 | `XIAOZE-ACTION-EDITEDARGS-001` | P1 | agent | automated | `/parameters` | Admin | api | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
 | `XIAOZE-ACTION-AUTHZ-001` | P1 | agent | automated | `/parameters` | Guest | api | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
+| `XIAOZE-APPROVAL-EXEC-FAIL-001` | P1 | agent | future | `/parameters` | Admin | ui, api | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
 | `XIAOZE-PLAN-MULTISTEP-001` | P2 | agent | automated | `/parameters` | Admin | api | `e2e/acceptance/xiaoze-planning.acceptance.spec.ts` |
 | `XIAOZE-PROACTIVE-001` | P2 | agent | automated | `/parameters` | Admin | api | `e2e/acceptance/xiaoze-planning.acceptance.spec.ts` |
 | `PERM-GOV-001` | P0 | permissions | automated | `/user-permissions` | Admin | ui | `e2e/acceptance/permissions.acceptance.spec.ts` |
@@ -165,6 +166,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 - `DTS-RELOAD-DEPLOY-HW-001`: Requires DEVICE_BRIDGE_HDC_AVAILABLE=true, a paired bridge with mountTarget/pushFile/readKernelLog, USB device, and an approved lab reload destination.
 - `HDC-LAB-001`: Requires DEBUG_DEVICE_GATEWAY_MODE=hdc and HDC_DEVICE_LAB_AVAILABLE=true with hardware attached.
 - `ADB-LAB-001`: Requires DEBUG_DEVICE_GATEWAY_MODE=adb, ADB_DEVICE_LAB_AVAILABLE=true, exactly one ready ADB device, one ADB inventory row, and one shared default ADB smoke binding.
+- `XIAOZE-APPROVAL-EXEC-FAIL-001`: A true browser path needs a stale-working-tip / unresolvable-overlay fixture that is too brittle for this slice. Graph, orchestrator, and AG-UI assembly tests are the blocking gate; this ID is an honest planned stub.
 - `PARAM-ADMIN-IA-001`: Unit-covered in ParameterAdminNextPage and organization path tests; dedicated Playwright marker deferred.
 - `PARAM-ENABLE-GATE-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
 - `PARAM-ENABLE-VISIBLE-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.

@@ -610,4 +610,56 @@ describe("createXiaozeAgUiHandler", () => {
     expect(outcome?.type).toBe("interrupt");
     expect(outcome?.interrupts?.[0]?.id).toBe("approval-chained-2");
   });
+
+  it("persists a Chinese assistant turn when resumed approval execution throws", async () => {
+    const persistTurn = vi.fn().mockResolvedValue(undefined);
+    const handler = createXiaozeAgUiHandler({
+      resolveAuth: async () => anyAuth,
+      persistTurn,
+      createAgent: () => ({
+        run: vi.fn().mockRejectedValue(
+          new ApiError("CONFLICT", "请刷新后基于本轮最新工作版本继续编辑。", 409, {
+            reason: "stale-working-tip"
+          })
+        )
+      }),
+      approvalChain: { beginApproval: vi.fn() } as never
+    });
+
+    const response = await handler({
+      headers: { authorization: "Bearer test" },
+      body: {
+        threadId: "thread-exec-fail",
+        runId: "run-exec-fail",
+        messages: [{ id: "m-resume", role: "user", content: "approve" }],
+        resume: [
+          {
+            interruptId: "approval-exec-fail",
+            status: "resolved",
+            payload: { approvalId: "approval-exec-fail", decision: "approve" }
+          }
+        ]
+      },
+      requestId: "req-exec-fail"
+    });
+
+    const events = await collectSseEvents(response as { sse: AsyncIterable<{ event: string; data: unknown }> });
+    const answer = events
+      .filter((event) => event.event === EventType.TEXT_MESSAGE_CONTENT)
+      .map((event) => (event.data as { delta?: string }).delta ?? "")
+      .join("");
+    expect(answer).toContain("操作未能完成");
+    expect(answer).toContain("请刷新后基于本轮最新工作版本继续编辑");
+    expect(events.some((event) => event.event === EventType.RUN_ERROR)).toBe(false);
+    expect(events.at(-1)?.event).toBe(EventType.RUN_FINISHED);
+    expect((events.at(-1)?.data as { outcome?: { type?: string } })?.outcome?.type).toBe("success");
+    expect(persistTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: "thread-exec-fail",
+        assistantMessage: expect.objectContaining({
+          content: expect.stringContaining("操作未能完成")
+        })
+      })
+    );
+  });
 });
