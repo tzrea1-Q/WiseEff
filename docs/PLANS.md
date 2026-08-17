@@ -12,7 +12,7 @@ Execution plans are first-class repository artifacts. Use them for work that has
 
 ## Current Active Plan
 
-This list is only plans that still have remaining work. Finished implementation lives under `exec-plans/completed/` — including the 2026-08-17 archive of path-reachable C1–C4, product feedback, topology review rounds 3–6, the notification center, and the project-configuration-workbench defect repair. Do not reopen those as active work.
+This list is only plans that still have remaining work. Finished implementation lives under `exec-plans/completed/` — including the 2026-08-17 archive of path-reachable C1–C4, product feedback, topology review rounds 3–6, the notification center, the project-configuration-workbench defect repair, and Xiaoze approval-failure recovery (TD-102 / TD-094). Do not reopen those as active work.
 
 ### Waiting on external inputs or a target environment
 
@@ -28,7 +28,6 @@ This list is only plans that still have remaining work. Finished implementation 
 
 ### Remaining product and UX work
 
-- `exec-plans/active/2026-08-17-xiaoze-approval-failure-recovery.md`: TD-102 / TD-094 — halt and persist a Chinese failure turn after approved tool execution fails; stop double-writing the success reply. Implementation is on `fix/td102-approval-execution-dead-end`.
 - `exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md`: remaining write-contract SE-2 / SE-5 / SE-D6.
 - `exec-plans/active/2026-08-03-parameter-admin-org-ia-consolidation.md`: org admin IA (planning; ADR-0015).
 - `exec-plans/active/2026-08-02-parameter-admin-ux-polish.md`: parameter-admin UX polish.
