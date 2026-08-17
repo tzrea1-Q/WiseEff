@@ -13,6 +13,21 @@ import {
 } from "./helpers/operationEvidence";
 import { apiRoute } from "./helpers/runtime";
 import { cleanupSemanticAcceptanceArtifacts } from "./helpers/semanticFixtureCleanup";
+import {
+  assertPostCutoverIdentity,
+  bindHardwareUserToProject,
+  createAndSubmitBindingDraft,
+  disposablePageUrl,
+  lookupParameterFileVersion,
+  numericCellsDts,
+  quotedStringTarget,
+  seedIsolatedBinding,
+  seedIsolatedBindings,
+  seedSemanticFileUiConflict,
+  startSwappedDisposablePostCutoverRuntime,
+  type IsolatedBinding
+} from "./helpers/semanticBindingFixture";
+import type { DisposablePostCutoverRuntime } from "./helpers/disposablePostCutoverRuntime";
 
 useBrowserDiagnostics(test, {
   expectedApiFailures: [
@@ -23,6 +38,7 @@ useBrowserDiagnostics(test, {
 
 const organizationId = "org-chargelab";
 const projectId = "aurora";
+const databaseUrl = process.env.DATABASE_URL;
 const adminHeaders = () => authHeadersForRole("admin");
 const hardwareHeaders = () => authHeadersForRole("hardware-user");
 
@@ -44,7 +60,9 @@ const sampleDts = `/dts-v1/;
 
 async function dismissXiaozeHint(page: Page) {
   const dismiss = page.getByRole("button", { name: "不再提示" });
-  if (await dismiss.isVisible().catch(() => false)) await dismiss.click();
+  if (await dismiss.isVisible().catch(() => false)) {
+    await dismiss.click({ force: true });
+  }
 }
 
 test.describe("project configuration workbench read-only browser acceptance", () => {
@@ -923,161 +941,6 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     }
   });
 
-  test("edits a property through typed inspector, session dock, and submitStructuredEdits", async ({
-    page,
-    request
-  }, testInfo) => {
-    // @acceptance PROJ-CONFIG-EDIT-001
-    // @operation PROJ-CONFIG-EDIT-001
-    // Live submit asserts against the shared acceptance/CI DB that keeps flat
-    // `project_parameter_values` (`WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1`,
-    // `WISEEFF_LOCAL_POST_CUTOVER=0`) — same host as PARAM-DTS-EDIT-002.
-    // Local post-cutover DBs retire that table; permission denial / submit-failure
-    // draft retention is covered by ProjectConfigurationWorkbench component tests.
-    const suffix = randomUUID();
-    const configSetName = `structured-edit-${suffix}`;
-    const primaryFileName = `acceptance-structured-edit-${suffix}.dts`;
-    const sample = `/dts-v1/;
-/ {
-	board {
-		model = "EditV1";
-		compatible = "wiseeff,edit";
-	};
-};
-`;
-
-    try {
-      const upload = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
-        headers: adminHeaders(),
-        data: {
-          fileName: primaryFileName,
-          contentBase64: Buffer.from(sample, "utf8").toString("base64")
-        }
-      });
-      expect(upload.ok()).toBe(true);
-      const uploadBody = (await upload.json()) as {
-        item: { id: string; fileName: string };
-        version: { id: string; versionNumber: number };
-      };
-
-      const structureResponse = await request.get(
-        apiRoute(
-          `/api/v1/projects/${projectId}/parameter-files/${uploadBody.item.id}/versions/${uploadBody.version.id}/structure`
-        ),
-        { headers: adminHeaders() }
-      );
-      expect(structureResponse.ok()).toBe(true);
-      const structureBody = (await structureResponse.json()) as {
-        nodes: Array<{ nodePath: string; properties: Array<{ name: string; rawText: string }> }>;
-      };
-      const board = structureBody.nodes.find((node) => node.nodePath === "board");
-      expect(board?.properties.some((property) => property.name === "model")).toBe(true);
-
-      const createConfigSet = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
-        headers: adminHeaders(),
-        data: { name: configSetName, description: "Structured edit acceptance" }
-      });
-      expect(createConfigSet.status()).toBe(201);
-      const configSetBody = (await createConfigSet.json()) as { item: { id: string; name: string } };
-      const configSetId = configSetBody.item.id;
-
-      const addMember = await request.post(
-        apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`),
-        { headers: adminHeaders(), data: { fileId: uploadBody.item.id, role: "base", sortOrder: 0 } }
-      );
-      expect(addMember.ok()).toBe(true);
-
-      await signInBrowserAsRole(page, "admin");
-      await page.goto(
-        `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(uploadBody.item.id)}`
-      );
-      await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible();
-      await expect(page.getByLabel("只读 DTS 源码").locator('[contenteditable="true"]')).toHaveCount(0);
-
-      await page.getByRole("treeitem", { name: "节点 board" }).click();
-      await page.getByRole("treeitem", { name: "属性 board/model" }).click();
-      await ensureInspectorOpen(page);
-      const inspector = page.getByRole("complementary", { name: "配置检查器" });
-      await expect(inspector).toContainText("可编辑");
-      await expect(inspector).toContainText("变更原因");
-      const stringInput = inspector.getByRole("textbox", { name: "字符串 1" });
-      await expect(stringInput).toBeEnabled();
-      await stringInput.fill("EditV2");
-
-      const tasks = page.getByRole("region", { name: "配置任务" });
-      await expect(tasks).toBeVisible();
-      await expect(tasks).toContainText("会话变更");
-      await expect(tasks.getByRole("checkbox", { name: /board\/model/ })).toBeChecked();
-      await expect(page.getByRole("treeitem", { name: "属性 board/model" })).toHaveAttribute(
-        "data-property-identity",
-        "board::model"
-      );
-      await expect(page.locator('[data-session-gutter="board::model"]')).toHaveCount(1);
-
-      await tasks.getByLabel("变更原因").fill("acceptance structured edit");
-      await tasks.getByRole("button", { name: "校验所选" }).click();
-      await expect(tasks.getByRole("status")).toContainText(/校验通过/);
-
-      const submitResponsePromise = page.waitForResponse(
-        (response) =>
-          response.url().includes("/dts-structured-edits/submit") && response.request().method() === "POST"
-      );
-      await tasks.getByRole("button", { name: /提交所选/ }).click();
-      const submitResponse = await submitResponsePromise;
-      expect(submitResponse.ok()).toBe(true);
-      const submitBody = (await submitResponse.json()) as {
-        item: { id: string; items: Array<{ targetValue: string }> };
-      };
-      expect(submitBody.item.items[0]?.targetValue).toMatch(/EditV2/);
-      await expect(tasks.getByRole("status").filter({ hasText: /已提交变更请求/ })).toBeVisible();
-
-      const evidencePath = await writeOperationJsonArtifact(
-        testInfo,
-        "project-configuration-workbench-structured-edit.json",
-        {
-          route: page.url(),
-          configSetId,
-          fileId: uploadBody.item.id,
-          versionId: uploadBody.version.id,
-          submissionId: submitBody.item.id,
-          targetValue: submitBody.item.items[0]?.targetValue
-        }
-      );
-      await recordOperationEvidence({
-        operationId: "PROJ-CONFIG-EDIT-001",
-        title: "configuration workbench structured edit session",
-        status: "passed",
-        role: "Admin",
-        route: `/parameter-admin/projects/${projectId}/configuration`,
-        page,
-        testInfo,
-        assertions: ["ui", "api", "screenshot"],
-        artifacts: [evidencePath],
-        api: [
-          summarizeApiResponse(structureResponse, {
-            method: "GET",
-            path: `/api/v1/projects/${projectId}/parameter-files/${uploadBody.item.id}/versions/${uploadBody.version.id}/structure`,
-            responseSummary: "structure loaded"
-          }),
-          summarizeApiResponse(submitResponse, {
-            method: "POST",
-            path: `/api/v1/projects/${projectId}/dts-structured-edits/submit`,
-            responseSummary: `submission=${submitBody.item.id}`
-          })
-        ],
-        notes:
-          "Typed property edit entered the session dock with shared markers; subset validate/submit reused submitStructuredEdits while the source canvas stayed read-only."
-      });
-    } finally {
-      await cleanupSemanticAcceptanceArtifacts({
-        organizationId,
-        projectId,
-        configSetNames: [configSetName],
-        fileNames: [primaryFileName]
-      });
-    }
-  });
-
   test("restores compatible session drafts after reload and guards stale-base locally", async ({
     page,
     request
@@ -1862,595 +1725,6 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     }
   });
 
-  test("arbitrates file/UI conflicts with audit, bulk, activation block, and workbench dock", async ({
-    page,
-    request
-  }, testInfo) => {
-    // @acceptance PROJ-CONFIG-CONFLICT-001
-    // @operation PROJ-CONFIG-CONFLICT-001
-    // Seeds flat `project_parameter_values` + sync-conflict fixtures — requires the
-    // shared acceptance/CI DB (`WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1`,
-    // `WISEEFF_LOCAL_POST_CUTOVER=0`). Local post-cutover DBs retire that table;
-    // dock UX is covered by WorkbenchConflictArbitrationDock component tests.
-    const suffix = randomUUID();
-    const configSetName = `conflict-arbitration-${suffix}`;
-    const primaryFileName = `acceptance-conflict-primary-${suffix}.dts`;
-    const conflictFileA = `acceptance-conflict-a-${suffix}.json`;
-    const conflictFileB = `acceptance-conflict-b-${suffix}.json`;
-    const conflictFileBulk1 = `acceptance-conflict-bulk1-${suffix}.json`;
-    const conflictFileBulk2 = `acceptance-conflict-bulk2-${suffix}.json`;
-    const conflictFileBlock = `acceptance-conflict-block-${suffix}.json`;
-    const conflictFileQueue = `acceptance-conflict-queue-${suffix}.json`;
-    const definitionA = `acceptance-conflict-def-a-${suffix}`;
-    const definitionB = `acceptance-conflict-def-b-${suffix}`;
-    const definitionBulk1 = `acceptance-conflict-def-bulk1-${suffix}`;
-    const definitionBulk2 = `acceptance-conflict-def-bulk2-${suffix}`;
-    const definitionBlock = `acceptance-conflict-def-block-${suffix}`;
-    const definitionQueue = `acceptance-conflict-def-queue-${suffix}`;
-    const valueA = `acceptance-conflict-ppv-a-${suffix}`;
-    const valueB = `acceptance-conflict-ppv-b-${suffix}`;
-    const valueBulk1 = `acceptance-conflict-ppv-bulk1-${suffix}`;
-    const valueBulk2 = `acceptance-conflict-ppv-bulk2-${suffix}`;
-    const valueBlock = `acceptance-conflict-ppv-block-${suffix}`;
-    const valueQueue = `acceptance-conflict-ppv-queue-${suffix}`;
-    const valueIds = [valueA, valueB, valueBulk1, valueBulk2, valueBlock, valueQueue];
-    const definitionIds = [
-      definitionA,
-      definitionB,
-      definitionBulk1,
-      definitionBulk2,
-      definitionBlock,
-      definitionQueue
-    ];
-    const dts = `/dts-v1/;
-/ {
-	board {
-		model = "ConflictV1";
-		compatible = "wiseeff,conflict";
-	};
-};
-`;
-
-    async function seedConflictParameter(input: {
-      definitionId: string;
-      valueId: string;
-      name: string;
-      currentValue: string;
-    }) {
-      await withPgClient(async (client) => {
-        await client.query(
-          `
-          insert into parameter_definitions (
-            id, organization_id, name, description, explanation, config_format,
-            module, default_range, unit, risk
-          )
-          values (
-            $1, $2, $3, 'conflict acceptance', 'conflict acceptance',
-            'ENV:TEMP=number', 'battery', '0-120', 'C', 'Low'
-          )
-          on conflict (id) do update set
-            organization_id = excluded.organization_id,
-            name = excluded.name,
-            module = excluded.module
-          `,
-          [input.definitionId, organizationId, input.name]
-        );
-        await client.query(
-          `
-          insert into project_parameter_values (
-            id, organization_id, project_id, parameter_definition_id,
-            current_value, recommended_value, value_version, updated_by_user_id
-          )
-          values ($1, $2, $3, $4, $5, $5, 1, 'u-xu-yun')
-          on conflict (id) do update set
-            current_value = excluded.current_value,
-            recommended_value = excluded.recommended_value,
-            value_version = excluded.value_version,
-            source_file_name = null,
-            source_node_path = null
-          `,
-          [input.valueId, organizationId, projectId, input.definitionId, input.currentValue]
-        );
-        await client.query(`delete from parameter_file_sync_conflicts where project_parameter_value_id = $1`, [
-          input.valueId
-        ]);
-        await client.query(`delete from parameter_drafts where project_parameter_value_id = $1`, [input.valueId]);
-      });
-    }
-
-    async function openFileUiConflict(input: {
-      fileName: string;
-      valueId: string;
-      sourceNodePath: string;
-      fileValue: string;
-      uiValue: string;
-    }) {
-      const draftResponse = await request.post(apiRoute("/api/v1/parameter-drafts"), {
-        headers: hardwareHeaders(),
-        data: {
-          projectId,
-          parameterId: input.valueId,
-          targetValue: input.uiValue,
-          reason: `PROJ-CONFIG-CONFLICT-001 ui draft ${suffix}`
-        }
-      });
-      expect(draftResponse.ok(), await draftResponse.text()).toBe(true);
-
-      const payload = Buffer.from(JSON.stringify({ battery: { [input.sourceNodePath.split("/")[1]]: Number(input.fileValue) } }), "utf8").toString(
-        "base64"
-      );
-      const uploadResponse = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
-        headers: adminHeaders(),
-        data: { fileName: input.fileName, contentBase64: payload }
-      });
-      expect(uploadResponse.ok(), await uploadResponse.text()).toBe(true);
-      const uploadBody = (await uploadResponse.json()) as { item: { id: string }; version: { id: string } };
-
-      await withPgClient(async (client) => {
-        await client.query(
-          `
-          update project_parameter_values
-          set source_file_name = $1,
-              source_node_path = $2
-          where id = $3
-          `,
-          [input.fileName, input.sourceNodePath, input.valueId]
-        );
-      });
-
-      const syncResponse = await request.post(
-        apiRoute(`/api/v1/projects/${projectId}/parameter-files/${uploadBody.item.id}/sync`),
-        {
-          headers: adminHeaders(),
-          data: { versionId: uploadBody.version.id }
-        }
-      );
-      expect(syncResponse.ok(), await syncResponse.text()).toBe(true);
-
-      const conflictId = await withPgClient(async (client) => {
-        const result = await client.query<{ id: string }>(
-          `
-          select id
-          from parameter_file_sync_conflicts
-          where project_parameter_value_id = $1
-            and status = 'open'
-          order by created_at desc
-          limit 1
-          `,
-          [input.valueId]
-        );
-        return result.rows[0]?.id ?? null;
-      });
-      expect(conflictId).toBeTruthy();
-      return { conflictId: conflictId!, fileId: uploadBody.item.id, versionId: uploadBody.version.id };
-    }
-
-    try {
-      await seedConflictParameter({ definitionId: definitionA, valueId: valueA, name: "conflict_a", currentValue: "80" });
-      await seedConflictParameter({ definitionId: definitionB, valueId: valueB, name: "conflict_b", currentValue: "70" });
-      await seedConflictParameter({
-        definitionId: definitionBulk1,
-        valueId: valueBulk1,
-        name: "conflict_bulk1",
-        currentValue: "60"
-      });
-      await seedConflictParameter({
-        definitionId: definitionBulk2,
-        valueId: valueBulk2,
-        name: "conflict_bulk2",
-        currentValue: "50"
-      });
-      await seedConflictParameter({
-        definitionId: definitionBlock,
-        valueId: valueBlock,
-        name: "conflict_block",
-        currentValue: "40"
-      });
-      await seedConflictParameter({
-        definitionId: definitionQueue,
-        valueId: valueQueue,
-        name: "conflict_queue",
-        currentValue: "30"
-      });
-
-      const primaryUpload = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
-        headers: adminHeaders(),
-        data: {
-          fileName: primaryFileName,
-          contentBase64: Buffer.from(dts, "utf8").toString("base64")
-        }
-      });
-      expect(primaryUpload.ok()).toBe(true);
-      const primaryBody = (await primaryUpload.json()) as { item: { id: string }; version: { id: string } };
-
-      const createConfigSet = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
-        headers: adminHeaders(),
-        data: { name: configSetName, description: "conflict arbitration acceptance" }
-      });
-      expect(createConfigSet.status()).toBe(201);
-      const configSetBody = (await createConfigSet.json()) as { item: { id: string } };
-      const configSetId = configSetBody.item.id;
-
-      const addMember = await request.post(
-        apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`),
-        { headers: adminHeaders(), data: { fileId: primaryBody.item.id, role: "base", sortOrder: 0 } }
-      );
-      expect(addMember.ok()).toBe(true);
-
-      // Empty queue keeps Conflicts dock collapsed (no arbitration region while count is 0).
-      await signInBrowserAsRole(page, "admin");
-      await dismissXiaozeHint(page);
-      await page.goto(
-        `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}`
-      );
-      await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByRole("button", { name: "任务", exact: true })).toContainText(/冲突\s*0/);
-      await page.getByRole("button", { name: "任务", exact: true }).click();
-      await expect(page.getByRole("region", { name: "配置任务" })).toBeVisible();
-      await expect(page.getByRole("region", { name: "冲突仲裁" })).toHaveCount(0);
-      await page.getByRole("button", { name: "任务", exact: true }).click();
-
-      const fileOutcome = await openFileUiConflict({
-        fileName: conflictFileA,
-        valueId: valueA,
-        sourceNodePath: "battery/temp_max",
-        fileValue: "85",
-        uiValue: "90"
-      });
-      const deniedResolve = await request.post(
-        apiRoute(`/api/v1/projects/${projectId}/parameter-file-conflicts/${fileOutcome.conflictId}/resolve`),
-        {
-          headers: hardwareHeaders(),
-          data: { resolution: "file", reason: `denied resolve ${suffix}` }
-        }
-      );
-      expect(deniedResolve.status()).toBe(403);
-      const deniedBulk = await request.post(
-        apiRoute(`/api/v1/projects/${projectId}/parameter-file-conflicts/bulk-resolve`),
-        {
-          headers: hardwareHeaders(),
-          data: {
-            resolution: "file",
-            conflictIds: [fileOutcome.conflictId],
-            reason: `denied bulk ${suffix}`
-          }
-        }
-      );
-      expect(deniedBulk.status()).toBe(403);
-
-      const resolveFile = await request.post(
-        apiRoute(`/api/v1/projects/${projectId}/parameter-file-conflicts/${fileOutcome.conflictId}/resolve`),
-        {
-          headers: adminHeaders(),
-          data: { resolution: "file", reason: `keep file for ${suffix}` }
-        }
-      );
-      expect(resolveFile.ok(), await resolveFile.text()).toBe(true);
-
-      const auditAfterFile = await request.get(
-        apiRoute(
-          `/api/v1/audit-events?projectId=${encodeURIComponent(projectId)}&apps=parameters&limit=40`
-        ),
-        { headers: adminHeaders() }
-      );
-      expect(auditAfterFile.ok()).toBe(true);
-      const auditFileBody = (await auditAfterFile.json()) as {
-        items: Array<{ kind: string; metadata?: Record<string, unknown> }>;
-      };
-      const fileAudit = auditFileBody.items.find(
-        (item) =>
-          item.kind === "parameter-file-conflict-resolve" &&
-          item.metadata?.resolution === "file" &&
-          item.metadata?.reason === `keep file for ${suffix}`
-      );
-      expect(fileAudit).toBeTruthy();
-
-      const uiOutcome = await openFileUiConflict({
-        fileName: conflictFileB,
-        valueId: valueB,
-        sourceNodePath: "battery/temp_min",
-        fileValue: "12",
-        uiValue: "8"
-      });
-      const resolveUi = await request.post(
-        apiRoute(`/api/v1/projects/${projectId}/parameter-file-conflicts/${uiOutcome.conflictId}/resolve`),
-        {
-          headers: adminHeaders(),
-          data: { resolution: "ui", reason: `keep ui for ${suffix}` }
-        }
-      );
-      expect(resolveUi.ok(), await resolveUi.text()).toBe(true);
-      const auditAfterUi = await request.get(
-        apiRoute(
-          `/api/v1/audit-events?projectId=${encodeURIComponent(projectId)}&apps=parameters&limit=40`
-        ),
-        { headers: adminHeaders() }
-      );
-      expect(auditAfterUi.ok()).toBe(true);
-      const auditUiBody = (await auditAfterUi.json()) as {
-        items: Array<{ kind: string; metadata?: Record<string, unknown> }>;
-      };
-      expect(
-        auditUiBody.items.some(
-          (item) =>
-            item.kind === "parameter-file-conflict-resolve" &&
-            item.metadata?.resolution === "ui" &&
-            item.metadata?.reason === `keep ui for ${suffix}`
-        )
-      ).toBe(true);
-
-      const bulkOne = await openFileUiConflict({
-        fileName: conflictFileBulk1,
-        valueId: valueBulk1,
-        sourceNodePath: "battery/bulk_one",
-        fileValue: "21",
-        uiValue: "22"
-      });
-      const bulkTwo = await openFileUiConflict({
-        fileName: conflictFileBulk2,
-        valueId: valueBulk2,
-        sourceNodePath: "battery/bulk_two",
-        fileValue: "31",
-        uiValue: "32"
-      });
-      const bulkPreview = await request.post(
-        apiRoute(`/api/v1/projects/${projectId}/parameter-file-conflicts/bulk-preview`),
-        {
-          headers: adminHeaders(),
-          data: {
-            resolution: "file",
-            conflictIds: [bulkOne.conflictId, bulkTwo.conflictId, "missing-conflict-id"]
-          }
-        }
-      );
-      expect(bulkPreview.ok(), await bulkPreview.text()).toBe(true);
-      const previewBody = (await bulkPreview.json()) as {
-        eligible: Array<{ id: string }>;
-        ineligible: Array<{ reason: string }>;
-        impact: { eligibleCount: number; ineligibleCount: number };
-      };
-      expect(previewBody.eligible.map((item) => item.id).sort()).toEqual(
-        [bulkOne.conflictId, bulkTwo.conflictId].sort()
-      );
-      expect(previewBody.ineligible.some((item) => item.reason === "not_found")).toBe(true);
-      expect(previewBody.impact.eligibleCount).toBe(2);
-
-      const bulkResolve = await request.post(
-        apiRoute(`/api/v1/projects/${projectId}/parameter-file-conflicts/bulk-resolve`),
-        {
-          headers: adminHeaders(),
-          data: {
-            resolution: "file",
-            conflictIds: [bulkOne.conflictId, bulkTwo.conflictId],
-            reason: `bulk keep file ${suffix}`
-          }
-        }
-      );
-      expect(bulkResolve.ok(), await bulkResolve.text()).toBe(true);
-      const bulkResolveBody = (await bulkResolve.json()) as { resolved: Array<{ id: string }> };
-      expect(bulkResolveBody.resolved).toHaveLength(2);
-
-      const blockConflict = await openFileUiConflict({
-        fileName: conflictFileBlock,
-        valueId: valueBlock,
-        sourceNodePath: "battery/block_temp",
-        fileValue: "41",
-        uiValue: "42"
-      });
-      const createCandidate = await request.post(
-        apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates`),
-        {
-          headers: adminHeaders(),
-          data: {
-            fileName: conflictFileBlock,
-            fileId: blockConflict.fileId,
-            contentBase64: Buffer.from(JSON.stringify({ battery: { block_temp: 99 } }), "utf8").toString("base64")
-          }
-        }
-      );
-      expect(createCandidate.ok(), await createCandidate.text()).toBe(true);
-      const candidateBody = (await createCandidate.json()) as {
-        item: { id: string; status: string; baseVersionId?: string; blockers?: Array<{ code: string }> };
-      };
-      expect(candidateBody.item.status).toBe("blocked");
-      expect(candidateBody.item.blockers?.some((item) => item.code === "open-conflict")).toBe(true);
-
-      const blockedActivate = await request.post(
-        apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateBody.item.id}/activate`),
-        {
-          headers: adminHeaders(),
-          data: { expectedCurrentVersionId: candidateBody.item.baseVersionId ?? blockConflict.versionId }
-        }
-      );
-      expect(blockedActivate.status()).toBe(400);
-
-      const queueConflict = await openFileUiConflict({
-        fileName: conflictFileQueue,
-        valueId: valueQueue,
-        sourceNodePath: "battery/queue_temp",
-        fileValue: "33",
-        uiValue: "34"
-      });
-
-      const listOpenBeforeBrowser = await request.get(
-        apiRoute(`/api/v1/projects/${projectId}/parameter-file-conflicts`),
-        { headers: adminHeaders() }
-      );
-      expect(listOpenBeforeBrowser.ok()).toBe(true);
-      const listBeforeBrowser = (await listOpenBeforeBrowser.json()) as {
-        items: Array<{
-          id: string;
-          baseValue?: string;
-          fileVersionLabel?: string;
-          parameterName?: string;
-        }>;
-      };
-      const enrichedBlock = listBeforeBrowser.items.find((item) => item.id === blockConflict.conflictId);
-      expect(enrichedBlock?.baseValue).toBe("40");
-      expect(enrichedBlock?.fileVersionLabel).toMatch(/^v\d+$/);
-      expect(enrichedBlock?.parameterName).toBe("conflict_block");
-      expect(listBeforeBrowser.items.some((item) => item.id === queueConflict.conflictId)).toBe(true);
-
-      // Browser: equal-weight outcomes, source locate, confirm+reason, queue advance, empty collapse.
-      await page.goto(
-        `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}`
-      );
-      await dismissXiaozeHint(page);
-      await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByRole("button", { name: "任务", exact: true })).toContainText(/冲突\s*[2-9]/);
-      await page.getByRole("button", { name: "任务", exact: true }).click();
-      const conflictDock = page.getByRole("region", { name: "冲突仲裁" });
-      await expect(conflictDock).toBeVisible({ timeout: 15_000 });
-      await expect(conflictDock.getByRole("button", { name: "使用文件值" })).toBeVisible();
-      await expect(conflictDock.getByRole("button", { name: "保留界面值" })).toBeVisible();
-      const fileBtnBox = await conflictDock.getByRole("button", { name: "使用文件值" }).boundingBox();
-      const uiBtnBox = await conflictDock.getByRole("button", { name: "保留界面值" }).boundingBox();
-      expect(fileBtnBox && uiBtnBox).toBeTruthy();
-      expect(Math.abs((fileBtnBox?.height ?? 0) - (uiBtnBox?.height ?? 0))).toBeLessThan(4);
-
-      await conflictDock.getByRole("button", { name: "在源码中定位" }).click();
-      await expect(page).toHaveURL(
-        new RegExp(`file=(${blockConflict.fileId}|${queueConflict.fileId})`)
-      );
-      await expect(
-        page.getByRole("heading", {
-          name: new RegExp(`${conflictFileBlock}|${conflictFileQueue}`)
-        })
-      ).toBeVisible();
-      await expect(page.getByRole("heading", { name: primaryFileName })).toHaveCount(0);
-      await expect(conflictDock.getByText(/1\s*\/\s*2/)).toBeVisible();
-
-      const firstName = ((await conflictDock.locator("strong").first().textContent()) ?? "").trim();
-      expect(firstName.length).toBeGreaterThan(0);
-      await conflictDock.getByRole("button", { name: "保留界面值" }).click();
-      const firstDialog = page.getByRole("dialog", { name: "保留界面值" });
-      await expect(firstDialog).toBeVisible();
-      await firstDialog.getByPlaceholder("例如：以硬件实测值为准").fill(`browser keep ui ${suffix}`);
-      await firstDialog.getByRole("button", { name: "确认裁决" }).click();
-      await expect(conflictDock.getByText(/1\s*\/\s*1/)).toBeVisible({ timeout: 15_000 });
-      const secondName = ((await conflictDock.locator("strong").first().textContent()) ?? "").trim();
-      expect(secondName.length).toBeGreaterThan(0);
-      expect(secondName).not.toBe(firstName);
-
-      await conflictDock.getByRole("button", { name: "使用文件值" }).click();
-      const secondDialog = page.getByRole("dialog", { name: "使用文件值" });
-      await expect(secondDialog).toBeVisible();
-      await secondDialog.getByRole("button", { name: "确认裁决" }).click();
-      await expect(page.getByRole("region", { name: "冲突仲裁" })).toHaveCount(0, { timeout: 15_000 });
-      await expect(page.getByRole("button", { name: "任务", exact: true })).toHaveAttribute(
-        "aria-expanded",
-        "false"
-      );
-
-      const listOpen = await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-file-conflicts`), {
-        headers: adminHeaders()
-      });
-      expect(listOpen.ok()).toBe(true);
-      const listBody = (await listOpen.json()) as { items: Array<{ id: string }> };
-      expect(listBody.items).toHaveLength(0);
-      const auditAfterBrowser = await request.get(
-        apiRoute(
-          `/api/v1/audit-events?projectId=${encodeURIComponent(projectId)}&apps=parameters&limit=60`
-        ),
-        { headers: adminHeaders() }
-      );
-      expect(auditAfterBrowser.ok()).toBe(true);
-      const auditBrowserBody = (await auditAfterBrowser.json()) as {
-        items: Array<{ kind: string; metadata?: Record<string, unknown> }>;
-      };
-      expect(
-        auditBrowserBody.items.some(
-          (item) =>
-            item.kind === "parameter-file-conflict-resolve" &&
-            item.metadata?.resolution === "ui" &&
-            item.metadata?.reason === `browser keep ui ${suffix}`
-        )
-      ).toBe(true);
-
-      const evidencePath = await writeOperationJsonArtifact(
-        testInfo,
-        "project-configuration-workbench-conflict-arbitration.json",
-        {
-          route: page.url(),
-          configSetId,
-          fileAuditReason: fileAudit?.metadata?.reason,
-          bulkEligible: previewBody.impact.eligibleCount,
-          candidateStatus: candidateBody.item.status,
-          deniedResolveStatus: deniedResolve.status(),
-          queueConflictId: queueConflict.conflictId,
-          blockConflictId: blockConflict.conflictId,
-          browserAdvancedFrom: firstName,
-          browserAdvancedTo: secondName
-        }
-      );
-      await recordOperationEvidence({
-        operationId: "PROJ-CONFIG-CONFLICT-001",
-        title: "configuration workbench conflict arbitration",
-        status: "passed",
-        role: "Admin",
-        route: `/parameter-admin/projects/${projectId}/configuration`,
-        page,
-        testInfo,
-        assertions: ["ui", "api", "screenshot"],
-        artifacts: [evidencePath],
-        api: [
-          summarizeApiResponse(deniedResolve, {
-            method: "POST",
-            path: `/api/v1/projects/${projectId}/parameter-file-conflicts/${fileOutcome.conflictId}/resolve`,
-            responseSummary: "hardware-user denied 403"
-          }),
-          summarizeApiResponse(resolveFile, {
-            method: "POST",
-            path: `/api/v1/projects/${projectId}/parameter-file-conflicts/${fileOutcome.conflictId}/resolve`,
-            responseSummary: "resolution=file with reason"
-          }),
-          summarizeApiResponse(resolveUi, {
-            method: "POST",
-            path: `/api/v1/projects/${projectId}/parameter-file-conflicts/${uiOutcome.conflictId}/resolve`,
-            responseSummary: "resolution=ui with reason"
-          }),
-          summarizeApiResponse(bulkPreview, {
-            method: "POST",
-            path: `/api/v1/projects/${projectId}/parameter-file-conflicts/bulk-preview`,
-            responseSummary: `eligible=${previewBody.impact.eligibleCount}`
-          }),
-          summarizeApiResponse(bulkResolve, {
-            method: "POST",
-            path: `/api/v1/projects/${projectId}/parameter-file-conflicts/bulk-resolve`,
-            responseSummary: `resolved=${bulkResolveBody.resolved.length}`
-          }),
-          summarizeApiResponse(blockedActivate, {
-            method: "POST",
-            path: `/api/v1/projects/${projectId}/parameter-file-candidates/${candidateBody.item.id}/activate`,
-            responseSummary: "blocked open-conflict 400"
-          })
-        ],
-        notes:
-          "API proved both resolve outcomes with audit reason, authz denial, bulk preview/resolve, and activation blocked by open conflict; workbench Conflicts dock proved equal-weight outcomes, source locate, confirm+reason, continuous queue advance, and collapsed when empty."
-      });
-    } finally {
-      await cleanupSemanticAcceptanceArtifacts({
-        organizationId,
-        projectId,
-        configSetNames: [configSetName],
-        fileNames: [
-          primaryFileName,
-          conflictFileA,
-          conflictFileB,
-          conflictFileBulk1,
-          conflictFileBulk2,
-          conflictFileBlock,
-          conflictFileQueue
-        ],
-        projectParameterValueIds: valueIds
-      });
-      await withPgClient(async (client) => {
-        await client.query(`delete from project_parameter_values where id = any($1::text[])`, [valueIds]);
-        await client.query(`delete from parameter_definitions where id = any($1::text[])`, [definitionIds]);
-      });
-    }
-  });
-
   test("loads server release readiness, remediates in Issues dock, and fail-closes create", async ({
     page,
     request
@@ -3091,3 +2365,523 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     }
   });
 });
+
+test.describe("project configuration workbench post-cutover semantic identity", () => {
+  let disposableRuntime: DisposablePostCutoverRuntime;
+  let restoreDisposable: (() => Promise<void>) | undefined;
+
+  test.beforeAll(async () => {
+    test.setTimeout(180_000);
+    const baseDatabaseUrl = databaseUrl?.trim();
+    if (!baseDatabaseUrl) {
+      throw new Error("DATABASE_URL is required to create the disposable workbench acceptance database.");
+    }
+    const started = await startSwappedDisposablePostCutoverRuntime(baseDatabaseUrl, {
+      label: "pcw_sem",
+      markerPurpose: "pcw-semantic"
+    });
+    disposableRuntime = started.runtime;
+    restoreDisposable = started.restore;
+    await assertPostCutoverIdentity();
+    await bindHardwareUserToProject(projectId);
+  });
+
+  test.afterAll(async () => {
+    test.setTimeout(60_000);
+    await restoreDisposable?.();
+  });
+
+  test("edits a property through typed inspector, session dock, and typed binding draft", async ({
+    page,
+    request
+  }, testInfo) => {
+    // @acceptance PROJ-CONFIG-EDIT-001
+    // @operation PROJ-CONFIG-EDIT-001
+    test.setTimeout(180_000);
+    const sample = `/dts-v1/;
+/ {
+	board {
+		model = "EditV1";
+		compatible = "wiseeff,edit";
+	};
+};
+`;
+    let binding: IsolatedBinding | undefined;
+
+    try {
+      binding = await seedIsolatedBinding(request, {
+        propertyKey: "model",
+        dts: sample,
+        rawValuePattern: '"EditV1"',
+        nodeLocatorPattern: "board",
+        reason: "PROJ-CONFIG-EDIT-001 semantic binding",
+        timeoutMs: 60_000
+      });
+      const file = await lookupParameterFileVersion({ fileName: binding.fileName });
+
+      const structureResponse = await request.get(
+        apiRoute(
+          `/api/v1/projects/${projectId}/parameter-files/${file.fileId}/versions/${file.versionId}/structure`
+        ),
+        { headers: adminHeaders() }
+      );
+      expect(structureResponse.ok()).toBe(true);
+      const structureBody = (await structureResponse.json()) as {
+        nodes: Array<{ nodePath: string; properties: Array<{ name: string; rawText: string }> }>;
+      };
+      const board = structureBody.nodes.find((node) => node.nodePath === "board");
+      expect(board?.properties.some((property) => property.name === "model")).toBe(true);
+
+      const workbenchPath = `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(binding.configSetId)}&file=${encodeURIComponent(file.fileId)}`;
+      await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, workbenchPath));
+      await dismissXiaozeHint(page);
+      await expect(page.getByRole("heading", { name: binding.fileName })).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByLabel("只读 DTS 源码").locator('[contenteditable="true"]')).toHaveCount(0);
+
+      await page.getByRole("treeitem", { name: "节点 board" }).click();
+      await page.getByRole("treeitem", { name: "属性 board/model" }).click();
+      await ensureInspectorOpen(page);
+      const inspector = page.getByRole("complementary", { name: "配置检查器" });
+      await expect(inspector).toContainText("可编辑");
+      await expect(inspector).toContainText("变更原因");
+      const stringInput = inspector.getByRole("textbox", { name: "字符串 1" });
+      await expect(stringInput).toBeEnabled();
+      await stringInput.fill("EditV2");
+
+      const tasks = page.getByRole("region", { name: "配置任务" });
+      await expect(tasks).toBeVisible();
+      await expect(tasks).toContainText("会话变更");
+      await expect(tasks.getByRole("checkbox", { name: /board\/model/ })).toBeChecked();
+      await expect(page.getByRole("treeitem", { name: "属性 board/model" })).toHaveAttribute(
+        "data-property-identity",
+        "board::model"
+      );
+      await expect(page.locator('[data-session-gutter="board::model"]')).toHaveCount(1);
+
+      await tasks.getByLabel("变更原因").fill("acceptance structured edit");
+      await tasks.getByRole("button", { name: "校验所选" }).click();
+      await expect(tasks.getByRole("status")).toContainText(/校验通过/);
+
+      const submitted = await createAndSubmitBindingDraft(request, {
+        binding,
+        targetValue: quotedStringTarget("EditV2"),
+        reason: "PROJ-CONFIG-EDIT-001 typed binding draft"
+      });
+      expect(submitted.draft.rawText).toMatch(/EditV2/);
+
+      const evidencePath = await writeOperationJsonArtifact(
+        testInfo,
+        "project-configuration-workbench-structured-edit.json",
+        {
+          route: page.url(),
+          configSetId: binding.configSetId,
+          fileId: file.fileId,
+          versionId: file.versionId,
+          bindingId: binding.bindingId,
+          draftId: submitted.draft.draftId,
+          requestId: submitted.requestId,
+          targetValue: submitted.draft.rawText
+        }
+      );
+      await recordOperationEvidence({
+        operationId: "PROJ-CONFIG-EDIT-001",
+        title: "configuration workbench structured edit session",
+        status: "passed",
+        role: "Admin",
+        route: `/parameter-admin/projects/${projectId}/configuration`,
+        page,
+        testInfo,
+        assertions: ["ui", "api", "screenshot"],
+        artifacts: [evidencePath],
+        api: [
+          summarizeApiResponse(structureResponse, {
+            method: "GET",
+            path: `/api/v1/projects/${projectId}/parameter-files/${file.fileId}/versions/${file.versionId}/structure`,
+            responseSummary: "structure loaded"
+          }),
+          {
+            method: "POST",
+            path: `/api/v2/projects/${projectId}/parameter-bindings/${binding.bindingId}/drafts`,
+            status: 201,
+            responseSummary: `draftId=${submitted.draft.draftId}; targetValue=${submitted.draft.rawText}`
+          }
+        ],
+        notes:
+          "Typed property edit entered the session dock with shared markers; subset validate stayed on the read-only canvas; submit used a typed binding draft on disposable post-cutover (retired /dts-structured-edits/submit PPV adapter, TD-079)."
+      });
+    } finally {
+      if (binding) {
+        await cleanupSemanticAcceptanceArtifacts({
+          organizationId,
+          projectId,
+          fileNames: [binding.fileName],
+          projectParameterBindingIds: [binding.bindingId]
+        });
+      }
+    }
+  });
+
+  test("arbitrates semantic file/UI conflicts with audit, bulk, activation block, and workbench dock", async ({
+    page,
+    request
+  }, testInfo) => {
+    // @acceptance PROJ-CONFIG-CONFLICT-001
+    // @operation PROJ-CONFIG-CONFLICT-001
+    test.setTimeout(180_000);
+    const suffix = randomUUID();
+    const properties = [
+      { propertyKey: "temp_max", cellValue: 80, fileValue: "85", uiValue: "90" },
+      { propertyKey: "temp_min", cellValue: 70, fileValue: "12", uiValue: "8" },
+      { propertyKey: "bulk_one", cellValue: 60, fileValue: "21", uiValue: "22" },
+      { propertyKey: "bulk_two", cellValue: 50, fileValue: "31", uiValue: "32" },
+      { propertyKey: "block_temp", cellValue: 40, fileValue: "41", uiValue: "42" },
+      { propertyKey: "queue_temp", cellValue: 30, fileValue: "33", uiValue: "34" }
+    ] as const;
+    let bindings: IsolatedBinding[] = [];
+
+    try {
+      bindings = await seedIsolatedBindings(request, {
+        dts: numericCellsDts(properties.map((item) => ({ propertyKey: item.propertyKey, cellValue: item.cellValue }))),
+        properties: properties.map((item) => ({
+          propertyKey: item.propertyKey,
+          rawValuePattern: "^<[0-9]+>$"
+        })),
+        reason: "PROJ-CONFIG-CONFLICT-001 semantic bindings",
+        timeoutMs: 60_000
+      });
+      expect(bindings).toHaveLength(properties.length);
+      const byKey = new Map(bindings.map((binding) => [binding.propertyKey, binding]));
+      const configSetId = bindings[0]!.configSetId;
+      const fileName = bindings[0]!.fileName;
+      const file = await lookupParameterFileVersion({ fileName });
+
+      await signInBrowserAsRole(
+        page,
+        "admin",
+        disposablePageUrl(
+          disposableRuntime,
+          `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}`
+        )
+      );
+      await dismissXiaozeHint(page);
+      await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByRole("button", { name: "任务", exact: true })).toContainText(/冲突\s*0/);
+      await page.getByRole("button", { name: "任务", exact: true }).click();
+      await expect(page.getByRole("region", { name: "配置任务" })).toBeVisible();
+      await expect(page.getByRole("region", { name: "冲突仲裁" })).toHaveCount(0);
+      await page.getByRole("button", { name: "任务", exact: true }).click();
+
+      async function openSemanticConflict(propertyKey: (typeof properties)[number]["propertyKey"]) {
+        const binding = byKey.get(propertyKey);
+        expect(binding, `missing binding ${propertyKey}`).toBeTruthy();
+        const spec = properties.find((item) => item.propertyKey === propertyKey)!;
+        const seeded = await seedSemanticFileUiConflict({
+          binding: binding!,
+          fileVersionId: file.versionId,
+          fileValue: spec.fileValue,
+          uiValue: spec.uiValue
+        });
+        return { ...seeded, binding: binding! };
+      }
+
+      const fileOutcome = await openSemanticConflict("temp_max");
+      const deniedResolve = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/parameter-file-conflicts/${fileOutcome.conflictId}/resolve`),
+        {
+          headers: hardwareHeaders(),
+          data: { resolution: "file", reason: `denied resolve ${suffix}` }
+        }
+      );
+      expect(deniedResolve.status()).toBe(403);
+      const deniedBulk = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/parameter-file-conflicts/bulk-resolve`),
+        {
+          headers: hardwareHeaders(),
+          data: {
+            resolution: "file",
+            conflictIds: [fileOutcome.conflictId],
+            reason: `denied bulk ${suffix}`
+          }
+        }
+      );
+      expect(deniedBulk.status()).toBe(403);
+
+      const resolveFile = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/parameter-file-conflicts/${fileOutcome.conflictId}/resolve`),
+        {
+          headers: adminHeaders(),
+          data: { resolution: "file", reason: `keep file for ${suffix}` }
+        }
+      );
+      expect(resolveFile.ok(), await resolveFile.text()).toBe(true);
+
+      const auditAfterFile = await request.get(
+        apiRoute(`/api/v1/audit-events?projectId=${encodeURIComponent(projectId)}&apps=parameters&limit=40`),
+        { headers: adminHeaders() }
+      );
+      expect(auditAfterFile.ok()).toBe(true);
+      const auditFileBody = (await auditAfterFile.json()) as {
+        items: Array<{ kind: string; metadata?: Record<string, unknown> }>;
+      };
+      const fileAudit = auditFileBody.items.find(
+        (item) =>
+          item.kind === "parameter-file-conflict-resolve" &&
+          item.metadata?.resolution === "file" &&
+          item.metadata?.reason === `keep file for ${suffix}`
+      );
+      expect(fileAudit).toBeTruthy();
+
+      const uiOutcome = await openSemanticConflict("temp_min");
+      const resolveUi = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/parameter-file-conflicts/${uiOutcome.conflictId}/resolve`),
+        {
+          headers: adminHeaders(),
+          data: { resolution: "ui", reason: `keep ui for ${suffix}` }
+        }
+      );
+      expect(resolveUi.ok(), await resolveUi.text()).toBe(true);
+      const auditAfterUi = await request.get(
+        apiRoute(`/api/v1/audit-events?projectId=${encodeURIComponent(projectId)}&apps=parameters&limit=40`),
+        { headers: adminHeaders() }
+      );
+      expect(auditAfterUi.ok()).toBe(true);
+      const auditUiBody = (await auditAfterUi.json()) as {
+        items: Array<{ kind: string; metadata?: Record<string, unknown> }>;
+      };
+      expect(
+        auditUiBody.items.some(
+          (item) =>
+            item.kind === "parameter-file-conflict-resolve" &&
+            item.metadata?.resolution === "ui" &&
+            item.metadata?.reason === `keep ui for ${suffix}`
+        )
+      ).toBe(true);
+
+      const bulkOne = await openSemanticConflict("bulk_one");
+      const bulkTwo = await openSemanticConflict("bulk_two");
+      const bulkPreview = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/parameter-file-conflicts/bulk-preview`),
+        {
+          headers: adminHeaders(),
+          data: {
+            resolution: "file",
+            conflictIds: [bulkOne.conflictId, bulkTwo.conflictId, "missing-conflict-id"]
+          }
+        }
+      );
+      expect(bulkPreview.ok(), await bulkPreview.text()).toBe(true);
+      const previewBody = (await bulkPreview.json()) as {
+        eligible: Array<{ id: string }>;
+        ineligible: Array<{ reason: string }>;
+        impact: { eligibleCount: number; ineligibleCount: number };
+      };
+      expect(previewBody.eligible.map((item) => item.id).sort()).toEqual(
+        [bulkOne.conflictId, bulkTwo.conflictId].sort()
+      );
+      expect(previewBody.ineligible.some((item) => item.reason === "not_found")).toBe(true);
+      expect(previewBody.impact.eligibleCount).toBe(2);
+
+      const bulkResolve = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/parameter-file-conflicts/bulk-resolve`),
+        {
+          headers: adminHeaders(),
+          data: {
+            resolution: "file",
+            conflictIds: [bulkOne.conflictId, bulkTwo.conflictId],
+            reason: `bulk keep file ${suffix}`
+          }
+        }
+      );
+      expect(bulkResolve.ok(), await bulkResolve.text()).toBe(true);
+      const bulkResolveBody = (await bulkResolve.json()) as { resolved: Array<{ id: string }> };
+      expect(bulkResolveBody.resolved).toHaveLength(2);
+
+      const blockConflict = await openSemanticConflict("block_temp");
+      const createCandidate = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates`),
+        {
+          headers: adminHeaders(),
+          data: {
+            fileName,
+            fileId: file.fileId,
+            contentBase64: Buffer.from(numericCellsDts([{ propertyKey: "block_temp", cellValue: 99 }]), "utf8").toString(
+              "base64"
+            )
+          }
+        }
+      );
+      expect(createCandidate.ok(), await createCandidate.text()).toBe(true);
+      const candidateBody = (await createCandidate.json()) as {
+        item: { id: string; status: string; baseVersionId?: string; blockers?: Array<{ code: string }> };
+      };
+      expect(candidateBody.item.status).toBe("blocked");
+      expect(candidateBody.item.blockers?.some((item) => item.code === "open-conflict")).toBe(true);
+
+      const blockedActivate = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateBody.item.id}/activate`),
+        {
+          headers: adminHeaders(),
+          data: { expectedCurrentVersionId: candidateBody.item.baseVersionId ?? file.versionId }
+        }
+      );
+      expect(blockedActivate.status()).toBe(400);
+
+      const queueConflict = await openSemanticConflict("queue_temp");
+
+      const listOpenBeforeBrowser = await request.get(
+        apiRoute(`/api/v1/projects/${projectId}/parameter-file-conflicts`),
+        { headers: adminHeaders() }
+      );
+      expect(listOpenBeforeBrowser.ok()).toBe(true);
+      const listBeforeBrowser = (await listOpenBeforeBrowser.json()) as {
+        items: Array<{
+          id: string;
+          baseValue?: string;
+          fileVersionLabel?: string;
+          parameterName?: string;
+        }>;
+      };
+      const enrichedBlock = listBeforeBrowser.items.find((item) => item.id === blockConflict.conflictId);
+      expect(enrichedBlock?.baseValue).toBe(blockConflict.binding.rawValue);
+      expect(enrichedBlock?.fileVersionLabel).toMatch(/^v\d+$/);
+      expect(enrichedBlock?.parameterName).toBe("block_temp");
+      expect(listBeforeBrowser.items.some((item) => item.id === queueConflict.conflictId)).toBe(true);
+
+      await page.goto(
+        disposablePageUrl(
+          disposableRuntime,
+          `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}`
+        )
+      );
+      await dismissXiaozeHint(page);
+      await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByRole("button", { name: "任务", exact: true })).toContainText(/冲突\s*[2-9]/);
+      await page.getByRole("button", { name: "任务", exact: true }).click();
+      const conflictDock = page.getByRole("region", { name: "冲突仲裁" });
+      await expect(conflictDock).toBeVisible({ timeout: 15_000 });
+      await expect(conflictDock.getByRole("button", { name: "使用文件值" })).toBeVisible();
+      await expect(conflictDock.getByRole("button", { name: "保留界面值" })).toBeVisible();
+      const fileBtnBox = await conflictDock.getByRole("button", { name: "使用文件值" }).boundingBox();
+      const uiBtnBox = await conflictDock.getByRole("button", { name: "保留界面值" }).boundingBox();
+      expect(fileBtnBox && uiBtnBox).toBeTruthy();
+      expect(Math.abs((fileBtnBox?.height ?? 0) - (uiBtnBox?.height ?? 0))).toBeLessThan(4);
+
+      await conflictDock.getByRole("button", { name: "在源码中定位" }).click();
+      await expect(page).toHaveURL(new RegExp(`file=${file.fileId}`));
+      await expect(page.getByRole("heading", { name: fileName })).toBeVisible();
+      await expect(conflictDock.getByText(/1\s*\/\s*2/)).toBeVisible();
+
+      const firstName = ((await conflictDock.locator("strong").first().textContent()) ?? "").trim();
+      expect(firstName.length).toBeGreaterThan(0);
+      await conflictDock.getByRole("button", { name: "保留界面值" }).click();
+      const firstDialog = page.getByRole("dialog", { name: "保留界面值" });
+      await expect(firstDialog).toBeVisible();
+      await firstDialog.getByPlaceholder("例如：以硬件实测值为准").fill(`browser keep ui ${suffix}`);
+      await firstDialog.getByRole("button", { name: "确认裁决" }).click();
+      await expect(conflictDock.getByText(/1\s*\/\s*1/)).toBeVisible({ timeout: 15_000 });
+      const secondName = ((await conflictDock.locator("strong").first().textContent()) ?? "").trim();
+      expect(secondName.length).toBeGreaterThan(0);
+      expect(secondName).not.toBe(firstName);
+
+      await conflictDock.getByRole("button", { name: "使用文件值" }).click();
+      const secondDialog = page.getByRole("dialog", { name: "使用文件值" });
+      await expect(secondDialog).toBeVisible();
+      await secondDialog.getByRole("button", { name: "确认裁决" }).click();
+      await expect(page.getByRole("region", { name: "冲突仲裁" })).toHaveCount(0, { timeout: 15_000 });
+      await expect(page.getByRole("button", { name: "任务", exact: true })).toHaveAttribute("aria-expanded", "false");
+
+      const listOpen = await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-file-conflicts`), {
+        headers: adminHeaders()
+      });
+      expect(listOpen.ok()).toBe(true);
+      const listBody = (await listOpen.json()) as { items: Array<{ id: string }> };
+      expect(listBody.items).toHaveLength(0);
+      const auditAfterBrowser = await request.get(
+        apiRoute(`/api/v1/audit-events?projectId=${encodeURIComponent(projectId)}&apps=parameters&limit=60`),
+        { headers: adminHeaders() }
+      );
+      expect(auditAfterBrowser.ok()).toBe(true);
+      const auditBrowserBody = (await auditAfterBrowser.json()) as {
+        items: Array<{ kind: string; metadata?: Record<string, unknown> }>;
+      };
+      expect(
+        auditBrowserBody.items.some(
+          (item) =>
+            item.kind === "parameter-file-conflict-resolve" &&
+            item.metadata?.resolution === "ui" &&
+            item.metadata?.reason === `browser keep ui ${suffix}`
+        )
+      ).toBe(true);
+
+      const evidencePath = await writeOperationJsonArtifact(
+        testInfo,
+        "project-configuration-workbench-conflict-arbitration.json",
+        {
+          route: page.url(),
+          configSetId,
+          fileAuditReason: fileAudit?.metadata?.reason,
+          bulkEligible: previewBody.impact.eligibleCount,
+          candidateStatus: candidateBody.item.status,
+          deniedResolveStatus: deniedResolve.status(),
+          queueConflictId: queueConflict.conflictId,
+          blockConflictId: blockConflict.conflictId,
+          browserAdvancedFrom: firstName,
+          browserAdvancedTo: secondName
+        }
+      );
+      await recordOperationEvidence({
+        operationId: "PROJ-CONFIG-CONFLICT-001",
+        title: "configuration workbench conflict arbitration",
+        status: "passed",
+        role: "Admin",
+        route: `/parameter-admin/projects/${projectId}/configuration`,
+        page,
+        testInfo,
+        assertions: ["ui", "api", "screenshot"],
+        artifacts: [evidencePath],
+        api: [
+          summarizeApiResponse(deniedResolve, {
+            method: "POST",
+            path: `/api/v1/projects/${projectId}/parameter-file-conflicts/${fileOutcome.conflictId}/resolve`,
+            responseSummary: "hardware-user denied 403"
+          }),
+          summarizeApiResponse(resolveFile, {
+            method: "POST",
+            path: `/api/v1/projects/${projectId}/parameter-file-conflicts/${fileOutcome.conflictId}/resolve`,
+            responseSummary: "resolution=file with reason"
+          }),
+          summarizeApiResponse(resolveUi, {
+            method: "POST",
+            path: `/api/v1/projects/${projectId}/parameter-file-conflicts/${uiOutcome.conflictId}/resolve`,
+            responseSummary: "resolution=ui with reason"
+          }),
+          summarizeApiResponse(bulkPreview, {
+            method: "POST",
+            path: `/api/v1/projects/${projectId}/parameter-file-conflicts/bulk-preview`,
+            responseSummary: `eligible=${previewBody.impact.eligibleCount}`
+          }),
+          summarizeApiResponse(bulkResolve, {
+            method: "POST",
+            path: `/api/v1/projects/${projectId}/parameter-file-conflicts/bulk-resolve`,
+            responseSummary: `resolved=${bulkResolveBody.resolved.length}`
+          }),
+          summarizeApiResponse(blockedActivate, {
+            method: "POST",
+            path: `/api/v1/projects/${projectId}/parameter-file-candidates/${candidateBody.item.id}/activate`,
+            responseSummary: "blocked open-conflict 400"
+          })
+        ],
+        notes:
+          "Semantic binding conflicts: both resolve outcomes with audit reason, authz denial, bulk preview/resolve, and activation blocked by open conflict; workbench Conflicts dock proved equal-weight outcomes, source locate, confirm+reason, continuous queue advance, and collapsed when empty."
+      });
+    } finally {
+      await cleanupSemanticAcceptanceArtifacts({
+        organizationId,
+        projectId,
+        fileNames: bindings[0] ? [bindings[0].fileName] : [],
+        projectParameterBindingIds: bindings.map((item) => item.bindingId)
+      });
+    }
+  });
+});
+

@@ -283,4 +283,18 @@ describe.skipIf(!databaseAvailable)("file sync conflict repository", () => {
       }
     });
   });
+
+  it("inserts in semantic mode while the pre-cutover PPV columns still exist", async () => {
+    setParameterIdentityMode("semantic");
+    await seedFileWithVersion();
+    await seedDraftPair();
+
+    const inserted = await insertFileSyncConflict(db, conflictInput());
+    expect(inserted).toMatchObject({
+      id: "conflict-1",
+      projectParameterValueId: "ppv-1",
+      parameterDefinitionId: "pd-1",
+      status: "open"
+    });
+  });
 });

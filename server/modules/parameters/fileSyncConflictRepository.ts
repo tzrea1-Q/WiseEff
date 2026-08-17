@@ -208,6 +208,21 @@ export async function hasOpenFileSyncConflict(
   return result.rows.length > 0;
 }
 
+async function conflictTableHasLegacyIdentityColumns(db: Queryable): Promise<boolean> {
+  const result = await db.query<{ exists: boolean }>(
+    `
+    select exists (
+      select 1
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'parameter_file_sync_conflicts'
+        and column_name = 'project_parameter_value_id'
+    ) as exists
+    `
+  );
+  return Boolean(result.rows[0]?.exists);
+}
+
 export async function insertFileSyncConflict(
   db: Queryable,
   input: {
@@ -225,6 +240,36 @@ export async function insertFileSyncConflict(
     projectParameterBindingId?: string;
   }
 ) {
+  const bindingId = input.projectParameterBindingId ?? input.projectParameterValueId;
+  const specId = input.parameterSpecId ?? input.parameterDefinitionId;
+
+  if (parameterIdentityMode() === "semantic" && !(await conflictTableHasLegacyIdentityColumns(db))) {
+    const result = await db.query<FileSyncConflictRow>(
+      `
+      insert into parameter_file_sync_conflicts (
+        id, organization_id, project_id,
+        file_version_id, file_draft_id, ui_draft_id, file_value, ui_draft_value, status,
+        parameter_spec_id, project_parameter_binding_id
+      )
+      values ($1, $2, $3, $4, $5, $6, $7, $8, 'open', $9, $10)
+      returning *
+      `,
+      [
+        input.id,
+        input.organizationId,
+        input.projectId,
+        input.fileVersionId,
+        input.fileDraftId,
+        input.uiDraftId,
+        input.fileValue,
+        input.uiDraftValue,
+        specId,
+        bindingId
+      ]
+    );
+    return toFileSyncConflictRecord(result.rows[0]);
+  }
+
   const result = await db.query<FileSyncConflictRow>(
     `
     insert into parameter_file_sync_conflicts (
