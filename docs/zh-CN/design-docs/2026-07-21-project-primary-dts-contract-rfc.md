@@ -6,7 +6,7 @@
 - 状态：**Accepted for planning**
 - 依赖：[`2026-07-21-dts-parameter-surface-boundary-rfc.md`](2026-07-21-dts-parameter-surface-boundary-rfc.md)
 - 修订：[`2026-07-21-dts-capability-cut-matrix.md`](2026-07-21-dts-capability-cut-matrix.md) §6 中合成基 **Keep-internal** → **Retire**
-- 实现计划：[`../exec-plans/active/2026-07-21-retire-synthetic-base-dts.md`](../exec-plans/active/2026-07-21-retire-synthetic-base-dts.md)
+- 实现计划：[`../exec-plans/completed/2026-07-21-retire-synthetic-base-dts.md`](../exec-plans/completed/2026-07-21-retire-synthetic-base-dts.md)
 
 ## 1. 问题
 

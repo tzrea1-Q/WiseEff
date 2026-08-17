@@ -198,12 +198,12 @@ Chinese actives: equivalent neutral wording (no `superpowers:`).
 
 Priority files (non-exhaustive; re-run `rg` during execution):
 
-- `docs/exec-plans/active/2026-07-21-dts-parameter-surface-mvp.md`
-- `docs/exec-plans/active/2026-07-21-retire-synthetic-base-dts.md`
-- `docs/exec-plans/active/2026-07-21-instance-submodule-seed.md`
-- `docs/exec-plans/active/2026-07-20-dts-workbench-module-refocus.md`
-- `docs/exec-plans/active/2026-07-23-local-demo-credentials-seed.md` (+ zh)
-- `docs/exec-plans/active/2026-07-23-local-post-cutover-seed.md` (+ zh)
+- `docs/exec-plans/completed/2026-07-21-dts-parameter-surface-mvp.md`
+- `docs/exec-plans/completed/2026-07-21-retire-synthetic-base-dts.md`
+- `docs/exec-plans/completed/2026-07-21-instance-submodule-seed.md`
+- `docs/exec-plans/completed/2026-07-20-dts-workbench-module-refocus.md`
+- `docs/exec-plans/completed/2026-07-23-local-demo-credentials-seed.md` (+ zh)
+- `docs/exec-plans/completed/2026-07-23-local-post-cutover-seed.md` (+ zh)
 
 - [x] For each link: point to migrated `design-docs` / merged exec-plan section
 

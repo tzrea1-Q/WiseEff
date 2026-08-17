@@ -33,7 +33,7 @@ Debugging admin catalog changes are covered by `DEBUG-ADMIN-001` in `e2e/accepta
 
 Hierarchical module trees are covered by `MOD-TREE-PARAM-001/002`, `MOD-TREE-DEBUG-001`, and `MOD-TREE-AUTHZ-001` in `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` (nested create, subtree filter, move/cycle guard, authz, and non-empty delete guards).
 
-Module attribution (compatible queue, classify preview/apply, kind-scoped tree, importance inheritance) is covered by `MOD-ATTR-QUEUE-001`, `MOD-ATTR-CLASSIFY-001`, `MOD-ATTR-BULK-001`, `MOD-ATTR-TREE-001`, and `MOD-ATTR-IMPORTANCE-001` in `e2e/acceptance/parameter-topology.acceptance.spec.ts` (see `docs/exec-plans/active/2026-07-27-module-attribution-redesign.md`).
+Module attribution (compatible queue, classify preview/apply, kind-scoped tree, importance inheritance) is covered by `MOD-ATTR-QUEUE-001`, `MOD-ATTR-CLASSIFY-001`, `MOD-ATTR-BULK-001`, `MOD-ATTR-TREE-001`, and `MOD-ATTR-IMPORTANCE-001` in `e2e/acceptance/parameter-topology.acceptance.spec.ts` (see `docs/exec-plans/completed/2026-07-27-module-attribution-redesign.md`).
 
 Simulator debugging is covered by `DEBUG-SIM-001` in `e2e/acceptance/debugging-simulator.acceptance.spec.ts`, including a complex JSON write path that records `valueKind`, digest, and preview metadata in `node_operations` without leaking full payloads into operation evidence.
 

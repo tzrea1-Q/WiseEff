@@ -1,0 +1,35 @@
+# Instance Submodule Seed + Driver Discovery — Execution Plan
+> Status: **Completed 2026-08-17 (archive round 2)** — implementation is on `main`.
+
+> Chinese: [`../../zh-CN/exec-plans/completed/2026-07-21-instance-submodule-seed.md`](../../zh-CN/exec-plans/completed/2026-07-21-instance-submodule-seed.md)  
+> Spec: [`../../design-docs/2026-07-21-instance-submodule-seed-design.md`](../../design-docs/2026-07-21-instance-submodule-seed-design.md)  
+> Agent plan: [`../../exec-plans/completed/2026-07-21-instance-submodule-seed.md`](./2026-07-21-instance-submodule-seed.md)
+
+- Date: 2026-07-21
+- Feature branch: `feat/instance-submodule-seed`
+
+## Goal
+
+Ship Type U/N/C module placement for demo seed and ingest, plus Admin discovery for unmapped drivers.
+
+> **Superseded (Admin discovery UI):** driver discovery in this plan is superseded by [`2026-07-27-module-attribution-redesign.md`](2026-07-27-module-attribution-redesign.md) — compatible queue only (no spec-library driver aggregation).
+
+## Documentation Impact Matrix
+
+| Document | Impact | Action |
+| --- | --- | --- |
+| `docs/design-docs/2026-07-21-instance-submodule-seed-design.md` | Spec | **Done** |
+| `docs/zh-CN/design-docs/2026-07-21-instance-submodule-seed-design.md` | Spec ZH | **Done** |
+| `docs/FRONTEND.md` / `docs/zh-CN/frontend.md` | Principle | **Update** in Task E |
+| `docs/PLANS.md` / `docs/zh-CN/PLANS.md` | Active list | **Update** (this change) |
+| `docs/design-docs/domain-model.md` EN+ZH | Optional module tree note | **Review** during seed |
+
+## Documentation Update Gate
+
+- [ ] FRONTEND EN+ZH updated
+- [ ] `npm run docs:check` passes
+- [ ] Spec success criteria checked before moving to `completed/`
+
+## Task overview
+
+See agent plan Tasks A–E.

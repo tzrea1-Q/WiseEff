@@ -3,7 +3,7 @@
 > 日期：2026-07-21  
 > 状态：进入实现计划  
 > 英文完整版：[`docs/design-docs/2026-07-21-instance-submodule-seed-design.md`](../../design-docs/2026-07-21-instance-submodule-seed-design.md)  
-> 实现计划：[`docs/exec-plans/active/2026-07-21-instance-submodule-seed.md`](../../exec-plans/active/2026-07-21-instance-submodule-seed.md)
+> 实现计划：[`docs/exec-plans/completed/2026-07-21-instance-submodule-seed.md`](../../exec-plans/completed/2026-07-21-instance-submodule-seed.md)
 
 ## 问题
 

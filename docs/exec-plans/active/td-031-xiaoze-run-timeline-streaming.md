@@ -1,6 +1,6 @@
 # TD-031: Xiaoze run timeline and streaming (P0 + P2)
 
-Status: active
+Status: keep in `active/`. Timeline/streaming implementation was absorbed by completed `2026-08-12-xiaoze-turn-stream` (TD-070 closed). Residual in this file is the documentation update gate (EN+ZH design-doc metadata note); not open product/code work.
 
 ## Goal
 

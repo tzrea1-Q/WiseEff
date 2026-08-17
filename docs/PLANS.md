@@ -12,7 +12,7 @@ Execution plans are first-class repository artifacts. Use them for work that has
 
 ## Current Active Plan
 
-This list is only plans that still have remaining work. Finished implementation lives under `exec-plans/completed/` — including the 2026-08-17 archive of path-reachable C1–C4, product feedback, topology review rounds 3–6, the notification center, the project-configuration-workbench defect repair, and Xiaoze approval-failure recovery (TD-102 / TD-094). Do not reopen those as active work.
+This list is only plans that still have remaining work. Finished implementation lives under `exec-plans/completed/` — including the 2026-08-17 archive of path-reachable C1–C4, product feedback, topology review rounds 3–6, the notification center, the project-configuration-workbench defect repair, and Xiaoze approval-failure recovery (TD-102 / TD-094); and the 2026-08-17 round-2 archive of landed DTS workbench/seed, attribution/driver-registry/overlay, parameter-admin UX/IA, batch import/excel, logs org-scope, personal overview, ADB/HDC, debug-admin, Device Bridge phase 1/2, Xiaoze turn-state UX, and CORS bootstrap plans. Do not reopen those as active work.
 
 ### Waiting on external inputs or a target environment
 
@@ -28,48 +28,22 @@ This list is only plans that still have remaining work. Finished implementation 
 
 ### Remaining product and UX work
 
-- `exec-plans/active/2026-08-03-parameter-admin-org-ia-consolidation.md`: org admin IA (planning; ADR-0015).
-- `exec-plans/active/2026-08-02-parameter-admin-ux-polish.md`: parameter-admin UX polish.
-- `exec-plans/active/2026-08-04-parameter-definition-identity-correction.md`: definition identity correction follow-through.
-- `exec-plans/active/2026-08-01-attribution-deferred-implementation.md`: locked D-AG-01–04 follow-through.
-- `exec-plans/active/td-031-xiaoze-run-timeline-streaming.md`: confirm residual vs the landed `xiaozeTurnStream` module (TD-070 closed).
+- `exec-plans/active/2026-08-04-parameter-definition-identity-correction.md`: definition identity correction follow-through (Batch 4 in flight).
+- `exec-plans/active/2026-08-01-attribution-deferred-implementation.md`: locked D-AG-01–04 follow-through (acceptance/playwright evidence still open).
+- `exec-plans/active/td-031-xiaoze-run-timeline-streaming.md`: timeline/streaming landed in `xiaozeTurnStream` (TD-070 closed); residual is this plan's design-doc metadata note.
+- `exec-plans/active/2026-07-08-project-hotspot-scoring-redesign.md`: implementation on `main`; residual is the API contract review row.
+- `exec-plans/active/2026-07-01-wiseeff-node-only-debugging-platform.md`: do not reopen hide-`/debugging`; later DTS reload restored a parameter-debugging surface.
 
 ### Still in `active/` pending a later archive pass
 
 These files remain in `active/` until a follow-up confirms residual scope. They are not a build order.
 
 - `exec-plans/active/development-roadmap.md`
-- `exec-plans/active/2026-07-19-dts-parameter-workbench-redesign.md`
-- `exec-plans/active/2026-07-20-dts-workbench-module-refocus.md`
-- `exec-plans/active/2026-07-21-dts-parameter-surface-mvp.md`
-- `exec-plans/active/2026-07-21-retire-synthetic-base-dts.md`
-- `exec-plans/active/2026-07-21-instance-submodule-seed.md`
-- `exec-plans/active/2026-07-23-local-post-cutover-seed.md`
-- `exec-plans/active/2026-07-23-local-demo-credentials-seed.md`
-- `exec-plans/active/2026-07-27-module-attribution-redesign.md`
-- `exec-plans/active/2026-07-28-module-logical-kind-and-manual-reclassify.md`
-- `exec-plans/active/2026-07-28-driver-registry.md`
-- `exec-plans/active/2026-07-29-org-driver-schema-overlay.md`
-- `exec-plans/active/2026-07-30-attribution-tree-is-taxonomy-not-topology.md`
-- `exec-plans/active/2026-07-30-attribution-subjects-and-versioned-specs.md`
-- `exec-plans/active/2026-07-01-wiseeff-node-only-debugging-platform.md`
-- `exec-plans/active/2026-07-06-parameter-batch-import-wizard.md`
-- `exec-plans/active/2026-07-06-parameter-excel-export.md`
-- `exec-plans/active/2026-07-07-wiseeff-debug-logs-org-scope-decoupling.md`
-- `exec-plans/active/2026-07-08-parameter-home-personal-overview.md`
-- `exec-plans/active/2026-07-08-project-hotspot-scoring-redesign.md`
-- `exec-plans/active/2026-06-21-wiseeff-adb-hdc-debugging-protocol.md`
-- `exec-plans/active/2026-06-22-wiseeff-adb-auto-device-lab-config.md`
-- `exec-plans/active/2026-06-22-wiseeff-debugging-admin-hdc-adb-crud.md`
-- `exec-plans/active/2026-06-23-wiseeff-debugging-admin-modal-layout-redesign.md`
-- `exec-plans/active/2026-06-23-wiseeff-local-device-bridge-phase1.md`
-- `exec-plans/active/2026-06-23-wiseeff-local-device-bridge-phase2.md`
-- `exec-plans/active/2026-06-25-xiaoze-turn-state-ux.md`
-- `exec-plans/active/2026-06-27-wiseeff-device-bridge-cors-bootstrap-fix.md`
+- `exec-plans/active/2026-07-19-dts-parameter-workbench-redesign.md`: original workbench-redesign checkboxes remain open; later project-configuration-workbench plans under `completed/` superseded this rewrite. Do not reopen as greenfield work.
 
 ## Completed Plans
 
-Completed historical plans are preserved under `exec-plans/completed/`, including the 2026-08-17 archive of path-reachable C1–C4, Internal Beta product feedback, topology review rounds 3–6, the notification center (`2026-07-06-wiseeff-notification-center.md`), and the project-configuration-workbench defect repair (`2026-08-08-project-configuration-workbench-defect-repair.md`); also including M0-M5 productization work, M5.1 documentation governance, Chinese developer documentation, M5.3 documentation system completion, M5.4-M5.12 browser acceptance hardening, M6.1 self-hosted runtime baseline, M3.5 commercial readiness hardening, local account lifecycle, Pi Agent provider adapter rounds, the complex debugging-node value model, Device Bridge zero-friction Phase B (`2026-06-25-wiseeff-device-bridge-zero-friction-phase-b.md`), Xiaoze sole Agent cleanup (`2026-06-26-xiaoze-sole-agent-wiseagent-cleanup.md`), Xiaoze thread persistence (`2026-06-24-wiseeff-xiaoze-thread-persistence.md`), dead code cleanup (`2026-06-30-wiseeff-dead-code-cleanup.md`), parameter debugging interim hide (`2026-07-01-wiseeff-parameter-debugging-platform-redesign.md`), the parameter-home production redesign (`2026-07-07-parameter-home-production-redesign.md`), hierarchical module trees (`2026-07-09-wiseeff-hierarchical-modules.md`), project parameter DTS/JSON files with bidirectional sync (`2026-07-11-project-parameter-files.md`), the DTS parameter management structural refactor program (`2026-07-14-dts-management-program.md` with P0/P1/P2/P3/P3.1 phase plans — CST parser, config sets/baselines/dtc gate, structured product UI, and edit→CR→writeback loop), the full DTS seed and reproducible dtc toolchain (`2026-07-15-dts-full-seed-and-toolchain.md`), DTS hardening closeout (`2026-07-15-dts-hardening-closeout.md`), parameter import wizard TD-035 (`2026-07-15-parameter-import-wizard-td035.md`), retire Superpowers agent harness and adopt Matt Pocock skills (`2026-07-25-retire-superpowers-adopt-matt-skills.md`), and older feature-specific plans that once lived under a parallel Superpowers plans tree. Residual path-derived identity and production schema validation debt are superseded by the active topology/schema cutover plan. Use `exec-plans/completed/README.md` to interpret completed plans as historical evidence rather than current implementation contracts.
+Completed historical plans are preserved under `exec-plans/completed/`, including the 2026-08-17 archive of path-reachable C1–C4, Internal Beta product feedback, topology review rounds 3–6, the notification center (`2026-07-06-wiseeff-notification-center.md`), and the project-configuration-workbench defect repair (`2026-08-08-project-configuration-workbench-defect-repair.md`); the 2026-08-17 round-2 archive of landed DTS workbench/seed, attribution/driver-registry/overlay, parameter-admin UX/IA, batch import/excel, logs org-scope, personal overview, ADB/HDC, debug-admin, Device Bridge phase 1/2, Xiaoze turn-state UX, and CORS bootstrap plans; also including M0-M5 productization work, M5.1 documentation governance, Chinese developer documentation, M5.3 documentation system completion, M5.4-M5.12 browser acceptance hardening, M6.1 self-hosted runtime baseline, M3.5 commercial readiness hardening, local account lifecycle, Pi Agent provider adapter rounds, the complex debugging-node value model, Device Bridge zero-friction Phase B (`2026-06-25-wiseeff-device-bridge-zero-friction-phase-b.md`), Xiaoze sole Agent cleanup (`2026-06-26-xiaoze-sole-agent-wiseagent-cleanup.md`), Xiaoze thread persistence (`2026-06-24-wiseeff-xiaoze-thread-persistence.md`), dead code cleanup (`2026-06-30-wiseeff-dead-code-cleanup.md`), parameter debugging interim hide (`2026-07-01-wiseeff-parameter-debugging-platform-redesign.md`), the parameter-home production redesign (`2026-07-07-parameter-home-production-redesign.md`), hierarchical module trees (`2026-07-09-wiseeff-hierarchical-modules.md`), project parameter DTS/JSON files with bidirectional sync (`2026-07-11-project-parameter-files.md`), the DTS parameter management structural refactor program (`2026-07-14-dts-management-program.md` with P0/P1/P2/P3/P3.1 phase plans — CST parser, config sets/baselines/dtc gate, structured product UI, and edit→CR→writeback loop), the full DTS seed and reproducible dtc toolchain (`2026-07-15-dts-full-seed-and-toolchain.md`), DTS hardening closeout (`2026-07-15-dts-hardening-closeout.md`), parameter import wizard TD-035 (`2026-07-15-parameter-import-wizard-td035.md`), retire Superpowers agent harness and adopt Matt Pocock skills (`2026-07-25-retire-superpowers-adopt-matt-skills.md`), and older feature-specific plans that once lived under a parallel Superpowers plans tree. Residual path-derived identity and production schema validation debt are superseded by the active topology/schema cutover plan. Use `exec-plans/completed/README.md` to interpret completed plans as historical evidence rather than current implementation contracts.
 
 ## Plan Rules
 

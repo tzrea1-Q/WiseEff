@@ -6,7 +6,7 @@
 - Status: **Accepted for planning**
 - Depends on: [`2026-07-21-dts-parameter-surface-boundary-rfc.md`](2026-07-21-dts-parameter-surface-boundary-rfc.md) (surface, module UX, L0/L2)
 - Revises: Seeds & demo row in [`2026-07-21-dts-capability-cut-matrix.md`](2026-07-21-dts-capability-cut-matrix.md) §6 (`wiseeff-power-base.dts` **Keep-internal** → **Retire**)
-- Implementation plan: [`../exec-plans/active/2026-07-21-retire-synthetic-base-dts.md`](../exec-plans/active/2026-07-21-retire-synthetic-base-dts.md)
+- Implementation plan: [`../exec-plans/completed/2026-07-21-retire-synthetic-base-dts.md`](../exec-plans/completed/2026-07-21-retire-synthetic-base-dts.md)
 
 ## 1. Problem statement
 

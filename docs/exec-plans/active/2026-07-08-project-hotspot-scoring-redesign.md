@@ -1,6 +1,7 @@
 # Project Hotspot Scoring Redesign
 
-> **Status:** In progress  
+> **Status:** Implementation on `main`; residual is the API contract review row (`scoreBreakdown` still documents the pre-behavioral shape). Not archived in round 2.  
+
 > **Scope:** Project, module, and parameter leaderboards (`dimension=project|module|parameter`). All three use the shared four-dimension behavioral scorer; parameter scope counts **projects** that modified the definition, not parameter instances.
 
 **Goal:** Replace static-inventory scoring (risk, definition count, recommended drift) with behavioral governance scoring for all hotspot dimensions.

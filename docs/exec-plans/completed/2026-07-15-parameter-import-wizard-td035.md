@@ -146,7 +146,7 @@ Audit kind 保持现有 import 事件，metadata 合并 `reviewMetadata`。
 | --- | --- | --- |
 | 方案 | `docs/design-docs/2026-07-15-dts-followup-scheme.md` | No change |
 | API 契约（中英） | `docs/design-docs/api-contract.md` | **Update**（parse-dts + reviewMetadata） |
-| 批导计划 | `docs/exec-plans/active/2026-07-06-parameter-batch-import-wizard.md` | **Update**（P2/P3 指向本期） |
+| 批导计划 | `docs/exec-plans/completed/2026-07-06-parameter-batch-import-wizard.md` | **Update**（P2/P3 指向本期） |
 | tech-debt | `docs/exec-plans/tech-debt-tracker.md` | **Update**（关闭 TD-035） |
 | FRONTEND / zh | 导入相关段落 | **Update** |
 | PLANS（中英） | | **Update** |

@@ -6,7 +6,7 @@
 - Status: **Accepted for planning** (product-boundary decision; not yet implemented)
 - Supersedes / revises: locked decisions §2.2–2.5 in [`2026-07-14-dts-parameter-management-assessment.md`](2026-07-14-dts-parameter-management-assessment.md) where they conflict (see §6)
 - Companion: capability cut matrix [`2026-07-21-dts-capability-cut-matrix.md`](2026-07-21-dts-capability-cut-matrix.md); project-primary DTS / retire platform base [`2026-07-21-project-primary-dts-contract-rfc.md`](2026-07-21-project-primary-dts-contract-rfc.md)
-- Implementation plan: [`../exec-plans/active/2026-07-21-dts-parameter-surface-mvp.md`](../exec-plans/active/2026-07-21-dts-parameter-surface-mvp.md)
+- Implementation plan: [`../exec-plans/completed/2026-07-21-dts-parameter-surface-mvp.md`](../exec-plans/completed/2026-07-21-dts-parameter-surface-mvp.md)
 
 ## 1. Problem statement
 

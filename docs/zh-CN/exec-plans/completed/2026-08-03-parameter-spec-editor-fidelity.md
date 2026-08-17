@@ -5,7 +5,7 @@
 > English: [`docs/exec-plans/completed/2026-08-03-parameter-spec-editor-fidelity.md`](../../../exec-plans/completed/2026-08-03-parameter-spec-editor-fidelity.md)
 > 约束性 IA：[ADR-0001](../../../adr/0001-parameter-admin-organized-by-governance-scope.md)、[ADR-0015](../../../adr/0015-governance-queues-live-with-the-object-they-govern.md)
 > 相关决策：[ADR-0010](../../../adr/0010-attribution-tree-is-taxonomy-not-topology.md)（归属树是分类而非拓扑）、TD-047（`driverModule` 仅用于展示）
-> 前序计划：[`2026-08-03-parameter-admin-org-ia-consolidation.md`](../active/2026-08-03-parameter-admin-org-ia-consolidation.md)
+> 前序计划：[`2026-08-03-parameter-admin-org-ia-consolidation.md`](./2026-08-03-parameter-admin-org-ia-consolidation.md)
 
 ## 已落地与剩余
 

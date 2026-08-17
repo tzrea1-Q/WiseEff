@@ -6,7 +6,7 @@
 - 状态：**规划已接受**（产品边界决策；尚未实现）
 - 修订：[`2026-07-14-dts-parameter-management-assessment.md`](../../design-docs/2026-07-14-dts-parameter-management-assessment.md) §2 中与本 RFC 冲突的锁定项（见 §6）
 - 配套：能力裁剪矩阵 [`2026-07-21-dts-capability-cut-matrix.md`](2026-07-21-dts-capability-cut-matrix.md)；项目主 DTS / 退役平台基 [`2026-07-21-project-primary-dts-contract-rfc.md`](2026-07-21-project-primary-dts-contract-rfc.md)
-- 实现计划：[`../../exec-plans/active/2026-07-21-dts-parameter-surface-mvp.md`](../../exec-plans/active/2026-07-21-dts-parameter-surface-mvp.md)
+- 实现计划：[`../../exec-plans/completed/2026-07-21-dts-parameter-surface-mvp.md`](../../exec-plans/completed/2026-07-21-dts-parameter-surface-mvp.md)
 
 ## 1. 问题陈述
 

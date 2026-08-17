@@ -288,7 +288,7 @@ If a later PR must start before its predecessor merges, it branches from the pre
 | Generated artifacts | **Update** | `docs/generated/db-schema.md` — regenerate for `0081`–`0083`; it was already stale before the ADR-0010 work and TD-004 tracks the underlying gap |
 | Acceptance coverage | **Update** | `docs/developer/browser-acceptance-coverage-map.md`, `docs/developer/user-operation-coverage-matrix.md` and Chinese companions |
 | References | Review | `docs/references/productization-api-contract-draft.md` |
-| Other active plans | Review | `docs/exec-plans/active/2026-07-29-org-driver-schema-overlay.md`, `2026-07-30-platform-tier-and-super-admin.md`, `2026-07-30-attribution-tree-is-taxonomy-not-topology.md` — all touch overlays, definitions, or module kinds |
+| Other active plans | Review | `docs/exec-plans/completed/2026-07-29-org-driver-schema-overlay.md`, `2026-07-30-platform-tier-and-super-admin.md`, `2026-07-30-attribution-tree-is-taxonomy-not-topology.md` — all touch overlays, definitions, or module kinds |
 
 ## Documentation Update Gate
 
