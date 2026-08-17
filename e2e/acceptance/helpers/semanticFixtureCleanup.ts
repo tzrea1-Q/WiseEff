@@ -204,6 +204,10 @@ export async function cleanupSemanticAcceptanceArtifacts(
         [versionIds]
       );
       await client.query(
+        `update parameter_drafts set source_file_version_id = null where source_file_version_id = any($1::text[])`,
+        [versionIds]
+      );
+      await client.query(
         `
         update parameter_change_requests
         set source_file_version_id = null

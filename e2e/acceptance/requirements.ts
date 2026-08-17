@@ -704,13 +704,13 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     title: "Publish is blocked by compiler/edit diagnostics; clean revisions validate/publish with audit and semantic persistence after reload.",
     required: true
   },
-  // Remaining PARAM-ENABLE / MOD-ATTR / DRV-* IDs stay required: false until their
-  // `@acceptance-planned` stubs become runnable. PARAM-ENABLE-VISIBLE-001 is automated.
+  // Remaining MOD-ATTR / DRV-* IDs stay required: false until their
+  // `@acceptance-planned` stubs become runnable. PARAM-ENABLE-* are automated.
   {
     id: "PARAM-ENABLE-GATE-001",
     workflow: "B",
     title: "Structural properties do not create spec review tasks or block candidate promotion or migration finalize.",
-    required: false
+    required: true
   },
   {
     id: "PARAM-ENABLE-VISIBLE-001",
@@ -722,13 +722,13 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "PARAM-ENABLE-TOGGLE-001",
     workflow: "B",
     title: "Node disable requires reason and confirmation; enablement drafts share the working tip with binding edits.",
-    required: false
+    required: true
   },
   {
     id: "PARAM-ENABLE-GUARD-001",
     workflow: "B",
     title: "Non-standard status values are read-only unless explicitly acknowledged for override.",
-    required: false
+    required: true
   },
   {
     id: "MOD-ATTR-QUEUE-001",

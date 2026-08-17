@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { rm } from "node:fs/promises";
+import { rm, readFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import path from "node:path";
 import pg from "pg";
@@ -194,6 +194,25 @@ async function preparePostCutoverDatabase(databaseUrl: string, purpose: string) 
       throw new Error(`Disposable post-cutover migration was blocked: ${report.blockers.join("; ")}`);
     }
     await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
+    // Cutover SQL re-imposes NOT NULL on semantic FKs. Production applied 0069/0070
+    // after that historical cutover (ADR-0003 enablement drafts with null binding id).
+    // Disposable runs cutover last, so replay those files to match production schema.
+    await db.query(await readFile(path.join(migrationsDir, "0069_node_enablement_drafts.sql"), "utf8"));
+    await db.query(await readFile(path.join(migrationsDir, "0070_node_enablement_change_requests.sql"), "utf8"));
+    const enablementNullability = await db.query<{ is_nullable: string }>(
+      `
+      select is_nullable
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'parameter_drafts'
+        and column_name = 'project_parameter_binding_id'
+      `,
+    );
+    if (enablementNullability.rows[0]?.is_nullable !== "YES") {
+      throw new Error(
+        "Disposable post-cutover schema must allow null parameter_drafts.project_parameter_binding_id for node-enablement drafts.",
+      );
+    }
     await db.query(
       `create table wiseeff_acceptance_test_markers (
          purpose text primary key,

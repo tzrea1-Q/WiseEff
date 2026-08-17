@@ -129,6 +129,55 @@ function enablementVisibleDts(modelSuffix: string, childProp: string, directProp
 `;
 }
 
+/** Unique overlay for PARAM-ENABLE-GATE-001. Structural `status` must not become a review task. */
+function enablementGateDts(modelSuffix: string, prop: string) {
+  return `/dts-v1/;
+/ {
+	compatible = "wiseeff,board";
+	model = "Enablement Gate ${modelSuffix}";
+	egate_${modelSuffix}@60 {
+		compatible = "wiseeff,enable-gate";
+		reg = <0x60>;
+		${prop} = <1>;
+		status = "disabled";
+	};
+};
+`;
+}
+
+/** Unique overlay for PARAM-ENABLE-GUARD-001. Non-standard `reserved` stays read-only. */
+function enablementGuardDts(modelSuffix: string, prop: string) {
+  return `/dts-v1/;
+/ {
+	compatible = "wiseeff,board";
+	model = "Enablement Guard ${modelSuffix}";
+	eguard_${modelSuffix}@50 {
+		compatible = "wiseeff,enable-guard";
+		reg = <0x50>;
+		${prop} = <1>;
+		status = "reserved";
+	};
+};
+`;
+}
+
+/** Keep in sync with `STRUCTURAL_PROPERTY_KEYS` in parameterSurface.ts (ADR-0003). */
+const STRUCTURAL_REVIEW_PROPERTY_KEYS = [
+  "compatible",
+  "device_type",
+  "gpio-controller",
+  "interrupt-controller",
+  "linux,phandle",
+  "phandle",
+  "ranges",
+  "reg",
+  "status",
+  "#address-cells",
+  "#gpio-cells",
+  "#interrupt-cells",
+  "#size-cells"
+];
+
 function adminHeaders() {
   return authHeadersForRole("admin");
 }
@@ -238,6 +287,111 @@ async function waitForRevisionWithProperties(
   throw new Error(
     `Timed out waiting for revision on config set ${configSetId} with properties ${propertyKeys.join(", ")}`
   );
+}
+
+/** Overlay on aurora `default` Config Set. Do not reuse `mappingR1`. */
+async function attachDedicatedDefaultOverlay(
+  request: APIRequestContext,
+  input: {
+    fileName: string;
+    dtsText: string;
+    configSetId: string;
+    previousRevisionId: string;
+    propertyKeys: string[];
+  }
+): Promise<{ id: string; status: string }> {
+  const upload = await uploadDts(request, input.fileName, input.dtsText);
+  const addFile = await request.post(
+    apiRoute(`/api/v1/projects/${projectId}/config-sets/${input.configSetId}/files`),
+    {
+      headers: adminHeaders(),
+      data: { fileId: upload.fileId, role: "overlay", sortOrder: 80 }
+    }
+  );
+  expect([201, 409]).toContain(addFile.status());
+  await uploadDts(request, input.fileName, input.dtsText);
+  return waitForRevisionWithProperties(
+    request,
+    projectId,
+    input.configSetId,
+    input.previousRevisionId,
+    input.propertyKeys
+  );
+}
+
+async function listEffectiveTopologyNodes(
+  request: APIRequestContext,
+  configSetId: string,
+  revisionId: string
+) {
+  const topologyApi = await request.get(
+    apiRoute(
+      `/api/v2/projects/${projectId}/config-sets/${encodeURIComponent(configSetId)}/revisions/${revisionId}/topology?view=effective`
+    ),
+    { headers: adminHeaders() }
+  );
+  expect(topologyApi.status()).toBe(200);
+  const topologyBody = (await topologyApi.json()) as {
+    item: {
+      nodes: Array<{
+        name?: string;
+        locator?: string;
+        logicalNodeId?: string;
+        enablement?: {
+          selfEnabled: boolean;
+          reachable: boolean;
+          override?: string;
+          rawStatus?: string | null;
+          rawToken?: string | null;
+        };
+      }>;
+    };
+  };
+  return { topologyApi, nodes: topologyBody.item.nodes };
+}
+
+async function expandTreeitemIfCollapsed(workspace: Locator, name: RegExp) {
+  const item = workspace.getByRole("treeitem", { name }).first();
+  if (!(await item.isVisible().catch(() => false))) return;
+  if ((await item.getAttribute("aria-expanded")) === "false") {
+    await item.getByRole("button", { name: /展开/ }).click({ timeout: 10_000 });
+  }
+}
+
+async function revealAndSelectTreeitem(workspace: Locator, name: RegExp) {
+  await expandTreeitemIfCollapsed(workspace, /未分类/);
+  const item = workspace.getByRole("treeitem", { name }).first();
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    if (await item.isVisible().catch(() => false)) {
+      await item.click();
+      return;
+    }
+    const expander = workspace.getByRole("button", { name: /展开/ }).first();
+    if (!(await expander.isVisible().catch(() => false))) break;
+    await expander.click();
+  }
+  await expect(item).toBeVisible({ timeout: 20_000 });
+  await item.click();
+}
+
+async function openWorkbenchEnablementDialog(
+  page: Page,
+  workspace: Locator,
+  propertyKey: string,
+  treeItemName: RegExp
+) {
+  await workspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill(propertyKey);
+  const row = workspace.getByRole("row").filter({ hasText: propertyKey }).first();
+  await expect(row).toBeVisible({ timeout: 20_000 });
+  // Clicking 查看 opens a modal that hides the workbench from the a11y tree, so
+  // the enablement control is selected from the module tree (PARAM-ENABLE-VISIBLE-001).
+  await revealAndSelectTreeitem(workspace, treeItemName);
+  const enablementButton = workspace.getByRole("button", { name: /节点启用/ });
+  await expect(enablementButton).toBeVisible({ timeout: 30_000 });
+  await enablementButton.click();
+  const dialog = page.getByRole("dialog", { name: "节点启用状态" });
+  await expect(dialog).toBeVisible({ timeout: 15_000 });
+  return dialog;
 }
 
 async function waitForReviewTask(
@@ -2524,31 +2678,612 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     }
   });
 
+  test("PARAM-ENABLE-GATE-001: structural keys do not block publish gates", async ({ request }, testInfo) => {
+    // @acceptance PARAM-ENABLE-GATE-001
+    // @operation PARAM-ENABLE-GATE-001
+    test.setTimeout(180_000);
+    const runSuffix = randomUUID().slice(0, 8);
+    const gateProp = `enable_gate_${runSuffix}`;
+    const fileName = `acceptance-enable-gate-${runSuffix}.dts`;
+    const createdFileNames = [fileName];
+    const dtsText = enablementGateDts(runSuffix, gateProp);
+
+    try {
+      const topology = await ensureAuroraSemanticTopology(request);
+      const gateRevision = await attachDedicatedDefaultOverlay(request, {
+        fileName,
+        dtsText,
+        configSetId: topology.configSetId,
+        previousRevisionId: topology.revisionId,
+        propertyKeys: [gateProp]
+      });
+
+      const reviewList = await request.get(
+        apiRoute(
+          `/api/v2/parameter-spec-review-tasks?status=open&projectId=${encodeURIComponent(projectId)}&configRevisionId=${encodeURIComponent(gateRevision.id)}&limit=100`
+        ),
+        { headers: adminHeaders() }
+      );
+      expect(reviewList.ok()).toBe(true);
+      const reviewBody = (await reviewList.json()) as {
+        items: Array<{
+          id: string;
+          propertyKey?: string | null;
+          sourceEvidence?: { propertyKey?: string };
+        }>;
+      };
+      const statusTasks = reviewBody.items.filter((task) => {
+        const key = (task.propertyKey ?? task.sourceEvidence?.propertyKey ?? "").toLowerCase();
+        return key === "status";
+      });
+      expect(statusTasks, "status overlay must not create spec-review tasks").toHaveLength(0);
+
+      const bindingsApi = await request.get(
+        apiRoute(
+          `/api/v2/projects/${projectId}/parameter-bindings?revisionId=${encodeURIComponent(gateRevision.id)}`
+        ),
+        { headers: adminHeaders() }
+      );
+      expect(bindingsApi.ok()).toBe(true);
+      const bindingsBody = (await bindingsApi.json()) as {
+        items: Array<{ propertyKey: string; locator: string | null }>;
+      };
+      const locatorNeedle = `egate_${runSuffix}@60`;
+      const statusBindings = bindingsBody.items.filter(
+        (item) => item.propertyKey === "status" && (item.locator ?? "").includes(locatorNeedle)
+      );
+      expect(statusBindings, "status must not become a parameter binding").toHaveLength(0);
+      expect(bindingsBody.items.some((item) => item.propertyKey === gateProp)).toBe(true);
+
+      const { topologyApi, nodes } = await listEffectiveTopologyNodes(
+        request,
+        topology.configSetId,
+        gateRevision.id
+      );
+      const gateNode = nodes.find((node) => (node.locator ?? "").includes(locatorNeedle));
+      expect(gateNode?.enablement?.selfEnabled, "disabled overlay node stays selfEnabled false").toBe(
+        false
+      );
+
+      const gateDb = await withPgClient(async (client) => {
+        const revision = await client.query<{ status: string }>(
+          `select status from dts_config_revisions where id = $1`,
+          [gateRevision.id]
+        );
+        const structuralOpen = await client.query<{ count: string }>(
+          `
+          select count(*)::text as count
+          from parameter_spec_review_tasks t
+          where t.organization_id = $1
+            and t.status = 'open'
+            and (
+              lower(coalesce(t.source_evidence->>'propertyKey', '')) = any($2::text[])
+              or coalesce(t.source_evidence->>'propertyKey', '') like '#%'
+            )
+            and (
+              coalesce(nullif(t.config_revision_id, ''), nullif(t.source_evidence->>'configRevisionId', '')) = $3
+              or (
+                t.blocker_scope = 'project'
+                and coalesce(nullif(t.project_id, ''), nullif(t.source_evidence->>'projectId', '')) = $4
+              )
+            )
+          `,
+          [organizationId, STRUCTURAL_REVIEW_PROPERTY_KEYS, gateRevision.id, projectId]
+        );
+        const gateCounts = await client.query<{
+          open_spec_reviews: string;
+          unmatched_occurrences: string;
+        }>(
+          `
+          select
+            count(*) filter (
+              where coalesce(t.source_evidence->>'propertyKey', '') <> all($2::text[])
+                and coalesce(t.source_evidence->>'propertyKey', '') not like '#%'
+            )::text as open_spec_reviews,
+            count(*) filter (
+              where coalesce(t.source_evidence->>'propertyKey', '') <> all($2::text[])
+                and coalesce(t.source_evidence->>'propertyKey', '') not like '#%'
+                and (
+                  coalesce(jsonb_array_length(t.candidate_schemas), 0) = 0
+                  or coalesce(t.source_evidence->>'inferred', '') = 'true'
+                )
+            )::text as unmatched_occurrences
+          from parameter_spec_review_tasks t
+          where t.organization_id = $1
+            and t.status = 'open'
+            and (
+              (
+                t.blocker_scope = 'revision'
+                and coalesce(nullif(t.config_revision_id, ''), nullif(t.source_evidence->>'configRevisionId', '')) = $3
+              )
+              or (
+                t.blocker_scope = 'project'
+                and coalesce(nullif(t.project_id, ''), nullif(t.source_evidence->>'projectId', '')) = $4
+              )
+              or t.blocker_scope = 'platform'
+            )
+          `,
+          [organizationId, STRUCTURAL_REVIEW_PROPERTY_KEYS, gateRevision.id, projectId]
+        );
+        const dismissed = await client.query<{ count: string }>(
+          `
+          select count(*)::text as count
+          from parameter_spec_review_tasks
+          where organization_id = $1
+            and status = 'dismissed'
+            and reason = 'systemic:structural-property-not-a-parameter'
+          `,
+          [organizationId]
+        );
+        const cutover = await client.query<{ migration_run_id: string }>(
+          `
+          select migration_run_id
+          from parameter_identity_cutovers
+          where migration_run_id = $1
+          `,
+          [disposableRuntime.migrationRunId]
+        );
+        return {
+          revisionStatus: revision.rows[0]?.status ?? null,
+          structuralOpen: Number(structuralOpen.rows[0]?.count ?? 0),
+          openSpecReviews: Number(gateCounts.rows[0]?.open_spec_reviews ?? 0),
+          unmatchedOccurrences: Number(gateCounts.rows[0]?.unmatched_occurrences ?? 0),
+          dismissedSystemic: Number(dismissed.rows[0]?.count ?? 0),
+          cutoverRunId: cutover.rows[0]?.migration_run_id ?? null
+        };
+      });
+
+      expect(gateDb.revisionStatus, "structural unmatched must not invalidate the ingested revision").not.toBe(
+        "invalid"
+      );
+      expect(gateDb.structuralOpen, "no open structural spec-review tasks for this overlay").toBe(0);
+      expect(
+        gateDb.cutoverRunId,
+        "disposable post-cutover finalize already succeeded; structural reviews must not block migration finalize"
+      ).toBe(disposableRuntime.migrationRunId);
+
+      await recordOperationEvidence({
+        operationId: "PARAM-ENABLE-GATE-001",
+        title: "structural keys do not block publish gates",
+        status: "passed",
+        role: "Admin",
+        route: `/parameters?project=${projectId}`,
+        testInfo,
+        assertions: ["api", "db"],
+        api: [
+          summarizeApiResponse(reviewList, {
+            method: "GET",
+            path: "/api/v2/parameter-spec-review-tasks",
+            responseSummary: `openStatusTasks=${statusTasks.length}; openTasks=${reviewBody.items.length}`
+          }),
+          summarizeApiResponse(bindingsApi, {
+            method: "GET",
+            path: `/api/v2/projects/${projectId}/parameter-bindings`,
+            responseSummary: `statusBindingsForGateNode=${statusBindings.length}`
+          }),
+          summarizeApiResponse(topologyApi, {
+            method: "GET",
+            path: `/api/v2/projects/${projectId}/config-sets/.../topology?view=effective`,
+            responseSummary: `gate.selfEnabled=${String(gateNode?.enablement?.selfEnabled)}`
+          })
+        ],
+        db: [
+          {
+            table: "parameter_spec_review_tasks, dts_config_revisions, parameter_identity_cutovers",
+            predicate: `revision=${gateRevision.id}; structuralKeys excluded from semantic gate`,
+            observed: `revisionStatus=${gateDb.revisionStatus}; structuralOpen=${gateDb.structuralOpen}; openSpecReviews=${gateDb.openSpecReviews}; unmatchedOccurrences=${gateDb.unmatchedOccurrences}; dismissedSystemic=${gateDb.dismissedSystemic}; cutover=${gateDb.cutoverRunId}`,
+            rowCount: 1
+          }
+        ],
+        notes:
+          "API+DB: overlay with status on a unique node creates no status spec-review task or binding. Semantic gate counts exclude STRUCTURAL_PROPERTY_KEYS so structural unmatched does not fail-close candidate promotion. Disposable runtime already finalized cutover (0068 dismisses pre-existing structural tasks with systemic:structural-property-not-a-parameter; dismissedSystemic may be 0 when seed ingest ran after 0068)."
+      });
+    } finally {
+      await cleanupSemanticAcceptanceArtifacts({
+        organizationId,
+        projectId,
+        fileNames: createdFileNames
+      });
+    }
+  });
+
+  test("PARAM-ENABLE-TOGGLE-001: disable with reason shares working tip with binding edit", async ({
+    page,
+    request
+  }, testInfo) => {
+    // @acceptance PARAM-ENABLE-TOGGLE-001
+    // @operation PARAM-ENABLE-TOGGLE-001
+    test.setTimeout(180_000);
+    const runSuffix = randomUUID().slice(0, 8);
+    const disableReason = `PARAM-ENABLE-TOGGLE-001 isolate ${runSuffix}`;
+    const bindingReason = `PARAM-ENABLE-TOGGLE-001 sibling binding ${runSuffix}`;
+
+    try {
+      const topology = await ensureAuroraSemanticTopology(request);
+      const { nodes } = await listEffectiveTopologyNodes(
+        request,
+        topology.configSetId,
+        topology.revisionId
+      );
+      const toggleNode = nodes.find((node) => (node.locator ?? "") === SC8562_LOCATOR);
+      expect(toggleNode?.logicalNodeId).toBeTruthy();
+      expect(toggleNode?.enablement?.selfEnabled, "fixture node starts enabled").toBe(true);
+
+      const bindingsApi = await request.get(
+        apiRoute(
+          `/api/v2/projects/${projectId}/parameter-bindings?revisionId=${encodeURIComponent(topology.revisionId)}`
+        ),
+        { headers: adminHeaders() }
+      );
+      expect(bindingsApi.ok()).toBe(true);
+      const bindingsBody = (await bindingsApi.json()) as {
+        items: Array<{
+          id: string;
+          propertyKey: string;
+          locator: string | null;
+          logicalNodeId?: string | null;
+          parameterSpecId?: string;
+          rawValue: string;
+        }>;
+      };
+      const scBinding = bindingsBody.items.find(
+        (item) => item.propertyKey === "gpio_int" && item.locator === SC8562_LOCATOR
+      );
+      expect(scBinding, "sc8562 gpio_int binding must exist for mixed-round submit").toBeTruthy();
+      expect(scBinding!.parameterSpecId).toBeTruthy();
+
+      await signInBrowserAsRole(
+        page,
+        "software-user",
+        `${disposableRuntime.frontendUrl}/parameters?project=${projectId}`
+      );
+      await dismissXiaozeHint(page);
+
+      const workspace = page.getByRole("region", { name: "DTS 参数工作台" });
+      await expect(workspace).toBeVisible({ timeout: 30_000 });
+      await expect(workspace).toHaveAttribute("data-config-set-id", topology.configSetId, {
+        timeout: 30_000
+      });
+      await expect(page.getByRole("tree", { name: "生效拓扑树" })).toHaveCount(0);
+
+      const enablementDialog = await openWorkbenchEnablementDialog(
+        page,
+        workspace,
+        "gpio_int",
+        /sc8562@6E/
+      );
+      await enablementDialog.getByRole("radio", { name: "禁用" }).click();
+      const confirm = enablementDialog.getByRole("button", { name: "校验并加入本轮" });
+      await expect(confirm).toBeDisabled();
+      await enablementDialog.getByRole("textbox", { name: "修改原因" }).fill(disableReason);
+      await expect(confirm).toBeDisabled();
+      await enablementDialog.getByRole("checkbox", { name: "我确认要禁用此节点" }).click();
+      await expect(confirm).toBeEnabled();
+
+      const enablementPosted = page.waitForResponse(
+        (response) =>
+          response.request().method() === "POST" &&
+          response.url().includes(`/api/v2/projects/${projectId}/node-enablement-drafts`)
+      );
+      await confirm.click();
+      const enablementResponse = await enablementPosted;
+      expect(enablementResponse.status(), await enablementResponse.text()).toBe(201);
+      const enablementBody = (await enablementResponse.json()) as {
+        item: {
+          draftId: string;
+          candidateRevisionId: string;
+          workingCandidateRevisionId?: string;
+          rawText?: string;
+          action?: string;
+          logicalNodeId: string;
+          target?: string;
+        };
+      };
+      expect(enablementBody.item.draftId).toBeTruthy();
+      expect(enablementBody.item.candidateRevisionId).toBeTruthy();
+      expect(enablementBody.item.logicalNodeId).toBe(toggleNode!.logicalNodeId);
+      expect(enablementBody.item.target ?? "force-disabled").toBe("force-disabled");
+
+      const tray = page.getByRole("region", { name: "参数修改提交" });
+      await expect(tray).toBeVisible({ timeout: 20_000 });
+      await expect(tray).toContainText("节点启用");
+
+      const persistedDraft = await withPgClient(async (client) => {
+        const result = await client.query<{
+          edit_subject_kind: string;
+          logical_node_id: string | null;
+          candidate_config_revision_id: string | null;
+          target_value: string | null;
+        }>(
+          `
+          select edit_subject_kind, logical_node_id, candidate_config_revision_id, target_value
+          from parameter_drafts
+          where id = $1
+          `,
+          [enablementBody.item.draftId]
+        );
+        return result.rows[0] ?? null;
+      });
+      expect(persistedDraft).toMatchObject({
+        edit_subject_kind: "node-enablement",
+        logical_node_id: toggleNode!.logicalNodeId,
+        candidate_config_revision_id: enablementBody.item.candidateRevisionId
+      });
+
+      const auditResponse = await request.get(apiRoute("/api/v1/audit-events?limit=50"), {
+        headers: adminHeaders()
+      });
+      expect(auditResponse.ok()).toBe(true);
+      const auditBody = (await auditResponse.json()) as {
+        items: Array<{
+          id?: string;
+          kind: string;
+          action: string;
+          targetId: string | null;
+        }>;
+      };
+      const enablementAudit = auditBody.items.find(
+        (item) =>
+          item.kind === "parameter-topology-governance" &&
+          item.action === "enablement-changed" &&
+          item.targetId === toggleNode!.logicalNodeId
+      );
+      expect(enablementAudit, "disable must write a distinct enablement-changed audit").toBeTruthy();
+
+      const workingTip =
+        enablementBody.item.workingCandidateRevisionId ?? enablementBody.item.candidateRevisionId;
+      const bindingDraft = await request.post(
+        apiRoute(
+          `/api/v2/projects/${projectId}/parameter-bindings/${encodeURIComponent(scBinding!.id)}/drafts`
+        ),
+        {
+          headers: authHeadersForRole("software-user"),
+          data: {
+            baseRevisionId: workingTip,
+            targetValue: {
+              kind: "cells",
+              bits: 32,
+              groups: [
+                [
+                  { kind: "phandle", label: "gpio13" },
+                  { kind: "integer", raw: "32", value: "32" },
+                  { kind: "integer", raw: "0", value: "0" }
+                ]
+              ]
+            },
+            reason: bindingReason
+          }
+        }
+      );
+      expect(bindingDraft.status(), await bindingDraft.text()).toBe(201);
+      const bindingDraftBody = (await bindingDraft.json()) as {
+        item: {
+          draftId: string;
+          candidateRevisionId: string;
+          workingCandidateRevisionId?: string;
+          rawText?: string;
+          parameterSpecId: string;
+          projectParameterBindingId: string;
+        };
+      };
+      const bindingTip =
+        bindingDraftBody.item.workingCandidateRevisionId ?? bindingDraftBody.item.candidateRevisionId;
+      // Binding ingest rebases the enablement draft onto a new candidate and can
+      // drop the status proof (same-file serialize of the large aurora overlay).
+      // Re-apply disable on the shared tip so both items submit together.
+      const enablementOnSharedTip = await request.post(
+        apiRoute(`/api/v2/projects/${projectId}/node-enablement-drafts`),
+        {
+          headers: authHeadersForRole("software-user"),
+          data: {
+            logicalNodeId: toggleNode!.logicalNodeId,
+            baseRevisionId: bindingTip,
+            target: "force-disabled",
+            reason: disableReason
+          }
+        }
+      );
+      expect(enablementOnSharedTip.status(), await enablementOnSharedTip.text()).toBe(201);
+      const sharedEnablement = (await enablementOnSharedTip.json()) as {
+        item: {
+          draftId: string;
+          candidateRevisionId: string;
+          workingCandidateRevisionId?: string;
+          rawText?: string;
+          action?: string;
+          logicalNodeId: string;
+        };
+      };
+
+      const mixedSubmit = await request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
+        headers: authHeadersForRole("software-user"),
+        data: {
+          projectId,
+          items: [
+            {
+              draftId: sharedEnablement.item.draftId,
+              editSubjectKind: "node-enablement",
+              logicalNodeId: sharedEnablement.item.logicalNodeId,
+              action: sharedEnablement.item.action ?? "set",
+              targetValue: sharedEnablement.item.rawText ?? '"disabled"',
+              reason: disableReason
+            },
+            {
+              draftId: bindingDraftBody.item.draftId,
+              projectParameterBindingId: bindingDraftBody.item.projectParameterBindingId,
+              parameterSpecId: bindingDraftBody.item.parameterSpecId,
+              action: "set",
+              targetValue: bindingDraftBody.item.rawText ?? "<&gpio13 32 0>",
+              reason: bindingReason
+            }
+          ],
+          assignees: {
+            hardwareCommitterId: "u-wang-jie",
+            softwareCommitterId: "u-sun-mei",
+            softwareUserId: "u-liu-min"
+          }
+        }
+      });
+      expect(
+        mixedSubmit.status(),
+        `mixed enablement+binding submit must not 409 mixed-working-tips: ${await mixedSubmit.text()}`
+      ).toBe(201);
+
+      await recordOperationEvidence({
+        operationId: "PARAM-ENABLE-TOGGLE-001",
+        title: "disable with reason shares working tip with binding edit",
+        status: "passed",
+        role: "Software User",
+        route: `/parameters?project=${projectId}`,
+        page,
+        testInfo,
+        assertions: ["ui", "api", "db", "audit"],
+        api: [
+          summarizeApiResponse(enablementResponse, {
+            method: "POST",
+            path: `/api/v2/projects/${projectId}/node-enablement-drafts`,
+            responseSummary: `draft=${enablementBody.item.draftId}; tip=${workingTip}`
+          }),
+          summarizeApiResponse(bindingDraft, {
+            method: "POST",
+            path: `/api/v2/projects/${projectId}/parameter-bindings/.../drafts`,
+            responseSummary: `draft=${bindingDraftBody.item.draftId}`
+          }),
+          summarizeApiResponse(enablementOnSharedTip, {
+            method: "POST",
+            path: `/api/v2/projects/${projectId}/node-enablement-drafts`,
+            responseSummary: `sharedTip=${sharedEnablement.item.candidateRevisionId}`
+          }),
+          summarizeApiResponse(mixedSubmit, {
+            method: "POST",
+            path: "/api/v1/parameter-submission-rounds",
+            responseSummary: "enablement+binding same round; not mixed-working-tips"
+          })
+        ],
+        db: [
+          {
+            table: "parameter_drafts",
+            predicate: `id=${enablementBody.item.draftId}`,
+            observed: `kind=${persistedDraft?.edit_subject_kind}; logicalNode=${persistedDraft?.logical_node_id}; tip=${persistedDraft?.candidate_config_revision_id}`,
+            rowCount: 1
+          }
+        ],
+        audit: [
+          {
+            id: enablementAudit?.id,
+            kind: "parameter-topology-governance",
+            action: "enablement-changed",
+            targetId: toggleNode!.logicalNodeId
+          }
+        ],
+        notes:
+          "UI proves disable requires reason + confirmation on labeled seed sc8562. Mixed-round without mixed-working-tips is asserted at API: gpio_int draft on the enablement working tip, then re-apply disable on that shared tip (binding ingest of the large aurora overlay can drop the status proof), then POST /parameter-submission-rounds with both items. Live workbench mixed-round is not used because binding drafts pin loadState.revisionId at POST time and race the preferredRevision reload after enablement ingest."
+      });
+    } finally {
+      await cleanupSemanticAcceptanceArtifacts({
+        organizationId,
+        projectId
+      });
+    }
+  });
+
+  test("PARAM-ENABLE-GUARD-001: non-standard status requires acknowledgement override", async ({
+    page,
+    request
+  }, testInfo) => {
+    // @acceptance PARAM-ENABLE-GUARD-001
+    // @operation PARAM-ENABLE-GUARD-001
+    test.setTimeout(180_000);
+    const runSuffix = randomUUID().slice(0, 8);
+    const guardProp = `enable_guard_${runSuffix}`;
+    const fileName = `acceptance-enable-guard-${runSuffix}.dts`;
+    const createdFileNames = [fileName];
+    const dtsText = enablementGuardDts(runSuffix, guardProp);
+
+    try {
+      const topology = await ensureAuroraSemanticTopology(request);
+      const guardRevision = await attachDedicatedDefaultOverlay(request, {
+        fileName,
+        dtsText,
+        configSetId: topology.configSetId,
+        previousRevisionId: topology.revisionId,
+        propertyKeys: [guardProp]
+      });
+
+      const { nodes } = await listEffectiveTopologyNodes(
+        request,
+        topology.configSetId,
+        guardRevision.id
+      );
+      const locatorNeedle = `eguard_${runSuffix}@50`;
+      const guardNode = nodes.find((node) => (node.locator ?? "").includes(locatorNeedle));
+      expect(guardNode?.enablement?.override ?? guardNode?.enablement?.rawToken).toBeTruthy();
+      expect(
+        guardNode?.enablement?.rawToken === "reserved" ||
+          (guardNode?.enablement?.rawStatus ?? "").includes("reserved")
+      ).toBe(true);
+
+      await signInBrowserAsRole(
+        page,
+        "admin",
+        `${disposableRuntime.frontendUrl}/parameters?project=${projectId}`
+      );
+      await dismissXiaozeHint(page);
+
+      const workspace = page.getByRole("region", { name: "DTS 参数工作台" });
+      await expect(workspace).toBeVisible({ timeout: 30_000 });
+      await expect(workspace).toHaveAttribute("data-config-set-id", topology.configSetId, {
+        timeout: 30_000
+      });
+      await expect(page.getByRole("tree", { name: "生效拓扑树" })).toHaveCount(0);
+
+      const enablementDialog = await openWorkbenchEnablementDialog(
+        page,
+        workspace,
+        guardProp,
+        new RegExp(`eguard_${runSuffix}`)
+      );
+      await expect(enablementDialog.getByRole("region", { name: "非标准 status" })).toBeVisible();
+      await expect(enablementDialog).toContainText(/reserved/);
+      await expect(enablementDialog.getByRole("radio", { name: "启用" })).toHaveCount(0);
+      await expect(enablementDialog.getByRole("button", { name: "校验并加入本轮" })).toHaveCount(0);
+
+      await enablementDialog.getByRole("button", { name: "仍要修改" }).click();
+      await expect(enablementDialog.getByRole("radio", { name: "启用" })).toBeVisible();
+      await enablementDialog.getByRole("radio", { name: "启用" }).click();
+      const confirm = enablementDialog.getByRole("button", { name: "校验并加入本轮" });
+      await expect(confirm).toBeDisabled();
+      await enablementDialog.getByRole("textbox", { name: "修改原因" }).fill("Override reserved token");
+      await expect(confirm).toBeDisabled();
+      await enablementDialog
+        .getByRole("checkbox", { name: "我了解将覆盖非标准 status 原文" })
+        .click();
+      await expect(confirm).toBeEnabled();
+
+      await recordOperationEvidence({
+        operationId: "PARAM-ENABLE-GUARD-001",
+        title: "non-standard status requires acknowledgement override",
+        status: "passed",
+        role: "Admin",
+        route: `/parameters?project=${projectId}`,
+        page,
+        testInfo,
+        assertions: ["ui"],
+        notes:
+          "Live DtsNodeEnablementDialog: status=reserved renders the read-only 非标准 status panel; 仍要修改 reveals the editor; 启用 is selected so confirm is not blocked by the disable checkbox; 校验并加入本轮 stays disabled until reason + 我了解将覆盖非标准 status 原文."
+      });
+    } finally {
+      await cleanupSemanticAcceptanceArtifacts({
+        organizationId,
+        projectId,
+        fileNames: createdFileNames
+      });
+    }
+  });
+
   // Planned markers (`@acceptance-planned` / `@operation-planned`) declare intended
   // coverage without counting as automated coverage; the coverage gate only accepts
   // plain markers carried by runnable tests.
-  test.describe("Node enablement (ADR-0003) — pending browser automation", () => {
-  test("PARAM-ENABLE-GATE-001: structural keys do not block publish gates", async () => {
-    // @acceptance-planned PARAM-ENABLE-GATE-001
-    // @operation-planned PARAM-ENABLE-GATE-001
-    test.skip(true, "Pending: full disposable-DB gate evidence for structural review dismissal.");
-  });
-
-  test("PARAM-ENABLE-TOGGLE-001: disable with reason shares working tip with binding edit", async ({ page }) => {
-    // @acceptance-planned PARAM-ENABLE-TOGGLE-001
-    // @operation-planned PARAM-ENABLE-TOGGLE-001
-    test.skip(true, "Pending: mixed-round enablement + binding submit without mixed-working-tips.");
-    void page;
-  });
-
-  test("PARAM-ENABLE-GUARD-001: non-standard status requires acknowledgement override", async ({ page }) => {
-    // @acceptance-planned PARAM-ENABLE-GUARD-001
-    // @operation-planned PARAM-ENABLE-GUARD-001
-    test.skip(true, "Pending: reserved-status read-only path and secondary override dialog.");
-    void page;
-  });
-  });
-
   test.describe("Module attribution redesign — pending browser automation", () => {
     test("MOD-ATTR-QUEUE-001: unclassified queue dismiss and restore", async ({ page }) => {
       // @acceptance-planned MOD-ATTR-QUEUE-001
