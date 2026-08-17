@@ -8771,6 +8771,16 @@
         "tags": [
           "agent"
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/XiaozeAgUiRunRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -8831,7 +8841,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/XiaozeThreadListResponse"
                 }
               }
             }
@@ -8850,13 +8860,23 @@
         "tags": [
           "agent"
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/XiaozeThreadCreateRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": "Successful response.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/XiaozeThreadCreateResponse"
                 }
               }
             }
@@ -8893,7 +8913,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/XiaozeThreadDetailResponse"
                 }
               }
             }
@@ -8927,7 +8947,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/GenericObjectRequest"
+                "$ref": "#/components/schemas/XiaozeThreadPatchRequest"
               }
             }
           }
@@ -8938,7 +8958,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/XiaozeThreadPatchResponse"
                 }
               }
             }
@@ -8973,7 +8993,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/XiaozeThreadArchiveResponse"
                 }
               }
             }
@@ -10630,6 +10650,35 @@
       },
       "ProjectListResponse": {
         "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "code"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "ProjectListResponse"
       },
       "ConfigSetMemberFileListResponse": {
@@ -10883,14 +10932,339 @@
       },
       "ParameterListResponse": {
         "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "explanation": {
+                  "type": "string"
+                },
+                "configFormat": {
+                  "type": "string"
+                },
+                "valueKind": {
+                  "type": "string",
+                  "enum": [
+                    "scalar",
+                    "complex"
+                  ]
+                },
+                "module": {
+                  "type": "string"
+                },
+                "moduleId": {
+                  "type": "string"
+                },
+                "modulePath": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "projectId": {
+                  "type": "string"
+                },
+                "currentValue": {
+                  "type": "string"
+                },
+                "recommendedValue": {
+                  "type": "string"
+                },
+                "range": {
+                  "type": "string"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "risk": {
+                  "type": "string",
+                  "enum": [
+                    "High",
+                    "Medium",
+                    "Low"
+                  ]
+                },
+                "sourceFileName": {
+                  "type": "string"
+                },
+                "sourceNodePath": {
+                  "type": "string"
+                },
+                "parameterSpecId": {
+                  "type": "string"
+                },
+                "projectParameterBindingId": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                },
+                "updatedAtTs": {
+                  "type": "string"
+                },
+                "history": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "version": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": "string"
+                      },
+                      "changedAt": {
+                        "type": "string"
+                      },
+                      "changedBy": {
+                        "type": "string"
+                      },
+                      "requestId": {
+                        "type": "string"
+                      },
+                      "projectParameterBindingId": {
+                        "type": "string"
+                      },
+                      "parameterSpecId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "value",
+                      "changedAt",
+                      "changedBy"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "description",
+                "explanation",
+                "configFormat",
+                "module",
+                "projectId",
+                "currentValue",
+                "recommendedValue",
+                "range",
+                "unit",
+                "risk",
+                "updatedAt",
+                "updatedAtTs",
+                "history"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "ParameterListResponse"
       },
       "ParameterResponse": {
         "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "explanation": {
+                "type": "string"
+              },
+              "configFormat": {
+                "type": "string"
+              },
+              "valueKind": {
+                "type": "string",
+                "enum": [
+                  "scalar",
+                  "complex"
+                ]
+              },
+              "module": {
+                "type": "string"
+              },
+              "moduleId": {
+                "type": "string"
+              },
+              "modulePath": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "currentValue": {
+                "type": "string"
+              },
+              "recommendedValue": {
+                "type": "string"
+              },
+              "range": {
+                "type": "string"
+              },
+              "unit": {
+                "type": "string"
+              },
+              "risk": {
+                "type": "string",
+                "enum": [
+                  "High",
+                  "Medium",
+                  "Low"
+                ]
+              },
+              "sourceFileName": {
+                "type": "string"
+              },
+              "sourceNodePath": {
+                "type": "string"
+              },
+              "parameterSpecId": {
+                "type": "string"
+              },
+              "projectParameterBindingId": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "updatedAtTs": {
+                "type": "string"
+              },
+              "history": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": "string"
+                    },
+                    "changedAt": {
+                      "type": "string"
+                    },
+                    "changedBy": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "projectParameterBindingId": {
+                      "type": "string"
+                    },
+                    "parameterSpecId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "value",
+                    "changedAt",
+                    "changedBy"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "description",
+              "explanation",
+              "configFormat",
+              "module",
+              "projectId",
+              "currentValue",
+              "recommendedValue",
+              "range",
+              "unit",
+              "risk",
+              "updatedAt",
+              "updatedAtTs",
+              "history"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "ParameterResponse"
       },
       "ParameterHistoryResponse": {
         "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "version": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                },
+                "changedAt": {
+                  "type": "string"
+                },
+                "changedBy": {
+                  "type": "string"
+                },
+                "requestId": {
+                  "type": "string"
+                },
+                "projectParameterBindingId": {
+                  "type": "string"
+                },
+                "parameterSpecId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "version",
+                "value",
+                "changedAt",
+                "changedBy"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "ParameterHistoryResponse"
       },
       "SaveParameterDraftRequest": {
@@ -10899,10 +11273,165 @@
       },
       "ParameterDraftResponse": {
         "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "parameterId": {
+                "type": "string"
+              },
+              "targetValue": {
+                "type": "string"
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "set",
+                  "delete"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "projectParameterBindingId": {
+                "type": "string"
+              },
+              "candidateConfigRevisionId": {
+                "type": "string"
+              },
+              "parameterSpecId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "module": {
+                "type": "string"
+              },
+              "editSubjectKind": {
+                "type": "string",
+                "enum": [
+                  "binding",
+                  "node-enablement"
+                ]
+              },
+              "logicalNodeId": {
+                "type": "string"
+              },
+              "nodeLabel": {
+                "type": "string"
+              },
+              "currentValue": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "projectId",
+              "parameterId",
+              "targetValue",
+              "reason",
+              "updatedAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "ParameterDraftResponse"
       },
       "ParameterDraftListResponse": {
         "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "projectId": {
+                  "type": "string"
+                },
+                "parameterId": {
+                  "type": "string"
+                },
+                "targetValue": {
+                  "type": "string"
+                },
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "set",
+                    "delete"
+                  ]
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                },
+                "projectParameterBindingId": {
+                  "type": "string"
+                },
+                "candidateConfigRevisionId": {
+                  "type": "string"
+                },
+                "parameterSpecId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "module": {
+                  "type": "string"
+                },
+                "editSubjectKind": {
+                  "type": "string",
+                  "enum": [
+                    "binding",
+                    "node-enablement"
+                  ]
+                },
+                "logicalNodeId": {
+                  "type": "string"
+                },
+                "nodeLabel": {
+                  "type": "string"
+                },
+                "currentValue": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "projectId",
+                "parameterId",
+                "targetValue",
+                "reason",
+                "updatedAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "ParameterDraftListResponse"
       },
       "SubmitParameterRoundRequest": {
@@ -10911,14 +11440,653 @@
       },
       "ParameterSubmissionRoundResponse": {
         "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "projectName": {
+                "type": "string"
+              },
+              "submitter": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "submitted",
+                  "hardware_review",
+                  "software_review",
+                  "software_merge",
+                  "merged",
+                  "rejected",
+                  "withdrawn",
+                  "stashed"
+                ]
+              },
+              "summary": {
+                "type": "string"
+              },
+              "workflowAssignees": {
+                "type": "object",
+                "properties": {
+                  "hardwareCommitterId": {
+                    "type": "string"
+                  },
+                  "softwareCommitterId": {
+                    "type": "string"
+                  },
+                  "softwareUserId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "hardwareCommitterId",
+                  "softwareCommitterId",
+                  "softwareUserId"
+                ],
+                "additionalProperties": false
+              },
+              "workflowTrail": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "enum": [
+                        "hardware_review",
+                        "software_review",
+                        "software_merge"
+                      ]
+                    },
+                    "stepIndex": {
+                      "type": "number"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "assigneeName": {
+                      "type": "string"
+                    },
+                    "executorName": {
+                      "type": "string"
+                    },
+                    "executorLabel": {
+                      "type": "string",
+                      "enum": [
+                        "执行人",
+                        "当前处理"
+                      ]
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "active",
+                        "completed",
+                        "skipped"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "stepIndex",
+                    "label",
+                    "assigneeName",
+                    "executorLabel",
+                    "state"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "parameterId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "module": {
+                      "type": "string"
+                    },
+                    "currentValue": {
+                      "type": "string"
+                    },
+                    "targetValue": {
+                      "type": "string"
+                    },
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "set",
+                        "delete"
+                      ]
+                    },
+                    "candidateConfigRevisionId": {
+                      "type": "string"
+                    },
+                    "unit": {
+                      "type": "string"
+                    },
+                    "risk": {
+                      "type": "string",
+                      "enum": [
+                        "High",
+                        "Medium",
+                        "Low"
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "valueKind": {
+                      "type": "string",
+                      "enum": [
+                        "scalar",
+                        "complex"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "requestId",
+                    "parameterId",
+                    "name",
+                    "module",
+                    "currentValue",
+                    "targetValue",
+                    "unit",
+                    "risk",
+                    "reason"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "projectId",
+              "projectName",
+              "submitter",
+              "createdAt",
+              "status",
+              "summary",
+              "items"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "ParameterSubmissionRoundResponse"
       },
       "ParameterSubmissionRoundListResponse": {
         "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "projectId": {
+                  "type": "string"
+                },
+                "projectName": {
+                  "type": "string"
+                },
+                "submitter": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "submitted",
+                    "hardware_review",
+                    "software_review",
+                    "software_merge",
+                    "merged",
+                    "rejected",
+                    "withdrawn",
+                    "stashed"
+                  ]
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "workflowAssignees": {
+                  "type": "object",
+                  "properties": {
+                    "hardwareCommitterId": {
+                      "type": "string"
+                    },
+                    "softwareCommitterId": {
+                      "type": "string"
+                    },
+                    "softwareUserId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "hardwareCommitterId",
+                    "softwareCommitterId",
+                    "softwareUserId"
+                  ],
+                  "additionalProperties": false
+                },
+                "workflowTrail": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "key": {
+                        "type": "string",
+                        "enum": [
+                          "hardware_review",
+                          "software_review",
+                          "software_merge"
+                        ]
+                      },
+                      "stepIndex": {
+                        "type": "number"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "assigneeName": {
+                        "type": "string"
+                      },
+                      "executorName": {
+                        "type": "string"
+                      },
+                      "executorLabel": {
+                        "type": "string",
+                        "enum": [
+                          "执行人",
+                          "当前处理"
+                        ]
+                      },
+                      "state": {
+                        "type": "string",
+                        "enum": [
+                          "pending",
+                          "active",
+                          "completed",
+                          "skipped"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "key",
+                      "stepIndex",
+                      "label",
+                      "assigneeName",
+                      "executorLabel",
+                      "state"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "requestId": {
+                        "type": "string"
+                      },
+                      "parameterId": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "module": {
+                        "type": "string"
+                      },
+                      "currentValue": {
+                        "type": "string"
+                      },
+                      "targetValue": {
+                        "type": "string"
+                      },
+                      "action": {
+                        "type": "string",
+                        "enum": [
+                          "set",
+                          "delete"
+                        ]
+                      },
+                      "candidateConfigRevisionId": {
+                        "type": "string"
+                      },
+                      "unit": {
+                        "type": "string"
+                      },
+                      "risk": {
+                        "type": "string",
+                        "enum": [
+                          "High",
+                          "Medium",
+                          "Low"
+                        ]
+                      },
+                      "reason": {
+                        "type": "string"
+                      },
+                      "valueKind": {
+                        "type": "string",
+                        "enum": [
+                          "scalar",
+                          "complex"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "requestId",
+                      "parameterId",
+                      "name",
+                      "module",
+                      "currentValue",
+                      "targetValue",
+                      "unit",
+                      "risk",
+                      "reason"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "projectId",
+                "projectName",
+                "submitter",
+                "createdAt",
+                "status",
+                "summary",
+                "items"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "ParameterSubmissionRoundListResponse"
       },
       "ParameterChangeRequestListResponse": {
         "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "submissionRoundId": {
+                  "type": "string"
+                },
+                "projectId": {
+                  "type": "string"
+                },
+                "editSubjectKind": {
+                  "type": "string",
+                  "enum": [
+                    "binding",
+                    "node-enablement"
+                  ]
+                },
+                "logicalNodeId": {
+                  "type": "string"
+                },
+                "parameterId": {
+                  "type": "string"
+                },
+                "baseVersion": {
+                  "type": "number"
+                },
+                "module": {
+                  "type": "string"
+                },
+                "moduleDescription": {
+                  "type": "string"
+                },
+                "parameterDescription": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "currentValue": {
+                  "type": "string"
+                },
+                "targetValue": {
+                  "type": "string"
+                },
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "set",
+                    "delete"
+                  ]
+                },
+                "candidateConfigRevisionId": {
+                  "type": "string"
+                },
+                "submitter": {
+                  "type": "string"
+                },
+                "submitterUserId": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "createdAtTs": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "submitted",
+                    "hardware_review",
+                    "software_review",
+                    "software_merge",
+                    "merged",
+                    "rejected"
+                  ]
+                },
+                "aiSummary": {
+                  "type": "string"
+                },
+                "rejectReason": {
+                  "type": "string"
+                },
+                "waitingHours": {
+                  "type": "number"
+                },
+                "aiSuggestion": {
+                  "type": "object",
+                  "properties": {
+                    "recommendation": {
+                      "type": "string",
+                      "enum": [
+                        "advance",
+                        "needs-review",
+                        "reject"
+                      ]
+                    },
+                    "confidence": {
+                      "type": "string",
+                      "enum": [
+                        "high",
+                        "mid",
+                        "low"
+                      ]
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "reasons": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "similarRequests": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "recommendation",
+                    "confidence",
+                    "summary",
+                    "reasons",
+                    "similarRequests"
+                  ],
+                  "additionalProperties": false
+                },
+                "impact": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "module",
+                          "test",
+                          "parameter",
+                          "phandle",
+                          "compatible",
+                          "config-set"
+                        ]
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "note": {
+                        "type": "string"
+                      },
+                      "risk": {
+                        "type": "string",
+                        "enum": [
+                          "High",
+                          "Medium",
+                          "Low"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "name",
+                      "note",
+                      "risk"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "assignedTo": {
+                  "type": "string"
+                },
+                "workflowAssignees": {
+                  "type": "object",
+                  "properties": {
+                    "hardwareCommitterId": {
+                      "type": "string"
+                    },
+                    "softwareCommitterId": {
+                      "type": "string"
+                    },
+                    "softwareUserId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "hardwareCommitterId",
+                    "softwareCommitterId",
+                    "softwareUserId"
+                  ],
+                  "additionalProperties": false
+                },
+                "fastTrack": {
+                  "type": "boolean"
+                },
+                "reviewerNote": {
+                  "type": "string"
+                },
+                "valueKind": {
+                  "type": "string",
+                  "enum": [
+                    "scalar",
+                    "complex"
+                  ]
+                },
+                "projectParameterBindingId": {
+                  "type": "string"
+                },
+                "parameterSpecId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "parameterId",
+                "module",
+                "title",
+                "currentValue",
+                "targetValue",
+                "submitter",
+                "createdAt",
+                "createdAtTs",
+                "updatedAt",
+                "status",
+                "aiSummary",
+                "waitingHours",
+                "aiSuggestion",
+                "impact"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "ParameterChangeRequestListResponse"
       },
       "ReviewParameterChangeRequest": {
@@ -10927,6 +12095,249 @@
       },
       "ParameterChangeRequestResponse": {
         "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "submissionRoundId": {
+                "type": "string"
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "editSubjectKind": {
+                "type": "string",
+                "enum": [
+                  "binding",
+                  "node-enablement"
+                ]
+              },
+              "logicalNodeId": {
+                "type": "string"
+              },
+              "parameterId": {
+                "type": "string"
+              },
+              "baseVersion": {
+                "type": "number"
+              },
+              "module": {
+                "type": "string"
+              },
+              "moduleDescription": {
+                "type": "string"
+              },
+              "parameterDescription": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "currentValue": {
+                "type": "string"
+              },
+              "targetValue": {
+                "type": "string"
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "set",
+                  "delete"
+                ]
+              },
+              "candidateConfigRevisionId": {
+                "type": "string"
+              },
+              "submitter": {
+                "type": "string"
+              },
+              "submitterUserId": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "createdAtTs": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "submitted",
+                  "hardware_review",
+                  "software_review",
+                  "software_merge",
+                  "merged",
+                  "rejected"
+                ]
+              },
+              "aiSummary": {
+                "type": "string"
+              },
+              "rejectReason": {
+                "type": "string"
+              },
+              "waitingHours": {
+                "type": "number"
+              },
+              "aiSuggestion": {
+                "type": "object",
+                "properties": {
+                  "recommendation": {
+                    "type": "string",
+                    "enum": [
+                      "advance",
+                      "needs-review",
+                      "reject"
+                    ]
+                  },
+                  "confidence": {
+                    "type": "string",
+                    "enum": [
+                      "high",
+                      "mid",
+                      "low"
+                    ]
+                  },
+                  "summary": {
+                    "type": "string"
+                  },
+                  "reasons": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "similarRequests": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "recommendation",
+                  "confidence",
+                  "summary",
+                  "reasons",
+                  "similarRequests"
+                ],
+                "additionalProperties": false
+              },
+              "impact": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "module",
+                        "test",
+                        "parameter",
+                        "phandle",
+                        "compatible",
+                        "config-set"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "note": {
+                      "type": "string"
+                    },
+                    "risk": {
+                      "type": "string",
+                      "enum": [
+                        "High",
+                        "Medium",
+                        "Low"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "name",
+                    "note",
+                    "risk"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "assignedTo": {
+                "type": "string"
+              },
+              "workflowAssignees": {
+                "type": "object",
+                "properties": {
+                  "hardwareCommitterId": {
+                    "type": "string"
+                  },
+                  "softwareCommitterId": {
+                    "type": "string"
+                  },
+                  "softwareUserId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "hardwareCommitterId",
+                  "softwareCommitterId",
+                  "softwareUserId"
+                ],
+                "additionalProperties": false
+              },
+              "fastTrack": {
+                "type": "boolean"
+              },
+              "reviewerNote": {
+                "type": "string"
+              },
+              "valueKind": {
+                "type": "string",
+                "enum": [
+                  "scalar",
+                  "complex"
+                ]
+              },
+              "projectParameterBindingId": {
+                "type": "string"
+              },
+              "parameterSpecId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "parameterId",
+              "module",
+              "title",
+              "currentValue",
+              "targetValue",
+              "submitter",
+              "createdAt",
+              "createdAtTs",
+              "updatedAt",
+              "status",
+              "aiSummary",
+              "waitingHours",
+              "aiSuggestion",
+              "impact"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "ParameterChangeRequestResponse"
       },
       "CreateParameterImportBatchRequest": {
@@ -10935,6 +12346,145 @@
       },
       "ParameterImportBatchResponse": {
         "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "sourceName": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "previewed",
+                  "applied"
+                ]
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "appliedAt": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "object",
+                "properties": {
+                  "added": {
+                    "type": "number"
+                  },
+                  "updated": {
+                    "type": "number"
+                  },
+                  "unchanged": {
+                    "type": "number"
+                  },
+                  "conflict": {
+                    "type": "number"
+                  },
+                  "highRisk": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "added",
+                  "updated",
+                  "unchanged",
+                  "conflict",
+                  "highRisk"
+                ],
+                "additionalProperties": false
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "module": {
+                      "type": "string"
+                    },
+                    "risk": {
+                      "type": "string",
+                      "enum": [
+                        "High",
+                        "Medium",
+                        "Low"
+                      ]
+                    },
+                    "unit": {
+                      "type": "string"
+                    },
+                    "range": {
+                      "type": "string"
+                    },
+                    "currentValue": {
+                      "type": "string"
+                    },
+                    "recommendedValue": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "explanation": {
+                      "type": "string"
+                    },
+                    "configFormat": {
+                      "type": "string"
+                    },
+                    "classification": {
+                      "type": "string",
+                      "enum": [
+                        "added",
+                        "updated",
+                        "unchanged",
+                        "conflict"
+                      ]
+                    },
+                    "riskFlag": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "module",
+                    "risk",
+                    "unit",
+                    "range",
+                    "classification"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "projectId",
+              "sourceName",
+              "status",
+              "createdAt",
+              "summary",
+              "items"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "ParameterImportBatchResponse"
       },
       "ApplyParameterImportBatchRequest": {
@@ -11067,6 +12617,300 @@
       },
       "LogFileUploadResponse": {
         "type": "object",
+        "properties": {
+          "fileObject": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "organizationId": {
+                "type": "string"
+              },
+              "storageKey": {
+                "type": "string"
+              },
+              "fileName": {
+                "type": "string"
+              },
+              "contentType": {
+                "type": "string"
+              },
+              "fileSizeBytes": {
+                "type": "number"
+              },
+              "checksumSha256": {
+                "type": "string"
+              },
+              "uploadedByUserId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "createdAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          },
+          "log": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "reportId": {
+                "type": "string"
+              },
+              "fileName": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "fileSizeBytes": {
+                "type": "number"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "uploaded",
+                  "processing",
+                  "complete",
+                  "failed"
+                ]
+              },
+              "archiveState": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "archived"
+                ]
+              },
+              "stage": {
+                "type": "string",
+                "enum": [
+                  "parse",
+                  "pattern",
+                  "rootcause",
+                  "report"
+                ]
+              },
+              "confidence": {
+                "type": "number"
+              },
+              "conclusion": {
+                "type": "string"
+              },
+              "impact": {
+                "type": "string"
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "stageId": {
+                      "type": "string",
+                      "enum": [
+                        "parse",
+                        "pattern",
+                        "rootcause",
+                        "report"
+                      ]
+                    },
+                    "lineNumbers": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      }
+                    },
+                    "inference": {
+                      "type": "string"
+                    },
+                    "suggestedAction": {
+                      "type": "string"
+                    },
+                    "ruleHit": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "stageId",
+                    "lineNumbers",
+                    "inference",
+                    "suggestedAction"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "suggestedActions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "severity": {
+                "type": "string",
+                "enum": [
+                  "Critical",
+                  "Warning",
+                  "Info"
+                ]
+              },
+              "rawLines": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "capturedAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "submittedBy": {
+                "type": "string"
+              },
+              "relatedParameterId": {
+                "type": "string"
+              },
+              "device": {
+                "type": "string"
+              },
+              "failureReason": {
+                "type": "string"
+              },
+              "analysisQuestion": {
+                "type": "string"
+              },
+              "logDomainId": {
+                "type": "string"
+              },
+              "logDomainName": {
+                "type": "string"
+              },
+              "analysisSource": {
+                "type": "string",
+                "enum": [
+                  "agent",
+                  "rules-fallback"
+                ]
+              },
+              "degradedReason": {
+                "type": "string",
+                "enum": [
+                  "provider-unavailable",
+                  "token-budget-exhausted"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "reportId",
+              "fileName",
+              "source",
+              "fileSizeBytes",
+              "status",
+              "archiveState",
+              "stage",
+              "confidence",
+              "conclusion",
+              "impact",
+              "evidence",
+              "suggestedActions",
+              "severity",
+              "rawLines",
+              "capturedAt",
+              "updatedAt",
+              "submittedBy"
+            ],
+            "additionalProperties": false
+          },
+          "job": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "log-analysis"
+                ]
+              },
+              "logId": {
+                "type": "string"
+              },
+              "runId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "queued",
+                  "processing",
+                  "complete",
+                  "failed"
+                ]
+              },
+              "progress": {
+                "type": "number"
+              },
+              "currentStage": {
+                "type": "string",
+                "enum": [
+                  "parse",
+                  "pattern",
+                  "rootcause",
+                  "report"
+                ]
+              },
+              "error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "organizationId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "logId",
+              "runId",
+              "status",
+              "progress",
+              "currentStage",
+              "error",
+              "updatedAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "fileObject",
+          "log",
+          "job"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "LogFileUploadResponse"
       },
       "CreateLogRecordRequest": {
@@ -11075,18 +12919,756 @@
       },
       "LogRecordResponse": {
         "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "reportId": {
+                "type": "string"
+              },
+              "fileName": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "fileSizeBytes": {
+                "type": "number"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "uploaded",
+                  "processing",
+                  "complete",
+                  "failed"
+                ]
+              },
+              "archiveState": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "archived"
+                ]
+              },
+              "stage": {
+                "type": "string",
+                "enum": [
+                  "parse",
+                  "pattern",
+                  "rootcause",
+                  "report"
+                ]
+              },
+              "confidence": {
+                "type": "number"
+              },
+              "conclusion": {
+                "type": "string"
+              },
+              "impact": {
+                "type": "string"
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "stageId": {
+                      "type": "string",
+                      "enum": [
+                        "parse",
+                        "pattern",
+                        "rootcause",
+                        "report"
+                      ]
+                    },
+                    "lineNumbers": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      }
+                    },
+                    "inference": {
+                      "type": "string"
+                    },
+                    "suggestedAction": {
+                      "type": "string"
+                    },
+                    "ruleHit": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "stageId",
+                    "lineNumbers",
+                    "inference",
+                    "suggestedAction"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "suggestedActions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "severity": {
+                "type": "string",
+                "enum": [
+                  "Critical",
+                  "Warning",
+                  "Info"
+                ]
+              },
+              "rawLines": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "capturedAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "submittedBy": {
+                "type": "string"
+              },
+              "relatedParameterId": {
+                "type": "string"
+              },
+              "device": {
+                "type": "string"
+              },
+              "failureReason": {
+                "type": "string"
+              },
+              "analysisQuestion": {
+                "type": "string"
+              },
+              "logDomainId": {
+                "type": "string"
+              },
+              "logDomainName": {
+                "type": "string"
+              },
+              "analysisSource": {
+                "type": "string",
+                "enum": [
+                  "agent",
+                  "rules-fallback"
+                ]
+              },
+              "degradedReason": {
+                "type": "string",
+                "enum": [
+                  "provider-unavailable",
+                  "token-budget-exhausted"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "reportId",
+              "fileName",
+              "source",
+              "fileSizeBytes",
+              "status",
+              "archiveState",
+              "stage",
+              "confidence",
+              "conclusion",
+              "impact",
+              "evidence",
+              "suggestedActions",
+              "severity",
+              "rawLines",
+              "capturedAt",
+              "updatedAt",
+              "submittedBy"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "LogRecordResponse"
       },
       "LogRecordListResponse": {
         "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "reportId": {
+                  "type": "string"
+                },
+                "fileName": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                },
+                "fileSizeBytes": {
+                  "type": "number"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "uploaded",
+                    "processing",
+                    "complete",
+                    "failed"
+                  ]
+                },
+                "archiveState": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "archived"
+                  ]
+                },
+                "stage": {
+                  "type": "string",
+                  "enum": [
+                    "parse",
+                    "pattern",
+                    "rootcause",
+                    "report"
+                  ]
+                },
+                "confidence": {
+                  "type": "number"
+                },
+                "conclusion": {
+                  "type": "string"
+                },
+                "impact": {
+                  "type": "string"
+                },
+                "evidence": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "stageId": {
+                        "type": "string",
+                        "enum": [
+                          "parse",
+                          "pattern",
+                          "rootcause",
+                          "report"
+                        ]
+                      },
+                      "lineNumbers": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        }
+                      },
+                      "inference": {
+                        "type": "string"
+                      },
+                      "suggestedAction": {
+                        "type": "string"
+                      },
+                      "ruleHit": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "stageId",
+                      "lineNumbers",
+                      "inference",
+                      "suggestedAction"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "suggestedActions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": [
+                    "Critical",
+                    "Warning",
+                    "Info"
+                  ]
+                },
+                "rawLines": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "capturedAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                },
+                "submittedBy": {
+                  "type": "string"
+                },
+                "relatedParameterId": {
+                  "type": "string"
+                },
+                "device": {
+                  "type": "string"
+                },
+                "failureReason": {
+                  "type": "string"
+                },
+                "analysisQuestion": {
+                  "type": "string"
+                },
+                "logDomainId": {
+                  "type": "string"
+                },
+                "logDomainName": {
+                  "type": "string"
+                },
+                "analysisSource": {
+                  "type": "string",
+                  "enum": [
+                    "agent",
+                    "rules-fallback"
+                  ]
+                },
+                "degradedReason": {
+                  "type": "string",
+                  "enum": [
+                    "provider-unavailable",
+                    "token-budget-exhausted"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "reportId",
+                "fileName",
+                "source",
+                "fileSizeBytes",
+                "status",
+                "archiveState",
+                "stage",
+                "confidence",
+                "conclusion",
+                "impact",
+                "evidence",
+                "suggestedActions",
+                "severity",
+                "rawLines",
+                "capturedAt",
+                "updatedAt",
+                "submittedBy"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "LogRecordListResponse"
       },
       "LogRunListResponse": {
         "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "logId": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "queued",
+                    "processing",
+                    "complete",
+                    "failed"
+                  ]
+                },
+                "currentStage": {
+                  "type": "string",
+                  "enum": [
+                    "parse",
+                    "pattern",
+                    "rootcause",
+                    "report"
+                  ]
+                },
+                "progress": {
+                  "type": "number"
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "updatedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "logId",
+                "status",
+                "currentStage",
+                "progress",
+                "error",
+                "updatedAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "LogRunListResponse"
       },
       "LogRunResponse": {
         "type": "object",
+        "properties": {
+          "log": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "reportId": {
+                "type": "string"
+              },
+              "fileName": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "fileSizeBytes": {
+                "type": "number"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "uploaded",
+                  "processing",
+                  "complete",
+                  "failed"
+                ]
+              },
+              "archiveState": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "archived"
+                ]
+              },
+              "stage": {
+                "type": "string",
+                "enum": [
+                  "parse",
+                  "pattern",
+                  "rootcause",
+                  "report"
+                ]
+              },
+              "confidence": {
+                "type": "number"
+              },
+              "conclusion": {
+                "type": "string"
+              },
+              "impact": {
+                "type": "string"
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "stageId": {
+                      "type": "string",
+                      "enum": [
+                        "parse",
+                        "pattern",
+                        "rootcause",
+                        "report"
+                      ]
+                    },
+                    "lineNumbers": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      }
+                    },
+                    "inference": {
+                      "type": "string"
+                    },
+                    "suggestedAction": {
+                      "type": "string"
+                    },
+                    "ruleHit": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "stageId",
+                    "lineNumbers",
+                    "inference",
+                    "suggestedAction"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "suggestedActions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "severity": {
+                "type": "string",
+                "enum": [
+                  "Critical",
+                  "Warning",
+                  "Info"
+                ]
+              },
+              "rawLines": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "capturedAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "submittedBy": {
+                "type": "string"
+              },
+              "relatedParameterId": {
+                "type": "string"
+              },
+              "device": {
+                "type": "string"
+              },
+              "failureReason": {
+                "type": "string"
+              },
+              "analysisQuestion": {
+                "type": "string"
+              },
+              "logDomainId": {
+                "type": "string"
+              },
+              "logDomainName": {
+                "type": "string"
+              },
+              "analysisSource": {
+                "type": "string",
+                "enum": [
+                  "agent",
+                  "rules-fallback"
+                ]
+              },
+              "degradedReason": {
+                "type": "string",
+                "enum": [
+                  "provider-unavailable",
+                  "token-budget-exhausted"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "reportId",
+              "fileName",
+              "source",
+              "fileSizeBytes",
+              "status",
+              "archiveState",
+              "stage",
+              "confidence",
+              "conclusion",
+              "impact",
+              "evidence",
+              "suggestedActions",
+              "severity",
+              "rawLines",
+              "capturedAt",
+              "updatedAt",
+              "submittedBy"
+            ],
+            "additionalProperties": false
+          },
+          "job": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "log-analysis"
+                ]
+              },
+              "logId": {
+                "type": "string"
+              },
+              "runId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "queued",
+                  "processing",
+                  "complete",
+                  "failed"
+                ]
+              },
+              "progress": {
+                "type": "number"
+              },
+              "currentStage": {
+                "type": "string",
+                "enum": [
+                  "parse",
+                  "pattern",
+                  "rootcause",
+                  "report"
+                ]
+              },
+              "error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "organizationId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "logId",
+              "runId",
+              "status",
+              "progress",
+              "currentStage",
+              "error",
+              "updatedAt"
+            ],
+            "additionalProperties": false
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "logId": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "queued",
+                    "processing",
+                    "complete",
+                    "failed"
+                  ]
+                },
+                "currentStage": {
+                  "type": "string",
+                  "enum": [
+                    "parse",
+                    "pattern",
+                    "rootcause",
+                    "report"
+                  ]
+                },
+                "progress": {
+                  "type": "number"
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "updatedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "logId",
+                "status",
+                "currentStage",
+                "progress",
+                "error",
+                "updatedAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "log",
+          "job"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "LogRunResponse"
       },
       "LogFeedbackRequest": {
@@ -11095,14 +13677,165 @@
       },
       "LogFeedbackResponse": {
         "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "LogFeedbackResponse"
       },
       "LogFeedbackInsightsResponse": {
         "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "logDomainId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "logDomainName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "analysisSource": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "agent",
+                        "rules-fallback"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "promptVersion": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "totalCount": {
+                  "type": "number"
+                },
+                "helpfulCount": {
+                  "type": "number"
+                },
+                "helpfulRate": {
+                  "type": "number"
+                },
+                "lastFeedbackAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "logDomainId",
+                "logDomainName",
+                "analysisSource",
+                "promptVersion",
+                "totalCount",
+                "helpfulCount",
+                "helpfulRate",
+                "lastFeedbackAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "LogFeedbackInsightsResponse"
       },
       "LogDomainListResponse": {
         "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "archived"
+                  ]
+                },
+                "formatProfile": {},
+                "modelOverride": {
+                  "type": "string"
+                },
+                "webhook": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "secretConfigured": {
+                      "type": "boolean"
+                    },
+                    "secretLastFour": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "enabled",
+                    "secretConfigured"
+                  ],
+                  "additionalProperties": false
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "status",
+                "createdAt",
+                "updatedAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "LogDomainListResponse"
       },
       "CreateLogDomainRequest": {
@@ -11111,6 +13844,73 @@
       },
       "LogDomainResponse": {
         "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "archived"
+                ]
+              },
+              "formatProfile": {},
+              "modelOverride": {
+                "type": "string"
+              },
+              "webhook": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "secretConfigured": {
+                    "type": "boolean"
+                  },
+                  "secretLastFour": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "enabled",
+                  "secretConfigured"
+                ],
+                "additionalProperties": false
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "status",
+              "createdAt",
+              "updatedAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "LogDomainResponse"
       },
       "UpdateLogDomainRequest": {
@@ -11119,6 +13919,59 @@
       },
       "LogDomainKnowledgeLinkListResponse": {
         "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "logDomainId": {
+                  "type": "string"
+                },
+                "knowledgeEntryId": {
+                  "type": "string"
+                },
+                "entryTitle": {
+                  "type": "string"
+                },
+                "entryStatus": {
+                  "type": "string",
+                  "enum": [
+                    "draft",
+                    "published",
+                    "archived"
+                  ]
+                },
+                "entryTags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "linkedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "logDomainId",
+                "knowledgeEntryId",
+                "entryTitle",
+                "entryStatus",
+                "entryTags",
+                "linkedAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "LogDomainKnowledgeLinkListResponse"
       },
       "SetLogDomainKnowledgeLinksRequest": {
@@ -11131,6 +13984,68 @@
       },
       "LogWebhookDeliveryListResponse": {
         "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "logDomainId": {
+                  "type": "string"
+                },
+                "logRecordId": {
+                  "type": "string"
+                },
+                "runId": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "result",
+                    "test"
+                  ]
+                },
+                "attempt": {
+                  "type": "number"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "delivered",
+                    "retrying",
+                    "failed"
+                  ]
+                },
+                "httpStatus": {
+                  "type": "number"
+                },
+                "error": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "logDomainId",
+                "kind",
+                "attempt",
+                "status",
+                "createdAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "LogWebhookDeliveryListResponse"
       },
       "SendLogDomainWebhookTestRequest": {
@@ -11139,6 +14054,39 @@
       },
       "LogWebhookTestOutcomeResponse": {
         "type": "object",
+        "properties": {
+          "outcome": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "delivered",
+                  "failed",
+                  "skipped"
+                ]
+              },
+              "attempts": {
+                "type": "number"
+              },
+              "httpStatus": {
+                "type": "number"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "attempts"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "outcome"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "LogWebhookTestOutcomeResponse"
       },
       "CreateProductFeedbackRequest": {
@@ -11260,6 +14208,77 @@
       },
       "JobResponse": {
         "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "log-analysis"
+                ]
+              },
+              "logId": {
+                "type": "string"
+              },
+              "runId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "queued",
+                  "processing",
+                  "complete",
+                  "failed"
+                ]
+              },
+              "progress": {
+                "type": "number"
+              },
+              "currentStage": {
+                "type": "string",
+                "enum": [
+                  "parse",
+                  "pattern",
+                  "rootcause",
+                  "report"
+                ]
+              },
+              "error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "organizationId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "logId",
+              "runId",
+              "status",
+              "progress",
+              "currentStage",
+              "error",
+              "updatedAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "JobResponse"
       },
       "JobEventListResponse": {
@@ -11268,6 +14287,63 @@
       },
       "DebugDeviceListResponse": {
         "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "transport": {
+                  "type": "string",
+                  "enum": [
+                    "simulator",
+                    "hdc",
+                    "adb",
+                    "multi"
+                  ]
+                },
+                "firmware": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "online",
+                    "offline",
+                    "unknown"
+                  ]
+                },
+                "lastSeenAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "organizationId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "firmware",
+                "status",
+                "lastSeenAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "DebugDeviceListResponse"
       },
       "DetectDebugTargetRequest": {
@@ -11276,14 +14352,500 @@
       },
       "DebugTargetListResponse": {
         "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "deviceId": {
+                  "type": "string"
+                },
+                "bridgeId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "bridge_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "bridgeMachineLabel": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "bridge_machine_label": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "protocol": {
+                  "type": "string",
+                  "enum": [
+                    "hdc",
+                    "adb"
+                  ]
+                },
+                "label": {
+                  "type": "string"
+                },
+                "targetRef": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "detected",
+                    "lost"
+                  ]
+                },
+                "organizationId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "deviceId",
+                "label",
+                "targetRef",
+                "status"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "DebugTargetListResponse"
       },
       "DebugParameterListResponse": {
         "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "module": {
+                  "type": "string"
+                },
+                "nodePath": {
+                  "type": "string"
+                },
+                "accessMode": {
+                  "type": "string",
+                  "enum": [
+                    "RO",
+                    "WO",
+                    "RW"
+                  ]
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "range": {
+                  "type": "string"
+                },
+                "minValue": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "maxValue": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "risk": {
+                  "type": "string",
+                  "enum": [
+                    "Low",
+                    "Medium",
+                    "High"
+                  ]
+                },
+                "currentValue": {
+                  "type": "string"
+                },
+                "targetValue": {
+                  "type": "string"
+                },
+                "sortOrder": {
+                  "type": "number"
+                },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "archivedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "archivedBy": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "archiveReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "selectedBinding": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "protocol": {
+                      "type": "string",
+                      "enum": [
+                        "hdc",
+                        "adb"
+                      ]
+                    },
+                    "nodePath": {
+                      "type": "string"
+                    },
+                    "accessMode": {
+                      "type": "string",
+                      "enum": [
+                        "RO",
+                        "WO",
+                        "RW"
+                      ]
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "isSmokeDefault": {
+                      "type": "boolean"
+                    },
+                    "notes": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "disabledReason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "parameterId": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "protocol",
+                    "nodePath",
+                    "accessMode",
+                    "enabled"
+                  ],
+                  "additionalProperties": false
+                },
+                "bindings": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "protocol": {
+                        "type": "string",
+                        "enum": [
+                          "hdc",
+                          "adb"
+                        ]
+                      },
+                      "nodePath": {
+                        "type": "string"
+                      },
+                      "accessMode": {
+                        "type": "string",
+                        "enum": [
+                          "RO",
+                          "WO",
+                          "RW"
+                        ]
+                      },
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "isSmokeDefault": {
+                        "type": "boolean"
+                      },
+                      "notes": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "disabledReason": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "organizationId": {
+                        "type": "string"
+                      },
+                      "parameterId": {
+                        "type": "string"
+                      },
+                      "createdAt": {
+                        "type": "string"
+                      },
+                      "updatedAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "protocol",
+                      "nodePath",
+                      "accessMode",
+                      "enabled"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "valueKind": {
+                  "type": "string",
+                  "enum": [
+                    "scalar",
+                    "complex"
+                  ]
+                },
+                "valueFormat": {
+                  "type": "string",
+                  "enum": [
+                    "raw",
+                    "json",
+                    "dts",
+                    "line-list",
+                    "kv-list"
+                  ]
+                },
+                "normalizationMode": {
+                  "type": "string",
+                  "enum": [
+                    "exact",
+                    "trim",
+                    "line-ending-normalized",
+                    "json-canonical"
+                  ]
+                },
+                "maxValueBytes": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "organizationId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "key",
+                "description",
+                "module",
+                "unit",
+                "range",
+                "risk",
+                "currentValue",
+                "targetValue"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "DebugParameterListResponse"
       },
       "DebugNodeListResponse": {
         "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "writeFormatExample": {
+                  "type": "string"
+                },
+                "writeFormatHint": {
+                  "type": "string"
+                },
+                "module": {
+                  "type": "string"
+                },
+                "protocol": {
+                  "type": "string",
+                  "enum": [
+                    "hdc",
+                    "adb"
+                  ]
+                },
+                "nodePath": {
+                  "type": "string"
+                },
+                "accessMode": {
+                  "type": "string",
+                  "enum": [
+                    "RO",
+                    "WO",
+                    "RW"
+                  ]
+                },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "valueKind": {
+                  "type": "string",
+                  "enum": [
+                    "scalar",
+                    "complex"
+                  ]
+                },
+                "valueFormat": {
+                  "type": "string",
+                  "enum": [
+                    "raw",
+                    "json",
+                    "dts",
+                    "line-list",
+                    "kv-list"
+                  ]
+                },
+                "normalizationMode": {
+                  "type": "string",
+                  "enum": [
+                    "exact",
+                    "trim",
+                    "line-ending-normalized",
+                    "json-canonical"
+                  ]
+                },
+                "maxValueBytes": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "organizationId": {
+                  "type": "string"
+                },
+                "detailedDescription": {
+                  "type": "string"
+                },
+                "moduleId": {
+                  "type": "string"
+                },
+                "modulePath": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "archivedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "archivedBy": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "archiveReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "description",
+                "module",
+                "protocol",
+                "nodePath",
+                "accessMode",
+                "enabled"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "DebugNodeListResponse"
       },
       "DebugAdminParameterListResponse": {
@@ -11364,10 +14926,277 @@
       },
       "DebugSessionResponse": {
         "type": "object",
+        "properties": {
+          "item": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "deviceId": {
+                "type": "string"
+              },
+              "targetId": {
+                "type": "string"
+              },
+              "protocol": {
+                "type": "string",
+                "enum": [
+                  "hdc",
+                  "adb"
+                ]
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "closed"
+                ]
+              },
+              "startedAt": {
+                "type": "string"
+              },
+              "endedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "organizationId": {
+                "type": "string"
+              },
+              "executionMode": {
+                "type": "string",
+                "enum": [
+                  "server",
+                  "bridge"
+                ]
+              },
+              "bridgeId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "bridgeMachineLabel": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sessionKind": {
+                "type": "string",
+                "enum": [
+                  "node",
+                  "parameter_reload"
+                ]
+              },
+              "actorUserId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "deviceId",
+              "targetId",
+              "status",
+              "startedAt",
+              "endedAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "DebugSessionResponse"
       },
       "DebugSessionEventListResponse": {
         "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "sessionId": {
+                  "type": "string"
+                },
+                "parameterId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "nodeId": {
+                  "type": "string"
+                },
+                "protocol": {
+                  "type": "string",
+                  "enum": [
+                    "hdc",
+                    "adb"
+                  ]
+                },
+                "nodePath": {
+                  "type": "string"
+                },
+                "operationType": {
+                  "type": "string",
+                  "enum": [
+                    "detect",
+                    "read",
+                    "write",
+                    "reload",
+                    "rollback"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "succeeded",
+                    "failed",
+                    "readback_mismatch"
+                  ]
+                },
+                "requestedValue": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "previousValue": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "readValue": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "readbackValue": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "verified": {
+                  "type": "boolean"
+                },
+                "failureReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "durationMs": {
+                  "type": "number"
+                },
+                "snapshotId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "valueKind": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "scalar",
+                    "complex"
+                  ]
+                },
+                "valueFormat": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "raw",
+                    "json",
+                    "dts",
+                    "line-list",
+                    "kv-list"
+                  ]
+                },
+                "normalizationMode": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "exact",
+                    "trim",
+                    "line-ending-normalized",
+                    "json-canonical"
+                  ]
+                },
+                "requestedValueDigest": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "previousValueDigest": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "readbackValueDigest": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "valuePreview": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "sessionId",
+                "parameterId",
+                "nodePath",
+                "operationType",
+                "status",
+                "requestedValue",
+                "previousValue",
+                "readValue",
+                "readbackValue",
+                "verified",
+                "failureReason",
+                "durationMs",
+                "snapshotId",
+                "createdAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "DebugSessionEventListResponse"
       },
       "ReadDebugNodeRequest": {
@@ -11376,6 +15205,222 @@
       },
       "DebugNodeOperationResponse": {
         "type": "object",
+        "properties": {
+          "operation": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "sessionId": {
+                "type": "string"
+              },
+              "parameterId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "nodeId": {
+                "type": "string"
+              },
+              "protocol": {
+                "type": "string",
+                "enum": [
+                  "hdc",
+                  "adb"
+                ]
+              },
+              "nodePath": {
+                "type": "string"
+              },
+              "operationType": {
+                "type": "string",
+                "enum": [
+                  "detect",
+                  "read",
+                  "write",
+                  "reload",
+                  "rollback"
+                ]
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "succeeded",
+                  "failed",
+                  "readback_mismatch"
+                ]
+              },
+              "requestedValue": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "previousValue": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "readValue": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "readbackValue": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "verified": {
+                "type": "boolean"
+              },
+              "failureReason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "durationMs": {
+                "type": "number"
+              },
+              "snapshotId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "valueKind": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "scalar",
+                  "complex"
+                ]
+              },
+              "valueFormat": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "raw",
+                  "json",
+                  "dts",
+                  "line-list",
+                  "kv-list"
+                ]
+              },
+              "normalizationMode": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "exact",
+                  "trim",
+                  "line-ending-normalized",
+                  "json-canonical"
+                ]
+              },
+              "requestedValueDigest": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "previousValueDigest": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "readbackValueDigest": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "valuePreview": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "sessionId",
+              "parameterId",
+              "nodePath",
+              "operationType",
+              "status",
+              "requestedValue",
+              "previousValue",
+              "readValue",
+              "readbackValue",
+              "verified",
+              "failureReason",
+              "durationMs",
+              "snapshotId",
+              "createdAt"
+            ],
+            "additionalProperties": false
+          },
+          "snapshot": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "sessionId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "valid",
+                  "rollback_pending",
+                  "consumed",
+                  "invalid"
+                ]
+              },
+              "risk": {
+                "type": "string",
+                "enum": [
+                  "Low",
+                  "Medium",
+                  "High"
+                ]
+              },
+              "createdAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "sessionId",
+              "status",
+              "risk",
+              "createdAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "operation"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "DebugNodeOperationResponse"
       },
       "WriteDebugNodeRequest": {
@@ -11388,15 +15433,722 @@
       },
       "DebugRollbackResponse": {
         "type": "object",
+        "properties": {
+          "snapshot": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "sessionId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "valid",
+                  "rollback_pending",
+                  "consumed",
+                  "invalid"
+                ]
+              },
+              "risk": {
+                "type": "string",
+                "enum": [
+                  "Low",
+                  "Medium",
+                  "High"
+                ]
+              },
+              "createdAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "sessionId",
+              "status",
+              "risk",
+              "createdAt"
+            ],
+            "additionalProperties": false
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "sessionId": {
+                  "type": "string"
+                },
+                "parameterId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "nodeId": {
+                  "type": "string"
+                },
+                "protocol": {
+                  "type": "string",
+                  "enum": [
+                    "hdc",
+                    "adb"
+                  ]
+                },
+                "nodePath": {
+                  "type": "string"
+                },
+                "operationType": {
+                  "type": "string",
+                  "enum": [
+                    "detect",
+                    "read",
+                    "write",
+                    "reload",
+                    "rollback"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "succeeded",
+                    "failed",
+                    "readback_mismatch"
+                  ]
+                },
+                "requestedValue": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "previousValue": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "readValue": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "readbackValue": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "verified": {
+                  "type": "boolean"
+                },
+                "failureReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "durationMs": {
+                  "type": "number"
+                },
+                "snapshotId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "valueKind": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "scalar",
+                    "complex"
+                  ]
+                },
+                "valueFormat": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "raw",
+                    "json",
+                    "dts",
+                    "line-list",
+                    "kv-list"
+                  ]
+                },
+                "normalizationMode": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "exact",
+                    "trim",
+                    "line-ending-normalized",
+                    "json-canonical"
+                  ]
+                },
+                "requestedValueDigest": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "previousValueDigest": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "readbackValueDigest": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "valuePreview": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "sessionId",
+                "parameterId",
+                "nodePath",
+                "operationType",
+                "status",
+                "requestedValue",
+                "previousValue",
+                "readValue",
+                "readbackValue",
+                "verified",
+                "failureReason",
+                "durationMs",
+                "snapshotId",
+                "createdAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "snapshot",
+          "operations"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "DebugRollbackResponse"
+      },
+      "XiaozeAgUiRunRequest": {
+        "type": "object",
+        "properties": {
+          "threadId": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "messages": {
+            "type": "array",
+            "items": {}
+          },
+          "tools": {
+            "type": "array",
+            "items": {}
+          },
+          "context": {
+            "type": "array",
+            "items": {}
+          },
+          "state": {},
+          "forwardedProps": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "resume": {
+            "type": "array",
+            "items": {}
+          }
+        },
+        "additionalProperties": true,
+        "x-wiseeff-schema": "XiaozeAgUiRunRequest"
       },
       "GenericObjectResponse": {
         "type": "object",
         "x-wiseeff-schema": "GenericObjectResponse"
       },
-      "GenericObjectRequest": {
+      "XiaozeThreadListResponse": {
         "type": "object",
-        "x-wiseeff-schema": "GenericObjectRequest"
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "preview": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                },
+                "messageCount": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "preview",
+                "createdAt",
+                "updatedAt",
+                "messageCount"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "XiaozeThreadListResponse"
+      },
+      "XiaozeThreadCreateRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "context": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "pageKey": {
+                "type": "string"
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "roleId": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false,
+        "x-wiseeff-schema": "XiaozeThreadCreateRequest"
+      },
+      "XiaozeThreadCreateResponse": {
+        "type": "object",
+        "properties": {
+          "thread": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "preview": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "context": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "pageKey": {
+                    "type": "string"
+                  },
+                  "projectId": {
+                    "type": "string"
+                  },
+                  "roleId": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "messages": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "user",
+                        "assistant",
+                        "reasoning",
+                        "system"
+                      ]
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "citations": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    "confidence": {
+                      "type": "number"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "role",
+                    "content",
+                    "createdAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "preview",
+              "createdAt",
+              "updatedAt",
+              "context"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "thread"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "XiaozeThreadCreateResponse"
+      },
+      "XiaozeThreadDetailResponse": {
+        "type": "object",
+        "properties": {
+          "thread": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "preview": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "context": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "pageKey": {
+                    "type": "string"
+                  },
+                  "projectId": {
+                    "type": "string"
+                  },
+                  "roleId": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "messages": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "user",
+                        "assistant",
+                        "reasoning",
+                        "system"
+                      ]
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "citations": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    "confidence": {
+                      "type": "number"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "role",
+                    "content",
+                    "createdAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "preview",
+              "createdAt",
+              "updatedAt",
+              "context"
+            ],
+            "additionalProperties": false
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "assistant",
+                    "reasoning",
+                    "system"
+                  ]
+                },
+                "content": {
+                  "type": "string"
+                },
+                "citations": {
+                  "type": "array",
+                  "items": {}
+                },
+                "metadata": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "confidence": {
+                  "type": "number"
+                },
+                "createdAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "role",
+                "content",
+                "createdAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "thread",
+          "messages"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "XiaozeThreadDetailResponse"
+      },
+      "XiaozeThreadPatchRequest": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "XiaozeThreadPatchRequest"
+      },
+      "XiaozeThreadPatchResponse": {
+        "type": "object",
+        "properties": {
+          "thread": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "preview": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "context": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "pageKey": {
+                    "type": "string"
+                  },
+                  "projectId": {
+                    "type": "string"
+                  },
+                  "roleId": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "messages": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "user",
+                        "assistant",
+                        "reasoning",
+                        "system"
+                      ]
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "citations": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    "confidence": {
+                      "type": "number"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "role",
+                    "content",
+                    "createdAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "preview",
+              "createdAt",
+              "updatedAt",
+              "context"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "thread"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "XiaozeThreadPatchResponse"
+      },
+      "XiaozeThreadArchiveResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "XiaozeThreadArchiveResponse"
       },
       "LiveHealthResponse": {
         "type": "object",

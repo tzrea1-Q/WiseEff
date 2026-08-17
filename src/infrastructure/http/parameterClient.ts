@@ -10,6 +10,20 @@ import type {
   WorkflowAssigneeCandidates
 } from "@/application/ports/ParameterRepository";
 import { createApiClient, WiseEffApiError } from "./apiClient";
+import { parseContractDto } from "./parseContractDto";
+import {
+  parameterChangeRequestListResponseSchema,
+  parameterChangeRequestResponseSchema,
+  parameterDraftListResponseSchema,
+  parameterDraftResponseSchema,
+  parameterHistoryResponseSchema,
+  parameterImportBatchResponseSchema,
+  parameterListResponseSchema,
+  parameterResponseSchema,
+  parameterSubmissionRoundListResponseSchema,
+  parameterSubmissionRoundResponseSchema,
+  projectListResponseSchema
+} from "@wiseeff/dto-schemas";
 import {
   changeRequestFromDto,
   importBatchFromDto,
@@ -107,7 +121,11 @@ function applyImportBody(input: ApplyParameterImportBatchInput) {
 export function createHttpParameterRepository(apiClient: ApiClient = createDefaultApiClient()): ParameterRepository {
   return {
     async listProjects() {
-      const response = await apiClient.get<ItemsEnvelope<ProjectDto>>("/api/v1/projects");
+      const response = parseContractDto(
+        projectListResponseSchema,
+        await apiClient.get<ItemsEnvelope<ProjectDto>>("/api/v1/projects"),
+        "ProjectListResponse"
+      );
       return response.items.map(projectFromDto);
     },
     async listParameterModules() {
@@ -115,13 +133,21 @@ export function createHttpParameterRepository(apiClient: ApiClient = createDefau
       return response.items;
     },
     async listParameters(query?: ParameterListQuery) {
-      const response = await apiClient.get<ItemsEnvelope<ParameterRecordDto>>(buildParametersPath(query));
+      const response = parseContractDto(
+        parameterListResponseSchema,
+        await apiClient.get<ItemsEnvelope<ParameterRecordDto>>(buildParametersPath(query)),
+        "ParameterListResponse"
+      );
       return response.items.map(parameterRecordFromDto);
     },
     async getParameter(parameterId: string) {
       try {
-        const response = await apiClient.get<ItemEnvelope<ParameterRecordDto>>(
-          `/api/v1/parameters/${encodeURIComponent(parameterId)}`
+        const response = parseContractDto(
+          parameterResponseSchema,
+          await apiClient.get<ItemEnvelope<ParameterRecordDto>>(
+            `/api/v1/parameters/${encodeURIComponent(parameterId)}`
+          ),
+          "ParameterResponse"
         );
         return parameterRecordFromDto(response.item);
       } catch (error) {
@@ -146,26 +172,48 @@ export function createHttpParameterRepository(apiClient: ApiClient = createDefau
       }
     },
     async listParameterHistory(parameterId: string) {
-      const response = await apiClient.get<ItemsEnvelope<ParameterHistoryEntryDto>>(`/api/v1/parameters/${encodeURIComponent(parameterId)}/history`);
+      const response = parseContractDto(
+        parameterHistoryResponseSchema,
+        await apiClient.get<ItemsEnvelope<ParameterHistoryEntryDto>>(
+          `/api/v1/parameters/${encodeURIComponent(parameterId)}/history`
+        ),
+        "ParameterHistoryResponse"
+      );
       return response.items.map(parameterHistoryEntryFromDto);
     },
     async listDrafts(projectId?: string) {
-      const response = await apiClient.get<ItemsEnvelope<ParameterDraftDto>>(buildDraftsPath(projectId));
+      const response = parseContractDto(
+        parameterDraftListResponseSchema,
+        await apiClient.get<ItemsEnvelope<ParameterDraftDto>>(buildDraftsPath(projectId)),
+        "ParameterDraftListResponse"
+      );
       return response.items.map(parameterDraftFromDto);
     },
     async saveDraft(input) {
-      const response = await apiClient.post<ItemEnvelope<ParameterDraftDto>>("/api/v1/parameter-drafts", input);
+      const response = parseContractDto(
+        parameterDraftResponseSchema,
+        await apiClient.post<ItemEnvelope<ParameterDraftDto>>("/api/v1/parameter-drafts", input),
+        "ParameterDraftResponse"
+      );
       return parameterDraftFromDto(response.item);
     },
     async deleteDraft(draftId: string) {
       await apiClient.delete<OkEnvelope>(`/api/v1/parameter-drafts/${encodeURIComponent(draftId)}`);
     },
     async listChangeRequests(query?: ChangeRequestListQuery) {
-      const response = await apiClient.get<ItemsEnvelope<ChangeRequestDto>>(buildChangeRequestsPath(query));
+      const response = parseContractDto(
+        parameterChangeRequestListResponseSchema,
+        await apiClient.get<ItemsEnvelope<ChangeRequestDto>>(buildChangeRequestsPath(query)),
+        "ParameterChangeRequestListResponse"
+      );
       return response.items.map(changeRequestFromDto);
     },
     async listSubmissionRounds(query?: SubmissionRoundListQuery) {
-      const response = await apiClient.get<ItemsEnvelope<ParameterSubmissionRoundDto>>(buildSubmissionRoundsPath(query));
+      const response = parseContractDto(
+        parameterSubmissionRoundListResponseSchema,
+        await apiClient.get<ItemsEnvelope<ParameterSubmissionRoundDto>>(buildSubmissionRoundsPath(query)),
+        "ParameterSubmissionRoundListResponse"
+      );
       return response.items.map(submissionRoundFromDto);
     },
     async listWorkflowAssignees(projectId: string) {
@@ -175,31 +223,51 @@ export function createHttpParameterRepository(apiClient: ApiClient = createDefau
       return response.item;
     },
     async submitParameterChanges(input) {
-      const response = await apiClient.post<ItemEnvelope<ParameterSubmissionRoundDto>>("/api/v1/parameter-submission-rounds", input);
+      const response = parseContractDto(
+        parameterSubmissionRoundResponseSchema,
+        await apiClient.post<ItemEnvelope<ParameterSubmissionRoundDto>>("/api/v1/parameter-submission-rounds", input),
+        "ParameterSubmissionRoundResponse"
+      );
       return submissionRoundFromDto(response.item);
     },
     async withdrawSubmissionRound(roundId: string) {
-      const response = await apiClient.post<ItemEnvelope<ParameterSubmissionRoundDto>>(
-        `/api/v1/parameter-submission-rounds/${encodeURIComponent(roundId)}/withdraw`,
-        {}
+      const response = parseContractDto(
+        parameterSubmissionRoundResponseSchema,
+        await apiClient.post<ItemEnvelope<ParameterSubmissionRoundDto>>(
+          `/api/v1/parameter-submission-rounds/${encodeURIComponent(roundId)}/withdraw`,
+          {}
+        ),
+        "ParameterSubmissionRoundResponse"
       );
       return submissionRoundFromDto(response.item);
     },
     async reviewChange(input: ReviewParameterChangeInput) {
-      const response = await apiClient.post<ItemEnvelope<ChangeRequestDto>>(
-        `/api/v1/parameter-change-requests/${encodeURIComponent(input.requestId)}/review`,
-        reviewBody(input)
+      const response = parseContractDto(
+        parameterChangeRequestResponseSchema,
+        await apiClient.post<ItemEnvelope<ChangeRequestDto>>(
+          `/api/v1/parameter-change-requests/${encodeURIComponent(input.requestId)}/review`,
+          reviewBody(input)
+        ),
+        "ParameterChangeRequestResponse"
       );
       return changeRequestFromDto(response.item);
     },
     async createImportPreview(input: ParameterImportPreviewInput) {
-      const response = await apiClient.post<ItemEnvelope<ParameterImportBatchDto>>("/api/v1/parameter-import-batches", input);
+      const response = parseContractDto(
+        parameterImportBatchResponseSchema,
+        await apiClient.post<ItemEnvelope<ParameterImportBatchDto>>("/api/v1/parameter-import-batches", input),
+        "ParameterImportBatchResponse"
+      );
       return importBatchFromDto(response.item);
     },
     async applyImportBatch(input: ApplyParameterImportBatchInput) {
-      const response = await apiClient.post<ItemEnvelope<ParameterImportBatchDto>>(
-        `/api/v1/parameter-import-batches/${encodeURIComponent(input.batchId)}/apply`,
-        applyImportBody(input)
+      const response = parseContractDto(
+        parameterImportBatchResponseSchema,
+        await apiClient.post<ItemEnvelope<ParameterImportBatchDto>>(
+          `/api/v1/parameter-import-batches/${encodeURIComponent(input.batchId)}/apply`,
+          applyImportBody(input)
+        ),
+        "ParameterImportBatchResponse"
       );
       return importBatchFromDto(response.item);
     },

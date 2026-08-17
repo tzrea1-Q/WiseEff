@@ -14,6 +14,21 @@ import type {
 } from "@/application/ports/LogAnalysisRepository";
 import type { LogRecord } from "@/domain/logs/types";
 import { createApiClient, WiseEffApiError } from "./apiClient";
+import { parseContractDto } from "./parseContractDto";
+import {
+  jobResponseSchema,
+  logJobDtoSchema,
+  logDomainKnowledgeLinkListResponseSchema,
+  logDomainListResponseSchema,
+  logDomainResponseSchema,
+  logFeedbackInsightsResponseSchema,
+  logFileUploadResponseSchema,
+  logRecordListResponseSchema,
+  logRecordResponseSchema,
+  logRunResponseSchema,
+  logWebhookDeliveryListResponseSchema,
+  logWebhookTestOutcomeResponseSchema
+} from "@wiseeff/dto-schemas";
 import {
   jobSnapshotFromDto,
   logDomainFromDto,
@@ -142,12 +157,20 @@ export function createHttpLogAnalysisRepository(
 
   const repository: LogAnalysisRepository = {
     async listLogs(query?: LogListQuery) {
-      const response = await apiClient.get<{ items: LogRecordDto[] }>(buildLogsPath(query));
+      const response = parseContractDto(
+        logRecordListResponseSchema,
+        await apiClient.get<{ items: LogRecordDto[] }>(buildLogsPath(query)),
+        "LogRecordListResponse"
+      );
       return logListFromDto(response);
     },
     async getLog(logId: string) {
       try {
-        const response = await apiClient.get<ItemEnvelope<LogRecordDto>>(routeLogPath(logId));
+        const response = parseContractDto(
+          logRecordResponseSchema,
+          await apiClient.get<ItemEnvelope<LogRecordDto>>(routeLogPath(logId)),
+          "LogRecordResponse"
+        );
         return logRecordFromDto(response.item);
       } catch (error) {
         if (error instanceof WiseEffApiError && error.code === "NOT_FOUND") {
@@ -157,14 +180,22 @@ export function createHttpLogAnalysisRepository(
       }
     },
     async uploadLog(input: LogUploadInput) {
-      const response = await apiClient.post<LogUploadResponse>("/api/v1/log-files", uploadBody(input, await fileToBase64(input.file)));
+      const response = parseContractDto(
+        logFileUploadResponseSchema,
+        await apiClient.post<LogUploadResponse>("/api/v1/log-files", uploadBody(input, await fileToBase64(input.file))),
+        "LogFileUploadResponse"
+      );
       return {
         log: logRecordFromDto(response.log),
         job: response.job ? jobSnapshotFromDto(response.job) : null
       };
     },
     async getJob(jobId: string) {
-      const response = await apiClient.get<ItemEnvelope<LogJobDto>>(routeJobPath(jobId));
+      const response = parseContractDto(
+        jobResponseSchema,
+        await apiClient.get<ItemEnvelope<LogJobDto>>(routeJobPath(jobId)),
+        "JobResponse"
+      );
       return jobSnapshotFromDto(response.item);
     },
     watchJob(jobId, onEvent) {
@@ -217,7 +248,9 @@ export function createHttpLogAnalysisRepository(
       if (typeof EventSource !== "undefined") {
         eventSource = new EventSource(apiUrl(baseUrl, `${routeJobPath(jobId)}/events`));
         eventSource.addEventListener("job", (event) => {
-          const snapshot = jobSnapshotFromDto(JSON.parse(event.data) as LogJobDto);
+          const snapshot = jobSnapshotFromDto(
+            parseContractDto(logJobDtoSchema, JSON.parse(event.data), "LogJobDto")
+          );
           lastStatus = snapshot.status;
           onEvent(snapshot);
           if (terminalJobStatuses.has(snapshot.status)) {
@@ -237,7 +270,11 @@ export function createHttpLogAnalysisRepository(
       return cleanup;
     },
     async rerunLog(input: LogRerunInput) {
-      const response = await apiClient.post<LogRerunResponse>(`${routeLogPath(input.logId)}/rerun`, rerunBody(input));
+      const response = parseContractDto(
+        logRunResponseSchema,
+        await apiClient.post<LogRerunResponse>(`${routeLogPath(input.logId)}/rerun`, rerunBody(input)),
+        "LogRunResponse"
+      );
       return {
         log: logRecordFromDto(response.log),
         job: jobSnapshotFromDto(response.job)
@@ -253,71 +290,111 @@ export function createHttpLogAnalysisRepository(
       await apiClient.post<OkEnvelope>(`${routeLogPath(input.logId)}/feedback`, feedbackBody(input));
     },
     async listLogDomains(query?: LogDomainListQuery) {
-      const response = await apiClient.get<{ items: LogDomainDto[] }>(buildLogDomainsPath(query));
+      const response = parseContractDto(
+        logDomainListResponseSchema,
+        await apiClient.get<{ items: LogDomainDto[] }>(buildLogDomainsPath(query)),
+        "LogDomainListResponse"
+      );
       return logDomainListFromDto(response);
     },
     async createLogDomain(input: LogDomainCreateInput) {
-      const response = await apiClient.post<ItemEnvelope<LogDomainDto>>("/api/v1/log-domains", logDomainCreateBody(input));
+      const response = parseContractDto(
+        logDomainResponseSchema,
+        await apiClient.post<ItemEnvelope<LogDomainDto>>("/api/v1/log-domains", logDomainCreateBody(input)),
+        "LogDomainResponse"
+      );
       return logDomainFromDto(response.item);
     },
     async updateLogDomain(input: LogDomainUpdateInput) {
-      const response = await apiClient.patch<ItemEnvelope<LogDomainDto>>(
-        `/api/v1/log-domains/${encodeURIComponent(input.domainId)}`,
-        logDomainUpdateBody(input)
+      const response = parseContractDto(
+        logDomainResponseSchema,
+        await apiClient.patch<ItemEnvelope<LogDomainDto>>(
+          `/api/v1/log-domains/${encodeURIComponent(input.domainId)}`,
+          logDomainUpdateBody(input)
+        ),
+        "LogDomainResponse"
       );
       return logDomainFromDto(response.item);
     },
     async archiveLogDomain(domainId: string) {
-      const response = await apiClient.post<ItemEnvelope<LogDomainDto>>(
-        `/api/v1/log-domains/${encodeURIComponent(domainId)}/archive`,
-        {}
+      const response = parseContractDto(
+        logDomainResponseSchema,
+        await apiClient.post<ItemEnvelope<LogDomainDto>>(
+          `/api/v1/log-domains/${encodeURIComponent(domainId)}/archive`,
+          {}
+        ),
+        "LogDomainResponse"
       );
       return logDomainFromDto(response.item);
     },
     async listLogDomainKnowledgeLinks(domainId: string) {
-      const response = await apiClient.get<{ items: LogDomainKnowledgeLinkDto[] }>(
-        `/api/v1/log-domains/${encodeURIComponent(domainId)}/knowledge-links`
+      const response = parseContractDto(
+        logDomainKnowledgeLinkListResponseSchema,
+        await apiClient.get<{ items: LogDomainKnowledgeLinkDto[] }>(
+          `/api/v1/log-domains/${encodeURIComponent(domainId)}/knowledge-links`
+        ),
+        "LogDomainKnowledgeLinkListResponse"
       );
       return response.items.map(logDomainKnowledgeLinkFromDto);
     },
     async setLogDomainKnowledgeLinks(input: LogDomainKnowledgeLinksInput) {
-      const response = await apiClient.put<{ items: LogDomainKnowledgeLinkDto[] }>(
-        `/api/v1/log-domains/${encodeURIComponent(input.domainId)}/knowledge-links`,
-        { knowledgeEntryIds: input.knowledgeEntryIds }
+      const response = parseContractDto(
+        logDomainKnowledgeLinkListResponseSchema,
+        await apiClient.put<{ items: LogDomainKnowledgeLinkDto[] }>(
+          `/api/v1/log-domains/${encodeURIComponent(input.domainId)}/knowledge-links`,
+          { knowledgeEntryIds: input.knowledgeEntryIds }
+        ),
+        "LogDomainKnowledgeLinkListResponse"
       );
       return response.items.map(logDomainKnowledgeLinkFromDto);
     },
     async listFeedbackInsights(query?: LogFeedbackInsightsQuery) {
       const params = new URLSearchParams();
       if (query?.timeWindow) params.set("timeWindow", query.timeWindow);
-      const response = await apiClient.get<{ items: LogFeedbackInsightDto[] }>(
-        appendQuery("/api/v1/logs/feedback-insights", params)
+      const response = parseContractDto(
+        logFeedbackInsightsResponseSchema,
+        await apiClient.get<{ items: LogFeedbackInsightDto[] }>(
+          appendQuery("/api/v1/logs/feedback-insights", params)
+        ),
+        "LogFeedbackInsightsResponse"
       );
       return response.items.map(logFeedbackInsightFromDto);
     },
     async setLogDomainWebhook(input: LogDomainWebhookInput) {
-      const response = await apiClient.put<ItemEnvelope<LogDomainDto>>(
-        `/api/v1/log-domains/${encodeURIComponent(input.domainId)}/webhook`,
-        {
-          url: input.url,
-          enabled: input.enabled,
-          ...(input.secret !== undefined ? { secret: input.secret } : {})
-        }
+      const response = parseContractDto(
+        logDomainResponseSchema,
+        await apiClient.put<ItemEnvelope<LogDomainDto>>(
+          `/api/v1/log-domains/${encodeURIComponent(input.domainId)}/webhook`,
+          {
+            url: input.url,
+            enabled: input.enabled,
+            ...(input.secret !== undefined ? { secret: input.secret } : {})
+          }
+        ),
+        "LogDomainResponse"
       );
       return logDomainFromDto(response.item);
     },
     async listLogDomainWebhookDeliveries(domainId: string, limit?: number) {
       const params = new URLSearchParams();
       if (limit !== undefined) params.set("limit", String(limit));
-      const response = await apiClient.get<{ items: LogWebhookDeliveryDto[] }>(
-        appendQuery(`/api/v1/log-domains/${encodeURIComponent(domainId)}/webhook-deliveries`, params)
+      const response = parseContractDto(
+        logWebhookDeliveryListResponseSchema,
+        await apiClient.get<{ items: LogWebhookDeliveryDto[] }>(
+          appendQuery(`/api/v1/log-domains/${encodeURIComponent(domainId)}/webhook-deliveries`, params)
+        ),
+        "LogWebhookDeliveryListResponse"
       );
       return response.items.map(logWebhookDeliveryFromDto);
     },
     async sendLogDomainWebhookTest(domainId: string) {
-      const response = await apiClient.post<{ outcome: LogWebhookTestOutcome }>(
-        `/api/v1/log-domains/${encodeURIComponent(domainId)}/webhook-test`,
-        {}
+      const response = parseContractDto(
+        logWebhookTestOutcomeResponseSchema,
+        await apiClient.post<{ outcome: LogWebhookTestOutcome }>(
+          `/api/v1/log-domains/${encodeURIComponent(domainId)}/webhook-test`,
+          {}
+        ),
+        "LogWebhookTestOutcomeResponse"
       );
       return response.outcome;
     }

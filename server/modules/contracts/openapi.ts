@@ -1,6 +1,8 @@
 import type { HttpMethod } from "../../shared/http/router";
+import { dtoSchemaCatalog } from "./dtoSchemas/catalog";
 import { routeManifest } from "./routeManifest";
 import { schemaRegistry } from "./schemaRegistry";
+import { zodToOpenApiSchema } from "./zodToOpenApiSchema";
 
 type SchemaRef = { $ref: string };
 type BinarySchema = { type: "string"; format: "binary" };
@@ -100,16 +102,23 @@ function buildSchemaPlaceholders() {
     }
   };
 
+  const placeholder = (name: string, binary = false) => {
+    const realized = dtoSchemaCatalog[name];
+    if (realized) {
+      return zodToOpenApiSchema(realized, name);
+    }
+    return binary
+      ? { type: "string", format: "binary", "x-wiseeff-schema": name }
+      : { type: "object", "x-wiseeff-schema": name };
+  };
+
   for (const schema of Object.values(schemaRegistry)) {
     if (schema.requestBody) {
-      schemas[schema.requestBody] = { type: "object", "x-wiseeff-schema": schema.requestBody };
+      schemas[schema.requestBody] = placeholder(schema.requestBody);
     }
-    schemas[schema.responseBody] =
-      schema.responseMedia === "binary"
-        ? { type: "string", format: "binary", "x-wiseeff-schema": schema.responseBody }
-        : { type: "object", "x-wiseeff-schema": schema.responseBody };
+    schemas[schema.responseBody] = placeholder(schema.responseBody, schema.responseMedia === "binary");
     for (const responseBody of Object.values(schema.additionalSuccessResponses ?? {})) {
-      schemas[responseBody] = { type: "object", "x-wiseeff-schema": responseBody };
+      schemas[responseBody] = placeholder(responseBody);
     }
   }
 
