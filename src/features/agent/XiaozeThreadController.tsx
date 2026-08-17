@@ -6,6 +6,7 @@ import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { clearXiaozePromptDebugStore } from "./XiaozePromptDebugContext";
 import { readActiveXiaozeThreadStoreSnapshot, useXiaozeThreads } from "./XiaozeThreadContext";
 import { isKnownPersistedThread } from "./xiaozeThreadStorage";
+import { clearXiaozeAgentPendingTurn } from "./xiaozeHttpAgent";
 
 const isApiRuntime = wiseEffRuntimeMode === "api";
 
@@ -49,6 +50,7 @@ export function XiaozeThreadController() {
     }
 
     skipNextPersistRef.current = true;
+    clearXiaozeAgentPendingTurn(agent);
 
     if (isApiRuntime) {
       if (!isKnownPersistedThread(threads, activeThreadId)) {

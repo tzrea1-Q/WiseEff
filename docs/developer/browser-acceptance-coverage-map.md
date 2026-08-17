@@ -70,6 +70,7 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | `XIAOZE-ACTION-EDITEDARGS-001` | G | Yes | Approving a Xiaoze action with edited arguments executes the edited payload into the change request. | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
 | `XIAOZE-ACTION-REJECT-001` | G | Yes | Rejecting a Xiaoze action approval does not mutate parameter state. | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
 | `XIAOZE-ACTION-AUTHZ-001` | G | Yes | Users without edit permission cannot approve Xiaoze mutating actions. | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
+| `XIAOZE-APPROVAL-EXEC-FAIL-001` | G | No (pending automation) | When approved Xiaoze tool execution fails, the chat shows a Chinese assistant failure turn (halt prefix plus reason), the thread stays usable, and New conversation is not blocked by a pending interrupt. Blocking proof is graph + AG-UI assembly tests; browser path needs a stale-working-tip fixture. | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
 | `XIAOZE-PLAN-MULTISTEP-001` | G | Yes | Xiaoze resumes a multi-step plan after approval and reports the observed execution result. | `e2e/acceptance/xiaoze-planning.acceptance.spec.ts` |
 | `XIAOZE-PROACTIVE-001` | G | Yes | Opt-in Xiaoze proactive suggestions are read-only, authz-bounded, and absent when disabled. | `e2e/acceptance/xiaoze-planning.acceptance.spec.ts` |
 | `PERM-GOV-001` | H | Yes | User governance page is Admin-only and the active Admin cannot disable itself. | `e2e/acceptance/permissions.acceptance.spec.ts` |

@@ -25,6 +25,7 @@ import { mergeReasoningText } from "./splitAssistantContent";
 import { formatToolCatalogForSystemPrompt, getXiaozeToolLabel } from "./toolCatalog";
 import { buildXiaozePromptDebugSnapshot } from "./promptDebug";
 import { createToolCallId, startRunStep, type RunEventSink } from "./runEventSink";
+import { formatApprovalExecutionFailure } from "./approvalExecutionFailure";
 import { XIAOZE_PROMPT_VERSION, XIAOZE_SYSTEM_PROMPT } from "./xiaozePrompt";
 
 export type PlanningResumeDecision = Pick<ApprovalResolveInput, "approvalId" | "decision" | "editedArgs" | "reason">;
@@ -387,8 +388,18 @@ export function createPlanningAgent(options: {
         reason: resumeDecision.reason
       });
     } catch (error) {
-      pushSink(config, finish({ status: "failed", summary: error instanceof Error ? error.message : "Tool failed." }));
-      throw error;
+      const summary = formatApprovalExecutionFailure(error);
+      pushSink(config, finish({ status: "failed", summary }));
+      if (isForbiddenError(error)) {
+        throw error;
+      }
+      return {
+        text: summary,
+        halted: true,
+        pendingMutatingCall: undefined,
+        interrupt: undefined,
+        step: state.step + 1
+      };
     }
     pushSink(config, finish({ status: "succeeded", summary: resumed.text }));
 

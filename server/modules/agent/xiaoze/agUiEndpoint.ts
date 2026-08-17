@@ -17,6 +17,7 @@ import { registerXiaozeThreadRoutes } from "./threadRoutes";
 import { wrapLangChainChatModel } from "./perceptionAgent";
 import { createDeterministicPerceptionModel } from "./deterministicModel";
 import type { PerceptionAgentRunResult, PerceptionToolDescriptor } from "./modelTypes";
+import { formatApprovalExecutionFailure } from "./approvalExecutionFailure";
 import { createPlanningAgent, type PlanningApprovalResolver } from "./planningGraph";
 import { runXiaozeSuggest, type XiaozeSuggestContext } from "./suggest";
 import { buildXiaozePlanningToolDescriptors, toOpenAiToolDefinitions } from "./toolCatalog";
@@ -428,6 +429,17 @@ export function createXiaozeAgUiHandler(options: {
           await persistSuccessfulTurn({
             userMessage: activeResume ? undefined : userMessageEntry,
             assistantMessage: { id: messageId, content: safeMessage }
+          });
+          yield* stream.complete();
+          return;
+        }
+
+        if (error instanceof ApiError) {
+          const recovered = formatApprovalExecutionFailure(error);
+          yield* stream.forbidden(recovered);
+          await persistSuccessfulTurn({
+            userMessage: activeResume ? undefined : userMessageEntry,
+            assistantMessage: { id: messageId, content: recovered }
           });
           yield* stream.complete();
           return;

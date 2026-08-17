@@ -28,6 +28,7 @@
 
 ### 仍待做的产品与 UX
 
+- `exec-plans/active/2026-08-17-xiaoze-approval-failure-recovery.md`：TD-102 / TD-094 — 批准后工具执行失败时以中文回合停住并落库；成功路径不再双写 assistant。实现分支 `fix/td102-approval-execution-dead-end`。
 - `exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md`：剩余写入契约为 SE-2 / SE-5 / SE-D6。
 - `exec-plans/active/2026-08-03-parameter-admin-org-ia-consolidation.md`：组织后台信息架构（仅规划；ADR-0015）。
 - `exec-plans/active/2026-08-02-parameter-admin-ux-polish.md`：参数管理后台 UX 打磨。

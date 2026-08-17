@@ -1098,6 +1098,20 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["api"]
   },
   {
+    id: "XIAOZE-APPROVAL-EXEC-FAIL-001",
+    priority: "P1",
+    area: "agent",
+    route: "/parameters",
+    roles: ["Admin"],
+    action: "After an approved Xiaoze tool fails to execute, see a Chinese assistant failure bubble, keep the thread usable, and start a new conversation without a pending interrupt.",
+    coverage: "future",
+    acceptanceIds: ["XIAOZE-APPROVAL-EXEC-FAIL-001"],
+    specFiles: ["e2e/acceptance/xiaoze-action.acceptance.spec.ts"],
+    assertions: ["ui", "api"],
+    deferralReason:
+      "A true browser path needs a stale-working-tip / unresolvable-overlay fixture that is too brittle for this slice. Graph, orchestrator, and AG-UI assembly tests are the blocking gate; this ID is an honest planned stub."
+  },
+  {
     id: "XIAOZE-PLAN-MULTISTEP-001",
     priority: "P2",
     area: "agent",

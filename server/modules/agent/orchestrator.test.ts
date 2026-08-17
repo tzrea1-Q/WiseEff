@@ -344,8 +344,8 @@ describe("agent orchestrator", () => {
     });
   });
 
-  it("approveToolCall re-checks registry execution, approves, succeeds the tool, and appends an assistant message", async () => {
-    const { db } = createMemoryDb();
+  it("approveToolCall re-checks registry execution, approves, and succeeds the tool without appending an assistant message", async () => {
+    const { db, tables } = createMemoryDb();
     const metrics = createAgentMetricsSpy();
     const registry = createRegistry(
       [createToolDefinition({ name: "action.submitParameterChange", kind: "mutating", requiresApproval: true })],
@@ -367,6 +367,7 @@ describe("agent orchestrator", () => {
         payload: { projectId: "aurora", parameterId: "pd-1", targetValue: "3100", reason: "Stage draft" }
       }
     });
+    const messageCount = tables.messages.length;
 
     const turn = await orchestrator.approveToolCall({
       auth: developmentAuthContext,
@@ -378,10 +379,9 @@ describe("agent orchestrator", () => {
     expect(registry.run).toHaveBeenCalledTimes(1);
     expect(turn.approvals[0]).toMatchObject({ status: "approved", decidedByUserId: developmentAuthContext.user.id });
     expect(turn.toolCalls[0]).toMatchObject({ status: "succeeded" });
-    expect(turn.messages.at(-1)).toMatchObject({
-      role: "assistant",
-      content: expect.stringContaining("Submitted parameter change request")
-    });
+    expect(turn.toolCalls[0].result?.summary).toContain("Submitted parameter change request");
+    expect(tables.messages).toHaveLength(messageCount);
+    expect(turn.messages.filter((message) => message.role === "assistant")).toEqual([]);
     expect(metrics.recordAgentApproval).toHaveBeenCalledWith({
       action: "approved",
       tool: "action.submitParameterChange",
@@ -558,6 +558,7 @@ describe("agent orchestrator", () => {
 
     expect(tables.approvals[0].status).toBe("approved");
     expect(tables.toolCalls[0]).toMatchObject({ status: "failed", error_message: "Draft service unavailable" });
+    expect(tables.messages.filter((row) => row.role === "assistant")).toEqual([]);
     expect(tables.audits.at(-1)).toMatchObject({ action: "approval-execution-failed", trace_id: "req-approve" });
     expect(metrics.recordAgentApproval).toHaveBeenCalledWith({
       action: "approved",

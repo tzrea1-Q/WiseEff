@@ -257,6 +257,82 @@ describe("registerXiaozeRoutes approval assembly", () => {
     expect(tables.approvals[0]).toMatchObject({ status: "rejected", decision_reason: "Not now" });
   });
 
+  it("persists a Chinese halt and leaves the thread usable when approved execution fails", async () => {
+    const { ApiError } = await import("../../../shared/http/errors");
+    mockedSubmit.mockReset();
+    mockedCreateDraft.mockReset();
+    primeParameterMocks("<3100>");
+
+    const { db, tables } = createMemoryAgentDb();
+    const router = createRouter();
+    registerXiaozeRoutes(router, {
+      db,
+      getCurrentAuthContext: () => developmentAuthContext
+    });
+
+    const threadId = "thread-assembly-exec-fail";
+    const started = await postXiaoze(router, "req-assembly-fail-1", {
+      threadId,
+      runId: "run-assembly-fail-1",
+      messages: [{ id: "m-user", role: "user", content: "set pd-1 to <3100>" }],
+      context: [
+        {
+          description: "wiseeff.page",
+          value: { pageKey: "parameters", projectId: "aurora", path: "/parameters?project=aurora" }
+        }
+      ]
+    });
+    const interrupt = readInterruptApprovalId(started.events);
+    expect(interrupt.approvalId).toBeTruthy();
+
+    mockedCreateDraft.mockRejectedValue(
+      new ApiError("CONFLICT", "请刷新后基于本轮最新工作版本继续编辑。", 409, {
+        reason: "stale-working-tip"
+      })
+    );
+
+    const resumed = await postXiaoze(router, "req-assembly-fail-2", {
+      threadId,
+      runId: "run-assembly-fail-2",
+      messages: [{ id: "m-resume", role: "user", content: "approve" }],
+      resume: [
+        {
+          interruptId: interrupt.approvalId,
+          status: "resolved",
+          payload: {
+            approvalId: interrupt.approvalId,
+            decision: "approve"
+          }
+        }
+      ]
+    });
+
+    expect(resumed.events.some((event) => event.event === EventType.RUN_ERROR)).toBe(false);
+    const finished = resumed.events.find((event) => event.event === EventType.RUN_FINISHED);
+    expect((finished?.data as { outcome?: { type?: string } })?.outcome?.type).toBe("success");
+    const answer = resumed.events
+      .filter((event) => event.event === EventType.TEXT_MESSAGE_CONTENT)
+      .map((event) => (event.data as { delta?: string }).delta ?? "")
+      .join("");
+    expect(answer).toContain("操作未能完成");
+    expect(answer).toContain("请刷新后基于本轮最新工作版本继续编辑");
+    expect(tables.toolCalls[0]).toMatchObject({ status: "failed" });
+    expect(tables.approvals[0]).toMatchObject({ status: "approved" });
+    expect(tables.audits.map((row) => row.action)).toContain("approval-execution-failed");
+    expect(tables.messages.some((row) => String(row.role) === "assistant" && String(row.content).includes("操作未能完成"))).toBe(
+      true
+    );
+
+    const followUp = await postXiaoze(router, "req-assembly-fail-3", {
+      threadId,
+      runId: "run-assembly-fail-3",
+      messages: [{ id: "m-follow", role: "user", content: "然后呢" }]
+    });
+    const followUpError = followUp.events.find((event) => event.event === EventType.RUN_ERROR);
+    expect(JSON.stringify(followUpError ?? {})).not.toMatch(/pending interrupt/i);
+    expect(followUp.events.some((event) => event.event === EventType.RUN_STARTED)).toBe(true);
+  });
+
   it("refuses to run against a thread owned by another same-org user", async () => {
     const { db, tables } = createMemoryAgentDb();
     const owner = developmentAuthContext;

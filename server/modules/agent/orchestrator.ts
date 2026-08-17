@@ -428,14 +428,6 @@ export function createAgentOrchestrator(options: {
       if (!succeeded) {
         throw staleTransition("Agent tool call could not be marked succeeded.", { toolCallId: toolCall.id });
       }
-      await appendAgentMessage(tx, {
-        id: newId("agent-msg"),
-        sessionId: approval.sessionId,
-        organizationId: input.auth.organization.id,
-        role: "assistant",
-        content: result.summary,
-        citations: result.citations
-      });
       await audit({
         context: input,
         projectId: toolCall.projectId ?? approval.projectId,
@@ -610,7 +602,8 @@ export function createAgentOrchestrator(options: {
       approvalId: input.approvalId,
       reason: input.reason ?? "Approved from Xiaoze chat."
     });
-    return { text: turn.messages.at(-1)?.content ?? "The proposed action was approved and executed." };
+    const executed = turn.toolCalls.find((call) => call.approvalId === input.approvalId) ?? turn.toolCalls.at(-1);
+    return { text: executed?.result?.summary ?? "The proposed action was approved and executed." };
   }
 
   return {
