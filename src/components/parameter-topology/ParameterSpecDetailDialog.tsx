@@ -17,7 +17,40 @@ import {
   type SpecRelatedKnowledgeSource
 } from "./ParameterSpecDetail";
 import { formatSpecPrimaryLabel } from "./ParameterSpecLibrary";
+import { specEditorSaveDiff, stablePrettyJson } from "./specEditorSaveDiff";
 import { subjectPickerFlatNodes, subjectsFromModules } from "./SpecCreateDialog";
+
+const EMPTY_IDENTITY_MODULES: ParameterModule[] = [];
+
+function SpecEditorSaveDiffBlock({
+  label,
+  previous,
+  next,
+}: {
+  label: string;
+  previous: Record<string, unknown>;
+  next: Record<string, unknown>;
+}) {
+  return (
+    <div className="param-admin-save-diff__field">
+      <strong className="param-admin-save-diff__heading">{label}</strong>
+      <div className="param-admin-save-diff__sides">
+        <div className="param-admin-save-diff__side">
+          <span>变更前</span>
+          <pre aria-label={`${label} 变更前`} className="param-admin-save-diff__json">
+            {stablePrettyJson(previous)}
+          </pre>
+        </div>
+        <div className="param-admin-save-diff__side">
+          <span>变更后</span>
+          <pre aria-label={`${label} 变更后`} className="param-admin-save-diff__json">
+            {stablePrettyJson(next)}
+          </pre>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export type ParameterSpecDetailDialogProps = {
   detail: ParameterSpecDetailView;
@@ -54,7 +87,7 @@ export function ParameterSpecDetailDialog({
   onRestore,
   onReattribute,
   onRenamePropertyKey,
-  identityModules = [],
+  identityModules = EMPTY_IDENTITY_MODULES,
   onPrepareCutover,
   onFinalizeCutover,
   pending = false,
@@ -89,6 +122,7 @@ export function ParameterSpecDetailDialog({
   const [lifecycleReason, setLifecycleReason] = useState("");
   const [saveConfirmOpen, setSaveConfirmOpen] = useState(false);
   const [saveReason, setSaveReason] = useState("");
+  const [saveAcknowledged, setSaveAcknowledged] = useState(false);
   const [cutoverConfirmOpen, setCutoverConfirmOpen] = useState(false);
   const [cutoverFinalizeReason, setCutoverFinalizeReason] = useState("");
   const [identityKind, setIdentityKind] = useState<"reattribute" | "rename" | null>(null);
@@ -107,6 +141,7 @@ export function ParameterSpecDetailDialog({
     setLocalError(null);
     setSaveConfirmOpen(false);
     setSaveReason("");
+    setSaveAcknowledged(false);
     setCutoverConfirmOpen(false);
     setCutoverFinalizeReason("");
     setNextModuleId(moduleIdForSubject(detail.attributionSubjectId));
@@ -129,6 +164,14 @@ export function ParameterSpecDetailDialog({
   const isDirty = useMemo(() => isSpecEditorDraftDirty(detail, draft), [detail, draft]);
   // Draft activation is itself a lifecycle change; active/update requires field edits.
   const canSave = editable && !isDeprecated && (isDraft || isDirty);
+  const saveDiff = useMemo(() => {
+    if (!saveConfirmOpen) return null;
+    const preview = buildSpecEditorSavePayload(detail, draft, "__preview__");
+    if (!preview.payload) return null;
+    return specEditorSaveDiff(detail, preview.payload);
+  }, [saveConfirmOpen, detail, draft]);
+  const saveDiffVisible = Boolean(saveDiff?.valueShapeChanged || saveDiff?.constraintsChanged);
+  const needsSaveAcknowledgement = detail.usageCount > 0;
 
   const handleDraftChange = (patch: Partial<SpecEditorDraft>) => {
     setDraft((current) => ({ ...current, ...patch }));
@@ -156,12 +199,23 @@ export function ParameterSpecDetailDialog({
     }
     setLocalError(null);
     setSaveReason("");
+    setSaveAcknowledged(false);
     setSaveConfirmOpen(true);
+  };
+
+  const closeSaveConfirm = () => {
+    setSaveConfirmOpen(false);
+    setSaveReason("");
+    setSaveAcknowledged(false);
   };
 
   const handleSaveConfirm = async () => {
     if (!onSave) {
       setLocalError("当前环境未接线参数定义保存能力。");
+      return;
+    }
+    if (needsSaveAcknowledgement && !saveAcknowledged) {
+      setLocalError(`请确认已了解该定义有 ${detail.usageCount} 处引用。`);
       return;
     }
     const built = buildSpecEditorSavePayload(detail, draft, saveReason);
@@ -176,8 +230,7 @@ export function ParameterSpecDetailDialog({
       // the panel-provided `error` prop renders inside the layer.
       return;
     }
-    setSaveConfirmOpen(false);
-    setSaveReason("");
+    closeSaveConfirm();
   };
 
   const handleLifecycle = async () => {
@@ -420,15 +473,12 @@ export function ParameterSpecDetailDialog({
       {saveConfirmOpen ? (
         <ModalDialog
           open
-          onDismiss={
-            pending
-              ? undefined
-              : () => {
-                  setSaveConfirmOpen(false);
-                  setSaveReason("");
-                }
+          onDismiss={pending ? undefined : closeSaveConfirm}
+          className={
+            saveDiffVisible
+              ? "submission-dialog param-admin-confirm-dialog param-admin-confirm-dialog--diff"
+              : "submission-dialog param-admin-confirm-dialog"
           }
-          className="submission-dialog param-admin-confirm-dialog"
         >
           {({ titleId }) => (
             <>
@@ -438,8 +488,12 @@ export function ParameterSpecDetailDialog({
                 <h2 id={titleId}>{isDraft ? "确认激活" : "确认保存"}</h2>
                 <p>
                   {isDraft
-                    ? `将激活「${primaryLabel}」；请填写激活原因以便审计留痕。`
-                    : `将保存「${primaryLabel}」的修改；请填写修改原因以便审计留痕。`}
+                    ? needsSaveAcknowledgement
+                      ? `将激活「${primaryLabel}」；该定义已有 ${detail.usageCount} 处引用。请填写激活原因以便审计留痕。`
+                      : `将激活「${primaryLabel}」；请填写激活原因以便审计留痕。`
+                    : needsSaveAcknowledgement
+                      ? `将保存「${primaryLabel}」的修改；该定义已有 ${detail.usageCount} 处引用。请填写修改原因以便审计留痕。`
+                      : `将保存「${primaryLabel}」的修改；请填写修改原因以便审计留痕。`}
                 </p>
               </div>
               <button
@@ -447,15 +501,34 @@ export function ParameterSpecDetailDialog({
                 className="audit-dialog-close-icon"
                 aria-label="关闭"
                 disabled={pending}
-                onClick={() => {
-                  setSaveConfirmOpen(false);
-                  setSaveReason("");
-                }}
+                onClick={closeSaveConfirm}
               >
                 <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
               </button>
             </div>
             <div className="param-admin-confirm-dialog-body">
+              {saveDiffVisible && saveDiff ? (
+                <div
+                  className="param-admin-confirm-summary param-admin-save-diff"
+                  role="region"
+                  aria-label="值形状与约束变更"
+                >
+                  {saveDiff.valueShapeChanged ? (
+                    <SpecEditorSaveDiffBlock
+                      label="值形状 valueShape"
+                      previous={saveDiff.previousValueShape}
+                      next={saveDiff.nextValueShape}
+                    />
+                  ) : null}
+                  {saveDiff.constraintsChanged ? (
+                    <SpecEditorSaveDiffBlock
+                      label="约束 constraints"
+                      previous={saveDiff.previousConstraints}
+                      next={saveDiff.nextConstraints}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
               <label className="param-admin-confirm-field">
                 <span>{isDraft ? "激活原因" : "修改原因"}</span>
                 <textarea
@@ -470,6 +543,20 @@ export function ParameterSpecDetailDialog({
                   }}
                 />
               </label>
+              {needsSaveAcknowledgement ? (
+                <label className="param-admin-confirm-acknowledge">
+                  <input
+                    type="checkbox"
+                    checked={saveAcknowledged}
+                    disabled={pending}
+                    onChange={(event) => {
+                      setSaveAcknowledged(event.target.checked);
+                      setLocalError(null);
+                    }}
+                  />
+                  <span>{`已有 ${detail.usageCount} 处引用；我确认继续保存该定义。`}</span>
+                </label>
+              ) : null}
               {localError || error ? <p className="form-error" role="alert">{localError || error}</p> : null}
             </div>
             <div className="dialog-actions">
@@ -477,10 +564,7 @@ export function ParameterSpecDetailDialog({
                 type="button"
                 className="button subtle"
                 disabled={pending}
-                onClick={() => {
-                  setSaveConfirmOpen(false);
-                  setSaveReason("");
-                }}
+                onClick={closeSaveConfirm}
               >
                 取消
               </button>
@@ -488,7 +572,7 @@ export function ParameterSpecDetailDialog({
                 type="button"
                 className="button primary"
                 onClick={() => void handleSaveConfirm()}
-                disabled={pending}
+                disabled={pending || (needsSaveAcknowledgement && !saveAcknowledged)}
               >
                 {pending ? (isDraft ? "激活中…" : "保存中…") : isDraft ? "确认激活" : "确认保存"}
               </button>

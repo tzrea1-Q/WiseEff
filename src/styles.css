@@ -16724,6 +16724,77 @@ body.xiaoze-popup-resize-active {
   margin-top: 2px;
 }
 
+.param-admin-confirm-dialog--diff {
+  width: min(640px, calc(100vw - 48px));
+  max-height: min(88vh, 800px);
+}
+
+.param-admin-confirm-dialog--diff .param-admin-confirm-dialog-body {
+  overflow: auto;
+}
+
+.param-admin-save-diff {
+  gap: var(--space-3);
+}
+
+.param-admin-save-diff__field,
+.param-admin-save-diff__sides,
+.param-admin-save-diff__side {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.param-admin-save-diff__side {
+  gap: var(--space-1);
+}
+
+.param-admin-save-diff .param-admin-save-diff__heading {
+  display: block;
+  margin: 0;
+  color: var(--app-muted);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.param-admin-save-diff__side span {
+  color: var(--app-muted);
+  font-size: var(--text-sm);
+}
+
+.param-admin-save-diff__json {
+  margin: 0;
+  max-height: 10rem;
+  overflow: auto;
+  padding: var(--space-2) var(--space-3);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.param-admin-confirm-acknowledge {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+  background: var(--surface-low);
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.param-admin-confirm-acknowledge input {
+  flex-shrink: 0;
+}
+
 /* Secondary confirm / cutover reason stacks nested in editor dialogs. */
 .submission-dialog .form-stack {
   display: flex;
