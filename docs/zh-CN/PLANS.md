@@ -28,7 +28,8 @@
 
 ### 仍待做的产品与 UX
 
-- `exec-plans/active/2026-08-01-attribution-deferred-implementation.md`：已锁定 D-AG-01–04 的后续实现（验收/playwright 证据仍开放）。
+- `exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`：上线窗口可关闭、且不需要 HDC / 专家日志 / 目标环境的技术债收口。批次 1 归档归属证据；批次 2 为 TD-056；TD-079 留在并行分支 `fix/td-079-acceptance-semantic-fixtures`；TD-082 已由 #507 合入 `main`。
+- `exec-plans/active/2026-08-01-attribution-deferred-implementation.md`：已锁定 D-AG-01–04 的后续实现（验收/playwright 证据仍开放；由上面的上线收口计划承接）。
 - `exec-plans/active/td-031-xiaoze-run-timeline-streaming.md`：时间线/流式已落入 `xiaozeTurnStream`（TD-070 已关）；本文件残留是设计文档 metadata 门禁。
 - `exec-plans/active/2026-07-08-project-hotspot-scoring-redesign.md`：实现已在 `main`；残留是 API 合同 review 行。
 - `exec-plans/active/2026-07-01-wiseeff-node-only-debugging-platform.md`：不要重开隐藏 `/debugging`；后续 DTS reload 已恢复参数调试表面。

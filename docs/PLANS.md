@@ -28,7 +28,8 @@ This list is only plans that still have remaining work. Finished implementation 
 
 ### Remaining product and UX work
 
-- `exec-plans/active/2026-08-01-attribution-deferred-implementation.md`: locked D-AG-01–04 follow-through (acceptance/playwright evidence still open).
+- `exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`: launch-window closeout of tracker rows that do not need HDC, expert logs, or a target environment. Batch 1 archives attribution evidence; Batch 2 is TD-056; TD-079 stays on sibling `fix/td-079-acceptance-semantic-fixtures`; TD-082 closed on `main` via #507.
+- `exec-plans/active/2026-08-01-attribution-deferred-implementation.md`: locked D-AG-01–04 follow-through (acceptance/playwright evidence still open; owned by the launch closeout plan above).
 - `exec-plans/active/td-031-xiaoze-run-timeline-streaming.md`: timeline/streaming landed in `xiaozeTurnStream` (TD-070 closed); residual is this plan's design-doc metadata note.
 - `exec-plans/active/2026-07-08-project-hotspot-scoring-redesign.md`: implementation on `main`; residual is the API contract review row.
 - `exec-plans/active/2026-07-01-wiseeff-node-only-debugging-platform.md`: do not reopen hide-`/debugging`; later DTS reload restored a parameter-debugging surface.
