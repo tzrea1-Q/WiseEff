@@ -5,6 +5,7 @@ import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCop
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
 import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
+import { presentError } from "@/infrastructure/http/presentError";
 
 import {
   ParameterSpecDetail,
@@ -293,7 +294,8 @@ export function ParameterSpecDetailDialog({
         }
         await onRenamePropertyKey?.({ propertyKey: nextPropertyKey.trim(), reason });
       }
-    } catch {
+    } catch (caught) {
+      setLocalError(presentError(caught, "身份修正失败，请检查后重试。"));
       return;
     }
     setIdentityKind(null);

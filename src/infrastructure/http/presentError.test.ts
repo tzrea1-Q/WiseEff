@@ -39,6 +39,30 @@ describe("presentError", () => {
     expect(presentError("boom", FALLBACK)).toBe(FALLBACK);
     expect(presentError(undefined, FALLBACK)).toBe(FALLBACK);
   });
+
+  it("maps identity-triple CONFLICT details including a deprecated blocker", () => {
+    const err = new WiseEffApiError(
+      "CONFLICT",
+      "A parameter definition already exists for this subject and property key.",
+      { parameterSpecId: "spec-deprecated-legacy", lifecycle: "deprecated" },
+      "req-identity",
+    );
+    expect(presentError(err, FALLBACK)).toBe(
+      "目标身份已被定义「spec-deprecated-legacy」（已废弃）占用，无法覆盖。",
+    );
+  });
+
+  it("maps identity-triple CONFLICT details for an active blocker", () => {
+    const err = new WiseEffApiError(
+      "CONFLICT",
+      "A parameter definition already exists for this subject and property key.",
+      { parameterSpecId: "spec-mt5788-gpio-int", lifecycle: "active" },
+      "req-identity-active",
+    );
+    expect(presentError(err, FALLBACK)).toBe(
+      "目标身份已被定义「spec-mt5788-gpio-int」（已启用）占用，无法覆盖。",
+    );
+  });
 });
 
 describe("presentErrorMessage", () => {

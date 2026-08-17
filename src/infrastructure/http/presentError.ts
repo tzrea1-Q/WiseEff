@@ -56,6 +56,23 @@ const NETWORK_MESSAGE_PATTERN = /failed to fetch|networkerror|network error|load
 
 export const NETWORK_ERROR_MESSAGE = "网络连接失败，请稍后重试。";
 
+function identityCollisionCopy(err: WiseEffApiError): string | null {
+  if (err.code !== "CONFLICT") return null;
+  const specId = err.details.parameterSpecId;
+  if (typeof specId !== "string" || !specId.trim()) return null;
+  if (!("lifecycle" in err.details)) return null;
+  const raw = typeof err.details.lifecycle === "string" ? err.details.lifecycle.trim() : "";
+  const lifecycleLabel =
+    raw === "draft"
+      ? "草稿"
+      : raw === "active"
+        ? "已启用"
+        : raw === "deprecated"
+          ? "已废弃"
+          : raw || "未知";
+  return `目标身份已被定义「${specId}」（${lifecycleLabel}）占用，无法覆盖。`;
+}
+
 /**
  * Fetch-level network failure (service unreachable, DNS, offline). Structured
  * API errors — including 401/403 — are `WiseEffApiError`, never a `TypeError`.
@@ -96,6 +113,10 @@ export function presentError(err: unknown, fallback: string): string {
   }
 
   if (err instanceof WiseEffApiError) {
+    const collision = identityCollisionCopy(err);
+    if (collision) {
+      return collision;
+    }
     const byMessage = presentErrorMessage(err.message, "");
     if (byMessage) {
       return byMessage;

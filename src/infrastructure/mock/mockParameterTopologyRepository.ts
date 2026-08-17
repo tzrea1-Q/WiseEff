@@ -80,6 +80,7 @@ function seedSpecs(): Map<string, SpecFixture> {
       compatiblePatterns: ["vendor,sc8562"],
       policyTarget: null,
       attributionModules: [{ id: "mod-charge", name: "充电策略", kind: "driver-group" }],
+      attributionSubjectId: "asub:driver:sc8562",
       referenceCount: 1,
       activatedAt: "2026-07-01T00:00:00.000Z"
     },
@@ -105,6 +106,7 @@ function seedSpecs(): Map<string, SpecFixture> {
       compatiblePatterns: ["mediatek,mt5788"],
       policyTarget: null,
       attributionModules: [],
+      attributionSubjectId: "asub:driver:mt5788",
       referenceCount: 0,
       activatedAt: "2026-07-01T00:00:00.000Z"
     },
@@ -130,6 +132,7 @@ function seedSpecs(): Map<string, SpecFixture> {
       compatiblePatterns: null,
       policyTarget: null,
       attributionModules: [],
+      attributionSubjectId: "asub:driver:mt5788",
       referenceCount: 0,
       activatedAt: null
     },
@@ -155,6 +158,7 @@ function seedSpecs(): Map<string, SpecFixture> {
       compatiblePatterns: null,
       policyTarget: null,
       attributionModules: [],
+      attributionSubjectId: "asub:driver:sc8562",
       referenceCount: 0,
       activatedAt: null
     }
@@ -504,6 +508,7 @@ function toSummary(detail: SpecFixture): ParameterSpecSummary {
         : detail.valueShape,
     compatiblePatterns: detail.compatiblePatterns ? [...detail.compatiblePatterns] : null,
     attributionModules: detail.attributionModules ? [...detail.attributionModules] : [],
+    attributionSubjectId: detail.attributionSubjectId ?? null,
     referenceCount: detail.referenceCount ?? 0
   };
 }
