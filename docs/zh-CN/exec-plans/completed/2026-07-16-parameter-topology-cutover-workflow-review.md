@@ -1,6 +1,7 @@
 # 参数拓扑 Cutover 工作流 Review 修复计划
 
-> English: [English](../../../exec-plans/active/2026-07-16-parameter-topology-cutover-workflow-review.md)
+> Status: **已于 2026-08-17 完成** — 实现已合入 `main`。生产 cutover 证据仍为 **TD-042**。
+> English: [English](../../../exec-plans/completed/2026-07-16-parameter-topology-cutover-workflow-review.md)
 > 前序: [e2e review blockers](./2026-07-16-parameter-topology-e2e-review-blockers.md)
 > 设计: [面向拓扑与 Schema 的参数精细化管理](../../design-docs/2026-07-16-parameter-topology-schema-management-design.md)
 

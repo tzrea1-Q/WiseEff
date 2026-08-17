@@ -1,6 +1,6 @@
 # Agent log analysis system
 
-> Status: **Active (P1 merged; P2 merged; P3a merged; P3b — result webhooks, per-domain model override, judge-calibration mechanism + quality-gate automation — implemented on `feat/log-analysis-p3b-callbacks-calibration`, in review; only truly external inputs remain pending, see P3 status notes)**
+> Status: **Active — implementation complete on `main`; remaining work is external inputs only** (P1–P3b merged, including `feat/log-analysis-p3b-callbacks-calibration`. Pending: 20–50 expert-annotated real cases per domain, a second pilot domain, and human judge-calibration reviews. See P2/P3 status notes. There is no open PR.)
 > Date: 2026-08-12
 > Planning branch: `plan/agent-log-analysis` (this document, glossary, ADR-0022)
 > Implementation branches: `feat/log-analysis-p1-domains-and-llm`, `feat/log-analysis-p2-agent-loop-and-golden-set`, `feat/log-analysis-p3-eval-maturation` (one branch per phase; each checked out from the latest `main`)

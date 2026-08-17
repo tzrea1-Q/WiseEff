@@ -1,9 +1,10 @@
 # Parameter Topology Cutover Workflow Review Fixes
 
+> Status: **Completed 2026-08-17** — implementation landed on `main`. Residual production cutover evidence is **TD-042**.
 > **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` where applicable. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
 
 >
-> Chinese: [中文](../../zh-CN/exec-plans/active/2026-07-16-parameter-topology-cutover-workflow-review.md)
+> Chinese: [中文](../../zh-CN/exec-plans/completed/2026-07-16-parameter-topology-cutover-workflow-review.md)
 > Prior: [e2e review blockers](./2026-07-16-parameter-topology-e2e-review-blockers.md)
 > Design: [Topology- and Schema-Aware Parameter Management](../../design-docs/2026-07-16-parameter-topology-schema-management-design.md)
 

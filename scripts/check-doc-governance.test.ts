@@ -9,6 +9,7 @@ import {
   validateM6ReleaseRunbookCommands,
   validateEnvExample,
   validateMarkdownLinks,
+  validateNoDuplicatePlanFilenames,
   validatePlanDocument,
   validateRequiredRepositoryDocs
 } from "./check-doc-governance";
@@ -76,6 +77,37 @@ describe("validatePlanDocument", () => {
 
   it("exempts the active development roadmap", () => {
     expect(validatePlanDocument("docs/exec-plans/active/development-roadmap.md", "# Roadmap")).toEqual([]);
+  });
+});
+
+describe("validateNoDuplicatePlanFilenames", () => {
+  it("fails when the same plan filename lives in both active and completed", async () => {
+    const root = await createTempRoot();
+    await write(root, "docs/exec-plans/active/2026-07-15-dts-hardening-closeout.md", "# Active copy\n");
+    await write(root, "docs/exec-plans/completed/2026-07-15-dts-hardening-closeout.md", "# Completed copy\n");
+    await write(
+      root,
+      "docs/zh-CN/exec-plans/active/2026-07-16-parameter-topology-e2e-review-blockers.md",
+      "# 活跃副本\n"
+    );
+    await write(
+      root,
+      "docs/zh-CN/exec-plans/completed/2026-07-16-parameter-topology-e2e-review-blockers.md",
+      "# 已完成副本\n"
+    );
+
+    await expect(validateNoDuplicatePlanFilenames(root)).resolves.toEqual([
+      "Plan filename 2026-07-15-dts-hardening-closeout.md exists in both docs/exec-plans/active and docs/exec-plans/completed.",
+      "Plan filename 2026-07-16-parameter-topology-e2e-review-blockers.md exists in both docs/zh-CN/exec-plans/active and docs/zh-CN/exec-plans/completed."
+    ]);
+  });
+
+  it("accepts unique filenames and missing plan directories", async () => {
+    const root = await createTempRoot();
+    await write(root, "docs/exec-plans/active/still-open.md", "# Open\n");
+    await write(root, "docs/exec-plans/completed/already-done.md", "# Done\n");
+
+    await expect(validateNoDuplicatePlanFilenames(root)).resolves.toEqual([]);
   });
 });
 

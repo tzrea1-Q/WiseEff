@@ -3,6 +3,7 @@
 > **面向 Agent 执行者：**必须使用 Matt `implement`（推荐）或 Matt `implement`，按任务逐项执行。所有步骤使用 `- [ ]` 追踪。
 >
 > English: [English](../../../exec-plans/active/2026-07-16-parameter-topology-schema-management.md)
+> Status: **实现已在 `main` 完成；生产证据余量是 TD-042。** Review 第 3–6 轮已于 2026-08-17 归档到 `completed/`。不要把那些轮次重新当成活跃工作。
 > 设计规格：[面向拓扑与 Schema 的参数精细化管理](../../design-docs/2026-07-16-parameter-topology-schema-management-design.md)
 
 **目标：**用源码 occurrence、有效 DTS 拓扑、版本化驱动/属性规格和稳定项目绑定，替换当前由完整路径派生的扁平参数身份；在一次维护窗口中迁移全部历史引用并原子切换。

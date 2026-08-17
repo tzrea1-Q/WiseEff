@@ -1,11 +1,11 @@
 # Project parameter initialization — semantic landing (C1)
 
-> Status: **Implementation complete on branch** — awaiting parent PR/merge; **TD-060** closed in tech-debt tracker
+> Status: **Completed 2026-08-17** — landed on `main`. Closes **TD-060**.
 > Date: 2026-08-05
 > Parent: [`2026-08-05-path-reachable-mock-gap-program.md`](./2026-08-05-path-reachable-mock-gap-program.md)
 > Tracks: **TD-060**
 > Design (to amend first): [`docs/design-docs/2026-05-20-project-parameter-initialization-design.md`](../../design-docs/2026-05-20-project-parameter-initialization-design.md)
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-05-project-parameter-initialization.md`](../../zh-CN/exec-plans/active/2026-08-05-project-parameter-initialization.md)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-05-project-parameter-initialization.md`](../../zh-CN/exec-plans/completed/2026-08-05-project-parameter-initialization.md)
 
 ## Goal
 

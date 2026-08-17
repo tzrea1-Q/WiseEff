@@ -1,6 +1,7 @@
 # Parameter Topology Round 4 Review Blockers
 
-> Chinese: [中文](../../zh-CN/exec-plans/active/2026-07-16-parameter-topology-round4-review-blockers.md)
+> Status: **Completed 2026-08-17** — implementation landed on `main`. Residual production cutover evidence is **TD-042**.
+> Chinese: [中文](../../zh-CN/exec-plans/completed/2026-07-16-parameter-topology-round4-review-blockers.md)
 > Prior: [round3](./2026-07-16-parameter-topology-semantic-cutover-round3.md)
 
 **Goal:** Close parent-agent Round 3 Review blockers: real dt-validate schemas, durable stage→finalize, exact locked merge writeback, scoped matcher/review, honest manifest backfill, global-spec hotspots, unmatched review UI+audit, regression/acceptance gates.

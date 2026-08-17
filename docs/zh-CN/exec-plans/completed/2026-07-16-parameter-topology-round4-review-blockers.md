@@ -1,6 +1,7 @@
 # 参数拓扑第四轮 Review 阻断修复计划
 
-> English: [English](../../../exec-plans/active/2026-07-16-parameter-topology-round4-review-blockers.md)
+> Status: **已于 2026-08-17 完成** — 实现已合入 `main`。生产 cutover 证据仍为 **TD-042**。
+> English: [English](../../../exec-plans/completed/2026-07-16-parameter-topology-round4-review-blockers.md)
 > 上一轮：[第三轮语义切换](./2026-07-16-parameter-topology-semantic-cutover-round3.md)
 
 **目标：** 关闭第三轮 Review 阻断——真实 dt-validate schema、可运维 stage→finalize、精确锁定 merge 回写、matcher/review 作用域、诚实 manifest 回填、全局规格 hotspot、未匹配审核 UI+审计、回归与浏览器门禁。

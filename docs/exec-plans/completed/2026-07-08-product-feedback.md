@@ -1,5 +1,6 @@
 # Product Feedback (Internal Beta 问题反馈) Implementation Plan
 
+> Status: **Completed 2026-08-17** — archived after TD-036 closed on `feat/product-feedback`.
 > **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` — write the failing test first, implement the smallest change, then verify green. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
 
 Prefer Matt `tdd` for behavior and security-sensitive code.
@@ -78,7 +79,7 @@ git checkout -b feat/product-feedback
 Add:
 
 ```markdown
-- `exec-plans/active/2026-07-08-product-feedback.md`: Internal Beta 问题反馈 — persist sidebar feedback with multi-image ObjectStore attachments and admin triage at `/feedback-admin`.
+- `exec-plans/completed/2026-07-08-product-feedback.md`: Internal Beta 问题反馈 — persist sidebar feedback with multi-image ObjectStore attachments and admin triage at `/feedback-admin`.
 ```
 
 Mirror in `docs/zh-CN/PLANS.md`.
@@ -88,7 +89,7 @@ Mirror in `docs/zh-CN/PLANS.md`.
 In `docs/exec-plans/tech-debt-tracker.md` Open table:
 
 ```markdown
-| TD-036 | Product Feedback | Sidebar「问题反馈」is UI-only fake submit; no admin triage page. | Internal beta reports are lost; operators cannot track 待处理→处理中→已关闭. | Implement `docs/exec-plans/active/2026-07-08-product-feedback.md` on `feat/product-feedback`. |
+| TD-036 | Product Feedback | Sidebar「问题反馈」is UI-only fake submit; no admin triage page. | Internal beta reports are lost; operators cannot track 待处理→处理中→已关闭. | Implement `docs/exec-plans/completed/2026-07-08-product-feedback.md` on `feat/product-feedback`. |
 ```
 
 Mirror zh-CN tracker.
@@ -96,11 +97,11 @@ Mirror zh-CN tracker.
 - [ ] **Step 4: Commit plan registration**
 
 ```bash
-git add docs/exec-plans/active/2026-07-08-product-feedback.md \
-  docs/exec-plans/active/2026-07-08-product-feedback.md \
+git add docs/exec-plans/completed/2026-07-08-product-feedback.md \
+  docs/exec-plans/completed/2026-07-08-product-feedback.md \
   docs/PLANS.md docs/zh-CN/PLANS.md \
   docs/exec-plans/tech-debt-tracker.md docs/zh-CN/exec-plans/tech-debt-tracker.md
-git add -f docs/exec-plans/active/2026-07-08-product-feedback.md
+git add -f docs/exec-plans/completed/2026-07-08-product-feedback.md
 git commit -m "$(cat <<'EOF'
 docs: add product feedback implementation plan
 

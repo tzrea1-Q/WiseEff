@@ -9,75 +9,42 @@
 - 本页和英文版是相互链接的独立文档；不要在同一篇文档里混写中文和英文正文。
 - 命令、路径、环境变量、API 路径、角色名、状态名和脚本名称保持英文原样，避免复制时出错。
 - 修改相关功能时，请同时更新英文版和中文版；如果只更新一侧，`npm run docs:check` 应阻止完成。
+- 同一计划文件名不得同时出现在 `active/` 和 `completed/`（中英目录均适用）；`docs:check` 会拦截。
 - 若中文页与源码、测试或英文页冲突，以源码、测试和当前英文页为准，并在同一变更中修正中文页。
 
 ## 关键阅读点
 
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
-- `exec-plans/completed/2026-08-16-frontend-runtime-follow-up.md`：app-shell 收口后的架构审查余项已于 2026-08-17 经 #474–#488 完成——API 启动态诚实（TD-110）、mock `WiseEffApiError` 信封与领域守卫（TD-109）、feature CSS 同目录（C7）、节点调试 session、以及 `src/application/bridge/bridgeTargetSession.ts` 中的 C5 共享类型（#488）。TD-110/TD-109 余量留在债表作卫生项（中文全文 `docs/zh-CN/exec-plans/completed/2026-08-16-frontend-runtime-follow-up.md`）。
-- `exec-plans/completed/2026-08-13-knowledge-parameter-references.md`：参数定义与知识条目的结构化引用，已于 2026-08-13 经 #438 合并完成（知识库延后路线图第 2 项）——`knowledge_parameter_references` 把条目绑定到 `parameter_specs.id` 代理键（ADR-0017 身份纠错与 ADR-0011 废弃后均存续），条目编辑器内编辑权限门控的引用编辑并审计添加/移除，知识侧定义 chips 带如实「已废弃」徽章，定义详情新增仅已发布的「相关知识」列表，`knowledge.getDocument` 报告被引用定义（分支 `feat/knowledge-parameter-references`；KB-XREF-001）。
-- `exec-plans/completed/2026-08-13-node-debugging-gateway-port.md`：`/node-debugging` 改走 `DebuggingGateway` 端口，已于 2026-08-13 经 #423 完成——删除页面级 `/api/hdc/*` 回退（`src/hdcClient.ts`），新增 `resolveDebuggingGateway` 与带种子的 mock 适配器以恢复 ADR-0002 对等（mock 下可走 detect/read/write/rollback，确认令牌门禁与 API 一致），API 模式载荷不变（分支 `refactor/node-debugging-gateway-port`）。
-- `exec-plans/completed/2026-08-13-knowledge-log-recommendations.md`：日志分析结果的相关知识推荐已于 2026-08-13 经 #400 合并完成（知识库延后路线图第 1 项）——`GET /api/v1/knowledge/related-to-log` 从存储的结论/影响文本推导相似度查询，经现有混合检索并施加相关度截断（仅已发布条目，`knowledge:view` + `logs:view` + 组织隔离），日志结果页新增带引用深链与诚实检索模式说明的「相关知识」区块（KB-REC-001）。
-- `exec-plans/completed/2026-08-13-knowledge-reload-distillation.md`：DTS 重载运行沉淀为知识草稿（知识库延后路线图第 3 项），已于 2026-08-13 经 #429 合并完成——终态重载运行（已验证 / 不可验证 / 矛盾 / 失败，诚实陈述结局）经 `POST /api/v1/knowledge/distill-from-reload-run` 从 `/dts-reload` 运行历史/详情面沉淀为预填知识草稿，`source_reload_run_id` 与 Phase 3 的 `source_log_id` 并列，`action.createKnowledgeDraft` 扩展 `sourceReloadRunId`，草稿规则与日志蒸馏一致（分支 `feat/knowledge-reload-distillation`；KB-DISTILL-002）。
-- `exec-plans/completed/2026-08-07-project-configuration-workbench-release-baselines.md`：Issue #238 源码上下文中的发布基线创建/对比/发布/恢复——草稿/已发布/历史身份、对比模式、警告确认、影响发布、带预览的原子恢复、已发布 tip 不变（分支 `feat/project-configuration-workbench-release-baselines`）。
-- `exec-plans/completed/2026-08-07-project-configuration-workbench-release-readiness.md`：Issue #237 服务端发布就绪与源码 remediation——命令栏摘要、Issues 任务坞、带 gate token 的失败关闭基线创建/发布（分支 `feat/project-configuration-workbench-release-readiness`）。
-- `exec-plans/completed/2026-08-07-project-configuration-workbench-conflict-arbitration.md`：Issue #235 源码定位三方冲突仲裁——任务坞 Conflicts、等权结果、可选审计原因、合格批量影响预览、激活阻断（分支 `feat/project-configuration-workbench-conflict-arbitration`；关闭 TD-058）。
-- `exec-plans/completed/2026-08-07-project-configuration-workbench-session-drafts.md`：Issue #234 结构化 DTS 编辑会话的可恢复草稿与过期基保护——作用域本地持久化、导航/刷新恢复、离开确认、登出清空（分支 `feat/project-configuration-workbench-session-drafts`）。
-- `exec-plans/completed/2026-08-07-project-configuration-workbench-structured-edit.md`：Issue #233 源码上下文中的结构化 DTS 编辑会话——类型化检查器、会话变更坞、经既有变更请求提交流、权限锁定（分支 `feat/project-configuration-workbench-structured-edit`）。
-- `exec-plans/completed/2026-08-07-project-configuration-workbench-activity-timeline.md`：Issue #239 上下文项目活动时间线——命令栏入口、项目范围服务器审计投影、目标恢复、toast + 刷新、PCW-D11/D15（分支 `feat/project-configuration-workbench-activity-timeline`）。
-- `exec-plans/completed/2026-08-07-project-configuration-workbench-file-config-ops.md`：Issue #236 上下文检查器中的文件与配置集操作——创建/配置、成员角色/顺序、未编组、手动同步、导出、空集候选路径（分支 `feat/project-configuration-workbench-file-config-ops`）。
-- `exec-plans/completed/2026-08-07-project-configuration-workbench-candidate-activation.md`：Issue #232 候选激活——配置集指派、expected-current-version CAS、过期基安全，以及工作配置晋升（分支 `feat/project-configuration-workbench-candidate-activation`）。
-- `exec-plans/completed/2026-08-07-project-configuration-workbench-candidate-upload.md`：Issue #231 候选文件版本生命周期——上传、解析、影响审查与放弃，且不激活工作配置（分支 `feat/project-configuration-workbench-candidate-upload`）。
-- `exec-plans/completed/2026-08-07-project-configuration-workbench-inspector-history.md`：Issue #230 上下文检查器、不可变文件历史、源码历史/对比模式与 PCW-D15 叠层常驻规则（分支 `feat/project-configuration-workbench-inspector-history`）。
-- `exec-plans/completed/2026-08-07-project-configuration-workbench-source-nav.md`：Issue #229 源码定位 DTS 导航——结构 span、统一搜索、URL 深链与工作台源码同步（分支 `feat/project-configuration-workbench-source-nav`）。
-- `exec-plans/completed/2026-08-06-project-configuration-workbench-readonly.md`：Issue #228 Phase 1 只读 tracer——开发开关后的规范路由、确定性配置集上下文、成员/未编组源码树、经既有 ports 加载活跃源码，以及源码主导响应式外壳（分支 `feat/project-configuration-workbench-readonly`）。
-- 当前活跃计划清单以英文版 `docs/PLANS.md` 为准。`2026-07-16-parameter-topology-round4-review-blockers.md` 为第四轮 Review 阻断修复：真实 dt-validate schema、可运维 stage→finalize、精确锁定 merge 回写、matcher/review 作用域、manifest 门禁、全局规格 hotspot、未匹配创建+不匹配审计、acceptance/浏览器证据（分支 `fix/parameter-topology-round4-review-blockers`）。`2026-07-16-parameter-topology-round5-review-blockers.md` 为第五轮：不可变 base binding、真 fail-closed writeback、stage/finalize phase 审计、租户 resolve、createSpec 草稿→激活、acceptance fixture 诚实化（分支 `fix/parameter-topology-round5-review-blockers`）。TD-042 仍为 BLOCKER。
-- `exec-plans/completed/2026-08-08-project-configuration-workbench-cutover.md`：退役配置工作台开发开关，将旧四视图路由重定向到规范 `/configuration` 上下文，移除 `ProjectOperationsDialog` / 过时页面式面板，迁移 PROJ-OPS → PROJ-CONFIG-CUTOVER 验收，并完成中英文档（#240 / Phase 6）。
-- `exec-plans/completed/2026-08-09-pcw-workbench-shell-wave-3.md`：PCW 壳层 wave-3——Navigation / WorkspaceLoad / CanvasHistory / Activity Workbench session；壳 ≤ ~1500 行；关闭 #258（分支 `feat/pcw-workbench-shell-wave-3`）。
-- `exec-plans/completed/2026-08-09-pcw-workbench-shell-wave-2.md`：PCW 壳层 wave-2——Inspector + CommandBar + 源结构树/画布/任务坞展示适配器与 ConfigSetOpsSession；壳 ≤ ~2500 行（分支 `feat/pcw-workbench-shell-wave-2`）。
-- `exec-plans/completed/2026-08-10-dts-reload-debugging.md`：DTS 重载调试（#280 系列；#281–#289 已合并；#290 收口于 `feat/dts-reload-closeout`——文档门禁、中文配套、退役参数重载清理、TD-063–067）。
-- `exec-plans/completed/2026-08-12-frontend-aesthetics-uplift.md`：前端美学提升纲领，已完成 2026-08-13（P0 #332 令牌、P1 原语、P2 页面清扫、P3 #447 动效/暗色就绪、P4 #444 `ui:check`+lint 门禁与 #446 12 路由质量规格、FA-25 交互态快照收尾）——令牌单一来源地基、原语收敛（Button/Dialog/Toast/表格/状态）、页面缺陷清扫（本地化泄漏、布局预算、移动端抽屉）、动效与主题就绪、CI 强制门禁；标准见 `design-docs/ui-design-system.md`，门禁见 `developer/ui-quality-checklist.md`；递延残留 TD-111–TD-115。
-- `exec-plans/completed/2026-08-12-dts-reload-drop-synthesised-anchor-gate.md`：废除不对称的 `synthesised-anchor` 重载候选门禁，已于 2026-08-12 经 #311 完成——父 `/label` 与子孙路径同等分类；路径适用性仍由 preflight 负责（分支 `fix/dts-reload-drop-synthesised-anchor-gate`）。
-- `exec-plans/completed/2026-08-12-parameters-repository-split.md`：parameters 仓储拆分已于 2026-08-13 经 #321/#340/#359/#376/#377 完成（2026-08-12 架构评审候选项 3）——抽出 project/review-workflow/draft/file-sync/import 聚合，随后落地 `parameter-drafts`、`parameter-kernel`、`projects` 模块，并打断 parameters↔parameter-topology 环。正式仓储端口在出现第二个适配器前不排期。
-- `exec-plans/completed/2026-08-12-topology-writelock-writeback.md`：parameter-topology `editService` 拆分已于 2026-08-12 经 #327 完成（2026-08-12 架构评审候选项 6）——逐字抽出 `writeLock.ts` + `overlayWriteback.ts`；binding/enablement 去重仍为未排期的非目标。
-- `exec-plans/completed/2026-08-12-knowledge-base-mvp.md`：组织级 agentic 知识库 MVP 已于 2026-08-13 完成（#330 基座、#370 检索与小泽工具、#385 沉淀回路）——扁平多标签的 markdown/文件知识条目 + wiki 式轻治理生命周期、仅已发布内容进入混合检索（pgvector + 全文检索降级，ADR-0025）、小泽知识工具带引用溯源、审批门控的 Agent 草稿、日志结论一键沉淀（设计文档 `docs/design-docs/2026-08-12-knowledge-base-design.md`；遗留 TD-083）。
-- `exec-plans/active/2026-08-12-agent-log-analysis-system.md`：Agent 日志分析系统——把 `LogAnalysisAdapter` 背后的 4 条规则内核替换为证据接地的日志分析 Agent，新增组织作用域日志业务域（声明式格式画像、诚实降级），并建设两层评测体系（行为层进 CI、效果层跑脱敏金标准案例集）；P1–P3 分阶段（规划分支 `plan/agent-log-analysis`；实施自 `feat/log-analysis-p1-domains-and-llm` 起；ADR-0022；中文伴随页 `docs/zh-CN/exec-plans/active/2026-08-12-agent-log-analysis-system.md`）。
-- `exec-plans/completed/2026-08-12-xiaoze-turn-stream.md`：把小泽回合流式管线深化为单一 `xiaozeTurnStream` reducer 模块，持有"已经流出了什么"的唯一一份状态——吸收了帧构造、回合状态跟踪与最终回复 resync；resume 分支并入同一 open/ingest/finalize 路径，批准回合从此流出运行步骤（关闭 TD-070）；线协议不变（分支 `refactor/xiaoze-turn-stream`，PR #354；#358/#363 造成的验收漂移由 #379 修复；中文伴随页 `docs/zh-CN/exec-plans/completed/2026-08-12-xiaoze-turn-stream.md`）。
-- `exec-plans/completed/2026-08-13-xiaoze-turn-view.md`：把 `XiaozeTurnBlock` 组件体内无测试的七路来源回合渲染裁决移入纯函数 `resolveXiaozeTurnView` ViewModel——步骤/答案/推理优先级与全部显示门收进一个有测试的模块；渲染不变（分支 `refactor/xiaoze-turn-view`；架构审查候选 3；中文伴随页 `docs/zh-CN/exec-plans/completed/2026-08-13-xiaoze-turn-view.md`）。
-- `exec-plans/completed/2026-08-13-xiaoze-perception-residue.md`：删除小泽感知侧死掉的兼容层（`createPerceptionAgent`、线程仓库无用助手），抽出纯类型词汇 `modelTypes.ts` 打断 agent 模块 import 环；脚本化假模型/确定性模型迁出生产文件（分支 `refactor/xiaoze-perception-residue`；架构审查候选 6；中文伴随页 `docs/zh-CN/exec-plans/completed/2026-08-13-xiaoze-perception-residue.md`）。
-- `exec-plans/completed/2026-08-13-agent-tool-single-definition.md`：Agent 工具在 `toolMetadata.ts` 一处声明——名字联合、注册表定义、规划描述符、OpenAI 定义、系统提示词目录与中文标签全部由它派生；删除三张名字键控的目录旁表与死掉的重复 `AgentToolDefinition`（分支 `refactor/agent-tool-single-definition`；架构审查候选 4；中文伴随页 `docs/zh-CN/exec-plans/completed/2026-08-13-agent-tool-single-definition.md`）。
-- `exec-plans/completed/2026-08-13-xiaoze-protocol-package.md`：小泽 AG-UI 线协议契约收进 workspace 包 `@wiseeff/xiaoze-protocol` 一处——五个 CUSTOM 事件名与载荷形状由服务端发出方与前端消费方共享；删除四个前端手抄镜像文件与服务端重复声明，步骤记录全线统一为 `XiaozeRunStep`（分支 `refactor/xiaoze-protocol-package`；架构审查候选 5；ADR-0031；中文伴随页 `docs/zh-CN/exec-plans/completed/2026-08-13-xiaoze-protocol-package.md`）。
-- `exec-plans/completed/2026-08-12-xiaoze-approval-chain-single-seam.md`：把重复构造的小泽审批桥收拢为 orchestrator 自有、状态入库的 Agent 审批链（`beginApproval` / `resolveApproval`），请求上下文与运行 sink 经每次调用的配置传递，修复 `editedArgs` 丢弃与并发请求上下文串扰（分支 `fix/xiaoze-approval-chain-single-seam`；ADR-0024）。
-- `exec-plans/completed/2026-08-12-xiaoze-action-semantic-submit.md`：让 `action.submitParameterChange` 走切换后语义路径——类型化绑定草稿 + 草稿身份提交并携 `actorType: "agent"`——并修复 `xiaoze-action` 验收文件的退役身份漂移（分支 `fix/xiaoze-action-semantic-submit`；关闭 TD-078，记录 TD-079）。
-- `exec-plans/active/2026-08-08-project-configuration-workbench-defect-repair.md`：修复已上线的配置工作台——恢复被 `listOpenConflicts` 结构漂移阻断的发布通路（原始数据库错误被当作产品阻断项展示，并禁用基线创建与发布），缩减承载过载、实测产生 15 处元素重叠的命令栏，修复移动端操作行与源结构排序错误，让源结构树具备真实层级，并强化那条"在重叠存在时仍然通过"的 `PROJ-CONFIG-READ-001` 布局断言（分支 `fix/project-configuration-workbench-defects`）。
-- `exec-plans/active/2026-07-16-parameter-topology-round6-review-blockers.md`：第六轮 Review 阻断——历史 scope 校正、无损规格 ID、全局规格激活权限、完整 valueShape、真实 merge 验收、cleanup 租户隔离、稳定 test:all（分支 `fix/parameter-topology-round6-review-blockers`）。TD-042 仍为 BLOCKER。
-- `exec-plans/active/2026-07-19-dts-parameter-workbench-redesign.md`：以成熟参数工作台重新承载 API 模式参数页面，深度融合嵌套 DTS 拓扑、语义 binding 行、来源链、类型化草稿、响应式 UX 和可见验收，不恢复扁平身份。
-- `exec-plans/active/2026-07-21-dts-parameter-surface-mvp.md`：产品边界纠偏——可管参数面、模块→参数 UX、维护项目 DTS、工具链 L2 离开编辑热路径（见 RFC 与裁剪矩阵；中文摘要 `docs/zh-CN/exec-plans/active/2026-07-21-dts-parameter-surface-mvp.md`）。
-- `exec-plans/active/2026-07-23-local-post-cutover-seed.md`：本地 `db:seed:m1` / `dev:all` 默认语义-only + 本地 post-cutover，typed binding 可提交审核（分支 `feat/local-post-cutover-seed`）。
-- `exec-plans/active/2026-07-23-local-demo-credentials-seed.md`：仅 development 下 M0 为 ChargeLab 演示账号写入固定 username + 共用密码（分支 `feat/local-demo-credentials-seed`）。
-- `exec-plans/active/2026-07-21-retire-synthetic-base-dts.md`：退役平台合成基 `wiseeff-power-base.dts`；seed/写回 = 每项目一份项目主 DTS；管理员只维护模块↔驱动（见 RFC；中文摘要 `docs/zh-CN/exec-plans/active/2026-07-21-retire-synthetic-base-dts.md`）。
-- `exec-plans/active/2026-07-21-instance-submodule-seed.md`：Type U/N/C 实例子模块 + 驱动组；ingest ensure；未映射驱动 Admin 发现队列（中文摘要 `docs/zh-CN/exec-plans/active/2026-07-21-instance-submodule-seed.md`）。
-- `exec-plans/active/2026-07-27-module-attribution-redesign.md`：模块归属重构 —— 模块显式声明 kind/origin 取代名字猜测、废除失效的 driver 匹配、待归类队列可过滤可忽略因而能清空、规则先预览再按范围应用并回收空桶、操作按 kind 分级、重要性由业务分类继承（分支 `feat/module-attribution-model` 与 `feat/module-attribution-ui`；ADR-0004、ADR-0005；中文对照 `docs/zh-CN/exec-plans/active/2026-07-27-module-attribution-redesign.md`）。
-- `exec-plans/active/2026-07-30-attribution-tree-is-taxonomy-not-topology.md`：归属树是分类学而非拓扑 —— 废除每实例模块、将 `logical` 更名为 `node-type`、杠杆改为 `compatible` 与 `node-type`、绑定只挂在驱动组与节点类型单元、定义库陈述 `attributionModules` 而非预测、工作台启用 `groupByDevice` 做按实例浏览（分支 `feat/attribution-taxonomy-not-topology`；ADR-0010；部分取代 ADR-0004/0005/0006）。
-- `exec-plans/active/2026-07-30-attribution-subjects-and-versioned-specs.md`：归属主体 + 版本化参数定义 —— PR0–PR6 已落地（ADR-0013/0014）；follow-up 与治理 PR 经 #212–#215 合入；收口 #216 已完成；D-AG-* 实现见 `2026-08-01-attribution-deferred-implementation.md`。
-- `exec-plans/active/2026-08-01-attribution-deferred-implementation.md`：交付已锁定的 D-AG-01–04 —— PR1 可编辑 nature/cardinality + overlay-only claim；PR2 删除 `driverModule`（TD-047）；PR3 按注册默认分类放置 + auto 回放（TD-046）；中文摘要同路径 zh-CN。
-- `exec-plans/active/2026-08-02-parameter-admin-ux-polish.md`：参数管理后台 UX 打磨 —— 修复桌面列宽规则泄漏导致的移动端项目清单破损、把归属筛选移到它所筛选的列、修结构浏览层叠故障、补齐 tab 与表格 ARIA，随后统一四个项目 tab 的容器与空态语言并给项目清单加治理信号（分支 `feat/parameter-admin-ux-polish`；不越出 ADR-0001）；中文摘要同路径 zh-CN。
-- `exec-plans/active/2026-08-03-parameter-admin-org-ia-consolidation.md`：组织配置收敛为两入口 —— 参数定义管理（库内嵌定义匹配审核；节点对应确认嵌套且条件出现）与模块管理（不变）；仅规划；分支 `feat/parameter-admin-org-ia`；ADR-0015；中文摘要同路径 zh-CN。
-- `exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md`：让参数定义编辑器与写入契约一致 —— 落库或移除 API 静默丢弃的编辑（策略目标、删除约束键、清空单位、激活路径），删掉只能是占位的字段，给 JSON 编辑框真实的可供性，并修复模态层叠、滚动边界与焦点处理；SE-D1 至 SE-D6 已于 2026-08-03 定案；分支 `feat/parameter-spec-editor-fidelity`；中文摘要同路径 zh-CN。
-- `exec-plans/active/2026-08-05-path-reachable-mock-gap-program.md`：A+1 纲领 —— 关闭参数管理/调试中路径可达的仅 mock 与半通缺口，经 C4→C2→C3→C1 四子计划；排除 `/debugging`、reload 410、对比页 NoEntry；中文摘要同路径 zh-CN。
-- `exec-plans/active/2026-08-05-mock-honesty-and-dead-residual-cleanup.md`：C4 —— mock 导入诚实 apply、删除死残件 `AI_FEEDBACK`、清理孤儿 reload-bindings 契约；分支 `feat/mock-honesty-dead-residual-cleanup`。
-- `exec-plans/active/2026-08-05-node-debugging-ui-closure.md`：C2 —— `/node-debugging` 快照回滚 UI、会话事件 hydrate、高风险写确认；关闭 **TD-015**；分支 `feat/node-debugging-ui-closure`。
-- `exec-plans/active/2026-08-05-parameter-admin-audit-hints.md`：C3 —— 本地 `PUSH_AUDIT_HINT` 改为审计中心投影并补齐服务端审计；跟踪 **TD-061**；分支 `feat/parameter-admin-audit-hints`。
-- `exec-plans/active/2026-08-05-project-parameter-initialization.md`：C1 —— 语义化项目参数初始化落地（先修订五月设计，再 schema/API/UI）；跟踪 **TD-060**；分支 `feat/project-parameter-initialization`。
-- `exec-plans/completed/2026-08-05-project-operations-modal-restore.md`：产品覆盖 POD-D1 —— 在共享 `ModalDialog` 硬化成果之上恢复盖在清单上的深链项目运营弹窗；ADR-0001 修订为「路由可寻址」不等于「只能整页」。
-- `exec-plans/completed/2026-08-05-project-operations-dialog-hardening.md`：项目运营界面加固已于 2026-08-05 在 `feat/project-operations-dialog-hardening` 完成 —— **POD-D1 曾把四个视图临时还原为整页路由**；共享 `ModalDialog` / `ConfirmDialog` 原语（焦点陷阱、焦点归还、背景惰性化、仅最顶层响应 Escape、遮罩关闭成对判定、统一 z-index 刻度）已交付，并继续作为剩余弹窗与 `2026-08-03-parameter-spec-editor-fidelity.md` 第 19–23 项的契约；`StructuredValueEditor` 补齐样式；发布/回滚基线、移除成员与冲突裁决均需确认，`requiresConfirmation` 会真正拦截；教学资产与裸内部值已从四个视图移除。未交付范围转入 TD-056 – TD-059。呈现已由 `2026-08-05-project-operations-modal-restore.md` 恢复为深链弹窗；英文对照同路径。
-- `exec-plans/completed/2026-08-01-governance-platform-closeout.md`：治理/平台收口已合入（#216）—— 归档三份源计划、关闭 TD-054、Platform 证据、治理 Admin 验收 ID。
-- `exec-plans/completed/2026-07-30-parameter-governance-state-machine-completion.md`：参数管理后台状态机收口已合入（#212–#214；ADR-0011/0012）。残留 → 收口 #216；D1–D8 仍在 design-docs。
-- `exec-plans/completed/2026-07-31-attribution-governance-follow-up.md`：归属 follow-up PR7–PR9 已合入（#215）。残留 → 收口 #216；D-AG-01–04 已锁定 → `2026-08-01-attribution-deferred-implementation.md`（中文对照 `docs/zh-CN/exec-plans/completed/2026-07-31-attribution-governance-follow-up.md`）。
-- `exec-plans/completed/2026-07-30-platform-tier-and-super-admin.md`：platform-admin + schema 平台层已合入（#209–#210；ADR-0009）。残留 → 收口 #216。
-- `exec-plans/completed/2026-07-27-dts-node-enablement.md`：把 DTS `status` 当作节点启用状态而非参数 —— 结构键单一事实来源、派生启用与可达性、拓扑树与工作台可见、三态编辑接入共享草稿管线、vendor schema 不再向匹配喂入 `status`（分支 `feat/dts-node-enablement`；ADR-0003；中文对照 `docs/zh-CN/exec-plans/completed/2026-07-27-dts-node-enablement.md`）。
-- `exec-plans/completed/2026-07-25-parameter-admin-redesign.md`：参数管理后台产品重设计 —— 以治理作用域为信息架构主轴、项目级路由取代 modal、经拓扑 port 实现 mock/API 对等、identity mapping 治理迁入后台、后台自持状态、旧界面一次性退场（分支 `feat/refactor-parameter-admin`；ADR-0001、ADR-0002；中文对照 `docs/zh-CN/exec-plans/completed/2026-07-25-parameter-admin-redesign.md`）。
+- 已完成实现见 `docs/exec-plans/completed/`（含 2026-08-17 归档的路径可达 C1–C4、产品反馈、拓扑 review 第 3–6 轮）。不要把那些计划重新当成活跃工作。
+- 当前仍有剩余工作的计划：
+
+### 等待外部输入或目标环境
+
+- `exec-plans/active/2026-08-12-agent-log-analysis-system.md`：P1–P3b 已在 `main`。剩下的是专家标注金标准案例、第二个试点域、以及人工 judge 校准记录——不是开放 PR。残留 TD-090 / TD-103 / TD-105 / TD-116。
+- `exec-plans/active/2026-07-16-parameter-topology-schema-management.md`：语义身份实现已落地；**TD-042** 在干净快照演练完成前仍阻断“生产 cutover 就绪”声明。各轮 review 计划已在 `completed/`。
+- `exec-plans/active/2026-05-29-wiseeff-m5-2-staging-pilot-evidence-execution.md` 与 `2026-05-29-wiseeff-m5-2-non-hdc-target-evidence-closure.md`：M5.2 目标环境证据。
+- `exec-plans/active/2026-06-02-wiseeff-m6-2-identity-user-governance.md` 至 `2026-06-02-wiseeff-m6-6-release-rollback-capacity-gate.md`：自托管身份、备份、队列、可观测、发布/回滚/容量证据（TD-019–025）。
+
+### 仍待做的产品与 UX
+
+- `exec-plans/active/2026-08-08-project-configuration-workbench-defect-repair.md`：已上线配置工作台的发布通路与布局缺陷。
+- `exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md`：定义编辑器与写入契约保真（SE-D1–SE-D6；TD-059）。
+- `exec-plans/active/2026-07-06-wiseeff-notification-center.md`：持久化通知收件箱（TD-034）。
+- `exec-plans/active/2026-08-03-parameter-admin-org-ia-consolidation.md`：组织后台信息架构（仅规划；ADR-0015）。
+- `exec-plans/active/2026-08-02-parameter-admin-ux-polish.md`：参数管理后台 UX 打磨。
+- `exec-plans/active/2026-08-04-parameter-definition-identity-correction.md`：定义身份纠错收尾。
+- `exec-plans/active/2026-08-01-attribution-deferred-implementation.md`：已锁定 D-AG-01–04 的后续实现。
+- `exec-plans/active/td-031-xiaoze-run-timeline-streaming.md`：对照已落地的 `xiaozeTurnStream` 确认残留（TD-070 已关）。
+
+### 仍在 `active/`、待后续归档核对
+
+下面这些文件先留在 `active/`，等下一轮确认残余范围；不是施工顺序。完整路径以英文版 `docs/PLANS.md` 为准。
+
+- `development-roadmap.md`，以及 2026-07 的 DTS 工作台 / 种子 / 归属 / 驱动注册与 overlay 计划
+- 2026-07 的节点调试平台、批导、Excel 导出、日志调试组织解耦、个人总览、热榜
+- 2026-06 的 ADB/HDC 协议、调试后台、Device Bridge、小泽回合 UX
+
 - **分支与 PR：** 实现型子智能体只在从 `main` 切出的 feature branch 上开发并本地 commit；不得 push `main`、不得开/合 GitHub PR。由父智能体 review 后提 PR、合并，再 `git pull` 同步本地 `main`。细则见英文版 `docs/PLANS.md` § Git Branch & PR Workflow。
 - **Agent 技能：** 使用 Matt Pocock skills（如 `implement`、`tdd`、`to-spec`、`triage`）与 `docs/agents/*`；不要新建/更新 `docs/superpowers/**`，也不要指示调用 `superpowers:*`。进行中实现跟踪仍以 `docs/exec-plans/active/` 为准。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。

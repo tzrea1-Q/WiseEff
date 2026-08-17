@@ -1,9 +1,9 @@
 # Mock honesty and dead residual cleanup (C4)
 
-> Status: **Implementation complete on branch** — included in umbrella PR
+> Status: **Completed 2026-08-17** — landed on `main` (C4).
 > Date: 2026-08-05
 > Parent: [`2026-08-05-path-reachable-mock-gap-program.md`](./2026-08-05-path-reachable-mock-gap-program.md)
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-05-mock-honesty-and-dead-residual-cleanup.md`](../../zh-CN/exec-plans/active/2026-08-05-mock-honesty-and-dead-residual-cleanup.md)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-05-mock-honesty-and-dead-residual-cleanup.md`](../../zh-CN/exec-plans/completed/2026-08-05-mock-honesty-and-dead-residual-cleanup.md)
 
 ## Goal
 

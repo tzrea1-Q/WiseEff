@@ -2,7 +2,7 @@
 
 > 2026-08-05 修订：对齐拓扑 cutover 后的**语义 binding**（C1 / TD-060）。  
 > English: [`docs/design-docs/2026-05-20-project-parameter-initialization-design.md`](../../design-docs/2026-05-20-project-parameter-initialization-design.md)  
-> 计划：[`docs/zh-CN/exec-plans/active/2026-08-05-project-parameter-initialization.md`](../exec-plans/active/2026-08-05-project-parameter-initialization.md)
+> 计划：[`docs/zh-CN/exec-plans/completed/2026-08-05-project-parameter-initialization.md`](../exec-plans/completed/2026-08-05-project-parameter-initialization.md)
 
 ## 摘要
 

@@ -1,8 +1,8 @@
 # 项目参数初始化 · 语义落地（C1）
 
-> Status: **实现完成（分支上）** — 待 parent PR/合并；**TD-060** 已关
+> Status: **已于 2026-08-17 完成** — 已合入 `main`。关闭 **TD-060**。
 > Date: 2026-08-05
-> English: [`docs/exec-plans/active/2026-08-05-project-parameter-initialization.md`](../../../exec-plans/active/2026-08-05-project-parameter-initialization.md)
+> English: [`docs/exec-plans/completed/2026-08-05-project-parameter-initialization.md`](../../../exec-plans/completed/2026-08-05-project-parameter-initialization.md)
 > 上位：[`2026-08-05-path-reachable-mock-gap-program.md`](./2026-08-05-path-reachable-mock-gap-program.md)
 > 跟踪：**TD-060**
 > 设计（须先修订）：[`docs/design-docs/2026-05-20-project-parameter-initialization-design.md`](../../../design-docs/2026-05-20-project-parameter-initialization-design.md)

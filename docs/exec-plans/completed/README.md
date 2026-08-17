@@ -36,6 +36,8 @@ Completed plans are historical implementation evidence. They can explain why a s
 
 ## Historical Feature Plans
 
+On 2026-08-17, landed path-reachable C1–C4 (`2026-08-05-path-reachable-mock-gap-program.md` and children), Internal Beta product feedback (`2026-07-08-product-feedback.md`), and topology review rounds 3–6 were moved here from `active/`.
+
 The dated feature plans from 2026-05-07 through 2026-05-24 record prototype and UI evolution. Treat them as history unless a current product, design, frontend, or architecture document explicitly points to them as still-current behavior.
 
 ## Reading Rule

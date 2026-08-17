@@ -1,8 +1,8 @@
 # Mock 诚实化与死残件清理（C4）
 
-> Status: **实现完成（伞分支）**
+> Status: **已于 2026-08-17 完成** — 已合入 `main`（C4）。
 > Date: 2026-08-05
-> English: [`docs/exec-plans/active/2026-08-05-mock-honesty-and-dead-residual-cleanup.md`](../../../exec-plans/active/2026-08-05-mock-honesty-and-dead-residual-cleanup.md)
+> English: [`docs/exec-plans/completed/2026-08-05-mock-honesty-and-dead-residual-cleanup.md`](../../../exec-plans/completed/2026-08-05-mock-honesty-and-dead-residual-cleanup.md)
 > 上位：[`2026-08-05-path-reachable-mock-gap-program.md`](./2026-08-05-path-reachable-mock-gap-program.md)
 
 ## 目标

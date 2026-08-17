@@ -1,6 +1,7 @@
 # 参数拓扑第六轮 Review 阻断修复
 
-> English: [English](../../../exec-plans/active/2026-07-16-parameter-topology-round6-review-blockers.md)
+> Status: **已于 2026-08-17 完成** — 实现已合入 `main`。生产 cutover 证据仍为 **TD-042**。
+> English: [English](../../../exec-plans/completed/2026-07-16-parameter-topology-round6-review-blockers.md)
 > 上一轮：[第五轮](./2026-07-16-parameter-topology-round5-review-blockers.md)
 
 **目标：** 关闭父智能体第五轮 Review 阻断：历史跨租户 review task scope 校正、无损手工规格 ID、全局规格激活权限、完整 valueShape 激活 UX、真实 submit→review→merge 验收、租户作用域 fixture 清理、稳定 `npm run test:all`。

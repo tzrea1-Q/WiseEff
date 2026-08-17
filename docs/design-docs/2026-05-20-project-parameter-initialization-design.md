@@ -2,7 +2,7 @@
 
 > Amended 2026-08-05 for post-cutover **semantic bindings** (C1 / TD-060).  
 > Chinese: [`docs/zh-CN/design-docs/2026-05-20-project-parameter-initialization-design.md`](../zh-CN/design-docs/2026-05-20-project-parameter-initialization-design.md)  
-> Plan: [`docs/exec-plans/active/2026-08-05-project-parameter-initialization.md`](../exec-plans/active/2026-08-05-project-parameter-initialization.md)
+> Plan: [`docs/exec-plans/completed/2026-08-05-project-parameter-initialization.md`](../exec-plans/completed/2026-08-05-project-parameter-initialization.md)
 
 ## Summary
 
