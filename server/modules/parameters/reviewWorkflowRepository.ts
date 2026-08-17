@@ -120,6 +120,39 @@ const CR_MODULE_JOINS_SEMANTIC_SQL = `
     left join project_parameter_bindings b on b.id = pcr.project_parameter_binding_id
     left join parameter_modules binding_pm on binding_pm.id = b.module_id`;
 
+function semanticSourceFileNameSql(tableAlias: string): string {
+  return `(
+    select f.file_name
+    from project_parameter_file_versions pfv
+    inner join project_parameter_files f on f.id = pfv.file_id
+    where pfv.id = ${tableAlias}.source_file_version_id
+  )`;
+}
+
+/** `node/prop` so `findBoundNode` can strip the property and match `dts_nodes.node_path`. */
+const SEMANTIC_SOURCE_NODE_PATH_SQL = `
+      case
+        when nullif(trim(both '/' from coalesce(lnr.node_locator, '')), '') is null then null
+        when nullif(trim(coalesce(dps.property_key, split_part(ps.specification_key, '/', 2))), '') is null
+          then trim(both '/' from lnr.node_locator)
+        else trim(both '/' from lnr.node_locator) || '/' || coalesce(dps.property_key, split_part(ps.specification_key, '/', 2))
+      end`;
+
+const SEMANTIC_LNR_FROM_BINDING_SQL = `
+    left join lateral (
+      select lnr.node_locator, lnr.name
+      from dts_logical_node_revisions lnr
+      where lnr.logical_node_id = coalesce(b.logical_node_id, pcr.logical_node_id)
+      order by
+        case
+          when pcr.base_config_revision_id is not null
+            and lnr.config_revision_id = pcr.base_config_revision_id then 0
+          else 1
+        end,
+        lnr.config_revision_id desc
+      limit 1
+    ) lnr on true`;
+
 /** Legacy: prefer binding leaf name, else definition module label. */
 const CR_MODULE_NAME_LEGACY_SQL = `
       coalesce(nullif(trim(binding_pm.name), ''), pd.module) as module`;
@@ -1156,8 +1189,8 @@ export async function listChangeRequests(
       pcr.reviewer_note,
       pcr.reject_reason,
       pcr.fast_track,
-      null::text as source_file_name,
-      lnr.node_locator as source_node_path
+      ${semanticSourceFileNameSql("pcr")} as source_file_name,
+      ${SEMANTIC_SOURCE_NODE_PATH_SQL} as source_node_path
     from parameter_change_requests pcr
     left join parameter_specs ps on ps.id = pcr.parameter_spec_id
     left join dts_property_specs dps on dps.parameter_spec_id = ps.id
@@ -1170,13 +1203,7 @@ export async function listChangeRequests(
     ) psv on true
     left join project_parameter_bindings b on b.id = pcr.project_parameter_binding_id
     left join parameter_modules binding_pm on binding_pm.id = b.module_id
-    left join lateral (
-      select lnr.node_locator
-      from dts_logical_node_revisions lnr
-      where lnr.logical_node_id = b.logical_node_id
-      order by lnr.config_revision_id desc
-      limit 1
-    ) lnr on true
+    ${SEMANTIC_LNR_FROM_BINDING_SQL}
     inner join users on users.id = pcr.submitter_user_id
     left join users assignee on assignee.id = pcr.assigned_to_user_id
     where ${where.join("\n      and ")}
@@ -1271,8 +1298,8 @@ export async function findOpenChangeRequest(
         pcr.reviewer_note,
         pcr.reject_reason,
         pcr.fast_track,
-        null::text as source_file_name,
-        null::text as source_node_path
+        ${semanticSourceFileNameSql("pcr")} as source_file_name,
+        ${SEMANTIC_SOURCE_NODE_PATH_SQL} as source_node_path
       from parameter_change_requests pcr
       left join parameter_specs ps on ps.id = pcr.parameter_spec_id
       left join dts_property_specs dps on dps.parameter_spec_id = ps.id
@@ -1284,6 +1311,7 @@ export async function findOpenChangeRequest(
         limit 1
       ) psv on true
       ${CR_MODULE_JOINS_SEMANTIC_SQL}
+      ${SEMANTIC_LNR_FROM_BINDING_SQL}
       inner join users on users.id = pcr.submitter_user_id
       left join users assignee on assignee.id = pcr.assigned_to_user_id
       where pcr.organization_id = $1
@@ -1402,14 +1430,13 @@ export async function getChangeRequestById(
         pcr.reviewer_note,
         pcr.reject_reason,
         pcr.fast_track,
-        null::text as source_file_name,
-        null::text as source_node_path
+        ${semanticSourceFileNameSql("pcr")} as source_file_name,
+        ${SEMANTIC_SOURCE_NODE_PATH_SQL} as source_node_path
       from parameter_change_requests pcr
       left join parameter_specs ps on ps.id = pcr.parameter_spec_id
       left join dts_property_specs dps on dps.parameter_spec_id = ps.id
-      left join dts_logical_node_revisions lnr
-        on lnr.logical_node_id = pcr.logical_node_id
-       and lnr.config_revision_id = pcr.base_config_revision_id
+      ${CR_MODULE_JOINS_SEMANTIC_SQL}
+      ${SEMANTIC_LNR_FROM_BINDING_SQL}
       left join lateral (
         select psv.*
         from parameter_spec_versions psv
@@ -1417,7 +1444,6 @@ export async function getChangeRequestById(
         order by case when psv.lifecycle = 'active' then 0 else 1 end, psv.version desc
         limit 1
       ) psv on true
-      ${CR_MODULE_JOINS_SEMANTIC_SQL}
       inner join users on users.id = pcr.submitter_user_id
       left join users assignee on assignee.id = pcr.assigned_to_user_id
       where pcr.organization_id = $1

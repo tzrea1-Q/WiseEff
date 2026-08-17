@@ -37,7 +37,7 @@ One plan → one branch. Sequential commits on this branch are slices (plan → 
 
 | Branch | Owns | This plan's duty |
 | --- | --- | --- |
-| `fix/td-079-acceptance-semantic-fixtures` | **TD-079** leftover `project_parameter_value_id` fixtures before flipping the shared CI acceptance job | Record ownership only |
+| `fix/td-079-acceptance-remaining` | **TD-079** leftover `project_parameter_value_id` fixtures before flipping the shared CI acceptance job (`#509` already merged the first fixture slice) | Record ownership only |
 | `chore/td-082-apierror-status-codemod` | **TD-082** mechanical `ApiError` third-argument deletion | Record ownership only |
 
 Merge-time: re-check `docs/PLANS.md` and both tech-debt tracker twins against `origin/main` before requesting merge. Those files collide often.
@@ -106,7 +106,7 @@ Legend: **Done** = closed or closeable in a batch above; **In progress (sibling)
 | TD-056 | Done in Batch 2 (this branch) | This branch after Batch 1 |
 | TD-057 | Open (later) | Batch 3 |
 | TD-064 / TD-065 | Open (later) | Batch 3; not this session by default |
-| TD-079 | In progress (sibling) | `fix/td-079-acceptance-semantic-fixtures` |
+| TD-079 | In progress (sibling) | `fix/td-079-acceptance-remaining` |
 | TD-082 | Done on `main` via #507 | `chore/td-082-apierror-status-codemod` |
 | TD-001 | Deferred | Long-running mock/API parity constraint, not a ticket |
 | TD-033 | Deferred | Archive-only leftover debugging catalog tables |

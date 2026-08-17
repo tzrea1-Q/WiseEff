@@ -16,10 +16,10 @@ import {
   bindHardwareUserToProject,
   createAndSubmitBindingDraft,
   createBindingDraftViaApi,
-  defaultWorkflowAssignees,
   disposablePageUrl,
   insertSensitiveNodeRule,
   integerCellTarget,
+  seedIsolatedBinding,
   seedIsolatedHexChipBindings,
   startSwappedDisposablePostCutoverRuntime,
   submitBindingDraftViaApi
@@ -30,14 +30,9 @@ useBrowserDiagnostics(test);
 
 const organizationId = "org-chargelab";
 const projectId = "aurora";
-const adminUserId = "u-xu-yun";
 const descriptionPrefix = "PARAM-DTS acceptance";
 const databaseUrl = process.env.DATABASE_URL;
 
-const parameterDefinitionId = "acceptance-dts-chip-reg";
-const parameterValueId = "acceptance-aurora-dts-chip-reg";
-const sensitiveParameterDefinitionId = "acceptance-dts-sensitive-status";
-const sensitiveParameterValueId = "acceptance-aurora-dts-sensitive-status";
 const sensitiveRuleId = "acceptance-dts-sensitive-rule-critical";
 
 /** Minimal DTS without /include/ so upload + structural ingest succeed. */
@@ -68,6 +63,28 @@ const peerDts = `/dts-v1/;
 		zone@0 {
 			compatible = "vendor,thermal-zone";
 			status = "okay";
+		};
+	};
+};
+`;
+
+/** Two chips sharing compatible so IMPACT can attach a `compatible` kind; `vendor-id` is bindable (unlike structural `reg`). */
+const impactDts = `/dts-v1/;
+/ {
+	amba {
+		i2c@1 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			chip@6E {
+				compatible = "vendor,chip123";
+				vendor-id = <0x6e>;
+				status = "okay";
+			};
+			chip@70 {
+				compatible = "vendor,chip123";
+				vendor-id = <0x70>;
+				status = "okay";
+			};
 		};
 	};
 };
@@ -651,6 +668,95 @@ test.describe("DTS structured post-cutover typed edits", () => {
     }
   });
 
+  test("structural impact kinds when DTS bindings exist", async ({ request }, testInfo) => {
+    // @acceptance PARAM-DTS-IMPACT-001
+    // @operation PARAM-DTS-IMPACT-001
+    test.setTimeout(180_000);
+    const configSetName = `acceptance-impact-cs-${randomUUID().slice(0, 8)}`;
+    const peerFileName = `acceptance-dts-impact-peer-${randomUUID()}.dts`;
+    let fileName = "";
+    let bindingIds: string[] = [];
+
+    try {
+      const binding = await seedIsolatedBinding(request, {
+        propertyKey: "vendor-id",
+        dts: impactDts,
+        configSetName,
+        nodeLocatorPattern: "chip@6E",
+        rawValuePattern: ".",
+        reason: `${descriptionPrefix} impact binding`,
+        timeoutMs: 60_000
+      });
+      fileName = binding.fileName;
+      bindingIds = [binding.bindingId];
+
+      const peer = await uploadDtsFile(request, peerFileName, peerDts);
+      const addPeer = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/config-sets/${encodeURIComponent(binding.configSetId)}/files`),
+        {
+          headers: adminHeaders(),
+          data: { fileId: peer.fileId, role: "thermal", sortOrder: 1 }
+        }
+      );
+      expect([200, 201, 409]).toContain(addPeer.status());
+
+      const submitted = await createAndSubmitBindingDraft(request, {
+        binding,
+        targetValue: integerCellTarget("0x6f"),
+        reason: `${descriptionPrefix} impact submit`
+      });
+      const requestId = submitted.requestId;
+      expect(requestId).toBeTruthy();
+
+      const changesResponse = await request.get(
+        apiRoute(`/api/v1/parameter-change-requests?projectId=${projectId}`),
+        { headers: adminHeaders() }
+      );
+      expect(changesResponse.ok()).toBe(true);
+      const changesBody = (await changesResponse.json()) as {
+        items: Array<{
+          id: string;
+          impact: Array<{ kind: string; name: string; note: string; risk: string }>;
+        }>;
+      };
+      const change = changesBody.items.find((item) => item.id === requestId);
+      expect(change).toBeTruthy();
+      expect(Array.isArray(change?.impact)).toBe(true);
+      expect(change!.impact.length).toBeGreaterThan(0);
+      const kinds = new Set(change!.impact.map((item) => item.kind));
+      expect(kinds.has("parameter")).toBe(true);
+      const structuralKinds = ["compatible", "config-set", "phandle"].filter((kind) => kinds.has(kind));
+      expect(structuralKinds.length).toBeGreaterThan(0);
+      const impactArtifact = await writeOperationJsonArtifact(testInfo, "parameter-dts-impact.json", {
+        requestId,
+        impact: change!.impact,
+        structuralKinds
+      });
+
+      await recordOperationEvidence({
+        operationId: "PARAM-DTS-IMPACT-001",
+        title: "change-request impact with structural kinds when available",
+        status: "passed",
+        testInfo,
+        assertions: ["api"],
+        artifacts: [impactArtifact],
+        api: [
+          summarizeApiResponse(changesResponse, {
+            method: "GET",
+            path: "/api/v1/parameter-change-requests",
+            responseSummary: `kinds=${[...kinds].join(",")} structural=${structuralKinds.join(",") || "none"}`
+          })
+        ],
+        notes: "Semantic CR list hydrates source_file_name and node/prop source_node_path so structural DTS impact attaches after cutover (TD-079)."
+      });
+    } finally {
+      await cleanupDtsUploadedArtifacts(fileName ? [fileName, peerFileName] : [peerFileName], {
+        configSetNames: [configSetName],
+        bindingIds
+      });
+    }
+  });
+
   test("sensitive-node RBAC denies missing capability; agent critical deny is enforced", async ({
     request
   }, testInfo) => {
@@ -761,206 +867,6 @@ test.describe("DTS structured post-cutover typed edits", () => {
         await client.query(`delete from dts_sensitive_node_rules where id = $1`, [sensitiveRuleId]);
       });
       await cleanupDtsUploadedArtifacts(fileName ? [fileName] : [], { bindingIds });
-    }
-  });
-});
-
-test.describe("DTS structured impact leftover pre-cutover PPV", () => {
-  async function seedDtsLegacyPpvFixture() {
-    await withPgClient(async (client) => {
-      await client.query(
-        `
-        insert into parameter_definitions (
-          id, organization_id, name, description, explanation, config_format,
-          module, default_range, unit, risk
-        )
-        values (
-          $1, $2, 'reg', 'acceptance dts chip reg', 'chip reg',
-          'DTS', 'amba/i2c@1/chip@6E', '0-255', '', 'Low'
-        )
-        on conflict (id) do update set
-          organization_id = excluded.organization_id,
-          name = excluded.name,
-          module = excluded.module,
-          risk = excluded.risk
-        `,
-        [parameterDefinitionId, organizationId]
-      );
-      await client.query(
-        `
-        insert into project_parameter_values (
-          id, organization_id, project_id, parameter_definition_id,
-          current_value, recommended_value, value_version, updated_by_user_id,
-          source_file_name, source_node_path
-        )
-        values ($1, $2, $3, $4, '<0x6e>', '<0x6e>', 1, $5, null, null)
-        on conflict (id) do update set
-          current_value = excluded.current_value,
-          recommended_value = excluded.recommended_value,
-          value_version = excluded.value_version,
-          source_file_name = null,
-          source_node_path = null
-        `,
-        [parameterValueId, organizationId, projectId, parameterDefinitionId, adminUserId]
-      );
-    });
-  }
-
-  async function cleanupDtsLegacyPpv(fileNames: string[], configSetNames: string[]) {
-    await cleanupSemanticAcceptanceArtifacts({
-      organizationId,
-      projectId,
-      fileNames,
-      configSetNames,
-      projectParameterValueIds: [parameterValueId]
-    });
-    await withPgClient(async (client) => {
-      await client.query(`delete from project_parameter_values where id = any($1::text[])`, [
-        [parameterValueId]
-      ]);
-      await client.query(`delete from parameter_definitions where id = any($1::text[])`, [
-        [parameterDefinitionId, sensitiveParameterDefinitionId]
-      ]);
-    });
-  }
-
-  test.beforeEach(async () => {
-    const postCutover = await withPgClient(async (client) => {
-      const cutover = await client.query<{ c: string }>(`select count(*)::text as c from parameter_identity_cutovers`);
-      const ppv = await client.query<{ c: string }>(
-        `
-        select count(*)::text as c
-        from information_schema.tables
-        where table_schema = 'public' and table_name = 'project_parameter_values'
-        `
-      );
-      return Number(cutover.rows[0]?.c ?? 0) > 0 || Number(ppv.rows[0]?.c ?? 0) === 0;
-    });
-    test.skip(
-      postCutover,
-      "PARAM-DTS-IMPACT-001 still requires pre-cutover PPV identity; semantic CR list nulls source_file_name so structural kinds do not attach (TD-079 remaining)."
-    );
-    await seedDtsLegacyPpvFixture();
-  });
-
-  test("structural impact kinds when DTS bindings exist", async ({ request }, testInfo) => {
-    // @acceptance PARAM-DTS-IMPACT-001
-    // @operation PARAM-DTS-IMPACT-001
-    const fileName = `acceptance-dts-impact-${randomUUID()}.dts`;
-    const peerFileName = `acceptance-dts-impact-peer-${randomUUID()}.dts`;
-    const configSetName = `acceptance-impact-cs-${randomUUID().slice(0, 8)}`;
-
-    try {
-      const primary = await uploadDtsFile(request, fileName, sampleDts);
-      const peer = await uploadDtsFile(request, peerFileName, peerDts);
-
-      const createCs = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
-        headers: adminHeaders(),
-        data: { name: configSetName }
-      });
-      expect(createCs.status()).toBe(201);
-      const csBody = (await createCs.json()) as { item: { id: string } };
-      await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets/${csBody.item.id}/files`), {
-        headers: adminHeaders(),
-        data: { fileId: primary.fileId, role: "base", sortOrder: 0 }
-      });
-      await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets/${csBody.item.id}/files`), {
-        headers: adminHeaders(),
-        data: { fileId: peer.fileId, role: "thermal", sortOrder: 1 }
-      });
-
-      const syncResponse = await request.post(
-        apiRoute(`/api/v1/projects/${projectId}/parameter-files/${primary.fileId}/sync`),
-        {
-          headers: adminHeaders(),
-          data: { versionId: primary.versionId }
-        }
-      );
-      expect(syncResponse.ok()).toBe(true);
-
-      await withPgClient(async (client) => {
-        await client.query(
-          `
-          update project_parameter_values
-          set source_file_name = $1,
-              source_node_path = 'amba/i2c@1/chip@6E/reg',
-              current_value = '<0x6e>'
-          where id = $2
-          `,
-          [fileName, parameterValueId]
-        );
-      });
-
-      const submitResponse = await request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
-        headers: adminHeaders(),
-        data: {
-          projectId,
-          items: [
-            {
-              parameterId: parameterValueId,
-              targetValue: "<0x6f>",
-              reason: `${descriptionPrefix} impact submit`
-            }
-          ],
-          reason: `${descriptionPrefix} impact submit`,
-          assignees: defaultWorkflowAssignees
-        }
-      });
-      expect(submitResponse.ok()).toBe(true);
-      const submitBody = (await submitResponse.json()) as {
-        item: { items: Array<{ requestId: string }> };
-      };
-      const requestId = submitBody.item.items[0]?.requestId;
-      expect(requestId).toBeTruthy();
-
-      const changesResponse = await request.get(
-        apiRoute(`/api/v1/parameter-change-requests?projectId=${projectId}`),
-        { headers: adminHeaders() }
-      );
-      expect(changesResponse.ok()).toBe(true);
-      const changesBody = (await changesResponse.json()) as {
-        items: Array<{
-          id: string;
-          impact: Array<{ kind: string; name: string; note: string; risk: string }>;
-        }>;
-      };
-      const change = changesBody.items.find((item) => item.id === requestId);
-      expect(change).toBeTruthy();
-      expect(Array.isArray(change?.impact)).toBe(true);
-      expect(change!.impact.length).toBeGreaterThan(0);
-      const kinds = new Set(change!.impact.map((item) => item.kind));
-      expect(kinds.has("parameter")).toBe(true);
-      const structuralKinds = ["compatible", "config-set", "phandle"].filter((kind) => kinds.has(kind));
-      expect(structuralKinds.length).toBeGreaterThan(0);
-      const impactArtifact = await writeOperationJsonArtifact(testInfo, "parameter-dts-impact.json", {
-        requestId,
-        impact: change!.impact,
-        structuralKinds
-      });
-
-      await recordOperationEvidence({
-        operationId: "PARAM-DTS-IMPACT-001",
-        title: "change-request impact with structural kinds when available",
-        status: "passed",
-        testInfo,
-        assertions: ["api"],
-        artifacts: [impactArtifact],
-        api: [
-          summarizeApiResponse(submitResponse, {
-            method: "POST",
-            path: "/api/v1/parameter-submission-rounds",
-            responseSummary: `requestId=${requestId}`
-          }),
-          summarizeApiResponse(changesResponse, {
-            method: "GET",
-            path: "/api/v1/parameter-change-requests",
-            responseSummary: `kinds=${[...kinds].join(",")} structural=${structuralKinds.join(",") || "none"}`
-          })
-        ],
-        notes: `Impact included structural kinds: ${structuralKinds.join(", ")}. Still uses leftover PPV identity because semantic CR list nulls source_file_name (TD-079 remaining).`
-      });
-    } finally {
-      await cleanupDtsLegacyPpv([fileName, peerFileName], [configSetName]);
     }
   });
 });
