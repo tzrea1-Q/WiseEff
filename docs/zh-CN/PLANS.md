@@ -28,6 +28,7 @@
 
 ### 仍待做的产品与 UX
 
+- `exec-plans/active/2026-08-17-xiaoze-approval-failure-recovery.md`：TD-102 / TD-094 — 批准后工具执行失败时以中文回合停住并落库；成功路径不再双写 assistant。实现分支 `fix/td102-approval-execution-dead-end`。
 - `exec-plans/active/2026-08-08-project-configuration-workbench-defect-repair.md`：已上线配置工作台的发布通路与布局缺陷。
 - `exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md`：定义编辑器与写入契约保真（SE-D1–SE-D6；TD-059）。
 - `exec-plans/active/2026-07-06-wiseeff-notification-center.md`：持久化通知收件箱（TD-034）。

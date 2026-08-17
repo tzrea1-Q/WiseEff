@@ -28,6 +28,7 @@ This list is only plans that still have remaining work. Finished implementation 
 
 ### Remaining product and UX work
 
+- `exec-plans/active/2026-08-17-xiaoze-approval-failure-recovery.md`: TD-102 / TD-094 — halt and persist a Chinese failure turn after approved tool execution fails; stop double-writing the success reply. Implementation is on `fix/td102-approval-execution-dead-end`.
 - `exec-plans/active/2026-08-08-project-configuration-workbench-defect-repair.md`: shipped workbench release-path and layout defects.
 - `exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md`: definition editor vs write-contract fidelity (SE-D1–SE-D6; TD-059 dialog migration).
 - `exec-plans/active/2026-07-06-wiseeff-notification-center.md`: durable notification inbox (TD-034).

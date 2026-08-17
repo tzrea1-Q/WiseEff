@@ -63,7 +63,7 @@ flowchart TD
 - [x] Batch 2: `approveToolCall` stops `appendAgentMessage` on success; `resolveApproval` reads the tool summary; update `orchestrator.test.ts`.
 - [x] Register `XIAOZE-APPROVAL-EXEC-FAIL-001` as `required: false` + `@acceptance-planned` stub.
 - [x] Update TD-102 / TD-094 tracker rows (EN Open table + zh-CN in-progress / recently closed).
-- [ ] Parent: add Current Active bullet in `docs/PLANS.md` / `docs/zh-CN/PLANS.md` (deferred to parent; this branch does not edit those files).
+- [x] Parent: add Current Active bullet in `docs/PLANS.md` / `docs/zh-CN/PLANS.md`.
 
 ## UI Interaction Automation review
 
@@ -99,7 +99,7 @@ Do not run full browser acceptance unless cheap.
 | Area | Action | Paths |
 | --- | --- | --- |
 | Repository maps | No change | `AGENTS.md`, `ARCHITECTURE.md` — approval-chain seams unchanged |
-| Planning | Update | This plan + zh companion. `docs/PLANS.md` / `docs/zh-CN/PLANS.md` Current Active bullet deferred to parent |
+| Planning | Update | This plan + zh companion. `docs/PLANS.md` / `docs/zh-CN/PLANS.md` Current Active bullet. |
 | Product specs | No change | Failure copy is recovery UX, not a new workflow |
 | Domain / glossary | No change | Agent approval chain already documented |
 | Design docs | No change | No API/schema change |
@@ -118,6 +118,6 @@ Do not run full browser acceptance unless cheap.
 - [x] Coverage map + operation matrix EN + zh register `XIAOZE-APPROVAL-EXEC-FAIL-001` before claiming the slice done.
 - [x] TD-102 and TD-094 updated in both tracker twins.
 - [x] This plan + zh companion include Impact Matrix, Update Gate, Git & PR Workflow, and UI automation review.
-- [ ] `docs/PLANS.md` Current Active bullet — parent owns this pass.
+- [x] `docs/PLANS.md` Current Active bullet.
 - [x] `npm run docs:check` green before merge.
 - [ ] Move this plan to `completed/` after the parent merges.

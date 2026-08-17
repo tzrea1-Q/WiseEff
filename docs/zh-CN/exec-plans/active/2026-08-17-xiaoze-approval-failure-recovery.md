@@ -44,7 +44,7 @@
 - [x] 批次 2：`approveToolCall` 成功时不再 `appendAgentMessage`；`resolveApproval` 读工具摘要；更新 `orchestrator.test.ts`。
 - [x] 登记 `XIAOZE-APPROVAL-EXEC-FAIL-001` 为 `required: false` + `@acceptance-planned` 桩。
 - [x] 更新 TD-102 / TD-094 追踪行（英文 Open 表 + 中文进行中/近期关闭）。
-- [ ] 父代理：在 `docs/PLANS.md` / `docs/zh-CN/PLANS.md` 增加 Current Active 条目（本分支不改这两份文件）。
+- [x] 父代理：在 `docs/PLANS.md` / `docs/zh-CN/PLANS.md` 增加 Current Active 条目。
 
 ## UI 交互自动化审查
 
@@ -78,7 +78,7 @@ npm run acceptance:operations
 | 领域 | 动作 | 路径 |
 | --- | --- | --- |
 | 仓库地图 | 无变更 | `AGENTS.md`、`ARCHITECTURE.md` — 审批链接缝未改 |
-| 计划 | 更新 | 本计划 + 英文对应。`docs/PLANS.md` / `docs/zh-CN/PLANS.md` Current Active 条目交给父代理 |
+| 计划 | 更新 | 本计划 + 英文对应。`docs/PLANS.md` / `docs/zh-CN/PLANS.md` Current Active 条目。 |
 | 产品规格 | 无变更 | 失败文案是恢复 UX，不是新工作流 |
 | 领域术语 | 无变更 | Agent 审批链已有文档 |
 | 设计文档 | 无变更 | 无 API/schema 变更 |
@@ -97,6 +97,6 @@ npm run acceptance:operations
 - [x] 覆盖图与操作矩阵中英登记 `XIAOZE-APPROVAL-EXEC-FAIL-001`。
 - [x] TD-102 与 TD-094 在两份追踪文件中更新。
 - [x] 本计划与英文对应包含影响矩阵、更新门禁、Git 与 PR 工作流、UI 自动化审查。
-- [ ] `docs/PLANS.md` Current Active 条目 — 父代理负责。
+- [x] `docs/PLANS.md` Current Active 条目。
 - [x] 合并前 `npm run docs:check` 为绿。
 - [ ] 父代理合并后把本计划移入 `completed/`。
