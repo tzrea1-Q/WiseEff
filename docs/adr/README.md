@@ -41,3 +41,7 @@ See also: [`CONTEXT.md`](../../CONTEXT.md), [`docs/design-docs/domain-model.md`]
 | [0029](0029-parameter-platform-primitives-live-in-a-standalone-kernel-module.md) | Parameter platform primitives live in a standalone kernel module |
 | [0030](0030-projects-are-a-standalone-module.md) | Projects are a standalone module |
 | [0031](0031-xiaoze-wire-contract-is-a-shared-package.md) | The Xiaoze wire contract is a shared package |
+| [0032](0032-semantic-edits-on-active-definitions-mint-a-successor.md) | Semantic edits on an active definition mint a successor version |
+| [0033](0033-identity-mapping-uses-protected-re-resolve.md) | Identity mapping mistakes re-resolve in place |
+| [0034](0034-referenced-property-key-rename-is-a-source-cutover.md) | Referenced property-key rename is a staged source-rewriting cutover |
+| [0035](0035-debug-value-promotion-stages-drafts.md) | Proven debug values promote through parameter drafts |

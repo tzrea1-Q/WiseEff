@@ -15,4 +15,4 @@ A **debug value** is run-scoped evidence only. Starting or completing a reload r
 
 - Reload runs read the library as a baseline and persist their own target rows plus overlay artifacts.
 - Tests for the run skeleton assert a library fingerprint is unchanged across a run.
-- Future "send proven value to change request" work must not collapse into the reload write path.
+- Future "send proven value to change request" work must not collapse into the reload write path. The governed path is [ADR-0035](0035-debug-value-promotion-stages-drafts.md): a promote-to-drafts command, then the existing workbench CR flow — never a library write from start/deploy/complete.

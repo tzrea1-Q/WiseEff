@@ -33,5 +33,6 @@
 - [项目主 DTS 契约 RFC](2026-07-21-project-primary-dts-contract-rfc.md)
 - [项目配置工作台——锁定设计](2026-08-06-project-configuration-workbench-design.md)
 - [知识库——锁定设计](2026-08-12-knowledge-base-design.md)
+- [参数治理延期问题——2026-08-18 锁定（英文）](../../design-docs/2026-07-30-parameter-governance-deferred-questions.md)
 - [表格列多选筛选 UX](ux-table-column-filter.md)
 - [UI 设计系统](ui-design-system.md)
