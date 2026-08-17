@@ -125,7 +125,7 @@
 - `rollbackToBaseline(baselineId)` 是原子的：在一个事务内把每个已漂移成员的 `current_version_id` 指回钉住的版本。它不删除历史，也不会让文件的线性版本指针悄悄倒退——而是插入一条新的 `origin='rollback'` 版本，把钉住版本的字节带到最新指针，保持版本历史单调可追溯。任一被钉住的文件已不存在会让整个回滚失败。因为回滚总会为漂移成员创建一个新版本 id，回滚后立刻 `compareBaseline` 仍会把该成员报为 `version_changed`（id 与基线钉住的 id 不同），但其结构化差异为空，证明内容本身完全一致。
 - `releaseBaseline(baselineId)` 对配置集**当前**成员内容运行校验门禁（见下），仅当门禁放行时才把 `draft` 基线翻转为 `released`。
 
-**校验门禁：** `DtcValidator.validate(files, { mode })` 在受限子进程（独立临时目录、仅含 `PATH` 的环境、硬超时）中用系统 `dtc` 二进制编译配置集的 dts 成员，返回 `{ ok, mode, diagnostics, compiler }`。`mode` 读取自 `DTS_VALIDATION_MODE`（默认 `block`，可选 `warn` 或 `off`；见 `docs/zh-CN/developer/environment-variables.md`）。
+**校验门禁：** `DtcValidator.validate(files, { mode })` 在受限子进程（独立临时目录、`PATH` 及已存在的 `HOME`/`USER`/`LOGNAME`、硬超时）中用系统 `dtc` 二进制编译配置集的 dts 成员，返回 `{ ok, mode, diagnostics, compiler }`。`mode` 读取自 `DTS_VALIDATION_MODE`（默认 `block`，可选 `warn` 或 `off`；见 `docs/zh-CN/developer/environment-variables.md`）。
 
 - `mode=block`：只要有 `error` 级诊断，或 `dtc` 二进制不可用，就 `ok=false`；`releaseBaseline` 抛出 `ApiError('CONFLICT', ..., 409, { code: 'dts-validation-failed', diagnostics })`，基线保持 `draft`。
 - `mode=warn`：始终 `ok=true`，但 `requiresConfirmation=true`——放行发布并显式标记「未校验」。

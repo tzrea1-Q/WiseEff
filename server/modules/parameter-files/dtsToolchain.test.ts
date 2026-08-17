@@ -37,10 +37,14 @@ function createFakeChild(): FakeChild {
 }
 
 function fakeSpawnScript(
-  handler: (command: string, args: string[]) => { stdout?: string; stderr?: string; code?: number; hang?: boolean }
+  handler: (
+    command: string,
+    args: string[],
+    options?: { env?: NodeJS.ProcessEnv }
+  ) => { stdout?: string; stderr?: string; code?: number; hang?: boolean }
 ): typeof nodeSpawn {
-  return ((command: string, args: readonly string[] = []) => {
-    const plan = handler(command, [...args]);
+  return ((command: string, args: readonly string[] = [], options?: { env?: NodeJS.ProcessEnv }) => {
+    const plan = handler(command, [...args], options);
     const proc = createFakeChild();
     if (plan.hang) {
       return proc;
@@ -183,6 +187,55 @@ describe("resolveDtsToolchainCommands", () => {
       fdtoverlay: join(managedDir, "bin", "fdtoverlay"),
       dtschema: join(managedDir, "bin", "dt-validate")
     });
+  });
+});
+
+describe("probeDtsToolchain restricted env", () => {
+  it("forwards HOME and PATH into the probe spawn env without secrets", async () => {
+    const captured: Array<NodeJS.ProcessEnv | undefined> = [];
+    const spawnFn = fakeSpawnScript((_command, _args, options) => {
+      captured.push(options?.env);
+      return { stdout: "1.8.1" };
+    });
+
+    await probeDtsToolchain(spawnFn, {
+      env: {
+        PATH: "/bin",
+        HOME: "/Users/ci",
+        USER: "ci",
+        LOGNAME: "ci",
+        AWS_SECRET_ACCESS_KEY: "secret",
+        SSH_AUTH_SOCK: "/tmp/ssh.sock"
+      }
+    });
+
+    expect(captured.length).toBeGreaterThan(0);
+    for (const env of captured) {
+      expect(env?.HOME).toBe("/Users/ci");
+      expect(env?.PATH).toBe("/bin");
+      expect(env?.USER).toBe("ci");
+      expect(env?.LOGNAME).toBe("ci");
+      expect(env?.AWS_SECRET_ACCESS_KEY).toBeUndefined();
+      expect(env?.SSH_AUTH_SOCK).toBeUndefined();
+    }
+  });
+
+  it("omits HOME from the probe spawn env when the source env has none", async () => {
+    const captured: Array<NodeJS.ProcessEnv | undefined> = [];
+    const spawnFn = fakeSpawnScript((_command, _args, options) => {
+      captured.push(options?.env);
+      return { stdout: "1.8.1" };
+    });
+
+    await probeDtsToolchain(spawnFn, {
+      env: { PATH: "/bin" }
+    });
+
+    expect(captured.length).toBeGreaterThan(0);
+    for (const env of captured) {
+      expect(env).not.toHaveProperty("HOME");
+      expect(env?.PATH).toBe("/bin");
+    }
   });
 });
 

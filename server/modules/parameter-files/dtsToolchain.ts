@@ -193,10 +193,22 @@ export function loadPinnedToolchainVersions(
   };
 }
 
+/** User-profile keys macOS Python (`dt-validate`) needs; never secrets or agent sockets. */
+const MINIMAL_ENV_KEYS = ["PATH", "HOME", "USER", "LOGNAME"] as const;
+
+/**
+ * Restricted subprocess env. Copies PATH plus present user-profile identity vars
+ * so `dt-validate --version` does not stall ~3s looking up a home directory when
+ * HOME is stripped (issue #430). Omits unset keys rather than inventing values.
+ * Secrets, SSH agent sockets, and the rest of `process.env` stay out.
+ */
 function minimalEnv(sourceEnv: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
-  if (sourceEnv.PATH) {
-    env.PATH = sourceEnv.PATH;
+  for (const key of MINIMAL_ENV_KEYS) {
+    const value = sourceEnv[key];
+    if (value) {
+      env[key] = value;
+    }
   }
   return env;
 }
@@ -322,7 +334,7 @@ async function probeCommand(
 export type DtsToolchainProcessResult = ProcessResult;
 
 /**
- * Run one device-tree binary in a restricted subprocess (PATH-only env, hard timeout).
+ * Run one device-tree binary in a restricted subprocess (minimal env, hard timeout).
  * Exported so other modules that drive `dtc` / `fdtoverlay` directly do not re-implement
  * process spawning, timeout kill, and output capture.
  */
@@ -519,7 +531,7 @@ export function withEphemeralEntryCompileStub(configSet: DtsToolchainConfigSet):
 /**
  * Complete DTS config-set toolchain runner:
  * base `dtc -@` → overlay DTBO → `fdtoverlay` in manifest order → `dt-validate`.
- * Restricted subprocess: isolated tmpdir, PATH-only env, hard timeout, no network assumptions.
+ * Restricted subprocess: isolated tmpdir, minimal env, hard timeout, no network assumptions.
  */
 export function createDtsToolchainRunner(deps: CreateDtsToolchainRunnerDeps = {}): DtsToolchainRunner {
   const spawnFn = deps.spawnFn ?? nodeSpawn;

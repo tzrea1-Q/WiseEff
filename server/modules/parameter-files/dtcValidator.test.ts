@@ -370,8 +370,12 @@ describe("createSubprocessDtcValidator - restricted subprocess execution", () =>
     expect(existsSync(capturedTmpDir)).toBe(false);
   });
 
-  it("passes a minimal env (PATH only) to the child process, stripping other vars", async () => {
+  it("forwards HOME and PATH into the child env without secrets", async () => {
+    vi.stubEnv("PATH", "/bin");
+    vi.stubEnv("HOME", "/Users/ci");
     vi.stubEnv("SUPER_SECRET_TOKEN", "leak-me-not");
+    vi.stubEnv("AWS_SECRET_ACCESS_KEY", "secret");
+    vi.stubEnv("SSH_AUTH_SOCK", "/tmp/ssh.sock");
     let capturedEnv: NodeJS.ProcessEnv | undefined;
     const spawnFn = ((command: string, args: readonly string[] = [], options?: { env?: NodeJS.ProcessEnv }) => {
       capturedEnv = options?.env;
@@ -388,8 +392,11 @@ describe("createSubprocessDtcValidator - restricted subprocess execution", () =>
 
     await validator.validate([{ name: "a.dts", content: "x" }], { mode: "block" });
 
-    expect(capturedEnv).toBeDefined();
+    expect(capturedEnv?.HOME).toBe("/Users/ci");
+    expect(capturedEnv?.PATH).toBe("/bin");
     expect(capturedEnv?.SUPER_SECRET_TOKEN).toBeUndefined();
+    expect(capturedEnv?.AWS_SECRET_ACCESS_KEY).toBeUndefined();
+    expect(capturedEnv?.SSH_AUTH_SOCK).toBeUndefined();
   });
 
   it("kills the child process and reports an error diagnostic when it exceeds the timeout", async () => {

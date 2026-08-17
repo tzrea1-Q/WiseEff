@@ -62,7 +62,7 @@
 | `WISEEFF_SEED_LEGACY_FLAT_IDENTITY` | 未设置（`0`） | `db:seed:m1` / `dev:api` 启动 | 设为 `1` 时种双轨 flat defs/PPV 且不做本地 post-cutover（typed 提交仍会拦截）；同时关闭 API 启动期本地 post-cutover。默认未设置/语义-only 会执行本地 post-cutover finalize。 |
 | `WISEEFF_LOCAL_POST_CUTOVER` | 未设置（development 下等同开启） | `dev:api` 启动 | 设为 `0`/`false`/`off` 可跳过 listen 前本地 post-cutover。production 永不执行。test 仅在显式设为 `1` 时执行。 |
 
-`DtcValidator`（`server/modules/parameter-files/dtcValidator.ts`）在受限子进程中运行系统 `dtc` 编译器：独立临时目录、仅含 `PATH` 的最小环境变量，以及到期即杀进程的硬超时。当 `dtc` 不在 `PATH` 上时校验器会降级而不是挂起：`block` 返回 `ok:false`（发布保持阻断，直到人工决定切到 `warn`），`warn` 返回 `ok:true` 并附带「校验已跳过」诊断，`off` 完全不调用 `dtc`。每次门禁运行——通过、失败或降级——都会写入 `validation.gate` 审计事件。容器/`gVisor` 沙箱**本期不做**；见 `docs/zh-CN/SECURITY.md`。
+`DtcValidator`（`server/modules/parameter-files/dtcValidator.ts`）在受限子进程中运行系统 `dtc` 编译器：独立临时目录、最小环境变量（`PATH` 以及已存在的用户身份变量 `HOME` / `USER` / `LOGNAME`，不含 secret），以及到期即杀进程的硬超时。当 `dtc` 不在 `PATH` 上时校验器会降级而不是挂起：`block` 返回 `ok:false`（发布保持阻断，直到人工决定切到 `warn`），`warn` 返回 `ok:true` 并附带「校验已跳过」诊断，`off` 完全不调用 `dtc`。每次门禁运行——通过、失败或降级——都会写入 `validation.gate` 审计事件。容器/`gVisor` 沙箱**本期不做**；见 `docs/zh-CN/SECURITY.md`。
 
 ## 设备调试
 
