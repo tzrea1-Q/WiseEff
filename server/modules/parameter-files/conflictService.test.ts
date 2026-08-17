@@ -269,7 +269,7 @@ describe.skipIf(!databaseAvailable)("parameter file conflict service", () => {
         },
         { conflictId: "conflict-1", resolution: "ui" }
       )
-    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter review permission is required.", 403));
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter review permission is required."));
   });
 
   it("puts trimmed resolve reason into audit metadata and omits blank reason", async () => {

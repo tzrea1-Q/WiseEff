@@ -25,13 +25,13 @@ export type ConfigSetServiceContext = AuditCorrelationContext;
 
 function requireParameterFileAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Forbidden.", 403, { permission: "admin:access" });
+    throw new ApiError("FORBIDDEN", "Forbidden.", { permission: "admin:access" });
   }
 }
 
 function requireParameterFileView(auth: AuthContext) {
   if (!canViewParameters(auth) && !canAdminParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Forbidden.", 403, { permission: "parameter:view" });
+    throw new ApiError("FORBIDDEN", "Forbidden.", { permission: "parameter:view" });
   }
 }
 
@@ -74,7 +74,7 @@ export async function createConfigSet(
       name: input.name
     });
     if (existing) {
-      throw new ApiError("CONFLICT", "A config set with this name already exists in the project.", 409, {
+      throw new ApiError("CONFLICT", "A config set with this name already exists in the project.", {
         projectId: input.projectId,
         name: input.name
       });
@@ -125,7 +125,7 @@ export async function listConfigSetFiles(
     configSetId: input.configSetId
   });
   if (!configSet || configSet.projectId !== input.projectId) {
-    throw new ApiError("NOT_FOUND", "Config set not found.", 404, {
+    throw new ApiError("NOT_FOUND", "Config set not found.", {
       configSetId: input.configSetId
     });
   }
@@ -198,7 +198,7 @@ export async function addConfigSetFile(
       configSetId: input.configSetId
     });
     if (!configSet) {
-      throw new ApiError("NOT_FOUND", "Config set not found.", 404, { configSetId: input.configSetId });
+      throw new ApiError("NOT_FOUND", "Config set not found.", { configSetId: input.configSetId });
     }
 
     const membership = await getFileConfigSetMembership(tx, {
@@ -206,18 +206,18 @@ export async function addConfigSetFile(
       fileId: input.fileId
     });
     if (!membership) {
-      throw new ApiError("NOT_FOUND", "Parameter file not found.", 404, { fileId: input.fileId });
+      throw new ApiError("NOT_FOUND", "Parameter file not found.", { fileId: input.fileId });
     }
 
     if (membership.projectId !== configSet.projectId) {
-      throw new ApiError("VALIDATION_FAILED", "File does not belong to the config set's project.", 400, {
+      throw new ApiError("VALIDATION_FAILED", "File does not belong to the config set's project.", {
         fileId: input.fileId,
         configSetId: input.configSetId
       });
     }
 
     if (membership.configSetId && membership.configSetId !== input.configSetId) {
-      throw new ApiError("CONFLICT", "File already belongs to a different config set.", 409, {
+      throw new ApiError("CONFLICT", "File already belongs to a different config set.", {
         fileId: input.fileId,
         currentConfigSetId: membership.configSetId
       });
@@ -261,7 +261,7 @@ export async function removeConfigSetFile(
       fileId: input.fileId
     });
     if (!membership || membership.configSetId !== input.configSetId) {
-      throw new ApiError("NOT_FOUND", "File is not a member of this config set.", 404, {
+      throw new ApiError("NOT_FOUND", "File is not a member of this config set.", {
         fileId: input.fileId,
         configSetId: input.configSetId
       });
@@ -297,7 +297,7 @@ export async function updateConfigSet(
       configSetId: input.configSetId
     });
     if (!existing) {
-      throw new ApiError("NOT_FOUND", "Config set not found.", 404, { configSetId: input.configSetId });
+      throw new ApiError("NOT_FOUND", "Config set not found.", { configSetId: input.configSetId });
     }
 
     const nextName = input.name ?? existing.name;
@@ -317,7 +317,7 @@ export async function updateConfigSet(
         name: nextName
       });
       if (conflict && conflict.id !== input.configSetId) {
-        throw new ApiError("CONFLICT", "A config set with this name already exists in the project.", 409, {
+        throw new ApiError("CONFLICT", "A config set with this name already exists in the project.", {
           projectId: existing.projectId,
           name: nextName
         });

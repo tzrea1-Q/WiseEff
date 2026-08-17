@@ -100,12 +100,12 @@ export async function loadBridgeToolReleaseManifest(manifestPath: string): Promi
   try {
     raw = await readFile(manifestPath, "utf8");
   } catch {
-    throw new ApiError("NOT_FOUND", "Bridge tool release manifest was not found.", 404);
+    throw new ApiError("NOT_FOUND", "Bridge tool release manifest was not found.");
   }
 
   const parsed = manifestFileSchema.safeParse(JSON.parse(raw));
   if (!parsed.success) {
-    throw new ApiError("INTERNAL_ERROR", "Bridge tool release manifest is invalid.", 500, {
+    throw new ApiError("INTERNAL_ERROR", "Bridge tool release manifest is invalid.", {
       issues: parsed.error.issues
     });
   }
@@ -134,7 +134,7 @@ export async function loadLatestBridgeToolReleaseManifest(artifactRoot: string):
   try {
     entries = await readdir(resolvedRoot);
   } catch {
-    throw new ApiError("NOT_FOUND", "Bridge tool release artifacts were not found.", 404);
+    throw new ApiError("NOT_FOUND", "Bridge tool release artifacts were not found.");
   }
 
   const versionDirs = (
@@ -152,7 +152,7 @@ export async function loadLatestBridgeToolReleaseManifest(artifactRoot: string):
   ).filter((entry): entry is string => entry !== null);
 
   if (versionDirs.length === 0) {
-    throw new ApiError("NOT_FOUND", "Bridge tool release manifest was not found.", 404);
+    throw new ApiError("NOT_FOUND", "Bridge tool release manifest was not found.");
   }
 
   versionDirs.sort(compareSemver);

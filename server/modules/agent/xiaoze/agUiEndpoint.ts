@@ -276,7 +276,7 @@ export function createXiaozeAgUiHandler(options: {
   return async function handleXiaozeAgUi(request: XiaozeAgUiRequest): Promise<RouteResponse> {
     const auth = await options.resolveAuth(request);
     if (!auth) {
-      throw new ApiError("UNAUTHENTICATED", "Authentication is required for Xiaoze.", 401);
+      throw new ApiError("UNAUTHENTICATED", "Authentication is required for Xiaoze.");
     }
     const verifiedAuth = auth;
 
@@ -590,7 +590,7 @@ export function registerXiaozeRoutes(
     assertThreadAccess: async ({ auth, threadId }) => {
       const session = await getAgentSession(options.db!, auth.organization.id, threadId);
       if (session && session.actorUserId !== auth.user.id) {
-        throw new ApiError("FORBIDDEN", "This Xiaoze thread belongs to another user.", 403, { threadId });
+        throw new ApiError("FORBIDDEN", "This Xiaoze thread belongs to another user.", { threadId });
       }
     }
   });
@@ -607,7 +607,7 @@ export function registerXiaozeRoutes(
       auth = await options.getCurrentAuthContext(request);
     } catch (error) {
       if (error instanceof ApiError && error.code === "UNAUTHENTICATED") {
-        throw new ApiError("UNAUTHENTICATED", "Authentication is required for Xiaoze suggestions.", 401);
+        throw new ApiError("UNAUTHENTICATED", "Authentication is required for Xiaoze suggestions.");
       }
       throw error;
     }

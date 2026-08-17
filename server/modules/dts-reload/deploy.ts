@@ -117,7 +117,7 @@ export function isBridgeVersionBelowMinimum(version: string | null | undefined, 
 
 function upgradeRequiredError(message: string, details: Record<string, unknown> = {}) {
   // A too-old bridge is a state conflict with the request, not an invalid payload.
-  return new ApiError("CONFLICT", message, 409, {
+  return new ApiError("CONFLICT", message, {
     code: "bridge-upgrade-required",
     releasesPath: DEVICE_BRIDGE_RELEASES_PATH,
     ...details
@@ -243,7 +243,6 @@ export async function executeReloadDeploy(input: {
     throw new ApiError(
       "VALIDATION_FAILED",
       `Deploying a reload run requires confirmation token "${DTS_RELOAD_CONFIRMATION_TOKEN}".`,
-      400,
       { code: "missing-dts-reload-confirmation", requiredToken: DTS_RELOAD_CONFIRMATION_TOKEN }
     );
   }
@@ -252,13 +251,12 @@ export async function executeReloadDeploy(input: {
     throw new ApiError(
       "CONFLICT",
       `Reload run status "${run.status}" cannot be deployed. Expected validated (or failed retry).`,
-      409,
       { code: "reload-not-deployable", status: run.status }
     );
   }
 
   if (!run.artifact?.sha256) {
-    throw new ApiError("CONFLICT", "Reload run has no compiled overlay artifact to deploy.", 409, {
+    throw new ApiError("CONFLICT", "Reload run has no compiled overlay artifact to deploy.", {
       code: "reload-artifact-missing"
     });
   }
@@ -267,7 +265,6 @@ export async function executeReloadDeploy(input: {
     throw new ApiError(
       "VALIDATION_FAILED",
       `Compiled overlay exceeds the server pushFile size cap of ${pushFileMaxBytes} bytes.`,
-      400,
       { code: "push-file-too-large", sizeBytes: artifactBytes.length, maxBytes: pushFileMaxBytes }
     );
   }
@@ -280,11 +277,11 @@ export async function executeReloadDeploy(input: {
   });
   const bridge = bridges.find((item) => item.id === deploy.bridgeId && item.revokedAt === null);
   if (!bridge) {
-    throw new ApiError("NOT_FOUND", "Device bridge was not found.", 404, { bridgeId: deploy.bridgeId });
+    throw new ApiError("NOT_FOUND", "Device bridge was not found.", { bridgeId: deploy.bridgeId });
   }
 
   if (!deps.bridgeConnectionPool.isConnected(deploy.bridgeId)) {
-    throw new ApiError("DEVICE_UNAVAILABLE", "Selected device bridge is offline.", 409, {
+    throw new ApiError("DEVICE_UNAVAILABLE", "Selected device bridge is offline.", {
       bridgeId: deploy.bridgeId
     });
   }

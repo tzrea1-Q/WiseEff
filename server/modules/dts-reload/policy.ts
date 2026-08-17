@@ -12,7 +12,7 @@ export type DtsReloadMutatingAction = "start" | "deploy" | "restore" | "configur
 
 function requirePermission(auth: AuthContext, permission: BackendPermission) {
   if (!auth.user.isActive || !auth.permissions.includes(permission)) {
-    throw new ApiError("FORBIDDEN", `Missing permission: ${permission}.`, 403, { permission });
+    throw new ApiError("FORBIDDEN", `Missing permission: ${permission}.`, { permission });
   }
 }
 
@@ -34,7 +34,7 @@ export function requireDtsReloadView(auth: AuthContext) {
   if (hasPermission(auth, "debugging:view") || hasPermission(auth, "debugging:dts-reload")) {
     return;
   }
-  throw new ApiError("FORBIDDEN", "Missing permission: debugging:view.", 403, {
+  throw new ApiError("FORBIDDEN", "Missing permission: debugging:view.", {
     permission: "debugging:view"
   });
 }
@@ -86,7 +86,6 @@ export async function assertDtsReloadHumanActor(
   throw new ApiError(
     "FORBIDDEN",
     "Agent actors cannot start, deploy, restore, or configure DTS reload; a human operator is required.",
-    403,
     {
       code: DTS_RELOAD_AGENT_REFUSED_CODE,
       reason: "agent-refused",

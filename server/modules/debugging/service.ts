@@ -313,7 +313,7 @@ async function resolveDebugNodeModuleAssignment(
 
   const moduleName = input.module?.trim();
   if (!moduleName) {
-    throw new ApiError("VALIDATION_FAILED", "Either module or moduleId is required.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Either module or moduleId is required.");
   }
 
   const module = await getDebugNodeModuleByName(db, { organizationId, name: moduleName, parentId: null });
@@ -338,10 +338,10 @@ function auditInput(
 
 function ensureActiveSession(session: DebugSessionRecord | null): DebugSessionRecord {
   if (!session) {
-    throw new ApiError("NOT_FOUND", "Debug session was not found.", 404);
+    throw new ApiError("NOT_FOUND", "Debug session was not found.");
   }
   if (session.status !== "active") {
-    throw new ApiError("VALIDATION_FAILED", "Debug session is not active.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Debug session is not active.");
   }
 
   return session;
@@ -355,7 +355,7 @@ function ensureActiveSession(session: DebugSessionRecord | null): DebugSessionRe
 function requireOwnedActiveSession(session: DebugSessionRecord | null, auth: AuthContext): DebugSessionRecord {
   const active = ensureActiveSession(session);
   if (active.actorUserId !== auth.user.id) {
-    throw new ApiError("FORBIDDEN", "Debug session belongs to another user.", 403, { sessionId: active.id });
+    throw new ApiError("FORBIDDEN", "Debug session belongs to another user.", { sessionId: active.id });
   }
   return active;
 }
@@ -398,23 +398,23 @@ function runtimeNodeAsParameter(source: RuntimeNodeSource): DebugParameterRecord
 
 function ensureNodeRuntimeAvailable(node: DebugNodeRecord) {
   if (!node.enabled || node.archivedAt) {
-    throw new ApiError("VALIDATION_FAILED", "Debug node is disabled or archived.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Debug node is disabled or archived.");
   }
 }
 
 function ensureParameterRuntimeAvailable(parameter: DebugParameterRecord) {
   if (!parameter.enabled || parameter.archivedAt !== null) {
-    throw new ApiError("VALIDATION_FAILED", "Debug parameter is archived or disabled.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Debug parameter is archived or disabled.");
   }
 }
 
 function ensureReadable(parameter: DebugParameterRecord | null, accessMode: DebugAccessMode) {
   if (!parameter) {
-    throw new ApiError("NOT_FOUND", "Debug parameter was not found.", 404);
+    throw new ApiError("NOT_FOUND", "Debug parameter was not found.");
   }
   ensureParameterRuntimeAvailable(parameter);
   if (accessMode !== "RO" && accessMode !== "RW") {
-    throw new ApiError("VALIDATION_FAILED", "Parameter is not readable.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Parameter is not readable.");
   }
 }
 
@@ -424,11 +424,11 @@ function ensureWritable(
   accessMode: DebugAccessMode
 ): DebugParameterRecord {
   if (!parameter) {
-    throw new ApiError("NOT_FOUND", "Debug parameter was not found.", 404);
+    throw new ApiError("NOT_FOUND", "Debug parameter was not found.");
   }
   ensureParameterRuntimeAvailable(parameter);
   if (accessMode !== "WO" && accessMode !== "RW") {
-    throw new ApiError("VALIDATION_FAILED", "Parameter is read-only.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Parameter is read-only.");
   }
 
   const metadata = resolveDebugValueMetadata(parameter);
@@ -436,20 +436,20 @@ function ensureWritable(
   if (metadata.valueKind === DEBUG_VALUE_KIND_COMPLEX) {
     const validation = validateWritePayload(input.value, metadata);
     if (!validation.ok) {
-      throw new ApiError("VALIDATION_FAILED", validation.error, 400);
+      throw new ApiError("VALIDATION_FAILED", validation.error);
     }
   } else {
     const hasNumericRange = parameter.minValue !== null || parameter.maxValue !== null;
     const numericValue = Number(input.value);
     if (hasNumericRange && !Number.isFinite(numericValue)) {
-      throw new ApiError("VALIDATION_FAILED", "Value must be numeric for ranged parameters.", 400, {
+      throw new ApiError("VALIDATION_FAILED", "Value must be numeric for ranged parameters.", {
         minValue: parameter.minValue,
         maxValue: parameter.maxValue
       });
     }
     if (hasNumericRange) {
       if ((parameter.minValue !== null && numericValue < parameter.minValue) || (parameter.maxValue !== null && numericValue > parameter.maxValue)) {
-        throw new ApiError("VALIDATION_FAILED", "Value is outside the allowed range.", 400, {
+        throw new ApiError("VALIDATION_FAILED", "Value is outside the allowed range.", {
           minValue: parameter.minValue,
           maxValue: parameter.maxValue
         });
@@ -458,7 +458,7 @@ function ensureWritable(
   }
 
   if (parameter.risk === "High" && input.confirmationToken !== "confirm-high-risk-write" && !input.approvalId?.trim()) {
-    throw new ApiError("VALIDATION_FAILED", "High-risk write requires confirmation or approval.", 400);
+    throw new ApiError("VALIDATION_FAILED", "High-risk write requires confirmation or approval.");
   }
 
   return parameter;
@@ -503,7 +503,7 @@ async function requireDeviceLease(tx: Queryable, auth: AuthContext, session: Deb
     leaseTtlMs: DEVICE_LEASE_TTL_MS
   });
   if (!lease) {
-    throw new ApiError("CONFLICT", "Debug device is leased by another active session.", 409, {
+    throw new ApiError("CONFLICT", "Debug device is leased by another active session.", {
       deviceId: session.deviceId,
       sessionId: session.id
     });
@@ -516,13 +516,13 @@ async function requireProtocolBinding(
 ): Promise<DebugParameterNodeBindingRecord> {
   const binding = await getDebugParameterNodeBinding(tx, { ...input, includeDisabled: true });
   if (!binding) {
-    throw new ApiError("DEBUG_BINDING_NOT_CONFIGURED", "Debug parameter is not configured for the selected protocol.", 400, {
+    throw new ApiError("DEBUG_BINDING_NOT_CONFIGURED", "Debug parameter is not configured for the selected protocol.", {
       parameterId: input.parameterId,
       protocol: input.protocol
     });
   }
   if (!binding.enabled) {
-    throw new ApiError("DEBUG_BINDING_DISABLED", "Debug parameter binding is disabled for the selected protocol.", 400, {
+    throw new ApiError("DEBUG_BINDING_DISABLED", "Debug parameter binding is disabled for the selected protocol.", {
       parameterId: input.parameterId,
       protocol: input.protocol
     });
@@ -538,13 +538,13 @@ async function requireNodeBinding(
 ): Promise<DebugNodeBindingRecord> {
   const binding = await getDebugNodeBinding(tx, { organizationId, nodeId, protocol, includeDisabled: true });
   if (!binding) {
-    throw new ApiError("DEBUG_BINDING_NOT_CONFIGURED", "Debug node is not configured for the selected protocol.", 400, {
+    throw new ApiError("DEBUG_BINDING_NOT_CONFIGURED", "Debug node is not configured for the selected protocol.", {
       nodeId,
       protocol
     });
   }
   if (!binding.enabled) {
-    throw new ApiError("DEBUG_BINDING_DISABLED", "Debug node binding is disabled for the selected protocol.", 400, {
+    throw new ApiError("DEBUG_BINDING_DISABLED", "Debug node binding is disabled for the selected protocol.", {
       nodeId,
       protocol
     });
@@ -769,7 +769,7 @@ function operationValueMetadata(
 }
 
 function notFound(message = "Debug parameter was not found.") {
-  return new ApiError("NOT_FOUND", message, 404);
+  return new ApiError("NOT_FOUND", message);
 }
 
 function hasOwn<T extends object, K extends PropertyKey>(value: T, key: K): value is T & Record<K, unknown> {
@@ -827,7 +827,7 @@ export function createDebuggingService(options: ServiceOptions) {
       if (input.deviceId) {
         const device = await getDebugDevice(db, { organizationId, deviceId: input.deviceId });
         if (!device) {
-          throw new ApiError("NOT_FOUND", "Debug device was not found.", 404);
+          throw new ApiError("NOT_FOUND", "Debug device was not found.");
         }
       }
 
@@ -880,7 +880,7 @@ export function createDebuggingService(options: ServiceOptions) {
             metadata: { deviceId: input.deviceId, protocol, error: gatewayResult.error }
           });
         });
-        throw new ApiError("DEVICE_UNAVAILABLE", failureReason(gatewayResult.error, "Debug target detection failed."), 409);
+        throw new ApiError("DEVICE_UNAVAILABLE", failureReason(gatewayResult.error, "Debug target detection failed."));
       }
 
       const persistedTargets = [
@@ -1454,7 +1454,7 @@ export function createDebuggingService(options: ServiceOptions) {
       const organizationId = organizationIdFor(auth);
       const name = input.name.trim();
       if (!name) {
-        throw new ApiError("VALIDATION_FAILED", "Module name is required.", 400);
+        throw new ApiError("VALIDATION_FAILED", "Module name is required.");
       }
 
       const parentId = input.parentId ?? null;
@@ -1467,7 +1467,7 @@ export function createDebuggingService(options: ServiceOptions) {
 
       const existing = await getDebugNodeModuleByName(db, { organizationId, name, parentId });
       if (existing) {
-        throw new ApiError("CONFLICT", "Debug module already exists.", 409, { name, parentId });
+        throw new ApiError("CONFLICT", "Debug module already exists.", { name, parentId });
       }
 
       return db.transaction(async (tx) => {
@@ -1511,7 +1511,7 @@ export function createDebuggingService(options: ServiceOptions) {
 
       const nextName = (input.name ?? current.name).trim();
       if (!nextName) {
-        throw new ApiError("VALIDATION_FAILED", "Module name is required.", 400);
+        throw new ApiError("VALIDATION_FAILED", "Module name is required.");
       }
       if (nextName !== current.name) {
         const conflict = await getDebugNodeModuleByName(db, {
@@ -1520,7 +1520,7 @@ export function createDebuggingService(options: ServiceOptions) {
           parentId: current.parentId
         });
         if (conflict && conflict.id !== current.id) {
-          throw new ApiError("CONFLICT", "Debug module already exists.", 409, { name: nextName });
+          throw new ApiError("CONFLICT", "Debug module already exists.", { name: nextName });
         }
       }
 
@@ -1596,7 +1596,7 @@ export function createDebuggingService(options: ServiceOptions) {
         parentId
       });
       if (conflict && conflict.id !== current.id) {
-        throw new ApiError("CONFLICT", "Debug module already exists under the target parent.", 409, {
+        throw new ApiError("CONFLICT", "Debug module already exists under the target parent.", {
           name: current.name,
           parentId
         });
@@ -1634,7 +1634,7 @@ export function createDebuggingService(options: ServiceOptions) {
         });
       } catch (error) {
         if (error instanceof Error && /cycle/i.test(error.message)) {
-          throw new ApiError("CONFLICT", error.message, 409, { moduleId: input.moduleId, parentId });
+          throw new ApiError("CONFLICT", error.message, { moduleId: input.moduleId, parentId });
         }
         throw error;
       }
@@ -1650,7 +1650,7 @@ export function createDebuggingService(options: ServiceOptions) {
 
       const nodeCount = await countDebugNodesForModuleId(db, { organizationId, moduleId });
       if (nodeCount > 0) {
-        throw new ApiError("CONFLICT", "Cannot delete a debug module that still has nodes.", 409, {
+        throw new ApiError("CONFLICT", "Cannot delete a debug module that still has nodes.", {
           moduleId,
           nodeCount
         });
@@ -1682,7 +1682,7 @@ export function createDebuggingService(options: ServiceOptions) {
         });
       } catch (error) {
         if (error instanceof Error && /child modules|referenced by debug nodes/i.test(error.message)) {
-          throw new ApiError("CONFLICT", error.message, 409, { moduleId });
+          throw new ApiError("CONFLICT", error.message, { moduleId });
         }
         throw error;
       }
@@ -1779,23 +1779,23 @@ export function createDebuggingService(options: ServiceOptions) {
         const bridgeExecutionRequested = isBridgeBackedTargetId(input.targetId);
         const device = bridgeExecutionRequested ? null : await getDebugDevice(tx, { organizationId, deviceId: input.deviceId });
         if (!bridgeExecutionRequested && !device) {
-          throw new ApiError("NOT_FOUND", "Debug device was not found.", 404);
+          throw new ApiError("NOT_FOUND", "Debug device was not found.");
         }
         const target = await getDebugTarget(tx, { organizationId, targetId: input.targetId });
         if (!target) {
-          throw new ApiError("NOT_FOUND", "Debug target was not found.", 404);
+          throw new ApiError("NOT_FOUND", "Debug target was not found.");
         }
         if (target.deviceId !== input.deviceId) {
-          throw new ApiError("VALIDATION_FAILED", "Debug target does not belong to the requested device.", 400);
+          throw new ApiError("VALIDATION_FAILED", "Debug target does not belong to the requested device.");
         }
         if (device && device.status !== "online") {
-          throw new ApiError("DEVICE_UNAVAILABLE", "Debug device is offline.", 409);
+          throw new ApiError("DEVICE_UNAVAILABLE", "Debug device is offline.");
         }
         if (target.status !== "detected") {
-          throw new ApiError("DEVICE_UNAVAILABLE", "Debug target is not detected.", 409);
+          throw new ApiError("DEVICE_UNAVAILABLE", "Debug target is not detected.");
         }
         if (target.protocol !== protocol) {
-          throw new ApiError("VALIDATION_FAILED", "Debug target protocol does not match the requested protocol.", 400, {
+          throw new ApiError("VALIDATION_FAILED", "Debug target protocol does not match the requested protocol.", {
             targetProtocol: target.protocol,
             protocol
           });
@@ -1808,22 +1808,22 @@ export function createDebuggingService(options: ServiceOptions) {
 
         if (bridgeExecution) {
           if (!input.bridgeId) {
-            throw new ApiError("VALIDATION_FAILED", "bridgeId is required for bridge-backed targets.", 400);
+            throw new ApiError("VALIDATION_FAILED", "bridgeId is required for bridge-backed targets.");
           }
           if (target.bridgeId && target.bridgeId !== input.bridgeId) {
-            throw new ApiError("VALIDATION_FAILED", "Provided bridgeId does not match the selected debug target.", 400, {
+            throw new ApiError("VALIDATION_FAILED", "Provided bridgeId does not match the selected debug target.", {
               bridgeId: input.bridgeId,
               targetBridgeId: target.bridgeId
             });
           }
           if (!options.bridgeConnectionPool?.isConnected(input.bridgeId)) {
-            throw new ApiError("DEVICE_UNAVAILABLE", "Selected device bridge is offline.", 409, { bridgeId: input.bridgeId });
+            throw new ApiError("DEVICE_UNAVAILABLE", "Selected device bridge is offline.", { bridgeId: input.bridgeId });
           }
 
           const userBridges = await listBridgesForUser(tx, { userId: auth.user.id, organizationId });
           const bridge = userBridges.find((item) => item.id === input.bridgeId && item.revokedAt === null);
           if (!bridge) {
-            throw new ApiError("NOT_FOUND", "Device bridge was not found.", 404, { bridgeId: input.bridgeId });
+            throw new ApiError("NOT_FOUND", "Device bridge was not found.", { bridgeId: input.bridgeId });
           }
 
           bridgeId = input.bridgeId;
@@ -1883,7 +1883,7 @@ export function createDebuggingService(options: ServiceOptions) {
       const organizationId = organizationIdFor(auth);
       const session = await getDebugSessionRecord(db, { organizationId, sessionId: input.sessionId });
       if (!session) {
-        throw new ApiError("NOT_FOUND", "Debug session was not found.", 404);
+        throw new ApiError("NOT_FOUND", "Debug session was not found.");
       }
       return listDebugSessionEvents(db, { organizationId, sessionId: input.sessionId });
     },
@@ -1903,7 +1903,7 @@ export function createDebuggingService(options: ServiceOptions) {
         if (input.nodeId) {
           const node = await getDebugNode(tx, { organizationId, nodeId: input.nodeId });
           if (!node) {
-            throw new ApiError("NOT_FOUND", "Debug node was not found.", 404);
+            throw new ApiError("NOT_FOUND", "Debug node was not found.");
           }
           ensureNodeRuntimeAvailable(node);
           const binding = await requireNodeBinding(tx, organizationId, node.id, protocol);
@@ -1925,19 +1925,19 @@ export function createDebuggingService(options: ServiceOptions) {
         }
 
         if (!nodePath) {
-          throw new ApiError("VALIDATION_FAILED", "nodeId, parameterId, or nodePath is required.", 400);
+          throw new ApiError("VALIDATION_FAILED", "nodeId, parameterId, or nodePath is required.");
         }
         const target = await getDebugTarget(tx, { organizationId, targetId: session.targetId });
         if (!target) {
-          throw new ApiError("NOT_FOUND", "Debug target was not found.", 404);
+          throw new ApiError("NOT_FOUND", "Debug target was not found.");
         }
         const executionMode = resolveExecutionMode(session);
         const bridgeId = session.bridgeId;
         if (executionMode === "bridge" && !bridgeId) {
-          throw new ApiError("VALIDATION_FAILED", "Bridge-backed session is missing bridge id.", 400);
+          throw new ApiError("VALIDATION_FAILED", "Bridge-backed session is missing bridge id.");
         }
         if (executionMode === "bridge" && !options.bridgeRpcClient) {
-          throw new ApiError("INTERNAL_ERROR", "Bridge RPC client is required for bridge-backed sessions.", 500);
+          throw new ApiError("INTERNAL_ERROR", "Bridge RPC client is required for bridge-backed sessions.");
         }
         const gateway = executionMode === "server" ? gatewayRegistry.requireGateway(protocol) : null;
 
@@ -2033,11 +2033,11 @@ export function createDebuggingService(options: ServiceOptions) {
         const operationType: DebugOperationType = "write";
 
         if (isReload) {
-          throw new ApiError("GONE", "Parameter reload is no longer available.", 410);
+          throw new ApiError("GONE", "Parameter reload is no longer available.");
         } else if (input.nodeId?.trim()) {
           const node = await getDebugNode(tx, { organizationId, nodeId: input.nodeId.trim() });
           if (!node) {
-            throw new ApiError("NOT_FOUND", "Debug node was not found.", 404);
+            throw new ApiError("NOT_FOUND", "Debug node was not found.");
           }
           ensureNodeRuntimeAvailable(node);
           const binding = await requireNodeBinding(tx, organizationId, node.id, protocol);
@@ -2060,20 +2060,20 @@ export function createDebuggingService(options: ServiceOptions) {
           // write (#416; ADR-0021 snapshot, ADR-0027 audit atomicity).
           catalogNodeId = await resolveDebugNodeIdByBinding(tx, { organizationId, protocol, nodePath: binding.nodePath });
         } else {
-          throw new ApiError("VALIDATION_FAILED", "nodeId or parameterId is required.", 400);
+          throw new ApiError("VALIDATION_FAILED", "nodeId or parameterId is required.");
         }
 
         const target = await getDebugTarget(tx, { organizationId, targetId: session.targetId });
         if (!target) {
-          throw new ApiError("NOT_FOUND", "Debug target was not found.", 404);
+          throw new ApiError("NOT_FOUND", "Debug target was not found.");
         }
         const executionMode = resolveExecutionMode(session);
         const bridgeId = session.bridgeId;
         if (executionMode === "bridge" && !bridgeId) {
-          throw new ApiError("VALIDATION_FAILED", "Bridge-backed session is missing bridge id.", 400);
+          throw new ApiError("VALIDATION_FAILED", "Bridge-backed session is missing bridge id.");
         }
         if (executionMode === "bridge" && !options.bridgeRpcClient) {
-          throw new ApiError("INTERNAL_ERROR", "Bridge RPC client is required for bridge-backed sessions.", 500);
+          throw new ApiError("INTERNAL_ERROR", "Bridge RPC client is required for bridge-backed sessions.");
         }
         const gateway = executionMode === "server" ? gatewayRegistry.requireGateway(protocol) : null;
         await requireDeviceLease(tx, auth, session);
@@ -2273,35 +2273,35 @@ export function createDebuggingService(options: ServiceOptions) {
     ): Promise<{ operations: NodeOperationRecord[]; snapshot: Awaited<ReturnType<typeof markSnapshotConsumed>> }> {
       requireDebugRollback(auth);
       if (input.confirmationToken !== "confirm-rollback") {
-        throw new ApiError("VALIDATION_FAILED", "Rollback confirmation is required.", 400);
+        throw new ApiError("VALIDATION_FAILED", "Rollback confirmation is required.");
       }
       const organizationId = organizationIdFor(auth);
 
       return db.transaction(async (tx) => {
         const snapshot = await getDebugSnapshot(tx, { organizationId, snapshotId: input.snapshotId });
         if (!snapshot) {
-          throw new ApiError("NOT_FOUND", "Snapshot was not found.", 404);
+          throw new ApiError("NOT_FOUND", "Snapshot was not found.");
         }
         const session = requireOwnedActiveSession(await getDebugSessionRecord(tx, { organizationId, sessionId: snapshot.sessionId }), auth);
         if (snapshot.status !== "valid" || snapshot.sessionId !== session.id) {
-          throw new ApiError("VALIDATION_FAILED", "Snapshot is not valid for this session.", 400);
+          throw new ApiError("VALIDATION_FAILED", "Snapshot is not valid for this session.");
         }
         const claimedSnapshot = await claimSnapshotForRollback(tx, { organizationId, snapshotId: snapshot.id });
         if (!claimedSnapshot) {
-          throw new ApiError("CONFLICT", "Snapshot is already being rolled back or has been consumed.", 409);
+          throw new ApiError("CONFLICT", "Snapshot is already being rolled back or has been consumed.");
         }
         const target = await getDebugTarget(tx, { organizationId, targetId: session.targetId });
         if (!target) {
-          throw new ApiError("NOT_FOUND", "Debug target was not found.", 404);
+          throw new ApiError("NOT_FOUND", "Debug target was not found.");
         }
         const protocol = session.protocol ?? defaultDebugConnectionProtocol;
         const executionMode = resolveExecutionMode(session);
         const bridgeId = session.bridgeId;
         if (executionMode === "bridge" && !bridgeId) {
-          throw new ApiError("VALIDATION_FAILED", "Bridge-backed session is missing bridge id.", 400);
+          throw new ApiError("VALIDATION_FAILED", "Bridge-backed session is missing bridge id.");
         }
         if (executionMode === "bridge" && !options.bridgeRpcClient) {
-          throw new ApiError("INTERNAL_ERROR", "Bridge RPC client is required for bridge-backed sessions.", 500);
+          throw new ApiError("INTERNAL_ERROR", "Bridge RPC client is required for bridge-backed sessions.");
         }
         const gateway = executionMode === "server" ? gatewayRegistry.requireGateway(protocol) : null;
         await requireDeviceLease(tx, auth, session);
@@ -2319,7 +2319,7 @@ export function createDebuggingService(options: ServiceOptions) {
         for (const entry of snapshot.entries) {
           const entryProtocol = entry.protocol ?? protocol;
           if (entryProtocol !== protocol) {
-            throw new ApiError("VALIDATION_FAILED", "Snapshot protocol does not match the rollback session.", 400);
+            throw new ApiError("VALIDATION_FAILED", "Snapshot protocol does not match the rollback session.");
           }
           preparedEntries.push({
             entry,

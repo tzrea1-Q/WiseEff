@@ -11,7 +11,6 @@ export function assertNonStructuralPropertyKey(propertyKey: string): void {
   throw new ApiError(
     "VALIDATION_FAILED",
     `Structural DTS property "${propertyKey.trim()}" is not a parameter definition (ADR-0003).`,
-    400,
     { propertyKey: propertyKey.trim() },
   );
 }

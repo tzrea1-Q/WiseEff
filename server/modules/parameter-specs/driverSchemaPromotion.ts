@@ -28,7 +28,7 @@ const schemasRoot = join(dirname(fileURLToPath(import.meta.url)), "../../../sche
 
 function requireCanPromote(auth: AuthContext) {
   if (!auth.user.isActive || !auth.permissions.includes("platform:schema-promote")) {
-    throw new ApiError("FORBIDDEN", "Platform schema promotion permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Platform schema promotion permission is required.");
   }
 }
 
@@ -221,8 +221,7 @@ function pickDocumentationSource(
     if (!match) {
       throw new ApiError(
         "VALIDATION_FAILED",
-        "documentationSourceOrganizationId is not among the contributors.",
-        400,
+        "documentationSourceOrganizationId is not among the contributors."
       );
     }
     return documentationSourceOrganizationId;
@@ -248,7 +247,7 @@ export async function promoteDriverSchemaOverlayForAuth(
   requireCanPromote(auth);
   const compatible = input.compatible.trim();
   if (!compatible) {
-    throw new ApiError("VALIDATION_FAILED", "compatible is required.", 400);
+    throw new ApiError("VALIDATION_FAILED", "compatible is required.");
   }
 
   return db.transaction(async (tx) => {
@@ -257,7 +256,6 @@ export async function promoteDriverSchemaOverlayForAuth(
       throw new ApiError(
         "CONFLICT",
         "An active platform overlay already exists for this compatible.",
-        409,
         { platformSchemaId: existingPlatform.id },
       );
     }
@@ -266,7 +264,7 @@ export async function promoteDriverSchemaOverlayForAuth(
       (overlay) => overlay.compatible.toLowerCase() === compatible.toLowerCase(),
     );
     if (overlays.length === 0) {
-      throw new ApiError("NOT_FOUND", "No active organization overlays found for compatible.", 404);
+      throw new ApiError("NOT_FOUND", "No active organization overlays found for compatible.");
     }
 
     const contributors = overlays.map(contributorProjection);
@@ -275,7 +273,6 @@ export async function promoteDriverSchemaOverlayForAuth(
       throw new ApiError(
         "VALIDATION_FAILED",
         "Contributors are not equivalent for promotion.",
-        400,
         { divergence: verdict.divergence },
       );
     }
@@ -386,18 +383,17 @@ export async function revertDriverSchemaOverlayPromotionForAuth(
   return db.transaction(async (tx) => {
     const promotion = await getDriverSchemaOverlayPromotion(tx, promotionId);
     if (!promotion) {
-      throw new ApiError("NOT_FOUND", "Promotion record not found.", 404);
+      throw new ApiError("NOT_FOUND", "Promotion record not found.");
     }
 
     const platformSchema = await getDriverSchemaOverlay(tx, promotion.platform_schema_id);
     if (!platformSchema || platformSchema.organizationId != null) {
-      throw new ApiError("NOT_FOUND", "Platform overlay not found.", 404);
+      throw new ApiError("NOT_FOUND", "Platform overlay not found.");
     }
     if (platformSchema.lifecycle !== "active") {
       throw new ApiError(
         "VALIDATION_FAILED",
-        "Only active platform overlays can be reverted via promotion.",
-        400,
+        "Only active platform overlays can be reverted via promotion."
       );
     }
 
@@ -407,7 +403,7 @@ export async function revertDriverSchemaOverlayPromotionForAuth(
       updatedByUserId: auth.user.id,
     });
     if (!deprecated) {
-      throw new ApiError("NOT_FOUND", "Platform overlay not found.", 404);
+      throw new ApiError("NOT_FOUND", "Platform overlay not found.");
     }
 
     const restored = await restoreSupersededContributors(tx, platformSchema.id);

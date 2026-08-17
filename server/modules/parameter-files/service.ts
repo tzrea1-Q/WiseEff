@@ -63,7 +63,7 @@ type StoredVersionRef = {
 
 function requireParameterFileAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Forbidden.", 403, { permission: "admin:access" });
+    throw new ApiError("FORBIDDEN", "Forbidden.", { permission: "admin:access" });
   }
 }
 
@@ -71,7 +71,7 @@ export function detectFormat(fileName: string): ParameterFileFormat {
   const extension = extname(fileName).toLowerCase();
   if (extension === ".json") return "json";
   if (extension === ".dts" || extension === ".dtsi") return "dts";
-  throw new ApiError("VALIDATION_FAILED", "Unsupported parameter file extension.", 400, {
+  throw new ApiError("VALIDATION_FAILED", "Unsupported parameter file extension.", {
     fileName,
     supportedExtensions: [".json", ".dts", ".dtsi"]
   });
@@ -84,7 +84,7 @@ function contentTypeForFormat(format: ParameterFileFormat) {
 function parseUploadInput(input: UploadProjectParameterFileInput): UploadProjectParameterFileInput {
   const parsed = uploadProjectParameterFileInputSchema.safeParse(input);
   if (!parsed.success) {
-    throw new ApiError("VALIDATION_FAILED", "Invalid project parameter file upload input.", 400, {
+    throw new ApiError("VALIDATION_FAILED", "Invalid project parameter file upload input.", {
       issues: parsed.error.issues
     });
   }
@@ -96,7 +96,7 @@ function buildParsedIndex(format: ParameterFileFormat, bytes: Buffer) {
   try {
     return format === "json" ? buildJsonParsedIndex(source) : buildDtsParsedIndex(source);
   } catch {
-    throw new ApiError("VALIDATION_FAILED", "Failed to parse project parameter file content.", 400, {
+    throw new ApiError("VALIDATION_FAILED", "Failed to parse project parameter file content.", {
       format
     });
   }
@@ -244,7 +244,7 @@ export async function uploadProjectParameterFile(
   const format = detectFormat(normalized.fileName);
   const sizeBytes = normalized.bytes.byteLength;
   if (sizeBytes > MAX_FILE_BYTES) {
-    throw new ApiError("VALIDATION_FAILED", "Project parameter file exceeds the 2MB limit.", 400, {
+    throw new ApiError("VALIDATION_FAILED", "Project parameter file exceeds the 2MB limit.", {
       maxBytes: MAX_FILE_BYTES,
       sizeBytes
     });

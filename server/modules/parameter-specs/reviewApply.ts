@@ -110,7 +110,6 @@ export function requireLocateEvidence(evidence: SpecReviewEvidence, taskId: stri
     throw new ApiError(
       "VALIDATION_FAILED",
       "Spec review task evidence cannot precisely locate the property occurrence.",
-      400,
       { taskId, missing },
     );
   }
@@ -141,7 +140,7 @@ async function loadPropertyValueForBinding(
   );
   const row = result.rows[0];
   if (!row) {
-    throw new ApiError("NOT_FOUND", "Property occurrence was not found for this review task.", 404, {
+    throw new ApiError("NOT_FOUND", "Property occurrence was not found for this review task.", {
       propertyOccurrenceId: locate.propertyOccurrenceId,
       configRevisionId: locate.configRevisionId,
     });
@@ -381,7 +380,7 @@ export async function requireOrgOrGlobalSpec(
     specId: input.parameterSpecId,
   });
   if (!allowedSpec) {
-    throw new ApiError("NOT_FOUND", "Parameter spec was not found for this organization.", 404, {
+    throw new ApiError("NOT_FOUND", "Parameter spec was not found for this organization.", {
       parameterSpecId: input.parameterSpecId,
     });
   }
@@ -389,7 +388,6 @@ export async function requireOrgOrGlobalSpec(
     throw new ApiError(
       "VALIDATION_FAILED",
       "Parameter spec has no current version to bind.",
-      400,
       { parameterSpecId: input.parameterSpecId },
     );
   }
@@ -409,12 +407,11 @@ export async function requireOrgOwnedSpec(
     throw new ApiError(
       "FORBIDDEN",
       "Platform global parameter specs require platform-admin governance.",
-      403,
       { parameterSpecId: input.parameterSpecId },
     );
   }
   if (allowedSpec.organizationId !== input.organizationId) {
-    throw new ApiError("NOT_FOUND", "Parameter spec was not found for this organization.", 404, {
+    throw new ApiError("NOT_FOUND", "Parameter spec was not found for this organization.", {
       parameterSpecId: input.parameterSpecId,
     });
   }
@@ -434,7 +431,6 @@ export function assertPropertyKeyMatchOrConfirmed(
       throw new ApiError(
         "CONFLICT",
         "Selected parameter spec property key does not match the review task.",
-        409,
         {
           taskPropertyKey,
           specPropertyKey,
@@ -477,8 +473,7 @@ export async function createOrgManualParameterSpec(
   if (!input.attributionSubjectId.trim()) {
     throw new ApiError(
       "VALIDATION_FAILED",
-      "attributionSubjectId is required to create a manual parameter spec.",
-      400,
+      "attributionSubjectId is required to create a manual parameter spec."
     );
   }
   const inferredShape = inferDraftValueShapeFromOccurrence({

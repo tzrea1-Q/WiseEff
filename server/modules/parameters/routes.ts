@@ -112,7 +112,7 @@ const listChangeRequestsQuerySchema = z.object({
 
 function requireDb(db: Database | undefined) {
   if (!db) {
-    throw new ApiError("INTERNAL_ERROR", "Database adapter is required for parameter routes.", 500);
+    throw new ApiError("INTERNAL_ERROR", "Database adapter is required for parameter routes.");
   }
 
   return db;
@@ -121,7 +121,7 @@ function requireDb(db: Database | undefined) {
 function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Invalid parameter route input.") {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
-    throw new ApiError("VALIDATION_FAILED", message, 400, { issues: parsed.error.issues });
+    throw new ApiError("VALIDATION_FAILED", message, { issues: parsed.error.issues });
   }
 
   return parsed.data;
@@ -129,7 +129,7 @@ function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Inv
 
 function requireCanView(auth: AuthContext) {
   if (!canViewParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter view permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter view permission is required.");
   }
 }
 
@@ -148,7 +148,7 @@ async function rejectRetiredLegacyParameterId(db: Queryable, legacyId: string): 
   if (!evidenceId) {
     return;
   }
-  throw new ApiError("GONE", "legacy-parameter-id-retired", 410, {
+  throw new ApiError("GONE", "legacy-parameter-id-retired", {
     diagnostic: "legacy-parameter-id-retired",
     migrationEvidenceId: evidenceId
   });
@@ -156,13 +156,13 @@ async function rejectRetiredLegacyParameterId(db: Queryable, legacyId: string): 
 
 function requireCanReviewOrMerge(auth: AuthContext) {
   if (!canReviewParameters(auth) && !canMergeParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter review or merge permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter review or merge permission is required.");
   }
 }
 
 function requireCanAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter admin permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter admin permission is required.");
   }
 }
 
@@ -179,7 +179,7 @@ function withRouteField(value: unknown, field: string, fieldValue: string) {
     field in value &&
     value[field as keyof typeof value] !== fieldValue
   ) {
-    throw new ApiError("VALIDATION_FAILED", `Route ${field} must match request body ${field}.`, 400, {
+    throw new ApiError("VALIDATION_FAILED", `Route ${field} must match request body ${field}.`, {
       [field]: value[field as keyof typeof value],
       routeValue: fieldValue
     });
@@ -232,7 +232,7 @@ export function registerParameterRoutes(
     });
 
     if (!item) {
-      throw new ApiError("NOT_FOUND", "Project was not found.", 404, { projectId: params.projectId });
+      throw new ApiError("NOT_FOUND", "Project was not found.", { projectId: params.projectId });
     }
 
     return { status: 200, body: { item } };
@@ -277,7 +277,7 @@ export function registerParameterRoutes(
     );
 
     if (!item) {
-      throw new ApiError("NOT_FOUND", "Project was not found.", 404, { projectId: params.projectId });
+      throw new ApiError("NOT_FOUND", "Project was not found.", { projectId: params.projectId });
     }
 
     return { status: 200, body: { item } };
@@ -293,7 +293,7 @@ export function registerParameterRoutes(
       projectId: params.projectId
     });
     if (!existing) {
-      throw new ApiError("NOT_FOUND", "Project was not found.", 404, { projectId: params.projectId });
+      throw new ApiError("NOT_FOUND", "Project was not found.", { projectId: params.projectId });
     }
 
     const result = await deleteProjectForAuth(
@@ -304,7 +304,7 @@ export function registerParameterRoutes(
     );
 
     if (!result.deleted) {
-      throw new ApiError("NOT_FOUND", "Project was not found.", 404, { projectId: params.projectId });
+      throw new ApiError("NOT_FOUND", "Project was not found.", { projectId: params.projectId });
     }
 
     return { status: 200, body: { ok: true as const } };
@@ -392,7 +392,7 @@ export function registerParameterRoutes(
 
     if (!item) {
       await rejectRetiredLegacyParameterId(db, params.parameterId);
-      throw new ApiError("NOT_FOUND", "Parameter was not found.", 404, { parameterId: params.parameterId });
+      throw new ApiError("NOT_FOUND", "Parameter was not found.", { parameterId: params.parameterId });
     }
 
     return { status: 200, body: { item } };

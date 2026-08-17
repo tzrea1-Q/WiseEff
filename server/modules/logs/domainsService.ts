@@ -72,7 +72,7 @@ function parseFormatProfileOrThrow(value: unknown): LogFormatProfile | undefined
   }
   const result = validateLogFormatProfile(value);
   if (!result.ok) {
-    throw new ApiError("VALIDATION_FAILED", "Log domain format profile is invalid.", 400, { issues: result.issues });
+    throw new ApiError("VALIDATION_FAILED", "Log domain format profile is invalid.", { issues: result.issues });
   }
   return result.profile;
 }
@@ -80,7 +80,7 @@ function parseFormatProfileOrThrow(value: unknown): LogFormatProfile | undefined
 function trimmedName(name: string) {
   const value = name.trim();
   if (value.length === 0) {
-    throw new ApiError("VALIDATION_FAILED", "Log domain name must not be blank.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Log domain name must not be blank.");
   }
   return value;
 }
@@ -107,7 +107,7 @@ export async function createLogDomainRecord(
   return withAuditedWrite(db, auth, context, async (tx) => {
     const existing = await findLogDomainByName(tx, { organizationId: auth.organization.id, name });
     if (existing) {
-      throw new ApiError("CONFLICT", "A log domain with this name already exists in the organization.", 409, {
+      throw new ApiError("CONFLICT", "A log domain with this name already exists in the organization.", {
         name
       });
     }
@@ -146,12 +146,12 @@ export async function updateLogDomainRecord(
   return withAuditedWrite(db, auth, context, async (tx) => {
     const existing = await getLogDomainById(tx, { organizationId: auth.organization.id, domainId: input.domainId });
     if (!existing) {
-      throw new ApiError("NOT_FOUND", "Log domain was not found.", 404, { domainId: input.domainId });
+      throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId: input.domainId });
     }
     if (name && name !== existing.name) {
       const conflicting = await findLogDomainByName(tx, { organizationId: auth.organization.id, name });
       if (conflicting && conflicting.id !== input.domainId) {
-        throw new ApiError("CONFLICT", "A log domain with this name already exists in the organization.", 409, {
+        throw new ApiError("CONFLICT", "A log domain with this name already exists in the organization.", {
           name
         });
       }
@@ -167,7 +167,7 @@ export async function updateLogDomainRecord(
       modelOverride: input.modelOverride === undefined ? undefined : input.modelOverride?.trim() || null
     });
     if (!domain) {
-      throw new ApiError("NOT_FOUND", "Log domain was not found.", 404, { domainId: input.domainId });
+      throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId: input.domainId });
     }
 
     return {
@@ -199,7 +199,7 @@ export async function archiveLogDomainRecord(
   return withAuditedWrite(db, auth, context, async (tx) => {
     const existing = await getLogDomainById(tx, { organizationId: auth.organization.id, domainId });
     if (!existing) {
-      throw new ApiError("NOT_FOUND", "Log domain was not found.", 404, { domainId });
+      throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId });
     }
 
     const domain = await updateLogDomainRow(tx, {
@@ -208,7 +208,7 @@ export async function archiveLogDomainRecord(
       status: "archived"
     });
     if (!domain) {
-      throw new ApiError("NOT_FOUND", "Log domain was not found.", 404, { domainId });
+      throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId });
     }
 
     return {
@@ -231,7 +231,7 @@ export async function listLogDomainKnowledgeLinkRecords(
   requireLogAdminDomains(auth);
   const domain = await getLogDomainById(db, { organizationId: auth.organization.id, domainId });
   if (!domain) {
-    throw new ApiError("NOT_FOUND", "Log domain was not found.", 404, { domainId });
+    throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId });
   }
   return { items: await listLogDomainKnowledgeLinks(db, { organizationId: auth.organization.id, domainId }) };
 }
@@ -255,16 +255,16 @@ export async function setLogDomainKnowledgeLinkRecords(
   const items = await withAuditedWrite(db, auth, context, async (tx) => {
     const domain = await getLogDomainById(tx, { organizationId: auth.organization.id, domainId: input.domainId });
     if (!domain) {
-      throw new ApiError("NOT_FOUND", "Log domain was not found.", 404, { domainId: input.domainId });
+      throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId: input.domainId });
     }
 
     for (const entryId of knowledgeEntryIds) {
       const entry = await getKnowledgeEntryById(tx, auth, entryId);
       if (!entry) {
-        throw new ApiError("NOT_FOUND", "Knowledge entry was not found.", 404, { knowledgeEntryId: entryId });
+        throw new ApiError("NOT_FOUND", "Knowledge entry was not found.", { knowledgeEntryId: entryId });
       }
       if (entry.status !== "published") {
-        throw new ApiError("VALIDATION_FAILED", "Only published knowledge entries can be linked to a log domain.", 400, {
+        throw new ApiError("VALIDATION_FAILED", "Only published knowledge entries can be linked to a log domain.", {
           knowledgeEntryId: entryId,
           status: entry.status
         });
@@ -332,22 +332,22 @@ export async function setLogDomainWebhookRecord(
   if (url) {
     const validation = validateWebhookUrl(url, { allowInsecureLocal: security.allowInsecureLocal });
     if (!validation.ok) {
-      throw new ApiError("VALIDATION_FAILED", validation.message, 400, { reason: validation.reason });
+      throw new ApiError("VALIDATION_FAILED", validation.message, { reason: validation.reason });
     }
   }
   if (input.enabled && !url) {
-    throw new ApiError("VALIDATION_FAILED", "An enabled webhook needs a URL.", 400, { reason: "webhook-url-required" });
+    throw new ApiError("VALIDATION_FAILED", "An enabled webhook needs a URL.", { reason: "webhook-url-required" });
   }
 
   return withAuditedWrite(db, auth, context, async (tx) => {
     const existing = await getLogDomainById(tx, { organizationId: auth.organization.id, domainId: input.domainId });
     if (!existing) {
-      throw new ApiError("NOT_FOUND", "Log domain was not found.", 404, { domainId: input.domainId });
+      throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId: input.domainId });
     }
 
     const secretAfterUpdate = input.secret === undefined ? existing.webhook.secretConfigured : Boolean(input.secret);
     if (input.enabled && !secretAfterUpdate) {
-      throw new ApiError("VALIDATION_FAILED", "An enabled webhook needs a signing secret.", 400, {
+      throw new ApiError("VALIDATION_FAILED", "An enabled webhook needs a signing secret.", {
         reason: "webhook-secret-required"
       });
     }
@@ -360,7 +360,7 @@ export async function setLogDomainWebhookRecord(
       secret: input.secret
     });
     if (!domain) {
-      throw new ApiError("NOT_FOUND", "Log domain was not found.", 404, { domainId: input.domainId });
+      throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId: input.domainId });
     }
 
     return {
@@ -388,7 +388,7 @@ export async function listLogDomainWebhookDeliveryRecords(
   requireLogAdminDomains(auth);
   const domain = await getLogDomainById(db, { organizationId: auth.organization.id, domainId: input.domainId });
   if (!domain) {
-    throw new ApiError("NOT_FOUND", "Log domain was not found.", 404, { domainId: input.domainId });
+    throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId: input.domainId });
   }
   return {
     items: await listRecentLogWebhookDeliveries(db, {
@@ -413,7 +413,7 @@ export async function sendLogDomainWebhookTestDelivery(
   requireLogAdminDomains(auth);
   const domain = await getLogDomainById(db, { organizationId: auth.organization.id, domainId });
   if (!domain) {
-    throw new ApiError("NOT_FOUND", "Log domain was not found.", 404, { domainId });
+    throw new ApiError("NOT_FOUND", "Log domain was not found.", { domainId });
   }
 
   const outcome = await deliverer.sendTestDelivery({ organizationId: auth.organization.id, domainId });

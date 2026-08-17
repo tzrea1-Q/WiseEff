@@ -116,7 +116,6 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
           throw new ApiError(
             "VALIDATION_FAILED",
             "Project id, parameter id, target value, and reason are required for parameter change submission.",
-            400,
             { projectId, parameterId, targetValue }
           );
         }
@@ -130,7 +129,7 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
         // contract, and `parameterId` is the project parameter binding id.
         const binding = await loadBindingContext(db, context.auth, parameterId);
         if (binding.project_id !== projectId) {
-          throw new ApiError("NOT_FOUND", "Parameter binding was not found for this project.", 404, {
+          throw new ApiError("NOT_FOUND", "Parameter binding was not found for this project.", {
             projectId,
             parameterId
           });
@@ -157,7 +156,6 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
             `targetValue must be DTS source text such as <3600>, "fast" or [01 02]: ${
               error instanceof Error ? error.message : "unrecognized value"
             }`,
-            400,
             { parameterId, targetValue }
           );
         }
@@ -171,7 +169,6 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
           throw new ApiError(
             "CONFLICT",
             "No config revision is available for this parameter binding yet.",
-            409,
             { projectId, parameterId }
           );
         }
@@ -256,7 +253,6 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
           throw new ApiError(
             "VALIDATION_FAILED",
             "Title and markdown content are required to create a knowledge draft.",
-            400,
             { title }
           );
         }

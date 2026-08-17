@@ -132,7 +132,7 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
         auth({ user: { ...auth().user, isActive: false } }),
         createInput({ attachments: [attachmentInput("shot.png")] })
       )
-    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Forbidden.", 403, { reason: "inactive" }));
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Forbidden.", { reason: "inactive" }));
     expect(put).not.toHaveBeenCalled();
     expect(await feedbackCount()).toBe(0);
   });
@@ -142,16 +142,16 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
     const user = auth();
 
     await expect(listProductFeedback(db, user, {})).rejects.toMatchObject(
-      new ApiError("FORBIDDEN", "Forbidden.", 403, { permission: "admin:access" })
+      new ApiError("FORBIDDEN", "Forbidden.", { permission: "admin:access" })
     );
     await expect(getProductFeedback(db, user, "feedback-1")).rejects.toMatchObject(
-      new ApiError("FORBIDDEN", "Forbidden.", 403, { permission: "admin:access" })
+      new ApiError("FORBIDDEN", "Forbidden.", { permission: "admin:access" })
     );
     await expect(updateProductFeedback(db, user, "feedback-1", { status: "in_progress" })).rejects.toMatchObject(
-      new ApiError("FORBIDDEN", "Forbidden.", 403, { permission: "admin:access" })
+      new ApiError("FORBIDDEN", "Forbidden.", { permission: "admin:access" })
     );
     await expect(getProductFeedbackAttachmentContent(db, objectStore, user, "feedback-1", "attachment-1")).rejects.toMatchObject(
-      new ApiError("FORBIDDEN", "Forbidden.", 403, { permission: "admin:access" })
+      new ApiError("FORBIDDEN", "Forbidden.", { permission: "admin:access" })
     );
   });
 
@@ -213,7 +213,7 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
 
     await expect(
       createProductFeedback(db, objectStore, auth(), createInput({ attachments: [attachmentInput("huge.png", 5 * 1024 * 1024 + 1)] }))
-    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Attachment exceeds the 5MB per-image limit.", 400));
+    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Attachment exceeds the 5MB per-image limit."));
     expect(put).not.toHaveBeenCalled();
     expect(await feedbackCount()).toBe(0);
   });
@@ -235,7 +235,7 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
           ]
         })
       )
-    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Attachments exceed the 15MB total limit.", 400));
+    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Attachments exceed the 15MB total limit."));
     expect(put).not.toHaveBeenCalled();
     expect(await feedbackCount()).toBe(0);
   });
@@ -255,20 +255,20 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
     // open -> closed skips in_progress and is refused; the row stays open.
     const skipped = await createProductFeedback(db, objectStore, auth(), createInput());
     await expect(updateProductFeedback(db, adminAuth(), skipped.id, { status: "closed" })).rejects.toMatchObject(
-      new ApiError("VALIDATION_FAILED", "Illegal product feedback status transition: open -> closed.", 400)
+      new ApiError("VALIDATION_FAILED", "Illegal product feedback status transition: open -> closed.")
     );
     await expect(getProductFeedback(db, adminAuth(), skipped.id)).resolves.toMatchObject({ status: "open" });
 
     // A closed row cannot be updated further, even to change the admin note.
     await updateProductFeedback(db, adminAuth(), updated.id, { status: "closed" });
     await expect(updateProductFeedback(db, adminAuth(), updated.id, { adminNote: "Already handled." })).rejects.toMatchObject(
-      new ApiError("VALIDATION_FAILED", "Closed product feedback cannot be updated.", 400)
+      new ApiError("VALIDATION_FAILED", "Closed product feedback cannot be updated.")
     );
   });
 
   it("returns NOT_FOUND for missing or cross-org feedback get", async () => {
     await expect(getProductFeedback(db, adminAuth(), MISSING_FEEDBACK_ID)).rejects.toMatchObject(
-      new ApiError("NOT_FOUND", "Product feedback was not found.", 404, { feedbackId: MISSING_FEEDBACK_ID })
+      new ApiError("NOT_FOUND", "Product feedback was not found.", { feedbackId: MISSING_FEEDBACK_ID })
     );
 
     await seedCoreGraph(db, {
@@ -286,7 +286,7 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
     const foreign = await createProductFeedback(db, objectStore, otherOrgAuth, createInput());
 
     await expect(getProductFeedback(db, adminAuth(), foreign.id)).rejects.toMatchObject(
-      new ApiError("NOT_FOUND", "Product feedback was not found.", 404, { feedbackId: foreign.id })
+      new ApiError("NOT_FOUND", "Product feedback was not found.", { feedbackId: foreign.id })
     );
   });
 

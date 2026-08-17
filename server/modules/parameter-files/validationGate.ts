@@ -143,7 +143,7 @@ export async function runValidationGate(
     configSetId: input.configSetId
   });
   if (!configSet) {
-    throw new ApiError("NOT_FOUND", "Config set not found.", 404, { configSetId: input.configSetId });
+    throw new ApiError("NOT_FOUND", "Config set not found.", { configSetId: input.configSetId });
   }
 
   const mode = input.mode ?? readDtsValidationMode();
@@ -152,7 +152,6 @@ export async function runValidationGate(
     throw new ApiError(
       "CONFLICT",
       "Release baseline rejects warn/off DTS validation; fail-closed release mode is required.",
-      409,
       { code: "dts-release-mode-required", mode }
     );
   }
@@ -181,7 +180,7 @@ export async function runValidationGate(
     );
 
     if (!validation.ok) {
-      throw new ApiError("CONFLICT", "DTS validation failed.", 409, {
+      throw new ApiError("CONFLICT", "DTS validation failed.", {
         code: "dts-validation-failed",
         diagnostics: validation.diagnostics,
         mode: validation.mode,
@@ -226,7 +225,7 @@ export async function runValidationGate(
         },
         context
       );
-      throw new ApiError("CONFLICT", "Empty config set cannot be released.", 409, {
+      throw new ApiError("CONFLICT", "Empty config set cannot be released.", {
         code: "dts-empty-config-set",
         diagnostics,
         mode,
@@ -302,7 +301,7 @@ export async function runValidationGate(
   );
 
   if (!mapped.ok) {
-    throw new ApiError("CONFLICT", "DTS validation failed.", 409, {
+    throw new ApiError("CONFLICT", "DTS validation failed.", {
       code: "dts-validation-failed",
       diagnostics: mapped.diagnostics,
       mode: mapped.mode,

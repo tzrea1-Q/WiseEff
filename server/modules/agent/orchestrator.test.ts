@@ -40,7 +40,7 @@ function createRegistry(
     require: vi.fn((name: string) => {
       const definition = byName.get(name as AgentToolName);
       if (!definition) {
-        throw new ApiError("VALIDATION_FAILED", "Unknown Agent tool.", 400);
+        throw new ApiError("VALIDATION_FAILED", "Unknown Agent tool.");
       }
       return definition;
     }),
@@ -495,7 +495,7 @@ describe("agent orchestrator", () => {
       async () => ({ summary: "should not run", data: {}, citations: [] })
     );
     registry.authorize.mockImplementationOnce(() => {
-      throw new ApiError("FORBIDDEN", "Missing permission: parameter:edit.", 403, { permission: "parameter:edit" });
+      throw new ApiError("FORBIDDEN", "Missing permission: parameter:edit.", { permission: "parameter:edit" });
     });
     const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
     const sessionId = await createTestSession(db);

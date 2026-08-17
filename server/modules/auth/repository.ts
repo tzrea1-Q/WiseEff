@@ -36,12 +36,12 @@ const authContextSelect = `
 
 function authContextFromRows(rows: AuthRow[]) {
   if (rows.length === 0) {
-    throw new ApiError("UNAUTHENTICATED", "User is not authenticated.", 401);
+    throw new ApiError("UNAUTHENTICATED", "User is not authenticated.");
   }
 
   const first = rows[0];
   if (!first.is_active) {
-    throw new ApiError("FORBIDDEN", "User is inactive.", 403);
+    throw new ApiError("FORBIDDEN", "User is inactive.");
   }
 
   const roles = rows
@@ -97,7 +97,7 @@ export async function getAuthContextForExternalIdentity(
   }
 
   if (!input.email?.trim()) {
-    throw new ApiError("UNAUTHENTICATED", "User is not authenticated.", 401);
+    throw new ApiError("UNAUTHENTICATED", "User is not authenticated.");
   }
 
   const emailResult = await db.query<AuthRow>(

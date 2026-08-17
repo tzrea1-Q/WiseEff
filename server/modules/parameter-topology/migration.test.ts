@@ -1306,7 +1306,7 @@ describe.skipIf(!databaseAvailable)("post-cutover API smoke (temp DB)", () => {
         [PPV_ID]
       );
       expect(legacyLookup.rows[0]?.id).toBeTruthy();
-      const gone = new ApiError("GONE", "legacy-parameter-id-retired", 410, {
+      const gone = new ApiError("GONE", "legacy-parameter-id-retired", {
         diagnostic: "legacy-parameter-id-retired",
         migrationEvidenceId: legacyLookup.rows[0]!.id
       });

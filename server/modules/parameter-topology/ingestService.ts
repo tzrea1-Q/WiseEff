@@ -717,7 +717,6 @@ async function matchBindAndQueueReviews(
           throw new ApiError(
             "CONFLICT",
             "Cannot resolve attribution subject for provisional surface binding.",
-            409,
             {
               organizationId: input.organizationId,
               moduleId: surfaceModuleId,
@@ -814,7 +813,7 @@ async function ingestConfigRevisionTx(
     members: manifest.members,
   });
   if (!normalized.ok) {
-    throw new ApiError("VALIDATION_FAILED", normalized.failure.message, 400, {
+    throw new ApiError("VALIDATION_FAILED", normalized.failure.message, {
       reason: normalized.failure.code,
     });
   }

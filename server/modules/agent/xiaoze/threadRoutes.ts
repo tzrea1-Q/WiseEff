@@ -20,7 +20,7 @@ import {
 
 function requireDb(db: Database | undefined) {
   if (!db) {
-    throw new ApiError("INTERNAL_ERROR", "Database adapter is required for Xiaoze thread routes.", 500);
+    throw new ApiError("INTERNAL_ERROR", "Database adapter is required for Xiaoze thread routes.");
   }
   return db;
 }
@@ -29,12 +29,12 @@ function parseParams<T>(schema: { parse: (value: unknown) => T }, value: unknown
   try {
     return schema.parse(value);
   } catch {
-    throw new ApiError("VALIDATION_FAILED", "Invalid Xiaoze thread route input.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Invalid Xiaoze thread route input.");
   }
 }
 
 function threadNotFound(threadId: string) {
-  return new ApiError("NOT_FOUND", "Xiaoze thread was not found.", 404, { threadId });
+  return new ApiError("NOT_FOUND", "Xiaoze thread was not found.", { threadId });
 }
 
 export function registerXiaozeThreadRoutes(

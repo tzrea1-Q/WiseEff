@@ -30,7 +30,7 @@ export function isValidDestinationFilename(value: string): boolean {
 
 export function parseReloadConfigurationContract(input: unknown): ReloadConfigurationContract {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
-    throw new ApiError("VALIDATION_FAILED", "Reload configuration must be an object.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Reload configuration must be an object.");
   }
   const record = input as Record<string, unknown>;
   const destinationDirectory = typeof record.destinationDirectory === "string" ? record.destinationDirectory.trim() : "";
@@ -55,7 +55,6 @@ export function assertReloadConfigurationContract(contract: ReloadConfigurationC
     throw new ApiError(
       "VALIDATION_FAILED",
       "Destination directory must be an absolute Unix path without '..' segments.",
-      400,
       { field: "destinationDirectory" }
     );
   }
@@ -63,7 +62,6 @@ export function assertReloadConfigurationContract(contract: ReloadConfigurationC
     throw new ApiError(
       "VALIDATION_FAILED",
       "Destination filename must be a basename only (no path separators).",
-      400,
       { field: "destinationFilename" }
     );
   }
@@ -71,17 +69,16 @@ export function assertReloadConfigurationContract(contract: ReloadConfigurationC
     throw new ApiError(
       "VALIDATION_FAILED",
       "Trigger node path must be an absolute Unix path without '..' segments.",
-      400,
       { field: "triggerNodePath" }
     );
   }
   if (!contract.triggerPayload.trim()) {
-    throw new ApiError("VALIDATION_FAILED", "Trigger payload must be a non-empty string.", 400, {
+    throw new ApiError("VALIDATION_FAILED", "Trigger payload must be a non-empty string.", {
       field: "triggerPayload"
     });
   }
   if (contract.triggerPayload.trim().length > 256) {
-    throw new ApiError("VALIDATION_FAILED", "Trigger payload exceeds the 256 character limit.", 400, {
+    throw new ApiError("VALIDATION_FAILED", "Trigger payload exceeds the 256 character limit.", {
       field: "triggerPayload"
     });
   }
@@ -89,7 +86,6 @@ export function assertReloadConfigurationContract(contract: ReloadConfigurationC
     throw new ApiError(
       "VALIDATION_FAILED",
       `Kernel log command must be one of: ${KERNEL_LOG_COMMAND_ALLOWLIST.join(", ")}.`,
-      400,
       {
         field: "kernelLogCommand",
         allowlist: [...KERNEL_LOG_COMMAND_ALLOWLIST],

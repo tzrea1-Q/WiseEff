@@ -33,7 +33,7 @@ describe("createXiaozeAgUiHandler", () => {
   it("refuses a run against a foreign thread before running the agent", async () => {
     const run = vi.fn(async () => ({ text: "hi", citations: [] }));
     const assertThreadAccess = vi.fn(async ({ threadId }: { threadId: string }) => {
-      throw new ApiError("FORBIDDEN", "This Xiaoze thread belongs to another user.", 403, { threadId });
+      throw new ApiError("FORBIDDEN", "This Xiaoze thread belongs to another user.", { threadId });
     });
     const handler = createXiaozeAgUiHandler({
       resolveAuth: async () => anyAuth,
@@ -618,7 +618,7 @@ describe("createXiaozeAgUiHandler", () => {
       persistTurn,
       createAgent: () => ({
         run: vi.fn().mockRejectedValue(
-          new ApiError("CONFLICT", "请刷新后基于本轮最新工作版本继续编辑。", 409, {
+          new ApiError("CONFLICT", "请刷新后基于本轮最新工作版本继续编辑。", {
             reason: "stale-working-tip"
           })
         )

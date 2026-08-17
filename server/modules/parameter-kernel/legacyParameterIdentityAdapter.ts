@@ -21,7 +21,6 @@ export function assertPreCutoverParameterIdentity(): void {
     throw new ApiError(
       "GONE",
       "Pre-cutover parameter identity adapter is unreachable after identity cutover.",
-      410,
       { diagnostic: "legacy-parameter-identity-retired" }
     );
   }

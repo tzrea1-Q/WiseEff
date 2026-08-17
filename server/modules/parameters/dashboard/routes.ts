@@ -9,7 +9,7 @@ import { getDashboardHotspots, getDashboardSummary } from "./service";
 
 function requireDb(db: Database | undefined) {
   if (!db) {
-    throw new ApiError("INTERNAL_ERROR", "Database adapter is required for dashboard routes.", 500);
+    throw new ApiError("INTERNAL_ERROR", "Database adapter is required for dashboard routes.");
   }
   return db;
 }
@@ -17,7 +17,7 @@ function requireDb(db: Database | undefined) {
 function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Invalid dashboard route input.") {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
-    throw new ApiError("VALIDATION_FAILED", message, 400, { issues: parsed.error.issues });
+    throw new ApiError("VALIDATION_FAILED", message, { issues: parsed.error.issues });
   }
   return parsed.data;
 }
@@ -29,7 +29,7 @@ export function registerParameterDashboardRoutes(
   router.get("/api/v1/parameters/dashboard/summary", async (request) => {
     const auth = await options.getCurrentAuthContext(request);
     if (!canViewParameters(auth)) {
-      throw new ApiError("FORBIDDEN", "Parameter view permission is required.", 403);
+      throw new ApiError("FORBIDDEN", "Parameter view permission is required.");
     }
     const query = parseWithSchema(dashboardSummaryQuerySchema, request.query);
     const item = await getDashboardSummary(requireDb(options.db), {
@@ -44,7 +44,7 @@ export function registerParameterDashboardRoutes(
   router.get("/api/v1/parameters/dashboard/hotspots", async (request) => {
     const auth = await options.getCurrentAuthContext(request);
     if (!canViewParameters(auth)) {
-      throw new ApiError("FORBIDDEN", "Parameter view permission is required.", 403);
+      throw new ApiError("FORBIDDEN", "Parameter view permission is required.");
     }
     const query = parseWithSchema(dashboardHotspotsQuerySchema, request.query);
     const items = await getDashboardHotspots(requireDb(options.db), {

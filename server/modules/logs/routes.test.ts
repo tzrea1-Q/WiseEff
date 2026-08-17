@@ -465,7 +465,7 @@ describe("log routes", () => {
 
   it("forbidden archive returns FORBIDDEN", async () => {
     const db = makeDb();
-    vi.mocked(service.archiveLogRecord).mockRejectedValue(new ApiError("FORBIDDEN", "Forbidden.", 403, { permission: "logs:archive" }));
+    vi.mocked(service.archiveLogRecord).mockRejectedValue(new ApiError("FORBIDDEN", "Forbidden.", { permission: "logs:archive" }));
 
     const response = await requestJson<{ error: { code: string } }>(
       makeServer({ db, objectStore: makeObjectStore() }),

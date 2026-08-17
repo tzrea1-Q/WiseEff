@@ -256,10 +256,10 @@ describe.skipIf(!databaseAvailable)("parameter service", () => {
           sourceName: "admin-upload.csv",
           items: [baseImportItems()[1]]
         })
-      ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Admin access is required for parameter import.", 403));
+      ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Admin access is required for parameter import."));
 
       await expect(applyImportBatch(db, makeAuth(), { batchId: "batch-1" })).rejects.toMatchObject(
-        new ApiError("FORBIDDEN", "Admin access is required for parameter import.", 403)
+        new ApiError("FORBIDDEN", "Admin access is required for parameter import.")
       );
 
       await expect(countBatches()).resolves.toBe(0);
@@ -283,7 +283,7 @@ describe.skipIf(!databaseAvailable)("parameter service", () => {
 
       await expect(
         createImportPreview(db, makeAdminAuth(), invalidBody as never)
-      ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Invalid parameter import item.", 400));
+      ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Invalid parameter import item."));
       await expect(countBatches()).resolves.toBe(0);
     });
 
@@ -294,7 +294,7 @@ describe.skipIf(!databaseAvailable)("parameter service", () => {
           sourceName: "admin-upload.csv",
           items: [baseImportItems()[1]]
         })
-      ).rejects.toMatchObject(new ApiError("NOT_FOUND", "Project was not found for this organization.", 404));
+      ).rejects.toMatchObject(new ApiError("NOT_FOUND", "Project was not found for this organization."));
 
       await expect(countBatches()).resolves.toBe(0);
     });
@@ -688,7 +688,7 @@ describe.skipIf(!databaseAvailable)("parameter service", () => {
 
       await expect(
         applyImportBatch(db, makeAdminAuth(), { batchId: "batch-foreign", selectedItemIds: ["item-added"] })
-      ).rejects.toMatchObject(new ApiError("NOT_FOUND", "Project was not found for this organization.", 404));
+      ).rejects.toMatchObject(new ApiError("NOT_FOUND", "Project was not found for this organization."));
 
       await expect(readBatchStatus("batch-foreign")).resolves.toBe("previewed");
       await expect(findDefinitionByName("thermal_guard_threshold_c")).resolves.toBeUndefined();
@@ -700,7 +700,7 @@ describe.skipIf(!databaseAvailable)("parameter service", () => {
       await expect(
         applyImportBatch(db, makeAdminAuth(), { batchId: batch.id, selectedItemIds: ["item-missing"] })
       ).rejects.toMatchObject(
-        new ApiError("VALIDATION_FAILED", "Selected import item was not found in the batch.", 400)
+        new ApiError("VALIDATION_FAILED", "Selected import item was not found in the batch.")
       );
 
       await expect(readBatchStatus(batch.id)).resolves.toBe("previewed");
@@ -711,7 +711,7 @@ describe.skipIf(!databaseAvailable)("parameter service", () => {
 
       await expect(
         applyImportBatch(db, makeAdminAuth(), { batchId: batch.id, selectedItemIds: [] })
-      ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "At least one import item must be selected.", 400));
+      ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "At least one import item must be selected."));
 
       await expect(readBatchStatus(batch.id)).resolves.toBe("previewed");
     });
@@ -748,7 +748,7 @@ describe.skipIf(!databaseAvailable)("parameter service", () => {
           selectedItemIds: ["fast_charge_current_limit_ma"]
         })
       ).rejects.toMatchObject(
-        new ApiError("VALIDATION_FAILED", "At least one eligible import item must be selected.", 400)
+        new ApiError("VALIDATION_FAILED", "At least one eligible import item must be selected.")
       );
 
       await expect(readBatchStatus(batch.id)).resolves.toBe("previewed");
@@ -765,7 +765,7 @@ describe.skipIf(!databaseAvailable)("parameter service", () => {
           batchId: batch.id,
           selectedItemIds: ["thermal_guard_threshold_c"]
         })
-      ).rejects.toMatchObject(new ApiError("CONFLICT", "Import item definition id already exists.", 409));
+      ).rejects.toMatchObject(new ApiError("CONFLICT", "Import item definition id already exists."));
 
       await expect(readBatchStatus(batch.id)).resolves.toBe("previewed");
       await expect(readImportAudits()).resolves.toEqual([]);
@@ -789,7 +789,7 @@ describe.skipIf(!databaseAvailable)("parameter service", () => {
           selectedItemIds: ["fast_charge_current_limit_ma"]
         })
       ).rejects.toMatchObject(
-        new ApiError("CONFLICT", "Cannot apply import items with open change requests.", 409)
+        new ApiError("CONFLICT", "Cannot apply import items with open change requests.")
       );
 
       expect(await readValue("param-1")).toMatchObject({ current_value: "3200", value_version: 7 });
@@ -932,7 +932,7 @@ describe.skipIf(!databaseAvailable)("parameter service", () => {
           selectedItemIds: ["fast_charge_current_limit_ma"]
         })
       ).rejects.toMatchObject(
-        new ApiError("CONFLICT", "Cannot apply import items with open change requests.", 409)
+        new ApiError("CONFLICT", "Cannot apply import items with open change requests.")
       );
 
       expect(await readValue("param-1")).toMatchObject({ current_value: "3200", value_version: 7 });
@@ -960,7 +960,7 @@ describe.skipIf(!databaseAvailable)("parameter service", () => {
             reason: "Reduce thermal risk."
           }
         )
-      ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter edit permission is required.", 403));
+      ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter edit permission is required."));
 
       await expect(countDrafts()).resolves.toBe(0);
     });
@@ -977,7 +977,7 @@ describe.skipIf(!databaseAvailable)("parameter service", () => {
           targetValue: "3100",
           reason: "cross-project"
         })
-      ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter edit role is required for this project.", 403));
+      ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter edit role is required for this project."));
 
       await expect(countDrafts()).resolves.toBe(0);
     });
@@ -996,7 +996,7 @@ describe.skipIf(!databaseAvailable)("parameter service", () => {
           reason: "org-wide binding"
         })
       ).rejects.toMatchObject(
-        new ApiError("NOT_FOUND", "Parameter was not found for this project.", 404, {
+        new ApiError("NOT_FOUND", "Parameter was not found for this project.", {
           parameterId: "param-1",
           projectId: "project-2"
         })
@@ -1014,7 +1014,7 @@ describe.skipIf(!databaseAvailable)("parameter service", () => {
           },
           { requestId: "req-cross" }
         )
-      ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter edit role is required for this project.", 403));
+      ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter edit role is required for this project."));
 
       const rounds = await db.query<{ c: string }>(
         `select count(*)::text as c from parameter_submission_rounds where organization_id = 'org-1'`
@@ -1071,7 +1071,7 @@ describe.skipIf(!databaseAvailable)("parameter service", () => {
           reason: "Reduce thermal risk."
         })
       ).rejects.toMatchObject(
-        new ApiError("NOT_FOUND", "Parameter was not found for this project.", 404, {
+        new ApiError("NOT_FOUND", "Parameter was not found for this project.", {
           parameterId: "param-from-other-project",
           projectId: "project-1"
         })
@@ -1384,7 +1384,6 @@ describe("parameter service (fake-db residuals)", () => {
       new ApiError(
         "CONFLICT",
         "本轮草稿不在同一工作版本上，无法一起提交。请移除冲突项或清空后重新编辑。",
-        409,
         {
           reason: "mixed-working-tips",
           candidateConfigRevisionIds: expect.arrayContaining([tipA, tipB])
@@ -1520,7 +1519,7 @@ describe("parameter service (fake-db residuals)", () => {
           { objectStore: { get: async () => Buffer.alloc(0), put: async () => ({ storageKey: "x", checksumSha256: "y", fileSizeBytes: 0 }) } as never }
         )
       ).rejects.toMatchObject(
-        new ApiError("CONFLICT", "Semantic merge requires a project-scoped change request.", 409, {
+        new ApiError("CONFLICT", "Semantic merge requires a project-scoped change request.", {
           requestId: "request-1"
         })
       );

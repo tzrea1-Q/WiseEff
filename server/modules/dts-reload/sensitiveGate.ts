@@ -128,7 +128,7 @@ function denySensitiveReload(
   message: string,
   extras: Record<string, unknown>
 ): never {
-  throw new ApiError("FORBIDDEN", message, 403, {
+  throw new ApiError("FORBIDDEN", message, {
     code: SENSITIVE_RELOAD_DENIED_CODE,
     riskTier: hit.rule.riskTier,
     bindingId: hit.bindingId,

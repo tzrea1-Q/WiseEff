@@ -34,14 +34,14 @@ import {
 
 function requireDb(db: Database | undefined) {
   if (!db) {
-    throw new ApiError("INTERNAL_ERROR", "Database adapter is required for dts-reload routes.", 500);
+    throw new ApiError("INTERNAL_ERROR", "Database adapter is required for dts-reload routes.");
   }
   return db;
 }
 
 function requireObjectStore(objectStore: ObjectStore | undefined) {
   if (!objectStore) {
-    throw new ApiError("INTERNAL_ERROR", "Object store is required for dts-reload routes.", 500);
+    throw new ApiError("INTERNAL_ERROR", "Object store is required for dts-reload routes.");
   }
   return objectStore;
 }
@@ -49,7 +49,7 @@ function requireObjectStore(objectStore: ObjectStore | undefined) {
 function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Invalid dts-reload route input.") {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
-    throw new ApiError("VALIDATION_FAILED", message, 400, { issues: parsed.error.issues });
+    throw new ApiError("VALIDATION_FAILED", message, { issues: parsed.error.issues });
   }
   return parsed.data;
 }
@@ -74,7 +74,7 @@ function parseReloadRunListCursor(cursor: string | undefined) {
     if (error instanceof ApiError) {
       throw error;
     }
-    throw new ApiError("VALIDATION_FAILED", "Invalid reload run list cursor.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Invalid reload run list cursor.");
   }
 }
 
@@ -195,7 +195,6 @@ export function registerDtsReloadRoutes(
       throw new ApiError(
         "INTERNAL_ERROR",
         "Device bridge RPC is not configured; reload deploy requires the local device bridge.",
-        500,
         { code: "bridge-rpc-unavailable" }
       );
     }

@@ -292,7 +292,7 @@ describe("product feedback routes", () => {
     const db = makeDb();
     const objectStore = makeObjectStore();
     vi.mocked(service.getProductFeedbackAttachmentContent).mockRejectedValue(
-      new ApiError("NOT_FOUND", "Product feedback was not found.", 404, { feedbackId: "feedback-route" })
+      new ApiError("NOT_FOUND", "Product feedback was not found.", { feedbackId: "feedback-route" })
     );
 
     const response = await requestJson<{ error: { code: string } }>(

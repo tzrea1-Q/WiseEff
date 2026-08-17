@@ -62,7 +62,7 @@ export function throwIfManifestNeedsReview(revision: { id: string; manifestState
   if (!gate) {
     return;
   }
-  throw new ApiError("CONFLICT", gate.message, 409, {
+  throw new ApiError("CONFLICT", gate.message, {
     reason: MANIFEST_NEEDS_REVIEW_FAILURE_CODE,
     failureCode: MANIFEST_NEEDS_REVIEW_FAILURE_CODE,
     configRevisionId: revision.id,
@@ -97,7 +97,7 @@ export async function loadFileContentFromVersion(
   );
   const row = result.rows[0];
   if (!row) {
-    throw new ApiError("NOT_FOUND", "File version was not found for binding edit.", 404, { fileVersionId });
+    throw new ApiError("NOT_FOUND", "File version was not found for binding edit.", { fileVersionId });
   }
 
   if (objectStore) {
@@ -114,7 +114,7 @@ export async function loadFileContentFromVersion(
     if (typeof source === "string") return source;
   }
 
-  throw new ApiError("CONFLICT", "File version content is unavailable for binding edit.", 409, {
+  throw new ApiError("CONFLICT", "File version content is unavailable for binding edit.", {
     fileVersionId,
     storageKey: row.storage_key,
   });
@@ -176,7 +176,7 @@ function propertyStatementSpan(
   const searchFrom = Math.max(parent.span.start, 0);
   const nameStart = content.lastIndexOf(propertyKey, property.span.start);
   if (nameStart < searchFrom) {
-    throw new ApiError("CONFLICT", "Occurrence property statement span is stale.", 409, {
+    throw new ApiError("CONFLICT", "Occurrence property statement span is stale.", {
       reason: "stale-span",
       propertyKey,
       span: property.span,
@@ -185,14 +185,14 @@ function propertyStatementSpan(
   const between = content.slice(nameStart + propertyKey.length, property.span.start);
   if (property.rawText.length > 0) {
     if (!/^\s*=\s*$/.test(between)) {
-      throw new ApiError("CONFLICT", "Occurrence property statement span is stale.", 409, {
+      throw new ApiError("CONFLICT", "Occurrence property statement span is stale.", {
         reason: "stale-span",
         propertyKey,
         span: property.span,
       });
     }
   } else if (!/^\s*$/.test(between)) {
-    throw new ApiError("CONFLICT", "Occurrence property statement span is stale.", 409, {
+    throw new ApiError("CONFLICT", "Occurrence property statement span is stale.", {
       reason: "stale-span",
       propertyKey,
       span: property.span,
@@ -200,7 +200,7 @@ function propertyStatementSpan(
   }
   const semi = content.indexOf(";", property.span.end);
   if (semi < 0 || semi > parent.span.end) {
-    throw new ApiError("CONFLICT", "Occurrence property statement span is stale.", 409, {
+    throw new ApiError("CONFLICT", "Occurrence property statement span is stale.", {
       reason: "stale-span",
       propertyKey,
       span: property.span,
@@ -212,7 +212,7 @@ function propertyStatementSpan(
 function insertAfterNodeOpenBrace(content: string, node: DtsNodeCst, insertion: string): string {
   const openBrace = content.indexOf("{", node.span.start);
   if (openBrace < 0 || openBrace >= node.span.end) {
-    throw new ApiError("CONFLICT", "Unable to locate overlay node body for write.", 409, {
+    throw new ApiError("CONFLICT", "Unable to locate overlay node body for write.", {
       reason: "stale-span",
       nodeSpan: node.span,
     });
@@ -227,7 +227,7 @@ function resolveInsertTargetNode(
   if (input.nodeSpan) {
     const bySpan = findNodeByExactSpan(docRoots, input.nodeSpan);
     if (!bySpan) {
-      throw new ApiError("CONFLICT", "Overlay node occurrence span is stale.", 409, {
+      throw new ApiError("CONFLICT", "Overlay node occurrence span is stale.", {
         reason: "stale-span",
         nodeSpan: input.nodeSpan,
         targetRef: input.targetRef,
@@ -237,7 +237,7 @@ function resolveInsertTargetNode(
   }
   const matches = findAllOverlayNodesByRef(docRoots, input.targetRef);
   if (matches.length > 1) {
-    throw new ApiError("CONFLICT", "Ambiguous overlay target ref for binding edit.", 409, {
+    throw new ApiError("CONFLICT", "Ambiguous overlay target ref for binding edit.", {
       reason: "ambiguous-overlay-target",
       targetRef: input.targetRef,
       matchCount: matches.length,
@@ -265,14 +265,14 @@ export function ensureOverlayProperty(
 ): string {
   const { propertyKey, rawText, action, targetRef } = input;
   if (!targetRef.trim()) {
-    throw new ApiError("CONFLICT", "Overlay write requires an explicit target ref.", 409, {
+    throw new ApiError("CONFLICT", "Overlay write requires an explicit target ref.", {
       reason: "missing-overlay-target-ref",
       propertyKey,
     });
   }
 
   if (checksumOf(content) !== input.expectedChecksum) {
-    throw new ApiError("CONFLICT", "Overlay file checksum is stale for binding edit.", 409, {
+    throw new ApiError("CONFLICT", "Overlay file checksum is stale for binding edit.", {
       reason: "stale-checksum",
       propertyKey,
       expectedChecksum: input.expectedChecksum,
@@ -285,7 +285,7 @@ export function ensureOverlayProperty(
   if (input.occurrenceSpan) {
     const slice = content.slice(input.occurrenceSpan.start, input.occurrenceSpan.end);
     if (input.expectedRawText != null && slice !== input.expectedRawText) {
-      throw new ApiError("CONFLICT", "Occurrence CST span is stale for binding edit.", 409, {
+      throw new ApiError("CONFLICT", "Occurrence CST span is stale for binding edit.", {
         reason: "stale-span",
         propertyKey,
         occurrenceSpan: input.occurrenceSpan,
@@ -294,7 +294,7 @@ export function ensureOverlayProperty(
 
     const located = findPropertyByExactSpan(doc.topLevel, input.occurrenceSpan);
     if (!located || located.property.name !== propertyKey) {
-      throw new ApiError("CONFLICT", "Occurrence CST span is stale for binding edit.", 409, {
+      throw new ApiError("CONFLICT", "Occurrence CST span is stale for binding edit.", {
         reason: "stale-span",
         propertyKey,
         occurrenceSpan: input.occurrenceSpan,
@@ -443,7 +443,6 @@ export function candidateGateError(
   return new ApiError(
     isConflict ? "CONFLICT" : "VALIDATION_FAILED",
     `Candidate config revision failed semantic/toolchain gate (${reason}).`,
-    isConflict ? 409 : 400,
     {
       reason,
       candidateRevisionId,
@@ -500,7 +499,7 @@ export async function applyLockedOverlayWriteback(
     revisionId: input.lock.baseConfigRevisionId,
   });
   if (!revision) {
-    throw new ApiError("CONFLICT", "Base config revision is stale for writeback.", 409, {
+    throw new ApiError("CONFLICT", "Base config revision is stale for writeback.", {
       reason: "stale-revision",
       baseConfigRevisionId: input.lock.baseConfigRevisionId,
     });
@@ -512,7 +511,7 @@ export async function applyLockedOverlayWriteback(
   const baseMember = members.find((member) => member.role === "base");
   const overlayMember = members.find((member) => member.file_id === input.lock.overlayFileId);
   if (!baseMember || !overlayMember) {
-    throw new ApiError("CONFLICT", "Config revision members missing for locked writeback.", 409, {
+    throw new ApiError("CONFLICT", "Config revision members missing for locked writeback.", {
       reason: "missing-members",
       baseConfigRevisionId: input.lock.baseConfigRevisionId,
     });
@@ -528,7 +527,7 @@ export async function applyLockedOverlayWriteback(
 
   const overlayContent = memberContents.get(input.lock.sourceFileVersionId);
   if (overlayContent === undefined) {
-    throw new ApiError("CONFLICT", "Locked overlay file version is not part of the base revision.", 409, {
+    throw new ApiError("CONFLICT", "Locked overlay file version is not part of the base revision.", {
       reason: "stale-file-version",
       sourceFileVersionId: input.lock.sourceFileVersionId,
     });
@@ -628,7 +627,7 @@ export async function applyLockedOverlayWriteback(
     members: candidateMembers,
   });
   if (!normalizedManifest.ok) {
-    throw new ApiError("VALIDATION_FAILED", normalizedManifest.failure.message, 400, {
+    throw new ApiError("VALIDATION_FAILED", normalizedManifest.failure.message, {
       reason: normalizedManifest.failure.code,
     });
   }
@@ -650,7 +649,6 @@ export async function applyLockedOverlayWriteback(
       ingested.status === "needs_mapping"
         ? "Writeback candidate revision has unresolved identity mapping."
         : "Writeback candidate revision failed resolve.",
-      ingested.status === "needs_mapping" ? 409 : 400,
       {
         reason: ingested.status === "needs_mapping" ? "unresolved-mapping" : "resolve-failure",
         candidateRevisionId: ingested.id,
@@ -739,7 +737,7 @@ export async function applyLockedEnablementWriteback(
     revisionId: input.lock.baseConfigRevisionId,
   });
   if (!revision) {
-    throw new ApiError("CONFLICT", "Base config revision is stale for writeback.", 409, {
+    throw new ApiError("CONFLICT", "Base config revision is stale for writeback.", {
       reason: "stale-revision",
       baseConfigRevisionId: input.lock.baseConfigRevisionId,
     });
@@ -751,7 +749,7 @@ export async function applyLockedEnablementWriteback(
   const baseMember = members.find((member) => member.role === "base");
   const overlayMember = members.find((member) => member.file_id === input.lock.overlayFileId);
   if (!baseMember || !overlayMember) {
-    throw new ApiError("CONFLICT", "Config revision members missing for locked writeback.", 409, {
+    throw new ApiError("CONFLICT", "Config revision members missing for locked writeback.", {
       reason: "missing-members",
       baseConfigRevisionId: input.lock.baseConfigRevisionId,
     });
@@ -767,7 +765,7 @@ export async function applyLockedEnablementWriteback(
 
   const overlayContent = memberContents.get(input.lock.sourceFileVersionId);
   if (overlayContent === undefined) {
-    throw new ApiError("CONFLICT", "Locked overlay file version is not part of the base revision.", 409, {
+    throw new ApiError("CONFLICT", "Locked overlay file version is not part of the base revision.", {
       reason: "stale-file-version",
       sourceFileVersionId: input.lock.sourceFileVersionId,
     });
@@ -867,7 +865,7 @@ export async function applyLockedEnablementWriteback(
     members: candidateMembers,
   });
   if (!normalizedManifest.ok) {
-    throw new ApiError("VALIDATION_FAILED", normalizedManifest.failure.message, 400, {
+    throw new ApiError("VALIDATION_FAILED", normalizedManifest.failure.message, {
       reason: normalizedManifest.failure.code,
     });
   }
@@ -889,7 +887,6 @@ export async function applyLockedEnablementWriteback(
       ingested.status === "needs_mapping"
         ? "Writeback candidate revision has unresolved identity mapping."
         : "Writeback candidate revision failed resolve.",
-      ingested.status === "needs_mapping" ? 409 : 400,
       {
         reason: ingested.status === "needs_mapping" ? "unresolved-mapping" : "resolve-failure",
         candidateRevisionId: ingested.id,

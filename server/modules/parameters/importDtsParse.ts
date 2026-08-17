@@ -45,7 +45,7 @@ export function parseDtsImportSource(
   const maxBytes = options.maxContentBytes ?? DEFAULT_MAX_CONTENT_BYTES;
   const byteLength = Buffer.byteLength(input.content, "utf8");
   if (byteLength > maxBytes) {
-    throw new ApiError("VALIDATION_FAILED", `DTS import source exceeds the ${maxBytes} byte limit.`, 400, {
+    throw new ApiError("VALIDATION_FAILED", `DTS import source exceeds the ${maxBytes} byte limit.`, {
       maxBytes,
       sizeBytes: byteLength
     });

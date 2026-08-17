@@ -443,7 +443,6 @@ export async function validateSpecReviewTenantEvidence(
     throw new ApiError(
       "NOT_FOUND",
       "Review task evidence could not be verified for this organization.",
-      404,
       { taskId: input.taskId },
     );
   }
@@ -472,7 +471,7 @@ export async function assertProjectBelongsToOrganization(
     [input.organizationId, input.projectId],
   );
   if (!result.rows[0]) {
-    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", 404, {
+    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", {
       projectId: input.projectId,
     });
   }
@@ -497,7 +496,6 @@ export async function assertBindingBelongsToTenant(
     throw new ApiError(
       "NOT_FOUND",
       "Project parameter binding could not be verified for this organization.",
-      404,
       { bindingId: input.bindingId },
     );
   }
@@ -595,7 +593,6 @@ export async function upsertOccurrenceSpecDecision(
     throw new ApiError(
       "NOT_FOUND",
       "Config revision could not be verified for this organization.",
-      404,
       { configRevisionId: input.configRevisionId },
     );
   }
@@ -614,7 +611,6 @@ export async function upsertOccurrenceSpecDecision(
     throw new ApiError(
       "NOT_FOUND",
       "Property occurrence could not be verified for this organization.",
-      404,
       { propertyOccurrenceId: input.propertyOccurrenceId },
     );
   }

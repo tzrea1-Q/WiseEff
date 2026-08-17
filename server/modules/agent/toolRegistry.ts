@@ -32,7 +32,7 @@ function requireScopedProjectOrGlobalAdmin(context: AgentToolExecutionContext, p
     (role) => (role.roleId === "admin" || role.roleId === "platform-admin") && role.projectId === null
   );
   if (!projectId && !hasGlobalAdmin) {
-    throw new ApiError("FORBIDDEN", "Agent project access is required.", 403, { projectId });
+    throw new ApiError("FORBIDDEN", "Agent project access is required.", { projectId });
   }
 }
 
@@ -64,7 +64,7 @@ export function createAgentToolRegistry(options: {
     require(name: string) {
       const tool = byName.get(name);
       if (!tool) {
-        throw new ApiError("VALIDATION_FAILED", "Unknown Agent tool.", 400, { toolName: name });
+        throw new ApiError("VALIDATION_FAILED", "Unknown Agent tool.", { toolName: name });
       }
       return tool;
     },

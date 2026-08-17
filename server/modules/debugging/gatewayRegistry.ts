@@ -14,7 +14,7 @@ export function createDebugDeviceGatewayRegistry(
     requireGateway(protocol) {
       const gateway = gateways[protocol];
       if (!gateway) {
-        throw new ApiError("PROTOCOL_UNSUPPORTED", `Debug protocol ${protocol} is not enabled.`, 409, { protocol });
+        throw new ApiError("PROTOCOL_UNSUPPORTED", `Debug protocol ${protocol} is not enabled.`, { protocol });
       }
       return gateway;
     },

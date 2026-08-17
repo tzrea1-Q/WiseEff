@@ -40,7 +40,7 @@ export type InitializationServiceContext = AuditCorrelationContext;
 
 function requireCanView(auth: AuthContext) {
   if (!canViewParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter view permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter view permission is required.");
   }
 }
 
@@ -49,14 +49,13 @@ function requireCanEdit(auth: AuthContext, projectId?: string) {
   const scopedOnly = projectId !== undefined && canEditParameters(auth);
   throw new ApiError(
     "FORBIDDEN",
-    scopedOnly ? "Parameter edit role is required for this project." : "Parameter edit permission is required.",
-    403
+    scopedOnly ? "Parameter edit role is required for this project." : "Parameter edit permission is required."
   );
 }
 
 function requireCanAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter admin permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter admin permission is required.");
   }
 }
 
@@ -65,8 +64,7 @@ function validateDraftShape(input: UpsertInitializationDraftInput) {
     if (input.sourceProjectIds.length > 0 || input.selectedSourceBindingIds.length > 0) {
       throw new ApiError(
         "VALIDATION_FAILED",
-        "Empty-library initialization cannot include source projects or bindings.",
-        400
+        "Empty-library initialization cannot include source projects or bindings."
       );
     }
     return;
@@ -75,24 +73,23 @@ function validateDraftShape(input: UpsertInitializationDraftInput) {
   if (input.sourceProjectIds.length === 0) {
     throw new ApiError(
       "VALIDATION_FAILED",
-      "Select at least one source project, or explicitly start from an empty library.",
-      400
+      "Select at least one source project, or explicitly start from an empty library."
     );
   }
 
   if (!input.primarySourceProjectId) {
-    throw new ApiError("VALIDATION_FAILED", "A primary source project is required.", 400);
+    throw new ApiError("VALIDATION_FAILED", "A primary source project is required.");
   }
 
   if (!input.sourceProjectIds.includes(input.primarySourceProjectId)) {
-    throw new ApiError("VALIDATION_FAILED", "Primary source must be included in source projects.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Primary source must be included in source projects.");
   }
 }
 
 function validateSubmitDraft(draft: InitializationDraftDto) {
   if (draft.emptyLibrary) {
     if (draft.bindingSnapshots.length > 0) {
-      throw new ApiError("VALIDATION_FAILED", "Empty-library draft must have zero binding snapshots.", 400);
+      throw new ApiError("VALIDATION_FAILED", "Empty-library draft must have zero binding snapshots.");
     }
     return;
   }
@@ -100,13 +97,12 @@ function validateSubmitDraft(draft: InitializationDraftDto) {
   if (draft.bindingSnapshots.length === 0) {
     throw new ApiError(
       "VALIDATION_FAILED",
-      "Select at least one binding before submitting initialization for review.",
-      400
+      "Select at least one binding before submitting initialization for review."
     );
   }
 
   if (!draft.primarySourceProjectId) {
-    throw new ApiError("VALIDATION_FAILED", "A primary source project is required before submit.", 400);
+    throw new ApiError("VALIDATION_FAILED", "A primary source project is required before submit.");
   }
 }
 
@@ -148,7 +144,6 @@ async function ensureTargetConfigRevision(
     throw new ApiError(
       "CONFLICT",
       "Default config set is required before materializing initialization bindings.",
-      409,
       { projectId: input.projectId }
     );
   }
@@ -196,7 +191,6 @@ async function materializeSnapshots(
       throw new ApiError(
         "VALIDATION_FAILED",
         "Initialization snapshot is missing required binding identity fields.",
-        400,
         { snapshotId: snapshot.id }
       );
     }
@@ -250,7 +244,7 @@ export async function getProjectInitializationStatus(
     projectId
   });
   if (!status) {
-    throw new ApiError("NOT_FOUND", "Project was not found.", 404, { projectId });
+    throw new ApiError("NOT_FOUND", "Project was not found.", { projectId });
   }
   return status;
 }
@@ -270,13 +264,12 @@ export async function upsertDraft(
       projectId: input.projectId
     });
     if (!existingStatus) {
-      throw new ApiError("NOT_FOUND", "Project was not found.", 404, { projectId: input.projectId });
+      throw new ApiError("NOT_FOUND", "Project was not found.", { projectId: input.projectId });
     }
     if (existingStatus === "initialization_pending_review" || existingStatus === "initialized") {
       throw new ApiError(
         "CONFLICT",
         "Initialization draft cannot be edited in the current project status.",
-        409,
         { projectId: input.projectId, status: existingStatus }
       );
     }
@@ -358,13 +351,12 @@ export async function submitDraft(
       projectId: input.projectId
     });
     if (!status) {
-      throw new ApiError("NOT_FOUND", "Project was not found.", 404, { projectId: input.projectId });
+      throw new ApiError("NOT_FOUND", "Project was not found.", { projectId: input.projectId });
     }
     if (status === "initialization_pending_review" || status === "initialized") {
       throw new ApiError(
         "CONFLICT",
         "Initialization is already submitted or completed for this project.",
-        409,
         { projectId: input.projectId, status }
       );
     }
@@ -374,7 +366,7 @@ export async function submitDraft(
       projectId: input.projectId
     });
     if (!draft) {
-      throw new ApiError("NOT_FOUND", "Initialization draft was not found.", 404, {
+      throw new ApiError("NOT_FOUND", "Initialization draft was not found.", {
         projectId: input.projectId
       });
     }
@@ -439,12 +431,12 @@ export async function approveReview(
       reviewId: input.reviewId
     });
     if (!review) {
-      throw new ApiError("NOT_FOUND", "Initialization review was not found.", 404, {
+      throw new ApiError("NOT_FOUND", "Initialization review was not found.", {
         reviewId: input.reviewId
       });
     }
     if (review.status !== "pending") {
-      throw new ApiError("CONFLICT", "Initialization review is not pending approval.", 409, {
+      throw new ApiError("CONFLICT", "Initialization review is not pending approval.", {
         reviewId: input.reviewId,
         status: review.status
       });
@@ -455,7 +447,7 @@ export async function approveReview(
       projectId: review.projectId
     });
     if (!draft || draft.id !== review.draftId) {
-      throw new ApiError("NOT_FOUND", "Initialization draft was not found for review.", 404, {
+      throw new ApiError("NOT_FOUND", "Initialization draft was not found for review.", {
         reviewId: input.reviewId,
         draftId: review.draftId
       });
@@ -476,7 +468,7 @@ export async function approveReview(
       reviewedByUserId: auth.user.id
     });
     if (!approved) {
-      throw new ApiError("CONFLICT", "Initialization review is not pending approval.", 409, {
+      throw new ApiError("CONFLICT", "Initialization review is not pending approval.", {
         reviewId: input.reviewId
       });
     }
@@ -518,7 +510,7 @@ export async function rejectReview(
 
   const reason = input.reason.trim();
   if (!reason) {
-    throw new ApiError("VALIDATION_FAILED", "Rejection reason is required.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Rejection reason is required.");
   }
 
   return db.transaction(async (tx) => {
@@ -527,12 +519,12 @@ export async function rejectReview(
       reviewId: input.reviewId
     });
     if (!review) {
-      throw new ApiError("NOT_FOUND", "Initialization review was not found.", 404, {
+      throw new ApiError("NOT_FOUND", "Initialization review was not found.", {
         reviewId: input.reviewId
       });
     }
     if (review.status !== "pending") {
-      throw new ApiError("CONFLICT", "Initialization review is not pending.", 409, {
+      throw new ApiError("CONFLICT", "Initialization review is not pending.", {
         reviewId: input.reviewId,
         status: review.status
       });
@@ -551,7 +543,7 @@ export async function rejectReview(
       rejectionReason: reason
     });
     if (!rejected) {
-      throw new ApiError("CONFLICT", "Initialization review is not pending.", 409, {
+      throw new ApiError("CONFLICT", "Initialization review is not pending.", {
         reviewId: input.reviewId
       });
     }
@@ -589,13 +581,12 @@ export async function assertProjectAllowsParameterSubmit(
 ): Promise<void> {
   const status = await loadProjectInitializationStatus(db, { organizationId, projectId });
   if (status === null) {
-    throw new ApiError("NOT_FOUND", "Project was not found.", 404, { projectId });
+    throw new ApiError("NOT_FOUND", "Project was not found.", { projectId });
   }
   if (status !== "initialized") {
     throw new ApiError(
       "CONFLICT",
       "Project parameter changes are locked until initialization is approved.",
-      409,
       { projectId, initializationStatus: status }
     );
   }

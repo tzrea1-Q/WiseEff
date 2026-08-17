@@ -48,7 +48,7 @@ function decodeRouteParam(pathSegment: string, path: string) {
     return decodeURIComponent(pathSegment);
   } catch (error) {
     if (error instanceof URIError) {
-      throw new ApiError("VALIDATION_FAILED", "Route parameter is not valid URL encoding.", 400, { path });
+      throw new ApiError("VALIDATION_FAILED", "Route parameter is not valid URL encoding.", { path });
     }
     throw error;
   }
@@ -126,7 +126,7 @@ export function createRouter() {
         .sort((left, right) => right.route.staticCount - left.route.staticCount || compareEqualStaticCountPrecedence(left.route, right.route));
       const match = matchingRoutes[0];
       if (!match) {
-        throw new ApiError("NOT_FOUND", "Route not found.", 404, { path: request.path });
+        throw new ApiError("NOT_FOUND", "Route not found.", { path: request.path });
       }
       return match.route.handler({ ...request, params: { ...request.params, ...match.params } });
     }

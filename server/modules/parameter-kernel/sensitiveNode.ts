@@ -267,7 +267,6 @@ export async function assertSensitiveNodeWriteAllowed(
     throw new ApiError(
       "FORBIDDEN",
       "Agent writes to critical sensitive nodes require a human.",
-      403,
       {
         riskTier: matched.riskTier,
         requireHuman: true,
@@ -281,7 +280,6 @@ export async function assertSensitiveNodeWriteAllowed(
     throw new ApiError(
       "FORBIDDEN",
       `Missing permission: ${matched.requiredCapability}.`,
-      403,
       {
         riskTier: matched.riskTier,
         nodePath,

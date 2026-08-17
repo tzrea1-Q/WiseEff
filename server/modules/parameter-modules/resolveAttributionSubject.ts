@@ -96,7 +96,7 @@ export async function ensureAttributionSubjectForCompatible(
 ): Promise<string> {
   const compatible = input.compatible.trim();
   if (!compatible) {
-    throw new ApiError("VALIDATION_FAILED", "compatible is required to resolve attribution subject.", 400);
+    throw new ApiError("VALIDATION_FAILED", "compatible is required to resolve attribution subject.");
   }
   const existing = await resolveAttributionSubjectIdForCompatible(db, {
     organizationId: input.organizationId,
@@ -154,7 +154,6 @@ export async function requireAttributionSubjectIdForCompatible(
   throw new ApiError(
     "CONFLICT",
     "Cannot resolve attribution subject for compatible; register or place the driver before writing specs.",
-    409,
     {
       organizationId: input.organizationId,
       compatible: input.compatible,

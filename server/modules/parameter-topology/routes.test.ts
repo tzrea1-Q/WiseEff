@@ -126,7 +126,7 @@ describe("parameter semantic v2 routes", () => {
   it("GET /api/v2/parameter-specs/:specId returns 404 for cross-org ids", async () => {
     const { ApiError } = await import("../../shared/http/errors");
     vi.mocked(specService.getParameterSpec).mockRejectedValue(
-      new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, { specId: "spec-x" })
+      new ApiError("NOT_FOUND", "Parameter spec was not found.", { specId: "spec-x" })
     );
 
     const response = await requestJson(makeServer({ db: makeDb() }), "/api/v2/parameter-specs/spec-x");
@@ -310,7 +310,7 @@ describe("parameter semantic v2 routes", () => {
   it("GET /api/v2/projects/:projectId/parameter-bindings returns 404 for cross-org projectId", async () => {
     const { ApiError } = await import("../../shared/http/errors");
     vi.mocked(topologyService.listProjectBindings).mockRejectedValue(
-      new ApiError("NOT_FOUND", "Project was not found for this organization.", 404, {
+      new ApiError("NOT_FOUND", "Project was not found for this organization.", {
         projectId: "cross-org-project"
       })
     );

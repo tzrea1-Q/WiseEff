@@ -58,14 +58,14 @@ const paramsWithSpecIdSchema = paramsWithEntryIdSchema.extend({
 
 function requireDb(db: Database | undefined) {
   if (!db) {
-    throw new ApiError("INTERNAL_ERROR", "Database adapter is required for knowledge routes.", 500);
+    throw new ApiError("INTERNAL_ERROR", "Database adapter is required for knowledge routes.");
   }
   return db;
 }
 
 function requireObjectStore(objectStore: ObjectStore | undefined) {
   if (!objectStore) {
-    throw new ApiError("INTERNAL_ERROR", "Object store is required for knowledge routes.", 500);
+    throw new ApiError("INTERNAL_ERROR", "Object store is required for knowledge routes.");
   }
   return objectStore;
 }
@@ -81,7 +81,7 @@ function parseWithSchema<Schema extends z.ZodTypeAny>(
 ): z.infer<Schema> {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
-    throw new ApiError("VALIDATION_FAILED", message, 400, { issues: parsed.error.issues });
+    throw new ApiError("VALIDATION_FAILED", message, { issues: parsed.error.issues });
   }
   return parsed.data;
 }

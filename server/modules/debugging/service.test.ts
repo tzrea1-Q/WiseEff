@@ -329,7 +329,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
 
       await expect(service.listAdminParameters(readAuth, { includeArchived: true })).rejects.toMatchObject(
-        new ApiError("FORBIDDEN", "Missing permission: debugging:admin.", 403, { permission: "debugging:admin" })
+        new ApiError("FORBIDDEN", "Missing permission: debugging:admin.", { permission: "debugging:admin" })
       );
 
       const items = await service.listAdminParameters(adminAuth, { includeArchived: true });
@@ -539,7 +539,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
           accessMode: "RO",
           enabled: true
         })
-      ).rejects.toMatchObject(new ApiError("NOT_FOUND", "Debug parameter was not found.", 404));
+      ).rejects.toMatchObject(new ApiError("NOT_FOUND", "Debug parameter was not found."));
       // The failed transaction left no binding row behind.
       const rows = await db.query<{ parameter_id: string }>(
         `select parameter_id from debugging_parameter_node_bindings where parameter_id = 'missing-param'`
@@ -608,16 +608,16 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
 
       await expect(service.listDevices(makeAuth([]))).rejects.toMatchObject(
-        new ApiError("FORBIDDEN", "Missing permission: debugging:view.", 403, { permission: "debugging:view" })
+        new ApiError("FORBIDDEN", "Missing permission: debugging:view.", { permission: "debugging:view" })
       );
       await expect(service.listParameters(makeAuth([]))).rejects.toMatchObject(
-        new ApiError("FORBIDDEN", "Missing permission: debugging:view.", 403, { permission: "debugging:view" })
+        new ApiError("FORBIDDEN", "Missing permission: debugging:view.", { permission: "debugging:view" })
       );
       await expect(service.getSession(makeAuth([]), { sessionId: session.id })).rejects.toMatchObject(
-        new ApiError("FORBIDDEN", "Missing permission: debugging:view.", 403, { permission: "debugging:view" })
+        new ApiError("FORBIDDEN", "Missing permission: debugging:view.", { permission: "debugging:view" })
       );
       await expect(service.listSessionEvents(makeAuth([]), { sessionId: session.id })).rejects.toMatchObject(
-        new ApiError("FORBIDDEN", "Missing permission: debugging:view.", 403, { permission: "debugging:view" })
+        new ApiError("FORBIDDEN", "Missing permission: debugging:view.", { permission: "debugging:view" })
       );
 
       // Record an operation through the real write path so the event listing has content.
@@ -649,7 +649,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent, metrics, gatewayMode: "simulator", tracing });
 
       await expect(service.detectTargets(makeAuth(["debugging:view"]), { deviceId: "device-1" })).rejects.toMatchObject(
-        new ApiError("FORBIDDEN", "Missing permission: debugging:read.", 403, { permission: "debugging:read" })
+        new ApiError("FORBIDDEN", "Missing permission: debugging:read.", { permission: "debugging:read" })
       );
 
       const targets = await service.detectTargets(readAuth, { deviceId: "device-1" });
@@ -763,7 +763,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       });
 
       await expect(service.detectTargets(readAuth, { deviceId: "device-1" })).rejects.toMatchObject(
-        new ApiError("DEVICE_UNAVAILABLE", "USB bridge unavailable.", 409)
+        new ApiError("DEVICE_UNAVAILABLE", "USB bridge unavailable.")
       );
 
       // The failure event committed even though the detect call threw.
@@ -904,13 +904,13 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
 
       await expect(service.createSession(readAuth, { deviceId: "device-1", targetId: "target-1" })).rejects.toMatchObject(
-        new ApiError("DEVICE_UNAVAILABLE", "Debug target is not detected.", 409)
+        new ApiError("DEVICE_UNAVAILABLE", "Debug target is not detected.")
       );
 
       await db.query(`update debugging_targets set status = 'detected' where id = 'target-1'`);
       await db.query(`update debugging_devices set status = 'offline' where id = 'device-1'`);
       await expect(service.createSession(readAuth, { deviceId: "device-1", targetId: "target-1" })).rejects.toMatchObject(
-        new ApiError("DEVICE_UNAVAILABLE", "Debug device is offline.", 409)
+        new ApiError("DEVICE_UNAVAILABLE", "Debug device is offline.")
       );
 
       await db.query(`update debugging_devices set status = 'online' where id = 'device-1'`);
@@ -947,7 +947,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
 
       await expect(
         service.createSession(readAuth, { deviceId: "bridge:br-1", targetId, protocol: "adb" })
-      ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "bridgeId is required for bridge-backed targets.", 400));
+      ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "bridgeId is required for bridge-backed targets."));
 
       const session = await service.createSession(readAuth, {
         deviceId: "bridge:br-1",
@@ -971,7 +971,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
 
       await expect(service.createSession(readAuth, { deviceId: "device-1", targetId: "target-1" })).rejects.toMatchObject(
-        new ApiError("VALIDATION_FAILED", "Debug target does not belong to the requested device.", 400)
+        new ApiError("VALIDATION_FAILED", "Debug target does not belong to the requested device.")
       );
     });
 
@@ -1015,7 +1015,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       await expect(
         service.readNode(makeAuth(["debugging:view"]), { sessionId: session.id, nodePath: "/sys/current" })
       ).rejects.toMatchObject(
-        new ApiError("FORBIDDEN", "Missing permission: debugging:read.", 403, { permission: "debugging:read" })
+        new ApiError("FORBIDDEN", "Missing permission: debugging:read.", { permission: "debugging:read" })
       );
 
       const operation = await service.readNode(readAuth, {
@@ -1137,7 +1137,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
 
       await expect(
         inactiveService.readNode(readAuth, { sessionId: session.id, nodePath: "/sys/current" })
-      ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Debug session is not active.", 400));
+      ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Debug session is not active."));
       expect(inactiveGateway.readNode).not.toHaveBeenCalled();
 
       await db.query(`update debugging_sessions set status = 'active' where id = $1`, [session.id]);
@@ -1146,7 +1146,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
 
       await expect(
         writeOnlyService.readNode(readAuth, { sessionId: session.id, parameterId: parameter.id, nodePath: "/sys/current" })
-      ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Parameter is not readable.", 400));
+      ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Parameter is not readable."));
       expect(writeOnlyGateway.readNode).not.toHaveBeenCalled();
     });
 
@@ -1157,7 +1157,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
 
       await expect(service.readNode(readAuth, { sessionId: session.id, parameterId: parameter.id })).rejects.toMatchObject(
-        new ApiError("VALIDATION_FAILED", "Debug parameter is archived or disabled.", 400)
+        new ApiError("VALIDATION_FAILED", "Debug parameter is archived or disabled.")
       );
       expect(gateway.readNode).not.toHaveBeenCalled();
     });
@@ -1221,7 +1221,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       await expect(
         readService.readNode(otherUser, { sessionId: session.id, parameterId: parameter.id, nodePath: "/sys/current" })
       ).rejects.toMatchObject(
-        new ApiError("FORBIDDEN", "Debug session belongs to another user.", 403, { sessionId: session.id })
+        new ApiError("FORBIDDEN", "Debug session belongs to another user.", { sessionId: session.id })
       );
       expect(readGateway.readNode).not.toHaveBeenCalled();
 
@@ -1271,7 +1271,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
 
       await expect(service.readNode(readAuth, { sessionId: session.id, nodeId: node.id })).rejects.toMatchObject(
-        new ApiError("DEBUG_BINDING_NOT_CONFIGURED", "Debug node is not configured for the selected protocol.", 400, {
+        new ApiError("DEBUG_BINDING_NOT_CONFIGURED", "Debug node is not configured for the selected protocol.", {
           nodeId: node.id,
           protocol: "hdc"
         })
@@ -1336,7 +1336,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       await expect(
         permissionService.writeNode(readAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" })
       ).rejects.toMatchObject(
-        new ApiError("FORBIDDEN", "Missing permission: debugging:write.", 403, { permission: "debugging:write" })
+        new ApiError("FORBIDDEN", "Missing permission: debugging:write.", { permission: "debugging:write" })
       );
       expect(permissionGateway.writeNode).not.toHaveBeenCalled();
 
@@ -1347,7 +1347,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
 
       await expect(
         inactiveService.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: "3200" })
-      ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Debug session is not active.", 400));
+      ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Debug session is not active."));
       expect(inactiveGateway.writeNode).not.toHaveBeenCalled();
     });
 
@@ -1358,7 +1358,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
 
       await expect(
         service.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: "3200" })
-      ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Parameter is read-only.", 400));
+      ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Parameter is read-only."));
       expect(gateway.writeNode).not.toHaveBeenCalled();
     });
 
@@ -1369,7 +1369,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
 
       await expect(
         service.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: "3200" })
-      ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Debug parameter is archived or disabled.", 400));
+      ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Debug parameter is archived or disabled."));
       expect(gateway.readNode).not.toHaveBeenCalled();
       expect(gateway.writeNode).not.toHaveBeenCalled();
     });
@@ -1381,7 +1381,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
 
       await expect(
         service.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: "6000" })
-      ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Value is outside the allowed range.", 400));
+      ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Value is outside the allowed range."));
       expect(gateway.writeNode).not.toHaveBeenCalled();
     });
 
@@ -1393,7 +1393,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       await expect(
         service.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: "not-a-number" })
       ).rejects.toMatchObject(
-        new ApiError("VALIDATION_FAILED", "Value must be numeric for ranged parameters.", 400, { minValue: 0, maxValue: 5000 })
+        new ApiError("VALIDATION_FAILED", "Value must be numeric for ranged parameters.", { minValue: 0, maxValue: 5000 })
       );
       expect(gateway.readNode).not.toHaveBeenCalled();
       expect(gateway.writeNode).not.toHaveBeenCalled();
@@ -1406,7 +1406,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
 
       await expect(
         service.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: "3200" })
-      ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "High-risk write requires confirmation or approval.", 400));
+      ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "High-risk write requires confirmation or approval."));
       expect(gateway.writeNode).not.toHaveBeenCalled();
     });
 
@@ -1599,7 +1599,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
 
       await expect(
         service.writeNode(writeAuth, { sessionId: session.id, parameterId: parameter.id, value: "3200" })
-      ).rejects.toMatchObject(new ApiError("CONFLICT", "Debug device is leased by another active session.", 409));
+      ).rejects.toMatchObject(new ApiError("CONFLICT", "Debug device is leased by another active session."));
 
       expect(gateway.readNode).not.toHaveBeenCalled();
       expect(gateway.writeNode).not.toHaveBeenCalled();
@@ -2024,7 +2024,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       await expect(
         permissionService.rollbackSnapshot(writeAuth, { snapshotId: "snapshot-1", confirmationToken: "confirm-rollback" })
       ).rejects.toMatchObject(
-        new ApiError("FORBIDDEN", "Missing permission: debugging:rollback.", 403, { permission: "debugging:rollback" })
+        new ApiError("FORBIDDEN", "Missing permission: debugging:rollback.", { permission: "debugging:rollback" })
       );
       expect(permissionGateway.writeNode).not.toHaveBeenCalled();
 
@@ -2033,7 +2033,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
 
       await expect(
         tokenService.rollbackSnapshot(rollbackAuth, { snapshotId: "snapshot-1", confirmationToken: "wrong-token" })
-      ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Rollback confirmation is required.", 400));
+      ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Rollback confirmation is required."));
       expect(tokenGateway.writeNode).not.toHaveBeenCalled();
     });
 
@@ -2046,14 +2046,14 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
 
       await expect(
         service.rollbackSnapshot(rollbackAuth, { snapshotId: "missing-snapshot", confirmationToken: "confirm-rollback" })
-      ).rejects.toMatchObject(new ApiError("NOT_FOUND", "Snapshot was not found.", 404));
+      ).rejects.toMatchObject(new ApiError("NOT_FOUND", "Snapshot was not found."));
 
       const { snapshot } = await seedRollbackReady();
       for (const status of ["consumed", "rollback_pending"]) {
         await db.query(`update debugging_snapshots set status = $1 where id = $2`, [status, snapshot.id]);
         await expect(
           service.rollbackSnapshot(rollbackAuth, { snapshotId: snapshot.id, confirmationToken: "confirm-rollback" })
-        ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Snapshot is not valid for this session.", 400));
+        ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Snapshot is not valid for this session."));
       }
     });
 
@@ -2072,7 +2072,7 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
 
       await expect(
         service.rollbackSnapshot(rollbackAuth, { snapshotId: snapshot.id, confirmationToken: "confirm-rollback" })
-      ).rejects.toMatchObject(new ApiError("CONFLICT", "Debug device is leased by another active session.", 409));
+      ).rejects.toMatchObject(new ApiError("CONFLICT", "Debug device is leased by another active session."));
 
       expect(gateway.writeNode).not.toHaveBeenCalled();
       // The failed transaction rolled the claim back: the snapshot is still valid.

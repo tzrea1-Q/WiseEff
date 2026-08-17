@@ -70,12 +70,12 @@ export function registerAuditRoutes(
 ) {
   router.post("/api/v1/audit-events", async (request) => {
     if (!options.db) {
-      throw new ApiError("INTERNAL_ERROR", "Database adapter is required for audit writes.", 500);
+      throw new ApiError("INTERNAL_ERROR", "Database adapter is required for audit writes.");
     }
 
     const auth = await options.getCurrentAuthContext(request);
     if (!auth.permissions.includes("admin:access")) {
-      throw new ApiError("FORBIDDEN", "Admin access required.", 403);
+      throw new ApiError("FORBIDDEN", "Admin access required.");
     }
 
     const body = auditBodySchema.parse(request.body);
@@ -104,12 +104,12 @@ export function registerAuditRoutes(
 
   router.get("/api/v1/audit-events", async (request) => {
     if (!options.db) {
-      throw new ApiError("INTERNAL_ERROR", "Database adapter is required for audit reads.", 500);
+      throw new ApiError("INTERNAL_ERROR", "Database adapter is required for audit reads.");
     }
 
     const auth = await options.getCurrentAuthContext(request);
     if (!auth.permissions.includes("admin:access")) {
-      throw new ApiError("FORBIDDEN", "Admin access required.", 403);
+      throw new ApiError("FORBIDDEN", "Admin access required.");
     }
 
     const query = parseAuditListQuery(request.query);

@@ -60,7 +60,7 @@ import {
 
 function requireDb(db: Database | undefined) {
   if (!db) {
-    throw new ApiError("INTERNAL_ERROR", "Database adapter is required for parameter spec routes.", 500);
+    throw new ApiError("INTERNAL_ERROR", "Database adapter is required for parameter spec routes.");
   }
   return db;
 }
@@ -68,7 +68,7 @@ function requireDb(db: Database | undefined) {
 function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Invalid parameter spec route input.") {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
-    throw new ApiError("VALIDATION_FAILED", message, 400, { issues: parsed.error.issues });
+    throw new ApiError("VALIDATION_FAILED", message, { issues: parsed.error.issues });
   }
   return parsed.data;
 }
@@ -79,13 +79,13 @@ function flattenQuery(query: Record<string, string | string[]>) {
 
 function requireCanView(auth: AuthContext) {
   if (!canViewParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter view permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter view permission is required.");
   }
 }
 
 function requireCanAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter admin permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter admin permission is required.");
   }
 }
 

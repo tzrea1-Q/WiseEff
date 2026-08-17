@@ -216,7 +216,7 @@ describe("action.submitParameterChange", () => {
   });
 
   it("cleans up the created draft when submission fails", async () => {
-    mockedSubmit.mockRejectedValue(new ApiError("CONFLICT", "stale", 409));
+    mockedSubmit.mockRejectedValue(new ApiError("CONFLICT", "stale"));
 
     await expect(
       tool().run(adminContext, { projectId: "p1", parameterId: "binding-1", targetValue: "<3600>", reason: "tune" })

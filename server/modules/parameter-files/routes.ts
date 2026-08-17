@@ -143,7 +143,7 @@ const bulkConflictResolveBodySchema = z.object({
 
 function requireDb(db: Database | undefined) {
   if (!db) {
-    throw new ApiError("INTERNAL_ERROR", "Database adapter is required for parameter file routes.", 500);
+    throw new ApiError("INTERNAL_ERROR", "Database adapter is required for parameter file routes.");
   }
 
   return db;
@@ -151,7 +151,7 @@ function requireDb(db: Database | undefined) {
 
 function requireObjectStore(objectStore: ObjectStore | undefined) {
   if (!objectStore) {
-    throw new ApiError("INTERNAL_ERROR", "Object store is required for parameter file routes.", 500);
+    throw new ApiError("INTERNAL_ERROR", "Object store is required for parameter file routes.");
   }
 
   return objectStore;
@@ -160,7 +160,7 @@ function requireObjectStore(objectStore: ObjectStore | undefined) {
 function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Invalid parameter file route input.") {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
-    throw new ApiError("VALIDATION_FAILED", message, 400, { issues: parsed.error.issues });
+    throw new ApiError("VALIDATION_FAILED", message, { issues: parsed.error.issues });
   }
 
   return parsed.data;
@@ -168,19 +168,19 @@ function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Inv
 
 function requireCanView(auth: AuthContext) {
   if (!canViewParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter view permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter view permission is required.");
   }
 }
 
 function requireCanEdit(auth: AuthContext) {
   if (!canEditParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter edit permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter edit permission is required.");
   }
 }
 
 function requireCanAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter admin permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter admin permission is required.");
   }
 }
 
@@ -192,13 +192,13 @@ function toPublicCandidate(candidate: ProjectParameterFileCandidateDto) {
 function decodeContentBase64(contentBase64: string) {
   const trimmed = contentBase64.trim();
   if (!trimmed) {
-    throw new ApiError("VALIDATION_FAILED", "Parameter file contentBase64 is required.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Parameter file contentBase64 is required.");
   }
 
   try {
     return Buffer.from(trimmed, "base64");
   } catch {
-    throw new ApiError("VALIDATION_FAILED", "Parameter file contentBase64 is invalid.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Parameter file contentBase64 is invalid.");
   }
 }
 
@@ -217,7 +217,7 @@ async function requireProjectFile(
     fileId
   });
   if (!file || file.projectId !== projectId) {
-    throw new ApiError("NOT_FOUND", "Project parameter file was not found.", 404, { fileId, projectId });
+    throw new ApiError("NOT_FOUND", "Project parameter file was not found.", { fileId, projectId });
   }
 
   return file;
@@ -289,7 +289,7 @@ export function registerParameterFileRoutes(
     const body = parseWithSchema(uploadVersionBodySchema, request.body, "Invalid parameter file version upload payload.");
     const file = await requireProjectFile(db, auth, params.projectId, params.fileId);
     if (body.fileName && body.fileName.trim() !== file.fileName) {
-      throw new ApiError("VALIDATION_FAILED", "Route fileId does not match request body fileName.", 400, {
+      throw new ApiError("VALIDATION_FAILED", "Route fileId does not match request body fileName.", {
         fileId: params.fileId,
         routeFileName: file.fileName,
         bodyFileName: body.fileName
@@ -336,7 +336,7 @@ export function registerParameterFileRoutes(
     const file = await requireProjectFile(db, auth, params.projectId, params.fileId);
     const version = await getFileVersionById(db, { versionId: params.versionId });
     if (!version || version.fileId !== file.id) {
-      throw new ApiError("NOT_FOUND", "Project parameter file version was not found.", 404, {
+      throw new ApiError("NOT_FOUND", "Project parameter file version was not found.", {
         fileId: params.fileId,
         versionId: params.versionId
       });
@@ -359,7 +359,7 @@ export function registerParameterFileRoutes(
     const file = await requireProjectFile(db, auth, params.projectId, params.fileId);
     const version = await getFileVersionById(db, { versionId: params.versionId });
     if (!version || version.fileId !== file.id) {
-      throw new ApiError("NOT_FOUND", "Project parameter file version was not found.", 404, {
+      throw new ApiError("NOT_FOUND", "Project parameter file version was not found.", {
         fileId: params.fileId,
         versionId: params.versionId
       });
@@ -426,7 +426,7 @@ export function registerParameterFileRoutes(
     const file = await requireProjectFile(db, auth, params.projectId, params.fileId);
     const versionId = body.versionId ?? file.currentVersionId;
     if (!versionId) {
-      throw new ApiError("CONFLICT", "Project parameter file has no synced version.", 409, { fileId: params.fileId });
+      throw new ApiError("CONFLICT", "Project parameter file has no synced version.", { fileId: params.fileId });
     }
     // Manual re-sync previously ran its draft/binding/conflict writes and audits
     // auto-committed; one audited write makes the whole sync atomic (ADR-0027).

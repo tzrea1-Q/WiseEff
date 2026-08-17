@@ -68,7 +68,7 @@ describe("createRouter", () => {
         requestId: "req-1",
         body: undefined
       })
-    ).rejects.toMatchObject(new ApiError("NOT_FOUND", "Route not found.", 404));
+    ).rejects.toMatchObject(new ApiError("NOT_FOUND", "Route not found."));
   });
 
   it("matches dynamic params and query strings", async () => {
@@ -159,7 +159,7 @@ describe("createRouter", () => {
         body: undefined
       })
     ).rejects.toMatchObject(
-      new ApiError("VALIDATION_FAILED", "Route parameter is not valid URL encoding.", 400, {
+      new ApiError("VALIDATION_FAILED", "Route parameter is not valid URL encoding.", {
         path: "/api/v1/parameters/%E0%A4%A/history"
       })
     );

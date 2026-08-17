@@ -286,7 +286,7 @@ describe("registerXiaozeRoutes approval assembly", () => {
     expect(interrupt.approvalId).toBeTruthy();
 
     mockedCreateDraft.mockRejectedValue(
-      new ApiError("CONFLICT", "请刷新后基于本轮最新工作版本继续编辑。", 409, {
+      new ApiError("CONFLICT", "请刷新后基于本轮最新工作版本继续编辑。", {
         reason: "stale-working-tip"
       })
     );

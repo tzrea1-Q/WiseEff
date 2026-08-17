@@ -80,19 +80,19 @@ import type { ConfigRevisionStatus, PersistedValidationDiagnostic } from "./type
 
 function requireCanView(auth: AuthContext) {
   if (!canViewParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter view permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter view permission is required.");
   }
 }
 
 function requireCanEdit(auth: AuthContext) {
   if (!canEditParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter edit permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter edit permission is required.");
   }
 }
 
 function requireCanAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter admin permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter admin permission is required.");
   }
 }
 
@@ -142,7 +142,7 @@ export async function getTopology(
         revisionId: input.revisionId
       });
   if (!revision) {
-    throw new ApiError("NOT_FOUND", "Config revision was not found.", 404, {
+    throw new ApiError("NOT_FOUND", "Config revision was not found.", {
       projectId: input.projectId,
       configSetId: input.configSetId,
       revisionId: input.revisionId
@@ -199,7 +199,7 @@ export async function listProjectBindings(
     projectId: input.projectId
   });
   if (!project) {
-    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", 404, {
+    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", {
       projectId: input.projectId
     });
   }
@@ -242,7 +242,7 @@ export async function listIdentityMappingTasks(
       projectId: input.projectId
     });
     if (!project) {
-      throw new ApiError("NOT_FOUND", "Project was not found for this organization.", 404, {
+      throw new ApiError("NOT_FOUND", "Project was not found for this organization.", {
         projectId: input.projectId
       });
     }
@@ -294,7 +294,7 @@ export async function getBindingHistory(
     projectId: input.projectId
   });
   if (!project) {
-    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", 404, {
+    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", {
       projectId: input.projectId
     });
   }
@@ -305,7 +305,7 @@ export async function getBindingHistory(
     bindingId: input.bindingId
   });
   if (!binding) {
-    throw new ApiError("NOT_FOUND", "Project parameter binding was not found for this project.", 404, {
+    throw new ApiError("NOT_FOUND", "Project parameter binding was not found for this project.", {
       bindingId: input.bindingId
     });
   }
@@ -365,7 +365,7 @@ export async function getBindingCompare(
     projectId: input.projectId
   });
   if (!project) {
-    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", 404, {
+    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", {
       projectId: input.projectId
     });
   }
@@ -376,7 +376,7 @@ export async function getBindingCompare(
     bindingId: input.bindingId
   });
   if (!binding) {
-    throw new ApiError("NOT_FOUND", "Project parameter binding was not found for this project.", 404, {
+    throw new ApiError("NOT_FOUND", "Project parameter binding was not found for this project.", {
       bindingId: input.bindingId
     });
   }
@@ -417,7 +417,7 @@ export async function resolveIdentityMappingTask(
         taskId: input.taskId
       });
       if (!known) {
-        throw new ApiError("NOT_FOUND", "Identity mapping task was not found.", 404, {
+        throw new ApiError("NOT_FOUND", "Identity mapping task was not found.", {
           taskId: input.taskId
         });
       }
@@ -447,7 +447,6 @@ export async function resolveIdentityMappingTask(
           throw new ApiError(
             "CONFLICT",
             "Completed mapping lacks reversible continuity evidence; an explicit migration is required.",
-            409,
             { code: "identity-mapping-migration-required", taskId: input.taskId }
           );
         }
@@ -461,7 +460,6 @@ export async function resolveIdentityMappingTask(
           throw new ApiError(
             "VALIDATION_FAILED",
             "selectedLogicalNodeId must belong to the same organization, project, and config revision.",
-            400,
             {
               selectedLogicalNodeId: input.selectedLogicalNodeId,
               configRevisionId: known.configRevisionId
@@ -480,7 +478,6 @@ export async function resolveIdentityMappingTask(
           throw new ApiError(
             "CONFLICT",
             "Completed mapping has downstream workflow/device usage; migrate those references before re-resolving.",
-            409,
             {
               code: "identity-mapping-migration-required",
               taskId: input.taskId,
@@ -510,7 +507,7 @@ export async function resolveIdentityMappingTask(
           continuityReuse
         });
         if (!updated) {
-          throw new ApiError("CONFLICT", "Identity mapping task changed during re-resolve.", 409, {
+          throw new ApiError("CONFLICT", "Identity mapping task changed during re-resolve.", {
             taskId: input.taskId
           });
         }
@@ -541,14 +538,13 @@ export async function resolveIdentityMappingTask(
           reResolved: true
         };
       }
-      throw new ApiError("CONFLICT", "Identity mapping task is not open.", 409, { taskId: input.taskId });
+      throw new ApiError("CONFLICT", "Identity mapping task is not open.", { taskId: input.taskId });
     }
 
     if (existing.taskKind === "singleton-cardinality") {
       throw new ApiError(
         "CONFLICT",
         "Singleton-per-project conflicts must be fixed in the registration or topology; identity decisions cannot discard instances.",
-        409,
         {
           code: "singleton-cardinality-conflict",
           taskId: input.taskId,
@@ -565,7 +561,6 @@ export async function resolveIdentityMappingTask(
       throw new ApiError(
         "VALIDATION_FAILED",
         "Confirm all candidates before keeping multiple new identities.",
-        400,
         {
           code: "confirm-all-candidates-required",
           candidateCount: existing.candidateLogicalNodeIds.length
@@ -578,7 +573,7 @@ export async function resolveIdentityMappingTask(
       input.selectedLogicalNodeId &&
       !existing.candidateLogicalNodeIds.includes(input.selectedLogicalNodeId)
     ) {
-      throw new ApiError("VALIDATION_FAILED", "selectedLogicalNodeId must be one of the candidate ids.", 400, {
+      throw new ApiError("VALIDATION_FAILED", "selectedLogicalNodeId must be one of the candidate ids.", {
         selectedLogicalNodeId: input.selectedLogicalNodeId,
         candidates: existing.candidateLogicalNodeIds
       });
@@ -595,7 +590,6 @@ export async function resolveIdentityMappingTask(
         throw new ApiError(
           "VALIDATION_FAILED",
           "selectedLogicalNodeId must belong to the same organization, project, and config revision.",
-          400,
           {
             selectedLogicalNodeId: input.selectedLogicalNodeId,
             configRevisionId: existing.configRevisionId
@@ -627,7 +621,7 @@ export async function resolveIdentityMappingTask(
       continuityReuse
     });
     if (!resolved) {
-      throw new ApiError("CONFLICT", "Identity mapping task is not open.", 409, { taskId: input.taskId });
+      throw new ApiError("CONFLICT", "Identity mapping task is not open.", { taskId: input.taskId });
     }
 
     const openRemaining = await countOpenIdentityMappingTasksForRevision(tx, {
@@ -704,7 +698,7 @@ export async function reopenIdentityMappingTask(
       taskId: input.taskId
     });
     if (!known) {
-      throw new ApiError("NOT_FOUND", "Identity mapping task was not found.", 404, {
+      throw new ApiError("NOT_FOUND", "Identity mapping task was not found.", {
         taskId: input.taskId
       });
     }
@@ -712,12 +706,11 @@ export async function reopenIdentityMappingTask(
       throw new ApiError(
         "CONFLICT",
         "This completed mapping cannot be reopened; use protected re-resolve for an applied mapping.",
-        409,
         { taskId: input.taskId, status: known.status, taskKind: known.taskKind }
       );
     }
     if (known.status === "open") {
-      throw new ApiError("CONFLICT", "Identity mapping task is already open.", 409, {
+      throw new ApiError("CONFLICT", "Identity mapping task is already open.", {
         taskId: input.taskId
       });
     }
@@ -728,7 +721,7 @@ export async function reopenIdentityMappingTask(
       reason: input.reason
     });
     if (!reopened) {
-      throw new ApiError("CONFLICT", "Identity mapping task cannot be reopened.", 409, {
+      throw new ApiError("CONFLICT", "Identity mapping task cannot be reopened.", {
         taskId: input.taskId,
         status: known.status
       });
@@ -953,7 +946,7 @@ export async function validateConfigRevision(
     revisionId: input.revisionId
   });
   if (!revision) {
-    throw new ApiError("NOT_FOUND", "Config revision was not found.", 404, {
+    throw new ApiError("NOT_FOUND", "Config revision was not found.", {
       projectId: input.projectId,
       revisionId: input.revisionId
     });
@@ -1478,7 +1471,7 @@ export async function createBindingDraft(
     projectId: input.projectId
   });
   if (!project) {
-    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", 404, {
+    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", {
       projectId: input.projectId
     });
   }
@@ -1493,7 +1486,7 @@ export async function createBindingDraft(
     [input.bindingId, auth.organization.id]
   );
   if (!bindingProject.rows[0] || bindingProject.rows[0].project_id !== input.projectId) {
-    throw new ApiError("NOT_FOUND", "Project parameter binding was not found for this project.", 404, {
+    throw new ApiError("NOT_FOUND", "Project parameter binding was not found for this project.", {
       projectId: input.projectId,
       bindingId: input.bindingId
     });
@@ -1550,7 +1543,7 @@ export async function createNodeEnablementDraft(
     projectId: input.projectId
   });
   if (!project) {
-    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", 404, {
+    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", {
       projectId: input.projectId
     });
   }

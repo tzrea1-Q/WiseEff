@@ -74,7 +74,7 @@ export type ExportConfigSetDeps = {
 
 function requireParameterFileAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Forbidden.", 403, { permission: "admin:access" });
+    throw new ApiError("FORBIDDEN", "Forbidden.", { permission: "admin:access" });
   }
 }
 
@@ -150,15 +150,15 @@ export async function exportFile(
     fileId
   });
   if (!file) {
-    throw new ApiError("NOT_FOUND", "Parameter file not found.", 404, { fileId });
+    throw new ApiError("NOT_FOUND", "Parameter file not found.", { fileId });
   }
   if (!file.currentVersionId) {
-    throw new ApiError("CONFLICT", "Parameter file has no current version to export.", 409, { fileId });
+    throw new ApiError("CONFLICT", "Parameter file has no current version to export.", { fileId });
   }
 
   const version = await getFileVersionById(db, { versionId: file.currentVersionId });
   if (!version) {
-    throw new ApiError("NOT_FOUND", "Parameter file version not found.", 404, {
+    throw new ApiError("NOT_FOUND", "Parameter file version not found.", {
       fileId,
       versionId: file.currentVersionId
     });
@@ -206,7 +206,7 @@ export async function exportConfigSet(
     configSetId
   });
   if (!configSet) {
-    throw new ApiError("NOT_FOUND", "Config set not found.", 404, { configSetId });
+    throw new ApiError("NOT_FOUND", "Config set not found.", { configSetId });
   }
 
   const snapshot = await loadConfigSetSnapshot(db, deps.objectStore, configSetId);

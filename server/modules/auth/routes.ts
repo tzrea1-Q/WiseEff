@@ -73,7 +73,7 @@ type LocalAuthService = ReturnType<typeof createLocalAuthService>;
 function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message: string) {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
-    throw new ApiError("VALIDATION_FAILED", message, 400, { issues: parsed.error.issues });
+    throw new ApiError("VALIDATION_FAILED", message, { issues: parsed.error.issues });
   }
   return parsed.data;
 }
@@ -96,7 +96,7 @@ export function registerAuthRoutes(
 
   router.post("/api/v1/auth/register", async (request) => {
     if (!options.localAuthService) {
-      throw new ApiError("NOT_FOUND", "Local account registration is not enabled.", 404);
+      throw new ApiError("NOT_FOUND", "Local account registration is not enabled.");
     }
     const body = parseWithSchema(registerBodySchema, request.body, "Invalid registration input.");
     const result = await options.localAuthService.register(body, { requestId: request.requestId });
@@ -114,7 +114,7 @@ export function registerAuthRoutes(
 
   router.post("/api/v1/auth/login", async (request) => {
     if (!options.localAuthService) {
-      throw new ApiError("NOT_FOUND", "Local account login is not enabled.", 404);
+      throw new ApiError("NOT_FOUND", "Local account login is not enabled.");
     }
     const body = parseWithSchema(loginBodySchema, request.body, "Invalid login input.");
     const result = await options.localAuthService.login(body, { requestId: request.requestId });
@@ -126,7 +126,7 @@ export function registerAuthRoutes(
 
   router.post("/api/v1/auth/logout", async (request) => {
     if (!options.localAuthService) {
-      throw new ApiError("NOT_FOUND", "Local account logout is not enabled.", 404);
+      throw new ApiError("NOT_FOUND", "Local account logout is not enabled.");
     }
     const auth = await options.getCurrentAuthContext(request);
     await options.localAuthService.logout(request.headers.authorization, auth, { requestId: request.requestId });
@@ -145,7 +145,7 @@ export function registerAuthRoutes(
 
   router.patch("/api/v1/me/profile", async (request) => {
     if (!options.localAuthService) {
-      throw new ApiError("NOT_FOUND", "Local profile updates are not enabled.", 404);
+      throw new ApiError("NOT_FOUND", "Local profile updates are not enabled.");
     }
     const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(updateProfileBodySchema, request.body, "Invalid profile input.");

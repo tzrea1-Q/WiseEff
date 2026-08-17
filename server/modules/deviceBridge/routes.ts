@@ -19,7 +19,7 @@ import { createAuditEvent as defaultCreateAuditEvent } from "../audit/repository
 
 function requireDb(db: Database | undefined) {
   if (!db) {
-    throw new ApiError("INTERNAL_ERROR", "Database adapter is required for device bridge routes.", 500);
+    throw new ApiError("INTERNAL_ERROR", "Database adapter is required for device bridge routes.");
   }
 
   return db;
@@ -28,7 +28,7 @@ function requireDb(db: Database | undefined) {
 function parseWithSchema<T extends z.ZodTypeAny>(schema: T, value: unknown, message = "Invalid device bridge route input."): z.output<T> {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
-    throw new ApiError("VALIDATION_FAILED", message, 400, { issues: parsed.error.issues });
+    throw new ApiError("VALIDATION_FAILED", message, { issues: parsed.error.issues });
   }
 
   return parsed.data;
@@ -36,7 +36,7 @@ function parseWithSchema<T extends z.ZodTypeAny>(schema: T, value: unknown, mess
 
 function requireDebuggingUsePermission(auth: AuthContext) {
   if (!auth.user.isActive || !auth.permissions.includes("debugging:use")) {
-    throw new ApiError("FORBIDDEN", "Missing permission: debugging:use.", 403, { permission: "debugging:use" });
+    throw new ApiError("FORBIDDEN", "Missing permission: debugging:use.", { permission: "debugging:use" });
   }
 }
 
@@ -83,7 +83,7 @@ export function registerDeviceBridgeRoutes(
 
   router.get(DEVICE_BRIDGE_RELEASES_PATH, async () => {
     if (!options.loadReleaseManifest) {
-      throw new ApiError("INTERNAL_ERROR", "Device bridge release manifest loader is required.", 500);
+      throw new ApiError("INTERNAL_ERROR", "Device bridge release manifest loader is required.");
     }
 
     const manifest = await options.loadReleaseManifest();
@@ -162,7 +162,7 @@ export function registerDeviceBridgeRoutes(
     });
 
     if (!updated) {
-      throw new ApiError("NOT_FOUND", "Device bridge was not found.", 404, { bridgeId: params.bridgeId });
+      throw new ApiError("NOT_FOUND", "Device bridge was not found.", { bridgeId: params.bridgeId });
     }
 
     await writeAudit(db, {
@@ -204,7 +204,7 @@ export function registerDeviceBridgeRoutes(
     });
 
     if (!revoked) {
-      throw new ApiError("NOT_FOUND", "Device bridge was not found.", 404, { bridgeId: params.bridgeId });
+      throw new ApiError("NOT_FOUND", "Device bridge was not found.", { bridgeId: params.bridgeId });
     }
 
     await writeAudit(db, {

@@ -408,7 +408,6 @@ export async function listReloadRuns(
     throw new ApiError(
       "VALIDATION_FAILED",
       "List reload runs requires projectId and/or deviceId.",
-      400,
       { code: "reload-run-list-filter-required" }
     );
   }
@@ -447,7 +446,6 @@ async function loadBaseSource(
     throw new ApiError(
       "CONFLICT",
       "The project has no DTS configuration-set members to build a base device tree from.",
-      409,
       { code: "reload-base-missing", projectId }
     );
   }
@@ -463,7 +461,6 @@ async function loadBaseSource(
       throw new ApiError(
         "CONFLICT",
         `Failed to read DTS configuration-set member "${member.file_name}" from storage.`,
-        409,
         {
           code: "reload-base-read-failed",
           projectId,
@@ -500,28 +497,24 @@ function throwAuthoringIssue(
       throw new ApiError(
         "VALIDATION_FAILED",
         `Debug value could not be parsed: ${issue.message}`,
-        400,
         { bindingId, debugValue }
       );
     case "not-single-string":
       throw new ApiError(
         "VALIDATION_FAILED",
         `Debug value must be a single string (for example ${placeholder}).`,
-        400,
         { bindingId, debugValue }
       );
     case "not-string-list":
       throw new ApiError(
         "VALIDATION_FAILED",
         `Debug value must be a string list (for example ${placeholder}).`,
-        400,
         { bindingId, debugValue }
       );
     case "not-phandle-cell-array":
       throw new ApiError(
         "VALIDATION_FAILED",
         `Debug value must be a GPIO-style phandle cell array (for example ${placeholder}).`,
-        400,
         { bindingId, debugValue }
       );
     case "not-integer-cell-array":
@@ -530,14 +523,12 @@ function throwAuthoringIssue(
         issue.expectedBits === 32
           ? `Debug value must be an unsigned 32-bit cell array (for example ${placeholder}).`
           : `Debug value must be a /bits/ ${issue.expectedBits} cell array (for example ${placeholder}).`,
-        400,
         { bindingId, debugValue, expectedBits: issue.expectedBits }
       );
     case "cells-per-group-mismatch":
       throw new ApiError(
         "VALIDATION_FAILED",
         `Debug value must have ${issue.expectedCellsPerGroup} cell(s) per group.`,
-        400,
         {
           bindingId,
           debugValue,
@@ -549,7 +540,6 @@ function throwAuthoringIssue(
       throw new ApiError(
         "VALIDATION_FAILED",
         `Debug value must have ${issue.expectedGroups} cell group(s).`,
-        400,
         {
           bindingId,
           debugValue,
@@ -566,7 +556,7 @@ async function resolveStartTargets(
   input: StartReloadRunInput
 ): Promise<ResolvedReloadTarget[]> {
   if (input.targets.length === 0) {
-    throw new ApiError("VALIDATION_FAILED", "At least one reload target is required.", 400);
+    throw new ApiError("VALIDATION_FAILED", "At least one reload target is required.");
   }
 
   const seen = new Set<string>();
@@ -578,7 +568,6 @@ async function resolveStartTargets(
       throw new ApiError(
         "VALIDATION_FAILED",
         `Duplicate bindingId in reload batch: ${target.bindingId}.`,
-        400,
         { bindingId: target.bindingId }
       );
     }
@@ -590,7 +579,7 @@ async function resolveStartTargets(
       bindingId: target.bindingId
     });
     if (!row) {
-      throw new ApiError("NOT_FOUND", "Parameter binding was not found for this project.", 404, {
+      throw new ApiError("NOT_FOUND", "Parameter binding was not found for this project.", {
         bindingId: target.bindingId,
         projectId: input.projectId
       });
@@ -601,7 +590,7 @@ async function resolveStartTargets(
       const detail = candidate.blockReason
         ? BLOCK_REASON_MESSAGES[candidate.blockReason]
         : "parameter is not debuggable";
-      throw new ApiError("VALIDATION_FAILED", `Parameter is not debuggable: ${detail}.`, 400, {
+      throw new ApiError("VALIDATION_FAILED", `Parameter is not debuggable: ${detail}.`, {
         bindingId: candidate.bindingId,
         blockReason: candidate.blockReason
       });
@@ -612,7 +601,6 @@ async function resolveStartTargets(
       throw new ApiError(
         "VALIDATION_FAILED",
         `Duplicate overlay target in reload batch: ${candidate.nodePath} :: ${candidate.propertyKey}.`,
-        400,
         {
           code: "reload-duplicate-overlay-target",
           bindingId: candidate.bindingId,
@@ -674,7 +662,6 @@ export async function startReloadRun(
       throw new ApiError(
         "VALIDATION_FAILED",
         "restore-baseline runs require a pinned deviceId at start.",
-        400,
         { code: "restore-device-required" }
       );
     }
@@ -682,7 +669,6 @@ export async function startReloadRun(
       throw new ApiError(
         "VALIDATION_FAILED",
         "restore-baseline runs require restoresSourceRunId naming the residue source run.",
-        400,
         { code: "restore-source-run-required" }
       );
     }
@@ -861,7 +847,6 @@ export async function startRestoreBaselineRun(
     throw new ApiError(
       "CONFLICT",
       "No reload residue is recorded for this device; restore-baseline has nothing to compensate.",
-      409,
       { code: "reload-residue-missing", deviceId: input.deviceId }
     );
   }
@@ -869,7 +854,6 @@ export async function startRestoreBaselineRun(
     throw new ApiError(
       "CONFLICT",
       "Residue for this device belongs to a different project.",
-      409,
       {
         code: "reload-residue-project-mismatch",
         deviceId: input.deviceId,
@@ -882,7 +866,6 @@ export async function startRestoreBaselineRun(
     throw new ApiError(
       "CONFLICT",
       "Residue record has no parameters to restore.",
-      409,
       { code: "reload-residue-empty", deviceId: input.deviceId, sourceRunId: residue.sourceRunId }
     );
   }
@@ -898,7 +881,6 @@ export async function startRestoreBaselineRun(
       throw new ApiError(
         "NOT_FOUND",
         `Residue parameter binding ${parameter.bindingId} is no longer available in the project.`,
-        404,
         { code: "reload-residue-binding-missing", bindingId: parameter.bindingId }
       );
     }
@@ -909,7 +891,6 @@ export async function startRestoreBaselineRun(
       throw new ApiError(
         "CONFLICT",
         `Residue parameter ${parameter.propertyKey} now resolves to a different device-tree node than when its debug value was written; refuse restore to avoid stranding debug values on the original node.`,
-        409,
         {
           code: "reload-residue-node-drift",
           bindingId: parameter.bindingId,
@@ -923,7 +904,6 @@ export async function startRestoreBaselineRun(
       throw new ApiError(
         "CONFLICT",
         `Residue parameter ${parameter.propertyKey} has no library baseline value to restore.`,
-        409,
         { code: "reload-residue-baseline-missing", bindingId: parameter.bindingId }
       );
     }
@@ -1083,7 +1063,6 @@ async function assertLibraryUntouched(
     throw new ApiError(
       "CONFLICT",
       "The parameter library changed while the reload run was in progress. Retry the run.",
-      409,
       { code: "reload-library-changed", before, after }
     );
   }
@@ -1098,7 +1077,7 @@ export async function getReloadRun(
   requireDtsReloadView(auth);
   const row = await getReloadRunRow(db, { organizationId: auth.organization.id, runId });
   if (!row) {
-    throw new ApiError("NOT_FOUND", "Reload run was not found.", 404, { runId });
+    throw new ApiError("NOT_FOUND", "Reload run was not found.", { runId });
   }
 
   const targets = await listReloadRunTargets(db, runId);
@@ -1133,7 +1112,7 @@ export async function getReloadRunRecord(
   requireDtsReloadView(auth);
   const row = await getReloadRunRow(db, { organizationId: auth.organization.id, runId });
   if (!row) {
-    throw new ApiError("NOT_FOUND", "Reload run was not found.", 404, { runId });
+    throw new ApiError("NOT_FOUND", "Reload run was not found.", { runId });
   }
 
   const targets = await listReloadRunTargets(db, runId);
@@ -1157,7 +1136,7 @@ export async function getReloadRunArtifact(
   requireDtsReloadView(auth);
   const row = await getReloadRunRow(db, { organizationId: auth.organization.id, runId });
   if (!row) {
-    throw new ApiError("NOT_FOUND", "Reload run was not found.", 404, { runId });
+    throw new ApiError("NOT_FOUND", "Reload run was not found.", { runId });
   }
 
   const createdAt = row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at);
@@ -1172,7 +1151,6 @@ export async function getReloadRunArtifact(
     throw new ApiError(
       "GONE",
       "This reload run's overlay artifact has passed its retention window and is no longer downloadable.",
-      410,
       {
         code: "reload-artifact-expired",
         runId,
@@ -1187,7 +1165,6 @@ export async function getReloadRunArtifact(
     throw new ApiError(
       "CONFLICT",
       "This reload run has no compiled artifact to download (it may have been blocked).",
-      409,
       { runId, status: row.status }
     );
   }
@@ -1303,14 +1280,13 @@ export async function deployReloadRun(
     throw new ApiError(
       "VALIDATION_FAILED",
       `Deploying a reload run requires confirmation token "${DTS_RELOAD_CONFIRMATION_TOKEN}".`,
-      400,
       { code: "missing-dts-reload-confirmation", requiredToken: DTS_RELOAD_CONFIRMATION_TOKEN }
     );
   }
 
   const run = await getReloadRun(db, objectStore, auth, input.runId);
   if (!run.artifact?.sha256) {
-    throw new ApiError("CONFLICT", "Reload run has no compiled overlay artifact to deploy.", 409, {
+    throw new ApiError("CONFLICT", "Reload run has no compiled overlay artifact to deploy.", {
       code: "reload-artifact-missing",
       runId: input.runId
     });
@@ -1322,7 +1298,6 @@ export async function deployReloadRun(
     throw new ApiError(
       "GONE",
       "This reload run's overlay artifact has passed its retention window and can no longer be deployed. Start a fresh run.",
-      410,
       { code: "reload-artifact-expired", runId: run.id, retentionDays: RELOAD_ARTIFACT_RETENTION_DAYS }
     );
   }
@@ -1334,7 +1309,6 @@ export async function deployReloadRun(
       throw new ApiError(
         "CONFLICT",
         "Restore-baseline run is missing its pinned device id; refuse deploy.",
-        409,
         { code: "restore-device-unpinned", runId: run.id }
       );
     }
@@ -1342,7 +1316,6 @@ export async function deployReloadRun(
       throw new ApiError(
         "CONFLICT",
         "Restore-baseline deploy must target the same device the restore run was started for.",
-        409,
         {
           code: "restore-device-mismatch",
           runId: run.id,
@@ -1359,7 +1332,7 @@ export async function deployReloadRun(
 
   const row = await getReloadRunRow(db, { organizationId: auth.organization.id, runId: input.runId });
   if (!row?.overlay_artifact_storage_key) {
-    throw new ApiError("CONFLICT", "Reload run has no compiled overlay artifact to deploy.", 409, {
+    throw new ApiError("CONFLICT", "Reload run has no compiled overlay artifact to deploy.", {
       code: "reload-artifact-missing",
       runId: input.runId
     });
@@ -1429,7 +1402,6 @@ export async function deployReloadRun(
             throw new ApiError(
               "CONFLICT",
               "Reload run is already being deployed (or is no longer deployable).",
-              409,
               { code: "reload-deploy-already-in-progress", runId: run.id, status: run.status }
             );
           }

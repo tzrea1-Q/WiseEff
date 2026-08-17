@@ -534,7 +534,7 @@ describe("config set and baseline routes", () => {
       { file: "board.dts", line: 12, severity: "error" as const, message: "syntax error" }
     ];
     vi.mocked(baselineService.releaseBaseline).mockRejectedValue(
-      new ApiError("CONFLICT", "DTS validation failed.", 409, {
+      new ApiError("CONFLICT", "DTS validation failed.", {
         code: "dts-validation-failed",
         diagnostics,
         mode: "block",

@@ -87,7 +87,7 @@ export type EvaluateReleaseReadinessDeps = Partial<ValidationGateDeps> & {
 
 function requireParameterFileAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Forbidden.", 403, { permission: "admin:access" });
+    throw new ApiError("FORBIDDEN", "Forbidden.", { permission: "admin:access" });
   }
 }
 
@@ -197,7 +197,7 @@ export async function evaluateReleaseReadiness(
     configSetId: input.configSetId
   });
   if (!configSet) {
-    throw new ApiError("NOT_FOUND", "Config set not found.", 404, { configSetId: input.configSetId });
+    throw new ApiError("NOT_FOUND", "Config set not found.", { configSetId: input.configSetId });
   }
 
   const unavailable = (reason: string): ReleaseReadinessResult => {
@@ -528,7 +528,7 @@ export async function assertReleaseGateAllows(
   deps: EvaluateReleaseReadinessDeps = {}
 ): Promise<ReleaseReadinessResult> {
   if (!input.gateToken) {
-    throw new ApiError("CONFLICT", "Release readiness gate token is required.", 409, {
+    throw new ApiError("CONFLICT", "Release readiness gate token is required.", {
       code: "readiness-gate-required",
       configSetId: input.configSetId
     });
@@ -542,7 +542,7 @@ export async function assertReleaseGateAllows(
   );
 
   if (!readiness.available) {
-    throw new ApiError("CONFLICT", readiness.unavailableReason ?? "Release readiness is unavailable.", 409, {
+    throw new ApiError("CONFLICT", readiness.unavailableReason ?? "Release readiness is unavailable.", {
       code: "readiness-unavailable",
       configSetId: input.configSetId,
       gateToken: readiness.gateToken
@@ -550,7 +550,7 @@ export async function assertReleaseGateAllows(
   }
 
   if (readiness.gateToken !== input.gateToken) {
-    throw new ApiError("CONFLICT", "Release readiness gate token is stale.", 409, {
+    throw new ApiError("CONFLICT", "Release readiness gate token is stale.", {
       code: "readiness-gate-stale",
       configSetId: input.configSetId,
       gateToken: readiness.gateToken,
@@ -559,7 +559,7 @@ export async function assertReleaseGateAllows(
   }
 
   if (input.action === "create" && !readiness.canCreateBaseline) {
-    throw new ApiError("CONFLICT", "Baseline creation is blocked by release readiness.", 409, {
+    throw new ApiError("CONFLICT", "Baseline creation is blocked by release readiness.", {
       code: "readiness-blocked",
       configSetId: input.configSetId,
       level: readiness.level,
@@ -568,7 +568,7 @@ export async function assertReleaseGateAllows(
   }
 
   if (input.action === "release" && !readiness.canRelease) {
-    throw new ApiError("CONFLICT", "Baseline release is blocked by release readiness.", 409, {
+    throw new ApiError("CONFLICT", "Baseline release is blocked by release readiness.", {
       code: "readiness-blocked",
       configSetId: input.configSetId,
       level: readiness.level,

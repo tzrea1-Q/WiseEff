@@ -237,7 +237,7 @@ export async function resolveStructuredEditToParameter(
     fileId: edit.fileId
   });
   if (!file || file.projectId !== projectId) {
-    throw new ApiError("NOT_FOUND", "Project parameter file was not found.", 404, {
+    throw new ApiError("NOT_FOUND", "Project parameter file was not found.", {
       fileId: edit.fileId,
       projectId
     });
@@ -246,7 +246,7 @@ export async function resolveStructuredEditToParameter(
   const sourceFileName = file.fileName;
   const sourceNodePath = sourceNodePathForStructuredEdit(edit);
   if (!sourceNodePath) {
-    throw new ApiError("VALIDATION_FAILED", "Structured edit requires nodePath or propertyName.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Structured edit requires nodePath or propertyName.");
   }
 
   const bySource = await findProjectValueBySource(db, {
@@ -263,7 +263,7 @@ export async function resolveStructuredEditToParameter(
   try {
     identity = nodePathToParameterIdentity(sourceNodePath);
   } catch {
-    throw new ApiError("VALIDATION_FAILED", `Invalid structured edit path: ${sourceNodePath}`, 400, {
+    throw new ApiError("VALIDATION_FAILED", `Invalid structured edit path: ${sourceNodePath}`, {
       sourceNodePath
     });
   }
@@ -301,7 +301,7 @@ export async function submitStructuredEdits(
   requireCanEdit(auth, input.projectId);
 
   if (input.edits.length === 0) {
-    throw new ApiError("VALIDATION_FAILED", "At least one structured edit is required.", 400);
+    throw new ApiError("VALIDATION_FAILED", "At least one structured edit is required.");
   }
 
   return withAuditedWrite(db, auth, context, async (tx) => {
@@ -311,7 +311,7 @@ export async function submitStructuredEdits(
     for (const edit of input.edits) {
       const key = `${edit.fileId}:${sourceNodePathForStructuredEdit(edit)}`;
       if (seenKeys.has(key)) {
-        throw new ApiError("VALIDATION_FAILED", "Duplicate structured edit for the same property.", 400, {
+        throw new ApiError("VALIDATION_FAILED", "Duplicate structured edit for the same property.", {
           fileId: edit.fileId,
           nodePath: edit.nodePath,
           propertyName: edit.propertyName
@@ -431,7 +431,7 @@ export type ApplyImportBatchInput = {
 
 function requireCanView(auth: AuthContext) {
   if (!canViewParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter view permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter view permission is required.");
   }
 }
 
@@ -442,14 +442,13 @@ function requireCanEdit(auth: AuthContext, projectId?: string) {
   const scopedOnly = projectId !== undefined && canEditParameters(auth);
   throw new ApiError(
     "FORBIDDEN",
-    scopedOnly ? "Parameter edit role is required for this project." : "Parameter edit permission is required.",
-    403
+    scopedOnly ? "Parameter edit role is required for this project." : "Parameter edit permission is required."
   );
 }
 
 function requireCanAdminImport(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Admin access is required for parameter import.", 403);
+    throw new ApiError("FORBIDDEN", "Admin access is required for parameter import.");
   }
 }
 
@@ -457,7 +456,7 @@ export function parseDtsImportForAuth(auth: AuthContext, input: ParseDtsImportBo
   requireCanAdminImport(auth);
   const parsed = parseDtsImportBodySchema.safeParse(input);
   if (!parsed.success) {
-    throw new ApiError("VALIDATION_FAILED", "Invalid DTS import parse request.", 400, {
+    throw new ApiError("VALIDATION_FAILED", "Invalid DTS import parse request.", {
       issues: parsed.error.issues
     });
   }
@@ -475,13 +474,13 @@ function getReviewForbiddenMessage(fromStatus: ParameterChangeRequestStatus) {
 function requireCanReviewStage(auth: AuthContext, projectId: string | undefined, fromStatus: ParameterChangeRequestStatus) {
   if (projectId && canReviewParameterStage(auth, projectId, fromStatus)) return;
 
-  throw new ApiError("FORBIDDEN", getReviewForbiddenMessage(fromStatus), 403);
+  throw new ApiError("FORBIDDEN", getReviewForbiddenMessage(fromStatus));
 }
 
 function requireCanMerge(auth: AuthContext, projectId: string | undefined) {
   if (canMergeParameters(auth, projectId)) return;
 
-  throw new ApiError("FORBIDDEN", "Parameter merge role is required for this project.", 403);
+  throw new ApiError("FORBIDDEN", "Parameter merge role is required for this project.");
 }
 
 function getCompleteWorkflowAssignees(input: SubmitParameterChangesInput) {
@@ -491,7 +490,7 @@ function getCompleteWorkflowAssignees(input: SubmitParameterChangesInput) {
   }
 
   if (!assignees?.hardwareCommitterId || !assignees.softwareCommitterId || !assignees.softwareUserId) {
-    throw new ApiError("VALIDATION_FAILED", "Workflow assignees must include all review roles or be omitted.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Workflow assignees must include all review roles or be omitted.");
   }
 
   return {
@@ -510,7 +509,7 @@ function assertUniqueSubmissionParameters(items: SubmitParameterChangesInput["it
     if ("draftId" in item) {
       if (isEnablementSubmissionItem(item)) {
         if (enablementIds.has(item.logicalNodeId)) {
-          throw new ApiError("VALIDATION_FAILED", "Each parameter can only appear once per submission round.", 400, {
+          throw new ApiError("VALIDATION_FAILED", "Each parameter can only appear once per submission round.", {
             logicalNodeId: item.logicalNodeId
           });
         }
@@ -519,7 +518,7 @@ function assertUniqueSubmissionParameters(items: SubmitParameterChangesInput["it
       }
 
       if (bindingIds.has(item.projectParameterBindingId)) {
-        throw new ApiError("VALIDATION_FAILED", "Each parameter can only appear once per submission round.", 400, {
+        throw new ApiError("VALIDATION_FAILED", "Each parameter can only appear once per submission round.", {
           parameterId: item.projectParameterBindingId
         });
       }
@@ -528,7 +527,7 @@ function assertUniqueSubmissionParameters(items: SubmitParameterChangesInput["it
     }
 
     if (legacyParameterIds.has(item.parameterId)) {
-      throw new ApiError("VALIDATION_FAILED", "Each parameter can only appear once per submission round.", 400, {
+      throw new ApiError("VALIDATION_FAILED", "Each parameter can only appear once per submission round.", {
         parameterId: item.parameterId
       });
     }
@@ -539,7 +538,7 @@ function assertUniqueSubmissionParameters(items: SubmitParameterChangesInput["it
 function assertValidCreateImportInput(input: CreateImportPreviewInput) {
   const parsed = createImportBatchBodySchema.safeParse(input);
   if (!parsed.success) {
-    throw new ApiError("VALIDATION_FAILED", "Invalid parameter import item.", 400, {
+    throw new ApiError("VALIDATION_FAILED", "Invalid parameter import item.", {
       issues: parsed.error.issues
     });
   }
@@ -550,13 +549,13 @@ function assertValidCreateImportInput(input: CreateImportPreviewInput) {
 function assertValidApplyImportInput(input: ApplyImportBatchInput) {
   const parsed = applyImportBatchBodySchema.safeParse(input);
   if (!parsed.success) {
-    throw new ApiError("VALIDATION_FAILED", "Invalid parameter import apply request.", 400, {
+    throw new ApiError("VALIDATION_FAILED", "Invalid parameter import apply request.", {
       issues: parsed.error.issues
     });
   }
 
   if (parsed.data.selectedItemIds && parsed.data.selectedItemIds.length === 0) {
-    throw new ApiError("VALIDATION_FAILED", "At least one import item must be selected.", 400);
+    throw new ApiError("VALIDATION_FAILED", "At least one import item must be selected.");
   }
 
   return parsed.data;
@@ -586,7 +585,7 @@ async function assertWorkflowAssigneesAreEligible(
     });
 
     if (!eligible) {
-      throw new ApiError("VALIDATION_FAILED", "Workflow assignee is not eligible for the requested role.", 400, {
+      throw new ApiError("VALIDATION_FAILED", "Workflow assignee is not eligible for the requested role.", {
         userId: check.userId,
         roleId: check.roleId,
         projectId
@@ -689,7 +688,7 @@ async function loadParameterForSubmission(
   });
 
   if (!parameter) {
-    throw new ApiError("NOT_FOUND", "Parameter was not found for this project.", 404, { parameterId, projectId });
+    throw new ApiError("NOT_FOUND", "Parameter was not found for this project.", { parameterId, projectId });
   }
 
   return parameter;
@@ -702,7 +701,7 @@ async function loadChangeRequestForReview(db: Queryable, auth: AuthContext, requ
   });
 
   if (!request) {
-    throw new ApiError("NOT_FOUND", "Parameter change request was not found.", 404, { requestId });
+    throw new ApiError("NOT_FOUND", "Parameter change request was not found.", { requestId });
   }
 
   return request;
@@ -715,7 +714,7 @@ async function loadProjectForImport(db: Queryable, auth: AuthContext, projectId:
   });
 
   if (!project) {
-    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", 404, { projectId });
+    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", { projectId });
   }
 
   return project;
@@ -990,10 +989,10 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
     });
 
     if (!batch) {
-      throw new ApiError("NOT_FOUND", "Parameter import batch was not found.", 404, { batchId: parsed.batchId });
+      throw new ApiError("NOT_FOUND", "Parameter import batch was not found.", { batchId: parsed.batchId });
     }
     if (batch.status !== "previewed") {
-      throw new ApiError("CONFLICT", "Parameter import batch has already been applied.", 409, { batchId: parsed.batchId });
+      throw new ApiError("CONFLICT", "Parameter import batch has already been applied.", { batchId: parsed.batchId });
     }
 
     await loadProjectForImport(tx, auth, batch.projectId);
@@ -1002,7 +1001,7 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
       const batchItemIds = new Set(batch.items.map((item) => item.id));
       const unknownItemId = parsed.selectedItemIds.find((itemId) => !batchItemIds.has(itemId));
       if (unknownItemId) {
-        throw new ApiError("VALIDATION_FAILED", "Selected import item was not found in the batch.", 400, {
+        throw new ApiError("VALIDATION_FAILED", "Selected import item was not found in the batch.", {
           batchId: parsed.batchId,
           itemId: unknownItemId
         });
@@ -1016,20 +1015,20 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
     });
     const conflictItem = selectedItems.find((item) => item.classification === "conflict");
     if (conflictItem) {
-      throw new ApiError("CONFLICT", "Cannot apply import items with open change requests.", 409, {
+      throw new ApiError("CONFLICT", "Cannot apply import items with open change requests.", {
         batchId: parsed.batchId,
         itemId: conflictItem.id
       });
     }
     if (selectedItems.length === 0) {
-      throw new ApiError("VALIDATION_FAILED", "At least one eligible import item must be selected.", 400, {
+      throw new ApiError("VALIDATION_FAILED", "At least one eligible import item must be selected.", {
         batchId: parsed.batchId
       });
     }
 
     const selectedItemsWithTargets = selectedItems.map((item) => {
       if (!item.definitionId || !item.projectParameterValueId) {
-        throw new ApiError("VALIDATION_FAILED", "Import preview item is missing persisted target identifiers.", 400, {
+        throw new ApiError("VALIDATION_FAILED", "Import preview item is missing persisted target identifiers.", {
           batchId: parsed.batchId,
           itemId: item.id
         });
@@ -1053,7 +1052,7 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
         parameterId: item.projectParameterValueId
       });
       if (openRequest) {
-        throw new ApiError("CONFLICT", "Cannot apply import items with open change requests.", 409, {
+        throw new ApiError("CONFLICT", "Cannot apply import items with open change requests.", {
           batchId: parsed.batchId,
           itemId: item.id,
           requestId: openRequest.id
@@ -1073,7 +1072,7 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
           item
         });
         if (!appliedItem) {
-          throw new ApiError("CONFLICT", "Import item definition id already exists.", 409, {
+          throw new ApiError("CONFLICT", "Import item definition id already exists.", {
             batchId: parsed.batchId,
             itemId: item.id,
             definitionId: item.definitionId
@@ -1089,7 +1088,7 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
           item
         });
         if (!appliedItem) {
-          throw new ApiError("CONFLICT", "Import item definition id already exists.", 409, {
+          throw new ApiError("CONFLICT", "Import item definition id already exists.", {
             batchId: parsed.batchId,
             itemId: item.id,
             definitionId: item.definitionId
@@ -1104,7 +1103,7 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
       batchId: parsed.batchId
     });
     if (!applied) {
-      throw new ApiError("NOT_FOUND", "Parameter import batch was not found.", 404, { batchId: parsed.batchId });
+      throw new ApiError("NOT_FOUND", "Parameter import batch was not found.", { batchId: parsed.batchId });
     }
 
     await createImportAudit(asAuditTx(tx), auth, {
@@ -1142,7 +1141,6 @@ export async function saveDraft(db: Queryable, auth: AuthContext, input: SaveDra
     throw new ApiError(
       "CONFLICT",
       "Legacy parameter drafts are retired after semantic identity cutover; create a typed binding draft instead.",
-      409,
       { projectId: input.projectId }
     );
   }
@@ -1182,7 +1180,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
   requireCanEdit(auth, input.projectId);
 
   if (input.items.length === 0) {
-    throw new ApiError("VALIDATION_FAILED", "At least one parameter change is required.", 400);
+    throw new ApiError("VALIDATION_FAILED", "At least one parameter change is required.");
   }
   assertUniqueSubmissionParameters(input.items);
   const workflowAssignees = getCompleteWorkflowAssignees(input);
@@ -1195,7 +1193,6 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
       throw new ApiError(
         "CONFLICT",
         "Legacy parameter submission is retired after semantic identity cutover; submit an exact binding draft.",
-        409,
         { projectId: input.projectId }
       );
     }
@@ -1214,7 +1211,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
     for (const item of input.items) {
       if ("draftId" in item && isEnablementSubmissionItem(item)) {
         if (!useSemanticIdentity) {
-          throw new ApiError("CONFLICT", "Enablement draft submission requires completed semantic identity cutover.", 409, {
+          throw new ApiError("CONFLICT", "Enablement draft submission requires completed semantic identity cutover.", {
             draftId: item.draftId
           });
         }
@@ -1226,13 +1223,13 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
           draftId: item.draftId
         });
         if (!loadedDraft) {
-          throw new ApiError("NOT_FOUND", "Enablement draft was not found for this project.", 404, {
+          throw new ApiError("NOT_FOUND", "Enablement draft was not found for this project.", {
             draftId: item.draftId,
             projectId: input.projectId
           });
         }
         if (loadedDraft.logicalNodeId !== item.logicalNodeId) {
-          throw new ApiError("CONFLICT", "Enablement draft identity does not match the submitted logical node.", 409, {
+          throw new ApiError("CONFLICT", "Enablement draft identity does not match the submitted logical node.", {
             draftId: item.draftId,
             logicalNodeId: item.logicalNodeId
           });
@@ -1243,7 +1240,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
           loadedDraft.targetValue !== item.targetValue ||
           loadedDraft.reason !== item.reason
         ) {
-          throw new ApiError("CONFLICT", "Enablement draft action, value, or reason changed before submission.", 409, {
+          throw new ApiError("CONFLICT", "Enablement draft action, value, or reason changed before submission.", {
             draftId: item.draftId
           });
         }
@@ -1252,7 +1249,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
           loadedDraft.candidateStatus !== "draft" ||
           !loadedDraft.candidateActionProven
         ) {
-          throw new ApiError("CONFLICT", "Enablement draft candidate revision is missing, stale, or action-mismatched.", 409, {
+          throw new ApiError("CONFLICT", "Enablement draft candidate revision is missing, stale, or action-mismatched.", {
             draftId: item.draftId,
             action: submittedAction,
             candidateConfigRevisionId: loadedDraft.candidateConfigRevisionId,
@@ -1263,7 +1260,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
           });
         }
         if (!loadedDraft.writeLock || !loadedDraft.writeLockMatchesRevision) {
-          throw new ApiError("CONFLICT", "Enablement draft is missing exact writeback lock metadata.", 409, {
+          throw new ApiError("CONFLICT", "Enablement draft is missing exact writeback lock metadata.", {
             draftId: item.draftId
           });
         }
@@ -1275,7 +1272,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
           logicalNodeId: item.logicalNodeId
         });
         if (openRequest) {
-          throw new ApiError("CONFLICT", "Logical node already has an open change request.", 409, {
+          throw new ApiError("CONFLICT", "Logical node already has an open change request.", {
             logicalNodeId: item.logicalNodeId,
             requestId: openRequest.id
           });
@@ -1308,7 +1305,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
       let exactDraft: NonNullable<Awaited<ReturnType<typeof getBindingDraftForSubmission>>> | undefined;
       if ("draftId" in item) {
         if (!useSemanticIdentity) {
-          throw new ApiError("CONFLICT", "Binding draft submission requires completed semantic identity cutover.", 409, {
+          throw new ApiError("CONFLICT", "Binding draft submission requires completed semantic identity cutover.", {
             draftId: item.draftId
           });
         }
@@ -1319,7 +1316,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
           draftId: item.draftId
         });
         if (!loadedDraft) {
-          throw new ApiError("NOT_FOUND", "Binding draft was not found for this project.", 404, {
+          throw new ApiError("NOT_FOUND", "Binding draft was not found for this project.", {
             draftId: item.draftId,
             projectId: input.projectId
           });
@@ -1328,7 +1325,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
           loadedDraft.bindingId !== item.projectParameterBindingId ||
           loadedDraft.parameterSpecId !== item.parameterSpecId
         ) {
-          throw new ApiError("CONFLICT", "Binding draft identity does not match the submitted binding/spec.", 409, {
+          throw new ApiError("CONFLICT", "Binding draft identity does not match the submitted binding/spec.", {
             draftId: item.draftId,
             projectParameterBindingId: item.projectParameterBindingId,
             parameterSpecId: item.parameterSpecId
@@ -1340,7 +1337,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
           loadedDraft.targetValue !== item.targetValue ||
           loadedDraft.reason !== item.reason
         ) {
-          throw new ApiError("CONFLICT", "Binding draft action, value, or reason changed before submission.", 409, {
+          throw new ApiError("CONFLICT", "Binding draft action, value, or reason changed before submission.", {
             draftId: item.draftId
           });
         }
@@ -1349,7 +1346,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
           loadedDraft.candidateStatus !== "draft" ||
           !loadedDraft.candidateActionProven
         ) {
-          throw new ApiError("CONFLICT", "Binding draft candidate revision is missing, stale, or action-mismatched.", 409, {
+          throw new ApiError("CONFLICT", "Binding draft candidate revision is missing, stale, or action-mismatched.", {
             draftId: item.draftId,
             action: submittedAction,
             candidateConfigRevisionId: loadedDraft.candidateConfigRevisionId,
@@ -1360,7 +1357,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
           });
         }
         if (!loadedDraft.writeLock || !loadedDraft.writeLockMatchesBinding) {
-          throw new ApiError("CONFLICT", "Binding draft is missing exact writeback lock metadata.", 409, {
+          throw new ApiError("CONFLICT", "Binding draft is missing exact writeback lock metadata.", {
             draftId: item.draftId
           });
         }
@@ -1379,7 +1376,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
       });
 
       if (openRequest) {
-        throw new ApiError("CONFLICT", "Parameter already has an open change request.", 409, {
+        throw new ApiError("CONFLICT", "Parameter already has an open change request.", {
           parameterId,
           requestId: openRequest.id
         });
@@ -1388,7 +1385,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         projectParameterValueId: parameter.id
       });
       if (hasConflict) {
-        throw new ApiError("CONFLICT", "Parameter has an open file sync conflict.", 409, {
+        throw new ApiError("CONFLICT", "Parameter has an open file sync conflict.", {
           parameterId
         });
       }
@@ -1423,7 +1420,6 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
       throw new ApiError(
         "CONFLICT",
         "本轮草稿不在同一工作版本上，无法一起提交。请移除冲突项或清空后重新编辑。",
-        409,
         { reason: "mixed-working-tips", candidateConfigRevisionIds: tipIds }
       );
     }
@@ -1459,7 +1455,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         candidateConfigRevisionId: draft.candidateConfigRevisionId
       });
       if (!promoted) {
-        throw new ApiError("CONFLICT", "Draft candidate changed before review promotion.", 409, {
+        throw new ApiError("CONFLICT", "Draft candidate changed before review promotion.", {
           draftId: draft.draftId,
           candidateConfigRevisionId: draft.candidateConfigRevisionId
         });
@@ -1535,7 +1531,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
               })
             : null;
         if (projectParameterBindingId && useSemanticIdentity && !writeLock) {
-          throw new ApiError("CONFLICT", "Draft is missing exact writeback lock metadata.", 409, {
+          throw new ApiError("CONFLICT", "Draft is missing exact writeback lock metadata.", {
             parameterId: parameter.id
           });
         }
@@ -1818,15 +1814,15 @@ export async function withdrawSubmissionRound(
     });
 
     if (!owner) {
-      throw new ApiError("NOT_FOUND", "Parameter submission round was not found.", 404, { roundId });
+      throw new ApiError("NOT_FOUND", "Parameter submission round was not found.", { roundId });
     }
 
     if (owner.submitter_user_id !== auth.user.id) {
-      throw new ApiError("FORBIDDEN", "Only the submitter can withdraw this submission round.", 403, { roundId });
+      throw new ApiError("FORBIDDEN", "Only the submitter can withdraw this submission round.", { roundId });
     }
 
     if (nonWithdrawableSubmissionRoundStatuses.has(owner.status)) {
-      throw new ApiError("CONFLICT", "Parameter submission round is already closed.", 409, {
+      throw new ApiError("CONFLICT", "Parameter submission round is already closed.", {
         roundId,
         status: owner.status
       });
@@ -1838,7 +1834,7 @@ export async function withdrawSubmissionRound(
     });
 
     if (!round) {
-      throw new ApiError("NOT_FOUND", "Parameter submission round was not found.", 404, { roundId });
+      throw new ApiError("NOT_FOUND", "Parameter submission round was not found.", { roundId });
     }
 
     await withdrawOpenChangeRequestsForRound(tx, {
@@ -1875,7 +1871,7 @@ export async function withdrawSubmissionRound(
     });
 
     if (!updated) {
-      throw new ApiError("NOT_FOUND", "Parameter submission round was not found.", 404, { roundId });
+      throw new ApiError("NOT_FOUND", "Parameter submission round was not found.", { roundId });
     }
 
     return updated;
@@ -1888,7 +1884,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
     const fromStatus = request.status;
 
     if (fromStatus === "merged" || fromStatus === "rejected") {
-      throw new ApiError("CONFLICT", "Parameter change request is already closed.", 409, {
+      throw new ApiError("CONFLICT", "Parameter change request is already closed.", {
         requestId: input.requestId,
         status: fromStatus
       });
@@ -1905,7 +1901,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
       });
 
       if (!updated) {
-        throw new ApiError("NOT_FOUND", "Parameter change request was not found.", 404, { requestId: input.requestId });
+        throw new ApiError("NOT_FOUND", "Parameter change request was not found.", { requestId: input.requestId });
       }
 
       await insertReviewDecision(tx, {
@@ -1965,7 +1961,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
       requireCanReviewStage(auth, request.projectId, fromStatus);
 
       if (toStatus === fromStatus) {
-        throw new ApiError("CONFLICT", "Parameter change request cannot advance from its current status.", 409, {
+        throw new ApiError("CONFLICT", "Parameter change request cannot advance from its current status.", {
           requestId: input.requestId,
           status: fromStatus
         });
@@ -1979,7 +1975,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
       });
 
       if (!updated) {
-        throw new ApiError("NOT_FOUND", "Parameter change request was not found.", 404, { requestId: input.requestId });
+        throw new ApiError("NOT_FOUND", "Parameter change request was not found.", { requestId: input.requestId });
       }
 
       await insertReviewDecision(tx, {
@@ -2049,7 +2045,6 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
         throw new ApiError(
           "CONFLICT",
           "High-risk parameter changes require hardware and software review before merge.",
-          409,
           { requestId: input.requestId }
         );
       }
@@ -2065,7 +2060,6 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
       throw new ApiError(
         "VALIDATION_FAILED",
         "Merge requires an http(s) merge link in note.",
-        400,
         { requestId: input.requestId }
       );
     }
@@ -2086,7 +2080,6 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
         throw new ApiError(
           "CONFLICT",
           "Semantic merge requires object storage for DTS writeback.",
-          409,
           { requestId: input.requestId }
         );
       }
@@ -2094,7 +2087,6 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
         throw new ApiError(
           "CONFLICT",
           "Semantic merge requires a project-scoped change request.",
-          409,
           { requestId: input.requestId }
         );
       }
@@ -2102,7 +2094,6 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
         throw new ApiError(
           "CONFLICT",
           "Semantic merge requires a project parameter binding write lock.",
-          409,
           { requestId: input.requestId }
         );
       }
@@ -2110,7 +2101,6 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
         throw new ApiError(
           "CONFLICT",
           "Semantic enablement merge requires a logical node write lock.",
-          409,
           { requestId: input.requestId }
         );
       }
@@ -2125,7 +2115,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
     });
 
     if (!merged) {
-      throw new ApiError("CONFLICT", "Parameter value changed before merge.", 409, { requestId: input.requestId });
+      throw new ApiError("CONFLICT", "Parameter value changed before merge.", { requestId: input.requestId });
     }
 
     if (semanticIdentity) {
@@ -2162,7 +2152,6 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
         throw new ApiError(
           "CONFLICT",
           "Semantic merge writeback was skipped; refusing to mark the request as merged.",
-          409,
           { requestId: input.requestId }
         );
       }
@@ -2176,7 +2165,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
     });
 
     if (!updated) {
-      throw new ApiError("NOT_FOUND", "Parameter change request was not found.", 404, { requestId: input.requestId });
+      throw new ApiError("NOT_FOUND", "Parameter change request was not found.", { requestId: input.requestId });
     }
 
     await insertReviewDecision(tx, {
@@ -2244,7 +2233,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
 
 function requireParameterAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter admin permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter admin permission is required.");
   }
 }
 
@@ -2337,7 +2326,7 @@ export async function resolveParameterListQuery(
 
 export async function listParameterModulesForAuth(db: Database, auth: AuthContext): Promise<ParameterModuleDto[]> {
   if (!canViewParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter view permission is required.", 403);
+    throw new ApiError("FORBIDDEN", "Parameter view permission is required.");
   }
 
   return listParameterModules(db, { organizationId: auth.organization.id });
@@ -2359,7 +2348,7 @@ export async function createParameterModuleForAuth(
   if (parentId) {
     parent = await getParameterModuleById(db, { organizationId, moduleId: parentId });
     if (!parent) {
-      throw new ApiError("NOT_FOUND", "Parent parameter module was not found.", 404, { parentId });
+      throw new ApiError("NOT_FOUND", "Parent parameter module was not found.", { parentId });
     }
   }
 
@@ -2368,7 +2357,6 @@ export async function createParameterModuleForAuth(
       throw new ApiError(
         "VALIDATION_FAILED",
         "Business modules must be root or under another business module.",
-        400,
         { parentId, parentKind: parent.kind }
       );
     }
@@ -2377,7 +2365,6 @@ export async function createParameterModuleForAuth(
       throw new ApiError(
         "VALIDATION_FAILED",
         "driver-group modules must be created under a business category.",
-        400,
         { parentId, parentKind: parent?.kind ?? null }
       );
     }
@@ -2389,7 +2376,6 @@ export async function createParameterModuleForAuth(
       throw new ApiError(
         "VALIDATION_FAILED",
         "node-type modules must be created under a business, driver-group, or node-type module.",
-        400,
         { parentId, parentKind: parent?.kind ?? null }
       );
     }
@@ -2408,7 +2394,7 @@ export async function createParameterModuleForAuth(
 
   const existing = await getParameterModuleByName(db, { organizationId, name, parentId });
   if (existing) {
-    throw new ApiError("CONFLICT", "Parameter module already exists under this parent.", 409, { name, parentId });
+    throw new ApiError("CONFLICT", "Parameter module already exists under this parent.", { name, parentId });
   }
 
   const sourceKey =
@@ -2459,12 +2445,12 @@ export async function updateParameterModuleForAuth(
   const organizationId = auth.organization.id;
   const current = await getParameterModuleById(db, { organizationId, moduleId });
   if (!current) {
-    throw new ApiError("NOT_FOUND", "Parameter module was not found.", 404, { moduleId });
+    throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
   }
 
   const nextName = body.name?.trim() ?? current.name;
   if (!nextName) {
-    throw new ApiError("VALIDATION_FAILED", "Module name is required.", 400);
+    throw new ApiError("VALIDATION_FAILED", "Module name is required.");
   }
 
   const reclassifyKinds = new Set(["business", "node-type"] as const);
@@ -2475,7 +2461,6 @@ export async function updateParameterModuleForAuth(
       throw new ApiError(
         "VALIDATION_FAILED",
         "Only business and node-type modules can be reclassified.",
-        400,
         { moduleId, kind: current.kind }
       );
     }
@@ -2483,7 +2468,6 @@ export async function updateParameterModuleForAuth(
       throw new ApiError(
         "VALIDATION_FAILED",
         "Modules can only be reclassified to business or node-type.",
-        400,
         { moduleId, kind: body.kind }
       );
     }
@@ -2498,7 +2482,6 @@ export async function updateParameterModuleForAuth(
           throw new ApiError(
             "VALIDATION_FAILED",
             "A business category must sit under another business category or at the root.",
-            400,
             { moduleId, parentId: current.parentId, parentKind: parent?.kind ?? null }
           );
         }
@@ -2514,7 +2497,6 @@ export async function updateParameterModuleForAuth(
         throw new ApiError(
           "VALIDATION_FAILED",
           "Cannot leave the business category while business children remain.",
-          400,
           { moduleId }
         );
       }
@@ -2525,7 +2507,6 @@ export async function updateParameterModuleForAuth(
     throw new ApiError(
       "VALIDATION_FAILED",
       "Importance can only be set on business-category modules.",
-      400,
       { moduleId, kind: nextKind }
     );
   }
@@ -2537,7 +2518,7 @@ export async function updateParameterModuleForAuth(
       parentId: current.parentId
     });
     if (conflict && conflict.id !== current.id) {
-      throw new ApiError("CONFLICT", "Parameter module already exists under this parent.", 409, {
+      throw new ApiError("CONFLICT", "Parameter module already exists under this parent.", {
         name: nextName,
         parentId: current.parentId
       });
@@ -2556,7 +2537,7 @@ export async function updateParameterModuleForAuth(
       kind: body.kind
     });
     if (!module) {
-      throw new ApiError("NOT_FOUND", "Parameter module was not found.", 404, { moduleId });
+      throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
     }
 
     await createParameterModuleAudit(
@@ -2589,14 +2570,14 @@ export async function moveParameterModuleForAuth(
   const organizationId = auth.organization.id;
   const current = await getParameterModuleById(db, { organizationId, moduleId });
   if (!current) {
-    throw new ApiError("NOT_FOUND", "Parameter module was not found.", 404, { moduleId });
+    throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
   }
 
   const parentId = body.parentId;
   if (parentId) {
     const parent = await getParameterModuleById(db, { organizationId, moduleId: parentId });
     if (!parent) {
-      throw new ApiError("NOT_FOUND", "Target parent parameter module was not found.", 404, { parentId });
+      throw new ApiError("NOT_FOUND", "Target parent parameter module was not found.", { parentId });
     }
   }
 
@@ -2607,7 +2588,7 @@ export async function moveParameterModuleForAuth(
   const nextName = current.name;
   const conflict = await getParameterModuleByName(db, { organizationId, name: nextName, parentId });
   if (conflict && conflict.id !== current.id) {
-    throw new ApiError("CONFLICT", "Parameter module already exists under the target parent.", 409, {
+    throw new ApiError("CONFLICT", "Parameter module already exists under the target parent.", {
       name: nextName,
       parentId
     });
@@ -2621,7 +2602,7 @@ export async function moveParameterModuleForAuth(
         parentId
       });
       if (!module) {
-        throw new ApiError("NOT_FOUND", "Parameter module was not found.", 404, { moduleId });
+        throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
       }
 
       await createParameterModuleAudit(
@@ -2640,7 +2621,7 @@ export async function moveParameterModuleForAuth(
     });
   } catch (error) {
     if (error instanceof Error && /cycle/i.test(error.message)) {
-      throw new ApiError("CONFLICT", error.message, 409, { moduleId, parentId });
+      throw new ApiError("CONFLICT", error.message, { moduleId, parentId });
     }
     throw error;
   }
@@ -2656,7 +2637,7 @@ export async function deleteParameterModuleForAuth(
   const organizationId = auth.organization.id;
   const current = await getParameterModuleById(db, { organizationId, moduleId });
   if (!current) {
-    throw new ApiError("NOT_FOUND", "Parameter module was not found.", 404, { moduleId });
+    throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
   }
 
   if (current.kind === "driver-group") {
@@ -2683,7 +2664,7 @@ export async function deleteParameterModuleForAuth(
 
   const childCount = await countParameterModuleChildren(db, { organizationId, moduleId });
   if (childCount > 0) {
-    throw new ApiError("CONFLICT", "Cannot delete a parameter module that still has child modules.", 409, {
+    throw new ApiError("CONFLICT", "Cannot delete a parameter module that still has child modules.", {
       moduleId,
       childCount
     });
@@ -2691,7 +2672,7 @@ export async function deleteParameterModuleForAuth(
 
   const parameterCount = await countParametersForModule(db, { organizationId, moduleId });
   if (parameterCount > 0) {
-    throw new ApiError("CONFLICT", "Cannot delete a parameter module referenced by parameters.", 409, {
+    throw new ApiError("CONFLICT", "Cannot delete a parameter module referenced by parameters.", {
       moduleId,
       parameterCount
     });
@@ -2700,7 +2681,7 @@ export async function deleteParameterModuleForAuth(
   await db.transaction(async (tx) => {
     const deleted = await deleteParameterModule(tx, { organizationId, moduleId });
     if (!deleted) {
-      throw new ApiError("NOT_FOUND", "Parameter module was not found.", 404, { moduleId });
+      throw new ApiError("NOT_FOUND", "Parameter module was not found.", { moduleId });
     }
 
     await createParameterModuleAudit(

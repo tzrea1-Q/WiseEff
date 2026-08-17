@@ -194,7 +194,7 @@ describe("parameter spec review service", () => {
   it("resolveSpecReviewTask rejects cross-org or unknown parameterSpecId with 404", async () => {
     vi.mocked(lockOpenSpecReviewTask).mockResolvedValue(openTask);
     vi.mocked(requireOrgOrGlobalSpec).mockRejectedValue(
-      new ApiError("NOT_FOUND", "Parameter spec was not found for this organization.", 404, {
+      new ApiError("NOT_FOUND", "Parameter spec was not found for this organization.", {
         parameterSpecId: "pspec:other-org",
       }),
     );
@@ -426,7 +426,7 @@ describe("parameter spec review service", () => {
       policyTarget: null,
     });
     vi.mocked(assertPropertyKeyMatchOrConfirmed).mockImplementation(() => {
-      throw new ApiError("CONFLICT", "Selected parameter spec property key does not match the review task.", 409, {
+      throw new ApiError("CONFLICT", "Selected parameter spec property key does not match the review task.", {
         taskPropertyKey: "gpio_int",
         specPropertyKey: "other_key",
         confirmRequired: true,
