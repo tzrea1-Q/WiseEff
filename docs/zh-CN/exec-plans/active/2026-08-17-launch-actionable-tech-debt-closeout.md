@@ -40,9 +40,9 @@
 | `fix/td-079-acceptance-semantic-fixtures` / `#509` | TD-079 第一刀残留 PPV 夹具 | 已合入 `main` |
 | `fix/td-079-acceptance-remaining` / `#510` | IMPACT + PERM-MATRIX-002 | 已合入 `main` |
 | `chore/td-082-apierror-status-codemod` / `#507` | **TD-082** 机械删除 `ApiError` 第三参数 | 已合入 `main` |
-| `fix/td-079-hierarchical-modules` | **TD-079** hierarchical-modules 夹具（本批次 3 轨道） | 其他轨道只记录归属 |
-| `fix/td-079-import-wizard` | **TD-079** import-wizard 夹具 | 本轨道不要改那个 spec |
-| `feat/td-057-config-set-revision-gate` | **TD-057** 配置集修订门禁 | TD-079 夹具轨道不要改 `ConfigSetBaselinePanel` / 发布基线产品代码 |
+| `fix/td-079-hierarchical-modules` / `#511` | **TD-079** hierarchical-modules 夹具 | 已合入 `main` |
+| `fix/td-079-import-wizard` / `#512` | **TD-079** import-wizard 夹具 | 已合入 `main` |
+| `feat/td-057-config-set-revision-gate` / `#513` | **TD-057** 配置集修订门禁 | 已合入 `main` |
 
 合入前对照 `origin/main` 再核一次 `docs/PLANS.md` 与中英技术债追踪表。这两类文件经常撞车。
 
@@ -50,7 +50,7 @@
 
 - 本计划中英都在，并已从 `docs/PLANS.md` / `docs/zh-CN/PLANS.md` 挂出；本上线切片关心的追踪行都有 Done / Deferred / Blocked。
 - 归属 deferred 计划已在验收登记 + playwright-cli 证据通过后移到 `completed/`（批次 1）。
-- **TD-056** 只在归属收口已经提交且绿灯后，才作为本分支后续提交。**批次 3** 是点名并行轨道（hierarchical-modules 夹具、import-wizard 夹具、TD-057 修订门禁）。**TD-064 / TD-065**、parameter-files file-sync、xiaoze-action 的 pre-cutover 回退、翻转共享 CI job 都不在批次 3。
+- **TD-056** 只在归属收口已经提交且绿灯后，才作为本分支后续提交。**批次 3** 已于 2026-08-17 合入 `main`（#511 hierarchical-modules、#512 import-wizard、#513 TD-057）。**TD-064 / TD-065**、parameter-files file-sync、xiaoze-action 的 pre-cutover 回退、翻转共享 CI job 都不在批次 3。
 - 文档切片完成前 `npm run docs:check` 绿灯。UI 切片还要跑相关测试、`npm run build` 和 playwright-cli。
 
 ## 批次
@@ -87,18 +87,20 @@ TDD。API + port + UI + 测试 + 中英文档。不要重写配置工作台。
 
 ### 批次 3 — 并行轨道（批次 2 已在 `main` 之后）
 
-不要另开一份总方案。这些轨道从最新 `origin/main` 并行推进。每条轨道只碰自己的文件。
+不要另开一份总方案。这些轨道从最新 `origin/main` 并行推进。每条轨道只碰自己的文件。**已于 2026-08-17 合入：** #511 hierarchical-modules、#512 import-wizard、#513 TD-057。
 
 | 轨道 | 分支 | 负责 | 不要碰 |
 | --- | --- | --- | --- |
-| TD-079 hierarchical-modules | `fix/td-079-hierarchical-modules` | `e2e/acceptance/hierarchical-modules.acceptance.spec.ts`，以及它需要的语义 list `moduleId` 接缝（`listSemanticParameters` 从 `b.module_id` 取值；删除门禁改数 bindings） | `parameter-import-wizard.acceptance.spec.ts`；`project-configuration-workbench.acceptance.spec.ts`；`parameter-files.acceptance.spec.ts`；翻转 CI env |
-| TD-079 import wizard | `fix/td-079-import-wizard` | `parameter-import-wizard.acceptance.spec.ts` | 其他批次 3 轨道不要改那个 spec |
-| TD-057 修订门禁 | `feat/td-057-config-set-revision-gate` | 给配置集视图接真实修订来源，再恢复门禁。不要发明 `revision-teaching-1`。 | TD-079 夹具轨道不要改 `ConfigSetBaselinePanel` / 发布基线产品代码 |
+| TD-079 hierarchical-modules | `fix/td-079-hierarchical-modules` / `#511` | `e2e/acceptance/hierarchical-modules.acceptance.spec.ts`，以及它需要的语义 list `moduleId` 接缝（`listSemanticParameters` 从 `b.module_id` 取值；删除门禁改数 bindings） | `parameter-import-wizard.acceptance.spec.ts`；`project-configuration-workbench.acceptance.spec.ts`；`parameter-files.acceptance.spec.ts`；翻转 CI env |
+| TD-079 import wizard | `fix/td-079-import-wizard` / `#512` | `parameter-import-wizard.acceptance.spec.ts` | 其他批次 3 轨道不要改那个 spec |
+| TD-057 修订门禁 | `feat/td-057-config-set-revision-gate` / `#513` | 给配置集视图接真实修订来源，再恢复门禁。不要发明 `revision-teaching-1`。 | TD-079 夹具轨道不要改 `ConfigSetBaselinePanel` / 发布基线产品代码 |
 
-**明确不在本批：**
+**明确不在本批，批次 3 之后仍开放：**
 
 - `parameter-files.acceptance.spec.ts` 的 file-sync（需要语义同步，否则继续 pre-cutover）
+- `project-configuration-workbench.acceptance.spec.ts`（`submitStructuredEdits` + PPV 冲突种子）
 - `xiaoze-action.acceptance.spec.ts` 的 pre-cutover 回退（共享 job 翻转前保持故意）
+- 非 acceptance 的 `e2e/parameter-management.api.spec.ts`
 - 翻转共享 CI 验收 job / `WISEEFF_SEED_LEGACY_FLAT_IDENTITY`
 - **TD-064** / **TD-065** — 下一批，不是批次 3
 
@@ -122,9 +124,9 @@ TDD。API + port + UI + 测试 + 中英文档。不要重写配置工作台。
 | 归属计划收口（DRV-REG-004 / `DRV-REG-005`） | 批次 1 Done（本分支） | 批次 1 |
 | TD-046 / TD-047 | Done（已在 `main` 关闭） | 批次 1 补证据并归档 |
 | TD-056 | 批次 2 Done（本分支） | 本分支，批次 1 之后 |
-| TD-057 | 进行中（兄弟分支） | 批次 3：`feat/td-057-config-set-revision-gate` |
+| TD-057 | 已由 #513 合入 `main` | 批次 3：`feat/td-057-config-set-revision-gate` |
 | TD-064 / TD-065 | Open（后续） | 批次 4；不在批次 3 |
-| TD-079 | 进行中（批次 3 并行） | `fix/td-079-hierarchical-modules` + `fix/td-079-import-wizard`；`#509` / `#510` 已在 `main`。不要翻转 CI。 |
+| TD-079 | 进行中（残留夹具；批次 3 PR 已关） | `#509` / `#510` / `#511` / `#512` 已在 `main`。残留：`parameter-files.acceptance.spec.ts`、`project-configuration-workbench.acceptance.spec.ts`、`xiaoze-action.acceptance.spec.ts` 的 pre-cutover 回退、`e2e/parameter-management.api.spec.ts`。不要翻转 CI。 |
 | TD-082 | 已由 #507 合入 `main` | `chore/td-082-apierror-status-codemod` |
 | TD-001 | Deferred | mock/API 长期对等约束，不是工单 |
 | TD-033 | Deferred | 仅归档的遗留调试 catalog 表 |
@@ -201,14 +203,14 @@ npm run acceptance:operations
 | 质量 / 验收 | Update | 覆盖图 + 操作矩阵中英；`PARAM-FILE-ROLLBACK-001` 在 `requirements.ts` / `operationMatrix.ts` / `parameter-files.acceptance.spec.ts` |
 | 生成物 | 无变更 | 无迁移；批次 2 复用 schema 已有的 `origin='rollback'` |
 | 参考 | Review | 不变：产品化 API 草稿不是现行合同；现行合同已在上方更新 |
-| 技术债 | Update | 中英追踪表：TD-056 关闭；TD-079 remaining 列表在本批次 3 轨道后划掉 hierarchical-modules（CI 仍未翻转）；TD-082 已由 #507 关闭 |
+| 技术债 | Update | 中英追踪表：TD-056 关闭；批次 3 已合入（#511 hierarchical-modules、#512 import-wizard、#513 TD-057）；TD-079 remaining 残留 PPV 夹具已列出（CI 仍未翻转）；TD-082 已由 #507 关闭 |
 
 ## 文档更新门禁
 
 一批次在下列完成前不得称为完成：
 
 1. 该批次影响矩阵里每个 `Update` / `Review` 行都已更新，或有证据记录为不变。
-2. 该批次关闭或推进的中英追踪行已更新。TD-079 / TD-082 保持由兄弟分支负责。
+2. 该批次关闭或推进的中英追踪行已更新。TD-079 残留夹具仍开放；不要翻转 CI。TD-082 已由 #507 关闭。
 3. `npm run docs:check` 绿灯。
 4. 该批次的 UI 交互覆盖已登记（planned 桩 + 补充 playwright-cli 是诚实做法；伪造 `@acceptance` 标记不是）。
 5. 把计划移到 `completed/` 后，同名文件不得留在 `active/`（中英皆然）。
