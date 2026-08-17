@@ -43,6 +43,12 @@
 | `fix/td-079-hierarchical-modules` / `#511` | **TD-079** hierarchical-modules 夹具 | 已合入 `main` |
 | `fix/td-079-import-wizard` / `#512` | **TD-079** import-wizard 夹具 | 已合入 `main` |
 | `feat/td-057-config-set-revision-gate` / `#513` | **TD-057** 配置集修订门禁 | 已合入 `main` |
+| `fix/td-079-workbench-semantic` / `#516` | **TD-079** 工作台残留 PPV 夹具 | 已合入 `main` |
+| `feat/td-079-parameter-files-semantic-sync` / `#519` | **TD-079** 语义 file-sync | 已合入 `main` |
+| `feat/dts-reload-handoff-and-shapes` / `#517` | **TD-064** / **TD-065** | 已合入 `main` |
+| `feat/openapi-client-or-dto-validation` / `#515` | schema 级 DTO 校验（TD-003/012/018 部分；TD-008 关闭并记残差） | 已合入 `main` |
+| `test/td-073-render-harness` / `#518` | **TD-073** 部分（harness + 4 页测） | 已合入 `main` |
+| `docs/parameter-governance-deferred-adr` / `#520` | D1–D8 / TD-117 / TD-063 ADR 锁定（TD-050 / TD-053 关闭） | 已合入 `main` |
 
 合入前对照 `origin/main` 再核一次 `docs/PLANS.md` 与中英技术债追踪表。这两类文件经常撞车。
 
@@ -50,7 +56,7 @@
 
 - 本计划中英都在，并已从 `docs/PLANS.md` / `docs/zh-CN/PLANS.md` 挂出；本上线切片关心的追踪行都有 Done / Deferred / Blocked。
 - 归属 deferred 计划已在验收登记 + playwright-cli 证据通过后移到 `completed/`（批次 1）。
-- **TD-056** 只在归属收口已经提交且绿灯后，才作为本分支后续提交。**批次 3** 已于 2026-08-17 合入 `main`（#511 hierarchical-modules、#512 import-wizard、#513 TD-057）。**TD-064 / TD-065**、parameter-files file-sync、xiaoze-action 的 pre-cutover 回退、翻转共享 CI job 都不在批次 3。
+- **TD-056** 只在归属收口已经提交且绿灯后，才作为本分支后续提交。**批次 3** 已于 2026-08-17 合入 `main`（#511 hierarchical-modules、#512 import-wizard、#513 TD-057）。**批次 4** 已于 2026-08-18 合入（#516 工作台、#519 file-sync、#517 TD-064/065、#515 DTO 校验、#518 TD-073 部分、#520 治理 ADR）。TD-079 残留夹具：xiaoze-action 的 pre-cutover 回退与 `e2e/parameter-management.api.spec.ts`。不要翻转共享 CI job。
 - 文档切片完成前 `npm run docs:check` 绿灯。UI 切片还要跑相关测试、`npm run build` 和 playwright-cli。
 
 ## 批次
@@ -95,25 +101,27 @@ TDD。API + port + UI + 测试 + 中英文档。不要重写配置工作台。
 | TD-079 import wizard | `fix/td-079-import-wizard` / `#512` | `parameter-import-wizard.acceptance.spec.ts` | 其他批次 3 轨道不要改那个 spec |
 | TD-057 修订门禁 | `feat/td-057-config-set-revision-gate` / `#513` | 给配置集视图接真实修订来源，再恢复门禁。不要发明 `revision-teaching-1`。 | TD-079 夹具轨道不要改 `ConfigSetBaselinePanel` / 发布基线产品代码 |
 
-**明确不在本批，批次 3 之后仍开放：**
+**明确不在本批，批次 3 之后仍开放（批次 4 已划掉工作台与 parameter-files）：**
 
-- `parameter-files.acceptance.spec.ts` 的 file-sync（需要语义同步，否则继续 pre-cutover）
-- `project-configuration-workbench.acceptance.spec.ts`（`submitStructuredEdits` + PPV 冲突种子）
+- ~~`parameter-files.acceptance.spec.ts` 的 file-sync~~（#519；`PARAM-FILE-ROLLBACK-001` 仍 skip）
+- ~~`project-configuration-workbench.acceptance.spec.ts`~~（#516）
 - `xiaoze-action.acceptance.spec.ts` 的 pre-cutover 回退（共享 job 翻转前保持故意）
 - 非 acceptance 的 `e2e/parameter-management.api.spec.ts`
 - 翻转共享 CI 验收 job / `WISEEFF_SEED_LEGACY_FLAT_IDENTITY`
-- **TD-064** / **TD-065** — 下一批，不是批次 3
+- ~~**TD-064** / **TD-065**~~（#517）
 
 ### 批次 4 — 更后的上线可见产品切片
 
+**已于 2026-08-18 合入 `main`：** #516、#519、#517、#515、#518、#520。
+
 | ID | 为何排在后面 | 说明 |
 | --- | --- | --- |
-| **TD-064** | 工作台交接至 `/dts-reload` | 等独立重载表面稳定后再做。 |
-| **TD-065** | 拓宽 DTS 重载值形态 | 一张一张票，带 overlay + preflight 夹具；禁止静默猜编码。 |
+| **TD-064** | 工作台交接至 `/dts-reload` | **已完成**（#517）。 |
+| **TD-065** | 拓宽 DTS 重载值形态 | **已完成**（#517；删除 = 诚实预检失败）。 |
 
 ### 更后的产品/平台批次（本切片不阻断上线）
 
-卫生与架构余量是真债，但不该抢走上线窗口：TD-003 / TD-008 / TD-012 / TD-018（生成客户端）、TD-005（已完成计划卫生）、TD-013 / TD-014（审批/目录）、TD-048–TD-053 / TD-055 / TD-117（治理延期问题）、TD-059（剩余弹窗）、TD-063 / TD-066 / TD-067 / TD-068（重载/桥/安全后续）、TD-071–TD-077（测试架构）、TD-097 / TD-109 / TD-110 / TD-112 / TD-114（前端余量）。触及那些表面时再捡；不要捆进本分支。
+卫生与架构余量是真债，但不该抢走上线窗口：TD-003 / TD-012 / TD-018（生成客户端余量；TD-008 已关并记 POST logs + SSE 残差）、TD-005（已完成计划卫生）、TD-013 / TD-014（审批/目录）、TD-048 / TD-049 / TD-051 / TD-052 / TD-055 / TD-117（治理——决策已锁、实现仍开；TD-050 / TD-053 已关）、TD-059（剩余弹窗）、TD-063 / TD-066 / TD-067 / TD-068（重载/桥/安全后续）、TD-071–TD-077（测试架构；TD-073 部分关闭）、TD-097 / TD-109 / TD-110 / TD-112 / TD-114（前端余量）。触及那些表面时再捡；不要捆进本分支。
 
 ## 本上线切片的逐条 TD 状态
 
@@ -125,8 +133,8 @@ TDD。API + port + UI + 测试 + 中英文档。不要重写配置工作台。
 | TD-046 / TD-047 | Done（已在 `main` 关闭） | 批次 1 补证据并归档 |
 | TD-056 | 批次 2 Done（本分支） | 本分支，批次 1 之后 |
 | TD-057 | 已由 #513 合入 `main` | 批次 3：`feat/td-057-config-set-revision-gate` |
-| TD-064 / TD-065 | Open（后续） | 批次 4；不在批次 3 |
-| TD-079 | 进行中（残留夹具；批次 3 PR 已关） | `#509` / `#510` / `#511` / `#512` 已在 `main`。残留：`parameter-files.acceptance.spec.ts`、`project-configuration-workbench.acceptance.spec.ts`、`xiaoze-action.acceptance.spec.ts` 的 pre-cutover 回退、`e2e/parameter-management.api.spec.ts`。不要翻转 CI。 |
+| TD-064 / TD-065 | 已由 #517 合入 `main` | 批次 4 |
+| TD-079 | 进行中（残留夹具） | `#509`–`#512` / `#516` / `#519` 已在 `main`。残留：`xiaoze-action.acceptance.spec.ts` 的 pre-cutover 回退、`e2e/parameter-management.api.spec.ts`。不要翻转 CI。 |
 | TD-082 | 已由 #507 合入 `main` | `chore/td-082-apierror-status-codemod` |
 | TD-001 | Deferred | mock/API 长期对等约束，不是工单 |
 | TD-033 | Deferred | 仅归档的遗留调试 catalog 表 |
@@ -142,7 +150,7 @@ TDD。API + port + UI + 测试 + 中英文档。不要重写配置工作台。
 | TD-038 / TD-042 | Blocked | 目标证明 / 干净快照 cutover 演练 |
 | TD-039 / TD-040 | Blocked | 跟拓扑 cutover 走；不要另开程序 |
 | TD-103 / TD-105 / TD-116 | Blocked | 需要 KMS 或真实投递量 |
-| 其余开放行（TD-003、TD-005、TD-008、TD-012–014、TD-018、TD-048–055、TD-059、TD-063、TD-066–068、TD-071–077、TD-097、TD-109–112、TD-114、TD-117 等） | Open（后续） | 不在本分支 |
+| 其余开放行（TD-003、TD-005、TD-012–014、TD-018、TD-048–049、TD-051–052、TD-055、TD-059、TD-063、TD-066–068、TD-071–077、TD-097、TD-109–112、TD-114、TD-117 等） | Open（后续） | 不在本分支。TD-003/012/018/073/048 保持**部分**开放；TD-008/050/053/064/065 已关。 |
 
 ## UI 交互自动化审查
 
@@ -203,14 +211,14 @@ npm run acceptance:operations
 | 质量 / 验收 | Update | 覆盖图 + 操作矩阵中英；`PARAM-FILE-ROLLBACK-001` 在 `requirements.ts` / `operationMatrix.ts` / `parameter-files.acceptance.spec.ts` |
 | 生成物 | 无变更 | 无迁移；批次 2 复用 schema 已有的 `origin='rollback'` |
 | 参考 | Review | 不变：产品化 API 草稿不是现行合同；现行合同已在上方更新 |
-| 技术债 | Update | 中英追踪表：TD-056 关闭；批次 3 已合入（#511 hierarchical-modules、#512 import-wizard、#513 TD-057）；TD-079 remaining 残留 PPV 夹具已列出（CI 仍未翻转）；TD-082 已由 #507 关闭 |
+| 技术债 | Update | 中英追踪表：TD-056 关闭；批次 3 已合入（#511 hierarchical-modules、#512 import-wizard、#513 TD-057）；批次 4 已合入（#516/#519 TD-079 夹具、#517 TD-064/065、#515 DTO 校验、#518 TD-073 部分、#520 ADR；TD-008/050/053 关闭）。TD-079 remaining：xiaoze pre-cutover 回退 + `parameter-management.api.spec.ts`（CI 仍未翻转）。TD-082 已由 #507 关闭 |
 
 ## 文档更新门禁
 
 一批次在下列完成前不得称为完成：
 
 1. 该批次影响矩阵里每个 `Update` / `Review` 行都已更新，或有证据记录为不变。
-2. 该批次关闭或推进的中英追踪行已更新。TD-079 残留夹具仍开放；不要翻转 CI。TD-082 已由 #507 关闭。
+2. 该批次关闭或推进的中英追踪行已更新。TD-079 残留夹具仍开放（`xiaoze-action.acceptance.spec.ts` 的 pre-cutover 回退、`e2e/parameter-management.api.spec.ts`）；不要翻转 CI。TD-082 已由 #507 关闭。
 3. `npm run docs:check` 绿灯。
 4. 该批次的 UI 交互覆盖已登记（planned 桩 + 补充 playwright-cli 是诚实做法；伪造 `@acceptance` 标记不是）。
 5. 把计划移到 `completed/` 后，同名文件不得留在 `active/`（中英皆然）。
