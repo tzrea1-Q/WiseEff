@@ -1,11 +1,17 @@
 # Parameter spec editor fidelity
 
-> Status: **Active** — SE-D1 through SE-D6 settled 2026-08-03; implementation not started
+> Status: **Active** — partial landing on `main`; remaining write-contract work is SE-2, SE-5, and SE-D6
 > Date: 2026-08-03
 > Chinese: [`docs/zh-CN/exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md`](../../zh-CN/exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md)
 > Governing IA: [ADR-0001](../../adr/0001-parameter-admin-organized-by-governance-scope.md), [ADR-0015](../../adr/0015-governance-queues-live-with-the-object-they-govern.md)
 > Related decisions: [ADR-0010](../../adr/0010-attribution-tree-is-taxonomy-not-topology.md) (attribution is taxonomy), TD-047 (`driverModule` is display-only)
 > Predecessor: [`2026-08-03-parameter-admin-org-ia-consolidation.md`](./2026-08-03-parameter-admin-org-ia-consolidation.md)
+
+## Landed vs remaining
+
+**Landed:** SE-D1 (`policyTarget` removed from the editor write path); SE-D3 server key-presence (`units` no longer uses `coalesce` to ignore null); SE-D4 activate accepts and persists `units` / `exampleValue`; shared `ValueShapeFields`; ModalDialog chrome for SE-17–SE-21.
+
+**Remaining:** SE-2 still shallow-merges `{ ...spec.constraints, ...input.constraints }` in `updateParameterSpec` and `activateParameterSpec`; SE-5 frontend still falls back `displayName || propertyKey`; SE-D5 pre-save diff confirm; SE-D6 PATCH still does not call `assertSpecActivatable` when `valueShape` changes.
 
 ## Context
 

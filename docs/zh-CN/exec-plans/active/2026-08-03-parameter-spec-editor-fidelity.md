@@ -1,11 +1,17 @@
 # 参数定义编辑器保真度
 
-> 状态：**进行中** — SE-D1 至 SE-D6 已于 2026-08-03 定案；实现尚未开工
+> 状态：**进行中** — 部分已在 `main` 落地；剩余写入契约为 SE-2、SE-5、SE-D6
 > 日期：2026-08-03
 > English: [`docs/exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md`](../../../exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md)
 > 约束性 IA：[ADR-0001](../../../adr/0001-parameter-admin-organized-by-governance-scope.md)、[ADR-0015](../../../adr/0015-governance-queues-live-with-the-object-they-govern.md)
 > 相关决策：[ADR-0010](../../../adr/0010-attribution-tree-is-taxonomy-not-topology.md)（归属树是分类而非拓扑）、TD-047（`driverModule` 仅用于展示）
 > 前序计划：[`2026-08-03-parameter-admin-org-ia-consolidation.md`](./2026-08-03-parameter-admin-org-ia-consolidation.md)
+
+## 已落地与剩余
+
+**已落地：** SE-D1（编辑器写入路径已去掉 `policyTarget`）；SE-D3 服务端按键是否出现判定（`units` 不再用 `coalesce` 忽略 null）；SE-D4 激活会接受并持久化 `units` / `exampleValue`；共用 `ValueShapeFields`；SE-17–SE-21 的 ModalDialog 外壳。
+
+**剩余：** SE-2 仍在 `updateParameterSpec` 与 `activateParameterSpec` 里浅合并 `{ ...spec.constraints, ...input.constraints }`；SE-5 前端仍回退 `displayName || propertyKey`；SE-D5 保存前 diff 确认；SE-D6 在 `valueShape` 变化时 PATCH 仍不调用 `assertSpecActivatable`。
 
 ## 背景
 

@@ -1,10 +1,10 @@
 # Project configuration workbench defect repair
 
-> Status: **Active** — Batches 0–3 + CW-T1 implemented on `fix/project-configuration-workbench-defects`; awaiting parent review / PR
+> Status: **Completed 2026-08-17** — command-bar layout, CW-B1 `project_parameter_bindings` join, and CW-B2 `readiness-unavailable` landed on `main`; stretch 800–1000 remains TD-062.
 > Date: 2026-08-08
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-08-project-configuration-workbench-defect-repair.md`](../../zh-CN/exec-plans/active/2026-08-08-project-configuration-workbench-defect-repair.md)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-08-project-configuration-workbench-defect-repair.md`](../../zh-CN/exec-plans/completed/2026-08-08-project-configuration-workbench-defect-repair.md)
 > Locked design: [`docs/design-docs/2026-08-06-project-configuration-workbench-design.md`](../../design-docs/2026-08-06-project-configuration-workbench-design.md)
-> Cutover that shipped the surface: [`docs/exec-plans/completed/2026-08-08-project-configuration-workbench-cutover.md`](../completed/2026-08-08-project-configuration-workbench-cutover.md)
+> Cutover that shipped the surface: [`docs/exec-plans/completed/2026-08-08-project-configuration-workbench-cutover.md`](./2026-08-08-project-configuration-workbench-cutover.md)
 
 ## Context
 
