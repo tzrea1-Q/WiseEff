@@ -56,4 +56,31 @@ describe("disposable post-cutover acceptance database safety", () => {
       }),
     ).not.toThrow();
   });
+
+  it("rejects a marker purpose other than the expected one", () => {
+    expect(() =>
+      assertDisposableDatabaseIdentity({
+        databaseName: "wiseeff_acceptance_disposable_round6_abc",
+        markerPurpose: "xiaoze-action",
+        markerMigrationRunId: "run-1",
+        cutoverMigrationRunId: "run-1",
+        expectedMigrationRunId: "run-1",
+      }),
+    ).toThrow(/parameter-topology test-only marker/i);
+  });
+
+  it("accepts a custom marker purpose when the caller expects it", () => {
+    expect(() =>
+      assertDisposableDatabaseIdentity(
+        {
+          databaseName: "wiseeff_acceptance_disposable_round6_abc",
+          markerPurpose: "xiaoze-action",
+          markerMigrationRunId: "run-1",
+          cutoverMigrationRunId: "run-1",
+          expectedMigrationRunId: "run-1",
+        },
+        "xiaoze-action",
+      ),
+    ).not.toThrow();
+  });
 });
