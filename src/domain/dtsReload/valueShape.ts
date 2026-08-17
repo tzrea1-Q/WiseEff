@@ -2,8 +2,10 @@
  * Reload value shape — shared vocabulary for DTS reload debugging value shapes.
  *
  * A resolved reload value shape (CONTEXT.md "Reload value shape") is the normalized
- * vocabulary a debug value must conform to. Four families: integer cell arrays at
- * `/bits/` 8|16|32, GPIO-style phandle cell arrays, single strings, and string lists.
+ * vocabulary a debug value must conform to. Families: integer cell arrays at
+ * `/bits/` 8|16|32, GPIO-style phandle cell arrays, bare phandle lists, single strings,
+ * string lists, booleans, empty properties, mixed string+cell values, and explicit
+ * property deletion (`/delete-property/`). Encodings are never guessed.
  *
  * This file is pure vocabulary plus authoring expectations: family predicates, the
  * structural support check, authoring issue codes, and per-family authoring examples.
@@ -25,13 +27,15 @@ export type CandidateValueShape = {
 } | null;
 
 /**
- * A shape after `resolveReloadValueShape` normalized it onto the reload vocabulary
- * (`cells` | `phandle-cells` | `string` | `string-list` when supported). Structurally
- * identical to `CandidateValueShape`; the name states that resolution has run.
+ * A shape after `resolveReloadValueShape` normalized it onto the reload vocabulary.
+ * Structurally identical to `CandidateValueShape`; the name states that resolution has run.
  */
 export type ReloadValueShape = CandidateValueShape;
 
 export type SupportedCellBits = 8 | 16 | 32;
+
+/** Exact overlay token for property deletion. Never inferred from an empty RHS. */
+export const RELOAD_DELETE_PROPERTY_TOKEN = "/delete-property/";
 
 const SUPPORTED_CELL_BITS = new Set([8, 16, 32]);
 
@@ -47,14 +51,46 @@ export function isPhandleCellFamilyKind(kind: string | null | undefined): boolea
   return kind === "mixed" || kind === "phandle-list" || kind === "phandle-cells";
 }
 
+export function isReloadDeletePropertyToken(raw: string): boolean {
+  return raw.trim() === RELOAD_DELETE_PROPERTY_TOKEN;
+}
+
 /**
  * Supported reload shapes: integer cell arrays at bits 8/16/32 (including catalog `bytes`
- * authored as `/bits/ 8 <…>`), single strings, string lists, and GPIO-style phandle cell arrays.
+ * authored as `/bits/ 8 <…>`), single strings, string lists, GPIO-style phandle cell arrays,
+ * bare phandle lists, booleans, empty properties, mixed values, and explicit deletion.
  * Purely structural — expects a resolved shape and never parses values.
  */
 export function isSupportedReloadValueShape(valueShape: ReloadValueShape): boolean {
   if (!valueShape || typeof valueShape !== "object") return false;
-  if (valueShape.kind === "string-list" || valueShape.kind === "string") return true;
+  if (
+    valueShape.kind === "string-list" ||
+    valueShape.kind === "string" ||
+    valueShape.kind === "boolean" ||
+    valueShape.kind === "empty" ||
+    valueShape.kind === "mixed" ||
+    valueShape.kind === "delete"
+  ) {
+    return true;
+  }
+
+  if (valueShape.kind === "phandle-list") {
+    if (valueShape.bits !== undefined && valueShape.bits !== 32) return false;
+    if (
+      typeof valueShape.cellsPerGroup !== "number" ||
+      !Number.isInteger(valueShape.cellsPerGroup) ||
+      valueShape.cellsPerGroup < 1
+    ) {
+      return false;
+    }
+    if (
+      valueShape.groups !== undefined &&
+      (typeof valueShape.groups !== "number" || !Number.isInteger(valueShape.groups) || valueShape.groups < 1)
+    ) {
+      return false;
+    }
+    return true;
+  }
 
   if (valueShape.kind === "phandle-cells") {
     if (valueShape.bits !== undefined && valueShape.bits !== 32) return false;
@@ -107,6 +143,10 @@ export type ReloadAuthoringIssue =
   | { reason: "not-single-string" }
   | { reason: "not-string-list" }
   | { reason: "not-phandle-cell-array" }
+  | { reason: "not-phandle-list" }
+  | { reason: "not-mixed" }
+  | { reason: "not-boolean" }
+  | { reason: "not-empty" }
   | { reason: "not-integer-cell-array"; expectedBits: SupportedCellBits }
   | {
       reason: "cells-per-group-mismatch";
@@ -134,7 +174,22 @@ export function describeReloadValueShapeAuthoring(
   if (valueShape?.kind === "string-list") {
     return { placeholder: '"okay"' };
   }
-  if (isPhandleCellFamilyKind(valueShape?.kind)) {
+  if (valueShape?.kind === "boolean") {
+    return { placeholder: "true" };
+  }
+  if (valueShape?.kind === "empty") {
+    return { placeholder: "" };
+  }
+  if (valueShape?.kind === "delete") {
+    return { placeholder: RELOAD_DELETE_PROPERTY_TOKEN };
+  }
+  if (valueShape?.kind === "mixed") {
+    return { placeholder: '"name", <1 0>' };
+  }
+  if (valueShape?.kind === "phandle-list") {
+    return { placeholder: "<&gic>" };
+  }
+  if (valueShape?.kind === "phandle-cells" || isPhandleCellFamilyKind(valueShape?.kind)) {
     return { placeholder: "<&gpio13 29 0>" };
   }
   const bits = isSupportedCellBits(valueShape?.bits) ? valueShape!.bits! : 32;

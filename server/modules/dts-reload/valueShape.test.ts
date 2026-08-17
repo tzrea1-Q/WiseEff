@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseDtsValue } from "../dts";
 import {
+  canonicalizeMixedAsDtbCells,
   canonicalizeReloadValue,
   compareReloadDebugValue,
   inferCellsPerGroupFromBaseline,
@@ -67,11 +68,27 @@ describe("resolveReloadValueShape", () => {
     });
   });
 
-  it("does not invent width for a bare phandle-only list such as interrupt-parent", () => {
+  it("resolves a bare phandle-only list such as interrupt-parent onto phandle-list", () => {
     expect(resolveReloadValueShape({ kind: "phandle-list" }, "<&gic>")).toEqual({
-      kind: "phandle-cells",
-      bits: 32
+      kind: "phandle-list",
+      bits: 32,
+      cellsPerGroup: 1
     });
+  });
+
+  it("resolves catalog boolean and empty without guessing from the property name", () => {
+    expect(resolveReloadValueShape({ kind: "boolean" }, "")).toEqual({ kind: "boolean" });
+    expect(resolveReloadValueShape({ kind: "bool" }, null)).toEqual({ kind: "boolean" });
+    expect(resolveReloadValueShape({ kind: "empty" }, "")).toEqual({ kind: "empty" });
+  });
+
+  it("keeps true mixed string+cell baselines as mixed and refuses to guess cells", () => {
+    expect(resolveReloadValueShape({ kind: "mixed" }, '"aux", <1 0>')).toEqual({ kind: "mixed" });
+    expect(resolveReloadValueShape({ kind: "mixed" }, "<1 2 3>")).toBeNull();
+  });
+
+  it("does not coerce a phandle-list integer baseline into GPIO cells", () => {
+    expect(resolveReloadValueShape({ kind: "phandle-list" }, "<1 2 3>")).toBeNull();
   });
 
   it("resolves catalog bytes with /bits/ 8 baselines onto 8-bit cells", () => {
@@ -273,6 +290,65 @@ describe("validateAuthoredDebugValue", () => {
       }).ok
     ).toBe(true);
   });
+
+  it("accepts boolean presence, false deletion, and /delete-property/ without property-name guessing", () => {
+    expect(validateAuthoredDebugValue("keep-power", "", { kind: "boolean" })).toMatchObject({
+      ok: true,
+      parsed: { kind: "boolean", present: true }
+    });
+    expect(validateAuthoredDebugValue("keep-power", "true", { kind: "boolean" }).ok).toBe(true);
+    expect(validateAuthoredDebugValue("keep-power", "false", { kind: "boolean" })).toMatchObject({
+      ok: true,
+      deleteProperty: true
+    });
+    expect(validateAuthoredDebugValue("keep-power", "/delete-property/", { kind: "boolean" })).toMatchObject({
+      ok: true,
+      deleteProperty: true
+    });
+    expect(validateAuthoredDebugValue("keep-power", "<1>", { kind: "boolean" })).toMatchObject({
+      ok: false,
+      issue: { reason: "not-boolean" }
+    });
+    expect(validateAuthoredDebugValue("watchdog_time", "", { kind: "cells", bits: 32, cellsPerGroup: 1 })).toMatchObject({
+      ok: false,
+      issue: { reason: "unparsable", message: "empty debug value" }
+    });
+  });
+
+  it("accepts empty properties and refuses to infer deletion from an empty cell array", () => {
+    expect(validateAuthoredDebugValue("ranges", "", { kind: "empty" })).toMatchObject({
+      ok: true,
+      parsed: { kind: "empty" }
+    });
+    expect(validateAuthoredDebugValue("ranges", "/delete-property/", { kind: "empty" }).deleteProperty).toBe(true);
+    expect(validateAuthoredDebugValue("ranges", "true", { kind: "empty" })).toMatchObject({
+      ok: false,
+      issue: { reason: "not-empty" }
+    });
+  });
+
+  it("accepts a bare phandle list and mixed string+cell authoring", () => {
+    expect(validateAuthoredDebugValue("interrupt-parent", "<&gic>", { kind: "phandle-list", bits: 32, cellsPerGroup: 1 }).ok).toBe(
+      true
+    );
+    expect(
+      validateAuthoredDebugValue("interrupt-parent", "<&gpio13 29 0>", {
+        kind: "phandle-list",
+        bits: 32,
+        cellsPerGroup: 1
+      })
+    ).toMatchObject({ ok: false, issue: { reason: "not-phandle-list" } });
+    const mixed = validateAuthoredDebugValue("aux-map", '"aux", <1 0>', { kind: "mixed" });
+    expect(mixed.ok).toBe(true);
+    expect(validateAuthoredDebugValue("aux-map", "<&gpio13 29 0>", { kind: "mixed" })).toMatchObject({
+      ok: false,
+      issue: { reason: "not-mixed" }
+    });
+    expect(validateAuthoredDebugValue("aux-map", "<1 2>", { kind: "mixed" })).toMatchObject({
+      ok: false,
+      issue: { reason: "not-mixed" }
+    });
+  });
 });
 
 describe("compareReloadDebugValue", () => {
@@ -410,6 +486,49 @@ describe("compareReloadDebugValue", () => {
     ).toBe("incomparable");
   });
 
+  it("compares boolean presence and mixed AST without coercing mixed into cells", () => {
+    expect(
+      compareReloadDebugValue({
+        propertyKey: "keep-power",
+        debugValue: "true",
+        readValue: "",
+        valueShape: { kind: "boolean" }
+      })
+    ).toBe("matched");
+    expect(
+      compareReloadDebugValue({
+        propertyKey: "keep-power",
+        debugValue: "false",
+        readValue: "",
+        valueShape: { kind: "boolean" }
+      })
+    ).toBe("contradicted");
+    expect(
+      compareReloadDebugValue({
+        propertyKey: "aux-map",
+        debugValue: '"aux", <1 0>',
+        readValue: '"aux", <1 0>',
+        valueShape: { kind: "mixed" }
+      })
+    ).toBe("matched");
+    expect(
+      compareReloadDebugValue({
+        propertyKey: "aux-map",
+        debugValue: '"aux", <1 0>',
+        readValue: "<1635088384 1 0>",
+        valueShape: { kind: "mixed" }
+      })
+    ).toBe("incomparable");
+    expect(
+      compareReloadDebugValue({
+        propertyKey: "interrupt-parent",
+        debugValue: "<&gic>",
+        readValue: "<&gic>",
+        valueShape: { kind: "phandle-list", bits: 32, cellsPerGroup: 1 }
+      })
+    ).toBe("matched");
+  });
+
   it("matches /bits/ 8 debug values against square-bracket or bare byte read-back", () => {
     expect(
       compareReloadDebugValue({
@@ -463,5 +582,15 @@ describe("canonicalizeReloadValue", () => {
 
   it("falls back to the trimmed fallback text when the value is missing", () => {
     expect(canonicalizeReloadValue(undefined, "  raw text  ")).toBe("raw text");
+  });
+
+  it("renders boolean/empty as presence and mixed as joined segments", () => {
+    expect(canonicalizeReloadValue({ kind: "boolean", present: true }, "keep-power")).toBe("");
+    expect(canonicalizeReloadValue({ kind: "empty" }, "ranges")).toBe("");
+    expect(canonicalizeReloadValue(parsed("aux-map", '"aux", <1 0>'), "")).toBe('"aux", <1 0>');
+  });
+
+  it("encodes mixed overlays through the DTB property layout dtc decompiles to cells", () => {
+    expect(canonicalizeMixedAsDtbCells(parsed("aux-map", '"aux", <1 0>'))).toBe("<1635088384 1 0>");
   });
 });

@@ -79,6 +79,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `DTS-RELOAD-VERIFY-001` | P0 | debugging | automated | `/dts-reload` | Hardware Committer, Admin | api | `e2e/acceptance/dts-reload-deploy.acceptance.spec.ts`<br>`server/modules/dts-reload/deploy.test.ts` |
 | `DTS-RELOAD-RESIDUE-001` | P0 | debugging | automated | `/dts-reload` | Hardware Committer, Admin | api | `e2e/acceptance/dts-reload-deploy.acceptance.spec.ts`<br>`server/modules/dts-reload/residue.test.ts`<br>`server/modules/dts-reload/restoreBaseline.test.ts` |
 | `DTS-RELOAD-DEPLOY-HW-001` | P1 | debugging | conditional | `/dts-reload` | Hardware Committer, Admin | api | `e2e/acceptance/dts-reload-deploy.acceptance.spec.ts` |
+| `DTS-RELOAD-HANDOFF-001` | P1 | debugging | future | `/dts-reload` | Hardware Committer, Admin | ui | `e2e/acceptance/dts-reload-handoff.acceptance.spec.ts` |
 | `HDC-LAB-001` | P1 | debugging | conditional | `/node-debugging` | Hardware Committer, Admin | ui, api, audit | `e2e/acceptance/hdc-device-lab.acceptance.spec.ts` |
 | `ADB-LAB-001` | P1 | debugging | conditional | `/node-debugging` | Hardware Committer, Admin | ui, api, audit | `e2e/acceptance/adb-device-lab.acceptance.spec.ts` |
 | `XIAOZE-PERCEPTION-001` | P0 | agent | automated | `/parameters` | Admin | ui, api | `e2e/acceptance/xiaoze-perception.acceptance.spec.ts` |
@@ -172,6 +173,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 - `BRIDGE-WIN-001`: Requires a real Windows bridge runtime and localhost health endpoint orchestration in acceptance.
 - `BRIDGE-HDC-001`: Requires a pre-paired bridge process, hdc on PATH, USB device, and DEVICE_BRIDGE_HDC_AVAILABLE=true.
 - `DTS-RELOAD-DEPLOY-HW-001`: Requires DEVICE_BRIDGE_HDC_AVAILABLE=true, a paired bridge with mountTarget/pushFile/readKernelLog, USB device, and an approved lab reload destination.
+- `DTS-RELOAD-HANDOFF-001`: Browser Playwright automation is pending; unit coverage and playwright-cli evidence land with TD-064.
 - `HDC-LAB-001`: Requires DEBUG_DEVICE_GATEWAY_MODE=hdc and HDC_DEVICE_LAB_AVAILABLE=true with hardware attached.
 - `ADB-LAB-001`: Requires DEBUG_DEVICE_GATEWAY_MODE=adb, ADB_DEVICE_LAB_AVAILABLE=true, exactly one ready ADB device, one ADB inventory row, and one shared default ADB smoke binding.
 - `XIAOZE-APPROVAL-EXEC-FAIL-001`: A true browser path needs a stale-working-tip / unresolvable-overlay fixture that is too brittle for this slice. Graph, orchestrator, and AG-UI assembly tests are the blocking gate; this ID is an honest planned stub.

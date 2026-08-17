@@ -78,6 +78,11 @@ export type DtsReloadRunSessionSnapshot = {
   historyFilterDevice: boolean;
   /** Selected candidates in reload-batch insertion order. */
   selectedCandidates: DtsReloadCandidate[];
+  /**
+   * Binding ids carried from the parameter workbench (`?bindingIds=`).
+   * Null means no hand-off filter; the candidate table shows the full project list.
+   */
+  handoffBindingIds: string[] | null;
   selectedHasSensitive: boolean;
   selectedHasCriticalSensitive: boolean;
   selectedHasMeaningfulDebugChange: boolean;
@@ -98,6 +103,8 @@ export type DtsReloadRunSessionOptions = {
   initialProjectId?: string;
   initialBridges?: DtsReloadBridgeSummary[];
   initialTargetRef?: string;
+  /** Workbench hand-off (`?bindingIds=`); mount-time only. */
+  initialBindingIds?: string[];
   /** URL seams for run-id rehydration; default to `window.location` / `history.replaceState`. */
   readRunId?: () => string | null;
   writeRunId?: (runId: string | null) => void;
@@ -136,6 +143,7 @@ export type DtsReloadRunSession = {
   setProtocol(protocol: DtsReloadDeployProtocol): void;
   setTargetRef(targetRef: string): void;
   setDeviceId(deviceId: string): void;
+  clearHandoff(): void;
 };
 
 function defaultReadRunId(): string | null {
@@ -201,6 +209,10 @@ export function createDtsReloadRunSession(
   let historyLoadingMore = false;
   let historyError = "";
   let historyFilterDevice = false;
+  let handoffBindingIds: string[] | null =
+    options.initialBindingIds && options.initialBindingIds.length > 0
+      ? [...options.initialBindingIds]
+      : null;
 
   let candidatesGeneration = 0;
   let residueGeneration = 0;
@@ -231,7 +243,11 @@ export function createDtsReloadRunSession(
       Boolean(candidate.sensitiveMatch)
     );
     const selectedHasMeaningfulDebugChange = selectedCandidates.some((candidate) =>
-      hasMeaningfulDebugChange(debugValues[candidate.bindingId] ?? "", candidate.baselineValue)
+      hasMeaningfulDebugChange(
+        debugValues[candidate.bindingId] ?? "",
+        candidate.baselineValue,
+        candidate.resolvedValueShape
+      )
     );
 
     const residueBindingIds = new Set(residue?.parameters.map((entry) => entry.bindingId) ?? []);
@@ -272,6 +288,7 @@ export function createDtsReloadRunSession(
       historyLoadingMore,
       historyError,
       historyFilterDevice,
+      handoffBindingIds,
       selectedCandidates,
       selectedHasSensitive,
       selectedHasCriticalSensitive,
@@ -329,6 +346,7 @@ export function createDtsReloadRunSession(
     selectProject(nextProjectId) {
       if (projectId === nextProjectId) return;
       projectId = nextProjectId;
+      handoffBindingIds = null;
       // Invalidate any in-flight candidate load for the previous project immediately.
       candidatesGeneration += 1;
       emit();
@@ -350,7 +368,10 @@ export function createDtsReloadRunSession(
         if (generation !== candidatesGeneration) return;
         candidates = result.items;
         const firstDebuggable = result.items.find((item) => item.debuggable);
-        if (firstDebuggable) {
+        if (handoffBindingIds && handoffBindingIds.length > 0) {
+          selectedBindingIds = [];
+          debugValues = {};
+        } else if (firstDebuggable) {
           selectedBindingIds = [firstDebuggable.bindingId];
           debugValues = { [firstDebuggable.bindingId]: firstDebuggable.baselineValue ?? "" };
         } else {
@@ -434,7 +455,7 @@ export function createDtsReloadRunSession(
     confirmCandidateDebugValue(bindingId, debugValue) {
       const candidate = candidates.find((item) => item.bindingId === bindingId);
       if (!candidate) return "参数不存在或不可调试。";
-      if (!hasMeaningfulDebugChange(debugValue, candidate.baselineValue)) {
+      if (!hasMeaningfulDebugChange(debugValue, candidate.baselineValue, candidate.resolvedValueShape)) {
         return debugValue.trim()
           ? "调试值与库基线相同，无需加入本轮。"
           : "请输入调试值。";
@@ -816,6 +837,12 @@ export function createDtsReloadRunSession(
     setDeviceId(nextDeviceId) {
       deviceId = nextDeviceId;
       deviceIdTouched = true;
+      emit();
+    },
+
+    clearHandoff() {
+      if (handoffBindingIds === null) return;
+      handoffBindingIds = null;
       emit();
     }
   };

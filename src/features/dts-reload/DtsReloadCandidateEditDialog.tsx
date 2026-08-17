@@ -70,7 +70,7 @@ export function DtsReloadCandidateEditDialog({
       : candidate.sensitiveMatch
         ? "敏感 · high"
         : null;
-  const canSubmit = hasMeaningfulDebugChange(debugValue, candidate.baselineValue);
+  const canSubmit = hasMeaningfulDebugChange(debugValue, candidate.baselineValue, candidate.resolvedValueShape);
   const submitLabel = alreadyInBatch ? "更新本轮" : "加入本轮重载";
 
   const submit = () => {

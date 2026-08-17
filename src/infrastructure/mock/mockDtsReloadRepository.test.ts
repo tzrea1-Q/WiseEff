@@ -35,7 +35,18 @@ describe("createMockDtsReloadRepository (DtsReloadRepository contract)", () => {
         return shape.kind;
       });
     expect(kinds).toEqual(
-      expect.arrayContaining(["cells-32", "cells-8", "cells-16", "string", "string-list", "phandle-cells"])
+      expect.arrayContaining([
+        "cells-32",
+        "cells-8",
+        "cells-16",
+        "string",
+        "string-list",
+        "phandle-cells",
+        "boolean",
+        "empty",
+        "phandle-list",
+        "mixed"
+      ])
     );
 
     // Every debuggable baseline must pass the shared authoring pre-check for its own shape —

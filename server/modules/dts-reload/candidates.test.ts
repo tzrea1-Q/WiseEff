@@ -55,8 +55,8 @@ describe("classifyReloadCandidate", () => {
         valueShapeKind: "phandle-list",
         baselineValue: "<&gic>",
         constraints: {}
-      }).blockReason
-    ).toBe("unsupported-value-shape");
+      }).debuggable
+    ).toBe(true);
     expect(classifyReloadCandidate({ ...base, baselineValue: null }).blockReason).toBe("no-baseline-value");
   });
 
@@ -101,6 +101,52 @@ describe("classifyReloadCandidate", () => {
         constraints: { cells: 3 }
       }).debuggable
     ).toBe(true);
+  });
+
+  it("marks boolean, empty, bare phandle, and true mixed bindings as debuggable", () => {
+    expect(
+      classifyReloadCandidate({
+        ...base,
+        propertyKey: "keep-power",
+        valueShape: { kind: "boolean" },
+        valueShapeKind: "boolean",
+        baselineValue: "",
+        constraints: {}
+      }).debuggable
+    ).toBe(true);
+    expect(
+      classifyReloadCandidate({
+        ...base,
+        propertyKey: "ranges",
+        valueShape: { kind: "empty" },
+        valueShapeKind: "empty",
+        baselineValue: "",
+        constraints: {}
+      }).debuggable
+    ).toBe(true);
+    expect(
+      classifyReloadCandidate({
+        ...base,
+        propertyKey: "aux-map",
+        valueShape: { kind: "mixed" },
+        valueShapeKind: "mixed",
+        baselineValue: '"aux", <1 0>',
+        constraints: {}
+      }).debuggable
+    ).toBe(true);
+  });
+
+  it("still blocks mixed catalog rows whose baseline is integer cells", () => {
+    expect(
+      classifyReloadCandidate({
+        ...base,
+        propertyKey: "aux-map",
+        valueShape: { kind: "mixed" },
+        valueShapeKind: "mixed",
+        baselineValue: "<1 2 3>",
+        constraints: {}
+      }).blockReason
+    ).toBe("unsupported-value-shape");
   });
 
   it("marks catalog bytes bindings authored as /bits/ 8 as debuggable", () => {

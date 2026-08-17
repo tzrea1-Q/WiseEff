@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { validateDebugValue, type DtsReloadDebugValueTarget } from "./debugValue";
+import { hasMeaningfulDebugChange, validateDebugValue, type DtsReloadDebugValueTarget } from "./debugValue";
 
 function target(
   resolvedValueShape: DtsReloadDebugValueTarget["resolvedValueShape"],
@@ -135,8 +135,6 @@ describe("validateDebugValue", () => {
       { name: "accepts a single phandle group", raw: "<&gpio13 29 0>", candidate: phandleCells({ cells: 3 }), expected: null },
       { name: "accepts multiple uniform groups", raw: "<&gpio1 2 3> <&gpio2 4 5>", candidate: phandleCells({ cells: 3 }), expected: null },
       { name: "accepts hex integers after the phandle", raw: "<&gpio13 0x1D 0x0>", candidate: phandleCells({ cells: 3 }), expected: null },
-      { name: "routes the mixed catalog kind to the phandle family", raw: "<&gpio13 29 0>", candidate: target({ kind: "mixed" }, { cells: 3 }), expected: null },
-      { name: "routes the phandle-list catalog kind to the phandle family", raw: "<&gpio13 29 0>", candidate: target({ kind: "phandle-list" }, { cells: 3 }), expected: null },
       { name: "rejects integer-only groups without a phandle label", raw: "<1 2 3>", candidate: phandleCells(), expected: /GPIO 风格 phandle 数组，例如 <&gpio13 29 0>/ },
       { name: "rejects a phandle without trailing integers", raw: "<&gpio13>", candidate: phandleCells(), expected: /GPIO 风格 phandle 数组/ },
       { name: "rejects non-uniform group widths", raw: "<&a 1 2> <&b 1>", candidate: phandleCells(), expected: /GPIO 风格 phandle 数组/ },
@@ -158,9 +156,48 @@ describe("validateDebugValue", () => {
     });
   });
 
+  describe("boolean, empty, bare phandle, mixed, and /delete-property/", () => {
+    const booleanShape = () => target({ kind: "boolean" });
+    const emptyShape = () => target({ kind: "empty" });
+    const phandleList = () => target({ kind: "phandle-list", bits: 32, cellsPerGroup: 1 });
+    const mixed = () => target({ kind: "mixed" });
+    const cases: Case[] = [
+      { name: "accepts empty boolean as present", raw: "", candidate: booleanShape(), expected: null },
+      { name: "accepts true for boolean", raw: "true", candidate: booleanShape(), expected: null },
+      { name: "accepts false for boolean deletion", raw: "false", candidate: booleanShape(), expected: null },
+      { name: "accepts /delete-property/ on boolean", raw: "/delete-property/", candidate: booleanShape(), expected: null },
+      { name: "rejects a cell array on boolean", raw: "<1>", candidate: booleanShape(), expected: /布尔/ },
+      { name: "accepts empty property presence", raw: "", candidate: emptyShape(), expected: null },
+      { name: "rejects a value on empty property", raw: "true", candidate: emptyShape(), expected: /空属性/ },
+      { name: "accepts a bare phandle", raw: "<&gic>", candidate: phandleList(), expected: null },
+      { name: "rejects GPIO cells under phandle-list", raw: "<&gpio13 29 0>", candidate: phandleList(), expected: /裸 phandle 列表/ },
+      { name: "accepts mixed string+cell", raw: '"aux", <1 0>', candidate: mixed(), expected: null },
+      { name: "rejects GPIO under mixed", raw: "<&gpio13 29 0>", candidate: mixed(), expected: /mixed 字符串\+cell/ },
+      { name: "rejects integer cells under mixed", raw: "<1 2>", candidate: mixed(), expected: /mixed 字符串\+cell/ },
+      { name: "accepts /delete-property/ on u32", raw: "/delete-property/", candidate: u32(), expected: null }
+    ];
+    it.each(cases)("$name", ({ raw, candidate, expected }) => {
+      const result = validateDebugValue(raw, candidate);
+      if (expected === null) {
+        expect(result).toBeNull();
+      } else if (typeof expected === "string") {
+        expect(result).toBe(expected);
+      } else {
+        expect(result).toMatch(expected);
+      }
+    });
+  });
+
   it("ignores non-numeric constraint entries instead of applying them", () => {
     expect(
       validateDebugValue("<7000>", u32({ cells: "not-a-number", min: null, max: undefined }))
     ).toBeNull();
+  });
+
+  it("treats boolean empty vs empty baseline as no change, and false as a change", () => {
+    expect(hasMeaningfulDebugChange("", "", { kind: "boolean" })).toBe(false);
+    expect(hasMeaningfulDebugChange("true", "", { kind: "boolean" })).toBe(false);
+    expect(hasMeaningfulDebugChange("false", "", { kind: "boolean" })).toBe(true);
+    expect(hasMeaningfulDebugChange("/delete-property/", "", { kind: "boolean" })).toBe(true);
   });
 });

@@ -246,6 +246,78 @@ function createCandidateFixtures(): DtsReloadCandidate[] {
       sensitiveMatch: null
     },
     {
+      bindingId: "mock-binding-keep-power",
+      projectId: MOCK_PROJECT_ID,
+      propertyKey: "keep-power",
+      displayName: "保持供电",
+      module: "电源",
+      moduleId: null,
+      nodePath: "/soc/regulator@1",
+      compatible: "vendor,regulator",
+      baselineValue: "",
+      description: "布尔属性：存在即保持供电。",
+      valueShapeKind: "boolean",
+      resolvedValueShape: { kind: "boolean" },
+      unit: null,
+      constraints: {},
+      debuggable: true,
+      sensitiveMatch: null
+    },
+    {
+      bindingId: "mock-binding-ranges",
+      projectId: MOCK_PROJECT_ID,
+      propertyKey: "ranges",
+      displayName: "地址范围",
+      module: "总线",
+      moduleId: null,
+      nodePath: "/amba/i2c@FF120000",
+      compatible: "vendor,i2c",
+      baselineValue: "",
+      description: "空属性：声明地址翻译但无 ranges 表。",
+      valueShapeKind: "empty",
+      resolvedValueShape: { kind: "empty" },
+      unit: null,
+      constraints: {},
+      debuggable: true,
+      sensitiveMatch: null
+    },
+    {
+      bindingId: "mock-binding-interrupt-parent",
+      projectId: MOCK_PROJECT_ID,
+      propertyKey: "interrupt-parent",
+      displayName: "中断父节点",
+      module: "电源",
+      moduleId: null,
+      nodePath: "/soc/regulator@1",
+      compatible: "vendor,regulator",
+      baselineValue: "<&gic>",
+      description: "裸 phandle 列表，指向中断控制器。",
+      valueShapeKind: "phandle-list",
+      resolvedValueShape: { kind: "phandle-list", bits: 32, cellsPerGroup: 1, groups: 1 },
+      unit: null,
+      constraints: {},
+      debuggable: true,
+      sensitiveMatch: null
+    },
+    {
+      bindingId: "mock-binding-aux-map",
+      projectId: MOCK_PROJECT_ID,
+      propertyKey: "aux-map",
+      displayName: "辅助映射",
+      module: "电源",
+      moduleId: null,
+      nodePath: "/soc/regulator@1",
+      compatible: "vendor,regulator",
+      baselineValue: '"aux", <1 0>',
+      description: "mixed 字符串 + cell，不猜测为 GPIO 或纯 cell。",
+      valueShapeKind: "mixed",
+      resolvedValueShape: { kind: "mixed" },
+      unit: null,
+      constraints: {},
+      debuggable: true,
+      sensitiveMatch: null
+    },
+    {
       bindingId: "mock-binding-blocked-shape",
       projectId: MOCK_PROJECT_ID,
       propertyKey: "boot_slot_uuid",
@@ -286,11 +358,22 @@ function createCandidateFixtures(): DtsReloadCandidate[] {
   ];
 }
 
+function overlayAssignment(propertyKey: string, debugValue: string): string {
+  const trimmed = debugValue.trim();
+  if (trimmed === "/delete-property/" || trimmed === "false") {
+    return `/delete-property/ ${propertyKey};`;
+  }
+  if (trimmed === "" || trimmed === "true") {
+    return `${propertyKey};`;
+  }
+  return `${propertyKey} = ${trimmed};`;
+}
+
 function overlaySourceFor(targets: DtsReloadRun["targets"]): string {
   const fragments = targets
     .map(
       (target, index) =>
-        `\tfragment@${index} {\n\t\ttarget-path = "${target.nodePath}";\n\t\t__overlay__ {\n\t\t\t${target.propertyKey} = ${target.debugValue};\n\t\t};\n\t};`
+        `\tfragment@${index} {\n\t\ttarget-path = "${target.nodePath}";\n\t\t__overlay__ {\n\t\t\t${overlayAssignment(target.propertyKey, target.debugValue)}\n\t\t};\n\t};`
     )
     .join("\n");
   return `/dts-v1/;\n/plugin/;\n\n/ {\n${fragments}\n};\n`;

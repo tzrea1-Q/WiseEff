@@ -985,6 +985,19 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     deferralReason: "Requires DEVICE_BRIDGE_HDC_AVAILABLE=true, a paired bridge with mountTarget/pushFile/readKernelLog, USB device, and an approved lab reload destination."
   },
   {
+    id: "DTS-RELOAD-HANDOFF-001",
+    priority: "P1",
+    area: "debugging",
+    route: "/dts-reload",
+    roles: ["Hardware Committer", "Admin"],
+    action: "Carry a selected binding set from the parameter workbench into /dts-reload via ?project=&bindingIds= without dumping the full table into the reload batch.",
+    coverage: "future",
+    acceptanceIds: ["DTS-RELOAD-HANDOFF-001"],
+    specFiles: ["e2e/acceptance/dts-reload-handoff.acceptance.spec.ts"],
+    assertions: ["ui"],
+    deferralReason: "Browser Playwright automation is pending; unit coverage and playwright-cli evidence land with TD-064."
+  },
+  {
     id: "HDC-LAB-001",
     priority: "P1",
     area: "debugging",

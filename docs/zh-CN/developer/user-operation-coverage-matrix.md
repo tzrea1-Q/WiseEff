@@ -23,6 +23,7 @@
 - `DEBUG-ADMIN-001`：调试管理后台验收覆盖复杂值类型与格式元数据的创建和编辑。
 - `DTS-RELOAD-DEPLOY-001` / `KERNEL-001` / `VERIFY-001` / `RESIDUE-001`：假桥自动化验收（见英文操作矩阵）；浏览器证据 `work/ui-checks/285-*`–`288-*`。
 - `DTS-RELOAD-DEPLOY-HW-001`：真实 HDC 条件覆盖（非阻塞）。
+- `DTS-RELOAD-HANDOFF-001`：工作台 → `/dts-reload` 深链交接（planned；`required: false`）。
 
 ## 当前操作重点
 
@@ -31,6 +32,7 @@
 - `DTS-RELOAD-VERIFY-001`：经 `debug.readNode` 行为核对；`coverage: automated`。验收 spec 只覆盖无绑定路径，升级判定由 `server/modules/dts-reload/deploy.test.ts` 断言。
 - `DTS-RELOAD-RESIDUE-001`：残留记账与恢复基线；`coverage: automated`。验收 spec 只覆盖残留已记录可读，补偿运行与清除规则由 `residue.test.ts` / `restoreBaseline.test.ts` 断言。
 - `DTS-RELOAD-DEPLOY-HW-001`：真实 HDC 目标条件部署；`coverage: conditional`。
+- `DTS-RELOAD-HANDOFF-001`：从 `/parameters` 工作台「带到参数调试」携带 `?project=` 与 `?bindingIds=`；`coverage: future`。
 - `PARAM-ADMIN-003`：Admin 在 `/parameter-admin/projects` 确认项目清单在 ≤960px 卡片布局下状态、计数、最近更新、治理信号（冲突/基线）与行操作可见；Batch 1–3 以 CSS + playwright-cli 证据先行，专用 e2e 待后续。
 - `PARAM-INIT-WIZARD-001`：创建者完成项目参数初始化（选源 + 勾选）并进入待审阅；单测/服务端已覆盖；playwright-cli 证据见 `work/ui-checks/param-init/`；完整浏览器 e2e 待语义 binding 选择器落地后补。
 - `PARAM-INIT-EMPTY-001`：显式空库初始化可批准为 `initialized` 且零 binding（mock Port + 服务端）；专用 e2e 待补。

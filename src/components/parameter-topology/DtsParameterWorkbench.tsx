@@ -3,7 +3,8 @@ import {
   Download,
   Network,
   Search,
-  Boxes
+  Boxes,
+  Cpu
 } from "lucide-react";
 
 import { presentError } from "@/infrastructure/http/presentError";
@@ -22,6 +23,10 @@ import type {
 import type { ParameterModuleRegistry } from "@/domain/parameter-topology/moduleRegistry";
 import { formatDtsRawValueForUi } from "@/domain/parameter-topology/formatDtsRawValueForUi";
 import type { DtsParameterWorkbenchRow } from "@/domain/parameter-topology/workbenchTypes";
+import {
+  buildDtsReloadHandoffPath,
+  resolveWorkbenchReloadHandoff
+} from "@/domain/dtsReload/handoff";
 
 import type { BindingEditValidation } from "./BindingDetailPanel";
 import {
@@ -96,6 +101,8 @@ export type DtsParameterWorkbenchProps = {
   onExportRows?: (rows: DtsParameterWorkbenchRow[]) => void;
   /** Loads the project's primary DTS source when entering tech view. */
   loadPrimaryDtsSource?: () => Promise<PrimaryDtsSource>;
+  /** Router navigation for the parameter-debugging hand-off. */
+  onNavigate?: (path: string) => void;
 };
 
 function selectedSubtreeBindingIds(
@@ -177,7 +184,8 @@ export function DtsParameterWorkbench({
   toolbarActions,
   expandAllNodesByDefault: _expandAllNodesByDefault = false,
   onExportRows,
-  loadPrimaryDtsSource
+  loadPrimaryDtsSource,
+  onNavigate
 }: DtsParameterWorkbenchProps) {
   const [query, setQuery] = useState("");
   const [moduleFilter, setModuleFilter] = useState<string[]>([]);
@@ -330,6 +338,17 @@ export function DtsParameterWorkbench({
     const selected = new Set(activeModuleFilter);
     return scopedRows.filter((row) => selected.has(row.moduleName));
   }, [activeModuleFilter, scopedRows]);
+
+  const reloadHandoff = useMemo(
+    () =>
+      resolveWorkbenchReloadHandoff({
+        projectId,
+        selectedDraftBindingIds: selectedBindingIds,
+        visibleBindingIds: visibleRows.map((row) => row.bindingId),
+        totalRowCount: currentRows.length
+      }),
+    [currentRows.length, projectId, selectedBindingIds, visibleRows]
+  );
 
   const toggleModuleFilter = (value: string) => {
     setModuleFilter((current) =>
@@ -656,6 +675,34 @@ export function DtsParameterWorkbench({
                 导出当前结果
               </button>
             ) : null}
+            <button
+              type="button"
+              className="button subtle"
+              disabled={!reloadHandoff.ok || !onNavigate}
+              aria-label={
+                !onNavigate
+                  ? "带到参数调试：当前页未提供导航"
+                  : reloadHandoff.ok
+                    ? `带到参数调试（${reloadHandoff.bindingIds.length} 个参数）`
+                    : `带到参数调试：${reloadHandoff.disabledReason}`
+              }
+              title={
+                !onNavigate
+                  ? "带到参数调试：当前页未提供导航"
+                  : reloadHandoff.ok
+                    ? undefined
+                    : reloadHandoff.disabledReason
+              }
+              onClick={() => {
+                if (!reloadHandoff.ok || !projectId || !onNavigate) return;
+                onNavigate(
+                  buildDtsReloadHandoffPath({ projectId, bindingIds: reloadHandoff.bindingIds })
+                );
+              }}
+            >
+              <Cpu size={15} strokeWidth={1.9} aria-hidden="true" />
+              带到参数调试
+            </button>
           </div>
           {toolbarActions}
         </div>
