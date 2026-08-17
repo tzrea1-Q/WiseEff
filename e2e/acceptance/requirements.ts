@@ -692,10 +692,8 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     title: "Publish is blocked by compiler/edit diagnostics; clean revisions validate/publish with audit and semantic persistence after reload.",
     required: true
   },
-  // The next 19 requirements have no browser automation yet: their specs carry
-  // `@acceptance-planned` stubs in parameter-topology.acceptance.spec.ts. They stay
-  // required: false until the automation lands, so the coverage gate reports the
-  // truth instead of being satisfied by skipped stubs.
+  // Remaining PARAM-ENABLE / MOD-ATTR / DRV-* IDs stay required: false until their
+  // `@acceptance-planned` stubs become runnable. PARAM-ENABLE-VISIBLE-001 is automated.
   {
     id: "PARAM-ENABLE-GATE-001",
     workflow: "B",
@@ -706,7 +704,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "PARAM-ENABLE-VISIBLE-001",
     workflow: "B",
     title: "Topology shows node enablement badges and workbench no-effect notices for disabled nodes.",
-    required: false
+    required: true
   },
   {
     id: "PARAM-ENABLE-TOGGLE-001",

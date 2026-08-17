@@ -119,7 +119,7 @@
 - `PARAM-IDENTITY-MAP-ADMIN-001`：Admin 在 `/parameter-admin` 决议身份映射任务（含候选证据与治理审计）（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-CONFIG-PUBLISH-GATE-001`：真实工具链 validate 在黄金/候选 Config Set 上成功（status=okay + vendor linux-bindings；不以 schema-failed 冒充成功）；刷新后 bindingId 与 provenance 从 DB 持久（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-ENABLE-GATE-001`：结构属性（含 `status`）不产生规格审核任务、不阻塞候选晋级与迁移 finalize；存量结构任务以系统性原因驳回（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
-- `PARAM-ENABLE-VISIBLE-001`：拓扑树显示启用/禁用徽标与不可达标记；禁用节点下参数行显示不生效提示（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-ENABLE-VISIBLE-001`：已自动化。`/parameters` 工作台（`DtsParameterWorkbench`）在禁用父节点下的参数行显示「所属节点不可达」、在自身禁用节点行显示「所属节点已禁用」。本页不挂载 `TopologyTree`（`aria-label="生效拓扑树"`）；树模型证据为 `GET .../topology?view=effective` 的 `enablement.selfEnabled === false` / `reachable === false`。模块导航无启停徽标；选中带 enablement 的节点时可断言「节点启用」对话框（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-ENABLE-TOGGLE-001`：禁用需理由与二次确认；启停草稿可与 binding 编辑同轮提交且不触发 `mixed-working-tips`；独立 `enablement-changed` 审计（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-ENABLE-GUARD-001`：非标准 `status` 只读；二级覆盖入口须显式确认后方可写入（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 

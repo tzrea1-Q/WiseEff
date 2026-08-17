@@ -120,7 +120,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `PARAM-IDENTITY-MAP-ADMIN-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-CONFIG-PUBLISH-GATE-001` | P0 | parameters | automated | `/parameters` | Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-ENABLE-GATE-001` | P1 | parameters | future | `/parameters` | Admin | api, db | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `PARAM-ENABLE-VISIBLE-001` | P0 | parameters | future | `/parameters` | Admin, Hardware User | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-ENABLE-VISIBLE-001` | P0 | parameters | automated | `/parameters` | Admin, Hardware User | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-ENABLE-TOGGLE-001` | P0 | parameters | future | `/parameters` | Software User, Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-ENABLE-GUARD-001` | P1 | parameters | future | `/parameters` | Admin | ui | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `MOD-ATTR-QUEUE-001` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
@@ -169,7 +169,6 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 - `XIAOZE-APPROVAL-EXEC-FAIL-001`: A true browser path needs a stale-working-tip / unresolvable-overlay fixture that is too brittle for this slice. Graph, orchestrator, and AG-UI assembly tests are the blocking gate; this ID is an honest planned stub.
 - `PARAM-ADMIN-IA-001`: Unit-covered in ParameterAdminNextPage and organization path tests; dedicated Playwright marker deferred.
 - `PARAM-ENABLE-GATE-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
-- `PARAM-ENABLE-VISIBLE-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
 - `PARAM-ENABLE-TOGGLE-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
 - `PARAM-ENABLE-GUARD-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
 - `MOD-ATTR-QUEUE-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.

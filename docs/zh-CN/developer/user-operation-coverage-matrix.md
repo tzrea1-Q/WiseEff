@@ -117,7 +117,7 @@
 - `PARAM-IDENTITY-MAP-ADMIN-001`：Admin 在 `/parameter-admin` 决议身份映射任务并写治理审计（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-CONFIG-PUBLISH-GATE-001`：真实工具链 validate 与 DB reload 持久化（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-ENABLE-GATE-001`：结构属性闸门与迁移 finalize 驳回（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
-- `PARAM-ENABLE-VISIBLE-001`：拓扑徽标与工作台不生效提示（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-ENABLE-VISIBLE-001`：已自动化。工作台不生效提示 + 拓扑 API enablement；`TopologyTree` 不在 `/parameters` 默认面上（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-ENABLE-TOGGLE-001`：启停草稿同轮提交与 `enablement-changed` 审计（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-ENABLE-GUARD-001`：非标准 status 只读与二级确认（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 
