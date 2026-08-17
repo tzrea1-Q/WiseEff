@@ -1,5 +1,6 @@
 # WiseEff Notification Center Implementation Plan
 
+> Status: **Completed 2026-08-17** — durable TopBar inbox, notification APIs, unread badge, and automated `NOTIF-INBOX-001` / `NOTIF-READ-001` landed on `main`; optional leftover is `NOTIF-DEEPLINK-001` e2e (inbox already navigates via `actionUrl`).
 > **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` — write the failing test first, implement the smallest change, then verify green. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
 
 
@@ -264,7 +265,7 @@ One phase per PR unless plan explicitly combines tightly coupled backend+fronten
 
 ### Phase 0 — Plan & debt (this PR)
 
-- [x] Author this plan under `docs/exec-plans/active/`.
+- [x] Author this plan under `docs/exec-plans/completed/` (archived from `active/` on 2026-08-17).
 - [ ] Register **TD-034** in `docs/exec-plans/tech-debt-tracker.md`.
 - [ ] Add plan link to `docs/PLANS.md`.
 - [ ] Run `npm run docs:check`.
@@ -386,4 +387,4 @@ This plan changes TopBar interaction behavior.
 
 ---
 
-**Plan status:** Active — Phase 0 (documentation). Implementation starts with Phase 1 branch `feat/notification-center-mvp` after plan merge.
+**Plan status:** Completed 2026-08-17 — Phase 1 inbox/APIs/badge landed on `main`. Optional leftover: `NOTIF-DEEPLINK-001` browser e2e. Phase 2–4 producers/outbox/email stay out of this archive.

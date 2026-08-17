@@ -1,10 +1,10 @@
 # 项目配置工作台缺陷修复
 
-> 状态：**进行中** — 批次 0–3 与 CW-T1 已在 `fix/project-configuration-workbench-defects` 落地；待父 Agent 评审 / PR
+> 状态：**已于 2026-08-17 完成** — 命令栏布局、CW-B1 `project_parameter_bindings` 联接、CW-B2 `readiness-unavailable` 已在 `main` 落地；stretch 800–1000 仍为 TD-062。
 > 日期：2026-08-08
-> English: [`docs/exec-plans/active/2026-08-08-project-configuration-workbench-defect-repair.md`](../../../exec-plans/active/2026-08-08-project-configuration-workbench-defect-repair.md)
+> English: [`docs/exec-plans/completed/2026-08-08-project-configuration-workbench-defect-repair.md`](../../../exec-plans/completed/2026-08-08-project-configuration-workbench-defect-repair.md)
 > 已锁定的设计：[`docs/zh-CN/design-docs/2026-08-06-project-configuration-workbench-design.md`](../../design-docs/2026-08-06-project-configuration-workbench-design.md)
-> 交付该界面的切换计划：[`docs/zh-CN/exec-plans/completed/2026-08-08-project-configuration-workbench-cutover.md`](../completed/2026-08-08-project-configuration-workbench-cutover.md)
+> 交付该界面的切换计划：[`docs/zh-CN/exec-plans/completed/2026-08-08-project-configuration-workbench-cutover.md`](./2026-08-08-project-configuration-workbench-cutover.md)
 
 ## 背景
 
