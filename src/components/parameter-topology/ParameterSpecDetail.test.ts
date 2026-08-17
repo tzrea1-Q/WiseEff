@@ -39,11 +39,16 @@ function draftFrom(detail: ParameterSpecDetailView, overrides: Partial<SpecEdito
 }
 
 describe("createSpecEditorDraft", () => {
-  it("falls back displayName to propertyKey when displayName is empty (pre-SE-D3)", () => {
+  it("keeps an empty displayName instead of falling back to propertyKey (SE-5)", () => {
     const draft = createSpecEditorDraft(
       baseDetail({ displayName: "", description: "kept" }),
     );
-    expect(draft.displayName).toBe("active_perf_limit");
+    expect(draft.displayName).toBe("");
+  });
+
+  it("treats a null displayName as an empty editor field (SE-5)", () => {
+    const draft = createSpecEditorDraft(baseDetail({ displayName: null }));
+    expect(draft.displayName).toBe("");
   });
 
   it("does not invent missing cell fields for incomplete shapes (SE-23)", () => {
@@ -71,7 +76,7 @@ describe("buildSpecEditorSavePayload", () => {
     expect(built.payload!).not.toHaveProperty("policyTarget");
   });
 
-  it("falls back displayName to propertyKey when cleared (pre-SE-D3)", () => {
+  it("sends null displayName when the display name is cleared (SE-5)", () => {
     const detail = baseDetail({ displayName: "Perf limit" });
     const built = buildSpecEditorSavePayload(
       detail,
@@ -79,7 +84,7 @@ describe("buildSpecEditorSavePayload", () => {
       "fix",
     );
     expect(built.error).toBeNull();
-    expect(built.payload!.displayName).toBe("active_perf_limit");
+    expect(built.payload!.displayName).toBeNull();
   });
 
   it("sends null units when the units field is cleared (SE-3)", () => {
@@ -129,6 +134,11 @@ describe("buildSpecEditorSavePayload", () => {
 describe("isSpecEditorDraftDirty", () => {
   it("is false for an untouched draft", () => {
     const detail = baseDetail();
+    expect(isSpecEditorDraftDirty(detail, createSpecEditorDraft(detail))).toBe(false);
+  });
+
+  it("is false when an empty displayName is left untouched (SE-5)", () => {
+    const detail = baseDetail({ displayName: "" });
     expect(isSpecEditorDraftDirty(detail, createSpecEditorDraft(detail))).toBe(false);
   });
 

@@ -59,7 +59,7 @@ export type SpecEditorSavePayload = {
   valueShape: Record<string, unknown>;
   constraints: Record<string, unknown>;
   documentation: string;
-  displayName: string;
+  displayName: string | null;
   description: string;
   units: string | null;
   exampleValue: unknown;
@@ -85,7 +85,7 @@ function seedValueShape(detail: ParameterSpecDetailView): Record<string, unknown
 
 export function createSpecEditorDraft(detail: ParameterSpecDetailView): SpecEditorDraft {
   return {
-    displayName: detail.displayName?.trim() || detail.propertyKey,
+    displayName: detail.displayName?.trim() ?? "",
     description: detail.description ?? "",
     documentation: detail.documentation ?? "",
     units: detail.units ?? "",
@@ -155,7 +155,7 @@ export function buildSpecEditorSavePayload(
       valueShape: draft.valueShape,
       constraints: constraints.value,
       documentation: draft.documentation.trim(),
-      displayName: draft.displayName.trim() || detail.propertyKey,
+      displayName: draft.displayName.trim() || null,
       description: draft.description.trim(),
       units: draft.units.trim() || null,
       exampleValue: example.value,

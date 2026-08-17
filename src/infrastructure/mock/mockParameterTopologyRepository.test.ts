@@ -134,6 +134,43 @@ describe("createMockParameterTopologyRepository (ParameterTopologyRepository con
     });
   });
 
+  it("updateParameterSpec clears displayName when the client sends null (SE-5)", async () => {
+    const repo = createRepo();
+    const updated = await repo.updateParameterSpec("spec-sc8562-gpio-int", {
+      documentation: "gpio_int is a three-cell interrupt specifier.",
+      reason: "clear display name",
+      constraints: { cellsPerGroup: 3 },
+      displayName: null,
+    });
+    expect(updated.displayName).toBeNull();
+
+    const retrieved = await repo.getSpec("spec-sc8562-gpio-int");
+    expect(retrieved.displayName).toBeNull();
+  });
+
+  it("updateParameterSpec keeps displayName when the key is omitted (SE-5)", async () => {
+    const repo = createRepo();
+    const updated = await repo.updateParameterSpec("spec-sc8562-gpio-int", {
+      documentation: "gpio_int is a three-cell interrupt specifier.",
+      reason: "docs only",
+      constraints: { cellsPerGroup: 3 },
+    });
+    expect(updated.displayName).toBe("SC8562 GPIO interrupt");
+  });
+
+  it("activateParameterSpec persists an empty displayName instead of keeping the stored name (SE-5)", async () => {
+    const repo = createRepo();
+    const activated = await repo.activateParameterSpec("spec-draft-mystery", {
+      valueShape: { kind: "strings", maxItems: 1 },
+      constraints: {},
+      documentation: "Activated from mock",
+      reason: "Ready for use",
+      displayName: null,
+    });
+    expect(activated.lifecycle).toBe("active");
+    expect(activated.displayName).toBeNull();
+  });
+
   it("activateParameterSpec and createBindingDraft mutate through the public port", async () => {
     const repo = createRepo();
     const activated = await repo.activateParameterSpec("spec-draft-mystery", {
