@@ -12,7 +12,13 @@ import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
 import { registerParameterSpecRoutes } from "./routes";
-import { deprecateParameterSpec, getParameterSpec, restoreParameterSpec, updateParameterSpec } from "./service";
+import {
+  activateParameterSpec,
+  deprecateParameterSpec,
+  getParameterSpec,
+  restoreParameterSpec,
+  updateParameterSpec,
+} from "./service";
 
 const ORG_ID = "org-spec-lifecycle";
 const USER_ID = "user-spec-lifecycle";
@@ -341,9 +347,13 @@ describe.skipIf(!databaseAvailable)("parameter spec lifecycle deprecate/restore"
   });
 
   it("records before/after value_shape and constraints when updating an active definition", async () => {
+    await db!.query(
+      `update parameter_spec_versions set value_shape = '{"kind":"string"}'::jsonb where parameter_spec_id = $1`,
+      [ACTIVE_SPEC],
+    );
     await updateParameterSpec(db!, makeAuth(), {
       specId: ACTIVE_SPEC,
-      valueShape: { kind: "u32", bits: 16 },
+      valueShape: { kind: "string", encoding: "ascii" },
       constraints: { min: 0, max: 100 },
       documentation: "updated docs",
       reason: "tighten range",
@@ -360,10 +370,160 @@ describe.skipIf(!databaseAvailable)("parameter spec lifecycle deprecate/restore"
       [ACTIVE_SPEC],
     );
     expect(audits.rows[0]?.metadata).toMatchObject({
-      previousValueShape: { kind: "u32" },
-      nextValueShape: { kind: "u32", bits: 16 },
+      previousValueShape: { kind: "string" },
+      nextValueShape: { kind: "string", encoding: "ascii" },
       previousConstraints: {},
       nextConstraints: { min: 0, max: 100 },
+    });
+  });
+
+  it("replaces stored constraints on update instead of shallow-merging omitted keys (SE-2)", async () => {
+    await db!.query(
+      `update parameter_spec_versions set constraints = '{"min":0,"max":100}'::jsonb where parameter_spec_id = $1`,
+      [ACTIVE_SPEC],
+    );
+    await db!.query(
+      `update dts_property_specs set constraints = '{"min":0,"max":100}'::jsonb where parameter_spec_id = $1`,
+      [ACTIVE_SPEC],
+    );
+
+    const updated = await updateParameterSpec(db!, makeAuth(), {
+      specId: ACTIVE_SPEC,
+      constraints: { min: 0 },
+      documentation: "range without max",
+      reason: "drop max",
+    });
+    expect(updated.item.constraints).toEqual({ min: 0 });
+
+    const retrieved = await getParameterSpec(db!, makeAuth(), ACTIVE_SPEC);
+    expect(retrieved.item.constraints).toEqual({ min: 0 });
+  });
+
+  it("replaces stored constraints on activate instead of shallow-merging omitted keys (SE-2)", async () => {
+    const completeCells = { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 1 };
+    await db!.query(
+      `
+      update parameter_spec_versions
+      set
+        value_shape = $2::jsonb,
+        constraints = '{"cells":1,"extra":true}'::jsonb,
+        documentation = 'draft docs'
+      where parameter_spec_id = $1
+      `,
+      [DRAFT_SPEC, JSON.stringify(completeCells)],
+    );
+    await db!.query(
+      `update dts_property_specs set constraints = '{"cells":1,"extra":true}'::jsonb where parameter_spec_id = $1`,
+      [DRAFT_SPEC],
+    );
+
+    const activated = await activateParameterSpec(db!, makeAuth(), {
+      specId: DRAFT_SPEC,
+      valueShape: completeCells,
+      constraints: { cells: 1 },
+      documentation: "activated without extra",
+      reason: "drop extra",
+    });
+    expect(activated.item.constraints).toEqual({ cells: 1 });
+
+    const retrieved = await getParameterSpec(db!, makeAuth(), DRAFT_SPEC);
+    expect(retrieved.item.constraints).toEqual({ cells: 1 });
+  });
+
+  it("clears displayName on update when the client sends null (SE-5)", async () => {
+    const updated = await updateParameterSpec(db!, makeAuth(), {
+      specId: ACTIVE_SPEC,
+      displayName: null,
+      constraints: {},
+      documentation: "cleared display name",
+      reason: "drop display name",
+    });
+    expect(updated.item.displayName === null || updated.item.displayName === "").toBe(true);
+
+    const retrieved = await getParameterSpec(db!, makeAuth(), ACTIVE_SPEC);
+    expect(retrieved.item.displayName === null || retrieved.item.displayName === "").toBe(true);
+    expect(retrieved.item.propertyKey).toBe("lifecycle-active");
+  });
+
+  it("persists an empty displayName on activate when the client sends null (SE-5)", async () => {
+    const completeCells = { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 1 };
+    await db!.query(
+      `
+      update parameter_spec_versions
+      set
+        display_name = 'Draft label',
+        value_shape = $2::jsonb,
+        constraints = '{"cells":1}'::jsonb,
+        documentation = 'draft docs'
+      where parameter_spec_id = $1
+      `,
+      [DRAFT_SPEC, JSON.stringify(completeCells)],
+    );
+
+    const activated = await activateParameterSpec(db!, makeAuth(), {
+      specId: DRAFT_SPEC,
+      valueShape: completeCells,
+      constraints: { cells: 1 },
+      documentation: "activated with empty display name",
+      reason: "clear display name",
+      displayName: null,
+    });
+    expect(activated.item.displayName === null || activated.item.displayName === "").toBe(true);
+    expect(activated.item.displayName).not.toBe("lifecycle-draft");
+    expect(activated.item.displayName).not.toBe("Draft label");
+  });
+
+  it("allows documentation edits on an incomplete legacy valueShape when the shape is unchanged (SE-D6)", async () => {
+    await db!.query(
+      `update parameter_spec_versions set value_shape = '{"kind":"u32-array"}'::jsonb where parameter_spec_id = $1`,
+      [ACTIVE_SPEC],
+    );
+
+    const updated = await updateParameterSpec(db!, makeAuth(), {
+      specId: ACTIVE_SPEC,
+      constraints: { min: 0 },
+      documentation: "docs only on incomplete shape",
+      reason: "documentation edit",
+    });
+    expect(updated.item.valueShape).toEqual({ kind: "u32-array" });
+    expect(updated.item.documentation).toBe("docs only on incomplete shape");
+
+    const sameShape = await updateParameterSpec(db!, makeAuth(), {
+      specId: ACTIVE_SPEC,
+      valueShape: { kind: "u32-array" },
+      constraints: { min: 0 },
+      documentation: "same incomplete shape restated",
+      reason: "shape no-op",
+    });
+    expect(sameShape.item.valueShape).toEqual({ kind: "u32-array" });
+    expect(sameShape.item.documentation).toBe("same incomplete shape restated");
+  });
+
+  it("rejects a PATCH that changes valueShape to an incomplete cell-array kind (SE-D6)", async () => {
+    await expect(
+      updateParameterSpec(db!, makeAuth(), {
+        specId: ACTIVE_SPEC,
+        valueShape: { kind: "u32-array" },
+        constraints: {},
+        documentation: "attempt incomplete shape",
+        reason: "change shape",
+      }),
+    ).rejects.toMatchObject({ code: "VALIDATION_FAILED", status: 400 } satisfies Partial<ApiError>);
+  });
+
+  it("accepts a PATCH that changes valueShape to a complete cell layout (SE-D6)", async () => {
+    const updated = await updateParameterSpec(db!, makeAuth(), {
+      specId: ACTIVE_SPEC,
+      valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 1 },
+      constraints: { cells: 1 },
+      documentation: "complete cell shape",
+      reason: "complete shape",
+    });
+    expect(updated.item.valueShape).toEqual({
+      kind: "cells",
+      bits: 32,
+      groups: 1,
+      cellsPerGroup: 1,
     });
   });
 });

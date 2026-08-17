@@ -396,7 +396,7 @@ export function OrganizationSpecGovernancePanel({
       valueShape: Record<string, unknown>;
       constraints: Record<string, unknown>;
       documentation: string;
-      displayName: string;
+      displayName: string | null;
       description: string;
       units: string | null;
       exampleValue: unknown;

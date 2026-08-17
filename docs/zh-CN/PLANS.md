@@ -16,7 +16,7 @@
 
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
-- 已完成实现见 `docs/exec-plans/completed/`（含 2026-08-17 归档的路径可达 C1–C4、产品反馈、拓扑 review 第 3–6 轮、通知中心、配置工作台缺陷修复）。不要把那些计划重新当成活跃工作。
+- 已完成实现见 `docs/exec-plans/completed/`（含 2026-08-17 归档的路径可达 C1–C4、产品反馈、拓扑 review 第 3–6 轮、通知中心、配置工作台缺陷修复、以及小泽审批失败恢复 TD-102 / TD-094）。不要把那些计划重新当成活跃工作。
 - 当前仍有剩余工作的计划：
 
 ### 等待外部输入或目标环境
@@ -28,8 +28,7 @@
 
 ### 仍待做的产品与 UX
 
-- `exec-plans/active/2026-08-17-xiaoze-approval-failure-recovery.md`：TD-102 / TD-094 — 批准后工具执行失败时以中文回合停住并落库；成功路径不再双写 assistant。实现分支 `fix/td102-approval-execution-dead-end`。
-- `exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md`：剩余写入契约为 SE-2 / SE-5 / SE-D6。
+- `exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md`：剩余为 SE-D5 保存前 diff 与批次 2–5。
 - `exec-plans/active/2026-08-03-parameter-admin-org-ia-consolidation.md`：组织后台信息架构（仅规划；ADR-0015）。
 - `exec-plans/active/2026-08-02-parameter-admin-ux-polish.md`：参数管理后台 UX 打磨。
 - `exec-plans/active/2026-08-04-parameter-definition-identity-correction.md`：定义身份纠错收尾。

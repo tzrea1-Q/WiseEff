@@ -1,10 +1,10 @@
 # Xiaoze approval execution failure recovery (TD-102 / TD-094)
 
-> Status: **In progress**
+> Status: **Completed 2026-08-17** — merged to `main` via PR #493 (`26b4ffbb`). TD-102 / TD-094 closed; browser ID `XIAOZE-APPROVAL-EXEC-FAIL-001` remains an honest `@acceptance-planned` stub.
 > Date: 2026-08-17
 > Tracks: **TD-102**, **TD-094**
 > Branch: `fix/td102-approval-execution-dead-end`
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-17-xiaoze-approval-failure-recovery.md`](../../zh-CN/exec-plans/active/2026-08-17-xiaoze-approval-failure-recovery.md)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-17-xiaoze-approval-failure-recovery.md`](../../zh-CN/exec-plans/completed/2026-08-17-xiaoze-approval-failure-recovery.md)
 
 ## Goal
 
@@ -120,4 +120,4 @@ Do not run full browser acceptance unless cheap.
 - [x] This plan + zh companion include Impact Matrix, Update Gate, Git & PR Workflow, and UI automation review.
 - [x] `docs/PLANS.md` Current Active bullet.
 - [x] `npm run docs:check` green before merge.
-- [ ] Move this plan to `completed/` after the parent merges.
+- [x] Move this plan to `completed/` after the parent merges.

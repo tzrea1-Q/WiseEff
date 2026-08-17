@@ -615,8 +615,8 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
         valueShape: input.valueShape,
         constraints: input.constraints,
         documentation: input.documentation,
-        displayName: input.displayName ?? existing.displayName,
-        description: input.description ?? existing.description
+        displayName: input.displayName === undefined ? existing.displayName : input.displayName,
+        description: input.description === undefined ? existing.description : input.description
       };
       store.specs.set(specId, updated);
       return cloneDetail(updated);
@@ -634,8 +634,8 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
         valueShape: input.valueShape ?? existing.valueShape,
         constraints: input.constraints,
         documentation: input.documentation,
-        displayName: input.displayName ?? existing.displayName,
-        description: input.description ?? existing.description,
+        displayName: input.displayName === undefined ? existing.displayName : input.displayName,
+        description: input.description === undefined ? existing.description : input.description,
         units: input.units === undefined ? existing.units : input.units,
         exampleValue: input.exampleValue === undefined ? existing.exampleValue : input.exampleValue
       };

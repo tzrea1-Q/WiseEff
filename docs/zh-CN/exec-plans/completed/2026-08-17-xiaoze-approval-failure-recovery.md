@@ -1,10 +1,10 @@
 # 小泽审批执行失败恢复（TD-102 / TD-094）
 
-> 状态：**进行中**
+> 状态：**已于 2026-08-17 完成** — 经 PR #493 合入 `main`（`26b4ffbb`）。TD-102 / TD-094 已关闭；浏览器 ID `XIAOZE-APPROVAL-EXEC-FAIL-001` 仍为诚实的 `@acceptance-planned` 桩。
 > 日期：2026-08-17
 > 跟踪：**TD-102**、**TD-094**
 > 分支：`fix/td102-approval-execution-dead-end`
-> English: [`docs/exec-plans/active/2026-08-17-xiaoze-approval-failure-recovery.md`](../../../exec-plans/active/2026-08-17-xiaoze-approval-failure-recovery.md)
+> English: [`docs/exec-plans/completed/2026-08-17-xiaoze-approval-failure-recovery.md`](../../../exec-plans/completed/2026-08-17-xiaoze-approval-failure-recovery.md)
 
 ## 目标
 
@@ -99,4 +99,4 @@ npm run acceptance:operations
 - [x] 本计划与英文对应包含影响矩阵、更新门禁、Git 与 PR 工作流、UI 自动化审查。
 - [x] `docs/PLANS.md` Current Active 条目。
 - [x] 合并前 `npm run docs:check` 为绿。
-- [ ] 父代理合并后把本计划移入 `completed/`。
+- [x] 父代理合并后把本计划移入 `completed/`。
