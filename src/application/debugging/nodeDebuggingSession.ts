@@ -16,6 +16,7 @@
 
 import { isHdcPlaceholderTarget } from "@wiseeff/device-command-core/hdcTargets";
 
+import { normalizeBridgeProtocol } from "@/application/bridge/bridgeTargetSession";
 import type { DebuggingRuntimeActions } from "@/application/debugging/debuggingRuntime";
 import { formatDebuggingRuntimeError } from "@/application/debugging/debuggingRuntime";
 import type {
@@ -144,7 +145,7 @@ const BULK_WRITE_SUMMARY_MS = 8000;
 
 export function readInitialNodeDebuggingProtocol(): DebugConnectionProtocol {
   try {
-    return window.localStorage.getItem(NODE_DEBUGGING_PROTOCOL_STORAGE_KEY) === "adb" ? "adb" : "hdc";
+    return normalizeBridgeProtocol(window.localStorage.getItem(NODE_DEBUGGING_PROTOCOL_STORAGE_KEY));
   } catch {
     return "hdc";
   }

@@ -16,6 +16,14 @@
  *   commands (`setCriticalConfirmed` for start, `setRestoreCriticalConfirmed` for restore).
  */
 
+import {
+  bridgeTargetSelectionFrom,
+  defaultDeviceId,
+  pickPreferredBridgeId,
+  type BridgeHealthSummary,
+  type BridgeSummary,
+  type DebugConnectionProtocol
+} from "@/application/bridge/bridgeTargetSession";
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import { hasMeaningfulDebugChange, validateDebugValue } from "@/domain/dtsReload/debugValue";
 import {
@@ -31,18 +39,9 @@ import type {
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { DEVICE_BRIDGE_RELEASES_PATH } from "@wiseeff/device-command-core/bridgeApiPaths";
 
-export type DtsReloadDeployProtocol = "hdc" | "adb";
-
-export type DtsReloadBridgeSummary = {
-  id: string;
-  machineLabel: string;
-  lastSeenAt?: string | null;
-};
-
-export type DtsReloadBridgeHealthSummary = {
-  connected: boolean;
-  bridgeId?: string | null;
-} | null;
+export type DtsReloadDeployProtocol = DebugConnectionProtocol;
+export type DtsReloadBridgeSummary = BridgeSummary;
+export type DtsReloadBridgeHealthSummary = BridgeHealthSummary;
 
 export type DtsReloadRunSessionSnapshot = {
   projectId: string;
@@ -153,10 +152,6 @@ function defaultWriteRunId(runId: string | null): void {
     url.searchParams.delete("run");
   }
   window.history.replaceState({}, "", `${url.pathname}${url.search}`);
-}
-
-function defaultDeviceId(bridgeId: string): string {
-  return `bridge:${bridgeId}`;
 }
 
 function readBridgeUpgradeReleasesPath(error: unknown): string | null {
@@ -302,15 +297,14 @@ export function createDtsReloadRunSession(
   }
 
   function adoptRunTarget(existing: DtsReloadRun): void {
-    if (existing.bridgeId) bridgeId = existing.bridgeId;
-    if (existing.targetRef) targetRef = existing.targetRef;
+    const selection = bridgeTargetSelectionFrom(existing, protocol);
+    if (existing.bridgeId) bridgeId = selection.bridgeId;
+    if (existing.targetRef) targetRef = selection.targetRef;
     if (existing.deviceId) {
       deviceId = existing.deviceId;
       deviceIdTouched = true;
     }
-    if (existing.protocol === "hdc" || existing.protocol === "adb") {
-      protocol = existing.protocol;
-    }
+    protocol = selection.protocol;
   }
 
   function openDeployConfirmInternal(validatedRun: DtsReloadRun): void {
@@ -801,14 +795,7 @@ export function createDtsReloadRunSession(
         bridgeHealth?.connected === health?.connected &&
         bridgeHealth?.bridgeId === health?.bridgeId &&
         Boolean(bridgeHealth) === Boolean(health);
-      const preferred =
-        (health?.bridgeId && nextBridges.some((bridge) => bridge.id === health.bridgeId)
-          ? health.bridgeId
-          : null) ??
-        nextBridges[0]?.id ??
-        "";
-      const nextBridgeId =
-        bridgeId && nextBridges.some((bridge) => bridge.id === bridgeId) ? bridgeId : preferred;
+      const nextBridgeId = pickPreferredBridgeId(nextBridges, health, bridgeId);
       if (sameBridges && sameHealth && nextBridgeId === bridgeId) return;
       if (!sameBridges) bridges = nextBridges;
       if (!sameHealth) bridgeHealth = health;
