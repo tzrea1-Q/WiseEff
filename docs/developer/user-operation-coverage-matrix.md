@@ -112,6 +112,8 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `PARAM-DTS-IMPACT-001` | P1 | parameters | automated | `/api/v1/parameter-change-requests` | Admin, Hardware Committer | api | `e2e/acceptance/dts-structured.acceptance.spec.ts` |
 | `PARAM-DTS-RBAC-001` | P0 | parameters | automated | `/api/v1/parameter-submission-rounds` | Hardware User, Admin | api, db | `e2e/acceptance/dts-structured.acceptance.spec.ts` |
 | `PARAM-SPEC-GOVERN-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api, db | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-SPEC-EDIT-001` | P1 | parameters | future | `/parameter-admin/specs` | Admin | ui | `src/components/parameter-topology/ParameterSpecDetailDialog.test.tsx`<br>`src/components/parameter-topology/ParameterSpecDetail.test.ts` |
+| `PARAM-SPEC-EDIT-002` | P1 | parameters | future | `/parameter-admin/specs` | Admin | ui, screenshot | `src/components/common/ModalDialog.test.tsx`<br>`src/components/parameter-topology/ParameterSpecDetailDialog.test.tsx` |
 | `PARAM-ADMIN-IA-001` | P1 | parameters | future | `/parameter-admin/specs` | Admin | ui |  |
 | `PARAM-TOPOLOGY-BROWSE-001` | P0 | parameters | automated | `/parameters` | Admin, Hardware User | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-TOPOLOGY-EDIT-001` | P0 | parameters | automated | `/parameters` | Software User, Hardware Committer, Software Committer, Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
@@ -167,6 +169,8 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 - `HDC-LAB-001`: Requires DEBUG_DEVICE_GATEWAY_MODE=hdc and HDC_DEVICE_LAB_AVAILABLE=true with hardware attached.
 - `ADB-LAB-001`: Requires DEBUG_DEVICE_GATEWAY_MODE=adb, ADB_DEVICE_LAB_AVAILABLE=true, exactly one ready ADB device, one ADB inventory row, and one shared default ADB smoke binding.
 - `XIAOZE-APPROVAL-EXEC-FAIL-001`: A true browser path needs a stale-working-tip / unresolvable-overlay fixture that is too brittle for this slice. Graph, orchestrator, and AG-UI assembly tests are the blocking gate; this ID is an honest planned stub.
+- `PARAM-SPEC-EDIT-001`: Round-trip is covered by ParameterSpecDetailDialog RTL plus buildSpecEditorSavePayload unit tests and specLifecycle integration; a blocking Playwright marker is deferred so this does not enlarge the shared pre-cutover CI acceptance suite (TD-079).
+- `PARAM-SPEC-EDIT-002`: Reachability and keyboard contract are covered by ModalDialog unit tests plus playwright-cli evidence under work/ui-checks/param-spec-editor-batch4/. Mock has no Xiaoze FAB; stacking is the token ladder 1100 < 1150 < 1200. A keyboard-focused e2e spec follows the PARAM-ADMIN-DIALOG-001 pattern.
 - `PARAM-ADMIN-IA-001`: Unit-covered in ParameterAdminNextPage and organization path tests; dedicated Playwright marker deferred.
 - `PARAM-ENABLE-GATE-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
 - `PARAM-ENABLE-TOGGLE-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.

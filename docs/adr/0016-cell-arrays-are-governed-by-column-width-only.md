@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-03
-- Plan: `docs/exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md`
+- Plan: `docs/exec-plans/completed/2026-08-03-parameter-spec-editor-fidelity.md`
 
 ## Context
 

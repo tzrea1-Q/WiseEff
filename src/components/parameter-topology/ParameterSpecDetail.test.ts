@@ -122,6 +122,28 @@ describe("buildSpecEditorSavePayload", () => {
     expect(built.error).toMatch(/原因/);
   });
 
+  it("sends a DTS example fragment as a string, not a JSON parse error (SE-11)", () => {
+    const detail = baseDetail({ exampleValue: null });
+    const built = buildSpecEditorSavePayload(
+      detail,
+      draftFrom(detail, { exampleValueText: "<&gpio13 29 0>" }),
+      "fix",
+    );
+    expect(built.error).toBeNull();
+    expect(built.payload!.exampleValue).toBe("<&gpio13 29 0>");
+  });
+
+  it("includes documentation in the payload", () => {
+    const detail = baseDetail({ documentation: "docs" });
+    const built = buildSpecEditorSavePayload(
+      detail,
+      draftFrom(detail, { documentation: "updated docs" }),
+      "fix",
+    );
+    expect(built.error).toBeNull();
+    expect(built.payload!.documentation).toBe("updated docs");
+  });
+
   it("uses activate-reason copy for org drafts", () => {
     const detail = baseDetail({ reviewState: "draft" });
     const built = buildSpecEditorSavePayload(detail, draftFrom(detail), "");

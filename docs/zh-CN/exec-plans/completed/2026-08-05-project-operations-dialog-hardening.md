@@ -4,7 +4,7 @@
 > 日期：2026-08-05
 > English: [`docs/exec-plans/completed/2026-08-05-project-operations-dialog-hardening.md`](../../../exec-plans/completed/2026-08-05-project-operations-dialog-hardening.md)
 > 信息架构：[ADR-0001](../../../adr/0001-parameter-admin-organized-by-governance-scope.md) —— **重申而非修订，见 POD-D1**
-> 与之共享模态缺陷：[`2026-08-03-parameter-spec-editor-fidelity.md`](../active/2026-08-03-parameter-spec-editor-fidelity.md)（SE-17 – SE-21、SE-R5、SE-R6）
+> 与之共享模态缺陷：[`2026-08-03-parameter-spec-editor-fidelity.md`](./2026-08-03-parameter-spec-editor-fidelity.md)（SE-17 – SE-21、SE-R5、SE-R6）
 > 前序计划：[`2026-08-02-parameter-admin-ux-polish.md`](../active/2026-08-02-parameter-admin-ux-polish.md)（Batch 1–3 已随 `59f8d23c` 合入）
 
 ## 背景

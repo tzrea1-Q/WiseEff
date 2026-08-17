@@ -134,7 +134,7 @@ Path-derived `(name, module)` / full DTS path identity is being replaced by:
 | Source tree | All DTS/DTSI/overlay occurrences with file + span provenance. |
 | Effective tree | Overlay-resolved logical nodes/properties with ordered `sourceChain`. |
 | `ParameterSpec` / `ParameterSpecVersion` | Stable specification identity; `example_value` is illustrative only and never drives DB constraints or release policy. |
-| Schema default / policy target / effective value | Separate fields. Legacy `recommended_value` is migration evidence only and must not auto-promote into default or policy. |
+| Schema default / policy target / effective value | Separate fields. Legacy `recommended_value` is migration evidence only and must not auto-promote into default or policy. Policy target still has readers, but no production writer (TD-055). |
 | `ProjectParameterBinding` | Stable `project × logical-node × spec` binding used by history, drafts, CRs, and exports. |
 | Identity mapping / spec review tasks | Human queues for ambiguous or incomplete migration/governance. Spec-review resolve creates occurrence→spec decisions, project bindings, and reusable matcher overrides; dismiss never pretends a property matched and remains a fail-closed release blocker. Identity-mapping decisions are `resolved` (remap bindings), `dismissed` (reject; revision stays `needs_mapping`), and `new_identity` (confirm no predecessor; does not remap). A revision leaves `needs_mapping` only when no task remains `open` or `dismissed`. Reopen is allowed from `dismissed` / `new_identity` only. |
 | Binding candidate FSM | Centralized candidate states; `needs_mapping` / `invalid` must never be overwritten into `draft`. |

@@ -8953,6 +8953,10 @@ td small {
   backdrop-filter: blur(6px);
 }
 
+.modal-backdrop.param-admin-modal-backdrop--nested {
+  z-index: var(--z-modal-backdrop-nested);
+}
+
 .parameter-detail-dialog {
   width: min(1120px, calc(100vw - 48px));
   max-width: 100%;
@@ -16865,6 +16869,19 @@ body.xiaoze-popup-resize-active {
   margin-top: var(--space-1);
   flex: 1 1 auto;
   min-height: 0;
+  scroll-padding-bottom: var(--space-4);
+}
+
+.param-admin-editor-dialog .dialog-actions {
+  border-top: 1px solid var(--border);
+}
+
+.param-admin-cutover-panel {
+  margin-bottom: var(--space-4);
+}
+
+.param-admin-cutover-panel__finalize {
+  margin-top: var(--space-3);
 }
 
 .param-admin-editor-dialog .shared-definition-panel,

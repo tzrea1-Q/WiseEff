@@ -5,7 +5,7 @@
 > Chinese: [`docs/zh-CN/exec-plans/active/2026-08-04-parameter-definition-identity-correction.md`](../../zh-CN/exec-plans/active/2026-08-04-parameter-definition-identity-correction.md)
 > Governing decision: [ADR-0017](../../adr/0017-definition-identity-is-correctable.md)
 > Amends: [ADR-0013](../../adr/0013-attribution-subjects-are-stable-catalog-entities.md), [ADR-0014](../../adr/0014-parameter-definitions-are-versioned-subjects.md)
-> Predecessor: [`2026-08-03-parameter-spec-editor-fidelity.md`](./2026-08-03-parameter-spec-editor-fidelity.md)
+> Predecessor: [`2026-08-03-parameter-spec-editor-fidelity.md`](../completed/2026-08-03-parameter-spec-editor-fidelity.md)
 
 ## Context
 
