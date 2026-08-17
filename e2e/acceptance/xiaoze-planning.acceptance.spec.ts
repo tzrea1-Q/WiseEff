@@ -1,83 +1,44 @@
 import "dotenv/config";
-import { createHmac } from "node:crypto";
-import { expect, test } from "playwright/test";
+import { expect, test, type APIRequestContext } from "playwright/test";
 
-import { runNpmScript, withPgClient } from "./helpers/database";
-import { apiRoute, smokeHeaders } from "./helpers/runtime";
+import { authHeadersForRole, authHeadersForUser } from "./helpers/bearerAuth";
+import { acceptanceCast } from "./helpers/cast";
+import { withPgClient } from "./helpers/database";
+import { type DisposablePostCutoverRuntime } from "./helpers/disposablePostCutoverRuntime";
 import {
   recordOperationEvidence,
   summarizeApiResponse,
   writeOperationJsonArtifact
 } from "./helpers/operationEvidence";
+import { apiRoute } from "./helpers/runtime";
+import {
+  createAndSubmitBindingDraft,
+  integerCellTarget,
+  seedIsolatedNumericCellBinding,
+  startSwappedDisposablePostCutoverRuntime,
+  type IsolatedBinding
+} from "./helpers/semanticBindingFixture";
 
 const databaseUrl = process.env.DATABASE_URL;
 const projectId = "aurora";
-const parameterId = "aurora-fast-charge-current";
-const actorUserId = "u-xu-yun";
+const organizationId = "org-chargelab";
 const threadId = "xiaoze-planning-thread";
 
-function bearerTokenFor(input: {
-  userId: string;
-  roleId: string;
-  projectId: string | null;
-  permissions: string[];
-}) {
-  const issuer = process.env.AUTH_TOKEN_ISSUER?.trim();
-  const secret = process.env.AUTH_TOKEN_HMAC_SECRET?.trim();
-  if (!issuer || !secret) {
-    return null;
-  }
-
-  const payload = Buffer.from(
-    JSON.stringify({
-      iss: issuer,
-      sub: input.userId,
-      org: "org-chargelab",
-      name: "Acceptance Xiaoze User",
-      email: `${input.userId}@chargelab.cn`,
-      title: "Acceptance User",
-      orgName: "ChargeLab",
-      roles: [{ roleId: input.roleId, projectId: input.projectId }],
-      permissions: input.permissions,
-      isActive: true,
-      nbf: 0,
-      exp: 9999999999
-    })
-  ).toString("base64url");
-  const signature = createHmac("sha256", secret).update(payload).digest("base64url");
-  return `Bearer ${payload}.${signature}`;
-}
+test.skip(!databaseUrl, "DATABASE_URL is required for disposable post-cutover Xiaoze planning acceptance.");
 
 function adminHeaders() {
-  const authorization =
-    process.env.VITE_WISEEFF_API_AUTHORIZATION?.trim() ||
-    process.env.M5_SMOKE_AUTHORIZATION?.trim() ||
-    process.env.WISEEFF_SMOKE_AUTHORIZATION?.trim();
-  if (process.env.AUTH_PROVIDER === "local" || !authorization) {
-    return { ...smokeHeaders(), Accept: "text/event-stream", "x-wiseeff-user": actorUserId };
-  }
-  return { "Content-Type": "application/json", Authorization: authorization, Accept: "text/event-stream" };
+  return { ...authHeadersForRole("admin"), Accept: "text/event-stream" };
 }
 
 function jsonAdminHeaders() {
-  const streamHeaders = adminHeaders();
-  return { ...streamHeaders, Accept: "application/json" };
+  return { ...authHeadersForRole("admin"), Accept: "application/json" };
 }
 
 function readOnlyHeaders() {
-  const authorization = bearerTokenFor({
-    userId: "acceptance-xiaoze-readonly",
-    roleId: "guest",
-    projectId,
-    permissions: ["parameter:view", "logs:view"]
-  });
-  if (authorization) {
-    return { "Content-Type": "application/json", Authorization: authorization, Accept: "application/json" };
-  }
+  const guest = acceptanceCast.acceptanceGuest;
   return {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-    "x-wiseeff-user": "acceptance-xiaoze-readonly"
+    ...authHeadersForUser(guest.userId, guest.email, guest.name),
+    Accept: "application/json"
   };
 }
 
@@ -111,7 +72,12 @@ function readAssistantText(events: Array<Record<string, unknown>>) {
 }
 
 async function postXiaoze(
-  request: { post: (url: string, options?: object) => Promise<{ status: () => number; text: () => Promise<string>; headers: () => Record<string, string> }> },
+  request: {
+    post: (
+      url: string,
+      options?: object
+    ) => Promise<{ status: () => number; text: () => Promise<string>; headers: () => Record<string, string> }>;
+  },
   headers: Record<string, string>,
   payload: Record<string, unknown>
 ) {
@@ -123,105 +89,121 @@ async function postXiaoze(
   return { status: response.status(), body, events: parseSseEvents(body), response };
 }
 
-async function resetOpenChangeRequestsForParameter() {
+async function seedPlanningGuestUser() {
+  const guest = acceptanceCast.acceptanceGuest;
+  await withPgClient(async (client) => {
+    await client.query(
+      `
+      insert into users (id, organization_id, name, email, title, is_active)
+      values ($1, $2, $3, $4, $5, true)
+      on conflict (id) do update set
+        name = excluded.name,
+        email = excluded.email,
+        title = excluded.title,
+        is_active = excluded.is_active
+      `,
+      [guest.userId, organizationId, guest.name, guest.email, guest.title]
+    );
+    await client.query(
+      `
+      insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+      values ($1, $2, $3, $4, 'guest')
+      on conflict (id) do update set
+        project_id = excluded.project_id,
+        role_id = excluded.role_id
+      `,
+      [`acceptance-${guest.userId}-guest-${projectId}`, guest.userId, organizationId, projectId]
+    );
+  });
+}
+
+async function resetOpenChangeRequestsForBinding(bindingId: string) {
   await withPgClient(async (client) => {
     await client.query(
       `
       update parameter_change_requests
       set status = 'rejected', reject_reason = 'xiaoze acceptance reset', updated_at = now()
-      where organization_id = 'org-chargelab'
-        and project_id = $1
-        and project_parameter_value_id = $2
+      where organization_id = $1
+        and project_id = $2
+        and project_parameter_binding_id = $3
         and status not in ('merged', 'rejected')
       `,
-      [projectId, parameterId]
+      [organizationId, projectId, bindingId]
     );
   });
 }
 
-async function countOpenChangeRequests() {
+async function countOpenChangeRequests(bindingId: string) {
   return withPgClient(async (client) => {
     const result = await client.query<{ count: string }>(
       `
       select count(*)::text as count
       from parameter_change_requests
-      where organization_id = 'org-chargelab'
-        and project_id = $1
-        and project_parameter_value_id = $2
+      where organization_id = $1
+        and project_id = $2
+        and project_parameter_binding_id = $3
         and status not in ('merged', 'rejected', 'withdrawn')
       `,
-      [projectId, parameterId]
+      [organizationId, projectId, bindingId]
     );
     return Number(result.rows[0]?.count ?? 0);
   });
 }
 
-test.skip(!databaseUrl, "DATABASE_URL is required for Xiaoze planning acceptance evidence.");
-
-test.beforeAll(async () => {
-  runNpmScript("db:migrate");
-  runNpmScript("db:seed:m0");
-  runNpmScript("db:seed:m1");
-});
-
-test.beforeEach(async () => {
-  await resetOpenChangeRequestsForParameter();
-});
-
-async function ensureOpenChangeRequestForSuggest() {
-  await withPgClient(async (client) => {
-    const existing = await client.query<{ count: string }>(
-      `
-      select count(*)::text as count
-      from parameter_change_requests
-      where organization_id = 'org-chargelab'
-        and project_id = $1
-        and project_parameter_value_id = $2
-        and status not in ('merged', 'rejected', 'withdrawn')
-      `,
-      [projectId, parameterId]
-    );
-    if (Number(existing.rows[0]?.count ?? 0) > 0) {
-      return;
-    }
-
-    const definition = await client.query<{ parameter_definition_id: string }>(
-      `
-      select parameter_definition_id
-      from project_parameter_values
-      where id = $1
-      `,
-      [parameterId]
-    );
-    const parameterDefinitionId = definition.rows[0]?.parameter_definition_id;
-    if (!parameterDefinitionId) {
-      throw new Error(`Missing parameter_definition_id for ${parameterId}`);
-    }
-
-    await client.query(
-      `
-      insert into parameter_change_requests (
-        id, organization_id, project_id, project_parameter_value_id, parameter_definition_id,
-        base_version, current_value, target_value, status, submitter_user_id
-      )
-      values ($1, 'org-chargelab', $2, $3, $4, 1, '3000', '3100', 'submitted', $5)
-      on conflict (id) do update set
-        status = 'submitted',
-        reject_reason = null,
-        updated_at = now()
-      `,
-      [`acceptance-xiaoze-suggest-${parameterId}`, projectId, parameterId, parameterDefinitionId, actorUserId]
-    );
+async function ensureOpenChangeRequestForSuggest(request: APIRequestContext, binding: IsolatedBinding) {
+  if ((await countOpenChangeRequests(binding.bindingId)) > 0) {
+    return;
+  }
+  const baseCellValue = Number(binding.rawValue.replace(/[<>]/g, ""));
+  await createAndSubmitBindingDraft(request, {
+    binding,
+    targetValue: integerCellTarget(String(baseCellValue + 50)),
+    reason: "XIAOZE-PROACTIVE-001 open request fixture"
   });
 }
 
 test.describe("Xiaoze P2 planning", () => {
+  let disposableRuntime: DisposablePostCutoverRuntime;
+  let restoreDisposable: (() => Promise<void>) | undefined;
+  let seededBinding: IsolatedBinding;
+
+  test.beforeAll(async ({ request }) => {
+    test.setTimeout(180_000);
+    const baseDatabaseUrl = databaseUrl?.trim();
+    if (!baseDatabaseUrl) {
+      throw new Error("DATABASE_URL is required to create the disposable Xiaoze planning database.");
+    }
+    const started = await startSwappedDisposablePostCutoverRuntime(baseDatabaseUrl, {
+      label: "xiaoze_plan",
+      markerPurpose: "xiaoze-planning",
+      apiEnv: { XIAOZE_PROACTIVE_ENABLED: "true" }
+    });
+    disposableRuntime = started.runtime;
+    restoreDisposable = started.restore;
+    expect(disposableRuntime.markerPurpose).toBe("xiaoze-planning");
+    await seedPlanningGuestUser();
+    seededBinding = await seedIsolatedNumericCellBinding(request, {
+      reason: "XIAOZE-PLAN semantic binding"
+    });
+  });
+
+  test.afterAll(async () => {
+    test.setTimeout(60_000);
+    await restoreDisposable?.();
+  });
+
+  test.beforeEach(async () => {
+    await resetOpenChangeRequestsForBinding(seededBinding.bindingId);
+  });
+
   test("completes a multi-step task through approval and observe loop", async ({ request }, testInfo) => {
     // @acceptance XIAOZE-PLAN-MULTISTEP-001
     // @operation XIAOZE-PLAN-MULTISTEP-001
-    const openBefore = await countOpenChangeRequests();
+    test.setTimeout(180_000);
+    const openBefore = await countOpenChangeRequests(seededBinding.bindingId);
     const thread = `${threadId}-multistep-${Date.now()}`;
-    const actionPrompt = `project ${projectId} charges slowly; set ${parameterId} to 18A`;
+    const targetValue = `<${Number(seededBinding.rawValue.replace(/[<>]/g, "")) + 1}>`;
+    const actionPrompt = `project ${projectId} charges slowly; set ${seededBinding.bindingId} to ${targetValue}`;
     const started = await postXiaoze(request, adminHeaders(), {
       threadId: thread,
       runId: `run-plan-start-${Date.now()}`,
@@ -257,13 +239,14 @@ test.describe("Xiaoze P2 planning", () => {
     expect(resumed.status).toBe(200);
     expect(resumed.events.some((event) => event.type === "RUN_ERROR")).toBe(false);
     expect(resumed.events.some((event) => event.type === "TEXT_MESSAGE_CONTENT")).toBe(true);
-    const openAfter = await countOpenChangeRequests();
+    const openAfter = await countOpenChangeRequests(seededBinding.bindingId);
     expect(openAfter).toBeGreaterThan(openBefore);
 
     const finalText = readAssistantText(resumed.events).toLowerCase();
     expect(finalText.includes("change") || finalText.includes("request") || finalText.includes("citation")).toBe(true);
     const planArtifact = await writeOperationJsonArtifact(testInfo, "xiaoze-plan-multistep.json", {
       approvalId: interruptValue?.approvalId,
+      bindingId: seededBinding.bindingId,
       startedStatus: started.status,
       resumedStatus: resumed.status,
       openBefore,
@@ -290,13 +273,14 @@ test.describe("Xiaoze P2 planning", () => {
           responseSummary: finalText.slice(0, 120)
         })
       ],
-      notes: "Xiaoze resumes the same planning thread after approval and reports the observed execution result."
+      notes: "Xiaoze resumes the same planning thread after approval and reports the observed execution result. Prompt addressed a runtime-resolved project_parameter_binding_id on disposable post-cutover identity (TD-079)."
     });
   });
 
   test("returns grounded proactive suggestions when enabled and nothing for unauthorized scope", async ({ request }, testInfo) => {
     // @acceptance XIAOZE-PROACTIVE-001
-    await ensureOpenChangeRequestForSuggest();
+    test.setTimeout(180_000);
+    await ensureOpenChangeRequestForSuggest(request, seededBinding);
 
     const enabledResponse = await request.post(apiRoute("/api/v1/agent/xiaoze/suggest"), {
       headers: jsonAdminHeaders(),
@@ -339,7 +323,7 @@ test.describe("Xiaoze P2 planning", () => {
           responseSummary: String(enabledBody.suggestions?.[0]?.headline ?? "suggestion")
         })
       ],
-      notes: "Proactive suggest is read-only, authz-bounded, and gated by XIAOZE_PROACTIVE_ENABLED."
+      notes: "Proactive suggest is read-only, authz-bounded, and gated by XIAOZE_PROACTIVE_ENABLED. Open CR fixture used a typed binding draft rather than a retired PPV insert (TD-079)."
     });
   });
 });

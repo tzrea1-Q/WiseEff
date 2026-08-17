@@ -1,118 +1,35 @@
 import "dotenv/config";
 import { expect, test, type Page } from "playwright/test";
-import { apiRoute, smokeHeaders } from "./helpers/runtime";
-import { runNpmScript, withPgClient } from "./helpers/database";
+
+import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+import { withPgClient } from "./helpers/database";
+import {
+  type DisposablePostCutoverRuntime
+} from "./helpers/disposablePostCutoverRuntime";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
-import { signInBrowserAsRole } from "./helpers/bearerAuth";
-import { castByRole } from "./helpers/cast";
 import { prepareInteractionSurface } from "./helpers/interactionSurface";
+import { apiRoute } from "./helpers/runtime";
+import {
+  createAndSubmitBindingDraft,
+  disposablePageUrl,
+  integerCellTarget,
+  seedIsolatedNumericCellBinding,
+  startSwappedDisposablePostCutoverRuntime
+} from "./helpers/semanticBindingFixture";
 
 useBrowserDiagnostics(test);
 
 const projectId = "aurora";
-const parameterValueId = `${projectId}-fast-charge-current`;
-const actorUserId = "u-xu-yun";
-const rejectParameterValueId = `${projectId}-charge-voltage-limit`;
 const rejectTargetValue = "4333";
 const rejectReasonPrefix = "M5.8 PARAM-REJECT-001 browser acceptance";
-const draftEditReasonPrefix = "M5.8 PARAM-DRAFT-EDIT-001 browser acceptance";
 const rejectionReason = `${rejectReasonPrefix} needs supplemental thermal evidence`;
+const databaseUrl = process.env.DATABASE_URL;
 
-async function seedWorkflowUsers() {
-  const users = [
-    [castByRole["hardware-committer"], "hardware-committer"],
-    [castByRole["software-committer"], "software-committer"],
-    [castByRole["software-user"], "software-user"]
-  ] as const;
+test.skip(!databaseUrl, "DATABASE_URL is required for disposable post-cutover parameter acceptance.");
 
-  await withPgClient(async (client) => {
-    for (const [{ userId, name, email, title }, roleId] of users) {
-      await client.query(
-        `
-        insert into users (id, organization_id, name, email, title, is_active)
-        values ($1, 'org-chargelab', $2, $3, $4, true)
-        on conflict (id) do update set
-          name = excluded.name,
-          email = excluded.email,
-          title = excluded.title,
-          is_active = excluded.is_active
-        `,
-        [userId, name, email, title]
-      );
-      await client.query(
-        `
-        delete from user_role_bindings
-        where user_id = $1
-          and organization_id = 'org-chargelab'
-          and (project_id = $2 or project_id is null)
-          and role_id <> $3
-        `,
-        [userId, projectId, roleId]
-      );
-      await client.query(
-        `
-        insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
-        values ($1, $2, 'org-chargelab', $3, $4)
-        on conflict (id) do update set
-          project_id = excluded.project_id,
-          role_id = excluded.role_id
-        `,
-        [`acceptance-${userId}-${roleId}-${projectId}`, userId, projectId, roleId]
-      );
-    }
-  });
-}
-
-async function cleanupOpenAcceptanceRequests() {
-  await withPgClient(async (client) => {
-    const requests = await client.query<{ id: string; submission_round_id: string | null }>(
-      `
-      select cr.id, cr.submission_round_id
-      from parameter_change_requests cr
-      join parameter_submission_items psi on psi.change_request_id = cr.id
-      where (
-          psi.reason like 'M5.4 browser acceptance%'
-          or psi.reason like $1
-        )
-        and cr.status not in ('merged', 'rejected')
-      `,
-      [`${draftEditReasonPrefix}%`]
-    );
-    const requestIds = requests.rows.map((row) => row.id);
-    const roundIds = Array.from(
-      new Set(requests.rows.map((row) => row.submission_round_id).filter((id): id is string => Boolean(id)))
-    );
-
-    if (requestIds.length > 0) {
-      await client.query("delete from parameter_review_decisions where request_id = any($1::text[])", [requestIds]);
-      await client.query("delete from parameter_submission_items where change_request_id = any($1::text[])", [requestIds]);
-      await client.query("delete from parameter_change_requests where id = any($1::text[])", [requestIds]);
-    }
-    if (roundIds.length > 0) {
-      await client.query(
-        `
-        delete from parameter_submission_rounds
-        where id = any($1::text[])
-          and not exists (
-            select 1 from parameter_change_requests
-            where parameter_change_requests.submission_round_id = parameter_submission_rounds.id
-          )
-        `,
-        [roundIds]
-      );
-    }
-
-    await client.query(
-      `
-      delete from parameter_drafts
-      where project_id = $1
-        and user_id = $2
-        and project_parameter_value_id = $3
-      `,
-      [projectId, actorUserId, parameterValueId]
-    );
-  });
+function adminHeaders() {
+  return authHeadersForRole("admin");
 }
 
 async function cleanupRejectedAcceptanceRequests() {
@@ -154,7 +71,7 @@ async function cleanupRejectedAcceptanceRequests() {
 }
 
 async function expectSuccessfulApiResponse(page: Page, route: string) {
-  const response = await page.request.get(apiRoute(route), { headers: smokeHeaders() });
+  const response = await page.request.get(apiRoute(route), { headers: adminHeaders() });
   expect(response.ok()).toBe(true);
   return response;
 }
@@ -203,53 +120,38 @@ function auditSummaryFor(
   };
 }
 
-async function createSubmittedRejectionRequest(page: Page) {
-  const response = await page.request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
-    headers: smokeHeaders(),
-    data: {
-      projectId,
-      items: [
-        {
-          parameterId: rejectParameterValueId,
-          targetValue: rejectTargetValue,
-          reason: `${rejectReasonPrefix} submitted request`
-        }
-      ],
-      reason: `${rejectReasonPrefix} submitted request`,
-      assignees: {
-        hardwareCommitterId: "u-wang-jie",
-        softwareCommitterId: "u-sun-mei",
-        softwareUserId: "u-liu-min"
-      }
+test.describe("M5.4 manual flow B/C - parameter management browser acceptance", () => {
+  let disposableRuntime: DisposablePostCutoverRuntime;
+  let restoreDisposable: (() => Promise<void>) | undefined;
+
+  test.beforeAll(async () => {
+    test.setTimeout(180_000);
+    const baseDatabaseUrl = databaseUrl?.trim();
+    if (!baseDatabaseUrl) {
+      throw new Error("DATABASE_URL is required to create the disposable parameter acceptance database.");
     }
+    const started = await startSwappedDisposablePostCutoverRuntime(baseDatabaseUrl, {
+      label: "param_reject",
+      markerPurpose: "param-reject"
+    });
+    disposableRuntime = started.runtime;
+    restoreDisposable = started.restore;
+    await cleanupRejectedAcceptanceRequests();
   });
 
-  expect(response.ok()).toBe(true);
-  const body = (await response.json()) as {
-    item: {
-      items: Array<{ requestId: string; targetValue: string }>;
-    };
-  };
-  const requestId = body.item.items.find((item) => item.targetValue === rejectTargetValue)?.requestId;
-  expect(requestId).toBeTruthy();
-
-  return requestId!;
-}
-
-test.describe("M5.4 manual flow B/C - parameter management browser acceptance", () => {
-  test.beforeAll(async () => {
-    runNpmScript("db:migrate");
-    runNpmScript("db:seed:m0");
-    runNpmScript("db:seed:m1");
-    await cleanupOpenAcceptanceRequests();
-    await cleanupRejectedAcceptanceRequests();
-    await seedWorkflowUsers();
+  test.afterAll(async () => {
+    test.setTimeout(60_000);
+    await restoreDisposable?.();
   });
 
   test("isolates the semantic API workspace and opens admin import preview", async ({ page }, testInfo) => {
     // @acceptance PARAM-ADMIN-001
     // @operation PARAM-ADMIN-001
-    await page.goto(`/parameters?project=${projectId}`);
+    await signInBrowserAsRole(
+      page,
+      "admin",
+      disposablePageUrl(disposableRuntime, `/parameters?project=${projectId}`)
+    );
 
     // API mode mounts semantic topology workspace from ingested Config Set (not teaching fixtures).
     const workspace = page.getByRole("region", { name: "DTS 参数工作台" });
@@ -264,10 +166,10 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     await expect(page.getByRole("button", { name: "导出 Excel" })).toHaveCount(0);
     await expect(page.getByText("推荐值", { exact: false })).toHaveCount(0);
 
-    await signInBrowserAsRole(page, "admin", "/parameter-admin?audit=open");
+    await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, "/parameter-admin?audit=open"));
     await expect(page).toHaveURL(/\/audit/);
     await expect(page.getByLabel("搜索审计记录")).toBeVisible();
-    await page.goto("/parameter-admin");
+    await page.goto(disposablePageUrl(disposableRuntime, "/parameter-admin"));
     await expect(page.getByRole("region", { name: "参数定义库" })).toBeVisible({ timeout: 30_000 });
     await prepareInteractionSurface(page);
 
@@ -301,6 +203,15 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     // dedicated acceptance; PARAM-ADMIN-001 only needs the admin import surface to open and parse.
     await expect(importWizard.getByRole("button", { name: "下一步" })).toBeVisible();
 
+    const auditProbe = await page.request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
+      headers: adminHeaders(),
+      data: {
+        name: `param-admin-audit-${Date.now()}`,
+        description: "PARAM-ADMIN-001 disposable audit probe"
+      }
+    });
+    expect(auditProbe.ok(), await auditProbe.text()).toBe(true);
+
     const auditResponse = await expectSuccessfulApiResponse(page, "/api/v1/audit-events");
     const auditBody = (await auditResponse.json()) as {
       items: Array<{ id?: string; kind: string; action: string; projectId: string | null; targetId: string | null; traceId?: string }>;
@@ -333,25 +244,48 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     });
   });
 
-  test("rejects a submitted parameter request and persists rejection reason and audit evidence", async ({ page }, testInfo) => {
+  test("rejects a submitted parameter request and persists rejection reason and audit evidence", async ({
+    page,
+    request
+  }, testInfo) => {
     // @acceptance PARAM-REJECT-001
     // @operation PARAM-REJECT-001
-    const requestId = await createSubmittedRejectionRequest(page);
+    test.setTimeout(180_000);
+    const binding = await seedIsolatedNumericCellBinding(request, {
+      reason: `${rejectReasonPrefix} binding`
+    });
+    const submitted = await createAndSubmitBindingDraft(request, {
+      binding,
+      targetValue: integerCellTarget(rejectTargetValue),
+      reason: `${rejectReasonPrefix} submitted request`
+    });
+    const requestId = submitted.requestId;
 
     const rejectResponse = await page.request.post(
       apiRoute(`/api/v1/parameter-change-requests/${encodeURIComponent(requestId)}/review`),
       {
-        headers: smokeHeaders(),
+        headers: adminHeaders(),
         data: { decision: "reject", note: rejectionReason }
       }
     );
     expect(rejectResponse.ok(), await rejectResponse.text()).toBe(true);
 
-    await page.goto("/parameter-review");
+    const listed = await page.request.get(apiRoute(`/api/v1/parameter-change-requests?projectId=${projectId}`), {
+      headers: adminHeaders()
+    });
+    expect(listed.ok()).toBe(true);
+    const listedBody = (await listed.json()) as {
+      items: Array<{ id: string; module: string; targetValue: string }>;
+    };
+    const submittedItem = listedBody.items.find((item) => item.id === requestId);
+    expect(submittedItem).toBeTruthy();
+    const moduleLabel = submittedItem!.module;
+
+    await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, "/parameter-review"));
     await page.getByRole("tab", { name: "历史审阅" }).click();
     const requestRow = page.getByRole("row").filter({ hasText: rejectTargetValue }).first();
     await expect(requestRow).toBeVisible();
-    await expect(requestRow).toContainText("Charging Policy");
+    await expect(requestRow).toContainText(moduleLabel);
     await requestRow.click();
 
     const reviewDetail = page.getByRole("complementary", { name: "审阅详情" });
@@ -421,7 +355,7 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
           targetId: requestId
         })
       ],
-      notes: `Parameter request ${requestId} was rejected through the browser UI and produced persisted rejection and parameter-review-reject audit evidence.`
+      notes: `Parameter request ${requestId} was rejected through the browser UI and produced persisted rejection and parameter-review-reject audit evidence. Submitted via typed binding draft on disposable post-cutover identity (TD-079).`
     });
   });
 });

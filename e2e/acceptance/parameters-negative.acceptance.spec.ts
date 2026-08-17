@@ -1,55 +1,35 @@
 import "dotenv/config";
 import { expect, test, type Page } from "playwright/test";
+
+import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
-import { runNpmScript, withPgClient } from "./helpers/database";
+import { withPgClient } from "./helpers/database";
+import { type DisposablePostCutoverRuntime } from "./helpers/disposablePostCutoverRuntime";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
-import { apiRoute, smokeHeaders } from "./helpers/runtime";
+import { apiRoute } from "./helpers/runtime";
+import {
+  createBindingDraftViaApi,
+  deleteDraftViaApi,
+  disposablePageUrl,
+  integerCellTarget,
+  seedIsolatedNumericCellBinding,
+  seedIsolatedNumericCellPair,
+  startSwappedDisposablePostCutoverRuntime,
+  submitBindingDraftViaApi,
+  type IsolatedBinding
+} from "./helpers/semanticBindingFixture";
 
 useBrowserDiagnostics(test);
 
 const projectId = "aurora";
-const parameterName = "fast_charge_current_limit_ma";
-const parameterValueId = `${projectId}-fast-charge-current`;
-const removableParameterValueId = `${projectId}-charge-voltage-limit`;
-const actorUserId = "u-xu-yun";
 const reasonPrefix = "M5.5 browser acceptance";
 const draftEditReasonPrefix = "M5.8 PARAM-DRAFT-EDIT-001 browser acceptance";
+const databaseUrl = process.env.DATABASE_URL;
 
-async function cleanupOpenChangeRequests(parameterIds: string[]) {
-  await withPgClient(async (client) => {
-    const requests = await client.query<{ id: string; submission_round_id: string | null }>(
-      `
-      select id, submission_round_id
-      from parameter_change_requests
-      where project_parameter_value_id = any($1::text[])
-        and status not in ('merged', 'rejected', 'withdrawn')
-      `,
-      [parameterIds]
-    );
-    const requestIds = requests.rows.map((row) => row.id);
-    const roundIds = Array.from(
-      new Set(requests.rows.map((row) => row.submission_round_id).filter((id): id is string => Boolean(id)))
-    );
+test.skip(!databaseUrl, "DATABASE_URL is required for disposable post-cutover parameter negative acceptance.");
 
-    if (requestIds.length > 0) {
-      await client.query("delete from parameter_review_decisions where request_id = any($1::text[])", [requestIds]);
-      await client.query("delete from parameter_submission_items where change_request_id = any($1::text[])", [requestIds]);
-      await client.query("delete from parameter_change_requests where id = any($1::text[])", [requestIds]);
-    }
-    if (roundIds.length > 0) {
-      await client.query("delete from parameter_submission_rounds where id = any($1::text[])", [roundIds]);
-    }
-
-    await client.query(
-      `
-      delete from parameter_drafts
-      where project_id = $1
-        and user_id = $2
-        and project_parameter_value_id = any($3::text[])
-      `,
-      [projectId, actorUserId, parameterIds]
-    );
-  });
+function adminHeaders() {
+  return authHeadersForRole("admin");
 }
 
 async function cleanupM55ParameterState() {
@@ -78,40 +58,6 @@ async function cleanupM55ParameterState() {
       await client.query("delete from parameter_submission_rounds where id = any($1::text[])", [roundIds]);
     }
   });
-  await cleanupOpenChangeRequests([parameterValueId, removableParameterValueId]);
-}
-
-async function prepareParameterNegativeAcceptanceState() {
-  runNpmScript("db:migrate");
-  runNpmScript("db:seed:m0");
-  runNpmScript("db:seed:m1");
-  await cleanupM55ParameterState();
-}
-
-async function createDraftViaApi(
-  page: Page,
-  input: { parameterId: string; targetValue: string; reason: string }
-) {
-  const response = await page.request.post(apiRoute("/api/v1/parameter-drafts"), {
-    headers: smokeHeaders(),
-    data: {
-      projectId,
-      parameterId: input.parameterId,
-      targetValue: input.targetValue,
-      reason: input.reason
-    }
-  });
-  expect(response.ok()).toBe(true);
-  const body = (await response.json()) as { item: { id: string; targetValue: string; reason: string } };
-  return body.item;
-}
-
-async function dismissXiaozeHint(page: Page) {
-  const dismiss = page.getByRole("button", { name: "不再提示" });
-  await dismiss.waitFor({ state: "visible", timeout: 2_000 }).catch(() => undefined);
-  if (await dismiss.isVisible().catch(() => false)) {
-    await dismiss.click();
-  }
 }
 
 async function submittedDraftEditDbSummary(requestId: string, excludedTargetValue: string) {
@@ -148,20 +94,33 @@ async function submittedDraftEditDbSummary(requestId: string, excludedTargetValu
 }
 
 test.describe("M5.5 parameter negative-path browser acceptance", () => {
+  let disposableRuntime: DisposablePostCutoverRuntime;
+  let restoreDisposable: (() => Promise<void>) | undefined;
+
   test.beforeAll(async () => {
-    await prepareParameterNegativeAcceptanceState();
+    test.setTimeout(180_000);
+    const baseDatabaseUrl = databaseUrl?.trim();
+    if (!baseDatabaseUrl) {
+      throw new Error("DATABASE_URL is required to create the disposable parameter-negative acceptance database.");
+    }
+    const started = await startSwappedDisposablePostCutoverRuntime(baseDatabaseUrl, {
+      label: "param_neg",
+      markerPurpose: "param-negative"
+    });
+    disposableRuntime = started.runtime;
+    restoreDisposable = started.restore;
+    await cleanupM55ParameterState();
   });
 
-  test.beforeEach(async () => {
-    await cleanupOpenChangeRequests([parameterValueId, removableParameterValueId]);
+  test.afterAll(async () => {
+    test.setTimeout(60_000);
+    await restoreDisposable?.();
   });
 
   test("blocks blank draft reasons before API submission", async ({ page }, testInfo) => {
     // @acceptance PARAM-REASON-001
     // @operation PARAM-REASON-001
-    // API mode /parameters mounts topology workspace; blank-reason UX is enforced on
-    // draft-spec activation (and identity mapping) rather than the legacy parameters table.
-    await page.goto("/parameter-admin");
+    await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, "/parameter-admin"));
     const library = page.getByRole("region", { name: "参数定义库" });
     await expect(library).toBeVisible({ timeout: 30_000 });
 
@@ -181,12 +140,12 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
     }
 
     const blankSubmit = await page.request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
-      headers: smokeHeaders(),
+      headers: adminHeaders(),
       data: {
         projectId,
         items: [
           {
-            parameterId: parameterValueId,
+            parameterId: "unused-legacy-id",
             targetValue: "3100",
             reason: "   "
           }
@@ -216,74 +175,65 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
     });
   });
 
-  test("edits a draft item and removes another item before final submission", async ({ page }, testInfo) => {
+  test("edits a draft item and removes another item before final submission", async ({ page, request }, testInfo) => {
     // @acceptance PARAM-DRAFT-EDIT-001
     // @operation PARAM-DRAFT-EDIT-001
-    await page.goto(`/parameters?project=${projectId}`);
+    test.setTimeout(180_000);
+    await signInBrowserAsRole(
+      page,
+      "admin",
+      disposablePageUrl(disposableRuntime, `/parameters?project=${projectId}`)
+    );
     await expect(page.getByRole("region", { name: "DTS 参数工作台" })).toBeVisible({ timeout: 30_000 });
 
-    const kept = await createDraftViaApi(page, {
-      parameterId: parameterValueId,
-      targetValue: "3111",
+    const pair = await seedIsolatedNumericCellPair(request, {
+      kept: { propertyKey: "iin_max", cellValue: 2300 },
+      removable: { propertyKey: "vin_min", cellValue: 4100 },
+      reason: `${draftEditReasonPrefix} bindings`
+    });
+
+    const keptCreated = await createBindingDraftViaApi(request, {
+      binding: pair.kept,
+      targetValue: integerCellTarget("3111"),
       reason: `${draftEditReasonPrefix} editable item`
     });
-    const removable = await createDraftViaApi(page, {
-      parameterId: removableParameterValueId,
-      targetValue: "4331",
-      reason: `${draftEditReasonPrefix} removable item`
-    });
+    expect(keptCreated.status, keptCreated.bodyText).toBe(201);
+    expect(keptCreated.draft).toBeTruthy();
+    expect(keptCreated.draft!.rawText).toContain("3111");
 
-    const updateResponse = await page.request.post(apiRoute("/api/v1/parameter-drafts"), {
-      headers: smokeHeaders(),
-      data: {
-        projectId,
-        parameterId: parameterValueId,
-        targetValue: "3122",
-        reason: `${draftEditReasonPrefix} editable item`
-      }
+    // Recreate the kept draft at the edited target so the write lock is captured
+    // in one createBindingDraft; a second upsert can coalesce a stale occurrence.
+    await deleteDraftViaApi(request, keptCreated.draft!.draftId);
+    const updated = await createBindingDraftViaApi(request, {
+      binding: pair.kept,
+      targetValue: integerCellTarget("3122"),
+      reason: `${draftEditReasonPrefix} editable item`
     });
-    expect(updateResponse.ok()).toBe(true);
+    expect(updated.status, updated.bodyText).toBe(201);
+    expect(updated.draft).toBeTruthy();
+    expect(updated.draft!.rawText).toContain("3122");
+    expect(updated.draft!.rawText).not.toContain("3111");
 
-    const deleteResponse = await page.request.delete(
-      apiRoute(`/api/v1/parameter-drafts/${encodeURIComponent(removable.id)}`),
-      { headers: smokeHeaders() }
-    );
-    expect(deleteResponse.ok()).toBe(true);
-
-    const submitResponse = await page.request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
-      headers: smokeHeaders(),
-      data: {
-        projectId,
-        items: [
-          {
-            parameterId: parameterValueId,
-            targetValue: "3122",
-            reason: `${draftEditReasonPrefix} editable item`
-          }
-        ],
-        reason: `${draftEditReasonPrefix} editable item`,
-        assignees: {
-          hardwareCommitterId: "u-wang-jie",
-          softwareCommitterId: "u-sun-mei",
-          softwareUserId: "u-liu-min"
-        }
-      }
+    const removableCreated = await createBindingDraftViaApi(request, {
+      binding: pair.removable,
+      targetValue: integerCellTarget("4331"),
+      reason: `${draftEditReasonPrefix} removable item`,
+      baseRevisionId: updated.draft!.candidateRevisionId
     });
-    expect(submitResponse.ok()).toBe(true);
-    const submitBody = (await submitResponse.json()) as {
-      item: {
-        items: Array<{ requestId: string; targetValue: string }>;
-      };
-    };
-    expect(submitBody.item.items).toEqual(
-      expect.arrayContaining([expect.objectContaining({ targetValue: "3122" })])
-    );
-    expect(submitBody.item.items).not.toEqual(
-      expect.arrayContaining([expect.objectContaining({ targetValue: "4331" })])
-    );
-    const submittedRequestId = submitBody.item.items.find((item) => item.targetValue === "3122")?.requestId;
-    expect(submittedRequestId).toBeTruthy();
-    expect(kept.id).toBeTruthy();
+    expect(removableCreated.status, removableCreated.bodyText).toBe(201);
+    expect(removableCreated.draft).toBeTruthy();
+
+    await deleteDraftViaApi(request, removableCreated.draft!.draftId);
+
+    const submitResponse = await submitBindingDraftViaApi(request, {
+      projectId,
+      draft: updated.draft!,
+      reason: `${draftEditReasonPrefix} editable item`
+    });
+    expect(submitResponse.status, submitResponse.bodyText).toBe(201);
+    expect(submitResponse.requestId).toBeTruthy();
+    expect(submitResponse.bodyText).toContain("3122");
+    expect(submitResponse.bodyText).not.toContain("4331");
 
     await recordOperationEvidence({
       operationId: "PARAM-DRAFT-EDIT-001",
@@ -292,31 +242,47 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
       page,
       testInfo,
       api: [
-        summarizeApiResponse(submitResponse, {
+        {
           method: "POST",
           path: "/api/v1/parameter-submission-rounds",
-          responseSummary: `submitted request ${submittedRequestId}; removed target 4331 absent`
-        })
+          status: submitResponse.status,
+          responseSummary: `submitted request ${submitResponse.requestId}; removed target 4331 absent`
+        }
       ],
-      db: [await submittedDraftEditDbSummary(submittedRequestId!, "4331")],
-      notes: "API-mode topology workspace: edited one draft target, deleted the other draft, and submitted only the edited item."
+      db: [await submittedDraftEditDbSummary(submitResponse.requestId!, "<4331>")],
+      notes: "API-mode topology workspace: edited one typed binding draft target, deleted the other draft, and submitted only the edited item on disposable post-cutover identity (TD-079)."
     });
   });
 
-  test("rejects forced invalid workflow assignees at the API boundary", async ({ page }, testInfo) => {
+  test("rejects forced invalid workflow assignees at the API boundary", async ({ page, request }, testInfo) => {
     // @acceptance PARAM-ASSIGNEE-003
     // @operation PARAM-ASSIGNEE-003
-    await cleanupOpenChangeRequests([removableParameterValueId]);
+    test.setTimeout(180_000);
+    const binding: IsolatedBinding = await seedIsolatedNumericCellBinding(request, {
+      propertyKey: "iin_max",
+      cellValue: 2400,
+      reason: `${reasonPrefix} assignee binding`
+    });
+    const created = await createBindingDraftViaApi(request, {
+      binding,
+      targetValue: integerCellTarget("3102"),
+      reason: `${reasonPrefix} invalid assignee guard`
+    });
+    expect(created.status, created.bodyText).toBe(201);
+    expect(created.draft).toBeTruthy();
 
     const response = await page.request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
-      headers: smokeHeaders(),
+      headers: adminHeaders(),
       data: {
         projectId,
         items: [
           {
-            parameterId: removableParameterValueId,
-            targetValue: "3102",
-            reason: `${reasonPrefix} invalid assignee guard`
+            draftId: created.draft!.draftId,
+            projectParameterBindingId: created.draft!.projectParameterBindingId,
+            parameterSpecId: created.draft!.parameterSpecId,
+            action: created.draft!.action,
+            targetValue: created.draft!.rawText,
+            reason: created.draft!.reason
           }
         ],
         reason: `${reasonPrefix} invalid assignee guard`,
@@ -346,7 +312,7 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
           responseSummary: "VALIDATION_FAILED for role-ineligible workflow assignees"
         })
       ],
-      notes: "The parameter submission API rejected role-ineligible workflow assignees with VALIDATION_FAILED."
+      notes: "The parameter submission API rejected role-ineligible workflow assignees with VALIDATION_FAILED after a typed binding draft was staged (TD-079)."
     });
   });
 });

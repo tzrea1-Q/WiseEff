@@ -49,6 +49,10 @@ export type StartDisposablePostCutoverRuntimeOptions = {
   apiPort?: number;
   frontendPort?: number;
   markerPurpose?: string;
+  /** Extra env for the disposable API process (does not change topology defaults). */
+  apiEnv?: Record<string, string>;
+  /** Extra env for the disposable Vite process. */
+  frontendEnv?: Record<string, string>;
 };
 
 function safeSegment(value: string) {
@@ -348,6 +352,7 @@ export async function startDisposablePostCutoverRuntime(
       OBJECT_STORE_MODE: "local",
       OBJECT_STORE_ROOT: objectStoreRoot,
       XIAOZE_DETERMINISTIC: "true",
+      ...(options.apiEnv ?? {}),
     });
     children.push(api);
     await waitForHttp(`${apiUrl}/health/live`, api);
@@ -358,6 +363,7 @@ export async function startDisposablePostCutoverRuntime(
       {
         VITE_WISEEFF_RUNTIME_MODE: "api",
         VITE_WISEEFF_API_BASE_URL: apiUrl,
+        ...(options.frontendEnv ?? {}),
       },
     );
     children.push(frontend);
