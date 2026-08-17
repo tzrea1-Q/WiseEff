@@ -1,6 +1,6 @@
 # Parameter spec editor fidelity
 
-> Status: **Active** — remaining write-contract and Batch 2 closed; Batches 3–5 still open
+> Status: **Active** — remaining write-contract and Batches 2–3 closed; Batches 4–5 still open
 > Date: 2026-08-03
 > Chinese: [`docs/zh-CN/exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md`](../../zh-CN/exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md)
 > Governing IA: [ADR-0001](../../adr/0001-parameter-admin-organized-by-governance-scope.md), [ADR-0015](../../adr/0015-governance-queues-live-with-the-object-they-govern.md)
@@ -9,9 +9,9 @@
 
 ## Landed vs remaining
 
-**Landed:** SE-D1 (`policyTarget` removed from the editor write path); SE-D2 constraints replace on update and activate; SE-D3 server key-presence (`units` no longer uses `coalesce` to ignore null); SE-D4 activate accepts and persists `units` / `exampleValue`; SE-5 empty `displayName` round-trips; SE-D6 PATCH runs `assertSpecActivatable` only when `valueShape` changed; SE-D5 pre-save `valueShape`/`constraints` diff plus referenced-definition acknowledgement; shared `ValueShapeFields`; ModalDialog chrome for SE-17–SE-21; Batch 2 display honesty (SE-6–SE-9).
+**Landed:** SE-D1 (`policyTarget` removed from the editor write path); SE-D2 constraints replace on update and activate; SE-D3 server key-presence (`units` no longer uses `coalesce` to ignore null); SE-D4 activate accepts and persists `units` / `exampleValue`; SE-5 empty `displayName` round-trips; SE-D6 PATCH runs `assertSpecActivatable` only when `valueShape` changed; SE-D5 pre-save `valueShape`/`constraints` diff plus referenced-definition acknowledgement; shared `ValueShapeFields`; ModalDialog chrome for SE-17–SE-21; Batch 2 display honesty (SE-6–SE-9); Batch 3 editing affordances (SE-10–SE-15).
 
-**Remaining:** Batches 3–5 (editing affordances, dialog chrome leftovers, acceptance/docs gate).
+**Remaining:** Batches 4–5 (dialog chrome leftovers, acceptance/docs gate).
 
 ## Context
 
@@ -182,11 +182,11 @@ Call `assertSpecActivatable` from `updateParameterSpec` only when the incoming `
 
 ### Batch 3 — editing affordances
 
-13. [ ] Extract `SpecCreateDialog`'s value-shape control (`VALUE_SHAPE_OPTIONS`, `needsCellFields`, `buildValueShape`, `defaultConstraintsForShape`) into a shared component and use it in the editor (SE-10, SE-12, SE-D4). It must not auto-populate keys the stored shape lacks (SE-23).
-14. [ ] Keep 值类型 in sync with the shape control or drop it (SE-12).
-15. [ ] Visually and semantically separate the JSON editors from the free-text ones (SE-11), reusing `parseOptionalJson` semantics and adding inline validation feedback.
-16. [ ] Mark 修改原因 required (SE-13); mark read-only fields with more than a tint (SE-14).
-17. [ ] Correct the 可编辑 / 只读 eyebrow on deprecated definitions (SE-15), and the draft hint 「激活前可修订」 per the SE-D4 implementation note.
+13. [x] Extract `SpecCreateDialog`'s value-shape control (`VALUE_SHAPE_OPTIONS`, `needsCellFields`, `buildValueShape`, `defaultConstraintsForShape`) into a shared component and use it in the editor (SE-10, SE-12, SE-D4). It must not auto-populate keys the stored shape lacks (SE-23). Landed as `ValueShapeFields` with `mode="edit"`.
+14. [x] Drop 值类型 from the editor (SE-12). The library table still shows `valueType` as a last-saved kind snapshot; the dialog no longer restates it beside the shape control.
+15. [x] Visually and semantically separate the JSON editors from the free-text ones (SE-11): 约束 is a JSON-object editor with inline validation; 示例值 accepts DTS or JSON without treating a fragment as invalid JSON.
+16. [x] Mark 修改原因 required (SE-13) on the save confirm step (`aria-required`, 必填 hint, confirm disabled until filled). Mark read-only fields with a 只读 (or 实测/声明) hint, not only a tint (SE-14).
+17. [x] Correct the 可编辑 / 只读 eyebrow on deprecated definitions (SE-15). The draft hint 「激活前可修订」 is gone; org drafts still say they save-and-activate.
 18. [x] Close SE-16 per SE-D5: before/after for `valueShape` and `constraints`, with a confirmation step when `referenceCount > 0`.
 
 ### Batch 4 — dialog chrome

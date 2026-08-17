@@ -1,6 +1,6 @@
 import { presentError } from "@/infrastructure/http/presentError";
 import { Pencil } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { ParameterSpecCutoverSummary } from "@/domain/parameter-topology/types";
 import { formatParameterSpecLifecycle } from "@/application/parameters/parameterAdminUiCopy";
 import type { ParameterSpecLibraryRow } from "./ParameterSpecLibrary";
@@ -158,7 +158,7 @@ function ReadOnlyField({
   mono = false,
   className,
   description,
-  badge,
+  badge = "只读",
   multiline = false,
   rows = 3,
 }: {
@@ -211,6 +211,9 @@ function EditableField({
   value,
   onChange,
   description,
+  hint,
+  error = null,
+  json = false,
   multiline = false,
   mono = false,
   rows = 3,
@@ -221,37 +224,62 @@ function EditableField({
   value: string;
   onChange: (value: string) => void;
   description?: string;
+  hint?: string;
+  error?: string | null;
+  json?: boolean;
   multiline?: boolean;
   mono?: boolean;
   rows?: number;
   placeholder?: string;
   className?: string;
 }) {
+  const errorId = useId();
+  const invalid = Boolean(error);
+  const editorClass = json
+    ? "parameter-admin-code-editor param-admin-json-editor"
+    : mono
+      ? "parameter-admin-code-editor"
+      : undefined;
   return (
     <label className={className}>
       <span className="def-field-label-row">
         {label}
         {description ? <FieldInfoTip label={label} description={description} /> : null}
+        {hint ? (
+          <span className="label-hint" aria-hidden="true">
+            {hint}
+          </span>
+        ) : null}
       </span>
       {multiline ? (
         <textarea
           aria-label={label}
-          className={mono ? "parameter-admin-code-editor" : undefined}
+          aria-invalid={invalid || undefined}
+          aria-describedby={invalid ? errorId : undefined}
+          className={editorClass}
           value={value}
           rows={rows}
           placeholder={placeholder}
-          wrap={mono ? "off" : undefined}
+          spellCheck={json ? false : undefined}
+          wrap={mono || json ? "off" : undefined}
           onChange={(event) => onChange(event.target.value)}
         />
       ) : (
         <input
           aria-label={label}
+          aria-invalid={invalid || undefined}
+          aria-describedby={invalid ? errorId : undefined}
           className={mono ? "mono" : undefined}
           value={value}
           placeholder={placeholder}
           onChange={(event) => onChange(event.target.value)}
         />
       )}
+      {error ? (
+        <span id={errorId} className="form-error" role="alert">
+          {error}
+        </span>
+      ) : null}
     </label>
   );
 }
@@ -443,6 +471,7 @@ export function ParameterSpecDetail({
   const canCorrectIdentity = editable && detail.reviewState !== "deprecated";
   const identityCorrectable =
     typeof onCorrectAttribution === "function" || typeof onCorrectPropertyKey === "function";
+  const constraintsParsed = parseObjectField(draft.constraintsText, "约束 constraints");
 
   return (
     <section className="shared-definition-panel" aria-label="参数定义详情">
@@ -581,6 +610,7 @@ export function ParameterSpecDetail({
                 value={draft.exampleValueText}
                 onChange={(exampleValueText) => onDraftChange({ exampleValueText })}
                 description={SPEC_EDITOR_FIELD_HELP.exampleValue}
+                hint="原文或 JSON"
                 className="param-admin-example-value-field"
                 multiline
                 mono
@@ -640,8 +670,11 @@ export function ParameterSpecDetail({
                 value={draft.constraintsText}
                 onChange={(constraintsText) => onDraftChange({ constraintsText })}
                 description={SPEC_EDITOR_FIELD_HELP.constraints}
+                hint="JSON"
+                error={constraintsParsed.error}
+                json
+                className="param-admin-json-field"
                 multiline
-                mono
                 rows={5}
               />
             ) : (
