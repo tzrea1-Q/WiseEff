@@ -2,9 +2,9 @@
 
 > Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-08-16-frontend-runtime-follow-up.md)
 
-- **Status:** Active — Closeout. First batch A/B/C (#474–#476), wave 2 (#478 domain guards, #479 parameter-review CSS, #481 DTS `/include/` envelope), and #480 API catalog honesty are on `main`. Remaining closeout tracks D–H below.
+- **Status:** Active — Closeout. Tracks D/E/F/H are on `main` (#483–#486). Remaining: Track G C5 shared bridge/target/protocol types (`refactor/bridge-target-session`).
 - **Owner:** Frontend
-- **Verified against:** GitHub `main` on 2026-08-17 (`d99823df`, merge of #480).
+- **Verified against:** GitHub `main` on 2026-08-17 (`bf6b99ca`, merge of #482).
 - **Predecessor:** `docs/exec-plans/completed/2026-08-12-app-shell-decomposition.md` (PRs #324, #342, #375, page-owned loading). C2/C6 leftovers were recorded as TD-110 / TD-109.
 
 ## Goal
@@ -14,11 +14,12 @@ Close the remaining architecture-review follow-ups that are still open on `main`
 After this program:
 
 - API mode no longer boots with demo people, demo log-admin users, or demo audit events in `PrototypeState`. **Done** (#474).
-- Mock adapters throw `WiseEffApiError`, so `error.code` branches in application runtimes work in mock mode. **Done** (#475). Wave 1 leftover `Object.assign(new Error)` in spec reattribute/rename is a closeout track.
-- Log-analysis feature CSS lives next to `src/features/log-analysis/`. **Done** (#476). Parameter-review CSS lives next to `src/features/parameter-review/`. **Done** (#479).
+- Mock adapters throw `WiseEffApiError`, so `error.code` branches in application runtimes work in mock mode. **Done** (#475, leftover `Object.assign` #483).
+- Log-analysis feature CSS lives next to `src/features/log-analysis/`. **Done** (#476). Parameter-review CSS lives next to `src/features/parameter-review/`. **Done** (#479). Configuration-workbench CSS lives next to the workbench module. **Done** (#484).
 - Identity-mapping, candidate-activation, and spec-lifecycle guards live in `src/domain/`. **Done** (#478).
 - DTS `/include/` mock parse throws `WiseEffApiError`. **Done** (#481).
-- `NodeDebuggingPage` owns a `dtsReloadRunSession`-shaped session, then C5 `BridgeGateway` can share target/protocol/session without rewriting either page.
+- `NodeDebuggingPage` owns a `dtsReloadRunSession`-shaped session. **Done** (#485). C5 shared bridge/target/protocol types are Track G.
+- Mock `createPrototypeState` lives under `src/infrastructure/mock/`; API boot does not go through it. **Done** (#486).
 
 ## Non-goals (this program)
 
@@ -37,7 +38,7 @@ Pre-merge snapshot (then-`main` @ `fcef9758`). After #474/#475/#476 the leftover
 | TD-110 | `createApiInitialState()` emptied parameters/logs/devices/notifications but still spread mock `auditEvents`, `developers` (12 demo names, **zero production readers**), and `logAdminUsers` (Jane Smith / Mike Kruger / Ana Lin; **no page reads**; `LOG_ADMIN_*_USER` only in reducer tests). `AuditCenterPage` already isolates mock events via `isApiMode`. | Prefer **retirement** for `developers` / `logAdminUsers`, not a new `HYDRATE_*` channel. **Done in #474.** |
 | TD-109 | `src/infrastructure/mock/` had **zero** `WiseEffApiError` imports; adapters still `throw new Error(...)`. Candidate activation and identity-mapping open/closed checks remain duplicated against `server/modules/`. | "Five error strings match character-for-character" is **stale**. Messages have drifted (mock appends `taskId`; candidate stale text is the short form). Envelope alignment **done in #475**; duplication of **rules** remains for wave 2. |
 | C7 | `src/styles.css` ≈ 28,732 lines. Feature CSS existed only for `parameter-home` and Xiaoze markdown. Log Analysis v2 block started at `styles.css:6935`. | First cut is log-analysis only. **Done in #476.** Parameter-review CSS is wave 2. |
-| C5 | No `BridgeGateway` type. `LocalDeviceBridgePanel` is shared UI only. | Keep deferred. |
+| C5 | No `BridgeGateway` type. `LocalDeviceBridgePanel` is shared UI only. | Sessionized in #485. Shared types are Track G. |
 
 ## Parallel file map (do not cross)
 
@@ -195,37 +196,39 @@ Frontend-visible: `/logs` and `/log-dashboard` at 1440×900, 768×1024, 390×844
 | C7 wave 2 parameter-review CSS | [#479](https://github.com/tzrea1-Q/WiseEff/pull/479) | `00f18d0a` |
 | TD-109 DTS `/include/` envelope leftover | [#481](https://github.com/tzrea1-Q/WiseEff/pull/481) | `4fc6a127` |
 | TD-110 API catalog honesty | [#480](https://github.com/tzrea1-Q/WiseEff/pull/480) | `d99823df` |
+| Docs closeout snapshot | [#482](https://github.com/tzrea1-Q/WiseEff/pull/482) | `bf6b99ca` |
+| TD-109 `Object.assign` leftover | [#483](https://github.com/tzrea1-Q/WiseEff/pull/483) | `dbfc0e8a` |
+| C7 configuration-workbench CSS | [#484](https://github.com/tzrea1-Q/WiseEff/pull/484) | `6a43a509` |
+| NodeDebugging session | [#485](https://github.com/tzrea1-Q/WiseEff/pull/485) | `11b2fbdf` |
+| TD-110 mock seeding | [#486](https://github.com/tzrea1-Q/WiseEff/pull/486) | `1551d818` |
 
-## Closeout tracks (file-disjoint, from `origin/main` @ `4fc6a127`)
+## Closeout tracks
 
 ```
-landed: A #474 │ B #475 │ C #476 │ guards #478 │ review CSS #479 │ dts-parse #481 │ catalog #480 │ docs #477
-next:   D  TD-109 Object.assign leftover     branch fix/td109-topology-mock-api-error
-next:   E  C7 configuration-workbench CSS    branch refactor/configuration-workbench-css
-next:   F  NodeDebuggingPage session         branch refactor/node-debugging-session
-then:   G  C5 BridgeGateway / BridgeTargetSession (starts only after F merges)
-then:   H  TD-110 mock seeding into adapters (unblocked by #480)
+landed: A #474 │ B #475 │ C #476 │ guards #478 │ review CSS #479 │ dts-parse #481 │ catalog #480
+        docs #482 │ Object.assign #483 │ workbench CSS #484 │ node session #485 │ seeding #486
+open:   G  C5 shared bridge/target/protocol types     branch refactor/bridge-target-session
 ```
 
 ### Track D — TD-109 `Object.assign(new Error)` leftover
 
-`mockParameterTopologyRepository.reattributeParameterSpec` / `renameParameterSpecPropertyKey` still throw `Object.assign(new Error, { code: "CONFLICT", status: 409, details })`. Swap to `mockApiError("CONFLICT", sameMessage, details)`. Drop `status`. Add `instanceof WiseEffApiError` coverage. `rg "new Error" src/infrastructure/mock --glob '!*.test.ts'` must be empty.
+**Landed in #483.** `reattributeParameterSpec` / `renameParameterSpecPropertyKey` throw `mockApiError("CONFLICT", …)`.
 
 ### Track E — C7 configuration-workbench CSS
 
-Move the `src/styles.css` block starting `/* === Project configuration workbench (read-only tracer) ===` (~24680) to `src/components/project-configuration-workbench/configuration-workbench.css`. Import from `ProjectConfigurationWorkbench.tsx`. Leave shared `.workbench-page` / `.workbench-sheet` / `.node-debugging-page` / Parameter Admin M1 / `.dts-parameter-workbench*` in `styles.css`. Pixel-identical. Do not edit `App.test.tsx` unless a test goes red.
+**Landed in #484.** Feature CSS colocated; shared workbench chrome stayed in `styles.css`.
 
 ### Track F — NodeDebugging session (C5 prerequisite)
 
-Extract `src/application/debugging/nodeDebuggingSession.ts` + `useNodeDebuggingSession.ts` on the `dtsReloadRunSession` snapshot/subscribe/command shape. Page stays render + wiring. Existing `NodeDebuggingPage.test.tsx` stays green. Do not touch `src/application/dts-reload/**`, do not invent `BridgeGateway` here.
+**Landed in #485.** `nodeDebuggingSession` snapshot/subscribe/command; page is render + wiring.
 
-### Track G — C5 `BridgeGateway` / `BridgeTargetSession`
+### Track G — C5 shared bridge/target/protocol types
 
-After F: extract the shared bridge/target/protocol/session cluster used by node-debugging and dts-reload. `dtsReloadRunSession` already owns that cluster for reload; fold the overlapping types behind one port without rewriting reload behavior. Starts only after F merges.
+In progress on `refactor/bridge-target-session`. Fold the overlapping protocol/bridge/target cluster used by node-debugging and dts-reload behind one module without rewriting reload deploy confirmation or node-debugging I/O. Skip a hollow `BridgeGateway` HTTP port if types/helpers are enough.
 
 ### Track H — TD-110 mock seeding
 
-Move `createPrototypeState` construction into `src/infrastructure/mock/` so production pages/reducer never import the mock catalog. `createApiInitialState` must not go through seeded `createPrototypeState`. Unblocked by #480.
+**Landed in #486.** `createPrototypeState` in `src/infrastructure/mock/prototypeState.ts`; `createApiInitialState` is an empty shell; reducer does not import `@/mockData`.
 
 ## Git & PR Workflow
 
@@ -237,12 +240,10 @@ This plan **explicitly uses multiple feature branches**, each from latest `main`
 | Implementation agent | Must not push to `main`, open GitHub PRs, merge PRs, fast-forward local `main`, or edit `docs/PLANS.md` / tech-debt trackers / this plan / FRONTEND.md. |
 | Parent agent | Review, open GitHub PRs, merge when green, sync `main`, then update tracker rows and FRONTEND bilingual pages. |
 
-Closeout worktrees (created from `origin/main` @ `4fc6a127`):
+Closeout worktrees:
 
-- Track D: `/Users/tzrea1/Develop/WiseEff/.worktrees/td109-w3`
-- Track E: `/Users/tzrea1/Develop/WiseEff/.worktrees/c7-pcw-css`
-- Track F: `/Users/tzrea1/Develop/WiseEff/.worktrees/node-debug-session`
-- Docs: `/Users/tzrea1/Develop/WiseEff/.worktrees/arch-closeout`
+- Track G: `/Users/tzrea1/Develop/WiseEff/.worktrees/c5-bridge` (`refactor/bridge-target-session`, from `origin/main` @ `bf6b99ca`)
+- Docs: `/Users/tzrea1/Develop/WiseEff/.worktrees/arch-closeout` (`docs/arch-closeout-landed`)
 
 The shared checkout `/Users/tzrea1/Develop/WiseEff` is dirty and on an unrelated branch — never implement there.
 
@@ -264,7 +265,7 @@ The shared checkout `/Users/tzrea1/Develop/WiseEff` is dirty and on an unrelated
 | Repository map | `AGENTS.md` | No change |
 | Architecture | `ARCHITECTURE.md` | Reviewed 2026-08-16 — Frontend Boundaries still accurate (`Production behavior must not depend on mock runtime data`); no edit |
 | Architecture (zh) | `docs/zh-CN/architecture.md` | Reviewed — same; no edit |
-| Frontend guide | `docs/FRONTEND.md` | Updated this docs PR — API boot has no demo audit/people slices; catalog honesty #480; mock adapters throw `WiseEffApiError`; log-analysis and parameter-review CSS colocation |
+| Frontend guide | `docs/FRONTEND.md` | Updated this docs PR — D/E/F/H landings (#483–#486): colocated workbench CSS, node-debugging session, mock seeding under `infrastructure/mock`, `Object.assign` leftover closed |
 | Frontend guide (zh) | `docs/zh-CN/frontend.md` | Updated — mirror |
 | Plans index | `docs/PLANS.md` | Updated — this plan in Current Active Plan with landed PR numbers; remainder listed |
 | Plans index (zh) | `docs/zh-CN/PLANS.md` | Updated — mirror the active-plan bullet |
@@ -290,20 +291,20 @@ This plan cannot move to `completed/` until:
 - [x] Track C merged (#476); FRONTEND notes log-analysis CSS colocation
 - [x] TD-109 wave 2 merged (#478); C7 wave 2 merged (#479); DTS `/include/` envelope merged (#481)
 - [x] #480 merged (`d99823df`); ParametersPage / reducer no longer fall back to `mockData.projects`
-- [ ] Track D (`Object.assign` leftover) merged; `rg "new Error" src/infrastructure/mock --glob '!*.test.ts'` empty
-- [ ] Track E configuration-workbench CSS merged; FRONTEND notes the colocation
-- [ ] Track F NodeDebugging session merged
-- [ ] Track G C5 `BridgeGateway` merged **or** explicitly re-homed on the tracker with a reason
-- [ ] Track H mock seeding merged **or** tracker row states why `createPrototypeState` stays in `mockData.ts`
-- [ ] Bilingual FRONTEND + tracker + PLANS match the landed PRs
+- [x] Track D (`Object.assign` leftover) merged (#483)
+- [x] Track E configuration-workbench CSS merged (#484); FRONTEND notes the colocation
+- [x] Track F NodeDebugging session merged (#485)
+- [ ] Track G C5 shared bridge/target/protocol types merged **or** explicitly re-homed on the tracker with a reason
+- [x] Track H mock seeding merged (#486); `createPrototypeState` lives in `src/infrastructure/mock/`
+- [ ] Bilingual FRONTEND + tracker + PLANS match the landed PRs (this docs PR) **and** Track G when it lands
 - [ ] `npm run docs:check` passes
 
 Keep this plan **active** until the closeout tracks land or are re-homed on the tracker.
 
 ## Expected outcomes
 
-- First-batch PRs #474–#476 plus wave-2 #478/#479/#481 and catalog honesty #480 on `main`.
+- First-batch PRs #474–#476 plus wave-2 #478/#479/#481, catalog honesty #480, and closeout D/E/F/H (#483–#486) on `main`.
 - API mode cannot be confused with demo directory/audit fixtures or the mock project catalog.
 - Mock failures participate in `WiseEffApiError` code branches, including spec reattribute/rename and DTS `/include/`.
 - Feature CSS for log-analysis, parameter-review, and configuration-workbench is colocated; shared workbench chrome stays global.
-- `/node-debugging` is sessionized; C5 either shares bridge/target/session with dts-reload or is a dated tracker row.
+- `/node-debugging` is sessionized; C5 shares bridge/target/protocol types with dts-reload (Track G) or is a dated tracker row.
