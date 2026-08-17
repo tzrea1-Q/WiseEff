@@ -1,6 +1,6 @@
 # Parameter spec editor fidelity
 
-> Status: **Active** — remaining write-contract closed except SE-D5 / later batches
+> Status: **Active** — remaining write-contract closed; Batches 2–5 still open
 > Date: 2026-08-03
 > Chinese: [`docs/zh-CN/exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md`](../../zh-CN/exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md)
 > Governing IA: [ADR-0001](../../adr/0001-parameter-admin-organized-by-governance-scope.md), [ADR-0015](../../adr/0015-governance-queues-live-with-the-object-they-govern.md)
@@ -9,9 +9,9 @@
 
 ## Landed vs remaining
 
-**Landed:** SE-D1 (`policyTarget` removed from the editor write path); SE-D2 constraints replace on update and activate; SE-D3 server key-presence (`units` no longer uses `coalesce` to ignore null); SE-D4 activate accepts and persists `units` / `exampleValue`; SE-5 empty `displayName` round-trips; SE-D6 PATCH runs `assertSpecActivatable` only when `valueShape` changed; shared `ValueShapeFields`; ModalDialog chrome for SE-17–SE-21.
+**Landed:** SE-D1 (`policyTarget` removed from the editor write path); SE-D2 constraints replace on update and activate; SE-D3 server key-presence (`units` no longer uses `coalesce` to ignore null); SE-D4 activate accepts and persists `units` / `exampleValue`; SE-5 empty `displayName` round-trips; SE-D6 PATCH runs `assertSpecActivatable` only when `valueShape` changed; SE-D5 pre-save `valueShape`/`constraints` diff plus referenced-definition acknowledgement; shared `ValueShapeFields`; ModalDialog chrome for SE-17–SE-21.
 
-**Remaining:** SE-D5 pre-save diff confirm; Batches 2–5 (display fields, editing affordances, dialog chrome, acceptance/docs gate).
+**Remaining:** Batches 2–5 (display fields, editing affordances, dialog chrome, acceptance/docs gate).
 
 ## Context
 
@@ -187,7 +187,7 @@ Call `assertSpecActivatable` from `updateParameterSpec` only when the incoming `
 15. [ ] Visually and semantically separate the JSON editors from the free-text ones (SE-11), reusing `parseOptionalJson` semantics and adding inline validation feedback.
 16. [ ] Mark 修改原因 required (SE-13); mark read-only fields with more than a tint (SE-14).
 17. [ ] Correct the 可编辑 / 只读 eyebrow on deprecated definitions (SE-15), and the draft hint 「激活前可修订」 per the SE-D4 implementation note.
-18. [ ] Close SE-16 per SE-D5: before/after for `valueShape` and `constraints`, with a confirmation step when `referenceCount > 0`.
+18. [x] Close SE-16 per SE-D5: before/after for `valueShape` and `constraints`, with a confirmation step when `referenceCount > 0`.
 
 ### Batch 4 — dialog chrome
 
