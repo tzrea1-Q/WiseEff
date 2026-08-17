@@ -47,6 +47,7 @@ import { type CreateBindingDraftDeps } from "./overlayWriteback";
 import { writeGovernanceAudit } from "./governanceAudit";
 import { asAuditTx, withAuditedWrite } from "../audit/auditedWrite";
 import { getProjectById } from "../projects/repository";
+import { getConfigSetById } from "../parameter-files/configSetRepository";
 import { listStructuralPropertyKeys } from "./parameterSurface";
 import {
   assertManifestStateReady,
@@ -60,6 +61,7 @@ import {
   insertValidationDiagnostics,
   insertValidationRun,
   listConfigRevisionMembers,
+  listConfigRevisions as listConfigRevisionRows,
   listEffectiveTopology,
   listRevisionDiagnostics,
   listSourceTopology,
@@ -186,6 +188,39 @@ export async function getTopology(
     diagnostics,
     nodes: effective.nodes
   };
+}
+
+export async function listConfigRevisions(
+  db: Database,
+  auth: AuthContext,
+  input: { projectId: string; configSetId: string }
+) {
+  requireCanView(auth);
+  const project = await getProjectById(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId
+  });
+  if (!project) {
+    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", {
+      projectId: input.projectId
+    });
+  }
+  const configSet = await getConfigSetById(db, {
+    organizationId: auth.organization.id,
+    configSetId: input.configSetId
+  });
+  if (!configSet || configSet.projectId !== input.projectId) {
+    throw new ApiError("NOT_FOUND", "Config set was not found.", {
+      projectId: input.projectId,
+      configSetId: input.configSetId
+    });
+  }
+  const items = await listConfigRevisionRows(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    configSetId: input.configSetId
+  });
+  return { items };
 }
 
 export async function listProjectBindings(
@@ -1432,7 +1467,8 @@ export async function validateConfigRevision(
     status: "passed" as const,
     stage,
     artifactHashes,
-    toolchain: toolchainPayload
+    toolchain: toolchainPayload,
+    ...(toolchainResult.diagnostics.length > 0 ? { requiresConfirmation: true } : {})
   };
 }
 

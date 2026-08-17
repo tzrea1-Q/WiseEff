@@ -21,6 +21,7 @@ import {
   resolveIdentityMappingTaskBodySchema,
   topologyParamsSchema,
   topologyQuerySchema,
+  listConfigRevisionsParamsSchema,
   validateConfigRevisionBodySchema,
   validateConfigRevisionParamsSchema
 } from "./schemas";
@@ -30,6 +31,7 @@ import {
   getBindingCompare,
   getBindingHistory,
   getTopology,
+  listConfigRevisions,
   listIdentityMappingTasks,
   listProjectBindings,
   reopenIdentityMappingTask,
@@ -82,6 +84,18 @@ export function registerParameterTopologyRoutes(
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
   }
 ) {
+  router.get(
+    "/api/v2/projects/:projectId/config-sets/:configSetId/revisions",
+    async (request) => {
+      const db = requireDb(options.db);
+      const auth = await options.getCurrentAuthContext(request);
+      requireCanView(auth);
+      const params = parseWithSchema(listConfigRevisionsParamsSchema, request.params);
+      const result = await listConfigRevisions(db, auth, params);
+      return { status: 200, body: result };
+    }
+  );
+
   router.get(
     "/api/v2/projects/:projectId/config-sets/:configSetId/revisions/:revisionId/topology",
     async (request) => {

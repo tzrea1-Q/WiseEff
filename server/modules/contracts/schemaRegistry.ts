@@ -649,6 +649,12 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
       "409": "ErrorResponse"
     }
   },
+  "parameterTopology.listConfigRevisions": {
+    summary: "List config revisions for a project config set",
+    tags: ["parameters"],
+    responseBody: "ConfigRevisionListResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "parameterTopology.getTopology": {
     summary: "Get source or effective DTS topology for a config revision",
     tags: ["parameters"],

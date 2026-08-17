@@ -160,6 +160,7 @@ function createAppParameterTopologyRepository(
     }),
     listMappingTasks: vi.fn().mockResolvedValue([]),
     resolveMapping: vi.fn().mockResolvedValue(undefined),
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
     validateRevision: vi.fn().mockResolvedValue({ id: "run-app-test", status: "passed", stage: "toolchain" }),
     createBindingDraft: vi.fn(),
     ...overrides

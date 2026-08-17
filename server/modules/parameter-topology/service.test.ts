@@ -4,6 +4,7 @@ import type { AuthContext } from "../auth/types";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { makeTestAuthContext } from "../../testing/authContext";
+import { getConfigSetById } from "../parameter-files/configSetRepository";
 import { getProjectById } from "../projects/repository";
 import {
   getBindingForProject,
@@ -12,15 +13,21 @@ import {
   listIdentityMappingTaskRows,
   listProjectBindingRows
 } from "./bindingService";
+import { listConfigRevisions as listConfigRevisionRows } from "./repository";
 import {
   getBindingCompare,
   getBindingHistory,
+  listConfigRevisions,
   listIdentityMappingTasks,
   listProjectBindings
 } from "./service";
 
 vi.mock("../projects/repository", () => ({
   getProjectById: vi.fn()
+}));
+
+vi.mock("../parameter-files/configSetRepository", () => ({
+  getConfigSetById: vi.fn()
 }));
 
 vi.mock("./bindingService", () => ({
@@ -41,6 +48,7 @@ vi.mock("./repository", () => ({
   listSourceTopology: vi.fn(),
   listRevisionDiagnostics: vi.fn(),
   listConfigRevisionMembers: vi.fn(),
+  listConfigRevisions: vi.fn(),
   updateConfigRevisionStatus: vi.fn()
 }));
 
@@ -285,5 +293,83 @@ describe("parameter topology service org scope", () => {
     } satisfies Partial<ApiError>);
 
     expect(listBindingCompareRows).not.toHaveBeenCalled();
+  });
+
+  it("listConfigRevisions returns org-scoped listed revisions and 404s missing config sets", async () => {
+    vi.mocked(getProjectById).mockResolvedValue({ id: "project-1", name: "Project", code: "P1" });
+    vi.mocked(getConfigSetById).mockResolvedValue({
+      id: "cs-1",
+      organizationId: "org-1",
+      projectId: "project-1",
+      name: "default",
+      createdAt: "2026-08-17T00:00:00.000Z",
+      updatedAt: "2026-08-17T00:00:00.000Z"
+    });
+    vi.mocked(listConfigRevisionRows).mockResolvedValue([
+      {
+        id: "rev-2",
+        organizationId: "org-1",
+        projectId: "project-1",
+        configSetId: "cs-1",
+        revisionNumber: 2,
+        status: "resolved",
+        manifestState: "complete",
+        createdAt: "2026-08-17T10:00:00.000Z"
+      },
+      {
+        id: "rev-1",
+        organizationId: "org-1",
+        projectId: "project-1",
+        configSetId: "cs-1",
+        revisionNumber: 1,
+        status: "validated",
+        manifestState: "complete",
+        createdAt: "2026-08-16T10:00:00.000Z"
+      }
+    ]);
+
+    const result = await listConfigRevisions(makeDb(), makeAuth(), {
+      projectId: "project-1",
+      configSetId: "cs-1"
+    });
+
+    expect(result.items.map((item) => item.id)).toEqual(["rev-2", "rev-1"]);
+    expect(listConfigRevisionRows).toHaveBeenCalledWith(expect.anything(), {
+      organizationId: "org-1",
+      projectId: "project-1",
+      configSetId: "cs-1"
+    });
+
+    vi.mocked(getConfigSetById).mockResolvedValue(null);
+    await expect(
+      listConfigRevisions(makeDb(), makeAuth(), { projectId: "project-1", configSetId: "missing" })
+    ).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      status: 404,
+      details: { configSetId: "missing" }
+    } satisfies Partial<ApiError>);
+    expect(listConfigRevisionRows).toHaveBeenCalledTimes(1);
+  });
+
+  it("listConfigRevisions returns 404 when the config set belongs to another project", async () => {
+    vi.mocked(getProjectById).mockResolvedValue({ id: "project-1", name: "Project", code: "P1" });
+    vi.mocked(getConfigSetById).mockResolvedValue({
+      id: "cs-other",
+      organizationId: "org-1",
+      projectId: "project-other",
+      name: "other",
+      createdAt: "2026-08-17T00:00:00.000Z",
+      updatedAt: "2026-08-17T00:00:00.000Z"
+    });
+
+    await expect(
+      listConfigRevisions(makeDb(), makeAuth(), { projectId: "project-1", configSetId: "cs-other" })
+    ).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      status: 404,
+      details: { configSetId: "cs-other" }
+    } satisfies Partial<ApiError>);
+
+    expect(listConfigRevisionRows).not.toHaveBeenCalled();
   });
 });

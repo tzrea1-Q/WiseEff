@@ -41,6 +41,8 @@ export type WorkbenchBaselineDialogsProps = {
   } | null;
   onCancelConfirmation: () => void;
   onConfirmConfirmation: () => void;
+  /** Soft-pass revision gate: ConfirmDialog acknowledgement before release. */
+  releaseRequiresConfirmation?: boolean;
 };
 
 export function WorkbenchBaselineDialogs({
@@ -68,7 +70,8 @@ export function WorkbenchBaselineDialogs({
   onConfirmLeave,
   confirmation,
   onCancelConfirmation,
-  onConfirmConfirmation
+  onConfirmConfirmation,
+  releaseRequiresConfirmation = false
 }: WorkbenchBaselineDialogsProps) {
   return (
     <>
@@ -126,6 +129,11 @@ export function WorkbenchBaselineDialogs({
         pending={pendingAction === "release-baseline"}
         pendingLabel="发布中…"
         tone="danger"
+        acknowledgement={
+          releaseRequiresConfirmation
+            ? "我已了解修订校验未硬性通过的风险，确认继续发布。"
+            : undefined
+        }
         onCancel={onCancelRelease}
         onConfirm={onConfirmRelease}
       />

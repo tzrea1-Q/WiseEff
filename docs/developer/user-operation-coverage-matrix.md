@@ -52,6 +52,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `PROJ-CONFIG-CONFLICT-001` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, api, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
 | `PROJ-CONFIG-READINESS-001` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, api, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
 | `PROJ-CONFIG-BASELINE-001` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, api, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
+| `PROJ-CONFIG-REVISION-GATE-001` | P1 | parameters | future | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, api | `e2e/acceptance/config-set-revision-gate.acceptance.spec.ts`<br>`src/components/project-configuration-workbench/ProjectConfigurationWorkbench.test.tsx`<br>`src/application/project-configuration/configRevisionGateSession.test.ts`<br>`src/infrastructure/mock/mockParameterTopologyRepository.test.ts`<br>`src/infrastructure/http/parameterTopologyClient.test.ts`<br>`server/modules/parameter-topology/service.test.ts`<br>`server/modules/parameter-topology/routes.test.ts` |
 | `PROJ-CONFIG-CUTOVER-001` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, screenshot, api | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`<br>`src/ParameterAdminNextPage.test.tsx`<br>`src/components/parameter-admin-next/projectOperationsCutover.test.ts` |
 | `PARAM-ADMIN-DIALOG-001` | P1 | parameters | future | `/parameter-admin/projects` | Admin | ui, screenshot | `src/components/common/ModalDialog.test.tsx` |
 | `PARAM-IMPORT-DTS-FULL-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts` |
@@ -166,6 +167,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 - `PARAM-INIT-REVIEW-001`: API-mode App handlers call Port approve; server materialize + audit covered in initializationService tests; full browser evidence follows.
 - `PARAM-INIT-REJECT-001`: Reducer and server reject paths covered; dedicated browser reject/resubmit e2e follows.
 - `PARAM-INIT-LOCK-001`: UI lock + submitParameterChanges assertProjectAllowsParameterSubmit covered by unit tests; browser lock evidence follows.
+- `PROJ-CONFIG-REVISION-GATE-001`: Unit/server/mock coverage plus playwright-cli evidence under work/ui-checks/td-057-config-set-revision-gate/. A blocking Playwright marker is deferred so this does not enlarge the shared pre-cutover CI acceptance suite (TD-079).
 - `PARAM-ADMIN-DIALOG-001`: The modal contract is covered by unit tests on the shared primitive plus playwright-cli evidence; a keyboard-focused e2e spec follows.
 - `BRIDGE-WIN-001`: Requires a real Windows bridge runtime and localhost health endpoint orchestration in acceptance.
 - `BRIDGE-HDC-001`: Requires a pre-paired bridge process, hdc on PATH, USB device, and DEVICE_BRIDGE_HDC_AVAILABLE=true.

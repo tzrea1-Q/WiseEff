@@ -115,6 +115,28 @@ describe("createMockParameterTopologyRepository (ParameterTopologyRepository con
     });
   });
 
+  it("lists real config revisions and refuses invented topology keys", async () => {
+    const repo = createRepo();
+    const listed = await repo.listConfigRevisions(PROJECT_ID, CONFIG_SET_ID);
+    expect(listed.map((item) => item.id)).toEqual([REVISION_ID]);
+
+    const current = await repo.getTopology(PROJECT_ID, CONFIG_SET_ID, "current", "effective");
+    expect(current.revisionId).toBe(REVISION_ID);
+
+    await expect(repo.getTopology(PROJECT_ID, CONFIG_SET_ID, "revision-bogus", "effective")).rejects.toMatchObject({
+      code: "NOT_FOUND"
+    } satisfies Partial<WiseEffApiError>);
+    await expect(repo.validateRevision(PROJECT_ID, "revision-bogus")).rejects.toMatchObject({
+      code: "NOT_FOUND"
+    } satisfies Partial<WiseEffApiError>);
+
+    const other = await repo.listConfigRevisions("aurora", "mock-cs-default-aurora");
+    expect(other.some((item) => item.id === "revision-teaching-1")).toBe(false);
+    expect(other[0]?.id).toBe("rev-mock-cs-default-aurora-head");
+    const soft = await repo.validateRevision("aurora", other[0]!.id);
+    expect(soft.requiresConfirmation).toBe(true);
+  });
+
   it("listBindingHistory and listBindingCompare return optional history peers", async () => {
     const repo = createRepo();
     const history = await repo.listBindingHistory!(PROJECT_ID, "binding-sc8562-gpio-int");

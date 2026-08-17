@@ -125,6 +125,15 @@ export function ProjectsOperationsPanel({
       resolveDtsStructuredRepository(runtimeMode),
     [application, dtsStructuredRepository, runtimeMode]
   );
+  const topologyRepository = useMemo(
+    () => ({
+      listConfigRevisions: (projectId: string, configSetId: string) =>
+        application.listConfigRevisions(projectId, configSetId),
+      validateRevision: (projectId: string, revisionId: string) =>
+        application.validateRevision(projectId, revisionId)
+    }),
+    [application]
+  );
   const auditQuery = useMemo(() => resolveAuditQuery(runtimeMode), [runtimeMode]);
 
   const [apiRows, setApiRows] = useState<ParameterAdminProjectRow[]>([]);
@@ -350,6 +359,7 @@ export function ProjectsOperationsPanel({
           canEdit
           canEditCritical
           canAdmin={canAdmin}
+          topologyRepository={topologyRepository}
         />
       ) : null}
 

@@ -1,3 +1,4 @@
+import { type ReactNode } from "react";
 import { Lock, TriangleAlert } from "lucide-react";
 
 import type {
@@ -120,6 +121,7 @@ export type WorkbenchInspectorPanelProps = {
   staleDraftLocked: boolean;
   onStructuredValueChange: (change: StructuredValueChange) => void;
   canEdit: boolean;
+  revisionGate?: ReactNode;
 };
 
 export function WorkbenchInspectorPanel({
@@ -191,7 +193,8 @@ export function WorkbenchInspectorPanel({
   criticalLocked,
   staleDraftLocked,
   onStructuredValueChange,
-  canEdit
+  canEdit,
+  revisionGate
 }: WorkbenchInspectorPanelProps) {
   return (
     <aside
@@ -259,6 +262,7 @@ export function WorkbenchInspectorPanel({
           onExitCompare={onExitBaselineCompare}
           onSelectCompareMember={onSelectBaselineCompareMember}
         />
+        {revisionGate}
         <dl>
           <div>
             <dt>检查层级</dt>

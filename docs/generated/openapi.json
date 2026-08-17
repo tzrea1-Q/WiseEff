@@ -4497,6 +4497,57 @@
         }
       }
     },
+    "/api/v2/projects/{projectId}/config-sets/{configSetId}/revisions": {
+      "get": {
+        "operationId": "parameterTopology.listConfigRevisions",
+        "summary": "List config revisions for a project config set",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "configSetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigRevisionListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/projects/{projectId}/config-sets/{configSetId}/revisions/{revisionId}/topology": {
       "get": {
         "operationId": "parameterTopology.getTopology",
@@ -10949,6 +11000,10 @@
       "RenameParameterSpecPropertyKeyRequest": {
         "type": "object",
         "x-wiseeff-schema": "RenameParameterSpecPropertyKeyRequest"
+      },
+      "ConfigRevisionListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ConfigRevisionListResponse"
       },
       "ParameterTopologyResponse": {
         "type": "object",

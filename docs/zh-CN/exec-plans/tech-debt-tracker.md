@@ -32,7 +32,6 @@
 - **TD-051（已 resolved 的节点对应任务无反向回滚）：** `applyReviewedIdentityMapping` 已重写绑定身份且无逆操作，选错逻辑节点只能靠重新上传 DTS 补救。见 D3。
 - **TD-052（定义数与实测处数未拆分）：** `aggregateSubtreeParameterCounts` 只上卷单一 `parameterCount`；驱动组直接持有定义后两个事实已分岔，废弃引用数又引入第三个计数。见 D4（承接 ADR-0010 的 out of scope）。
 - **TD-053（overlay 停用无接班约束、superseded 无组织侧呈现）：** 停用会直接撤走解析覆盖；被平台晋升后置为 `superseded` 的组织行在其自身治理界面没有定义好的呈现方式。见 D5、D8。
-- **TD-057（项目运营页缺少真实配置修订来源）：** 为落实 POD-C1，`ConfigSetBaselinePanel` 不再校验凭空构造的 `revision-teaching-1`，因此项目运营页暂不提供「校验修订」：该页没有任何地方选择配置修订，mock `getTopology` 也只是回显传入的 revision key。影响：修订门禁（含发布前 `requiresConfirmation` 拦截）只能在参数工作台触发，而不是在真正发布基线的界面。下一步：通过拓扑接缝给配置集视图接入真实修订列表/选择，再按该 ID 恢复门禁入口。
 - **TD-059（其余弹窗尚未迁到共享原语）：** `ModalDialog` / `ConfirmDialog`（`src/components/common/`）已承载弹窗契约，且 `ParameterSpecDetailDialog` 已接入 `ModalDialog`。仍未使用该原语的 `*Dialog.tsx` 是 Radix `Dialog` 或 `WorkbenchSheet`：`DtsBindingDraftDialog`、`DtsBindingDetailDialog`、`DtsBindingCompareDialog`、`DtsBindingHistoryDiffDialog`、`DtsNodeEnablementDialog`、`DtsReloadCandidateEditDialog`。影响：未迁移表面仍可能偏离焦点、层叠与 Escape 契约（POD-F1–F5）。下一步：触及这些界面时再迁到共享原语，不要从 `ParameterSpecDetailDialog` 重新开始。
 - **TD-062（PCW 壳 stretch 800–1000）：** Wave-3（#273–#278）已满足软门禁（`ProjectConfigurationWorkbench.tsx` = 1496 行）并关闭 #258；stretch 目标 800–1000 仍为残余债。勿重开 #258；下次改壳时再抽 bootstrap effects / MainStage bindings。
 - **TD-055（产品作用域策略目标面未建）：** 定义编辑器与 `PATCH /api/v2/parameter-specs/:specId` 已按 SE-D1 移除 `policyTarget` 写入；`parameter_policy_targets` 表与三处只读 join 仍在，但无生产写入。初始化仍优先 `policyTarget ?? schemaDefault`。后续要么建产品作用域治理面，要么用 ADR 正式退役表与读者。
@@ -59,6 +58,7 @@
 
 ## 近期关闭项
 
+- **TD-057（配置集修订门禁）：** **2026-08-17 关闭**（`feat/td-057-config-set-revision-gate`）。`GET .../config-sets/:configSetId/revisions` 列出真实配置修订；配置工作台检查器经拓扑接缝列出/选择该 id 并运行 `validateRevision`。软通过 `requiresConfirmation` 时发布基线 ConfirmDialog 须勾选确认。mock `getTopology` 不再回显发明的 revision key。验收 `PROJ-CONFIG-REVISION-GATE-001` 为 planned；playwright-cli 证据 `work/ui-checks/td-057-config-set-revision-gate/`。
 - **TD-056（参数文件回滚 / 操作者显示名）：** **2026-08-17 关闭**（`feat/launch-actionable-td-closeout` 批次 2）。`POST .../parameter-files/:fileId/versions/:versionId/rollback` 插入 `origin=rollback` 指针版本（复用 blob、不倒带；已经是当前则 `409`）。版本列表 DTO 含 `createdByDisplayName`。配置工作台检查器展示显示名（缺省「未记录」），Admin「恢复为当前」走既有 ConfirmDialog。验收 `PARAM-FILE-ROLLBACK-001` 为 planned；playwright-cli 证据 `work/ui-checks/param-file-rollback/`。
 - **TD-082（ApiError 废弃 status 位置参）：** **2026-08-17 关闭**（`chore/td-082-apierror-status-codemod`）。AST 机械删除所有 `new ApiError(...)` 被忽略的第三参 HTTP status（996 处），并去掉构造函数上的废弃参数；`status` 只来自 `API_ERROR_STATUS`。无行为变化。
 - **TD-044（节点启停 e2e）：** **2026-08-17 关闭**（`test/td044-enable-gate-toggle-guard`）。`PARAM-ENABLE-GATE-001` / `TOGGLE-001` / `GUARD-001` 已在 disposable post-cutover 拓扑运行时落地为可运行 Playwright：结构属性闸门（API+DB）、禁用需理由与确认并与 binding 同轮提交且不触发 `mixed-working-tips`（含 `enablement-changed` 审计）、非标准 `reserved` 只读与「仍要修改」确认。`PARAM-ENABLE-VISIBLE-001` 此前已落地。产品行为仍见 `2026-07-27-dts-node-enablement` / ADR-0003。

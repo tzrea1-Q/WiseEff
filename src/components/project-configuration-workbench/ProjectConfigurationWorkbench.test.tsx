@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DtsStructuredRepository } from "@/application/ports/DtsStructuredRepository";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
+import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import { ToastProvider } from "@/components/common/toast/ToastProvider";
 import {
   ProjectConfigurationWorkbench,
@@ -230,6 +231,36 @@ function createFileRepository(
   } as ParameterFileRepository;
 }
 
+function createTopologyRepository(
+  overrides: Partial<Pick<ParameterTopologyRepository, "listConfigRevisions" | "validateRevision">> = {}
+): Pick<ParameterTopologyRepository, "listConfigRevisions" | "validateRevision"> {
+  return {
+    listConfigRevisions: vi.fn(async () => [
+      {
+        id: "rev-cs-listed",
+        configSetId: "cs-default",
+        revisionNumber: 2,
+        status: "resolved" as const,
+        createdAt: "2026-08-17T10:00:00.000Z"
+      },
+      {
+        id: "rev-cs-older",
+        configSetId: "cs-default",
+        revisionNumber: 1,
+        status: "validated" as const,
+        createdAt: "2026-08-16T10:00:00.000Z"
+      }
+    ]),
+    validateRevision: vi.fn(async () => ({
+      id: "run-listed",
+      status: "passed" as const,
+      stage: "toolchain",
+      requiresConfirmation: true
+    })),
+    ...overrides
+  };
+}
+
 async function openWorkbenchMoreMenu() {
   fireEvent.click(screen.getByRole("button", { name: "更多" }));
   return screen.findByRole("menu", { name: "更多操作" });
@@ -267,6 +298,7 @@ function renderWorkbench(options: {
   currentUserId?: string;
   organizationId?: string;
   draftStorage?: ProjectConfigurationWorkbenchProps["draftStorage"];
+  topologyRepository?: ProjectConfigurationWorkbenchProps["topologyRepository"];
 } = {}) {
   const onNavigate = options.onNavigate ?? vi.fn();
   const sharedProps = {
@@ -281,7 +313,8 @@ function renderWorkbench(options: {
     ...(options.canAdmin === undefined ? {} : { canAdmin: options.canAdmin }),
     ...(options.currentUserId === undefined ? {} : { currentUserId: options.currentUserId }),
     ...(options.organizationId === undefined ? {} : { organizationId: options.organizationId }),
-    ...(options.draftStorage ? { draftStorage: options.draftStorage } : {})
+    ...(options.draftStorage ? { draftStorage: options.draftStorage } : {}),
+    ...(options.topologyRepository ? { topologyRepository: options.topologyRepository } : {})
   };
   if (options.syncSearch) {
     function Harness() {
@@ -1927,6 +1960,94 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(screen.getByRole("button", { name: "检查器" })).toHaveAttribute("aria-expanded", "true");
   });
 
+  it("does not render the revision gate without a topology repository", async () => {
+    renderWorkbench({
+      search: "?configSet=cs-default&inspector=config-set"
+    });
+    await screen.findByRole("complementary", { name: "配置检查器" });
+    expect(screen.queryByRole("region", { name: "配置修订门禁" })).not.toBeInTheDocument();
+  });
+
+  it("lists real config revisions and validates the selected listed id", async () => {
+    const topologyRepository = createTopologyRepository();
+    renderWorkbench({
+      search: "?configSet=cs-default&inspector=config-set",
+      topologyRepository
+    });
+
+    const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
+    const gate = await within(inspector).findByRole("region", { name: "配置修订门禁" });
+    const revisionSelect = await within(gate).findByRole("combobox", { name: "配置修订" });
+    await waitFor(() => expect(revisionSelect).toHaveValue("rev-cs-listed"));
+    expect(within(gate).getByRole("option", { name: "修订 2 · 已解析" })).toBeInTheDocument();
+    expect(within(gate).queryByText("revision-teaching-1")).not.toBeInTheDocument();
+
+    fireEvent.click(within(gate).getByRole("button", { name: "校验修订" }));
+    await waitFor(() =>
+      expect(topologyRepository.validateRevision).toHaveBeenCalledWith("project-1", "rev-cs-listed")
+    );
+    expect(topologyRepository.validateRevision).not.toHaveBeenCalledWith(
+      "project-1",
+      "revision-teaching-1"
+    );
+    expect(await within(gate).findByRole("status")).toHaveTextContent(
+      "修订校验未硬性通过，发布前需确认该风险。"
+    );
+  });
+
+  it("requires acknowledgement on baseline release when revision validation is a soft pass", async () => {
+    const topologyRepository = createTopologyRepository();
+    renderWorkbench({
+      search: "?configSet=cs-default&inspector=config-set&baseline=baseline-draft-v2",
+      topologyRepository,
+      dtsRepository: createDtsRepository({
+        listBaselines: vi.fn(async (_projectId, configSetId) =>
+          configSetId === "cs-default"
+            ? [
+                {
+                  id: "baseline-draft-v2",
+                  organizationId: "org-1",
+                  configSetId,
+                  name: "draft-v2",
+                  status: "draft" as const,
+                  createdAt: "2026-08-17T08:00:00.000Z"
+                },
+                {
+                  id: "baseline-seed-v1",
+                  organizationId: "org-1",
+                  configSetId,
+                  name: "seed-v1",
+                  status: "released" as const,
+                  createdAt: "2026-08-06T08:00:00.000Z"
+                }
+              ]
+            : []
+        )
+      })
+    });
+
+    const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
+    const gate = await within(inspector).findByRole("region", { name: "配置修订门禁" });
+    await waitFor(() =>
+      expect(within(gate).getByRole("combobox", { name: "配置修订" })).toHaveValue("rev-cs-listed")
+    );
+    fireEvent.click(within(gate).getByRole("button", { name: "校验修订" }));
+    await waitFor(() =>
+      expect(topologyRepository.validateRevision).toHaveBeenCalledWith("project-1", "rev-cs-listed")
+    );
+
+    fireEvent.click(await within(inspector).findByRole("button", { name: "发布" }));
+    const dialog = await screen.findByRole("dialog", { name: "发布基线确认" });
+    const confirm = within(dialog).getByRole("button", { name: "确认发布" });
+    expect(confirm).toBeDisabled();
+    fireEvent.click(
+      within(dialog).getByRole("checkbox", {
+        name: "我已了解修订校验未硬性通过的风险，确认继续发布。"
+      })
+    );
+    expect(confirm).toBeEnabled();
+  });
+
   it("opens the Conflicts task dock from tasks=conflicts cutover query", async () => {
     renderWorkbench({
       search: "?configSet=cs-default&file=file-board&tasks=conflicts"
@@ -2651,6 +2772,7 @@ describe("configuration-workbench stylesheet", () => {
 
     expect(hasRule(css, ".configuration-workbench")).toBe(true);
     expect(hasRule(css, ".workbench-conflict-dock")).toBe(true);
+    expect(hasRule(css, ".configuration-workbench__revision-gate")).toBe(true);
     expect(hasRule(css, ".main-content:has(.param-admin-shell--configuration-workbench)")).toBe(true);
     expect(hasRule(css, ".param-admin-shell--configuration-workbench")).toBe(true);
     expect(hasAtRule(css, "@media (max-width: 1024px)")).toBe(true);

@@ -13,6 +13,7 @@ import type {
 import type {
   BindingCompareEntry,
   BindingHistoryEntry,
+  ConfigRevisionSummary,
   IdentityMappingTask,
   ParameterSpecDetail,
   ParameterSpecSummary,
@@ -41,6 +42,7 @@ const DEFAULT_PROJECT_ID = "project-teaching";
 const DEFAULT_CONFIG_SET_ID = "config-set-teaching";
 const DEFAULT_REVISION_ID = "revision-teaching-1";
 const DEFAULT_ORG_ID = "org-teaching";
+const CURRENT_REVISION_ALIASES = new Set(["current", "latest", "head"]);
 
 type SpecFixture = ParameterSpecDetail & { activatedAt?: string | null };
 
@@ -54,6 +56,7 @@ type Store = {
   effectiveTopology: TopologyTree;
   mappingTasks: IdentityMappingTask[];
   validationRuns: Map<string, ValidationRun>;
+  configRevisions: Map<string, ConfigRevisionSummary[]>;
 };
 
 function seedSpecs(): Map<string, SpecFixture> {
@@ -487,6 +490,20 @@ function seedStore(): Store {
           diagnostics: []
         }
       ]
+    ]),
+    configRevisions: new Map([
+      [
+        `${DEFAULT_PROJECT_ID}:${DEFAULT_CONFIG_SET_ID}`,
+        [
+          {
+            id: DEFAULT_REVISION_ID,
+            configSetId: DEFAULT_CONFIG_SET_ID,
+            revisionNumber: 1,
+            status: "validated",
+            createdAt: MOCK_NOW
+          }
+        ]
+      ]
     ])
   };
 }
@@ -526,6 +543,91 @@ function cloneDetail(detail: SpecFixture): ParameterSpecDetail {
     referenceCount: detail.referenceCount ?? 0,
     attributionModules: detail.attributionModules ? [...detail.attributionModules] : []
   };
+}
+
+function revisionStoreKey(projectId: string, configSetId: string): string {
+  return `${projectId}:${configSetId}`;
+}
+
+function cloneRevision(item: ConfigRevisionSummary): ConfigRevisionSummary {
+  return { ...item };
+}
+
+function latestListedRevision(items: ConfigRevisionSummary[]): ConfigRevisionSummary | null {
+  if (items.length === 0) return null;
+  return [...items].sort((left, right) => right.revisionNumber - left.revisionNumber)[0] ?? null;
+}
+
+function ensureListedRevisions(
+  store: Store,
+  projectId: string,
+  configSetId: string
+): ConfigRevisionSummary[] {
+  const key = revisionStoreKey(projectId, configSetId);
+  const existing = store.configRevisions.get(key);
+  if (existing && existing.length > 0) {
+    return existing;
+  }
+  const seeded: ConfigRevisionSummary[] =
+    projectId === DEFAULT_PROJECT_ID && configSetId === DEFAULT_CONFIG_SET_ID
+      ? [
+          {
+            id: DEFAULT_REVISION_ID,
+            configSetId,
+            revisionNumber: 1,
+            status: "validated",
+            createdAt: MOCK_NOW
+          }
+        ]
+      : [
+          {
+            id: `rev-${configSetId}-head`,
+            configSetId,
+            revisionNumber: 1,
+            status: "resolved",
+            createdAt: MOCK_NOW
+          }
+        ];
+  store.configRevisions.set(key, seeded);
+  return seeded;
+}
+
+function findListedRevision(
+  store: Store,
+  projectId: string,
+  revisionId: string
+): ConfigRevisionSummary | undefined {
+  for (const [key, items] of store.configRevisions) {
+    if (!key.startsWith(`${projectId}:`)) continue;
+    const found = items.find((item) => item.id === revisionId);
+    if (found) return found;
+  }
+  if (projectId === DEFAULT_PROJECT_ID && revisionId === DEFAULT_REVISION_ID) {
+    return ensureListedRevisions(store, DEFAULT_PROJECT_ID, DEFAULT_CONFIG_SET_ID).find(
+      (item) => item.id === DEFAULT_REVISION_ID
+    );
+  }
+  return undefined;
+}
+
+function resolveListedRevisionId(
+  store: Store,
+  projectId: string,
+  configSetId: string,
+  revisionId: string
+): string {
+  const listed = ensureListedRevisions(store, projectId, configSetId);
+  const resolvedId = CURRENT_REVISION_ALIASES.has(revisionId)
+    ? latestListedRevision(listed)?.id
+    : revisionId;
+  if (!resolvedId || !listed.some((item) => item.id === resolvedId)) {
+    throw mockApiError("NOT_FOUND", "Config revision was not found.", {
+      projectId,
+      configSetId,
+      revisionId
+    });
+  }
+  return resolvedId;
 }
 
 /**
@@ -828,14 +930,19 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
       return (store.bindingCompare.get(bindingId) ?? []).map((entry) => ({ ...entry }));
     },
 
+    async listConfigRevisions(projectId, configSetId) {
+      return ensureListedRevisions(store, projectId, configSetId).map(cloneRevision);
+    },
+
     async getTopology(projectId, configSetId, revisionId, view) {
+      const resolvedRevisionId = resolveListedRevisionId(store, projectId, configSetId, revisionId);
       const base = view === "source" ? store.sourceTopology : store.effectiveTopology;
       if (base.view === "source") {
         return {
           ...base,
           projectId,
           configSetId,
-          revisionId,
+          revisionId: resolvedRevisionId,
           nodes: base.nodes.map((node) => ({
             ...node,
             labels: [...node.labels],
@@ -847,7 +954,7 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
         ...base,
         projectId,
         configSetId,
-        revisionId,
+        revisionId: resolvedRevisionId,
         nodes: base.nodes.map((node) => ({
           ...node,
           effects: node.effects.map((effect) => ({ ...effect }))
@@ -883,6 +990,10 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
     },
 
     async validateRevision(projectId, revisionId) {
+      const listed = findListedRevision(store, projectId, revisionId);
+      if (!listed) {
+        throw mockApiError("NOT_FOUND", "Config revision was not found.", { projectId, revisionId });
+      }
       const key = `${projectId}:${revisionId}`;
       const existing = store.validationRuns.get(key);
       if (existing) {
@@ -892,15 +1003,21 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
           diagnostics: existing.diagnostics ? existing.diagnostics.map((item) => ({ ...item })) : undefined
         };
       }
+      const requiresConfirmation = listed.status !== "validated" && listed.status !== "compiled";
       const run: ValidationRun = {
         id: `validation-run-${projectId}-${revisionId}`,
         status: "passed",
         stage: "toolchain",
         artifactHashes: { dtc: "hash-dtc-mock" },
-        diagnostics: []
+        diagnostics: [],
+        ...(requiresConfirmation ? { requiresConfirmation: true } : {})
       };
       store.validationRuns.set(key, run);
-      return { ...run, diagnostics: [] };
+      return {
+        ...run,
+        diagnostics: [],
+        artifactHashes: run.artifactHashes ? { ...run.artifactHashes } : undefined
+      };
     },
 
     async createBindingDraft(projectId, bindingId, input: CreateBindingDraftInput): Promise<BindingDraftResult> {

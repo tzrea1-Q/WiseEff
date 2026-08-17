@@ -8,6 +8,7 @@ import type {
 import type {
   BindingCompareEntry,
   BindingHistoryEntry,
+  ConfigRevisionSummary,
   IdentityMappingTask,
   ParameterSpecDetail,
   ParameterSpecSummary,
@@ -122,6 +123,10 @@ function buildBindingComparePath(projectId: string, bindingId: string) {
   return `/api/v2/projects/${encodeURIComponent(projectId)}/bindings/${encodeURIComponent(bindingId)}/compare`;
 }
 
+function buildConfigRevisionsPath(projectId: string, configSetId: string) {
+  return `/api/v2/projects/${encodeURIComponent(projectId)}/config-sets/${encodeURIComponent(configSetId)}/revisions`;
+}
+
 function buildTopologyPath(
   projectId: string,
   configSetId: string,
@@ -233,8 +238,19 @@ function validationRunFromDto(dto: ValidationRun): ValidationRun {
     id: dto.id,
     status: dto.status,
     stage: dto.stage,
+    ...(dto.requiresConfirmation !== undefined ? { requiresConfirmation: dto.requiresConfirmation } : {}),
     ...(dto.artifactHashes !== undefined ? { artifactHashes: dto.artifactHashes } : {}),
     ...(dto.diagnostics !== undefined ? { diagnostics: dto.diagnostics } : {})
+  };
+}
+
+function configRevisionFromDto(dto: ConfigRevisionSummary): ConfigRevisionSummary {
+  return {
+    id: dto.id,
+    configSetId: dto.configSetId,
+    revisionNumber: dto.revisionNumber,
+    status: dto.status,
+    createdAt: dto.createdAt
   };
 }
 
@@ -490,6 +506,12 @@ export function createHttpParameterTopologyRepository(
         buildBindingComparePath(projectId, bindingId)
       );
       return response.items.map((entry) => ({ ...entry }));
+    },
+    async listConfigRevisions(projectId, configSetId) {
+      const response = await apiClient.get<ItemsEnvelope<ConfigRevisionSummary>>(
+        buildConfigRevisionsPath(projectId, configSetId)
+      );
+      return response.items.map(configRevisionFromDto);
     },
     async getTopology(projectId, configSetId, revisionId, view) {
       const response = await apiClient.get<ItemEnvelope<TopologyTree>>(

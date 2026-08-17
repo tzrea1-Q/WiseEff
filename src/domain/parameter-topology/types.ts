@@ -334,12 +334,37 @@ export type ReopenMappingInput = {
   reason: string;
 };
 
+export type ConfigRevisionStatus =
+  | "draft"
+  | "resolving"
+  | "needs_mapping"
+  | "invalid"
+  | "resolved"
+  | "validated"
+  | "validation_failed"
+  | "compiled"
+  | "pending_approval";
+
+/** Listed config-set revision identity for topology list/select. Never a teaching fallback. */
+export type ConfigRevisionSummary = {
+  id: string;
+  configSetId: string;
+  revisionNumber: number;
+  status: ConfigRevisionStatus;
+  createdAt: string;
+};
+
 export type ValidationRunStatus = "passed" | "failed" | "running";
 
 export type ValidationRun = {
   id: string;
   status: ValidationRunStatus;
   stage: string;
+  /**
+   * When true, baseline release stays blocked until ConfirmDialog acknowledgement.
+   * Present for warn-mode / soft toolchain passes; omitted or false for a hard dtc pass.
+   */
+  requiresConfirmation?: boolean;
   artifactHashes?: Record<string, unknown>;
   diagnostics?: TopologyDiagnostic[];
 };

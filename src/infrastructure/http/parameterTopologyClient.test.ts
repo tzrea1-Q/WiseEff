@@ -334,6 +334,54 @@ describe("createHttpParameterTopologyRepository", () => {
     expect(run).toMatchObject({ id: "run-1", status: "passed", stage: "toolchain" });
   });
 
+  it("lists config revisions and maps requiresConfirmation on validate", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        response({
+          items: [
+            {
+              id: "rev-2",
+              configSetId: "cs-1",
+              revisionNumber: 2,
+              status: "resolved",
+              createdAt: "2026-08-17T10:00:00.000Z"
+            }
+          ]
+        })
+      )
+      .mockResolvedValueOnce(
+        response({
+          item: {
+            id: "run-soft",
+            status: "passed",
+            stage: "toolchain",
+            requiresConfirmation: true
+          }
+        })
+      );
+    const repository = createHttpParameterTopologyRepository(
+      createApiClient({ baseUrl: "http://api.test", fetchImpl: fetchMock })
+    );
+
+    const listed = await repository.listConfigRevisions("project-1", "cs-1");
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "http://api.test/api/v2/projects/project-1/config-sets/cs-1/revisions"
+    );
+    expect(listed).toEqual([
+      {
+        id: "rev-2",
+        configSetId: "cs-1",
+        revisionNumber: 2,
+        status: "resolved",
+        createdAt: "2026-08-17T10:00:00.000Z"
+      }
+    ]);
+
+    const run = await repository.validateRevision("project-1", "rev-2");
+    expect(run.requiresConfirmation).toBe(true);
+  });
+
   it("creates a typed binding draft via v2 drafts API", async () => {
     const fetchMock = fetchQueue({
       item: {

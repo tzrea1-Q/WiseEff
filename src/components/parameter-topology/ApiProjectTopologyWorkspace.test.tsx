@@ -127,6 +127,7 @@ function createRepository(
     }),
     listMappingTasks: vi.fn().mockResolvedValue([]),
     resolveMapping: vi.fn(),
+    listConfigRevisions: vi.fn().mockResolvedValue([]),
     validateRevision: vi.fn().mockResolvedValue({ id: "run-1", status: "passed", stage: "toolchain" }),
     createBindingDraft: vi.fn().mockResolvedValue({
       draftId: "draft-1",

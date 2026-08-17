@@ -20,6 +20,7 @@ vi.mock("../parameter-specs/service", () => ({
 
 vi.mock("./service", () => ({
   getTopology: vi.fn(),
+  listConfigRevisions: vi.fn(),
   listProjectBindings: vi.fn(),
   listIdentityMappingTasks: vi.fn(),
   resolveIdentityMappingTask: vi.fn(),
@@ -285,6 +286,48 @@ describe("parameter semantic v2 routes", () => {
         view: "effective"
       })
     );
+  });
+
+  it("GET config-set revisions lists real revision ids for viewers", async () => {
+    vi.mocked(topologyService.listConfigRevisions).mockResolvedValue({
+      items: [
+        {
+          id: "rev-2",
+          organizationId: "org-1",
+          projectId: "project-1",
+          configSetId: "cs-1",
+          revisionNumber: 2,
+          status: "resolved",
+          manifestState: "complete",
+          createdAt: "2026-08-17T10:00:00.000Z"
+        }
+      ]
+    });
+
+    const response = await requestJson<{ items: Array<{ id: string; revisionNumber: number }> }>(
+      makeServer({ db: makeDb() }),
+      "/api/v2/projects/project-1/config-sets/cs-1/revisions"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body?.items[0]).toMatchObject({ id: "rev-2", revisionNumber: 2 });
+    expect(topologyService.listConfigRevisions).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ organization: { id: "org-1", name: "ChargeLab" } }),
+      { projectId: "project-1", configSetId: "cs-1" }
+    );
+  });
+
+  it("GET config-set revisions requires parameter view permission", async () => {
+    const response = await requestJson(
+      makeServer({
+        db: makeDb(),
+        auth: makeAuth({ permissions: [] })
+      }),
+      "/api/v2/projects/project-1/config-sets/cs-1/revisions"
+    );
+    expect(response.status).toBe(403);
+    expect(topologyService.listConfigRevisions).not.toHaveBeenCalled();
   });
 
   it("GET /api/v2/projects/:projectId/parameter-bindings returns semantic binding DTOs", async () => {
