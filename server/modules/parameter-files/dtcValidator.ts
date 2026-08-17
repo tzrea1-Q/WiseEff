@@ -116,10 +116,21 @@ function isOverlayFile(file: DtcValidatorFile): boolean {
   return file.name.endsWith(".dtso") || file.content.includes("/plugin/");
 }
 
-function minimalEnv(): NodeJS.ProcessEnv {
+/** User-profile keys macOS Python (`dt-validate`) needs; never secrets or agent sockets. */
+const MINIMAL_ENV_KEYS = ["PATH", "HOME", "USER", "LOGNAME"] as const;
+
+/**
+ * Restricted subprocess env. Copies PATH plus present user-profile identity vars
+ * so macOS Python lookups do not stall when HOME is stripped (issue #430).
+ * Omits unset keys rather than inventing values. Secrets stay out.
+ */
+function minimalEnv(sourceEnv: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
-  if (process.env.PATH) {
-    env.PATH = process.env.PATH;
+  for (const key of MINIMAL_ENV_KEYS) {
+    const value = sourceEnv[key];
+    if (value) {
+      env[key] = value;
+    }
   }
   return env;
 }
@@ -193,7 +204,7 @@ export interface CreateSubprocessDtcValidatorDeps {
  * Prefer `createDtsToolchainRunner` / `dtsToolchain.ts` for complete config-set
  * validation (base `dtc -@` → overlay DTBO → `fdtoverlay` → `dt-validate`).
  *
- * Security posture is unchanged: isolated tmpdir, PATH-only env, hard timeout,
+ * Security posture is unchanged: isolated tmpdir, minimal env, hard timeout,
  * best-effort cleanup. mode=off never invokes whichDtc/spawn.
  *
  * Optional dt-schema: when `enableDtSchema` / `DTS_ENABLE_DT_SCHEMA` is on,
