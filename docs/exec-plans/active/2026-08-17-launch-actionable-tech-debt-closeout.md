@@ -43,6 +43,12 @@ One plan → one branch. Sequential commits on this branch are slices (plan → 
 | `fix/td-079-hierarchical-modules` / `#511` | **TD-079** hierarchical-modules fixture | Landed on `main` |
 | `fix/td-079-import-wizard` / `#512` | **TD-079** import-wizard fixture | Landed on `main` |
 | `feat/td-057-config-set-revision-gate` / `#513` | **TD-057** config-set revision gate | Landed on `main` |
+| `fix/td-079-workbench-semantic` / `#516` | **TD-079** workbench leftover-PPV fixtures | Landed on `main` |
+| `feat/td-079-parameter-files-semantic-sync` / `#519` | **TD-079** semantic file-sync | Landed on `main` |
+| `feat/dts-reload-handoff-and-shapes` / `#517` | **TD-064** / **TD-065** | Landed on `main` |
+| `feat/openapi-client-or-dto-validation` / `#515` | Schema-level DTO validation (TD-003/012/018 partial; TD-008 closed with residual) | Landed on `main` |
+| `test/td-073-render-harness` / `#518` | **TD-073** partial (harness + 4 page tests) | Landed on `main` |
+| `docs/parameter-governance-deferred-adr` / `#520` | D1–D8 / TD-117 / TD-063 ADR lock (TD-050 / TD-053 closed) | Landed on `main` |
 
 Merge-time: re-check `docs/PLANS.md` and both tech-debt tracker twins against `origin/main` before requesting merge. Those files collide often.
 
@@ -50,7 +56,7 @@ Merge-time: re-check `docs/PLANS.md` and both tech-debt tracker twins against `o
 
 - This plan exists EN+ZH, is listed from `docs/PLANS.md` / `docs/zh-CN/PLANS.md`, and every open tracker row that this launch cut cares about has an explicit Done / Deferred / Blocked status below.
 - Attribution deferred plan (`2026-08-01-attribution-deferred-implementation.md`) moved to `completed/` after acceptance registration + playwright-cli evidence (Batch 1).
-- **TD-056** lands in a later commit on this branch only if attribution closeout is already committed and green. **Batch 3** landed 2026-08-17 on `main` (#511 hierarchical-modules, #512 import-wizard, #513 TD-057). **TD-064 / TD-065**, parameter-files file-sync, xiaoze-action pre-cutover fallback, and flipping the shared CI job stay out of Batch 3.
+- **TD-056** lands in a later commit on this branch only if attribution closeout is already committed and green. **Batch 3** landed 2026-08-17 on `main` (#511 hierarchical-modules, #512 import-wizard, #513 TD-057). **Batch 4** landed 2026-08-18 (#516 workbench, #519 file-sync, #517 TD-064/065, #515 DTO validation, #518 TD-073 partial, #520 governance ADRs). Remaining TD-079 leftover fixtures: xiaoze-action pre-cutover fallback and `e2e/parameter-management.api.spec.ts`. Do not flip the shared CI job.
 - `npm run docs:check` green before claiming the docs slice done. UI slices also run targeted tests, `npm run build`, and playwright-cli.
 
 ## Batches
@@ -95,25 +101,27 @@ Do **not** open a second closeout plan. These tracks ran in parallel from latest
 | TD-079 import wizard | `fix/td-079-import-wizard` / `#512` | `parameter-import-wizard.acceptance.spec.ts` | Do not edit that spec from the other Batch 3 tracks |
 | TD-057 revision gate | `feat/td-057-config-set-revision-gate` / `#513` | Config-set revision source, then restore the gate. Do not invent `revision-teaching-1`. | Do not edit `ConfigSetBaselinePanel` / release-baseline product code from the TD-079 fixture tracks |
 
-**Out of this batch (explicit), still open after Batch 3:**
+**Out of this batch (explicit), still open after Batch 3 (Batch 4 later struck workbench + parameter-files):**
 
-- `parameter-files.acceptance.spec.ts` file-sync (needs semantic sync or stays pre-cutover)
-- `project-configuration-workbench.acceptance.spec.ts` (`submitStructuredEdits` + PPV conflict seed)
+- ~~`parameter-files.acceptance.spec.ts` file-sync~~ (#519; `PARAM-FILE-ROLLBACK-001` still skip)
+- ~~`project-configuration-workbench.acceptance.spec.ts`~~ (#516)
 - `xiaoze-action.acceptance.spec.ts` pre-cutover fallback (intentional until the shared job flips)
 - non-acceptance `e2e/parameter-management.api.spec.ts`
 - Flipping the shared CI acceptance job / `WISEEFF_SEED_LEGACY_FLAT_IDENTITY`
-- **TD-064** / **TD-065** — next batch, not Batch 3
+- ~~**TD-064** / **TD-065**~~ (#517)
 
 ### Batch 4 — Later launch-visible product slices
 
+**Landed 2026-08-18** on `main`: #516, #519, #517, #515, #518, #520.
+
 | ID | Why it is next | Notes |
 | --- | --- | --- |
-| **TD-064** | Workbench → `/dts-reload` hand-off | Only after the standalone reload surface stays stable. |
-| **TD-065** | Wider DTS reload value shapes | Ticket-by-ticket with overlay + preflight fixtures; no silent encodings. |
+| **TD-064** | Workbench → `/dts-reload` hand-off | **Done** via #517. |
+| **TD-065** | Wider DTS reload value shapes | **Done** via #517 (deletion = honest preflight failure). |
 
 ### Later product/platform batches (not launch-blocking in this cut)
 
-Hygiene and architecture leftovers that are real but should not steal the launch window: TD-003 / TD-008 / TD-012 / TD-018 (generated clients), TD-005 (completed-plan hygiene), TD-013 / TD-014 (approvals/catalog), TD-048–TD-053 / TD-055 / TD-117 (governance deferred questions), TD-059 (leftover dialogs), TD-063 / TD-066 / TD-067 / TD-068 (reload/bridge/security follow-ups), TD-071–TD-077 (test architecture), TD-097 / TD-109 / TD-110 / TD-112 / TD-114 (frontend residue). Pick them when touching those surfaces; do not bundle them here.
+Hygiene and architecture leftovers that are real but should not steal the launch window: TD-003 / TD-012 / TD-018 (generated client remainder; TD-008 closed with POST-logs+SSE residual), TD-005 (completed-plan hygiene), TD-013 / TD-014 (approvals/catalog), TD-048 / TD-049 / TD-051 / TD-052 / TD-055 / TD-117 (governance — decisions locked, implementation open; TD-050 / TD-053 closed), TD-059 (leftover dialogs), TD-063 / TD-066 / TD-067 / TD-068 (reload/bridge/security follow-ups), TD-071–TD-077 (test architecture; TD-073 partial), TD-097 / TD-109 / TD-110 / TD-112 / TD-114 (frontend residue). Pick them when touching those surfaces; do not bundle them here.
 
 ## Per-TD status for this launch cut
 
@@ -125,8 +133,8 @@ Legend: **Done** = closed or closeable in a batch above; **In progress (sibling)
 | TD-046 / TD-047 | Done (already closed on `main`) | Evidence + archive in Batch 1 |
 | TD-056 | Done in Batch 2 (this branch) | This branch after Batch 1 |
 | TD-057 | Done on `main` via #513 | Batch 3: `feat/td-057-config-set-revision-gate` |
-| TD-064 / TD-065 | Open (later) | Batch 4; not Batch 3 |
-| TD-079 | In progress (remaining leftover fixtures; no Batch 3 PRs open) | `#509` / `#510` / `#511` / `#512` on `main`. Remaining: `parameter-files.acceptance.spec.ts`, `project-configuration-workbench.acceptance.spec.ts`, `xiaoze-action.acceptance.spec.ts` pre-cutover fallback, `e2e/parameter-management.api.spec.ts`. Do not flip CI. |
+| TD-064 / TD-065 | Done on `main` via #517 | Batch 4 |
+| TD-079 | In progress (remaining leftover fixtures) | `#509`–`#512` / `#516` / `#519` on `main`. Remaining: `xiaoze-action.acceptance.spec.ts` pre-cutover fallback, `e2e/parameter-management.api.spec.ts`. Do not flip CI. |
 | TD-082 | Done on `main` via #507 | `chore/td-082-apierror-status-codemod` |
 | TD-001 | Deferred | Long-running mock/API parity constraint, not a ticket |
 | TD-033 | Deferred | Archive-only leftover debugging catalog tables |
@@ -142,7 +150,7 @@ Legend: **Done** = closed or closeable in a batch above; **In progress (sibling)
 | TD-038 / TD-042 | Blocked | Target proof / clean snapshot cutover rehearsal |
 | TD-039 / TD-040 | Blocked | Follow the topology cutover; do not reopen a separate program |
 | TD-103 / TD-105 / TD-116 | Blocked | Needs KMS or real webhook volume |
-| Remaining open rows (TD-003, TD-005, TD-008, TD-012–014, TD-018, TD-048–055, TD-059, TD-063, TD-066–068, TD-071–077, TD-097, TD-109–112, TD-114, TD-117, …) | Open (later) | Not this branch |
+| Remaining open rows (TD-003, TD-005, TD-012–014, TD-018, TD-048–049, TD-051–052, TD-055, TD-059, TD-063, TD-066–068, TD-071–077, TD-097, TD-109–112, TD-114, TD-117, …) | Open (later) | Not this branch. TD-003/012/018/073/048 stay **partially** open; TD-008/050/053/064/065 closed. |
 
 ## UI Interaction Automation review
 
@@ -203,14 +211,14 @@ Do not run full browser acceptance unless cheap. Do not claim target-environment
 | Quality / acceptance | Update | Coverage map + operation matrix EN+ZH; `PARAM-FILE-ROLLBACK-001` in `requirements.ts` / `operationMatrix.ts` / `parameter-files.acceptance.spec.ts` |
 | Generated artifacts | No change | No migration; Batch 2 reuses schema `origin='rollback'` |
 | References | Review | Unchanged: productization API draft is not the live contract; live contract updated above |
-| Tech debt | Update | EN+ZH tracker: TD-056 closed; Batch 3 landed (#511 hierarchical-modules, #512 import-wizard, #513 TD-057); TD-079 remaining leftover PPV fixtures listed (CI still not flipped); TD-082 closed via #507 |
+| Tech debt | Update | EN+ZH tracker: TD-056 closed; Batch 3 landed (#511 hierarchical-modules, #512 import-wizard, #513 TD-057); Batch 4 landed (#516/#519 TD-079 fixtures, #517 TD-064/065, #515 DTO validation, #518 TD-073 partial, #520 ADRs; TD-008/050/053 closed). TD-079 remaining: xiaoze pre-cutover fallback + `parameter-management.api.spec.ts` (CI still not flipped). TD-082 closed via #507 |
 
 ## Documentation Update Gate
 
 A batch cannot be called complete until:
 
 1. Every Impact Matrix `Update` / `Review` row for that batch is updated or recorded unchanged with evidence.
-2. EN+ZH tracker rows that this batch closes or advances are updated. TD-079 remaining leftover fixtures stay open; do not flip CI. TD-082 closed via #507.
+2. EN+ZH tracker rows that this batch closes or advances are updated. TD-079 remaining leftover fixtures stay open (`xiaoze-action.acceptance.spec.ts` pre-cutover fallback, `e2e/parameter-management.api.spec.ts`); do not flip CI. TD-082 closed via #507.
 3. `npm run docs:check` is green.
 4. UI-interaction coverage for that batch is registered (planned stub + supplemental playwright-cli is honest; fake `@acceptance` markers are not).
 5. Moving a plan to `completed/` does not leave the same filename in `active/` (EN or ZH).
