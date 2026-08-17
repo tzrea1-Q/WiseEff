@@ -25,7 +25,7 @@ The first cut additionally refused to deprecate platform-global definitions (`or
 - Routes: `POST /api/v2/parameter-specs/:specId/deprecate` and `.../restore`. Both `admin:access`; the deprecate/restore service resolves via `requireOrgOrGlobalSpec` only when the caller holds `platform-admin`, otherwise `requireOrgOwnedSpec`.
 - Migration `0083` (ADR-0014 versioning) adds `parameter_spec_versions.activated_at` and definition-level soft retirement; the earlier planned `0081_spec_lifecycle_closure` migration was superseded and not shipped as a separate file.
 - Audit actions: `spec-deprecated`, `spec-restored`; `spec-updated` records before/after `value_shape` and `constraints`. Global-row governance writes `organization_id`-nullable audit entries (ADR-0009 fan-out).
-- Hard retirement, versioned definitions, and delete remain out of scope (see deferred-questions D1–D2, D7).
+- Hard retirement and delete remain out of scope. Versioned definitions shipped as ADR-0014; the remaining semantic-edit door is ADR-0032 (PATCH must not rewrite live meaning). D7 is closed: structural keys are not a lifecycle (ADR-0003, migration `0081`).
 
 ## Alternatives considered
 

@@ -25,9 +25,10 @@ We decided:
 
 ## Follow-up
 
-- Staged atomic version cutover jobs.
+- Staged atomic version cutover jobs (prepare/finalize routes exist; remaining work is operational, not a new model).
 - Mature library create entry requiring coverage claims before activate.
-- Lifecycle ranking audit of the eight historical SQL sites.
+- Lifecycle ranking audit: locked as D6 in [`2026-07-30-parameter-governance-deferred-questions.md`](../design-docs/2026-07-30-parameter-governance-deferred-questions.md) (pin vs `active → deprecated → draft`).
+- PATCH still rewrote semantic fields after this ADR; closed by [ADR-0032](0032-semantic-edits-on-active-definitions-mint-a-successor.md).
 
 ## Supersession (ADR-0017)
 

@@ -39,6 +39,6 @@ We decided that **the identity triple stays the business key, `parameter_specs.i
 
 ## Follow-up
 
-- Whether a referenced `property_key` rename should become a staged cutover job (mirroring ADR-0014 version cutover) rather than staying forbidden.
-- Whether platform-global definitions accept identity correction only from `platform-admin`, in step with the deprecate/restore ownership split recorded in ADR-0011.
+- Referenced `property_key` rename is a staged **source-rewriting** cutover, not an inline field and not this route: [ADR-0034](0034-referenced-property-key-rename-is-a-source-cutover.md) (TD-117). Zero-reference rename stays here.
+- Whether platform-global definitions accept identity correction only from `platform-admin`, in step with the deprecate/restore ownership split recorded in ADR-0011. **Settled in implementation:** the same ownership split as deprecate/restore (ID-R5).
 - Retiring the remaining direct `specification_key` parsing so the column can eventually stop being a display source.
