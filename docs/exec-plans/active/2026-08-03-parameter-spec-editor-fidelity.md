@@ -1,6 +1,6 @@
 # Parameter spec editor fidelity
 
-> Status: **Active** — partial landing on `main`; remaining write-contract work is SE-2, SE-5, and SE-D6
+> Status: **Active** — remaining write-contract closed except SE-D5 / later batches
 > Date: 2026-08-03
 > Chinese: [`docs/zh-CN/exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md`](../../zh-CN/exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md)
 > Governing IA: [ADR-0001](../../adr/0001-parameter-admin-organized-by-governance-scope.md), [ADR-0015](../../adr/0015-governance-queues-live-with-the-object-they-govern.md)
@@ -9,9 +9,9 @@
 
 ## Landed vs remaining
 
-**Landed:** SE-D1 (`policyTarget` removed from the editor write path); SE-D3 server key-presence (`units` no longer uses `coalesce` to ignore null); SE-D4 activate accepts and persists `units` / `exampleValue`; shared `ValueShapeFields`; ModalDialog chrome for SE-17–SE-21.
+**Landed:** SE-D1 (`policyTarget` removed from the editor write path); SE-D2 constraints replace on update and activate; SE-D3 server key-presence (`units` no longer uses `coalesce` to ignore null); SE-D4 activate accepts and persists `units` / `exampleValue`; SE-5 empty `displayName` round-trips; SE-D6 PATCH runs `assertSpecActivatable` only when `valueShape` changed; shared `ValueShapeFields`; ModalDialog chrome for SE-17–SE-21.
 
-**Remaining:** SE-2 still shallow-merges `{ ...spec.constraints, ...input.constraints }` in `updateParameterSpec` and `activateParameterSpec`; SE-5 frontend still falls back `displayName || propertyKey`; SE-D5 pre-save diff confirm; SE-D6 PATCH still does not call `assertSpecActivatable` when `valueShape` changes.
+**Remaining:** SE-D5 pre-save diff confirm; Batches 2–5 (display fields, editing affordances, dialog chrome, acceptance/docs gate).
 
 ## Context
 
@@ -166,12 +166,12 @@ Call `assertSpecActivatable` from `updateParameterSpec` only when the incoming `
 
 1. [x] Settle SE-D1 through SE-D6 and record each in this plan.
 2. [x] Close SE-1: remove `policyTarget` from the dialog, `updateParameterSpecBodySchema`, `UpdateParameterSpecInput`, and the mock; file TD-055 for the product-scoped surface.
-3. [ ] Close SE-2: constraints replace on both `updateParameterSpec` and `activateParameterSpec`.
-4. [ ] Close SE-3 and SE-5 together: `case when $flag` in place of `coalesce` for `units` / `displayName` / `description` / `exampleValue`; `displayName` and `description` become nullable; drop the frontend `propertyKey` fallback.
-5. [ ] Close SE-4: `activateParameterSpecBodySchema` gains `units` and `exampleValue`; the activate branch sends them.
-6. [ ] Close SE-23 per SE-D6: `updateParameterSpec` runs `assertSpecActivatable` when `valueShape` changed.
-7. [ ] Keep the mock in step with every contract change in this batch (SE-R2).
-8. [ ] Server integration coverage per SE-R1.
+3. [x] Close SE-2: constraints replace on both `updateParameterSpec` and `activateParameterSpec`.
+4. [x] Close SE-3 and SE-5 together: `case when $flag` in place of `coalesce` for `units` / `displayName` / `description` / `exampleValue` (SE-3 already on `main`); `displayName` and `description` become nullable; drop the frontend `propertyKey` fallback (SE-5).
+5. [x] Close SE-4: `activateParameterSpecBodySchema` gains `units` and `exampleValue`; the activate branch sends them (already on `main`).
+6. [x] Close SE-23 per SE-D6: `updateParameterSpec` runs `assertSpecActivatable` when `valueShape` changed.
+7. [x] Keep the mock in step with every contract change in this batch (SE-R2).
+8. [x] Server integration coverage per SE-R1.
 
 ### Batch 2 — fields that cannot carry a real value
 

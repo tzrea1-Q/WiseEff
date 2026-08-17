@@ -1,6 +1,6 @@
 # 参数定义编辑器保真度
 
-> 状态：**进行中** — 部分已在 `main` 落地；剩余写入契约为 SE-2、SE-5、SE-D6
+> 状态：**进行中** — 剩余写入契约已关闭，仅剩 SE-D5 与后续批次
 > 日期：2026-08-03
 > English: [`docs/exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md`](../../../exec-plans/active/2026-08-03-parameter-spec-editor-fidelity.md)
 > 约束性 IA：[ADR-0001](../../../adr/0001-parameter-admin-organized-by-governance-scope.md)、[ADR-0015](../../../adr/0015-governance-queues-live-with-the-object-they-govern.md)
@@ -9,9 +9,9 @@
 
 ## 已落地与剩余
 
-**已落地：** SE-D1（编辑器写入路径已去掉 `policyTarget`）；SE-D3 服务端按键是否出现判定（`units` 不再用 `coalesce` 忽略 null）；SE-D4 激活会接受并持久化 `units` / `exampleValue`；共用 `ValueShapeFields`；SE-17–SE-21 的 ModalDialog 外壳。
+**已落地：** SE-D1（编辑器写入路径已去掉 `policyTarget`）；SE-D2 约束在 update 与 activate 上改为替换；SE-D3 服务端按键是否出现判定（`units` 不再用 `coalesce` 忽略 null）；SE-D4 激活会接受并持久化 `units` / `exampleValue`；SE-5 空展示名可往返；SE-D6 PATCH 仅在 `valueShape` 变化时运行 `assertSpecActivatable`；共用 `ValueShapeFields`；SE-17–SE-21 的 ModalDialog 外壳。
 
-**剩余：** SE-2 仍在 `updateParameterSpec` 与 `activateParameterSpec` 里浅合并 `{ ...spec.constraints, ...input.constraints }`；SE-5 前端仍回退 `displayName || propertyKey`；SE-D5 保存前 diff 确认；SE-D6 在 `valueShape` 变化时 PATCH 仍不调用 `assertSpecActivatable`。
+**剩余：** SE-D5 保存前 diff 确认；批次 2–5（展示字段、编辑形态、弹窗外壳、验收/文档门禁）。
 
 ## 背景
 
@@ -166,12 +166,12 @@ D2 的审计那一半已经落地：`spec-updated` 元数据携带 `previousValu
 
 1. [x] 决定 SE-D1 至 SE-D6，并把每条记入本计划。
 2. [x] 关闭 SE-1：从弹窗、`updateParameterSpecBodySchema`、`UpdateParameterSpecInput` 与 mock 移除 `policyTarget`；为产品维度的编辑面登记 TD-055。
-3. [ ] 关闭 SE-2：约束在 `updateParameterSpec` 与 `activateParameterSpec` 上改为替换。
-4. [ ] 一并关闭 SE-3 与 SE-5：`units` / `displayName` / `description` / `exampleValue` 用 `case when $flag` 取代 `coalesce`；`displayName` 与 `description` 改为可空；去掉前端的 `propertyKey` 兜底。
-5. [ ] 关闭 SE-4：`activateParameterSpecBodySchema` 增加 `units` 与 `exampleValue`，activate 分支随之发送。
-6. [ ] 按 SE-D6 关闭 SE-23：`valueShape` 变更时 `updateParameterSpec` 执行 `assertSpecActivatable`。
-7. [ ] 本批次每一处契约变更都让 mock 同步（SE-R2）。
-8. [ ] 按 SE-R1 补服务端集成覆盖。
+3. [x] 关闭 SE-2：约束在 `updateParameterSpec` 与 `activateParameterSpec` 上改为替换。
+4. [x] 一并关闭 SE-3 与 SE-5：`units` / `displayName` / `description` / `exampleValue` 用 `case when $flag` 取代 `coalesce`（SE-3 已在 `main`）；`displayName` 与 `description` 改为可空；去掉前端的 `propertyKey` 兜底（SE-5）。
+5. [x] 关闭 SE-4：`activateParameterSpecBodySchema` 增加 `units` 与 `exampleValue`，activate 分支随之发送（已在 `main`）。
+6. [x] 按 SE-D6 关闭 SE-23：`valueShape` 变更时 `updateParameterSpec` 执行 `assertSpecActivatable`。
+7. [x] 本批次每一处契约变更都让 mock 同步（SE-R2）。
+8. [x] 按 SE-R1 补服务端集成覆盖。
 
 ### 批次 2 — 无法承载真实取值的字段
 
