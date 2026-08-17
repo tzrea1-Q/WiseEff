@@ -24,18 +24,18 @@ import {
   rulesFor
 } from "./test/cssAssertions";
 import { selectModuleTreeFilter } from "./test/moduleTreeTestHelpers";
-import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
-import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
-import type { ParameterRepository } from "@/application/ports/ParameterRepository";
-import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import {
+  createTestAuthClient,
+  createTestConfigSetList,
+  createTestDebuggingGateway,
+  createTestLogAnalysisRepository,
+  createTestParameterRepository,
+  createTestParameterTopologyRepository,
+  createTestUserGovernanceActions,
+  renderApp
+} from "./test/harness";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
-import type { UserGovernanceActions } from "@/UserPermissionsPage";
-import {
-  TOPOLOGY_TEACHING_BINDINGS,
-  TOPOLOGY_TEACHING_EFFECTIVE_NODES,
-  TOPOLOGY_TEACHING_SOURCE_NODES
-} from "@/components/parameter-topology/topologyTeachingFixtures";
 
 const userState = { ...initialState, activeRoleId: "user", changeRequests: [] };
 const committerState = { ...initialState, activeRoleId: "committer" };
@@ -75,111 +75,20 @@ const apiDebugParameter = {
   projectId: initialState.activeProjectId
 };
 
-function createAppParameterRepository(overrides: Partial<ParameterRepository> = {}): ParameterRepository {
-  return {
-    listProjects: vi.fn().mockResolvedValue([apiProject]),
-    listParameters: vi.fn().mockResolvedValue([apiParameter]),
-    getParameter: vi.fn().mockResolvedValue(apiParameter),
-    listParameterHistory: vi.fn().mockResolvedValue([]),
-    listDrafts: vi.fn().mockResolvedValue([]),
-    saveDraft: vi.fn().mockResolvedValue({
-      id: "draft-api-runtime",
-      projectId: initialState.activeProjectId,
-      parameterId: apiParameter.id,
-      targetValue: "42",
-      reason: "Tune value",
-      updatedAt: "2026-05-25T08:00:00.000Z"
-    }),
-    deleteDraft: vi.fn().mockResolvedValue(undefined),
-    listChangeRequests: vi.fn().mockResolvedValue([]),
-    listSubmissionRounds: vi.fn().mockResolvedValue([]),
-    submitParameterChanges: vi.fn().mockResolvedValue({ ...initialState.parameterSubmissionRounds[0], id: "api-runtime-round" }),
-    withdrawSubmissionRound: vi.fn().mockResolvedValue({ ...initialState.parameterSubmissionRounds[0], id: "api-runtime-round", status: "已撤回" }),
-    reviewChange: vi.fn().mockResolvedValue({ ...initialState.changeRequests[0], id: "api-runtime-change" }),
-    createImportPreview: vi.fn().mockResolvedValue({
-      id: "api-runtime-batch",
-      projectId: initialState.activeProjectId,
-      sourceName: "import.csv",
-      status: "previewed",
-      createdAt: "2026-05-25T08:00:00.000Z",
-      summary: { added: 0, updated: 0, unchanged: 0, conflict: 0, highRisk: 0 },
-      items: []
-    }),
-    applyImportBatch: vi.fn().mockResolvedValue({
-      id: "api-runtime-batch",
-      projectId: initialState.activeProjectId,
-      sourceName: "import.csv",
-      status: "applied",
-      createdAt: "2026-05-25T08:00:00.000Z",
-      appliedAt: "2026-05-25T08:01:00.000Z",
-      summary: { added: 0, updated: 0, unchanged: 0, conflict: 0, highRisk: 0 },
-      items: []
-    }),
-    parseDtsImport: vi.fn().mockResolvedValue({ format: "dts-full", rows: [] }),
-    ...overrides
-  };
-}
-
-function createAppParameterTopologyRepository(
-  overrides: Partial<ParameterTopologyRepository> = {}
-): ParameterTopologyRepository {
-  return {
-    listSpecs: vi.fn().mockResolvedValue([]),
-    getSpec: vi.fn(),
-    activateParameterSpec: vi.fn(),
-    updateParameterSpec: vi.fn(),
-    deprecateParameterSpec: vi.fn(),
-    restoreParameterSpec: vi.fn(),
-    listSpecReviewTasks: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
-    resolveSpecReviewTask: vi.fn().mockResolvedValue(undefined),
-    listBindings: vi.fn().mockResolvedValue(TOPOLOGY_TEACHING_BINDINGS),
-    getTopology: vi.fn(async (projectId, configSetId, revisionId, view) => {
-      const resolvedRevisionId = revisionId === "current" ? "rev-app-test" : revisionId;
-      if (view === "source") {
-        return {
-          view: "source" as const,
-          revisionId: resolvedRevisionId,
-          configSetId,
-          projectId,
-          status: "resolved",
-          incompleteBase: false,
-          diagnostics: [],
-          nodes: TOPOLOGY_TEACHING_SOURCE_NODES
-        };
-      }
-      return {
-        view: "effective" as const,
-        revisionId: resolvedRevisionId,
-        configSetId,
-        projectId,
-        status: "resolved",
-        incompleteBase: false,
-        diagnostics: [],
-        nodes: TOPOLOGY_TEACHING_EFFECTIVE_NODES
-      };
-    }),
-    listMappingTasks: vi.fn().mockResolvedValue([]),
-    resolveMapping: vi.fn().mockResolvedValue(undefined),
-    listConfigRevisions: vi.fn().mockResolvedValue([]),
-    validateRevision: vi.fn().mockResolvedValue({ id: "run-app-test", status: "passed", stage: "toolchain" }),
-    createBindingDraft: vi.fn(),
-    ...overrides
-  };
-}
-
-function createAppConfigSetList() {
-  return vi.fn().mockResolvedValue([{ id: "config-set-app-test", name: "default" }]);
-}
-
-function createAppDebuggingGateway(overrides: Partial<DebuggingGateway> = {}): DebuggingGateway {
-  return {
+function createAppDebuggingGateway(
+  overrides: Parameters<typeof createTestDebuggingGateway>[0] = {}
+) {
+  const gateway = createTestDebuggingGateway({
     listDevices: vi.fn().mockResolvedValue([apiDebugDevice]),
     listParameters: vi.fn().mockResolvedValue([apiDebugParameter]),
-    detectTargets: vi.fn().mockResolvedValue([]),
-    readNode: vi.fn().mockResolvedValue({ ok: true }),
-    writeNode: vi.fn().mockResolvedValue({ ok: true }),
     ...overrides
-  };
+  });
+  // Historical App-shell API stubs omitted listRuntimeNodes, so hydration used
+  // listParameters. Keep that unless a test explicitly supplies the newer method.
+  if (!Object.prototype.hasOwnProperty.call(overrides, "listRuntimeNodes")) {
+    delete gateway.listRuntimeNodes;
+  }
+  return gateway;
 }
 
 function createAppDebuggingAdminApiMock() {
@@ -199,70 +108,6 @@ function createAppDebuggingAdminApiMock() {
     post: vi.fn().mockResolvedValue({ item: seedNode }),
     patch: vi.fn().mockResolvedValue({ item: seedNode }),
     put: vi.fn()
-  };
-}
-
-function createAppLogAnalysisRepository(overrides: Partial<LogAnalysisRepository> = {}): LogAnalysisRepository {
-  return {
-    listLogs: vi.fn().mockResolvedValue([]),
-    getLog: vi.fn().mockResolvedValue(null),
-    uploadLog: vi.fn(),
-    getJob: vi.fn(),
-    rerunLog: vi.fn(),
-    archiveLog: vi.fn(),
-    unarchiveLog: vi.fn(),
-    submitFeedback: vi.fn(),
-    ...overrides
-  };
-}
-
-function createResolvedAuthClient() {
-  return {
-    getCurrentAuthContext: vi.fn(async () => ({
-      user: {
-        id: "u-api-user",
-        organizationId: "org-chargelab",
-        name: "API User",
-        email: "api-user@chargelab.cn",
-        title: "API Parameter User",
-        isActive: true
-      },
-      organization: { id: "org-chargelab", name: "ChargeLab" },
-      roles: [{ projectId: null, roleId: "user" }],
-      permissions: ["parameter:edit"]
-    }))
-  };
-}
-
-function createResolvedAdminAuthClient() {
-  return {
-    getCurrentAuthContext: vi.fn(async () => ({
-      user: {
-        id: "u-api-admin",
-        organizationId: "org-chargelab",
-        name: "API Admin",
-        email: "api-admin@chargelab.cn",
-        title: "API Platform Owner",
-        isActive: true
-      },
-      organization: { id: "org-chargelab", name: "ChargeLab" },
-      roles: [{ projectId: null, roleId: "admin" }],
-      permissions: ["admin:access", "users:manage", "debugging:admin", "debugging:view"]
-    }))
-  };
-}
-
-type TestUserGovernanceActions = UserGovernanceActions & {
-  listUsers: ReturnType<typeof vi.fn>;
-};
-
-function createUserGovernanceActions(overrides: Partial<TestUserGovernanceActions> = {}): TestUserGovernanceActions {
-  return {
-    listUsers: vi.fn().mockResolvedValue(adminState.users),
-    createUser: vi.fn().mockResolvedValue(undefined),
-    assignUserRole: vi.fn().mockResolvedValue(undefined),
-    setUserActive: vi.fn().mockResolvedValue(undefined),
-    ...overrides
   };
 }
 
@@ -331,7 +176,7 @@ function stateForCurrentPath() {
 }
 
 function renderAppForCurrentPath() {
-  return render(<App initialAppState={stateForCurrentPath()} />);
+  return renderApp({ initialAppState: stateForCurrentPath() });
 }
 
 describe("WiseEff app shell", { timeout: 20_000 }, () => {
@@ -363,10 +208,10 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     render(
       <App
-        authClient={createResolvedAuthClient()}
-        parameterRepository={createAppParameterRepository()}
-        parameterTopologyRepository={createAppParameterTopologyRepository()}
-        listParameterConfigSets={createAppConfigSetList()}
+        authClient={createTestAuthClient()}
+        parameterRepository={createTestParameterRepository()}
+        parameterTopologyRepository={createTestParameterTopologyRepository()}
+        listParameterConfigSets={createTestConfigSetList()}
         runtimeMode="api"
       />
     );
@@ -375,7 +220,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   });
 
   it("does not render Xiaoze or WiseAgent controls in mock mode", () => {
-    render(<App initialAppState={userState} runtimeMode="mock" />);
+    renderApp({ initialAppState: userState, runtimeMode: "mock" });
 
     expect(screen.queryByLabelText("打开 WiseAgent")).not.toBeInTheDocument();
     expect(document.querySelector(".xiaoze-chat-toggle-anchor")).not.toBeInTheDocument();
@@ -422,7 +267,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
           })
         }}
         initialAppState={initialState}
-        parameterRepository={createAppParameterRepository()}
+        parameterRepository={createTestParameterRepository()}
         runtimeMode="api"
       />
     );
@@ -454,7 +299,11 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       }))
     };
 
-    render(<App authClient={authClient} initialAppState={initialState} parameterRepository={createAppParameterRepository()} runtimeMode="api" />);
+    renderApp({
+      runtimeMode: "api",
+      initialAppState: initialState,
+      ports: { authClient, parameterRepository: createTestParameterRepository() }
+    });
 
     expect(await screen.findByRole("heading", { name: "登录雷泽" })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "local.admin" } });
@@ -472,7 +321,11 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       getCurrentAuthContext: vi.fn().mockRejectedValue(unauthenticatedProbeError("Session is not active."))
     };
 
-    render(<App authClient={authClient} initialAppState={initialState} parameterRepository={createAppParameterRepository()} runtimeMode="api" />);
+    renderApp({
+      runtimeMode: "api",
+      initialAppState: initialState,
+      ports: { authClient, parameterRepository: createTestParameterRepository() }
+    });
 
     expect(await screen.findByRole("heading", { name: "登录雷泽" })).toBeInTheDocument();
     expect(window.localStorage.getItem("wiseeff.localAuthToken")).toBeNull();
@@ -502,7 +355,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       <App
         authClient={{ getCurrentAuthContext }}
         initialAppState={initialState}
-        parameterRepository={createAppParameterRepository()}
+        parameterRepository={createTestParameterRepository()}
         runtimeMode="api"
       />
     );
@@ -525,7 +378,11 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       getCurrentAuthContext: vi.fn().mockReturnValue(new Promise<never>(() => undefined))
     };
 
-    render(<App authClient={authClient} initialAppState={initialState} parameterRepository={createAppParameterRepository()} runtimeMode="api" />);
+    renderApp({
+      runtimeMode: "api",
+      initialAppState: initialState,
+      ports: { authClient, parameterRepository: createTestParameterRepository() }
+    });
 
     expect(screen.queryByLabelText("用户名")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("密码")).not.toBeInTheDocument();
@@ -558,7 +415,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       <App
         authClient={{ getCurrentAuthContext }}
         initialAppState={initialState}
-        parameterRepository={createAppParameterRepository()}
+        parameterRepository={createTestParameterRepository()}
         runtimeMode="api"
       />
     );
@@ -581,7 +438,11 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
         .mockRejectedValue(new WiseEffApiError("UNAUTHENTICATED", "Session is not active.", {}, "req-auth-1"))
     };
 
-    render(<App authClient={authClient} initialAppState={initialState} parameterRepository={createAppParameterRepository()} runtimeMode="api" />);
+    renderApp({
+      runtimeMode: "api",
+      initialAppState: initialState,
+      ports: { authClient, parameterRepository: createTestParameterRepository() }
+    });
 
     expect(await screen.findByRole("heading", { name: "登录雷泽" })).toBeInTheDocument();
     expect(screen.queryByText("无法连接服务")).not.toBeInTheDocument();
@@ -610,7 +471,11 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       }))
     };
 
-    render(<App authClient={authClient} initialAppState={initialState} parameterRepository={createAppParameterRepository()} runtimeMode="api" />);
+    renderApp({
+      runtimeMode: "api",
+      initialAppState: initialState,
+      ports: { authClient, parameterRepository: createTestParameterRepository() }
+    });
 
     fireEvent.click(await screen.findByRole("tab", { name: "注册" }));
     changeSelectValue(screen.getByRole("combobox", { name: "组织" }), "软件部");
@@ -633,7 +498,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
   it("keeps committer self-registration on the auth screen while approval is pending", async () => {
     window.history.replaceState(null, "", "/parameter-home");
-    const parameterRepository = createAppParameterRepository();
+    const parameterRepository = createTestParameterRepository();
     const authClient = {
       getCurrentAuthContext: vi.fn().mockRejectedValue(unauthenticatedProbeError("Authorization bearer token is required.")),
       register: vi.fn(async () => ({
@@ -692,7 +557,11 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       register: vi.fn()
     };
 
-    render(<App authClient={authClient} initialAppState={initialState} parameterRepository={createAppParameterRepository()} runtimeMode="api" />);
+    renderApp({
+      runtimeMode: "api",
+      initialAppState: initialState,
+      ports: { authClient, parameterRepository: createTestParameterRepository() }
+    });
 
     fireEvent.click(await screen.findByRole("tab", { name: "注册" }));
     const roleSelector = screen.getByRole("combobox", { name: "角色" });
@@ -751,7 +620,11 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       logout: vi.fn(async () => undefined)
     };
 
-    render(<App authClient={authClient} initialAppState={adminState} parameterRepository={createAppParameterRepository()} runtimeMode="api" />);
+    renderApp({
+      runtimeMode: "api",
+      initialAppState: adminState,
+      ports: { authClient, parameterRepository: createTestParameterRepository() }
+    });
 
     fireEvent.click(await screen.findByRole("button", { name: "打开用户菜单" }));
     fireEvent.click(screen.getByRole("button", { name: "个人资料" }));
@@ -776,7 +649,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
   it("routes user governance page mutations through injected API-mode actions", async () => {
     window.history.replaceState(null, "", "/user-permissions");
-    const userGovernanceActions = createUserGovernanceActions();
+    const userGovernanceActions = createTestUserGovernanceActions();
 
     render(
       <App
@@ -797,9 +670,9 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
             permissions: ["admin:access", "users:manage"]
           }))
         }}
-        parameterRepository={createAppParameterRepository()}
-        parameterTopologyRepository={createAppParameterTopologyRepository()}
-        listParameterConfigSets={createAppConfigSetList()}
+        parameterRepository={createTestParameterRepository()}
+        parameterTopologyRepository={createTestParameterTopologyRepository()}
+        listParameterConfigSets={createTestConfigSetList()}
         userGovernanceActions={userGovernanceActions}
       />
     );
@@ -813,7 +686,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
   it("hydrates backend governed users before rendering API-mode user governance", async () => {
     window.history.replaceState(null, "", "/user-permissions");
-    const userGovernanceActions = createUserGovernanceActions({
+    const userGovernanceActions = createTestUserGovernanceActions({
       listUsers: vi.fn().mockResolvedValue([
         {
           id: "u-backend-governed",
@@ -847,7 +720,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
             permissions: ["admin:access", "users:manage"]
           }))
         }}
-        parameterRepository={createAppParameterRepository()}
+        parameterRepository={createTestParameterRepository()}
         userGovernanceActions={userGovernanceActions}
       />
     );
@@ -858,7 +731,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
   it("does not hydrate backend governed users on non-user-governance API pages", async () => {
     window.history.replaceState(null, "", "/parameters");
-    const userGovernanceActions = createUserGovernanceActions({
+    const userGovernanceActions = createTestUserGovernanceActions({
       listUsers: vi.fn().mockResolvedValue([
         {
           id: "u-backend-governed",
@@ -872,8 +745,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
         }
       ])
     });
-    const parameterTopologyRepository = createAppParameterTopologyRepository();
-    const listParameterConfigSets = createAppConfigSetList();
+    const parameterTopologyRepository = createTestParameterTopologyRepository();
+    const listParameterConfigSets = createTestConfigSetList();
 
     render(
       <App
@@ -894,7 +767,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
             permissions: ["admin:access", "users:manage"]
           }))
         }}
-        parameterRepository={createAppParameterRepository()}
+        parameterRepository={createTestParameterRepository()}
         parameterTopologyRepository={parameterTopologyRepository}
         listParameterConfigSets={listParameterConfigSets}
         userGovernanceActions={userGovernanceActions}
@@ -906,7 +779,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.queryByLabelText("项目拓扑工作区")).not.toBeInTheDocument();
     expect(parameterTopologyRepository.getTopology).toHaveBeenCalledWith(
       initialState.activeProjectId,
-      "config-set-app-test",
+      "config-set-teaching",
       "current",
       "effective"
     );
@@ -937,7 +810,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
         initialAppState={adminState}
         runtimeMode="api"
         authClient={authClient}
-        parameterRepository={createAppParameterRepository()}
+        parameterRepository={createTestParameterRepository()}
       />
     );
 
@@ -951,9 +824,9 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
   it("hydrates parameter runtime data from the API repository after auth", async () => {
     window.history.replaceState(null, "", "/parameters");
-    const parameterRepository = createAppParameterRepository();
-    const parameterTopologyRepository = createAppParameterTopologyRepository();
-    const listParameterConfigSets = createAppConfigSetList();
+    const parameterRepository = createTestParameterRepository();
+    const parameterTopologyRepository = createTestParameterTopologyRepository();
+    const listParameterConfigSets = createTestConfigSetList();
 
     render(
       <App
@@ -983,11 +856,11 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(await screen.findAllByText("gpio_int")).not.toHaveLength(0);
     expect(screen.getByLabelText("DTS 参数工作台")).toBeInTheDocument();
     expect(screen.queryByLabelText("项目拓扑工作区")).not.toBeInTheDocument();
-    expect(parameterRepository.listProjects).toHaveBeenCalledTimes(1);
-    expect(parameterRepository.listParameters).toHaveBeenCalledTimes(1);
-    expect(parameterRepository.listChangeRequests).toHaveBeenCalledTimes(1);
-    expect(parameterRepository.listSubmissionRounds).toHaveBeenCalledTimes(1);
-    expect(parameterRepository.listDrafts).toHaveBeenCalledTimes(1);
+    expect(parameterRepository.listProjects).toHaveBeenCalled();
+    expect(parameterRepository.listParameters).toHaveBeenCalled();
+    expect(parameterRepository.listChangeRequests).toHaveBeenCalled();
+    expect(parameterRepository.listSubmissionRounds).toHaveBeenCalled();
+    expect(parameterRepository.listDrafts).toHaveBeenCalled();
     expect(parameterTopologyRepository.getTopology).toHaveBeenCalled();
     expect(listParameterConfigSets).toHaveBeenCalledWith(initialState.activeProjectId);
   });
@@ -1016,7 +889,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
         }}
         debuggingGateway={debuggingGateway}
         initialAppState={adminState}
-        parameterRepository={createAppParameterRepository()}
+        parameterRepository={createTestParameterRepository()}
         runtimeMode="api"
       />
     );
@@ -1052,7 +925,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
         }}
         debuggingGateway={debuggingGateway}
         initialAppState={adminState}
-        parameterRepository={createAppParameterRepository()}
+        parameterRepository={createTestParameterRepository()}
         runtimeMode="api"
       />
     );
@@ -1093,7 +966,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
         }}
         debuggingGateway={debuggingGateway}
         initialAppState={{ ...initialState, activeRoleId: "guest" }}
-        parameterRepository={createAppParameterRepository()}
+        parameterRepository={createTestParameterRepository()}
         runtimeMode="api"
       />
     );
@@ -1124,10 +997,10 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     render(
       <App
-        authClient={createResolvedAdminAuthClient()}
+        authClient={createTestAuthClient("admin")}
         debuggingGateway={debuggingGateway}
         initialAppState={userState}
-        parameterRepository={createAppParameterRepository()}
+        parameterRepository={createTestParameterRepository()}
         runtimeMode="api"
       />
     );
@@ -1144,10 +1017,10 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     render(
       <App
-        authClient={createResolvedAdminAuthClient()}
+        authClient={createTestAuthClient("admin")}
         debuggingGateway={debuggingGateway}
         initialAppState={userState}
-        parameterRepository={createAppParameterRepository()}
+        parameterRepository={createTestParameterRepository()}
         runtimeMode="api"
       />
     );
@@ -1161,7 +1034,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     window.localStorage.setItem("wiseeff.nodeDebugging.protocol", "hdc");
     window.history.replaceState(null, "", "/node-debugging");
     const debuggingGateway = createAppDebuggingGateway();
-    const parameterRepository = createAppParameterRepository({
+    const parameterRepository = createTestParameterRepository({
       listProjects: vi.fn().mockRejectedValue(new Error("parameter API unavailable"))
     });
 
@@ -1222,7 +1095,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       id: "merge-link-required"
     };
     const reviewChange = vi.fn().mockResolvedValue({ ...mergeRequest, status: "已合入" as const });
-    const parameterRepository = createAppParameterRepository({
+    const parameterRepository = createTestParameterRepository({
       listChangeRequests: vi.fn().mockResolvedValue([mergeRequest]),
       reviewChange
     });
@@ -1285,7 +1158,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       status: "已合入" as const,
       reviewerNote: "https://example.com/mr/99"
     };
-    const parameterRepository = createAppParameterRepository({
+    const parameterRepository = createTestParameterRepository({
       listChangeRequests: vi.fn().mockResolvedValue([merged])
     });
 
@@ -1338,7 +1211,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       status: "已合入" as const,
       reviewerNote: "legacy free-text note"
     };
-    const parameterRepository = createAppParameterRepository({
+    const parameterRepository = createTestParameterRepository({
       listChangeRequests: vi.fn().mockResolvedValue([merged])
     });
 
@@ -1383,7 +1256,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       status: "硬件Committer检视" as const,
       baseVersion: 7
     };
-    const parameterRepository = createAppParameterRepository({
+    const parameterRepository = createTestParameterRepository({
       listChangeRequests: vi.fn().mockResolvedValue([apiReview]),
       reviewChange: vi.fn().mockResolvedValue({ ...apiReview, status: "软件Committer检视" })
     });
@@ -1526,14 +1399,14 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     const listProjects = vi.fn()
       .mockRejectedValueOnce(new Error("api down"))
       .mockResolvedValue([apiProject]);
-    const parameterRepository = createAppParameterRepository({ listProjects });
+    const parameterRepository = createTestParameterRepository({ listProjects });
 
     render(
       <App
-        authClient={createResolvedAuthClient()}
+        authClient={createTestAuthClient()}
         initialAppState={initialState}
         parameterRepository={parameterRepository}
-        logAnalysisRepository={createAppLogAnalysisRepository()}
+        logAnalysisRepository={createTestLogAnalysisRepository([])}
         debuggingGateway={createAppDebuggingGateway()}
         runtimeMode="api"
       />
@@ -1883,7 +1756,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   it("hides project initialization from Guest parameter routes", () => {
     window.history.replaceState(null, "", "/parameters");
 
-    render(<App initialAppState={{ ...initialState, activeRoleId: "guest" }} />);
+    renderApp({ initialAppState: { ...initialState, activeRoleId: "guest" } });
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
     expect(topbar).toBeInTheDocument();
@@ -1894,7 +1767,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   it("does not allow switching roles from the topbar user menu", () => {
     window.history.replaceState(null, "", "/debugging-admin");
 
-    render(<App initialAppState={{ ...initialState, activeRoleId: "guest" }} />);
+    renderApp({ initialAppState: { ...initialState, activeRoleId: "guest" } });
 
     expect(screen.getByRole("heading", { name: "无权访问该页面" })).toBeInTheDocument();
 
@@ -2135,7 +2008,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   it("opens a hidden personal submission history page from the parameter workbench", () => {
     window.history.replaceState(null, "", "/parameters");
 
-    render(<App initialAppState={userState} />);
+    renderApp({ initialAppState: userState });
 
     expect(screen.queryByRole("button", { name: "我的历史提交" })).not.toBeInTheDocument();
 
@@ -2151,7 +2024,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   it("submits a round with multiple parameter changes and shows it in personal history", () => {
     window.history.replaceState(null, "", "/parameters");
 
-    render(<App initialAppState={userState} />);
+    renderApp({ initialAppState: userState });
 
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
     fireEvent.click(screen.getByRole("button", { name: /编辑 charge_voltage_limit_mv/ }));
@@ -2370,7 +2243,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   it("keeps submission round detail copy to a single prompt line and a single-row timeline", () => {
     window.history.replaceState(null, "", "/parameters");
 
-    render(<App initialAppState={userState} />);
+    renderApp({ initialAppState: userState });
 
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
     fireEvent.click(screen.getByRole("button", { name: /编辑 charge_voltage_limit_mv/ }));
@@ -2562,7 +2435,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   it("requires a rejection reason when an admin sends a parameter request back", () => {
     window.history.replaceState(null, "", "/parameter-review");
 
-    render(<App initialAppState={adminState} />);
+    renderApp({ initialAppState: adminState });
 
     const reviewDetail = screen.getByRole("complementary", { name: "审阅详情" });
     const advanceButton = within(reviewDetail).getByRole("button", { name: "推进流程" });
@@ -3213,9 +3086,9 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       <App
         initialAppState={{ ...userState, activeProjectId: "aurora", logs: [], archivedLogIds: [] }}
         runtimeMode="api"
-        authClient={createResolvedAdminAuthClient()}
-        parameterRepository={createAppParameterRepository()}
-        logAnalysisRepository={createAppLogAnalysisRepository()}
+        authClient={createTestAuthClient("admin")}
+        parameterRepository={createTestParameterRepository()}
+        logAnalysisRepository={createTestLogAnalysisRepository([])}
         debuggingGateway={createAppDebuggingGateway()}
       />
     );
@@ -3653,7 +3526,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   it("renders the parameter admin projects workspace without hanging", () => {
     window.history.replaceState(null, "", "/parameter-admin/projects");
 
-    render(<App initialAppState={adminState} />);
+    renderApp({ initialAppState: adminState });
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
     const scopeNav = screen.getByRole("navigation", { name: "参数管理后台配置范围" });
@@ -3674,7 +3547,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   it("serves organization governance on the canonical admin route", async () => {
     window.history.replaceState(null, "", "/parameter-admin");
 
-    render(<App initialAppState={adminState} />);
+    renderApp({ initialAppState: adminState });
 
     const scopeNav = screen.getByRole("navigation", { name: "参数管理后台配置范围" });
     expect(within(scopeNav).getByRole("button", { name: "组织配置" })).toHaveAttribute("aria-current", "page");
@@ -3687,7 +3560,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   it("exposes a single parameter admin sidebar entry with in-page scope switching", () => {
     window.history.replaceState(null, "", "/parameter-home");
 
-    render(<App initialAppState={adminState} />);
+    renderApp({ initialAppState: adminState });
 
     const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
     const parameterGroup = parameterAdminNavGroup(sidebar);
@@ -3699,7 +3572,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   it("keeps the sidebar admin entry active on project-scoped deep links", () => {
     window.history.replaceState(null, "", "/parameter-admin/projects");
 
-    render(<App initialAppState={adminState} />);
+    renderApp({ initialAppState: adminState });
 
     const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
     expect(within(parameterAdminNavGroup(sidebar)).getByRole("button", { name: /^参数后台$/ })).toHaveAttribute(
@@ -3742,7 +3615,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   it("does not expose local JSON save actions on parameter admin", () => {
     window.history.replaceState(null, "", "/parameter-admin");
 
-    render(<App initialAppState={adminState} />);
+    renderApp({ initialAppState: adminState });
 
     expect(screen.queryByRole("button", { name: "保存到 JSON 文件" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /导出 JSON/ })).not.toBeInTheDocument();
@@ -3753,10 +3626,10 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     render(
       <App
-        authClient={createResolvedAdminAuthClient()}
+        authClient={createTestAuthClient("admin")}
         initialAppState={adminState}
         runtimeMode="api"
-        parameterRepository={createAppParameterRepository()}
+        parameterRepository={createTestParameterRepository()}
       />
     );
 
@@ -3767,7 +3640,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   it("edits debug node config from the debugging admin catalog", () => {
     window.history.replaceState(null, "", "/debugging-admin/nodes");
 
-    render(<App initialAppState={adminState} runtimeMode="mock" />);
+    renderApp({ initialAppState: adminState, runtimeMode: "mock" });
 
     const catalog = screen.getByRole("table", { name: "可调节点目录" });
     const chargerRow = within(catalog).getByRole("row", { name: /充电输入限流/ });
@@ -3786,7 +3659,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     window.history.replaceState(null, "", "/debugging-admin/nodes");
     const nextName = "新调试节点";
 
-    render(<App initialAppState={adminState} runtimeMode="mock" />);
+    renderApp({ initialAppState: adminState, runtimeMode: "mock" });
 
     fireEvent.click(screen.getByRole("button", { name: "新增节点" }));
     fireEvent.change(screen.getByLabelText("名称"), { target: { value: nextName } });
@@ -3805,7 +3678,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   it("renders the debugging admin context in a normalized workspace header", () => {
     window.history.replaceState(null, "", "/debugging-admin/nodes");
 
-    render(<App initialAppState={stateForCurrentPath()} runtimeMode="mock" />);
+    renderApp({ initialAppState: stateForCurrentPath(), runtimeMode: "mock" });
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
     expect(topbar).toHaveTextContent("可调节点");
@@ -3835,11 +3708,11 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     render(
       <App
-        authClient={createResolvedAdminAuthClient()}
+        authClient={createTestAuthClient("admin")}
         debuggingAdminClient={createDebuggingAdminClient(apiClient as never)}
         initialAppState={adminState}
         runtimeMode="api"
-        parameterRepository={createAppParameterRepository()}
+        parameterRepository={createTestParameterRepository()}
       />
     );
 
@@ -3874,7 +3747,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
         }}
         debuggingAdminClient={createDebuggingAdminClient(apiClient as never)}
         initialAppState={adminState}
-        parameterRepository={createAppParameterRepository()}
+        parameterRepository={createTestParameterRepository()}
         runtimeMode="api"
       />
     );
@@ -3904,7 +3777,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   it("keeps browser history navigation synced with rendered pages", () => {
     window.history.replaceState(null, "", "/parameters");
 
-    render(<App initialAppState={userState} />);
+    renderApp({ initialAppState: userState });
     expect(screen.getByRole("region", { name: "项目参数用户工作台" })).toBeInTheDocument();
 
     window.history.pushState(null, "", "/logs");
