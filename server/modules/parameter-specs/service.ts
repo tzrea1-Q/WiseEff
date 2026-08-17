@@ -690,6 +690,11 @@ function stableJson(value: unknown): string {
   return JSON.stringify(value ?? null);
 }
 
+/** `display_name` / `description` are NOT NULL; persist empty string instead of SQL NULL. */
+function persistOptionalText(value: string | null): string {
+  return value?.trim() ?? "";
+}
+
 function activationContentChanged(
   spec: ParameterSpecDetailRow,
   input: ActivateParameterSpecBody,
@@ -945,10 +950,7 @@ export async function activateParameterSpec(
       });
     }
 
-    const nextConstraints = {
-      ...(spec.constraints ?? {}),
-      ...input.constraints,
-    };
+    const nextConstraints = input.constraints;
     assertSpecActivatable({
       parameterSpecId: input.specId,
       valueShape: input.valueShape,
@@ -995,7 +997,7 @@ export async function activateParameterSpec(
     const displayName =
       input.displayName === undefined
         ? (spec.displayName ?? spec.propertyKey ?? input.specId)
-        : (input.displayName?.trim() || spec.propertyKey || input.specId);
+        : persistOptionalText(input.displayName);
     const description =
       input.description === undefined
         ? (spec.description ?? displayName)
@@ -1250,12 +1252,20 @@ export async function updateParameterSpec(
     }
 
     const nextValueShape = input.valueShape ?? spec.valueShape ?? {};
-    const nextConstraints = {
-      ...(spec.constraints ?? {}),
-      ...input.constraints,
-    };
+    const nextConstraints = input.constraints;
     if (!input.documentation.trim()) {
       throw new ApiError("VALIDATION_FAILED", "documentation is required.", 400);
+    }
+    if (
+      input.valueShape !== undefined &&
+      stableJson(nextValueShape) !== stableJson(spec.valueShape)
+    ) {
+      assertSpecActivatable({
+        parameterSpecId: input.specId,
+        valueShape: nextValueShape,
+        constraints: nextConstraints,
+        documentation: input.documentation,
+      });
     }
 
     await tx.query(
@@ -1274,8 +1284,8 @@ export async function updateParameterSpec(
       [
         spec.currentVersionId,
         input.specId,
-        input.displayName === undefined ? null : input.displayName,
-        input.description === undefined ? null : input.description,
+        input.displayName === undefined ? null : persistOptionalText(input.displayName),
+        input.description === undefined ? null : persistOptionalText(input.description),
         JSON.stringify(nextValueShape),
         input.exampleValue === undefined ? null : JSON.stringify(input.exampleValue),
         input.units === undefined ? null : input.units,

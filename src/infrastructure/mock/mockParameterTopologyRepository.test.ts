@@ -134,6 +134,17 @@ describe("createMockParameterTopologyRepository (ParameterTopologyRepository con
     });
   });
 
+  it("updateParameterSpec replaces constraints so omitted keys are gone (SE-2)", async () => {
+    const repo = createRepo();
+    const updated = await repo.updateParameterSpec("spec-sc8562-gpio-int", {
+      documentation: "gpio_int is a three-cell interrupt specifier.",
+      reason: "drop extra constraint keys",
+      constraints: { cells: 1 },
+    });
+    expect(updated.constraints).toEqual({ cells: 1 });
+    expect(updated.constraints).not.toHaveProperty("cellsPerGroup");
+  });
+
   it("updateParameterSpec clears displayName when the client sends null (SE-5)", async () => {
     const repo = createRepo();
     const updated = await repo.updateParameterSpec("spec-sc8562-gpio-int", {
