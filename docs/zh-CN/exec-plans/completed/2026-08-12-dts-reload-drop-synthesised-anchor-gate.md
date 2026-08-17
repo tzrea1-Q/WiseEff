@@ -1,9 +1,9 @@
 # 废除 synthesised-anchor 重载候选不对称门禁
 
-> Status: **Active**
+> Status: **Completed**（经 PR #311 于 2026-08-12 合入）。文档门禁于 2026-08-17 关闭。
 > Date: 2026-08-12
 > Branch: `fix/dts-reload-drop-synthesised-anchor-gate`
-> English: [`docs/exec-plans/active/2026-08-12-dts-reload-drop-synthesised-anchor-gate.md`](../../../exec-plans/active/2026-08-12-dts-reload-drop-synthesised-anchor-gate.md)
+> English: [`docs/exec-plans/completed/2026-08-12-dts-reload-drop-synthesised-anchor-gate.md`](../../../exec-plans/completed/2026-08-12-dts-reload-drop-synthesised-anchor-gate.md)
 > 取代 [`docs/exec-plans/completed/2026-08-10-dts-reload-debugging.md`](../../../exec-plans/completed/2026-08-10-dts-reload-debugging.md) 中「降级定位器 / 合成 `/label` 拒绝」锁定决策
 
 ## 目标

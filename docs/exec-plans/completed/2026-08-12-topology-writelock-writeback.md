@@ -1,9 +1,9 @@
 # Parameter-Topology editService Decomposition: writeLock + overlayWriteback (Architecture Review Candidate 6)
 
-> Status: **Active**
+> Status: **Completed** (merged via PR #327 on 2026-08-12). Documentation gate closed 2026-08-17. Binding/enablement dedup remains an unscheduled non-goal.
 > Date: 2026-08-12
 > Branch: `refactor/topology-writelock-writeback` (created from `main` @ `8ab19113`)
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-12-topology-writelock-writeback.md`](../../zh-CN/exec-plans/active/2026-08-12-topology-writelock-writeback.md)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-12-topology-writelock-writeback.md`](../../zh-CN/exec-plans/completed/2026-08-12-topology-writelock-writeback.md)
 
 ## Background
 
@@ -62,9 +62,9 @@ Backend-only verbatim refactor: no route, form, table, upload, modal, approval, 
 | Architecture (zh) | `docs/zh-CN/architecture.md` | No change (mirror of the above) |
 | Full-stack architecture | `docs/design-docs/full-stack-architecture.md` | No change (no seam or layer change) |
 | Domain model | `docs/design-docs/domain-model.md` | No change (no entity or state-machine change) |
-| Plans index | `docs/PLANS.md` | No change (index lists themes, not per-plan rows; this plan lives in `active/`) |
-| Plans index (zh) | `docs/zh-CN/PLANS.md` | No change (mirror of the above) |
-| Tech debt | `docs/exec-plans/tech-debt-tracker.md` | No change now — the deferred binding/enablement dedup and `src/domain` shared-kernel re-homing are follow-ups owned by the 2026-08-12 architecture review, to be registered when that review's tracker rows land |
+| Plans index | `docs/PLANS.md` | Applied at closeout — listed as completed (#327) |
+| Plans index (zh) | `docs/zh-CN/PLANS.md` | Applied at closeout — Chinese index row mirrors the English completed path |
+| Tech debt | `docs/exec-plans/tech-debt-tracker.md` | Applied at closeout — binding/enablement dedup stays an unscheduled non-goal; shared-kernel relocation landed in `2026-08-12-parameters-repository-split.md` slices 4–4b |
 | Product specs | `docs/product-specs/*` | No change (no product behavior change) |
 | API docs | `docs/api/*` | No change (no endpoint/DTO change) |
 | Quality/testing | `docs/QUALITY_SCORE.md`, `docs/design-docs/testing-strategy.md` | No change (tests keep their file and coverage; only import lines changed) |
@@ -76,7 +76,7 @@ Backend-only verbatim refactor: no route, form, table, upload, modal, approval, 
 
 ## Documentation Update Gate
 
-This plan cannot move to `completed/` until every row above is either applied or explicitly recorded as unchanged with evidence, and `npm run docs:check` passes. All rows are `No change` with the evidence stated inline; `npm run docs:check` passes on this branch. Deferred work (binding/enablement dedup; shared-kernel relocation) is tracked by the 2026-08-12 architecture review follow-ups rather than this plan.
+This plan moved to `completed/` on 2026-08-17. Binding/enablement dedup stays an unscheduled non-goal; shared-kernel relocation landed in `2026-08-12-parameters-repository-split.md` slices 4–4b.
 
 ## Expected Outcomes
 

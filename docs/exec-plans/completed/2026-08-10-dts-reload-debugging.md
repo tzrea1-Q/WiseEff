@@ -39,7 +39,7 @@ Ship DTS reload debugging so hardware engineers can validate candidate library p
 - Overlay addresses nodes by absolute `target-path` inside `fragment@N`, never `&label`
 - Pre-flight uses the real pinned `dtc` / `fdtoverlay` toolchain
 - Mock mode: static unavailable only — no mock repository / fixtures / reducer actions
-- Degraded locator: refuse only when the parameter's own locator *is* a synthesised `/label` anchor, not when it is a descendant hanging under one — **superseded 2026-08-12** by [`docs/exec-plans/active/2026-08-12-dts-reload-drop-synthesised-anchor-gate.md`](../active/2026-08-12-dts-reload-drop-synthesised-anchor-gate.md) (parent and descendant absolute paths are classified equally; path applicability stays with preflight)
+- Degraded locator: refuse only when the parameter's own locator *is* a synthesised `/label` anchor, not when it is a descendant hanging under one — **superseded 2026-08-12** by [`docs/exec-plans/completed/2026-08-12-dts-reload-drop-synthesised-anchor-gate.md`](../completed/2026-08-12-dts-reload-drop-synthesised-anchor-gate.md) (parent and descendant absolute paths are classified equally; path applicability stays with preflight)
 - Kernel log command allowlist (server save + bridge re-validate): exact entries via `@wiseeff/device-command-core/kernelLogCommand`
 - In-request deploy — [ADR-0020](../../adr/0020-reload-runs-execute-in-request-on-bridge-holding-process.md)
 - Reload snapshot — [ADR-0021](../../adr/0021-reload-snapshot-satisfies-device-write-snapshot-non-negotiable.md)

@@ -1,6 +1,6 @@
 # Route NodeDebuggingPage through the DebuggingGateway port
 
-> Status: **Active**
+> Status: **Completed** (merged via PR #423 on 2026-08-13). Documentation gate closed 2026-08-17.
 > Date: 2026-08-13
 > Branch: `refactor/node-debugging-gateway-port`
 
@@ -68,7 +68,7 @@ Mock-mode-only behavior gain; API-mode interaction behavior is unchanged. Existi
 ## Documentation Update Gate
 
 - [x] FRONTEND EN + zh describe the resolver, mock adapter story, bridge seams, and hdcClient deletion
-- [x] `docs/PLANS.md` lists this active plan
+- [x] `docs/PLANS.md` lists this completed plan
 - [x] Tech-debt tracker searched for a covering TD row — none exists; recorded above with evidence
 - [x] Acceptance coverage map reviewed — `BRIDGE-TOOLS-001` mapping still valid, no retarget
-- [ ] `npm run docs:check` green before moving this plan to `completed/`
+- [x] `npm run docs:check` green before moving this plan to `completed/`

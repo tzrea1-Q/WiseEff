@@ -1,6 +1,6 @@
 # Parameters Repository Split — Slices 1–4b (Architecture Review Candidate 3)
 
-- **Status:** Active (slice 1 merged as PR #321; slice 2 in review as PR #340; slice 3 implemented; slice 4 implemented — identity half of the kernel; slice 4b implemented — kernel completion + projects module, cycle broken)
+- **Status:** Completed 2026-08-13 — slices 1–4b on `main` (#321, #340, #359, #376, #377). Documentation gate closed 2026-08-17. Formal repository port remains unscheduled until a second adapter exists.
 - **Branch:** slice 1 `refactor/parameters-repository-split-1` (from `main` @ `faa6cc19`); slice 2 `refactor/parameters-repository-split-2` (from `main` @ `5826b2b2`, after PR #328's identity-mode single seam); slice 3 `refactor/parameter-drafts-module` (stacked on slice 2 @ `6ffb07e8`, after the #336 test repoint); slice 4 `refactor/parameter-kernel-module` (stacked on slice 3 @ `2bfeb647`); slice 4b `refactor/parameter-kernel-4b` (stacked on slice 4 @ `93273805`)
 - **Owner:** Backend
 - **Scope source:** 2026-08-12 architecture review, Candidate 3: `server/modules/parameters/repository.ts` is a god module — 5,435 lines, 68 exported functions touching ~35 tables in one flat namespace, imported by 40+ files including 12+ other backend modules. Candidates 1–2 (frontend shell) are owned by `2026-08-12-app-shell-decomposition.md`.
@@ -111,9 +111,9 @@ Behavior-preserving backend refactor: no route, endpoint, DTO, permission, or UI
 | ADRs / domain index | `docs/adr/README.md`, `CONTEXT.md` | Slice 3: ADR-0028 added to both indexes; `Parameter draft` glossary entry added to `CONTEXT.md`. Slice 4: ADR-0029 added to both indexes. Slice 4b: ADR-0029 amended in place (unmerged, same stacked chain); ADR-0030 added to both indexes |
 | Full-stack architecture | `docs/design-docs/full-stack-architecture.md` | Review — mentions module repository files generically; no row names `parameters/repository.ts` explicitly (verified via search; unchanged) |
 | Domain model | `docs/design-docs/domain-model.md` | No change (entities and state machines unchanged) |
-| Plans index | `docs/PLANS.md` | Update at closeout — add this plan to Current Active Plan when the parent merges |
-| Plans index (zh) | `docs/zh-CN/PLANS.md` | Review — mirror the English row if added |
-| Tech debt | `docs/exec-plans/tech-debt-tracker.md` | Update at closeout — record remaining follow-ups (port interface, cycle break; the draft-cluster slice is done) if not planned elsewhere |
+| Plans index | `docs/PLANS.md` | Applied at closeout — listed as completed (#321/#340/#359/#376/#377) |
+| Plans index (zh) | `docs/zh-CN/PLANS.md` | Applied at closeout — Chinese index row mirrors the English completed path |
+| Tech debt | `docs/exec-plans/tech-debt-tracker.md` | Applied at closeout — cycle break landed in slice 4b; formal repository port stays unscheduled until a second adapter exists (not a new TD) |
 | Product specs | `docs/product-specs/*` | No change (no product behavior change) |
 | Quality/testing | `docs/QUALITY_SCORE.md`, `docs/design-docs/testing-strategy.md` | No change (tests move verbatim; counts and strategy unchanged) |
 | Reliability/runbooks | `docs/RELIABILITY.md`, `docs/runbooks/*` | No change |
@@ -124,7 +124,7 @@ Behavior-preserving backend refactor: no route, endpoint, DTO, permission, or UI
 
 ## Documentation Update Gate
 
-This plan cannot move to `completed/` until every Update/Review row above is either applied or explicitly recorded as unchanged with evidence, and `npm run docs:check` passes. Deferred work goes to `docs/exec-plans/tech-debt-tracker.md`.
+This plan moved to `completed/` on 2026-08-17. Every Update/Review row above is applied or recorded as unchanged with evidence. Deferred work: a formal repository port waits for a second adapter (YAGNI); TD-042 still gates deleting the legacy identity adapter.
 
 ## Expected Outcomes
 
