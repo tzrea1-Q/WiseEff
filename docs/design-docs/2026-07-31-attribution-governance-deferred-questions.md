@@ -2,7 +2,7 @@
 
 > Date: 2026-07-31  
 > Status: **Locked 2026-08-01** (grilling complete)  
-> Implementation plan: [`docs/exec-plans/active/2026-08-01-attribution-deferred-implementation.md`](../exec-plans/active/2026-08-01-attribution-deferred-implementation.md)  
+> Implementation plan: [`docs/exec-plans/completed/2026-08-01-attribution-deferred-implementation.md`](../exec-plans/completed/2026-08-01-attribution-deferred-implementation.md)  
 > Companion plan (prior decided work): [`docs/exec-plans/completed/2026-07-31-attribution-governance-follow-up.md`](../exec-plans/completed/2026-07-31-attribution-governance-follow-up.md)  
 > Chinese: [`docs/zh-CN/design-docs/2026-07-31-attribution-governance-deferred-questions.md`](../zh-CN/design-docs/2026-07-31-attribution-governance-deferred-questions.md)
 

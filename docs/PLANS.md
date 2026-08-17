@@ -12,7 +12,7 @@ Execution plans are first-class repository artifacts. Use them for work that has
 
 ## Current Active Plan
 
-This list is only plans that still have remaining work. Finished implementation lives under `exec-plans/completed/` — including the 2026-08-17 archive of path-reachable C1–C4, product feedback, topology review rounds 3–6, the notification center, the project-configuration-workbench defect repair, and Xiaoze approval-failure recovery (TD-102 / TD-094); the 2026-08-17 round-2 archive of landed DTS workbench/seed, attribution/driver-registry/overlay, parameter-admin UX/IA, batch import/excel, logs org-scope, personal overview, ADB/HDC, debug-admin, Device Bridge phase 1/2, Xiaoze turn-state UX, and CORS bootstrap plans; and definition identity correction (`2026-08-04-parameter-definition-identity-correction.md`, #504). Do not reopen those as active work.
+This list is only plans that still have remaining work. Finished implementation lives under `exec-plans/completed/` — including the 2026-08-17 archive of path-reachable C1–C4, product feedback, topology review rounds 3–6, the notification center, the project-configuration-workbench defect repair, and Xiaoze approval-failure recovery (TD-102 / TD-094); the 2026-08-17 round-2 archive of landed DTS workbench/seed, attribution/driver-registry/overlay, parameter-admin UX/IA, batch import/excel, logs org-scope, personal overview, ADB/HDC, debug-admin, Device Bridge phase 1/2, Xiaoze turn-state UX, and CORS bootstrap plans; definition identity correction (`2026-08-04-parameter-definition-identity-correction.md`, #504); and the 2026-08-17 evidence archive of attribution deferred D-AG-01–04 (`2026-08-01-attribution-deferred-implementation.md`). Do not reopen those as active work.
 
 ### Waiting on external inputs or a target environment
 
@@ -28,8 +28,7 @@ This list is only plans that still have remaining work. Finished implementation 
 
 ### Remaining product and UX work
 
-- `exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`: launch-window closeout of tracker rows that do not need HDC, expert logs, or a target environment. Batch 1 archives attribution evidence; Batch 2 is TD-056; TD-079 stays on sibling `fix/td-079-acceptance-semantic-fixtures`; TD-082 closed on `main` via #507.
-- `exec-plans/active/2026-08-01-attribution-deferred-implementation.md`: locked D-AG-01–04 follow-through (acceptance/playwright evidence still open; owned by the launch closeout plan above).
+- `exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`: launch-window closeout of tracker rows that do not need HDC, expert logs, or a target environment. Batch 1 archived attribution evidence and moved `2026-08-01-attribution-deferred-implementation.md` to `completed/`; Batch 2 is TD-056; TD-079 stays on sibling `fix/td-079-acceptance-semantic-fixtures`; TD-082 closed on `main` via #507.
 - `exec-plans/active/td-031-xiaoze-run-timeline-streaming.md`: timeline/streaming landed in `xiaozeTurnStream` (TD-070 closed); residual is this plan's design-doc metadata note.
 - `exec-plans/active/2026-07-08-project-hotspot-scoring-redesign.md`: implementation on `main`; residual is the API contract review row.
 - `exec-plans/active/2026-07-01-wiseeff-node-only-debugging-platform.md`: do not reopen hide-`/debugging`; later DTS reload restored a parameter-debugging surface.

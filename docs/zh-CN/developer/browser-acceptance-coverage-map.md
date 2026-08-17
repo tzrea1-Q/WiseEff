@@ -102,7 +102,8 @@
 - `DRV-REG-001`：上传前登记驱动；树上出现带解析覆盖徽标的未实测 curated 驱动组（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `DRV-REG-002`：从队列或模块树认领已观测未登记驱动，origin 变为 curated（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `DRV-REG-003`：DTS 上传后一次性摘要报告已登记匹配与新观测未登记 compatible（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
-- `DRV-REG-004`：编辑 driverNature / instanceCardinality；组织 Admin 不能改平台主体；platform-admin 组织侧编辑进入组织审计；改为 singleton 仅刷新发布阻断任务（`e2e/acceptance/parameter-topology.acceptance.spec.ts`；单元/服务端已覆盖，浏览器 e2e 仍为 future）。
+- `DRV-REG-004`：编辑 driverNature / instanceCardinality；组织 Admin 不能改平台主体；platform-admin 组织侧编辑进入组织审计；改为 singleton 仅刷新发布阻断任务（`e2e/acceptance/parameter-topology.acceptance.spec.ts`；单元/服务端已覆盖；playwright-cli 证据 `work/ui-checks/attribution-deferred/`；阻断 Playwright 等 TD-079）。
+- `DRV-REG-005`：Admin 设置注册默认业务分类并执行「从注册回放放置」；auto 驱动组重挂，curated 冻结（`e2e/acceptance/parameter-topology.acceptance.spec.ts`；`ModuleEditDialog.test.tsx`；mock 仓储；playwright-cli 证据 `work/ui-checks/attribution-deferred/`）。
 - `DRV-SCHEMA-001`：Admin 对解析未覆盖的驱动组配置并激活组织级解析，覆盖徽标变为「组织级解析覆盖」（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `DRV-SCHEMA-002`：仅组织叠加层声明的 compatible 上传后绑定类型化属性，且不进入未匹配审核（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `DRV-SCHEMA-003`：钉扎 schema 已覆盖时激活叠加层被拒绝并说明原因（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。

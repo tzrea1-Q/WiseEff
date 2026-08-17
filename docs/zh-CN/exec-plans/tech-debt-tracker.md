@@ -97,7 +97,7 @@
 - **TD-061（参数后台审计提示）：** 已于 2026-08-05 在 `feat/parameter-admin-audit-hints`（C3）关闭。去掉 `PUSH_AUDIT_HINT`；后台最近审计条为 `listAuditEvents` 投影。详见英文版 Completed 表。
 - **TD-047（规格 driverModule 身份分裂）：** 已于 2026-08-01 PR2 / D-AG-03 关闭。无物理 `driver_module` 列；新写入一律 `buildSubjectScopedManualSpecIds`；迁移 `0088` 对无法解析主体的身份行 fail-closed；列表筛选改为 `attributionSubjectId`；API `driverModule` 仅作主体展示。
 - **TD-054（openapi listPromotionCandidates）：** 已于 2026-08-01 经 #216 关闭。`schemaRegistry` 已登记 `parameterSpecs.listPromotionCandidates`；`openapi.test.ts` 10/10 通过。收口计划已归档至 `docs/exec-plans/completed/2026-08-01-governance-platform-closeout.md`。
-- **TD-046（归属放置启发式）：** 已于 2026-08-01 在 `feat/attribution-registration-placement` 关闭（D-AG-04）。迁移 `0089` 增加注册默认业务分类；auto 放置/回放 API；关键词启发式降级为 seed/bootstrap-once。见 `docs/exec-plans/active/2026-08-01-attribution-deferred-implementation.md` PR3。
+- **TD-046（归属放置启发式）：** 已于 2026-08-01 在 `feat/attribution-registration-placement` 关闭（D-AG-04）。迁移 `0089` 增加注册默认业务分类；auto 放置/回放 API；关键词启发式降级为 seed/bootstrap-once。见 `docs/exec-plans/completed/2026-08-01-attribution-deferred-implementation.md` PR3。
 - **TD-035（参数批导完整 DTS / reviewMetadata）：** 已于 2026-07-15 关闭。计划归档：`docs/exec-plans/completed/2026-07-15-parameter-import-wizard-td035.md`。
 - **TD-041（结构化编辑回路）：** 已于 2026-07-15 在 P3.1 关闭。编辑→变更集→`submitStructuredEdits`→既有 CR 审阅合入→CST 回写已打通；回写载荷用 `rawText`。计划归档：`docs/exec-plans/completed/2026-07-14-dts-p31-structured-edit-loop.md`。
 - **TD-037（多层级模块）：** 已于 2026-07-09 在 `feat/hierarchical-modules` 分支关闭。参数域与调试域独立模块树、`module_id` 外键、子树筛选、`ModuleTreeSelect` UI 与 MOD-TREE 验收已交付。计划归档：`docs/exec-plans/completed/2026-07-09-wiseeff-hierarchical-modules.md`。

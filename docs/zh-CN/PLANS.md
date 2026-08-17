@@ -16,7 +16,7 @@
 
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
-- 已完成实现见 `docs/exec-plans/completed/`（含 2026-08-17 归档的路径可达 C1–C4、产品反馈、拓扑 review 第 3–6 轮、通知中心、配置工作台缺陷修复、以及小泽审批失败恢复 TD-102 / TD-094；2026-08-17 第二轮归档的已落地 DTS 工作台/种子、归属/驱动注册/overlay、参数后台 UX/IA、批导/Excel、日志组织解耦、个人总览、ADB/HDC、调试后台、Device Bridge 阶段 1/2、小泽回合 UX、CORS bootstrap；以及定义身份纠错 `2026-08-04-parameter-definition-identity-correction.md`，#504）。不要把那些计划重新当成活跃工作。
+- 已完成实现见 `docs/exec-plans/completed/`（含 2026-08-17 归档的路径可达 C1–C4、产品反馈、拓扑 review 第 3–6 轮、通知中心、配置工作台缺陷修复、以及小泽审批失败恢复 TD-102 / TD-094；2026-08-17 第二轮归档的已落地 DTS 工作台/种子、归属/驱动注册/overlay、参数后台 UX/IA、批导/Excel、日志组织解耦、个人总览、ADB/HDC、调试后台、Device Bridge 阶段 1/2、小泽回合 UX、CORS bootstrap；定义身份纠错 `2026-08-04-parameter-definition-identity-correction.md`，#504；以及 2026-08-17 归档的归属 deferred D-AG-01–04 证据收口 `2026-08-01-attribution-deferred-implementation.md`）。不要把那些计划重新当成活跃工作。
 - 当前仍有剩余工作的计划：
 
 ### 等待外部输入或目标环境
@@ -28,8 +28,7 @@
 
 ### 仍待做的产品与 UX
 
-- `exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`：上线窗口可关闭、且不需要 HDC / 专家日志 / 目标环境的技术债收口。批次 1 归档归属证据；批次 2 为 TD-056；TD-079 留在并行分支 `fix/td-079-acceptance-semantic-fixtures`；TD-082 已由 #507 合入 `main`。
-- `exec-plans/active/2026-08-01-attribution-deferred-implementation.md`：已锁定 D-AG-01–04 的后续实现（验收/playwright 证据仍开放；由上面的上线收口计划承接）。
+- `exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`：上线窗口可关闭、且不需要 HDC / 专家日志 / 目标环境的技术债收口。批次 1 已归档归属证据并把 `2026-08-01-attribution-deferred-implementation.md` 移到 `completed/`；批次 2 为 TD-056；TD-079 留在并行分支 `fix/td-079-acceptance-semantic-fixtures`；TD-082 已由 #507 合入 `main`。
 - `exec-plans/active/td-031-xiaoze-run-timeline-streaming.md`：时间线/流式已落入 `xiaozeTurnStream`（TD-070 已关）；本文件残留是设计文档 metadata 门禁。
 - `exec-plans/active/2026-07-08-project-hotspot-scoring-redesign.md`：实现已在 `main`；残留是 API 合同 review 行。
 - `exec-plans/active/2026-07-01-wiseeff-node-only-debugging-platform.md`：不要重开隐藏 `/debugging`；后续 DTS reload 已恢复参数调试表面。

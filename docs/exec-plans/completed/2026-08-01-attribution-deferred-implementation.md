@@ -1,8 +1,8 @@
 # Attribution deferred implementation (D-AG-01–04)
 
-> Status: **Active** — decisions locked; implement on sequential feature branches from `main`  
+> Status: **Completed 2026-08-17** — PR1–PR3 merged; acceptance IDs registered; playwright-cli evidence recorded on `feat/launch-actionable-td-closeout`  
 > Date: 2026-08-01  
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-01-attribution-deferred-implementation.md`](../../zh-CN/exec-plans/active/2026-08-01-attribution-deferred-implementation.md)  
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-01-attribution-deferred-implementation.md`](../../zh-CN/exec-plans/completed/2026-08-01-attribution-deferred-implementation.md)  
 > Locked decisions: [`docs/design-docs/2026-07-31-attribution-governance-deferred-questions.md`](../../design-docs/2026-07-31-attribution-governance-deferred-questions.md)  
 > Prior follow-up (merged): [`docs/exec-plans/completed/2026-07-31-attribution-governance-follow-up.md`](../completed/2026-07-31-attribution-governance-follow-up.md)  
 > Prior closeout (merged #216): [`docs/exec-plans/completed/2026-08-01-governance-platform-closeout.md`](../completed/2026-08-01-governance-platform-closeout.md)
@@ -39,13 +39,13 @@ This plan intentionally uses **three sequential branches/PRs** (exception to one
 
 ## Success criteria
 
-- [ ] Locked decision table remains the source of truth; no silent semantic drift in PRs.
+- [x] Locked decision table remains the source of truth; no silent semantic drift in PRs.
 - [x] PR1: Org Admin cannot edit platform registrations; platform-admin can edit org registrations and those edits appear in org audit; singleton→publish blocked via tasks; save is one transaction; nature UI stays distinct from `node-type`.
 - [x] PR1: Public contract/docs no longer advertise `pinned-schema-property` as a supported claim kind.
 - [x] PR2: `driverModule` column and identity write paths gone; migration fails closed on unresolvable subjects; TD-047 closed.
 - [x] PR3: Auto placement uses registration default business category; curated frozen; auto replay + explicit replay op; TD-046 closed; keyword heuristic retired or demoted to non-product path.
-- [ ] Acceptance IDs registered/updated; focused tests + `npm run build` green per PR; `npm run docs:check` green before marking this plan complete.
-- [ ] Frontend-visible PR1/PR3: playwright-cli evidence at 1440×900 / 768×1024 / 390×844 with 0 console errors.
+- [x] Acceptance IDs registered/updated; focused tests + `npm run build` green per PR; `npm run docs:check` green before marking this plan complete.
+- [x] Frontend-visible PR1/PR3: playwright-cli evidence at 1440×900 / 768×1024 / 390×844 with 0 console errors.
 
 ## Delivery batches
 
@@ -66,10 +66,10 @@ This plan intentionally uses **three sequential branches/PRs** (exception to one
 
 ### PR3 — Registration default placement (TD-046)
 
-1. Replace keyword `businessCategoryForNodePath` product path with registration **default business category**.
-2. Curated placements frozen; auto placements replay when registration default changes.
-3. Explicit Admin/operator “replay from registration” action.
-4. Close TD-046; update ADR-0010 / placement docs if they still call the heuristic authoritative.
+1. [x] Replace keyword `businessCategoryForNodePath` product path with registration **default business category**.
+2. [x] Curated placements frozen; auto placements replay when registration default changes.
+3. [x] Explicit Admin/operator “replay from registration” action.
+4. [x] Close TD-046; update ADR-0010 / placement docs if they still call the heuristic authoritative.
 
 ## Key seams (starting points)
 
@@ -98,13 +98,32 @@ This plan intentionally uses **three sequential branches/PRs** (exception to one
 
 ## Documentation Update Gate
 
-Before moving this plan to `completed/`:
+Passed 2026-08-17 on `feat/launch-actionable-td-closeout`:
 
 1. Every Impact Matrix `Update`/`Review` row is updated or recorded unchanged with evidence.
 2. TD-046 and TD-047 are closed (or remaining work is re-filed honestly).
 3. EN/ZH deferred-questions stay **Locked** with links to the merged PRs.
 4. `npm run docs:check` is green.
-5. UI-interaction coverage for PR1/PR3 is registered with automation or supplemental evidence.
+5. UI-interaction coverage for PR1/PR3 is registered with automation or supplemental evidence (`DRV-REG-004` / `DRV-REG-005` stay `@acceptance-planned` so the shared pre-cutover CI suite does not grow — TD-079).
+
+## Closeout evidence (2026-08-17)
+
+Supplemental playwright-cli (mock Vite `http://127.0.0.1:5174/parameter-admin/modules`, Xu Yun / Admin). Screenshots live under gitignored `work/ui-checks/attribution-deferred/`.
+
+| Viewport | Tree | Dialog |
+| --- | --- | --- |
+| 1440×900 | `modules-tree-1440.png` | `sc8562-edit-1440.png`, `sc8562-replay-1440.png`, `unmapped-ic-edit-1440.png`, `unmapped-ic-replay-1440.png` |
+| 768×1024 | `modules-tree-768.png` | `sc8562-edit-768.png` |
+| 390×844 | `modules-tree-390.png` | `sc8562-edit-390.png` |
+
+Observed:
+
+- 0 console errors after a real (non-symlinked) `node_modules` in the worktree. A prior Geist `.woff2` 403 came from Vite `@fs` refusing a symlinked font path; that is an environment issue, not product copy.
+- SC8562 (curated) **replay from registration**: `回放完成：移动 0，跳过 curated 1，缺默认 0`. Nature / cardinality / default-category controls visible and distinct from `node-type`.
+- `unmapped-ic` (auto fixture under 电池安全, default category 充电策略) replay: `回放完成：移动 1，跳过 curated 0，缺默认 0`; tree reparented to sit beside SC8562 under 充电策略.
+- 390×844: sidebar collapses to “打开导航菜单”; user menu remains reachable; dialog controls remain usable.
+
+Mock seed needed for the auto walk: registration for SC8562 hangs on `mod-sc8562`; auto group `mod-unmapped-ic` parents under `mod-battery` with default category `mod-charging`. Blocking Playwright for these IDs waits on TD-079.
 
 ## Verification (per PR)
 

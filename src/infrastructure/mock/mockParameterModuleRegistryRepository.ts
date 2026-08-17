@@ -149,6 +149,21 @@ function createSeedStore(): Store {
         effectiveImportance: "high",
         parameterCount: 0,
         attributionSubjectId: "asub:nodetype:charger"
+      },
+      {
+        id: "mod-unmapped-ic",
+        name: "unmapped-ic",
+        parentId: "mod-battery",
+        sortOrder: 5,
+        description: "自动发现的驱动组（回放夹具）",
+        scope: "组织",
+        importance: "medium",
+        kind: "driver-group",
+        origin: "auto",
+        sourceKey: "compatible:vendor,unmapped-ic",
+        effectiveImportance: "high",
+        parameterCount: 2,
+        attributionSubjectId: "asub:driver:unmapped-ic"
       }
     ],
     mappings: [
@@ -176,7 +191,7 @@ function createSeedStore(): Store {
     recomputeResult: { updated: 2, conflicts: [] },
     driverRegistry: [
       {
-        moduleId: "mod-charging",
+        moduleId: "mod-sc8562",
         name: "SC8562",
         origin: "curated",
         businessCategoryId: "mod-charging",
@@ -192,6 +207,26 @@ function createSeedStore(): Store {
           {
             compatible: "vendor,sc8562",
             coverage: { covered: true, pattern: "vendor,sc8562", driverId: "sc8562", source: "pinned", scope: "platform" }
+          }
+        ]
+      },
+      {
+        moduleId: "mod-unmapped-ic",
+        name: "unmapped-ic",
+        origin: "auto",
+        businessCategoryId: "mod-battery",
+        businessCategoryName: "电池安全",
+        defaultBusinessCategoryId: "mod-charging",
+        compatibles: ["vendor,unmapped-ic"],
+        parameterCount: 2,
+        observed: true,
+        notYetObserved: false,
+        driverNature: "physical-device",
+        instanceCardinality: "multiple",
+        parseCoverages: [
+          {
+            compatible: "vendor,unmapped-ic",
+            coverage: { covered: false }
           }
         ]
       }

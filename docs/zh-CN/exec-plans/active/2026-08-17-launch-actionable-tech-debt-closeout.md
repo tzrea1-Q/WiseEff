@@ -45,7 +45,7 @@
 ## 成功标准
 
 - 本计划中英都在，并已从 `docs/PLANS.md` / `docs/zh-CN/PLANS.md` 挂出；本上线切片关心的追踪行都有 Done / Deferred / Blocked。
-- 归属 deferred 计划要么在验收登记 + playwright-cli 证据通过后移到 `completed/`，要么本计划如实记录浏览器 blocker。
+- 归属 deferred 计划已在验收登记 + playwright-cli 证据通过后移到 `completed/`（批次 1）。
 - **TD-056** 只在归属收口已经提交且绿灯后，才作为本分支后续提交。**TD-057 / TD-064 / TD-065** 默认不进本会话；除非 TD-056 已完整提交且测试绿，否则不要做（即便如此也属于批次 3，不是本会话默认范围）。
 - 文档切片完成前 `npm run docs:check` 绿灯。UI 切片还要跑相关测试、`npm run build` 和 playwright-cli。
 
@@ -59,7 +59,7 @@
 
 ### 批次 1 — 归属 deferred 收口（本会话）
 
-所属计划：`docs/exec-plans/active/2026-08-01-attribution-deferred-implementation.md`（中文孪生在 `docs/zh-CN/exec-plans/active/`）。
+所属计划（已归档）：`docs/exec-plans/completed/2026-08-01-attribution-deferred-implementation.md`（中文孪生在 `docs/zh-CN/exec-plans/completed/`）。
 
 PR1–PR3 代码已在 `main`（D-AG-01–04，TD-046 / TD-047 已关）。剩余：
 

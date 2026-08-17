@@ -45,7 +45,7 @@ Merge-time: re-check `docs/PLANS.md` and both tech-debt tracker twins against `o
 ## Success criteria
 
 - This plan exists EN+ZH, is listed from `docs/PLANS.md` / `docs/zh-CN/PLANS.md`, and every open tracker row that this launch cut cares about has an explicit Done / Deferred / Blocked status below.
-- Attribution deferred plan (`2026-08-01-attribution-deferred-implementation.md`) either moves to `completed/` after acceptance registration + playwright-cli evidence, or this plan records the honest blocker (missing browser).
+- Attribution deferred plan (`2026-08-01-attribution-deferred-implementation.md`) moved to `completed/` after acceptance registration + playwright-cli evidence (Batch 1).
 - **TD-056** lands in a later commit on this branch only if attribution closeout is already committed and green. **TD-057 / TD-064 / TD-065** stay out of this session unless TD-056 is fully committed and tests are green (then they still belong to Batch 3, not this session's default).
 - `npm run docs:check` green before claiming the docs slice done. UI slices also run targeted tests, `npm run build`, and playwright-cli.
 
@@ -59,7 +59,7 @@ Merge-time: re-check `docs/PLANS.md` and both tech-debt tracker twins against `o
 
 ### Batch 1 — Attribution deferred closeout (this session)
 
-Owner plan: `docs/exec-plans/active/2026-08-01-attribution-deferred-implementation.md` (ZH twin under `docs/zh-CN/exec-plans/active/`).
+Owner plan (archived): `docs/exec-plans/completed/2026-08-01-attribution-deferred-implementation.md` (ZH twin under `docs/zh-CN/exec-plans/completed/`).
 
 PR1–PR3 code is already on `main` (D-AG-01–04, TD-046 / TD-047 closed). Remaining:
 

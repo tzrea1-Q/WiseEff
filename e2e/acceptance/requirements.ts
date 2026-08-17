@@ -812,6 +812,13 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: false
   },
   {
+    id: "DRV-REG-005",
+    workflow: "C",
+    title:
+      "Admin sets a driver registration default business category and runs replay-from-registration; auto driver-groups reparent to the default; curated placements stay frozen.",
+    required: false
+  },
+  {
     id: "DRV-SCHEMA-001",
     workflow: "C",
     title:

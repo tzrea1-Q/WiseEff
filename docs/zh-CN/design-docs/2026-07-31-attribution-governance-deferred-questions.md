@@ -3,7 +3,7 @@
 > 英文：[English](../../design-docs/2026-07-31-attribution-governance-deferred-questions.md)  
 > 日期：2026-07-31  
 > 状态：**已于 2026-08-01 锁定**（grilling 完成）  
-> 实现计划：[`docs/exec-plans/active/2026-08-01-attribution-deferred-implementation.md`](../../exec-plans/active/2026-08-01-attribution-deferred-implementation.md)  
+> 实现计划：[`docs/exec-plans/completed/2026-08-01-attribution-deferred-implementation.md`](../../exec-plans/completed/2026-08-01-attribution-deferred-implementation.md)  
 > 已锁定前期工作见：[follow-up 计划](../../exec-plans/completed/2026-07-31-attribution-governance-follow-up.md)
 
 2026-07-31 grill-with-docs 已审阅；**2026-08-01 锁定答案**。实现 PR 不得自行改语义；按实现计划的 PR 拆分交付。

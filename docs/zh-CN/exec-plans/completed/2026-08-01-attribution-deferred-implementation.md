@@ -1,8 +1,8 @@
 # 归属 deferred 实现（D-AG-01–04）
 
-> Status: **进行中** — 决策已锁定；按序从 `main` 开分支实现  
+> Status: **已于 2026-08-17 完成** — PR1–PR3 已合入；验收 ID 已登记；playwright-cli 证据记在 `feat/launch-actionable-td-closeout`  
 > Date: 2026-08-01  
-> English: [`docs/exec-plans/active/2026-08-01-attribution-deferred-implementation.md`](../../../exec-plans/active/2026-08-01-attribution-deferred-implementation.md)  
+> English: [`docs/exec-plans/completed/2026-08-01-attribution-deferred-implementation.md`](../../../exec-plans/completed/2026-08-01-attribution-deferred-implementation.md)  
 > 锁定决策：[`docs/zh-CN/design-docs/2026-07-31-attribution-governance-deferred-questions.md`](../../design-docs/2026-07-31-attribution-governance-deferred-questions.md)
 
 ## 目标
@@ -31,9 +31,11 @@
 
 ## 成功标准（摘要）
 
-- [x] PR1（#218 已合入）：权限/审计/同事务/仅阻断发布；去掉 pinned claim 宣传；验收 ID `DRV-REG-004` 已登记（e2e 仍为 future）
+- [x] PR1（#218 已合入）：权限/审计/同事务/仅阻断发布；去掉 pinned claim 宣传；验收 ID `DRV-REG-004` 已登记（e2e 仍为 planned，等 TD-079）
 - [x] PR2：subject-only 写入 + 迁移 `0088` fail-closed；关 TD-047
-- [x] PR3：注册默认分类；curated 冻结、auto 回放；关 TD-046（迁移 `0089`）
-- 每 PR：聚焦测试 + `build`；收口前 `docs:check`；UI 变更需 playwright-cli 三视口证据
+- [x] PR3：注册默认分类；curated 冻结、auto 回放；关 TD-046（迁移 `0089`）；`DRV-REG-005` 已登记
+- [x] 收口前 `docs:check`；playwright-cli 三视口 0 console error；证据目录 `work/ui-checks/attribution-deferred/`（gitignore）
+
+2026-08-17 补充：SC8562 curated 回放「移动 0，跳过 curated 1」；auto 夹具 `unmapped-ic` 回放「移动 1」并重挂到充电策略。阻断 Playwright 仍等 TD-079。
 
 完整任务、文档影响矩阵与验证命令以英文计划为准。

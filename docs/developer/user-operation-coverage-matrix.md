@@ -137,6 +137,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `DRV-REG-002` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `DRV-REG-003` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `DRV-REG-004` | P1 | parameters | future | `/parameter-admin` | Admin, Platform Admin | ui, api, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `DRV-REG-005` | P1 | parameters | future | `/parameter-admin/modules` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts`<br>`src/components/admin/ModuleEditDialog.test.tsx`<br>`src/infrastructure/mock/mockParameterModuleRegistryRepository.test.ts` |
 | `DRV-SCHEMA-001` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `DRV-SCHEMA-002` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `DRV-SCHEMA-003` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
@@ -185,7 +186,8 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 - `DRV-REG-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
 - `DRV-REG-002`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
 - `DRV-REG-003`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
-- `DRV-REG-004`: Unit/server coverage lands with PR1; browser e2e pending disposable-DB / Playwright evidence before gating CI.
+- `DRV-REG-004`: Unit/server coverage landed with PR1; playwright-cli evidence under work/ui-checks/attribution-deferred/. A blocking Playwright marker is deferred so this does not enlarge the shared pre-cutover CI acceptance suite (TD-079).
+- `DRV-REG-005`: Unit/mock coverage plus playwright-cli evidence under work/ui-checks/attribution-deferred/. A blocking Playwright marker is deferred so this does not enlarge the shared pre-cutover CI acceptance suite (TD-079).
 - `DRV-SCHEMA-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
 - `DRV-SCHEMA-002`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
 - `DRV-SCHEMA-003`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
