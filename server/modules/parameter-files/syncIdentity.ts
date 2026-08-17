@@ -22,7 +22,7 @@ export function normalizeFileSyncNodePath(path: string): string {
 /**
  * Resolve a parsed-index path to a project parameter binding using this file
  * version's occurrence graph (logical node locator + property key).
- * Must not query retired `project_parameter_values` / `parameter_definitions`.
+ * Must not query retired leftover PPV or definition-catalog tables.
  */
 export async function findBindingBySource(
   db: Queryable,
