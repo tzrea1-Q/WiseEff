@@ -1,9 +1,9 @@
 /**
  * DTS import batch repository for `parameter_import_batches`: definition
  * matching for import previews, batch persistence, and apply/mark-applied.
- * Legacy mode writes flat identity tables. Semantic mode matches bindings by
- * property key and updates the head binding revision — it must not touch
- * retired `parameter_definitions` / `project_parameter_values`.
+ * Legacy mode writes flat identity tables via LEGACY_IDENTITY_SQL. Semantic
+ * mode matches bindings by property key and updates the head binding revision
+ * — it must not touch retired flat-identity tables.
  */
 
 import type { Queryable } from "../../shared/database/client";
