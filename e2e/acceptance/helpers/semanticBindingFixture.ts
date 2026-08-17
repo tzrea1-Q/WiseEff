@@ -704,3 +704,30 @@ export async function deleteDraftViaApi(
   });
   expect(response.ok(), await response.text()).toBe(true);
 }
+
+/** Disposable post-cutover suites refuse leftover PPV columns and require a cutover marker. */
+export async function assertPostCutoverIdentity(): Promise<void> {
+  await withPgClient(async (client) => {
+    const cutover = await client.query<{ c: string }>(
+      `select count(*)::text as c from parameter_identity_cutovers`
+    );
+    expect(
+      Number(cutover.rows[0]?.c ?? 0),
+      "disposable spec requires parameter_identity_cutovers count > 0"
+    ).toBeGreaterThan(0);
+
+    const legacyColumn = await client.query<{ c: string }>(
+      `
+      select count(*)::text as c
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'parameter_change_requests'
+        and column_name = 'project_parameter_value_id'
+      `
+    );
+    expect(
+      Number(legacyColumn.rows[0]?.c ?? 0),
+      "disposable spec refuses the retired project_parameter_value_id column"
+    ).toBe(0);
+  });
+}

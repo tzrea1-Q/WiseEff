@@ -1,184 +1,112 @@
 import "dotenv/config";
 import { expect, test, type Page } from "playwright/test";
+
+import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
-import { recordOperationEvidence } from "./helpers/operationEvidence";
 import { withPgClient } from "./helpers/database";
-import { prepareInteractionSurface } from "./helpers/interactionSurface";
+import { type DisposablePostCutoverRuntime } from "./helpers/disposablePostCutoverRuntime";
+import { recordOperationEvidence } from "./helpers/operationEvidence";
+import { dismissXiaozeToggleHint, prepareInteractionSurface } from "./helpers/interactionSurface";
+import { apiRoute } from "./helpers/runtime";
+import {
+  assertPostCutoverIdentity,
+  disposablePageUrl,
+  seedIsolatedNumericCellBinding,
+  startSwappedDisposablePostCutoverRuntime
+} from "./helpers/semanticBindingFixture";
 
 useBrowserDiagnostics(test);
 
-async function dismissXiaozeHint(page: Page) {
-  const dismiss = page.getByRole("button", { name: "不再提示" });
-  if (await dismiss.isVisible().catch(() => false)) {
-    await dismiss.click();
-  }
-}
-
-const importParameterName = "charge_voltage_limit_mv";
-const organizationId = "org-chargelab";
 const projectId = "aurora";
+const organizationId = "org-chargelab";
+const databaseUrl = process.env.DATABASE_URL;
+const importPropertyKey = "charge_voltage_limit_mv";
 
-type ImportTargetSnapshot = {
-  definition_id: string;
-  value_id: string;
-  description: string;
-  explanation: string;
-  config_format: string;
-  module: string;
-  default_range: string;
-  unit: string;
-  risk: string;
-  current_value: string;
-  recommended_value: string;
-  value_version: number;
-  updated_by_user_id: string | null;
-};
+test.skip(!databaseUrl, "DATABASE_URL is required for disposable post-cutover import wizard acceptance.");
 
-let importTargetSnapshot: ImportTargetSnapshot | null = null;
-
-async function loadImportTargetSnapshot() {
-  return withPgClient(async (client) => {
-    const result = await client.query<ImportTargetSnapshot>(
-      `
-      select
-        pd.id as definition_id,
-        ppv.id as value_id,
-        pd.description,
-        pd.explanation,
-        pd.config_format,
-        pd.module,
-        pd.default_range,
-        pd.unit,
-        pd.risk,
-        ppv.current_value,
-        ppv.recommended_value,
-        ppv.value_version,
-        ppv.updated_by_user_id
-      from parameter_definitions pd
-      inner join project_parameter_values ppv on ppv.parameter_definition_id = pd.id
-      where pd.organization_id = $1
-        and ppv.project_id = $2
-        and pd.name = $3
-      `,
-      [organizationId, projectId, importParameterName]
-    );
-    return result.rows[0] ?? null;
-  });
+async function dismissXiaozeHint(page: Page) {
+  await dismissXiaozeToggleHint(page);
 }
-
-async function restoreImportTargetSnapshot(snapshot: ImportTargetSnapshot) {
-  await withPgClient(async (client) => {
-    await client.query("begin");
-    try {
-      await client.query(
-        `
-        delete from parameter_history_entries
-        where project_parameter_value_id = $1
-          and version > $2
-          and request_id is null
-          and changed_by_user_id = 'u-xu-yun'
-        `,
-        [snapshot.value_id, snapshot.value_version]
-      );
-      await client.query(
-        `
-        update parameter_definitions
-        set description = $2,
-            explanation = $3,
-            config_format = $4,
-            module = $5,
-            default_range = $6,
-            unit = $7,
-            risk = $8
-        where id = $1
-          and organization_id = $9
-        `,
-        [
-          snapshot.definition_id,
-          snapshot.description,
-          snapshot.explanation,
-          snapshot.config_format,
-          snapshot.module,
-          snapshot.default_range,
-          snapshot.unit,
-          snapshot.risk,
-          organizationId
-        ]
-      );
-      await client.query(
-        `
-        update project_parameter_values
-        set current_value = $2,
-            recommended_value = $3,
-            value_version = $4,
-            updated_by_user_id = $5
-        where id = $1
-          and organization_id = $6
-          and project_id = $7
-        `,
-        [
-          snapshot.value_id,
-          snapshot.current_value,
-          snapshot.recommended_value,
-          snapshot.value_version,
-          snapshot.updated_by_user_id,
-          organizationId,
-          projectId
-        ]
-      );
-      await client.query("commit");
-    } catch (error) {
-      await client.query("rollback");
-      throw error;
-    }
-  });
-}
-
-const importPayload = JSON.stringify([
-  {
-    name: importParameterName,
-    module: "Charging Policy",
-    risk: "High",
-    unit: "mA",
-    range: "4200 - 4500",
-    currentValue: "4350",
-    recommendedValue: "4310",
-    description: "Browser acceptance import wizard row"
-  }
-]);
 
 test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () => {
-  test.beforeEach(async () => {
-    importTargetSnapshot = await loadImportTargetSnapshot();
-    expect(importTargetSnapshot).toBeTruthy();
-    await restoreImportTargetSnapshot(importTargetSnapshot!);
-  });
+  let disposableRuntime: DisposablePostCutoverRuntime;
+  let restoreDisposable: (() => Promise<void>) | undefined;
 
-  test.afterEach(async () => {
-    if (importTargetSnapshot) {
-      await restoreImportTargetSnapshot(importTargetSnapshot);
-      importTargetSnapshot = null;
+  test.beforeAll(async () => {
+    test.setTimeout(180_000);
+    const baseDatabaseUrl = databaseUrl?.trim();
+    if (!baseDatabaseUrl) {
+      throw new Error("DATABASE_URL is required to create the disposable import-wizard post-cutover database.");
     }
+    const started = await startSwappedDisposablePostCutoverRuntime(baseDatabaseUrl, {
+      label: "imp_wizard",
+      markerPurpose: "import-wizard"
+    });
+    disposableRuntime = started.runtime;
+    restoreDisposable = started.restore;
   });
 
-  test("runs the five-step import wizard through preview", async ({ page }, testInfo) => {
+  test.afterAll(async () => {
+    test.setTimeout(60_000);
+    await restoreDisposable?.();
+  });
+
+  test("runs the five-step import wizard through preview", async ({ page, request }, testInfo) => {
     // @acceptance PARAM-ADMIN-002
     // @operation PARAM-ADMIN-002
+    test.setTimeout(180_000);
     const workflowStartedAt = new Date();
-    await page.goto("/parameter-admin");
+
+    await assertPostCutoverIdentity();
+    expect(disposableRuntime.markerPurpose).toBe("import-wizard");
+
+    const binding = await seedIsolatedNumericCellBinding(request, {
+      propertyKey: importPropertyKey,
+      cellValue: 2300,
+      reason: "PARAM-ADMIN-002 disposable import wizard binding"
+    });
+    const listed = await request.get(apiRoute(`/api/v1/parameters?projectId=${projectId}&limit=500`), {
+      headers: authHeadersForRole("admin")
+    });
+    expect(listed.ok(), await listed.text()).toBe(true);
+    const listedBody = (await listed.json()) as {
+      items: Array<{ id: string; name: string; module: string; currentValue: string }>;
+    };
+    const seeded = listedBody.items.find((item) => item.id === binding.bindingId);
+    expect(seeded, `missing hydrated binding ${binding.bindingId}`).toBeTruthy();
+
+    const importedCurrentValue = "<4350>";
+    const importedRecommendedValue = "<4310>";
+    expect(seeded!.currentValue).not.toBe(importedCurrentValue);
+
+    const importPayload = JSON.stringify([
+      {
+        name: seeded!.name,
+        module: seeded!.module,
+        risk: "High",
+        unit: "mA",
+        range: "4200 - 4500",
+        currentValue: importedCurrentValue,
+        recommendedValue: importedRecommendedValue,
+        description: "Browser acceptance import wizard row"
+      }
+    ]);
+
+    await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, "/parameter-admin"));
+    await expect(page.getByRole("region", { name: "参数定义库" })).toBeVisible({ timeout: 30_000 });
     await dismissXiaozeHint(page);
     await prepareInteractionSurface(page);
 
-    // Bulk import lives in the TopBar action slot (no standalone region when TopBar is mounted).
     const openImport = page.getByRole("button", { name: "打开批量参数导入" });
     await expect(openImport).toBeVisible({ timeout: 30_000 });
     await openImport.click();
-    // The wizard dialog is named by its eyebrow title "批量参数导入" (stable across steps).
     const wizard = page.getByRole("dialog", { name: "批量参数导入" });
     await expect(wizard).toBeVisible();
 
     await expect(wizard.getByRole("region", { name: "选择来源与目标项目" })).toBeVisible();
-    await expect(wizard.getByRole("combobox", { name: "目标项目" })).toBeVisible();
+    const projectSelect = wizard.getByRole("combobox", { name: "目标项目" });
+    await expect(projectSelect).toBeVisible();
+    await projectSelect.selectOption(projectId);
     await wizard.getByRole("button", { name: "粘贴 JSON / CSV / DTS 内容" }).click();
     const pasteDialog = page.getByRole("dialog", { name: "粘贴导入内容" });
     await pasteDialog.getByLabel("导入内容").fill(importPayload);
@@ -193,22 +121,22 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
 
     const rowReview = wizard.getByRole("region", { name: "逐行核对" });
     await expect(rowReview).toBeVisible();
-    await expect(rowReview).toContainText(importParameterName);
+    await expect(rowReview).toContainText(seeded!.name);
     await wizard.getByRole("button", { name: "通过" }).click();
     await expect(wizard.getByRole("button", { name: "下一步" })).toBeEnabled();
     await wizard.getByRole("button", { name: "下一步" }).click();
 
     const batchPreview = wizard.getByRole("region", { name: "批次预览" });
     await expect(batchPreview).toBeVisible({ timeout: 30_000 });
-    const previewRow = batchPreview.getByRole("row").filter({ hasText: importParameterName });
+    const previewRow = batchPreview.getByRole("row").filter({ hasText: seeded!.name });
     await expect(previewRow).toContainText("更新");
-    await expect(previewRow.getByRole("checkbox", { name: `选择 ${importParameterName}` })).toBeChecked();
+    await expect(previewRow.getByRole("checkbox", { name: `选择 ${seeded!.name}` })).toBeChecked();
     await expect(wizard.getByRole("button", { name: "下一步" })).toBeEnabled();
     await wizard.getByRole("button", { name: "下一步" }).click();
 
     const confirmApply = wizard.getByRole("region", { name: "确认应用" });
     await expect(confirmApply).toBeVisible();
-    await expect(confirmApply).toContainText("AUR-Prod");
+    await expect(confirmApply).toContainText("AURORA");
     await expect(confirmApply).toContainText("更新");
     await confirmApply.getByRole("button", { name: "确认应用" }).click();
     await expect(wizard).not.toBeVisible({ timeout: 30_000 });
@@ -252,6 +180,27 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
         [organizationId, projectId, workflowStartedAt]
       );
       const batch = batchResult.rows[0] ?? null;
+      const head = await client.query<{ raw_value: string | null }>(
+        `
+        select br.raw_value
+        from project_parameter_binding_revisions br
+        where br.binding_id = $1
+        order by br.created_at desc
+        limit 1
+        `,
+        [binding.bindingId]
+      );
+      const history = await client.query<{ version: number; value: string }>(
+        `
+        select version, value
+        from parameter_history_entries
+        where organization_id = $1
+          and project_parameter_binding_id = $2
+        order by version desc
+        limit 1
+        `,
+        [organizationId, binding.bindingId]
+      );
       const audit = batch
         ? {
             id: batch.audit_id,
@@ -262,10 +211,17 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
             metadata: batch.audit_metadata
           }
         : null;
-      return { batch, audit };
+      return {
+        batch,
+        audit,
+        rawValue: head.rows[0]?.raw_value ?? null,
+        history: history.rows[0] ?? null
+      };
     });
     expect(applied.batch).toMatchObject({ status: "applied" });
     expect(applied.audit).toBeTruthy();
+    expect(applied.rawValue).toBe(importedCurrentValue);
+    expect(applied.history).toMatchObject({ value: importedCurrentValue });
 
     await recordOperationEvidence({
       operationId: "PARAM-ADMIN-002",
@@ -280,6 +236,12 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
           predicate: `organizationId=${organizationId}; projectId=${projectId}; id=${applied.batch?.id}`,
           observed: `status=${applied.batch?.status}; updated=${applied.batch?.summary.updated ?? 0}`,
           rowCount: applied.batch ? 1 : 0
+        },
+        {
+          table: "project_parameter_binding_revisions",
+          predicate: `bindingId=${binding.bindingId}`,
+          observed: `rawValue=${applied.rawValue}`,
+          rowCount: applied.rawValue ? 1 : 0
         }
       ],
       audit: [
@@ -289,10 +251,10 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
           action: applied.audit!.action,
           targetId: applied.audit?.target_id,
           requestId: applied.audit?.trace_id ?? undefined,
-          metadataSummary: `batchId=${applied.batch?.id}; status=${applied.batch?.status}`
+          metadataSummary: `batchId=${applied.batch?.id}; status=${applied.batch?.status}; bindingId=${binding.bindingId}`
         }
       ],
-      notes: `Wizard applied an update for ${importParameterName}; the acceptance fixture restores the original definition and project value after evidence capture.`
+      notes: `Wizard applied an update for ${seeded!.name} onto disposable post-cutover binding ${binding.bindingId}; shared CI pre-cutover PPV fixtures are not used here.`
     });
   });
 });
