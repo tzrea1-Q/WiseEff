@@ -12,6 +12,8 @@ const validPackageJson = {
     "selfhost:ip-lab:init": "tsx ops/self-hosted/scripts/init-ip-lab.ts",
     "selfhost:ip-lab:preflight": "tsx ops/self-hosted/scripts/preflight-ip-lab.ts",
     "selfhost:ip-lab:provision": "tsx ops/self-hosted/scripts/provision-ip-lab.ts",
+    "selfhost:setup": "tsx ops/self-hosted/scripts/setup-selfhost.ts",
+    "selfhost:doctor": "tsx ops/self-hosted/scripts/doctor-selfhost.ts",
     "dtc:check": "tsx scripts/check-dtc.ts",
     "dtc:seed:compile": "tsx scripts/compile-dts-seed.ts",
     "dts:toolchain:check": "tsx scripts/check-dts-toolchain.ts --required",
@@ -166,7 +168,14 @@ const existingSelfHostedFiles = new Set([
   "ops/self-hosted/scripts/init-ip-lab.ts",
   "ops/self-hosted/scripts/preflight-ip-lab.ts",
   "ops/self-hosted/scripts/provision-ip-lab.ts",
-  "ops/self-hosted/scripts/deploy-ip-lab.sh"
+  "ops/self-hosted/scripts/deploy-ip-lab.sh",
+  "ops/self-hosted/scripts/setup.sh",
+  "ops/self-hosted/scripts/doctor.sh",
+  "ops/self-hosted/scripts/selfhost-answers.ts",
+  "ops/self-hosted/scripts/selfhost-profile.ts",
+  "ops/self-hosted/scripts/setup-selfhost.ts",
+  "ops/self-hosted/scripts/doctor-selfhost.ts",
+  "ops/self-hosted/setup.md"
 ]);
 
 function evaluateWithEnvExample(envExampleText: string) {
@@ -253,6 +262,8 @@ describe("self-hosted config metadata", () => {
       "selfhost:ip-lab:init",
       "selfhost:ip-lab:preflight",
       "selfhost:ip-lab:provision",
+      "selfhost:setup",
+      "selfhost:doctor",
       "backup:drill",
       "restore:drill",
       "backup:check",

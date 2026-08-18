@@ -21,7 +21,7 @@
 - 知识库在 `server/modules/knowledge/`：组织级知识条目与不可变修订、经对象存储的文件上传与正文提取 seam（pdf-parse/mammoth）、仅 `published` 的混合检索,以及 `knowledge:view|edit|manage` 服务端强制。`knowledge/indexing/` 是异步分块索引 worker seam（默认轮询,镜像 logs worker）：发布/编辑/归档把逐条目刷新入队 `knowledge_index_status`,chunk 经 `EMBEDDING_API_*` seam 携带可选 pgvector 嵌入,检索用 RRF 融合向量与 FTS/trigram 排名,扩展或端点缺失时诚实降级为 FTS-only（ADR-0025）。小泽新增只读工具 `knowledge.search` / `knowledge.getDocument`（组织级、`knowledge:view`、仅 published、返回引用负载）。UI 为 `/knowledge`（检索、API 模式下的问小泽入口）,已归档治理与索引健康/重建在 `/knowledge-admin`;Agent 草稿在蒸馏阶段接入。
 - 日志分析内核在 `server/modules/logs/analyzer/`（ADR-0022,小泽栈之外、零写路径）：P2 默认有界 agent 循环（`agentLoop.ts`,`LOG_ANALYSIS_KERNEL=loop`,至多 `LOG_ANALYSIS_MAX_STEPS` 步严格 JSON,五个只读组织级工具,含经 `log_domain_knowledge_links` 关联的已发布知识条目检索）,P1 单发内核保留为 `single-shot` 回退;两层评测在 `server/modules/logs/eval/`（行为层 `logs:eval` CI 门禁、效果层 `logs:eval:quality` + `eval-cases/logs/` 金标准案例集与基线门禁）。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
-- 只有 IP、没有域名的自托管实验室走 [IP 实验室 profile](../../../ops/self-hosted/ip-lab.zh-CN.md)，不走 Let's Encrypt Caddyfile。
+- 只有 IP、没有域名的自托管实验室走 [配置向导](../../../ops/self-hosted/setup.zh-CN.md) / [IP 实验室 profile](../../../ops/self-hosted/ip-lab.zh-CN.md)，不走 Let's Encrypt Caddyfile。
 
 ## 同类中文文档
 

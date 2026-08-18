@@ -17,12 +17,14 @@
 
 ## 一条命令
 
-在 `ops/self-hosted/` 下：
+优先使用 [配置向导](setup.zh-CN.md)。IP 实验室的 flag 路径在 `ops/self-hosted/` 下仍然可用：
 
 ```bash
-chmod +x scripts/deploy-ip-lab.sh
-./scripts/deploy-ip-lab.sh --ip <server-ip>
+chmod +x scripts/setup.sh
+./scripts/setup.sh --non-interactive --ip <server-ip>
 ```
+
+`deploy-ip-lab.sh --ip <server-ip>` 仍是同一命令的兼容包装。
 
 示例：
 

@@ -8,6 +8,8 @@ export const requiredSelfHostedScripts = [
   "selfhost:ip-lab:init",
   "selfhost:ip-lab:preflight",
   "selfhost:ip-lab:provision",
+  "selfhost:setup",
+  "selfhost:doctor",
   "backup:drill",
   "restore:drill",
   "backup:check",

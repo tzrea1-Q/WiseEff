@@ -141,13 +141,16 @@ export async function provisionIpLab(env: NodeJS.ProcessEnv = process.env) {
     throw new Error("WISEEFF_LAB_ADMIN_PASSWORD is required to provision the IP lab.");
   }
 
-  const seed = spawnSync("npm", ["run", "db:seed:all"], {
-    stdio: "inherit",
-    env,
-    shell: process.platform === "win32"
-  });
-  if (seed.status !== 0) {
-    throw new Error("Seed step failed: db:seed:all");
+  const seedMode = (env.WISEEFF_LAB_SEED ?? "chargelab").trim();
+  if (seedMode !== "none") {
+    const seed = spawnSync("npm", ["run", "db:seed:all"], {
+      stdio: "inherit",
+      env,
+      shell: process.platform === "win32"
+    });
+    if (seed.status !== 0) {
+      throw new Error("Seed step failed: db:seed:all");
+    }
   }
 
   const db = createPostgresDatabase(serverEnv.DATABASE_URL);

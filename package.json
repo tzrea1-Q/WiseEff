@@ -50,6 +50,8 @@
     "selfhost:ip-lab:init": "tsx ops/self-hosted/scripts/init-ip-lab.ts",
     "selfhost:ip-lab:preflight": "tsx ops/self-hosted/scripts/preflight-ip-lab.ts",
     "selfhost:ip-lab:provision": "tsx ops/self-hosted/scripts/provision-ip-lab.ts",
+    "selfhost:setup": "tsx ops/self-hosted/scripts/setup-selfhost.ts",
+    "selfhost:doctor": "tsx ops/self-hosted/scripts/doctor-selfhost.ts",
     "selfhost:release-gate": "tsx scripts/run-self-hosted-release-gate.ts",
     "capacity:gate": "tsx scripts/run-capacity-gate.ts",
     "rollback:rehearsal": "tsx scripts/run-rollback-rehearsal.ts",

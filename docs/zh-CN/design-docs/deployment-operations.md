@@ -13,7 +13,7 @@ WiseEff 至少需要三个环境：
 | local | 开发 | 可使用 mock、测试数据库、设备模拟器 |
 | staging | 验收 | 接近生产配置，禁用前端业务 mock |
 | production | 生产 | 强制认证、真实数据库、监控告警、备份 |
-| ip-lab | 无域名单机实验室 | HTTP 或 Caddy 自签证书、本地账号、ChargeLab 种子；不是试点/发布证据。操作见 `ops/self-hosted/ip-lab.zh-CN.md` |
+| ip-lab | 无域名单机实验室 | HTTP 或 Caddy 自签证书、本地账号、ChargeLab 种子；不是试点/发布证据。入口见 `ops/self-hosted/setup.zh-CN.md`，profile 见 `ops/self-hosted/ip-lab.zh-CN.md` |
 
 ## 2. 服务
 

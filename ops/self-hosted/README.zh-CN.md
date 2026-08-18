@@ -16,7 +16,7 @@
 - 先确认该文档属于哪个决策面：self-hosted。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
-- 只有 IP、没有域名的 Ubuntu 实验室部署走 [IP 实验室 profile](ip-lab.zh-CN.md)：`./scripts/deploy-ip-lab.sh --ip <server-ip>`。不要手工复制 `.env.example` 去填 Let's Encrypt 域名。该路径是实验室/演示，不是试点或发布就绪证据。
+- 自托管入口是 [配置向导](setup.zh-CN.md)：`./scripts/setup.sh`。只有 IP、没有域名时走 [IP 实验室 profile](ip-lab.zh-CN.md)。不要手工复制 `.env.example` 去填 Let's Encrypt 域名。该路径是实验室/演示，不是试点或发布就绪证据。
 - 自托管 runtime 镜像通过 Alpine `dtc` 包内置 Device Tree Compiler，并在镜像构建时执行 `dtc --version`。因此 `./scripts/seed-demo-data.sh` 的 M1 阶段会在容器内真实编译三项目 overlay，不依赖宿主机安装。
 - 修改镜像或 DTS seed 后运行 `npm run selfhost:check`、`npm run dtc:check -- --required` 和 `npm run dtc:seed:compile`。
 

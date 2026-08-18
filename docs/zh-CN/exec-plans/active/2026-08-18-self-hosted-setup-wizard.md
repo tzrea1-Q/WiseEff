@@ -4,7 +4,7 @@
 
 **目标：** 给自托管操作员一条终端向导：只问人必须决定的项，其余自动生成；之后可以只改其中一段，而不重写整份 `.env`。同一套答案必须能用 flag 表达，供脚本和 CI 使用。
 
-**状态：** 仅设计。在本计划被接受、且 IP 实验室 profile（`2026-08-18-self-hosted-ip-lab-profile.md`，PR #534）已出现在实现分支之前，不要开工写代码。
+**状态：** 正在 `cursor/selfhost-setup-wizard-24de` 上实现。叠在 IP 实验室 profile（PR #534，tip `64e12237`）之上。
 
 **架构：** 只借鉴 OpenClaw / Hermes 的**向导架构**，不照搬它们的个人 Agent 产品。WiseEff 仍然是 Docker Compose 栈。把安装（宿主机前置）、配置（答案 → 渲染 `.env` → 启动前校验 → 拉起 → provision）、诊断（修复）分开。TypeScript 渲染器是唯一真相。bash 入口负责提问和编排，以便服务器不必装 Node。
 
@@ -272,14 +272,14 @@ v1 除「改完 `access` 后重写派生 URL」外不做 `--fix`。修复走 `se
 - [x] 写本计划及英文对照页。
 - [x] 从 `docs/PLANS.md` 与路线图挂上本计划。
 
-实现（后续分支）：
+实现（本分支）：
 
-- [ ] `SelfHostAnswers` + 按 profile 分支的渲染 / 校验测试。
-- [ ] `ops/self-hosted/scripts/setup.sh` 的 TTY 与 `--non-interactive`。
-- [ ] 带已展开 `DATABASE_URL` 的 ACME 渲染路径。
-- [ ] 分段命令 + doctor。
-- [ ] `deploy-ip-lab.sh` 兼容包装。
-- [ ] 中英操作文档与 metadata 门禁。
+- [x] `SelfHostAnswers` + 按 profile 分支的渲染 / 校验测试。
+- [x] `ops/self-hosted/scripts/setup.sh` 的 TTY 与 `--non-interactive`。
+- [x] 带已展开 `DATABASE_URL` 的 ACME 渲染路径。
+- [x] 分段命令 + doctor。
+- [x] `deploy-ip-lab.sh` 兼容包装。
+- [x] 中英操作文档与 metadata 门禁。
 
 ## 验证
 

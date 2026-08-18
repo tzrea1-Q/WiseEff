@@ -4,11 +4,11 @@
 
 This directory contains the M6.1 single-Linux-server baseline. It is meant for a controlled self-hosted staging or pilot host, not broad production hardening by itself.
 
-If the host has an IP address and **no DNS name**, use the [IP lab profile](ip-lab.md) instead of copying `.env.example` by hand:
+Use the [setup wizard](setup.md) instead of copying `.env.example` by hand. It covers the [IP lab profile](ip-lab.md) and the DNS + Let's Encrypt profile:
 
 ```bash
 cd ops/self-hosted
-./scripts/deploy-ip-lab.sh --ip <server-ip>
+./scripts/setup.sh
 ```
 
 The DNS + Let's Encrypt path below remains the M6 staging/pilot profile.

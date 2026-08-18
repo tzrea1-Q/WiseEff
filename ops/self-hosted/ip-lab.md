@@ -17,12 +17,14 @@ Install Docker on a bare Ubuntu host before continuing: https://docs.docker.com/
 
 ## One Command
 
-From `ops/self-hosted/`:
+Prefer the [setup wizard](setup.md). The IP lab flag path still works from `ops/self-hosted/`:
 
 ```bash
-chmod +x scripts/deploy-ip-lab.sh
-./scripts/deploy-ip-lab.sh --ip <server-ip>
+chmod +x scripts/setup.sh
+./scripts/setup.sh --non-interactive --ip <server-ip>
 ```
+
+`deploy-ip-lab.sh --ip <server-ip>` remains a compatibility wrapper for the same command.
 
 Examples:
 

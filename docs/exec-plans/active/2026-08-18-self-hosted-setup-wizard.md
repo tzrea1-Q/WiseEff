@@ -4,7 +4,7 @@
 
 **Goal:** Give a self-hosted operator one TTY wizard that asks only human decisions, generates the rest, and can later change one section without rewriting the whole `.env`. Same answers must be expressible as flags for scripts and CI.
 
-**Status:** Design only. Do not implement until this plan is accepted and the IP lab profile (`2026-08-18-self-hosted-ip-lab-profile.md`, PR #534) is on the implementation branch.
+**Status:** Implementation in progress on `cursor/selfhost-setup-wizard-24de`. Stacked on the IP lab profile (PR #534 tip `64e12237`).
 
 **Architecture:** Copy the OpenClaw / Hermes *wizard architecture*, not their personal-agent product. WiseEff remains a Docker Compose stack. Split install (host prerequisites) from onboard (answers → render `.env` → preflight → up → provision) from doctor (repair). Keep one TypeScript renderer as the source of truth. The bash entry is a prompt and orchestration layer for hosts that do not have Node.
 
@@ -272,14 +272,14 @@ Design (this change):
 - [x] Write this plan and the Chinese companion.
 - [x] Index the plan from `docs/PLANS.md` and the roadmap.
 
-Implementation (later branch):
+Implementation (this branch):
 
-- [ ] `SelfHostAnswers` + profile-aware renderer/evaluator tests.
-- [ ] `ops/self-hosted/scripts/setup.sh` TTY + `--non-interactive`.
-- [ ] ACME render path with expanded `DATABASE_URL`.
-- [ ] Section commands + doctor.
-- [ ] Compatibility wrapper for `deploy-ip-lab.sh`.
-- [ ] Operator docs (EN + ZH) and metadata gate.
+- [x] `SelfHostAnswers` + profile-aware renderer/evaluator tests.
+- [x] `ops/self-hosted/scripts/setup.sh` TTY + `--non-interactive`.
+- [x] ACME render path with expanded `DATABASE_URL`.
+- [x] Section commands + doctor.
+- [x] Compatibility wrapper for `deploy-ip-lab.sh`.
+- [x] Operator docs (EN + ZH) and metadata gate.
 
 ## Verification
 

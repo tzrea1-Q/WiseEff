@@ -211,8 +211,9 @@ M6.1 adds `ops/self-hosted/.env.example` for Linux deployments. M6.2 switches th
 | `BACKUP_REDIS_CHECKPOINT_VALIDATED` | `true` after Redis checkpoint validation | Required by `npm run m6:target-plan`; target M6.3 evidence must prove durable queue persistence was captured. |
 | `WISEEFF_SITE_HOST` | operator-provided DNS, or a raw IP in the [IP lab profile](../../ops/self-hosted/ip-lab.md) | Used by Caddy and frontend API base URL. |
 | `WISEEFF_TLS_EMAIL` | operator-provided email | Used by Caddy ACME/TLS. Unused in the IP lab HTTP profile. |
-| `WISEEFF_DEPLOY_PROFILE` | unset; `ip-lab` when generated | Marks `ops/self-hosted/.env` as the no-DNS lab profile. |
-| `WISEEFF_TLS_MODE` | unset; `http` or `internal` in IP lab | Selects `Caddyfile.ip-lab` or `Caddyfile.ip-lab-tls`. |
+| `WISEEFF_DEPLOY_PROFILE` | unset; `ip-lab` or `acme` when generated | Marks `ops/self-hosted/.env` as the lab or wizard-managed ACME profile. |
+| `WISEEFF_TLS_MODE` | unset; `http`, `internal`, or `acme` | Selects `Caddyfile.ip-lab`, `Caddyfile.ip-lab-tls`, or `Caddyfile.example`. |
+| `WISEEFF_LAB_SEED` | `chargelab` when generated | `chargelab` runs `db:seed:all` during provision; `none` skips seed and still creates the local admin. |
 | `WISEEFF_CADDYFILE` | `Caddyfile.example` | Compose mounts this file as the proxy config. |
 | `WISEEFF_PUBLIC_URL` | `https://${WISEEFF_SITE_HOST}` or `http://<ip>` | Canonical browser origin written by the IP lab generator. |
 | `WISEEFF_LAB_ADMIN_USERNAME` | `admin.ops` in IP lab | Local admin created or attached to ChargeLab during provision. |
