@@ -8,7 +8,7 @@ import { ApiError } from "../../shared/http/errors";
 
 export const DTS_RELOAD_AGENT_REFUSED_CODE = "dts-reload-agent-refused";
 
-export type DtsReloadMutatingAction = "start" | "deploy" | "restore" | "configure";
+export type DtsReloadMutatingAction = "start" | "deploy" | "restore" | "configure" | "promote";
 
 function requirePermission(auth: AuthContext, permission: BackendPermission) {
   if (!auth.user.isActive || !auth.permissions.includes(permission)) {
@@ -40,7 +40,26 @@ export function requireDtsReloadView(auth: AuthContext) {
 }
 
 /**
- * Refuse Agent actors from DTS reload mutating paths (start / deploy / restore / configure).
+ * Promotion is a reload-adjacent write: read the run, then create parameter drafts.
+ * Caller needs the reload read gate, `parameter:edit`, and either the existing
+ * reload write permission or Admin. Does not grant submit/review.
+ */
+export function requireDtsReloadPromote(auth: AuthContext) {
+  requireDtsReloadView(auth);
+  if (!hasPermission(auth, "parameter:edit")) {
+    throw new ApiError("FORBIDDEN", "Missing permission: parameter:edit.", {
+      permission: "parameter:edit"
+    });
+  }
+  if (!hasPermission(auth, "debugging:dts-reload") && !hasPermission(auth, "admin:access")) {
+    throw new ApiError("FORBIDDEN", "Missing permission: debugging:dts-reload.", {
+      permission: "debugging:dts-reload"
+    });
+  }
+}
+
+/**
+ * Refuse Agent actors from DTS reload mutating paths (start / deploy / restore / configure / promote).
  * Sensitive-node Agent refusal remains as defence in depth for matched batches.
  *
  * Trust boundary: `actorType` is a caller-supplied in-process label (same pattern as
@@ -85,7 +104,7 @@ export async function assertDtsReloadHumanActor(
 
   throw new ApiError(
     "FORBIDDEN",
-    "Agent actors cannot start, deploy, restore, or configure DTS reload; a human operator is required.",
+    "Agent actors cannot start, deploy, restore, configure, or promote DTS reload; a human operator is required.",
     {
       code: DTS_RELOAD_AGENT_REFUSED_CODE,
       reason: "agent-refused",

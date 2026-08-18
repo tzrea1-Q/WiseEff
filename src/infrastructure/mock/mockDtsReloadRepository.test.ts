@@ -280,6 +280,69 @@ describe("createMockDtsReloadRepository (DtsReloadRepository contract)", () => {
     expect(reread.organisation.destinationFilename).toBe("custom.dtbo");
   });
 
+  it("promotes a verified ordinary run to drafts and refuses restore-baseline or stacking", async () => {
+    const repo = createRepo();
+    const { items } = await repo.listCandidates(PROJECT_ID);
+    const watchdog = items.find((item) => item.bindingId === "mock-binding-watchdog")!;
+    const other = items.find((item) => item.debuggable && !item.sensitiveMatch && item.bindingId !== watchdog.bindingId)!;
+
+    const seededUnverifiable = await repo.getRun("mock-reload-seed-01");
+    await expect(
+      repo.promoteToDrafts({ runId: seededUnverifiable.id, bindingIds: [watchdog.bindingId] })
+    ).rejects.toThrow(/不可验证/);
+    const acknowledged = await repo.promoteToDrafts({
+      runId: seededUnverifiable.id,
+      bindingIds: [watchdog.bindingId],
+      unverifiableAcknowledged: true
+    });
+    expect(acknowledged.drafts[0]?.outcome).toBe("created");
+
+    const started = await repo.startRun({
+      projectId: PROJECT_ID,
+      targets: [{ bindingId: other.bindingId, debugValue: other.baselineValue ?? "<7000>" }]
+    });
+    const deployed = await repo.deployRun({
+      runId: started.id,
+      deviceId: MOCK_DTS_RELOAD_DEVICE_ID,
+      bridgeId: MOCK_DTS_RELOAD_BRIDGE_ID,
+      targetRef: MOCK_DTS_RELOAD_TARGET_REF,
+      protocol: "hdc",
+      confirmationTokens: ["confirm-dts-reload"]
+    });
+
+    const first = await repo.promoteToDrafts({
+      runId: deployed.id,
+      bindingIds: [other.bindingId]
+    });
+    expect(first.drafts).toEqual([
+      { bindingId: other.bindingId, draftId: expect.stringMatching(/^mock-reload-draft-/), outcome: "created" }
+    ]);
+    expect(first.workbenchHref).toBe(`/parameters?project=${PROJECT_ID}`);
+
+    const again = await repo.promoteToDrafts({
+      runId: deployed.id,
+      bindingIds: [other.bindingId]
+    });
+    expect(again.drafts[0]).toMatchObject({
+      bindingId: other.bindingId,
+      draftId: first.drafts[0]!.draftId,
+      outcome: "unchanged"
+    });
+
+    await expect(
+      repo.promoteToDrafts({
+        runId: "mock-reload-seed-04",
+        bindingIds: [(await repo.getRun("mock-reload-seed-04")).targets[0]!.bindingId]
+      })
+    ).rejects.toThrow(/恢复基线/);
+    await expect(
+      repo.promoteToDrafts({
+        runId: "mock-reload-seed-02",
+        bindingIds: [(await repo.getRun("mock-reload-seed-02")).targets[0]!.bindingId]
+      })
+    ).rejects.toThrow(/不能晋升/);
+  });
+
   it("provides stable bridge seams matching the seeded device identifiers", async () => {
     const seams = createMockDtsReloadBridgeSeams();
     expect(seams.bridges[0]).toMatchObject({ id: MOCK_DTS_RELOAD_BRIDGE_ID });

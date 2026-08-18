@@ -998,6 +998,19 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     deferralReason: "Browser Playwright automation is pending; unit coverage and playwright-cli evidence land with TD-064."
   },
   {
+    id: "DTS-RELOAD-PROMOTE-001",
+    priority: "P1",
+    area: "debugging",
+    route: "/dts-reload",
+    roles: ["Hardware Committer", "Admin"],
+    action: "Promote selected stored debug values from a successful ordinary reload run into parameter drafts, then stop (no change request, no auto-submit).",
+    coverage: "future",
+    acceptanceIds: ["DTS-RELOAD-PROMOTE-001"],
+    specFiles: ["e2e/acceptance/dts-reload-promote.acceptance.spec.ts"],
+    assertions: ["ui", "api"],
+    deferralReason: "Browser Playwright automation is pending; API and page unit coverage land with TD-063."
+  },
+  {
     id: "HDC-LAB-001",
     priority: "P1",
     area: "debugging",

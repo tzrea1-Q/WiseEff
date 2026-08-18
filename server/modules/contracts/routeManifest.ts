@@ -726,6 +726,13 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "dtsReload.promoteToDrafts",
+    method: "POST",
+    path: "/api/v1/dts-reload/runs/:runId/promote-to-drafts",
+    module: "dts-reload",
+    stability: "mvp"
+  },
+  {
     id: "dtsReload.getRun",
     method: "GET",
     path: "/api/v1/dts-reload/runs/:runId",

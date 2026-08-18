@@ -168,6 +168,7 @@ M2 日志与 M3 调试运行时/catalog API 以认证用户的 `organization_id`
 | `GET` | `/api/v1/dts-reload/runs` / `.../:runId` | 查看路径 | 历史与含重载快照的详情 |
 | `GET` | `/api/v1/dts-reload/residue` | 查看路径 | 设备残留记账 |
 | `POST` | `/api/v1/dts-reload/projects/:projectId/restore-baseline` | `debugging:dts-reload` | 启动恢复基线运行 |
+| `POST` | `/api/v1/dts-reload/runs/:runId/promote-to-drafts` | 重载读取门加 `parameter:edit`，并具备 `debugging:dts-reload` 或 `admin:access`。仅人类 actor（`actorType` 须诚实；Agent 拒绝）。 | 把所选已存调试值经 `createBindingDraft` 写成 `parameter_drafts` 后停止。Body `{ bindingIds, unverifiableAcknowledged? }`。普通 `verified` 运行，或带 `unverifiableAcknowledged: true` 的普通 `unverifiable` 运行。**不**创建变更请求、不自动提交、不把调试值写进 binding。返回草稿 id 与 `/parameters?project=` 工作台深链。里程碑审计 `reload-value-promoted-to-draft`。 |
 | `*` | `/api/v1/dts-reload/configuration` | `debugging:admin` | 组织级重载配置默认值 |
 
 请求/响应 schema 以已提交的 OpenAPI（`docs/generated/openapi.json`）为准。

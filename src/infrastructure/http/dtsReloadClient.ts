@@ -3,7 +3,9 @@ import type {
   StartDtsReloadRunInput,
   DeployDtsReloadRunInput,
   RestoreDtsReloadBaselineInput,
-  ListDtsReloadRunsInput
+  ListDtsReloadRunsInput,
+  PromoteDtsReloadRunToDraftsInput,
+  PromoteDtsReloadRunToDraftsResult
 } from "@/application/ports/DtsReloadRepository";
 import type {
   DtsReloadCandidate,
@@ -59,6 +61,10 @@ function runPath(runId: string) {
 
 function deployPath(runId: string) {
   return `${runPath(runId)}/deploy`;
+}
+
+function promoteToDraftsPath(runId: string) {
+  return `${runPath(runId)}/promote-to-drafts`;
 }
 
 function artifactPath(runId: string) {
@@ -118,6 +124,17 @@ export function createHttpDtsReloadRepository(options: HttpDtsReloadRepositoryOp
 
     async getRun(runId: string) {
       const response = await apiClient.get<ItemEnvelope<DtsReloadRun>>(runPath(runId));
+      return response.item;
+    },
+
+    async promoteToDrafts(input: PromoteDtsReloadRunToDraftsInput) {
+      const response = await apiClient.post<ItemEnvelope<PromoteDtsReloadRunToDraftsResult>>(
+        promoteToDraftsPath(input.runId),
+        {
+          bindingIds: input.bindingIds,
+          ...(input.unverifiableAcknowledged ? { unverifiableAcknowledged: true } : {})
+        }
+      );
       return response.item;
     },
 

@@ -51,6 +51,7 @@
 - `DTS-RELOAD-RESIDUE-001`：设备写后终端记录残留。验收 spec 断言残留已记录且可读；补偿性恢复运行与"仅成功时清除"规则由服务端测试断言。人工浏览器证据 `work/ui-checks/288-*`。
 - `DTS-RELOAD-DEPLOY-HW-001`：真实 HDC 目标经已配对本地桥部署重载 overlay（条件覆盖，非阻塞）。
 - `DTS-RELOAD-HANDOFF-001`：参数工作台把已选 binding 集带到 `/dts-reload?project=&bindingIds=`，工程师不必重搜；重载页过滤候选且不自动填入本轮托盘（单元覆盖已有；浏览器自动化待补）。
+- `DTS-RELOAD-PROMOTE-001`：已验证或经确认的不可验证普通重载运行，把所选已存调试值写成 `parameter_drafts` 后停止；不创建变更请求（单元覆盖已有；浏览器自动化待补）。
 - `BRIDGE-WIN-001`：`/node-debugging` 的 Windows 优先本地 Bridge 面板可覆盖缺失安装、未配对、未启动、在线无设备与在线目标状态，并展示同源 Windows 下载入口。
 - `BRIDGE-TOOLS-001`：Bridge 已连接但 `tools.adb.available: false` 时，Step ③ 显示缺少 ADB 与 **安装调试工具** CTA（非「Bridge 未安装」）。覆盖：`src/NodeDebuggingPage.test.tsx`。
 - `PARAM-HOME-001`：`/parameter-home` 通过 `ParameterDashboardRepository` 加载 summary/hotspots API 数据，并支持页面内时间窗口与热榜维度切换（`e2e/acceptance/parameter-home.acceptance.spec.ts`）。

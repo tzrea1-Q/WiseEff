@@ -22,10 +22,12 @@ import {
   startReloadRun,
   startRestoreBaselineRun
 } from "./service";
+import { promoteReloadRunToDrafts } from "./promote";
 import {
   deployReloadRunBodySchema,
   listReloadRunsQuerySchema,
   projectIdParamsSchema,
+  promoteReloadRunToDraftsBodySchema,
   residueQuerySchema,
   restoreBaselineBodySchema,
   runIdParamsSchema,
@@ -221,6 +223,25 @@ export function registerDtsReloadRoutes(
       { requestId: request.requestId }
     );
     return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v1/dts-reload/runs/:runId/promote-to-drafts", async (request) => {
+    const db = requireDb(options.db);
+    const objectStore = requireObjectStore(options.objectStore);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(runIdParamsSchema, request.params);
+    const body = parseWithSchema(promoteReloadRunToDraftsBodySchema, request.body);
+    const item = await promoteReloadRunToDrafts(
+      db,
+      auth,
+      {
+        runId: params.runId,
+        bindingIds: body.bindingIds,
+        unverifiableAcknowledged: body.unverifiableAcknowledged
+      },
+      { requestId: request.requestId, objectStore }
+    );
+    return { status: 201, body: { item } };
   });
 
   router.get("/api/v1/dts-reload/runs/:runId", async (request) => {

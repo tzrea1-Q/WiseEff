@@ -5,6 +5,7 @@ import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepositor
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
 import type { KnowledgeCapability } from "@/domain/knowledge/rules";
 import { isReloadRunDistillable } from "@/domain/knowledge/distillReload";
+import { isReloadRunPromotable } from "@/domain/dtsReload/promote";
 import { dtsReloadBlockReasonLabels } from "@/domain/dtsReload/types";
 import type { DtsReloadCandidate } from "@/domain/dtsReload/types";
 import { describeReloadValueShapeAuthoring } from "@/domain/dtsReload/valueShape";
@@ -67,6 +68,8 @@ export type DtsReloadPageProps = {
   /** Resolved per runtime mode by the composition root (ADR-0002); never null. */
   repository: DtsReloadRepository;
   canStartRun: boolean;
+  /** Reload write or Admin plus parameter:edit; UI gate only. */
+  canPromoteToDrafts?: boolean;
   bridges?: DtsReloadBridgeOption[];
   listBridges?: () => Promise<DtsReloadBridgeOption[]>;
   /** Optional local health probe — defaults to deviceBridgeClient.probeLocalBridgeHealth. */
@@ -96,6 +99,7 @@ export function DtsReloadPage({
   initialProjectId,
   repository,
   canStartRun,
+  canPromoteToDrafts = false,
   bridges: bridgesProp,
   listBridges,
   probeBridgeHealth,
@@ -179,6 +183,9 @@ export function DtsReloadPage({
   const [detectingTargets, setDetectingTargets] = useState(false);
   const [distilPending, setDistilPending] = useState(false);
   const [distilError, setDistilError] = useState("");
+  const [promotePending, setPromotePending] = useState(false);
+  const [promoteError, setPromoteError] = useState("");
+  const [promoteConfirmOpen, setPromoteConfirmOpen] = useState(false);
   const openedInitialRunRef = useRef(false);
 
   const selectedBridge = useMemo(
@@ -445,8 +452,47 @@ export function DtsReloadPage({
     }
   }, [distilPending, knowledgeRepository, onNavigate, run]);
 
+  const canPromoteRun = Boolean(canPromoteToDrafts && onNavigate && run && isReloadRunPromotable(run));
+  const executePromote = useCallback(
+    async (unverifiableAcknowledged?: boolean) => {
+      if (!onNavigate || !run || promotePending) {
+        return;
+      }
+      setPromotePending(true);
+      setPromoteError("");
+      try {
+        const result = await repository.promoteToDrafts({
+          runId: run.id,
+          bindingIds: run.targets.map((target) => target.bindingId),
+          ...(unverifiableAcknowledged ? { unverifiableAcknowledged: true } : {})
+        });
+        setPromoteConfirmOpen(false);
+        onNavigate(result.workbenchHref);
+      } catch (error) {
+        setPromoteError(
+          error instanceof Error && error.message ? `晋升为草稿失败:${error.message}` : "晋升为草稿失败,请稍后重试"
+        );
+      } finally {
+        setPromotePending(false);
+      }
+    },
+    [onNavigate, promotePending, repository, run]
+  );
+  const onPromote = useCallback(() => {
+    if (!run || !canPromoteRun) {
+      return;
+    }
+    if (run.status === "unverifiable") {
+      setPromoteConfirmOpen(true);
+      return;
+    }
+    void executePromote();
+  }, [canPromoteRun, executePromote, run]);
+
   useEffect(() => {
     setDistilError("");
+    setPromoteError("");
+    setPromoteConfirmOpen(false);
   }, [run?.id]);
 
   const confirmRun = pendingDeployRun ?? run;
@@ -920,6 +966,11 @@ export function DtsReloadPage({
                 {distilError}
               </p>
             ) : null}
+            {promoteError ? (
+              <p role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-950">
+                {promoteError}
+              </p>
+            ) : null}
             <RunResultSection
               run={run}
               deviceId={deviceId}
@@ -932,6 +983,8 @@ export function DtsReloadPage({
               onDeploy={() => session.openDeployConfirm(run)}
               onDistil={canDistilRun ? () => void onDistil() : undefined}
               distilPending={distilPending}
+              onPromote={canPromoteRun ? onPromote : undefined}
+              promotePending={promotePending}
             />
           </>
         ) : null}
@@ -1030,6 +1083,19 @@ export function DtsReloadPage({
           error={restoreError}
           onCancel={() => session.closeRestoreConfirm()}
           onConfirm={() => void session.confirmRestore(repository)}
+        />
+
+        <ConfirmDialog
+          open={promoteConfirmOpen}
+          title="确认晋升不可验证的运行"
+          description="平台未能确认驱动观察到这些调试值。晋升只会创建参数草稿，不会提交变更请求，也不会改写库中的当前值。"
+          confirmLabel="晋升为草稿"
+          acknowledgement="我理解本次运行不可验证，仍要将调试值写成草稿"
+          pending={promotePending}
+          pendingLabel="晋升中…"
+          error={promoteError}
+          onCancel={() => setPromoteConfirmOpen(false)}
+          onConfirm={() => void executePromote(true)}
         />
       </div>
     </div>

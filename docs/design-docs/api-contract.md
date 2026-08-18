@@ -128,6 +128,7 @@ Dedicated module under `/api/v1/dts-reload/*` (not the retired `/api/v1/debuggin
 | `GET` | `/api/v1/dts-reload/runs` / `.../:runId` | view path | History and detail including reload snapshot |
 | `GET` | `/api/v1/dts-reload/residue` | view path | Device residue bookkeeping |
 | `POST` | `/api/v1/dts-reload/projects/:projectId/restore-baseline` | `debugging:dts-reload` | Start compensating restore-baseline run |
+| `POST` | `/api/v1/dts-reload/runs/:runId/promote-to-drafts` | Reload read gate plus `parameter:edit`, and either `debugging:dts-reload` or `admin:access`. Human actor only (`actorType` honest; Agent refused). | Promote selected stored debug values into `parameter_drafts` via `createBindingDraft`, then stop. Body `{ bindingIds, unverifiableAcknowledged? }`. Ordinary `verified` runs, or ordinary `unverifiable` with `unverifiableAcknowledged: true`. Does **not** create change requests, submit rounds, or write the debug value into the binding. Returns draft ids and a `/parameters?project=` workbench href. Audited as milestone `reload-value-promoted-to-draft`. |
 | `*` | `/api/v1/dts-reload/configuration` | `debugging:admin` | Organisation reload-configuration defaults |
 
 Committed OpenAPI (`docs/generated/openapi.json`) is authoritative for request/response schemas.

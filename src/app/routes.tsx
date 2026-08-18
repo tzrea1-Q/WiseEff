@@ -86,6 +86,7 @@ export type PageProps = {
   runtime?: AppRuntime;
   knowledgeCapability?: KnowledgeCapability;
   canStartDtsReload?: boolean;
+  canPromoteDtsReloadDrafts?: boolean;
   runtimeMode?: WiseEffRuntimeMode;
   dashboardState?: DashboardState;
   dashboardRuntime?: ReturnType<typeof createParameterDashboardRuntime>;
@@ -131,6 +132,7 @@ export function PageRouter({
   runtime,
   knowledgeCapability,
   canStartDtsReload = false,
+  canPromoteDtsReloadDrafts = false,
   runtimeMode,
   dashboardState,
   dashboardRuntime,
@@ -377,6 +379,7 @@ export function PageRouter({
           initialProjectId={handoff.projectId ?? state.activeProjectId}
           repository={dtsReloadRepository ?? resolveDtsReloadRepository(runtimeMode)}
           canStartRun={canStartDtsReload}
+          canPromoteToDrafts={canPromoteDtsReloadDrafts}
           knowledgeRepository={knowledgeRepository}
           knowledgeCapability={knowledgeCapability}
           onNavigate={onNavigate}

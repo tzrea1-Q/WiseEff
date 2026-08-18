@@ -24,7 +24,7 @@ import type {
 import type { DtsWorkbenchTreeNode } from "@/application/parameters/buildDtsTopologyTree";
 import type { DeviceBridgeRecord, LocalBridgeHealthState } from "@/infrastructure/http/deviceBridgeClient";
 import type { LocalBridgeProbeResult } from "@/infrastructure/http/bridgeConnectLauncher";
-import { BookPlus } from "lucide-react";
+import { BookPlus, FilePlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const BRIDGE_UPGRADE_ENTRY_PATH = "/node-debugging";
@@ -414,7 +414,9 @@ export function RunResultSection({
   onDownload,
   onDeploy,
   onDistil,
-  distilPending = false
+  distilPending = false,
+  onPromote,
+  promotePending = false
 }: {
   run: DtsReloadRun;
   deviceId: string;
@@ -428,6 +430,9 @@ export function RunResultSection({
   /** Distil-to-knowledge handoff; the page gates it to terminal runs + knowledge:edit. */
   onDistil?: () => void;
   distilPending?: boolean;
+  /** Promote stored debug values into parameter drafts; stops before submit/CR. */
+  onPromote?: () => void;
+  promotePending?: boolean;
 }) {
   return (
     <section className="debug-table dts-reload-run-result" aria-live="polite">
@@ -524,7 +529,7 @@ export function RunResultSection({
           </section>
         ) : null}
 
-        {run.artifact || (canRetryDeploy && canStartRun) || onDistil ? (
+        {run.artifact || (canRetryDeploy && canStartRun) || onDistil || onPromote ? (
           <section className="dts-reload-run-slice dts-reload-run-slice--actions" aria-label="产物与操作">
             <h3 className="dts-reload-run-slice__title">产物与操作</h3>
             {run.artifact ? (
@@ -552,6 +557,18 @@ export function RunResultSection({
               >
                 <BookPlus size={16} strokeWidth={1.9} aria-hidden="true" />
                 沉淀为知识
+              </button>
+            ) : null}
+            {onPromote ? (
+              <button
+                type="button"
+                className="button subtle"
+                disabled={promotePending}
+                aria-busy={promotePending || undefined}
+                onClick={onPromote}
+              >
+                <FilePlus size={16} strokeWidth={1.9} aria-hidden="true" />
+                晋升为草稿
               </button>
             ) : null}
             {canRetryDeploy && canStartRun ? (
