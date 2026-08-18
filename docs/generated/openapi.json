@@ -4497,6 +4497,59 @@
         }
       }
     },
+    "/api/v2/parameter-specs/{specId}/property-key-cutover/preview": {
+      "post": {
+        "operationId": "parameterSpecs.previewPropertyKeyCutover",
+        "summary": "Preview a referenced property-key source cutover without writing catalog or source",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "specId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewPropertyKeyCutoverRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PropertyKeyCutoverPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/projects/{projectId}/config-sets/{configSetId}/revisions": {
       "get": {
         "operationId": "parameterTopology.listConfigRevisions",
@@ -12620,6 +12673,14 @@
       "RenameParameterSpecPropertyKeyRequest": {
         "type": "object",
         "x-wiseeff-schema": "RenameParameterSpecPropertyKeyRequest"
+      },
+      "PreviewPropertyKeyCutoverRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "PreviewPropertyKeyCutoverRequest"
+      },
+      "PropertyKeyCutoverPreviewResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "PropertyKeyCutoverPreviewResponse"
       },
       "ConfigRevisionListResponse": {
         "type": "object",

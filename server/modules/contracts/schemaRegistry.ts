@@ -649,6 +649,17 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
       "409": "ErrorResponse"
     }
   },
+  "parameterSpecs.previewPropertyKeyCutover": {
+    summary: "Preview a referenced property-key source cutover without writing catalog or source",
+    tags: ["parameters"],
+    requestBody: "PreviewPropertyKeyCutoverRequest",
+    responseBody: "PropertyKeyCutoverPreviewResponse",
+    additionalResponses: {
+      "400": "ErrorResponse",
+      "403": "ErrorResponse",
+      "404": "ErrorResponse"
+    }
+  },
   "parameterTopology.listConfigRevisions": {
     summary: "List config revisions for a project config set",
     tags: ["parameters"],

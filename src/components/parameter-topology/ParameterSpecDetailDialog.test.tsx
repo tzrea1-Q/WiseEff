@@ -410,7 +410,11 @@ describe("ParameterSpecDetailDialog identity correction (PARAM-SPEC-IDENTITY)", 
     const rename = screen.getByRole("button", { name: "修正属性键" });
     expect(rename).toBeDisabled();
     expect(rename).toHaveAttribute("title", "已有 1 处引用，不能改属性键");
+    expect(screen.getByLabelText("属性键")).toHaveAttribute("readonly");
     expect(screen.getByRole("button", { name: "修正归属" })).toBeEnabled();
+    fireEvent.click(rename);
+    expect(screen.queryByRole("dialog", { name: "修正属性键" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /源文件|cutover|改写属性键/i })).not.toBeInTheDocument();
   });
 
   it("offers 修正属性键 when usageCount is 0", () => {
