@@ -85,6 +85,11 @@ export type ModalDialogProps = {
   backdropClassName?: string;
   /** Set when the card renders an element carrying `descriptionId`. */
   describedBy?: boolean;
+  /**
+   * Focus this element on open when it is present and visible. Falls back to the
+   * card so a missing or hidden target never leaves focus on the background.
+   */
+  initialFocusRef?: { readonly current: HTMLElement | null };
   children: ReactNode | ((ids: ModalDialogRenderProps) => ReactNode);
 };
 
@@ -100,6 +105,7 @@ export function ModalDialog({
   className,
   backdropClassName,
   describedBy = false,
+  initialFocusRef,
   children
 }: ModalDialogProps) {
   const generatedId = useId();
@@ -138,13 +144,18 @@ export function ModalDialog({
       return undefined;
     }
     const previouslyFocused = document.activeElement as HTMLElement | null;
-    cardRef.current?.focus();
+    const preferred = initialFocusRef?.current;
+    if (preferred && isVisible(preferred)) {
+      preferred.focus();
+    } else {
+      cardRef.current?.focus();
+    }
     return () => {
       if (previouslyFocused && document.contains(previouslyFocused)) {
         previouslyFocused.focus();
       }
     };
-  }, [open]);
+  }, [initialFocusRef, open]);
 
   useEffect(() => {
     if (!open || !dismissible) {

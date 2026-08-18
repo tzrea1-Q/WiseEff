@@ -840,9 +840,11 @@ describe("ApiProjectTopologyWorkspace", () => {
       reason: "Current Aurora draft after stale response settled"
     });
     await waitFor(() => expect(screen.getByRole("region", { name: "参数修改提交" })).toBeVisible());
-    expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
-      "data-revision-id",
-      "rev-aurora-current"
+    await waitFor(() =>
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+        "data-revision-id",
+        "rev-aurora-current"
+      )
     );
   });
 
@@ -925,9 +927,11 @@ describe("ApiProjectTopologyWorkspace", () => {
       reason: "Current Aurora draft after stale error settled"
     });
     await waitFor(() => expect(screen.getByRole("region", { name: "参数修改提交" })).toBeVisible());
-    expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
-      "data-revision-id",
-      "rev-aurora-current"
+    await waitFor(() =>
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+        "data-revision-id",
+        "rev-aurora-current"
+      )
     );
   });
 
@@ -1024,9 +1028,11 @@ describe("ApiProjectTopologyWorkspace", () => {
     const tray = await screen.findByRole("region", { name: "参数修改提交" });
     expect(within(tray).getByText(/^本轮 2 项$/)).toBeVisible();
     expect(within(tray).queryByText("技术身份")).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
-      "data-revision-id",
-      "working-tip-2"
+    await waitFor(() =>
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+        "data-revision-id",
+        "working-tip-2"
+      )
     );
     const submitButton = within(tray).getByRole("button", { name: /^提交审核/ });
     await waitFor(() => expect(submitButton).toBeEnabled());

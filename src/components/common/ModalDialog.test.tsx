@@ -69,6 +69,72 @@ describe("ModalDialog", () => {
     expect(document.activeElement).toBe(trigger);
   });
 
+  it("focuses initialFocusRef on open when that element is present", () => {
+    const initialFocusRef: { current: HTMLElement | null } = { current: null };
+
+    function FocusTargetHarness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <div>
+          <button type="button" onClick={() => setOpen(true)}>
+            打开
+          </button>
+          <ModalDialog
+            open={open}
+            onDismiss={() => setOpen(false)}
+            className="confirm-dialog"
+            initialFocusRef={initialFocusRef}
+          >
+            {({ titleId }) => (
+              <>
+                <h2 id={titleId}>测试弹窗</h2>
+                <button type="button">第一项</button>
+                <textarea
+                  ref={(node) => {
+                    initialFocusRef.current = node;
+                  }}
+                  aria-label="目标值"
+                />
+              </>
+            )}
+          </ModalDialog>
+        </div>
+      );
+    }
+
+    render(<FocusTargetHarness />);
+    fireEvent.click(screen.getByRole("button", { name: "打开" }));
+    expect(screen.getByRole("textbox", { name: "目标值" })).toHaveFocus();
+  });
+
+  it("falls back to the card when initialFocusRef is missing or hidden", () => {
+    const initialFocusRef: { current: HTMLElement | null } = { current: null };
+
+    function HiddenFocusHarness() {
+      return (
+        <ModalDialog
+          open
+          onDismiss={() => undefined}
+          className="confirm-dialog"
+          initialFocusRef={initialFocusRef}
+        >
+          {({ titleId }) => (
+            <>
+              <h2 id={titleId}>测试弹窗</h2>
+              <textarea hidden ref={(node) => {
+                initialFocusRef.current = node;
+              }} aria-label="隐藏目标" />
+              <button type="button">可见按钮</button>
+            </>
+          )}
+        </ModalDialog>
+      );
+    }
+
+    render(<HiddenFocusHarness />);
+    expect(screen.getByRole("dialog", { name: "测试弹窗" })).toHaveFocus();
+  });
+
   it("keeps Tab inside the dialog", () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole("button", { name: "打开" }));
