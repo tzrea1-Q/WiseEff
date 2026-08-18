@@ -152,6 +152,7 @@ export function OrganizationSpecsArea({
           search={search}
           pathname={pathname}
           isPlatformSuperAdmin={isPlatformSuperAdmin}
+          onNavigate={onNavigate}
           onOpenIdentityMapping={
             hasMappingSurface ? () => goToSubView("identity-mapping") : undefined
           }

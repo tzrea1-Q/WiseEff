@@ -286,6 +286,8 @@ export const propertyKeyCutoverItemDtoSchema = z.object({
   locationStatus: propertyKeyCutoverLocationStatusSchema.nullable(),
   incompatibilityCode: z.string().nullable(),
   fileName: z.string().nullable(),
+  fileId: z.string().nullable(),
+  configSetId: z.string().nullable(),
   nodePath: z.string().nullable(),
   stagedRewrite: stagedPropertyKeyRewriteSchema.nullable(),
 });
@@ -317,6 +319,7 @@ export const propertyKeyCutoverPreviewLocationSchema = z.object({
   fileId: z.string().nullable(),
   fileVersionId: z.string().nullable(),
   fileName: z.string().nullable(),
+  configSetId: z.string().nullable(),
   nodePath: z.string().nullable(),
   rawValue: z.string().nullable(),
   fromKey: nonEmptyString,

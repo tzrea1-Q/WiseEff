@@ -284,6 +284,7 @@ export type ParameterSpecLibraryProps = {
   onPrepareCutover?: (specId: string) => void | Promise<void>;
   onFinalizeCutover?: (input: { specId: string; reason: string }) => void | Promise<void>;
   propertyKeyCutover?: import("./PropertyKeyCutoverPanel").PropertyKeyCutoverActions;
+  onNavigate?: (path: string) => void;
   savePending?: boolean;
   saveError?: string | null;
   onCreateSpec?: () => void;
@@ -318,6 +319,7 @@ export function ParameterSpecLibrary({
   onPrepareCutover,
   onFinalizeCutover,
   propertyKeyCutover,
+  onNavigate,
   savePending = false,
   saveError = null,
   onCreateSpec,
@@ -681,6 +683,7 @@ export function ParameterSpecLibrary({
               : undefined
           }
           propertyKeyCutover={propertyKeyCutover}
+          onNavigate={onNavigate}
           onSave={
             onSaveSpec ??
             (onActivateDraftSpec

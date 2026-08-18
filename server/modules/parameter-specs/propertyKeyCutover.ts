@@ -63,6 +63,7 @@ export type PropertyKeyCutoverPreviewLocation = {
   fileId: string | null;
   fileVersionId: string | null;
   fileName: string | null;
+  configSetId: string | null;
   nodePath: string | null;
   rawValue: string | null;
   fromKey: string;
@@ -104,9 +105,18 @@ export type PropertyKeyCutoverItemDto = {
   locationStatus: PropertyKeySourceLocationStatus | null;
   incompatibilityCode: string | null;
   fileName: string | null;
+  fileId: string | null;
+  configSetId: string | null;
   nodePath: string | null;
   stagedRewrite: StagedPropertyKeyRewrite | null;
 };
+
+export function resolveLiveStagedRewrite(
+  staged: StagedPropertyKeyRewrite,
+  live: { status: string } | null,
+): StagedPropertyKeyRewrite {
+  return { ...staged, status: live?.status ?? "missing" };
+}
 
 export type PropertyKeyCutoverRunDto = {
   id: string;
@@ -196,11 +206,13 @@ type LocationRow = {
   from_file_id: string | null;
   from_file_version_id: string | null;
   from_file_name: string | null;
+  from_config_set_id: string | null;
   from_node_path: string | null;
   to_occurrence_id: string | null;
   to_file_id: string | null;
   to_file_version_id: string | null;
   to_file_name: string | null;
+  to_config_set_id: string | null;
   to_node_path: string | null;
 };
 
@@ -236,6 +248,7 @@ async function loadPreviewLocations(
         po.file_version_id,
         pf.id as file_id,
         pf.file_name,
+        pf.config_set_id,
         no.node_path
       from tip
       inner join dts_logical_node_revisions lnr
@@ -257,6 +270,7 @@ async function loadPreviewLocations(
         po.file_version_id,
         pf.id as file_id,
         pf.file_name,
+        pf.config_set_id,
         no.node_path
       from tip
       inner join dts_logical_node_revisions lnr
@@ -281,11 +295,13 @@ async function loadPreviewLocations(
       from_occ.file_id as from_file_id,
       from_occ.file_version_id as from_file_version_id,
       from_occ.file_name as from_file_name,
+      from_occ.config_set_id as from_config_set_id,
       from_occ.node_path as from_node_path,
       to_occ.property_occurrence_id as to_occurrence_id,
       to_occ.file_id as to_file_id,
       to_occ.file_version_id as to_file_version_id,
       to_occ.file_name as to_file_name,
+      to_occ.config_set_id as to_config_set_id,
       to_occ.node_path as to_node_path
     from tip
     left join from_occ on from_occ.binding_id = tip.binding_id
@@ -311,6 +327,7 @@ async function loadPreviewLocations(
       fileId: hasFrom ? row.from_file_id : row.to_file_id,
       fileVersionId: hasFrom ? row.from_file_version_id : row.to_file_version_id,
       fileName: hasFrom ? row.from_file_name : row.to_file_name,
+      configSetId: hasFrom ? row.from_config_set_id : row.to_config_set_id,
       nodePath: hasFrom ? row.from_node_path : row.to_node_path,
       rawValue: row.raw_value,
       fromKey: input.fromKey,
@@ -445,6 +462,7 @@ function locationDetails(location: PropertyKeyCutoverPreviewLocation): Record<st
     fileId: location.fileId,
     fileVersionId: location.fileVersionId,
     fileName: location.fileName,
+    configSetId: location.configSetId,
     nodePath: location.nodePath,
     rawValue: location.rawValue,
     fromKey: location.fromKey,
@@ -613,6 +631,36 @@ async function loadRunDto(
     organizationId: auth.organization.id,
     specIds: [run.parameter_spec_id],
   });
+  const mappedItems = items.rows.map((row) => {
+    const details = parseDetails(row.details);
+    return {
+      id: row.id,
+      bindingId: row.binding_id,
+      projectId: row.project_id,
+      status: row.status,
+      locationStatus: row.location_status,
+      incompatibilityCode: row.incompatibility_code,
+      fileName: typeof details.fileName === "string" ? details.fileName : null,
+      fileId: typeof details.fileId === "string" ? details.fileId : null,
+      configSetId: typeof details.configSetId === "string" ? details.configSetId : null,
+      nodePath: typeof details.nodePath === "string" ? details.nodePath : null,
+      stagedRewrite: parseStagedRewrite(details),
+    };
+  });
+  const hydrated = await Promise.all(
+    mappedItems.map(async (item) => {
+      if (!item.stagedRewrite || !item.projectId) return item;
+      const live = await getParameterFileCandidateById(tx, {
+        organizationId: auth.organization.id,
+        projectId: item.projectId,
+        candidateId: item.stagedRewrite.id,
+      });
+      return {
+        ...item,
+        stagedRewrite: resolveLiveStagedRewrite(item.stagedRewrite, live),
+      };
+    }),
+  );
   return {
     id: run.id,
     parameterSpecId: run.parameter_spec_id,
@@ -622,22 +670,9 @@ async function loadRunDto(
     referenceCount: referenceCounts.get(run.parameter_spec_id) ?? 0,
     writesCatalog: run.status === "finalized",
     writesSource: false,
-    stagedSource: items.rows.some((row) => Boolean(parseStagedRewrite(parseDetails(row.details)))),
+    stagedSource: hydrated.some((item) => Boolean(item.stagedRewrite)),
     startBlockers,
-    items: items.rows.map((row) => {
-      const details = parseDetails(row.details);
-      return {
-        id: row.id,
-        bindingId: row.binding_id,
-        projectId: row.project_id,
-        status: row.status,
-        locationStatus: row.location_status,
-        incompatibilityCode: row.incompatibility_code,
-        fileName: typeof details.fileName === "string" ? details.fileName : null,
-        nodePath: typeof details.nodePath === "string" ? details.nodePath : null,
-        stagedRewrite: parseStagedRewrite(details),
-      };
-    }),
+    items: hydrated,
   };
 }
 

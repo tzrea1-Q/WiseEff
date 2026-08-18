@@ -1,13 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
+import {
+  formatPropertyKeyCutoverWorkbenchHref,
+  presentFileCandidateHandoffStatus,
+  propertyKeyCutoverHandoffIsOpenable,
+  propertyKeyCutoverHandoffLinkLabel,
+} from "@/application/parameters/propertyKeyCutoverHandoff";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import type {
+  PropertyKeyCutoverItem,
   PropertyKeyCutoverPreview,
   PropertyKeyCutoverRun,
   PropertyKeyCutoverStartBlocker,
 } from "@/domain/parameter-topology/types";
 import { presentError } from "@/infrastructure/http/presentError";
+import { handleSpaLinkClick } from "@/linear-template/spaLinkNavigation";
 
 const NESTED_CONFIRM_BACKDROP = "param-admin-modal-backdrop param-admin-modal-backdrop--nested";
 
@@ -23,6 +31,7 @@ export type PropertyKeyCutoverPanelProps = {
   currentKey: string;
   pending?: boolean;
   actions: PropertyKeyCutoverActions;
+  onNavigate?: (path: string) => void;
 };
 
 function blockerLabel(blocker: PropertyKeyCutoverStartBlocker) {
@@ -65,10 +74,33 @@ function itemLabel(status: string) {
   }
 }
 
+function itemStatusLabel(item: PropertyKeyCutoverItem) {
+  if (item.stagedRewrite?.kind === "file-candidate") {
+    return presentFileCandidateHandoffStatus(item.stagedRewrite.status);
+  }
+  return itemLabel(item.status);
+}
+
+function handoffGuidance(run: PropertyKeyCutoverRun, sourcesMoved: boolean) {
+  const candidateStatuses = run.items
+    .map((item) => item.stagedRewrite?.status)
+    .filter((status): status is string => Boolean(status));
+  if (sourcesMoved) return PARAMETER_ADMIN_UI.propertyKeyCutoverHandoffReadyHint;
+  if (candidateStatuses.includes("abandoned")) {
+    return PARAMETER_ADMIN_UI.propertyKeyCutoverHandoffAbandonedHint;
+  }
+  if (candidateStatuses.includes("active")) {
+    return PARAMETER_ADMIN_UI.propertyKeyCutoverHandoffActivatedHint;
+  }
+  if (run.stagedSource) return PARAMETER_ADMIN_UI.propertyKeyCutoverStaged;
+  return null;
+}
+
 export function PropertyKeyCutoverPanel({
   currentKey,
   pending = false,
   actions,
+  onNavigate,
 }: PropertyKeyCutoverPanelProps) {
   const [nextKey, setNextKey] = useState("");
   const [reason, setReason] = useState("");
@@ -87,6 +119,7 @@ export function PropertyKeyCutoverPanel({
     (preview?.locations.length ?? 0) > 0 &&
     (preview?.locations.every((location) => location.status === "already-new-key") ?? false);
   const canFinalize = Boolean(run && run.status === "ready" && sourcesMoved);
+  const guidance = run ? handoffGuidance(run, sourcesMoved) : null;
   const loadOpenRun = actions.loadOpenRun;
   const loadOpenRunRef = useRef(loadOpenRun);
   loadOpenRunRef.current = loadOpenRun;
@@ -215,6 +248,24 @@ export function PropertyKeyCutoverPanel({
         >
           {PARAMETER_ADMIN_UI.propertyKeyCutoverFinalize}
         </button>
+        {loadOpenRun ? (
+          <button
+            type="button"
+            className="button subtle"
+            disabled={blocked}
+            onClick={() =>
+              void runAction(async () => {
+                const openRun = await loadOpenRun();
+                if (openRun) {
+                  setRun(openRun);
+                  setNextKey(openRun.toKey);
+                }
+              })
+            }
+          >
+            {PARAMETER_ADMIN_UI.propertyKeyCutoverRefreshStatus}
+          </button>
+        ) : null}
       </div>
       {localError ? (
         <p className="form-error" role="alert">
@@ -241,15 +292,41 @@ export function PropertyKeyCutoverPanel({
         </p>
       ) : null}
       {run ? (
-        <p className="form-hint">
-          {run.stagedSource ? PARAMETER_ADMIN_UI.propertyKeyCutoverStaged : null}
-          {run.items
-            .map(
-              (item) =>
-                `${item.fileName ?? PARAMETER_ADMIN_UI.propertyKeyCutoverUnnamedFile}（${itemLabel(item.status)}）`,
-            )
-            .join("；")}
-        </p>
+        <div className="param-admin-cutover-panel__handoff">
+          {guidance ? <p className="form-hint">{guidance}</p> : null}
+          <ul className="param-admin-cutover-panel__items">
+            {run.items.map((item) => {
+              const staged = item.stagedRewrite;
+              const href =
+                staged?.kind === "file-candidate" && propertyKeyCutoverHandoffIsOpenable(staged.status)
+                  ? formatPropertyKeyCutoverWorkbenchHref({
+                      projectId: item.projectId,
+                      configSetId: item.configSetId,
+                      candidateId: staged.id,
+                      fileId: item.fileId,
+                      nodePath: item.nodePath,
+                    })
+                  : null;
+              return (
+                <li key={item.id} className="param-admin-cutover-panel__item">
+                  <p className="form-hint">
+                    {item.fileName ?? PARAMETER_ADMIN_UI.propertyKeyCutoverUnnamedFile}
+                    （<span>{itemStatusLabel(item)}</span>）
+                  </p>
+                  {href ? (
+                    <a
+                      className="button subtle"
+                      href={href}
+                      onClick={(event) => handleSpaLinkClick(event, href, onNavigate)}
+                    >
+                      {propertyKeyCutoverHandoffLinkLabel(item.fileName, staged?.status)}
+                    </a>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       ) : null}
 
       {finalizeOpen ? (

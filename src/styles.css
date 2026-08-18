@@ -16701,6 +16701,28 @@ body.xiaoze-popup-resize-active {
   margin-top: var(--space-3);
 }
 
+.param-admin-cutover-panel__handoff {
+  margin-top: var(--space-3);
+}
+
+.param-admin-cutover-panel__items {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.param-admin-cutover-panel__item {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+}
+
+.param-admin-cutover-panel__item .form-hint {
+  margin: 0;
+}
+
 .param-admin-editor-dialog .shared-definition-panel,
 .param-admin-editor-dialog .project-value-matrix {
   border: 0;

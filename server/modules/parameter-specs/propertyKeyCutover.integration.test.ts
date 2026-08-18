@@ -11,10 +11,12 @@ import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testi
 import { makeTestAuthContext } from "../../testing/authContext";
 import { createMemoryObjectStore } from "../../testing/objectStore";
 import { ApiError } from "../../shared/http/errors";
+import { activateCandidate } from "../parameter-files/candidateService";
 import { getParameterFileCandidateById } from "../parameter-files/candidateRepository";
 import { getProjectParameterFileById } from "../parameter-files/repository";
 import {
   finalizePropertyKeySourceCutover,
+  getOpenPropertyKeySourceCutover,
   preparePropertyKeySourceCutover,
   previewPropertyKeySourceCutover,
   startPropertyKeySourceCutover,
@@ -791,6 +793,8 @@ describe.skipIf(!databaseAvailable)("property-key source cutover prepare staging
           kind: "file-candidate",
           status: "ready",
         }),
+        fileId: FILE_ID,
+        configSetId: CONFIG_SET_ID,
       }),
     ]);
 
@@ -817,6 +821,11 @@ describe.skipIf(!databaseAvailable)("property-key source cutover prepare staging
       dtsPropertyKey: FROM_KEY,
     });
 
+    expect(prepared.item.items[0]).toMatchObject({
+      fileId: FILE_ID,
+      fileName: "board.dts",
+    });
+
     await expect(
       finalizePropertyKeySourceCutover(db!, makeAuth(), {
         specId: SPEC_ID,
@@ -832,6 +841,84 @@ describe.skipIf(!databaseAvailable)("property-key source cutover prepare staging
     const finalized = await finalizePropertyKeySourceCutover(db!, makeAuth(), {
       specId: SPEC_ID,
       reason: "human merged the candidate into live source",
+    });
+    expect(finalized.item.status).toBe("finalized");
+    expect(await catalogKeys(db!)).toMatchObject({
+      specPropertyKey: TO_KEY,
+      dtsPropertyKey: TO_KEY,
+    });
+  });
+
+  it("GET reflects live candidate status after activate and still keeps catalog closed until finalize", async () => {
+    const objectStore = createMemoryObjectStore();
+    await seedRewritableBindingOnly(db!, objectStore);
+    await startPropertyKeySourceCutover(db!, makeAuth(), {
+      specId: SPEC_ID,
+      propertyKey: TO_KEY,
+      reason: "stage source rewrite",
+    });
+    const prepared = await preparePropertyKeySourceCutover(
+      db!,
+      makeAuth(),
+      { specId: SPEC_ID, reason: "stage drafts" },
+      {},
+      { objectStore },
+    );
+    const candidateId = prepared.item.items[0]?.stagedRewrite?.id;
+    expect(candidateId).toBeTruthy();
+
+    await expect(
+      finalizePropertyKeySourceCutover(db!, makeAuth(), {
+        specId: SPEC_ID,
+        reason: "activate has not happened",
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+    } satisfies Partial<ApiError>);
+
+    await activateCandidate(db!, objectStore, makeAuth(), {
+      projectId: PROJECT_ID,
+      candidateId: candidateId!,
+      expectedCurrentVersionId: FILE_VERSION_ID,
+    });
+
+    const opened = await getOpenPropertyKeySourceCutover(db!, makeAuth(), SPEC_ID);
+    expect(opened.item.items[0]).toMatchObject({
+      fileId: FILE_ID,
+      configSetId: CONFIG_SET_ID,
+      fileName: "board.dts",
+      stagedRewrite: {
+        kind: "file-candidate",
+        id: candidateId,
+        status: "active",
+      },
+    });
+    expect(await catalogKeys(db!)).toMatchObject({
+      specPropertyKey: FROM_KEY,
+      dtsPropertyKey: FROM_KEY,
+    });
+
+    const repreview = await previewPropertyKeySourceCutover(db!, makeAuth(), {
+      specId: SPEC_ID,
+      propertyKey: TO_KEY,
+    });
+    if (!repreview.item.locations.every((location) => location.status === "already-new-key")) {
+      await expect(
+        finalizePropertyKeySourceCutover(db!, makeAuth(), {
+          specId: SPEC_ID,
+          reason: "live occurrence still on the old key",
+        }),
+      ).rejects.toMatchObject({
+        code: "CONFLICT",
+        status: 409,
+      } satisfies Partial<ApiError>);
+      await rewriteOccurrenceToNewKey(db!);
+    }
+
+    const finalized = await finalizePropertyKeySourceCutover(db!, makeAuth(), {
+      specId: SPEC_ID,
+      reason: "source already uses the new key",
     });
     expect(finalized.item.status).toBe("finalized");
     expect(await catalogKeys(db!)).toMatchObject({

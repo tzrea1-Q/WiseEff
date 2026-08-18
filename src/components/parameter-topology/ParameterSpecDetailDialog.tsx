@@ -71,6 +71,7 @@ export type ParameterSpecDetailDialogProps = {
   onPrepareCutover?: () => void | Promise<void>;
   onFinalizeCutover?: (input: { reason: string }) => void | Promise<void>;
   propertyKeyCutover?: PropertyKeyCutoverActions;
+  onNavigate?: (path: string) => void;
   pending?: boolean;
   error?: string | null;
   /** Platform super admin may deprecate/restore platform-global definitions. */
@@ -98,6 +99,7 @@ export function ParameterSpecDetailDialog({
   onPrepareCutover,
   onFinalizeCutover,
   propertyKeyCutover,
+  onNavigate,
   pending = false,
   error = null,
   canDeprecateGlobal = false,
@@ -397,6 +399,7 @@ export function ParameterSpecDetailDialog({
               currentKey={detail.propertyKey}
               pending={pending}
               actions={propertyKeyCutover}
+              onNavigate={onNavigate}
             />
           ) : null}
           <ParameterSpecDetail
