@@ -257,7 +257,30 @@ describe("browser acceptance runner", () => {
 
     expect(workflows.find((workflow) => workflow.id === "A")).toMatchObject({ status: "passed" });
     expect(workflows.find((workflow) => workflow.id === "G")).toMatchObject({ status: "skipped" });
-    expect(workflows.find((workflow) => workflow.id === "H")).toMatchObject({ status: "skipped" });
+    expect(workflows.find((workflow) => workflow.id === "H")).toMatchObject({ status: "passed" });
+  });
+
+  it("does not mark a workflow skipped when planned stubs sit beside passing tests", () => {
+    const workflows = deriveBrowserAcceptanceWorkflowsFromPlaywrightReport(
+      {
+        suites: [
+          {
+            file: "e2e/acceptance/xiaoze-action.acceptance.spec.ts",
+            specs: [
+              { tests: [{ results: [{ status: "passed" }] }] },
+              { tests: [{ results: [{ status: "skipped" }] }] }
+            ]
+          },
+          {
+            file: "e2e/acceptance/xiaoze-perception.acceptance.spec.ts",
+            specs: [{ tests: [{ results: [{ status: "passed" }] }] }]
+          }
+        ]
+      },
+      "playwright-report/acceptance/index.html"
+    );
+
+    expect(workflows.find((workflow) => workflow.id === "G")).toMatchObject({ status: "passed" });
   });
 
   it("carries selected dotenv values into the Playwright command env", () => {
