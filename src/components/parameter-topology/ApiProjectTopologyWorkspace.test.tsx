@@ -840,9 +840,11 @@ describe("ApiProjectTopologyWorkspace", () => {
       reason: "Current Aurora draft after stale response settled"
     });
     await waitFor(() => expect(screen.getByRole("region", { name: "参数修改提交" })).toBeVisible());
-    expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
-      "data-revision-id",
-      "rev-aurora-current"
+    await waitFor(() =>
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+        "data-revision-id",
+        "rev-aurora-current"
+      )
     );
   });
 
@@ -925,9 +927,11 @@ describe("ApiProjectTopologyWorkspace", () => {
       reason: "Current Aurora draft after stale error settled"
     });
     await waitFor(() => expect(screen.getByRole("region", { name: "参数修改提交" })).toBeVisible());
-    expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
-      "data-revision-id",
-      "rev-aurora-current"
+    await waitFor(() =>
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+        "data-revision-id",
+        "rev-aurora-current"
+      )
     );
   });
 
