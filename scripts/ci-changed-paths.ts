@@ -100,7 +100,7 @@ export function runChangedPathClassification(args = process.argv.slice(2), stdin
   const writeGithub = args.includes("--github-output");
   const asJson = args.includes("--json");
   const paths = useStdin
-    ? readChangedPathsFromText(stdinText ?? readFileSync(0, "utf8"))
+    ? readChangedPathsFromText(stdinText ?? readFileSync("/dev/stdin", "utf8"))
     : args.filter((arg) => !arg.startsWith("--"));
   const decision = classifyChangedPaths(paths);
 

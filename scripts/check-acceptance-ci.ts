@@ -53,6 +53,12 @@ export const requiredAcceptanceCiArtifactPaths = [
 export const CI_SMOKE_TAG = "@ci-smoke";
 export const CI_SMOKE_TAG_MIN = 1;
 export const CI_SMOKE_TAG_MAX = 5;
+export const requiredSmokeSpecPaths = [
+  "e2e/acceptance/runtime-warmup.spec.ts",
+  "e2e/acceptance/shell-navigation.acceptance.spec.ts",
+  "e2e/acceptance/auth-runtime.acceptance.spec.ts",
+  "e2e/acceptance/parameter-home.acceptance.spec.ts"
+] as const;
 
 export type AcceptanceCiConfigurationInput = {
   packageJson: {
@@ -70,6 +76,7 @@ export type AcceptanceCiConfigurationResult = {
   fullPilotDefaultGate: boolean;
   smokeTagCount: number;
   smokeTagGate: boolean;
+  missingSmokeSpecPaths: string[];
 };
 
 export function countCiSmokeTags(sourceText: string): number {
@@ -105,12 +112,15 @@ export function evaluateAcceptanceCiConfiguration(
   const fullPilotDefaultGate = hasDefaultFullPilotGate(workflowText);
   const smokeTagCount = input.smokeTagCount ?? 0;
   const smokeTagGate = smokeTagCount >= CI_SMOKE_TAG_MIN && smokeTagCount <= CI_SMOKE_TAG_MAX;
+  const smokeScript = scripts["acceptance:smoke"] ?? "";
+  const missingSmokeSpecPaths = requiredSmokeSpecPaths.filter((path) => !smokeScript.includes(path));
 
   return {
     status:
       missingScripts.length === 0 &&
       missingWorkflowTokens.length === 0 &&
       missingArtifactPaths.length === 0 &&
+      missingSmokeSpecPaths.length === 0 &&
       !fullPilotDefaultGate &&
       smokeTagGate
         ? "passed"
@@ -120,7 +130,8 @@ export function evaluateAcceptanceCiConfiguration(
     missingArtifactPaths,
     fullPilotDefaultGate,
     smokeTagCount,
-    smokeTagGate
+    smokeTagGate,
+    missingSmokeSpecPaths
   };
 }
 

@@ -35,7 +35,7 @@
     "acceptance:responsive": "playwright test --config playwright.quality.config.ts --project responsive",
     "acceptance:quality": "tsx scripts/check-quality-gates.ts",
     "acceptance:quality-run": "playwright test --config playwright.quality.config.ts",
-    "acceptance:smoke": "playwright test --config playwright.acceptance.config.ts --grep @ci-smoke",
+    "acceptance:smoke": "playwright test --config playwright.acceptance.config.ts --grep \"@ci-smoke|warm vite entry graph\" e2e/acceptance/runtime-warmup.spec.ts e2e/acceptance/shell-navigation.acceptance.spec.ts e2e/acceptance/auth-runtime.acceptance.spec.ts e2e/acceptance/parameter-home.acceptance.spec.ts",
     "ci:changed-paths": "tsx -- scripts/ci-changed-paths.ts",
     "observability:check": "tsx scripts/check-observability-config.ts",
     "backup:drill": "tsx scripts/run-backup-drill.ts",

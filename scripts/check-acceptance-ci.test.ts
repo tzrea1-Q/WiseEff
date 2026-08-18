@@ -75,7 +75,11 @@ jobs:
         if: inputs.acceptance_mode == 'full-pilot'
 `;
 
-const compliantScripts = Object.fromEntries(requiredAcceptanceCiScripts.map((script) => [script, "ok"]));
+const compliantScripts = {
+  ...Object.fromEntries(requiredAcceptanceCiScripts.map((script) => [script, "ok"])),
+  "acceptance:smoke":
+    "playwright test --config playwright.acceptance.config.ts --grep \"@ci-smoke|warm vite entry graph\" e2e/acceptance/runtime-warmup.spec.ts e2e/acceptance/shell-navigation.acceptance.spec.ts e2e/acceptance/auth-runtime.acceptance.spec.ts e2e/acceptance/parameter-home.acceptance.spec.ts"
+};
 
 describe("M5.12 acceptance CI configuration", () => {
   it("requires layered job ids, smoke, and a single quality-run token", () => {

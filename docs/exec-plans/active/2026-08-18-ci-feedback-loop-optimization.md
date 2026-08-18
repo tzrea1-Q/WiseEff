@@ -301,7 +301,7 @@ New `acceptance:quality-run` = `playwright test --config playwright.quality.conf
 
 ### Smoke set (cap 5, ship 3)
 
-Playwright tags `@ci-smoke`. Script: `acceptance:smoke` → `playwright test --config playwright.acceptance.config.ts --grep @ci-smoke` with `WISEEFF_ACCEPTANCE_EVIDENCE_RUN_ID=focused-ci-smoke` (must not publish `latest-full.json`).
+Playwright tags `@ci-smoke`. Script: `acceptance:smoke` lists only warmup + the three smoke specs (do not load the full `e2e/acceptance` tree; unrelated specs currently import `@playwright/test` and would fail collection). Grep is `@ci-smoke|warm vite entry graph`. Set `WISEEFF_ACCEPTANCE_EVIDENCE_RUN_ID=focused-ci-smoke` (must not publish `latest-full.json`).
 
 | Spec | Test | Why |
 | --- | --- | --- |
