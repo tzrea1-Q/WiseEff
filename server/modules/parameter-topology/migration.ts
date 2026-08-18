@@ -19,6 +19,10 @@ import type { Database, Queryable } from "../../shared/database/client";
 import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
 import { nodeTypeKeyForNode } from "../parameter-modules/modulePlacement";
 import { listStructuralPropertyKeys } from "./parameterSurface";
+import {
+  DEFINITION_LIFECYCLE_RANK_SQL,
+  SPEC_VERSION_STATUS_RANK_SQL
+} from "../parameters/specVersionSelection";
 
 export type ParameterIdentityMigrationCoverage = {
   history: number;
@@ -181,7 +185,7 @@ function sanitizeSpecSegment(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9_.@+-]+/g, "-").replace(/^-+|-+$/g, "") || "unknown";
 }
 
-async function loadSpecCandidates(
+export async function loadSpecCandidates(
   db: Queryable,
   input: {
     organizationId: string;
@@ -211,12 +215,11 @@ async function loadSpecCandidates(
       dps.schema_namespace,
       dps.property_key,
       ps.specification_key,
-      psv.lifecycle,
+      ps.definition_lifecycle as lifecycle,
       psv.description
     from parameter_specs ps
     inner join parameter_spec_versions psv
       on psv.parameter_spec_id = ps.id
-     and psv.lifecycle in ('active', 'draft')
     left join dts_property_specs dps on dps.parameter_spec_id = ps.id
     where (ps.organization_id is null or ps.organization_id = $1)
       and (
@@ -234,7 +237,8 @@ async function loadSpecCandidates(
         )
       )
     order by
-      case when psv.lifecycle = 'active' then 0 else 1 end,
+      ${DEFINITION_LIFECYCLE_RANK_SQL},
+      ${SPEC_VERSION_STATUS_RANK_SQL},
       case
         when ps.specification_key = $2 then 0
         when $3::text is not null and ps.specification_key = $3 then 1
@@ -242,7 +246,6 @@ async function loadSpecCandidates(
         when $6::text is not null and split_part(ps.specification_key, '/', 1) = $6 then 3
         else 4
       end,
-      ps.specification_key asc,
       psv.version desc
     `,
     [
@@ -1145,7 +1148,9 @@ async function runParameterIdentityMigration(
       propertyKey,
       module: def.module
     });
-    const activeCandidates = candidates.filter((c) => c.lifecycle === "active" && !c.inferredDraft);
+    const matchableCandidates = candidates.filter(
+      (c) => (c.lifecycle === "active" || c.lifecycle === "deprecated") && !c.inferredDraft
+    );
     const inferredDraftCandidates = candidates.filter((c) => c.inferredDraft);
 
     let spec: SpecCandidate | null = null;
@@ -1162,14 +1167,14 @@ async function runParameterIdentityMigration(
       return exact.length === 1 ? exact[0]! : null;
     };
 
-    const exact = pickExact(activeCandidates);
+    const exact = pickExact(matchableCandidates);
     if (exact) {
       spec = exact;
       matchKind = "exact";
-    } else if (activeCandidates.length > 1) {
+    } else if (matchableCandidates.length > 1) {
       ambiguousRecords += 1;
       blockers.push(
-        `ambiguous definition ${def.id}: ${activeCandidates.map((c) => c.parameterSpecId).join(",")}`
+        `ambiguous definition ${def.id}: ${matchableCandidates.map((c) => c.parameterSpecId).join(",")}`
       );
       await ensureAmbiguityTasks(db, {
         apply: persistStaging,
@@ -1177,12 +1182,12 @@ async function runParameterIdentityMigration(
         projectId: values.rows.find((v) => v.parameter_definition_id === def.id)?.project_id ?? "unknown",
         configRevisionId: null,
         reason: `ambiguous parameter spec for ${def.module}/${propertyKey}`,
-        parameterSpecIds: activeCandidates.map((c) => c.parameterSpecId),
+        parameterSpecIds: matchableCandidates.map((c) => c.parameterSpecId),
         evidence: {
           definitionId: def.id,
           module: def.module,
           propertyKey,
-          candidateSpecificationKeys: activeCandidates.map((c) => c.specificationKey)
+          candidateSpecificationKeys: matchableCandidates.map((c) => c.specificationKey)
         },
         migrationRunId: persistStaging ? migrationRunId : null
       });
@@ -1389,10 +1394,12 @@ async function runParameterIdentityMigration(
         schemaNamespace,
         driverName
       });
-      if (refined.length === 1) {
-        valueSpec = refined[0]!;
+      const refinedMatchable = refined.filter((c) => c.lifecycle !== "draft" && !c.inferredDraft);
+      if (refinedMatchable.length === 1) {
+        valueSpec = refinedMatchable[0]!;
       } else if (refined.length > 1) {
-        const exactDriver = refined.filter(
+        const exactDriverPool = refinedMatchable.length > 0 ? refinedMatchable : refined;
+        const exactDriver = exactDriverPool.filter(
           (c) =>
             driverName &&
             (c.specificationKey.startsWith(`${driverName}/`) ||

@@ -2,6 +2,7 @@
  * Post-cutover semantic parameter identity SQL fragments.
  * Dashboard and activity reads after cutover must use these tables/expressions only.
  */
+import { PINNED_OR_RANKED_SPEC_VERSION_LATERAL } from "./specVersionSelection";
 export const SEMANTIC_IDENTITY_SQL = {
   specsTable: "parameter_specs",
   specVersionsTable: "parameter_spec_versions",
@@ -40,13 +41,5 @@ export const SEMANTIC_RISK_EXPR = `coalesce(nullif(ps.risk, ''), 'Low')`;
  */
 export const SEMANTIC_BINDING_ORG_SCOPE = `b.organization_id = $1`;
 
-/** Active spec version lateral join used by dashboard aggregations. */
-export const SEMANTIC_ACTIVE_SPEC_VERSION_LATERAL = `
-  left join lateral (
-    select psv.*
-    from ${SEMANTIC_IDENTITY_SQL.specVersionsTable} psv
-    where psv.parameter_spec_id = ps.id
-    order by case when psv.lifecycle = 'active' then 0 else 1 end, psv.version desc
-    limit 1
-  ) psv on true
-`;
+/** Pin to the binding revision when one is in scope; otherwise rank version_status. */
+export const SEMANTIC_ACTIVE_SPEC_VERSION_LATERAL = PINNED_OR_RANKED_SPEC_VERSION_LATERAL;

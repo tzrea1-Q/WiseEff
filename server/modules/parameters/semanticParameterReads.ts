@@ -91,21 +91,15 @@ export async function listSemanticParameters(
     from project_parameter_bindings b
     inner join parameter_specs ps on ps.id = b.parameter_spec_id
     left join parameter_modules pm on pm.id = b.module_id and pm.organization_id = b.organization_id
-    left join lateral (
-      select psv.*
-      from parameter_spec_versions psv
-      where psv.parameter_spec_id = ps.id
-      order by case when psv.lifecycle = 'active' then 0 else 1 end, psv.version desc
-      limit 1
-    ) psv on true
     left join dts_property_specs dps on dps.parameter_spec_id = ps.id
     left join lateral (
-      select bpr.*
+      select bpr.raw_value, bpr.created_at, bpr.parameter_spec_version_id
       from project_parameter_binding_revisions bpr
       where bpr.binding_id = b.id
       order by bpr.created_at desc
       limit 1
     ) bpr on true
+    left join parameter_spec_versions psv on psv.id = bpr.parameter_spec_version_id
     left join dts_logical_nodes ln on ln.id = b.logical_node_id
     left join lateral (
       select lnr.node_locator

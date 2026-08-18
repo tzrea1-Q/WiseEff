@@ -19,6 +19,10 @@ import { LEGACY_IDENTITY_SQL } from "../parameter-kernel/legacyParameterIdentity
 import type { BindingWriteLockFields, EnablementWriteLockFields, ParameterChangeAction } from "../parameter-drafts/types";
 import { addCondition, dateTimeToIso } from "../../shared/database/sqlUtil";
 import { resolveParameterValueKind } from "./repositoryShared";
+import {
+  PINNED_OR_RANKED_SPEC_VERSION_FROM_CR_LATERAL,
+  PINNED_OR_RANKED_SPEC_VERSION_FROM_INSERTED_BINDING_LATERAL
+} from "./specVersionSelection";
 
 export async function findOpenEnablementChangeRequest(
   db: Queryable,
@@ -866,13 +870,7 @@ export async function createSubmissionItem(
       left join project_parameter_bindings b on b.id = inserted.project_parameter_binding_id
       left join parameter_specs ps on ps.id = b.parameter_spec_id
       left join dts_property_specs dps on dps.parameter_spec_id = ps.id
-      left join lateral (
-        select psv.*
-        from parameter_spec_versions psv
-        where psv.parameter_spec_id = ps.id
-        order by case when psv.lifecycle = 'active' then 0 else 1 end, psv.version desc
-        limit 1
-      ) psv on true
+      ${PINNED_OR_RANKED_SPEC_VERSION_FROM_INSERTED_BINDING_LATERAL}
       `,
       [
         input.id,
@@ -1194,13 +1192,7 @@ export async function listChangeRequests(
     from parameter_change_requests pcr
     left join parameter_specs ps on ps.id = pcr.parameter_spec_id
     left join dts_property_specs dps on dps.parameter_spec_id = ps.id
-    left join lateral (
-      select psv.*
-      from parameter_spec_versions psv
-      where psv.parameter_spec_id = ps.id
-      order by case when psv.lifecycle = 'active' then 0 else 1 end, psv.version desc
-      limit 1
-    ) psv on true
+    ${PINNED_OR_RANKED_SPEC_VERSION_FROM_CR_LATERAL}
     left join project_parameter_bindings b on b.id = pcr.project_parameter_binding_id
     left join parameter_modules binding_pm on binding_pm.id = b.module_id
     ${SEMANTIC_LNR_FROM_BINDING_SQL}
@@ -1303,13 +1295,7 @@ export async function findOpenChangeRequest(
       from parameter_change_requests pcr
       left join parameter_specs ps on ps.id = pcr.parameter_spec_id
       left join dts_property_specs dps on dps.parameter_spec_id = ps.id
-      left join lateral (
-        select psv.*
-        from parameter_spec_versions psv
-        where psv.parameter_spec_id = ps.id
-        order by case when psv.lifecycle = 'active' then 0 else 1 end, psv.version desc
-        limit 1
-      ) psv on true
+      ${PINNED_OR_RANKED_SPEC_VERSION_FROM_CR_LATERAL}
       ${CR_MODULE_JOINS_SEMANTIC_SQL}
       ${SEMANTIC_LNR_FROM_BINDING_SQL}
       inner join users on users.id = pcr.submitter_user_id
@@ -1437,13 +1423,7 @@ export async function getChangeRequestById(
       left join dts_property_specs dps on dps.parameter_spec_id = ps.id
       ${CR_MODULE_JOINS_SEMANTIC_SQL}
       ${SEMANTIC_LNR_FROM_BINDING_SQL}
-      left join lateral (
-        select psv.*
-        from parameter_spec_versions psv
-        where psv.parameter_spec_id = ps.id
-        order by case when psv.lifecycle = 'active' then 0 else 1 end, psv.version desc
-        limit 1
-      ) psv on true
+      ${PINNED_OR_RANKED_SPEC_VERSION_FROM_CR_LATERAL}
       inner join users on users.id = pcr.submitter_user_id
       left join users assignee on assignee.id = pcr.assigned_to_user_id
       where pcr.organization_id = $1
@@ -2262,13 +2242,7 @@ async function listSubmissionItemsByRoundIds(
       on b.id = coalesce(psi.project_parameter_binding_id, pcr.project_parameter_binding_id)
     inner join parameter_specs ps on ps.id = coalesce(pcr.parameter_spec_id, b.parameter_spec_id)
     left join dts_property_specs dps on dps.parameter_spec_id = ps.id
-    left join lateral (
-      select version.*
-      from parameter_spec_versions version
-      where version.parameter_spec_id = ps.id
-      order by case when version.lifecycle = 'active' then 0 else 1 end, version.version desc
-      limit 1
-    ) psv on true
+    ${PINNED_OR_RANKED_SPEC_VERSION_FROM_CR_LATERAL}
     where psi.organization_id = $1
       and psi.submission_round_id = any($2::text[])
     order by psi.id asc
