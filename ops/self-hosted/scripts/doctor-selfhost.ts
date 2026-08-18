@@ -13,9 +13,10 @@ export type DoctorResult = {
 };
 
 function readArg(args: readonly string[], name: string, fallback: string) {
-  const index = args.indexOf(name);
-  if (index >= 0 && args[index + 1]) {
-    return args[index + 1];
+  const filtered = args.filter((arg) => arg !== "--");
+  const index = filtered.indexOf(name);
+  if (index >= 0 && filtered[index + 1]) {
+    return filtered[index + 1];
   }
   return fallback;
 }

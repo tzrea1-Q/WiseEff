@@ -424,10 +424,10 @@ write_env_via_tsx() {
   mapfile -t args < <(render_cli_args)
   if [ "${print_env}" = "true" ]; then
     args+=(--print-env)
-    (cd "${repo_root}" && "${repo_root}/node_modules/.bin/tsx" ops/self-hosted/scripts/setup-selfhost.ts "${args[@]}")
+    (cd "${repo_root}" && "${repo_root}/node_modules/.bin/tsx" ops/self-hosted/scripts/setup-selfhost.ts -- "${args[@]}")
     return 0
   fi
-  (cd "${repo_root}" && "${repo_root}/node_modules/.bin/tsx" ops/self-hosted/scripts/setup-selfhost.ts "${args[@]}")
+  (cd "${repo_root}" && "${repo_root}/node_modules/.bin/tsx" ops/self-hosted/scripts/setup-selfhost.ts -- "${args[@]}")
 }
 
 write_env_bash() {
@@ -623,7 +623,7 @@ run_preflight() {
     exit 1
   fi
   if has_tsx; then
-    (cd "${repo_root}" && "${repo_root}/node_modules/.bin/tsx" ops/self-hosted/scripts/doctor-selfhost.ts --env-file "${env_file}")
+    (cd "${repo_root}" && "${repo_root}/node_modules/.bin/tsx" ops/self-hosted/scripts/doctor-selfhost.ts -- --env-file "${env_file}")
     return 0
   fi
   local site_host postgres_password database_url caddyfile

@@ -282,6 +282,9 @@ export function parseSelfHostCliArgs(args: readonly string[]): SelfHostCliOption
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
+    if (arg === "--") {
+      continue;
+    }
     if ((selfHostSections as readonly string[]).includes(arg)) {
       options.section = arg as SelfHostSection;
       continue;

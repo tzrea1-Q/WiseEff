@@ -26,7 +26,7 @@ done
 if [ -x "${repo_root}/node_modules/.bin/tsx" ]; then
   args=(--env-file "${env_file}")
   [ "${probe_live}" = "true" ] && args+=(--probe-live)
-  exec "${repo_root}/node_modules/.bin/tsx" "${script_dir}/doctor-selfhost.ts" "${args[@]}"
+  exec "${repo_root}/node_modules/.bin/tsx" "${script_dir}/doctor-selfhost.ts" -- "${args[@]}"
 fi
 
 exec "${script_dir}/setup.sh" --non-interactive --env-file "${env_file}" preflight
