@@ -1,32 +1,47 @@
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
+import { formatWorkbenchPath } from "@/application/project-configuration/workbenchPath";
 
 export type PropertyKeyCutoverWorkbenchHrefInput = {
   projectId: string | null;
+  configSetId?: string | null;
   candidateId: string;
   fileId?: string | null;
   nodePath?: string | null;
 };
 
+const MERGEABLE_CANDIDATE_STATUSES = new Set(["ready", "uploading", "parsing"]);
+
 export function formatPropertyKeyCutoverWorkbenchHref(
   input: PropertyKeyCutoverWorkbenchHrefInput,
 ): string | null {
   const projectId = input.projectId?.trim() ?? "";
+  const configSetId = input.configSetId?.trim() ?? "";
   const candidateId = input.candidateId.trim();
-  if (!projectId || !candidateId) return null;
-  const params = new URLSearchParams();
-  params.set("sourceMode", "candidate");
-  params.set("candidate", candidateId);
-  params.set("inspector", "file");
-  if (input.fileId?.trim()) params.set("file", input.fileId.trim());
-  if (input.nodePath?.trim()) params.set("node", input.nodePath.trim());
-  return `/parameter-admin/projects/${encodeURIComponent(projectId)}/configuration?${params.toString()}`;
+  if (!projectId || !configSetId || !candidateId) return null;
+  return formatWorkbenchPath(projectId, "", {
+    configSet: configSetId,
+    file: input.fileId?.trim() || null,
+    node: input.nodePath?.trim() || null,
+    sourceMode: "candidate",
+    candidate: candidateId,
+    inspector: "file",
+  });
 }
 
-export function propertyKeyCutoverHandoffLinkLabel(fileName: string | null): string {
+export function propertyKeyCutoverHandoffIsOpenable(status: string): boolean {
+  return status !== "missing";
+}
+
+export function propertyKeyCutoverHandoffLinkLabel(fileName: string | null, status = "ready"): string {
   const name = fileName?.trim();
+  if (MERGEABLE_CANDIDATE_STATUSES.has(status)) {
+    return name
+      ? `在配置工作台审阅并合入 ${name}`
+      : PARAMETER_ADMIN_UI.propertyKeyCutoverHandoffUnnamedLink;
+  }
   return name
-    ? `在配置工作台审阅并合入 ${name}`
-    : PARAMETER_ADMIN_UI.propertyKeyCutoverHandoffUnnamedLink;
+    ? `在配置工作台查看 ${name}`
+    : PARAMETER_ADMIN_UI.propertyKeyCutoverHandoffUnnamedViewLink;
 }
 
 export function presentFileCandidateHandoffStatus(status: string): string {

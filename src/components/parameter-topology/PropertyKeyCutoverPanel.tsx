@@ -4,6 +4,7 @@ import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCop
 import {
   formatPropertyKeyCutoverWorkbenchHref,
   presentFileCandidateHandoffStatus,
+  propertyKeyCutoverHandoffIsOpenable,
   propertyKeyCutoverHandoffLinkLabel,
 } from "@/application/parameters/propertyKeyCutoverHandoff";
 import { ModalDialog } from "@/components/common/ModalDialog";
@@ -14,6 +15,7 @@ import type {
   PropertyKeyCutoverStartBlocker,
 } from "@/domain/parameter-topology/types";
 import { presentError } from "@/infrastructure/http/presentError";
+import { handleSpaLinkClick } from "@/linear-template/spaLinkNavigation";
 
 const NESTED_CONFIRM_BACKDROP = "param-admin-modal-backdrop param-admin-modal-backdrop--nested";
 
@@ -29,6 +31,7 @@ export type PropertyKeyCutoverPanelProps = {
   currentKey: string;
   pending?: boolean;
   actions: PropertyKeyCutoverActions;
+  onNavigate?: (path: string) => void;
 };
 
 function blockerLabel(blocker: PropertyKeyCutoverStartBlocker) {
@@ -97,6 +100,7 @@ export function PropertyKeyCutoverPanel({
   currentKey,
   pending = false,
   actions,
+  onNavigate,
 }: PropertyKeyCutoverPanelProps) {
   const [nextKey, setNextKey] = useState("");
   const [reason, setReason] = useState("");
@@ -292,11 +296,13 @@ export function PropertyKeyCutoverPanel({
           {guidance ? <p className="form-hint">{guidance}</p> : null}
           <ul className="param-admin-cutover-panel__items">
             {run.items.map((item) => {
+              const staged = item.stagedRewrite;
               const href =
-                item.stagedRewrite?.kind === "file-candidate"
+                staged?.kind === "file-candidate" && propertyKeyCutoverHandoffIsOpenable(staged.status)
                   ? formatPropertyKeyCutoverWorkbenchHref({
                       projectId: item.projectId,
-                      candidateId: item.stagedRewrite.id,
+                      configSetId: item.configSetId,
+                      candidateId: staged.id,
                       fileId: item.fileId,
                       nodePath: item.nodePath,
                     })
@@ -308,8 +314,12 @@ export function PropertyKeyCutoverPanel({
                     （<span>{itemStatusLabel(item)}</span>）
                   </p>
                   {href ? (
-                    <a className="button subtle" href={href}>
-                      {propertyKeyCutoverHandoffLinkLabel(item.fileName)}
+                    <a
+                      className="button subtle"
+                      href={href}
+                      onClick={(event) => handleSpaLinkClick(event, href, onNavigate)}
+                    >
+                      {propertyKeyCutoverHandoffLinkLabel(item.fileName, staged?.status)}
                     </a>
                   ) : null}
                 </li>

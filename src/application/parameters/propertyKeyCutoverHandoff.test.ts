@@ -11,27 +11,38 @@ describe("property-key cutover workbench handoff", () => {
     expect(
       formatPropertyKeyCutoverWorkbenchHref({
         projectId: "p1",
+        configSetId: "cs-default",
         candidateId: "cand-1",
         fileId: "file-board",
         nodePath: "/charger@6e",
       }),
     ).toBe(
-      "/parameter-admin/projects/p1/configuration?sourceMode=candidate&candidate=cand-1&inspector=file&file=file-board&node=%2Fcharger%406e",
+      "/parameter-admin/projects/p1/configuration?configSet=cs-default&file=file-board&node=%2Fcharger%406e&sourceMode=candidate&candidate=cand-1&inspector=file",
     );
     expect(propertyKeyCutoverHandoffLinkLabel("board.dts")).toBe("在配置工作台审阅并合入 board.dts");
     expect(propertyKeyCutoverHandoffLinkLabel(null)).toBe("在配置工作台审阅并合入该文件草稿");
+    expect(propertyKeyCutoverHandoffLinkLabel("board.dts", "abandoned")).toBe("在配置工作台查看 board.dts");
+    expect(propertyKeyCutoverHandoffLinkLabel(null, "active")).toBe("在配置工作台查看该文件草稿");
   });
 
   it("returns no href when the staged rewrite cannot be opened in the workbench", () => {
     expect(
       formatPropertyKeyCutoverWorkbenchHref({
         projectId: null,
+        configSetId: "cs-default",
         candidateId: "cand-1",
       }),
     ).toBeNull();
     expect(
       formatPropertyKeyCutoverWorkbenchHref({
         projectId: "p1",
+        candidateId: "cand-1",
+      }),
+    ).toBeNull();
+    expect(
+      formatPropertyKeyCutoverWorkbenchHref({
+        projectId: "p1",
+        configSetId: "cs-default",
         candidateId: "",
       }),
     ).toBeNull();

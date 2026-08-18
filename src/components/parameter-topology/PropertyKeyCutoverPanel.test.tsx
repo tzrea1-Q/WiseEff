@@ -49,6 +49,7 @@ function run(overrides: Partial<PropertyKeyCutoverRun> = {}): PropertyKeyCutover
         incompatibilityCode: null,
         fileName: "board.dts",
         fileId: "file-board",
+        configSetId: "cs-default",
         nodePath: "/charger@6e",
         stagedRewrite: { kind: "file-candidate", id: "cand-1", status: "ready" },
       },
@@ -88,7 +89,7 @@ describe("PropertyKeyCutoverPanel", () => {
     const handoff = screen.getByRole("link", { name: "在配置工作台审阅并合入 board.dts" });
     expect(handoff).toHaveAttribute(
       "href",
-      "/parameter-admin/projects/p1/configuration?sourceMode=candidate&candidate=cand-1&inspector=file&file=file-board&node=%2Fcharger%406e",
+      "/parameter-admin/projects/p1/configuration?configSet=cs-default&file=file-board&node=%2Fcharger%406e&sourceMode=candidate&candidate=cand-1&inspector=file",
     );
     expect(handoff).not.toHaveTextContent("cand-1");
     expect(screen.getByText("已暂存")).toBeInTheDocument();
@@ -114,6 +115,7 @@ describe("PropertyKeyCutoverPanel", () => {
               incompatibilityCode: null,
               fileName: "board.dts",
               fileId: "file-board",
+              configSetId: "cs-default",
               nodePath: "/charger@6e",
               stagedRewrite: { kind: "file-candidate", id: "cand-1", status: "active" },
             },
@@ -150,6 +152,7 @@ describe("PropertyKeyCutoverPanel", () => {
               incompatibilityCode: null,
               fileName: "board.dts",
               fileId: "file-board",
+              configSetId: "cs-default",
               nodePath: "/charger@6e",
               stagedRewrite: { kind: "file-candidate", id: "cand-1", status: "abandoned" },
             },
@@ -161,6 +164,8 @@ describe("PropertyKeyCutoverPanel", () => {
     render(<PropertyKeyCutoverPanel currentKey="typo_prop" actions={actions} />);
     await waitFor(() => expect(screen.getByText("已放弃")).toBeInTheDocument());
     expect(screen.getByText(/文件草稿已放弃/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "在配置工作台查看 board.dts" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /审阅并合入/ })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "完成切换" })).toBeDisabled();
     expect(actions.finalize).not.toHaveBeenCalled();
   });
@@ -257,5 +262,53 @@ describe("PropertyKeyCutoverPanel", () => {
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent("无法读取进行中的属性键切换，请重试。"),
     );
+  });
+
+  it("uses SPA navigation for the workbench handoff link", async () => {
+    const onNavigate = vi.fn();
+    render(
+      <PropertyKeyCutoverPanel
+        currentKey="typo_prop"
+        onNavigate={onNavigate}
+        actions={{
+          preview: vi.fn(),
+          start: vi.fn(),
+          prepare: vi.fn(),
+          finalize: vi.fn(),
+          loadOpenRun: vi.fn().mockResolvedValue(run()),
+        }}
+      />,
+    );
+    const handoff = await screen.findByRole("link", { name: "在配置工作台审阅并合入 board.dts" });
+    fireEvent.click(handoff);
+    expect(onNavigate).toHaveBeenCalledWith(
+      "/parameter-admin/projects/p1/configuration?configSet=cs-default&file=file-board&node=%2Fcharger%406e&sourceMode=candidate&candidate=cand-1&inspector=file",
+    );
+  });
+
+  it("does not offer a workbench link for a missing candidate", async () => {
+    render(
+      <PropertyKeyCutoverPanel
+        currentKey="typo_prop"
+        actions={{
+          preview: vi.fn(),
+          start: vi.fn(),
+          prepare: vi.fn(),
+          finalize: vi.fn(),
+          loadOpenRun: vi.fn().mockResolvedValue(
+            run({
+              items: [
+                {
+                  ...run().items[0]!,
+                  stagedRewrite: { kind: "file-candidate", id: "cand-1", status: "missing" },
+                },
+              ],
+            }),
+          ),
+        }}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("候选已不可用")).toBeInTheDocument());
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 });

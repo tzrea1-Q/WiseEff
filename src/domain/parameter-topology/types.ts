@@ -158,6 +158,7 @@ export type PropertyKeyCutoverItem = {
   incompatibilityCode: string | null;
   fileName: string | null;
   fileId: string | null;
+  configSetId: string | null;
   nodePath: string | null;
   stagedRewrite: StagedPropertyKeyRewrite | null;
 };

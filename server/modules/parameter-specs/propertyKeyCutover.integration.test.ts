@@ -793,6 +793,8 @@ describe.skipIf(!databaseAvailable)("property-key source cutover prepare staging
           kind: "file-candidate",
           status: "ready",
         }),
+        fileId: FILE_ID,
+        configSetId: CONFIG_SET_ID,
       }),
     ]);
 
@@ -884,6 +886,7 @@ describe.skipIf(!databaseAvailable)("property-key source cutover prepare staging
     const opened = await getOpenPropertyKeySourceCutover(db!, makeAuth(), SPEC_ID);
     expect(opened.item.items[0]).toMatchObject({
       fileId: FILE_ID,
+      configSetId: CONFIG_SET_ID,
       fileName: "board.dts",
       stagedRewrite: {
         kind: "file-candidate",

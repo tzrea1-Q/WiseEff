@@ -126,6 +126,7 @@ export type OrganizationSpecGovernancePanelProps = {
   onOpenIdentityMapping?: () => void;
   identityMappingOpenCount?: number;
   identityMappingCountError?: string | null;
+  onNavigate?: (path: string) => void;
 };
 
 export function OrganizationSpecGovernancePanel({
@@ -134,7 +135,8 @@ export function OrganizationSpecGovernancePanel({
   isPlatformSuperAdmin = false,
   onOpenIdentityMapping,
   identityMappingOpenCount,
-  identityMappingCountError = null
+  identityMappingCountError = null,
+  onNavigate,
 }: OrganizationSpecGovernancePanelProps) {
   const { application, dispatch, state, relatedKnowledge } = useParameterAdmin();
   const refreshRecentAudits = useRefreshParameterAdminRecentAudits();
@@ -701,6 +703,7 @@ export function OrganizationSpecGovernancePanel({
               }
             : undefined
         }
+        onNavigate={onNavigate}
         canDeprecateGlobal={isPlatformSuperAdmin}
         relatedKnowledge={relatedKnowledge}
         savePending={activatePendingSpecId === urlState.specId}

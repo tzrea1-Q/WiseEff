@@ -209,6 +209,7 @@ export const PARAMETER_ADMIN_UI = {
   propertyKeyCutoverHandoffAbandonedHint: "文件草稿已放弃。请重新暂存草稿，或处理不兼容项。",
   propertyKeyCutoverHandoffReadyHint: "源已是新键，可以完成切换。",
   propertyKeyCutoverHandoffUnnamedLink: "在配置工作台审阅并合入该文件草稿",
+  propertyKeyCutoverHandoffUnnamedViewLink: "在配置工作台查看该文件草稿",
   propertyKeyCutoverCandidateStaged: "已暂存",
   propertyKeyCutoverCandidateActivated: "已合入现行源",
   propertyKeyCutoverCandidateAbandoned: "已放弃",
