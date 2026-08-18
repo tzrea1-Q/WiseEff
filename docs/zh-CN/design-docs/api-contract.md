@@ -114,6 +114,8 @@ M2 日志与 M3 调试运行时/catalog API 以认证用户的 `organization_id`
 | `PUT` | `/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol` | Upsert HDC 或 ADB node binding。 |
 | `PATCH` | `/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol` | 更新 HDC 或 ADB node binding。 |
 | `POST` | `/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol/archive` | 禁用单个 protocol binding。 |
+| `GET` | `/api/v1/debugging/admin/catalog/export` | 导出本组织调试节点目录（模块、节点、bindings）为 `wiseeff.debug-node-catalog.v1`。要求 `debugging:admin`。写入 `debug-node-catalog-export` 审计，不包含原始 node path。 |
+| `POST` | `/api/v1/debugging/admin/catalog/import` | 合并导入 v1 目录文档：模块按父路径+名称 upsert，节点按 id 或 名称+模块路径匹配。要求 `debugging:admin`。写入 `debug-node-catalog-import` 审计，不包含原始 node path。 |
 
 运行时 `/api/v1/debugging/parameters?protocol=...` 只返回启用、未归档，且所选协议 binding 启用的参数。管理列表 API 可返回缺失或已归档的 bindings，供 `/debugging-admin` 展示 HDC/ADB 覆盖标签。
 

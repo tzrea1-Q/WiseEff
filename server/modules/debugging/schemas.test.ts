@@ -2,10 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   archiveDebugParameterBodySchema,
   createDebugSessionBodySchema,
+  DEBUG_CATALOG_FORMAT_V1,
   debugAdminBindingParamsSchema,
   debugAdminParameterParamsSchema,
+  debugCatalogDocumentSchema,
   debugParameterNodeBindingSchema,
   detectTargetsBodySchema,
+  exportDebugCatalogQuerySchema,
+  importDebugCatalogBodySchema,
   listDebuggingAdminParametersQuerySchema,
   listDebuggingParametersQuerySchema,
   patchDebugParameterAdminBodySchema,
@@ -295,6 +299,49 @@ describe("debugging admin schemas", () => {
       normalizationMode: "json-canonical",
       maxValueBytes: 8192
     });
+  });
+
+  it("parses catalog export query and import document", () => {
+    expect(exportDebugCatalogQuerySchema.parse({ includeArchived: "true" })).toEqual({ includeArchived: true });
+    expect(
+      importDebugCatalogBodySchema.parse({
+        format: DEBUG_CATALOG_FORMAT_V1,
+        modules: [{ name: "Battery" }],
+        nodes: [
+          {
+            name: "Cycle count",
+            moduleNamePath: ["Battery"],
+            bindings: [{ protocol: "hdc", nodePath: "/sys/hdc/cycles", accessMode: "RO" }]
+          }
+        ]
+      })
+    ).toMatchObject({
+      format: DEBUG_CATALOG_FORMAT_V1,
+      modules: [{ name: "Battery", parentNamePath: [] }],
+      nodes: [expect.objectContaining({ name: "Cycle count", enabled: true })]
+    });
+  });
+
+  it("rejects catalog documents that omit a module assignment or use a relative binding path", () => {
+    expect(() => debugCatalogDocumentSchema.parse({ format: "other", modules: [], nodes: [] })).toThrow();
+    expect(() =>
+      debugCatalogDocumentSchema.parse({
+        format: DEBUG_CATALOG_FORMAT_V1,
+        nodes: [{ name: "Missing module" }]
+      })
+    ).toThrow();
+    expect(() =>
+      debugCatalogDocumentSchema.parse({
+        format: DEBUG_CATALOG_FORMAT_V1,
+        nodes: [
+          {
+            name: "Broken path",
+            module: "Battery",
+            bindings: [{ protocol: "hdc", nodePath: "relative", accessMode: "RO" }]
+          }
+        ]
+      })
+    ).toThrow();
   });
 
   it("rejects json-canonical normalization without json format", () => {

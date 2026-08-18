@@ -67,6 +67,8 @@ export type DebugNodeLibraryTableProps = {
   onDisable: (nodeId: string) => void;
   onCreate?: () => void;
   onManageModules?: () => void;
+  onExport?: () => void;
+  onImport?: () => void;
   canEdit?: boolean;
   loading?: boolean;
 };
@@ -81,6 +83,8 @@ export function DebugNodeLibraryTable({
   onDisable,
   onCreate,
   onManageModules,
+  onExport,
+  onImport,
   canEdit = true,
   loading = false
 }: DebugNodeLibraryTableProps) {
@@ -103,6 +107,28 @@ export function DebugNodeLibraryTable({
           <p>维护节点调试可调用的设备节点路径，通过操作列编辑元数据或配置 HDC / ADB 路径绑定。</p>
         </div>
         <div className="param-admin-library-heading-actions">
+          {onExport ? (
+            <button
+              className="button subtle"
+              type="button"
+              onClick={onExport}
+              disabled={!canEdit || loading}
+              title={canEdit ? undefined : "缺少 debugging:admin 权限"}
+            >
+              导出目录
+            </button>
+          ) : null}
+          {onImport ? (
+            <button
+              className="button subtle"
+              type="button"
+              onClick={onImport}
+              disabled={!canEdit || loading}
+              title={canEdit ? undefined : "缺少 debugging:admin 权限"}
+            >
+              导入目录
+            </button>
+          ) : null}
           {onManageModules ? (
             <button className="button subtle" type="button" onClick={onManageModules} disabled={loading}>
               模块管理

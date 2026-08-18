@@ -858,6 +858,20 @@ export const routeManifest = [
     module: "debugging",
     stability: "mvp"
   },
+  {
+    id: "debugging.admin.exportCatalog",
+    method: "GET",
+    path: "/api/v1/debugging/admin/catalog/export",
+    module: "debugging",
+    stability: "mvp"
+  },
+  {
+    id: "debugging.admin.importCatalog",
+    method: "POST",
+    path: "/api/v1/debugging/admin/catalog/import",
+    module: "debugging",
+    stability: "mvp"
+  },
   { id: "debugging.listReloadTargets", method: "GET", path: "/api/v1/debugging/reload-targets", module: "debugging", stability: "deprecated" },
   { id: "debugging.reloadParameter", method: "POST", path: "/api/v1/debugging/parameters/reload", module: "debugging", stability: "deprecated" },
   { id: "debugging.createSession", method: "POST", path: "/api/v1/debugging/sessions", module: "debugging", stability: "mvp" },

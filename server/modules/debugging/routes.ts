@@ -33,8 +33,11 @@ import {
   writeDebugNodeAdminBodySchema,
   writeDebugNodeModuleAdminBodySchema,
   writeDebugParameterAdminBodySchema,
-  writeNodeBodySchema
+  writeNodeBodySchema,
+  exportDebugCatalogQuerySchema,
+  importDebugCatalogBodySchema
 } from "./schemas";
+import { exportDebugCatalog, importDebugCatalog } from "./catalogImportExport";
 import { createDebuggingService } from "./service";
 
 const paramsWithSessionIdSchema = z.object({
@@ -357,6 +360,27 @@ export function registerDebuggingRoutes(
       { nodeId: params.nodeId, protocol: params.protocol },
       { requestId: request.requestId }
     );
+
+    return { status: 200, body: { item } };
+  });
+
+  router.get("/api/v1/debugging/admin/catalog/export", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const query = parseWithSchema(exportDebugCatalogQuerySchema, request.query);
+    const item = await exportDebugCatalog(db, auth, {
+      requestId: request.requestId,
+      includeArchived: query.includeArchived
+    });
+
+    return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v1/debugging/admin/catalog/import", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const body = parseWithSchema(importDebugCatalogBodySchema, request.body);
+    const item = await importDebugCatalog(db, auth, body, { requestId: request.requestId });
 
     return { status: 200, body: { item } };
   });
