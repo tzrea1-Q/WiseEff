@@ -1,8 +1,8 @@
 # Referenced property-key rename is a source-file rewrite cutover
 
-> Status: **Active** — start + finalize + prepare staging on `main` (#549 / #553). This slice adds a product-internal workbench handoff from the spec-editor panel. TD-117 stays **Open** until operators routinely complete human merge + finalize without leaving the product path.  
+> Status: **Active** — preview / start / finalize / prepare / workbench handoff on `main` (#544 / #549 / #553 / #555). TD-117 stays **Open**: operators still leave the spec editor to activate, then return to re-preview before finalize.  
 > Date: 2026-08-18  
-> Branch: `feat/td-117-property-key-workbench-handoff`  
+> Branch: merged via #555 (`feat/td-117-property-key-workbench-handoff`)  
 > Chinese: [`docs/zh-CN/exec-plans/active/2026-08-18-property-key-source-cutover.md`](../../zh-CN/exec-plans/active/2026-08-18-property-key-source-cutover.md)  
 > Governing decision: [ADR-0034](../../adr/0034-referenced-property-key-rename-is-a-source-cutover.md)  
 > Tracker: [TD-117](../tech-debt-tracker.md) (session 0 owns the index)
