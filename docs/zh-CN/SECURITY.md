@@ -89,7 +89,7 @@ Agent tool 分为：
 
 **Xiaoze P0 感知：** `perception.*` 工具为只读（`kind: read`，`requiresApproval: false`），必须通过与其他 Agent 工具相同的 `ToolRegistry.authorize` 边界。跨页面读取受调用方项目 scope 与权限限制；越权 tool call 返回 `FORBIDDEN`，Agent 必须给出安全的非数据回答。AG-UI 端点在流式事件前拒绝未认证请求。
 
-**Xiaoze P1 行动：** `action.submitParameterChange` 为 mutating 且 approval-gated。AG-UI runtime 开启 orchestrator 自有的 Agent 审批链——`beginApproval` 持久化 tool-call + approval 记录并发出 interrupt——且仅通过 `resolveApproval` 恢复，在事务内重新鉴权、审计 `actorType=agent`。审批状态以数据库行（`agent_tool_calls` + `agent_approvals`）为唯一载体、绝不驻留进程内存，因此 begin 与 resolve 跨重启和多副本仍然正确（ADR-0024）。`editedArgs` 在批准时重鉴权与执行之前完整替换 tool payload。执行时工具走切换后的语义路径：创建类型化绑定草稿（schema 校验、写锁），以草稿身份经 `submitParameterChanges` 提交（`actorType: "agent"`）；提交失败会删除 Agent 建的草稿。任何草稿创建之前先走与人工相同的敏感节点守卫：命中 `critical` 规则立即拒绝（`403`、`requireHuman: true`），不会创建生产变更请求。设备写闸门在 P1 仍由调试界面与后端拥有，不在小泽内执行。
+**Xiaoze P1 行动：** `action.submitParameterChange` 为 mutating 且 approval-gated。AG-UI runtime 开启 orchestrator 自有的 Agent 审批链——`beginApproval` 持久化 tool-call + approval 记录并发出 interrupt——且仅通过 `resolveApproval` 恢复，在事务内重新鉴权、审计 `actorType=agent`。审批状态以数据库行（`agent_tool_calls` + `agent_approvals`）为唯一载体、绝不驻留进程内存，因此 begin 与 resolve 跨重启和多副本仍然正确（ADR-0024）。`editedArgs` 在批准时重鉴权与执行之前完整替换 tool payload。执行时工具走切换后的语义路径：创建类型化绑定草稿（schema 校验、写锁），以草稿身份经 `submitParameterChanges` 提交（`actorType: "agent"`）；提交失败会删除 Agent 建的草稿。任何草稿创建之前先走与人工相同的敏感节点守卫：命中 `critical` 规则立即拒绝（`403`、`requireHuman: true`），不会创建生产变更请求。设备写闸门在 P1 仍由调试界面与后端拥有，不在小泽内执行：独立高风险写入仍用 `confirm-high-risk-write`。当 Agent 驱动的设备工具启用时，必须先落 `agent_approvals`，再把该 `approvalId` 传入调试 write/rollback；调试服务会复核该行已批准且匹配本次 tool/write，任意字符串一律拒绝。
 
 **Xiaoze P2 规划：** 多步计划使用 LangGraph `StateGraph` 与按 `threadId` 的 checkpointer，使 mutating 步骤在批准后能从计划中途恢复而不丢失已感知上下文。当 `XIAOZE_CHECKPOINTER=postgres` 时，checkpoint 载荷（含 tool 参数与感知上下文）静态保存在 PostgreSQL 中，须与 Agent 业务表一样受数据库访问控制保护；与用户可见聊天历史（TD-030）分离。resume 命令仅携带审批决定（`approvalId`、`decision`、`editedArgs`、`reason`）；请求级认证上下文经每次调用的配置传递，绝不进入图状态、也不会被序列化进 checkpoint（ADR-0024）。主动建议为只读、受 authz 限制且 opt-in（`XIAOZE_PROACTIVE_ENABLED` / `VITE_XIAOZE_PROACTIVE_ENABLED`，默认关闭）。suggest 通道仅通过 `POST /api/v1/agent/xiaoze/suggest` 调用 `perception.*` 工具，不写库且不提出调用方权限外的数据。计划中的 mutating 写入仍须逐步经 orchestrator approval 链人工批准；拒绝某步则安全终止计划且不产生 mutation。
 
@@ -116,7 +116,7 @@ Agent tool 分为：
 
 ## 设备安全
 
-设备访问必须经过 gateway boundary。写请求需要 request id、用户和权限上下文、设备和 node target、access mode、目标值、风险等级、确认或 approval id、写前快照，以及 readback 结果或失败原因。
+设备访问必须经过 gateway boundary。写请求需要 request id、用户和权限上下文、设备和 node target、access mode、目标值、风险等级、确认或 approval id、写前快照，以及 readback 结果或失败原因。独立高风险写入仍收集 `confirm-high-risk-write`；`approvalId` 必须解析为已批准的 `agent_approvals` 行，且 tool call 为 `action.writeDebugNode`、payload 匹配本次写入（session、node/parameter、value）。回滚同样：独立路径用 `confirm-rollback`，Agent 路径用已批准且匹配该 snapshot 的 `action.rollbackDebugSnapshot` 审批。任意字符串不能代替确认令牌。
 
 Simulator-backed path 只用于本地验证。ADB/HDC 都必须经过同一个后端 gateway、权限、lease、snapshot、rollback 和 audit 边界。真实 pilot readiness 需要 HDC/device-lab 目标证据；本机 ADB lab 证据只能作为补充：不能有前端直接设备写入，不能无 lease 和 snapshot 写入，不能无确认 rollback，也不能绕过审计。
 

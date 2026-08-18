@@ -461,7 +461,8 @@ export function registerDebuggingRoutes(
       auth,
       {
         snapshotId: params.snapshotId,
-        confirmationToken: body.confirmationToken
+        confirmationToken: body.confirmationToken,
+        approvalId: body.approvalId
       },
       { requestId: request.requestId }
     );

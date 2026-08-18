@@ -6,8 +6,10 @@
  * every database effect is asserted through returned DTOs and subsequent
  * reads — never SQL text.
  */
+import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTracingBoundary, type TraceExporter } from "../../observability/tracing";
+import { serializePostgresJsonb } from "../../shared/database/jsonb";
 import { ApiError } from "../../shared/http/errors";
 import {
   createInMemoryTestDatabase,
@@ -17,6 +19,7 @@ import {
 import { seedCoreGraph } from "../../testing/fixtures";
 import type { AuthContext } from "../auth/types";
 import type { CreateAuditEventInput } from "../audit/types";
+import { createAgentApproval, createAgentSession } from "../agent/repository";
 import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import type { DebugDeviceGateway, GatewayWriteResult } from "./gateway";
 import { createDebugDeviceGatewayRegistry } from "./gatewayRegistry";
@@ -253,6 +256,53 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       bridgeMachineLabel: overrides.bridgeMachineLabel,
       actorUserId: overrides.actorUserId ?? "user-1"
     });
+  }
+
+  async function seedAgentDeviceApproval(input: {
+    approvalId?: string;
+    toolName?: string;
+    status?: "pending" | "approved" | "rejected";
+    payload: Record<string, unknown>;
+    organizationId?: string;
+    userId?: string;
+  }) {
+    const organizationId = input.organizationId ?? "org-1";
+    const userId = input.userId ?? "user-1";
+    const sessionId = `agent-session-${randomUUID()}`;
+    const toolCallId = `agent-tool-${randomUUID()}`;
+    const approvalId = input.approvalId ?? `agent-approval-${randomUUID()}`;
+    await createAgentSession(db, {
+      id: sessionId,
+      organizationId,
+      actorUserId: userId,
+      pageKey: "node-debugging",
+      context: { path: "/node-debugging", pageKey: "node-debugging" },
+      title: "Device write approval"
+    });
+    await db.query(
+      `insert into agent_tool_calls (
+         id, session_id, organization_id, name, label, payload, requires_approval, status
+       ) values ($1, $2, $3, $4, $5, $6::jsonb, true, 'pending_approval')`,
+      [
+        toolCallId,
+        sessionId,
+        organizationId,
+        input.toolName ?? "action.writeDebugNode",
+        "Write debug node",
+        serializePostgresJsonb(input.payload)
+      ]
+    );
+    await createAgentApproval(db, {
+      id: approvalId,
+      sessionId,
+      toolCallId,
+      organizationId,
+      status: input.status ?? "approved",
+      title: "Device write",
+      message: "Approve the device write.",
+      requestedByUserId: userId
+    });
+    return { approvalId, sessionId, toolCallId };
   }
 
   /** Standard server-mode runtime: online device, detected target, RW parameter + hdc binding, active session. */
@@ -1410,6 +1460,116 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       expect(gateway.writeNode).not.toHaveBeenCalled();
     });
 
+    it("accepts standalone High-risk writes with the confirmation token and no approval id", async () => {
+      const { parameter, session } = await seedRuntime({ parameter: { risk: "High" } });
+      const gateway = makeGateway();
+      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+
+      const operation = await service.writeNode(writeAuth, {
+        sessionId: session.id,
+        parameterId: parameter.id,
+        value: "3200",
+        confirmationToken: "confirm-high-risk-write"
+      });
+
+      expect(operation).toMatchObject({ status: "succeeded", approvalId: null });
+      expect(gateway.writeNode).toHaveBeenCalledOnce();
+    });
+
+    it("rejects an arbitrary approvalId string that is not an approved matching agent_approvals row", async () => {
+      const { parameter, session } = await seedRuntime({ parameter: { risk: "High" } });
+      const gateway = makeGateway();
+      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+
+      await expect(
+        service.writeNode(writeAuth, {
+          sessionId: session.id,
+          parameterId: parameter.id,
+          value: "3200",
+          approvalId: "not-a-real-approval"
+        })
+      ).rejects.toMatchObject(
+        new ApiError("VALIDATION_FAILED", "Device write approval is not valid for this write.", {
+          approvalId: "not-a-real-approval",
+          reason: "not-found"
+        })
+      );
+      expect(gateway.writeNode).not.toHaveBeenCalled();
+    });
+
+    it("rejects pending, rejected, wrong-tool, and payload-mismatched device-write approvals", async () => {
+      const { parameter, session } = await seedRuntime({ parameter: { risk: "High" } });
+      const gateway = makeGateway();
+      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const matchingPayload = { sessionId: session.id, parameterId: parameter.id, value: "3200" };
+
+      const pending = await seedAgentDeviceApproval({ status: "pending", payload: matchingPayload });
+      await expect(
+        service.writeNode(writeAuth, {
+          sessionId: session.id,
+          parameterId: parameter.id,
+          value: "3200",
+          approvalId: pending.approvalId
+        })
+      ).rejects.toMatchObject({ code: "VALIDATION_FAILED", details: { reason: "not-approved" } });
+
+      const rejected = await seedAgentDeviceApproval({ status: "rejected", payload: matchingPayload });
+      await expect(
+        service.writeNode(writeAuth, {
+          sessionId: session.id,
+          parameterId: parameter.id,
+          value: "3200",
+          approvalId: rejected.approvalId
+        })
+      ).rejects.toMatchObject({ code: "VALIDATION_FAILED", details: { reason: "not-approved" } });
+
+      const wrongTool = await seedAgentDeviceApproval({
+        toolName: "action.submitParameterChange",
+        payload: matchingPayload
+      });
+      await expect(
+        service.writeNode(writeAuth, {
+          sessionId: session.id,
+          parameterId: parameter.id,
+          value: "3200",
+          approvalId: wrongTool.approvalId
+        })
+      ).rejects.toMatchObject({ code: "VALIDATION_FAILED", details: { reason: "tool-mismatch" } });
+
+      const wrongValue = await seedAgentDeviceApproval({
+        payload: { sessionId: session.id, parameterId: parameter.id, value: "9999" }
+      });
+      await expect(
+        service.writeNode(writeAuth, {
+          sessionId: session.id,
+          parameterId: parameter.id,
+          value: "3200",
+          approvalId: wrongValue.approvalId
+        })
+      ).rejects.toMatchObject({ code: "VALIDATION_FAILED", details: { reason: "write-mismatch" } });
+
+      expect(gateway.writeNode).not.toHaveBeenCalled();
+    });
+
+    it("accepts a High-risk write when approvalId is an approved agent_approvals row matching this write", async () => {
+      const { parameter, session } = await seedRuntime({ parameter: { risk: "High" } });
+      const gateway = makeGateway();
+      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const { approvalId } = await seedAgentDeviceApproval({
+        payload: { sessionId: session.id, parameterId: parameter.id, value: "3200" }
+      });
+
+      const operation = await service.writeNode(writeAuth, {
+        sessionId: session.id,
+        parameterId: parameter.id,
+        value: "3200",
+        approvalId
+      });
+
+      expect(operation).toMatchObject({ status: "succeeded", approvalId });
+      expect(gateway.writeNode).toHaveBeenCalledOnce();
+    });
+
     it("writes an org-scoped writable parameter through the active session binding", async () => {
       await seedDevice();
       await seedTarget({ protocol: "adb", target_ref: "emulator-5554" });
@@ -2035,6 +2195,38 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
         tokenService.rollbackSnapshot(rollbackAuth, { snapshotId: "snapshot-1", confirmationToken: "wrong-token" })
       ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Rollback confirmation is required."));
       expect(tokenGateway.writeNode).not.toHaveBeenCalled();
+    });
+
+    it("rejects an arbitrary rollback approvalId that is not an approved matching agent_approvals row", async () => {
+      const { snapshot } = await seedRollbackReady();
+      const gateway = makeGateway();
+      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+
+      await expect(
+        service.rollbackSnapshot(rollbackAuth, { snapshotId: snapshot.id, approvalId: "not-a-real-approval" })
+      ).rejects.toMatchObject(
+        new ApiError("VALIDATION_FAILED", "Device rollback approval is not valid for this snapshot.", {
+          approvalId: "not-a-real-approval",
+          reason: "not-found"
+        })
+      );
+      expect(gateway.writeNode).not.toHaveBeenCalled();
+    });
+
+    it("accepts rollback when approvalId is an approved agent_approvals row matching this snapshot", async () => {
+      const { snapshot } = await seedRollbackReady();
+      const gateway = makeGateway();
+      const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+      const { approvalId } = await seedAgentDeviceApproval({
+        toolName: "action.rollbackDebugSnapshot",
+        payload: { snapshotId: snapshot.id }
+      });
+
+      const result = await service.rollbackSnapshot(rollbackAuth, { snapshotId: snapshot.id, approvalId });
+
+      expect(result.snapshot).toMatchObject({ id: snapshot.id, status: "consumed" });
+      expect(result.operations[0]).toMatchObject({ operationType: "rollback", approvalId });
+      expect(gateway.writeNode).toHaveBeenCalled();
     });
 
     it("rejects missing, consumed, and rollback-pending snapshots", async () => {
