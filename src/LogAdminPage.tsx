@@ -98,6 +98,21 @@ type LogDomainFormState = {
 
 const emptyLogDomainForm: LogDomainFormState = { name: "", description: "", profileText: "", modelOverride: "" };
 
+function formatProfileLabel(domain: LogDomain): string {
+  return domain.formatProfile ? "已配置" : "未配置";
+}
+
+function webhookStateLabel(domain: LogDomain): string {
+  if (domain.webhook?.enabled) {
+    return "已启用";
+  }
+  return domain.webhook?.url ? "已配置未启用" : "未配置";
+}
+
+function domainStatusLabel(status: LogDomain["status"]): string {
+  return status === "active" ? "启用" : "已归档";
+}
+
 function parseProfileText(profileText: string): { ok: true; profile: unknown } | { ok: false; error: string } {
   const trimmed = profileText.trim();
   if (trimmed.length === 0) {
@@ -613,6 +628,82 @@ function LogDomainGovernanceSection({
     }
   };
 
+  const domainColumns: Column<LogDomain>[] = [
+    {
+      key: "name",
+      header: "名称",
+      render: (domain) => (
+        <span className={cn("font-medium text-foreground", domain.status === "archived" && "opacity-60")}>{domain.name}</span>
+      ),
+      sortAccessor: (domain) => domain.name
+    },
+    {
+      key: "description",
+      header: "描述",
+      render: (domain) => (
+        <span className={cn("text-xs text-muted-foreground", domain.status === "archived" && "opacity-60")}>
+          {domain.description ?? "-"}
+        </span>
+      ),
+      sortAccessor: (domain) => domain.description ?? ""
+    },
+    {
+      key: "formatProfile",
+      header: "格式画像",
+      render: (domain) => (
+        <span className={cn("text-xs text-muted-foreground", domain.status === "archived" && "opacity-60")}>
+          {formatProfileLabel(domain)}
+        </span>
+      ),
+      sortAccessor: (domain) => formatProfileLabel(domain)
+    },
+    {
+      key: "model",
+      header: "模型",
+      render: (domain) => (
+        <span className={cn("text-xs text-muted-foreground", domain.status === "archived" && "opacity-60")} data-testid={`domain-model-${domain.id}`}>
+          {domain.modelOverride ? <span className="font-mono">{domain.modelOverride}</span> : "全局模型"}
+        </span>
+      ),
+      sortAccessor: (domain) => domain.modelOverride ?? ""
+    },
+    {
+      key: "webhook",
+      header: "结果回调",
+      render: (domain) => (
+        <span
+          className={cn("text-xs text-muted-foreground", domain.status === "archived" && "opacity-60")}
+          data-testid={`domain-webhook-state-${domain.id}`}
+        >
+          {webhookStateLabel(domain)}
+        </span>
+      )
+    },
+    {
+      key: "status",
+      header: "状态",
+      headerFilter: {
+        label: "状态",
+        values: ["active", "archived"],
+        getValue: (domain) => domain.status,
+        renderLabel: (status) => domainStatusLabel(status as LogDomain["status"]),
+        align: "right"
+      },
+      render: (domain) => (
+        <span
+          className={cn(
+            "inline-flex h-5 items-center rounded-md px-1.5 text-[11px] font-medium",
+            domain.status === "archived" && "opacity-60",
+            domain.status === "active" ? "bg-emerald-100 text-emerald-900" : "bg-muted text-muted-foreground"
+          )}
+        >
+          {domainStatusLabel(domain.status)}
+        </span>
+      ),
+      sortAccessor: (domain) => domain.status
+    }
+  ];
+
   return (
     <section className="flex flex-col gap-2" aria-label="日志业务域治理" data-testid="log-domain-governance">
       <div className="flex items-center justify-between gap-2">
@@ -639,91 +730,46 @@ function LogDomainGovernanceSection({
         </p>
       ) : (
         <>
-          <div className="overflow-hidden rounded-lg border border-border">
-            <table className="w-full text-left text-sm" aria-label="业务域列表">
-              <thead className="bg-muted/60 text-xs text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2 font-medium">名称</th>
-                  <th className="px-3 py-2 font-medium">描述</th>
-                  <th className="px-3 py-2 font-medium">格式画像</th>
-                  <th className="px-3 py-2 font-medium">模型</th>
-                  <th className="px-3 py-2 font-medium">结果回调</th>
-                  <th className="px-3 py-2 font-medium">状态</th>
-                  <th className="px-3 py-2 text-right font-medium">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {domains.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-3 py-4 text-center text-xs text-muted-foreground">
-                      暂无业务域；未分类域始终可用（通用分析）。
-                    </td>
-                  </tr>
-                ) : (
-                  domains.map((domain) => (
-                    <tr key={domain.id} className={cn("border-t border-border", domain.status === "archived" && "opacity-60")}>
-                      <td className="px-3 py-2 font-medium text-foreground">{domain.name}</td>
-                      <td className="px-3 py-2 text-xs text-muted-foreground">{domain.description ?? "-"}</td>
-                      <td className="px-3 py-2 text-xs text-muted-foreground">{domain.formatProfile ? "已配置" : "未配置"}</td>
-                      <td className="px-3 py-2 text-xs text-muted-foreground" data-testid={`domain-model-${domain.id}`}>
-                        {domain.modelOverride ? <span className="font-mono">{domain.modelOverride}</span> : "全局模型"}
-                      </td>
-                      <td className="px-3 py-2 text-xs text-muted-foreground" data-testid={`domain-webhook-state-${domain.id}`}>
-                        {domain.webhook?.enabled ? "已启用" : domain.webhook?.url ? "已配置未启用" : "未配置"}
-                      </td>
-                      <td className="px-3 py-2 text-xs">
-                        <span
-                          className={cn(
-                            "inline-flex h-5 items-center rounded-md px-1.5 text-[11px] font-medium",
-                            domain.status === "active" ? "bg-emerald-100 text-emerald-900" : "bg-muted text-muted-foreground"
-                          )}
-                        >
-                          {domain.status === "active" ? "启用" : "已归档"}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <div className="flex justify-end gap-1.5">
-                          <Button variant="outline" size="sm" disabled={pending} onClick={() => openEditForm(domain)}>
-                            编辑
-                          </Button>
-                          {domain.status === "active" ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={pending}
-                              onClick={() => setLinksDomain((current) => (current?.id === domain.id ? null : domain))}
-                            >
-                              知识条目
-                            </Button>
-                          ) : null}
-                          {domain.status === "active" ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={pending}
-                              onClick={() => setWebhookDomain((current) => (current?.id === domain.id ? null : domain))}
-                            >
-                              结果回调
-                            </Button>
-                          ) : null}
-                          {domain.status === "active" ? (
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              disabled={pending}
-                              onClick={() => void archiveDomain(domain.id)}
-                            >
-                              归档
-                            </Button>
-                          ) : null}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            aria-label="业务域列表"
+            rows={domains}
+            rowKey={(domain) => domain.id}
+            columns={domainColumns}
+            pageSize={50}
+            emptyMessage="暂无业务域；未分类域始终可用（通用分析）。"
+            renderRowActions={(domain) => (
+              <div className="flex flex-wrap justify-end gap-1.5">
+                <Button variant="outline" size="sm" disabled={pending} onClick={() => openEditForm(domain)}>
+                  编辑
+                </Button>
+                {domain.status === "active" ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={pending}
+                    onClick={() => setLinksDomain((current) => (current?.id === domain.id ? null : domain))}
+                  >
+                    知识条目
+                  </Button>
+                ) : null}
+                {domain.status === "active" ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={pending}
+                    onClick={() => setWebhookDomain((current) => (current?.id === domain.id ? null : domain))}
+                  >
+                    结果回调
+                  </Button>
+                ) : null}
+                {domain.status === "active" ? (
+                  <Button variant="destructive" size="sm" disabled={pending} onClick={() => void archiveDomain(domain.id)}>
+                    归档
+                  </Button>
+                ) : null}
+              </div>
+            )}
+          />
 
           {formOpen ? (
             <form

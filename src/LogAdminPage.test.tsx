@@ -597,6 +597,55 @@ describe("LogAdminPage 业务域治理", () => {
     expect(within(table).getByText("charging-power")).toBeInTheDocument();
     expect(within(table).getByText("legacy")).toBeInTheDocument();
     expect(within(table).getByText("已归档")).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: /名称/ })).toHaveAttribute("aria-sort", "none");
+    expect(within(table).getByRole("columnheader", { name: /状态/ })).toHaveAttribute("aria-sort", "none");
+    expect(within(table).getByRole("button", { name: "筛选状态" })).toBeInTheDocument();
+  });
+
+  it("shows the DataTable empty state when no domains exist", async () => {
+    const logActions = createLogActions({ listLogDomains: vi.fn().mockResolvedValue([]) });
+    renderPage({ logActions });
+
+    const table = await screen.findByRole("table", { name: "业务域列表" });
+    expect(within(table).getByText("暂无业务域；未分类域始终可用（通用分析）。")).toBeInTheDocument();
+  });
+
+  it("sorts the domain list from the 名称 column header", async () => {
+    const logActions = createLogActions({
+      listLogDomains: vi.fn().mockResolvedValue([
+        chargingDomain,
+        { ...chargingDomain, id: "domain-old", name: "legacy", status: "archived" as const }
+      ])
+    });
+    renderPage({ logActions });
+
+    const table = await screen.findByRole("table", { name: "业务域列表" });
+    const nameHeader = within(table).getByRole("columnheader", { name: /名称/ });
+    await userEvent.click(within(nameHeader).getByRole("button", { name: /名称/ }));
+
+    expect(nameHeader).toHaveAttribute("aria-sort", "ascending");
+    const bodyRows = within(table).getAllByRole("row").slice(1);
+    expect(within(bodyRows[0]).getByText("charging-power")).toBeInTheDocument();
+    expect(within(bodyRows[1]).getByText("legacy")).toBeInTheDocument();
+  });
+
+  it("filters the domain list from the 状态 column header", async () => {
+    const logActions = createLogActions({
+      listLogDomains: vi.fn().mockResolvedValue([
+        chargingDomain,
+        { ...chargingDomain, id: "domain-old", name: "legacy", status: "archived" as const }
+      ])
+    });
+    renderPage({ logActions });
+
+    const table = await screen.findByRole("table", { name: "业务域列表" });
+    const statusHeader = within(table).getByRole("columnheader", { name: /状态/ });
+    await userEvent.click(within(statusHeader).getByRole("button", { name: "筛选状态" }));
+    await userEvent.click(within(statusHeader).getByRole("checkbox", { name: "已归档" }));
+
+    expect(within(statusHeader).getByRole("button", { name: "筛选状态" })).toHaveClass("active");
+    expect(within(table).getByText("legacy")).toBeInTheDocument();
+    expect(within(table).queryByText("charging-power")).not.toBeInTheDocument();
   });
 
   it("creates a domain through the form with a valid profile JSON", async () => {
