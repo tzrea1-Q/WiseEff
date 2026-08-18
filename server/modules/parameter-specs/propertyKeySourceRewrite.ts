@@ -4,7 +4,7 @@ import { ApiError } from "../../shared/http/errors";
 export type PropertyKeySourceRewriteInput = {
   fromKey: string;
   toKey: string;
-  nodePath?: string | null;
+  nodePath: string;
 };
 
 function escapeRegExp(value: string) {
@@ -38,13 +38,14 @@ function locatePropertyNameSpan(
 
   const head = source.slice(0, input.valueSpanStart);
   const match = head.match(new RegExp(`(?:^|[^A-Za-z0-9_])(${escapeRegExp(input.fromKey)})\\s*=\\s*$`));
-  if (!match) {
+  if (!match || match.index === undefined) {
     throw new ApiError("CONFLICT", "Unable to locate property name in source for rewrite.", {
       reason: "missing-property-name-span",
       fromKey: input.fromKey,
     });
   }
-  const start = head.lastIndexOf(input.fromKey);
+  const delimiterOffset = match[0].startsWith(input.fromKey) ? 0 : 1;
+  const start = match.index + delimiterOffset;
   return { start, end: start + input.fromKey.length };
 }
 
@@ -58,8 +59,14 @@ export function rewritePropertyKeyInDtsSource(
 ): string {
   const fromKey = input.fromKey.trim();
   const toKey = input.toKey.trim();
+  const nodePath = input.nodePath.trim();
   if (!fromKey || !toKey || fromKey === toKey) {
     throw new ApiError("VALIDATION_FAILED", "Property-key source rewrite requires distinct from/to keys.");
+  }
+  if (!nodePath) {
+    throw new ApiError("VALIDATION_FAILED", "Property-key source rewrite requires a node path.", {
+      reason: "missing-node-path",
+    });
   }
 
   let document;
@@ -72,9 +79,7 @@ export function rewritePropertyKeyInDtsSource(
   }
 
   const resolved = resolveDts(document);
-  const nodes = input.nodePath
-    ? resolved.nodes.filter((node) => nodePathsMatch(node.nodePath, input.nodePath!))
-    : resolved.nodes.filter((node) => node.properties.some((property) => property.name === fromKey));
+  const nodes = resolved.nodes.filter((node) => nodePathsMatch(node.nodePath, nodePath));
 
   const edits: Array<{ start: number; end: number }> = [];
   for (const node of nodes) {
@@ -103,7 +108,7 @@ export function rewritePropertyKeyInDtsSource(
     throw new ApiError("CONFLICT", "Unable to locate property occurrence for rewrite.", {
       reason: "missing-from-source",
       fromKey,
-      nodePath: input.nodePath ?? null,
+      nodePath,
     });
   }
 

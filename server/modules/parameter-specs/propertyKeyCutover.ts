@@ -864,22 +864,32 @@ async function stageWouldRewriteLocations(
       continue;
     }
 
-    const reused: StagedPropertyKeyRewrite[] = [];
+    const writable: Array<PropertyKeyCutoverPreviewLocation & { nodePath: string }> = [];
     for (const location of group) {
+      const nodePath = location.nodePath?.trim() ?? "";
+      if (!nodePath) {
+        stagedByBinding.set(location.bindingId, { errorCode: "missing-node-path" });
+        continue;
+      }
+      writable.push({ ...location, nodePath });
+    }
+    if (writable.length === 0) continue;
+
+    const reused: StagedPropertyKeyRewrite[] = [];
+    for (const location of writable) {
       const existing = parseStagedRewrite(input.existingDetailsByBinding.get(location.bindingId) ?? {});
       const reusable = await reusableStagedRewrite(db, auth, projectId, existing);
       if (reusable) reused.push(reusable);
     }
-    if (reused.length === group.length && new Set(reused.map((item) => item.id)).size === 1) {
-      for (const location of group) {
+    if (reused.length === writable.length && new Set(reused.map((item) => item.id)).size === 1) {
+      for (const location of writable) {
         stagedByBinding.set(location.bindingId, reused[0]!);
       }
       continue;
     }
 
     try {
-      for (const location of group) {
-        if (!location.nodePath) continue;
+      for (const location of writable) {
         await assertSensitiveNodeWriteAllowed(
           db,
           auth,
@@ -904,7 +914,7 @@ async function stageWouldRewriteLocations(
       }
       const source = (await input.objectStore.get(version.storageKey)).toString("utf8");
       let rewritten = source;
-      for (const location of group) {
+      for (const location of writable) {
         rewritten = rewritePropertyKeyInDtsSource(rewritten, {
           fromKey: location.fromKey,
           toKey: location.toKey,
@@ -930,17 +940,17 @@ async function stageWouldRewriteLocations(
         status: candidate.status,
       };
       if (candidate.status !== "ready") {
-        for (const location of group) {
+        for (const location of writable) {
           stagedByBinding.set(location.bindingId, { errorCode: `candidate-${candidate.status}` });
         }
         continue;
       }
-      for (const location of group) {
+      for (const location of writable) {
         stagedByBinding.set(location.bindingId, staged);
       }
     } catch (error) {
       const errorCode = errorCodeFromUnknown(error, "stage-failed");
-      for (const location of group) {
+      for (const location of writable) {
         stagedByBinding.set(location.bindingId, { errorCode });
       }
     }

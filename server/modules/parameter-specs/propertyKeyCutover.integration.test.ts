@@ -884,4 +884,47 @@ describe.skipIf(!databaseAvailable)("property-key source cutover prepare staging
       dtsPropertyKey: FROM_KEY,
     });
   });
+
+  it("prepare marks a missing node path incompatible and does not stage a candidate", async () => {
+    const objectStore = createMemoryObjectStore();
+    await seedRewritableBindingOnly(db!, objectStore);
+    await db!.query(`update dts_node_occurrences set node_path = '' where id = 'no-pk-cutover'`);
+
+    await startPropertyKeySourceCutover(db!, makeAuth(), {
+      specId: SPEC_ID,
+      propertyKey: TO_KEY,
+      reason: "stage without node path",
+    });
+
+    const prepared = await preparePropertyKeySourceCutover(
+      db!,
+      makeAuth(),
+      { specId: SPEC_ID, reason: "missing node path" },
+      {},
+      { objectStore },
+    );
+
+    expect(prepared.item).toMatchObject({
+      status: "preparing",
+      writesCatalog: false,
+      writesSource: false,
+      stagedSource: false,
+    });
+    expect(prepared.item.items).toEqual([
+      expect.objectContaining({
+        bindingId: BINDING_WITH_OCCURRENCE,
+        status: "incompatible",
+        incompatibilityCode: "missing-node-path",
+      }),
+    ]);
+    const candidates = await db!.query<{ count: string }>(
+      `select count(*)::text as count from project_parameter_file_candidates where project_id = $1`,
+      [PROJECT_ID],
+    );
+    expect(Number(candidates.rows[0]?.count ?? 0)).toBe(0);
+    expect(await catalogKeys(db!)).toMatchObject({
+      specPropertyKey: FROM_KEY,
+      dtsPropertyKey: FROM_KEY,
+    });
+  });
 });

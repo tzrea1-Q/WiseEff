@@ -136,4 +136,49 @@ describe("PropertyKeyCutoverPanel", () => {
     expect(screen.getByRole("button", { name: "启动作业" })).toBeDisabled();
     expect(actions.start).not.toHaveBeenCalled();
   });
+
+  it("keeps finalize disabled when a re-preview still has no-occurrence locations", async () => {
+    const actions = {
+      preview: vi
+        .fn()
+        .mockResolvedValueOnce(preview())
+        .mockResolvedValueOnce({
+          ...preview(),
+          locations: [{ ...preview().locations[0]!, status: "no-occurrence" as const, fileName: null }],
+        }),
+      start: vi.fn().mockResolvedValue(run({ status: "preparing", stagedSource: false, items: [] })),
+      prepare: vi.fn().mockResolvedValue(run()),
+      finalize: vi.fn(),
+    };
+
+    render(<PropertyKeyCutoverPanel currentKey="typo_prop" actions={actions} />);
+    fireEvent.change(screen.getByLabelText("新属性键"), { target: { value: "corrected_prop" } });
+    fireEvent.click(screen.getByRole("button", { name: "预检" }));
+    await waitFor(() => expect(actions.preview).toHaveBeenCalledTimes(1));
+    fireEvent.change(screen.getByLabelText("原因"), { target: { value: "纠正错键" } });
+    fireEvent.click(screen.getByRole("button", { name: "启动作业" }));
+    await waitFor(() => expect(actions.start).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "暂存草稿" }));
+    await waitFor(() => expect(actions.prepare).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole("button", { name: "预检" }));
+    await waitFor(() => expect(actions.preview).toHaveBeenCalledTimes(2));
+    expect(screen.getByText(/未命名文件/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "完成切换" })).toBeDisabled();
+  });
+
+  it("surfaces a resume failure instead of swallowing it", async () => {
+    const actions = {
+      preview: vi.fn(),
+      start: vi.fn(),
+      prepare: vi.fn(),
+      finalize: vi.fn(),
+      loadOpenRun: vi.fn().mockRejectedValue(new Error("network down")),
+    };
+
+    render(<PropertyKeyCutoverPanel currentKey="typo_prop" actions={actions} />);
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent("无法读取进行中的属性键切换，请重试。"),
+    );
+  });
 });

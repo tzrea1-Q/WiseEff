@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import { ModalDialog } from "@/components/common/ModalDialog";
@@ -44,7 +44,7 @@ function locationLabel(status: string) {
     case "conflict":
       return "新旧键同时存在";
     default:
-      return "待处理";
+      return PARAMETER_ADMIN_UI.propertyKeyCutoverUnknownStatus;
   }
 }
 
@@ -61,7 +61,7 @@ function itemLabel(status: string) {
     case "applied":
       return "已完成";
     default:
-      return status;
+      return PARAMETER_ADMIN_UI.propertyKeyCutoverUnknownStatus;
   }
 }
 
@@ -84,30 +84,33 @@ export function PropertyKeyCutoverPanel({
   const sourcesMoved =
     Boolean(run) &&
     preview?.toKey === run?.toKey &&
-    (preview?.locations.every(
-      (location) => location.status === "already-new-key" || location.status === "no-occurrence",
-    ) ??
-      false);
+    (preview?.locations.length ?? 0) > 0 &&
+    (preview?.locations.every((location) => location.status === "already-new-key") ?? false);
   const canFinalize = Boolean(run && run.status === "ready" && sourcesMoved);
+  const loadOpenRun = actions.loadOpenRun;
+  const loadOpenRunRef = useRef(loadOpenRun);
+  loadOpenRunRef.current = loadOpenRun;
 
   useEffect(() => {
-    if (!actions.loadOpenRun) return undefined;
+    const load = loadOpenRunRef.current;
+    if (!load) return undefined;
     let cancelled = false;
-    void actions
-      .loadOpenRun()
+    void load()
       .then((openRun) => {
         if (!cancelled && openRun) {
           setRun(openRun);
           setNextKey(openRun.toKey);
         }
       })
-      .catch(() => {
-        /* no open run */
+      .catch((error) => {
+        if (!cancelled) {
+          setLocalError(presentError(error, PARAMETER_ADMIN_UI.propertyKeyCutoverResumeFailed));
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [actions]);
+  }, []);
 
   async function runAction(task: () => Promise<void>) {
     setLocalError(null);
@@ -230,14 +233,22 @@ export function PropertyKeyCutoverPanel({
           {preview.locations.length === 0
             ? "预检未发现需改写的源位置。"
             : `预检 ${preview.locations.length} 处：${preview.locations
-                .map((location) => `${location.fileName ?? location.bindingId}（${locationLabel(location.status)}）`)
+                .map(
+                  (location) =>
+                    `${location.fileName ?? PARAMETER_ADMIN_UI.propertyKeyCutoverUnnamedFile}（${locationLabel(location.status)}）`,
+                )
                 .join("；")}`}
         </p>
       ) : null}
       {run ? (
         <p className="form-hint">
           {run.stagedSource ? PARAMETER_ADMIN_UI.propertyKeyCutoverStaged : null}
-          {run.items.map((item) => `${item.fileName ?? item.bindingId}（${itemLabel(item.status)}）`).join("；")}
+          {run.items
+            .map(
+              (item) =>
+                `${item.fileName ?? PARAMETER_ADMIN_UI.propertyKeyCutoverUnnamedFile}（${itemLabel(item.status)}）`,
+            )
+            .join("；")}
         </p>
       ) : null}
 

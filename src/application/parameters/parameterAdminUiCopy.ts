@@ -205,6 +205,9 @@ export const PARAMETER_ADMIN_UI = {
   propertyKeyCutoverPrepare: "暂存草稿",
   propertyKeyCutoverFinalize: "完成切换",
   propertyKeyCutoverStaged: "已暂存文件草稿，现行源尚未改写。请在配置工作台审阅并合入后再完成切换。",
+  propertyKeyCutoverUnnamedFile: "未命名文件",
+  propertyKeyCutoverUnknownStatus: "待处理",
+  propertyKeyCutoverResumeFailed: "无法读取进行中的属性键切换，请重试。",
 } as const;
 
 export type SpecReviewMatchStatusUi =
