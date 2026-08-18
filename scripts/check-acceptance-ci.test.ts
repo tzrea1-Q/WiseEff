@@ -3,6 +3,7 @@ import {
   CI_SMOKE_TAG,
   countCiSmokeTags,
   evaluateAcceptanceCiConfiguration,
+  findForbiddenPlaywrightImports,
   requiredAcceptanceCiArtifactPaths,
   requiredAcceptanceCiScripts,
   requiredAcceptanceCiWorkflowTokens
@@ -31,6 +32,13 @@ concurrency:
 jobs:
   detect:
     name: Detect changed paths
+    steps:
+      - run: echo detect
+
+  build-and-test:
+    steps:
+      - name: Acceptance CI metadata (L1)
+        run: npm run acceptance:ci
 
   required:
     name: Merge bar
@@ -102,6 +110,7 @@ describe("M5.12 acceptance CI configuration", () => {
         "acceptance-local-non-hdc:",
         "full-acceptance",
         "cancel-in-progress",
+        "Acceptance CI metadata (L1)",
         "npm run acceptance:quality-run",
         "npm run acceptance:smoke",
         "npm run acceptance:browser -- --mode local-non-hdc"
@@ -183,6 +192,27 @@ jobs:
 
     expect(result.status).toBe("failed");
     expect(result.fullPilotDefaultGate).toBe(true);
+  });
+
+  it("fails when a spec imports @playwright/test instead of playwright/test", () => {
+    expect(
+      findForbiddenPlaywrightImports([
+        { path: "e2e/acceptance/ok.spec.ts", source: 'import { test } from "playwright/test";\n' }
+      ])
+    ).toEqual([]);
+    const result = evaluateAcceptanceCiConfiguration({
+      packageJson: { scripts: compliantScripts },
+      workflowText: compliantWorkflow,
+      smokeTagCount: 3,
+      playwrightSources: [
+        {
+          path: "e2e/acceptance/broken.acceptance.spec.ts",
+          source: 'import { test } from "@playwright/test";\n'
+        }
+      ]
+    });
+    expect(result.status).toBe("failed");
+    expect(result.forbiddenPlaywrightImports).toEqual(["e2e/acceptance/broken.acceptance.spec.ts"]);
   });
 
   it("rejects a missing or oversized @ci-smoke set", () => {
