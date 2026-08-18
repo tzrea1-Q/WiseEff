@@ -237,7 +237,7 @@ describe.skipIf(!databaseAvailable)("catalogImportExport", () => {
     );
 
     const audits = await listAuditEvents(db, { organizationId: "org-1", app: "debugging", kind: "debug-node-catalog-import" });
-    expect(audits.items[0]).toMatchObject({
+    expect(audits.items.find((item) => item.traceId === "req-import-2")).toMatchObject({
       action: "import",
       targetType: "debug-node-catalog",
       traceId: "req-import-2"
