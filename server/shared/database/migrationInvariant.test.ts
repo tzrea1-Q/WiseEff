@@ -375,6 +375,22 @@ describe("parameter spec version cutover migration invariants (ADR-0014)", () =>
   });
 });
 
+describe("parameter spec property-key cutover migration invariants (ADR-0034)", () => {
+  it("introduces a parallel run and item table, not columns on version cutover", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0113_parameter_spec_property_key_cutover.sql"),
+      "utf8",
+    );
+    expect(migration).toContain("parameter_spec_property_key_cutover_runs");
+    expect(migration).toContain("parameter_spec_property_key_cutover_items");
+    expect(migration).toContain("from_key");
+    expect(migration).toContain("to_key");
+    expect(migration).toContain("preparing");
+    expect(migration).toContain("finalized");
+    expect(migration).not.toContain("alter table parameter_spec_version_cutover");
+  });
+});
+
 describe("identity mapping singleton blockers migration invariants", () => {
   it("extends mapping outcomes and singleton task kind", () => {
     const migration = readFileSync(

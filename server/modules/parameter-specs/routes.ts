@@ -21,6 +21,9 @@ import {
   parameterSpecReviewTaskParamsSchema,
   prepareParameterSpecCutoverBodySchema,
   previewPropertyKeyCutoverBodySchema,
+  startPropertyKeyCutoverBodySchema,
+  preparePropertyKeyCutoverBodySchema,
+  finalizePropertyKeyCutoverBodySchema,
   reattributeParameterSpecBodySchema,
   renameParameterSpecPropertyKeyBodySchema,
   resolveSpecReviewTaskBodySchema,
@@ -44,7 +47,12 @@ import {
   restoreParameterSpec,
   updateParameterSpec,
 } from "./service";
-import { previewPropertyKeySourceCutover } from "./propertyKeyCutover";
+import {
+  finalizePropertyKeySourceCutover,
+  preparePropertyKeySourceCutover,
+  previewPropertyKeySourceCutover,
+  startPropertyKeySourceCutover,
+} from "./propertyKeyCutover";
 import {
   activateOrganizationDriverSchemaForAuth,
   createOrganizationDriverSchemaForAuth,
@@ -287,6 +295,51 @@ export function registerParameterSpecRoutes(
       specId: params.specId,
       propertyKey: body.propertyKey,
     });
+    return { status: 200, body: result };
+  });
+
+  router.post("/api/v2/parameter-specs/:specId/property-key-cutover/start", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(parameterSpecParamsSchema, request.params);
+    const body = parseWithSchema(startPropertyKeyCutoverBodySchema, request.body ?? {});
+    const result = await startPropertyKeySourceCutover(
+      db,
+      auth,
+      { specId: params.specId, propertyKey: body.propertyKey, reason: body.reason },
+      { requestId: request.requestId },
+    );
+    return { status: 200, body: result };
+  });
+
+  router.post("/api/v2/parameter-specs/:specId/property-key-cutover/prepare", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(parameterSpecParamsSchema, request.params);
+    const body = parseWithSchema(preparePropertyKeyCutoverBodySchema, request.body ?? {});
+    const result = await preparePropertyKeySourceCutover(
+      db,
+      auth,
+      { specId: params.specId, reason: body.reason },
+      { requestId: request.requestId },
+    );
+    return { status: 200, body: result };
+  });
+
+  router.post("/api/v2/parameter-specs/:specId/property-key-cutover/finalize", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(parameterSpecParamsSchema, request.params);
+    const body = parseWithSchema(finalizePropertyKeyCutoverBodySchema, request.body ?? {});
+    const result = await finalizePropertyKeySourceCutover(
+      db,
+      auth,
+      { specId: params.specId, reason: body.reason },
+      { requestId: request.requestId },
+    );
     return { status: 200, body: result };
   });
 

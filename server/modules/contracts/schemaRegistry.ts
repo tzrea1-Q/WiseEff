@@ -660,6 +660,41 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
       "404": "ErrorResponse"
     }
   },
+  "parameterSpecs.startPropertyKeyCutover": {
+    summary: "Start a referenced property-key source cutover run from the preview locations",
+    tags: ["parameters"],
+    requestBody: "StartPropertyKeyCutoverRequest",
+    responseBody: "PropertyKeyCutoverRunResponse",
+    additionalResponses: {
+      "400": "ErrorResponse",
+      "403": "ErrorResponse",
+      "404": "ErrorResponse",
+      "409": "ErrorResponse"
+    }
+  },
+  "parameterSpecs.preparePropertyKeyCutover": {
+    summary: "Reclassify property-key cutover items from live source locations without writing catalog",
+    tags: ["parameters"],
+    requestBody: "PreparePropertyKeyCutoverRequest",
+    responseBody: "PropertyKeyCutoverRunResponse",
+    additionalResponses: {
+      "403": "ErrorResponse",
+      "404": "ErrorResponse",
+      "409": "ErrorResponse"
+    }
+  },
+  "parameterSpecs.finalizePropertyKeyCutover": {
+    summary: "Finalize a property-key source cutover by rewriting the catalog triple after sources moved",
+    tags: ["parameters"],
+    requestBody: "FinalizePropertyKeyCutoverRequest",
+    responseBody: "PropertyKeyCutoverRunResponse",
+    additionalResponses: {
+      "400": "ErrorResponse",
+      "403": "ErrorResponse",
+      "404": "ErrorResponse",
+      "409": "ErrorResponse"
+    }
+  },
   "parameterTopology.listConfigRevisions": {
     summary: "List config revisions for a project config set",
     tags: ["parameters"],
