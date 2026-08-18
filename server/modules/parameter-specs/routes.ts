@@ -20,6 +20,7 @@ import {
   parameterSpecParamsSchema,
   parameterSpecReviewTaskParamsSchema,
   prepareParameterSpecCutoverBodySchema,
+  previewPropertyKeyCutoverBodySchema,
   reattributeParameterSpecBodySchema,
   renameParameterSpecPropertyKeyBodySchema,
   resolveSpecReviewTaskBodySchema,
@@ -43,6 +44,7 @@ import {
   restoreParameterSpec,
   updateParameterSpec,
 } from "./service";
+import { previewPropertyKeySourceCutover } from "./propertyKeyCutover";
 import {
   activateOrganizationDriverSchemaForAuth,
   createOrganizationDriverSchemaForAuth,
@@ -272,6 +274,19 @@ export function registerParameterSpecRoutes(
       { ...body, specId: params.specId },
       { requestId: request.requestId },
     );
+    return { status: 200, body: result };
+  });
+
+  router.post("/api/v2/parameter-specs/:specId/property-key-cutover/preview", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(parameterSpecParamsSchema, request.params);
+    const body = parseWithSchema(previewPropertyKeyCutoverBodySchema, request.body ?? {});
+    const result = await previewPropertyKeySourceCutover(db, auth, {
+      specId: params.specId,
+      propertyKey: body.propertyKey,
+    });
     return { status: 200, body: result };
   });
 

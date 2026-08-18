@@ -225,6 +225,55 @@ export const renameParameterSpecPropertyKeyBodySchema = z.object({
   reason: nonEmptyString,
 });
 
+export const previewPropertyKeyCutoverBodySchema = z.object({
+  propertyKey: nonEmptyString,
+});
+
+export const propertyKeyCutoverLocationStatusSchema = z.enum([
+  "would-rewrite",
+  "already-new-key",
+  "missing-from-source",
+  "no-occurrence",
+  "conflict",
+]);
+
+export const propertyKeyCutoverStartBlockerSchema = z.object({
+  code: z.enum(["triple-collision", "open-version-cutover"]),
+  message: nonEmptyString,
+  details: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const propertyKeyCutoverPreviewLocationSchema = z.object({
+  projectId: nonEmptyString,
+  bindingId: nonEmptyString,
+  bindingRevisionId: z.string().nullable(),
+  configRevisionId: z.string().nullable(),
+  propertyOccurrenceId: z.string().nullable(),
+  fileVersionId: z.string().nullable(),
+  fileName: z.string().nullable(),
+  nodePath: z.string().nullable(),
+  rawValue: z.string().nullable(),
+  fromKey: nonEmptyString,
+  toKey: nonEmptyString,
+  status: propertyKeyCutoverLocationStatusSchema,
+});
+
+export const propertyKeyCutoverPreviewDtoSchema = z.object({
+  parameterSpecId: nonEmptyString,
+  fromKey: nonEmptyString,
+  toKey: nonEmptyString,
+  referenceCount: z.number().int().nonnegative(),
+  writesCatalog: z.literal(false),
+  writesSource: z.literal(false),
+  inlineRenameEligible: z.boolean(),
+  startBlockers: z.array(propertyKeyCutoverStartBlockerSchema),
+  locations: z.array(propertyKeyCutoverPreviewLocationSchema),
+});
+
+export const propertyKeyCutoverPreviewResponseSchema = z.object({
+  item: propertyKeyCutoverPreviewDtoSchema,
+});
+
 export const prepareParameterSpecCutoverBodySchema = z.object({
   reason: z.string().optional(),
 });
@@ -256,6 +305,8 @@ export type DeprecateParameterSpecBody = z.infer<typeof deprecateParameterSpecBo
 export type RestoreParameterSpecBody = z.infer<typeof restoreParameterSpecBodySchema>;
 export type ReattributeParameterSpecBody = z.infer<typeof reattributeParameterSpecBodySchema>;
 export type RenameParameterSpecPropertyKeyBody = z.infer<typeof renameParameterSpecPropertyKeyBodySchema>;
+export type PreviewPropertyKeyCutoverBody = z.infer<typeof previewPropertyKeyCutoverBodySchema>;
+export type PropertyKeyCutoverPreviewDto = z.infer<typeof propertyKeyCutoverPreviewDtoSchema>;
 export type PrepareParameterSpecCutoverBody = z.infer<typeof prepareParameterSpecCutoverBodySchema>;
 export type FinalizeParameterSpecCutoverBody = z.infer<typeof finalizeParameterSpecCutoverBodySchema>;
 
