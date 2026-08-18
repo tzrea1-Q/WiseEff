@@ -48,6 +48,7 @@ function run(overrides: Partial<PropertyKeyCutoverRun> = {}): PropertyKeyCutover
         locationStatus: "would-rewrite",
         incompatibilityCode: null,
         fileName: "board.dts",
+        fileId: "file-board",
         nodePath: "/charger@6e",
         stagedRewrite: { kind: "file-candidate", id: "cand-1", status: "ready" },
       },
@@ -84,6 +85,82 @@ describe("PropertyKeyCutoverPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "暂存草稿" }));
     await waitFor(() => expect(actions.prepare).toHaveBeenCalled());
     expect(screen.getByText(/已暂存文件草稿/)).toBeInTheDocument();
+    const handoff = screen.getByRole("link", { name: "在配置工作台审阅并合入 board.dts" });
+    expect(handoff).toHaveAttribute(
+      "href",
+      "/parameter-admin/projects/p1/configuration?sourceMode=candidate&candidate=cand-1&inspector=file&file=file-board&node=%2Fcharger%406e",
+    );
+    expect(handoff).not.toHaveTextContent("cand-1");
+    expect(screen.getByText("已暂存")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "完成切换" })).toBeDisabled();
+    expect(actions.finalize).not.toHaveBeenCalled();
+  });
+
+  it("shows activated and abandoned file-candidate states and still requires a re-preview to finalize", async () => {
+    const actions = {
+      preview: vi.fn().mockResolvedValue(preview()),
+      start: vi.fn(),
+      prepare: vi.fn(),
+      finalize: vi.fn(),
+      loadOpenRun: vi.fn().mockResolvedValue(
+        run({
+          items: [
+            {
+              id: "item-1",
+              bindingId: "b1",
+              projectId: "p1",
+              status: "ready",
+              locationStatus: "would-rewrite",
+              incompatibilityCode: null,
+              fileName: "board.dts",
+              fileId: "file-board",
+              nodePath: "/charger@6e",
+              stagedRewrite: { kind: "file-candidate", id: "cand-1", status: "active" },
+            },
+          ],
+        }),
+      ),
+    };
+
+    render(<PropertyKeyCutoverPanel currentKey="typo_prop" actions={actions} />);
+    await waitFor(() => expect(actions.loadOpenRun).toHaveBeenCalledTimes(1));
+    expect(screen.getByText("已合入现行源")).toBeInTheDocument();
+    expect(screen.getByText(/请再预检，确认源已是新键后再完成切换/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "完成切换" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "刷新候选状态" }));
+    await waitFor(() => expect(actions.loadOpenRun).toHaveBeenCalledTimes(2));
+  });
+
+  it("shows an abandoned file-candidate without offering finalize", async () => {
+    const actions = {
+      preview: vi.fn(),
+      start: vi.fn(),
+      prepare: vi.fn(),
+      finalize: vi.fn(),
+      loadOpenRun: vi.fn().mockResolvedValue(
+        run({
+          items: [
+            {
+              id: "item-1",
+              bindingId: "b1",
+              projectId: "p1",
+              status: "ready",
+              locationStatus: "would-rewrite",
+              incompatibilityCode: null,
+              fileName: "board.dts",
+              fileId: "file-board",
+              nodePath: "/charger@6e",
+              stagedRewrite: { kind: "file-candidate", id: "cand-1", status: "abandoned" },
+            },
+          ],
+        }),
+      ),
+    };
+
+    render(<PropertyKeyCutoverPanel currentKey="typo_prop" actions={actions} />);
+    await waitFor(() => expect(screen.getByText("已放弃")).toBeInTheDocument());
+    expect(screen.getByText(/文件草稿已放弃/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "完成切换" })).toBeDisabled();
     expect(actions.finalize).not.toHaveBeenCalled();
   });

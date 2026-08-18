@@ -1,8 +1,8 @@
 # 有引用的属性键改名是源文件改写 cutover
 
-> 状态：**进行中** — start + finalize 已在 `main`（#549）。本刀 prepare 暂存文件候选草稿，并加最小定义编辑器面板。人审合入 + finalize 成为日常路径前，TD-117 保持 **Open**。  
+> 状态：**进行中** — start + finalize + prepare 暂存已在 `main`（#549 / #553）。本刀补定义编辑器到配置工作台的产品内手顺。人审合入 + finalize 成为日常路径前，TD-117 保持 **Open**。  
 > 日期：2026-08-18  
-> 分支：`feat/td-117-property-key-prepare-ui`  
+> 分支：`feat/td-117-property-key-workbench-handoff`  
 > English: [`docs/exec-plans/active/2026-08-18-property-key-source-cutover.md`](../../../exec-plans/active/2026-08-18-property-key-source-cutover.md)  
 > 锁定决策：[ADR-0034](../../../adr/0034-referenced-property-key-rename-is-a-source-cutover.md)  
 > 追踪表：[TD-117](../tech-debt-tracker.md)（索引由会话 0 维护）
@@ -11,7 +11,7 @@
 
 把绑错过的 `property_key` 做成**专用分阶段 cutover**：先在每个 binding 的**源文件**里改写属性名（草稿 / 变更请求，走现有评审），再在 **finalize** 时改 catalog 三元组（`property_key` + 派生的 `specification_key` / `schema_namespace`），使 ingest 只认已经改完的源。
 
-本计划**不宣称**整条产品作业已完成。#544 已合入锁定架构与只读预检。#549 已合入 start + finalize。本分支交付 **prepare 暂存**：把旧键 → 新键写入现有参数文件候选（不激活现行源），并加最小 Admin 面板（预检 → 启动 → 暂存 → 人审合入 → 完成切换）。finalize 仍要求活源已是新键。不另造参数值 CR——那条缝改不了属性名。
+本计划**不宣称**整条产品作业已完成。#544 已合入锁定架构与只读预检。#549 已合入 start + finalize。#553 已合入 prepare 暂存（文件候选，不激活现行源）与最小 Admin 面板。本分支交付**工作台手顺**：暂存后，每个 `file-candidate` 都是现有配置工作台候选审阅的可操作深链，并诚实展示候选实况；再预检确认源已是新键才能完成切换。作业仍不自动激活、不合入现行源。不另造参数值 CR——那条缝改不了属性名。
 
 ## 已锁定（不要重开）
 
@@ -25,7 +25,7 @@
 | 废弃 + 重建 | 第二个身份、引用数被拆开、错键行仍可解析发布（ADR-0011 / ADR-0017） |
 | 并进版本 cutover（ADR-0032 / ADR-0014 表） | 改标识 ≠ 改语义内容；finalize 写入不同 |
 
-零引用改名仍走 `POST /api/v2/parameter-specs/:specId/rename-property-key`。`referenceCount > 0` 时该路由保持 `409` `{ parameterSpecId, referenceCount }`，编辑器「修正属性键」保持**禁用**，直到 finalize 落地。
+零引用改名仍走 `POST /api/v2/parameter-specs/:specId/rename-property-key`。`referenceCount > 0` 时该路由保持 `409` `{ parameterSpecId, referenceCount }`，编辑器「修正属性键」保持**禁用**。
 
 ## 架构
 
@@ -83,10 +83,10 @@ Finalize（同一事务）：改 catalog 三元组
 
 | 角色 | 允许 |
 | --- | --- |
-| 实现代理 | 从最新 `origin/main` 建隔离 worktree；在 `feat/td-117-property-key-prepare-ui` 提交；`git push -u origin HEAD`；不合入 |
+| 实现代理 | 从最新 `origin/main` 建隔离 worktree；在 `feat/td-117-property-key-workbench-handoff` 提交；`git push -u origin HEAD`；不合入 |
 | 父代理 / 会话负责人 | 评审；若子代理未开 PR 则开 PR；评审后再合入，然后同步本地 `main` |
 
-分支：`feat/td-117-property-key-prepare-ui`。一计划一支。不要 push `main`，不要 `--no-verify`，不要改写已发布历史。
+分支：`feat/td-117-property-key-workbench-handoff`。一计划一支。不要 push `main`，不要 `--no-verify`，不要改写已发布历史。
 
 合入时（舰队协调）：对照刷新后的 `origin/main` 复核 ADR / 迁移 / TD 编号。本分支**不得**新开 ADR。若后续批次加迁移，编号在合入时认领。
 
@@ -108,18 +108,23 @@ Finalize（同一事务）：改 catalog 三元组
 
 run + item 表（`0113` 已在 `main`）。start 拒绝冲突与开放版本 cutover。**本刀：** prepare 写入参数文件候选（旧键 → 新键），项标 `ready` 并带 `stagedRewrite`。不激活现行源。
 
-### 第 3 批 — Finalize catalog 三元组（#549 已合）+ Admin 面板（本 PR）
+### 第 3 批 — Finalize catalog 三元组（#549 已合）+ Admin 面板（#553 已合）
 
-仅当每个活位置都是 `already-new-key` 或诚实 skip 后，原子改 catalog。`triple-collision` / `open-version-cutover` 失败关闭。审计 `spec-property-key-cutover-finalized`。**本刀：** 定义编辑器最小面板：预检 → 启动 → 暂存 → 完成切换。行内改键保持禁用。
+仅当每个活位置都是 `already-new-key` 或诚实 skip 后，原子改 catalog。`triple-collision` / `open-version-cutover` 失败关闭。审计 `spec-property-key-cutover-finalized`。定义编辑器最小面板：预检 → 启动 → 暂存 → 完成切换。行内改键保持禁用。
+
+### 第 4 批 — 工作台手顺（本 PR）
+
+暂存后，定义编辑器把每个已暂存的 `file-candidate` 做成可操作的配置工作台入口（现有路由 + 候选审阅 UI）。展示候选实况（已暂存 / 已合入现行源 / 已放弃 / 已不可用），并引导再预检后才能完成切换。prepare / finalize / 面板仍**不**激活候选、不写现行源。
 
 ## 成功标准（本刀）
 
-- prepare 暂存文件候选改写，不写现行源、不改 catalog。
-- 候选合入现行源后，finalize 改 catalog 三元组。
-- prepare / finalize 对 `triple-collision` 与 `open-version-cutover` 失败关闭；catalog 不变。
+- 暂存后，每个文件候选都有中文工作台深链，能打开该项目的候选审阅。
+- GET / 恢复作业时候选状态诚实（不是 prepare 当时的过期快照）。
+- 激活仍只走现有工作台；再预检全部为 `already-new-key` 之前 finalize 保持 `409`。
+- catalog 仍只在 finalize 后变。
 - `referenceCount > 0` 时行内改名仍拒绝/禁用。
 - `npm run docs:check`、相关测试、`npm run contract:check`、`npm run build` 通过。
-- PR 正文写明 TD-117 是否仍 Open；prepare 走文件候选（不是参数值 CR）；有最小定义编辑器面板。
+- PR 正文写明 TD-117 能否关闭；手顺是否还要跨页；未做项。
 
 ## 验收命令
 
@@ -130,6 +135,7 @@ npx vitest run --config vitest.server.config.ts \
   server/modules/parameter-specs/propertyKeySourceRewrite.test.ts \
   server/modules/contracts/routeParity.test.ts
 npx vitest run \
+  src/application/parameters/propertyKeyCutoverHandoff.test.ts \
   src/components/parameter-topology/PropertyKeyCutoverPanel.test.tsx \
   src/components/parameter-topology/ParameterSpecDetailDialog.test.tsx \
   src/infrastructure/http/parameterTopologyClient.test.ts
@@ -143,7 +149,7 @@ npm run build
 
 ## 界面交互自动化审查
 
-`usageCount > 0` 时定义编辑器增加属性键切换面板。行内「修正属性键」保持禁用。既有身份编辑器单测加上 `PropertyKeyCutoverPanel.test.tsx` 覆盖新交互。不新增验收需求 ID 或操作 ID。
+`usageCount > 0` 时定义编辑器增加属性键切换面板。暂存后深链到现有配置工作台候选审阅。行内「修正属性键」保持禁用。既有身份编辑器单测加上 `PropertyKeyCutoverPanel.test.tsx` 与 `propertyKeyCutoverHandoff.test.ts` 覆盖新交互。不新增验收需求 ID 或操作 ID。
 
 ## Documentation Impact Matrix
 
@@ -154,8 +160,8 @@ npm run build
 | 产品规格 | 复核 | `docs/product-specs/product-spec.md`（含中文）— 行内身份纠错仍是零引用。本刀不改产品规格。 |
 | 领域 / 词汇 | 复核 | `CONTEXT.md`、`docs/design-docs/domain-model.md`（含中文）— 「仅零引用可改属性键」对行内路径仍成立。cutover 作业词条等第 2/3 批。 |
 | 设计文档 / ADR | 复核 | [ADR-0034](../../../adr/0034-referenced-property-key-rename-is-a-source-cutover.md) Locked 原文不动。`docs/design-docs/2026-07-30-parameter-governance-deferred-questions.md` 已指向此处。 |
-| API | 更新 | `docs/design-docs/api-contract.md`（含中文）：预检 + start + prepare（文件候选）+ finalize + GET 开放 run。 |
-| 前端 / 设计系统 | 更新 | `docs/FRONTEND.md`（含中文）：定义编辑器面板；行内改键保持禁用。 |
+| API | 更新 | `docs/design-docs/api-contract.md`（含中文）：预检 + start + prepare（文件候选）+ finalize + GET 开放 run。项带 `fileId`；GET 刷新候选实况。 |
+| 前端 / 设计系统 | 更新 | `docs/FRONTEND.md`（含中文）：定义编辑器面板带工作台入口；行内改键保持禁用。 |
 | 安全 | 更新 | prepare 在敏感节点检查后暂存文件候选；审计 `spec-property-key-cutover-started` / `-prepared` / `-finalized`。无新密钥。 |
 | 可靠性 / runbook | 不变 | 无目标环境或运维规程。 |
 | 开发者环境 | 不变 | 无新环境变量。 |
@@ -169,7 +175,7 @@ npm run build
 一批次不得宣称完成，除非：
 
 1. 该批次影响矩阵里每个「更新 / 复核」行已改过，或有证据记录为未变。
-2. 中英追踪表行**不得**被悄悄关掉。TD-117 在 finalize 落地前保持 Open。
+2. 中英追踪表行**不得**被悄悄关掉。人审合入 + finalize 成为产品内日常路径前，TD-117 保持 Open。
 3. `npm run docs:check` 通过。PLANS 索引由会话 0 加；本分支缺索引是预期。
 4. 已审查界面交互覆盖（第 1 批：无新交互）。
 5. 计划迁入 `completed/` 时，同名文件不得留在 `active/`（中英皆然）。

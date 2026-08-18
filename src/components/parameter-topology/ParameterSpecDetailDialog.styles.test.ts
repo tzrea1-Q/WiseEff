@@ -17,9 +17,13 @@ describe("ParameterSpecDetailDialog chrome styles (Batch 4)", () => {
     const styles = readStylesheet("src/styles.css");
     const panel = declarationsFor(styles, ".param-admin-cutover-panel");
     const finalize = declarationsFor(styles, ".param-admin-cutover-panel__finalize");
+    const handoff = declarationsFor(styles, ".param-admin-cutover-panel__handoff");
+    const items = declarationsFor(styles, ".param-admin-cutover-panel__items");
 
     expect(panel["margin-bottom"]).toBe("var(--space-4)");
     expect(finalize["margin-top"]).toBe("var(--space-3)");
+    expect(handoff["margin-top"]).toBe("var(--space-3)");
+    expect(items.gap).toBe("var(--space-2)");
   });
 
   it("stacks nested confirms on the shared nested backdrop token (SE-17, SE-R5)", () => {

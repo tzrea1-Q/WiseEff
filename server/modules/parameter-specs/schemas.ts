@@ -286,6 +286,7 @@ export const propertyKeyCutoverItemDtoSchema = z.object({
   locationStatus: propertyKeyCutoverLocationStatusSchema.nullable(),
   incompatibilityCode: z.string().nullable(),
   fileName: z.string().nullable(),
+  fileId: z.string().nullable(),
   nodePath: z.string().nullable(),
   stagedRewrite: stagedPropertyKeyRewriteSchema.nullable(),
 });

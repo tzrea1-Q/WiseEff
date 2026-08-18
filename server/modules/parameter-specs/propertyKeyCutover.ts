@@ -104,9 +104,17 @@ export type PropertyKeyCutoverItemDto = {
   locationStatus: PropertyKeySourceLocationStatus | null;
   incompatibilityCode: string | null;
   fileName: string | null;
+  fileId: string | null;
   nodePath: string | null;
   stagedRewrite: StagedPropertyKeyRewrite | null;
 };
+
+export function resolveLiveStagedRewrite(
+  staged: StagedPropertyKeyRewrite,
+  live: { status: string } | null,
+): StagedPropertyKeyRewrite {
+  return { ...staged, status: live?.status ?? "missing" };
+}
 
 export type PropertyKeyCutoverRunDto = {
   id: string;
@@ -613,6 +621,35 @@ async function loadRunDto(
     organizationId: auth.organization.id,
     specIds: [run.parameter_spec_id],
   });
+  const mappedItems = items.rows.map((row) => {
+    const details = parseDetails(row.details);
+    return {
+      id: row.id,
+      bindingId: row.binding_id,
+      projectId: row.project_id,
+      status: row.status,
+      locationStatus: row.location_status,
+      incompatibilityCode: row.incompatibility_code,
+      fileName: typeof details.fileName === "string" ? details.fileName : null,
+      fileId: typeof details.fileId === "string" ? details.fileId : null,
+      nodePath: typeof details.nodePath === "string" ? details.nodePath : null,
+      stagedRewrite: parseStagedRewrite(details),
+    };
+  });
+  const hydrated = await Promise.all(
+    mappedItems.map(async (item) => {
+      if (!item.stagedRewrite || !item.projectId) return item;
+      const live = await getParameterFileCandidateById(tx, {
+        organizationId: auth.organization.id,
+        projectId: item.projectId,
+        candidateId: item.stagedRewrite.id,
+      });
+      return {
+        ...item,
+        stagedRewrite: resolveLiveStagedRewrite(item.stagedRewrite, live),
+      };
+    }),
+  );
   return {
     id: run.id,
     parameterSpecId: run.parameter_spec_id,
@@ -622,22 +659,9 @@ async function loadRunDto(
     referenceCount: referenceCounts.get(run.parameter_spec_id) ?? 0,
     writesCatalog: run.status === "finalized",
     writesSource: false,
-    stagedSource: items.rows.some((row) => Boolean(parseStagedRewrite(parseDetails(row.details)))),
+    stagedSource: hydrated.some((item) => Boolean(item.stagedRewrite)),
     startBlockers,
-    items: items.rows.map((row) => {
-      const details = parseDetails(row.details);
-      return {
-        id: row.id,
-        bindingId: row.binding_id,
-        projectId: row.project_id,
-        status: row.status,
-        locationStatus: row.location_status,
-        incompatibilityCode: row.incompatibility_code,
-        fileName: typeof details.fileName === "string" ? details.fileName : null,
-        nodePath: typeof details.nodePath === "string" ? details.nodePath : null,
-        stagedRewrite: parseStagedRewrite(details),
-      };
-    }),
+    items: hydrated,
   };
 }
 

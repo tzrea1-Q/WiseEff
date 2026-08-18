@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   classifyPropertyKeySourceLocation,
   itemDispositionFromLocationStatus,
+  resolveLiveStagedRewrite,
 } from "./propertyKeyCutover";
 
 describe("classifyPropertyKeySourceLocation (ADR-0034 dry-run)", () => {
@@ -84,6 +85,31 @@ describe("itemDispositionFromLocationStatus (ADR-0034 start/finalize)", () => {
     expect(itemDispositionFromLocationStatus("conflict")).toEqual({
       status: "incompatible",
       incompatibilityCode: "conflict",
+    });
+  });
+});
+
+describe("resolveLiveStagedRewrite", () => {
+  const staged = { kind: "file-candidate" as const, id: "cand-1", status: "ready" };
+
+  it("replaces the stored snapshot with the live candidate status", () => {
+    expect(resolveLiveStagedRewrite(staged, { status: "active" })).toEqual({
+      kind: "file-candidate",
+      id: "cand-1",
+      status: "active",
+    });
+    expect(resolveLiveStagedRewrite(staged, { status: "abandoned" })).toEqual({
+      kind: "file-candidate",
+      id: "cand-1",
+      status: "abandoned",
+    });
+  });
+
+  it("marks a missing candidate so the panel can say it is gone", () => {
+    expect(resolveLiveStagedRewrite(staged, null)).toEqual({
+      kind: "file-candidate",
+      id: "cand-1",
+      status: "missing",
     });
   });
 });
