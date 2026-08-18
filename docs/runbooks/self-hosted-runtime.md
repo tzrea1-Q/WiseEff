@@ -16,8 +16,8 @@ docker version
 
 Node.js is **not** required on the runtime server. Run `npm run selfhost:check`, `npm run selfhost:smoke`, and other repository verification commands from a development machine or CI runner with Node.js 22.
 
-- DNS for `WISEEFF_SITE_HOST`.
-- Ports `80` and `443` open to the intended network.
+- DNS for `WISEEFF_SITE_HOST`, **or** the [setup wizard](../../ops/self-hosted/setup.md) / [IP lab profile](../../ops/self-hosted/ip-lab.md) when the host only has an IP address.
+- Ports `80` and `443` open to the intended network. The IP lab HTTP mode needs port `80` only.
 - At least 20 GB free disk for a pilot baseline, with PostgreSQL growth monitored separately:
 
 ```bash
@@ -29,6 +29,18 @@ docker system df
 - A non-customer staging decision if `DEBUG_DEVICE_GATEWAY_MODE=simulator` is used.
 - S3-compatible object-store endpoint credentials. M6.1 consumes the endpoint; M6.3 chooses and hardens the self-hosted provider.
 - Live Agent provider URL, model, and API key if `/health/ready` should report Agent readiness.
+
+## IP Lab (No DNS)
+
+For a basic Ubuntu host with an IP and no domain, do not copy `.env.example` and do not wait for Let's Encrypt. From `ops/self-hosted/`:
+
+```bash
+./scripts/setup.sh
+```
+
+Non-interactive IP lab: `./scripts/setup.sh --non-interactive --ip <server-ip>`. `deploy-ip-lab.sh` remains a compatibility wrapper.
+
+That command writes `.env`, starts the stack, seeds ChargeLab demo data, and creates a local admin in `org-chargelab`. Full flags, TLS-internal mode, and split commands are in [ops/self-hosted/ip-lab.md](../../ops/self-hosted/ip-lab.md). The DNS/ACME path below stays the M6 staging/pilot profile.
 
 ## Prepare Environment
 

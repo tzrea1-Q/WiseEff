@@ -33,6 +33,7 @@ pnpm-debug.log*
 !.env.example
 !.env.local.example
 !ops/self-hosted/.env.example
+!ops/self-hosted/.env.ip-lab.example
 
 # Editor and OS files
 .DS_Store

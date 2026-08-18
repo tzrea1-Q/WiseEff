@@ -16,6 +16,7 @@
 - 先确认该文档属于哪个决策面：runbook。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
+- 自托管入口见 [配置向导](../../../ops/self-hosted/setup.zh-CN.md)。只有 IP、没有域名的实验室见 [IP 实验室 profile](../../../ops/self-hosted/ip-lab.zh-CN.md)。
 
 ## 同类中文文档
 

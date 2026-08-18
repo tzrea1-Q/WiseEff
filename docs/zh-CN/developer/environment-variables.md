@@ -170,4 +170,6 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 
 M6.1 在 `ops/self-hosted/.env.example` 提供 Linux 部署 profile。M6.2 默认目标身份 provider 为 OIDC；如果部署明确选择 WiseEff 本地账号，可以把 `AUTH_PROVIDER` 设为 `local`，但需要接受没有外部 SSO/MFA 联邦的边界。`AUTH_PROVIDER=hmac` 仍只适合本地 smoke/test，不是目标环境身份验收证据。
 
+不要手填 `.env.example`。使用 [配置向导](../../../ops/self-hosted/setup.zh-CN.md) 或 [IP 实验室 profile](../../../ops/self-hosted/ip-lab.zh-CN.md)：`WISEEFF_DEPLOY_PROFILE=ip-lab|acme`、`WISEEFF_TLS_MODE=http|internal|acme`、`WISEEFF_CADDYFILE`、`WISEEFF_PUBLIC_URL`、`WISEEFF_LAB_ADMIN_*`、`WISEEFF_LAB_SEED`，以及未填 live key 时的 `XIAOZE_DETERMINISTIC=true` / `LOG_ANALYSIS_DETERMINISTIC=true`。完整命令见向导页。
+
 目标环境不要提交真实 bearer token、API key、数据库密码或对象存储 secret。所有 target-ready、pilot-ready、release-ready 结论都必须引用真实目标证据，而不是本地 skip 或示例值。

@@ -209,8 +209,16 @@ M6.1 adds `ops/self-hosted/.env.example` for Linux deployments. M6.2 switches th
 | `REDIS_URL` | `redis://redis:6379` | Compose Redis service used by API and worker containers. |
 | `BACKUP_REDIS_SNAPSHOT_TARGET` | restore-drill snapshot path | Required by `npm run m6:target-plan` for final M6.3 target evidence when durable queue mode is in scope. |
 | `BACKUP_REDIS_CHECKPOINT_VALIDATED` | `true` after Redis checkpoint validation | Required by `npm run m6:target-plan`; target M6.3 evidence must prove durable queue persistence was captured. |
-| `WISEEFF_SITE_HOST` | operator-provided DNS | Used by Caddy and frontend API base URL. |
-| `WISEEFF_TLS_EMAIL` | operator-provided email | Used by Caddy ACME/TLS. |
+| `WISEEFF_SITE_HOST` | operator-provided DNS, or a raw IP in the [IP lab profile](../../ops/self-hosted/ip-lab.md) | Used by Caddy and frontend API base URL. |
+| `WISEEFF_TLS_EMAIL` | operator-provided email | Used by Caddy ACME/TLS. Unused in the IP lab HTTP profile. |
+| `WISEEFF_DEPLOY_PROFILE` | unset; `ip-lab` or `acme` when generated | Marks `ops/self-hosted/.env` as the lab or wizard-managed ACME profile. |
+| `WISEEFF_TLS_MODE` | unset; `http`, `internal`, or `acme` | Selects `Caddyfile.ip-lab`, `Caddyfile.ip-lab-tls`, or `Caddyfile.example`. |
+| `WISEEFF_LAB_SEED` | `chargelab` when generated | `chargelab` runs `db:seed:all` during provision; `none` skips seed and still creates the local admin. |
+| `WISEEFF_CADDYFILE` | `Caddyfile.example` | Compose mounts this file as the proxy config. |
+| `WISEEFF_PUBLIC_URL` | `https://${WISEEFF_SITE_HOST}` or `http://<ip>` | Canonical browser origin written by the IP lab generator. |
+| `WISEEFF_LAB_ADMIN_USERNAME` | `admin.ops` in IP lab | Local admin created or attached to ChargeLab during provision. |
+| `WISEEFF_LAB_ADMIN_PASSWORD` | generated | Required by `selfhost:ip-lab:provision`. Keep the `.env` mode `600`. |
+| `XIAOZE_DETERMINISTIC` | unset locally; `true` in IP lab | Makes `/health/ready` accept a missing live Xiaoze key. Lab default only. |
 | `AUTH_PROVIDER` | `oidc` | Target self-hosted production identity provider. Use `local` only for a self-managed deployment that intentionally uses WiseEff local accounts instead of external SSO. |
 | `AUTH_OIDC_ISSUER` | operator-provided issuer | Must match the access-token `iss` claim. |
 | `AUTH_OIDC_AUDIENCE` | `wiseeff-api` or operator value | Must match the access-token `aud` claim. |

@@ -28,8 +28,8 @@ Node.js 22 官方 Linux 二进制需要 glibc 2.28 及以上。Ubuntu 18.04 等�
 
 - Docker Engine 20.10 及以上。
 - Docker Compose v2 插件，或独立 `docker-compose` 1.28 及以上。
-- 反向代理开放 `80` / `443`。
-- `WISEEFF_SITE_HOST` 对应 DNS 已就绪。
+- 反向代理开放 `80` / `443`。仅 IP、无域名的实验室只需 `80`（`--tls-mode internal` 时才需要 `443`）。
+- `WISEEFF_SITE_HOST` 对应 DNS 已就绪，**或者**走 [配置向导](../../../ops/self-hosted/setup.zh-CN.md)。
 
 在服务器上使用 `ops/self-hosted/scripts/compose`；它会自动兼容 `docker compose` / `docker-compose`，并在 standalone 模式下附加 `-f compose.yaml`。
 

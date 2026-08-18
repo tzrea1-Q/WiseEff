@@ -25,3 +25,4 @@ pnpm-debug.log*
 .wiseeff-backups/
 .wiseeff-restore/
 qa-screenshots/
+ops/self-hosted/images/*.tar

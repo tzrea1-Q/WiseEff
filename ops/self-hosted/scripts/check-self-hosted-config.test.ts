@@ -9,6 +9,11 @@ const validPackageJson = {
     "restore:drill": "tsx scripts/run-restore-drill.ts",
     "selfhost:check": "tsx ops/self-hosted/scripts/check-self-hosted-config.ts",
     "selfhost:smoke": "tsx ops/self-hosted/scripts/run-self-hosted-smoke.ts",
+    "selfhost:ip-lab:init": "tsx ops/self-hosted/scripts/init-ip-lab.ts",
+    "selfhost:ip-lab:preflight": "tsx ops/self-hosted/scripts/preflight-ip-lab.ts",
+    "selfhost:ip-lab:provision": "tsx ops/self-hosted/scripts/provision-ip-lab.ts",
+    "selfhost:setup": "tsx ops/self-hosted/scripts/setup-selfhost.ts",
+    "selfhost:doctor": "tsx ops/self-hosted/scripts/doctor-selfhost.ts",
     "dtc:check": "tsx scripts/check-dtc.ts",
     "dtc:seed:compile": "tsx scripts/compile-dts-seed.ts",
     "dts:toolchain:check": "tsx scripts/check-dts-toolchain.ts --required",
@@ -59,6 +64,8 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    volumes:
+      - ./\${WISEEFF_CADDYFILE:-Caddyfile.example}:/etc/caddy/Caddyfile:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:2019/config/"]
 volumes:
@@ -87,6 +94,7 @@ dist/
 .git/
 **/.env
 **/.env.*
+ops/self-hosted/images/*.tar
 `;
 
 const validEnvExample = `
@@ -153,7 +161,21 @@ const existingSelfHostedFiles = new Set([
   "ops/self-hosted/storage/README.md",
   "ops/self-hosted/storage/provider-decision.md",
   "ops/self-hosted/storage/object-store.env.example",
-  "ops/self-hosted/scripts/compose"
+  "ops/self-hosted/scripts/compose",
+  "ops/self-hosted/Caddyfile.ip-lab",
+  "ops/self-hosted/Caddyfile.ip-lab-tls",
+  "ops/self-hosted/.env.ip-lab.example",
+  "ops/self-hosted/scripts/init-ip-lab.ts",
+  "ops/self-hosted/scripts/preflight-ip-lab.ts",
+  "ops/self-hosted/scripts/provision-ip-lab.ts",
+  "ops/self-hosted/scripts/deploy-ip-lab.sh",
+  "ops/self-hosted/scripts/setup.sh",
+  "ops/self-hosted/scripts/doctor.sh",
+  "ops/self-hosted/scripts/selfhost-answers.ts",
+  "ops/self-hosted/scripts/selfhost-profile.ts",
+  "ops/self-hosted/scripts/setup-selfhost.ts",
+  "ops/self-hosted/scripts/doctor-selfhost.ts",
+  "ops/self-hosted/setup.md"
 ]);
 
 function evaluateWithEnvExample(envExampleText: string) {
@@ -237,6 +259,11 @@ describe("self-hosted config metadata", () => {
     expect(result.missingScripts).toEqual([
       "selfhost:check",
       "selfhost:smoke",
+      "selfhost:ip-lab:init",
+      "selfhost:ip-lab:preflight",
+      "selfhost:ip-lab:provision",
+      "selfhost:setup",
+      "selfhost:doctor",
       "backup:drill",
       "restore:drill",
       "backup:check",
@@ -261,7 +288,9 @@ describe("self-hosted config metadata", () => {
     expect(result.missingDockerfileTokens).toEqual(
       expect.arrayContaining(["ARG DTC_COMMIT=8f48565e5cfedc74d3f7512f1e0188e9d85dc1de"])
     );
-    expect(result.missingDockerignoreTokens).toEqual(expect.arrayContaining(["**/.env", "**/.env.*"]));
+    expect(result.missingDockerignoreTokens).toEqual(
+      expect.arrayContaining(["**/.env", "**/.env.*", "ops/self-hosted/images/*.tar"])
+    );
     expect(result.missingEnvKeys).toEqual(
       expect.arrayContaining([
         "HOST",
@@ -300,12 +329,16 @@ describe("self-hosted config metadata", () => {
       ])
     );
     expect(result.missingProxyTokens).toEqual(expect.arrayContaining(["reverse_proxy api:8787", "tls"]));
-    expect(result.missingFiles).toEqual([
-      "ops/self-hosted/storage/README.md",
-      "ops/self-hosted/storage/provider-decision.md",
-      "ops/self-hosted/storage/object-store.env.example",
-      "ops/self-hosted/scripts/compose"
-    ]);
+    expect(result.missingFiles).toEqual(
+      expect.arrayContaining([
+        "ops/self-hosted/storage/README.md",
+        "ops/self-hosted/storage/provider-decision.md",
+        "ops/self-hosted/storage/object-store.env.example",
+        "ops/self-hosted/scripts/compose",
+        "ops/self-hosted/Caddyfile.ip-lab",
+        "ops/self-hosted/scripts/deploy-ip-lab.sh"
+      ])
+    );
   });
 
   it("rejects self-hosted Node images below the Pi Agent provider runtime floor", () => {

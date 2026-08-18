@@ -32,6 +32,11 @@
 | `npm run test:server -- server/modules/dts/goldenPowerFixture.test.ts server/modules/parameters/seedM1DtsFiles.test.ts server/modules/parameter-specs/matcher.test.ts --run` | 锁定黄金拓扑计数：**176** 属性 occurrence、**528** 行 `dts_properties` seed | 修改 DTS seed fixture、ingest 或 matcher 覆盖后。 |
 | `npm run test:scripts -- scripts/vendorDtSchemaGenerator.test.ts --run` | 黄金 DTB 真实 `dt-validate`；负例 DTB 按预期失败 | 修改厂商 dt-schema 生成或 linux-binding schema 后。（`test:server` 不包含 `scripts/**`，直接传该路径会静默零执行。） |
 | `npm run test:scripts` | ops/治理脚本套件（`scripts/**`、`ops/**`，Node 环境） | 修改脚本或 ops 自动化后。 |
+| `npm run selfhost:setup` | 按向导答案渲染自托管 `.env` | 本机已有 Node.js 22 时使用。服务器用 `ops/self-hosted/scripts/setup.sh`。 |
+| `npm run selfhost:doctor` | 校验已生成的 `.env` 与 Caddyfile | 配置完成后、或 `compose up` 前。 |
+| `npm run selfhost:ip-lab:init` | 为无域名 IP 实验室生成 `ops/self-hosted/.env` | 兼容辅助。优先 `setup.sh` 或 `selfhost:setup`。 |
+| `npm run selfhost:ip-lab:preflight` | 校验 IP 实验室 `.env` 与选定 Caddyfile | IP 实验室 `compose up` 前，或改过实验室环境变量后。 |
+| `npm run selfhost:ip-lab:provision` | 导入 M0–M3（`WISEEFF_LAB_SEED=none` 时跳过）并把实验室管理员挂到 ChargeLab | 栈就绪后在 API 容器内执行。 |
 | `npm run ui:check` | UI 设计系统棘轮门禁:逐规则统计令牌块之外的裸颜色/裸 `z-index`/裸 `font-size`/手写 `box-shadow`/`ease` 关键字,以及 `window.confirm`、手写 modal-backdrop、固定英文残留清单,计数不得超过 `scripts/ui-standards-baseline.json` | 涉及样式、令牌、弹窗、动效或可见 UI 文案的前端变更后使用;计数下降时在同一变更里运行 `npm run ui:check -- --update-baseline` 下调棘轮。 |
 | `npm run lint` | eslint 9 flat config（`jsx-a11y` + `react-hooks`）作用于 `src/**/*.{ts,tsx}`:零违规规则为 error,存量规则为 warn 且计数记录在 `eslint.config.js` | 任何 `src/` TypeScript/React 变更后使用;error 阻断,warn 是已记录的待清偿存量。 |
 | `npm run bridge:test` | 设备桥工作区套件（`packages/**`，Node 环境） | 修改 device-bridge 或 device-command-core 后。 |

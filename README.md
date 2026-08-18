@@ -28,8 +28,8 @@ Server prerequisites:
 
 - Docker Engine 20.10 or newer.
 - Docker Compose v2 plugin, or standalone `docker-compose` 1.28 or newer.
-- Ports `80` and `443` open for the reverse proxy.
-- DNS for `WISEEFF_SITE_HOST`.
+- Ports `80` and `443` open for the reverse proxy. An IP-only lab needs port `80` (and `443` only when using Caddy internal TLS).
+- DNS for `WISEEFF_SITE_HOST`, **or** the [setup wizard](ops/self-hosted/setup.md) when the host has no domain.
 
 Use `./scripts/compose` in `ops/self-hosted/` on the server. It accepts either `docker compose` or `docker-compose`, passes `-f compose.yaml` automatically for standalone Compose, and rejects versions that are too old for the self-hosted compose file.
 
@@ -79,7 +79,14 @@ Parameter semantic identity cutover (maintenance window only) is documented in [
 
 Run the service stack on the server. Keep development, unit tests, E2E, and smoke checks on another machine with Node.js 22.
 
-On the server:
+If the server has an IP and no DNS name, use the setup wizard instead of copying `.env.example`:
+
+```bash
+cd ops/self-hosted
+./scripts/setup.sh
+```
+
+See [ops/self-hosted/setup.md](ops/self-hosted/setup.md). For a DNS + Let's Encrypt staging/pilot host, the same wizard can write the ACME profile, or:
 
 ```bash
 cd ops/self-hosted
