@@ -443,6 +443,13 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "parameterSpecs.getPropertyKeyCutover",
+    method: "GET",
+    path: "/api/v2/parameter-specs/:specId/property-key-cutover",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
     id: "parameterSpecs.previewPropertyKeyCutover",
     method: "POST",
     path: "/api/v2/parameter-specs/:specId/property-key-cutover/preview",

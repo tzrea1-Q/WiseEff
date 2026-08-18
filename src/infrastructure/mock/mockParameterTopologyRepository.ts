@@ -953,6 +953,36 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
       throw mockApiError("FORBIDDEN", `Cutover finalize is unavailable in mock mode (${specId}).`, { specId });
     },
 
+    async previewPropertyKeyCutover(specId, input: { propertyKey: string }) {
+      const existing = store.specs.get(specId);
+      if (!existing) {
+        throw mockApiError("NOT_FOUND", `ParameterSpec not found: ${specId}`, { specId });
+      }
+      return {
+        parameterSpecId: specId,
+        fromKey: existing.propertyKey ?? "",
+        toKey: input.propertyKey,
+        referenceCount: existing.referenceCount ?? 0,
+        writesCatalog: false as const,
+        writesSource: false as const,
+        inlineRenameEligible: (existing.referenceCount ?? 0) === 0,
+        startBlockers: [],
+        locations: [],
+      };
+    },
+    async startPropertyKeyCutover(specId) {
+      throw mockApiError("FORBIDDEN", `Property-key cutover start is unavailable in mock mode (${specId}).`, { specId });
+    },
+    async preparePropertyKeyCutover(specId) {
+      throw mockApiError("FORBIDDEN", `Property-key cutover prepare is unavailable in mock mode (${specId}).`, { specId });
+    },
+    async finalizePropertyKeyCutover(specId) {
+      throw mockApiError("FORBIDDEN", `Property-key cutover finalize is unavailable in mock mode (${specId}).`, { specId });
+    },
+    async getPropertyKeyCutover() {
+      return null;
+    },
+
     async listSpecReviewTasks(query = {}) {
       let items = store.reviewTasks.map((task) => ({
         ...task,

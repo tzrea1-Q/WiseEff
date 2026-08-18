@@ -272,6 +272,12 @@ export const propertyKeyCutoverItemStatusSchema = z.enum([
   "applied",
 ]);
 
+export const stagedPropertyKeyRewriteSchema = z.object({
+  kind: z.literal("file-candidate"),
+  id: nonEmptyString,
+  status: nonEmptyString,
+});
+
 export const propertyKeyCutoverItemDtoSchema = z.object({
   id: nonEmptyString,
   bindingId: nonEmptyString,
@@ -281,6 +287,7 @@ export const propertyKeyCutoverItemDtoSchema = z.object({
   incompatibilityCode: z.string().nullable(),
   fileName: z.string().nullable(),
   nodePath: z.string().nullable(),
+  stagedRewrite: stagedPropertyKeyRewriteSchema.nullable(),
 });
 
 export const propertyKeyCutoverRunDtoSchema = z.object({
@@ -292,6 +299,7 @@ export const propertyKeyCutoverRunDtoSchema = z.object({
   referenceCount: z.number().int().nonnegative(),
   writesCatalog: z.boolean(),
   writesSource: z.literal(false),
+  stagedSource: z.boolean(),
   startBlockers: z.array(propertyKeyCutoverStartBlockerSchema),
   items: z.array(propertyKeyCutoverItemDtoSchema),
 });
@@ -306,6 +314,7 @@ export const propertyKeyCutoverPreviewLocationSchema = z.object({
   bindingRevisionId: z.string().nullable(),
   configRevisionId: z.string().nullable(),
   propertyOccurrenceId: z.string().nullable(),
+  fileId: z.string().nullable(),
   fileVersionId: z.string().nullable(),
   fileName: z.string().nullable(),
   nodePath: z.string().nullable(),

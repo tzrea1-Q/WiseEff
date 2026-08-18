@@ -40,6 +40,8 @@ import type {
   ParameterSpecDetail,
   ParameterSpecSummary,
   ParameterSpecCutoverSummary,
+  PropertyKeyCutoverPreview,
+  PropertyKeyCutoverRun,
   SpecQuery,
   SpecReviewTaskListResult,
   SpecReviewTaskQuery,
@@ -81,6 +83,23 @@ export type ParameterAdminApplication = {
     input?: { reason?: string }
   ): Promise<ParameterSpecDetail>;
   finalizeSpecVersionCutover(specId: string, input: { reason: string }): Promise<ParameterSpecDetail>;
+  previewPropertyKeyCutover?(
+    specId: string,
+    input: { propertyKey: string },
+  ): Promise<PropertyKeyCutoverPreview>;
+  startPropertyKeyCutover?(
+    specId: string,
+    input: { propertyKey: string; reason: string },
+  ): Promise<PropertyKeyCutoverRun>;
+  preparePropertyKeyCutover?(
+    specId: string,
+    input?: { reason?: string },
+  ): Promise<PropertyKeyCutoverRun>;
+  finalizePropertyKeyCutover?(
+    specId: string,
+    input: { reason: string },
+  ): Promise<PropertyKeyCutoverRun>;
+  getPropertyKeyCutover?(specId: string): Promise<PropertyKeyCutoverRun | null>;
 
   getModuleRegistry(): Promise<ParameterModuleRegistry>;
   getModuleDiscoveryHints(): Promise<ModuleDiscoveryHints>;
@@ -204,6 +223,21 @@ export function createParameterAdminApplication({
     finalizeSpecVersionCutover(specId, input) {
       return topology.finalizeSpecVersionCutover(specId, input);
     },
+    previewPropertyKeyCutover: topology.previewPropertyKeyCutover
+      ? (specId, input) => topology.previewPropertyKeyCutover!(specId, input)
+      : undefined,
+    startPropertyKeyCutover: topology.startPropertyKeyCutover
+      ? (specId, input) => topology.startPropertyKeyCutover!(specId, input)
+      : undefined,
+    preparePropertyKeyCutover: topology.preparePropertyKeyCutover
+      ? (specId, input) => topology.preparePropertyKeyCutover!(specId, input)
+      : undefined,
+    finalizePropertyKeyCutover: topology.finalizePropertyKeyCutover
+      ? (specId, input) => topology.finalizePropertyKeyCutover!(specId, input)
+      : undefined,
+    getPropertyKeyCutover: topology.getPropertyKeyCutover
+      ? (specId) => topology.getPropertyKeyCutover!(specId)
+      : undefined,
 
     getModuleRegistry() {
       return moduleRegistry.getRegistry();

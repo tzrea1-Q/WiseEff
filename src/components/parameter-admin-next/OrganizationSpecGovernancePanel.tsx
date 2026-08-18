@@ -679,6 +679,28 @@ export function OrganizationSpecGovernancePanel({
         identityModules={createModules}
         onPrepareCutover={handlePrepareCutover}
         onFinalizeCutover={handleFinalizeCutover}
+        propertyKeyCutover={
+          urlState.specId &&
+          application.previewPropertyKeyCutover &&
+          application.startPropertyKeyCutover &&
+          application.preparePropertyKeyCutover &&
+          application.finalizePropertyKeyCutover
+            ? {
+                preview: (input) => application.previewPropertyKeyCutover!(urlState.specId!, input),
+                start: (input) => application.startPropertyKeyCutover!(urlState.specId!, input),
+                prepare: (input) => application.preparePropertyKeyCutover!(urlState.specId!, input),
+                finalize: async (input) => {
+                  const result = await application.finalizePropertyKeyCutover!(urlState.specId!, input);
+                  showToast("属性键切换已完成");
+                  await reloadSpecs();
+                  return result;
+                },
+                loadOpenRun: application.getPropertyKeyCutover
+                  ? async () => application.getPropertyKeyCutover!(urlState.specId!)
+                  : undefined,
+              }
+            : undefined
+        }
         canDeprecateGlobal={isPlatformSuperAdmin}
         relatedKnowledge={relatedKnowledge}
         savePending={activatePendingSpecId === urlState.specId}

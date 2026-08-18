@@ -5,6 +5,8 @@ import type {
   ParameterSpecDetail,
   ParameterSpecSummary,
   ParameterSpecCutoverSummary,
+  PropertyKeyCutoverPreview,
+  PropertyKeyCutoverRun,
   ProjectParameterBinding,
   ReopenMappingInput,
   ResolveMappingInput,
@@ -176,6 +178,23 @@ export interface ParameterTopologyRepository {
     input?: { reason?: string }
   ): Promise<ParameterSpecDetail>;
   finalizeSpecVersionCutover(specId: string, input: { reason: string }): Promise<ParameterSpecDetail>;
+  previewPropertyKeyCutover?(
+    specId: string,
+    input: { propertyKey: string },
+  ): Promise<PropertyKeyCutoverPreview>;
+  startPropertyKeyCutover?(
+    specId: string,
+    input: { propertyKey: string; reason: string },
+  ): Promise<PropertyKeyCutoverRun>;
+  preparePropertyKeyCutover?(
+    specId: string,
+    input?: { reason?: string },
+  ): Promise<PropertyKeyCutoverRun>;
+  finalizePropertyKeyCutover?(
+    specId: string,
+    input: { reason: string },
+  ): Promise<PropertyKeyCutoverRun>;
+  getPropertyKeyCutover?(specId: string): Promise<PropertyKeyCutoverRun | null>;
   listSpecReviewTasks(query?: SpecReviewTaskQuery): Promise<SpecReviewTaskListResult>;
   resolveSpecReviewTask(taskId: string, input: ResolveSpecReviewInput): Promise<void>;
   listBindings(projectId: string, revisionId: string): Promise<ProjectParameterBinding[]>;

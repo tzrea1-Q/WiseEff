@@ -417,7 +417,40 @@ describe("ParameterSpecDetailDialog identity correction (PARAM-SPEC-IDENTITY)", 
     expect(screen.getByRole("button", { name: "修正归属" })).toBeEnabled();
     fireEvent.click(rename);
     expect(screen.queryByRole("dialog", { name: "修正属性键" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /源文件|cutover|改写属性键/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("property-key-cutover")).not.toBeInTheDocument();
+  });
+
+  it("keeps 修正属性键 disabled and shows the source-cutover panel when handlers are wired", () => {
+    render(
+      <ParameterSpecDetailDialog
+        detail={baseDetail({
+          propertyKey: "gpio_int",
+          attributionSubjectId: "asub:driver:sc8562",
+          driverModule: "SC8562",
+          usageCount: 2,
+        })}
+        identityModules={IDENTITY_MODULES}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+        onReattribute={vi.fn()}
+        onRenamePropertyKey={vi.fn()}
+        propertyKeyCutover={{
+          preview: vi.fn(),
+          start: vi.fn(),
+          prepare: vi.fn(),
+          finalize: vi.fn(),
+        }}
+      />,
+    );
+
+    const rename = screen.getByRole("button", { name: "修正属性键" });
+    expect(rename).toBeDisabled();
+    fireEvent.click(rename);
+    expect(screen.queryByRole("dialog", { name: "修正属性键" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("property-key-cutover")).toHaveTextContent("属性键切换");
+    expect(screen.getByRole("button", { name: "预检" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("新属性键"), { target: { value: "corrected_prop" } });
+    expect(screen.getByRole("button", { name: "预检" })).toBeEnabled();
   });
 
   it("offers 修正属性键 when usageCount is 0", () => {

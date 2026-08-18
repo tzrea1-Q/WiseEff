@@ -1,20 +1,25 @@
 /**
  * ADR-0034 / TD-117: referenced property_key rename is a source-file rewrite
  * cutover. Preview is read-only. Start persists a run from that preview.
- * Finalize rewrites the catalog triple only after live sources already show
- * the new key (or honest skip). This slice does not stage file-candidate / CR
- * drafts — prepare reclassifies items from the existing binding/occurrence
- * identities and does not write source.
+ * Prepare stages a file-candidate rewrite through the existing parameter-files
+ * seam (no live activate). Finalize rewrites the catalog triple only after
+ * live sources already show the new key (or honest skip).
  */
 import { randomUUID } from "node:crypto";
 
 import type { AuditCorrelationContext } from "../audit/types";
 import { asAuditTx } from "../audit/auditedWrite";
 import type { AuthContext } from "../auth/types";
+import type { ObjectStore } from "../logs/objectStore";
+import { createCandidate } from "../parameter-files/candidateService";
+import { getParameterFileCandidateById } from "../parameter-files/candidateRepository";
+import { getFileVersionById } from "../parameter-files/repository";
+import { assertSensitiveNodeWriteAllowed } from "../parameter-kernel/sensitiveNode";
 import { canAdminParameters } from "../parameter-kernel/policy";
 import { writeGovernanceAudit } from "../parameter-topology/governanceAudit";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { rewritePropertyKeyInDtsSource } from "./propertyKeySourceRewrite";
 import {
   findParameterSpecByIdentity,
   getParameterSpecRow,
@@ -43,12 +48,19 @@ export type PropertyKeyCutoverStartBlocker = {
   details?: Record<string, unknown>;
 };
 
+export type StagedPropertyKeyRewrite = {
+  kind: "file-candidate";
+  id: string;
+  status: string;
+};
+
 export type PropertyKeyCutoverPreviewLocation = {
   projectId: string;
   bindingId: string;
   bindingRevisionId: string | null;
   configRevisionId: string | null;
   propertyOccurrenceId: string | null;
+  fileId: string | null;
   fileVersionId: string | null;
   fileName: string | null;
   nodePath: string | null;
@@ -93,6 +105,7 @@ export type PropertyKeyCutoverItemDto = {
   incompatibilityCode: string | null;
   fileName: string | null;
   nodePath: string | null;
+  stagedRewrite: StagedPropertyKeyRewrite | null;
 };
 
 export type PropertyKeyCutoverRunDto = {
@@ -104,8 +117,14 @@ export type PropertyKeyCutoverRunDto = {
   referenceCount: number;
   writesCatalog: boolean;
   writesSource: false;
+  stagedSource: boolean;
   startBlockers: PropertyKeyCutoverStartBlocker[];
   items: PropertyKeyCutoverItemDto[];
+};
+
+export type PropertyKeyCutoverPrepareDeps = {
+  objectStore: ObjectStore;
+  createCandidate?: typeof createCandidate;
 };
 
 export function classifyPropertyKeySourceLocation(input: {
@@ -174,10 +193,12 @@ type LocationRow = {
   config_revision_id: string | null;
   raw_value: string | null;
   from_occurrence_id: string | null;
+  from_file_id: string | null;
   from_file_version_id: string | null;
   from_file_name: string | null;
   from_node_path: string | null;
   to_occurrence_id: string | null;
+  to_file_id: string | null;
   to_file_version_id: string | null;
   to_file_name: string | null;
   to_node_path: string | null;
@@ -213,6 +234,7 @@ async function loadPreviewLocations(
         tip.binding_id,
         po.id as property_occurrence_id,
         po.file_version_id,
+        pf.id as file_id,
         pf.file_name,
         no.node_path
       from tip
@@ -233,6 +255,7 @@ async function loadPreviewLocations(
         tip.binding_id,
         po.id as property_occurrence_id,
         po.file_version_id,
+        pf.id as file_id,
         pf.file_name,
         no.node_path
       from tip
@@ -255,10 +278,12 @@ async function loadPreviewLocations(
       tip.config_revision_id,
       tip.raw_value,
       from_occ.property_occurrence_id as from_occurrence_id,
+      from_occ.file_id as from_file_id,
       from_occ.file_version_id as from_file_version_id,
       from_occ.file_name as from_file_name,
       from_occ.node_path as from_node_path,
       to_occ.property_occurrence_id as to_occurrence_id,
+      to_occ.file_id as to_file_id,
       to_occ.file_version_id as to_file_version_id,
       to_occ.file_name as to_file_name,
       to_occ.node_path as to_node_path
@@ -283,6 +308,7 @@ async function loadPreviewLocations(
       bindingRevisionId: row.binding_revision_id,
       configRevisionId: row.config_revision_id,
       propertyOccurrenceId: row.from_occurrence_id ?? row.to_occurrence_id,
+      fileId: hasFrom ? row.from_file_id : row.to_file_id,
       fileVersionId: hasFrom ? row.from_file_version_id : row.to_file_version_id,
       fileName: hasFrom ? row.from_file_name : row.to_file_name,
       nodePath: hasFrom ? row.from_node_path : row.to_node_path,
@@ -416,6 +442,7 @@ function locationDetails(location: PropertyKeyCutoverPreviewLocation): Record<st
     bindingRevisionId: location.bindingRevisionId,
     configRevisionId: location.configRevisionId,
     propertyOccurrenceId: location.propertyOccurrenceId,
+    fileId: location.fileId,
     fileVersionId: location.fileVersionId,
     fileName: location.fileName,
     nodePath: location.nodePath,
@@ -425,22 +452,55 @@ function locationDetails(location: PropertyKeyCutoverPreviewLocation): Record<st
   };
 }
 
+function parseStagedRewrite(details: Record<string, unknown>): StagedPropertyKeyRewrite | null {
+  const raw = details.stagedRewrite;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const staged = raw as Record<string, unknown>;
+  if (staged.kind !== "file-candidate") return null;
+  if (typeof staged.id !== "string" || typeof staged.status !== "string") return null;
+  return { kind: "file-candidate", id: staged.id, status: staged.status };
+}
+
 async function syncItemsFromLocations(
   tx: Queryable,
   runId: string,
   locations: PropertyKeyCutoverPreviewLocation[],
+  options: {
+    stagedByBinding?: Map<string, StagedPropertyKeyRewrite | { errorCode: string }>;
+  } = {},
 ): Promise<{ pending: number; incompatible: number; skipped: number; ready: number }> {
-  const existing = await tx.query<{ id: string; binding_id: string }>(
-    `select id, binding_id from parameter_spec_property_key_cutover_items where run_id = $1`,
+  const existing = await tx.query<{ id: string; binding_id: string; details: ItemRow["details"] }>(
+    `select id, binding_id, details from parameter_spec_property_key_cutover_items where run_id = $1`,
     [runId],
   );
-  const existingByBinding = new Map(existing.rows.map((row) => [row.binding_id, row.id]));
+  const existingByBinding = new Map(existing.rows.map((row) => [row.binding_id, row]));
   const seen = new Set<string>();
 
   for (const location of locations) {
     seen.add(location.bindingId);
     const disposition = itemDispositionFromLocationStatus(location.status);
-    const itemId = existingByBinding.get(location.bindingId) ?? randomUUID();
+    const previous = existingByBinding.get(location.bindingId);
+    const itemId = previous?.id ?? randomUUID();
+    const details: Record<string, unknown> = {
+      ...locationDetails(location),
+      ...parseDetails(previous?.details ?? null),
+    };
+    let status = disposition.status;
+    let incompatibilityCode = disposition.incompatibilityCode;
+    const staged = options.stagedByBinding?.get(location.bindingId);
+    if (location.status === "would-rewrite" && staged) {
+      if ("errorCode" in staged) {
+        status = "incompatible";
+        incompatibilityCode = staged.errorCode;
+        delete details.stagedRewrite;
+      } else {
+        status = "ready";
+        incompatibilityCode = null;
+        details.stagedRewrite = staged;
+      }
+    } else if (location.status !== "would-rewrite") {
+      delete details.stagedRewrite;
+    }
     await tx.query(
       `
       insert into parameter_spec_property_key_cutover_items (
@@ -458,10 +518,10 @@ async function syncItemsFromLocations(
         runId,
         location.bindingId,
         location.projectId,
-        disposition.status,
+        status,
         location.status,
-        disposition.incompatibilityCode,
-        JSON.stringify(locationDetails(location)),
+        incompatibilityCode,
+        JSON.stringify(details),
       ],
     );
   }
@@ -562,6 +622,7 @@ async function loadRunDto(
     referenceCount: referenceCounts.get(run.parameter_spec_id) ?? 0,
     writesCatalog: run.status === "finalized",
     writesSource: false,
+    stagedSource: items.rows.some((row) => Boolean(parseStagedRewrite(parseDetails(row.details)))),
     startBlockers,
     items: items.rows.map((row) => {
       const details = parseDetails(row.details);
@@ -574,6 +635,7 @@ async function loadRunDto(
         incompatibilityCode: row.incompatibility_code,
         fileName: typeof details.fileName === "string" ? details.fileName : null,
         nodePath: typeof details.nodePath === "string" ? details.nodePath : null,
+        stagedRewrite: parseStagedRewrite(details),
       };
     }),
   };
@@ -601,16 +663,16 @@ async function loadOpenRun(
 function throwIfStartBlockers(
   specId: string,
   blockers: PropertyKeyCutoverStartBlocker[],
-  phase: "start" | "finalize",
+  phase: "start" | "prepare" | "finalize",
 ) {
   if (blockers.length === 0) return;
-  throw new ApiError(
-    "CONFLICT",
+  const message =
     phase === "start"
       ? "Property-key cutover cannot start while blockers remain."
-      : "Property-key cutover cannot finalize while blockers remain.",
-    { parameterSpecId: specId, startBlockers: blockers },
-  );
+      : phase === "prepare"
+        ? "Property-key cutover cannot prepare while blockers remain."
+        : "Property-key cutover cannot finalize while blockers remain.";
+  throw new ApiError("CONFLICT", message, { parameterSpecId: specId, startBlockers: blockers });
 }
 
 /**
@@ -737,29 +799,238 @@ export async function startPropertyKeySourceCutover(
   });
 }
 
+async function reusableStagedRewrite(
+  db: Queryable,
+  auth: AuthContext,
+  projectId: string,
+  staged: StagedPropertyKeyRewrite | null,
+): Promise<StagedPropertyKeyRewrite | null> {
+  if (!staged) return null;
+  const candidate = await getParameterFileCandidateById(db, {
+    organizationId: auth.organization.id,
+    projectId,
+    candidateId: staged.id,
+  });
+  if (!candidate) return null;
+  if (candidate.status === "abandoned" || candidate.status === "active") return null;
+  return { kind: "file-candidate", id: candidate.id, status: candidate.status };
+}
+
+function errorCodeFromUnknown(error: unknown, fallback: string) {
+  if (error instanceof ApiError) {
+    const reason = error.details.reason;
+    if (typeof reason === "string" && reason.trim()) return reason;
+    return error.code.toLowerCase().replace(/_/g, "-");
+  }
+  return fallback;
+}
+
+async function stageWouldRewriteLocations(
+  db: Database,
+  auth: AuthContext,
+  input: {
+    locations: PropertyKeyCutoverPreviewLocation[];
+    existingDetailsByBinding: Map<string, Record<string, unknown>>;
+    objectStore: ObjectStore;
+    createCandidate: typeof createCandidate;
+    context: AuditCorrelationContext;
+  },
+): Promise<Map<string, StagedPropertyKeyRewrite | { errorCode: string }>> {
+  const stagedByBinding = new Map<string, StagedPropertyKeyRewrite | { errorCode: string }>();
+  const groups = new Map<string, PropertyKeyCutoverPreviewLocation[]>();
+  for (const location of input.locations) {
+    if (location.status !== "would-rewrite") continue;
+    const key = `${location.projectId}:${location.fileId ?? location.fileVersionId ?? location.bindingId}`;
+    const group = groups.get(key) ?? [];
+    group.push(location);
+    groups.set(key, group);
+  }
+
+  for (const group of groups.values()) {
+    const projectId = group[0]?.projectId;
+    const fileId = group[0]?.fileId;
+    const fileName = group[0]?.fileName;
+    const fileVersionId = group[0]?.fileVersionId;
+    if (!projectId || !fileId || !fileName || !fileVersionId) {
+      for (const location of group) {
+        stagedByBinding.set(location.bindingId, { errorCode: "missing-file" });
+      }
+      continue;
+    }
+    if (!fileName.endsWith(".dts")) {
+      for (const location of group) {
+        stagedByBinding.set(location.bindingId, { errorCode: "unsupported-format" });
+      }
+      continue;
+    }
+
+    const writable: Array<PropertyKeyCutoverPreviewLocation & { nodePath: string }> = [];
+    for (const location of group) {
+      const nodePath = location.nodePath?.trim() ?? "";
+      if (!nodePath) {
+        stagedByBinding.set(location.bindingId, { errorCode: "missing-node-path" });
+        continue;
+      }
+      writable.push({ ...location, nodePath });
+    }
+    if (writable.length === 0) continue;
+
+    const reused: StagedPropertyKeyRewrite[] = [];
+    for (const location of writable) {
+      const existing = parseStagedRewrite(input.existingDetailsByBinding.get(location.bindingId) ?? {});
+      const reusable = await reusableStagedRewrite(db, auth, projectId, existing);
+      if (reusable) reused.push(reusable);
+    }
+    if (reused.length === writable.length && new Set(reused.map((item) => item.id)).size === 1) {
+      for (const location of writable) {
+        stagedByBinding.set(location.bindingId, reused[0]!);
+      }
+      continue;
+    }
+
+    try {
+      for (const location of writable) {
+        await assertSensitiveNodeWriteAllowed(
+          db,
+          auth,
+          {
+            organizationId: auth.organization.id,
+            projectId,
+            nodePath: location.nodePath,
+            sourceFileName: fileName,
+            actorType: "user",
+            requestId: input.context.requestId,
+          },
+          { refusalDb: db },
+        );
+      }
+
+      const version = await getFileVersionById(db, { versionId: fileVersionId });
+      if (!version) {
+        throw new ApiError("NOT_FOUND", "Source file version was not found for rewrite.", {
+          reason: "missing-file",
+          fileVersionId,
+        });
+      }
+      const source = (await input.objectStore.get(version.storageKey)).toString("utf8");
+      let rewritten = source;
+      for (const location of writable) {
+        rewritten = rewritePropertyKeyInDtsSource(rewritten, {
+          fromKey: location.fromKey,
+          toKey: location.toKey,
+          nodePath: location.nodePath,
+        });
+      }
+
+      const candidate = await input.createCandidate(
+        db,
+        input.objectStore,
+        auth,
+        {
+          projectId,
+          fileId,
+          fileName,
+          bytes: Buffer.from(rewritten, "utf8"),
+        },
+        input.context,
+      );
+      const staged: StagedPropertyKeyRewrite = {
+        kind: "file-candidate",
+        id: candidate.id,
+        status: candidate.status,
+      };
+      if (candidate.status !== "ready") {
+        for (const location of writable) {
+          stagedByBinding.set(location.bindingId, { errorCode: `candidate-${candidate.status}` });
+        }
+        continue;
+      }
+      for (const location of writable) {
+        stagedByBinding.set(location.bindingId, staged);
+      }
+    } catch (error) {
+      const errorCode = errorCodeFromUnknown(error, "stage-failed");
+      for (const location of writable) {
+        stagedByBinding.set(location.bindingId, { errorCode });
+      }
+    }
+  }
+
+  return stagedByBinding;
+}
+
+export async function getOpenPropertyKeySourceCutover(
+  db: Database,
+  auth: AuthContext,
+  specId: string,
+): Promise<{ item: PropertyKeyCutoverRunDto }> {
+  requireCanAdmin(auth);
+  const spec = await requireGovernableSpec(db, auth, specId);
+  const run = await loadOpenRun(db, specId, auth.organization.id);
+  if (!run) {
+    throw new ApiError("NOT_FOUND", "No open property-key cutover run for this spec.", { specId });
+  }
+  return {
+    item: await loadRunDto(
+      db,
+      auth,
+      run,
+      await collectStartBlockers(db, spec, run.to_key, { excludePropertyKeyRunId: run.id }),
+    ),
+  };
+}
+
 export async function preparePropertyKeySourceCutover(
   db: Database,
   auth: AuthContext,
   input: { specId: string; reason?: string },
   context: AuditCorrelationContext = {},
+  deps?: PropertyKeyCutoverPrepareDeps,
 ): Promise<{ item: PropertyKeyCutoverRunDto }> {
   requireCanAdmin(auth);
-  return db.transaction(async (tx) => {
-    const spec = await requireGovernableSpec(tx, auth, input.specId);
-    const run = await loadOpenRun(tx, input.specId, auth.organization.id);
-    if (!run) {
-      throw new ApiError("NOT_FOUND", "No open property-key cutover run for this spec.", {
-        specId: input.specId,
-      });
-    }
+  if (!deps?.objectStore) {
+    throw new ApiError(
+      "INTERNAL_ERROR",
+      "Object store is required to stage property-key source rewrites.",
+    );
+  }
 
-    const locations = await loadPreviewLocations(tx, {
-      organizationId: auth.organization.id,
+  const spec = await requireGovernableSpec(db, auth, input.specId);
+  const run = await loadOpenRun(db, input.specId, auth.organization.id);
+  if (!run) {
+    throw new ApiError("NOT_FOUND", "No open property-key cutover run for this spec.", {
       specId: input.specId,
-      fromKey: run.from_key,
-      toKey: run.to_key,
     });
-    const counts = await syncItemsFromLocations(tx, run.id, locations);
+  }
+
+  const startBlockers = await collectStartBlockers(db, spec, run.to_key, {
+    excludePropertyKeyRunId: run.id,
+  });
+  throwIfStartBlockers(input.specId, startBlockers, "prepare");
+
+  const locations = await loadPreviewLocations(db, {
+    organizationId: auth.organization.id,
+    specId: input.specId,
+    fromKey: run.from_key,
+    toKey: run.to_key,
+  });
+  const existing = await db.query<{ binding_id: string; details: ItemRow["details"] }>(
+    `select binding_id, details from parameter_spec_property_key_cutover_items where run_id = $1`,
+    [run.id],
+  );
+  const existingDetailsByBinding = new Map(
+    existing.rows.map((row) => [row.binding_id, parseDetails(row.details)]),
+  );
+  const stagedByBinding = await stageWouldRewriteLocations(db, auth, {
+    locations,
+    existingDetailsByBinding,
+    objectStore: deps.objectStore,
+    createCandidate: deps.createCandidate ?? createCandidate,
+    context,
+  });
+
+  return db.transaction(async (tx) => {
+    const counts = await syncItemsFromLocations(tx, run.id, locations, { stagedByBinding });
     const nextStatus = runStatusFromCounts(counts);
     await tx.query(`update parameter_spec_property_key_cutover_runs set status = $2 where id = $1`, [
       run.id,
@@ -780,18 +1051,16 @@ export async function preparePropertyKeySourceCutover(
           reasonHash: input.reason ? hashReason(input.reason) : null,
           itemCounts: counts,
           writesSource: false,
+          stagedCandidateCount: [...stagedByBinding.values()].filter(
+            (value) => !("errorCode" in value),
+          ).length,
         },
       },
       context,
     );
 
     return {
-      item: await loadRunDto(
-        tx,
-        auth,
-        { ...run, status: nextStatus },
-        await collectStartBlockers(tx, spec, run.to_key, { excludePropertyKeyRunId: run.id }),
-      ),
+      item: await loadRunDto(tx, auth, { ...run, status: nextStatus }, []),
     };
   });
 }

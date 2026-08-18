@@ -16690,6 +16690,17 @@ body.xiaoze-popup-resize-active {
   margin-top: var(--space-3);
 }
 
+.param-admin-cutover-panel .param-admin-confirm-field {
+  margin-top: var(--space-3);
+}
+
+.param-admin-cutover-panel .dialog-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
 .param-admin-editor-dialog .shared-definition-panel,
 .param-admin-editor-dialog .project-value-matrix {
   border: 0;

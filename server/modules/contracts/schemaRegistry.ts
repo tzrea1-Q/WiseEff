@@ -649,6 +649,15 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
       "409": "ErrorResponse"
     }
   },
+  "parameterSpecs.getPropertyKeyCutover": {
+    summary: "Read the open property-key source cutover run for a spec",
+    tags: ["parameters"],
+    responseBody: "PropertyKeyCutoverRunResponse",
+    additionalResponses: {
+      "403": "ErrorResponse",
+      "404": "ErrorResponse"
+    }
+  },
   "parameterSpecs.previewPropertyKeyCutover": {
     summary: "Preview a referenced property-key source cutover without writing catalog or source",
     tags: ["parameters"],
@@ -673,7 +682,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     }
   },
   "parameterSpecs.preparePropertyKeyCutover": {
-    summary: "Reclassify property-key cutover items from live source locations without writing catalog",
+    summary: "Stage property-key source rewrites as file-candidate drafts without writing live source or catalog",
     tags: ["parameters"],
     requestBody: "PreparePropertyKeyCutoverRequest",
     responseBody: "PropertyKeyCutoverRunResponse",
