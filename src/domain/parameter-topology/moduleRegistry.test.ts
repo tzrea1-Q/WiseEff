@@ -10,8 +10,8 @@ import {
 
 const registry: ParameterModuleRegistry = {
   modules: [
-    { id: "charge", name: "充电策略", parentId: null, sortOrder: 0, importance: "high", kind: "business", origin: "curated", sourceKey: null, effectiveImportance: "high", parameterCount: 0 },
-    { id: "safety", name: "电池安全", parentId: null, sortOrder: 1, importance: "medium", kind: "business", origin: "curated", sourceKey: null, effectiveImportance: "medium", parameterCount: 0 }
+    { id: "charge", name: "充电策略", parentId: null, sortOrder: 0, importance: "high", kind: "business", origin: "curated", sourceKey: null, effectiveImportance: "high", parameterCount: 0, definitionCount: 0 },
+    { id: "safety", name: "电池安全", parentId: null, sortOrder: 1, importance: "medium", kind: "business", origin: "curated", sourceKey: null, effectiveImportance: "medium", parameterCount: 0, definitionCount: 0 }
   ],
   mappings: [
     { id: "map-compat-sc8562", moduleId: "charge", matchKind: "compatible", matchValue: "vendor,sc8562", priority: 0 },

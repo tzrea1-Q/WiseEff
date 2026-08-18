@@ -20,7 +20,10 @@ export type ParameterModuleDto = {
   /** Present for driver-group / node-type modules after attribution cutover. */
   attributionSubjectId: string | null;
   effectiveImportance: ModuleImportance;
+  /** Subtree bindings (measured occurrences). */
   parameterCount: number;
+  /** Distinct specs in the same subtree (definition count). */
+  definitionCount: number;
 };
 
 export type ParameterModuleMappingDto = {
@@ -50,6 +53,7 @@ export type ParameterModuleRow = {
   attribution_subject_id: string | null;
   path: string;
   parameter_count: string | number | null;
+  definition_count?: string | number | null;
 };
 
 export type ParameterModuleMappingRow = {

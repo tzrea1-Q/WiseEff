@@ -20,7 +20,7 @@ import type {
   ParameterModuleMapping,
   ParameterModuleRegistry
 } from "@/domain/parameter-topology/moduleRegistry";
-import { aggregateSubtreeParameterCounts } from "@/components/parameter-topology/moduleAttributionTreeUtils";
+import { aggregateSubtreeAttributionCounts } from "@/components/parameter-topology/moduleAttributionTreeUtils";
 import { mockApiError } from "./mockApiError";
 
 type Store = {
@@ -35,12 +35,16 @@ type Store = {
 
 function cloneRegistry(store: Store): ParameterModuleRegistry {
   const modules = store.modules.map((module) => ({ ...module }));
-  const subtreeCounts = aggregateSubtreeParameterCounts(modules);
+  const subtreeCounts = aggregateSubtreeAttributionCounts(modules);
   return {
-    modules: modules.map((module) => ({
-      ...module,
-      parameterCount: subtreeCounts.get(module.id) ?? 0
-    })),
+    modules: modules.map((module) => {
+      const counts = subtreeCounts.get(module.id);
+      return {
+        ...module,
+        parameterCount: counts?.parameterCount ?? 0,
+        definitionCount: counts?.definitionCount ?? 0
+      };
+    }),
     mappings: store.mappings.map((mapping) => ({ ...mapping }))
   };
 }
@@ -89,7 +93,8 @@ function createSeedStore(): Store {
         origin: "curated",
         sourceKey: null,
         effectiveImportance: "high",
-        parameterCount: 12
+        parameterCount: 12,
+        definitionCount: 12
       },
       {
         id: "mod-battery",
@@ -103,7 +108,8 @@ function createSeedStore(): Store {
         origin: "curated",
         sourceKey: null,
         effectiveImportance: "high",
-        parameterCount: 4
+        parameterCount: 4,
+        definitionCount: 4
       },
       {
         id: "mod-sc8562",
@@ -118,6 +124,7 @@ function createSeedStore(): Store {
         sourceKey: "compatible:vendor,sc8562",
         effectiveImportance: "high",
         parameterCount: 0,
+        definitionCount: 0,
         attributionSubjectId: "asub:driver:sc8562"
       },
       {
@@ -133,6 +140,7 @@ function createSeedStore(): Store {
         sourceKey: "compatible:vendor,mt5788",
         effectiveImportance: "high",
         parameterCount: 0,
+        definitionCount: 0,
         attributionSubjectId: "asub:driver:mt5788"
       },
       {
@@ -148,6 +156,7 @@ function createSeedStore(): Store {
         sourceKey: "nodetype:charger",
         effectiveImportance: "high",
         parameterCount: 0,
+        definitionCount: 0,
         attributionSubjectId: "asub:nodetype:charger"
       },
       {
@@ -163,6 +172,7 @@ function createSeedStore(): Store {
         sourceKey: "compatible:vendor,unmapped-ic",
         effectiveImportance: "high",
         parameterCount: 2,
+        definitionCount: 2,
         attributionSubjectId: "asub:driver:unmapped-ic"
       }
     ],
@@ -332,7 +342,8 @@ export function createMockParameterModuleRegistryRepository(
         origin,
         sourceKey: input.sourceKey ?? null,
         effectiveImportance: importance,
-        parameterCount: 0
+        parameterCount: 0,
+        definitionCount: 0
       });
       if (kind === "driver-group" && (input.compatibles?.length ?? 0) > 0) {
         for (const compatible of input.compatibles ?? []) {
@@ -494,7 +505,8 @@ export function createMockParameterModuleRegistryRepository(
           origin: "curated",
           sourceKey: `compatible:${compatibles[0]}`,
           effectiveImportance: "medium",
-          parameterCount: 0
+          parameterCount: 0,
+          definitionCount: 0
         });
         for (const compatible of compatibles) {
           mappingSeq += 1;

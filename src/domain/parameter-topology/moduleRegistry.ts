@@ -36,7 +36,10 @@ export type ParameterModule = {
   sourceKey: string | null;
   /** Nearest ancestor business category importance (or own, when business). */
   effectiveImportance: ModuleImportance;
+  /** Subtree bindings (measured occurrences). */
   parameterCount: number;
+  /** Distinct specs in the same subtree (definition count). */
+  definitionCount: number;
   /** Stable catalog identity for driver-group / node-type (ADR-0013). */
   attributionSubjectId?: string | null;
 };

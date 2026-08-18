@@ -27,6 +27,7 @@ const sampleModules: ParameterModule[] = [
     sourceKey: null,
     effectiveImportance: "medium",
     parameterCount: 0,
+    definitionCount: 0,
     attributionSubjectId: null,
   },
   {
@@ -42,6 +43,7 @@ const sampleModules: ParameterModule[] = [
     sourceKey: "compatible:vendor,sc8562",
     effectiveImportance: "medium",
     parameterCount: 2,
+    definitionCount: 2,
     attributionSubjectId: "asub:driver:sc8562",
   },
   {
@@ -57,6 +59,7 @@ const sampleModules: ParameterModule[] = [
     sourceKey: "nodetype:charger",
     effectiveImportance: "medium",
     parameterCount: 1,
+    definitionCount: 1,
     attributionSubjectId: "asub:nodetype:charger",
   },
 ];

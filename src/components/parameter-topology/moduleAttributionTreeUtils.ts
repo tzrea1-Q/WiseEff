@@ -420,15 +420,30 @@ export function siblingModuleNames(
     .map((module) => module.name);
 }
 
+export type SubtreeAttributionCounts = {
+  parameterCount: number;
+  definitionCount: number;
+};
+
 /**
- * Registry `parameterCount` is direct bindings on that module_id.
- * TODO(ADR-0010): split 定义数 vs 实测处数 in the tree UI; this rollup stays binding-based for now.
- * Returns subtree totals (self + all descendants) for tree display.
+ * Mock/local rollup of *direct* registry counts. API `GET /api/v2/parameter-modules`
+ * already returns subtree totals — the tree must display those fields, not re-sum.
+ * Definition rollup here is a sum of stored direct `definitionCount`s (mock seeds
+ * do not share specs across siblings). Server `rollupSubtreeAttributionCounts`
+ * unions distinct spec ids.
  */
-export function aggregateSubtreeParameterCounts(
+export function aggregateSubtreeAttributionCounts(
   modules: readonly ParameterModule[]
-): ReadonlyMap<string, number> {
-  const direct = new Map(modules.map((module) => [module.id, module.parameterCount]));
+): ReadonlyMap<string, SubtreeAttributionCounts> {
+  const direct = new Map(
+    modules.map((module) => [
+      module.id,
+      {
+        parameterCount: module.parameterCount,
+        definitionCount: module.definitionCount
+      }
+    ])
+  );
   const childrenByParent = new Map<string, string[]>();
   for (const module of modules) {
     if (!module.parentId) continue;
@@ -437,25 +452,41 @@ export function aggregateSubtreeParameterCounts(
     childrenByParent.set(module.parentId, siblings);
   }
 
-  const totals = new Map<string, number>();
+  const totals = new Map<string, SubtreeAttributionCounts>();
   const visiting = new Set<string>();
 
-  const totalFor = (moduleId: string): number => {
+  const totalFor = (moduleId: string): SubtreeAttributionCounts => {
     const cached = totals.get(moduleId);
     if (cached !== undefined) return cached;
-    if (visiting.has(moduleId)) return direct.get(moduleId) ?? 0;
+    const own = direct.get(moduleId) ?? { parameterCount: 0, definitionCount: 0 };
+    if (visiting.has(moduleId)) return own;
     visiting.add(moduleId);
-    let sum = direct.get(moduleId) ?? 0;
+    let parameterCount = own.parameterCount;
+    let definitionCount = own.definitionCount;
     for (const childId of childrenByParent.get(moduleId) ?? []) {
-      sum += totalFor(childId);
+      const child = totalFor(childId);
+      parameterCount += child.parameterCount;
+      definitionCount += child.definitionCount;
     }
     visiting.delete(moduleId);
-    totals.set(moduleId, sum);
-    return sum;
+    const next = { parameterCount, definitionCount };
+    totals.set(moduleId, next);
+    return next;
   };
 
   for (const module of modules) {
     totalFor(module.id);
+  }
+  return totals;
+}
+
+/** @deprecated Prefer {@link aggregateSubtreeAttributionCounts}. */
+export function aggregateSubtreeParameterCounts(
+  modules: readonly ParameterModule[]
+): ReadonlyMap<string, number> {
+  const totals = new Map<string, number>();
+  for (const [id, counts] of aggregateSubtreeAttributionCounts(modules)) {
+    totals.set(id, counts.parameterCount);
   }
   return totals;
 }

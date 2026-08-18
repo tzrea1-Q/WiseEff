@@ -33,7 +33,8 @@ describe("ClassifyCompatibleDialog", () => {
             origin: "curated",
             sourceKey: null,
             effectiveImportance: "high",
-            parameterCount: 2
+            parameterCount: 2,
+            definitionCount: 1
           }
         ]}
         preview={{

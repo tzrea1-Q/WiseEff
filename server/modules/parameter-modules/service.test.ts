@@ -69,6 +69,74 @@ describe("parameter module registry service", () => {
     expect(result.item.modules[0]?.name).toBe("充电策略");
   });
 
+  it("exposes subtree definitionCount and parameterCount as distinct facts", async () => {
+    const query = vi.fn(async (text: string) => {
+      if (text.includes("from parameter_modules") && !text.includes("select id from")) {
+        return {
+          rows: [
+            {
+              id: "m-root",
+              name: "充电策略",
+              parent_id: null,
+              sort_order: 0,
+              description: "",
+              scope: "",
+              importance: "high",
+              kind: "business",
+              origin: "curated",
+              source_key: null,
+              path: "m-root",
+              parameter_count: "0"
+            },
+            {
+              id: "m-leaf",
+              name: "SC8562",
+              parent_id: "m-root",
+              sort_order: 0,
+              description: "",
+              scope: "",
+              importance: "medium",
+              kind: "driver-group",
+              origin: "auto",
+              source_key: null,
+              path: "m-root/m-leaf",
+              parameter_count: "0"
+            }
+          ],
+          rowCount: 2
+        };
+      }
+      if (text.includes("parameter_spec_id") && text.includes("project_parameter_bindings")) {
+        return {
+          rows: [
+            { module_id: "m-leaf", parameter_spec_id: "spec-a" },
+            { module_id: "m-leaf", parameter_spec_id: "spec-a" },
+            { module_id: "m-leaf", parameter_spec_id: "spec-b" }
+          ],
+          rowCount: 3
+        };
+      }
+      if (text.includes("from parameter_module_mappings")) {
+        return { rows: [], rowCount: 0 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    const db = {
+      query,
+      transaction: vi.fn(async (fn) => fn({ query } as never))
+    } as unknown as Database;
+
+    const result = await getParameterModuleRegistry(db, makeAuth());
+    const root = result.item.modules.find((module) => module.id === "m-root");
+    const leaf = result.item.modules.find((module) => module.id === "m-leaf");
+    expect(leaf).toEqual(
+      expect.objectContaining({ parameterCount: 3, definitionCount: 2 })
+    );
+    expect(root).toEqual(
+      expect.objectContaining({ parameterCount: 3, definitionCount: 2 })
+    );
+  });
+
   it("rejects registry reads without view permission", async () => {
     const db = makeReadableDb();
     await expect(

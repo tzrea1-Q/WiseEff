@@ -202,7 +202,8 @@ describe("ModuleEditDialog", () => {
             origin: "curated",
             sourceKey: null,
             effectiveImportance: "medium",
-            parameterCount: 0
+            parameterCount: 0,
+            definitionCount: 0
           },
           {
             id: "biz-2",
@@ -216,7 +217,8 @@ describe("ModuleEditDialog", () => {
             origin: "curated",
             sourceKey: null,
             effectiveImportance: "medium",
-            parameterCount: 0
+            parameterCount: 0,
+            definitionCount: 0
           }
         ]}
         defaultBusinessCategoryId="biz-1"

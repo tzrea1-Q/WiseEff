@@ -272,7 +272,12 @@ function ModuleAttributionTreeRow({
         </div>
 
         <div className="module-attribution-tree__meta">
-          <span className="module-attribution-tree__count">{module.parameterCount} 参数</span>
+          <span className="module-attribution-tree__count" aria-label={PARAMETER_ADMIN_UI.definitionCountLabel}>
+            {module.definitionCount} 定义
+          </span>
+          <span className="module-attribution-tree__count" aria-label={PARAMETER_ADMIN_UI.occurrenceCountLabel}>
+            · {module.parameterCount} 实测处
+          </span>
           {module.kind === "driver-group" && compatibleCount > 0 ? (
             <span className="module-attribution-tree__rules-summary">
               · {compatibleCount} 条 compatible

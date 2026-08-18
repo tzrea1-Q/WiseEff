@@ -13,7 +13,8 @@ describe("createMockParameterModuleRegistryRepository", () => {
         origin: "curated",
         effectiveImportance: "high",
         // Direct 12 + child 电池安全 4 + auto unmapped-ic 2
-        parameterCount: 18
+        parameterCount: 18,
+        definitionCount: 18
       })
     );
     expect(registry.mappings).toEqual(

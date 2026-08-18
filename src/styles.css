@@ -22992,7 +22992,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
 
 .module-attribution-tree__row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 5.5rem 8.75rem;
+  grid-template-columns: minmax(0, 1fr) minmax(8rem, max-content) 8.75rem;
   gap: var(--space-1) var(--space-3);
   align-items: center;
   min-width: 0;
@@ -23116,12 +23116,11 @@ button.dts-topology-navigator__disclosure:focus-visible {
 
 .module-attribution-tree__meta {
   display: inline-flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 6px;
+  gap: var(--space-1);
   justify-self: stretch;
-  white-space: nowrap;
   text-align: right;
 }
 
@@ -23130,6 +23129,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
   font-size: var(--text-sm);
   color: #7a8ba3;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .module-attribution-tree__importance-chip {

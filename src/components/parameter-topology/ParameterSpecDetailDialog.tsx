@@ -333,7 +333,8 @@ export function ParameterSpecDetailDialog({
             </p>
             {typeof detail.usageCount === "number" ? (
               <p className="form-hint" aria-label={PARAMETER_ADMIN_UI.referenceCountLabel}>
-                {PARAMETER_ADMIN_UI.referenceCountLabel}：{detail.usageCount}
+                {PARAMETER_ADMIN_UI.referenceCountLabel}：{detail.usageCount}（
+                {PARAMETER_ADMIN_UI.referenceCountAsOccurrence}）
               </p>
             ) : null}
           </div>

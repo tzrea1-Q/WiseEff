@@ -46,6 +46,7 @@ type ModuleDto = {
   sourceKey?: string | null;
   effectiveImportance?: ModuleImportance;
   parameterCount?: number;
+  definitionCount?: number;
   attributionSubjectId?: string | null;
 };
 
@@ -94,6 +95,7 @@ function mapModule(module: ModuleDto): ParameterModule {
     sourceKey: module.sourceKey ?? null,
     effectiveImportance: module.effectiveImportance ?? importance,
     parameterCount: module.parameterCount ?? 0,
+    definitionCount: module.definitionCount ?? 0,
     attributionSubjectId: module.attributionSubjectId ?? null
   };
 }

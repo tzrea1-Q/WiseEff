@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
 import {
-  aggregateSubtreeParameterCounts,
+  aggregateSubtreeAttributionCounts,
   addChildModuleDecision,
   allowedCreateKindsForParent,
   canAddChildModule,
@@ -33,7 +33,8 @@ const modules: ParameterModule[] = [
     origin: "curated",
     sourceKey: null,
     effectiveImportance: "high",
-    parameterCount: 0
+    parameterCount: 0,
+    definitionCount: 0
   },
   {
     id: "g",
@@ -47,7 +48,8 @@ const modules: ParameterModule[] = [
     origin: "auto",
     sourceKey: null,
     effectiveImportance: "high",
-    parameterCount: 1
+    parameterCount: 1,
+    definitionCount: 1
   },
   {
     id: "i",
@@ -61,7 +63,8 @@ const modules: ParameterModule[] = [
     origin: "auto",
     sourceKey: null,
     effectiveImportance: "high",
-    parameterCount: 1
+    parameterCount: 2,
+    definitionCount: 1
   }
 ];
 
@@ -125,11 +128,11 @@ describe("moduleAttributionTreeUtils", () => {
     expect(visible.map((module) => module.id).sort()).toEqual(["b", "g", "i"]);
   });
 
-  it("rolls direct parameter counts up the parent tree for display", () => {
-    const totals = aggregateSubtreeParameterCounts(modules);
-    expect(totals.get("i")).toBe(1);
-    expect(totals.get("g")).toBe(2);
-    expect(totals.get("b")).toBe(2);
+  it("rolls direct definition and occurrence counts up the parent tree for mock display", () => {
+    const totals = aggregateSubtreeAttributionCounts(modules);
+    expect(totals.get("i")).toEqual({ parameterCount: 2, definitionCount: 1 });
+    expect(totals.get("g")).toEqual({ parameterCount: 3, definitionCount: 2 });
+    expect(totals.get("b")).toEqual({ parameterCount: 3, definitionCount: 2 });
   });
 
   it("marks curated empty driver-group and node-type modules as not yet observed", () => {
