@@ -286,7 +286,6 @@ export function registerParameterSpecRoutes(
       auth,
       {
         ...body,
-        constraints: body.constraints ?? {},
         specId: params.specId,
       },
       { requestId: request.requestId },

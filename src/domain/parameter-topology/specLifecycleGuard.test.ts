@@ -1,29 +1,97 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  SEMANTIC_EDIT_REQUIRES_SUCCESSOR,
   guardActivateParameterSpec,
   guardDeprecateParameterSpec,
   guardRestoreParameterSpec,
+  guardSemanticFieldPatch,
   guardUpdateParameterSpec,
   nextSpecLifecycleAfterRestore
 } from "./specLifecycleGuard";
 
 describe("guardActivateParameterSpec", () => {
-  it("allows only draft specs", () => {
+  it("allows draft and active specs so activate can mint a successor", () => {
     expect(guardActivateParameterSpec("draft", "spec-1")).toEqual({ ok: true });
+    expect(guardActivateParameterSpec("active", "spec-1")).toEqual({ ok: true });
   });
 
-  it("rejects activate when the spec is not a draft", () => {
-    expect(guardActivateParameterSpec("active", "spec-1")).toEqual({
+  it("rejects activate when the spec is deprecated", () => {
+    expect(guardActivateParameterSpec("deprecated", "spec-1")).toEqual({
       ok: false,
       code: "CONFLICT",
-      message: "Only draft parameter specs can be activated.",
+      message: "Only draft or active parameter specs can be activated.",
       details: { specId: "spec-1" }
     });
-    expect(guardActivateParameterSpec("deprecated", "spec-1")).toMatchObject({
-      ok: false,
-      code: "CONFLICT"
-    });
+  });
+});
+
+describe("guardSemanticFieldPatch", () => {
+  const stored = {
+    valueShape: { kind: "string" },
+    constraints: { min: 0 },
+    units: null as string | null
+  };
+
+  it("allows documentation-class patches that restate or omit semantic fields", () => {
+    expect(
+      guardSemanticFieldPatch("active", "spec-1", stored, {
+        valueShape: { kind: "string" },
+        constraints: { min: 0 }
+      })
+    ).toEqual({ ok: true });
+    expect(guardSemanticFieldPatch("active", "spec-1", stored, {})).toEqual({ ok: true });
+    expect(
+      guardSemanticFieldPatch("deprecated", "spec-1", stored, {
+        valueShape: { kind: "string" }
+      })
+    ).toEqual({ ok: true });
+  });
+
+  it("treats key-order-only JSON as unchanged", () => {
+    expect(
+      guardSemanticFieldPatch("active", "spec-1", stored, {
+        valueShape: { kind: "string" },
+        constraints: { min: 0 }
+      })
+    ).toEqual({ ok: true });
+    expect(
+      guardSemanticFieldPatch(
+        "active",
+        "spec-1",
+        { ...stored, valueShape: { kind: "cells", bits: 32, groups: 1 } },
+        { valueShape: { groups: 1, bits: 32, kind: "cells" } }
+      )
+    ).toEqual({ ok: true });
+  });
+
+  it("rejects a semantic field change on active or deprecated with the successor code", () => {
+    const expected = {
+      ok: false as const,
+      code: "CONFLICT" as const,
+      message: "Semantic fields on an active or deprecated definition must change through activate → successor.",
+      details: {
+        specId: "spec-1",
+        parameterSpecId: "spec-1",
+        code: SEMANTIC_EDIT_REQUIRES_SUCCESSOR,
+        reason: SEMANTIC_EDIT_REQUIRES_SUCCESSOR
+      }
+    };
+    expect(
+      guardSemanticFieldPatch("active", "spec-1", stored, {
+        valueShape: { kind: "string", encoding: "ascii" }
+      })
+    ).toEqual(expected);
+    expect(
+      guardSemanticFieldPatch("active", "spec-1", stored, {
+        constraints: { min: 0, max: 100 }
+      })
+    ).toEqual(expected);
+    expect(
+      guardSemanticFieldPatch("deprecated", "spec-1", stored, {
+        units: "mV"
+      })
+    ).toEqual(expected);
   });
 });
 

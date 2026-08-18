@@ -32,8 +32,10 @@ import {
   guardActivateParameterSpec,
   guardDeprecateParameterSpec,
   guardRestoreParameterSpec,
+  guardSemanticFieldPatch,
   guardUpdateParameterSpec,
-  nextSpecLifecycleAfterRestore
+  nextSpecLifecycleAfterRestore,
+  stableJson
 } from "@/domain/parameter-topology/specLifecycleGuard";
 import { mockApiError } from "./mockApiError";
 
@@ -541,7 +543,60 @@ function cloneDetail(detail: SpecFixture): ParameterSpecDetail {
         ? { ...(detail.valueShape as Record<string, unknown>) }
         : detail.valueShape,
     referenceCount: detail.referenceCount ?? 0,
-    attributionModules: detail.attributionModules ? [...detail.attributionModules] : []
+    attributionModules: detail.attributionModules ? [...detail.attributionModules] : [],
+    cutover: detail.cutover
+      ? {
+          ...detail.cutover,
+          impact: { ...detail.cutover.impact }
+        }
+      : undefined
+  };
+}
+
+function mockActivationContentChanged(
+  existing: SpecFixture,
+  input: ActivateParameterSpecInput
+): boolean {
+  if (stableJson(existing.valueShape) !== stableJson(input.valueShape)) return true;
+  if (stableJson(existing.constraints ?? {}) !== stableJson(input.constraints ?? {})) return true;
+  if ((existing.documentation ?? "").trim() !== input.documentation.trim()) return true;
+  if (input.displayName !== undefined && input.displayName !== (existing.displayName ?? null)) return true;
+  if (input.description !== undefined && input.description !== (existing.description ?? null)) return true;
+  if (input.units !== undefined && input.units !== (existing.units ?? null)) return true;
+  if (
+    input.exampleValue !== undefined &&
+    stableJson(input.exampleValue) !== stableJson(existing.exampleValue ?? null)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function countTipBindings(store: Store, specId: string, versionId: string | null): number {
+  if (!versionId) return 0;
+  const seen = new Set<string>();
+  for (const bindings of store.bindingsByRevision.values()) {
+    for (const binding of bindings) {
+      if (binding.parameterSpecId === specId && binding.parameterSpecVersionId === versionId) {
+        seen.add(binding.id);
+      }
+    }
+  }
+  return seen.size;
+}
+
+function applyActivateContent(existing: SpecFixture, input: ActivateParameterSpecInput): SpecFixture {
+  return {
+    ...existing,
+    lifecycle: "active",
+    activatedAt: existing.activatedAt ?? MOCK_NOW,
+    valueShape: input.valueShape,
+    constraints: input.constraints,
+    documentation: input.documentation,
+    displayName: input.displayName === undefined ? existing.displayName : input.displayName,
+    description: input.description === undefined ? existing.description : input.description,
+    units: input.units === undefined ? existing.units : input.units,
+    exampleValue: input.exampleValue === undefined ? existing.exampleValue : input.exampleValue
   };
 }
 
@@ -715,16 +770,41 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
       }
       const activateGate = guardActivateParameterSpec(existing.lifecycle, specId);
       if (!activateGate.ok) throw mockApiError(activateGate.code, activateGate.message, activateGate.details);
-      const updated: SpecFixture = {
-        ...existing,
-        lifecycle: "active",
-        activatedAt: existing.activatedAt ?? MOCK_NOW,
-        valueShape: input.valueShape,
-        constraints: input.constraints,
-        documentation: input.documentation,
-        displayName: input.displayName === undefined ? existing.displayName : input.displayName,
-        description: input.description === undefined ? existing.description : input.description
-      };
+      const createSuccessor = existing.lifecycle === "active" && mockActivationContentChanged(existing, input);
+      if (createSuccessor) {
+        const nextVersion = (existing.currentVersion ?? 1) + 1;
+        const nextVersionId = `${existing.id}:v${nextVersion}`;
+        const tipBindingCount = countTipBindings(store, specId, existing.currentVersionId);
+        if (tipBindingCount === 0) {
+          const finalized = applyActivateContent(existing, input);
+          finalized.currentVersion = nextVersion;
+          finalized.currentVersionId = nextVersionId;
+          finalized.cutover = undefined;
+          store.specs.set(specId, finalized);
+          return cloneDetail(finalized);
+        }
+        const staged: SpecFixture = {
+          ...existing,
+          cutover: {
+            runId: `cutover-${specId}-${nextVersion}`,
+            status: "preparing",
+            fromVersionId: existing.currentVersionId ?? `${existing.id}:v${existing.currentVersion ?? 1}`,
+            toVersionId: nextVersionId,
+            fromVersion: existing.currentVersion ?? 1,
+            toVersion: nextVersion,
+            impact: {
+              pending: tipBindingCount,
+              ready: 0,
+              incompatible: 0,
+              skipped: 0,
+              total: tipBindingCount
+            }
+          }
+        };
+        store.specs.set(specId, staged);
+        return cloneDetail(staged);
+      }
+      const updated = applyActivateContent(existing, input);
       store.specs.set(specId, updated);
       return cloneDetail(updated);
     },
@@ -736,6 +816,21 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
       }
       const updateGate = guardUpdateParameterSpec(existing.lifecycle, specId);
       if (!updateGate.ok) throw mockApiError(updateGate.code, updateGate.message, updateGate.details);
+      const semanticGate = guardSemanticFieldPatch(
+        existing.lifecycle,
+        specId,
+        {
+          valueShape: existing.valueShape,
+          constraints: existing.constraints,
+          units: existing.units
+        },
+        {
+          valueShape: input.valueShape,
+          constraints: input.constraints,
+          units: input.units
+        }
+      );
+      if (!semanticGate.ok) throw mockApiError(semanticGate.code, semanticGate.message, semanticGate.details);
       const updated: SpecFixture = {
         ...existing,
         valueShape: input.valueShape ?? existing.valueShape,

@@ -65,6 +65,13 @@ function toSpecDetailView(
 
 function formatReviewActionError(error: unknown): string {
   if (error instanceof WiseEffApiError) {
+    if (
+      error.code === "CONFLICT" &&
+      (error.details.code === "semantic-edit-requires-successor" ||
+        error.details.reason === "semantic-edit-requires-successor")
+    ) {
+      return presentError(error, "语义字段需通过激活后继版本修改，不能直接保存。");
+    }
     if (error.code === "CONFLICT" && error.details.confirmRequired === true) {
       return "所选规格属性键与任务不一致，请勾选确认后再批准。";
     }

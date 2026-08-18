@@ -52,6 +52,18 @@ describe("presentError", () => {
     );
   });
 
+  it("maps semantic-edit successor CONFLICT details to activate-successor copy", () => {
+    const err = new WiseEffApiError(
+      "CONFLICT",
+      "Semantic fields on an active or deprecated definition must change through activate → successor.",
+      { specId: "spec-sc8562-gpio-int", code: "semantic-edit-requires-successor", reason: "semantic-edit-requires-successor" },
+      "req-semantic-edit",
+    );
+    expect(presentError(err, FALLBACK)).toBe(
+      "语义字段（取值形状 / 约束 / 单位）不能在已启用或已废弃定义上直接修改，请通过激活后继版本完成切换。",
+    );
+  });
+
   it("maps identity-triple CONFLICT details for an active blocker", () => {
     const err = new WiseEffApiError(
       "CONFLICT",

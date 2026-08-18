@@ -1487,14 +1487,14 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse" }
   },
   "parameterSpecs.update": {
-    summary: "Update a parameter definition (draft content or governed fields)",
+    summary: "Update documentation-class fields on an active definition",
     tags: ["parameters"],
     requestBody: "UpdateParameterSpecRequest",
     responseBody: "ParameterSpecResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "parameterSpecs.activate": {
-    summary: "Activate a draft parameter definition",
+    summary: "Activate a draft, or mint a successor on an active definition",
     tags: ["parameters"],
     responseBody: "ParameterSpecResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
