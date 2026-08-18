@@ -1,6 +1,12 @@
 import type { Queryable } from "../../shared/database/client";
-import type { LogStage } from "../logs/status";
-import type { ClaimedLogAnalysisJobDto, LogAnalysisJobDto, LogAnalysisJobKind, LogAnalysisJobSnapshotDto } from "./types";
+import type {
+  ClaimedLogAnalysisJobDto,
+  ClaimedOverlayArtifactGcJobDto,
+  LogAnalysisJobDto,
+  LogAnalysisJobKind,
+  LogAnalysisJobSnapshotDto,
+  OverlayArtifactGcJobDto
+} from "./types";
 
 type JobRow = {
   id: string;
@@ -168,7 +174,7 @@ export async function markJobRetryScheduled(
     organizationId: string;
     jobId: string;
     error: string;
-    currentStage?: LogStage;
+    currentStage?: string;
     nextRunAt: string;
     reason: string;
     leaseOwner: string;
@@ -199,7 +205,7 @@ export async function markJobRetryScheduled(
 
 export async function markJobDeadLettered(
   db: Queryable,
-  input: { organizationId: string; jobId: string; error: string; reason: string; currentStage?: LogStage; leaseOwner: string }
+  input: { organizationId: string; jobId: string; error: string; reason: string; currentStage?: string; leaseOwner: string }
 ) {
   const result = await db.query(
     `
@@ -256,7 +262,7 @@ export async function getJobSnapshot(db: Queryable, jobId: string) {
 
 export async function updateJobProgress(
   db: Queryable,
-  input: { organizationId: string; jobId: string; progress: number; currentStage: LogStage; leaseOwner: string }
+  input: { organizationId: string; jobId: string; progress: number; currentStage: string; leaseOwner: string }
 ) {
   const result = await db.query(
     `
@@ -278,7 +284,7 @@ export async function updateJobProgress(
 
 export async function completeJob(
   db: Queryable,
-  input: { organizationId: string; jobId: string; currentStage?: LogStage; leaseOwner: string }
+  input: { organizationId: string; jobId: string; currentStage?: string; leaseOwner: string }
 ) {
   const result = await db.query(
     `
@@ -301,7 +307,7 @@ export async function completeJob(
 
 export async function failJob(
   db: Queryable,
-  input: { organizationId: string; jobId: string; error: string; currentStage?: LogStage; leaseOwner: string }
+  input: { organizationId: string; jobId: string; error: string; currentStage?: string; leaseOwner: string }
 ) {
   const result = await db.query(
     `
@@ -321,4 +327,117 @@ export async function failJob(
   );
 
   return result.rowCount === 1;
+}
+
+type OverlayArtifactGcJobRow = {
+  id: string;
+  organization_id: string;
+  kind: OverlayArtifactGcJobDto["kind"];
+  status: OverlayArtifactGcJobDto["status"];
+  progress: number | string;
+  error_message: string | null;
+  updated_at: string | Date;
+  lease_owner?: string | null;
+  lease_expires_at?: string | Date | null;
+  attempt_count?: number | string;
+};
+
+function toOverlayArtifactGcJobDto(row: OverlayArtifactGcJobRow): OverlayArtifactGcJobDto {
+  return {
+    id: row.id,
+    kind: "overlay-artifact-gc",
+    organizationId: row.organization_id,
+    status: row.status,
+    progress: Number(row.progress),
+    error: row.error_message,
+    updatedAt: dateTimeToIso(row.updated_at)
+  };
+}
+
+function toClaimedOverlayArtifactGcJobDto(row: OverlayArtifactGcJobRow): ClaimedOverlayArtifactGcJobDto {
+  return {
+    ...toOverlayArtifactGcJobDto(row),
+    leaseOwner: row.lease_owner ?? null,
+    leaseExpiresAt: nullableDateTimeToIso(row.lease_expires_at),
+    attemptCount: Number(row.attempt_count ?? 0)
+  };
+}
+
+export async function findLiveOverlayArtifactGcJob(db: Queryable, organizationId: string) {
+  const result = await db.query<OverlayArtifactGcJobRow>(
+    `
+    select id, organization_id, kind, status, progress, error_message, updated_at,
+      lease_owner, lease_expires_at, attempt_count
+    from jobs
+    where organization_id = $1
+      and kind = 'overlay-artifact-gc'
+      and status in ('queued', 'processing')
+      and dead_lettered_at is null
+    order by created_at asc, id asc
+    limit 1
+    `,
+    [organizationId]
+  );
+
+  return result.rows[0] ? toOverlayArtifactGcJobDto(result.rows[0]) : null;
+}
+
+export async function createOverlayArtifactGcJob(
+  db: Queryable,
+  input: { id: string; organizationId: string }
+) {
+  const result = await db.query<OverlayArtifactGcJobRow>(
+    `
+    insert into jobs (
+      id, organization_id, kind, target_type, target_id, status, progress, current_stage
+    )
+    values ($1, $2, 'overlay-artifact-gc', 'organization', $2, 'queued', 0, 'sweep')
+    returning id, organization_id, kind, status, progress, error_message, updated_at,
+      lease_owner, lease_expires_at, attempt_count
+    `,
+    [input.id, input.organizationId]
+  );
+
+  return toOverlayArtifactGcJobDto(result.rows[0]);
+}
+
+export async function claimNextOverlayArtifactGcJob(
+  db: Queryable,
+  input: { leaseOwner?: string; leaseTtlMs?: number } = {}
+) {
+  const leaseOwner = input.leaseOwner ?? "overlay-artifact-gc-worker";
+  const leaseTtlMs = input.leaseTtlMs ?? 60_000;
+  const result = await db.query<OverlayArtifactGcJobRow>(
+    `
+    update jobs
+    set status = 'processing',
+      lease_owner = $1,
+      lease_expires_at = now() + ($2 * interval '1 millisecond'),
+      attempt_count = coalesce(attempt_count, 0) + 1,
+      error_message = null,
+      updated_at = now()
+    where id = (
+      select id
+      from jobs
+      where kind = 'overlay-artifact-gc'
+        and (
+          status = 'queued'
+          or (
+            status = 'processing'
+            and lease_expires_at is not null
+            and lease_expires_at <= now()
+          )
+        )
+        and (next_run_at is null or next_run_at <= now())
+      order by created_at asc, id asc
+      for update skip locked
+      limit 1
+    )
+    returning id, organization_id, kind, status, progress, error_message, updated_at,
+      lease_owner, lease_expires_at, attempt_count
+    `,
+    [leaseOwner, leaseTtlMs]
+  );
+
+  return result.rows[0] ? toClaimedOverlayArtifactGcJobDto(result.rows[0]) : null;
 }

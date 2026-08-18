@@ -1252,7 +1252,7 @@ export type SweepReloadArtifactsResult = {
 export async function sweepExpiredReloadArtifacts(
   db: Database,
   objectStore: ObjectStore,
-  options: { now?: () => Date; batchLimit?: number } = {}
+  options: { now?: () => Date; batchLimit?: number; organizationId?: string } = {}
 ): Promise<SweepReloadArtifactsResult> {
   const remove = objectStore.delete?.bind(objectStore);
   if (!remove) {
@@ -1264,7 +1264,11 @@ export async function sweepExpiredReloadArtifacts(
   const retentionMs = RELOAD_ARTIFACT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
   const olderThanIso = new Date(now().getTime() - retentionMs).toISOString();
 
-  const expired = await listExpiredReloadArtifactRuns(db, { olderThanIso, limit: batchLimit });
+  const expired = await listExpiredReloadArtifactRuns(db, {
+    olderThanIso,
+    limit: batchLimit,
+    organizationId: options.organizationId
+  });
   let reclaimedRuns = 0;
   let deletedBlobs = 0;
   for (const run of expired) {

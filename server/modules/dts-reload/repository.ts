@@ -595,7 +595,7 @@ export type ExpiredReloadArtifactRow = {
  */
 export async function listExpiredReloadArtifactRuns(
   db: Queryable,
-  input: { olderThanIso: string; limit: number }
+  input: { olderThanIso: string; limit: number; organizationId?: string }
 ): Promise<ExpiredReloadArtifactRow[]> {
   const result = await db.query<ExpiredReloadArtifactRow>(
     `
@@ -603,10 +603,11 @@ export async function listExpiredReloadArtifactRuns(
     from dts_reload_runs
     where coalesce(completed_at, created_at) < $1::timestamptz
       and (overlay_artifact_storage_key is not null or overlay_source_storage_key is not null)
+      and ($3::text is null or organization_id = $3)
     order by coalesce(completed_at, created_at) asc
     limit $2
     `,
-    [input.olderThanIso, input.limit]
+    [input.olderThanIso, input.limit, input.organizationId ?? null]
   );
   return result.rows;
 }

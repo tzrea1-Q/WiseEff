@@ -33,6 +33,9 @@ export function createMemoryObjectStore(): MemoryObjectStore {
         throw new Error(`Missing object for storage key: ${storageKey}`);
       }
       return Buffer.from(value);
+    },
+    async delete(storageKey) {
+      entries.delete(storageKey);
     }
   };
 }
