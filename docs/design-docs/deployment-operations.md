@@ -8,6 +8,8 @@ Date: 2026-05-25
 
 WiseEff expects local, staging, and production-like environments. Local can use mock/runtime shortcuts for development. Staging should be close to production and disable business mock data. Production-like deployments require real auth, database, object storage, worker, queue, monitoring, backups, and rollback evidence.
 
+An optional **IP lab** profile under `ops/self-hosted/` covers a single Linux host that has an IP and no DNS name. It generates secrets, terminates HTTP or Caddy internal TLS, uses local accounts, seeds ChargeLab demo data, and is explicitly not a commercial-pilot or release-ready environment. Operator steps live in `ops/self-hosted/ip-lab.md`.
+
 ## Services
 
 Deployment units include web, API, log worker, PostgreSQL, Redis/BullMQ, object storage, reverse proxy, observability stack, and optional HDC device gateway connectivity.

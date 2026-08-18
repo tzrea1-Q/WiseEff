@@ -49,6 +49,8 @@ M6.1 adds a self-hosted Linux runtime under `ops/self-hosted/`. It separates Pos
 
 M6.4 adds Redis/BullMQ durable dispatch for log analysis. PostgreSQL remains the source of truth for job state, leases, retries, dead-letter metadata, audit, and evidence. Queue payloads carry the PostgreSQL `jobId`; the worker claims that job before processing. When PostgreSQL schedules a retry, the BullMQ handler throws so Redis redelivers the message according to the configured attempts/backoff. Database polling mode remains available with `LOG_ANALYSIS_QUEUE_MODE=polling`.
 
+Hosts that have an IP and no DNS name should use the [IP lab profile](../ops/self-hosted/ip-lab.md) (`./scripts/deploy-ip-lab.sh --ip <server-ip>`). That path generates secrets, serves HTTP or Caddy internal TLS, seeds ChargeLab demo data, and attaches the lab admin to `org-chargelab`. It is a lab/demo profile, not commercial-pilot evidence.
+
 Self-hosted operators should run:
 
 ```bash

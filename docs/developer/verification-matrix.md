@@ -56,7 +56,10 @@ Use the narrowest command that proves the change while developing. Before finish
 | `npm run acceptance:e2e -- e2e/acceptance/adb-device-lab.acceptance.spec.ts` | Local real-device ADB frontend/API/device evidence | When an approved local ADB device is connected and `DEBUG_DEVICE_GATEWAY_MODE=adb` plus `ADB_DEVICE_LAB_AVAILABLE=true` are configured. Defaults to read-only unless `ADB_SMOKE_ENABLE_WRITE=true`. |
 | `npm run acceptance:browser` | Preflight plus browser acceptance evidence | Before accepting a local or target browser workflow candidate. |
 | `npm run queue:check` | M6.4 target durable queue readiness | Against a running self-hosted or staging API configured with Redis/BullMQ durable queue mode. |
-| `npm run selfhost:check` | M6.1 self-hosted compose/env/proxy metadata | After changing `ops/self-hosted/`, package selfhost scripts, or self-hosted runtime docs. |
+| `npm run selfhost:check` | M6.1 self-hosted compose/env/proxy metadata, including IP lab files | After changing `ops/self-hosted/`, package selfhost scripts, or self-hosted runtime docs. |
+| `npm run selfhost:ip-lab:init` | Generate `ops/self-hosted/.env` for an IP/no-DNS lab | On a machine with Node.js 22. Servers without Node should use `ops/self-hosted/scripts/deploy-ip-lab.sh`. |
+| `npm run selfhost:ip-lab:preflight` | Validate an IP lab `.env` and selected Caddyfile | Before `compose up` on an IP lab host, or after editing lab env keys. |
+| `npm run selfhost:ip-lab:provision` | Seed M0–M3 and attach the lab admin to ChargeLab | Inside the API container after the IP lab stack is live. |
 | `npm run selfhost:smoke` | M6.1 live self-hosted API smoke and evidence | Against a running self-hosted target with `--base-url` and smoke authorization configured. |
 | `npm run restore:drill` | M6.3 restore target safety guard | Before running restore commands or changing restore env/script behavior. |
 | `npm run backup:drill` | M6.3 backup/restore evidence generation | After collecting PostgreSQL/object-store drill evidence in local or target environments. |
