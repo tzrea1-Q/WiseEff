@@ -1,0 +1,33 @@
+.skip-link {
+  position: absolute;
+  left: var(--space-4);
+  top: var(--space-4);
+  z-index: var(--z-dropdown);
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+  color: var(--surface);
+  background: var(--accent);
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  font-weight: 600;
+  line-height: var(--leading-md);
+  text-decoration: none;
+}
+
+.skip-link:focus,
+.skip-link:focus-visible {
+  position: fixed;
+  width: auto;
+  height: auto;
+  padding: var(--space-2) var(--space-4);
+  overflow: visible;
+  clip: auto;
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}

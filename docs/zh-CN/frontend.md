@@ -52,7 +52,7 @@ API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒
 
 启动探测会区分“认证被拒绝”和“后端不可达”，避免后端重启或网络抖动把所有人登出。只有 `WiseEffApiError` 且 code 为 `UNAUTHENTICATED` / `FORBIDDEN` 才清除本地 token 并回到登录页；其他失败（fetch `TypeError`、超时、5xx）保留 token 并进入 `unreachable` 状态，渲染品牌化的「无法连接服务器」屏，其中「重试」按钮重跑探测（`authProbeAttempt`）并就地恢复会话——无需重新登录。探测进行中的 `checking` 状态渲染轻量的会话恢复屏（「正在恢复会话…」）而非可交互登录表单，刷新时不再闪现登录页。两个状态复用 `.auth-panel` 外观（`.auth-status-panel`）。
 
-通知反馈（`state.notifications`，由 `ADD_NOTIFICATION` 推入）经由唯一渲染器上屏：`AppToastLayer`（`src/components/common/AppToastLayer.tsx`）是挂在 AppShell 的无 DOM 桥（**两种运行时都挂载**），把队列每一条倾倒进设计系统 `ToastProvider`（`useToast`），按词法推断 tone（失败词汇 → `danger`/`role="alert"`，完成词汇 → `success`，其余 `info`），并立即经 `DISMISS_NOTIFICATION` 消费队列。展示由 `ToastCard` 负责：约 4 秒自动消退、悬停暂停、在 `.toast-viewport`（`--z-toast` 层，位于弹窗与小泽聊天之上）栈叠，以及带 aria-label 的手动关闭按钮（关闭提示）。命令式 `useToast()` 与 reducer 通知从此共用一条视觉管线。这取代了此前 `LogsPage` 内仅 mock 模式渲染的 toast——那种写法让 API 模式所有成功/失败提示都不可见。详情选中支持深链：`/parameter-review?request=<id>` 恢复选中的审阅行并经 `history.replaceState` 保持地址栏同步；`/logs?logId=<id>`（「复制链接」的目标）在 API 数据水合后恢复选中日志，且不会被最新上传自动选中覆盖。变更审阅（`/parameter-review` 待审阅视图）支持检视阶段的批量通过：存在可操作行时出现复选框列（初始化审阅与合入阶段除外——合入需逐条填写合入链接），工具栏出现「批量通过」按钮，聚合确认对话框说明影响范围，执行按请求串行（`reviewChange` 传 `notifyOnFailure: false`），成功与失败各汇总为一条 toast；失败行保持勾选便于重试。经运行时通知透出的服务端失败统一走 `toUserErrorMessage`（`src/infrastructure/http/userErrorMessage.ts`）：按 `WiseEffApiError.code`（及已知 `details.reason`）映射中文话术并附短请求编号后缀；未知错误码保留服务端原文但仍可报障，fetch 层网络失败给连接话术。
+通知反馈（`state.notifications`，由 `ADD_NOTIFICATION` 推入）经由唯一渲染器上屏：`AppToastLayer`（`src/components/common/AppToastLayer.tsx`）是挂在 AppShell 的无 DOM 桥（**两种运行时都挂载**），把队列每一条倾倒进设计系统 `ToastProvider`（`useToast`），按词法推断 tone（失败词汇 → `danger`/`role="alert"`，完成词汇 → `success`，其余 `info`），并立即经 `DISMISS_NOTIFICATION` 消费队列。展示由 `ToastCard` 负责：约 4 秒自动消退、悬停暂停、在 `.toast-viewport`（`--z-toast` 层，位于弹窗与小泽聊天之上）栈叠，以及带 aria-label 的手动关闭按钮（关闭提示）。命令式 `useToast()` 与 reducer 通知从此共用一条视觉管线。这取代了此前 `LogsPage` 内仅 mock 模式渲染的 toast——那种写法让 API 模式所有成功/失败提示都不可见。详情选中支持深链：`/parameter-review?request=<id>` 恢复选中的审阅行并经 `history.replaceState` 保持地址栏同步；`/logs?logId=<id>`（「复制链接」的目标）在 API 数据水合后恢复选中日志，且不会被最新上传自动选中覆盖。变更审阅（`/parameter-review` 待审阅视图）支持检视阶段的批量通过：存在可操作行时出现复选框列（初始化审阅与合入阶段除外——合入需逐条填写合入链接），工具栏出现「批量通过」按钮，聚合确认对话框说明影响范围，执行按请求串行（`reviewChange` 传 `notifyOnFailure: false`），成功与失败各汇总为一条 toast；失败行保持勾选便于重试。同一页经 `formatWorkflowDisplayText` 把流程状态（含列表头筛选标签）显示为产品中文（如 `硬件Committer检视` → `硬件MDE检视`），并提供下方记录的无修饰键队列快捷键。经运行时通知透出的服务端失败统一走 `toUserErrorMessage`（`src/infrastructure/http/userErrorMessage.ts`）：按 `WiseEffApiError.code`（及已知 `details.reason`）映射中文话术并附短请求编号后缀；未知错误码保留服务端原文但仍可报障，fetch 层网络失败给连接话术。
 
 审计中心（`/audit`）的筛选下推到 `GET /api/v1/audit-events`：文本搜索（`q`，服务端匹配操作/类型/对象/操作人）、时间窗（今天 / 近 7 天 / 近 30 天，经 `from`），加上既有的模块分组/项目/严重度/trace 筛选与游标分页。「导出 CSV」按当前筛选分页拉取全量（上限 2000 行）导出 UTF-8-BOM、中文表头的 CSV，模块/类型/操作/严重度均为中文标签，并保留原始类型标识列供机器筛选。mock 模式下相同筛选在客户端执行。
 
@@ -248,6 +248,15 @@ Xiaoze（小泽，唯一 Agent）：
 - `/api/v1/me` 在 OIDC、HMAC smoke 和本地账号下返回同一类 `AuthContext`。
 - `/user-permissions` 在 API mode 下通过 `/api/v1/users` 读取和写入用户治理数据，并通过 `/api/v1/users/registration-role-requests` 处理待审批的 Committer 注册申请。管理员在“添加用户”中创建的是本地账号：表单使用姓名、用户名、可选职务、初始密码和初始角色，不再把邮箱作为账号标识。该账号会加入当前管理员所在组织并立即启用；密码只提交给后端创建凭据，前端用户状态不会保存明文密码。
 - 前端权限检查只是 UX，后端仍必须执行 authz、self-lockout 防护和 audit。
+
+## 快捷键与地标
+
+应用壳和 `/parameter-review` 遵循 macOS 感知的快捷键约定（TD-097 切片；其它页保持既有辅助键）：
+
+- 平台主键在 Apple 上是 ⌘，其它系统是 Ctrl（`src/app/keyboardShortcuts.ts` 的 `formatPrimaryShortcut` / `isPrimaryModifier`）。
+- 新的产品快捷键不要绑定 ⌘/Ctrl+字母，那些留给浏览器和系统。页面辅助使用 Alt+字母，或在非输入时使用无修饰键（与配置工作台 Alt+F/N/G/1/2 同一原则）。
+- 应用壳提供「跳到主内容」skip-link（指向 `#main-content`）、带标签的 `header` banner、带标签的 `nav`，以及 `main` 地标。`/parameter-review` 的 main 名称来自 TopBar 页标题。
+- `/parameter-review` 补齐队列/详情的 landmark 与 heading，队列行可用键盘激活，J/K 或方向键移动选中行（Enter 打开提交详情）。状态筛选与徽章使用同一套中文标签（`硬件MDE检视`），不再露出 `Committer`/`User`。
 
 ## UI 设计系统与质量门禁
 

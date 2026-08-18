@@ -78,7 +78,7 @@ import { createAppRuntime, type WiseEffAuthClient } from "@/app/appRuntime";
 function isStaticDownloadPath(pathname: string) {
   return pathname.startsWith("/downloads/");
 }
-import { TopBarActionsContext } from "./components/layout";
+import { TopBarActionsContext, SkipLink, MAIN_CONTENT_ID } from "./components/layout";
 import { readInitialNodeDebuggingProtocol } from "./NodeDebuggingPage";
 import { initialState, mockDataFingerprint } from "@/infrastructure/mock/prototypeState";
 import {
@@ -1009,6 +1009,7 @@ function AppShell({
 
   const appShell = (
     <div className={appShellClassName}>
+        {!isPlatformHome ? <SkipLink /> : null}
         {!isPlatformHome ? (
           <Sidebar
             activePath={page.path}
@@ -1079,7 +1080,12 @@ function AppShell({
               />
             </div>
           ) : (
-            <main className="main-content" aria-label={isParameterHome ? "参数管理首页" : undefined}>
+            <main
+              id={MAIN_CONTENT_ID}
+              className="main-content"
+              tabIndex={-1}
+              aria-label={isParameterHome ? "参数管理首页" : page.title}
+            >
               {apiRuntimeStatusBanner}
               {proactiveInsightsBanner}
               <PageRouter
@@ -1352,7 +1358,7 @@ function TopBar({
   };
 
   return (
-    <header className="topbar">
+    <header className="topbar" aria-label="页面栏">
       <div className="topbar-page">
         <div className="topbar-page-head">
           {onToggleMobileNav ? (

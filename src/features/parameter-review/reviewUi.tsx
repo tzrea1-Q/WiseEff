@@ -31,8 +31,21 @@ export function getUserName(users: PrototypeState["users"], userId?: string) {
   return users.find((user) => user.id === userId)?.name ?? userId;
 }
 
+const WORKFLOW_DISPLAY_LABELS: Record<string, string> = {
+  硬件Committer检视: "硬件MDE检视",
+  软件Committer检视: "软件MDE检视",
+  软件User合入: "软件开发人员合入"
+};
+
 export function formatWorkflowDisplayText(text: string) {
-  return String(text ?? "")
+  const raw = String(text ?? "");
+  if (WORKFLOW_DISPLAY_LABELS[raw]) {
+    return WORKFLOW_DISPLAY_LABELS[raw];
+  }
+  return raw
+    .replaceAll("硬件Committer", "硬件MDE")
+    .replaceAll("软件Committer", "软件MDE")
+    .replaceAll("软件User", "软件开发人员")
     .replaceAll("Committer", "MDE")
     .replaceAll("User", "开发人员");
 }
