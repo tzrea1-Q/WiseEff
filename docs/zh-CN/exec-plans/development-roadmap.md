@@ -14,6 +14,7 @@ M0-M5 productization work has merged. 当前项目已经从前端原型推进到
 - PostgreSQL 迁移是 source of truth，`docs/generated/db-schema.md` 是人工维护的 schema 摘要。
 - OpenAPI artifact/check、生产 auth 边界、worker/object-store seam、Redis/BullMQ durable queue seam、HDC gateway seam、live Agent provider seam 和 M5 pilot-readiness gate 已落地。
 - GitHub PR #39 已合并，CI Build and test 通过。
+- CI 反馈环计划（`2026-08-18-ci-feedback-loop-optimization.md`）已归档到 `completed/`（#523–#525）；PR 合入门槛是 L1 + `@ci-smoke`。
 
 主要缺口：
 

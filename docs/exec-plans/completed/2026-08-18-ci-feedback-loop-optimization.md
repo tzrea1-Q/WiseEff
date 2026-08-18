@@ -1,9 +1,9 @@
 # CI Feedback Loop Optimization
 
-> Status: **Active — Wave 0+1 on `main` (#523, #524); Wave 2 on `feat/ci-wave2`**
+> Status: **Completed 2026-08-18** — #523 (Wave 0+1), #524 (L1 import ratchet), #525 (Wave 2). First Wave 2 `main` L2: [`32109015523`](https://github.com/tzrea1-Q/WiseEff/actions/runs/32109015523) (wall 31m12s).
 > Date: 2026-08-18
-> Implementation branch: `feat/ci-wave2` (Wave 2). Wave 0+1 landed on `feat/ci-feedback-loop` (#523); L1 import ratchet on `feat/ci-l2-harden` (#524).
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-18-ci-feedback-loop-optimization.md`](../../zh-CN/exec-plans/active/2026-08-18-ci-feedback-loop-optimization.md)
+> Implementation branches: `feat/ci-feedback-loop`, `feat/ci-l2-harden`, `feat/ci-wave2`
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-18-ci-feedback-loop-optimization.md`](../../zh-CN/exec-plans/completed/2026-08-18-ci-feedback-loop-optimization.md)
 
 **Goal:** Stop treating the 38-minute M5.12 local-non-HDC suite as the PR merge bar. Keep that suite as the post-merge / on-demand evidence gate, and give everyday changes a layered GitHub Actions pipeline that matches how mature TypeScript products schedule work.
 
@@ -144,7 +144,7 @@ Excludes:
 | Implementation agent | Commit on `feat/ci-feedback-loop` (or `feat/ci-hygiene` then rebase onto a Wave 1 branch); do not open or merge GitHub PRs |
 | Parent agent | Review, run verification, open/merge the PR, then sync local `main` |
 
-**Landing decision (2026-08-18):** Wave 0+1 landed in **one** PR (#523). #524 added the L1 `@playwright/test` ratchet. Wave 2 is this PR (`feat/ci-wave2`) after measuring green `main` L2 at 35m20s.
+**Landing decision (2026-08-18):** Wave 0+1 landed in **one** PR (#523). #524 added the L1 `@playwright/test` ratchet. Wave 2 landed in #525 after measuring green `main` L2 at 35m20s; first Wave 2 `main` L2 was 31m12s wall.
 
 ---
 
@@ -318,7 +318,7 @@ No topology, HDC, ADB, disposable-DB specs.
 
 ### Wave 2
 
-Implemented on `feat/ci-wave2` after measuring `main` L2 at 35m20s. Quality is the existing `acceptance-quality` job on L2 events; the L2 job no longer runs `acceptance:quality-run`. DTS setup is a composite action with `actions/cache`. TD-118 remainder is the 25m39s shared-DB browser suite.
+Landed in #525. First Wave 2 `main` L2 ([`32109015523`](https://github.com/tzrea1-Q/WiseEff/actions/runs/32109015523)): wall **31m12s**, browser job 30m22s, quality sibling 8m1s. Quality is the existing `acceptance-quality` job on L2 events; the L2 job no longer runs `acceptance:quality-run`. DTS setup is a composite action with `actions/cache`. TD-118 remainder is the shared-DB browser suite (27m in that run).
 
 ### Follow-up after #523
 
@@ -350,7 +350,7 @@ This plan changes CI scheduling and evidence *when* the existing suite runs. It 
 | Frontend/design docs | No change | `docs/FRONTEND.md`, `docs/DESIGN.md` | No UI or token change. |
 | Generated artifacts | Review | `docs/generated/acceptance-*` | Still produced by L2, not by smoke. |
 | References | No change | `docs/references/` | Research lives in this plan, not a second note. |
-| Chinese developer docs | Update | `docs/zh-CN/exec-plans/active/2026-08-18-ci-feedback-loop-optimization.md` plus the ZH quality/testing rows above | Companion required because the merge-bar rule is developer-facing. |
+| Chinese developer docs | Update | `docs/zh-CN/exec-plans/completed/2026-08-18-ci-feedback-loop-optimization.md` plus the ZH quality/testing rows above | Companion required because the merge-bar rule is developer-facing. |
 
 ---
 
@@ -379,3 +379,14 @@ After each merged Wave, record in the PR:
 - One docs-only sample URL
 - One product-PR sample URL
 - After Wave 1, one `main` L2 artifact URL proving evidence still uploaded
+
+Recorded 2026-08-18:
+
+| Sample | URL | Wall / notes |
+| --- | --- | --- |
+| Product PR (Wave 1) | [32102487377](https://github.com/tzrea1-Q/WiseEff/actions/runs/32102487377) (#523) | ~11 min; L2 skipped; Merge bar green |
+| Workflow PR (Wave 2) | [32108148756](https://github.com/tzrea1-Q/WiseEff/actions/runs/32108148756) (#525) | ~11 min; quality+L2 skipped |
+| Wave 1 `main` L2 | [32105098601](https://github.com/tzrea1-Q/WiseEff/actions/runs/32105098601) | 36m29s wall; L2 job 35m20s (quality 6m45s + browser 25m39s) |
+| Wave 2 `main` L2 | [32109015523](https://github.com/tzrea1-Q/WiseEff/actions/runs/32109015523) | **31m12s** wall; L2 browser job 30m22s (browser 27m); quality sibling 8m1s hidden; evidence uploaded |
+
+Human follow-up: if branch protection is enabled, require **Merge bar** only.

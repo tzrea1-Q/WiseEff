@@ -12,7 +12,7 @@ Execution plans are first-class repository artifacts. Use them for work that has
 
 ## Current Active Plan
 
-This list is only plans that still have remaining work. Finished implementation lives under `exec-plans/completed/` — including the 2026-08-17 archive of path-reachable C1–C4, product feedback, topology review rounds 3–6, the notification center, the project-configuration-workbench defect repair, and Xiaoze approval-failure recovery (TD-102 / TD-094); the 2026-08-17 round-2 archive of landed DTS workbench/seed, attribution/driver-registry/overlay, parameter-admin UX/IA, batch import/excel, logs org-scope, personal overview, ADB/HDC, debug-admin, Device Bridge phase 1/2, Xiaoze turn-state UX, and CORS bootstrap plans; definition identity correction (`2026-08-04-parameter-definition-identity-correction.md`, #504); and the 2026-08-17 evidence archive of attribution deferred D-AG-01–04 (`2026-08-01-attribution-deferred-implementation.md`). Do not reopen those as active work.
+This list is only plans that still have remaining work. Finished implementation lives under `exec-plans/completed/` — including the 2026-08-18 CI feedback-loop plan (`2026-08-18-ci-feedback-loop-optimization.md`, #523–#525); the 2026-08-17 archive of path-reachable C1–C4, product feedback, topology review rounds 3–6, the notification center, the project-configuration-workbench defect repair, and Xiaoze approval-failure recovery (TD-102 / TD-094); the 2026-08-17 round-2 archive of landed DTS workbench/seed, attribution/driver-registry/overlay, parameter-admin UX/IA, batch import/excel, logs org-scope, personal overview, ADB/HDC, debug-admin, Device Bridge phase 1/2, Xiaoze turn-state UX, and CORS bootstrap plans; definition identity correction (`2026-08-04-parameter-definition-identity-correction.md`, #504); and the 2026-08-17 evidence archive of attribution deferred D-AG-01–04 (`2026-08-01-attribution-deferred-implementation.md`). Do not reopen those as active work.
 
 ### Waiting on external inputs or a target environment
 
@@ -25,10 +25,6 @@ This list is only plans that still have remaining work. Finished implementation 
 - `exec-plans/active/2026-06-02-wiseeff-m6-4-durable-queue.md`: durable queue target evidence (TD-007).
 - `exec-plans/active/2026-06-02-wiseeff-m6-5-observability-operations.md`: self-hosted observability.
 - `exec-plans/active/2026-06-02-wiseeff-m6-6-release-rollback-capacity-gate.md`: release, rollback, capacity, and target synthetic gates (TD-019 / TD-024 / TD-025).
-
-### Remaining platform work
-
-- `exec-plans/active/2026-08-18-ci-feedback-loop-optimization.md`: layered CI merge bar (L1 smoke on PRs, L2 full local-non-HDC on `main` / nightly / label). Wave 0+1 on `main` (#523, #524); Wave 2 on `feat/ci-wave2`. TD-118 remainder is the 25m39s shared-DB browser suite.
 
 ### Remaining product and UX work
 
