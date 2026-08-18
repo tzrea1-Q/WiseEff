@@ -122,7 +122,11 @@ export function runChangedPathClassification(args = process.argv.slice(2), stdin
 }
 
 function isWorkflowPath(path: string): boolean {
-  return path.startsWith(".github/workflows/") || WORKFLOW_FILES.has(path);
+  return (
+    path.startsWith(".github/workflows/") ||
+    path.startsWith(".github/actions/") ||
+    WORKFLOW_FILES.has(path)
+  );
 }
 
 function isProductPath(path: string): boolean {

@@ -43,6 +43,16 @@ describe("classifyChangedPaths", () => {
     });
   });
 
+  it("treats composite CI actions as workflow paths", () => {
+    expect(classifyChangedPaths([".github/actions/setup-dts-toolchain/action.yml"])).toMatchObject({
+      docsOnly: false,
+      workflow: true,
+      runL1: true,
+      runSmoke: true,
+      runQuality: false
+    });
+  });
+
   it("runs quality without smoke for public-asset-only UI diffs", () => {
     expect(classifyChangedPaths(["public/favicon.svg", "index.html"])).toMatchObject({
       docsOnly: false,

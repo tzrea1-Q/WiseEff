@@ -1,0 +1,23 @@
+name: Setup DTS toolchain
+description: Restore or bootstrap the pinned project DTS toolchain and fail closed on version mismatch.
+
+runs:
+  using: composite
+  steps:
+    - name: Cache DTS toolchain
+      uses: actions/cache@v4
+      with:
+        path: |
+          .wiseeff-tools/dts-toolchain
+          .wiseeff-tools/dtc-src
+        key: dts-toolchain-${{ runner.os }}-${{ hashFiles('tools/dts-toolchain/versions.json', 'tools/dts-toolchain/requirements.txt') }}
+        restore-keys: |
+          dts-toolchain-${{ runner.os }}-
+
+    - name: Install and verify DTS toolchain
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential bison flex pkg-config git python3-pip python3-venv
+        npm run dts:toolchain:bootstrap
+        npm run dts:toolchain:check -- --required

@@ -1,8 +1,8 @@
 # CI 反馈环优化
 
-> 状态：**进行中 — Wave 0+1 已在 `main`（#523）；L2 跟进进行中**
+> 状态：**进行中 — Wave 0+1 已在 `main`（#523、#524）；Wave 2 在 `feat/ci-wave2`**
 > 日期：2026-08-18
-> 实现分支：`feat/ci-feedback-loop`（从最新 `origin/main` 切出；Wave 0+1 同一 PR）
+> 实现分支：`feat/ci-wave2`（Wave 2）。Wave 0+1 在 `feat/ci-feedback-loop`（#523）；L1 import 棘轮在 `feat/ci-l2-harden`（#524）。
 > English: [`docs/exec-plans/active/2026-08-18-ci-feedback-loop-optimization.md`](../../../exec-plans/active/2026-08-18-ci-feedback-loop-optimization.md)
 
 **目标：** 不再把 38 分钟的 M5.12 本机非 HDC 全量验收当作 PR 合入门槛。全量套件改到合并后 / 夜间 / 按需跑；日常改动走分层 GitHub Actions，对齐成熟 TypeScript 产品的调度方式。
@@ -13,7 +13,7 @@
 | --- | --- | --- | --- |
 | L0 探测 | 每个事件 | 哪些路径变了，后面哪些 job 可以跳 | < 1 分钟 |
 | L1 合入门槛 | 每个产品 PR；`main` | 单测/集成、lint、文档、UI 棘轮、合同、构建；UI 路径再跑一次质量门；产品路径再跑带 `@ci-smoke` 的验收 | 常规 10–15 分钟；文档-only 2–5 分钟 |
-| L2 全量本机非 HDC | `push` 到 `main`、夜间、标签 `full-acceptance`、`workflow_dispatch` | 今天的 a11y + visual + responsive + `acceptance:browser --mode local-non-hdc` + 证据归档 | 30–38 分钟 |
+| L2 全量本机非 HDC | `push` 到 `main`、夜间、标签 `full-acceptance`、`workflow_dispatch` | 兄弟 job `acceptance-quality` + `acceptance:browser --mode local-non-hdc` + 证据归档 | Wave 2 后预期约 29 分钟（浏览器 25m39s 是下限） |
 | L3 目标合成 | 仅手动 | `target-non-hdc` / `full-pilot` 不变 | 与现在相同 |
 
 任务勾选、文件清单、验证命令与 Documentation Impact Matrix 以英文计划为准。下面是调研结论与对本仓库的裁剪。
@@ -133,11 +133,16 @@ WiseEff 已经是 `workers: 1` / `fullyParallel: false`，因为验收库共享�
 
 成功：常规产品 PR 10–15 分钟；文档-only ≤ 5 分钟；`main` 仍产出 Playwright 报告与操作证据产物。
 
-### Wave 2 — 让剩下的 L2 更便宜（可选）
+### Wave 2 — 让剩下的 L2 更便宜
 
-L2 质量门与浏览器验收拆 job；缓存 `.wiseeff-tools`（不缓存浏览器）；质量门路由可分片；`--only-changed` 只能当 L2 的预跑，不能替代 L2。不对共享库验收分片。
+2026-08-18 #522 合入后的 `main` L2（[`32105098601`](https://github.com/tzrea1-Q/WiseEff/actions/runs/32105098601)）墙钟 **36m29s**，job **35m20s**：准备约 2m50s、quality-run **6m45s**、浏览器 **25m39s**。拆 job 后预期墙钟 ≈ 准备 + 浏览器 ≈ **29 分钟**。原先 ≤25 分钟目标被共享库浏览器套件挡住（不对它分片）。
 
-成功：L2 墙钟 ≤ 25 分钟，且不断言变弱。
+- 质量门复用已有 `acceptance-quality`（L2 事件也跑）；L2 job 只留 models + 浏览器 + 证据。
+- DTS 用 composite action 缓存 `.wiseeff-tools/dts-toolchain`（不缓存 Playwright 浏览器）。
+- L1 lint 24s，加 ESLint cache。
+- 质量门路由分片与 `--only-changed` 预跑不做：拆完后质量门不在墙钟关键路径，且帮不了 `main` L2。
+
+成功：质量门离开 L2 关键路径。要到 25 分钟需要更快的浏览器套件或共享库隔离（TD-118 余量）。
 
 ---
 
@@ -145,14 +150,14 @@ L2 质量门与浏览器验收拆 job；缓存 `.wiseeff-tools`（不缓存浏�
 
 实现子代理只在功能分支提交，不得开/合 GitHub PR。父代理 review、验证、开/合 PR，再同步本地 `main`。
 
-**落地决定（2026-08-18）：** Wave 0+1 已合入 #523。#523 的 `main` L2 因两个规格误 import `@playwright/test` 在收集期失败（#522 已改回 `playwright/test`）。跟进：`acceptance:ci` 拒绝该 import，并在 L1 跑，避免再烧掉一整趟 L2。Wave 2 仍是 TD-118。
+**落地决定（2026-08-18）：** Wave 0+1 已合入 #523。#524 加上 L1 `@playwright/test` 棘轮。第一次绿的 `main` L2：[`32105098601`](https://github.com/tzrea1-Q/WiseEff/actions/runs/32105098601)（35m20s）。Wave 2 在本 PR（`feat/ci-wave2`）。
 
 ### 实现合同（摘要）
 
 - 工作流总启动，无 `on.paths`。job：`detect`、`docs-governance`（每次 `docs:check`）、`build-and-test`（L1）、`acceptance-quality`（`acceptance:quality-run` 一次进程）、`acceptance-smoke`、`acceptance-local-non-hdc`（L2）、target synthetic、哨兵 `required`（显示名 Merge bar）。
 - `acceptance:quality` 仍是元数据检查。新脚本 `acceptance:quality-run` 一次跑完 warmup+a11y+visual+responsive。
 - smoke 三个已有用例打 `@ci-smoke`：shell `/`、auth-runtime、parameter-home。证据命名空间 `focused-ci-smoke`，不得发布 `latest-full`。
-- `main` / 夜间：L1 + L2，不重复 smoke/quality。产品 PR：L1 + quality + smoke。文档-only：detect + docs:check + 哨兵。
+- `main` / 夜间：L1 + 兄弟 `acceptance-quality` + L2 浏览器（不重复 smoke）。产品 PR：L1 + quality + smoke。文档-only：detect + docs:check + 哨兵。
 - 路径分类与棘轮测试见英文计划 Implementation Contract。
 
 ---

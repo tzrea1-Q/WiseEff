@@ -28,7 +28,7 @@ This list is only plans that still have remaining work. Finished implementation 
 
 ### Remaining platform work
 
-- `exec-plans/active/2026-08-18-ci-feedback-loop-optimization.md`: layered CI merge bar (L1 smoke on PRs, L2 full local-non-HDC on `main` / nightly / label). Wave 0+1 land together; Wave 2 is TD-118.
+- `exec-plans/active/2026-08-18-ci-feedback-loop-optimization.md`: layered CI merge bar (L1 smoke on PRs, L2 full local-non-HDC on `main` / nightly / label). Wave 0+1 on `main` (#523, #524); Wave 2 on `feat/ci-wave2`. TD-118 remainder is the 25m39s shared-DB browser suite.
 
 ### Remaining product and UX work
 

@@ -29,6 +29,7 @@ export const requiredAcceptanceCiWorkflowTokens = [
   "cancel-in-progress",
   "pgvector/pgvector:pg16",
   "npx playwright install --with-deps chromium",
+  "./.github/actions/setup-dts-toolchain",
   "Acceptance CI metadata (L1)",
   "npm run acceptance:ci",
   "npm run acceptance:models",
