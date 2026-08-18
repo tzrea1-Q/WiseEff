@@ -42,18 +42,22 @@ async function expectUsableShell(page: Page, testInfo: TestInfo, route: string) 
 
 test.describe("M5.4 manual flow A - shell navigation", () => {
   for (const route of routes) {
-    test(`loads ${route} without a runtime crash`, async ({ page }, testInfo) => {
-      await signInBrowserAsRole(page, "admin", route);
-      await expectUsableShell(page, testInfo, route);
+    test(
+      `loads ${route} without a runtime crash`,
+      { tag: route === "/" ? ["@ci-smoke"] : [] },
+      async ({ page }, testInfo) => {
+        await signInBrowserAsRole(page, "admin", route);
+        await expectUsableShell(page, testInfo, route);
 
-      await recordOperationEvidence({
-        operationId: "SHELL-DIAG-001",
-        title: `shell route ${route === "/" ? "home" : route.slice(1).replace(/\//g, "-")}`,
-        status: "passed",
-        page,
-        testInfo,
-        notes: `Route ${route} loaded without visible runtime crash or browser diagnostic failures.`
-      });
-    });
+        await recordOperationEvidence({
+          operationId: "SHELL-DIAG-001",
+          title: `shell route ${route === "/" ? "home" : route.slice(1).replace(/\//g, "-")}`,
+          status: "passed",
+          page,
+          testInfo,
+          notes: `Route ${route} loaded without visible runtime crash or browser diagnostic failures.`
+        });
+      }
+    );
   }
 });

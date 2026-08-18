@@ -7,7 +7,9 @@ import { apiRoute, smokeHeaders } from "./helpers/runtime";
 useBrowserDiagnostics(test);
 
 test.describe("parameter-home production dashboard", () => {
-  test("loads summary and hotspots APIs and renders in-page dashboard controls", async ({ page }, testInfo) => {
+  test("loads summary and hotspots APIs and renders in-page dashboard controls", {
+    tag: ["@ci-smoke"]
+  }, async ({ page }, testInfo) => {
     // @acceptance PARAM-HOME-001
     // @operation PARAM-HOME-001
     const summaryResponse = await page.request.get(apiRoute("/api/v1/parameters/dashboard/summary?window=30d"), {

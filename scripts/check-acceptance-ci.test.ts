@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  CI_SMOKE_TAG,
+  countCiSmokeTags,
   evaluateAcceptanceCiConfiguration,
   requiredAcceptanceCiArtifactPaths,
   requiredAcceptanceCiScripts,
@@ -11,6 +13,7 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -21,8 +24,23 @@ on:
           - target-non-hdc
           - full-pilot
 
+concurrency:
+  group: ci
+  cancel-in-progress: true
+
 jobs:
+  detect:
+    name: Detect changed paths
+
+  required:
+    name: Merge bar
+
+  acceptance-smoke:
+    steps:
+      - run: npm run acceptance:smoke
+
   acceptance-local-non-hdc:
+    if: contains(github.event.pull_request.labels.*.name, 'full-acceptance')
     name: Acceptance local non-HDC
     services:
       postgres:
@@ -32,9 +50,7 @@ jobs:
       - run: npm run acceptance:ci
       - run: npm run acceptance:models
       - run: npm run acceptance:quality
-      - run: npm run acceptance:a11y
-      - run: npm run acceptance:visual
-      - run: npm run acceptance:responsive
+      - run: npm run acceptance:quality-run
       - run: npm run acceptance:browser -- --mode local-non-hdc
       - uses: actions/upload-artifact@v4
         with:
@@ -52,37 +68,46 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.acceptance_mode != 'local-non-hdc'
     steps:
       - run: npx playwright install --with-deps chromium
+      - run: npm run acceptance:quality-run
       - run: npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime
         if: inputs.acceptance_mode == 'target-non-hdc'
       - run: npm run acceptance:browser -- --mode full-pilot --no-start-runtime
         if: inputs.acceptance_mode == 'full-pilot'
 `;
 
+const compliantScripts = {
+  ...Object.fromEntries(requiredAcceptanceCiScripts.map((script) => [script, "ok"])),
+  "acceptance:smoke":
+    "playwright test --config playwright.acceptance.config.ts --grep \"@ci-smoke|warm vite entry graph\" e2e/acceptance/runtime-warmup.spec.ts e2e/acceptance/shell-navigation.acceptance.spec.ts e2e/acceptance/auth-runtime.acceptance.spec.ts e2e/acceptance/parameter-home.acceptance.spec.ts"
+};
+
 describe("M5.12 acceptance CI configuration", () => {
-  it("requires package scripts and workflow tokens for synthetic acceptance", () => {
+  it("requires layered job ids, smoke, and a single quality-run token", () => {
     expect(requiredAcceptanceCiScripts).toEqual([
       "acceptance:ci",
       "acceptance:browser",
       "acceptance:models",
       "acceptance:quality",
+      "acceptance:quality-run",
+      "acceptance:smoke",
       "acceptance:a11y",
       "acceptance:visual",
       "acceptance:responsive"
     ]);
     expect(requiredAcceptanceCiWorkflowTokens).toEqual(
       expect.arrayContaining([
-        "acceptance-local-non-hdc",
-        "target-synthetic-acceptance",
-        "workflow_dispatch",
-        "acceptance_mode",
-        "pgvector/pgvector:pg16",
-        "npx playwright install --with-deps chromium",
-        "npm run acceptance:browser -- --mode local-non-hdc",
-        "npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime",
-        "npm run acceptance:browser -- --mode full-pilot --no-start-runtime",
-        "actions/upload-artifact@v4"
+        "name: Detect changed paths",
+        "name: Merge bar",
+        "acceptance-smoke:",
+        "acceptance-local-non-hdc:",
+        "full-acceptance",
+        "cancel-in-progress",
+        "npm run acceptance:quality-run",
+        "npm run acceptance:smoke",
+        "npm run acceptance:browser -- --mode local-non-hdc"
       ])
     );
+    expect(requiredAcceptanceCiWorkflowTokens).not.toContain("npm run acceptance:a11y");
     expect(requiredAcceptanceCiArtifactPaths).toEqual([
       "playwright-report/acceptance",
       "test-results/acceptance",
@@ -94,19 +119,19 @@ describe("M5.12 acceptance CI configuration", () => {
     ]);
   });
 
-  it("passes when the package scripts and workflow archive the required evidence", () => {
+  it("passes when the package scripts, workflow layers, and smoke cap are present", () => {
     const result = evaluateAcceptanceCiConfiguration({
-      packageJson: {
-        scripts: Object.fromEntries(requiredAcceptanceCiScripts.map((script) => [script, "ok"]))
-      },
-      workflowText: compliantWorkflow
+      packageJson: { scripts: compliantScripts },
+      workflowText: compliantWorkflow,
+      smokeTagCount: 3
     });
 
     expect(result).toMatchObject({
       status: "passed",
       missingScripts: [],
       missingWorkflowTokens: [],
-      missingArtifactPaths: []
+      missingArtifactPaths: [],
+      smokeTagGate: true
     });
   });
 
@@ -125,7 +150,8 @@ jobs:
   build-and-test:
     steps:
       - run: npm test
-`
+`,
+      smokeTagCount: 0
     });
 
     expect(result.status).toBe("failed");
@@ -133,27 +159,40 @@ jobs:
       "acceptance:ci",
       "acceptance:models",
       "acceptance:quality",
+      "acceptance:quality-run",
+      "acceptance:smoke",
       "acceptance:a11y",
       "acceptance:visual",
       "acceptance:responsive"
     ]);
     expect(result.missingWorkflowTokens).toEqual(expect.arrayContaining([...requiredAcceptanceCiWorkflowTokens]));
     expect(result.missingArtifactPaths).toEqual(requiredAcceptanceCiArtifactPaths);
+    expect(result.smokeTagGate).toBe(false);
   });
 
   it("blocks accidental default full-pilot gates on pull requests", () => {
     const result = evaluateAcceptanceCiConfiguration({
-      packageJson: {
-        scripts: Object.fromEntries(requiredAcceptanceCiScripts.map((script) => [script, "ok"]))
-      },
+      packageJson: { scripts: compliantScripts },
       workflowText: `${compliantWorkflow}
   dangerous-pr-full-pilot:
     steps:
       - run: npm run acceptance:browser -- --mode full-pilot
-`
+`,
+      smokeTagCount: 3
     });
 
     expect(result.status).toBe("failed");
     expect(result.fullPilotDefaultGate).toBe(true);
+  });
+
+  it("rejects a missing or oversized @ci-smoke set", () => {
+    expect(countCiSmokeTags(`test("a", { tag: ["${CI_SMOKE_TAG}"] }, async () => {});`)).toBe(1);
+    expect(
+      evaluateAcceptanceCiConfiguration({
+        packageJson: { scripts: compliantScripts },
+        workflowText: compliantWorkflow,
+        smokeTagCount: 6
+      }).smokeTagGate
+    ).toBe(false);
   });
 });

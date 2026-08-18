@@ -174,9 +174,14 @@ Xiaoze 测试覆盖 AG-UI endpoint、read-only `perception.*` tools、mutating a
 - 设备网关模拟超时、断连、stderr 和回读不一致。
 ## 8. M5.12 CI And Synthetic Evidence
 
-M5.12 adds CI and target synthetic evidence archiving on top of the deterministic browser gates. PR and push workflows run `acceptance-local-non-hdc` with a PostgreSQL service, local object store, deterministic Agent provider, simulator gateway, `npm run acceptance:models`, M5.11 quality gates, and `npm run acceptance:browser -- --mode local-non-hdc`.
+M5.12 在确定性浏览器门禁之上增加 CI 与目标合成证据归档。合入门槛是 **L1**，不是全量本机非 HDC：
 
-Manual `workflow_dispatch` runs can select `target-non-hdc` or `full-pilot`. These runs use `--no-start-runtime`, target frontend/API URLs, GitHub Secrets, and uploaded Playwright/evidence artifacts. `full-pilot` is never a default PR gate and remains valid only with external HDC, backup/restore, rollback, object-store, worker, and live Agent evidence.
+- 每个 PR 都会启动 `ci.yml`（只用 job 级 `if:` 跳过）。`detect` 分类 diff，并总是跑 `docs:check`。
+- 产品 / workflow PR 跑 `build-and-test` 和 `@ci-smoke`（`npm run acceptance:smoke`）。UI 或产品路径再跑一次 `acceptance:quality-run`。
+- 文档-only PR 只跑 `detect` + `docs:check` + 哨兵 `Merge bar`。
+- L2 `acceptance-local-non-hdc` 跑在 `push` 到 `main`、夜间定时、标签 `full-acceptance`、以及 `workflow_dispatch` 的 `local-non-hdc`。仍使用 PostgreSQL、本地对象存储、确定性 Agent、simulator 网关、`npm run acceptance:models`、一次 quality-run，以及 `npm run acceptance:browser -- --mode local-non-hdc`，然后上传证据产物。
+
+手动 `workflow_dispatch` 可选择 `target-non-hdc` 或 `full-pilot`。这些运行使用 `--no-start-runtime`、目标前端/API URL、GitHub Secrets，并上传 Playwright/证据产物。`full-pilot` 永远不是默认 PR 门，且只在具备外部 HDC、backup/restore、rollback、object-store、worker 和 live Agent 证据时有效。smoke 走 focused 证据命名空间，不得发布 `latest-full.json`。
 
 ## 9. M5 Release Operations
 
