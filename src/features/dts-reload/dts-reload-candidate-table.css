@@ -1,0 +1,134 @@
+.dts-reload-candidates-results .dts-reload-candidate-table-wrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dts-reload-candidate-table {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.dts-reload-candidate-table > .border-b {
+  flex: 0 0 auto;
+  border-bottom-color: var(--dts-workbench-border, var(--border));
+  padding: var(--space-3) var(--space-4) var(--space-2);
+}
+
+.dts-reload-candidate-table > .overflow-x-auto,
+.dts-reload-candidate-table > .overflow-visible {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.dts-reload-candidate-table__grid {
+  table-layout: fixed;
+  min-width: 640px;
+}
+
+.dts-reload-candidate-table__select {
+  width: 44px;
+  min-width: 44px;
+  max-width: 44px;
+  padding-inline: var(--space-1);
+  text-align: center;
+  vertical-align: top;
+}
+
+.dts-reload-candidate-table__param {
+  min-width: 128px;
+  vertical-align: top;
+}
+
+.dts-reload-candidate-table__identity {
+  min-width: 0;
+}
+
+.dts-reload-candidate-table__identity.is-blocked {
+  opacity: 0.8;
+}
+
+.dts-reload-candidate-table__identity strong {
+  display: block;
+  overflow: hidden;
+  color: var(--foreground);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dts-reload-candidate-table__identity small {
+  display: block;
+  overflow: hidden;
+  margin-top: var(--space-1);
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dts-reload-candidate-table__module {
+  width: 108px;
+  min-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dts-reload-candidate-table__baseline {
+  min-width: 112px;
+}
+
+.dts-reload-candidate-table__baseline code {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.dts-reload-candidate-table .dts-reload-candidate-table__edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dts-workbench-ink, var(--foreground));
+  background: var(--dts-workbench-surface, var(--surface));
+  border: 1px solid var(--dts-workbench-border-strong, var(--border));
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+
+.dts-reload-candidate-table .dts-reload-candidate-table__edit:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--dts-workbench-blue, var(--primary)) 8%, var(--dts-workbench-surface, var(--surface)));
+  border-color: color-mix(in srgb, var(--dts-workbench-blue, var(--primary)) 35%, var(--dts-workbench-border-strong, var(--border)));
+}
+
+.dts-reload-candidate-table .dts-reload-candidate-table__edit:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--dts-workbench-blue, var(--primary)) 45%, transparent);
+  outline-offset: 2px;
+}
+
+.dts-reload-candidate-table td:last-child .dts-reload-status-text {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  text-align: center;
+}

@@ -91,6 +91,21 @@ describe("DataTable", () => {
     expect(screen.getByRole("row", { name: /thermal_snapshot\.bin/ })).toHaveAttribute("aria-selected", "true");
   });
 
+  it("highlights multiple selected rows", () => {
+    render(
+      <DataTable
+        ariaLabel="日志分析记录"
+        columns={columns}
+        rows={rows}
+        rowKey={(row) => row.id}
+        selectedRowKeys={["r1", "r2"]}
+      />
+    );
+
+    expect(screen.getByRole("row", { name: /charging_thermal_trace\.log/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("row", { name: /thermal_snapshot\.bin/ })).toHaveAttribute("aria-selected", "true");
+  });
+
   it("supports custom row actions", () => {
     render(
       <DataTable

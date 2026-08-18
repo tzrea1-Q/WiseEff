@@ -1,18 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pencil, Search, X } from "lucide-react";
+import { X } from "lucide-react";
 
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import type { KnowledgeRepository } from "@/application/ports/KnowledgeRepository";
 import type { KnowledgeCapability } from "@/domain/knowledge/rules";
 import { isReloadRunDistillable } from "@/domain/knowledge/distillReload";
 import { isReloadRunPromotable } from "@/domain/dtsReload/promote";
-import { dtsReloadBlockReasonLabels } from "@/domain/dtsReload/types";
 import type { DtsReloadCandidate } from "@/domain/dtsReload/types";
 import { describeReloadValueShapeAuthoring } from "@/domain/dtsReload/valueShape";
 import { useDtsReloadRunSession } from "@/application/dts-reload/useDtsReloadRunSession";
 import type { DtsReloadDeployProtocol } from "@/application/dts-reload/dtsReloadRunSession";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
-import { ColumnFilter } from "@/components/ColumnFilter";
 import { ParameterValueDiff } from "@/components/ParameterValueDiff";
 import { inferBridgeOnline } from "@/components/bridgeOnline";
 import {
@@ -21,6 +19,7 @@ import {
 } from "@/components/LocalDeviceBridgePanel";
 import { DtsTopologyNavigator } from "@/components/parameter-topology/DtsTopologyNavigator";
 import { DtsReloadCandidateEditDialog } from "@/features/dts-reload/DtsReloadCandidateEditDialog";
+import { DtsReloadCandidateTable } from "@/features/dts-reload/DtsReloadCandidateTable";
 import {
   adaptProbeBridgeHealth,
   asDeviceBridgeRecords,
@@ -815,146 +814,27 @@ export function DtsReloadPage({
             </div>
 
             <div className="dts-reload-candidates-results">
-              <section className="parameters-table" aria-label="可调试参数">
-                <div className="parameters-table-toolbar dts-reload-candidates-toolbar">
-                  <label className="parameters-table-search">
-                    <Search size={16} aria-hidden="true" />
-                    <input
-                      type="search"
-                      aria-label="按名称搜索参数"
-                      value={nameQuery}
-                      onChange={(event) => setNameQuery(event.target.value)}
-                      placeholder="参数名"
-                    />
-                  </label>
-                  <span className="parameters-table-count">
-                    显示 {filtered.length} / {handoffFilteredCandidates.length} 项
-                  </span>
-                </div>
-
-            <div className="parameters-table-scroll table-wrap">
-              <table className="parameters-table-grid dts-reload-candidates-grid">
-                <colgroup>
-                  <col className="dts-reload-col-select" />
-                  <col className="dts-reload-col-param" />
-                  <col className="dts-reload-col-module" />
-                  <col className="dts-reload-col-baseline" />
-                  <col className="dts-reload-col-actions" />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th>选择</th>
-                    <th>参数</th>
-                    <th scope="col">
-                      <div className="parameters-table-head-cell">
-                        <span>模块</span>
-                        <ColumnFilter
-                          label="模块"
-                          groupLabel="模块筛选"
-                          values={moduleFilterOptions}
-                          selectedValues={activeModuleColumnFilter}
-                          onToggle={(value) =>
-                            setModuleColumnFilter((current) =>
-                              current.includes(value)
-                                ? current.filter((item) => item !== value)
-                                : [...current, value]
-                            )
-                          }
-                          onClear={() => setModuleColumnFilter([])}
-                        />
-                      </div>
-                    </th>
-                    <th>库基线</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    <tr>
-                      <td colSpan={5}>加载中…</td>
-                    </tr>
-                  ) : filtered.length === 0 ? (
-                    <tr>
-                      <td colSpan={5}>当前筛选条件下没有可列出的参数。</td>
-                    </tr>
-                  ) : (
-                    filtered.map((candidate) => {
-                      const selected = selectedBindingIds.includes(candidate.bindingId);
-                      return (
-                        <tr
-                          key={candidate.bindingId}
-                          className={cn(
-                            candidate.debuggable ? "cursor-pointer" : "opacity-80",
-                            selected && "is-selected"
-                          )}
-                          onClick={() => session.toggleCandidate(candidate.bindingId)}
-                        >
-                          <td data-label="选择">
-                            <input
-                              type="checkbox"
-                              aria-label={`选择 ${candidate.displayName || candidate.propertyKey}`}
-                              checked={selected}
-                              disabled={!candidate.debuggable}
-                              onChange={() => session.toggleCandidate(candidate.bindingId)}
-                              onClick={(event) => event.stopPropagation()}
-                            />
-                          </td>
-                          <td data-label="参数">
-                            <strong title={candidate.displayName || candidate.propertyKey}>
-                              {candidate.displayName || candidate.propertyKey}
-                            </strong>
-                            <small title={candidate.nodePath ?? "无路径"}>
-                              {candidate.nodePath ?? "无路径"}
-                            </small>
-                          </td>
-                          <td data-label="模块" title={candidateModuleLabel(candidate)}>
-                            {candidateModuleLabel(candidate)}
-                          </td>
-                          <td data-label="库基线">
-                            <code title={candidate.baselineValue ?? undefined}>
-                              {candidate.baselineValue ?? "—"}
-                            </code>
-                          </td>
-                          <td
-                            data-label="操作"
-                            className="parameter-row-actions"
-                            onClick={(event) => event.stopPropagation()}
-                          >
-                            {candidate.debuggable ? (
-                              <button
-                                type="button"
-                                className="button subtle dts-parameter-workbench-table__icon-action"
-                                aria-label={`编辑 ${candidate.displayName || candidate.propertyKey}`}
-                                title="编辑"
-                                onClick={() => openCandidateEditor(candidate)}
-                              >
-                                <Pencil size={16} strokeWidth={1.9} aria-hidden="true" />
-                              </button>
-                            ) : (
-                              <span
-                                className="dts-reload-status-text"
-                                title={
-                                  dtsReloadBlockReasonLabels[
-                                    candidate.blockReason ?? "unsupported-value-shape"
-                                  ]
-                                }
-                              >
-                                {
-                                  dtsReloadBlockReasonLabels[
-                                    candidate.blockReason ?? "unsupported-value-shape"
-                                  ]
-                                }
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-                </div>
-              </section>
+              <DtsReloadCandidateTable
+                rows={filtered}
+                selectedBindingIds={selectedBindingIds}
+                loading={loading}
+                nameQuery={nameQuery}
+                onNameQueryChange={setNameQuery}
+                listedCount={filtered.length}
+                totalCount={handoffFilteredCandidates.length}
+                moduleFilterOptions={moduleFilterOptions}
+                selectedModuleFilters={activeModuleColumnFilter}
+                onToggleModuleFilter={(value) =>
+                  setModuleColumnFilter((current) =>
+                    current.includes(value)
+                      ? current.filter((item) => item !== value)
+                      : [...current, value]
+                  )
+                }
+                onClearModuleFilter={() => setModuleColumnFilter([])}
+                onToggle={(bindingId) => session.toggleCandidate(bindingId)}
+                onEdit={openCandidateEditor}
+              />
             </div>
           </div>
         </section>
