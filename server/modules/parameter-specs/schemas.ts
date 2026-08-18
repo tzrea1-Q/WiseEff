@@ -229,6 +229,19 @@ export const previewPropertyKeyCutoverBodySchema = z.object({
   propertyKey: nonEmptyString,
 });
 
+export const startPropertyKeyCutoverBodySchema = z.object({
+  propertyKey: nonEmptyString,
+  reason: nonEmptyString,
+});
+
+export const preparePropertyKeyCutoverBodySchema = z.object({
+  reason: z.string().optional(),
+});
+
+export const finalizePropertyKeyCutoverBodySchema = z.object({
+  reason: nonEmptyString,
+});
+
 export const propertyKeyCutoverLocationStatusSchema = z.enum([
   "would-rewrite",
   "already-new-key",
@@ -238,9 +251,53 @@ export const propertyKeyCutoverLocationStatusSchema = z.enum([
 ]);
 
 export const propertyKeyCutoverStartBlockerSchema = z.object({
-  code: z.enum(["triple-collision", "open-version-cutover"]),
+  code: z.enum(["triple-collision", "open-version-cutover", "open-property-key-cutover"]),
   message: nonEmptyString,
   details: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const propertyKeyCutoverRunStatusSchema = z.enum([
+  "preparing",
+  "ready",
+  "finalized",
+  "cancelled",
+  "failed",
+]);
+
+export const propertyKeyCutoverItemStatusSchema = z.enum([
+  "pending",
+  "ready",
+  "incompatible",
+  "skipped",
+  "applied",
+]);
+
+export const propertyKeyCutoverItemDtoSchema = z.object({
+  id: nonEmptyString,
+  bindingId: nonEmptyString,
+  projectId: z.string().nullable(),
+  status: propertyKeyCutoverItemStatusSchema,
+  locationStatus: propertyKeyCutoverLocationStatusSchema.nullable(),
+  incompatibilityCode: z.string().nullable(),
+  fileName: z.string().nullable(),
+  nodePath: z.string().nullable(),
+});
+
+export const propertyKeyCutoverRunDtoSchema = z.object({
+  id: nonEmptyString,
+  parameterSpecId: nonEmptyString,
+  fromKey: nonEmptyString,
+  toKey: nonEmptyString,
+  status: propertyKeyCutoverRunStatusSchema,
+  referenceCount: z.number().int().nonnegative(),
+  writesCatalog: z.boolean(),
+  writesSource: z.literal(false),
+  startBlockers: z.array(propertyKeyCutoverStartBlockerSchema),
+  items: z.array(propertyKeyCutoverItemDtoSchema),
+});
+
+export const propertyKeyCutoverRunResponseSchema = z.object({
+  item: propertyKeyCutoverRunDtoSchema,
 });
 
 export const propertyKeyCutoverPreviewLocationSchema = z.object({
@@ -306,7 +363,11 @@ export type RestoreParameterSpecBody = z.infer<typeof restoreParameterSpecBodySc
 export type ReattributeParameterSpecBody = z.infer<typeof reattributeParameterSpecBodySchema>;
 export type RenameParameterSpecPropertyKeyBody = z.infer<typeof renameParameterSpecPropertyKeyBodySchema>;
 export type PreviewPropertyKeyCutoverBody = z.infer<typeof previewPropertyKeyCutoverBodySchema>;
+export type StartPropertyKeyCutoverBody = z.infer<typeof startPropertyKeyCutoverBodySchema>;
+export type PreparePropertyKeyCutoverBody = z.infer<typeof preparePropertyKeyCutoverBodySchema>;
+export type FinalizePropertyKeyCutoverBody = z.infer<typeof finalizePropertyKeyCutoverBodySchema>;
 export type PropertyKeyCutoverPreviewDto = z.infer<typeof propertyKeyCutoverPreviewDtoSchema>;
+export type PropertyKeyCutoverRunDto = z.infer<typeof propertyKeyCutoverRunDtoSchema>;
 export type PrepareParameterSpecCutoverBody = z.infer<typeof prepareParameterSpecCutoverBodySchema>;
 export type FinalizeParameterSpecCutoverBody = z.infer<typeof finalizeParameterSpecCutoverBodySchema>;
 

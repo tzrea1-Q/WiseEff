@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { classifyPropertyKeySourceLocation } from "./propertyKeyCutover";
+import {
+  classifyPropertyKeySourceLocation,
+  itemDispositionFromLocationStatus,
+} from "./propertyKeyCutover";
 
 describe("classifyPropertyKeySourceLocation (ADR-0034 dry-run)", () => {
   it("marks a tip occurrence of the old key as would-rewrite", () => {
@@ -51,5 +54,36 @@ describe("classifyPropertyKeySourceLocation (ADR-0034 dry-run)", () => {
         hasToKeyOccurrence: true,
       }),
     ).toBe("conflict");
+  });
+});
+
+describe("itemDispositionFromLocationStatus (ADR-0034 start/finalize)", () => {
+  it("skips a tip that already has only the new key", () => {
+    expect(itemDispositionFromLocationStatus("already-new-key")).toEqual({
+      status: "skipped",
+      incompatibilityCode: null,
+    });
+  });
+
+  it("keeps a would-rewrite tip pending until source is rewritten", () => {
+    expect(itemDispositionFromLocationStatus("would-rewrite")).toEqual({
+      status: "pending",
+      incompatibilityCode: null,
+    });
+  });
+
+  it("marks missing, no-occurrence, and conflict as incompatible", () => {
+    expect(itemDispositionFromLocationStatus("missing-from-source")).toEqual({
+      status: "incompatible",
+      incompatibilityCode: "missing-from-source",
+    });
+    expect(itemDispositionFromLocationStatus("no-occurrence")).toEqual({
+      status: "incompatible",
+      incompatibilityCode: "no-occurrence",
+    });
+    expect(itemDispositionFromLocationStatus("conflict")).toEqual({
+      status: "incompatible",
+      incompatibilityCode: "conflict",
+    });
   });
 });

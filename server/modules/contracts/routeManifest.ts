@@ -450,6 +450,27 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "parameterSpecs.startPropertyKeyCutover",
+    method: "POST",
+    path: "/api/v2/parameter-specs/:specId/property-key-cutover/start",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterSpecs.preparePropertyKeyCutover",
+    method: "POST",
+    path: "/api/v2/parameter-specs/:specId/property-key-cutover/prepare",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterSpecs.finalizePropertyKeyCutover",
+    method: "POST",
+    path: "/api/v2/parameter-specs/:specId/property-key-cutover/finalize",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
     id: "parameterTopology.listConfigRevisions",
     method: "GET",
     path: "/api/v2/projects/:projectId/config-sets/:configSetId/revisions",

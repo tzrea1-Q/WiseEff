@@ -10,7 +10,11 @@ import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { ApiError } from "../../shared/http/errors";
-import { previewPropertyKeySourceCutover } from "./propertyKeyCutover";
+import {
+  finalizePropertyKeySourceCutover,
+  previewPropertyKeySourceCutover,
+  startPropertyKeySourceCutover,
+} from "./propertyKeyCutover";
 import { renameParameterSpecPropertyKey } from "./service";
 
 const ORG_ID = "org-pk-cutover";
@@ -403,5 +407,298 @@ describe.skipIf(!databaseAvailable)("property-key source cutover preview (ADR-00
       ]),
     );
     expect(result.item.writesCatalog).toBe(false);
+  });
+});
+
+async function rewriteOccurrenceToNewKey(db: InMemoryTestDatabase) {
+  await db.query(`update dts_property_occurrences set property_name = $1 where id = $2`, [
+    TO_KEY,
+    PROPERTY_OCCURRENCE_ID,
+  ]);
+  await db.query(`update dts_occurrence_effects set property_name = $1 where property_occurrence_id = $2`, [
+    TO_KEY,
+    PROPERTY_OCCURRENCE_ID,
+  ]);
+}
+
+async function seedRewritableBindingOnly(db: InMemoryTestDatabase) {
+  await seedReferencedBindings(db);
+  await db.query(`delete from project_parameter_bindings where id = $1`, [BINDING_WITHOUT_REVISION]);
+}
+
+describe.skipIf(!databaseAvailable)("property-key source cutover start/finalize (ADR-0034 / TD-117)", () => {
+  let db: InMemoryTestDatabase | null = null;
+
+  beforeEach(async () => {
+    db = await createInMemoryTestDatabase();
+    await db.query(`insert into organizations (id, name) values ($1, 'PK Cutover Org')`, [ORG_ID]);
+    await db.query(
+      `insert into users (id, organization_id, name, email, title, is_active)
+       values ($1, $2, 'PK Cutover Admin', 'pk-cutover@example.com', 'Admin', true)`,
+      [USER_ID, ORG_ID],
+    );
+    await seedSubject(db, SUBJECT_A, "subject-a");
+    await seedSubject(db, SUBJECT_B, "subject-b");
+    await seedSpec(db, { specId: SPEC_ID, subjectId: SUBJECT_A, propertyKey: FROM_KEY });
+  });
+
+  afterEach(async () => {
+    if (db) {
+      await db.rollback();
+      db = null;
+    }
+  });
+
+  it("preview → start → source rewritten → finalize rewrites the catalog triple", async () => {
+    await seedRewritableBindingOnly(db!);
+    const preview = await previewPropertyKeySourceCutover(db!, makeAuth(), {
+      specId: SPEC_ID,
+      propertyKey: TO_KEY,
+    });
+    expect(preview.item.locations).toEqual([
+      expect.objectContaining({
+        bindingId: BINDING_WITH_OCCURRENCE,
+        status: "would-rewrite",
+        fromKey: FROM_KEY,
+        toKey: TO_KEY,
+      }),
+    ]);
+    expect(preview.item.startBlockers).toEqual([]);
+
+    const started = await startPropertyKeySourceCutover(db!, makeAuth(), {
+      specId: SPEC_ID,
+      propertyKey: TO_KEY,
+      reason: "correct typo after bindings exist",
+    });
+    expect(started.item).toMatchObject({
+      parameterSpecId: SPEC_ID,
+      fromKey: FROM_KEY,
+      toKey: TO_KEY,
+      status: "preparing",
+      writesCatalog: false,
+      writesSource: false,
+    });
+    expect(started.item.items).toEqual([
+      expect.objectContaining({
+        bindingId: BINDING_WITH_OCCURRENCE,
+        status: "pending",
+        locationStatus: "would-rewrite",
+      }),
+    ]);
+    expect(await catalogKeys(db!)).toMatchObject({
+      specPropertyKey: FROM_KEY,
+      dtsPropertyKey: FROM_KEY,
+    });
+
+    await expect(
+      renameParameterSpecPropertyKey(db!, makeAuth(), {
+        specId: SPEC_ID,
+        propertyKey: TO_KEY,
+        reason: "still referenced",
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      details: expect.objectContaining({ referenceCount: 1 }),
+    } satisfies Partial<ApiError>);
+
+    await rewriteOccurrenceToNewKey(db!);
+
+    const finalized = await finalizePropertyKeySourceCutover(db!, makeAuth(), {
+      specId: SPEC_ID,
+      reason: "sources already use the corrected key",
+    });
+    expect(finalized.item).toMatchObject({
+      parameterSpecId: SPEC_ID,
+      fromKey: FROM_KEY,
+      toKey: TO_KEY,
+      status: "finalized",
+      writesCatalog: true,
+      writesSource: false,
+    });
+    expect(finalized.item.items).toEqual([
+      expect.objectContaining({
+        bindingId: BINDING_WITH_OCCURRENCE,
+        status: "skipped",
+        locationStatus: "already-new-key",
+      }),
+    ]);
+
+    const after = await catalogKeys(db!);
+    expect(after.specPropertyKey).toBe(TO_KEY);
+    expect(after.dtsPropertyKey).toBe(TO_KEY);
+    expect(after.specificationKey).not.toBe(`manual/${FROM_KEY}`);
+    expect(after.schemaNamespace).not.toBe("manual");
+  });
+
+  it("finalize fails closed while the old key is still in source", async () => {
+    await seedRewritableBindingOnly(db!);
+    await startPropertyKeySourceCutover(db!, makeAuth(), {
+      specId: SPEC_ID,
+      propertyKey: TO_KEY,
+      reason: "start before rewrite",
+    });
+
+    await expect(
+      finalizePropertyKeySourceCutover(db!, makeAuth(), {
+        specId: SPEC_ID,
+        reason: "too early",
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      details: expect.objectContaining({
+        parameterSpecId: SPEC_ID,
+        blockingItems: 1,
+      }),
+    } satisfies Partial<ApiError>);
+
+    expect(await catalogKeys(db!)).toMatchObject({
+      specPropertyKey: FROM_KEY,
+      dtsPropertyKey: FROM_KEY,
+    });
+  });
+
+  it("start and finalize refuse a triple-collision without rewriting catalog", async () => {
+    await seedRewritableBindingOnly(db!);
+    await seedSpec(db!, {
+      specId: BLOCKER_ID,
+      subjectId: SUBJECT_A,
+      propertyKey: TO_KEY,
+      specificationKey: `manual/${TO_KEY}-blocker`,
+      lifecycle: "deprecated",
+    });
+
+    await expect(
+      startPropertyKeySourceCutover(db!, makeAuth(), {
+        specId: SPEC_ID,
+        propertyKey: TO_KEY,
+        reason: "blocked by deprecated twin",
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      details: expect.objectContaining({
+        startBlockers: expect.arrayContaining([
+          expect.objectContaining({
+            code: "triple-collision",
+            details: expect.objectContaining({
+              parameterSpecId: BLOCKER_ID,
+              lifecycle: "deprecated",
+            }),
+          }),
+        ]),
+      }),
+    } satisfies Partial<ApiError>);
+
+    expect(await catalogKeys(db!)).toMatchObject({
+      specPropertyKey: FROM_KEY,
+      dtsPropertyKey: FROM_KEY,
+    });
+
+    await db!.query(
+      `
+      insert into parameter_spec_property_key_cutover_runs (
+        id, organization_id, parameter_spec_id, from_key, to_key,
+        status, created_by_user_id
+      ) values (
+        'run-pk-cutover-collision', $1, $2, $3, $4, 'ready', $5
+      )
+      `,
+      [ORG_ID, SPEC_ID, FROM_KEY, TO_KEY, USER_ID],
+    );
+    await rewriteOccurrenceToNewKey(db!);
+
+    await expect(
+      finalizePropertyKeySourceCutover(db!, makeAuth(), {
+        specId: SPEC_ID,
+        reason: "collision still present",
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      details: expect.objectContaining({
+        startBlockers: expect.arrayContaining([
+          expect.objectContaining({ code: "triple-collision" }),
+        ]),
+      }),
+    } satisfies Partial<ApiError>);
+
+    expect(await catalogKeys(db!)).toMatchObject({
+      specPropertyKey: FROM_KEY,
+      dtsPropertyKey: FROM_KEY,
+    });
+  });
+
+  it("start and finalize refuse an open version cutover without rewriting catalog", async () => {
+    await seedRewritableBindingOnly(db!);
+    await db!.query(
+      `
+      insert into parameter_spec_version_cutover_runs (
+        id, organization_id, parameter_spec_id, from_version_id, to_version_id,
+        status, created_by_user_id
+      ) values (
+        'run-pk-cutover-version-block', $1, $2, $3, $3, 'preparing', $4
+      )
+      `,
+      [ORG_ID, SPEC_ID, `${SPEC_ID}:v1`, USER_ID],
+    );
+
+    await expect(
+      startPropertyKeySourceCutover(db!, makeAuth(), {
+        specId: SPEC_ID,
+        propertyKey: TO_KEY,
+        reason: "blocked by version cutover",
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      details: expect.objectContaining({
+        startBlockers: expect.arrayContaining([
+          expect.objectContaining({
+            code: "open-version-cutover",
+            details: expect.objectContaining({ runId: "run-pk-cutover-version-block" }),
+          }),
+        ]),
+      }),
+    } satisfies Partial<ApiError>);
+
+    expect(await catalogKeys(db!)).toMatchObject({
+      specPropertyKey: FROM_KEY,
+      dtsPropertyKey: FROM_KEY,
+    });
+
+    await db!.query(
+      `
+      insert into parameter_spec_property_key_cutover_runs (
+        id, organization_id, parameter_spec_id, from_key, to_key,
+        status, created_by_user_id
+      ) values (
+        'run-pk-cutover-version-finalize', $1, $2, $3, $4, 'ready', $5
+      )
+      `,
+      [ORG_ID, SPEC_ID, FROM_KEY, TO_KEY, USER_ID],
+    );
+    await rewriteOccurrenceToNewKey(db!);
+
+    await expect(
+      finalizePropertyKeySourceCutover(db!, makeAuth(), {
+        specId: SPEC_ID,
+        reason: "version cutover still open",
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      details: expect.objectContaining({
+        startBlockers: expect.arrayContaining([
+          expect.objectContaining({ code: "open-version-cutover" }),
+        ]),
+      }),
+    } satisfies Partial<ApiError>);
+
+    expect(await catalogKeys(db!)).toMatchObject({
+      specPropertyKey: FROM_KEY,
+      dtsPropertyKey: FROM_KEY,
+    });
   });
 });

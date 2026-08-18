@@ -4550,6 +4550,174 @@
         }
       }
     },
+    "/api/v2/parameter-specs/{specId}/property-key-cutover/start": {
+      "post": {
+        "operationId": "parameterSpecs.startPropertyKeyCutover",
+        "summary": "Start a referenced property-key source cutover run from the preview locations",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "specId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartPropertyKeyCutoverRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PropertyKeyCutoverRunResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/parameter-specs/{specId}/property-key-cutover/prepare": {
+      "post": {
+        "operationId": "parameterSpecs.preparePropertyKeyCutover",
+        "summary": "Reclassify property-key cutover items from live source locations without writing catalog",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "specId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreparePropertyKeyCutoverRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PropertyKeyCutoverRunResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/parameter-specs/{specId}/property-key-cutover/finalize": {
+      "post": {
+        "operationId": "parameterSpecs.finalizePropertyKeyCutover",
+        "summary": "Finalize a property-key source cutover by rewriting the catalog triple after sources moved",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "specId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinalizePropertyKeyCutoverRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PropertyKeyCutoverRunResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/projects/{projectId}/config-sets/{configSetId}/revisions": {
       "get": {
         "operationId": "parameterTopology.listConfigRevisions",
@@ -12883,6 +13051,22 @@
       "PropertyKeyCutoverPreviewResponse": {
         "type": "object",
         "x-wiseeff-schema": "PropertyKeyCutoverPreviewResponse"
+      },
+      "StartPropertyKeyCutoverRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "StartPropertyKeyCutoverRequest"
+      },
+      "PropertyKeyCutoverRunResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "PropertyKeyCutoverRunResponse"
+      },
+      "PreparePropertyKeyCutoverRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "PreparePropertyKeyCutoverRequest"
+      },
+      "FinalizePropertyKeyCutoverRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "FinalizePropertyKeyCutoverRequest"
       },
       "ConfigRevisionListResponse": {
         "type": "object",
