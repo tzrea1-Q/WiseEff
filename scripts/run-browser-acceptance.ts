@@ -744,11 +744,11 @@ function summarizeStatuses(statuses: BrowserAcceptanceStatus[]): BrowserAcceptan
     return "failed";
   }
 
-  if (statuses.includes("skipped")) {
-    return "skipped";
+  if (statuses.includes("passed")) {
+    return "passed";
   }
 
-  return "passed";
+  return "skipped";
 }
 
 function mapPlaywrightResultStatus(status: string | undefined): BrowserAcceptanceStatus {

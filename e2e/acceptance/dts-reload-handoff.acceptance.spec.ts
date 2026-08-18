@@ -1,4 +1,4 @@
-import { test } from "@playwright/test";
+import { test } from "playwright/test";
 
 test.describe("DTS reload workbench hand-off", () => {
   test("DTS-RELOAD-HANDOFF-001: carry selected bindings from /parameters into /dts-reload", async ({

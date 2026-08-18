@@ -76,7 +76,7 @@ API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒
 
 P3 / P3.1 新表面（均走 `DtsStructuredRepository`，勿在新面板里直接 new HTTP client）：
 
-- `submitStructuredEdits`：经 `POST /api/v1/projects/:projectId/dts-structured-edits/submit` 提交结构化编辑；CR 与 CST 回写载荷用 `rawText`（非 `normalizedValue`）保真。共享验收/CI 库保留扁平身份（`WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1`、`WISEEFF_LOCAL_POST_CUTOVER=0`），以便 `PROJ-CONFIG-EDIT-001` / `PARAM-DTS-EDIT-002` 证明 live submit；本地 post-cutover 库已退役该表，cutover 感知的结构化编辑适配不在工作台 #233 范围内。
+- `submitStructuredEdits`：经 `POST /api/v1/projects/:projectId/dts-structured-edits/submit` 提交结构化编辑；CR 与 CST 回写载荷用 `rawText`（非 `normalizedValue`）保真。共享验收/CI 库为 post-cutover（语义身份）。`PROJ-CONFIG-EDIT-001` / `PARAM-DTS-EDIT-002` 在可丢弃 post-cutover 运行时上证明 live submit。
 - `StructuredValueEditor`：按 `valueType` 编辑 `rawText`（与后端值类型对齐的客户端校验）。
 - `DtsStructureBrowserPanel`：结构浏览、属性编辑、本地变更集聚合与「提交变更请求」；需 `parameter:edit`（`canEdit`），安全关键节点另需 `parameter:edit-critical`（`canEditCritical`）。
 - 配置工作台统一检索：路径 / `@地址` / 标签 / compatible / 值检索，挂在规范路由 `/parameter-admin/projects/:projectId/configuration` 的源结构区（旧 `DtsSearchPanel` 页面式挂载已随 cutover 移除）。

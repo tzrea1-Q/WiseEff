@@ -56,7 +56,7 @@ Merge-time: re-check `docs/PLANS.md` and both tech-debt tracker twins against `o
 
 - This plan exists EN+ZH, is listed from `docs/PLANS.md` / `docs/zh-CN/PLANS.md`, and every open tracker row that this launch cut cares about has an explicit Done / Deferred / Blocked status below.
 - Attribution deferred plan (`2026-08-01-attribution-deferred-implementation.md`) moved to `completed/` after acceptance registration + playwright-cli evidence (Batch 1).
-- **TD-056** lands in a later commit on this branch only if attribution closeout is already committed and green. **Batch 3** landed 2026-08-17 on `main` (#511 hierarchical-modules, #512 import-wizard, #513 TD-057). **Batch 4** landed 2026-08-18 (#516 workbench, #519 file-sync, #517 TD-064/065, #515 DTO validation, #518 TD-073 partial, #520 governance ADRs). Remaining TD-079 leftover fixtures: xiaoze-action pre-cutover fallback and `e2e/parameter-management.api.spec.ts`. Do not flip the shared CI job.
+- **Batch 4** landed 2026-08-18 (#516 workbench, #519 file-sync, #517 TD-064/065, #515 DTO validation, #518 TD-073 partial, #520 governance ADRs). **TD-079 closed** on `fix/td-079-flip-ci-acceptance` (shared CI acceptance is post-cutover).
 - `npm run docs:check` green before claiming the docs slice done. UI slices also run targeted tests, `npm run build`, and playwright-cli.
 
 ## Batches
@@ -101,13 +101,13 @@ Do **not** open a second closeout plan. These tracks ran in parallel from latest
 | TD-079 import wizard | `fix/td-079-import-wizard` / `#512` | `parameter-import-wizard.acceptance.spec.ts` | Do not edit that spec from the other Batch 3 tracks |
 | TD-057 revision gate | `feat/td-057-config-set-revision-gate` / `#513` | Config-set revision source, then restore the gate. Do not invent `revision-teaching-1`. | Do not edit `ConfigSetBaselinePanel` / release-baseline product code from the TD-079 fixture tracks |
 
-**Out of this batch (explicit), still open after Batch 3 (Batch 4 later struck workbench + parameter-files):**
+**Out of this batch (explicit), still open after Batch 3 (later closed):**
 
 - ~~`parameter-files.acceptance.spec.ts` file-sync~~ (#519; `PARAM-FILE-ROLLBACK-001` still skip)
 - ~~`project-configuration-workbench.acceptance.spec.ts`~~ (#516)
-- `xiaoze-action.acceptance.spec.ts` pre-cutover fallback (intentional until the shared job flips)
-- non-acceptance `e2e/parameter-management.api.spec.ts`
-- Flipping the shared CI acceptance job / `WISEEFF_SEED_LEGACY_FLAT_IDENTITY`
+- ~~`xiaoze-action.acceptance.spec.ts` pre-cutover fallback~~ (`fix/td-079-flip-ci-acceptance`)
+- ~~non-acceptance `e2e/parameter-management.api.spec.ts`~~ (`fix/td-079-flip-ci-acceptance`)
+- ~~Flipping the shared CI acceptance job / `WISEEFF_SEED_LEGACY_FLAT_IDENTITY`~~ (`fix/td-079-flip-ci-acceptance`)
 - ~~**TD-064** / **TD-065**~~ (#517)
 
 ### Batch 4 — Later launch-visible product slices
@@ -134,7 +134,7 @@ Legend: **Done** = closed or closeable in a batch above; **In progress (sibling)
 | TD-056 | Done in Batch 2 (this branch) | This branch after Batch 1 |
 | TD-057 | Done on `main` via #513 | Batch 3: `feat/td-057-config-set-revision-gate` |
 | TD-064 / TD-065 | Done on `main` via #517 | Batch 4 |
-| TD-079 | In progress (remaining leftover fixtures) | `#509`–`#512` / `#516` / `#519` on `main`. Remaining: `xiaoze-action.acceptance.spec.ts` pre-cutover fallback, `e2e/parameter-management.api.spec.ts`. Do not flip CI. |
+| TD-079 | **Done** on `fix/td-079-flip-ci-acceptance` | Shared CI acceptance is post-cutover. Xiaoze leftover fallback and `e2e/parameter-management.api.spec.ts` migrated off retired PPV submit. |
 | TD-082 | Done on `main` via #507 | `chore/td-082-apierror-status-codemod` |
 | TD-001 | Deferred | Long-running mock/API parity constraint, not a ticket |
 | TD-033 | Deferred | Archive-only leftover debugging catalog tables |
@@ -211,14 +211,14 @@ Do not run full browser acceptance unless cheap. Do not claim target-environment
 | Quality / acceptance | Update | Coverage map + operation matrix EN+ZH; `PARAM-FILE-ROLLBACK-001` in `requirements.ts` / `operationMatrix.ts` / `parameter-files.acceptance.spec.ts` |
 | Generated artifacts | No change | No migration; Batch 2 reuses schema `origin='rollback'` |
 | References | Review | Unchanged: productization API draft is not the live contract; live contract updated above |
-| Tech debt | Update | EN+ZH tracker: TD-056 closed; Batch 3 landed (#511 hierarchical-modules, #512 import-wizard, #513 TD-057); Batch 4 landed (#516/#519 TD-079 fixtures, #517 TD-064/065, #515 DTO validation, #518 TD-073 partial, #520 ADRs; TD-008/050/053 closed). TD-079 remaining: xiaoze pre-cutover fallback + `parameter-management.api.spec.ts` (CI still not flipped). TD-082 closed via #507 |
+| Tech debt | Update | EN+ZH tracker: TD-056 closed; Batch 3 landed (#511 hierarchical-modules, #512 import-wizard, #513 TD-057); Batch 4 landed (#516/#519 TD-079 fixtures, #517 TD-064/065, #515 DTO validation, #518 TD-073 partial, #520 ADRs; TD-008/050/053 closed). **TD-079 closed** on `fix/td-079-flip-ci-acceptance` (shared CI post-cutover). TD-082 closed via #507 |
 
 ## Documentation Update Gate
 
 A batch cannot be called complete until:
 
 1. Every Impact Matrix `Update` / `Review` row for that batch is updated or recorded unchanged with evidence.
-2. EN+ZH tracker rows that this batch closes or advances are updated. TD-079 remaining leftover fixtures stay open (`xiaoze-action.acceptance.spec.ts` pre-cutover fallback, `e2e/parameter-management.api.spec.ts`); do not flip CI. TD-082 closed via #507.
+2. EN+ZH tracker rows that this batch closes or advances are updated. **TD-079 closed** on `fix/td-079-flip-ci-acceptance` (shared CI acceptance is post-cutover). TD-082 closed via #507.
 3. `npm run docs:check` is green.
 4. UI-interaction coverage for that batch is registered (planned stub + supplemental playwright-cli is honest; fake `@acceptance` markers are not).
 5. Moving a plan to `completed/` does not leave the same filename in `active/` (EN or ZH).

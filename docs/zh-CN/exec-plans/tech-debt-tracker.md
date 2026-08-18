@@ -26,7 +26,6 @@
 - **TD-039（项目参数文件，程序主体已关闭）：** DTS 程序与硬化收口已归档。路径派生身份退役由活跃计划 `2026-07-16-parameter-topology-schema-management.md` 承接（语义规格/绑定 + 原子切换）。残余 fallback 仅在 cutover 前存在。
 - **TD-040（DTS 配置集/门禁后续）：** (1)(2)(3)(4) 状态见英文版；生产失败关闭 Schema/工具链校验由拓扑计划 Task 8/10/17 承接。
 - **TD-042（参数身份 cutover）：** Phase 7、第四轮与第五轮已完成既有语义迁移、状态门禁、不可变 base/candidate 和 fail-closed writeback。**第六轮**补齐 0058 scope、无损手工身份、global authz、完整 valueShape、真实角色 UI/merge、租户 cleanup/test 隔离、跨 origin candidate-less draft 失效和持久 `set|delete`；新增 0063，使 submission 锁定并推进 exact candidate、在 item/request 上持久化其 ID，merge 再次锁定复核。带 marker 的可丢弃库已覆盖实现链路，但它仍是空 legacy 合成库，不是生产近似快照或恢复演练。**缺少合法干净非客户快照与维护窗口**，尚未执行 apply→cutover→整库恢复→旧 API smoke，因此 TD-042 继续为 BLOCKER，不得宣称生产 cutover 就绪。
-- **TD-079（CI 验收库仍为 pre-cutover）：** 套件内小泽写入的 post-cutover 覆盖已落地（`e2e/acceptance/xiaoze-action-semantic.acceptance.spec.ts`）。#509–#512 已迁 parameters / negative / xiaoze-planning / dts-structured / IMPACT / PERM-MATRIX-002 / hierarchical-modules / import-wizard。#516 再迁 `project-configuration-workbench.acceptance.spec.ts`（typed binding draft + 语义 file/UI 冲突，disposable post-cutover）。#519 再迁 `parameter-files.acceptance.spec.ts`（语义 file-sync 真正跑；`PARAM-FILE-ROLLBACK-001` 仍 skip）。STRUCTURE/SEARCH/CONFIGSET/DIFF 仍走共享 job。**尚未翻转共享 CI job。** 残留仅：`xiaoze-action.acceptance.spec.ts` 的 pre-cutover 回退（有意保留到翻转 job），以及非 acceptance 的 `e2e/parameter-management.api.spec.ts`。未关闭。详见英文版 Open 表。
 - **TD-048（参数定义多版本模型未启用）：** 决策已锁定 [ADR-0032](../../adr/0032-semantic-edits-on-active-definitions-mint-a-successor.md) / D1–D2：生命周期仍在定义层；active 上改语义 → 后继版本 + cutover。实现与 mock 分歧仍开；不要标成全部关闭。
 - **TD-049（生命周期排序把 deprecated 与 draft 同等降权）：** 决策已锁定 D6：有 binding/CR 则 pin 版本；跨 spec 匹配顺序 `active → deprecated → draft`。SQL/调用点实现仍开。
 - **TD-051（已 resolved 的节点对应任务无反向回滚）：** 决策已锁定 [ADR-0033](../../adr/0033-identity-mapping-uses-protected-re-resolve.md) / D3：受保护 re-resolve（服务端已能）。mock/UI/合同诚实化仍开。
@@ -57,6 +56,7 @@
 
 ## 近期关闭项
 
+- **TD-079（CI 验收库仍为 pre-cutover）：** **2026-08-18 关闭**（`fix/td-079-flip-ci-acceptance`）。共享 CI 验收 job 不再设 `WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1` / `WISEEFF_LOCAL_POST_CUTOVER=0`；M1 seed 跑本地 post-cutover finalize。`xiaoze-action.acceptance.spec.ts` 只走 `project_parameter_binding_id` + DTS cell，无退役 PPV 回退。`e2e/parameter-management.api.spec.ts` 经 typed binding draft 提交。可丢弃 post-cutover 套件仍作隔离覆盖。
 - **TD-065（DTS 重载值形态）：** **2026-08-18 关闭**（#517）。已支持 boolean、空属性、裸 phandle（`<&gic>`）、mixed、显式 `/delete-property/`。禁止从属性名猜编码。删除在当前 `dtc` 1.8.1 上是诚实预检失败（`property-value-mismatch` / empty overlay fragment），overlay 源码仍钉死 `/delete-property/ name;`。
 - **TD-064（工作台交接至 `/dts-reload`）：** **2026-08-18 关闭**（#517）。`/parameters` **带到参数调试** 把草稿勾选（否则当前搜索/模块收窄）深链到 `/dts-reload?project=&bindingIds=`。重载页过滤候选、显示横幅，不自动填本轮托盘。
 - **TD-053（overlay 停用 / superseded 呈现）：** **2026-08-18 关闭**（D5+D8，#520）。不要求后继 overlay；覆盖丢失必须 `confirmCoverageLoss`（已上线）。组织侧保留 superseded 并文案「已提升至平台层」（已上线）。

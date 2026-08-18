@@ -10,6 +10,7 @@ import {
   summarizeApiResponse,
   writeOperationJsonArtifact
 } from "./helpers/operationEvidence";
+import { assertPostCutoverIdentity } from "./helpers/semanticBindingFixture";
 
 const databaseUrl = process.env.DATABASE_URL;
 const projectId = "aurora";
@@ -17,35 +18,19 @@ const actorUserId = "u-xu-yun";
 const threadId = "xiaoze-action-thread";
 
 /**
- * The mutating tool follows the database's identity mode: post-cutover it
- * addresses parameters by project_parameter_binding id and expects DTS source
- * text values; legacy-identity databases (CI keeps one for the identity
- * migration suites, TD-079) still use the flat parameter id and free-form
- * values. The fixture resolves the mode and a real seeded target at runtime.
+ * Shared CI acceptance is post-cutover. This spec addresses parameters by
+ * `project_parameter_binding_id` and DTS cell text. It never falls back to
+ * `project_parameter_value_id` or `aurora-fast-charge-current`.
  */
 let parameterId = "";
 let baseCellValue = 3000;
-let semanticIdentityMode = true;
-let changeRequestParameterColumn = "project_parameter_binding_id";
 
 function cellValue(offset: number) {
-  return semanticIdentityMode ? `<${baseCellValue + offset}>` : `${14 + offset}A`;
+  return `<${baseCellValue + offset}>`;
 }
 
 async function resolveSeededBinding() {
   await withPgClient(async (client) => {
-    const cutover = await client.query<{ c: string }>(
-      `select count(*)::text as c from parameter_identity_cutovers`
-    );
-    semanticIdentityMode = Number(cutover.rows[0]?.c ?? 0) > 0;
-
-    if (!semanticIdentityMode) {
-      parameterId = "aurora-fast-charge-current";
-      changeRequestParameterColumn = "project_parameter_value_id";
-      return;
-    }
-
-    changeRequestParameterColumn = "project_parameter_binding_id";
     const result = await client.query<{ id: string; raw_value: string | null }>(
       `
       select b.id, latest.raw_value
@@ -183,7 +168,7 @@ async function resetOpenChangeRequestsForParameter() {
       set status = 'rejected', reject_reason = 'xiaoze acceptance reset', updated_at = now()
       where organization_id = 'org-chargelab'
         and project_id = $1
-        and ${changeRequestParameterColumn} = $2
+        and project_parameter_binding_id = $2
         and status not in ('merged', 'rejected')
       `,
       [projectId, parameterId]
@@ -199,7 +184,7 @@ async function countOpenChangeRequests() {
       from parameter_change_requests
       where organization_id = 'org-chargelab'
         and project_id = $1
-        and ${changeRequestParameterColumn} = $2
+        and project_parameter_binding_id = $2
         and status not in ('merged', 'rejected')
       `,
       [projectId, parameterId]
@@ -237,7 +222,10 @@ test.beforeAll(async () => {
   runNpmScript("db:migrate");
   runNpmScript("db:seed:m0");
   runNpmScript("db:seed:m1");
+  await assertPostCutoverIdentity();
   await resolveSeededBinding();
+  expect(parameterId).not.toBe("aurora-fast-charge-current");
+  expect(parameterId).toMatch(/^[0-9a-f-]{36}$/i);
   await withPgClient(async (client) => {
     await client.query(`update users set is_active = true where id = $1`, [actorUserId]);
     await client.query(
@@ -265,7 +253,7 @@ test.beforeAll(async () => {
       set status = 'rejected', reject_reason = 'xiaoze acceptance reset', updated_at = now()
       where organization_id = 'org-chargelab'
         and project_id = $1
-        and ${changeRequestParameterColumn} = $2
+        and project_parameter_binding_id = $2
         and status not in ('merged', 'rejected')
       `,
       [projectId, parameterId]
@@ -688,8 +676,9 @@ test.describe("Xiaoze P1 action", () => {
     // A requester without the write capability (guest role) can plan and
     // approve their own action, but execution is refused with the
     // in-conversation safe reply instead of an executed write.
+    const guestThread = `${threadId}-authz-self-${Date.now()}`;
     const readOnlyStarted = await postXiaoze(request, readOnlyHeaders(), {
-      threadId: `${threadId}-authz-self`,
+      threadId: guestThread,
       runId: `run-action-authz-self-${Date.now()}`,
       messages: [{ id: "m-user", role: "user", content: `set ${parameterId} to ${cellValue(9)}` }],
       context: [
@@ -699,11 +688,12 @@ test.describe("Xiaoze P1 action", () => {
         }
       ]
     });
+    expect(readOnlyStarted.status, readOnlyStarted.body.slice(0, 800)).toBe(200);
     const readOnlyInterrupt = readInterruptValue(readOnlyStarted.events);
     expect(readOnlyInterrupt?.approvalId).toBeTruthy();
 
     const resumed = await postXiaoze(request, readOnlyHeaders(), {
-      threadId: `${threadId}-authz-self`,
+      threadId: guestThread,
       runId: `run-resume-authz-${Date.now()}`,
       messages: [{ id: "m-resume", role: "user", content: "approve" }],
       forwardedProps: {

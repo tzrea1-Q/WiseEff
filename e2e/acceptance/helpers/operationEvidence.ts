@@ -119,6 +119,8 @@ export async function recordOperationEvidence(input: RecordOperationEvidenceInpu
     artifacts.push(screenshotPath);
   }
 
+  artifacts.push(jsonPath);
+
   const record = {
     runId: run.runId,
     sourceCommit: run.sourceCommit,
