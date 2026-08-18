@@ -377,6 +377,11 @@ describe("agent orchestrator", () => {
     });
 
     expect(registry.run).toHaveBeenCalledTimes(1);
+    expect(registry.run).toHaveBeenCalledWith(
+      "action.submitParameterChange",
+      expect.objectContaining({ approvalId: toolCall.approvalId }),
+      expect.any(Object)
+    );
     expect(turn.approvals[0]).toMatchObject({ status: "approved", decidedByUserId: developmentAuthContext.user.id });
     expect(turn.toolCalls[0]).toMatchObject({ status: "succeeded" });
     expect(turn.toolCalls[0].result?.summary).toContain("Submitted parameter change request");

@@ -1072,6 +1072,39 @@ describe("debugging routes", () => {
     );
   });
 
+  it("POST /api/v1/debugging/nodes/write forwards a caller approvalId to the service", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    const operation = operationRecord({ id: "op-write", operationType: "write", requestedValue: "3200", approvalId: "agent-approval-1" });
+    serviceMocks.writeNode.mockResolvedValue(operation);
+
+    const response = await requestJson<{ operation: NodeOperationRecord }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/nodes/write",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          sessionId: "session-1",
+          parameterId: "param-1",
+          value: "3200",
+          approvalId: "agent-approval-1"
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(serviceMocks.writeNode).toHaveBeenCalledWith(
+      makeAuth(),
+      expect.objectContaining({
+        sessionId: "session-1",
+        parameterId: "param-1",
+        value: "3200",
+        approvalId: "agent-approval-1"
+      }),
+      { requestId: "test-request" }
+    );
+  });
+
   it("POST /api/v1/debugging/nodes/write returns operation only when the service does not return a snapshot", async () => {
     const db = makeDb();
     const gateway = makeGateway();
@@ -1115,6 +1148,33 @@ describe("debugging routes", () => {
         snapshotId: "snapshot-1",
         confirmationToken: "confirm-rollback"
       },
+      { requestId: "test-request" }
+    );
+  });
+
+  it("POST /api/v1/debugging/snapshots/:snapshotId/rollback forwards approvalId without a confirmation token", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    const operation = operationRecord({ id: "op-rollback", operationType: "rollback", requestedValue: "3000", approvalId: "agent-approval-1" });
+    const snapshot = snapshotRecord({ id: "snapshot-1", status: "consumed" });
+    serviceMocks.rollbackSnapshot.mockResolvedValue({ operations: [operation], snapshot });
+
+    const response = await requestJson<{ operations: NodeOperationRecord[]; snapshot: DebugSnapshotRecord }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/snapshots/snapshot-1/rollback",
+      {
+        method: "POST",
+        body: JSON.stringify({ approvalId: "agent-approval-1" })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(serviceMocks.rollbackSnapshot).toHaveBeenCalledWith(
+      makeAuth(),
+      expect.objectContaining({
+        snapshotId: "snapshot-1",
+        approvalId: "agent-approval-1"
+      }),
       { requestId: "test-request" }
     );
   });

@@ -64,6 +64,10 @@ describe("debugging schemas", () => {
     expect(rollbackSnapshotBodySchema.parse({ confirmationToken: "confirm-rollback" })).toEqual({
       confirmationToken: "confirm-rollback"
     });
+    expect(rollbackSnapshotBodySchema.parse({ approvalId: "agent-approval-1" })).toEqual({
+      approvalId: "agent-approval-1"
+    });
+    expect(() => rollbackSnapshotBodySchema.parse({})).toThrow();
   });
 
   it("requires device and target when creating sessions", () => {

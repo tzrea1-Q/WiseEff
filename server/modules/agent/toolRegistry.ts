@@ -15,6 +15,8 @@ export type AgentToolExecutionContext = {
   requestId: string;
   sessionId: string;
   projectId?: string;
+  /** Set when executing after an `agent_approvals` decision so device writes can reuse the same row. */
+  approvalId?: string;
 };
 
 /** A registered tool is its metadata (single declaration in `toolMetadata.ts`) plus the runtime implementation. */

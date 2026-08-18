@@ -250,7 +250,8 @@ export function createAgentOrchestrator(options: {
       auth: input.auth,
       requestId: input.requestId,
       sessionId,
-      projectId: typeof toolCall.payload.projectId === "string" ? toolCall.payload.projectId : undefined
+      projectId: typeof toolCall.payload.projectId === "string" ? toolCall.payload.projectId : undefined,
+      approvalId: toolCall.approvalId
     };
 
     const running = await updateAgentToolCall(db, input.auth.organization.id, toolCall.id, { status: "running" });
@@ -383,7 +384,8 @@ export function createAgentOrchestrator(options: {
       auth: input.auth,
       requestId: input.requestId,
       sessionId: approval.sessionId,
-      projectId: toolCall.projectId ?? approval.projectId
+      projectId: toolCall.projectId ?? approval.projectId,
+      approvalId: approval.id
     };
     toolRegistry.authorize(toolCall.name, executionContext, toolCall.payload);
 

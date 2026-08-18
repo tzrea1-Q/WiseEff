@@ -205,9 +205,15 @@ export const writeNodeBodySchema = z
     path: ["nodeId"]
   });
 
-export const rollbackSnapshotBodySchema = z.object({
-  confirmationToken: nonEmptyString
-});
+export const rollbackSnapshotBodySchema = z
+  .object({
+    confirmationToken: nonEmptyString.optional(),
+    approvalId: nonEmptyString.optional()
+  })
+  .refine((value) => Boolean(value.confirmationToken || value.approvalId), {
+    message: "Either confirmationToken or approvalId is required.",
+    path: ["confirmationToken"]
+  });
 
 export const listRuntimeDebugNodesQuerySchema = z.object({
   protocol: protocolSchema.optional(),

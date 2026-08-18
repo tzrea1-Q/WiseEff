@@ -19,6 +19,7 @@ import {
   readNodeViaBridge,
   writeNodeViaBridge
 } from "./bridgeExecution";
+import { assertDeviceRollbackAuthorization, assertDeviceWriteAuthorization } from "./deviceWriteApproval";
 import {
   requireDebugAdmin,
   requireDebugRead,
@@ -289,7 +290,8 @@ type WriteNodeInput = {
 
 type RollbackSnapshotInput = {
   snapshotId: string;
-  confirmationToken: string;
+  confirmationToken?: string;
+  approvalId?: string;
 };
 
 type ServiceContext = AuditCorrelationContext;
@@ -455,10 +457,6 @@ function ensureWritable(
         });
       }
     }
-  }
-
-  if (parameter.risk === "High" && input.confirmationToken !== "confirm-high-risk-write" && !input.approvalId?.trim()) {
-    throw new ApiError("VALIDATION_FAILED", "High-risk write requires confirmation or approval.");
   }
 
   return parameter;
@@ -2063,6 +2061,16 @@ export function createDebuggingService(options: ServiceOptions) {
           throw new ApiError("VALIDATION_FAILED", "nodeId or parameterId is required.");
         }
 
+        await assertDeviceWriteAuthorization(tx, auth, {
+          risk: parameter.risk,
+          sessionId: session.id,
+          parameterId: input.parameterId,
+          nodeId: input.nodeId,
+          value: input.value,
+          confirmationToken: input.confirmationToken,
+          approvalId: input.approvalId
+        });
+
         const target = await getDebugTarget(tx, { organizationId, targetId: session.targetId });
         if (!target) {
           throw new ApiError("NOT_FOUND", "Debug target was not found.");
@@ -2272,7 +2280,7 @@ export function createDebuggingService(options: ServiceOptions) {
       context: ServiceContext = {}
     ): Promise<{ operations: NodeOperationRecord[]; snapshot: Awaited<ReturnType<typeof markSnapshotConsumed>> }> {
       requireDebugRollback(auth);
-      if (input.confirmationToken !== "confirm-rollback") {
+      if (!input.approvalId?.trim() && input.confirmationToken !== "confirm-rollback") {
         throw new ApiError("VALIDATION_FAILED", "Rollback confirmation is required.");
       }
       const organizationId = organizationIdFor(auth);
@@ -2286,6 +2294,11 @@ export function createDebuggingService(options: ServiceOptions) {
         if (snapshot.status !== "valid" || snapshot.sessionId !== session.id) {
           throw new ApiError("VALIDATION_FAILED", "Snapshot is not valid for this session.");
         }
+        await assertDeviceRollbackAuthorization(tx, auth, {
+          snapshotId: snapshot.id,
+          confirmationToken: input.confirmationToken,
+          approvalId: input.approvalId
+        });
         const claimedSnapshot = await claimSnapshotForRollback(tx, { organizationId, snapshotId: snapshot.id });
         if (!claimedSnapshot) {
           throw new ApiError("CONFLICT", "Snapshot is already being rolled back or has been consumed.");
@@ -2384,6 +2397,7 @@ export function createDebuggingService(options: ServiceOptions) {
               verified: result.ok && result.verified,
               failureReason: status === "succeeded" ? undefined : failureReason(result.error ?? result.writeResult.error ?? result.readResult?.error, "Rollback write failed."),
               durationMs: Math.max(result.writeResult.durationMs, result.readResult?.durationMs ?? 0),
+              approvalId: input.approvalId,
               snapshotId: snapshot.id,
               ...operationValueMetadata(entryMetadata, {
                 requestedValue: entry.previousValue,
