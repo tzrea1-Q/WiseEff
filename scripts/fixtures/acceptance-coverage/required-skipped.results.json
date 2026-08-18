@@ -1,0 +1,59 @@
+{
+  "suites": [
+    {
+      "title": "auth-runtime.acceptance.spec.ts",
+      "file": "e2e/acceptance/auth-runtime.acceptance.spec.ts",
+      "specs": [],
+      "suites": [
+        {
+          "title": "M5.5 auth runtime parity",
+          "file": "e2e/acceptance/auth-runtime.acceptance.spec.ts",
+          "specs": [
+            {
+              "title": "loads API-mode browser current user with the local dev auth contract",
+              "ok": true,
+              "tags": ["@ci-smoke"],
+              "file": "e2e/acceptance/auth-runtime.acceptance.spec.ts",
+              "line": 10,
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [
+                    {
+                      "type": "skip",
+                      "description": "fixture: required test was dynamically skipped"
+                    }
+                  ],
+                  "expectedStatus": "skipped",
+                  "projectName": "Desktop Chrome",
+                  "results": [
+                    {
+                      "status": "skipped",
+                      "duration": 1,
+                      "errors": [],
+                      "retry": 0,
+                      "annotations": [
+                        {
+                          "type": "skip",
+                          "description": "fixture: required test was dynamically skipped"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "skipped"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "expected": 0,
+    "skipped": 1,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}
