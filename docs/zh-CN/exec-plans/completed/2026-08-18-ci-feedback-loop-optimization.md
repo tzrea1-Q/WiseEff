@@ -1,9 +1,9 @@
 # CI 反馈环优化
 
-> 状态：**进行中 — Wave 0+1 已在 `main`（#523、#524）；Wave 2 在 `feat/ci-wave2`**
+> 状态：**已完成 2026-08-18** — #523（Wave 0+1）、#524（L1 import 棘轮）、#525（Wave 2）。Wave 2 后第一次 `main` L2：[`32109015523`](https://github.com/tzrea1-Q/WiseEff/actions/runs/32109015523)（墙钟 31m12s）。
 > 日期：2026-08-18
-> 实现分支：`feat/ci-wave2`（Wave 2）。Wave 0+1 在 `feat/ci-feedback-loop`（#523）；L1 import 棘轮在 `feat/ci-l2-harden`（#524）。
-> English: [`docs/exec-plans/active/2026-08-18-ci-feedback-loop-optimization.md`](../../../exec-plans/active/2026-08-18-ci-feedback-loop-optimization.md)
+> 实现分支：`feat/ci-feedback-loop`、`feat/ci-l2-harden`、`feat/ci-wave2`
+> English: [`docs/exec-plans/completed/2026-08-18-ci-feedback-loop-optimization.md`](../../../exec-plans/completed/2026-08-18-ci-feedback-loop-optimization.md)
 
 **目标：** 不再把 38 分钟的 M5.12 本机非 HDC 全量验收当作 PR 合入门槛。全量套件改到合并后 / 夜间 / 按需跑；日常改动走分层 GitHub Actions，对齐成熟 TypeScript 产品的调度方式。
 
@@ -150,7 +150,7 @@ WiseEff 已经是 `workers: 1` / `fullyParallel: false`，因为验收库共享�
 
 实现子代理只在功能分支提交，不得开/合 GitHub PR。父代理 review、验证、开/合 PR，再同步本地 `main`。
 
-**落地决定（2026-08-18）：** Wave 0+1 已合入 #523。#524 加上 L1 `@playwright/test` 棘轮。第一次绿的 `main` L2：[`32105098601`](https://github.com/tzrea1-Q/WiseEff/actions/runs/32105098601)（35m20s）。Wave 2 在本 PR（`feat/ci-wave2`）。
+**落地决定（2026-08-18）：** Wave 0+1 已合入 #523。#524 加上 L1 `@playwright/test` 棘轮。Wave 2 已合入 #525。第一次 Wave 2 `main` L2：[`32109015523`](https://github.com/tzrea1-Q/WiseEff/actions/runs/32109015523)（墙钟 31m12s）。
 
 ### 实现合同（摘要）
 

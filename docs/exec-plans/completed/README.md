@@ -36,6 +36,8 @@ Completed plans are historical implementation evidence. They can explain why a s
 
 ## Historical Feature Plans
 
+On 2026-08-18, the CI feedback-loop plan (`2026-08-18-ci-feedback-loop-optimization.md`, #523–#525) moved here: PR merge bar is L1 + `@ci-smoke`; L2 is post-merge / nightly / label. Wave 2 `main` L2 wall clock was 31m12s ([`32109015523`](https://github.com/tzrea1-Q/WiseEff/actions/runs/32109015523)). TD-118 remains for the shared-DB browser suite.
+
 On 2026-08-17, landed path-reachable C1–C4 (`2026-08-05-path-reachable-mock-gap-program.md` and children), Internal Beta product feedback (`2026-07-08-product-feedback.md`), topology review rounds 3–6, and Xiaoze approval-failure recovery (`2026-08-17-xiaoze-approval-failure-recovery.md`, TD-102 / TD-094) were moved here from `active/`. A second 2026-08-17 archive pass moved landed DTS workbench/seed, attribution/driver-registry/overlay, parameter-admin UX/IA, batch import/excel, logs org-scope, personal overview, ADB/HDC, debug-admin, Device Bridge phase 1/2, Xiaoze turn-state UX, and CORS bootstrap plans. The same day’s launch closeout archived attribution deferred D-AG-01–04 evidence (`2026-08-01-attribution-deferred-implementation.md`).
 
 The dated feature plans from 2026-05-07 through 2026-05-24 record prototype and UI evolution. Treat them as history unless a current product, design, frontend, or architecture document explicitly points to them as still-current behavior.
