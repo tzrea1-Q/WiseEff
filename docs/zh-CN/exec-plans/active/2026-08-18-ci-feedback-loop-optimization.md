@@ -1,6 +1,6 @@
 # CI 反馈环优化
 
-> 状态：**进行中 — 已实现，待合入**
+> 状态：**进行中 — Wave 0+1 已在 `main`（#523）；L2 跟进进行中**
 > 日期：2026-08-18
 > 实现分支：`feat/ci-feedback-loop`（从最新 `origin/main` 切出；Wave 0+1 同一 PR）
 > English: [`docs/exec-plans/active/2026-08-18-ci-feedback-loop-optimization.md`](../../../exec-plans/active/2026-08-18-ci-feedback-loop-optimization.md)
@@ -145,7 +145,7 @@ L2 质量门与浏览器验收拆 job；缓存 `.wiseeff-tools`（不缓存浏�
 
 实现子代理只在功能分支提交，不得开/合 GitHub PR。父代理 review、验证、开/合 PR，再同步本地 `main`。
 
-**落地决定（2026-08-18）：** Wave 0+1 同一 PR。本会话要改合入门槛，不单独合「产品 PR 仍跑全量 L2」的中间态。Wave 2 不进本 PR；合入后若夜间 L2 仍慢，再开后续并记技术债。
+**落地决定（2026-08-18）：** Wave 0+1 已合入 #523。#523 的 `main` L2 因两个规格误 import `@playwright/test` 在收集期失败（#522 已改回 `playwright/test`）。跟进：`acceptance:ci` 拒绝该 import，并在 L1 跑，避免再烧掉一整趟 L2。Wave 2 仍是 TD-118。
 
 ### 实现合同（摘要）
 

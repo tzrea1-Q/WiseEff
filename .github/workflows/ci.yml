@@ -147,6 +147,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Acceptance CI metadata (L1)
+        run: npm run acceptance:ci
+
       - name: Install and verify DTS toolchain
         run: |
           sudo apt-get update

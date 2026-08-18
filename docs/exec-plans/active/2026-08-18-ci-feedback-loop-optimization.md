@@ -1,6 +1,6 @@
 # CI Feedback Loop Optimization
 
-> Status: **Active — implemented, awaiting merge**
+> Status: **Active — Wave 0+1 on `main` (#523); L2 follow-up in flight**
 > Date: 2026-08-18
 > Implementation branch: `feat/ci-feedback-loop` (from latest `origin/main`; Wave 0+1 land in one PR)
 > Chinese: [`docs/zh-CN/exec-plans/active/2026-08-18-ci-feedback-loop-optimization.md`](../../zh-CN/exec-plans/active/2026-08-18-ci-feedback-loop-optimization.md)
@@ -317,7 +317,11 @@ No topology, HDC, ADB, disposable-DB specs.
 
 ### Wave 2
 
-Not in this PR. After merge, if nightly L2 is still too slow, open a follow-up from the Wave 2 checklist and add a tech-debt row.
+Not in #523. After merge, if nightly L2 is still too slow, implement the Wave 2 checklist (TD-118).
+
+### Follow-up after #523
+
+`main` L2 on #523 failed in collection: two specs imported `@playwright/test` (package not installed; the repo uses `playwright/test`). Those files were corrected on `main` via #522. This follow-up makes `acceptance:ci` fail closed on that import and runs it on L1 so the next bad spec cannot burn 18 minutes of L2.
 
 ---
 

@@ -29,6 +29,7 @@ export const requiredAcceptanceCiWorkflowTokens = [
   "cancel-in-progress",
   "pgvector/pgvector:pg16",
   "npx playwright install --with-deps chromium",
+  "Acceptance CI metadata (L1)",
   "npm run acceptance:ci",
   "npm run acceptance:models",
   "npm run acceptance:quality",
@@ -66,6 +67,7 @@ export type AcceptanceCiConfigurationInput = {
   };
   workflowText: string;
   smokeTagCount?: number;
+  playwrightSources?: Array<{ path: string; source: string }>;
 };
 
 export type AcceptanceCiConfigurationResult = {
@@ -77,7 +79,24 @@ export type AcceptanceCiConfigurationResult = {
   smokeTagCount: number;
   smokeTagGate: boolean;
   missingSmokeSpecPaths: string[];
+  forbiddenPlaywrightImports: string[];
 };
+
+const FORBIDDEN_PLAYWRIGHT_IMPORT = /from\s+["']@playwright\/test["']/;
+
+export function findForbiddenPlaywrightImports(files: Array<{ path: string; source: string }>): string[] {
+  return files
+    .filter((file) => FORBIDDEN_PLAYWRIGHT_IMPORT.test(file.source))
+    .map((file) => file.path)
+    .sort();
+}
+
+export function readPlaywrightSources(roots = ["e2e/acceptance", "e2e/quality"]): Array<{ path: string; source: string }> {
+  return roots.flatMap((root) => listTypeScriptFiles(root)).map((path) => ({
+    path,
+    source: readFileSync(path, "utf8")
+  }));
+}
 
 export function countCiSmokeTags(sourceText: string): number {
   if (!sourceText.includes(CI_SMOKE_TAG)) {
@@ -114,6 +133,7 @@ export function evaluateAcceptanceCiConfiguration(
   const smokeTagGate = smokeTagCount >= CI_SMOKE_TAG_MIN && smokeTagCount <= CI_SMOKE_TAG_MAX;
   const smokeScript = scripts["acceptance:smoke"] ?? "";
   const missingSmokeSpecPaths = requiredSmokeSpecPaths.filter((path) => !smokeScript.includes(path));
+  const forbiddenPlaywrightImports = findForbiddenPlaywrightImports(input.playwrightSources ?? []);
 
   return {
     status:
@@ -121,6 +141,7 @@ export function evaluateAcceptanceCiConfiguration(
       missingWorkflowTokens.length === 0 &&
       missingArtifactPaths.length === 0 &&
       missingSmokeSpecPaths.length === 0 &&
+      forbiddenPlaywrightImports.length === 0 &&
       !fullPilotDefaultGate &&
       smokeTagGate
         ? "passed"
@@ -131,7 +152,8 @@ export function evaluateAcceptanceCiConfiguration(
     fullPilotDefaultGate,
     smokeTagCount,
     smokeTagGate,
-    missingSmokeSpecPaths
+    missingSmokeSpecPaths,
+    forbiddenPlaywrightImports
   };
 }
 
@@ -143,10 +165,28 @@ export function runAcceptanceCiConfigurationCheck() {
   const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as AcceptanceCiConfigurationInput["packageJson"];
   const workflowText = readFileSync(".github/workflows/ci.yml", "utf8");
   const smokeTagCount = countCiSmokeTags(readAcceptanceSpecSources());
-  const result = evaluateAcceptanceCiConfiguration({ packageJson, workflowText, smokeTagCount });
+  const result = evaluateAcceptanceCiConfiguration({
+    packageJson,
+    workflowText,
+    smokeTagCount,
+    playwrightSources: readPlaywrightSources()
+  });
 
   console.log(JSON.stringify(result, null, 2));
   return result;
+}
+
+function listTypeScriptFiles(root: string): string[] {
+  if (!existsSync(root)) {
+    return [];
+  }
+  return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(root, entry.name);
+    if (entry.isDirectory()) {
+      return listTypeScriptFiles(path);
+    }
+    return entry.name.endsWith(".ts") ? [path.replaceAll("\\", "/")] : [];
+  });
 }
 
 function hasDefaultFullPilotGate(normalizedWorkflowText: string) {
