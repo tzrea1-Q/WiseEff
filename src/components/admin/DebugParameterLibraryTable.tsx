@@ -1,10 +1,10 @@
 import { Search } from "lucide-react";
 import { useState } from "react";
+import { DataTable, type DataTableSort } from "@/components/admin/DataTable";
 import { LibraryRiskFilter } from "@/components/admin/LibraryRiskFilter";
 import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
 import {
   filterDebugParameterLibrary,
-  sortDebugParameterLibrary,
   type DebugAdminSearch,
   type DebugParameterLibraryRow
 } from "@/debugAdminLibraryFilters";
@@ -12,12 +12,20 @@ import { coverageLabel, isArchivedDebugParameter } from "@/debugAdminDraft";
 import { getDebugValueFormatLabel } from "@/debugValueKind";
 import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import type { DebugParameter as DomainDebugParameter } from "@/domain/debugging/types";
+import type { RiskLevel } from "@/domain/parameters/types";
+import "./debug-admin-library-table.css";
 
 const RISK_LABEL = {
   High: "高",
   Medium: "中",
   Low: "低"
 } as const;
+
+const RISK_WEIGHT: Record<RiskLevel, number> = {
+  High: 3,
+  Medium: 2,
+  Low: 1
+};
 
 const COVERAGE_OPTIONS: Array<{ value: DebugAdminSearch["coverage"]; label: string }> = [
   { value: "all", label: "全部" },
@@ -33,6 +41,18 @@ const COVERAGE_LABEL = Object.fromEntries(COVERAGE_OPTIONS.map((option) => [opti
   DebugAdminSearch["coverage"],
   string
 >;
+
+const LIBRARY_PAGE_SIZE = 50;
+
+function parseLibrarySort(sort: string): DataTableSort {
+  if (sort.endsWith("-desc")) {
+    return { key: sort.slice(0, -5), direction: "desc" };
+  }
+  if (sort.endsWith("-asc")) {
+    return { key: sort.slice(0, -4), direction: "asc" };
+  }
+  return { key: "name", direction: "asc" };
+}
 
 export type DebugParameterLibraryTableProps = {
   parameters: readonly DebugParameterLibraryRow[];
@@ -63,12 +83,13 @@ export function DebugParameterLibraryTable({
 }: DebugParameterLibraryTableProps) {
   const [coverageOpen, setCoverageOpen] = useState(false);
   const mockMode = runtimeMode === "mock";
-  const filtered = sortDebugParameterLibrary(filterDebugParameterLibrary(parameters, search, moduleNodes), search.sort);
+  const filtered = filterDebugParameterLibrary(parameters, search, moduleNodes);
   const filtersActive =
     search.q.trim().length > 0 ||
     search.risk !== "all" ||
     search.modules.length > 0 ||
     search.coverage !== "all";
+  const tableSort = parseLibrarySort(search.sort);
 
   const clearFilters = () => {
     onUpdateSearch({
@@ -83,7 +104,7 @@ export function DebugParameterLibraryTable({
     isArchivedDebugParameter(parameter as DomainDebugParameter) || !canEdit;
 
   return (
-    <section className="parameters-table param-admin-library-table" aria-label="可调参数目录">
+    <section className="parameters-table param-admin-library-table debug-admin-library-table" aria-label="可调参数目录">
       <div className="parameters-table-heading">
         <div>
           <h2>可调参数目录</h2>
@@ -98,181 +119,183 @@ export function DebugParameterLibraryTable({
         </div>
       </div>
 
-      <div className="parameters-table-toolbar">
-        <label className="parameters-table-search">
-          <Search size={16} aria-hidden="true" />
-          <input
-            aria-label="搜索可调参数"
-            type="search"
-            value={search.q}
-            onChange={(event) => onUpdateSearch({ q: event.target.value })}
-            placeholder="搜索参数、Key、模块或说明"
-            disabled={loading}
-          />
-        </label>
-        <div className="parameters-table-filters param-admin-library-filters">
-          <LibraryRiskFilter
-            value={search.risk}
-            disabled={loading}
-            onChange={(risk) => onUpdateSearch({ risk: risk as DebugAdminSearch["risk"] })}
-          />
-          <ModuleTreeSelect
-            label="模块"
-            mode="multi-filter"
-            nodes={moduleNodes}
-            value={search.modules}
-            onChange={(modules) => onUpdateSearch({ modules: typeof modules === "string" ? [modules] : modules })}
-            disabled={loading}
-          />
-          {!mockMode ? (
-            <div className="dropdown-root">
-              <button
-                aria-expanded={coverageOpen}
-                aria-haspopup="listbox"
-                className="dropdown-trigger"
-                type="button"
-                onClick={() => setCoverageOpen((current) => !current)}
-                disabled={loading}
-              >
-                覆盖{search.coverage !== "all" ? ` · ${COVERAGE_LABEL[search.coverage]}` : ""} ▾
-              </button>
-              {coverageOpen ? (
-                <div className="dropdown-menu" role="listbox">
-                  {COVERAGE_OPTIONS.map((option) => (
-                    <label className="dropdown-item" key={option.value}>
-                      <input
-                        aria-label={option.label}
-                        checked={search.coverage === option.value}
-                        name="debug-coverage"
-                        type="radio"
-                        onChange={() => {
-                          onUpdateSearch({ coverage: option.value });
-                          setCoverageOpen(false);
-                        }}
-                      />
-                      <span>{option.label}</span>
-                    </label>
-                  ))}
-                </div>
+      <DataTable
+        aria-label="可调参数目录"
+        className="debug-admin-library-datatable"
+        rows={loading ? [] : filtered}
+        rowKey={(parameter) => parameter.id}
+        pageSize={LIBRARY_PAGE_SIZE}
+        sort={tableSort}
+        onSort={(key) => {
+          const nextDirection = tableSort.key === key && tableSort.direction === "asc" ? "desc" : "asc";
+          onUpdateSearch({ sort: `${key}-${nextDirection}` });
+        }}
+        onRowClick={
+          canEdit && !loading
+            ? (parameter) => {
+                if (!rowActionsDisabled(parameter)) {
+                  onEditDefinition(parameter.id);
+                }
+              }
+            : undefined
+        }
+        emptyState={
+          loading ? (
+            <p className="text-sm text-muted-foreground">加载中…</p>
+          ) : (
+            <div>
+              <p className="text-sm text-muted-foreground">没有匹配的参数。</p>
+              {filtersActive ? (
+                <button type="button" className="button subtle" onClick={clearFilters}>
+                  清除筛选条件
+                </button>
               ) : null}
             </div>
-          ) : null}
-          <select
-            aria-label="排序"
-            className="library-sort"
-            value={search.sort}
-            onChange={(event) => onUpdateSearch({ sort: event.target.value })}
-            disabled={loading}
-          >
-            <option value="name-asc">名称 A-Z</option>
-            <option value="risk-desc">风险 ↓</option>
-          </select>
-          {filtersActive ? (
-            <button aria-label="清除筛选" className="clear-filters" type="button" onClick={clearFilters}>
-              清除筛选
-            </button>
-          ) : null}
-        </div>
-        <span className="parameters-table-count">
-          {filtered.length} / {parameters.length} 项
-        </span>
-      </div>
-
-      <div className="parameters-table-scroll">
-        <table className="parameters-table-grid debug-admin-library-grid" aria-label="可调参数目录">
-          <colgroup>
-            <col className="debug-admin-col-index" />
-            <col className="debug-admin-col-name" />
-            <col className="debug-admin-col-risk" />
-            <col className="debug-admin-col-format" />
-            <col className="debug-admin-col-coverage" />
-            <col className="debug-admin-col-actions" />
-          </colgroup>
-          <thead>
-            <tr>
-              <th scope="col">#</th>
-              <th scope="col">参数名</th>
-              <th scope="col">风险</th>
-              <th scope="col">格式</th>
-              <th scope="col">覆盖</th>
-              <th scope="col">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={6}>加载中…</td>
-              </tr>
-            ) : (
-              filtered.map((parameter, index) => {
-                const disabled = rowActionsDisabled(parameter);
-                return (
-                  <tr key={parameter.id}>
-                    <td data-label="#">{index + 1}</td>
-                    <td data-label="参数名">
-                      <strong>{parameter.name}</strong>
-                      {parameter.description ? <small>{parameter.description}</small> : null}
-                    </td>
-                    <td data-label="风险">
-                      <span className={`risk-badge ${parameter.risk.toLowerCase()}`}>{RISK_LABEL[parameter.risk]}</span>
-                    </td>
-                    <td data-label="格式">
-                      <span className="debug-admin-format-badge">
-                        {getDebugValueFormatLabel(parameter)}
-                      </span>
-                    </td>
-                    <td data-label="覆盖">
-                      <span className="debug-admin-coverage-badge">
-                        {coverageLabel(parameter as DomainDebugParameter)}
-                      </span>
-                    </td>
-                    <td data-label="操作">
-                      <div className="param-admin-row-actions">
-                        <button
-                          type="button"
-                          className="button subtle param-admin-row-action"
-                          disabled={disabled}
-                          onClick={() => onEditDefinition(parameter.id)}
-                        >
-                          修改
-                        </button>
-                        <button
-                          type="button"
-                          className="button subtle param-admin-row-action"
-                          disabled={disabled}
-                          onClick={() => onEditBindings(parameter.id)}
-                        >
-                          路径绑定
-                        </button>
-                        <button
-                          type="button"
-                          className="button danger param-admin-row-action"
-                          disabled={disabled}
-                          aria-label={`归档 ${parameter.name}`}
-                          onClick={() => onArchive(parameter.id)}
-                        >
-                          归档
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {!loading && filtered.length === 0 ? (
-        <div className="parameters-table-empty">
-          <p>没有匹配的参数。</p>
-          {filtersActive ? (
-            <button type="button" className="button subtle" onClick={clearFilters}>
-              清除筛选条件
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+          )
+        }
+        toolbar={
+          <div className="parameters-table-toolbar">
+            <label className="parameters-table-search">
+              <Search size={16} aria-hidden="true" />
+              <input
+                aria-label="搜索可调参数"
+                type="search"
+                value={search.q}
+                onChange={(event) => onUpdateSearch({ q: event.target.value })}
+                placeholder="搜索参数、Key、模块或说明"
+                disabled={loading}
+              />
+            </label>
+            <div className="parameters-table-filters param-admin-library-filters">
+              <LibraryRiskFilter
+                value={search.risk}
+                disabled={loading}
+                onChange={(risk) => onUpdateSearch({ risk: risk as DebugAdminSearch["risk"] })}
+              />
+              <ModuleTreeSelect
+                label="模块"
+                mode="multi-filter"
+                nodes={moduleNodes}
+                value={search.modules}
+                onChange={(modules) => onUpdateSearch({ modules: typeof modules === "string" ? [modules] : modules })}
+                disabled={loading}
+              />
+              {!mockMode ? (
+                <div className="dropdown-root">
+                  <button
+                    aria-expanded={coverageOpen}
+                    aria-haspopup="listbox"
+                    className="dropdown-trigger"
+                    type="button"
+                    onClick={() => setCoverageOpen((current) => !current)}
+                    disabled={loading}
+                  >
+                    覆盖{search.coverage !== "all" ? ` · ${COVERAGE_LABEL[search.coverage]}` : ""} ▾
+                  </button>
+                  {coverageOpen ? (
+                    <div className="dropdown-menu" role="listbox">
+                      {COVERAGE_OPTIONS.map((option) => (
+                        <label className="dropdown-item" key={option.value}>
+                          <input
+                            aria-label={option.label}
+                            checked={search.coverage === option.value}
+                            name="debug-coverage"
+                            type="radio"
+                            onChange={() => {
+                              onUpdateSearch({ coverage: option.value });
+                              setCoverageOpen(false);
+                            }}
+                          />
+                          <span>{option.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {filtersActive ? (
+                <button aria-label="清除筛选" className="clear-filters" type="button" onClick={clearFilters}>
+                  清除筛选
+                </button>
+              ) : null}
+            </div>
+            <span className="parameters-table-count">
+              {filtered.length} / {parameters.length} 项
+            </span>
+          </div>
+        }
+        columns={[
+          {
+            key: "name",
+            header: "参数名",
+            sortAccessor: (parameter) => parameter.name,
+            render: (parameter) => (
+              <div className="debug-admin-library-name">
+                <strong>{parameter.name}</strong>
+                {parameter.description ? <small>{parameter.description}</small> : null}
+              </div>
+            )
+          },
+          {
+            key: "risk",
+            header: "风险",
+            sortAccessor: (parameter) => RISK_WEIGHT[parameter.risk],
+            render: (parameter) => (
+              <span className={`risk-badge ${parameter.risk.toLowerCase()}`}>{RISK_LABEL[parameter.risk]}</span>
+            )
+          },
+          {
+            key: "format",
+            header: "格式",
+            sortAccessor: (parameter) => getDebugValueFormatLabel(parameter),
+            render: (parameter) => (
+              <span className="debug-admin-format-badge">{getDebugValueFormatLabel(parameter)}</span>
+            )
+          },
+          {
+            key: "coverage",
+            header: "覆盖",
+            sortAccessor: (parameter) => coverageLabel(parameter as DomainDebugParameter),
+            render: (parameter) => (
+              <span className="debug-admin-coverage-badge">
+                {coverageLabel(parameter as DomainDebugParameter)}
+              </span>
+            )
+          }
+        ]}
+        renderRowActions={(parameter) => {
+          const disabled = rowActionsDisabled(parameter) || loading;
+          return (
+            <div className="param-admin-row-actions">
+              <button
+                type="button"
+                className="button subtle param-admin-row-action"
+                disabled={disabled}
+                onClick={() => onEditDefinition(parameter.id)}
+              >
+                修改
+              </button>
+              <button
+                type="button"
+                className="button subtle param-admin-row-action"
+                disabled={disabled}
+                onClick={() => onEditBindings(parameter.id)}
+              >
+                路径绑定
+              </button>
+              <button
+                type="button"
+                className="button danger param-admin-row-action"
+                disabled={disabled}
+                aria-label={`归档 ${parameter.name}`}
+                onClick={() => onArchive(parameter.id)}
+              >
+                归档
+              </button>
+            </div>
+          );
+        }}
+      />
     </section>
   );
 }

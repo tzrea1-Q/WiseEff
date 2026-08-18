@@ -1,10 +1,12 @@
 import { Search } from "lucide-react";
+import { DataTable, type DataTableSort } from "@/components/admin/DataTable";
 import { LibrarySelectFilter } from "@/components/admin/LibrarySelectFilter";
 import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
 import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import type { DebugConnectionProtocol, DebugNodeRegistryEntry } from "@/domain/debugging/types";
 import { nodeBindingStatus } from "@/debugAdminDraft";
 import { filterDebugNodesByModuleTree, modulePathLabelForDebugNode } from "@/debugAdminModules";
+import "./debug-admin-library-table.css";
 
 export type DebugNodeLibrarySearch = {
   q: string;
@@ -19,7 +21,7 @@ const PROTOCOL_OPTIONS: Array<{ value: DebugNodeLibrarySearch["protocol"]; label
   { value: "adb", label: "协议 · ADB" }
 ];
 
-const SORT_OPTIONS = [{ value: "name-asc", label: "名称 A-Z" }] as const;
+const LIBRARY_PAGE_SIZE = 50;
 
 function nodeSearchHaystack(node: DebugNodeRegistryEntry) {
   const bindingPaths = (node.bindings ?? []).map((binding) => binding.nodePath).join(" ");
@@ -49,12 +51,14 @@ function filterNodes(
   });
 }
 
-function sortNodes(nodes: DebugNodeRegistryEntry[], sort: DebugNodeLibrarySearch["sort"]) {
-  const sorted = [...nodes];
-  if (sort === "name-asc") {
-    sorted.sort((left, right) => left.name.localeCompare(right.name, "zh-CN"));
+function parseLibrarySort(sort: string): DataTableSort {
+  if (sort.endsWith("-desc")) {
+    return { key: sort.slice(0, -5), direction: "desc" };
   }
-  return sorted;
+  if (sort.endsWith("-asc")) {
+    return { key: sort.slice(0, -4), direction: "asc" };
+  }
+  return { key: "name", direction: "asc" };
 }
 
 export type DebugNodeLibraryTableProps = {
@@ -88,8 +92,9 @@ export function DebugNodeLibraryTable({
   canEdit = true,
   loading = false
 }: DebugNodeLibraryTableProps) {
-  const filtered = sortNodes(filterNodes(nodes, search, moduleNodes), search.sort);
+  const filtered = filterNodes(nodes, search, moduleNodes);
   const filtersActive = search.q.trim().length > 0 || search.protocol !== "all" || search.modules.length > 0;
+  const tableSort = parseLibrarySort(search.sort);
 
   const clearFilters = () => {
     onUpdateSearch({
@@ -100,7 +105,7 @@ export function DebugNodeLibraryTable({
   };
 
   return (
-    <section className="parameters-table param-admin-library-table" aria-label="可调节点目录">
+    <section className="parameters-table param-admin-library-table debug-admin-library-table" aria-label="可调节点目录">
       <div className="parameters-table-heading">
         <div>
           <h2>可调节点目录</h2>
@@ -142,138 +147,134 @@ export function DebugNodeLibraryTable({
         </div>
       </div>
 
-      <div className="parameters-table-toolbar">
-        <label className="parameters-table-search">
-          <Search size={16} aria-hidden="true" />
-          <input
-            aria-label="搜索可调节点"
-            type="search"
-            value={search.q}
-            onChange={(event) => onUpdateSearch({ q: event.target.value })}
-            placeholder="搜索节点名称、模块、说明或路径"
-            disabled={loading}
-          />
-        </label>
-        <div className="parameters-table-filters param-admin-library-filters">
-          <LibrarySelectFilter
-            ariaLabel="协议筛选"
-            disabled={loading}
-            options={PROTOCOL_OPTIONS}
-            value={search.protocol}
-            onChange={(protocol) => onUpdateSearch({ protocol })}
-          />
-          <ModuleTreeSelect
-            label="模块"
-            mode="multi-filter"
-            nodes={moduleNodes}
-            value={search.modules}
-            onChange={(modules) => onUpdateSearch({ modules: typeof modules === "string" ? [modules] : modules })}
-            disabled={loading}
-          />
-          <LibrarySelectFilter
-            ariaLabel="排序"
-            disabled={loading}
-            options={SORT_OPTIONS}
-            value={search.sort}
-            onChange={(sort) => onUpdateSearch({ sort })}
-          />
-          {filtersActive ? (
-            <button aria-label="清除筛选" className="clear-filters" type="button" onClick={clearFilters}>
-              清除筛选
-            </button>
-          ) : null}
-        </div>
-        <span className="parameters-table-count">
-          {filtered.length} / {nodes.length} 项
-        </span>
-      </div>
-
-      <div className="parameters-table-scroll">
-        <table className="parameters-table-grid debug-admin-library-grid debug-admin-node-library-grid" aria-label="可调节点目录">
-          <colgroup>
-            <col className="debug-admin-col-index" />
-            <col className="debug-admin-col-name" />
-            <col className="debug-admin-col-module" />
-            <col className="debug-admin-col-format" />
-            <col className="debug-admin-col-actions" />
-          </colgroup>
-          <thead>
-            <tr>
-              <th scope="col">#</th>
-              <th scope="col">节点名</th>
-              <th scope="col">模块</th>
-              <th scope="col">状态</th>
-              <th scope="col">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={5}>加载中…</td>
-              </tr>
-            ) : (
-              filtered.map((node, index) => {
-                const rowDisabled = !canEdit || !node.enabled;
-                return (
-                  <tr key={node.id}>
-                    <td data-label="#">{index + 1}</td>
-                    <td data-label="节点名">
-                      <strong>{node.name}</strong>
-                      {node.description ? <small>{node.description}</small> : null}
-                    </td>
-                    <td data-label="模块">{modulePathLabelForDebugNode(node, moduleNodes) || "—"}</td>
-                    <td data-label="状态">
-                      <span className={`debug-admin-coverage-badge${node.enabled ? "" : " disabled"}`}>
-                        {node.enabled ? "启用" : "已禁用"}
-                      </span>
-                    </td>
-                    <td data-label="操作">
-                      <div className="param-admin-row-actions">
-                        <button
-                          type="button"
-                          className="button subtle param-admin-row-action"
-                          disabled={!canEdit || loading}
-                          onClick={() => onEdit(node.id)}
-                        >
-                          编辑
-                        </button>
-                        <button
-                          type="button"
-                          className="button subtle param-admin-row-action"
-                          disabled={!canEdit || loading}
-                          onClick={() => onEditBindings(node.id)}
-                        >
-                          路径绑定
-                        </button>
-                        <button
-                          type="button"
-                          className="button danger param-admin-row-action"
-                          disabled={rowDisabled || loading}
-                          aria-label={`禁用 ${node.name}`}
-                          onClick={() => onDisable(node.id)}
-                        >
-                          禁用
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {!loading && filtered.length === 0 ? (
-        <div className="parameters-table-empty">
-          <p>没有匹配的节点。</p>
-          {filtersActive ? (
-            <button type="button" className="button subtle" onClick={clearFilters}>
-              清除筛选条件
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+      <DataTable
+        aria-label="可调节点目录"
+        className="debug-admin-library-datatable"
+        rows={loading ? [] : filtered}
+        rowKey={(node) => node.id}
+        pageSize={LIBRARY_PAGE_SIZE}
+        sort={tableSort}
+        onSort={(key) => {
+          const nextDirection = tableSort.key === key && tableSort.direction === "asc" ? "desc" : "asc";
+          onUpdateSearch({ sort: `${key}-${nextDirection}` });
+        }}
+        onRowClick={canEdit && !loading ? (node) => onEdit(node.id) : undefined}
+        emptyState={
+          loading ? (
+            <p className="text-sm text-muted-foreground">加载中…</p>
+          ) : (
+            <div>
+              <p className="text-sm text-muted-foreground">没有匹配的节点。</p>
+              {filtersActive ? (
+                <button type="button" className="button subtle" onClick={clearFilters}>
+                  清除筛选条件
+                </button>
+              ) : null}
+            </div>
+          )
+        }
+        toolbar={
+          <div className="parameters-table-toolbar">
+            <label className="parameters-table-search">
+              <Search size={16} aria-hidden="true" />
+              <input
+                aria-label="搜索可调节点"
+                type="search"
+                value={search.q}
+                onChange={(event) => onUpdateSearch({ q: event.target.value })}
+                placeholder="搜索节点名称、模块、说明或路径"
+                disabled={loading}
+              />
+            </label>
+            <div className="parameters-table-filters param-admin-library-filters">
+              <LibrarySelectFilter
+                ariaLabel="协议筛选"
+                disabled={loading}
+                options={PROTOCOL_OPTIONS}
+                value={search.protocol}
+                onChange={(protocol) => onUpdateSearch({ protocol })}
+              />
+              <ModuleTreeSelect
+                label="模块"
+                mode="multi-filter"
+                nodes={moduleNodes}
+                value={search.modules}
+                onChange={(modules) => onUpdateSearch({ modules: typeof modules === "string" ? [modules] : modules })}
+                disabled={loading}
+              />
+              {filtersActive ? (
+                <button aria-label="清除筛选" className="clear-filters" type="button" onClick={clearFilters}>
+                  清除筛选
+                </button>
+              ) : null}
+            </div>
+            <span className="parameters-table-count">
+              {filtered.length} / {nodes.length} 项
+            </span>
+          </div>
+        }
+        columns={[
+          {
+            key: "name",
+            header: "节点名",
+            sortAccessor: (node) => node.name,
+            render: (node) => (
+              <div className="debug-admin-library-name">
+                <strong>{node.name}</strong>
+                {node.description ? <small>{node.description}</small> : null}
+              </div>
+            )
+          },
+          {
+            key: "module",
+            header: "模块",
+            sortAccessor: (node) => modulePathLabelForDebugNode(node, moduleNodes),
+            render: (node) => modulePathLabelForDebugNode(node, moduleNodes) || "—"
+          },
+          {
+            key: "status",
+            header: "状态",
+            sortAccessor: (node) => (node.enabled ? 0 : 1),
+            render: (node) => (
+              <span className={`debug-admin-coverage-badge${node.enabled ? "" : " disabled"}`}>
+                {node.enabled ? "启用" : "已禁用"}
+              </span>
+            )
+          }
+        ]}
+        renderRowActions={(node) => {
+          const rowDisabled = !canEdit || !node.enabled;
+          return (
+            <div className="param-admin-row-actions">
+              <button
+                type="button"
+                className="button subtle param-admin-row-action"
+                disabled={!canEdit || loading}
+                onClick={() => onEdit(node.id)}
+              >
+                编辑
+              </button>
+              <button
+                type="button"
+                className="button subtle param-admin-row-action"
+                disabled={!canEdit || loading}
+                onClick={() => onEditBindings(node.id)}
+              >
+                路径绑定
+              </button>
+              <button
+                type="button"
+                className="button danger param-admin-row-action"
+                disabled={rowDisabled || loading}
+                aria-label={`禁用 ${node.name}`}
+                onClick={() => onDisable(node.id)}
+              >
+                禁用
+              </button>
+            </div>
+          );
+        }}
+      />
     </section>
   );
 }

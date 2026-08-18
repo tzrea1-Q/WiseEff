@@ -224,7 +224,7 @@ Phase B（Step ③ 工具）：health 含 `tools.adb` / `tools.hdc`；所选协�
 
 页面壳在 `src/DebuggingAdminPage.tsx`；主区域为全宽**节点目录**表，模块树由 `DebugModuleManagementDialog` 管理，节点/参数库筛选使用 `ModuleTreeSelect`。
 
-- `DebugNodeLibraryTable` — 工具栏搜索、模块树筛选、协议覆盖与行操作。
+- `DebugNodeLibraryTable` — `admin/DataTable` 外壳（排序 + `aria-sort`、分页、键盘行）；工具栏搜索、模块树筛选、协议覆盖与行操作。导入/导出仍在标题区。
 - `DebugNodeEditorDialog` — 逻辑节点元数据与模块归属。
 - `DebugNodeBindingsDialog` — 每协议 HDC/ADB 路径 binding 编辑。
 
@@ -278,7 +278,7 @@ Xiaoze（小泽，唯一 Agent）：
 
 支持选 0 / 1 / 多个分类值的列表头筛选，必须使用共享的 `ColumnFilter`（安静的漏斗触发器 + 勾选菜单），不要用常驻 `<select>` 或用排序箭头冒充筛选。规格：[表格列多选筛选 UX](design-docs/ux-table-column-filter.md)。规范实现：`src/components/ColumnFilter.tsx`。参考接入：`ParametersTable`、工作台 `DtsParameterWorkbenchTable` 的「所属模块」、参数后台 `ParameterSpecLibrary` / `ProjectAdminTable`，以及 `/log-admin` 业务域列表的「状态」列。
 
-管理端**列表**表格使用 `src/components/admin/DataTable`（排序 + `aria-sort`、分页、键盘行、空态、可选 `ColumnFilter`）。已接入：`/user-permissions`、`/log-admin` 业务域列表、`/log-admin` 分析质量。`/logs` 的 `rawlog-table` 是行查看器，不是列表外壳。TD-112 剩余手写列表：debug-admin 库表、dts-reload 候选网格、配置工作台表。
+管理端**列表**表格使用 `src/components/admin/DataTable`（排序 + `aria-sort`、分页、键盘行、空态、可选 `ColumnFilter`）。已接入：`/user-permissions`、`/log-admin` 业务域列表、`/log-admin` 分析质量、`/debugging-admin` 节点/参数库表。`/logs` 的 `rawlog-table` 是行查看器，不是列表外壳。TD-112 剩余手写列表：dts-reload 候选网格、配置工作台表。
 
 ## 测试建议
 

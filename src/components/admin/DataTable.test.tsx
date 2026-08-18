@@ -105,6 +105,27 @@ describe("DataTable", () => {
     expect(screen.getByRole("button", { name: "查看 r1" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "查看 r2" })).toBeInTheDocument();
   });
+
+  it("does not activate the row when a row action is used", async () => {
+    const onRowClick = vi.fn();
+
+    render(
+      <DataTable
+        ariaLabel="日志分析记录"
+        columns={columns}
+        rows={rows}
+        rowKey={(row) => row.id}
+        onRowClick={onRowClick}
+        renderRowActions={(row) => <button type="button">查看 {row.id}</button>}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "查看 r2" }));
+    expect(onRowClick).not.toHaveBeenCalled();
+
+    await userEvent.keyboard("{Enter}");
+    expect(onRowClick).not.toHaveBeenCalled();
+  });
 });
 
 type SimpleRow = { id: string; name: string; score: number };

@@ -353,7 +353,7 @@ Bridge management (rename/revoke, multi-bridge target picker) behavior is unchan
 
 Page shell lives in `src/DebuggingAdminPage.tsx`. The main surface is a full-width **node directory** table; create/edit/archive flows open modal dialogs.
 
-- `DebugNodeLibraryTable` — toolbar search, module tree filter (`ModuleTreeSelect`), protocol coverage filters, and row actions (edit node, edit bindings, archive).
+- `DebugNodeLibraryTable` — `admin/DataTable` shell (sort + `aria-sort`, pagination, keyboard rows); toolbar search, module tree filter (`ModuleTreeSelect`), protocol coverage filters, and row actions (edit node, edit bindings, archive). Import/export stay heading actions.
 - `DebugNodeEditorDialog` — logical node metadata (name, description, sort order, enabled, module tree assignment).
 - `DebugModuleManagementDialog` — nested debug node module CRUD (create-child, move, delete guards).
 - `DebugNodeBindingsDialog` — per-protocol binding editor (HDC / ADB node path, access mode, enabled, notes).
@@ -445,7 +445,7 @@ Dialog footers, table row actions, topbar actions, card actions, and toast actio
 
 Categorical column filters that support zero / one / many values must use the shared `ColumnFilter` pattern (quiet funnel trigger in the header + checkbox menu), not a permanent `<select>` or sort-arrow stand-in. Spec: [Table Column Multi-Select Filter UX](design-docs/ux-table-column-filter.md). Canonical code: `src/components/ColumnFilter.tsx`. Reference: `ParametersTable`, workbench module column in `DtsParameterWorkbenchTable`, parameter-admin `ParameterSpecLibrary` / `ProjectAdminTable`, and the `/log-admin` domain-list status column.
 
-Admin **list** tables use `src/components/admin/DataTable` (sort + `aria-sort`, pagination, keyboard-activatable rows, empty state, optional `ColumnFilter`). Adopted list shells: `/user-permissions`, `/log-admin` domain list, `/log-admin` analysis quality. `/logs` `rawlog-table` is a row viewer, not a list shell. Remaining handwritten list shells (TD-112): debug-admin library tables, dts-reload candidate grid, project-configuration workbench tables.
+Admin **list** tables use `src/components/admin/DataTable` (sort + `aria-sort`, pagination, keyboard-activatable rows, empty state, optional `ColumnFilter`). Adopted list shells: `/user-permissions`, `/log-admin` domain list, `/log-admin` analysis quality, `/debugging-admin` node and parameter library tables. `/logs` `rawlog-table` is a row viewer, not a list shell. Remaining handwritten list shells (TD-112): dts-reload candidate grid, project-configuration workbench tables.
 
 ## Testing
 
