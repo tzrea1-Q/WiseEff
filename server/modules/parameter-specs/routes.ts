@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { AuthContext } from "../auth/types";
+import type { ObjectStore } from "../logs/objectStore";
 import { canAdminParameters, canViewParameters } from "../parameter-kernel/policy";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -49,6 +50,7 @@ import {
 } from "./service";
 import {
   finalizePropertyKeySourceCutover,
+  getOpenPropertyKeySourceCutover,
   preparePropertyKeySourceCutover,
   previewPropertyKeySourceCutover,
   startPropertyKeySourceCutover,
@@ -103,6 +105,7 @@ export function registerParameterSpecRoutes(
   router: WiseEffRouter,
   options: {
     db?: Database;
+    objectStore?: ObjectStore;
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
   }
 ) {
@@ -285,6 +288,15 @@ export function registerParameterSpecRoutes(
     return { status: 200, body: result };
   });
 
+  router.get("/api/v2/parameter-specs/:specId/property-key-cutover", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(parameterSpecParamsSchema, request.params);
+    const result = await getOpenPropertyKeySourceCutover(db, auth, params.specId);
+    return { status: 200, body: result };
+  });
+
   router.post("/api/v2/parameter-specs/:specId/property-key-cutover/preview", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
@@ -324,6 +336,7 @@ export function registerParameterSpecRoutes(
       auth,
       { specId: params.specId, reason: body.reason },
       { requestId: request.requestId },
+      options.objectStore ? { objectStore: options.objectStore } : undefined,
     );
     return { status: 200, body: result };
   });

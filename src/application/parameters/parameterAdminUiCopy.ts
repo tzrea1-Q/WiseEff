@@ -194,7 +194,17 @@ export const PARAMETER_ADMIN_UI = {
   occurrenceCountLabel: "实测处数",
   referenceCountLabel: "引用数",
   referenceCountAsOccurrence: "该定义的实测处数",
-  showDeprecatedHint: "默认隐藏已废弃定义；在审核状态筛选中勾选「已废弃」可查看。"
+  showDeprecatedHint: "默认隐藏已废弃定义；在审核状态筛选中勾选「已废弃」可查看。",
+  propertyKeyCutoverTitle: "属性键切换",
+  propertyKeyCutoverHint:
+    "有引用时不能行内改键。先预检，再把源改写暂存为文件草稿；人在配置工作台合入现行源之后，才能完成切换。",
+  propertyKeyCutoverNextKey: "新属性键",
+  propertyKeyCutoverReason: "原因",
+  propertyKeyCutoverPreview: "预检",
+  propertyKeyCutoverStart: "启动作业",
+  propertyKeyCutoverPrepare: "暂存草稿",
+  propertyKeyCutoverFinalize: "完成切换",
+  propertyKeyCutoverStaged: "已暂存文件草稿，现行源尚未改写。请在配置工作台审阅并合入后再完成切换。",
 } as const;
 
 export type SpecReviewMatchStatusUi =

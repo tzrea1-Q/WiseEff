@@ -4497,6 +4497,49 @@
         }
       }
     },
+    "/api/v2/parameter-specs/{specId}/property-key-cutover": {
+      "get": {
+        "operationId": "parameterSpecs.getPropertyKeyCutover",
+        "summary": "Read the open property-key source cutover run for a spec",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "specId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PropertyKeyCutoverRunResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/parameter-specs/{specId}/property-key-cutover/preview": {
       "post": {
         "operationId": "parameterSpecs.previewPropertyKeyCutover",
@@ -4609,7 +4652,7 @@
     "/api/v2/parameter-specs/{specId}/property-key-cutover/prepare": {
       "post": {
         "operationId": "parameterSpecs.preparePropertyKeyCutover",
-        "summary": "Reclassify property-key cutover items from live source locations without writing catalog",
+        "summary": "Stage property-key source rewrites as file-candidate drafts without writing live source or catalog",
         "tags": [
           "parameters"
         ],
@@ -13044,6 +13087,10 @@
         "type": "object",
         "x-wiseeff-schema": "RenameParameterSpecPropertyKeyRequest"
       },
+      "PropertyKeyCutoverRunResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "PropertyKeyCutoverRunResponse"
+      },
       "PreviewPropertyKeyCutoverRequest": {
         "type": "object",
         "x-wiseeff-schema": "PreviewPropertyKeyCutoverRequest"
@@ -13055,10 +13102,6 @@
       "StartPropertyKeyCutoverRequest": {
         "type": "object",
         "x-wiseeff-schema": "StartPropertyKeyCutoverRequest"
-      },
-      "PropertyKeyCutoverRunResponse": {
-        "type": "object",
-        "x-wiseeff-schema": "PropertyKeyCutoverRunResponse"
       },
       "PreparePropertyKeyCutoverRequest": {
         "type": "object",

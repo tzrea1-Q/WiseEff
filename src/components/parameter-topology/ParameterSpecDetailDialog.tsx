@@ -18,6 +18,10 @@ import {
   type SpecRelatedKnowledgeSource
 } from "./ParameterSpecDetail";
 import { formatSpecPrimaryLabel } from "./ParameterSpecLibrary";
+import {
+  PropertyKeyCutoverPanel,
+  type PropertyKeyCutoverActions,
+} from "./PropertyKeyCutoverPanel";
 import { specEditorSaveDiff, stablePrettyJson } from "./specEditorSaveDiff";
 import { subjectPickerFlatNodes, subjectsFromModules } from "./SpecCreateDialog";
 
@@ -66,6 +70,7 @@ export type ParameterSpecDetailDialogProps = {
   identityModules?: ParameterModule[];
   onPrepareCutover?: () => void | Promise<void>;
   onFinalizeCutover?: (input: { reason: string }) => void | Promise<void>;
+  propertyKeyCutover?: PropertyKeyCutoverActions;
   pending?: boolean;
   error?: string | null;
   /** Platform super admin may deprecate/restore platform-global definitions. */
@@ -92,6 +97,7 @@ export function ParameterSpecDetailDialog({
   identityModules = EMPTY_IDENTITY_MODULES,
   onPrepareCutover,
   onFinalizeCutover,
+  propertyKeyCutover,
   pending = false,
   error = null,
   canDeprecateGlobal = false,
@@ -385,6 +391,13 @@ export function ParameterSpecDetailDialog({
                 </button>
               ) : null}
             </div>
+          ) : null}
+          {propertyKeyCutover && detail.usageCount > 0 && detail.propertyKey ? (
+            <PropertyKeyCutoverPanel
+              currentKey={detail.propertyKey}
+              pending={pending}
+              actions={propertyKeyCutover}
+            />
           ) : null}
           <ParameterSpecDetail
             detail={detail}

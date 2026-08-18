@@ -180,6 +180,57 @@ describe("createHttpParameterTopologyRepository", () => {
     );
   });
 
+  it("calls property-key cutover preview/start/prepare/finalize routes", async () => {
+    const run = {
+      id: "run-1",
+      parameterSpecId: "spec-1",
+      fromKey: "typo_prop",
+      toKey: "corrected_prop",
+      status: "ready",
+      referenceCount: 1,
+      writesCatalog: false,
+      writesSource: false,
+      stagedSource: true,
+      startBlockers: [],
+      items: []
+    };
+    const fetchMock = fetchQueue(
+      { item: { parameterSpecId: "spec-1", fromKey: "typo_prop", toKey: "corrected_prop", locations: [], startBlockers: [], writesCatalog: false, writesSource: false, inlineRenameEligible: false, referenceCount: 1 } },
+      { item: run },
+      { item: run },
+      { item: { ...run, status: "finalized", writesCatalog: true } }
+    );
+    const repository = createHttpParameterTopologyRepository(
+      createApiClient({ baseUrl: "http://api.test", fetchImpl: fetchMock })
+    );
+
+    await repository.previewPropertyKeyCutover!("spec-1", { propertyKey: "corrected_prop" });
+    await repository.startPropertyKeyCutover!("spec-1", { propertyKey: "corrected_prop", reason: "fix" });
+    await repository.preparePropertyKeyCutover!("spec-1", { reason: "stage" });
+    await repository.finalizePropertyKeyCutover!("spec-1", { reason: "done" });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://api.test/api/v2/parameter-specs/spec-1/property-key-cutover/preview",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://api.test/api/v2/parameter-specs/spec-1/property-key-cutover/start",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://api.test/api/v2/parameter-specs/spec-1/property-key-cutover/prepare",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "http://api.test/api/v2/parameter-specs/spec-1/property-key-cutover/finalize",
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
   it("lists bindings via v2 project bindings and maps DTOs", async () => {
     const fetchMock = fetchQueue({ items: [bindingDto] });
     const repository = createHttpParameterTopologyRepository(

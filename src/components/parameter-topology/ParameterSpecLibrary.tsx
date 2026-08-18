@@ -283,6 +283,7 @@ export type ParameterSpecLibraryProps = {
   identityModules?: import("@/domain/parameter-topology/moduleRegistry").ParameterModule[];
   onPrepareCutover?: (specId: string) => void | Promise<void>;
   onFinalizeCutover?: (input: { specId: string; reason: string }) => void | Promise<void>;
+  propertyKeyCutover?: import("./PropertyKeyCutoverPanel").PropertyKeyCutoverActions;
   savePending?: boolean;
   saveError?: string | null;
   onCreateSpec?: () => void;
@@ -316,6 +317,7 @@ export function ParameterSpecLibrary({
   identityModules = [],
   onPrepareCutover,
   onFinalizeCutover,
+  propertyKeyCutover,
   savePending = false,
   saveError = null,
   onCreateSpec,
@@ -678,6 +680,7 @@ export function ParameterSpecLibrary({
               ? ({ reason }) => onFinalizeCutover({ specId: detail.id, reason })
               : undefined
           }
+          propertyKeyCutover={propertyKeyCutover}
           onSave={
             onSaveSpec ??
             (onActivateDraftSpec

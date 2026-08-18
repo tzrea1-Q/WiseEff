@@ -103,6 +103,78 @@ export type ParameterSpecDetail = ParameterSpecSummary & {
   cutover?: ParameterSpecCutoverSummary;
 };
 
+export type PropertyKeyCutoverStartBlocker = {
+  code: "triple-collision" | "open-version-cutover" | "open-property-key-cutover";
+  message: string;
+  details?: Record<string, unknown>;
+};
+
+export type PropertyKeySourceLocationStatus =
+  | "would-rewrite"
+  | "already-new-key"
+  | "missing-from-source"
+  | "no-occurrence"
+  | "conflict";
+
+export type PropertyKeyCutoverItemStatus =
+  | "pending"
+  | "ready"
+  | "incompatible"
+  | "skipped"
+  | "applied";
+
+export type StagedPropertyKeyRewrite = {
+  kind: "file-candidate";
+  id: string;
+  status: string;
+};
+
+export type PropertyKeyCutoverPreviewLocation = {
+  projectId: string;
+  bindingId: string;
+  fileName: string | null;
+  nodePath: string | null;
+  status: PropertyKeySourceLocationStatus;
+};
+
+export type PropertyKeyCutoverPreview = {
+  parameterSpecId: string;
+  fromKey: string;
+  toKey: string;
+  referenceCount: number;
+  writesCatalog: false;
+  writesSource: false;
+  inlineRenameEligible: boolean;
+  startBlockers: PropertyKeyCutoverStartBlocker[];
+  locations: PropertyKeyCutoverPreviewLocation[];
+};
+
+export type PropertyKeyCutoverItem = {
+  id: string;
+  bindingId: string;
+  projectId: string | null;
+  status: PropertyKeyCutoverItemStatus;
+  locationStatus: PropertyKeySourceLocationStatus | null;
+  incompatibilityCode: string | null;
+  fileName: string | null;
+  nodePath: string | null;
+  stagedRewrite: StagedPropertyKeyRewrite | null;
+};
+
+export type PropertyKeyCutoverRun = {
+  id: string;
+  parameterSpecId: string;
+  fromKey: string;
+  toKey: string;
+  status: "preparing" | "ready" | "finalized" | "cancelled" | "failed";
+  referenceCount: number;
+  writesCatalog: boolean;
+  writesSource: false;
+  stagedSource: boolean;
+  startBlockers: PropertyKeyCutoverStartBlocker[];
+  items: PropertyKeyCutoverItem[];
+};
+
 export type BindingSchemaState = "valid" | "invalid" | "unreviewed";
 export type BindingPolicyState = "pass" | "fail" | "not_applicable";
 

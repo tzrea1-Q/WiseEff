@@ -11,6 +11,8 @@ import type {
   ConfigRevisionSummary,
   IdentityMappingTask,
   ParameterSpecDetail,
+  PropertyKeyCutoverPreview,
+  PropertyKeyCutoverRun,
   ParameterSpecSummary,
   ProjectParameterBinding,
   ResolveSpecReviewInput,
@@ -488,6 +490,47 @@ export function createHttpParameterTopologyRepository(
         input
       );
       return specDetailFromDto(response.item);
+    },
+    async previewPropertyKeyCutover(specId, input: { propertyKey: string }) {
+      const response = await apiClient.post<ItemEnvelope<PropertyKeyCutoverPreview>>(
+        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/property-key-cutover/preview`,
+        input
+      );
+      return response.item;
+    },
+    async startPropertyKeyCutover(specId, input: { propertyKey: string; reason: string }) {
+      const response = await apiClient.post<ItemEnvelope<PropertyKeyCutoverRun>>(
+        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/property-key-cutover/start`,
+        input
+      );
+      return response.item;
+    },
+    async preparePropertyKeyCutover(specId, input: { reason?: string } = {}) {
+      const response = await apiClient.post<ItemEnvelope<PropertyKeyCutoverRun>>(
+        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/property-key-cutover/prepare`,
+        input
+      );
+      return response.item;
+    },
+    async finalizePropertyKeyCutover(specId, input: { reason: string }) {
+      const response = await apiClient.post<ItemEnvelope<PropertyKeyCutoverRun>>(
+        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/property-key-cutover/finalize`,
+        input
+      );
+      return response.item;
+    },
+    async getPropertyKeyCutover(specId) {
+      try {
+        const response = await apiClient.get<ItemEnvelope<PropertyKeyCutoverRun>>(
+          `/api/v2/parameter-specs/${encodeURIComponent(specId)}/property-key-cutover`
+        );
+        return response.item;
+      } catch (error) {
+        if (error instanceof WiseEffApiError && error.code === "NOT_FOUND") {
+          return null;
+        }
+        throw error;
+      }
     },
     async listBindings(projectId, revisionId) {
       const response = await apiClient.get<ItemsEnvelope<ProjectBindingDto>>(

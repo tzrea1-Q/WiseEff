@@ -9,9 +9,13 @@ import type { AuthContext } from "../auth/types";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { makeTestAuthContext } from "../../testing/authContext";
+import { createMemoryObjectStore } from "../../testing/objectStore";
 import { ApiError } from "../../shared/http/errors";
+import { getParameterFileCandidateById } from "../parameter-files/candidateRepository";
+import { getProjectParameterFileById } from "../parameter-files/repository";
 import {
   finalizePropertyKeySourceCutover,
+  preparePropertyKeySourceCutover,
   previewPropertyKeySourceCutover,
   startPropertyKeySourceCutover,
 } from "./propertyKeyCutover";
@@ -35,6 +39,13 @@ const LOGICAL_NODE_ID = "ln-pk-cutover";
 const FILE_ID = "file-pk-cutover";
 const FILE_VERSION_ID = "fv-pk-cutover";
 const PROPERTY_OCCURRENCE_ID = "po-pk-cutover";
+const BOARD_DTS = `/dts-v1/;
+/ {
+	charger@6e {
+		typo_prop = <1>;
+	};
+};
+`;
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
@@ -119,7 +130,10 @@ async function seedSpec(
   );
 }
 
-async function seedReferencedBindings(db: InMemoryTestDatabase) {
+async function seedReferencedBindings(
+  db: InMemoryTestDatabase,
+  objectStore?: ReturnType<typeof createMemoryObjectStore>,
+) {
   await db.query(
     `insert into projects (id, organization_id, name, code, status)
      values ($1, $2, 'PK Cutover', 'PKC', 'initialized')`,
@@ -151,13 +165,27 @@ async function seedReferencedBindings(db: InMemoryTestDatabase) {
     `,
     [FILE_ID, ORG_ID, PROJECT_ID, CONFIG_SET_ID],
   );
+  let storageKey = "pk-cutover/board.dts";
+  let checksum = "abc";
+  let sizeBytes = 12;
+  if (objectStore) {
+    const stored = await objectStore.put({
+      organizationId: ORG_ID,
+      fileName: "board.dts",
+      contentType: "text/plain",
+      bytes: Buffer.from(BOARD_DTS, "utf8"),
+    });
+    storageKey = stored.storageKey;
+    checksum = stored.checksumSha256;
+    sizeBytes = stored.fileSizeBytes;
+  }
   await db.query(
     `
     insert into project_parameter_file_versions (
       id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin
-    ) values ($1, $2, 1, 'pk-cutover/board.dts', 'abc', 12, '{}'::jsonb, 'upload')
+    ) values ($1, $2, 1, $3, $4, $5, '{}'::jsonb, 'upload')
     `,
-    [FILE_VERSION_ID, FILE_ID],
+    [FILE_VERSION_ID, FILE_ID, storageKey, checksum, sizeBytes],
   );
   await db.query(`update project_parameter_files set current_version_id = $1 where id = $2`, [
     FILE_VERSION_ID,
@@ -421,8 +449,11 @@ async function rewriteOccurrenceToNewKey(db: InMemoryTestDatabase) {
   ]);
 }
 
-async function seedRewritableBindingOnly(db: InMemoryTestDatabase) {
-  await seedReferencedBindings(db);
+async function seedRewritableBindingOnly(
+  db: InMemoryTestDatabase,
+  objectStore?: ReturnType<typeof createMemoryObjectStore>,
+) {
+  await seedReferencedBindings(db, objectStore);
   await db.query(`delete from project_parameter_bindings where id = $1`, [BINDING_WITHOUT_REVISION]);
 }
 
@@ -696,6 +727,158 @@ describe.skipIf(!databaseAvailable)("property-key source cutover start/finalize 
       }),
     } satisfies Partial<ApiError>);
 
+    expect(await catalogKeys(db!)).toMatchObject({
+      specPropertyKey: FROM_KEY,
+      dtsPropertyKey: FROM_KEY,
+    });
+  });
+});
+
+describe.skipIf(!databaseAvailable)("property-key source cutover prepare staging (ADR-0034 / TD-117)", () => {
+  let db: InMemoryTestDatabase | null = null;
+
+  beforeEach(async () => {
+    db = await createInMemoryTestDatabase();
+    await db.query(`insert into organizations (id, name) values ($1, 'PK Cutover Org')`, [ORG_ID]);
+    await db.query(
+      `insert into users (id, organization_id, name, email, title, is_active)
+       values ($1, $2, 'PK Cutover Admin', 'pk-cutover@example.com', 'Admin', true)`,
+      [USER_ID, ORG_ID],
+    );
+    await seedSubject(db, SUBJECT_A, "subject-a");
+    await seedSubject(db, SUBJECT_B, "subject-b");
+    await seedSpec(db, { specId: SPEC_ID, subjectId: SUBJECT_A, propertyKey: FROM_KEY });
+  });
+
+  afterEach(async () => {
+    if (db) {
+      await db.rollback();
+      db = null;
+    }
+  });
+
+  it("prepare stages a file-candidate rewrite without writing live source or catalog", async () => {
+    const objectStore = createMemoryObjectStore();
+    await seedRewritableBindingOnly(db!, objectStore);
+
+    await startPropertyKeySourceCutover(db!, makeAuth(), {
+      specId: SPEC_ID,
+      propertyKey: TO_KEY,
+      reason: "stage source rewrite",
+    });
+
+    const prepared = await preparePropertyKeySourceCutover(
+      db!,
+      makeAuth(),
+      { specId: SPEC_ID, reason: "stage drafts" },
+      {},
+      { objectStore },
+    );
+
+    expect(prepared.item).toMatchObject({
+      parameterSpecId: SPEC_ID,
+      status: "ready",
+      writesCatalog: false,
+      writesSource: false,
+      stagedSource: true,
+    });
+    expect(prepared.item.items).toEqual([
+      expect.objectContaining({
+        bindingId: BINDING_WITH_OCCURRENCE,
+        status: "ready",
+        locationStatus: "would-rewrite",
+        stagedRewrite: expect.objectContaining({
+          kind: "file-candidate",
+          status: "ready",
+        }),
+      }),
+    ]);
+
+    const candidateId = prepared.item.items[0]?.stagedRewrite?.id;
+    expect(candidateId).toBeTruthy();
+    const candidate = await getParameterFileCandidateById(db!, {
+      organizationId: ORG_ID,
+      projectId: PROJECT_ID,
+      candidateId: candidateId!,
+    });
+    expect(candidate?.fileId).toBe(FILE_ID);
+    expect(candidate?.status).toBe("ready");
+    const candidateBytes = await objectStore.get(candidate!.storageKey!);
+    expect(candidateBytes.toString("utf8")).toContain(`${TO_KEY} = <1>`);
+    expect(candidateBytes.toString("utf8")).not.toContain(FROM_KEY);
+
+    const liveFile = await getProjectParameterFileById(db!, {
+      organizationId: ORG_ID,
+      fileId: FILE_ID,
+    });
+    expect(liveFile?.currentVersionId).toBe(FILE_VERSION_ID);
+    expect(await catalogKeys(db!)).toMatchObject({
+      specPropertyKey: FROM_KEY,
+      dtsPropertyKey: FROM_KEY,
+    });
+
+    await expect(
+      finalizePropertyKeySourceCutover(db!, makeAuth(), {
+        specId: SPEC_ID,
+        reason: "candidate is not live yet",
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      details: expect.objectContaining({ blockingItems: 1 }),
+    } satisfies Partial<ApiError>);
+
+    await rewriteOccurrenceToNewKey(db!);
+    const finalized = await finalizePropertyKeySourceCutover(db!, makeAuth(), {
+      specId: SPEC_ID,
+      reason: "human merged the candidate into live source",
+    });
+    expect(finalized.item.status).toBe("finalized");
+    expect(await catalogKeys(db!)).toMatchObject({
+      specPropertyKey: TO_KEY,
+      dtsPropertyKey: TO_KEY,
+    });
+  });
+
+  it("prepare fails closed on triple-collision without staging a candidate", async () => {
+    const objectStore = createMemoryObjectStore();
+    await seedRewritableBindingOnly(db!, objectStore);
+    await startPropertyKeySourceCutover(db!, makeAuth(), {
+      specId: SPEC_ID,
+      propertyKey: TO_KEY,
+      reason: "start before collision appears",
+    });
+    await seedSpec(db!, {
+      specId: BLOCKER_ID,
+      subjectId: SUBJECT_A,
+      propertyKey: TO_KEY,
+      specificationKey: `manual/${TO_KEY}-blocker`,
+      lifecycle: "deprecated",
+    });
+
+    await expect(
+      preparePropertyKeySourceCutover(
+        db!,
+        makeAuth(),
+        { specId: SPEC_ID, reason: "collision now present" },
+        {},
+        { objectStore },
+      ),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      details: expect.objectContaining({
+        startBlockers: expect.arrayContaining([
+          expect.objectContaining({ code: "triple-collision" }),
+        ]),
+      }),
+    } satisfies Partial<ApiError>);
+
+    const candidates = await db!.query<{ count: string }>(
+      `select count(*)::text as count from project_parameter_file_candidates where project_id = $1`,
+      [PROJECT_ID],
+    );
+    expect(Number(candidates.rows[0]?.count ?? 0)).toBe(0);
     expect(await catalogKeys(db!)).toMatchObject({
       specPropertyKey: FROM_KEY,
       dtsPropertyKey: FROM_KEY,
