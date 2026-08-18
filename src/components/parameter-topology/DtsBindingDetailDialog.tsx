@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { CircleX } from "lucide-react";
 
+import { ModalDialog } from "@/components/common/ModalDialog";
 import { formatAuditAbsoluteTime } from "@/domain/audit/formatAuditTime";
 import { formatModulePathLabel } from "@/domain/modules/moduleTree";
 import {
@@ -11,14 +12,6 @@ import { formatDtsRawValueForUi } from "@/domain/parameter-topology/formatDtsRaw
 import type { ParameterSpecDetail } from "@/domain/parameter-topology/types";
 import type { DtsParameterWorkbenchRow } from "@/domain/parameter-topology/workbenchTypes";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
 
 import { DtsBindingCompareDialog } from "./DtsBindingCompareDialog";
 import { DtsBindingHistoryDiffDialog } from "./DtsBindingHistoryDiffDialog";
@@ -189,29 +182,34 @@ export function DtsBindingDetailDialog({
   const policyTarget = formatUnknownValue(specDetail?.policyTarget ?? null);
   const hasPeers = peerCount > 0;
   const recentHistory = historyEntries.slice(0, RECENT_HISTORY_LIMIT);
+  // Compare / HistoryDiff are still Radix (z-50/60). Suspend this ModalDialog
+  // so its --z-modal-backdrop layer cannot steal Escape or paint over them.
+  const stackedChildOpen = compareOpen || historyDiffOpen;
 
   return (
     <>
-      <Dialog open onOpenChange={(open) => {
-        if (!open) onClose();
-      }}>
-        <DialogContent
-          aria-label={`${row.propertyKey} 参数详情`}
-          className="dts-binding-detail-dialog flex max-h-[calc(100vh-2rem)] w-full flex-col gap-3 overflow-hidden sm:max-w-5xl"
-          overlayClassName="dts-binding-detail-dialog__overlay"
-          showCloseButton={false}
-        >
-          <DialogHeader className="dts-binding-detail-dialog__header flex-row items-center justify-between gap-2">
-            <DialogTitle>{row.propertyKey} 参数详情</DialogTitle>
+      <ModalDialog
+        open
+        onDismiss={stackedChildOpen ? undefined : onClose}
+        className={`dts-binding-detail-dialog${stackedChildOpen ? " is-suspended" : ""}`}
+        backdropClassName={`dts-binding-detail-dialog__overlay${stackedChildOpen ? " is-suspended" : ""}`}
+        describedBy
+      >
+        {({ titleId, descriptionId }) => (
+          <>
+          <div className="dts-binding-detail-dialog__header">
+            <div>
+              <h2 id={titleId}>{row.propertyKey} 参数详情</h2>
+              <p id={descriptionId} className="sr-only">
+                查看该参数的定义、近期历史与跨项目对比。
+              </p>
+            </div>
             <Button type="button" variant="ghost" size="icon-sm" aria-label="关闭参数详情" onClick={onClose}>
               <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
             </Button>
-          </DialogHeader>
-          <DialogDescription className="sr-only">
-            查看该参数的定义、近期历史与跨项目对比。
-          </DialogDescription>
+          </div>
 
-          <div className="dts-binding-detail-dialog__content grid gap-4 overflow-y-auto">
+          <div className="dts-binding-detail-dialog__content">
             <section aria-labelledby="dts-binding-definition-title">
               <h3 id="dts-binding-definition-title">参数定义</h3>
               {specDetailStatus === "loading" ? (
@@ -290,16 +288,17 @@ export function DtsBindingDetailDialog({
             </section>
           </div>
 
-          <DialogFooter>
+          <div className="dts-binding-detail-dialog__footer">
             <Button type="button" variant="outline" onClick={onClose}>关闭</Button>
             {canEdit && onAddToDraft ? (
               <Button type="button" onClick={() => onAddToDraft(row.bindingId)}>
                 加入草稿
               </Button>
             ) : null}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+          </>
+        )}
+      </ModalDialog>
 
       {compareOpen && hasPeers ? (
         <DtsBindingCompareDialog

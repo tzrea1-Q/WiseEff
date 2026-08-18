@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -113,12 +114,9 @@ describe("DtsBindingDetailDialog", () => {
     });
 
     const dialog = screen.getByRole("dialog", { name: "gpio_int 参数详情" });
-    expect(document.querySelector('[data-slot="dialog-overlay"]')).toHaveClass(
-      "dts-binding-detail-dialog__overlay"
-    );
-    expect(dialog.className).toMatch(/overflow-hidden/);
-    expect(dialog.className).not.toMatch(/overflow-y-auto/);
-    expect(dialog.querySelector(".dts-binding-detail-dialog__content")).toHaveClass("overflow-y-auto");
+    expect(dialog.parentElement).toHaveClass("modal-backdrop", "dts-binding-detail-dialog__overlay");
+    expect(dialog).toHaveClass("dts-binding-detail-dialog");
+    expect(dialog.querySelector(".dts-binding-detail-dialog__content")).toBeTruthy();
     expect(within(dialog).getByRole("button", { name: "关闭参数详情" })).toBeInTheDocument();
     for (const heading of ["参数定义", "近期历史", "跨项目对比"]) {
       expect(within(dialog).getByRole("heading", { name: heading })).toBeInTheDocument();
@@ -277,5 +275,78 @@ describe("DtsBindingDetailDialog", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "加入草稿" }));
     expect(onAddToDraft).toHaveBeenCalledWith("binding-gpio-int");
+  });
+
+  it("moves focus into the dialog card and dismisses on Escape or paired backdrop press", () => {
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <div>
+          <button type="button" onClick={() => setOpen(true)}>打开详情</button>
+          {open ? (
+            <DtsBindingDetailDialog
+              row={gpioRow()}
+              canEdit={false}
+              onClose={() => setOpen(false)}
+            />
+          ) : null}
+        </div>
+      );
+    }
+
+    render(<Harness />);
+    const trigger = screen.getByRole("button", { name: "打开详情" });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    const dialog = screen.getByRole("dialog", { name: "gpio_int 参数详情" });
+    expect(dialog).toHaveFocus();
+    expect(dialog).toHaveAccessibleDescription("查看该参数的定义、近期历史与跨项目对比。");
+
+    const last = within(dialog).getByRole("button", { name: "关闭" });
+    const first = within(dialog).getByRole("button", { name: "关闭参数详情" });
+    last.focus();
+    fireEvent.keyDown(dialog, { key: "Tab" });
+    expect(document.activeElement).toBe(first);
+    first.focus();
+    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(last);
+
+    const backdrop = dialog.parentElement!;
+    fireEvent.pointerDown(dialog);
+    fireEvent.pointerUp(backdrop);
+    expect(screen.getByRole("dialog", { name: "gpio_int 参数详情" })).toBeInTheDocument();
+
+    fireEvent.pointerDown(backdrop);
+    fireEvent.pointerUp(backdrop);
+    expect(screen.queryByRole("dialog", { name: "gpio_int 参数详情" })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+
+    fireEvent.click(trigger);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "gpio_int 参数详情" })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("does not dismiss the detail dialog while a still-Radix compare layer is open", () => {
+    const onClose = vi.fn();
+    renderDialog({
+      onClose,
+      compareEntries: [
+        {
+          projectId: "proj-aurora",
+          projectName: "Aurora 量产平台",
+          rawValue: "<3590>"
+        }
+      ]
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "打开跨项目对比" }));
+    expect(screen.getByRole("dialog", { name: "gpio_int 跨项目对比" })).toBeInTheDocument();
+    expect(document.querySelector(".dts-binding-detail-dialog__overlay")).toHaveClass("is-suspended");
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "gpio_int 跨项目对比" })).toBeInTheDocument();
   });
 });

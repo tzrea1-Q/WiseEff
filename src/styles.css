@@ -21476,14 +21476,19 @@ button.dts-topology-navigator__disclosure:focus-visible {
   --dts-workbench-ink: #152238;
   --dts-workbench-muted: #52657d;
   --dts-workbench-blue: #075bc4;
-  /* Override DialogContent default sm:max-w-sm (~384px). */
-  width: min(64rem, calc(100vw - 2rem));
-  max-width: min(64rem, calc(100vw - 2rem));
-  color: var(--dts-workbench-ink);
-  gap: 0.75rem;
   display: flex;
   flex-direction: column;
+  gap: var(--space-3);
+  width: min(64rem, calc(100vw - 2rem));
+  max-width: min(64rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - var(--space-12));
   overflow: hidden;
+  padding: var(--space-4);
+  color: var(--dts-workbench-ink);
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-3);
 }
 
 .dts-binding-detail-dialog__header {
@@ -21492,15 +21497,42 @@ button.dts-topology-navigator__disclosure:focus-visible {
   margin: 0;
   border-bottom: none;
   background: var(--popover, var(--surface));
-  z-index: 1;
+}
+
+.dts-binding-detail-dialog > .dts-binding-detail-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--dts-dialog-border);
+}
+
+.dts-binding-detail-dialog > .dts-binding-detail-dialog__header h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: var(--leading-lg);
 }
 
 .dts-binding-detail-dialog__content {
+  display: grid;
+  gap: var(--space-4);
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+.dts-binding-detail-dialog__footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--dts-dialog-border);
 }
 
 .dts-binding-detail-dialog .dts-binding-detail-history.parameter-detail-history {
@@ -22491,6 +22523,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
     padding: 11px;
   }
 
+  .modal-backdrop.dts-binding-detail-dialog__overlay,
   .modal-backdrop.dts-binding-draft-dialog__overlay {
     padding: 0;
   }
@@ -23675,6 +23708,11 @@ button.dts-topology-navigator__disclosure:focus-visible {
 
 .modal-backdrop.is-suspended {
   pointer-events: none;
+}
+
+/* Still-Radix compare/history sit at z-50/60; hide this 1150 layer so they remain usable. */
+.modal-backdrop.dts-binding-detail-dialog__overlay.is-suspended {
+  visibility: hidden;
 }
 
 .overlay-spec-picker-dialog {
