@@ -208,6 +208,12 @@ function createRepository(overrides: Partial<DtsReloadRepository> = {}): DtsRelo
     ),
     getRun: vi.fn(async () => run()),
     downloadArtifact: vi.fn(async () => new Blob([Uint8Array.from([1, 2, 3])])),
+    promoteToDrafts: vi.fn(async () => ({
+      runId: "run-1",
+      status: "verified" as const,
+      drafts: [{ bindingId: "binding-1", draftId: "draft-1", outcome: "created" as const }],
+      workbenchHref: "/parameters?project=project-1"
+    })),
     getReloadConfiguration: vi.fn(),
     updateOrganisationReloadConfiguration: vi.fn(),
     ...overrides
@@ -1148,6 +1154,152 @@ describe("DtsReloadPage", () => {
     await waitFor(() => expect(terminalRepo.getRun).toHaveBeenCalledWith("run-terminal"));
     await screen.findByLabelText("运行摘要");
     expect(screen.queryByRole("button", { name: "沉淀为知识" })).not.toBeInTheDocument();
+  });
+
+  it("offers 晋升为草稿 on a verified ordinary run and hands off to the workbench", async () => {
+    const user = userEvent.setup();
+    const verifiedRun = run({
+      id: "run-verified",
+      status: "verified",
+      deviceId: "bridge:bridge-1",
+      targetRef: "device-serial-1"
+    });
+    const repository = createRepository({
+      getRun: vi.fn(async () => verifiedRun),
+      promoteToDrafts: vi.fn(async () => ({
+        runId: "run-verified",
+        status: "verified" as const,
+        drafts: [{ bindingId: "binding-1", draftId: "draft-1", outcome: "created" as const }],
+        workbenchHref: "/parameters?project=project-1"
+      }))
+    });
+    const onNavigate = vi.fn();
+
+    renderPage(repository, {
+      canPromoteToDrafts: true,
+      onNavigate,
+      initialRunId: "run-verified"
+    });
+
+    await waitFor(() => expect(repository.getRun).toHaveBeenCalledWith("run-verified"));
+    await user.click(await screen.findByRole("button", { name: "晋升为草稿" }));
+
+    await waitFor(() =>
+      expect(repository.promoteToDrafts).toHaveBeenCalledWith({
+        runId: "run-verified",
+        bindingIds: ["binding-1"]
+      })
+    );
+    expect(onNavigate).toHaveBeenCalledWith("/parameters?project=project-1");
+  });
+
+  it("asks for acknowledgement before promoting an unverifiable run", async () => {
+    const user = userEvent.setup();
+    const unverifiableRun = run({
+      id: "run-unverifiable",
+      status: "unverifiable"
+    });
+    const repository = createRepository({
+      getRun: vi.fn(async () => unverifiableRun),
+      promoteToDrafts: vi.fn(async () => ({
+        runId: "run-unverifiable",
+        status: "unverifiable" as const,
+        drafts: [{ bindingId: "binding-1", draftId: "draft-1", outcome: "created" as const }],
+        workbenchHref: "/parameters?project=project-1"
+      }))
+    });
+    const onNavigate = vi.fn();
+
+    renderPage(repository, {
+      canPromoteToDrafts: true,
+      onNavigate,
+      initialRunId: "run-unverifiable"
+    });
+
+    await user.click(await screen.findByRole("button", { name: "晋升为草稿" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(repository.promoteToDrafts).not.toHaveBeenCalled();
+    const confirm = within(dialog).getByRole("button", { name: "晋升为草稿" });
+    expect(confirm).toBeDisabled();
+    await user.click(within(dialog).getByRole("checkbox"));
+    await user.click(confirm);
+
+    await waitFor(() =>
+      expect(repository.promoteToDrafts).toHaveBeenCalledWith({
+        runId: "run-unverifiable",
+        bindingIds: ["binding-1"],
+        unverifiableAcknowledged: true
+      })
+    );
+    expect(onNavigate).toHaveBeenCalledWith("/parameters?project=project-1");
+  });
+
+  it("hides 晋升为草稿 for contradicted, failed, restore-baseline, and users without promote permission", async () => {
+    const onNavigate = vi.fn();
+
+    const { unmount } = renderPage(
+      createRepository({
+        getRun: vi.fn(async () => run({ id: "run-contradicted", status: "contradicted" }))
+      }),
+      { canPromoteToDrafts: true, onNavigate, initialRunId: "run-contradicted" }
+    );
+    await waitFor(() => expect(screen.getByLabelText("运行摘要")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "晋升为草稿" })).not.toBeInTheDocument();
+    unmount();
+
+    const failedRepo = createRepository({
+      getRun: vi.fn(async () => run({ id: "run-failed", status: "failed", failureCode: "transfer-failed" }))
+    });
+    const failedView = renderPage(failedRepo, {
+      canPromoteToDrafts: true,
+      onNavigate,
+      initialRunId: "run-failed"
+    });
+    await waitFor(() => expect(failedRepo.getRun).toHaveBeenCalledWith("run-failed"));
+    expect(screen.queryByRole("button", { name: "晋升为草稿" })).not.toBeInTheDocument();
+    failedView.unmount();
+
+    const restoreRepo = createRepository({
+      getRun: vi.fn(async () =>
+        run({ id: "run-restore", status: "verified", purpose: "restore-baseline" })
+      )
+    });
+    const restoreView = renderPage(restoreRepo, {
+      canPromoteToDrafts: true,
+      onNavigate,
+      initialRunId: "run-restore"
+    });
+    await waitFor(() => expect(restoreRepo.getRun).toHaveBeenCalledWith("run-restore"));
+    expect(screen.queryByRole("button", { name: "晋升为草稿" })).not.toBeInTheDocument();
+    restoreView.unmount();
+
+    const verifiedRepo = createRepository({
+      getRun: vi.fn(async () => run({ id: "run-verified", status: "verified" }))
+    });
+    renderPage(verifiedRepo, { canPromoteToDrafts: false, onNavigate, initialRunId: "run-verified" });
+    await waitFor(() => expect(verifiedRepo.getRun).toHaveBeenCalledWith("run-verified"));
+    expect(screen.queryByRole("button", { name: "晋升为草稿" })).not.toBeInTheDocument();
+  });
+
+  it("surfaces a promotion failure without navigating away", async () => {
+    const user = userEvent.setup();
+    const repository = createRepository({
+      getRun: vi.fn(async () => run({ id: "run-verified", status: "verified" })),
+      promoteToDrafts: vi.fn(async () => {
+        throw new Error("该参数已有未提交草稿");
+      })
+    });
+    const onNavigate = vi.fn();
+
+    renderPage(repository, {
+      canPromoteToDrafts: true,
+      onNavigate,
+      initialRunId: "run-verified"
+    });
+
+    await user.click(await screen.findByRole("button", { name: "晋升为草稿" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/晋升为草稿失败:该参数已有未提交草稿/);
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 
   it("surfaces a distillation failure without navigating away", async () => {

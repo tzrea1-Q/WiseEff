@@ -16,6 +16,7 @@ import type {
   DeployDtsReloadRunInput,
   DtsReloadRepository,
   ListDtsReloadRunsInput,
+  PromoteDtsReloadRunToDraftsInput,
   RestoreDtsReloadBaselineInput,
   StartDtsReloadRunInput
 } from "@/application/ports/DtsReloadRepository";
@@ -417,7 +418,9 @@ export function createMockDtsReloadRepository(): DtsReloadRepository {
   const watchdog = candidates[0]!;
   const runs = new Map<string, DtsReloadRun>();
   const residueByDevice = new Map<string, DtsReloadResidue>();
+  const promotedDrafts: Array<{ id: string; bindingId: string; targetValue: string; runId: string }> = [];
   let runCounter = 0;
+  let draftCounter = 0;
   let clockCounter = 0;
   let organisationConfiguration: OrganisationReloadConfiguration = {
     scope: "organisation",
@@ -838,6 +841,73 @@ export function createMockDtsReloadRepository(): DtsReloadRepository {
 
     async getRun(runId: string) {
       return { ...requireRun(runId) };
+    },
+
+    async promoteToDrafts(input: PromoteDtsReloadRunToDraftsInput) {
+      const bindingIds = [...new Set(input.bindingIds.map((id) => id.trim()).filter(Boolean))];
+      if (bindingIds.length === 0) {
+        throw mockApiError("VALIDATION_FAILED", "至少选择一个参数才能晋升为草稿。");
+      }
+      const run = requireRun(input.runId);
+      if (run.purpose === "restore-baseline") {
+        throw mockApiError("CONFLICT", "恢复基线运行不能晋升为草稿。", {
+          code: "reload-promote-ineligible",
+          purpose: run.purpose,
+          status: run.status
+        });
+      }
+      if (run.status === "unverifiable" && input.unverifiableAcknowledged !== true) {
+        throw mockApiError("CONFLICT", "不可验证的运行需要确认后才能晋升为草稿。", {
+          code: "reload-promote-unverifiable-ack-required",
+          status: run.status
+        });
+      }
+      if (run.status !== "verified" && run.status !== "unverifiable") {
+        throw mockApiError("CONFLICT", "该运行状态不能晋升为草稿。", {
+          code: "reload-promote-ineligible",
+          purpose: run.purpose,
+          status: run.status
+        });
+      }
+
+      const drafts: Array<{ bindingId: string; draftId: string; outcome: "created" | "unchanged" }> = [];
+      for (const bindingId of bindingIds) {
+        const target = run.targets.find((item) => item.bindingId === bindingId);
+        if (!target) {
+          throw mockApiError("VALIDATION_FAILED", "所选参数不属于本次运行。", {
+            code: "reload-promote-unknown-target",
+            bindingId
+          });
+        }
+        const existing = promotedDrafts.find((draft) => draft.bindingId === bindingId);
+        if (existing) {
+          if (existing.targetValue === target.debugValue && existing.runId === run.id) {
+            drafts.push({ bindingId, draftId: existing.id, outcome: "unchanged" });
+            continue;
+          }
+          throw mockApiError("CONFLICT", "该参数已有未提交草稿。", {
+            code: "reload-promote-open-draft",
+            bindingId,
+            draftId: existing.id
+          });
+        }
+        draftCounter += 1;
+        const draft = {
+          id: `mock-reload-draft-${draftCounter}`,
+          bindingId,
+          targetValue: target.debugValue,
+          runId: run.id
+        };
+        promotedDrafts.push(draft);
+        drafts.push({ bindingId, draftId: draft.id, outcome: "created" });
+      }
+
+      return {
+        runId: run.id,
+        status: run.status,
+        drafts,
+        workbenchHref: `/parameters?project=${encodeURIComponent(run.projectId)}`
+      };
     },
 
     async downloadArtifact(runId: string) {

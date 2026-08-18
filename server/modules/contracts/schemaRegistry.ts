@@ -1047,6 +1047,14 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     successStatus: 200,
     additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "dtsReload.promoteToDrafts": {
+    summary: "Promote stored debug values from a terminal reload run into parameter drafts (does not create change requests)",
+    tags: ["dts-reload"],
+    requestBody: "PromoteDtsReloadRunToDraftsRequest",
+    responseBody: "PromoteDtsReloadRunToDraftsResponse",
+    successStatus: 201,
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "dtsReload.getRun": {
     summary: "Get a DTS reload run detail including overlay source",
     tags: ["dts-reload"],

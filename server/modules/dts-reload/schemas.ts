@@ -62,3 +62,9 @@ export const projectIdParamsSchema = z.object({
 export const runIdParamsSchema = z.object({
   runId: z.string().min(1)
 });
+
+/** Body for promoting stored debug values into parameter drafts (ADR-0035). Empty selection is 400. */
+export const promoteReloadRunToDraftsBodySchema = z.object({
+  bindingIds: z.array(z.string().min(1)).min(1),
+  unverifiableAcknowledged: z.boolean().optional()
+});

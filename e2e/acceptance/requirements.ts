@@ -477,6 +477,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: false
   },
   {
+    id: "DTS-RELOAD-PROMOTE-001",
+    workflow: "E",
+    title: "A verified or acknowledged-unverifiable ordinary reload run can promote selected stored debug values into parameter drafts without creating a change request.",
+    required: false
+  },
+  {
     id: "HDC-LAB-001",
     workflow: "F",
     title: "Real HDC device lab read/write smoke runs when explicitly enabled.",

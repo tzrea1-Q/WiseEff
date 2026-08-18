@@ -7212,6 +7212,62 @@
         }
       }
     },
+    "/api/v1/dts-reload/runs/{runId}/promote-to-drafts": {
+      "post": {
+        "operationId": "dtsReload.promoteToDrafts",
+        "summary": "Promote stored debug values from a terminal reload run into parameter drafts (does not create change requests)",
+        "tags": [
+          "dts-reload"
+        ],
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromoteDtsReloadRunToDraftsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromoteDtsReloadRunToDraftsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/dts-reload/runs/{runId}": {
       "get": {
         "operationId": "dtsReload.getRun",
@@ -14263,6 +14319,14 @@
       "DeployDtsReloadRunRequest": {
         "type": "object",
         "x-wiseeff-schema": "DeployDtsReloadRunRequest"
+      },
+      "PromoteDtsReloadRunToDraftsRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "PromoteDtsReloadRunToDraftsRequest"
+      },
+      "PromoteDtsReloadRunToDraftsResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "PromoteDtsReloadRunToDraftsResponse"
       },
       "DtsReloadConfigurationAdminResponse": {
         "type": "object",

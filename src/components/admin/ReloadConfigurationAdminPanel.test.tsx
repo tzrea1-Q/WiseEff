@@ -36,6 +36,7 @@ function createRepository(overrides: Partial<DtsReloadRepository> = {}): DtsRelo
     deployRun: vi.fn(),
     getRun: vi.fn(),
     downloadArtifact: vi.fn(),
+    promoteToDrafts: vi.fn(),
     getReloadConfiguration: vi.fn(async () => seededView()),
     updateOrganisationReloadConfiguration: vi.fn(async (contract) => ({
       scope: "organisation" as const,

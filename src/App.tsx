@@ -424,6 +424,11 @@ function AppShell({
   // Mock mode is a data-source substitution (ADR-0002): the demo account may start runs.
   const canStartDtsReload =
     runtimeMode === "api" ? apiAuthPermissions.includes("debugging:dts-reload") : true;
+  const canPromoteDtsReloadDrafts =
+    runtimeMode === "api"
+      ? apiAuthPermissions.includes("parameter:edit") &&
+        (apiAuthPermissions.includes("debugging:dts-reload") || apiAuthPermissions.includes("admin:access"))
+      : true;
   const parameterActions = useMemo<ParameterRuntimeActions>(
     () =>
       createParameterRuntimeActions({
@@ -1062,6 +1067,7 @@ function AppShell({
                 runtime={appRuntime}
                 knowledgeCapability={knowledgeCapability}
                 canStartDtsReload={canStartDtsReload}
+                canPromoteDtsReloadDrafts={canPromoteDtsReloadDrafts}
                 runtimeMode={runtimeMode}
                 search={search}
                 dashboardState={dashboardState}
@@ -1100,6 +1106,7 @@ function AppShell({
                 runtime={appRuntime}
                 knowledgeCapability={knowledgeCapability}
                 canStartDtsReload={canStartDtsReload}
+                canPromoteDtsReloadDrafts={canPromoteDtsReloadDrafts}
                 runtimeMode={runtimeMode}
                 search={search}
                 dashboardState={dashboardState}
