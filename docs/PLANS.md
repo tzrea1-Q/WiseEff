@@ -26,6 +26,10 @@ This list is only plans that still have remaining work. Finished implementation 
 - `exec-plans/active/2026-06-02-wiseeff-m6-5-observability-operations.md`: self-hosted observability.
 - `exec-plans/active/2026-06-02-wiseeff-m6-6-release-rollback-capacity-gate.md`: release, rollback, capacity, and target synthetic gates (TD-019 / TD-024 / TD-025).
 
+### Remaining platform work
+
+- `exec-plans/active/2026-08-18-ci-feedback-loop-optimization.md`: layered CI merge bar (L1 smoke on PRs, L2 full local-non-HDC on `main` / nightly / label). Wave 0+1 land together; Wave 2 is TD-118.
+
 ### Remaining product and UX work
 
 - `exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`: launch-window closeout of tracker rows that do not need HDC, expert logs, or a target environment. Batch 1 archived attribution evidence and moved `2026-08-01-attribution-deferred-implementation.md` to `completed/`; Batch 2 closed TD-056 (parameter-file rollback / display name); Batch 3 landed on `main` — TD-057 via #513, TD-079 hierarchical-modules via #511, import-wizard via #512. Batch 4 landed 2026-08-18: workbench fixtures #516, semantic file-sync #519, dts-reload handoff/shapes #517, DTO validation #515, render harness #518, governance ADRs #520. TD-079 remaining leftover fixtures are `xiaoze-action.acceptance.spec.ts` pre-cutover fallback and `e2e/parameter-management.api.spec.ts` (do not flip the shared CI job). TD-082 closed on `main` via #507.

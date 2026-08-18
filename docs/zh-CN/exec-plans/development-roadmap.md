@@ -231,9 +231,9 @@ Completion gate: `npm run acceptance:quality` must pass for quality-gate metadat
 
 ## 10.10 M5.12 Staging Synthetic & CI Evidence Archiving
 
-M5.12 moves the browser gate further into staged and CI environments by archiving evidence from synthetic runs, preserving the proof trail for release candidates, and making the browser validation output easier to review after the fact. PR and push workflows now run a local non-HDC acceptance job with PostgreSQL, state models, quality gates, and browser acceptance; manual workflow dispatch can run target non-HDC or full-pilot synthetic checks against externally managed runtimes.
+M5.12 moves the browser gate further into staged and CI environments by archiving evidence from synthetic runs, preserving the proof trail for release candidates, and making the browser validation output easier to review after the fact. The PR merge bar is L1 (unit/integration plus `@ci-smoke` and one quality-run when paths require them). L2 still runs a local non-HDC acceptance job with PostgreSQL, state models, quality gates, and browser acceptance on `main` / nightly / label / dispatch; manual workflow dispatch can run target non-HDC or full-pilot synthetic checks against externally managed runtimes.
 
-Completion gate: `npm run acceptance:ci` must pass, `.github/workflows/ci.yml` must retain `acceptance-local-non-hdc` and `target-synthetic-acceptance`, and CI artifacts must include Playwright acceptance reports, test results, generated browser evidence, generated operation evidence, and quality reports. PR artifacts prove local non-HDC readiness only. Full-pilot artifacts remain valid only with real target environment secrets plus HDC, backup/restore, rollback, object-store, worker, and live Agent evidence.
+Completion gate: `npm run acceptance:ci` must pass, `.github/workflows/ci.yml` must retain `detect`, `required` (`Merge bar`), `acceptance-smoke`, `acceptance-local-non-hdc`, and `target-synthetic-acceptance`, and L2 CI artifacts must include Playwright acceptance reports, test results, generated browser evidence, generated operation evidence, and quality reports. PR artifacts prove L1 / smoke only. Full-pilot artifacts remain valid only with real target environment secrets plus HDC, backup/restore, rollback, object-store, worker, and live Agent evidence.
 
 ## 10.11 M6 Self-Hosted Production Hardening
 

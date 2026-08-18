@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 export const requiredAcceptanceCiScripts = [
@@ -6,27 +7,33 @@ export const requiredAcceptanceCiScripts = [
   "acceptance:browser",
   "acceptance:models",
   "acceptance:quality",
+  "acceptance:quality-run",
+  "acceptance:smoke",
   "acceptance:a11y",
   "acceptance:visual",
   "acceptance:responsive"
 ] as const;
 
 export const requiredAcceptanceCiWorkflowTokens = [
-  "acceptance-local-non-hdc",
-  "target-synthetic-acceptance",
+  "name: Detect changed paths",
+  "name: Merge bar",
+  "acceptance-smoke:",
+  "acceptance-local-non-hdc:",
+  "target-synthetic-acceptance:",
   "workflow_dispatch",
   "acceptance_mode",
   "local-non-hdc",
   "target-non-hdc",
   "full-pilot",
+  "full-acceptance",
+  "cancel-in-progress",
   "pgvector/pgvector:pg16",
   "npx playwright install --with-deps chromium",
   "npm run acceptance:ci",
   "npm run acceptance:models",
   "npm run acceptance:quality",
-  "npm run acceptance:a11y",
-  "npm run acceptance:visual",
-  "npm run acceptance:responsive",
+  "npm run acceptance:quality-run",
+  "npm run acceptance:smoke",
   "npm run acceptance:browser -- --mode local-non-hdc",
   "npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime",
   "npm run acceptance:browser -- --mode full-pilot --no-start-runtime",
@@ -43,11 +50,16 @@ export const requiredAcceptanceCiArtifactPaths = [
   "test-results/quality"
 ] as const;
 
+export const CI_SMOKE_TAG = "@ci-smoke";
+export const CI_SMOKE_TAG_MIN = 1;
+export const CI_SMOKE_TAG_MAX = 5;
+
 export type AcceptanceCiConfigurationInput = {
   packageJson: {
     scripts?: Record<string, string>;
   };
   workflowText: string;
+  smokeTagCount?: number;
 };
 
 export type AcceptanceCiConfigurationResult = {
@@ -56,7 +68,27 @@ export type AcceptanceCiConfigurationResult = {
   missingWorkflowTokens: string[];
   missingArtifactPaths: string[];
   fullPilotDefaultGate: boolean;
+  smokeTagCount: number;
+  smokeTagGate: boolean;
 };
+
+export function countCiSmokeTags(sourceText: string): number {
+  if (!sourceText.includes(CI_SMOKE_TAG)) {
+    return 0;
+  }
+  return sourceText.split(CI_SMOKE_TAG).length - 1;
+}
+
+export function readAcceptanceSpecSources(root = "e2e/acceptance"): string {
+  if (!existsSync(root)) {
+    return "";
+  }
+  return readdirSync(root)
+    .filter((name) => name.endsWith(".spec.ts"))
+    .sort()
+    .map((name) => readFileSync(join(root, name), "utf8"))
+    .join("\n");
+}
 
 export function evaluateAcceptanceCiConfiguration(
   input: AcceptanceCiConfigurationInput
@@ -71,19 +103,24 @@ export function evaluateAcceptanceCiConfiguration(
     (path) => !workflowText.includes(normalizeWorkflowText(path))
   );
   const fullPilotDefaultGate = hasDefaultFullPilotGate(workflowText);
+  const smokeTagCount = input.smokeTagCount ?? 0;
+  const smokeTagGate = smokeTagCount >= CI_SMOKE_TAG_MIN && smokeTagCount <= CI_SMOKE_TAG_MAX;
 
   return {
     status:
       missingScripts.length === 0 &&
       missingWorkflowTokens.length === 0 &&
       missingArtifactPaths.length === 0 &&
-      !fullPilotDefaultGate
+      !fullPilotDefaultGate &&
+      smokeTagGate
         ? "passed"
         : "failed",
     missingScripts,
     missingWorkflowTokens,
     missingArtifactPaths,
-    fullPilotDefaultGate
+    fullPilotDefaultGate,
+    smokeTagCount,
+    smokeTagGate
   };
 }
 
@@ -94,14 +131,17 @@ export function runAcceptanceCiConfigurationCheck() {
 
   const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as AcceptanceCiConfigurationInput["packageJson"];
   const workflowText = readFileSync(".github/workflows/ci.yml", "utf8");
-  const result = evaluateAcceptanceCiConfiguration({ packageJson, workflowText });
+  const smokeTagCount = countCiSmokeTags(readAcceptanceSpecSources());
+  const result = evaluateAcceptanceCiConfiguration({ packageJson, workflowText, smokeTagCount });
 
   console.log(JSON.stringify(result, null, 2));
   return result;
 }
 
 function hasDefaultFullPilotGate(normalizedWorkflowText: string) {
-  const fullPilotRuns = normalizedWorkflowText.match(/run:\s*npm run acceptance:browser -- --mode full-pilot(?! --no-start-runtime)/g);
+  const fullPilotRuns = normalizedWorkflowText.match(
+    /run:\s*npm run acceptance:browser -- --mode full-pilot(?! --no-start-runtime)/g
+  );
 
   return (fullPilotRuns?.length ?? 0) > 0;
 }
