@@ -21427,18 +21427,60 @@ button.dts-topology-navigator__disclosure:focus-visible {
   --dts-dialog-border: #dbe3ef;
   --dts-workbench-ink: #152238;
   --dts-workbench-muted: #52657d;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
   width: min(64rem, calc(100vw - 2rem));
   max-width: min(64rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - var(--space-12));
+  overflow: hidden;
+  padding: var(--space-4);
   color: var(--dts-workbench-ink);
-  gap: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-3);
 }
 
-.dts-binding-compare-dialog__overlay {
-  z-index: var(--z-dropdown);
+.dts-binding-compare-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--dts-dialog-border);
 }
 
-.dts-binding-compare-dialog {
-  z-index: 61;
+.dts-binding-compare-dialog__header h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: var(--leading-lg);
+}
+
+.dts-binding-compare-dialog__content {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.dts-binding-compare-dialog__footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--dts-dialog-border);
+}
+
+.dts-binding-compare.dts-binding-compare--dialog {
+  display: grid;
+  gap: var(--space-3);
 }
 
 .dts-binding-compare__head > div {
@@ -22330,7 +22372,8 @@ button.dts-topology-navigator__disclosure:focus-visible {
   }
 
   .modal-backdrop.dts-binding-detail-dialog__overlay,
-  .modal-backdrop.dts-binding-draft-dialog__overlay {
+  .modal-backdrop.dts-binding-draft-dialog__overlay,
+  .modal-backdrop.dts-binding-compare-dialog__overlay {
     padding: 0;
   }
 
@@ -22351,6 +22394,26 @@ button.dts-topology-navigator__disclosure:focus-visible {
   }
 
   .dts-binding-draft-dialog textarea {
+    min-height: 44px;
+  }
+
+  .dts-binding-compare-dialog {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: 100dvh;
+    margin: 0;
+    border-radius: 0;
+  }
+
+  .dts-binding-compare-dialog button,
+  .dts-binding-compare-dialog [data-slot="button"] {
+    min-width: 44px;
+    min-height: 44px;
+    height: auto;
+  }
+
+  .dts-binding-compare-dialog select {
     min-height: 44px;
   }
 
@@ -22398,6 +22461,12 @@ button.dts-topology-navigator__disclosure:focus-visible {
 
   .dts-binding-draft-dialog,
   .dts-binding-draft-dialog__overlay {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .dts-binding-compare-dialog,
+  .dts-binding-compare-dialog__overlay {
     animation: none !important;
     transition: none !important;
   }
