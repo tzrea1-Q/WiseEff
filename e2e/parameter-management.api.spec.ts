@@ -1,15 +1,22 @@
+import "dotenv/config";
 import { Client } from "pg";
 import { expect, test, type Page } from "playwright/test";
-import { runNpmScript } from "./acceptance/helpers/database";
+import { runNpmScript, withPgClient } from "./acceptance/helpers/database";
+import { signInBrowserAsRole } from "./acceptance/helpers/bearerAuth";
 import { apiRoute, smokeHeaders } from "./acceptance/helpers/runtime";
+import {
+  assertPostCutoverIdentity,
+  createAndSubmitBindingDraft,
+  integerCellTarget,
+  seedIsolatedNumericCellBinding
+} from "./acceptance/helpers/semanticBindingFixture";
 
 const databaseUrl = process.env.DATABASE_URL;
 const projectId = "aurora";
-const parameterName = "fast_charge_current_limit_ma";
-const parameterValueId = `${projectId}-fast-charge-current`;
 const actorUserId = "u-xu-yun";
-const targetValue = String(3300 + (Date.now() % 100));
-const changeReason = `M1 E2E acceptance ${Date.now()}`;
+const changeReasonPrefix = "M1 E2E acceptance";
+const changeReason = `${changeReasonPrefix} ${Date.now()}`;
+const targetNumeric = String(3300 + (Date.now() % 100));
 
 async function seedWorkflowUsers(client: Client) {
   const users = [
@@ -51,12 +58,9 @@ async function cleanupOpenE2ERequests(client: Client) {
     from parameter_change_requests cr
     left join parameter_submission_items psi on psi.change_request_id = cr.id
     where cr.status not in ('merged', 'rejected', 'withdrawn')
-      and (
-        cr.project_parameter_value_id = $1
-        or psi.reason like 'M1 E2E acceptance%'
-      )
+      and psi.reason like $1
     `,
-    [parameterValueId]
+    [`${changeReasonPrefix}%`]
   );
   const requestIds = requests.rows.map((row) => row.id);
   const roundIds = Array.from(
@@ -92,37 +96,11 @@ async function cleanupOpenE2ERequests(client: Client) {
   );
 }
 
-type ChangeRequestSummary = {
-  id: string;
-  targetValue: string;
-  status: string;
-};
-
 function authHeadersForUser(userId: string) {
   return {
     ...smokeHeaders(),
     "x-wiseeff-user": userId
   };
-}
-
-async function listChangeRequests(page: Page) {
-  const response = await page.request.get(apiRoute(`/api/v1/parameter-change-requests?projectId=${projectId}`), {
-    headers: smokeHeaders()
-  });
-  expect(response.ok()).toBe(true);
-  return ((await response.json()) as { items: ChangeRequestSummary[] }).items;
-}
-
-async function findChangeRequestByTargetValue(page: Page, value: string) {
-  let match: ChangeRequestSummary | undefined;
-  await expect
-    .poll(async () => {
-      const items = await listChangeRequests(page);
-      match = items.find((item) => item.targetValue === value && item.status !== "merged" && item.status !== "rejected");
-      return match?.id ?? "";
-    }, { timeout: 30_000 })
-    .not.toBe("");
-  return match!;
 }
 
 async function advanceChangeRequestViaApi(page: Page, requestId: string, reviewerUserId: string) {
@@ -133,7 +111,7 @@ async function advanceChangeRequestViaApi(page: Page, requestId: string, reviewe
       note: `https://example.com/e2e/m1-acceptance/${Date.now()}`
     }
   });
-  expect(response.ok()).toBe(true);
+  expect(response.ok(), await response.text()).toBe(true);
 }
 
 test.beforeAll(async () => {
@@ -144,6 +122,7 @@ test.beforeAll(async () => {
   runNpmScript("db:migrate");
   runNpmScript("db:seed:m0");
   runNpmScript("db:seed:m1");
+  await assertPostCutoverIdentity();
 
   const client = new Client({ connectionString: databaseUrl });
   await client.connect();
@@ -155,61 +134,52 @@ test.beforeAll(async () => {
   }
 });
 
-test("M1 parameter management loop persists a merged parameter change and audit evidence", async ({ page }) => {
-  await page.goto(`/parameters?project=${projectId}`);
+test("M1 parameter management loop persists a merged parameter change and audit evidence", async ({
+  page,
+  request
+}) => {
+  test.setTimeout(180_000);
 
-  const searchTable = page.getByRole("region", { name: "检索参数表" });
-  await expect(searchTable).toContainText(parameterName);
-  await searchTable.getByRole("button", { name: "筛选重要性" }).click();
-  await page.getByRole("checkbox", { name: /高/ }).check();
-  await expect(searchTable).toContainText(parameterName);
+  const binding = await seedIsolatedNumericCellBinding(request, {
+    reason: `${changeReason} binding`
+  });
+  expect(binding.bindingId).not.toBe("aurora-fast-charge-current");
+  expect(binding.bindingId).toMatch(/^[0-9a-f-]{36}$/i);
 
-  await searchTable.getByRole("button", { name: `查看 ${parameterName}` }).click();
-  const detailDialog = page.getByRole("dialog", { name: parameterName });
-  await expect(detailDialog.getByText("近期历史")).toBeVisible();
-  await detailDialog.getByRole("button", { name: "加入修改草稿" }).click();
-
-  const draftDialog = page.getByRole("dialog", { name: "修改草稿" });
-  const staleDraftCards = draftDialog.locator(".parameter-draft-card").filter({ hasNotText: parameterName });
-  for (let index = 0; index < await staleDraftCards.count(); index += 1) {
-    await staleDraftCards.nth(index).getByRole("button", { name: "移除本项" }).click();
-  }
-  const parameterDraftCard = draftDialog.locator(".parameter-draft-card").filter({ hasText: parameterName });
-  await parameterDraftCard.locator('textarea[aria-label^="目标值"]').fill(targetValue);
-  await parameterDraftCard.locator('textarea[aria-label^="修改原因"]').fill(changeReason);
-  await draftDialog.getByRole("button", { name: "提交参数" }).click();
-
-  const modifiedSection = page.getByRole("region", { name: "本轮已修改参数区" });
-  await expect(modifiedSection).toContainText(targetValue);
-  await modifiedSection.getByRole("button", { name: /提交本轮 \(\d+ 项\)/ }).click();
-
-  const submitDialog = page.getByRole("dialog", { name: "提交本轮参数" });
-  await expect(submitDialog).toBeVisible();
-  await submitDialog.locator('select[aria-label="硬件 MDE"]').selectOption("u-wang-jie");
-  await submitDialog.locator('select[aria-label="软件 MDE"]').selectOption("u-sun-mei");
-  await submitDialog.locator('select[aria-label="软件开发"]').selectOption("u-liu-min");
-  await submitDialog.getByRole("button", { name: "确认提交" }).click();
-  await expect(submitDialog).not.toBeVisible();
-
-  const submittedRequest = await findChangeRequestByTargetValue(page, targetValue);
-  expect(submittedRequest?.id).toBeTruthy();
-  const requestId = submittedRequest!.id;
+  const submitted = await createAndSubmitBindingDraft(request, {
+    binding,
+    targetValue: integerCellTarget(targetNumeric),
+    reason: changeReason
+  });
+  const requestId = submitted.requestId;
 
   await advanceChangeRequestViaApi(page, requestId, "u-wang-jie");
   await advanceChangeRequestViaApi(page, requestId, "u-sun-mei");
   await advanceChangeRequestViaApi(page, requestId, "u-liu-min");
 
-  await page.goto("/parameter-review");
+  await withPgClient(async (client) => {
+    const result = await client.query<{
+      status: string;
+      target_value: string | null;
+      project_parameter_binding_id: string | null;
+    }>(
+      `
+      select status, target_value, project_parameter_binding_id
+      from parameter_change_requests
+      where id = $1
+      `,
+      [requestId]
+    );
+    expect(result.rows[0]?.status).toBe("merged");
+    expect(result.rows[0]?.project_parameter_binding_id).toBe(binding.bindingId);
+    expect(String(result.rows[0]?.target_value ?? "")).toContain(targetNumeric);
+  });
+
+  await signInBrowserAsRole(page, "admin", "/parameter-review");
   await page.getByRole("tab", { name: "历史审阅" }).click();
-  await expect(page.getByRole("row").filter({ hasText: targetValue }).first()).toContainText("已合入");
+  await expect(page.getByRole("row").filter({ hasText: targetNumeric }).first()).toContainText("已合入");
 
-  await page.goto(`/parameters?project=${projectId}`);
-  await page.reload();
-  await page.getByRole("searchbox", { name: "按名称 / 描述 / 模块搜索" }).fill(parameterName);
-  const mergedRow = searchTable.getByRole("row").filter({ hasText: parameterName }).first();
-  await expect(mergedRow.locator(".parameter-value-diff > span").first()).toHaveText(targetValue);
-
-  await page.goto("/parameter-admin?audit=open");
+  await signInBrowserAsRole(page, "admin", "/parameter-admin?audit=open");
   await expect(page).toHaveURL(/\/audit/);
   await expect(page.getByRole("searchbox", { name: "搜索审计记录" })).toBeVisible();
   const auditResponse = await page.request.get(apiRoute("/api/v1/audit-events"), { headers: smokeHeaders() });

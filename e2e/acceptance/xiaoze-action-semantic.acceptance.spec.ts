@@ -16,10 +16,9 @@ import {
 import { apiRoute } from "./helpers/runtime";
 
 /**
- * Suite-internal post-cutover proof for approved Xiaoze writes (TD-079).
- * The shared CI acceptance database stays pre-cutover; this file boots the
- * same disposable runtime as parameter-topology and requires a live
- * `parameter_identity_cutovers` row. It never falls back to
+ * Isolated post-cutover proof for approved Xiaoze writes. Shared CI is also
+ * post-cutover; this file still boots a disposable runtime so the mutating
+ * path does not share the job's aurora seed. It never falls back to
  * `project_parameter_value_id` or `aurora-fast-charge-current`.
  */
 
@@ -502,7 +501,7 @@ test.describe("Xiaoze P1 action on disposable post-cutover identity", () => {
         }
       ],
       notes:
-        "Disposable post-cutover runtime proved action.submitParameterChange against a resolved project_parameter_binding_id; shared CI pre-cutover fallback is not used here."
+        "Disposable post-cutover runtime proved action.submitParameterChange against a resolved project_parameter_binding_id."
     });
   });
 });

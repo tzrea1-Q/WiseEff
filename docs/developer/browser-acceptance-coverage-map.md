@@ -175,7 +175,7 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 - This map is machine-checked against `e2e/acceptance/requirements.ts`: `npm run acceptance:coverage` fails when a requirement has no row here or a row references a retired requirement ID.
 - A workflow-level pass does not imply every row above is covered. The generated browser evidence must report requirement-level coverage before this map can be treated as satisfied.
 - Operation markers use comments in acceptance specs: `// @operation PARAM-REASON-001` (planned variant: `// @operation-planned <ID>`). Automated P0/P1 operation IDs must produce operation evidence under `docs/generated/acceptance-operation-evidence.md`, and matrix `specFiles` references must exist on disk.
-- `XIAOZE-ACTION-APPROVE-001` still runs on the shared pre-cutover CI database via `e2e/acceptance/xiaoze-action.acceptance.spec.ts` (the legacy `project_parameter_value_id` fallback stays honest there). The production post-cutover `action.submitParameterChange` path is proven suite-internally by `e2e/acceptance/xiaoze-action-semantic.acceptance.spec.ts` on a disposable cutover database, without flipping the shared CI job (TD-079 remainder).
+- `XIAOZE-ACTION-APPROVE-001` still runs on the shared post-cutover CI database via `e2e/acceptance/xiaoze-action.acceptance.spec.ts` (binding id + DTS cell text; no `project_parameter_value_id` fallback). Extra isolation lives in `e2e/acceptance/xiaoze-action-semantic.acceptance.spec.ts` on a disposable cutover database.
 
 ## Supplemental Manual Evidence (Xiaoze P2)
 
