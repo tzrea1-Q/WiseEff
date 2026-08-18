@@ -1,11 +1,11 @@
 # 有引用的属性键改名是源文件改写 cutover
 
-> 状态：**进行中** — 第 2/3 批垂直切片（start + finalize）。prepare 只重分类；不暂存文件候选/CR，也无编辑器入口。TD-117 保持 **Open**。  
+> 状态：**进行中** — start + finalize 已由 #549 合入 `main`。prepare 只重分类；不暂存文件候选/CR，也无启动作业 UI。TD-117 保持 **Open**。  
 > 日期：2026-08-18  
-> 分支：`feat/td-117-property-key-cutover-finalize`  
+> 分支：`feat/td-117-property-key-cutover-finalize`（已合 #549）  
 > English: [`docs/exec-plans/active/2026-08-18-property-key-source-cutover.md`](../../../exec-plans/active/2026-08-18-property-key-source-cutover.md)  
 > 锁定决策：[ADR-0034](../../../adr/0034-referenced-property-key-rename-is-a-source-cutover.md)  
-> 追踪表：[TD-117](../tech-debt-tracker.md)（本 PR 只读；索引由会话 0 维护）
+> 追踪表：[TD-117](../tech-debt-tracker.md)（索引由会话 0 维护）
 
 ## 目标
 

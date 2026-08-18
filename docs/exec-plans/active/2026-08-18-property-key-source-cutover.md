@@ -1,11 +1,11 @@
 # Referenced property-key rename is a source-file rewrite cutover
 
-> Status: **Active** — Batch 2/3 vertical slice (start + finalize). Prepare reclassifies only; no file-candidate/CR staging and no editor UI. TD-117 stays **Open**.  
+> Status: **Active** — start + finalize landed on `main` via #549. Prepare reclassifies only; no file-candidate/CR staging and no start-job UI. TD-117 stays **Open**.  
 > Date: 2026-08-18  
-> Branch: `feat/td-117-property-key-cutover-finalize`  
+> Branch: `feat/td-117-property-key-cutover-finalize` (merged #549)  
 > Chinese: [`docs/zh-CN/exec-plans/active/2026-08-18-property-key-source-cutover.md`](../../zh-CN/exec-plans/active/2026-08-18-property-key-source-cutover.md)  
 > Governing decision: [ADR-0034](../../adr/0034-referenced-property-key-rename-is-a-source-cutover.md)  
-> Tracker: [TD-117](../tech-debt-tracker.md) (read-only in this PR; session 0 owns the index)
+> Tracker: [TD-117](../tech-debt-tracker.md) (session 0 owns the index)
 
 ## Goal
 
