@@ -328,7 +328,7 @@ describe("DtsBindingDetailDialog", () => {
     expect(trigger).toHaveFocus();
   });
 
-  it("does not dismiss the detail dialog while a still-Radix compare layer is open", () => {
+  it("closes only the stacked compare dialog on Escape and keeps the detail dialog open", () => {
     const onClose = vi.fn();
     renderDialog({
       onClose,
@@ -347,6 +347,7 @@ describe("DtsBindingDetailDialog", () => {
 
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).not.toHaveBeenCalled();
-    expect(screen.getByRole("dialog", { name: "gpio_int 跨项目对比" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "gpio_int 跨项目对比" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "gpio_int 参数详情" })).toBeInTheDocument();
   });
 });
