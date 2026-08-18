@@ -29,7 +29,7 @@ Agent 发起的变更调用（start / deploy / restore）在服务端直接拒�
 
 ## CI 合入门槛
 
-PR 合入门槛是 L1（`detect` + `docs:check` + `build-and-test`，产品路径加 `@ci-smoke`，UI/产品路径加一次 `acceptance:quality-run`）和哨兵 `Merge bar`。全量本机非 HDC 证据（L2）跑在 `main`、夜间、标签 `full-acceptance` 或手动 `workflow_dispatch`。完整评分与门禁表以英文版为准。
+PR 合入门槛是 L1（`detect` + `docs:check` + `build-and-test`，产品路径加 `@ci-smoke`，UI/产品路径加一次 `acceptance:quality-run`）和哨兵 `Merge bar`。全量本机非 HDC 证据（L2）把质量门和浏览器拆成兄弟 job，跑在 `main`、夜间、标签 `full-acceptance` 或手动 `workflow_dispatch`。完整评分与门禁表以英文版为准。
 
 ## 前端 UI 质量门禁
 

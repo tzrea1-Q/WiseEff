@@ -1,8 +1,8 @@
 # CI Feedback Loop Optimization
 
-> Status: **Active — Wave 0+1 on `main` (#523); L2 follow-up in flight**
+> Status: **Active — Wave 0+1 on `main` (#523, #524); Wave 2 on `feat/ci-wave2`**
 > Date: 2026-08-18
-> Implementation branch: `feat/ci-feedback-loop` (from latest `origin/main`; Wave 0+1 land in one PR)
+> Implementation branch: `feat/ci-wave2` (Wave 2). Wave 0+1 landed on `feat/ci-feedback-loop` (#523); L1 import ratchet on `feat/ci-l2-harden` (#524).
 > Chinese: [`docs/zh-CN/exec-plans/active/2026-08-18-ci-feedback-loop-optimization.md`](../../zh-CN/exec-plans/active/2026-08-18-ci-feedback-loop-optimization.md)
 
 **Goal:** Stop treating the 38-minute M5.12 local-non-HDC suite as the PR merge bar. Keep that suite as the post-merge / on-demand evidence gate, and give everyday changes a layered GitHub Actions pipeline that matches how mature TypeScript products schedule work.
@@ -13,7 +13,7 @@
 | --- | --- | --- | --- |
 | L0 detect | Every event | Which paths changed; which later jobs are allowed to skip | < 1 min |
 | L1 merge bar | Every product PR; `main` | Unit/integration, lint, docs, UI ratchet, contract, build; quality-once when UI paths change; tagged `@ci-smoke` acceptance when product paths change | 10–15 min typical; 2–5 min docs-only |
-| L2 full local-non-HDC | `push` to `main`, nightly schedule, `full-acceptance` label, `workflow_dispatch` | Today's a11y + visual + responsive + `acceptance:browser --mode local-non-hdc` + evidence archive | 30–38 min |
+| L2 full local-non-HDC | `push` to `main`, nightly schedule, `full-acceptance` label, `workflow_dispatch` | Sibling `acceptance-quality` + `acceptance:browser --mode local-non-hdc` + evidence archive | ~29 min expected after Wave 2 (browser 25m39s is the floor) |
 | L3 target synthetic | Manual only | Unchanged `target-non-hdc` / `full-pilot` | as today |
 
 **Tech Stack:** GitHub Actions (`concurrency`, path filters, job `if`, `timeout-minutes`), existing Playwright/Vitest scripts, a rewritten `scripts/check-acceptance-ci.ts` ratchet, optional `dorny/paths-filter` or a tiny in-repo changed-files script (no Nx/Turborepo).
@@ -144,7 +144,7 @@ Excludes:
 | Implementation agent | Commit on `feat/ci-feedback-loop` (or `feat/ci-hygiene` then rebase onto a Wave 1 branch); do not open or merge GitHub PRs |
 | Parent agent | Review, run verification, open/merge the PR, then sync local `main` |
 
-**Landing decision (2026-08-18):** Wave 0+1 in **one** PR on `feat/ci-feedback-loop`. Wave 0-only was allowed for review splitting; this session lands the merge-bar change, so an intermediate “product PRs still run full L2” state is not shipped. Wave 2 stays optional and is **not** in this PR (cannot measure post-merge L2 until the new workflow is on `main`). Record Wave 2 as tech debt if still needed.
+**Landing decision (2026-08-18):** Wave 0+1 landed in **one** PR (#523). #524 added the L1 `@playwright/test` ratchet. Wave 2 is this PR (`feat/ci-wave2`) after measuring green `main` L2 at 35m20s.
 
 ---
 
@@ -193,17 +193,17 @@ This is the plan's actual product decision.
 
 ---
 
-## Wave 2 — Make remaining L2 cheaper (optional, after Wave 1)
+## Wave 2 — Make remaining L2 cheaper (after Wave 1 measurement)
 
-Only if `main` / nightly L2 is still a problem.
+Measured on 2026-08-18 `main` push after #522 ([`32105098601`](https://github.com/tzrea1-Q/WiseEff/actions/runs/32105098601)): run wall **36m29s**, `Acceptance local non-HDC` **35m20s**. Breakdown: setup ~2m50s, quality-run **6m45s**, browser **25m39s**. Split expected wall ≈ setup + browser ≈ **29 min**. The original ≤25 min target is blocked by the shared-DB browser suite (do not shard).
 
-- [ ] Split L2 quality and L2 browser acceptance into sibling jobs (one seed, or seed once and accept two boots — measure).
-- [ ] Cache `.wiseeff-tools/dts-toolchain` keyed on `tools/dts-toolchain/versions.json` + `requirements.txt` (DTS only; do not cache Playwright browsers — Playwright CI docs advise against it).
-- [ ] Persist ESLint cache with `actions/cache` if lint stays on L1 and is > 20 s.
-- [ ] Optional: quality-route shard (`--shard 1/2` / `2/2`) because those tests do not mutate a shared workflow. Do **not** shard shared-DB acceptance.
-- [ ] Optional: `npx playwright test --only-changed` as a *first* step on L2 label runs, then the full L2 command (Playwright CI fail-fast recipe). Never replace L2 with `--only-changed`.
+- [x] Split L2 quality and L2 browser acceptance into sibling jobs (two boots: reuse `acceptance-quality` on L2 events; L2 job is browser + models + evidence).
+- [x] Cache `.wiseeff-tools/dts-toolchain` keyed on `tools/dts-toolchain/versions.json` + `requirements.txt` via `.github/actions/setup-dts-toolchain` (DTS only; do not cache Playwright browsers).
+- [x] Persist ESLint cache with `actions/cache` (L1 lint was 24s).
+- [ ] Optional quality-route shard — **skipped**: after the split, quality is not on the wall-clock critical path.
+- [ ] Optional `--only-changed` pre-step — **skipped**: does not help `main` L2.
 
-**Wave 2 success:** L2 wall clock ≤ 25 minutes without weakening assertions.
+**Wave 2 success:** quality off the L2 critical path; expected wall ≈ 29 min. Hitting 25 min needs a faster browser suite or shared-DB isolation (TD-118 remainder).
 
 ---
 
@@ -226,6 +226,7 @@ Create only if a path classifier is easier to test than YAML:
 
 - `scripts/ci-changed-paths.ts`
 - `scripts/ci-changed-paths.test.ts`
+- `.github/actions/setup-dts-toolchain/action.yml` (Wave 2 DTS cache)
 
 Do not create Nx/Turbo config.
 
@@ -273,8 +274,8 @@ required (name: Merge bar)   if: always()
 | UI-only PR (e.g. `public/**` only) | yes | yes | no | no |
 | Product PR | yes | yes | yes | only if label `full-acceptance` |
 | Workflow PR (`ci.yml` / ratchet) | yes | no unless also ui/product | yes | only if labeled |
-| `push` `main` / nightly | yes | no (L2 already runs quality) | no (L2 covers) | yes |
-| `workflow_dispatch` `local-non-hdc` | no | no | no | yes |
+| `push` `main` / nightly | yes | yes (sibling job, not inside L2) | no (L2 covers) | yes (browser + evidence) |
+| `workflow_dispatch` `local-non-hdc` | no | yes | no | yes |
 | `workflow_dispatch` target / full-pilot | no | no | no | no (target job only) |
 
 Empty or unrecognized diffs → run L1 + quality + smoke (fail-open). `main` / schedule ignore the file list and force the row above.
@@ -286,7 +287,7 @@ Timeouts: detect 5 · docs-governance 10 · build-and-test 20 · quality 25 · s
 ### Path classes (`scripts/ci-changed-paths.ts`)
 
 - **docs-inert:** `docs/**`, `**/*.md`, `.github/**` except `.github/workflows/ci.yml` and `.github/workflows/log-analysis-quality-gate.yml`
-- **workflow:** `.github/workflows/**`, `scripts/check-acceptance-ci.ts`, `scripts/ci-changed-paths.ts` (+ their tests)
+- **workflow:** `.github/workflows/**`, `.github/actions/**`, `scripts/check-acceptance-ci.ts`, `scripts/ci-changed-paths.ts` (+ their tests)
 - **product:** `src/**`, `server/**`, `e2e/**`, `packages/**`, root `playwright*.ts`, migrations, seed/`db` scripts, `package.json` / lockfile / `.nvmrc` / Vite+Vitest config
 - **ui:** `src/**`, `e2e/quality/**`, `index.html`, `**/*.css`, `public/**`
 - Unknown path → product
@@ -313,15 +314,15 @@ No topology, HDC, ADB, disposable-DB specs.
 
 ### Ratchet
 
-`check-acceptance-ci` must require: job ids `detect`, `required`, `acceptance-smoke`, `acceptance-local-non-hdc`, `target-synthetic-acceptance`; scripts `acceptance:smoke` and `acceptance:quality-run`; L2 tokens `npm run acceptance:quality-run` and `npm run acceptance:browser -- --mode local-non-hdc`; `full-acceptance`; concurrency; artifact paths; target/full-pilot `--no-start-runtime`; pgvector; Playwright Chromium install. **Stop** requiring three separate `npm run acceptance:a11y|visual|responsive` lines in the workflow text. Keep those scripts in `package.json`. Fail if `@ci-smoke` count is 0 or > 5.
+`check-acceptance-ci` must require: job ids `detect`, `required`, `acceptance-smoke`, `acceptance-local-non-hdc`, `target-synthetic-acceptance`; scripts `acceptance:smoke` and `acceptance:quality-run`; L2 tokens `npm run acceptance:quality-run` and `npm run acceptance:browser -- --mode local-non-hdc`; `full-acceptance`; concurrency; artifact paths; target/full-pilot `--no-start-runtime`; pgvector; Playwright Chromium install; `./.github/actions/setup-dts-toolchain`. **Stop** requiring three separate `npm run acceptance:a11y|visual|responsive` lines in the workflow text. Keep those scripts in `package.json`. Fail if `@ci-smoke` count is 0 or > 5.
 
 ### Wave 2
 
-Not in #523. After merge, if nightly L2 is still too slow, implement the Wave 2 checklist (TD-118).
+Implemented on `feat/ci-wave2` after measuring `main` L2 at 35m20s. Quality is the existing `acceptance-quality` job on L2 events; the L2 job no longer runs `acceptance:quality-run`. DTS setup is a composite action with `actions/cache`. TD-118 remainder is the 25m39s shared-DB browser suite.
 
 ### Follow-up after #523
 
-`main` L2 on #523 failed in collection: two specs imported `@playwright/test` (package not installed; the repo uses `playwright/test`). Those files were corrected on `main` via #522. This follow-up makes `acceptance:ci` fail closed on that import and runs it on L1 so the next bad spec cannot burn 18 minutes of L2.
+`main` L2 on #523 failed in collection: two specs imported `@playwright/test` (package not installed; the repo uses `playwright/test`). Those files were corrected on `main` via #522. #524 makes `acceptance:ci` fail closed on that import and runs it on L1. First green `main` L2 after the import fix: [`32105098601`](https://github.com/tzrea1-Q/WiseEff/actions/runs/32105098601) (35m20s job / 36m29s wall).
 
 ---
 

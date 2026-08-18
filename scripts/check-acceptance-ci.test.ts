@@ -55,6 +55,7 @@ jobs:
         image: pgvector/pgvector:pg16
     steps:
       - run: npx playwright install --with-deps chromium
+      - uses: ./.github/actions/setup-dts-toolchain
       - run: npm run acceptance:ci
       - run: npm run acceptance:models
       - run: npm run acceptance:quality
@@ -111,6 +112,7 @@ describe("M5.12 acceptance CI configuration", () => {
         "full-acceptance",
         "cancel-in-progress",
         "Acceptance CI metadata (L1)",
+        "./.github/actions/setup-dts-toolchain",
         "npm run acceptance:quality-run",
         "npm run acceptance:smoke",
         "npm run acceptance:browser -- --mode local-non-hdc"

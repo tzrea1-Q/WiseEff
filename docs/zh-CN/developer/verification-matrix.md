@@ -16,7 +16,7 @@
 - 先确认该文档属于哪个决策面：developer。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
-- M5.12：PR 合入门槛是 L1 + `@ci-smoke`（产品路径）+ 一次 `acceptance:quality-run`（UI/产品路径）。L2 全量本机非 HDC 只在 `main` / 夜间 / 标签 `full-acceptance` / 手动 `local-non-hdc` 跑。文档-only 只跑 `docs:check` 与哨兵 `Merge bar`。以后若打开 branch protection，required check 只设 `Merge bar`。
+- M5.12：PR 合入门槛是 L1 + `@ci-smoke`（产品路径）+ 一次 `acceptance:quality-run`（UI/产品路径）。L2 事件把 `acceptance-quality` 当兄弟 job，浏览器证据由 `acceptance-local-non-hdc` 在 `main` / 夜间 / 标签 `full-acceptance` / 手动 `local-non-hdc` 归档。文档-only 只跑 `docs:check` 与哨兵 `Merge bar`。以后若打开 branch protection，required check 只设 `Merge bar`。
 
 ## 补充命令
 

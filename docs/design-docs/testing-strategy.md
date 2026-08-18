@@ -48,7 +48,7 @@ M5.12 archives CI and target synthetic evidence on top of the deterministic brow
 - Every PR starts `ci.yml` (job-level `if:` skip only). `detect` classifies the diff and always runs `docs:check`.
 - Product and workflow PRs run `build-and-test` plus `@ci-smoke` (`npm run acceptance:smoke`). UI or product paths also run one `acceptance:quality-run`.
 - Docs-only PRs run `detect` + `docs:check` + sentinel `Merge bar`.
-- L2 `acceptance-local-non-hdc` runs on `push` to `main`, the nightly schedule, label `full-acceptance`, and `workflow_dispatch` `local-non-hdc`. It still uses PostgreSQL, a local object store, a deterministic Agent provider, the simulator gateway, `npm run acceptance:models`, one quality-run, and `npm run acceptance:browser -- --mode local-non-hdc`, then uploads evidence artifacts.
+- L2 events run `acceptance-quality` as a sibling (one `acceptance:quality-run`) plus `acceptance-local-non-hdc` on `push` to `main`, the nightly schedule, label `full-acceptance`, and `workflow_dispatch` `local-non-hdc`. The browser job still uses PostgreSQL, a local object store, a deterministic Agent provider, the simulator gateway, `npm run acceptance:models`, and `npm run acceptance:browser -- --mode local-non-hdc`, then uploads evidence artifacts.
 
 Manual `workflow_dispatch` can select `target-non-hdc` or `full-pilot`. Those runs use `--no-start-runtime`, target frontend/API URLs, GitHub Secrets, and uploaded Playwright/evidence artifacts. `full-pilot` is never a default PR gate and remains valid only with external HDC, backup/restore, rollback, object-store, worker, and live Agent evidence. Smoke uses the focused evidence namespace and must not publish `latest-full.json`.
 

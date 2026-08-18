@@ -28,7 +28,7 @@
 
 ### 仍待做的平台工作
 
-- `exec-plans/active/2026-08-18-ci-feedback-loop-optimization.md`：分层 CI 合入门槛（PR 跑 L1/smoke，`main` / 夜间 / 标签跑 L2 全量本机非 HDC）。Wave 0+1 同一 PR；Wave 2 记为 TD-118。
+- `exec-plans/active/2026-08-18-ci-feedback-loop-optimization.md`：分层 CI 合入门槛（PR 跑 L1/smoke，`main` / 夜间 / 标签跑 L2 全量本机非 HDC）。Wave 0+1 已在 `main`（#523、#524）；Wave 2 在 `feat/ci-wave2`。TD-118 余量是 25m39s 的共享库浏览器套件。
 
 ### 仍待做的产品与 UX
 

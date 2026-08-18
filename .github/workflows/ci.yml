@@ -71,29 +71,36 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.sha }}
           ACCEPTANCE_MODE: ${{ inputs.acceptance_mode }}
+          FULL_ACCEPTANCE: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-acceptance') }}
         run: |
           set -euo pipefail
           case "$EVENT_NAME" in
             pull_request)
               git diff --name-only "${BASE_SHA}...${HEAD_SHA}" \
                 | npx tsx scripts/ci-changed-paths.ts --stdin --github-output
-              echo "run_l2=false" >> "$GITHUB_OUTPUT"
+              if [ "${FULL_ACCEPTANCE}" = "true" ]; then
+                echo "run_l2=true" >> "$GITHUB_OUTPUT"
+                echo "run_quality=true" >> "$GITHUB_OUTPUT"
+              else
+                echo "run_l2=false" >> "$GITHUB_OUTPUT"
+              fi
               ;;
             push|schedule)
               echo "docs_only=false" >> "$GITHUB_OUTPUT"
               echo "run_l1=true" >> "$GITHUB_OUTPUT"
-              echo "run_quality=false" >> "$GITHUB_OUTPUT"
+              echo "run_quality=true" >> "$GITHUB_OUTPUT"
               echo "run_smoke=false" >> "$GITHUB_OUTPUT"
               echo "run_l2=true" >> "$GITHUB_OUTPUT"
               ;;
             workflow_dispatch)
               echo "docs_only=false" >> "$GITHUB_OUTPUT"
               echo "run_l1=false" >> "$GITHUB_OUTPUT"
-              echo "run_quality=false" >> "$GITHUB_OUTPUT"
               echo "run_smoke=false" >> "$GITHUB_OUTPUT"
               if [ "${ACCEPTANCE_MODE}" = "local-non-hdc" ]; then
+                echo "run_quality=true" >> "$GITHUB_OUTPUT"
                 echo "run_l2=true" >> "$GITHUB_OUTPUT"
               else
+                echo "run_quality=false" >> "$GITHUB_OUTPUT"
                 echo "run_l2=false" >> "$GITHUB_OUTPUT"
               fi
               ;;
@@ -147,15 +154,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Cache ESLint
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.cache/eslint
+          key: eslint-${{ runner.os }}-${{ hashFiles('eslint.config.js', 'package-lock.json') }}
+          restore-keys: |
+            eslint-${{ runner.os }}-
+
       - name: Acceptance CI metadata (L1)
         run: npm run acceptance:ci
 
       - name: Install and verify DTS toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential bison flex pkg-config git python3-pip python3-venv
-          npm run dts:toolchain:bootstrap
-          npm run dts:toolchain:check -- --required
+        uses: ./.github/actions/setup-dts-toolchain
 
       - name: Advisory DTS seed compile (dtc)
         continue-on-error: true
@@ -244,11 +255,7 @@ jobs:
         run: npm ci
 
       - name: Install and verify DTS toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential bison flex pkg-config git python3-pip python3-venv
-          npm run dts:toolchain:bootstrap
-          npm run dts:toolchain:check -- --required
+        uses: ./.github/actions/setup-dts-toolchain
 
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
@@ -286,6 +293,15 @@ jobs:
 
       - name: Acceptance quality gates
         run: npm run acceptance:quality-run
+
+      - name: Upload quality evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wiseeff-acceptance-quality
+          path: |
+            playwright-report/quality
+            test-results/quality
 
   acceptance-smoke:
     name: Acceptance smoke
@@ -339,11 +355,7 @@ jobs:
         run: npm ci
 
       - name: Install and verify DTS toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential bison flex pkg-config git python3-pip python3-venv
-          npm run dts:toolchain:bootstrap
-          npm run dts:toolchain:check -- --required
+        uses: ./.github/actions/setup-dts-toolchain
 
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
@@ -382,9 +394,7 @@ jobs:
   acceptance-local-non-hdc:
     name: Acceptance local non-HDC
     needs: detect
-    if: >-
-      needs.detect.outputs.run_l2 == 'true'
-      || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-acceptance'))
+    if: needs.detect.outputs.run_l2 == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 50
 
@@ -434,11 +444,7 @@ jobs:
         run: npm ci
 
       - name: Install and verify DTS toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential bison flex pkg-config git python3-pip python3-venv
-          npm run dts:toolchain:bootstrap
-          npm run dts:toolchain:check -- --required
+        uses: ./.github/actions/setup-dts-toolchain
 
       - name: Advisory DTS seed compile (dtc)
         continue-on-error: true
@@ -473,19 +479,12 @@ jobs:
         run: |
           npm run db:migrate
           npm run db:seed:all
-          echo "WISEEFF_QUALITY_SKIP_SEED=true" >> "$GITHUB_ENV"
 
       - name: Acceptance CI metadata
         run: npm run acceptance:ci
 
       - name: Acceptance state models
         run: npm run acceptance:models
-
-      - name: Acceptance quality metadata
-        run: npm run acceptance:quality
-
-      - name: Acceptance quality gates
-        run: npm run acceptance:quality-run
 
       - name: Browser acceptance local non-HDC
         run: npm run acceptance:browser -- --mode local-non-hdc
@@ -501,8 +500,6 @@ jobs:
             docs/generated/acceptance-browser-evidence.md
             docs/generated/acceptance-operation-evidence.md
             docs/generated/acceptance-operation-evidence/index.json
-            playwright-report/quality
-            test-results/quality
 
   target-synthetic-acceptance:
     name: Target synthetic acceptance
