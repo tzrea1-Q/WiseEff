@@ -100,6 +100,8 @@ Read/write node APIs resolve protocol-specific `nodePath` from `debug_node_bindi
 | `PUT` | `/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol` | Upsert the HDC or ADB node binding (legacy catalog). |
 | `PATCH` | `/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol` | Update the HDC or ADB node binding (legacy catalog). |
 | `POST` | `/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol/archive` | Disable one protocol binding (legacy catalog). |
+| `GET` | `/api/v1/debugging/admin/catalog/export` | Export the org debug-node catalog (modules, nodes, bindings) as `wiseeff.debug-node-catalog.v1`. Requires `debugging:admin`. Writes `debug-node-catalog-export` audit without raw node paths. |
+| `POST` | `/api/v1/debugging/admin/catalog/import` | Merge-import a v1 catalog document: upsert modules by parent+name and nodes by id or name+module path. Requires `debugging:admin`. Writes `debug-node-catalog-import` audit without raw node paths. |
 
 Runtime `/api/v1/debugging/parameters?protocol=...` (legacy) returns only enabled, non-archived parameters with an enabled selected-protocol binding. Admin list APIs can return missing or archived bindings so coverage labels remain visible.
 

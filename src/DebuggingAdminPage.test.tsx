@@ -28,6 +28,11 @@ function createDebuggingAdminApiMock() {
           items: [{ name: "Battery Charging", description: "", scope: "" }]
         });
       }
+      if (path.startsWith("/api/v1/debugging/admin/catalog/export")) {
+        return Promise.resolve({
+          item: { format: "wiseeff.debug-node-catalog.v1", modules: [], nodes: [seedNode] }
+        });
+      }
       return Promise.resolve({ items: [seedNode] });
     }),
     post: vi.fn().mockResolvedValue({ item: seedNode }),
@@ -183,6 +188,38 @@ describe("/debugging-admin API mode", () => {
 
     expect(screen.getByText("节点路径必须以 / 开头。")).toBeInTheDocument();
     expect(apiClient.put).not.toHaveBeenCalled();
+  });
+
+  it("exports the node catalog from the library heading", async () => {
+    const apiClient = renderDebuggingAdminPage();
+
+    await screen.findByText("Fast charge current");
+    fireEvent.click(screen.getByRole("button", { name: "导出目录" }));
+
+    await waitFor(() =>
+      expect(apiClient.get).toHaveBeenCalledWith("/api/v1/debugging/admin/catalog/export?includeArchived=true")
+    );
+  });
+
+  it("imports a catalog JSON file through the hidden file input", async () => {
+    const apiClient = renderDebuggingAdminPage();
+    apiClient.post.mockResolvedValue({
+      item: { modulesCreated: 0, modulesUpdated: 0, nodesCreated: 1, nodesUpdated: 0, bindingsUpserted: 0 }
+    });
+    const document = { format: "wiseeff.debug-node-catalog.v1", modules: [], nodes: [] };
+
+    await screen.findByText("Fast charge current");
+    const fileInput = screen.getByLabelText("导入目录文件") as HTMLInputElement;
+    const file = {
+      name: "debug-node-catalog.json",
+      type: "application/json",
+      text: async () => JSON.stringify(document)
+    } as File;
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith("/api/v1/debugging/admin/catalog/import", document)
+    );
   });
 
   it("disables nodes through confirmation dialog", async () => {

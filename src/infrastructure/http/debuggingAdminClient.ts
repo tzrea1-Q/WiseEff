@@ -71,6 +71,50 @@ export type MoveDebugNodeModuleAdminInput = {
   parentId: string | null;
 };
 
+export const DEBUG_CATALOG_FORMAT_V1 = "wiseeff.debug-node-catalog.v1" as const;
+
+export type DebugCatalogModule = {
+  name: string;
+  parentNamePath: string[];
+  description?: string;
+  scope?: string;
+  sortOrder?: number;
+};
+
+export type DebugCatalogNode = {
+  id?: string;
+  name: string;
+  description?: string;
+  detailedDescription?: string;
+  writeFormatExample?: string;
+  writeFormatHint?: string;
+  module?: string;
+  moduleId?: string;
+  moduleNamePath?: string[];
+  enabled?: boolean;
+  bindings?: Array<{
+    protocol: DebugConnectionProtocol;
+    nodePath: string;
+    accessMode: DebugParameterAccessMode;
+    enabled?: boolean;
+    notes?: string;
+  }>;
+};
+
+export type DebugCatalogDocument = {
+  format: typeof DEBUG_CATALOG_FORMAT_V1;
+  modules: DebugCatalogModule[];
+  nodes: DebugCatalogNode[];
+};
+
+export type DebugCatalogImportResult = {
+  modulesCreated: number;
+  modulesUpdated: number;
+  nodesCreated: number;
+  nodesUpdated: number;
+  bindingsUpserted: number;
+};
+
 type DebugAdminBindingInput = DebugAdminBindingWriteDto & {
   accessMode: DebugParameterAccessMode;
 };
@@ -275,6 +319,23 @@ export function createDebuggingAdminClient(apiClient: ApiClient = createDefaultA
     },
     async deleteModule(moduleId: string) {
       await apiClient.delete(adminModulePath(moduleId));
+    },
+    async exportCatalog(query?: { includeArchived?: boolean }): Promise<DebugCatalogDocument> {
+      const params = new URLSearchParams();
+      if (query?.includeArchived !== false) {
+        params.set("includeArchived", "true");
+      }
+      const response = await apiClient.get<ItemEnvelope<DebugCatalogDocument>>(
+        appendQuery("/api/v1/debugging/admin/catalog/export", params)
+      );
+      return response.item;
+    },
+    async importCatalog(document: DebugCatalogDocument): Promise<DebugCatalogImportResult> {
+      const response = await apiClient.post<ItemEnvelope<DebugCatalogImportResult>>(
+        "/api/v1/debugging/admin/catalog/import",
+        document
+      );
+      return response.item;
     }
   };
 }

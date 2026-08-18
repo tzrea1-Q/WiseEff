@@ -285,8 +285,56 @@ export const moveDebugNodeModuleBodySchema = z.object({
   parentId: nonEmptyString.nullable()
 });
 
+export const DEBUG_CATALOG_FORMAT_V1 = "wiseeff.debug-node-catalog.v1" as const;
+
+export const debugCatalogModuleSchema = z.object({
+  name: nonEmptyString,
+  parentNamePath: z.array(nonEmptyString).default([]),
+  description: z.string().trim().default(""),
+  scope: z.string().trim().default(""),
+  sortOrder: z.number().int().optional()
+});
+
+const debugCatalogNodeSchema = z
+  .object({
+    id: nonEmptyString.optional(),
+    name: nonEmptyString,
+    description: z.string().trim().default(""),
+    detailedDescription: optionalTrimmedString.default(""),
+    writeFormatExample: optionalTrimmedString.default(""),
+    writeFormatHint: optionalTrimmedString.default(""),
+    module: nonEmptyString.optional(),
+    moduleId: nonEmptyString.optional(),
+    moduleNamePath: z.array(nonEmptyString).optional(),
+    valueKind: debugValueKindSchema.default(DEBUG_VALUE_KIND_SCALAR),
+    valueFormat: debugValueFormatSchema.default(DEBUG_VALUE_FORMAT_RAW),
+    normalizationMode: debugNormalizationModeSchema.default(DEBUG_NORMALIZATION_MODE_TRIM),
+    maxValueBytes: z.number().int().positive().nullable().optional(),
+    enabled: z.boolean().default(true),
+    bindings: z.array(debugParameterNodeBindingSchema).default([])
+  })
+  .refine((value) => Boolean(value.module ?? value.moduleId ?? value.moduleNamePath?.length), {
+    message: "Either module, moduleId, or moduleNamePath is required.",
+    path: ["module"]
+  });
+
+export const debugCatalogDocumentSchema = z.object({
+  format: z.literal(DEBUG_CATALOG_FORMAT_V1),
+  modules: z.array(debugCatalogModuleSchema).max(500).default([]),
+  nodes: z.array(debugCatalogNodeSchema).max(2000).default([])
+});
+
+export const importDebugCatalogBodySchema = debugCatalogDocumentSchema;
+
+export const exportDebugCatalogQuerySchema = z.object({
+  includeArchived: booleanQuerySchema
+});
+
 export type MoveDebugNodeModuleBody = z.infer<typeof moveDebugNodeModuleBodySchema>;
 export type ListDebuggingParametersQuery = z.infer<typeof listDebuggingParametersQuerySchema>;
 export type ListDebuggingAdminParametersQuery = z.infer<typeof listDebuggingAdminParametersQuerySchema>;
 export type ListRuntimeDebugNodesQuery = z.infer<typeof listRuntimeDebugNodesQuerySchema>;
 export type ListDebugNodesAdminQuery = z.infer<typeof listDebugNodesAdminQuerySchema>;
+export type DebugCatalogDocument = z.infer<typeof debugCatalogDocumentSchema>;
+export type DebugCatalogModule = z.infer<typeof debugCatalogModuleSchema>;
+export type DebugCatalogNode = z.infer<typeof debugCatalogNodeSchema>;

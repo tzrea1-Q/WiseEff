@@ -19,9 +19,86 @@ import {
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import { ReloadConfigurationAdminPanel } from "@/components/admin/ReloadConfigurationAdminPanel";
 import { DebuggingAdminScopeNav } from "@/components/admin/DebuggingAdminScopeNav";
-import { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
+import {
+  createDebuggingAdminClient,
+  DEBUG_CATALOG_FORMAT_V1,
+  type DebugCatalogDocument
+} from "@/infrastructure/http/debuggingAdminClient";
 import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { ParameterModuleDraft } from "@/powerManagementConfig";
+
+function readFileText(file: File) {
+  if (typeof file.text === "function") {
+    return file.text();
+  }
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(reader.error ?? new Error("无法读取导入文件。"));
+    reader.readAsText(file);
+  });
+}
+
+function downloadJson(fileName: string, value: unknown) {
+  const blob = new Blob([`${JSON.stringify(value, null, 2)}\n`], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function catalogDocumentFromLibrary(
+  nodes: readonly DebugNodeRegistryEntry[],
+  moduleNodes: readonly FlatModuleNode[]
+): DebugCatalogDocument {
+  const byId = new Map(moduleNodes.map((module) => [module.id, module]));
+  const namePath = (moduleId: string | undefined): string[] => {
+    if (!moduleId) {
+      return [];
+    }
+    const names: string[] = [];
+    let current = byId.get(moduleId);
+    const seen = new Set<string>();
+    while (current && !seen.has(current.id)) {
+      seen.add(current.id);
+      names.unshift(current.name);
+      current = current.parentId ? byId.get(current.parentId) : undefined;
+    }
+    return names;
+  };
+
+  return {
+    format: DEBUG_CATALOG_FORMAT_V1,
+    modules: moduleNodes.map((module) => ({
+      name: module.name,
+      parentNamePath: namePath(module.parentId ?? undefined),
+      description: module.description ?? "",
+      scope: module.scope ?? "",
+      sortOrder: module.sortOrder
+    })),
+    nodes: nodes.map((node) => ({
+      id: node.id,
+      name: node.name,
+      description: node.description,
+      detailedDescription: node.detailedDescription,
+      writeFormatExample: node.writeFormatExample,
+      writeFormatHint: node.writeFormatHint,
+      module: node.module,
+      moduleId: node.moduleId,
+      moduleNamePath: node.modulePath ?? namePath(node.moduleId) ?? (node.module ? [node.module] : []),
+      enabled: node.enabled,
+      bindings: (node.bindings ?? []).map((binding) => ({
+        protocol: binding.protocol,
+        nodePath: binding.nodePath,
+        accessMode: binding.accessMode,
+        enabled: binding.enabled,
+        notes: binding.notes
+      }))
+    }))
+  };
+}
 
 function nodeWriteBodyFromDraft(draft: DebugNodeDraft) {
   return {
@@ -111,6 +188,7 @@ export function DebuggingAdminPage({
   const [adminModuleNodes, setAdminModuleNodes] = useState<FlatModuleNode[]>([]);
   const editorNodeRef = useRef<DebugNodeRegistryEntry | null>(null);
   const bindingsNodeRef = useRef<DebugNodeRegistryEntry | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const isApiMode = runtimeMode === "api";
   const canEditAdminCatalog = !isApiMode || apiAuthPermissions.includes("debugging:admin");
@@ -503,6 +581,54 @@ export function DebuggingAdminPage({
     setEditorNodeId(nodeId);
   };
 
+  const exportCatalog = async () => {
+    if (isApiMode) {
+      if (!debuggingAdminClient || !canEditAdminCatalog) {
+        return;
+      }
+      setAdminLoading(true);
+      setAdminError("");
+      try {
+        const document = await debuggingAdminClient.exportCatalog();
+        downloadJson("debug-node-catalog.json", document);
+        flashSaved("已导出目录");
+      } catch {
+        setAdminError("导出目录失败。");
+      } finally {
+        setAdminLoading(false);
+      }
+      return;
+    }
+
+    downloadJson("debug-node-catalog.json", catalogDocumentFromLibrary(library, moduleNodes));
+    flashSaved("已导出目录");
+  };
+
+  const importCatalogFile = async (file: File) => {
+    if (!isApiMode || !debuggingAdminClient || !canEditAdminCatalog) {
+      setAdminError("导入仅在 API 模式下可用。");
+      return;
+    }
+
+    setAdminLoading(true);
+    setAdminError("");
+    try {
+      const parsed = JSON.parse(await readFileText(file)) as unknown;
+      const result = await debuggingAdminClient.importCatalog(parsed as DebugCatalogDocument);
+      const [nodes, loadedModules] = await Promise.all([
+        debuggingAdminClient.listNodes({ includeArchived: true }),
+        debuggingAdminClient.listModules()
+      ]);
+      setAdminNodes(nodes);
+      setAdminModuleNodes(loadedModules);
+      flashSaved(`已导入：新增 ${result.nodesCreated}，更新 ${result.nodesUpdated}`);
+    } catch {
+      setAdminError("导入目录失败。");
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
   const disableNode = async (node: DebugNodeRegistryEntry) => {
     if (isApiMode) {
       if (!debuggingAdminClient || !canEditAdminCatalog) return;
@@ -584,8 +710,24 @@ export function DebuggingAdminPage({
                 setEditorNodeId(null);
               }}
               onManageModules={() => setModuleDialogOpen(true)}
+              onExport={() => void exportCatalog()}
+              onImport={() => importInputRef.current?.click()}
               canEdit={canEditAdminCatalog}
               loading={adminLoading}
+            />
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="application/json,.json"
+              hidden
+              aria-label="导入目录文件"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) {
+                  void importCatalogFile(file);
+                }
+              }}
             />
           </main>
 

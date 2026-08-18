@@ -8478,6 +8478,76 @@
         }
       }
     },
+    "/api/v1/debugging/admin/catalog/export": {
+      "get": {
+        "operationId": "debugging.admin.exportCatalog",
+        "summary": "Export debug node catalog",
+        "tags": [
+          "debugging"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugCatalogExportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/admin/catalog/import": {
+      "post": {
+        "operationId": "debugging.admin.importCatalog",
+        "summary": "Import debug node catalog",
+        "tags": [
+          "debugging"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebugCatalogImportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugCatalogImportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/debugging/reload-targets": {
       "get": {
         "operationId": "debugging.listReloadTargets",
@@ -14895,6 +14965,18 @@
       "DebugAdminNodeBindingResponse": {
         "type": "object",
         "x-wiseeff-schema": "DebugAdminNodeBindingResponse"
+      },
+      "DebugCatalogExportResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugCatalogExportResponse"
+      },
+      "DebugCatalogImportRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugCatalogImportRequest"
+      },
+      "DebugCatalogImportResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugCatalogImportResponse"
       },
       "DebugNodeModuleListResponse": {
         "type": "object",

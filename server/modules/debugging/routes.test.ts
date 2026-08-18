@@ -24,6 +24,16 @@ import type {
   NodeOperationRecord
 } from "./types";
 
+const catalogImportExportMocks = vi.hoisted(() => ({
+  exportDebugCatalog: vi.fn(),
+  importDebugCatalog: vi.fn()
+}));
+
+vi.mock("./catalogImportExport", () => ({
+  exportDebugCatalog: (...args: unknown[]) => catalogImportExportMocks.exportDebugCatalog(...args),
+  importDebugCatalog: (...args: unknown[]) => catalogImportExportMocks.importDebugCatalog(...args)
+}));
+
 const serviceMocks = vi.hoisted(() => ({
   listDevices: vi.fn(),
   detectTargets: vi.fn(),
@@ -730,6 +740,61 @@ describe("debugging routes", () => {
     expect(serviceMocks.archiveAdminDebugNodeBinding).toHaveBeenCalledWith(
       makeAuth(),
       { nodeId: "node-1", protocol: "adb" },
+      { requestId: "test-request" }
+    );
+  });
+
+  it("GET /api/v1/debugging/admin/catalog/export returns the catalog document", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    const item = { format: "wiseeff.debug-node-catalog.v1", modules: [], nodes: [] };
+    catalogImportExportMocks.exportDebugCatalog.mockResolvedValue(item);
+
+    const response = await requestJson<{ item: typeof item }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/admin/catalog/export?includeArchived=true"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ item });
+    expect(catalogImportExportMocks.exportDebugCatalog).toHaveBeenCalledWith(db, makeAuth(), {
+      requestId: "test-request",
+      includeArchived: true
+    });
+  });
+
+  it("POST /api/v1/debugging/admin/catalog/import applies a v1 catalog document", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    const item = { modulesCreated: 1, modulesUpdated: 0, nodesCreated: 1, nodesUpdated: 0, bindingsUpserted: 1 };
+    catalogImportExportMocks.importDebugCatalog.mockResolvedValue(item);
+    const body = {
+      format: "wiseeff.debug-node-catalog.v1",
+      modules: [{ name: "Battery" }],
+      nodes: [
+        {
+          name: "Cycle count",
+          module: "Battery",
+          bindings: [{ protocol: "hdc", nodePath: "/sys/hdc/cycles", accessMode: "RO" }]
+        }
+      ]
+    };
+
+    const response = await requestJson<{ item: typeof item }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/admin/catalog/import",
+      { method: "POST", body: JSON.stringify(body) }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ item });
+    expect(catalogImportExportMocks.importDebugCatalog).toHaveBeenCalledWith(
+      db,
+      makeAuth(),
+      expect.objectContaining({
+        format: "wiseeff.debug-node-catalog.v1",
+        nodes: [expect.objectContaining({ name: "Cycle count" })]
+      }),
       { requestId: "test-request" }
     );
   });

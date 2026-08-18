@@ -227,4 +227,22 @@ describe("debugging admin client", () => {
     expect(client).not.toHaveProperty("listReloadBindings");
     expect(client).not.toHaveProperty("upsertReloadBinding");
   });
+
+  it("exports the debug node catalog and imports a v1 document", async () => {
+    const apiClient = createApiClientMock();
+    const document = {
+      format: "wiseeff.debug-node-catalog.v1" as const,
+      modules: [{ name: "Battery", parentNamePath: [] }],
+      nodes: [{ name: "Cycle count", moduleNamePath: ["Battery"], bindings: [] }]
+    };
+    const summary = { modulesCreated: 1, modulesUpdated: 0, nodesCreated: 1, nodesUpdated: 0, bindingsUpserted: 0 };
+    apiClient.get.mockResolvedValue({ item: document });
+    apiClient.post.mockResolvedValue({ item: summary });
+    const client = createDebuggingAdminClient(apiClient as never);
+
+    await expect(client.exportCatalog()).resolves.toEqual(document);
+    await expect(client.importCatalog(document)).resolves.toEqual(summary);
+    expect(apiClient.get).toHaveBeenCalledWith("/api/v1/debugging/admin/catalog/export?includeArchived=true");
+    expect(apiClient.post).toHaveBeenCalledWith("/api/v1/debugging/admin/catalog/import", document);
+  });
 });
