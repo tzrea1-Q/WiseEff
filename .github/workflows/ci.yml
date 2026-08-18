@@ -2,7 +2,13 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  schedule:
+    # Nightly L1 + L2 on main (UTC).
+    - cron: "30 18 * * *"
   workflow_dispatch:
     inputs:
       acceptance_mode:
@@ -24,19 +30,94 @@ on:
         default: .env.target.local
         type: string
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
 jobs:
+  detect:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      docs_only: ${{ steps.paths.outputs.docs_only }}
+      run_l1: ${{ steps.paths.outputs.run_l1 }}
+      run_quality: ${{ steps.paths.outputs.run_quality }}
+      run_smoke: ${{ steps.paths.outputs.run_smoke }}
+      run_l2: ${{ steps.paths.outputs.run_l2 }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Classify changed paths
+        id: paths
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+          ACCEPTANCE_MODE: ${{ inputs.acceptance_mode }}
+        run: |
+          set -euo pipefail
+          case "$EVENT_NAME" in
+            pull_request)
+              git diff --name-only "${BASE_SHA}...${HEAD_SHA}" \
+                | npx tsx scripts/ci-changed-paths.ts --stdin --github-output
+              echo "run_l2=false" >> "$GITHUB_OUTPUT"
+              ;;
+            push|schedule)
+              echo "docs_only=false" >> "$GITHUB_OUTPUT"
+              echo "run_l1=true" >> "$GITHUB_OUTPUT"
+              echo "run_quality=false" >> "$GITHUB_OUTPUT"
+              echo "run_smoke=false" >> "$GITHUB_OUTPUT"
+              echo "run_l2=true" >> "$GITHUB_OUTPUT"
+              ;;
+            workflow_dispatch)
+              echo "docs_only=false" >> "$GITHUB_OUTPUT"
+              echo "run_l1=false" >> "$GITHUB_OUTPUT"
+              echo "run_quality=false" >> "$GITHUB_OUTPUT"
+              echo "run_smoke=false" >> "$GITHUB_OUTPUT"
+              if [ "${ACCEPTANCE_MODE}" = "local-non-hdc" ]; then
+                echo "run_l2=true" >> "$GITHUB_OUTPUT"
+              else
+                echo "run_l2=false" >> "$GITHUB_OUTPUT"
+              fi
+              ;;
+            *)
+              echo "docs_only=false" >> "$GITHUB_OUTPUT"
+              echo "run_l1=true" >> "$GITHUB_OUTPUT"
+              echo "run_quality=true" >> "$GITHUB_OUTPUT"
+              echo "run_smoke=true" >> "$GITHUB_OUTPUT"
+              echo "run_l2=false" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      - name: Documentation governance
+        run: npm run docs:check
+
   build-and-test:
     name: Build and test
+    needs: detect
+    if: needs.detect.outputs.run_l1 == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     services:
       postgres:
-        # pgvector-enabled postgres 16: migration 0104 installs the extension,
-        # so vectorSearch.integration.test.ts and the late-install ensure
-        # suites run in CI instead of skipping (TD-083).
         image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: wiseeff
@@ -107,15 +188,205 @@ jobs:
       - name: Log analysis behavior eval
         run: npm run logs:eval
 
-  acceptance-local-non-hdc:
-    name: Acceptance local non-HDC
+  acceptance-quality:
+    name: Acceptance quality
+    needs: detect
+    if: needs.detect.outputs.run_quality == 'true'
     runs-on: ubuntu-latest
-    if: github.event_name != 'workflow_dispatch' || inputs.acceptance_mode == 'local-non-hdc'
+    timeout-minutes: 25
 
     services:
       postgres:
-        # Same pgvector-enabled image as build-and-test so the acceptance
-        # database carries the embedding column (TD-083).
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: wiseeff
+          POSTGRES_PASSWORD: wiseeff
+          POSTGRES_DB: wiseeff
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U wiseeff -d wiseeff"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff
+      WISEEFF_API_BASE_URL: http://127.0.0.1:8787
+      VITE_WISEEFF_RUNTIME_MODE: api
+      VITE_WISEEFF_API_BASE_URL: http://127.0.0.1:8787
+      WISEEFF_ACCEPTANCE_FRONTEND_URL: http://127.0.0.1:5173
+      OBJECT_STORE_MODE: local
+      OBJECT_STORE_ROOT: .wiseeff-object-store
+      DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true"
+      XIAOZE_DETERMINISTIC: "true"
+      AUTH_MODE: production
+      AUTH_PROVIDER: hmac
+      M5_CONTRACT_CHECK_PASSED: "true"
+      M5_SMOKE_ALLOW_NO_API: "false"
+      # Shared acceptance DB is post-cutover. M1 seed runs local finalize
+      # when WISEEFF_SEED_LEGACY_FLAT_IDENTITY is unset.
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install and verify DTS toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bison flex pkg-config git python3-pip python3-venv
+          npm run dts:toolchain:bootstrap
+          npm run dts:toolchain:check -- --required
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Prepare local acceptance env
+        shell: bash
+        run: |
+          cp .env.example .env
+          {
+            echo "DATABASE_URL=${DATABASE_URL}"
+            echo "AUTH_MODE=production"
+            echo "AUTH_PROVIDER=hmac"
+            echo "XIAOZE_DETERMINISTIC=true"
+            echo "AGENT_API_BASE_URL=http://127.0.0.1:8787"
+            echo "AGENT_MODEL=wiseeff-rules-m4"
+            echo "AGENT_API_KEY=local-ci-deterministic"
+            echo "OBJECT_STORE_MODE=local"
+            echo "OBJECT_STORE_ROOT=.wiseeff-object-store"
+            echo "WISEEFF_API_BASE_URL=http://127.0.0.1:8787"
+            echo "VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787"
+            echo "VITE_WISEEFF_RUNTIME_MODE=api"
+            echo "DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true"
+            echo "M5_CONTRACT_CHECK_PASSED=true"
+          } >> .env
+          sed -i 's/^XIAOZE_PROACTIVE_ENABLED=.*/XIAOZE_PROACTIVE_ENABLED=true/' .env
+
+      - name: Migrate and seed database
+        run: |
+          npm run db:migrate
+          npm run db:seed:all
+          echo "WISEEFF_QUALITY_SKIP_SEED=true" >> "$GITHUB_ENV"
+
+      - name: Acceptance quality metadata
+        run: npm run acceptance:quality
+
+      - name: Acceptance quality gates
+        run: npm run acceptance:quality-run
+
+  acceptance-smoke:
+    name: Acceptance smoke
+    needs: detect
+    if: needs.detect.outputs.run_smoke == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: wiseeff
+          POSTGRES_PASSWORD: wiseeff
+          POSTGRES_DB: wiseeff
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U wiseeff -d wiseeff"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff
+      WISEEFF_API_BASE_URL: http://127.0.0.1:8787
+      VITE_WISEEFF_RUNTIME_MODE: api
+      VITE_WISEEFF_API_BASE_URL: http://127.0.0.1:8787
+      WISEEFF_ACCEPTANCE_FRONTEND_URL: http://127.0.0.1:5173
+      OBJECT_STORE_MODE: local
+      OBJECT_STORE_ROOT: .wiseeff-object-store
+      DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true"
+      XIAOZE_DETERMINISTIC: "true"
+      AUTH_MODE: production
+      AUTH_PROVIDER: hmac
+      M5_CONTRACT_CHECK_PASSED: "true"
+      M5_SMOKE_ALLOW_NO_API: "false"
+      WISEEFF_ACCEPTANCE_EVIDENCE_RUN_ID: focused-ci-smoke
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install and verify DTS toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bison flex pkg-config git python3-pip python3-venv
+          npm run dts:toolchain:bootstrap
+          npm run dts:toolchain:check -- --required
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Prepare local acceptance env
+        shell: bash
+        run: |
+          cp .env.example .env
+          {
+            echo "DATABASE_URL=${DATABASE_URL}"
+            echo "AUTH_MODE=production"
+            echo "AUTH_PROVIDER=hmac"
+            echo "XIAOZE_DETERMINISTIC=true"
+            echo "AGENT_API_BASE_URL=http://127.0.0.1:8787"
+            echo "AGENT_MODEL=wiseeff-rules-m4"
+            echo "AGENT_API_KEY=local-ci-deterministic"
+            echo "OBJECT_STORE_MODE=local"
+            echo "OBJECT_STORE_ROOT=.wiseeff-object-store"
+            echo "WISEEFF_API_BASE_URL=http://127.0.0.1:8787"
+            echo "VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787"
+            echo "VITE_WISEEFF_RUNTIME_MODE=api"
+            echo "DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true"
+            echo "M5_CONTRACT_CHECK_PASSED=true"
+            echo "WISEEFF_ACCEPTANCE_EVIDENCE_RUN_ID=focused-ci-smoke"
+          } >> .env
+          sed -i 's/^XIAOZE_PROACTIVE_ENABLED=.*/XIAOZE_PROACTIVE_ENABLED=true/' .env
+
+      - name: Migrate and seed database
+        run: |
+          npm run db:migrate
+          npm run db:seed:all
+
+      - name: Acceptance smoke
+        run: npm run acceptance:smoke
+
+  acceptance-local-non-hdc:
+    name: Acceptance local non-HDC
+    needs: detect
+    if: >-
+      needs.detect.outputs.run_l2 == 'true'
+      || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-acceptance'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+
+    services:
+      postgres:
         image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: wiseeff
@@ -193,13 +464,13 @@ jobs:
             echo "DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true"
             echo "M5_CONTRACT_CHECK_PASSED=true"
           } >> .env
-          # loadEnvContent keeps the first assignment; rewrite example defaults in-place.
           sed -i 's/^XIAOZE_PROACTIVE_ENABLED=.*/XIAOZE_PROACTIVE_ENABLED=true/' .env
 
       - name: Migrate and seed database
         run: |
           npm run db:migrate
           npm run db:seed:all
+          echo "WISEEFF_QUALITY_SKIP_SEED=true" >> "$GITHUB_ENV"
 
       - name: Acceptance CI metadata
         run: npm run acceptance:ci
@@ -210,14 +481,8 @@ jobs:
       - name: Acceptance quality metadata
         run: npm run acceptance:quality
 
-      - name: Acceptance accessibility gate
-        run: npm run acceptance:a11y
-
-      - name: Acceptance visual gate
-        run: npm run acceptance:visual
-
-      - name: Acceptance responsive gate
-        run: npm run acceptance:responsive
+      - name: Acceptance quality gates
+        run: npm run acceptance:quality-run
 
       - name: Browser acceptance local non-HDC
         run: npm run acceptance:browser -- --mode local-non-hdc
@@ -238,8 +503,10 @@ jobs:
 
   target-synthetic-acceptance:
     name: Target synthetic acceptance
-    runs-on: ubuntu-latest
+    needs: detect
     if: github.event_name == 'workflow_dispatch' && inputs.acceptance_mode != 'local-non-hdc'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
 
     env:
       WISEEFF_API_BASE_URL: ${{ secrets.WISEEFF_API_BASE_URL }}
@@ -318,18 +585,8 @@ jobs:
       - name: Acceptance quality metadata
         run: npm run acceptance:quality
 
-      - name: Acceptance accessibility gate
-        run: npm run acceptance:a11y
-        env:
-          WISEEFF_ACCEPTANCE_NO_START_RUNTIME: "true"
-
-      - name: Acceptance visual gate
-        run: npm run acceptance:visual
-        env:
-          WISEEFF_ACCEPTANCE_NO_START_RUNTIME: "true"
-
-      - name: Acceptance responsive gate
-        run: npm run acceptance:responsive
+      - name: Acceptance quality gates
+        run: npm run acceptance:quality-run
         env:
           WISEEFF_ACCEPTANCE_NO_START_RUNTIME: "true"
 
@@ -354,3 +611,38 @@ jobs:
             docs/generated/acceptance-operation-evidence/index.json
             playwright-report/quality
             test-results/quality
+
+  required:
+    name: Merge bar
+    if: always()
+    needs:
+      - detect
+      - build-and-test
+      - acceptance-quality
+      - acceptance-smoke
+      - acceptance-local-non-hdc
+      - target-synthetic-acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check jobs that were supposed to run
+        run: |
+          python3 - <<'PY'
+          import sys
+          results = {
+            "detect": "${{ needs.detect.result }}",
+            "build-and-test": "${{ needs.build-and-test.result }}",
+            "acceptance-quality": "${{ needs.acceptance-quality.result }}",
+            "acceptance-smoke": "${{ needs.acceptance-smoke.result }}",
+            "acceptance-local-non-hdc": "${{ needs.acceptance-local-non-hdc.result }}",
+            "target-synthetic-acceptance": "${{ needs.target-synthetic-acceptance.result }}",
+          }
+          print(results)
+          failed = [name for name, result in results.items() if result in ("failure", "cancelled")]
+          if failed:
+              print("failed or cancelled:", ", ".join(failed))
+              sys.exit(1)
+          if results["detect"] != "success":
+              print("detect must report success")
+              sys.exit(1)
+          PY

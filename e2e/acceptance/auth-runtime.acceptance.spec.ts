@@ -7,7 +7,9 @@ import { apiRoute, smokeHeaders } from "./helpers/runtime";
 useBrowserDiagnostics(test);
 
 test.describe("M5.5 auth runtime parity", () => {
-  test("loads API-mode browser current user with the local dev auth contract", async ({ page }, testInfo) => {
+  test("loads API-mode browser current user with the local dev auth contract", {
+    tag: ["@ci-smoke"]
+  }, async ({ page }, testInfo) => {
     // @acceptance AUTH-RUNTIME-001
     // @operation AUTH-RUNTIME-001
     const meResponse = await page.request.get(apiRoute("/api/v1/me"), {
