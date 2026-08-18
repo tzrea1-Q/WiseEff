@@ -43,6 +43,7 @@ import {
 import { canonicalIdentityPart } from "./specIdentity";
 import { buildSubjectScopedManualSpecIds } from "./specIdentity";
 import { assertNonStructuralPropertyKey } from "./structuralPropertyGuard";
+import { guardSemanticFieldPatch } from "../../../src/domain/parameter-topology/specLifecycleGuard";
 import type {
   ActivateParameterSpecBody,
   CreateParameterSpecBody,
@@ -1243,8 +1244,26 @@ export async function updateParameterSpec(
       });
     }
 
+    const semanticGate = guardSemanticFieldPatch(
+      spec.lifecycle,
+      input.specId,
+      {
+        valueShape: spec.valueShape,
+        constraints: spec.constraints,
+        units: spec.units ?? null,
+      },
+      {
+        valueShape: input.valueShape,
+        constraints: input.constraints,
+        units: input.units,
+      },
+    );
+    if (!semanticGate.ok) {
+      throw new ApiError(semanticGate.code, semanticGate.message, semanticGate.details);
+    }
+
     const nextValueShape = input.valueShape ?? spec.valueShape ?? {};
-    const nextConstraints = input.constraints;
+    const nextConstraints = input.constraints ?? spec.constraints ?? {};
     if (!input.documentation.trim()) {
       throw new ApiError("VALIDATION_FAILED", "documentation is required.");
     }

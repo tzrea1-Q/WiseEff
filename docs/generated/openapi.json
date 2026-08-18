@@ -3979,7 +3979,7 @@
       },
       "patch": {
         "operationId": "parameterSpecs.update",
-        "summary": "Update a parameter definition (draft content or governed fields)",
+        "summary": "Update documentation-class fields on an active definition",
         "tags": [
           "parameters"
         ],
@@ -10185,7 +10185,7 @@
     "/api/v2/parameter-specs/{specId}/activate": {
       "post": {
         "operationId": "parameterSpecs.activate",
-        "summary": "Activate a draft parameter definition",
+        "summary": "Activate a draft, or mint a successor on an active definition",
         "tags": [
           "parameters"
         ],

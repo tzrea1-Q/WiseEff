@@ -198,7 +198,7 @@ export const createParameterSpecBodySchema = z.object({
 
 export const updateParameterSpecBodySchema = z.object({
   valueShape: z.record(z.string(), z.unknown()).optional(),
-  constraints: z.record(z.string(), z.unknown()).default({}),
+  constraints: z.record(z.string(), z.unknown()).optional(),
   documentation: nonEmptyString,
   displayName: z.string().nullable().optional(),
   description: z.string().nullable().optional(),

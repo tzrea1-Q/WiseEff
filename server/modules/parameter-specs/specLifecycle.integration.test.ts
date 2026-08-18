@@ -252,9 +252,9 @@ describe.skipIf(!databaseAvailable)("parameter spec lifecycle deprecate/restore"
       specId: GLOBAL_ACTIVE,
       documentation: "platform edit of a global row",
       reason: "platform edit",
-      constraints: { min: 0 },
     });
     expect(result.item.lifecycle).toBe("active");
+    expect(result.item.documentation).toBe("platform edit of a global row");
 
     const audits = await db!.query<{ metadata: Record<string, unknown> }>(
       `select metadata from audit_events where target_id = $1 and action = 'spec-updated' order by created_at desc limit 1`,
@@ -346,17 +346,16 @@ describe.skipIf(!databaseAvailable)("parameter spec lifecycle deprecate/restore"
     expect(retrieved.item.referenceCount).toBe(1);
   });
 
-  it("records before/after value_shape and constraints when updating an active definition", async () => {
+  it("records documentation before/after when PATCH stays documentation-class (ADR-0032)", async () => {
     await db!.query(
       `update parameter_spec_versions set value_shape = '{"kind":"string"}'::jsonb where parameter_spec_id = $1`,
       [ACTIVE_SPEC],
     );
     await updateParameterSpec(db!, makeAuth(), {
       specId: ACTIVE_SPEC,
-      valueShape: { kind: "string", encoding: "ascii" },
-      constraints: { min: 0, max: 100 },
+      valueShape: { kind: "string" },
       documentation: "updated docs",
-      reason: "tighten range",
+      reason: "docs only",
     });
 
     const audits = await db!.query<{ metadata: Record<string, unknown> }>(
@@ -371,32 +370,58 @@ describe.skipIf(!databaseAvailable)("parameter spec lifecycle deprecate/restore"
     );
     expect(audits.rows[0]?.metadata).toMatchObject({
       previousValueShape: { kind: "string" },
-      nextValueShape: { kind: "string", encoding: "ascii" },
-      previousConstraints: {},
-      nextConstraints: { min: 0, max: 100 },
+      nextValueShape: { kind: "string" },
     });
   });
 
-  it("replaces stored constraints on update instead of shallow-merging omitted keys (SE-2)", async () => {
+  it("rejects a PATCH that changes semantic fields on an active definition (ADR-0032)", async () => {
     await db!.query(
-      `update parameter_spec_versions set constraints = '{"min":0,"max":100}'::jsonb where parameter_spec_id = $1`,
+      `update parameter_spec_versions set value_shape = '{"kind":"string"}'::jsonb where parameter_spec_id = $1`,
       [ACTIVE_SPEC],
     );
-    await db!.query(
-      `update dts_property_specs set constraints = '{"min":0,"max":100}'::jsonb where parameter_spec_id = $1`,
-      [ACTIVE_SPEC],
-    );
+    await expect(
+      updateParameterSpec(db!, makeAuth(), {
+        specId: ACTIVE_SPEC,
+        valueShape: { kind: "string", encoding: "ascii" },
+        constraints: { min: 0, max: 100 },
+        documentation: "updated docs",
+        reason: "tighten range",
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      details: { code: "semantic-edit-requires-successor", reason: "semantic-edit-requires-successor" },
+    } satisfies Partial<ApiError>);
+  });
 
-    const updated = await updateParameterSpec(db!, makeAuth(), {
-      specId: ACTIVE_SPEC,
-      constraints: { min: 0 },
-      documentation: "range without max",
-      reason: "drop max",
+  it("HTTP PATCH of semantic fields on an active definition returns 409 (ADR-0032)", async () => {
+    const auth = makeAuth();
+    const router = createRouter();
+    registerParameterSpecRoutes(router, {
+      db: db!,
+      getCurrentAuthContext: () => auth,
     });
-    expect(updated.item.constraints).toEqual({ min: 0 });
+    const server = createHttpServer(router);
 
-    const retrieved = await getParameterSpec(db!, makeAuth(), ACTIVE_SPEC);
-    expect(retrieved.item.constraints).toEqual({ min: 0 });
+    const denied = await requestJson(
+      server,
+      `/api/v2/parameter-specs/${encodeURIComponent(ACTIVE_SPEC)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          valueShape: { kind: "string", encoding: "ascii" },
+          documentation: "http semantic edit",
+          reason: "http semantic edit",
+        }),
+      },
+    );
+    expect(denied.status).toBe(409);
+    expect(denied.body).toMatchObject({
+      error: {
+        code: "CONFLICT",
+        details: { code: "semantic-edit-requires-successor" },
+      },
+    });
   });
 
   it("replaces stored constraints on activate instead of shallow-merging omitted keys (SE-2)", async () => {
@@ -481,7 +506,6 @@ describe.skipIf(!databaseAvailable)("parameter spec lifecycle deprecate/restore"
 
     const updated = await updateParameterSpec(db!, makeAuth(), {
       specId: ACTIVE_SPEC,
-      constraints: { min: 0 },
       documentation: "docs only on incomplete shape",
       reason: "documentation edit",
     });
@@ -491,7 +515,6 @@ describe.skipIf(!databaseAvailable)("parameter spec lifecycle deprecate/restore"
     const sameShape = await updateParameterSpec(db!, makeAuth(), {
       specId: ACTIVE_SPEC,
       valueShape: { kind: "u32-array" },
-      constraints: { min: 0 },
       documentation: "same incomplete shape restated",
       reason: "shape no-op",
     });
@@ -499,31 +522,34 @@ describe.skipIf(!databaseAvailable)("parameter spec lifecycle deprecate/restore"
     expect(sameShape.item.documentation).toBe("same incomplete shape restated");
   });
 
-  it("rejects a PATCH that changes valueShape to an incomplete cell-array kind (SE-D6)", async () => {
+  it("rejects a PATCH that changes valueShape even when the next shape is incomplete (ADR-0032)", async () => {
     await expect(
       updateParameterSpec(db!, makeAuth(), {
         specId: ACTIVE_SPEC,
         valueShape: { kind: "u32-array" },
-        constraints: {},
         documentation: "attempt incomplete shape",
         reason: "change shape",
       }),
-    ).rejects.toMatchObject({ code: "VALIDATION_FAILED", status: 400 } satisfies Partial<ApiError>);
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      details: { code: "semantic-edit-requires-successor" },
+    } satisfies Partial<ApiError>);
   });
 
-  it("accepts a PATCH that changes valueShape to a complete cell layout (SE-D6)", async () => {
-    const updated = await updateParameterSpec(db!, makeAuth(), {
-      specId: ACTIVE_SPEC,
-      valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 1 },
-      constraints: { cells: 1 },
-      documentation: "complete cell shape",
-      reason: "complete shape",
-    });
-    expect(updated.item.valueShape).toEqual({
-      kind: "cells",
-      bits: 32,
-      groups: 1,
-      cellsPerGroup: 1,
-    });
+  it("rejects a PATCH that changes valueShape even when the next shape is complete (ADR-0032)", async () => {
+    await expect(
+      updateParameterSpec(db!, makeAuth(), {
+        specId: ACTIVE_SPEC,
+        valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 1 },
+        constraints: { cells: 1 },
+        documentation: "complete cell shape",
+        reason: "complete shape",
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      details: { code: "semantic-edit-requires-successor" },
+    } satisfies Partial<ApiError>);
   });
 });

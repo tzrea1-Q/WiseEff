@@ -56,6 +56,14 @@ const NETWORK_MESSAGE_PATTERN = /failed to fetch|networkerror|network error|load
 
 export const NETWORK_ERROR_MESSAGE = "网络连接失败，请稍后重试。";
 
+function semanticEditSuccessorCopy(err: WiseEffApiError): string | null {
+  if (err.code !== "CONFLICT") return null;
+  if (err.details.code !== "semantic-edit-requires-successor" && err.details.reason !== "semantic-edit-requires-successor") {
+    return null;
+  }
+  return "语义字段（取值形状 / 约束 / 单位）不能在已启用或已废弃定义上直接修改，请通过激活后继版本完成切换。";
+}
+
 function identityCollisionCopy(err: WiseEffApiError): string | null {
   if (err.code !== "CONFLICT") return null;
   const specId = err.details.parameterSpecId;
@@ -113,6 +121,10 @@ export function presentError(err: unknown, fallback: string): string {
   }
 
   if (err instanceof WiseEffApiError) {
+    const semanticEdit = semanticEditSuccessorCopy(err);
+    if (semanticEdit) {
+      return semanticEdit;
+    }
     const collision = identityCollisionCopy(err);
     if (collision) {
       return collision;

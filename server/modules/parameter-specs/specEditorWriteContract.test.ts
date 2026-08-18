@@ -56,4 +56,12 @@ describe("parameter spec editor write contract", () => {
     });
     expect(parsed.units).toBeNull();
   });
+
+  it("keeps omitted constraints undefined so a docs-only PATCH is not a semantic change (ADR-0032)", () => {
+    const parsed = updateParameterSpecBodySchema.parse({
+      documentation: "docs only",
+      reason: "docs only",
+    });
+    expect(parsed.constraints).toBeUndefined();
+  });
 });
