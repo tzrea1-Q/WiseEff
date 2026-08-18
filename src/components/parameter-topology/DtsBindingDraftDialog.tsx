@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, CircleX } from "lucide-react";
 
+import { ModalDialog } from "@/components/common/ModalDialog";
 import { ParameterValueDiff } from "@/components/ParameterValueDiff";
 import { formatDtsRawValueForUi } from "@/domain/parameter-topology/formatDtsRawValueForUi";
 import type { DtsParameterWorkbenchRow } from "@/domain/parameter-topology/workbenchTypes";
@@ -12,14 +13,6 @@ import {
 } from "@/parameterValueKind";
 import { presentError } from "@/infrastructure/http/presentError";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -248,32 +241,29 @@ export function DtsBindingDraftDialog({
   };
 
   return (
-    <Dialog open onOpenChange={(open) => {
-      if (!open) onClose();
-    }}>
-      <DialogContent
-        aria-label="修改草稿"
-        className="dts-binding-draft-dialog max-h-[calc(100vh-2rem)] w-full sm:max-w-5xl overflow-y-auto"
-        overlayClassName="dts-binding-draft-dialog__overlay"
-        showCloseButton={false}
-        onOpenAutoFocus={(event) => {
-          event.preventDefault();
-          focusTargetRef.current?.focus();
-        }}
-      >
-        <DialogHeader className="dts-binding-draft-dialog__header flex-row items-start justify-between">
+    <ModalDialog
+      open
+      onDismiss={onClose}
+      className="dts-binding-draft-dialog"
+      backdropClassName="dts-binding-draft-dialog__overlay"
+      describedBy
+      initialFocusRef={focusTargetRef}
+    >
+      {({ titleId, descriptionId }) => (
+        <>
+        <div className="dts-binding-draft-dialog__header">
           <div>
-            <DialogTitle>修改草稿</DialogTitle>
-            <DialogDescription>
+            <h2 id={titleId}>修改草稿</h2>
+            <p id={descriptionId}>
               编辑会加入本轮草稿；校验通过后保留成功提示，并进入工作台「本轮已修改」托盘。
-            </DialogDescription>
+            </p>
           </div>
           <Button type="button" variant="ghost" size="icon-sm" aria-label="关闭草稿" onClick={onClose}>
             <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
           </Button>
-        </DialogHeader>
+        </div>
 
-        <div className="dts-binding-draft-dialog__content grid gap-4">
+        <div className="dts-binding-draft-dialog__content">
           <div className="dts-binding-draft-dialog__summary" aria-label="本轮草稿汇总">
             <div>
               <strong>本轮草稿 {bindingIds.length} 项</strong>
@@ -417,7 +407,7 @@ export function DtsBindingDraftDialog({
           </div>
         </div>
 
-        <DialogFooter>
+        <div className="dts-binding-draft-dialog__footer">
           <Button type="button" variant="outline" onClick={onClose}>关闭</Button>
           <Button
             type="button"
@@ -426,8 +416,9 @@ export function DtsBindingDraftDialog({
           >
             {batchPending ? "校验中…" : "校验并加入本轮"}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+        </>
+      )}
+    </ModalDialog>
   );
 }

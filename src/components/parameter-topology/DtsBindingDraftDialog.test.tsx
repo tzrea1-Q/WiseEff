@@ -316,7 +316,7 @@ describe("DtsBindingDraftDialog", () => {
       fireEvent.click(screen.getByRole("button", { name: "校验并加入本轮" }));
       await waitFor(() => expect(screen.getByRole("button", { name: "校验中…" })).toBeDisabled());
 
-      fireEvent.keyDown(screen.getByRole("dialog", { name: "修改草稿" }), { key: "Escape" });
+      fireEvent.keyDown(window, { key: "Escape" });
       await waitFor(() => expect(screen.queryByRole("dialog", { name: "修改草稿" })).not.toBeInTheDocument());
       fireEvent.click(screen.getByRole("button", { name: "重新打开草稿" }));
       expect(screen.getByRole("textbox", { name: "修改原因" })).toHaveValue("");
