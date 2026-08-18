@@ -293,11 +293,39 @@
   gap: var(--space-3);
 }
 
-.review-detail-hero__header h2 {
+.review-detail-hero__header h2,
+.review-detail-hero__header h3 {
   margin: var(--space-1) 0 0;
   color: var(--app-ink, #1f2937);
   font-size: 22px;
   line-height: 1.25;
+}
+
+.review-detail .detail-card h3 {
+  margin: var(--space-2) 0;
+  font-size: var(--text-xl);
+}
+
+.review-shortcut-hint {
+  margin: var(--space-2) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+}
+
+.review-table-wrap tbody tr {
+  cursor: pointer;
+}
+
+.review-table-wrap tbody tr:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.review-queue:focus-visible,
+.review-detail:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
 }
 
 .review-detail-hero__meta {

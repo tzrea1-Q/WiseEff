@@ -43,8 +43,10 @@ import {
 } from "@/features/parameter-review/submissionHistoryDiff";
 import { shouldSummarizeReviewChange } from "@/parameterValueKind";
 import { EmptyState, PanelHeader, SectionLabel, WorkbenchLayout, getContextQuery } from "@/workbenchUi";
+import { formatPrimaryShortcut } from "@/app/keyboardShortcuts";
+import { useReviewQueueKeyboard } from "@/features/parameter-review/useReviewQueueKeyboard";
 import { ArrowRight, CheckCircle2, CircleOff, FileText, History, Link2, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import "./parameter-review.css";
 
 type ParameterReviewMode = "pending" | "history";
@@ -148,8 +150,8 @@ export function ParameterReviewPage({
       project: project?.name ?? request.projectId ?? parameter?.projectId ?? "未关联项目",
       module: request.module,
       submitter: request.submitter,
-      change: `${request.currentValue} → ${request.targetValue}`,
-      status: request.status
+        change: `${request.currentValue} → ${request.targetValue}`,
+        status: formatWorkflowDisplayText(request.status)
     };
     return values[field];
   }, [state.configDraft.projects, state.parameters, state.users]);
@@ -489,6 +491,26 @@ export function ParameterReviewPage({
   const canActOnSelectedReview = selected ? canActOnReviewRequest(reviewerRoleId, selected) : false;
   const canRejectSelectedReview = canPerform(reviewerRoleId, "parameter.review");
   const reviewPageTitle = canPerform(reviewerRoleId, "parameter.review") ? "参数管理员工作台" : "参数合入工作台";
+  const reviewRowIds = useMemo(
+    () => reviewRows.map((row) => (row.kind === "initialization" ? row.review.id : row.request.id)),
+    [reviewRows]
+  );
+  const queueRef = useRef<HTMLElement | null>(null);
+  const detailRef = useRef<HTMLElement | null>(null);
+  const openSelectedSubmissionDetail = useCallback(() => {
+    if (selected) {
+      openSubmissionDetail(selected);
+    }
+  }, [selected]);
+  useReviewQueueKeyboard({
+    enabled: true,
+    rowIds: reviewRowIds,
+    selectedId,
+    onSelect: setSelectedId,
+    onOpenSelected: openSelectedSubmissionDetail,
+    queueRef,
+    detailRef
+  });
   const mergeUrl =
     selected?.status === "已合入" && selected.reviewerNote && isValidMergeLink(selected.reviewerNote)
       ? selected.reviewerNote.trim()
@@ -553,8 +575,11 @@ export function ParameterReviewPage({
 
   return (
     <WorkbenchLayout title={reviewPageTitle}>
-      <section className="review-queue">
+      <section className="review-queue" ref={queueRef} tabIndex={-1} aria-labelledby="review-queue-heading">
         <div className="review-queue-header">
+          <h2 id="review-queue-heading" className="sr-only">
+            审阅队列
+          </h2>
           <PanelHeader
             title={
               <div className="review-view-tabs" role="tablist" aria-label="审阅视角">
@@ -568,6 +593,7 @@ export function ParameterReviewPage({
                     role="tab"
                     aria-label={item.label}
                     aria-selected={reviewMode === item.mode}
+                    aria-controls="review-queue-table"
                     key={item.mode}
                     onClick={() => selectReviewMode(item.mode)}
                   >
@@ -579,6 +605,9 @@ export function ParameterReviewPage({
             }
             meta={reviewMeta}
           />
+          <p className="review-shortcut-hint" role="note">
+            快捷键：↑↓ 或 J/K 选择 · Enter 打开详情 · Alt+1 队列 · Alt+2 详情（不占用 {formatPrimaryShortcut("F")} 等系统键）
+          </p>
         </div>
         {reviewMode === "pending" && batchableRequests.length > 0 ? (
           <div className="review-batch-toolbar" role="toolbar" aria-label="批量审阅操作">
@@ -597,7 +626,7 @@ export function ParameterReviewPage({
           </div>
         ) : null}
         <div className="table-wrap review-table-wrap">
-          <Table>
+          <Table aria-label="审阅队列" id="review-queue-table">
             <TableHeader>
               <TableRow>
                 {reviewMode === "pending" && batchableRequests.length > 0 ? (
@@ -677,7 +706,16 @@ export function ParameterReviewPage({
                     <TableRow
                       className={row.review.id === selectedInitialization?.review.id ? "selected-row" : ""}
                       key={row.review.id}
+                      data-review-row-id={row.review.id}
+                      aria-selected={row.review.id === selectedInitialization?.review.id}
+                      tabIndex={row.review.id === selectedInitialization?.review.id ? 0 : -1}
                       onClick={() => setSelectedId(row.review.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedId(row.review.id);
+                        }
+                      }}
                     >
                       {showBatchColumn ? <TableCell className="review-batch-cell" /> : null}
                       <TableCell>{row.draft.projectName}</TableCell>
@@ -714,7 +752,16 @@ export function ParameterReviewPage({
                   <TableRow
                     className={request.id === selected?.id ? "selected-row" : ""}
                     key={request.id}
+                    data-review-row-id={request.id}
+                    aria-selected={request.id === selected?.id}
+                    tabIndex={request.id === selected?.id ? 0 : -1}
                     onClick={() => setSelectedId(request.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedId(request.id);
+                      }
+                    }}
                   >
                     {showBatchColumn ? (
                       <TableCell className="review-batch-cell">
@@ -787,12 +834,15 @@ export function ParameterReviewPage({
           />
         </div>
       </section>
-      <aside className="review-detail" aria-label="审阅详情">
+      <aside className="review-detail" ref={detailRef} tabIndex={-1} aria-labelledby="review-detail-heading">
+        <h2 id="review-detail-heading" className="sr-only">
+          审阅详情
+        </h2>
         {selectedInitialization ? (
           <>
             <div className="detail-card">
               <span className="eyebrow">参数初始化</span>
-              <h2>参数初始化</h2>
+              <h3>参数初始化</h3>
               <p>
                 {selectedInitialization.draft.projectName} 初始化由 {selectedInitializationSubmitter} 提交。
               </p>
@@ -884,7 +934,7 @@ export function ParameterReviewPage({
             <div className="ai-summary-card review-detail-hero">
               <div className="review-detail-hero__header">
                 <span className="eyebrow">{selectedProjectName}</span>
-                <h2>{selected.title}</h2>
+                <h3>{selected.title}</h3>
                 <p className="review-detail-hero__meta">
                   目标模块 <strong>{selected.module}</strong>
                   <span aria-hidden="true"> · </span>
@@ -949,7 +999,7 @@ export function ParameterReviewPage({
                     />
                     {mergeLink.trim().length > 0 && !isValidMergeLink(mergeLink) ? (
                       <span className="review-merge-link__hint" role="status">
-                        请输入有效的 http(s) 合入链接
+                        请输入以 http 或 https 开头的合入链接
                       </span>
                     ) : (
                       <span className="review-merge-link__hint">确认合入前必须填写可访问的合入链接</span>

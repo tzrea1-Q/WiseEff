@@ -2686,7 +2686,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       ["项目", "筛选项目", "Aurora 量产平台"],
       ["模块", "筛选模块", "Charging Policy"],
       ["提交人", "筛选提交人", "H. Zhao"],
-      ["状态", "筛选状态", "硬件Committer检视"]
+      ["状态", "筛选状态", "硬件MDE检视"]
     ];
 
     for (const [headerName, buttonName, optionName] of checks) {
@@ -2701,7 +2701,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     const statusHeader = within(table).getByRole("columnheader", { name: /状态/ });
     fireEvent.click(within(statusHeader).getByRole("button", { name: "筛选状态" }));
-    fireEvent.click(within(statusHeader).getByRole("checkbox", { name: "硬件Committer检视" }));
+    fireEvent.click(within(statusHeader).getByRole("checkbox", { name: "硬件MDE检视" }));
     const visibleBodyRows = Array.from(table.querySelectorAll("tbody tr"));
     expect(visibleBodyRows.length).toBeGreaterThan(0);
     expect(visibleBodyRows.every((row) => row.textContent?.includes("硬件MDE检视"))).toBe(true);
