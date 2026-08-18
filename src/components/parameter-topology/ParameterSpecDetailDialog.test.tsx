@@ -23,6 +23,7 @@ const IDENTITY_MODULES: ParameterModule[] = [
     sourceKey: null,
     effectiveImportance: "medium",
     parameterCount: 0,
+    definitionCount: 0,
     attributionSubjectId: null,
   },
   {
@@ -38,6 +39,7 @@ const IDENTITY_MODULES: ParameterModule[] = [
     sourceKey: "compatible:vendor,sc8562",
     effectiveImportance: "medium",
     parameterCount: 2,
+    definitionCount: 2,
     attributionSubjectId: "asub:driver:sc8562",
   },
   {
@@ -53,6 +55,7 @@ const IDENTITY_MODULES: ParameterModule[] = [
     sourceKey: "nodetype:charger",
     effectiveImportance: "medium",
     parameterCount: 1,
+    definitionCount: 1,
     attributionSubjectId: "asub:nodetype:charger",
   },
 ];
@@ -109,7 +112,7 @@ describe("ParameterSpecDetailDialog save confirm (SE-D5)", () => {
   it("states reference count once and omits placeholder usage history", () => {
     renderEditor({ usageCount: 4 });
     const editor = screen.getByRole("dialog", { name: /active_perf_limit/ });
-    expect(within(editor).getByLabelText("引用数")).toHaveTextContent("引用数：4");
+    expect(within(editor).getByLabelText("引用数")).toHaveTextContent("引用数：4（该定义的实测处数）");
     expect(within(editor).queryByLabelText("使用情况")).not.toBeInTheDocument();
     expect(within(editor).queryByLabelText("Schema 历史")).not.toBeInTheDocument();
     expect(within(editor).queryByText("使用与历史")).not.toBeInTheDocument();

@@ -392,7 +392,7 @@ describe("ParameterSpecLibrary", () => {
     expect(within(detail).queryByLabelText("使用情况")).not.toBeInTheDocument();
     expect(within(detail).queryByLabelText("Schema 历史")).not.toBeInTheDocument();
     expect(within(detail).queryByText("使用与历史")).not.toBeInTheDocument();
-    expect(within(detail).getByLabelText("引用数")).toHaveTextContent("引用数：2");
+    expect(within(detail).getByLabelText("引用数")).toHaveTextContent("引用数：2（该定义的实测处数）");
     expect(detail.textContent).not.toMatch(/推荐值/);
     expect(within(detail).getByText("参数定义库 · 可编辑")).toBeInTheDocument();
     expect(within(detail).getByRole("button", { name: "完成" })).toBeInTheDocument();

@@ -190,7 +190,10 @@ export const PARAMETER_ADMIN_UI = {
   deprecateReasonPlaceholder: "说明废弃原因（必填）",
   restoreReasonPlaceholder: "说明恢复原因（必填）",
   deprecateImpact: "废弃后仍参与解析，但不再出现在定义库默认视图，也不能被审核任务选中。",
+  definitionCountLabel: "定义数",
+  occurrenceCountLabel: "实测处数",
   referenceCountLabel: "引用数",
+  referenceCountAsOccurrence: "该定义的实测处数",
   showDeprecatedHint: "默认隐藏已废弃定义；在审核状态筛选中勾选「已废弃」可查看。"
 } as const;
 

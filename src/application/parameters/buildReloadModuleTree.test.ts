@@ -40,6 +40,7 @@ function module(overrides: Partial<ParameterModule>): ParameterModule {
     sourceKey: null,
     effectiveImportance: "medium",
     parameterCount: 0,
+    definitionCount: 0,
     attributionSubjectId: null,
     ...overrides
   };

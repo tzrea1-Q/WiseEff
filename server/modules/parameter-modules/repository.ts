@@ -11,6 +11,7 @@ import type {
   ParameterModuleRegistryDto,
   ParameterModuleRow
 } from "./types";
+import { rollupSubtreeAttributionCounts } from "./subtreeCounts";
 
 function moduleFromRow(
   row: ParameterModuleRow,
@@ -30,6 +31,7 @@ function moduleFromRow(
     attributionSubjectId: row.attribution_subject_id ?? null,
     effectiveImportance,
     parameterCount: Number(row.parameter_count ?? 0),
+    definitionCount: Number(row.definition_count ?? 0),
   };
 }
 
@@ -59,44 +61,10 @@ function resolveEffectiveImportance(
   return byId.get(moduleId)?.importance ?? "medium";
 }
 
-/**
- * Bindings hang on leaf modules (usually instances). Roll direct counts up the
- * parentId tree so business / driver-group rows show subtree totals.
- */
-function rollupSubtreeParameterCounts(
-  rows: readonly ParameterModuleRow[],
-): Map<string, number> {
-  const direct = new Map(rows.map((row) => [row.id, Number(row.parameter_count ?? 0)]));
-  const childrenByParent = new Map<string, string[]>();
-  for (const row of rows) {
-    if (!row.parent_id) continue;
-    const siblings = childrenByParent.get(row.parent_id) ?? [];
-    siblings.push(row.id);
-    childrenByParent.set(row.parent_id, siblings);
-  }
-
-  const totals = new Map<string, number>();
-  const visiting = new Set<string>();
-
-  const totalFor = (moduleId: string): number => {
-    const cached = totals.get(moduleId);
-    if (cached !== undefined) return cached;
-    if (visiting.has(moduleId)) return direct.get(moduleId) ?? 0;
-    visiting.add(moduleId);
-    let sum = direct.get(moduleId) ?? 0;
-    for (const childId of childrenByParent.get(moduleId) ?? []) {
-      sum += totalFor(childId);
-    }
-    visiting.delete(moduleId);
-    totals.set(moduleId, sum);
-    return sum;
-  };
-
-  for (const row of rows) {
-    totalFor(row.id);
-  }
-  return totals;
-}
+type BindingCountRow = {
+  module_id: string;
+  parameter_spec_id: string;
+};
 
 /**
  * Registry read: modules from the v1 parameter_modules tree + DTS mappings.
@@ -119,19 +87,26 @@ export async function readRegistry(
        coalesce(pm.origin, 'curated') as origin,
        pm.source_key,
        pm.attribution_subject_id,
-       pm.path,
-       (
-         select count(*)::text
-         from project_parameter_bindings b
-         where b.module_id = pm.id
-       ) as parameter_count
+       pm.path
        from parameter_modules pm
       where pm.organization_id = $1
       order by pm.sort_order asc, pm.path asc, pm.name asc`,
     [organizationId]
   );
+  const bindingFacts = await db.query<BindingCountRow>(
+    `select b.module_id, b.parameter_spec_id
+       from project_parameter_bindings b
+      where b.organization_id = $1`,
+    [organizationId]
+  );
   const byId = new Map(modules.rows.map((row) => [row.id, row]));
-  const subtreeCounts = rollupSubtreeParameterCounts(modules.rows);
+  const subtreeCounts = rollupSubtreeAttributionCounts(
+    modules.rows.map((row) => ({ id: row.id, parentId: row.parent_id ?? null })),
+    bindingFacts.rows.map((row) => ({
+      moduleId: row.module_id,
+      parameterSpecId: row.parameter_spec_id
+    }))
+  );
   const mappings = await db.query<ParameterModuleMappingRow>(
     `select id, parameter_module_id, match_kind, match_value, priority
        from parameter_module_mappings
@@ -142,7 +117,11 @@ export async function readRegistry(
   return {
     modules: modules.rows.map((row) =>
       moduleFromRow(
-        { ...row, parameter_count: subtreeCounts.get(row.id) ?? 0 },
+        {
+          ...row,
+          parameter_count: subtreeCounts.get(row.id)?.parameterCount ?? 0,
+          definition_count: subtreeCounts.get(row.id)?.definitionCount ?? 0
+        },
         resolveEffectiveImportance(row.id, byId),
       ),
     ),

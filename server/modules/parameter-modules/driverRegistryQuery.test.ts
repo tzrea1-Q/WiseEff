@@ -19,7 +19,11 @@ function makeAuth(): AuthContext {
 describe("listDriverRegistry", () => {
   it("lists driver groups with compatible rules, observed coverage, and skips scaffolding labels", async () => {
     const query = vi.fn(async (text: string) => {
-      if (text.includes("from parameter_modules") && text.includes("parameter_count")) {
+      if (
+        text.includes("from parameter_modules") &&
+        !text.includes("driver_registrations") &&
+        !text.includes("select id from")
+      ) {
         return {
           rows: [
             {
@@ -80,6 +84,16 @@ describe("listDriverRegistry", () => {
             },
           ],
           rowCount: 4,
+        };
+      }
+      if (text.includes("parameter_spec_id") && text.includes("project_parameter_bindings")) {
+        return {
+          rows: [
+            { module_id: "group-sc", parameter_spec_id: "spec-a" },
+            { module_id: "group-sc", parameter_spec_id: "spec-b" },
+            { module_id: "group-sc", parameter_spec_id: "spec-c" }
+          ],
+          rowCount: 3
         };
       }
       if (text.includes("from parameter_module_mappings")) {

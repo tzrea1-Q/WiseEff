@@ -10842,6 +10842,152 @@
       },
       "ParameterModuleRegistryResponse": {
         "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "modules": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "parentId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "sortOrder": {
+                      "type": "number"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "type": "string"
+                    },
+                    "importance": {
+                      "type": "string",
+                      "enum": [
+                        "high",
+                        "medium",
+                        "low"
+                      ]
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "business",
+                        "driver-group",
+                        "node-type",
+                        "unclassified"
+                      ]
+                    },
+                    "origin": {
+                      "type": "string",
+                      "enum": [
+                        "curated",
+                        "auto"
+                      ]
+                    },
+                    "sourceKey": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "attributionSubjectId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "effectiveImportance": {
+                      "type": "string",
+                      "enum": [
+                        "high",
+                        "medium",
+                        "low"
+                      ]
+                    },
+                    "parameterCount": {
+                      "type": "number"
+                    },
+                    "definitionCount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "parentId",
+                    "sortOrder",
+                    "description",
+                    "scope",
+                    "importance",
+                    "kind",
+                    "origin",
+                    "sourceKey",
+                    "effectiveImportance",
+                    "parameterCount",
+                    "definitionCount"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "mappings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "moduleId": {
+                      "type": "string"
+                    },
+                    "matchKind": {
+                      "type": "string",
+                      "enum": [
+                        "compatible",
+                        "node-type"
+                      ]
+                    },
+                    "matchValue": {
+                      "type": "string"
+                    },
+                    "priority": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "moduleId",
+                    "matchKind",
+                    "matchValue",
+                    "priority"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "modules",
+              "mappings"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "ParameterModuleRegistryResponse"
       },
       "ParameterModuleDiscoveryHintsResponse": {

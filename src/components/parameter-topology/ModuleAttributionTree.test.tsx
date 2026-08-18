@@ -19,7 +19,8 @@ const modules: ParameterModule[] = [
     origin: "curated",
     sourceKey: null,
     effectiveImportance: "high",
-    parameterCount: 0
+    parameterCount: 8,
+    definitionCount: 3
   },
   {
     id: "mod-group",
@@ -33,7 +34,8 @@ const modules: ParameterModule[] = [
     origin: "auto",
     sourceKey: "compatible:vendor,sc8562",
     effectiveImportance: "high",
-    parameterCount: 4
+    parameterCount: 8,
+    definitionCount: 3
   },
   {
     id: "mod-node-type",
@@ -47,7 +49,8 @@ const modules: ParameterModule[] = [
     origin: "auto",
     sourceKey: "nodetype:sc8562",
     effectiveImportance: "high",
-    parameterCount: 4
+    parameterCount: 4,
+    definitionCount: 2
   }
 ];
 
@@ -82,6 +85,11 @@ describe("ModuleAttributionTree", () => {
     const tree = screen.getByRole("tree", { name: "模块归属树" });
     expect(within(tree).getByText("业务分类")).toBeInTheDocument();
     expect(within(tree).getByText("驱动组")).toBeInTheDocument();
+    expect(within(tree).queryAllByText(/\d+\s+参数/)).toHaveLength(0);
+    expect(within(tree).queryByText("引用数")).not.toBeInTheDocument();
+    const driverRow = within(tree).getAllByRole("treeitem")[1]!;
+    expect(within(driverRow).getByLabelText("定义数")).toHaveTextContent("3 定义");
+    expect(within(driverRow).getByLabelText("实测处数")).toHaveTextContent("8 实测处");
     expect(within(tree).getByText("· 1 条 compatible")).toBeInTheDocument();
     expect(within(tree).queryByText("compatible:vendor,sc8562")).not.toBeInTheDocument();
     expect(
@@ -188,7 +196,7 @@ describe("ModuleAttributionTree", () => {
     expect(onDelete).not.toHaveBeenCalled();
     const confirmDialog = screen.getByRole("dialog", { name: "解散驱动组「SC8562」" });
     expect(confirmDialog).toHaveTextContent(/1 条 compatible 匹配规则将一并移除/);
-    expect(confirmDialog).toHaveTextContent(/4 个参数/);
+    expect(confirmDialog).toHaveTextContent(/8 个参数/);
     expect(confirmDialog).toHaveTextContent(/子模块（1 个）/);
     expect(confirmDialog).toHaveTextContent(/退回「未分类」/);
 
@@ -430,7 +438,8 @@ describe("ModuleAttributionTree", () => {
       origin: "auto",
       sourceKey: null,
       effectiveImportance: "medium",
-      parameterCount: 20
+      parameterCount: 20,
+      definitionCount: 6
     };
 
     const { rerender } = render(

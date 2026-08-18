@@ -16,7 +16,8 @@ const modules: ParameterModule[] = [
     origin: "curated",
     sourceKey: null,
     effectiveImportance: "high",
-    parameterCount: 0
+    parameterCount: 0,
+    definitionCount: 0
   },
   {
     id: "dg-1",
@@ -30,7 +31,8 @@ const modules: ParameterModule[] = [
     origin: "curated",
     sourceKey: null,
     effectiveImportance: "high",
-    parameterCount: 0
+    parameterCount: 0,
+    definitionCount: 0
   }
 ];
 
