@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { resetQualityRuntime, resolveFlatOrLegacyPpvTable } from "./reset-quality-runtime";
+import {
+  resetQualityRuntime,
+  resolveFlatOrLegacyDefinitionsTable,
+  resolveFlatOrLegacyPpvTable
+} from "./reset-quality-runtime";
 import type { Database, Queryable } from "../server/shared/database/client";
 
 function createRecordingDb(handler?: (text: string, values: unknown[]) => { rows: unknown[]; rowCount: number }): {
@@ -157,5 +161,70 @@ describe("quality runtime reset wiring", () => {
 
     const neither = createRecordingDb();
     await expect(resolveFlatOrLegacyPpvTable(neither.db)).resolves.toBeNull();
+  });
+
+  it("skips definition-table guards when neither flat nor legacy table exists", async () => {
+    const { db, queries } = createRecordingDb();
+
+    await resetQualityRuntime(db);
+
+    expect(
+      queries.some(
+        (query) =>
+          query.text.includes("from parameter_definitions") ||
+          query.text.includes("from legacy_parameter_definitions")
+      )
+    ).toBe(false);
+  });
+
+  it("guards demo-module prune with flat definitions before cutover", async () => {
+    const { db, queries } = createRecordingDb((text, values) => {
+      if (text.includes("information_schema.tables") && values[0] === "parameter_definitions") {
+        return { rows: [{ c: "1" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    await resetQualityRuntime(db);
+
+    expect(queries.some((query) => query.text.includes("from parameter_definitions pd"))).toBe(true);
+    expect(queries.some((query) => query.text.includes("from legacy_parameter_definitions"))).toBe(false);
+  });
+
+  it("guards demo-module prune with renamed legacy definitions after cutover", async () => {
+    const { db, queries } = createRecordingDb((text, values) => {
+      if (text.includes("information_schema.tables") && values[0] === "legacy_parameter_definitions") {
+        return { rows: [{ c: "1" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    await resetQualityRuntime(db);
+
+    expect(queries.some((query) => query.text.includes("from legacy_parameter_definitions pd"))).toBe(true);
+    expect(queries.some((query) => query.text.includes("from parameter_definitions pd"))).toBe(false);
+  });
+
+  it("resolveFlatOrLegacyDefinitionsTable prefers flat name then legacy rename", async () => {
+    const flatFirst = createRecordingDb((text, values) => {
+      if (text.includes("information_schema.tables") && values[0] === "parameter_definitions") {
+        return { rows: [{ c: "1" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    await expect(resolveFlatOrLegacyDefinitionsTable(flatFirst.db)).resolves.toBe("parameter_definitions");
+
+    const legacyOnly = createRecordingDb((text, values) => {
+      if (text.includes("information_schema.tables") && values[0] === "legacy_parameter_definitions") {
+        return { rows: [{ c: "1" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    await expect(resolveFlatOrLegacyDefinitionsTable(legacyOnly.db)).resolves.toBe(
+      "legacy_parameter_definitions"
+    );
+
+    const neither = createRecordingDb();
+    await expect(resolveFlatOrLegacyDefinitionsTable(neither.db)).resolves.toBeNull();
   });
 });

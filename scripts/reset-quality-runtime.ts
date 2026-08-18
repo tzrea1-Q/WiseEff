@@ -36,6 +36,11 @@ const FLAT_OR_LEGACY_PPV_TABLES = [
   "legacy_project_parameter_values"
 ] as const;
 
+const FLAT_OR_LEGACY_DEFINITIONS_TABLES = [
+  "parameter_definitions",
+  "legacy_parameter_definitions"
+] as const;
+
 /** Optional attribution FKs can be cleared instead of deleting the parent row. */
 const nullifyTransientUserRefs: ReadonlyArray<{ table: string; column: string }> = [
   { table: "agent_approvals", column: "decided_by_user_id" },
@@ -98,6 +103,14 @@ export async function resolveFlatOrLegacyPpvTable(tx: Queryable): Promise<string
   return null;
 }
 
+/** Resolve which definition table exists before/after identity cutover. */
+export async function resolveFlatOrLegacyDefinitionsTable(tx: Queryable): Promise<string | null> {
+  for (const table of FLAT_OR_LEGACY_DEFINITIONS_TABLES) {
+    if (await publicTableExists(tx, table)) return table;
+  }
+  return null;
+}
+
 /** Historical probe sessions upload standalone DTS files with this name prefix. */
 const PROBE_EDIT_FILE_NAME_PATTERN = "probe-edit-%.dts";
 
@@ -117,36 +130,53 @@ const PROBE_EDIT_VERSION_IDS_SUBQUERY = `
 /**
  * Runtime schema-promotion runbook demo modules (not ChargeLab seed fixtures).
  * Skips curated rows and modules still referenced by bindings or definitions.
+ * The definitions table is renamed at cutover; omit that guard when neither name remains.
  */
-const RUNTIME_DEMO_DRIVER_GROUP_MATCH_SQL = `
-  pm.origin <> 'curated'
+function runtimeDemoDriverGroupMatchSql(alias: string, definitionsTable: string | null): string {
+  const definitionsGuard = definitionsTable
+    ? `
+  and not exists (
+    select 1 from ${definitionsTable} pd where pd.parameter_module_id = ${alias}.id
+  )`
+    : "";
+  return `
+  ${alias}.origin <> 'curated'
   and (
-    pm.name = 'FoldRegistryTestDG'
-    or pm.source_key = 'compatible:vendor,fold_registry_test'
+    ${alias}.name = 'FoldRegistryTestDG'
+    or ${alias}.source_key = 'compatible:vendor,fold_registry_test'
     or (
-      pm.kind = 'driver-group'
-      and pm.name = '测试'
+      ${alias}.kind = 'driver-group'
+      and ${alias}.name = '测试'
       and exists (
         select 1
         from parameter_module_mappings m
-        where m.parameter_module_id = pm.id
+        where m.parameter_module_id = ${alias}.id
           and m.match_value like '%fold_registry_test%'
       )
     )
   )
   and not exists (
-    select 1 from project_parameter_bindings b where b.module_id = pm.id
-  )
-  and not exists (
-    select 1 from parameter_definitions pd where pd.parameter_module_id = pm.id
-  )
+    select 1 from project_parameter_bindings b where b.module_id = ${alias}.id
+  )${definitionsGuard}
 `;
+}
 
-const RUNTIME_DEMO_DRIVER_GROUP_IDS_SUBQUERY = `
+function runtimeDemoDriverGroupIdsSubquery(definitionsTable: string | null): string {
+  return `
   select pm.id
   from parameter_modules pm
-  where ${RUNTIME_DEMO_DRIVER_GROUP_MATCH_SQL}
+  where ${runtimeDemoDriverGroupMatchSql("pm", definitionsTable)}
 `;
+}
+
+function runtimeDemoDriverGroupSubtreeIdsSql(definitionsTable: string | null): string {
+  return `
+  select child.id
+  from parameter_modules child
+  join parameter_modules root on child.path = root.path or child.path like root.path || '/%'
+  where ${runtimeDemoDriverGroupMatchSql("root", definitionsTable)}
+`;
+}
 
 /** Drop probe-edit uploads and dependent DTS rows so shared dev resets stay seed-clean. */
 export async function pruneProbeEditParameterFileVersions(tx: Queryable): Promise<void> {
@@ -275,34 +305,37 @@ export async function pruneProbeEditParameterFileVersions(tx: Queryable): Promis
   );
 }
 
-const RUNTIME_DEMO_DRIVER_GROUP_SUBTREE_IDS_SQL = `
-  select child.id
-  from parameter_modules child
-  join parameter_modules root on child.path = root.path or child.path like root.path || '/%'
-  where ${RUNTIME_DEMO_DRIVER_GROUP_MATCH_SQL.replaceAll("pm.", "root.")}
-`;
-
 /** Remove runtime-only driver-group demos left by schema-promotion walkthroughs. */
 export async function pruneRuntimeDemoDriverGroupModules(tx: Queryable): Promise<void> {
+  const definitionsTable = await resolveFlatOrLegacyDefinitionsTable(tx);
+  const subtreeIdsSql = runtimeDemoDriverGroupSubtreeIdsSql(definitionsTable);
+  const idsSubquery = runtimeDemoDriverGroupIdsSubquery(definitionsTable);
+  const definitionsChildGuard = definitionsTable
+    ? `
+        and not exists (
+          select 1 from ${definitionsTable} pd where pd.parameter_module_id = child.id
+        )`
+    : "";
+
   await tx.query(
     `
     delete from project_modules
-    where parameter_module_id in (${RUNTIME_DEMO_DRIVER_GROUP_SUBTREE_IDS_SQL})
-       or parent_id in (${RUNTIME_DEMO_DRIVER_GROUP_SUBTREE_IDS_SQL})
+    where parameter_module_id in (${subtreeIdsSql})
+       or parent_id in (${subtreeIdsSql})
     `
   );
   await tx.query(
     `
     update driver_registrations
     set default_business_category_module_id = null
-    where default_business_category_module_id in (${RUNTIME_DEMO_DRIVER_GROUP_SUBTREE_IDS_SQL})
+    where default_business_category_module_id in (${subtreeIdsSql})
     `
   );
   await tx.query(
     `
     update project_parameter_files
     set module_hint = null
-    where module_hint in (${RUNTIME_DEMO_DRIVER_GROUP_SUBTREE_IDS_SQL})
+    where module_hint in (${subtreeIdsSql})
     `
   );
 
@@ -314,7 +347,7 @@ export async function pruneRuntimeDemoDriverGroupModules(tx: Queryable): Promise
         and exists (
           select 1
           from parameter_modules root
-          where ${RUNTIME_DEMO_DRIVER_GROUP_MATCH_SQL.replaceAll("pm.", "root.")}
+          where ${runtimeDemoDriverGroupMatchSql("root", definitionsTable)}
             and child.path like root.path || '/%'
         )
         and not exists (
@@ -322,10 +355,7 @@ export async function pruneRuntimeDemoDriverGroupModules(tx: Queryable): Promise
         )
         and not exists (
           select 1 from project_parameter_bindings b where b.module_id = child.id
-        )
-        and not exists (
-          select 1 from parameter_definitions pd where pd.parameter_module_id = child.id
-        )
+        )${definitionsChildGuard}
       returning child.id
       `
     );
@@ -335,34 +365,34 @@ export async function pruneRuntimeDemoDriverGroupModules(tx: Queryable): Promise
   await tx.query(
     `
     delete from parameter_module_mappings
-    where parameter_module_id in (${RUNTIME_DEMO_DRIVER_GROUP_IDS_SUBQUERY})
+    where parameter_module_id in (${idsSubquery})
     `
   );
   await tx.query(
     `
     delete from project_modules
-    where parameter_module_id in (${RUNTIME_DEMO_DRIVER_GROUP_IDS_SUBQUERY})
-       or parent_id in (${RUNTIME_DEMO_DRIVER_GROUP_IDS_SUBQUERY})
+    where parameter_module_id in (${idsSubquery})
+       or parent_id in (${idsSubquery})
     `
   );
   await tx.query(
     `
     update driver_registrations
     set default_business_category_module_id = null
-    where default_business_category_module_id in (${RUNTIME_DEMO_DRIVER_GROUP_IDS_SUBQUERY})
+    where default_business_category_module_id in (${idsSubquery})
     `
   );
   await tx.query(
     `
     update project_parameter_files
     set module_hint = null
-    where module_hint in (${RUNTIME_DEMO_DRIVER_GROUP_IDS_SUBQUERY})
+    where module_hint in (${idsSubquery})
     `
   );
   await tx.query(
     `
     delete from parameter_modules pm
-    where ${RUNTIME_DEMO_DRIVER_GROUP_MATCH_SQL}
+    where ${runtimeDemoDriverGroupMatchSql("pm", definitionsTable)}
     `
   );
 }
