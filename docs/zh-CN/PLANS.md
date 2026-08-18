@@ -19,16 +19,17 @@
 - 已完成实现见 `docs/exec-plans/completed/`（含 2026-08-18 CI 反馈环 `2026-08-18-ci-feedback-loop-optimization.md`，#523–#525；2026-08-17 归档的路径可达 C1–C4、产品反馈、拓扑 review 第 3–6 轮、通知中心、配置工作台缺陷修复、以及小泽审批失败恢复 TD-102 / TD-094；2026-08-17 第二轮归档的已落地 DTS 工作台/种子、归属/驱动注册/overlay、参数后台 UX/IA、批导/Excel、日志组织解耦、个人总览、ADB/HDC、调试后台、Device Bridge 阶段 1/2、小泽回合 UX、CORS bootstrap；定义身份纠错 `2026-08-04-parameter-definition-identity-correction.md`，#504；以及 2026-08-17 归档的归属 deferred D-AG-01–04 证据收口 `2026-08-01-attribution-deferred-implementation.md`）。不要把那些计划重新当成活跃工作。
 - 当前仍有剩余工作的计划：
 
-### 自托管操作体验
-
-- `exec-plans/active/2026-08-18-self-hosted-ip-lab-profile.md`：无域名 IP 实验室 profile——自动生成密钥、HTTP 或 Caddy 自签证书、一键 bootstrap，以及管理员可见的 ChargeLab 演示数据。
-
 ### 等待外部输入或目标环境
 
 - `exec-plans/active/2026-08-12-agent-log-analysis-system.md`：P1–P3b 已在 `main`。剩下的是专家标注金标准案例、第二个试点域、以及人工 judge 校准记录——不是开放 PR。残留 TD-090 / TD-103 / TD-105 / TD-116。
 - `exec-plans/active/2026-07-16-parameter-topology-schema-management.md`：语义身份实现已落地；**TD-042** 在干净快照演练完成前仍阻断“生产 cutover 就绪”声明。各轮 review 计划已在 `completed/`。
 - `exec-plans/active/2026-05-29-wiseeff-m5-2-staging-pilot-evidence-execution.md` 与 `2026-05-29-wiseeff-m5-2-non-hdc-target-evidence-closure.md`：M5.2 目标环境证据。
 - `exec-plans/active/2026-06-02-wiseeff-m6-2-identity-user-governance.md` 至 `2026-06-02-wiseeff-m6-6-release-rollback-capacity-gate.md`：自托管身份、备份、队列、可观测、发布/回滚/容量证据（TD-019–025）。
+
+### 自托管操作体验
+
+- `exec-plans/active/2026-08-18-self-hosted-setup-wizard.md`：OpenClaw/Hermes 风格的终端配置向导——只问人必须决定的项、自动生成密钥、分段重配、doctor。
+- `exec-plans/active/2026-08-18-self-hosted-ip-lab-profile.md`：无域名 IP 实验室 profile——自动生成密钥、HTTP 或 Caddy 自签证书、一键 bootstrap，以及管理员可见的 ChargeLab 演示数据。配置向导的前置条件。
 
 ### 仍待做的产品与 UX
 

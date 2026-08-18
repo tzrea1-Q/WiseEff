@@ -28,7 +28,8 @@ This list is only plans that still have remaining work. Finished implementation 
 
 ### Self-hosted operator experience
 
-- `exec-plans/active/2026-08-18-self-hosted-ip-lab-profile.md`: no-DNS IP lab profile — secret generation, HTTP or Caddy internal TLS, one-command bootstrap, and ChargeLab-visible demo seed.
+- `exec-plans/active/2026-08-18-self-hosted-setup-wizard.md`: OpenClaw/Hermes-style TTY setup wizard — ask only human decisions, generate secrets, section reconfigure, doctor.
+- `exec-plans/active/2026-08-18-self-hosted-ip-lab-profile.md`: no-DNS IP lab profile — secret generation, HTTP or Caddy internal TLS, one-command bootstrap, and ChargeLab-visible demo seed. Prerequisite for the setup wizard.
 
 ### Remaining product and UX work
 

@@ -15,7 +15,7 @@ M0-M5 productization work has merged. 当前项目已经从前端原型推进到
 - OpenAPI artifact/check、生产 auth 边界、worker/object-store seam、Redis/BullMQ durable queue seam、HDC gateway seam、live Agent provider seam 和 M5 pilot-readiness gate 已落地。
 - GitHub PR #39 已合并，CI Build and test 通过。
 - CI 反馈环计划（`2026-08-18-ci-feedback-loop-optimization.md`）已归档到 `completed/`（#523–#525）；PR 合入门槛是 L1 + `@ci-smoke`。
-- 无域名 IP 实验室操作路径见 `docs/exec-plans/active/2026-08-18-self-hosted-ip-lab-profile.md`。
+- 自托管操作路径见 IP 实验室 profile，以及配置向导计划 `docs/exec-plans/active/2026-08-18-self-hosted-setup-wizard.md`。
 
 主要缺口：
 

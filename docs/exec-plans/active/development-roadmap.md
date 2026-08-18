@@ -35,7 +35,7 @@ The product is suitable for controlled staging and pilot evidence collection. It
 
 ## Current Active Focus
 
-Active plans under `docs/exec-plans/active/` track remaining target evidence and self-hosted hardening. The no-DNS operator path is `2026-08-18-self-hosted-ip-lab-profile.md`. The CI feedback-loop plan (`2026-08-18-ci-feedback-loop-optimization.md`) is under `completed/` (#523–#525). Do not move a plan to completed until its Documentation Update Gate and verification commands pass.
+Active plans under `docs/exec-plans/active/` track remaining target evidence and self-hosted hardening. The self-hosted operator path is the IP lab profile plus the setup-wizard plan (`2026-08-18-self-hosted-setup-wizard.md`). The CI feedback-loop plan (`2026-08-18-ci-feedback-loop-optimization.md`) is under `completed/` (#523–#525). Do not move a plan to completed until its Documentation Update Gate and verification commands pass.
 
 ## Engineering Workflow
 
