@@ -26,14 +26,11 @@
 - **TD-039（项目参数文件，程序主体已关闭）：** DTS 程序与硬化收口已归档。路径派生身份退役由活跃计划 `2026-07-16-parameter-topology-schema-management.md` 承接（语义规格/绑定 + 原子切换）。残余 fallback 仅在 cutover 前存在。
 - **TD-040（DTS 配置集/门禁后续）：** (1)(2)(3)(4) 状态见英文版；生产失败关闭 Schema/工具链校验由拓扑计划 Task 8/10/17 承接。
 - **TD-042（参数身份 cutover）：** Phase 7、第四轮与第五轮已完成既有语义迁移、状态门禁、不可变 base/candidate 和 fail-closed writeback。**第六轮**补齐 0058 scope、无损手工身份、global authz、完整 valueShape、真实角色 UI/merge、租户 cleanup/test 隔离、跨 origin candidate-less draft 失效和持久 `set|delete`；新增 0063，使 submission 锁定并推进 exact candidate、在 item/request 上持久化其 ID，merge 再次锁定复核。带 marker 的可丢弃库已覆盖实现链路，但它仍是空 legacy 合成库，不是生产近似快照或恢复演练。**缺少合法干净非客户快照与维护窗口**，尚未执行 apply→cutover→整库恢复→旧 API smoke，因此 TD-042 继续为 BLOCKER，不得宣称生产 cutover 就绪。
-- **TD-049（生命周期排序把 deprecated 与 draft 同等降权）：** 决策已锁定 D6：有 binding/CR 则 pin 版本；跨 spec 匹配顺序 `active → deprecated → draft`。SQL/调用点实现仍开。
 - **TD-051（已 resolved 的节点对应任务无反向回滚）：** 决策已锁定 [ADR-0033](../../adr/0033-identity-mapping-uses-protected-re-resolve.md) / D3：受保护 re-resolve（服务端已能）。mock/UI/合同诚实化仍开。
-- **TD-052（定义数与实测处数未拆分）：** 决策已锁定 D4：树显示定义数 + 实测处数。DTO/标签拆分仍开。
 - **TD-059（其余弹窗尚未迁到共享原语，部分）：** `ModalDialog` / `ConfirmDialog`（`src/components/common/`）已承载弹窗契约。**已迁**：`ParameterSpecDetailDialog`，**#538** 的 `DtsBindingDraftDialog`（`initialFocusRef` 仍把首焦给目标值编辑器），以及 **#540** 的 `DtsBindingDetailDialog`。仍为 Radix `Dialog` / `WorkbenchSheet`：`DtsBindingCompareDialog`、`DtsBindingHistoryDiffDialog`、`DtsNodeEnablementDialog`。**未动** `DtsReloadCandidateEditDialog`（reload sheet）。影响：未迁移表面仍可能偏离焦点、层叠与 Escape 契约（POD-F1–F5）。**保持 Open（部分）**：剩余 Compare / HistoryDiff / NodeEnablement。不要从已迁移表面重新开始。
 - **TD-062（PCW 壳 stretch 800–1000）：** Wave-3（#273–#278）已满足软门禁（`ProjectConfigurationWorkbench.tsx` = 1496 行）并关闭 #258；stretch 目标 800–1000 仍为残余债。勿重开 #258；下次改壳时再抽 bootstrap effects / MainStage bindings。
 - **TD-055（产品作用域策略目标面未建）：** 定义编辑器与 `PATCH /api/v2/parameter-specs/:specId` 已按 SE-D1 移除 `policyTarget` 写入；`parameter_policy_targets` 表与三处只读 join 仍在，但无生产写入。初始化仍优先 `policyTarget ?? schemaDefault`。后续要么建产品作用域治理面，要么用 ADR 正式退役表与读者。
 - **TD-033（遗留调试 catalog 表）：** `debugging_parameters` / `debugging_parameter_node_bindings` 仍为审计/历史保留。`parameter_reload_bindings` 已在迁移 `0037` **删除**，不得再写成存活 schema；`/debugging` 参数重载保持产品下线，且与 `/dts-reload`（DTS 重载）不是同一概念。详见英文版 Open 表。
-- **TD-063（调试值晋升为草稿）：** 决策已锁定 [ADR-0035](../../adr/0035-debug-value-promotion-stages-drafts.md)：晋升只建 `parameter_drafts` 然后停。下一步是 `promote-to-drafts`，**不是** reload→CR。**负责人：Product / Debugging platform。**
 - **TD-014（调试目录，部分）：** #532 落地节点目录 JSON 导入/导出（`wiseeff.debug-node-catalog.v1`，`debugging:admin`，`debug-node-catalog-export/import` 审计只记数量）。节点/模块/绑定 CRUD 本就在 `main`。**保持 Open**：遗留 `/admin/parameters` 目录没有导入导出、无 HDC/e2e、没有超出 schema / 同名冲突之外的治理面。不要把 #532 当成整票关闭。
 - **TD-075（验收治理，部分）：** 第一阶段 2026-08-12 已落地。**#528 只做 results 绑定**：`npm run acceptance:coverage` 把 `@acceptance` ID 绑到 Playwright `results.json`，required 且运行时全 skip 会失败。未做四注册表合一，也未改 `requirements.ts` / `operationMatrix.ts`；三个工作流状态机仍复刻生产规则。**不要**把 TD-076 / TD-077 / TD-071 标关。
 - **TD-067（多副本桥接路由）：** 桥接 WebSocket 单进程亲和；进程内 DTS 重载部署（ADR-0020）依赖持有 socket 的副本。**负责人：Platform / Reliability。**
@@ -43,7 +40,7 @@
 - **TD-100（HDC 真机验证欠账）：** 审批流浏览器走查已于 2026-08-13 完成（证据 `work/ui-checks/td100/`）：审批卡在聊天打开时正常渲染、批准/拒绝点击可达、带理由拒绝零错误走通，并由新增验收 `XIAOZE-APPROVAL-CARD-001` 自动守护。剩余：批量高风险设备写入仍缺 HDC 真机手工验证（聚合确认、写入/跳过记账）。**负责人：QA。**
 - **TD-116（Webhook 至多一次投递语义）：** **2026-08-16 由重复的 TD-102 改号**（审批执行失败死路保留原号）。结果回调的重试链在进程内（fire-and-forget + in-flight 集合），进程崩溃会丢失当次剩余重试；集成指南已写明 Webhook 是通知通道、REST API 才是事实来源。若真实消费方需要更强保证，把投递落库为 outbox（复用通知 outbox 范式）由 worker 循环排空。**负责人：Log analysis。**
 - **TD-073（页面测试 render harness，部分关闭）：** #518 已加 `src/test/harness/` 并迁 `App.test.tsx`、`ParameterAdminNextPage.test.tsx`、`logsPage.upload.test.tsx`、`NodeDebuggingPage.test.tsx`。剩余页测仍用本地 doubles：`DebuggingPage.test.tsx`、`LogAdminPage.test.tsx`、`logsPage.primaryAction.test.tsx`、`ProjectConfigurationWorkbench.test.tsx`、`DtsParameterWorkbench.test.tsx`、`ApiProjectTopologyWorkspace.test.tsx`。不要标成全部关闭。详见英文版 Open 表。
-- **TD-117（有引用的 property_key 改名）：** 决策已锁定 [ADR-0034](../../adr/0034-referenced-property-key-rename-is-a-source-cutover.md)：有引用改名 = 源文件改写 cutover。缺的是实现不是拍板。不要重开 ADR-0017，也不要做成行内字段。**负责人：Parameter specs。**
+- **TD-117（有引用的 property_key 改名）：** 决策已锁定 [ADR-0034](../../adr/0034-referenced-property-key-rename-is-a-source-cutover.md)。**#544** 已合入方案（`2026-08-18-property-key-source-cutover.md`）+ 只读 `POST .../property-key-cutover/preview`。**保持 Open**：start / prepare（源文件草稿/CR）/ finalize catalog 三元组未做。`referenceCount > 0` 时行内「修正属性键」保持禁用。不要重开 ADR-0017。**负责人：Parameter specs。**
 - **TD-118（CI L2 仍贵）：** Wave 2 已合入 #525。第一次 Wave 2 `main` L2：墙钟 31m12s / 浏览器 job 30m22s / 质量门兄弟 job 8m1s（[`32109015523`](https://github.com/tzrea1-Q/WiseEff/actions/runs/32109015523)）。拆前绿跑墙钟 36m29s。余量：共享库浏览器套件（该次 27 分钟）是下限，不要对它分片。要到 25 分钟需要隔离共享验收库或缩小浏览器套件。
 - **TD-103（Webhook 签名密钥明文存储）：** `log_domains.webhook_secret` 明文存库（HMAC 需原文），API 只写不读、响应/审计仅含已配置态与末四位；数据库泄露将允许伪造投递签名。平台具备 KMS/信封加密基础设施后升级静态加密并轮换。**负责人：Security / Log analysis。**
 - **TD-105（投递记录无保留策略）：** `log_webhook_deliveries` 每次尝试一行、无清理机制,投递量大的域将无限增长。真实投递量出现后加保留策略（按域保留最近 N 条或按天龄清理,可挂 worker 循环或定时任务）。**负责人：Log analysis / Ops。**
@@ -56,6 +53,9 @@
 
 ## 近期关闭项
 
+- **TD-049（生命周期排序把 deprecated 与 draft 同等降权）：** **2026-08-18 关闭**（#546）。有 binding/CR 则 pin `parameter_spec_version_id`；`migration.ts` 跨 spec 匹配顺序 `active → deprecated → draft`。残差（不重开）：`schemaLoader.ts` 仍只区分是否可发布。
+- **TD-052（定义数与实测处数未拆分）：** **2026-08-18 关闭**（#545）。模块 DTO 拆出 `definitionCount`（子树互异规格）与 `parameterCount`（绑定/实测处数）；树分别标注；库详情 `referenceCount` 仍是单定义实测处数。
+- **TD-063（调试值晋升为草稿）：** **2026-08-18 关闭**（#547）。`POST /api/v1/dts-reload/runs/:runId/promote-to-drafts` 只建 `parameter_drafts` 然后停，不插入 `parameter_change_requests`，也不把调试值写入 binding。ADR-0019 重载指纹不变。
 - **TD-048（参数定义多版本模型未启用）：** **2026-08-18 关闭**（#541）。active 定义上 PATCH 语义字段返回 `409 semantic-edit-requires-successor`；对已 active 规格执行 activate（API + mock）会铸造后继版本并 cutover，而不是改写线上版本。ADR-0032 / D1–D2 决策不变。
 - **TD-013（设备写与 agent_approvals）：** **2026-08-18 关闭**（#529）。独立高风险写/回滚仍走确认口令；`approvalId` 必须解析为同组织已批准的 `agent_approvals`，且 tool name + payload 匹配本次 write 或 rollback。编排器批准执行时把 `approvalId` 放进 tool context。未新增 Xiaoze 设备写工具；无 HDC/ADB 真机证据。
 - **TD-066（产物保留清理）：** **2026-08-18 关闭**（#531）。`overlay-artifact-gc` job 经 PostgreSQL `jobs` 表领取并按组织清过期 overlay blob，写系统审计（含 run digest），失败走既有重试/死信。`npm run reload:sweep-artifacts` 入队并排空。残差（不重开）：仍需人工 cron 或等效定时器；没有常驻 worker；未做真实 S3/MinIO 演练。
