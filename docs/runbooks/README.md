@@ -13,7 +13,7 @@ Runbooks describe repeatable operational procedures. They complement the design 
 - [Durable Queue](durable-queue.md): M6.4 Redis/BullMQ queue operation, health, retry, and incident handling.
 - [Manual Acceptance](manual-acceptance.md): human acceptance checklist for product workflows, runtime gates, evidence capture, and Go/No-Go judgment.
 - [Staging Deployment](staging-deployment.md): deploy order and smoke sequence for staging.
-- [Backup And Restore](backup-restore.md): M6.3 PostgreSQL and S3-compatible object-store backup/restore drill procedure.
+- [Backup And Restore](backup-restore.md): M6.3 PostgreSQL and S3-compatible object-store backup/restore drill procedure, plus DTS overlay artifact retention / `overlay-artifact-gc`.
 - [Rollback](rollback.md): rollback rehearsal and emergency rollback sequence.
 - [Self-Hosted Release And Rollback](release-rollback.md): M6.6 release-candidate, capacity, target synthetic, and rollback rehearsal procedure.
 - [Monitoring And Alerting](monitoring-alerting.md): signals, alerts, and first triage.

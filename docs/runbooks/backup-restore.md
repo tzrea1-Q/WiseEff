@@ -163,6 +163,25 @@ When durable queue mode is enabled, `queue.status` cannot be `conditional`. Targ
 
 If the target intentionally avoids restoring queue persistence, the operator must document the queue-drain procedure and validate the post-restore queue state with `npm run queue:check -- --base-url <target-url>`.
 
+## Overlay Artifact Retention And GC
+
+Compiled DTS reload overlay blobs (source + `dtbo`) stay downloadable for `RELOAD_ARTIFACT_RETENTION_DAYS` (90) from run `completed_at` (else `created_at`). After that window, download and deploy return `410` with `details.code: "reload-artifact-expired"`. Run metadata, SHA-256 digests, byte sizes, the reload snapshot, and existing audit rows stay on the run.
+
+Physical blob deletion is a PostgreSQL jobs-table task, kind `overlay-artifact-gc`:
+
+- Enqueue is idempotent while a queued or processing job already exists for that organization.
+- The worker claims the job, deletes expired object-store keys, nulls storage keys, writes a system audit (`app: dts-reload`, `kind: overlay-artifact-gc`, `action: sweep`) with the run digest (`scannedRuns`, `reclaimedRuns`, `deletedBlobs`), then completes.
+- Failures use the jobs retry/backoff lease. Exhausted attempts dead-letter the job and leave remaining keys in place for the next sweep.
+- This path does not use Redis/BullMQ. Do not treat a real S3/MinIO drill as the completion gate.
+
+Operators still schedule the kick with cron (or an equivalent timer):
+
+```bash
+npm run reload:sweep-artifacts
+```
+
+The script reclaims stale `deploying` runs, enqueues `overlay-artifact-gc` jobs for organizations that still hold expired blobs, and drains those jobs through the same worker entry. A store without `delete` is a no-op. Repeating the command is safe.
+
 ## Failure Handling
 
 If backup or restore fails:

@@ -25,3 +25,22 @@ export type ClaimedLogAnalysisJobDto = LogAnalysisJobDto & {
 export type LogAnalysisJobSnapshotDto = LogAnalysisJobDto & {
   organizationId: string;
 };
+
+export type OverlayArtifactGcJobKind = "overlay-artifact-gc";
+export type OverlayArtifactGcJobStatus = "queued" | "processing" | "complete" | "failed";
+
+export type OverlayArtifactGcJobDto = {
+  id: string;
+  kind: OverlayArtifactGcJobKind;
+  organizationId: string;
+  status: OverlayArtifactGcJobStatus;
+  progress: number;
+  error: string | null;
+  updatedAt: string;
+};
+
+export type ClaimedOverlayArtifactGcJobDto = OverlayArtifactGcJobDto & {
+  leaseOwner: string | null;
+  leaseExpiresAt: string | null;
+  attemptCount: number;
+};
