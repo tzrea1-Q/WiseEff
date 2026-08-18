@@ -33,6 +33,7 @@
 
 ### 仍待做的产品与 UX
 
+- `exec-plans/active/2026-08-18-property-key-source-cutover.md`：方案 + 只读 `POST .../property-key-cutover/preview` 已由 #544 合入。**TD-117 保持 Open。** 剩余：start / prepare（源文件草稿/CR）/ finalize catalog 三元组。`referenceCount > 0` 时不要启用行内改名。
 - `exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`：上线窗口可关闭、且不需要 HDC / 专家日志 / 目标环境的技术债收口。批次 1 已归档归属证据并把 `2026-08-01-attribution-deferred-implementation.md` 移到 `completed/`；批次 2 已关闭 TD-056（参数文件回滚 / 操作者显示名）；批次 3 已合入 `main`——TD-057 经 #513，TD-079 hierarchical-modules 经 #511，import-wizard 经 #512。批次 4 已于 2026-08-18 合入：工作台夹具 #516、语义 file-sync #519、dts-reload 交接/形态 #517、DTO 校验 #515、render harness #518、治理 ADR #520。**TD-079 已关闭**（`fix/td-079-flip-ci-acceptance`，共享 CI 验收为 post-cutover）。TD-082 已由 #507 合入 `main`。第二波 H–N（2026-08-18）：TD-013 经 #529 关闭，TD-066 经 #531 关闭；TD-014 / TD-075 / TD-097 / TD-112 仍为**部分**开放；TD-059 未合入（GitHub 上无 PR）。
 - `exec-plans/active/td-031-xiaoze-run-timeline-streaming.md`：时间线/流式已落入 `xiaozeTurnStream`（TD-070 已关）；本文件残留是设计文档 metadata 门禁。
 - `exec-plans/active/2026-07-08-project-hotspot-scoring-redesign.md`：实现已在 `main`；残留是 API 合同 review 行。
