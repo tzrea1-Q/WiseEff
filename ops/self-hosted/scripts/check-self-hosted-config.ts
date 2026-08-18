@@ -1,9 +1,13 @@
 import { existsSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { evaluateIpLabCaddyfile, requiredIpLabFiles } from "./ip-lab-profile";
 
 export const requiredSelfHostedScripts = [
   "selfhost:check",
   "selfhost:smoke",
+  "selfhost:ip-lab:init",
+  "selfhost:ip-lab:preflight",
+  "selfhost:ip-lab:provision",
   "backup:drill",
   "restore:drill",
   "backup:check",
@@ -16,7 +20,7 @@ export const requiredSelfHostedScripts = [
 
 export const requiredSelfHostedServices = ["postgres", "redis", "api", "worker", "web", "proxy"] as const;
 
-export const requiredSelfHostedFiles = ["ops/self-hosted/scripts/compose"] as const;
+export const requiredSelfHostedFiles = ["ops/self-hosted/scripts/compose", ...requiredIpLabFiles] as const;
 
 export const requiredComposeTokens = [
   'version: "3.8"',
@@ -33,7 +37,8 @@ export const requiredComposeTokens = [
   "npm run worker:logs",
   "npm run preview -- --host 0.0.0.0 --port 5173 --strictPort",
   "80:80",
-  "443:443"
+  "443:443",
+  "./${WISEEFF_CADDYFILE:-Caddyfile.example}:/etc/caddy/Caddyfile:ro"
 ] as const;
 
 export const requiredDockerfileTokens = [
@@ -50,7 +55,7 @@ export const requiredDockerfileTokens = [
   "npx vite build"
 ] as const;
 
-export const requiredDockerignoreTokens = ["**/.env", "**/.env.*", ".git/"] as const;
+export const requiredDockerignoreTokens = ["**/.env", "**/.env.*", ".git/", "ops/self-hosted/images/*.tar"] as const;
 
 export const requiredEnvKeys = [
   "NODE_ENV",
@@ -216,6 +221,18 @@ export function runSelfHostedConfigCheck() {
     envExampleText: readFileSync(paths.envExample, "utf8"),
     caddyfileText: readFileSync(paths.caddyfile, "utf8")
   });
+
+  const httpLabCaddy = evaluateIpLabCaddyfile(readFileSync("ops/self-hosted/Caddyfile.ip-lab", "utf8"), "http");
+  const tlsLabCaddy = evaluateIpLabCaddyfile(readFileSync("ops/self-hosted/Caddyfile.ip-lab-tls", "utf8"), "internal");
+  if (httpLabCaddy.status === "failed" || tlsLabCaddy.status === "failed") {
+    result.status = "failed";
+    result.missingProxyTokens.push(
+      ...httpLabCaddy.missingTokens.map((token) => `Caddyfile.ip-lab:${token}`),
+      ...httpLabCaddy.forbiddenTokens.map((token) => `Caddyfile.ip-lab-forbidden:${token}`),
+      ...tlsLabCaddy.missingTokens.map((token) => `Caddyfile.ip-lab-tls:${token}`),
+      ...tlsLabCaddy.forbiddenTokens.map((token) => `Caddyfile.ip-lab-tls-forbidden:${token}`)
+    );
+  }
 
   console.log(JSON.stringify(result, null, 2));
   return result;

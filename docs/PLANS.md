@@ -26,6 +26,10 @@ This list is only plans that still have remaining work. Finished implementation 
 - `exec-plans/active/2026-06-02-wiseeff-m6-5-observability-operations.md`: self-hosted observability.
 - `exec-plans/active/2026-06-02-wiseeff-m6-6-release-rollback-capacity-gate.md`: release, rollback, capacity, and target synthetic gates (TD-019 / TD-024 / TD-025).
 
+### Self-hosted operator experience
+
+- `exec-plans/active/2026-08-18-self-hosted-ip-lab-profile.md`: no-DNS IP lab profile — secret generation, HTTP or Caddy internal TLS, one-command bootstrap, and ChargeLab-visible demo seed.
+
 ### Remaining product and UX work
 
 - `exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`: launch-window closeout of tracker rows that do not need HDC, expert logs, or a target environment. Batch 1 archived attribution evidence and moved `2026-08-01-attribution-deferred-implementation.md` to `completed/`; Batch 2 closed TD-056 (parameter-file rollback / display name); Batch 3 landed on `main` — TD-057 via #513, TD-079 hierarchical-modules via #511, import-wizard via #512. Batch 4 landed 2026-08-18: workbench fixtures #516, semantic file-sync #519, dts-reload handoff/shapes #517, DTO validation #515, render harness #518, governance ADRs #520. **TD-079 closed** on `fix/td-079-flip-ci-acceptance` (shared CI acceptance is post-cutover). TD-082 closed on `main` via #507.
