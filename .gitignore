@@ -45,7 +45,8 @@ Thumbs.db
 .worktrees/
 .codegraph/
 
-# Generated visual QA screenshots
+# Local visual QA screenshots — do not commit.
+# Current browser evidence path is work/ui-checks/ (also under work/).
 qa-screenshots/
 work/
 
