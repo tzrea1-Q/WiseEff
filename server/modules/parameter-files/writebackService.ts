@@ -30,6 +30,7 @@ import {
 } from "../parameter-topology/writeLock";
 import { createDtsToolchainRunner } from "./dtsToolchain";
 import type { ParameterFileFormat } from "./types";
+import { loadPinnedSpecVersionId } from "../parameters/specVersionSelection";
 
 type WritebackSource = {
   sourceFileName: string | null;
@@ -255,20 +256,11 @@ async function resolveLockedWritebackContext(
     });
   }
 
-  const specVersion = await db.query<{ id: string }>(
-    `
-    select psv.id
-    from parameter_spec_versions psv
-    where psv.parameter_spec_id = $1
-    order by case when psv.lifecycle = 'active' then 0 else 1 end, psv.version desc
-    limit 1
-    `,
-    [input.parameterSpecId],
-  );
-  const parameterSpecVersionId = specVersion.rows[0]?.id;
+  const parameterSpecVersionId = await loadPinnedSpecVersionId(db, persistedLock.bindingRevisionId);
   if (!parameterSpecVersionId) {
     throw new ApiError("CONFLICT", "Parameter spec version missing for locked writeback.", {
       reason: "missing-spec-version",
+      bindingRevisionId: persistedLock.bindingRevisionId,
       parameterSpecId: input.parameterSpecId,
     });
   }

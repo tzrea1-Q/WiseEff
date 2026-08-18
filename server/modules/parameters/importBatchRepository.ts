@@ -174,19 +174,13 @@ async function listSemanticParameterDefinitionsForImport(
     inner join parameter_specs ps on ps.id = b.parameter_spec_id
     left join dts_property_specs dps on dps.parameter_spec_id = ps.id
     left join lateral (
-      select psv.*
-      from parameter_spec_versions psv
-      where psv.parameter_spec_id = ps.id
-      order by case when psv.lifecycle = 'active' then 0 else 1 end, psv.version desc
-      limit 1
-    ) psv on true
-    left join lateral (
-      select bpr.raw_value
+      select bpr.raw_value, bpr.parameter_spec_version_id
       from project_parameter_binding_revisions bpr
       where bpr.binding_id = b.id
       order by bpr.created_at desc
       limit 1
     ) bpr on true
+    left join parameter_spec_versions psv on psv.id = bpr.parameter_spec_version_id
     where b.organization_id = $1
       and b.project_id = $2
       and (
