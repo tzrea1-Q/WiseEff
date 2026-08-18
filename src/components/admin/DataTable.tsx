@@ -125,13 +125,15 @@ export function DataTable<TData>({
     return [...filteredRows].sort((a, b) => {
       const av = accessor(a);
       const bv = accessor(b);
-      if (av < bv) {
-        return activeSort.dir === "asc" ? -1 : 1;
-      }
-      if (av > bv) {
-        return activeSort.dir === "asc" ? 1 : -1;
-      }
-      return 0;
+      const compared =
+        typeof av === "string" && typeof bv === "string"
+          ? av.localeCompare(bv, "zh-CN")
+          : av < bv
+            ? -1
+            : av > bv
+              ? 1
+              : 0;
+      return activeSort.dir === "asc" ? compared : -compared;
     });
   }, [activeSort, columns, filteredRows]);
 
@@ -288,7 +290,7 @@ export function DataTable<TData>({
                       )}
                       onClick={() => onRowClick?.(row)}
                       onKeyDown={(event) => {
-                        if (!clickable) {
+                        if (!clickable || event.target !== event.currentTarget) {
                           return;
                         }
                         if (event.key === "Enter" || event.key === " ") {
@@ -309,7 +311,15 @@ export function DataTable<TData>({
                           </td>
                         );
                       })}
-                      {renderRowActions ? <td className="px-4 py-3 text-right align-middle">{renderRowActions(row)}</td> : null}
+                      {renderRowActions ? (
+                        <td
+                          className="px-4 py-3 text-right align-middle"
+                          onClick={(event) => event.stopPropagation()}
+                          onKeyDown={(event) => event.stopPropagation()}
+                        >
+                          {renderRowActions(row)}
+                        </td>
+                      ) : null}
                     </tr>
                   );
                 })
