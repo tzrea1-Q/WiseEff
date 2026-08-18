@@ -38,6 +38,7 @@ export type DataTableProps<TData> = {
   columns: Array<Column<TData> | DataTableColumn<TData>>;
   onRowClick?: (row: TData) => void;
   selectedRowKey?: string;
+  selectedRowKeys?: readonly string[];
   toolbar?: ReactNode;
   emptyState?: ReactNode;
   emptyMessage?: string;
@@ -48,6 +49,7 @@ export type DataTableProps<TData> = {
   onSort?: (key: string) => void;
   renderRowActions?: (row: TData) => ReactNode;
   className?: string;
+  tableClassName?: string;
 };
 
 type SortState = { key: string; dir: "asc" | "desc" } | null;
@@ -77,6 +79,7 @@ export function DataTable<TData>({
   columns,
   onRowClick,
   selectedRowKey,
+  selectedRowKeys,
   toolbar,
   emptyState,
   emptyMessage = "当前筛选条件下没有数据。",
@@ -86,7 +89,8 @@ export function DataTable<TData>({
   sort: controlledSort,
   onSort,
   renderRowActions,
-  className
+  className,
+  tableClassName
 }: DataTableProps<TData>) {
   const [sort, setSort] = useState<SortState>(null);
   const [generatedFilters, setGeneratedFilters] = useState<HeaderFilterState>({});
@@ -217,7 +221,7 @@ export function DataTable<TData>({
       {toolbar ? <div className="border-b border-border p-3">{toolbar}</div> : null}
       <div className={cn("overflow-x-auto", hasHeaderFilters && "overflow-visible")}>
         {/* M7 note: narrow screens use horizontal overflow; card-style row folding belongs in a later dedicated spec. */}
-        <table aria-label={tableLabel} className="w-full min-w-[720px] border-collapse text-sm">
+        <table aria-label={tableLabel} className={cn("w-full min-w-[720px] border-collapse text-sm", tableClassName)}>
           <thead>
             <tr className="border-b border-border bg-muted/40">
               {columns.map((column) => {
@@ -273,7 +277,7 @@ export function DataTable<TData>({
             {pageRows.length > 0 ? (
               pageRows.map((row) => {
                   const key = rowKey(row);
-                  const selected = selectedRowKey === key;
+                  const selected = selectedRowKeys ? selectedRowKeys.includes(key) : selectedRowKey === key;
                   const clickable = Boolean(onRowClick);
 
                   return (

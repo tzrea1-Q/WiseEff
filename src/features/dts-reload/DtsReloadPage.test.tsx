@@ -472,6 +472,70 @@ describe("DtsReloadPage", () => {
     expect(screen.getByText("显示 2 / 2 项")).toBeInTheDocument();
   });
 
+  it("sorts the candidate DataTable and exposes aria-sort", async () => {
+    const user = userEvent.setup();
+    const repository = createRepository({
+      listCandidates: vi.fn(async () => ({
+        items: [
+          candidate(),
+          candidate({
+            bindingId: "binding-2",
+            propertyKey: "compatible",
+            displayName: "Compatible",
+            module: "uart",
+            nodePath: "/amba/uart@2",
+            baselineValue: '"sc8562"',
+            valueShapeKind: "string-list",
+            resolvedValueShape: { kind: "string-list" },
+            constraints: {}
+          })
+        ]
+      }))
+    });
+    renderPage(repository);
+
+    const table = await screen.findByRole("table", { name: "可调试参数" });
+    const parameterHeader = within(table).getByRole("columnheader", { name: /参数/ });
+    expect(parameterHeader).toHaveAttribute("aria-sort", "none");
+
+    await user.click(within(parameterHeader).getByRole("button", { name: /参数/ }));
+    expect(parameterHeader).toHaveAttribute("aria-sort", "ascending");
+    const bodyRows = within(table).getAllByRole("row").slice(1);
+    expect(within(bodyRows[0]!).getByText("Compatible")).toBeInTheDocument();
+    expect(within(bodyRows[1]!).getByText("Watchdog")).toBeInTheDocument();
+  });
+
+  it("paginates the candidate DataTable and toggles a row from the keyboard", async () => {
+    const user = userEvent.setup();
+    const repository = createRepository({
+      listCandidates: vi.fn(async () => ({
+        items: Array.from({ length: 12 }, (_, index) =>
+          candidate({
+            bindingId: `binding-${index + 1}`,
+            displayName: `参数 ${String(index + 1).padStart(2, "0")}`,
+            propertyKey: `param_${index + 1}`,
+            baselineValue: `<${index + 1}>`
+          })
+        )
+      }))
+    });
+    renderPage(repository);
+
+    const table = await screen.findByRole("table", { name: "可调试参数" });
+    expect(within(table).getByText("参数 01")).toBeInTheDocument();
+    expect(within(table).queryByText("参数 11")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下一页" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+    expect(within(table).getByText("参数 11")).toBeInTheDocument();
+
+    const row = within(table).getByRole("row", { name: /参数 11/ });
+    row.focus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("region", { name: "本轮重载" })).toBeInTheDocument();
+    expect(screen.getByText(/本轮 2 项/)).toBeInTheDocument();
+  });
+
   it("lists candidates, starts a batch run, shows overlay source, and downloads the artifact", async () => {
     const user = userEvent.setup();
     const repository = createRepository({

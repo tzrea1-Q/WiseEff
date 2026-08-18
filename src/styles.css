@@ -6960,189 +6960,12 @@ td small {
   }
 }
 
-.dts-reload-candidates-grid td strong {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dts-reload-candidates-grid td small,
 .dts-reload-last-reload-link small {
   display: block;
-  margin-top: 2px;
+  margin-top: var(--space-1);
   color: var(--app-muted);
   font-size: var(--text-xs);
   font-weight: 500;
-}
-
-.dts-reload-candidates-grid td[data-label="参数"] small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--font-mono);
-  line-height: 1.4;
-}
-
-.dts-reload-candidates-grid tr.is-selected {
-  background: rgba(14, 165, 233, 0.08);
-}
-
-/* Column budget for reload candidates (not ParametersTable / action-column semantics).
-   选择 compact · 参数 identity · 模块 short · 库基线 mono · 操作 takes remainder. */
-.parameters-table-grid.dts-reload-candidates-grid {
-  table-layout: fixed;
-  width: 100%;
-  min-width: 640px;
-}
-
-.parameters-table-grid.dts-reload-candidates-grid col.dts-reload-col-select {
-  width: 44px;
-}
-
-.parameters-table-grid.dts-reload-candidates-grid col.dts-reload-col-param {
-  width: 24%;
-}
-
-.parameters-table-grid.dts-reload-candidates-grid col.dts-reload-col-module {
-  width: 108px;
-}
-
-.parameters-table-grid.dts-reload-candidates-grid col.dts-reload-col-baseline {
-  width: 22%;
-}
-
-.parameters-table-grid.dts-reload-candidates-grid col.dts-reload-col-actions {
-  width: 18%;
-}
-
-.parameters-table-grid.dts-reload-candidates-grid th:last-child,
-.parameters-table-grid.dts-reload-candidates-grid td.parameter-row-actions {
-  min-width: 88px;
-  text-align: center;
-  vertical-align: middle;
-}
-
-.parameters-table-grid.dts-reload-candidates-grid td.parameter-row-actions .dts-parameter-workbench-table__icon-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-inline: auto;
-  vertical-align: middle;
-  color: var(--dts-workbench-ink, #152238);
-  background: var(--dts-workbench-surface, var(--surface));
-  border: 1px solid var(--dts-workbench-border-strong, #bac8dc);
-  border-radius: 9px;
-  box-shadow: none;
-}
-
-.parameters-table-grid.dts-reload-candidates-grid td.parameter-row-actions .dts-parameter-workbench-table__icon-action:hover:not(:disabled) {
-  background: var(--dts-workbench-blue-soft, #eff5ff);
-  border-color: #8eacd7;
-}
-
-.parameters-table-grid.dts-reload-candidates-grid td.parameter-row-actions .dts-parameter-workbench-table__icon-action:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--dts-workbench-blue, #075bc4) 45%, transparent);
-  outline-offset: 2px;
-}
-
-.parameters-table-grid.dts-reload-candidates-grid td.parameter-row-actions .dts-reload-status-text {
-  display: inline-block;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  white-space: normal;
-  text-align: center;
-}
-
-.parameters-table-grid.dts-reload-candidates-grid th,
-.parameters-table-grid.dts-reload-candidates-grid td {
-  max-width: none;
-  vertical-align: top;
-}
-
-.parameters-table-grid.dts-reload-candidates-grid thead th {
-  vertical-align: middle;
-}
-
-.parameters-table-grid.dts-reload-candidates-grid th:first-child,
-.parameters-table-grid.dts-reload-candidates-grid td:first-child {
-  width: 44px;
-  min-width: 44px;
-  max-width: 44px;
-  padding-inline: var(--space-1);
-  text-align: center;
-  white-space: nowrap;
-}
-
-.parameters-table-grid.dts-reload-candidates-grid th:first-child {
-  letter-spacing: 0.02em;
-}
-
-.parameters-table-grid.dts-reload-candidates-grid td:first-child {
-  /* Align checkbox with the first line of multi-line parameter cells. */
-  vertical-align: top;
-  padding-top: 14px;
-}
-
-.parameters-table-grid.dts-reload-candidates-grid th:nth-child(2),
-.parameters-table-grid.dts-reload-candidates-grid td:nth-child(2) {
-  width: 20%;
-  min-width: 128px;
-  max-width: none;
-  left: 44px;
-}
-
-.parameters-table-grid.dts-reload-candidates-grid td:nth-child(2) {
-  vertical-align: top;
-}
-
-.parameters-table-grid.dts-reload-candidates-grid th:nth-child(3),
-.parameters-table-grid.dts-reload-candidates-grid td:nth-child(3) {
-  width: 108px;
-  min-width: 100px;
-  max-width: 128px;
-  word-break: break-word;
-}
-
-.parameters-table-grid.dts-reload-candidates-grid td[data-label="模块"] {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.parameters-table-grid.dts-reload-candidates-grid th:nth-child(4),
-.parameters-table-grid.dts-reload-candidates-grid td:nth-child(4) {
-  width: 22%;
-  min-width: 112px;
-}
-
-.parameters-table-grid.dts-reload-candidates-grid td[data-label="库基线"] code {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  max-width: 100%;
-  overflow: hidden;
-  white-space: normal;
-  word-break: break-word;
-  font-size: var(--text-sm);
-  line-height: 1.4;
-}
-
-/* Ops column: prose reasons for blocked rows; icon action for debuggable rows. */
-.parameters-table-grid.dts-reload-candidates-grid th:nth-child(5),
-.parameters-table-grid.dts-reload-candidates-grid td:nth-child(5),
-.parameters-table-grid.dts-reload-candidates-grid th:last-child,
-.parameters-table-grid.dts-reload-candidates-grid td:last-child {
-  position: static;
-  right: auto;
-  z-index: auto;
-  width: auto;
-  min-width: 120px;
-  max-width: none;
-  box-shadow: none;
-  background: transparent;
-  text-align: center;
-  vertical-align: middle;
 }
 
 .dts-reload-candidate-edit .debug-detail-card {
@@ -7247,15 +7070,6 @@ td small {
   font-size: var(--text-base);
   line-height: 1.45;
   resize: vertical;
-}
-
-.parameters-table-grid.dts-reload-candidates-grid thead th:last-child {
-  background: var(--surface-low);
-}
-
-.parameters-table-grid.dts-reload-candidates-grid tbody tr:hover td:last-child,
-.parameters-table-grid.dts-reload-candidates-grid tbody tr.is-selected td:last-child {
-  background: inherit;
 }
 
 .dts-reload-status-text {
@@ -10844,14 +10658,6 @@ td small {
   .parameters-table-grid.debug-admin-library-grid td:nth-child(3),
   .parameters-table-grid.debug-admin-library-grid th:nth-child(5),
   .parameters-table-grid.debug-admin-library-grid td:nth-child(5) {
-    display: table-cell;
-  }
-
-  /* DTS reload candidates: keep 模块 (3) / 操作 (5) visible — not ParametersTable density. */
-  .parameters-table-grid.dts-reload-candidates-grid th:nth-child(3),
-  .parameters-table-grid.dts-reload-candidates-grid td:nth-child(3),
-  .parameters-table-grid.dts-reload-candidates-grid th:nth-child(5),
-  .parameters-table-grid.dts-reload-candidates-grid td:nth-child(5) {
     display: table-cell;
   }
 
