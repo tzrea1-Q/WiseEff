@@ -43,10 +43,10 @@ describe("WiseEff mature homepage theme", () => {
     expect(declarationFor(cssText, ".linear-footer", "background")).toBe("var(--surface)");
   });
 
-  it("renders three sub-app entry cards before the merged platform flow section", () => {
+  it("renders allowlisted sub-app entry cards before the merged platform flow section", () => {
     const { container } = render(createElement(LinearTemplateHome));
 
-    expect(container.querySelectorAll(".sub-app-card")).toHaveLength(3);
+    expect(container.querySelectorAll(".sub-app-card")).toHaveLength(2);
     expect(container.querySelector(".sub-app-card-badge")).not.toBeInTheDocument();
     expect(container.querySelector(".sub-app-entry-row")).toBeInTheDocument();
     expect(container.querySelector("#platform-flow")).toBeInTheDocument();
@@ -64,8 +64,7 @@ describe("WiseEff mature homepage theme", () => {
 
     expect(links).toEqual([
       { label: "参数管理", href: "/parameter-home" },
-      { label: "调试平台", href: "/node-debugging" },
-      { label: "日志分析", href: "/logs" }
+      { label: "调试平台", href: "/node-debugging" }
     ]);
     expect(nav?.querySelector('a[href="#platform"]')).not.toBeInTheDocument();
     expect(nav?.querySelector('a[href="#workflow"]')).not.toBeInTheDocument();

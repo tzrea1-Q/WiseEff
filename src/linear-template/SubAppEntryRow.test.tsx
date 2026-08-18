@@ -5,11 +5,12 @@ import { SubAppEntryRow } from "./SubAppEntryRow";
 afterEach(cleanup);
 
 describe("SubAppEntryRow", () => {
-  it("renders three sub-app cards in the documented order", () => {
+  it("renders allowlisted sub-app cards in the documented order", () => {
     render(<SubAppEntryRow />);
 
     const headings = screen.getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent);
-    expect(headings).toEqual(["参数管理", "调试平台", "日志分析"]);
+    expect(headings).toEqual(["参数管理", "调试平台"]);
+    expect(screen.queryByRole("heading", { name: "日志分析", level: 3 })).not.toBeInTheDocument();
   });
 
   it("does not show derived status badges on the entry cards", () => {
@@ -26,23 +27,23 @@ describe("SubAppEntryRow", () => {
 
     expect(screen.getByText("配置治理")).toBeInTheDocument();
     expect(screen.getByText("在线调试")).toBeInTheDocument();
-    expect(screen.getByText("证据链路")).toBeInTheDocument();
+    expect(screen.queryByText("证据链路")).not.toBeInTheDocument();
   });
 
   it("links the primary CTAs to the expected routes", () => {
     render(<SubAppEntryRow />);
 
     expect(screen.getByRole("link", { name: /进入参数首页/ })).toHaveAttribute("href", "/parameter-home");
-    expect(screen.getByRole("link", { name: /进入日志分析/ })).toHaveAttribute("href", "/logs");
     expect(screen.getByRole("link", { name: /进入节点调试/ })).toHaveAttribute("href", "/node-debugging");
+    expect(screen.queryByRole("link", { name: /进入日志分析/ })).not.toBeInTheDocument();
   });
 
   it("links the secondary CTAs to the admin routes", () => {
     render(<SubAppEntryRow />);
 
     expect(screen.getByRole("link", { name: /打开参数管理后台/ })).toHaveAttribute("href", "/parameter-admin");
-    expect(screen.getByRole("link", { name: /打开日志分析后台/ })).toHaveAttribute("href", "/log-admin");
     expect(screen.getByRole("link", { name: /打开调试管理后台/ })).toHaveAttribute("href", "/debugging-admin");
+    expect(screen.queryByRole("link", { name: /打开日志分析后台/ })).not.toBeInTheDocument();
   });
 
   it("applies the sub-app-entry-row container class", () => {
@@ -50,7 +51,7 @@ describe("SubAppEntryRow", () => {
 
     expect(container.querySelector(".sub-app-entry-row")).toBeInTheDocument();
     const cards = container.querySelectorAll(".sub-app-card");
-    expect(cards).toHaveLength(3);
+    expect(cards).toHaveLength(2);
   });
 
   it("keeps the cards free of empty-state badge labels", () => {

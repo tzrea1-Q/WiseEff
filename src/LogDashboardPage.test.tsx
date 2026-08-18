@@ -209,18 +209,15 @@ describe("LogDashboardPage", () => {
     expect(window.location.pathname).toBe("/logs");
   });
 
-  it("is reachable from the sidebar navigation", async () => {
+  it("keeps the deep-linked log workspace without a sidebar discovery group", async () => {
     window.history.replaceState(null, "", "/logs");
-    const user = await import("@testing-library/user-event").then((mod) => mod.default.setup());
 
     render(<App initialAppState={userState} />);
 
-    const logNavigation = screen.getAllByText("日志分析")[0].closest(".nav-group");
-    expect(logNavigation).not.toBeNull();
-    const logDashboardButton = within(logNavigation as HTMLElement).getByRole("button", { name: "看板" });
-
-    await user.click(logDashboardButton);
-
-    expect(window.location.pathname).toBe("/log-dashboard");
+    const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
+    expect(within(sidebar).queryByText("日志分析")).not.toBeInTheDocument();
+    expect(within(sidebar).queryByRole("button", { name: "看板" })).not.toBeInTheDocument();
+    expect(within(sidebar).queryByRole("button", { name: "智能分析" })).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe("/logs");
   });
 });

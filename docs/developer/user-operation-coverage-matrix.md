@@ -23,6 +23,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `KB-REC-001` | P1 | knowledge | automated | `/logs` | Hardware User | ui, api, db | `e2e/acceptance/knowledge.acceptance.spec.ts` |
 | `KB-XREF-001` | P1 | knowledge | automated | `/knowledge` | Hardware User | ui, api, db, audit | `e2e/acceptance/knowledge.acceptance.spec.ts` |
 | `SHELL-DIAG-001` | P0 | shell | automated | `core routes` | Admin | ui | `e2e/acceptance/shell-navigation.acceptance.spec.ts` |
+| `SHELL-DISCOVERY-001` | P1 | shell | future | `/` | Admin | ui, screenshot | `src/domain/workflowDiscovery.test.ts`<br>`src/App.test.tsx`<br>`src/linear-template/SubAppEntryRow.test.tsx`<br>`src/linear-template/PlatformFlowSection.test.tsx` |
 | `PARAM-REASON-001` | P0 | parameters | automated | `/parameters` | Hardware User | ui | `e2e/acceptance/parameters-negative.acceptance.spec.ts` |
 | `PARAM-ASSIGNEE-001` | P0 | parameters | automated | `/parameters` | Software User | ui | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-ASSIGNEE-002` | P0 | parameters | automated | `/parameters` | Software User | ui | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
@@ -163,6 +164,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 
 ## Deferred Or Conditional Operations
 
+- `SHELL-DISCOVERY-001`: Covered by unit tests and playwright-cli evidence under work/ui-checks/workflow-discovery/; no dedicated e2e acceptance spec in this slice.
 - `PARAM-ADMIN-003`: Batch 1 ships CSS fix + playwright-cli three-viewport evidence under work/ui-checks/param-admin-ux-polish-batch1/; dedicated e2e viewport assertion follows in a later batch.
 - `PARAM-INIT-WIZARD-001`: Unit/reducer/server cover submit→pending; playwright-cli evidence under work/ui-checks/param-init/; full browser e2e follows after semantic wizard binding picker lands.
 - `PARAM-INIT-EMPTY-001`: Server and mock Port tests cover empty approve; dedicated e2e API+UI path follows with wizard empty-mode CTA.

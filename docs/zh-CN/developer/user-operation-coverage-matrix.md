@@ -28,6 +28,7 @@
 
 ## 当前操作重点
 
+- `SHELL-DISCOVERY-001`：侧栏和首页发现面只提供 allowlist 工作流；隐藏工作流可直达。`coverage: future`（单元测试 + playwright-cli）。
 - `DTS-RELOAD-DEPLOY-001`：经假本地设备桥部署已校验 overlay（mount / pushFile / trigger）至 `unverifiable`；`coverage: automated`。
 - `DTS-RELOAD-KERNEL-001`：触发后内核日志为未判定证据；`coverage: automated`。
 - `DTS-RELOAD-VERIFY-001`：经 `debug.readNode` 行为核对；`coverage: automated`。验收 spec 只覆盖无绑定路径，升级判定由 `server/modules/dts-reload/deploy.test.ts` 断言。

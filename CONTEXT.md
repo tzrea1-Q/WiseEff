@@ -156,3 +156,4 @@ Architectural decisions: [`docs/adr/`](docs/adr/) (created lazily). Feature-scop
 - [`0029`](docs/adr/0029-parameter-platform-primitives-live-in-a-standalone-kernel-module.md) — parameter platform primitives live in a standalone kernel module
 - [`0030`](docs/adr/0030-projects-are-a-standalone-module.md) — projects are a standalone module
 - [`0031`](docs/adr/0031-xiaoze-wire-contract-is-a-shared-package.md) — the Xiaoze wire contract is a shared package
+- [`0036`](docs/adr/0036-workflow-discovery-uses-a-visible-workflow-allowlist.md) — workflow discovery uses a visible-workflow allowlist

@@ -9,6 +9,8 @@
 
 WiseEff 是一个面向企业高频工程作业的 AI 协同效率平台。当前项目已经实现了可交互前端原型，覆盖参数管理、日志分析、参数调试、统一 Agent、权限演示和审计展示。原型价值已经验证在交互和信息架构层面，下一阶段目标是把它发展为可真实使用、可测试、可上线的企业级系统。
 
+发现面（侧栏分组、首页寻路、点名某工作流的首页推销文案）只提供可见工作流 allowlist 上的工作流（[ADR-0036](../../adr/0036-workflow-discovery-uses-a-visible-workflow-allowlist.md)）。第一次名单是参数管理和调试。日志分析和知识库仍是产品工作流，直达可用；未写入名单前不出现在发现面。
+
 正式开发阶段不应重写现有原型，而应把当前 `domain`、`application/ports`、`infrastructure/mock` 和 DTO 边界作为迁移起点。第一阶段以参数管理闭环为主，逐步引入后端 API、数据库、认证授权、审计、异步任务、真实日志分析、设备网关和 Agent 编排。
 
 Implementation note: M0-M5 have already moved the core workflows behind governed API/runtime seams. The next product decision point is not broad new scope; it is staging/pilot evidence collection and focused production hardening while preserving the user-visible workflow intent below.

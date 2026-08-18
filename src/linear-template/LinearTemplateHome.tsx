@@ -4,24 +4,23 @@ import { WiseEffIcon } from "../components/WiseEffIcon";
 import { PlatformFlowSection } from "./PlatformFlowSection";
 import { SubAppEntryRow } from "./SubAppEntryRow";
 import { handleSpaLinkClick } from "./spaLinkNavigation";
+import { homepageHeroWorkflowPhrase, isWorkflowVisible, type WorkflowId } from "@/domain/workflowDiscovery";
 import "./linear-template.css";
 
 type OnNavigate = (path: string) => void;
 
-const navItems = [
-  { label: "参数管理", href: "/parameter-home" },
-  { label: "调试平台", href: "/node-debugging" },
-  { label: "日志分析", href: "/logs" }
-] as const;
+const allNavItems: Array<{ label: string; href: string; workflowId: WorkflowId }> = [
+  { label: "参数管理", href: "/parameter-home", workflowId: "parameter-management" },
+  { label: "调试平台", href: "/node-debugging", workflowId: "debugging" },
+  { label: "日志分析", href: "/logs", workflowId: "log-analysis" }
+];
+
+const navItems = allNavItems.filter((item) => isWorkflowVisible(item.workflowId));
 
 const footerColumns = [
   {
     title: "平台",
-    links: [
-      { label: "参数管理", href: "/parameter-home" },
-      { label: "调试平台", href: "/node-debugging" },
-      { label: "日志分析", href: "/logs" }
-    ]
+    links: allNavItems.filter((item) => isWorkflowVisible(item.workflowId))
   },
   {
     title: "流程",
@@ -41,7 +40,7 @@ const footerColumns = [
       { label: "查看配置", href: "/parameter-admin" }
     ]
   }
-] as const;
+];
 
 export function LinearTemplateHome({ onNavigate }: { onNavigate?: OnNavigate }) {
   return (
@@ -138,7 +137,7 @@ function Hero({ onNavigate }: { onNavigate?: OnNavigate }) {
     <div className="linear-hero">
       <h1 className="linear-fade-item delay-1">让业务流程更智能、更高效、更可控</h1>
       <p className="linear-hero-subtitle linear-fade-item delay-2">
-        雷泽把参数管理、设备调试和日志分析连接成一条可审阅工作流，
+        雷泽把{homepageHeroWorkflowPhrase()}连接成一条可审阅工作流，
         <br />
         让 Agent 辅助检索、分析和流转，关键变更始终保留人工确认、权限和审计。
       </p>

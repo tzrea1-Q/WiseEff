@@ -71,6 +71,7 @@ import { supportsXiaozeProactiveInsights } from "@/features/agent/xiaozeProactiv
 import { FeedbackDialog } from "@/features/product-feedback/FeedbackDialog";
 import { xiaozeProactiveEnabled } from "@/infrastructure/http/runtimeMode";
 import { getPageByPath, getXiaozeContextSummary, navigationItems, pageUsesProjectScope, PageConfig, utilityItems } from "./appConfig";
+import { isDiscoveryGroupVisible } from "@/domain/workflowDiscovery";
 import { createApiInitialState } from "@/application/state/apiInitialState";
 import { reducer, type AppAction, type ApiRuntimeDataDomain } from "@/application/state/appState";
 import { createAppRuntime, type WiseEffAuthClient } from "@/app/appRuntime";
@@ -1174,7 +1175,9 @@ function Sidebar({
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const pageTitle = getPageByPath(activePath).title;
   const activePageKey = getPageByPath(activePath).key;
-  const visibleNavigationItems = navigationItems.filter((item) => canAccessPage(currentRoleId, item.key));
+  const visibleNavigationItems = navigationItems.filter(
+    (item) => canAccessPage(currentRoleId, item.key) && isDiscoveryGroupVisible(item.group)
+  );
   const groups = visibleNavigationItems.reduce<Record<string, PageConfig[]>>((acc, item) => {
     acc[item.group] = [...(acc[item.group] ?? []), item];
     return acc;

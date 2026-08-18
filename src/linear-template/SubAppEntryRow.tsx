@@ -1,4 +1,5 @@
 import { FileText, SlidersHorizontal, TerminalSquare } from "lucide-react";
+import { isWorkflowVisible, type WorkflowId } from "@/domain/workflowDiscovery";
 import { SubAppCard, type SubAppCardProps } from "./SubAppCard";
 
 type SubAppEntryRowProps = {
@@ -6,8 +7,9 @@ type SubAppEntryRowProps = {
 };
 
 export function SubAppEntryRow({ onNavigate }: SubAppEntryRowProps) {
-  const cards: SubAppCardProps[] = [
+  const cards: Array<SubAppCardProps & { workflowId: WorkflowId }> = [
     {
+      workflowId: "parameter-management",
       accent: "#2857FF",
       icon: SlidersHorizontal,
       kicker: "配置治理",
@@ -18,6 +20,7 @@ export function SubAppEntryRow({ onNavigate }: SubAppEntryRowProps) {
       secondary: { label: "打开参数管理后台", href: "/parameter-admin" }
     },
     {
+      workflowId: "debugging",
       accent: "#7C3AED",
       icon: TerminalSquare,
       kicker: "在线调试",
@@ -28,6 +31,7 @@ export function SubAppEntryRow({ onNavigate }: SubAppEntryRowProps) {
       secondary: { label: "打开调试管理后台", href: "/debugging-admin" }
     },
     {
+      workflowId: "log-analysis",
       accent: "#00B8D4",
       icon: FileText,
       kicker: "证据链路",
@@ -41,7 +45,7 @@ export function SubAppEntryRow({ onNavigate }: SubAppEntryRowProps) {
 
   return (
     <div className="sub-app-entry-row" role="list" aria-label="子应用入口">
-      {cards.map((card, index) => (
+      {cards.filter((card) => isWorkflowVisible(card.workflowId)).map((card, index) => (
         <div role="listitem" key={card.title} className={`linear-fade-item delay-${index + 3}`}>
           <SubAppCard {...card} onNavigate={onNavigate} />
         </div>
