@@ -10,6 +10,7 @@ import {
   listRegistrationRoleRequests,
   rejectRegistrationRoleRequest,
   replaceUserRoles,
+  resetUserPassword,
   updateHomeOrganization,
   updateUserProfile
 } from "./service";
@@ -579,6 +580,40 @@ describe("user governance service", () => {
     expect(txCalls.find((call) => call.text.includes("insert into audit_events"))?.values).toEqual(
       expect.arrayContaining(["organization-update", "update", "organization", "org-chargelab"])
     );
+  });
+
+  it("resets a user password, revokes sessions, and writes audit", async () => {
+    const { db, txCalls } = createDb((text) => {
+      if (text.includes("from users") || text.includes("returning")) {
+        return [userRow({ email: null, username: "target.user" })];
+      }
+      return [];
+    });
+
+    const result = await resetUserPassword(
+      db,
+      adminAuth,
+      "u-target",
+      { password: "ResetPass@2026" },
+      { requestId: "request-reset" }
+    );
+
+    expect(result.id).toBe("u-target");
+    expect(txCalls.some((call) => call.text.includes("update user_password_credentials"))).toBe(true);
+    expect(txCalls.some((call) => call.text.includes("update auth_sessions") && call.text.includes("user_id"))).toBe(true);
+    const auditInsert = txCalls.find((call) => call.text.includes("insert into audit_events"));
+    expect(JSON.stringify(auditInsert?.values)).toContain("user-password-reset");
+    expect(JSON.stringify(auditInsert?.values)).toContain("reset-password");
+    expect(JSON.stringify(auditInsert?.values)).not.toContain("ResetPass@2026");
+  });
+
+  it("rejects password reset without users:manage", async () => {
+    const { db, txCalls } = createDb();
+
+    await expect(resetUserPassword(db, nonAdminAuth, "u-target", { password: "ResetPass@2026" })).rejects.toThrow(
+      "User management permission is required."
+    );
+    expect(txCalls).toHaveLength(0);
   });
 
   it("rejects organization rename without users:manage", async () => {

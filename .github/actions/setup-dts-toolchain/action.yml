@@ -17,7 +17,11 @@ runs:
     - name: Install and verify DTS toolchain
       shell: bash
       run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential bison flex pkg-config git python3-pip python3-venv
+        if npm run dts:toolchain:check -- --required; then
+          echo "Pinned DTS toolchain is already present; skipping apt and bootstrap."
+          exit 0
+        fi
+        sudo timeout 180 apt-get update
+        sudo timeout 180 apt-get install -y build-essential bison flex pkg-config git python3-pip python3-venv
         npm run dts:toolchain:bootstrap
         npm run dts:toolchain:check -- --required

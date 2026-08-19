@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import pg from "pg";
 
 import type { QueryResult } from "../shared/database/client";
 import {
+  createEphemeralTestDatabase,
   createInMemoryTestDatabase,
   createSerializedTestQueryable,
   isTestDatabaseAvailable,
@@ -77,5 +79,28 @@ describe.skipIf(!databaseAvailable)("test database fixture transactions", () => 
     // and the doomed write is gone.
     const rows = await db.query<{ label: string }>(`select label from fixture_tx_rows`);
     expect(rows.rows).toEqual([]);
+  });
+
+  it("keeps ephemeral committed writes off the shared worker rollback fixture", async () => {
+    const ephemeral = await createEphemeralTestDatabase("pollute");
+    const client = new pg.Client({ connectionString: ephemeral.url });
+    await client.connect();
+    try {
+      await client.query(
+        `insert into organizations (id, name) values ('org-eph-leak', 'Eph Leak')`
+      );
+    } finally {
+      await client.end();
+    }
+
+    db = await createInMemoryTestDatabase();
+    try {
+      const leaked = await db.query<{ id: string }>(
+        `select id from organizations where id = 'org-eph-leak'`
+      );
+      expect(leaked.rows).toEqual([]);
+    } finally {
+      await ephemeral.drop();
+    }
   });
 });

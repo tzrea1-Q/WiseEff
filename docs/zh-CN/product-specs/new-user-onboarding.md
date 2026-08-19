@@ -19,7 +19,7 @@ Date: 2026-05-25
 
 ## 首次会话流程
 
-API mode 下，未认证用户会先看到 WiseEff 认证页。本地账号登录和注册已产品化，用于自管理评估流程：注册使用用户名和允许自助选择的平台角色，新账号加入评估组织（有种子时是 ChargeLab，否则是唯一的 bootstrap Organization）。认证页没有组织下拉。Admin 不能自助注册；Committer 申请会创建 inactive 账号和待 Admin 审批的角色申请，但审批前不会登录系统或获得 session。审批通过后，账号才会被激活并授予申请的 Committer 角色。当前暂不支持邮箱验证，因此该路径不能被当作已验证域名 onboarding 或邀请接受流程。
+API mode 下，未认证用户会先看到 WiseEff 认证页。本地账号登录和注册已产品化，用于自管理评估流程：注册使用用户名、允许自助选择的平台角色，以及确认密码；新账号加入评估组织（有种子时是 ChargeLab，否则是唯一的 bootstrap Organization）。认证页没有组织下拉，并说明加入规则、用户名规则和一行角色提示。Admin 不能自助注册。还没有本地 Admin 时，认证页显示 `npm run admin:bootstrap` 提示。操作者可用 `AUTH_LOCAL_SELF_REGISTER=false` 关闭自助注册，此时「注册」页签隐藏。Committer 申请会创建 inactive 账号和待 Admin 审批的角色申请，但审批前不会登录系统或获得 session。审批通过后，账号才会被激活并授予申请的 Committer 角色。已登录用户可在个人资料中改密（其它会话退出）；Admin 可在 `/organization/members` 重置成员密码（该用户全部会话退出）。当前暂不支持邮箱验证，因此该路径不能被当作已验证域名 onboarding 或邀请接受流程。
 
 1. 用户进入 WiseEff 首页。
 2. 用户进入“我的工作台”，查看可访问工作区和与角色相关的入口。
@@ -41,7 +41,7 @@ API mode 下，未认证用户会先看到 WiseEff 认证页。本地账号登�
 
 ## Prototype 状态
 
-当前前端支持固定用户角色展示、权限拒绝 fallback、上下文 Agent 建议和 mock workflow actions。M0-M5 API mode 增加了 auth context、参数、日志、调试、Agent approval、审计和 pilot readiness 的后端治理边界。本地账号生命周期现已覆盖注册、登录、退出、`/api/v1/me`、当前用户资料编辑，以及 Committer 注册申请的 Admin 审批。邀请、邮箱验证和外部 SSO onboarding 仍是后续产品化工作。
+当前前端支持固定用户角色展示、权限拒绝 fallback、上下文 Agent 建议和 mock workflow actions。M0-M5 API mode 增加了 auth context、参数、日志、调试、Agent approval、审计和 pilot readiness 的后端治理边界。本地账号生命周期现已覆盖注册、登录、退出、`/api/v1/me`、当前用户资料编辑、自助改密、Admin 重置密码，以及 Committer 注册申请的 Admin 审批。自助注册可由服务端关闭。邀请、邮箱验证和外部 SSO onboarding 仍是后续产品化工作。
 
 ## 验收检查
 
@@ -57,3 +57,7 @@ API mode 下，未认证用户会先看到 WiseEff 认证页。本地账号登�
 | --- | --- | --- | --- | --- |
 | PM-02 | 注册 Committer 待审批 | 新用户 | 注册 `hardware-committer` 或 `software-committer`。 | API 创建 inactive 账号，记录对应基础 User 角色，并在 `/organization/members` 生成待审批请求；认证页显示待审批结果态，不再保留可编辑注册表单。该用户不会获得 session token，审批前登录应被拒绝。 |
 | PM-03 | 管理员审批角色 | Admin | 进入 `/organization/members`，批准 Committer 请求。 | 账号被激活并授予申请的 Committer 角色；用户重新登录或刷新后具备审阅能力。 |
+| PM-04 | 当前用户改密 | 已登录用户 | 打开个人资料，提交当前密码和新密码。 | 当前会话保持；该用户其它会话退出。 |
+| PM-05 | 重置成员密码 | Admin | 打开 `/organization/members`，重置该成员密码并确认。 | 新密码生效；该用户全部会话退出。 |
+| PM-06 | 关闭自助注册 | 操作者 | 设置 `AUTH_LOCAL_SELF_REGISTER=false` 并刷新认证页。 | 「注册」隐藏；`POST /api/v1/auth/register` 返回 `FORBIDDEN`。 |
+| PM-07 | 开通首位 Admin | 操作者 | 认证页提示还没有管理员时，运行 `npm run admin:bootstrap`。 | 首位 Admin 可以登录；自助注册仍不能创建 Admin。 |

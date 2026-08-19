@@ -18,6 +18,7 @@ const CODE_MESSAGES: Record<string, string> = {
   DEBUG_BINDING_NOT_CONFIGURED: "该参数尚未配置调试节点绑定，无法执行设备操作。",
   DEBUG_BINDING_DISABLED: "该参数的调试节点绑定已被停用。",
   GONE: "目标资源已过期或被回收，请刷新后重试。",
+  RATE_LIMITED: "尝试次数过多，请稍后再试。",
   INTERNAL_ERROR: "服务内部错误，请稍后重试。"
 };
 

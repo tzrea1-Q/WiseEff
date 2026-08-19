@@ -25,6 +25,9 @@ describe("loadServerEnv", () => {
     expect(env.PORT).toBe(8787);
     expect(env.AUTH_MODE).toBe("development");
     expect(env.AUTH_PROVIDER).toBe("local");
+    expect(env.AUTH_LOCAL_SELF_REGISTER).toBe(true);
+    expect(env.AUTH_LOCAL_AUTH_MAX_ATTEMPTS).toBe(10);
+    expect(env.AUTH_LOCAL_AUTH_WINDOW_MS).toBe(60_000);
     expect(env.AUTH_TOKEN_ISSUER).toBeUndefined();
     expect(env.AUTH_TOKEN_HMAC_SECRET).toBeUndefined();
     expect(env.OBJECT_STORE_MODE).toBe("local");

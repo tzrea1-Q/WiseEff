@@ -108,6 +108,13 @@ export function createUserGovernanceClient(
       });
       return userFromDto(response.item);
     },
+    async resetUserPassword(userId: string, password: string) {
+      const response = await apiClient.post<ItemEnvelope<UserGovernanceDto>>(
+        `/api/v1/users/${encodeURIComponent(userId)}/password`,
+        { password }
+      );
+      return userFromDto(response.item);
+    },
     async listRegistrationRoleRequests() {
       const response = await apiClient.get<ItemsEnvelope<RegistrationRoleRequestDto>>("/api/v1/users/registration-role-requests");
       return response.items;

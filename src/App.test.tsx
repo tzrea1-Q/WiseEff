@@ -483,6 +483,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     changeSelectValue(screen.getByRole("combobox", { name: "角色" }), "Software User");
     fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "new.admin" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "strong-password" } });
+    fireEvent.change(screen.getByLabelText("确认密码"), { target: { value: "strong-password" } });
     fireEvent.click(screen.getByRole("button", { name: "注册" }));
 
     expect(await screen.findByText("New Admin")).toBeInTheDocument();
@@ -523,6 +524,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     changeSelectValue(screen.getByRole("combobox", { name: "角色" }), "Hardware Committer");
     fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "new.committer" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "strong-password" } });
+    fireEvent.change(screen.getByLabelText("确认密码"), { target: { value: "strong-password" } });
     fireEvent.click(screen.getByRole("button", { name: "注册" }));
 
     const pendingNotice = (await screen.findByRole("heading", { name: "注册申请已提交" })).closest("section");
@@ -574,6 +576,105 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(roleLabels).toContain("Hardware Committer");
     expect(roleLabels).toContain("Software Committer");
     expect(roleLabels).not.toContain("Admin");
+  });
+
+  it("hides the register tab when local self-registration is disabled", async () => {
+    window.history.replaceState(null, "", "/parameter-home");
+    const authClient = {
+      getCurrentAuthContext: vi.fn().mockRejectedValue(unauthenticatedProbeError("Authorization bearer token is required.")),
+      getLocalAuthConfig: vi.fn(async () => ({
+        provider: "local" as const,
+        selfRegisterEnabled: false,
+        hasLocalAdmin: true,
+        evaluationOrganizationName: "ChargeLab"
+      })),
+      register: vi.fn()
+    };
+
+    renderApp({
+      runtimeMode: "api",
+      initialAppState: initialState,
+      ports: { authClient, parameterRepository: createTestParameterRepository() }
+    });
+
+    expect(await screen.findByRole("heading", { name: "登录雷泽" })).toBeInTheDocument();
+    expect(await screen.findByText(/评估组织「ChargeLab」/)).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "注册" })).not.toBeInTheDocument();
+    expect(authClient.getLocalAuthConfig).toHaveBeenCalled();
+  });
+
+  it("shows a bootstrap hint when no local Admin exists", async () => {
+    window.history.replaceState(null, "", "/parameter-home");
+    const authClient = {
+      getCurrentAuthContext: vi.fn().mockRejectedValue(unauthenticatedProbeError("Authorization bearer token is required.")),
+      getLocalAuthConfig: vi.fn(async () => ({
+        provider: "local" as const,
+        selfRegisterEnabled: true,
+        hasLocalAdmin: false,
+        evaluationOrganizationName: "ChargeLab"
+      }))
+    };
+
+    renderApp({
+      runtimeMode: "api",
+      initialAppState: initialState,
+      ports: { authClient, parameterRepository: createTestParameterRepository() }
+    });
+
+    expect(await screen.findByRole("heading", { name: "还没有管理员账号" })).toBeInTheDocument();
+    expect(screen.getByText(/npm run admin:bootstrap/)).toBeInTheDocument();
+  });
+
+  it("changes the current password from the profile dialog", async () => {
+    window.history.replaceState(null, "", "/parameter-home");
+    const authClient = {
+      getCurrentAuthContext: vi.fn(async () => ({
+        user: {
+          id: "u-api-admin",
+          organizationId: "org-chargelab",
+          name: "API Admin",
+          email: "api-admin@chargelab.cn",
+          title: "API Platform Owner",
+          isActive: true
+        },
+        organization: { id: "org-chargelab", name: "ChargeLab" },
+        roles: [{ projectId: null, roleId: "admin" }],
+        permissions: ["admin:access", "users:manage"]
+      })),
+      updateCurrentUserProfile: vi.fn(async () => ({
+        user: {
+          id: "u-api-admin",
+          organizationId: "org-chargelab",
+          name: "API Admin",
+          email: "api-admin@chargelab.cn",
+          title: "API Platform Owner",
+          isActive: true
+        },
+        organization: { id: "org-chargelab", name: "ChargeLab" },
+        roles: [{ projectId: null, roleId: "admin" }],
+        permissions: ["admin:access", "users:manage"]
+      })),
+      changePassword: vi.fn(async () => ({ ok: true as const }))
+    };
+
+    renderApp({
+      runtimeMode: "api",
+      initialAppState: adminState,
+      ports: { authClient, parameterRepository: createTestParameterRepository() }
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "打开用户菜单" }));
+    fireEvent.click(screen.getByRole("button", { name: "个人资料" }));
+    fireEvent.change(screen.getByLabelText("当前密码"), { target: { value: "strong-password" } });
+    fireEvent.change(screen.getByLabelText("新密码"), { target: { value: "newer-password" } });
+    fireEvent.change(screen.getByLabelText("确认新密码"), { target: { value: "newer-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "更新密码" }));
+
+    expect(await screen.findByText("密码已更新，其它会话已退出")).toBeInTheDocument();
+    expect(authClient.changePassword).toHaveBeenCalledWith({
+      currentPassword: "strong-password",
+      newPassword: "newer-password"
+    });
   });
 
   it("keeps the auth screen scrollable when registration content exceeds the viewport", () => {

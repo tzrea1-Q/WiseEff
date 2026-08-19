@@ -1391,9 +1391,41 @@ body {
   box-shadow: 0 1px 5px color-mix(in srgb, var(--text) 8%, transparent);
 }
 
+.auth-help,
+.auth-field-hint {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: var(--leading-sm);
+}
+
+.auth-help {
+  font-weight: 500;
+  line-height: var(--leading-md);
+}
+
+.auth-bootstrap-command {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  overflow-x: auto;
+  color: var(--text);
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: var(--leading-sm);
+}
+
 .auth-form {
   display: grid;
   gap: var(--space-3);
+}
+
+.auth-form-field {
+  display: grid;
+  gap: var(--space-1);
 }
 
 .auth-form label,
@@ -1564,6 +1596,28 @@ body {
   color: var(--text-muted);
   font-size: var(--text-base);
   overflow-wrap: anywhere;
+}
+
+.profile-dialog .modal-form-contents {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.profile-dialog form {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.profile-dialog__password {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.profile-dialog__password h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-lg);
+  line-height: var(--leading-lg);
 }
 
 .profile-dialog footer {
@@ -4971,6 +5025,16 @@ td small {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-4) var(--space-5) 18px;
+}
+
+.user-permissions-reset-hint {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+  font-weight: 600;
+  line-height: var(--leading-md);
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .user-permissions-modal-field {

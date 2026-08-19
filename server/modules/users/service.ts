@@ -17,6 +17,7 @@ import {
   listAllPendingRegistrationRoleRequests,
   insertUser,
   insertPasswordCredential,
+  updatePasswordCredential,
   listPendingRegistrationRoleRequests,
   listUsers,
   replaceRoleBindings,
@@ -25,10 +26,12 @@ import {
   updateUserActive
 } from "./repository";
 import { notifyUserDeactivated, notifyUserRoleChanged } from "../notifications/producers";
+import { revokeLocalUserSessions } from "../auth/localAuth";
 import type {
   CreateUserInput,
   ReplaceUserRolesInput,
   UpdateOrganizationInput,
+  ResetUserPasswordInput,
   UpdateUserActiveInput,
   UpdateUserProfileInput
 } from "./types";
@@ -146,8 +149,8 @@ async function auditUserMutation(
   tx: AuditTx,
   auth: AuthContext,
   input: {
-    kind: "user-create" | "user-update" | "user-activation" | "user-role-replace";
-    action: "create" | "update" | "activate" | "deactivate" | "replace-roles";
+    kind: "user-create" | "user-update" | "user-activation" | "user-role-replace" | "user-password-reset";
+    action: "create" | "update" | "activate" | "deactivate" | "replace-roles" | "reset-password";
     userId: string;
     metadata: Record<string, unknown>;
   },
@@ -324,6 +327,39 @@ export async function updateUserProfile(
     }, context);
 
     return user;
+  });
+}
+
+export async function resetUserPassword(
+  db: Database,
+  auth: AuthContext,
+  userId: string,
+  input: ResetUserPasswordInput,
+  context: AuditCorrelationContext = {}
+) {
+  requireUserManager(auth);
+  requirePasswordPolicy(input.password);
+
+  return db.transaction(async (tx) => {
+    const current = await getUserById(tx, { organizationId: auth.organization.id, userId });
+    if (!current) {
+      throw new ApiError("NOT_FOUND", "User was not found.", { userId });
+    }
+    const updated = await updatePasswordCredential(tx, {
+      userId,
+      passwordHash: await hashPassword(input.password)
+    });
+    if (updated === 0) {
+      throw new ApiError("NOT_FOUND", "Local password credential was not found.", { userId });
+    }
+    await revokeLocalUserSessions(tx, { userId, revokedAt: new Date().toISOString() });
+    await auditUserMutation(asAuditTx(tx), auth, {
+      kind: "user-password-reset",
+      action: "reset-password",
+      userId,
+      metadata: {}
+    }, context);
+    return current;
   });
 }
 

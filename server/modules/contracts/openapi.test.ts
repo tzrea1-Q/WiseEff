@@ -124,6 +124,13 @@ describe("M5 OpenAPI contract", () => {
           path: "/api/v1/users/:userId/roles",
           module: "users",
           stability: "commercial-readiness"
+        }),
+        expect.objectContaining({
+          id: "users.resetPassword",
+          method: "POST",
+          path: "/api/v1/users/:userId/password",
+          module: "users",
+          stability: "commercial-readiness"
         })
       ])
     );
@@ -142,10 +149,12 @@ describe("M5 OpenAPI contract", () => {
   it("publishes local account lifecycle API routes as commercial-readiness contracts", () => {
     expect(routeManifest).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({ id: "auth.localConfig", method: "GET", path: "/api/v1/auth/local-config", module: "auth", stability: "commercial-readiness" }),
         expect.objectContaining({ id: "auth.register", method: "POST", path: "/api/v1/auth/register", module: "auth", stability: "commercial-readiness" }),
         expect.objectContaining({ id: "auth.login", method: "POST", path: "/api/v1/auth/login", module: "auth", stability: "commercial-readiness" }),
         expect.objectContaining({ id: "auth.logout", method: "POST", path: "/api/v1/auth/logout", module: "auth", stability: "commercial-readiness" }),
-        expect.objectContaining({ id: "auth.updateProfile", method: "PATCH", path: "/api/v1/me/profile", module: "auth", stability: "commercial-readiness" })
+        expect.objectContaining({ id: "auth.updateProfile", method: "PATCH", path: "/api/v1/me/profile", module: "auth", stability: "commercial-readiness" }),
+        expect.objectContaining({ id: "auth.changePassword", method: "POST", path: "/api/v1/me/password", module: "auth", stability: "commercial-readiness" })
       ])
     );
 

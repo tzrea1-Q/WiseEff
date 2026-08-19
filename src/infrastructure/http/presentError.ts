@@ -18,9 +18,17 @@ const MESSAGE_LABELS: Array<{ match: RegExp; label: string | ((match: RegExpMatc
   },
   { match: /^Log analysis failed before a report was generated\.?$/i, label: "分析未完成，未生成报告，请重试或重新上传。" },
   { match: /^Username or password is incorrect\.?$/i, label: "用户名或密码不正确。" },
+  { match: /^Current password is incorrect\.?$/i, label: "当前密码不正确。" },
+  { match: /^New password must be different from the current password\.?$/i, label: "新密码不能与当前密码相同。" },
+  { match: /^Too many authentication attempts\. Try again later\.?$/i, label: "尝试次数过多，请稍后再试。" },
+  { match: /^Self-registration is disabled\.?$/i, label: "当前环境已关闭自助注册，请联系管理员创建账号。" },
+  { match: /^Local password credential was not found\.?$/i, label: "该账号没有本地密码凭据。" },
   { match: /^User is pending Admin approval\.?$/i, label: "账号等待管理员批准后才能登录。" },
   { match: /^User is inactive\.?$/i, label: "账号已被停用，请联系管理员。" },
   { match: /^Username is already registered\.?$/i, label: "该用户名已被注册。" },
+  { match: /^Username must be 3 to 64 characters\.?$/i, label: "用户名须为 3–64 个字符，仅限字母、数字、点、下划线和连字符。" },
+  { match: /^Username can only contain letters, numbers, dots, underscores, or hyphens\.?$/i, label: "用户名须为 3–64 个字符，仅限字母、数字、点、下划线和连字符。" },
+  { match: /^Password must be at least 8 characters\.?$/i, label: "密码至少需要 8 个字符。" },
   { match: /^Session is not active\.?$/i, label: "登录状态已失效，请重新登录。" },
   { match: /^Token has expired\.?$/i, label: "登录状态已过期，请重新登录。" },
   { match: /^Release readiness could not load open conflicts\.?$/i, label: "发布就绪检查暂时不可用：冲突清单加载失败。" },
@@ -49,7 +57,8 @@ const CODE_LABELS: Record<string, string> = {
   DEBUG_BINDING_DISABLED: "该调试绑定已停用。",
   DEBUG_BINDING_NOT_CONFIGURED: "该调试绑定尚未配置。",
   PROTOCOL_UNSUPPORTED: "当前协议不支持该操作。",
-  GONE: "请求的内容已失效。"
+  GONE: "请求的内容已失效。",
+  RATE_LIMITED: "尝试次数过多，请稍后再试。"
 };
 
 const NETWORK_MESSAGE_PATTERN = /failed to fetch|networkerror|network error|load failed|fetch failed/i;

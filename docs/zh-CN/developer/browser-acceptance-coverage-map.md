@@ -21,6 +21,10 @@
 
 - `SHELL-DISCOVERY-001`：侧栏和首页发现面只提供 allowlist 上的工作流（第一次是参数管理和调试）；日志分析和知识库不在发现面，直达仍可用（单元测试 + `work/ui-checks/workflow-discovery/`）。
 - `AUTH-RUNTIME-001`：API mode 浏览器运行时与本地 dev auth 契约一致。
+- `AUTH-LOCAL-PASSWORD-001`：已登录本地用户在个人资料改密；当前会话保持，其它会话退出（单元测试；浏览器 e2e 为 planned）。
+- `AUTH-LOCAL-ADMIN-RESET-001`：Admin 在 `/organization/members` 重置成员密码并吊销该用户全部会话（单元测试；浏览器 e2e 为 planned）。
+- `AUTH-LOCAL-SELF-REGISTER-001`：关闭自助注册后认证页隐藏「注册」，API 拒绝 `POST /api/v1/auth/register`（单元测试；浏览器 e2e 为 planned）。
+- `AUTH-LOCAL-BOOTSTRAP-HINT-001`：没有本地 Admin 时认证页显示 `npm run admin:bootstrap` 提示（单元测试；浏览器 e2e 为 planned）。
 - `NOTIF-INBOX-001`：TopBar 通知铃铛可打开收件箱面板，且 `/api/v1/notifications` 与未读数 API 对当前用户可用（`e2e/acceptance/notifications.acceptance.spec.ts`）。
 - `NOTIF-READ-001`：通知可通过后端 mark-all-read API 标记已读（`e2e/acceptance/notifications.acceptance.spec.ts`）。
 - `PFB-SUBMIT-001`：活跃用户从侧边栏提交产品反馈，包含描述和可选截图；API 持久化，UI 展示成功提示（`e2e/acceptance/product-feedback.acceptance.spec.ts`）。

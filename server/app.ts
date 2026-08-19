@@ -2,6 +2,7 @@ import { registerAuditRoutes } from "./modules/audit/routes";
 import { registerNotificationRoutes } from "./modules/notifications/routes";
 import { registerXiaozeRoutes } from "./modules/agent/xiaoze/agUiEndpoint";
 import { createAuthContextResolver } from "./modules/auth/contextFactory";
+import { createAuthAttemptLimiter } from "./modules/auth/authAttemptLimiter";
 import { createLocalAuthService } from "./modules/auth/localAuth";
 import { getAuthContext } from "./modules/auth/repository";
 import { developmentAuthContext, registerAuthRoutes } from "./modules/auth/routes";
@@ -53,12 +54,18 @@ async function getCurrentAuthContext(options: { db?: Database }, request: RouteR
   return options.db ? getAuthContext(options.db, userId) : developmentAuthContext;
 }
 
-function createEnvLocalAuthService(db: Database, env?: PilotReadinessEnv) {
+function createEnvLocalAuthService(db: Database, env?: PilotReadinessEnv & Partial<ServerEnv>) {
   if (env?.AUTH_PROVIDER !== "local") {
     return undefined;
   }
 
-  return createLocalAuthService(db);
+  return createLocalAuthService(db, {
+    selfRegisterEnabled: env.AUTH_LOCAL_SELF_REGISTER ?? true,
+    attemptLimiter: createAuthAttemptLimiter({
+      maxAttempts: env.AUTH_LOCAL_AUTH_MAX_ATTEMPTS,
+      windowMs: env.AUTH_LOCAL_AUTH_WINDOW_MS
+    })
+  });
 }
 
 type DeviceBridgeEnv = Pick<
@@ -78,7 +85,7 @@ export type WiseEffServerOptions = {
   debugGateway?: DebugDeviceGateway;
   debugGatewayRegistry?: DebugDeviceGatewayRegistry;
   durableQueue?: DurableQueueHealthCheck;
-  env?: PilotReadinessEnv & Partial<DeviceBridgeEnv>;
+  env?: PilotReadinessEnv & Partial<DeviceBridgeEnv> & Partial<ServerEnv>;
   auth?: { mode: "development" | "production"; verifier?: TokenVerifier };
   localAuthService?: LocalAuthService;
   tracing?: Pick<TracingBoundary, "withSpan">;
@@ -119,7 +126,21 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
     getCurrentAuthContext: authResolver
   });
 
-  registerAuthRoutes(router, { getCurrentAuthContext: authResolver, localAuthService });
+  registerAuthRoutes(router, {
+    getCurrentAuthContext: authResolver,
+    localAuthService,
+    authPublicConfig: localAuthService
+      ? () => localAuthService.getPublicConfig()
+      : () => {
+          const provider = options.env?.AUTH_PROVIDER;
+          return {
+            provider: provider === "oidc" || provider === "hmac" ? provider : "development",
+            selfRegisterEnabled: false as const,
+            hasLocalAdmin: true,
+            evaluationOrganizationName: null
+          };
+        }
+  });
   registerAuditRoutes(router, {
     db: options.db,
     getCurrentAuthContext: authResolver

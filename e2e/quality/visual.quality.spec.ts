@@ -7,7 +7,8 @@ import {
   seedQualityRuntime,
   settleAppToasts,
   settleQualityRoute,
-  stableMasks
+  stableMasks,
+  waitForFontsAndNextPaint
 } from "./helpers";
 
 const stableRoutes = [
@@ -105,7 +106,12 @@ test.describe("M5.11 interaction-state visual gate", () => {
 
     await page.getByRole("button", { name: "添加用户" }).click();
     await expect(page.getByRole("dialog", { name: "添加用户" })).toBeVisible();
+    await expect(page.locator(".modal-backdrop")).toBeVisible();
+    // Full-page shot includes sidebar/title chrome; wait out the API sync banner
+    // (not aria-live, so stableMasks will not cover it) and CJK font swap.
+    await expect(page.locator(".api-runtime-sync-banner")).toHaveCount(0, { timeout: 20_000 });
     await settleAppToasts(page);
+    await waitForFontsAndNextPaint(page);
 
     await expect(page).toHaveScreenshot("state-dialog-modal-open.png", {
       mask: stableMasks(page)

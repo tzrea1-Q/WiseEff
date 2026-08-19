@@ -4,6 +4,8 @@ import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { createAuditEvent } from "../audit/repository";
 import { getAuthContext } from "./repository";
+import { countLocalAdminBindings } from "./bootstrapLocalAdmin";
+import { authAttemptKey, createAuthAttemptLimiter, type AuthAttemptLimiter } from "./authAttemptLimiter";
 import { resolveEvaluationOrganization, type ResolvedOrganization } from "./evaluationOrganization";
 import {
   hashLocalAccountPassword,
@@ -46,9 +48,18 @@ type SessionRow = {
   revoked_at: string | null;
 };
 
+export type LocalAuthPublicConfig = {
+  provider: "local";
+  selfRegisterEnabled: boolean;
+  hasLocalAdmin: boolean;
+  evaluationOrganizationName: string | null;
+};
+
 export type LocalAuthServiceOptions = {
   now?: () => Date;
   sessionTtlMs?: number;
+  selfRegisterEnabled?: boolean;
+  attemptLimiter?: AuthAttemptLimiter;
   registrationOrganizationResolver?: (db: Queryable) => ResolvedOrganization | Promise<ResolvedOrganization>;
 };
 
@@ -101,6 +112,16 @@ export type UpdateCurrentUserProfileInput = {
   title?: string;
 };
 
+export type ChangeLocalAccountPasswordInput = {
+  currentPassword: string;
+  newPassword: string;
+};
+
+export type AuthAttemptContext = {
+  requestId: string;
+  clientIp?: string;
+};
+
 export { resolveEvaluationOrganization } from "./evaluationOrganization";
 
 function bearerToken(authorization: string | string[] | undefined) {
@@ -136,6 +157,33 @@ function assignedRoleForRegistration(roleId: BackendRoleId): BackendRoleId {
 
 export function isLocalSessionToken(token: string) {
   return /^we_local_[A-Za-z0-9_-]{32,}$/.test(token);
+}
+
+export async function revokeLocalUserSessions(
+  db: Queryable,
+  input: { userId: string; exceptTokenHash?: string; revokedAt: string }
+) {
+  await db.query(
+    `
+    update auth_sessions
+    set revoked_at = $2
+    where user_id = $1
+      and revoked_at is null
+      and ($3::text is null or token_hash <> $3)
+    `,
+    [input.userId, input.revokedAt, input.exceptTokenHash ?? null]
+  );
+}
+
+export async function updateLocalAccountPasswordHash(db: Queryable, input: { userId: string; passwordHash: string }) {
+  await db.query(
+    `
+    update user_password_credentials
+    set password_hash = $2, password_updated_at = now()
+    where user_id = $1
+    `,
+    [input.userId, input.passwordHash]
+  );
 }
 
 function hashToken(token: string) {
@@ -176,8 +224,8 @@ async function auditAuthEvent(
   db: Queryable,
   input: {
     organizationId: string;
-    userId: string;
-    action: "register" | "login" | "logout" | "update-profile";
+    userId: string | null;
+    action: "register" | "login" | "login-failed" | "logout" | "update-profile" | "change-password";
     metadata?: Record<string, unknown>;
     traceId: string;
   }
@@ -191,7 +239,7 @@ async function auditAuthEvent(
     app: "auth",
     kind: "auth-event",
     action: input.action,
-    severity: input.action === "logout" ? "Low" : "Medium",
+    severity: input.action === "logout" ? "Low" : input.action === "login-failed" ? "Low" : "Medium",
     targetType: "user",
     targetId: input.userId,
     metadata: input.metadata ?? {},
@@ -237,6 +285,28 @@ async function findUserForLogin(db: Queryable, username: string) {
   return result.rows[0] ?? null;
 }
 
+async function findUserForPasswordChange(db: Queryable, userId: string) {
+  const result = await db.query<UserLookupRow>(
+    `
+    select
+      users.id,
+      users.organization_id,
+      users.name,
+      users.title,
+      users.is_active,
+      user_password_credentials.username,
+      user_password_credentials.password_hash
+    from users
+    join user_password_credentials on user_password_credentials.user_id = users.id
+    where users.id = $1
+    limit 1
+    `,
+    [userId]
+  );
+
+  return result.rows[0] ?? null;
+}
+
 async function hasPendingRegistrationRoleRequest(db: Queryable, userId: string) {
   const result = await db.query<{ exists: boolean }>(
     `
@@ -255,13 +325,46 @@ async function hasPendingRegistrationRoleRequest(db: Queryable, userId: string) 
 export function createLocalAuthService(db: Database, options: LocalAuthServiceOptions = {}) {
   const now = options.now ?? (() => new Date());
   const sessionTtlMs = options.sessionTtlMs ?? defaultSessionTtlMs;
+  const selfRegisterEnabled = options.selfRegisterEnabled ?? true;
+  const attemptLimiter = options.attemptLimiter ?? createAuthAttemptLimiter();
   const resolveRegistrationOrganization =
     options.registrationOrganizationResolver ?? resolveEvaluationOrganization;
 
+  function consumeAttempt(kind: "login" | "register", username: string, clientIp?: string) {
+    const key = authAttemptKey(kind, clientIp ?? "unknown", username);
+    const decision = attemptLimiter.consume(key);
+    if (!decision.allowed) {
+      throw new ApiError("RATE_LIMITED", "Too many authentication attempts. Try again later.", {
+        retryAfterMs: decision.retryAfterMs
+      });
+    }
+    return key;
+  }
+
   return {
-    async register(input: RegisterLocalAccountInput, context: { requestId: string }) {
+    async getPublicConfig(): Promise<LocalAuthPublicConfig> {
+      const adminCount = await countLocalAdminBindings(db);
+      let evaluationOrganizationName: string | null = null;
+      try {
+        evaluationOrganizationName = (await resolveRegistrationOrganization(db)).name;
+      } catch {
+        evaluationOrganizationName = null;
+      }
+      return {
+        provider: "local",
+        selfRegisterEnabled,
+        hasLocalAdmin: adminCount > 0,
+        evaluationOrganizationName
+      };
+    },
+
+    async register(input: RegisterLocalAccountInput, context: AuthAttemptContext) {
+      if (!selfRegisterEnabled) {
+        throw new ApiError("FORBIDDEN", "Self-registration is disabled.");
+      }
       const username = normalizeUsername(input.username);
       requireUsername(username);
+      consumeAttempt("register", username, context.clientIp);
       const name = input.name.trim();
       const requestedRoleId = input.roleId ?? defaultSelfRegistrationRoleId;
       const roleId = assignedRoleForRegistration(requestedRoleId);
@@ -362,15 +465,36 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
       });
     },
 
-    async login(input: LoginLocalAccountInput, context: { requestId: string }) {
+    async login(input: LoginLocalAccountInput, context: AuthAttemptContext) {
       const username = normalizeUsername(input.username);
       requireUsername(username);
+      const attemptKey = consumeAttempt("login", username, context.clientIp);
       const user = await findUserForLogin(db, username);
       if (!user || !user.password_hash || !(await verifyPassword(input.password, user.password_hash))) {
+        const organizationId =
+          user?.organization_id ??
+          (await Promise.resolve(resolveRegistrationOrganization(db)).catch(() => null))?.id;
+        if (organizationId) {
+          await auditAuthEvent(db, {
+            organizationId,
+            userId: user?.id ?? null,
+            action: "login-failed",
+            metadata: { username, reason: user ? "invalid_password" : "unknown_username" },
+            traceId: context.requestId
+          });
+        }
         throw new ApiError("UNAUTHENTICATED", "Username or password is incorrect.");
       }
       if (!user.is_active) {
-        if (await hasPendingRegistrationRoleRequest(db, user.id)) {
+        const pending = await hasPendingRegistrationRoleRequest(db, user.id);
+        await auditAuthEvent(db, {
+          organizationId: user.organization_id,
+          userId: user.id,
+          action: "login-failed",
+          metadata: { username, reason: pending ? "pending_approval" : "inactive" },
+          traceId: context.requestId
+        });
+        if (pending) {
           throw new ApiError("FORBIDDEN", "User is pending Admin approval.");
         }
         throw new ApiError("FORBIDDEN", "User is inactive.");
@@ -389,6 +513,7 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
           action: "login",
           traceId: context.requestId
         });
+        attemptLimiter.reset(attemptKey);
 
         return { status: "authenticated", auth: await getAuthContext(tx, user.id), session } satisfies LocalAuthSessionResult;
       });
@@ -433,6 +558,45 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
           traceId: context.requestId
         });
       });
+    },
+
+    async changePassword(
+      auth: AuthContext,
+      input: ChangeLocalAccountPasswordInput,
+      context: { requestId: string; authorization?: string | string[] }
+    ) {
+      requirePasswordPolicy(input.newPassword);
+      if (input.currentPassword === input.newPassword) {
+        throw new ApiError("VALIDATION_FAILED", "New password must be different from the current password.");
+      }
+
+      const user = await findUserForPasswordChange(db, auth.user.id);
+      if (!user || !user.password_hash) {
+        throw new ApiError("NOT_FOUND", "Local password credential was not found.");
+      }
+      if (!(await verifyPassword(input.currentPassword, user.password_hash))) {
+        throw new ApiError("UNAUTHENTICATED", "Current password is incorrect.");
+      }
+
+      const currentToken = optionalBearerToken(context.authorization);
+      const currentTokenHash = currentToken ? hashToken(currentToken) : undefined;
+
+      await db.transaction(async (tx) => {
+        await updateLocalAccountPasswordHash(tx, { userId: user.id, passwordHash: await hashPassword(input.newPassword) });
+        await revokeLocalUserSessions(tx, {
+          userId: user.id,
+          exceptTokenHash: currentTokenHash,
+          revokedAt: now().toISOString()
+        });
+        await auditAuthEvent(tx, {
+          organizationId: user.organization_id,
+          userId: user.id,
+          action: "change-password",
+          traceId: context.requestId
+        });
+      });
+
+      return { ok: true as const };
     },
 
     async updateCurrentUserProfile(auth: AuthContext, input: UpdateCurrentUserProfileInput, context: { requestId: string }) {

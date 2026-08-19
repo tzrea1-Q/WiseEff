@@ -28,11 +28,13 @@ export type RouteManifestEntry = {
 };
 
 export const routeManifest = [
+  { id: "auth.localConfig", method: "GET", path: "/api/v1/auth/local-config", module: "auth", stability: "commercial-readiness" },
   { id: "auth.register", method: "POST", path: "/api/v1/auth/register", module: "auth", stability: "commercial-readiness" },
   { id: "auth.login", method: "POST", path: "/api/v1/auth/login", module: "auth", stability: "commercial-readiness" },
   { id: "auth.logout", method: "POST", path: "/api/v1/auth/logout", module: "auth", stability: "commercial-readiness" },
   { id: "auth.me", method: "GET", path: "/api/v1/me", module: "auth", stability: "mvp" },
   { id: "auth.updateProfile", method: "PATCH", path: "/api/v1/me/profile", module: "auth", stability: "commercial-readiness" },
+  { id: "auth.changePassword", method: "POST", path: "/api/v1/me/password", module: "auth", stability: "commercial-readiness" },
 
   { id: "audit.createEvent", method: "POST", path: "/api/v1/audit-events", module: "audit", stability: "mvp" },
   { id: "audit.listEvents", method: "GET", path: "/api/v1/audit-events", module: "audit", stability: "mvp" },
@@ -103,6 +105,13 @@ export const routeManifest = [
     id: "users.replaceRoles",
     method: "PUT",
     path: "/api/v1/users/:userId/roles",
+    module: "users",
+    stability: "commercial-readiness"
+  },
+  {
+    id: "users.resetPassword",
+    method: "POST",
+    path: "/api/v1/users/:userId/password",
     module: "users",
     stability: "commercial-readiness"
   },

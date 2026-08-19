@@ -3,7 +3,7 @@ import type { AuthContext } from "./types";
 import type { AuthContextResolver } from "./contextFactory";
 import { ApiError } from "../../shared/http/errors";
 import { z } from "zod";
-import type { createLocalAuthService, LocalAuthSessionResult } from "./localAuth";
+import type { createLocalAuthService, LocalAuthPublicConfig, LocalAuthSessionResult } from "./localAuth";
 
 const platformRoleIdSchema = z.enum([
   "guest",
@@ -65,7 +65,19 @@ const updateProfileBodySchema = z.object({
   title: z.string().min(1).optional()
 });
 
+const changePasswordBodySchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8)
+}).strict();
+
 type LocalAuthService = ReturnType<typeof createLocalAuthService>;
+
+export type AuthPublicConfig = LocalAuthPublicConfig | {
+  provider: "oidc" | "hmac" | "development";
+  selfRegisterEnabled: false;
+  hasLocalAdmin: boolean;
+  evaluationOrganizationName: string | null;
+};
 
 function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message: string) {
   const parsed = schema.safeParse(value);
@@ -85,18 +97,43 @@ function sessionResponse(result: LocalAuthSessionResult) {
 
 export function registerAuthRoutes(
   router: WiseEffRouter,
-  options: { getCurrentAuthContext: AuthContextResolver; localAuthService?: LocalAuthService }
+  options: {
+    getCurrentAuthContext: AuthContextResolver;
+    localAuthService?: LocalAuthService;
+    authPublicConfig?: () => Promise<AuthPublicConfig> | AuthPublicConfig;
+  }
 ) {
   if (!options.getCurrentAuthContext) {
     throw new Error("Auth context resolver is required for auth routes.");
   }
+
+  router.get("/api/v1/auth/local-config", async () => {
+    if (options.authPublicConfig) {
+      return { status: 200, body: await options.authPublicConfig() };
+    }
+    if (options.localAuthService) {
+      return { status: 200, body: await options.localAuthService.getPublicConfig() };
+    }
+    return {
+      status: 200,
+      body: {
+        provider: "development",
+        selfRegisterEnabled: false,
+        hasLocalAdmin: true,
+        evaluationOrganizationName: null
+      } satisfies AuthPublicConfig
+    };
+  });
 
   router.post("/api/v1/auth/register", async (request) => {
     if (!options.localAuthService) {
       throw new ApiError("NOT_FOUND", "Local account registration is not enabled.");
     }
     const body = parseWithSchema(registerBodySchema, request.body, "Invalid registration input.");
-    const result = await options.localAuthService.register(body, { requestId: request.requestId });
+    const result = await options.localAuthService.register(body, {
+      requestId: request.requestId,
+      clientIp: request.clientIp
+    });
     if (result.status === "pending_approval") {
       return {
         status: 202,
@@ -114,7 +151,10 @@ export function registerAuthRoutes(
       throw new ApiError("NOT_FOUND", "Local account login is not enabled.");
     }
     const body = parseWithSchema(loginBodySchema, request.body, "Invalid login input.");
-    const result = await options.localAuthService.login(body, { requestId: request.requestId });
+    const result = await options.localAuthService.login(body, {
+      requestId: request.requestId,
+      clientIp: request.clientIp
+    });
     return {
       status: 200,
       body: sessionResponse(result)
@@ -149,6 +189,21 @@ export function registerAuthRoutes(
     return {
       status: 200,
       body: await options.localAuthService.updateCurrentUserProfile(auth, body, { requestId: request.requestId })
+    };
+  });
+
+  router.post("/api/v1/me/password", async (request) => {
+    if (!options.localAuthService) {
+      throw new ApiError("NOT_FOUND", "Local password changes are not enabled.");
+    }
+    const auth = await options.getCurrentAuthContext(request);
+    const body = parseWithSchema(changePasswordBodySchema, request.body, "Invalid password change input.");
+    return {
+      status: 200,
+      body: await options.localAuthService.changePassword(auth, body, {
+        requestId: request.requestId,
+        authorization: request.headers.authorization
+      })
     };
   });
 }

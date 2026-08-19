@@ -11,6 +11,7 @@ export type ApiErrorCode =
   | "DEBUG_BINDING_NOT_CONFIGURED"
   | "DEBUG_BINDING_DISABLED"
   | "GONE"
+  | "RATE_LIMITED"
   | "INTERNAL_ERROR";
 
 /**
@@ -31,6 +32,7 @@ export const API_ERROR_STATUS: Record<ApiErrorCode, number> = {
   DEBUG_BINDING_NOT_CONFIGURED: 400,
   DEBUG_BINDING_DISABLED: 400,
   GONE: 410,
+  RATE_LIMITED: 429,
   INTERNAL_ERROR: 500
 };
 
