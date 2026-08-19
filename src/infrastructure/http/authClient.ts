@@ -38,7 +38,7 @@ export type PendingRegistrationDto = {
 export type RegisterLocalAccountResponseDto = AuthSessionDto | PendingRegistrationDto;
 
 export type RegisterLocalAccountInput = {
-  organization: string;
+  organization?: string;
   name: string;
   username: string;
   roleId: string;

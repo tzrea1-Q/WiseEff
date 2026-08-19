@@ -4,8 +4,8 @@ import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { createAuditEvent } from "../audit/repository";
 import { getAuthContext } from "./repository";
+import { resolveEvaluationOrganization, type ResolvedOrganization } from "./evaluationOrganization";
 import {
-  defaultLocalRegistrationOrganizationResolver,
   hashLocalAccountPassword,
   hashLocalSessionToken,
   validateLocalAccountPassword,
@@ -16,7 +16,6 @@ import type { AuthContext, BackendRoleId } from "./types";
 const scryptAsync = promisify(scrypt);
 const passwordHashPrefix = "scrypt";
 const defaultSessionTtlMs = 1000 * 60 * 60 * 24 * 7;
-const allowedLocalOrganizations = new Set(["硬件部", "软件部"]);
 const roleIds = new Set<BackendRoleId>([
   "guest",
   "hardware-user",
@@ -50,7 +49,7 @@ type SessionRow = {
 export type LocalAuthServiceOptions = {
   now?: () => Date;
   sessionTtlMs?: number;
-  registrationOrganizationResolver?: (organizationName: string) => { id: string; name: string };
+  registrationOrganizationResolver?: (db: Queryable) => ResolvedOrganization | Promise<ResolvedOrganization>;
 };
 
 export type RegisterLocalAccountInput = {
@@ -102,7 +101,7 @@ export type UpdateCurrentUserProfileInput = {
   title?: string;
 };
 
-export { defaultLocalRegistrationOrganizationResolver } from "./localAccountCredentials";
+export { resolveEvaluationOrganization } from "./evaluationOrganization";
 
 function bearerToken(authorization: string | string[] | undefined) {
   const header = Array.isArray(authorization) ? authorization[0] : authorization;
@@ -257,24 +256,20 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
   const now = options.now ?? (() => new Date());
   const sessionTtlMs = options.sessionTtlMs ?? defaultSessionTtlMs;
   const resolveRegistrationOrganization =
-    options.registrationOrganizationResolver ?? defaultLocalRegistrationOrganizationResolver;
+    options.registrationOrganizationResolver ?? resolveEvaluationOrganization;
 
   return {
     async register(input: RegisterLocalAccountInput, context: { requestId: string }) {
       const username = normalizeUsername(input.username);
       requireUsername(username);
-      const organizationName = (input.organization ?? input.organizationName ?? "").trim();
       const name = input.name.trim();
       const requestedRoleId = input.roleId ?? defaultSelfRegistrationRoleId;
       const roleId = assignedRoleForRegistration(requestedRoleId);
       const title = input.title?.trim() || roleId;
       const approvalRequired = approvalRequiredRoleIds.has(requestedRoleId);
       requirePasswordPolicy(input.password);
-      if (!organizationName || !name) {
-        throw new ApiError("VALIDATION_FAILED", "Organization and user name are required.");
-      }
-      if (!allowedLocalOrganizations.has(organizationName)) {
-        throw new ApiError("VALIDATION_FAILED", "Organization must be one of: 硬件部, 软件部.", { organization: organizationName });
+      if (!name) {
+        throw new ApiError("VALIDATION_FAILED", "User name is required.");
       }
       if (!roleIds.has(requestedRoleId)) {
         throw new ApiError("VALIDATION_FAILED", "Role is not supported.", { roleId: requestedRoleId });
@@ -294,17 +289,9 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
           throw new ApiError("CONFLICT", "Username is already registered.", { username });
         }
 
-        const registrationOrganization = resolveRegistrationOrganization(organizationName);
+        const registrationOrganization = await resolveRegistrationOrganization(tx);
         const organizationId = registrationOrganization.id;
         const userId = `u-${randomUUID()}`;
-        await tx.query(
-          `
-          insert into organizations (id, name)
-          values ($1, $2)
-          on conflict (id) do update set name = excluded.name
-          `,
-          [organizationId, registrationOrganization.name]
-        );
         await tx.query(
           `
           insert into users (id, organization_id, name, title, is_active, last_active_at)
@@ -347,7 +334,7 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
             username,
             roleId,
             requestedRoleId,
-            organization: organizationName,
+            organization: registrationOrganization.name,
             approvalRequired
           },
           traceId: context.requestId

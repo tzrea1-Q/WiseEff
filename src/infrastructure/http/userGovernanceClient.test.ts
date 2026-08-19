@@ -207,6 +207,49 @@ describe("createUserGovernanceClient", () => {
     });
   });
 
+  it("reads and updates the home organization", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            organization: { id: "org-chargelab", name: "ChargeLab", createdAt: "2026-01-15T00:00:00.000Z" }
+          }),
+          { status: 200 }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            organization: { id: "org-chargelab", name: "LeiZe Energy", createdAt: "2026-01-15T00:00:00.000Z" }
+          }),
+          { status: 200 }
+        )
+      );
+    const client = createUserGovernanceClient(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
+
+    await expect(client.getOrganization()).resolves.toEqual({
+      id: "org-chargelab",
+      name: "ChargeLab",
+      createdAt: "2026-01-15T00:00:00.000Z"
+    });
+    await expect(client.updateOrganization({ name: "LeiZe Energy" })).resolves.toEqual({
+      id: "org-chargelab",
+      name: "LeiZe Energy",
+      createdAt: "2026-01-15T00:00:00.000Z"
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/organization", {
+      headers: { Accept: "application/json" },
+      method: "GET"
+    });
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/organization", {
+      body: JSON.stringify({ name: "LeiZe Energy" }),
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      method: "PATCH"
+    });
+  });
+
   it("uses browser OIDC authorization for the default API client", async () => {
     const fetchMock = createFetchMock({ items: [] });
     const apiClient = createDefaultUserGovernanceApiClient({

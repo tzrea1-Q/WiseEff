@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { AppAction } from "@/application/state/appState";
 import { presentError } from "@/infrastructure/http/presentError";
 import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
+import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { OperationHistoryPanel } from "./components/OperationHistoryPanel";
 import { RollbackConfirmDialog } from "./components/RollbackConfirmDialog";
@@ -335,7 +336,7 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
               <span className="parameters-table-count">显示 {visibleRows.length} / {debugParameters.length} 个参数</span>
             </div>
 
-            <div className="parameters-table-scroll">
+            <HorizontalDragScroll className="parameters-table-scroll">
               <table className="parameters-table-grid">
                 <thead>
                   <tr>
@@ -405,7 +406,7 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
                   ))}
                 </tbody>
               </table>
-            </div>
+            </HorizontalDragScroll>
 
             {visibleRows.length === 0 ? (
               <div className="parameters-table-empty">

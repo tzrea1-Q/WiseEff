@@ -3,14 +3,16 @@ import { expect, test, type Page } from "playwright/test";
 
 import { runNpmScript, withPgClient } from "./helpers/database";
 import { apiRoute } from "./helpers/runtime";
-import { signInBrowserAsRoleLabel } from "./helpers/bearerAuth";
+import { authHeadersForUser, signInBrowserAsRoleLabel } from "./helpers/bearerAuth";
+import { acceptanceCast } from "./helpers/cast";
 import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 
 useBrowserDiagnostics(test, {
   expectedApiFailures: [
-    { method: "GET", path: "/api/v1/users", status: 403 }
+    { method: "GET", path: "/api/v1/users", status: 403 },
+    { method: "PATCH", path: "/api/v1/organization", status: 403 }
   ]
 });
 
@@ -56,7 +58,7 @@ async function preparePermissionsAcceptanceState() {
 }
 
 async function setPrototypeRole(page: Page, roleName: string) {
-  await signInBrowserAsRoleLabel(page, roleName, page.url() || "/user-permissions");
+  await signInBrowserAsRoleLabel(page, roleName, page.url() || "/organization");
 }
 
 /**
@@ -166,13 +168,13 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
   });
 
   test.beforeEach(async ({ page }) => {
-    await signInBrowserAsRoleLabel(page, "Admin", "/user-permissions");
+    await signInBrowserAsRoleLabel(page, "Admin", "/organization");
   });
 
   test("loads users, shows role/status, and gates user governance to Admin", async ({ page }, testInfo) => {
     // @acceptance PERM-GOV-001
     // @operation PERM-GOV-001
-    await page.goto("/user-permissions");
+    await page.goto("/organization/members");
 
     await expect(page.getByRole("region", { name: "用户权限" })).toBeVisible();
     const table = page.getByRole("table", { name: "平台用户" });
@@ -236,7 +238,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
   test("lets Admin manage a non-self user in UI while denying non-Admin access", async ({ page }, testInfo) => {
     // @acceptance PERM-USER-MGMT-001
     // @operation PERM-USER-MGMT-001
-    await page.goto("/user-permissions");
+    await page.goto("/organization/members");
 
     await expect(page.getByRole("region", { name: "用户权限" })).toBeVisible();
     const table = page.getByRole("table", { name: "平台用户" });
@@ -337,7 +339,109 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
         })
       ],
       notes:
-        "Admin changed a non-self user's role and created a backend-governed user through the UI. Software User was denied access to /user-permissions, and API, DB, and audit evidence confirmed durable user-governance writes."
+        "Admin changed a non-self user's role and created a backend-governed user through the UI. Software User was denied access to /organization/members, and API, DB, and audit evidence confirmed durable user-governance writes."
+    });
+  });
+
+  test("lets Admin rename the home organization while denying non-Admin writes", async ({ page }, testInfo) => {
+    // @acceptance ORG-ADMIN-RENAME-001
+    // @operation ORG-ADMIN-RENAME-001
+    await page.goto("/organization");
+
+    await expect(page.getByRole("region", { name: "组织档案" })).toBeVisible();
+    const nameInput = page.getByLabel("显示名称");
+    await expect(nameInput).toHaveValue("ChargeLab");
+    await expect(page.locator(".organization-profile__id")).toHaveText("org-chargelab");
+
+    const renamed = `ChargeLab Acceptance ${Date.now()}`;
+    await nameInput.fill(renamed);
+    await page.getByRole("button", { name: "保存名称" }).click();
+    await expect(nameInput).toHaveValue(renamed);
+    await expect(page.locator(".organization-profile__id")).toHaveText("org-chargelab");
+
+    const orgApi = await expectSuccessfulApiGet<{ organization: { id: string; name: string; createdAt: string } }>(
+      page,
+      "/api/v1/organization"
+    );
+    expect(orgApi.body.organization).toMatchObject({ id: "org-chargelab", name: renamed });
+
+    const meApi = await expectSuccessfulApiGet<{ organization: { id: string; name: string } }>(page, "/api/v1/me");
+    expect(meApi.body.organization).toMatchObject({ id: "org-chargelab", name: renamed });
+
+    const auditApi = await expectSuccessfulApiGet<{ items: AuditApiItem[] }>(page, "/api/v1/audit-events");
+    expect(auditApi.body.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "organization-update",
+          action: "update",
+          targetId: "org-chargelab"
+        })
+      ])
+    );
+
+    const restoreResponse = await page.request.patch(apiRoute("/api/v1/organization"), {
+      headers: apiAuthorization ? { Authorization: apiAuthorization } : undefined,
+      data: { name: "ChargeLab" }
+    });
+    expect(restoreResponse.ok()).toBe(true);
+
+    const denied = await page.request.patch(apiRoute("/api/v1/organization"), {
+      headers: authHeadersForUser(
+        acceptanceCast.liuMin.userId,
+        acceptanceCast.liuMin.email,
+        acceptanceCast.liuMin.name
+      ),
+      data: { name: "Should Fail" }
+    });
+    expect(denied.status()).toBe(403);
+
+    await recordOperationEvidence({
+      operationId: "ORG-ADMIN-RENAME-001",
+      title: "admin home organization rename and non admin denial",
+      status: "passed",
+      page,
+      testInfo,
+      api: [
+        summarizeApiResponse(orgApi.response, {
+          method: "GET",
+          path: "/api/v1/organization",
+          responseSummary: `home organization ${orgApi.body.organization.id} renamed`
+        }),
+        summarizeApiResponse(auditApi.response, {
+          method: "GET",
+          path: "/api/v1/audit-events",
+          responseSummary: "organization-update audit event visible"
+        }),
+        summarizeApiResponse(denied, {
+          method: "PATCH",
+          path: "/api/v1/organization",
+          responseSummary: "Software User rename rejected with 403"
+        })
+      ],
+      db: databaseUrl
+        ? [
+            await withPgClient(async (client) => {
+              const result = await client.query<{ id: string; name: string }>(
+                `select id, name from organizations where id = $1`,
+                ["org-chargelab"]
+              );
+              return {
+                table: "organizations",
+                predicate: "id=org-chargelab",
+                observed: `name=${result.rows[0]?.name ?? "missing"}`,
+                rowCount: result.rowCount ?? 0
+              };
+            })
+          ]
+        : undefined,
+      audit: [
+        userAuditSummaryFor(auditApi.body.items, {
+          kind: "organization-update",
+          targetId: "org-chargelab"
+        })
+      ],
+      notes:
+        "Admin renamed the home organization on /organization. Identifier stayed org-chargelab, /api/v1/me showed the new label, audit recorded organization-update, and Software User PATCH was rejected."
     });
   });
 

@@ -20,6 +20,7 @@ import type {
 import type { DashboardState } from "@/application/parameters/dashboardState";
 import type { createParameterDashboardRuntime } from "@/application/parameters/parameterDashboardRuntime";
 import type { DebuggingRuntimeActions } from "@/application/debugging/debuggingRuntime";
+import { parseOrganizationAdminArea } from "@/application/organization/organizationAdminPath";
 import type { LogRuntimeActions } from "@/application/logs/logRuntime";
 import type { KnowledgeCapability } from "@/domain/knowledge/rules";
 import { resolveDtsReloadRepository } from "@/application/dts-reload/dtsReloadRuntime";
@@ -48,7 +49,8 @@ import { KnowledgePage } from "@/features/knowledge/KnowledgePage";
 import { parseDtsReloadHandoffQuery } from "@/domain/dtsReload/handoff";
 import { DtsReloadPage } from "@/features/dts-reload/DtsReloadPage";
 import { ParametersPage as UserParametersPage } from "@/ParametersPage";
-import { UserPermissionsPage } from "@/UserPermissionsPage";
+import type { AuthContextDto } from "@/infrastructure/http/authClient";
+import { OrganizationPage } from "@/OrganizationPage";
 import { NoEntryPage } from "@/components/NoEntryPage";
 import type { PageConfig } from "@/appConfig";
 import type { PrototypeState } from "@/domain/prototype/types";
@@ -94,6 +96,7 @@ export type PageProps = {
   onDashboardDimensionChange?: (dimension: HotspotDimension) => void;
   onDashboardOverviewScopeChange?: (scope: OverviewScope) => void;
   onDashboardProjectChange?: (projectId: string | null) => void;
+  onAuthContextRefresh?: (context: AuthContextDto) => void;
 };
 
 /**
@@ -140,6 +143,7 @@ export function PageRouter({
   onDashboardDimensionChange,
   onDashboardOverviewScopeChange,
   onDashboardProjectChange,
+  onAuthContextRefresh,
   onNewProject,
   TopBarProjectId,
   DebuggingAdminPage
@@ -151,6 +155,7 @@ export function PageRouter({
   const knowledgeRepository = runtime?.knowledgeRepository;
   const dtsReloadRepository = runtime?.dtsReloadRepository;
   const userGovernanceActions = runtime?.userGovernanceActions;
+  const organizationActions = runtime?.organizationActions;
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
   const searchProjectId = new URLSearchParams(search).get("project") ?? "";
   const effectiveParametersProjectId = searchProjectId || state.activeProjectId;
@@ -429,12 +434,27 @@ export function PageRouter({
     }
     case "user-permissions":
       return (
-        <UserPermissionsPage
+        <OrganizationPage
           state={state}
           dispatch={dispatch}
           onNavigate={onNavigate}
           search={search}
+          area={parseOrganizationAdminArea(page.path) ?? "profile"}
           userGovernanceActions={userGovernanceActions}
+          organizationActions={organizationActions}
+          onOrganizationUpdated={async () => {
+            if (runtimeMode !== "api") {
+              return;
+            }
+            try {
+              const context = await runtime?.authClient.getCurrentAuthContext();
+              if (context) {
+                onAuthContextRefresh?.(context);
+              }
+            } catch {
+              // Rename already persisted. A stale /me fetch must not fail the save.
+            }
+          }}
         />
       );
     case "audit":

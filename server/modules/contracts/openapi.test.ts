@@ -79,6 +79,14 @@ describe("M5 OpenAPI contract", () => {
   it("publishes user governance API routes as commercial-readiness contracts", () => {
     expect(routeManifest).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({ id: "organization.get", method: "GET", path: "/api/v1/organization", module: "users", stability: "commercial-readiness" }),
+        expect.objectContaining({
+          id: "organization.update",
+          method: "PATCH",
+          path: "/api/v1/organization",
+          module: "users",
+          stability: "commercial-readiness"
+        }),
         expect.objectContaining({ id: "users.list", method: "GET", path: "/api/v1/users", module: "users", stability: "commercial-readiness" }),
         expect.objectContaining({ id: "users.create", method: "POST", path: "/api/v1/users", module: "users", stability: "commercial-readiness" }),
         expect.objectContaining({

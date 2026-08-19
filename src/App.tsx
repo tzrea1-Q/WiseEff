@@ -140,7 +140,6 @@ function isAuthRejectionError(error: unknown) {
 }
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "wiseeff.sidebar.collapsed";
-const localAuthOrganizations = ["硬件部", "软件部"] as const;
 const selfRegistrationRoleIds = new Set<PlatformRoleId>([
   "guest",
   "hardware-user",
@@ -783,7 +782,7 @@ function AppShell({
       }
       const nextPage = getPageByPath(window.location.pathname);
       if (nextPage.path !== window.location.pathname) {
-        window.history.replaceState(null, "", nextPage.path);
+        window.history.replaceState(null, "", `${nextPage.path}${window.location.search}`);
       }
       setPath(nextPage.path);
       setSearch(window.location.search);
@@ -1083,6 +1082,7 @@ function AppShell({
                 onDashboardProjectChange={(projectId) =>
                   dashboardDispatch({ type: "DASHBOARD_SET_PROJECT", projectId })
                 }
+                onAuthContextRefresh={hydrateAuthContext}
                 DebuggingAdminPage={DebuggingAdminPageWithRuntime}
               />
             </div>
@@ -1122,6 +1122,7 @@ function AppShell({
                 onDashboardProjectChange={(projectId) =>
                   dashboardDispatch({ type: "DASHBOARD_SET_PROJECT", projectId })
                 }
+                onAuthContextRefresh={hydrateAuthContext}
                 DebuggingAdminPage={DebuggingAdminPageWithRuntime}
               />
             </main>
@@ -1268,7 +1269,11 @@ function Sidebar({
             const button = (
               <Button
                 aria-label={item.label}
-                className={item.path === activePath ? "nav-item compact active" : "nav-item compact"}
+                className={
+                  item.path && getPageByPath(item.path).key === activePageKey
+                    ? "nav-item compact active"
+                    : "nav-item compact"
+                }
                 disabled={!item.path}
                 type="button"
                 variant="ghost"
@@ -1499,7 +1504,6 @@ function ApiAuthPage({
   onAuthenticated: (session: AuthSessionDto) => Promise<void>;
 }) {
   const [mode, setMode] = useState<"login" | "register">("login");
-  const [organization, setOrganization] = useState<(typeof localAuthOrganizations)[number]>("硬件部");
   const [name, setName] = useState("");
   const [roleId, setRoleId] = useState<PlatformRoleId>("hardware-user");
   const [username, setUsername] = useState("");
@@ -1507,10 +1511,6 @@ function ApiAuthPage({
   const [formError, setFormError] = useState("");
   const [pendingRegistration, setPendingRegistration] = useState<PendingRegistrationDto | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const organizationOptions = useMemo(
-    () => localAuthOrganizations.map((value) => ({ value, label: value })),
-    []
-  );
   const roleOptions = useMemo(
     () => platformRoles.filter((role) => selfRegistrationRoleIds.has(role.id)).map((role) => ({ value: role.id, label: role.name })),
     []
@@ -1545,7 +1545,6 @@ function ApiAuthPage({
           throw new Error("本地账号注册未启用。");
         }
         const response = await authClient.register({
-          organization,
           name,
           username,
           roleId,
@@ -1610,17 +1609,6 @@ function ApiAuthPage({
           <form className="auth-form" onSubmit={submit}>
             {mode === "register" ? (
               <>
-                <label>
-                  <span>组织</span>
-                  <SelectControl
-                    id="local-auth-organization"
-                    value={organization}
-                    onValueChange={setOrganization}
-                    options={organizationOptions}
-                    ariaLabel="组织"
-                    className="auth-select-control"
-                  />
-                </label>
                 <label>
                   <span>姓名</span>
                   <input value={name} onChange={(event) => setName(event.target.value)} required />

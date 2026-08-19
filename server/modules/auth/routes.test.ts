@@ -13,7 +13,10 @@ type QueryCall = {
 
 function createLocalRouteDb() {
   const calls: QueryCall[] = [];
-  const organization = { id: "org-local", name: "Local Org" };
+  const organizations = new Map<string, { id: string; name: string }>([
+    ["org-chargelab", { id: "org-chargelab", name: "ChargeLab" }]
+  ]);
+  const organization = organizations.get("org-chargelab")!;
   const user = {
     id: "u-local",
     organizationId: organization.id,
@@ -40,7 +43,17 @@ function createLocalRouteDb() {
         rowCount: matches ? 1 : 0
       };
     }
+    if (normalized.includes("from organizations") && normalized.includes("where id = $1")) {
+      const match = organizations.get(values[0] as string);
+      return { rows: (match ? [match] : []) as Row[], rowCount: match ? 1 : 0 };
+    }
+    if (normalized.includes("from organizations") && normalized.includes("id <> all($1::text[])")) {
+      const retired = new Set(values[0] as string[]);
+      const rows = Array.from(organizations.values()).filter((item) => !retired.has(item.id));
+      return { rows: rows as Row[], rowCount: rows.length };
+    }
     if (normalized.startsWith("insert into organizations")) {
+      organizations.set(values[0] as string, { id: values[0] as string, name: values[1] as string });
       organization.id = values[0] as string;
       organization.name = values[1] as string;
       return { rows: [], rowCount: 1 };
@@ -185,7 +198,6 @@ describe("GET /api/v1/me", () => {
       {
         method: "POST",
         body: JSON.stringify({
-          organization: "硬件部",
           name: "Local Admin",
           username: "local.admin",
           roleId: "hardware-user",
@@ -244,7 +256,6 @@ describe("GET /api/v1/me", () => {
     const register = await requestJson<{ error: { code: string } }>(createWiseEffServer(serverOptions), "/api/v1/auth/register", {
       method: "POST",
       body: JSON.stringify({
-        organization: "硬件部",
         name: "Local Admin",
         username: "local.admin",
         email: "local@example.com",
@@ -287,7 +298,6 @@ describe("GET /api/v1/me", () => {
     }>(createWiseEffServer(serverOptions), "/api/v1/auth/register", {
       method: "POST",
       body: JSON.stringify({
-        organization: "硬件部",
         name: "Committer Candidate",
         username: "committer.candidate",
         roleId: "hardware-committer",

@@ -8,7 +8,7 @@ This document captures first-session expectations for a new WiseEff user or deve
 
 Users should understand that WiseEff coordinates parameter management, log analysis, debugging, and Agent-assisted work inside governed engineering workflows.
 
-In API mode, unauthenticated users first see the WiseEff auth screen. Local account login and registration are productized for self-managed evaluation flows: registration uses a username, fixed localized hardware/software department organization choices, and an allowed self-service platform role. Admin is not available for self-registration. Committer requests create an inactive account and a pending Admin approval request; they do not sign the user in or grant a session until approval activates the account and assigns the requested Committer role. Email verification is intentionally not supported yet, so this path is not verified-domain onboarding or invitation acceptance.
+In API mode, unauthenticated users first see the WiseEff auth screen. Local account login and registration are productized for self-managed evaluation flows: registration uses a username and an allowed self-service platform role. The new account joins the Evaluation Organization (ChargeLab when seeded; otherwise the single bootstrap Organization). There is no organization picker. Admin is not available for self-registration. Committer requests create an inactive account and a pending Admin approval request; they do not sign the user in or grant a session until approval activates the account and assigns the requested Committer role. Email verification is intentionally not supported yet, so this path is not verified-domain onboarding or invitation acceptance.
 
 ## First Developer Path
 
@@ -37,4 +37,4 @@ New users should know which workflow to open, which role can perform each action
 | ID | Scenario | Actor | Steps | Expected result |
 | --- | --- | --- | --- | --- |
 | PM-02 | Register a Committer role that requires approval | New user | Register as `hardware-committer` or `software-committer`. | The API creates an inactive account with the matching base User role recorded and a pending Admin approval request. The auth screen shows a pending-approval result state without the editable registration form. The user does not receive a session token and cannot log in before approval. |
-| PM-03 | Approve a Committer registration request | Admin | Open `/user-permissions` and approve the pending Committer request. | The account is activated, the requested Committer role is granted, and the user can log in or refresh to access Committer review capabilities. |
+| PM-03 | Approve a Committer registration request | Admin | Open `/organization/members` and approve the pending Committer request. | The account is activated, the requested Committer role is granted, and the user can log in or refresh to access Committer review capabilities. |

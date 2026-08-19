@@ -282,6 +282,17 @@ function createDevelopmentLocalAuthDb() {
         return { rows: (credential ? [{ id: credential[0] }] : []) as Row[], rowCount: credential ? 1 : 0 };
       }
 
+      if (normalized.includes("from organizations") && normalized.includes("where id = $1")) {
+        const organization = organizations.get(values[0] as string);
+        return { rows: (organization ? [organization] : []) as Row[], rowCount: organization ? 1 : 0 };
+      }
+
+      if (normalized.includes("from organizations") && normalized.includes("id <> all($1::text[])")) {
+        const retired = new Set(values[0] as string[]);
+        const rows = Array.from(organizations.values()).filter((organization) => !retired.has(organization.id));
+        return { rows: rows as Row[], rowCount: rows.length };
+      }
+
       if (normalized.startsWith("insert into organizations")) {
         organizations.set(values[0] as string, { id: values[0] as string, name: values[1] as string });
         return { rows: [], rowCount: 1 };
@@ -712,7 +723,7 @@ describe("WiseEff API", () => {
     expect(response.body.error).toMatchObject({ code: "FORBIDDEN", message: "User is inactive." });
   });
 
-  it("registers development local accounts into ChargeLab demo data through environment wiring", async () => {
+  it("registers local accounts into ChargeLab regardless of NODE_ENV", async () => {
     const db = createDevelopmentLocalAuthDb();
     const server = () =>
       createWiseEffServerFromEnv({
@@ -730,7 +741,6 @@ describe("WiseEff API", () => {
       {
         method: "POST",
         body: JSON.stringify({
-          organization: "硬件部",
           name: "Demo Hardware User",
           username: "demo.hardware",
           roleId: "hardware-user",
@@ -754,7 +764,7 @@ describe("WiseEff API", () => {
     expect(parameters.body.items).toHaveLength(1);
   });
 
-  it("keeps non-development local account registration in the selected department organization", async () => {
+  it("ignores a retired department organization field on local register", async () => {
     const registered = await requestJson<{ auth: { organization: { id: string; name: string } } }>(
       createWiseEffServerFromEnv({
         db: createDevelopmentLocalAuthDb(),
@@ -778,7 +788,7 @@ describe("WiseEff API", () => {
     );
 
     expect(registered.status).toBe(201);
-    expect(registered.body.auth.organization).toEqual({ id: "org-hardware-department", name: "硬件部" });
+    expect(registered.body.auth.organization).toEqual({ id: "org-chargelab", name: "ChargeLab" });
   });
 
   it("rejects production routes without bearer auth instead of falling back to development auth", async () => {

@@ -70,6 +70,19 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "NotificationMarkAllReadResponse"
   },
 
+  "organization.get": {
+    summary: "Get the caller's home organization",
+    tags: ["users"],
+    responseBody: "OrganizationResponse",
+    additionalResponses: { "401": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "organization.update": {
+    summary: "Rename the caller's home organization",
+    tags: ["users"],
+    requestBody: "UpdateOrganizationRequest",
+    responseBody: "OrganizationResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "users.list": {
     summary: "List governed users",
     tags: ["users"],

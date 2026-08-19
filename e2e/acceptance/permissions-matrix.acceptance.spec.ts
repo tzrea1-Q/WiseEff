@@ -119,7 +119,7 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
     // @acceptance PLAT-ROLE-002
     // @operation PLAT-ROLE-002
     await setPrototypeRole(page, "Admin");
-    await navigateWithinApp(page, "/user-permissions");
+    await navigateWithinApp(page, "/organization/members");
     await expect(page.getByRole("heading", { name: /无权访问该页面/i })).toHaveCount(0);
 
     // Existing platform-admin users may still be *labeled* 平台超级管理员 in the table/filter.

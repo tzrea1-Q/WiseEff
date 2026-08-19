@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type Dispatch } from "react";
 import type { AppAction } from "@/application/state/appState";
 import type { ParameterPageActions } from "@/app/routes";
 import type { ParameterImportBatchDto, ParameterImportBatchItem } from "@/application/ports/ParameterRepository";
+import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
 import { isEligibleImportItem } from "@/application/parameters/import/isEligibleImportItem";
 import { toSourceItems } from "@/application/parameters/import/toSourceItems";
 import { buildImportReviewMetadata } from "@/application/parameters/import/buildImportReviewMetadata";
@@ -181,7 +182,7 @@ export function StepBatchPreview({
             </div>
           </dl>
 
-          <div className="parameter-import-preview-table-wrap">
+          <HorizontalDragScroll className="parameter-import-preview-table-wrap">
             <table className="import-review-diff-table parameter-import-preview-table" aria-label="预览条目">
               <thead>
                 <tr>
@@ -235,7 +236,7 @@ export function StepBatchPreview({
                 })}
               </tbody>
             </table>
-          </div>
+          </HorizontalDragScroll>
         </>
       ) : null}
 

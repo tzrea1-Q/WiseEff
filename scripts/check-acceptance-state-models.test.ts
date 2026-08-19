@@ -152,12 +152,12 @@ describe("acceptance state models", () => {
     });
     const visibleWithoutApi = applyPermissionModelStep(apiDenied, {
       type: "forceVisibleRoute",
-      route: "/user-permissions",
+      route: "/organization",
       visible: true
     });
 
-    expect(guest.visibleRoutes).not.toContain("/user-permissions");
-    expect(admin.visibleRoutes).toContain("/user-permissions");
+    expect(guest.visibleRoutes).not.toContain("/organization");
+    expect(admin.visibleRoutes).toContain("/organization");
     expect(visibleWithoutApi.violations).toContain("UI route visibility cannot exceed API eligibility");
   });
 

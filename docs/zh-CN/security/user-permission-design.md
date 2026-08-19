@@ -25,6 +25,10 @@
 - 发布者问责:`knowledge:edit` 不能发布或修改他人条目;草稿仅对拥有者与 manage 可见;彻底删除必须 `knowledge:manage` 并留 `High` 级审计。完整规则见英文版。
 - Phase 3 蒸馏与 Agent 草稿沿用同一模型,不新增权限:日志蒸馏(`POST /api/v1/knowledge/distill-from-log`)需要 `knowledge:edit` 创建草稿,且对来源分析记录需要 `logs:view` 加组织隔离;审批门控 Agent 工具 `action.createKnowledgeDraft` 在调用用户的 AuthContext 下执行(执行时强制 `knowledge:edit`),任何写入前必经人工批准,且只创建新草稿;Agent 草稿的创建者即会话用户,因此 `knowledge:edit` 可发布/拒绝归档本人会话沉淀的草稿,`knowledge:manage` 可在 `/knowledge-admin` 队列处理任意 Agent 草稿,拒绝归档端点(`POST /api/v1/knowledge/entries/:entryId/reject`)只接受 Agent 来源草稿。
 
+## 组织管理
+
+`/organization` 是组织档案，`/organization/members` 是人员管理。两者都是本组织租户运营。`GET /api/v1/organization` 对任意已启用已认证成员开放。`PATCH /api/v1/organization` 需要 `users:manage`，只接受 `{ name }`，同一事务写 `organization-update`。名称是标签，不做全局唯一。这与 `/parameter-admin` 的 Organization-scoped governance 不同。
+
 ## 同类中文文档
 
 - [docs/zh-CN/security/README.md](README.md)

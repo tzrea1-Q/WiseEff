@@ -266,4 +266,77 @@ describe("user governance routes", () => {
     expect(reject.body.item).toMatchObject({ id: "registration-role-request-1", status: "rejected" });
     expect(calls.some((call) => call.text.includes("insert into audit_events"))).toBe(true);
   });
+
+  it("returns the home organization for an authenticated member", async () => {
+    const { db } = makeDb((text) =>
+      text.includes("from organizations")
+        ? [{ id: "org-chargelab", name: "ChargeLab", created_at: "2026-01-01T00:00:00.000Z" }]
+        : []
+    );
+
+    const response = await requestJson<{ organization: { id: string; name: string; createdAt: string } }>(
+      createWiseEffServer({
+        db,
+        auth: { mode: "production", verifier: { verify: async () => nonAdminAuth } }
+      }),
+      "/api/v1/organization",
+      { headers: { Authorization: "Bearer user" } }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.organization).toEqual({
+      id: "org-chargelab",
+      name: "ChargeLab",
+      createdAt: "2026-01-01T00:00:00.000Z"
+    });
+  });
+
+  it("lets Admin rename the home organization", async () => {
+    const { calls, db } = makeDb((text) => {
+      if (text.includes("update organizations")) {
+        return [{ id: "org-chargelab", name: "雷泽能源", created_at: "2026-01-01T00:00:00.000Z" }];
+      }
+      if (text.includes("from organizations")) {
+        return [{ id: "org-chargelab", name: "ChargeLab", created_at: "2026-01-01T00:00:00.000Z" }];
+      }
+      return [];
+    });
+
+    const response = await requestJson<{ organization: { name: string } }>(
+      createWiseEffServer({
+        db,
+        auth: { mode: "production", verifier: { verify: async () => adminAuth } }
+      }),
+      "/api/v1/organization",
+      {
+        method: "PATCH",
+        headers: { Authorization: "Bearer admin" },
+        body: JSON.stringify({ name: "雷泽能源" })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.organization.name).toBe("雷泽能源");
+    expect(calls.some((call) => call.text.includes("insert into audit_events"))).toBe(true);
+  });
+
+  it("rejects organization rename from a non-Admin", async () => {
+    const { db } = makeDb(() => [], nonAdminAuth);
+
+    const response = await requestJson<{ error: { code: string } }>(
+      createWiseEffServer({
+        db,
+        auth: { mode: "production", verifier: { verify: async () => nonAdminAuth } }
+      }),
+      "/api/v1/organization",
+      {
+        method: "PATCH",
+        headers: { Authorization: "Bearer user" },
+        body: JSON.stringify({ name: "Acme" })
+      }
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe("FORBIDDEN");
+  });
 });

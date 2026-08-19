@@ -46,3 +46,4 @@ See also: [`CONTEXT.md`](../../CONTEXT.md), [`docs/design-docs/domain-model.md`]
 | [0034](0034-referenced-property-key-rename-is-a-source-cutover.md) | Referenced property-key rename is a staged source-rewriting cutover |
 | [0035](0035-debug-value-promotion-stages-drafts.md) | Proven debug values promote through parameter drafts |
 | [0036](0036-workflow-discovery-uses-a-visible-workflow-allowlist.md) | Workflow discovery uses a visible-workflow allowlist |
+| [0037](0037-organization-administration-is-home-org-tenant-operations.md) | Organization administration is home-org tenant operations |

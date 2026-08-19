@@ -22,7 +22,7 @@ const routes = [
   "/debugging",
   "/node-debugging",
   "/debugging-admin",
-  "/user-permissions"
+  "/organization"
 ] as const;
 
 async function expectUsableShell(page: Page, testInfo: TestInfo, route: string) {

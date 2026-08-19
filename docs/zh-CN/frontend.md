@@ -48,9 +48,9 @@ VITE_WISEEFF_RUNTIME_MODE=mock
 
 API 模式不再回退到 mock 数据：应用从 `createApiInitialState()`（保留结构性字段、业务数据切片全部为空，含 `auditEvents`；无用的 `developers` / `logAdminUsers` 已在 #474 退役）启动，首次同步完成前内容区顶部显示「正在连接雷泽服务…」提示条；任一域（参数/日志/调试）刷新失败时，经 `CLEAR_API_RUNTIME_DOMAIN` 清空该域业务切片，并在内容区顶部显示持久的「无法连接雷泽… API，当前无数据」错误横幅与重试按钮，绝不把演示数据当真实数据展示。参数域成功水合后，若演示项目 ID 不在服务端项目列表中，`activeProjectId` 会指向真实项目。#480 禁止参数页和 reducer 在 `configDraft.projects` 为空时回落到 `mockData.projects`；API boot 使用 `createEmptyPowerManagementConfig()`。#486 把 `createApiInitialState()` 建成显式空壳（不再调用 `createPrototypeState()`）；mock 播种在 `src/infrastructure/mock/prototypeState.ts`。mock 模式行为不变。
 
-API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒绝，前端显示 WiseEff 认证页，支持本地账号登录和注册。本地登录使用用户名和密码；注册会选择组织（`硬件部` / `软件部`）、姓名、允许自助选择的平台角色、用户名和密码。注册角色下拉不包含 Admin；申请 Hardware/Software Committer 时，后端会创建 inactive 账号、对应基础 User 角色和待审批申请，`/api/v1/auth/register` 返回 `202 pending_approval` 且不返回 session token，前端继续停留在认证页，展示待审批结果态且不再保留可编辑注册表单。只有登录或非 Committer 注册成功后，前端才把不透明的 `we_local_*` session token 存到 `localStorage` 的 `wiseeff.localAuthToken`；默认 API client 会优先使用 OIDC runtime token，若没有 OIDC token 再回退到本地 token。
+API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒绝，前端显示 WiseEff 认证页，支持本地账号登录和注册。本地登录使用用户名和密码；注册收集姓名、允许自助选择的平台角色、用户名和密码，没有组织下拉，新账号加入评估组织（有种子时是 ChargeLab，否则是唯一的 bootstrap Organization）。注册角色下拉不包含 Admin；申请 Hardware/Software Committer 时，后端会创建 inactive 账号、对应基础 User 角色和待审批申请，`/api/v1/auth/register` 返回 `202 pending_approval` 且不返回 session token，前端继续停留在认证页，展示待审批结果态且不再保留可编辑注册表单。只有登录或非 Committer 注册成功后，前端才把不透明的 `we_local_*` session token 存到 `localStorage` 的 `wiseeff.localAuthToken`；默认 API client 会优先使用 OIDC runtime token，若没有 OIDC token 再回退到本地 token。
 
-顶部用户菜单提供“个人资料”和“退出登录”。个人资料保存调用 `PATCH /api/v1/me/profile`，退出登录调用 `POST /api/v1/auth/logout` 并清除本地 token。注册按所选组织和允许自助选择的平台角色创建本地账号；当前暂不支持邮箱验证。
+顶部用户菜单提供“个人资料”和“退出登录”。个人资料保存调用 `PATCH /api/v1/me/profile`，退出登录调用 `POST /api/v1/auth/logout` 并清除本地 token。注册按评估组织和允许自助选择的平台角色创建本地账号；当前暂不支持邮箱验证。
 
 启动探测会区分“认证被拒绝”和“后端不可达”，避免后端重启或网络抖动把所有人登出。只有 `WiseEffApiError` 且 code 为 `UNAUTHENTICATED` / `FORBIDDEN` 才清除本地 token 并回到登录页；其他失败（fetch `TypeError`、超时、5xx）保留 token 并进入 `unreachable` 状态，渲染品牌化的「无法连接服务器」屏，其中「重试」按钮重跑探测（`authProbeAttempt`）并就地恢复会话——无需重新登录。探测进行中的 `checking` 状态渲染轻量的会话恢复屏（「正在恢复会话…」）而非可交互登录表单，刷新时不再闪现登录页。两个状态复用 `.auth-panel` 外观（`.auth-status-panel`）。
 
@@ -58,7 +58,7 @@ API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒
 
 审计中心（`/audit`）的筛选下推到 `GET /api/v1/audit-events`：文本搜索（`q`，服务端匹配操作/类型/对象/操作人）、时间窗（今天 / 近 7 天 / 近 30 天，经 `from`），加上既有的模块分组/项目/严重度/trace 筛选与游标分页。「导出 CSV」按当前筛选分页拉取全量（上限 2000 行）导出 UTF-8-BOM、中文表头的 CSV，模块/类型/操作/严重度均为中文标签，并保留原始类型标识列供机器筛选。mock 模式下相同筛选在客户端执行。
 
-本地账号注册的组织下拉固定为 `硬件部` 和 `软件部`。自助注册角色下拉使用：`guest`、`hardware-user`、`software-user`、`hardware-committer`、`software-committer`。`admin` 与 `platform-admin` 只能通过后台用户治理分配，且后者仅已持有 `platform-admin` 的调用方可以授予或撤销；不能在注册页自助选择。
+本地账号注册没有组织下拉；新账号加入评估组织（有种子时是 ChargeLab）。自助注册角色下拉使用：`guest`、`hardware-user`、`software-user`、`hardware-committer`、`software-committer`。`admin` 与 `platform-admin` 只能通过组织管理分配，且后者仅已持有 `platform-admin` 的调用方可以授予或撤销；不能在注册页自助选择。
 
 ## 端口和实现
 
@@ -249,7 +249,7 @@ Xiaoze（小泽，唯一 Agent）：
 用户和身份：
 
 - `/api/v1/me` 在 OIDC、HMAC smoke 和本地账号下返回同一类 `AuthContext`。
-- `/user-permissions` 在 API mode 下通过 `/api/v1/users` 读取和写入用户治理数据，并通过 `/api/v1/users/registration-role-requests` 处理待审批的 Committer 注册申请。管理员在“添加用户”中创建的是本地账号：表单使用姓名、用户名、可选职务、初始密码和初始角色，不再把邮箱作为账号标识。该账号会加入当前管理员所在组织并立即启用；密码只提交给后端创建凭据，前端用户状态不会保存明文密码。
+- 组织管理是一个侧栏入口、两条范围对等页（与调试后台相同）：`/organization`（组织档案，`GET`/`PATCH /api/v1/organization`）和 `/organization/members`（人员管理）。页面 key 仍是 `user-permissions`。`/user-permissions` 永久重定向到 `/organization/members` 并保留查询串。人员页在 API mode 下通过 `/api/v1/users` 读写用户治理，并通过 `/api/v1/users/registration-role-requests` 处理待审批的 Committer 注册申请。管理员在“添加用户”中创建的是本地账号：表单使用姓名、用户名、可选职务、初始密码和初始角色，不再把邮箱作为账号标识。该账号会加入当前管理员所在组织并立即启用；密码只提交给后端创建凭据，前端用户状态不会保存明文密码。
 - 前端权限检查只是 UX，后端仍必须执行 authz、self-lockout 防护和 audit。
 
 ## 快捷键与地标
@@ -281,7 +281,7 @@ Xiaoze（小泽，唯一 Agent）：
 
 支持选 0 / 1 / 多个分类值的列表头筛选，必须使用共享的 `ColumnFilter`（安静的漏斗触发器 + 勾选菜单），不要用常驻 `<select>` 或用排序箭头冒充筛选。规格：[表格列多选筛选 UX](design-docs/ux-table-column-filter.md)。规范实现：`src/components/ColumnFilter.tsx`。参考接入：`ParametersTable`、工作台 `DtsParameterWorkbenchTable` 的「所属模块」、参数后台 `ParameterSpecLibrary` / `ProjectAdminTable`，以及 `/log-admin` 业务域列表的「状态」列。
 
-管理端**列表**表格使用 `src/components/admin/DataTable`（排序 + `aria-sort`、分页、键盘行、空态、可选 `ColumnFilter`）。已接入：`/user-permissions`、`/log-admin` 业务域列表、`/log-admin` 分析质量、`/debugging-admin` 节点/参数库表、`/dts-reload` 候选网格。`/logs` 的 `rawlog-table` 是行查看器，不是列表外壳。TD-112 剩余手写列表：配置工作台表。
+管理端**列表**表格使用 `src/components/admin/DataTable`（排序 + `aria-sort`、分页、键盘行、空态、可选 `ColumnFilter`）。列宽超出卡片时，内层 `.data-table-scroll` 保持 `overflow-x: auto`（指针拖动 + 触控板/触摸滑动）；表头 `ColumnFilter` 菜单是 `position: fixed`，不得再把滚动层改成 `overflow-visible`。其他会溢出的表滚动层复用同一套 `HorizontalDragScroll` / `useHorizontalDragScroll`（`ParametersTable`、审阅 `Table`、参数后台库表、调试表、初始化/导入预览、平台控制台候选体）。页面外壳仍不得造成整页横向滚动。已接入：`/organization/members` 成员表、`/log-admin` 业务域列表、`/log-admin` 分析质量、`/debugging-admin` 节点/参数库表、`/dts-reload` 候选网格。`/logs` 的 `rawlog-table` 是行查看器，不是列表外壳。TD-112 剩余手写列表：配置工作台表。
 
 ## 测试建议
 

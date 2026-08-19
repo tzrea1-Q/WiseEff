@@ -66,7 +66,9 @@ AUTH_PROVIDER=local
 
 | 路由 | 用途 |
 | --- | --- |
-| `POST /api/v1/auth/register` | 使用所选组织和允许自助选择的平台角色注册本地账号。非 Committer 角色返回带 session 的 `201`；Committer 申请返回无 token 的 `202 pending_approval`。 |
+| `POST /api/v1/auth/register` | 使用允许自助选择的平台角色注册本地账号。账号加入评估组织（有种子时是 ChargeLab，否则是唯一的 bootstrap Organization）。非 Committer 角色返回带 session 的 `201`；Committer 申请返回无 token 的 `202 pending_approval`。 |
+| `GET /api/v1/organization` | 返回调用方本组织（`id`、`name`、`createdAt`）。任意已启用的已认证成员。 |
+| `PATCH /api/v1/organization` | 修改本组织显示名称（仅 `{ name }`）。需要 `users:manage`。同一事务写入 `organization-update`。 |
 | `POST /api/v1/auth/login` | 使用用户名和 password 换取本地会话 token。 |
 | `POST /api/v1/auth/logout` | 撤销当前本地会话 token。 |
 | `GET /api/v1/me` | 返回已认证用户的 `AuthContext`。 |
@@ -76,13 +78,13 @@ AUTH_PROVIDER=local
 | `POST /api/v1/users/registration-role-requests/:requestId/approve` | 让 Admin 批准待审批的 Committer 角色申请。 |
 | `POST /api/v1/users/registration-role-requests/:requestId/reject` | 让 Admin 拒绝待审批的 Committer 角色申请。 |
 
-注册请求包含 `organization`、`name`、`username`、`roleId` 和 `password`。自助注册组织选项为 `硬件部` 和 `软件部`。自助注册永远不接受 `admin`；申请 `hardware-committer` 或 `software-committer` 时，账号会以 inactive 状态创建，先写入对应基础 User 角色，并创建待 Admin 审批的角色申请。该路径不会创建 session token，密码登录也会在审批前被拒绝；只有审批通过后才激活账号并授予申请的 Committer 角色。本地账号不再保存或返回 email 地址，用户名就是本地登录标识。当前暂时不支持邮箱验证，因此注册不能被当作已验证域名 onboarding 或邀请接受流程。
+注册请求包含 `name`、`username`、`roleId` 和 `password`。遗留的可选 `organization` 字段会被忽略，且不得再创建硬件部 / 软件部租户。自助注册永远不接受 `admin`；申请 `hardware-committer` 或 `software-committer` 时，账号会以 inactive 状态创建，先写入对应基础 User 角色，并创建待 Admin 审批的角色申请。该路径不会创建 session token，密码登录也会在审批前被拒绝；只有审批通过后才激活账号并授予申请的 Committer 角色。本地账号不再保存或返回 email 地址，用户名就是本地登录标识。当前暂时不支持邮箱验证，因此注册不能被当作已验证域名 onboarding 或邀请接受流程。
 
 管理员创建用户不走自助注册，而是使用 `POST /api/v1/users`。请求包含 `name`、`username`、`password`、可选 `title` 和 `roles`；后端会在一个事务中创建用户、密码凭据、角色绑定和审计事件。这类账号会立即启用，包括 Committer/MDE 角色，因为该操作本身已经要求 `users:manage` 权限。响应和审计 metadata 都不能返回或记录明文密码、密码哈希。
 
-在本地开发 profile（`NODE_ENV=development`、`AUTH_MODE=production`、`AUTH_PROVIDER=local`）下，自助注册账号会刻意加入已 seed 的 `org-chargelab` / `ChargeLab` 演示组织，从而能看到本地种子参数、日志和调试数据。同一 development profile 下，`db:seed:m0` 还会为 ChargeLab 演示 persona upsert 固定 username 与共用演示密码（见 [本地开发](../developer/local-development.md) 中的演示登录说明）；非 development 的 seed 不写这些凭据。非开发的本地账号部署仍使用所选部门组织 id（`org-hardware-department` 或 `org-software-department`），以保留租户隔离语义。
+本地账号注册（`AUTH_PROVIDER=local`）加入评估组织：有 ChargeLab（`org-chargelab`）就加入它，否则加入唯一的 bootstrap Organization。这是 development 与非 development 的产品规则，不是 `NODE_ENV` 例外。development profile 下，`db:seed:m0` 还会为 ChargeLab 演示 persona upsert 固定 username 与共用演示密码（见 [本地开发](../developer/local-development.md) 中的演示登录说明）；非 development 的 seed 不写这些凭据。
 
-密码只以 salted `scrypt` 哈希保存在 `user_password_credentials`。只有登录成功或非 Committer 注册成功才会在响应中返回一次不透明的 `we_local_*` bearer token；待审批 Committer 注册和管理员创建本地账号都不会在创建响应中返回 session token。数据库 `auth_sessions` 只保存 SHA-256 token 哈希。会话会按服务 TTL 过期，退出登录会写入 `revoked_at`。注册、登录、退出、资料更新、管理员创建用户、角色替换和启停账号都会写审计事件。
+密码只以 salted `scrypt` 哈希保存在 `user_password_credentials`。只有登录成功或非 Committer 注册成功才会在响应中返回一次不透明的 `we_local_*` bearer token；待审批 Committer 注册和管理员创建本地账号都不会在创建响应中返回 session token。数据库 `auth_sessions` 只保存 SHA-256 token 哈希。会话会按服务 TTL 过期，退出登录会写入 `revoked_at`。注册、登录、退出、资料更新、本组织改名、管理员创建用户、角色替换和启停账号都会写审计事件。
 
 登录后的请求使用：
 

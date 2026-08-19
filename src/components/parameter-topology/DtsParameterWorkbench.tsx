@@ -7,6 +7,7 @@ import {
   Cpu
 } from "lucide-react";
 
+import { useHorizontalDragScroll } from "@/hooks/useHorizontalDragScroll";
 import { presentError } from "@/infrastructure/http/presentError";
 import { buildModuleTree } from "@/application/parameters/buildModuleTree";
 import {
@@ -211,6 +212,7 @@ export function DtsParameterWorkbench({
   const listScrollXRef = useRef<HTMLDivElement | null>(null);
   const listScrollRailRef = useRef<HTMLDivElement | null>(null);
   const listScrollSyncing = useRef(false);
+  useHorizontalDragScroll(listScrollXRef);
 
   const currentRows = effectiveRows;
   const moduleTree = useMemo(

@@ -17,7 +17,8 @@ const stableRoutes = [
   { path: "/parameter-admin", name: "parameter-admin-workbench" },
   { path: "/logs", name: "logs-workbench" },
   { path: "/debugging", name: "debugging-simulator" },
-  { path: "/user-permissions", name: "user-permissions" },
+  { path: "/organization", name: "organization" },
+  { path: "/organization/members", name: "organization-members" },
   // FA-25 expansion: dashboard, config workbench deep link, API-mode reload
   // workbench, feedback triage, and node debugging join the visual gate.
   { path: "/parameter-home", name: "parameter-home-workbench" },
@@ -58,7 +59,7 @@ test.describe("M5.11 visual quality gate", () => {
 /**
  * FA-25 interaction-state snapshots: hover / focus-visible states of the
  * shared Button, ModalDialog, and DataTable primitives. All states are staged
- * on /user-permissions because that route hosts every primitive on seeded,
+ * on /organization/members because that route hosts every primitive on seeded,
  * deterministic data (it already carries an unmasked full-page baseline).
  * Element-level shots target stable containers (toolbar strip, header row)
  * rather than the control itself so the 2px/2px-offset `--ring` outline is
@@ -70,7 +71,7 @@ test.describe("M5.11 interaction-state visual gate", () => {
   });
 
   async function openUserPermissions(page: Page) {
-    await page.goto("/user-permissions");
+    await page.goto("/organization/members");
     await expectUsablePage(page);
     await prepareInteractionSurface(page);
     await expect(page.getByRole("table", { name: "平台用户" })).toBeVisible({ timeout: 20_000 });

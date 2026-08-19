@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { resolveDriverSchemaPromotionRepository } from "@/application/parameters/driverSchemaPromotionResolve";
 import type {
@@ -150,7 +151,7 @@ export function PlatformConsolePage() {
               </div>
 
               {expanded ? (
-                <div className="platform-console-candidate__body">
+                <HorizontalDragScroll className="platform-console-candidate__body">
                   {!candidate.equivalent && candidate.divergence ? (
                     <div className="platform-console-divergence">
                       <h3>属性不一致（不可晋升）</h3>
@@ -207,7 +208,7 @@ export function PlatformConsolePage() {
                       平台级解析：<code>{candidate.platformSchemaId}</code>
                     </p>
                   ) : null}
-                </div>
+                </HorizontalDragScroll>
               ) : null}
             </li>
           );

@@ -458,13 +458,13 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
         auth: {
           user: {
             id: "u-new-admin",
-            organizationId: "org-new",
+            organizationId: "org-chargelab",
             name: "New Admin",
             username: "new.admin",
             title: "software-user",
             isActive: true
           },
-          organization: { id: "org-new", name: "软件部" },
+          organization: { id: "org-chargelab", name: "ChargeLab" },
           roles: [{ projectId: null, roleId: "software-user" }],
           permissions: ["parameter:edit"]
         }
@@ -478,7 +478,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     });
 
     fireEvent.click(await screen.findByRole("tab", { name: "注册" }));
-    changeSelectValue(screen.getByRole("combobox", { name: "组织" }), "软件部");
+    expect(screen.queryByRole("combobox", { name: "组织" })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "New Admin" } });
     changeSelectValue(screen.getByRole("combobox", { name: "角色" }), "Software User");
     fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "new.admin" } });
@@ -488,7 +488,6 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(await screen.findByText("New Admin")).toBeInTheDocument();
     expect(await screen.findByText("软件开发")).toBeInTheDocument();
     expect(authClient.register).toHaveBeenCalledWith({
-      organization: "软件部",
       name: "New Admin",
       username: "new.admin",
       roleId: "software-user",
@@ -542,7 +541,6 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     fireEvent.click(screen.getByRole("tab", { name: "登录" }));
     expect(screen.getByRole("button", { name: "登录" })).toBeInTheDocument();
     expect(authClient.register).toHaveBeenCalledWith({
-      organization: "硬件部",
       name: "New Committer",
       username: "new.committer",
       roleId: "hardware-committer",
@@ -648,7 +646,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   });
 
   it("routes user governance page mutations through injected API-mode actions", async () => {
-    window.history.replaceState(null, "", "/user-permissions");
+    window.history.replaceState(null, "", "/user-permissions?foo=1");
     const userGovernanceActions = createTestUserGovernanceActions();
 
     render(
@@ -676,6 +674,9 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
         userGovernanceActions={userGovernanceActions}
       />
     );
+
+    await waitFor(() => expect(window.location.pathname).toBe("/organization/members"));
+    expect(window.location.search).toBe("?foo=1");
 
     const row = await screen.findByText("Liu Min").then((cell) => cell.closest("tr")!);
     changeSelectValue(within(row).getByRole("combobox", { name: "调整 Liu Min 的角色" }), "software-committer");

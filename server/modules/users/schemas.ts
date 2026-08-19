@@ -36,3 +36,11 @@ export const updateUserActiveBodySchema = z.object({
 export const replaceUserRolesBodySchema = z.object({
   roles: z.array(roleBindingSchema).min(1)
 });
+
+export const organizationNameMaxLength = 80;
+
+export const updateOrganizationBodySchema = z
+  .object({
+    name: z.string().min(1).max(organizationNameMaxLength)
+  })
+  .strict();

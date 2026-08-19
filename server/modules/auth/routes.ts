@@ -53,10 +53,7 @@ const registerBodySchema = z.object({
   title: z.string().min(1).optional(),
   roleId: platformRoleIdSchema.optional(),
   password: z.string().min(8)
-}).strict().refine((body) => Boolean(body.organization ?? body.organizationName), {
-  path: ["organization"],
-  message: "Organization is required."
-});
+}).strict();
 
 const loginBodySchema = z.object({
   username: z.string().min(1),

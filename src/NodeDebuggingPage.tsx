@@ -4,6 +4,7 @@ import { canPerform } from "@/app/permissions";
 import { migrateLegacyRoleId } from "@/domain/users/types";
 import { presentError } from "@/infrastructure/http/presentError";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
+import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { ConfirmDialog } from "./components/common/ConfirmDialog";
 import { SectionError, SectionSkeleton } from "./components/common/SectionState";
@@ -443,7 +444,7 @@ export function NodeDebuggingPage({
               <span className="parameters-table-count">显示 {visibleRows.length} / {rows.length} 个参数</span>
             </div>
 
-            <div className="parameters-table-scroll">
+            <HorizontalDragScroll className="parameters-table-scroll">
               <table className="parameters-table-grid">
                 <thead>
                   <tr>
@@ -545,7 +546,7 @@ export function NodeDebuggingPage({
                   })}
                 </tbody>
               </table>
-            </div>
+            </HorizontalDragScroll>
 
             {visibleRows.length === 0 ? (
               <div className="parameters-table-empty">

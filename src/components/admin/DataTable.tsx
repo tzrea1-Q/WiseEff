@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
+import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
 import { cn } from "@/lib/utils";
 import { ColumnFilter } from "../ColumnFilter";
 import {
@@ -98,7 +99,6 @@ export function DataTable<TData>({
   const activeSort = controlledSort ? { key: controlledSort.key, dir: controlledSort.direction } : sort;
   const tableLabel = ariaLabelProp ?? ariaLabel;
   const hasActions = Boolean(renderRowActions);
-  const hasHeaderFilters = columns.some((column) => Boolean(column.headerFilter));
   const columnCount = columns.length + (hasActions ? 1 : 0);
   const generatedFilterConfigs = useMemo(
     () =>
@@ -217,9 +217,9 @@ export function DataTable<TData>({
   };
 
   return (
-    <div className={cn("overflow-hidden rounded-lg border border-border bg-card", hasHeaderFilters && "overflow-visible", className)}>
+    <div className={cn("overflow-hidden rounded-lg border border-border bg-card", className)}>
       {toolbar ? <div className="border-b border-border p-3">{toolbar}</div> : null}
-      <div className={cn("overflow-x-auto", hasHeaderFilters && "overflow-visible")}>
+      <HorizontalDragScroll className="data-table-scroll">
         {/* M7 note: narrow screens use horizontal overflow; card-style row folding belongs in a later dedicated spec. */}
         <table aria-label={tableLabel} className={cn("w-full min-w-[720px] border-collapse text-sm", tableClassName)}>
           <thead>
@@ -336,7 +336,7 @@ export function DataTable<TData>({
             )}
           </tbody>
         </table>
-      </div>
+      </HorizontalDragScroll>
       {totalPages > 1 ? (
         <div className="flex items-center justify-between border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
           <span>

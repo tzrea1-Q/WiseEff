@@ -6,9 +6,11 @@ import {
   approveRegistrationRoleRequest,
   createUser,
   deactivateUser,
+  getHomeOrganization,
   listRegistrationRoleRequests,
   rejectRegistrationRoleRequest,
   replaceUserRoles,
+  updateHomeOrganization,
   updateUserProfile
 } from "./service";
 
@@ -535,6 +537,54 @@ describe("user governance service", () => {
       "User management permission is required."
     );
     await expect(rejectRegistrationRoleRequest(db, nonAdminAuth, "registration-role-request-1")).rejects.toThrow(
+      "User management permission is required."
+    );
+    expect(txCalls).toHaveLength(0);
+  });
+
+  it("returns the caller's home organization without requiring users:manage", async () => {
+    const { db } = createDb((text) =>
+      text.includes("from organizations")
+        ? [{ id: "org-chargelab", name: "ChargeLab", created_at: "2026-01-01T00:00:00.000Z" }]
+        : []
+    );
+
+    await expect(getHomeOrganization(db, nonAdminAuth)).resolves.toEqual({
+      id: "org-chargelab",
+      name: "ChargeLab",
+      createdAt: "2026-01-01T00:00:00.000Z"
+    });
+  });
+
+  it("renames the home organization and writes an organization-update audit in the same transaction", async () => {
+    const { db, txCalls } = createDb((text) => {
+      if (text.includes("update organizations")) {
+        return [{ id: "org-chargelab", name: "雷泽能源", created_at: "2026-01-01T00:00:00.000Z" }];
+      }
+      if (text.includes("from organizations")) {
+        return [{ id: "org-chargelab", name: "ChargeLab", created_at: "2026-01-01T00:00:00.000Z" }];
+      }
+      return [];
+    });
+
+    const result = await updateHomeOrganization(db, adminAuth, { name: "  雷泽能源  " }, { requestId: "request-1" });
+
+    expect(result).toEqual({
+      id: "org-chargelab",
+      name: "雷泽能源",
+      createdAt: "2026-01-01T00:00:00.000Z"
+    });
+    expect(txCalls.some((call) => call.text.includes("update organizations") && call.values[1] === "雷泽能源")).toBe(true);
+    expect(txCalls.some((call) => call.text.includes("insert into audit_events"))).toBe(true);
+    expect(txCalls.find((call) => call.text.includes("insert into audit_events"))?.values).toEqual(
+      expect.arrayContaining(["organization-update", "update", "organization", "org-chargelab"])
+    );
+  });
+
+  it("rejects organization rename without users:manage", async () => {
+    const { db, txCalls } = createDb();
+
+    await expect(updateHomeOrganization(db, nonAdminAuth, { name: "Acme" })).rejects.toThrow(
       "User management permission is required."
     );
     expect(txCalls).toHaveLength(0);

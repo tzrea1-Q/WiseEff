@@ -140,7 +140,7 @@ export type PermissionRoute =
   | "/debugging"
   | "/node-debugging"
   | "/debugging-admin"
-  | "/user-permissions";
+  | "/organization";
 
 export type PermissionModelStep =
   | { type: "setRole"; roleId: BackendRoleId }
@@ -163,7 +163,7 @@ const permissionRoutes: Record<PermissionRoute, BackendPermission> = {
   "/debugging": "debugging:view",
   "/node-debugging": "debugging:read",
   "/debugging-admin": "debugging:admin",
-  "/user-permissions": "users:manage"
+  "/organization": "users:manage"
 };
 
 const terminalParameterStatuses = new Set<ParameterModelStatus>(["merged", "rejected"]);
@@ -445,7 +445,7 @@ const routeArbitrary = fc.constantFrom<PermissionRoute>(
   "/debugging",
   "/node-debugging",
   "/debugging-admin",
-  "/user-permissions"
+  "/organization"
 );
 
 const parameterStepArbitrary: fc.Arbitrary<ParameterModelStep> = fc.oneof(

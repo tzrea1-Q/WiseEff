@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
 import type { BackendRoleId, RoleBinding } from "../auth/types";
-import type { CreateUserInput, RegistrationRoleRequestDto, RegistrationRoleRequestStatus, UserGovernanceDto } from "./types";
+import type {
+  CreateUserInput,
+  OrganizationDto,
+  RegistrationRoleRequestDto,
+  RegistrationRoleRequestStatus,
+  UserGovernanceDto
+} from "./types";
 
 type UserGovernanceRow = {
   id: string;
@@ -94,6 +100,46 @@ const userWithRolesSelect = `
   left join user_role_bindings on user_role_bindings.user_id = users.id
   left join user_password_credentials on user_password_credentials.user_id = users.id
 `;
+
+type OrganizationRow = {
+  id: string;
+  name: string;
+  created_at: string;
+};
+
+function organizationToDto(row: OrganizationRow): OrganizationDto {
+  return {
+    id: row.id,
+    name: row.name,
+    createdAt: row.created_at
+  };
+}
+
+export async function getOrganizationById(db: Queryable, organizationId: string) {
+  const result = await db.query<OrganizationRow>(
+    `
+    select id, name, created_at::text as created_at
+    from organizations
+    where id = $1
+    limit 1
+    `,
+    [organizationId]
+  );
+  return result.rows[0] ? organizationToDto(result.rows[0]) : null;
+}
+
+export async function updateOrganizationName(db: Queryable, organizationId: string, name: string) {
+  const result = await db.query<OrganizationRow>(
+    `
+    update organizations
+    set name = $2
+    where id = $1
+    returning id, name, created_at::text as created_at
+    `,
+    [organizationId, name]
+  );
+  return result.rows[0] ? organizationToDto(result.rows[0]) : null;
+}
 
 export async function listUsers(db: Queryable, organizationId: string) {
   const result = await db.query<UserGovernanceRow>(

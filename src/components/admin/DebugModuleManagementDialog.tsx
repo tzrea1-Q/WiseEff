@@ -5,6 +5,7 @@ import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import { buildModuleTree } from "@/domain/modules/moduleTree";
 import { countDebugNodesByModuleId, debugNodesInModuleId } from "@/debugAdminModules";
 import type { ParameterModuleDraft } from "@/powerManagementConfig";
+import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
 import { ModuleCreateDialog } from "./ModuleCreateDialog";
@@ -189,7 +190,7 @@ export function DebugModuleManagementDialog({
             </div>
           ) : null}
 
-          <div className="param-admin-module-table-wrap" aria-label="模块列表">
+          <HorizontalDragScroll className="param-admin-module-table-wrap" aria-label="模块列表">
             {filteredTree.length === 0 ? (
               <p className="param-admin-module-empty">
                 {moduleNodes.length === 0 ? "还没有模块，点击「新增根模块」创建。" : "没有匹配的模块，请调整筛选条件。"}
@@ -243,7 +244,7 @@ export function DebugModuleManagementDialog({
                 </tbody>
               </table>
             )}
-          </div>
+          </HorizontalDragScroll>
         </div>
 
         <div className="dialog-actions">

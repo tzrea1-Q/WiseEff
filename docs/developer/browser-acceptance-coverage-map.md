@@ -168,6 +168,7 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | `ADB-LAB-001` | F | No | Real ADB device lab read-only smoke runs when explicitly enabled, with optional write and rollback. | `e2e/acceptance/adb-device-lab.acceptance.spec.ts` |
 | `XIAOZE-ACTION-RESUME-001` | G | Yes | Xiaoze AG-UI native resume continues an approved mutating action without reopening a change request. | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
 | `PERM-USER-MGMT-001` | H | Yes | Admin user-management mutation is covered with non-Admin denial and audit evidence. | `e2e/acceptance/permissions.acceptance.spec.ts` |
+| `ORG-ADMIN-RENAME-001` | H | Yes | Admin can rename the home organization with audit evidence, and non-Admin rename is rejected. | `e2e/acceptance/permissions.acceptance.spec.ts` |
 
 ## Interpretation
 

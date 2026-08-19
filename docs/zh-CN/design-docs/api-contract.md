@@ -178,6 +178,8 @@ M2 日志与 M3 调试运行时/catalog API 以认证用户的 `organization_id`
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `GET` | `/api/v1/me` | 当前用户、组织、角色和权限 |
+| `GET` | `/api/v1/organization` | 本组织档案（`id`、`name`、`createdAt`）；任意已启用已认证成员 |
+| `PATCH` | `/api/v1/organization` | 仅 `{ name }`；需要 `users:manage`；同一事务写 `organization-update` |
 | `GET` | `/api/v1/users` | 用户列表 |
 | `POST` | `/api/v1/users` | 创建用户 |
 | `PATCH` | `/api/v1/users/:userId` | 更新用户状态或资料 |

@@ -21,7 +21,7 @@ import type { PrototypeState, User } from "@/domain/prototype/types";
 
 type UserDirectoryStatus = "loading" | "ready" | "error";
 
-type UserPermissionsPageProps = {
+export type UserPermissionsPageProps = {
   state: PrototypeState;
   dispatch: Dispatch<AppAction>;
   onNavigate: (path: string) => void;
@@ -41,6 +41,8 @@ export type UserGovernanceActions = {
   listRegistrationRoleRequests?(): Promise<RegistrationRoleRequest[]>;
   approveRegistrationRoleRequest?(requestId: string): Promise<RegistrationRoleRequest | void>;
   rejectRegistrationRoleRequest?(requestId: string): Promise<RegistrationRoleRequest | void>;
+  getOrganization?(): Promise<{ id: string; name: string; createdAt: string }>;
+  updateOrganization?(input: { name: string }): Promise<{ id: string; name: string; createdAt: string }>;
 };
 
 export type RegistrationRoleRequest = {
@@ -86,7 +88,7 @@ const roleCapabilityDescriptions: Record<PlatformRoleId, string> = {
   "software-user": "软件侧可查看并提交参数修改，在变更审阅页完成合入推进，并使用参数调试和日志分析。",
   "hardware-committer": "包含硬件开发权限，并可执行硬件侧参数检视。",
   "software-committer": "包含软件开发权限，并可执行软件侧参数检视。",
-  admin: "包含全部提交人权限，并可访问各应用后台和用户管理。",
+  admin: "包含全部提交人权限，并可访问各应用后台和组织管理。",
   "platform-admin": "跨组织平台运营角色，在本组织内拥有管理员能力，并可访问平台控制台。"
 };
 
