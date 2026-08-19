@@ -3,16 +3,14 @@ import { useRef } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { useHorizontalDragScroll } from "./useHorizontalDragScroll";
 
-function DragSurface({ onCellClick }: { onCellClick?: () => void }) {
+function DragSurface() {
   const ref = useRef<HTMLDivElement>(null);
   useHorizontalDragScroll(ref);
 
   return (
     <div ref={ref} className="data-table-scroll" data-testid="scrollport">
       <button type="button">筛选角色</button>
-      <span data-testid="cell" onClick={onCellClick}>
-        Xu Yun
-      </span>
+      <span data-testid="cell">Xu Yun</span>
     </div>
   );
 }
@@ -26,9 +24,10 @@ function mockOverflow(element: HTMLElement, scrollWidth = 800, clientWidth = 200
 describe("useHorizontalDragScroll", () => {
   it("drags an overflowed surface horizontally and suppresses the trailing click", () => {
     const onCellClick = vi.fn();
-    const { getByTestId } = render(<DragSurface onCellClick={onCellClick} />);
+    const { getByTestId } = render(<DragSurface />);
     const scrollport = getByTestId("scrollport");
     const cell = getByTestId("cell");
+    cell.addEventListener("click", onCellClick);
     mockOverflow(scrollport);
 
     fireEvent.pointerDown(cell, { pointerId: 1, pointerType: "mouse", button: 0, clientX: 120 });
