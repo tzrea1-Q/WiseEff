@@ -347,6 +347,50 @@ describe.skipIf(!databaseAvailable || !semanticMode)("action.submitParameterChan
     expect(drafts.rows).toHaveLength(0);
   });
 
+  it("submits a second change after the first open request is rejected", async () => {
+    const fixture = await seedConfigAndBinding(db!, auth);
+
+    const first = await actionTool().run(contextFor(auth), {
+      projectId: PROJECT_ID,
+      parameterId: fixture.binding.id,
+      targetValue: "<3600>",
+      reason: "First agent submission"
+    });
+    expect(first.summary).toContain("Submitted parameter change request");
+
+    await db!.query(
+      `
+      update parameter_change_requests
+      set status = 'rejected', reject_reason = 'action-tool sequential reset', updated_at = now()
+      where organization_id = $1
+        and project_id = $2
+        and project_parameter_binding_id = $3
+        and status not in ('merged', 'rejected')
+      `,
+      [ORG_ID, PROJECT_ID, fixture.binding.id]
+    );
+
+    const second = await actionTool().run(contextFor(auth), {
+      projectId: PROJECT_ID,
+      parameterId: fixture.binding.id,
+      targetValue: "<3700>",
+      reason: "Second agent submission after reject"
+    });
+    expect(second.summary).toContain("Submitted parameter change request");
+    expect(second.data).toMatchObject({ targetValue: "<3700>", projectId: PROJECT_ID });
+
+    const changeRequests = await db!.query<{ target_value: string; status: string }>(
+      `select target_value, status
+       from parameter_change_requests
+       where organization_id = $1 and project_parameter_binding_id = $2
+       order by created_at desc`,
+      [ORG_ID, fixture.binding.id]
+    );
+    expect(changeRequests.rows).toHaveLength(2);
+    expect(changeRequests.rows[0]).toMatchObject({ target_value: "<3700>" });
+    expect(changeRequests.rows[1]).toMatchObject({ target_value: "<3600>", status: "rejected" });
+  });
+
   it("refuses agent writes to critical sensitive nodes before creating any draft", async () => {
     const fixture = await seedConfigAndBinding(db!, auth);
     await db!.query(

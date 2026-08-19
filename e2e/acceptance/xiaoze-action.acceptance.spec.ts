@@ -2,61 +2,42 @@ import "dotenv/config";
 import { createHmac } from "node:crypto";
 import { expect, test } from "playwright/test";
 
-import { signInBrowserAsRole } from "./helpers/bearerAuth";
-import { runNpmScript, withPgClient } from "./helpers/database";
-import { apiRoute, smokeHeaders } from "./helpers/runtime";
+import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
+import { withPgClient } from "./helpers/database";
+import { type DisposablePostCutoverRuntime } from "./helpers/disposablePostCutoverRuntime";
+import { apiRoute } from "./helpers/runtime";
 import {
   recordOperationEvidence,
   summarizeApiResponse,
   writeOperationJsonArtifact
 } from "./helpers/operationEvidence";
-import { assertPostCutoverIdentity } from "./helpers/semanticBindingFixture";
+import {
+  disposablePageUrl,
+  seedIsolatedNumericCellBinding,
+  startSwappedDisposablePostCutoverRuntime
+} from "./helpers/semanticBindingFixture";
 
 const databaseUrl = process.env.DATABASE_URL;
 const projectId = "aurora";
-const actorUserId = "u-xu-yun";
 const threadId = "xiaoze-action-thread";
 
 /**
  * Shared CI acceptance is post-cutover. This spec addresses parameters by
  * `project_parameter_binding_id` and DTS cell text. It never falls back to
  * `project_parameter_value_id` or `aurora-fast-charge-current`.
+ *
+ * Each mutating case uses a disposable post-cutover database plus its own
+ * isolated numeric cell binding. The shared aurora seed binding is not safe
+ * here: later approvals in this file were reading leftover CRs from earlier
+ * cases (and from other specs that also seed the shared DB).
  */
+let disposableRuntime: DisposablePostCutoverRuntime;
+let restoreDisposable: (() => Promise<void>) | undefined;
 let parameterId = "";
 let baseCellValue = 3000;
 
 function cellValue(offset: number) {
   return `<${baseCellValue + offset}>`;
-}
-
-async function resolveSeededBinding() {
-  await withPgClient(async (client) => {
-    const result = await client.query<{ id: string; raw_value: string | null }>(
-      `
-      select b.id, latest.raw_value
-      from project_parameter_bindings b
-      join lateral (
-        select r.raw_value
-        from project_parameter_binding_revisions r
-        where r.binding_id = b.id
-        order by r.created_at desc
-        limit 1
-      ) latest on true
-      where b.organization_id = 'org-chargelab'
-        and b.project_id = $1
-        and latest.raw_value ~ '^<[0-9]+>$'
-      order by b.id
-      limit 1
-      `,
-      [projectId]
-    );
-    const row = result.rows[0];
-    if (!row) {
-      throw new Error("No seeded aurora binding with a single-cell value was found for Xiaoze action acceptance.");
-    }
-    parameterId = row.id;
-    baseCellValue = Number((row.raw_value ?? "<3000>").replace(/[<>]/g, ""));
-  });
 }
 
 function bearerTokenFor(input: {
@@ -92,14 +73,7 @@ function bearerTokenFor(input: {
 }
 
 function adminHeaders() {
-  const authorization =
-    process.env.VITE_WISEEFF_API_AUTHORIZATION?.trim() ||
-    process.env.M5_SMOKE_AUTHORIZATION?.trim() ||
-    process.env.WISEEFF_SMOKE_AUTHORIZATION?.trim();
-  if (process.env.AUTH_PROVIDER === "local" || !authorization) {
-    return { ...smokeHeaders(), Accept: "text/event-stream", "x-wiseeff-user": actorUserId };
-  }
-  return { "Content-Type": "application/json", Authorization: authorization, Accept: "text/event-stream" };
+  return { ...authHeadersForRole("admin"), Accept: "text/event-stream" };
 }
 
 function readOnlyHeaders() {
@@ -219,15 +193,20 @@ async function latestAgentAuditForSession(sessionId: string) {
 test.skip(!databaseUrl, "DATABASE_URL is required for Xiaoze action acceptance evidence.");
 
 test.beforeAll(async () => {
-  runNpmScript("db:migrate");
-  runNpmScript("db:seed:m0");
-  runNpmScript("db:seed:m1");
-  await assertPostCutoverIdentity();
-  await resolveSeededBinding();
-  expect(parameterId).not.toBe("aurora-fast-charge-current");
-  expect(parameterId).toMatch(/^[0-9a-f-]{36}$/i);
+  test.setTimeout(180_000);
+  const baseDatabaseUrl = databaseUrl?.trim();
+  if (!baseDatabaseUrl) {
+    throw new Error("DATABASE_URL is required to create the disposable Xiaoze action database.");
+  }
+  const started = await startSwappedDisposablePostCutoverRuntime(baseDatabaseUrl, {
+    label: "xiaoze_p1",
+    markerPurpose: "xiaoze-action-p1"
+  });
+  disposableRuntime = started.runtime;
+  restoreDisposable = started.restore;
+  expect(disposableRuntime.markerPurpose).toBe("xiaoze-action-p1");
+
   await withPgClient(async (client) => {
-    await client.query(`update users set is_active = true where id = $1`, [actorUserId]);
     await client.query(
       `
       insert into users (id, organization_id, name, email, title, is_active)
@@ -247,21 +226,22 @@ test.beforeAll(async () => {
       `,
       [projectId]
     );
-    await client.query(
-      `
-      update parameter_change_requests
-      set status = 'rejected', reject_reason = 'xiaoze acceptance reset', updated_at = now()
-      where organization_id = 'org-chargelab'
-        and project_id = $1
-        and project_parameter_binding_id = $2
-        and status not in ('merged', 'rejected')
-      `,
-      [projectId, parameterId]
-    );
   });
 });
 
-test.beforeEach(async () => {
+test.afterAll(async () => {
+  test.setTimeout(60_000);
+  await restoreDisposable?.();
+});
+
+test.beforeEach(async ({ request }) => {
+  const seeded = await seedIsolatedNumericCellBinding(request, {
+    reason: `XIAOZE-ACTION ${test.info().title}`
+  });
+  parameterId = seeded.bindingId;
+  baseCellValue = Number(seeded.rawValue.replace(/[<>]/g, ""));
+  expect(parameterId).not.toBe("aurora-fast-charge-current");
+  expect(parameterId).toMatch(/^[0-9a-f-]{36}$/i);
   await resetOpenChangeRequestsForParameter();
 });
 
@@ -411,14 +391,16 @@ test.describe("Xiaoze P1 action", () => {
         from parameter_change_requests
         where organization_id = 'org-chargelab'
           and project_id = $1
+          and project_parameter_binding_id = $2
         order by created_at desc
         limit 1
         `,
-        [projectId]
+        [projectId, parameterId]
       );
       return result.rows[0];
     });
     expect(String(latestChangeRequest?.target_value ?? "")).toContain(editedTargetValue);
+    expect(latestChangeRequest?.status).not.toBe("rejected");
 
     const auditRows = await latestAgentAuditForSession(thread);
     const approvalAudit = auditRows.find((row) => row.action === "approval-executed" && row.actor_type === "agent");
@@ -745,7 +727,7 @@ test.describe("Xiaoze P1 action", () => {
     test.setTimeout(180_000);
     const openBefore = await countOpenChangeRequests();
 
-    await signInBrowserAsRole(page, "admin", `/parameters?project=${projectId}`);
+    await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, `/parameters?project=${projectId}`));
     const hintDismiss = page.getByRole("button", { name: "不再提示" });
     if (await hintDismiss.isVisible().catch(() => false)) {
       await hintDismiss.click();

@@ -37,6 +37,16 @@ describe("quality visual masks", () => {
     expect(helpers).toContain(".confidence-bar i");
   });
 
+  it("settles the full-page add-user dialog shot after the API sync banner drains", () => {
+    const helpers = readFileSync("e2e/quality/helpers.ts", "utf8");
+    const visualSpec = readFileSync("e2e/quality/visual.quality.spec.ts", "utf8");
+
+    expect(helpers).toContain("export async function waitForFontsAndNextPaint");
+    expect(visualSpec).toContain("state-dialog-modal-open.png");
+    expect(visualSpec).toContain(".api-runtime-sync-banner");
+    expect(visualSpec).toContain("waitForFontsAndNextPaint");
+  });
+
   it("keeps platform parameter baselines aligned with the masked dynamic table", () => {
     for (const platform of ["linux", "win32"]) {
       const maskPixels = countMagentaPixels(

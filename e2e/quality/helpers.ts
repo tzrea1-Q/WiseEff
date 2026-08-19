@@ -192,7 +192,7 @@ export function stableMasks(page: Page, routePath = ""): Locator[] {
  * Playwright already tries to wait for fonts at screenshot time; an explicit
  * ready + double-rAF still absorbs CJK fallback swaps and late layout.
  */
-async function waitForFontsAndNextPaint(page: Page) {
+export async function waitForFontsAndNextPaint(page: Page) {
   await page.evaluate(async () => {
     await document.fonts.ready;
     await new Promise<void>((resolve) => {
