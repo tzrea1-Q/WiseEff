@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   CI_SMOKE_TAG,
@@ -215,6 +216,20 @@ jobs:
     });
     expect(result.status).toBe("failed");
     expect(result.forbiddenPlaywrightImports).toEqual(["e2e/acceptance/broken.acceptance.spec.ts"]);
+  });
+
+  it("skips DTS bootstrap on a warm cache and does not install it in quality", () => {
+    const action = readFileSync(".github/actions/setup-dts-toolchain/action.yml", "utf8");
+    expect(action).toContain("Use cached DTS toolchain if it already verifies");
+    expect(action).toContain("if: steps.dts-warm.outputs.warm != 'true'");
+    expect(action).toContain("timeout 180s sudo apt-get update");
+
+    const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
+    const qualityJob = workflow.split("\n  acceptance-quality:")[1]?.split("\n  acceptance-smoke:")[0] ?? "";
+    expect(qualityJob).toContain("Acceptance quality");
+    expect(qualityJob).toContain("timeout-minutes: 35");
+    expect(qualityJob).not.toContain("setup-dts-toolchain");
+    expect(workflow).toContain("./.github/actions/setup-dts-toolchain");
   });
 
   it("rejects a missing or oversized @ci-smoke set", () => {

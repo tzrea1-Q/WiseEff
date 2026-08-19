@@ -21,6 +21,9 @@ const threadId = "xiaoze-action-thread";
  * Shared CI acceptance is post-cutover. This spec addresses parameters by
  * `project_parameter_binding_id` and DTS cell text. It never falls back to
  * `project_parameter_value_id` or `aurora-fast-charge-current`.
+ *
+ * Edited-args assertions must scope by binding id. A project-wide latest-CR
+ * query can read a rejected row from an earlier case in this file.
  */
 let parameterId = "";
 let baseCellValue = 3000;
@@ -411,14 +414,16 @@ test.describe("Xiaoze P1 action", () => {
         from parameter_change_requests
         where organization_id = 'org-chargelab'
           and project_id = $1
+          and project_parameter_binding_id = $2
         order by created_at desc
         limit 1
         `,
-        [projectId]
+        [projectId, parameterId]
       );
       return result.rows[0];
     });
     expect(String(latestChangeRequest?.target_value ?? "")).toContain(editedTargetValue);
+    expect(latestChangeRequest?.status).not.toBe("rejected");
 
     const auditRows = await latestAgentAuditForSession(thread);
     const approvalAudit = auditRows.find((row) => row.action === "approval-executed" && row.actor_type === "agent");

@@ -174,7 +174,10 @@ async function createGpioDraftFromWorkbench(
   input: { reason: string; rawValue?: string; editButtonName?: RegExp }
 ) {
   const editName = input.editButtonName ?? /编辑 gpio_int（未分类 · sc8562/;
-  fireEvent.click(within(workspace).getByRole("button", { name: editName }));
+  // Tree selection updates the workbench list asynchronously; wait for the
+  // target row before opening the draft dialog.
+  const editButton = await within(workspace).findByRole("button", { name: editName });
+  fireEvent.click(editButton);
   const draftDialog = await screen.findByRole("dialog", { name: "修改草稿" });
   if (input.rawValue !== undefined) {
     fireEvent.change(within(draftDialog).getByRole("textbox", { name: "目标值" }), {
@@ -1017,7 +1020,9 @@ describe("ApiProjectTopologyWorkspace", () => {
     await screen.findByRole("region", { name: "参数修改提交" });
 
     workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
-    fireEvent.click(within(workspace).getByRole("treeitem", { name: /未分类 · mt5788/ }));
+    const mt5788 = within(workspace).getByRole("treeitem", { name: /未分类 · mt5788/ });
+    fireEvent.click(mt5788);
+    await waitFor(() => expect(mt5788).toHaveAttribute("aria-selected", "true"));
     await createGpioDraftFromWorkbench(workspace, fireEvent, {
       reason: "Second binding draft",
       rawValue: "<&gpio6 16 0>",
