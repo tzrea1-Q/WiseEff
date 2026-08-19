@@ -48,6 +48,7 @@ The HTTP status is derived from the code (`API_ERROR_STATUS` in `server/shared/h
 | `DEBUG_BINDING_DISABLED` | 400 | The debug node binding exists but is disabled. |
 | `NOT_FOUND` | 404 | Target object does not exist or is outside scope. |
 | `GONE` | 410 | The surface is retired and permanently unavailable. |
+| `RATE_LIMITED` | 429 | Too many authentication attempts in the local sliding window (`AUTH_LOCAL_AUTH_MAX_ATTEMPTS` / `AUTH_LOCAL_AUTH_WINDOW_MS`). |
 | `INTERNAL_ERROR` | 500 | Unexpected server failure. |
 
 ## Operator Rule

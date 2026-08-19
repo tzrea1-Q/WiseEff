@@ -33,6 +33,12 @@ export const updateUserActiveBodySchema = z.object({
   isActive: z.boolean()
 });
 
+export const resetUserPasswordBodySchema = z
+  .object({
+    password: z.string().min(8)
+  })
+  .strict();
+
 export const replaceUserRolesBodySchema = z.object({
   roles: z.array(roleBindingSchema).min(1)
 });

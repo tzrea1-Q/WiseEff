@@ -7,6 +7,10 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | Operation ID | Priority | Area | Coverage | Route | Roles | Assertions | Specs |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `AUTH-RUNTIME-001` | P0 | auth | automated | `/` | Admin | ui, api | `e2e/acceptance/auth-runtime.acceptance.spec.ts` |
+| `AUTH-LOCAL-PASSWORD-001` | P1 | auth | future | `/` | Admin | ui, api | `src/App.test.tsx`<br>`src/infrastructure/http/authClient.test.ts`<br>`server/modules/auth/localAuth.test.ts`<br>`server/modules/auth/routes.test.ts`<br>`e2e/acceptance/auth-runtime.acceptance.spec.ts` |
+| `AUTH-LOCAL-ADMIN-RESET-001` | P1 | auth | future | `/organization/members` | Admin | ui, api | `src/UserPermissionsPage.test.tsx`<br>`src/infrastructure/http/userGovernanceClient.test.ts`<br>`server/modules/users/service.test.ts`<br>`server/modules/users/routes.test.ts`<br>`e2e/acceptance/auth-runtime.acceptance.spec.ts` |
+| `AUTH-LOCAL-SELF-REGISTER-001` | P1 | auth | future | `/` | Guest | ui, api | `src/App.test.tsx`<br>`server/modules/auth/localAuth.test.ts`<br>`e2e/acceptance/auth-runtime.acceptance.spec.ts` |
+| `AUTH-LOCAL-BOOTSTRAP-HINT-001` | P1 | auth | future | `/` | Guest | ui | `src/App.test.tsx`<br>`e2e/acceptance/auth-runtime.acceptance.spec.ts` |
 | `NOTIF-INBOX-001` | P1 | notifications | automated | `/parameters` | Admin | ui, api | `e2e/acceptance/notifications.acceptance.spec.ts` |
 | `NOTIF-READ-001` | P1 | notifications | automated | `/api/v1/notifications/mark-all-read` | Admin | api | `e2e/acceptance/notifications.acceptance.spec.ts` |
 | `PFB-SUBMIT-001` | P1 | product-feedback | automated | `/parameters` | Admin | ui, api, db, audit, screenshot | `e2e/acceptance/product-feedback.acceptance.spec.ts` |
@@ -165,6 +169,10 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 
 ## Deferred Or Conditional Operations
 
+- `AUTH-LOCAL-PASSWORD-001`: Covered by unit tests. Shared acceptance still injects HMAC smoke and does not exercise the local login form or profile password dialog.
+- `AUTH-LOCAL-ADMIN-RESET-001`: Covered by unit tests. Shared acceptance still injects HMAC smoke and does not exercise local-account password reset on /organization/members.
+- `AUTH-LOCAL-SELF-REGISTER-001`: Covered by unit tests. Shared acceptance still injects HMAC smoke and does not load the unauthenticated local auth screen.
+- `AUTH-LOCAL-BOOTSTRAP-HINT-001`: Covered by unit tests. Shared acceptance still injects HMAC smoke and does not load the unauthenticated local auth screen.
 - `SHELL-DISCOVERY-001`: Covered by unit tests and playwright-cli evidence under work/ui-checks/workflow-discovery/; no dedicated e2e acceptance spec in this slice.
 - `PARAM-ADMIN-003`: Batch 1 ships CSS fix + playwright-cli three-viewport evidence under work/ui-checks/param-admin-ux-polish-batch1/; dedicated e2e viewport assertion follows in a later batch.
 - `PARAM-INIT-WIZARD-001`: Unit/reducer/server cover submit→pending; playwright-cli evidence under work/ui-checks/param-init/; full browser e2e follows after semantic wizard binding picker lands.

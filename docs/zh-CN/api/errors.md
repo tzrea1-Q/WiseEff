@@ -16,6 +16,7 @@
 - 先确认该文档属于哪个决策面：api。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
+- 新增错误码 `RATE_LIMITED` 对应 HTTP 429，用于本地账号登录/注册滑动窗口限流。完整码表见英文版。
 
 ## 同类中文文档
 

@@ -12,6 +12,11 @@ export type ContractSchemaRef = {
 };
 
 export const schemaRegistry: Record<string, ContractSchemaRef> = {
+  "auth.localConfig": {
+    summary: "Get public local-account auth configuration",
+    tags: ["auth"],
+    responseBody: "LocalAuthPublicConfigResponse"
+  },
   "auth.register": {
     summary: "Register a local WiseEff account",
     tags: ["auth"],
@@ -19,14 +24,14 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "AuthSessionResponse",
     successStatus: 201,
     additionalSuccessResponses: { "202": "PendingRegistrationResponse" },
-    additionalResponses: { "409": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse", "429": "ErrorResponse" }
   },
   "auth.login": {
     summary: "Log in with a local WiseEff account",
     tags: ["auth"],
     requestBody: "LoginLocalAccountRequest",
     responseBody: "AuthSessionResponse",
-    additionalResponses: { "401": "ErrorResponse", "403": "ErrorResponse" }
+    additionalResponses: { "401": "ErrorResponse", "403": "ErrorResponse", "429": "ErrorResponse" }
   },
   "auth.logout": {
     summary: "Log out the current local account session",
@@ -41,6 +46,13 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     requestBody: "UpdateCurrentUserProfileRequest",
     responseBody: "MeResponse",
     additionalResponses: { "401": "ErrorResponse" }
+  },
+  "auth.changePassword": {
+    summary: "Change the current local-account password",
+    tags: ["auth"],
+    requestBody: "ChangeCurrentUserPasswordRequest",
+    responseBody: "OkResponse",
+    additionalResponses: { "401": "ErrorResponse", "404": "ErrorResponse" }
   },
 
   "audit.createEvent": {
@@ -135,6 +147,13 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     requestBody: "ReplaceUserRolesRequest",
     responseBody: "UserGovernanceResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "users.resetPassword": {
+    summary: "Reset a governed user's local password",
+    tags: ["users"],
+    requestBody: "ResetUserPasswordRequest",
+    responseBody: "UserGovernanceResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
 
   "parameters.listProjects": { summary: "List projects", tags: ["parameters"], responseBody: "ProjectListResponse" },

@@ -21,6 +21,7 @@ describe("toUserErrorMessage", () => {
       "DEBUG_BINDING_NOT_CONFIGURED",
       "DEBUG_BINDING_DISABLED",
       "GONE",
+      "RATE_LIMITED",
       "INTERNAL_ERROR"
     ];
     for (const code of codes) {

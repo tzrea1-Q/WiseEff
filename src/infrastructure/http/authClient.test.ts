@@ -124,4 +124,44 @@ describe("createAuthClient", () => {
     expect("status" in result ? result.status : undefined).toBe("pending_approval");
     expect(localStorage.getItem(LOCAL_AUTH_TOKEN_STORAGE_KEY)).toBeNull();
   });
+
+  it("loads public local auth config without requiring a session", async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          provider: "local",
+          selfRegisterEnabled: false,
+          hasLocalAdmin: true,
+          evaluationOrganizationName: "ChargeLab"
+        }),
+        { status: 200 }
+      )
+    );
+    const authClient = createAuthClient(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
+
+    await expect(authClient.getLocalAuthConfig()).resolves.toEqual({
+      provider: "local",
+      selfRegisterEnabled: false,
+      hasLocalAdmin: true,
+      evaluationOrganizationName: "ChargeLab"
+    });
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/auth/local-config", {
+      headers: { Accept: "application/json" },
+      method: "GET"
+    });
+  });
+
+  it("changes the current user password", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const authClient = createAuthClient(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
+
+    await expect(authClient.changePassword({ currentPassword: "old-password", newPassword: "new-password" })).resolves.toEqual({
+      ok: true
+    });
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/me/password", {
+      body: JSON.stringify({ currentPassword: "old-password", newPassword: "new-password" }),
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      method: "POST"
+    });
+  });
 });

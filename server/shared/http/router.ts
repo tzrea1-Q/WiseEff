@@ -9,6 +9,7 @@ export type RouteRequest = {
   query: Record<string, string | string[]>;
   headers: Record<string, string | string[] | undefined>;
   requestId: string;
+  clientIp?: string;
   body: unknown;
 };
 

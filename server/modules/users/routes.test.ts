@@ -339,4 +339,54 @@ describe("user governance routes", () => {
     expect(response.status).toBe(403);
     expect(response.body.error.code).toBe("FORBIDDEN");
   });
+
+  it("lets Admin reset a user password and writes audit evidence", async () => {
+    const { calls, db } = makeDb((text) => {
+      if (text.includes("from users") || text.includes("returning") || text.includes("select")) {
+        return [userRow({ email: null, username: "target.user" })];
+      }
+      return [];
+    });
+
+    const response = await requestJson<{ item: { id: string } }>(
+      createWiseEffServer({
+        db,
+        auth: { mode: "production", verifier: { verify: async () => adminAuth } }
+      }),
+      "/api/v1/users/u-target/password",
+      {
+        method: "POST",
+        headers: { Authorization: "Bearer admin" },
+        body: JSON.stringify({ password: "ResetPass@2026" })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.item.id).toBe("u-target");
+    expect(calls.some((call) => call.text.includes("update user_password_credentials"))).toBe(true);
+    expect(calls.some((call) => call.text.includes("insert into audit_events"))).toBe(true);
+    expect(JSON.stringify(calls.find((call) => call.text.includes("insert into audit_events"))?.values)).not.toContain(
+      "ResetPass@2026"
+    );
+  });
+
+  it("rejects password reset from a non-Admin", async () => {
+    const { db } = makeDb(() => [userRow()], nonAdminAuth);
+
+    const response = await requestJson<{ error: { code: string } }>(
+      createWiseEffServer({
+        db,
+        auth: { mode: "production", verifier: { verify: async () => nonAdminAuth } }
+      }),
+      "/api/v1/users/u-target/password",
+      {
+        method: "POST",
+        headers: { Authorization: "Bearer user" },
+        body: JSON.stringify({ password: "ResetPass@2026" })
+      }
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe("FORBIDDEN");
+  });
 });

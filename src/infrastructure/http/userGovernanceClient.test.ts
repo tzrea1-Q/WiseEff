@@ -108,6 +108,37 @@ describe("createUserGovernanceClient", () => {
     });
   });
 
+  it("resets a governed user password", async () => {
+    const fetchMock = createFetchMock({
+      item: {
+        id: "u-target",
+        organizationId: "org-chargelab",
+        name: "Liu Min",
+        email: null,
+        username: "liu.min",
+        title: "Validation Engineer",
+        isActive: true,
+        createdAt: "2026-06-02T00:00:00.000Z",
+        lastActiveAt: null,
+        roles: [{ projectId: null, roleId: "hardware-user" }]
+      }
+    });
+    const client = createUserGovernanceClient(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
+
+    await expect(client.resetUserPassword("u-target", "ResetPass@2026")).resolves.toEqual(
+      expect.objectContaining({
+        id: "u-target",
+        username: "liu.min",
+        roleId: "hardware-user"
+      })
+    );
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/users/u-target/password", {
+      body: JSON.stringify({ password: "ResetPass@2026" }),
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      method: "POST"
+    });
+  });
+
   it("lists and decides pending registration role requests", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()

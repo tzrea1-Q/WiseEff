@@ -89,6 +89,23 @@ function createLocalRouteDb() {
       revokedAt = null;
       return { rows: [], rowCount: 1 };
     }
+    if (normalized.includes("from users join user_password_credentials") && normalized.includes("where users.id = $1")) {
+      if (values[0] !== user.id || !passwordHash) {
+        return { rows: [], rowCount: 0 };
+      }
+      return {
+        rows: [{
+          id: user.id,
+          organization_id: user.organizationId,
+          name: user.name,
+          title: user.title,
+          is_active: user.isActive,
+          username,
+          password_hash: passwordHash
+        }] as Row[],
+        rowCount: 1
+      };
+    }
     if (normalized.includes("from users join user_password_credentials")) {
       if (username.toLowerCase() !== String(values[0]).toLowerCase()) {
         return { rows: [], rowCount: 0 };
@@ -106,6 +123,16 @@ function createLocalRouteDb() {
         rowCount: 1
       };
     }
+    if (normalized.includes("from user_role_bindings") && normalized.includes("count(*)")) {
+      return { rows: [{ count: roleId === "admin" ? "1" : "0" }] as Row[], rowCount: 1 };
+    }
+    if (normalized.startsWith("update user_password_credentials")) {
+      if (values[0] !== user.id) {
+        return { rows: [], rowCount: 0 };
+      }
+      passwordHash = values[1] as string;
+      return { rows: [], rowCount: 1 };
+    }
     if (normalized.includes("from auth_sessions")) {
       return {
         rows: [{
@@ -119,7 +146,10 @@ function createLocalRouteDb() {
       };
     }
     if (normalized.startsWith("update auth_sessions set revoked_at")) {
-      revokedAt = values[1] as string;
+      const exceptTokenHash = normalized.includes("user_id") ? (values[2] as string | null) : null;
+      if (!exceptTokenHash || exceptTokenHash !== tokenHash) {
+        revokedAt = values[1] as string;
+      }
       return { rows: [], rowCount: 1 };
     }
     if (normalized.startsWith("update users set name")) {
@@ -322,5 +352,85 @@ describe("GET /api/v1/me", () => {
     });
     expect(login.status).toBe(403);
     expect(login.body.error.message).toBe("User is pending Admin approval.");
+  });
+
+  it("exposes public local-auth config and changes the current password", async () => {
+    const { db } = createLocalRouteDb();
+    const localAuthService = createLocalAuthService(db, { now: () => new Date("2026-06-12T00:00:00.000Z") });
+    const serverOptions = {
+      db,
+      env: { AUTH_PROVIDER: "local" as const },
+      auth: { mode: "production" as const },
+      localAuthService
+    };
+
+    const config = await requestJson<{
+      provider: string;
+      selfRegisterEnabled: boolean;
+      hasLocalAdmin: boolean;
+      evaluationOrganizationName: string | null;
+    }>(createWiseEffServer(serverOptions), "/api/v1/auth/local-config");
+    expect(config.status).toBe(200);
+    expect(config.body).toMatchObject({
+      provider: "local",
+      selfRegisterEnabled: true,
+      evaluationOrganizationName: "ChargeLab"
+    });
+
+    const registered = await requestJson<{ token: string }>(createWiseEffServer(serverOptions), "/api/v1/auth/register", {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Local User",
+        username: "local.user",
+        roleId: "hardware-user",
+        password: "strong-password"
+      })
+    });
+    expect(registered.status).toBe(201);
+
+    const changed = await requestJson<{ ok: true }>(createWiseEffServer(serverOptions), "/api/v1/me/password", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${registered.body.token}` },
+      body: JSON.stringify({ currentPassword: "strong-password", newPassword: "newer-password" })
+    });
+    expect(changed.status).toBe(200);
+    expect(changed.body).toEqual({ ok: true });
+
+    const login = await requestJson<{ token: string }>(createWiseEffServer(serverOptions), "/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username: "local.user", password: "newer-password" })
+    });
+    expect(login.status).toBe(200);
+    expect(login.body.token).toMatch(/^we_local_/);
+  });
+
+  it("rejects registration when the local-auth service has self-registration disabled", async () => {
+    const { db } = createLocalRouteDb();
+    const localAuthService = createLocalAuthService(db, {
+      now: () => new Date("2026-06-12T00:00:00.000Z"),
+      selfRegisterEnabled: false
+    });
+
+    const response = await requestJson<{ error: { code: string; message: string } }>(
+      createWiseEffServer({
+        db,
+        env: { AUTH_PROVIDER: "local" as const },
+        auth: { mode: "production" as const },
+        localAuthService
+      }),
+      "/api/v1/auth/register",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Local User",
+          username: "local.user",
+          roleId: "hardware-user",
+          password: "strong-password"
+        })
+      }
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.message).toBe("Self-registration is disabled.");
   });
 });

@@ -30,6 +30,74 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api"]
   },
   {
+    id: "AUTH-LOCAL-PASSWORD-001",
+    priority: "P1",
+    area: "auth",
+    route: "/",
+    roles: ["Admin"],
+    action: "Change the current local password from the profile dialog and keep the current session while other sessions are revoked.",
+    coverage: "future",
+    acceptanceIds: ["AUTH-LOCAL-PASSWORD-001"],
+    specFiles: [
+      "src/App.test.tsx",
+      "src/infrastructure/http/authClient.test.ts",
+      "server/modules/auth/localAuth.test.ts",
+      "server/modules/auth/routes.test.ts",
+      "e2e/acceptance/auth-runtime.acceptance.spec.ts"
+    ],
+    assertions: ["ui", "api"],
+    deferralReason:
+      "Covered by unit tests. Shared acceptance still injects HMAC smoke and does not exercise the local login form or profile password dialog."
+  },
+  {
+    id: "AUTH-LOCAL-ADMIN-RESET-001",
+    priority: "P1",
+    area: "auth",
+    route: "/organization/members",
+    roles: ["Admin"],
+    action: "Reset a member password from people management and revoke every session for that user.",
+    coverage: "future",
+    acceptanceIds: ["AUTH-LOCAL-ADMIN-RESET-001"],
+    specFiles: [
+      "src/UserPermissionsPage.test.tsx",
+      "src/infrastructure/http/userGovernanceClient.test.ts",
+      "server/modules/users/service.test.ts",
+      "server/modules/users/routes.test.ts",
+      "e2e/acceptance/auth-runtime.acceptance.spec.ts"
+    ],
+    assertions: ["ui", "api"],
+    deferralReason:
+      "Covered by unit tests. Shared acceptance still injects HMAC smoke and does not exercise local-account password reset on /organization/members."
+  },
+  {
+    id: "AUTH-LOCAL-SELF-REGISTER-001",
+    priority: "P1",
+    area: "auth",
+    route: "/",
+    roles: ["Guest"],
+    action: "See no Register tab when self-registration is disabled, and receive FORBIDDEN from POST /api/v1/auth/register.",
+    coverage: "future",
+    acceptanceIds: ["AUTH-LOCAL-SELF-REGISTER-001"],
+    specFiles: ["src/App.test.tsx", "server/modules/auth/localAuth.test.ts", "e2e/acceptance/auth-runtime.acceptance.spec.ts"],
+    assertions: ["ui", "api"],
+    deferralReason:
+      "Covered by unit tests. Shared acceptance still injects HMAC smoke and does not load the unauthenticated local auth screen."
+  },
+  {
+    id: "AUTH-LOCAL-BOOTSTRAP-HINT-001",
+    priority: "P1",
+    area: "auth",
+    route: "/",
+    roles: ["Guest"],
+    action: "See the npm run admin:bootstrap hint when no local Admin exists.",
+    coverage: "future",
+    acceptanceIds: ["AUTH-LOCAL-BOOTSTRAP-HINT-001"],
+    specFiles: ["src/App.test.tsx", "e2e/acceptance/auth-runtime.acceptance.spec.ts"],
+    assertions: ["ui"],
+    deferralReason:
+      "Covered by unit tests. Shared acceptance still injects HMAC smoke and does not load the unauthenticated local auth screen."
+  },
+  {
     id: "NOTIF-INBOX-001",
     priority: "P1",
     area: "notifications",

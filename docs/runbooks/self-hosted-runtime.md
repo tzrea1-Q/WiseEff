@@ -93,7 +93,7 @@ Use this only for controlled self-managed deployments with `AUTH_PROVIDER=local`
   --organization WiseEff
 ```
 
-Then log in through the UI with that username and password. Additional admins should be created from people management (`/organization/members`) after login. If ChargeLab is already seeded, bootstrap joins that row instead of creating `WiseEff`.
+Then log in through the UI with that username and password. Additional admins should be created from people management (`/organization/members`) after login. If ChargeLab is already seeded, bootstrap joins that row instead of creating `WiseEff`. The unauthenticated auth screen shows this bootstrap command when `GET /api/v1/auth/local-config` reports `hasLocalAdmin: false`. After the first Admin exists, set `AUTH_LOCAL_SELF_REGISTER=false` if the host should stop accepting public sign-up. Login and register are rate-limited in-process; failed login writes `login-failed` audit events. Signed-in users change their own password from the profile dialog; Admins reset member passwords from `/organization/members`.
 
 If bootstrap reports that an admin already exists, use the governance UI or reset the deployment database; the command is intentionally one-shot for safety.
 

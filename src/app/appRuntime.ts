@@ -16,6 +16,8 @@ import {
   createAuthClient,
   type AuthContextDto,
   type AuthSessionDto,
+  type ChangeCurrentUserPasswordInput,
+  type LocalAuthPublicConfigDto,
   type LoginLocalAccountInput,
   type RegisterLocalAccountInput,
   type RegisterLocalAccountResponseDto,
@@ -40,10 +42,12 @@ import type { UserGovernanceActions } from "@/UserPermissionsPage";
 
 export type WiseEffAuthClient = {
   getCurrentAuthContext(): Promise<AuthContextDto>;
+  getLocalAuthConfig?(): Promise<LocalAuthPublicConfigDto>;
   register?(input: RegisterLocalAccountInput): Promise<RegisterLocalAccountResponseDto>;
   login?(input: LoginLocalAccountInput): Promise<AuthSessionDto>;
   logout?(): Promise<void>;
   updateCurrentUserProfile?(input: UpdateCurrentUserProfileInput): Promise<AuthContextDto>;
+  changePassword?(input: ChangeCurrentUserPasswordInput): Promise<{ ok: true }>;
 };
 
 /**

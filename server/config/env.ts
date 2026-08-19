@@ -11,6 +11,12 @@ const rawEnvSchema = z.object({
   AUTH_OIDC_ISSUER: z.string().optional(),
   AUTH_OIDC_AUDIENCE: z.string().optional(),
   AUTH_OIDC_JWKS_URI: z.string().optional(),
+  AUTH_LOCAL_SELF_REGISTER: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((value) => value === "true"),
+  AUTH_LOCAL_AUTH_MAX_ATTEMPTS: z.coerce.number().int().positive().default(10),
+  AUTH_LOCAL_AUTH_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   DATABASE_URL: z.string().optional(),
   OBJECT_STORE_MODE: z.enum(["local", "s3"]).default("local"),
   OBJECT_STORE_ROOT: z.string().default(".wiseeff-object-store"),

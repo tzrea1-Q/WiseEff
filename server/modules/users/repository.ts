@@ -203,6 +203,18 @@ export async function insertPasswordCredential(db: Queryable, input: { userId: s
   ]);
 }
 
+export async function updatePasswordCredential(db: Queryable, input: { userId: string; passwordHash: string }) {
+  const result = await db.query(
+    `
+    update user_password_credentials
+    set password_hash = $2, password_updated_at = now()
+    where user_id = $1
+    `,
+    [input.userId, input.passwordHash]
+  );
+  return result.rowCount;
+}
+
 export async function updateUser(db: Queryable, input: { organizationId: string; userId: string; name?: string; email?: string; title?: string }) {
   const current = await getUserById(db, { organizationId: input.organizationId, userId: input.userId });
   if (!current) return null;

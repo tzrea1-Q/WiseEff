@@ -122,6 +122,7 @@ export function createTestUserGovernanceActions(
     createUser: vi.fn().mockResolvedValue(undefined),
     assignUserRole: vi.fn().mockResolvedValue(undefined),
     setUserActive: vi.fn().mockResolvedValue(undefined),
+    resetUserPassword: vi.fn().mockResolvedValue(undefined),
     getOrganization: vi.fn().mockResolvedValue({
       id: "org-chargelab",
       name: "ChargeLab",

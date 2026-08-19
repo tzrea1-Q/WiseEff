@@ -57,6 +57,18 @@ export type UpdateCurrentUserProfileInput = {
   title?: string;
 };
 
+export type ChangeCurrentUserPasswordInput = {
+  currentPassword: string;
+  newPassword: string;
+};
+
+export type LocalAuthPublicConfigDto = {
+  provider: "local" | "oidc" | "hmac" | "development";
+  selfRegisterEnabled: boolean;
+  hasLocalAdmin: boolean;
+  evaluationOrganizationName: string | null;
+};
+
 export const LOCAL_AUTH_TOKEN_STORAGE_KEY = "wiseeff.localAuthToken";
 
 function storageAvailable() {
@@ -82,6 +94,7 @@ export function clearLocalAuthToken() {
 export function createAuthClient(apiClient = createDefaultApiClient()) {
   return {
     getCurrentAuthContext: () => apiClient.get<AuthContextDto>("/api/v1/me"),
+    getLocalAuthConfig: () => apiClient.get<LocalAuthPublicConfigDto>("/api/v1/auth/local-config"),
     async register(input: RegisterLocalAccountInput) {
       const response = await apiClient.post<RegisterLocalAccountResponseDto>("/api/v1/auth/register", input);
       if ("token" in response) {
@@ -101,6 +114,7 @@ export function createAuthClient(apiClient = createDefaultApiClient()) {
         clearLocalAuthToken();
       }
     },
-    updateCurrentUserProfile: (input: UpdateCurrentUserProfileInput) => apiClient.patch<AuthContextDto>("/api/v1/me/profile", input)
+    updateCurrentUserProfile: (input: UpdateCurrentUserProfileInput) => apiClient.patch<AuthContextDto>("/api/v1/me/profile", input),
+    changePassword: (input: ChangeCurrentUserPasswordInput) => apiClient.post<{ ok: true }>("/api/v1/me/password", input)
   };
 }

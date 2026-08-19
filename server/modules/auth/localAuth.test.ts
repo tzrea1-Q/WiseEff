@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
+import { createAuthAttemptLimiter } from "./authAttemptLimiter";
 import { createLocalAuthService, type RegisterLocalAccountResult } from "./localAuth";
 
 type QueryCall = {
@@ -89,6 +90,25 @@ function createMemoryLocalAuthDb(extraOrganizations: Array<{ id: string; name: s
       return { rows: [], rowCount: 1 };
     }
 
+    if (normalized.includes("from users join user_password_credentials") && normalized.includes("where users.id = $1")) {
+      const user = users.get(values[0] as string);
+      const credential = user ? credentials.get(user.id) : undefined;
+      return {
+        rows: (user && credential
+          ? [{
+              id: user.id,
+              organization_id: user.organizationId,
+              name: user.name,
+              title: user.title,
+              is_active: user.isActive,
+              username: credential.username,
+              password_hash: credential.passwordHash
+            }]
+          : []) as Row[],
+        rowCount: user && credential ? 1 : 0
+      };
+    }
+
     if (normalized.includes("from users join user_password_credentials")) {
       const username = String(values[0]).toLowerCase();
       const user = Array.from(users.values()).find((item) => {
@@ -112,6 +132,22 @@ function createMemoryLocalAuthDb(extraOrganizations: Array<{ id: string; name: s
       };
     }
 
+    if (normalized.includes("from user_role_bindings") && normalized.includes("count(*)")) {
+      const count = Array.from(roles.values()).reduce(
+        (total, bindings) => total + bindings.filter((binding) => binding.roleId === "admin").length,
+        0
+      );
+      return { rows: [{ count: String(count) }] as Row[], rowCount: 1 };
+    }
+
+    if (normalized.startsWith("update user_password_credentials")) {
+      const credential = credentials.get(values[0] as string);
+      if (credential) {
+        credential.passwordHash = values[1] as string;
+      }
+      return { rows: [], rowCount: credential ? 1 : 0 };
+    }
+
     if (normalized.includes("from auth_sessions")) {
       const session = sessions.get(values[0] as string);
       return {
@@ -126,6 +162,22 @@ function createMemoryLocalAuthDb(extraOrganizations: Array<{ id: string; name: s
           : []) as Row[],
         rowCount: session ? 1 : 0
       };
+    }
+
+    if (normalized.startsWith("update auth_sessions set revoked_at") && normalized.includes("user_id")) {
+      const exceptTokenHash = values[2] as string | null;
+      let rowCount = 0;
+      for (const session of sessions.values()) {
+        if (session.userId !== values[0] || session.revokedAt) {
+          continue;
+        }
+        if (exceptTokenHash && session.tokenHash === exceptTokenHash) {
+          continue;
+        }
+        session.revokedAt = values[1] as string;
+        rowCount += 1;
+      }
+      return { rows: [], rowCount };
     }
 
     if (normalized.startsWith("update auth_sessions set revoked_at")) {
@@ -432,5 +484,121 @@ describe("local auth service", () => {
     expect(updated.user).toMatchObject({ name: "Renamed Admin", title: "Owner", username: "pilot.admin" });
     expect(updated.user.email).toBeUndefined();
     expect(updated.roles).toEqual([{ projectId: null, roleId: "hardware-user" }]);
+  });
+
+  it("reports public local-auth config including whether a local Admin exists", async () => {
+    const { db } = createMemoryLocalAuthDb();
+    const service = createLocalAuthService(db, { now: () => new Date("2026-06-12T00:00:00.000Z") });
+
+    await expect(service.getPublicConfig()).resolves.toEqual({
+      provider: "local",
+      selfRegisterEnabled: true,
+      hasLocalAdmin: false,
+      evaluationOrganizationName: "ChargeLab"
+    });
+
+    await db.query(
+      "insert into user_role_bindings (id, user_id, organization_id, project_id, role_id) values ($1, $2, $3, null, $4)",
+      ["bind-admin", "u-admin", "org-chargelab", "admin"]
+    );
+    await expect(service.getPublicConfig()).resolves.toMatchObject({ hasLocalAdmin: true });
+  });
+
+  it("refuses self-registration when the switch is off", async () => {
+    const { db } = createMemoryLocalAuthDb();
+    const service = createLocalAuthService(db, {
+      now: () => new Date("2026-06-12T00:00:00.000Z"),
+      selfRegisterEnabled: false
+    });
+
+    await expect(
+      service.register(
+        {
+          name: "Pilot User",
+          username: "pilot.user",
+          password: "strong-password"
+        },
+        { requestId: "request-1" }
+      )
+    ).rejects.toThrow("Self-registration is disabled.");
+  });
+
+  it("rate-limits login attempts and audits failed passwords", async () => {
+    const { calls, db } = createMemoryLocalAuthDb();
+    const service = createLocalAuthService(db, {
+      now: () => new Date("2026-06-12T00:00:00.000Z"),
+      attemptLimiter: createAuthAttemptLimiter({ maxAttempts: 2, windowMs: 60_000 })
+    });
+    await service.register(
+      {
+        name: "Pilot User",
+        username: "pilot.user",
+        password: "strong-password"
+      },
+      { requestId: "request-1" }
+    );
+
+    await expect(
+      service.login({ username: "pilot.user", password: "wrong-password" }, { requestId: "request-2", clientIp: "10.0.0.8" })
+    ).rejects.toThrow("Username or password is incorrect.");
+    await expect(
+      service.login({ username: "pilot.user", password: "wrong-password" }, { requestId: "request-3", clientIp: "10.0.0.8" })
+    ).rejects.toThrow("Username or password is incorrect.");
+    await expect(
+      service.login({ username: "pilot.user", password: "wrong-password" }, { requestId: "request-4", clientIp: "10.0.0.8" })
+    ).rejects.toThrow("Too many authentication attempts. Try again later.");
+
+    const failedAudit = calls.find(
+      (call) => call.text.includes("insert into audit_events") && JSON.stringify(call.values).includes("login-failed")
+    );
+    expect(failedAudit).toBeDefined();
+    expect(JSON.stringify(failedAudit?.values)).toContain("invalid_password");
+  });
+
+  it("changes the current password, keeps this session, and revokes the others", async () => {
+    const { db } = createMemoryLocalAuthDb();
+    const service = createLocalAuthService(db, { now: () => new Date("2026-06-12T00:00:00.000Z") });
+    const first = expectAuthenticatedRegistration(
+      await service.register(
+        {
+          name: "Pilot User",
+          username: "pilot.user",
+          password: "strong-password"
+        },
+        { requestId: "request-1" }
+      )
+    );
+    const second = await service.login({ username: "pilot.user", password: "strong-password" }, { requestId: "request-2" });
+
+    await expect(
+      service.changePassword(
+        first.auth,
+        { currentPassword: "strong-password", newPassword: "strong-password" },
+        { requestId: "request-3", authorization: `Bearer ${first.session.token}` }
+      )
+    ).rejects.toThrow("New password must be different from the current password.");
+    await expect(
+      service.changePassword(
+        first.auth,
+        { currentPassword: "wrong-password", newPassword: "newer-password" },
+        { requestId: "request-4", authorization: `Bearer ${first.session.token}` }
+      )
+    ).rejects.toThrow("Current password is incorrect.");
+
+    await expect(
+      service.changePassword(
+        first.auth,
+        { currentPassword: "strong-password", newPassword: "newer-password" },
+        { requestId: "request-5", authorization: `Bearer ${first.session.token}` }
+      )
+    ).resolves.toEqual({ ok: true });
+
+    await expect(service.resolveSession(`Bearer ${first.session.token}`)).resolves.toMatchObject({
+      user: { username: "pilot.user" }
+    });
+    await expect(service.resolveSession(`Bearer ${second.session.token}`)).rejects.toThrow("Session is not active.");
+    await expect(
+      service.login({ username: "pilot.user", password: "newer-password" }, { requestId: "request-6" })
+    ).resolves.toMatchObject({ status: "authenticated" });
   });
 });

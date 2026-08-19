@@ -38,6 +38,7 @@ export type UserGovernanceActions = {
   createUser(input: { name: string; username: string; title: string; password: string; roleId: PlatformRoleId }): Promise<User | void>;
   assignUserRole(userId: string, roleId: PlatformRoleId): Promise<User | void>;
   setUserActive(userId: string, isActive: boolean): Promise<User | void>;
+  resetUserPassword?(userId: string, password: string): Promise<User | void>;
   listRegistrationRoleRequests?(): Promise<RegistrationRoleRequest[]>;
   approveRegistrationRoleRequest?(requestId: string): Promise<RegistrationRoleRequest | void>;
   rejectRegistrationRoleRequest?(requestId: string): Promise<RegistrationRoleRequest | void>;
@@ -277,6 +278,11 @@ export function UserPermissionsPage({
   const [pendingGovernance, setPendingGovernance] = useState<PendingGovernanceAction | null>(null);
   const [governancePending, setGovernancePending] = useState(false);
   const [governanceError, setGovernanceError] = useState<string | null>(null);
+  const [resetPasswordUser, setResetPasswordUser] = useState<User | null>(null);
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetConfirmPassword, setResetConfirmPassword] = useState("");
+  const [resetPasswordError, setResetPasswordError] = useState("");
+  const [resetPasswordPending, setResetPasswordPending] = useState(false);
 
   const approvalWorkflowEnabled = Boolean(userGovernanceActions?.listRegistrationRoleRequests);
   const pendingApprovalCount = registrationRoleRequests.length;
@@ -480,6 +486,41 @@ export function UserPermissionsPage({
     setInitialRoleId("hardware-user");
   }
 
+  function openResetPassword(user: User) {
+    setResetPasswordUser(user);
+    setResetPassword("");
+    setResetConfirmPassword("");
+    setResetPasswordError("");
+  }
+
+  async function handleResetPasswordSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!resetPasswordUser || !userGovernanceActions?.resetUserPassword || resetPasswordPending) {
+      return;
+    }
+    if (resetPassword.length < 8) {
+      setResetPasswordError("密码至少需要 8 个字符。");
+      return;
+    }
+    if (resetPassword !== resetConfirmPassword) {
+      setResetPasswordError("两次输入的密码不一致。");
+      return;
+    }
+    setResetPasswordPending(true);
+    setResetPasswordError("");
+    try {
+      await userGovernanceActions.resetUserPassword(resetPasswordUser.id, resetPassword);
+      dispatch({ type: "ADD_NOTIFICATION", message: `已重置 ${resetPasswordUser.name} 的密码，其全部会话已退出` });
+      setResetPasswordUser(null);
+      setResetPassword("");
+      setResetConfirmPassword("");
+    } catch (error) {
+      setResetPasswordError(presentError(error, "重置密码失败，请稍后重试。"));
+    } finally {
+      setResetPasswordPending(false);
+    }
+  }
+
   const accountColumns: Array<Column<User>> = [
     {
       key: "user",
@@ -581,6 +622,24 @@ export function UserPermissionsPage({
         );
       }
     },
+    ...(userGovernanceActions?.resetUserPassword
+      ? [
+          {
+            key: "password",
+            header: "密码",
+            render: (user: User) => (
+              <button
+                className="button"
+                type="button"
+                aria-label={`重置 ${user.name} 的密码`}
+                onClick={() => openResetPassword(user)}
+              >
+                重置密码
+              </button>
+            )
+          } satisfies Column<User>
+        ]
+      : []),
     {
       key: "lastActive",
       header: "最近活跃",
@@ -905,6 +964,75 @@ export function UserPermissionsPage({
           )}
         </ModalDialog>
       )}
+
+      {resetPasswordUser && userGovernanceActions?.resetUserPassword ? (
+        <ModalDialog
+          open
+          onDismiss={resetPasswordPending ? undefined : () => setResetPasswordUser(null)}
+          className="user-permissions-modal-card modal-card--sm"
+          backdropClassName="user-permissions-modal"
+        >
+          {({ titleId }) => (
+            <form className="modal-form-contents" onSubmit={handleResetPasswordSubmit}>
+              <h3 id={titleId}>重置密码</h3>
+              <div className="user-permissions-modal-fields">
+                <p className="user-permissions-reset-hint">
+                  将为 <strong>{resetPasswordUser.name}</strong>（{userAccountIdentifier(resetPasswordUser)}
+                  ）设置新密码，并退出该账号的全部会话。
+                </p>
+                <label className="user-permissions-modal-field">
+                  <span>新密码</span>
+                  <input
+                    className="user-permissions-modal-control"
+                    type="password"
+                    value={resetPassword}
+                    minLength={8}
+                    onChange={(event) => {
+                      setResetPassword(event.target.value);
+                      setResetPasswordError("");
+                    }}
+                    autoComplete="new-password"
+                    required
+                  />
+                </label>
+                <label className="user-permissions-modal-field">
+                  <span>确认新密码</span>
+                  <input
+                    className="user-permissions-modal-control"
+                    type="password"
+                    value={resetConfirmPassword}
+                    minLength={8}
+                    onChange={(event) => {
+                      setResetConfirmPassword(event.target.value);
+                      setResetPasswordError("");
+                    }}
+                    autoComplete="new-password"
+                    required
+                  />
+                </label>
+                {resetPasswordError ? <p role="alert" className="user-permissions-modal-error">{resetPasswordError}</p> : null}
+              </div>
+              <div className="user-permissions-modal-actions">
+                <button
+                  className="button user-permissions-modal-action user-permissions-modal-action--secondary"
+                  type="button"
+                  disabled={resetPasswordPending}
+                  onClick={() => setResetPasswordUser(null)}
+                >
+                  取消
+                </button>
+                <button
+                  className="button primary user-permissions-modal-action user-permissions-modal-action--primary"
+                  type="submit"
+                  disabled={resetPasswordPending}
+                >
+                  {resetPasswordPending ? "提交中…" : "确认重置"}
+                </button>
+              </div>
+            </form>
+          )}
+        </ModalDialog>
+      ) : null}
     </section>
   );
 }

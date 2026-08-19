@@ -31,6 +31,10 @@ export type UpdateUserActiveInput = {
   isActive: boolean;
 };
 
+export type ResetUserPasswordInput = {
+  password: string;
+};
+
 export type ReplaceUserRolesInput = {
   roles: Array<{ projectId?: string | null; roleId: BackendRoleId }>;
 };

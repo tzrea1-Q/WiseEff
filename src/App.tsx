@@ -94,6 +94,8 @@ import {
   clearLocalAuthToken,
   type AuthContextDto,
   type AuthSessionDto,
+  type ChangeCurrentUserPasswordInput,
+  type LocalAuthPublicConfigDto,
   type PendingRegistrationDto,
   type RegisterLocalAccountResponseDto,
   type UpdateCurrentUserProfileInput
@@ -919,6 +921,18 @@ function AppShell({
     [appRuntime.authClient, hydrateAuthContext]
   );
 
+  const handleChangeCurrentUserPassword = useCallback(
+    async (input: ChangeCurrentUserPasswordInput) => {
+      const client = appRuntime.authClient;
+      if (!client.changePassword) {
+        throw new Error("当前认证方式不支持修改密码。");
+      }
+      await client.changePassword(input);
+      dispatch({ type: "ADD_NOTIFICATION", message: "密码已更新，其它会话已退出" });
+    },
+    [appRuntime.authClient]
+  );
+
   const appShellClassName = isPlatformHome
     ? "app-shell home-shell"
     : [
@@ -1032,6 +1046,7 @@ function AppShell({
             onNewProject={() => setProjectInitOpen(true)}
             onLogout={handleLogout}
             onUpdateCurrentUserProfile={handleUpdateCurrentUserProfile}
+            onChangeCurrentUserPassword={handleChangeCurrentUserPassword}
             mockNotificationsClient={mockNotificationsClient}
             mobileNavOpen={mobileNavOpen}
             onToggleMobileNav={toggleMobileNav}
@@ -1300,6 +1315,7 @@ function TopBar({
   onNewProject,
   onLogout,
   onUpdateCurrentUserProfile,
+  onChangeCurrentUserPassword,
   mockNotificationsClient,
   mobileNavOpen = false,
   onToggleMobileNav
@@ -1314,6 +1330,7 @@ function TopBar({
   onNewProject: () => void;
   onLogout?: () => Promise<void> | void;
   onUpdateCurrentUserProfile?: (input: UpdateCurrentUserProfileInput) => Promise<void>;
+  onChangeCurrentUserPassword?: (input: ChangeCurrentUserPasswordInput) => Promise<void>;
   mockNotificationsClient?: import("@/infrastructure/http/notificationsClient").NotificationsClient;
   mobileNavOpen?: boolean;
   onToggleMobileNav?: () => void;
@@ -1458,6 +1475,7 @@ function TopBar({
             await onUpdateCurrentUserProfile(input);
             setProfileOpen(false);
           }}
+          onChangePassword={onChangeCurrentUserPassword}
         />
       ) : null}
       <ConfirmDialog
@@ -1478,6 +1496,14 @@ function TopBar({
   );
 }
 
+const selfRegistrationRoleHints: Record<string, string> = {
+  guest: "访客只能查看参数页面。",
+  "hardware-user": "硬件开发可提交参数修改，注册后即可登录。",
+  "software-user": "软件开发可提交参数修改，注册后即可登录。",
+  "hardware-committer": "硬件MDE 注册后需管理员批准才能登录。",
+  "software-committer": "软件MDE 注册后需管理员批准才能登录。"
+};
+
 function ApiAuthPage({
   authClient,
   error,
@@ -1494,9 +1520,20 @@ function ApiAuthPage({
   const [roleId, setRoleId] = useState<PlatformRoleId>("hardware-user");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [formError, setFormError] = useState("");
   const [pendingRegistration, setPendingRegistration] = useState<PendingRegistrationDto | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [localConfig, setLocalConfig] = useState<LocalAuthPublicConfigDto | null>(
+    authClient.getLocalAuthConfig
+      ? null
+      : {
+          provider: "local",
+          selfRegisterEnabled: Boolean(authClient.register),
+          hasLocalAdmin: true,
+          evaluationOrganizationName: null
+        }
+  );
   const roleOptions = useMemo(
     () => platformRoles.filter((role) => selfRegistrationRoleIds.has(role.id)).map((role) => ({ value: role.id, label: role.name })),
     []
@@ -1507,6 +1544,42 @@ function ApiAuthPage({
   const pendingAssignedRoleName = pendingRegistration
     ? (platformRoles.find((role) => role.id === pendingRegistration.assignedRoleId)?.name ?? pendingRegistration.assignedRoleId)
     : "";
+  const canSelfRegister =
+    Boolean(authClient.register) &&
+    (authClient.getLocalAuthConfig ? Boolean(localConfig?.selfRegisterEnabled) : true);
+
+  useEffect(() => {
+    if (!authClient.getLocalAuthConfig) {
+      return;
+    }
+    let cancelled = false;
+    void authClient
+      .getLocalAuthConfig()
+      .then((config) => {
+        if (!cancelled) {
+          setLocalConfig(config);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLocalConfig({
+            provider: "local",
+            selfRegisterEnabled: Boolean(authClient.register),
+            hasLocalAdmin: true,
+            evaluationOrganizationName: null
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authClient]);
+
+  useEffect(() => {
+    if (!canSelfRegister && mode === "register") {
+      setMode("login");
+    }
+  }, [canSelfRegister, mode]);
 
   function changeMode(nextMode: "login" | "register") {
     setMode(nextMode);
@@ -1530,6 +1603,10 @@ function ApiAuthPage({
         if (!authClient.register) {
           throw new Error("本地账号注册未启用。");
         }
+        if (password !== confirmPassword) {
+          setFormError("两次输入的密码不一致。");
+          return;
+        }
         const response = await authClient.register({
           name,
           username,
@@ -1539,6 +1616,7 @@ function ApiAuthPage({
         if (isPendingRegistrationResponse(response)) {
           setPendingRegistration(response);
           setPassword("");
+          setConfirmPassword("");
           return;
         }
         await onAuthenticated(response);
@@ -1561,14 +1639,35 @@ function ApiAuthPage({
           </div>
         </div>
 
-        <div className="auth-mode-tabs" role="tablist" aria-label="认证方式">
-          <button type="button" role="tab" aria-selected={mode === "login"} onClick={() => changeMode("login")}>
-            登录
-          </button>
-          <button type="button" role="tab" aria-selected={mode === "register"} onClick={() => changeMode("register")}>
-            注册
-          </button>
-        </div>
+        {localConfig?.hasLocalAdmin === false ? (
+          <section className="auth-pending-notice" aria-labelledby="auth-bootstrap-title">
+            <p className="eyebrow">首次开通</p>
+            <h2 id="auth-bootstrap-title">还没有管理员账号</h2>
+            <p>请先在服务器上创建首位管理员，再使用该账号登录。自助注册不能创建管理员。</p>
+            <pre className="auth-bootstrap-command">
+              npm run admin:bootstrap -- --username … --password … --name …
+            </pre>
+          </section>
+        ) : null}
+
+        {canSelfRegister ? (
+          <div className="auth-mode-tabs" role="tablist" aria-label="认证方式">
+            <button type="button" role="tab" aria-selected={mode === "login"} onClick={() => changeMode("login")}>
+              登录
+            </button>
+            <button type="button" role="tab" aria-selected={mode === "register"} onClick={() => changeMode("register")}>
+              注册
+            </button>
+          </div>
+        ) : null}
+
+        <p className="auth-help">
+          {`${
+            localConfig?.evaluationOrganizationName
+              ? `新账号将加入评估组织「${localConfig.evaluationOrganizationName}」。`
+              : "新账号将加入评估组织。"
+          } 用户名须为 3–64 个字符，仅限字母、数字、点、下划线和连字符。`}
+        </p>
 
         {pendingRegistration ? (
           <section className="auth-pending-notice" aria-labelledby="auth-pending-title">
@@ -1599,27 +1698,65 @@ function ApiAuthPage({
                   <span>姓名</span>
                   <input value={name} onChange={(event) => setName(event.target.value)} required />
                 </label>
-                <label>
-                  <span>角色</span>
-                  <SelectControl
-                    id="local-auth-role"
-                    value={roleId}
-                    onValueChange={setRoleId}
-                    options={roleOptions}
-                    ariaLabel="角色"
-                    className="auth-select-control"
-                  />
-                </label>
+                <div className="auth-form-field">
+                  <label>
+                    <span>角色</span>
+                    <SelectControl
+                      id="local-auth-role"
+                      value={roleId}
+                      onValueChange={setRoleId}
+                      options={roleOptions}
+                      ariaLabel="角色"
+                      className="auth-select-control"
+                    />
+                  </label>
+                  <span className="auth-field-hint" id="local-auth-role-hint">
+                    {selfRegistrationRoleHints[roleId] ?? "管理员不能自助注册，需由现有管理员创建。"}
+                  </span>
+                </div>
               </>
             ) : null}
-            <label>
-              <span>用户名</span>
-              <input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required />
-            </label>
+            <div className="auth-form-field">
+              <label>
+                <span>用户名</span>
+                <input
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  autoComplete="username"
+                  minLength={3}
+                  maxLength={64}
+                  aria-describedby="local-auth-username-hint"
+                  required
+                />
+              </label>
+              <span className="auth-field-hint" id="local-auth-username-hint">
+                3–64 个字符，仅限字母、数字、点、下划线和连字符。
+              </span>
+            </div>
             <label>
               <span>密码</span>
-              <input type="password" value={password} minLength={8} onChange={(event) => setPassword(event.target.value)} required />
+              <input
+                type="password"
+                value={password}
+                minLength={8}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
+                required
+              />
             </label>
+            {mode === "register" ? (
+              <label>
+                <span>确认密码</span>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  minLength={8}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  autoComplete="new-password"
+                  required
+                />
+              </label>
+            ) : null}
             {formError || (status === "unauthenticated" && error) ? (
               <p role="alert" className="auth-error">{formError || error}</p>
             ) : null}
@@ -1636,16 +1773,23 @@ function ApiAuthPage({
 function ProfileDialog({
   user,
   onCancel,
-  onSave
+  onSave,
+  onChangePassword
 }: {
   user: User;
   onCancel: () => void;
   onSave: (input: UpdateCurrentUserProfileInput) => Promise<void>;
+  onChangePassword?: (input: ChangeCurrentUserPasswordInput) => Promise<void>;
 }) {
   const [name, setName] = useState(user.name);
   const [title, setTitle] = useState(user.title);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSubmitting, setPasswordSubmitting] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1654,39 +1798,110 @@ function ProfileDialog({
     try {
       await onSave({ name, title });
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "保存失败。");
+      setError(presentError(saveError, "保存失败，请稍后重试。"));
     } finally {
       setSubmitting(false);
     }
   }
 
+  async function submitPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!onChangePassword) {
+      return;
+    }
+    setPasswordError("");
+    if (newPassword !== confirmNewPassword) {
+      setPasswordError("两次输入的密码不一致。");
+      return;
+    }
+    setPasswordSubmitting(true);
+    try {
+      await onChangePassword({ currentPassword, newPassword });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+    } catch (saveError) {
+      setPasswordError(presentError(saveError, "修改密码失败，请稍后重试。"));
+    } finally {
+      setPasswordSubmitting(false);
+    }
+  }
+
+  const busy = submitting || passwordSubmitting;
+
   return (
-    <ModalDialog open onDismiss={submitting ? undefined : onCancel} className="profile-dialog">
+    <ModalDialog open onDismiss={busy ? undefined : onCancel} className="profile-dialog">
       {({ titleId }) => (
-        <form className="modal-form-contents" onSubmit={submit}>
-          <header>
-            <span className="eyebrow">账号</span>
-            <h2 id={titleId}>个人资料</h2>
-            <p>{userAccountIdentifier(user)}</p>
-          </header>
-          <label>
-            <span>姓名</span>
-            <input value={name} onChange={(event) => setName(event.target.value)} required />
-          </label>
-          <label>
-            <span>职务</span>
-            <input value={title} onChange={(event) => setTitle(event.target.value)} required />
-          </label>
-          {error ? <p role="alert" className="auth-error">{error}</p> : null}
-          <footer>
-            <button type="button" className="button profile-dialog__button profile-dialog__button--secondary" onClick={onCancel}>
-              取消
-            </button>
-            <button type="submit" className="button primary profile-dialog__button profile-dialog__button--primary" disabled={submitting}>
-              保存
-            </button>
-          </footer>
-        </form>
+        <div className="modal-form-contents">
+          <form onSubmit={submit}>
+            <header>
+              <span className="eyebrow">账号</span>
+              <h2 id={titleId}>个人资料</h2>
+              <p>{userAccountIdentifier(user)}</p>
+            </header>
+            <label>
+              <span>姓名</span>
+              <input value={name} onChange={(event) => setName(event.target.value)} required />
+            </label>
+            <label>
+              <span>职务</span>
+              <input value={title} onChange={(event) => setTitle(event.target.value)} required />
+            </label>
+            {error ? <p role="alert" className="auth-error">{error}</p> : null}
+            <footer>
+              <button type="button" className="button profile-dialog__button profile-dialog__button--secondary" onClick={onCancel} disabled={busy}>
+                取消
+              </button>
+              <button type="submit" className="button primary profile-dialog__button profile-dialog__button--primary" disabled={busy}>
+                保存
+              </button>
+            </footer>
+          </form>
+          {onChangePassword ? (
+            <form className="profile-dialog__password" onSubmit={submitPassword} aria-labelledby="profile-password-title">
+              <h3 id="profile-password-title">修改密码</h3>
+              <p className="auth-field-hint">更新后当前会话保持登录，其它会话会退出。</p>
+              <label>
+                <span>当前密码</span>
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                  autoComplete="current-password"
+                  required
+                />
+              </label>
+              <label>
+                <span>新密码</span>
+                <input
+                  type="password"
+                  value={newPassword}
+                  minLength={8}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  autoComplete="new-password"
+                  required
+                />
+              </label>
+              <label>
+                <span>确认新密码</span>
+                <input
+                  type="password"
+                  value={confirmNewPassword}
+                  minLength={8}
+                  onChange={(event) => setConfirmNewPassword(event.target.value)}
+                  autoComplete="new-password"
+                  required
+                />
+              </label>
+              {passwordError ? <p role="alert" className="auth-error">{passwordError}</p> : null}
+              <footer>
+                <button type="submit" className="button primary profile-dialog__button profile-dialog__button--primary" disabled={busy}>
+                  更新密码
+                </button>
+              </footer>
+            </form>
+          ) : null}
+        </div>
       )}
     </ModalDialog>
   );
