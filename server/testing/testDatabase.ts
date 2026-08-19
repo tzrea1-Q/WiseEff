@@ -250,6 +250,40 @@ export async function teardownTestDatabaseRun(): Promise<void> {
   }
 }
 
+async function cloneTemplateDatabase(name: string): Promise<void> {
+  const fingerprint = await migrationsFingerprint();
+  const admin = new pg.Client({ connectionString: connectionStringFor("postgres") });
+  await admin.connect();
+  try {
+    if (await databaseExists(admin, name)) {
+      return;
+    }
+    // Serialize template build and cloning: concurrent CREATE DATABASE from one
+    // template fails while the template is being copied by another backend.
+    await acquireTemplateLock(admin);
+    try {
+      const templateName = await ensureTemplateDatabase(admin, fingerprint);
+      if (!(await databaseExists(admin, name))) {
+        await admin.query(`create database ${name} template ${templateName}`);
+      }
+    } finally {
+      await admin.query("select pg_advisory_unlock($1)", [TEMPLATE_BUILD_LOCK]).catch(() => undefined);
+    }
+  } finally {
+    await admin.end().catch(() => undefined);
+  }
+}
+
+async function dropDatabase(name: string): Promise<void> {
+  const admin = new pg.Client({ connectionString: connectionStringFor("postgres") });
+  await admin.connect();
+  try {
+    await admin.query(`drop database if exists ${name} with (force)`);
+  } finally {
+    await admin.end().catch(() => undefined);
+  }
+}
+
 async function ensureWorkerDatabase(): Promise<string> {
   if (workerDatabaseUrl) return workerDatabaseUrl;
 
@@ -258,28 +292,7 @@ async function ensureWorkerDatabase(): Promise<string> {
   // across test files (rollback isolation restores the template state between files),
   // so a run keeps at most maxWorkers databases and teardown removes them.
   const workerName = `${WORKER_PREFIX}${fingerprint}_${currentRunToken()}_w${currentPoolId()}`;
-  const admin = new pg.Client({ connectionString: connectionStringFor("postgres") });
-  await admin.connect();
-  try {
-    if (!(await databaseExists(admin, workerName))) {
-      // Serialize template build and worker-database cloning: concurrent CREATE DATABASE
-      // from one template fails while the template is being copied by another backend.
-      await acquireTemplateLock(admin);
-      try {
-        const templateName = await ensureTemplateDatabase(admin, fingerprint);
-        if (!(await databaseExists(admin, workerName))) {
-          await admin.query(`create database ${workerName} template ${templateName}`);
-        }
-      } finally {
-        await admin
-          .query("select pg_advisory_unlock($1)", [TEMPLATE_BUILD_LOCK])
-          .catch(() => undefined);
-      }
-    }
-  } finally {
-    await admin.end().catch(() => undefined);
-  }
-
+  await cloneTemplateDatabase(workerName);
   workerDatabaseUrl = connectionStringFor(workerName);
   return workerDatabaseUrl;
 }
@@ -288,14 +301,47 @@ async function ensureWorkerDatabase(): Promise<string> {
  * Resolve the migrated per-worker database URL for tests that must drive raw
  * clients outside the rollback fixture (e.g. e2e helpers reading DATABASE_URL).
  * The base database behind DATABASE_URL is not migrated by this harness.
+ *
+ * Commits on this URL persist for the rest of the worker. Suites that insert
+ * durable rows must use `createEphemeralTestDatabase` instead so they cannot
+ * poison later rollback fixtures in the same pool slot.
  */
 export async function resolveWorkerDatabaseUrl(): Promise<string> {
   return ensureWorkerDatabase();
 }
 
-export async function createInMemoryTestDatabase(): Promise<InMemoryTestDatabase> {
-  const connectionString = await ensureWorkerDatabase();
-  const client = new pg.Client({ connectionString });
+export type EphemeralTestDatabase = {
+  url: string;
+  drop: () => Promise<void>;
+};
+
+/**
+ * Clone the migrations template into a throwaway database. Use this when a
+ * suite must commit outside BEGIN/ROLLBACK (raw clients, acceptance helpers)
+ * without leaving rows on the shared worker database.
+ */
+export async function createEphemeralTestDatabase(label: string): Promise<EphemeralTestDatabase> {
+  const fingerprint = await migrationsFingerprint();
+  const safeLabel = label.replace(/[^a-z0-9]/gi, "").slice(0, 8) || "eph";
+  const rand = Math.floor(Math.random() * 1_000_000_000).toString(36);
+  const name = `${WORKER_PREFIX}${fingerprint}_${currentRunToken()}_e${safeLabel}_${rand}`;
+  await cloneTemplateDatabase(name);
+  let dropped = false;
+  return {
+    url: connectionStringFor(name),
+    drop: async () => {
+      if (dropped) return;
+      dropped = true;
+      await dropDatabase(name);
+    }
+  };
+}
+
+export async function createInMemoryTestDatabase(
+  connectionString?: string
+): Promise<InMemoryTestDatabase> {
+  const resolvedConnectionString = connectionString ?? (await ensureWorkerDatabase());
+  const client = new pg.Client({ connectionString: resolvedConnectionString });
   await client.connect();
   try {
     await client.query("begin");
