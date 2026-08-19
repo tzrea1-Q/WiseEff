@@ -1698,7 +1698,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.queryByRole("button", { name: "对比分析" })).not.toBeInTheDocument();
     expect(within(topbar).queryByRole("combobox", { name: "时间范围" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("group", { name: "时间窗口" }).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByRole("button", { name: "看板" }).filter((btn) => btn.classList.contains("active"))).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: "看板" })).not.toBeInTheDocument();
     const activeNavButtons = screen.getAllByRole("button", { name: "我的工作台" }).filter((btn) => btn.classList.contains("active"));
     expect(activeNavButtons.length).toBe(1);
   });
@@ -1779,7 +1779,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.getByRole("heading", { name: "无权访问该页面" })).toBeInTheDocument();
   });
 
-  it("exposes the three sub-app entries on the homepage main region", () => {
+  it("exposes the allowlisted sub-app entries on the homepage main region", () => {
     window.history.replaceState(null, "", "/");
 
     renderAppForCurrentPath();
@@ -1788,13 +1788,13 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     expect(within(homepage).getByRole("heading", { name: "参数管理", level: 3 })).toBeInTheDocument();
     expect(within(homepage).getByRole("heading", { name: "调试平台", level: 3 })).toBeInTheDocument();
-    expect(within(homepage).getByRole("heading", { name: "日志分析", level: 3 })).toBeInTheDocument();
+    expect(within(homepage).queryByRole("heading", { name: "日志分析", level: 3 })).not.toBeInTheDocument();
 
     expect(within(homepage).getByRole("link", { name: /进入参数首页/ })).toHaveAttribute("href", "/parameter-home");
-    expect(within(homepage).getByRole("link", { name: /进入日志分析/ })).toHaveAttribute("href", "/logs");
+    expect(within(homepage).queryByRole("link", { name: /进入日志分析/ })).not.toBeInTheDocument();
     expect(within(homepage).getByRole("link", { name: /进入节点调试/ })).toHaveAttribute("href", "/node-debugging");
 
-    expect(within(homepage).getByRole("heading", { name: "一条可审阅工作流，三种场景接入" })).toBeInTheDocument();
+    expect(within(homepage).getByRole("heading", { name: "一条可审阅工作流，两种场景接入" })).toBeInTheDocument();
 
     expect(within(homepage).queryByRole("heading", { name: "不是另一个后台系统" })).not.toBeInTheDocument();
     expect(within(homepage).queryByRole("heading", { name: "参数流转，从查询到审阅" })).not.toBeInTheDocument();
@@ -1828,9 +1828,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.getByRole("tab", { name: "调试平台" })).toHaveAttribute("aria-selected", "true");
     expect(within(screen.getByRole("tabpanel")).getByText("调试场景")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("tab", { name: "日志分析" }));
-    expect(screen.getByRole("tab", { name: "日志分析" })).toHaveAttribute("aria-selected", "true");
-    expect(within(screen.getByRole("tabpanel")).getByText("证据链路")).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "日志分析" })).not.toBeInTheDocument();
   });
 
   it("moves the platform flow tab selection by keyboard", () => {
@@ -3149,9 +3147,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
         path: "/",
         present: [
           "让业务流程更智能、更高效、更可控",
-          "雷泽把参数管理、设备调试和日志分析连接成一条可审阅工作流",
+          "雷泽把参数管理和设备调试连接成一条可审阅工作流",
           "参数管理",
-          "日志分析",
           "调试平台"
         ],
         absent: ["WiseEff Prototype", "Linear is a better way", "Powering the world's best product teams", "Issue tracking you'll enjoy using"]
@@ -3397,9 +3394,9 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     fireEvent.click(hamburger);
     expect(shell).toHaveClass("mobile-nav-open");
     const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
-    fireEvent.click(within(sidebar).getByRole("button", { name: "智能分析" }));
+    fireEvent.click(within(sidebar).getByRole("button", { name: "节点调试" }));
     expect(shell).not.toHaveClass("mobile-nav-open");
-    expect(window.location.pathname).toBe("/logs");
+    expect(window.location.pathname).toBe("/node-debugging");
   });
 
   it("resets the main content scroll position when the route changes", () => {
@@ -3411,9 +3408,9 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(mainContent).not.toBeNull();
     mainContent!.scrollTop = 480;
 
-    fireEvent.click(screen.getByRole("button", { name: "智能分析" }));
+    fireEvent.click(screen.getByRole("button", { name: "节点调试" }));
 
-    expect(window.location.pathname).toBe("/logs");
+    expect(window.location.pathname).toBe("/node-debugging");
     expect(mainContent!.scrollTop).toBe(0);
   });
 
@@ -3555,6 +3552,20 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(within(topbar).getByRole("button", { name: "打开批量参数导入" })).toBeInTheDocument();
     expect(await screen.findByRole("region", { name: "参数定义库" })).toBeInTheDocument();
     expect(screen.queryByText("项目共享参数库")).not.toBeInTheDocument();
+  });
+
+  it("omits unfinished workflows from sidebar discovery", () => {
+    window.history.replaceState(null, "", "/parameter-home");
+
+    renderApp({ initialAppState: adminState });
+
+    const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
+    const groupLabels = Array.from(sidebar.querySelectorAll(".nav-group-label")).map((node) => node.textContent);
+    expect(groupLabels).toEqual(["平台总览", "参数管理", "调试平台"]);
+    expect(within(sidebar).queryByRole("button", { name: "智能分析" })).not.toBeInTheDocument();
+    expect(within(sidebar).queryByRole("button", { name: "知识库" })).not.toBeInTheDocument();
+    expect(within(sidebar).queryByRole("button", { name: "日志后台" })).not.toBeInTheDocument();
+    expect(within(sidebar).getByRole("button", { name: "节点调试" })).toBeInTheDocument();
   });
 
   it("exposes a single parameter admin sidebar entry with in-page scope switching", () => {

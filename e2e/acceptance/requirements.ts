@@ -118,6 +118,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "SHELL-DISCOVERY-001",
+    workflow: "A",
+    title: "Sidebar and homepage discovery surfaces offer only allowlisted workflows; hidden workflows remain deep-linkable.",
+    required: false
+  },
+  {
     id: "PARAM-REASON-001",
     workflow: "B",
     title: "Parameter drafts cannot be submitted with an empty or blank reason.",

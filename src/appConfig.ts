@@ -30,6 +30,7 @@ import {
   PARAMETER_ADMIN_ORGANIZATION_VIEW_LABELS
 } from "@/application/parameters/parameterAdminOrganizationPath";
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
+import type { NavGroup } from "@/domain/workflowDiscovery";
 
 export type PageKey =
   | "home"
@@ -57,7 +58,7 @@ export type PageConfig = {
   key: PageKey;
   path: string;
   label: string;
-  group: "平台总览" | "参数管理" | "调试平台" | "日志分析" | "知识库";
+  group: NavGroup;
   icon: LucideIcon;
   title: string;
   subtitle: string;

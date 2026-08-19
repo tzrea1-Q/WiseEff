@@ -4,6 +4,8 @@
 
 WiseEff frontend is a Vite, React, TypeScript SPA. It supports a rich mock-backed prototype plus API mode for the M0-M6.2 productized backend surface.
 
+**Workflow discovery (ADR-0036).** Sidebar groups and homepage wayfinding (cards, flow tabs, header/footer workflow links, and promotional copy that names a workflow) read `VISIBLE_WORKFLOWS` in `src/domain/workflowDiscovery.ts`. The first allowlist is parameter management and debugging. Log analysis and the knowledge base stay in the page catalog and remain deep-linkable; they are omitted from discovery until added to that list. This is not a permission change and not a `NoEntryPage` retirement.
+
 ## Key Directories
 
 - `src/app/`: page routing, navigation, permission checks, and `appRuntime.ts` — the composition root that selects every mode-dependent adapter once (`createAppRuntime`); pages receive the record via `PageProps.runtime`.

@@ -230,6 +230,25 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui"]
   },
   {
+    id: "SHELL-DISCOVERY-001",
+    priority: "P1",
+    area: "shell",
+    route: "/",
+    roles: ["Admin"],
+    action: "See only allowlisted workflows on sidebar and homepage discovery surfaces; open hidden workflows by deep link.",
+    coverage: "future",
+    acceptanceIds: ["SHELL-DISCOVERY-001"],
+    specFiles: [
+      "src/domain/workflowDiscovery.test.ts",
+      "src/App.test.tsx",
+      "src/linear-template/SubAppEntryRow.test.tsx",
+      "src/linear-template/PlatformFlowSection.test.tsx"
+    ],
+    assertions: ["ui", "screenshot"],
+    deferralReason:
+      "Covered by unit tests and playwright-cli evidence under work/ui-checks/workflow-discovery/; no dedicated e2e acceptance spec in this slice."
+  },
+  {
     id: "PARAM-REASON-001",
     priority: "P0",
     area: "parameters",

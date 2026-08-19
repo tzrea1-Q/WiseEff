@@ -19,6 +19,7 @@
 
 ## 当前覆盖重点
 
+- `SHELL-DISCOVERY-001`：侧栏和首页发现面只提供 allowlist 上的工作流（第一次是参数管理和调试）；日志分析和知识库不在发现面，直达仍可用（单元测试 + `work/ui-checks/workflow-discovery/`）。
 - `AUTH-RUNTIME-001`：API mode 浏览器运行时与本地 dev auth 契约一致。
 - `NOTIF-INBOX-001`：TopBar 通知铃铛可打开收件箱面板，且 `/api/v1/notifications` 与未读数 API 对当前用户可用（`e2e/acceptance/notifications.acceptance.spec.ts`）。
 - `NOTIF-READ-001`：通知可通过后端 mark-all-read API 标记已读（`e2e/acceptance/notifications.acceptance.spec.ts`）。

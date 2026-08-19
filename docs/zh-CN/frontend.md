@@ -4,6 +4,8 @@
 
 WiseEff 前端是 Vite、React、TypeScript 单页应用。它同时支持 mock runtime 和 API runtime：mock 用于演示和组件测试，API runtime 用于产品化路径和全链路验收。
 
+**工作流发现面（ADR-0036）。** 侧栏分组和首页寻路（卡片、流程 Tab、顶栏/页脚工作流链接，以及点名某工作流的推销文案）读取 `src/domain/workflowDiscovery.ts` 的 `VISIBLE_WORKFLOWS`。第一次名单是参数管理和调试。日志分析和知识库仍在页面目录中，直达可用；未写入名单前不出现在发现面。这不是权限变更，也不是 `NoEntryPage` 退役。
+
 英文详细文档见 [FRONTEND.md](../FRONTEND.md)。
 
 ## 关键目录

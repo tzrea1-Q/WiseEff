@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  homepageFlowIntro,
+  homepageFlowTitle,
+  isWorkflowVisible,
+  type WorkflowId
+} from "@/domain/workflowDiscovery";
 
 type PreviewKey = "parameters" | "logs" | "debugging";
 
 type TabConfig = {
   key: PreviewKey;
+  workflowId: WorkflowId;
   label: string;
   headline: string;
   meta: string;
@@ -11,9 +18,10 @@ type TabConfig = {
   features: Array<{ title: string; text: string }>;
 };
 
-const tabs: TabConfig[] = [
+const allTabs: TabConfig[] = [
   {
     key: "parameters",
+    workflowId: "parameter-management",
     label: "参数管理",
     headline: "参数目录",
     meta: "统一口径",
@@ -31,6 +39,7 @@ const tabs: TabConfig[] = [
   },
   {
     key: "debugging",
+    workflowId: "debugging",
     label: "调试平台",
     headline: "调试场景",
     meta: "在线连接",
@@ -48,6 +57,7 @@ const tabs: TabConfig[] = [
   },
   {
     key: "logs",
+    workflowId: "log-analysis",
     label: "日志分析",
     headline: "证据链路",
     meta: "异常事件",
@@ -64,6 +74,8 @@ const tabs: TabConfig[] = [
     ]
   }
 ];
+
+const tabs = allTabs.filter((tab) => isWorkflowVisible(tab.workflowId));
 
 const AUTO_INTERVAL = 6000;
 
@@ -116,8 +128,8 @@ export function PlatformFlowSection() {
     <section className="platform-flow-section" id="platform-flow" aria-labelledby="platform-flow-title">
       <div className="linear-container">
         <div className="platform-flow-head">
-          <h2 id="platform-flow-title">一条可审阅工作流，三种场景接入</h2>
-          <p>把参数、日志和设备调试压缩进同一个可核对视图，保留 Agent 辅助与人工确认的边界。</p>
+          <h2 id="platform-flow-title">{homepageFlowTitle()}</h2>
+          <p>{homepageFlowIntro()}</p>
         </div>
         <div
           className="platform-flow-tablist"
