@@ -3,9 +3,10 @@
  * creation with its organization/credential/role-binding/audit rows, and the
  * one-admin guard, against a real database.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  createEphemeralTestDatabase,
   createInMemoryTestDatabase,
   isTestDatabaseAvailable,
   type InMemoryTestDatabase
@@ -13,16 +14,21 @@ import {
 import { bootstrapLocalAdmin, countLocalAdminBindings } from "./bootstrapLocalAdmin";
 
 const databaseAvailable = await isTestDatabaseAvailable();
+const ephemeral = databaseAvailable ? await createEphemeralTestDatabase("bootadmin") : null;
 
 describe.skipIf(!databaseAvailable)("bootstrapLocalAdmin", () => {
   let db: InMemoryTestDatabase;
 
   beforeEach(async () => {
-    db = await createInMemoryTestDatabase();
+    db = await createInMemoryTestDatabase(ephemeral?.url);
   });
 
   afterEach(async () => {
     await db?.rollback();
+  });
+
+  afterAll(async () => {
+    await ephemeral?.drop();
   });
 
   it("creates the first local admin when none exist", async () => {

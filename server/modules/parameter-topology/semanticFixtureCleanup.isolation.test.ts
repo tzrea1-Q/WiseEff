@@ -2,11 +2,11 @@
  * Round 6 T6: semantic fixture cleanup must scope Config Set deletes by org+project+name.
  */
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 import { withPgClient } from "../../../e2e/acceptance/helpers/database";
 import { cleanupSemanticAcceptanceArtifacts } from "../../../e2e/acceptance/helpers/semanticFixtureCleanup";
-import { isTestDatabaseAvailable, resolveWorkerDatabaseUrl } from "../../testing/testDatabase";
+import { createEphemeralTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 
 const ORG_A = "org-cleanup-iso-a";
 const ORG_B = "org-cleanup-iso-b";
@@ -16,21 +16,20 @@ const PROJECT_B = "project-cleanup-iso-b";
 const SHARED_NAME = "shared-acceptance-cs-r6";
 
 const databaseAvailable = await isTestDatabaseAvailable();
+const ephemeral = databaseAvailable ? await createEphemeralTestDatabase("cleanupiso") : null;
 
 async function ensureDatabaseUrl() {
-  // The e2e helpers read DATABASE_URL directly. Point them at the migrated
-  // per-worker database: the base database behind DATABASE_URL is no longer
-  // migrated by the test harness (template/worker scheme), so raw clients
-  // would otherwise hit an unmigrated schema in CI.
-  process.env.DATABASE_URL = await resolveWorkerDatabaseUrl();
+  // Acceptance helpers read DATABASE_URL and commit. Use a throwaway clone so
+  // those rows cannot leak into the shared worker database that rollback
+  // fixtures reuse for the rest of this vitest pool slot.
+  if (!ephemeral) {
+    throw new Error("Ephemeral test database is not available.");
+  }
+  process.env.DATABASE_URL = ephemeral.url;
 }
 
-// This suite exercises acceptance-fixture cleanup, which talks to the raw
-// DATABASE_URL database (not the migrations-template worker databases the other
-// integration tests use). In CI's build-and-test job that database exists but has
-// never been migrated, so gate on the schema actually being present.
 async function isAcceptanceSchemaAvailable(): Promise<boolean> {
-  if (!databaseAvailable) return false;
+  if (!ephemeral) return false;
   await ensureDatabaseUrl();
   try {
     return await withPgClient(async (client) => {
@@ -45,6 +44,10 @@ async function isAcceptanceSchemaAvailable(): Promise<boolean> {
 }
 
 const schemaAvailable = await isAcceptanceSchemaAvailable();
+
+afterAll(async () => {
+  await ephemeral?.drop();
+});
 
 async function ensureTenantGraph() {
   await ensureDatabaseUrl();
