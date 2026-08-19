@@ -1,12 +1,12 @@
 # Property-key cutover remainder is an accepted residual
 
-> Status: **Active** — docs closeout. Locks option 1: the cross-page human merge is the ADR-correct leftover, not a missing cutover machine.  
+> Status: **Completed 2026-08-19** — option 1 accepted. TD-117 closed as accepted residual. The cross-page human merge is the ADR-correct leftover, not a missing cutover machine.  
 > Date: 2026-08-19  
-> Branch: `feat/td-117-remainder-plan`  
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-19-property-key-cutover-remainder.md`](../../zh-CN/exec-plans/active/2026-08-19-property-key-cutover-remainder.md)  
+> Branch: `feat/td-117-remainder-plan` (merged #558)  
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-19-property-key-cutover-remainder.md`](../../zh-CN/exec-plans/completed/2026-08-19-property-key-cutover-remainder.md)  
 > Parent: [`2026-08-18-property-key-source-cutover.md`](2026-08-18-property-key-source-cutover.md)  
 > Governing decision: [ADR-0034](../../adr/0034-referenced-property-key-rename-is-a-source-cutover.md)  
-> Tracker: [TD-117](../tech-debt-tracker.md) (session 0 owns the index; this branch does not close the row)
+> Tracker: [TD-117](../tech-debt-tracker.md) (closed as accepted residual)
 
 ## Goal
 

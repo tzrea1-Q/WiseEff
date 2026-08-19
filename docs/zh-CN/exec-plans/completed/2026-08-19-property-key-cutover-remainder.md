@@ -1,12 +1,12 @@
 # 属性键 cutover 余量按接受残留关账
 
-> 状态：**进行中** — 文档关账。锁定选项 1：跨页人工合入是 ADR 正确的残留，不是缺一台 cutover 机器。  
+> 状态：**已完成 2026-08-19** — 选项 1 已接受。TD-117 已按接受残留关闭。跨页人工合入是 ADR 正确的残留，不是缺一台 cutover 机器。  
 > 日期：2026-08-19  
-> 分支：`feat/td-117-remainder-plan`  
-> English: [`docs/exec-plans/active/2026-08-19-property-key-cutover-remainder.md`](../../../exec-plans/active/2026-08-19-property-key-cutover-remainder.md)  
+> 分支：`feat/td-117-remainder-plan`（已由 #558 合入）  
+> English: [`docs/exec-plans/completed/2026-08-19-property-key-cutover-remainder.md`](../../../exec-plans/completed/2026-08-19-property-key-cutover-remainder.md)  
 > 父方案：[`2026-08-18-property-key-source-cutover.md`](2026-08-18-property-key-source-cutover.md)  
 > 锁定决策：[ADR-0034](../../../adr/0034-referenced-property-key-rename-is-a-source-cutover.md)  
-> 追踪表：[TD-117](../tech-debt-tracker.md)（索引由会话 0 维护；本分支不关该行）
+> 追踪表：[TD-117](../tech-debt-tracker.md)（已按接受残留关闭）
 
 ## 目标
 
