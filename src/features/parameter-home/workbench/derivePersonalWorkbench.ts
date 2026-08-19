@@ -185,7 +185,7 @@ function buildAdminActions(input: DerivePersonalWorkbenchInput): WorkbenchAction
       title: "检查用户与权限状态",
       description: "存在停用或需复核的用户账号。",
       meta: `${input.signals.inactiveAccounts} 个账号需关注`,
-      path: "/user-permissions",
+      path: "/organization/members",
       source: "admin"
     });
   }
@@ -304,7 +304,7 @@ function buildScenarioEntries(
             ...entry("new-project", "新建项目", "启动项目参数初始化流程。", "/parameter-home", "parameter-home", "项目", input.projects.length),
             action: "new-project" as const
           },
-          entry("users", "用户管理", "维护平台角色与账号权限。", "/user-permissions", "user-permissions", "账号", input.signals.inactiveAccounts)
+          entry("users", "组织管理", "维护本组织档案、成员和角色权限。", "/organization", "user-permissions", "账号", input.signals.inactiveAccounts)
         ]
       : roleView === "committer"
         ? [

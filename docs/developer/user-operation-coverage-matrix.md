@@ -96,10 +96,11 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `XIAOZE-APPROVAL-EXEC-FAIL-001` | P1 | agent | future | `/parameters` | Admin | ui, api | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
 | `XIAOZE-PLAN-MULTISTEP-001` | P2 | agent | automated | `/parameters` | Admin | api | `e2e/acceptance/xiaoze-planning.acceptance.spec.ts` |
 | `XIAOZE-PROACTIVE-001` | P2 | agent | automated | `/parameters` | Admin | api | `e2e/acceptance/xiaoze-planning.acceptance.spec.ts` |
-| `PERM-GOV-001` | P0 | permissions | automated | `/user-permissions` | Admin | ui | `e2e/acceptance/permissions.acceptance.spec.ts` |
+| `PERM-GOV-001` | P0 | permissions | automated | `/organization/members` | Admin | ui | `e2e/acceptance/permissions.acceptance.spec.ts` |
 | `PERM-MATRIX-001` | P0 | permissions | automated | `core routes` | Guest, Hardware User, Software User, Hardware Committer, Software Committer, Admin | ui | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` |
 | `PERM-MATRIX-002` | P0 | permissions | automated | `/api/v1/parameter-submission-rounds` | Hardware User, Hardware Committer, Software Committer, Software User, Admin | api | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` |
-| `PERM-USER-MGMT-001` | P1 | permissions | automated | `/user-permissions` | Admin | ui, api, db, audit | `e2e/acceptance/permissions.acceptance.spec.ts` |
+| `PERM-USER-MGMT-001` | P1 | permissions | automated | `/organization/members` | Admin | ui, api, db, audit | `e2e/acceptance/permissions.acceptance.spec.ts` |
+| `ORG-ADMIN-RENAME-001` | P1 | permissions | automated | `/organization` | Admin | ui, api, db, audit | `e2e/acceptance/permissions.acceptance.spec.ts` |
 | `MOD-TREE-PARAM-001` | P0 | parameters | automated | `/parameter-admin` | Admin | api, db | `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` |
 | `MOD-TREE-PARAM-002` | P0 | parameters | automated | `/parameter-admin` | Admin | api | `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` |
 | `MOD-TREE-DEBUG-001` | P0 | debugging | automated | `/debugging-admin/nodes` | Admin | api | `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` |
@@ -149,7 +150,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `DRV-SCHEMA-004` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `MOD-ATTR-CREATE-KIND-001` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PLAT-ROLE-001` | P1 | platform | automated | `/platform-console` | Platform Admin | ui | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` |
-| `PLAT-ROLE-002` | P1 | platform | automated | `/user-permissions` | Admin | ui, api | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` |
+| `PLAT-ROLE-002` | P1 | platform | automated | `/organization/members` | Admin | ui, api | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` |
 | `PLAT-ROLE-003` | P1 | platform | automated | `/api/v1/users` | Platform Admin | api | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` |
 | `DRV-PROMOTE-005` | P1 | platform | manual | `/platform-console` | Platform Admin | ui, api |  |
 | `SPEC-DEPRECATE-001` | P1 | parameters | future | `/parameter-admin/specs` | Admin | ui, api |  |

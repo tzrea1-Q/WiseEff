@@ -591,6 +591,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "ORG-ADMIN-RENAME-001",
+    workflow: "H",
+    title: "Admin can rename the home organization with audit evidence, and non-Admin rename is rejected.",
+    required: true
+  },
+  {
     id: "MOD-TREE-PARAM-001",
     workflow: "C",
     title: "Admin creates nested parameter modules, assigns a parameter, and parent filtering includes the child subtree.",

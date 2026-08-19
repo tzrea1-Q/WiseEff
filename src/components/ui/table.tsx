@@ -2,11 +2,12 @@
 
 import * as React from "react"
 
+import { HorizontalDragScroll } from "@/components/HorizontalDragScroll"
 import { cn } from "@/lib/utils"
 
 function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
-    <div
+    <HorizontalDragScroll
       data-slot="table-container"
       className="relative w-full overflow-x-auto"
     >
@@ -15,7 +16,7 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
         className={cn("w-full caption-bottom text-sm", className)}
         {...props}
       />
-    </div>
+    </HorizontalDragScroll>
   )
 }
 

@@ -2,6 +2,7 @@ import { Eye, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { Dispatch } from "react";
 import type { AppAction } from "@/application/state/appState";
+import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { ConfirmDialog } from "./components/common/ConfirmDialog";
@@ -423,7 +424,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
                   : `共 ${projects.length} 个项目`}
               </span>
             </div>
-            <div className={startFromEmpty ? "project-init-source-table-wrap is-disabled" : "project-init-source-table-wrap"}>
+            <HorizontalDragScroll className={startFromEmpty ? "project-init-source-table-wrap is-disabled" : "project-init-source-table-wrap"}>
               <table className="project-init-source-table" aria-label="可选来源项目">
                 <thead>
                   <tr>
@@ -485,7 +486,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
                   )}
                 </tbody>
               </table>
-            </div>
+            </HorizontalDragScroll>
             <div className="project-init-step-summary project-init-source-card__summary">
               {isEmptyInitialization
                 ? "将从零开始创建项目，不继承来源参数。"
@@ -609,7 +610,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
           </div>
         </div>
         <section className="project-init-scope-table-panel">
-          <div className="project-init-table">
+          <HorizontalDragScroll className="project-init-table">
             <table aria-label="参数库选择表">
               <colgroup>
                 <col className="project-init-col-select" />
@@ -694,7 +695,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
                 )}
               </tbody>
             </table>
-          </div>
+          </HorizontalDragScroll>
         </section>
         {detailCandidate && detailParameter ? (
           <aside className="project-init-parameter-detail" role="complementary" aria-label="参数详情">

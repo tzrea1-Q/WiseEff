@@ -18,6 +18,7 @@ describe("createAppRuntime", () => {
     expect(runtime.debuggingGateway).toBeDefined();
     expect(runtime.debuggingAdminClient).toBeDefined();
     expect(runtime.userGovernanceActions).toBeDefined();
+    expect(runtime.organizationActions).toBeDefined();
   });
 
   it("keeps api-only adapters absent in mock mode", () => {
@@ -26,6 +27,7 @@ describe("createAppRuntime", () => {
     expect(runtime.logAnalysisRepository).toBeUndefined();
     expect(runtime.debuggingAdminClient).toBeUndefined();
     expect(runtime.userGovernanceActions).toBeUndefined();
+    expect(runtime.organizationActions).toBeDefined();
     expect(runtime.parameterRepository).toBeDefined();
     expect(runtime.productFeedbackRepository).toBeDefined();
     expect(runtime.knowledgeRepository).toBeDefined();

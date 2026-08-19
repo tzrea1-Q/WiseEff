@@ -18,7 +18,7 @@ Rules:
 
 ## Endpoint Groups
 
-- Auth and users: `/me`, user listing, user creation, activation, role replacement.
+- Auth and users: `/me`, home organization `GET`/`PATCH /api/v1/organization`, user listing, user creation, activation, role replacement.
 - Projects and modules: project metadata and module lookup.
 - Parameters: parameter listing, detail, history, drafts, submission rounds, change requests, imports, dashboard aggregation (`/parameters/dashboard/summary`, `/parameters/dashboard/hotspots`), org module tree CRUD (`/parameter-modules`), **project parameter initialization** (`/parameters/projects/:projectId/initialization*`, `/parameters/admin/initialization-reviews*`), per-project parameter file hosting with sync, conflict resolution, and staged candidates (`/projects/:projectId/parameter-files*`, `/projects/:projectId/parameter-file-candidates*`), structured DTS read/search (`.../structure`, `/projects/:projectId/dts-search`), and per-project DTS config sets, release baselines, validation gate, and lossless export (`/projects/:projectId/config-sets*`, `/projects/:projectId/baselines/:baselineId/*`).
 - Semantic parameter topology (v2): parameter specs, spec review tasks, source/effective topology, project bindings, identity mapping tasks, and fail-closed config-revision validate under `/api/v2/*` (see below). Legacy flat parameter IDs are retired at cutover with `410 legacy-parameter-id-retired`.

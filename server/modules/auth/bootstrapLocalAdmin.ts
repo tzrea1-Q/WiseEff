@@ -2,12 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { createAuditEvent } from "../audit/repository";
-import {
-  defaultLocalRegistrationOrganizationResolver,
-  hashLocalAccountPassword,
-  validateLocalAccountPassword,
-  validateLocalAccountUsername
-} from "./localAccountCredentials";
+import { resolveBootstrapOrganization } from "./evaluationOrganization";
+import { hashLocalAccountPassword, validateLocalAccountPassword, validateLocalAccountUsername } from "./localAccountCredentials";
 import { seedBaselineAuthCatalog } from "./baselineCatalog";
 
 export type BootstrapLocalAdminInput = {
@@ -56,7 +52,6 @@ export async function bootstrapLocalAdmin(
   validateLocalAccountUsername(username);
   validateLocalAccountPassword(input.password);
 
-  const organizationName = (input.organization ?? input.organizationName ?? "硬件部").trim();
   const name = input.name.trim();
   const title = input.title?.trim() || "Platform Admin";
 
@@ -64,7 +59,9 @@ export async function bootstrapLocalAdmin(
     throw new ApiError("VALIDATION_FAILED", "Admin name is required.");
   }
 
-  const organization = defaultLocalRegistrationOrganizationResolver(organizationName);
+  const organization = await resolveBootstrapOrganization(db, {
+    organizationName: input.organization ?? input.organizationName
+  });
   const userId = `u-${randomUUID()}`;
 
   return db.transaction(async (tx) => {
@@ -81,14 +78,15 @@ export async function bootstrapLocalAdmin(
       throw new ApiError("CONFLICT", "Username is already registered.", { username });
     }
 
-    await tx.query(
-      `
-      insert into organizations (id, name)
-      values ($1, $2)
-      on conflict (id) do update set name = excluded.name
-      `,
-      [organization.id, organization.name]
-    );
+    if (organization.created) {
+      await tx.query(
+        `
+        insert into organizations (id, name)
+        values ($1, $2)
+        `,
+        [organization.id, organization.name]
+      );
+    }
     await tx.query(
       `
       insert into users (id, organization_id, name, title, is_active, last_active_at)

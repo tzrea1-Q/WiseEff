@@ -60,6 +60,14 @@ export const routeManifest = [
     stability: "mvp"
   },
 
+  { id: "organization.get", method: "GET", path: "/api/v1/organization", module: "users", stability: "commercial-readiness" },
+  {
+    id: "organization.update",
+    method: "PATCH",
+    path: "/api/v1/organization",
+    module: "users",
+    stability: "commercial-readiness"
+  },
   { id: "users.list", method: "GET", path: "/api/v1/users", module: "users", stability: "commercial-readiness" },
   { id: "users.create", method: "POST", path: "/api/v1/users", module: "users", stability: "commercial-readiness" },
   {

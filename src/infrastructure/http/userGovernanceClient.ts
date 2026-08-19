@@ -39,6 +39,12 @@ export type RegistrationRoleRequestDto = {
 type ItemsEnvelope<T> = { items: T[] };
 type ItemEnvelope<T> = { item: T };
 
+export type OrganizationRecordDto = {
+  id: string;
+  name: string;
+  createdAt: string;
+};
+
 export type CreateGovernedUserInput = {
   name: string;
   username: string;
@@ -119,6 +125,14 @@ export function createUserGovernanceClient(
         {}
       );
       return response.item;
+    },
+    async getOrganization() {
+      const response = await apiClient.get<{ organization: OrganizationRecordDto }>("/api/v1/organization");
+      return response.organization;
+    },
+    async updateOrganization(input: { name: string }) {
+      const response = await apiClient.patch<{ organization: OrganizationRecordDto }>("/api/v1/organization", input);
+      return response.organization;
     }
   };
 }

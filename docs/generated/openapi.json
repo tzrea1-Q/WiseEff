@@ -378,6 +378,80 @@
         }
       }
     },
+    "/api/v1/organization": {
+      "get": {
+        "operationId": "organization.get",
+        "summary": "Get the caller's home organization",
+        "tags": [
+          "users"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "organization.update",
+        "summary": "Rename the caller's home organization",
+        "tags": [
+          "users"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrganizationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/users": {
       "get": {
         "operationId": "users.list",
@@ -11005,6 +11079,14 @@
       "NotificationMarkAllReadResponse": {
         "type": "object",
         "x-wiseeff-schema": "NotificationMarkAllReadResponse"
+      },
+      "OrganizationResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "OrganizationResponse"
+      },
+      "UpdateOrganizationRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "UpdateOrganizationRequest"
       },
       "UserGovernanceListResponse": {
         "type": "object",

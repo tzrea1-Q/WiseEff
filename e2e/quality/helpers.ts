@@ -165,6 +165,13 @@ export function stableMasks(page: Page, routePath = ""): Locator[] {
     masks.push(page.locator(".local-device-bridge-panel__already-installed strong"));
   }
 
+  if (routePath === "/organization") {
+    // Organization created_at is `now()` from the seed/migration insert, so
+    // the clock label moves every CI run. The identifier and display name stay
+    // fixed; only the timestamp needs masking.
+    masks.push(page.locator(".organization-profile__created-at"));
+  }
+
   if (routePath === "/logs") {
     // Raw-log timestamps come from the seed fixture today, but the column is
     // the same surface that would show relative "N 分钟前" / clock-skewed ISO

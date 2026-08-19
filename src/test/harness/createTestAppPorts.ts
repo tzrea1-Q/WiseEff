@@ -79,6 +79,7 @@ export function createTestAppPorts(options: CreateTestAppPortsOptions = {}): Tes
     debuggingGateway: pickPort(assembled, overrides, "debuggingGateway"),
     debuggingAdminClient: pickPort(assembled, overrides, "debuggingAdminClient"),
     userGovernanceActions: pickPort(assembled, overrides, "userGovernanceActions"),
+    organizationActions: pickPort(assembled, overrides, "organizationActions"),
     listParameterConfigSets: pickPort(assembled, overrides, "listParameterConfigSets")
   };
 }
@@ -121,6 +122,16 @@ export function createTestUserGovernanceActions(
     createUser: vi.fn().mockResolvedValue(undefined),
     assignUserRole: vi.fn().mockResolvedValue(undefined),
     setUserActive: vi.fn().mockResolvedValue(undefined),
+    getOrganization: vi.fn().mockResolvedValue({
+      id: "org-chargelab",
+      name: "ChargeLab",
+      createdAt: "2026-01-15T00:00:00.000Z"
+    }),
+    updateOrganization: vi.fn().mockImplementation(async (input: { name: string }) => ({
+      id: "org-chargelab",
+      name: input.name,
+      createdAt: "2026-01-15T00:00:00.000Z"
+    })),
     ...overrides
   };
 }

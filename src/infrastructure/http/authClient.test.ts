@@ -89,7 +89,6 @@ describe("createAuthClient", () => {
     const authClient = createAuthClient(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
 
     await authClient.register({
-      organization: "硬件部",
       name: "Local User",
       username: "local.user",
       roleId: "hardware-user",
@@ -116,7 +115,6 @@ describe("createAuthClient", () => {
     const authClient = createAuthClient(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
 
     const result = await authClient.register({
-      organization: "硬件部",
       name: "Local Committer",
       username: "local.committer",
       roleId: "hardware-committer",

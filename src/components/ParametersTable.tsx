@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { ParameterRecord } from "@/domain/parameters/types";
 import { getParameterValueSummary, shouldSummarizeComplexParameter } from "@/parameterValueKind";
+import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
 import { ColumnFilter } from "./ColumnFilter";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "./tableFilterUtils";
 
@@ -373,7 +374,7 @@ export function ParametersTable({
         </div>
       ) : null}
 
-      <div className="parameters-table-scroll">
+      <HorizontalDragScroll className="parameters-table-scroll">
         <table className="parameters-table-grid">
           <thead>
             <tr>
@@ -511,7 +512,7 @@ export function ParametersTable({
             })}
           </tbody>
         </table>
-      </div>
+      </HorizontalDragScroll>
 
       {visibleRows.length === 0 ? (
         <div className="parameters-table-empty">

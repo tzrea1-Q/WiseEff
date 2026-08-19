@@ -23,8 +23,7 @@
   padding: var(--space-3) var(--space-4) var(--space-2);
 }
 
-.dts-reload-candidate-table > .overflow-x-auto,
-.dts-reload-candidate-table > .overflow-visible {
+.dts-reload-candidate-table > .data-table-scroll {
   flex: 1;
   min-height: 0;
   overflow: auto;

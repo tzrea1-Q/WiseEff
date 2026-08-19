@@ -7,13 +7,21 @@ import {
   approveRegistrationRoleRequest,
   createUser,
   deactivateUser,
+  getHomeOrganization,
   listGovernedUsers,
   listRegistrationRoleRequests,
   rejectRegistrationRoleRequest,
   replaceUserRoles,
+  updateHomeOrganization,
   updateUserProfile
 } from "./service";
-import { createUserBodySchema, replaceUserRolesBodySchema, updateUserActiveBodySchema, updateUserBodySchema } from "./schemas";
+import {
+  createUserBodySchema,
+  replaceUserRolesBodySchema,
+  updateOrganizationBodySchema,
+  updateUserActiveBodySchema,
+  updateUserBodySchema
+} from "./schemas";
 
 const userIdParamsSchema = z.object({
   userId: z.string().min(1)
@@ -44,6 +52,23 @@ export function registerUserRoutes(
   router: WiseEffRouter,
   options: { db?: Database; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
 ) {
+  router.get("/api/v1/organization", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const organization = await getHomeOrganization(db, auth);
+
+    return { status: 200, body: { organization } };
+  });
+
+  router.patch("/api/v1/organization", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const body = parseWithSchema(updateOrganizationBodySchema, request.body);
+    const organization = await updateHomeOrganization(db, auth, body, { requestId: request.requestId });
+
+    return { status: 200, body: { organization } };
+  });
+
   router.get("/api/v1/users", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);

@@ -10,6 +10,7 @@ import {
   decideRegistrationRoleRequest,
   getPendingRegistrationRoleRequestByIdForAdmin,
   getPendingRegistrationRoleRequestById,
+  getOrganizationById,
   getUserById,
   findPasswordCredentialByUsername,
   listActiveAdminUserIds,
@@ -19,11 +20,19 @@ import {
   listPendingRegistrationRoleRequests,
   listUsers,
   replaceRoleBindings,
+  updateOrganizationName,
   updateUser,
   updateUserActive
 } from "./repository";
 import { notifyUserDeactivated, notifyUserRoleChanged } from "../notifications/producers";
-import type { CreateUserInput, ReplaceUserRolesInput, UpdateUserActiveInput, UpdateUserProfileInput } from "./types";
+import type {
+  CreateUserInput,
+  ReplaceUserRolesInput,
+  UpdateOrganizationInput,
+  UpdateUserActiveInput,
+  UpdateUserProfileInput
+} from "./types";
+import { organizationNameMaxLength } from "./schemas";
 
 const roleIds = new Set<BackendRoleId>([
   "guest",
@@ -177,6 +186,65 @@ async function auditRegistrationRoleRequestDecision(
     targetType: "user",
     targetId: input.userId,
     metadata: { requestId: input.requestId, ...input.metadata }
+  });
+}
+
+function normalizeOrganizationName(name: string) {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new ApiError("VALIDATION_FAILED", "Organization name is required.");
+  }
+  if (trimmed.length > organizationNameMaxLength) {
+    throw new ApiError("VALIDATION_FAILED", `Organization name must be at most ${organizationNameMaxLength} characters.`, {
+      maxLength: organizationNameMaxLength
+    });
+  }
+  return trimmed;
+}
+
+export async function getHomeOrganization(db: Queryable, auth: AuthContext) {
+  if (!auth.user.isActive) {
+    throw new ApiError("FORBIDDEN", "User is inactive.");
+  }
+  const organization = await getOrganizationById(db, auth.organization.id);
+  if (!organization) {
+    throw new ApiError("NOT_FOUND", "Organization was not found.");
+  }
+  return organization;
+}
+
+export async function updateHomeOrganization(
+  db: Database,
+  auth: AuthContext,
+  input: UpdateOrganizationInput,
+  context: AuditCorrelationContext = {}
+) {
+  requireUserManager(auth);
+  const name = normalizeOrganizationName(input.name);
+
+  return db.transaction(async (tx) => {
+    const current = await getOrganizationById(tx, auth.organization.id);
+    if (!current) {
+      throw new ApiError("NOT_FOUND", "Organization was not found.");
+    }
+
+    const organization = await updateOrganizationName(tx, auth.organization.id, name);
+    if (!organization) {
+      throw new ApiError("NOT_FOUND", "Organization was not found.");
+    }
+
+    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
+      app: "user-governance",
+      kind: "organization-update",
+      action: "update",
+      severity: "High",
+      projectId: null,
+      targetType: "organization",
+      targetId: organization.id,
+      metadata: { previousName: current.name, name: organization.name }
+    });
+
+    return organization;
   });
 }
 

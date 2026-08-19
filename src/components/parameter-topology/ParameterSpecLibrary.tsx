@@ -1,6 +1,7 @@
 import { Check, ChevronLeft, ChevronRight, Pencil, Search } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { ColumnFilter } from "@/components/ColumnFilter";
+import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
 import {
   formatParameterSpecLifecycle,
   PARAMETER_ADMIN_UI
@@ -441,7 +442,7 @@ export function ParameterSpecLibrary({
           </span>
         </div>
 
-        <div className="parameters-table-scroll">
+        <HorizontalDragScroll className="parameters-table-scroll">
           <table
             aria-label="参数定义库列表"
             className="parameters-table-grid param-admin-library-grid parameter-spec-library-grid"
@@ -553,7 +554,7 @@ export function ParameterSpecLibrary({
               })}
             </tbody>
           </table>
-        </div>
+        </HorizontalDragScroll>
 
         {filtered.length > 0 ? (
           <div className="parameters-table-pagination param-admin-row-actions parameter-spec-library-pagination">

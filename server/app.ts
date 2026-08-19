@@ -58,16 +58,7 @@ function createEnvLocalAuthService(db: Database, env?: PilotReadinessEnv) {
     return undefined;
   }
 
-  return createLocalAuthService(db, {
-    ...(env.NODE_ENV === "development"
-      ? {
-          registrationOrganizationResolver: () => ({
-            id: developmentAuthContext.organization.id,
-            name: developmentAuthContext.organization.name
-          })
-        }
-      : {})
-  });
+  return createLocalAuthService(db);
 }
 
 type DeviceBridgeEnv = Pick<

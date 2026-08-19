@@ -5,23 +5,6 @@ import { ApiError } from "../../shared/http/errors";
 const scryptAsync = promisify(scrypt);
 const passwordHashPrefix = "scrypt";
 
-export const localRegistrationOrganizationIds = {
-  硬件部: "org-hardware-department",
-  软件部: "org-software-department"
-} as const;
-
-export function defaultLocalRegistrationOrganizationResolver(organizationName: string) {
-  const organizationId = localRegistrationOrganizationIds[organizationName as keyof typeof localRegistrationOrganizationIds];
-  if (!organizationId) {
-    throw new ApiError("VALIDATION_FAILED", "Organization must be one of: 硬件部, 软件部.", { organization: organizationName });
-  }
-
-  return {
-    id: organizationId,
-    name: organizationName
-  };
-}
-
 export function validateLocalAccountUsername(username: string) {
   if (!username) {
     throw new ApiError("VALIDATION_FAILED", "Username is required.");

@@ -23,6 +23,12 @@ import {
   parseDebuggingAdminArea
 } from "@/application/debugging/debuggingAdminPath";
 import {
+  ORGANIZATION_ADMIN_UI,
+  buildOrganizationAdminPath,
+  isOrganizationAdminPath,
+  parseOrganizationAdminArea
+} from "@/application/organization/organizationAdminPath";
+import {
   isParameterAdminOrganizationEntryPath,
   parseParameterAdminModulesSubView,
   parseParameterAdminOrganizationPath,
@@ -188,7 +194,7 @@ export const utilityItems: Array<{ label: string; icon: LucideIcon; path?: strin
   { label: "平台控制台", icon: TowerControl, path: "/platform-console" },
   { label: "反馈管理", icon: MessageSquareText, path: "/feedback-admin" },
   { label: "审计中心", icon: ScrollText, path: "/audit" },
-  { label: "用户管理", icon: Settings2, path: "/user-permissions" }
+  { label: "组织管理", icon: Settings2, path: "/organization" }
 ];
 
 export function getPageByPath(path: string): PageConfig {
@@ -204,15 +210,16 @@ export function getPageByPath(path: string): PageConfig {
     };
   }
 
-  if (path === "/user-permissions") {
+  if (isOrganizationAdminPath(path)) {
+    const area = parseOrganizationAdminArea(path) ?? "profile";
     return {
       key: "user-permissions",
-      path: "/user-permissions",
-      label: "用户权限",
+      path: buildOrganizationAdminPath(area),
+      label: "组织管理",
       group: "平台总览",
       icon: Settings2,
-      title: "用户权限管理",
-      subtitle: "统一管理雷泽平台用户、四档角色和访问权限"
+      title: "组织管理",
+      subtitle: area === "members" ? ORGANIZATION_ADMIN_UI.membersSubtitle : ORGANIZATION_ADMIN_UI.profileSubtitle
     };
   }
 
@@ -410,6 +417,11 @@ export function getXiaozeContextSummary(path: string): string {
         return "正在关注设备在线率、可调节点目录覆盖和节点访问策略。";
       }
       return "正在关注 DTS 重载配置：落地路径、触发节点与内核日志命令。";
+    case "user-permissions":
+      if (parseOrganizationAdminArea(path) === "members") {
+        return "正在关注本组织成员、角色权限和注册申请。";
+      }
+      return "正在关注本组织档案与显示名称。";
     case "feedback-admin":
       return "正在关注内测产品反馈、待处理问题、截图证据和分诊闭环。";
     case "knowledge":

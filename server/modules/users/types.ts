@@ -37,6 +37,16 @@ export type ReplaceUserRolesInput = {
 
 export type RegistrationRoleRequestStatus = "pending" | "approved" | "rejected";
 
+export type OrganizationDto = {
+  id: string;
+  name: string;
+  createdAt: string;
+};
+
+export type UpdateOrganizationInput = {
+  name: string;
+};
+
 export type RegistrationRoleRequestDto = {
   id: string;
   organizationId: string;

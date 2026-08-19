@@ -25,7 +25,7 @@ values (
 ```
 
 4. 确认 `/api/v1/me` 返回 `platform-admin`，且权限含 `platform:access` 与 `platform:schema-promote`。
-5. 确认可见 `/platform-console`，且只有该用户在 `/user-permissions` 看到平台超级管理员授予控件。
+5. 确认可见 `/platform-console`，且只有该用户在 `/organization/members` 看到平台超级管理员授予控件。
 
 开发种子（`npm run db:seed:m0`，`NODE_ENV=development`）已为 ChargeLab 演示管理员绑定 `platform-admin`。
 

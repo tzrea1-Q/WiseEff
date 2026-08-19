@@ -133,6 +133,9 @@
 - `PARAM-ENABLE-VISIBLE-001`：已自动化。工作台不生效提示 + 拓扑 API enablement；`TopologyTree` 不在 `/parameters` 默认面上（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-ENABLE-TOGGLE-001`：已自动化。禁用需理由与确认；启停草稿同轮提交不触发 `mixed-working-tips`；独立 `enablement-changed` 审计（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-ENABLE-GUARD-001`：已自动化。非标准 status 只读与二级确认（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PERM-GOV-001` / `PERM-USER-MGMT-001`：Admin 在 `/organization/members` 做成员治理；非 Admin 拒绝；`coverage: automated`。
+- `ORG-ADMIN-RENAME-001`：Admin 在 `/organization` 改本组织显示名称，写 `organization-update` 审计；非 Admin `PATCH` 返回 403；`coverage: automated`。
+- `PLAT-ROLE-002`：普通 Admin 在 `/organization/members` 看不到平台超级管理员授予控件，API 拒绝自授。
 
 ## 同类中文文档
 

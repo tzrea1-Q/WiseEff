@@ -31,18 +31,19 @@ describe.skipIf(!databaseAvailable)("bootstrapLocalAdmin", () => {
     const result = await bootstrapLocalAdmin(db, {
       name: "Platform Admin",
       username: "admin.ops",
-      password: "WiseEff@2026",
-      organization: "硬件部"
+      password: "WiseEff@2026"
     });
 
     expect(result.username).toBe("admin.ops");
-    expect(result.organizationId).toBe("org-hardware-department");
+    expect(result.organizationName).toBe("WiseEff");
+    expect(result.organizationId).toMatch(/^org-/);
+    expect(result.organizationId).not.toBe("org-hardware-department");
     // The user, credential, org-wide admin binding, and audit trail are all durable.
     const user = await db.query<{ organization_id: string; name: string; is_active: boolean }>(
       `select organization_id, name, is_active from users where id = $1`,
       [result.userId]
     );
-    expect(user.rows).toEqual([{ organization_id: "org-hardware-department", name: "Platform Admin", is_active: true }]);
+    expect(user.rows).toEqual([{ organization_id: result.organizationId, name: "Platform Admin", is_active: true }]);
     const credential = await db.query<{ username: string; password_hash: string }>(
       `select username, password_hash from user_password_credentials where user_id = $1`,
       [result.userId]
@@ -55,7 +56,8 @@ describe.skipIf(!databaseAvailable)("bootstrapLocalAdmin", () => {
     );
     expect(binding.rows).toEqual([{ role_id: "admin", project_id: null }]);
     const audit = await db.query<{ kind: string; action: string }>(
-      `select kind, action from audit_events where organization_id = 'org-hardware-department'`
+      `select kind, action from audit_events where organization_id = $1`,
+      [result.organizationId]
     );
     expect(audit.rows).toEqual([{ kind: "auth-event", action: "bootstrap-admin" }]);
   });

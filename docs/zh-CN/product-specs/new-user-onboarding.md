@@ -19,7 +19,7 @@ Date: 2026-05-25
 
 ## 首次会话流程
 
-API mode 下，未认证用户会先看到 WiseEff 认证页。本地账号登录和注册已产品化，用于自管理评估流程：注册使用用户名、固定组织选项（`硬件部` / `软件部`）和允许自助选择的平台角色。Admin 不能自助注册；Committer 申请会创建 inactive 账号和待 Admin 审批的角色申请，但审批前不会登录系统或获得 session。审批通过后，账号才会被激活并授予申请的 Committer 角色。当前暂不支持邮箱验证，因此该路径不能被当作已验证域名 onboarding 或邀请接受流程。
+API mode 下，未认证用户会先看到 WiseEff 认证页。本地账号登录和注册已产品化，用于自管理评估流程：注册使用用户名和允许自助选择的平台角色，新账号加入评估组织（有种子时是 ChargeLab，否则是唯一的 bootstrap Organization）。认证页没有组织下拉。Admin 不能自助注册；Committer 申请会创建 inactive 账号和待 Admin 审批的角色申请，但审批前不会登录系统或获得 session。审批通过后，账号才会被激活并授予申请的 Committer 角色。当前暂不支持邮箱验证，因此该路径不能被当作已验证域名 onboarding 或邀请接受流程。
 
 1. 用户进入 WiseEff 首页。
 2. 用户进入“我的工作台”，查看可访问工作区和与角色相关的入口。
@@ -55,5 +55,5 @@ API mode 下，未认证用户会先看到 WiseEff 认证页。本地账号登�
 
 | ID | 场景 | 操作人 | 步骤 | 期望结果 |
 | --- | --- | --- | --- | --- |
-| PM-02 | 注册 Committer 待审批 | 新用户 | 注册 `hardware-committer` 或 `software-committer`。 | API 创建 inactive 账号，记录对应基础 User 角色，并在 `/user-permissions` 生成待审批请求；认证页显示待审批结果态，不再保留可编辑注册表单。该用户不会获得 session token，审批前登录应被拒绝。 |
-| PM-03 | 管理员审批角色 | Admin | 进入 `/user-permissions`，批准 Committer 请求。 | 账号被激活并授予申请的 Committer 角色；用户重新登录或刷新后具备审阅能力。 |
+| PM-02 | 注册 Committer 待审批 | 新用户 | 注册 `hardware-committer` 或 `software-committer`。 | API 创建 inactive 账号，记录对应基础 User 角色，并在 `/organization/members` 生成待审批请求；认证页显示待审批结果态，不再保留可编辑注册表单。该用户不会获得 session token，审批前登录应被拒绝。 |
+| PM-03 | 管理员审批角色 | Admin | 进入 `/organization/members`，批准 Committer 请求。 | 账号被激活并授予申请的 Committer 角色；用户重新登录或刷新后具备审阅能力。 |

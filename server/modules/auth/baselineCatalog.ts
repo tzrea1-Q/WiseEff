@@ -144,11 +144,6 @@ export const baselinePlatformRoles: BaselineRoleSeed[] = [
   ]
 ] as const;
 
-export const baselineRegistrationOrganizations = [
-  ["org-hardware-department", "硬件部"],
-  ["org-software-department", "软件部"]
-] as const;
-
 export async function seedBaselinePlatformRoles(db: Database) {
   for (const [id, name, level, permissions] of baselinePlatformRoles) {
     await db.query(
@@ -162,20 +157,6 @@ export async function seedBaselinePlatformRoles(db: Database) {
   }
 }
 
-export async function seedBaselineRegistrationOrganizations(db: Database) {
-  for (const [id, name] of baselineRegistrationOrganizations) {
-    await db.query(
-      `
-      insert into organizations (id, name)
-      values ($1, $2)
-      on conflict (id) do update set name = excluded.name
-      `,
-      [id, name]
-    );
-  }
-}
-
 export async function seedBaselineAuthCatalog(db: Database) {
-  await seedBaselineRegistrationOrganizations(db);
   await seedBaselinePlatformRoles(db);
 }

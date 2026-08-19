@@ -15,7 +15,8 @@ const coreRoutes = [
   "/parameter-admin",
   "/logs",
   "/debugging",
-  "/user-permissions",
+  "/organization",
+  "/organization/members",
   // FA-25 expansion routes.
   "/parameter-home",
   "/parameter-admin/projects/aurora/configuration",
@@ -118,7 +119,7 @@ test.describe("M5.11 accessibility quality gate", () => {
     await expect(page.locator(".workbench-sheet")).toBeVisible();
     await scan(page, testInfo, "debugging-node-sheet");
 
-    await page.goto("/user-permissions");
+    await page.goto("/organization/members");
     await prepareInteractionSurface(page);
     await page.getByRole("button", { name: "添加用户" }).click();
     await expect(page.getByRole("dialog", { name: "添加用户" })).toBeVisible();

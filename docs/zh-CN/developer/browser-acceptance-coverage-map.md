@@ -88,6 +88,8 @@
 - `XIAOZE-APPROVAL-EXEC-FAIL-001`：批准后工具执行失败时，聊天应出现中文 assistant 失败回合（`操作未能完成` + 原因），线程仍可用，「新对话」不被 pending interrupt 卡住。本切片以图与 AG-UI 装配测试为阻断门禁；浏览器路径需要陈旧工作版本 / overlay 夹具，登记为诚实的 `@acceptance-planned` 桩（`e2e/acceptance/xiaoze-action.acceptance.spec.ts`）。
 - `XIAOZE-PLAN-MULTISTEP-001`：多步计划在批准后 checkpoint resume，并报告观察到的执行结果（`e2e/acceptance/xiaoze-planning.acceptance.spec.ts`）。
 - `XIAOZE-PROACTIVE-001`：opt-in 主动建议为只读、受 authz 限制；关闭时不展示（`e2e/acceptance/xiaoze-planning.acceptance.spec.ts`）。
+- `PERM-GOV-001` / `PERM-USER-MGMT-001`：`/organization/members` 的 Admin 成员治理与非 Admin 拒绝（`e2e/acceptance/permissions.acceptance.spec.ts`）。
+- `ORG-ADMIN-RENAME-001`：Admin 在 `/organization` 改名 + 审计 + 非 Admin `PATCH` 403（`e2e/acceptance/permissions.acceptance.spec.ts`）。
 - `MOD-TREE-PARAM-001`：Admin 创建嵌套参数模块、将参数挂到子模块，并按父模块筛选时包含子树（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
 - `MOD-TREE-PARAM-002`：Admin 移动参数模块到新父节点，循环移动被拒绝（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
 - `MOD-TREE-DEBUG-001`：Admin 创建嵌套调试节点模块，父模块筛选包含子模块下的节点（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。

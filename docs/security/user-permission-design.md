@@ -15,7 +15,11 @@ This note defines the current WiseEff platform permission model for role behavio
 | Software User | Software-side operator who can use software workflows and all Hardware User operations. |
 | Hardware Committer | Hardware MDE/reviewer role with Hardware User operations plus hardware commit/review responsibilities. |
 | Software Committer | Software MDE/reviewer role with Hardware User operations plus software commit/review responsibilities. |
-| Admin | Governance role for user, permission, audit, and admin surfaces. Admin is not a blanket workflow assignee. |
+| Admin | Governance role for user, permission, audit, and admin surfaces, including Organization administration (`/organization`). Admin is not a blanket workflow assignee. |
+
+## Organization administration
+
+`/organization` is the Organization administration profile. `/organization/members` is people management. Both are home-organization tenant operations. `GET /api/v1/organization` is available to any active authenticated member. `PATCH /api/v1/organization` requires `users:manage`, accepts `{ name }` only, and writes `organization-update` in the same transaction. The name is a label, not a globally unique identifier. This is distinct from Organization-scoped governance on `/parameter-admin`.
 
 ## Inclusion Rules
 

@@ -30,7 +30,15 @@ Expand lazily via `/domain-modeling` when terms are resolved. Prefer terms from 
 | Xiaoze | WiseEff Agent assistant surface in the product |
 | Parameter admin | Governance surface for parameter specs, review queues, module/driver mappings, project files, config sets, and baselines. Does not own everyday binding edits |
 | Parameter workbench | Everyday surface where users read topology and propose binding changes. Does not own governance queues or catalog upkeep |
-| Organization-scoped governance | Parameter assets governed independently of any single project: specs, module trees, business categories, policy targets |
+| Organization | The tenant boundary: one company or one deployment customer. A user, a project, and every organization-scoped catalog belong to exactly one Organization. Not a department, team, or discipline. _Avoid_: tenant (as a product noun), department, team, 硬件部, 软件部 |
+| Home organization | The single Organization a user belongs to. `AuthContext` always carries it; a user cannot belong to two Organizations and cannot change it from their profile |
+| Organization administration | 「组织管理」— the product surface for operating the caller's home organization: membership, onboarding, and the Organization display name (`users:manage`). It replaces the user-permissions utility, not the parameter-admin organization area. It does not list, create, or switch Organizations. Distinct from Organization-scoped governance. _Avoid_: 组织治理, organization governance (ambiguous) |
+| Organization display name | The mutable human label of an Organization. Identity stays on `organizations.id`. Not a slug, department, or Role discipline |
+| Evaluation Organization | The Organization local self-registration joins. In the seeded local profile that row is ChargeLab (`org-chargelab`). Not a second kind of Organization. _Avoid_: 硬件部, 软件部 (retired join targets) |
+| Organization membership | Belonging to one Organization. It is not access to a project and does not imply a project-scoped role |
+| Project member | A user's membership in one project. Out of Organization administration; not implied by Organization membership. _Avoid_: treating the unused project-scoped role binding as shipped product |
+| Organization-scoped governance | Parameter assets governed independently of any single project: specs, module trees, business categories, policy targets. A catalog-scope axis (ADR-0001), not the Organization administration product |
+| Role discipline | The hardware or software side of a platform role (`RoleDiscipline`). A property of the role, never an Organization. Local registration labels 硬件部 / 软件部 were a department-as-tenant accident, not this term |
 | Project-scoped operations | Parameter assets owned by one project: files, config sets, release baselines, bindings |
 | Project configuration workbench | The project-scoped operational surface where Admins manage source files, configuration composition, release state, and file conflicts in one project context. Distinct from the everyday parameter workbench, which is organized around reading and proposing parameter changes |
 | Config set | A project-scoped, buildable composition of a primary DTS and any supporting parameter files. It is the working context of the project configuration workbench; a release baseline snapshots its member file versions |
@@ -72,7 +80,7 @@ Expand lazily via `/domain-modeling` when terms are resolved. Prefer terms from 
 | Organization driver schema overlay | An org-owned manual driver schema (exact compatible + property definitions) that merges into the schema registry as the lowest releasable tier. Closes "parse uncovered" without editing repository files (ADR-0008) |
 | Platform driver schema tier | A promoted overlay row scoped to no organization (`driver_schema_overlays.organization_id IS NULL`), readable by every tenant, matched ahead of org overlays and behind vendor (ADR-0009) |
 | Overlay promotion | The reviewed platform act (`platform-admin` / `platform:schema-promote`) that lifts organization overlays into the platform tier, superseding contributing org rows instead of deleting them |
-| Platform super admin | Cross-organization role `platform-admin`. Home organization stays required on AuthContext; does not widen tenant business-data access; unlocks platform rows and promotion |
+| Platform super admin | Cross-organization role `platform-admin`. Home organization stays required on AuthContext; does not widen access to other Organizations' parameters, logs, users, or projects; unlocks platform rows and promotion |
 | Observed coverage | Whether a registered driver has produced parameters in at least one project. None means declared but not yet seen, which is a normal state rather than a misconfiguration |
 | Not-yet-observed driver group | A registered driver group holding no parameters. Shown in the tree rather than hidden, because being visible before the DTS arrives is why it was registered |
 | DTS reload debugging | Product UI title 「参数调试」 on `/dts-reload` — validating candidate parameter values on real hardware by generating a device-tree overlay from library parameters, compiling it, deploying it, and triggering a kernel reload. The unit of work is a batch of parameters reloaded together, never one property at a time. Distinct from node debugging, which reads and writes individual runtime node paths. Distinct from the product-offline legacy `/debugging` route (TD-032) |
@@ -156,4 +164,9 @@ Architectural decisions: [`docs/adr/`](docs/adr/) (created lazily). Feature-scop
 - [`0029`](docs/adr/0029-parameter-platform-primitives-live-in-a-standalone-kernel-module.md) — parameter platform primitives live in a standalone kernel module
 - [`0030`](docs/adr/0030-projects-are-a-standalone-module.md) — projects are a standalone module
 - [`0031`](docs/adr/0031-xiaoze-wire-contract-is-a-shared-package.md) — the Xiaoze wire contract is a shared package
+- [`0032`](docs/adr/0032-semantic-edits-on-active-definitions-mint-a-successor.md) — semantic edits on an active definition mint a successor version
+- [`0033`](docs/adr/0033-identity-mapping-uses-protected-re-resolve.md) — identity mapping mistakes re-resolve in place
+- [`0034`](docs/adr/0034-referenced-property-key-rename-is-a-source-cutover.md) — referenced property-key rename is a staged source-rewriting cutover
+- [`0035`](docs/adr/0035-debug-value-promotion-stages-drafts.md) — proven debug values promote through parameter drafts
 - [`0036`](docs/adr/0036-workflow-discovery-uses-a-visible-workflow-allowlist.md) — workflow discovery uses a visible-workflow allowlist
+- [`0037`](docs/adr/0037-organization-administration-is-home-org-tenant-operations.md) — Organization administration is home-org tenant operations, not departments or project ACL

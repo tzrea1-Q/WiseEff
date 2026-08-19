@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import { ColumnFilter } from "@/components/ColumnFilter";
+import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
 import type { UnmappedCompatibleHint } from "@/domain/parameter-topology/moduleDiscovery";
 
 export type UnclassifiedCompatibleQueueProps = {
@@ -100,7 +101,7 @@ export function UnclassifiedCompatibleQueue({
       </div>
 
       {hints.length === 0 ? null : (
-        <div className="unclassified-compatible-queue__table-wrap">
+        <HorizontalDragScroll className="unclassified-compatible-queue__table-wrap">
           <table className="unclassified-compatible-queue__table">
             <thead>
               <tr>
@@ -234,7 +235,7 @@ export function UnclassifiedCompatibleQueue({
               )}
             </tbody>
           </table>
-        </div>
+        </HorizontalDragScroll>
       )}
 
       {dismissedHints.length > 0 ? (

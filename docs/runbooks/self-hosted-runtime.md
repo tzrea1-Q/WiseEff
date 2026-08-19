@@ -90,10 +90,10 @@ Use this only for controlled self-managed deployments with `AUTH_PROVIDER=local`
   --username admin.ops \
   --password 'ReplaceWithAStrongPassword' \
   --name 'Platform Admin' \
-  --organization 硬件部
+  --organization WiseEff
 ```
 
-Then log in through the UI with that username and password. Additional admins should be created from **User Permissions** after login.
+Then log in through the UI with that username and password. Additional admins should be created from people management (`/organization/members`) after login. If ChargeLab is already seeded, bootstrap joins that row instead of creating `WiseEff`.
 
 If bootstrap reports that an admin already exists, use the governance UI or reset the deployment database; the command is intentionally one-shot for safety.
 

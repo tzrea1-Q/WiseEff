@@ -28,6 +28,8 @@ import { createHttpParameterRepository } from "@/infrastructure/http/parameterCl
 import { createHttpParameterDashboardRepository } from "@/infrastructure/http/parameterDashboardClient";
 import { createHttpProductFeedbackRepository } from "@/infrastructure/http/productFeedbackClient";
 import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
+import { createMockOrganizationActions } from "@/infrastructure/mock/mockOrganizationActions";
+import type { OrganizationActions } from "@/OrganizationPage";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { createMockKnowledgeRepository } from "@/infrastructure/mock/mockKnowledgeRepository";
 import { createMockParameterDashboardRepository } from "@/infrastructure/mock/mockParameterDashboardRepository";
@@ -62,6 +64,7 @@ export type AppRuntime = {
   debuggingGateway: DebuggingGateway;
   debuggingAdminClient?: ReturnType<typeof createDebuggingAdminClient>;
   userGovernanceActions?: UserGovernanceActions;
+  organizationActions?: OrganizationActions;
   listParameterConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
 };
 
@@ -112,6 +115,16 @@ export function createAppRuntime(
       resolveDebuggingGateway({ mode, getDebugParameters: () => deps.getState().debugParameters }),
     debuggingAdminClient: overrides.debuggingAdminClient ?? (api ? createDebuggingAdminClient() : undefined),
     userGovernanceActions: overrides.userGovernanceActions ?? (api ? createUserGovernanceClient() : undefined),
+    organizationActions:
+      overrides.organizationActions ??
+      (overrides.userGovernanceActions?.getOrganization && overrides.userGovernanceActions.updateOrganization
+        ? {
+            getOrganization: overrides.userGovernanceActions.getOrganization,
+            updateOrganization: overrides.userGovernanceActions.updateOrganization
+          }
+        : api
+          ? createUserGovernanceClient()
+          : createMockOrganizationActions()),
     listParameterConfigSets: overrides.listParameterConfigSets
   };
 }

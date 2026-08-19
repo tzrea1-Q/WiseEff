@@ -7,9 +7,12 @@ type QueryCall = {
   values: unknown[];
 };
 
-function createMemoryLocalAuthDb() {
+function createMemoryLocalAuthDb(extraOrganizations: Array<{ id: string; name: string }> = []) {
   const calls: QueryCall[] = [];
-  const organizations = new Map<string, { id: string; name: string }>();
+  const organizations = new Map<string, { id: string; name: string }>([
+    ["org-chargelab", { id: "org-chargelab", name: "ChargeLab" }],
+    ...extraOrganizations.map((organization) => [organization.id, organization] as const)
+  ]);
   const users = new Map<string, { id: string; organizationId: string; name: string; email: string | null; title: string; isActive: boolean }>();
   const credentials = new Map<string, { username: string; passwordHash: string }>();
   const roles = new Map<string, Array<{ projectId: string | null; roleId: string }>>();
@@ -24,6 +27,17 @@ function createMemoryLocalAuthDb() {
       const username = String(values[0]).toLowerCase();
       const credential = Array.from(credentials.entries()).find(([, item]) => item.username.toLowerCase() === username);
       return { rows: (credential ? [{ id: credential[0] }] : []) as Row[], rowCount: credential ? 1 : 0 };
+    }
+
+    if (normalized.includes("from organizations") && normalized.includes("where id = $1")) {
+      const organization = organizations.get(values[0] as string);
+      return { rows: (organization ? [organization] : []) as Row[], rowCount: organization ? 1 : 0 };
+    }
+
+    if (normalized.includes("from organizations") && normalized.includes("id <> all($1::text[])")) {
+      const retired = new Set(values[0] as string[]);
+      const rows = Array.from(organizations.values()).filter((organization) => !retired.has(organization.id));
+      return { rows: rows as Row[], rowCount: rows.length };
     }
 
     if (normalized.startsWith("insert into organizations")) {
@@ -179,13 +193,12 @@ function expectAuthenticatedRegistration(result: RegisterLocalAccountResult) {
 }
 
 describe("local auth service", () => {
-  it("registers a local account with the selected organization, username, and role", async () => {
+  it("registers a local account into the evaluation organization without a department picker", async () => {
     const { calls, db } = createMemoryLocalAuthDb();
     const service = createLocalAuthService(db, { now: () => new Date("2026-06-12T00:00:00.000Z") });
 
     const result = expectAuthenticatedRegistration(await service.register(
       {
-        organization: "硬件部",
         name: "Pilot Admin",
         username: "pilot.admin",
         roleId: "hardware-user",
@@ -196,21 +209,19 @@ describe("local auth service", () => {
 
     expect(result.auth.user.username).toBe("pilot.admin");
     expect(result.auth.user.email).toBeUndefined();
-    expect(result.auth.organization.id).toBe("org-hardware-department");
-    expect(result.auth.organization.name).toBe("硬件部");
+    expect(result.auth.organization).toEqual({ id: "org-chargelab", name: "ChargeLab" });
     expect(result.auth.roles).toEqual([{ projectId: null, roleId: "hardware-user" }]);
     expect(result.auth.permissions).toContain("parameter:edit");
     expect(result.auth.permissions).not.toContain("users:manage");
     expect(result.session.token).toMatch(/^we_local_/);
     expect(calls.find((call) => call.text.includes("insert into users"))?.text).not.toContain("email");
+    expect(calls.some((call) => call.text.includes("insert into organizations"))).toBe(false);
+    expect(calls.find((call) => call.text.includes("insert into users"))?.values).not.toContain("org-hardware-department");
   });
 
-  it("can override the registration organization for local development demos", async () => {
-    const { db } = createMemoryLocalAuthDb();
-    const service = createLocalAuthService(db, {
-      now: () => new Date("2026-06-12T00:00:00.000Z"),
-      registrationOrganizationResolver: () => ({ id: "org-chargelab", name: "ChargeLab" })
-    });
+  it("ignores a retired department organization field instead of minting that tenant", async () => {
+    const { calls, db } = createMemoryLocalAuthDb();
+    const service = createLocalAuthService(db, { now: () => new Date("2026-06-12T00:00:00.000Z") });
 
     const result = expectAuthenticatedRegistration(await service.register(
       {
@@ -224,16 +235,36 @@ describe("local auth service", () => {
     ));
 
     expect(result.auth.organization).toEqual({ id: "org-chargelab", name: "ChargeLab" });
+    expect(calls.some((call) => call.values.includes("org-hardware-department"))).toBe(false);
+  });
+
+  it("can override the registration organization for isolation tests", async () => {
+    const { db } = createMemoryLocalAuthDb([{ id: "org-fixture", name: "Fixture Org" }]);
+    const service = createLocalAuthService(db, {
+      now: () => new Date("2026-06-12T00:00:00.000Z"),
+      registrationOrganizationResolver: () => ({ id: "org-fixture", name: "Fixture Org" })
+    });
+
+    const result = expectAuthenticatedRegistration(await service.register(
+      {
+        name: "Demo User",
+        username: "demo.user",
+        roleId: "hardware-user",
+        password: "strong-password"
+      },
+      { requestId: "request-1" }
+    ));
+
+    expect(result.auth.organization).toEqual({ id: "org-fixture", name: "Fixture Org" });
     expect(result.auth.roles).toEqual([{ projectId: null, roleId: "hardware-user" }]);
   });
 
-  it("reuses the stable organization id for the selected local registration organization", async () => {
+  it("reuses the evaluation organization for every local registration", async () => {
     const { db } = createMemoryLocalAuthDb();
     const service = createLocalAuthService(db, { now: () => new Date("2026-06-12T00:00:00.000Z") });
 
     const first = expectAuthenticatedRegistration(await service.register(
       {
-        organization: "硬件部",
         name: "Hardware One",
         username: "hardware.one",
         roleId: "hardware-user",
@@ -243,18 +274,16 @@ describe("local auth service", () => {
     ));
     const second = expectAuthenticatedRegistration(await service.register(
       {
-        organization: "硬件部",
-        name: "Hardware Two",
-        username: "hardware.two",
-        roleId: "hardware-user",
+        name: "Software Two",
+        username: "software.two",
+        roleId: "software-user",
         password: "strong-password"
       },
       { requestId: "request-2" }
     ));
 
-    expect(first.auth.organization.id).toBe("org-hardware-department");
-    expect(second.auth.organization.id).toBe("org-hardware-department");
-    expect(first.auth.organization.name).toBe("硬件部");
+    expect(first.auth.organization).toEqual({ id: "org-chargelab", name: "ChargeLab" });
+    expect(second.auth.organization).toEqual({ id: "org-chargelab", name: "ChargeLab" });
   });
 
   it("rejects self-service Admin registration", async () => {
@@ -264,7 +293,6 @@ describe("local auth service", () => {
     await expect(
       service.register(
         {
-          organization: "硬件部",
           name: "Self Admin",
           username: "self.admin",
           roleId: "admin",
@@ -281,7 +309,6 @@ describe("local auth service", () => {
 
     const result = await service.register(
       {
-        organization: "软件部",
         name: "Committer Candidate",
         username: "committer.candidate",
         roleId: "software-committer",
@@ -307,7 +334,6 @@ describe("local auth service", () => {
 
     await service.register(
       {
-        organization: "软件部",
         name: "Committer Candidate",
         username: "committer.candidate",
         roleId: "software-committer",
@@ -327,7 +353,6 @@ describe("local auth service", () => {
 
     const result = expectAuthenticatedRegistration(await service.register(
       {
-        organization: "硬件部",
         name: "Default User",
         username: "default.user",
         password: "strong-password"
@@ -345,7 +370,6 @@ describe("local auth service", () => {
 
     await service.register(
       {
-        organization: "硬件部",
         name: "Pilot Admin",
         username: "pilot.admin",
         password: "strong-password"
@@ -364,7 +388,6 @@ describe("local auth service", () => {
     const service = createLocalAuthService(db, { now: () => new Date("2026-06-12T00:00:00.000Z") });
     const registered = expectAuthenticatedRegistration(await service.register(
       {
-        organization: "软件部",
         name: "Pilot Admin",
         username: "pilot.admin",
         password: "strong-password"
@@ -382,7 +405,6 @@ describe("local auth service", () => {
     const service = createLocalAuthService(db, { now: () => new Date("2026-06-12T00:00:00.000Z") });
     const registered = expectAuthenticatedRegistration(await service.register(
       {
-        organization: "软件部",
         name: "Pilot Admin",
         username: "pilot.admin",
         password: "strong-password"
@@ -398,7 +420,6 @@ describe("local auth service", () => {
     const service = createLocalAuthService(db, { now: () => new Date("2026-06-12T00:00:00.000Z") });
     const registered = expectAuthenticatedRegistration(await service.register(
       {
-        organization: "软件部",
         name: "Pilot Admin",
         username: "pilot.admin",
         password: "strong-password"

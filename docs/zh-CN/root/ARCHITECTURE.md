@@ -15,6 +15,7 @@
 
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
+- 组织管理（ADR-0037）是本组织租户运营：`server/modules/users/` 提供 `GET`/`PATCH /api/v1/organization`，产品入口为 `/organization`。硬件/软件是 Role 学科，不是 Organizations。
 - 参数身份已从路径派生模型转向 `parameter-topology` / `parameter-specs`（源树 vs 生效树、稳定 binding、版本化规格）；生产切换见 `docs/runbooks/parameter-identity-cutover.md`。
 - 模块归属 v2 后端在 `server/modules/parameter-modules/`：注册表、发现 hints、compatible 忽略、映射预览/范围应用、binding 重算（`dryRun`）与驱动组解散；工作台与 `/parameter-admin/modules`（**模块归属**）共用该边界。
 - DTS 重载调试在 `server/modules/dts-reload/`：调试 overlay 生成与预检、重载配置、进程内桥接部署（ADR-0020）、重载快照（ADR-0021）、残留 / 恢复基线与运行历史。权限 `debugging:dts-reload`；UI 为 `/dts-reload`，配置在 `/debugging-admin`（节点目录对等页为 `/debugging-admin/nodes`）。

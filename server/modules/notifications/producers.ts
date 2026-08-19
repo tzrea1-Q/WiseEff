@@ -18,7 +18,7 @@ function logsUrl() {
 }
 
 function userPermissionsUrl() {
-  return "/user-permissions";
+  return "/organization/members";
 }
 
 const backendRoleLabels: Record<string, string> = {

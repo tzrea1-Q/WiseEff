@@ -26,7 +26,7 @@ describe.skipIf(!databaseAvailable)("IP lab admin provision", () => {
       name: "Hardware Admin",
       username: "hardware.admin",
       password: "WiseEff@2026",
-      organization: "硬件部"
+      organization: "Other Lab"
     });
 
     const created = await ensureIpLabAdmin(db, {
@@ -51,9 +51,9 @@ describe.skipIf(!databaseAvailable)("IP lab admin provision", () => {
       name: "Platform Admin",
       username: "admin.ops",
       password: "WiseEff@2026",
-      organization: "硬件部"
+      organization: "Other Lab"
     });
-    expect(bootstrapped.organizationId).toBe("org-hardware-department");
+    expect(bootstrapped.organizationId).not.toBe(ipLabSeedOrganizationId);
 
     const first = await attachLocalAdminToSeedOrganization(db, "admin.ops");
     const second = await ensureIpLabAdmin(db, {

@@ -1,5 +1,6 @@
 import { Pencil, Search, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
+import { useHorizontalDragScroll } from "@/hooks/useHorizontalDragScroll";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import type { ParamAdminProjectsSearch } from "@/hooks/useParamAdminProjectsSearch";
 import type { ParameterAdminProjectRow } from "@/parameterAdminProjects";
@@ -72,6 +73,7 @@ export function ProjectAdminTable({
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const tableScrollRailRef = useRef<HTMLDivElement | null>(null);
   const tableScrollThumbRef = useRef<HTMLDivElement | null>(null);
+  useHorizontalDragScroll(tableScrollRef);
 
   useEffect(() => {
     const scroller = tableScrollRef.current;

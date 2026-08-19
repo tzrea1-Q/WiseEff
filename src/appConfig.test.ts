@@ -107,11 +107,21 @@ describe("WiseEff prototype configuration", () => {
     expect(getXiaozeContextSummary("/node-debugging")).toContain("HDC");
   });
 
-  it("resolves the shared user permissions route outside the main navigation map", () => {
-    const page = getPageByPath("/user-permissions");
+  it("resolves organization administration peers and permanently redirects the retired user-permissions path", () => {
+    const page = getPageByPath("/organization");
+    const members = getPageByPath("/organization/members");
+    const legacy = getPageByPath("/user-permissions");
 
     expect(page.key).toBe("user-permissions");
-    expect(page.path).toBe("/user-permissions");
+    expect(page.path).toBe("/organization");
+    expect(page.subtitle).toContain("档案");
+    expect(members.key).toBe("user-permissions");
+    expect(members.path).toBe("/organization/members");
+    expect(members.subtitle).toContain("成员");
+    expect(legacy.path).toBe("/organization/members");
+    expect(getXiaozeContextSummary("/organization")).toContain("档案");
+    expect(getXiaozeContextSummary("/organization/members")).toContain("成员");
+    expect(navigationItems.map((item) => item.path)).not.toContain("/organization");
     expect(navigationItems.map((item) => item.path)).not.toContain("/user-permissions");
   });
 
@@ -136,14 +146,14 @@ describe("WiseEff prototype configuration", () => {
     expect(getXiaozeContextSummary("/parameter-comparison")).toContain("已下线");
   });
 
-  it("makes user management a utility route to user permissions", () => {
-    const userManagement = utilityItems.find((item) => item.label.includes("用户管理"));
+  it("makes organization administration a utility route", () => {
+    const organizationAdmin = utilityItems.find((item) => item.label.includes("组织管理"));
 
-    expect(userManagement?.path).toBe("/user-permissions");
+    expect(organizationAdmin?.path).toBe("/organization");
   });
 
   it("places feedback admin directly after the sidebar feedback entry", () => {
-    expect(utilityItems.map((item) => item.label)).toEqual(["平台控制台", "反馈管理", "审计中心", "用户管理"]);
+    expect(utilityItems.map((item) => item.label)).toEqual(["平台控制台", "反馈管理", "审计中心", "组织管理"]);
   });
 
   it("does not expose a disabled Agent utility item", () => {

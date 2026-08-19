@@ -2,6 +2,7 @@ import { ChevronLeft, ChevronRight, Pencil, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { ColumnFilter } from "@/components/ColumnFilter";
+import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
 import { paginateItems } from "@/domain/parameter-topology/moduleProvenance";
 
 import { SpecReviewTaskDialog } from "./SpecReviewTaskDialog";
@@ -225,7 +226,7 @@ export function SpecReviewQueue({
           </span>
         </div>
 
-        <div className="parameters-table-scroll">
+        <HorizontalDragScroll className="parameters-table-scroll">
           {/*
             No <colgroup>: with table-layout:fixed, display:none cells still reserve
             width via <col>, which left a large right gap when 所属模块 / 受影响项目 hide.
@@ -307,7 +308,7 @@ export function SpecReviewQueue({
               })}
             </tbody>
           </table>
-        </div>
+        </HorizontalDragScroll>
 
         {filtered.length > 0 ? (
           <div className="parameters-table-pagination param-admin-row-actions parameter-spec-library-pagination">

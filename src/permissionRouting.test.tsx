@@ -32,7 +32,7 @@ describe("permission-aware routing", () => {
     expect(navigation.getByRole("button", { name: /参数修改|鍙傛暟淇敼/ })).toBeInTheDocument();
     expect(navigation.queryByRole("button", { name: /变更审阅|鍙傛暟瀹￠槄/ })).not.toBeInTheDocument();
     expect(navigation.queryByRole("button", { name: /参数调试|鍙傛暟璋冭瘯/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /用户管理|鐢ㄦ埛绠＄悊/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /组织管理/ })).not.toBeInTheDocument();
   });
 
   it("lets platform-admin see the platform console utility entry", async () => {
@@ -48,13 +48,13 @@ describe("permission-aware routing", () => {
 
     render(<App initialAppState={{ ...initialState, activeRoleId: "admin" }} />);
 
-    const settingsEntry = screen.getByRole("button", { name: /^打开 用户管理$/ });
+    const settingsEntry = screen.getByRole("button", { name: /^打开 组织管理$/ });
     expect(settingsEntry).toBeInTheDocument();
 
     fireEvent.click(settingsEntry);
 
     await waitFor(() => {
-      expect(screen.getByText("用户权限管理")).toBeInTheDocument();
+      expect(document.querySelector(".topbar-title")).toHaveTextContent("组织管理");
     });
   });
 

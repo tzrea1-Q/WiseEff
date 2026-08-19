@@ -25,7 +25,7 @@ values (
 ```
 
 4. Confirm `/api/v1/me` returns `platform-admin` and permissions include `platform:access` and `platform:schema-promote`.
-5. Confirm `/platform-console` is visible and `/user-permissions` shows the platform-admin grant control only for this user.
+5. Confirm `/platform-console` is visible and `/organization/members` shows the platform-admin grant control only for this user.
 
 Development seed (`npm run db:seed:m0`) already binds `platform-admin` for the ChargeLab demo admin when `NODE_ENV=development`.
 
