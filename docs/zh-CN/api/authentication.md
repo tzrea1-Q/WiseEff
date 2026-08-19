@@ -66,25 +66,28 @@ AUTH_PROVIDER=local
 
 | 路由 | 用途 |
 | --- | --- |
-| `POST /api/v1/auth/register` | 使用允许自助选择的平台角色注册本地账号。账号加入评估组织（有种子时是 ChargeLab，否则是唯一的 bootstrap Organization）。非 Committer 角色返回带 session 的 `201`；Committer 申请返回无 token 的 `202 pending_approval`。 |
+| `GET /api/v1/auth/local-config` | 未认证可读的认证页公开配置：`{ provider, selfRegisterEnabled, hasLocalAdmin, evaluationOrganizationName }`。非 local provider 仍返回 `200`，且 `selfRegisterEnabled: false`、`hasLocalAdmin: true`，避免误显示 bootstrap 提示。 |
+| `POST /api/v1/auth/register` | 使用允许自助选择的平台角色注册本地账号。账号加入评估组织（有种子时是 ChargeLab，否则是唯一的 bootstrap Organization）。非 Committer 角色返回带 session 的 `201`；Committer 申请返回无 token 的 `202 pending_approval`。`AUTH_LOCAL_SELF_REGISTER=false` 时返回 `FORBIDDEN`。登录与注册共用进程内滑动窗口限流（`AUTH_LOCAL_AUTH_MAX_ATTEMPTS` / `AUTH_LOCAL_AUTH_WINDOW_MS`），超出返回 `RATE_LIMITED`（HTTP 429）。 |
 | `GET /api/v1/organization` | 返回调用方本组织（`id`、`name`、`createdAt`）。任意已启用的已认证成员。 |
 | `PATCH /api/v1/organization` | 修改本组织显示名称（仅 `{ name }`）。需要 `users:manage`。同一事务写入 `organization-update`。 |
-| `POST /api/v1/auth/login` | 使用用户名和 password 换取本地会话 token。 |
+| `POST /api/v1/auth/login` | 使用用户名和 password 换取本地会话 token。失败尝试写入 `auth-event` / `login-failed`（用户名未知时 actor 与 target 可为 null；组织尽量落到评估组织）。 |
 | `POST /api/v1/auth/logout` | 撤销当前本地会话 token。 |
 | `GET /api/v1/me` | 返回已认证用户的 `AuthContext`。 |
 | `PATCH /api/v1/me/profile` | 更新当前用户的姓名和职务。 |
+| `POST /api/v1/me/password` | 当前用户改密（`{ currentPassword, newPassword }`）。校验当前密码、更新 salted `scrypt` 哈希、保留当前会话，并吊销该用户其它会话。 |
 | `POST /api/v1/users` | 让 Admin 在当前组织中创建已启用的本地账号，并设置用户名、初始密码、职务和角色绑定。 |
+| `POST /api/v1/users/:userId/password` | 让 Admin 重置用户本地密码（`{ password }`）。需要 `users:manage`。吊销该用户全部会话。 |
 | `GET /api/v1/users/registration-role-requests` | 让 Admin 查看待审批的本地 Committer 注册申请。 |
 | `POST /api/v1/users/registration-role-requests/:requestId/approve` | 让 Admin 批准待审批的 Committer 角色申请。 |
 | `POST /api/v1/users/registration-role-requests/:requestId/reject` | 让 Admin 拒绝待审批的 Committer 角色申请。 |
 
-注册请求包含 `name`、`username`、`roleId` 和 `password`。遗留的可选 `organization` 字段会被忽略，且不得再创建硬件部 / 软件部租户。自助注册永远不接受 `admin`；申请 `hardware-committer` 或 `software-committer` 时，账号会以 inactive 状态创建，先写入对应基础 User 角色，并创建待 Admin 审批的角色申请。该路径不会创建 session token，密码登录也会在审批前被拒绝；只有审批通过后才激活账号并授予申请的 Committer 角色。本地账号不再保存或返回 email 地址，用户名就是本地登录标识。当前暂时不支持邮箱验证，因此注册不能被当作已验证域名 onboarding 或邀请接受流程。
+注册请求包含 `name`、`username`、`roleId` 和 `password`。遗留的可选 `organization` 字段会被忽略，且不得再创建硬件部 / 软件部租户。自助注册永远不接受 `admin`。操作者可用 `AUTH_LOCAL_SELF_REGISTER=false` 关闭该路由；`GET /api/v1/auth/local-config` 返回 `selfRegisterEnabled: false` 时，认证页隐藏「注册」。申请 `hardware-committer` 或 `software-committer` 时，账号会以 inactive 状态创建，先写入对应基础 User 角色，并创建待 Admin 审批的角色申请。该路径不会创建 session token，密码登录也会在审批前被拒绝；只有审批通过后才激活账号并授予申请的 Committer 角色。本地账号不再保存或返回 email 地址，用户名就是本地登录标识。当前暂时不支持邮箱验证，因此注册不能被当作已验证域名 onboarding 或邀请接受流程。
 
 管理员创建用户不走自助注册，而是使用 `POST /api/v1/users`。请求包含 `name`、`username`、`password`、可选 `title` 和 `roles`；后端会在一个事务中创建用户、密码凭据、角色绑定和审计事件。这类账号会立即启用，包括 Committer/MDE 角色，因为该操作本身已经要求 `users:manage` 权限。响应和审计 metadata 都不能返回或记录明文密码、密码哈希。
 
 本地账号注册（`AUTH_PROVIDER=local`）加入评估组织：有 ChargeLab（`org-chargelab`）就加入它，否则加入唯一的 bootstrap Organization。这是 development 与非 development 的产品规则，不是 `NODE_ENV` 例外。development profile 下，`db:seed:m0` 还会为 ChargeLab 演示 persona upsert 固定 username 与共用演示密码（见 [本地开发](../developer/local-development.md) 中的演示登录说明）；非 development 的 seed 不写这些凭据。
 
-密码只以 salted `scrypt` 哈希保存在 `user_password_credentials`。只有登录成功或非 Committer 注册成功才会在响应中返回一次不透明的 `we_local_*` bearer token；待审批 Committer 注册和管理员创建本地账号都不会在创建响应中返回 session token。数据库 `auth_sessions` 只保存 SHA-256 token 哈希。会话会按服务 TTL 过期，退出登录会写入 `revoked_at`。注册、登录、退出、资料更新、本组织改名、管理员创建用户、角色替换和启停账号都会写审计事件。
+密码只以 salted `scrypt` 哈希保存在 `user_password_credentials`。只有登录成功或非 Committer 注册成功才会在响应中返回一次不透明的 `we_local_*` bearer token；待审批 Committer 注册和管理员创建本地账号都不会在创建响应中返回 session token。数据库 `auth_sessions` 只保存 SHA-256 token 哈希。会话会按服务 TTL 过期，退出登录会写入 `revoked_at`。当前用户改密会保留本次会话并吊销其它会话；Admin 重置密码会吊销该用户全部会话。注册、登录、失败登录、退出、改密、Admin 重置密码、资料更新、本组织改名、管理员创建用户、角色替换和启停账号都会写审计事件。
 
 登录后的请求使用：
 

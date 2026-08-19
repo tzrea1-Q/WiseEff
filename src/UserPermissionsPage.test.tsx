@@ -447,16 +447,31 @@ describe("UserPermissionsPage", () => {
 
     expect(userGovernanceActions.assignUserRole).toHaveBeenCalledWith("u-liu-min", "software-committer");
     expect(userGovernanceActions.setUserActive).toHaveBeenCalledWith("u-liu-min", false);
+  });
+
+  it("resets a member password through the governance action", async () => {
+    const userGovernanceActions: UserGovernanceActions = {
+      listUsers: vi.fn(async () => []),
+      createUser: vi.fn(async () => undefined),
+      assignUserRole: vi.fn(async () => undefined),
+      setUserActive: vi.fn(async () => undefined),
+      resetUserPassword: vi.fn(async () => undefined)
+    };
+    const { dispatch } = renderPageWithActions(userGovernanceActions);
+
+    await userEvent.click(screen.getByRole("button", { name: "重置 Liu Min 的密码" }));
+    const dialog = screen.getByRole("dialog", { name: "重置密码" });
+    expect(dialog).toHaveTextContent("Liu Min");
+    await userEvent.type(within(dialog).getByLabelText("新密码"), "ResetPass@2026");
+    await userEvent.type(within(dialog).getByLabelText("确认新密码"), "ResetPass@2026");
+    await userEvent.click(within(dialog).getByRole("button", { name: "确认重置" }));
+
+    expect(userGovernanceActions.resetUserPassword).toHaveBeenCalledWith("u-liu-min", "ResetPass@2026");
     expect(dispatch).toHaveBeenCalledWith({
-      type: "ASSIGN_USER_ROLE",
-      userId: "u-liu-min",
-      roleId: "software-committer"
+      type: "ADD_NOTIFICATION",
+      message: "已重置 Liu Min 的密码，其全部会话已退出"
     });
-    expect(dispatch).toHaveBeenCalledWith({
-      type: "TOGGLE_USER_ACTIVE",
-      userId: "u-liu-min",
-      isActive: false
-    });
+    expect(screen.queryByRole("dialog", { name: "重置密码" })).not.toBeInTheDocument();
   });
 
   it("keeps the confirm dialog open with the server refusal when the role change fails", async () => {

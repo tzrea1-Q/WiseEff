@@ -40,6 +40,30 @@ describe("presentError", () => {
     expect(presentError(undefined, FALLBACK)).toBe(FALLBACK);
   });
 
+  it("maps local-evaluation auth messages to Chinese product copy", () => {
+    expect(presentError(new WiseEffApiError("FORBIDDEN", "Self-registration is disabled.", {}, "req-reg"), FALLBACK)).toBe(
+      "当前环境已关闭自助注册，请联系管理员创建账号。"
+    );
+    expect(
+      presentError(new WiseEffApiError("RATE_LIMITED", "Too many authentication attempts. Try again later.", {}, "req-rl"), FALLBACK)
+    ).toBe("尝试次数过多，请稍后再试。");
+    expect(presentError(new WiseEffApiError("UNAUTHENTICATED", "Current password is incorrect.", {}, "req-pw"), FALLBACK)).toBe(
+      "当前密码不正确。"
+    );
+    expect(
+      presentError(
+        new WiseEffApiError("VALIDATION_FAILED", "New password must be different from the current password.", {}, "req-same"),
+        FALLBACK
+      )
+    ).toBe("新密码不能与当前密码相同。");
+    expect(presentError(new WiseEffApiError("NOT_FOUND", "Local password credential was not found.", {}, "req-cred"), FALLBACK)).toBe(
+      "该账号没有本地密码凭据。"
+    );
+    expect(presentError(new WiseEffApiError("RATE_LIMITED", "Request failed.", {}, "req-code"), FALLBACK)).toBe(
+      "尝试次数过多，请稍后再试。"
+    );
+  });
+
   it("maps identity-triple CONFLICT details including a deprecated blocker", () => {
     const err = new WiseEffApiError(
       "CONFLICT",

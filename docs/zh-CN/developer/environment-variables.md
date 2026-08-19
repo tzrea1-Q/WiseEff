@@ -23,6 +23,9 @@
 | --- | --- | --- | --- |
 | `AUTH_MODE` | `.env.example` 中为 `production` | production-mode smoke | 只有本地开发用户流才使用 `development`。 |
 | `AUTH_PROVIDER` | 本地 `.env.example` 为 `local`，自托管示例为 `oidc` | 生产认证 | `local` 是默认本地账号和 session provider，`oidc` 用于目标自托管 SSO，`hmac` 仅用于显式本地 smoke/test。 |
+| `AUTH_LOCAL_SELF_REGISTER` | `true` | 本地评估账号 | 设为 `false` 时拒绝 `POST /api/v1/auth/register`，认证页隐藏「注册」。 |
+| `AUTH_LOCAL_AUTH_MAX_ATTEMPTS` | `10` | 本地评估账号 | 登录/注册滑动窗口次数上限，键为客户端 IP + 用户名。超出返回 `RATE_LIMITED`（429）。 |
+| `AUTH_LOCAL_AUTH_WINDOW_MS` | `60000` | 本地评估账号 | 本地认证限流窗口长度（毫秒）。 |
 | `AUTH_TOKEN_ISSUER` | `wiseeff-local` | 可选本地 HMAC smoke | `AUTH_PROVIDER=hmac` 时必须与签名 token 的 issuer 一致。 |
 | `AUTH_TOKEN_HMAC_SECRET` | 本地示例 secret | 可选本地 HMAC smoke | 只用于本地 smoke/test profile。 |
 | `AUTH_OIDC_ISSUER` | 本地未设置 | 自托管 OIDC | 例如 `https://id.example.com/realms/wiseeff`。 |
@@ -33,7 +36,7 @@
 | `M6_SELFHOSTED_SMOKE_AUTHORIZATION` | 本地未设置 | 自托管 smoke | 目标环境优先使用 Admin OIDC bearer token。 |
 | `M6_IDENTITY_*` | 本地未设置 | M6.2 身份证据 | 目标 OIDC 正向和负向 token evidence。 |
 
-若要验证产品化的本地登录/注册 UI，保持默认 `AUTH_MODE=production` 和 `AUTH_PROVIDER=local`，先运行数据库迁移，确保存在 `user_password_credentials` 和 `auth_sessions`，再启动 API 和 API-mode 前端。本地账号不需要 `AUTH_TOKEN_*` 或 `AUTH_OIDC_*`。注册使用用户名和所选平台角色，没有组织下拉。新账号加入评估组织：有 ChargeLab（`org-chargelab`）就加入它，否则加入唯一的 bootstrap Organization。这是 `AUTH_PROVIDER=local` 的产品规则，不是 `NODE_ENV` 例外。当前暂不支持邮箱验证。
+若要验证产品化的本地登录/注册 UI，保持默认 `AUTH_MODE=production` 和 `AUTH_PROVIDER=local`，先运行数据库迁移，确保存在 `user_password_credentials` 和 `auth_sessions`，再启动 API 和 API-mode 前端。本地账号不需要 `AUTH_TOKEN_*` 或 `AUTH_OIDC_*`。注册使用用户名和所选平台角色，没有组织下拉。新账号加入评估组织：有 ChargeLab（`org-chargelab`）就加入它，否则加入唯一的 bootstrap Organization。这是 `AUTH_PROVIDER=local` 的产品规则，不是 `NODE_ENV` 例外。首位 Admin 就绪后，评估主机可设 `AUTH_LOCAL_SELF_REGISTER=false` 关闭公开注册。当前暂不支持邮箱验证。
 
 ## 对象存储
 

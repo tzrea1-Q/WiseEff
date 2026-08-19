@@ -23,6 +23,9 @@ Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then
 | --- | --- | --- | --- |
 | `AUTH_MODE` | `production` in `.env.example` | production-mode smoke | Use `development` only for local development-user flows. |
 | `AUTH_PROVIDER` | `local` in local `.env.example`; `oidc` in self-hosted example | production auth | `local` is the default local account/session provider, `oidc` is for target self-hosted SSO, and `hmac` is for explicit local smoke/test only. |
+| `AUTH_LOCAL_SELF_REGISTER` | `true` | local-account evaluation | Set `false` to reject `POST /api/v1/auth/register` and hide the Register tab. |
+| `AUTH_LOCAL_AUTH_MAX_ATTEMPTS` | `10` | local-account evaluation | Sliding-window attempt cap for login/register, keyed by client IP and username. Excess attempts return `RATE_LIMITED` (429). |
+| `AUTH_LOCAL_AUTH_WINDOW_MS` | `60000` | local-account evaluation | Sliding-window length in milliseconds for the local auth limiter. |
 | `AUTH_TOKEN_ISSUER` | `wiseeff-local` | optional local HMAC smoke | Must match signed local smoke token issuer when `AUTH_PROVIDER=hmac`. |
 | `AUTH_TOKEN_HMAC_SECRET` | local sample secret | optional local HMAC smoke | Use only for local smoke/test profiles. |
 | `AUTH_OIDC_ISSUER` | unset locally | self-hosted OIDC | OIDC issuer URL, for example `https://id.example.com/realms/wiseeff`. |
@@ -36,7 +39,7 @@ Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then
 | `M6_IDENTITY_WRONG_AUDIENCE_AUTHORIZATION` | unset locally | M6.2 identity evidence | Token expected to be rejected for audience mismatch. |
 | `M6_IDENTITY_EXPIRED_AUTHORIZATION` | unset locally | M6.2 identity evidence | Expired token expected to be rejected. |
 
-To exercise the productized local login/register UI, keep the default `AUTH_MODE=production` and `AUTH_PROVIDER=local`, run database migrations so `user_password_credentials` and `auth_sessions` exist, then start the API and API-mode frontend. Local accounts do not require `AUTH_TOKEN_*` or `AUTH_OIDC_*` values. Registration uses username and the selected platform role; there is no organization picker. New accounts join the Evaluation Organization: ChargeLab (`org-chargelab`) when that row exists, otherwise the single bootstrap Organization. This join rule is the product behavior for `AUTH_PROVIDER=local`, not a `NODE_ENV` exception. Email verification is intentionally not available yet.
+To exercise the productized local login/register UI, keep the default `AUTH_MODE=production` and `AUTH_PROVIDER=local`, run database migrations so `user_password_credentials` and `auth_sessions` exist, then start the API and API-mode frontend. Local accounts do not require `AUTH_TOKEN_*` or `AUTH_OIDC_*` values. Registration uses username and the selected platform role; there is no organization picker. New accounts join the Evaluation Organization: ChargeLab (`org-chargelab`) when that row exists, otherwise the single bootstrap Organization. This join rule is the product behavior for `AUTH_PROVIDER=local`, not a `NODE_ENV` exception. Set `AUTH_LOCAL_SELF_REGISTER=false` after the first Admin exists if the evaluation host should stop accepting public sign-up. Email verification is intentionally not available yet.
 
 ## Object Store
 

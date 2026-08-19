@@ -12,12 +12,14 @@ import {
   listRegistrationRoleRequests,
   rejectRegistrationRoleRequest,
   replaceUserRoles,
+  resetUserPassword,
   updateHomeOrganization,
   updateUserProfile
 } from "./service";
 import {
   createUserBodySchema,
   replaceUserRolesBodySchema,
+  resetUserPasswordBodySchema,
   updateOrganizationBodySchema,
   updateUserActiveBodySchema,
   updateUserBodySchema
@@ -128,6 +130,16 @@ export function registerUserRoutes(
     const params = parseWithSchema(userIdParamsSchema, request.params);
     const body = parseWithSchema(updateUserActiveBodySchema, request.body);
     const item = await deactivateUser(db, auth, params.userId, body, { requestId: request.requestId });
+
+    return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v1/users/:userId/password", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(userIdParamsSchema, request.params);
+    const body = parseWithSchema(resetUserPasswordBodySchema, request.body);
+    const item = await resetUserPassword(db, auth, params.userId, body, { requestId: request.requestId });
 
     return { status: 200, body: { item } };
   });

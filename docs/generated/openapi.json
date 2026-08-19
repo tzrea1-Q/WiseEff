@@ -5,6 +5,33 @@
     "version": "m5"
   },
   "paths": {
+    "/api/v1/auth/local-config": {
+      "get": {
+        "operationId": "auth.localConfig",
+        "summary": "Get public local-account auth configuration",
+        "tags": [
+          "auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalAuthPublicConfigResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/auth/register": {
       "post": {
         "operationId": "auth.register",
@@ -46,7 +73,13 @@
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
           },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
           "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "429": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -90,6 +123,9 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "429": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -187,6 +223,49 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/me/password": {
+      "post": {
+        "operationId": "auth.changePassword",
+        "summary": "Change the current local-account password",
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeCurrentUserPasswordRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -802,6 +881,59 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/users/{userId}/password": {
+      "post": {
+        "operationId": "users.resetPassword",
+        "summary": "Reset a governed user's local password",
+        "tags": [
+          "users"
+        ],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetUserPasswordRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserGovernanceResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -11024,6 +11156,10 @@
           }
         }
       },
+      "LocalAuthPublicConfigResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "LocalAuthPublicConfigResponse"
+      },
       "RegisterLocalAccountRequest": {
         "type": "object",
         "x-wiseeff-schema": "RegisterLocalAccountRequest"
@@ -11051,6 +11187,14 @@
       "UpdateCurrentUserProfileRequest": {
         "type": "object",
         "x-wiseeff-schema": "UpdateCurrentUserProfileRequest"
+      },
+      "ChangeCurrentUserPasswordRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "ChangeCurrentUserPasswordRequest"
+      },
+      "OkResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "OkResponse"
       },
       "CreateAuditEventRequest": {
         "type": "object",
@@ -11119,6 +11263,10 @@
       "ReplaceUserRolesRequest": {
         "type": "object",
         "x-wiseeff-schema": "ReplaceUserRolesRequest"
+      },
+      "ResetUserPasswordRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "ResetUserPasswordRequest"
       },
       "ProjectListResponse": {
         "type": "object",

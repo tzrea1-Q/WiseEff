@@ -15,6 +15,31 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "AUTH-LOCAL-PASSWORD-001",
+    workflow: "A",
+    title:
+      "A signed-in local user changes their password from the profile dialog; the current session stays active and other sessions are revoked.",
+    required: false
+  },
+  {
+    id: "AUTH-LOCAL-ADMIN-RESET-001",
+    workflow: "A",
+    title: "An Admin resets a member password from /organization/members; every session for that user is revoked.",
+    required: false
+  },
+  {
+    id: "AUTH-LOCAL-SELF-REGISTER-001",
+    workflow: "A",
+    title: "When self-registration is disabled, the auth screen hides Register and the API rejects POST /api/v1/auth/register.",
+    required: false
+  },
+  {
+    id: "AUTH-LOCAL-BOOTSTRAP-HINT-001",
+    workflow: "A",
+    title: "When no local Admin exists, the auth screen shows the npm run admin:bootstrap hint.",
+    required: false
+  },
+  {
     id: "NOTIF-INBOX-001",
     workflow: "A",
     title: "TopBar notification bell opens the inbox panel and inbox APIs load for the current user.",

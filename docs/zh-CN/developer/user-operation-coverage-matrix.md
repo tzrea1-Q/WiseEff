@@ -28,6 +28,10 @@
 
 ## 当前操作重点
 
+- `AUTH-LOCAL-PASSWORD-001`：已登录用户在个人资料改密并吊销其它会话。`coverage: future`（单元测试；共享验收仍注入 HMAC smoke，不走本地登录表单）。
+- `AUTH-LOCAL-ADMIN-RESET-001`：Admin 在 `/organization/members` 重置成员密码并吊销该用户全部会话。`coverage: future`。
+- `AUTH-LOCAL-SELF-REGISTER-001`：关闭自助注册后隐藏「注册」且 API 拒绝注册。`coverage: future`。
+- `AUTH-LOCAL-BOOTSTRAP-HINT-001`：无本地 Admin 时显示 bootstrap 提示。`coverage: future`。
 - `SHELL-DISCOVERY-001`：侧栏和首页发现面只提供 allowlist 工作流；隐藏工作流可直达。`coverage: future`（单元测试 + playwright-cli）。
 - `DTS-RELOAD-DEPLOY-001`：经假本地设备桥部署已校验 overlay（mount / pushFile / trigger）至 `unverifiable`；`coverage: automated`。
 - `DTS-RELOAD-KERNEL-001`：触发后内核日志为未判定证据；`coverage: automated`。

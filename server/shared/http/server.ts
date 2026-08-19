@@ -236,6 +236,15 @@ function parseQuery(searchParams: URLSearchParams) {
   return query;
 }
 
+function clientIpFromRequest(request: IncomingMessage) {
+  const forwarded = request.headers["x-forwarded-for"];
+  const forwardedValue = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+  if (typeof forwardedValue === "string" && forwardedValue.trim()) {
+    return forwardedValue.split(",")[0]?.trim() || "unknown";
+  }
+  return request.socket.remoteAddress?.trim() || "unknown";
+}
+
 export function createHttpServer(
   router: { handle(request: RouteRequest): Promise<RouteResponse>; matchRoutePattern?: (method: HttpMethod, path: string) => string | undefined },
   options: { metrics?: MetricsRegistry; tracing?: Pick<TracingBoundary, "withSpan"> } = {}
@@ -270,6 +279,7 @@ export function createHttpServer(
             query: parseQuery(url.searchParams),
             headers: request.headers,
             requestId,
+            clientIp: clientIpFromRequest(request),
             body: await readBody(request)
           });
           spanAttributes.status = routeResponse.status;
