@@ -112,7 +112,7 @@ function renderApiLogs(repository = createLogRepository()) {
 
 async function waitForApiRuntime(repository: LogAnalysisRepository) {
   await waitFor(() => expect(repository.listLogs).toHaveBeenCalled());
-  await waitFor(() => expect(document.body).toHaveTextContent("已连接雷泽调试 API"));
+  await waitFor(() => expect(document.querySelector(".api-runtime-sync-banner")).not.toBeInTheDocument());
 }
 
 afterEach(() => {

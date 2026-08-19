@@ -637,9 +637,6 @@ function AppShell({
     });
   }, []);
 
-  const parameterRuntimeConnectedRef = useRef(false);
-  const logRuntimeConnectedRef = useRef(false);
-  const debuggingRuntimeConnectedRef = useRef(false);
   const [apiRuntimeFailures, setApiRuntimeFailures] = useState<ReadonlySet<ApiRuntimeDataDomain>>(
     () => new Set()
   );
@@ -669,25 +666,14 @@ function AppShell({
       ) {
         failures.add("parameters");
         dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "parameters" });
-      } else if (!parameterRuntimeConnectedRef.current) {
-        parameterRuntimeConnectedRef.current = true;
-        dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽参数 API" });
       }
       if (logRefreshResult.status === "rejected") {
         failures.add("logs");
         dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "logs" });
-      } else if (!logRuntimeConnectedRef.current) {
-        logRuntimeConnectedRef.current = true;
-        dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽日志 API" });
       }
-      if (canUseDebugging) {
-        if (debuggingRefreshResult.status === "rejected") {
-          failures.add("debugging");
-          dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "debugging" });
-        } else if (!debuggingRuntimeConnectedRef.current) {
-          debuggingRuntimeConnectedRef.current = true;
-          dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽调试 API" });
-        }
+      if (canUseDebugging && debuggingRefreshResult.status === "rejected") {
+        failures.add("debugging");
+        dispatch({ type: "CLEAR_API_RUNTIME_DOMAIN", domain: "debugging" });
       }
       setApiRuntimeFailures(failures);
       setApiRuntimeSynced(true);
