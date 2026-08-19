@@ -1,6 +1,7 @@
 # Referenced property-key rename is a source-file rewrite cutover
 
 > Status: **Active** — preview / start / finalize / prepare / workbench handoff on `main` (#544 / #549 / #553 / #555). TD-117 stays **Open**: operators still leave the spec editor to activate, then return to re-preview before finalize.  
+> Remainder: leftover ownership moved to [`2026-08-19-property-key-cutover-remainder.md`](2026-08-19-property-key-cutover-remainder.md) (accepted residual; this branch does not close TD-117).  
 > Date: 2026-08-18  
 > Branch: merged via #555 (`feat/td-117-property-key-workbench-handoff`)  
 > Chinese: [`docs/zh-CN/exec-plans/active/2026-08-18-property-key-source-cutover.md`](../../zh-CN/exec-plans/active/2026-08-18-property-key-source-cutover.md)  

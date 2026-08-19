@@ -1,6 +1,7 @@
 # 有引用的属性键改名是源文件改写 cutover
 
 > 状态：**进行中** — preview / start / finalize / prepare / 工作台手顺已在 `main`（#544 / #549 / #553 / #555）。TD-117 保持 **Open**：日常仍要跨页（编辑器 → 工作台合入 → 回来再预检 → finalize）。  
+> 余量：未完成项改由 [`2026-08-19-property-key-cutover-remainder.md`](2026-08-19-property-key-cutover-remainder.md) 接管（接受为残留；本分支不关闭 TD-117）。  
 > 日期：2026-08-18  
 > 分支：已由 #555 合入（`feat/td-117-property-key-workbench-handoff`）  
 > English: [`docs/exec-plans/active/2026-08-18-property-key-source-cutover.md`](../../../exec-plans/active/2026-08-18-property-key-source-cutover.md)  
