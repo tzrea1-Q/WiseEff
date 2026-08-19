@@ -16,7 +16,7 @@
 
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
-- 已完成实现见 `docs/exec-plans/completed/`（含 2026-08-18 属性键源文件 cutover 与余量方案 `2026-08-18-property-key-source-cutover.md`、`2026-08-19-property-key-cutover-remainder.md`，#544/#549/#553/#555/#558；TD-117 已按接受残留关闭；2026-08-18 CI 反馈环 `2026-08-18-ci-feedback-loop-optimization.md`，#523–#525；2026-08-17 归档的路径可达 C1–C4、产品反馈、拓扑 review 第 3–6 轮、通知中心、配置工作台缺陷修复、以及小泽审批失败恢复 TD-102 / TD-094；2026-08-17 第二轮归档的已落地 DTS 工作台/种子、归属/驱动注册/overlay、参数后台 UX/IA、批导/Excel、日志组织解耦、个人总览、ADB/HDC、调试后台、Device Bridge 阶段 1/2、小泽回合 UX、CORS bootstrap；定义身份纠错 `2026-08-04-parameter-definition-identity-correction.md`，#504；以及 2026-08-17 归档的归属 deferred D-AG-01–04 证据收口 `2026-08-01-attribution-deferred-implementation.md`）。不要把那些计划重新当成活跃工作。
+- 已完成实现见 `docs/exec-plans/completed/`（含工作流发现面可见性 `2026-08-18-workflow-discovery-visibility.md`，#556；2026-08-18 属性键源文件 cutover 与余量方案 `2026-08-18-property-key-source-cutover.md`、`2026-08-19-property-key-cutover-remainder.md`，#544/#549/#553/#555/#558；TD-117 已按接受残留关闭；2026-08-18 CI 反馈环 `2026-08-18-ci-feedback-loop-optimization.md`，#523–#525；2026-08-17 归档的路径可达 C1–C4、产品反馈、拓扑 review 第 3–6 轮、通知中心、配置工作台缺陷修复、以及小泽审批失败恢复 TD-102 / TD-094；2026-08-17 第二轮归档的已落地 DTS 工作台/种子、归属/驱动注册/overlay、参数后台 UX/IA、批导/Excel、日志组织解耦、个人总览、ADB/HDC、调试后台、Device Bridge 阶段 1/2、小泽回合 UX、CORS bootstrap；定义身份纠错 `2026-08-04-parameter-definition-identity-correction.md`，#504；以及 2026-08-17 归档的归属 deferred D-AG-01–04 证据收口 `2026-08-01-attribution-deferred-implementation.md`）。不要把那些计划重新当成活跃工作。
 - 当前仍有剩余工作的计划：
 
 ### 等待外部输入或目标环境
@@ -33,7 +33,6 @@
 
 ### 仍待做的产品与 UX
 
-- `exec-plans/active/2026-08-18-workflow-discovery-visibility.md`：发现面读取可见工作流 allowlist（ADR-0036）。第一次只给参数管理和调试；日志分析和知识库不进侧栏/首页，直达仍可用。实现分支 `cursor/workflow-discovery-visibility-b895`。
 - `exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`：上线窗口可关闭、且不需要 HDC / 专家日志 / 目标环境的技术债收口。批次 1 已归档归属证据并把 `2026-08-01-attribution-deferred-implementation.md` 移到 `completed/`；批次 2 已关闭 TD-056（参数文件回滚 / 操作者显示名）；批次 3 已合入 `main`——TD-057 经 #513，TD-079 hierarchical-modules 经 #511，import-wizard 经 #512。批次 4 已于 2026-08-18 合入：工作台夹具 #516、语义 file-sync #519、dts-reload 交接/形态 #517、DTO 校验 #515、render harness #518、治理 ADR #520。**TD-079 已关闭**（`fix/td-079-flip-ci-acceptance`，共享 CI 验收为 post-cutover）。TD-082 已由 #507 合入 `main`。第二波 H–N（2026-08-18）：TD-013 经 #529 关闭，TD-066 经 #531 关闭；TD-014 / TD-075 / TD-097 / TD-112 仍为**部分**开放（dts-reload 网格经 #550）；TD-059 仍为**部分**（Draft/Detail/Compare 经 #538/#540/#551；剩余 HistoryDiff / NodeEnablement / reload）。
 - `exec-plans/active/td-031-xiaoze-run-timeline-streaming.md`：时间线/流式已落入 `xiaozeTurnStream`（TD-070 已关）；本文件残留是设计文档 metadata 门禁。
 - `exec-plans/active/2026-07-08-project-hotspot-scoring-redesign.md`：实现已在 `main`；残留是 API 合同 review 行。

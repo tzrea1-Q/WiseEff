@@ -1,13 +1,13 @@
 # Workflow Discovery Visibility
 
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-18-workflow-discovery-visibility.md`](../../zh-CN/exec-plans/active/2026-08-18-workflow-discovery-visibility.md)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-18-workflow-discovery-visibility.md`](../../zh-CN/exec-plans/completed/2026-08-18-workflow-discovery-visibility.md)
 
 > **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking.
 > Prefer Matt skills `implement` and `tdd` where applicable. Follow `docs/PLANS.md` Git Branch & PR Workflow
 > (implementation commits on the feature branch; parent opens/merges the PR).
 
 - Date: 2026-08-18
-- Status: **Active**
+- Status: **Completed** — #556
 - Branch: `cursor/workflow-discovery-visibility-b895`
 - Decision record: grill-with-docs 2026-08-18; [ADR-0036](../../adr/0036-workflow-discovery-uses-a-visible-workflow-allowlist.md)
 

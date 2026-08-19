@@ -1,11 +1,11 @@
 # 工作流发现面可见性
 
-> English: [`docs/exec-plans/active/2026-08-18-workflow-discovery-visibility.md`](../../../exec-plans/active/2026-08-18-workflow-discovery-visibility.md)
+> English: [`docs/exec-plans/completed/2026-08-18-workflow-discovery-visibility.md`](../../../exec-plans/completed/2026-08-18-workflow-discovery-visibility.md)
 
 > **给实现代理：** 按任务勾选推进。优先用 Matt skills `implement` / `tdd`。遵守 `docs/PLANS.md` 的分支与 PR 流程。
 
 - 日期：2026-08-18
-- 状态：**进行中**
+- 状态：**已完成** — #556
 - 分支：`cursor/workflow-discovery-visibility-b895`
 - 决策：[ADR-0036](../../../adr/0036-workflow-discovery-uses-a-visible-workflow-allowlist.md)
 
