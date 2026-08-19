@@ -249,7 +249,7 @@ export function createHttpServer(
   router: { handle(request: RouteRequest): Promise<RouteResponse>; matchRoutePattern?: (method: HttpMethod, path: string) => string | undefined },
   options: { metrics?: MetricsRegistry; tracing?: Pick<TracingBoundary, "withSpan"> } = {}
 ) {
-  return createServer(async (request, response) => {
+  const server = createServer(async (request, response) => {
     const startedAt = Date.now();
     const requestId = request.headers["x-request-id"]?.toString() ?? randomUUID();
     setCorsHeaders(request, response);
@@ -342,4 +342,10 @@ export function createHttpServer(
       }
     }
   });
+  // Node defaults keepAliveTimeout to 5s. Playwright's APIRequestContext
+  // reuses sockets, so a browser-only case longer than 5s then POSTs
+  // "socket hang up". headersTimeout must stay above keepAliveTimeout.
+  server.keepAliveTimeout = 65_000;
+  server.headersTimeout = 66_000;
+  return server;
 }

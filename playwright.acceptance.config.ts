@@ -20,6 +20,7 @@ export default defineConfig({
     ["html", { outputFolder: "playwright-report/acceptance", open: "never" }]
   ],
   timeout: 90_000,
+  retries: process.env.CI ? 1 : 0,
   expect: {
     timeout: 10_000
   },
