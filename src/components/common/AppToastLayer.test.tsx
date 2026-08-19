@@ -31,10 +31,10 @@ function Harness({ initial }: { initial: string[] }) {
 
 describe("AppToastLayer bridge", () => {
   it("drains queue entries into design-system toasts and consumes the queue", () => {
-    render(<Harness initial={["已连接雷泽参数 API"]} />);
+    render(<Harness initial={["已提交 RPT-1 的分析反馈"]} />);
 
     const toast = screen.getByTestId("app-toast");
-    expect(toast).toHaveTextContent("已连接雷泽参数 API");
+    expect(toast).toHaveTextContent("已提交 RPT-1 的分析反馈");
     // Success vocabulary maps to the success tone.
     expect(toast.className).toContain("toast--success");
   });
