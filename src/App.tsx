@@ -1662,10 +1662,11 @@ function ApiAuthPage({
         ) : null}
 
         <p className="auth-help">
-          {localConfig?.evaluationOrganizationName
-            ? `新账号将加入评估组织「${localConfig.evaluationOrganizationName}」。`
-            : "新账号将加入评估组织。"}
-          用户名须为 3–64 个字符，仅限字母、数字、点、下划线和连字符。
+          {`${
+            localConfig?.evaluationOrganizationName
+              ? `新账号将加入评估组织「${localConfig.evaluationOrganizationName}」。`
+              : "新账号将加入评估组织。"
+          } 用户名须为 3–64 个字符，仅限字母、数字、点、下划线和连字符。`}
         </p>
 
         {pendingRegistration ? (
@@ -1697,37 +1698,41 @@ function ApiAuthPage({
                   <span>姓名</span>
                   <input value={name} onChange={(event) => setName(event.target.value)} required />
                 </label>
-                <label>
-                  <span>角色</span>
-                  <SelectControl
-                    id="local-auth-role"
-                    value={roleId}
-                    onValueChange={setRoleId}
-                    options={roleOptions}
-                    ariaLabel="角色"
-                    className="auth-select-control"
-                  />
+                <div className="auth-form-field">
+                  <label>
+                    <span>角色</span>
+                    <SelectControl
+                      id="local-auth-role"
+                      value={roleId}
+                      onValueChange={setRoleId}
+                      options={roleOptions}
+                      ariaLabel="角色"
+                      className="auth-select-control"
+                    />
+                  </label>
                   <span className="auth-field-hint" id="local-auth-role-hint">
                     {selfRegistrationRoleHints[roleId] ?? "管理员不能自助注册，需由现有管理员创建。"}
                   </span>
-                </label>
+                </div>
               </>
             ) : null}
-            <label>
-              <span>用户名</span>
-              <input
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                autoComplete="username"
-                minLength={3}
-                maxLength={64}
-                aria-describedby="local-auth-username-hint"
-                required
-              />
+            <div className="auth-form-field">
+              <label>
+                <span>用户名</span>
+                <input
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  autoComplete="username"
+                  minLength={3}
+                  maxLength={64}
+                  aria-describedby="local-auth-username-hint"
+                  required
+                />
+              </label>
               <span className="auth-field-hint" id="local-auth-username-hint">
                 3–64 个字符，仅限字母、数字、点、下划线和连字符。
               </span>
-            </label>
+            </div>
             <label>
               <span>密码</span>
               <input

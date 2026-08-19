@@ -53,7 +53,7 @@ One branch: `cursor/local-eval-auth-hardening-5336`.
 - [x] Backend: config, limiter, password change/reset, session revoke, failed-login audit, local-config
 - [x] Frontend: auth screen, profile password change, Admin reset
 - [x] Docs + OpenAPI
-- [ ] Tests, `npm run build`, `npm run docs:check`
+- [x] Tests, `npm run build`, `npm run docs:check`
 
 ## Verification
 

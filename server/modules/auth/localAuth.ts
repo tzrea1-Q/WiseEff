@@ -471,7 +471,9 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
       const attemptKey = consumeAttempt("login", username, context.clientIp);
       const user = await findUserForLogin(db, username);
       if (!user || !user.password_hash || !(await verifyPassword(input.password, user.password_hash))) {
-        const organizationId = user?.organization_id ?? (await resolveRegistrationOrganization(db).catch(() => null))?.id;
+        const organizationId =
+          user?.organization_id ??
+          (await Promise.resolve(resolveRegistrationOrganization(db)).catch(() => null))?.id;
         if (organizationId) {
           await auditAuthEvent(db, {
             organizationId,

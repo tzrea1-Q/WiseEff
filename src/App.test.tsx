@@ -598,8 +598,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     });
 
     expect(await screen.findByRole("heading", { name: "登录雷泽" })).toBeInTheDocument();
+    expect(await screen.findByText(/评估组织「ChargeLab」/)).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "注册" })).not.toBeInTheDocument();
-    expect(screen.getByText(/评估组织「ChargeLab」/)).toBeInTheDocument();
     expect(authClient.getLocalAuthConfig).toHaveBeenCalled();
   });
 

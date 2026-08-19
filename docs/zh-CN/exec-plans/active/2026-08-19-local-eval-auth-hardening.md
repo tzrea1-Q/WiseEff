@@ -42,7 +42,7 @@
 - [x] 后端：配置、限流、改密/重置、会话吊销、失败登录审计、local-config
 - [x] 前端：认证页、资料改密、Admin 重置
 - [x] 文档 + OpenAPI
-- [ ] 测试、`npm run build`、`npm run docs:check`
+- [x] 测试、`npm run build`、`npm run docs:check`
 
 ## 验证
 
