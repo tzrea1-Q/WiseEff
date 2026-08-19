@@ -14,10 +14,24 @@ runs:
         restore-keys: |
           dts-toolchain-${{ runner.os }}-
 
-    - name: Install and verify DTS toolchain
+    - name: Use cached DTS toolchain if it already verifies
+      id: dts-warm
       shell: bash
       run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential bison flex pkg-config git python3-pip python3-venv
-        npm run dts:toolchain:bootstrap
+        if npm run dts:toolchain:check -- --required; then
+          echo "warm=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "warm=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Bootstrap DTS toolchain
+      if: steps.dts-warm.outputs.warm != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        # apt-get update can hang on a bad mirror; fail closed instead of
+        # consuming the whole job timeout (quality 35m / L2 50m).
+        timeout 180s sudo apt-get update
+        timeout 180s sudo apt-get install -y build-essential bison flex pkg-config git python3-pip python3-venv
+        timeout 720s npm run dts:toolchain:bootstrap
         npm run dts:toolchain:check -- --required
