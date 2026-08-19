@@ -1,12 +1,12 @@
 # Referenced property-key rename is a source-file rewrite cutover
 
-> Status: **Active** — preview / start / finalize / prepare / workbench handoff on `main` (#544 / #549 / #553 / #555). TD-117 stays **Open**: operators still leave the spec editor to activate, then return to re-preview before finalize.  
-> Remainder: leftover ownership moved to [`2026-08-19-property-key-cutover-remainder.md`](2026-08-19-property-key-cutover-remainder.md) (accepted residual; this branch does not close TD-117).  
+> Status: **Completed 2026-08-19** — preview / start / finalize / prepare / workbench handoff on `main` (#544 / #549 / #553 / #555). TD-117 closed as accepted residual (#558).  
+> Remainder: leftover ownership recorded in [`2026-08-19-property-key-cutover-remainder.md`](2026-08-19-property-key-cutover-remainder.md) (option 1 accepted; option 2 declined).  
 > Date: 2026-08-18  
 > Branch: merged via #555 (`feat/td-117-property-key-workbench-handoff`)  
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-18-property-key-source-cutover.md`](../../zh-CN/exec-plans/active/2026-08-18-property-key-source-cutover.md)  
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-18-property-key-source-cutover.md`](../../zh-CN/exec-plans/completed/2026-08-18-property-key-source-cutover.md)  
 > Governing decision: [ADR-0034](../../adr/0034-referenced-property-key-rename-is-a-source-cutover.md)  
-> Tracker: [TD-117](../tech-debt-tracker.md) (session 0 owns the index)
+> Tracker: [TD-117](../tech-debt-tracker.md) (closed as accepted residual)
 
 ## Goal
 

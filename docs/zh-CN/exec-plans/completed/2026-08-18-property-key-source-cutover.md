@@ -1,12 +1,12 @@
 # 有引用的属性键改名是源文件改写 cutover
 
-> 状态：**进行中** — preview / start / finalize / prepare / 工作台手顺已在 `main`（#544 / #549 / #553 / #555）。TD-117 保持 **Open**：日常仍要跨页（编辑器 → 工作台合入 → 回来再预检 → finalize）。  
-> 余量：未完成项改由 [`2026-08-19-property-key-cutover-remainder.md`](2026-08-19-property-key-cutover-remainder.md) 接管（接受为残留；本分支不关闭 TD-117）。  
+> 状态：**已完成 2026-08-19** — preview / start / finalize / prepare / 工作台手顺已在 `main`（#544 / #549 / #553 / #555）。TD-117 已按接受残留关闭（#558）。  
+> 余量：决策记在 [`2026-08-19-property-key-cutover-remainder.md`](2026-08-19-property-key-cutover-remainder.md)（选项 1 已接受；选项 2 已否决）。  
 > 日期：2026-08-18  
 > 分支：已由 #555 合入（`feat/td-117-property-key-workbench-handoff`）  
-> English: [`docs/exec-plans/active/2026-08-18-property-key-source-cutover.md`](../../../exec-plans/active/2026-08-18-property-key-source-cutover.md)  
+> English: [`docs/exec-plans/completed/2026-08-18-property-key-source-cutover.md`](../../../exec-plans/completed/2026-08-18-property-key-source-cutover.md)  
 > 锁定决策：[ADR-0034](../../../adr/0034-referenced-property-key-rename-is-a-source-cutover.md)  
-> 追踪表：[TD-117](../tech-debt-tracker.md)（索引由会话 0 维护）
+> 追踪表：[TD-117](../tech-debt-tracker.md)（已按接受残留关闭）
 
 ## 目标
 
