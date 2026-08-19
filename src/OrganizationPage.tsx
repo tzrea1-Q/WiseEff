@@ -130,7 +130,11 @@ export function OrganizationPage({
                 </div>
                 <div>
                   <span className="organization-profile__label">创建时间</span>
-                  <time dateTime={organization.createdAt} title={formatAbsolute(organization.createdAt)}>
+                  <time
+                    className="organization-profile__created-at"
+                    dateTime={organization.createdAt}
+                    title={formatAbsolute(organization.createdAt)}
+                  >
                     {formatAbsolute(organization.createdAt)}
                   </time>
                 </div>

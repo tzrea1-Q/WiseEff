@@ -12,6 +12,13 @@ describe("quality visual masks", () => {
     expect(visualSpec).toContain("stableMasks(page, route.path)");
   });
 
+  it("masks the home-org created-at clock on the organization profile screenshot", () => {
+    const helpers = readFileSync("e2e/quality/helpers.ts", "utf8");
+
+    expect(helpers).toMatch(/routePath\s*===\s*"\/organization"/);
+    expect(helpers).toContain(".organization-profile__created-at");
+  });
+
   it("masks /logs timestamps and waits for seeded hydrate before the screenshot", () => {
     const helpers = readFileSync("e2e/quality/helpers.ts", "utf8");
 
