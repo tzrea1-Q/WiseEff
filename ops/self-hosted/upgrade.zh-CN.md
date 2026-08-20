@@ -6,6 +6,16 @@
 
 宿主机只需要 Docker Engine 和 Compose，不需要 Node.js。命令会读取 `ops/self-hosted/.env`，但不会改写它、轮换密钥、写入种子数据、创建管理员，也不会删除 volume。实现不会调用 `compose down -v`、`volume rm` 或 `system prune`。
 
+Git 获取目标版本时会继承当前命令行的代理环境，并把大写的 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY` 规范化为 Git/libcurl 兼容的小写变量；已有 Git `http.proxy`、URL 专用代理、`GIT_SSH_COMMAND` 和 `core.sshCommand` 配置仍会生效。必要时只对 Git fetch 指定覆盖值：
+
+```bash
+./scripts/upgrade.sh plan --git-proxy http://127.0.0.1:7890
+```
+
+自动化也可以设置 `WISEEFF_UPGRADE_GIT_PROXY`，命令行参数优先。
+
+不要用 `source .env` 或 source 用户 shell profile 的方式传递代理；升级入口不会执行任意 shell 配置。`--git-proxy` 只适用于 HTTP(S)/SOCKS Git remote，SSH remote 请配置 `GIT_SSH_COMMAND` 或 `core.sshCommand`。
+
 ## 首次接入
 
 先按现有受控流程安装包含该入口的版本。第一次真实执行前，在非客户环境检查 checkout 与在线服务：
