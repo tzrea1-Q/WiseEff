@@ -50,6 +50,25 @@ chmod 600 .env
 
 The `./scripts/compose` wrapper accepts either `docker compose` (Compose v2) or `docker-compose` (standalone v1). It passes `-f compose.yaml` automatically when the standalone binary is used and rejects Compose versions that are too old for this stack.
 
+## Graphical Monitoring
+
+After the application stack is running, start the loopback-only monitoring profile:
+
+```bash
+./scripts/observability up
+./scripts/observability status
+```
+
+This starts Prometheus, Grafana, Alertmanager, blackbox exporter, Node exporter, PostgreSQL exporter, and Redis exporter. Grafana automatically provisions the Prometheus datasource and four WiseEff dashboards, including an all-services/host view. No manual import is required.
+
+From an operator workstation, tunnel the loopback-only Grafana port and open `http://127.0.0.1:3000` locally:
+
+```bash
+ssh -L 3000:127.0.0.1:3000 <user>@<server>
+```
+
+Use `./scripts/observability logs -f`, `restart`, or `down` for the monitoring lifecycle. `down` leaves the application services and all named volumes intact. See the [observability operations runbook](../../docs/runbooks/observability-operations.md) for security boundaries, port overrides, alert routing, and target evidence.
+
 After the stack is up with `AUTH_PROVIDER=local`, bootstrap the first admin once:
 
 ```bash

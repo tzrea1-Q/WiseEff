@@ -81,5 +81,5 @@ npm run selfhost:check
 - 不会替你安装 Docker。
 - 没有 Let's Encrypt，也不需要公网域名。
 - 没有 OIDC / Keycloak。
-- 不含备份演练、可观测性 compose 服务，或试点就绪证据。
+- 不含备份演练、自动启动可选 observability profile，或试点就绪证据。监控需另行执行 `./scripts/observability up`。
 - 不会在 `NODE_ENV=production` 主机上写入众所周知的演示密码（`WiseEff-Dev!`）。

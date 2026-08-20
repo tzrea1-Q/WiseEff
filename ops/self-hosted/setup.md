@@ -82,4 +82,4 @@ Installing Docker remains a separate step: https://docs.docker.com/engine/instal
 - A public `curl | bash` installer.
 - Ubuntu Docker installation.
 - OIDC / Keycloak.
-- Backup mounts, observability compose services, or pilot-ready claims.
+- Backup mounts, automatically starting the optional observability profile, or pilot-ready claims. After setup, operators may run `./scripts/observability up` separately.

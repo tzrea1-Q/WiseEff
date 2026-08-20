@@ -37,6 +37,7 @@
 | `npm run selfhost:ip-lab:init` | 为无域名 IP 实验室生成 `ops/self-hosted/.env` | 兼容辅助。优先 `setup.sh` 或 `selfhost:setup`。 |
 | `npm run selfhost:ip-lab:preflight` | 校验 IP 实验室 `.env` 与选定 Caddyfile | IP 实验室 `compose up` 前，或改过实验室环境变量后。 |
 | `npm run selfhost:ip-lab:provision` | 导入 M0–M3（`WISEEFF_LAB_SEED=none` 时跳过）并把实验室管理员挂到 ChargeLab | 栈就绪后在 API 容器内执行。 |
+| `npm run observability:check` | 校验监控 Compose profile、运维入口、自动 provisioning、四套 Dashboard、告警、全服务探针、runbook 链接和 secret hygiene | 修改监控栈或 worker 私网指标端点后使用；另在 `ops/self-hosted/` 运行 `./scripts/compose --env-file .env --profile observability config --quiet`。 |
 | `npm run ui:check` | UI 设计系统棘轮门禁:逐规则统计令牌块之外的裸颜色/裸 `z-index`/裸 `font-size`/手写 `box-shadow`/`ease` 关键字,以及 `window.confirm`、手写 modal-backdrop、固定英文残留清单,计数不得超过 `scripts/ui-standards-baseline.json` | 涉及样式、令牌、弹窗、动效或可见 UI 文案的前端变更后使用;计数下降时在同一变更里运行 `npm run ui:check -- --update-baseline` 下调棘轮。 |
 | `npm run lint` | eslint 9 flat config（`jsx-a11y` + `react-hooks`）作用于 `src/**/*.{ts,tsx}`:零违规规则为 error,存量规则为 warn 且计数记录在 `eslint.config.js` | 任何 `src/` TypeScript/React 变更后使用;error 阻断,warn 是已记录的待清偿存量。 |
 | `npm run bridge:test` | 设备桥工作区套件（`packages/**`，Node 环境） | 修改 device-bridge 或 device-command-core 后。 |

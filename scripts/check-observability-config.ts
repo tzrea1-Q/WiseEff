@@ -12,10 +12,68 @@ export const requiredObservabilityFiles = [
 export const requiredObservabilityDashboardFiles = [
   "ops/self-hosted/observability/grafana/dashboards/wiseeff-overview.json",
   "ops/self-hosted/observability/grafana/dashboards/wiseeff-jobs.json",
-  "ops/self-hosted/observability/grafana/dashboards/wiseeff-security-operations.json"
+  "ops/self-hosted/observability/grafana/dashboards/wiseeff-security-operations.json",
+  "ops/self-hosted/observability/grafana/dashboards/wiseeff-services.json"
 ] as const;
 
-const requiredPrometheusTokens = ["wiseeff-api", "/metrics", "wiseeff-worker", "node-exporter"] as const;
+export const requiredObservabilityRuntimeFiles = [
+  "ops/self-hosted/compose.yaml",
+  "ops/self-hosted/scripts/observability",
+  "ops/self-hosted/observability/alertmanager.yml",
+  "ops/self-hosted/observability/blackbox.yml",
+  "ops/self-hosted/observability/grafana/provisioning/datasources/prometheus.yml",
+  "ops/self-hosted/observability/grafana/provisioning/dashboards/wiseeff.yml"
+] as const;
+
+const requiredPrometheusTokens = [
+  "wiseeff-api",
+  "/metrics",
+  "wiseeff-worker",
+  "alertmanagers:",
+  "blackbox-exporter:9115",
+  "node-exporter:9100",
+  "postgres-exporter:9187",
+  "redis-exporter:9121",
+  "http://api:8787/health/live",
+  "http://worker:8788/health/live",
+  "http://web:5173/",
+  "http://proxy/health/live",
+  "http://minio:9000/minio/health/live",
+  "postgres:5432",
+  "redis:6379"
+] as const;
+const requiredRuntimeTokensByFile: Record<string, readonly string[]> = {
+  "ops/self-hosted/compose.yaml": [
+    'profiles: ["observability"]',
+    "prometheus:",
+    "alertmanager:",
+    "grafana:",
+    "blackbox-exporter:",
+    "node-exporter:",
+    "postgres-exporter:",
+    "redis-exporter:",
+    "127.0.0.1:${WISEEFF_GRAFANA_PORT:-3000}:3000",
+    "127.0.0.1:${WISEEFF_PROMETHEUS_PORT:-9090}:9090",
+    "127.0.0.1:${WISEEFF_ALERTMANAGER_PORT:-9093}:9093",
+    "LOG_WORKER_OBSERVABILITY_HOST: 0.0.0.0",
+    "wiseeff-prometheus-data",
+    "wiseeff-grafana-data",
+    "wiseeff-alertmanager-data"
+  ],
+  "ops/self-hosted/scripts/observability": ["up|down|restart|status|logs", "--profile observability"],
+  "ops/self-hosted/observability/alertmanager.yml": ["route:", "receiver:", "receivers:"],
+  "ops/self-hosted/observability/blackbox.yml": ["http_2xx:", "tcp_connect:"],
+  "ops/self-hosted/observability/grafana/provisioning/datasources/prometheus.yml": [
+    "name: Prometheus",
+    "uid: prometheus",
+    "url: http://prometheus:9090"
+  ],
+  "ops/self-hosted/observability/grafana/provisioning/dashboards/wiseeff.yml": [
+    "providers:",
+    "path: /var/lib/grafana/dashboards"
+  ],
+  "ops/self-hosted/observability/grafana/dashboards/wiseeff-services.json": ["probe_success", "node_filesystem_avail_bytes"]
+};
 const allowedWiseEffMetricNames = new Set([
   "wiseeff_xiaoze_llm_ready",
   "wiseeff_agent_approvals_total",
@@ -78,6 +136,8 @@ export type ObservabilityConfigResult = {
   status: "passed" | "failed";
   missingScripts: string[];
   missingFiles: string[];
+  missingRuntimeFiles: string[];
+  missingRuntimeTokens: string[];
   missingDashboardFiles: string[];
   invalidDashboardFiles: string[];
   alertsMissingRunbookUrl: string[];
@@ -168,10 +228,19 @@ function findUnknownMetricReferences(files: Record<string, string | undefined>) 
   return references;
 }
 
+function findMissingRuntimeTokens(files: Record<string, string | undefined>) {
+  return Object.entries(requiredRuntimeTokensByFile).flatMap(([file, tokens]) => {
+    const content = files[file] ?? "";
+    return tokens.filter((token) => !content.includes(token)).map((token) => `${file}:${token}`);
+  });
+}
+
 export function evaluateObservabilityConfig(input: ObservabilityConfigInput): ObservabilityConfigResult {
   const scripts = input.packageJson.scripts ?? {};
   const missingScripts = requiredObservabilityScripts.filter((scriptName) => !scripts[scriptName]);
   const missingFiles = requiredObservabilityFiles.filter((file) => input.files[file] === undefined);
+  const missingRuntimeFiles = requiredObservabilityRuntimeFiles.filter((file) => input.files[file] === undefined);
+  const missingRuntimeTokens = findMissingRuntimeTokens(input.files);
   const missingDashboardFiles = requiredObservabilityDashboardFiles.filter((file) => input.files[file] === undefined);
   const invalidDashboardFiles = findInvalidDashboards(input.files);
   const alertsMissingRunbookUrl = findAlertsMissingRunbookUrl(input.files["ops/self-hosted/observability/alerts.yml"]);
@@ -182,6 +251,8 @@ export function evaluateObservabilityConfig(input: ObservabilityConfigInput): Ob
   const status =
     missingScripts.length === 0 &&
     missingFiles.length === 0 &&
+    missingRuntimeFiles.length === 0 &&
+    missingRuntimeTokens.length === 0 &&
     missingDashboardFiles.length === 0 &&
     invalidDashboardFiles.length === 0 &&
     alertsMissingRunbookUrl.length === 0 &&
@@ -195,6 +266,8 @@ export function evaluateObservabilityConfig(input: ObservabilityConfigInput): Ob
     status,
     missingScripts,
     missingFiles,
+    missingRuntimeFiles,
+    missingRuntimeTokens,
     missingDashboardFiles,
     invalidDashboardFiles,
     alertsMissingRunbookUrl,
@@ -211,7 +284,10 @@ function readFileIfPresent(file: string) {
 export function runObservabilityConfigCheck() {
   const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as ObservabilityConfigInput["packageJson"];
   const files = Object.fromEntries(
-    [...requiredObservabilityFiles, ...requiredObservabilityDashboardFiles].map((file) => [file, readFileIfPresent(file)])
+    [...requiredObservabilityFiles, ...requiredObservabilityRuntimeFiles, ...requiredObservabilityDashboardFiles].map((file) => [
+      file,
+      readFileIfPresent(file)
+    ])
   );
   const result = evaluateObservabilityConfig({ packageJson, files });
 
@@ -249,6 +325,8 @@ export function buildObservabilityEvidence(args: { date: string; result: Observa
     `- Status: \`${result.status}\``,
     `- Missing scripts: ${listOrNone(result.missingScripts)}`,
     `- Missing files: ${listOrNone(result.missingFiles)}`,
+    `- Missing runtime files: ${listOrNone(result.missingRuntimeFiles)}`,
+    `- Missing runtime tokens: ${listOrNone(result.missingRuntimeTokens)}`,
     `- Missing dashboard files: ${listOrNone(result.missingDashboardFiles)}`,
     `- Invalid dashboard files: ${listOrNone(result.invalidDashboardFiles)}`,
     `- Alerts missing runbook URL: ${listOrNone(result.alertsMissingRunbookUrl)}`,

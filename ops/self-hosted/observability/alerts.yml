@@ -12,6 +12,17 @@ groups:
           description: Prometheus cannot scrape the WiseEff API metrics target for more than 2 minutes.
           runbook_url: docs/runbooks/observability-operations.md#wiseeffapidown
 
+      - alert: WiseEffServiceProbeDown
+        expr: probe_success{job=~"wiseeff-service-(http|tcp)"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: service-probe
+        annotations:
+          summary: WiseEff self-hosted service probe is down
+          description: The blackbox probe for {{ $labels.service }} has failed for more than 2 minutes.
+          runbook_url: docs/runbooks/observability-operations.md#wiseeffserviceprobedown
+
       - alert: WiseEffReadinessBlocked
         expr: wiseeff_readiness_status{status="not_ready"} > 0
         for: 5m

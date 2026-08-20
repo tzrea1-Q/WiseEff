@@ -124,6 +124,17 @@ npm run queue:check -- --env-file ops/self-hosted/.env --base-url https://wiseef
 
 This validates package scripts, compose services, persistent PostgreSQL and Redis storage, env keys, Caddy routing, and target durable queue readiness.
 
+## Optional Graphical Monitoring
+
+Start the loopback-only Prometheus/Grafana/Alertmanager profile after the application stack is healthy:
+
+```bash
+./scripts/observability up
+./scripts/observability status
+```
+
+Use an SSH tunnel to reach Grafana rather than opening its port publicly. The profile automatically provisions service, overview, jobs, and security dashboards. See [observability-operations.md](observability-operations.md) for lifecycle, access, alert routing, and evidence requirements.
+
 ## Smoke
 
 Before expecting the non-HDC smoke to be blocked only by `deviceGateway`, run the backup/restore drill and set `M5_BACKUP_RESTORE_DRILL_AT` to the real restore-validation timestamp. M6.3 will harden this procedure, but the existing pilot-readiness route already treats backup evidence as a readiness gate.

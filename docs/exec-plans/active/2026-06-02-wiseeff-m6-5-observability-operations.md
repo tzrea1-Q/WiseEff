@@ -52,6 +52,9 @@ M6.5 excludes:
 - Agent provider readiness, Agent provider calls, Agent approval decisions, Agent tool terminal results, Agent audit write failures, debugging HTTP route outcomes, and device gateway operations are observable through baseline counters.
 - Prometheus can scrape WiseEff metrics.
 - Grafana dashboards load from versioned local files.
+- A self-hosted operator can start, stop, inspect, and tail the complete local observability stack through one repository-owned command without installing Node.js on the server.
+- Grafana provisions the Prometheus datasource and all WiseEff dashboards automatically; no manual dashboard import is required.
+- The graphical service view covers API, worker, web, proxy, PostgreSQL, Redis, object storage, Prometheus, Grafana, Alertmanager, and the host, while Grafana, Prometheus, and Alertmanager bind to loopback by default.
 - Alerts are actionable and tied to runbooks.
 - `npm run docs:check`, `npm run test:all`, `npm run build`, and observability metadata gates pass.
 
@@ -66,9 +69,15 @@ Create:
 - `server/observability/*.test.ts`: focused tests for logging, metrics, and correlation.
 - `ops/self-hosted/observability/prometheus.yml`
 - `ops/self-hosted/observability/alerts.yml`
+- `ops/self-hosted/observability/alertmanager.yml`
+- `ops/self-hosted/observability/blackbox.yml`
+- `ops/self-hosted/observability/grafana/provisioning/datasources/prometheus.yml`
+- `ops/self-hosted/observability/grafana/provisioning/dashboards/wiseeff.yml`
 - `ops/self-hosted/observability/grafana/dashboards/wiseeff-overview.json`
 - `ops/self-hosted/observability/grafana/dashboards/wiseeff-jobs.json`
 - `ops/self-hosted/observability/grafana/dashboards/wiseeff-security-operations.json`
+- `ops/self-hosted/observability/grafana/dashboards/wiseeff-services.json`
+- `ops/self-hosted/scripts/observability`
 - `scripts/check-observability-config.ts`
 - `scripts/check-observability-config.test.ts`
 - `docs/runbooks/observability-operations.md`
@@ -147,6 +156,17 @@ Modify:
 - [x] Run `npm run build`.
 - [x] Run `git diff --check`.
 
+### Task 7: One-Command Self-Hosted Monitoring Stack
+
+- [x] Add red tests for the operator CLI, Compose observability profile, provisioning files, loopback-only ports, and full service-target coverage.
+- [x] Add Prometheus, Grafana, Alertmanager, blackbox exporter, Node exporter, PostgreSQL exporter, and Redis exporter to the self-hosted Compose profile.
+- [x] Expose a private worker liveness/metrics listener so the dedicated worker is a real Prometheus target rather than a reserved placeholder.
+- [x] Provision the Prometheus datasource and all versioned dashboards automatically, including an all-services/host dashboard.
+- [x] Add `./scripts/observability up|down|restart|status|logs` with persistent monitoring volumes and no effect on application data volumes.
+- [x] Bind Grafana, Prometheus, and Alertmanager to `127.0.0.1` by default and document SSH tunnelling; keep application `/metrics` private.
+- [x] Update English and Chinese operator, reliability, environment-variable, and verification documentation.
+- [x] Run focused tests, observability/self-hosted/docs checks, Compose rendering, build, `git diff --check`, and real Grafana browser verification when the local container runtime is available.
+
 ## Current Evidence Status
 
 - Local code/config evidence exists for the metrics endpoint, structured telemetry helpers, observability config gate, Prometheus config, alert runbook links, dashboard JSON, runbooks, log-analysis terminal job duration/failure-reason counters, Agent provider call counters, device gateway operation counters, HTTP route-template spans, Agent provider spans, and debugging gateway spans.
@@ -159,6 +179,7 @@ Modify:
 - On 2026-06-05, a local TDD slice added durable queue processor spans and log-analysis job-processing spans. Focused tests prove `log_analysis.queue.process` and `log_analysis.job` spans are emitted for durable queue and polling/queue job execution with low-cardinality queue/trigger/status/error-type attributes only; Redis URLs, queue prefixes, job IDs, run IDs, log IDs, organization IDs, project IDs, storage keys, file names, and raw failure messages are not exported as span attributes. This is local code evidence only; it does not prove target Prometheus scrape, Alertmanager routing, or Grafana import.
 - On 2026-06-05, a local TDD slice added Agent per-tool execution spans. Focused tests prove `agent.tool.execute` spans are emitted for direct read tools and approval-time preparation tools with bounded tool/kind/requires-approval/status attributes only; session IDs, tool call IDs, approval IDs, project IDs, request IDs, payload values, result summaries, citations, and raw failure messages are not exported as span attributes. This is local code evidence only; it does not prove target Prometheus scrape, Alertmanager routing, or Grafana import.
 - On 2026-06-05, `npm run observability:target-evidence` and the final `npm run m6:target-evidence` summary gate were tightened so target proof URLs for Prometheus, Alertmanager, and Grafana cannot point at `localhost`, `127.*`, `0.0.0.0`, or `::1`. Non-URL proof references such as redacted operator evidence paths or Prometheus query text remain valid. This prevents local dashboard or scrape links from being recorded as target observability proof.
+- On 2026-08-21, the one-command self-hosted monitoring profile was verified locally with the repository-owned operator command. Prometheus 2.54.1 and Alertmanager 0.28.0 accepted their mounted configs (`promtool` found 15 valid rules; `amtool` found one local receiver), Grafana 11.3.1 automatically provisioned the Prometheus datasource and four WiseEff dashboards, and the service dashboard returned 12 blackbox probe series. The rendered Compose profile contained all 15 application and monitoring services and bound Grafana, Prometheus, and Alertmanager to loopback. Browser verification of `/d/wiseeff-services/wiseeff-services` passed at `1440x900`, `768x1024`, and `390x844`; refresh worked, no horizontal overflow or browser console errors were found, and screenshots were written under `work/ui-checks/`. Focused tests passed (52 script files / 488 tests with 5 skipped; 17 worker/metrics tests), `npm run test:all` passed (395 frontend files / 2,954 tests; 52 script files / 488 tests with 5 skipped; 21 bridge files / 138 tests; 346 server files passed with 2 skipped / 2,681 tests passed with 8 skipped), and `npm run selfhost:check`, `npm run observability:check`, Compose rendering, `npm run build`, and `git diff --check` passed. This is local implementation evidence, not target-environment evidence.
 - Target-environment evidence is still pending: a real Prometheus instance has not scraped the deployed WiseEff API target, Alertmanager routing has not been exercised, and Grafana dashboard import/screenshots have not been captured.
 - Because target-environment observability evidence is pending, keep this plan in `docs/exec-plans/active/` until M6.6 or a target self-hosted environment run records that evidence.
 
@@ -170,21 +191,30 @@ Modify:
 - Whether Grafana/Prometheus run on the WiseEff host or a separate operations host.
 - Incident escalation contacts and operating hours.
 
+The one-command local stack does not wait for these inputs: it uses a local-only Alertmanager receiver and loopback-only UIs. External alert delivery and shared-network Grafana access remain explicit target-environment choices.
+
+## Git & PR Workflow
+
+- Feature branch: `feat/self-hosted-observability-stack`, created from local `main` aligned with `origin/main` at implementation start.
+- The implementation remains on the feature branch for review. Opening or merging a GitHub PR is outside this user-requested local implementation unless separately requested.
+
 ## Documentation Impact Matrix
 
 | Area | Status | Files | Notes |
 | --- | --- | --- | --- |
-| Repository maps | Update | `docs/README.md`, `docs/runbooks/README.md`, `AGENTS.md` | Add observability and incident runbooks. |
-| Planning docs | Update | `docs/exec-plans/active/development-roadmap.md`, this plan | Track M6.5 observability phase. |
+| Repository maps | Update | `docs/README.md`, `docs/zh-CN/README.md` | Point operators to the one-command profile. |
+| Planning docs | Update | This plan | Track and verify the one-command monitoring slice. |
 | Product specs | No change | `docs/product-specs/` | No product workflow change expected. |
-| Architecture docs | Update | `ARCHITECTURE.md`, `docs/design-docs/full-stack-architecture.md`, `docs/design-docs/deployment-operations.md` | Document telemetry paths and correlation IDs. |
-| Quality/testing docs | Update | `docs/developer/verification-matrix.md`, `docs/design-docs/testing-strategy.md`, `docs/QUALITY_SCORE.md` | Add observability config and smoke gates. |
-| Reliability/runbooks | Update | `docs/RELIABILITY.md`, `docs/runbooks/monitoring-alerting.md`, `docs/runbooks/observability-operations.md`, `docs/runbooks/incidents.md` | Core M6.5 scope. |
-| Security/governance docs | Update | `docs/SECURITY.md`, `docs/security/data-classification.md`, `docs/security/audit-retention.md`, `docs/security/secrets-management.md` | Logs/metrics/traces may contain sensitive metadata. |
+| Architecture docs | Review | `ARCHITECTURE.md`, `docs/design-docs/full-stack-architecture.md`, `docs/design-docs/deployment-operations.md` | Existing observability topology remains valid; record the deployable profile only where runtime operations are described. |
+| Quality/testing docs | Update | `docs/developer/verification-matrix.md`, `docs/zh-CN/developer/verification-matrix.md` | Add one-command stack and rendered Compose gates. |
+| Reliability/runbooks | Update | `docs/RELIABILITY.md`, `docs/zh-CN/RELIABILITY.md`, `docs/runbooks/observability-operations.md`, `docs/zh-CN/runbooks/observability-operations.md` | Document the local stack, access boundary, service coverage, and commands. |
+| Security/governance docs | Review | `docs/SECURITY.md`, `docs/security/data-classification.md`, `docs/security/audit-retention.md`, `docs/security/secrets-management.md` | No classification change; loopback-only UI ports preserve the existing private telemetry boundary. |
 | Frontend/design docs | Review | `docs/FRONTEND.md` | Update only if frontend telemetry is added. |
-| Generated artifacts | Review | `docs/generated/` | Generated evidence only if observability smoke writes a report. |
+| Generated artifacts | Update | `docs/generated/m6-observability-config-evidence.md` | Refresh config-only evidence; do not treat it as target proof. |
 | References | Review | `docs/references/` | Add compact observability reference if useful for agents. |
-| Chinese developer docs | Update | `docs/zh-CN/security-reliability.md`, `docs/zh-CN/backend-runtime.md`, `docs/zh-CN/quality-and-plans.md` | Observability commands and runbooks are developer-facing. |
+| Self-hosted operator docs | Update | `ops/self-hosted/README.md`, `ops/self-hosted/README.zh-CN.md` | Add the server-side one-command entry and local UI access. |
+| Environment variables | Update | `ops/self-hosted/.env.example`, `docs/developer/environment-variables.md`, `docs/zh-CN/developer/environment-variables.md` | Document local UI ports, retention, and worker metrics listener. |
+| Chinese developer docs | Update | `docs/zh-CN/README.md`, `docs/zh-CN/RELIABILITY.md`, `docs/zh-CN/root/ARCHITECTURE.md`, paired developer and runbook files | Keep operator commands, access boundary, environment variables, and verification guidance aligned with English docs. |
 
 ## Documentation Update Gate
 

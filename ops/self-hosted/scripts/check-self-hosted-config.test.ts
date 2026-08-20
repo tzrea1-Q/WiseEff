@@ -35,7 +35,7 @@ x-wiseeff-build: &wiseeff-build
 services:
   postgres:
     image: postgres:16-alpine
-    env_file: .env
+    env_file: \${WISEEFF_ENV_FILE:-.env}
     volumes:
       - wiseeff-postgres-data:/var/lib/postgresql/data
   redis:
@@ -46,14 +46,14 @@ services:
   api:
     image: *wiseeff-image
     build: *wiseeff-build
-    env_file: .env
+    env_file: \${WISEEFF_ENV_FILE:-.env}
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8787/health/live"]
     command: ["sh", "-lc", "npx tsx server/index.ts"]
   worker:
     image: *wiseeff-image
     build: *wiseeff-build
-    env_file: .env
+    env_file: \${WISEEFF_ENV_FILE:-.env}
     command: ["sh", "-lc", "npm run worker:logs"]
     depends_on:
       redis:
@@ -61,7 +61,7 @@ services:
   web:
     image: *wiseeff-image
     build: *wiseeff-build
-    env_file: .env
+    env_file: \${WISEEFF_ENV_FILE:-.env}
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:5173/"]
     command: ["sh", "-lc", "npm run preview -- --host 0.0.0.0 --port 5173 --strictPort"]
@@ -290,7 +290,7 @@ describe("self-hosted config metadata", () => {
       expect.arrayContaining([
         "wiseeff-postgres-data:/var/lib/postgresql/data",
         "wiseeff-redis-data:/data",
-        "env_file: .env",
+        "env_file: ${WISEEFF_ENV_FILE:-.env}",
         "redis-server",
         "npm run worker:logs",
         "VITE_WISEEFF_API_BASE_URL: ${VITE_WISEEFF_API_BASE_URL:?set VITE_WISEEFF_API_BASE_URL in ops/self-hosted/.env}"
