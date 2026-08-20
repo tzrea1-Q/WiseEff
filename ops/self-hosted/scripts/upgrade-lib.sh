@@ -18,6 +18,7 @@ Actions:
 
 Options:
   --ref REF                     Git ref; defaults to WISEEFF_UPGRADE_REF or origin/main.
+  --git-proxy URL               HTTP(S)/SOCKS proxy for resolving the Git ref (or WISEEFF_UPGRADE_GIT_PROXY).
   --env-file PATH               Runtime env file; defaults to ops/self-hosted/.env.
   --state-dir PATH              Upgrade journal root.
   --backup-root PATH            Upgrade backup root.
@@ -155,7 +156,31 @@ wiseeff_upgrade_compose() {
 }
 
 wiseeff_upgrade_git() {
-  git -C "$upgrade_repo_root" "$@"
+  if [ -n "${upgrade_git_proxy:-}" ]; then
+    git -C "$upgrade_repo_root" -c "http.proxy=${upgrade_git_proxy}" "$@"
+  else
+    git -C "$upgrade_repo_root" "$@"
+  fi
+}
+
+wiseeff_upgrade_prepare_git_transport() {
+  # Git/libcurl treats the lower-case forms as canonical. Interactive shells
+  # often export only upper-case names, so copy them without sourcing a shell
+  # profile or the runtime .env file. Git config (http.proxy, URL-specific
+  # proxy config, and GIT_SSH_COMMAND/core.sshCommand) remains authoritative
+  # and is read by every invocation above.
+  if [ -z "${http_proxy:-}" ] && [ -n "${HTTP_PROXY:-}" ]; then
+    export http_proxy="$HTTP_PROXY"
+  fi
+  if [ -z "${https_proxy:-}" ] && [ -n "${HTTPS_PROXY:-}" ]; then
+    export https_proxy="$HTTPS_PROXY"
+  fi
+  if [ -z "${all_proxy:-}" ] && [ -n "${ALL_PROXY:-}" ]; then
+    export all_proxy="$ALL_PROXY"
+  fi
+  if [ -z "${no_proxy:-}" ] && [ -n "${NO_PROXY:-}" ]; then
+    export no_proxy="$NO_PROXY"
+  fi
 }
 
 wiseeff_upgrade_docker() {
@@ -279,6 +304,7 @@ wiseeff_upgrade_validate_protocol() {
 
 wiseeff_upgrade_resolve_target() {
   upgrade_previous_sha="$(wiseeff_upgrade_git rev-parse HEAD)"
+  wiseeff_upgrade_prepare_git_transport
   wiseeff_upgrade_git fetch origin --prune >/dev/null
   upgrade_target_sha="$(wiseeff_upgrade_git rev-parse "${upgrade_ref}^{commit}")"
   [ -n "$upgrade_target_sha" ] || {
@@ -1170,6 +1196,7 @@ wiseeff_upgrade_main() {
   upgrade_env_file="${upgrade_compose_dir}/.env"
   upgrade_action="apply"
   upgrade_ref="${WISEEFF_UPGRADE_REF:-origin/main}"
+  upgrade_git_proxy="${WISEEFF_UPGRADE_GIT_PROXY:-}"
   upgrade_state_dir=""
   upgrade_backup_root=""
   upgrade_run_id=""
@@ -1195,6 +1222,11 @@ wiseeff_upgrade_main() {
       --ref)
         [ "$#" -ge 2 ] || { wiseeff_upgrade_die 2 "--ref requires a value."; return $?; }
         upgrade_ref="$2"
+        shift 2
+        ;;
+      --git-proxy)
+        [ "$#" -ge 2 ] || { wiseeff_upgrade_die 2 "--git-proxy requires a value."; return $?; }
+        upgrade_git_proxy="$2"
         shift 2
         ;;
       --env-file)

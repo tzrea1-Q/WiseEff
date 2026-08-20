@@ -6,6 +6,16 @@
 
 The host needs Docker Engine and Compose; Node.js is not required. The command reads `ops/self-hosted/.env` but never rewrites it, rotates credentials, seeds data, provisions an admin, or removes a volume. It never runs `compose down -v`, `volume rm`, or `system prune`.
 
+Git target resolution inherits the proxy environment of the invoking command and normalizes upper-case `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY` to the lower-case variables expected by Git/libcurl. Existing Git `http.proxy`, URL-specific proxy, `GIT_SSH_COMMAND`, and `core.sshCommand` settings remain effective. When needed, provide a Git-only override:
+
+```bash
+./scripts/upgrade.sh plan --git-proxy http://127.0.0.1:7890
+```
+
+Automation may set `WISEEFF_UPGRADE_GIT_PROXY` instead; the command-line option takes precedence.
+
+Do not source `.env` or a user shell profile to pass proxy settings; the entry point deliberately does not execute arbitrary shell configuration. `--git-proxy` is for HTTP(S)/SOCKS Git remotes; configure `GIT_SSH_COMMAND` or `core.sshCommand` for SSH remotes.
+
 ## First adoption
 
 Install the release containing this entry through the existing controlled procedure. Before the first real run, check the checkout and live stack:

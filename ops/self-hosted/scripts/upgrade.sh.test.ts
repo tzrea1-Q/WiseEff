@@ -23,6 +23,40 @@ describe("upgrade.sh public interface", () => {
     expect(result.stdout).toContain("status");
     expect(result.stdout).toContain("resume");
     expect(result.stdout).toContain("rollback");
+    expect(result.stdout).toContain("--git-proxy");
+  });
+
+  it("normalizes upper-case proxy variables for the non-interactive Git fetch", () => {
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      upgrade_repo_root="$PWD"
+      upgrade_git_proxy=""
+      unset http_proxy https_proxy all_proxy no_proxy
+      export HTTP_PROXY=http://127.0.0.1:7890
+      export HTTPS_PROXY=http://127.0.0.1:7890
+      export ALL_PROXY=socks5h://127.0.0.1:7891
+      export NO_PROXY=127.0.0.1,localhost
+      wiseeff_upgrade_prepare_git_transport
+      printf '%s\\n' "$http_proxy|$https_proxy|$all_proxy|$no_proxy"
+    `], { encoding: "utf8", env: { ...process.env } });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe(
+      "http://127.0.0.1:7890|http://127.0.0.1:7890|socks5h://127.0.0.1:7891|127.0.0.1,localhost"
+    );
+  });
+
+  it("applies the explicit Git proxy only to Git invocations", () => {
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      upgrade_repo_root="$PWD"
+      upgrade_git_proxy=http://127.0.0.1:7890
+      git() { printf '%s\\n' "$*"; }
+      wiseeff_upgrade_git fetch origin --prune
+    `], { encoding: "utf8", env: { ...process.env } });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toContain("-c http.proxy=http://127.0.0.1:7890 fetch origin --prune");
   });
 
   it("rejects unknown actions with the usage exit class", () => {
