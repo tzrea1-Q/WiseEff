@@ -5,6 +5,7 @@ import {
   parseObservabilityArgs,
   requiredObservabilityDashboardFiles,
   requiredObservabilityFiles,
+  requiredObservabilityRuntimeFiles,
   requiredObservabilityScripts
 } from "./check-observability-config";
 
@@ -17,6 +18,10 @@ const validPackageJson = {
 const validPrometheus = `
 global:
   scrape_interval: 15s
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
 scrape_configs:
   - job_name: wiseeff-api
     metrics_path: /metrics
@@ -24,10 +29,30 @@ scrape_configs:
       - targets: ["api:8787"]
   - job_name: wiseeff-worker
     static_configs:
-      - targets: ["worker:8788"]
+      - targets: ["worker:8788", "blackbox-exporter:9115"]
   - job_name: node-exporter
     static_configs:
       - targets: ["node-exporter:9100"]
+  - job_name: postgres-exporter
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+  - job_name: redis-exporter
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+  - job_name: wiseeff-service-http
+    static_configs:
+      - targets:
+          - http://api:8787/health/live
+          - http://worker:8788/health/live
+          - http://web:5173/
+          - http://proxy/health/live
+          - http://minio:9000/minio/health/live
+          - http://prometheus:9090/-/ready
+          - http://alertmanager:9093/-/ready
+          - http://grafana:3000/api/health
+  - job_name: wiseeff-service-tcp
+    static_configs:
+      - targets: ["postgres:5432", "redis:6379"]
 `;
 
 const validAlerts = `
@@ -68,7 +93,52 @@ const validDashboards = {
   "ops/self-hosted/observability/grafana/dashboards/wiseeff-security-operations.json": JSON.stringify({
     title: "WiseEff Security Operations",
     panels: [{ title: "Audit writes", type: "timeseries" }]
+  }),
+  "ops/self-hosted/observability/grafana/dashboards/wiseeff-services.json": JSON.stringify({
+    title: "WiseEff Services",
+    panels: [
+      { title: "Service status", type: "table", targets: [{ expr: "probe_success" }] },
+      { title: "Disk free", type: "stat", targets: [{ expr: "node_filesystem_avail_bytes" }] }
+    ]
   })
+};
+
+const validRuntimeFiles = {
+  "ops/self-hosted/compose.yaml": `
+services:
+  prometheus:
+    profiles: ["observability"]
+    ports: ["127.0.0.1:\${WISEEFF_PROMETHEUS_PORT:-9090}:9090"]
+  alertmanager:
+    profiles: ["observability"]
+    ports: ["127.0.0.1:\${WISEEFF_ALERTMANAGER_PORT:-9093}:9093"]
+  grafana:
+    profiles: ["observability"]
+    ports: ["127.0.0.1:\${WISEEFF_GRAFANA_PORT:-3000}:3000"]
+  blackbox-exporter:
+    profiles: ["observability"]
+  node-exporter:
+    profiles: ["observability"]
+  postgres-exporter:
+    profiles: ["observability"]
+  redis-exporter:
+    profiles: ["observability"]
+  worker:
+    environment:
+      LOG_WORKER_OBSERVABILITY_HOST: 0.0.0.0
+volumes:
+  wiseeff-prometheus-data:
+  wiseeff-grafana-data:
+  wiseeff-alertmanager-data:
+`,
+  "ops/self-hosted/scripts/observability":
+    "Usage: observability <up|down|restart|status|logs>\ncompose --profile observability",
+  "ops/self-hosted/observability/alertmanager.yml": "route:\n  receiver: local-dashboard\nreceivers:\n  - name: local-dashboard\n",
+  "ops/self-hosted/observability/blackbox.yml": "modules:\n  http_2xx:\n    prober: http\n  tcp_connect:\n    prober: tcp\n",
+  "ops/self-hosted/observability/grafana/provisioning/datasources/prometheus.yml":
+    "apiVersion: 1\ndatasources:\n  - name: Prometheus\n    uid: prometheus\n    url: http://prometheus:9090\n",
+  "ops/self-hosted/observability/grafana/provisioning/dashboards/wiseeff.yml":
+    "apiVersion: 1\nproviders:\n  - name: WiseEff\n    options:\n      path: /var/lib/grafana/dashboards\n"
 };
 
 describe("M6.5 observability configuration metadata", () => {
@@ -81,7 +151,16 @@ describe("M6.5 observability configuration metadata", () => {
     expect(requiredObservabilityDashboardFiles).toEqual([
       "ops/self-hosted/observability/grafana/dashboards/wiseeff-overview.json",
       "ops/self-hosted/observability/grafana/dashboards/wiseeff-jobs.json",
-      "ops/self-hosted/observability/grafana/dashboards/wiseeff-security-operations.json"
+      "ops/self-hosted/observability/grafana/dashboards/wiseeff-security-operations.json",
+      "ops/self-hosted/observability/grafana/dashboards/wiseeff-services.json"
+    ]);
+    expect(requiredObservabilityRuntimeFiles).toEqual([
+      "ops/self-hosted/compose.yaml",
+      "ops/self-hosted/scripts/observability",
+      "ops/self-hosted/observability/alertmanager.yml",
+      "ops/self-hosted/observability/blackbox.yml",
+      "ops/self-hosted/observability/grafana/provisioning/datasources/prometheus.yml",
+      "ops/self-hosted/observability/grafana/provisioning/dashboards/wiseeff.yml"
     ]);
   });
 
@@ -91,6 +170,7 @@ describe("M6.5 observability configuration metadata", () => {
       files: {
         "ops/self-hosted/observability/prometheus.yml": validPrometheus,
         "ops/self-hosted/observability/alerts.yml": validAlerts,
+        ...validRuntimeFiles,
         ...validDashboards
       }
     });
@@ -99,6 +179,8 @@ describe("M6.5 observability configuration metadata", () => {
       status: "passed",
       missingScripts: [],
       missingFiles: [],
+      missingRuntimeFiles: [],
+      missingRuntimeTokens: [],
       missingDashboardFiles: [],
       invalidDashboardFiles: [],
       alertsMissingRunbookUrl: [],
@@ -106,6 +188,60 @@ describe("M6.5 observability configuration metadata", () => {
       missingPrometheusTokens: [],
       unknownMetricReferences: []
     });
+  });
+
+  it("fails when the one-command runtime and automatic provisioning files are absent", () => {
+    const result = evaluateObservabilityConfig({
+      packageJson: validPackageJson,
+      files: {
+        "ops/self-hosted/observability/prometheus.yml": validPrometheus,
+        "ops/self-hosted/observability/alerts.yml": validAlerts,
+        ...validDashboards
+      }
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.missingRuntimeFiles).toEqual(requiredObservabilityRuntimeFiles);
+  });
+
+  it("rejects a monitoring runtime that omits loopback UI binding or automatic Grafana provisioning", () => {
+    const result = evaluateObservabilityConfig({
+      packageJson: validPackageJson,
+      files: {
+        "ops/self-hosted/observability/prometheus.yml": validPrometheus,
+        "ops/self-hosted/observability/alerts.yml": validAlerts,
+        ...validRuntimeFiles,
+        ...validDashboards,
+        "ops/self-hosted/compose.yaml": "services:\n  grafana:\n    profiles: [observability]\n    ports: [\"0.0.0.0:3000:3000\"]\n",
+        "ops/self-hosted/observability/grafana/provisioning/datasources/prometheus.yml": "apiVersion: 1\n"
+      }
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.missingRuntimeTokens).toEqual(
+      expect.arrayContaining([
+        "ops/self-hosted/compose.yaml:127.0.0.1:${WISEEFF_GRAFANA_PORT:-3000}:3000",
+        "ops/self-hosted/observability/grafana/provisioning/datasources/prometheus.yml:url: http://prometheus:9090"
+      ])
+    );
+  });
+
+  it("requires graphical probes for every self-hosted application and data service", () => {
+    const result = evaluateObservabilityConfig({
+      packageJson: validPackageJson,
+      files: {
+        "ops/self-hosted/observability/prometheus.yml": validPrometheus.replace(
+          "http://minio:9000/minio/health/live",
+          "http://missing-object-store:9000/health"
+        ),
+        "ops/self-hosted/observability/alerts.yml": validAlerts,
+        ...validRuntimeFiles,
+        ...validDashboards
+      }
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.missingPrometheusTokens).toContain("http://minio:9000/minio/health/live");
   });
 
   it("fails when alerts or dashboards reference WiseEff metrics that are not produced by the M6.5 runtime", () => {
@@ -119,6 +255,7 @@ describe("M6.5 observability configuration metadata", () => {
         annotations:
           runbook_url: docs/runbooks/observability-operations.md#unknownmetric
 `,
+        ...validRuntimeFiles,
         ...validDashboards,
         "ops/self-hosted/observability/grafana/dashboards/wiseeff-jobs.json": JSON.stringify({
           title: "WiseEff Jobs",
@@ -155,6 +292,7 @@ describe("M6.5 observability configuration metadata", () => {
         annotations:
           runbook_url: docs/runbooks/observability-operations.md#wiseeffxiaozellmfailure
 `,
+        ...validRuntimeFiles,
         ...validDashboards,
         "ops/self-hosted/observability/grafana/dashboards/wiseeff-security-operations.json": JSON.stringify({
           title: "WiseEff Security Operations",
@@ -195,7 +333,8 @@ groups:
     expect(result.missingFiles).toEqual([]);
     expect(result.missingDashboardFiles).toEqual([
       "ops/self-hosted/observability/grafana/dashboards/wiseeff-jobs.json",
-      "ops/self-hosted/observability/grafana/dashboards/wiseeff-security-operations.json"
+      "ops/self-hosted/observability/grafana/dashboards/wiseeff-security-operations.json",
+      "ops/self-hosted/observability/grafana/dashboards/wiseeff-services.json"
     ]);
     expect(result.invalidDashboardFiles).toEqual([
       "ops/self-hosted/observability/grafana/dashboards/wiseeff-overview.json"
@@ -210,6 +349,7 @@ groups:
       files: {
         "ops/self-hosted/observability/prometheus.yml": `${validPrometheus}\napi_key: sk-live-value`,
         "ops/self-hosted/observability/alerts.yml": validAlerts,
+        ...validRuntimeFiles,
         ...validDashboards
       }
     });
@@ -233,6 +373,7 @@ groups:
       files: {
         "ops/self-hosted/observability/prometheus.yml": validPrometheus,
         "ops/self-hosted/observability/alerts.yml": validAlerts,
+        ...validRuntimeFiles,
         ...validDashboards,
         "ops/self-hosted/observability/grafana/dashboards/security.json": "high-risk-operations"
       }
@@ -261,6 +402,7 @@ groups:
         files: {
           "ops/self-hosted/observability/prometheus.yml": validPrometheus,
           "ops/self-hosted/observability/alerts.yml": validAlerts,
+          ...validRuntimeFiles,
           ...validDashboards
         }
       })
@@ -270,6 +412,8 @@ groups:
     expect(evidence).toContain("- Status: `passed`");
     expect(evidence).toContain("- Missing scripts: none");
     expect(evidence).toContain("- Missing files: none");
+    expect(evidence).toContain("- Missing runtime files: none");
+    expect(evidence).toContain("- Missing runtime tokens: none");
     expect(evidence).not.toContain("sk-live-value");
   });
 });

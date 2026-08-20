@@ -65,7 +65,9 @@ The smoke writes `docs/generated/m6-self-hosted-runtime-evidence.md` by default 
 
 ## M6.5 Observability Baseline
 
-M6.5 adds self-hosted observability configuration under `ops/self-hosted/observability/`: Prometheus scrape config, alert rules, and three Grafana dashboards for overview, jobs, and security operations. The baseline scrape path is `api:8787/metrics` from a private compose or operations network.
+M6.5 adds self-hosted observability configuration under `ops/self-hosted/observability/`: Prometheus scrape config, alert rules, and four Grafana dashboards for services, overview, jobs, and security operations. The baseline scrape path is `api:8787/metrics` from a private compose or operations network.
+
+The self-hosted `observability` Compose profile is operated through `ops/self-hosted/scripts/observability`. It adds Prometheus, Grafana, Alertmanager, HTTP/TCP service probes, host metrics, PostgreSQL metrics, Redis metrics, automatic datasource/dashboard provisioning, and a fourth `WiseEff Services` dashboard. Monitoring UIs bind to loopback by default and are intended for SSH-tunnel, VPN, or an equivalently controlled operations path. The dedicated worker exposes private liveness and Prometheus endpoints on compose port `8788`.
 
 `GET /metrics` exposes build info, HTTP request counters/duration buckets, readiness/dependency gauges, worker queue gauges, log-analysis terminal job duration/failure-reason counters, Xiaoze LLM readiness gauges, Agent approval/tool metrics, device gateway operation counters, DTS parse/schema/compile latency and failures, DTS toolchain readiness/version info, open identity-mapping and spec-review backlogs, config publish results (including bypass), and parameter-identity migration/cutover status. These metrics support operational triage, but audit records, device snapshots, and target evidence remain the authoritative proof for high-risk writes.
 

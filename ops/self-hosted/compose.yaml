@@ -13,7 +13,7 @@ services:
     restart: unless-stopped
     mem_limit: 256m
     memswap_limit: 384m
-    env_file: .env
+    env_file: ${WISEEFF_ENV_FILE:-.env}
     environment:
       POSTGRES_USER: wiseeff
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in ops/self-hosted/.env}
@@ -80,7 +80,7 @@ services:
     restart: unless-stopped
     mem_limit: 512m
     memswap_limit: 768m
-    env_file: .env
+    env_file: ${WISEEFF_ENV_FILE:-.env}
     environment:
       HOST: 0.0.0.0
       PORT: 8787
@@ -109,9 +109,11 @@ services:
     restart: unless-stopped
     mem_limit: 384m
     memswap_limit: 576m
-    env_file: .env
+    env_file: ${WISEEFF_ENV_FILE:-.env}
     environment:
       LOG_WORKER_ENABLED: "true"
+      LOG_WORKER_OBSERVABILITY_HOST: 0.0.0.0
+      LOG_WORKER_OBSERVABILITY_PORT: 8788
     depends_on:
       postgres:
         condition: service_healthy
@@ -121,6 +123,13 @@ services:
         condition: service_completed_successfully
       api:
         condition: service_started
+    expose:
+      - "8788"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8788/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
     command: ["sh", "-lc", "npm run worker:logs"]
 
   web:
@@ -129,7 +138,7 @@ services:
     restart: unless-stopped
     mem_limit: 256m
     memswap_limit: 384m
-    env_file: .env
+    env_file: ${WISEEFF_ENV_FILE:-.env}
     environment:
       VITE_WISEEFF_RUNTIME_MODE: api
       VITE_WISEEFF_API_BASE_URL: ${VITE_WISEEFF_API_BASE_URL}
@@ -148,7 +157,7 @@ services:
     restart: unless-stopped
     mem_limit: 64m
     memswap_limit: 96m
-    env_file: .env
+    env_file: ${WISEEFF_ENV_FILE:-.env}
     depends_on:
       - api
       - web
@@ -169,9 +178,110 @@ services:
       timeout: 5s
       retries: 12
 
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    profiles: ["observability"]
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 384m
+    ports:
+      - "127.0.0.1:${WISEEFF_PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - wiseeff-prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${WISEEFF_PROMETHEUS_RETENTION:-15d}
+      - --web.enable-lifecycle
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.0
+    profiles: ["observability"]
+    restart: unless-stopped
+    mem_limit: 128m
+    memswap_limit: 192m
+    ports:
+      - "127.0.0.1:${WISEEFF_ALERTMANAGER_PORT:-9093}:9093"
+    volumes:
+      - ./observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - wiseeff-alertmanager-data:/alertmanager
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    profiles: ["observability"]
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 384m
+    depends_on:
+      - prometheus
+    ports:
+      - "127.0.0.1:${WISEEFF_GRAFANA_PORT:-3000}:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION: "true"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/wiseeff-services.json
+    volumes:
+      - ./observability/grafana/provisioning/datasources/prometheus.yml:/etc/grafana/provisioning/datasources/prometheus.yml:ro
+      - ./observability/grafana/provisioning/dashboards/wiseeff.yml:/etc/grafana/provisioning/dashboards/wiseeff.yml:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - wiseeff-grafana-data:/var/lib/grafana
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    profiles: ["observability"]
+    restart: unless-stopped
+    mem_limit: 64m
+    memswap_limit: 96m
+    volumes:
+      - ./observability/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    command:
+      - --config.file=/etc/blackbox_exporter/config.yml
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    profiles: ["observability"]
+    restart: unless-stopped
+    mem_limit: 64m
+    memswap_limit: 96m
+    pid: host
+    volumes:
+      - /:/host:ro
+    command:
+      - --path.rootfs=/host
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|var/lib/containers/storage/.+)($$|/)
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    profiles: ["observability"]
+    restart: unless-stopped
+    mem_limit: 64m
+    memswap_limit: 96m
+    environment:
+      DATA_SOURCE_NAME: ${DATABASE_URL}
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.66.0
+    profiles: ["observability"]
+    restart: unless-stopped
+    mem_limit: 64m
+    memswap_limit: 96m
+    environment:
+      REDIS_ADDR: redis://redis:6379
+
 volumes:
   wiseeff-postgres-data:
   wiseeff-redis-data:
   wiseeff-minio-data:
   wiseeff-caddy-data:
   wiseeff-caddy-config:
+  wiseeff-prometheus-data:
+  wiseeff-alertmanager-data:
+  wiseeff-grafana-data:

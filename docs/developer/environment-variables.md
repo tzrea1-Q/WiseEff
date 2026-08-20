@@ -84,6 +84,8 @@ To exercise the productized local login/register UI, keep the default `AUTH_MODE
 | `LOG_ANALYSIS_QUEUE_ATTEMPTS` | `4` | retry/dead-letter policy | Aligns BullMQ attempts with PostgreSQL job retry state. |
 | `LOG_ANALYSIS_QUEUE_BACKOFF_MS` | `1000` | retry/dead-letter policy | Base exponential backoff in milliseconds. |
 | `LOG_ANALYSIS_QUEUE_CONCURRENCY` | `1` | worker throughput | Increase only after capacity testing. |
+| `LOG_WORKER_OBSERVABILITY_HOST` | `127.0.0.1` | dedicated worker liveness/metrics | Self-hosted Compose overrides this to `0.0.0.0` only inside the private network. |
+| `LOG_WORKER_OBSERVABILITY_PORT` | `8788` | dedicated worker liveness/metrics | Exposes private `GET /health/live` and `GET /metrics`; do not publish this port. |
 
 ## Device Gateway
 
@@ -210,6 +212,10 @@ M6.1 adds `ops/self-hosted/.env.example` for Linux deployments. M6.2 switches th
 | `LOG_WORKER_ENABLED` | `false` in API, `true` in worker | Prevents the API container from running a duplicate in-process worker. |
 | `LOG_ANALYSIS_QUEUE_MODE` | `durable` | Uses Redis/BullMQ transport while PostgreSQL remains the source of truth. |
 | `REDIS_URL` | `redis://redis:6379` | Compose Redis service used by API and worker containers. |
+| `WISEEFF_GRAFANA_PORT` | `3000` | Loopback-only Grafana UI port used by `./scripts/observability`. |
+| `WISEEFF_PROMETHEUS_PORT` | `9090` | Loopback-only Prometheus UI/API port. |
+| `WISEEFF_ALERTMANAGER_PORT` | `9093` | Loopback-only Alertmanager UI/API port. |
+| `WISEEFF_PROMETHEUS_RETENTION` | `15d` | Prometheus TSDB retention for the named monitoring volume. |
 | `BACKUP_REDIS_SNAPSHOT_TARGET` | restore-drill snapshot path | Required by `npm run m6:target-plan` for final M6.3 target evidence when durable queue mode is in scope. |
 | `BACKUP_REDIS_CHECKPOINT_VALIDATED` | `true` after Redis checkpoint validation | Required by `npm run m6:target-plan`; target M6.3 evidence must prove durable queue persistence was captured. |
 | `WISEEFF_SITE_HOST` | operator-provided DNS, or a raw IP in the [IP lab profile](../../ops/self-hosted/ip-lab.md) | Used by Caddy and frontend API base URL. |
@@ -255,5 +261,7 @@ M6.5 observability config lives in `ops/self-hosted/observability/`. It does not
 | --- | --- | --- |
 | Metrics endpoint | `http://api:8787/metrics` from private network | Prometheus should scrape the API container over the compose or operations network. |
 | Public `/metrics` exposure | disabled | If reverse-proxied, restrict by VPN, fixed IP allowlist, mTLS, or stronger equivalent control. |
-| Grafana datasource | Prometheus datasource selected during import | Dashboard JSON uses a `DS_PROMETHEUS` datasource variable. |
+| Grafana datasource | Provisioned automatically as `Prometheus` | Dashboard JSON uses the provisioned `DS_PROMETHEUS` datasource variable. |
+| Monitoring lifecycle | `./scripts/observability up|down|restart|status|logs` | Runs the optional Compose profile without requiring Node.js on the server. |
+| Monitoring UI exposure | `127.0.0.1` only | Use an SSH tunnel, VPN, or equivalently controlled operations path; no Caddy route is added. |
 | Alert runbook links | `docs/runbooks/observability-operations.md#...` | Every alert rule must keep a `runbook_url` annotation. |

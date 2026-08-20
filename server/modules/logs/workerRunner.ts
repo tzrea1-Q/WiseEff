@@ -1,6 +1,7 @@
+import { createServer } from "node:http";
 import { loadServerEnv } from "../../config/env";
 import { resolveKnowledgeEmbeddingClient } from "../knowledge/indexing/embeddingClient";
-import type { MetricsRegistry } from "../../observability/metrics";
+import { createMetricsRegistry, type MetricsRegistry } from "../../observability/metrics";
 import { defaultTracingBoundary } from "../../observability/tracing";
 import type { Database } from "../../shared/database/client";
 import { createPostgresDatabase } from "../../shared/database/client";
@@ -24,6 +25,8 @@ type RawWorkerEnv = {
   OBJECT_STORAGE_ACCESS_KEY_ID?: string;
   OBJECT_STORAGE_SECRET_ACCESS_KEY?: string;
   OBJECT_STORAGE_REGION?: string;
+  LOG_WORKER_OBSERVABILITY_HOST?: string;
+  LOG_WORKER_OBSERVABILITY_PORT?: string;
 };
 
 type LogWorkerRuntimeOptions = {
@@ -40,6 +43,39 @@ type LogWorkerRuntimeOptions = {
   metrics?: Pick<MetricsRegistry, "recordLogAnalysisJobResult">;
   webhooks?: LogWorkerWebhooks;
 };
+
+export function createLogWorkerObservabilityServer({ metrics }: { metrics: Pick<MetricsRegistry, "renderPrometheus"> }) {
+  return createServer((request, response) => {
+    if (request.method === "GET" && request.url === "/health/live") {
+      response.statusCode = 200;
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify({ ok: true, service: "wiseeff-log-worker", status: "live" }));
+      return;
+    }
+
+    if (request.method === "GET" && request.url === "/metrics") {
+      response.statusCode = 200;
+      response.setHeader("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
+      response.end(metrics.renderPrometheus());
+      return;
+    }
+
+    response.statusCode = 404;
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify({ error: "not_found" }));
+  });
+}
+
+export function resolveLogWorkerObservabilityConfig(raw: RawWorkerEnv) {
+  const port = Number(raw.LOG_WORKER_OBSERVABILITY_PORT ?? "8788");
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    throw new Error("LOG_WORKER_OBSERVABILITY_PORT must be a positive integer.");
+  }
+  return {
+    host: raw.LOG_WORKER_OBSERVABILITY_HOST?.trim() || "127.0.0.1",
+    port
+  };
+}
 
 export function validateLogWorkerConfig(raw: RawWorkerEnv) {
   if (!raw.DATABASE_URL?.trim()) {
@@ -115,7 +151,10 @@ export async function createLogWorkerRuntimeFromEnv(raw: NodeJS.ProcessEnv = pro
   const db = createPostgresDatabase(env.DATABASE_URL!, { tracing: defaultTracingBoundary });
   await resolveParameterIdentityMode(db);
 
-  return createLogWorkerRuntime({
+  const metrics = createMetricsRegistry({ serviceName: "wiseeff-log-worker" });
+  const observability = resolveLogWorkerObservabilityConfig(raw);
+
+  const runtime = createLogWorkerRuntime({
     db,
     objectStore: createObjectStoreFromEnv(env, { tracing: defaultTracingBoundary }),
     analyzer: createLogAnalyzerFromEnv(env, { db, embeddingClient: resolveKnowledgeEmbeddingClient(env) }),
@@ -135,19 +174,33 @@ export async function createLogWorkerRuntimeFromEnv(raw: NodeJS.ProcessEnv = pro
         retryBaseDelayMs: env.LOG_WEBHOOK_RETRY_BASE_DELAY_MS,
         allowInsecureLocal: env.LOG_WEBHOOK_ALLOW_INSECURE_LOCAL
       }
-    })
+    }),
+    metrics
   });
+
+  return { ...runtime, metrics, observability };
 }
 
 if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, "/")}`) {
   const runtime = await createLogWorkerRuntimeFromEnv();
   const stop = runtime.start();
+  const observabilityServer = createLogWorkerObservabilityServer({ metrics: runtime.metrics });
+  observabilityServer.listen(runtime.observability.port, runtime.observability.host, () => {
+    console.log(
+      `WiseEff log worker observability listening on http://${runtime.observability.host}:${runtime.observability.port}`
+    );
+  });
 
-  const shutdown = () => {
-    stop();
-    process.exit(0);
+  let shuttingDown = false;
+  const shutdown = async () => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+    await Promise.resolve(stop());
+    observabilityServer.close(() => process.exit(0));
   };
 
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", () => void shutdown());
+  process.on("SIGTERM", () => void shutdown());
 }

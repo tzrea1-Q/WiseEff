@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+compose_dir="$(cd "${script_dir}/.." && pwd)"
+env_file="${WISEEFF_ENV_FILE:-${compose_dir}/.env}"
+action="${1:-help}"
+if [ "$#" -gt 0 ]; then
+  shift
+fi
+
+observability_services=(
+  prometheus
+  alertmanager
+  grafana
+  blackbox-exporter
+  node-exporter
+  postgres-exporter
+  redis-exporter
+)
+
+usage() {
+  cat <<'EOF'
+Usage: observability <up|down|restart|status|logs> [options]
+
+Commands:
+  up       Start or update the loopback-only monitoring stack.
+  down     Stop only monitoring services; application and data services stay running.
+  restart  Recreate the monitoring services without deleting their volumes.
+  status   Show monitoring containers and local UI addresses.
+  logs     Tail monitoring service logs; pass -f to follow.
+
+The UIs bind to 127.0.0.1 by default. From an operator workstation, use an
+SSH tunnel such as: ssh -L 3000:127.0.0.1:3000 <user>@<server>
+EOF
+}
+
+require_env_file() {
+  if [ ! -f "$env_file" ]; then
+    echo "Missing self-hosted environment file: ${env_file}" >&2
+    echo "Run ./scripts/setup.sh before starting observability." >&2
+    exit 66
+  fi
+}
+
+compose() {
+  WISEEFF_ENV_FILE="$env_file" "${script_dir}/compose" --env-file "$env_file" --profile observability "$@"
+}
+
+env_value() {
+  local key="$1"
+  sed -n "s/^${key}=//p" "$env_file" | tail -1
+}
+
+print_access() {
+  local grafana_port prometheus_port alertmanager_port
+  grafana_port="${WISEEFF_GRAFANA_PORT:-$(env_value WISEEFF_GRAFANA_PORT)}"
+  prometheus_port="${WISEEFF_PROMETHEUS_PORT:-$(env_value WISEEFF_PROMETHEUS_PORT)}"
+  alertmanager_port="${WISEEFF_ALERTMANAGER_PORT:-$(env_value WISEEFF_ALERTMANAGER_PORT)}"
+  grafana_port="${grafana_port:-3000}"
+  prometheus_port="${prometheus_port:-9090}"
+  alertmanager_port="${alertmanager_port:-9093}"
+  printf '\nGrafana:     http://127.0.0.1:%s\n' "$grafana_port"
+  printf 'Prometheus:  http://127.0.0.1:%s\n' "$prometheus_port"
+  printf 'Alertmanager: http://127.0.0.1:%s\n' "$alertmanager_port"
+  printf 'SSH tunnel:  ssh -L %s:127.0.0.1:%s <user>@<server>\n' "$grafana_port" "$grafana_port"
+}
+
+case "$action" in
+  help|-h|--help)
+    usage
+    ;;
+  up)
+    require_env_file
+    compose up -d "${observability_services[@]}"
+    compose ps -a "${observability_services[@]}"
+    print_access
+    ;;
+  down)
+    require_env_file
+    compose stop "${observability_services[@]}"
+    ;;
+  restart)
+    require_env_file
+    compose up -d --force-recreate "${observability_services[@]}"
+    compose ps -a "${observability_services[@]}"
+    print_access
+    ;;
+  status)
+    require_env_file
+    compose ps -a "${observability_services[@]}"
+    print_access
+    ;;
+  logs)
+    require_env_file
+    compose logs --tail=100 "$@" "${observability_services[@]}"
+    ;;
+  *)
+    echo "Unknown action: ${action}" >&2
+    usage >&2
+    exit 64
+    ;;
+esac

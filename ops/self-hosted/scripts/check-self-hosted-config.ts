@@ -37,7 +37,7 @@ export const requiredComposeTokens = [
   "image: *wiseeff-image",
   "wiseeff-postgres-data:/var/lib/postgresql/data",
   "wiseeff-redis-data:/data",
-  "env_file: .env",
+  "env_file: ${WISEEFF_ENV_FILE:-.env}",
   "redis-server",
   "VITE_WISEEFF_RUNTIME_MODE: api",
   "VITE_WISEEFF_API_BASE_URL: ${VITE_WISEEFF_API_BASE_URL:?set VITE_WISEEFF_API_BASE_URL in ops/self-hosted/.env}",

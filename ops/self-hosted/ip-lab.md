@@ -81,5 +81,5 @@ Rebuilding is still required when `VITE_WISEEFF_API_BASE_URL` changes. Set `--ip
 - Installing Docker for you.
 - Let's Encrypt or a public DNS name.
 - OIDC / Keycloak.
-- Backup/restore drills, observability compose services, or pilot-readiness evidence.
+- Backup/restore drills, automatic startup of the optional observability profile, or pilot-readiness evidence. Start monitoring separately with `./scripts/observability up`.
 - Shipping well-known demo passwords (`WiseEff-Dev!`) on a production `NODE_ENV` host.

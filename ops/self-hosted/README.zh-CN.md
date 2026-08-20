@@ -21,6 +21,25 @@
 - 自托管 runtime 镜像通过 Alpine `dtc` 包内置 Device Tree Compiler，并在镜像构建时执行 `dtc --version`。因此 `./scripts/seed-demo-data.sh` 的 M1 阶段会在容器内真实编译三项目 overlay，不依赖宿主机安装。
 - 修改镜像或 DTS seed 后运行 `npm run selfhost:check`、`npm run dtc:check -- --required` 和 `npm run dtc:seed:compile`。
 
+## 图形化监控
+
+WiseEff 主服务启动后，在服务器的 `ops/self-hosted/` 目录执行：
+
+```bash
+./scripts/observability up
+./scripts/observability status
+```
+
+该入口会启动 Prometheus、Grafana、Alertmanager、blackbox exporter、Node exporter、PostgreSQL exporter 和 Redis exporter，并自动配置 Prometheus 数据源和四套 WiseEff Dashboard，无需手工导入。
+
+Grafana 默认只绑定服务器的 `127.0.0.1:3000`。从操作员电脑建立 SSH 隧道后，在本机访问 `http://127.0.0.1:3000`：
+
+```bash
+ssh -L 3000:127.0.0.1:3000 <user>@<server>
+```
+
+使用 `./scripts/observability logs -f`、`restart` 和 `down` 管理监控服务。`down` 不会停止 WiseEff 主服务，也不会删除任何 named volume。完整安全边界、端口覆盖、告警路由和目标证据要求见[可观测性运维](../../docs/zh-CN/runbooks/observability-operations.md)。
+
 ## Device Bridge（macOS portable）
 
 portable 版 `wiseeff-bridge`（`.tar.gz`）不会自动注册 `wiseeff-bridge://` URL scheme。要通过浏览器完成配对，必须先注册 URL 处理器。

@@ -8,7 +8,8 @@ This runbook covers the M6.5 self-hosted observability slice: Prometheus scrape 
 
 - Config lives under `ops/self-hosted/observability/`.
 - Prometheus scrapes the WiseEff API metrics endpoint at `api:8787/metrics` from the private compose network.
-- Optional PostgreSQL, Caddy, and host metrics require exporter services on the same private network.
+- The self-hosted Compose `observability` profile runs Prometheus, Grafana, Alertmanager, blackbox exporter, Node exporter, PostgreSQL exporter, and Redis exporter without exposing them through Caddy.
+- The built-in profile provides PostgreSQL, Redis, and host exporters; Caddy/proxy availability is checked through a private blackbox probe.
 - Grafana dashboards are versioned JSON files under `ops/self-hosted/observability/grafana/dashboards/`.
 - The WiseEff API exposes `/metrics` as Prometheus text and refreshes dependency, readiness, and worker queue gauges before rendering the scrape response.
 - Log-analysis worker terminal metrics include duration samples by stage/status and failure counters by low-cardinality reason/stage. They intentionally omit job IDs, run IDs, raw uploaded content, and raw error messages.
@@ -38,17 +39,54 @@ Trace exporters must follow the same rule. Route templates, provider/model ident
 | --- | --- |
 | `ops/self-hosted/observability/prometheus.yml` | Prometheus scrape and rule-file configuration. |
 | `ops/self-hosted/observability/alerts.yml` | WiseEff alert rules with `runbook_url` annotations. |
+| `ops/self-hosted/observability/alertmanager.yml` | Local dashboard receiver and alert grouping defaults. |
+| `ops/self-hosted/observability/blackbox.yml` | HTTP and TCP service probes. |
+| `ops/self-hosted/observability/grafana/provisioning/` | Automatic Prometheus datasource and dashboard provisioning. |
 | `ops/self-hosted/observability/grafana/dashboards/wiseeff-overview.json` | Service health, traffic, latency, and dependency readiness. |
 | `ops/self-hosted/observability/grafana/dashboards/wiseeff-jobs.json` | Log-analysis queue, worker, retry, and duration views. |
 | `ops/self-hosted/observability/grafana/dashboards/wiseeff-security-operations.json` | Audit, Agent, and device-gateway operations views. |
+| `ops/self-hosted/observability/grafana/dashboards/wiseeff-services.json` | API, worker, web, proxy, data services, monitoring targets, and host resources. |
 
-## Install
+## One-Command Self-Hosted Start
 
-1. Put Prometheus on the same private network as the WiseEff API service.
-2. Mount `ops/self-hosted/observability/prometheus.yml` as the Prometheus config file.
-3. Mount `ops/self-hosted/observability/alerts.yml` next to it as `alerts.yml`.
-4. Import the three Grafana dashboards and bind their datasource variable to the Prometheus datasource.
-5. Confirm `/metrics` is not reachable from the public internet.
+Start the application stack first. Then, from `ops/self-hosted/` on the server:
+
+```bash
+./scripts/observability up
+./scripts/observability status
+```
+
+The command provisions the Prometheus datasource and all four WiseEff dashboards automatically. It preserves Prometheus, Grafana, and Alertmanager state in named volumes. The other lifecycle commands affect only monitoring services:
+
+```bash
+./scripts/observability logs -f
+./scripts/observability restart
+./scripts/observability down
+```
+
+`down` stops the monitoring services without stopping WiseEff or deleting monitoring/application volumes.
+
+Grafana, Prometheus, and Alertmanager bind to the server loopback interface. From an operator workstation, open an SSH tunnel:
+
+```bash
+ssh -L 3000:127.0.0.1:3000 <user>@<server>
+```
+
+Then open `http://127.0.0.1:3000` locally. Grafana runs as an anonymous read-only viewer because the listener is loopback-only; it does not create a default administrator account. Prometheus is available on loopback port `9090` and Alertmanager on `9093` for diagnosis. Override local ports with `WISEEFF_GRAFANA_PORT`, `WISEEFF_PROMETHEUS_PORT`, or `WISEEFF_ALERTMANAGER_PORT`. `WISEEFF_PROMETHEUS_RETENTION` defaults to `15d`.
+
+The built-in Alertmanager receiver keeps alerts visible in the local Alertmanager UI but deliberately sends no email, webhook, or chat notification. A target deployment must configure and exercise an approved receiver before marking Alertmanager routing evidence passed.
+
+The service dashboard combines blackbox probes for API, worker, web, proxy, MinIO, PostgreSQL, Redis, and the monitoring components with scrape-target state and host CPU, memory, and filesystem metrics. The dedicated worker exposes `/health/live` and `/metrics` on private compose port `8788`.
+
+## Separate Operations Host
+
+When Prometheus and Grafana run on a separate operations host instead of the built-in profile:
+
+1. Put Prometheus on an approved private network that can reach the WiseEff API service.
+2. Mount `ops/self-hosted/observability/prometheus.yml` and `alerts.yml` into Prometheus.
+3. Provision or import the datasource and dashboards from `ops/self-hosted/observability/grafana/`.
+4. Replace compose-only target names with approved private addresses where required.
+5. Confirm `/metrics` and monitoring UIs are not reachable from the public internet.
 
 ## Smoke Check
 
@@ -65,6 +103,14 @@ up{job="wiseeff-api"}
 ```
 
 Expected result: the query returns `1` for the WiseEff API target. If it returns `0`, follow [WiseEffApiDown](#wiseeffapidown).
+
+For the built-in stack, also verify that service probes are present:
+
+```promql
+max by (service) (probe_success{job=~"wiseeff-service-(http|tcp)"})
+```
+
+Every expected service should return `1`. A missing series is a configuration defect; a `0` is a live probe failure.
 
 ## Dashboard Review
 
@@ -128,6 +174,13 @@ If any target proof is not available, keep the matching status as `pending` or `
 2. From the Prometheus network, run `wget -qO- http://api:8787/health/live`.
 3. If health is down, check the API container/process logs and restart the API only after preserving the failure output.
 4. If health is up but scrape is down, verify `/metrics` routing and private-network DNS.
+
+### WiseEffServiceProbeDown
+
+1. Open the `WiseEff Services` dashboard and identify the `service` label reporting `DOWN`.
+2. Compare its blackbox `probe_success` result with the matching Compose service state from `./scripts/compose --env-file .env ps -a`.
+3. Probe the target from the Prometheus or blackbox container network; distinguish DNS/network failure from an application health failure.
+4. Preserve the matching service logs before restarting only the affected service.
 
 ### WiseEffReadinessBlocked
 

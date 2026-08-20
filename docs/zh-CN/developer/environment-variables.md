@@ -168,6 +168,8 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 | `REDIS_URL` | `redis://127.0.0.1:6379` | durable queue mode | `LOG_ANALYSIS_QUEUE_MODE=durable` 时必填。 |
 | `LOG_ANALYSIS_QUEUE_PREFIX` | `wiseeff` | BullMQ namespace | Redis 共享时应按环境区分。 |
 | `LOG_ANALYSIS_QUEUE_ATTEMPTS` | `4` | retry/dead-letter policy | 与 PostgreSQL job retry 状态对齐。 |
+| `LOG_WORKER_OBSERVABILITY_HOST` | `127.0.0.1` | 独立 worker 健康与指标 | 自托管 Compose 只在私网内覆盖为 `0.0.0.0`。 |
+| `LOG_WORKER_OBSERVABILITY_PORT` | `8788` | 独立 worker 健康与指标 | 私网提供 `GET /health/live` 和 `GET /metrics`，禁止发布该端口。 |
 
 ## 自托管运行时
 
@@ -176,3 +178,14 @@ M6.1 在 `ops/self-hosted/.env.example` 提供 Linux 部署 profile。M6.2 默�
 不要手填 `.env.example`。使用 [配置向导](../../../ops/self-hosted/setup.zh-CN.md) 或 [IP 实验室 profile](../../../ops/self-hosted/ip-lab.zh-CN.md)：`WISEEFF_DEPLOY_PROFILE=ip-lab|acme`、`WISEEFF_TLS_MODE=http|internal|acme`、`WISEEFF_CADDYFILE`、`WISEEFF_PUBLIC_URL`、`WISEEFF_LAB_ADMIN_*`、`WISEEFF_LAB_SEED`，以及未填 live key 时的 `XIAOZE_DETERMINISTIC=true` / `LOG_ANALYSIS_DETERMINISTIC=true`。完整命令见向导页。
 
 目标环境不要提交真实 bearer token、API key、数据库密码或对象存储 secret。所有 target-ready、pilot-ready、release-ready 结论都必须引用真实目标证据，而不是本地 skip 或示例值。
+
+图形化监控 profile 使用以下非 secret 设置：
+
+| 变量 | 自托管默认值 | 说明 |
+| --- | --- | --- |
+| `WISEEFF_GRAFANA_PORT` | `3000` | Grafana 仅绑定 loopback 的宿主机端口。 |
+| `WISEEFF_PROMETHEUS_PORT` | `9090` | Prometheus 仅绑定 loopback 的宿主机端口。 |
+| `WISEEFF_ALERTMANAGER_PORT` | `9093` | Alertmanager 仅绑定 loopback 的宿主机端口。 |
+| `WISEEFF_PROMETHEUS_RETENTION` | `15d` | Prometheus named volume 的 TSDB 保留期。 |
+
+使用 `./scripts/observability up|down|restart|status|logs` 管理可选监控 profile。Grafana 数据源和 Dashboard 自动 provisioning；监控 UI 不增加 Caddy 公网路由，应通过 SSH 隧道、VPN 或同等级受控运维路径访问。

@@ -82,4 +82,4 @@ npm run selfhost:doctor -- --env-file ops/self-hosted/.env
 - 公开的 `curl | bash` 安装器。
 - 在 Ubuntu 上代装 Docker。
 - OIDC / Keycloak。
-- 备份挂载、可观测 compose 服务，或试点就绪声明。
+- 备份挂载、自动启动可选的 observability profile，或试点就绪声明。配置完成后可单独运行 `./scripts/observability up`。

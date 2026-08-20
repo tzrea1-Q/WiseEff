@@ -1,7 +1,46 @@
 import { describe, expect, it, vi } from "vitest";
-import { createLogWorkerRuntime, validateLogWorkerConfig } from "./workerRunner";
+import {
+  createLogWorkerObservabilityServer,
+  createLogWorkerRuntime,
+  resolveLogWorkerObservabilityConfig,
+  validateLogWorkerConfig
+} from "./workerRunner";
+import { createMetricsRegistry } from "../../observability/metrics";
 
 describe("log worker runner", () => {
+  it("exposes private worker liveness and Prometheus metrics", async () => {
+    const metrics = createMetricsRegistry({ serviceName: "wiseeff-log-worker" });
+    const server = createLogWorkerObservabilityServer({ metrics });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Worker observability server did not bind a TCP port.");
+    }
+
+    try {
+      const live = await fetch(`http://127.0.0.1:${address.port}/health/live`);
+      expect(live.status).toBe(200);
+      await expect(live.json()).resolves.toEqual({ ok: true, service: "wiseeff-log-worker", status: "live" });
+
+      const metricsResponse = await fetch(`http://127.0.0.1:${address.port}/metrics`);
+      expect(metricsResponse.status).toBe(200);
+      expect(metricsResponse.headers.get("content-type")).toContain("text/plain");
+      expect(await metricsResponse.text()).toContain('wiseeff_build_info{service="wiseeff-log-worker"} 1');
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    }
+  });
+
+  it("keeps the worker observability listener private unless the deployment opts into a compose-network bind", () => {
+    expect(resolveLogWorkerObservabilityConfig({})).toEqual({ host: "127.0.0.1", port: 8788 });
+    expect(
+      resolveLogWorkerObservabilityConfig({ LOG_WORKER_OBSERVABILITY_HOST: "0.0.0.0", LOG_WORKER_OBSERVABILITY_PORT: "9797" })
+    ).toEqual({ host: "0.0.0.0", port: 9797 });
+    expect(() => resolveLogWorkerObservabilityConfig({ LOG_WORKER_OBSERVABILITY_PORT: "invalid" })).toThrow(
+      "LOG_WORKER_OBSERVABILITY_PORT must be a positive integer."
+    );
+  });
+
   it("does not load dotenv as an import-time side effect", async () => {
     vi.resetModules();
     vi.doMock("dotenv/config", () => {
@@ -99,14 +138,19 @@ describe("log worker runner", () => {
 
     const { createLogWorkerRuntimeFromEnv } = await import("./workerRunner");
 
-    await createLogWorkerRuntimeFromEnv({
+    const runtime = await createLogWorkerRuntimeFromEnv({
       DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
       OBJECT_STORE_MODE: "s3",
       OBJECT_STORAGE_ENDPOINT: "https://storage.example.com",
       OBJECT_STORAGE_BUCKET: "wiseeff-pilot",
       OBJECT_STORAGE_ACCESS_KEY_ID: "key",
-      OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret"
+      OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret",
+      LOG_WORKER_OBSERVABILITY_HOST: "0.0.0.0",
+      LOG_WORKER_OBSERVABILITY_PORT: "8788"
     });
+
+    expect(runtime.observability).toEqual({ host: "0.0.0.0", port: 8788 });
+    expect(runtime.metrics.renderPrometheus()).toContain('wiseeff_build_info{service="wiseeff-log-worker"} 1');
 
     expect(loadServerEnv).toHaveBeenCalledWith({
       DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
@@ -114,7 +158,9 @@ describe("log worker runner", () => {
       OBJECT_STORAGE_ENDPOINT: "https://storage.example.com",
       OBJECT_STORAGE_BUCKET: "wiseeff-pilot",
       OBJECT_STORAGE_ACCESS_KEY_ID: "key",
-      OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret"
+      OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret",
+      LOG_WORKER_OBSERVABILITY_HOST: "0.0.0.0",
+      LOG_WORKER_OBSERVABILITY_PORT: "8788"
     });
     expect(createObjectStoreFromEnv).toHaveBeenCalledWith(
       expect.objectContaining({
