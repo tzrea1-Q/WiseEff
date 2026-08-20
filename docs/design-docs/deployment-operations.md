@@ -22,6 +22,10 @@ Configuration is injected through environment variables or a secure configuratio
 
 CI should install dependencies, run tests, check contracts, build artifacts, and run documentation governance. Release candidates add self-hosted config checks, backup evidence, rollback planning, target synthetic acceptance, capacity checks, and observability review.
 
+## Self-Hosted Source Upgrade
+
+The current runtime has a manual `git fetch` / commit checkout / Compose rebuild procedure. The proposed [one-command upgrade module](2026-08-20-self-hosted-one-command-upgrade-design.md) makes that source-checkout path transactional at the operator seam: resolve one immutable commit, prebuild before downtime, quiesce writers, verify a PostgreSQL/object-store/Redis recovery point, recreate every service without deleting volumes, observe migration and health gates, and persist resumable recovery state. It remains separate from `setup.sh`; upgrade must not render `.env`, rotate credentials, or provision seed data.
+
 ## Health, Monitoring, And Evidence
 
 Operations endpoints report liveness, readiness, metrics, pilot readiness, and release readiness. Xiaoze LLM readiness evidence can identify model id and base URL configuration status in readiness JSON; metrics use `wiseeff_xiaoze_llm_ready`. Target-environment claims require target evidence; local skips only prove scripts and wiring.

@@ -26,6 +26,7 @@
 - [docs/zh-CN/design-docs/api-contract.md](api-contract.md)
 - [docs/zh-CN/design-docs/testing-strategy.md](testing-strategy.md)
 - [docs/zh-CN/design-docs/deployment-operations.md](deployment-operations.md)
+- [自托管一键升级——提案](2026-08-20-self-hosted-one-command-upgrade-design.md)
 - [docs/zh-CN/design-docs/security-governance.md](security-governance.md)
 - [docs/zh-CN/design-docs/2026-06-17-audit-center-design.md](2026-06-17-audit-center-design.md)
 - [DTS 可管参数面边界 RFC](2026-07-21-dts-parameter-surface-boundary-rfc.md)

@@ -19,6 +19,7 @@ Current baseline: M0-M5 productization work is merged. These docs should describ
 | Current | [API Contract](api-contract.md) | REST conventions, endpoint shape, error model, Agent/device contracts. |
 | Current | [Testing Strategy](testing-strategy.md) | Test layers, E2E scenarios, contract tests, reliability checks. |
 | Current | [Deployment Operations](deployment-operations.md) | Environments, CI/CD, health checks, monitoring, backup, rollback. |
+| Proposed | [Self-Hosted One-Command Upgrade](2026-08-20-self-hosted-one-command-upgrade-design.md) | Transactional source-checkout upgrade seam: immutable target, prebuild, quiescence, verified recovery point, full data-preserving restart, resume/recovery. |
 | Current | [Security Governance](security-governance.md) | Identity, authorization, audit, Agent safety, device safety, data protection. |
 | Current | [Audit Center Design](2026-06-17-audit-center-design.md) | Audit evidence model, module/org audit IA, API, and phased delivery. |
 | Current | [DTS Parameter Management Assessment](2026-07-14-dts-parameter-management-assessment.md) | Current-state problem inventory and locked positioning decisions for DTS/JSON tree parameter management (planning input). |

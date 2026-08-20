@@ -28,6 +28,7 @@
 
 ### 自托管操作体验
 
+- `exec-plans/active/2026-08-20-self-hosted-one-command-upgrade.md`：成熟的源码 checkout 升级入口——锁定唯一目标、停机前构建、停止队列/写入、验证 PostgreSQL/对象存储/Redis 恢复点、保留数据地完整重建服务、健康门禁、继续与显式恢复。设计完成，等待在 `feat/self-hosted-one-command-upgrade` 实现。
 - `exec-plans/active/2026-08-18-self-hosted-setup-wizard.md`：OpenClaw/Hermes 风格的终端配置向导——只问人必须决定的项、自动生成密钥、分段重配、doctor。实现分支 `cursor/selfhost-setup-wizard-24de`。
 - `exec-plans/active/2026-08-18-self-hosted-ip-lab-profile.md`：无域名 IP 实验室 profile——自动生成密钥、HTTP 或 Caddy 自签证书、一键 bootstrap，以及管理员可见的 ChargeLab 演示数据。配置向导的前置条件。
 
