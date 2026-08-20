@@ -2,9 +2,11 @@
 
 > Chinese: [Chinese](../zh-CN/design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 
-Date: 2026-08-20  
-Status: Proposed and ready for implementation  
+Date: 2026-08-20
+Status: Implemented locally; non-customer target rehearsal remains required
 Scope: The source-checkout-based Docker Compose runtime under `ops/self-hosted/`
+
+The implementation is available at `ops/self-hosted/scripts/upgrade.sh`, with local script, configuration, and build gates passing. A real Ubuntu rehearsal is deployment evidence and is intentionally not implied by repository-local tests.
 
 ## Context
 
@@ -154,7 +156,7 @@ Only one mutating self-hosted operation may run at a time. `upgrade.sh`, mutatin
 Default locations:
 
 ```text
-ops/self-hosted/.state/upgrade.lock
+ops/self-hosted/.state/.operation.lock
 ops/self-hosted/.state/upgrades/<run-id>/
 /var/backups/wiseeff/upgrades/<run-id>/
 ```

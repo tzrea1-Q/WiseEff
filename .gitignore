@@ -15,6 +15,9 @@ test-results/
 .wiseeff-restore/
 .wiseeff-tools/
 
+# Self-hosted upgrade journals and local recovery points
+ops/self-hosted/.state/
+
 # Local logs
 *.log
 !test-fixtures/logs/*.log

@@ -123,11 +123,12 @@ Migration `0021_baseline_platform_roles.sql` seeds platform roles and local-regi
 Upgrade an existing server deployment:
 
 ```bash
-git fetch origin
-git checkout <release-commit>
 cd ops/self-hosted
-./scripts/compose --env-file .env up -d --build
+./scripts/upgrade.sh plan --ref <release-tag>
+./scripts/upgrade.sh apply --ref <release-tag>
 ```
+
+Use `setup.sh` only for first install/configuration. The upgrade entry resolves one immutable commit, builds before downtime, preserves named volumes, verifies PostgreSQL/object-store/Redis recovery points, and records `status`/`resume`/`rollback` actions. See [Self-Hosted Upgrade](ops/self-hosted/upgrade.md).
 
 Graceful stop:
 

@@ -11,6 +11,13 @@ cd ops/self-hosted
 ./scripts/setup.sh
 ```
 
+For an already running checkout, use the dedicated [upgrade entry](upgrade.md). `setup.sh` remains the first-install/configuration/provisioning path; it is not an upgrade command:
+
+```bash
+./scripts/upgrade.sh plan --ref <release-tag>
+./scripts/upgrade.sh apply --ref <release-tag>
+```
+
 The DNS + Let's Encrypt path below remains the M6 staging/pilot profile.
 
 M6.6 release-candidate procedures live in [releases/](releases/). Use them after the runtime is deployed and before claiming a self-hosted target is ready for a controlled commercial pilot.
@@ -22,6 +29,8 @@ M6.6 release-candidate procedures live in [releases/](releases/). Use them after
 - `worker`: dedicated log-analysis worker through `npm run worker:logs`.
 - `web`: Vite preview serving the built frontend.
 - `proxy`: Caddy reverse proxy and TLS termination.
+
+The upgrade entry recreates all of these services while preserving the existing Compose project and named volumes. It records a PostgreSQL/object-store/Redis recovery point before migration and keeps the proxy stopped if post-migration recovery is required.
 
 ## Start
 

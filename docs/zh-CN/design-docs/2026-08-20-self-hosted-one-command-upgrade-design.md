@@ -2,9 +2,11 @@
 
 > English: [English](../../design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 
-日期：2026-08-20  
-状态：方案已提出，可进入实现  
+日期：2026-08-20
+状态：本地已实现；非客户目标演练仍需完成
 范围：`ops/self-hosted/` 下基于源码 checkout 的 Docker Compose 运行时
+
+实现入口已落在 `ops/self-hosted/scripts/upgrade.sh`，本地脚本、配置和构建门禁已通过。真实 Ubuntu 演练属于部署证据，仓库内测试不会把它默认为已完成。
 
 ## 背景
 
@@ -154,7 +156,7 @@ upgrade.sh                         外部接口
 默认位置：
 
 ```text
-ops/self-hosted/.state/upgrade.lock
+ops/self-hosted/.state/.operation.lock
 ops/self-hosted/.state/upgrades/<run-id>/
 /var/backups/wiseeff/upgrades/<run-id>/
 ```

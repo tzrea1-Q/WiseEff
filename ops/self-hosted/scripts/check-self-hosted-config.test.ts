@@ -14,6 +14,7 @@ const validPackageJson = {
     "selfhost:ip-lab:provision": "tsx ops/self-hosted/scripts/provision-ip-lab.ts",
     "selfhost:setup": "tsx ops/self-hosted/scripts/setup-selfhost.ts",
     "selfhost:doctor": "tsx ops/self-hosted/scripts/doctor-selfhost.ts",
+    "selfhost:queue-maintenance": "tsx ops/self-hosted/scripts/queue-maintenance.ts",
     "dtc:check": "tsx scripts/check-dtc.ts",
     "dtc:seed:compile": "tsx scripts/compile-dts-seed.ts",
     "dts:toolchain:check": "tsx scripts/check-dts-toolchain.ts --required",
@@ -23,6 +24,8 @@ const validPackageJson = {
 
 const validCompose = `
 version: "3.8"
+x-wiseeff-image: &wiseeff-image
+  "\${WISEEFF_APP_IMAGE:-wiseeff-app}:\${WISEEFF_APP_TAG:-local}"
 x-wiseeff-build: &wiseeff-build
   context: ../..
   dockerfile: ops/self-hosted/Dockerfile
@@ -41,12 +44,14 @@ services:
     volumes:
       - wiseeff-redis-data:/data
   api:
+    image: *wiseeff-image
     build: *wiseeff-build
     env_file: .env
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8787/health/live"]
     command: ["sh", "-lc", "npx tsx server/index.ts"]
   worker:
+    image: *wiseeff-image
     build: *wiseeff-build
     env_file: .env
     command: ["sh", "-lc", "npm run worker:logs"]
@@ -54,6 +59,7 @@ services:
       redis:
         condition: service_healthy
   web:
+    image: *wiseeff-image
     build: *wiseeff-build
     env_file: .env
     healthcheck:
@@ -162,6 +168,10 @@ const existingSelfHostedFiles = new Set([
   "ops/self-hosted/storage/provider-decision.md",
   "ops/self-hosted/storage/object-store.env.example",
   "ops/self-hosted/scripts/compose",
+  "ops/self-hosted/scripts/operation-lock.sh",
+  "ops/self-hosted/scripts/upgrade.sh",
+  "ops/self-hosted/scripts/upgrade-lib.sh",
+  "ops/self-hosted/upgrade-protocol.env",
   "ops/self-hosted/Caddyfile.ip-lab",
   "ops/self-hosted/Caddyfile.ip-lab-tls",
   "ops/self-hosted/.env.ip-lab.example",
@@ -264,6 +274,7 @@ describe("self-hosted config metadata", () => {
       "selfhost:ip-lab:provision",
       "selfhost:setup",
       "selfhost:doctor",
+      "selfhost:queue-maintenance",
       "backup:drill",
       "restore:drill",
       "backup:check",

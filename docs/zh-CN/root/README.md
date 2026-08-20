@@ -103,11 +103,12 @@ chmod 600 .env
 升级：
 
 ```bash
-git fetch origin
-git checkout <release-commit>
 cd ops/self-hosted
-./scripts/compose --env-file .env up -d --build
+./scripts/upgrade.sh plan --ref <release-tag>
+./scripts/upgrade.sh apply --ref <release-tag>
 ```
+
+`setup.sh` 只用于首次配置；已运行的 checkout 使用[自托管升级入口](../../../ops/self-hosted/upgrade.zh-CN.md)。该入口会在停机前构建、保留命名 volume、校验 PostgreSQL/对象存储/Redis 恢复点，并记录 `status`/`resume`/`rollback`。
 
 ## 从开发机验证已部署服务器
 

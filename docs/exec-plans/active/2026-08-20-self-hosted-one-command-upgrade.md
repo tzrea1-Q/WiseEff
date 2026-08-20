@@ -4,7 +4,7 @@
 
 **Goal:** Deliver a production-minded single-host upgrade entry that resolves one immutable Git commit, prebuilds it, quiesces writes, verifies a complete recovery point, recreates every Compose service without deleting volumes, runs migrations in the existing API startup path, validates the result, and supports durable resume/recovery.
 
-**Status:** Design complete; implementation pending approval.
+**Status:** Local implementation complete; repository gates pass. A non-customer Ubuntu rehearsal remains required target evidence before claiming release readiness.
 
 **Design:** [Self-Hosted One-Command Upgrade Design](../../design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 

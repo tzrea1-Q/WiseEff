@@ -24,7 +24,7 @@ CI should install dependencies, run tests, check contracts, build artifacts, and
 
 ## Self-Hosted Source Upgrade
 
-The current runtime has a manual `git fetch` / commit checkout / Compose rebuild procedure. The proposed [one-command upgrade module](2026-08-20-self-hosted-one-command-upgrade-design.md) makes that source-checkout path transactional at the operator seam: resolve one immutable commit, prebuild before downtime, quiesce writers, verify a PostgreSQL/object-store/Redis recovery point, recreate every service without deleting volumes, observe migration and health gates, and persist resumable recovery state. It remains separate from `setup.sh`; upgrade must not render `.env`, rotate credentials, or provision seed data.
+The current runtime now has a dedicated [one-command upgrade module](2026-08-20-self-hosted-one-command-upgrade-design.md) at `ops/self-hosted/scripts/upgrade.sh`. It makes the source-checkout path transactional at the operator seam: resolve one immutable commit, prebuild before downtime, quiesce writers, verify a PostgreSQL/object-store/Redis recovery point, recreate every service without deleting volumes, observe migration and health gates, and persist resumable recovery state. It remains separate from `setup.sh`; upgrade must not render `.env`, rotate credentials, or provision seed data.
 
 ## Health, Monitoring, And Evidence
 

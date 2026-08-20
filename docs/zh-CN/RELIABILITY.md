@@ -19,6 +19,7 @@
 - DTS 重载部署为**进程内请求**（ADR-0020）：挂载、推送、触发、内核日志采集与行为核对均在持有桥接 WebSocket 的 API 进程上执行，不走 BullMQ。多副本桥接亲和仍是平台限制（见技术债）。证据与 UI 在 `/dts-reload`，勿与已下线的 `/debugging` 混淆。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 - 只有 IP、没有域名的自托管实验室走 [配置向导](../../ops/self-hosted/setup.zh-CN.md) / [IP 实验室 profile](../../ops/self-hosted/ip-lab.zh-CN.md)，不是试点/发布证据。
+- 已运行 checkout 使用[自托管升级入口](../../ops/self-hosted/upgrade.zh-CN.md)：锁定一个 commit、停机前构建、校验 PostgreSQL/对象存储/Redis 恢复点，在不删除 volume 的情况下重建服务；migration 后失败会保持流量停止并记录 `recovery-required`。`setup.sh --force` 仍是配置操作，不是升级捷径。
 
 ## 补充说明（小泽 checkpoint）
 
