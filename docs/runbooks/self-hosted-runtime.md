@@ -168,16 +168,15 @@ Avoid `./scripts/compose down -v` unless the operator explicitly intends to dele
 
 ## Upgrade
 
+Use the dedicated [Self-Hosted Upgrade](../../ops/self-hosted/upgrade.md) entry for an already running checkout. It is the only normal path for a full data-preserving restart:
+
 ```bash
-git fetch origin
-git checkout <release-commit>
-npm ci
-npm run selfhost:check
 cd ops/self-hosted
-./scripts/compose --env-file .env up -d --build
+./scripts/upgrade.sh plan --ref <release-tag>
+./scripts/upgrade.sh apply --ref <release-tag>
 ```
 
-After upgrade, run self-hosted smoke and review proxy/API/worker logs.
+Use `status --run-id <id>` after an interruption. A `recovery-required` run keeps the proxy stopped; use `resume` only for the journal's idempotent finalization action, or use the token-gated `rollback --restore-data --confirm restore-<id>` whole-state restore. Do not use `setup.sh --force` or `compose down -v` as an upgrade shortcut. After a successful upgrade, run self-hosted smoke and review proxy/API/worker logs.
 
 ## Known M6.1 Boundaries
 

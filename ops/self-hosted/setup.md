@@ -6,6 +6,8 @@ This is the operator entry for a self-hosted WiseEff host. It asks only human de
 
 It does **not** claim commercial-pilot or release readiness.
 
+This file covers first install and configuration only. For a checkout that is already running, use [Self-Hosted Upgrade](upgrade.md); do not use `setup.sh --force` as an upgrade because that path intentionally rotates data-store credentials.
+
 ## One Command
 
 From `ops/self-hosted/` on a machine with a terminal:

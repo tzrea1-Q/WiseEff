@@ -10,6 +10,7 @@ export const requiredSelfHostedScripts = [
   "selfhost:ip-lab:provision",
   "selfhost:setup",
   "selfhost:doctor",
+  "selfhost:queue-maintenance",
   "backup:drill",
   "restore:drill",
   "backup:check",
@@ -22,10 +23,19 @@ export const requiredSelfHostedScripts = [
 
 export const requiredSelfHostedServices = ["postgres", "redis", "api", "worker", "web", "proxy"] as const;
 
-export const requiredSelfHostedFiles = ["ops/self-hosted/scripts/compose", ...requiredIpLabFiles] as const;
+export const requiredSelfHostedFiles = [
+  "ops/self-hosted/scripts/compose",
+  "ops/self-hosted/scripts/operation-lock.sh",
+  "ops/self-hosted/scripts/upgrade.sh",
+  "ops/self-hosted/scripts/upgrade-lib.sh",
+  "ops/self-hosted/upgrade-protocol.env",
+  ...requiredIpLabFiles
+] as const;
 
 export const requiredComposeTokens = [
   'version: "3.8"',
+  "x-wiseeff-image: &wiseeff-image",
+  "image: *wiseeff-image",
   "wiseeff-postgres-data:/var/lib/postgresql/data",
   "wiseeff-redis-data:/data",
   "env_file: .env",

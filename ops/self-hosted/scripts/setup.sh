@@ -7,6 +7,8 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 compose_dir="$(cd "${script_dir}/.." && pwd)"
 repo_root="$(cd "${compose_dir}/../.." && pwd)"
 env_file="${compose_dir}/.env"
+# shellcheck source=operation-lock.sh
+source "${script_dir}/operation-lock.sh"
 
 profile=""
 tls_mode=""
@@ -420,8 +422,11 @@ render_cli_args() {
 }
 
 write_env_via_tsx() {
-  local -a args
-  mapfile -t args < <(render_cli_args)
+  local -a args=()
+  local rendered_arg
+  while IFS= read -r rendered_arg; do
+    args+=("${rendered_arg}")
+  done < <(render_cli_args)
   if [ "${print_env}" = "true" ]; then
     args+=(--print-env)
     (cd "${repo_root}" && "${repo_root}/node_modules/.bin/tsx" ops/self-hosted/scripts/setup-selfhost.ts -- "${args[@]}")
@@ -727,6 +732,10 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
+
+wiseeff_operation_lock_acquire "${WISEEFF_OPERATION_LOCK_DIR:-${repo_root}/ops/self-hosted/.state}" \
+  "Another WiseEff setup or upgrade operation holds the host lock."
+trap wiseeff_operation_lock_release EXIT
 
 if [ "${non_interactive}" != "true" ] && { [ -t 0 ] || [ -r /dev/tty ]; }; then
   if [ "${action}" = "all" ] || [ "${action}" = "init" ] || [ -n "${section}" ]; then

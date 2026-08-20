@@ -7,6 +7,8 @@ x-wiseeff-build: &wiseeff-build
     VITE_WISEEFF_RUNTIME_MODE: api
     VITE_WISEEFF_API_BASE_URL: ${VITE_WISEEFF_API_BASE_URL:?set VITE_WISEEFF_API_BASE_URL in ops/self-hosted/.env}
 
+x-wiseeff-image: &wiseeff-image "${WISEEFF_APP_IMAGE:-wiseeff-app}:${WISEEFF_APP_TAG:-local}"
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -75,6 +77,7 @@ services:
     restart: "no"
 
   api:
+    image: *wiseeff-image
     build: *wiseeff-build
     restart: unless-stopped
     mem_limit: 512m
@@ -103,6 +106,7 @@ services:
     command: ["sh", "-lc", "npm run db:migrate && npx tsx server/index.ts"]
 
   worker:
+    image: *wiseeff-image
     build: *wiseeff-build
     restart: unless-stopped
     mem_limit: 384m
@@ -122,6 +126,7 @@ services:
     command: ["sh", "-lc", "npm run worker:logs"]
 
   web:
+    image: *wiseeff-image
     build: *wiseeff-build
     restart: unless-stopped
     mem_limit: 256m

@@ -51,6 +51,8 @@ M6.4 adds Redis/BullMQ durable dispatch for log analysis. PostgreSQL remains the
 
 Hosts that have an IP and no DNS name should use the [setup wizard](../ops/self-hosted/setup.md) (`./scripts/setup.sh`). The IP lab path generates secrets, serves HTTP or Caddy internal TLS, seeds ChargeLab demo data, and attaches the lab admin to `org-chargelab`. It is a lab/demo profile, not commercial-pilot evidence.
 
+An already running checkout uses the dedicated [self-hosted upgrade entry](../ops/self-hosted/upgrade.md). It resolves one commit, builds before downtime, verifies a PostgreSQL/object-store/Redis recovery point, recreates services without deleting volumes, and leaves traffic stopped with `recovery-required` after post-migration failure. `setup.sh --force` remains a configuration operation, not an upgrade shortcut.
+
 Self-hosted operators should run:
 
 ```bash

@@ -28,6 +28,7 @@ This list is only plans that still have remaining work. Finished implementation 
 
 ### Self-hosted operator experience
 
+- `exec-plans/active/2026-08-20-self-hosted-one-command-upgrade.md`: mature source-checkout upgrade entry — immutable target resolution, pre-downtime build, queue/write quiescence, verified PostgreSQL/object-store/Redis recovery point, full data-preserving service recreation, health gates, resume, and explicit recovery. Local implementation and gates are complete on `feat/self-hosted-one-command-upgrade`; non-customer Ubuntu rehearsal remains target evidence.
 - `exec-plans/active/2026-08-18-self-hosted-setup-wizard.md`: OpenClaw/Hermes-style TTY setup wizard — ask only human decisions, generate secrets, section reconfigure, doctor. Implementation on `cursor/selfhost-setup-wizard-24de`.
 - `exec-plans/active/2026-08-18-self-hosted-ip-lab-profile.md`: no-DNS IP lab profile — secret generation, HTTP or Caddy internal TLS, one-command bootstrap, and ChargeLab-visible demo seed. Prerequisite for the setup wizard.
 

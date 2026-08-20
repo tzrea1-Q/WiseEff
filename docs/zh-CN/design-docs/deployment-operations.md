@@ -65,6 +65,10 @@ CD 阶段：
 6. 灰度或滚动发布 production。
 7. 发布后健康检查和告警观察。
 
+## 4.1 自托管源码升级
+
+当前运行时已在 `ops/self-hosted/scripts/upgrade.sh` 提供[一键升级模块](2026-08-20-self-hosted-one-command-upgrade-design.md)。它在操作员 seam 上把源码 checkout 流程做成事务式编排：锁定唯一 commit、停机前预构建、停止 writer、验证 PostgreSQL/对象存储/Redis 恢复点、不删除 volume 地重建所有服务、观察迁移和健康门禁，并持久化可继续的恢复状态。它与 `setup.sh` 分离；升级不能渲染 `.env`、轮换凭据或导入 seed。
+
 ## 5. 数据库迁移
 
 规则：
