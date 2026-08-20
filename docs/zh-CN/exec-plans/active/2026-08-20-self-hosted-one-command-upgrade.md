@@ -4,7 +4,7 @@
 
 **目标：** 交付一条面向生产思维的单机升级入口：解析唯一 Git commit、提前构建、停止写入、验证完整恢复点、在不删除 volume 的情况下重建所有 Compose 服务、沿用 API 启动迁移、验证结果，并支持持久化继续与恢复。
 
-**状态：** 本地实现已完成，仓库门禁已通过。声称发布就绪前仍需完成非客户 Ubuntu 目标演练证据。
+**状态：** 核心实现已进入 `main`。首次非客户 Ubuntu 演练暴露了宿主机兼容和陈旧锁恢复缺口；`fix/self-hosted-upgrade-host-compat` 上的加固后续已通过本地实现门禁，正等待 PR/CI 合入。声称发布就绪前仍需完成一次干净的前向升级和恢复演练证据。
 
 **设计：** [自托管一键升级设计](../../design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 
@@ -29,6 +29,7 @@
 - 实现代理只在 feature branch 提交；不得 push `main`、开/合 PR 或快进本地 `main`。
 - 父代理/会话 owner 评审分支，执行或抽查门禁，批准后开 PR、合并，再运行 `git pull origin main`。
 - 原则上一份计划一个实现分支；只有目标环境证据确需后续时才建 evidence-only 分支。
+- 目标演练兼容性加固使用从当前 `main` 创建的 `fix/self-hosted-upgrade-host-compat`；父代理/会话 owner 在本地门禁与 CI merge bar 通过后开 PR 并合入。
 
 ## 前置条件
 
@@ -221,6 +222,35 @@ git diff --check
 ```
 
 预期：本地门禁通过，release record 关联一次成功目标升级和一次恢复演练。
+
+## Phase 7 — 目标演练宿主机兼容性加固
+
+首次 Ubuntu 演练证明了升级状态机的基本形态，同时暴露出一组不能继续停留在聊天手工处理中的运维兼容缺口：
+
+| 发现 | 根因 | 必须自动化的处理 |
+| --- | --- | --- |
+| 部署用户 Git 正常，但 `sudo` 下连接超时 | `sudo` 清除代理环境并读取 root 的 Git 配置 | 保留代理规范化/`--git-proxy`，拒绝任何 root 有效用户执行 `plan`、`apply` 和恢复动作；提供不访问 Git 的 root 专用宿主机准备动作 |
+| Docker 只能通过 `sudo` 使用 | 部署用户不在 Docker socket 对应组 | `prepare-host` 检测并把 `SUDO_USER` 加入 Docker 组，同时提示重新登录 |
+| `/var/backups/wiseeff/upgrades` 已存在但属于 root | 创建目录时没有把所有权交给部署操作员 | `prepare-host` 创建并设置专用备份根与升级状态根的所有者/权限，不改动业务数据 |
+| 本地诊断文件或企业构建修改让 checkout 变脏 | tracked/untracked 文件会改变 Docker 构建上下文或让部署源码不再唯一 | 立即失败并提示 `git status --short`；绝不自动删除操作员改动 |
+| root 创建的 `.state/upgrades/<run-id>` 导致 Docker 构建上下文读取失败 | 升级日志被 Git 忽略，但未被 Docker 忽略 | 从 `.dockerignore` 排除 `ops/self-hosted/.state/`，并由 `selfhost:check` 守住 |
+| 历史 API、worker、web 容器镜像 ID 不同 | 旧 Compose 形态按服务分别构建镜像 | 按服务保存并标记旧镜像，preflight 接受历史混合身份，恢复时按记录镜像逐服务恢复 |
+| preflight/fetch/build 失败后仍可能继续并打印陈旧目标 | `if ! ...` 调用函数时 Bash 会抑制 `errexit` | 为 preflight、目标解析、构建、排空、快照与恢复显式传播每一个错误 |
+| 进程退出后锁文件仍存在，或崩溃留下 fallback 锁目录 | `flock` 文件持久存在是正常行为；mkdir fallback 可能陈旧 | 写入持锁者元数据，提供 `lock-status`，并让 `unlock` 只清理已证明陈旧的元数据/fallback 锁，真实内核锁必须拒绝绕过 |
+| Compose 提示顶层 `version` 已废弃 | Compose v2 会忽略旧字段 | 删除该字段并更新配置 token 检查 |
+| Git 已连通，但 Docker 拉取或 curl TLS 校验仍失败 | Git、Docker daemon 与企业 CA 信任属于不同网络边界 | 脚本保留 Git 代理，文档说明 Docker 服务代理与组织批准 CA；绝不自动关闭 TLS 校验 |
+
+**任务：**
+
+- [x] 增加 fail-fast preflight/fetch/build 与历史混合应用镜像的回归测试。
+- [x] 增加 `prepare-host`、`lock-status` 和安全 `unlock` 动作，不扩大 `apply` 权限。
+- [x] 增加持锁者元数据，以及 `flock`/mkdir fallback 陈旧锁恢复测试。
+- [x] 从 Docker 构建上下文排除升级状态，并移除废弃的 Compose version 字段。
+- [x] 更新中英文运维指南/设计，写清一次性准备流程、自动兼容行为、锁决策表和成功证据。
+- [x] 本地运行脚本测试、`selfhost:check`、`docs:check`、TypeScript build 与 `git diff --check`。
+- [ ] 只在 CI merge bar 通过后合入。
+
+**预期结果：** 全新或曾由 root 操作的 Ubuntu checkout 可通过一条显式宿主机准备命令完成规范化；日常升级由部署用户执行；历史应用镜像无需人工预先收敛；任何失败门禁立即停止；操作员不再手工删除锁文件或锁目录。
 
 ## 推广与兼容
 

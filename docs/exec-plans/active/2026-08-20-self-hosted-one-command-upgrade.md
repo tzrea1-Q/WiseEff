@@ -4,7 +4,7 @@
 
 **Goal:** Deliver a production-minded single-host upgrade entry that resolves one immutable Git commit, prebuilds it, quiesces writes, verifies a complete recovery point, recreates every Compose service without deleting volumes, runs migrations in the existing API startup path, validates the result, and supports durable resume/recovery.
 
-**Status:** Local implementation complete; repository gates pass. A non-customer Ubuntu rehearsal remains required target evidence before claiming release readiness.
+**Status:** Core implementation is on `main`. The first non-customer Ubuntu rehearsal exposed host-compatibility and stale-lock recovery gaps; the hardening follow-up on `fix/self-hosted-upgrade-host-compat` has passed local implementation gates and awaits PR/CI merge. A clean forward upgrade and recovery rehearsal remain required target evidence before claiming release readiness.
 
 **Design:** [Self-Hosted One-Command Upgrade Design](../../design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 
@@ -29,6 +29,7 @@
 - Implementation agents commit only on that feature branch. They do not push to `main`, open/merge a PR, or fast-forward local `main`.
 - The parent/session owner reviews the branch, runs or spot-checks the required gates, opens the PR, merges after approval, and then runs `git pull origin main`.
 - Keep this as one implementation branch unless the target-environment rehearsal needs a follow-up evidence-only branch.
+- Target-rehearsal compatibility hardening uses `fix/self-hosted-upgrade-host-compat` from current `main`; the parent/session owner opens and merges its PR after the local gates and CI merge bar pass.
 
 ## Preconditions
 
@@ -249,6 +250,35 @@ git diff --check
 ```
 
 Expected: local gates pass and the release record links one successful target upgrade plus one recovery rehearsal.
+
+## Phase 7 — Target-Rehearsal Host Compatibility Hardening
+
+The first Ubuntu rehearsal established the upgrade state-machine shape but exposed several operator-host compatibility gaps. These are implementation findings, not steps that should remain as chat-only manual recovery:
+
+| Finding | Root cause | Required automation |
+| --- | --- | --- |
+| Git works for the deployment user but times out under `sudo` | `sudo` resets proxy environment variables and reads root's Git config | Keep proxy normalization/`--git-proxy`, reject `plan`/`apply`/recovery actions for any root effective user, and provide a root-only host-preparation action that does not access Git |
+| Docker works only through `sudo` | deployment user is absent from the Docker socket group | `prepare-host` detects and adds the invoking `SUDO_USER` to the Docker group, then reports that a new login is required |
+| `/var/backups/wiseeff/upgrades` exists but is root-owned | directory creation did not transfer ownership to the deployment operator | `prepare-host` creates/owns/modes the dedicated backup root and upgrade state root without changing application data |
+| local diagnostics or corporate build edits make the checkout dirty | untracked/tracked files can change the Docker context or make the deployed source ambiguous | fail immediately with `git status --short` guidance; never auto-delete operator changes |
+| a root-created `.state/upgrades/<run-id>` breaks Docker build context transfer | local upgrade journals are ignored by Git but not by Docker | exclude `ops/self-hosted/.state/` from `.dockerignore` and guard it in `selfhost:check` |
+| legacy API, worker, and web containers have different image IDs | the earlier Compose shape built per-service images | preserve and tag the previous image per service, accept mixed legacy identities during preflight, and restore each service from its recorded image |
+| failed preflight/fetch/build steps can continue and print stale target data | Bash `errexit` is suppressed for functions invoked from `if ! ...` | explicitly propagate every preflight, target-resolution, build, quiescence, snapshot, and recovery error |
+| the lock file exists after exit or a fallback lock directory survives a crash | `flock` files are persistent by design; mkdir fallback can be stale | record lock-owner metadata, expose `lock-status`, and make `unlock` clear only proven-stale metadata/fallback locks while refusing a live kernel lock |
+| Compose prints the obsolete top-level `version` warning | Compose v2 ignores the legacy key | remove the key and update configuration-token checks |
+| Git works but Docker pulls or curl TLS verification still fail | Git, the Docker daemon, and corporate CA trust are separate network scopes | preserve Git proxy settings in the script, document Docker-service proxy and approved-CA setup, and never disable TLS verification automatically |
+
+**Tasks:**
+
+- [x] Add regression tests for fail-fast preflight/fetch/build behavior and mixed legacy application images.
+- [x] Add `prepare-host`, `lock-status`, and safe `unlock` actions without widening `apply` authority.
+- [x] Add lock-owner metadata and stale-lock recovery tests for `flock` and mkdir fallback modes.
+- [x] Exclude upgrade state from Docker build context and remove the obsolete Compose version field.
+- [x] Update the operator guide/design pair with the one-time preparation flow, automatic compatibility behavior, lock decision table, and exact success evidence.
+- [x] Run script tests, `selfhost:check`, `docs:check`, TypeScript build, and `git diff --check` locally.
+- [ ] Merge only after the CI merge bar passes.
+
+**Expected outcome:** a fresh or previously root-operated Ubuntu checkout can be normalized with one explicit host-preparation command, normal upgrade commands run as the deployment user, legacy application images require no manual convergence, failed gates stop immediately, and operators never manually delete a lock file or directory.
 
 ## Rollout And Compatibility
 

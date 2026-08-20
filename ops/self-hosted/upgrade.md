@@ -16,6 +16,23 @@ Automation may set `WISEEFF_UPGRADE_GIT_PROXY` instead; the command-line option 
 
 Do not source `.env` or a user shell profile to pass proxy settings; the entry point deliberately does not execute arbitrary shell configuration. `--git-proxy` is for HTTP(S)/SOCKS Git remotes; configure `GIT_SSH_COMMAND` or `core.sshCommand` for SSH remotes.
 
+Git, Docker Engine, and application build downloads are separate network scopes. The script can preserve or override Git proxy settings, but it deliberately does not rewrite a host's Docker daemon proxy or corporate trust store. If `git fetch` works while an image pull fails, configure the Docker service proxy. If TLS inspection produces an unknown/self-signed-chain error, install the organization-approved CA for Git/curl/Docker instead of globally disabling certificate verification.
+
+## One-time host preparation
+
+Normalize a host that was initialized or operated through root before running the first upgrade:
+
+```bash
+cd /srv/wiseeff/ops/self-hosted
+sudo ./scripts/upgrade.sh prepare-host --yes
+```
+
+`prepare-host` does not fetch Git, build an image, stop a service, or touch application data. It identifies the invoking `SUDO_USER`, adds that operator to the Docker socket group when needed, creates and secures the upgrade journal and backup roots, and transfers ownership of existing upgrade state/recovery artifacts to that operator. Membership in the Docker group is effectively root-equivalent host access, so use a dedicated trusted deployment account. A direct root session must pass `--operator <deployment-user>`. Log out and reconnect when the command adds Docker group membership.
+
+Run `plan`, `apply`, `resume`, and `rollback` as the deployment user without `sudo`. The upgrade entry rejects those actions whenever the effective user is root—including direct root shells—because root does not normally inherit the deployment user's proxy environment or Git configuration and would recreate root-owned state.
+
+The compatibility path accepts legacy deployments whose API, worker, and web containers have different image IDs. It records and tags each previous service image independently, then uses those exact service-specific images if pre-migration recovery or rollback is required. Operators no longer need to rebuild/recreate the three services merely to satisfy preflight.
+
 ## First adoption
 
 Install the release containing this entry through the existing controlled procedure. Before the first real run, check the checkout and live stack:
@@ -68,6 +85,29 @@ For an idempotent post-migration health/finalization phase, use the journal's pr
 
 `resume` never resets `migration_started` and never silently restores data. If the run is `recovery-required`, follow the explicit rollback path.
 
+### Host lock status and recovery
+
+The regular `.operation.lock` file intentionally remains on disk when `flock` is available; file presence does not mean the host is locked. Inspect the kernel/fallback state and recorded owner with:
+
+```bash
+./scripts/upgrade.sh lock-status
+```
+
+If a crash left stale owner metadata or a stale mkdir fallback lock, clear it safely with:
+
+```bash
+./scripts/upgrade.sh unlock
+```
+
+`unlock` is idempotent. It never removes the regular `flock` file, never kills a process, and returns exit `75` with the recorded PID/user/operation when a live setup or upgrade still owns the lock. A recent pidless fallback directory is treated as an acquisition in progress and is not cleared until the five-minute stale-lock grace period proves it was abandoned. Proven-stale mkdir fallback locks are moved aside automatically when a later setup/upgrade acquires the lock, so operators must not manually delete lock files or directories.
+
+| `lock_state` | Meaning | Operator action |
+| --- | --- | --- |
+| `free` | no operation owns the lock; a regular `flock` file may still exist | continue normally; optional `unlock` clears stale owner metadata |
+| `held` | a live kernel lock or fallback PID owns it | wait for the recorded operation; `unlock` safely refuses with exit `75` |
+| `initializing` | a recent fallback directory has not finished publishing its PID | wait and retry; after five minutes an abandoned directory becomes stale |
+| `stale` | the fallback PID is absent or an incomplete lock exceeded the grace period | run `unlock`, or simply retry setup/upgrade and let acquisition move it aside |
+
 ## Rollback and whole-state restore
 
 Rollback always requires the run id. A pre-migration application rollback restores the previous commit-addressed image. If migration startup began, the command refuses an application-only rollback and requires the exact token printed in the journal:
@@ -84,6 +124,7 @@ Stable exit classes are useful for automation: `0` completed/no-op, `2` invalid 
 ## Operator safety
 
 - Keep backup storage outside the checkout and Docker data root; protect it with mode `0700` directories and `0600` files.
+- Keep `ops/self-hosted/.state/` outside the Docker build context; it contains private operation journals, not application source.
 - Preserve the same Compose project and named volume identities. Do not add a new project name during an upgrade.
 - Treat `recovery-required` as a maintenance incident. Keep the proxy stopped until `resume` or the approved whole-state restore completes.
 - Local tests and `selfhost:check` validate the entry and templates; they do not constitute target-environment, pilot, or production-readiness evidence.

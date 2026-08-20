@@ -28,7 +28,7 @@
 
 ### 自托管操作体验
 
-- `exec-plans/active/2026-08-20-self-hosted-one-command-upgrade.md`：成熟的源码 checkout 升级入口——锁定唯一目标、停机前构建、停止队列/写入、验证 PostgreSQL/对象存储/Redis 恢复点、保留数据地完整重建服务、健康门禁、继续与显式恢复。`feat/self-hosted-one-command-upgrade` 的本地实现与门禁已完成；非客户 Ubuntu 演练仍属于目标环境证据。
+- `exec-plans/active/2026-08-20-self-hosted-one-command-upgrade.md`：成熟的源码 checkout 升级入口——锁定唯一目标、停机前构建、停止队列/写入、验证 PostgreSQL/对象存储/Redis 恢复点、保留数据地完整重建服务、健康门禁、继续与显式恢复。核心实现已进入 `main`；`fix/self-hosted-upgrade-host-compat` 的部署用户权限、历史镜像、fail-fast 错误和安全陈旧锁恢复已通过本地门禁，等待 PR/CI 合入。干净的非客户前向/恢复证据仍待完成。
 - `exec-plans/active/2026-08-18-self-hosted-setup-wizard.md`：OpenClaw/Hermes 风格的终端配置向导——只问人必须决定的项、自动生成密钥、分段重配、doctor。实现分支 `cursor/selfhost-setup-wizard-24de`。
 - `exec-plans/active/2026-08-18-self-hosted-ip-lab-profile.md`：无域名 IP 实验室 profile——自动生成密钥、HTTP 或 Caddy 自签证书、一键 bootstrap，以及管理员可见的 ChargeLab 演示数据。配置向导的前置条件。
 

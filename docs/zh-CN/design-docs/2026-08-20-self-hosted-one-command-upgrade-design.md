@@ -99,6 +99,9 @@ cd ops/self-hosted
 ```text
 upgrade.sh [apply] [--ref <git-ref>] [--restart] [--non-interactive --yes]
 upgrade.sh plan [--ref <git-ref>] [--json]
+sudo upgrade.sh prepare-host [--operator <user>] --yes
+upgrade.sh lock-status
+upgrade.sh unlock
 upgrade.sh status [--run-id <id>] [--json]
 upgrade.sh resume --run-id <id>
 upgrade.sh rollback --run-id <id> [--restore-data] [--confirm <token>]
@@ -106,6 +109,8 @@ upgrade.sh rollback --run-id <id> [--restore-data] [--confirm <token>]
 
 - `apply` 为默认动作：fetch、解析、预构建、停止写入、备份、重建、验证、收尾。
 - `plan` 解析目标并报告 commit、迁移变化、磁盘需求、备份位置和预期停机，但不 checkout、不改变容器。
+- `prepare-host` 是唯一面向 root 的动作：规范部署用户的 Docker 组成员关系以及受保护的 operation/journal/备份目录；它不访问 Git，也不改变运行中的服务。
+- `lock-status` 报告内核/fallback 锁状态与脱敏持锁者元数据；`unlock` 只清理已证明陈旧的元数据/fallback 锁，并拒绝真实在运行的操作。
 - `status` 只读取持久化运行记录。
 - `resume` 从第一个未完成的幂等阶段继续；不会盲目重复已验证的快照或迁移。
 - `rollback` 恢复旧应用镜像；增加 `--restore-data` 后同时恢复 PostgreSQL、对象存储和 Redis 恢复点。
@@ -136,6 +141,7 @@ upgrade.sh rollback --run-id <id> [--restore-data] [--confirm <token>]
 upgrade.sh                         外部接口
         |
         +-- upgrade-lib.sh         状态机与策略
+        +-- operation-lock.sh      持锁者元数据与安全陈旧锁恢复
         +-- scripts/compose        现有 Compose adapter
         +-- Git CLI                源码 adapter
         +-- Docker CLI             镜像/volume adapter
@@ -151,7 +157,7 @@ upgrade.sh                         外部接口
 
 ## 持久化运行状态
 
-同一时间只允许一个会修改状态的自托管操作。`upgrade.sh`、`setup.sh` 的 mutating 动作以及未来 restore 入口共享原子宿主机锁。实现优先使用 `flock`，不允许不安全地猜测陈旧锁。
+同一时间只允许一个会修改状态的自托管操作。`upgrade.sh`、`setup.sh` 的 mutating 动作以及未来 restore 入口共享原子宿主机锁。实现优先使用 `flock`，把 PID/用户/动作/开始时间元数据与内核锁分开记录，绝不把持久存在的普通锁文件本身解释为仍被占用。mkdir fallback 锁只有在 PID 已证明不存在时才自动移到旁路；缺失/非法 PID 的 fallback 锁会先保守视为正在获取锁，超过五分钟才可判定为被遗弃，从而封住 mkdir 到 PID 发布之间的竞争窗口。显式 `unlock` 采用同一证明规则，拒绝符号链接锁路径，并拒绝真实或无法确定的持锁者。
 
 默认位置：
 
@@ -315,6 +321,8 @@ Compose 将新增显式应用镜像仓库/tag 变量，使回滚不依赖可变�
 实现必须通过 `scripts/compose` 同时兼容 Compose v2 和仓库已声明的 standalone Compose 最低版本。不能依赖 `docker compose wait` 等较新专属能力，健康等待由控制器实现。
 
 命令必须在同一 checkout 与 `ops/self-hosted` 目录内执行，从而保持现有 Compose project 和命名 volume 身份不变。若检测到 project 身份变化，必须拒绝继续，除非操作员执行单独文档化的迁移。
+
+正常目标解析与恢复动作由部署用户执行，不通过 `sudo`，从而保留该用户的代理环境和 Git 配置；`prepare-host` 是一次性 root 工作的显式权限 seam。历史部署即使 API/worker/web 镜像 ID 不同也保持兼容，因为控制器会分别记录、标记并按服务恢复旧镜像。升级 journal 虽已被 Git 忽略，也必须从 Docker 构建上下文排除。
 
 ## 被否决的替代方案
 

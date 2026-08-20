@@ -100,6 +100,7 @@ dist/
 .git/
 **/.env
 **/.env.*
+ops/self-hosted/.state/
 ops/self-hosted/images/*.tar
 `;
 

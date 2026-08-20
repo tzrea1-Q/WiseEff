@@ -172,9 +172,12 @@ Use the dedicated [Self-Hosted Upgrade](../../ops/self-hosted/upgrade.md) entry 
 
 ```bash
 cd ops/self-hosted
-./scripts/upgrade.sh plan --ref <release-tag>
-./scripts/upgrade.sh apply --ref <release-tag>
+sudo ./scripts/upgrade.sh prepare-host --yes # one-time host normalization
+./scripts/upgrade.sh plan                     # defaults to origin/main
+./scripts/upgrade.sh apply
 ```
+
+Pin controlled releases with `--ref refs/tags/<release>` or a commit SHA. Run `plan`, `apply`, `resume`, and `rollback` as the deployment user without `sudo`; `prepare-host` grants that user Docker access and ownership of the protected journal/backup roots. Use `lock-status` and `unlock` for operation-lock recovery instead of deleting the persistent lock file.
 
 Use `status --run-id <id>` after an interruption. A `recovery-required` run keeps the proxy stopped; use `resume` only for the journal's idempotent finalization action, or use the token-gated `rollback --restore-data --confirm restore-<id>` whole-state restore. Do not use `setup.sh --force` or `compose down -v` as an upgrade shortcut. After a successful upgrade, run self-hosted smoke and review proxy/API/worker logs.
 
