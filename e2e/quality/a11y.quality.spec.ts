@@ -43,6 +43,16 @@ const routeScanExcludes: Partial<Record<(typeof coreRoutes)[number], string[]>> 
 };
 
 async function scan(page: Page, testInfo: TestInfo, label: string, excludeSelectors: string[] = []) {
+  await page.waitForFunction(
+    () =>
+      document.getAnimations().every((animation) => {
+        const iterations = animation.effect?.getComputedTiming().iterations;
+        return iterations === Infinity || animation.playState === "finished" || animation.playState === "idle";
+      }),
+    undefined,
+    { timeout: 5_000 }
+  );
+
   let builder = new AxeBuilder({ page }).withTags(wcagTags);
   for (const selector of excludeSelectors) {
     builder = builder.exclude(selector);
