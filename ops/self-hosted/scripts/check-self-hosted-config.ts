@@ -33,7 +33,6 @@ export const requiredSelfHostedFiles = [
 ] as const;
 
 export const requiredComposeTokens = [
-  'version: "3.8"',
   "x-wiseeff-image: &wiseeff-image",
   "image: *wiseeff-image",
   "wiseeff-postgres-data:/var/lib/postgresql/data",
@@ -67,7 +66,13 @@ export const requiredDockerfileTokens = [
   "npx vite build"
 ] as const;
 
-export const requiredDockerignoreTokens = ["**/.env", "**/.env.*", ".git/", "ops/self-hosted/images/*.tar"] as const;
+export const requiredDockerignoreTokens = [
+  "**/.env",
+  "**/.env.*",
+  ".git/",
+  "ops/self-hosted/.state/",
+  "ops/self-hosted/images/*.tar"
+] as const;
 
 export const requiredEnvKeys = [
   "NODE_ENV",

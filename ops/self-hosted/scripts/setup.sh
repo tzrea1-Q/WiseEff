@@ -734,7 +734,8 @@ while [ $# -gt 0 ]; do
 done
 
 wiseeff_operation_lock_acquire "${WISEEFF_OPERATION_LOCK_DIR:-${repo_root}/ops/self-hosted/.state}" \
-  "Another WiseEff setup or upgrade operation holds the host lock."
+  "Another WiseEff setup or upgrade operation holds the host lock." \
+  "setup:${action}"
 trap wiseeff_operation_lock_release EXIT
 
 if [ "${non_interactive}" != "true" ] && { [ -t 0 ] || [ -r /dev/tty ]; }; then

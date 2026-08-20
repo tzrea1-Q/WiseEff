@@ -14,9 +14,12 @@ cd ops/self-hosted
 For an already running checkout, use the dedicated [upgrade entry](upgrade.md). `setup.sh` remains the first-install/configuration/provisioning path; it is not an upgrade command:
 
 ```bash
-./scripts/upgrade.sh plan --ref <release-tag>
-./scripts/upgrade.sh apply --ref <release-tag>
+sudo ./scripts/upgrade.sh prepare-host --yes # once per host/operator
+./scripts/upgrade.sh plan                     # defaults to origin/main
+./scripts/upgrade.sh apply
 ```
+
+Use `--ref refs/tags/<release>`, `--ref <sha>`, or `WISEEFF_UPGRADE_REF` when the target must be pinned. Run normal upgrade actions without `sudo`. Use `lock-status` and the idempotent `unlock` action instead of deleting operation-lock files by hand.
 
 The DNS + Let's Encrypt path below remains the M6 staging/pilot profile.
 

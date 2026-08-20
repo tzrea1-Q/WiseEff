@@ -99,6 +99,9 @@ The complete external interface is intentionally small:
 ```text
 upgrade.sh [apply] [--ref <git-ref>] [--restart] [--non-interactive --yes]
 upgrade.sh plan [--ref <git-ref>] [--json]
+sudo upgrade.sh prepare-host [--operator <user>] --yes
+upgrade.sh lock-status
+upgrade.sh unlock
 upgrade.sh status [--run-id <id>] [--json]
 upgrade.sh resume --run-id <id>
 upgrade.sh rollback --run-id <id> [--restore-data] [--confirm <token>]
@@ -106,6 +109,8 @@ upgrade.sh rollback --run-id <id> [--restore-data] [--confirm <token>]
 
 - `apply` is the default. It fetches, resolves, prebuilds, quiesces, backs up, recreates, validates, and finalizes.
 - `plan` resolves the target and reports commits, migration changes, disk requirements, backup destination, and expected downtime without checking out code or changing containers.
+- `prepare-host` is the only root-oriented action. It normalizes the deployment user's Docker group membership and the protected operation/journal/backup directories; it never accesses Git or changes a running service.
+- `lock-status` reports the kernel/fallback lock state plus redacted holder metadata. `unlock` clears only proven-stale metadata/fallback locks and refuses a live operation.
 - `status` reads the durable journal only.
 - `resume` continues the first incomplete idempotent phase; it does not repeat a verified snapshot or migration blindly.
 - `rollback` restores the previous application image. `--restore-data` additionally restores the recorded PostgreSQL, object-store, and Redis recovery point.
@@ -136,6 +141,7 @@ operator / automation
 upgrade.sh                         external interface
         |
         +-- upgrade-lib.sh         state machine and policy
+        +-- operation-lock.sh      owner metadata and safe stale-lock recovery
         +-- scripts/compose        existing Compose adapter
         +-- Git CLI                source adapter
         +-- Docker CLI             image/volume adapter
@@ -151,7 +157,7 @@ The external interface is the test surface. Internal command adapters are replac
 
 ## Durable Run State
 
-Only one mutating self-hosted operation may run at a time. `upgrade.sh`, mutating `setup.sh` actions, and any future restore entry share an atomic host lock. The implementation uses `flock` when available and refuses unsafe stale-lock guessing.
+Only one mutating self-hosted operation may run at a time. `upgrade.sh`, mutating `setup.sh` actions, and any future restore entry share an atomic host lock. The implementation uses `flock` when available, records PID/user/operation/start metadata separately from the kernel lock, and never interprets the persistent regular lock file itself as proof of ownership. A mkdir fallback lock is automatically moved aside only when its PID is proven absent. A pidless/invalid fallback lock is conservatively treated as an acquisition in progress for five minutes before it can be considered abandoned; this closes the mkdir-to-PID publication race. An explicit `unlock` action applies the same proof rules, rejects symlink lock paths, and refuses a live or inconclusive owner.
 
 Default locations:
 
@@ -315,6 +321,8 @@ The first release containing this module must still be installed through the cur
 The implementation must support both Compose v2 and the repository's documented standalone Compose floor through `scripts/compose`. It must not rely on `docker compose wait` or another newer-only convenience; health polling remains in the controller.
 
 The command operates in the same checkout and `ops/self-hosted` directory so existing Compose project and named-volume identities do not change. It refuses a different project identity unless the operator follows a separately documented migration.
+
+Normal target resolution and recovery actions run as the deployment user, not through `sudo`; this preserves that user's proxy environment and Git configuration. `prepare-host` is an explicit authority seam for the one-time root work. Legacy deployments with different API/worker/web image IDs remain compatible because the controller records and tags each previous service image independently, then restores each service with its own tag. Upgrade journals are excluded from the Docker build context even though they are already ignored by Git.
 
 ## Alternatives Rejected
 
