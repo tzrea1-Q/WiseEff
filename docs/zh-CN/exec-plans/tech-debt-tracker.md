@@ -26,7 +26,6 @@
 - **TD-039（项目参数文件，程序主体已关闭）：** DTS 程序与硬化收口已归档。路径派生身份退役由活跃计划 `2026-07-16-parameter-topology-schema-management.md` 承接（语义规格/绑定 + 原子切换）。残余 fallback 仅在 cutover 前存在。
 - **TD-040（DTS 配置集/门禁后续）：** (1)(2)(3)(4) 状态见英文版；生产失败关闭 Schema/工具链校验由拓扑计划 Task 8/10/17 承接。
 - **TD-042（参数身份 cutover）：** Phase 7、第四轮与第五轮已完成既有语义迁移、状态门禁、不可变 base/candidate 和 fail-closed writeback。**第六轮**补齐 0058 scope、无损手工身份、global authz、完整 valueShape、真实角色 UI/merge、租户 cleanup/test 隔离、跨 origin candidate-less draft 失效和持久 `set|delete`；新增 0063，使 submission 锁定并推进 exact candidate、在 item/request 上持久化其 ID，merge 再次锁定复核。带 marker 的可丢弃库已覆盖实现链路，但它仍是空 legacy 合成库，不是生产近似快照或恢复演练。**缺少合法干净非客户快照与维护窗口**，尚未执行 apply→cutover→整库恢复→旧 API smoke，因此 TD-042 继续为 BLOCKER，不得宣称生产 cutover 就绪。
-- **TD-051（已 resolved 的节点对应任务无反向回滚）：** 决策已锁定 [ADR-0033](../../adr/0033-identity-mapping-uses-protected-re-resolve.md) / D3：受保护 re-resolve（服务端已能）。mock/UI/合同诚实化仍开。
 - **TD-059（其余弹窗尚未迁到共享原语，部分）：** `ModalDialog` / `ConfirmDialog`（`src/components/common/`）已承载弹窗契约。**已迁**：`ParameterSpecDetailDialog`，**#538** 的 `DtsBindingDraftDialog`（`initialFocusRef` 仍把首焦给目标值编辑器），**#540** 的 `DtsBindingDetailDialog`，以及 **#551** 的 `DtsBindingCompareDialog`。仍为 Radix `Dialog` / `WorkbenchSheet`：`DtsBindingHistoryDiffDialog`、`DtsNodeEnablementDialog`。**未动** `DtsReloadCandidateEditDialog`（reload sheet）。影响：未迁移表面仍可能偏离焦点、层叠与 Escape 契约（POD-F1–F5）。**保持 Open（部分）**：剩余 HistoryDiff / NodeEnablement。不要从已迁移表面重新开始，也不要动 reload。
 - **TD-062（PCW 壳 stretch 800–1000）：** Wave-3（#273–#278）已满足软门禁（`ProjectConfigurationWorkbench.tsx` = 1496 行）并关闭 #258；stretch 目标 800–1000 仍为残余债。勿重开 #258；下次改壳时再抽 bootstrap effects / MainStage bindings。
 - **TD-055（产品作用域策略目标面未建）：** 定义编辑器与 `PATCH /api/v2/parameter-specs/:specId` 已按 SE-D1 移除 `policyTarget` 写入；`parameter_policy_targets` 表与三处只读 join 仍在，但无生产写入。初始化仍优先 `policyTarget ?? schemaDefault`。后续要么建产品作用域治理面，要么用 ADR 正式退役表与读者。
@@ -55,6 +54,7 @@
 
 ## 近期关闭项
 
+- **TD-051（已 resolved 的节点对应任务无反向回滚）：** **2026-08-22 关闭**（`codex/td051-protected-reresolve`）。公共合同已写清受保护重新对应及失败关闭门禁；mock 与服务端对齐同目标幂等、连续性、候选作用域、单例冲突、已建模下游使用，并拒绝在已对应任务上执行非重新对应决议。管理端历史区展示当前对应，并提供备选候选与全新原因输入。`PARAM-IDENTITY-MAP-ADMIN-001` 证明从首次确认到受保护重新对应的 UI + API + DB + 审计链路；390px 下长节点定位符不再撑破卡片。ADR-0033 继续约束：不做反向撤销，不把 `resolved` 重开为 `open`。
 - **TD-117（有引用的 property_key 改名）：** **2026-08-19 关闭（接受残留）**（#544 / #549 / #553 / #555 / #558）。机器已齐：预检、启动、暂存（仅文件候选）、工作台深链、再预检门禁、finalize。残留是跨页导航（编辑器 → 工作台合入 → 回来再预检 → finalize）；同页激活（选项 2）已否决。`referenceCount > 0` 时行内「修正属性键」保持禁用。不要重开 ADR-0017 或 ADR-0034。归档：`docs/zh-CN/exec-plans/completed/2026-08-18-property-key-source-cutover.md` 与 `docs/zh-CN/exec-plans/completed/2026-08-19-property-key-cutover-remainder.md`。
 - **TD-049（生命周期排序把 deprecated 与 draft 同等降权）：** **2026-08-18 关闭**（#546）。有 binding/CR 则 pin `parameter_spec_version_id`；`migration.ts` 跨 spec 匹配顺序 `active → deprecated → draft`。残差（不重开）：`schemaLoader.ts` 仍只区分是否可发布。
 - **TD-052（定义数与实测处数未拆分）：** **2026-08-18 关闭**（#545）。模块 DTO 拆出 `definitionCount`（子树互异规格）与 `parameterCount`（绑定/实测处数）；树分别标注；库详情 `referenceCount` 仍是单定义实测处数。

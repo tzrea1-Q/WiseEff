@@ -338,6 +338,11 @@ export type IdentityMappingEvidence = {
   evidence?: string[];
   candidates?: IdentityMappingCandidate[];
   risk?: string | null;
+  selectedLogicalNodeId?: string | null;
+  selectedNodeLocator?: string | null;
+  selectedName?: string | null;
+  selectedUnitAddress?: string | null;
+  continuityReusable?: boolean;
 };
 
 export type IdentityMappingTask = {

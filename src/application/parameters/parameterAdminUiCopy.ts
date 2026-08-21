@@ -163,6 +163,18 @@ export const PARAMETER_ADMIN_UI = {
   identityMappingCandidates: "候选拓扑节点",
   selectIdentityCandidate: "选择对应节点",
   confirmIdentityMapping: "确认对应",
+  currentIdentityMapping: "当前对应",
+  reselectIdentityCandidate: "重新选择对应节点",
+  identityReResolveReason: "重新对应原因",
+  identityReResolveReasonPlaceholder: "说明为何更正已应用的节点对应",
+  confirmIdentityReResolve: "确认重新对应",
+  identityReResolveGuidance:
+    "已对应任务不可重开；如原决定有误，可在没有下游草稿、提交或设备操作时受保护地更正。",
+  identityReResolveMigrationRequired:
+    "当前任务缺少安全更正所需的连续性证据；请通过显式迁移或上传新 DTS 处理。",
+  identityReResolveSelectDifferent: "请选择不同于当前对应的候选节点",
+  identityReResolveReasonRequired: "请填写重新对应原因",
+  identityReResolveSubmitting: "正在提交重新对应",
   declareNewIdentity: "声明新身份",
   identityMappingTaskKindAmbiguity: "身份歧义",
   identityMappingTaskKindSingleton: "单例冲突",
