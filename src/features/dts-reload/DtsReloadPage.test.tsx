@@ -253,6 +253,9 @@ async function setWatchdogDebugValue(
   user: ReturnType<typeof userEvent.setup>,
   value = "<7000>"
 ) {
+  if (!screen.queryByLabelText("Watchdog 调试值")) {
+    await user.click(await screen.findByRole("checkbox", { name: "选择 Watchdog" }));
+  }
   await setDebugValueInTray(user, "Watchdog 调试值", value);
 }
 
@@ -284,8 +287,8 @@ describe("DtsReloadPage", () => {
     expect(screen.getByRole("columnheader", { name: "操作" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "筛选模块" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /编辑 Watchdog/ })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "本轮重载" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /下发参数/ })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "本轮重载" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /下发参数/ })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("DTS 重载启动操作栏")).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "已选调试值" })).not.toBeInTheDocument();
     const history = screen.getByLabelText("运行历史");
@@ -304,24 +307,25 @@ describe("DtsReloadPage", () => {
     expect(within(sheet).getByText("Watchdog timeout for charger safety.")).toBeInTheDocument();
     expect(within(sheet).getByRole("heading", { name: "上次重载" })).toBeInTheDocument();
     expect(within(sheet).getByLabelText("Watchdog 调试值")).toHaveValue("<6000>");
-    expect(within(sheet).getByRole("button", { name: "更新本轮" })).toBeDisabled();
+    expect(within(sheet).getByRole("button", { name: "加入本轮重载" })).toBeDisabled();
 
     const valueInput = within(sheet).getByLabelText("Watchdog 调试值");
     await user.clear(valueInput);
-    expect(within(sheet).getByRole("button", { name: "更新本轮" })).toBeDisabled();
+    expect(within(sheet).getByRole("button", { name: "加入本轮重载" })).toBeDisabled();
     await user.type(valueInput, "<7000>");
-    expect(within(sheet).getByRole("button", { name: "更新本轮" })).toBeEnabled();
-    await user.click(within(sheet).getByRole("button", { name: "更新本轮" }));
+    expect(within(sheet).getByRole("button", { name: "加入本轮重载" })).toBeEnabled();
+    await user.click(within(sheet).getByRole("button", { name: "加入本轮重载" }));
 
     expect(screen.queryByRole("dialog", { name: "Watchdog" })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "本轮重载" })).toBeInTheDocument();
     expect(screen.getByDisplayValue("<7000>")).toBeInTheDocument();
   });
 
-  it("keeps dispatch disabled while the reload batch has no meaningful debug changes", async () => {
+  it("keeps the reload batch empty until the user selects a candidate", async () => {
     renderPage(createRepository());
-    expect(await screen.findByRole("region", { name: "本轮重载" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /下发参数/ })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: /编辑 Watchdog/ })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "本轮重载" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /下发参数/ })).not.toBeInTheDocument();
   });
 
   it("edits the reload batch in a workbench-style tray with remove and reset actions", async () => {
@@ -346,6 +350,7 @@ describe("DtsReloadPage", () => {
     });
     renderPage(repository);
 
+    await user.click(await screen.findByRole("checkbox", { name: "选择 Watchdog" }));
     expect(await screen.findByRole("region", { name: "本轮重载" })).toBeInTheDocument();
     expect(screen.getByText(/本轮 1 项/)).toBeInTheDocument();
     const watchdogDiff = screen.getByLabelText("Watchdog 值变更");
@@ -533,7 +538,7 @@ describe("DtsReloadPage", () => {
     row.focus();
     await user.keyboard("{Enter}");
     expect(screen.getByRole("region", { name: "本轮重载" })).toBeInTheDocument();
-    expect(screen.getByText(/本轮 2 项/)).toBeInTheDocument();
+    expect(screen.getByText(/本轮 1 项/)).toBeInTheDocument();
   });
 
   it("lists candidates, starts a batch run, shows overlay source, and downloads the artifact", async () => {
@@ -588,6 +593,7 @@ describe("DtsReloadPage", () => {
     expect(screen.queryByRole("checkbox", { name: "选择 Compatible" })).not.toBeInTheDocument();
     await user.clear(screen.getByLabelText("按名称搜索参数"));
 
+    await user.click(screen.getByLabelText("选择 Watchdog"));
     await user.click(screen.getByLabelText("选择 Compatible"));
     expect(screen.getByText(/本轮 2 项/)).toBeInTheDocument();
 
@@ -697,7 +703,9 @@ describe("DtsReloadPage", () => {
 
     renderPage(repository);
 
-    expect(await screen.findByRole("checkbox", { name: "选择 Safety Watchdog" })).toBeChecked();
+    const safetyCheckbox = await screen.findByRole("checkbox", { name: "选择 Safety Watchdog" });
+    expect(safetyCheckbox).not.toBeChecked();
+    await user.click(safetyCheckbox);
     expect(screen.getAllByText("敏感 · critical").length).toBeGreaterThan(0);
 
     await user.click(screen.getByRole("checkbox", { name: "选择 High Param" }));
@@ -1023,7 +1031,7 @@ describe("DtsReloadPage", () => {
     renderPage(repository, { canStartRun: false });
     await screen.findByText("运行历史");
     expect(screen.getByText(/仅有调试查看权限/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /下发参数/ })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /下发参数/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "上次重载" })).not.toBeInTheDocument();
 
     await user.click(await screen.findByRole("button", { name: /编辑 Watchdog/ }));
