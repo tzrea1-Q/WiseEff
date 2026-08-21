@@ -17,6 +17,7 @@ import {
   LocalDeviceBridgePanel,
   type LocalDeviceBridgePanelState
 } from "@/components/LocalDeviceBridgePanel";
+import { useTopBarActions } from "@/components/layout";
 import { DtsTopologyNavigator } from "@/components/parameter-topology/DtsTopologyNavigator";
 import { DtsReloadCandidateEditDialog } from "@/features/dts-reload/DtsReloadCandidateEditDialog";
 import { DtsReloadCandidateTable } from "@/features/dts-reload/DtsReloadCandidateTable";
@@ -379,6 +380,31 @@ export function DtsReloadPage({
     }
     void runDetectTargets();
   }, [detectTargets, protocol, bridges.length, runDetectTargets]);
+
+  const connectedTargetRef = targetRef.trim();
+  const connectedTargetLabel =
+    reachableTargets.find((target) => target.targetRef === connectedTargetRef)?.label?.trim()
+    || connectedTargetRef;
+
+  useTopBarActions(
+    <div className="device-pill">
+      <span className={connectedTargetRef ? "live-dot" : "idle-dot"} />
+      {connectedTargetRef
+        ? `已连接：${connectedTargetLabel}`
+        : detectingTargets
+          ? "检测中..."
+          : `未连接 ${protocol.toUpperCase()} 设备`}
+      <button
+        className="link-button"
+        type="button"
+        disabled={!detectTargets}
+        onClick={() => void runDetectTargets()}
+      >
+        重新检测
+      </button>
+    </div>,
+    [connectedTargetLabel, connectedTargetRef, detectTargets, detectingTargets, protocol, runDetectTargets]
+  );
 
   useEffect(() => {
     void session.loadResidue(repository);

@@ -7093,14 +7093,14 @@ td small {
 .dts-reload-page .dts-reload-candidates-body .dts-workbench-topology {
   position: relative;
   top: auto;
-  height: 100%;
-  max-height: none;
-  align-self: stretch;
+  height: auto;
+  max-height: 100%;
+  align-self: start;
   box-sizing: border-box;
 }
 
 .dts-reload-page .dts-reload-candidates-body .dts-topology-navigator {
-  flex: 1;
+  flex: 0 1 auto;
   min-height: 0;
   overflow: auto;
 }
@@ -7974,6 +7974,45 @@ td small {
 .local-device-bridge-panel__install-cta:hover {
   background: var(--primary-container);
   border-color: var(--primary-container);
+}
+
+.local-device-bridge-panel__already-installed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.local-device-bridge-panel__already-installed > .local-device-bridge-panel__install-desc {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+.local-device-bridge-panel__pairing-validity {
+  white-space: nowrap;
+}
+
+.local-device-bridge-panel__already-installed-cta {
+  flex: 0 1 auto;
+  max-width: 100%;
+  white-space: normal;
+}
+
+@media (max-width: 480px) {
+  .local-device-bridge-panel__already-installed {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .local-device-bridge-panel__already-installed > .local-device-bridge-panel__install-desc,
+  .local-device-bridge-panel__already-installed-cta {
+    width: 100%;
+  }
+
+  .local-device-bridge-panel__already-installed > .local-device-bridge-panel__install-desc {
+    flex: 0 1 auto;
+  }
 }
 
 .local-device-bridge-panel__host-pick {
@@ -20487,6 +20526,8 @@ body.xiaoze-popup-resize-active {
   display: grid;
   gap: var(--space-4);
   min-width: 0;
+  container-type: inline-size;
+  container-name: dts-workbench;
   color: var(--dts-workbench-ink);
 }
 
@@ -22349,6 +22390,53 @@ button.dts-topology-navigator__disclosure:focus-visible {
   .dts-parameter-workbench-table__row {
     grid-template-columns: minmax(90px, .8fr) minmax(120px, .9fr) minmax(155px, 1.2fr) minmax(120px, 1fr) minmax(105px, .8fr) minmax(110px, .9fr) 72px;
     gap: var(--space-2);
+  }
+}
+
+/* The shell can collapse its sidebar while the viewport remains below 1200px.
+ * Use the workbench's real inline space to restore the two-column reload layout
+ * when both the navigator and the 640px candidate table fit. */
+@container workbench-main (min-width: 960px) {
+  .dts-reload-page .dts-reload-candidates-body.dts-parameter-workbench__body {
+    grid-template-columns: auto minmax(0, 1fr);
+    height: var(--dts-reload-candidates-pane-height);
+    min-height: 420px;
+    max-height: var(--dts-reload-candidates-pane-height);
+  }
+
+  .dts-reload-page .dts-reload-candidates-body .dts-workbench-topology {
+    width: max-content;
+    min-width: var(--module-navigator-min-width);
+    max-width: var(--module-navigator-max-width);
+    height: auto;
+    max-height: 100%;
+    align-self: start;
+  }
+
+  .dts-reload-page .dts-reload-candidates-results {
+    height: 100%;
+  }
+}
+
+/* Parameter editing and parameter administration own the shared DTS workbench
+ * directly, so their responsive decision must use that workbench's width. */
+@container dts-workbench (min-width: 960px) {
+  .dts-parameter-workbench > .dts-parameter-workbench__body {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .dts-parameter-workbench > .dts-parameter-workbench__body > .dts-workbench-topology {
+    position: sticky;
+    top: 12px;
+    width: max-content;
+    min-width: var(--module-navigator-min-width);
+    max-width: var(--module-navigator-max-width);
+    max-height: min(670px, calc(100vh - 230px));
+  }
+
+  .dts-parameter-workbench > .dts-parameter-workbench__body > .dts-workbench-list {
+    height: min(670px, calc(100vh - 230px));
+    max-height: min(670px, calc(100vh - 230px));
   }
 }
 

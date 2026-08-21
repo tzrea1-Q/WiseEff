@@ -561,7 +561,10 @@ export function LocalDeviceBridgeWizard({
                   <span className="local-device-bridge-panel__install-desc">正在生成配对码...</span>
                 ) : pairingCode ? (
                   <span className="local-device-bridge-panel__install-desc">
-                    当前配对码：<strong>{pairingCode.code}</strong>（约 30 分钟内有效，用于终端兜底命令）
+                    当前配对码：<strong>{pairingCode.code}</strong>
+                    <span className="local-device-bridge-panel__pairing-validity">
+                      （约 30 分钟内有效，用于终端兜底命令）
+                    </span>
                   </span>
                 ) : null}
                 <button
