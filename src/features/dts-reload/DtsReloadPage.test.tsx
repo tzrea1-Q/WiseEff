@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ComponentProps } from "react";
+import { useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
@@ -11,6 +11,7 @@ import type { DtsReloadCandidate, DtsReloadRun } from "@/domain/dtsReload/types"
 import { DTS_RELOAD_CONFIRMATION_TOKEN } from "@/domain/dtsReload/types";
 import { DtsReloadPage } from "./DtsReloadPage";
 import { getRequiredRoleForPage } from "@/app/permissions";
+import { TopBarActionsContext } from "@/components/layout";
 
 vi.mock("@/infrastructure/http/bridgeConnectLauncher", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/infrastructure/http/bridgeConnectLauncher")>();
@@ -235,6 +236,49 @@ function renderPage(repository: DtsReloadRepository, overrides: Partial<Componen
   );
 }
 
+function DtsReloadTopBarHarness({
+  pageProps
+}: {
+  pageProps: ComponentProps<typeof DtsReloadPage>;
+}) {
+  const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
+  const [topBarLeadingActions, setTopBarLeadingActions] = useState<ReactNode | null>(null);
+  const context = useMemo(
+    () => ({ setActions: setTopBarActions, setLeadingActions: setTopBarLeadingActions }),
+    []
+  );
+
+  return (
+    <TopBarActionsContext.Provider value={context}>
+      <div className="topbar-page-actions">
+        {topBarLeadingActions}
+        {topBarActions}
+      </div>
+      <DtsReloadPage {...pageProps} />
+    </TopBarActionsContext.Provider>
+  );
+}
+
+function renderPageWithTopBar(
+  repository: DtsReloadRepository,
+  overrides: Partial<ComponentProps<typeof DtsReloadPage>> = {}
+) {
+  return render(
+    <DtsReloadTopBarHarness
+      pageProps={{
+        projects: [{ id: "project-1", name: "Demo" }],
+        repository,
+        canStartRun: true,
+        bridges: testBridges,
+        probeBridgeHealth: async () => ({ connected: true, bridgeId: "bridge-1" }),
+        initialTargetRef: "",
+        moduleRegistryRepository: null,
+        ...overrides
+      }}
+    />
+  );
+}
+
 async function fillDeployFields(_user: ReturnType<typeof userEvent.setup>) {
   // Deploy target comes from Bridge detect / initialTargetRef — no manual field.
 }
@@ -294,6 +338,23 @@ describe("DtsReloadPage", () => {
     const history = screen.getByLabelText("运行历史");
     expect(history.tagName.toLowerCase()).toBe("details");
     expect(history).not.toHaveAttribute("open");
+  });
+
+  it("publishes device connection status and redetection to the topbar", async () => {
+    const user = userEvent.setup();
+    const detectTargets = vi.fn(async () => []);
+    renderPageWithTopBar(createRepository(), { detectTargets });
+
+    const topbarActions = document.querySelector(".topbar-page-actions") as HTMLElement;
+    await waitFor(() => expect(topbarActions).toHaveTextContent("未连接 HDC 设备"));
+    const initialDetectionCount = detectTargets.mock.calls.length;
+
+    await user.click(within(topbarActions).getByRole("button", { name: "重新检测" }));
+    await waitFor(() => expect(detectTargets).toHaveBeenCalledTimes(initialDetectionCount + 1));
+    expect(detectTargets).toHaveBeenLastCalledWith("hdc");
+
+    await user.click(screen.getByRole("button", { name: "ADB" }));
+    await waitFor(() => expect(topbarActions).toHaveTextContent("未连接 ADB 设备"));
   });
 
   it("opens a side sheet to edit a debuggable candidate into the reload batch", async () => {

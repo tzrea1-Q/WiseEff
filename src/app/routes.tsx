@@ -24,6 +24,7 @@ import { parseOrganizationAdminArea } from "@/application/organization/organizat
 import type { LogRuntimeActions } from "@/application/logs/logRuntime";
 import type { KnowledgeCapability } from "@/domain/knowledge/rules";
 import { resolveDtsReloadRepository } from "@/application/dts-reload/dtsReloadRuntime";
+import type { DtsReloadDeployProtocol } from "@/application/dts-reload/dtsReloadRunSession";
 import { createMockDebuggingBridgeSeams } from "@/infrastructure/mock/mockDebuggingGateway";
 import { createMockDtsReloadBridgeSeams } from "@/infrastructure/mock/mockDtsReloadRepository";
 import type { AppAction } from "@/application/state/appState";
@@ -206,6 +207,24 @@ export function PageRouter({
       }));
     };
   }, [parameterTopologyRepository, canViewParameterSpecs]);
+
+  const detectDtsReloadTargets = useMemo(() => {
+    if (!debuggingGateway) {
+      return undefined;
+    }
+    return async (protocol: DtsReloadDeployProtocol) => {
+      const targets = await debuggingGateway.detectTargets({ protocol });
+      return targets
+        .filter((target) => Boolean(target.targetRef?.trim()))
+        .map((target) => ({
+          targetRef: target.targetRef!.trim(),
+          label: target.bridgeMachineLabel?.trim()
+            ? `${target.bridgeMachineLabel.trim()} · ${target.targetRef!.trim()}`
+            : target.label || target.targetRef!.trim(),
+          bridgeId: target.bridgeId
+        }));
+    };
+  }, [debuggingGateway]);
 
   if (!canAccessPage(currentRoleId, page.key)) {
     const requiredRole = getRequiredRoleForPage(page.key);
@@ -396,20 +415,7 @@ export function PageRouter({
           detectTargets={
             mockSeams
               ? mockSeams.detectTargets
-              : debuggingGateway
-                ? async (protocol) => {
-                    const targets = await debuggingGateway.detectTargets({ protocol });
-                    return targets
-                      .filter((target) => Boolean(target.targetRef?.trim()))
-                      .map((target) => ({
-                        targetRef: target.targetRef!.trim(),
-                        label: target.bridgeMachineLabel?.trim()
-                          ? `${target.bridgeMachineLabel.trim()} · ${target.targetRef!.trim()}`
-                          : target.label || target.targetRef!.trim(),
-                        bridgeId: target.bridgeId
-                      }));
-                  }
-                : undefined
+              : detectDtsReloadTargets
           }
         />
       );
