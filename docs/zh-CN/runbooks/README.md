@@ -17,6 +17,7 @@
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 - 自托管入口见 [配置向导](../../../ops/self-hosted/setup.zh-CN.md)。只有 IP、没有域名的实验室见 [IP 实验室 profile](../../../ops/self-hosted/ip-lab.zh-CN.md)。
+- 初始化、日常启停、健康与日志、升级恢复、备份、监控和常见故障统一见[自托管运维操作手册](../../../ops/self-hosted/operations.zh-CN.md)。
 - 已运行自托管 checkout 的升级见 [自托管升级](../../../ops/self-hosted/upgrade.zh-CN.md)，包括目标锁定、停机前构建、恢复点、resume 与显式 rollback。
 
 ## 同类中文文档

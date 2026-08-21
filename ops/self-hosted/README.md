@@ -4,6 +4,8 @@
 
 This directory contains the M6.1 single-Linux-server baseline. It is meant for a controlled self-hosted staging or pilot host, not broad production hardening by itself.
 
+For one operator-facing index of setup, routine start/stop/restart, status, logs, upgrade/recovery, backup, monitoring, and common failures, use the [Self-Hosted Operations Handbook](operations.md).
+
 Use the [setup wizard](setup.md) instead of copying `.env.example` by hand. It covers the [IP lab profile](ip-lab.md) and the DNS + Let's Encrypt profile:
 
 ```bash

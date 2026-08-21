@@ -8,6 +8,7 @@ Runbooks describe repeatable operational procedures. They complement the design 
 
 - [M5 Commercial Pilot Readiness](m5-commercial-pilot-readiness.md): current go/no-go checklist and pilot gate.
 - [Self-Hosted Runtime](self-hosted-runtime.md): M6.1 single-Linux-server runtime startup, smoke, and emergency stop. Start from the [setup wizard](../../ops/self-hosted/setup.md). Hosts with an IP and no DNS can also use [ops/self-hosted/ip-lab.md](../../ops/self-hosted/ip-lab.md).
+- [Self-Hosted Operations Handbook](../../ops/self-hosted/operations.md): one operator command index for setup, routine lifecycle, health/logs, upgrade/recovery, backup, monitoring, and common failures.
 - [Self-Hosted Upgrade](../../ops/self-hosted/upgrade.md): immutable target resolution, pre-downtime build, data-preserving full recreation, recovery point, resume, and explicit rollback.
 - [WSL Linux Validation](wsl-linux-validation.md): local WSL lab validation scope, known limitations, and target-evidence gaps.
 - [Identity Provider](identity-provider.md): M6.2 self-hosted OIDC, Keycloak reference setup, token rotation, and Admin recovery.
