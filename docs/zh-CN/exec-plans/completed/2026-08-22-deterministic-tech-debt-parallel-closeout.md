@@ -1,9 +1,9 @@
 # 确定性技术债并行收口
 
-> 状态：**进行中**  
+> 状态：**已完成 2026-08-22**
 > 日期：2026-08-22  
 > 计划分支：`docs/deterministic-td-parallel-closeout-plan`  
-> English: [English](../../../exec-plans/active/2026-08-22-deterministic-tech-debt-parallel-closeout.md)  
+> English: [English](../../../exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout.md)
 > 追踪表：[技术债追踪表](../tech-debt-tracker.md)
 
 ## 目标
@@ -15,6 +15,13 @@
 - **TD-073**：在真实应用/Port 接缝完成前端测试 harness 收口，不把合理的组件 props 测试强行改成整 App 测试。
 
 本批次强调独立归属和完整关闭。单条实现只有在聚焦门禁、全量门禁和最终文档收口都合入后才算关闭。
+
+## 完成结果
+
+- **TD-071** 经 #575（`27ada8d4`）关闭：两个 M1 seed 集成套件使用共享 seed/object-store 测试 factory，不再保留失真的 reset 或超时特例。
+- **TD-073** 经 #576（`ddf5f6fa`）关闭：六个审计目标收敛到共享 App/Port 接缝，同时保留合理的 typed-props 组件接缝。
+- **TD-059** 经 #577（`d8c68335`）关闭：范围内最后两个弹窗使用 `ModalDialog`，并通过聚焦、全量、验收和 API 模式三视口浏览器门禁。
+- 每个实现 diff 的最终 Standards / Spec 复审均为 0 个遗留问题；三个实现 PR 合入前均通过 Build、Acceptance quality、Acceptance smoke 与 Merge bar。
 
 ## 假设与锁定决策
 
@@ -110,23 +117,32 @@ npm run contract:check
 git diff --check
 ```
 
+基于刷新后 `main` 的最终组合收口结果：
+
+- `npm test`：401 files / 2988 tests 通过。
+- `npm run test:server`：346 files / 2682 tests 通过；另有 2 files / 8 tests 按既有环境门禁跳过。
+- `npm run build`（含 `tsc -b`）：通过。
+- `npm run lint`：0 errors / 298 条基线 warnings。
+- `npm run ui:check`、`npm run contract:check`、`npm run docs:check`：通过。本地数据库没有 pgvector，因此 canonical pgvector schema artifact 按仓库既有规则跳过；CI 会在 `pgvector/pgvector:pg16` 验证。
+- `git diff --check`：通过。
+
 每条轨道的专用命令和浏览器证据路径记录在实现 PR 与最终 tracker 行。
 
 ## 文档影响矩阵
 
 | 区域 | 状态 | 文件/证据 |
 | --- | --- | --- |
-| 仓库地图 | Review | `AGENTS.md`、`ARCHITECTURE.md`、`docs/README.md`；预计无需改导航 |
-| 计划 | Update | 本中英计划、`docs/PLANS.md`、`docs/zh-CN/PLANS.md`、旧上线收口计划 |
-| 技术债 | Update | 中英 `tech-debt-tracker.md` 的 TD-059/071/073 |
+| 仓库地图 | 已审查—不变 | `AGENTS.md`、`ARCHITECTURE.md`、`docs/README.md`；无导航变化 |
+| 计划 | 已更新 | 本中英计划已归档；`docs/PLANS.md`、`docs/zh-CN/PLANS.md` 与旧上线收口计划已更新 |
+| 技术债 | 已更新 | 中英 `tech-debt-tracker.md` 已把 TD-059/071/073 移到近期关闭项 |
 | 产品规格 | No change | 不改用户流程或产品决策 |
-| 架构/领域 | Review | 只收敛弹窗/测试接缝；预计不改生产架构 |
-| 质量/测试 | Review | tracker/计划证据；只有 harness 契约实质变化时才更新长期测试文档 |
+| 架构/领域 | 已审查—不变 | 只收敛弹窗/测试接缝；未改生产架构或领域合同 |
+| 质量/测试 | 已审查—不变 | factory 契约随测试落地，关闭证据在 tracker/计划；无需修改长期测试指南 |
 | 可靠性/runbook | No change | 不改运行时或运维流程 |
 | 安全/治理 | No change | 不改 authz、审计、secret 或设备写入 |
-| 前端/设计 | Update | TD-059 若移除最后例外，则更新中英 `FRONTEND`；PR 记录 UI checklist 证据 |
+| 前端/设计 | 已更新 | #577 已更新中英 `FRONTEND`，并在 PR 记录 UI checklist 与浏览器证据 |
 | API/生成物 | No change | 不改 API 或 schema |
-| references | Review | 预计无需更新 |
+| references | 已审查—不变 | 未改变参考合同 |
 
 ## 文档更新门禁
 
@@ -137,3 +153,5 @@ git diff --check
 - 完成后本计划文件只存在于 `completed/`；
 - 共享收口分支的 `npm run docs:check` 与 `git diff --check` 通过；
 - TD-059 前端证据记录路由、视口、交互、截图、console/network 检查以及发现/修复的问题。
+
+各实现 PR 与共享收口 PR 记录门禁结果。归档合入前，已从收口分支基于最新 `main` 运行最终组合命令集。
