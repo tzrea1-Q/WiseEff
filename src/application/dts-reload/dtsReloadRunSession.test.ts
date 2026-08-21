@@ -108,6 +108,8 @@ async function createReadySession(
   const listCandidates = vi.fn(async () => ({ items }));
   const getRun = vi.fn(async (): Promise<DtsReloadRun> => run());
   await session.loadCandidates({ listCandidates, getRun });
+  const firstDebuggable = items.find((item) => item.debuggable);
+  if (firstDebuggable) session.toggleCandidate(firstDebuggable.bindingId);
   session.syncBridges(
     [{ id: "bridge-1", machineLabel: "Lab Mac", lastSeenAt: null }],
     { connected: true, bridgeId: "bridge-1" }
@@ -118,7 +120,7 @@ async function createReadySession(
 
 describe("dtsReloadRunSession", () => {
   describe("candidate loading and URL rehydration", () => {
-    it("loads candidates and seeds the first debuggable candidate with its baseline", async () => {
+    it("loads candidates without adding the first debuggable candidate to the reload batch", async () => {
       const session = createSession();
       const listCandidates = vi.fn(async () => ({
         items: [
@@ -132,8 +134,8 @@ describe("dtsReloadRunSession", () => {
       const snapshot = session.getSnapshot();
       expect(listCandidates).toHaveBeenCalledWith("project-1");
       expect(snapshot.candidates).toHaveLength(2);
-      expect(snapshot.selectedBindingIds).toEqual(["binding-2"]);
-      expect(snapshot.debugValues).toEqual({ "binding-2": "<1>" });
+      expect(snapshot.selectedBindingIds).toEqual([]);
+      expect(snapshot.debugValues).toEqual({});
       expect(snapshot.run).toBeNull();
       expect(getRun).not.toHaveBeenCalled();
     });
@@ -347,6 +349,7 @@ describe("dtsReloadRunSession", () => {
         listCandidates: async () => ({ items: [candidate()] }),
         getRun: async () => run()
       });
+      notReady.toggleCandidate("binding-1");
       notReady.setDebugValue("binding-1", "<7000>");
       await notReady.start({ startRun: async () => run() });
       expect(notReady.getSnapshot().deployConfirmOpen).toBe(false);

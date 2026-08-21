@@ -367,17 +367,8 @@ export function createDtsReloadRunSession(
         const result = await repository.listCandidates(requestedProjectId);
         if (generation !== candidatesGeneration) return;
         candidates = result.items;
-        const firstDebuggable = result.items.find((item) => item.debuggable);
-        if (handoffBindingIds && handoffBindingIds.length > 0) {
-          selectedBindingIds = [];
-          debugValues = {};
-        } else if (firstDebuggable) {
-          selectedBindingIds = [firstDebuggable.bindingId];
-          debugValues = { [firstDebuggable.bindingId]: firstDebuggable.baselineValue ?? "" };
-        } else {
-          selectedBindingIds = [];
-          debugValues = {};
-        }
+        selectedBindingIds = [];
+        debugValues = {};
         const existingRunId = readRunId();
         if (existingRunId) {
           try {
