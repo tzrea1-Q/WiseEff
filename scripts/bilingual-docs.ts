@@ -74,6 +74,7 @@ export const developerFacingBilingualDocs: BilingualDocEntry[] = [
   { en: "ops/self-hosted/README.md", zh: "ops/self-hosted/README.zh-CN.md", tier: "self-hosted", status: "required" },
   { en: "ops/self-hosted/ip-lab.md", zh: "ops/self-hosted/ip-lab.zh-CN.md", tier: "self-hosted", status: "required" },
   { en: "ops/self-hosted/setup.md", zh: "ops/self-hosted/setup.zh-CN.md", tier: "self-hosted", status: "required" },
+  { en: "ops/self-hosted/operations.md", zh: "ops/self-hosted/operations.zh-CN.md", tier: "self-hosted", status: "required" },
   { en: "ops/self-hosted/upgrade.md", zh: "ops/self-hosted/upgrade.zh-CN.md", tier: "self-hosted", status: "required" },
   { en: "ops/self-hosted/storage/README.md", zh: "ops/self-hosted/storage/README.zh-CN.md", tier: "self-hosted", status: "required" },
   { en: "ops/self-hosted/storage/provider-decision.md", zh: "ops/self-hosted/storage/provider-decision.zh-CN.md", tier: "self-hosted", status: "required" },

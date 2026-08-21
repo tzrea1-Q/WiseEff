@@ -2,6 +2,8 @@
 
 > English: [English](../../runbooks/self-hosted-runtime.md)
 
+部署人员可先阅读[自托管运维操作手册](../../../ops/self-hosted/operations.zh-CN.md)统一查找命令；本文继续作为 runtime 与 readiness 专题说明。
+
 这是运行手册，说明 staging、试点、自托管、备份、回滚、监控、事故和证据采集流程。
 
 ## 使用方式

@@ -2,6 +2,8 @@
 
 > Chinese: [Chinese](../zh-CN/runbooks/self-hosted-runtime.md)
 
+For a consolidated operator command index, start with the [Self-Hosted Operations Handbook](../../ops/self-hosted/operations.md). This runbook remains the detailed runtime and readiness procedure.
+
 This runbook covers the M6.1 self-hosted Linux baseline plus the M6.4 durable queue runtime shape. It proves WiseEff can run as separate API, web, worker, PostgreSQL, Redis, and reverse-proxy services on a controlled Linux host. It does not replace the remaining M6 hardening for OIDC, self-hosted object storage evidence, observability, rollback, and capacity.
 
 ## Preconditions
