@@ -9503,11 +9503,13 @@ td small {
   border-bottom: 1px solid rgba(148, 163, 184, 0.2);
 }
 
+.parameter-history-diff-dialog__head h2,
 .parameter-history-diff-dialog__head h3,
 .parameter-history-diff-dialog__head p {
   margin: 0;
 }
 
+.parameter-history-diff-dialog__head h2,
 .parameter-history-diff-dialog__head h3 {
   margin-top: var(--space-1);
   font-size: var(--text-xl);
@@ -22074,19 +22076,39 @@ button.dts-topology-navigator__disclosure:focus-visible {
   --dts-workbench-muted: #52657d;
   --dts-workbench-blue: #075bc4;
   --dts-workbench-blue-soft: #edf4ff;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   width: min(32rem, calc(100vw - 2rem));
   max-width: min(32rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - var(--space-12));
+  overflow: hidden;
+  padding: var(--space-4);
   color: var(--dts-workbench-ink);
-  gap: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-3);
+  gap: var(--space-3);
 }
 
 .dts-node-enablement-dialog__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
   padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--dts-dialog-border);
 }
 
-.dts-node-enablement-dialog__header [data-slot="dialog-description"] {
-  margin-top: var(--space-1);
+.dts-node-enablement-dialog__header h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: var(--leading-lg);
+}
+
+.dts-node-enablement-dialog__description {
+  margin: var(--space-1) 0 0;
   color: var(--dts-workbench-muted);
   font-size: var(--text-sm);
   line-height: 1.45;
@@ -22097,7 +22119,13 @@ button.dts-topology-navigator__disclosure:focus-visible {
 }
 
 .dts-node-enablement-dialog__content {
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
   min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .dts-node-enablement-dialog__summary,
@@ -22287,6 +22315,11 @@ button.dts-topology-navigator__disclosure:focus-visible {
 }
 
 .dts-node-enablement-dialog__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
   padding-top: var(--space-1);
   border-top: 1px solid var(--dts-dialog-border);
 }
@@ -22714,7 +22747,8 @@ button.dts-topology-navigator__disclosure:focus-visible {
 
   .modal-backdrop.dts-binding-detail-dialog__overlay,
   .modal-backdrop.dts-binding-draft-dialog__overlay,
-  .modal-backdrop.dts-binding-compare-dialog__overlay {
+  .modal-backdrop.dts-binding-compare-dialog__overlay,
+  .modal-backdrop.dts-node-enablement-dialog__overlay {
     padding: 0;
   }
 
@@ -23926,7 +23960,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
   pointer-events: none;
 }
 
-/* Still-Radix compare/history sit at z-50/60; hide this 1150 layer so they remain usable. */
+/* A stacked detail child owns the visible backdrop until it returns focus to this surface. */
 .modal-backdrop.dts-binding-detail-dialog__overlay.is-suspended {
   visibility: hidden;
 }

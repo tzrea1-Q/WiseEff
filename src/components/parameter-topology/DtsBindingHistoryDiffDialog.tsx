@@ -1,17 +1,10 @@
 import { CircleX } from "lucide-react";
 
+import { ModalDialog } from "@/components/common/ModalDialog";
 import { DiffCodeBlock } from "@/components/parameter-compare/ParameterDiffViews";
 import { formatAuditAbsoluteTime } from "@/domain/audit/formatAuditTime";
 import { formatDtsRawValueForUi } from "@/domain/parameter-topology/formatDtsRawValueForUi";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
 
 export type BindingHistoryDiffEntry = {
   id: string;
@@ -38,29 +31,26 @@ export function DtsBindingHistoryDiffDialog({
   onClose
 }: DtsBindingHistoryDiffDialogProps) {
   return (
-    <Dialog
+    <ModalDialog
       open
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
+      onDismiss={onClose}
+      className="parameter-history-diff-dialog dts-binding-history-diff-dialog"
+      backdropClassName="dts-binding-history-diff-dialog__overlay"
+      describedBy
     >
-      <DialogContent
-        aria-label={`${propertyKey} 历史差异`}
-        className="dts-binding-history-diff-dialog max-h-[calc(100vh-2rem)] w-full gap-3 sm:max-w-5xl overflow-y-auto z-[61]"
-        overlayClassName="dts-binding-history-diff-dialog__overlay z-[60]"
-        showCloseButton={false}
-      >
-        <DialogHeader className="dts-binding-detail-dialog__header flex-row items-start justify-between gap-2">
+      {({ titleId, descriptionId }) => (
+        <>
+        <header className="parameter-history-diff-dialog__head">
           <div className="grid gap-1">
-            <DialogTitle>{propertyKey} 历史差异</DialogTitle>
-            <DialogDescription>
+            <h2 id={titleId}>{propertyKey} 历史差异</h2>
+            <p id={descriptionId}>
               按提交顺序查看历史修订带来的参数值变化。
-            </DialogDescription>
+            </p>
           </div>
           <Button type="button" variant="ghost" size="icon-sm" aria-label="关闭历史差异" onClick={onClose}>
             <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
           </Button>
-        </DialogHeader>
+        </header>
 
         <div className="parameter-history-diff-list">
           {historyEntries.map((entry, index) => {
@@ -92,12 +82,13 @@ export function DtsBindingHistoryDiffDialog({
           })}
         </div>
 
-        <DialogFooter>
+        <footer className="parameter-history-diff-dialog__footer">
           <Button type="button" variant="outline" onClick={onClose}>
             关闭
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </footer>
+        </>
+      )}
+    </ModalDialog>
   );
 }
