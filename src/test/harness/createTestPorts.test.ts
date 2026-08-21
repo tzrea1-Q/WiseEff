@@ -68,21 +68,25 @@ describe("createTestParameterFileRepository", () => {
 describe("test runtime action factories", () => {
   it("returns observable log actions and lets overrides win", async () => {
     const rerun = vi.fn().mockRejectedValue(new Error("rerun sentinel"));
-    const actions = createTestLogRuntimeActions({ rerun });
+    const first = createTestLogRuntimeActions({ rerun });
+    const second = createTestLogRuntimeActions();
 
-    await expect(actions.refresh()).resolves.toBeUndefined();
-    await expect(actions.rerun({ logId: "log-1" })).rejects.toThrow("rerun sentinel");
-    expect(actions.refresh).toHaveBeenCalledTimes(1);
+    await expect(first.refresh()).resolves.toBeUndefined();
+    await expect(first.rerun({ logId: "log-1" })).rejects.toThrow("rerun sentinel");
+    expect(first.refresh).toHaveBeenCalledTimes(1);
+    expect(second.refresh).not.toHaveBeenCalled();
     expect(rerun).toHaveBeenCalledWith({ logId: "log-1" });
   });
 
   it("returns observable debugging actions and lets overrides win", async () => {
     const pushValues = vi.fn().mockRejectedValue(new Error("push sentinel"));
-    const actions = createTestDebuggingRuntimeActions({ pushValues });
+    const first = createTestDebuggingRuntimeActions({ pushValues });
+    const second = createTestDebuggingRuntimeActions();
 
-    await expect(actions.refresh()).resolves.toBeUndefined();
-    await expect(actions.pushValues(["parameter-1"])).rejects.toThrow("push sentinel");
-    expect(actions.refresh).toHaveBeenCalledTimes(1);
+    await expect(first.refresh()).resolves.toBeUndefined();
+    await expect(first.pushValues(["parameter-1"])).rejects.toThrow("push sentinel");
+    expect(first.refresh).toHaveBeenCalledTimes(1);
+    expect(second.refresh).not.toHaveBeenCalled();
     expect(pushValues).toHaveBeenCalledWith(["parameter-1"]);
   });
 });
