@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ParameterPageActions } from "@/app/routes";
 import { ToastProvider } from "@/components/common/toast/ToastProvider";
@@ -983,7 +983,11 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
     const region = await screen.findByRole("region", { name: "节点对应确认" });
     expect(within(region).getByText("/amba/i2c@FDF5E000/sc8562@6E")).toBeInTheDocument();
     expect(within(region).getByText("unit address matched")).toBeInTheDocument();
-    expect(listMappingTasks).toHaveBeenCalled();
+    await waitFor(() => expect(listMappingTasks).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(listMappingTasks).toHaveBeenCalledTimes(2);
   });
 
   it("resolves a mapping task via the lossless candidate identity path with audit", async () => {
@@ -1038,6 +1042,7 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
     );
     expect(screen.queryByRole("button", { name: "确认对应" })).not.toBeInTheDocument();
     expect(screen.getByText("已对应")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "重新对应原因" })).toHaveValue("");
   });
 });
 

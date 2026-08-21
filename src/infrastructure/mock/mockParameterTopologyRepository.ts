@@ -14,6 +14,7 @@ import type {
   BindingCompareEntry,
   BindingHistoryEntry,
   ConfigRevisionSummary,
+  IdentityMappingEvidence,
   IdentityMappingTask,
   ParameterSpecDetail,
   ParameterSpecSummary,
@@ -59,6 +60,31 @@ type Store = {
   mappingTasks: IdentityMappingTask[];
   validationRuns: Map<string, ValidationRun>;
   configRevisions: Map<string, ConfigRevisionSummary[]>;
+};
+
+function asIdentityMappingEvidence(
+  value: IdentityMappingTask["evidence"]
+): IdentityMappingEvidence {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return value as IdentityMappingEvidence;
+}
+
+function cloneIdentityMappingTask(task: IdentityMappingTask): IdentityMappingTask {
+  return {
+    ...task,
+    candidateLogicalNodeIds: [...task.candidateLogicalNodeIds],
+    evidence: task.evidence == null ? task.evidence : structuredClone(task.evidence)
+  };
+}
+
+export type MockParameterTopologyRepositoryOptions = {
+  mappingTasks?: IdentityMappingTask[];
+  mappingDownstreamUsage?: Record<
+    string,
+    { drafts: number; submissions: number; operations: number }
+  >;
 };
 
 function seedSpecs(): Map<string, SpecFixture> {
@@ -477,6 +503,7 @@ function seedStore(): Store {
           ],
           risk: "high"
         },
+        taskKind: "identity-ambiguity",
         status: "open",
         createdAt: MOCK_NOW
       }
@@ -690,8 +717,14 @@ function resolveListedRevisionId(
  * Fixtures express the semantic model (specs, bindings, topology, review/mapping tasks, validation).
  * Identity is parameterSpecId / projectParameterBindingId — never path-derived flat keys.
  */
-export function createMockParameterTopologyRepository(): ParameterTopologyRepository {
+export function createMockParameterTopologyRepository(
+  options: MockParameterTopologyRepositoryOptions = {}
+): ParameterTopologyRepository {
   const store = seedStore();
+  if (options.mappingTasks) {
+    store.mappingTasks = options.mappingTasks.map(cloneIdentityMappingTask);
+  }
+  const mappingDownstreamUsage = new Map(Object.entries(options.mappingDownstreamUsage ?? {}));
   let draftCounter = 0;
 
   return {
@@ -1090,16 +1123,68 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
     async listMappingTasks(projectId) {
       return store.mappingTasks
         .filter((task) => !projectId || task.projectId === projectId)
-        .map((task) => ({
-          ...task,
-          candidateLogicalNodeIds: [...task.candidateLogicalNodeIds]
-        }));
+        .map(cloneIdentityMappingTask);
     },
 
     async resolveMapping(taskId, input) {
       const task = store.mappingTasks.find((item) => item.id === taskId);
-      const result = guardResolveIdentityMapping({ taskId, status: task?.status });
+      const evidence = asIdentityMappingEvidence(task?.evidence);
+      const result = guardResolveIdentityMapping({
+        taskId,
+        status: task?.status,
+        taskKind: task?.taskKind,
+        decision: input.decision,
+        selectedLogicalNodeId: input.selectedLogicalNodeId,
+        priorSelectedLogicalNodeId: evidence.selectedLogicalNodeId,
+        previousLogicalNodeId: task?.previousLogicalNodeId,
+        candidateLogicalNodeIds: task?.candidateLogicalNodeIds
+      });
       if (!result.ok) throw mockApiError(result.code, result.message, result.details);
+      if (input.decision === "resolved") {
+        const selectedLogicalNodeId = input.selectedLogicalNodeId;
+        if (task!.status === "resolved" && evidence.selectedLogicalNodeId === selectedLogicalNodeId) {
+          return;
+        }
+        if (task!.status === "resolved") {
+          const downstream = mappingDownstreamUsage.get(task!.id) ?? {
+            drafts: 0,
+            submissions: 0,
+            operations: 0
+          };
+          if (downstream.drafts + downstream.submissions + downstream.operations > 0) {
+            throw mockApiError(
+              "CONFLICT",
+              "Completed mapping has downstream workflow/device usage; migrate those references before re-resolving.",
+              {
+                code: "identity-mapping-migration-required",
+                taskId: task!.id,
+                downstream
+              }
+            );
+          }
+        }
+        if (!selectedLogicalNodeId || !task!.candidateLogicalNodeIds.includes(selectedLogicalNodeId)) {
+          throw mockApiError(
+            "VALIDATION_FAILED",
+            "selectedLogicalNodeId must be one of the candidate ids.",
+            {
+              selectedLogicalNodeId,
+              candidates: task!.candidateLogicalNodeIds
+            }
+          );
+        }
+        const selectedCandidate = evidence.candidates?.find(
+          (candidate) => candidate.logicalNodeId === selectedLogicalNodeId
+        );
+        task!.evidence = {
+          ...evidence,
+          selectedLogicalNodeId,
+          selectedNodeLocator: selectedCandidate?.nodeLocator ?? null,
+          selectedName: selectedCandidate?.name ?? null,
+          selectedUnitAddress: selectedCandidate?.unitAddress ?? null,
+          continuityReusable: true
+        };
+      }
       task!.status = input.decision === "new-identity" ? "new_identity" : input.decision;
       task!.reason = input.reason;
       task!.resolvedAt = MOCK_NOW;

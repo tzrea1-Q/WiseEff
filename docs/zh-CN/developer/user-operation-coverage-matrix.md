@@ -131,7 +131,7 @@
 - `PARAM-TOPOLOGY-BROWSE-001`：融合工作台中的真实源/生效嵌套树、语义行、详情 shape/provenance 与 topology API 200（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-TOPOLOGY-EDIT-001`：drafts Schema 诊断、409 与编译失败关闭（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-IDENTITY-MAP-001`：`open-mapping` 阻断 validate 与决议审计（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
-- `PARAM-IDENTITY-MAP-ADMIN-001`：Admin 在 `/parameter-admin` 决议身份映射任务并写治理审计（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-IDENTITY-MAP-ADMIN-001`：Admin 在 `/parameter-admin` 决议身份映射任务，并通过受保护 re-resolve 更正已应用的选择，覆盖 UI、API、DB 与治理审计（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-CONFIG-PUBLISH-GATE-001`：真实工具链 validate 与 DB reload 持久化（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-ENABLE-GATE-001`：已自动化。结构属性闸门与迁移 finalize 驳回（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-ENABLE-VISIBLE-001`：已自动化。工作台不生效提示 + 拓扑 API enablement；`TopologyTree` 不在 `/parameters` 默认面上（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。

@@ -581,4 +581,34 @@ describe.skipIf(!databaseAvailable)("resolveIdentityMappingTask transaction", ()
       },
     });
   });
+
+  it("requires explicit migration when the next candidate is outside the task revision scope", async () => {
+    const { taskA } = await seedMultiTaskAmbiguousRevision(db!);
+    await resolveIdentityMappingTask(db!, auth, {
+      taskId: taskA,
+      decision: "resolved",
+      selectedLogicalNodeId: CAND_A1,
+      reason: "Initial continuity choice",
+    });
+    await db!.query(
+      `update identity_mapping_tasks set candidate_logical_node_ids = $2::jsonb where id = $1`,
+      [taskA, JSON.stringify([CAND_A1, "ln-candidate-outside-revision"])],
+    );
+
+    await expect(
+      resolveIdentityMappingTask(db!, auth, {
+        taskId: taskA,
+        decision: "resolved",
+        selectedLogicalNodeId: "ln-candidate-outside-revision",
+        reason: "Try to cross the revision boundary",
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      details: {
+        code: "identity-mapping-migration-required",
+        taskId: taskA,
+      },
+    });
+  });
 });

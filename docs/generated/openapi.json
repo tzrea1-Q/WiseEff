@@ -5252,7 +5252,7 @@
     "/api/v2/identity-mapping-tasks/{taskId}/resolve": {
       "post": {
         "operationId": "parameterTopology.resolveIdentityMappingTask",
-        "summary": "Resolve an identity mapping task",
+        "summary": "Resolve or protected re-resolve an identity mapping task",
         "tags": [
           "parameters"
         ],

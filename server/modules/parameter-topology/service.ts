@@ -493,9 +493,11 @@ export async function resolveIdentityMappingTask(
         });
         if (!belongs) {
           throw new ApiError(
-            "VALIDATION_FAILED",
-            "selectedLogicalNodeId must belong to the same organization, project, and config revision.",
+            "CONFLICT",
+            "Completed mapping candidate is outside the original revision scope; an explicit migration is required.",
             {
+              code: "identity-mapping-migration-required",
+              taskId: input.taskId,
               selectedLogicalNodeId: input.selectedLogicalNodeId,
               configRevisionId: known.configRevisionId
             }

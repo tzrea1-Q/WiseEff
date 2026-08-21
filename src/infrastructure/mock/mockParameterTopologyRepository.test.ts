@@ -1,12 +1,33 @@
 import { describe, expect, it } from "vitest";
 
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import type { IdentityMappingTask } from "@/domain/parameter-topology/types";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createMockParameterTopologyRepository } from "./mockParameterTopologyRepository";
 
 const PROJECT_ID = "project-teaching";
 const CONFIG_SET_ID = "config-set-teaching";
 const REVISION_ID = "revision-teaching-1";
+
+function resolvedMappingTask(id: string): IdentityMappingTask {
+  return {
+    id,
+    projectId: PROJECT_ID,
+    configRevisionId: REVISION_ID,
+    previousLogicalNodeId: "ln-previous",
+    candidateLogicalNodeIds: ["ln-a", "ln-b"],
+    evidence: {
+      selectedLogicalNodeId: "ln-a",
+      candidates: [
+        { logicalNodeId: "ln-a", nodeLocator: "/bus/a@1" },
+        { logicalNodeId: "ln-b", nodeLocator: "/bus/b@2" }
+      ]
+    },
+    taskKind: "identity-ambiguity",
+    status: "resolved",
+    createdAt: "2026-08-18T00:00:00.000Z"
+  };
+}
 
 describe("createMockParameterTopologyRepository (ParameterTopologyRepository contract)", () => {
   function createRepo(): ParameterTopologyRepository {
@@ -330,30 +351,143 @@ describe("createMockParameterTopologyRepository (ParameterTopologyRepository con
     });
   });
 
-  it("resolveMapping throws CONFLICT when the identity mapping task is not open", async () => {
+  it("re-resolves an already resolved identity mapping task to another candidate", async () => {
     const repo = createRepo();
     const tasks = await repo.listMappingTasks(PROJECT_ID);
     const task = tasks[0];
+    const [firstCandidate, nextCandidate] = task.candidateLogicalNodeIds;
+    await repo.resolveMapping(task.id, {
+      decision: "resolved",
+      selectedLogicalNodeId: firstCandidate,
+      reason: "Keep current sc8562 node"
+    });
+
+    await repo.resolveMapping(task.id, {
+      decision: "resolved",
+      selectedLogicalNodeId: nextCandidate,
+      reason: "Correct the continuity choice"
+    });
+
+    const [after] = await repo.listMappingTasks(PROJECT_ID);
+    expect(after).toMatchObject({
+      id: task.id,
+      status: "resolved",
+      reason: "Correct the continuity choice",
+      evidence: { selectedLogicalNodeId: nextCandidate }
+    });
+  });
+
+  it("rejects a non-resolve decision for an already resolved identity mapping task", async () => {
+    const repo = createRepo();
+    const [task] = await repo.listMappingTasks(PROJECT_ID);
     await repo.resolveMapping(task.id, {
       decision: "resolved",
       selectedLogicalNodeId: task.candidateLogicalNodeIds[0],
       reason: "Keep current sc8562 node"
     });
 
-    const error = await repo
-      .resolveMapping(task.id, {
-        decision: "resolved",
-        selectedLogicalNodeId: task.candidateLogicalNodeIds[0],
-        reason: "retry"
-      })
-      .catch((caught: unknown) => caught);
+    const error = await repo.resolveMapping(task.id, {
+      decision: "dismissed",
+      reason: "Try to discard an applied mapping"
+    }).catch((caught: unknown) => caught);
 
-    expect(error).toBeInstanceOf(WiseEffApiError);
+    expect(error).toMatchObject({ code: "CONFLICT", details: { taskId: task.id } });
+  });
+
+  it("requires continuity evidence before re-resolving a completed mock task", async () => {
+    const task: IdentityMappingTask = {
+      id: "mapping-incomplete",
+      projectId: PROJECT_ID,
+      configRevisionId: REVISION_ID,
+      previousLogicalNodeId: "ln-previous",
+      candidateLogicalNodeIds: ["ln-a", "ln-b"],
+      evidence: {
+        candidates: [
+          { logicalNodeId: "ln-a", nodeLocator: "/bus/a@1" },
+          { logicalNodeId: "ln-b", nodeLocator: "/bus/b@2" }
+        ]
+      },
+      taskKind: "identity-ambiguity",
+      status: "resolved",
+      createdAt: "2026-08-18T00:00:00.000Z"
+    };
+    const repo = createMockParameterTopologyRepository({ mappingTasks: [task] });
+
+    const error = await repo.resolveMapping(task.id, {
+      decision: "resolved",
+      selectedLogicalNodeId: "ln-b",
+      reason: "Try to infer missing continuity"
+    }).catch((caught: unknown) => caught);
+
     expect(error).toMatchObject({
       code: "CONFLICT",
-      message: "Identity mapping task is not open.",
-      requestId: "mock",
-      details: { taskId: task.id }
+      details: { code: "identity-mapping-migration-required", taskId: task.id }
+    });
+  });
+
+  it("preserves the singleton-cardinality gate in mock mode", async () => {
+    const task: IdentityMappingTask = {
+      id: "mapping-singleton",
+      projectId: PROJECT_ID,
+      configRevisionId: REVISION_ID,
+      previousLogicalNodeId: null,
+      candidateLogicalNodeIds: ["ln-a", "ln-b"],
+      evidence: {},
+      taskKind: "singleton-cardinality",
+      status: "open",
+      createdAt: "2026-08-18T00:00:00.000Z"
+    };
+    const repo = createMockParameterTopologyRepository({ mappingTasks: [task] });
+
+    const error = await repo.resolveMapping(task.id, {
+      decision: "resolved",
+      selectedLogicalNodeId: "ln-a",
+      reason: "Try to discard the duplicate"
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({
+      code: "CONFLICT",
+      details: { code: "singleton-cardinality-conflict", taskId: task.id }
+    });
+  });
+
+  it("blocks mock re-resolve when the modeled task has downstream usage", async () => {
+    const task = resolvedMappingTask("mapping-with-downstream");
+    const downstream = { drafts: 1, submissions: 0, operations: 0 };
+    const repo = createMockParameterTopologyRepository({
+      mappingTasks: [task],
+      mappingDownstreamUsage: { [task.id]: downstream }
+    });
+
+    const error = await repo.resolveMapping(task.id, {
+      decision: "resolved",
+      selectedLogicalNodeId: "ln-b",
+      reason: "Try to move a referenced mapping"
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({
+      code: "CONFLICT",
+      details: {
+        code: "identity-mapping-migration-required",
+        taskId: task.id,
+        downstream
+      }
+    });
+  });
+
+  it("requires explicit migration when a mock re-resolve target leaves the candidate scope", async () => {
+    const task = resolvedMappingTask("mapping-outside-scope");
+    const repo = createMockParameterTopologyRepository({ mappingTasks: [task] });
+
+    const error = await repo.resolveMapping(task.id, {
+      decision: "resolved",
+      selectedLogicalNodeId: "ln-foreign",
+      reason: "Try to cross the revision boundary"
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({
+      code: "CONFLICT",
+      details: { code: "identity-mapping-migration-required", taskId: task.id }
     });
   });
 

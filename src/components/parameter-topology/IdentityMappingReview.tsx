@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { LoaderCircle } from "lucide-react";
 import type {
   IdentityMappingCandidate,
   IdentityMappingEvidence,
@@ -100,6 +101,7 @@ export function IdentityMappingReview({ tasks, onResolve, onReopen }: IdentityMa
     [tasks]
   );
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [reResolveDrafts, setReResolveDrafts] = useState<Record<string, Draft>>({});
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [reopenReasons, setReopenReasons] = useState<Record<string, string>>({});
 
@@ -288,10 +290,44 @@ export function IdentityMappingReview({ tasks, onResolve, onReopen }: IdentityMa
             {historyTasks.map((task) => {
               const evidence = asEvidence(task.evidence);
               const busy = busyTaskId === task.id;
+              const candidates = resolveCandidates(task);
               const canReopen =
                 (task.status === "dismissed" || task.status === "new_identity") &&
                 resolveTaskKind(task) === "identity-ambiguity";
               const reopenReason = reopenReasons[task.id] ?? "";
+              const currentLogicalNodeId = evidence.selectedLogicalNodeId?.trim() ?? "";
+              const currentCandidate = candidates.find(
+                (candidate) => candidate.logicalNodeId === currentLogicalNodeId
+              );
+              const canOfferReResolve =
+                task.status === "resolved" &&
+                resolveTaskKind(task) === "identity-ambiguity" &&
+                Boolean(task.previousLogicalNodeId && currentLogicalNodeId) &&
+                candidates.some((candidate) => candidate.logicalNodeId === currentLogicalNodeId) &&
+                candidates.some((candidate) => candidate.logicalNodeId !== currentLogicalNodeId);
+              const reResolveDraft = reResolveDrafts[task.id] ?? {
+                ...EMPTY_DRAFT,
+                selectedLogicalNodeId: currentLogicalNodeId
+              };
+              const canSubmitReResolve =
+                canOfferReResolve &&
+                reResolveDraft.selectedLogicalNodeId.trim().length > 0 &&
+                reResolveDraft.selectedLogicalNodeId !== currentLogicalNodeId &&
+                reResolveDraft.reason.trim().length > 0;
+              const reResolveDisabledReason = busy
+                ? PARAMETER_ADMIN_UI.identityReResolveSubmitting
+                : reResolveDraft.selectedLogicalNodeId === currentLogicalNodeId
+                  ? PARAMETER_ADMIN_UI.identityReResolveSelectDifferent
+                  : reResolveDraft.reason.trim().length === 0
+                    ? PARAMETER_ADMIN_UI.identityReResolveReasonRequired
+                    : undefined;
+
+              const updateReResolveDraft = (patch: Partial<Draft>) => {
+                setReResolveDrafts((current) => ({
+                  ...current,
+                  [task.id]: { ...reResolveDraft, ...patch }
+                }));
+              };
 
               return (
                 <li key={task.id} className="identity-mapping-review__item">
@@ -305,6 +341,12 @@ export function IdentityMappingReview({ tasks, onResolve, onReopen }: IdentityMa
                     <span className="risk-badge">{statusLabel(task.status)}</span>
                   </header>
                   {task.reason ? <p className="form-hint">原因：{task.reason}</p> : null}
+                  {task.status === "resolved" && currentLogicalNodeId ? (
+                    <p className="form-hint">
+                      {PARAMETER_ADMIN_UI.currentIdentityMapping}：
+                      {evidence.selectedNodeLocator ?? currentCandidate?.nodeLocator ?? currentLogicalNodeId}
+                    </p>
+                  ) : null}
                   {canReopen && onReopen ? (
                     <div className="identity-mapping-review__form">
                       <label>
@@ -337,8 +379,76 @@ export function IdentityMappingReview({ tasks, onResolve, onReopen }: IdentityMa
                         {busy ? "提交中…" : "重新打开"}
                       </button>
                     </div>
+                  ) : canOfferReResolve && onResolve ? (
+                    <div className="identity-mapping-review__form">
+                      <p className="form-hint">
+                        {PARAMETER_ADMIN_UI.identityReResolveGuidance}
+                      </p>
+                      <label>
+                        {PARAMETER_ADMIN_UI.reselectIdentityCandidate}
+                        <select
+                          aria-label={PARAMETER_ADMIN_UI.reselectIdentityCandidate}
+                          value={reResolveDraft.selectedLogicalNodeId}
+                          disabled={busy}
+                          onChange={(event) =>
+                            updateReResolveDraft({ selectedLogicalNodeId: event.target.value })
+                          }
+                        >
+                          {candidates.map((candidate) => (
+                            <option key={candidate.logicalNodeId} value={candidate.logicalNodeId}>
+                              {candidate.nodeLocator ?? candidate.logicalNodeId}
+                              {candidate.logicalNodeId === currentLogicalNodeId ? "（当前）" : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        {PARAMETER_ADMIN_UI.identityReResolveReason}
+                        <textarea
+                          aria-label={PARAMETER_ADMIN_UI.identityReResolveReason}
+                          value={reResolveDraft.reason}
+                          disabled={busy}
+                          rows={2}
+                          placeholder={PARAMETER_ADMIN_UI.identityReResolveReasonPlaceholder}
+                          onChange={(event) => updateReResolveDraft({ reason: event.target.value })}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="button subtle"
+                        disabled={!canSubmitReResolve || busy}
+                        aria-busy={busy || undefined}
+                        title={!canSubmitReResolve || busy ? reResolveDisabledReason : undefined}
+                        onClick={() => {
+                          setBusyTaskId(task.id);
+                          void Promise.resolve(
+                            onResolve(task.id, {
+                              decision: "resolved",
+                              selectedLogicalNodeId: reResolveDraft.selectedLogicalNodeId,
+                              reason: reResolveDraft.reason.trim()
+                            })
+                          ).finally(() => setBusyTaskId(null));
+                        }}
+                      >
+                        {busy ? (
+                          <>
+                            <LoaderCircle
+                              className="dts-status-icon dts-status-icon--spin"
+                              size={16}
+                              strokeWidth={2}
+                              aria-hidden="true"
+                            />
+                            提交中…
+                          </>
+                        ) : (
+                          PARAMETER_ADMIN_UI.confirmIdentityReResolve
+                        )}
+                      </button>
+                    </div>
                   ) : task.status === "resolved" ? (
-                    <p className="form-hint">已对应任务不可重开（绑定身份已重写）；请走受保护 re-resolve。</p>
+                    <p className="form-hint">
+                      {PARAMETER_ADMIN_UI.identityReResolveMigrationRequired}
+                    </p>
                   ) : null}
                 </li>
               );

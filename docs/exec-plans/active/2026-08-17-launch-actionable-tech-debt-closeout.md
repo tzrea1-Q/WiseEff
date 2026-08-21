@@ -121,7 +121,7 @@ Do **not** open a second closeout plan. These tracks ran in parallel from latest
 
 ### Later product/platform batches (not launch-blocking in this cut)
 
-Hygiene and architecture leftovers that are real but should not steal the launch window: TD-003 / TD-012 / TD-018 (generated client remainder; TD-008 closed with POST-logs+SSE residual), TD-005 (completed-plan hygiene), TD-014 (catalog remainder after #532 import/export), TD-048 / TD-049 / TD-051 / TD-052 / TD-055 / TD-117 (governance — decisions locked, implementation open; TD-050 / TD-053 closed), TD-059 (leftover dialogs; `fix/td-059-binding-draft-modaldialog` did not land), TD-063 / TD-067 / TD-068 (reload/bridge/security follow-ups; TD-066 closed via #531), TD-071–TD-077 (test architecture; TD-073 and TD-075 partial; TD-076 / TD-077 / TD-071 still open), TD-097 / TD-109 / TD-110 / TD-112 / TD-114 (frontend residue; TD-097 / TD-112 partial via #533 / #526). Pick them when touching those surfaces; do not bundle them here. TD-013 closed via #529.
+Hygiene and architecture leftovers that are real but should not steal the launch window: TD-003 / TD-012 / TD-018 (generated client remainder; TD-008 closed with POST-logs+SSE residual), TD-005 (completed-plan hygiene), TD-014 (catalog remainder after #532 import/export), TD-048 / TD-049 / TD-052 / TD-055 / TD-117 (governance — decisions locked, implementation open; TD-050 / TD-051 / TD-053 closed), TD-059 (leftover dialogs; `fix/td-059-binding-draft-modaldialog` did not land), TD-063 / TD-067 / TD-068 (reload/bridge/security follow-ups; TD-066 closed via #531), TD-071–TD-077 (test architecture; TD-073 and TD-075 partial; TD-076 / TD-077 / TD-071 still open), TD-097 / TD-109 / TD-110 / TD-112 / TD-114 (frontend residue; TD-097 / TD-112 partial via #533 / #526). Pick them when touching those surfaces; do not bundle them here. TD-013 closed via #529. TD-051 closed independently on 2026-08-22 with protected re-resolve contract/mock/UI/acceptance parity.
 
 ## Per-TD status for this launch cut
 
@@ -150,7 +150,7 @@ Legend: **Done** = closed or closeable in a batch above; **In progress (sibling)
 | TD-038 / TD-042 | Blocked | Target proof / clean snapshot cutover rehearsal |
 | TD-039 / TD-040 | Blocked | Follow the topology cutover; do not reopen a separate program |
 | TD-103 / TD-105 / TD-116 | Blocked | Needs KMS or real webhook volume |
-| Remaining open rows (TD-003, TD-005, TD-012, TD-014, TD-018, TD-048–049, TD-051–052, TD-055, TD-059, TD-063, TD-067–068, TD-071–077, TD-097, TD-109–112, TD-114, TD-117, …) | Open (later) | Not this branch. TD-003/012/014/018/073/075/097/112/048 stay **partially** open; TD-008/013/050/053/064/065/066 closed. |
+| Remaining open rows (TD-003, TD-005, TD-012, TD-014, TD-018, TD-048–049, TD-052, TD-055, TD-059, TD-063, TD-067–068, TD-071–077, TD-097, TD-109–112, TD-114, TD-117, …) | Open (later) | Not this branch. TD-003/012/014/018/073/075/097/112/048 stay **partially** open; TD-008/013/050/051/053/064/065/066 closed. |
 
 ## UI Interaction Automation review
 

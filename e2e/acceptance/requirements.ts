@@ -770,7 +770,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "PARAM-IDENTITY-MAP-ADMIN-001",
     workflow: "B",
     title:
-      "Admin resolves identity mapping tasks from the parameter admin with evidence and governance audit.",
+      "Admin resolves identity mapping tasks and safely corrects an applied choice through protected re-resolve with evidence and governance audit.",
     required: true
   },
   {

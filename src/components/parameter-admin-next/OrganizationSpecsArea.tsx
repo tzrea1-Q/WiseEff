@@ -43,6 +43,13 @@ export function OrganizationSpecsArea({
     [dispatch]
   );
 
+  const handleMappingTasksLoaded = useCallback(
+    ({ openCount, historyCount }: { openCount: number; historyCount: number }) => {
+      applyMappingCounts(openCount, historyCount);
+    },
+    [applyMappingCounts]
+  );
+
   useEffect(() => {
     let cancelled = false;
     setMappingCounts({ status: "loading" });
@@ -142,11 +149,7 @@ export function OrganizationSpecsArea({
       ) : null}
 
       {activeSubView === "identity-mapping" ? (
-        <OrganizationIdentityMappingPanel
-          onTasksLoaded={({ openCount: nextOpen, historyCount }) =>
-            applyMappingCounts(nextOpen, historyCount)
-          }
-        />
+        <OrganizationIdentityMappingPanel onTasksLoaded={handleMappingTasksLoaded} />
       ) : (
         <OrganizationSpecGovernancePanel
           search={search}

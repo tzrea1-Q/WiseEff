@@ -773,7 +773,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse" }
   },
   "parameterTopology.resolveIdentityMappingTask": {
-    summary: "Resolve an identity mapping task",
+    summary: "Resolve or protected re-resolve an identity mapping task",
     tags: ["parameters"],
     requestBody: "ResolveIdentityMappingTaskRequest",
     responseBody: "IdentityMappingTaskResponse",

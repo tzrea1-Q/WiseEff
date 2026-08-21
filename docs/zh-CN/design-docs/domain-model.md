@@ -177,7 +177,7 @@ stateDiagram-v2
 | `ParameterSpec` / `ParameterSpecVersion` | 稳定规格身份为归属范围 + `attribution_subject_id` + `property_key`。`parameter_specs.id` 是**代理键**（ADR-0017）：身份可就地纠错，不改行 id、不级联外键。`example_value` 仅作示例，不参与 DB 约束或发布策略 |
 | Schema 默认 / 策略目标 / 生效值 | 分字段存储；遗留 `recommended_value` 仅作迁移证据，不得自动提升为 default/policy。策略目标仍有读取方，但今天没有生产写入（TD-055）。 |
 | `ProjectParameterBinding` | 稳定的 `project × logical-node × spec` 绑定，供历史/草稿/CR/导出使用 |
-| 身份映射 / 规格审核任务 | 歧义或不完整迁移/治理的人工队列。规格审核 `resolved` 会写入 occurrence→spec 决策、项目 binding 与可复用 matcher override；`dismissed` 不得假装已匹配，并作为 fail-closed 发布阻断。身份映射决议为 `resolved`（重写绑定身份）、`dismissed`（驳回候选，修订保持 `needs_mapping`）、`new_identity`（确认为新身份，不重写绑定）。修订仅在无 `open` 且无 `dismissed` 任务时离开 `needs_mapping`。仅 `dismissed` / `new_identity` 可重开。 |
+| 身份映射 / 规格审核任务 | 歧义或不完整迁移/治理的人工队列。规格审核 `resolved` 会写入 occurrence→spec 决策、项目 binding 与可复用 matcher override；`dismissed` 不得假装已匹配，并作为 fail-closed 发布阻断。身份映射决议为 `resolved`（重写绑定身份）、`dismissed`（驳回候选，修订保持 `needs_mapping`）、`new_identity`（确认为新身份，不重写绑定）。修订仅在无 `open` 且无 `dismissed` 任务时离开 `needs_mapping`。仅 `dismissed` / `new_identity` 可重开；错误的 `resolved` 选择仅在连续性证据与下游使用门禁通过时原地执行受保护 re-resolve，不重开，也不做反向 undo（ADR-0033）。 |
 | Binding candidate 状态机 | 集中候选态；`needs_mapping` / `invalid` 不得被覆盖成 `draft`。 |
 | 校验门禁 | 失败关闭工具链校验；再次校验失败撤销 `validated`；缺失 Config Set base/manifest 失败关闭。 |
 | 迁移匹配分桶 | 报告拆分 `exactMatched` / `reviewedMatched` / `inferredPendingReview` / `ambiguous` / `unmapped` / `broken`。推断草稿不计为可发布已映射；未审核 inferred 阻断 cutover。 |

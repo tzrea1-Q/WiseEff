@@ -1682,7 +1682,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin",
     roles: ["Admin"],
     action:
-      "Resolve identity mapping tasks from the parameter admin with evidence and governance audit.",
+      "Resolve identity mapping tasks and correct an applied choice through protected re-resolve with evidence and governance audit.",
     coverage: "automated",
     acceptanceIds: ["PARAM-IDENTITY-MAP-ADMIN-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],

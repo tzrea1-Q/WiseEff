@@ -2443,6 +2443,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         (candidate) => candidate.nodeLocator.includes("left"),
         "left sibling node"
       );
+      const rightCandidate = requireMappingCandidate(
+        openMapTask,
+        (candidate) => candidate.nodeLocator.includes("right"),
+        "right sibling node"
+      );
 
       await signInBrowserAsRole(
         page,
@@ -2477,6 +2482,64 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         )
         .toBe("resolved");
 
+      const history = review.getByRole("list", { name: "节点对应历史" });
+      const resolvedTask = history.getByRole("listitem").filter({ hasText: leftCandidate.nodeLocator });
+      await expect(resolvedTask.getByText(/当前对应/)).toContainText(leftCandidate.nodeLocator);
+      await resolvedTask
+        .getByRole("combobox", { name: "重新选择对应节点" })
+        .selectOption(rightCandidate.logicalNodeId);
+      await resolvedTask
+        .getByLabel("重新对应原因")
+        .fill(`${descriptionPrefix} correct mapping after evidence review ${runSuffix}`);
+      const reResolveResponsePromise = page.waitForResponse(
+        (response) =>
+          response.request().method() === "POST" &&
+          response.url().includes(`/api/v2/identity-mapping-tasks/${openMapTask.id}/resolve`)
+      );
+      await resolvedTask.getByRole("button", { name: "确认重新对应" }).click();
+      const reResolveResponse = await reResolveResponsePromise;
+      expect(reResolveResponse.ok(), await reResolveResponse.text()).toBe(true);
+
+      let selectedLogicalNodeId = "missing";
+      await expect
+        .poll(
+          async () => {
+            selectedLogicalNodeId = await withPgClient(async (client) => {
+              const result = await client.query<{ selected_logical_node_id: string | null }>(
+                `select evidence ->> 'selectedLogicalNodeId' as selected_logical_node_id
+                 from identity_mapping_tasks where id = $1`,
+                [openMapTask.id]
+              );
+              return result.rows[0]?.selected_logical_node_id ?? "missing";
+            });
+            return selectedLogicalNodeId;
+          },
+          { timeout: 30_000 }
+        )
+        .toBe(rightCandidate.logicalNodeId);
+
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect
+        .poll(async () => {
+          return resolvedTask.evaluate((item) => {
+            const bounds = item.getBoundingClientRect();
+            return bounds.left >= -1 && bounds.right <= document.documentElement.clientWidth + 1;
+          });
+        })
+        .toBe(true);
+      const overflowingControls = await resolvedTask
+        .locator("select, textarea, button")
+        .evaluateAll((controls) =>
+          controls
+            .filter((control) => {
+              const bounds = control.getBoundingClientRect();
+              return bounds.left < -1 || bounds.right > document.documentElement.clientWidth + 1;
+            })
+            .map((control) => control.tagName.toLowerCase())
+        );
+      expect(overflowingControls).toEqual([]);
+      await page.setViewportSize({ width: 1440, height: 900 });
+
       const auditResponse = await request.get(apiRoute("/api/v1/audit-events?limit=50"), {
         headers: adminHeaders()
       });
@@ -2505,13 +2568,18 @@ test.describe("Parameter topology / schema browser acceptance", () => {
             method: "GET",
             path: "/api/v2/identity-mapping-tasks",
             responseSummary: `openTask=${openMapTask.id}`
+          }),
+          summarizeApiResponse(reResolveResponse, {
+            method: "POST",
+            path: `/api/v2/identity-mapping-tasks/${openMapTask.id}/resolve`,
+            responseSummary: `reResolved=${rightCandidate.logicalNodeId}`
           })
         ],
         db: [
           {
             table: "identity_mapping_tasks",
             predicate: `id=${openMapTask.id}`,
-            observed: `status=${resolvedDbStatus}`,
+            observed: `status=${resolvedDbStatus}; selectedLogicalNodeId=${selectedLogicalNodeId}`,
             rowCount: 1
           }
         ],
@@ -2524,7 +2592,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
           }
         ],
         notes:
-          "Admin resolved an open identity mapping task from /parameter-admin with candidate evidence and governance audit."
+          "Admin resolved an open identity mapping task, then corrected the applied choice through protected re-resolve with candidate evidence and governance audit."
       });
     } finally {
       await cleanupSemanticAcceptanceArtifacts({

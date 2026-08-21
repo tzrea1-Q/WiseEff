@@ -20256,6 +20256,7 @@ body.xiaoze-popup-resize-active {
 .identity-mapping-review {
   display: grid;
   gap: var(--space-2);
+  min-width: 0;
 }
 
 .identity-mapping-review__list {
@@ -20264,6 +20265,7 @@ body.xiaoze-popup-resize-active {
   padding: 0;
   display: grid;
   gap: var(--space-3);
+  min-width: 0;
 }
 
 .identity-mapping-review__item {
@@ -20272,6 +20274,12 @@ body.xiaoze-popup-resize-active {
   padding: var(--space-3);
   border: 1px solid var(--border, #d4d4d8);
   border-radius: var(--radius-md);
+  min-width: 0;
+}
+
+.identity-mapping-review__item :where(strong, p, li, label) {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .identity-mapping-review__item header {
@@ -20318,6 +20326,13 @@ body.xiaoze-popup-resize-active {
 .identity-mapping-review__form {
   display: grid;
   gap: var(--space-2);
+  min-width: 0;
+}
+
+.identity-mapping-review__form :where(select, textarea, button) {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .topology-tree {
