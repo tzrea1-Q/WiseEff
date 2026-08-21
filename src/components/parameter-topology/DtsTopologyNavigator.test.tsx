@@ -73,6 +73,51 @@ const tree: DtsWorkbenchTreeNode[] = [
 ];
 
 describe("DtsTopologyNavigator", () => {
+  it("applies the default expansion depth when async tree data arrives", () => {
+    const { rerender } = render(
+      <DtsTopologyNavigator
+        view="effective"
+        nodes={[]}
+        selectedNodeId={null}
+        defaultExpandDepth={2}
+        onSelectNode={vi.fn()}
+      />
+    );
+
+    rerender(
+      <DtsTopologyNavigator
+        view="effective"
+        nodes={tree}
+        selectedNodeId={null}
+        defaultExpandDepth={2}
+        onSelectNode={vi.fn()}
+      />
+    );
+
+    const navigator = screen.getByRole("tree", { name: "生效 DTS 拓扑" });
+    expect(within(navigator).getByRole("treeitem", { name: /^\// })).toHaveAttribute(
+      "aria-expanded",
+      "true"
+    );
+    expect(within(navigator).getByRole("treeitem", { name: /amba/ })).toBeInTheDocument();
+  });
+
+  it("supports a caller-specific count unit without changing the shared tree behavior", () => {
+    render(
+      <DtsTopologyNavigator
+        view="effective"
+        nodes={tree}
+        selectedNodeId={null}
+        countUnit="定义"
+        onSelectNode={vi.fn()}
+      />
+    );
+
+    const navigator = screen.getByRole("tree", { name: "生效 DTS 拓扑" });
+    expect(within(navigator).getAllByText("3 个定义").length).toBeGreaterThan(0);
+    expect(within(navigator).queryByText("3 个参数")).not.toBeInTheDocument();
+  });
+
   it("renders an accessible effective tree and expands the selected node path", () => {
     render(
       <DtsTopologyNavigator

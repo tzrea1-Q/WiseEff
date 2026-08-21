@@ -451,6 +451,12 @@ Categorical column filters that support zero / one / many values must use the sh
 
 Admin **list** tables use `src/components/admin/DataTable` (sort + `aria-sort`, pagination, keyboard-activatable rows, empty state, optional `ColumnFilter`). When columns exceed the card, the inner `.data-table-scroll` stays `overflow-x: auto` (pointer-drag plus trackpad/touch) even with header filters — `ColumnFilter` menus are `position: fixed` and must not force `overflow-visible` on the scrollport. Other overflowed table scrollports reuse the same `HorizontalDragScroll` / `useHorizontalDragScroll` seam (`ParametersTable`, review `Table`, parameter-admin libraries, debugging tables, init/import previews, platform-console candidate body). Page chrome still must not cause whole-page horizontal scroll. Adopted list shells: `/organization/members` table, `/log-admin` domain list, `/log-admin` analysis quality, `/debugging-admin` node and parameter library tables, `/dts-reload` candidate grid. `/logs` `rawlog-table` is a row viewer, not a list shell. Remaining handwritten list shells (TD-112): project-configuration workbench tables.
 
+## Shared Module Navigation
+
+`DtsTopologyNavigator` is the shared module-first tree on parameter editing, parameter debugging, and `/parameter-admin/specs`. The spec-governance adapter derives its tree from observed attribution paths, rolls up distinct definition counts, filters the selected subtree, and stores the selected node in `?moduleNode=`; selecting the active node again clears the scope.
+
+Module names stay on one line. On desktop, the navigation pane grows with its content up to the declared layout-token cap and then scrolls horizontally inside the pane. Below the two-column breakpoint, it uses the full available width so the page itself does not gain horizontal overflow.
+
 ## Testing
 
 Use targeted tests while editing:

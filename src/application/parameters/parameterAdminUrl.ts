@@ -7,6 +7,7 @@ export type ParameterAdminUrlState = {
   compatibles: string[];
   schemaSources: string[];
   moduleNames: string[];
+  moduleNodeId: string | null;
   sort: string;
   specId: string | null;
 };
@@ -49,6 +50,7 @@ export function parseParameterAdminUrl(search: string): ParameterAdminUrlState {
     compatibles: parseCsvQueryParam(params.get("compatible")),
     schemaSources: parseCsvQueryParam(params.get("schema")),
     moduleNames: parseCsvQueryParam(params.get("module")),
+    moduleNodeId: params.get("moduleNode"),
     sort: params.get("sort") ?? DEFAULT_SORT,
     specId: params.get("spec")
   };
@@ -79,6 +81,7 @@ export function buildParameterAdminSearch(patch: Partial<ParameterAdminUrlState>
   setOrDelete("compatible", formatCsvQueryParam(next.compatibles));
   setOrDelete("schema", formatCsvQueryParam(next.schemaSources));
   setOrDelete("module", formatCsvQueryParam(next.moduleNames));
+  setOrDelete("moduleNode", next.moduleNodeId);
   if (next.sort && next.sort !== DEFAULT_SORT) {
     params.set("sort", next.sort);
   }

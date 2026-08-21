@@ -66,6 +66,92 @@ function createRepository(
 }
 
 describe("ParameterAdminNextPage · a11y", () => {
+  it("在参数定义管理中复用模块导航，并按选中子树筛选定义", async () => {
+    const repository = createRepository({
+      listSpecs: vi.fn().mockResolvedValue([
+        {
+          id: "spec-sc8562-gpio-int",
+          organizationId: "org-teaching",
+          sourceKind: "dts",
+          specificationKey: "dts/sc8562/gpio_int",
+          propertyKey: "gpio_int",
+          driverModule: "sc8562",
+          lifecycle: "active",
+          currentVersionId: "specver-1",
+          currentVersion: 1,
+          valueShape: { kind: "cells" },
+          compatiblePatterns: ["vendor,sc8562"],
+          attributionModules: [
+            {
+              id: "module-charge",
+              name: "超长充电协议参数定义模块",
+              kind: "driver-group",
+              path: ["Power", "Charging", "超长充电协议参数定义模块"]
+            }
+          ]
+        },
+        {
+          id: "spec-thermal-status",
+          organizationId: "org-teaching",
+          sourceKind: "dts",
+          specificationKey: "dts/thermal/status",
+          propertyKey: "thermal_status",
+          driverModule: "thermal",
+          lifecycle: "active",
+          currentVersionId: "specver-2",
+          currentVersion: 1,
+          valueShape: { kind: "strings" },
+          compatiblePatterns: ["vendor,thermal"],
+          attributionModules: [
+            {
+              id: "module-thermal",
+              name: "Thermal",
+              kind: "driver-group",
+              path: ["Power", "Thermal"]
+            }
+          ]
+        }
+      ])
+    });
+
+    render(
+      <ToastProvider>
+        <ParameterAdminNextPage
+          area="organization"
+          onNavigate={() => {}}
+          search=""
+          pathname="/parameter-admin/specs"
+          parameterTopologyRepository={repository}
+        />
+      </ToastProvider>
+    );
+
+    const moduleTree = await screen.findByRole("tree", { name: "参数定义模块树" });
+    expect(within(moduleTree).getByRole("treeitem", { name: /Power.*2 个定义/ })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(moduleTree).getByRole("treeitem", { name: /Power.*2 个定义/ })).toHaveAttribute(
+        "aria-expanded",
+        "true"
+      );
+    });
+    const libraryTable = screen.getByRole("table", { name: "参数定义库列表" });
+    expect(within(libraryTable).getByText("gpio_int")).toBeInTheDocument();
+    expect(within(libraryTable).getByText("thermal_status")).toBeInTheDocument();
+
+    fireEvent.click(within(moduleTree).getByRole("treeitem", { name: /Charging.*1 个定义/ }));
+    await waitFor(() => {
+      expect(new URL(window.location.href).searchParams.get("moduleNode")).toContain("Charging");
+      expect(within(libraryTable).getByText("gpio_int")).toBeInTheDocument();
+      expect(within(libraryTable).queryByText("thermal_status")).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(within(moduleTree).getByRole("treeitem", { name: /Charging.*1 个定义/ }));
+    await waitFor(() => {
+      expect(new URL(window.location.href).searchParams.has("moduleNode")).toBe(false);
+      expect(within(libraryTable).getByText("thermal_status")).toBeInTheDocument();
+    });
+  });
+
   it("Tab 从范围导航到搜索与生命周期筛选控件顺序可达", async () => {
     render(
       <ToastProvider>

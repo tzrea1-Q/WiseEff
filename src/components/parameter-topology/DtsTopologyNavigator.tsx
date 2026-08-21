@@ -19,6 +19,8 @@ export type DtsTopologyNavigatorProps = {
   defaultExpandDepth?: number;
   /** Module labels read as natural text; DTS node labels stay monospaced. */
   labelKind?: "code" | "text";
+  /** Noun shown after each subtree count. */
+  countUnit?: string;
   emptyMessage?: string;
 };
 
@@ -142,6 +144,7 @@ export function DtsTopologyNavigator({
   expandAllByDefault = false,
   defaultExpandDepth,
   labelKind = "code",
+  countUnit = "参数",
   emptyMessage
 }: DtsTopologyNavigatorProps) {
   const index = useMemo(() => indexTree(nodes), [nodes]);
@@ -160,14 +163,29 @@ export function DtsTopologyNavigator({
   const treeRef = useRef<HTMLUListElement>(null);
   const itemRefs = useRef(new Map<string, HTMLElement>());
   const previousSelectedNodeId = useRef(selectedNodeId);
+  const hasInitializedNodes = useRef(false);
+  const hasNodes = index.byId.size > 0;
+  const shouldSeedInitialExpansion = hasNodes && !hasInitializedNodes.current;
 
   useEffect(() => {
+    hasInitializedNodes.current = hasNodes;
     setExpandedIds((current) => {
       const next = new Set([...current].filter((id) => index.byId.has(id)));
+      if (shouldSeedInitialExpansion) {
+        for (const id of initialExpandedIds(
+          nodes,
+          index,
+          selectedNodeId,
+          expandAllByDefault,
+          defaultExpandDepth
+        )) {
+          next.add(id);
+        }
+      }
       for (const id of expansionPath(index, selectedNodeId)) next.add(id);
       return next;
     });
-  }, [index, selectedNodeId]);
+  }, [defaultExpandDepth, expandAllByDefault, hasNodes, index, nodes, selectedNodeId, shouldSeedInitialExpansion]);
 
   const visibleIds = useMemo(() => visibleNodeIds(nodes, expandedIds), [expandedIds, nodes]);
   const visibleIdSet = useMemo(() => new Set(visibleIds), [visibleIds]);
@@ -312,7 +330,9 @@ export function DtsTopologyNavigator({
               <code className="dts-topology-navigator__label">{node.label}</code>
             )}
             <span className="dts-topology-navigator__meta">
-              <span className="dts-topology-navigator__count">{node.bindingCount} 个参数</span>
+              <span className="dts-topology-navigator__count">
+                {node.bindingCount} 个{countUnit}
+              </span>
               {node.attentionCount > 0 ? (
                 <span className="dts-topology-navigator__attention">
                   <CircleAlert size={12} strokeWidth={2} aria-hidden="true" />
