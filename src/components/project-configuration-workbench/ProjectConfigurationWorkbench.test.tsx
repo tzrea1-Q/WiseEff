@@ -18,6 +18,11 @@ import {
   upsertSessionDraftBucket
 } from "@/application/project-configuration/sessionDraftStorage";
 import { declarationsFor, hasAtRule, hasRule, readStylesheet } from "../../test/cssAssertions";
+import {
+  createTestDtsStructuredRepository,
+  createTestParameterFileRepository,
+  createTestParameterTopologyRepository
+} from "@/test/harness";
 
 afterEach(() => {
   cleanup();
@@ -58,7 +63,7 @@ const PROJECT = {
 function createDtsRepository(
   overrides: Partial<DtsStructuredRepository> = {}
 ): DtsStructuredRepository {
-  return {
+  return createTestDtsStructuredRepository({
     getStructure: vi.fn(async () => ({ nodes: [] })),
     search: vi.fn(async () => ({ hits: [] })),
     listConfigSets: vi.fn(async () => [
@@ -116,9 +121,6 @@ function createDtsRepository(
             }
           ]
     ),
-    createConfigSet: vi.fn(),
-    addConfigSetFile: vi.fn(),
-    removeConfigSetFile: vi.fn(),
     listBaselines: vi.fn(async (_projectId, configSetId) =>
       configSetId === "cs-default"
         ? [
@@ -133,7 +135,6 @@ function createDtsRepository(
           ]
         : []
     ),
-    createBaseline: vi.fn(),
     getReleaseReadiness: vi.fn(async () => ({
       available: true,
       level: "ready" as const,
@@ -146,19 +147,14 @@ function createDtsRepository(
       canCreateBaseline: true,
       canRelease: true
     })),
-    compareBaseline: vi.fn(),
-    rollbackBaseline: vi.fn(),
-    releaseBaseline: vi.fn(),
-    exportConfigSet: vi.fn(),
-    submitStructuredEdits: vi.fn(),
     ...overrides
-  } as DtsStructuredRepository;
+  });
 }
 
 function createFileRepository(
   overrides: Partial<ParameterFileRepository> = {}
 ): ParameterFileRepository {
-  return {
+  return createTestParameterFileRepository({
     listFiles: vi.fn(async () => [
       {
         id: "file-board",
@@ -210,31 +206,17 @@ function createFileRepository(
           : `/dts-v1/;\n/ { model = \"Aurora\"; /* ${versionId} */ };\n`
       )
     })),
-    uploadFile: vi.fn(),
-    uploadVersion: vi.fn(),
     listVersions: vi.fn(async () => []),
-    rollbackVersion: vi.fn(),
-    syncFile: vi.fn(),
     listConflicts: vi.fn(async () => []),
-    resolveConflict: vi.fn(),
-    previewBulkConflictResolution: vi.fn(),
-    resolveConflictsBulk: vi.fn(),
     listCandidates: vi.fn(async () => []),
-    createCandidate: vi.fn(),
-    getCandidate: vi.fn(),
-    getCandidateImpact: vi.fn(),
-    downloadCandidate: vi.fn(),
-    abandonCandidate: vi.fn(),
-    recomputeCandidate: vi.fn(),
-    activateCandidate: vi.fn(),
     ...overrides
-  } as ParameterFileRepository;
+  });
 }
 
 function createTopologyRepository(
   overrides: Partial<Pick<ParameterTopologyRepository, "listConfigRevisions" | "validateRevision">> = {}
 ): Pick<ParameterTopologyRepository, "listConfigRevisions" | "validateRevision"> {
-  return {
+  return createTestParameterTopologyRepository({
     listConfigRevisions: vi.fn(async () => [
       {
         id: "rev-cs-listed",
@@ -258,7 +240,7 @@ function createTopologyRepository(
       requiresConfirmation: true
     })),
     ...overrides
-  };
+  });
 }
 
 async function openWorkbenchMoreMenu() {

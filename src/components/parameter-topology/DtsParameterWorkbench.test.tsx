@@ -212,6 +212,11 @@ function row(
   };
 }
 
+/**
+ * TD-073 audited component seam: this presentational workbench accepts typed,
+ * precomputed rows and callbacks, so its focused scenarios intentionally do
+ * not assemble App ports or duplicate an IO repository.
+ */
 function renderWorkbench(overrides?: Partial<React.ComponentProps<typeof DtsParameterWorkbench>>) {
   const props: React.ComponentProps<typeof DtsParameterWorkbench> = {
     sourceRows,

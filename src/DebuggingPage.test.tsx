@@ -1,6 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import App from "./App";
 import { appReducer, type AppAction } from "@/application/state/appState";
 import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
 import { TopBarActionsContext } from "./components/layout";
@@ -8,6 +7,7 @@ import { DebuggingPage } from "./DebuggingPage";
 import { initialState } from "./mockData";
 import type { PrototypeState } from "@/domain/prototype/types";
 import { useMemo, useReducer, useState, type ReactNode } from "react";
+import { createTestDebuggingRuntimeActions, renderApp } from "./test/harness";
 
 const userState = { ...initialState, activeRoleId: "user" };
 const adminState = { ...initialState, activeRoleId: "admin" };
@@ -36,30 +36,6 @@ const apiSnapshot = {
     }
   ]
 };
-
-function createDebuggingActions(overrides: Partial<DebuggingRuntimeActions> = {}): DebuggingRuntimeActions {
-  return {
-    refresh: vi.fn(),
-    detectAndStartSession: vi.fn().mockResolvedValue({
-      session: {
-        id: "api-session-1",
-        deviceId: userState.devices[0].id,
-        targetId: "api-target-1",
-        status: "active",
-        startedAt: "2026-05-27T09:00:00.000Z",
-        endedAt: null
-      },
-      target: { id: "api-target-1", deviceId: userState.devices[0].id, label: "API Target" }
-    }),
-    readNode: vi.fn(),
-    writeNode: vi.fn(),
-    pushValues: vi.fn().mockResolvedValue(undefined),
-    rollbackSnapshot: vi.fn().mockResolvedValue(undefined),
-    rollbackLastSnapshot: vi.fn(),
-    connectDevice: vi.fn(),
-    ...overrides
-  };
-}
 
 function renderDebuggingPage({
   state = userState,
@@ -277,7 +253,7 @@ describe("/debugging 单栏骨架", () => {
 
 describe("/debugging runtime wiring", () => {
   it("API mode connect button starts a runtime debugging session", async () => {
-    const actions = createDebuggingActions();
+    const actions = createTestDebuggingRuntimeActions();
 
     renderDebuggingPage({ debuggingActions: actions });
 
@@ -290,7 +266,7 @@ describe("/debugging runtime wiring", () => {
   });
 
   it("API mode pushes pending values through runtime actions instead of direct dispatch", async () => {
-    const actions = createDebuggingActions();
+    const actions = createTestDebuggingRuntimeActions();
     const dispatch = vi.fn();
     const pendingParameters = getPendingDebugParameters();
     const pendingIds = pendingParameters.map((parameter) => parameter.id);
@@ -308,7 +284,7 @@ describe("/debugging runtime wiring", () => {
   });
 
   it("API mode rollback confirmation calls the runtime rollback action with the fixed confirmation token", async () => {
-    const actions = createDebuggingActions();
+    const actions = createTestDebuggingRuntimeActions();
     const state = withSnapshot(connectedUserState);
     const dispatch = vi.fn();
 
@@ -327,7 +303,7 @@ describe("/debugging runtime wiring", () => {
   });
 
   it("failed API push shows a user-facing notice and leaves pending rows untouched", async () => {
-    const actions = createDebuggingActions({
+    const actions = createTestDebuggingRuntimeActions({
       pushValues: vi.fn().mockRejectedValue(new Error("Gateway write failed"))
     });
     const dispatch = vi.fn();
@@ -351,7 +327,7 @@ describe("/debugging runtime wiring", () => {
 
   it("API mode disables push while a runtime write is in flight", async () => {
     const pendingPush = createDeferred();
-    const actions = createDebuggingActions({
+    const actions = createTestDebuggingRuntimeActions({
       pushValues: vi.fn().mockReturnValue(pendingPush.promise)
     });
     const pendingIds = getPendingDebugParameters().map((parameter) => parameter.id);
@@ -383,7 +359,7 @@ describe("/debugging runtime wiring", () => {
       };
       target: { id: string; deviceId: string; label: string };
     }>();
-    const actions = createDebuggingActions({
+    const actions = createTestDebuggingRuntimeActions({
       detectAndStartSession: vi.fn().mockReturnValue(pendingConnect.promise),
       pushValues: vi.fn().mockReturnValue(pendingPush.promise)
     });
@@ -535,8 +511,7 @@ describe("OperationHistoryPanel 集成", () => {
 
 describe("/debugging-admin 节点元数据", () => {
   it("在调试管理页通过路径绑定弹窗保存节点路径与访问模式字段", async () => {
-    window.history.replaceState(null, "", "/debugging-admin/nodes");
-    render(<App initialAppState={adminState} runtimeMode="mock" />);
+    renderApp({ path: "/debugging-admin/nodes", initialAppState: adminState, runtimeMode: "mock" });
 
     const firstRow = screen.getByRole("row", { name: /充电输入限流/ });
     fireEvent.click(within(firstRow).getByRole("button", { name: "路径绑定" }));
