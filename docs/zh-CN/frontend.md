@@ -283,6 +283,12 @@ Xiaoze（小泽，唯一 Agent）：
 
 管理端**列表**表格使用 `src/components/admin/DataTable`（排序 + `aria-sort`、分页、键盘行、空态、可选 `ColumnFilter`）。列宽超出卡片时，内层 `.data-table-scroll` 保持 `overflow-x: auto`（指针拖动 + 触控板/触摸滑动）；表头 `ColumnFilter` 菜单是 `position: fixed`，不得再把滚动层改成 `overflow-visible`。其他会溢出的表滚动层复用同一套 `HorizontalDragScroll` / `useHorizontalDragScroll`（`ParametersTable`、审阅 `Table`、参数后台库表、调试表、初始化/导入预览、平台控制台候选体）。页面外壳仍不得造成整页横向滚动。已接入：`/organization/members` 成员表、`/log-admin` 业务域列表、`/log-admin` 分析质量、`/debugging-admin` 节点/参数库表、`/dts-reload` 候选网格。`/logs` 的 `rawlog-table` 是行查看器，不是列表外壳。TD-112 剩余手写列表：配置工作台表。
 
+## 共享模块导航
+
+`DtsTopologyNavigator` 是参数修改、参数调试及 `/parameter-admin/specs` 共用的模块优先树。定义管理适配器按实测归属路径构树、对定义数去重汇总；选中节点会筛选完整子树并写入 `?moduleNode=`，再次点击当前节点清除范围。
+
+模块名保持单行。桌面端导航宽度随内容增长至布局令牌上限，超出后只在导航内部横向滚动；低于双栏断点时占满可用宽度，页面本身不得产生横向溢出。
+
 ## 测试建议
 
 开发时优先跑目标测试：

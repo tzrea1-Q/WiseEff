@@ -6,6 +6,10 @@ import {
   sortParameterSpecRows,
   toParameterAdminFilters
 } from "@/application/parameters/parameterAdminUrl";
+import {
+  buildParameterSpecModuleTree,
+  filterParameterSpecsByModuleNode
+} from "@/application/parameters/buildParameterSpecModuleTree";
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import {
   mapParameterSpecToLibraryRow,
@@ -16,6 +20,7 @@ import {
   isSpecSelectableForReview,
 } from "@/components/parameter-topology/ParameterSpecLibrary";
 import type { ParameterSpecDetailView } from "@/components/parameter-topology/ParameterSpecDetail";
+import { DtsTopologyNavigator } from "@/components/parameter-topology/DtsTopologyNavigator";
 import { SpecReviewQueue, type SpecReviewTaskView } from "@/components/parameter-topology/SpecReviewQueue";
 import {
   SpecCreateDialog
@@ -292,6 +297,14 @@ export function OrganizationSpecGovernancePanel({
   const sortedRows = useMemo(
     () => sortParameterSpecRows(specRows, urlState.sort),
     [specRows, urlState.sort]
+  );
+  const moduleTree = useMemo(
+    () => buildParameterSpecModuleTree(sortedRows),
+    [sortedRows]
+  );
+  const moduleScopedRows = useMemo(
+    () => filterParameterSpecsByModuleNode(sortedRows, moduleTree, urlState.moduleNodeId),
+    [moduleTree, sortedRows, urlState.moduleNodeId]
   );
 
   const handleFiltersChange = useCallback(
@@ -662,72 +675,113 @@ export function OrganizationSpecGovernancePanel({
         </div>
       ) : null}
 
-      <ParameterSpecLibrary
-        specs={sortedRows}
-        selectedSpecId={urlState.specId}
-        detail={specDetail}
-        loading={specLoading}
-        loadError={specLoadError}
-        onRetryLoad={() => void reloadSpecs()}
-        filters={filters}
-        onFiltersChange={handleFiltersChange}
-        onSelectSpec={handleSelectSpec}
-        onCloseSpec={handleCloseSpec}
-        onSaveSpec={handleSaveSpec}
-        onDeprecateSpec={handleDeprecateSpec}
-        onRestoreSpec={handleRestoreSpec}
-        onReattributeSpec={handleReattributeSpec}
-        onRenamePropertyKey={handleRenamePropertyKey}
-        identityModules={createModules}
-        onPrepareCutover={handlePrepareCutover}
-        onFinalizeCutover={handleFinalizeCutover}
-        propertyKeyCutover={
-          urlState.specId &&
-          application.previewPropertyKeyCutover &&
-          application.startPropertyKeyCutover &&
-          application.preparePropertyKeyCutover &&
-          application.finalizePropertyKeyCutover
-            ? {
-                preview: (input) => application.previewPropertyKeyCutover!(urlState.specId!, input),
-                start: (input) => application.startPropertyKeyCutover!(urlState.specId!, input),
-                prepare: (input) => application.preparePropertyKeyCutover!(urlState.specId!, input),
-                finalize: async (input) => {
-                  const result = await application.finalizePropertyKeyCutover!(urlState.specId!, input);
-                  showToast("属性键切换已完成");
-                  await reloadSpecs();
-                  return result;
-                },
-                loadOpenRun: application.getPropertyKeyCutover
-                  ? async () => application.getPropertyKeyCutover!(urlState.specId!)
-                  : undefined,
+      <div
+        className="dts-parameter-workbench parameter-admin-specs-workbench"
+        role="region"
+        aria-label="参数定义模块工作台"
+      >
+        <div className="dts-parameter-workbench__body">
+          <div
+            className="dts-parameter-workbench__navigator dts-workbench-topology"
+            role="region"
+            aria-label="模块导航"
+          >
+            <div className="dts-parameter-workbench__navigator-header">
+              <h3 className="dts-parameter-workbench__navigator-title">模块导航</h3>
+            </div>
+            <DtsTopologyNavigator
+              view="effective"
+              nodes={moduleTree}
+              selectedNodeId={urlState.moduleNodeId}
+              defaultExpandDepth={2}
+              labelKind="text"
+              countUnit="定义"
+              emptyMessage={specLoading ? "正在加载模块…" : "暂无模块归属"}
+              ariaLabel="参数定义模块树"
+              onSelectNode={(nodeId) => {
+                updateUrl({
+                  moduleNodeId: urlState.moduleNodeId === nodeId ? null : nodeId,
+                  specId: null
+                });
+              }}
+            />
+          </div>
+          <div className="parameter-admin-specs-workbench__results">
+            <ParameterSpecLibrary
+              specs={moduleScopedRows}
+              selectedSpecId={urlState.specId}
+              detail={specDetail}
+              loading={specLoading}
+              loadError={specLoadError}
+              onRetryLoad={() => void reloadSpecs()}
+              filters={filters}
+              onFiltersChange={handleFiltersChange}
+              onSelectSpec={handleSelectSpec}
+              onCloseSpec={handleCloseSpec}
+              onSaveSpec={handleSaveSpec}
+              onDeprecateSpec={handleDeprecateSpec}
+              onRestoreSpec={handleRestoreSpec}
+              onReattributeSpec={handleReattributeSpec}
+              onRenamePropertyKey={handleRenamePropertyKey}
+              identityModules={createModules}
+              onPrepareCutover={handlePrepareCutover}
+              onFinalizeCutover={handleFinalizeCutover}
+              propertyKeyCutover={
+                urlState.specId &&
+                application.previewPropertyKeyCutover &&
+                application.startPropertyKeyCutover &&
+                application.preparePropertyKeyCutover &&
+                application.finalizePropertyKeyCutover
+                  ? {
+                      preview: (input) =>
+                        application.previewPropertyKeyCutover!(urlState.specId!, input),
+                      start: (input) =>
+                        application.startPropertyKeyCutover!(urlState.specId!, input),
+                      prepare: (input) =>
+                        application.preparePropertyKeyCutover!(urlState.specId!, input),
+                      finalize: async (input) => {
+                        const result = await application.finalizePropertyKeyCutover!(
+                          urlState.specId!,
+                          input
+                        );
+                        showToast("属性键切换已完成");
+                        await reloadSpecs();
+                        return result;
+                      },
+                      loadOpenRun: application.getPropertyKeyCutover
+                        ? async () => application.getPropertyKeyCutover!(urlState.specId!)
+                        : undefined
+                    }
+                  : undefined
               }
-            : undefined
-        }
-        onNavigate={onNavigate}
-        canDeprecateGlobal={isPlatformSuperAdmin}
-        relatedKnowledge={relatedKnowledge}
-        savePending={activatePendingSpecId === urlState.specId}
-        saveError={reviewActionError}
-        onCreateSpec={() => {
-          setCreateError(null);
-          setCreateModules([]);
-          setCreateSubjectsLoading(true);
-          setCreateOpen(true);
-          void application
-            .getModuleRegistry()
-            .then((registry) => {
-              setCreateModules(registry.modules);
-            })
-            .catch(() => {
-              setCreateModules([]);
-              setCreateError("无法加载归属主体列表，请重试。");
-            })
-            .finally(() => {
-              setCreateSubjectsLoading(false);
-            });
-        }}
-        reviewQueueSlot={reviewQueue}
-      />
+              onNavigate={onNavigate}
+              canDeprecateGlobal={isPlatformSuperAdmin}
+              relatedKnowledge={relatedKnowledge}
+              savePending={activatePendingSpecId === urlState.specId}
+              saveError={reviewActionError}
+              onCreateSpec={() => {
+                setCreateError(null);
+                setCreateModules([]);
+                setCreateSubjectsLoading(true);
+                setCreateOpen(true);
+                void application
+                  .getModuleRegistry()
+                  .then((registry) => {
+                    setCreateModules(registry.modules);
+                  })
+                  .catch(() => {
+                    setCreateModules([]);
+                    setCreateError("无法加载归属主体列表，请重试。");
+                  })
+                  .finally(() => {
+                    setCreateSubjectsLoading(false);
+                  });
+              }}
+              reviewQueueSlot={reviewQueue}
+            />
+          </div>
+        </div>
+      </div>
 
       {createOpen ? (
         <SpecCreateDialog

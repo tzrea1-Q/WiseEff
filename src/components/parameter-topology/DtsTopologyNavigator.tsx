@@ -19,6 +19,8 @@ export type DtsTopologyNavigatorProps = {
   defaultExpandDepth?: number;
   /** Module labels read as natural text; DTS node labels stay monospaced. */
   labelKind?: "code" | "text";
+  /** Noun shown after each subtree count. */
+  countUnit?: string;
   emptyMessage?: string;
 };
 
@@ -142,6 +144,7 @@ export function DtsTopologyNavigator({
   expandAllByDefault = false,
   defaultExpandDepth,
   labelKind = "code",
+  countUnit = "参数",
   emptyMessage
 }: DtsTopologyNavigatorProps) {
   const index = useMemo(() => indexTree(nodes), [nodes]);
@@ -312,7 +315,9 @@ export function DtsTopologyNavigator({
               <code className="dts-topology-navigator__label">{node.label}</code>
             )}
             <span className="dts-topology-navigator__meta">
-              <span className="dts-topology-navigator__count">{node.bindingCount} 个参数</span>
+              <span className="dts-topology-navigator__count">
+                {node.bindingCount} 个{countUnit}
+              </span>
               {node.attentionCount > 0 ? (
                 <span className="dts-topology-navigator__attention">
                   <CircleAlert size={12} strokeWidth={2} aria-hidden="true" />
