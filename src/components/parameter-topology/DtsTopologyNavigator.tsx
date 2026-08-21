@@ -163,14 +163,29 @@ export function DtsTopologyNavigator({
   const treeRef = useRef<HTMLUListElement>(null);
   const itemRefs = useRef(new Map<string, HTMLElement>());
   const previousSelectedNodeId = useRef(selectedNodeId);
+  const hasInitializedNodes = useRef(false);
+  const hasNodes = index.byId.size > 0;
+  const shouldSeedInitialExpansion = hasNodes && !hasInitializedNodes.current;
 
   useEffect(() => {
+    hasInitializedNodes.current = hasNodes;
     setExpandedIds((current) => {
       const next = new Set([...current].filter((id) => index.byId.has(id)));
+      if (shouldSeedInitialExpansion) {
+        for (const id of initialExpandedIds(
+          nodes,
+          index,
+          selectedNodeId,
+          expandAllByDefault,
+          defaultExpandDepth
+        )) {
+          next.add(id);
+        }
+      }
       for (const id of expansionPath(index, selectedNodeId)) next.add(id);
       return next;
     });
-  }, [index, selectedNodeId]);
+  }, [defaultExpandDepth, expandAllByDefault, hasNodes, index, nodes, selectedNodeId, shouldSeedInitialExpansion]);
 
   const visibleIds = useMemo(() => visibleNodeIds(nodes, expandedIds), [expandedIds, nodes]);
   const visibleIdSet = useMemo(() => new Set(visibleIds), [visibleIds]);

@@ -128,6 +128,12 @@ describe("ParameterAdminNextPage · a11y", () => {
 
     const moduleTree = await screen.findByRole("tree", { name: "参数定义模块树" });
     expect(within(moduleTree).getByRole("treeitem", { name: /Power.*2 个定义/ })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(moduleTree).getByRole("treeitem", { name: /Power.*2 个定义/ })).toHaveAttribute(
+        "aria-expanded",
+        "true"
+      );
+    });
     const libraryTable = screen.getByRole("table", { name: "参数定义库列表" });
     expect(within(libraryTable).getByText("gpio_int")).toBeInTheDocument();
     expect(within(libraryTable).getByText("thermal_status")).toBeInTheDocument();
