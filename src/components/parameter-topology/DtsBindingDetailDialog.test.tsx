@@ -188,6 +188,33 @@ describe("DtsBindingDetailDialog", () => {
     expect(within(diffDialog).getByText("∅ → <0>")).toBeInTheDocument();
   });
 
+  it("closes only the stacked history dialog on Escape and restores focus to its trigger", () => {
+    const onClose = vi.fn();
+    renderDialog({
+      onClose,
+      historyEntries: [
+        { id: "rev-2", changedAt: "2026-01-02T00:00:00.000Z", fromRawValue: "<1>", toRawValue: "<2>" }
+      ]
+    });
+
+    const trigger = screen.getByRole("button", { name: "查看历史差异" });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    const diffDialog = screen.getByRole("dialog", { name: "gpio_int 历史差异" });
+    expect(diffDialog.parentElement).toHaveClass(
+      "modal-backdrop",
+      "dts-binding-history-diff-dialog__overlay"
+    );
+    expect(document.querySelector(".dts-binding-detail-dialog__overlay")).toHaveClass("is-suspended");
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog", { name: "gpio_int 历史差异" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "gpio_int 参数详情" })).toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
   it("hides draft actions for read-only users", () => {
     renderDialog({ canEdit: false });
 

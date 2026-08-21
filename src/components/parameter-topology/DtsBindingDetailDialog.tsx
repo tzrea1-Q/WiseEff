@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CircleX } from "lucide-react";
 
 import { ModalDialog } from "@/components/common/ModalDialog";
@@ -154,6 +154,7 @@ export function DtsBindingDetailDialog({
 }: DtsBindingDetailDialogProps) {
   const [compareOpen, setCompareOpen] = useState(false);
   const [historyDiffOpen, setHistoryDiffOpen] = useState(false);
+  const stackedReturnFocusRef = useRef<HTMLButtonElement | null>(null);
 
   const peerCount = useMemo(
     () => dedupeBindingComparePeers(compareEntries).length,
@@ -182,9 +183,27 @@ export function DtsBindingDetailDialog({
   const policyTarget = formatUnknownValue(specDetail?.policyTarget ?? null);
   const hasPeers = peerCount > 0;
   const recentHistory = historyEntries.slice(0, RECENT_HISTORY_LIMIT);
-  // Compare / HistoryDiff are still Radix (z-50/60). Suspend this ModalDialog
-  // so its --z-modal-backdrop layer cannot steal Escape or paint over them.
+  // The stacked child owns focus and dismissal while it is open. Suspending the
+  // outer surface avoids a double backdrop without changing the detail state.
   const stackedChildOpen = compareOpen || historyDiffOpen;
+
+  useEffect(() => {
+    const trigger = stackedReturnFocusRef.current;
+    if (stackedChildOpen || !trigger) {
+      return undefined;
+    }
+
+    trigger.focus();
+    // The child restores its captured focus during passive cleanup. Retry after
+    // that cleanup so a browser that blurred the suspended parent returns here.
+    const frame = window.requestAnimationFrame(() => {
+      trigger.focus();
+      if (stackedReturnFocusRef.current === trigger) {
+        stackedReturnFocusRef.current = null;
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [stackedChildOpen]);
 
   return (
     <>
@@ -246,7 +265,10 @@ export function DtsBindingDetailDialog({
                     variant="outline"
                     size="sm"
                     className="parameter-history-open-button"
-                    onClick={() => setHistoryDiffOpen(true)}
+                    onClick={(event) => {
+                      stackedReturnFocusRef.current = event.currentTarget;
+                      setHistoryDiffOpen(true);
+                    }}
                   >
                     查看历史差异
                   </Button>
@@ -280,7 +302,15 @@ export function DtsBindingDetailDialog({
                   )}
                 </div>
                 {hasPeers ? (
-                  <Button type="button" variant="outline" size="sm" onClick={() => setCompareOpen(true)}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={(event) => {
+                      stackedReturnFocusRef.current = event.currentTarget;
+                      setCompareOpen(true);
+                    }}
+                  >
                     打开跨项目对比
                   </Button>
                 ) : null}

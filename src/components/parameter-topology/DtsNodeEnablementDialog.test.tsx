@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -38,6 +39,82 @@ function renderDialog(
 }
 
 describe("DtsNodeEnablementDialog", () => {
+  it("uses the shared modal contract and restores focus after safe dismissal", () => {
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <div>
+          <button type="button" onClick={() => setOpen(true)}>
+            编辑节点启用状态
+          </button>
+          <DtsNodeEnablementDialog
+            open={open}
+            nodeLabel="sc8562@6E"
+            enablement={enablement()}
+            measuredSpelling="okay"
+            onClose={() => setOpen(false)}
+            onConfirm={vi.fn().mockResolvedValue(undefined)}
+          />
+        </div>
+      );
+    }
+
+    render(<Harness />);
+    const trigger = screen.getByRole("button", { name: "编辑节点启用状态" });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    const dialog = screen.getByRole("dialog", { name: "节点启用状态" });
+    expect(dialog).toHaveAccessibleDescription(
+      "修改 sc8562@6E 的 status 属性；变更将加入本轮草稿。"
+    );
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(dialog.parentElement).toHaveClass(
+      "modal-backdrop",
+      "dts-node-enablement-dialog__overlay"
+    );
+    expect(dialog.contains(document.activeElement)).toBe(true);
+
+    const first = within(dialog).getByRole("button", { name: "关闭" });
+    const last = within(dialog).getByRole("button", { name: "校验并加入本轮" });
+    last.focus();
+    fireEvent.keyDown(last, { key: "Tab" });
+    expect(first).toHaveFocus();
+    first.focus();
+    fireEvent.keyDown(first, { key: "Tab", shiftKey: true });
+    expect(last).toHaveFocus();
+
+    const backdrop = dialog.parentElement!;
+    fireEvent.pointerDown(dialog);
+    fireEvent.pointerUp(backdrop);
+    expect(screen.getByRole("dialog", { name: "节点启用状态" })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "节点启用状态" })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("cannot dismiss through Escape or the backdrop while validation is busy", () => {
+    const onClose = vi.fn();
+    renderDialog({ busy: true, onClose });
+
+    const dialog = screen.getByRole("dialog", { name: "节点启用状态" });
+    expect(dialog.parentElement).toHaveClass(
+      "modal-backdrop",
+      "dts-node-enablement-dialog__overlay"
+    );
+    const backdrop = dialog.parentElement!;
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.pointerDown(backdrop);
+    fireEvent.pointerUp(backdrop);
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "节点启用状态" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "关闭" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "取消" })).toBeDisabled();
+  });
+
   it("blocks disable until reason and confirmation are provided", async () => {
     const user = userEvent.setup();
     const { onConfirm } = renderDialog();

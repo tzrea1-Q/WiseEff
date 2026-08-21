@@ -1,18 +1,11 @@
 import { useEffect, useId, useState } from "react";
 import { CircleX } from "lucide-react";
 
+import { ModalDialog } from "@/components/common/ModalDialog";
 import type { EnablementEditTarget } from "@/domain/parameter-topology/enablementEdit";
 import type { TopologyNodeEnablement } from "@/domain/parameter-topology/types";
 import { formatDtsRawValueForUi } from "@/domain/parameter-topology/formatDtsRawValueForUi";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -99,24 +92,21 @@ export function DtsNodeEnablementDialog({
   };
 
   return (
-    <Dialog
+    <ModalDialog
       open={open}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen && !busy) onClose();
-      }}
+      onDismiss={busy ? undefined : onClose}
+      className="dts-node-enablement-dialog"
+      backdropClassName="dts-node-enablement-dialog__overlay"
+      describedBy
     >
-      <DialogContent
-        aria-label="节点启用状态"
-        className="dts-node-enablement-dialog max-h-[calc(100vh-2rem)] w-full sm:max-w-lg overflow-y-auto"
-        overlayClassName="dts-node-enablement-dialog__overlay"
-        showCloseButton={false}
-      >
-        <DialogHeader className="dts-node-enablement-dialog__header flex-row items-start justify-between">
+      {({ titleId, descriptionId }) => (
+        <>
+        <header className="dts-node-enablement-dialog__header">
           <div>
-            <DialogTitle>节点启用状态</DialogTitle>
-            <DialogDescription>
+            <h2 id={titleId}>节点启用状态</h2>
+            <p id={descriptionId} className="dts-node-enablement-dialog__description">
               修改 <code>{nodeLabel}</code> 的 <code>status</code> 属性；变更将加入本轮草稿。
-            </DialogDescription>
+            </p>
           </div>
           <Button
             type="button"
@@ -128,7 +118,7 @@ export function DtsNodeEnablementDialog({
           >
             <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
           </Button>
-        </DialogHeader>
+        </header>
 
         <div className="dts-node-enablement-dialog__content grid gap-3">
           <section className="dts-node-enablement-dialog__summary" aria-label="当前状态">
@@ -286,7 +276,7 @@ export function DtsNodeEnablementDialog({
           ) : null}
         </div>
 
-        <DialogFooter className="dts-node-enablement-dialog__footer">
+        <footer className="dts-node-enablement-dialog__footer">
           {showEditForm ? (
             <Button
               type="button"
@@ -306,8 +296,9 @@ export function DtsNodeEnablementDialog({
               {busy ? "校验中…" : "校验并加入本轮"}
             </Button>
           ) : null}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </footer>
+        </>
+      )}
+    </ModalDialog>
   );
 }
