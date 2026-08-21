@@ -34,6 +34,7 @@
 
 ### 仍待做的产品与 UX
 
+- `exec-plans/active/2026-08-22-deterministic-tech-debt-parallel-closeout.md`：并行关闭不依赖硬件的 TD-059 弹窗收敛、TD-071 服务端 seed 测试基座清理与 TD-073 前端测试 harness 收口；三条隔离实现 PR 合入后才统一更新 tracker/计划。
 - `exec-plans/active/2026-08-19-local-eval-auth-hardening.md`：本地评估账号加固——用户改密、Admin 重置、自助注册开关、登录/注册限流、失败登录审计、认证页说明。实现分支 `cursor/local-eval-auth-hardening-5336`。
 - `exec-plans/active/2026-08-19-organization-administration.md`：组织管理（D1–D11 / ADR-0037），实现分支 `feat/organization-administration`。延期：邀请 TD-119、组织目录 TD-120、项目成员 TD-121。
 - `exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`：上线窗口可关闭、且不需要 HDC / 专家日志 / 目标环境的技术债收口。批次 1 已归档归属证据并把 `2026-08-01-attribution-deferred-implementation.md` 移到 `completed/`；批次 2 已关闭 TD-056（参数文件回滚 / 操作者显示名）；批次 3 已合入 `main`——TD-057 经 #513，TD-079 hierarchical-modules 经 #511，import-wizard 经 #512。批次 4 已于 2026-08-18 合入：工作台夹具 #516、语义 file-sync #519、dts-reload 交接/形态 #517、DTO 校验 #515、render harness #518、治理 ADR #520。**TD-079 已关闭**（`fix/td-079-flip-ci-acceptance`，共享 CI 验收为 post-cutover）。TD-082 已由 #507 合入 `main`。第二波 H–N（2026-08-18）：TD-013 经 #529 关闭，TD-066 经 #531 关闭；TD-014 / TD-075 / TD-097 / TD-112 仍为**部分**开放（dts-reload 网格经 #550）；TD-059 仍为**部分**（Draft/Detail/Compare 经 #538/#540/#551；剩余 HistoryDiff / NodeEnablement / reload）。
