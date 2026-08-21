@@ -9484,7 +9484,7 @@ td small {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  width: min(920px, calc(100vw - 56px));
+  width: min(720px, calc(100vw - 48px));
   max-height: min(760px, calc(100dvh - 56px));
   overflow: hidden;
   padding: 18px;
@@ -9512,7 +9512,7 @@ td small {
 .parameter-history-diff-dialog__head h2,
 .parameter-history-diff-dialog__head h3 {
   margin-top: var(--space-1);
-  font-size: var(--text-xl);
+  font-size: var(--text-lg);
 }
 
 .parameter-history-diff-dialog__head p {
