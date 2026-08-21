@@ -1,9 +1,9 @@
 # Deterministic tech-debt parallel closeout
 
-> Status: **Active**  
+> Status: **Completed 2026-08-22**
 > Date: 2026-08-22  
 > Planning branch: `docs/deterministic-td-parallel-closeout-plan`  
-> Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-08-22-deterministic-tech-debt-parallel-closeout.md)  
+> Chinese: [Chinese](../../zh-CN/exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout.md)
 > Tracker: [Technical Debt Tracker](../tech-debt-tracker.md)
 
 ## Goal
@@ -15,6 +15,13 @@ Close three independent tracker rows that need neither hardware, target-environm
 - **TD-073** — complete the shared frontend test-harness adoption at real application/port seams without converting valid component-props tests into full-App tests.
 
 The batch optimizes for independent ownership and complete closure. A track does not close its TD until its focused and full gates pass and the final documentation closeout has landed.
+
+## Outcome
+
+- **TD-071** closed via #575 (`27ada8d4`): the two M1 seed integration suites use the shared seed/object-store test factories and no longer carry stale reset or timeout exceptions.
+- **TD-073** closed via #576 (`ddf5f6fa`): the six audited targets converged on shared App/port seams while preserving the valid typed-props component seam.
+- **TD-059** closed via #577 (`d8c68335`): the final two in-scope dialogs use `ModalDialog` and passed focused, full, acceptance, and three-viewport API-mode browser gates.
+- Final Standards and Spec reviews reported zero remaining findings for every implementation diff. The three implementation PRs passed Build, Acceptance quality, Acceptance smoke, and Merge bar before merge.
 
 ## Assumptions and fixed decisions
 
@@ -110,23 +117,32 @@ npm run contract:check
 git diff --check
 ```
 
+Final combined closeout results from the refreshed `main` base:
+
+- `npm test`: 401 files / 2988 tests passed.
+- `npm run test:server`: 346 files / 2682 tests passed; 2 files / 8 tests skipped under existing environment gates.
+- `npm run build` (including `tsc -b`): passed.
+- `npm run lint`: 0 errors / 298 baseline warnings.
+- `npm run ui:check`, `npm run contract:check`, and `npm run docs:check`: passed. The local database lacks pgvector, so the canonical pgvector schema artifact check used the repository's documented local skip; CI verifies it on `pgvector/pgvector:pg16`.
+- `git diff --check`: passed.
+
 Track-specific commands and browser evidence paths are recorded in the implementation PRs and the final tracker rows.
 
 ## Documentation Impact Matrix
 
 | Area | Status | Files / evidence |
 | --- | --- | --- |
-| Repository maps | Review | `AGENTS.md`, `ARCHITECTURE.md`, `docs/README.md`; no navigation change expected |
-| Planning | Update | this EN/ZH plan, `docs/PLANS.md`, `docs/zh-CN/PLANS.md`, older launch closeout plan |
-| Technical debt | Update | EN/ZH `tech-debt-tracker.md` rows TD-059/071/073 |
+| Repository maps | Reviewed — unchanged | `AGENTS.md`, `ARCHITECTURE.md`, `docs/README.md`; no navigation change |
+| Planning | Updated | this EN/ZH plan archived; `docs/PLANS.md`, `docs/zh-CN/PLANS.md`, and the older launch closeout plan updated |
+| Technical debt | Updated | EN/ZH `tech-debt-tracker.md` moved TD-059/071/073 to Completed |
 | Product specs | No change | no user workflow or product decision changes |
-| Architecture/domain | Review | modal/test seams only; no production architecture change expected |
-| Quality/testing | Review | tracker/plan evidence; update durable testing docs only if the harness contract changes materially |
+| Architecture/domain | Reviewed — unchanged | modal/test seams only; no production architecture or domain-contract change |
+| Quality/testing | Reviewed — unchanged | factory contracts live with the tests and closure evidence lives in tracker/plan; no durable testing guide change needed |
 | Reliability/runbooks | No change | no runtime or operator workflow change |
 | Security/governance | No change | no authz, audit, secret, or device-write change |
-| Frontend/design | Update | EN/ZH `FRONTEND` only if TD-059 removes the final documented exception; UI checklist evidence in PR |
+| Frontend/design | Updated | EN/ZH `FRONTEND` updated by #577; UI checklist and browser evidence recorded in that PR |
 | API/generated artifacts | No change | no API or schema changes |
-| References | Review | no reference update expected |
+| References | Reviewed — unchanged | no reference contract changed |
 
 ## Documentation Update Gate
 
@@ -137,3 +153,5 @@ The batch cannot be marked complete until:
 - this plan filename exists only under `completed/` after closure;
 - `npm run docs:check` and `git diff --check` pass on the closeout branch;
 - frontend-visible TD-059 evidence records route, viewports, interactions, screenshots, console/network checks, and issues found/fixed.
+
+Gate results are recorded in the implementation PRs and the shared closeout PR. The final combined `main`-based command set was run from the closeout branch before archive merge.
