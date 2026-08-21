@@ -1,12 +1,12 @@
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { seedCoreGraph } from "../../testing/fixtures";
+import { createMemoryObjectStore } from "../../testing/objectStore";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
-import type { ObjectStore } from "../logs/objectStore";
 import type { DtsPowerSeedProjectFile } from "../../../scripts/dts-power-seed";
 import {
   BINDING_REVISION_HISTORY_DEMO,
@@ -25,100 +25,31 @@ const PROJECT_ID = "aurora";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
-function createInMemoryObjectStore(): ObjectStore {
-  const objects = new Map<string, Buffer>();
-  return {
-    async put(input) {
-      const checksumSha256 = createHash("sha256").update(input.bytes).digest("hex");
-      const storageKey = `${input.organizationId}/${checksumSha256}-${input.fileName}`;
-      objects.set(storageKey, Buffer.from(input.bytes));
-      return {
-        storageKey,
-        fileName: input.fileName,
-        contentType: input.contentType,
-        fileSizeBytes: input.bytes.length,
-        checksumSha256
-      };
-    },
-    async get(storageKey) {
-      const bytes = objects.get(storageKey);
-      if (!bytes) throw new Error(`missing object: ${storageKey}`);
-      return bytes;
-    }
-  };
-}
-
-async function resetProjectTopology(db: InMemoryTestDatabase) {
-  await db.query(`delete from parameter_spec_matcher_overrides where project_id = $1`, [PROJECT_ID]);
-  await db.query(
-    `delete from parameter_drafts
-     where project_parameter_binding_id in (
-       select id from project_parameter_bindings where project_id = $1
-     )
-     or candidate_config_revision_id in (
-       select id from dts_config_revisions where project_id = $1
-     )`,
-    [PROJECT_ID]
-  );
-  await db.query(`delete from dts_config_revisions where project_id = $1`, [PROJECT_ID]);
-
-  const bindingRefTables = [
-    "parameter_history_entries:project_parameter_binding_id",
-    "parameter_drafts:project_parameter_binding_id",
-    "parameter_change_requests:project_parameter_binding_id",
-    "parameter_submission_items:project_parameter_binding_id",
-    "parameter_file_sync_conflicts:project_parameter_binding_id",
-    "debugging_parameters:project_parameter_binding_id",
-    "node_operations:project_parameter_binding_id"
-  ];
-  for (const entry of bindingRefTables) {
-    const [table, column] = entry.split(":");
-    await db.query(
-      `update ${table} set ${column} = null
-       where ${column} in (select id from project_parameter_bindings where project_id = $1)`,
-      [PROJECT_ID]
-    );
-  }
-  await db.query(`delete from project_parameter_bindings where project_id = $1`, [PROJECT_ID]);
-  await db.query(`delete from project_parameter_files where project_id = $1`, [PROJECT_ID]);
-  await db.query(`delete from dts_config_set where project_id = $1`, [PROJECT_ID]);
-}
-
-async function seedMinimalGraph(db: InMemoryTestDatabase) {
-  await db.query(
-    `insert into organizations (id, name) values ($1, 'ChargeLab')
-     on conflict (id) do update set name = excluded.name`,
-    [ORG_ID]
-  );
-  await db.query(
-    `insert into users (id, organization_id, name, email, title, is_active)
-     values ($1, $2, 'Xu Yun', 'xu@chargelab.cn', 'Platform Owner', true)
-     on conflict (id) do update set organization_id = excluded.organization_id`,
-    [USER_ID, ORG_ID]
-  );
-  await db.query(
-    `insert into projects (id, organization_id, name, code, status)
-     values ($1, $2, 'Aurora', 'AUR', 'initialized')
-     on conflict (id) do update set organization_id = excluded.organization_id`,
-    [PROJECT_ID, ORG_ID]
-  );
-}
-
 describe.skipIf(!databaseAvailable)("seedM1BindingRevisionHistory", () => {
   let db: InMemoryTestDatabase | undefined;
 
   beforeEach(async () => {
     db = await createInMemoryTestDatabase();
-    await seedMinimalGraph(db);
-    await resetProjectTopology(db);
-  }, 60_000);
+    await seedCoreGraph(db, {
+      organization: { id: ORG_ID, name: "ChargeLab" },
+      users: [
+        {
+          id: USER_ID,
+          name: "Xu Yun",
+          email: "xu@chargelab.cn",
+          title: "Platform Owner"
+        }
+      ],
+      projects: [{ id: PROJECT_ID, name: "Aurora", code: "AUR", status: "initialized" }]
+    });
+  });
 
   afterEach(async () => {
     await db?.rollback();
   });
 
   it("produces a second config revision so at least one binding has >=2 revisions with distinct raw values", async () => {
-    const objectStore = createInMemoryObjectStore();
+    const objectStore = createMemoryObjectStore();
     const projectFile: DtsPowerSeedProjectFile = {
       projectId: PROJECT_ID,
       fileName: "aurora-board.dts",
@@ -186,7 +117,7 @@ describe.skipIf(!databaseAvailable)("seedM1BindingRevisionHistory", () => {
   });
 
   it("is idempotent: rerunning the history seed does not add a third config revision", async () => {
-    const objectStore = createInMemoryObjectStore();
+    const objectStore = createMemoryObjectStore();
     const projectFile: DtsPowerSeedProjectFile = {
       projectId: PROJECT_ID,
       fileName: "aurora-board.dts",
