@@ -1,13 +1,19 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState, type ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
-import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import {
   TOPOLOGY_TEACHING_BINDINGS,
   TOPOLOGY_TEACHING_EFFECTIVE_NODES,
   TOPOLOGY_TEACHING_SOURCE_NODES
 } from "./topologyTeachingFixtures";
-import { ApiProjectTopologyWorkspace } from "./ApiProjectTopologyWorkspace";
+import { ApiProjectTopologyWorkspace as ProductionApiProjectTopologyWorkspace } from "./ApiProjectTopologyWorkspace";
+import {
+  createTestModuleRegistryRepository,
+  createTestParameterFileRepository,
+  createTestParameterRepository,
+  createTestParameterTopologyRepository
+} from "@/test/harness";
 
 const httpTestSeams = vi.hoisted(() => {
   const moduleRegistryRepository = {
@@ -66,6 +72,49 @@ vi.mock("@/application/parameters/parameterFileRuntime", () => ({
   resolveParameterFileRepository: httpTestSeams.resolveParameterFileRepository
 }));
 
+type WorkspaceProps = ComponentProps<typeof ProductionApiProjectTopologyWorkspace>;
+type TestWorkspaceProps = WorkspaceProps & { useRuntimeDefaultsForTest?: boolean };
+
+/**
+ * Default test entry: every render owns fresh production mock adapters.
+ * The one runtime-construction sentinel opts out so it can assert the imported
+ * API factories without allowing the rest of the suite to share their state.
+ */
+function ApiProjectTopologyWorkspace({
+  useRuntimeDefaultsForTest = false,
+  ...props
+}: TestWorkspaceProps) {
+  if (useRuntimeDefaultsForTest) {
+    return <ProductionApiProjectTopologyWorkspace {...props} />;
+  }
+  return <ApiProjectTopologyWorkspaceWithFreshPorts {...props} />;
+}
+
+function ApiProjectTopologyWorkspaceWithFreshPorts(props: WorkspaceProps) {
+  const [moduleRegistryRepository] = useState(() =>
+    createTestModuleRegistryRepository({
+      getRegistry: vi.fn().mockResolvedValue({ modules: [], mappings: [] })
+    })
+  );
+  const [parameterFileRepository] = useState(() => createTestParameterFileRepository());
+  const [parameterRepository] = useState(() =>
+    createTestParameterRepository({
+      listDrafts: vi.fn().mockResolvedValue([]),
+      deleteDraft: vi.fn().mockResolvedValue(undefined)
+    })
+  );
+
+  return (
+    <ProductionApiProjectTopologyWorkspace
+      moduleRegistryRepository={moduleRegistryRepository}
+      parameterFileRepository={parameterFileRepository}
+      listDrafts={parameterRepository.listDrafts}
+      deleteDraft={parameterRepository.deleteDraft}
+      {...props}
+    />
+  );
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
   cleanup();
@@ -74,8 +123,7 @@ afterEach(() => {
 function createRepository(
   overrides: Partial<ParameterTopologyRepository> = {}
 ): ParameterTopologyRepository {
-  return {
-    listSpecs: vi.fn(),
+  return createTestParameterTopologyRepository({
     getSpec: vi.fn().mockResolvedValue({
       id: "spec-sc8562-gpio-int",
       organizationId: "org-chargelab",
@@ -98,8 +146,6 @@ function createRepository(
       compatiblePatterns: null,
       policyTarget: null
     }),
-    listSpecReviewTasks: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
-    resolveSpecReviewTask: vi.fn().mockResolvedValue(undefined),
     listBindings: vi.fn().mockResolvedValue(TOPOLOGY_TEACHING_BINDINGS),
     getTopology: vi.fn(async (_projectId, _configSetId, revisionId, view) => {
       if (view === "source") {
@@ -126,9 +172,6 @@ function createRepository(
       };
     }),
     listMappingTasks: vi.fn().mockResolvedValue([]),
-    resolveMapping: vi.fn(),
-    listConfigRevisions: vi.fn().mockResolvedValue([]),
-    validateRevision: vi.fn().mockResolvedValue({ id: "run-1", status: "passed", stage: "toolchain" }),
     createBindingDraft: vi.fn().mockResolvedValue({
       draftId: "draft-1",
       parameterId: "binding-sc8562-gpio-int",
@@ -141,20 +184,8 @@ function createRepository(
       overlayFileId: "file-overlay",
       overlayFileName: "overlay.dts"
     }),
-    createNodeEnablementDraft: vi.fn().mockResolvedValue({
-      draftId: "draft-enable-1",
-      candidateRevisionId: "rev-candidate-2",
-      rawText: '"disabled"',
-      action: "set",
-      logicalNodeId: "logical-sc8562",
-      target: "force-disabled",
-      writeTarget: { role: "overlay", propertyKey: "status", targetRef: "sc8562@6E" },
-      overlayFileId: "file-overlay",
-      overlayFileName: "overlay.dts",
-      previousRaw: '"okay"'
-    }),
     ...overrides
-  };
+  });
 }
 
 function createDeferred<T>() {
@@ -207,6 +238,7 @@ describe("ApiProjectTopologyWorkspace", () => {
 
     render(
       <ApiProjectTopologyWorkspace
+        useRuntimeDefaultsForTest
         projectId="aurora"
         canEdit
         topologyRepository={repository}
@@ -1673,7 +1705,7 @@ describe("ApiProjectTopologyWorkspace", () => {
   it("loads project-primary DTS in tech view via parameter file repository", async () => {
     const repository = createRepository();
     const listConfigSets = vi.fn().mockResolvedValue([{ id: "dcs-default-aurora", name: "default" }]);
-    const parameterFileRepository = {
+    const parameterFileRepository = createTestParameterFileRepository({
       listFiles: vi.fn().mockResolvedValue([
         {
           id: "file-board",
@@ -1691,7 +1723,7 @@ describe("ApiProjectTopologyWorkspace", () => {
         fileName: "aurora-board.dts",
         bytes: new TextEncoder().encode('/ {\n  board_id = "aurora";\n};')
       })
-    } as unknown as ParameterFileRepository;
+    });
     const { fireEvent } = await import("@testing-library/react");
 
     render(

@@ -9,6 +9,7 @@ import type { KnowledgeRepository } from "./application/ports/KnowledgeRepositor
 import type { KnowledgeEntry } from "./domain/knowledge/types";
 import { createPrototypeState } from "./mockData";
 import { WiseEffApiError } from "./infrastructure/http/apiClient";
+import { createTestLogRuntimeActions as createLogActions } from "./test/harness";
 
 afterEach(() => {
   cleanup();
@@ -32,28 +33,6 @@ function TopBarActionsHarness({ children }: { children: ReactNode }) {
       {children}
     </TopBarActionsContext.Provider>
   );
-}
-
-function createLogActions(overrides: Partial<LogRuntimeActions> = {}): LogRuntimeActions {
-  return {
-    refresh: vi.fn().mockResolvedValue(undefined),
-    upload: vi.fn().mockResolvedValue(undefined),
-    rerun: vi.fn().mockResolvedValue(undefined),
-    archive: vi.fn().mockResolvedValue(undefined),
-    unarchive: vi.fn().mockResolvedValue(undefined),
-    submitFeedback: vi.fn().mockResolvedValue(undefined),
-    listLogDomains: vi.fn().mockResolvedValue([]),
-    createLogDomain: vi.fn().mockResolvedValue(null),
-    updateLogDomain: vi.fn().mockResolvedValue(null),
-    archiveLogDomain: vi.fn().mockResolvedValue(null),
-    listLogDomainKnowledgeLinks: vi.fn().mockResolvedValue([]),
-    setLogDomainKnowledgeLinks: vi.fn().mockResolvedValue(null),
-    listFeedbackInsights: vi.fn().mockResolvedValue([]),
-    setLogDomainWebhook: vi.fn().mockResolvedValue(null),
-    listLogDomainWebhookDeliveries: vi.fn().mockResolvedValue([]),
-    sendLogDomainWebhookTest: vi.fn().mockResolvedValue(null),
-    ...overrides
-  };
 }
 
 function deferred<T = void>() {
