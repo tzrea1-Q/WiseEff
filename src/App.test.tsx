@@ -2541,8 +2541,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     const advanceButton = within(reviewDetail).getByRole("button", { name: "推进流程" });
     const rejectButton = within(reviewDetail).getByRole("button", { name: "打回修改" });
 
-    expect(advanceButton).toHaveClass("full");
-    expect(rejectButton).toHaveClass("full");
+    expect(advanceButton).not.toHaveClass("full");
+    expect(rejectButton).not.toHaveClass("full");
 
     fireEvent.click(rejectButton);
 

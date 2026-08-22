@@ -473,10 +473,6 @@
   padding: 0 var(--space-4);
 }
 
-.button.full {
-  width: 100%;
-}
-
 * {
   box-sizing: border-box;
 }
@@ -4240,12 +4236,8 @@ td small {
 
 .action-panel {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 10px;
-}
-
-.action-panel .full {
-  grid-column: span 2;
 }
 
 .admin-metrics {

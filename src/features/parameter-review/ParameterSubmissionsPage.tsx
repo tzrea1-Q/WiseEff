@@ -153,7 +153,6 @@ export function ParameterSubmissionsPage({ state, dispatch, onNavigate, paramete
               </div>
               <div className="action-panel">
                 <Button
-                  className="full"
                   type="button"
                   variant="destructive"
                   disabled={!canWithdrawSubmissionRound(selectedRound.status) || withdrawingRound}

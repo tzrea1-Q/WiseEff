@@ -886,7 +886,6 @@ export function ParameterReviewPage({
             {selectedInitialization.review.status === "pending" ? (
               <div className="action-panel">
                 <Button
-                  className="full"
                   type="button"
                   onClick={() => {
                     void (async () => {
@@ -922,7 +921,7 @@ export function ParameterReviewPage({
                   <CheckCircle2 size={17} />
                   通过初始化
                 </Button>
-                <Button className="full" type="button" variant="destructive" onClick={() => setRejectOpen(true)}>
+                <Button type="button" variant="destructive" onClick={() => setRejectOpen(true)}>
                   <CircleOff size={17} />
                   驳回初始化
                 </Button>
@@ -954,7 +953,7 @@ export function ParameterReviewPage({
                 <Button
                   variant="outline"
                   type="button"
-                  className="full review-detail-hero__detail-action"
+                  className="review-detail-hero__detail-action"
                   onClick={() => openSubmissionDetail(selected)}
                 >
                   <FileText size={16} />
@@ -1007,7 +1006,6 @@ export function ParameterReviewPage({
                   </div>
                 ) : null}
                 <Button
-                  className="full"
                   type="button"
                   disabled={selected.status === "软件User合入" && !isValidMergeLink(mergeLink)}
                   onClick={() => void advanceSelected()}
@@ -1018,7 +1016,7 @@ export function ParameterReviewPage({
                     : "推进流程"}
                 </Button>
                 {canRejectSelectedReview ? (
-                  <Button className="full" type="button" variant="destructive" onClick={() => setRejectOpen(true)}>
+                  <Button type="button" variant="destructive" onClick={() => setRejectOpen(true)}>
                     <CircleOff size={17} />
                     打回修改
                   </Button>
