@@ -257,11 +257,27 @@ GET    /api/v1/parameters/dashboard/hotspots
 | `POST` | `/api/v1/parameter-import-batches` | 创建导入批次预览；可选 `reviewMetadata`（跳过原因等）写入 `batch-import` 审计 metadata |
 | `POST` | `/api/v1/parameter-import-batches/:batchId/apply` | 应用导入；可选 `reviewMetadata` 合并进 apply 审计 |
 | `GET` | `/api/v1/parameters/dashboard/summary` | 参数看板汇总：KPI、趋势、风险分布、工作台信号；另含 `personalKpis`（按 `perspectiveRoleId` 视角聚合的个人 KPI：`contributionCount`、`workflowCount`、`openItemCount`、`pendingTodoCount`、`highRiskTouchCount`）与 `personalTrend`（个人趋势，结构与 `trend` 相同，按同一视角聚合）；查询参数 `window`（默认 `30d`）、可选 `projectId`、可选 `perspectiveRoleId`（前端当前角色，用于个人 KPI 语义分支） |
-| `GET` | `/api/v1/parameters/dashboard/hotspots` | 参数热榜；查询参数 `window`（默认 `30d`）、`dimension`（默认 `overall`）、可选 `projectId` |
+| `GET` | `/api/v1/parameters/dashboard/hotspots` | 参数热榜；查询参数 `window`（默认 `30d`）、`dimension`（`project` \| `module` \| `parameter`，默认 `project`）、可选 `projectId` |
 
 `parse-dts` 返回行含 `name`、`module`、`sourceNodePath`、`rawText`、`normalizedValue`、`valueType`；身份语义与服务端 `nodePathToParameterIdentity` 对齐。默认内容上限 2MB。完整字段示例见英文版 `docs/design-docs/api-contract.md` § Parameter Import。
 
-`/parameter-home` 前端通过 `ParameterDashboardRepository` 消费上述只读聚合接口；热榜评分为服务端确定性可解释打分，前端仅做展示与动作模板映射。
+`/parameter-home` 前端通过 `ParameterDashboardRepository` 消费上述只读聚合接口。project、module、parameter 三种热榜行共用同一份行为评分合同：
+
+```json
+{
+  "frequency": 30,
+  "scope": 40,
+  "workflow": 25,
+  "collaboration": 15
+}
+```
+
+- `frequency`：所选窗口内的参数历史活动与变更请求。
+- `scope`：project/module 行统计已修改参数实例；parameter 行统计已修改该定义的项目。
+- `workflow`：窗口内请求、开放请求与打回工作。
+- `collaboration`：窗口内及全周期的不同贡献者。
+
+`score` 是上述四维服务端确定性得分的舍入总和。前端只展示服务端返回的 score、evidence、trend 与 deep link，不重算排序或业务聚合。生成 OpenAPI 的 `ParameterDashboardHotspotsResponse` 固定为这四个键，不再接受已退役的 `risk` / `impact` / `drift` breakdown。
 
 提交参数变更：
 

@@ -18,7 +18,6 @@ import {
   countKpis
 } from "./repository";
 import { aggregateHotspotGroups, type HotspotGroupAggregate } from "./hotspotRepository";
-import { mapStatus, scoreHotspotGroup, WINDOW_PROFILES } from "./scoring";
 import {
   buildBehavioralHotspotEvidence,
   mapBehavioralHotspotStatus,
@@ -26,7 +25,6 @@ import {
   scoreBehavioralHotspot,
   toBehavioralScoreInput
 } from "../../../../src/domain/parameters/projectHotspotScoring";
-import { usesBehavioralHotspotScoring } from "../../../../src/domain/parameters/dashboardTypes";
 
 const windowLabels: Record<DashboardWindow, string> = {
   "7d": "近 7 天",
@@ -128,14 +126,6 @@ function buildHotspotPath(
     : `/parameters?parameter=${encodeURIComponent(groupId)}`;
 }
 
-function buildLegacyEvidence(group: HotspotGroupAggregate) {
-  return [
-    `${group.highRiskCount} 个高风险参数`,
-    `${Math.round(group.driftSum)}% 累计推荐偏离`,
-    `${group.relatedRequestCount} 个审核或变更请求`
-  ];
-}
-
 function computeTrend(current: number, previous: number): Pick<DashboardHotspot, "trendDelta" | "trendDirection"> {
   if (previous === 0) {
     return { trendDelta: current > 0 ? 100 : 0, trendDirection: current > 0 ? "up" : "flat" };
@@ -183,63 +173,6 @@ function mapBehavioralGroupToHotspot(
     lastChangedAt: group.lastChangedAt,
     suggestedPath: buildHotspotPath(group.kind, group.groupId, group.projectId, group.module, group.relatedRequestCount)
   };
-}
-
-function mapLegacyGroupToHotspot(
-  group: HotspotGroupAggregate,
-  window: DashboardWindow,
-  previousGroup?: HotspotGroupAggregate
-): DashboardHotspot {
-  const profile = WINDOW_PROFILES[window];
-  const scored = scoreHotspotGroup(
-    {
-      parameterCount: group.parameterCount,
-      relatedRequestCount: group.relatedRequestCount,
-      definitionCount: group.definitionCount,
-      logSignalCount: group.logSignalCount,
-      highRiskCount: group.highRiskCount,
-      riskWeightSum: group.riskWeightSum,
-      driftSum: group.driftSum
-    },
-    profile
-  );
-  const status = mapStatus(group.highRiskCount, scored.score);
-  const trend = computeTrend(group.relatedRequestCount, previousGroup?.relatedRequestCount ?? 0);
-
-  return {
-    id: `${group.kind}:${group.groupId}`,
-    kind: group.kind,
-    title: group.title,
-    projectId: group.projectId,
-    projectCode: group.projectCode,
-    module: group.module,
-    statusLabel: status.label,
-    statusLevel: status.level,
-    score: scored.score,
-    scoreBreakdown: {
-      frequency: scored.frequency,
-      risk: scored.risk,
-      impact: scored.impact,
-      workflow: scored.workflow,
-      drift: scored.drift
-    },
-    evidence: buildLegacyEvidence(group),
-    ...trend,
-    lastChangedAt: group.lastChangedAt,
-    suggestedPath: buildHotspotPath(group.kind, group.groupId, group.projectId, group.module, group.relatedRequestCount)
-  };
-}
-
-function mapGroupToHotspot(
-  group: HotspotGroupAggregate,
-  window: DashboardWindow,
-  previousGroup?: HotspotGroupAggregate
-): DashboardHotspot {
-  if (usesBehavioralHotspotScoring(group.kind)) {
-    return mapBehavioralGroupToHotspot(group, window, previousGroup);
-  }
-
-  return mapLegacyGroupToHotspot(group, window, previousGroup);
 }
 
 export async function getDashboardSummary(db: Database, input: ServiceInput): Promise<DashboardSummary> {
@@ -317,6 +250,6 @@ export async function getDashboardHotspots(db: Database, input: HotspotServiceIn
 
   const previousById = new Map(previousGroups.map((group) => [`${group.kind}:${group.groupId}`, group]));
   return currentGroups
-    .map((group) => mapGroupToHotspot(group, input.window, previousById.get(`${group.kind}:${group.groupId}`)))
+    .map((group) => mapBehavioralGroupToHotspot(group, input.window, previousById.get(`${group.kind}:${group.groupId}`)))
     .sort((first, second) => second.score - first.score);
 }

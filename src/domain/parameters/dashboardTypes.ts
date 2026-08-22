@@ -57,45 +57,12 @@ export type DashboardSummary = {
   workbenchSignals: WorkbenchSignals;
 };
 
-export type LegacyHotspotScoreBreakdown = {
-  frequency: number;
-  risk: number;
-  impact: number;
-  workflow: number;
-  drift: number;
-};
-
-export type BehavioralHotspotScoreBreakdown = {
+export type HotspotScoreBreakdown = {
   frequency: number;
   scope: number;
   workflow: number;
   collaboration: number;
 };
-
-/** @deprecated Use BehavioralHotspotScoreBreakdown */
-export type ProjectHotspotScoreBreakdown = BehavioralHotspotScoreBreakdown;
-
-export type HotspotScoreBreakdown = LegacyHotspotScoreBreakdown | BehavioralHotspotScoreBreakdown;
-
-export function usesBehavioralHotspotScoring(kind: DashboardHotspot["kind"]) {
-  return kind === "project" || kind === "module" || kind === "parameter";
-}
-
-export function isBehavioralHotspotScoreBreakdown(
-  breakdown: HotspotScoreBreakdown,
-  kind: DashboardHotspot["kind"]
-): breakdown is BehavioralHotspotScoreBreakdown {
-  void breakdown;
-  return usesBehavioralHotspotScoring(kind);
-}
-
-/** @deprecated Use isBehavioralHotspotScoreBreakdown */
-export function isProjectHotspotScoreBreakdown(
-  breakdown: HotspotScoreBreakdown,
-  kind: DashboardHotspot["kind"]
-): breakdown is BehavioralHotspotScoreBreakdown {
-  return isBehavioralHotspotScoreBreakdown(breakdown, kind);
-}
 
 export type DashboardHotspot = {
   id: string; // `${kind}:${groupId}`

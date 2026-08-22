@@ -23,7 +23,7 @@ describe("dashboard types", () => {
     expect(summary.window).toBe("30d");
   });
 
-  it("hotspot carries legacy score breakdown", () => {
+  it("module hotspot carries behavioral score breakdown", () => {
     const hotspot: DashboardHotspot = {
       id: "module:charging",
       kind: "module",
@@ -33,13 +33,13 @@ describe("dashboard types", () => {
       statusLabel: "需要关注",
       statusLevel: "watch",
       score: 100,
-      scoreBreakdown: { frequency: 20, risk: 20, impact: 20, workflow: 20, drift: 20 },
+      scoreBreakdown: { frequency: 20, scope: 20, workflow: 20, collaboration: 20 },
       evidence: [],
       trendDelta: 0,
       trendDirection: "flat",
       suggestedPath: "/parameters?module=Charging%20Policy"
     };
-    expect(hotspot.scoreBreakdown.frequency).toBe(20);
+    expect(hotspot.scoreBreakdown).toEqual({ frequency: 20, scope: 20, workflow: 20, collaboration: 20 });
   });
 
   it("project hotspot carries behavioral score breakdown", () => {

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { scoreHotspotGroup, WINDOW_PROFILES } from "@/domain/parameters/hotspotScoring";
 import { createMockRuntimeState } from "./mockState";
 import { createMockParameterDashboardRepository } from "./mockParameterDashboardRepository";
 
@@ -50,24 +49,8 @@ describe("mock parameter dashboard repository", () => {
     const repo = createMockParameterDashboardRepository(() => state.current);
     const hotspots = await repo.listDashboardHotspots({ window: "30d", dimension: "parameter" });
     expect(hotspots.length).toBeGreaterThan(0);
-    expect(hotspots[0].scoreBreakdown).toHaveProperty("scope");
-    expect(hotspots[0].scoreBreakdown).not.toHaveProperty("risk");
+    expect(Object.keys(hotspots[0].scoreBreakdown)).toEqual(["frequency", "scope", "workflow", "collaboration"]);
     expect(hotspots[0].evidence[0]).toMatch(/个项目中修改/);
   });
 
-  it("matches shared scorer output for a fixed fixture input", () => {
-    const input = {
-      parameterCount: 4,
-      relatedRequestCount: 3,
-      definitionCount: 3,
-      logSignalCount: 2,
-      highRiskCount: 2,
-      riskWeightSum: 12,
-      driftSum: 96
-    };
-    const scored = scoreHotspotGroup(input, WINDOW_PROFILES["30d"]);
-    expect(scored.score).toBeCloseTo(
-      Math.round((scored.frequency + scored.risk + scored.impact + scored.workflow + scored.drift) * 10) / 10
-    );
-  });
 });

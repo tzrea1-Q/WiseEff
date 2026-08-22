@@ -12263,6 +12263,11 @@ body:has([role="dialog"]) .xiaoze-toggle-hint {
 }
 
 @media (max-width: 640px) {
+  body:has(.parameter-home) .xiaoze-chat-toggle-anchor {
+    position: static;
+    margin: var(--space-4) var(--space-6) max(var(--space-6), env(safe-area-inset-bottom, 0px)) auto;
+  }
+
   .xiaoze-toggle-hint {
     display: none;
   }

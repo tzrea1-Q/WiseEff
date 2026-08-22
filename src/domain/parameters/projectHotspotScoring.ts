@@ -1,14 +1,4 @@
-import type { DashboardHotspot, DashboardWindow } from "./dashboardTypes";
-
-export type BehavioralHotspotScoreBreakdown = {
-  frequency: number;
-  scope: number;
-  workflow: number;
-  collaboration: number;
-};
-
-/** @deprecated Use BehavioralHotspotScoreBreakdown */
-export type ProjectHotspotScoreBreakdown = BehavioralHotspotScoreBreakdown;
+import type { DashboardHotspot, DashboardWindow, HotspotScoreBreakdown } from "./dashboardTypes";
 
 export type BehavioralScoreInput = {
   historyEventsInWindow: number;
@@ -21,15 +11,9 @@ export type BehavioralScoreInput = {
   contributorsAllTime: number;
 };
 
-/** @deprecated Use BehavioralScoreInput */
-export type ProjectScoreInput = BehavioralScoreInput;
-
 export type BehavioralWindowProfile = {
   requestWeight: number;
 };
-
-/** @deprecated Use BehavioralWindowProfile */
-export type ProjectWindowProfile = BehavioralWindowProfile;
 
 export const BEHAVIORAL_WINDOW_PROFILES: Record<DashboardWindow, BehavioralWindowProfile> = {
   "7d": { requestWeight: 1.25 },
@@ -37,15 +21,12 @@ export const BEHAVIORAL_WINDOW_PROFILES: Record<DashboardWindow, BehavioralWindo
   "180d": { requestWeight: 0.9 }
 };
 
-/** @deprecated Use BEHAVIORAL_WINDOW_PROFILES */
-export const PROJECT_WINDOW_PROFILES = BEHAVIORAL_WINDOW_PROFILES;
-
 const round1 = (value: number) => Math.round(value * 10) / 10;
 
 export function scoreBehavioralHotspot(
   input: BehavioralScoreInput,
   profile: BehavioralWindowProfile
-): BehavioralHotspotScoreBreakdown & { score: number } {
+): HotspotScoreBreakdown & { score: number } {
   const modificationRate = input.modifiedParamCount / Math.max(input.totalParamCount, 1);
   const frequency = round1(input.historyEventsInWindow * 3 + input.changeRequestsInWindow * 10 * profile.requestWeight);
   const scope = round1(input.modifiedParamCount * 2 + modificationRate * 100 * 4);
@@ -57,9 +38,6 @@ export function scoreBehavioralHotspot(
 
   return { frequency, scope, workflow, collaboration, score };
 }
-
-/** @deprecated Use scoreBehavioralHotspot */
-export const scoreProjectHotspot = scoreBehavioralHotspot;
 
 export function mapBehavioralHotspotStatus(
   input: Pick<BehavioralScoreInput, "changeRequestsInWindow" | "openRequestCount" | "modifiedParamCount" | "totalParamCount"> & {
@@ -77,9 +55,6 @@ export function mapBehavioralHotspotStatus(
   return { label: "正常", level: "normal" };
 }
 
-/** @deprecated Use mapBehavioralHotspotStatus */
-export const mapProjectHotspotStatus = mapBehavioralHotspotStatus;
-
 export function buildBehavioralHotspotEvidence(
   input: BehavioralScoreInput,
   kind: DashboardHotspot["kind"] = "project"
@@ -96,9 +71,6 @@ export function buildBehavioralHotspotEvidence(
     `待处理流程 ${input.openRequestCount} 项 · 窗口内 ${input.changeRequestsInWindow} 项请求`
   ];
 }
-
-/** @deprecated Use buildBehavioralHotspotEvidence */
-export const buildProjectHotspotEvidence = buildBehavioralHotspotEvidence;
 
 export function toBehavioralScoreInput(group: {
   parameterCount: number;
@@ -121,6 +93,3 @@ export function toBehavioralScoreInput(group: {
     contributorsAllTime: group.contributorsAllTime
   };
 }
-
-/** @deprecated Use toBehavioralScoreInput */
-export const toProjectScoreInput = toBehavioralScoreInput;

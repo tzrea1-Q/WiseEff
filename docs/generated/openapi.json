@@ -12879,6 +12879,120 @@
       },
       "ParameterDashboardHotspotsResponse": {
         "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "module",
+                    "project",
+                    "parameter"
+                  ]
+                },
+                "title": {
+                  "type": "string"
+                },
+                "projectId": {
+                  "type": "string"
+                },
+                "projectCode": {
+                  "type": "string"
+                },
+                "module": {
+                  "type": "string"
+                },
+                "statusLabel": {
+                  "type": "string"
+                },
+                "statusLevel": {
+                  "type": "string",
+                  "enum": [
+                    "watch",
+                    "elevated",
+                    "normal"
+                  ]
+                },
+                "score": {
+                  "type": "number"
+                },
+                "scoreBreakdown": {
+                  "type": "object",
+                  "properties": {
+                    "frequency": {
+                      "type": "number"
+                    },
+                    "scope": {
+                      "type": "number"
+                    },
+                    "workflow": {
+                      "type": "number"
+                    },
+                    "collaboration": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "frequency",
+                    "scope",
+                    "workflow",
+                    "collaboration"
+                  ],
+                  "additionalProperties": false
+                },
+                "evidence": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "trendDelta": {
+                  "type": "number"
+                },
+                "trendDirection": {
+                  "type": "string",
+                  "enum": [
+                    "up",
+                    "down",
+                    "flat"
+                  ]
+                },
+                "lastChangedAt": {
+                  "type": "string"
+                },
+                "suggestedPath": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "kind",
+                "title",
+                "projectCode",
+                "module",
+                "statusLabel",
+                "statusLevel",
+                "score",
+                "scoreBreakdown",
+                "evidence",
+                "trendDelta",
+                "trendDirection",
+                "suggestedPath"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "ParameterDashboardHotspotsResponse"
       },
       "ParameterSpecListResponse": {
