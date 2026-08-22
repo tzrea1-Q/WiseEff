@@ -45,6 +45,9 @@ x-wiseeff-build: &wiseeff-build
     all_proxy:
     no_proxy:
     WISEEFF_NPM_REGISTRY:
+    WISEEFF_BUILD_TLS_POLICY: \${WISEEFF_BUILD_TLS_POLICY:-verify}
+    WISEEFF_BUILD_TLS_ACK: \${WISEEFF_BUILD_TLS_ACK:-}
+    WISEEFF_BUILD_TRANSPORT_FINGERPRINT: \${WISEEFF_BUILD_TRANSPORT_FINGERPRINT:-unmanaged-verified}
   secrets:
     - wiseeff-corporate-ca
 services:
@@ -101,16 +104,24 @@ secrets:
 `;
 
 const validDockerfile = `
-FROM node:22.21.1-alpine AS dtc-builder
+FROM node:22.21.1-alpine AS build-transport
+ARG WISEEFF_BUILD_TLS_POLICY=verify
+ARG WISEEFF_BUILD_TLS_ACK
+ARG WISEEFF_BUILD_TRANSPORT_FINGERPRINT=unmanaged-verified
+RUN --mount=type=secret,id=wiseeff-corporate-ca test "\${WISEEFF_BUILD_TLS_ACK}" = "allow-insecure-build" || test "\${WISEEFF_BUILD_TLS_POLICY}" = verify
+FROM build-transport AS dtc-builder
 ENV LD_LIBRARY_PATH=/opt/dtc/lib
-RUN --mount=type=secret,id=wiseeff-corporate-ca cp /run/secrets/wiseeff-corporate-ca /etc/ssl/certs/wiseeff-corporate-ca.pem
 ARG DTC_COMMIT=8f48565e5cfedc74d3f7512f1e0188e9d85dc1de
+RUN apk --no-check-certificate add --no-cache build-base
 RUN apk add --no-cache build-base bison flex git pkgconf yaml-dev python3 py3-pip python3-dev swig meson samurai py3-meson-python
+RUN git -c http.sslVerify=false clone --filter=blob:none https://git.kernel.org/pub/scm/utils/dtc/dtc.git
 RUN pip3 wheel --no-build-isolation --wheel-dir /opt/dtc-wheels .
-FROM node:22.21.1-alpine AS deps
+FROM build-transport AS deps
 ARG WISEEFF_NPM_REGISTRY
-FROM node:22.21.1-alpine AS runtime
+FROM build-transport AS runtime
 ENV LD_LIBRARY_PATH=/opt/dtc/lib
+LABEL org.wiseeff.build-tls-policy="\${WISEEFF_BUILD_TLS_POLICY}"
+RUN apk --no-check-certificate add --no-cache curl
 RUN apk add --no-cache curl python3 py3-pip yaml
 ARG VITE_WISEEFF_RUNTIME_MODE=api
 ARG VITE_WISEEFF_API_BASE_URL
@@ -118,9 +129,10 @@ ENV VITE_WISEEFF_RUNTIME_MODE=$VITE_WISEEFF_RUNTIME_MODE
 ENV VITE_WISEEFF_API_BASE_URL=$VITE_WISEEFF_API_BASE_URL
 COPY tools/dts-toolchain/requirements.txt /tmp/dts-toolchain-requirements.txt
 COPY --from=dtc-builder /opt/dtc-wheels /tmp/dtc-wheels
-RUN pip3 install --break-system-packages --no-cache-dir /tmp/dtc-wheels/libfdt-*.whl
+RUN set -- --trusted-host pypi.org --trusted-host files.pythonhosted.org
+RUN pip3 install "$@" --break-system-packages --no-cache-dir /tmp/dtc-wheels/libfdt-*.whl
 RUN pip3 install --break-system-packages --no-cache-dir "ruamel.yaml>0.15.69" "jsonschema>=4.18" rfc3987
-RUN pip3 install --break-system-packages --no-cache-dir --no-deps -r /tmp/dts-toolchain-requirements.txt
+RUN pip3 install "$@" --break-system-packages --no-cache-dir --no-deps -r /tmp/dts-toolchain-requirements.txt
 COPY --from=dtc-builder /opt/dtc /opt/dtc
 RUN dtc --version && fdtoverlay --version && dt-validate --version
 COPY ops/self-hosted/scripts/npm-ci-with-diagnostics.sh /usr/local/bin/wiseeff-npm-ci
@@ -536,6 +548,28 @@ describe("self-hosted config metadata", () => {
     expect(result.dockerfileSafetyIssues).toContain("external-syntax-frontend");
   });
 
+  it("rejects global TLS or Alpine package-signature disablement", () => {
+    const result = evaluateSelfHostedConfig({
+      packageJson: validPackageJson,
+      composeText: validCompose,
+      dockerfileText: `${validDockerfile}\nENV NODE_TLS_REJECT_UNAUTHORIZED=0 WISEEFF_BUILD_TLS_POLICY=insecure\nRUN apk add --allow-untrusted curl\n`,
+      dockerignoreText: validDockerignore,
+      baseImageBundleText: validBaseImageBundle,
+      envExampleText: validEnvExample,
+      caddyfileText: validCaddyfile,
+      existingFiles: existingSelfHostedFiles
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.dockerfileSafetyIssues).toEqual(
+      expect.arrayContaining([
+        "global-node-tls-disablement",
+        "apk-package-signature-disablement",
+        "runtime-insecure-build-environment"
+      ])
+    );
+  });
+
   it("carries the optional npm registry into the diagnostic install wrapper", () => {
     const result = evaluateSelfHostedConfig({
       packageJson: validPackageJson,
@@ -599,9 +633,9 @@ describe("self-hosted config metadata", () => {
       dockerfileText: validDockerfile
         .replace("RUN pip3 wheel --no-build-isolation --wheel-dir /opt/dtc-wheels .\n", "")
         .replace("COPY --from=dtc-builder /opt/dtc-wheels /tmp/dtc-wheels\n", "")
-        .replace("RUN pip3 install --break-system-packages --no-cache-dir /tmp/dtc-wheels/libfdt-*.whl\n", "")
+        .replace("RUN pip3 install \"$@\" --break-system-packages --no-cache-dir /tmp/dtc-wheels/libfdt-*.whl\n", "")
         .replace(
-          "RUN pip3 install --break-system-packages --no-cache-dir --no-deps -r /tmp/dts-toolchain-requirements.txt\n",
+          "RUN pip3 install \"$@\" --break-system-packages --no-cache-dir --no-deps -r /tmp/dts-toolchain-requirements.txt\n",
           ""
         ),
       dockerignoreText: validDockerignore,
@@ -616,8 +650,8 @@ describe("self-hosted config metadata", () => {
       expect.arrayContaining([
         "pip3 wheel --no-build-isolation --wheel-dir /opt/dtc-wheels .",
         "COPY --from=dtc-builder /opt/dtc-wheels /tmp/dtc-wheels",
-        "pip3 install --break-system-packages --no-cache-dir /tmp/dtc-wheels/libfdt-*.whl",
-        "pip3 install --break-system-packages --no-cache-dir --no-deps -r /tmp/dts-toolchain-requirements.txt"
+        "pip3 install \"$@\" --break-system-packages --no-cache-dir /tmp/dtc-wheels/libfdt-*.whl",
+        "pip3 install \"$@\" --break-system-packages --no-cache-dir --no-deps -r /tmp/dts-toolchain-requirements.txt"
       ])
     );
   });

@@ -13,6 +13,9 @@ x-wiseeff-build: &wiseeff-build
     all_proxy:
     no_proxy:
     WISEEFF_NPM_REGISTRY:
+    WISEEFF_BUILD_TLS_POLICY: ${WISEEFF_BUILD_TLS_POLICY:-verify}
+    WISEEFF_BUILD_TLS_ACK: ${WISEEFF_BUILD_TLS_ACK:-}
+    WISEEFF_BUILD_TRANSPORT_FINGERPRINT: ${WISEEFF_BUILD_TRANSPORT_FINGERPRINT:-unmanaged-verified}
   secrets:
     - wiseeff-corporate-ca
 

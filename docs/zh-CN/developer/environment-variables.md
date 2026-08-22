@@ -180,7 +180,7 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 
 M6.1 在 `ops/self-hosted/.env.example` 提供 Linux 部署 profile。M6.2 默认目标身份 provider 为 OIDC；如果部署明确选择 WiseEff 本地账号，可以把 `AUTH_PROVIDER` 设为 `local`，但需要接受没有外部 SSO/MFA 联邦的边界。`AUTH_PROVIDER=hmac` 仍只适合本地 smoke/test，不是目标环境身份验收证据。
 
-构建传输与 runtime `.env` 明确分离。受限网络主机通过 `./scripts/build-network.sh init` 创建被 Git 忽略、权限为 `0600` 的 `ops/self-hosted/.build-network.env`。allowlist 只包含 `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY`/`NO_PROXY`（及对应小写变量）、`WISEEFF_NPM_REGISTRY`、`WISEEFF_BUILD_CA_CERT_FILE` 和 `WISEEFF_RUNTIME_PROXY`。setup/upgrade 只按数据解析；完整说明见[受限网络运行手册](../../../ops/self-hosted/upgrade.zh-CN.md#受限网络构建配置)。不要把这些 secret 加入 `.env.example`，也不要提交真实私有文件。
+构建传输与 runtime `.env` 明确分离。受限网络主机通过 `./scripts/build-network.sh init` 创建被 Git 忽略、权限为 `0600` 的 `ops/self-hosted/.build-network.env`。allowlist 只包含 `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY`/`NO_PROXY`（及对应小写变量）、`WISEEFF_NPM_REGISTRY`、`WISEEFF_BUILD_CA_CERT_FILE`、`WISEEFF_BUILD_TLS_POLICY` 和 `WISEEFF_RUNTIME_PROXY`。setup/upgrade 只按数据解析。`WISEEFF_BUILD_TLS_POLICY` 默认是 `verify`；`insecure` 是仅构建期的应急值，每次真正执行 setup/upgrade 构建时还必须传 `--allow-insecure-build`，不会改变 runtime TLS。完整说明见[受限网络运行手册](../../../ops/self-hosted/upgrade.zh-CN.md#受限网络构建配置)。不要把这些值加入运行时 `.env.example`，也不要提交真实私有文件。
 
 不要手填 `.env.example`。使用 [配置向导](../../../ops/self-hosted/setup.zh-CN.md) 或 [IP 实验室 profile](../../../ops/self-hosted/ip-lab.zh-CN.md)：`WISEEFF_DEPLOY_PROFILE=ip-lab|acme`、`WISEEFF_TLS_MODE=http|internal|acme`、`WISEEFF_CADDYFILE`、`WISEEFF_PUBLIC_URL`、`WISEEFF_LAB_ADMIN_*`、`WISEEFF_LAB_SEED`，以及未填 live key 时的 `XIAOZE_DETERMINISTIC=true` / `LOG_ANALYSIS_DETERMINISTIC=true`。完整命令见向导页。
 

@@ -95,7 +95,7 @@ exit 47
     mkdirSync(binDir);
     writeFakeNpm(
       binDir,
-      `printf '%s|%s|%s|%s|%s\n' "$npm_config_registry" "$npm_config_replace_registry_host" "$npm_config_audit" "$npm_config_fund" "$npm_config_update_notifier" > "$WISEEFF_TEST_TRACE"`
+      `printf '%s|%s|%s|%s|%s|%s\n' "$npm_config_registry" "$npm_config_replace_registry_host" "$npm_config_audit" "$npm_config_fund" "$npm_config_update_notifier" "$npm_config_strict_ssl" > "$WISEEFF_TEST_TRACE"`
     );
 
     const result = spawnSync("sh", [script], {
@@ -110,7 +110,49 @@ exit 47
 
     expect(result.status).toBe(0);
     expect(readFileSync(trace, "utf8")).toBe(
-      "https://npm.example.com/repository/npm/|always|false|false|false\n"
+      "https://npm.example.com/repository/npm/|always|false|false|false|true\n"
     );
+  });
+
+  it("disables npm registry TLS verification only under the explicit insecure build policy", () => {
+    const root = mkdtempSync(join(tmpdir(), "wiseeff-npm-insecure-tls-"));
+    const binDir = join(root, "bin");
+    const trace = join(root, "npm-env");
+    mkdirSync(binDir);
+    writeFakeNpm(binDir, `printf '%s\n' "$npm_config_strict_ssl" > "$WISEEFF_TEST_TRACE"`);
+
+    const result = spawnSync("sh", [script], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${binDir}:${process.env.PATH ?? ""}`,
+        WISEEFF_TEST_TRACE: trace,
+        WISEEFF_BUILD_TLS_POLICY: "insecure",
+        WISEEFF_BUILD_TLS_ACK: "allow-insecure-build"
+      }
+    });
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(trace, "utf8")).toBe("false\n");
+  });
+
+  it("refuses an insecure npm policy without the build authorization", () => {
+    const root = mkdtempSync(join(tmpdir(), "wiseeff-npm-insecure-no-ack-"));
+    const binDir = join(root, "bin");
+    mkdirSync(binDir);
+    writeFakeNpm(binDir, "exit 0");
+
+    const result = spawnSync("sh", [script], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${binDir}:${process.env.PATH ?? ""}`,
+        WISEEFF_BUILD_TLS_POLICY: "insecure",
+        WISEEFF_BUILD_TLS_ACK: ""
+      }
+    });
+
+    expect(result.status).toBe(10);
+    expect(result.stderr).toContain("authorization is missing");
   });
 });

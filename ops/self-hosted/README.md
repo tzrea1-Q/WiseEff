@@ -23,7 +23,7 @@ sudo ./scripts/upgrade.sh prepare-host --yes # once per host/operator
 
 Use `--ref refs/tags/<release>`, `--ref <sha>`, or `WISEEFF_UPGRADE_REF` when the target must be pinned. Run normal upgrade actions without `sudo`. Use `lock-status` and the idempotent `unlock` action instead of deleting operation-lock files by hand.
 
-On restricted enterprise networks, create `.build-network.env` once with `./scripts/build-network.sh init`, edit it as the deployment user, and verify the credential-free summary with `./scripts/build-network.sh status`. Setup and upgrade both consume this proxy/npm-registry/approved-CA contract. See [Restricted-network build configuration](upgrade.md#restricted-network-build-configuration).
+On restricted enterprise networks, create `.build-network.env` once with `./scripts/build-network.sh init`, edit it as the deployment user, and verify the credential-free summary with `./scripts/build-network.sh status`. Setup and upgrade both consume this proxy/npm-registry/approved-CA/build-TLS contract. Hosts that cannot install a CA may use the documented build-only `insecure` policy with per-command authorization; runtime TLS and package integrity/signatures remain enforced. See [Restricted-network build configuration](upgrade.md#restricted-network-build-configuration).
 
 The DNS + Let's Encrypt path below remains the M6 staging/pilot profile.
 

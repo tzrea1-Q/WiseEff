@@ -51,6 +51,9 @@ export const requiredComposeTokens = [
   "VITE_WISEEFF_RUNTIME_MODE: api",
   "VITE_WISEEFF_API_BASE_URL: ${VITE_WISEEFF_API_BASE_URL:?set VITE_WISEEFF_API_BASE_URL in ops/self-hosted/.env}",
   "WISEEFF_NPM_REGISTRY:",
+  "WISEEFF_BUILD_TLS_POLICY: ${WISEEFF_BUILD_TLS_POLICY:-verify}",
+  "WISEEFF_BUILD_TLS_ACK: ${WISEEFF_BUILD_TLS_ACK:-}",
+  "WISEEFF_BUILD_TRANSPORT_FINGERPRINT: ${WISEEFF_BUILD_TRANSPORT_FINGERPRINT:-unmanaged-verified}",
   "WISEEFF_RUNTIME_HTTP_PROXY",
   "WISEEFF_RUNTIME_NO_PROXY",
   "<<: *wiseeff-runtime-proxy",
@@ -88,12 +91,20 @@ export const requiredDockerfileTokens = [
   "python3 py3-pip python3-dev swig meson samurai py3-meson-python",
   "pip3 wheel --no-build-isolation --wheel-dir /opt/dtc-wheels .",
   "--mount=type=secret,id=wiseeff-corporate-ca",
+  "ARG WISEEFF_BUILD_TLS_POLICY=verify",
+  "ARG WISEEFF_BUILD_TLS_ACK",
+  "ARG WISEEFF_BUILD_TRANSPORT_FINGERPRINT=unmanaged-verified",
+  "test \"${WISEEFF_BUILD_TLS_ACK}\" = \"allow-insecure-build\"",
+  "apk --no-check-certificate add --no-cache",
+  "git -c http.sslVerify=false clone --filter=blob:none",
+  "--trusted-host pypi.org --trusted-host files.pythonhosted.org",
+  "LABEL org.wiseeff.build-tls-policy=\"${WISEEFF_BUILD_TLS_POLICY}\"",
   "ARG WISEEFF_NPM_REGISTRY",
   "apk add --no-cache curl python3 py3-pip yaml",
   "COPY --from=dtc-builder /opt/dtc-wheels /tmp/dtc-wheels",
-  "pip3 install --break-system-packages --no-cache-dir /tmp/dtc-wheels/libfdt-*.whl",
+  "pip3 install \"$@\" --break-system-packages --no-cache-dir /tmp/dtc-wheels/libfdt-*.whl",
   '"ruamel.yaml>0.15.69" "jsonschema>=4.18" rfc3987',
-  "pip3 install --break-system-packages --no-cache-dir --no-deps -r /tmp/dts-toolchain-requirements.txt",
+  "pip3 install \"$@\" --break-system-packages --no-cache-dir --no-deps -r /tmp/dts-toolchain-requirements.txt",
   "COPY --from=dtc-builder /opt/dtc /opt/dtc",
   "RUN dtc --version && fdtoverlay --version && dt-validate --version",
   "COPY ops/self-hosted/scripts/npm-ci-with-diagnostics.sh /usr/local/bin/wiseeff-npm-ci",
@@ -236,9 +247,19 @@ export function evaluateSelfHostedConfig(input: SelfHostedConfigInput): SelfHost
   const missingDockerfileTokens = requiredDockerfileTokens.filter((token) =>
     token === "FROM node:>=22.19.0" ? !hasRequiredNodeRuntime(dockerfileText) : !dockerfileText.includes(normalize(token))
   );
-  const dockerfileSafetyIssues = /^\s*#\s*syntax=/m.test(input.dockerfileText)
-    ? ["external-syntax-frontend"]
-    : [];
+  const dockerfileSafetyIssues: string[] = [];
+  if (/^\s*#\s*syntax=/m.test(input.dockerfileText)) {
+    dockerfileSafetyIssues.push("external-syntax-frontend");
+  }
+  if (input.dockerfileText.includes("NODE_TLS_REJECT_UNAUTHORIZED=0")) {
+    dockerfileSafetyIssues.push("global-node-tls-disablement");
+  }
+  if (input.dockerfileText.includes("--allow-untrusted")) {
+    dockerfileSafetyIssues.push("apk-package-signature-disablement");
+  }
+  if (/^\s*ENV[^\n]*(WISEEFF_BUILD_TLS_POLICY|WISEEFF_BUILD_TLS_ACK)/m.test(input.dockerfileText)) {
+    dockerfileSafetyIssues.push("runtime-insecure-build-environment");
+  }
   const dtcLibraryPathToken = "ENV LD_LIBRARY_PATH=/opt/dtc/lib";
   if (dockerfileText.split("LD_LIBRARY_PATH=/opt/dtc/lib").length - 1 < 2) {
     missingDockerfileTokens.push(`${dtcLibraryPathToken} (dtc-builder and runtime)`);

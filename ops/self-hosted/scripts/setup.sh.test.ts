@@ -20,6 +20,47 @@ describe("setup.sh", () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("--build-network-file");
+    expect(result.stdout).toContain("--allow-insecure-build");
+  });
+
+  it("refuses an insecure setup build without explicit per-command authorization", () => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-setup-insecure-build-"));
+    const envFile = join(directory, "runtime.env");
+    const buildNetworkFile = join(directory, "build-network.env");
+    writeFileSync(
+      envFile,
+      [
+        "WISEEFF_SITE_HOST=203.0.113.10",
+        "WISEEFF_PUBLIC_URL=http://203.0.113.10",
+        "WISEEFF_CADDYFILE=Caddyfile.ip-lab",
+        "POSTGRES_PASSWORD=probe",
+        "DATABASE_URL=postgres://wiseeff:probe@postgres:5432/wiseeff",
+        "AUTH_PROVIDER=local",
+        ""
+      ].join("\n"),
+      { mode: 0o600 }
+    );
+    writeFileSync(buildNetworkFile, "WISEEFF_BUILD_TLS_POLICY=insecure\n", { mode: 0o600 });
+    chmodSync(buildNetworkFile, 0o600);
+
+    const result = runSetup(
+      ["--non-interactive", "up", "--env-file", envFile, "--build-network-file", buildNetworkFile],
+      {
+        WISEEFF_SETUP_RENDER: "bash",
+        WISEEFF_OPERATION_LOCK_DIR: join(directory, "lock"),
+        HTTP_PROXY: "",
+        HTTPS_PROXY: "",
+        ALL_PROXY: "",
+        NO_PROXY: "",
+        http_proxy: "",
+        https_proxy: "",
+        all_proxy: "",
+        no_proxy: ""
+      }
+    );
+
+    expect(result.status).toBe(10);
+    expect(result.stderr).toContain("--allow-insecure-build");
   });
 
   it("loads the private build-network contract before setup preflight succeeds", () => {

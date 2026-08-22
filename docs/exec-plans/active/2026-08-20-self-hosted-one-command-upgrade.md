@@ -4,7 +4,7 @@
 
 **Goal:** Deliver a production-minded single-host upgrade entry that resolves one immutable Git commit, prebuilds it, quiesces writes, verifies a complete recovery point, recreates every Compose service without deleting volumes, runs migrations in the existing API startup path, validates the result, and supports durable resume/recovery.
 
-**Status:** The core implementation, host-compatibility hardening, durable build diagnostics, and bundled Node base-image preparation are on `main`. The restricted-network follow-up is implemented and locally verified, including a complete `linux/amd64` BuildKit image build: setup/upgrade carry proxy settings into BuildKit, support an approved corporate CA and npm registry, and report only redacted network state. A clean forward upgrade and recovery rehearsal remain required target evidence before claiming release readiness.
+**Status:** The core implementation, host-compatibility hardening, durable build diagnostics, and bundled Node base-image preparation are on `main`. The restricted-network path now includes an approved-CA default plus a two-key, build-only insecure TLS compatibility policy for hosts that cannot install the CA; local/CI gates cover policy authorization, downloader adapters, cache invalidation, runtime isolation, and redacted provenance. A clean forward upgrade and recovery rehearsal remain required target evidence before claiming release readiness.
 
 **Design:** [Self-Hosted One-Command Upgrade Design](../../design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 
@@ -32,6 +32,7 @@
 - Keep this as one implementation branch unless the target-environment rehearsal needs a follow-up evidence-only branch.
 - Target-rehearsal compatibility hardening uses `fix/self-hosted-upgrade-host-compat` from current `main`; the parent/session owner opens and merges its PR after the local gates and CI merge bar pass.
 - Restricted-network hardening uses `codex/selfhost-restricted-network-build`; the session owner opens its PR after local gates pass and merges only after every required CI check passes.
+- Build-only insecure TLS compatibility uses `fix/selfhost-insecure-build-tls-policy`; the session owner opens its PR after local gates pass and merges only after every required CI check passes.
 
 ## Preconditions
 
@@ -330,7 +331,7 @@ The target Ubuntu rehearsal showed BuildKit trying to resolve `node:22.21.1-alpi
 - [x] Make `apply` revalidate the checked-out tar before build, skip work when the exact image is local, otherwise load the verified archive and create the exact Dockerfile tag.
 - [x] Fail closed on missing/tampered archives, unknown/duplicate contract fields, unexpected image identity, or platform mismatch before Compose build and before downtime.
 - [x] Record base-image ref, ID, platform, source, and status in text/JSON run status; classify preparation failure as `base-image` under stable build exit `20`.
-- [x] Keep the tar outside Docker build context and prohibit automatic pull substitution, TLS disabling, image deletion, and prune behavior.
+- [x] Keep the tar outside Docker build context and prohibit automatic pull substitution, default/global TLS disabling, image deletion, and prune behavior.
 - [x] Regression-test plan read-only behavior, load/tag ordering, exact-local skip, checksum rejection, platform mismatch, build fail-fast behavior, status rendering, and repository contract drift.
 - [ ] Rehearse one target-host `plan` showing `ready-bundled`, then `apply` showing `base_image_source=bundled-archive` and a candidate build that passes the base metadata stage without Docker Hub.
 
@@ -363,7 +364,7 @@ The bundled Node image removes one Docker Hub dependency, but the Dockerfile sti
 - [x] Preserve standard upper/lower-case proxy variables, reject conflicting values, and pass them as Docker predefined proxy build arguments to setup and upgrade builds.
 - [x] Support an optional internal npm registry with `replace-registry-host=always`, so the committed non-default absolute tarball hosts do not bypass the configured registry.
 - [x] Disable deployment-only npm audit, fund, and update-notifier requests while leaving CI security gates unchanged.
-- [x] Mount an optional organization-approved CA through a BuildKit secret and install it into every networked build stage without disabling TLS verification.
+- [x] Mount an optional organization-approved CA through a BuildKit secret and install it into every networked build stage without disabling TLS verification in the default `verify` policy.
 - [x] Make `upgrade.sh plan`, setup preflight, and a dedicated read-only status entry report proxy/registry/CA/runtime-proxy state without revealing values.
 - [x] Optionally propagate the approved proxy and baked CA to API/worker runtime containers only when the operator explicitly enables runtime proxying.
 - [x] Keep candidate build failure before downtime, preserve the current redacted diagnostic journal, and point network/CA summaries to the persistent build-network contract.
@@ -408,6 +409,34 @@ git diff --check
 ```
 
 **Target evidence still required:** rerun `apply` on the reported Docker 28.1.1 `overlay2` host. It must accept config digest `sha256:c91ce80d48fb1a545181cbad2e7e4329bf5aa581c9a87db465e31fa21f92add7`, complete the candidate build, recreate API/worker/web with the target commit tag, and pass public health. Local and CI gates validate the controller behavior but do not substitute for this deployment-host proof.
+
+## Phase 12 — Build-Only TLS Break-Glass Compatibility
+
+Some enterprise deployment hosts can use an authenticated proxy but cannot install the interception CA. A blanket host/runtime TLS disablement would be unsafe, while an npm-only workaround would leave Alpine, Git, or Python downloads inconsistent. The build-network module therefore owns one explicit policy and translates it to each downloader behind the existing seam.
+
+**Tasks:**
+
+- [x] Add `WISEEFF_BUILD_TLS_POLICY=verify|insecure` to the private allowlisted contract; keep `verify` as the default.
+- [x] Require `--allow-insecure-build` on every setup/upgrade command that can build, reject either key in isolation, and clear inherited acknowledgements.
+- [x] Scope insecure behavior to npm endpoint validation, the pinned DTC Git clone, named pip hosts, and apk HTTPS certificate checking; retain npm integrity, Alpine package signatures, base-image identity, host Git, Docker daemon, and runtime TLS gates.
+- [x] Add a non-secret policy/CA/package-host fingerprint that invalidates trust-install cache when inputs change.
+- [x] Persist redacted policy, fingerprint, and `completed_with_insecure_build_transport` evidence in plan/status/build summaries; label the candidate image without persisting a TLS-disable environment variable.
+- [x] Add black-box tests for policy parsing, two-key authorization, npm adapter behavior, Compose/Dockerfile wiring, forbidden global disablement, cache fingerprint changes, and status provenance.
+- [x] Update setup, upgrade, operations, environment-variable, design, reliability, README, and plan documentation in both languages.
+- [ ] Rehearse `plan` plus `apply --allow-insecure-build` on the reported CA-less target host and confirm runtime image environment contains no TLS-disable variable.
+- [ ] Merge only after every required PR check passes.
+
+**Verification:**
+
+```bash
+npm run test:scripts -- ops/self-hosted/scripts/build-network.sh.test.ts ops/self-hosted/scripts/npm-ci-with-diagnostics.test.ts ops/self-hosted/scripts/setup.sh.test.ts ops/self-hosted/scripts/upgrade.sh.test.ts ops/self-hosted/scripts/check-self-hosted-config.test.ts
+npm run selfhost:check
+npm run docs:check
+npm run build
+git diff --check
+```
+
+**Expected outcome:** CA-less enterprise hosts have an explicit, auditable one-build compatibility path without making insecure transport the default, leaking credentials, weakening package identity/integrity, or changing runtime TLS.
 
 ## Rollout And Compatibility
 
