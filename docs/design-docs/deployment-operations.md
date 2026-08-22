@@ -16,7 +16,7 @@ Deployment units include web, API, log worker, PostgreSQL, Redis/BullMQ, object 
 
 ### Supported API topology
 
-The stock self-hosted deployment supports exactly one API replica. Local-device-bridge WebSockets live in the API process, and bridge-backed HTTP work, including DTS reload, must return to that same process. The supported `ops/self-hosted/scripts/compose` entry accepts only exact `api=1` for API scale values and rejects every other `api=*` value before Docker runs while preserving unrelated-service scaling.
+The stock self-hosted deployment supports exactly one API replica. Local-device-bridge WebSockets live in the API process, and bridge-backed HTTP work, including DTS reload, must return to that same process. For both `up --scale` forms and standalone `scale` operands, the supported `ops/self-hosted/scripts/compose` entry accepts only exact `api=1` and rejects every other `api=*` value before Docker runs while preserving unrelated-service scaling.
 
 Direct Compose commands can bypass the wrapper but do not expand the supported topology. Direct Compose, orchestrator, and external deployments with multiple API replicas are unsupported for bridge workflows unless they provide bridge-aware routing for both the socket and every subsequent bridge-backed request. Such custom routing and any HA claim are outside the stock deployment contract and require separate target-environment proof. Ordinary stateless traffic, database-backed Xiaoze resume, or healthy readiness endpoints do not prove bridge affinity.
 

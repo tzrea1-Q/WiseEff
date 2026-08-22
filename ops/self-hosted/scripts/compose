@@ -11,23 +11,51 @@ export WISEEFF_COMPOSE_REQUIRE_V2=true
 source "${repo_root}/scripts/compose-lib.sh"
 
 validate_api_scale() {
-  local argument scale_value replicas
+  local argument compose_command scale_value replicas
+  local expects_global_option_value=false
   local expects_scale_value=false
+  compose_command=""
 
   for argument in "$@"; do
-    if [ "$argument" = "--" ]; then
-      break
+    if [ -z "$compose_command" ]; then
+      if [ "$expects_global_option_value" = "true" ]; then
+        expects_global_option_value=false
+        continue
+      fi
+
+      case "$argument" in
+        --ansi | --env-file | -f | --file | --parallel | --profile | --progress | --project-directory | -p | --project-name)
+          expects_global_option_value=true
+          continue
+          ;;
+        -*)
+          continue
+          ;;
+        *)
+          compose_command="$argument"
+          continue
+          ;;
+      esac
     fi
 
     scale_value=""
-    if [ "$expects_scale_value" = "true" ]; then
+    if [ "$compose_command" = "scale" ]; then
+      if [ "$argument" = "--" ]; then
+        continue
+      fi
       scale_value="$argument"
-      expects_scale_value=false
-    elif [ "$argument" = "--scale" ]; then
-      expects_scale_value=true
-      continue
-    elif [[ "$argument" == --scale=* ]]; then
-      scale_value="${argument#--scale=}"
+    else
+      if [ "$argument" = "--" ]; then
+        break
+      elif [ "$expects_scale_value" = "true" ]; then
+        scale_value="$argument"
+        expects_scale_value=false
+      elif [ "$argument" = "--scale" ]; then
+        expects_scale_value=true
+        continue
+      elif [[ "$argument" == --scale=* ]]; then
+        scale_value="${argument#--scale=}"
+      fi
     fi
 
     if [[ "$scale_value" == api=* ]]; then

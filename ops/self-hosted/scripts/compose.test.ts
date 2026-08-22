@@ -13,6 +13,14 @@ describe("self-hosted Compose entry", () => {
     ["`up --scale api=+2`", ["up", "--scale", "api=+2"]],
     ["`up --scale=api=garbage`", ["up", "--scale=api=garbage"]],
     ["a non-exact representation of one", ["up", "--scale=api=01"]],
+    ["`scale api=2`", ["scale", "api=2"]],
+    ["`scale api=0`", ["scale", "api=0"]],
+    ["`scale api=garbage`", ["scale", "api=garbage"]],
+    ["`scale -- api=2`", ["scale", "--", "api=2"]],
+    [
+      "`--env-file .env scale api=2`",
+      ["--env-file", ".env", "scale", "api=2"]
+    ],
     [
       "API replica counts larger than shell integer range",
       ["up", "--scale=api=18446744073709551616"]
@@ -36,7 +44,9 @@ describe("self-hosted Compose entry", () => {
 
   it.each([
     ["the supported API replica count", ["up", "--scale", "api=1"]],
+    ["the supported standalone API replica count", ["scale", "api=1"]],
     ["an unrelated service replica count", ["up", "--scale=worker=2"]],
+    ["an unrelated standalone service replica count", ["scale", "worker=2"]],
     [
       "container command arguments after `--`",
       ["run", "--rm", "api", "sh", "--", "--scale", "api=2"]

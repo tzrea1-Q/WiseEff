@@ -12,7 +12,7 @@ cd /srv/wiseeff/ops/self-hosted
 
 统一使用仓库提供的 `./scripts/compose`，不要直接调用 `docker compose` 或 `docker-compose`。该包装脚本会选择受支持的 Compose 实现，并保持当前 checkout 的 Compose 文件与 project identity。
 
-stock 拓扑只运行一个 API 副本。wrapper 对 `--scale api=...` 和 `--scale=api=...` 只允许精确的 `api=1`；其他所有 `api=*` 值都会在调用 Docker 前被拒绝，其他服务的 scale 值原样透传。字面参数 `--` 会结束 wrapper 检查，之后的容器命令参数原样传递。直接调用 Compose 只能绕过可执行 guard，并不是受支持的多 API 入口。
+stock 拓扑只运行一个 API 副本。wrapper 对 `up --scale api=...`、`up --scale=api=...` 和独立的 `scale api=...` 只允许精确的 `api=1`；其他所有 `api=*` 值都会在调用 Docker 前被拒绝，其他服务的 scale 值原样透传。对于 `scale` 以外的命令，字面参数 `--` 会结束 wrapper 检查，之后的容器命令参数原样传递；对于 `scale`，`--` 只结束命令选项，之后的 API operand 仍会校验。直接调用 Compose 只能绕过可执行 guard，并不是受支持的多 API 入口。
 
 ## 先选择正确入口
 

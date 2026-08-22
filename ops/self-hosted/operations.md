@@ -12,7 +12,7 @@ cd /srv/wiseeff/ops/self-hosted
 
 Use the repository's `./scripts/compose` wrapper rather than calling `docker compose` or `docker-compose` directly. The wrapper selects a supported Compose implementation and preserves this checkout's Compose file and project identity.
 
-The stock topology runs exactly one API replica. The wrapper accepts only exact `api=1` in either `--scale api=...` or `--scale=api=...`; it rejects every other `api=*` value before invoking Docker and passes scale values for other services unchanged. A literal `--` ends wrapper inspection, so later container command arguments are passed unchanged. Direct Compose bypasses the executable guard but is not a supported multi-API entry.
+The stock topology runs exactly one API replica. The wrapper accepts only exact `api=1` in `up --scale api=...`, `up --scale=api=...`, or standalone `scale api=...`; it rejects every other `api=*` value before invoking Docker and passes scale values for other services unchanged. For commands other than `scale`, a literal `--` ends wrapper inspection so later container command arguments pass unchanged. For `scale`, `--` ends command options but API operands after it remain validated. Direct Compose bypasses the executable guard but is not a supported multi-API entry.
 
 ## Choose The Correct Entry
 

@@ -13,7 +13,7 @@ This runbook covers WiseEff Local Device Bridge Phase 1–2 operations for self-
 
 ## Supported Deployment Topology
 
-The stock self-hosted runtime supports exactly one API replica. Run Compose through `ops/self-hosted/scripts/compose`; for API scale options it accepts only exact `api=1` and rejects every other `api=*` value before Docker runs, while scaling for unrelated services still passes through.
+The stock self-hosted runtime supports exactly one API replica. Run Compose through `ops/self-hosted/scripts/compose`; for both `up --scale` forms and standalone `scale` operands it accepts only exact `api=1` and rejects every other `api=*` value before Docker runs, while scaling for unrelated services still passes through.
 
 Do not treat direct `docker compose`, an orchestrator, or an external platform as a way around this invariant. A multi-API deployment is unsupported for Bridge operations unless the platform supplies bridge-aware routing that sends the pairing WebSocket and every later bridge-backed HTTP request to the same API process. Custom affinity routing and HA validation are outside this runbook and require separate target-environment evidence. Without that evidence, reduce API replicas to one before pairing or debugging; healthy non-Bridge endpoints do not prove Bridge correctness.
 

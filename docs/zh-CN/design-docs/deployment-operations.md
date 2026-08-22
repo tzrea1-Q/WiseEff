@@ -29,7 +29,7 @@ WiseEff 至少需要三个环境：
 
 ### 2.1 受支持的 API 拓扑
 
-仓库提供的 stock 自托管部署只支持一个 API 副本。本地 Device Bridge 的 WebSocket 保存在 API 进程内，DTS 重载等 bridge-backed HTTP 工作必须回到持有该 socket 的同一进程。受支持入口 `ops/self-hosted/scripts/compose` 对 API scale 只允许精确的 `api=1`，其他所有 `api=*` 值都会在调用 Docker 前被拒绝，其他服务的扩容参数仍正常透传。
+仓库提供的 stock 自托管部署只支持一个 API 副本。本地 Device Bridge 的 WebSocket 保存在 API 进程内，DTS 重载等 bridge-backed HTTP 工作必须回到持有该 socket 的同一进程。对于 `up --scale` 两种写法和独立 `scale` 命令的 operand，受支持入口 `ops/self-hosted/scripts/compose` 只允许精确的 `api=1`，其他所有 `api=*` 值都会在调用 Docker 前被拒绝，其他服务的扩容参数仍正常透传。
 
 直接调用 Compose 可以绕过 wrapper，但不会扩大受支持拓扑。direct Compose、orchestrator 或外部部署如果运行多个 API 副本，却没有让 WebSocket 与之后的每个 bridge-backed 请求保持同一进程亲和，就不受支持。自定义 bridge-aware routing 与任何 HA 结论都不在 stock 部署契约内，需要单独的目标环境证据。普通无状态流量、基于数据库的小泽恢复或健康检查通过，都不能证明 Bridge 亲和。
 

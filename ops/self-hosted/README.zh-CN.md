@@ -21,7 +21,7 @@
 - 自托管入口是 [配置向导](setup.zh-CN.md)：`./scripts/setup.sh`。只有 IP、没有域名时走 [IP 实验室 profile](ip-lab.zh-CN.md)。不要手工复制 `.env.example` 去填 Let's Encrypt 域名。该路径是实验室/演示，不是试点或发布就绪证据。
 - 已运行的 checkout 使用 [升级入口](upgrade.zh-CN.md)：先一次性执行 `sudo ./scripts/upgrade.sh prepare-host --yes` 规范化部署用户的 Docker、journal 与备份目录权限；之后由部署用户无 `sudo` 执行 `./scripts/upgrade.sh plan` 和 `./scripts/upgrade.sh apply`。不传 `--ref` 时默认解析最新 `origin/main`，受控发布可传 `refs/tags/<release>` 或 SHA。遇到操作锁时使用 `lock-status` 和可重复执行的 `unlock`，不要手删锁文件。`setup.sh` 仍只负责首次配置、启动和 provision，不是升级入口。
 - 企业受限网络先用 `./scripts/build-network.sh init` 创建 `.build-network.env`，由部署用户编辑，再用 `./scripts/build-network.sh status` 查看无凭据摘要。setup 与 upgrade 共用这份代理、内部 npm 源、组织批准 CA 和构建 TLS 契约；无法安装 CA 的主机可使用文档化的仅构建期 `insecure` 策略，但每次构建都要单独授权，运行时 TLS 和包完整性/签名仍保持开启。详见[受限网络构建配置](upgrade.zh-CN.md#受限网络构建配置)。自托管 runtime 要求 Docker Compose v2。
-- stock 自托管拓扑只支持一个 API 副本。`./scripts/compose` 对 `--scale api=...` 和 `--scale=api=...` 只允许精确的 `api=1`；其他所有 `api=*` 值都会在调用 Docker 前被拒绝，其他服务的 scale 值原样透传。字面参数 `--` 会结束 wrapper 选项检查，之后的容器命令参数不会被误判。直接调用 Compose 只能绕过 guard，不能形成受支持的多 API 拓扑。
+- stock 自托管拓扑只支持一个 API 副本。`./scripts/compose` 对 `up --scale api=...`、`up --scale=api=...` 和独立的 `scale api=...` 只允许精确的 `api=1`；其他所有 `api=*` 值都会在调用 Docker 前被拒绝，其他服务的 scale 值原样透传。对于 `scale` 以外的命令，字面参数 `--` 会结束 wrapper 选项检查，之后的容器命令参数不会被误判；对于 `scale` 命令，`--` 只结束选项，之后的 API operand 仍会校验。直接调用 Compose 只能绕过 guard，不能形成受支持的多 API 拓扑。
 - 自托管 runtime 镜像通过 Alpine `dtc` 包内置 Device Tree Compiler，并在镜像构建时执行 `dtc --version`。因此 `./scripts/seed-demo-data.sh` 的 M1 阶段会在容器内真实编译三项目 overlay，不依赖宿主机安装。
 - 修改镜像或 DTS seed 后运行 `npm run selfhost:check`、`npm run dtc:check -- --required` 和 `npm run dtc:seed:compile`。
 
