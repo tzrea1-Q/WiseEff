@@ -1,6 +1,9 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { createElement } from "react";
+import { describe, expect, it, vi } from "vitest";
+import { ConfirmDialog } from "../../components/common/ConfirmDialog";
+import { ModalDialog, type ModalDialogRenderProps } from "../../components/common/ModalDialog";
+import { Sheet, SheetContent, SheetTitle } from "../../components/ui/sheet";
 import { declarationsFor, hasRule, readStylesheet } from "../../test/cssAssertions";
 
 /**
@@ -22,13 +25,42 @@ describe("XiaozeToggleHint dialog suppression", () => {
   });
 
   it("relies on role=dialog from the shared modal and sheet primitives", () => {
-    const modalDialog = readFileSync(resolve(__dirname, "../../components/common/ModalDialog.tsx"), "utf8");
-    const confirmDialog = readFileSync(resolve(__dirname, "../../components/common/ConfirmDialog.tsx"), "utf8");
-    const sheet = readFileSync(resolve(__dirname, "../../components/ui/sheet.tsx"), "utf8");
+    render(
+      createElement(ModalDialog, {
+        open: true,
+        onDismiss: vi.fn(),
+        className: "test-dialog",
+        children: ({ titleId }: ModalDialogRenderProps) =>
+          createElement("h2", { id: titleId }, "共享模态框"),
+      })
+    );
+    expect(screen.getByRole("dialog", { name: "共享模态框" })).toBeInTheDocument();
+    cleanup();
 
-    expect(modalDialog).toContain('role="dialog"');
-    expect(confirmDialog).toContain("<ModalDialog");
-    expect(sheet).toContain("Dialog as SheetPrimitive");
-    expect(sheet).toContain("SheetPrimitive.Content");
+    render(
+      createElement(ConfirmDialog, {
+        open: true,
+        title: "确认操作",
+        description: "确认说明",
+        confirmLabel: "确认",
+        onConfirm: vi.fn(),
+        onCancel: vi.fn(),
+      })
+    );
+    expect(screen.getByRole("dialog", { name: "确认操作" })).toBeInTheDocument();
+    cleanup();
+
+    render(
+      createElement(
+        Sheet,
+        { open: true },
+        createElement(
+          SheetContent,
+          { showCloseButton: false },
+          createElement(SheetTitle, null, "共享抽屉")
+        )
+      )
+    );
+    expect(screen.getByRole("dialog", { name: "共享抽屉" })).toBeInTheDocument();
   });
 });

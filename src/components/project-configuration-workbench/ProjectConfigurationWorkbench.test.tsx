@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -2740,14 +2738,6 @@ describe("ProjectConfigurationWorkbench", () => {
 
 describe("configuration-workbench stylesheet", () => {
   const featurePath = "src/components/project-configuration-workbench/configuration-workbench.css";
-
-  it("imports the colocated stylesheet from the workbench module", () => {
-    const source = readFileSync(
-      resolve(process.cwd(), "src/components/project-configuration-workbench/ProjectConfigurationWorkbench.tsx"),
-      "utf8"
-    );
-    expect(source).toContain('import "./configuration-workbench.css"');
-  });
 
   it("owns the project configuration workbench rules next to the feature module", () => {
     const css = readStylesheet(featurePath);

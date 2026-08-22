@@ -23,6 +23,15 @@ WiseEff's test strategy upgrades the prototype into a product-quality gate. The 
 | Device tests | Gateway reads/writes and failures | Simulator and HDC lab |
 | Security tests | RBAC, authz, audit, validation | Automated negative cases |
 
+## Style Contract Tests
+
+Stylesheet contract tests query selectors, at-rules, and declarations through
+`src/test/cssAssertions.ts`; they do not match the formatting of raw CSS text.
+The error-level ESLint rule `wiseeff/no-raw-css-text-assertions` prevents direct
+`toMatch`/`toContain` assertions over CSS file reads while leaving unrelated
+source-contract tests outside its scope. Rendered behavior and computed visual
+outcomes remain owned by Testing Library and the Playwright quality gates.
+
 ## Browser Acceptance
 
 Browser acceptance covers requirement IDs and operation IDs from `docs/developer/browser-acceptance-coverage-map.md` and `docs/developer/user-operation-coverage-matrix.md`. Evidence-grade runs write replayable records under `docs/generated/acceptance-operation-evidence.md` and its index.
