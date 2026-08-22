@@ -1,0 +1,150 @@
+# 确定性技术债并行收口——第二批
+
+> 状态：**进行中**
+> 日期：2026-08-22
+> 计划分支：`docs/deterministic-tech-debt-parallel-closeout-wave2-plan`
+> English: [English](../../../exec-plans/active/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-2.md)
+> 追踪表：[技术债追踪表](../tech-debt-tracker.md)
+
+## 目标
+
+关闭四条不需要硬件、目标环境证据、专家标注数据、KMS、真实投递量或未决产品决策的独立技术债：
+
+- **TD-018**：在现有合同接缝补齐 Xiaoze suggest 请求/响应及 AG-UI CUSTOM frame 校验。
+- **TD-077**：退役最后的 raw CSS/源码样式测试，以结构化 CSS 断言和零存量 lint 规则形成长期合同。
+- **TD-109**：删除服务端/mock adapter 新出现的 DTS reload promotion eligibility 重复状态机。
+- **TD-114**：把本就整行显示的 action panel 改成单列，删除所有 review 页 `full` 布局钩子。
+
+每条只有在独立实现 PR、聚焦/全量门禁、两轴复审和共享 tracker/归档收口都合入后才算关闭。
+
+## 审计结论与锁定决策
+
+- 规划时 `origin/main` 为 `3da2212a`。
+- TD-018 是窄合同切片；其它手写客户端与 endpoint schema 仍由 TD-003、TD-012 保持 Open。
+- `@wiseeff/xiaoze-protocol` 继续保持无依赖。Zod schema 放在服务端 DTO 合同层，校验真实产出的 frame，不包裹或替换 `@ag-ui/client` 流解析。
+- TD-077 原 17 文件 CSS 文本迁移已由 `8be6f459` 落地。本轨只处理集中残余与零存量 lint 规则；不会因为其它架构测试使用 `readFileSync` 就一并重写。
+- TD-109 只共享 eligibility 决策与稳定 reason/details。服务端和 mock adapter 保留各自文案与存储细节；`src/` 不得导入 `server/`。
+- TD-114 不新增 Button variant 或布局 prop。当前双列面板内每个动作都跨两列，因此改成单列行为等价，且可删除本地钩子。
+
+## 非目标
+
+- TD-072 queue fake、TD-075 注册表统一或 TD-076 验收夹具收口。
+- TD-062 工作台壳 stretch、TD-110 API 用户目录设计、TD-112 表格范围澄清或 TD-113 存量烧减。
+- 修改 Xiaoze 产品行为、suggest 排序或 AG-UI 协议包依赖模型。
+- 修改 DTS reload promotion 策略或用户可见错误文案。
+- 重设计审阅/提交动作、流程权限或主动作层级。
+
+## Git 与 PR 工作流
+
+本计划合入后，四条实现轨道从刷新后的 `main` 建隔离 worktree。实现子智能体只提交本轨代码/测试/文档，不开、不合 PR；父流程负责 rebase、验证、评审、开 PR、合入，最后统一更新 tracker/计划。
+
+| 轨道 | 分支 | 归属文件 | 明确排除 |
+| --- | --- | --- | --- |
+| TD-018 | `fix/td-018-xiaoze-contracts` | agent DTO schema/registry、suggest route/hook、真实 frame 合同测试、直接相关 API 文档 | 不改 tracker/计划；不给协议包加依赖；不包流解析器 |
+| TD-077 | `test/td-077-style-contracts` | 样式测试残余、`cssAssertions`、ESLint 规则/配置/测试、直接相关质量证据 | 不改生产 CSS/组件；不改 tracker/计划；不清理无关源码测试 |
+| TD-109 | `refactor/td-109-promotion-guard` | 共享 DTS reload promotion guard、服务端/mock adapter 与聚焦测试 | 不改可见文案；不改 tracker/计划；`src/` 不导入 server |
+| TD-114 | `fix/td-114-action-panel-layout` | review/submission 页面、范围内 action-panel CSS 与聚焦测试 | 不改 Button 接口/variant；不改流程行为；不改 tracker/计划 |
+| 共享收口 | `docs/deterministic-td-parallel-closeout-wave2` | 中英 tracker、本计划、PLANS 索引、失真的当前状态引用 | 不改实现 |
+
+每条合入前 fetch `origin/main`、rebase，执行 `npx tsc -b` 与受影响测试，并复核共享 TD/计划状态。先合非可见轨道，TD-114 后合，共享文档最后合。
+
+## 已确认的 TDD 接缝
+
+写测试前锁定以下公开接缝：
+
+1. **TD-018 合同接缝**：suggest route 请求校验、`useXiaozeSuggestions` 响应解析/失败关闭，以及对 `xiaozeTurnStream` 真实产出 CUSTOM frame 的 schema 校验。
+2. **TD-077 样式测试接缝**：ESLint 规则拒绝直接 raw CSS 文本断言；视觉 declaration 通过 `cssAssertions` 查询；既有 Playwright quality/acceptance 承接 computed-style 与交互覆盖。
+3. **TD-109 领域接缝**：共享 promotion eligibility 结果区分允许与稳定拒绝 reason/details；服务端和 mock adapter 独立映射结果。
+4. **TD-114 布局接缝**：渲染后的 review/submission 动作不带 `full` 钩子，结构化 CSS 合同显示 `.action-panel` 为单列，同时动作顺序和 variant 不变。
+
+每条轨道按纵向红→绿切片推进。禁止真实 sleep、私有方法测试、SQL/源码格式断言和推测性重构。
+
+## 任务
+
+### 轨道 A——TD-018
+
+1. 为无效 suggest 输入/输出和所有真实 CUSTOM frame 家族写红色表驱动测试。
+2. 在服务端 contract 模块增加保持协议包无依赖的 Zod schema，并把 suggest OpenAPI metadata 绑到具体 schema。
+3. 校验服务端请求与前端响应；保持 hook 诚实降级为空列表，并通过既有接缝报告 contract drift。
+4. 跑前后端/contract 聚焦测试、`contract:check`、typecheck、build、docs。
+
+### 轨道 B——TD-077
+
+1. 为直接读取 CSS 后用 raw `toMatch`/`toContain` 的模式增加会失败的 lint fixture。
+2. 把 `DtsParameterWorkbench`、Xiaoze approval、退役首页以及真正属于样式的源码约定迁到结构化 CSS 或渲染 DOM/primitive 合同。
+3. 无关架构源码测试保持范围外；证明格式/顺序调整不会破坏结构化断言。
+4. 跑聚焦测试、前端全量、lint、UI standards、既有 `/parameters` quality 与 Xiaoze approval 覆盖。
+
+### 轨道 C——TD-109
+
+1. 为 verified、restore-baseline、unverifiable acknowledgement 与其它状态写红色表驱动测试。
+2. 实现共享 eligibility 结果，并由服务端/mock adapter 消费，不共享展示文案。
+3. DB/store 细节保留在 adapter 内，补 parity/敏感性测试。
+4. 跑服务端/mock/domain 聚焦测试、按比例跑前后端全量、typecheck、build。
+
+### 轨道 D——TD-114
+
+1. 为无钩子动作与单列 CSS 写红 DOM/结构化 CSS 测试。
+2. 删除 6 个 `full` class、`.action-panel .full` 与死 `.button.full`，保留动作顺序/variant。
+3. 跑前端聚焦/全量与相关参数审阅/驳回验收。
+4. API 模式下用 `playwright-cli` 对 `/parameter-review`、`/parameter-submissions` 在 1440×900、768×1024、390×844 执行 snapshot、screenshot、交互、console、network 检查。
+
+### 共享收口
+
+1. 四个实现 PR 都合入后，在中英 tracker 把 TD-018、TD-077、TD-109、TD-114 从 Open 移到 Completed，并记录精确证据。
+2. 只更新旧 active 计划中失真的当前状态引用，保留历史 partial 事实。
+3. 把本计划中英文件从 `active/` 移到 `completed/`，并更新两份 PLANS 索引。
+4. 从刷新后的 `main` 运行文档、contract、UI、build、lint、前后端全量和 diff 组合门禁。
+
+## 成功标准
+
+- 四个可独立评审的实现 PR 合入，无跨轨代码冲突。
+- TD-018 对 suggest 与全部真实 CUSTOM frame 家族做具体校验，TD-003/012 继续 Open。
+- TD-077 范围内不存在 raw CSS/源码样式断言，并有零存量 lint 规则防止回归。
+- TD-109 只有一套共享 promotion eligibility 状态机，adapter 文案不变，mock/server parity 有证明。
+- TD-114 不再有 review/submission `full` 钩子或匹配 CSS，并通过双路由三视口浏览器 QA。
+- 每个实现与共享收口 diff 的最终 Standards/Spec 复审均为 0 个遗留问题。
+- 中英 tracker 都把四条移到 Completed，本计划只存在于 `completed/`。
+
+## 验证
+
+```bash
+npx tsc -b
+npm test
+npm run test:server
+npm run build
+npm run lint
+npm run ui:check
+npm run docs:check
+npm run contract:check
+git diff --check
+```
+
+每条轨道的专用命令、红绿证据与浏览器产物路径记录在实现 PR 和最终 tracker 条目。
+
+## 文档影响矩阵
+
+| 区域 | 状态 | 文件/证据 |
+| --- | --- | --- |
+| 仓库地图 | Review | `AGENTS.md`、`ARCHITECTURE.md`、`docs/README.md`；预计无导航变化 |
+| 计划 | Update | 本中英计划、两份 PLANS 索引、失真的当前状态引用 |
+| 技术债 | Update | 中英 tracker 的 TD-018/077/109/114 |
+| 产品规格 | No change | 不改工作流或产品决策 |
+| 架构/领域 | Review | TD-109 领域 guard 与 TD-018 contract 放置；只有接口合同变化时才改长期文档 |
+| 质量/测试 | Review | TD-077 lint/结构化合同；记录门禁归属，不复制实现细节 |
+| 可靠性/runbook | No change | 不改运行时/运维流程或 readiness 声明 |
+| 安全/治理 | Review | 畸形合同失败关闭；不改 authz、secret、audit 或设备写入 |
+| 前端/设计 | Review | TD-114 行为等价布局清理；需要浏览器证据，既有设计规则已允许 scope 只加布局 |
+| API/生成物 | Update | TD-018 具体 suggest/OpenAPI 合同；重新生成/检查产物 |
+| references | Review | ADR-0031 继续无依赖；仅在必要时记录 schema 放置 |
+
+## 文档更新门禁
+
+本批次只有满足以下条件才能完成：
+
+- 每个 Update/Review 行都已更新，或有证据记录为不变；
+- 中英 tracker 与计划状态一致；
+- 完成后计划文件只存在于 `completed/`；
+- 共享收口分支的 `npm run docs:check` 与 `git diff --check` 通过；
+- TD-114 证据记录两条路由、三个视口、交互、截图、console/network 检查以及发现/修复的问题；
+- 跳过的目标环境/HDC/模型 provider 门禁保持明确不在关闭声明内。
