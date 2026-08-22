@@ -11,6 +11,14 @@ const _prototypeStateHasNoRetiredSlices: [UnexpectedRetiredSlice] extends [never
 void _prototypeStateHasNoRetiredSlices;
 
 describe("createApiInitialState leftover slices", () => {
+  it("boots API mode without mock identities before authentication", () => {
+    expect(createApiInitialState()).toMatchObject({
+      users: [],
+      currentUserId: "",
+      activeRoleId: "guest"
+    });
+  });
+
   it("boots API mode with empty auditEvents", () => {
     expect(createApiInitialState().auditEvents).toEqual([]);
   });

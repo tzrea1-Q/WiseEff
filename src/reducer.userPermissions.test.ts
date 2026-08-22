@@ -1,8 +1,69 @@
 import { describe, expect, it } from "vitest";
 import { appReducer } from "@/application/state/appState";
+import { createApiInitialState } from "@/application/state/apiInitialState";
 import { createPrototypeState } from "./mockData";
 
+const authenticatedUser = {
+  id: "u-authenticated",
+  name: "Authenticated Admin",
+  email: "authenticated@example.com",
+  username: "authenticated.admin",
+  title: "Administrator",
+  roleId: "admin" as const,
+  isActive: true,
+  createdAt: "2026-08-22T00:00:00.000Z",
+  lastActive: "just now"
+};
+
+const directoryUser = {
+  id: "u-directory",
+  name: "Directory User",
+  email: "directory@example.com",
+  username: "directory.user",
+  title: "Engineer",
+  roleId: "software-user" as const,
+  isActive: true,
+  createdAt: "2026-08-21T00:00:00.000Z",
+  lastActive: "never"
+};
+
+function createAuthenticatedApiState() {
+  return appReducer(createApiInitialState(), {
+    type: "HYDRATE_AUTH_CONTEXT" as const,
+    user: authenticatedUser,
+    roleId: "admin" as const
+  });
+}
+
 describe("shared user permission reducer actions", () => {
+  it("hydrates only the authenticated user into an empty API shell", () => {
+    const next = createAuthenticatedApiState();
+
+    expect(next.users).toEqual([authenticatedUser]);
+    expect(next.currentUserId).toBe(authenticatedUser.id);
+    expect(next.activeRoleId).toBe("admin");
+  });
+
+  it("replaces the governed directory when it includes the current user", () => {
+    const governedCurrentUser = { ...authenticatedUser, title: "Governed Administrator" };
+    const next = appReducer(createAuthenticatedApiState(), {
+      type: "HYDRATE_USERS",
+      users: [directoryUser, governedCurrentUser]
+    });
+
+    expect(next.users).toEqual([directoryUser, governedCurrentUser]);
+  });
+
+  it("retains the authenticated current user when the governed directory omits it", () => {
+    const next = appReducer(createAuthenticatedApiState(), {
+      type: "HYDRATE_USERS",
+      users: [directoryUser]
+    });
+
+    expect(next.users).toEqual([authenticatedUser, directoryUser]);
+    expect(next.users.map((user) => user.id)).not.toContain("u-xu-yun");
+  });
+
   it("adds a platform user with title and role", () => {
     const state = { ...createPrototypeState(), activeRoleId: "guest" };
     const next = appReducer(state, {
