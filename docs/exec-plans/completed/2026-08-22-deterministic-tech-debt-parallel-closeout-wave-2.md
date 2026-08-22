@@ -1,9 +1,11 @@
 # Deterministic tech-debt parallel closeout — wave 2
 
-> Status: **Active**
+> Status: **Completed 2026-08-22**
 > Date: 2026-08-22
 > Planning branch: `docs/deterministic-tech-debt-parallel-closeout-wave2-plan`
-> Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-2.md)
+> Closeout branch: `docs/deterministic-td-parallel-closeout-wave2`
+> Implementation PRs: #580 (TD-109), #582 (TD-018), #583 (TD-077), #585 (TD-114)
+> Chinese: [Chinese](../../zh-CN/exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-2.md)
 > Tracker: [Technical Debt Tracker](../tech-debt-tracker.md)
 
 ## Goal
@@ -42,7 +44,7 @@ The four implementation tracks use isolated worktrees from the refreshed `main` 
 | --- | --- | --- | --- |
 | TD-018 | `fix/td-018-xiaoze-contracts` | agent DTO schemas/registry, suggest route/hook, emitted-frame contract tests, directly affected API docs | No tracker/plan edits; no protocol-package dependency; no stream-parser wrapper |
 | TD-077 | `test/td-077-style-contracts` | residual style tests, `cssAssertions`, ESLint rule/config/tests, directly related quality evidence | No production CSS/component changes; no tracker/plan edits; no unrelated source-test cleanup |
-| TD-109 | `refactor/td-109-promotion-guard` | shared DTS reload promotion guard, server/mock adapters and focused tests | No visible copy changes; no tracker/plan edits; no server import from `src/` |
+| TD-109 | `refactor/td-109-promotion-guard` | shared DTS reload promotion guard, server/mock adapters and focused tests | No visible copy changes; no tracker/plan edits; no imports from `server/` into `src/` |
 | TD-114 | `fix/td-114-action-panel-layout` | review/submission pages, scoped action-panel CSS and focused tests | No Button interface/variant change; no workflow behavior change; no tracker/plan edits |
 | Shared closeout | `docs/deterministic-td-parallel-closeout-wave2` | EN/ZH tracker, this plan, PLANS indexes, stale current-state references | No implementation changes |
 
@@ -122,29 +124,40 @@ git diff --check
 
 Track-specific commands, red/green evidence, and browser artifact paths are recorded in implementation PRs and final tracker entries.
 
+## Closeout evidence
+
+- **TD-109 — #580 (`8d8f06bd`):** domain/mock 23/23 and server promotion 9/9 passed. Implementation-time full suites passed 402 frontend files / 3001 tests and 346 server files / 2682 tests, with 2 files / 8 tests skipped. Repository CI passed 402/3001 frontend tests and 347 server files / 2686 tests, with 1 file / 4 tests skipped.
+- **TD-018 — #582 (`693a4da8`):** focused frontend 12/12 and server/CUSTOM 44/44 passed. Implementation-time full suites passed 401 frontend files / 2991 tests and 348 server files / 2698 tests, with 2 files / 8 tests skipped. Repository CI passed 403/3005 frontend tests and 349 server files / 2711 tests, with 1 file / 4 tests skipped.
+- **TD-077 — #583 (`c3937904`):** repository CI passed 404 frontend files / 3005 tests and 349 server files / 2711 tests, with 1 file / 4 tests skipped; script coverage passed 500 tests with 5 existing skips. The final seven residual files use structural/rendered/primitive contracts, and the error-level regression rule passed its 6/6 focused cases.
+- **TD-114 — #585 (`bf3739a2`):** local focused coverage passed 4 files / 148 tests, the implementation-time frontend suite passed 402 files / 2993 tests, and parameter acceptance passed 3/3. Repository CI passed 405/3010 frontend tests and 349 server files / 2711 tests, with 1 file / 4 tests skipped; Acceptance quality passed 97 tests and Acceptance smoke passed 4 tests. API-mode QA covered `/parameter-review` and `/parameter-submissions` at 1440×900, 768×1024, and 390×844 with snapshots, screenshots, reject/approve/withdraw requests at HTTP 200, zero overflow, and zero console errors. It found and fixed mobile rule ordering, history-card specificity, and an implicit merge-link grid track; the remaining console warning was the local CopilotKit license warning.
+- All four PRs passed the repository Detect, Build and test, Acceptance quality, Acceptance smoke, and Merge bar gates. Their final independent Standards and Spec reviews each reported zero findings.
+- **Combined closeout verification:** after all four implementation merges, the refreshed `bf3739a2` closeout branch was installed locally and verified with the shared documentation diff as its only additional change. `npx tsc -b` passed. `npm run build` passed with only the existing externalized-module and chunk-size warnings. `npm test -- --maxWorkers=4` passed 405 files / 3010 tests. `npm run test:server` passed 348 files / 2707 tests, with 2 files / 8 tests skipped. `npm run lint` reported 0 errors and 298 baseline warnings. `npm run ui:check` passed with raw-color 1016 ≤ 1022, raw-z-index 48 ≤ 50, raw-font-size 214, raw-shadow 142, raw-spacing 1244 ≤ 1250, raw-radius 147 ≤ 148, and all other counters at 0. `npm run contract:check` reported the contract artifacts current. `npm run docs:check` passed documentation governance; the pgvector schema artifact was skipped as designed because the local server lacks the extension and remains CI-verified. `git diff --check` passed. This exercises the same four-merge-plus-shared-doc composition proposed for `main`; the closeout PR still must pass all repository CI gates before merge.
+- This shared closeout updates only the EN/ZH trackers, plans, indexes, and stale current-state references. Repository maps, product specifications, runbooks, security rules, design-system rules, and ADR-0031 were reviewed and remain unchanged; #582 already carries the required API/OpenAPI artifact changes, and #583 carries the quality-rule changes.
+- This closure supplies local and repository-CI implementation evidence only. Path-filtered local non-HDC and target-synthetic jobs were skipped. It does **not** claim HDC/device-lab, target-environment, target-synthetic, or live model/provider evidence.
+
 ## Documentation Impact Matrix
 
 | Area | Status | Files / evidence |
 | --- | --- | --- |
-| Repository maps | Review | `AGENTS.md`, `ARCHITECTURE.md`, `docs/README.md`; no navigation change expected |
-| Planning | Update | this EN/ZH plan, both PLANS indexes, current-state references if stale |
-| Technical debt | Update | EN/ZH tracker rows TD-018/077/109/114 |
-| Product specs | No change | no workflow or product decision changes |
-| Architecture/domain | Review | TD-109 domain guard and TD-018 contract placement; update durable docs only if an interface contract changes |
-| Quality/testing | Review | TD-077 lint/structural contract; record gate ownership without duplicating implementation detail |
-| Reliability/runbooks | No change | no runtime/operator workflow or readiness claim |
-| Security/governance | Review | malformed contracts fail closed; no authz, secret, audit, or device-write change |
-| Frontend/design | Review | TD-114 behavior-equivalent layout cleanup; browser evidence required, durable design rules already cover scoped layout |
-| API/generated artifacts | Update | TD-018 concrete suggest/OpenAPI contract; regenerate/check artifacts |
-| References | Review | ADR-0031 remains dependency-free; note schema placement only if needed |
+| Repository maps | No change | Reviewed `AGENTS.md`, `docs/zh-CN/root/AGENTS.md`, `ARCHITECTURE.md`, `docs/zh-CN/root/ARCHITECTURE.md`, `docs/README.md`, and `docs/zh-CN/README.md`; their navigation remains accurate. |
+| Planning | Update | Archived `docs/exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-2.md` and `docs/zh-CN/exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-2.md`; updated `docs/PLANS.md`, `docs/zh-CN/PLANS.md`, `docs/exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`, and `docs/zh-CN/exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`. |
+| Technical debt | Update | Updated `docs/exec-plans/tech-debt-tracker.md` and `docs/zh-CN/exec-plans/tech-debt-tracker.md`: TD-018/077/109/114 moved to Completed; TD-003/012 and TD-072/075/076 remain Open. |
+| Product specs | No change | Reviewed `docs/product-specs/index.md`, `docs/product-specs/product-spec.md`, `docs/zh-CN/product-specs/index.md`, and `docs/zh-CN/product-specs/product-spec.md`; no workflow or product decision changed. |
+| Architecture/domain | Update | #580 and #582 updated `docs/FRONTEND.md` and `docs/zh-CN/frontend.md`; the shared closeout verified those durable frontend/domain boundaries and requires no further edit. |
+| Quality/testing | Update | #583 updated `docs/design-docs/testing-strategy.md` and `docs/zh-CN/design-docs/testing-strategy.md` for the error-level lint/structural style-test contract; the trackers record its closeout evidence. |
+| Reliability/runbooks | No change | Reviewed `docs/RELIABILITY.md`, `docs/zh-CN/RELIABILITY.md`, `docs/runbooks/README.md`, and `docs/zh-CN/runbooks/README.md`; no runtime/operator workflow or readiness claim changed. |
+| Security/governance | Review | Reviewed unchanged `docs/SECURITY.md`, `docs/zh-CN/SECURITY.md`, `docs/security/README.md`, and `docs/zh-CN/security/README.md`; malformed contracts fail closed, with no authz, secret, audit, or device-write change. |
+| Frontend/design | Review | Reviewed unchanged `docs/design-docs/ui-design-system.md` and `docs/zh-CN/design-docs/ui-design-system.md`; #585 is a behavior-equivalent layout cleanup covered by the existing design rules and browser evidence. |
+| API/generated artifacts | Update | #582 updated `docs/api/README.md`, `docs/zh-CN/api/README.md`, `docs/design-docs/api-contract.md`, `docs/zh-CN/design-docs/api-contract.md`, and `docs/generated/openapi.json`; the concrete suggest/OpenAPI contracts were generated and checked there. |
+| References | Review | Reviewed unchanged `docs/adr/0031-xiaoze-wire-contract-is-a-shared-package.md`; the protocol package remains dependency-free, so no ADR amendment was required. |
 
 ## Documentation Update Gate
 
-The batch cannot be marked complete until:
+The documentation update gate is satisfied on the closeout branch:
 
-- every Update/Review row is updated or recorded unchanged with evidence;
-- EN/ZH tracker and plan state agree;
-- the plan filename exists only under `completed/` after closure;
-- `npm run docs:check` and `git diff --check` pass on the closeout branch;
+- every Update/Review row names exact files and is updated or recorded unchanged with evidence;
+- the EN/ZH trackers and plan state agree, and the plan filename exists only under `completed/`;
+- combined local verification, `npm run docs:check`, and `git diff --check` passed on the four-merge-plus-shared-doc closeout branch;
 - TD-114 evidence records both routes, all three viewports, interactions, screenshots, console/network checks, and issues found/fixed;
-- skipped target/HDC/model-provider gates remain explicitly outside the closure claim.
+- skipped target/HDC/model-provider gates remain explicitly outside the closure claim;
+- the closeout PR's repository CI gates remain blocking and must all be green before merge.

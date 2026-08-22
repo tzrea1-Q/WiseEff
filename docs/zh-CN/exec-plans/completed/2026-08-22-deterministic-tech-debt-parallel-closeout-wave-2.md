@@ -1,9 +1,11 @@
 # 确定性技术债并行收口——第二批
 
-> 状态：**进行中**
+> 状态：**已于 2026-08-22 完成**
 > 日期：2026-08-22
 > 计划分支：`docs/deterministic-tech-debt-parallel-closeout-wave2-plan`
-> English: [English](../../../exec-plans/active/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-2.md)
+> 收口分支：`docs/deterministic-td-parallel-closeout-wave2`
+> 实现 PR：#580（TD-109）、#582（TD-018）、#583（TD-077）、#585（TD-114）
+> English: [English](../../../exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-2.md)
 > 追踪表：[技术债追踪表](../tech-debt-tracker.md)
 
 ## 目标
@@ -122,29 +124,40 @@ git diff --check
 
 每条轨道的专用命令、红绿证据与浏览器产物路径记录在实现 PR 和最终 tracker 条目。
 
+## 收口证据
+
+- **TD-109——#580（`8d8f06bd`）：** domain/mock 23/23、服务端 promotion 9/9 通过。实现阶段全量为前端 402 files / 3001 tests、服务端 346 files / 2682 tests，另有 2 files / 8 tests 按既有条件跳过。仓库 CI 为前端 402/3001、服务端 347 files / 2686 tests，另有 1 file / 4 tests 跳过。
+- **TD-018——#582（`693a4da8`）：** 聚焦前端 12/12、服务端/CUSTOM 44/44 通过。实现阶段全量为前端 401 files / 2991 tests、服务端 348 files / 2698 tests，另有 2 files / 8 tests 跳过。仓库 CI 为前端 403/3005、服务端 349 files / 2711 tests，另有 1 file / 4 tests 跳过。
+- **TD-077——#583（`c3937904`）：** 仓库 CI 为前端 404 files / 3005 tests、服务端 349 files / 2711 tests，另有 1 file / 4 tests 跳过；脚本覆盖 500 tests 通过，保留 5 个既有 skip。最后七个残余已改用结构化/渲染/primitive 合同，error 级回归规则的 6/6 聚焦用例通过。
+- **TD-114——#585（`bf3739a2`）：** 本地聚焦 4 files / 148 tests、实现阶段前端全量 402 files / 2993 tests、参数验收 3/3 通过。仓库 CI 为前端 405/3010、服务端 349 files / 2711 tests，另有 1 file / 4 tests 跳过；Acceptance quality 97 tests、Acceptance smoke 4 tests 通过。API 模式在 `/parameter-review`、`/parameter-submissions` 的 1440×900、768×1024、390×844 完成 snapshot、screenshot 与 reject/approve/withdraw 交互，请求均 HTTP 200，overflow 和 console error 均为 0。走查发现并修复移动端规则顺序、history-card specificity 与 merge-link 隐式网格轨道；剩余 warning 只有本地 CopilotKit license 提示。
+- 四个 PR 的仓库 Detect、Build and test、Acceptance quality、Acceptance smoke、Merge bar 门禁全部通过；四条实现的最终独立 Standards / Spec 复审均为 0 个问题。
+- **组合收口验证：** 四条实现都合入后，在刷新至 `bf3739a2` 的收口分支执行本地安装与组合验证；相对该四实现基线，唯一附加变更是共享文档 diff。`npx tsc -b` 通过。`npm run build` 通过，只有既有 externalized-module 与 chunk-size warning。`npm test -- --maxWorkers=4` 通过 405 files / 3010 tests。`npm run test:server` 通过 348 files / 2707 tests，另有 2 files / 8 tests 按既有条件跳过。`npm run lint` 为 0 error / 298 条基线 warning。`npm run ui:check` 通过：raw-color 1016 ≤ 1022、raw-z-index 48 ≤ 50、raw-font-size 214、raw-shadow 142、raw-spacing 1244 ≤ 1250、raw-radius 147 ≤ 148，其它计数均为 0。`npm run contract:check` 确认 contract 产物为 current。`npm run docs:check` 的文档治理检查通过；本地服务端缺少 pgvector 扩展，因此 pgvector schema artifact 按设计跳过并继续由 CI 验证。`git diff --check` 通过。这组验证覆盖了待合入 `main` 的“四实现 merge + 共享文档”同一文件组合；closeout PR 仍须等仓库 CI 门禁全部变绿后才能合入。
+- 本次共享收口只更新中英 tracker、计划、索引和失真的当前状态引用。仓库地图、产品规格、runbook、安全规则、设计系统规则与 ADR-0031 均已复核且无需修改；#582 已包含必要的 API/OpenAPI 产物，#583 已包含质量规则。
+- 本次关闭只提供本地与仓库 CI 实现证据。按路径过滤的 local non-HDC 与 target-synthetic job 已跳过；本批次**不声明** HDC/设备实验室、目标环境、target synthetic 或真实模型/provider 证据。
+
 ## 文档影响矩阵
 
 | 区域 | 状态 | 文件/证据 |
 | --- | --- | --- |
-| 仓库地图 | Review | `AGENTS.md`、`ARCHITECTURE.md`、`docs/README.md`；预计无导航变化 |
-| 计划 | Update | 本中英计划、两份 PLANS 索引、失真的当前状态引用 |
-| 技术债 | Update | 中英 tracker 的 TD-018/077/109/114 |
-| 产品规格 | No change | 不改工作流或产品决策 |
-| 架构/领域 | Review | TD-109 领域 guard 与 TD-018 contract 放置；只有接口合同变化时才改长期文档 |
-| 质量/测试 | Review | TD-077 lint/结构化合同；记录门禁归属，不复制实现细节 |
-| 可靠性/runbook | No change | 不改运行时/运维流程或 readiness 声明 |
-| 安全/治理 | Review | 畸形合同失败关闭；不改 authz、secret、audit 或设备写入 |
-| 前端/设计 | Review | TD-114 行为等价布局清理；需要浏览器证据，既有设计规则已允许 scope 只加布局 |
-| API/生成物 | Update | TD-018 具体 suggest/OpenAPI 合同；重新生成/检查产物 |
-| references | Review | ADR-0031 继续无依赖；仅在必要时记录 schema 放置 |
+| 仓库地图 | No change | 已复核 `AGENTS.md`、`docs/zh-CN/root/AGENTS.md`、`ARCHITECTURE.md`、`docs/zh-CN/root/ARCHITECTURE.md`、`docs/README.md`、`docs/zh-CN/README.md`；导航仍准确。 |
+| 计划 | Update | 已归档 `docs/exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-2.md`、`docs/zh-CN/exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-2.md`；已更新 `docs/PLANS.md`、`docs/zh-CN/PLANS.md`、`docs/exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`、`docs/zh-CN/exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`。 |
+| 技术债 | Update | 已更新 `docs/exec-plans/tech-debt-tracker.md`、`docs/zh-CN/exec-plans/tech-debt-tracker.md`：TD-018/077/109/114 移入关闭项，TD-003/012 与 TD-072/075/076 保持 Open。 |
+| 产品规格 | No change | 已复核 `docs/product-specs/index.md`、`docs/product-specs/product-spec.md`、`docs/zh-CN/product-specs/index.md`、`docs/zh-CN/product-specs/product-spec.md`；没有工作流或产品决策变化。 |
+| 架构/领域 | Update | #580、#582 已更新 `docs/FRONTEND.md`、`docs/zh-CN/frontend.md`；共享收口复核这些长期前端/领域边界后无需追加修改。 |
+| 质量/测试 | Update | #583 已更新 `docs/design-docs/testing-strategy.md`、`docs/zh-CN/design-docs/testing-strategy.md`，记录 error 级 lint/结构化样式测试合同；tracker 同步记录收口证据。 |
+| 可靠性/runbook | No change | 已复核 `docs/RELIABILITY.md`、`docs/zh-CN/RELIABILITY.md`、`docs/runbooks/README.md`、`docs/zh-CN/runbooks/README.md`；没有运行时/运维流程或 readiness 声明变化。 |
+| 安全/治理 | Review | 已复核且不修改 `docs/SECURITY.md`、`docs/zh-CN/SECURITY.md`、`docs/security/README.md`、`docs/zh-CN/security/README.md`；畸形合同失败关闭，不改 authz、secret、audit 或设备写入。 |
+| 前端/设计 | Review | 已复核且不修改 `docs/design-docs/ui-design-system.md`、`docs/zh-CN/design-docs/ui-design-system.md`；#585 是由既有设计规则和浏览器证据覆盖的行为等价布局清理。 |
+| API/生成物 | Update | #582 已更新 `docs/api/README.md`、`docs/zh-CN/api/README.md`、`docs/design-docs/api-contract.md`、`docs/zh-CN/design-docs/api-contract.md`、`docs/generated/openapi.json`；具体 suggest/OpenAPI contract 已在该 PR 生成并检查。 |
+| references | Review | 已复核且不修改 `docs/adr/0031-xiaoze-wire-contract-is-a-shared-package.md`；协议包继续保持无依赖，无需修订 ADR。 |
 
 ## 文档更新门禁
 
-本批次只有满足以下条件才能完成：
+收口分支已满足文档更新门禁：
 
-- 每个 Update/Review 行都已更新，或有证据记录为不变；
-- 中英 tracker 与计划状态一致；
-- 完成后计划文件只存在于 `completed/`；
-- 共享收口分支的 `npm run docs:check` 与 `git diff --check` 通过；
+- 每个 Update/Review 行均列出精确文件，并已更新或有证据记录为不变；
+- 中英 tracker 与计划状态一致，计划文件只存在于 `completed/`；
+- “四实现 merge + 共享文档”收口分支的组合本地验证、`npm run docs:check`、`git diff --check` 均通过；
 - TD-114 证据记录两条路由、三个视口、交互、截图、console/network 检查以及发现/修复的问题；
-- 跳过的目标环境/HDC/模型 provider 门禁保持明确不在关闭声明内。
+- 跳过的目标环境/HDC/模型 provider 门禁保持明确不在关闭声明内；
+- closeout PR 的仓库 CI 仍是合入阻断项，必须全部变绿后才能合入。
