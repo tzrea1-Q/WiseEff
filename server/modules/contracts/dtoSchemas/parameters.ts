@@ -211,6 +211,31 @@ export const parameterImportBatchDtoSchema = z.object({
   items: z.array(parameterImportBatchItemDtoSchema)
 });
 
+export const hotspotScoreBreakdownDtoSchema = z.object({
+  frequency: z.number(),
+  scope: z.number(),
+  workflow: z.number(),
+  collaboration: z.number()
+}).strict();
+
+export const dashboardHotspotDtoSchema = z.object({
+  id: z.string(),
+  kind: z.enum(["module", "project", "parameter"]),
+  title: z.string(),
+  projectId: z.string().optional(),
+  projectCode: z.string(),
+  module: z.string(),
+  statusLabel: z.string(),
+  statusLevel: z.enum(["watch", "elevated", "normal"]),
+  score: z.number(),
+  scoreBreakdown: hotspotScoreBreakdownDtoSchema,
+  evidence: z.array(z.string()),
+  trendDelta: z.number(),
+  trendDirection: z.enum(["up", "down", "flat"]),
+  lastChangedAt: z.string().optional(),
+  suggestedPath: z.string()
+});
+
 export const projectListResponseSchema = itemsEnvelopeSchema(projectDtoSchema);
 export const parameterListResponseSchema = itemsEnvelopeSchema(parameterRecordDtoSchema);
 export const parameterResponseSchema = itemEnvelopeSchema(parameterRecordDtoSchema);
@@ -222,4 +247,5 @@ export const parameterSubmissionRoundListResponseSchema = itemsEnvelopeSchema(pa
 export const parameterChangeRequestListResponseSchema = itemsEnvelopeSchema(changeRequestDtoSchema);
 export const parameterChangeRequestResponseSchema = itemEnvelopeSchema(changeRequestDtoSchema);
 export const parameterImportBatchResponseSchema = itemEnvelopeSchema(parameterImportBatchDtoSchema);
+export const parameterDashboardHotspotsResponseSchema = itemsEnvelopeSchema(dashboardHotspotDtoSchema);
 export const parameterDeleteResponseSchema = okEnvelopeSchema;

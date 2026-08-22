@@ -92,16 +92,31 @@ describe("parameter dashboard routes", () => {
     expect(response.body).toEqual({ item: summary });
   });
 
-  it("GET /api/v1/parameters/dashboard/hotspots returns items envelope for viewer", async () => {
+  it("GET /api/v1/parameters/dashboard/hotspots defaults dimension to project", async () => {
     vi.mocked(service.getDashboardHotspots).mockResolvedValue([]);
 
     const response = await requestJson<{ items: unknown[] }>(
       makeServer({ db: makeDb() }),
-      "/api/v1/parameters/dashboard/hotspots?window=30d&dimension=project"
+      "/api/v1/parameters/dashboard/hotspots?window=30d"
     );
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ items: [] });
+    expect(service.getDashboardHotspots).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ window: "30d", dimension: "project" })
+    );
+  });
+
+  it("rejects the retired overall hotspot dimension", async () => {
+    const response = await requestJson<{ error: { code: string } }>(
+      makeServer({ db: makeDb() }),
+      "/api/v1/parameters/dashboard/hotspots?window=30d&dimension=overall"
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_FAILED");
+    expect(service.getDashboardHotspots).not.toHaveBeenCalled();
   });
 
   it("rejects callers without parameter:view", async () => {

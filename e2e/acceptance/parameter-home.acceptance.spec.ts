@@ -42,6 +42,35 @@ test.describe("parameter-home production dashboard", () => {
     await page.getByRole("radio", { name: "模块榜" }).first().click();
     await expect(page.getByRole("radio", { name: "模块榜" }).first()).toHaveAttribute("aria-checked", "true");
 
+    await page.getByRole("radio", { name: "项目榜" }).first().click();
+    await page.getByRole("button", { name: /展开热区 #1 / }).click();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect
+      .poll(async () => page.locator(".sidebar").evaluate((sidebar) => sidebar.getBoundingClientRect().right))
+      .toBeLessThanOrEqual(0);
+
+    const mobileFabOverlapsLastHotspot = await page.evaluate(() => {
+      const fab = document.querySelector<HTMLElement>('button[aria-label="打开小泽"]');
+      const hotspotRows = Array.from(
+        document.querySelectorAll<HTMLElement>('[aria-label^="展开热区"], [aria-label^="收起热区"]')
+      );
+      const lastHotspot = hotspotRows.at(-1);
+      if (!fab || !lastHotspot) {
+        return true;
+      }
+
+      const fabRect = fab.getBoundingClientRect();
+      const hotspotRect = lastHotspot.getBoundingClientRect();
+      return !(
+        fabRect.right <= hotspotRect.left ||
+        fabRect.left >= hotspotRect.right ||
+        fabRect.bottom <= hotspotRect.top ||
+        fabRect.top >= hotspotRect.bottom
+      );
+    });
+
+    expect(mobileFabOverlapsLastHotspot).toBe(false);
+
     await recordOperationEvidence({
       operationId: "PARAM-HOME-001",
       title: "parameter-home dashboard APIs and in-page controls",
@@ -60,7 +89,8 @@ test.describe("parameter-home production dashboard", () => {
           responseSummary: `items=${hotspotsBody.items?.length ?? 0}`
         })
       ],
-      notes: "Dashboard summary/hotspots APIs returned data and /parameter-home rendered time-window and hotspot-dimension controls."
+      notes:
+        "Dashboard summary/hotspots APIs returned data; /parameter-home rendered time-window and hotspot-dimension controls; the expanded mobile leaderboard remained unobstructed by the Xiaoze launcher."
     });
   });
 });

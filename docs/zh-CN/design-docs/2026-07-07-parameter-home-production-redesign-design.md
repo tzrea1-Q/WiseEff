@@ -1,12 +1,18 @@
 # 参数管理首页生产级重设计方案
 
+> English: [English](../../design-docs/2026-07-07-parameter-home-production-redesign-design.md)
+
 日期：2026-07-07
-状态：**已实施**
+状态：**已实施；热点评分合同于 2026-08-23 由后续四维行为评分方案取代**
 适用范围：`/parameter-home`（组件 `ParameterHomePage`，特性目录 `src/features/parameter-home/`）
 
-## 背景与问题
+本文件记录 Parameter Home 生产化的整体设计。热点评分部分以后续的
+[项目热点行为评分重设计](../exec-plans/completed/2026-07-08-project-hotspot-scoring-redesign.md)
+和当前 [API 合同](api-contract.md) 为准；旧五维模型只保留为历史背景，不能作为当前实现或审计口径。
 
-当前 `/parameter-home` 停留在原型/mock 阶段，三个层面都不达生产上线标准：
+## 历史背景与问题
+
+本设计起草时，`/parameter-home` 停留在原型/mock 阶段，三个层面都不达生产上线标准：
 
 - **数据真实性**：参数更新趋势图完全用固定参考日（2026-05-10）的 LCG 伪随机序列生成，与真实变更历史无关；各项目风险分布图基于真实风险计数但叠加随机 jitter；"AI 评分拆解"实为前端硬编码的五维启发式公式，却以"AI"名义呈现。
 - **后端接入**：页面无专用后端聚合接口，完全从全局 `PrototypeState` 同步派生；API 模式下部分工作台信号（配置脏态、账号需关注、待导出）仍来自 mock 残留字段。
@@ -53,7 +59,7 @@
 
 - 参数更新趋势（真实时序）、各项目风险分布（真实计数）、可解释热榜（服务端评分 + 真实证据）。
 - Admin/Guest 默认展开；operator 首屏默认折叠（渐进披露），保持行动优先。
-- 热榜维度切换（总/模块/项目/参数）与评分拆解保留，改为服务端计算、可审计。
+- 热榜维度切换（项目/模块/参数）与评分拆解保留，改为服务端计算、可审计。
 
 ### 分析上下文控件统一
 
@@ -82,8 +88,8 @@
 
 仅热榜（维度相关），切换维度时单独刷新：
 
-- 按 `dimension`（overall/module/project/parameter）在 SQL 侧聚合每组的变更频次、风险权重、影响范围、流程堆积、偏离度。
-- **评分下沉到服务端**：沿用现有五维确定性公式（frequency/risk/impact/workflow/drift），改为基于真实聚合计算，返回 `score` + `scoreBreakdown` + `evidence[]` + `suggestedPath`，前端只渲染。
+- 按 `dimension`（project/module/parameter）在 SQL 侧聚合每组的窗口历史事件、修改范围、变更请求、开放/打回流程与贡献者。
+- **评分下沉到服务端**：当前统一采用四维行为评分（`frequency` / `scope` / `workflow` / `collaboration`），返回 `score` + `scoreBreakdown` + `evidence[]` + `suggestedPath`，前端只渲染。parameter 的 `scope` 统计修改该定义的项目数，而不是参数实例数。
 - **诚实命名**：接口与 UI 从"AI 评分拆解"改为"热度评分构成/依据"；评分可复现、可审计。
 
 ### 契约、治理与性能
@@ -166,7 +172,7 @@ loading 骨架、空态引导文案、错误态带重试；operator 首屏先渲
 
 ### 响应式
 
-桌面 1440 / 平板 768 / 移动 390 三档；态势条自动换行，证据区图表堆叠，热榜沿用 accordion。
+桌面 1440 / 平板 768 / 移动 390 三档；态势条自动换行，证据区图表堆叠，热榜沿用 accordion。Parameter Home 在不超过 640px 时让小泽入口跟随页面内容，避免遮挡最后一条热榜；更宽视口继续使用固定入口。
 
 ### 无障碍
 
@@ -215,18 +221,20 @@ loading 骨架、空态引导文案、错误态带重试；operator 首屏先渲
 | `docs/FRONTEND.md` | 新增 dashboard 数据层与特性目录说明 | 阶段 3 |
 | `docs/design-docs/2026-05-24-parameter-personal-workbench-design.md` | 标注被本方案取代/演进的部分 | 阶段 4 |
 | OpenAPI 契约产物 | 重新生成并校验 | 阶段 1 |
-| 本 spec 的中英镜像 | 视需要补英文镜像 | 阶段 4 |
+| `docs/design-docs/2026-07-07-parameter-home-production-redesign-design.md` | Update：新增独立英文 companion，并与本页互链 | 2026-08-23 合同收口 |
+| `scripts/bilingual-docs.ts` | Update：把本 spec 中英 pair 纳入强制治理清单 | 2026-08-23 合同收口 |
+| `docs/exec-plans/completed/2026-07-08-project-hotspot-scoring-redesign.md` 及中文 companion | Update：记录四维 successor 与文档影响 | 2026-08-23 合同收口 |
 
 **Documentation Update Gate**：完成前运行 `npm run docs:check`，确保文档与实现同步。
 
 ## 附录：评分与分桶口径（可审计基准）
 
-- **五维评分**（服务端确定性计算，输入均为真实聚合值）：
-  - `frequency`：组内参数数与近窗关联变更请求数的加权和。
-  - `risk`：组内各参数风险等级权重和（High=3 / Medium=2 / Low=1，乘以系数）。
-  - `impact`：去重参数定义数与关联日志信号数的加权和。
-  - `workflow`：关联变更请求数与高风险数的加权和。
-  - `drift`：组内各参数当前值与推荐值的相对偏离百分比之和。
-  - `score = frequency + risk + impact + workflow + drift`，各时间窗使用固定权重档（沿用现有 `timeWindowProfiles` 口径，去除随机成分）。
+- **四维行为评分**（服务端确定性计算，输入均为真实聚合值）：
+  - `frequency = historyEventsInWindow × 3 + changeRequestsInWindow × 10 × requestWeight`。
+  - `scope = modifiedParamCount × 2 + modificationRate × 100 × 4`，其中 `modificationRate = modifiedParamCount / max(totalParamCount, 1)`。
+  - `workflow = changeRequestsInWindow × 8 × requestWeight + openRequestCount × 5 + returnedInWindow × 12`。
+  - `collaboration = contributorsInWindow × 15 + contributorsAllTime × 3`。
+  - `score = round1(frequency + scope + workflow + collaboration)`；`requestWeight` 为 `7d = 1.25`、`30d = 1.00`、`180d = 0.90`。
+  - project/module 的范围分母是参数实例；parameter 的范围分母是拥有该定义的项目。`risk` / `impact` / `drift` 是已退役的历史键，不属于当前 `scoreBreakdown`。
 - **趋势分桶**：7d/30d 按天 `date_trunc('day', changed_at)`，180d 按周 `date_trunc('week', changed_at)`；桶内计数为 `parameter_history_entries` 变更数（可叠加 `parameter_change_requests` 流程事件数，作为独立系列或合并计数，实施时在 spec 附录固化口径）。
 - **风险分布**：`COUNT(*) GROUP BY project, risk`，直接来自 `parameter_definitions.risk`，无缩放、无 jitter。

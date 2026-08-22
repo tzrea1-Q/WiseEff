@@ -71,7 +71,7 @@ describe.skipIf(!databaseAvailable)("dashboard service", () => {
   it("returns ranked module hotspots with behavioral score breakdown", async () => {
     const hotspots = await getDashboardHotspots(db, { auth, window: "30d", dimension: "module" });
     expect(hotspots.length).toBeGreaterThan(0);
-    expect(hotspots[0].scoreBreakdown).toHaveProperty("scope");
+    expect(Object.keys(hotspots[0].scoreBreakdown)).toEqual(["frequency", "scope", "workflow", "collaboration"]);
     expect(hotspots[0].evidence[0]).toContain("累计修改");
   });
 
@@ -79,15 +79,14 @@ describe.skipIf(!databaseAvailable)("dashboard service", () => {
     const hotspots = await getDashboardHotspots(db, { auth, window: "30d", dimension: "project" });
     expect(hotspots.length).toBeGreaterThan(0);
     expect(hotspots[0].score).toBeGreaterThanOrEqual(hotspots[hotspots.length - 1].score);
-    expect(hotspots[0].scoreBreakdown).toHaveProperty("scope");
+    expect(Object.keys(hotspots[0].scoreBreakdown)).toEqual(["frequency", "scope", "workflow", "collaboration"]);
     expect(hotspots[0].evidence[0]).toContain("累计修改");
   });
 
   it("returns ranked parameter hotspots with project-scope evidence", async () => {
     const hotspots = await getDashboardHotspots(db, { auth, window: "30d", dimension: "parameter" });
     expect(hotspots.length).toBeGreaterThan(0);
-    expect(hotspots[0].scoreBreakdown).toHaveProperty("scope");
-    expect(hotspots[0].scoreBreakdown).not.toHaveProperty("risk");
+    expect(Object.keys(hotspots[0].scoreBreakdown)).toEqual(["frequency", "scope", "workflow", "collaboration"]);
     expect(hotspots[0].evidence[0]).toContain("个项目中修改");
     expect(hotspots[0].projectCode).toContain("个项目");
   });

@@ -44,6 +44,7 @@ import {
   parameterDraftResponseSchema,
   parameterHistoryResponseSchema,
   parameterImportBatchResponseSchema,
+  parameterDashboardHotspotsResponseSchema,
   parameterListResponseSchema,
   parameterResponseSchema,
   parameterSubmissionRoundListResponseSchema,
@@ -68,6 +69,7 @@ export const dtoSchemaCatalog: Record<string, ZodTypeAny> = {
   ParameterChangeRequestListResponse: parameterChangeRequestListResponseSchema,
   ParameterChangeRequestResponse: parameterChangeRequestResponseSchema,
   ParameterImportBatchResponse: parameterImportBatchResponseSchema,
+  ParameterDashboardHotspotsResponse: parameterDashboardHotspotsResponseSchema,
   ParameterModuleRegistryResponse: parameterModuleRegistryResponseSchema,
 
   LogFileUploadResponse: logFileUploadResponseSchema,
@@ -119,6 +121,7 @@ export const dtoSchemaCoveredRouteIds = [
   "parameters.reviewChangeRequest",
   "parameters.createImportBatch",
   "parameters.applyImportBatch",
+  "parameters-dashboard-hotspots",
   "parameterModules.getRegistry",
   "logs.uploadFile",
   "logs.list",

@@ -179,19 +179,35 @@ Read-only aggregation endpoints for `/parameter-home`. Both routes require param
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/v1/parameters/dashboard/summary` | KPIs, update trend buckets, per-project risk buckets, and workbench signals for the selected window (`7d`, `30d`, `180d`). |
-| `GET` | `/api/v1/parameters/dashboard/hotspots` | Ranked hotspot leaderboard for the selected window and dimension (`overall`, `module`, `project`, `parameter`). |
+| `GET` | `/api/v1/parameters/dashboard/hotspots` | Ranked hotspot leaderboard for the selected window and dimension (`project`, `module`, `parameter`). |
 
 Query parameters:
 
 - `summary`: `window` (default `30d`), optional `projectId`
-- `hotspots`: `window` (default `30d`), `dimension` (default `overall`), optional `projectId`
+- `hotspots`: `window` (default `30d`), `dimension` (`project` | `module` | `parameter`, default `project`), optional `projectId`
 
 Response envelopes:
 
 - `summary` returns `{ item: DashboardSummary }`
 - `hotspots` returns `{ items: DashboardHotspot[] }`
 
-`DashboardHotspot.scoreBreakdown` is deterministic server-side scoring (frequency, risk, impact, workflow, drift). Frontend presentation helpers in `src/hotspotPresentation.ts` map breakdown dominance to action templates but do not compute business aggregates.
+Every project, module, and parameter row uses the same behavioral `DashboardHotspot.scoreBreakdown` contract:
+
+```json
+{
+  "frequency": 30,
+  "scope": 40,
+  "workflow": 25,
+  "collaboration": 15
+}
+```
+
+- `frequency`: parameter-history activity plus change requests in the selected window.
+- `scope`: modified parameter instances for project/module rows; modified projects for parameter rows.
+- `workflow`: requests in the window, open requests, and returned work.
+- `collaboration`: distinct contributors in and across the selected window.
+
+`score` is the rounded sum of those four deterministic server-side dimensions. The frontend renders the returned score, evidence, trend, and deep link; it does not reconstruct ranking or business aggregates. `ParameterDashboardHotspotsResponse` in the generated OpenAPI publishes this exact four-key object and does not accept the retired `risk` / `impact` / `drift` breakdown.
 
 ## Product Feedback
 

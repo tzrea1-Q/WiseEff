@@ -38,6 +38,7 @@ export const developerFacingBilingualDocs: BilingualDocEntry[] = [
   { en: "docs/design-docs/testing-strategy.md", zh: "docs/zh-CN/design-docs/testing-strategy.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/deployment-operations.md", zh: "docs/zh-CN/design-docs/deployment-operations.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/security-governance.md", zh: "docs/zh-CN/design-docs/security-governance.md", tier: "architecture", status: "required" },
+  { en: "docs/design-docs/2026-07-07-parameter-home-production-redesign-design.md", zh: "docs/zh-CN/design-docs/2026-07-07-parameter-home-production-redesign-design.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/2026-08-06-project-configuration-workbench-design.md", zh: "docs/zh-CN/design-docs/2026-08-06-project-configuration-workbench-design.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/2026-08-12-knowledge-base-design.md", zh: "docs/zh-CN/design-docs/2026-08-12-knowledge-base-design.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/2026-08-19-organization-administration-design.md", zh: "docs/zh-CN/design-docs/2026-08-19-organization-administration-design.md", tier: "architecture", status: "required" },

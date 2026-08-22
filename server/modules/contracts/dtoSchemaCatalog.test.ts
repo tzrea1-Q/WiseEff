@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildOpenApiDocument } from "./openapi";
 import { schemaRegistry } from "./schemaRegistry";
 import { dtoSchemaCatalog, dtoSchemaCoveredRouteIds } from "./dtoSchemas/catalog";
+import { dashboardHotspotDtoSchema } from "./dtoSchemas/parameters";
 
 const leftoverSchemaNames = new Set(["GenericObjectResponse"]);
 
@@ -57,5 +58,35 @@ describe("DTO schema catalog coverage", () => {
     });
     expect(dtoSchemaCatalog.XiaozeSuggestRequest).toBeDefined();
     expect(dtoSchemaCatalog.XiaozeSuggestResponse).toBeDefined();
+  });
+
+  it("accepts only the four-dimension behavioral hotspot DTO", () => {
+    const base = {
+      id: "module:charging",
+      kind: "module" as const,
+      title: "Charging Policy",
+      projectCode: "3 个项目",
+      module: "Charging Policy",
+      statusLabel: "偏高",
+      statusLevel: "elevated" as const,
+      score: 100,
+      evidence: [],
+      trendDelta: 0,
+      trendDirection: "flat" as const,
+      suggestedPath: "/parameters?module=Charging%20Policy"
+    };
+
+    expect(
+      dashboardHotspotDtoSchema.safeParse({
+        ...base,
+        scoreBreakdown: { frequency: 25, scope: 25, workflow: 25, collaboration: 25 }
+      }).success
+    ).toBe(true);
+    expect(
+      dashboardHotspotDtoSchema.safeParse({
+        ...base,
+        scoreBreakdown: { frequency: 25, scope: 25, workflow: 25, collaboration: 25, risk: 20 }
+      }).success
+    ).toBe(false);
   });
 });

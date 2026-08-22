@@ -50,6 +50,44 @@ describe("M5 OpenAPI contract", () => {
     ).toEqual([]);
   });
 
+  it("publishes the behavioral hotspot score breakdown instead of an opaque placeholder", () => {
+    const schema = buildOpenApiDocument().components.schemas.ParameterDashboardHotspotsResponse as {
+      type?: string;
+      required?: string[];
+      properties?: {
+        items?: {
+          type?: string;
+          items?: {
+            properties?: {
+              scoreBreakdown?: {
+                required?: string[];
+                properties?: Record<string, unknown>;
+                additionalProperties?: boolean;
+              };
+            };
+          };
+        };
+      };
+    };
+
+    expect(schema.type).toBe("object");
+    expect(schema.required).toEqual(["items"]);
+    expect(schema.properties?.items?.type).toBe("array");
+    expect(schema.properties?.items?.items?.properties?.scoreBreakdown?.required).toEqual([
+      "frequency",
+      "scope",
+      "workflow",
+      "collaboration"
+    ]);
+    expect(Object.keys(schema.properties?.items?.items?.properties?.scoreBreakdown?.properties ?? {})).toEqual([
+      "frequency",
+      "scope",
+      "workflow",
+      "collaboration"
+    ]);
+    expect(schema.properties?.items?.items?.properties?.scoreBreakdown?.additionalProperties).toBe(false);
+  });
+
   it("publishes the read-only Config set member identity endpoint", () => {
     expect(routeManifest).toContainEqual({
       id: "parameters.listConfigSetFiles",
