@@ -9,4 +9,66 @@ export WISEEFF_COMPOSE_REQUIRE_V2=true
 
 # shellcheck source=../../../scripts/compose-lib.sh
 source "${repo_root}/scripts/compose-lib.sh"
+
+validate_api_scale() {
+  local argument compose_command scale_value replicas
+  local expects_global_option_value=false
+  local expects_scale_value=false
+  compose_command=""
+
+  for argument in "$@"; do
+    if [ -z "$compose_command" ]; then
+      if [ "$expects_global_option_value" = "true" ]; then
+        expects_global_option_value=false
+        continue
+      fi
+
+      case "$argument" in
+        --ansi | --env-file | -f | --file | --parallel | --profile | --progress | --project-directory | -p | --project-name)
+          expects_global_option_value=true
+          continue
+          ;;
+        -*)
+          continue
+          ;;
+        *)
+          compose_command="$argument"
+          continue
+          ;;
+      esac
+    fi
+
+    scale_value=""
+    if [ "$compose_command" = "scale" ]; then
+      if [ "$argument" = "--" ]; then
+        continue
+      fi
+      scale_value="$argument"
+    elif [ "$compose_command" = "up" ]; then
+      if [ "$argument" = "--" ]; then
+        break
+      elif [ "$expects_scale_value" = "true" ]; then
+        scale_value="$argument"
+        expects_scale_value=false
+      elif [ "$argument" = "--scale" ]; then
+        expects_scale_value=true
+        continue
+      elif [[ "$argument" == --scale=* ]]; then
+        scale_value="${argument#--scale=}"
+      fi
+    else
+      continue
+    fi
+
+    if [[ "$scale_value" == api=* ]]; then
+      replicas="${scale_value#api=}"
+      if [ "$replicas" != "1" ]; then
+        echo "The supported self-hosted topology requires exactly one API replica; api=${replicas} is unsupported." >&2
+        return 2
+      fi
+    fi
+  done
+}
+
+validate_api_scale "$@"
 wiseeff_compose_exec "${compose_dir}" "${compose_file}" "$@"

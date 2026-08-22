@@ -11,6 +11,12 @@
 - Bridge-backed 会话仍受后端调试权限、lease、确认 token、快照回滚与审计约束。
 - 本文关注本地/自托管操作流程，不覆盖托管云发布流程。
 
+## 受支持的部署拓扑
+
+仓库提供的自托管运行时只支持一个 API 副本。Compose 必须通过 `ops/self-hosted/scripts/compose` 执行；对于 `up --scale` 两种写法和独立 `scale` 命令的 operand，只允许精确的 `api=1`，其他所有 `api=*` 值都会在调用 Docker 前被拒绝，其他服务的扩容参数仍正常透传。
+
+不要把直接执行 `docker compose`、使用 orchestrator 或外部平台当成绕过该约束的方法。多 API 部署只有在平台提供 bridge-aware routing、确保配对 WebSocket 与之后每个 bridge-backed HTTP 请求都落到同一 API 进程时才具备继续验证的前提；这种自定义亲和与 HA 验证不在本手册和 stock 部署契约内，必须另取目标环境证据。在没有该证据时，配对或调试前须把 API 副本降为一个；普通非 Bridge 接口健康不能证明 Bridge 正确。
+
 ## 必需环境变量
 
 服务端运行变量：
