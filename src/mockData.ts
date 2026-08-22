@@ -4,7 +4,7 @@
  * `src/application/state/apiInitialState.ts`. Production `App.tsx` / `appState.ts`
  * should not import `createPrototypeState` or the projects catalog from here.
  */
-export { createApiInitialState, users } from "./application/state/apiInitialState";
+export { createApiInitialState } from "./application/state/apiInitialState";
 export { derivePowerManagementRuntimeState } from "./application/state/derivePowerManagementRuntimeState";
 export {
   auditEvents,
@@ -12,6 +12,7 @@ export {
   initialState,
   mockDataFingerprint,
   projects,
-  roles
+  roles,
+  users
 } from "./infrastructure/mock/prototypeState";
 export { REVIEW_MOCK_NOW } from "./reviewMockData";

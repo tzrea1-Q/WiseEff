@@ -46,7 +46,7 @@ VITE_WISEEFF_RUNTIME_MODE=mock
 
 生产构建不能把 mock data 当业务数据源。组件测试默认仍通过 `npm test` 覆盖为 mock，避免本地 `.env` 的 API 设置污染单测。
 
-API 模式不再回退到 mock 数据：应用从 `createApiInitialState()`（保留结构性字段、业务数据切片全部为空，含 `auditEvents`；无用的 `developers` / `logAdminUsers` 已在 #474 退役）启动，首次同步完成前内容区顶部显示「正在连接雷泽服务…」提示条；任一域（参数/日志/调试）刷新失败时，经 `CLEAR_API_RUNTIME_DOMAIN` 清空该域业务切片，并在内容区顶部显示持久的「无法连接雷泽… API，当前无数据」错误横幅与重试按钮，绝不把演示数据当真实数据展示。参数域成功水合后，若演示项目 ID 不在服务端项目列表中，`activeProjectId` 会指向真实项目。#480 禁止参数页和 reducer 在 `configDraft.projects` 为空时回落到 `mockData.projects`；API boot 使用 `createEmptyPowerManagementConfig()`。#486 把 `createApiInitialState()` 建成显式空壳（不再调用 `createPrototypeState()`）；mock 播种在 `src/infrastructure/mock/prototypeState.ts`。mock 模式行为不变。
+API 模式不再回退到 mock 数据：应用从 `createApiInitialState()`（保留结构性字段、业务数据切片全部为空，含 `auditEvents`；无用的 `developers` / `logAdminUsers` 已在 #474 退役）启动，首次同步完成前内容区顶部显示「正在连接雷泽服务…」提示条；任一域（参数/日志/调试）刷新失败时，经 `CLEAR_API_RUNTIME_DOMAIN` 清空该域业务切片，并在内容区顶部显示持久的「无法连接雷泽… API，当前无数据」错误横幅与重试按钮，绝不把演示数据当真实数据展示。参数域成功水合后，若演示项目 ID 不在服务端项目列表中，`activeProjectId` 会指向真实项目。#480 禁止参数页和 reducer 在 `configDraft.projects` 为空时回落到 `mockData.projects`；API boot 使用 `createEmptyPowerManagementConfig()`。#486 把 `createApiInitialState()` 建成显式空壳（不再调用 `createPrototypeState()`）。其中身份字段也以无用户、访客权限启动（`users: []`、`currentUserId: ""`、`activeRoleId: "guest"`）：`/api/v1/me` 只插入已认证当前用户，`/api/v1/users` 只在 `/organization/members` 水合治理名录。9 个演示用户及其它 mock 播种都归 `src/infrastructure/mock/prototypeState.ts` 所有。mock 模式行为不变。
 
 API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒绝，前端显示 WiseEff 认证页，支持本地账号登录和（在开放时）注册。认证 client 提供 `getLocalAuthConfig` 时，页面会先读取未认证的 `GET /api/v1/auth/local-config`。本地登录使用用户名和密码；注册收集姓名、允许自助选择的平台角色、用户名、密码和确认密码，没有组织下拉，新账号加入评估组织（有种子时是 ChargeLab，否则是唯一的 bootstrap Organization）。认证页说明加入规则、用户名规则（3–64 个字符，仅限字母、数字、点、下划线和连字符）以及一行角色提示。注册角色下拉不包含 Admin。`selfRegisterEnabled` 为 false 时隐藏「注册」页签；`hasLocalAdmin` 为 false 时显示 `npm run admin:bootstrap` 提示。申请 Hardware/Software Committer 时，后端会创建 inactive 账号、对应基础 User 角色和待审批申请，`/api/v1/auth/register` 返回 `202 pending_approval` 且不返回 session token，前端继续停留在认证页，展示待审批结果态且不再保留可编辑注册表单。只有登录或非 Committer 注册成功后，前端才把不透明的 `we_local_*` session token 存到 `localStorage` 的 `wiseeff.localAuthToken`；默认 API client 会优先使用 OIDC runtime token，若没有 OIDC token 再回退到本地 token。
 
@@ -251,7 +251,7 @@ Xiaoze（小泽，唯一 Agent）：
 用户和身份：
 
 - `/api/v1/me` 在 OIDC、HMAC smoke 和本地账号下返回同一类 `AuthContext`。
-- 组织管理是一个侧栏入口、两条范围对等页（与调试后台相同）：`/organization`（组织档案，`GET`/`PATCH /api/v1/organization`）和 `/organization/members`（人员管理）。页面 key 仍是 `user-permissions`。`/user-permissions` 永久重定向到 `/organization/members` 并保留查询串。人员页在 API mode 下通过 `/api/v1/users` 读写用户治理，并通过 `/api/v1/users/registration-role-requests` 处理待审批的 Committer 注册申请。管理员在“添加用户”中创建的是本地账号：表单使用姓名、用户名、可选职务、初始密码和初始角色，不再把邮箱作为账号标识。该账号会加入当前管理员所在组织并立即启用；密码只提交给后端创建凭据，前端用户状态不会保存明文密码。治理 action 提供 `resetUserPassword` 时，成员行可打开重置密码弹窗，提交 `POST /api/v1/users/:userId/password`，并提示该用户全部会话已退出。
+- 组织管理是一个侧栏入口、两条范围对等页（与调试后台相同）：`/organization`（组织档案，`GET`/`PATCH /api/v1/organization`）和 `/organization/members`（人员管理）。页面 key 仍是 `user-permissions`。`/user-permissions` 永久重定向到 `/organization/members` 并保留查询串。人员页在 API mode 下通过 `/api/v1/users` 读写用户治理，并通过 `/api/v1/users/registration-role-requests` 处理待审批的 Committer 注册申请。管理员在“添加用户”中创建的是本地账号：表单使用姓名、用户名、可选职务、初始密码和初始角色，不再把邮箱作为账号标识。该账号会加入当前管理员所在组织并立即启用；密码只提交给后端创建凭据，前端用户状态不会保存明文密码。若目录响应不含当前调用者，状态只保留 `/api/v1/me` 返回的真实当前用户以稳定外壳身份，不会恢复演示用户。治理 action 提供 `resetUserPassword` 时，成员行可打开重置密码弹窗，提交 `POST /api/v1/users/:userId/password`，并提示该用户全部会话已退出。
 - 前端权限检查只是 UX，后端仍必须执行 authz、self-lockout 防护和 audit。
 
 ## 快捷键与地标

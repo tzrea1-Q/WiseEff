@@ -380,7 +380,6 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     renderApp({
       runtimeMode: "api",
-      initialAppState: initialState,
       ports: { authClient, parameterRepository: createTestParameterRepository() }
     });
 
@@ -390,6 +389,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.getByRole("status", { name: "正在进入工作台" })).toBeInTheDocument();
     expect(document.querySelector(".app-shell-skeleton")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "登录雷泽" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Xu Yun")).not.toBeInTheDocument();
+    expect(screen.queryByText("Liu Min")).not.toBeInTheDocument();
   });
 
   it("shows a retryable connection error instead of the login form when the session probe fails at the network level", async () => {
