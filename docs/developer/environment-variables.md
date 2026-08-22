@@ -170,6 +170,8 @@ Per-domain result webhooks (P3b) are configured in `/log-admin` (URL, write-only
 | `LOG_WEBHOOK_TIMEOUT_MS` | `5000` | webhook sender | Per-attempt request timeout; response bodies are discarded. |
 | `LOG_WEBHOOK_MAX_ATTEMPTS` | `3` | webhook sender | Attempts per delivery before it is marked failed (exponential backoff between attempts). |
 | `LOG_WEBHOOK_RETRY_BASE_DELAY_MS` | `1000` | webhook sender | Backoff base: attempt n waits `base * 2^(n-1)` ms. |
+| `LOG_WEBHOOK_DELIVERY_RETENTION_ENABLED` | `true` | webhook delivery history maintenance | Runs one fail-open cleanup loop in the active log worker for polling and durable queue modes. Set `false` to stop future deletion; it does not restore already-pruned rows. |
+| `LOG_WEBHOOK_DELIVERY_RETENTION_PER_DOMAIN` | `10000` | webhook delivery history maintenance | Keeps the latest N attempt rows independently for each organization-scoped log domain; accepts integers `1..1000000`. Ordering is `created_at DESC, id DESC`. |
 | `LOG_WEBHOOK_ALLOW_INSECURE_LOCAL` | `true` in `.env.example`, `false` in code | local webhook development | Permits plain-http loopback receivers (`http://127.0.0.1`) for local integration testing and acceptance runs. Refused in production by env validation. |
 
 ## Knowledge Base Embeddings And Indexing

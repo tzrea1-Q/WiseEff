@@ -150,6 +150,8 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 | `LOG_WEBHOOK_TIMEOUT_MS` | `5000` | webhook 发送端 | 单次尝试请求超时；响应体一律丢弃。 |
 | `LOG_WEBHOOK_MAX_ATTEMPTS` | `3` | webhook 发送端 | 每次投递的尝试上限，超过后标记失败（尝试间指数退避）。 |
 | `LOG_WEBHOOK_RETRY_BASE_DELAY_MS` | `1000` | webhook 发送端 | 退避基数：第 n 次尝试前等待 `base * 2^(n-1)` 毫秒。 |
+| `LOG_WEBHOOK_DELIVERY_RETENTION_ENABLED` | `true` | Webhook 投递历史维护 | polling 与 durable 队列模式均由活动日志 worker 运行一个 fail-open 清理循环。设为 `false` 只停止未来删除，不能恢复已经裁剪的行。 |
+| `LOG_WEBHOOK_DELIVERY_RETENTION_PER_DOMAIN` | `10000` | Webhook 投递历史维护 | 对每个组织域内的日志业务域分别保留最近 N 条尝试记录；合法范围为整数 `1..1000000`，排序固定为 `created_at DESC, id DESC`。 |
 | `LOG_WEBHOOK_ALLOW_INSECURE_LOCAL` | `.env.example` 为 `true`，代码默认 `false` | 本地 webhook 联调 | 放行明文 http 环回接收端（`http://127.0.0.1`），便于本地集成测试与验收运行。生产环境由 env 校验直接拒绝。 |
 
 ## 知识库嵌入与索引

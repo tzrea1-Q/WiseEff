@@ -104,6 +104,7 @@ Every production alert rule must include a `runbook_url` annotation. Use [runboo
 - Jobs move through queued/running/complete/failed states with parse, pattern, rootcause, and report stages. The frontend currently uses job polling through `LogAnalysisRepository`; SSE endpoints exist in the API shape but polling remains the reliable local path.
 - Unsupported file formats do not enter the worker. They create a terminal failed log record immediately with an unsupported-format reason.
 - Rerun creates a new run/job for the same log record. Duplicate queue delivery is idempotent because a completed PostgreSQL job cannot be claimed again. Dead-letter and retry evidence remains visible in PostgreSQL job state.
+- Webhook delivery-attempt rows are bounded by one maintenance loop owned by the active log worker in both polling and durable modes. It starts an asynchronous cycle immediately, then every 60 seconds deletes at most 10 batches of 1,000 rows while retaining the latest configured N per organization-scoped domain (`10000` by default, stable `created_at DESC, id DESC`). Cleanup failures are redacted and retried next cycle without interrupting analysis or delivery. Disabling retention stops future deletion only; database backup/restore is the recovery path for already-pruned rows.
 
 ## M6.3 Backup And Restore
 

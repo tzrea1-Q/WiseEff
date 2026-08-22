@@ -16,6 +16,7 @@
 - 先确认该文档属于哪个决策面：security。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
+- `log_webhook_deliveries` 是审计相邻的运维历史，不是不可变的 `audit_events` 产品证据。活动日志 worker 按组织内每个日志业务域，以稳定的 `created_at DESC, id DESC` 顺序默认保留最近 10,000 次尝试；每批删除 1,000 行，每 60 秒最多 10 批。清理对 Webhook 投递 fail-open，只记录删除数量/耗时或脱敏错误码。`LOG_WEBHOOK_DELIVERY_RETENTION_ENABLED=false` 只停止未来删除，已裁剪记录只能通过正常数据库备份/恢复找回。
 
 ## 同类中文文档
 

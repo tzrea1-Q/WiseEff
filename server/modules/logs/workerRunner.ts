@@ -12,6 +12,10 @@ import type { ObjectStore } from "./objectStore";
 import { createLogAnalysisQueueRuntime, type LogAnalysisQueueRuntimeEnv } from "./logAnalysisQueueRuntime";
 import { resolveParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { createLogWebhookDeliverer } from "./webhookDelivery";
+import {
+  startLogWebhookDeliveryRetentionLoop,
+  type LogWebhookDeliveryRetentionLoopStarter
+} from "./webhookRetention";
 import { startLogWorkerLoop, type LogWorkerWebhooks, type ProcessLogWorkerOptions } from "./worker";
 
 type RawWorkerEnv = {
@@ -34,6 +38,8 @@ type LogWorkerRuntimeOptions = {
   objectStore: ObjectStore;
   analyzer?: LogAnalysisAdapter;
   startLoop?: (options: ProcessLogWorkerOptions, intervalMs?: number) => () => void;
+  startRetentionLoop?: LogWebhookDeliveryRetentionLoopStarter;
+  retention?: { enabled: boolean; keepPerDomain: number };
   createDurableRuntime?: typeof createLogAnalysisQueueRuntime;
   queueMode?: "polling" | "durable";
   env?: LogAnalysisQueueRuntimeEnv;
@@ -107,6 +113,8 @@ export function createLogWorkerRuntime({
   objectStore,
   analyzer,
   startLoop = startLogWorkerLoop,
+  startRetentionLoop = startLogWebhookDeliveryRetentionLoop,
+  retention,
   createDurableRuntime = createLogAnalysisQueueRuntime,
   queueMode = "polling",
   env,
@@ -118,6 +126,7 @@ export function createLogWorkerRuntime({
 }: LogWorkerRuntimeOptions) {
   return {
     start() {
+      let stopWorker: () => void | Promise<void>;
       if (queueMode === "durable") {
         if (!env) {
           throw new Error("Durable log worker runtime requires Redis queue environment.");
@@ -132,13 +141,23 @@ export function createLogWorkerRuntime({
           ...(analyzer ? { analyzer } : {}),
           ...(webhooks ? { webhooks } : {})
         });
-        return () => runtime.close();
+        stopWorker = () => runtime.close();
+      } else {
+        stopWorker = startLoop(
+          { db, objectStore, workerId, leaseTtlMs, metrics, ...(analyzer ? { analyzer } : {}), ...(webhooks ? { webhooks } : {}) },
+          intervalMs
+        );
       }
 
-      return startLoop(
-        { db, objectStore, workerId, leaseTtlMs, metrics, ...(analyzer ? { analyzer } : {}), ...(webhooks ? { webhooks } : {}) },
-        intervalMs
-      );
+      const stopRetention = retention?.enabled
+        ? startRetentionLoop({ db, keepPerDomain: retention.keepPerDomain })
+        : undefined;
+
+      return async () => {
+        const retentionShutdown = stopRetention?.();
+        const workerShutdown = stopWorker();
+        await Promise.all([retentionShutdown, workerShutdown]);
+      };
     }
   };
 }
@@ -175,6 +194,10 @@ export async function createLogWorkerRuntimeFromEnv(raw: NodeJS.ProcessEnv = pro
         allowInsecureLocal: env.LOG_WEBHOOK_ALLOW_INSECURE_LOCAL
       }
     }),
+    retention: {
+      enabled: env.LOG_WEBHOOK_DELIVERY_RETENTION_ENABLED,
+      keepPerDomain: env.LOG_WEBHOOK_DELIVERY_RETENTION_PER_DOMAIN
+    },
     metrics
   });
 
@@ -197,7 +220,7 @@ if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, "/")}`) {
       return;
     }
     shuttingDown = true;
-    await Promise.resolve(stop());
+    await stop();
     observabilityServer.close(() => process.exit(0));
   };
 

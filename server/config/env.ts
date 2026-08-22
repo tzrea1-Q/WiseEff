@@ -72,6 +72,11 @@ const rawEnvSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
+  LOG_WEBHOOK_DELIVERY_RETENTION_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((value) => value === "true"),
+  LOG_WEBHOOK_DELIVERY_RETENTION_PER_DOMAIN: z.coerce.number().int().min(1).max(1_000_000).default(10_000),
   LOG_ANALYSIS_QUEUE_MODE: z.enum(["polling", "durable"]).default("polling"),
   REDIS_URL: z.string().optional(),
   LOG_ANALYSIS_QUEUE_PREFIX: z.string().default("wiseeff"),

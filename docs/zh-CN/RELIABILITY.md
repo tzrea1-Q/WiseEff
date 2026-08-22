@@ -22,6 +22,7 @@
 - 已运行 checkout 使用[自托管升级入口](../../ops/self-hosted/upgrade.zh-CN.md)：锁定一个 commit、停机前构建、校验 PostgreSQL/对象存储/Redis 恢复点，在不删除 volume 的情况下重建服务；migration 后失败会保持流量停止并记录 `recovery-required`。首次 root-only `prepare-host` 为部署用户配置 Docker 与受保护的 journal/备份目录，此后普通动作拒绝任何 root 有效用户，以保留部署用户的 Git/代理环境与文件所有权；受限网络主机用一份权限 `0600`、按 allowlist 解析的代理/npm 源/组织 CA/构建 TLS 策略契约，setup/upgrade 将其传给 BuildKit，但不把凭据写入 journal 或镜像层，Docker daemon 拉取仍是独立边界。`verify` 是默认策略；无法安装 CA 的主机可选择仅构建期 `insecure`，但每次实际构建还必须传 `--allow-insecure-build`，journal 会记录该来源，同时宿主机/运行时 TLS 与包完整性/签名门禁保持开启。固定基础镜像契约同时记录 OCI manifest 和 Docker config digest，使 containerd 与经典 `overlay2` 存储能校验同一归档且不放宽平台门禁；相同 SHA no-op 还必须满足 API/worker/web 使用精确目标镜像并通过公网探测。历史混合 API/worker/web 镜像按服务分别保留，持久锁通过 `lock-status`/`unlock` 安全处理而不是手删。`setup.sh --force` 仍是配置操作，不是升级捷径。
 - 自托管图形化监控使用 `ops/self-hosted/scripts/observability up`：Compose profile 会启动 Prometheus、Grafana、Alertmanager、HTTP/TCP 服务探针和主机/PostgreSQL/Redis exporter，自动装载四套 Dashboard。监控 UI 默认只绑定 loopback，通过 SSH 隧道、VPN 或同等级受控运维路径访问；独立 worker 在 Compose 私网端口 `8788` 提供 liveness 与 Prometheus 指标。
 - 小泽 readiness 只消费 resolver 规范化后的 atomic `XIAOZE_LLM_*` 组三键；canonical 空值不会回退旧别名。`XIAOZE_DETERMINISTIC=true` 可免 base/key 通过离线 health，但不构成 live-provider 证据。
+- polling 与 durable 模式都由活动日志 worker 拥有同一个 Webhook 投递历史维护循环：启动后立即异步执行一次，之后每 60 秒最多删除 10 批、每批 1,000 行，并按组织内每个日志业务域稳定保留最近 N 行（默认 `10000`，顺序 `created_at DESC, id DESC`）。清理失败只输出脱敏错误码，下轮重试，不中断分析或投递。关闭 retention 只停止未来删除；已裁剪行只能通过数据库备份/恢复找回。
 
 ## 补充说明（小泽 checkpoint）
 

@@ -2139,7 +2139,7 @@ Constraints:
 
 Indexes:
 
-- `log_webhook_deliveries_domain_recent_idx`: INDEX log_webhook_deliveries_domain_recent_idx ON public.log_webhook_deliveries USING btree (organization_id, log_domain_id, created_at DESC)
+- `log_webhook_deliveries_domain_recent_idx`: INDEX log_webhook_deliveries_domain_recent_idx ON public.log_webhook_deliveries USING btree (organization_id, log_domain_id, created_at DESC, id DESC)
 
 ### node_operations
 
