@@ -6,7 +6,6 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
-  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -32,9 +31,10 @@ export const gate0SourceOutputDirectFiles = [
   "docs/generated/acceptance-operation-evidence/index.json",
 ] as const;
 
-export const gate0SourceOutputRecursiveRoots = [
-  "e2e/quality/visual.quality.spec.ts-snapshots",
-] as const;
+// Gate0 redirects Playwright snapshots into its run root. Recursive source-tree
+// cleanup is intentionally disabled because a new file cannot be proven to be
+// owned by this run rather than a concurrent user or agent.
+export const gate0SourceOutputRecursiveRoots = [] as const;
 
 export function captureGate0SourceOutputs(input: {
   worktreeRoot: string;
@@ -70,6 +70,7 @@ export function restoreAndArchiveGate0SourceOutputs(snapshot: Gate0SourceOutputS
   for (const relativePath of snapshot.files.keys()) currentPaths.add(relativePath);
 
   const results: Array<Record<string, unknown>> = [];
+  const unknownPaths: string[] = [];
   for (const relativePath of [...currentPaths].sort()) {
     const absolutePath = resolveDescendant(snapshot.worktreeRoot, relativePath);
     const captured = snapshot.files.get(relativePath) ?? { relativePath, existedBefore: false };
@@ -90,8 +91,8 @@ export function restoreAndArchiveGate0SourceOutputs(snapshot: Gate0SourceOutputS
         writeFileSync(absolutePath, captured.content!);
         action = "restored";
       } else if (existsAfter) {
-        unlinkSync(absolutePath);
-        action = "removed-created";
+        action = "retained-unknown";
+        unknownPaths.push(relativePath);
       }
     }
 
@@ -106,7 +107,13 @@ export function restoreAndArchiveGate0SourceOutputs(snapshot: Gate0SourceOutputS
     });
   }
 
-  return writeManifest(snapshot, "restored", results);
+  const manifestPath = writeManifest(snapshot, "restored", results);
+  if (unknownPaths.length > 0) {
+    throw new Error(
+      `Gate0 found ${unknownPaths.length} unknown source-output path(s); retained them and refused broad cleanup.`,
+    );
+  }
+  return manifestPath;
 }
 
 function captureFile(root: string, relativePath: string, files: Map<string, CapturedFile>) {

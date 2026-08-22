@@ -18,8 +18,10 @@ import {
   OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV,
   recordNestedRuntimeFinish,
   recordNestedRuntimeStart,
+  type NestedRuntimeCleanup,
 } from "./nestedRuntimeManifest";
 import { OWNED_ACCEPTANCE_DESCRIPTOR_ENV } from "./ownedRuntimeDescriptor";
+import { stopOwnedProcessGroup } from "../../../scripts/owned-process-group";
 
 const databasePrefix = "wiseeff_acceptance_disposable_";
 /** Topology suites omit `markerPurpose`; keep this default so their marker check stays unchanged. */
@@ -307,21 +309,7 @@ function spawnRuntime(command: string, args: string[], env: RuntimeEnv) {
 }
 
 async function stopRuntime(child: ChildProcess) {
-  if (child.exitCode != null || !child.pid) return;
-  const signal = (name: NodeJS.Signals) => {
-    try {
-      if (process.platform === "win32") child.kill(name);
-      else process.kill(-child.pid!, name);
-    } catch {
-      // Process already stopped.
-    }
-  };
-  signal("SIGTERM");
-  await Promise.race([
-    new Promise((resolve) => child.once("exit", resolve)),
-    new Promise((resolve) => setTimeout(resolve, 3_000)),
-  ]);
-  if (child.exitCode == null) signal("SIGKILL");
+  await stopOwnedProcessGroup(child, { terminateGraceMs: 3_000 });
 }
 
 export async function startDisposablePostCutoverRuntime(
@@ -409,42 +397,112 @@ export async function startDisposablePostCutoverRuntime(
       authSecret,
       nestedRuntimeId: nestedRegistered ? databaseName : undefined,
       async dispose() {
+        const cleanup: NestedRuntimeCleanup = nestedCleanupPending();
+        const errors: Error[] = [];
+        await stopAndRecordNestedProcesses(children, cleanup, errors);
         try {
-          await Promise.all(children.reverse().map(stopRuntime));
           await verifyPostCutoverDatabase(databaseUrl, migrationRunId, purpose);
           await withClient(adminUrl, (client) =>
             client.query(`drop database if exists ${databaseName} with (force)`),
           );
-          await rm(objectStoreRoot, { recursive: true, force: true });
-          if (nestedManifestPath && nestedRegistered) {
-            recordNestedRuntimeFinish(nestedManifestPath, databaseName, "cleaned");
-          }
+          cleanup.database = { status: "removed" };
         } catch (error) {
-          if (nestedManifestPath && nestedRegistered) {
-            recordNestedRuntimeFinish(nestedManifestPath, databaseName, "cleanup-failed");
-          }
-          throw error;
+          cleanup.database = { status: "failed", reason: safeNestedCleanupReason(error) };
+          errors.push(asNestedError(error));
+        }
+        try {
+          await rm(objectStoreRoot, { recursive: true, force: true });
+          cleanup.objectStore = { status: "removed" };
+        } catch (error) {
+          cleanup.objectStore = { status: "failed", reason: safeNestedCleanupReason(error) };
+          errors.push(asNestedError(error));
+        }
+        if (nestedManifestPath && nestedRegistered) {
+          recordNestedRuntimeFinish(
+            nestedManifestPath,
+            databaseName,
+            errors.length === 0 ? "cleaned" : "cleanup-failed",
+            cleanup,
+          );
+        }
+        if (errors.length > 0) {
+          throw new AggregateError(errors, "Disposable nested runtime cleanup failed.");
         }
       },
     };
   } catch (error) {
-    await Promise.all(children.reverse().map(stopRuntime));
-    const databaseCleanup = await withClient(adminUrl, (client) =>
+    const cleanup: NestedRuntimeCleanup = nestedCleanupPending();
+    const cleanupErrors: Error[] = [];
+    await stopAndRecordNestedProcesses(children, cleanup, cleanupErrors);
+    await withClient(adminUrl, (client) =>
       client.query(`drop database if exists ${databaseName} with (force)`),
-    ).then(() => true, () => false);
-    const objectCleanup = await rm(objectStoreRoot, { recursive: true, force: true }).then(
-      () => true,
-      () => false,
+    ).then(
+      () => { cleanup.database = { status: "removed" }; },
+      (cleanupError) => {
+        cleanup.database = { status: "failed", reason: safeNestedCleanupReason(cleanupError) };
+        cleanupErrors.push(asNestedError(cleanupError));
+      },
+    );
+    await rm(objectStoreRoot, { recursive: true, force: true }).then(
+      () => { cleanup.objectStore = { status: "removed" }; },
+      (cleanupError) => {
+        cleanup.objectStore = { status: "failed", reason: safeNestedCleanupReason(cleanupError) };
+        cleanupErrors.push(asNestedError(cleanupError));
+      },
     );
     if (nestedManifestPath && nestedRegistered) {
       recordNestedRuntimeFinish(
         nestedManifestPath,
         databaseName,
-        databaseCleanup && objectCleanup ? "failed-cleaned" : "cleanup-failed",
+        cleanupErrors.length === 0 ? "failed-cleaned" : "cleanup-failed",
+        cleanup,
       );
     }
-    throw error;
+    throw cleanupErrors.length === 0
+      ? error
+      : new AggregateError([asNestedError(error), ...cleanupErrors], "Disposable runtime startup and rollback failed.");
   }
+}
+
+function nestedCleanupPending() {
+  return {
+    apiProcess: { status: "failed" as const, reason: "Nested API process cleanup did not complete." },
+    frontendProcess: { status: "failed" as const, reason: "Nested frontend process cleanup did not complete." },
+    database: { status: "retained" as const, reason: "Nested database cleanup did not complete." },
+    objectStore: { status: "retained" as const, reason: "Nested object-store cleanup did not complete." },
+  };
+}
+
+async function stopAndRecordNestedProcesses(
+  children: ChildProcess[],
+  cleanup: NestedRuntimeCleanup,
+  errors: Error[],
+) {
+  for (const [label, child] of ([
+    ["frontendProcess", children[1]],
+    ["apiProcess", children[0]],
+  ] as const)) {
+    if (!child) continue;
+    try {
+      await stopRuntime(child);
+      cleanup[label] = { status: "stopped" };
+    } catch (error) {
+      cleanup[label] = { status: "failed", reason: safeNestedCleanupReason(error) };
+      errors.push(asNestedError(error));
+    }
+  }
+}
+
+function safeNestedCleanupReason(error: unknown) {
+  return (error instanceof Error ? error.message : String(error))
+    .replace(/postgres(?:ql)?:\/\/[^\s"'\\]+/giu, "[REDACTED_DATABASE_URL]")
+    .replace(/\bBearer\s+[-A-Za-z0-9._~+/=]{8,}/giu, "credential [REDACTED]")
+    .replace(/authorization/giu, "credential-header")
+    .replace(/auth.?secret/giu, "credential-secret");
+}
+
+function asNestedError(error: unknown) {
+  return error instanceof Error ? error : new Error(String(error));
 }
 
 function requireRuntimePid(child: ChildProcess, label: string) {

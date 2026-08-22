@@ -88,11 +88,17 @@ export type DefaultWorkflowInput = {
   artifactPath: string;
 };
 
-const defaultPreflightEvidenceOut = "test-results/acceptance-preflight/evidence.md";
-const defaultEvidenceOut = "docs/generated/acceptance-browser-evidence.md";
-const defaultPlaywrightJsonReport = "test-results/acceptance/results.json";
-const defaultOperationEvidenceOut = "docs/generated/acceptance-operation-evidence.md";
-const defaultOperationEvidenceJsonOut = "docs/generated/acceptance-operation-evidence/index.json";
+const defaultPreflightEvidenceOut = process.env.WISEEFF_ACCEPTANCE_PREFLIGHT_EVIDENCE_OUT
+  ?? "test-results/acceptance-preflight/evidence.md";
+const defaultEvidenceOut = process.env.WISEEFF_ACCEPTANCE_BROWSER_EVIDENCE_OUT
+  ?? "docs/generated/acceptance-browser-evidence.md";
+const defaultPlaywrightJsonReport = `${process.env.WISEEFF_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR ?? "test-results/acceptance"}/results.json`;
+const defaultPlaywrightReport = process.env.WISEEFF_ACCEPTANCE_PLAYWRIGHT_REPORT_DIR
+  ?? "playwright-report/acceptance";
+const defaultOperationEvidenceOut = process.env.WISEEFF_ACCEPTANCE_OPERATION_EVIDENCE_OUT
+  ?? "docs/generated/acceptance-operation-evidence.md";
+const defaultOperationEvidenceJsonOut = process.env.WISEEFF_ACCEPTANCE_OPERATION_EVIDENCE_JSON_OUT
+  ?? "docs/generated/acceptance-operation-evidence/index.json";
 const commandMaxBuffer = 64 * 1024 * 1024;
 const modes: BrowserAcceptanceMode[] = ["local-non-hdc", "target-non-hdc", "full-pilot"];
 const workflowDefinitions: BrowserAcceptanceWorkflowEvidence[] = [
@@ -606,8 +612,8 @@ async function main() {
       defaultPreflightEvidenceOut,
       defaultPlaywrightJsonReport,
       evidenceRun.runRoot,
-      "test-results/acceptance",
-      "playwright-report/acceptance",
+      process.env.WISEEFF_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR ?? "test-results/acceptance",
+      defaultPlaywrightReport,
       defaultOperationEvidenceOut,
       defaultOperationEvidenceJsonOut,
       ...(ownedRuntime
@@ -663,7 +669,7 @@ function runPlaywright(command: CommandInvocation) {
   return {
     status: commandStatus(result),
     hdc: resolvePlaywrightHdcStatus(command.env ?? process.env),
-    artifactPath: "playwright-report/acceptance/index.html",
+    artifactPath: `${defaultPlaywrightReport}/index.html`,
     detail: commandDetail(result)
   };
 }

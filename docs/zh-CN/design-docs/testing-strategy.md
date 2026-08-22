@@ -190,7 +190,7 @@ M5.12 在确定性浏览器门禁之上增加 CI 与目标合成证据归档。�
 - 每个 PR 都会启动 `ci.yml`（只用 job 级 `if:` 跳过）。`detect` 分类 diff，并总是跑 `docs:check`。
 - 产品 / workflow PR 跑 `build-and-test` 和 `@ci-smoke`（`npm run acceptance:smoke`）。UI 或产品路径再跑一次 `acceptance:quality-run`。
 - 文档-only PR 只跑 `detect` + `docs:check` + 哨兵 `Merge bar`。
-- L2 事件把 `acceptance-quality`（一次 `acceptance:quality-run`）和 `acceptance-local-non-hdc` 拆成兄弟 job，跑在 `push` 到 `main`、夜间定时、标签 `full-acceptance`、以及 `workflow_dispatch` 的 `local-non-hdc`。浏览器 job 仍使用 PostgreSQL、本地对象存储、确定性 Agent、simulator 网关、`npm run acceptance:models`，以及 `npm run acceptance:browser -- --mode local-non-hdc`，然后上传证据产物。
+- L2 事件把 `acceptance-quality`（一次 `acceptance:quality-run`）和 `acceptance-local-non-hdc` 拆成兄弟 job，跑在 `push` 到 `main`、夜间定时、标签 `full-acceptance`、以及 `workflow_dispatch` 的 `local-non-hdc`。本机浏览器 job 先跑 `npm run acceptance:models`，再跑权威入口 `npm run acceptance:gate0`。Gate0 在 provision 前校验钉扎 DTS 工具链，独占一个全新 PostgreSQL 数据库、run-scoped 对象根、精确 loopback API/frontend 进程，并把同一份不含秘密的 descriptor 交给 visual 与 full browser。60 分钟 owner 时限覆盖 provision 和 finalize；Playwright output/report、snapshot、preflight 与生成证据都写入 runRoot。失败保留精确取证资源，只有成功才删除独占数据库与对象根。CI 上传前递归脱敏（包括 ZIP trace 内条目），并由 fail-closed scanner 证明 secret-bearing path 为 0。旧的 `npm run acceptance:browser -- --mode local-non-hdc` 仍是直接/人工 runner，不是权威 owned-runtime L2 门禁。
 
 手动 `workflow_dispatch` 可选择 `target-non-hdc` 或 `full-pilot`。这些运行使用 `--no-start-runtime`、目标前端/API URL、GitHub Secrets，并上传 Playwright/证据产物。`full-pilot` 永远不是默认 PR 门，且只在具备外部 HDC、backup/restore、rollback、object-store、worker 和 live Agent 证据时有效。smoke 走 focused 证据命名空间，不得发布 `latest-full.json`。
 

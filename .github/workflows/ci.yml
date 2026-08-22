@@ -455,21 +455,17 @@ jobs:
       - name: Owned visual and browser acceptance Gate 0
         run: npm run acceptance:gate0
 
-      - name: Upload acceptance evidence
+      - name: Acceptance artifact safety
+        id: acceptance_artifact_safety
         if: always()
+        run: npm run acceptance:artifacts:check -- --root test-results/acceptance-runtime-runs
+
+      - name: Upload acceptance evidence
+        if: always() && steps.acceptance_artifact_safety.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: wiseeff-acceptance-local-non-hdc
-          path: |
-            test-results/acceptance-runtime-runs
-            playwright-report/acceptance
-            test-results/acceptance
-            test-results/acceptance-preflight
-            playwright-report/quality
-            test-results/quality
-            docs/generated/acceptance-browser-evidence.md
-            docs/generated/acceptance-operation-evidence.md
-            docs/generated/acceptance-operation-evidence/index.json
+          path: test-results/acceptance-runtime-runs
 
   target-synthetic-acceptance:
     name: Target synthetic acceptance

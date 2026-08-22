@@ -3,7 +3,10 @@ import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import pg from "pg";
+import {
+  withOwnerAwarePostgres,
+  type OwnerAwarePostgresDeadline,
+} from "../../../scripts/owner-aware-postgres";
 import { OWNED_ACCEPTANCE_NESTED_RUNTIME_MANIFEST_ENV } from "./nestedRuntimeManifest";
 
 const execFileAsync = promisify(execFile);
@@ -15,6 +18,21 @@ export const OWNED_ACCEPTANCE_MARKER_PURPOSE = "td-122-gate0";
 export const OWNED_API_PORT_RANGE = { min: 18_800, max: 18_899 } as const;
 export const OWNED_FRONTEND_PORT_RANGE = { min: 5_180, max: 5_279 } as const;
 
+export function buildOwnedRuntimeArtifactEnv(runRoot: string): Record<string, string> {
+  const root = path.resolve(runRoot);
+  return {
+    WISEEFF_QUALITY_PLAYWRIGHT_OUTPUT_DIR: path.join(root, "artifacts", "visual", "test-results"),
+    WISEEFF_QUALITY_PLAYWRIGHT_REPORT_DIR: path.join(root, "artifacts", "visual", "playwright-report"),
+    WISEEFF_QUALITY_SNAPSHOT_ROOT: path.join(root, "artifacts", "visual", "snapshots"),
+    WISEEFF_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR: path.join(root, "artifacts", "browser", "test-results"),
+    WISEEFF_ACCEPTANCE_PLAYWRIGHT_REPORT_DIR: path.join(root, "artifacts", "browser", "playwright-report"),
+    WISEEFF_ACCEPTANCE_PREFLIGHT_EVIDENCE_OUT: path.join(root, "artifacts", "browser", "preflight", "evidence.md"),
+    WISEEFF_ACCEPTANCE_BROWSER_EVIDENCE_OUT: path.join(root, "artifacts", "browser", "browser-evidence.md"),
+    WISEEFF_ACCEPTANCE_OPERATION_EVIDENCE_OUT: path.join(root, "artifacts", "browser", "operation-evidence.md"),
+    WISEEFF_ACCEPTANCE_OPERATION_EVIDENCE_JSON_OUT: path.join(root, "artifacts", "browser", "operation-evidence.json"),
+  };
+}
+
 export type OwnedRuntimePhaseStatus = "pending" | "running" | "passed" | "failed" | "blocked";
 
 export type OwnedRuntimePhase = {
@@ -25,6 +43,11 @@ export type OwnedRuntimePhase = {
   report?: string;
   preflightEvidence?: string;
   evidenceRunId?: string;
+};
+
+export type OwnedRuntimeCleanupResource = {
+  status: "pending" | "stopped" | "verified" | "removed" | "retained" | "failed";
+  reason?: string;
 };
 
 export type OwnedLocalAcceptanceRuntimeDescriptorV1 = {
@@ -47,7 +70,12 @@ export type OwnedLocalAcceptanceRuntimeDescriptorV1 = {
   };
   database: {
     name: string;
-    connectionSha256: string;
+    connection: {
+      host: string;
+      port: number;
+      user: string;
+      database: string;
+    };
     absentBeforeCreate: true;
     marker: {
       table: typeof OWNED_ACCEPTANCE_MARKER_TABLE;
@@ -105,7 +133,6 @@ export type OwnedLocalAcceptanceRuntimeDescriptorV1 = {
     mode: "production";
     provider: "hmac";
     issuer: string;
-    secretSha256: string;
     smokeSubject: "u-xu-yun";
   };
   runtime: {
@@ -134,6 +161,14 @@ export type OwnedLocalAcceptanceRuntimeDescriptorV1 = {
     exactDatabaseName: string;
     exactObjectStoreRoot: string;
     completedAt?: string;
+    resources: {
+      apiProcess: OwnedRuntimeCleanupResource;
+      frontendProcess: OwnedRuntimeCleanupResource;
+      database: OwnedRuntimeCleanupResource;
+      objectStore: OwnedRuntimeCleanupResource;
+      descriptor: OwnedRuntimeCleanupResource;
+      artifacts: OwnedRuntimeCleanupResource;
+    };
   };
 };
 
@@ -179,15 +214,17 @@ export function assertOwnedRuntimeEnvironment(
   env: RuntimeEnv = process.env,
 ) {
   const databaseUrl = env.DATABASE_URL?.trim();
-  if (!databaseUrl || sha256(databaseUrl) !== descriptor.database.connectionSha256) {
-    throw new Error("Owned runtime DATABASE_URL digest does not match the descriptor.");
-  }
-  if (databaseNameFromUrl(databaseUrl) !== descriptor.database.name) {
-    throw new Error("Owned runtime DATABASE_URL does not name the descriptor database.");
+  if (!databaseUrl || !sameDatabaseIdentity(databaseIdentityFromUrl(databaseUrl), descriptor.database.connection)) {
+    throw new Error("Owned runtime DATABASE_URL identity does not match the descriptor.");
   }
   const authSecret = env.AUTH_TOKEN_HMAC_SECRET?.trim();
-  if (!authSecret || sha256(authSecret) !== descriptor.auth.secretSha256) {
-    throw new Error("Owned runtime HMAC secret digest does not match the descriptor.");
+  if (
+    !authSecret ||
+    env.AUTH_MODE !== descriptor.auth.mode ||
+    env.AUTH_PROVIDER !== descriptor.auth.provider ||
+    env.AUTH_TOKEN_ISSUER !== descriptor.auth.issuer
+  ) {
+    throw new Error("Owned runtime authentication environment does not match the descriptor.");
   }
   if (env.WISEEFF_ACCEPTANCE_EVIDENCE_RUN_ID !== descriptor.run.id) {
     throw new Error("Owned runtime evidence run ID does not match the descriptor.");
@@ -203,6 +240,22 @@ export function assertOwnedRuntimeEnvironment(
   }
   if (env[OWNED_ACCEPTANCE_NESTED_RUNTIME_MANIFEST_ENV] !== descriptor.artifacts.nestedRuntimeManifest) {
     throw new Error("Owned runtime nested-runtime manifest does not match the descriptor.");
+  }
+  for (const key of [
+    "WISEEFF_QUALITY_PLAYWRIGHT_OUTPUT_DIR",
+    "WISEEFF_QUALITY_PLAYWRIGHT_REPORT_DIR",
+    "WISEEFF_QUALITY_SNAPSHOT_ROOT",
+    "WISEEFF_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR",
+    "WISEEFF_ACCEPTANCE_PLAYWRIGHT_REPORT_DIR",
+    "WISEEFF_ACCEPTANCE_PREFLIGHT_EVIDENCE_OUT",
+    "WISEEFF_ACCEPTANCE_BROWSER_EVIDENCE_OUT",
+    "WISEEFF_ACCEPTANCE_OPERATION_EVIDENCE_OUT",
+    "WISEEFF_ACCEPTANCE_OPERATION_EVIDENCE_JSON_OUT",
+  ] as const) {
+    const artifactPath = env[key]?.trim();
+    if (!artifactPath || !path.isAbsolute(artifactPath) || !isDescendant(descriptor.artifacts.runRoot, artifactPath)) {
+      throw new Error(`Owned runtime artifact path ${key} must be an absolute descendant of its run root.`);
+    }
   }
   return descriptor;
 }
@@ -237,7 +290,13 @@ export function assertOwnedRuntimeDescriptor(
   if (!/^wiseeff_acceptance_full_[a-z0-9_]+$/.test(databaseName) || databaseName.length > 63) {
     throw new Error(`Refusing owned runtime database name ${databaseName}.`);
   }
-  requireSha256(database.connectionSha256, "database.connectionSha256");
+  const connection = requireRecord(database.connection, "database.connection");
+  requireString(connection.host, "database.connection.host");
+  requirePositiveInteger(connection.port, "database.connection.port");
+  requireString(connection.user, "database.connection.user");
+  if (connection.database !== databaseName) {
+    throw new Error("Owned runtime database connection identity does not match its database name.");
+  }
   if (database.absentBeforeCreate !== true) {
     throw new Error("Owned runtime database must be checked absent before creation.");
   }
@@ -283,7 +342,6 @@ export function assertOwnedRuntimeDescriptor(
     throw new Error("Owned runtime authentication contract is invalid.");
   }
   requireString(auth.issuer, "auth.issuer");
-  requireSha256(auth.secretSha256, "auth.secretSha256");
 
   const runtime = requireRecord(descriptor.runtime, "runtime");
   if (
@@ -327,11 +385,20 @@ export function assertOwnedRuntimeDescriptor(
   if (cleanup.exactDatabaseName !== database.name || cleanup.exactObjectStoreRoot !== objectStore.root) {
     throw new Error("Owned runtime cleanup targets do not match provisioned resources.");
   }
+  const cleanupResources = requireRecord(cleanup.resources, "cleanup.resources");
+  for (const resource of ["apiProcess", "frontendProcess", "database", "objectStore", "descriptor", "artifacts"] as const) {
+    const result = requireRecord(cleanupResources[resource], `cleanup.resources.${resource}`);
+    if (!["pending", "stopped", "verified", "removed", "retained", "failed"].includes(String(result.status))) {
+      throw new Error(`Owned runtime cleanup resource ${resource} has an invalid status.`);
+    }
+    if (result.reason !== undefined) requireString(result.reason, `cleanup.resources.${resource}.reason`);
+  }
 }
 
 export async function verifyOwnedRuntimeOwnership(
   descriptor: OwnedLocalAcceptanceRuntimeDescriptorV1,
   env: RuntimeEnv = process.env,
+  owner?: OwnerAwarePostgresDeadline,
 ) {
   assertOwnedRuntimeDescriptor(descriptor);
   if (!(["ready", "running"] as const).includes(descriptor.run.state as "ready" | "running")) {
@@ -344,13 +411,14 @@ export async function verifyOwnedRuntimeOwnership(
   assertOwnedRuntimeEnvironment(descriptor, env);
   const databaseUrl = env.DATABASE_URL!.trim();
 
-  await verifyDatabaseMarker(databaseUrl, descriptor);
+  await verifyDatabaseMarker(databaseUrl, descriptor, owner);
   verifyObjectStoreMarker(descriptor);
 
   for (const url of [descriptor.endpoints.api.healthUrl, descriptor.endpoints.frontend.url]) {
     const response = await fetch(url, { signal: AbortSignal.timeout(2_000) });
     if (!response.ok) throw new Error(`Owned runtime endpoint is unhealthy: ${url} returned ${response.status}.`);
   }
+  await verifyOwnedAuthentication(descriptor, env);
 
   return descriptor;
 }
@@ -410,11 +478,14 @@ function processExists(pid: number) {
 async function verifyDatabaseMarker(
   databaseUrl: string,
   descriptor: OwnedLocalAcceptanceRuntimeDescriptorV1,
+  owner?: OwnerAwarePostgresDeadline,
 ) {
-  const client = new pg.Client({ connectionString: databaseUrl });
-  await client.connect();
-  try {
-    const result = await client.query<{
+  await withOwnerAwarePostgres({
+    connectionString: databaseUrl,
+    owner,
+    stage: "owned runtime marker verification",
+  }, async (database) => {
+    const result = await database.query<{
       database_name: string;
       run_id: string;
       source_commit: string;
@@ -424,6 +495,7 @@ async function verifyDatabaseMarker(
        from ${OWNED_ACCEPTANCE_MARKER_TABLE}
        where purpose = $1`,
       [OWNED_ACCEPTANCE_MARKER_PURPOSE],
+      "marker query",
     );
     const row = result.rows[0];
     if (
@@ -435,9 +507,7 @@ async function verifyDatabaseMarker(
     ) {
       throw new Error("Owned runtime database marker does not match descriptor run/source identity.");
     }
-  } finally {
-    await client.end();
-  }
+  });
 }
 
 function verifyObjectStoreMarker(descriptor: OwnedLocalAcceptanceRuntimeDescriptorV1) {
@@ -460,8 +530,46 @@ function verifyObjectStoreMarker(descriptor: OwnedLocalAcceptanceRuntimeDescript
   }
 }
 
-function databaseNameFromUrl(connectionString: string) {
-  return decodeURIComponent(new URL(connectionString).pathname.replace(/^\//, ""));
+export function databaseIdentityFromUrl(connectionString: string) {
+  const url = new URL(connectionString);
+  if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") {
+    throw new Error("Owned runtime database URL must use postgres or postgresql.");
+  }
+  const port = url.port ? Number.parseInt(url.port, 10) : 5432;
+  const database = decodeURIComponent(url.pathname.replace(/^\//, ""));
+  if (!url.hostname || !url.username || !database || !Number.isSafeInteger(port) || port <= 0) {
+    throw new Error("Owned runtime database URL has an incomplete non-secret identity.");
+  }
+  return {
+    host: url.hostname,
+    port,
+    user: decodeURIComponent(url.username),
+    database,
+  };
+}
+
+function sameDatabaseIdentity(
+  left: ReturnType<typeof databaseIdentityFromUrl>,
+  right: OwnedLocalAcceptanceRuntimeDescriptorV1["database"]["connection"],
+) {
+  return left.host === right.host && left.port === right.port && left.user === right.user && left.database === right.database;
+}
+
+async function verifyOwnedAuthentication(
+  descriptor: OwnedLocalAcceptanceRuntimeDescriptorV1,
+  env: RuntimeEnv,
+) {
+  const authorization = env.VITE_WISEEFF_API_AUTHORIZATION?.trim();
+  if (!authorization) throw new Error("Owned runtime live authentication proof requires browser authorization.");
+  const response = await fetch(`${descriptor.endpoints.api.url}/api/v1/me`, {
+    headers: { authorization },
+    signal: AbortSignal.timeout(2_000),
+  });
+  if (!response.ok) throw new Error(`Owned runtime live authentication proof returned ${response.status}.`);
+  const body = await response.json() as { user?: { id?: string } };
+  if (body.user?.id !== descriptor.auth.smokeSubject) {
+    throw new Error("Owned runtime live authentication subject does not match the descriptor.");
+  }
 }
 
 function isDescendant(parent: string, child: string) {
@@ -478,8 +586,11 @@ function assertNoSecrets(value: unknown, at = "descriptor") {
   }
   if (!value || typeof value !== "object") return;
   for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+    if (/sha256$/iu.test(key) && !(at === "descriptor.objectStore" && key === "markerSha256")) {
+      throw new Error(`Owned runtime descriptor must not contain secret-derived verifier ${at}.${key}.`);
+    }
     if (
-      !/sha256$/i.test(key) &&
+      key !== "markerSha256" &&
       /(password|authorization|bearer|database.?url|connection.?string|token|secret|api.?key)/i.test(key)
     ) {
       throw new Error(`Owned runtime descriptor must not contain secret field ${at}.${key}.`);

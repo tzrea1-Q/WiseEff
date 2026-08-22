@@ -604,6 +604,49 @@ describe("browser acceptance runner", () => {
 });
 
 describe("playwright acceptance config", () => {
+  it("disables Playwright retries for a validated owned Gate0 runtime while legacy CI keeps one retry", async () => {
+    const previousCi = process.env.CI;
+    process.env.CI = "true";
+    try {
+      vi.resetModules();
+      vi.doMock("../e2e/acceptance/helpers/ownedRuntimeDescriptor", () => ({
+        loadOwnedRuntimeDescriptorFromEnv: () => ({
+          endpoints: {
+            frontend: { url: "http://127.0.0.1:5180" },
+            api: { url: "http://127.0.0.1:18800" },
+          },
+        }),
+      }));
+      const owned = (await import("../playwright.acceptance.config")).default;
+      expect(owned.retries).toBe(0);
+
+      vi.doUnmock("../e2e/acceptance/helpers/ownedRuntimeDescriptor");
+      vi.resetModules();
+      const legacy = (await import("../playwright.acceptance.config")).default;
+      expect(legacy.retries).toBe(1);
+    } finally {
+      vi.doUnmock("../e2e/acceptance/helpers/ownedRuntimeDescriptor");
+      if (previousCi === undefined) delete process.env.CI;
+      else process.env.CI = previousCi;
+    }
+  });
+
+  it("honors the owned run-scoped output and report directories", async () => {
+    process.env.WISEEFF_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR = "/tmp/owned/artifacts/browser/test-results";
+    process.env.WISEEFF_ACCEPTANCE_PLAYWRIGHT_REPORT_DIR = "/tmp/owned/artifacts/browser/playwright-report";
+    try {
+      vi.resetModules();
+      const config = (await import("../playwright.acceptance.config")).default;
+      expect(config.outputDir).toBe("/tmp/owned/artifacts/browser/test-results");
+      expect(config.reporter).toEqual(expect.arrayContaining([
+        ["html", expect.objectContaining({ outputFolder: "/tmp/owned/artifacts/browser/playwright-report" })],
+      ]));
+    } finally {
+      delete process.env.WISEEFF_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR;
+      delete process.env.WISEEFF_ACCEPTANCE_PLAYWRIGHT_REPORT_DIR;
+    }
+  });
+
   it("disables web servers when Playwright is told not to start runtime", async () => {
     const config = await importAcceptanceConfig("true");
 
@@ -655,6 +698,25 @@ describe("playwright acceptance config", () => {
 });
 
 describe("playwright quality config", () => {
+  it("honors owned run-scoped output, report, and snapshot directories", async () => {
+    process.env.WISEEFF_QUALITY_PLAYWRIGHT_OUTPUT_DIR = "/tmp/owned/artifacts/visual/test-results";
+    process.env.WISEEFF_QUALITY_PLAYWRIGHT_REPORT_DIR = "/tmp/owned/artifacts/visual/playwright-report";
+    process.env.WISEEFF_QUALITY_SNAPSHOT_ROOT = "/tmp/owned/artifacts/visual/snapshots";
+    try {
+      vi.resetModules();
+      const config = (await import("../playwright.quality.config")).default;
+      expect(config.outputDir).toBe("/tmp/owned/artifacts/visual/test-results");
+      expect(config.snapshotPathTemplate).toBe("/tmp/owned/artifacts/visual/snapshots/{platform}/{arg}{ext}");
+      expect(config.reporter).toEqual(expect.arrayContaining([
+        ["html", expect.objectContaining({ outputFolder: "/tmp/owned/artifacts/visual/playwright-report" })],
+      ]));
+    } finally {
+      delete process.env.WISEEFF_QUALITY_PLAYWRIGHT_OUTPUT_DIR;
+      delete process.env.WISEEFF_QUALITY_PLAYWRIGHT_REPORT_DIR;
+      delete process.env.WISEEFF_QUALITY_SNAPSHOT_ROOT;
+    }
+  });
+
   it("uses the configured target frontend URL", async () => {
     const config = await importQualityConfig("https://frontend.example.test");
 

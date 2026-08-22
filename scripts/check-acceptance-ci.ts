@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 export const requiredAcceptanceCiScripts = [
   "acceptance:ci",
   "acceptance:browser",
+  "acceptance:artifacts:check",
   "acceptance:gate0",
   "acceptance:models",
   "acceptance:quality",
@@ -38,6 +39,9 @@ export const requiredAcceptanceCiWorkflowTokens = [
   "npm run acceptance:quality-run",
   "npm run acceptance:smoke",
   "npm run acceptance:gate0",
+  "name: Acceptance artifact safety",
+  "npm run acceptance:artifacts:check -- --root test-results/acceptance-runtime-runs",
+  "steps.acceptance_artifact_safety.outcome == 'success'",
   "npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime",
   "npm run acceptance:browser -- --mode full-pilot --no-start-runtime",
   "actions/upload-artifact@v4"

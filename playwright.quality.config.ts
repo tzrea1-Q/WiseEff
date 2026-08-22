@@ -11,17 +11,22 @@ const apiURL = ownedRuntime?.endpoints.api.url ?? process.env.VITE_WISEEFF_API_B
 const frontendPort = portFromUrl(baseURL, "5173");
 const reuseExistingServer = !process.env.CI;
 const skipWebServers = process.env.WISEEFF_ACCEPTANCE_NO_START_RUNTIME === "true";
+const outputDir = process.env.WISEEFF_QUALITY_PLAYWRIGHT_OUTPUT_DIR ?? "test-results/quality";
+const reportDir = process.env.WISEEFF_QUALITY_PLAYWRIGHT_REPORT_DIR ?? "playwright-report/quality";
+const snapshotRoot = process.env.WISEEFF_QUALITY_SNAPSHOT_ROOT?.trim();
 
 export default defineConfig({
   testDir: "./e2e/quality",
-  outputDir: "test-results/quality",
-  snapshotPathTemplate: "{testDir}/{testFileName}-snapshots/{platform}/{arg}{ext}",
+  outputDir,
+  snapshotPathTemplate: snapshotRoot
+    ? `${snapshotRoot}/{platform}/{arg}{ext}`
+    : "{testDir}/{testFileName}-snapshots/{platform}/{arg}{ext}",
   fullyParallel: false,
   workers: 1,
   reporter: [
     ["list"],
-    ["json", { outputFile: "test-results/quality/results.json" }],
-    ["html", { outputFolder: "playwright-report/quality", open: "never" }]
+    ["json", { outputFile: `${outputDir}/results.json` }],
+    ["html", { outputFolder: reportDir, open: "never" }]
   ],
   timeout: 60_000,
   expect: {

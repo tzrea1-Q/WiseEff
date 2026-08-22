@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -7,11 +8,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   type OwnedLocalAcceptanceRuntimeDescriptorV1,
   assertOwnedRuntimeDescriptor,
+  databaseIdentityFromUrl,
   verifyOwnedRuntimeOwnership,
 } from "../e2e/acceptance/helpers/ownedRuntimeDescriptor";
 import {
   createOwnedAcceptanceAuthorization,
-  provisionOwnedLocalAcceptanceRuntime,
+  cleanupExactOrphanedOwnedRuntime,
+  readCleanSource,
 } from "./owned-local-acceptance-runtime";
 
 const children: ChildProcess[] = [];
@@ -21,6 +24,29 @@ afterEach(async () => {
 });
 
 describe("owned local acceptance runtime", () => {
+  it("records database ownership identity without deriving a verifier from the password", () => {
+    expect(
+      databaseIdentityFromUrl(
+        "postgres://owned-user:first-password@127.0.0.1:5432/wiseeff_acceptance_full_red",
+      ),
+    ).toEqual({
+      host: "127.0.0.1",
+      port: 5432,
+      user: "owned-user",
+      database: "wiseeff_acceptance_full_red",
+    });
+    expect(
+      databaseIdentityFromUrl(
+        "postgres://owned-user:different-password@127.0.0.1:5432/wiseeff_acceptance_full_red",
+      ),
+    ).toEqual({
+      host: "127.0.0.1",
+      port: 5432,
+      user: "owned-user",
+      database: "wiseeff_acceptance_full_red",
+    });
+  });
+
   it("mints the production HMAC bearer consumed by smoke and browser preflight", () => {
     const authorization = createOwnedAcceptanceAuthorization("wiseeff-owned", "test-secret");
     const [payload, signature] = authorization.replace(/^Bearer\s+/u, "").split(".");
@@ -49,15 +75,28 @@ describe("owned local acceptance runtime", () => {
         notes: "postgresql://owner:plaintext@example.test/runtime",
       }),
     ).toThrow(/secret value/i);
+    expect(() =>
+      assertOwnedRuntimeDescriptor({
+        version: 1,
+        kind: "wiseeff-owned-local-acceptance",
+        database: { connectionSha256: "a".repeat(64) },
+      }),
+    ).toThrow(/secret-derived verifier/i);
   });
 
-  it("refuses to provision from a dirty source worktree", async () => {
-    await expect(
-      provisionOwnedLocalAcceptanceRuntime({
-        baseDatabaseUrl: "postgres://wiseeff:wiseeff@127.0.0.1:5432/postgres",
-        worktreeRoot: process.cwd(),
-      }),
-    ).rejects.toThrow(/clean source worktree/i);
+  it("reads an exact clean HEAD and refuses an isolated dirty repository without provisioning", async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), "wiseeff-owned-source-"));
+    execFileSync("git", ["init"], { cwd: repo, stdio: "ignore" });
+    execFileSync("git", ["config", "user.email", "gate0@example.test"], { cwd: repo });
+    execFileSync("git", ["config", "user.name", "Gate0 Test"], { cwd: repo });
+    writeFileSync(path.join(repo, "tracked.txt"), "clean\n");
+    execFileSync("git", ["add", "tracked.txt"], { cwd: repo });
+    execFileSync("git", ["commit", "-m", "clean"], { cwd: repo, stdio: "ignore" });
+    const expectedCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
+
+    await expect(readCleanSource(repo)).resolves.toEqual({ commit: expectedCommit });
+    writeFileSync(path.join(repo, "tracked.txt"), "dirty\n");
+    await expect(readCleanSource(repo)).rejects.toThrow(/clean source worktree/i);
   });
 
   it("rejects a healthy listener whose PID does not match the owned descriptor", async () => {
@@ -95,7 +134,12 @@ describe("owned local acceptance runtime", () => {
       },
       database: {
         name: "wiseeff_acceptance_full_red",
-        connectionSha256: "a".repeat(64),
+        connection: {
+          host: "127.0.0.1",
+          port: 5432,
+          user: "wiseeff",
+          database: "wiseeff_acceptance_full_red",
+        },
         absentBeforeCreate: true,
         marker: {
           table: "wiseeff_acceptance_runtime_markers",
@@ -153,7 +197,6 @@ describe("owned local acceptance runtime", () => {
         mode: "production",
         provider: "hmac",
         issuer: "wiseeff-owned-full-red",
-        secretSha256: "c".repeat(64),
         smokeSubject: "u-xu-yun",
       },
       runtime: {
@@ -181,6 +224,14 @@ describe("owned local acceptance runtime", () => {
         status: "pending",
         exactDatabaseName: "wiseeff_acceptance_full_red",
         exactObjectStoreRoot: objectRoot,
+        resources: {
+          apiProcess: { status: "pending" },
+          frontendProcess: { status: "pending" },
+          database: { status: "pending" },
+          objectStore: { status: "pending" },
+          descriptor: { status: "pending" },
+          artifacts: { status: "pending" },
+        },
       },
     };
 
@@ -190,5 +241,36 @@ describe("owned local acceptance runtime", () => {
         AUTH_TOKEN_HMAC_SECRET: "not-the-real-secret",
       }),
     ).rejects.toThrow(/api process|pid|owner/i);
+  });
+
+  it("refuses orphan cleanup before destructive callbacks when the object marker mismatches", async () => {
+    const worktreeRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-owned-orphan-"));
+    const runId = "full-20260822t221325228z-022e85fec8a7-27bb4a93";
+    const runRoot = path.join(worktreeRoot, "test-results", "acceptance-runtime-runs", runId);
+    const objectRoot = path.join(runRoot, "object-store");
+    mkdirSync(objectRoot, { recursive: true });
+    writeFileSync(path.join(objectRoot, ".wiseeff-acceptance-owner.json"), JSON.stringify({
+      kind: "wiseeff-owned-local-acceptance-object-store",
+      purpose: "td-122-gate0",
+      runId: "wrong-run",
+      sourceCommit: "0".repeat(40),
+    }));
+    let destructiveCalls = 0;
+
+    await expect(cleanupExactOrphanedOwnedRuntime({
+      baseDatabaseUrl: "postgres://owner:secret@127.0.0.1:5432/postgres",
+      worktreeRoot,
+      runRoot,
+      databaseName: "wiseeff_acceptance_full_20260822t22132522_022e85fe_27bb4a93",
+      runId,
+      sourceCommit: "022e85fec8a7bf696bdf8466f48cd7cee9f991e1",
+      ports: [18_800, 5_180],
+    }, {
+      verifyDatabaseMarker: async () => undefined,
+      assertPortsUnused: async () => undefined,
+      dropDatabase: async () => { destructiveCalls += 1; },
+      assertDatabaseAbsent: async () => undefined,
+    })).rejects.toThrow(/object marker.*mismatch/i);
+    expect(destructiveCalls).toBe(0);
   });
 });

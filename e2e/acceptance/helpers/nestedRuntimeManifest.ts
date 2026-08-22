@@ -6,9 +6,16 @@ export const OWNED_ACCEPTANCE_NESTED_RUNTIME_MANIFEST_ENV =
 export const OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV =
   "WISEEFF_ACCEPTANCE_NESTED_RUNTIME_ID";
 
-export type NestedRuntimeState = "running" | "cleaned" | "failed-cleaned" | "cleanup-failed";
+export type NestedRuntimeState = "running" | "cleaned" | "failed-cleaned" | "failed-retained" | "cleanup-failed";
 
-type NestedRuntimeRecord = {
+export type NestedRuntimeCleanup = {
+  apiProcess: { status: "stopped" | "failed"; reason?: string };
+  frontendProcess: { status: "stopped" | "failed"; reason?: string };
+  database: { status: "removed" | "retained" | "failed"; reason?: string };
+  objectStore: { status: "removed" | "retained" | "failed"; reason?: string };
+};
+
+export type NestedRuntimeRecord = {
   id: string;
   state: NestedRuntimeState;
   databaseName: string;
@@ -21,9 +28,10 @@ type NestedRuntimeRecord = {
   frontendPid: number;
   startedAt: string;
   completedAt?: string;
+  cleanup?: NestedRuntimeCleanup;
 };
 
-type NestedRuntimeManifest = {
+export type NestedRuntimeManifest = {
   version: 1;
   kind: "wiseeff-gate0-nested-runtime-manifest";
   parentRunId: string;
@@ -79,6 +87,7 @@ export function recordNestedRuntimeFinish(
   manifestPath: string,
   childId: string,
   state: Exclude<NestedRuntimeState, "running">,
+  cleanup: NestedRuntimeCleanup,
 ) {
   const manifest = readManifest(manifestPath);
   const child = manifest.children.find((entry) => entry.id === childId);
@@ -86,11 +95,12 @@ export function recordNestedRuntimeFinish(
   if (child.state !== "running") throw new Error(`Nested runtime ${childId} is already finalized.`);
   child.state = state;
   child.completedAt = new Date().toISOString();
+  child.cleanup = cleanup;
   manifest.updatedAt = child.completedAt;
   writeManifest(manifestPath, manifest);
 }
 
-function readManifest(manifestPath: string) {
+export function readNestedRuntimeManifest(manifestPath: string) {
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as NestedRuntimeManifest;
   if (
     manifest.version !== 1 ||
@@ -101,6 +111,8 @@ function readManifest(manifestPath: string) {
   }
   return manifest;
 }
+
+const readManifest = readNestedRuntimeManifest;
 
 function writeManifest(manifestPath: string, manifest: NestedRuntimeManifest, flag: "w" | "wx" = "w") {
   const serialized = `${JSON.stringify(manifest, null, 2)}\n`;

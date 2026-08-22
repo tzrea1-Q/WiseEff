@@ -62,7 +62,12 @@ jobs:
       - run: npm run acceptance:quality
       - run: npm run acceptance:quality-run
       - run: npm run acceptance:gate0
+      - name: Acceptance artifact safety
+        id: acceptance_artifact_safety
+        if: always()
+        run: npm run acceptance:artifacts:check -- --root test-results/acceptance-runtime-runs
       - uses: actions/upload-artifact@v4
+        if: always() && steps.acceptance_artifact_safety.outcome == 'success'
         with:
           path: |
             playwright-report/acceptance
@@ -97,6 +102,7 @@ describe("M5.12 acceptance CI configuration", () => {
     expect(requiredAcceptanceCiScripts).toEqual([
       "acceptance:ci",
       "acceptance:browser",
+      "acceptance:artifacts:check",
       "acceptance:gate0",
       "acceptance:models",
       "acceptance:quality",
@@ -172,6 +178,7 @@ jobs:
     expect(result.status).toBe("failed");
     expect(result.missingScripts).toEqual([
       "acceptance:ci",
+      "acceptance:artifacts:check",
       "acceptance:gate0",
       "acceptance:models",
       "acceptance:quality",
