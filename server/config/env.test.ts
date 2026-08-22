@@ -68,12 +68,35 @@ describe("loadServerEnv", () => {
     });
     expect(env.AGENT_API_TIMEOUT_MS).toBe(5000);
     expect(env.LOG_WORKER_ENABLED).toBe(true);
+    expect(env.LOG_WEBHOOK_DELIVERY_RETENTION_ENABLED).toBe(true);
+    expect(env.LOG_WEBHOOK_DELIVERY_RETENTION_PER_DOMAIN).toBe(10_000);
     expect(env.XIAOZE_REASONING_FALLBACK_HEURISTIC).toBe(false);
     expect(env.DEVICE_BRIDGE_ARTIFACT_ROOT).toBe("ops/self-hosted/bridge-artifacts");
     expect(env.DEVICE_BRIDGE_PAIRING_TTL_SECONDS).toBe(1800);
     expect(env.DEVICE_BRIDGE_TOKEN_TTL_DAYS).toBe(90);
     expect(env.DEVICE_BRIDGE_WS_PATH).toBe("/api/v1/device-bridges/ws");
     expect(env.XIAOZE_CHECKPOINTER).toBe("memory");
+  });
+
+  it("parses the webhook delivery retention rollback switch and bounded per-domain limit", () => {
+    expect(
+      loadServerEnv({
+        LOG_WEBHOOK_DELIVERY_RETENTION_ENABLED: "false",
+        LOG_WEBHOOK_DELIVERY_RETENTION_PER_DOMAIN: "1"
+      })
+    ).toMatchObject({
+      LOG_WEBHOOK_DELIVERY_RETENTION_ENABLED: false,
+      LOG_WEBHOOK_DELIVERY_RETENTION_PER_DOMAIN: 1
+    });
+    expect(loadServerEnv({ LOG_WEBHOOK_DELIVERY_RETENTION_PER_DOMAIN: "1000000" })).toMatchObject({
+      LOG_WEBHOOK_DELIVERY_RETENTION_ENABLED: true,
+      LOG_WEBHOOK_DELIVERY_RETENTION_PER_DOMAIN: 1_000_000
+    });
+
+    expect(() => loadServerEnv({ LOG_WEBHOOK_DELIVERY_RETENTION_ENABLED: "sometimes" })).toThrow();
+    expect(() => loadServerEnv({ LOG_WEBHOOK_DELIVERY_RETENTION_PER_DOMAIN: "0" })).toThrow();
+    expect(() => loadServerEnv({ LOG_WEBHOOK_DELIVERY_RETENTION_PER_DOMAIN: "1000001" })).toThrow();
+    expect(() => loadServerEnv({ LOG_WEBHOOK_DELIVERY_RETENTION_PER_DOMAIN: "2.5" })).toThrow();
   });
 
   it("parses explicit API settings", () => {

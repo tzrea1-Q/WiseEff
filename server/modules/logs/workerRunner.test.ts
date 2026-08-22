@@ -6,6 +6,7 @@ import {
   validateLogWorkerConfig
 } from "./workerRunner";
 import { createMetricsRegistry } from "../../observability/metrics";
+import type { LogWebhookDeliveryRetentionLoopStarter } from "./webhookRetention";
 
 describe("log worker runner", () => {
   it("exposes private worker liveness and Prometheus metrics", async () => {
@@ -178,18 +179,67 @@ describe("log worker runner", () => {
     );
   });
 
-  it("starts the worker loop with injected dependencies", () => {
+  it("starts the worker loop with injected dependencies and awaits retention shutdown", async () => {
     const stop = vi.fn();
     const startLoop = vi.fn(() => stop);
+    let resolveRetentionStop: (() => void) | undefined;
+    const retentionStopped = new Promise<void>((resolve) => {
+      resolveRetentionStop = resolve;
+    });
+    const stopRetention = vi.fn(() => retentionStopped);
+    const startRetentionLoop = vi.fn<LogWebhookDeliveryRetentionLoopStarter>(
+      () => stopRetention
+    );
     const db = { query: vi.fn(), transaction: vi.fn() };
     const objectStore = { put: vi.fn(), get: vi.fn() };
     const metrics = { recordLogAnalysisJobResult: vi.fn() };
 
-    const runtime = createLogWorkerRuntime({ db, objectStore, startLoop, metrics, workerId: "worker-a", leaseTtlMs: 30000, intervalMs: 250 });
+    const runtime = createLogWorkerRuntime({
+      db,
+      objectStore,
+      startLoop,
+      startRetentionLoop,
+      retention: { enabled: true, keepPerDomain: 10_000 },
+      metrics,
+      workerId: "worker-a",
+      leaseTtlMs: 30000,
+      intervalMs: 250
+    });
     const returnedStop = runtime.start();
 
-    expect(returnedStop).toBe(stop);
+    let shutdownFinished = false;
+    const shutdown = Promise.resolve(returnedStop()).then(() => {
+      shutdownFinished = true;
+    });
+
     expect(startLoop).toHaveBeenCalledWith({ db, objectStore, metrics, workerId: "worker-a", leaseTtlMs: 30000 }, 250);
+    expect(startRetentionLoop).toHaveBeenCalledOnce();
+    expect(startRetentionLoop).toHaveBeenCalledWith({ db, keepPerDomain: 10_000 });
+    expect(stop).toHaveBeenCalledOnce();
+    expect(stopRetention).toHaveBeenCalledOnce();
+    await Promise.resolve();
+    expect(shutdownFinished).toBe(false);
+
+    resolveRetentionStop?.();
+    await shutdown;
+    expect(shutdownFinished).toBe(true);
+  });
+
+  it("keeps retention disabled when the rollback switch is false", () => {
+    const startRetentionLoop = vi.fn<LogWebhookDeliveryRetentionLoopStarter>(
+      () => async () => undefined
+    );
+    const runtime = createLogWorkerRuntime({
+      db: { query: vi.fn(), transaction: vi.fn() },
+      objectStore: { put: vi.fn(), get: vi.fn() },
+      startLoop: vi.fn(() => vi.fn()),
+      startRetentionLoop,
+      retention: { enabled: false, keepPerDomain: 10_000 }
+    });
+
+    runtime.start()();
+
+    expect(startRetentionLoop).not.toHaveBeenCalled();
   });
 
   it("starts a durable BullMQ runtime instead of polling when queue mode is durable", async () => {
@@ -206,6 +256,14 @@ describe("log worker runner", () => {
       close
     }));
     const startLoop = vi.fn(() => vi.fn());
+    let resolveRetentionStop: (() => void) | undefined;
+    const retentionStopped = new Promise<void>((resolve) => {
+      resolveRetentionStop = resolve;
+    });
+    const stopRetention = vi.fn(() => retentionStopped);
+    const startRetentionLoop = vi.fn<LogWebhookDeliveryRetentionLoopStarter>(
+      () => stopRetention
+    );
     const db = { query: vi.fn(), transaction: vi.fn() };
     const objectStore = { put: vi.fn(), get: vi.fn() };
     const metrics = { recordLogAnalysisJobResult: vi.fn() };
@@ -215,6 +273,8 @@ describe("log worker runner", () => {
       objectStore,
       metrics,
       startLoop,
+      startRetentionLoop,
+      retention: { enabled: true, keepPerDomain: 10_000 },
       createDurableRuntime,
       queueMode: "durable",
       env: {
@@ -226,7 +286,10 @@ describe("log worker runner", () => {
       }
     });
     const stop = runtime.start();
-    await stop();
+    let shutdownFinished = false;
+    const shutdown = Promise.resolve(stop()).then(() => {
+      shutdownFinished = true;
+    });
 
     expect(createDurableRuntime).toHaveBeenCalledWith({
       env: {
@@ -243,6 +306,15 @@ describe("log worker runner", () => {
       workerId: "wiseeff-log-worker"
     });
     expect(startLoop).not.toHaveBeenCalled();
+    expect(startRetentionLoop).toHaveBeenCalledOnce();
+    expect(startRetentionLoop).toHaveBeenCalledWith({ db, keepPerDomain: 10_000 });
+    expect(stopRetention).toHaveBeenCalledOnce();
     expect(close).toHaveBeenCalledOnce();
+    await Promise.resolve();
+    expect(shutdownFinished).toBe(false);
+
+    resolveRetentionStop?.();
+    await shutdown;
+    expect(shutdownFinished).toBe(true);
   });
 });

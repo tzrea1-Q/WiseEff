@@ -61,6 +61,7 @@ An Admin configures the webhook per log domain in `/log-admin` (business-domain 
 ### Delivery semantics
 
 - Best-effort and asynchronous: delivery never blocks or fails the analysis itself. Failed sends retry with exponential backoff (default 3 attempts) and are then marked failed; every attempt is visible in `/log-admin` → 最近投递. Treat the webhook as a notification channel and the REST API as the source of truth.
+- Delivery-attempt history is bounded independently per log domain. The worker keeps the latest 10,000 rows by `created_at DESC, id DESC` by default; cleanup failures produce a redacted warning and retry on the next 60-second cycle without interrupting delivery. Operators can tune the bound or disable future pruning with `LOG_WEBHOOK_DELIVERY_RETENTION_*`, but only database backup/restore can recover rows already deleted.
 - Respond with a `2xx` quickly (do the work async). Redirects are not followed; response bodies are discarded.
 - Deliveries are at-least-once across retries — deduplicate on `runId` if your handler is not idempotent.
 

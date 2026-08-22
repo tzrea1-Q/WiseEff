@@ -14,6 +14,8 @@ Audit records are product evidence. Missing audit is a product failure for produ
 
 ## Retention Guidance
 
+`log_webhook_deliveries` is audit-adjacent operational history, not the immutable `audit_events` product-evidence log. It is intentionally bounded per organization-scoped log domain: the active log worker keeps the latest 10,000 attempts by stable `created_at DESC, id DESC` order, in batches of 1,000 (at most 10 batches every 60 seconds). Cleanup is fail-open for webhook delivery and logs only deleted count/duration or a redacted failure code. `LOG_WEBHOOK_DELIVERY_RETENTION_ENABLED=false` stops future deletion; already-pruned rows are recoverable only through the normal database backup/restore path.
+
 For controlled pilot:
 
 - keep audit events for the full pilot period plus the agreed review window,

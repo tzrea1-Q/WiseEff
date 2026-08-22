@@ -15,6 +15,7 @@ import { startKnowledgeIndexWorkerLoop } from "./modules/knowledge/indexing/work
 import { createLogAnalyzerFromEnv } from "./modules/logs/analyzer/analyzerFromEnv";
 import { createLogAnalysisQueueRuntime, createLogAnalysisQueueTransport } from "./modules/logs/logAnalysisQueueRuntime";
 import { createLogWebhookDeliverer } from "./modules/logs/webhookDelivery";
+import { startLogWebhookDeliveryRetentionLoop } from "./modules/logs/webhookRetention";
 import { startLogWorkerLoop } from "./modules/logs/worker";
 import { configureNotificationDelivery } from "./modules/notifications/delivery";
 import {
@@ -107,6 +108,16 @@ const stopLogWorker =
   env.LOG_WORKER_ENABLED && env.LOG_ANALYSIS_QUEUE_MODE === "polling" && db && objectStore
     ? startLogWorkerLoop({ db, objectStore, analyzer: logAnalyzer, metrics, tracing: defaultTracingBoundary, webhooks: logWebhookDeliverer })
     : undefined;
+const stopLogWebhookDeliveryRetention =
+  env.LOG_WORKER_ENABLED &&
+  env.LOG_WEBHOOK_DELIVERY_RETENTION_ENABLED &&
+  db &&
+  objectStore
+    ? startLogWebhookDeliveryRetentionLoop({
+        db,
+        keepPerDomain: env.LOG_WEBHOOK_DELIVERY_RETENTION_PER_DOMAIN
+      })
+    : undefined;
 // Started in start() after ensureKnowledgeVectorColumn so the worker never
 // caches a pre-install "no vector support" detection.
 let stopKnowledgeIndexWorker: (() => void) | undefined;
@@ -175,32 +186,33 @@ const server = createWiseEffServerFromEnv({
   }
 });
 
-function shutdown() {
-  stopLogWorker?.();
-  stopKnowledgeIndexWorker?.();
-  stopNotificationWorker?.();
-  void Promise.all([
+let shuttingDown = false;
+async function shutdown() {
+  if (shuttingDown) {
+    return;
+  }
+  shuttingDown = true;
+
+  await Promise.all([
+    stopLogWorker?.(),
+    stopLogWebhookDeliveryRetention?.(),
+    stopKnowledgeIndexWorker?.(),
+    stopNotificationWorker?.(),
     logAnalysisQueueRuntime?.close().catch((error) => {
       console.error("Failed to close log-analysis durable queue runtime.", error);
     }),
     notificationQueueRuntime?.close().catch((error) => {
       console.error("Failed to close notification durable queue runtime.", error);
     })
-  ]).finally(() => {
-    server.close(() => {
-      process.exit(0);
-    });
-  });
+  ]);
 
-  if (!logAnalysisQueueRuntime && !notificationQueueRuntime) {
-    server.close(() => {
-      process.exit(0);
-    });
-  }
+  server.close(() => {
+    process.exit(0);
+  });
 }
 
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+process.on("SIGINT", () => void shutdown());
+process.on("SIGTERM", () => void shutdown());
 
 async function start() {
   if (db && shouldEnsureLocalPostCutoverOnApiBoot(process.env)) {
