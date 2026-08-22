@@ -637,7 +637,6 @@
 }
 
 .review-merge-link {
-  grid-column: span 2;
   display: grid;
   gap: 6px;
   color: #475569;

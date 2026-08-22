@@ -105,10 +105,34 @@ describe("parameter action panels", () => {
 
   it("uses one structural action column without legacy full-width selectors", () => {
     const stylesheet = readStylesheet("src/styles.css");
+    const parameterReviewStylesheet = readStylesheet("src/features/parameter-review/parameter-review.css");
 
     expect(declarationFor(stylesheet, ".action-panel", "grid-template-columns")).toBe("1fr");
     expect(hasRule(stylesheet, ".action-panel .full")).toBe(false);
     expect(hasRule(stylesheet, ".button.full")).toBe(false);
+    expect(declarationFor(parameterReviewStylesheet, ".review-merge-link", "grid-column")).toBeUndefined();
+  });
+
+  it("keeps the software merge field and confirmation in the same hook-free action panel", () => {
+    const mergeRequest = initialState.changeRequests.find((request) => request.status === "软件User合入");
+    expect(mergeRequest).toBeDefined();
+
+    renderReview({
+      ...initialState,
+      activeRoleId: "software-user",
+      changeRequests: [{ ...mergeRequest!, id: "action-panel-merge-request" }]
+    });
+
+    const mergeLink = screen.getByLabelText("合入链接");
+    const confirmMerge = screen.getByRole("button", { name: "确认合入" });
+    const actionPanel = mergeLink.closest(".action-panel");
+    const mergeLinkGroup = mergeLink.closest(".review-merge-link");
+
+    expect(actionPanel).not.toBeNull();
+    expect(mergeLinkGroup).not.toBeNull();
+    expect(confirmMerge.closest(".action-panel")).toBe(actionPanel);
+    expect(Array.from(actionPanel!.children)).toEqual([mergeLinkGroup, confirmMerge]);
+    expect(actionPanel!.querySelector(".full")).toBeNull();
   });
 
   it("keeps the submission history mobile grid override after its base rule", () => {
