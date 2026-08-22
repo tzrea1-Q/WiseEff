@@ -272,7 +272,9 @@ sudo ./scripts/upgrade.sh prepare-host --yes
 ./scripts/upgrade.sh apply
 ```
 
-`plan` 还会只读校验目标 commit 中固定校验和的 `linux/amd64` Dockerfile 基础镜像包。输出中的 `base image` 会说明本地是否已有完全一致的镜像，或 `apply` 将自动 load/tag 已验证的仓库 tar。安装本控制器版本后不再需要手工执行 `docker load`；准备动作发生在 Compose build 和停流量之前。运行的文本/JSON status 会记录精确镜像身份及来源 `local` 或 `bundled-archive`。
+`plan` 还会只读校验目标 commit 中固定校验和的 `linux/amd64` Dockerfile 基础镜像包。输出中的 `base image` 会说明本地是否已有完全一致的镜像，或 `apply` 将自动 load/tag 已验证的仓库 tar。安装本控制器版本后不再需要手工执行 `docker load`；准备动作发生在 Compose build 和停流量之前。运行的文本/JSON status 会同时记录 OCI manifest 与 Docker config digest，以及来源 `local` 或 `bundled-archive`，兼容 containerd 与经典 `overlay2` Docker 镜像存储。
+
+`already running` 是经过验证的 no-op，不只是比较 Git：checkout 与目标 SHA 必须一致，API/worker/web 必须都引用该 commit 的精确应用镜像，并且公网健康探测通过。若上一次 apply 只 checkout 到目标、却在构建中失败，重新执行 `apply` 会自动继续构建/重建。
 
 固定受控 release 或 commit：
 
@@ -399,11 +401,13 @@ npm run selfhost:release-gate -- \
 | 备份根目录不可写 | 宿主机准备或目录 ownership 未完成 | 执行 `prepare-host`；不要用 root 运行普通升级动作 |
 | `Another WiseEff setup or upgrade operation holds the host lock` | 存在真实或陈旧的共享操作锁 | 执行 `lock-status`；held 时等待，仅 stale 时使用 `unlock` |
 | `category=base-image`，或离线包校验和/平台报错 | 目标契约、tar、Dockerfile 标签或宿主机架构不一致 | 不要随意 pull 或 retag 其他镜像；恢复仓库固定离线包/契约，或换用匹配的受支持宿主机，再重跑 `plan` |
+| `Loaded base-image identity does not match` | Docker 返回的既不是固定 OCI manifest digest，也不是所需平台上的固定 config digest | 保留完整 expected/actual 报错和 `status --json`；不要在部署机修改契约 |
 | Docker 仍尝试获取 `node:22.21.1-alpine` metadata | 当前已安装控制器早于自动准备离线包版本，或精确固定标签尚未准备 | 按基础镜像文档的手工 fallback 做一次接入；后续 `apply` 会自动准备 |
 | checkout dirty 拒绝 | 已跟踪或未忽略文件偏离部署 commit | 检查 `git status --short`，保留操作员文件并有意处理差异 |
 | 用户直接运行 Git 成功，但升级 Git fetch 超时 | 可能错误使用 `sudo`、代理环境缺失或 Git 配置不同 | 由部署用户执行；检查代理；必要时用 `--git-proxy` 只覆盖 Git |
 | Git 成功，但镜像拉取或构建失败 | Docker daemon/build 使用独立的代理或 CA 边界 | 配置 Docker 服务代理和组织批准的 CA；禁止全局关闭 TLS |
 | `npm ci` 失败并提示 `/root/.npm/_logs` | 该路径属于临时镜像构建 stage，不是宿主机 | 查看本次运行的 `build_summary` 和脱敏 `build_log`；修复分类原因后重新执行 `apply` |
+| `apply` 输出 `already running` | checkout、三个应用镜像引用和公网健康状态均已针对同一个目标 SHA 验证 | 目标版本已生效；只有确实要同版本全量重建时才加 `--restart` |
 | `/health/live` 通过但 `/health/ready` 失败 | API 存活，但必需依赖阻塞 | 保留 readiness JSON，按其中命名的依赖排查 |
 | `worker` 配置了 `restart: unless-stopped` 仍反复退出 | 属于启动、配置或依赖错误，而不是普通停止 | 先保留日志并检查依赖 readiness，禁止盲目重启循环 |
 | `recovery-required` | candidate migration 已开始，但自动安全收尾失败 | 保持 proxy 停止；执行 journal 指定的 `resume` 或获批整点回滚 |

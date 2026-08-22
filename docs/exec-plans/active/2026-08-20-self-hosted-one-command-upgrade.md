@@ -383,6 +383,32 @@ git diff --check
 
 **Expected outcome:** a deployment user can persist one private build-network file or use the current shell proxy, then run the unchanged one-command setup/upgrade interfaces. Git, BuildKit package downloads, optional internal npm registry replacement, and approved CA trust are deterministic and diagnosable without leaking credentials or editing Docker daemon state.
 
+## Phase 11 — Docker Image-Store Identity Compatibility And Verified No-Op
+
+A target Docker Engine 28.1.1 host using classic `overlay2` reports the saved image's config digest from `.Id`, while a containerd-backed development host reports its OCI manifest digest. The same target also showed that Git HEAD alone cannot prove a successful apply: an earlier build failure may leave the checkout at the target while API/worker/web still run an older image.
+
+**Tasks:**
+
+- [x] Extend the base-image contract with the pinned Docker config digest while retaining the OCI manifest digest and exact platform.
+- [x] Accept either contracted digest only on the contracted platform; include both expected identities and the Docker-reported actual identity in mismatch diagnostics.
+- [x] Extract manifest and config identities from the repository tar in `selfhost:check` so contract/archive drift fails CI.
+- [x] Persist both identities in plan output and text/JSON run status.
+- [x] Require exact commit-addressed image refs on API/worker/web plus a passing public probe before a same-SHA apply returns no-op.
+- [x] Add black-box regressions for classic Docker identity, unexpected identity diagnostics, stale runtime images, public health probing, and status evidence.
+- [x] Update the upgrade, operations, base-image, design, reliability, and plan bilingual documentation pairs.
+
+**Verification:**
+
+```bash
+npm run test:scripts -- ops/self-hosted/scripts/upgrade.sh.test.ts ops/self-hosted/scripts/check-self-hosted-config.test.ts
+npm run selfhost:check
+npm run docs:check
+npm run build
+git diff --check
+```
+
+**Target evidence still required:** rerun `apply` on the reported Docker 28.1.1 `overlay2` host. It must accept config digest `sha256:c91ce80d48fb1a545181cbad2e7e4329bf5aa581c9a87db465e31fa21f92add7`, complete the candidate build, recreate API/worker/web with the target commit tag, and pass public health. Local and CI gates validate the controller behavior but do not substitute for this deployment-host proof.
+
 ## Rollout And Compatibility
 
 1. Land the implementation without changing existing setup/start defaults.

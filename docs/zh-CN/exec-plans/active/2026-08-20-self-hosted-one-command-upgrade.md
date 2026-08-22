@@ -355,6 +355,32 @@ git diff --check
 
 **预期结果：** 部署用户可以持久化一个私有构建网络文件，也可以直接使用当前 shell 代理，然后继续运行不变的一键 setup/upgrade 接口。Git、BuildKit 包下载、可选内部 npm registry 替换和已批准 CA 信任都可确定性诊断，且不泄露凭据、不修改 Docker daemon 状态。
 
+## 阶段 11 —— Docker 镜像存储身份兼容与可信 no-op
+
+目标机使用 Docker Engine 28.1.1 经典 `overlay2` 存储，`.Id` 返回保存镜像的 config digest；开发机使用 containerd 存储时则返回 OCI manifest digest。该目标机也证明 Git HEAD 不能单独代表 apply 成功：先前构建失败可能让 checkout 留在目标 commit，而 API/worker/web 仍运行旧镜像。
+
+**任务：**
+
+- [x] 在保留 OCI manifest digest 和精确平台的同时，把固定 Docker config digest 加入基础镜像契约。
+- [x] 只在契约平台上接受这两个固定 digest；不匹配时打印两个预期身份和 Docker 实际身份。
+- [x] 由 `selfhost:check` 从仓库 tar 中提取 manifest/config 身份，使契约/归档漂移在 CI 失败。
+- [x] 在 plan 输出和文本/JSON 运行状态中持久化两个身份。
+- [x] 相同 SHA apply 只有在 API/worker/web 都引用精确 commit 镜像且公网探测通过时才 no-op。
+- [x] 增加经典 Docker 身份、意外身份诊断、旧运行镜像、公网健康探测和状态证据的黑盒回归。
+- [x] 更新升级、运维、基础镜像、设计、可靠性和计划的中英文文档对。
+
+**验证：**
+
+```bash
+npm run test:scripts -- ops/self-hosted/scripts/upgrade.sh.test.ts ops/self-hosted/scripts/check-self-hosted-config.test.ts
+npm run selfhost:check
+npm run docs:check
+npm run build
+git diff --check
+```
+
+**仍需目标机证据：** 在报告问题的 Docker 28.1.1 `overlay2` 主机重新执行 `apply`。它必须接受 config digest `sha256:c91ce80d48fb1a545181cbad2e7e4329bf5aa581c9a87db465e31fa21f92add7`，完成候选构建，以目标 commit 标签重建 API/worker/web，并通过公网健康检查。本地和 CI 门禁验证控制器行为，但不能替代部署主机实证。
+
 ## 推广与兼容
 
 1. 落地实现，但不改变既有 setup/start 默认行为。

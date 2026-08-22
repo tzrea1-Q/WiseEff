@@ -145,6 +145,7 @@ WISEEFF_BASE_IMAGE_ARCHIVE=node-22.21.1-alpine-amd64.tar
 WISEEFF_BASE_IMAGE_ARCHIVE_REF=node:22.21.1-alpine-amd64
 WISEEFF_BASE_IMAGE_PLATFORM=linux/amd64
 WISEEFF_BASE_IMAGE_ID=sha256:eefb407f08684593068a61d76c3336fb418bdfd184357ccfe448aadfa1147b3e
+WISEEFF_BASE_IMAGE_CONFIG_ID=sha256:c91ce80d48fb1a545181cbad2e7e4329bf5aa581c9a87db465e31fa21f92add7
 WISEEFF_BASE_IMAGE_ARCHIVE_SHA256=42558e13bb39a42ac540780d4231c62a945bcaa48250bd7ac01b2af72c8f91f0
 `;
 
@@ -444,6 +445,40 @@ describe("self-hosted config metadata", () => {
 
     expect(result.status).toBe("failed");
     expect(result.baseImageBundleIssues).toContain("archive-checksum-mismatch");
+  });
+
+  it("rejects drift between the archive config digest and the dual-identity contract", () => {
+    const result = evaluateSelfHostedConfig({
+      packageJson: validPackageJson,
+      composeText: validCompose,
+      dockerfileText: validDockerfile,
+      dockerignoreText: validDockerignore,
+      baseImageBundleText: validBaseImageBundle,
+      baseImageArchiveConfigId: `sha256:${"d".repeat(64)}`,
+      envExampleText: validEnvExample,
+      caddyfileText: validCaddyfile,
+      existingFiles: existingSelfHostedFiles
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.baseImageBundleIssues).toContain("archive-config-id-mismatch");
+  });
+
+  it("rejects drift between the archive manifest digest and the dual-identity contract", () => {
+    const result = evaluateSelfHostedConfig({
+      packageJson: validPackageJson,
+      composeText: validCompose,
+      dockerfileText: validDockerfile,
+      dockerignoreText: validDockerignore,
+      baseImageBundleText: validBaseImageBundle,
+      baseImageArchiveImageId: `sha256:${"d".repeat(64)}`,
+      envExampleText: validEnvExample,
+      caddyfileText: validCaddyfile,
+      existingFiles: existingSelfHostedFiles
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.baseImageBundleIssues).toContain("archive-image-id-mismatch");
   });
 
   it("requires Compose to carry the deployment proxy into BuildKit without Dockerfile proxy ENV values", () => {

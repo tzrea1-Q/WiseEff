@@ -39,7 +39,9 @@ cd /srv/wiseeff/ops/self-hosted
 
 `plan`、`status` 和 `status --json` 只显示代理/CA 是否已配置、npm registry 主机名与运行时代理开关，绝不打印或持久化代理 URL/凭据。真实配置被 Git 忽略，真实配置与示例契约都被排除在 Docker build context 外。
 
-Dockerfile 基础镜像是一个特例：仓库在 `ops/self-hosted/images/` 中携带了固定校验和的 `linux/amd64` 离线包。`plan` 会只读校验目标 commit 中的离线包契约、tar 校验和、Dockerfile 引用和 Docker server 平台，并输出 `verified local image` 或 `verified bundle; apply will load and tag it`。`apply` 选择不可变目标后、Compose build 前，会再次校验 checkout 中的 tar；若本地没有完全一致的固定镜像，则自动 load，校验 image ID/平台，再创建 `FROM` 使用的精确标签。运行 journal 会记录 `base_image_ref`、`base_image_id`、`base_image_platform`、`base_image_source` 和 `base_image_status`。
+Dockerfile 基础镜像是一个特例：仓库在 `ops/self-hosted/images/` 中携带了固定校验和的 `linux/amd64` 离线包。`plan` 会只读校验目标 commit 中的离线包契约、tar 校验和、Dockerfile 引用和 Docker server 平台，并输出 `verified local image` 或 `verified bundle; apply will load and tag it`。`apply` 选择不可变目标后、Compose build 前，会再次校验 checkout 中的 tar；若本地没有完全一致的固定镜像，则自动 load，校验身份/平台，再创建 `FROM` 使用的精确标签。
+
+契约同时固定 OCI manifest digest（`base_image_id`）和 Docker config digest（`base_image_config_id`）。Docker Desktop/containerd 镜像存储可能把前者显示为 `.Id`，经典 Docker Engine `overlay2` 镜像存储则可能对同一份离线包显示后者。控制器只在平台也完全一致时接受这两个固定值；出现第三个身份时，报错会同时打印两个预期值和 Docker 实际值。`npm run selfhost:check` 也会从 tar 中提取两个身份，确保契约与离线包漂移时 CI 失败。文本与 JSON 运行状态会记录两个 digest、平台、来源和准备状态。
 
 这只消除了 `node:22.21.1-alpine` 对 Docker Hub 的依赖，并不代表整个构建已经离线化。Alpine 软件包、固定版本 DTC Git 源、Python 包和 npm 包仍需要受管代理/镜像路径，除非另行打包。其他服务镜像拉取仍属于 Docker daemon 网络边界。控制器不会关闭 TLS、删除镜像或清理 Docker 状态。
 
@@ -89,7 +91,7 @@ cd /srv/wiseeff/ops/self-hosted
 ./scripts/upgrade.sh apply --ref <sha> --non-interactive --yes
 ```
 
-如果目标 SHA 已经在运行，命令成功退出且不做操作；只有确实需要同 SHA 全量重建时才加 `--restart`。
+只有 checkout SHA 等于解析出的目标、API/worker/web 都引用该 commit 的精确目标镜像，并且公网健康探测通过时，`apply` 才会成功 no-op。若上一次构建失败后只有 checkout 被更新，本次会进入正常构建/重建流程，不会误报 `already running`。健康的同 SHA 服务仍需要主动全量重建时才加 `--restart`。
 
 恢复点默认写到 `/var/backups/wiseeff/upgrades/<run-id>`，被 Git 忽略的 journal 写到 `ops/self-hosted/.state/upgrades/<run-id>`。主机有专用且受保护的文件系统时可用 `--backup-root`、`--state-dir` 覆盖。环境文件权限必须保持 `600`。
 
@@ -116,7 +118,7 @@ cat ops/self-hosted/.state/upgrades/<run-id>/diagnostics/summary.txt
 less ops/self-hosted/.state/upgrades/<run-id>/diagnostics/build.log
 ```
 
-基础镜像契约、tar 或平台失败会归类为 `base-image`。其他故障会自动分类为 dependency lock 不一致、企业 CA、DNS、网络/代理、registry 完整性或包缺失、宿主机容量及疑似 OOM；无法识别时标为 `unclassified`，完整日志仍保留。修复摘要指出的问题后重新执行 `apply` 即可；停流量前的构建失败不需要从 `/root/.npm` 手工复制日志，也不需要执行 `resume`。
+基础镜像契约、tar 或平台失败会归类为 `base-image`。身份不匹配时，报错会打印固定的 manifest/config digest、平台和 Docker 实际身份；修改任何标签前先与 `status --json` 中的相同字段对照。其他故障会自动分类为 dependency lock 不一致、企业 CA、DNS、网络/代理、registry 完整性或包缺失、宿主机容量及疑似 OOM；无法识别时标为 `unclassified`，完整日志仍保留。修复摘要指出的问题后重新执行 `apply` 即可；停流量前的构建失败不需要从 `/root/.npm` 手工复制日志，也不需要执行 `resume`。
 
 在 migration 启动前，排空或备份失败会恢复旧服务，并记录 `old-stack-restored` 或 `failed-safe`。候选 API 启动后失败会记录 `recovery-required`，保持 proxy 停止并保持队列暂停。不要手工修改 journal 或直接恢复流量。
 

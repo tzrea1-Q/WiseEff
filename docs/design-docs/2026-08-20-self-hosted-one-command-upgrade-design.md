@@ -116,7 +116,7 @@ upgrade.sh rollback --run-id <id> [--restore-data] [--confirm <token>]
 - `status` reads the durable journal only, including candidate-build status, diagnostic paths, and the actionable next step.
 - `resume` continues the first incomplete idempotent phase; it does not repeat a verified snapshot or migration blindly.
 - `rollback` restores the previous application image. `--restore-data` additionally restores the recorded PostgreSQL, object-store, and Redis recovery point.
-- if the resolved SHA already runs and `--restart` is absent, `apply` exits successfully as a no-op.
+- if checkout and resolved SHA match, API/worker/web all reference the exact commit-addressed image, the public probe passes, and `--restart` is absent, `apply` exits successfully as a no-op.
 - non-interactive apply requires both `--non-interactive` and `--yes`; destructive restore additionally requires the printed run-specific token.
 
 Stable exit classes are part of the interface:
@@ -231,7 +231,7 @@ The journal permits only declared forward transitions. `resume` checks observabl
 6. Check Docker/Compose versions, disk and inode headroom, backup-root permissions, clock, and public URL.
 7. Fetch and resolve the requested ref to one commit. Compare migration files between previous and target commits.
 8. Verify the target upgrade protocol and render `compose config` without exposing resolved secrets.
-9. Read the target commit's base-image contract as data; verify its archive blob SHA-256, Dockerfile `FROM` reference, expected image identity, and Docker server platform. `plan` may inspect images but never loads or tags them.
+9. Read the target commit's base-image contract as data; verify its archive blob SHA-256, Dockerfile `FROM` reference, pinned OCI manifest/config identities, and Docker server platform. `plan` may inspect images but never loads or tags them.
 
 Disk preflight includes candidate image headroom plus at least the estimated PostgreSQL, object-store, and Redis backup size with a safety factor. Unknown size or insufficient space fails closed.
 
@@ -239,7 +239,7 @@ Disk preflight includes candidate image headroom plus at least the estimated Pos
 
 1. Tag each current application image with the run-specific previous tag.
 2. Check out the resolved target commit in detached-head deployment mode.
-3. Revalidate the checked-out base-image archive. If the exact pinned image is absent, load the tar, verify archive tag identity/platform, and tag it with the exact Dockerfile reference. Never pull a substitute, disable TLS, delete an image, or prune state.
+3. Revalidate the checked-out base-image archive. If the exact pinned image is absent, load the tar, accept only its pinned OCI manifest or config digest on the pinned platform, and tag it with the exact Dockerfile reference. Never pull a substitute, disable TLS, delete an image, or prune state.
 4. Build one commit-addressed application image used by API, worker, and web.
 5. Stream redacted plain-progress output into the run journal; if npm fails, export its sanitized in-stage debug log before the stage disappears.
 6. Write a classified summary and expose build and base-image evidence through `status`.
@@ -248,7 +248,7 @@ Disk preflight includes candidate image headroom plus at least the estimated Pos
 
 The Compose file gains an explicit application image repository/tag variable so rollback does not depend on a mutable default Compose tag or on rebuilding old source during an incident.
 
-The bundle contract pins archive filename/hash, archive tag, Dockerfile tag, image ID, and platform. It is parsed as data rather than sourced as shell. The current repository bundle covers only the Dockerfile's Node base image on `linux/amd64`; package-manager and source downloads remain separate network/trust boundaries.
+The bundle contract pins archive filename/hash, archive tag, Dockerfile tag, OCI manifest digest, Docker config digest, and platform. Docker/containerd-backed stores may report the manifest digest as `.Id`, while classic Docker Engine `overlay2` stores may report the config digest for the same saved image. The controller accepts either contracted identity only with the contracted platform, records both in run status, and reports expected/actual identities on mismatch. The repository config gate extracts both identities from the archive, so the dual contract cannot drift silently. The contract is parsed as data rather than sourced as shell. The current repository bundle covers only the Dockerfile's Node base image on `linux/amd64`; package-manager and source downloads remain separate network/trust boundaries.
 
 Restricted-network inputs form a separate deep module behind `build-network.sh`. A mode-`0600`, non-symlink data file accepts only proxy pairs, one npm registry URL, one approved PEM path, and an explicit runtime-proxy boolean. Shell proxy variables remain an input for interactive operators; ambiguous upper/lower pairs fail closed. The controller exports Docker predefined proxy build arguments, uses an npm registry host-replacement policy for lockfile-resolved tarballs, and mounts the CA through a BuildKit secret into every build stage. It records only safe status fields. It does not source configuration, put proxy values in Dockerfile `ENV`, disable TLS, rewrite Docker daemon configuration, or send runtime proxy values to data-plane containers by default.
 
@@ -363,7 +363,7 @@ Vitest invokes the public shell interface with temporary Git repositories and fa
 
 - moving ref resolves once to an immutable SHA;
 - dirty worktree, unsupported protocol, missing `.env`, lock contention, low disk, and target build failure leave old services untouched;
-- same SHA is a no-op unless `--restart` is set;
+- same checkout SHA is a no-op only when all application containers reference the target image and public health passes, unless `--restart` is set;
 - queue drain and backup failures restore the old stack;
 - a verified backup is not repeated on resume;
 - migration-started failures become `recovery-required`;
