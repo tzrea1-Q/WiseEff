@@ -131,6 +131,7 @@ Track-specific commands, red/green evidence, and browser artifact paths are reco
 - **TD-077 — #583 (`c3937904`):** repository CI passed 404 frontend files / 3005 tests and 349 server files / 2711 tests, with 1 file / 4 tests skipped; script coverage passed 500 tests with 5 existing skips. The final seven residual files use structural/rendered/primitive contracts, and the error-level regression rule passed its 6/6 focused cases.
 - **TD-114 — #585 (`bf3739a2`):** local focused coverage passed 4 files / 148 tests, the implementation-time frontend suite passed 402 files / 2993 tests, and parameter acceptance passed 3/3. Repository CI passed 405/3010 frontend tests and 349 server files / 2711 tests, with 1 file / 4 tests skipped; Acceptance quality passed 97 tests and Acceptance smoke passed 4 tests. API-mode QA covered `/parameter-review` and `/parameter-submissions` at 1440×900, 768×1024, and 390×844 with snapshots, screenshots, reject/approve/withdraw requests at HTTP 200, zero overflow, and zero console errors. It found and fixed mobile rule ordering, history-card specificity, and an implicit merge-link grid track; the remaining console warning was the local CopilotKit license warning.
 - All four PRs passed the repository Detect, Build and test, Acceptance quality, Acceptance smoke, and Merge bar gates. Their final independent Standards and Spec reviews each reported zero findings.
+- **Combined closeout verification:** after all four implementation merges, the refreshed `bf3739a2` closeout branch was installed locally and verified with the shared documentation diff as its only additional change. `npx tsc -b` passed. `npm run build` passed with only the existing externalized-module and chunk-size warnings. `npm test -- --maxWorkers=4` passed 405 files / 3010 tests. `npm run test:server` passed 348 files / 2707 tests, with 2 files / 8 tests skipped. `npm run lint` reported 0 errors and 298 baseline warnings. `npm run ui:check` passed with raw-color 1016 ≤ 1022, raw-z-index 48 ≤ 50, raw-font-size 214, raw-shadow 142, raw-spacing 1244 ≤ 1250, raw-radius 147 ≤ 148, and all other counters at 0. `npm run contract:check` reported the contract artifacts current. `npm run docs:check` passed documentation governance; the pgvector schema artifact was skipped as designed because the local server lacks the extension and remains CI-verified. `git diff --check` passed. This exercises the same four-merge-plus-shared-doc composition proposed for `main`; the closeout PR still must pass all repository CI gates before merge.
 - This shared closeout updates only the EN/ZH trackers, plans, indexes, and stale current-state references. Repository maps, product specifications, runbooks, security rules, design-system rules, and ADR-0031 were reviewed and remain unchanged; #582 already carries the required API/OpenAPI artifact changes, and #583 carries the quality-rule changes.
 - This closure supplies local and repository-CI implementation evidence only. Path-filtered local non-HDC and target-synthetic jobs were skipped. It does **not** claim HDC/device-lab, target-environment, target-synthetic, or live model/provider evidence.
 
@@ -152,11 +153,11 @@ Track-specific commands, red/green evidence, and browser artifact paths are reco
 
 ## Documentation Update Gate
 
-The batch cannot be marked complete until:
+The documentation update gate is satisfied on the closeout branch:
 
-- every Update/Review row is updated or recorded unchanged with evidence;
-- EN/ZH tracker and plan state agree;
-- the plan filename exists only under `completed/` after closure;
-- `npm run docs:check` and `git diff --check` pass on the closeout branch;
+- every Update/Review row names exact files and is updated or recorded unchanged with evidence;
+- the EN/ZH trackers and plan state agree, and the plan filename exists only under `completed/`;
+- combined local verification, `npm run docs:check`, and `git diff --check` passed on the four-merge-plus-shared-doc closeout branch;
 - TD-114 evidence records both routes, all three viewports, interactions, screenshots, console/network checks, and issues found/fixed;
-- skipped target/HDC/model-provider gates remain explicitly outside the closure claim.
+- skipped target/HDC/model-provider gates remain explicitly outside the closure claim;
+- the closeout PR's repository CI gates remain blocking and must all be green before merge.
