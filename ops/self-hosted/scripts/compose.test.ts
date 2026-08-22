@@ -48,6 +48,14 @@ describe("self-hosted Compose entry", () => {
     ["an unrelated service replica count", ["up", "--scale=worker=2"]],
     ["an unrelated standalone service replica count", ["scale", "worker=2"]],
     [
+      "`exec` container arguments without a delimiter",
+      ["exec", "api", "tool", "--scale", "api=2"]
+    ],
+    [
+      "`run` container arguments without a delimiter",
+      ["run", "--rm", "api", "tool", "--scale=api=2"]
+    ],
+    [
       "container command arguments after `--`",
       ["run", "--rm", "api", "sh", "--", "--scale", "api=2"]
     ]

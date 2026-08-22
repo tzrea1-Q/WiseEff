@@ -44,7 +44,7 @@ validate_api_scale() {
         continue
       fi
       scale_value="$argument"
-    else
+    elif [ "$compose_command" = "up" ]; then
       if [ "$argument" = "--" ]; then
         break
       elif [ "$expects_scale_value" = "true" ]; then
@@ -56,6 +56,8 @@ validate_api_scale() {
       elif [[ "$argument" == --scale=* ]]; then
         scale_value="${argument#--scale=}"
       fi
+    else
+      continue
     fi
 
     if [[ "$scale_value" == api=* ]]; then
