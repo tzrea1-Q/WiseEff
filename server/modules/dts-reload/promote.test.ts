@@ -301,15 +301,43 @@ describe.skipIf(!databaseAvailable)("promoteReloadRunToDrafts", () => {
     ).rejects.toMatchObject({ code: "VALIDATION_FAILED", status: 400 });
   });
 
-  it("refuses contradicted, failed, restore-baseline, and unverifiable-without-ack runs", async () => {
+  it("preserves server rejection copy and details for every promotion eligibility rejection", async () => {
     await seedCandidate({ bindingId: "binding-1" });
     const recorder = recordingCreateDraft();
 
-    for (const [id, status, purpose, ack] of [
-      ["run-contradicted", "contradicted", "ordinary", undefined],
-      ["run-failed", "failed", "ordinary", undefined],
-      ["run-restore", "verified", "restore-baseline", undefined],
-      ["run-unv", "unverifiable", "ordinary", undefined]
+    for (const [id, status, purpose, ack, message, details] of [
+      [
+        "run-contradicted",
+        "contradicted",
+        "ordinary",
+        undefined,
+        "Reload run status contradicted cannot be promoted to parameter drafts.",
+        { code: "reload-promote-ineligible", purpose: "ordinary", status: "contradicted" }
+      ],
+      [
+        "run-failed",
+        "failed",
+        "ordinary",
+        undefined,
+        "Reload run status failed cannot be promoted to parameter drafts.",
+        { code: "reload-promote-ineligible", purpose: "ordinary", status: "failed" }
+      ],
+      [
+        "run-restore",
+        "verified",
+        "restore-baseline",
+        undefined,
+        "restore-baseline runs cannot be promoted; those values are already the library baseline.",
+        { code: "reload-promote-ineligible", purpose: "restore-baseline", status: "verified" }
+      ],
+      [
+        "run-unv",
+        "unverifiable",
+        "ordinary",
+        undefined,
+        "Unverifiable reload runs require unverifiableAcknowledged: true before promotion.",
+        { code: "reload-promote-unverifiable-ack-required", status: "unverifiable" }
+      ]
     ] as const) {
       await seedRun({
         id,
@@ -324,7 +352,7 @@ describe.skipIf(!databaseAvailable)("promoteReloadRunToDrafts", () => {
           { runId: id, bindingIds: ["binding-1"], unverifiableAcknowledged: ack },
           { createBindingDraft: recorder.createBindingDraft }
         )
-      ).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+      ).rejects.toMatchObject({ code: "CONFLICT", status: 409, message, details });
     }
     expect(recorder.calls).toHaveLength(0);
   });

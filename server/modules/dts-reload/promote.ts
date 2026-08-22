@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
 
+import {
+  evaluateDtsReloadPromotionEligibility,
+  type DtsReloadPromotionRejection
+} from "../../../src/domain/dtsReload/promotionGuard";
 import { writeMilestoneAudit } from "../audit/auditedWrite";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
@@ -98,35 +102,29 @@ function verificationForBinding(snapshot: unknown, bindingId: string): Parameter
   return match?.outcome ?? "unbound";
 }
 
-function assertRunEligible(input: {
+function serverPromotionRejectionMessage(rejection: DtsReloadPromotionRejection): string {
+  switch (rejection.reason) {
+    case "restore-baseline":
+      return "restore-baseline runs cannot be promoted; those values are already the library baseline.";
+    case "unverifiable-ack-required":
+      return "Unverifiable reload runs require unverifiableAcknowledged: true before promotion.";
+    case "status-ineligible":
+      return `Reload run status ${rejection.details.status} cannot be promoted to parameter drafts.`;
+  }
+}
+
+function assertRunPromotionEligible(input: {
   status: ReloadRunStatus;
   purpose: ReloadRunPurpose;
   unverifiableAcknowledged?: boolean;
 }): void {
-  if (input.purpose === "restore-baseline") {
-    throw new ApiError(
-      "CONFLICT",
-      "restore-baseline runs cannot be promoted; those values are already the library baseline.",
-      { code: "reload-promote-ineligible", purpose: input.purpose, status: input.status }
-    );
-  }
-  if (input.status === "verified") {
-    return;
-  }
-  if (input.status === "unverifiable") {
-    if (input.unverifiableAcknowledged === true) {
-      return;
-    }
-    throw new ApiError(
-      "CONFLICT",
-      "Unverifiable reload runs require unverifiableAcknowledged: true before promotion.",
-      { code: "reload-promote-unverifiable-ack-required", status: input.status }
-    );
-  }
+  const eligibility = evaluateDtsReloadPromotionEligibility(input);
+  if (eligibility.allowed) return;
+
   throw new ApiError(
     "CONFLICT",
-    `Reload run status ${input.status} cannot be promoted to parameter drafts.`,
-    { code: "reload-promote-ineligible", purpose: input.purpose, status: input.status }
+    serverPromotionRejectionMessage(eligibility),
+    eligibility.details
   );
 }
 
@@ -212,7 +210,7 @@ export async function promoteReloadRunToDrafts(
   });
 
   const purpose = asReloadPurpose(row.purpose);
-  assertRunEligible({
+  assertRunPromotionEligible({
     status: row.status,
     purpose,
     unverifiableAcknowledged: input.unverifiableAcknowledged
