@@ -11,7 +11,7 @@ Long-running work in WiseEff usually goes through BullMQ so HTTP handlers stay s
 
 Reload deploy and trigger execute **in-request** on the API process that holds the bridge WebSocket. They are not enqueued on BullMQ. Persistence still records per-step statuses so a later move to asynchronous execution needs no data reshaping, but the current execution affinity remains the process with the socket.
 
-The stock self-hosted topology supports **exactly one API replica**. Its `ops/self-hosted/scripts/compose` entry rejects `api>1` scaling before invoking Docker; `api=1` and scaling unrelated services remain valid. Calling Compose directly bypasses this executable guard but does not make a multi-API topology supported.
+The stock self-hosted topology supports **exactly one API replica**. Its `ops/self-hosted/scripts/compose` entry accepts only the exact `api=1` scale value and rejects every other `api=*` value before invoking Docker; scaling unrelated services remains valid. Calling Compose directly bypasses this executable guard but does not make a multi-API topology supported.
 
 Any direct Compose, orchestrator, or external deployment with multiple API replicas is unsupported for local-device-bridge workflows unless it provides bridge-aware routing that keeps both the WebSocket and every later bridge-backed HTTP request on the process holding that socket. Such custom routing is outside the stock deployment contract and requires its own target-environment evidence; this ADR does not claim HA or multi-replica readiness.
 

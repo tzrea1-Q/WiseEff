@@ -52,7 +52,7 @@ chmod 600 .env
 ./scripts/compose --env-file .env up -d --build
 ```
 
-The `./scripts/compose` wrapper requires Docker Compose v2 for this self-hosted stack and rejects standalone Compose v1 before mutation.
+The `./scripts/compose` wrapper requires Docker Compose v2 for this self-hosted stack and rejects standalone Compose v1 before mutation. The stock topology has exactly one API replica: for either `--scale api=...` or `--scale=api=...`, only exact `api=1` is accepted; every other `api=*` value is rejected before Docker runs. Other services' scale values pass through unchanged. A literal `--` ends wrapper-option inspection so container command arguments are not mistaken for Compose scale options. Calling Compose directly bypasses the guard but does not create a supported multi-API topology.
 
 ## Graphical Monitoring
 

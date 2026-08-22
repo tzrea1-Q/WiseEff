@@ -8,6 +8,11 @@ describe("self-hosted Compose entry", () => {
   it.each([
     ["`up --scale api=2`", ["up", "--scale", "api=2"]],
     ["`up --scale=api=2`", ["up", "--scale=api=2"]],
+    ["`up --scale api=0`", ["up", "--scale", "api=0"]],
+    ["`up --scale=api=00`", ["up", "--scale=api=00"]],
+    ["`up --scale api=+2`", ["up", "--scale", "api=+2"]],
+    ["`up --scale=api=garbage`", ["up", "--scale=api=garbage"]],
+    ["a non-exact representation of one", ["up", "--scale=api=01"]],
     [
       "API replica counts larger than shell integer range",
       ["up", "--scale=api=18446744073709551616"]
@@ -31,7 +36,11 @@ describe("self-hosted Compose entry", () => {
 
   it.each([
     ["the supported API replica count", ["up", "--scale", "api=1"]],
-    ["an unrelated service replica count", ["up", "--scale=worker=2"]]
+    ["an unrelated service replica count", ["up", "--scale=worker=2"]],
+    [
+      "container command arguments after `--`",
+      ["run", "--rm", "api", "sh", "--", "--scale", "api=2"]
+    ]
   ])("passes through %s", (_description, arguments_) => {
     const directory = mkdtempSync(join(tmpdir(), "wiseeff-selfhost-compose-"));
     const docker = join(directory, "docker");
