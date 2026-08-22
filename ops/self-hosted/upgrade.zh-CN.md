@@ -18,6 +18,10 @@ Git 获取目标版本时会继承当前命令行的代理环境，并把大写�
 
 Git、Docker Engine 与应用构建下载属于不同网络边界。脚本可以保留或覆盖 Git 代理，但不会擅自改写宿主机 Docker daemon 代理或企业信任库。若 `git fetch` 成功而镜像拉取失败，应配置 Docker 服务代理；若 TLS 检查报告未知或自签名证书链，应安装组织批准的 CA 到 Git/curl/Docker 信任链，不要全局关闭证书校验。
 
+Dockerfile 基础镜像是一个特例：仓库在 `ops/self-hosted/images/` 中携带了固定校验和的 `linux/amd64` 离线包。`plan` 会只读校验目标 commit 中的离线包契约、tar 校验和、Dockerfile 引用和 Docker server 平台，并输出 `verified local image` 或 `verified bundle; apply will load and tag it`。`apply` 选择不可变目标后、Compose build 前，会再次校验 checkout 中的 tar；若本地没有完全一致的固定镜像，则自动 load，校验 image ID/平台，再创建 `FROM` 使用的精确标签。运行 journal 会记录 `base_image_ref`、`base_image_id`、`base_image_platform`、`base_image_source` 和 `base_image_status`。
+
+这只消除了 `node:22.21.1-alpine` 对 Docker Hub 的依赖，并不代表整个构建已经离线化。Alpine 软件包、固定版本 DTC Git 源、Python 包和 npm 包仍需要各自配置的网络或镜像源，除非另行打包。控制器不会关闭 TLS、删除镜像或清理 Docker 状态。
+
 ## 一次性宿主机准备
 
 首次升级前，先把曾由 root 初始化或操作过的宿主机规范化：
@@ -47,6 +51,8 @@ cd ops/self-hosted
 
 检查当前与目标 SHA、变化的 migration、Compose project、volume identity、备份目录和空间门禁。首次接入必须在非客户主机完成一次带恢复点的演练。
 
+旧控制器无法执行只存在于目标 commit 中的新行为。如果部署机当前控制器早于“自动准备基础镜像”版本，并且已经卡在 Docker metadata 解析，可按[自托管基础镜像](images/README.zh-CN.md)中的手工 `docker load`/`docker tag` fallback 做一次接入。安装本版本后发起的后续升级都会走集成流程。
+
 ## 日常升级
 
 在当前 checkout 中交互执行。默认 ref 为 `WISEEFF_UPGRADE_REF` 或 `origin/main`；受控部署优先使用 release tag 或 SHA：
@@ -75,7 +81,7 @@ cd /srv/wiseeff/ops/self-hosted
 ./scripts/upgrade.sh status --run-id <run-id> --json
 ```
 
-候选构建始终使用 BuildKit plain progress，并把脱敏后的完整输出同步写入本次运行 journal。Docker 或 `npm ci` 失败时，`apply` 会在停止流量前以退出码 `20` 结束、恢复旧 checkout，并打印三个部署用户可读的路径：
+候选构建始终使用 BuildKit plain progress，并把脱敏后的完整输出同步写入本次运行 journal。基础镜像准备、Docker 或 `npm ci` 失败时，`apply` 会在停止流量前以退出码 `20` 结束、恢复旧 checkout，并打印三个部署用户可读的路径：
 
 - `diagnostics_dir`：位于运行 journal 下、权限为 `0700` 的私有目录；
 - `build_summary`：权限为 `0600` 的原因分类和下一步；
@@ -89,7 +95,7 @@ cat ops/self-hosted/.state/upgrades/<run-id>/diagnostics/summary.txt
 less ops/self-hosted/.state/upgrades/<run-id>/diagnostics/build.log
 ```
 
-脚本会自动分类 dependency lock 不一致、企业 CA、DNS、网络/代理、registry 完整性或包缺失、宿主机容量及疑似 OOM；无法识别时标为 `unclassified`，完整日志仍保留。修复摘要指出的问题后重新执行 `apply` 即可；停流量前的构建失败不需要从 `/root/.npm` 手工复制日志，也不需要执行 `resume`。
+基础镜像契约、tar 或平台失败会归类为 `base-image`。其他故障会自动分类为 dependency lock 不一致、企业 CA、DNS、网络/代理、registry 完整性或包缺失、宿主机容量及疑似 OOM；无法识别时标为 `unclassified`，完整日志仍保留。修复摘要指出的问题后重新执行 `apply` 即可；停流量前的构建失败不需要从 `/root/.npm` 手工复制日志，也不需要执行 `resume`。
 
 在 migration 启动前，排空或备份失败会恢复旧服务，并记录 `old-stack-restored` 或 `failed-safe`。候选 API 启动后失败会记录 `recovery-required`，保持 proxy 停止并保持队列暂停。不要手工修改 journal 或直接恢复流量。
 

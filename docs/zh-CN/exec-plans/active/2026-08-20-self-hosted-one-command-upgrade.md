@@ -285,6 +285,38 @@ git diff --check
 
 **预期结果：** `upgrade.sh apply` 会自动把原本不可访问的 BuildKit npm 失败转化为持久化、私有、部署用户可读的诊断包，同时保持“构建失败不产生停机”的不变量和现有操作员接口。
 
+## 阶段 9 — 固定的 Dockerfile 基础镜像离线包
+
+目标 Ubuntu 演练发现，即使仓库包含 amd64 tar，BuildKit 仍会从 Docker Hub 解析 `node:22.21.1-alpine`。checkout 中存在文件不等于 Docker image store 已加载该镜像；tar 内标签也与 Dockerfile 不同；同时 `.dockerignore` 有意排除 54 MB tar，避免它进入应用 build context。因此基础镜像就绪必须由升级控制器在候选构建前负责。
+
+**文件：**
+
+- 在既有基础镜像 tar 旁新增机器可读契约。
+- 更新 `upgrade-lib.sh`、公开接口测试和 self-hosted config checker。
+- 更新基础镜像、升级、运维手册、设计和执行计划的中英文文档对。
+
+**任务：**
+
+- [x] `plan` 不 source 契约，而是只读目标 commit 的数据；校验 Dockerfile ref、tar blob SHA-256、预期 image ID/平台和 Docker server 平台，不 load/tag。
+- [x] `apply` 在构建前再次校验 checkout tar；本地已有完全一致镜像时跳过，否则 load 已验证 tar 并创建 Dockerfile 精确标签。
+- [x] 缺失/被修改 tar、未知/重复契约字段、异常镜像身份或平台不匹配时，在 Compose build 与停流量前失败关闭。
+- [x] 在文本/JSON status 中记录基础镜像 ref、ID、平台、来源和状态；准备失败归类为 `base-image`，并保持构建退出码 `20`。
+- [x] tar 继续排除在 Docker build context 外，禁止自动 pull 替代、关闭 TLS、删除镜像或 prune。
+- [x] 回归测试 plan 只读、load/tag 顺序、精确本地镜像跳过、校验和拒绝、平台不匹配、build fail-fast、status 渲染和仓库契约漂移。
+- [ ] 在目标主机演练一次输出 `ready-bundled` 的 `plan`，再执行 `apply`，证明 `base_image_source=bundled-archive` 且候选构建无需 Docker Hub 即通过基础镜像 metadata 阶段。
+
+**验证：**
+
+```bash
+npm run test:scripts -- ops/self-hosted/scripts/upgrade.sh.test.ts ops/self-hosted/scripts/check-self-hosted-config.test.ts
+npm run selfhost:check
+npm run docs:check
+npm run build
+git diff --check
+```
+
+**预期结果：** 安装本控制器版本后，标准 `plan`/`apply` 会在候选构建前确定性地从仓库离线包准备固定 Node 基础镜像；任何准备失败都保持旧栈在线。由于旧控制器无法执行只存在于目标 commit 的行为，安装该新控制器的那一次仍可能需要文档中的手工 load/tag 首次接入 fallback。
+
 ## 推广与兼容
 
 1. 落地实现，但不改变既有 setup/start 默认行为。

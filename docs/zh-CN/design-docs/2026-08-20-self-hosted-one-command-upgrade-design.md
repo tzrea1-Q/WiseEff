@@ -231,6 +231,7 @@ stateDiagram-v2
 6. 检查 Docker/Compose 版本、磁盘与 inode 余量、备份根目录权限、系统时间和公网 URL。
 7. fetch 并把请求 ref 解析为一个 commit；比较旧 commit 与目标 commit 的 migration 文件。
 8. 校验目标升级协议，并在不输出已展开密钥的情况下渲染 `compose config`。
+9. 把目标 commit 的基础镜像契约作为数据读取；校验 tar blob SHA-256、Dockerfile `FROM` 引用、预期镜像身份和 Docker server 平台。`plan` 可以 inspect 镜像，但绝不 load 或 tag。
 
 磁盘预检需要覆盖候选镜像空间，加上 PostgreSQL、对象存储和 Redis 预计备份大小及安全系数。无法估算或空间不足时必须失败关闭。
 
@@ -238,13 +239,16 @@ stateDiagram-v2
 
 1. 给当前每个应用镜像打本次运行专用旧版本 tag。
 2. 以 detached-head 部署模式 checkout 已解析目标 commit。
-3. 构建一份带 commit tag 的应用镜像，API、worker 和 web 共用。
-4. 把脱敏后的 plain-progress 输出写入运行 journal；npm 失败时，在构建 stage 消失前导出经过脱敏的 stage 内 debug log。
-5. 写入原因分类摘要，并通过 `status` 暴露诊断路径。
-6. 执行镜像级 self-hosted 配置/构建检查。
-7. 任一步失败时恢复旧 checkout 并退出；旧容器从未停止。
+3. 再次校验 checkout 中的基础镜像 tar。若本地没有完全一致的固定镜像，则 load tar，验证归档标签身份/平台，再创建 Dockerfile 使用的精确标签。不得 pull 替代镜像、关闭 TLS、删除镜像或 prune 状态。
+4. 构建一份带 commit tag 的应用镜像，API、worker 和 web 共用。
+5. 把脱敏后的 plain-progress 输出写入运行 journal；npm 失败时，在构建 stage 消失前导出经过脱敏的 stage 内 debug log。
+6. 写入原因分类摘要，并通过 `status` 暴露构建与基础镜像证据。
+7. 执行镜像级 self-hosted 配置/构建检查。
+8. 任一步失败时恢复旧 checkout 并退出；旧容器从未停止。
 
 Compose 将新增显式应用镜像仓库/tag 变量，使回滚不依赖可变的 Compose 默认 tag，也不需要事故期间重新构建旧源码。
+
+离线包契约固定 tar 文件名/校验和、归档标签、Dockerfile 标签、image ID 和平台；脚本只按数据解析，不会 source 到 shell。当前仓库离线包只覆盖 `linux/amd64` 上 Dockerfile 的 Node 基础镜像；包管理器与源码下载仍是独立的网络/信任边界。
 
 ### 3. 停止写入
 

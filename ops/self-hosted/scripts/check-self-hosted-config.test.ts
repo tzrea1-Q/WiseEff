@@ -106,6 +106,15 @@ ops/self-hosted/.state/
 ops/self-hosted/images/*.tar
 `;
 
+const validBaseImageBundle = `
+WISEEFF_BASE_IMAGE_REF=node:22.21.1-alpine
+WISEEFF_BASE_IMAGE_ARCHIVE=node-22.21.1-alpine-amd64.tar
+WISEEFF_BASE_IMAGE_ARCHIVE_REF=node:22.21.1-alpine-amd64
+WISEEFF_BASE_IMAGE_PLATFORM=linux/amd64
+WISEEFF_BASE_IMAGE_ID=sha256:eefb407f08684593068a61d76c3336fb418bdfd184357ccfe448aadfa1147b3e
+WISEEFF_BASE_IMAGE_ARCHIVE_SHA256=42558e13bb39a42ac540780d4231c62a945bcaa48250bd7ac01b2af72c8f91f0
+`;
+
 const validEnvExample = `
 NODE_ENV=production
 HOST=0.0.0.0
@@ -176,6 +185,8 @@ const existingSelfHostedFiles = new Set([
   "ops/self-hosted/scripts/upgrade-lib.sh",
   "ops/self-hosted/scripts/npm-ci-with-diagnostics.sh",
   "ops/self-hosted/upgrade-protocol.env",
+  "ops/self-hosted/images/base-image-bundle.env",
+  "ops/self-hosted/images/node-22.21.1-alpine-amd64.tar",
   "ops/self-hosted/Caddyfile.ip-lab",
   "ops/self-hosted/Caddyfile.ip-lab-tls",
   "ops/self-hosted/.env.ip-lab.example",
@@ -198,6 +209,7 @@ function evaluateWithEnvExample(envExampleText: string) {
     composeText: validCompose,
     dockerfileText: validDockerfile,
     dockerignoreText: validDockerignore,
+    baseImageBundleText: validBaseImageBundle,
     envExampleText,
     caddyfileText: validCaddyfile,
     existingFiles: existingSelfHostedFiles
@@ -240,6 +252,7 @@ describe("self-hosted config metadata", () => {
       composeText: validCompose,
       dockerfileText: validDockerfile,
       dockerignoreText: validDockerignore,
+      baseImageBundleText: validBaseImageBundle,
       envExampleText: validEnvExample,
       caddyfileText: validCaddyfile,
       existingFiles: existingSelfHostedFiles
@@ -252,6 +265,7 @@ describe("self-hosted config metadata", () => {
       missingComposeTokens: [],
       missingDockerfileTokens: [],
       missingDockerignoreTokens: [],
+      baseImageBundleIssues: [],
       missingEnvKeys: [],
       missingProxyTokens: [],
       missingFiles: []
@@ -264,6 +278,7 @@ describe("self-hosted config metadata", () => {
       composeText: "services:\n  api:\n    image: node:20-alpine\n",
       dockerfileText: "FROM node:22-alpine\nCOPY . .\nRUN npm run build\n",
       dockerignoreText: "node_modules/\n",
+      baseImageBundleText: "",
       envExampleText: "NODE_ENV=production\n",
       caddyfileText: "",
       existingFiles: new Set()
@@ -305,6 +320,9 @@ describe("self-hosted config metadata", () => {
     );
     expect(result.missingDockerignoreTokens).toEqual(
       expect.arrayContaining(["**/.env", "**/.env.*", "ops/self-hosted/images/*.tar"])
+    );
+    expect(result.baseImageBundleIssues).toEqual(
+      expect.arrayContaining(["missing-key:WISEEFF_BASE_IMAGE_REF", "missing-key:WISEEFF_BASE_IMAGE_ARCHIVE_SHA256"])
     );
     expect(result.missingEnvKeys).toEqual(
       expect.arrayContaining([
@@ -362,6 +380,7 @@ describe("self-hosted config metadata", () => {
       composeText: validCompose,
       dockerfileText: validDockerfile.replaceAll("node:22.21.1-alpine", "node:22.18.0-alpine"),
       dockerignoreText: validDockerignore,
+      baseImageBundleText: validBaseImageBundle,
       envExampleText: validEnvExample,
       caddyfileText: validCaddyfile,
       existingFiles: existingSelfHostedFiles
@@ -369,6 +388,24 @@ describe("self-hosted config metadata", () => {
 
     expect(result.status).toBe("failed");
     expect(result.missingDockerfileTokens).toContain("FROM node:>=22.19.0");
+    expect(result.baseImageBundleIssues).toContain("dockerfile-ref-mismatch");
+  });
+
+  it("rejects drift between the bundled archive and its pinned checksum", () => {
+    const result = evaluateSelfHostedConfig({
+      packageJson: validPackageJson,
+      composeText: validCompose,
+      dockerfileText: validDockerfile,
+      dockerignoreText: validDockerignore,
+      baseImageBundleText: validBaseImageBundle,
+      baseImageArchiveSha256: "a".repeat(64),
+      envExampleText: validEnvExample,
+      caddyfileText: validCaddyfile,
+      existingFiles: existingSelfHostedFiles
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.baseImageBundleIssues).toContain("archive-checksum-mismatch");
   });
 
   it("requires the log-analysis LLM env family to be declared even when values are blank", () => {
