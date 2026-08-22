@@ -1,8 +1,11 @@
 # 本地评估账号加固
 
-> Status: **Active**
+> 历史状态：**已实施并归档**——经 PR #563（`1e5b771c`）合入。
+>
+> 余量归属：邀请 / 邮箱验证仍归 TD-119，目标环境 OIDC 证据仍归 TD-020。本地评估实现不构成企业身份或目标环境证明。
+>
 > Date: 2026-08-19
-> English: [`docs/exec-plans/active/2026-08-19-local-eval-auth-hardening.md`](../../../exec-plans/active/2026-08-19-local-eval-auth-hardening.md)
+> English: [`docs/exec-plans/completed/2026-08-19-local-eval-auth-hardening.md`](../../../exec-plans/completed/2026-08-19-local-eval-auth-hardening.md)
 
 ## 目标
 

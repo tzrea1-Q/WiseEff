@@ -1,7 +1,11 @@
 # 组织管理
 
-> English: [English](../../../exec-plans/active/2026-08-19-organization-administration.md)
-> 状态：**进行中**——`feat/organization-administration` 实现已完成；父代理评审 / PR / `acceptance:browser` 仍待做
+> English: [English](../../../exec-plans/completed/2026-08-19-organization-administration.md)
+>
+> 历史状态：**已实施并归档**——经 PR #560（`85953051`）合入。
+>
+> 余量归属：邀请仍归 TD-119，平台 Organization 目录仍归 TD-120，项目成员 / 项目级角色仍归 TD-121；本次归档不表示这些余量已完成。
+>
 > 日期：2026-08-19
 > 设计：[`docs/zh-CN/design-docs/2026-08-19-organization-administration-design.md`](../../design-docs/2026-08-19-organization-administration-design.md)
 > ADR：[ADR-0037](../../../adr/0037-organization-administration-is-home-org-tenant-operations.md)（英文）

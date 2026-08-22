@@ -2,7 +2,11 @@
 
 > **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` where applicable. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
 
-**Status:** Keep in `active/`. Do not reopen the hide-`/debugging` product direction; later DTS reload work restored a parameter-debugging surface. Node-catalog work landed. Round 2 did not archive this file.
+> Chinese: [Chinese](../../zh-CN/exec-plans/completed/2026-07-01-wiseeff-node-only-debugging-platform.md)
+>
+> Historical status: **Implemented with superseded sections and archived** — the node-catalog pivot landed in `8e9656ff`; later DTS reload work superseded the plan's blanket removal of every parameter-debugging surface. The current node-only debugging catalog remains authoritative.
+>
+> Residual ownership: legacy debugging tables remain TD-033 and live HDC device evidence remains TD-100. Historical unchecked boxes below are not current work.
 
 **Goal:** Remove all user-facing **parameter debugging** surfaces; keep **node debugging** (`/node-debugging`) as the sole runtime workspace; repurpose **调试管理后台** to govern a **node catalog** (`debug_nodes`) instead of parameter-shaped legacy rows.
 
@@ -236,7 +240,7 @@ Logic per org/project:
 
 | Doc | Action | Path |
 | --- | --- | --- |
-| Active plan | **Create (this file)** | `docs/exec-plans/active/2026-07-01-wiseeff-node-only-debugging-platform.md` |
+| Historical plan | **Implemented / archived** | `docs/exec-plans/completed/2026-07-01-wiseeff-node-only-debugging-platform.md`; moved on 2026-08-23 with superseded-section and residual-ownership metadata. |
 | TD-032 execution | Review / supersede | `docs/exec-plans/completed/2026-07-01-td032-parameter-debugging-reload-execution.md` |
 | Tech debt | Update | `docs/exec-plans/tech-debt-tracker.md`, zh-CN mirror |
 | Domain model | Update | `docs/design-docs/domain-model.md`, zh-CN |

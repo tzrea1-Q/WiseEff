@@ -2,9 +2,11 @@
 
 > **面向执行智能体：** 必须使用 Matt `implement`（推荐）或 Matt `implement`，按任务逐项执行。本计划使用 - [ ] 跟踪状态。
 
-> English: [English](../../../exec-plans/active/2026-07-19-dts-parameter-workbench-redesign.md)
+> English: [English](../../../exec-plans/completed/2026-07-19-dts-parameter-workbench-redesign.md)
 
-> 状态：留在 `active/`。实现勾选仍未完成；后续项目配置工作台计划已在 `completed/` 取代这次重写。不要当全新工作台重开。
+> 历史状态：**已实施，部分章节已被取代，现已归档**——API 模式集成 DTS 工作台经 `402226cd`、`71460d5e` 落地。后续项目配置工作台计划取代了项目运维假设和下方未勾选的施工顺序；历史勾选框不再构成当前工作。
+>
+> 余量归属：生产 topology cutover 证据仍由 `docs/zh-CN/exec-plans/active/2026-07-16-parameter-topology-schema-management.md` / TD-042 承接。当前源码、验收测试与规范前端/设计文档优先于本历史步骤。
 
 **目标：** 以成熟参数工作台为 API 模式 /parameters 的主框架，深度融合嵌套 DTS 拓扑、语义 binding、来源链、类型化草稿和真实提交身份。
 

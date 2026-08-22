@@ -3,7 +3,7 @@
 > Status: **Locked design** — decisions D1–D11 settled 2026-08-19 in a grilled design session
 > Date: 2026-08-19
 > Chinese: [`docs/zh-CN/design-docs/2026-08-19-organization-administration-design.md`](../zh-CN/design-docs/2026-08-19-organization-administration-design.md)
-> Execution plan: [`docs/exec-plans/active/2026-08-19-organization-administration.md`](../exec-plans/active/2026-08-19-organization-administration.md)
+> Execution plan: [`docs/exec-plans/completed/2026-08-19-organization-administration.md`](../exec-plans/completed/2026-08-19-organization-administration.md)
 > ADR: [ADR-0037](../adr/0037-organization-administration-is-home-org-tenant-operations.md)
 
 ## Positioning

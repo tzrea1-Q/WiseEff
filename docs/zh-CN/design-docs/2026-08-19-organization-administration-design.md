@@ -3,7 +3,7 @@
 > English: [English](../../design-docs/2026-08-19-organization-administration-design.md)
 > 状态：**锁定设计**——D1–D11 于 2026-08-19 经拷问式设计会话敲定
 > 日期：2026-08-19
-> 执行计划：[`docs/zh-CN/exec-plans/active/2026-08-19-organization-administration.md`](../exec-plans/active/2026-08-19-organization-administration.md)
+> 执行计划：[`docs/zh-CN/exec-plans/completed/2026-08-19-organization-administration.md`](../exec-plans/completed/2026-08-19-organization-administration.md)
 > ADR：[ADR-0037](../../adr/0037-organization-administration-is-home-org-tenant-operations.md)（英文）
 
 ## 定位

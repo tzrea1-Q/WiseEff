@@ -1,8 +1,11 @@
 # Local evaluation auth hardening
 
-> Status: **Active**
+> Historical status: **Implemented and archived** — merged via PR #563 (`1e5b771c`).
+>
+> Residual ownership: invitation/email verification remains TD-119 and target OIDC evidence remains TD-020. This local-evaluation implementation is not enterprise-identity or target-environment proof.
+>
 > Date: 2026-08-19
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-19-local-eval-auth-hardening.md`](../../zh-CN/exec-plans/active/2026-08-19-local-eval-auth-hardening.md)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-19-local-eval-auth-hardening.md`](../../zh-CN/exec-plans/completed/2026-08-19-local-eval-auth-hardening.md)
 
 ## Goal
 

@@ -1,9 +1,12 @@
 # Organization administration
 
-> Status: **Active** — implementation complete on `feat/organization-administration`; parent review / PR / `acceptance:browser` remain
+> Historical status: **Implemented and archived** — merged via PR #560 (`85953051`).
+>
+> Residual ownership: invitations remain TD-119, the platform Organization directory remains TD-120, and project membership / project-scoped roles remain TD-121. None is implied complete by this archive.
+>
 > Date: 2026-08-19
 > Design: [`docs/design-docs/2026-08-19-organization-administration-design.md`](../../design-docs/2026-08-19-organization-administration-design.md)
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-19-organization-administration.md`](../../zh-CN/exec-plans/active/2026-08-19-organization-administration.md)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-19-organization-administration.md`](../../zh-CN/exec-plans/completed/2026-08-19-organization-administration.md)
 > ADR: [ADR-0037](../../adr/0037-organization-administration-is-home-org-tenant-operations.md)
 
 ## Goal
