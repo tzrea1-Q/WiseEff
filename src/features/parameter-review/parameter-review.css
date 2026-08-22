@@ -762,11 +762,6 @@
   .submission-history-summary {
     grid-template-columns: 1fr;
   }
-
-  .submission-history-layout {
-    grid-template-columns: 1fr;
-    min-height: auto;
-  }
 }
 
 .submission-history-layout {
@@ -781,6 +776,13 @@
 .submission-history-layout .submission-round-detail {
   grid-column: auto;
   min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .submission-history-layout {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
 }
 
 .submission-round-detail {
@@ -805,7 +807,7 @@
   min-width: 0;
 }
 
-.submission-diff-card--history {
+.submission-diff-card.submission-diff-card--history {
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
   background: var(--surface);
@@ -815,8 +817,8 @@
   background: var(--surface);
 }
 
-.submission-diff-card--history strong,
-.submission-diff-card--history small,
+.submission-diff-card.submission-diff-card--history strong,
+.submission-diff-card.submission-diff-card--history small,
 .submission-diff-card--history-complex strong,
 .submission-diff-card--history-complex small {
   word-break: normal;
