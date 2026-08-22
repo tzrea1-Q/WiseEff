@@ -280,6 +280,41 @@ describe("createMockDtsReloadRepository (DtsReloadRepository contract)", () => {
     expect(reread.organisation.destinationFilename).toBe("custom.dtbo");
   });
 
+  it("preserves mock rejection copy and details for every seeded eligibility rejection", async () => {
+    const repo = createRepo();
+
+    for (const [runId, message, details] of [
+      [
+        "mock-reload-seed-01",
+        "不可验证的运行需要确认后才能晋升为草稿。",
+        { code: "reload-promote-unverifiable-ack-required", status: "unverifiable" }
+      ],
+      [
+        "mock-reload-seed-02",
+        "该运行状态不能晋升为草稿。",
+        { code: "reload-promote-ineligible", purpose: "ordinary", status: "failed" }
+      ],
+      [
+        "mock-reload-seed-03",
+        "该运行状态不能晋升为草稿。",
+        { code: "reload-promote-ineligible", purpose: "ordinary", status: "blocked" }
+      ],
+      [
+        "mock-reload-seed-04",
+        "恢复基线运行不能晋升为草稿。",
+        { code: "reload-promote-ineligible", purpose: "restore-baseline", status: "verified" }
+      ]
+    ] as const) {
+      const run = await repo.getRun(runId);
+      await expect(
+        repo.promoteToDrafts({
+          runId,
+          bindingIds: [run.targets[0]!.bindingId]
+        })
+      ).rejects.toMatchObject({ code: "CONFLICT", message, details });
+    }
+  });
+
   it("promotes a verified ordinary run to drafts and refuses restore-baseline or stacking", async () => {
     const repo = createRepo();
     const { items } = await repo.listCandidates(PROJECT_ID);

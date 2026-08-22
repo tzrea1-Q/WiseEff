@@ -21,6 +21,10 @@ import type {
   StartDtsReloadRunInput
 } from "@/application/ports/DtsReloadRepository";
 import {
+  evaluateDtsReloadPromotionEligibility,
+  type DtsReloadPromotionRejection
+} from "@/domain/dtsReload/promotionGuard";
+import {
   DTS_RELOAD_CONFIRMATION_TOKEN,
   SENSITIVE_RELOAD_CONFIRMATION_TOKEN
 } from "@/domain/dtsReload/types";
@@ -33,6 +37,17 @@ import type {
   ReloadConfigurationContract
 } from "@/domain/dtsReload/types";
 import { mockApiError } from "./mockApiError";
+
+function mockPromotionRejectionMessage(rejection: DtsReloadPromotionRejection): string {
+  switch (rejection.reason) {
+    case "restore-baseline":
+      return "恢复基线运行不能晋升为草稿。";
+    case "unverifiable-ack-required":
+      return "不可验证的运行需要确认后才能晋升为草稿。";
+    case "status-ineligible":
+      return "该运行状态不能晋升为草稿。";
+  }
+}
 
 export const MOCK_DTS_RELOAD_BRIDGE_ID = "mock-bridge";
 export const MOCK_DTS_RELOAD_DEVICE_ID = `bridge:${MOCK_DTS_RELOAD_BRIDGE_ID}`;
@@ -849,25 +864,17 @@ export function createMockDtsReloadRepository(): DtsReloadRepository {
         throw mockApiError("VALIDATION_FAILED", "至少选择一个参数才能晋升为草稿。");
       }
       const run = requireRun(input.runId);
-      if (run.purpose === "restore-baseline") {
-        throw mockApiError("CONFLICT", "恢复基线运行不能晋升为草稿。", {
-          code: "reload-promote-ineligible",
-          purpose: run.purpose,
-          status: run.status
-        });
-      }
-      if (run.status === "unverifiable" && input.unverifiableAcknowledged !== true) {
-        throw mockApiError("CONFLICT", "不可验证的运行需要确认后才能晋升为草稿。", {
-          code: "reload-promote-unverifiable-ack-required",
-          status: run.status
-        });
-      }
-      if (run.status !== "verified" && run.status !== "unverifiable") {
-        throw mockApiError("CONFLICT", "该运行状态不能晋升为草稿。", {
-          code: "reload-promote-ineligible",
-          purpose: run.purpose,
-          status: run.status
-        });
+      const eligibility = evaluateDtsReloadPromotionEligibility({
+        status: run.status,
+        purpose: run.purpose,
+        unverifiableAcknowledged: input.unverifiableAcknowledged
+      });
+      if (!eligibility.allowed) {
+        throw mockApiError(
+          "CONFLICT",
+          mockPromotionRejectionMessage(eligibility),
+          eligibility.details
+        );
       }
 
       const drafts: Array<{ bindingId: string; draftId: string; outcome: "created" | "unchanged" }> = [];
