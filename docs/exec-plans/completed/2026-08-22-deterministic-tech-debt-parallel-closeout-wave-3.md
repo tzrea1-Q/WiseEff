@@ -1,10 +1,12 @@
 # Deterministic tech-debt parallel closeout — wave 3
 
-> Status: **Active**
+> Status: **Completed 2026-08-22**
 > Date: 2026-08-22
 > Planning baseline: `origin/main@afa6095f9c9d27576f8f0b423fb438e2782a5e8d`
 > Planning branch: `codex/deterministic-tech-debt-wave3-plan`
-> Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-3.md)
+> Closeout branch: `codex/deterministic-td-wave3-closeout`
+> Implementation PRs: #588 (TD-072), #589 (TD-110), #591 (TD-031), #592 (TD-112)
+> Chinese: [Chinese](../../zh-CN/exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-3.md)
 > Tracker: [Technical Debt Tracker](../tech-debt-tracker.md)
 
 ## Goal
@@ -128,7 +130,7 @@ Implementation workers commit only to their feature branches. They do not push `
 3. **Red: node enablement.** Submit a real node-enablement draft and assert the returned request plus persisted request/item/enablement semantics.
 4. **Green: behavior parity.** Reuse production submit paths; keep test-only rows local and assert transaction rollback/state, not query order.
 5. **Red/green: impossible project-less merge.** Pin the semantic review subject/precondition in `server/modules/parameters/reviewChangePolicy.ts`, consume it from `reviewChange`, and execute its table test from `server/modules/parameters/reviewChangePolicy.test.ts`. Do not insert an invalid database row.
-6. Remove `QueuedResult`, `createFakeDb`, queue helpers, stale comments, and all remaining SQL-text assertions in this section. Prove repository-wide `QueuedResult` stock is zero.
+6. Remove `QueuedResult`, `createFakeDb`, queue helpers, stale comments, and all remaining SQL-text assertions in this section. Prove `QueuedResult` stock is zero across production and test source (`server/`, `src/`, `e2e/`, `scripts/`, and `ops/`); historical plan/tracker prose is not part of that identifier stock.
 
 ### Track B — TD-110
 
@@ -218,7 +220,7 @@ Required repository checks remain blocking. A pending check is not approval to m
 ## Shared tracker and active-plan hygiene closeout
 
 1. Move only successfully closed TD-072/110/031/112 rows from Open to Completed in both trackers with exact PR/SHA, focused/full/CI, browser/acceptance, and boundary evidence. If TD-112's scope gate fails, leave it Open and record why.
-2. Correct TD-072's stale reference to already-Completed TD-096 and record repository-wide zero `QueuedResult` only after verified.
+2. Correct TD-072's stale reference to already-Completed TD-096 and record zero `QueuedResult` across production and test source only after verified; do not count preserved historical plan/tracker prose as source stock.
 3. Satisfy the stale timeline plan's metadata gate in:
    - `docs/design-docs/xiaoze-thread-persistence.md`
    - `docs/zh-CN/design-docs/xiaoze-thread-persistence.md`
@@ -229,7 +231,7 @@ Required repository checks remain blocking. A pending check is not approval to m
 ## Success criteria
 
 - Three first-wave workers run concurrently without overlapping code ownership; TD-112 reuses the TD-110 slot from a refreshed main baseline.
-- Repository `QueuedResult` stock is zero; local PostgreSQL preflight passes; the two converted DB behaviors and the pure project-less policy test execute with zero skips; no SQL-text/call-order assertion replaces behavior evidence.
+- Production/test-source `QueuedResult` stock is zero across `server/`, `src/`, `e2e/`, `scripts/`, and `ops/`; local PostgreSQL preflight passes; the two converted DB behaviors and the pure project-less policy test execute with zero skips; no SQL-text/call-order assertion replaces behavior evidence.
 - API initial state contains no demo user or demo authority; mock mode retains the nine-person cast; API auth and directory hydration remain correct with no visible demo flash.
 - All current templates and setup output use `XIAOZE_LLM_*`. Direct legacy reads are allowed only in `server/config/xiaozeLlmConfig.ts`, the audited `ops/self-hosted/scripts/setup.sh` Bash migration adapter, their exact tests, and explicit migration/history documents; every other production consumer has zero direct legacy reads. TypeScript/Bash parity passes, config/health errors stay redacted, and no live-provider readiness is claimed.
 - `ProjectAdminTable` composes `DataTable`, no longer owns a handwritten `<table>` or scroll math, and preserves 390/768/1440 behavior plus entry/actions/filters/sort/pagination and `q`/`status`/`sort` URL restoration across reload, `popstate`, Back, and Forward.
@@ -265,13 +267,29 @@ git diff --check
 
 Also re-run the TD-072 local-PostgreSQL preflight plus named zero-skip behavior gate and the TD-110/112 API-mode browser gates from their final merged routes. Record exact test counts, skips, named TD-072 cases, warnings, screenshots, network/console results, CI check names, PR numbers, and merge SHAs in the completed plan and trackers.
 
+## Closeout evidence
+
+- **TD-072 — #588 (`fc3d96b22fce42b72c31a8c61a4bedc4821ceaab`):** local PostgreSQL preflight passed; focused coverage passed 4 files / 75 tests / 0 skipped and actually executed the two converted database behaviors plus the pure project-less policy. The full server suite passed 349 files with 2 existing skipped files and 2710 tests with 8 existing skips. Production/test-source `QueuedResult` stock is zero across `server/`, `src/`, `e2e/`, `scripts/`, and `ops/`; preserved historical prose is not counted as source stock.
+- **TD-110 — #589 (`cb2b0d6ffc77a6675078b2c5cb2e78c083fbcdab`):** focused coverage passed 4 files / 187 tests, the full frontend suite passed 405 files / 3014 tests, and fresh production-HMAC `PERM-USER-MGMT-001` passed 2/2. API-mode `/organization/members` evidence covered 1440×900, 768×1024, and 390×844 with zero demo-user flash, `/me` and `/users` HTTP 200, no overflow, and zero console errors.
+- **TD-031 — #591 (`07d37d7e2368fa4af423b1446fb73ae89b70c501`):** focused server coverage passed 13 files / 105 tests and scripts passed 5 files / 41 tests; full server passed 2718 tests with 8 existing skips and scripts passed 511 with 5 existing skips. Fresh deterministic Xiaoze acceptance passed 10 with 1 existing planned skip, exact deterministic-ready health, evidence artifacts, and production-provider factory 0 calls. The zero is a construction-contract count, not network telemetry.
+- **TD-112 — #592 (`7314004c5bd41d4624b4d1e81c7e0948f6e66791`):** final affected coverage passed 7 files / 110 tests and `ApiProjectTopologyWorkspace` 24/24. Focused acceptance passed 3/3 runner cases—runtime warmup plus business IDs `PARAM-ADMIN-003` and `PROJ-CONFIG-READ-001`—and evidence run `wave3-td112-final-post-seam` passed. Fresh-task-database a11y passed 14/14, responsive 65/65, and relevant visual 3/3. Three-viewport API-mode evidence covered the complete interaction and URL-history contract with HTTP 200 and zero console errors. Final CI passed 408 frontend files / 3031 tests; scripts 54 files / 520 tests with 5 existing skips; Device Bridge 21 files / 134 tests with 4 existing skips; and server 351 files / 2726 tests with 1 file / 4 tests skipped. Acceptance quality passed 97/97, Acceptance smoke 4/4, and lint reported 0 errors / 299 baseline warnings.
+- All four implementation PRs passed Detect changed paths, Build and test, Acceptance quality, Acceptance smoke, and Merge bar; their independent Standards and Spec reviews each ended with zero findings. Path-filtered local non-HDC and target-synthetic jobs skipped and supply no readiness evidence.
+- TD-112 remains the scoped Admin-list closure only: `ProjectAdminTable` and the project-configuration-workbench directory now contain zero handwritten `<table>` elements, while Dts, mock-only `ParametersTable`, raw logs, wizards, and non-table PCW surfaces remain outside the row.
+- The implementation PRs supplied the matrix's runtime, architecture, frontend, acceptance, security, runbook, and current-operator documentation updates; this closeout supplies the exact tracker, plan-location, launch-state, and Xiaoze persistence metadata updates. Every remaining Review/No-change path was checked against final `7314004c` and needs no additional closeout edit; no product workflow, permission, HTTP contract, generated artifact, ADR, trust, or audit boundary moved.
+- This shared closeout changes tracker/planning/persistence documentation only. It does not add hardware, target-environment, target-synthetic, live-provider, credential-provisioning, or production-readiness evidence.
+- Shared-closeout validation passed `npm run docs:check` and `git diff --check`; the local database-schema artifact check reported its designed pgvector-extension skip and remains CI-verified.
+- Final merged-tree verification used the tree shared by `origin/main@7314004c5bd41d4624b4d1e81c7e0948f6e66791` and the clean TD-112 implementation worktree. Typecheck, build, frontend 408 files / 3031 tests, server 350 passed files + 2 skipped files and 2722 passed tests + 8 skips, scripts 54 files / 520 tests + 5 skips, lint 0 errors / 299 baseline warnings, UI ratchet, self-hosted checks, contract, acceptance coverage/operations/quality, a11y 14/14, responsive 65/65, and TD-072 PostgreSQL 4 files / 75 tests / 0 skips all passed. The three named TD-072 behaviors actually executed.
+- Focused merged-tree browser acceptance passed 4/4 runner cases: runtime warmup plus `PERM-USER-MGMT-001`, `PARAM-ADMIN-003`, and `PROJ-CONFIG-READ-001`. Evidence run `wave3-closeout-focused` is bound to source commit `7314004c5bd41d4624b4d1e81c7e0948f6e66791`; all three required operation records passed with API/DB/audit or screenshot evidence as applicable.
+- Two repository-wide local commands exposed pre-existing, out-of-scope baseline debt and are not presented as green. On Darwin, `acceptance:visual` passed 9/20 and failed 11 stale/missing snapshots; the TD-112 relevant `/parameter-admin`, configuration-workbench, and focused visual cases passed, while repository CI Acceptance quality passed 97/97. `acceptance:browser -- --mode local-non-hdc` passed 109, skipped 29 planned cases, and failed 18 unrelated broad-suite cases (including toolchain, permissions, knowledge, and Xiaoze baseline state); because that full run was not publishable, the unscoped latest-run `acceptance:evidence` check correctly had no valid full manifest. No snapshots, permissions, hardware/toolchain, or unrelated workflows were rewritten in this documentation closeout. Required per-track browser/evidence gates and all four implementation PR CI runs are green.
+- Independent Standards/Spec review and required repository CI for the shared closeout PR remain blocking before that PR merges.
+
 ## Documentation Impact Matrix
 
 | Area | Status | Exact files / required evidence |
 | --- | --- | --- |
 | Repository maps | Review | `AGENTS.md`; `docs/zh-CN/root/AGENTS.md`; `ARCHITECTURE.md`; `docs/zh-CN/root/ARCHITECTURE.md`; `docs/README.md`; `docs/zh-CN/README.md`. Treat the latter pair as the documentation knowledge-base indexes; record unchanged unless navigation or runtime boundaries actually move. |
 | Architecture entry points | Update | `README.md`; `docs/zh-CN/root/README.md`; `docs/design-docs/full-stack-architecture.md`; `docs/zh-CN/design-docs/full-stack-architecture.md`. Align the Xiaoze canonical runtime/configuration entry points and retain the local-deterministic versus live-provider evidence boundary. |
-| Planning | Update | `docs/exec-plans/active/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-3.md`; `docs/zh-CN/exec-plans/active/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-3.md`; closeout destinations `docs/exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-3.md` and `docs/zh-CN/exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-3.md`; `docs/PLANS.md`; `docs/zh-CN/PLANS.md`; `docs/exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`; `docs/zh-CN/exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`; stale source `docs/exec-plans/active/td-031-xiaoze-run-timeline-streaming.md`; archive destinations `docs/exec-plans/completed/2026-08-22-xiaoze-run-timeline-streaming-metadata-closeout.md` and `docs/zh-CN/exec-plans/completed/2026-08-22-xiaoze-run-timeline-streaming-metadata-closeout.md`. |
+| Planning | Update | `docs/exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-3.md`; `docs/zh-CN/exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-3.md`; `docs/PLANS.md`; `docs/zh-CN/PLANS.md`; `docs/exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`; `docs/zh-CN/exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`; `docs/exec-plans/completed/2026-08-22-xiaoze-run-timeline-streaming-metadata-closeout.md`; `docs/zh-CN/exec-plans/completed/2026-08-22-xiaoze-run-timeline-streaming-metadata-closeout.md`. The prior active locations were removed rather than duplicated. |
 | Technical debt | Update | `docs/exec-plans/tech-debt-tracker.md`; `docs/zh-CN/exec-plans/tech-debt-tracker.md`. Move only rows supported by merged evidence. |
 | Domain context | Review | `CONTEXT.md`; `docs/adr/README.md`. Preserve the everyday Parameter workbench vs Parameter admin/configuration-workbench distinction; add no ADR unless implementation changes a durable decision. |
 | Product specs | No change | `docs/product-specs/index.md`; `docs/product-specs/product-spec.md`; `docs/zh-CN/product-specs/index.md`; `docs/zh-CN/product-specs/product-spec.md`. No product workflow or permission decision is planned. |
