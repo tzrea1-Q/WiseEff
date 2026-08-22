@@ -28,6 +28,17 @@ import {
 type RuntimeEnv = Record<string, string | undefined>;
 type Gate0Phase = "visual" | "browser";
 
+type Gate0PrerequisiteCommandResult = {
+  status: number | null;
+  error?: Error;
+};
+
+export type Gate0PrerequisiteCommandRunner = (
+  command: string,
+  args: string[],
+  options: { cwd: string; env: NodeJS.ProcessEnv; stdio: "inherit" },
+) => Gate0PrerequisiteCommandResult;
+
 export type Gate0Command = {
   phase: Gate0Phase;
   command: string;
@@ -36,6 +47,42 @@ export type Gate0Command = {
 };
 
 export const GATE0_OWNER_TIMEOUT_MS = 60 * 60 * 1_000;
+
+export function assertGate0DtsToolchainReady(
+  worktreeRoot: string,
+  runCommand: Gate0PrerequisiteCommandRunner = (command, args, options) => {
+    const result = spawnSync(command, args, options);
+    return { status: result.status, error: result.error };
+  },
+) {
+  const args = ["run", "dts:toolchain:check", "--", "--required"];
+  const result = runCommand("npm", args, {
+    cwd: worktreeRoot,
+    env: process.env,
+    stdio: "inherit",
+  });
+  if (result.error || result.status !== 0) {
+    throw new Error(
+      result.error?.message ??
+        `Gate0 prerequisite failed before runtime provisioning: npm ${args.join(" ")} exited ${result.status ?? "unknown"}. Run npm run dts:toolchain:bootstrap, then retry.`,
+    );
+  }
+}
+
+export async function prepareGate0OwnedRuntime(
+  options: Parameters<typeof provisionOwnedLocalAcceptanceRuntime>[0],
+  dependencies: {
+    assertDtsToolchainReady?: (worktreeRoot: string) => void;
+    provisionOwnedRuntime?: typeof provisionOwnedLocalAcceptanceRuntime;
+  } = {},
+) {
+  const worktreeRoot = options.worktreeRoot ?? process.cwd();
+  (dependencies.assertDtsToolchainReady ?? assertGate0DtsToolchainReady)(worktreeRoot);
+  return (dependencies.provisionOwnedRuntime ?? provisionOwnedLocalAcceptanceRuntime)({
+    ...options,
+    worktreeRoot,
+  });
+}
 
 export function buildGate0Commands(descriptorPath: string): Gate0Command[] {
   const sharedEnv = {
@@ -83,7 +130,7 @@ async function main() {
     throw new Error("DATABASE_URL or WISEEFF_ACCEPTANCE_ADMIN_DATABASE_URL is required for acceptance:gate0.");
   }
 
-  const runtime = await provisionOwnedLocalAcceptanceRuntime({
+  const runtime = await prepareGate0OwnedRuntime({
     baseDatabaseUrl,
     worktreeRoot: process.cwd(),
   });

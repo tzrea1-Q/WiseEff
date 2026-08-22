@@ -5,13 +5,55 @@ import { describe, expect, it } from "vitest";
 
 import {
   GATE0_OWNER_TIMEOUT_MS,
+  assertGate0DtsToolchainReady,
   buildGate0Commands,
   evaluateGate0Outcome,
   gate0PhaseArtifactSources,
+  prepareGate0OwnedRuntime,
   runGate0PhaseCommand,
 } from "./run-acceptance-gate0";
 
 describe("acceptance Gate 0 runner", () => {
+  it("runs the pinned required DTS check through the public command", () => {
+    const calls: Array<{ command: string; args: string[]; cwd: string }> = [];
+
+    assertGate0DtsToolchainReady("/repo", (command, args, options) => {
+      calls.push({ command, args, cwd: options.cwd });
+      return { status: 0, error: undefined };
+    });
+
+    expect(calls).toEqual([
+      {
+        command: "npm",
+        args: ["run", "dts:toolchain:check", "--", "--required"],
+        cwd: "/repo",
+      },
+    ]);
+  });
+
+  it("fails missing DTS tooling before provisioning any owned resource", async () => {
+    let provisionCalls = 0;
+
+    await expect(
+      prepareGate0OwnedRuntime(
+        {
+          baseDatabaseUrl: "postgres://owner:secret@127.0.0.1:5432/postgres",
+          worktreeRoot: "/repo",
+        },
+        {
+          assertDtsToolchainReady: () => {
+            throw new Error("DTS toolchain required but incomplete");
+          },
+          provisionOwnedRuntime: async () => {
+            provisionCalls += 1;
+            throw new Error("must not provision");
+          },
+        },
+      ),
+    ).rejects.toThrow("DTS toolchain required but incomplete");
+    expect(provisionCalls).toBe(0);
+  });
+
   it("owns a hard 60 minute deadline so timeout cleanup runs before the CI job is killed", () => {
     expect(GATE0_OWNER_TIMEOUT_MS).toBe(60 * 60 * 1_000);
   });
