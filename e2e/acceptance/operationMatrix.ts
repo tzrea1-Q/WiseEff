@@ -418,13 +418,12 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "parameters",
     route: "/parameter-admin/projects",
     roles: ["Admin"],
-    action: "Open the project list and confirm status, counts, last-updated, and row actions remain visible in the ≤960px card layout.",
-    coverage: "future",
+    action:
+      "Search, filter, sort, paginate, restore q/status/sort through reload and browser history, enter a row by keyboard without action bubbling, and verify the 390px card, 768px visible-rail table, and 1440px no-page-overflow layouts.",
+    coverage: "automated",
     acceptanceIds: ["PARAM-ADMIN-003"],
-    specFiles: ["src/components/admin/ProjectAdminTable.tsx"],
-    assertions: ["ui", "screenshot"],
-    deferralReason:
-      "Batch 1 ships CSS fix + playwright-cli three-viewport evidence under work/ui-checks/param-admin-ux-polish-batch1/; dedicated e2e viewport assertion follows in a later batch."
+    specFiles: ["e2e/acceptance/parameter-admin-projects.acceptance.spec.ts"],
+    assertions: ["ui", "api", "screenshot"]
   },
   {
     id: "PARAM-INIT-WIZARD-001",

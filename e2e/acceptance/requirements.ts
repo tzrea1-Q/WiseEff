@@ -199,7 +199,8 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "PARAM-ADMIN-003",
     workflow: "C",
-    title: "Admin project list renders status, counts, last-updated, and row actions at mobile width without clipped cells.",
+    title:
+      "Admin project list preserves q/status/sort through reload and browser history, supports pagination and keyboard-isolated row actions, and renders complete 390px cards, a 768px scroll table with a visible rail, and a non-overflowing 1440px table.",
     required: false
   },
   {

@@ -23,11 +23,11 @@ import {
   type EditableProjectStatus,
   type ParameterAdminProjectRow
 } from "@/parameterAdminProjects";
-import type { ParamAdminProjectsSearch } from "@/hooks/useParamAdminProjectsSearch";
 import {
-  formatCsvQueryParam,
-  parseCsvQueryParam
-} from "@/application/parameters/parameterAdminUrl";
+  buildParamAdminProjectsPath,
+  parseParamAdminProjectsSearch,
+  type ParamAdminProjectsSearch
+} from "@/hooks/useParamAdminProjectsSearch";
 import { useParameterAdmin } from "./ParameterAdminProvider";
 import { useRefreshParameterAdminRecentAudits } from "./useRefreshParameterAdminRecentAudits";
 import {
@@ -50,25 +50,6 @@ export function parseParameterAdminNextProjectPath(pathname: string): {
   }
   const view = (match[2] as ParameterAdminNextProjectView | "configuration" | undefined) ?? "files";
   return { projectId: decodeURIComponent(match[1]!), view };
-}
-
-function parseListSearch(search: string): ParamAdminProjectsSearch {
-  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-  return {
-    q: params.get("q") ?? "",
-    statuses: parseCsvQueryParam(params.get("status")),
-    sort: params.get("sort") ?? "name-asc"
-  };
-}
-
-function buildListSearch(patch: Partial<ParamAdminProjectsSearch>, current: ParamAdminProjectsSearch): string {
-  const next = { ...current, ...patch };
-  const params = new URLSearchParams();
-  if (next.q.trim()) params.set("q", next.q.trim());
-  const status = formatCsvQueryParam(next.statuses);
-  if (status) params.set("status", status);
-  if (next.sort !== "name-asc") params.set("sort", next.sort);
-  return params.toString();
 }
 
 export type ProjectsOperationsPanelProps = {
@@ -146,7 +127,7 @@ export function ProjectsOperationsPanel({
   const [formError, setFormError] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [projectsLoaded, setProjectsLoaded] = useState(false);
-  const listSearch = useMemo(() => parseListSearch(search), [search]);
+  const listSearch = useMemo(() => parseParamAdminProjectsSearch(search), [search]);
 
   const mockRows = useMemo(() => buildParameterAdminProjectsFromState(state), [state]);
   const rows = isApiMode ? apiRows : mockRows;
@@ -188,8 +169,7 @@ export function ProjectsOperationsPanel({
 
   const updateListSearch = useCallback(
     (patch: Partial<ParamAdminProjectsSearch>) => {
-      const query = buildListSearch(patch, listSearch);
-      onNavigate(`/parameter-admin/projects${query ? `?${query}` : ""}`);
+      onNavigate(buildParamAdminProjectsPath({ ...listSearch, ...patch }));
     },
     [listSearch, onNavigate]
   );

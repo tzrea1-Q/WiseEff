@@ -3832,6 +3832,16 @@ td small {
   min-width: 720px;
 }
 
+.horizontal-drag-scroll-shell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.horizontal-drag-scroll-rail {
+  display: none;
+}
+
 [data-overflow-x="true"] {
   cursor: grab;
 }
@@ -13990,12 +14000,12 @@ body.xiaoze-popup-resize-active {
    table via `.param-admin-library-table` rules; do not force min-width:0 there
    or columns crush with no horizontal scroll. */
 @media (max-width: 640px) {
-  .param-admin-shell .project-admin-library-table .parameters-table-scroll {
+  .param-admin-shell .project-admin-library-table .data-table-scroll {
     overflow: visible;
     max-height: none;
   }
 
-  .param-admin-shell .project-admin-library-table .parameters-table-scroll > table,
+  .param-admin-shell .project-admin-library-table .data-table-scroll > table,
   .param-admin-shell .project-admin-library-grid {
     width: 100%;
     min-width: 0;
@@ -14007,18 +14017,26 @@ body.xiaoze-popup-resize-active {
     justify-content: flex-start;
   }
 
-  .project-admin-library-table .project-admin-h-rail {
+  .project-admin-library-table .horizontal-drag-scroll-rail {
     display: none;
+  }
+
+  .param-admin-shell .project-admin-library-grid td:first-child {
+    display: grid;
+  }
+
+  .param-admin-shell .project-admin-library-grid td:first-child::before {
+    content: attr(data-label);
   }
 }
 
 /* Table column sizing for any non-card shell (≥641). Must stay outside the
    ≤640px card layout or white-space:nowrap leaks into cards and clips cells.
    Table min-width keeps nowrap columns from being crushed. Native overlay
-   scrollbars stay hidden; `.project-admin-h-rail` is the always-visible drag
+   scrollbars stay hidden; the shared horizontal drag rail is the always-visible
    handle (same pattern as `.dts-workbench-list__h-rail`). */
 @media (min-width: 641px) {
-  .param-admin-shell .project-admin-library-table .parameters-table-scroll {
+  .param-admin-shell .project-admin-library-table .data-table-scroll {
     max-height: none;
     overflow-x: auto;
     overflow-y: hidden;
@@ -14026,11 +14044,11 @@ body.xiaoze-popup-resize-active {
     scrollbar-width: none;
   }
 
-  .param-admin-shell .project-admin-library-table .parameters-table-scroll::-webkit-scrollbar {
+  .param-admin-shell .project-admin-library-table .data-table-scroll::-webkit-scrollbar {
     display: none;
   }
 
-  .param-admin-shell .project-admin-library-table .parameters-table-scroll > table,
+  .param-admin-shell .project-admin-library-table .data-table-scroll > table,
   .param-admin-shell .project-admin-library-table .project-admin-library-grid {
     width: max-content;
     min-width: 1080px;
@@ -14038,45 +14056,54 @@ body.xiaoze-popup-resize-active {
     table-layout: auto;
   }
 
-  .project-admin-library-table .project-admin-table-scroll-shell {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    gap: 0;
-  }
-
-  .project-admin-library-table .project-admin-h-rail {
+  .horizontal-drag-scroll-rail {
     display: block;
     position: relative;
     box-sizing: border-box;
-    height: 16px;
+    height: var(--space-4);
     overflow: hidden;
-    background: #d7e0ec;
-    border: 1px solid var(--outline);
+    background: var(--surface-sunken);
+    border: 1px solid var(--border);
     border-top: 0;
     border-radius: 0 0 var(--radius-md) var(--radius-md);
     cursor: pointer;
   }
 
-  .project-admin-library-table .project-admin-h-rail-thumb {
+  .horizontal-drag-scroll-rail__thumb {
+    --horizontal-drag-scroll-thumb-min-width: var(--space-10);
+
     position: absolute;
-    top: 3px;
+    top: var(--space-1);
     left: 0;
-    height: 10px;
-    min-width: 40px;
+    height: var(--space-2);
+    min-width: var(--horizontal-drag-scroll-thumb-min-width);
     border-radius: var(--radius-full);
-    background: #5b6f8a;
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--surface) 25%, transparent);
+    background: var(--text-muted);
     cursor: grab;
     touch-action: none;
   }
 
-  .project-admin-library-table .project-admin-h-rail-thumb:active {
-    cursor: grabbing;
-    background: #3f536c;
+  .horizontal-drag-scroll-rail:not([hidden]):hover {
+    background: var(--surface-muted);
+    border-color: var(--border-strong);
   }
 
-  .project-admin-library-table .parameters-table-scroll {
+  .horizontal-drag-scroll-rail:not([hidden]):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: -2px;
+    background: var(--surface-raised);
+  }
+
+  .horizontal-drag-scroll-rail:not([hidden]):focus-visible .horizontal-drag-scroll-rail__thumb {
+    background: var(--accent);
+  }
+
+  .horizontal-drag-scroll-rail__thumb:active {
+    cursor: grabbing;
+    background: var(--text-secondary);
+  }
+
+  .project-admin-library-table .data-table-scroll {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
   }
@@ -14095,20 +14122,13 @@ body.xiaoze-popup-resize-active {
 
   .project-admin-library-grid th:first-child,
   .project-admin-library-grid td:first-child {
-    width: 44px;
-    min-width: 44px;
-    text-align: center;
-  }
-
-  .project-admin-library-grid th:nth-child(2),
-  .project-admin-library-grid td:nth-child(2) {
     width: auto;
     min-width: 140px;
     max-width: 240px;
     white-space: normal;
   }
 
-  .project-admin-library-grid td:nth-child(2) strong {
+  .project-admin-library-grid td:first-child strong {
     display: block;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -14117,8 +14137,8 @@ body.xiaoze-popup-resize-active {
 
   /* 状态: keep the badge + filter compact and centered (global ParametersTable
      nth-child(4) is 16%/120px and left-aligned for a different column map). */
-  .project-admin-library-grid th:nth-child(4),
-  .project-admin-library-grid td:nth-child(4) {
+  .project-admin-library-grid th:nth-child(3),
+  .project-admin-library-grid td:nth-child(3) {
     width: 1%;
     min-width: 88px;
     max-width: 104px;
@@ -14126,14 +14146,9 @@ body.xiaoze-popup-resize-active {
     padding-inline: 6px;
   }
 
-  .project-admin-library-grid th:nth-child(4) .param-admin-library-head-cell {
-    justify-content: center;
-    width: 100%;
-  }
-
   /* 冲突: short numeric attention column — override global 16%/112px slot. */
-  .project-admin-library-grid th:nth-child(5),
-  .project-admin-library-grid td:nth-child(5) {
+  .project-admin-library-grid th:nth-child(4),
+  .project-admin-library-grid td:nth-child(4) {
     width: 1%;
     min-width: 56px;
     max-width: 72px;
@@ -14141,10 +14156,10 @@ body.xiaoze-popup-resize-active {
     padding-inline: 6px;
   }
 
+  .project-admin-library-grid th:nth-child(5),
   .project-admin-library-grid th:nth-child(6),
   .project-admin-library-grid th:nth-child(7),
-  .project-admin-library-grid th:nth-child(8),
-  .project-admin-library-grid td:nth-child(6),
+  .project-admin-library-grid td:nth-child(5),
   .project-admin-library-grid .project-admin-col-numeric {
     text-align: center;
   }
@@ -14161,10 +14176,6 @@ body.xiaoze-popup-resize-active {
     flex-flow: row nowrap;
     justify-content: center;
   }
-}
-
-.project-admin-h-rail {
-  display: none;
 }
 
 .project-admin-row-edit {
@@ -24796,7 +24807,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
     max-width: none;
   }
 
-  .param-admin-shell .project-admin-library-table .parameters-table-scroll {
+  .param-admin-shell .project-admin-library-table .data-table-scroll {
     overflow-x: auto;
     overflow-y: hidden;
     max-height: none;
@@ -24805,7 +24816,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
     scrollbar-width: none;
   }
 
-  .param-admin-shell .project-admin-library-table .parameters-table-scroll::-webkit-scrollbar {
+  .param-admin-shell .project-admin-library-table .data-table-scroll::-webkit-scrollbar {
     display: none;
   }
 

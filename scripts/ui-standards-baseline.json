@@ -2,57 +2,75 @@
   "description": "Ratchet baseline for `npm run ui:check`. Counts may only go down: when a rule's live count drops below its baseline, run `npm run ui:check -- --update-baseline` in the same change. Rules at 0 are hard-forbidden and must never ratchet up. Structure: rule id -> { count, note?, files? }.",
   "rules": {
     "raw-color": {
-      "count": 1022,
+      "count": 1013,
       "note": "Stock from the pre-P3 monolith; P3 (motion/chart/dark wiring) reduces it in parallel. Ratchet down after each merge.",
       "files": {
+        "src/components/project-configuration-workbench/configuration-workbench.css": 31,
+        "src/features/log-analysis/log-analysis.css": 49,
         "src/features/parameter-home/parameter-home.css": 1,
+        "src/features/parameter-review/parameter-review.css": 33,
         "src/linear-template/linear-template.css": 35,
-        "src/styles.css": 986
+        "src/styles.css": 864
       }
     },
     "raw-z-index": {
-      "count": 50,
+      "count": 48,
       "note": "73 CSS declarations plus ColumnFilter.tsx zIndex literals (FA-06); migrate to the var(--z-*) ladder.",
       "files": {
+        "src/components/project-configuration-workbench/configuration-workbench.css": 7,
+        "src/features/log-analysis/log-analysis.css": 2,
+        "src/features/parameter-review/parameter-review.css": 3,
         "src/linear-template/linear-template.css": 1,
-        "src/styles.css": 49
+        "src/styles.css": 35
       }
     },
     "raw-font-size": {
       "count": 214,
       "note": "Stock outside the type scale; migrate to var(--text-xs..2xl).",
       "files": {
+        "src/components/project-configuration-workbench/configuration-workbench.css": 13,
+        "src/features/log-analysis/log-analysis.css": 10,
         "src/features/parameter-home/parameter-home.css": 31,
+        "src/features/parameter-review/parameter-review.css": 2,
         "src/linear-template/linear-template.css": 9,
-        "src/styles.css": 174
+        "src/styles.css": 149
       }
     },
     "raw-shadow": {
-      "count": 142,
+      "count": 141,
       "note": "Stock outside var(--shadow-1..3)/var(--ring); migrate to elevation tokens.",
       "files": {
+        "src/components/project-configuration-workbench/configuration-workbench.css": 5,
+        "src/features/log-analysis/log-analysis.css": 3,
         "src/features/parameter-home/parameter-home.css": 10,
+        "src/features/parameter-review/parameter-review.css": 4,
         "src/linear-template/linear-template.css": 8,
-        "src/styles.css": 124
+        "src/styles.css": 111
       }
     },
     "raw-spacing": {
-      "count": 1250,
+      "count": 1244,
       "note": "Off-grid spacing stock after wave 3 exact --space-* burn; ratchet down as rem/em/off-grid px are migrated.",
       "files": {
+        "src/components/project-configuration-workbench/configuration-workbench.css": 73,
         "src/features/agent/xiaozeAssistantMarkdown.css": 1,
+        "src/features/log-analysis/log-analysis.css": 67,
         "src/features/parameter-home/parameter-home.css": 68,
+        "src/features/parameter-review/parameter-review.css": 48,
         "src/linear-template/linear-template.css": 25,
-        "src/styles.css": 1156
+        "src/styles.css": 962
       }
     },
     "raw-radius": {
-      "count": 148,
+      "count": 147,
       "note": "Off-grid radius stock after wave 3 exact --radius-* burn; ratchet down as non-token radii are migrated.",
       "files": {
+        "src/components/project-configuration-workbench/configuration-workbench.css": 2,
+        "src/features/log-analysis/log-analysis.css": 8,
         "src/features/parameter-home/parameter-home.css": 9,
+        "src/features/parameter-review/parameter-review.css": 6,
         "src/linear-template/linear-template.css": 1,
-        "src/styles.css": 138
+        "src/styles.css": 121
       }
     },
     "ease-keyword": {
