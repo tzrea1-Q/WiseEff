@@ -1,4 +1,13 @@
-import { type ComponentProps, type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ComponentProps,
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import {
   CopilotChatView,
   CopilotModalHeader,
@@ -71,7 +80,9 @@ export function XiaozePopupView({
   const labels = configuration?.labels;
   const modalTitle = labels?.modalHeaderTitle ?? "小泽";
 
+  const layerRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
   const wasOpenRef = useRef(false);
   const [isMounted, setIsMounted] = useState(isPopupOpen);
   const [motion, setMotion] = useState<XiaozePopupMotionPhase>(isPopupOpen ? "visible" : "leaving");
@@ -149,6 +160,32 @@ export function XiaozePopupView({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isPopupOpen, requestClose]);
 
+  useLayoutEffect(() => {
+    const layer = layerRef.current;
+    const activeElement = document.activeElement;
+
+    if (isPopupOpen) {
+      if (activeElement instanceof HTMLElement && !layer?.contains(activeElement)) {
+        restoreFocusRef.current = activeElement;
+      }
+      return;
+    }
+
+    if (!layer?.contains(activeElement)) {
+      restoreFocusRef.current = null;
+      return;
+    }
+
+    const previousFocus = restoreFocusRef.current;
+    const toggle = document.querySelector<HTMLElement>("[data-slot='chat-toggle-button']");
+    const focusTarget =
+      previousFocus && previousFocus !== document.body && previousFocus.isConnected && !layer.contains(previousFocus)
+        ? previousFocus
+        : toggle;
+    focusTarget?.focus({ preventScroll: true });
+    restoreFocusRef.current = null;
+  }, [isPopupOpen]);
+
   useEffect(() => {
     if (!isPopupOpen) {
       return;
@@ -175,6 +212,9 @@ export function XiaozePopupView({
         return;
       }
       if (containerRef.current?.contains(target)) {
+        return;
+      }
+      if (target instanceof Element && target.closest(".xiaoze-popup-scrim")) {
         return;
       }
       if (isWithinApprovalCard(target)) {
@@ -212,6 +252,7 @@ export function XiaozePopupView({
       {toggleButtonElement}
       {isMounted ? (
         <div
+          ref={layerRef}
           className="xiaoze-popup-layer"
           data-motion={motion}
           data-testid="xiaoze-popup-layer"
@@ -231,9 +272,11 @@ export function XiaozePopupView({
           <div
             ref={containerRef}
             tabIndex={-1}
-            role="dialog"
-            aria-label={modalTitle}
-            aria-modal="true"
+            role={isPopupOpen ? "dialog" : undefined}
+            aria-label={isPopupOpen ? modalTitle : undefined}
+            aria-modal={isPopupOpen ? "true" : undefined}
+            aria-hidden={isPopupOpen ? undefined : "true"}
+            inert={isPopupOpen ? undefined : true}
             data-testid="copilot-popup"
             data-copilot-popup=""
             data-motion={motion}
