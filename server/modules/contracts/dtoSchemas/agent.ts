@@ -7,6 +7,7 @@ import {
   XIAOZE_TURN_REPLY_EVENT,
   XIAOZE_TURN_STATE_EVENT,
   type XiaozeCitation,
+  type XiaozeInterruptPayload,
   type XiaozePromptDebugPayload,
   type XiaozePromptDebugSnapshot,
   type XiaozePromptDebugTool,
@@ -204,7 +205,7 @@ export const xiaozePromptDebugPayloadSchema: z.ZodType<XiaozePromptDebugPayload>
   snapshot: xiaozePromptDebugSnapshotSchema
 });
 
-export const xiaozeInterruptPayloadSchema = z.object({
+export const xiaozeInterruptPayloadSchema: z.ZodType<XiaozeInterruptPayload> = z.object({
   approvalId: z.string(),
   toolCallId: z.string(),
   toolName: z.string(),

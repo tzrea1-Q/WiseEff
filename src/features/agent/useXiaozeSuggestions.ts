@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Insight } from "@/components/AgentInsightBar";
-import { resolveXiaozeAuthorizationHeader } from "./xiaozeHttpAgent";
+import { requestXiaozeSuggestions } from "@/infrastructure/http/xiaozeSuggestionsClient";
 import { supportsXiaozeProactiveInsightPage } from "./xiaozeProactiveInsights";
 import { useXiaozePageContextValue } from "./xiaozePageContext";
-import { resolveWiseEffApiBaseUrl } from "@/infrastructure/http/runtimeMode";
-import { parseContractDto } from "@/infrastructure/http/parseContractDto";
-import { xiaozeSuggestResponseSchema } from "@wiseeff/dto-schemas";
 
 export function useXiaozeSuggestions(options: { enabled: boolean }) {
   const pageContext = useXiaozePageContextValue();
@@ -21,35 +18,14 @@ export function useXiaozeSuggestions(options: { enabled: boolean }) {
     }
 
     try {
-      const authorization = await resolveXiaozeAuthorizationHeader();
-      const response = await fetch(`${resolveWiseEffApiBaseUrl().replace(/\/+$/, "")}/api/v1/agent/xiaoze/suggest`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(authorization ? { Authorization: authorization } : {})
-        },
-        body: JSON.stringify({
-          context: {
-            path: pageContext.path,
-            pageKey: pageContext.pageKey,
-            projectId: pageContext.projectId,
-            projectName: pageContext.projectName
-          }
-        })
+      const suggestions = await requestXiaozeSuggestions({
+        path: pageContext.path,
+        pageKey: pageContext.pageKey,
+        projectId: pageContext.projectId,
+        projectName: pageContext.projectName
       });
-
-      if (!response.ok) {
-        setInsights([]);
-        return;
-      }
-
-      const payload = parseContractDto(
-        xiaozeSuggestResponseSchema,
-        await response.json(),
-        "XiaozeSuggestResponse"
-      );
       setInsights(
-        payload.suggestions.map((item) => ({
+        suggestions.map((item) => ({
           id: item.id,
           variant: item.tone,
           headline: item.headline,
@@ -70,7 +46,14 @@ export function useXiaozeSuggestions(options: { enabled: boolean }) {
       setInsights([]);
       console.error("Failed to load Xiaoze suggestions.", error);
     }
-  }, [options.enabled, pageContext?.path, pageContext?.pageKey, pageContext?.projectId, pageKeySupported]);
+  }, [
+    options.enabled,
+    pageContext?.path,
+    pageContext?.pageKey,
+    pageContext?.projectId,
+    pageContext?.projectName,
+    pageKeySupported
+  ]);
 
   useEffect(() => {
     void fetchSuggestions();

@@ -11,6 +11,7 @@ import {
   XIAOZE_RUN_TIMING_EVENT,
   XIAOZE_TURN_REPLY_EVENT,
   XIAOZE_TURN_STATE_EVENT,
+  type XiaozeInterruptPayload,
   type XiaozeRunStep,
   type XiaozeTurnPhase,
   type XiaozeTurnStatePayload
@@ -40,14 +41,6 @@ export type XiaozeTurnFinalizeInput = {
   runSteps?: XiaozeRunStep[];
   promptDebug?: XiaozePromptDebugSnapshot;
   promptDebugModel?: string;
-};
-
-export type XiaozeApprovalInterrupt = {
-  approvalId: string;
-  toolCallId: string;
-  toolName: string;
-  payload: Record<string, unknown>;
-  citations: AgentCitation[];
 };
 
 export function createReasoningMessageId() {
@@ -354,14 +347,14 @@ export function createXiaozeTurnStream(ids: XiaozeTurnStreamIds) {
     },
 
     /** Frames for a mutating-tool pause: approval card tool call, interrupt outcome. */
-    interrupt(begin: XiaozeApprovalInterrupt): AgUiStreamEvent[] {
+    interrupt(begin: XiaozeInterruptPayload): AgUiStreamEvent[] {
       const interruptValue = {
         approvalId: begin.approvalId,
         toolCallId: begin.toolCallId,
         toolName: begin.toolName,
         payload: begin.payload,
         citations: begin.citations
-      };
+      } satisfies XiaozeInterruptPayload;
       const frontendToolCallId = randomUUID();
       return [
         ...reasoningEndEvents(),

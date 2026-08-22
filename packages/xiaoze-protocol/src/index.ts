@@ -41,6 +41,24 @@ export type XiaozeCitation = {
   confidence?: number;
 };
 
+/** Mutating-tool approval payload carried by the `on_interrupt` CUSTOM event. */
+export type XiaozeInterruptPayload = {
+  approvalId: string;
+  toolCallId: string;
+  toolName: string;
+  payload: Record<string, unknown> & {
+    projectId?: string;
+    parameterId?: string;
+    targetValue?: string;
+    reason?: string;
+    title?: string;
+    contentMarkdown?: string;
+    tags?: string[];
+    sourceLogId?: string;
+  };
+  citations: XiaozeCitation[];
+};
+
 /** Live turn progress snapshot, emitted after every streamed frame. */
 export type XiaozeTurnStatePayload = {
   runId: string;
