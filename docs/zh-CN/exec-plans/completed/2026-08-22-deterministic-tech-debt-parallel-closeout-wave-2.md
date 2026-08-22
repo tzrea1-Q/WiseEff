@@ -1,9 +1,11 @@
 # 确定性技术债并行收口——第二批
 
-> 状态：**进行中**
+> 状态：**已于 2026-08-22 完成**
 > 日期：2026-08-22
 > 计划分支：`docs/deterministic-tech-debt-parallel-closeout-wave2-plan`
-> English: [English](../../../exec-plans/active/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-2.md)
+> 收口分支：`docs/deterministic-td-parallel-closeout-wave2`
+> 实现 PR：#580（TD-109）、#582（TD-018）、#583（TD-077）、#585（TD-114）
+> English: [English](../../../exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-2.md)
 > 追踪表：[技术债追踪表](../tech-debt-tracker.md)
 
 ## 目标
@@ -122,21 +124,31 @@ git diff --check
 
 每条轨道的专用命令、红绿证据与浏览器产物路径记录在实现 PR 和最终 tracker 条目。
 
+## 收口证据
+
+- **TD-109——#580（`8d8f06bd`）：** domain/mock 23/23、服务端 promotion 9/9 通过。实现阶段全量为前端 402 files / 3001 tests、服务端 346 files / 2682 tests，另有 2 files / 8 tests 按既有条件跳过。仓库 CI 为前端 402/3001、服务端 347 files / 2686 tests，另有 1 file / 4 tests 跳过。
+- **TD-018——#582（`693a4da8`）：** 聚焦前端 12/12、服务端/CUSTOM 44/44 通过。实现阶段全量为前端 401 files / 2991 tests、服务端 348 files / 2698 tests，另有 2 files / 8 tests 跳过。仓库 CI 为前端 403/3005、服务端 349 files / 2711 tests，另有 1 file / 4 tests 跳过。
+- **TD-077——#583（`c3937904`）：** 仓库 CI 为前端 404 files / 3005 tests、服务端 349 files / 2711 tests，另有 1 file / 4 tests 跳过；脚本覆盖 500 tests 通过，保留 5 个既有 skip。最后七个残余已改用结构化/渲染/primitive 合同，error 级回归规则的 6/6 聚焦用例通过。
+- **TD-114——#585（`bf3739a2`）：** 本地聚焦 4 files / 148 tests、实现阶段前端全量 402 files / 2993 tests、参数验收 3/3 通过。仓库 CI 为前端 405/3010、服务端 349 files / 2711 tests，另有 1 file / 4 tests 跳过；Acceptance quality 97 tests、Acceptance smoke 4 tests 通过。API 模式在 `/parameter-review`、`/parameter-submissions` 的 1440×900、768×1024、390×844 完成 snapshot、screenshot 与 reject/approve/withdraw 交互，请求均 HTTP 200，overflow 和 console error 均为 0。走查发现并修复移动端规则顺序、history-card specificity 与 merge-link 隐式网格轨道；剩余 warning 只有本地 CopilotKit license 提示。
+- 四个 PR 的仓库 Detect、Build and test、Acceptance quality、Acceptance smoke、Merge bar 门禁全部通过；四条实现的最终独立 Standards / Spec 复审均为 0 个问题。
+- 本次共享收口只更新中英 tracker、计划、索引和失真的当前状态引用。仓库地图、产品规格、runbook、安全规则、设计系统规则与 ADR-0031 均已复核且无需修改；#582 已包含必要的 API/OpenAPI 产物，#583 已包含质量规则。
+- 本次关闭只提供本地与仓库 CI 实现证据。按路径过滤的 local non-HDC 与 target-synthetic job 已跳过；本批次**不声明** HDC/设备实验室、目标环境、target synthetic 或真实模型/provider 证据。
+
 ## 文档影响矩阵
 
 | 区域 | 状态 | 文件/证据 |
 | --- | --- | --- |
-| 仓库地图 | Review | `AGENTS.md`、`ARCHITECTURE.md`、`docs/README.md`；预计无导航变化 |
-| 计划 | Update | 本中英计划、两份 PLANS 索引、失真的当前状态引用 |
-| 技术债 | Update | 中英 tracker 的 TD-018/077/109/114 |
+| 仓库地图 | 已复核，无需修改 | `AGENTS.md`、`ARCHITECTURE.md`、`docs/README.md` 仍指向相同文件；无导航变化 |
+| 计划 | 已更新 | 本中英计划、两份 PLANS 索引和失真的当前状态引用 |
+| 技术债 | 已更新 | 中英 tracker 的 TD-018/077/109/114 已移入关闭项；TD-003/012 与 TD-072/075/076 保持 Open |
 | 产品规格 | No change | 不改工作流或产品决策 |
-| 架构/领域 | Review | TD-109 领域 guard 与 TD-018 contract 放置；只有接口合同变化时才改长期文档 |
-| 质量/测试 | Review | TD-077 lint/结构化合同；记录门禁归属，不复制实现细节 |
+| 架构/领域 | 已复核，无需追加 | #580 承载 domain guard，#582 承载 contract 放置；既有架构边界仍准确 |
+| 质量/测试 | 已复核，无需追加 | #583 承载 error 级 lint/结构化合同；tracker 记录门禁而不复制实现细节 |
 | 可靠性/runbook | No change | 不改运行时/运维流程或 readiness 声明 |
-| 安全/治理 | Review | 畸形合同失败关闭；不改 authz、secret、audit 或设备写入 |
-| 前端/设计 | Review | TD-114 行为等价布局清理；需要浏览器证据，既有设计规则已允许 scope 只加布局 |
-| API/生成物 | Update | TD-018 具体 suggest/OpenAPI 合同；重新生成/检查产物 |
-| references | Review | ADR-0031 继续无依赖；仅在必要时记录 schema 放置 |
+| 安全/治理 | 已复核，无需修改 | 畸形合同失败关闭；不改 authz、secret、audit 或设备写入 |
+| 前端/设计 | 已复核，无需追加 | #585 是带浏览器证据的行为等价布局清理；既有设计规则仍准确 |
+| API/生成物 | 已在 #582 更新 | 具体 suggest/OpenAPI contract 已在实现 PR 生成并检查 |
+| references | 已复核，无需修改 | ADR-0031 继续保持无依赖，无需修订 |
 
 ## 文档更新门禁
 
