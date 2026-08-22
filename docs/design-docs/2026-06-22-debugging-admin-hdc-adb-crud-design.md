@@ -3,7 +3,9 @@
 > Chinese: [Chinese](../zh-CN/design-docs/2026-06-22-debugging-admin-hdc-adb-crud-design.md)
 
 Date: 2026-06-22
-Status: Approved for implementation planning
+Status: **Superseded** by the node-only catalog contract in [`domain-model.md`](domain-model.md#node-registry-vs-parameter-reload-td-032)
+
+This file preserves the 2026-06-22 parameter-catalog design as historical evidence. The product now governs `debug_nodes` / `debug_node_bindings`; legacy parameter Admin HTTP/client routes are retired while their tables and history remain intact.
 
 ## Context
 

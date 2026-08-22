@@ -820,50 +820,6 @@ export const routeManifest = [
   { id: "debugging.detectTarget", method: "POST", path: "/api/v1/debugging/targets/detect", module: "debugging", stability: "mvp" },
   { id: "debugging.listParameters", method: "GET", path: "/api/v1/debugging/parameters", module: "debugging", stability: "mvp" },
   { id: "debugging.listRuntimeNodes", method: "GET", path: "/api/v1/debugging/nodes", module: "debugging", stability: "mvp" },
-  { id: "debugging.admin.listParameters", method: "GET", path: "/api/v1/debugging/admin/parameters", module: "debugging", stability: "mvp" },
-  { id: "debugging.admin.createParameter", method: "POST", path: "/api/v1/debugging/admin/parameters", module: "debugging", stability: "mvp" },
-  {
-    id: "debugging.admin.updateParameter",
-    method: "PATCH",
-    path: "/api/v1/debugging/admin/parameters/:parameterId",
-    module: "debugging",
-    stability: "mvp"
-  },
-  {
-    id: "debugging.admin.archiveParameter",
-    method: "POST",
-    path: "/api/v1/debugging/admin/parameters/:parameterId/archive",
-    module: "debugging",
-    stability: "mvp"
-  },
-  {
-    id: "debugging.admin.restoreParameter",
-    method: "POST",
-    path: "/api/v1/debugging/admin/parameters/:parameterId/restore",
-    module: "debugging",
-    stability: "mvp"
-  },
-  {
-    id: "debugging.admin.upsertBinding",
-    method: "PUT",
-    path: "/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol",
-    module: "debugging",
-    stability: "mvp"
-  },
-  {
-    id: "debugging.admin.patchBinding",
-    method: "PATCH",
-    path: "/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol",
-    module: "debugging",
-    stability: "mvp"
-  },
-  {
-    id: "debugging.admin.archiveBinding",
-    method: "POST",
-    path: "/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol/archive",
-    module: "debugging",
-    stability: "mvp"
-  },
   { id: "debugging.admin.listNodes", method: "GET", path: "/api/v1/debugging/admin/nodes", module: "debugging", stability: "mvp" },
   { id: "debugging.admin.createNode", method: "POST", path: "/api/v1/debugging/admin/nodes", module: "debugging", stability: "mvp" },
   {

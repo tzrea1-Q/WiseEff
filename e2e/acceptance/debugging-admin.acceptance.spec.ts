@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { spawnSync } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "playwright/test";
 import type { Client } from "pg";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
@@ -138,8 +139,10 @@ async function debuggingAdminDbSummary(nodeName: string) {
   });
 }
 
-function auditSummaryFor(items: AuditEventDto[], kind: string, targetId: string) {
-  const item = items.find((candidate) => candidate.kind === kind && candidate.targetId === targetId);
+function auditSummaryFor(items: AuditEventDto[], kind: string, targetId: string, requestId?: string) {
+  const item = items.find(
+    (candidate) => candidate.kind === kind && candidate.targetId === targetId && (!requestId || candidate.traceId === requestId)
+  );
   expect(item).toBeTruthy();
 
   return {
@@ -155,6 +158,29 @@ function auditSummaryFor(items: AuditEventDto[], kind: string, targetId: string)
           .join("; ")
       : undefined
   };
+}
+
+function catalogAuditSummaryFor(
+  items: AuditEventDto[],
+  kind: "debug-node-catalog-export" | "debug-node-catalog-import",
+  requestId: string | undefined,
+  expectedMetadata: Record<string, unknown>,
+  rawNodePaths: string[]
+) {
+  const item = items.find(
+    (candidate) => candidate.kind === kind && candidate.targetId === "org-chargelab" && candidate.traceId === requestId
+  );
+
+  expect(item, `${kind} audit with request id ${requestId}`).toBeTruthy();
+  expect(item!.metadata).toEqual(expectedMetadata);
+
+  const serializedMetadata = JSON.stringify(item!.metadata);
+  expect(serializedMetadata.toLowerCase()).not.toContain("nodepath");
+  for (const rawNodePath of rawNodePaths) {
+    expect(serializedMetadata).not.toContain(rawNodePath);
+  }
+
+  return auditSummaryFor(items, kind, "org-chargelab", requestId);
 }
 
 function nodeRow(page: Page, name: string) {
@@ -226,16 +252,70 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     await expect(definitionDialog).not.toBeVisible({ timeout: 30_000 });
     await expect(nodeRow(page, editedName)).toBeVisible();
 
+    const exportResponsePromise = page.waitForResponse(
+      (response) => response.request().method() === "GET" && response.url().includes("/api/v1/debugging/admin/catalog/export")
+    );
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "导出目录" }).click();
+    const [exportResponse, download] = await Promise.all([exportResponsePromise, downloadPromise]);
+    expect(exportResponse.ok()).toBe(true);
+    const downloadPath = await download.path();
+    expect(downloadPath).toBeTruthy();
+    const exportedCatalog = JSON.parse(await readFile(downloadPath!, "utf8")) as {
+      format: "wiseeff.debug-node-catalog.v1";
+      modules: unknown[];
+      nodes: Array<Record<string, unknown> & { id?: string; name: string; bindings: Array<{ nodePath: string }> }>;
+    };
+    const exportedNode = exportedCatalog.nodes.find((node) => node.name === editedName);
+    expect(exportedNode).toBeTruthy();
+
+    const importedDescription = `Imported acceptance node ${suffix}`;
+    const importDocument = {
+      format: exportedCatalog.format,
+      modules: [],
+      nodes: [{ ...exportedNode!, description: importedDescription }]
+    };
+    const importResponsePromise = page.waitForResponse(
+      (response) => response.request().method() === "POST" && response.url().includes("/api/v1/debugging/admin/catalog/import")
+    );
+    await page.getByLabel("导入目录文件").setInputFiles({
+      name: "debug-node-catalog.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(JSON.stringify(importDocument))
+    });
+    const importResponse = await importResponsePromise;
+    expect(importResponse.ok()).toBe(true);
+    const importBody = (await importResponse.json()) as {
+      item: {
+        modulesCreated: number;
+        modulesUpdated: number;
+        nodesCreated: number;
+        nodesUpdated: number;
+        bindingsUpserted: number;
+      };
+    };
+    expect(importBody.item).toEqual({
+      modulesCreated: 0,
+      modulesUpdated: 0,
+      nodesCreated: 0,
+      nodesUpdated: 1,
+      bindingsUpserted: 2
+    });
+    await expect(
+      page.getByRole("toolbar", { name: "调试管理后台页面操作" }).getByText(/^已导入：/)
+    ).toBeVisible({ timeout: 30_000 });
+
     const listResponse = await page.request.get(apiRoute("/api/v1/debugging/admin/nodes?includeArchived=true"), {
       headers: smokeHeaders()
     });
     expect(listResponse.ok()).toBe(true);
-    const listBody = (await listResponse.json()) as { items: AdminNodeDto[] };
+    const listBody = (await listResponse.json()) as { items: Array<AdminNodeDto & { description: string }> };
     const created = listBody.items.find((item) => item.name === editedName);
     expect(created).toBeTruthy();
     expect(created).toMatchObject({
       enabled: true,
-      archivedAt: null
+      archivedAt: null,
+      description: importedDescription
     });
     expect(created!.bindings.some((binding) => binding.protocol === "hdc" && binding.enabled)).toBe(true);
     expect(created!.bindings.some((binding) => binding.protocol === "adb" && binding.enabled)).toBe(true);
@@ -280,13 +360,45 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     });
     expect(auditResponse.ok()).toBe(true);
     const auditBody = (await auditResponse.json()) as { items: AuditEventDto[] };
+    const exportedBindingPaths = exportedCatalog.nodes.flatMap((node) => node.bindings.map((binding) => binding.nodePath));
+    const exportAuditMetadata = {
+      moduleCount: exportedCatalog.modules.length,
+      nodeCount: exportedCatalog.nodes.length,
+      bindingCount: exportedBindingPaths.length,
+      includeArchived: true
+    };
+    const importAuditMetadata = { ...importBody.item };
+    const exportAuditSummary = catalogAuditSummaryFor(
+      auditBody.items,
+      "debug-node-catalog-export",
+      exportResponse.headers()["x-request-id"],
+      exportAuditMetadata,
+      exportedBindingPaths
+    );
+    const importAuditSummary = catalogAuditSummaryFor(
+      auditBody.items,
+      "debug-node-catalog-import",
+      importResponse.headers()["x-request-id"],
+      importAuditMetadata,
+      importDocument.nodes.flatMap((node) => node.bindings.map((binding) => binding.nodePath))
+    );
     expect(auditBody.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: "debug-node-admin-create", targetId: created!.id }),
         expect.objectContaining({ kind: "debug-node-admin-update", targetId: created!.id }),
         expect.objectContaining({ kind: "debug-node-binding-admin-upsert", targetId: `${created!.id}:hdc` }),
         expect.objectContaining({ kind: "debug-node-binding-admin-upsert", targetId: `${created!.id}:adb` }),
-        expect.objectContaining({ kind: "debug-node-binding-admin-archive", targetId: `${created!.id}:adb` })
+        expect.objectContaining({ kind: "debug-node-binding-admin-archive", targetId: `${created!.id}:adb` }),
+        expect.objectContaining({
+          kind: "debug-node-catalog-export",
+          targetId: "org-chargelab",
+          traceId: exportResponse.headers()["x-request-id"]
+        }),
+        expect.objectContaining({
+          kind: "debug-node-catalog-import",
+          targetId: "org-chargelab",
+          traceId: importResponse.headers()["x-request-id"]
+        })
       ])
     );
 
@@ -297,6 +409,16 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
       page,
       testInfo,
       api: [
+        summarizeApiResponse(exportResponse, {
+          method: "GET",
+          path: "/api/v1/debugging/admin/catalog/export?includeArchived=true",
+          responseSummary: `exported node catalog contains ${exportedCatalog.nodes.length} nodes`
+        }),
+        summarizeApiResponse(importResponse, {
+          method: "POST",
+          path: "/api/v1/debugging/admin/catalog/import",
+          responseSummary: `node catalog import updated ${importBody.item.nodesUpdated} node and upserted ${importBody.item.bindingsUpserted} bindings`
+        }),
         summarizeApiResponse(listResponse, {
           method: "GET",
           path: "/api/v1/debugging/admin/nodes?includeArchived=true",
@@ -327,9 +449,11 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
       audit: [
         auditSummaryFor(auditBody.items, "debug-node-admin-create", created!.id),
         auditSummaryFor(auditBody.items, "debug-node-admin-update", created!.id),
-        auditSummaryFor(auditBody.items, "debug-node-binding-admin-archive", `${created!.id}:adb`)
+        auditSummaryFor(auditBody.items, "debug-node-binding-admin-archive", `${created!.id}:adb`),
+        exportAuditSummary,
+        importAuditSummary
       ],
-      notes: "Admin UI created, edited, and disabled a debug node; path bindings configured in 路径绑定 dialog; ADB binding archive and node re-enable verified through admin API."
+      notes: "Admin UI created and edited a logical debug node, exported the real node catalog, imported a derived one-node document, verified exact count metadata and absence of raw node paths for both catalog audit events, configured HDC/ADB paths, archived the ADB binding, disabled the node, and re-enabled it through the node Admin API. No HDC device claim is made."
     });
   });
 });

@@ -106,27 +106,26 @@ M2 日志与 M3 调试运行时/catalog API 以认证用户的 `organization_id`
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/api/v1/debugging/admin/parameters` | 查询完整调试 catalog；`includeArchived=true` 时包含 disabled 或 archived 行。 |
-| `POST` | `/api/v1/debugging/admin/parameters` | 创建调试参数和可选 HDC/ADB bindings。 |
-| `PATCH` | `/api/v1/debugging/admin/parameters/:parameterId` | 更新调试参数 metadata。 |
-| `POST` | `/api/v1/debugging/admin/parameters/:parameterId/archive` | 归档参数，但不删除历史引用。 |
-| `POST` | `/api/v1/debugging/admin/parameters/:parameterId/restore` | 恢复已归档参数。 |
-| `PUT` | `/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol` | Upsert HDC 或 ADB node binding。 |
-| `PATCH` | `/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol` | 更新 HDC 或 ADB node binding。 |
-| `POST` | `/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol/archive` | 禁用单个 protocol binding。 |
+| `GET` | `/api/v1/debugging/admin/nodes` | 查询逻辑调试节点；`includeArchived=true` 时包含 disabled 或 archived 行，可按 `moduleId` 子树筛选。 |
+| `POST` | `/api/v1/debugging/admin/nodes` | 创建逻辑调试节点和可选 HDC/ADB bindings。 |
+| `PATCH` | `/api/v1/debugging/admin/nodes/:nodeId` | 更新逻辑节点 metadata。 |
+| `PUT` / `PATCH` | `/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol` | Upsert 或更新 HDC/ADB 节点 binding。 |
+| `POST` | `/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol/archive` | 禁用单个 protocol binding，不影响节点及另一协议。 |
 | `GET` | `/api/v1/debugging/admin/catalog/export` | 导出本组织调试节点目录（模块、节点、bindings）为 `wiseeff.debug-node-catalog.v1`。要求 `debugging:admin`。写入 `debug-node-catalog-export` 审计，不包含原始 node path。 |
 | `POST` | `/api/v1/debugging/admin/catalog/import` | 合并导入 v1 目录文档：模块按父路径+名称 upsert，节点按 id 或 名称+模块路径匹配。要求 `debugging:admin`。写入 `debug-node-catalog-import` 审计，不包含原始 node path。 |
 
-运行时 `/api/v1/debugging/parameters?protocol=...` 只返回启用、未归档，且所选协议 binding 启用的参数。管理列表 API 可返回缺失或已归档的 bindings，供 `/debugging-admin` 展示 HDC/ADB 覆盖标签。
+遗留 `/api/v1/debugging/admin/parameters*` 已退役并返回 `404`，不再出现在 route manifest、OpenAPI 或前端 Admin client 中。这里只移除无人使用的治理接口；`debugging_parameters`、`debugging_parameter_node_bindings`、repository/service、历史行、binding、operation 与审计证据继续保留，用于历史解释和迁移。
 
-运行时与管理端调试参数 DTO 包含可选值元数据：
+运行时 `/api/v1/debugging/parameters?protocol=...` 与上述 Admin 接口分开保留，只返回启用、未归档且所选协议 binding 启用的 legacy 参数。产品 `/node-debugging` 使用逻辑节点运行时接口。
+
+Legacy 运行时调试参数 DTO 包含可选值元数据：
 
 - `valueKind`：`scalar | complex`（legacy 行默认为 `scalar`）
 - `valueFormat`：`raw | json | dts | line-list | kv-list`
 - `normalizationMode`：`exact | trim | line-ending-normalized | json-canonical`
 - `maxValueBytes`：正整数，用于限制写入 payload 大小
 
-管理端 `POST`/`PATCH` 会校验组合关系：标量默认 `raw`/`trim`；`json-canonical` 要求 `valueFormat=json`；复杂 JSON 目标值必须可解析。节点写入请求仍使用 `value: string`；服务层根据参数元数据解析格式、规范化、digest、preview 和比较规则。
+节点写入请求仍使用 `value: string`；服务层根据已存 metadata 解析格式、规范化、digest、preview 和比较规则。
 
 节点操作 DTO 可包含 `valueKind`、`valueFormat`、`normalizationMode`、`valuePreview` 以及值 digest，用于复杂写入的列表视图，而不返回完整大 payload。
 

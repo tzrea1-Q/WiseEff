@@ -1,20 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-  archiveDebugParameterBodySchema,
   createDebugSessionBodySchema,
   DEBUG_CATALOG_FORMAT_V1,
-  debugAdminBindingParamsSchema,
-  debugAdminParameterParamsSchema,
   debugCatalogDocumentSchema,
   debugParameterNodeBindingSchema,
   detectTargetsBodySchema,
   exportDebugCatalogQuerySchema,
   importDebugCatalogBodySchema,
-  listDebuggingAdminParametersQuerySchema,
   listDebuggingParametersQuerySchema,
-  patchDebugParameterAdminBodySchema,
-  upsertDebugParameterNodeBindingBodySchema,
-  writeDebugParameterAdminBodySchema,
   readNodeBodySchema,
   rollbackSnapshotBodySchema,
   writeNodeBodySchema
@@ -154,157 +147,6 @@ describe("debugging protocol schemas", () => {
 });
 
 describe("debugging admin schemas", () => {
-  it("parses admin list filters", () => {
-    expect(
-      listDebuggingAdminParametersQuerySchema.parse({
-        includeArchived: "true",
-        protocol: "adb",
-        coverage: "missing-adb"
-      })
-    ).toEqual({
-      includeArchived: true,
-      protocol: "adb",
-      coverage: "missing-adb"
-    });
-  });
-
-  it("validates parameter metadata and optional bindings", () => {
-    expect(
-      writeDebugParameterAdminBodySchema.parse({
-        name: "Fast charge current",
-        key: "debug.fast_charge.current",
-        description: "Fast charge current limit.",
-        module: "Charging",
-        risk: "High",
-        unit: "mA",
-        range: "0-5000",
-        minValue: 0,
-        maxValue: 5000,
-        currentValue: "3000",
-        targetValue: "3000",
-        sortOrder: 10,
-        enabled: true,
-        bindings: [
-          {
-            protocol: "hdc",
-            nodePath: "/sys/class/power_supply/battery/input_current_limit",
-            accessMode: "RW",
-            enabled: true,
-            notes: "HDC path"
-          }
-        ]
-      })
-    ).toMatchObject({
-      name: "Fast charge current",
-      enabled: true,
-      bindings: [expect.objectContaining({ protocol: "hdc", enabled: true })]
-    });
-  });
-
-  it("rejects enabled bindings without absolute node paths", () => {
-    expect(() =>
-      upsertDebugParameterNodeBindingBodySchema.parse({
-        nodePath: "relative",
-        accessMode: "RW",
-        enabled: true
-      })
-    ).toThrow();
-  });
-
-  it("accepts partial admin parameter patches with optional bindings", () => {
-    expect(
-      patchDebugParameterAdminBodySchema.parse({
-        name: "Renamed",
-        enabled: false,
-        bindings: [
-          {
-            protocol: "adb",
-            nodePath: "/sys/adb/path",
-            accessMode: "RO",
-            enabled: true
-          }
-        ]
-      })
-    ).toEqual({
-      name: "Renamed",
-      enabled: false,
-      bindings: [
-        {
-          protocol: "adb",
-          nodePath: "/sys/adb/path",
-          accessMode: "RO",
-          enabled: true
-        }
-      ]
-    });
-  });
-
-  it("does not downgrade complex value metadata when a patch omits value metadata", () => {
-    expect(
-      patchDebugParameterAdminBodySchema.parse({
-        name: "Renamed only"
-      })
-    ).toEqual({
-      name: "Renamed only"
-    });
-  });
-
-  it("defaults scalar value metadata only when scalar is explicit on admin parameter patches", () => {
-    expect(
-      patchDebugParameterAdminBodySchema.parse({
-        valueKind: "scalar"
-      })
-    ).toEqual({
-      valueKind: "scalar",
-      valueFormat: "raw",
-      normalizationMode: "trim"
-    });
-  });
-
-  it("parses route params and archive reasons", () => {
-    expect(debugAdminParameterParamsSchema.parse({ parameterId: "param-1" })).toEqual({ parameterId: "param-1" });
-    expect(debugAdminBindingParamsSchema.parse({ parameterId: "param-1", protocol: "adb" })).toEqual({
-      parameterId: "param-1",
-      protocol: "adb"
-    });
-    expect(archiveDebugParameterBodySchema.parse({ reason: "Deprecated" })).toEqual({ reason: "Deprecated" });
-  });
-
-  it("defaults scalar value metadata on admin parameter writes", () => {
-    expect(
-      writeDebugParameterAdminBodySchema.parse({
-        name: "Scalar parameter",
-        key: "debug.scalar",
-        module: "Battery",
-        risk: "Low"
-      })
-    ).toMatchObject({
-      valueKind: "scalar",
-      valueFormat: "raw",
-      normalizationMode: "trim"
-    });
-  });
-
-  it("accepts complex JSON value metadata on admin parameter writes", () => {
-    expect(
-      writeDebugParameterAdminBodySchema.parse({
-        name: "Complex JSON",
-        key: "debug.complex.json",
-        module: "Diagnostics",
-        risk: "Medium",
-        valueKind: "complex",
-        valueFormat: "json",
-        normalizationMode: "json-canonical",
-        maxValueBytes: 8192
-      })
-    ).toMatchObject({
-      valueKind: "complex",
-      valueFormat: "json",
-      normalizationMode: "json-canonical",
-      maxValueBytes: 8192
-    });
-  });
-
   it("parses catalog export query and import document", () => {
     expect(exportDebugCatalogQuerySchema.parse({ includeArchived: "true" })).toEqual({ includeArchived: true });
     expect(
@@ -348,17 +190,4 @@ describe("debugging admin schemas", () => {
     ).toThrow();
   });
 
-  it("rejects json-canonical normalization without json format", () => {
-    expect(() =>
-      writeDebugParameterAdminBodySchema.parse({
-        name: "Invalid combo",
-        key: "debug.invalid",
-        module: "Diagnostics",
-        risk: "Low",
-        valueKind: "complex",
-        valueFormat: "raw",
-        normalizationMode: "json-canonical"
-      })
-    ).toThrow();
-  });
 });

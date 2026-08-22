@@ -8,7 +8,6 @@ async function migrateDebugParametersToNodes(client: Client) {
   const result = await client.query<{
     parameter_id: string;
     organization_id: string;
-    project_id: string | null;
     name: string;
     description: string;
     module: string;
@@ -23,7 +22,6 @@ async function migrateDebugParametersToNodes(client: Client) {
     select
       p.id as parameter_id,
       p.organization_id,
-      p.project_id,
       p.name,
       p.description,
       p.module,
@@ -51,25 +49,16 @@ async function migrateDebugParametersToNodes(client: Client) {
       await client.query(
         `
         insert into debug_nodes (
-          id, organization_id, project_id, name, description, module, enabled
-        ) values ($1, $2, $3, $4, $5, $6, $7)
+          id, organization_id, name, description, module, enabled
+        ) values ($1, $2, $3, $4, $5, $6)
         on conflict (id) do update set
           name = excluded.name,
           description = excluded.description,
           module = excluded.module,
           enabled = excluded.enabled,
-          project_id = excluded.project_id,
           updated_at = now()
         `,
-        [
-          nodeId,
-          row.organization_id,
-          row.project_id,
-          row.name,
-          row.description,
-          row.module,
-          row.enabled
-        ]
+        [nodeId, row.organization_id, row.name, row.description, row.module, row.enabled]
       );
     }
 
@@ -77,11 +66,10 @@ async function migrateDebugParametersToNodes(client: Client) {
     await client.query(
       `
       insert into debug_node_bindings (
-        id, organization_id, project_id, node_id, protocol, node_path, access_mode, enabled, notes
-      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        id, organization_id, node_id, protocol, node_path, access_mode, enabled, notes
+      ) values ($1, $2, $3, $4, $5, $6, $7, $8)
       on conflict (node_id, protocol) do update set
         organization_id = excluded.organization_id,
-        project_id = excluded.project_id,
         node_path = excluded.node_path,
         access_mode = excluded.access_mode,
         enabled = excluded.enabled,
@@ -91,7 +79,6 @@ async function migrateDebugParametersToNodes(client: Client) {
       [
         bindingId,
         row.organization_id,
-        row.project_id,
         nodeId,
         row.protocol,
         row.node_path,

@@ -325,21 +325,21 @@ M2 implementation notes:
 - 写入操作必须记录目标值、回读值、验证结果和错误。
 - 回滚必须引用快照。
 
-调试参数、逻辑调试节点及其协议 binding 均为组织级 catalog，以 `organization_id` 为边界。参数管理仍通过 M1 参数管理表保持项目级作用域。
+逻辑调试节点及其协议 binding 是产品的组织级 catalog，以 `organization_id` 为边界。参数管理仍通过 M1 参数管理表保持项目级作用域。
 
 调试运行时记录为组织级作用域。Devices、targets、sessions、leases、node operations、snapshots 和 events 均以 `organization_id` 为键；权限使用组织级调试 RBAC，不再依赖参数项目上下文。新的日志/调试审计事件使用 `project_id = null`。
 
-调试 catalog governance 与 runtime execution 分离。`debugging_parameters.enabled=false` 或 `archived_at` 非空会让参数退出 runtime 列表，但保留 audit、snapshot 和 operation history 的可解释性。Admin catalog API 可以查看并恢复 archived 行；runtime 参数读取只使用 enabled 且未 archived 的行。
-
-HDC 和 ADB node bindings 在 `debugging_parameter_node_bindings` 中按 protocol 独立存储。禁用或归档某个 binding 只影响对应 protocol，不能让另一个 protocol 的 binding 从 admin catalog governance 中消失。
+目录治理与 runtime execution 分离。`debug_nodes.enabled=false` 或 `archived_at` 非空会让节点退出 runtime 列表，同时保留历史 operation 与 audit。HDC 和 ADB 路径在 `debug_node_bindings` 中按 protocol 独立存储；禁用某个 binding 只影响对应 protocol。
 
 ### 节点注册表 vs 参数重载（TD-032）
 
-TD-032 将调试 catalog 拆成三个协作面：
+Node-only 架构决策如下：
 
-- **Legacy 调试参数**（`debugging_parameters` + `debugging_parameter_node_bindings`）仍是 M3 节点调试 catalog，供 `/node-debugging` 使用，行形态仍带参数语义与按协议 bindings。
-- **调试节点**（`debug_nodes`）是逻辑、协议无关的可调节点，供 `/node-debugging` 运行时与调试 Admin **节点目录** Tab 使用。
+- **Legacy 调试参数**（`debugging_parameters` + `debugging_parameter_node_bindings`）仅作为非产品兼容状态保留。历史行、binding、repository/service 行为、operation、audit 与既有 runtime read seam 均不删除，但不再提供 Admin HTTP/client 治理接口。
+- **调试节点**（`debug_nodes`）是唯一产品目录：逻辑、协议无关的可调节点，供 `/node-debugging` 运行时与调试 Admin **节点目录** 使用。
 - **Debug node bindings**（`debug_node_bindings`）为每个逻辑节点存储按协议的 HDC/ADB 路径、访问模式与启用状态。
+
+该 seam 上的节点治理已完整覆盖节点 CRUD、独立协议 binding、模块分类、带明确冲突语义的 JSON 导入/导出、服务端鉴权与只记数量的审计；产品不要求 legacy 参数目录对等治理。真机验证属于仍 Open 的 TD-100；确定性目录验收不得宣称 HDC 已就绪。
 
 运行时分离：
 
@@ -347,7 +347,7 @@ TD-032 将调试 catalog 拆成三个协作面：
 - `/debugging` 参数重载工作区仍为**产品下线**（TD-032）。迁移 `0037` 已删除 `parameter_reload_bindings` 及 reload-target/reload-write HTTP 路由。
 - reload 操作的 `node_operations.parameter_definition_id` 仅保留历史审计；legacy 节点写仍引用 `debugging_parameters.id`。
 
-Admin IA 提供单一**节点目录** Tab：逻辑节点 CRUD 与按协议 binding upsert/archive。
+Admin IA 提供单一**节点目录**：逻辑节点 CRUD、按协议 binding upsert/archive、模块治理和带审计的目录导入/导出。
 
 ### DTS 重载调试（#280）
 

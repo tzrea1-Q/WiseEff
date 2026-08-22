@@ -1,9 +1,11 @@
 # 调试管理后台 HDC/ADB 目录 CRUD 设计
 
-> English: not available
+> English: [English](../../design-docs/2026-06-22-debugging-admin-hdc-adb-crud-design.md)
 
 日期：2026-06-22
-状态：已认可，可进入实施计划
+状态：**已被取代**，现行 node-only 目录合同见 [`domain-model.md`](domain-model.md#节点注册表-vs-参数重载td-032)
+
+本文件仅保留 2026-06-22 参数目录设计的历史证据。当前产品治理 `debug_nodes` / `debug_node_bindings`；legacy 参数 Admin HTTP/client 路由已退役，历史表和证据继续保留。
 
 ## 背景
 

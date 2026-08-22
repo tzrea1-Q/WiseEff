@@ -42,6 +42,14 @@ describe("M5 OpenAPI contract", () => {
     }
   });
 
+  it("does not publish the retired legacy debugging parameter admin catalog", () => {
+    const document = buildOpenApiDocument();
+
+    expect(
+      Object.keys(document.paths).filter((path) => path.startsWith("/api/v1/debugging/admin/parameters"))
+    ).toEqual([]);
+  });
+
   it("publishes the read-only Config set member identity endpoint", () => {
     expect(routeManifest).toContainEqual({
       id: "parameters.listConfigSetFiles",
@@ -170,62 +178,6 @@ describe("M5 OpenAPI contract", () => {
     expect(routeManifest).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: "debugging.admin.listParameters",
-          method: "GET",
-          path: "/api/v1/debugging/admin/parameters",
-          module: "debugging",
-          stability: "mvp"
-        }),
-        expect.objectContaining({
-          id: "debugging.admin.createParameter",
-          method: "POST",
-          path: "/api/v1/debugging/admin/parameters",
-          module: "debugging",
-          stability: "mvp"
-        }),
-        expect.objectContaining({
-          id: "debugging.admin.updateParameter",
-          method: "PATCH",
-          path: "/api/v1/debugging/admin/parameters/:parameterId",
-          module: "debugging",
-          stability: "mvp"
-        }),
-        expect.objectContaining({
-          id: "debugging.admin.archiveParameter",
-          method: "POST",
-          path: "/api/v1/debugging/admin/parameters/:parameterId/archive",
-          module: "debugging",
-          stability: "mvp"
-        }),
-        expect.objectContaining({
-          id: "debugging.admin.restoreParameter",
-          method: "POST",
-          path: "/api/v1/debugging/admin/parameters/:parameterId/restore",
-          module: "debugging",
-          stability: "mvp"
-        }),
-        expect.objectContaining({
-          id: "debugging.admin.upsertBinding",
-          method: "PUT",
-          path: "/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol",
-          module: "debugging",
-          stability: "mvp"
-        }),
-        expect.objectContaining({
-          id: "debugging.admin.patchBinding",
-          method: "PATCH",
-          path: "/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol",
-          module: "debugging",
-          stability: "mvp"
-        }),
-        expect.objectContaining({
-          id: "debugging.admin.archiveBinding",
-          method: "POST",
-          path: "/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol/archive",
-          module: "debugging",
-          stability: "mvp"
-        }),
-        expect.objectContaining({
           id: "debugging.admin.listNodes",
           method: "GET",
           path: "/api/v1/debugging/admin/nodes",
@@ -278,30 +230,12 @@ describe("M5 OpenAPI contract", () => {
     );
     expect(buildOpenApiDocument().paths["/api/v1/debugging/reload-targets"]?.get?.responses?.["200"]).toBeUndefined();
 
-    expect(schemaRegistry["debugging.admin.createParameter"]).toMatchObject({
-      requestBody: "DebugAdminParameterRequest",
-      responseBody: "DebugAdminParameterResponse",
-      successStatus: 201
-    });
-    expect(schemaRegistry["debugging.admin.upsertBinding"]).toMatchObject({
-      requestBody: "DebugAdminBindingRequest",
-      responseBody: "DebugAdminBindingResponse"
-    });
     expect(schemaRegistry["debugging.admin.upsertNodeBinding"]).toMatchObject({
       requestBody: "DebugAdminNodeBindingRequest",
       responseBody: "DebugAdminNodeBindingResponse"
     });
 
     const document = buildOpenApiDocument();
-    expect(document.paths["/api/v1/debugging/admin/parameters"]?.get).toBeDefined();
-    expect(document.paths["/api/v1/debugging/admin/parameters"]?.post).toBeDefined();
-    expect(document.paths["/api/v1/debugging/admin/parameters/{parameterId}"]?.patch?.parameters).toEqual([
-      { name: "parameterId", in: "path", required: true, schema: { type: "string" } }
-    ]);
-    expect(document.paths["/api/v1/debugging/admin/parameters/{parameterId}/bindings/{protocol}"]?.put?.parameters).toEqual([
-      { name: "parameterId", in: "path", required: true, schema: { type: "string" } },
-      { name: "protocol", in: "path", required: true, schema: { type: "string" } }
-    ]);
     expect(document.paths["/api/v1/debugging/admin/nodes/{nodeId}/bindings/{protocol}"]?.put?.parameters).toEqual([
       { name: "nodeId", in: "path", required: true, schema: { type: "string" } },
       { name: "protocol", in: "path", required: true, schema: { type: "string" } }

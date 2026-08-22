@@ -264,28 +264,28 @@ Hard delete is a manage-level act allowed from any state and removes the entry w
 
 ## Debugging Catalog Scope
 
-Debugging parameters, logical debug nodes, and their protocol bindings are an organization-level catalog keyed by `organization_id`. Parameter management remains project-scoped through the M1 parameter-management tables.
+Logical debug nodes and their protocol bindings are the organization-level product catalog keyed by `organization_id`. Parameter management remains project-scoped through the M1 parameter-management tables.
 
 Debugging runtime records are organization-scoped. Devices, targets, sessions, leases, node operations, snapshots, and events are keyed by `organization_id`; permissions use org-level debugging RBAC rather than parameter project context. New log and debug audit events use `project_id = null`.
 
-Debugging catalog governance is split from runtime execution. `debugging_parameters.enabled=false` or non-null `archived_at` removes a parameter from runtime lists but keeps audit, snapshot, and operation history understandable. Admin catalog APIs can view and restore archived rows; runtime parameter reads only use enabled, non-archived rows.
-
-HDC and ADB node bindings remain separate rows in `debugging_parameter_node_bindings`, keyed by protocol. Disabling or archiving one binding only affects that protocol and must not hide the other protocol's binding from admin catalog governance.
+Catalog governance is split from runtime execution. `debug_nodes.enabled=false` or non-null `archived_at` removes a node from runtime lists while preserving historical operations and audit. HDC and ADB paths remain separate `debug_node_bindings` rows keyed by protocol; disabling one binding affects only that protocol.
 
 ### Node Registry vs Parameter Reload (TD-032)
 
-TD-032 split the debugging catalog into three cooperating surfaces:
+The node-only architecture decision is:
 
-- **Legacy debugging parameters** (`debugging_parameters` + `debugging_parameter_node_bindings`) remain the M3 node-debugging catalog used by `/node-debugging`. They are parameter-shaped rows with optional per-protocol bindings.
-- **Debug nodes** (`debug_nodes`) are logical, protocol-agnostic adjustable nodes for `/node-debugging` runtime and the debugging admin **node directory**. They carry node metadata (name, description, sort order, enabled/archive) but not device paths.
+- **Legacy debugging parameters** (`debugging_parameters` + `debugging_parameter_node_bindings`) are non-product compatibility state. Their historical rows, bindings, repository/service behavior, operations, audit, and existing runtime read seam stay intact, but they have no Admin HTTP/client governance interface.
+- **Debug nodes** (`debug_nodes`) are the only product catalog: logical, protocol-agnostic adjustable nodes for `/node-debugging` runtime and the debugging Admin **node directory**. They carry node metadata (name, description, sort order, enabled/archive) but not device paths.
 - **Debug node bindings** (`debug_node_bindings`) store per-protocol HDC/ADB paths, access mode, and enablement for each logical node. One enabled binding row per `(node_id, protocol)`; disabling or archiving one protocol binding does not hide the other protocol's binding from admin governance.
+
+Node governance is complete at this seam: node CRUD, independent protocol bindings, module taxonomy, JSON export/import with explicit conflict behavior, server authorization, and count-only audit. Legacy parameter-catalog parity is not a product requirement. Live device validation is a separate evidence gate tracked by Open TD-100; deterministic catalog acceptance must not claim HDC readiness.
 Runtime separation:
 
 - `/node-debugging` creates sessions with `session_kind = node`, lists federated runtime nodes via `GET /api/v1/debugging/nodes?protocol=...`, and reads/writes through node APIs using `nodeId`. The runtime list inner-joins enabled `debug_node_bindings` for the requested protocol (Option A: nodes without an enabled selected-protocol binding are omitted).
 - `/debugging` parameter-reload workspace remains **product-offline** (TD-032). Migration `0037` dropped `parameter_reload_bindings` and removed reload-target/reload-write HTTP routes.
 - `node_operations.node_id` references `debug_nodes.id` for node writes; legacy `parameter_id` remains for historical rows and audit compatibility.
 
-Admin IA exposes a single **node directory** tab for logical node CRUD plus per-protocol binding upsert/archive.
+Admin IA exposes a single **node directory** tab for logical node CRUD, per-protocol binding upsert/archive, module governance, and audited catalog export/import.
 
 ### DTS reload debugging (#280)
 

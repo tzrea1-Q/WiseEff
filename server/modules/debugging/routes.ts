@@ -10,15 +10,11 @@ import type { DebugDeviceGatewayRegistry } from "./gatewayRegistry";
 import type { BridgeConnectionPool } from "../deviceBridge/connectionPool";
 import type { BridgeRpcClient } from "../deviceBridge/rpc";
 import {
-  archiveDebugParameterBodySchema,
   createDebugSessionBodySchema,
-  debugAdminBindingParamsSchema,
   debugAdminNodeBindingParamsSchema,
   debugAdminNodeParamsSchema,
-  debugAdminParameterParamsSchema,
   debugNodeBindingWriteSchema,
   detectTargetsBodySchema,
-  listDebuggingAdminParametersQuerySchema,
   listDebuggingParametersQuerySchema,
   listRuntimeDebugNodesQuerySchema,
   listDebugNodesAdminQuerySchema,
@@ -26,13 +22,10 @@ import {
   patchDebugNodeAdminBodySchema,
   patchDebugNodeModuleAdminBodySchema,
   moveDebugNodeModuleBodySchema,
-  patchDebugParameterAdminBodySchema,
   readNodeBodySchema,
   rollbackSnapshotBodySchema,
-  upsertDebugParameterNodeBindingBodySchema,
   writeDebugNodeAdminBodySchema,
   writeDebugNodeModuleAdminBodySchema,
-  writeDebugParameterAdminBodySchema,
   writeNodeBodySchema,
   exportDebugCatalogQuerySchema,
   importDebugCatalogBodySchema
@@ -166,90 +159,6 @@ export function registerDebuggingRoutes(
     const items = await service.listRuntimeNodes(auth, query);
 
     return { status: 200, body: { items } };
-  });
-
-  router.get("/api/v1/debugging/admin/parameters", async (request) => {
-    const { service } = serviceFrom(options);
-    const auth = await options.getCurrentAuthContext(request);
-    const query = parseWithSchema(listDebuggingAdminParametersQuerySchema, request.query);
-    const items = await service.listAdminParameters(auth, {
-      ...query,
-      risk: normalizeArray(query.risk)
-    });
-
-    return { status: 200, body: { items } };
-  });
-
-  router.post("/api/v1/debugging/admin/parameters", async (request) => {
-    const { service } = serviceFrom(options);
-    const auth = await options.getCurrentAuthContext(request);
-    const body = parseWithSchema(writeDebugParameterAdminBodySchema, request.body);
-    const item = await service.createAdminParameter(auth, body, { requestId: request.requestId });
-
-    return { status: 201, body: { item } };
-  });
-
-  router.patch("/api/v1/debugging/admin/parameters/:parameterId", async (request) => {
-    const { service } = serviceFrom(options);
-    const auth = await options.getCurrentAuthContext(request);
-    const params = parseWithSchema(debugAdminParameterParamsSchema, request.params);
-    const body = parseWithSchema(patchDebugParameterAdminBodySchema, request.body);
-    const item = await service.updateAdminParameter(auth, { parameterId: params.parameterId, ...body }, { requestId: request.requestId });
-
-    return { status: 200, body: { item } };
-  });
-
-  router.post("/api/v1/debugging/admin/parameters/:parameterId/archive", async (request) => {
-    const { service } = serviceFrom(options);
-    const auth = await options.getCurrentAuthContext(request);
-    const params = parseWithSchema(debugAdminParameterParamsSchema, request.params);
-    const body = parseWithSchema(archiveDebugParameterBodySchema, request.body ?? {});
-    const item = await service.archiveAdminParameter(
-      auth,
-      { parameterId: params.parameterId, reason: body.reason },
-      { requestId: request.requestId }
-    );
-
-    return { status: 200, body: { item } };
-  });
-
-  router.post("/api/v1/debugging/admin/parameters/:parameterId/restore", async (request) => {
-    const { service } = serviceFrom(options);
-    const auth = await options.getCurrentAuthContext(request);
-    const params = parseWithSchema(debugAdminParameterParamsSchema, request.params);
-    const item = await service.restoreAdminParameter(auth, { parameterId: params.parameterId }, { requestId: request.requestId });
-
-    return { status: 200, body: { item } };
-  });
-
-  const upsertAdminBinding = async (request: RouteRequest) => {
-    const { service } = serviceFrom(options);
-    const auth = await options.getCurrentAuthContext(request);
-    const params = parseWithSchema(debugAdminBindingParamsSchema, request.params);
-    const body = parseWithSchema(upsertDebugParameterNodeBindingBodySchema, request.body);
-    const item = await service.upsertAdminParameterBinding(
-      auth,
-      { parameterId: params.parameterId, protocol: params.protocol, ...body },
-      { requestId: request.requestId }
-    );
-
-    return { status: 200, body: { item } };
-  };
-
-  router.put("/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol", upsertAdminBinding);
-  router.patch("/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol", upsertAdminBinding);
-
-  router.post("/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol/archive", async (request) => {
-    const { service } = serviceFrom(options);
-    const auth = await options.getCurrentAuthContext(request);
-    const params = parseWithSchema(debugAdminBindingParamsSchema, request.params);
-    const item = await service.archiveAdminParameterBinding(
-      auth,
-      { parameterId: params.parameterId, protocol: params.protocol },
-      { requestId: request.requestId }
-    );
-
-    return { status: 200, body: { item } };
   });
 
   router.get("/api/v1/debugging/admin/nodes", async (request) => {

@@ -457,7 +457,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "DEBUG-ADMIN-001",
     workflow: "E",
-    title: "Debugging admin can create, edit, archive, restore, and protocol-bind catalog parameters in API mode, including complex value metadata.",
+    title: "Debugging admin governs the logical-node catalog in API mode: create, edit, disable/re-enable, protocol-bind, export, and import through production APIs with database and audit evidence.",
     required: true
   },
   {
