@@ -1,8 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import type {
@@ -11,6 +9,13 @@ import type {
   TopologyView
 } from "@/domain/parameter-topology/types";
 import type { DtsParameterWorkbenchRow } from "@/domain/parameter-topology/workbenchTypes";
+import {
+  allSelectors,
+  declarationFor,
+  hasAtRule,
+  hasRule,
+  readStylesheet
+} from "@/test/cssAssertions";
 
 import { DtsParameterWorkbench } from "./DtsParameterWorkbench";
 
@@ -267,37 +272,76 @@ describe("DtsParameterWorkbench", () => {
   });
 
   it("keeps the responsive visual contract scoped to the DTS workbench", () => {
-    const styles = readFileSync(
-      resolve(process.cwd(), "src/styles.css"),
-      "utf8"
+    const styles = readStylesheet("src/styles.css");
+
+    [
+      ".dts-parameter-workbench",
+      ".dts-workbench-topology",
+      ".dts-workbench-list",
+      ".dts-draft-tray"
+    ].forEach((selector) => expect(hasRule(styles, selector)).toBe(true));
+    [1200, 820, 480].forEach((width) => {
+      expect(hasAtRule(styles, `@media (max-width: ${width}px)`)).toBe(true);
+    });
+    expect(
+      allSelectors(styles).some(
+        (selector) => selector.startsWith(".dts-parameter-workbench") && selector.includes(":focus-visible")
+      )
+    ).toBe(true);
+
+    expect(declarationFor(styles, ".dts-workbench-list", "height")).toBe(
+      "min(670px, calc(100vh - 230px))"
     );
-
-    expect(styles).toMatch(/\.dts-parameter-workbench[^{]*\{/);
-    expect(styles).toMatch(/\.dts-workbench-topology[^{]*\{/);
-    expect(styles).toMatch(/\.dts-workbench-list[^{]*\{/);
-    expect(styles).toMatch(/\.dts-draft-tray[^{]*\{/);
-    expect(styles).toMatch(/@media\s*\(max-width:\s*1200px\)/);
-    expect(styles).toMatch(/@media\s*\(max-width:\s*820px\)/);
-    expect(styles).toMatch(/@media\s*\(max-width:\s*480px\)/);
-    expect(styles).toMatch(/\.dts-parameter-workbench[\s\S]*:focus-visible/);
-    expect(styles).toMatch(/\.dts-workbench-list[^{]*\{[^}]*height:\s*min\(670px/);
-    expect(styles).toMatch(/\.dts-workbench-list__scroll-x[^{]*\{[^}]*overflow-x:\s*auto/);
-    expect(styles).toMatch(/\.dts-workbench-list__scroll-y[^{]*\{[^}]*min-width:\s*680px/);
-    expect(styles).toMatch(/\.dts-workbench-list__h-rail[^{]*\{[^}]*overflow-x:\s*scroll/);
-    expect(styles).toMatch(/\.dts-workbench-list__h-rail-spacer[^{]*\{[^}]*min-width:\s*680px/);
-    expect(styles).toMatch(/\.dts-parameter-workbench-table[^{]*\{[^}]*min-width:\s*680px/);
-    expect(styles).toMatch(/\.dts-parameter-workbench-table__head[^{]*\{[^}]*position:\s*sticky/);
-    expect(styles).toMatch(/@media\s*\(max-width:\s*1200px\)[\s\S]*\.dts-parameter-workbench-table[\s\S]*min-width:\s*640px/);
-    expect(styles).toMatch(/@media\s*\(max-width:\s*820px\)[\s\S]*\.dts-parameter-workbench-table--surface-mvp[\s\S]*min-width:\s*0/);
-    expect(styles).toMatch(/@media\s*\(max-width:\s*820px\)[\s\S]*\.dts-parameter-workbench-table--surface-mvp\s+\.dts-parameter-workbench-table__row[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(0,\s*1\.5fr\)/);
-
-    expect(styles).toMatch(/@media\s*\(max-width:\s*820px\)[\s\S]*\.dts-parameter-workbench-table[\s\S]*min-width:\s*0/);
-    expect(styles).toMatch(/@media\s*\(max-width:\s*820px\)[\s\S]*\.dts-parameter-workbench-table__head[\s\S]*display:\s*none/);
-    expect(styles).toMatch(/min-height:\s*44px/);
-    expect(styles).toContain("--dts-workbench-muted: #52657d");
-    expect(styles).not.toContain("--dts-workbench-muted: #5e6b7e");
-    expect(styles).toMatch(/\.dts-parameter-workbench__governance-content\s+:is\([^}]+\)[\s\S]*min-height:\s*44px/);
-    expect(styles).toMatch(/prefers-reduced-motion[\s\S]*\.dts-binding-detail-dialog__overlay[\s\S]*animation:\s*none/);
+    expect(declarationFor(styles, ".dts-workbench-list__scroll-x", "overflow-x")).toBe("auto");
+    expect(declarationFor(styles, ".dts-workbench-list__scroll-y", "min-width")).toBe("680px");
+    expect(declarationFor(styles, ".dts-workbench-list__h-rail", "overflow-x")).toBe("scroll");
+    expect(declarationFor(styles, ".dts-workbench-list__h-rail-spacer", "min-width")).toBe("680px");
+    expect(declarationFor(styles, ".dts-parameter-workbench-table", "min-width")).toBe("680px");
+    expect(declarationFor(styles, ".dts-parameter-workbench-table__head", "position")).toBe("sticky");
+    expect(
+      declarationFor(styles, ".dts-parameter-workbench-table", "min-width", {
+        within: "@media (max-width: 1200px)"
+      })
+    ).toBe("640px");
+    expect(
+      declarationFor(styles, ".dts-parameter-workbench-table--surface-mvp", "min-width", {
+        within: "@media (max-width: 820px)"
+      })
+    ).toBe("0 !important");
+    expect(
+      declarationFor(
+        styles,
+        ".dts-parameter-workbench-table--surface-mvp .dts-parameter-workbench-table__row",
+        "grid-template-columns",
+        { within: "@media (max-width: 820px)" }
+      )
+    ).toBe("minmax(0, 1fr) minmax(0, 1.5fr) !important");
+    expect(
+      declarationFor(styles, ".dts-parameter-workbench-table", "min-width", {
+        within: "@media (max-width: 820px)"
+      })
+    ).toBe("0 !important");
+    expect(
+      declarationFor(styles, ".dts-parameter-workbench-table__head", "display", {
+        within: "@media (max-width: 820px)"
+      })
+    ).toBe("none !important");
+    expect(declarationFor(styles, ".dts-parameter-workbench", "--dts-workbench-muted")).toBe(
+      "#52657d"
+    );
+    expect(
+      declarationFor(
+        styles,
+        ".dts-parameter-workbench__governance-content :is(button, .button, input, select, textarea)",
+        "min-height",
+        { within: "@media (max-width: 480px)" }
+      )
+    ).toBe("44px");
+    expect(
+      declarationFor(styles, ".dts-binding-detail-dialog__overlay", "animation", {
+        within: "@media (prefers-reduced-motion: reduce)"
+      })
+    ).toBe("none !important");
   });
 
   it("renders module-first headers and module navigator by default", () => {

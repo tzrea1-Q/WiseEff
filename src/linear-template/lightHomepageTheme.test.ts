@@ -1,12 +1,10 @@
 import { render } from "@testing-library/react";
-import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { describe, expect, it } from "vitest";
 import { declarationFor, declarationsFor, readStylesheet } from "../test/cssAssertions";
 import { LinearTemplateHome } from "./LinearTemplateHome";
 
 const cssText = readStylesheet("src/linear-template/linear-template.css");
-const homeSource = readFileSync("src/linear-template/LinearTemplateHome.tsx", "utf8");
 
 describe("WiseEff mature homepage theme", () => {
   it("keeps the page foundation light and the three entry cards restrained", () => {
@@ -50,8 +48,18 @@ describe("WiseEff mature homepage theme", () => {
     expect(container.querySelector(".sub-app-card-badge")).not.toBeInTheDocument();
     expect(container.querySelector(".sub-app-entry-row")).toBeInTheDocument();
     expect(container.querySelector("#platform-flow")).toBeInTheDocument();
-    expect(container.querySelector(".linear-product-section")).not.toBeInTheDocument();
-    expect(container.querySelector(".wiseeff-hero-stage")).not.toBeInTheDocument();
+    for (const retiredSelector of [
+      ".linear-product-section",
+      ".wiseeff-hero-stage",
+      ".linear-stars",
+      ".linear-unlike",
+      ".linear-tool-grid",
+      ".command-card",
+      ".logo-light-card",
+      '#agent',
+    ]) {
+      expect(container.querySelector(retiredSelector)).not.toBeInTheDocument();
+    }
   });
 
   it("links the homepage navigation directly to workbench application pages", () => {
@@ -92,13 +100,4 @@ describe("WiseEff mature homepage theme", () => {
     expect(mobileHeroTitle["font-size"]).toBe("36px");
   });
 
-  it("removes retired marketing and carousel components from the homepage source", () => {
-    expect(homeSource).not.toContain("WiseEffHeroStage");
-    expect(homeSource).not.toContain("StarsDivider");
-    expect(homeSource).not.toContain("UnlikeAnyTool");
-    expect(homeSource).not.toContain("ProductSection");
-    expect(homeSource).not.toContain("CommandMenuMock");
-    expect(homeSource).not.toContain("LogoLightMock");
-    expect(homeSource).not.toContain('id="agent"');
-  });
 });

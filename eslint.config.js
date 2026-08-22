@@ -14,6 +14,13 @@
 import tsParser from "@typescript-eslint/parser";
 import jsxA11y from "eslint-plugin-jsx-a11y";
 import reactHooks from "eslint-plugin-react-hooks";
+import { noRawCssTextAssertions } from "./scripts/eslint/no-raw-css-text-assertions.js";
+
+const wiseeffPlugin = {
+  rules: {
+    "no-raw-css-text-assertions": noRawCssTextAssertions
+  }
+};
 
 export default [
   {
@@ -54,6 +61,13 @@ export default [
       "react-hooks/rules-of-hooks": "warn", // 3 — correctness rule; clear these first
       "react-hooks/immutability": "warn", // 1
       "react-hooks/purity": "warn" // 1
+    }
+  },
+  {
+    files: ["src/**/*.{test,spec}.{ts,tsx}"],
+    plugins: { wiseeff: wiseeffPlugin },
+    rules: {
+      "wiseeff/no-raw-css-text-assertions": "error"
     }
   }
 ];

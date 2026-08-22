@@ -1,11 +1,12 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const cssText = readFileSync("src/linear-template/linear-template.css", "utf8");
+import { allSelectors, hasAtRule, readStylesheet } from "../test/cssAssertions";
+
+const cssText = readStylesheet("src/linear-template/linear-template.css");
 
 describe("retired homepage stage styles", () => {
   it("removes old carousel, Agent section, and product section CSS", () => {
-    [
+    const retiredSelectorFragments = [
       "wiseeff-hero-stage",
       "wiseeff-stage-",
       "wiseeff-boundary-panel",
@@ -28,9 +29,13 @@ describe("retired homepage stage styles", () => {
       "linear-feature-summary",
       "linear-feature-grid",
       "linear-feature-card"
-    ].forEach((staleToken) => {
-      expect(cssText).not.toContain(staleToken);
-    });
+    ];
+
+    expect(
+      allSelectors(cssText).filter((selector) =>
+        retiredSelectorFragments.some((fragment) => selector.includes(fragment))
+      )
+    ).toEqual([]);
   });
 
   it("removes keyframes that only powered the retired hero stage", () => {
@@ -46,7 +51,7 @@ describe("retired homepage stage styles", () => {
       "linearGlowHorizontal",
       "linearGlowVertical"
     ].forEach((keyframeName) => {
-      expect(cssText).not.toContain(keyframeName);
+      expect(hasAtRule(cssText, `@keyframes ${keyframeName}`)).toBe(false);
     });
   });
 });

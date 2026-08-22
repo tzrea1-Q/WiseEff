@@ -32,6 +32,11 @@ WiseEff 需要从“原型测试”升级为“产品质量门禁”。测试体
 - 对权限隐藏和禁用状态保持覆盖。
 - 对表格筛选、排序、分页、弹窗、键盘操作保留覆盖。
 - 对生产模式禁用 mock runtime 增加测试。
+- 样式合同通过 `src/test/cssAssertions.ts` 结构化查询 selector、at-rule
+  和 declaration，不对 raw CSS 文本格式做匹配。error 级 ESLint 规则
+  `wiseeff/no-raw-css-text-assertions` 禁止 CSS 文件读取结果直接使用
+  `toMatch`/`toContain`，但不影响无关源码合同测试。渲染行为和最终视觉
+  结果继续由 Testing Library 与 Playwright 质量门禁负责。
 
 关键命令：
 
