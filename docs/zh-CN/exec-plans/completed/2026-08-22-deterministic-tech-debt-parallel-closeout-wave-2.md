@@ -138,17 +138,17 @@ git diff --check
 
 | 区域 | 状态 | 文件/证据 |
 | --- | --- | --- |
-| 仓库地图 | 已复核，无需修改 | `AGENTS.md`、`ARCHITECTURE.md`、`docs/README.md` 仍指向相同文件；无导航变化 |
-| 计划 | 已更新 | 本中英计划、两份 PLANS 索引和失真的当前状态引用 |
-| 技术债 | 已更新 | 中英 tracker 的 TD-018/077/109/114 已移入关闭项；TD-003/012 与 TD-072/075/076 保持 Open |
-| 产品规格 | No change | 不改工作流或产品决策 |
-| 架构/领域 | 已复核，无需追加 | #580 承载 domain guard，#582 承载 contract 放置；既有架构边界仍准确 |
-| 质量/测试 | 已复核，无需追加 | #583 承载 error 级 lint/结构化合同；tracker 记录门禁而不复制实现细节 |
-| 可靠性/runbook | No change | 不改运行时/运维流程或 readiness 声明 |
-| 安全/治理 | 已复核，无需修改 | 畸形合同失败关闭；不改 authz、secret、audit 或设备写入 |
-| 前端/设计 | 已复核，无需追加 | #585 是带浏览器证据的行为等价布局清理；既有设计规则仍准确 |
-| API/生成物 | 已在 #582 更新 | 具体 suggest/OpenAPI contract 已在实现 PR 生成并检查 |
-| references | 已复核，无需修改 | ADR-0031 继续保持无依赖，无需修订 |
+| 仓库地图 | No change | 已复核 `AGENTS.md`、`docs/zh-CN/root/AGENTS.md`、`ARCHITECTURE.md`、`docs/zh-CN/root/ARCHITECTURE.md`、`docs/README.md`、`docs/zh-CN/README.md`；导航仍准确。 |
+| 计划 | Update | 已归档 `docs/exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-2.md`、`docs/zh-CN/exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-2.md`；已更新 `docs/PLANS.md`、`docs/zh-CN/PLANS.md`、`docs/exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`、`docs/zh-CN/exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`。 |
+| 技术债 | Update | 已更新 `docs/exec-plans/tech-debt-tracker.md`、`docs/zh-CN/exec-plans/tech-debt-tracker.md`：TD-018/077/109/114 移入关闭项，TD-003/012 与 TD-072/075/076 保持 Open。 |
+| 产品规格 | No change | 已复核 `docs/product-specs/index.md`、`docs/product-specs/product-spec.md`、`docs/zh-CN/product-specs/index.md`、`docs/zh-CN/product-specs/product-spec.md`；没有工作流或产品决策变化。 |
+| 架构/领域 | Update | #580、#582 已更新 `docs/FRONTEND.md`、`docs/zh-CN/frontend.md`；共享收口复核这些长期前端/领域边界后无需追加修改。 |
+| 质量/测试 | Update | #583 已更新 `docs/design-docs/testing-strategy.md`、`docs/zh-CN/design-docs/testing-strategy.md`，记录 error 级 lint/结构化样式测试合同；tracker 同步记录收口证据。 |
+| 可靠性/runbook | No change | 已复核 `docs/RELIABILITY.md`、`docs/zh-CN/RELIABILITY.md`、`docs/runbooks/README.md`、`docs/zh-CN/runbooks/README.md`；没有运行时/运维流程或 readiness 声明变化。 |
+| 安全/治理 | Review | 已复核且不修改 `docs/SECURITY.md`、`docs/zh-CN/SECURITY.md`、`docs/security/README.md`、`docs/zh-CN/security/README.md`；畸形合同失败关闭，不改 authz、secret、audit 或设备写入。 |
+| 前端/设计 | Review | 已复核且不修改 `docs/design-docs/ui-design-system.md`、`docs/zh-CN/design-docs/ui-design-system.md`；#585 是由既有设计规则和浏览器证据覆盖的行为等价布局清理。 |
+| API/生成物 | Update | #582 已更新 `docs/api/README.md`、`docs/zh-CN/api/README.md`、`docs/design-docs/api-contract.md`、`docs/zh-CN/design-docs/api-contract.md`、`docs/generated/openapi.json`；具体 suggest/OpenAPI contract 已在该 PR 生成并检查。 |
+| references | Review | 已复核且不修改 `docs/adr/0031-xiaoze-wire-contract-is-a-shared-package.md`；协议包继续保持无依赖，无需修订 ADR。 |
 
 ## 文档更新门禁
 

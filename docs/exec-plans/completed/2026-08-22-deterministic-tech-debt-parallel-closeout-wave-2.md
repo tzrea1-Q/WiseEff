@@ -138,17 +138,17 @@ Track-specific commands, red/green evidence, and browser artifact paths are reco
 
 | Area | Status | Files / evidence |
 | --- | --- | --- |
-| Repository maps | Reviewed — no change | `AGENTS.md`, `ARCHITECTURE.md`, and `docs/README.md` still route the same files; no navigation change |
-| Planning | Updated | this EN/ZH plan, both PLANS indexes, and stale current-state references |
-| Technical debt | Updated | EN/ZH tracker rows TD-018/077/109/114 moved to Completed; TD-003/012 and TD-072/075/076 remain Open |
-| Product specs | No change | no workflow or product decision changes |
-| Architecture/domain | Reviewed — no additional change | #580 owns the domain guard and #582 owns the contract placement; existing architecture boundaries remain accurate |
-| Quality/testing | Reviewed — no additional change | #583 owns the error-level lint/structural contract; tracker evidence records the gate without duplicating implementation detail |
-| Reliability/runbooks | No change | no runtime/operator workflow or readiness claim |
-| Security/governance | Reviewed — no change | malformed contracts fail closed; no authz, secret, audit, or device-write change |
-| Frontend/design | Reviewed — no additional change | #585 is a behavior-equivalent layout cleanup with browser evidence; the existing design rules remain accurate |
-| API/generated artifacts | Updated in #582 | concrete suggest/OpenAPI contracts were generated and checked in the implementation PR |
-| References | Reviewed — no change | ADR-0031 remains dependency-free and needs no amendment |
+| Repository maps | No change | Reviewed `AGENTS.md`, `docs/zh-CN/root/AGENTS.md`, `ARCHITECTURE.md`, `docs/zh-CN/root/ARCHITECTURE.md`, `docs/README.md`, and `docs/zh-CN/README.md`; their navigation remains accurate. |
+| Planning | Update | Archived `docs/exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-2.md` and `docs/zh-CN/exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-2.md`; updated `docs/PLANS.md`, `docs/zh-CN/PLANS.md`, `docs/exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`, and `docs/zh-CN/exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`. |
+| Technical debt | Update | Updated `docs/exec-plans/tech-debt-tracker.md` and `docs/zh-CN/exec-plans/tech-debt-tracker.md`: TD-018/077/109/114 moved to Completed; TD-003/012 and TD-072/075/076 remain Open. |
+| Product specs | No change | Reviewed `docs/product-specs/index.md`, `docs/product-specs/product-spec.md`, `docs/zh-CN/product-specs/index.md`, and `docs/zh-CN/product-specs/product-spec.md`; no workflow or product decision changed. |
+| Architecture/domain | Update | #580 and #582 updated `docs/FRONTEND.md` and `docs/zh-CN/frontend.md`; the shared closeout verified those durable frontend/domain boundaries and requires no further edit. |
+| Quality/testing | Update | #583 updated `docs/design-docs/testing-strategy.md` and `docs/zh-CN/design-docs/testing-strategy.md` for the error-level lint/structural style-test contract; the trackers record its closeout evidence. |
+| Reliability/runbooks | No change | Reviewed `docs/RELIABILITY.md`, `docs/zh-CN/RELIABILITY.md`, `docs/runbooks/README.md`, and `docs/zh-CN/runbooks/README.md`; no runtime/operator workflow or readiness claim changed. |
+| Security/governance | Review | Reviewed unchanged `docs/SECURITY.md`, `docs/zh-CN/SECURITY.md`, `docs/security/README.md`, and `docs/zh-CN/security/README.md`; malformed contracts fail closed, with no authz, secret, audit, or device-write change. |
+| Frontend/design | Review | Reviewed unchanged `docs/design-docs/ui-design-system.md` and `docs/zh-CN/design-docs/ui-design-system.md`; #585 is a behavior-equivalent layout cleanup covered by the existing design rules and browser evidence. |
+| API/generated artifacts | Update | #582 updated `docs/api/README.md`, `docs/zh-CN/api/README.md`, `docs/design-docs/api-contract.md`, `docs/zh-CN/design-docs/api-contract.md`, and `docs/generated/openapi.json`; the concrete suggest/OpenAPI contracts were generated and checked there. |
+| References | Review | Reviewed unchanged `docs/adr/0031-xiaoze-wire-contract-is-a-shared-package.md`; the protocol package remains dependency-free, so no ADR amendment was required. |
 
 ## Documentation Update Gate
 
