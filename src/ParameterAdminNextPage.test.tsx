@@ -1047,6 +1047,37 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
 });
 
 describe("ParameterAdminNextPage · project-scoped routes and parameter files", () => {
+  it("restores project list controls and rows from q, status, and sort query state", async () => {
+    const { onNavigate, rerender } = renderPage({
+      path: "/parameter-admin/projects?q=Aurora&status=initialized&sort=name-desc",
+      area: "projects"
+    });
+
+    const table = await screen.findByRole("table", { name: "项目管理列表" });
+    expect(screen.getByRole("searchbox", { name: "搜索项目" })).toHaveValue("Aurora");
+    expect(screen.getByRole("button", { name: "筛选状态" })).toHaveTextContent("1");
+    expect(within(table).getByRole("columnheader", { name: /项目名称/ })).toHaveAttribute(
+      "aria-sort",
+      "descending"
+    );
+    expect(within(table).getByText("Aurora 量产平台")).toBeInTheDocument();
+    expect(within(table).queryByText("Nebula 高频调试项目")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索项目" }), {
+      target: { value: "Nebula" }
+    });
+    expect(onNavigate).toHaveBeenCalledWith(
+      "/parameter-admin/projects?q=Nebula&status=initialized&sort=name-desc"
+    );
+
+    rerender("/parameter-admin/projects?q=Nebula&status=initialized&sort=name-asc");
+    expect(screen.getByRole("searchbox", { name: "搜索项目" })).toHaveValue("Nebula");
+    expect(within(screen.getByRole("table", { name: "项目管理列表" })).getByRole(
+      "columnheader",
+      { name: /项目名称/ }
+    )).toHaveAttribute("aria-sort", "ascending");
+  });
+
   it("opens the Configuration workbench from the project list", async () => {
     const { onNavigate } = renderPage({
       path: "/parameter-admin/projects",

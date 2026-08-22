@@ -40,7 +40,7 @@
 - `DTS-RELOAD-DEPLOY-HW-001`：真实 HDC 目标条件部署；`coverage: conditional`。
 - `DTS-RELOAD-HANDOFF-001`：从 `/parameters` 工作台「带到参数调试」携带 `?project=` 与 `?bindingIds=`；`coverage: future`。
 - `DTS-RELOAD-PROMOTE-001`：从成功普通重载运行把已存调试值写成参数草稿后停止（不建 CR、不自动提交）；`coverage: future`。
-- `PARAM-ADMIN-003`：Admin 在 `/parameter-admin/projects` 确认项目清单在 ≤960px 卡片布局下状态、计数、最近更新、治理信号（冲突/基线）与行操作可见；Batch 1–3 以 CSS + playwright-cli 证据先行，专用 e2e 待后续。
+- `PARAM-ADMIN-003`：Admin 在 `/parameter-admin/projects` 搜索、状态筛选、排序与分页；刷新、`popstate`、后退与前进都恢复 `q`/`status`/`sort`；键盘进入行且编辑/删除不冒泡，并自动断言 390/768/1440 三档布局。`coverage: automated`，见 `e2e/acceptance/parameter-admin-projects.acceptance.spec.ts`。
 - `PARAM-INIT-WIZARD-001`：创建者完成项目参数初始化（选源 + 勾选）并进入待审阅；单测/服务端已覆盖；playwright-cli 证据见 `work/ui-checks/param-init/`；完整浏览器 e2e 待语义 binding 选择器落地后补。
 - `PARAM-INIT-EMPTY-001`：显式空库初始化可批准为 `initialized` 且零 binding（mock Port + 服务端）；专用 e2e 待补。
 - `PARAM-INIT-REVIEW-001`：Admin 在 `/parameter-review` 批准初始化后解锁并物化 binding；服务端 + App Port；playwright-cli 审阅页证据见 `work/ui-checks/param-init/review-*`。

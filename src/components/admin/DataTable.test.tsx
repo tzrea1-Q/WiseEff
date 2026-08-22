@@ -121,6 +121,29 @@ describe("DataTable", () => {
     expect(screen.getByRole("button", { name: "查看 r2" })).toBeInTheDocument();
   });
 
+  it("derives responsive cell labels from string headers and labels row actions", () => {
+    render(
+      <DataTable
+        ariaLabel="日志分析记录"
+        columns={columns}
+        rows={rows}
+        rowKey={(row) => row.id}
+        renderRowActions={(row) => <button type="button">查看 {row.id}</button>}
+      />
+    );
+
+    const firstRow = screen.getByRole("row", { name: /charging_thermal_trace\.log/ });
+    expect(within(firstRow).getByText("charging_thermal_trace.log").closest("td")).toHaveAttribute(
+      "data-label",
+      "文件名"
+    );
+    expect(within(firstRow).getByText("Complete").closest("td")).toHaveAttribute("data-label", "状态");
+    expect(within(firstRow).getByRole("button", { name: "查看 r1" }).closest("td")).toHaveAttribute(
+      "data-label",
+      "操作"
+    );
+  });
+
   it("does not activate the row when a row action is used", async () => {
     const onRowClick = vi.fn();
 
@@ -408,6 +431,24 @@ describe("DataTable planned API", () => {
     expect(declarationsFor(siblingStyles, ".binding-property-table")["overflow-x"]).toBe("auto");
     expect(declarationsFor(siblingStyles, ".binding-property-table table")["min-width"]).toBe("640px");
     expect(declarationsFor(siblingStyles, ".dts-reload-candidate-table > .data-table-scroll").overflow).toBe("auto");
+  });
+
+  it("opts into the shared visible horizontal rail without changing the default", () => {
+    const { container, rerender } = render(
+      <DataTable aria-label="t" rows={simpleRows} rowKey={(row) => row.id} columns={simpleColumns} />
+    );
+    expect(container.querySelector(".horizontal-drag-scroll-rail")).not.toBeInTheDocument();
+
+    rerender(
+      <DataTable
+        aria-label="t"
+        rows={simpleRows}
+        rowKey={(row) => row.id}
+        columns={simpleColumns}
+        visibleScrollRail
+      />
+    );
+    expect(container.querySelector(".horizontal-drag-scroll-rail")).toBeInTheDocument();
   });
 
   it("supports aria-label on the table element", () => {

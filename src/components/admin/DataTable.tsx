@@ -51,6 +51,7 @@ export type DataTableProps<TData> = {
   renderRowActions?: (row: TData) => ReactNode;
   className?: string;
   tableClassName?: string;
+  visibleScrollRail?: boolean;
 };
 
 type SortState = { key: string; dir: "asc" | "desc" } | null;
@@ -91,7 +92,8 @@ export function DataTable<TData>({
   onSort,
   renderRowActions,
   className,
-  tableClassName
+  tableClassName,
+  visibleScrollRail = false
 }: DataTableProps<TData>) {
   const [sort, setSort] = useState<SortState>(null);
   const [generatedFilters, setGeneratedFilters] = useState<HeaderFilterState>({});
@@ -219,7 +221,7 @@ export function DataTable<TData>({
   return (
     <div className={cn("overflow-hidden rounded-lg border border-border bg-card", className)}>
       {toolbar ? <div className="border-b border-border p-3">{toolbar}</div> : null}
-      <HorizontalDragScroll className="data-table-scroll">
+      <HorizontalDragScroll className="data-table-scroll" visibleRail={visibleScrollRail}>
         {/* M7 note: narrow screens use horizontal overflow; card-style row folding belongs in a later dedicated spec. */}
         <table aria-label={tableLabel} className={cn("w-full min-w-[720px] border-collapse text-sm", tableClassName)}>
           <thead>
@@ -309,6 +311,7 @@ export function DataTable<TData>({
                         return (
                           <td
                             key={column.key}
+                            data-label={typeof column.header === "string" ? column.header : undefined}
                             className={cn("px-4 py-3 align-middle text-foreground", alignClass[alignment], column.className)}
                           >
                             {column.render(row)}
@@ -317,6 +320,7 @@ export function DataTable<TData>({
                       })}
                       {renderRowActions ? (
                         <td
+                          data-label="操作"
                           className="px-4 py-3 text-right align-middle"
                           onClick={(event) => event.stopPropagation()}
                           onKeyDown={(event) => event.stopPropagation()}

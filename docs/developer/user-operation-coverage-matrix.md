@@ -36,7 +36,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `PARAM-HOME-001` | P1 | parameters | automated | `/parameter-home` | Admin | ui, api | `e2e/acceptance/parameter-home.acceptance.spec.ts` |
 | `PARAM-ADMIN-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, audit | `e2e/acceptance/parameters.acceptance.spec.ts` |
 | `PARAM-ADMIN-002` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, audit | `e2e/acceptance/parameter-import-wizard.acceptance.spec.ts` |
-| `PARAM-ADMIN-003` | P1 | parameters | future | `/parameter-admin/projects` | Admin | ui, screenshot | `src/components/admin/ProjectAdminTable.tsx` |
+| `PARAM-ADMIN-003` | P1 | parameters | automated | `/parameter-admin/projects` | Admin | ui, api, screenshot | `e2e/acceptance/parameter-admin-projects.acceptance.spec.ts` |
 | `PARAM-INIT-WIZARD-001` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api, audit, screenshot | `src/ProjectParameterInitializationWizard.test.tsx`<br>`src/appReducer.parameterAdmin.test.ts`<br>`server/modules/parameters/initializationService.test.ts` |
 | `PARAM-INIT-EMPTY-001` | P1 | parameters | future | `/api/v1/parameters/projects/:projectId/initialization` | Admin | api, db, audit | `src/infrastructure/mock/mockParameterInitializationRepository.test.ts`<br>`server/modules/parameters/initializationService.test.ts` |
 | `PARAM-INIT-REVIEW-001` | P1 | parameters | future | `/parameter-review` | Admin | ui, api, db, audit | `src/App.tsx`<br>`server/modules/parameters/initializationService.test.ts` |
@@ -174,7 +174,6 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 - `AUTH-LOCAL-SELF-REGISTER-001`: Covered by unit tests. Shared acceptance still injects HMAC smoke and does not load the unauthenticated local auth screen.
 - `AUTH-LOCAL-BOOTSTRAP-HINT-001`: Covered by unit tests. Shared acceptance still injects HMAC smoke and does not load the unauthenticated local auth screen.
 - `SHELL-DISCOVERY-001`: Covered by unit tests and playwright-cli evidence under work/ui-checks/workflow-discovery/; no dedicated e2e acceptance spec in this slice.
-- `PARAM-ADMIN-003`: Batch 1 ships CSS fix + playwright-cli three-viewport evidence under work/ui-checks/param-admin-ux-polish-batch1/; dedicated e2e viewport assertion follows in a later batch.
 - `PARAM-INIT-WIZARD-001`: Unit/reducer/server cover submit→pending; playwright-cli evidence under work/ui-checks/param-init/; full browser e2e follows after semantic wizard binding picker lands.
 - `PARAM-INIT-EMPTY-001`: Server and mock Port tests cover empty approve; dedicated e2e API+UI path follows with wizard empty-mode CTA.
 - `PARAM-INIT-REVIEW-001`: API-mode App handlers call Port approve; server materialize + audit covered in initializationService tests; full browser evidence follows.

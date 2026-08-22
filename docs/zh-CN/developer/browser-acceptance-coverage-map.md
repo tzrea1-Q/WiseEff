@@ -60,7 +60,7 @@
 - `BRIDGE-WIN-001`：`/node-debugging` 的 Windows 优先本地 Bridge 面板可覆盖缺失安装、未配对、未启动、在线无设备与在线目标状态，并展示同源 Windows 下载入口。
 - `BRIDGE-TOOLS-001`：Bridge 已连接但 `tools.adb.available: false` 时，Step ③ 显示缺少 ADB 与 **安装调试工具** CTA（非「Bridge 未安装」）。覆盖：`src/NodeDebuggingPage.test.tsx`。
 - `PARAM-HOME-001`：`/parameter-home` 通过 `ParameterDashboardRepository` 加载 summary/hotspots API 数据，并支持页面内时间窗口与热榜维度切换（`e2e/acceptance/parameter-home.acceptance.spec.ts`）。
-- `PARAM-ADMIN-003`：Admin 在 `/parameter-admin/projects` 的项目清单在 ≤960px 卡片布局下仍完整显示状态、模块/参数数、最近更新、治理信号（冲突/基线）与行操作（CSS 已修；playwright-cli 证据见 `work/ui-checks/param-admin-ux-polish-batch{1,3}/`；专用 e2e 待后续）。
+- `PARAM-ADMIN-003`：Admin 项目清单在刷新、`popstate`、后退与前进后恢复 `q`/`status`/`sort`，支持分页、键盘进入行且行操作不冒泡；390px 为字段完整的卡片，768px 为 1080px 宽表格加 16px 常显横向滚动条，1440px 完整显示且页面不横向溢出。自动化见 `e2e/acceptance/parameter-admin-projects.acceptance.spec.ts`。
 - `PARAM-INIT-WIZARD-001`：创建者完成项目参数初始化（选源 + 勾选）并进入待审阅（单测 wizard/reducer；服务端 `initializationService`；playwright-cli 见 `work/ui-checks/param-init/`）。
 - `PARAM-INIT-EMPTY-001`：显式空库初始化可批准为 `initialized` 且零 binding（mock Port + 服务端单测）。
 - `PARAM-INIT-REVIEW-001`：Admin 批准初始化后解锁项目并按快照物化 binding（服务端物化/审计；App Port 接线；playwright-cli 审阅页见 `work/ui-checks/param-init/review-*`）。

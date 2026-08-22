@@ -17,8 +17,8 @@ const defaultSearch: ParamAdminProjectsSearch = {
   sort: "name-asc"
 };
 
-function parseFromLocation(): ParamAdminProjectsSearch {
-  const params = new URL(window.location.href).searchParams;
+export function parseParamAdminProjectsSearch(search: string): ParamAdminProjectsSearch {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   return {
     q: params.get("q") ?? "",
     statuses: parseCsvQueryParam(params.get("status")),
@@ -26,23 +26,12 @@ function parseFromLocation(): ParamAdminProjectsSearch {
   };
 }
 
+function parseFromLocation(): ParamAdminProjectsSearch {
+  return parseParamAdminProjectsSearch(window.location.search);
+}
+
 function applyToLocation(search: ParamAdminProjectsSearch) {
-  const url = new URL(window.location.href);
-  const params = url.searchParams;
-  const setOrDelete = (key: string, value: string | null | undefined, omitValue?: string) => {
-    if (!value || value === omitValue) {
-      params.delete(key);
-      return;
-    }
-    params.set(key, value);
-  };
-
-  setOrDelete("q", search.q.trim() || null);
-  setOrDelete("status", formatCsvQueryParam(search.statuses));
-  setOrDelete("sort", search.sort, "name-asc");
-
-  const query = params.toString();
-  const next = `/parameter-admin/projects${query ? `?${query}` : ""}${url.hash}`;
+  const next = `${buildParamAdminProjectsPath(search)}${window.location.hash}`;
   const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   if (next !== current) {
     window.history.pushState(null, "", next);
