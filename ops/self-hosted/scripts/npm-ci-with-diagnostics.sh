@@ -8,6 +8,24 @@ set -u
 export npm_config_audit=false
 export npm_config_fund=false
 export npm_config_update_notifier=false
+
+case "${WISEEFF_BUILD_TLS_POLICY:-verify}" in
+  verify)
+    export npm_config_strict_ssl=true
+    ;;
+  insecure)
+    if [ "${WISEEFF_BUILD_TLS_ACK:-}" != "allow-insecure-build" ]; then
+      printf '%s\n' 'Insecure npm TLS policy authorization is missing.' >&2
+      exit 10
+    fi
+    export npm_config_strict_ssl=false
+    ;;
+  *)
+    printf 'Unsupported WISEEFF_BUILD_TLS_POLICY: %s\n' "${WISEEFF_BUILD_TLS_POLICY}" >&2
+    exit 10
+    ;;
+esac
+
 if [ -n "${WISEEFF_NPM_REGISTRY:-}" ]; then
   export npm_config_registry="$WISEEFF_NPM_REGISTRY"
   export npm_config_replace_registry_host=always

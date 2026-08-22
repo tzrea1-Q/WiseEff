@@ -36,6 +36,7 @@ force="false"
 skip_build="false"
 skip_up="false"
 skip_provision="false"
+allow_insecure_build="false"
 non_interactive="false"
 print_env="false"
 json="false"
@@ -66,7 +67,8 @@ Actions:  init | preflight | up | provision | all   (default: all)
   --log-analysis-model NAME
   --log-analysis-api-key KEY
   --env-file PATH
-  --build-network-file PATH  Private proxy/registry/CA data file (defaults to .build-network.env)
+  --build-network-file PATH  Private proxy/registry/CA/TLS-policy data file (defaults to .build-network.env)
+  --allow-insecure-build     Authorize one build whose configured TLS policy is insecure
   --force                    Overwrite an existing .env (rotates DB/object-store secrets)
   --skip-build --skip-up --skip-provision
   --non-interactive          Require flags; never prompt
@@ -728,7 +730,7 @@ run_preflight() {
     echo "Missing ${env_file}. Run: $0 --ip <address> init" >&2
     exit 1
   fi
-  wiseeff_build_network_prepare "${compose_dir}" "${build_network_file}"
+  prepare_build_network
   if has_tsx; then
     (cd "${repo_root}" && "${repo_root}/node_modules/.bin/tsx" ops/self-hosted/scripts/doctor-selfhost.ts -- --env-file "${env_file}")
     wiseeff_build_network_print_status text
@@ -750,6 +752,26 @@ run_preflight() {
   [ "$(env_value AUTH_PROVIDER)" = "local" ] || { echo "AUTH_PROVIDER must be local." >&2; exit 1; }
   wiseeff_build_network_print_status text
   echo "Preflight passed for $(env_value WISEEFF_PUBLIC_URL)"
+}
+
+setup_requires_build_authorization() {
+  [ "${skip_build}" != "true" ] || return 1
+  case "${action}" in
+    up) return 0 ;;
+    all) [ "${skip_up}" != "true" ] ;;
+    *) return 1 ;;
+  esac
+}
+
+prepare_build_network() {
+  if [ "${build_network_prepared}" = "true" ]; then
+    return 0
+  fi
+  wiseeff_build_network_prepare "${compose_dir}" "${build_network_file}"
+  if setup_requires_build_authorization; then
+    wiseeff_build_network_authorize_build "${allow_insecure_build}" "setup ${action}"
+  fi
+  build_network_prepared="true"
 }
 
 run_up() {
@@ -813,6 +835,7 @@ while [ $# -gt 0 ]; do
     --log-analysis-api-key) log_analysis_api_key="${2:-}"; shift 2 ;;
     --env-file) env_file="${2:-}"; shift 2 ;;
     --build-network-file) build_network_file="${2:-}"; shift 2 ;;
+    --allow-insecure-build) allow_insecure_build="true"; shift ;;
     --force) force="true"; shift ;;
     --skip-build) skip_build="true"; shift ;;
     --skip-up) skip_up="true"; shift ;;
@@ -837,6 +860,12 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
+
+build_network_prepared="false"
+if [ "${allow_insecure_build}" = "true" ] && ! setup_requires_build_authorization; then
+  echo "--allow-insecure-build is only valid for a setup action that builds an image." >&2
+  exit 2
+fi
 
 wiseeff_operation_lock_acquire "${WISEEFF_OPERATION_LOCK_DIR:-${repo_root}/ops/self-hosted/.state}" \
   "Another WiseEff setup or upgrade operation holds the host lock." \
@@ -868,6 +897,12 @@ if [ "${non_interactive}" = "true" ] && [ "${section}" = "llm" ] && [ -f "${env_
 fi
 
 apply_profile_defaults
+
+# `all` can write or replace .env before its normal preflight. Validate the
+# build transport and its break-glass authorization before that mutation.
+if [ "${action}" = "all" ] && setup_requires_build_authorization; then
+  prepare_build_network
+fi
 
 case "${action}" in
   init)

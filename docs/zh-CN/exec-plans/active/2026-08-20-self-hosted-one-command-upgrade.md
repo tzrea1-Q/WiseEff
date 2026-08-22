@@ -4,7 +4,7 @@
 
 **目标：** 交付一条面向生产思维的单机升级入口：解析唯一 Git commit、提前构建、停止写入、验证完整恢复点、在不删除 volume 的情况下重建所有 Compose 服务、沿用 API 启动迁移、验证结果，并支持持久化继续与恢复。
 
-**状态：** 核心实现、宿主机兼容加固、持久构建诊断和 Node 基础镜像离线包准备均已进入 `main`。受限网络后续已经实现并通过本地验证，包括一次完整 `linux/amd64` BuildKit 镜像构建：setup/upgrade 会把代理传入 BuildKit，支持组织批准的企业 CA 与 npm registry，并且只输出脱敏网络状态。声称发布就绪前仍需完成一次干净的前向升级和恢复演练证据。
+**状态：** 核心实现、宿主机兼容加固、持久构建诊断和 Node 基础镜像离线包准备均已进入 `main`。受限网络路径现在同时提供组织 CA 默认方案，以及面向无法安装 CA 主机的“两把钥匙、仅构建期”insecure TLS 兼容策略；本地/CI 门禁覆盖策略授权、下载 adapter、缓存失效、运行时隔离和脱敏来源。声称发布就绪前仍需完成一次干净的前向升级和恢复演练证据。
 
 **设计：** [自托管一键升级设计](../../design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 
@@ -32,6 +32,7 @@
 - 原则上一份计划一个实现分支；只有目标环境证据确需后续时才建 evidence-only 分支。
 - 目标演练兼容性加固使用从当前 `main` 创建的 `fix/self-hosted-upgrade-host-compat`；父代理/会话 owner 在本地门禁与 CI merge bar 通过后开 PR 并合入。
 - 受限网络加固使用 `codex/selfhost-restricted-network-build`；会话 owner 在本地门禁通过后开 PR，并且只在全部 required CI check 通过后合入。
+- 仅构建期 insecure TLS 兼容使用 `fix/selfhost-insecure-build-tls-policy`；会话 owner 在本地门禁通过后开 PR，并且只在全部 required CI check 通过后合入。
 
 ## 前置条件
 
@@ -302,7 +303,7 @@ git diff --check
 - [x] `apply` 在构建前再次校验 checkout tar；本地已有完全一致镜像时跳过，否则 load 已验证 tar 并创建 Dockerfile 精确标签。
 - [x] 缺失/被修改 tar、未知/重复契约字段、异常镜像身份或平台不匹配时，在 Compose build 与停流量前失败关闭。
 - [x] 在文本/JSON status 中记录基础镜像 ref、ID、平台、来源和状态；准备失败归类为 `base-image`，并保持构建退出码 `20`。
-- [x] tar 继续排除在 Docker build context 外，禁止自动 pull 替代、关闭 TLS、删除镜像或 prune。
+- [x] tar 继续排除在 Docker build context 外，禁止自动 pull 替代、默认/全局关闭 TLS、删除镜像或 prune。
 - [x] 回归测试 plan 只读、load/tag 顺序、精确本地镜像跳过、校验和拒绝、平台不匹配、build fail-fast、status 渲染和仓库契约漂移。
 - [ ] 在目标主机演练一次输出 `ready-bundled` 的 `plan`，再执行 `apply`，证明 `base_image_source=bundled-archive` 且候选构建无需 Docker Hub 即通过基础镜像 metadata 阶段。
 
@@ -335,7 +336,7 @@ Node 离线包只消除了一个 Docker Hub 依赖；Dockerfile 仍需解析 Alp
 - [x] 保留标准代理变量的大小写形式，拒绝相互冲突的值，并把它们作为 Docker 预定义代理构建参数传给 setup 与 upgrade 构建。
 - [x] 支持可选内部 npm registry，并使用 `replace-registry-host=always`，避免 lockfile 中已提交的非默认绝对 tar 地址绕过配置 registry。
 - [x] 关闭部署构建专用的 npm audit、fund 和 update-notifier 请求，不改变 CI 安全门禁。
-- [x] 通过 BuildKit secret 挂载可选的组织批准 CA，在每个联网构建阶段安装它，绝不关闭 TLS 校验。
+- [x] 通过 BuildKit secret 挂载可选的组织批准 CA，在每个联网构建阶段安装它，并在默认 `verify` 策略下保持 TLS 校验。
 - [x] 让 `upgrade.sh plan`、setup preflight 和专用只读状态入口只报告代理/registry/CA/运行时代理状态，不暴露值。
 - [x] 仅在操作员显式启用时，才把已批准代理与镜像内 CA 传给 API/worker 运行时容器。
 - [x] 保持候选构建失败发生在停机前，保留当前脱敏诊断 journal，并让网络/CA 摘要指向持久构建网络契约。
@@ -380,6 +381,34 @@ git diff --check
 ```
 
 **仍需目标机证据：** 在报告问题的 Docker 28.1.1 `overlay2` 主机重新执行 `apply`。它必须接受 config digest `sha256:c91ce80d48fb1a545181cbad2e7e4329bf5aa581c9a87db465e31fa21f92add7`，完成候选构建，以目标 commit 标签重建 API/worker/web，并通过公网健康检查。本地和 CI 门禁验证控制器行为，但不能替代部署主机实证。
+
+## 阶段 12 —— 仅构建期 TLS 应急兼容
+
+部分企业部署机可以使用认证代理，却无法安装代理拦截 CA。全局关闭宿主机/运行时 TLS 风险不可接受；只处理 npm 又会让 Alpine、Git 或 Python 下载继续不一致。因此 build-network 模块拥有一个显式策略，并在既有 seam 后把它翻译为各下载器的行为。
+
+**任务：**
+
+- [x] 在私有 allowlist 契约中增加 `WISEEFF_BUILD_TLS_POLICY=verify|insecure`，默认保持 `verify`。
+- [x] 每个可能构建镜像的 setup/upgrade 命令都必须传 `--allow-insecure-build`；任一钥匙单独出现都拒绝，并清除继承来的 acknowledgement。
+- [x] insecure 行为仅作用于 npm endpoint 校验、固定 DTC Git clone、已命名 pip 主机和 apk HTTPS 证书检查；npm 完整性、Alpine 软件包签名、基础镜像身份、宿主机 Git、Docker daemon 与运行时 TLS 门禁仍保持开启。
+- [x] 增加不含秘密的策略/CA/package-host 指纹，输入变化时使信任安装缓存失效。
+- [x] 在 plan/status/build summary 中持久化脱敏策略、指纹和 `completed_with_insecure_build_transport` 证据；候选镜像记录 label，但不持久化关闭 TLS 的环境变量。
+- [x] 增加策略解析、两把钥匙授权、npm adapter、Compose/Dockerfile 接线、禁止全局关闭、缓存指纹变化和状态来源的黑盒测试。
+- [x] 同步更新 setup、upgrade、operations、环境变量、设计、可靠性、README 和计划的中英文文档。
+- [ ] 在报告问题的无 CA 目标机演练 `plan` 与 `apply --allow-insecure-build`，并确认运行镜像环境不包含关闭 TLS 的变量。
+- [ ] 仅在 PR 全部必需检查通过后合入。
+
+**验证：**
+
+```bash
+npm run test:scripts -- ops/self-hosted/scripts/build-network.sh.test.ts ops/self-hosted/scripts/npm-ci-with-diagnostics.test.ts ops/self-hosted/scripts/setup.sh.test.ts ops/self-hosted/scripts/upgrade.sh.test.ts ops/self-hosted/scripts/check-self-hosted-config.test.ts
+npm run selfhost:check
+npm run docs:check
+npm run build
+git diff --check
+```
+
+**预期结果：** 无 CA 企业主机获得一个显式、可审计的单次构建兼容路径，同时不把不安全传输设为默认、不泄露凭据、不削弱包身份/完整性，也不改变运行时 TLS。
 
 ## 推广与兼容
 

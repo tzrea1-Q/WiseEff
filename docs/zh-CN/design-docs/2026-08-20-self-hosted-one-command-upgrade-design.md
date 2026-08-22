@@ -250,7 +250,9 @@ Compose 将新增显式应用镜像仓库/tag 变量，使回滚不依赖可变�
 
 离线包契约固定 tar 文件名/校验和、归档标签、Dockerfile 标签、OCI manifest digest、Docker config digest 和平台。Docker/containerd 镜像存储可能把 manifest digest 显示为 `.Id`，经典 Docker Engine `overlay2` 则可能对同一份离线包显示 config digest。控制器只在契约平台上接受这两个固定身份，在运行状态中记录两者，并在不匹配时打印 expected/actual；仓库配置门禁会从 tar 中提取两个身份，避免双身份契约静默漂移。脚本只按数据解析，不会 source 到 shell。当前仓库离线包只覆盖 `linux/amd64` 上 Dockerfile 的 Node 基础镜像；包管理器与源码下载仍是独立的网络/信任边界。
 
-受限网络输入被收口为 `build-network.sh` 背后的独立深模块。权限 `0600`、非符号链接的数据文件只接受大小写代理对、一个 npm registry URL、一个组织批准 PEM 路径及显式 runtime-proxy 布尔值。交互操作仍可使用 shell 代理环境；大小写值有歧义时失败关闭。控制器导出 Docker 预定义 proxy build arg，通过 npm registry host replacement 覆盖 lockfile tarball 主机，并用 BuildKit secret 把 CA 安装到每个构建 stage；journal 只记录安全状态字段。实现不会 source 配置、不会把代理值写成 Dockerfile `ENV`、不会关闭 TLS、不会改写 Docker daemon，也不会默认把 runtime proxy 发送给数据面容器。
+受限网络输入被收口为 `build-network.sh` 背后的独立深模块。权限 `0600`、非符号链接的数据文件只接受大小写代理对、一个 npm registry URL、一个组织批准 PEM 路径、枚举型构建 TLS 策略及显式 runtime-proxy 布尔值。交互操作仍可使用 shell 代理环境；大小写值有歧义时失败关闭。控制器导出 Docker 预定义 proxy build arg，通过 npm registry host replacement 覆盖 lockfile tarball 主机，并用 BuildKit secret 把 CA 安装到共享 build-transport stage。外部 interface 仍只有一个 `verify|insecure` 策略，内部 adapter 再把已授权的 insecure 值映射到仅构建期的 npm、Git、pip 主机和 apk endpoint 证书行为。
+
+`verify` 是默认值。`insecure` 采用两把钥匙：私有文件选择该策略，setup/upgrade 命令还必须独立传 `--allow-insecure-build`。模块会清除继承来的 acknowledgement，在调用 Docker 前拒绝策略/授权不匹配，并且只对该构建进程导出固定 acknowledgement。由策略、CA 内容和 package 主机构成的非秘密指纹确保信任输入变化时 BuildKit 缓存失效。journal 与候选镜像记录策略来源，但不记录代理值。运行时 `ENV` 不含任何关闭校验的变量；宿主机 Git、Docker daemon 信任、npm 完整性、Alpine 软件包签名和运行时 TLS 都不属于该 adapter。
 
 固定 DTC 源码同时也是 Python `libfdt` binding 的来源。builder 从同一 commit 构建 DTC 二进制/库和 Meson wheel；runtime 先安装该 wheel，再以关闭依赖解析的方式安装 `dtschema`。这样可以避开不兼容的旧 `pylibfdt` 源码包，并保持 `dtc`、`fdtoverlay`、`libfdt` 和已记录工具链版本一致。Alpine 构建/runtime YAML 依赖及 `/opt/dtc/lib` 解析都显式声明，并受 self-hosted config check 保护。
 

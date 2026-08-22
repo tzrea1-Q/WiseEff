@@ -31,19 +31,37 @@ cd /srv/wiseeff/ops/self-hosted
 ./scripts/upgrade.sh apply
 ```
 
-该文件只接受文档列出的大小写代理变量、`WISEEFF_NPM_REGISTRY`、`WISEEFF_BUILD_CA_CERT_FILE` 和 `WISEEFF_RUNTIME_PROXY`；脚本只按数据解析，绝不会 source。文件必须是非符号链接普通文件，且只能由 owner 读写（权限 `0600`）。不创建该文件时，现有 shell 代理环境仍然生效。同名非空 shell 值优先；大小写代理值冲突会在修改 Docker 或 Git 前直接拒绝。
+该文件只接受文档列出的大小写代理变量、`WISEEFF_NPM_REGISTRY`、`WISEEFF_BUILD_CA_CERT_FILE`、`WISEEFF_BUILD_TLS_POLICY` 和 `WISEEFF_RUNTIME_PROXY`；脚本只按数据解析，绝不会 source。文件必须是非符号链接普通文件，且只能由 owner 读写（权限 `0600`）。不创建该文件时，现有 shell 代理环境仍然生效。同名非空 shell 值优先；大小写代理值冲突会在修改 Docker 或 Git 前直接拒绝。
 
-`WISEEFF_NPM_REGISTRY` 会在 `npm ci` 时替换已提交 lockfile 内的 registry host。当前入口只支持可通过已配置代理访问、且 URL 本身不含凭据的 registry；脚本会拒绝内嵌账号密码，暂不暴露 npm token 配置。`WISEEFF_BUILD_CA_CERT_FILE` 可用绝对路径或相对 `.build-network.env` 的路径，必须指向组织批准且可读的 PEM。BuildKit 以 secret mount 把 PEM 安装到每个构建 stage，不会把私有配置或代理凭据复制进镜像层；TLS 校验始终开启。
+`WISEEFF_NPM_REGISTRY` 会在 `npm ci` 时替换已提交 lockfile 内的 registry host。当前入口只支持可通过已配置代理访问、且 URL 本身不含凭据的 registry；脚本会拒绝内嵌账号密码，暂不暴露 npm token 配置。`WISEEFF_BUILD_CA_CERT_FILE` 可用绝对路径或相对 `.build-network.env` 的路径，必须指向组织批准且可读的 PEM。BuildKit 以 secret mount 把 PEM 安装到每个构建 stage，不会把私有配置或代理凭据复制进镜像层。`WISEEFF_BUILD_TLS_POLICY=verify` 是默认且推荐的策略。
+
+部署机确实无法取得企业 CA 时，可以启用仅限构建期的应急策略。在 `.build-network.env` 中设置：
+
+```dotenv
+WISEEFF_BUILD_TLS_POLICY=insecure
+```
+
+`plan` 仍是只读动作，会直接显示 insecure 策略，不要求授权。任何真正可能构建镜像的命令还必须提供第二把钥匙：
+
+```bash
+./scripts/upgrade.sh apply --allow-insecure-build
+# 无人值守：
+./scripts/upgrade.sh apply --non-interactive --yes --allow-insecure-build
+```
+
+只有配置值而没有参数时会拒绝执行；配置仍是 `verify` 时传 `--allow-insecure-build` 也会被拒绝。授权只对当前进程有效。跳过校验仅作用于 Docker 构建内的 npm、固定 DTC Git clone、已命名 Python 包主机和 Alpine 仓库 HTTPS 适配；不会设置 `NODE_TLS_REJECT_UNAUTHORIZED`，不会改变宿主机 Git/Docker daemon 信任，不会关闭 npm lockfile 完整性或 Alpine 软件包签名，也不会把关闭 TLS 的变量带进运行容器。条件具备后仍应优先改用组织 CA、带签名的内部镜像或离线依赖包。
+
+控制器会根据 TLS 策略、CA 内容和已配置 package 主机计算一个不含秘密的构建传输指纹。策略或 CA 变化后，BuildKit 的信任安装层会自动失效，不会静默复用旧 secret 缓存。候选镜像用非秘密 label 记录构建策略；升级 journal 会记录 `build_tls_policy`、指纹与 `completed_with_insecure_build_transport`，但不会记录代理值。
 
 `WISEEFF_RUNTIME_PROXY` 默认 `false`。只有 API/worker 运行时访问也必须走代理时才设为 `true`；控制器会把 Compose 服务名加入 `NO_PROXY`。此时代理凭据会成为 Docker 管理员可见的容器环境数据，应使用专用、最小权限的部署凭据。数据库、Redis、对象存储、web 和 proxy 容器不会接收运行时代理映射。
 
-`plan`、`status` 和 `status --json` 只显示代理/CA 是否已配置、npm registry 主机名与运行时代理开关，绝不打印或持久化代理 URL/凭据。真实配置被 Git 忽略，真实配置与示例契约都被排除在 Docker build context 外。
+`plan`、`status` 和 `status --json` 只显示代理/CA 是否已配置、npm registry 主机名、构建 TLS 策略/指纹、完成来源与运行时代理开关，绝不打印或持久化代理 URL/凭据。真实配置被 Git 忽略，真实配置与示例契约都被排除在 Docker build context 外。
 
 Dockerfile 基础镜像是一个特例：仓库在 `ops/self-hosted/images/` 中携带了固定校验和的 `linux/amd64` 离线包。`plan` 会只读校验目标 commit 中的离线包契约、tar 校验和、Dockerfile 引用和 Docker server 平台，并输出 `verified local image` 或 `verified bundle; apply will load and tag it`。`apply` 选择不可变目标后、Compose build 前，会再次校验 checkout 中的 tar；若本地没有完全一致的固定镜像，则自动 load，校验身份/平台，再创建 `FROM` 使用的精确标签。
 
 契约同时固定 OCI manifest digest（`base_image_id`）和 Docker config digest（`base_image_config_id`）。Docker Desktop/containerd 镜像存储可能把前者显示为 `.Id`，经典 Docker Engine `overlay2` 镜像存储则可能对同一份离线包显示后者。控制器只在平台也完全一致时接受这两个固定值；出现第三个身份时，报错会同时打印两个预期值和 Docker 实际值。`npm run selfhost:check` 也会从 tar 中提取两个身份，确保契约与离线包漂移时 CI 失败。文本与 JSON 运行状态会记录两个 digest、平台、来源和准备状态。
 
-这只消除了 `node:22.21.1-alpine` 对 Docker Hub 的依赖，并不代表整个构建已经离线化。Alpine 软件包、固定版本 DTC Git 源、Python 包和 npm 包仍需要受管代理/镜像路径，除非另行打包。其他服务镜像拉取仍属于 Docker daemon 网络边界。控制器不会关闭 TLS、删除镜像或清理 Docker 状态。
+这只消除了 `node:22.21.1-alpine` 对 Docker Hub 的依赖，并不代表整个构建已经离线化。Alpine 软件包、固定版本 DTC Git 源、Python 包和 npm 包仍需要受管代理/镜像路径，除非另行打包。其他服务镜像拉取仍属于 Docker daemon 网络边界。控制器不会削弱宿主机/运行时 TLS 或包完整性/签名校验，也不会删除镜像或清理 Docker 状态；只有显式授权的构建期策略可以跳过 endpoint 证书校验。
 
 ## 一次性宿主机准备
 

@@ -32,6 +32,16 @@ Full 模式还会问 TLS（HTTP、Caddy `tls internal`、或 Let's Encrypt）、
 
 setup 预检会应用与升级相同的构建代理、内部 npm 源和组织批准 CA 契约。不创建文件时，现有 shell 代理变量也会生效。优先级、TLS、运行时代理、Docker daemon 和凭据边界见[自托管升级：受限网络构建配置](upgrade.zh-CN.md#受限网络构建配置)。
 
+部署机没有企业 CA，并且 `.build-network.env` 已明确设置 `WISEEFF_BUILD_TLS_POLICY=insecure` 时，只对真正执行构建的 setup 命令授权：
+
+```bash
+./scripts/setup.sh --allow-insecure-build
+# 或参数化首次安装：
+./scripts/setup.sh --non-interactive --ip <server-ip> --allow-insecure-build
+```
+
+仅预检动作和 `--skip-build` 动作不接受这个授权参数。insecure 策略只影响构建，不会改变安装后的运行时 TLS 策略。
+
 ## Flag（同一套答案，不提问）
 
 ```bash

@@ -29,6 +29,47 @@ describe("upgrade.sh public interface", () => {
     expect(result.stdout).toContain("unlock");
     expect(result.stdout).toContain("--git-proxy");
     expect(result.stdout).toContain("--build-network-file");
+    expect(result.stdout).toContain("--allow-insecure-build");
+  });
+
+  it("refuses an insecure upgrade build without explicit per-command authorization", () => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-insecure-build-"));
+    const config = join(directory, "build-network.env");
+    writeFileSync(config, "WISEEFF_BUILD_TLS_POLICY=insecure\n", { mode: 0o600 });
+    chmodSync(config, 0o600);
+
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      upgrade_action=apply
+      upgrade_allow_insecure_build=false
+      upgrade_compose_dir="$PWD/ops/self-hosted"
+      upgrade_build_network_file="$WISEEFF_TEST_BUILD_NETWORK_CONFIG"
+      wiseeff_upgrade_reject_root_runtime() { return 0; }
+      wiseeff_upgrade_require_command() { return 0; }
+      wiseeff_upgrade_validate_env() { return 0; }
+      wiseeff_upgrade_validate_backup_root() { return 0; }
+      wiseeff_upgrade_validate_worktree() { return 0; }
+      wiseeff_upgrade_docker() { printf 'docker-must-not-run\n'; return 0; }
+      if wiseeff_upgrade_preflight; then exit 0; else exit $?; fi
+    `], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        WISEEFF_TEST_BUILD_NETWORK_CONFIG: config,
+        HTTP_PROXY: "",
+        HTTPS_PROXY: "",
+        ALL_PROXY: "",
+        NO_PROXY: "",
+        http_proxy: "",
+        https_proxy: "",
+        all_proxy: "",
+        no_proxy: ""
+      }
+    });
+
+    expect(result.status).toBe(10);
+    expect(result.stderr).toContain("--allow-insecure-build");
+    expect(result.stdout).not.toContain("docker-must-not-run");
   });
 
   it("normalizes upper-case proxy variables for the non-interactive Git fetch", () => {
@@ -453,7 +494,7 @@ describe("upgrade.sh public interface", () => {
     expect(result.stdout).toContain('"id":"sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"');
     expect(result.stdout).toContain('"configId":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"');
     expect(result.stdout).toContain(
-      '"buildNetwork":{"proxy":"configured","npmRegistry":"npm.example.com","corporateCa":"not configured","runtimeProxy":false}'
+      '"buildNetwork":{"proxy":"configured","npmRegistry":"npm.example.com","corporateCa":"not configured","buildTlsPolicy":"verify","runtimeProxy":false}'
     );
     expect(`${result.stdout}\n${result.stderr}`).not.toContain("plan-secret");
     expect(existsSync(mutationLog)).toBe(false);
@@ -965,6 +1006,9 @@ describe("upgrade.sh public interface", () => {
     writeFileSync(join(runDir, "build_proxy_status"), "configured\n");
     writeFileSync(join(runDir, "npm_registry_host"), "npm.example.com\n");
     writeFileSync(join(runDir, "corporate_ca_status"), "configured\n");
+    writeFileSync(join(runDir, "build_tls_policy"), "insecure\n");
+    writeFileSync(join(runDir, "build_transport_fingerprint"), `${"a".repeat(64)}\n`);
+    writeFileSync(join(runDir, "completed_with_insecure_build_transport"), "true\n");
     writeFileSync(join(runDir, "runtime_proxy_status"), "false\n");
     writeFileSync(join(runDir, "next_action"), "none\n");
     writeFileSync(join(runDir, "status"), "run_id=run-1\nphase=completed\noutcome=completed\n");
@@ -990,10 +1034,35 @@ describe("upgrade.sh public interface", () => {
         proxy: "configured",
         npmRegistry: "npm.example.com",
         corporateCa: "configured",
+        buildTlsPolicy: "insecure",
+        transportFingerprint: "a".repeat(64),
         runtimeProxy: false
-      }
+      },
+      completedWithInsecureBuildTransport: true
     });
     expect(result.stdout).not.toContain("POSTGRES_PASSWORD");
+  });
+
+  it("records insecure build provenance from persisted run state during completion", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-insecure-completion-"));
+    writeFileSync(join(runDir, "build_tls_policy"), "insecure\n");
+    writeFileSync(join(runDir, "phase"), "validating-public\n");
+
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      upgrade_run_dir="$WISEEFF_TEST_RUN_DIR"
+      unset WISEEFF_BUILD_TLS_POLICY
+      wiseeff_upgrade_record_build_transport_completion
+      cat "$WISEEFF_TEST_RUN_DIR/completed_with_insecure_build_transport"
+      grep 'event=completed-with-insecure-build-transport' "$WISEEFF_TEST_RUN_DIR/events.log"
+    `], {
+      encoding: "utf8",
+      env: { ...process.env, WISEEFF_TEST_RUN_DIR: runDir }
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("true");
+    expect(result.stdout).toContain("runtime-tls=unchanged");
   });
 
   it.each(["resume", "rollback"])('requires --run-id for %s', (action) => {

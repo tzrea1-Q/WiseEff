@@ -17,7 +17,7 @@ wiseeff_build_network_file_mode() {
 
 wiseeff_build_network_key_allowed() {
   case "$1" in
-    HTTP_PROXY|HTTPS_PROXY|ALL_PROXY|NO_PROXY|http_proxy|https_proxy|all_proxy|no_proxy|WISEEFF_NPM_REGISTRY|WISEEFF_BUILD_CA_CERT_FILE|WISEEFF_RUNTIME_PROXY)
+    HTTP_PROXY|HTTPS_PROXY|ALL_PROXY|NO_PROXY|http_proxy|https_proxy|all_proxy|no_proxy|WISEEFF_NPM_REGISTRY|WISEEFF_BUILD_CA_CERT_FILE|WISEEFF_BUILD_TLS_POLICY|WISEEFF_RUNTIME_PROXY)
       return 0
       ;;
     *)
@@ -135,13 +135,67 @@ wiseeff_build_network_ca_status() {
   printf '%s\n' "${WISEEFF_BUILD_NETWORK_CA_STATUS:-not configured}"
 }
 
+wiseeff_build_network_tls_policy() {
+  printf '%s\n' "${WISEEFF_BUILD_TLS_POLICY:-verify}"
+}
+
+wiseeff_build_network_hash_stream() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum | awk '{print $1}'
+  else
+    shasum -a 256 | awk '{print $1}'
+  fi
+}
+
+wiseeff_build_network_file_fingerprint() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
+wiseeff_build_network_authorize_build() {
+  local allowed="${1:-false}"
+  local operation="${2:-build}"
+  local policy="${WISEEFF_BUILD_TLS_POLICY:-verify}"
+
+  case "$allowed" in
+    true|false) ;;
+    *)
+      wiseeff_build_network_error "Internal error: insecure-build authorization must be true or false."
+      return $?
+      ;;
+  esac
+
+  if [ "$policy" = "verify" ]; then
+    if [ "$allowed" = "true" ]; then
+      wiseeff_build_network_error "--allow-insecure-build is only valid when WISEEFF_BUILD_TLS_POLICY=insecure."
+      return $?
+    fi
+    WISEEFF_BUILD_TLS_ACK=""
+    export WISEEFF_BUILD_TLS_ACK
+    return 0
+  fi
+
+  if [ "$allowed" != "true" ]; then
+    wiseeff_build_network_error "${operation} uses WISEEFF_BUILD_TLS_POLICY=insecure. Re-run with --allow-insecure-build to authorize this build only."
+    return $?
+  fi
+
+  WISEEFF_BUILD_TLS_ACK="allow-insecure-build"
+  export WISEEFF_BUILD_TLS_ACK
+  printf 'WARNING: TLS certificate verification is disabled for this image build only (%s).\n' "$operation" >&2
+}
+
 wiseeff_build_network_prepare() {
   local compose_dir="$1"
   local config_file="${2:-${WISEEFF_BUILD_NETWORK_FILE:-${compose_dir}/.build-network.env}}"
-  local ca_file registry_authority runtime_proxy
+  local ca_file ca_fingerprint registry_authority runtime_proxy tls_policy
 
   WISEEFF_BUILD_NETWORK_FILE_EFFECTIVE="$config_file"
-  export WISEEFF_BUILD_NETWORK_FILE_EFFECTIVE
+  WISEEFF_BUILD_TLS_ACK=""
+  export WISEEFF_BUILD_NETWORK_FILE_EFFECTIVE WISEEFF_BUILD_TLS_ACK
   wiseeff_build_network_load_file "$config_file" || return $?
 
   wiseeff_build_network_normalize_proxy_pair HTTP_PROXY http_proxy || return $?
@@ -180,6 +234,16 @@ wiseeff_build_network_prepare() {
     fi
   fi
 
+  tls_policy="${WISEEFF_BUILD_TLS_POLICY:-verify}"
+  case "$tls_policy" in
+    verify|insecure) ;;
+    *)
+      wiseeff_build_network_error "WISEEFF_BUILD_TLS_POLICY must be verify or insecure."
+      return $?
+      ;;
+  esac
+  WISEEFF_BUILD_TLS_POLICY="$tls_policy"
+
   ca_file="${WISEEFF_BUILD_CA_CERT_FILE:-}"
   if [ -n "$ca_file" ]; then
     case "$ca_file" in
@@ -200,7 +264,17 @@ wiseeff_build_network_prepare() {
     WISEEFF_BUILD_CA_CERT_FILE="${compose_dir}/build-network/empty-ca.pem"
     WISEEFF_BUILD_NETWORK_CA_STATUS="not configured"
   fi
+  ca_fingerprint="$(wiseeff_build_network_file_fingerprint "$WISEEFF_BUILD_CA_CERT_FILE")" || return $?
+  WISEEFF_BUILD_TRANSPORT_FINGERPRINT="$({
+    printf 'tls-policy=%s\n' "$WISEEFF_BUILD_TLS_POLICY"
+    printf 'ca-sha256=%s\n' "$ca_fingerprint"
+    printf 'npm-registry-host=%s\n' "$(wiseeff_build_network_registry_host)"
+    printf 'apk-source=container-default\n'
+    printf 'git-source=git.kernel.org\n'
+    printf 'pip-sources=pypi.org,files.pythonhosted.org\n'
+  } | wiseeff_build_network_hash_stream)" || return $?
   export WISEEFF_BUILD_CA_CERT_FILE WISEEFF_BUILD_NETWORK_CA_STATUS
+  export WISEEFF_BUILD_TLS_POLICY WISEEFF_BUILD_TRANSPORT_FINGERPRINT
 
   runtime_proxy="${WISEEFF_RUNTIME_PROXY:-false}"
   case "$runtime_proxy" in
@@ -230,17 +304,24 @@ wiseeff_build_network_print_status() {
   local format="${1:-text}"
   local ca_status
   local registry_host
+  local tls_policy
   registry_host="$(wiseeff_build_network_registry_host)"
   ca_status="$(wiseeff_build_network_ca_status)"
+  tls_policy="$(wiseeff_build_network_tls_policy)"
   if [ "$format" = "json" ]; then
-    printf '{"proxy":"%s","npmRegistry":"%s","corporateCa":"%s","runtimeProxy":%s}\n' \
-      "$WISEEFF_BUILD_NETWORK_PROXY_STATUS" "$registry_host" "$ca_status" "$WISEEFF_RUNTIME_PROXY"
+    printf '{"proxy":"%s","npmRegistry":"%s","corporateCa":"%s","buildTlsPolicy":"%s","runtimeProxy":%s}\n' \
+      "$WISEEFF_BUILD_NETWORK_PROXY_STATUS" "$registry_host" "$ca_status" "$tls_policy" "$WISEEFF_RUNTIME_PROXY"
     return 0
   fi
   printf 'WiseEff build network\n'
   printf '  proxy: %s\n' "$WISEEFF_BUILD_NETWORK_PROXY_STATUS"
   printf '  npm registry: %s\n' "$registry_host"
   printf '  corporate CA: %s\n' "$ca_status"
+  if [ "$tls_policy" = "insecure" ]; then
+    printf '  build TLS: INSECURE (build only; explicit authorization required)\n'
+  else
+    printf '  build TLS: verified\n'
+  fi
   if [ "$WISEEFF_RUNTIME_PROXY" = "true" ]; then
     printf '  runtime proxy: enabled\n'
   else

@@ -32,6 +32,16 @@ On a host that can reach external build dependencies only through an enterprise 
 
 The setup preflight applies the same proxy, internal npm registry, and approved-CA contract used by upgrades. Existing shell proxy variables also work without a file. See [Self-Hosted Upgrade: Restricted-network build configuration](upgrade.md#restricted-network-build-configuration) for precedence, TLS, runtime-proxy, Docker daemon, and credential boundaries.
 
+If `.build-network.env` deliberately sets `WISEEFF_BUILD_TLS_POLICY=insecure` because no enterprise CA is available, authorize only the setup command that actually builds:
+
+```bash
+./scripts/setup.sh --allow-insecure-build
+# or for a flag-driven first install:
+./scripts/setup.sh --non-interactive --ip <server-ip> --allow-insecure-build
+```
+
+Preflight-only and `--skip-build` actions do not accept the authorization flag. The insecure policy remains build-only and never changes the installed runtime TLS policy.
+
 ## Flags (same answers, no prompts)
 
 ```bash

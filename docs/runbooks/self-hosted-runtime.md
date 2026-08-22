@@ -42,7 +42,7 @@ For a basic Ubuntu host with an IP and no domain, do not copy `.env.example` and
 
 Non-interactive IP lab: `./scripts/setup.sh --non-interactive --ip <server-ip>`. `deploy-ip-lab.sh` remains a compatibility wrapper.
 
-If the server reaches external build dependencies only through an enterprise proxy, run `./scripts/build-network.sh init`, edit the resulting mode-`0600` `.build-network.env`, and verify it with `./scripts/build-network.sh status` before setup. The same contract is consumed automatically by upgrades. Full security and Docker-daemon boundaries are documented in [Self-Hosted Upgrade](../../ops/self-hosted/upgrade.md#restricted-network-build-configuration).
+If the server reaches external build dependencies only through an enterprise proxy, run `./scripts/build-network.sh init`, edit the resulting mode-`0600` `.build-network.env`, and verify it with `./scripts/build-network.sh status` before setup. The same contract is consumed automatically by upgrades. When the enterprise CA cannot be installed, the runbook provides a two-key, build-only `insecure` policy; every actual build still requires `--allow-insecure-build`, and runtime TLS is unchanged. Full security and Docker-daemon boundaries are documented in [Self-Hosted Upgrade](../../ops/self-hosted/upgrade.md#restricted-network-build-configuration).
 
 That command writes `.env`, starts the stack, seeds ChargeLab demo data, and creates a local admin in `org-chargelab`. Full flags, TLS-internal mode, and split commands are in [ops/self-hosted/ip-lab.md](../../ops/self-hosted/ip-lab.md). The DNS/ACME path below stays the M6 staging/pilot profile.
 

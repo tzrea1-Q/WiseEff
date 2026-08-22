@@ -24,7 +24,8 @@ Actions:
 Options:
   --ref REF                     Git ref; defaults to WISEEFF_UPGRADE_REF or origin/main.
   --git-proxy URL               HTTP(S)/SOCKS proxy for resolving the Git ref (or WISEEFF_UPGRADE_GIT_PROXY).
-  --build-network-file PATH     Private proxy/registry/CA data file (defaults to .build-network.env).
+  --build-network-file PATH     Private proxy/registry/CA/TLS-policy data file (defaults to .build-network.env).
+  --allow-insecure-build        Authorize one candidate build configured with insecure TLS.
   --env-file PATH               Runtime env file; defaults to ops/self-hosted/.env.
   --state-dir PATH              Upgrade journal root.
   --backup-root PATH            Upgrade backup root.
@@ -136,6 +137,9 @@ wiseeff_upgrade_write_status() {
     printf 'build_proxy_status=%s\n' "$(wiseeff_upgrade_state_read build_proxy_status)"
     printf 'npm_registry_host=%s\n' "$(wiseeff_upgrade_state_read npm_registry_host)"
     printf 'corporate_ca_status=%s\n' "$(wiseeff_upgrade_state_read corporate_ca_status)"
+    printf 'build_tls_policy=%s\n' "$(wiseeff_upgrade_state_read build_tls_policy)"
+    printf 'build_transport_fingerprint=%s\n' "$(wiseeff_upgrade_state_read build_transport_fingerprint)"
+    printf 'completed_with_insecure_build_transport=%s\n' "$(wiseeff_upgrade_state_read completed_with_insecure_build_transport)"
     printf 'runtime_proxy_status=%s\n' "$(wiseeff_upgrade_state_read runtime_proxy_status)"
     printf 'next_action=%s\n' "$(wiseeff_upgrade_state_read next_action)"
   } > "$temp_path"
@@ -860,6 +864,9 @@ wiseeff_upgrade_preflight() {
   wiseeff_upgrade_validate_backup_root || return $?
   wiseeff_upgrade_validate_worktree || return $?
   wiseeff_build_network_prepare "$upgrade_compose_dir" "$upgrade_build_network_file" || return $?
+  if [ "${upgrade_action:-plan}" = "apply" ]; then
+    wiseeff_build_network_authorize_build "${upgrade_allow_insecure_build:-false}" "upgrade apply" || return $?
+  fi
   if ! wiseeff_upgrade_docker info >/dev/null; then
     wiseeff_upgrade_die 10 "Docker daemon is unavailable to the deployment user. Run sudo ./scripts/upgrade.sh prepare-host --yes once, reconnect, then retry without sudo."
     return $?
@@ -874,17 +881,18 @@ wiseeff_upgrade_preflight() {
 wiseeff_upgrade_print_plan() {
   local migrations_count=0
   local escaped_ref
-  local build_proxy build_registry build_ca runtime_proxy
+  local build_proxy build_registry build_ca build_tls_policy runtime_proxy
   escaped_ref="$(wiseeff_upgrade_json_escape "$upgrade_ref")"
   build_proxy="${WISEEFF_BUILD_NETWORK_PROXY_STATUS:-not configured}"
   build_registry="$(wiseeff_build_network_registry_host)"
   build_ca="$(wiseeff_build_network_ca_status)"
+  build_tls_policy="$(wiseeff_build_network_tls_policy)"
   runtime_proxy="${WISEEFF_RUNTIME_PROXY:-false}"
   if [ -n "$upgrade_migrations" ]; then
     migrations_count="$(printf '%s\n' "$upgrade_migrations" | sed '/^$/d' | wc -l | tr -d ' ')"
   fi
   if [ "$upgrade_json" = "true" ]; then
-    printf '{"action":"plan","previousSha":"%s","targetSha":"%s","requestedRef":"%s","migrationCount":%s,"restart":%s,"baseImage":{"ref":"%s","id":"%s","configId":"%s","platform":"%s","source":"%s","status":"%s"},"buildNetwork":{"proxy":"%s","npmRegistry":"%s","corporateCa":"%s","runtimeProxy":%s}}\n' \
+    printf '{"action":"plan","previousSha":"%s","targetSha":"%s","requestedRef":"%s","migrationCount":%s,"restart":%s,"baseImage":{"ref":"%s","id":"%s","configId":"%s","platform":"%s","source":"%s","status":"%s"},"buildNetwork":{"proxy":"%s","npmRegistry":"%s","corporateCa":"%s","buildTlsPolicy":"%s","runtimeProxy":%s}}\n' \
       "$upgrade_previous_sha" "$upgrade_target_sha" "$escaped_ref" "$migrations_count" "$upgrade_restart" \
       "$(wiseeff_upgrade_json_escape "$upgrade_base_image_ref")" \
       "$(wiseeff_upgrade_json_escape "$upgrade_base_image_id")" \
@@ -895,6 +903,7 @@ wiseeff_upgrade_print_plan() {
       "$(wiseeff_upgrade_json_escape "$build_proxy")" \
       "$(wiseeff_upgrade_json_escape "$build_registry")" \
       "$(wiseeff_upgrade_json_escape "$build_ca")" \
+      "$(wiseeff_upgrade_json_escape "$build_tls_policy")" \
       "$runtime_proxy"
     return 0
   fi
@@ -914,6 +923,12 @@ wiseeff_upgrade_print_plan() {
   printf '  build proxy: %s\n' "$build_proxy"
   printf '  npm registry: %s\n' "$build_registry"
   printf '  corporate CA: %s\n' "$build_ca"
+  if [ "$build_tls_policy" = "insecure" ]; then
+    printf '  build TLS: INSECURE (build only; apply requires --allow-insecure-build)\n'
+    printf '  warning:   build downloads can be intercepted or replaced\n'
+  else
+    printf '  build TLS: verified\n'
+  fi
   printf '  runtime proxy: %s\n' "$runtime_proxy"
   if [ "${upgrade_mixed_app_images:-false}" = "true" ]; then
     printf '  compatibility: preserving legacy API/worker/web images separately for rollback\n'
@@ -961,6 +976,7 @@ wiseeff_upgrade_init_run() {
   wiseeff_upgrade_state_write backup_dir "$upgrade_backup_dir"
   wiseeff_upgrade_state_write protocol_version 1
   wiseeff_upgrade_state_write build_status not-started
+  wiseeff_upgrade_state_write completed_with_insecure_build_transport false
   wiseeff_upgrade_state_write started_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   wiseeff_upgrade_set_phase initialized running
   wiseeff_upgrade_write_status "$upgrade_run_id"
@@ -982,6 +998,8 @@ wiseeff_upgrade_store_plan() {
   wiseeff_upgrade_state_write build_proxy_status "${WISEEFF_BUILD_NETWORK_PROXY_STATUS:-not configured}"
   wiseeff_upgrade_state_write npm_registry_host "$(wiseeff_build_network_registry_host)"
   wiseeff_upgrade_state_write corporate_ca_status "$(wiseeff_build_network_ca_status)"
+  wiseeff_upgrade_state_write build_tls_policy "$(wiseeff_build_network_tls_policy)"
+  wiseeff_upgrade_state_write build_transport_fingerprint "${WISEEFF_BUILD_TRANSPORT_FINGERPRINT:-unknown}"
   wiseeff_upgrade_state_write runtime_proxy_status "${WISEEFF_RUNTIME_PROXY:-false}"
   if [ -n "$upgrade_migrations" ]; then
     wiseeff_upgrade_state_write migration_changed true
@@ -1055,6 +1073,7 @@ wiseeff_upgrade_build_candidate() {
   wiseeff_upgrade_state_write build_log "$upgrade_build_log" || return $?
   wiseeff_upgrade_state_write build_summary "$upgrade_build_summary" || return $?
   wiseeff_upgrade_state_write build_status running || return $?
+  wiseeff_upgrade_event candidate-build-transport "tls-policy=$(wiseeff_build_network_tls_policy)" || return $?
   if [ -n "${upgrade_run_id:-}" ]; then
     wiseeff_upgrade_write_status "$upgrade_run_id" || return $?
   fi
@@ -1167,6 +1186,7 @@ wiseeff_upgrade_write_build_summary() {
     printf 'category=%s\n' "$category"
     printf 'message=%s\n' "$message"
     printf 'next_step=%s\n' "$next_step"
+    printf 'build_tls_policy=%s\n' "$(wiseeff_build_network_tls_policy)"
     printf 'build_log=%s\n' "$upgrade_build_log"
   } > "$temp_path" || return $?
   chmod 600 "$temp_path" || return $?
@@ -1186,7 +1206,11 @@ wiseeff_upgrade_write_build_failure_summary() {
   elif grep -Eqi 'SELF_SIGNED_CERT_IN_CHAIN|UNABLE_TO_VERIFY_LEAF_SIGNATURE|self signed certificate|certificate verify failed' "$upgrade_build_log"; then
     category="corporate-ca"
     message="The image build could not validate the package registry certificate chain."
-    next_step="Set WISEEFF_BUILD_CA_CERT_FILE in .build-network.env to the organization-approved PEM, run ./scripts/build-network.sh status, and rerun apply; do not disable TLS verification."
+    if [ "$(wiseeff_build_network_tls_policy)" = "insecure" ]; then
+      next_step="Insecure build TLS was already authorized; inspect the failing downloader and route that host through an approved internal mirror before rerunning apply."
+    else
+      next_step="Set WISEEFF_BUILD_CA_CERT_FILE in .build-network.env to the organization-approved PEM, or explicitly configure the documented build-only insecure policy, then rerun apply."
+    fi
   elif grep -Eqi 'EAI_AGAIN|ENOTFOUND|temporary failure in name resolution|could not resolve host' "$upgrade_build_log"; then
     category="dns"
     message="The Docker build could not resolve a required package or image host."
@@ -1454,6 +1478,18 @@ wiseeff_upgrade_load_run() {
   }
 }
 
+wiseeff_upgrade_record_build_transport_completion() {
+  local policy
+  policy="$(wiseeff_upgrade_state_read build_tls_policy)"
+  [ -n "$policy" ] || policy="verify"
+  if [ "$policy" = "insecure" ]; then
+    wiseeff_upgrade_state_write completed_with_insecure_build_transport true
+    wiseeff_upgrade_event completed-with-insecure-build-transport "runtime-tls=unchanged"
+  else
+    wiseeff_upgrade_state_write completed_with_insecure_build_transport false
+  fi
+}
+
 wiseeff_upgrade_complete_candidate() {
   local previous_phase
   previous_phase="$(wiseeff_upgrade_state_read phase)"
@@ -1463,6 +1499,7 @@ wiseeff_upgrade_complete_candidate() {
     return 70
   fi
   wiseeff_upgrade_state_write outcome completed
+  wiseeff_upgrade_record_build_transport_completion
   wiseeff_upgrade_state_write next_action none
   wiseeff_upgrade_set_phase completed completed
   wiseeff_upgrade_write_status "$upgrade_run_id"
@@ -1848,13 +1885,16 @@ wiseeff_upgrade_run_apply() {
   fi
 
   wiseeff_upgrade_state_write outcome completed
+  wiseeff_upgrade_record_build_transport_completion
   wiseeff_upgrade_state_write next_action none
   wiseeff_upgrade_set_phase completed completed
   wiseeff_upgrade_write_status "$upgrade_run_id"
   if [ "$upgrade_json" = "true" ]; then
-    printf '{"action":"apply","status":"completed","runId":"%s","targetSha":"%s"}\n' "$upgrade_run_id" "$upgrade_target_sha"
+    printf '{"action":"apply","status":"completed","runId":"%s","targetSha":"%s","completedWithInsecureBuildTransport":%s}\n' \
+      "$upgrade_run_id" "$upgrade_target_sha" "$(wiseeff_upgrade_state_read completed_with_insecure_build_transport)"
   else
-    printf 'Upgrade completed. run_id=%s target=%s backup=%s\n' "$upgrade_run_id" "$upgrade_target_sha" "$upgrade_backup_dir"
+    printf 'Upgrade completed. run_id=%s target=%s backup=%s insecure_build_transport=%s\n' \
+      "$upgrade_run_id" "$upgrade_target_sha" "$upgrade_backup_dir" "$(wiseeff_upgrade_state_read completed_with_insecure_build_transport)"
   fi
 }
 
@@ -1889,13 +1929,18 @@ wiseeff_upgrade_status() {
     if [ -f "${state_root}/${requested_run_id}/status" ]; then
       if [ "${upgrade_json}" = "true" ]; then
         local run_dir="${state_root}/${requested_run_id}"
-        local runtime_proxy_status
+        local completed_insecure_build runtime_proxy_status
+        completed_insecure_build="$(cat "${run_dir}/completed_with_insecure_build_transport" 2>/dev/null || printf 'false')"
+        case "$completed_insecure_build" in
+          true|false) ;;
+          *) completed_insecure_build=false ;;
+        esac
         runtime_proxy_status="$(cat "${run_dir}/runtime_proxy_status" 2>/dev/null || printf 'false')"
         case "$runtime_proxy_status" in
           true|false) ;;
           *) runtime_proxy_status=false ;;
         esac
-        printf '{"runId":"%s","phase":"%s","outcome":"%s","updatedAt":"%s","protocolVersion":"%s","previousSha":"%s","targetSha":"%s","backupDir":"%s","buildStatus":"%s","diagnosticsDir":"%s","buildLog":"%s","buildSummary":"%s","baseImageRef":"%s","baseImageId":"%s","baseImageConfigId":"%s","baseImagePlatform":"%s","baseImageSource":"%s","baseImageStatus":"%s","buildNetwork":{"proxy":"%s","npmRegistry":"%s","corporateCa":"%s","runtimeProxy":%s},"nextAction":"%s"}\n' \
+        printf '{"runId":"%s","phase":"%s","outcome":"%s","updatedAt":"%s","protocolVersion":"%s","previousSha":"%s","targetSha":"%s","backupDir":"%s","buildStatus":"%s","diagnosticsDir":"%s","buildLog":"%s","buildSummary":"%s","baseImageRef":"%s","baseImageId":"%s","baseImageConfigId":"%s","baseImagePlatform":"%s","baseImageSource":"%s","baseImageStatus":"%s","buildNetwork":{"proxy":"%s","npmRegistry":"%s","corporateCa":"%s","buildTlsPolicy":"%s","transportFingerprint":"%s","runtimeProxy":%s},"completedWithInsecureBuildTransport":%s,"nextAction":"%s"}\n' \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/run_id" 2>/dev/null || printf '%s' "$requested_run_id")")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/phase" 2>/dev/null || true)")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/outcome" 2>/dev/null || true)")" \
@@ -1917,7 +1962,10 @@ wiseeff_upgrade_status() {
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/build_proxy_status" 2>/dev/null || true)")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/npm_registry_host" 2>/dev/null || true)")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/corporate_ca_status" 2>/dev/null || true)")" \
+          "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/build_tls_policy" 2>/dev/null || printf 'verify')")" \
+          "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/build_transport_fingerprint" 2>/dev/null || true)")" \
           "$runtime_proxy_status" \
+          "$completed_insecure_build" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/next_action" 2>/dev/null || true)")"
       else
         cat "${state_root}/${requested_run_id}/status"
@@ -1971,6 +2019,7 @@ wiseeff_upgrade_main() {
   upgrade_run_id=""
   upgrade_operator=""
   upgrade_restart="false"
+  upgrade_allow_insecure_build="false"
   upgrade_non_interactive="false"
   upgrade_yes="false"
   upgrade_restore_data="false"
@@ -2030,6 +2079,7 @@ wiseeff_upgrade_main() {
         shift 2
         ;;
       --restart) upgrade_restart="true"; shift ;;
+      --allow-insecure-build) upgrade_allow_insecure_build="true"; shift ;;
       --non-interactive) upgrade_non_interactive="true"; shift ;;
       --yes) upgrade_yes="true"; shift ;;
       --restore-data) upgrade_restore_data="true"; shift ;;
@@ -2063,6 +2113,11 @@ wiseeff_upgrade_main() {
 
   if [ -n "$upgrade_operator" ] && [ "$upgrade_action" != "prepare-host" ]; then
     wiseeff_upgrade_die 2 "--operator is only valid with prepare-host."
+    return $?
+  fi
+
+  if [ "$upgrade_allow_insecure_build" = "true" ] && [ "$upgrade_action" != "apply" ]; then
+    wiseeff_upgrade_die 2 "--allow-insecure-build is only valid with apply."
     return $?
   fi
 

@@ -34,6 +34,7 @@ describe("build-network.sh public interface", () => {
     expect(result.status).toBe(0);
     expect(statSync(config).mode & 0o777).toBe(0o600);
     expect(readFileSync(config, "utf8")).toContain("WISEEFF_BUILD_CA_CERT_FILE=");
+    expect(readFileSync(config, "utf8")).toContain("WISEEFF_BUILD_TLS_POLICY=verify");
     expect(result.stdout).toContain("Edit the values, then run");
   });
 
@@ -62,9 +63,107 @@ describe("build-network.sh public interface", () => {
     expect(result.stdout).toContain("proxy: configured");
     expect(result.stdout).toContain("npm registry: npm.example.com");
     expect(result.stdout).toContain("corporate CA: not configured");
+    expect(result.stdout).toContain("build TLS: verified");
     expect(result.stdout).toContain("runtime proxy: disabled");
     expect(`${result.stdout}\n${result.stderr}`).not.toContain("operator");
     expect(`${result.stdout}\n${result.stderr}`).not.toContain("proxy-secret");
+  });
+
+  it("reports the explicit build-only insecure TLS policy without treating it as runtime configuration", () => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-build-network-insecure-"));
+    const config = join(directory, "build-network.env");
+    writeFileSync(
+      config,
+      ["WISEEFF_BUILD_TLS_POLICY=insecure", "WISEEFF_RUNTIME_PROXY=false", ""].join("\n"),
+      { mode: 0o600 }
+    );
+    chmodSync(config, 0o600);
+
+    const result = spawnSync("bash", [script, "status", "--config", config, "--json"], {
+      encoding: "utf8",
+      env: cleanProxyEnv()
+    });
+
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      buildTlsPolicy: "insecure",
+      runtimeProxy: false
+    });
+  });
+
+  it("rejects unknown build TLS policies", () => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-build-network-policy-"));
+    const config = join(directory, "build-network.env");
+    writeFileSync(config, "WISEEFF_BUILD_TLS_POLICY=disabled\n", { mode: 0o600 });
+    chmodSync(config, 0o600);
+
+    const result = spawnSync("bash", [script, "status", "--config", config], {
+      encoding: "utf8",
+      env: cleanProxyEnv()
+    });
+
+    expect(result.status).toBe(10);
+    expect(result.stderr).toContain("WISEEFF_BUILD_TLS_POLICY must be verify or insecure");
+  });
+
+  it("requires both insecure policy and an explicit per-command authorization", () => {
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/build-network-lib.sh
+      WISEEFF_BUILD_TLS_POLICY=insecure
+      WISEEFF_BUILD_TLS_ACK=
+      if wiseeff_build_network_authorize_build false "upgrade apply"; then exit 0; else exit $?; fi
+    `], {
+      encoding: "utf8",
+      env: cleanProxyEnv()
+    });
+
+    expect(result.status).toBe(10);
+    expect(result.stderr).toContain("--allow-insecure-build");
+  });
+
+  it("authorizes insecure transport only for the current process", () => {
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/build-network-lib.sh
+      WISEEFF_BUILD_TLS_POLICY=insecure
+      WISEEFF_BUILD_TLS_ACK=
+      wiseeff_build_network_authorize_build true "upgrade apply"
+      printf '%s\n' "$WISEEFF_BUILD_TLS_ACK"
+    `], {
+      encoding: "utf8",
+      env: cleanProxyEnv()
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe("allow-insecure-build");
+  });
+
+  it("changes the non-secret transport fingerprint when the TLS policy changes", () => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-build-network-fingerprint-"));
+    const secureConfig = join(directory, "secure.env");
+    const insecureConfig = join(directory, "insecure.env");
+    writeFileSync(secureConfig, "WISEEFF_BUILD_TLS_POLICY=verify\n", { mode: 0o600 });
+    writeFileSync(insecureConfig, "WISEEFF_BUILD_TLS_POLICY=insecure\n", { mode: 0o600 });
+    chmodSync(secureConfig, 0o600);
+    chmodSync(insecureConfig, 0o600);
+
+    const runFingerprint = (config: string) =>
+      spawnSync("bash", ["-c", `
+        source ops/self-hosted/scripts/build-network-lib.sh
+        wiseeff_build_network_prepare "$PWD/ops/self-hosted" "$WISEEFF_TEST_CONFIG"
+        printf '%s\n' "$WISEEFF_BUILD_TRANSPORT_FINGERPRINT"
+      `], {
+        encoding: "utf8",
+        env: cleanProxyEnv({ WISEEFF_TEST_CONFIG: config, WISEEFF_BUILD_TLS_POLICY: "" })
+      });
+
+    const secure = runFingerprint(secureConfig);
+    const insecure = runFingerprint(insecureConfig);
+
+    expect(secure.status).toBe(0);
+    expect(insecure.status).toBe(0);
+    expect(secure.stdout.trim()).toMatch(/^[a-f0-9]{64}$/);
+    expect(insecure.stdout.trim()).toMatch(/^[a-f0-9]{64}$/);
+    expect(insecure.stdout).not.toBe(secure.stdout);
   });
 
   it("uses the deployment shell proxy when no persistent config exists", () => {
