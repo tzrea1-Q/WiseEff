@@ -313,6 +313,38 @@ git diff --check
 
 **Expected outcome:** `upgrade.sh apply` automatically turns an otherwise inaccessible BuildKit npm failure into a durable, private, deployment-user-readable diagnostic bundle, while preserving the no-downtime-on-build-failure invariant and the existing operator interface.
 
+## Phase 9 — Pinned Bundled Dockerfile Base Image
+
+The target Ubuntu rehearsal showed BuildKit trying to resolve `node:22.21.1-alpine` from Docker Hub even though the repository contains an amd64 tar. A file in the checkout is not part of Docker's image store, the tar carries a different archive tag, and `.dockerignore` intentionally keeps the 54 MB artifact out of the application build context. Base-image readiness must therefore be a controller responsibility before candidate build.
+
+**Files:**
+
+- Add a machine-readable contract beside the existing base-image tar.
+- Update `upgrade-lib.sh`, its public-interface tests, and the self-hosted config checker.
+- Update the base-image, upgrade, operations, design, and execution-plan bilingual pairs.
+
+**Tasks:**
+
+- [x] Make `plan` read the target commit's contract without sourcing it and verify Dockerfile ref, tar blob SHA-256, expected image ID/platform, and Docker server platform without loading/tagging.
+- [x] Make `apply` revalidate the checked-out tar before build, skip work when the exact image is local, otherwise load the verified archive and create the exact Dockerfile tag.
+- [x] Fail closed on missing/tampered archives, unknown/duplicate contract fields, unexpected image identity, or platform mismatch before Compose build and before downtime.
+- [x] Record base-image ref, ID, platform, source, and status in text/JSON run status; classify preparation failure as `base-image` under stable build exit `20`.
+- [x] Keep the tar outside Docker build context and prohibit automatic pull substitution, TLS disabling, image deletion, and prune behavior.
+- [x] Regression-test plan read-only behavior, load/tag ordering, exact-local skip, checksum rejection, platform mismatch, build fail-fast behavior, status rendering, and repository contract drift.
+- [ ] Rehearse one target-host `plan` showing `ready-bundled`, then `apply` showing `base_image_source=bundled-archive` and a candidate build that passes the base metadata stage without Docker Hub.
+
+**Verification:**
+
+```bash
+npm run test:scripts -- ops/self-hosted/scripts/upgrade.sh.test.ts ops/self-hosted/scripts/check-self-hosted-config.test.ts
+npm run selfhost:check
+npm run docs:check
+npm run build
+git diff --check
+```
+
+**Expected outcome:** after this controller release is installed, the standard `plan`/`apply` interface deterministically prepares the pinned Node base image from the repository bundle before candidate build, while preserving the old online stack on any preparation failure. The one release that installs this newer controller may still require the documented manual load/tag first-adoption fallback because an older running controller cannot execute target-only behavior.
+
 ## Rollout And Compatibility
 
 1. Land the implementation without changing existing setup/start defaults.

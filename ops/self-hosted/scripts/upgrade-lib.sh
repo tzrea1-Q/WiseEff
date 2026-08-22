@@ -124,6 +124,11 @@ wiseeff_upgrade_write_status() {
     printf 'diagnostics_dir=%s\n' "$(wiseeff_upgrade_state_read diagnostics_dir)"
     printf 'build_log=%s\n' "$(wiseeff_upgrade_state_read build_log)"
     printf 'build_summary=%s\n' "$(wiseeff_upgrade_state_read build_summary)"
+    printf 'base_image_ref=%s\n' "$(wiseeff_upgrade_state_read base_image_ref)"
+    printf 'base_image_id=%s\n' "$(wiseeff_upgrade_state_read base_image_id)"
+    printf 'base_image_platform=%s\n' "$(wiseeff_upgrade_state_read base_image_platform)"
+    printf 'base_image_source=%s\n' "$(wiseeff_upgrade_state_read base_image_source)"
+    printf 'base_image_status=%s\n' "$(wiseeff_upgrade_state_read base_image_status)"
     printf 'next_action=%s\n' "$(wiseeff_upgrade_state_read next_action)"
   } > "$temp_path"
   chmod 600 "$temp_path"
@@ -363,6 +368,222 @@ wiseeff_upgrade_docker() {
   docker "$@"
 }
 
+wiseeff_upgrade_base_image_contract_relative_path() {
+  printf 'ops/self-hosted/images/base-image-bundle.env\n'
+}
+
+wiseeff_upgrade_parse_base_image_contract() {
+  local content="$1"
+  local key value
+
+  upgrade_base_image_ref=""
+  upgrade_base_image_archive=""
+  upgrade_base_image_archive_ref=""
+  upgrade_base_image_platform=""
+  upgrade_base_image_id=""
+  upgrade_base_image_archive_sha256=""
+
+  while IFS='=' read -r key value; do
+    key="${key%$'\r'}"
+    value="${value%$'\r'}"
+    case "$key" in
+      ""|\#*) continue ;;
+      WISEEFF_BASE_IMAGE_REF)
+        [ -z "$upgrade_base_image_ref" ] || { wiseeff_upgrade_die 10 "Duplicate base-image contract key: ${key}"; return $?; }
+        upgrade_base_image_ref="$value"
+        ;;
+      WISEEFF_BASE_IMAGE_ARCHIVE)
+        [ -z "$upgrade_base_image_archive" ] || { wiseeff_upgrade_die 10 "Duplicate base-image contract key: ${key}"; return $?; }
+        upgrade_base_image_archive="$value"
+        ;;
+      WISEEFF_BASE_IMAGE_ARCHIVE_REF)
+        [ -z "$upgrade_base_image_archive_ref" ] || { wiseeff_upgrade_die 10 "Duplicate base-image contract key: ${key}"; return $?; }
+        upgrade_base_image_archive_ref="$value"
+        ;;
+      WISEEFF_BASE_IMAGE_PLATFORM)
+        [ -z "$upgrade_base_image_platform" ] || { wiseeff_upgrade_die 10 "Duplicate base-image contract key: ${key}"; return $?; }
+        upgrade_base_image_platform="$value"
+        ;;
+      WISEEFF_BASE_IMAGE_ID)
+        [ -z "$upgrade_base_image_id" ] || { wiseeff_upgrade_die 10 "Duplicate base-image contract key: ${key}"; return $?; }
+        upgrade_base_image_id="$value"
+        ;;
+      WISEEFF_BASE_IMAGE_ARCHIVE_SHA256)
+        [ -z "$upgrade_base_image_archive_sha256" ] || { wiseeff_upgrade_die 10 "Duplicate base-image contract key: ${key}"; return $?; }
+        upgrade_base_image_archive_sha256="$value"
+        ;;
+      *)
+        wiseeff_upgrade_die 10 "Unknown base-image contract key: ${key}"
+        return $?
+        ;;
+    esac
+  done <<< "$content"
+
+  case "$upgrade_base_image_ref" in
+    ""|*[!A-Za-z0-9._:/@+-]*) wiseeff_upgrade_die 10 "Invalid WISEEFF_BASE_IMAGE_REF in the base-image contract."; return $? ;;
+  esac
+  case "$upgrade_base_image_archive_ref" in
+    ""|*[!A-Za-z0-9._:/@+-]*) wiseeff_upgrade_die 10 "Invalid WISEEFF_BASE_IMAGE_ARCHIVE_REF in the base-image contract."; return $? ;;
+  esac
+  case "$upgrade_base_image_archive" in
+    ""|*[!A-Za-z0-9._-]*|*/*|*.tar.tar) wiseeff_upgrade_die 10 "Invalid WISEEFF_BASE_IMAGE_ARCHIVE in the base-image contract."; return $? ;;
+  esac
+  case "$upgrade_base_image_archive" in
+    *.tar) ;;
+    *) wiseeff_upgrade_die 10 "The bundled base-image archive must use a .tar filename."; return $? ;;
+  esac
+  if [[ ! "$upgrade_base_image_platform" =~ ^linux/(amd64|arm64)$ ]]; then
+    wiseeff_upgrade_die 10 "Invalid WISEEFF_BASE_IMAGE_PLATFORM in the base-image contract."
+    return $?
+  fi
+  if [[ ! "$upgrade_base_image_id" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+    wiseeff_upgrade_die 10 "Invalid WISEEFF_BASE_IMAGE_ID in the base-image contract."
+    return $?
+  fi
+  if [[ ! "$upgrade_base_image_archive_sha256" =~ ^[a-f0-9]{64}$ ]]; then
+    wiseeff_upgrade_die 10 "Invalid WISEEFF_BASE_IMAGE_ARCHIVE_SHA256 in the base-image contract."
+    return $?
+  fi
+}
+
+wiseeff_upgrade_load_base_image_contract_file() {
+  local contract_path
+  contract_path="${upgrade_repo_root}/$(wiseeff_upgrade_base_image_contract_relative_path)"
+  if [ ! -f "$contract_path" ] || [ -L "$contract_path" ]; then
+    wiseeff_upgrade_die 10 "Missing or unsafe bundled base-image contract: ${contract_path}"
+    return $?
+  fi
+  wiseeff_upgrade_parse_base_image_contract "$(cat "$contract_path")" || return $?
+  upgrade_base_image_archive_path="$(dirname "$contract_path")/${upgrade_base_image_archive}"
+}
+
+wiseeff_upgrade_stream_fingerprint() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum | awk '{print $1}'
+  else
+    shasum -a 256 | awk '{print $1}'
+  fi
+}
+
+wiseeff_upgrade_validate_base_image_archive_file() {
+  local actual_sha
+  if [ ! -f "$upgrade_base_image_archive_path" ] || [ -L "$upgrade_base_image_archive_path" ]; then
+    wiseeff_upgrade_die 10 "Missing or unsafe bundled base-image archive: ${upgrade_base_image_archive_path}"
+    return $?
+  fi
+  actual_sha="$(wiseeff_upgrade_fingerprint "$upgrade_base_image_archive_path")" || return $?
+  if [ "$actual_sha" != "$upgrade_base_image_archive_sha256" ]; then
+    wiseeff_upgrade_die 10 "Bundled base-image archive checksum mismatch: ${upgrade_base_image_archive_path}"
+    return $?
+  fi
+}
+
+wiseeff_upgrade_base_image_identity() {
+  wiseeff_upgrade_docker image inspect --format '{{.Id}}|{{.Os}}/{{.Architecture}}' "$1" 2>/dev/null
+}
+
+wiseeff_upgrade_validate_docker_platform() {
+  local server_platform
+  server_platform="$(wiseeff_upgrade_docker version --format '{{.Server.Os}}/{{.Server.Arch}}' 2>/dev/null || true)"
+  if [ -z "$server_platform" ]; then
+    wiseeff_upgrade_die 10 "Could not determine the Docker server platform for the bundled base image."
+    return $?
+  fi
+  if [ "$server_platform" != "$upgrade_base_image_platform" ]; then
+    wiseeff_upgrade_die 10 "Bundled base image platform ${upgrade_base_image_platform} does not match Docker server platform ${server_platform}."
+    return $?
+  fi
+}
+
+wiseeff_upgrade_validate_target_base_image_bundle() {
+  local contract_path contract dockerfile archive_spec actual_sha local_identity
+  contract_path="$(wiseeff_upgrade_base_image_contract_relative_path)"
+  contract="$(wiseeff_upgrade_git show "${upgrade_target_sha}:${contract_path}" 2>/dev/null)" || {
+    wiseeff_upgrade_die 10 "Target ${upgrade_target_sha} does not contain ${contract_path}."
+    return $?
+  }
+  wiseeff_upgrade_parse_base_image_contract "$contract" || return $?
+
+  dockerfile="$(wiseeff_upgrade_git show "${upgrade_target_sha}:ops/self-hosted/Dockerfile" 2>/dev/null)" || {
+    wiseeff_upgrade_die 10 "Target ${upgrade_target_sha} does not contain the self-hosted Dockerfile."
+    return $?
+  }
+  if ! printf '%s\n' "$dockerfile" | awk -v ref="$upgrade_base_image_ref" '$1 == "FROM" && $2 == ref { found = 1 } END { exit(found ? 0 : 1) }'; then
+    wiseeff_upgrade_die 10 "Target Dockerfile does not use the base image pinned by ${contract_path}: ${upgrade_base_image_ref}"
+    return $?
+  fi
+
+  archive_spec="${upgrade_target_sha}:ops/self-hosted/images/${upgrade_base_image_archive}"
+  if [ "$(wiseeff_upgrade_git cat-file -t "$archive_spec" 2>/dev/null || true)" != "blob" ]; then
+    wiseeff_upgrade_die 10 "Target ${upgrade_target_sha} does not contain bundled base-image archive ${upgrade_base_image_archive}."
+    return $?
+  fi
+  actual_sha="$(wiseeff_upgrade_git show "$archive_spec" | wiseeff_upgrade_stream_fingerprint)" || {
+    wiseeff_upgrade_die 10 "Could not verify bundled base-image archive ${upgrade_base_image_archive} from target ${upgrade_target_sha}."
+    return $?
+  }
+  if [ "$actual_sha" != "$upgrade_base_image_archive_sha256" ]; then
+    wiseeff_upgrade_die 10 "Target bundled base-image archive checksum mismatch: ${upgrade_base_image_archive}"
+    return $?
+  fi
+
+  wiseeff_upgrade_validate_docker_platform || return $?
+  local_identity="$(wiseeff_upgrade_base_image_identity "$upgrade_base_image_ref" || true)"
+  if [ "$local_identity" = "${upgrade_base_image_id}|${upgrade_base_image_platform}" ]; then
+    upgrade_base_image_status="ready-local"
+    upgrade_base_image_source="local"
+  else
+    upgrade_base_image_status="ready-bundled"
+    upgrade_base_image_source="bundled-archive"
+  fi
+}
+
+wiseeff_upgrade_record_base_image() {
+  [ -n "${upgrade_run_dir:-}" ] || return 0
+  wiseeff_upgrade_state_write base_image_ref "$upgrade_base_image_ref" || return $?
+  wiseeff_upgrade_state_write base_image_id "$upgrade_base_image_id" || return $?
+  wiseeff_upgrade_state_write base_image_platform "$upgrade_base_image_platform" || return $?
+  wiseeff_upgrade_state_write base_image_source "$upgrade_base_image_source" || return $?
+  wiseeff_upgrade_state_write base_image_status ready || return $?
+}
+
+wiseeff_upgrade_ensure_base_image() {
+  local identity
+  wiseeff_upgrade_load_base_image_contract_file || return $?
+  wiseeff_upgrade_validate_base_image_archive_file || return $?
+  wiseeff_upgrade_validate_docker_platform || return $?
+
+  identity="$(wiseeff_upgrade_base_image_identity "$upgrade_base_image_ref" || true)"
+  if [ "$identity" = "${upgrade_base_image_id}|${upgrade_base_image_platform}" ]; then
+    upgrade_base_image_source="local"
+    wiseeff_upgrade_record_base_image || return $?
+    printf 'Verified bundled base-image identity already present: %s (%s)\n' "$upgrade_base_image_ref" "$upgrade_base_image_id"
+    return 0
+  fi
+
+  wiseeff_upgrade_docker load -i "$upgrade_base_image_archive_path" || {
+    wiseeff_upgrade_die 10 "Docker could not load bundled base-image archive: ${upgrade_base_image_archive_path}"
+    return $?
+  }
+  identity="$(wiseeff_upgrade_base_image_identity "$upgrade_base_image_archive_ref" || true)"
+  if [ "$identity" != "${upgrade_base_image_id}|${upgrade_base_image_platform}" ]; then
+    wiseeff_upgrade_die 10 "Loaded base-image identity does not match the pinned bundle contract: ${upgrade_base_image_archive_ref}"
+    return $?
+  fi
+  wiseeff_upgrade_docker tag "$upgrade_base_image_archive_ref" "$upgrade_base_image_ref" || {
+    wiseeff_upgrade_die 10 "Docker could not tag bundled base image as ${upgrade_base_image_ref}."
+    return $?
+  }
+  identity="$(wiseeff_upgrade_base_image_identity "$upgrade_base_image_ref" || true)"
+  if [ "$identity" != "${upgrade_base_image_id}|${upgrade_base_image_platform}" ]; then
+    wiseeff_upgrade_die 10 "Prepared Dockerfile base-image tag does not match the pinned bundle contract: ${upgrade_base_image_ref}"
+    return $?
+  fi
+  upgrade_base_image_source="bundled-archive"
+  wiseeff_upgrade_record_base_image || return $?
+  printf 'Loaded and tagged bundled base image: %s -> %s\n' "$upgrade_base_image_archive_ref" "$upgrade_base_image_ref"
+}
+
 wiseeff_upgrade_require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     wiseeff_upgrade_die 10 "Required command is missing: $1"
@@ -595,6 +816,7 @@ wiseeff_upgrade_preflight() {
   wiseeff_upgrade_collect_runtime || return $?
   wiseeff_upgrade_collect_volumes || return $?
   wiseeff_upgrade_resolve_target || return $?
+  wiseeff_upgrade_validate_target_base_image_bundle || return $?
 }
 
 wiseeff_upgrade_print_plan() {
@@ -605,8 +827,13 @@ wiseeff_upgrade_print_plan() {
     migrations_count="$(printf '%s\n' "$upgrade_migrations" | sed '/^$/d' | wc -l | tr -d ' ')"
   fi
   if [ "$upgrade_json" = "true" ]; then
-    printf '{"action":"plan","previousSha":"%s","targetSha":"%s","requestedRef":"%s","migrationCount":%s,"restart":%s}\n' \
-      "$upgrade_previous_sha" "$upgrade_target_sha" "$escaped_ref" "$migrations_count" "$upgrade_restart"
+    printf '{"action":"plan","previousSha":"%s","targetSha":"%s","requestedRef":"%s","migrationCount":%s,"restart":%s,"baseImage":{"ref":"%s","id":"%s","platform":"%s","source":"%s","status":"%s"}}\n' \
+      "$upgrade_previous_sha" "$upgrade_target_sha" "$escaped_ref" "$migrations_count" "$upgrade_restart" \
+      "$(wiseeff_upgrade_json_escape "$upgrade_base_image_ref")" \
+      "$(wiseeff_upgrade_json_escape "$upgrade_base_image_id")" \
+      "$(wiseeff_upgrade_json_escape "$upgrade_base_image_platform")" \
+      "$(wiseeff_upgrade_json_escape "$upgrade_base_image_source")" \
+      "$(wiseeff_upgrade_json_escape "$upgrade_base_image_status")"
     return 0
   fi
   printf 'WiseEff self-hosted upgrade plan\n'
@@ -615,6 +842,12 @@ wiseeff_upgrade_print_plan() {
   printf '  migrations: %s\n' "$migrations_count"
   printf '  backup:   %s\n' "$(wiseeff_upgrade_default_backup_root)"
   printf '  restart:   %s\n' "$upgrade_restart"
+  if [ "$upgrade_base_image_status" = "ready-local" ]; then
+    printf '  base image: %s (%s, verified local image)\n' "$upgrade_base_image_ref" "$upgrade_base_image_platform"
+  else
+    printf '  base image: %s (%s, verified bundle; apply will load and tag it)\n' "$upgrade_base_image_ref" "$upgrade_base_image_platform"
+  fi
+  printf '  base image id: %s\n' "$upgrade_base_image_id"
   if [ "${upgrade_mixed_app_images:-false}" = "true" ]; then
     printf '  compatibility: preserving legacy API/worker/web images separately for rollback\n'
   fi
@@ -674,6 +907,10 @@ wiseeff_upgrade_store_plan() {
   wiseeff_upgrade_state_write compose_project "$upgrade_compose_project"
   wiseeff_upgrade_state_write queue_mode "log-analysis=$(wiseeff_upgrade_env_value LOG_ANALYSIS_QUEUE_MODE);notifications=$(wiseeff_upgrade_env_value NOTIFICATION_QUEUE_MODE)"
   wiseeff_upgrade_state_write env_fingerprint "$(wiseeff_upgrade_fingerprint "$upgrade_env_file")"
+  wiseeff_upgrade_state_write base_image_ref "$upgrade_base_image_ref"
+  wiseeff_upgrade_state_write base_image_id "$upgrade_base_image_id"
+  wiseeff_upgrade_state_write base_image_platform "$upgrade_base_image_platform"
+  wiseeff_upgrade_state_write base_image_status "$upgrade_base_image_status"
   if [ -n "$upgrade_migrations" ]; then
     wiseeff_upgrade_state_write migration_changed true
   else
@@ -761,10 +998,35 @@ wiseeff_upgrade_build_candidate() {
     return "$build_status"
   fi
 
+  if wiseeff_upgrade_ensure_base_image 2>&1 \
+    | wiseeff_upgrade_sanitize_diagnostic_stream \
+    | tee -a "$upgrade_build_log"; then
+    build_pipeline_statuses=("${PIPESTATUS[@]}")
+  else
+    build_pipeline_statuses=("${PIPESTATUS[@]}")
+  fi
+  build_status="${build_pipeline_statuses[0]:-1}"
+  if [ "$build_status" -eq 0 ]; then
+    for pipeline_status in "${build_pipeline_statuses[@]:1}"; do
+      if [ "$pipeline_status" -ne 0 ]; then
+        build_status="$pipeline_status"
+        break
+      fi
+    done
+  fi
+  if [ "$build_status" -ne 0 ]; then
+    wiseeff_upgrade_state_write base_image_status failed || return $?
+    wiseeff_upgrade_write_build_summary failed base-image \
+      "The pinned bundled Dockerfile base image could not be prepared safely." \
+      "Verify the base-image summary, Docker server platform, and bundled archive, then rerun apply." || return $?
+    wiseeff_upgrade_state_write build_status failed || return $?
+    return "$build_status"
+  fi
+
   if BUILDKIT_PROGRESS=plain WISEEFF_APP_TAG="$upgrade_target_sha" \
     wiseeff_upgrade_compose build api 2>&1 \
       | wiseeff_upgrade_sanitize_diagnostic_stream \
-      | tee "$upgrade_build_log"; then
+      | tee -a "$upgrade_build_log"; then
     build_pipeline_statuses=("${PIPESTATUS[@]}")
   else
     build_pipeline_statuses=("${PIPESTATUS[@]}")
@@ -1552,7 +1814,7 @@ wiseeff_upgrade_status() {
     if [ -f "${state_root}/${requested_run_id}/status" ]; then
       if [ "${upgrade_json}" = "true" ]; then
         local run_dir="${state_root}/${requested_run_id}"
-        printf '{"runId":"%s","phase":"%s","outcome":"%s","updatedAt":"%s","protocolVersion":"%s","previousSha":"%s","targetSha":"%s","backupDir":"%s","buildStatus":"%s","diagnosticsDir":"%s","buildLog":"%s","buildSummary":"%s","nextAction":"%s"}\n' \
+        printf '{"runId":"%s","phase":"%s","outcome":"%s","updatedAt":"%s","protocolVersion":"%s","previousSha":"%s","targetSha":"%s","backupDir":"%s","buildStatus":"%s","diagnosticsDir":"%s","buildLog":"%s","buildSummary":"%s","baseImageRef":"%s","baseImageId":"%s","baseImagePlatform":"%s","baseImageSource":"%s","baseImageStatus":"%s","nextAction":"%s"}\n' \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/run_id" 2>/dev/null || printf '%s' "$requested_run_id")")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/phase" 2>/dev/null || true)")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/outcome" 2>/dev/null || true)")" \
@@ -1565,6 +1827,11 @@ wiseeff_upgrade_status() {
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/diagnostics_dir" 2>/dev/null || true)")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/build_log" 2>/dev/null || true)")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/build_summary" 2>/dev/null || true)")" \
+          "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/base_image_ref" 2>/dev/null || true)")" \
+          "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/base_image_id" 2>/dev/null || true)")" \
+          "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/base_image_platform" 2>/dev/null || true)")" \
+          "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/base_image_source" 2>/dev/null || true)")" \
+          "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/base_image_status" 2>/dev/null || true)")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/next_action" 2>/dev/null || true)")"
       else
         cat "${state_root}/${requested_run_id}/status"

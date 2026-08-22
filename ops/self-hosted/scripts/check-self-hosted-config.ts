@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { evaluateIpLabCaddyfile, requiredIpLabFiles } from "./ip-lab-profile";
@@ -30,6 +31,8 @@ export const requiredSelfHostedFiles = [
   "ops/self-hosted/scripts/upgrade-lib.sh",
   "ops/self-hosted/scripts/npm-ci-with-diagnostics.sh",
   "ops/self-hosted/upgrade-protocol.env",
+  "ops/self-hosted/images/base-image-bundle.env",
+  "ops/self-hosted/images/node-22.21.1-alpine-amd64.tar",
   ...requiredIpLabFiles
 ] as const;
 
@@ -150,6 +153,8 @@ export type SelfHostedConfigInput = {
   composeText: string;
   dockerfileText: string;
   dockerignoreText: string;
+  baseImageBundleText: string;
+  baseImageArchiveSha256?: string;
   envExampleText: string;
   caddyfileText: string;
   existingFiles?: Set<string>;
@@ -162,6 +167,7 @@ export type SelfHostedConfigResult = {
   missingComposeTokens: string[];
   missingDockerfileTokens: string[];
   missingDockerignoreTokens: string[];
+  baseImageBundleIssues: string[];
   missingEnvKeys: string[];
   missingProxyTokens: string[];
   missingFiles: string[];
@@ -172,6 +178,11 @@ export function evaluateSelfHostedConfig(input: SelfHostedConfigInput): SelfHost
   const composeText = normalize(input.composeText);
   const dockerfileText = normalize(input.dockerfileText);
   const dockerignoreText = normalize(input.dockerignoreText);
+  const baseImageBundleIssues = evaluateBaseImageBundle(
+    input.baseImageBundleText,
+    input.dockerfileText,
+    input.baseImageArchiveSha256
+  );
   const caddyfileText = normalize(input.caddyfileText);
   const envKeys = parseEnvKeys(input.envExampleText);
   const existingFiles =
@@ -200,6 +211,7 @@ export function evaluateSelfHostedConfig(input: SelfHostedConfigInput): SelfHost
       missingComposeTokens.length === 0 &&
       missingDockerfileTokens.length === 0 &&
       missingDockerignoreTokens.length === 0 &&
+      baseImageBundleIssues.length === 0 &&
       missingEnvKeys.length === 0 &&
       missingProxyTokens.length === 0 &&
       missingFiles.length === 0
@@ -210,6 +222,7 @@ export function evaluateSelfHostedConfig(input: SelfHostedConfigInput): SelfHost
     missingComposeTokens,
     missingDockerfileTokens,
     missingDockerignoreTokens,
+    baseImageBundleIssues,
     missingEnvKeys,
     missingProxyTokens,
     missingFiles
@@ -221,6 +234,8 @@ export function runSelfHostedConfigCheck() {
     compose: "ops/self-hosted/compose.yaml",
     dockerfile: "ops/self-hosted/Dockerfile",
     dockerignore: ".dockerignore",
+    baseImageBundle: "ops/self-hosted/images/base-image-bundle.env",
+    baseImageArchive: "ops/self-hosted/images/node-22.21.1-alpine-amd64.tar",
     envExample: "ops/self-hosted/.env.example",
     caddyfile: "ops/self-hosted/Caddyfile.example",
     packageJson: "package.json"
@@ -238,6 +253,10 @@ export function runSelfHostedConfigCheck() {
     composeText: readFileSync(paths.compose, "utf8"),
     dockerfileText: readFileSync(paths.dockerfile, "utf8"),
     dockerignoreText: readFileSync(paths.dockerignore, "utf8"),
+    baseImageBundleText: readFileSync(paths.baseImageBundle, "utf8"),
+    baseImageArchiveSha256: createHash("sha256")
+      .update(readFileSync(paths.baseImageArchive))
+      .digest("hex"),
     envExampleText: readFileSync(paths.envExample, "utf8"),
     caddyfileText: readFileSync(paths.caddyfile, "utf8")
   });
@@ -270,6 +289,75 @@ function parseEnvKeys(text: string) {
   }
 
   return keys;
+}
+
+function evaluateBaseImageBundle(bundleText: string, dockerfileText: string, actualArchiveSha256?: string) {
+  const requiredKeys = [
+    "WISEEFF_BASE_IMAGE_REF",
+    "WISEEFF_BASE_IMAGE_ARCHIVE",
+    "WISEEFF_BASE_IMAGE_ARCHIVE_REF",
+    "WISEEFF_BASE_IMAGE_PLATFORM",
+    "WISEEFF_BASE_IMAGE_ID",
+    "WISEEFF_BASE_IMAGE_ARCHIVE_SHA256"
+  ] as const;
+  const values = new Map<string, string>();
+  const issues: string[] = [];
+
+  for (const rawLine of bundleText.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) {
+      continue;
+    }
+    const separator = line.indexOf("=");
+    if (separator < 1) {
+      issues.push(`invalid-line:${line}`);
+      continue;
+    }
+    const key = line.slice(0, separator);
+    const value = line.slice(separator + 1);
+    if (!requiredKeys.includes(key as (typeof requiredKeys)[number])) {
+      issues.push(`unknown-key:${key}`);
+      continue;
+    }
+    if (values.has(key)) {
+      issues.push(`duplicate-key:${key}`);
+      continue;
+    }
+    values.set(key, value);
+  }
+
+  for (const key of requiredKeys) {
+    if (!values.get(key)) {
+      issues.push(`missing-key:${key}`);
+    }
+  }
+
+  const ref = values.get("WISEEFF_BASE_IMAGE_REF") ?? "";
+  const archive = values.get("WISEEFF_BASE_IMAGE_ARCHIVE") ?? "";
+  const archiveRef = values.get("WISEEFF_BASE_IMAGE_ARCHIVE_REF") ?? "";
+  const platform = values.get("WISEEFF_BASE_IMAGE_PLATFORM") ?? "";
+  const imageId = values.get("WISEEFF_BASE_IMAGE_ID") ?? "";
+  const archiveSha256 = values.get("WISEEFF_BASE_IMAGE_ARCHIVE_SHA256") ?? "";
+
+  if (ref && !/^[A-Za-z0-9._:/@+-]+$/.test(ref)) issues.push("invalid-ref");
+  if (archiveRef && !/^[A-Za-z0-9._:/@+-]+$/.test(archiveRef)) issues.push("invalid-archive-ref");
+  if (archive && !/^[A-Za-z0-9._-]+\.tar$/.test(archive)) issues.push("invalid-archive");
+  if (platform && !/^linux\/(amd64|arm64)$/.test(platform)) issues.push("invalid-platform");
+  if (imageId && !/^sha256:[a-f0-9]{64}$/.test(imageId)) issues.push("invalid-image-id");
+  if (archiveSha256 && !/^[a-f0-9]{64}$/.test(archiveSha256)) issues.push("invalid-archive-sha256");
+  if (actualArchiveSha256 && archiveSha256 && actualArchiveSha256 !== archiveSha256) {
+    issues.push("archive-checksum-mismatch");
+  }
+  if (ref) {
+    const fromRefs = dockerfileText
+      .split(/\r?\n/)
+      .map((line) => line.trim().split(/\s+/))
+      .filter((parts) => parts[0] === "FROM")
+      .map((parts) => parts[1]);
+    if (!fromRefs.includes(ref)) issues.push("dockerfile-ref-mismatch");
+  }
+
+  return issues;
 }
 
 function hasComposeService(normalizedComposeText: string, service: string) {

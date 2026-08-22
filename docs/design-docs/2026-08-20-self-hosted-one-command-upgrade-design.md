@@ -231,6 +231,7 @@ The journal permits only declared forward transitions. `resume` checks observabl
 6. Check Docker/Compose versions, disk and inode headroom, backup-root permissions, clock, and public URL.
 7. Fetch and resolve the requested ref to one commit. Compare migration files between previous and target commits.
 8. Verify the target upgrade protocol and render `compose config` without exposing resolved secrets.
+9. Read the target commit's base-image contract as data; verify its archive blob SHA-256, Dockerfile `FROM` reference, expected image identity, and Docker server platform. `plan` may inspect images but never loads or tags them.
 
 Disk preflight includes candidate image headroom plus at least the estimated PostgreSQL, object-store, and Redis backup size with a safety factor. Unknown size or insufficient space fails closed.
 
@@ -238,13 +239,16 @@ Disk preflight includes candidate image headroom plus at least the estimated Pos
 
 1. Tag each current application image with the run-specific previous tag.
 2. Check out the resolved target commit in detached-head deployment mode.
-3. Build one commit-addressed application image used by API, worker, and web.
-4. Stream redacted plain-progress output into the run journal; if npm fails, export its sanitized in-stage debug log before the stage disappears.
-5. Write a classified summary and expose the diagnostic paths through `status`.
-6. Run image-level self-hosted configuration/build checks.
-7. If any step fails, restore the previous checkout and exit; the old containers have not stopped.
+3. Revalidate the checked-out base-image archive. If the exact pinned image is absent, load the tar, verify archive tag identity/platform, and tag it with the exact Dockerfile reference. Never pull a substitute, disable TLS, delete an image, or prune state.
+4. Build one commit-addressed application image used by API, worker, and web.
+5. Stream redacted plain-progress output into the run journal; if npm fails, export its sanitized in-stage debug log before the stage disappears.
+6. Write a classified summary and expose build and base-image evidence through `status`.
+7. Run image-level self-hosted configuration/build checks.
+8. If any step fails, restore the previous checkout and exit; the old containers have not stopped.
 
 The Compose file gains an explicit application image repository/tag variable so rollback does not depend on a mutable default Compose tag or on rebuilding old source during an incident.
+
+The bundle contract pins archive filename/hash, archive tag, Dockerfile tag, image ID, and platform. It is parsed as data rather than sourced as shell. The current repository bundle covers only the Dockerfile's Node base image on `linux/amd64`; package-manager and source downloads remain separate network/trust boundaries.
 
 ### 3. Quiesce writes
 

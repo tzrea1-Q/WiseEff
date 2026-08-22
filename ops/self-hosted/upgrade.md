@@ -18,6 +18,10 @@ Do not source `.env` or a user shell profile to pass proxy settings; the entry p
 
 Git, Docker Engine, and application build downloads are separate network scopes. The script can preserve or override Git proxy settings, but it deliberately does not rewrite a host's Docker daemon proxy or corporate trust store. If `git fetch` works while an image pull fails, configure the Docker service proxy. If TLS inspection produces an unknown/self-signed-chain error, install the organization-approved CA for Git/curl/Docker instead of globally disabling certificate verification.
 
+The Dockerfile base image is a special case: the repository carries a checksum-pinned `linux/amd64` bundle under `ops/self-hosted/images/`. `plan` verifies the target commit's bundle contract, archive checksum, Dockerfile reference, and Docker server platform without loading or tagging an image. It reports either `verified local image` or `verified bundle; apply will load and tag it`. During `apply`, after selecting the immutable target and before Compose build, the controller rechecks the checkout archive, loads it when the exact pinned image is absent, verifies its image ID/platform, and creates the exact tag used by `FROM`. The run journal records `base_image_ref`, `base_image_id`, `base_image_platform`, `base_image_source`, and `base_image_status`.
+
+This removes the Docker Hub dependency for `node:22.21.1-alpine`; it does not make the whole build air-gapped. Alpine packages, the pinned DTC Git source, Python packages, and npm packages still need their configured network/mirror path unless separately bundled. The controller never disables TLS, deletes images, or prunes Docker state.
+
 ## One-time host preparation
 
 Normalize a host that was initialized or operated through root before running the first upgrade:
@@ -47,6 +51,8 @@ cd ops/self-hosted
 
 Review the current and target SHA, changed migrations, Compose project, volume identities, backup root, and free-space gate. The first adoption must be rehearsed on a non-customer host with a disposable recovery point.
 
+An older controller cannot execute behavior that exists only in its target commit. If the currently installed controller predates automatic base-image preparation and is already blocked at Docker metadata resolution, use the manual `docker load`/`docker tag` fallback in [Self-Hosted Base Images](images/README.md) once to install this release. Upgrades started from this release onward use the integrated path.
+
 ## Normal upgrade
 
 Run interactively from the existing checkout. The default ref is `WISEEFF_UPGRADE_REF` or `origin/main`; release tags or SHAs are preferred for controlled deployment:
@@ -75,7 +81,7 @@ Every mutating phase is written atomically. Keep the printed `run_id` and inspec
 ./scripts/upgrade.sh status --run-id <run-id> --json
 ```
 
-Candidate builds always use plain BuildKit progress and stream a redacted copy to the run journal. If Docker or `npm ci` fails, `apply` exits with code `20` before traffic is stopped, restores the previous checkout, and prints three deployment-user-readable paths:
+Candidate builds always use plain BuildKit progress and stream a redacted copy to the run journal. If bundled base-image preparation, Docker, or `npm ci` fails, `apply` exits with code `20` before traffic is stopped, restores the previous checkout, and prints three deployment-user-readable paths:
 
 - `diagnostics_dir`: private mode-`0700` directory under the run journal;
 - `build_summary`: mode-`0600` classified cause and next step;
@@ -89,7 +95,7 @@ cat ops/self-hosted/.state/upgrades/<run-id>/diagnostics/summary.txt
 less ops/self-hosted/.state/upgrades/<run-id>/diagnostics/build.log
 ```
 
-Common failures are classified as dependency-lock mismatch, corporate CA, DNS, network/proxy, registry integrity/package availability, host capacity, or probable OOM. Unknown failures remain `unclassified` with the full log retained. Correct the reported cause and rerun `apply`; no manual copy from `/root/.npm` and no `resume` are needed for a pre-downtime build failure.
+Base-image contract/archive/platform failures use the `base-image` category. Other common failures are classified as dependency-lock mismatch, corporate CA, DNS, network/proxy, registry integrity/package availability, host capacity, or probable OOM. Unknown failures remain `unclassified` with the full log retained. Correct the reported cause and rerun `apply`; no manual copy from `/root/.npm` and no `resume` are needed for a pre-downtime build failure.
 
 Before migration starts, a quiescence or backup failure brings the previous stack back and records `old-stack-restored` or `failed-safe`. A failure after candidate API startup records `recovery-required`, leaves the proxy stopped, and keeps queues paused. Do not edit the journal or manually resume traffic.
 

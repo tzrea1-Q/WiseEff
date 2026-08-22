@@ -244,6 +244,8 @@ sudo ./scripts/upgrade.sh prepare-host --yes
 ./scripts/upgrade.sh apply
 ```
 
+`plan` 还会只读校验目标 commit 中固定校验和的 `linux/amd64` Dockerfile 基础镜像包。输出中的 `base image` 会说明本地是否已有完全一致的镜像，或 `apply` 将自动 load/tag 已验证的仓库 tar。安装本控制器版本后不再需要手工执行 `docker load`；准备动作发生在 Compose build 和停流量之前。运行的文本/JSON status 会记录精确镜像身份及来源 `local` 或 `bundled-archive`。
+
 固定受控 release 或 commit：
 
 ```bash
@@ -368,6 +370,8 @@ npm run selfhost:release-gate -- \
 | `Docker daemon is unavailable to the deployment user` | 缺少 Docker group/socket 权限，或当前登录会话未刷新 | 执行 `sudo ./scripts/upgrade.sh prepare-host --yes`，重新登录，再无 `sudo` 重试 |
 | 备份根目录不可写 | 宿主机准备或目录 ownership 未完成 | 执行 `prepare-host`；不要用 root 运行普通升级动作 |
 | `Another WiseEff setup or upgrade operation holds the host lock` | 存在真实或陈旧的共享操作锁 | 执行 `lock-status`；held 时等待，仅 stale 时使用 `unlock` |
+| `category=base-image`，或离线包校验和/平台报错 | 目标契约、tar、Dockerfile 标签或宿主机架构不一致 | 不要随意 pull 或 retag 其他镜像；恢复仓库固定离线包/契约，或换用匹配的受支持宿主机，再重跑 `plan` |
+| Docker 仍尝试获取 `node:22.21.1-alpine` metadata | 当前已安装控制器早于自动准备离线包版本，或精确固定标签尚未准备 | 按基础镜像文档的手工 fallback 做一次接入；后续 `apply` 会自动准备 |
 | checkout dirty 拒绝 | 已跟踪或未忽略文件偏离部署 commit | 检查 `git status --short`，保留操作员文件并有意处理差异 |
 | 用户直接运行 Git 成功，但升级 Git fetch 超时 | 可能错误使用 `sudo`、代理环境缺失或 Git 配置不同 | 由部署用户执行；检查代理；必要时用 `--git-proxy` 只覆盖 Git |
 | Git 成功，但镜像拉取或构建失败 | Docker daemon/build 使用独立的代理或 CA 边界 | 配置 Docker 服务代理和组织批准的 CA；禁止全局关闭 TLS |
