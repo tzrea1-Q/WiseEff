@@ -44,6 +44,7 @@
 - **TD-119（组织管理 / 邀请）：** 邀请链接与邮箱验证不在组织管理 v1（ADR-0037 D4）。目标环境入职仍是 OIDC JIT + Admin 开账号。有邮箱或令牌通道后再设计邀请；不要重开「部门即租户」。**负责人：Identity。**
 - **TD-120（组织管理 / 平台目录）：** 平台组织目录（创建 / 归档 / 切换）不在 v1（ADR-0037 D3）。多余 `organizations` 行仍是 bootstrap 或夹具；`platform-admin` 仍不能列出其它租户用户。仅当一次部署要把多家客户 Organization 做成产品时再开。**负责人：Platform。**
 - **TD-121（组织管理 / 项目成员）：** `ProjectMember` 与 `user_role_bindings.project_id` 预留未交付（ADR-0037 D5）。组织内成员仍看见全部项目。若需要项目 ACL，另做产品，不要折进 `/organization`。**负责人：Identity / Parameters。**
+- **TD-122（验收基线完整性）：** Wave 3 诊断发现两条非绿整库基线。Darwin visual 使用任务专属 isolated DB，9/20 通过，另有 4 个 stale + 7 个 missing snapshot。full local non-HDC browser 使用既有共享验收库，且 worktree 含测试生成变化；结果为 109 passed、29 个 planned skip、18 个失败，涉及 toolchain、permission、knowledge、小泽及其它共享状态夹具，没有可发布 full evidence manifest，因此不是 fresh-DB 复现证据。29 个诊断失败全部由本行承接，不藏进四条范围明确的 Wave 3 关闭项。**负责人：QA / Frontend / Platform。** 按 `docs/zh-CN/exec-plans/active/2026-08-22-acceptance-baseline-integrity.md` 从 clean merged-main worktree + fresh isolated DB 复现并保存逐用例清单；snapshot 必须 review 后更新；只有 0 个非计划失败且 full evidence manifest 合法时才关闭。
 
 
 ## 近期关闭项
