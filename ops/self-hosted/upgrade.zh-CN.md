@@ -16,11 +16,32 @@ Git 获取目标版本时会继承当前命令行的代理环境，并把大写�
 
 不要用 `source .env` 或 source 用户 shell profile 的方式传递代理；升级入口不会执行任意 shell 配置。`--git-proxy` 只适用于 HTTP(S)/SOCKS Git remote，SSH remote 请配置 `GIT_SSH_COMMAND` 或 `core.sshCommand`。
 
-Git、Docker Engine 与应用构建下载属于不同网络边界。脚本可以保留或覆盖 Git 代理，但不会擅自改写宿主机 Docker daemon 代理或企业信任库。若 `git fetch` 成功而镜像拉取失败，应配置 Docker 服务代理；若 TLS 检查报告未知或自签名证书链，应安装组织批准的 CA 到 Git/curl/Docker 信任链，不要全局关闭证书校验。
+Git、Docker Engine 与应用构建下载属于不同网络边界。脚本可以保留或覆盖 Git 代理，也会把受管构建代理、内部 npm 源和组织批准的 CA 传给 BuildKit，但不会擅自改写宿主机 Docker daemon 代理或信任库。若 `git fetch` 成功，而镜像 metadata 或镜像拉取失败，仍需单独配置 Docker 服务代理。
+
+## 受限网络构建配置
+
+企业服务器必须通过代理访问外部 package/source endpoint 时，先由部署用户一次性创建私有构建网络配置：
+
+```bash
+cd /srv/wiseeff/ops/self-hosted
+./scripts/build-network.sh init
+# 编辑 .build-network.env
+./scripts/build-network.sh status
+./scripts/upgrade.sh plan
+./scripts/upgrade.sh apply
+```
+
+该文件只接受文档列出的大小写代理变量、`WISEEFF_NPM_REGISTRY`、`WISEEFF_BUILD_CA_CERT_FILE` 和 `WISEEFF_RUNTIME_PROXY`；脚本只按数据解析，绝不会 source。文件必须是非符号链接普通文件，且只能由 owner 读写（权限 `0600`）。不创建该文件时，现有 shell 代理环境仍然生效。同名非空 shell 值优先；大小写代理值冲突会在修改 Docker 或 Git 前直接拒绝。
+
+`WISEEFF_NPM_REGISTRY` 会在 `npm ci` 时替换已提交 lockfile 内的 registry host。当前入口只支持可通过已配置代理访问、且 URL 本身不含凭据的 registry；脚本会拒绝内嵌账号密码，暂不暴露 npm token 配置。`WISEEFF_BUILD_CA_CERT_FILE` 可用绝对路径或相对 `.build-network.env` 的路径，必须指向组织批准且可读的 PEM。BuildKit 以 secret mount 把 PEM 安装到每个构建 stage，不会把私有配置或代理凭据复制进镜像层；TLS 校验始终开启。
+
+`WISEEFF_RUNTIME_PROXY` 默认 `false`。只有 API/worker 运行时访问也必须走代理时才设为 `true`；控制器会把 Compose 服务名加入 `NO_PROXY`。此时代理凭据会成为 Docker 管理员可见的容器环境数据，应使用专用、最小权限的部署凭据。数据库、Redis、对象存储、web 和 proxy 容器不会接收运行时代理映射。
+
+`plan`、`status` 和 `status --json` 只显示代理/CA 是否已配置、npm registry 主机名与运行时代理开关，绝不打印或持久化代理 URL/凭据。真实配置被 Git 忽略，真实配置与示例契约都被排除在 Docker build context 外。
 
 Dockerfile 基础镜像是一个特例：仓库在 `ops/self-hosted/images/` 中携带了固定校验和的 `linux/amd64` 离线包。`plan` 会只读校验目标 commit 中的离线包契约、tar 校验和、Dockerfile 引用和 Docker server 平台，并输出 `verified local image` 或 `verified bundle; apply will load and tag it`。`apply` 选择不可变目标后、Compose build 前，会再次校验 checkout 中的 tar；若本地没有完全一致的固定镜像，则自动 load，校验 image ID/平台，再创建 `FROM` 使用的精确标签。运行 journal 会记录 `base_image_ref`、`base_image_id`、`base_image_platform`、`base_image_source` 和 `base_image_status`。
 
-这只消除了 `node:22.21.1-alpine` 对 Docker Hub 的依赖，并不代表整个构建已经离线化。Alpine 软件包、固定版本 DTC Git 源、Python 包和 npm 包仍需要各自配置的网络或镜像源，除非另行打包。控制器不会关闭 TLS、删除镜像或清理 Docker 状态。
+这只消除了 `node:22.21.1-alpine` 对 Docker Hub 的依赖，并不代表整个构建已经离线化。Alpine 软件包、固定版本 DTC Git 源、Python 包和 npm 包仍需要受管代理/镜像路径，除非另行打包。其他服务镜像拉取仍属于 Docker daemon 网络边界。控制器不会关闭 TLS、删除镜像或清理 Docker 状态。
 
 ## 一次性宿主机准备
 

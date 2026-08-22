@@ -8,7 +8,7 @@ It is a **lab/demo** path. It does not replace the DNS + Let's Encrypt profile i
 
 ## Preconditions
 
-- Docker Engine 20.10+ and Compose v2 or standalone `docker-compose` 1.28+.
+- Docker Engine 20.10+ and Docker Compose v2. Build secrets are part of the self-hosted build contract.
 - Ports `80` (and `443` if you choose `--tls-mode internal`) reachable by the browsers you will use.
 - About 4 GB RAM for the first image build. The stack can run tighter after images exist, but a 1–2 GB host often OOMs during `vite build`.
 - A git checkout of this repository on the server. Node.js is **not** required on the host.

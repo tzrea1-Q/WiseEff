@@ -8,8 +8,8 @@ This runbook covers the M6.1 self-hosted Linux baseline plus the M6.4 durable qu
 
 ## Preconditions
 
-- A Linux server or VM. The baseline expectation is Ubuntu 22.04/24.04 LTS, Debian 12, Rocky Linux 9, or another distribution that can run a supported Docker Engine release. Older hosts such as Ubuntu 18.04 may still work with the standalone `docker-compose` binary through `./scripts/compose`.
-- Docker Engine **20.10+** and a Compose CLI usable by the operator account. Use `./scripts/compose` in this directory; it accepts `docker compose` or standalone `docker-compose` **1.28+** and rejects older versions.
+- A Linux server or VM. The baseline expectation is Ubuntu 22.04/24.04 LTS, Debian 12, Rocky Linux 9, or another distribution that can run a supported Docker Engine release.
+- Docker Engine **20.10+** and Docker Compose **v2** usable by the operator account. Use `./scripts/compose` in this directory; the self-hosted wrapper rejects standalone Compose v1 before mutation because the build contract uses BuildKit secrets.
 
 ```bash
 docker version
@@ -41,6 +41,8 @@ For a basic Ubuntu host with an IP and no domain, do not copy `.env.example` and
 ```
 
 Non-interactive IP lab: `./scripts/setup.sh --non-interactive --ip <server-ip>`. `deploy-ip-lab.sh` remains a compatibility wrapper.
+
+If the server reaches external build dependencies only through an enterprise proxy, run `./scripts/build-network.sh init`, edit the resulting mode-`0600` `.build-network.env`, and verify it with `./scripts/build-network.sh status` before setup. The same contract is consumed automatically by upgrades. Full security and Docker-daemon boundaries are documented in [Self-Hosted Upgrade](../../ops/self-hosted/upgrade.md#restricted-network-build-configuration).
 
 That command writes `.env`, starts the stack, seeds ChargeLab demo data, and creates a local admin in `org-chargelab`. Full flags, TLS-internal mode, and split commands are in [ops/self-hosted/ip-lab.md](../../ops/self-hosted/ip-lab.md). The DNS/ACME path below stays the M6 staging/pilot profile.
 

@@ -4,7 +4,7 @@
 
 **目标：** 交付一条面向生产思维的单机升级入口：解析唯一 Git commit、提前构建、停止写入、验证完整恢复点、在不删除 volume 的情况下重建所有 Compose 服务、沿用 API 启动迁移、验证结果，并支持持久化继续与恢复。
 
-**状态：** 核心实现和宿主机兼容加固均已进入 `main`。当前后续把持久化、脱敏的候选构建诊断集成进 `apply` 与 `status`。声称发布就绪前仍需完成一次干净的前向升级和恢复演练证据。
+**状态：** 核心实现、宿主机兼容加固、持久构建诊断和 Node 基础镜像离线包准备均已进入 `main`。受限网络后续已经实现并通过本地验证，包括一次完整 `linux/amd64` BuildKit 镜像构建：setup/upgrade 会把代理传入 BuildKit，支持组织批准的企业 CA 与 npm registry，并且只输出脱敏网络状态。声称发布就绪前仍需完成一次干净的前向升级和恢复演练证据。
 
 **设计：** [自托管一键升级设计](../../design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 
@@ -31,6 +31,7 @@
 - 父代理/会话 owner 评审分支，执行或抽查门禁，批准后开 PR、合并，再运行 `git pull origin main`。
 - 原则上一份计划一个实现分支；只有目标环境证据确需后续时才建 evidence-only 分支。
 - 目标演练兼容性加固使用从当前 `main` 创建的 `fix/self-hosted-upgrade-host-compat`；父代理/会话 owner 在本地门禁与 CI merge bar 通过后开 PR 并合入。
+- 受限网络加固使用 `codex/selfhost-restricted-network-build`；会话 owner 在本地门禁通过后开 PR，并且只在全部 required CI check 通过后合入。
 
 ## 前置条件
 
@@ -316,6 +317,43 @@ git diff --check
 ```
 
 **预期结果：** 安装本控制器版本后，标准 `plan`/`apply` 会在候选构建前确定性地从仓库离线包准备固定 Node 基础镜像；任何准备失败都保持旧栈在线。由于旧控制器无法执行只存在于目标 commit 的行为，安装该新控制器的那一次仍可能需要文档中的手工 load/tag 首次接入 fallback。
+
+## 阶段 10 — 受限企业构建网络
+
+Node 离线包只消除了一个 Docker Hub 依赖；Dockerfile 仍需解析 Alpine 软件包、固定 DTC Git 源、Python 包和 npm 包。宿主机 Git 代理成功不代表 BuildKit 的 `RUN` 指令拿到了代理；若企业代理会做 TLS 检查，还必须把组织批准的 CA 放进每个需要联网的构建阶段。
+
+**文件：**
+
+- 在 `ops/self-hosted/scripts/` 下增加一个小型构建网络模块和操作员入口。
+- 增加独立于运行时 `.env` 的、权限为 `0600` 的构建网络示例/配置契约。
+- 更新 `compose.yaml`、`Dockerfile`、npm 诊断、setup/upgrade 入口和聚焦的脚本/配置测试。
+- 在新操作员契约涉及的范围内更新升级、setup、运维、设计、可靠性和环境变量中英文文档。
+
+**任务：**
+
+- [x] 只按 allowlist 把配置文件解析为数据；绝不 source，也不打印代理凭据。
+- [x] 保留标准代理变量的大小写形式，拒绝相互冲突的值，并把它们作为 Docker 预定义代理构建参数传给 setup 与 upgrade 构建。
+- [x] 支持可选内部 npm registry，并使用 `replace-registry-host=always`，避免 lockfile 中已提交的非默认绝对 tar 地址绕过配置 registry。
+- [x] 关闭部署构建专用的 npm audit、fund 和 update-notifier 请求，不改变 CI 安全门禁。
+- [x] 通过 BuildKit secret 挂载可选的组织批准 CA，在每个联网构建阶段安装它，绝不关闭 TLS 校验。
+- [x] 让 `upgrade.sh plan`、setup preflight 和专用只读状态入口只报告代理/registry/CA/运行时代理状态，不暴露值。
+- [x] 仅在操作员显式启用时，才把已批准代理与镜像内 CA 传给 API/worker 运行时容器。
+- [x] 保持候选构建失败发生在停机前，保留当前脱敏诊断 journal，并让网络/CA 摘要指向持久构建网络契约。
+- [x] 通过公开 seam 覆盖仅 shell 代理、配置文件代理、变量冲突、不安全权限、CA 校验、npm registry 替换、setup/upgrade 接线和凭据脱敏。
+- [x] 让固定 Alpine DTC 构建自包含（`yaml-dev`、runtime `yaml`、library path），并从同一固定 DTC commit 构建 Python `libfdt`，不再解析不兼容的旧 PyPI 源码包。
+
+**验证：**
+
+```bash
+npm run test:scripts -- ops/self-hosted/scripts/build-network.sh.test.ts ops/self-hosted/scripts/npm-ci-with-diagnostics.test.ts ops/self-hosted/scripts/upgrade.sh.test.ts ops/self-hosted/scripts/setup.sh.test.ts ops/self-hosted/scripts/check-self-hosted-config.test.ts
+npm run selfhost:check
+npm run docs:check
+npm run build
+docker buildx build --platform linux/amd64 --load --tag wiseeff-build-network-verify:amd64 --secret id=wiseeff-corporate-ca,src=ops/self-hosted/build-network/empty-ca.pem -f ops/self-hosted/Dockerfile .
+git diff --check
+```
+
+**预期结果：** 部署用户可以持久化一个私有构建网络文件，也可以直接使用当前 shell 代理，然后继续运行不变的一键 setup/upgrade 接口。Git、BuildKit 包下载、可选内部 npm registry 替换和已批准 CA 信任都可确定性诊断，且不泄露凭据、不修改 Docker daemon 状态。
 
 ## 推广与兼容
 

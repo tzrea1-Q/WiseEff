@@ -4,8 +4,29 @@ x-wiseeff-build: &wiseeff-build
   args:
     VITE_WISEEFF_RUNTIME_MODE: api
     VITE_WISEEFF_API_BASE_URL: ${VITE_WISEEFF_API_BASE_URL:?set VITE_WISEEFF_API_BASE_URL in ops/self-hosted/.env}
+    HTTP_PROXY:
+    HTTPS_PROXY:
+    ALL_PROXY:
+    NO_PROXY:
+    http_proxy:
+    https_proxy:
+    all_proxy:
+    no_proxy:
+    WISEEFF_NPM_REGISTRY:
+  secrets:
+    - wiseeff-corporate-ca
 
 x-wiseeff-image: &wiseeff-image "${WISEEFF_APP_IMAGE:-wiseeff-app}:${WISEEFF_APP_TAG:-local}"
+
+x-wiseeff-runtime-proxy: &wiseeff-runtime-proxy
+  HTTP_PROXY: ${WISEEFF_RUNTIME_HTTP_PROXY:-}
+  HTTPS_PROXY: ${WISEEFF_RUNTIME_HTTPS_PROXY:-}
+  ALL_PROXY: ${WISEEFF_RUNTIME_ALL_PROXY:-}
+  NO_PROXY: ${WISEEFF_RUNTIME_NO_PROXY:-}
+  http_proxy: ${WISEEFF_RUNTIME_HTTP_PROXY:-}
+  https_proxy: ${WISEEFF_RUNTIME_HTTPS_PROXY:-}
+  all_proxy: ${WISEEFF_RUNTIME_ALL_PROXY:-}
+  no_proxy: ${WISEEFF_RUNTIME_NO_PROXY:-}
 
 services:
   postgres:
@@ -82,6 +103,7 @@ services:
     memswap_limit: 768m
     env_file: ${WISEEFF_ENV_FILE:-.env}
     environment:
+      <<: *wiseeff-runtime-proxy
       HOST: 0.0.0.0
       PORT: 8787
       LOG_WORKER_ENABLED: "false"
@@ -111,6 +133,7 @@ services:
     memswap_limit: 576m
     env_file: ${WISEEFF_ENV_FILE:-.env}
     environment:
+      <<: *wiseeff-runtime-proxy
       LOG_WORKER_ENABLED: "true"
       LOG_WORKER_OBSERVABILITY_HOST: 0.0.0.0
       LOG_WORKER_OBSERVABILITY_PORT: 8788
@@ -285,3 +308,7 @@ volumes:
   wiseeff-prometheus-data:
   wiseeff-alertmanager-data:
   wiseeff-grafana-data:
+
+secrets:
+  wiseeff-corporate-ca:
+    file: ${WISEEFF_BUILD_CA_CERT_FILE:-./build-network/empty-ca.pem}

@@ -7,7 +7,7 @@ WISEEFF_MIN_COMPOSE_V1_PATCH=0
 wiseeff_parse_compose_version() {
   local output="$1"
   local version_line
-  version_line="$(printf '%s\n' "$output" | sed -n 's/.*[^0-9]\([0-9]\+\)\.\([0-9]\+\)\.\([0-9]\+\).*/\1 \2 \3/p' | head -1)"
+  version_line="$(printf '%s\n' "$output" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1 | tr '.' ' ')"
   if [ -z "$version_line" ]; then
     return 1
   fi
@@ -39,6 +39,10 @@ wiseeff_compose_version_ok() {
 }
 
 wiseeff_compose_requirement_message() {
+  if [ "${WISEEFF_COMPOSE_REQUIRE_V2:-false}" = "true" ]; then
+    printf 'Install Docker Compose v2; the self-hosted build uses BuildKit secrets.\n'
+    return 0
+  fi
   printf 'Install docker compose (v2 plugin) or docker-compose %s.%s.%s+.\n' \
     "$WISEEFF_MIN_COMPOSE_V1_MAJOR" \
     "$WISEEFF_MIN_COMPOSE_V1_MINOR" \
@@ -58,6 +62,11 @@ wiseeff_compose_exec() {
     version_parts="$(wiseeff_parse_compose_version "$version_output" || true)"
     if [ -n "$version_parts" ]; then
       read -r major minor patch <<< "$version_parts"
+      if [ "${WISEEFF_COMPOSE_REQUIRE_V2:-false}" = "true" ] && [ "$major" -lt 2 ]; then
+        echo "Docker Compose v2 is required for the self-hosted build." >&2
+        wiseeff_compose_requirement_message >&2
+        exit 1
+      fi
       if ! wiseeff_compose_version_ok "$major" "$minor" "$patch"; then
         echo "Docker Compose ${major}.${minor}.${patch} is too old." >&2
         wiseeff_compose_requirement_message >&2
@@ -77,6 +86,11 @@ wiseeff_compose_exec() {
       exit 1
     fi
     read -r major minor patch <<< "$version_parts"
+    if [ "${WISEEFF_COMPOSE_REQUIRE_V2:-false}" = "true" ] && [ "$major" -lt 2 ]; then
+      echo "Docker Compose v2 is required for the self-hosted build." >&2
+      wiseeff_compose_requirement_message >&2
+      exit 1
+    fi
     if ! wiseeff_compose_version_ok "$major" "$minor" "$patch"; then
       echo "docker-compose ${major}.${minor}.${patch} is too old." >&2
       wiseeff_compose_requirement_message >&2

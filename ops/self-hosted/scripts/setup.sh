@@ -7,8 +7,11 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 compose_dir="$(cd "${script_dir}/.." && pwd)"
 repo_root="$(cd "${compose_dir}/../.." && pwd)"
 env_file="${compose_dir}/.env"
+build_network_file="${WISEEFF_BUILD_NETWORK_FILE:-${compose_dir}/.build-network.env}"
 # shellcheck source=operation-lock.sh
 source "${script_dir}/operation-lock.sh"
+# shellcheck source=build-network-lib.sh
+source "${script_dir}/build-network-lib.sh"
 
 profile=""
 tls_mode=""
@@ -63,6 +66,7 @@ Actions:  init | preflight | up | provision | all   (default: all)
   --log-analysis-model NAME
   --log-analysis-api-key KEY
   --env-file PATH
+  --build-network-file PATH  Private proxy/registry/CA data file (defaults to .build-network.env)
   --force                    Overwrite an existing .env (rotates DB/object-store secrets)
   --skip-build --skip-up --skip-provision
   --non-interactive          Require flags; never prompt
@@ -724,8 +728,10 @@ run_preflight() {
     echo "Missing ${env_file}. Run: $0 --ip <address> init" >&2
     exit 1
   fi
+  wiseeff_build_network_prepare "${compose_dir}" "${build_network_file}"
   if has_tsx; then
     (cd "${repo_root}" && "${repo_root}/node_modules/.bin/tsx" ops/self-hosted/scripts/doctor-selfhost.ts -- --env-file "${env_file}")
+    wiseeff_build_network_print_status text
     return 0
   fi
   local site_host postgres_password database_url caddyfile
@@ -742,6 +748,7 @@ run_preflight() {
   esac
   [ -f "${compose_dir}/${caddyfile}" ] || { echo "Missing Caddyfile: ${compose_dir}/${caddyfile}" >&2; exit 1; }
   [ "$(env_value AUTH_PROVIDER)" = "local" ] || { echo "AUTH_PROVIDER must be local." >&2; exit 1; }
+  wiseeff_build_network_print_status text
   echo "Preflight passed for $(env_value WISEEFF_PUBLIC_URL)"
 }
 
@@ -805,6 +812,7 @@ while [ $# -gt 0 ]; do
     --log-analysis-model) log_analysis_model="${2:-}"; shift 2 ;;
     --log-analysis-api-key) log_analysis_api_key="${2:-}"; shift 2 ;;
     --env-file) env_file="${2:-}"; shift 2 ;;
+    --build-network-file) build_network_file="${2:-}"; shift 2 ;;
     --force) force="true"; shift ;;
     --skip-build) skip_build="true"; shift ;;
     --skip-up) skip_up="true"; shift ;;

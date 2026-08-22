@@ -211,6 +211,8 @@ Semantic retrieval for the knowledge base mirrors the OpenAI-compatible Xiaoze L
 
 M6.1 adds `ops/self-hosted/.env.example` for Linux deployments. M6.2 switches the target identity profile to OIDC. It keeps secrets blank and expects the operator to fill DNS/TLS, PostgreSQL password, OIDC issuer/audience, S3-compatible object storage, Xiaoze LLM settings, and smoke authorization values.
 
+Build transport is deliberately separate from runtime `.env`. Restricted-network hosts create the ignored, mode-`0600` `ops/self-hosted/.build-network.env` through `./scripts/build-network.sh init`. Its allowlist is `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY`/`NO_PROXY` (and lower-case pairs), `WISEEFF_NPM_REGISTRY`, `WISEEFF_BUILD_CA_CERT_FILE`, and `WISEEFF_RUNTIME_PROXY`. Setup and upgrade parse it as data; see the [restricted-network runbook](../../ops/self-hosted/upgrade.md#restricted-network-build-configuration). Do not add these secrets to `.env.example` or commit the private file.
+
 | Variable | Self-hosted value | Notes |
 | --- | --- | --- |
 | `HOST` | `0.0.0.0` | Required inside the API container so Caddy can proxy to it. |

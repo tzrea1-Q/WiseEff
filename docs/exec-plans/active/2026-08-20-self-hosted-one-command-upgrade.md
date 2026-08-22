@@ -4,7 +4,7 @@
 
 **Goal:** Deliver a production-minded single-host upgrade entry that resolves one immutable Git commit, prebuilds it, quiesces writes, verifies a complete recovery point, recreates every Compose service without deleting volumes, runs migrations in the existing API startup path, validates the result, and supports durable resume/recovery.
 
-**Status:** The core implementation and host-compatibility hardening are on `main`. The current follow-up integrates durable, redacted candidate-build diagnostics into `apply` and `status`. A clean forward upgrade and recovery rehearsal remain required target evidence before claiming release readiness.
+**Status:** The core implementation, host-compatibility hardening, durable build diagnostics, and bundled Node base-image preparation are on `main`. The restricted-network follow-up is implemented and locally verified, including a complete `linux/amd64` BuildKit image build: setup/upgrade carry proxy settings into BuildKit, support an approved corporate CA and npm registry, and report only redacted network state. A clean forward upgrade and recovery rehearsal remain required target evidence before claiming release readiness.
 
 **Design:** [Self-Hosted One-Command Upgrade Design](../../design-docs/2026-08-20-self-hosted-one-command-upgrade-design.md)
 
@@ -31,6 +31,7 @@
 - The parent/session owner reviews the branch, runs or spot-checks the required gates, opens the PR, merges after approval, and then runs `git pull origin main`.
 - Keep this as one implementation branch unless the target-environment rehearsal needs a follow-up evidence-only branch.
 - Target-rehearsal compatibility hardening uses `fix/self-hosted-upgrade-host-compat` from current `main`; the parent/session owner opens and merges its PR after the local gates and CI merge bar pass.
+- Restricted-network hardening uses `codex/selfhost-restricted-network-build`; the session owner opens its PR after local gates pass and merges only after every required CI check passes.
 
 ## Preconditions
 
@@ -344,6 +345,43 @@ git diff --check
 ```
 
 **Expected outcome:** after this controller release is installed, the standard `plan`/`apply` interface deterministically prepares the pinned Node base image from the repository bundle before candidate build, while preserving the old online stack on any preparation failure. The one release that installs this newer controller may still require the documented manual load/tag first-adoption fallback because an older running controller cannot execute target-only behavior.
+
+## Phase 10 — Restricted Enterprise Build Network
+
+The bundled Node image removes one Docker Hub dependency, but the Dockerfile still resolves Alpine packages, the pinned DTC Git source, Python packages, and npm packages. Host Git proxy success is not evidence that BuildKit `RUN` instructions received a proxy, and a TLS-inspecting enterprise proxy also requires the organization-approved CA inside every networked build stage.
+
+**Files:**
+
+- Add a small build-network module and operator entry under `ops/self-hosted/scripts/`.
+- Add a mode-`0600` build-network example/config contract outside the runtime `.env`.
+- Update `compose.yaml`, `Dockerfile`, npm diagnostics, setup/upgrade entries, and focused script/config tests.
+- Update the upgrade, setup, operations, design, reliability, and environment-variable bilingual documentation where the new operator contract applies.
+
+**Tasks:**
+
+- [x] Load only an allowlisted data format; never source the build-network file or print proxy credentials.
+- [x] Preserve standard upper/lower-case proxy variables, reject conflicting values, and pass them as Docker predefined proxy build arguments to setup and upgrade builds.
+- [x] Support an optional internal npm registry with `replace-registry-host=always`, so the committed non-default absolute tarball hosts do not bypass the configured registry.
+- [x] Disable deployment-only npm audit, fund, and update-notifier requests while leaving CI security gates unchanged.
+- [x] Mount an optional organization-approved CA through a BuildKit secret and install it into every networked build stage without disabling TLS verification.
+- [x] Make `upgrade.sh plan`, setup preflight, and a dedicated read-only status entry report proxy/registry/CA/runtime-proxy state without revealing values.
+- [x] Optionally propagate the approved proxy and baked CA to API/worker runtime containers only when the operator explicitly enables runtime proxying.
+- [x] Keep candidate build failure before downtime, preserve the current redacted diagnostic journal, and point network/CA summaries to the persistent build-network contract.
+- [x] Cover shell-only proxy settings, config-file settings, conflicting variables, unsafe permissions, CA validation, npm registry replacement, setup/upgrade wiring, and credential redaction through public seams.
+- [x] Make the pinned Alpine DTC build self-contained (`yaml-dev`, runtime `yaml`, library path) and build the Python `libfdt` binding from the same pinned DTC commit instead of resolving the incompatible legacy PyPI source package.
+
+**Verification:**
+
+```bash
+npm run test:scripts -- ops/self-hosted/scripts/build-network.sh.test.ts ops/self-hosted/scripts/npm-ci-with-diagnostics.test.ts ops/self-hosted/scripts/upgrade.sh.test.ts ops/self-hosted/scripts/setup.sh.test.ts ops/self-hosted/scripts/check-self-hosted-config.test.ts
+npm run selfhost:check
+npm run docs:check
+npm run build
+docker buildx build --platform linux/amd64 --load --tag wiseeff-build-network-verify:amd64 --secret id=wiseeff-corporate-ca,src=ops/self-hosted/build-network/empty-ca.pem -f ops/self-hosted/Dockerfile .
+git diff --check
+```
+
+**Expected outcome:** a deployment user can persist one private build-network file or use the current shell proxy, then run the unchanged one-command setup/upgrade interfaces. Git, BuildKit package downloads, optional internal npm registry replacement, and approved CA trust are deterministic and diagnosable without leaking credentials or editing Docker daemon state.
 
 ## Rollout And Compatibility
 

@@ -2,6 +2,17 @@
 # Run npm ci inside the image build and export otherwise-ephemeral npm diagnostics.
 set -u
 
+# Deployment builds use the lockfile as the integrity contract. Audit/fund
+# reporting remains a CI responsibility, and the update notifier must not add
+# an unrelated public-registry request on a restricted host.
+export npm_config_audit=false
+export npm_config_fund=false
+export npm_config_update_notifier=false
+if [ -n "${WISEEFF_NPM_REGISTRY:-}" ]; then
+  export npm_config_registry="$WISEEFF_NPM_REGISTRY"
+  export npm_config_replace_registry_host=always
+fi
+
 wiseeff_npm_redact() {
   sed \
     -e 's#\(https\{0,1\}://\)[^/@[:space:]][^/@[:space:]]*@#\1[REDACTED]@#g' \

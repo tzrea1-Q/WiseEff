@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -28,6 +28,7 @@ describe("upgrade.sh public interface", () => {
     expect(result.stdout).toContain("lock-status");
     expect(result.stdout).toContain("unlock");
     expect(result.stdout).toContain("--git-proxy");
+    expect(result.stdout).toContain("--build-network-file");
   });
 
   it("normalizes upper-case proxy variables for the non-interactive Git fetch", () => {
@@ -76,6 +77,46 @@ describe("upgrade.sh public interface", () => {
     expect(result.status).toBe(10);
     expect(result.stdout).toContain("env-failed");
     expect(result.stdout).not.toContain("should-not-run");
+  });
+
+  it("loads the private build-network contract before Compose preflight", () => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-build-network-"));
+    const config = join(directory, "build-network.env");
+    writeFileSync(config, "HTTPS_PROXY=http://operator:secret@proxy.example.com:8080\n", { mode: 0o644 });
+    chmodSync(config, 0o644);
+
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      upgrade_compose_dir="$PWD/ops/self-hosted"
+      upgrade_build_network_file="$WISEEFF_TEST_BUILD_NETWORK_CONFIG"
+      wiseeff_upgrade_reject_root_runtime() { return 0; }
+      wiseeff_upgrade_require_command() { return 0; }
+      wiseeff_upgrade_validate_env() { return 0; }
+      wiseeff_upgrade_validate_backup_root() { return 0; }
+      wiseeff_upgrade_validate_worktree() { return 0; }
+      wiseeff_upgrade_docker() { return 0; }
+      wiseeff_upgrade_compose_config() { printf 'compose-must-not-run\n'; return 0; }
+      if wiseeff_upgrade_preflight; then exit 0; else exit $?; fi
+    `], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        WISEEFF_TEST_BUILD_NETWORK_CONFIG: config,
+        HTTP_PROXY: "",
+        HTTPS_PROXY: "",
+        ALL_PROXY: "",
+        NO_PROXY: "",
+        http_proxy: "",
+        https_proxy: "",
+        all_proxy: "",
+        no_proxy: ""
+      }
+    });
+
+    expect(result.status).toBe(10);
+    expect(result.stderr).toContain("mode 644");
+    expect(result.stdout).not.toContain("compose-must-not-run");
+    expect(`${result.stdout}\n${result.stderr}`).not.toContain("operator:secret");
   });
 
   it("does not resolve a stale target after Git fetch fails", () => {
@@ -247,7 +288,15 @@ describe("upgrade.sh public interface", () => {
       "WISEEFF_BASE_IMAGE_ID=sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       `WISEEFF_BASE_IMAGE_ARCHIVE_SHA256=${archiveSha}`
     ].join("\n");
-    const mutationLog = join(mkdtempSync(join(tmpdir(), "wiseeff-upgrade-plan-base-")), "docker-mutations");
+    const planDirectory = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-plan-base-"));
+    const mutationLog = join(planDirectory, "docker-mutations");
+    const buildNetworkConfig = join(planDirectory, "build-network.env");
+    writeFileSync(
+      buildNetworkConfig,
+      "HTTPS_PROXY=http://operator:plan-secret@proxy.example.com:8080\nWISEEFF_NPM_REGISTRY=https://npm.example.com/repository/npm/\n",
+      { mode: 0o600 }
+    );
+    chmodSync(buildNetworkConfig, 0o600);
 
     const result = spawnSync("bash", ["-c", `
       source ops/self-hosted/scripts/upgrade-lib.sh
@@ -278,6 +327,7 @@ describe("upgrade.sh public interface", () => {
       upgrade_ref=origin/main
       upgrade_migrations=""
       upgrade_restart=false
+      wiseeff_build_network_prepare "$PWD/ops/self-hosted" "$WISEEFF_TEST_BUILD_NETWORK_CONFIG"
       wiseeff_upgrade_print_plan
     `], {
       encoding: "utf8",
@@ -285,7 +335,16 @@ describe("upgrade.sh public interface", () => {
         ...process.env,
         WISEEFF_TEST_CONTRACT: contract,
         WISEEFF_TEST_ARCHIVE: archive,
-        WISEEFF_TEST_MUTATION_LOG: mutationLog
+        WISEEFF_TEST_MUTATION_LOG: mutationLog,
+        WISEEFF_TEST_BUILD_NETWORK_CONFIG: buildNetworkConfig,
+        HTTP_PROXY: "",
+        HTTPS_PROXY: "",
+        ALL_PROXY: "",
+        NO_PROXY: "",
+        http_proxy: "",
+        https_proxy: "",
+        all_proxy: "",
+        no_proxy: ""
       }
     });
 
@@ -293,6 +352,10 @@ describe("upgrade.sh public interface", () => {
     expect(result.stdout).toContain("status=ready-bundled");
     expect(result.stdout).toContain('"source":"bundled-archive"');
     expect(result.stdout).toContain('"id":"sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"');
+    expect(result.stdout).toContain(
+      '"buildNetwork":{"proxy":"configured","npmRegistry":"npm.example.com","corporateCa":"not configured","runtimeProxy":false}'
+    );
+    expect(`${result.stdout}\n${result.stderr}`).not.toContain("plan-secret");
     expect(existsSync(mutationLog)).toBe(false);
   });
 
@@ -410,6 +473,27 @@ describe("upgrade.sh public interface", () => {
     expect(existsSync(join(runDir, "candidate_image_tag"))).toBe(false);
     expect(statSync(join(runDir, "diagnostics", "build.log")).mode & 0o777).toBe(0o600);
     expect(statSync(join(runDir, "diagnostics", "summary.txt")).mode & 0o777).toBe(0o600);
+  });
+
+  it("points restricted-network failures at the managed build-network entry", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-network-guidance-"));
+    const diagnosticsDir = join(runDir, "diagnostics");
+    mkdirSync(diagnosticsDir);
+    writeFileSync(join(diagnosticsDir, "build.log"), "npm error ETIMEDOUT registry.example.com\n");
+
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      upgrade_run_dir="$WISEEFF_TEST_RUN_DIR"
+      upgrade_build_log="$WISEEFF_TEST_RUN_DIR/diagnostics/build.log"
+      upgrade_build_summary="$WISEEFF_TEST_RUN_DIR/diagnostics/summary.txt"
+      wiseeff_upgrade_write_build_failure_summary 1
+    `], { encoding: "utf8", env: { ...process.env, WISEEFF_TEST_RUN_DIR: runDir } });
+
+    expect(result.status).toBe(0);
+    const summary = readFileSync(join(diagnosticsDir, "summary.txt"), "utf8");
+    expect(summary).toContain("category=network");
+    expect(summary).toContain("./scripts/build-network.sh status");
+    expect(summary).toContain("Docker daemon proxy");
   });
 
   it("preserves a target-checkout failure and does not start the build", () => {
@@ -775,6 +859,10 @@ describe("upgrade.sh public interface", () => {
     writeFileSync(join(runDir, "base_image_platform"), "linux/amd64\n");
     writeFileSync(join(runDir, "base_image_source"), "bundled-archive\n");
     writeFileSync(join(runDir, "base_image_status"), "ready\n");
+    writeFileSync(join(runDir, "build_proxy_status"), "configured\n");
+    writeFileSync(join(runDir, "npm_registry_host"), "npm.example.com\n");
+    writeFileSync(join(runDir, "corporate_ca_status"), "configured\n");
+    writeFileSync(join(runDir, "runtime_proxy_status"), "false\n");
     writeFileSync(join(runDir, "next_action"), "none\n");
     writeFileSync(join(runDir, "status"), "run_id=run-1\nphase=completed\noutcome=completed\n");
 
@@ -793,7 +881,13 @@ describe("upgrade.sh public interface", () => {
       baseImageId: "sha256:eeee",
       baseImagePlatform: "linux/amd64",
       baseImageSource: "bundled-archive",
-      baseImageStatus: "ready"
+      baseImageStatus: "ready",
+      buildNetwork: {
+        proxy: "configured",
+        npmRegistry: "npm.example.com",
+        corporateCa: "configured",
+        runtimeProxy: false
+      }
     });
     expect(result.stdout).not.toContain("POSTGRES_PASSWORD");
   });

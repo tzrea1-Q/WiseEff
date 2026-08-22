@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -86,5 +86,31 @@ exit 47
 
     expect(result.status).toBe(0);
     expect(result.stderr).toBe("");
+  });
+
+  it("routes every locked tarball through the configured registry and suppresses deployment-only requests", () => {
+    const root = mkdtempSync(join(tmpdir(), "wiseeff-npm-registry-"));
+    const binDir = join(root, "bin");
+    const trace = join(root, "npm-env");
+    mkdirSync(binDir);
+    writeFakeNpm(
+      binDir,
+      `printf '%s|%s|%s|%s|%s\n' "$npm_config_registry" "$npm_config_replace_registry_host" "$npm_config_audit" "$npm_config_fund" "$npm_config_update_notifier" > "$WISEEFF_TEST_TRACE"`
+    );
+
+    const result = spawnSync("sh", [script], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${binDir}:${process.env.PATH ?? ""}`,
+        WISEEFF_TEST_TRACE: trace,
+        WISEEFF_NPM_REGISTRY: "https://npm.example.com/repository/npm/"
+      }
+    });
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(trace, "utf8")).toBe(
+      "https://npm.example.com/repository/npm/|always|false|false|false\n"
+    );
   });
 });

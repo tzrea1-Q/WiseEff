@@ -16,11 +16,32 @@ Automation may set `WISEEFF_UPGRADE_GIT_PROXY` instead; the command-line option 
 
 Do not source `.env` or a user shell profile to pass proxy settings; the entry point deliberately does not execute arbitrary shell configuration. `--git-proxy` is for HTTP(S)/SOCKS Git remotes; configure `GIT_SSH_COMMAND` or `core.sshCommand` for SSH remotes.
 
-Git, Docker Engine, and application build downloads are separate network scopes. The script can preserve or override Git proxy settings, but it deliberately does not rewrite a host's Docker daemon proxy or corporate trust store. If `git fetch` works while an image pull fails, configure the Docker service proxy. If TLS inspection produces an unknown/self-signed-chain error, install the organization-approved CA for Git/curl/Docker instead of globally disabling certificate verification.
+Git, Docker Engine, and application build downloads are separate network scopes. The script can preserve or override Git proxy settings. It also passes the managed build proxy, internal npm registry, and organization-approved CA into BuildKit, but it deliberately does not rewrite the host's Docker daemon proxy or trust store. If `git fetch` works while image metadata or an image pull fails, configure the Docker service proxy separately.
+
+## Restricted-network build configuration
+
+For a host that reaches external package and source endpoints only through an enterprise proxy, create the private build-network file once:
+
+```bash
+cd /srv/wiseeff/ops/self-hosted
+./scripts/build-network.sh init
+# Edit .build-network.env as the deployment user.
+./scripts/build-network.sh status
+./scripts/upgrade.sh plan
+./scripts/upgrade.sh apply
+```
+
+The file accepts only the documented proxy pairs, `WISEEFF_NPM_REGISTRY`, `WISEEFF_BUILD_CA_CERT_FILE`, and `WISEEFF_RUNTIME_PROXY`; it is parsed as data and is never sourced. It must be a non-symlink regular file readable only by its owner (mode `0600`). Existing shell proxy variables remain valid when no file is created. Non-empty shell values take precedence for the same key, and conflicting upper/lower-case proxy values fail before Docker or Git is changed.
+
+`WISEEFF_NPM_REGISTRY` replaces registry hosts from the committed npm lockfile during `npm ci`. The current entry supports a credential-free URL reachable through the configured proxy; it intentionally rejects inline credentials and does not expose npm token configuration. `WISEEFF_BUILD_CA_CERT_FILE` may be an absolute path or a path relative to `.build-network.env`; it must point to an approved readable PEM file. BuildKit mounts the PEM as a secret and installs it in each build stage without copying the private config or proxy credentials into an image layer. TLS verification stays enabled.
+
+`WISEEFF_RUNTIME_PROXY=false` is the default. Set it to `true` only when API or worker runtime calls also need the proxy; the controller adds Compose service names to `NO_PROXY`. Docker proxy credentials then become container environment data visible to Docker administrators, so use a dedicated least-privilege deployment credential. Database, Redis, object-storage, web, and proxy containers do not receive the runtime proxy mapping.
+
+`plan`, `status`, and `status --json` expose only whether proxy/CA are configured, the npm registry host, and the runtime-proxy boolean. They never print or persist proxy URLs or credentials. The file and its example contract are excluded from the Docker build context, and the real file is ignored by Git.
 
 The Dockerfile base image is a special case: the repository carries a checksum-pinned `linux/amd64` bundle under `ops/self-hosted/images/`. `plan` verifies the target commit's bundle contract, archive checksum, Dockerfile reference, and Docker server platform without loading or tagging an image. It reports either `verified local image` or `verified bundle; apply will load and tag it`. During `apply`, after selecting the immutable target and before Compose build, the controller rechecks the checkout archive, loads it when the exact pinned image is absent, verifies its image ID/platform, and creates the exact tag used by `FROM`. The run journal records `base_image_ref`, `base_image_id`, `base_image_platform`, `base_image_source`, and `base_image_status`.
 
-This removes the Docker Hub dependency for `node:22.21.1-alpine`; it does not make the whole build air-gapped. Alpine packages, the pinned DTC Git source, Python packages, and npm packages still need their configured network/mirror path unless separately bundled. The controller never disables TLS, deletes images, or prunes Docker state.
+This removes the Docker Hub dependency for `node:22.21.1-alpine`; it does not make the whole build air-gapped. Alpine packages, the pinned DTC Git source, Python packages, and npm packages still need the managed proxy/mirror path unless separately bundled. Other service image pulls remain a Docker daemon network responsibility. The controller never disables TLS, deletes images, or prunes Docker state.
 
 ## One-time host preparation
 

@@ -21,6 +21,17 @@ Quick mode (the default on a fresh host) writes an IP lab HTTP profile, a genera
 
 Full mode also asks for TLS (HTTP, Caddy `tls internal`, or Let's Encrypt), whether to skip seed, and optional Xiaoze / log-analysis keys.
 
+On a host that can reach external build dependencies only through an enterprise proxy, prepare the private transport contract before setup:
+
+```bash
+./scripts/build-network.sh init
+# Edit .build-network.env; keep mode 0600.
+./scripts/build-network.sh status
+./scripts/setup.sh
+```
+
+The setup preflight applies the same proxy, internal npm registry, and approved-CA contract used by upgrades. Existing shell proxy variables also work without a file. See [Self-Hosted Upgrade: Restricted-network build configuration](upgrade.md#restricted-network-build-configuration) for precedence, TLS, runtime-proxy, Docker daemon, and credential boundaries.
+
 ## Flags (same answers, no prompts)
 
 ```bash
@@ -71,7 +82,7 @@ Wizard copy follows `WISEEFF_SETUP_LOCALE` or `LANG` (`en`, `zh-CN`). Command na
 
 ## Preconditions
 
-- Docker Engine 20.10+ and Compose v2 or standalone `docker-compose` 1.28+.
+- Docker Engine 20.10+ and Docker Compose v2. Build-secret support makes standalone Compose v1 unsupported for this runtime.
 - A git checkout of this repository. Node.js is not required on the server.
 - About 4 GB RAM for the first image build.
 

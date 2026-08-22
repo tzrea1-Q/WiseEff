@@ -8,7 +8,7 @@
 
 ## 前置条件
 
-- Docker Engine 20.10+，以及 Compose v2 或独立 `docker-compose` 1.28+。
+- Docker Engine 20.10+ 和 Docker Compose v2；自托管构建契约需要 build secret。
 - 浏览器能访问主机的 `80` 端口（若使用 `--tls-mode internal`，还需要 `443`）。
 - 首次构建镜像建议约 4 GB 内存。镜像存在后可以更紧，但 1–2 GB 主机很容易在 `vite build` 时 OOM。
 - 服务器上有本仓库的 git checkout。宿主机**不必**安装 Node.js。
