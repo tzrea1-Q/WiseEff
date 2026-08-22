@@ -9,4 +9,32 @@ export WISEEFF_COMPOSE_REQUIRE_V2=true
 
 # shellcheck source=../../../scripts/compose-lib.sh
 source "${repo_root}/scripts/compose-lib.sh"
+
+validate_api_scale() {
+  local argument scale_value replicas
+  local expects_scale_value=false
+
+  for argument in "$@"; do
+    scale_value=""
+    if [ "$expects_scale_value" = "true" ]; then
+      scale_value="$argument"
+      expects_scale_value=false
+    elif [ "$argument" = "--scale" ]; then
+      expects_scale_value=true
+      continue
+    elif [[ "$argument" == --scale=* ]]; then
+      scale_value="${argument#--scale=}"
+    fi
+
+    if [[ "$scale_value" =~ ^api=([0-9]+)$ ]]; then
+      replicas="${BASH_REMATCH[1]}"
+      if [[ ! "$replicas" =~ ^0*[01]$ ]]; then
+        echo "The supported self-hosted topology requires exactly one API replica; api=${replicas} is unsupported." >&2
+        return 2
+      fi
+    fi
+  done
+}
+
+validate_api_scale "$@"
 wiseeff_compose_exec "${compose_dir}" "${compose_file}" "$@"

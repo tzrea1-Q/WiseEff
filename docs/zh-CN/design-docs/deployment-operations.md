@@ -27,6 +27,12 @@ WiseEff 至少需要三个环境：
 - `redis`：任务队列和短期缓存。
 - `object-storage`：日志文件、导出文件和附件。
 
+### 2.1 受支持的 API 拓扑
+
+仓库提供的 stock 自托管部署只支持一个 API 副本。本地 Device Bridge 的 WebSocket 保存在 API 进程内，DTS 重载等 bridge-backed HTTP 工作必须回到持有该 socket 的同一进程。受支持入口 `ops/self-hosted/scripts/compose` 会在调用 Docker 前拒绝大于一的 API scale，同时保留 `api=1` 和其他服务的扩容参数。
+
+直接调用 Compose 可以绕过 wrapper，但不会扩大受支持拓扑。direct Compose、orchestrator 或外部部署如果运行多个 API 副本，却没有让 WebSocket 与之后的每个 bridge-backed 请求保持同一进程亲和，就不受支持。自定义 bridge-aware routing 与任何 HA 结论都不在 stock 部署契约内，需要单独的目标环境证据。普通无状态流量、基于数据库的小泽恢复或健康检查通过，都不能证明 Bridge 亲和。
+
 ## 3. 配置
 
 配置必须通过环境变量或安全配置系统注入。现行变量以 `docs/developer/environment-variables.md` 为准，例如：

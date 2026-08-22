@@ -14,6 +14,12 @@ An optional **IP lab** profile under `ops/self-hosted/` covers a single Linux ho
 
 Deployment units include web, API, log worker, PostgreSQL, Redis/BullMQ, object storage, reverse proxy, observability stack, and optional HDC device gateway connectivity.
 
+### Supported API topology
+
+The stock self-hosted deployment supports exactly one API replica. Local-device-bridge WebSockets live in the API process, and bridge-backed HTTP work, including DTS reload, must return to that same process. The supported `ops/self-hosted/scripts/compose` entry rejects API scale values above one before Docker runs while preserving `api=1` and unrelated-service scaling.
+
+Direct Compose commands can bypass the wrapper but do not expand the supported topology. Direct Compose, orchestrator, and external deployments with multiple API replicas are unsupported for bridge workflows unless they provide bridge-aware routing for both the socket and every subsequent bridge-backed request. Such custom routing and any HA claim are outside the stock deployment contract and require separate target-environment proof. Ordinary stateless traffic, database-backed Xiaoze resume, or healthy readiness endpoints do not prove bridge affinity.
+
 ## Configuration
 
 Configuration is injected through environment variables or a secure configuration system. Production-like modes must reject unsafe defaults such as mock runtime as business data, missing database, missing S3-compatible object storage, missing auth boundary, or unsafe Agent provider configuration.
