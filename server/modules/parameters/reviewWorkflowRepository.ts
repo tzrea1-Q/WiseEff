@@ -16,6 +16,7 @@ import type { ParameterChangeRequestStatus } from "../parameter-kernel/workflowS
 import { buildChangeRequestImpact } from "./impact";
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { LEGACY_IDENTITY_SQL } from "../parameter-kernel/legacyParameterIdentityNames";
+import { presentProvisionalSurfaceDescription } from "../parameter-specs/provisionalSurfacePresentation";
 import type { BindingWriteLockFields, EnablementWriteLockFields, ParameterChangeAction } from "../parameter-drafts/types";
 import { addCondition, dateTimeToIso } from "../../shared/database/sqlUtil";
 import { resolveParameterValueKind } from "./repositoryShared";
@@ -348,6 +349,10 @@ async function toChangeRequestDto(db: Queryable, row: ChangeRequestRow): Promise
   const createdAt = dateTimeToIso(row.created_at);
   const updatedAt = dateTimeToIso(row.updated_at);
   const summary = buildChangeRequestSummary(row);
+  const parameterDescription = presentProvisionalSurfaceDescription(
+    row.title,
+    row.parameter_description
+  );
   const impact = await buildChangeRequestImpact(db, {
     projectId: row.project_id,
     projectParameterValueId: row.project_parameter_value_id,
@@ -376,9 +381,7 @@ async function toChangeRequestDto(db: Queryable, row: ChangeRequestRow): Promise
     ...(row.module_description?.trim()
       ? { moduleDescription: row.module_description.trim() }
       : {}),
-    ...(row.parameter_description?.trim()
-      ? { parameterDescription: row.parameter_description.trim() }
-      : {}),
+    ...(parameterDescription ? { parameterDescription } : {}),
     title: row.title,
     currentValue: row.current_value,
     targetValue: row.target_value,

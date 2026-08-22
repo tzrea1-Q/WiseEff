@@ -30,13 +30,13 @@ describe("buildTemplateImpact", () => {
       {
         kind: "parameter",
         name: "status",
-        note: `Changes demo_multi_instance/battery_checker@0 parameter from "ok" to "disabled".`,
+        note: `将 demo_multi_instance/battery_checker@0 模块的参数值从 "ok" 调整为 "disabled"。`,
         risk: "Medium"
       },
       {
         kind: "module",
         name: "demo_multi_instance/battery_checker@0",
-        note: "Medium risk module review recommended.",
+        note: "建议对中风险模块变更进行审阅。",
         risk: "Medium"
       }
     ]);
@@ -193,25 +193,25 @@ describe.skipIf(!databaseAvailable)("buildChangeRequestImpact", () => {
       {
         kind: "phandle",
         name: "amba/consumer",
-        note: "Phandle reference via chip-handle → chip_label targets amba/i2c@1/chip@6E.",
+        note: "通过 chip-handle → chip_label 的 phandle 引用指向 amba/i2c@1/chip@6E。",
         risk: "Medium"
       },
       {
         kind: "compatible",
         name: "amba/i2c@2/chip@70",
-        note: 'Shares compatible "vendor,chip123" with amba/i2c@1/chip@6E.',
+        note: "与 amba/i2c@1/chip@6E 共用 compatible「vendor,chip123」。",
         risk: "Medium"
       },
       {
         kind: "config-set",
         name: "board-overlay.dts",
-        note: "Same configuration set variant as board.dts.",
+        note: "与 board.dts 属于同一配置集变体。",
         risk: "Medium"
       },
       {
         kind: "config-set",
         name: "board-sku-b.dts",
-        note: "Same configuration set variant as board.dts.",
+        note: "与 board.dts 属于同一配置集变体。",
         risk: "Medium"
       }
     ]);

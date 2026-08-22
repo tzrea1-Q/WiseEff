@@ -3,6 +3,58 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("quality visual masks", () => {
+  it("keeps Xiaoze content observable and settles the popup closed on stable routes", () => {
+    const helpers = readFileSync("e2e/quality/helpers.ts", "utf8");
+    const visualSpec = readFileSync("e2e/quality/visual.quality.spec.ts", "utf8");
+
+    expect(helpers).not.toContain('page.locator(".xiaoze-popup-window")');
+    expect(helpers).not.toContain('page.locator(".xiaoze-toggle-hint")');
+    expect(visualSpec).toContain("settleXiaozePopupClosed(page)");
+    expect(visualSpec).toContain("dismissXiaozeToggleHintIfPresent(page)");
+    expect(visualSpec).toContain('toHaveScreenshot("xiaoze-popup-open.png");');
+
+    for (const platform of ["darwin", "linux"]) {
+      const popupBaseline = decodeRgbPng(
+        readFileSync(`e2e/quality/visual.quality.spec.ts-snapshots/${platform}/xiaoze-popup-open.png`)
+      );
+      const magentaPixels = countMagentaPixelsInDecodedPng(popupBaseline);
+      expect(magentaPixels).toBeLessThan(popupBaseline.width * popupBaseline.height * 0.01);
+    }
+  });
+
+  it("keeps the populated parameter review detail observable", () => {
+    const helpers = readFileSync("e2e/quality/helpers.ts", "utf8");
+
+    expect(helpers).not.toContain('page.locator(".review-detail")');
+    for (const platform of ["darwin", "linux"]) {
+      const baseline = decodeRgbPng(
+        readFileSync(`e2e/quality/visual.quality.spec.ts-snapshots/${platform}/parameter-review-workbench.png`)
+      );
+      expect(countMagentaPixelsInDecodedPng(baseline)).toBeLessThan(
+        baseline.width * baseline.height * 0.05
+      );
+    }
+  });
+
+  it("keeps organization baselines free of giant mask regions", () => {
+    for (const platform of ["darwin", "linux"]) {
+      for (const name of ["organization.png", "organization-members.png"]) {
+        const baseline = decodeRgbPng(
+          readFileSync(`e2e/quality/visual.quality.spec.ts-snapshots/${platform}/${name}`)
+        );
+        expect(countMagentaPixelsInDecodedPng(baseline)).toBe(0);
+      }
+    }
+  });
+
+  it("requires the authenticated application shell before visual assertions", () => {
+    const helpers = readFileSync("e2e/quality/helpers.ts", "utf8");
+
+    expect(helpers).toContain('page.locator(".app-shell")');
+    expect(helpers).toContain('page.locator(".auth-screen")');
+    expect(helpers).toMatch(/\.auth-screen[\s\S]*toHaveCount\(0/);
+  });
+
   it("masks dynamic parameter table rows only for the parameters workbench screenshot", () => {
     const helpers = readFileSync("e2e/quality/helpers.ts", "utf8");
     const visualSpec = readFileSync("e2e/quality/visual.quality.spec.ts", "utf8");
@@ -12,11 +64,13 @@ describe("quality visual masks", () => {
     expect(visualSpec).toContain("stableMasks(page, route.path)");
   });
 
-  it("masks the home-org created-at clock on the organization profile screenshot", () => {
+  it("renders a deterministic home-org created-at value without masking its pixels", () => {
     const helpers = readFileSync("e2e/quality/helpers.ts", "utf8");
+    const visualSpec = readFileSync("e2e/quality/visual.quality.spec.ts", "utf8");
 
-    expect(helpers).toMatch(/routePath\s*===\s*"\/organization"/);
-    expect(helpers).toContain(".organization-profile__created-at");
+    expect(helpers).not.toContain('page.locator(".organization-profile__created-at")');
+    expect(helpers).toContain("stabilizeOrganizationVisualClock");
+    expect(visualSpec).toContain("stabilizeOrganizationVisualClock(page)");
   });
 
   it("masks /logs timestamps and waits for seeded hydrate before the screenshot", () => {
@@ -60,7 +114,10 @@ describe("quality visual masks", () => {
 
 function countMagentaPixels(path: string) {
   const png = Buffer.from(readFileSync(path, "binary"), "binary");
-  const { width, height, data } = decodeRgbPng(png);
+  return countMagentaPixelsInDecodedPng(decodeRgbPng(png));
+}
+
+function countMagentaPixelsInDecodedPng({ width, height, data }: ReturnType<typeof decodeRgbPng>) {
   let count = 0;
 
   for (let index = 0; index < width * height; index += 1) {

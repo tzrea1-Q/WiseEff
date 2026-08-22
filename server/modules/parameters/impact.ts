@@ -40,6 +40,12 @@ type ConfigSetImpactRow = {
   file_name: string;
 };
 
+const RISK_LABELS: Record<ParameterRiskLevel, string> = {
+  High: "高",
+  Medium: "中",
+  Low: "低"
+};
+
 /** Legacy two-item impact used when no structural DTS info is available. */
 export function buildTemplateImpact(input: {
   title: string;
@@ -52,13 +58,13 @@ export function buildTemplateImpact(input: {
     {
       kind: "parameter",
       name: input.title,
-      note: `Changes ${input.module} parameter from ${input.currentValue} to ${input.targetValue}.`,
+      note: `将 ${input.module} 模块的参数值从 ${input.currentValue} 调整为 ${input.targetValue}。`,
       risk: input.risk
     },
     {
       kind: "module",
       name: input.module,
-      note: `${input.risk} risk module review recommended.`,
+      note: `建议对${RISK_LABELS[input.risk]}风险模块变更进行审阅。`,
       risk: input.risk
     }
   ];
@@ -159,7 +165,7 @@ function toStructuralImpact(
     items.push({
       kind: "phandle",
       name: phandle.from_node_path,
-      note: `Phandle reference via ${phandle.from_property} → ${phandle.target_label} targets ${bound.node_path}.`,
+      note: `通过 ${phandle.from_property} → ${phandle.target_label} 的 phandle 引用指向 ${bound.node_path}。`,
       risk: input.risk
     });
   }
@@ -168,7 +174,7 @@ function toStructuralImpact(
     items.push({
       kind: "compatible",
       name: peer.node_path,
-      note: `Shares compatible "${peer.compatible}" with ${bound.node_path}.`,
+      note: `与 ${bound.node_path} 共用 compatible「${peer.compatible}」。`,
       risk: input.risk
     });
   }
@@ -177,7 +183,7 @@ function toStructuralImpact(
     items.push({
       kind: "config-set",
       name: peer.file_name,
-      note: `Same configuration set variant as ${bound.file_name}.`,
+      note: `与 ${bound.file_name} 属于同一配置集变体。`,
       risk: input.risk
     });
   }

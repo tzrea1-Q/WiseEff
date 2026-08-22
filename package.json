@@ -82,6 +82,8 @@
     "parameter-identities:cutover": "tsx scripts/apply-parameter-identity-cutover.ts",
     "parameter-identities:check": "tsx scripts/check-parameter-identity-cutover.ts",
     "reset:quality-runtime": "tsx scripts/reset-quality-runtime.ts",
+    "seed:quality:visual-review": "tsx scripts/seed-quality-visual-review.ts",
+    "cleanup:quality:visual-review": "tsx scripts/seed-quality-visual-review.ts --cleanup",
     "db:seed:m0": "tsx scripts/seed-m0.ts",
     "db:seed:m1": "tsx scripts/seed-m1-parameters.ts",
     "db:seed:m2": "tsx scripts/seed-m2-logs.ts",

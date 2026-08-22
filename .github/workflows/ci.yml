@@ -284,6 +284,8 @@ jobs:
           npm run db:migrate
           npm run db:seed:all
           echo "WISEEFF_QUALITY_SKIP_SEED=true" >> "$GITHUB_ENV"
+          echo "WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE=true" >> "$GITHUB_ENV"
+          echo "WISEEFF_QUALITY_FIXTURE_DATABASE_NAME=wiseeff" >> "$GITHUB_ENV"
 
       - name: Acceptance quality metadata
         run: npm run acceptance:quality

@@ -1,24 +1,55 @@
 import { expect, type Locator, type Page } from "playwright/test";
 import { runNpmScript } from "../acceptance/helpers/database";
+import {
+  assertVisualReviewFixtureConfigured,
+  visualReviewFixtureConfigured
+} from "../../scripts/quality-visual-review-authorization";
 
 const runtimeCrashPattern =
   /Application error|Cannot read properties|ReferenceError|TypeError|Unhandled Runtime Error|vite\/client|failed to fetch/i;
 
 let qualitySeeded = false;
 
-export function seedQualityRuntime() {
+export function visualReviewFixtureAllowed() {
+  return visualReviewFixtureConfigured();
+}
+
+function assertVisualReviewFixtureAllowed() {
+  assertVisualReviewFixtureConfigured();
+}
+
+export function seedQualityRuntime(runScript: (script: string) => void = runNpmScript) {
   if (qualitySeeded || process.env.WISEEFF_QUALITY_SKIP_SEED === "true") {
     return;
   }
 
-  for (const script of ["db:migrate", "reset:quality-runtime", "db:seed:m0", "db:seed:m1", "db:seed:m2", "db:seed:m3"]) {
-    runNpmScript(script);
+  for (const script of [
+    "db:migrate",
+    "reset:quality-runtime",
+    "db:seed:m0",
+    "db:seed:m1",
+    "db:seed:m2",
+    "db:seed:m3"
+  ]) {
+    runScript(script);
   }
   qualitySeeded = true;
 }
 
+export function seedQualityVisualReviewFixture() {
+  assertVisualReviewFixtureAllowed();
+  runNpmScript("seed:quality:visual-review");
+}
+
+export function cleanupQualityVisualReviewFixture() {
+  assertVisualReviewFixtureAllowed();
+  runNpmScript("cleanup:quality:visual-review");
+}
+
 export async function expectUsablePage(page: Page) {
   await expect(page.locator("body")).toBeVisible();
+  await expect(page.locator(".app-shell")).toBeVisible();
+  await expect(page.locator(".auth-screen")).toHaveCount(0);
   await expect(page.locator("main, .main-content").first()).toBeVisible();
   await expect(page.locator("body")).not.toContainText(runtimeCrashPattern);
 }
@@ -91,9 +122,27 @@ export async function settleXiaozePopupClosed(page: Page, dwellMs = 600, timeout
   await expect(layer).toBeHidden();
 }
 
+/**
+ * Xiaoze's first-use hint appears after a 1.4s delay. Wait through that
+ * reveal window and close it explicitly so screenshots never depend on
+ * whether route hydration happened just before or after the timer fired.
+ */
+export async function dismissXiaozeToggleHintIfPresent(page: Page, timeoutMs = 2_000) {
+  const hint = page.getByTestId("xiaoze-toggle-hint");
+  await hint.waitFor({ state: "visible", timeout: timeoutMs }).catch(() => undefined);
+
+  const dismiss = hint.getByRole("button", { name: "不再提示" });
+  if (await dismiss.isVisible().catch(() => false)) {
+    await dismiss.click();
+  }
+  await expect(hint).toBeHidden();
+}
+
 export async function prepareInteractionSurface(page: Page) {
   await dismissCopilotDevOverlays(page);
   await closeXiaozePopupIfOpen(page);
+  await settleXiaozePopupClosed(page);
+  await dismissXiaozeToggleHintIfPresent(page);
   await dismissCopilotDevOverlays(page);
 }
 
@@ -135,14 +184,44 @@ export async function focusViaKeyboard(page: Page, target: Locator, maxTabs = 80
   throw new Error(`Keyboard focus did not reach the target within ${maxTabs} tabs.`);
 }
 
+const ORGANIZATION_VISUAL_CREATED_AT = "2026-08-19T03:53:01.000Z";
+
+/**
+ * Keep the organization profile's creation clock visible while making the
+ * screenshot independent of the fresh database's migration timestamp. Only
+ * the read response used by this page is normalized; the database is untouched.
+ */
+export async function stabilizeOrganizationVisualClock(page: Page) {
+  await page.route("**/api/v1/organization", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    const response = await route.fetch();
+    const body = (await response.json()) as {
+      organization?: Record<string, unknown>;
+    };
+    if (!body.organization) {
+      throw new Error("Organization visual clock requires the organization API response.");
+    }
+    await route.fulfill({
+      response,
+      json: {
+        ...body,
+        organization: {
+          ...body.organization,
+          createdAt: ORGANIZATION_VISUAL_CREATED_AT
+        }
+      }
+    });
+  });
+}
+
 export function stableMasks(page: Page, routePath = ""): Locator[] {
   const masks = [
     page.locator(".topbar-user-menu"),
-    page.locator(".xiaoze-popup-window"),
-    page.locator(".xiaoze-toggle-hint"),
     page.locator(".operation-history-list"),
     page.locator(".audit-column"),
-    page.locator(".review-detail"),
     page.locator("[aria-live]")
   ];
 
@@ -163,13 +242,6 @@ export function stableMasks(page: Page, routePath = ""): Locator[] {
     // on every page load; the surrounding copy is static, so only the <strong>
     // digits need masking.
     masks.push(page.locator(".local-device-bridge-panel__already-installed strong"));
-  }
-
-  if (routePath === "/organization") {
-    // Organization created_at is `now()` from the seed/migration insert, so
-    // the clock label moves every CI run. The identifier and display name stay
-    // fixed; only the timestamp needs masking.
-    masks.push(page.locator(".organization-profile__created-at"));
   }
 
   if (routePath === "/logs") {

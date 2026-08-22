@@ -1,12 +1,18 @@
 import type { ImpactItem } from "@/domain/parameters/types";
 
 const KIND_LABELS: Record<ImpactItem["kind"], string> = {
-  parameter: "parameter",
-  module: "module",
-  test: "test",
-  phandle: "phandle",
-  compatible: "compatible",
-  "config-set": "config-set"
+  parameter: "参数",
+  module: "模块",
+  test: "测试",
+  phandle: "phandle 引用",
+  compatible: "compatible 关联",
+  "config-set": "配置集"
+};
+
+const RISK_LABELS: Record<ImpactItem["risk"], string> = {
+  High: "高风险",
+  Medium: "中风险",
+  Low: "低风险"
 };
 
 type ReviewImpactListProps = {
@@ -30,7 +36,7 @@ export function ReviewImpactList({ items }: ReviewImpactListProps) {
               <span className="review-impact-list__note">{item.note}</span>
             </div>
             <span className="review-impact-list__risk" data-risk={item.risk}>
-              {item.risk}
+              {RISK_LABELS[item.risk]}
             </span>
           </li>
         ))}

@@ -61,8 +61,8 @@ async function seedSurrogateDefinition(db: InMemoryTestDatabase) {
   await db.query(
     `
     insert into parameter_spec_versions (
-      id, parameter_spec_id, version, display_name, description, value_shape, lifecycle
-    ) values ($1, $2, 1, $3, $3, '{"kind":"unknown"}'::jsonb, 'draft')
+      id, parameter_spec_id, version, display_name, description, documentation, value_shape, lifecycle
+    ) values ($1, $2, 1, $3, $3, 'surrogate version row', '{"kind":"unknown"}'::jsonb, 'draft')
     `,
     [`${SURROGATE_SPEC_ID}:v1`, SURROGATE_SPEC_ID, PROPERTY_KEY],
   );
@@ -102,7 +102,7 @@ describe.skipIf(!databaseAvailable)("parameter spec identity surrogate lookup (A
     });
   });
 
-  it("repeated provisional upsert of one identity yields exactly one parameter_specs row", async () => {
+  it("creates localized provisional content and keeps one spec row across repeated upserts", async () => {
     const first = await upsertProvisionalSurfacePropertySpec(db!, {
       organizationId: ORG_ID,
       propertyKey: PROPERTY_KEY,
@@ -131,9 +131,93 @@ describe.skipIf(!databaseAvailable)("parameter spec identity surrogate lookup (A
       [ORG_ID, SUBJECT_ID, PROPERTY_KEY],
     );
     expect(Number(counted.rows[0]?.n)).toBe(1);
+
+    const content = await db!.query<{
+      description: string;
+      versionDocumentation: string | null;
+      propertyDocumentation: string;
+      effectiveDocumentation: string;
+    }>(
+      `
+      select
+        v.description,
+        v.documentation as "versionDocumentation",
+        d.documentation as "propertyDocumentation",
+        coalesce(v.documentation, d.documentation) as "effectiveDocumentation"
+      from parameter_spec_versions v
+      inner join dts_property_specs d on d.parameter_spec_id = v.parameter_spec_id
+      where v.parameter_spec_id = $1
+      `,
+      [first.parameterSpecId],
+    );
+    expect(content.rows).toEqual([
+      {
+        description: `参数「${PROPERTY_KEY}」由 DTS 表面发现，等待参数定义审阅。`,
+        versionDocumentation: null,
+        propertyDocumentation: "临时 DTS 表面绑定；完成参数定义审阅后可激活。",
+        effectiveDocumentation: "临时 DTS 表面绑定；完成参数定义审阅后可激活。",
+      },
+    ]);
   });
 
-  it("provisional upsert after a surrogate correction reuses the corrected row instead of minting the hash id", async () => {
+  it("does not rewrite persisted legacy content when an existing surface spec is reused", async () => {
+    await seedSurrogateDefinition(db!);
+    await db!.query(
+      `update parameter_spec_versions
+       set description = $2,
+         documentation = $3,
+         version_status = 'active'
+       where parameter_spec_id = $1`,
+      [
+        SURROGATE_SPEC_ID,
+        `Provisional surface spec for ${PROPERTY_KEY}`,
+        "Provisional surface binding; activate after schema review.",
+      ],
+    );
+    await db!.query(
+      `update dts_property_specs
+       set documentation = 'Provisional surface binding; activate after schema review.'
+       where parameter_spec_id = $1`,
+      [SURROGATE_SPEC_ID],
+    );
+
+    await upsertProvisionalSurfacePropertySpec(db!, {
+      organizationId: ORG_ID,
+      propertyKey: PROPERTY_KEY,
+      attributionSubjectId: SUBJECT_ID,
+      occurrenceAstJson: { type: "integer", value: 9 },
+      occurrenceRawText: "<9>",
+    });
+
+    const content = await db!.query<{
+      description: string;
+      versionDocumentation: string;
+      propertyDocumentation: string;
+      effectiveDocumentation: string;
+    }>(
+      `
+      select
+        v.description,
+        v.documentation as "versionDocumentation",
+        d.documentation as "propertyDocumentation",
+        coalesce(v.documentation, d.documentation) as "effectiveDocumentation"
+      from parameter_spec_versions v
+      inner join dts_property_specs d on d.parameter_spec_id = v.parameter_spec_id
+      where v.parameter_spec_id = $1
+      `,
+      [SURROGATE_SPEC_ID],
+    );
+    expect(content.rows).toEqual([
+      {
+        description: `Provisional surface spec for ${PROPERTY_KEY}`,
+        versionDocumentation: "Provisional surface binding; activate after schema review.",
+        propertyDocumentation: "Provisional surface binding; activate after schema review.",
+        effectiveDocumentation: "Provisional surface binding; activate after schema review.",
+      },
+    ]);
+  });
+
+  it("provisional upsert reuses a corrected surrogate row without overwriting human-authored content", async () => {
     await seedSurrogateDefinition(db!);
     const reused = await upsertProvisionalSurfacePropertySpec(db!, {
       organizationId: ORG_ID,
@@ -166,6 +250,33 @@ describe.skipIf(!databaseAvailable)("parameter spec identity surrogate lookup (A
       [ORG_ID, SUBJECT_ID, PROPERTY_KEY],
     );
     expect(Number(counted.rows[0]?.n)).toBe(1);
+
+    const content = await db!.query<{
+      description: string;
+      versionDocumentation: string;
+      propertyDocumentation: string;
+      effectiveDocumentation: string;
+    }>(
+      `
+      select
+        v.description,
+        v.documentation as "versionDocumentation",
+        d.documentation as "propertyDocumentation",
+        coalesce(v.documentation, d.documentation) as "effectiveDocumentation"
+      from parameter_spec_versions v
+      inner join dts_property_specs d on d.parameter_spec_id = v.parameter_spec_id
+      where v.parameter_spec_id = $1
+      `,
+      [SURROGATE_SPEC_ID],
+    );
+    expect(content.rows).toEqual([
+      {
+        description: PROPERTY_KEY,
+        versionDocumentation: "surrogate version row",
+        propertyDocumentation: "surrogate row",
+        effectiveDocumentation: "surrogate version row",
+      },
+    ]);
   });
 
   it("createOrgManualParameterSpec reuses a surrogate identity row", async () => {

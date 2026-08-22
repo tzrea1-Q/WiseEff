@@ -50,6 +50,10 @@ Targeted unit coverage includes `server/modules/debugging/valueCodec.test.ts`, g
 
 Quality and acceptance Playwright configs (`playwright.quality.config.ts`, `playwright.acceptance.config.ts`) run a `runtime-warmup` dependency project before product specs. After the webServer reports ready, warmup loads the SPA entry via `page.goto` so Vite's first transform is not billed to the first a11y/visual/responsive or acceptance case; product spec timeouts are unchanged.
 
+The populated `/parameter-review` visual case is evidence-owned test data, not a general seed. An isolated runner opts in with both `WISEEFF_QUALITY_ALLOW_VISUAL_FIXTURE=true` and `WISEEFF_QUALITY_FIXTURE_DATABASE_NAME=<current_database()>`; the seed/cleanup scripts verify the live database name and exact ownership of their fixed IDs before any mutation. Target synthetic runs omit both variables and planned-skip only this one write-dependent visual case, so they remain read-only while the other visual routes and all a11y/responsive cases still run. Volatile values that must remain visible, such as the organization creation clock, are normalized at the test read seam instead of being hidden by a screenshot mask.
+
+The committed Linux visual snapshots are merge-authoritative only when adopted from the GitHub Actions `Acceptance quality` runner artifact. That runner is the environment that enforces them on pull requests, including its production/HMAC seed identity and installed CJK font stack. The repository-compatible local MCR Playwright arm64 container remains a useful Linux preflight, but its rendered screenshots must not replace committed Linux baselines when they differ from a reviewed GitHub runner artifact. Adopt only the exact failed images after inspecting each actual at original resolution; never run a wholesale snapshot update.
+
 ## M5.12 CI And Synthetic Evidence
 
 M5.12 archives CI and target synthetic evidence on top of the deterministic browser gates. The merge bar is **L1**, not the full local-non-HDC suite:
