@@ -1,4 +1,13 @@
-import { type ComponentProps, type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ComponentProps,
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import {
   CopilotChatView,
   CopilotModalHeader,
@@ -149,6 +158,15 @@ export function XiaozePopupView({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isPopupOpen, requestClose]);
 
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (isPopupOpen || !container?.contains(document.activeElement)) {
+      return;
+    }
+
+    document.querySelector<HTMLElement>("[data-slot='chat-toggle-button']")?.focus({ preventScroll: true });
+  }, [isPopupOpen]);
+
   useEffect(() => {
     if (!isPopupOpen) {
       return;
@@ -231,9 +249,11 @@ export function XiaozePopupView({
           <div
             ref={containerRef}
             tabIndex={-1}
-            role="dialog"
-            aria-label={modalTitle}
-            aria-modal="true"
+            role={isPopupOpen ? "dialog" : undefined}
+            aria-label={isPopupOpen ? modalTitle : undefined}
+            aria-modal={isPopupOpen ? "true" : undefined}
+            aria-hidden={isPopupOpen ? undefined : "true"}
+            inert={isPopupOpen ? undefined : true}
             data-testid="copilot-popup"
             data-copilot-popup=""
             data-motion={motion}

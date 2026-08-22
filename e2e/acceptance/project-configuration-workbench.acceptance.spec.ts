@@ -1606,8 +1606,17 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await expect(inspector).toContainText("成员管理");
       await expect(inspector.getByRole("button", { name: "关闭检查器" })).toBeVisible();
       await inspector.getByRole("button", { name: `移除 ${looseFileName}` }).click();
-      await expect(page.getByRole("dialog")).toContainText("后续基线与导出将不再包含它");
-      await page.getByRole("button", { name: "确认移除" }).click();
+      const removeMemberDialog = page.getByRole("dialog", { name: "移除配置集成员" });
+      await expect(page.getByRole("dialog")).toHaveCount(1);
+      await expect(removeMemberDialog).toContainText("后续基线与导出将不再包含它");
+      const removeMemberResponsePromise = page.waitForResponse(
+        (response) =>
+          response.request().method() === "DELETE" &&
+          response.url().includes(`/config-sets/${configSetId}/files/${looseBody.item.id}`)
+      );
+      await removeMemberDialog.getByRole("button", { name: "确认移除" }).click();
+      const removeMemberResponse = await removeMemberResponsePromise;
+      expect(removeMemberResponse.ok()).toBe(true);
       await expect(ungrouped).toContainText(looseFileName);
 
       const inspectorToggle = page.getByRole("button", { name: "检查器", exact: true });
@@ -1678,6 +1687,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         primaryFileId: primaryBody.item.id,
         looseFileId: looseBody.item.id,
         exportMembers: exportBody.manifest.members.length,
+        uiRemoveMemberStatus: removeMemberResponse.status(),
         nonAdminDeniedAddStatus: deniedAdd.status(),
         nonAdminDeniedExportStatus: deniedExport.status()
       });
@@ -1706,6 +1716,11 @@ test.describe("project configuration workbench read-only browser acceptance", ()
             method: "POST",
             path: `/api/v1/projects/${projectId}/parameter-files/${primaryBody.item.id}/sync`,
             responseSummary: "sync ok"
+          }),
+          summarizeApiResponse(removeMemberResponse, {
+            method: "DELETE",
+            path: `/api/v1/projects/${projectId}/config-sets/${configSetId}/files/${looseBody.item.id}`,
+            responseSummary: "member removed through named confirmation dialog"
           }),
           summarizeApiResponse(deniedAdd, {
             method: "POST",
@@ -2884,4 +2899,3 @@ test.describe("project configuration workbench post-cutover semantic identity", 
     }
   });
 });
-
