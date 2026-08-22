@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { createHmac } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { expect, test } from "playwright/test";
 
 import { runNpmScript, withPgClient } from "./helpers/database";
@@ -9,6 +9,7 @@ import {
   summarizeApiResponse,
   writeOperationJsonArtifact
 } from "./helpers/operationEvidence";
+import { assertDeterministicXiaozeReady } from "./helpers/xiaozeDeterministicEvidence";
 
 const databaseUrl = process.env.DATABASE_URL;
 const projectId = "aurora";
@@ -155,6 +156,10 @@ test.beforeAll(async () => {
   });
 });
 
+test.beforeEach(async ({ request }, testInfo) => {
+  await assertDeterministicXiaozeReady(request, testInfo);
+});
+
 test.describe("Xiaoze P0 perception", () => {
   test("returns a grounded answer for an in-scope project question", async ({ request }, testInfo) => {
     // @acceptance XIAOZE-PERCEPTION-001
@@ -190,12 +195,15 @@ test.describe("Xiaoze P0 perception", () => {
   test("does not leak data for an out-of-scope project question", async ({ request }, testInfo) => {
     // @acceptance XIAOZE-PERCEPTION-AUTHZ-001
     // @operation XIAOZE-PERCEPTION-AUTHZ-001
+    // Xiaoze thread ownership is durable in PostgreSQL. A fixed acceptance id
+    // becomes owned by whichever actor used it in an earlier local/CI run.
+    const authzThreadId = `xiaoze-thread-acceptance-authz-${randomUUID()}`;
     const result = await postXiaozeQuestion(
       request,
       limitedProjectHeaders(),
       "summarize forbidden secret-project details",
       "secret-project",
-      "xiaoze-thread-acceptance-authz"
+      authzThreadId
     );
     expect(result.status).toBe(200);
     const answer = readSseText(result.body);

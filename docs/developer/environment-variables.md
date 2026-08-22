@@ -2,7 +2,7 @@
 
 > Chinese: [Chinese](../zh-CN/developer/environment-variables.md)
 
-Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then fill the blank `AGENT_API_*` values when testing live Xiaoze LLM behavior.
+Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then fill `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY` when testing live Xiaoze LLM behavior.
 
 ## Core Runtime
 
@@ -124,17 +124,22 @@ API mode always includes Xiaoze; mock mode has no Agent UI. The backend always r
 
 | Variable | Local default | Required for | Notes |
 | --- | --- | --- | --- |
-| `AGENT_API_BASE_URL` | blank | live Xiaoze LLM | OpenAI-compatible endpoint. Never commit secrets or private endpoints. |
-| `AGENT_MODEL` | blank | live Xiaoze LLM | Fill locally for live model runs. |
-| `AGENT_API_KEY` | blank | live Xiaoze LLM | Secret. |
-| `AGENT_API_TIMEOUT_MS` | `30000` | live Xiaoze LLM | Request timeout for LangChain `ChatOpenAI`. |
-| `XIAOZE_MODEL` | blank (falls back to `AGENT_MODEL`) | live Xiaoze runs | Optional override for the Xiaoze LangGraph agent model id. |
+| `XIAOZE_LLM_API_BASE_URL` | blank | live Xiaoze LLM | OpenAI-compatible endpoint. Never commit secrets or private endpoints. |
+| `XIAOZE_LLM_MODEL` | blank (`gpt-4o-mini`) | live Xiaoze LLM | The resolver supplies the default when this canonical value is blank or absent inside canonical mode. |
+| `XIAOZE_LLM_API_KEY` | blank | live Xiaoze LLM | Secret. |
+| `AGENT_API_TIMEOUT_MS` | `30000` | separate wiring debt | Not part of the canonical Xiaoze group and currently has no Xiaoze runtime consumer. |
 | `XIAOZE_CHECKPOINTER` | `memory` | production Xiaoze planning resume | Use `postgres` in production/self-hosted so LangGraph checkpoints survive restarts and multi-replica routing; tables are ensured by `npm run db:migrate`. `memory` remains valid for local dev and tests. |
 | `XIAOZE_REASONING_FALLBACK_HEURISTIC` | `false` | live Xiaoze LLM | Opt-in legacy language heuristic for splitting untagged model content into reasoning vs answer. Keep `false` in production; structured `reasoning_content` / `<think>` tags are the primary path. |
 | `XIAOZE_PROACTIVE_ENABLED` | `false` | proactive suggest API | Set `true` to register read-only `POST /api/v1/agent/xiaoze/suggest`. Default off; opt-in only. |
 | `VITE_XIAOZE_PROACTIVE_ENABLED` | `false` | proactive suggestions UI | Mounts `useXiaozeSuggestions` in `AgentInsightBar`. Requires API `XIAOZE_PROACTIVE_ENABLED=true`. Default off. |
 | `VITE_XIAOZE_PROMPT_DEBUG` | `false` | frontend dev tooling | Opt-in prompt/debug surfacing for Xiaoze development. |
 | `VITE_XIAOZE_INSPECTOR` | `false` | frontend dev tooling | Opt-in CopilotKit AG-UI inspector for admins (non-production only). Off by default because the inspector ships a CDN announcement banner with no separate switch. |
+
+<!-- xiaoze-llm-legacy-fallback:start -->
+### Legacy migration fallback (canonical group absent only)
+
+The three canonical keys are group-atomic: the presence of any raw `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, or `XIAOZE_LLM_API_KEY` key, including a blank value, selects canonical mode and prevents fallback. Only when all three canonical keys are absent may one migration-window fallback read `AGENT_API_BASE_URL`, `AGENT_API_KEY`, and model precedence `XIAOZE_MODEL > AGENT_MODEL > gpt-4o-mini`. Diagnostics name keys and codes only; they never include endpoint, model, or secret values. Current templates and setup output write canonical keys only.
+<!-- xiaoze-llm-legacy-fallback:end -->
 
 ## Log Analysis LLM
 
@@ -169,7 +174,7 @@ Per-domain result webhooks (P3b) are configured in `/log-admin` (URL, write-only
 
 ## Knowledge Base Embeddings And Indexing
 
-Semantic retrieval for the knowledge base mirrors the `AGENT_API_*` seam with an OpenAI-compatible `/v1/embeddings` endpoint. Leave the group blank for FTS-only mode: every knowledge surface stays fully usable without semantic search. Semantic retrieval additionally requires the pgvector extension on the PostgreSQL server (see the self-hosted runbook); when either the endpoint or the extension is missing, search responses honestly report `fts_only`.
+Semantic retrieval for the knowledge base mirrors the OpenAI-compatible Xiaoze LLM seam with its own `/v1/embeddings` endpoint. Leave the group blank for FTS-only mode: every knowledge surface stays fully usable without semantic search. Semantic retrieval additionally requires the pgvector extension on the PostgreSQL server (see the self-hosted runbook); when either the endpoint or the extension is missing, search responses honestly report `fts_only`.
 
 | Variable | Local default | Required for | Notes |
 | --- | --- | --- | --- |

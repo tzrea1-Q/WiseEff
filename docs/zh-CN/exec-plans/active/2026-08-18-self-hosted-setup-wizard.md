@@ -153,7 +153,7 @@ npm run selfhost:doctor
 | `access` | 对外入口 | IP 或主机名；TLS 模式；仅 Let's Encrypt 时要 ACME 邮箱 | `WISEEFF_SITE_HOST`、`WISEEFF_TLS_MODE`、`WISEEFF_TLS_EMAIL`、`WISEEFF_PUBLIC_URL`、`WISEEFF_CADDYFILE`、API/VITE/bridge 公网 URL |
 | `admin` | 首位操作员 | 用户名；密码（空则生成）；显示名 | `WISEEFF_LAB_ADMIN_*`；`AUTH_PROVIDER=local` |
 | `seed` | 演示数据 | ChargeLab 种子或空库 | provision 开关，不是一大段 env |
-| `llm` | 模型接入 | 跳过 / 小泽 / 小泽 + 日志分析 | `AGENT_API_*`、`LOG_ANALYSIS_*`、确定性开关 |
+| `llm` | 模型接入 | 跳过 / 小泽 / 小泽 + 日志分析 | `XIAOZE_LLM_API_BASE_URL` / `XIAOZE_LLM_MODEL` / `XIAOZE_LLM_API_KEY`、`LOG_ANALYSIS_*`、确定性开关 |
 
 OIDC、备份挂载、可观测 compose、Device Bridge 配对不进 v1。Full Setup 可以把它们标成「以后再做，本向导不管」。
 
@@ -210,7 +210,7 @@ TTY / flags / 答案文件
 5. 复核屏（profile、URL、用户名、密码只显示一次、种子、LLM 模式）。确认。
 6. 渲染 `.env`、启动前校验、`compose up`、provision，打印登录 URL 和 doctor 提示。
 
-Full 在复核屏之前插入 TLS 和 LLM 问题。对 `AGENT_API_*` 做真实补全探测属于 P2，且不得挡住跳过路径。
+Full 在复核屏之前插入 TLS 和 LLM 问题。对 `XIAOZE_LLM_API_BASE_URL`、`XIAOZE_LLM_MODEL`、`XIAOZE_LLM_API_KEY` 做真实补全探测属于 P2，且不得挡住跳过路径。
 
 ### 非交互契约
 

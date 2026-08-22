@@ -19,9 +19,13 @@ admin_password=""
 admin_name="Platform Admin"
 seed="chargelab"
 llm="skip"
+llm_arg_set="false"
 agent_api_base_url=""
+agent_api_base_url_arg_set="false"
 agent_model=""
+agent_model_arg_set="false"
 agent_api_key=""
+agent_api_key_arg_set="false"
 log_analysis_api_base_url=""
 log_analysis_model=""
 log_analysis_api_key=""
@@ -98,7 +102,87 @@ detect_host() {
 
 env_value() {
   local key="$1"
-  awk -F= -v key="${key}" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "${env_file}" 2>/dev/null || true
+  awk -F= -v key="${key}" '{ raw_key = $1; gsub(/^[[:space:]]+|[[:space:]]+$/, "", raw_key) } raw_key == key { print substr($0, index($0, "=") + 1); exit }' "${env_file}" 2>/dev/null || true
+}
+
+env_has_key() {
+  local key="$1"
+  awk -F= -v key="${key}" '{ raw_key = $1; gsub(/^[[:space:]]+|[[:space:]]+$/, "", raw_key) } raw_key == key { found = 1; exit } END { exit found ? 0 : 1 }' "${env_file}" 2>/dev/null
+}
+
+trim_value() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s\n' "${value}"
+}
+
+emit_xiaoze_migration_diagnostic() {
+  local code="$1"
+  local legacy_key="$2"
+  local canonical_key="$3"
+  printf '[xiaoze-llm-config] %s: %s -> %s\n' "${code}" "${legacy_key}" "${canonical_key}" >&2
+}
+
+diagnose_xiaoze_legacy_key() {
+  local legacy_key="$1"
+  local canonical_key="$2"
+  local canonical_value="$3"
+  local legacy_value
+  env_has_key "${legacy_key}" || return 0
+  legacy_value="$(trim_value "$(env_value "${legacy_key}")")"
+  if [ "${legacy_value}" = "${canonical_value}" ]; then
+    emit_xiaoze_migration_diagnostic "legacy-deprecated-ignored" "${legacy_key}" "${canonical_key}"
+  else
+    emit_xiaoze_migration_diagnostic "legacy-conflict-ignored" "${legacy_key}" "${canonical_key}"
+  fi
+}
+
+load_existing_xiaoze_answers() {
+  local canonical_present="false"
+  local legacy_present="false"
+  local legacy_model=""
+  local canonical_key=""
+  local key
+  for key in XIAOZE_LLM_API_BASE_URL XIAOZE_LLM_MODEL XIAOZE_LLM_API_KEY; do
+    if env_has_key "${key}"; then
+      canonical_present="true"
+    fi
+  done
+
+  if [ "${canonical_present}" = "true" ]; then
+    agent_api_base_url="$(trim_value "$(env_value XIAOZE_LLM_API_BASE_URL)")"
+    agent_model="$(trim_value "$(env_value XIAOZE_LLM_MODEL)")"
+    agent_api_key="$(trim_value "$(env_value XIAOZE_LLM_API_KEY)")"
+    [ -n "${agent_model}" ] || agent_model="gpt-4o-mini"
+    diagnose_xiaoze_legacy_key AGENT_API_BASE_URL XIAOZE_LLM_API_BASE_URL "${agent_api_base_url}"
+    diagnose_xiaoze_legacy_key XIAOZE_MODEL XIAOZE_LLM_MODEL "${agent_model}"
+    diagnose_xiaoze_legacy_key AGENT_MODEL XIAOZE_LLM_MODEL "${agent_model}"
+    diagnose_xiaoze_legacy_key AGENT_API_KEY XIAOZE_LLM_API_KEY "${agent_api_key}"
+    return 0
+  fi
+
+  for key in AGENT_API_BASE_URL XIAOZE_MODEL AGENT_MODEL AGENT_API_KEY; do
+    if env_has_key "${key}"; then
+      legacy_present="true"
+      case "${key}" in
+        AGENT_API_BASE_URL) canonical_key="XIAOZE_LLM_API_BASE_URL" ;;
+        XIAOZE_MODEL|AGENT_MODEL) canonical_key="XIAOZE_LLM_MODEL" ;;
+        AGENT_API_KEY) canonical_key="XIAOZE_LLM_API_KEY" ;;
+      esac
+      emit_xiaoze_migration_diagnostic "legacy-used" "${key}" "${canonical_key}"
+    fi
+  done
+  agent_api_base_url="$(trim_value "$(env_value AGENT_API_BASE_URL)")"
+  legacy_model="$(trim_value "$(env_value XIAOZE_MODEL)")"
+  [ -n "${legacy_model}" ] || legacy_model="$(trim_value "$(env_value AGENT_MODEL)")"
+  agent_model="${legacy_model:-gpt-4o-mini}"
+  agent_api_key="$(trim_value "$(env_value AGENT_API_KEY)")"
+  if [ "${legacy_present}" != "true" ]; then
+    agent_api_base_url=""
+    agent_model="gpt-4o-mini"
+    agent_api_key=""
+  fi
 }
 
 require_command() {
@@ -183,15 +267,13 @@ load_existing_answers() {
   admin_password="$(env_value WISEEFF_LAB_ADMIN_PASSWORD)"
   admin_name="$(env_value WISEEFF_LAB_ADMIN_NAME)"
   seed="$(env_value WISEEFF_LAB_SEED)"
-  agent_api_base_url="$(env_value AGENT_API_BASE_URL)"
-  agent_model="$(env_value AGENT_MODEL)"
-  agent_api_key="$(env_value AGENT_API_KEY)"
+  load_existing_xiaoze_answers
   log_analysis_api_base_url="$(env_value LOG_ANALYSIS_API_BASE_URL)"
   log_analysis_model="$(env_value LOG_ANALYSIS_MODEL)"
   log_analysis_api_key="$(env_value LOG_ANALYSIS_API_KEY)"
-  if [ -n "${agent_api_key}" ] && [ -n "${log_analysis_api_key}" ]; then
+  if [ -n "${agent_api_base_url}" ] && [ -n "${agent_api_key}" ] && [ -n "${log_analysis_api_key}" ]; then
     llm="xiaoze+logs"
-  elif [ -n "${agent_api_key}" ]; then
+  elif [ -n "${agent_api_base_url}" ] || [ -n "${agent_api_key}" ]; then
     llm="xiaoze"
   else
     llm="skip"
@@ -205,9 +287,9 @@ load_existing_answers() {
 collect_llm_tty() {
   local choice
   if is_zh; then
-    choice="$(choose_tty "大模型" "先跳过（确定性模式，健康检查可通过）" "配置小泽 AGENT_API_*" "同时配置小泽和日志分析")"
+    choice="$(choose_tty "大模型" "先跳过（确定性模式，健康检查可通过）" "配置小泽 XIAOZE_LLM_*" "同时配置小泽和日志分析")"
   else
-    choice="$(choose_tty "LLM" "Skip for now (deterministic, keeps /health/ready green)" "Configure Xiaoze AGENT_API_*" "Configure Xiaoze and log-analysis")"
+    choice="$(choose_tty "LLM" "Skip for now (deterministic, keeps /health/ready green)" "Configure Xiaoze XIAOZE_LLM_*" "Configure Xiaoze and log-analysis")"
   fi
   case "${choice}" in
     1) llm="skip" ;;
@@ -215,9 +297,9 @@ collect_llm_tty() {
     3) llm="xiaoze+logs" ;;
   esac
   if [ "${llm}" = "xiaoze" ] || [ "${llm}" = "xiaoze+logs" ]; then
-    agent_api_base_url="$(read_tty "AGENT_API_BASE_URL" "${agent_api_base_url}")"
-    agent_model="$(read_tty "AGENT_MODEL" "${agent_model}")"
-    agent_api_key="$(read_tty "AGENT_API_KEY" "${agent_api_key}" true)"
+    agent_api_base_url="$(read_tty "XIAOZE_LLM_API_BASE_URL" "${agent_api_base_url}")"
+    agent_model="$(read_tty "XIAOZE_LLM_MODEL" "${agent_model}")"
+    agent_api_key="$(read_tty "XIAOZE_LLM_API_KEY" "${agent_api_key}" true)"
   fi
   if [ "${llm}" = "xiaoze+logs" ]; then
     log_analysis_api_base_url="$(read_tty "LOG_ANALYSIS_API_BASE_URL" "${log_analysis_api_base_url}")"
@@ -437,6 +519,13 @@ write_env_via_tsx() {
 
 write_env_bash() {
   local postgres_password minio_password public caddyfile object_tls xiaoze_det log_det
+  if [ "${llm}" = "xiaoze" ] || [ "${llm}" = "xiaoze+logs" ]; then
+    [ -n "${agent_model}" ] || agent_model="gpt-4o-mini"
+    if [ -z "${agent_api_base_url}" ] || [ -z "${agent_api_key}" ]; then
+      echo "Xiaoze LLM requires --agent-api-base-url and --agent-api-key; model defaults to gpt-4o-mini." >&2
+      exit 1
+    fi
+  fi
   if [ -f "${env_file}" ] && [ "${force}" != "true" ]; then
     postgres_password="$(env_value POSTGRES_PASSWORD)"
     minio_password="$(env_value MINIO_ROOT_PASSWORD)"
@@ -546,9 +635,9 @@ DEVICE_BRIDGE_WS_PATH=/api/v1/device-bridges/ws
 DEVICE_BRIDGE_LAB_AVAILABLE=false
 DEVICE_BRIDGE_SERVER_URL=${public}
 
-AGENT_API_BASE_URL=${agent_api_base_url}
-AGENT_MODEL=${agent_model}
-AGENT_API_KEY=${agent_api_key}
+XIAOZE_LLM_API_BASE_URL=${agent_api_base_url}
+XIAOZE_LLM_MODEL=${agent_model}
+XIAOZE_LLM_API_KEY=${agent_api_key}
 AGENT_API_TIMEOUT_MS=30000
 XIAOZE_CHECKPOINTER=postgres
 XIAOZE_DETERMINISTIC=${xiaoze_det}
@@ -610,8 +699,9 @@ run_init() {
     exit 1
   fi
   if [ "${llm}" = "xiaoze" ] || [ "${llm}" = "xiaoze+logs" ]; then
-    if [ -z "${agent_api_base_url}" ] || [ -z "${agent_model}" ] || [ -z "${agent_api_key}" ]; then
-      echo "Xiaoze LLM requires --agent-api-base-url, --agent-model, and --agent-api-key." >&2
+    [ -n "${agent_model}" ] || agent_model="gpt-4o-mini"
+    if [ -z "${agent_api_base_url}" ] || [ -z "${agent_api_key}" ]; then
+      echo "Xiaoze LLM requires --agent-api-base-url and --agent-api-key; model defaults to gpt-4o-mini." >&2
       exit 1
     fi
   fi
@@ -707,10 +797,10 @@ while [ $# -gt 0 ]; do
     --admin-password) admin_password="${2:-}"; shift 2 ;;
     --admin-name) admin_name="${2:-}"; shift 2 ;;
     --seed) seed="${2:-}"; shift 2 ;;
-    --llm) llm="${2:-}"; shift 2 ;;
-    --agent-api-base-url) agent_api_base_url="${2:-}"; shift 2 ;;
-    --agent-model) agent_model="${2:-}"; shift 2 ;;
-    --agent-api-key) agent_api_key="${2:-}"; shift 2 ;;
+    --llm) llm="${2:-}"; llm_arg_set="true"; shift 2 ;;
+    --agent-api-base-url) agent_api_base_url="${2:-}"; agent_api_base_url_arg_set="true"; shift 2 ;;
+    --agent-model) agent_model="${2:-}"; agent_model_arg_set="true"; shift 2 ;;
+    --agent-api-key) agent_api_key="${2:-}"; agent_api_key_arg_set="true"; shift 2 ;;
     --log-analysis-api-base-url) log_analysis_api_base_url="${2:-}"; shift 2 ;;
     --log-analysis-model) log_analysis_model="${2:-}"; shift 2 ;;
     --log-analysis-api-key) log_analysis_api_key="${2:-}"; shift 2 ;;
@@ -755,6 +845,18 @@ elif [ "${non_interactive}" = "true" ] && [ -z "${host}" ] && [ -z "${section}" 
   echo "Missing --ip/--host. Non-interactive setup cannot prompt." >&2
   usage >&2
   exit 2
+fi
+
+if [ "${non_interactive}" = "true" ] && [ "${section}" = "llm" ] && [ -f "${env_file}" ] && ! has_tsx; then
+  requested_llm="${llm}"
+  requested_agent_api_base_url="${agent_api_base_url}"
+  requested_agent_model="${agent_model}"
+  requested_agent_api_key="${agent_api_key}"
+  load_existing_answers
+  [ "${llm_arg_set}" = "true" ] && llm="${requested_llm}"
+  [ "${agent_api_base_url_arg_set}" = "true" ] && agent_api_base_url="${requested_agent_api_base_url}"
+  [ "${agent_model_arg_set}" = "true" ] && agent_model="${requested_agent_model}"
+  [ "${agent_api_key_arg_set}" = "true" ] && agent_api_key="${requested_agent_api_key}"
 fi
 
 apply_profile_defaults

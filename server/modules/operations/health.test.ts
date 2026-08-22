@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { resolveXiaozeLlmConfig } from "../../config/xiaozeLlmConfig";
 import type { Queryable } from "../../shared/database/client";
 import { buildLiveHealth, buildReadyHealth } from "./health";
 
@@ -311,9 +312,11 @@ describe("operations health", () => {
         db,
         objectStore,
         env: {
-          AGENT_API_BASE_URL: "https://agent.example.com",
-          AGENT_API_KEY: "test-key",
-          XIAOZE_MODEL: "xiaoze-model",
+          XIAOZE_LLM_CONFIG: resolveXiaozeLlmConfig({
+            XIAOZE_LLM_API_BASE_URL: "https://agent.example.com",
+            XIAOZE_LLM_API_KEY: "test-key",
+            XIAOZE_LLM_MODEL: "xiaoze-model"
+          }),
           LOG_ANALYSIS_DETERMINISTIC: true
         }
       })
@@ -348,8 +351,10 @@ describe("operations health", () => {
         db,
         objectStore,
         env: {
-          AGENT_API_BASE_URL: "https://agent.example.com",
-          AGENT_API_KEY: "test-key",
+          XIAOZE_LLM_CONFIG: resolveXiaozeLlmConfig({
+            XIAOZE_LLM_API_BASE_URL: "https://agent.example.com",
+            XIAOZE_LLM_API_KEY: "test-key"
+          }),
           LOG_ANALYSIS_API_BASE_URL: "https://llm.example.com",
           LOG_ANALYSIS_API_KEY: "log-key",
           LOG_ANALYSIS_MODEL: "log-model"
@@ -386,8 +391,10 @@ describe("operations health", () => {
         db,
         objectStore,
         env: {
-          AGENT_API_BASE_URL: "https://agent.example.com",
-          AGENT_API_KEY: "test-key",
+          XIAOZE_LLM_CONFIG: resolveXiaozeLlmConfig({
+            XIAOZE_LLM_API_BASE_URL: "https://agent.example.com",
+            XIAOZE_LLM_API_KEY: "test-key"
+          }),
           LOG_ANALYSIS_API_BASE_URL: "https://llm.example.com"
         }
       })
@@ -420,8 +427,10 @@ describe("operations health", () => {
         db,
         objectStore,
         env: {
-          AGENT_API_BASE_URL: "https://agent.example.com",
-          AGENT_API_KEY: "test-key",
+          XIAOZE_LLM_CONFIG: resolveXiaozeLlmConfig({
+            XIAOZE_LLM_API_BASE_URL: "https://agent.example.com",
+            XIAOZE_LLM_API_KEY: "test-key"
+          }),
           LOG_ANALYSIS_DETERMINISTIC: true
         }
       })
@@ -453,7 +462,9 @@ describe("operations health", () => {
         db,
         objectStore,
         env: {
-          AGENT_API_BASE_URL: "https://agent.example.com"
+          XIAOZE_LLM_CONFIG: resolveXiaozeLlmConfig({
+            XIAOZE_LLM_API_BASE_URL: "https://agent.example.com"
+          })
         }
       })
     ).resolves.toMatchObject({
@@ -464,7 +475,7 @@ describe("operations health", () => {
           xiaozeLlm: {
             ok: false,
             status: "missing",
-            message: "Xiaoze LLM configuration is incomplete. Missing: AGENT_API_KEY."
+            message: "Xiaoze LLM configuration is incomplete. Missing: XIAOZE_LLM_API_KEY."
           }
         }
       }

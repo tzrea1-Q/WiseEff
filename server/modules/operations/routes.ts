@@ -1,4 +1,5 @@
 import type { Database } from "../../shared/database/client";
+import { resolveXiaozeLlmConfig } from "../../config/xiaozeLlmConfig";
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStoreHealthCheck } from "../logs/objectStore";
@@ -235,10 +236,7 @@ function defaultPilotReadinessEnv(): PilotReadinessEnv {
     M5_CONTRACT_CHECK_PASSED: process.env.M5_CONTRACT_CHECK_PASSED === "true",
     M5_CONTRACT_ARTIFACT_CHECKED_AT: process.env.M5_CONTRACT_ARTIFACT_CHECKED_AT?.trim() || undefined,
     XIAOZE_DETERMINISTIC: process.env.XIAOZE_DETERMINISTIC === "true",
-    AGENT_API_BASE_URL: process.env.AGENT_API_BASE_URL?.trim() || undefined,
-    AGENT_API_KEY: process.env.AGENT_API_KEY?.trim() || undefined,
-    AGENT_MODEL: process.env.AGENT_MODEL?.trim() || undefined,
-    XIAOZE_MODEL: process.env.XIAOZE_MODEL?.trim() || undefined
+    XIAOZE_LLM_CONFIG: resolveXiaozeLlmConfig(process.env)
   };
 }
 
@@ -291,7 +289,7 @@ export function registerOperationsRoutes(
       includeWorkerQueue: true,
       includeNotificationOutbox: options.env?.NOTIFICATION_WORKER_ENABLED === true,
       durableQueue: options.durableQueue,
-      env: options.env
+      env
     });
     const dependencies = readyHealth.body.dependencies;
 

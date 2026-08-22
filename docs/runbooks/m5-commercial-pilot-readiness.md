@@ -25,7 +25,7 @@ This runbook describes the release gate for a controlled commercial pilot. It as
 - `M5_SMOKE_AUTHORIZATION` or `WISEEFF_SMOKE_AUTHORIZATION` with `admin:access` for staging/prod pilot-readiness smoke
 - `M5_SMOKE_ALLOW_NO_API=true` only for local documentation runs that intentionally skip the API probe
 - `M5_CONTRACT_CHECK_PASSED=true` or `M5_CONTRACT_ARTIFACT_CHECKED_AT=<timestamp>` for the pilot-readiness contract gate
-- `AGENT_API_BASE_URL`, `AGENT_MODEL`, `AGENT_API_KEY`, and `AGENT_API_TIMEOUT_MS` for live Xiaoze LLM evidence; set `XIAOZE_DETERMINISTIC=true` for offline acceptance instead
+- `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY` for live Xiaoze LLM evidence; set `XIAOZE_DETERMINISTIC=true` for offline acceptance instead. `AGENT_API_TIMEOUT_MS` remains separate unwired debt.
 - `XIAOZE_CHECKPOINTER=postgres` in production/self-hosted unless `XIAOZE_DETERMINISTIC=true`
 
 ## Deploy Order
@@ -46,7 +46,7 @@ npm run test:m5
 npm run acceptance:e2e -- e2e/acceptance/xiaoze-perception.acceptance.spec.ts
 ```
 
-`npm run smoke:m5` requires a live API URL by default. For staging/prod pilot checks, set `M5_SMOKE_AUTHORIZATION` or `WISEEFF_SMOKE_AUTHORIZATION` to a bearer token with `admin:access`; otherwise `/api/v1/operations/pilot-readiness` will return 403. Use `M5_SMOKE_ALLOW_NO_API=true` only when documenting the runbook locally without a reachable API. `npm run test:m5` always probes the live API because it passes `--require-api` to the smoke runner. For offline Xiaoze acceptance, set `XIAOZE_DETERMINISTIC=true` instead of live `AGENT_API_*` values.
+`npm run smoke:m5` requires a live API URL by default. For staging/prod pilot checks, set `M5_SMOKE_AUTHORIZATION` or `WISEEFF_SMOKE_AUTHORIZATION` to a bearer token with `admin:access`; otherwise `/api/v1/operations/pilot-readiness` will return 403. Use `M5_SMOKE_ALLOW_NO_API=true` only when documenting the runbook locally without a reachable API. `npm run test:m5` always probes the live API because it passes `--require-api` to the smoke runner. For offline Xiaoze acceptance, set `XIAOZE_DETERMINISTIC=true` instead of live `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY` values.
 
 ## Monitoring
 

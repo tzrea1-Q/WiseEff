@@ -6,13 +6,12 @@ Use this runbook when validating live Xiaoze LLM configuration in staging or pil
 
 ## Required Configuration
 
-- `AGENT_API_BASE_URL`
-- `AGENT_MODEL`
-- `AGENT_API_KEY`
-- `AGENT_API_TIMEOUT_MS`
-- Optional: `XIAOZE_MODEL` when overriding the default model selection
+- `XIAOZE_LLM_API_BASE_URL`
+- `XIAOZE_LLM_MODEL` (blank defaults to `gpt-4o-mini`)
+- `XIAOZE_LLM_API_KEY`
+- `AGENT_API_TIMEOUT_MS` remains separate, currently unwired debt; it is not a fourth canonical Xiaoze key.
 
-For acceptance or offline drills without a live model, set `XIAOZE_DETERMINISTIC=true` instead of filling `AGENT_API_*`.
+For acceptance or offline drills without a live model, set `XIAOZE_DETERMINISTIC=true` instead of filling `XIAOZE_LLM_*`. If any canonical raw key is present, the canonical group wins as a unit, including explicit blanks. Legacy aliases are read only when the whole canonical group is absent and produce redacted migration diagnostics.
 
 Production and self-hosted deployments must set `XIAOZE_CHECKPOINTER=postgres` (unless `XIAOZE_DETERMINISTIC=true`). Run `npm run db:migrate` after deploy or config changes so LangGraph checkpoint tables are ensured before serving traffic.
 

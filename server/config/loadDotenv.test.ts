@@ -16,11 +16,11 @@ describe("loadDotenvFiles", () => {
   it("loads .env.local overrides after .env", () => {
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "wiseeff-dotenv-"));
     tempDirs.push(cwd);
-    fs.writeFileSync(path.join(cwd, ".env"), "AGENT_API_KEY=from-env\n");
-    fs.writeFileSync(path.join(cwd, ".env.local"), "AGENT_API_KEY=from-local\n");
+    fs.writeFileSync(path.join(cwd, ".env"), "XIAOZE_LLM_API_KEY=from-env\n");
+    fs.writeFileSync(path.join(cwd, ".env.local"), "XIAOZE_LLM_API_KEY=from-local\n");
 
     loadDotenvFiles(cwd);
 
-    expect(process.env.AGENT_API_KEY).toBe("from-local");
+    expect(process.env.XIAOZE_LLM_API_KEY).toBe("from-local");
   });
 });

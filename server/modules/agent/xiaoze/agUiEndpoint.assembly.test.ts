@@ -107,6 +107,32 @@ function readInterruptApprovalId(events: SseEvent[]) {
  * planning graph, the real orchestrator, and the shared memory agent DB.
  */
 describe("registerXiaozeRoutes approval assembly", () => {
+  it("normalizes a partial route env before resolving the Xiaoze model label", async () => {
+    const { db } = createMemoryAgentDb();
+    const router = createRouter();
+    registerXiaozeRoutes(router, {
+      db,
+      env: {
+        XIAOZE_PROACTIVE_ENABLED: false,
+        XIAOZE_CHECKPOINTER: "memory",
+        XIAOZE_REASONING_FALLBACK_HEURISTIC: false
+      } as never,
+      getCurrentAuthContext: () => developmentAuthContext,
+      createAgent: () => ({
+        run: async () => ({ text: "normalized", citations: [] })
+      })
+    });
+
+    const { events } = await postXiaoze(router, "req-partial-env", {
+      threadId: "thread-partial-env",
+      runId: "run-partial-env",
+      messages: [{ id: "m-user", role: "user", content: "hello" }]
+    });
+
+    expect(events.some((event) => event.event === EventType.RUN_ERROR)).toBe(false);
+    expect(events.some((event) => event.event === EventType.RUN_FINISHED)).toBe(true);
+  });
+
   it("executes the edited payload when an approval is resumed with editedArgs", async () => {
     primeParameterMocks("<3600>");
     mockedSubmit.mockResolvedValue({ id: "batch-1", items: [{ requestId: "cr-777" }] } as never);

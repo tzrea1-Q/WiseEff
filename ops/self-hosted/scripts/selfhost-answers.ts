@@ -1,3 +1,5 @@
+import { resolveXiaozeLlmConfig } from "../../../server/config/xiaozeLlmConfig";
+
 export const selfHostProfiles = ["ip-lab", "acme"] as const;
 export const selfHostTlsModes = ["http", "internal", "acme"] as const;
 export const selfHostSeeds = ["chargelab", "none"] as const;
@@ -136,8 +138,8 @@ export function validateAnswers(answers: SelfHostAnswers): string[] {
     errors.push("Admin password must be at least 8 characters.");
   }
   if (normalized.llm === "xiaoze" || normalized.llm === "xiaoze+logs") {
-    if (!normalized.agentApiBaseUrl || !normalized.agentModel || !normalized.agentApiKey) {
-      errors.push("Xiaoze LLM requires --agent-api-base-url, --agent-model, and --agent-api-key.");
+    if (!normalized.agentApiBaseUrl || !normalized.agentApiKey) {
+      errors.push("Xiaoze LLM requires --agent-api-base-url and --agent-api-key; model defaults to gpt-4o-mini.");
     }
   }
   if (normalized.llm === "xiaoze+logs") {
@@ -151,8 +153,9 @@ export function validateAnswers(answers: SelfHostAnswers): string[] {
 }
 
 export function answersFromEnv(env: Record<string, string | undefined>): SelfHostAnswers {
-  const agentKey = env.AGENT_API_KEY?.trim() ?? "";
-  const agentUrl = env.AGENT_API_BASE_URL?.trim() ?? "";
+  const xiaozeLlm = resolveXiaozeLlmConfig(env).config;
+  const agentKey = xiaozeLlm.apiKey ?? "";
+  const agentUrl = xiaozeLlm.apiBaseUrl ?? "";
   const logKey = env.LOG_ANALYSIS_API_KEY?.trim() ?? "";
   const logUrl = env.LOG_ANALYSIS_API_BASE_URL?.trim() ?? "";
   let llm: SelfHostLlmMode = "skip";
@@ -175,9 +178,9 @@ export function answersFromEnv(env: Record<string, string | undefined>): SelfHos
     adminName: env.WISEEFF_LAB_ADMIN_NAME ?? "Platform Admin",
     seed: env.WISEEFF_LAB_SEED === "none" ? "none" : "chargelab",
     llm,
-    agentApiBaseUrl: env.AGENT_API_BASE_URL ?? "",
-    agentModel: env.AGENT_MODEL ?? "",
-    agentApiKey: env.AGENT_API_KEY ?? "",
+    agentApiBaseUrl: xiaozeLlm.apiBaseUrl ?? "",
+    agentModel: xiaozeLlm.model,
+    agentApiKey: xiaozeLlm.apiKey ?? "",
     logAnalysisApiBaseUrl: env.LOG_ANALYSIS_API_BASE_URL ?? "",
     logAnalysisModel: env.LOG_ANALYSIS_MODEL ?? "",
     logAnalysisApiKey: env.LOG_ANALYSIS_API_KEY ?? ""
@@ -228,9 +231,9 @@ export function renderAnswersEnvText(answers: SelfHostAnswers) {
     `WISEEFF_LAB_ADMIN_NAME=${normalized.adminName}`,
     `WISEEFF_LAB_SEED=${normalized.seed}`,
     `WISEEFF_LLM_MODE=${normalized.llm}`,
-    `AGENT_API_BASE_URL=${normalized.agentApiBaseUrl}`,
-    `AGENT_MODEL=${normalized.agentModel}`,
-    `AGENT_API_KEY=${normalized.agentApiKey}`,
+    `XIAOZE_LLM_API_BASE_URL=${normalized.agentApiBaseUrl}`,
+    `XIAOZE_LLM_MODEL=${normalized.agentModel}`,
+    `XIAOZE_LLM_API_KEY=${normalized.agentApiKey}`,
     `LOG_ANALYSIS_API_BASE_URL=${normalized.logAnalysisApiBaseUrl}`,
     `LOG_ANALYSIS_MODEL=${normalized.logAnalysisModel}`,
     `LOG_ANALYSIS_API_KEY=${normalized.logAnalysisApiKey}`,
@@ -251,7 +254,7 @@ export function parseAnswersEnvText(text: string): SelfHostAnswers {
   const llm = env.WISEEFF_LLM_MODE?.trim();
   return answersFromEnv({
     ...env,
-    AGENT_API_KEY: llm === "skip" ? "" : env.AGENT_API_KEY,
+    XIAOZE_LLM_API_KEY: llm === "skip" ? "" : env.XIAOZE_LLM_API_KEY,
     LOG_ANALYSIS_API_KEY: llm === "xiaoze+logs" ? env.LOG_ANALYSIS_API_KEY : llm === "xiaoze" ? "" : env.LOG_ANALYSIS_API_KEY
   });
 }

@@ -2,6 +2,8 @@
 
 > **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` — write the failing test first, implement the smallest change, then verify green. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
 
+> **Configuration supersession (2026-08-22):** Future Xiaoze commands in this still-open evidence plan use the canonical atomic `XIAOZE_LLM_API_BASE_URL` / `XIAOZE_LLM_MODEL` / `XIAOZE_LLM_API_KEY` group. This updates future execution only and does not rewrite or claim historical target evidence.
+
 
 
 **Goal:** Close every M5.2 target-environment evidence gate except real HDC device-lab evidence, and record the remaining HDC gap honestly.
@@ -108,8 +110,8 @@ Please provide these before execution. Secrets must be supplied locally or throu
 
 ### Xiaoze LLM
 
-- `AGENT_API_BASE_URL`, `AGENT_MODEL`, and `AGENT_API_KEY` for live LLM evidence, or `XIAOZE_DETERMINISTIC=true` for offline acceptance.
-- `AGENT_API_TIMEOUT_MS`, if different from 30000.
+- `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY` for live LLM evidence, or `XIAOZE_DETERMINISTIC=true` for offline acceptance.
+- `AGENT_API_TIMEOUT_MS` remains separate, currently unwired debt; do not treat it as a fourth canonical key.
 - `XIAOZE_CHECKPOINTER=postgres` for production/self-hosted unless `XIAOZE_DETERMINISTIC=true`.
 - Safe outage/degraded-mode simulation window, if outage evidence is required.
 
@@ -223,9 +225,9 @@ OBJECT_STORAGE_SECRET_ACCESS_KEY=<secret-key>
 OBJECT_STORAGE_REGION=<region-if-needed>
 DEBUG_DEVICE_GATEWAY_MODE=simulator
 DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true
-AGENT_API_BASE_URL=<agent-base-url>
-AGENT_MODEL=<model>
-AGENT_API_KEY=<agent-key>
+XIAOZE_LLM_API_BASE_URL=<agent-base-url>
+XIAOZE_LLM_MODEL=<model>
+XIAOZE_LLM_API_KEY=<agent-key>
 AGENT_API_TIMEOUT_MS=30000
 XIAOZE_CHECKPOINTER=postgres
 WISEEFF_API_BASE_URL=<staging-api-url>
@@ -449,9 +451,9 @@ DATABASE_URL=<staging-postgres-url>
 OBJECT_STORE_MODE=s3
 DEBUG_DEVICE_GATEWAY_MODE=simulator
 DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true
-AGENT_API_BASE_URL=<agent-base-url>
-AGENT_MODEL=<model>
-AGENT_API_KEY=<agent-key>
+XIAOZE_LLM_API_BASE_URL=<agent-base-url>
+XIAOZE_LLM_MODEL=<model>
+XIAOZE_LLM_API_KEY=<agent-key>
 XIAOZE_CHECKPOINTER=postgres
 ```
 

@@ -140,6 +140,8 @@ DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff OBJECT_STORE_ROOT
 npm run acceptance:e2e -- e2e/acceptance/xiaoze-action.acceptance.spec.ts
 ```
 
+离线验收不需要 live provider；live 目标环境验证必须显式配置 `XIAOZE_LLM_API_BASE_URL`、`XIAOZE_LLM_MODEL`、`XIAOZE_LLM_API_KEY`。
+
 Xiaoze 测试覆盖 AG-UI endpoint、read-only `perception.*` tools、mutating action approval/resume、LangGraph planning/checkpoint，以及 orchestrator approval 边界。负面测试应覆盖 `APPROVAL_REQUIRED`、`INVALID_APPROVAL_STATE`、`FORBIDDEN`、`VALIDATION_FAILED`、错误 session approval、inactive user、missing permissions 和 tool execution failures。
 
 ### 日志分析两层评测

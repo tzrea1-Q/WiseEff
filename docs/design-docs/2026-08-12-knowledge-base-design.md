@@ -45,7 +45,7 @@ Scenario checks the model must satisfy:
 ## Retrieval and RAG
 
 - **Storage**: chunk rows in PostgreSQL with a pgvector embedding column plus full-text/trigram indexes ([ADR-0025](../adr/0025-knowledge-retrieval-lives-in-postgres.md)). No dedicated vector database.
-- **Embeddings**: an OpenAI-compatible `EMBEDDING_API_*` endpoint, mirroring the `AGENT_API_*` seam. Self-hosted deployments may target a local OpenAI-compatible inference server. When unconfigured, the knowledge base runs in FTS-only mode: fully usable, no semantic retrieval.
+- **Embeddings**: an OpenAI-compatible `EMBEDDING_API_*` endpoint, mirroring the canonical Xiaoze seam (`XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY`). Self-hosted deployments may target a local OpenAI-compatible inference server. When unconfigured, the knowledge base runs in FTS-only mode: fully usable, no semantic retrieval.
 - **Indexing pipeline**: an asynchronous worker seam mirroring the log-analysis module (polling default, queue-ready). Publish, edit, and archive enqueue index refreshes; failures surface in `/knowledge-admin` with per-entry status and a rebuild action. The index is always rebuildable from published revisions.
 - **Chunking**: markdown splits heading-aware with overlap; extracted file text splits by paragraph windows. Chunks carry entry and revision identity so citations can deep-link.
 - **Hybrid retrieval**: when embeddings exist, vector similarity is fused with full-text ranking; otherwise full-text alone. CJK caveat: PostgreSQL default FTS does not segment CJK text, so Phase 1 pairs trigram matching for CJK with standard FTS for latin text; a dedicated CJK tokenizer stays a future option.

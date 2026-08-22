@@ -22,14 +22,14 @@ Secrets should be supplied by local `.env` files or the target environment's sec
 `.env.example` contains a local non-HDC staging profile. It intentionally leaves:
 
 ```text
-AGENT_API_BASE_URL=
-AGENT_MODEL=
-AGENT_API_KEY=
+XIAOZE_LLM_API_BASE_URL=
+XIAOZE_LLM_MODEL=
+XIAOZE_LLM_API_KEY=
 ```
 
-blank. Fill `AGENT_MODEL` and `AGENT_API_KEY` only in `.env` for the default Pi-backed provider. Fill `AGENT_API_BASE_URL` only when using URL-backed `wiseeff` or `openai` live provider formats.
+blank. For live Xiaoze mode, configure the canonical group atomically in `.env`: set `XIAOZE_LLM_API_BASE_URL` and `XIAOZE_LLM_API_KEY`, and either set `XIAOZE_LLM_MODEL` or leave it blank to use `gpt-4o-mini`. The presence of any canonical key, including a blank value, selects the canonical group and prevents fallback to legacy aliases.
 
-Pi Agent smoke and readiness evidence must redact `AGENT_API_KEY`, Authorization headers, raw prompts, raw provider payloads, and customer data. It is acceptable to record safe metadata such as provider format, Pi provider id, model id, prompt version, readiness status, token counts, estimated cost, latency, trace id, and approval id.
+Xiaoze smoke and readiness evidence must redact `XIAOZE_LLM_API_KEY`, Authorization headers, raw prompts, raw provider payloads, and customer data. Resolver migration diagnostics may include only diagnostic codes and canonical/legacy key names, never values. It is acceptable to record safe metadata such as provider kind, model id, prompt version, readiness status, token counts, estimated cost, latency, trace id, and approval id.
 
 Local `.env.example` defaults to WiseEff local accounts and also includes a deterministic HMAC smoke token for explicit local non-HDC acceptance runs without Keycloak. Target self-hosted environments that require SSO/MFA should use `AUTH_PROVIDER=oidc` with operator-managed issuer/audience values and must keep real OIDC tokens out of committed evidence.
 

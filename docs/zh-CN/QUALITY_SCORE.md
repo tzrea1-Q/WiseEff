@@ -31,6 +31,8 @@ Agent 发起的变更调用（start / deploy / restore）在服务端直接拒�
 
 PR 合入门槛是 L1（`detect` + `docs:check` + `build-and-test`，产品路径加 `@ci-smoke`，UI/产品路径加一次 `acceptance:quality-run`）和哨兵 `Merge bar`。全量本机非 HDC 证据（L2）把质量门和浏览器拆成兄弟 job，跑在 `main`、夜间、标签 `full-acceptance` 或手动 `workflow_dispatch`。完整评分与门禁表以英文版为准。
 
+小泽离线验收使用 `XIAOZE_DETERMINISTIC=true`；live LLM 质量证据必须在目标环境配置 `XIAOZE_LLM_API_BASE_URL`、`XIAOZE_LLM_MODEL`、`XIAOZE_LLM_API_KEY` 后采集。
+
 ## 前端 UI 质量门禁
 
 - `npm run ui:check`(CI 门禁):逐规则统计令牌块之外的裸颜色/裸 `z-index`/裸 `font-size`/手写 `box-shadow`/`ease` 关键字,以及 `window.confirm`、手写 modal-backdrop、固定英文残留清单;任一规则计数超过 `scripts/ui-standards-baseline.json` 即失败。计数下降时在同一变更里运行 `npm run ui:check -- --update-baseline` 下调棘轮;基线为 0 的规则从第一天起硬禁止。

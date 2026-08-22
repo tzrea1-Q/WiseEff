@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { networkInterfaces, type NetworkInterfaceInfo } from "node:os";
+import { resolveXiaozeLlmConfig } from "../../../server/config/xiaozeLlmConfig";
 
 export const ipLabSeedOrganizationId = "org-chargelab";
 export const ipLabSeedOrganizationName = "ChargeLab";
@@ -232,9 +233,9 @@ export function renderIpLabEnv(input: IpLabInitInput) {
     "DEVICE_BRIDGE_LAB_AVAILABLE=false",
     `DEVICE_BRIDGE_SERVER_URL=${publicUrl}`,
     "",
-    `AGENT_API_BASE_URL=${agentApiBaseUrl}`,
-    `AGENT_MODEL=${agentModel}`,
-    `AGENT_API_KEY=${agentApiKey}`,
+    `XIAOZE_LLM_API_BASE_URL=${agentApiBaseUrl}`,
+    `XIAOZE_LLM_MODEL=${agentModel}`,
+    `XIAOZE_LLM_API_KEY=${agentApiKey}`,
     "AGENT_API_TIMEOUT_MS=30000",
     "XIAOZE_CHECKPOINTER=postgres",
     `XIAOZE_DETERMINISTIC=${xiaozeDeterministic}`,
@@ -357,13 +358,14 @@ export function evaluateIpLabEnv(env: Record<string, string | undefined>): IpLab
   if ((env.XIAOZE_CHECKPOINTER ?? "").trim() !== "postgres") {
     issues.push({ level: "error", message: "XIAOZE_CHECKPOINTER must be postgres." });
   }
+  const xiaozeLlm = resolveXiaozeLlmConfig(env).config;
   const xiaozeReady =
     (env.XIAOZE_DETERMINISTIC ?? "").trim() === "true" ||
-    Boolean(env.AGENT_API_BASE_URL?.trim() && env.AGENT_API_KEY?.trim());
+    Boolean(xiaozeLlm.apiBaseUrl && xiaozeLlm.apiKey);
   if (!xiaozeReady) {
     issues.push({
       level: "error",
-      message: "Set XIAOZE_DETERMINISTIC=true or provide AGENT_API_BASE_URL and AGENT_API_KEY."
+      message: "Set XIAOZE_DETERMINISTIC=true or provide XIAOZE_LLM_API_BASE_URL and XIAOZE_LLM_API_KEY."
     });
   }
   const logAnalysisReady =

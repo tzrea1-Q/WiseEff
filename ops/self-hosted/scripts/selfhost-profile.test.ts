@@ -76,7 +76,10 @@ describe("self-host profile renderer", () => {
     );
     expect(env.XIAOZE_DETERMINISTIC).toBe("false");
     expect(env.LOG_ANALYSIS_DETERMINISTIC).toBe("false");
-    expect(env.AGENT_API_KEY).toBe("sk-xiaoze");
+    expect(env.XIAOZE_LLM_API_BASE_URL).toBe("https://llm.example.com/v1");
+    expect(env.XIAOZE_LLM_MODEL).toBe("demo-model");
+    expect(env.XIAOZE_LLM_API_KEY).toBe("sk-xiaoze");
+    expect(env).not.toHaveProperty("AGENT_API_KEY");
     expect(evaluateSelfHostEnv(env).status).toBe("passed");
   });
 

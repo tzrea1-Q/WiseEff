@@ -18,6 +18,8 @@ Deployment units include web, API, log worker, PostgreSQL, Redis/BullMQ, object 
 
 Configuration is injected through environment variables or a secure configuration system. Production-like modes must reject unsafe defaults such as mock runtime as business data, missing database, missing S3-compatible object storage, missing auth boundary, or unsafe Agent provider configuration.
 
+Xiaoze live-provider configuration enters through the atomic `XIAOZE_LLM_API_BASE_URL` / `XIAOZE_LLM_MODEL` / `XIAOZE_LLM_API_KEY` group. Any present canonical raw key selects that whole group, including explicit blanks; legacy aliases are migration-only input and current deployment output is canonical-only. `XIAOZE_DETERMINISTIC=true` is an offline gate, not target-provider evidence.
+
 ## CI/CD And Release
 
 CI should install dependencies, run tests, check contracts, build artifacts, and run documentation governance. Release candidates add self-hosted config checks, backup evidence, rollback planning, target synthetic acceptance, capacity checks, and observability review.

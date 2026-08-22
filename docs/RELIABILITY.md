@@ -85,8 +85,8 @@ Every production alert rule must include a `runbook_url` annotation. Use [runboo
 - `NODE_ENV=production` requires `OBJECT_STORE_MODE=s3`.
 - `OBJECT_STORE_MODE=s3` requires `OBJECT_STORAGE_ENDPOINT`, `OBJECT_STORAGE_BUCKET`, `OBJECT_STORAGE_ACCESS_KEY_ID`, and `OBJECT_STORAGE_SECRET_ACCESS_KEY`.
 - M6.3 self-hosted targets should also set `OBJECT_STORAGE_TLS_POLICY=required`, `OBJECT_STORAGE_PATH_STYLE`, `OBJECT_STORAGE_HEALTH_PREFIX`, and isolated backup/restore targets before backup drills.
-- `NODE_ENV=production` requires live Xiaoze LLM configuration unless `XIAOZE_DETERMINISTIC=true`: `AGENT_API_BASE_URL`, `AGENT_MODEL`, and `AGENT_API_KEY`.
-- `AGENT_API_TIMEOUT_MS` controls the live LLM request timeout and defaults to 5000ms.
+- `NODE_ENV=production` requires live Xiaoze LLM configuration unless `XIAOZE_DETERMINISTIC=true`: `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY`.
+- `AGENT_API_TIMEOUT_MS` is not part of the canonical Xiaoze group and currently has no Xiaoze runtime consumer; wiring or renaming it is separate debt.
 - Production and self-hosted deployments require `XIAOZE_CHECKPOINTER=postgres` unless `XIAOZE_DETERMINISTIC=true`.
 - `LOG_ANALYSIS_QUEUE_MODE=durable` requires `REDIS_URL`.
 - Missing or unsafe production settings should stop the API process before it accepts traffic.
@@ -127,7 +127,7 @@ Every production alert rule must include a `runbook_url` annotation. Use [runboo
 - Approval execution is idempotent by approval state: only `pending` approvals can transition to `approved` or `rejected`; repeated approval attempts return `INVALID_APPROVAL_STATE`.
 - Approval-time execution must re-check authz and current business state before running the tool. If that check fails, the pending approval and tool call remain retryable.
 - `parameter.submitChangeDraft` creates human-review drafts only; it does not merge or apply production parameter values.
-- Live Xiaoze LLM startup uses LangChain `ChatOpenAI` against `AGENT_API_BASE_URL`, `AGENT_MODEL`, and `AGENT_API_KEY`, with optional `XIAOZE_MODEL` override.
+- Live Xiaoze LLM startup uses LangChain `ChatOpenAI` against the atomic `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY` group. The model defaults to `gpt-4o-mini`; canonical blanks never fall back to legacy aliases.
 - Xiaoze LLM readiness is checked through the same health seam used by `/health/ready`; dependency details include safe evidence such as `baseUrlConfigured` and model id when available. If the LLM is unavailable, the orchestrator emits a degraded assistant message, records a fallback reason, and skips tool execution.
 - Xiaoze multi-step planning checkpoints are durable when `XIAOZE_CHECKPOINTER=postgres` (required in production unless `XIAOZE_DETERMINISTIC=true`). LangGraph checkpoint tables are created idempotently during `npm run db:migrate`, so HITL resume survives API restarts and multi-replica routing bound to the same PostgreSQL. Local dev/tests default to in-memory checkpointing.
 - `/metrics` exports `wiseeff_xiaoze_llm_ready` for Xiaoze LLM readiness. Model ids stay in readiness JSON and traces rather than Prometheus labels.

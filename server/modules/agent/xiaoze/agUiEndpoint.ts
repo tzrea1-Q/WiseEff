@@ -6,6 +6,7 @@ import type { Database } from "../../../shared/database/client";
 import type { KnowledgeEmbeddingClient } from "../../knowledge/indexing/embeddingClient";
 import type { ObjectStore } from "../../logs/objectStore";
 import type { ServerEnv } from "../../../config/env";
+import { resolveXiaozeLlmConfig } from "../../../config/xiaozeLlmConfig";
 import { getAgentSession } from "../repository";
 import { createAgentToolRegistry } from "../toolRegistry";
 import type { AgentToolExecutionContext } from "../toolRegistry";
@@ -235,22 +236,18 @@ function readResumeDecision(body: unknown): ResumeDecision | undefined {
   return undefined;
 }
 
-function resolveXiaozeModel(env: Pick<ServerEnv, "AGENT_MODEL" | "XIAOZE_MODEL">) {
-  return env.XIAOZE_MODEL?.trim() || env.AGENT_MODEL?.trim() || "gpt-4o-mini";
-}
-
 function createProductionModel(
   env: Pick<
     ServerEnv,
-    "AGENT_API_BASE_URL" | "AGENT_API_KEY" | "AGENT_MODEL" | "XIAOZE_MODEL" | "XIAOZE_REASONING_FALLBACK_HEURISTIC"
+    "XIAOZE_LLM_CONFIG" | "XIAOZE_REASONING_FALLBACK_HEURISTIC"
   >,
   tools: PerceptionToolDescriptor[]
 ) {
   const chat = new ChatOpenAI({
-    model: resolveXiaozeModel(env),
-    apiKey: env.AGENT_API_KEY,
+    model: env.XIAOZE_LLM_CONFIG.config.model,
+    apiKey: env.XIAOZE_LLM_CONFIG.config.apiKey,
     configuration: {
-      baseURL: env.AGENT_API_BASE_URL
+      baseURL: env.XIAOZE_LLM_CONFIG.config.apiBaseUrl
     },
     modelKwargs: {
       extra_body: {
@@ -458,10 +455,7 @@ export function createXiaozeAgentFactory(options: {
   db: Database;
   env: Pick<
     ServerEnv,
-    | "AGENT_API_BASE_URL"
-    | "AGENT_API_KEY"
-    | "AGENT_MODEL"
-    | "XIAOZE_MODEL"
+    | "XIAOZE_LLM_CONFIG"
     | "XIAOZE_CHECKPOINTER"
     | "XIAOZE_REASONING_FALLBACK_HEURISTIC"
     | "DATABASE_URL"
@@ -525,10 +519,7 @@ export function registerXiaozeRoutes(
       | "XIAOZE_PROACTIVE_ENABLED"
       | "XIAOZE_CHECKPOINTER"
       | "DATABASE_URL"
-      | "AGENT_API_BASE_URL"
-      | "AGENT_API_KEY"
-      | "AGENT_MODEL"
-      | "XIAOZE_MODEL"
+      | "XIAOZE_LLM_CONFIG"
       | "XIAOZE_REASONING_FALLBACK_HEURISTIC"
     >;
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
@@ -547,10 +538,16 @@ export function registerXiaozeRoutes(
     getCurrentAuthContext: options.getCurrentAuthContext
   });
 
-  const envDefaults = options.env ?? {
-    XIAOZE_CHECKPOINTER: "memory",
-    XIAOZE_REASONING_FALLBACK_HEURISTIC: false
-  };
+  const envDefaults = options.env
+    ? {
+        ...options.env,
+        XIAOZE_LLM_CONFIG: options.env.XIAOZE_LLM_CONFIG ?? resolveXiaozeLlmConfig({})
+      }
+    : {
+        XIAOZE_CHECKPOINTER: "memory" as const,
+        XIAOZE_REASONING_FALLBACK_HEURISTIC: false,
+        XIAOZE_LLM_CONFIG: resolveXiaozeLlmConfig({})
+      };
   const registry = createAgentToolRegistry({
     db: options.db,
     objectStore: options.objectStore,
@@ -587,7 +584,7 @@ export function registerXiaozeRoutes(
     createAgent,
     approvalChain,
     persistTurn,
-    resolveModelLabel: options.env ? () => resolveXiaozeModel(options.env!) : undefined,
+    resolveModelLabel: options.env ? () => envDefaults.XIAOZE_LLM_CONFIG.config.model : undefined,
     assertThreadAccess: async ({ auth, threadId }) => {
       const session = await getAgentSession(options.db!, auth.organization.id, threadId);
       if (session && session.actorUserId !== auth.user.id) {

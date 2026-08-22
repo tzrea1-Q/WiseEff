@@ -83,6 +83,8 @@ WiseEff 处理参数、日志、设备调试和 AI 工具调用，所有这些�
 
 Agent 只能通过工具调用访问系统。
 
+Live Xiaoze LLM 使用 `XIAOZE_LLM_API_BASE_URL`、`XIAOZE_LLM_MODEL`、`XIAOZE_LLM_API_KEY`；模型输出在后端 registry、authz、approval 和 audit 接受前都不能成为业务写入。
+
 工具分级：
 
 | 类型 | 示例 | 审批 |

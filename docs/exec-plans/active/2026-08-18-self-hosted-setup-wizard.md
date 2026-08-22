@@ -153,7 +153,7 @@ There is no Blank Slate equivalent that disables product modules. WiseEff profil
 | `access` | Public entry | IP or hostname; TLS mode; ACME email only for Let's Encrypt | `WISEEFF_SITE_HOST`, `WISEEFF_TLS_MODE`, `WISEEFF_TLS_EMAIL`, `WISEEFF_PUBLIC_URL`, `WISEEFF_CADDYFILE`, API/VITE/bridge public URLs |
 | `admin` | First operator | Username; password (generate if blank); display name | `WISEEFF_LAB_ADMIN_*`; `AUTH_PROVIDER=local` |
 | `seed` | Demo data | ChargeLab seed or empty | Provision flag, not a long env block |
-| `llm` | Model access | Skip / Xiaoze / Xiaoze + log-analysis | `AGENT_API_*`, `LOG_ANALYSIS_*`, deterministic flags |
+| `llm` | Model access | Skip / Xiaoze / Xiaoze + log-analysis | `XIAOZE_LLM_API_BASE_URL` / `XIAOZE_LLM_MODEL` / `XIAOZE_LLM_API_KEY`, `LOG_ANALYSIS_*`, deterministic flags |
 
 OIDC, backup mounts, observability compose, and Device Bridge pairing stay out of v1. Full Setup may show them as “later, not in this wizard.”
 
@@ -210,7 +210,7 @@ If the host has Docker but no Node, rendering should run as a one-shot container
 5. Show a review screen (profile, URL, username, password once, seed, LLM mode). Confirm.
 6. Render `.env`, preflight, `compose up`, provision, print login URL and doctor hint.
 
-Full inserts TLS and LLM questions before the review screen. Live completion against `AGENT_API_*` is P2 and must not block a skip path.
+Full inserts TLS and LLM questions before the review screen. Live completion against `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY` is P2 and must not block a skip path.
 
 ### Non-interactive contract
 

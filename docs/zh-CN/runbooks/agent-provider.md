@@ -6,13 +6,12 @@
 
 ## 必需配置
 
-- `AGENT_API_BASE_URL`
-- `AGENT_MODEL`
-- `AGENT_API_KEY`
-- `AGENT_API_TIMEOUT_MS`
-- 可选：`XIAOZE_MODEL` 覆盖默认模型选择
+- `XIAOZE_LLM_API_BASE_URL`
+- `XIAOZE_LLM_MODEL`（空值默认 `gpt-4o-mini`）
+- `XIAOZE_LLM_API_KEY`
+- `AGENT_API_TIMEOUT_MS` 是单独且当前未接线的 debt，不是第四个 canonical 小泽键。
 
-验收或离线演练可设 `XIAOZE_DETERMINISTIC=true`，无需填写 `AGENT_API_*`。
+验收或离线演练可设 `XIAOZE_DETERMINISTIC=true`，无需填写 `XIAOZE_LLM_*`。任一 canonical 原始键出现时整组优先，包括显式空值；只有 canonical 组三键全部缺席时才读取旧别名，并输出不含值的迁移诊断。
 
 生产与自托管部署须设 `XIAOZE_CHECKPOINTER=postgres`（除非 `XIAOZE_DETERMINISTIC=true`）。部署或配置变更后运行 `npm run db:migrate`，确保 LangGraph checkpoint 表已创建再对外服务。
 

@@ -1,6 +1,6 @@
 # 后端与运行环境
 
-WiseEff 后端是 TypeScript 模块化单体。M0-M5 已包括 auth、audit、parameters、logs、jobs、debugging、agent、contracts、operations 等模块，并通过 PostgreSQL、对象存储、worker、设备网关和 Xiaoze LLM（`AGENT_API_*`）形成产品化 runtime seam。
+WiseEff 后端是 TypeScript 模块化单体。M0-M5 已包括 auth、audit、parameters、logs、jobs、debugging、agent、contracts、operations 等模块，并通过 PostgreSQL、对象存储、worker、设备网关和 Xiaoze LLM（`XIAOZE_LLM_API_BASE_URL`、`XIAOZE_LLM_MODEL`、`XIAOZE_LLM_API_KEY`）形成产品化 runtime seam。
 
 ## 本地启动
 
@@ -33,7 +33,7 @@ VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787
 
 ## 环境变量
 
-本地开发推荐从 `.env.example` 复制为 `.env`。小泽 LLM 通过 `AGENT_API_BASE_URL`、`AGENT_MODEL`、`AGENT_API_KEY` 配置；本地验收或离线演示可设 `XIAOZE_DETERMINISTIC=true` 使用确定性响应，无需 live LLM。
+本地开发推荐从 `.env.example` 复制为 `.env`。小泽 LLM 通过 `XIAOZE_LLM_API_BASE_URL`、`XIAOZE_LLM_MODEL`、`XIAOZE_LLM_API_KEY` 配置；本地验收或离线演示可设 `XIAOZE_DETERMINISTIC=true` 使用确定性响应，无需 live LLM。
 
 关键变量：
 
@@ -45,8 +45,8 @@ VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787
 - `OBJECT_STORE_MODE`：`local` 或 `s3`。
 - `OBJECT_STORE_ROOT`：local object store 目录。
 - `DEBUG_DEVICE_GATEWAY_MODE`：`simulator`、`hdc`、`adb` 或 `multi`。
-- `AGENT_API_BASE_URL` / `AGENT_MODEL` / `AGENT_API_KEY` / `AGENT_API_TIMEOUT_MS`：live Xiaoze LLM 配置；验收可用 `XIAOZE_DETERMINISTIC=true` 代替。
-- `XIAOZE_MODEL`：可选，覆盖默认模型 id。
+- `XIAOZE_LLM_API_BASE_URL` / `XIAOZE_LLM_MODEL` / `XIAOZE_LLM_API_KEY`：live Xiaoze LLM 配置；验收可用 `XIAOZE_DETERMINISTIC=true` 代替。任一 canonical 原始键出现（包括空值）即整组生效，不回退旧别名。
+- `AGENT_API_TIMEOUT_MS`：不属于 canonical 小泽组三键，当前没有小泽运行时消费者，另列 wiring debt。
 - `XIAOZE_CHECKPOINTER`：`memory` 或 `postgres`；生产/自托管默认 `postgres`。
 - `WISEEFF_API_BASE_URL` / `VITE_WISEEFF_API_BASE_URL`：smoke 和前端 API base URL。
 - `LOG_ANALYSIS_QUEUE_MODE`：`polling` 或 `durable`。
@@ -150,15 +150,14 @@ HDC_SMOKE_WRITE_VALUE=...
 Live Xiaoze LLM：
 
 ```text
-AGENT_API_BASE_URL=...
-AGENT_MODEL=...
-AGENT_API_KEY=...
+XIAOZE_LLM_API_BASE_URL=...
+XIAOZE_LLM_MODEL=...
+XIAOZE_LLM_API_KEY=...
 AGENT_API_TIMEOUT_MS=30000
-XIAOZE_MODEL=...            # 可选
 XIAOZE_CHECKPOINTER=postgres # 生产/自托管
 ```
 
-离线验收或 CI 可设 `XIAOZE_DETERMINISTIC=true`，无需填写 `AGENT_API_*`。
+离线验收或 CI 可设 `XIAOZE_DETERMINISTIC=true`，无需填写 `XIAOZE_LLM_API_BASE_URL`、`XIAOZE_LLM_MODEL`、`XIAOZE_LLM_API_KEY`。
 
 Xiaoze 使用 LangChain `ChatOpenAI` 连接 OpenAI-compatible endpoint。工具执行仍由 WiseEff registry、approval、authz 和 audit 控制。
 

@@ -2,7 +2,7 @@
 
 > English: [English](../../developer/environment-variables.md)
 
-使用 `.env.example` 作为本地 non-HDC staging profile。复制为 `.env` 后，测试 live 小泽 LLM 时填写空白 `AGENT_API_*` 值。
+使用 `.env.example` 作为本地 non-HDC staging profile。复制为 `.env` 后，测试 live 小泽 LLM 时填写 `XIAOZE_LLM_API_BASE_URL`、`XIAOZE_LLM_MODEL`、`XIAOZE_LLM_API_KEY`。
 
 ## 核心运行时
 
@@ -104,17 +104,22 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 
 | 变量 | 本地默认值 | 用途 | 说明 |
 | --- | --- | --- | --- |
-| `AGENT_API_BASE_URL` | 空 | live 小泽 LLM | OpenAI-compatible 端点。 |
-| `AGENT_MODEL` | 空 | live 小泽 LLM | 本地填写。 |
-| `AGENT_API_KEY` | 空 | live 小泽 LLM | secret。 |
-| `AGENT_API_TIMEOUT_MS` | `30000` | live 小泽 LLM | LangChain `ChatOpenAI` 请求超时。 |
-| `XIAOZE_MODEL` | 空（回退 `AGENT_MODEL`） | live 小泽 | 可选覆盖 LangGraph agent 模型名。 |
+| `XIAOZE_LLM_API_BASE_URL` | 空 | live 小泽 LLM | OpenAI-compatible 端点。 |
+| `XIAOZE_LLM_MODEL` | 空（默认 `gpt-4o-mini`） | live 小泽 LLM | canonical 模式下空值或缺省均使用默认模型。 |
+| `XIAOZE_LLM_API_KEY` | 空 | live 小泽 LLM | secret。 |
+| `AGENT_API_TIMEOUT_MS` | `30000` | 单独 wiring debt | 不属于 canonical 小泽组三键，当前没有小泽运行时消费者。 |
 | `XIAOZE_CHECKPOINTER` | `memory` | 生产小泽规划 resume | 生产/自托管使用 `postgres`，使 LangGraph checkpoint 跨重启与多副本可用；表由 `npm run db:migrate` 确保。本地开发与测试可用 `memory`。 |
 | `XIAOZE_REASONING_FALLBACK_HEURISTIC` | `false` | live 小泽 LLM | 可选旧版语言启发式，仅在无结构化 `reasoning_content` / `<think>` 标签时拆分 reasoning 与 answer。生产环境保持 `false`。 |
 | `XIAOZE_PROACTIVE_ENABLED` | `false` | 主动 suggest API | 设为 `true` 注册只读 `POST /api/v1/agent/xiaoze/suggest`。默认关闭。 |
 | `VITE_XIAOZE_PROACTIVE_ENABLED` | `false` | 主动建议 UI | 在 `AgentInsightBar` 挂载 `useXiaozeSuggestions`。须 API `XIAOZE_PROACTIVE_ENABLED=true`。 |
 | `VITE_XIAOZE_PROMPT_DEBUG` | `false` | 前端开发工具 | opt-in 提示词/调试展示。 |
 | `VITE_XIAOZE_INSPECTOR` | `false` | 前端开发工具 | opt-in 管理员 CopilotKit AG-UI inspector（仅限非生产构建）。默认关闭：inspector 自带 CDN 推广横幅且上游无独立开关。 |
+
+<!-- xiaoze-llm-legacy-fallback:start -->
+### 旧键迁移回退（仅 canonical 三键全部缺席）
+
+三个 canonical 键按组原子解析：任一 `XIAOZE_LLM_API_BASE_URL`、`XIAOZE_LLM_MODEL`、`XIAOZE_LLM_API_KEY` 原始键出现（包括空值）即选择 canonical 模式，空值不会回退。只有 canonical 三键全部未出现时，才在一个迁移窗口内读取 `AGENT_API_BASE_URL`、`AGENT_API_KEY`，模型按 `XIAOZE_MODEL > AGENT_MODEL > gpt-4o-mini` 选择。诊断只包含 code 与键名，不包含端点、模型值或 secret；当前模板和 setup 只写 canonical 键。
+<!-- xiaoze-llm-legacy-fallback:end -->
 
 ## 日志分析 LLM
 
@@ -149,7 +154,7 @@ API mode 始终包含小泽；mock mode 无 Agent UI。数据库可用时，后�
 
 ## 知识库嵌入与索引
 
-知识库语义检索镜像 `AGENT_API_*` 接缝,使用 OpenAI-compatible `/v1/embeddings` 端点。整组留空即为 FTS-only 模式:知识库所有功能保持可用,只是没有语义检索。语义检索还额外要求 PostgreSQL 服务器安装 pgvector 扩展(见自托管 runbook);端点或扩展缺失时,检索响应会诚实上报 `fts_only`。
+知识库语义检索镜像 OpenAI-compatible 小泽 LLM 接缝，使用独立的 `/v1/embeddings` 端点。整组留空即为 FTS-only 模式：知识库所有功能保持可用，只是没有语义检索。语义检索还额外要求 PostgreSQL 服务器安装 pgvector 扩展（见自托管 runbook）；端点或扩展缺失时，检索响应会诚实上报 `fts_only`。
 
 | 变量 | 本地默认值 | 用途 | 说明 |
 | --- | --- | --- | --- |

@@ -3,9 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  currentXiaozeLlmInstructionDocs,
   requiredEnvExampleKeys,
   requiredRepositoryDocs,
   validateBilingualDeveloperDocs,
+  validateCurrentXiaozeLlmInstructions,
   validateM6ReleaseRunbookCommands,
   validateEnvExample,
   validateMarkdownLinks,
@@ -127,12 +129,12 @@ describe("validateRequiredRepositoryDocs", () => {
 describe("validateEnvExample", () => {
   it("requires .env.example to contain every documented local setup key", async () => {
     const root = await createTempRoot();
-    await write(root, ".env.example", "DATABASE_URL=postgres://example\nAGENT_API_BASE_URL=\n");
+    await write(root, ".env.example", "DATABASE_URL=postgres://example\nXIAOZE_LLM_API_BASE_URL=\n");
 
     const errors = await validateEnvExample(root);
 
-    expect(errors).toContain("Missing required .env.example key: AGENT_MODEL.");
-    expect(errors).toContain("Missing required .env.example key: AGENT_API_KEY.");
+    expect(errors).toContain("Missing required .env.example key: XIAOZE_LLM_MODEL.");
+    expect(errors).toContain("Missing required .env.example key: XIAOZE_LLM_API_KEY.");
     expect(errors).toContain("Missing required .env.example key: LOG_ANALYSIS_QUEUE_MODE.");
     expect(errors).toContain("Missing required .env.example key: REDIS_URL.");
     expect(errors).toContain("Missing required .env.example key: LOG_ANALYSIS_QUEUE_CONCURRENCY.");
@@ -180,6 +182,143 @@ describe("validateEnvExample", () => {
     );
 
     await expect(validateEnvExample(root)).resolves.toEqual([]);
+  });
+});
+
+describe("validateCurrentXiaozeLlmInstructions", () => {
+  it("allows a high-level current overview to name the canonical Xiaoze family without enumerating every key", () => {
+    expect(
+      validateCurrentXiaozeLlmInstructions(
+        "docs/README.md",
+        "The current Xiaoze provider uses the `XIAOZE_LLM_*` configuration family."
+      )
+    ).toEqual([]);
+  });
+
+  it("rejects a legacy Xiaoze live-configuration instruction outside the explicit migration fallback", () => {
+    const content = [
+      "# Local development",
+      "",
+      "Configure `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY`.",
+      "Fill `AGENT_API_*` when testing the live Xiaoze LLM."
+    ].join("\n");
+
+    expect(validateCurrentXiaozeLlmInstructions("docs/developer/local-development.md", content)).toEqual([
+      "docs/developer/local-development.md treats legacy Xiaoze LLM key AGENT_API_* as a current instruction outside an explicit canonical-group-absent migration fallback."
+    ]);
+  });
+
+  it("requires each operator/config document to name the complete canonical Xiaoze group", () => {
+    const content = "Set `XIAOZE_LLM_API_BASE_URL` for live Xiaoze behavior.";
+
+    expect(validateCurrentXiaozeLlmInstructions("docs/runbooks/manual-acceptance.md", content)).toEqual([
+      "docs/runbooks/manual-acceptance.md is missing canonical Xiaoze LLM key XIAOZE_LLM_MODEL.",
+      "docs/runbooks/manual-acceptance.md is missing canonical Xiaoze LLM key XIAOZE_LLM_API_KEY."
+    ]);
+  });
+
+  it("does not let a fallback heading authorize legacy keys without structured markers", () => {
+    const content = [
+      "# Environment variables",
+      "",
+      "Configure `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY`.",
+      "",
+      "## Legacy migration fallback (canonical group absent only)",
+      "",
+      "Read `AGENT_API_BASE_URL`, `AGENT_API_KEY`, `XIAOZE_MODEL`, then `AGENT_MODEL`."
+    ].join("\n");
+
+    expect(validateCurrentXiaozeLlmInstructions("docs/developer/environment-variables.md", content)).toEqual([
+      "docs/developer/environment-variables.md treats legacy Xiaoze LLM key AGENT_API_BASE_URL as a current instruction outside an explicit canonical-group-absent migration fallback.",
+      "docs/developer/environment-variables.md treats legacy Xiaoze LLM key AGENT_API_KEY as a current instruction outside an explicit canonical-group-absent migration fallback.",
+      "docs/developer/environment-variables.md treats legacy Xiaoze LLM key XIAOZE_MODEL as a current instruction outside an explicit canonical-group-absent migration fallback.",
+      "docs/developer/environment-variables.md treats legacy Xiaoze LLM key AGENT_MODEL as a current instruction outside an explicit canonical-group-absent migration fallback."
+    ]);
+  });
+
+  it("allows legacy keys inside a paired canonical-group-absent migration marker", () => {
+    const content = [
+      "Configure `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY`.",
+      "<!-- xiaoze-llm-legacy-fallback:start -->",
+      "Read `AGENT_API_BASE_URL`, `AGENT_API_KEY`, `XIAOZE_MODEL`, then `AGENT_MODEL`.",
+      "<!-- xiaoze-llm-legacy-fallback:end -->"
+    ].join("\n");
+
+    expect(validateCurrentXiaozeLlmInstructions("docs/developer/environment-variables.md", content)).toEqual([]);
+  });
+
+  it("rejects an unclosed legacy fallback marker", () => {
+    const content = [
+      "Configure `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY`.",
+      "<!-- xiaoze-llm-legacy-fallback:start -->",
+      "Read `AGENT_API_BASE_URL` during migration."
+    ].join("\n");
+
+    expect(validateCurrentXiaozeLlmInstructions("docs/developer/environment-variables.md", content)).toEqual([
+      "docs/developer/environment-variables.md has an unclosed Xiaoze LLM legacy fallback marker."
+    ]);
+  });
+
+  it("rejects nested and unmatched legacy fallback markers", () => {
+    const content = [
+      "Configure `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY`.",
+      "<!-- xiaoze-llm-legacy-fallback:start -->",
+      "<!-- xiaoze-llm-legacy-fallback:start -->",
+      "Read `AGENT_API_BASE_URL` during migration.",
+      "<!-- xiaoze-llm-legacy-fallback:end -->",
+      "<!-- xiaoze-llm-legacy-fallback:end -->"
+    ].join("\n");
+
+    expect(validateCurrentXiaozeLlmInstructions("docs/developer/environment-variables.md", content)).toEqual([
+      "docs/developer/environment-variables.md has nested Xiaoze LLM legacy fallback markers.",
+      "docs/developer/environment-variables.md has an unmatched Xiaoze LLM legacy fallback end marker."
+    ]);
+  });
+
+  it("rejects legacy fallback markers outside the English and Chinese environment guides", () => {
+    const content = [
+      "The current Xiaoze provider uses the `XIAOZE_LLM_*` family.",
+      "<!-- xiaoze-llm-legacy-fallback:start -->",
+      "Read `AGENT_API_BASE_URL` during migration.",
+      "<!-- xiaoze-llm-legacy-fallback:end -->"
+    ].join("\n");
+
+    expect(validateCurrentXiaozeLlmInstructions("docs/README.md", content)).toEqual([
+      "docs/README.md may not declare a Xiaoze LLM legacy fallback block; only the English and Chinese environment-variable guides may contain one.",
+      "docs/README.md treats legacy Xiaoze LLM key AGENT_API_BASE_URL as a current instruction outside an explicit canonical-group-absent migration fallback."
+    ]);
+  });
+
+  it("governs every current normative Xiaoze surface and its available language companion", () => {
+    expect(currentXiaozeLlmInstructionDocs).toEqual(
+      expect.arrayContaining([
+        "ARCHITECTURE.md",
+        "docs/zh-CN/root/ARCHITECTURE.md",
+        "docs/QUALITY_SCORE.md",
+        "docs/zh-CN/QUALITY_SCORE.md",
+        "docs/README.md",
+        "docs/zh-CN/README.md",
+        "docs/SECURITY.md",
+        "docs/zh-CN/SECURITY.md",
+        "docs/design-docs/security-governance.md",
+        "docs/zh-CN/design-docs/security-governance.md",
+        "docs/design-docs/testing-strategy.md",
+        "docs/zh-CN/design-docs/testing-strategy.md",
+        "docs/developer/verification-matrix.md",
+        "docs/zh-CN/developer/verification-matrix.md",
+        "docs/exec-plans/active/2026-08-18-self-hosted-setup-wizard.md",
+        "docs/zh-CN/exec-plans/active/2026-08-18-self-hosted-setup-wizard.md",
+        "docs/references/pi-agent-provider-evidence.md",
+        "docs/design-docs/2026-08-12-knowledge-base-design.md",
+        "docs/zh-CN/design-docs/2026-08-12-knowledge-base-design.md"
+      ])
+    );
+    expect(currentXiaozeLlmInstructionDocs).not.toContain(
+      "docs/exec-plans/active/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-3.md"
+    );
+    expect(currentXiaozeLlmInstructionDocs).not.toContain(
+      "docs/design-docs/2026-06-26-xiaoze-sole-agent-cleanup-design.md"
+    );
   });
 });
 

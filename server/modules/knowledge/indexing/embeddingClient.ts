@@ -1,5 +1,5 @@
 /**
- * Embedding seam for knowledge retrieval, mirroring the AGENT_API_* chat seam:
+ * Embedding seam for knowledge retrieval, mirroring the canonical XIAOZE_LLM_* chat seam:
  * an OpenAI-compatible `/v1/embeddings` endpoint configured via EMBEDDING_API_*.
  * When unconfigured the knowledge base stays in FTS-only mode.
  */
@@ -15,7 +15,7 @@ export type EmbeddingEnv = {
   EMBEDDING_API_TIMEOUT_MS?: number;
 };
 
-/** Accepts bases with or without a trailing `/v1`, like the AGENT_API_BASE_URL convention. */
+/** Accepts bases with or without a trailing `/v1`, like the XIAOZE_LLM_API_BASE_URL convention. */
 export function buildEmbeddingsUrl(baseUrl: string) {
   const trimmed = baseUrl.replace(/\/+$/, "");
   return /\/v1$/.test(trimmed) ? `${trimmed}/embeddings` : `${trimmed}/v1/embeddings`;

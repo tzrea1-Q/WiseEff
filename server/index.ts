@@ -33,6 +33,11 @@ import {
 import { resolveParameterIdentityMode } from "./modules/parameter-kernel/parameterIdentityMode";
 
 const env = loadServerEnv(process.env);
+for (const diagnostic of env.XIAOZE_LLM_CONFIG.diagnostics) {
+  console.warn(
+    `[xiaoze-llm-config] ${diagnostic.code}: ${diagnostic.key} -> ${diagnostic.canonicalKey}`
+  );
+}
 const db = env.DATABASE_URL ? createPostgresDatabase(env.DATABASE_URL, { tracing: defaultTracingBoundary }) : undefined;
 const objectStore = db ? createObjectStoreFromEnv(env, { tracing: defaultTracingBoundary }) : undefined;
 const metrics = createMetricsRegistry({ serviceName: "wiseeff-api" });

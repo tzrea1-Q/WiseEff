@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { resolveXiaozeLlmConfig } from "../../config/xiaozeLlmConfig";
 import type { Database } from "../../shared/database/client";
 import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
@@ -48,8 +49,10 @@ function createDebugGateway(): DebugDeviceGateway {
 
 function createXiaozeLlmEnv(overrides: Partial<PilotReadinessEnv> = {}) {
   return {
-    AGENT_API_BASE_URL: "https://agent.example.com",
-    AGENT_API_KEY: "test-key",
+    XIAOZE_LLM_CONFIG: resolveXiaozeLlmConfig({
+      XIAOZE_LLM_API_BASE_URL: "https://agent.example.com",
+      XIAOZE_LLM_API_KEY: "test-key"
+    }),
     XIAOZE_DETERMINISTIC: false,
     ...overrides
   };
@@ -216,7 +219,11 @@ describe("operations routes", () => {
           HDC_SMOKE_NODE_PATH: "/power/fast-charge-current",
           HDC_SMOKE_WRITE_VALUE: "3100",
           M5_CONTRACT_CHECK_PASSED: true,
-          XIAOZE_MODEL: "model-a"
+          XIAOZE_LLM_CONFIG: resolveXiaozeLlmConfig({
+            XIAOZE_LLM_API_BASE_URL: "https://agent.example.com",
+            XIAOZE_LLM_API_KEY: "test-key",
+            XIAOZE_LLM_MODEL: "model-a"
+          })
         }),
         getCurrentAuthContext: async () => createAdminAuth()
       });
@@ -336,7 +343,9 @@ describe("operations routes", () => {
         debugGateway: createDebugGateway(),
         env: createPilotReadinessEnv({
           M5_CONTRACT_CHECK_PASSED: true,
-          AGENT_API_KEY: undefined
+          XIAOZE_LLM_CONFIG: resolveXiaozeLlmConfig({
+            XIAOZE_LLM_API_BASE_URL: "https://agent.example.com"
+          })
         }),
         getCurrentAuthContext: async () => createAdminAuth()
       });

@@ -9,6 +9,7 @@ WiseEff 是一个面向企业工程效率的 AI 辅助平台原型。当前仓�
 - 本仓库适合本地开发、API 模式验证、自托管基线验证，以及受控 staging / pilot evidence collection。
 - 不能仅凭本地检查宣称生产就绪、试点就绪或发布就绪。
 - 真实目标环境结论必须有对应证据，例如 live API、PostgreSQL-backed E2E、HDC device-lab、backup/restore、rollback、identity、queue、observability、capacity 和 live Agent provider evidence。
+- 小泽 live LLM 的 canonical 配置是 atomic `XIAOZE_LLM_API_BASE_URL` / `XIAOZE_LLM_MODEL` / `XIAOZE_LLM_API_KEY` 组三键；本地 `XIAOZE_DETERMINISTIC=true` 只证明离线路径，不代表 live provider readiness。
 
 ## 环境要求
 

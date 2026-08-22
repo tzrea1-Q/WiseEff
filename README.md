@@ -2,7 +2,7 @@
 
 > Chinese: [Chinese](docs/zh-CN/root/README.md)
 
-WiseEff is an AI-assisted enterprise efficiency platform prototype. It has moved from a frontend-only demo toward an M0-M6 productization baseline with a Vite/React/TypeScript frontend, mock and API runtimes, a TypeScript modular backend, PostgreSQL migrations, OpenAPI contract checks, production auth boundaries, worker/object-store seams, Redis/BullMQ durable queue support, HDC gateway seams, Xiaoze LLM integration (`AGENT_API_*`), and admin-gated pilot/readiness endpoints.
+WiseEff is an AI-assisted enterprise efficiency platform prototype. It has moved from a frontend-only demo toward an M0-M6 productization baseline with a Vite/React/TypeScript frontend, mock and API runtimes, a TypeScript modular backend, PostgreSQL migrations, OpenAPI contract checks, production auth boundaries, worker/object-store seams, Redis/BullMQ durable queue support, HDC gateway seams, Xiaoze LLM integration (`XIAOZE_LLM_*`), and admin-gated pilot/readiness endpoints.
 
 The repository is suitable for controlled staging and pilot evidence collection. It must not be described as broadly production-ready until real target-environment evidence exists for live API, PostgreSQL-backed E2E, HDC device lab, backup/restore, rollback, identity, queue, observability, capacity, and Xiaoze LLM readiness checks.
 
@@ -45,7 +45,7 @@ copy .env.example .env
 npm run dev:all
 ```
 
-`npm run dev:all` auto-detects `docker compose` or `docker-compose`, starts PostgreSQL from `compose.yaml`, waits for readiness, runs migrations and seeds, then starts the WiseEff API and API-mode Vite frontend. Start from `.env.example`; it prepares local PostgreSQL, local object storage, multi-protocol device gateway defaults, production-mode local account auth defaults, optional HMAC smoke inputs, and Xiaoze LLM settings via `AGENT_API_*`.
+`npm run dev:all` auto-detects `docker compose` or `docker-compose`, starts PostgreSQL from `compose.yaml`, waits for readiness, runs migrations and seeds, then starts the WiseEff API and API-mode Vite frontend. Start from `.env.example`; it prepares local PostgreSQL, local object storage, multi-protocol device gateway defaults, production-mode local account auth defaults, optional HMAC smoke inputs, and the canonical atomic Xiaoze LLM group `XIAOZE_LLM_API_BASE_URL` / `XIAOZE_LLM_MODEL` / `XIAOZE_LLM_API_KEY`. Offline acceptance uses `XIAOZE_DETERMINISTIC=true`; it does not prove live-provider readiness.
 
 Development services bind to `127.0.0.1`. Vite usually prints this URL after startup:
 
