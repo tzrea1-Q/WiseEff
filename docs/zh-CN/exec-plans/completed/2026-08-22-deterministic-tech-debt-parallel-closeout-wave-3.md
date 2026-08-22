@@ -1,10 +1,12 @@
 # 确定性技术债并行收口——第三批
 
-> 状态：**进行中**
+> 状态：**已完成（2026-08-22）**
 > 日期：2026-08-22
 > 规划基线：`origin/main@afa6095f9c9d27576f8f0b423fb438e2782a5e8d`
 > 规划分支：`codex/deterministic-tech-debt-wave3-plan`
-> English: [English](../../../exec-plans/active/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-3.md)
+> 收口分支：`codex/deterministic-td-wave3-closeout`
+> 实现 PR：#588（TD-072）、#589（TD-110）、#591（TD-031）、#592（TD-112）
+> English: [English](../../../exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-3.md)
 > 追踪表：[技术债追踪表](../tech-debt-tracker.md)
 
 ## 目标
@@ -128,7 +130,7 @@ TD-112 worker 必须在第一个 red test 前记录：
 3. **Red：node enablement。** 提交真实 enablement draft，断言返回 request 及落库 request/item/enablement 语义。
 4. **Green：行为对等。** 复用生产 submit path，断言事务/rollback 后状态，不断言查询顺序。
 5. **Red/green：不可能的 project-less merge。** 在 `server/modules/parameters/reviewChangePolicy.ts` 固化 semantic review subject/precondition，由 `reviewChange` 消费，并实际执行 `server/modules/parameters/reviewChangePolicy.test.ts` 的表测试；不得插入非法 DB row。
-6. 删除 `QueuedResult`、`createFakeDb`、queue helpers、过时注释与该段剩余 SQL-text assertions，证明全仓 `QueuedResult` 为 0。
+6. 删除 `QueuedResult`、`createFakeDb`、queue helpers、过时注释与该段剩余 SQL-text assertions，证明 production/test source（`server/`、`src/`、`e2e/`、`scripts/`、`ops/`）内 `QueuedResult` 为 0；历史 plan/tracker 文字不属于该 identifier stock。
 
 ### Track B——TD-110
 
@@ -213,7 +215,7 @@ pending CI 不是可合入。target/HDC/provider job 可按路径诚实 skip，�
 ## 共享 tracker 与 active-plan 卫生收口
 
 1. 只把成功合入并有完整证据的 TD-072/110/031/112 从中英文 Open 移到 Completed；TD-112 scope gate 失败则保持 Open 并写原因。
-2. 修正 TD-072 对已关 TD-096 的过时依赖；只在核验后写全仓 `QueuedResult=0`。
+2. 修正 TD-072 对已关 TD-096 的过时依赖；只在核验后写 production/test source 的 `QueuedResult=0`，不把保留的历史 plan/tracker 文字算入源码存量。
 3. 在 `docs/design-docs/xiaoze-thread-persistence.md` 与 `docs/zh-CN/design-docs/xiaoze-thread-persistence.md` 补齐已实现的 assistant-message run-step metadata。
 4. 将 `docs/exec-plans/active/td-031-xiaoze-run-timeline-streaming.md` 归档为 `docs/exec-plans/completed/2026-08-22-xiaoze-run-timeline-streaming-metadata-closeout.md`，并新建 `docs/zh-CN/exec-plans/completed/2026-08-22-xiaoze-run-timeline-streaming-metadata-closeout.md`。
 5. 更新 `docs/PLANS.md`、`docs/zh-CN/PLANS.md`、`docs/exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`、`docs/zh-CN/exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`；历史实现证据保留，不重写。
@@ -222,7 +224,7 @@ pending CI 不是可合入。target/HDC/provider job 可按路径诚实 skip，�
 ## 成功标准
 
 - 第一波三个 worker 并行且代码所有权不重叠；TD-112 从刷新后的 `main` 复用 TD-110 槽位。
-- 全仓 `QueuedResult=0`，local PostgreSQL preflight 通过，两个转换后的 DB 行为与 pure project-less policy test 实际执行且 0 skip，没有用 SQL-text/call-order 冒充行为证据。
+- `server/`、`src/`、`e2e/`、`scripts/`、`ops/` 的 production/test source 中 `QueuedResult=0`；local PostgreSQL preflight 通过，两个转换后的 DB 行为与 pure project-less policy test 实际执行且 0 skip，没有用 SQL-text/call-order 冒充行为证据。
 - API 初态没有 demo user/authority；mock 保留九人 cast；API auth/directory hydration 正确且无 demo 闪现。
 - 当前模板/setup 只用 `XIAOZE_LLM_*`；legacy 直读只允许出现在 `server/config/xiaozeLlmConfig.ts`、受审计的 `ops/self-hosted/scripts/setup.sh` Bash adapter、精确测试与显式迁移/历史文档，其余 production 为 0；TypeScript/Bash parity 通过，错误/诊断不泄露值，不宣称 live provider readiness。
 - `ProjectAdminTable` 组合 `DataTable`，不再拥有手写 `<table>`/scroll math，保留 390/768/1440、entry/action/filter/sort/pagination，以及 reload/`popstate`/Back/Forward 下 `q`/`status`/`sort` 恢复。
@@ -258,19 +260,35 @@ git diff --check
 
 同时复跑 TD-072 local PostgreSQL preflight/具名 0-skip 门禁，以及最终合入路由上的 TD-110/112 API-mode 浏览器门禁。completed 计划和 tracker 记录精确测试数、skip、TD-072 具名 case、warning、截图、network/console、CI check、PR 与 merge SHA。
 
+## 收口证据
+
+- **TD-072 — #588（`fc3d96b22fce42b72c31a8c61a4bedc4821ceaab`）：** local PostgreSQL preflight 通过；focused 4 files / 75 tests / 0 skip，并实际执行两个转换后的 DB 行为和 pure project-less policy。server 全量 349 passed files + 2 个既有 skipped files、2710 passed tests + 8 个既有 skip。`server/`、`src/`、`e2e/`、`scripts/`、`ops/` 的 production/test source 中 `QueuedResult=0`；保留的历史文字不算源码存量。
+- **TD-110 — #589（`cb2b0d6ffc77a6675078b2c5cb2e78c083fbcdab`）：** focused 4 files / 187 tests、前端全量 405 files / 3014 tests、fresh production-HMAC `PERM-USER-MGMT-001` 2/2。API 模式 `/organization/members` 覆盖 1440×900、768×1024、390×844，demo-user flash 0，`/me` 与 `/users` HTTP 200，overflow 0，console error 0。
+- **TD-031 — #591（`07d37d7e2368fa4af423b1446fb73ae89b70c501`）：** focused server 13 files / 105 tests、scripts 5 files / 41 tests；server 全量 2718 tests + 8 个既有 skip，scripts 511 tests + 5 个既有 skip。fresh deterministic Xiaoze 验收 10 passed / 1 个既有 planned skip，健康状态精确 deterministic-ready，有 evidence artifact，production provider factory 0 calls。该 0 是 construction-contract 计数，不是网络遥测。
+- **TD-112 — #592（`7314004c5bd41d4624b4d1e81c7e0948f6e66791`）：** 最终受影响覆盖 7 files / 110 tests，`ApiProjectTopologyWorkspace` 24/24。focused runner 3/3——runtime warmup 加业务 ID `PARAM-ADMIN-003`、`PROJ-CONFIG-READ-001`——且 evidence run `wave3-td112-final-post-seam` 通过。fresh task DB 下 a11y 14/14、responsive 65/65、相关 visual 3/3。API 模式三视口覆盖完整交互与 URL-history 合同，HTTP 200、console error 0。最终 CI 前端 408 files / 3031 tests；scripts 54 files / 520 tests + 5 个既有 skip；Device Bridge 21 files / 134 tests + 4 个既有 skip；server 351 files / 2726 tests，另 1 file / 4 tests skip。Acceptance quality 97/97、Acceptance smoke 4/4，lint 0 error / 299 条基线 warning。
+- 四个实现 PR 的 Detect changed paths、Build and test、Acceptance quality、Acceptance smoke、Merge bar 均通过，独立 Standards/Spec 复审均收敛到 0 finding。path-filtered local non-HDC 与 target-synthetic job 的 skip 不提供 readiness 证据。
+- TD-112 仍只关闭限定的 Admin list：`ProjectAdminTable` 与 project-configuration-workbench 目录当前均有 0 个手写 `<table>`；Dts、mock-only `ParametersTable`、raw logs、wizards 与 PCW 非表格表面明确排除。
+- 实现 PR 已完成矩阵中的 runtime、architecture、frontend、acceptance、security、runbook 与 current-operator 文档更新；本 closeout 完成精确 tracker、计划位置、launch 状态与 Xiaoze persistence metadata 更新。其余 Review/No-change 路径已对最终 `7314004c` 核对，无需追加 closeout diff；product workflow、permission、HTTP contract、generated artifact、ADR、trust、audit boundary 均未变化。
+- 本共享收口只改 tracker、计划与 persistence 文档；不新增硬件、目标环境、target synthetic、live provider、credential provisioning 或 production-readiness 证据。
+- shared-closeout 的 `npm run docs:check` 与 `git diff --check` 通过；本地 database-schema artifact check 按设计报告 pgvector extension skip，仍由 CI 验证。
+- 最终 merged-tree 验证使用 `origin/main@7314004c5bd41d4624b4d1e81c7e0948f6e66791` 与 clean TD-112 实现工作树共有的精确 tree。typecheck、build、前端 408 files / 3031 tests、server 350 passed files + 2 skipped files 与 2722 passed tests + 8 skips、scripts 54 files / 520 tests + 5 skips、lint 0 error / 299 条基线 warning、UI ratchet、self-hosted、contract、acceptance coverage/operations/quality、a11y 14/14、responsive 65/65，以及 TD-072 PostgreSQL 4 files / 75 tests / 0 skip 均通过；TD-072 三个具名行为都实际执行。
+- merged-tree focused 浏览器验收 4/4：runtime warmup 加 `PERM-USER-MGMT-001`、`PARAM-ADMIN-003`、`PROJ-CONFIG-READ-001`。evidence run `wave3-closeout-focused` 绑定 source commit `7314004c5bd41d4624b4d1e81c7e0948f6e66791`，三个 required operation record 均通过，并按场景记录 API/DB/audit 或 screenshot 证据。
+- 两个整库本地命令暴露范围外基线债，不会被写成全绿：Darwin `acceptance:visual` 使用任务专属 isolated DB，9/20 通过，失败项为 4 个 stale + 7 个 missing snapshot；TD-112 相关 `/parameter-admin`、配置工作台与 focused visual 通过，仓库 CI Acceptance quality 97/97 通过。`acceptance:browser -- --mode local-non-hdc` 从含测试生成变化的 TD-112 implementation worktree 运行，并使用既有共享验收库；结果为 109 passed、29 个 planned skip、18 个 broad-suite failure（含 toolchain、permission、knowledge 与 Xiaoze 基线状态）。该失败 full run 不可发布，无作用域 latest-run `acceptance:evidence` 因此没有合法 full manifest；它只提供诊断清单，不是 fresh-DB 复现证据。29 个失败全部转交 Open TD-122 与 `docs/zh-CN/exec-plans/active/2026-08-22-acceptance-baseline-integrity.md`，首个门禁是 clean merged main + fresh DB 重跑。文档收口未顺手改写 snapshot、permission、硬件/toolchain 或其它 workflow；各轨必须的 browser/evidence gate 与四个实现 PR CI 均为绿色。
+- shared closeout PR 的独立 Standards/Spec 复审与 required repository CI 在合入前仍为阻断门禁。
+
 ## Documentation Impact Matrix
 
 | 区域 | 状态 | 精确文件 / 证据要求 |
 | --- | --- | --- |
 | 仓库地图 | Review | `AGENTS.md`、`docs/zh-CN/root/AGENTS.md`、`ARCHITECTURE.md`、`docs/zh-CN/root/ARCHITECTURE.md`、`docs/README.md`、`docs/zh-CN/README.md`；后两者作为 docs 知识库索引成对 Review；导航/runtime boundary 未变则记录 unchanged。 |
 | 架构入口 | Update | `README.md`、`docs/zh-CN/root/README.md`、`docs/design-docs/full-stack-architecture.md`、`docs/zh-CN/design-docs/full-stack-architecture.md`；对齐 Xiaoze canonical runtime/configuration 入口，保留 local-deterministic 与 live-provider 证据边界。 |
-| 规划 | Update | `docs/exec-plans/active/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-3.md`、`docs/zh-CN/exec-plans/active/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-3.md`、closeout destinations `docs/exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-3.md` 与 `docs/zh-CN/exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-3.md`、`docs/PLANS.md`、`docs/zh-CN/PLANS.md`、`docs/exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`、`docs/zh-CN/exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`、stale source `docs/exec-plans/active/td-031-xiaoze-run-timeline-streaming.md`、archive destinations `docs/exec-plans/completed/2026-08-22-xiaoze-run-timeline-streaming-metadata-closeout.md` 与 `docs/zh-CN/exec-plans/completed/2026-08-22-xiaoze-run-timeline-streaming-metadata-closeout.md`。 |
+| 规划 | Update | `docs/exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-3.md`、`docs/zh-CN/exec-plans/completed/2026-08-22-deterministic-tech-debt-parallel-closeout-wave-3.md`、`docs/PLANS.md`、`docs/zh-CN/PLANS.md`、`docs/exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`、`docs/zh-CN/exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`、`docs/exec-plans/completed/2026-08-22-xiaoze-run-timeline-streaming-metadata-closeout.md`、`docs/zh-CN/exec-plans/completed/2026-08-22-xiaoze-run-timeline-streaming-metadata-closeout.md`；旧 active 路径已删除，不保留重复文件。 |
 | 技术债 | Update | `docs/exec-plans/tech-debt-tracker.md`、`docs/zh-CN/exec-plans/tech-debt-tracker.md`；只移动有合入证据的行。 |
 | 领域语境 | Review | `CONTEXT.md`、`docs/adr/README.md`；保留 everyday Parameter workbench 与 Parameter admin/configuration-workbench 区分；durable decision 不变时不加 ADR。 |
 | 产品规格 | No change | `docs/product-specs/index.md`、`docs/product-specs/product-spec.md`、`docs/zh-CN/product-specs/index.md`、`docs/zh-CN/product-specs/product-spec.md`；本计划不改 workflow/permission 决策。 |
 | 前端架构 | Update | `docs/FRONTEND.md`、`docs/zh-CN/frontend.md`；删除 API demo-user 描述、明确 TD-112 Admin-list closure，并更新其中 Xiaoze env 名称。 |
 | 质量/测试 | Review | `docs/QUALITY_SCORE.md`、`docs/zh-CN/QUALITY_SCORE.md`、`docs/design-docs/testing-strategy.md`、`docs/zh-CN/design-docs/testing-strategy.md`、`docs/developer/verification-matrix.md`、`docs/zh-CN/developer/verification-matrix.md`；若全仓 gate 不变则记录 unchanged。 |
-| 浏览器验收 | Update | `e2e/acceptance/requirements.ts`、`e2e/acceptance/operationMatrix.ts`、`e2e/acceptance/parameter-admin-projects.acceptance.spec.ts`、`docs/developer/browser-acceptance-coverage-map.md`、`docs/zh-CN/developer/browser-acceptance-coverage-map.md`、`docs/developer/user-operation-coverage-matrix.md`、`docs/zh-CN/developer/user-operation-coverage-matrix.md`；`PARAM-ADMIN-003` 改 automated 并覆盖准确 breakpoints/URL history，保留 `PROJ-CONFIG-READ-001`，通过 `npm run acceptance:operations`、focused evidence 命令、`npm run acceptance:quality`、`npm run acceptance:a11y`、`npm run acceptance:visual`、`npm run acceptance:responsive`。 |
+| 浏览器验收 | Update | `e2e/acceptance/requirements.ts`、`e2e/acceptance/operationMatrix.ts`、`e2e/acceptance/parameter-admin-projects.acceptance.spec.ts`、`docs/developer/browser-acceptance-coverage-map.md`、`docs/zh-CN/developer/browser-acceptance-coverage-map.md`、`docs/developer/user-operation-coverage-matrix.md`、`docs/zh-CN/developer/user-operation-coverage-matrix.md`；`PARAM-ADMIN-003` 改 automated 并覆盖准确 breakpoints/URL history，保留 `PROJ-CONFIG-READ-001`；通过 `npm run acceptance:operations`、focused operation evidence、`npm run acceptance:quality`、`npm run acceptance:a11y`、`npm run acceptance:responsive` 与 focused `/parameter-admin` / 配置工作台 visual。整库 visual/browser 诊断只按 TD-122 记录非绿，不冒充 Wave 3 通过。 |
 | 环境/runtime/contribution | Update | `.env.example`、`.env.local.example`、`ops/self-hosted/.env.example`、`ops/self-hosted/.env.ip-lab.example`、`CONTRIBUTING.md`、`docs/zh-CN/root/CONTRIBUTING.md`、`docs/developer/environment-variables.md`、`docs/zh-CN/developer/environment-variables.md`、`docs/developer/local-development.md`、`docs/zh-CN/developer/local-development.md`、`docs/zh-CN/backend-runtime.md`；canonical output、legacy migration input。 |
 | 可靠性/runbook | Update | `docs/RELIABILITY.md`、`docs/zh-CN/RELIABILITY.md`、`docs/runbooks/agent-provider.md`、`docs/zh-CN/runbooks/agent-provider.md`、`docs/runbooks/observability-operations.md`、`docs/zh-CN/runbooks/observability-operations.md`、`docs/runbooks/manual-acceptance.md`、`docs/zh-CN/manual-acceptance.md`、`docs/runbooks/m5-commercial-pilot-readiness.md`、`docs/zh-CN/runbooks/m5-commercial-pilot-readiness.md`、`docs/design-docs/deployment-operations.md`、`docs/zh-CN/design-docs/deployment-operations.md`；保留 local/target 证据边界。 |
 | 活跃 target-evidence 计划 | Update | `docs/exec-plans/active/2026-05-29-wiseeff-m5-2-staging-pilot-evidence-execution.md`、`docs/exec-plans/active/2026-05-29-wiseeff-m5-2-non-hdc-target-evidence-closure.md`；这两份历史 evidence-execution 计划没有直接中文 companion，只更新英文中的 future 示例和 supersession note，不伪造目标证据。当前运维说明仍由上方环境、runbook、可靠性与安全行保持双语。 |
@@ -291,5 +309,6 @@ git diff --check
 - TD-072/110/031/112 tracker 状态与合入代码/CI 一致；TD-112 scope gate 失败必须 Open；
 - stale Xiaoze timeline metadata 完成，计划只在 `completed/` 且有中文 companion；
 - 本 Wave 3 文件在有剩余工作时只位于 `active/`，完成后只位于 `completed/`；
-- 移动计划前 `npm run docs:check`、`npm run acceptance:coverage`、`npm run acceptance:operations`、`npm run acceptance:quality`、`npm run acceptance:a11y`、`npm run acceptance:visual`、`npm run acceptance:responsive`、`npm run acceptance:browser -- --mode local-non-hdc`、`npm run acceptance:evidence`、`npm run contract:check`、`git diff --check` 全绿；
+- 移动计划前 `npm run docs:check`、`npm run acceptance:coverage`、`npm run acceptance:operations`、`npm run acceptance:quality`、`npm run acceptance:a11y`、`npm run acceptance:responsive`、`npm run contract:check`、`git diff --check` 全绿；TD-110/112 focused browser、focused visual 与 required evidence 也必须全绿；
+- 对本次四行 Wave 3，整库 `npm run acceptance:visual`、`npm run acceptance:browser -- --mode local-non-hdc` 与无作用域 latest-run `npm run acceptance:evidence` 是诊断门而非 scoped gate 的替代。任何非绿都必须记录精确计数、不得冒充通过，并在 Wave 3 归档前交给 Open tracker 行与 active plan。本次 11 个 visual 与 18 个 browser failure 已交 TD-122；TD-122 仍必须在这些整库命令全绿且 full evidence manifest 合法后才能关闭；
 - deferred target/HDC/live-provider evidence 继续明确，不得转写为本地完成声明。

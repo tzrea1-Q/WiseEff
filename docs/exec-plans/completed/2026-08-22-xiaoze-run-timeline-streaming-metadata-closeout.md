@@ -1,6 +1,8 @@
-# TD-031: Xiaoze run timeline and streaming (P0 + P2)
+# Xiaoze run timeline and streaming metadata closeout
 
-Status: keep in `active/`. Timeline/streaming implementation was absorbed by completed `2026-08-12-xiaoze-turn-stream` (TD-070 closed). Residual in this file is the documentation update gate (EN+ZH design-doc metadata note); not open product/code work.
+> Status: **Completed 2026-08-22**
+> Historical label: this file previously reused `TD-031`, but timeline/streaming implementation was absorbed by completed `2026-08-12-xiaoze-turn-stream` and TD-070 is closed. Current TD-031 refers only to Xiaoze LLM environment naming and closed via #591.
+> Chinese: [Chinese](../../zh-CN/exec-plans/completed/2026-08-22-xiaoze-run-timeline-streaming-metadata-closeout.md)
 
 ## Goal
 
@@ -20,7 +22,9 @@ Expose mid-run process visibility (tool steps, streaming deltas, accurate thinki
 
 ## Documentation Update Gate
 
-- [ ] English + Chinese design doc metadata note before merge
+- [x] English + Chinese persistence design docs state that finalized assistant messages store `metadata: { runSteps, runId }`, hydration restores `metadata.runSteps`, and persistence occurs after successful turn completion rather than per SSE token.
+
+No product/code work remained in this plan. The metadata note matches `server/modules/agent/xiaoze/threadPersistence.ts` and `src/features/agent/XiaozeTurnTimeline.tsx`; the plan now exists only under `completed/` with a Chinese companion.
 
 ## Verification
 

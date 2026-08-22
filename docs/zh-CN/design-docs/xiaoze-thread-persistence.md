@@ -90,6 +90,8 @@ v1 **不新建** `xiaoze_threads` 表。
 
 **写入时机：** 每次 AG-UI run 成功结束后持久化（含审批 resume），而非每个 SSE token。用户消息来自请求体；assistant/reasoning 来自 agent 结果。失败 run 不写入 assistant 内容。
 
+**Assistant run-step metadata：** 成功回合存在 finalized steps 时，assistant `agent_messages` 行写入 `metadata: { runSteps, runId }`。thread hydration 会返回该 metadata，`XiaozeTurnTimeline` 读取 `metadata.runSteps` 恢复已完成时间线。这是回合结束时持久化，不是逐 token SSE 持久化；失败 run 仍不写入 assistant 内容或 finalized timeline metadata。
+
 **空 thread：** 首条非空用户消息之前不插入 `agent_sessions`（与当前前端规则一致）。
 
 **幂等：** AG-UI 提供稳定 message id；`appendAgentMessage` 使用 `ON CONFLICT (id) DO NOTHING`，重试不重复插入。

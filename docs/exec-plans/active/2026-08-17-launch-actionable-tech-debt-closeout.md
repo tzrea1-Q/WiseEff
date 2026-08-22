@@ -121,7 +121,7 @@ Do **not** open a second closeout plan. These tracks ran in parallel from latest
 
 ### Later product/platform batches (not launch-blocking in this cut)
 
-Hygiene and architecture leftovers that are real but should not steal the launch window: TD-003 / TD-012 (generated-client and generic AG-UI/REST remainder; TD-008 and TD-018 are closed), TD-005 (completed-plan hygiene), TD-014 (catalog remainder after #532 import/export), TD-055 (governance implementation), TD-067 / TD-068 (bridge/security follow-ups; TD-063 / TD-066 closed via #547 / #531), TD-072 / TD-075 / TD-076 (test architecture; TD-075 partial), and TD-097 / TD-110 / TD-112 / TD-113 (frontend residue; TD-097 / TD-112 partial via #533 / #526). Pick them when touching those surfaces; do not bundle them here. TD-013 closed via #529; TD-048 / TD-049 / TD-050 / TD-051 / TD-052 / TD-053 / TD-059 / TD-063 / TD-071 / TD-073 / TD-074 / TD-117 are closed. TD-059 / TD-071 / TD-073 completed on 2026-08-22 via #577 / #575 / #576; the reload workflow sheet remains outside TD-059. Deterministic closeout wave 2 then closed TD-109 via #580, TD-018 via #582, TD-077 via #583, and TD-114 via #585 without closing the broader TD-003/012 or TD-072/075/076 residuals.
+Hygiene and architecture leftovers that are real but should not steal the launch window: TD-003 / TD-012 (generated-client and generic AG-UI/REST remainder; TD-008 and TD-018 are closed), TD-005 (completed-plan hygiene), TD-014 (catalog remainder after #532 import/export), TD-055 (governance implementation), TD-067 / TD-068 (bridge/security follow-ups; TD-063 / TD-066 closed via #547 / #531), TD-075 / TD-076 (test architecture; TD-075 partial), and TD-097 / TD-113 (frontend residue; TD-097 partial via #533). Pick them when touching those surfaces; do not bundle them here. TD-013 closed via #529; TD-048 / TD-049 / TD-050 / TD-051 / TD-052 / TD-053 / TD-059 / TD-063 / TD-071 / TD-073 / TD-074 / TD-117 are closed. TD-059 / TD-071 / TD-073 completed on 2026-08-22 via #577 / #575 / #576; the reload workflow sheet remains outside TD-059. Deterministic closeout wave 2 then closed TD-109 via #580, TD-018 via #582, TD-077 via #583, and TD-114 via #585 without closing the broader TD-003/012/075/076 residuals. Wave 3 subsequently closed TD-072 via #588, TD-110 via #589, TD-031 via #591, and the scoped `/parameter-admin/projects` TD-112 Admin list via #592; those later PRs did not run on this launch-plan branch.
 
 ## Per-TD status for this launch cut
 
@@ -138,7 +138,7 @@ Legend: **Done** = closed or closeable in a batch above; **In progress (sibling)
 | TD-082 | Done on `main` via #507 | `chore/td-082-apierror-status-codemod` |
 | TD-001 | Deferred | Long-running mock/API parity constraint, not a ticket |
 | TD-033 | Deferred | Archive-only leftover debugging catalog tables |
-| TD-031 | Deferred | Env-var rename; high confusion risk in the launch window |
+| TD-031 | Done later via #591 | Deferred from this launch branch, then closed by deterministic Wave 3 with canonical group-atomic `XIAOZE_LLM_*` configuration and an explicit legacy migration fallback. |
 | TD-113 | Deferred | Large token-burn waves; continue only on touched surfaces |
 | TD-062 | Deferred | PCW stretch 800–1000 LOC; do not reopen #258 |
 | TD-043 | Deferred | Optional Admin L2 toolchain panel |
@@ -150,7 +150,7 @@ Legend: **Done** = closed or closeable in a batch above; **In progress (sibling)
 | TD-038 / TD-042 | Blocked | Target proof / clean snapshot cutover rehearsal |
 | TD-039 / TD-040 | Blocked | Follow the topology cutover; do not reopen a separate program |
 | TD-103 / TD-105 / TD-116 | Blocked | Needs KMS or real webhook volume |
-| Remaining open rows (TD-003, TD-005, TD-012, TD-014, TD-055, TD-067–068, TD-072, TD-075–076, TD-097, TD-110, TD-112–113, …) | Open (later) | Not this branch. TD-003/012/014/075/097/112 stay **partially** open. TD-018/077/109/114 closed in deterministic wave 2 via #582/#583/#580/#585; TD-008/013/048–053/059/063–066/071/073/074/117 were already closed. |
+| Remaining open rows (TD-003, TD-005, TD-012, TD-014, TD-055, TD-067–068, TD-075–076, TD-097, TD-113, …) | Open (later) | Not this branch. TD-003/012/014/075/097 stay **partially** open. TD-018/077/109/114 closed in deterministic wave 2 via #582/#583/#580/#585; TD-072/110/031/112 later closed in Wave 3 via #588/#589/#591/#592; TD-008/013/048–053/059/063–066/071/073/074/117 were already closed. |
 
 ## UI Interaction Automation review
 

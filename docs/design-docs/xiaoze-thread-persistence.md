@@ -90,6 +90,8 @@ Frontend (CopilotKit threadId)
 
 **Write timing:** persist at end of each successful AG-UI run (including approval resume runs), not on every SSE token. User message is taken from the request; assistant/reasoning from agent result. Failed runs do not append assistant content.
 
+**Assistant run-step metadata:** when a successful turn has finalized steps, the assistant `agent_messages` row stores `metadata: { runSteps, runId }`. Thread hydration returns that metadata and `XiaozeTurnTimeline` reads `metadata.runSteps` to restore the completed timeline. This is end-of-turn persistence, not per-token SSE persistence; a failed run still appends no assistant content or finalized timeline metadata.
+
 **Empty threads:** do not insert `agent_sessions` until the first non-empty user message (matches current frontend rule).
 
 **Idempotency:** AG-UI supplies stable message ids; `appendAgentMessage` uses `ON CONFLICT (id) DO NOTHING` (new migration) so retries do not duplicate rows.
